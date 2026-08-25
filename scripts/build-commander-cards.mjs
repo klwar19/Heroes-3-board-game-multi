@@ -159,6 +159,13 @@ const COMMANDERS = [
     ]
   },
   {
+    slug: "demon_ancestor", name: "Demon Ancestor", faction: "Heavenly Demon Palace",
+    abilities: [
+      "Undying Demon Body: immune to Paralysis.",
+      "Blood Frenzy: empowers an allied melee cultivator."
+    ]
+  },
+  {
     slug: "might_guy", name: "Might Guy", faction: "Hidden Leaf Village",
     abilities: [
       "Eight Gates: chooses +1 Attack or +1 Defense before combat.",

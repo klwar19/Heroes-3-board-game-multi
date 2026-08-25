@@ -76,10 +76,10 @@ export const HERO_GRADE_REGISTERS: Record<GradeRegisterKey, readonly GradeLabel[
   ],
   // Ninefold Realms (xianxia) — martial-world titles.
   xianxia: [
-    { en: "Martial Artist", vi: "Võ Giả" },
-    { en: "Expert", vi: "Cao Thủ" },
-    { en: "Grandmaster", vi: "Tông Sư" },
-    { en: "Legendary", vi: "Truyền Kỳ" }
+    { en: "Qi Refinement", vi: "Luyện Khí" },
+    { en: "Foundation Establishment", vi: "Trúc Cơ" },
+    { en: "Golden Core", vi: "Kim Đan" },
+    { en: "Nascent Soul", vi: "Nguyên Anh" }
   ],
   // Otherworld Gate (isekai) — adventurer guild ranks.
   isekai: [
@@ -104,10 +104,10 @@ export const HERO_GRADE_REGISTERS: Record<GradeRegisterKey, readonly GradeLabel[
   // exactly like Azur Lane vs Fuyuki in the anime visual family — its explicit
   // faction mapping is what preserves distinct titles.
   modao: [
-    { en: "Blood Adept", vi: "Huyết Đồ" },
-    { en: "Demon General", vi: "Ma Tướng" },
-    { en: "Demon King", vi: "Ma Vương" },
-    { en: "Heavenly Demon", vi: "Thiên Ma" }
+    { en: "Blood Refinement", vi: "Luyện Huyết" },
+    { en: "Demon Foundation", vi: "Ma Cơ" },
+    { en: "Demon Core", vi: "Ma Đan" },
+    { en: "Demon Soul", vi: "Ma Anh" }
   ],
   // Little Busters (seishun / school-days) — also scales its town-exclusive battlefield hero.
   seishun: [
@@ -126,6 +126,18 @@ export const HERO_GRADE_REGISTERS: Record<GradeRegisterKey, readonly GradeLabel[
 
 /** Bespoke grade emblems; other registers keep the existing Sparkles fallback. */
 export const HERO_GRADE_ICONS: Partial<Record<GradeRegisterKey, readonly string[]>> = {
+  xianxia: [
+    "/assets/anime/icons/cultivation/qi-refinement.webp",
+    "/assets/anime/icons/cultivation/foundation-establishment.webp",
+    "/assets/anime/icons/cultivation/golden-core.webp",
+    "/assets/anime/icons/cultivation/nascent-soul.webp"
+  ],
+  modao: [
+    "/assets/anime/icons/cultivation/blood-refinement.webp",
+    "/assets/anime/icons/cultivation/demon-foundation.webp",
+    "/assets/anime/icons/cultivation/demon-core.webp",
+    "/assets/anime/icons/cultivation/demon-soul.webp"
+  ],
   seishun: [
     "/assets/anime/icons/little-busters/grade-benchwarmer.webp",
     "/assets/anime/icons/little-busters/grade-regular.webp",
@@ -260,6 +272,42 @@ export const MGQ_JOB_MASTERY_NODE = {
   name: { en: "Job Mastery", vi: "Tinh Thong Nghe Nghiep" },
   summary: "Passive: this hero's town Job assignments and reassignments cost 0 gold."
 } as const satisfies HeroGradeNode;
+
+export const XIANXIA_CULTIVATION_NODES = [
+  {
+    id: "xianxia-meridian-circulation", tier: 1, kind: "passive",
+    name: { en: "Meridian Circulation", vi: "Chu Thiên Vận Khí" },
+    summary: "Passive: begin each combat with +1 Sect Qi (2 instead of 1)."
+  },
+  {
+    id: "xianxia-body-refinement", tier: 2, kind: "passive",
+    name: { en: "Body Refinement", vi: "Luyện Thể" },
+    summary: "Passive: your Sect Qi capacity increases from 3 to 4."
+  },
+  {
+    id: "xianxia-sword-domain", tier: 3, kind: "passive",
+    name: { en: "Sword Domain", vi: "Kiếm Vực" },
+    summary: "Passive: a Sword Intent hero releases Sword Intent after 2 damaging attacks instead of 3."
+  }
+] as const satisfies readonly HeroGradeNode[];
+
+export const MODAO_CULTIVATION_NODES = [
+  {
+    id: "modao-blood-refinement", tier: 1, kind: "passive",
+    name: { en: "Blood Refinement", vi: "Huyết Luyện" },
+    summary: "Passive: begin each combat with 1 Blood Essence."
+  },
+  {
+    id: "modao-corpse-furnace", tier: 2, kind: "passive",
+    name: { en: "Corpse Furnace", vi: "Thi Lô" },
+    summary: "Passive: your Blood Essence capacity increases from 4 to 5."
+  },
+  {
+    id: "modao-forbidden-overreach", tier: 3, kind: "passive",
+    name: { en: "Forbidden Overreach", vi: "Nghịch Thiên Cấm Thuật" },
+    summary: "Passive: Blood Frenzy grants +2 Attack instead of +1 when it spends Essence."
+  }
+] as const satisfies readonly HeroGradeNode[];
 
 // --- Node id constants (referenced by the engine wiring & tests) ------------
 export const HERO_GRADE_NODE_IDS = {
@@ -534,6 +582,8 @@ export const HERO_GRADE_NODES: Record<string, HeroGradeNode> = {
  * engine builds that player's pickable catalog.
  */
 export const HERO_GRADE_REGISTER_NODES: Partial<Record<GradeRegisterKey, readonly HeroGradeNode[]>> = {
+  xianxia: XIANXIA_CULTIVATION_NODES,
+  modao: MODAO_CULTIVATION_NODES,
   mgq: [MGQ_JOB_MASTERY_NODE]
 };
 

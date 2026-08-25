@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="743" height="1040" viewBox="0 0 743 1040">
   <title>Azure Breeze Sect Mountain Guardian PACK art proof</title>
-  <metadata data-status="art-proof-not-playable" data-layout="ninefold-board-game-classic-v3" data-source="docs/anime-mod-plan.md" data-master="units-azure-breeze-golden-mountain-guardian-master.png" data-frame="units-azure-breeze-board-game-frame-master.png" data-level="7" data-variant="pack" data-attack="6" data-defense="3" data-health="8" data-initiative="3" data-traits="GROUND,MELEE" data-rule-capacity-lines="7"/>
+  <metadata data-status="art-proof-not-playable" data-layout="ninefold-board-game-classic-v3" data-source="docs/anime-mod-plan.md" data-master="units-azure-breeze-golden-mountain-guardian-master.png" data-frame="units-azure-breeze-board-game-frame-master.png" data-level="7" data-variant="pack" data-attack="6" data-defense="3" data-health="9" data-initiative="3" data-traits="GROUND,MELEE" data-rule-capacity-lines="7"/>
   <defs>
     <linearGradient id="variantBand" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4a2d1d"/><stop offset=".52" stop-color="#29170f"/><stop offset="1" stop-color="#1a0d09"/></linearGradient>
     <filter id="textShadow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur in="SourceAlpha" stdDeviation="2"/><feOffset dy="2"/><feComponentTransfer><feFuncA type="linear" slope=".8"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
@@ -12,7 +12,7 @@
       .smallcaps { font-family: "Liberation Serif", Georgia, serif; font-weight: 700; letter-spacing: 2.5px; }
       .statNumber { fill: #fff0c8; font-family: "Liberation Serif", Georgia, serif; font-size: 40px; font-weight: 700; text-anchor: middle; filter: url(#textShadow); }
       .typeLabel { fill: #e8e2b4; font-family: Arial, sans-serif; font-size: 13px; font-weight: 700; letter-spacing: 2px; filter: url(#textShadow); }
-      .ruleText { fill: #f3e8c7; font-family: "Liberation Serif", Georgia, serif; font-size: 18px; font-weight: 700; text-anchor: middle; filter: url(#textShadow); }
+      .ruleText { fill: #f3e8c7; font-family: "Liberation Serif", Georgia, serif; font-size: 21px; font-weight: 700; text-anchor: middle; filter: url(#textShadow); }
     </style>
   </defs>
 
@@ -51,7 +51,7 @@
       <path d="M-11-29H11V-11H29V11H11V29H-11V11H-29V-11H-11Z" fill="#d7d7a4" stroke="#f2e7bd"/>
       <path d="M0 18C-7 10-15 8-20 9-17 1-10-5 0-10 10-5 17 1 20 9 15 8 7 10 0 18Z" fill="#4f846d" stroke="#315f50" stroke-width="2.5"/>
     </g>
-      <text x="118" y="570" class="statNumber">8</text>
+      <text x="118" y="570" class="statNumber">9</text>
     </g><g id="stat-initiative">
       <g id="icon-initiative-cloud-step" transform="translate(118 649)" fill="none" stroke="#dce4c5" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round" filter="url(#iconShadow)">
     <circle cx="10" cy="-22" r="7" fill="#dce4c5"/>
@@ -74,6 +74,6 @@
     <text x="371" y="105" class="display" fill="#f5dda0" font-size="34" text-anchor="middle" filter="url(#textShadow)">Mountain Guardian</text>
     <text x="371" y="135" fill="#c8d6b9" font-family="Liberation Serif, Georgia, serif" font-size="17" font-style="italic" font-weight="700" text-anchor="middle" filter="url(#textShadow)">Thủ sơn linh thú</text>
     <text x="376" y="814" class="display" fill="#f5dda0" font-size="34" text-anchor="middle" filter="url(#textShadow)"># PACK</text>
-    <g id="editable-rules"><path d="M84 887.88q10-9 20 0-10 2-13 12-2-8-7-12Z" fill="#e0c17e"/><text x="384" y="896.88" class="ruleText">Verdant Pulse — At the start of your turn, heal this</text><text x="384" y="917.88" class="ruleText">unit and every adjacent allied unit 1 Health.</text><path d="M84 935.88q10-9 20 0-10 2-13 12-2-8-7-12Z" fill="#e0c17e"/><text x="384" y="944.88" class="ruleText">Returning Earth — When removed, heal every adjacent</text><text x="384" y="965.88" class="ruleText">allied unit 1 Health.</text></g>
+    <g id="editable-rules"><path d="M84 911.22q10-9 20 0-10 2-13 12-2-8-7-12Z" fill="#e0c17e"/><text x="384" y="920.22" class="ruleText">Returning Earth — heal 2 on activation; unlimited</text><text x="384" y="944.22" class="ruleText">Retaliation.</text></g>
   </g>
 </svg>

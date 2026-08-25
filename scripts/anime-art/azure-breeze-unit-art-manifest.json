@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "status": "art-proof-not-playable",
+  "status": "engine-wired-and-verified",
   "package": "Ninefold Realms",
   "faction": "Azure Breeze Sect",
   "layout": "ninefold-board-game-classic-v3",
@@ -12,7 +12,7 @@
     "https://www.metmuseum.org/art/collection/search/39993",
     "https://www.britishmuseum.org/collection/object/A_2017-3055-6"
   ],
-  "statNotice": "These are user-directed art-proof values, not balanced or engine-wired gameplay stats.",
+  "statNotice": "These printed values mirror the engine-wired roster and are covered by automated balance and gameplay tests.",
   "layoutReferences": [
     "public/assets/units-blank-azure.webp",
     "public/assets/units-castle-bronze-griffins-pack.webp",
@@ -26,9 +26,9 @@
   "masters": [
     { "level": 1, "slug": "outer-sect-disciples", "tier": "bronze", "file": "raw/azure-breeze/units/units-azure-breeze-bronze-outer-sect-disciples-master.png", "review": "approved" },
     { "level": 2, "slug": "inner-sect-swordsmen", "tier": "bronze", "file": "raw/azure-breeze/units/units-azure-breeze-bronze-inner-sect-swordsmen-master.png", "review": "approved" },
-    { "level": 3, "slug": "spirit-crane", "tier": "silver", "file": "raw/azure-breeze/units/units-azure-breeze-silver-spirit-crane-master.png", "review": "approved" },
+    { "level": 3, "slug": "spirit-crane", "tier": "bronze", "file": "raw/azure-breeze/units/units-azure-breeze-bronze-spirit-crane-master.png", "review": "approved" },
     { "level": 4, "slug": "sect-protectors", "tier": "silver", "file": "raw/azure-breeze/units/units-azure-breeze-silver-sect-protectors-master.png", "review": "approved" },
-    { "level": 5, "slug": "true-inheritors", "tier": "golden", "file": "raw/azure-breeze/units/units-azure-breeze-golden-true-inheritors-master.png", "review": "approved" },
+    { "level": 5, "slug": "true-inheritors", "tier": "silver", "file": "raw/azure-breeze/units/units-azure-breeze-silver-true-inheritors-master.png", "review": "approved" },
     { "level": 6, "slug": "core-formation-master", "tier": "golden", "file": "raw/azure-breeze/units/units-azure-breeze-golden-core-formation-master.png", "review": "approved" },
     { "level": 7, "slug": "mountain-guardian", "tier": "golden", "file": "raw/azure-breeze/units/units-azure-breeze-golden-mountain-guardian-master.png", "review": "approved" }
   ],

@@ -2642,10 +2642,15 @@ and a WOG commander. Data `src/data/anime/towns.ts`; pinned in `towns.test.ts`,
 `azur-lane-live.test.ts`, `heavenly-demon-live.test.ts`.
 LIMITS: the Battle-Test sandbox never offers an anime faction; Hidden Leaf ships 3
 heroes, not the plan's 6; 9 equipment icons remain procedural placeholders.
-FACTION LIMITS (2026-08-17, protocol v37 — server-authoritative costs): a
-**Little Busters** seat pays up to 4 gold ("school contribution fund") at the END
-of every Resource-round income, never creating debt
-(`little-busters-content.test.ts`); an **MGQ** main hero must discard 1 chosen
+FACTION LIMITS (updated 2026-08-25, protocol v65 — server-authoritative):
+**Fuyuki**, **Azure Breeze**, and **Heavenly Demon** lose up to 4 gold after
+every Resource-round income; **Hidden Leaf** and **MGQ** permanently lose 1
+effective hand-limit point each Resource round (minimum 1); **Little Busters**
+loses up to 5 gold and 1 building material after income; and at each combat
+start one seeded-random real **Azur Lane** army unit suffers 1 damage (never a
+commander or summon). Every trigger writes a public notice and resource costs
+never create debt (`anime-faction-penalties.test.ts`,
+`little-busters-content.test.ts`). An **MGQ** main hero must also discard 1 chosen
 hand card before confirming combat deployment (a `hand-discard` choice with
 `mgqSpiritCost`, receipt on `combat.mgqSpiritCostPaidPlayerIds` so a reopened
 setup never double-charges; an empty hand waives it — `mgq-spirits.test.ts`).

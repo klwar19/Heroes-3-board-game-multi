@@ -55,7 +55,10 @@ const EXPECTED_ABILITIES: Record<string, { few: string[]; pack: string[] }> = {
     few: ["commander-charge"],
     pack: ["commander-charge", "ignores-retaliation"]
   },
-  "heavenly_demon.ghost_king": { few: ["wraith-heal-1"], pack: ["wraith-heal-2", "unlimited-retaliation"] },
+  "heavenly_demon.ghost_king": {
+    few: ["ignore-combat-penalties", "wraith-heal-1"],
+    pack: ["ignore-all-combat-penalties", "wraith-heal-2"]
+  },
   "heavenly_demon.demon_avatar": {
     few: ["heavenly-demon-reap"],
     pack: ["heavenly-demon-reap", "titan-ignore-ongoing"]
@@ -73,9 +76,9 @@ const ENVELOPES: Record<
   "bronze" | "silver" | "gold",
   { attack: [number, number]; defense: [number, number]; health: [number, number]; initiative: [number, number]; gold: [number, number]; valuables: [number, number] }
 > = {
-  bronze: { attack: [1, 3], defense: [1, 2], health: [2, 3], initiative: [5, 8], gold: [2, 6], valuables: [0, 0] },
-  silver: { attack: [2, 4], defense: [2, 3], health: [3, 5], initiative: [3, 7], gold: [7, 13], valuables: [0, 0] },
-  gold: { attack: [5, 7], defense: [2, 3], health: [5, 8], initiative: [3, 7], gold: [13, 23], valuables: [1, 2] }
+  bronze: { attack: [2, 3], defense: [0, 1], health: [2, 4], initiative: [5, 10], gold: [2, 6], valuables: [0, 0] },
+  silver: { attack: [2, 5], defense: [1, 2], health: [4, 6], initiative: [2, 8], gold: [9, 14], valuables: [0, 0] },
+  gold: { attack: [4, 7], defense: [2, 3], health: [7, 8], initiative: [5, 7], gold: [14, 24], valuables: [1, 2] }
 };
 
 function fileExists(assetPath: string, minBytes = 1000): boolean {
@@ -91,7 +94,7 @@ describe("Heavenly Demon Palace — registration & roster shape", () => {
     expect(faction.startingTileId).toBe("D-S1");
     expect(faction.units).toHaveLength(7);
     expect(faction.buildings).toHaveLength(8);
-    expect(faction.heroes).toEqual(["xuedao", "guiyan", "xuanming", "yaoji", "molian"]);
+    expect(faction.heroes).toEqual(["xuedao", "guiyan", "xuanming", "yaoji", "molian", "luohun", "shiyan"]);
 
     const byTier = { bronze: 0, silver: 0, gold: 0, azure: 0 };
     for (const id of faction.units) byTier[coreUnitDefinitions[id].tier] += 1;
@@ -123,9 +126,9 @@ describe("Heavenly Demon Palace — registration & roster shape", () => {
     }
   });
 
-  it("uses the wuxia visual register (same as Azure Breeze) with the Martial-Path lexicon", () => {
+  it("uses the wuxia visual register (same as Azure Breeze) with the Cultivation-Realm lexicon", () => {
     expect(factionVisualRegister(FACTION)).toBe("wuxia");
-    expect(factionUiLexicon(FACTION).grade).toBe("Martial Path");
+    expect(factionUiLexicon(FACTION).grade).toBe("Cultivation Realm");
   });
 });
 
@@ -205,9 +208,9 @@ describe("Heavenly Demon Palace — balance envelopes & Few→Pack progression",
     }
   });
 
-  it("ships exactly one RANGED unit (the Gu Witches)", () => {
+  it("ships exactly two RANGED units (Gu Witches and Ghost King)", () => {
     const ranged = coreFactionDefinitions[FACTION].units.filter((id) => coreUnitDefinitions[id].type === "ranged");
-    expect(ranged).toEqual(["heavenly_demon.gu_witches"]);
+    expect(ranged).toEqual(["heavenly_demon.gu_witches", "heavenly_demon.ghost_king"]);
   });
 });
 
@@ -455,10 +458,10 @@ const EXPECTED_SCHEDULES: Record<string, readonly [RankPin, RankPin, RankPin, Ra
     ["veteran-spell-sunder", "ignore-all-combat-penalties", "ranged-extra-shot-on-low-roll", "veteran-low-roll-insight"]
   ],
   "heavenly_demon.shadow_wraiths": [
-    ["veteran-retaliation-fury"],
-    ["zombie-resilience-weak", "veteran-retaliation-fury", "wraith-heal-1", "veteran-guarded-stance"],
+    ["veteran-attack-when-attacking"],
+    ["veteran-attack-when-attacking", "veteran-guarded-stance", "commander-charge", "wog-no-negative-attack-roll"],
     "stats",
-    ["wraith-heal-2", "wraith-enemy-discard", "veteran-rebirth", "veteran-soul-feast"]
+    ["unlimited-retaliation", "commander-max-damage", "veteran-defense-pierce", "veteran-rebirth"]
   ],
   "heavenly_demon.corpse_puppets": [
     ["veteran-retaliation-fury"],
@@ -474,9 +477,9 @@ const EXPECTED_SCHEDULES: Record<string, readonly [RankPin, RankPin, RankPin, Ra
   ],
   "heavenly_demon.ghost_king": [
     ["veteran-attack-when-attacking"],
-    ["veteran-attack-when-attacking", "veteran-guarded-stance", "commander-charge", "wog-no-negative-attack-roll"],
+    ["veteran-steady-aim", "bulwark-air-shield", "attack-roll-advantage-passive", "ranged-extra-shot-on-low-roll"],
     "stats",
-    ["unlimited-retaliation", "commander-max-damage", "veteran-defense-pierce", "veteran-rebirth"]
+    ["ignore-all-combat-penalties", "ranged-extra-shot-on-low-roll", "veteran-low-roll-insight", "veteran-spell-sunder"]
   ],
   "heavenly_demon.demon_avatar": [
     "stats",
@@ -494,7 +497,7 @@ const EXPECTED_GRANTS: Record<string, readonly string[]> = {
     "veteran-defense-pierce"
   ],
   "heavenly_demon.gu_witches": ["ranged-extra-shot-on-low-roll", "veteran-spell-sunder"],
-  "heavenly_demon.shadow_wraiths": ["veteran-retaliation-fury", "zombie-resilience-weak", "wraith-heal-2"],
+  "heavenly_demon.shadow_wraiths": ["veteran-attack-when-attacking", "veteran-guarded-stance", "unlimited-retaliation"],
   "heavenly_demon.corpse_puppets": [
     "veteran-retaliation-fury",
     "wog-no-negative-attack-roll",
@@ -507,8 +510,8 @@ const EXPECTED_GRANTS: Record<string, readonly string[]> = {
   ],
   "heavenly_demon.ghost_king": [
     "veteran-attack-when-attacking",
-    "veteran-guarded-stance",
-    "commander-max-damage"
+    "veteran-steady-aim",
+    "ranged-extra-shot-on-low-roll"
   ],
   "heavenly_demon.demon_avatar": ["reduce-spell-damage-1", "commander-max-damage", "wog-fire-shield-1"]
 };
@@ -541,7 +544,7 @@ describe("Heavenly Demon Palace — Demon-path veterancy: resolved rank schedule
       expect(unitRankAbilityIds(unitId, 4), unitId).toEqual([...EXPECTED_GRANTS[unitId]!]);
     }
     // Spot the headline picks explicitly so the intent is legible.
-    expect(unitRankAbilityIds("heavenly_demon.shadow_wraiths", 4)).toContain("wraith-heal-2");
+    expect(unitRankAbilityIds("heavenly_demon.shadow_wraiths", 4)).toContain("unlimited-retaliation");
     expect(unitRankAbilityIds("heavenly_demon.demon_avatar", 4)).toContain("wog-fire-shield-1");
   });
 
@@ -610,7 +613,7 @@ describe("Heavenly Demon Palace — Demon-path veterancy: resolved rank schedule
     expect(plain.attack).toBe(coreUnitDefinitions["heavenly_demon.ghost_king"].few!.attack);
     expect(r1.abilities).toContain("veteran-attack-when-attacking");
     expect(r1.attack).toBe(plain.attack);
-    expect(r2.abilities).toContain("veteran-guarded-stance");
+    expect(r2.abilities).toContain("veteran-steady-aim");
     expect(r2.attack).toBe(plain.attack);
 
     // R3 is the stats rank: gold step 0 is +1 Attack — an OBSERVABLE delta.
@@ -618,9 +621,9 @@ describe("Heavenly Demon Palace — Demon-path veterancy: resolved rank schedule
 
     // CONTROLs: below each threshold there is NO grant, and the plain card
     // (no XP) carries neither ability nor the stat bump.
-    expect(r1.abilities).not.toContain("veteran-guarded-stance");
+    expect(r1.abilities).not.toContain("veteran-steady-aim");
     expect(plain.abilities).not.toContain("veteran-attack-when-attacking");
-    expect(plain.abilities).not.toContain("veteran-guarded-stance");
+    expect(plain.abilities).not.toContain("veteran-steady-aim");
     expect(plain.unitRank ?? 0).toBe(0);
   });
 });

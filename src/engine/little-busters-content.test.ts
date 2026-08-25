@@ -92,7 +92,7 @@ function enterNeutralFight(factionId: "little_busters" | "fuyuki", heroDefId: st
 }
 
 describe("Little Busters complete playable content", () => {
-  it("pays the 4-gold school contribution fund every Resource round without creating debt", () => {
+  it("pays the 5-gold and 1-material school contribution every Resource round without creating debt", () => {
     const state = createAdventureGameState({
       seed: "little-busters-school-fund",
       difficulty: "normal",
@@ -105,16 +105,19 @@ describe("Little Busters complete playable content", () => {
     });
     state.pendingChoice = null;
     state.players.p1.resources.gold = 1;
+    state.players.p1.resources.buildingMaterials = 2;
     state.players.p1.production.gold = 6;
+    state.players.p1.production.buildingMaterials = 0;
     state.players.p2.resources.gold = 1;
     state.players.p2.production.gold = 6;
     state.round = 3;
 
     startAdventureRound(state);
 
-    expect(state.players.p1.resources.gold).toBe(3); // 1 + 6 income - 4 fund
+    expect(state.players.p1.resources.gold).toBe(2); // 1 + 6 income - 5 fund
+    expect(state.players.p1.resources.buildingMaterials).toBe(1);
     expect(state.players.p2.resources.gold).toBe(7); // control: no faction cost
-    expect(state.eventLog.some((event) => event.type === "EVENT_NOTE" && event.message.includes("School contribution fund: 4 gold"))).toBe(true);
+    expect(state.eventLog.some((event) => event.type === "EVENT_NOTE" && event.message.includes("School Contribution Fund — 5 gold and 1 building material"))).toBe(true);
 
     state.players.p1.resources.gold = 0;
     state.players.p1.production.gold = 2;

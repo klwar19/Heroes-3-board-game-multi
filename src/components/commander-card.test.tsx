@@ -130,14 +130,14 @@ describe("CommanderCardFace — themed commander layouts", () => {
     expect(queryByText("Belfast")).toBeNull();
   });
 
-  it("keeps Demon Ancestor on the same commander format with Wuxia styling", () => {
-    const { container, queryByText, getByText } = render(<CommanderCardFace slug="demon_ancestor" grades={{}} />);
+  it("puts Demon Ancestor in the same true commander frame as Sword Saint", () => {
+    const { container, getByText } = render(<CommanderCardFace slug="demon_ancestor" grades={{}} />);
 
-    expect(container.querySelector('[data-card-layout="wuxia"]')).toBeTruthy();
-    expect(container.querySelector(".themedCommanderStats")).toBeTruthy();
-    expect(container.querySelector(".themedCommanderAbility")).toBeTruthy();
+    expect(container.querySelector('[data-card-layout="classic"]')).toBeTruthy();
+    expect(container.querySelector(".themedCommanderStats")).toBeNull();
+    expect(container.querySelector(".themedCommanderAbility")).toBeNull();
+    expect(getByText("Demon Ancestor")).toBeTruthy();
     expect(getByText(/Blood Frenzy/)).toBeTruthy();
-    expect(queryByText("Demon Ancestor")).toBeNull();
   });
 });
 

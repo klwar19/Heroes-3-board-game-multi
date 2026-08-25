@@ -30,6 +30,11 @@ import { assetUrl } from "@/lib/asset-url";
 import { playLibrarySound, playSpellBookOpen } from "@/lib/sound";
 import { formatCost } from "@/components/table/utils";
 import {
+  fuyukiCommandSealsOf,
+  hiddenLeafMissionRankOf,
+  hiddenLeafNextMissionRank
+} from "@/engine/anime-town-mechanics";
+import {
   BuildingDetailPanel,
   HireHeroesSection,
   TownRecruitSection,
@@ -469,6 +474,14 @@ export function TownBoardView({
   const geometry = spec.geometry;
   const isScan = Boolean(spec.emptyImage);
   const built = (buildingId: string) => town.buildings.includes(buildingId);
+  const missionPoints = Math.max(0, player.hiddenLeafMissionPoints ?? 0);
+  const nextMissionRank = hiddenLeafNextMissionRank(missionPoints);
+  const factionMechanicStatus =
+    faction.id === "fuyuki"
+      ? `Command Seals: ${fuyukiCommandSealsOf(player)}/3 · Compel grants +1 Attack; Recall heals 3 · maximum one seal per combat.`
+      : faction.id === "hidden_leaf"
+        ? `Mission Rank ${hiddenLeafMissionRankOf(missionPoints)} · ${missionPoints} points${nextMissionRank ? ` · ${nextMissionRank.threshold - missionPoints} to rank ${nextMissionRank.rank}` : " · maximum rank"}.`
+        : null;
 
   const buildActions = legalActions.filter(
     (legal): legal is LegalAction & { action: Extract<GameAction, { type: "BUILD_STRUCTURE" }> } =>
@@ -774,6 +787,7 @@ export function TownBoardView({
 
   return (
     <section className={`tbRoot theme-${factionVisualRegister(faction.id)} faction-${faction.id}`} aria-label={`${faction.name} town board`}>
+      {factionMechanicStatus ? <small className="tbPanelHint" role="status">{factionMechanicStatus}</small> : null}
       <div
         className={`tbBoard ${isScan ? "scan" : "designed"} faction-${faction.id}`}
         style={{ aspectRatio: `${geometry.aspect[0]} / ${geometry.aspect[1]}`, "--tb-faction": faction.color } as CSSProperties}

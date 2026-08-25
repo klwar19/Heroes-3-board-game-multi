@@ -62,7 +62,9 @@ export function equipmentContextAvailable(
 
 /** The player's MAIN hero (inlined to keep this a leaf — see the file header). */
 function mainHeroOf(state: GameState, playerId: PlayerId): HeroState | null {
-  for (const hero of Object.values(state.heroes)) {
+  // Several pure policy/unit tests intentionally pass a narrow GameState stub
+  // with no hero registry. Optional equipment must remain a safe read there.
+  for (const hero of Object.values(state.heroes ?? {})) {
     if (hero.controllerId === playerId && hero.kind === "main") {
       return hero;
     }
@@ -76,10 +78,13 @@ function mainHeroOf(state: GameState, playerId: PlayerId): HeroState | null {
 
 /** The player's equipped items ({} when off / unstamped). */
 export function heroEquipmentOf(state: GameState, playerId: PlayerId): Partial<Record<AnimeEquipmentSlot, string>> {
+  const stamped = mainHeroOf(state, playerId)?.equipment ?? {};
   if (!equipmentEnabled(state)) {
-    return {};
+    return stamped.accessory === EQUIPMENT_IDS.soulBanner
+      ? { accessory: EQUIPMENT_IDS.soulBanner }
+      : {};
   }
-  return mainHeroOf(state, playerId)?.equipment ?? {};
+  return stamped;
 }
 
 /** The item id in a given slot ({undefined} when empty / off). */

@@ -614,6 +614,7 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return `${playerName(state, event.playerId)}'s hero returns ${name} from ${event.slot} to the equipment bag.`;
     }
     case "HERO_SKILL_USED":
+    case "FACTION_MECHANIC_TRIGGERED":
       return event.message;
     case "COMMANDER_CAST_USED":
     case "COMMANDER_POINTS_AWARDED":

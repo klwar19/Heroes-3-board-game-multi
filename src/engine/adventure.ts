@@ -40,6 +40,7 @@ import {
   releaseEndedOngoingCards
 } from "./active-effects";
 import { digFromOwnDeckTop, drawCardsForPlayer, reshuffleSharedDeckIfEmpty, shuffleCards } from "./decks";
+import { applyAnimeFactionResourceRoundPenalty } from "./anime-faction-penalties";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { cultivationEnabled, cultivationHandLimitBonus, maybeAdvanceCultivationRealm } from "./anime-cultivation";
 import {
@@ -76,6 +77,7 @@ import {
   playerOwnsEquipment
 } from "./anime-equipment";
 import {
+  EQUIPMENT_IDS,
   EQUIPMENT_GRADE_TO_ARTIFACT_TIER,
   EQUIPMENT_SHOP_SALES,
   equipmentRegisterLineFor,
@@ -814,7 +816,8 @@ export function effectiveHandLimit(state: GameState, playerId: PlayerId): number
     permanentBonus +
     cultivationHandLimitBonus(state, playerId) +
     heroGradeHandLimitBonus(state, playerId) +
-    equipmentHandLimitBonus(state, playerId);
+    equipmentHandLimitBonus(state, playerId) -
+    Math.max(0, Math.trunc(player.otherworldHandLimitLoss ?? 0));
 
   const active = getActiveAstrologersCard(state);
   let limit = base;
@@ -17471,6 +17474,22 @@ export function healLegacyPlayerFields(state: GameState): boolean {
       changed = true;
     }
   }
+  // Save migration: Heavenly Demon Palace gained an intrinsic birthright item.
+  // The banner is the faction's intrinsic equipped birthright. Preserve an
+  // existing accessory by moving it to the bag, then put the Banner in its
+  // required slot. New games stamp it directly during setup.
+  for (const hero of Object.values(state.heroes)) {
+    if (hero.kind !== "main" || state.players[hero.controllerId]?.factionId !== "heavenly_demon") continue;
+    const equipped = Object.values(hero.equipment ?? {}).includes(EQUIPMENT_IDS.soulBanner);
+    const bagged = (hero.equipmentInventory ?? []).includes(EQUIPMENT_IDS.soulBanner);
+    if (equipped || bagged) continue;
+    const previousAccessory = hero.equipment?.accessory;
+    if (previousAccessory && !(hero.equipmentInventory ?? []).includes(previousAccessory)) {
+      hero.equipmentInventory = [...(hero.equipmentInventory ?? []), previousAccessory];
+    }
+    hero.equipment = { ...(hero.equipment ?? {}), accessory: EQUIPMENT_IDS.soulBanner };
+    changed = true;
+  }
   return changed;
 }
 
@@ -18657,21 +18676,10 @@ export function startAdventureRound(state: GameState): void {
       }
     }
 
-    // Little Busters faction limit: collect the school contribution only after
-    // every automatic Resource-round income source has paid. Never creates debt
-    // — a player with fewer than 4 gold contributes everything they have.
-    if (player.factionId === "little_busters") {
-      const contribution = Math.min(4, player.resources.gold);
-      player.resources.gold -= contribution;
-      if (contribution > 0) {
-        appendEvent(state, { type: "RESOURCES_SPENT", playerId, cost: { gold: contribution } });
-      }
-      appendEvent(state, {
-        type: "EVENT_NOTE",
-        playerId,
-        message: `School contribution fund: ${contribution} gold paid${contribution < 4 ? " (all available gold)" : ""}.`
-      });
-    }
+    // Anime / xianxia Otherworld penalties resolve only after every automatic
+    // Resource-round source has paid. Resource losses floor at zero; the two
+    // hand-limit factions instead accumulate a persistent −1 each Resource round.
+    applyAnimeFactionResourceRoundPenalty(state, playerId);
 
     // FO redesign wave 3 — Urahara's Shop credit. Collected at the SAME income
     // chokepoint as the Little Busters contribution (after every automatic

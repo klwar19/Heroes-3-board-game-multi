@@ -1997,6 +1997,13 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "ADJACENT_ALLY_ATTACK_AURA", amount: 1 },
     implementationStatus: "implemented"
   },
+  "azure-sword-array": {
+    id: "azure-sword-array",
+    name: "Sword Array",
+    text: "[unit_passive] Friendly units gain +1 Attack on their own attacks while adjacent to this unit (never on Retaliation Attacks).",
+    effect: { type: "ADJACENT_ALLY_ATTACK_AURA", amount: 1 },
+    implementationStatus: "implemented"
+  },
   // Heavenly Demon Palace — the town's TWO new engine arms (shipped with the
   // faction; both are referenced by its units below). Wired + mutation-tested in
   // src/engine/heavenly-demon-abilities.test.ts.
@@ -2012,13 +2019,13 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     implementationStatus: "implemented"
   },
   // (2) Reap the Fallen: whenever an ADJACENT unit is removed (any source), this
-  // unit gains +1 Attack for the rest of the combat — escalating, and surviving a
+  // unit gains +1 Attack for the rest of the combat (maximum +2), surviving a
   // Pack→Few flip (baked onto the combat unit's permanentAttackBonus, never
   // mirrored to the army card).
   "heavenly-demon-reap": {
     id: "heavenly-demon-reap",
     name: "Reap the Fallen",
-    text: "[unit_passive] Whenever a unit adjacent to this unit is removed from Combat (any source), this unit gains +1 Attack for the rest of the Combat (this stacks with each nearby death).",
+    text: "[unit_passive] Whenever a unit adjacent to this unit is removed from Combat (any source), this unit gains +1 Attack for the rest of the Combat, to a maximum of +2.",
     effect: { type: "ATTACK_BUFF_ON_ADJACENT_REMOVAL", amount: 1 },
     implementationStatus: "implemented"
   },

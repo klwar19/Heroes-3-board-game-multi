@@ -27,87 +27,87 @@ const littleBustersCard = (tier: "bronze" | "silver" | "golden", slug: string, s
 /** Two complete seven-line faction rosters: one anime/isekai, one wuxia. */
 export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
   "fuyuki.assassins": {
-    id: "fuyuki.assassins", name: "Assassins", faction: "fuyuki", tier: "bronze", type: "ground",
-    few: { attack: 2, defense: 1, health: 2, initiative: 7, cost: { gold: 2 }, abilities: [], cardImage: fuyukiCard("bronze", "assassins", "few") },
-    pack: { attack: 2, defense: 2, health: 2, initiative: 7, cost: { gold: 3 }, abilities: ["ignores-retaliation"], abilityText: "Presence Concealment — attacks do not provoke Retaliation.", cardImage: fuyukiCard("bronze", "assassins", "pack") },
+    id: "fuyuki.assassins", name: "Sasaki Kojirō", faction: "fuyuki", tier: "bronze", type: "ground",
+    few: { attack: 2, defense: 1, health: 2, initiative: 8, cost: { gold: 2 }, abilities: [], cardImage: fuyukiCard("bronze", "assassins", "few") },
+    pack: { attack: 2, defense: 1, health: 2, initiative: 9, cost: { gold: 3 }, abilities: ["ignores-retaliation"], abilityText: "Presence Concealment — attacks do not provoke Retaliation.", cardImage: fuyukiCard("bronze", "assassins", "pack") },
     source
   },
   "fuyuki.riders": {
-    id: "fuyuki.riders", name: "Riders", faction: "fuyuki", tier: "bronze", type: "ground",
-    few: { attack: 2, defense: 1, health: 2, initiative: 6, cost: { gold: 3 }, abilities: [], cardImage: fuyukiCard("bronze", "riders", "few") },
-    pack: { attack: 3, defense: 1, health: 2, initiative: 7, cost: { gold: 4 }, abilities: ["basilisk-paralysis"], abilityText: "Trample — after attacking, roll a die; on 0 the target is Paralyzed.", cardImage: fuyukiCard("bronze", "riders", "pack") },
+    id: "fuyuki.riders", name: "Medusa", faction: "fuyuki", tier: "bronze", type: "ground",
+    few: { attack: 2, defense: 1, health: 2, initiative: 7, cost: { gold: 3 }, abilities: [], cardImage: fuyukiCard("bronze", "riders", "few") },
+    pack: { attack: 3, defense: 1, health: 3, initiative: 8, cost: { gold: 5 }, abilities: ["basilisk-paralysis"], abilityText: "Mystic Eyes — after attacking, roll a die; on 0 the target is Paralyzed.", cardImage: fuyukiCard("bronze", "riders", "pack") },
     source
   },
   "fuyuki.lancers": {
-    id: "fuyuki.lancers", name: "Lancers", faction: "fuyuki", tier: "bronze", type: "ground",
-    few: { attack: 2, defense: 1, health: 3, initiative: 5, cost: { gold: 4 }, abilities: ["mechanics-line-attack-1"], abilityText: "Gáe Bolg — strike through the target for a second Attack 1 hit.", cardImage: fuyukiCard("bronze", "lancers", "few") },
-    pack: { attack: 3, defense: 1, health: 3, initiative: 6, cost: { gold: 5 }, abilities: ["mechanics-line-attack-2", "ignores-retaliation"], abilityText: "Gáe Bolg — strike behind the target at Attack 2; ignores Retaliation.", cardImage: fuyukiCard("bronze", "lancers", "pack") },
+    id: "fuyuki.lancers", name: "Cú Chulainn", faction: "fuyuki", tier: "bronze", type: "ground",
+    few: { attack: 3, defense: 1, health: 3, initiative: 6, cost: { gold: 4 }, abilities: ["mechanics-line-attack-1"], abilityText: "Gáe Bolg — strike through the target for a second Attack 1 hit.", cardImage: fuyukiCard("bronze", "lancers", "few") },
+    pack: { attack: 3, defense: 2, health: 3, initiative: 7, cost: { gold: 6 }, abilities: ["mechanics-line-attack-2"], abilityText: "Gáe Bolg — strike behind the target at Attack 2.", cardImage: fuyukiCard("bronze", "lancers", "pack") },
     source
   },
   "fuyuki.archers": {
-    id: "fuyuki.archers", name: "Archers", faction: "fuyuki", tier: "silver", type: "ranged",
-    few: { attack: 3, defense: 2, health: 3, initiative: 5, cost: { gold: 7 }, abilities: ["ignore-all-combat-penalties"], abilityText: "Hawkeye — ignores all ranged Combat penalties.", cardImage: fuyukiCard("silver", "archers", "few") },
-    pack: { attack: 3, defense: 2, health: 3, initiative: 6, cost: { gold: 10 }, abilities: ["ignore-all-combat-penalties", "double-attack"], abilityText: "Hawkeye — ignores penalties and attacks a distant target twice.", cardImage: fuyukiCard("silver", "archers", "pack") },
+    id: "fuyuki.archers", name: "EMIYA", faction: "fuyuki", tier: "silver", type: "ranged",
+    few: { attack: 3, defense: 2, health: 4, initiative: 6, cost: { gold: 8 }, abilities: ["ignore-combat-penalties"], abilityText: "Hawkeye — ignores the adjacent ranged Combat penalty.", cardImage: fuyukiCard("silver", "archers", "few") },
+    pack: { attack: 3, defense: 2, health: 4, initiative: 7, cost: { gold: 11 }, abilities: ["ignore-all-combat-penalties", "double-attack"], abilityText: "Unlimited Blade Works — ignores ranged penalties and attacks a distant target twice.", cardImage: fuyukiCard("silver", "archers", "pack") },
     source
   },
   "fuyuki.casters": {
-    id: "fuyuki.casters", name: "Casters", faction: "fuyuki", tier: "silver", type: "ranged",
+    id: "fuyuki.casters", name: "Medea", faction: "fuyuki", tier: "silver", type: "ranged",
     // engine: elemental-damage + casters-damage-cap (≤1 from each attack OR Spell)
     // + magi-power-boost. Pack no longer uses reduce-spell-damage-1 — the hard
     // cap is strictly stronger and covers attacks too.
     few: {
       attack: 2,
-      defense: 2,
+      defense: 1,
       health: 3,
       initiative: 4,
-      cost: { gold: 7 },
-      abilities: ["elemental-damage", "casters-damage-cap", "magi-power-boost"],
+      cost: { gold: 8 },
+      abilities: ["elemental-damage", "casters-damage-cap"],
       abilityText:
-        "Leycraft — deals elemental damage; cannot take more than 1 damage from a single attack or Spell; first Spell this round +1 Power.",
+        "Rule Breaker — deals elemental damage and cannot take more than 1 damage from a single attack or Spell.",
       cardImage: fuyukiCard("silver", "casters", "few")
     },
     pack: {
       attack: 3,
       defense: 2,
-      health: 3,
-      initiative: 5,
-      cost: { gold: 11 },
+      health: 4,
+      initiative: 6,
+      cost: { gold: 13 },
       abilities: ["elemental-damage", "casters-damage-cap", "magi-power-boost"],
       abilityText:
-        "Leycraft — deals elemental damage; cannot take more than 1 damage from a single attack or Spell; first Spell this round +1 Power.",
+        "High-Speed Divine Words — elemental damage; each attack or Spell deals at most 1 damage; first Spell this round +1 Power.",
       cardImage: fuyukiCard("silver", "casters", "pack")
     },
     source
   },
   "fuyuki.sabers": {
-    id: "fuyuki.sabers", name: "Sabers", faction: "fuyuki", tier: "gold", type: "ground",
-    few: { attack: 5, defense: 3, health: 5, initiative: 6, cost: { gold: 13, valuables: 1 }, abilities: ["dragon-line-attack-2"], abilityText: "Excalibur — a second Attack 2 hit strikes behind the target.", cardImage: fuyukiCard("golden", "sabers", "few") },
-    pack: { attack: 6, defense: 3, health: 6, initiative: 7, cost: { gold: 20, valuables: 2 }, abilities: ["dragon-line-attack-3", "commander-charge"], abilityText: "Excalibur — line strike at Attack 3; +1 Attack after moving.", cardImage: fuyukiCard("golden", "sabers", "pack") },
+    id: "fuyuki.sabers", name: "Artoria Pendragon", faction: "fuyuki", tier: "gold", type: "ground",
+    few: { attack: 5, defense: 3, health: 6, initiative: 6, cost: { gold: 14, valuables: 1 }, abilities: ["dragon-line-attack-2"], abilityText: "Excalibur — a second Attack 2 hit strikes behind the target.", cardImage: fuyukiCard("golden", "sabers", "few") },
+    pack: { attack: 6, defense: 3, health: 7, initiative: 7, cost: { gold: 22, valuables: 2 }, abilities: ["dragon-line-attack-3", "commander-charge"], abilityText: "Excalibur — line strike at Attack 3; +1 Attack after moving.", cardImage: fuyukiCard("golden", "sabers", "pack") },
     source
   },
   "fuyuki.berserkers": {
-    id: "fuyuki.berserkers", name: "Berserkers", faction: "fuyuki", tier: "gold", type: "ground",
-    few: { attack: 6, defense: 2, health: 7, initiative: 4, cost: { gold: 14, valuables: 1 }, abilities: ["phoenix-rebirth"], abilityText: "God Hand — once per Combat, lethal damage leaves this unit at 1 Health.", cardImage: fuyukiCard("golden", "berserkers", "few") },
-    pack: { attack: 7, defense: 2, health: 8, initiative: 4, cost: { gold: 22, valuables: 2 }, abilities: ["phoenix-rebirth", "immune-all-spells"], abilityText: "God Hand — rebirths once and is immune to all Spells.", cardImage: fuyukiCard("golden", "berserkers", "pack") },
+    id: "fuyuki.berserkers", name: "Heracles", faction: "fuyuki", tier: "gold", type: "ground",
+    few: { attack: 6, defense: 2, health: 7, initiative: 5, cost: { gold: 15, valuables: 1 }, abilities: ["phoenix-rebirth"], abilityText: "God Hand — once per Combat, lethal damage leaves this unit at 1 Health.", cardImage: fuyukiCard("golden", "berserkers", "few") },
+    pack: { attack: 7, defense: 3, health: 8, initiative: 5, cost: { gold: 24, valuables: 2 }, abilities: ["phoenix-rebirth", "reduce-spell-damage-1"], abilityText: "God Hand — rebirths once; Spell damage against this unit is reduced by 1.", cardImage: fuyukiCard("golden", "berserkers", "pack") },
     source
   },
 
   // Azure Breeze printed levels (3 bronze / 2 silver / 2 gold) — CANONICAL order:
   // LV1 Outer · LV2 Inner · LV3 Spirit Crane (bronze) ·
-  // LV4 Sect Protectors · LV5 True Inheritors (silver) ·
-  // LV6 Core Formation Master · LV7 Mountain Guardian (gold).
+  // LV4 Sect Formation Wardens · LV5 True Inheritors (silver) ·
+  // LV6 Golden Core Elders · LV7 Mountain Guardian (gold).
   // Keep this object key order = recruit order. Do not reorder casually.
   // --- BRONZE (3) — LV 1–3 -------------------------------------------------
   "azure_breeze.outer_disciples": {
     id: "azure_breeze.outer_disciples", name: "Outer Sect Disciples", faction: "azure_breeze", tier: "bronze", type: "ground",
     few: { attack: 2, defense: 1, health: 2, initiative: 5, cost: { gold: 2 }, abilities: [], cardImage: azureCard("bronze", "outer-sect-disciples", "few") },
-    pack: { attack: 3, defense: 1, health: 2, initiative: 5, cost: { gold: 3 }, abilities: ["wog-attack-when-attacking-1"], abilityText: "Sword Array — gains +1 Attack on its own attacks.", cardImage: azureCard("bronze", "outer-sect-disciples", "pack") },
+    pack: { attack: 2, defense: 1, health: 3, initiative: 6, cost: { gold: 4 }, abilities: ["azure-sword-array"], abilityText: "Sword Array — friendly units gain +1 Attack on their own attacks while adjacent to this unit.", cardImage: azureCard("bronze", "outer-sect-disciples", "pack") },
     source
   },
   "azure_breeze.inner_swordsmen": {
     id: "azure_breeze.inner_swordsmen", name: "Inner Sect Swordsmen", faction: "azure_breeze", tier: "bronze", type: "ground",
     few: { attack: 2, defense: 1, health: 2, initiative: 7, cost: { gold: 3 }, abilities: ["ignore-combat-penalties"], abilityText: "Flowing Step — ignores the adjacent Combat penalty.", cardImage: azureCard("bronze", "inner-sect-swordsmen", "few") },
-    pack: { attack: 3, defense: 1, health: 2, initiative: 9, cost: { gold: 5 }, abilities: ["ignore-all-combat-penalties"], abilityText: "Flowing Step — ignores all Combat penalties.", cardImage: azureCard("bronze", "inner-sect-swordsmen", "pack") },
+    pack: { attack: 3, defense: 1, health: 3, initiative: 8, cost: { gold: 5 }, abilities: ["ignore-all-combat-penalties"], abilityText: "Flowing Step — ignores all Combat penalties.", cardImage: azureCard("bronze", "inner-sect-swordsmen", "pack") },
     source
   },
   // LV 3 bronze flyer.
@@ -119,13 +119,12 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
   },
   // --- SILVER (2) — LV 4–5 -------------------------------------------------
   "azure_breeze.sect_protectors": {
-    id: "azure_breeze.sect_protectors", name: "Sect Protectors", faction: "azure_breeze", tier: "silver", type: "ground",
+    id: "azure_breeze.sect_protectors", name: "Sect Formation Wardens", faction: "azure_breeze", tier: "silver", type: "ground",
     few: { attack: 3, defense: 2, health: 4, initiative: 4, cost: { gold: 8 }, abilities: ["commander-defense-token"], abilityText: "Iron Ward — always rolls the Defend die when attacked.", cardImage: azureCard("silver", "sect-protectors", "few") },
-    pack: { attack: 4, defense: 2, health: 5, initiative: 4, cost: { gold: 12 }, abilities: ["unlimited-retaliation"], abilityText: "Unbroken Guard — may Retaliate any number of times each round.", cardImage: azureCard("silver", "sect-protectors", "pack") },
+    pack: { attack: 4, defense: 2, health: 5, initiative: 4, cost: { gold: 13 }, abilities: ["unlimited-retaliation"], abilityText: "Unbroken Guard — may Retaliate any number of times each round.", cardImage: azureCard("silver", "sect-protectors", "pack") },
     source
   },
-  // LV 5 silver — Qingyun specialty. Must sit ABOVE LV4 protectors and BELOW LV6 gold
-  // (never reuse the old gold TI numbers 5/2/6/7 — those beat LV6).
+  // LV 5 silver sword heirs — fast martial line before the Golden Core elders.
   "azure_breeze.true_inheritors": {
     id: "azure_breeze.true_inheritors", name: "True Inheritors", faction: "azure_breeze", tier: "silver", type: "ground",
     few: { attack: 3, defense: 2, health: 4, initiative: 6, cost: { gold: 9 }, abilities: ["commander-charge"], abilityText: "Charge — +1 Attack after moving.", cardImage: azureCard("silver", "true-inheritors", "few") },
@@ -133,11 +132,11 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
     source
   },
   // --- GOLD (2) — LV 6–7 ---------------------------------------------------
-  // LV 6 gold formation mage — clearly above silver LV5 on raw stats + valuables cost.
+  // LV 6 gold ranged elders. The Pack deliberately costs only 1 valuable.
   "azure_breeze.core_master": {
-    id: "azure_breeze.core_master", name: "Core Formation Master", faction: "azure_breeze", tier: "gold", type: "ranged",
-    few: { attack: 5, defense: 3, health: 6, initiative: 6, cost: { gold: 14, valuables: 1 }, abilities: ["ignore-all-combat-penalties", "magi-power-boost"], abilityText: "Talisman Arts — ignores penalties; first Spell +1 Power.", cardImage: azureCard("golden", "core-formation-master", "few") },
-    pack: { attack: 6, defense: 3, health: 7, initiative: 6, cost: { gold: 22, valuables: 2 }, abilities: ["ignore-all-combat-penalties", "magi-power-boost", "unicorn-spell-ward-aura"], abilityText: "Talisman Aura — first Spell +1 Power; protects adjacent allies from Spell damage.", cardImage: azureCard("golden", "core-formation-master", "pack") },
+    id: "azure_breeze.core_master", name: "Golden Core Elders", faction: "azure_breeze", tier: "gold", type: "ranged",
+    few: { attack: 5, defense: 2, health: 6, initiative: 6, cost: { gold: 14, valuables: 1 }, abilities: ["ignore-all-combat-penalties", "magi-power-boost"], abilityText: "Talisman Arts — ignores penalties; first Spell +1 Power.", cardImage: azureCard("golden", "core-formation-master", "few") },
+    pack: { attack: 6, defense: 2, health: 7, initiative: 6, cost: { gold: 22, valuables: 1 }, abilities: ["ignore-all-combat-penalties", "magi-power-boost", "unicorn-spell-ward-aura"], abilityText: "Talisman Aura — first Spell +1 Power; protects adjacent allies from Spell damage.", cardImage: azureCard("golden", "core-formation-master", "pack") },
     source
   },
   // LV 7 gold mountain tank.
@@ -148,7 +147,7 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
     source
   },
 
-  // Hidden Leaf Village printed levels (3 bronze / 2 silver / 2 gold) — CANONICAL
+  // Hidden Leaf Village printed levels (3 bronze / 2 silver / 3 gold) — CANONICAL
   // recruit order = object key order (the faction derives `units` from this order
   // via a filter, exactly like Fuyuki). Swarm identity: fast + frail + cheap on
   // the bronze line, control/tank on silver, AoE/armored on gold. Every ability
@@ -157,55 +156,64 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
   // and (per CLAUDE.md §2) no abilityText.
   // --- BRONZE (3) ----------------------------------------------------------
   "hidden_leaf.genin_squad": {
-    id: "hidden_leaf.genin_squad", name: "Genin Squad", faction: "hidden_leaf", tier: "bronze", type: "ground",
+    id: "hidden_leaf.genin_squad", name: "Academy Genin", faction: "hidden_leaf", tier: "bronze", type: "ground",
     few: { attack: 2, defense: 1, health: 2, initiative: 7, cost: { gold: 2 }, abilities: [], cardImage: hiddenLeafCard("bronze", "genin-squad", "few") },
     // Genin Pack reuses the EXACT id Azure's Outer Sect Disciples Pack carries
     // (wog-attack-when-attacking-1 = OWN_ATTACK_FLAT_BONUS +1, own attacks only).
-    pack: { attack: 2, defense: 1, health: 2, initiative: 8, cost: { gold: 3 }, abilities: ["wog-attack-when-attacking-1"], abilityText: "Teamwork Formation — this unit gains +1 Attack on its own attacks (never on a Retaliation Attack).", cardImage: hiddenLeafCard("bronze", "genin-squad", "pack") },
+    pack: { attack: 2, defense: 1, health: 3, initiative: 8, cost: { gold: 4 }, abilities: ["wog-attack-when-attacking-1"], abilityText: "Shadow Clone Formation — this unit gains +1 Attack on its own attacks, never on Retaliation.", cardImage: hiddenLeafCard("bronze", "genin-squad", "pack") },
     source
   },
   "hidden_leaf.medical_nin": {
-    id: "hidden_leaf.medical_nin", name: "Medical-Nin", faction: "hidden_leaf", tier: "bronze", type: "ground",
-    few: { attack: 1, defense: 1, health: 2, initiative: 6, cost: { gold: 2 }, abilities: [], cardImage: hiddenLeafCard("bronze", "medical-nin", "few") },
-    pack: { attack: 2, defense: 1, health: 3, initiative: 6, cost: { gold: 4 }, abilities: ["enchanter-heal-or-buff"], abilityText: "Mystical Palm — [activation] remove up to 2 damage from a chosen friendly unit; only if no friendly unit can be healed, instead gain +1 Attack for the combat round. It can not heal itself, and this does not end the activation.", cardImage: hiddenLeafCard("bronze", "medical-nin", "pack") },
+    id: "hidden_leaf.medical_nin", name: "Sakura's Medical Corps", faction: "hidden_leaf", tier: "bronze", type: "ground",
+    few: { attack: 1, defense: 1, health: 3, initiative: 6, cost: { gold: 3 }, abilities: [], cardImage: hiddenLeafCard("bronze", "medical-nin", "few") },
+    pack: { attack: 2, defense: 2, health: 3, initiative: 6, cost: { gold: 5 }, abilities: ["enchanter-heal-or-buff"], abilityText: "Mystical Palm — on activation, heal another friendly unit by 2; if none can be healed, gain +1 Attack this round.", cardImage: hiddenLeafCard("bronze", "medical-nin", "pack") },
     source
   },
   // LV3 bronze RANGED skirmisher.
   "hidden_leaf.anbu": {
-    id: "hidden_leaf.anbu", name: "Anbu Black Ops", faction: "hidden_leaf", tier: "bronze", type: "ranged",
-    few: { attack: 2, defense: 1, health: 2, initiative: 7, cost: { gold: 4 }, abilities: ["ignore-combat-penalties"], abilityText: "Shadow Step — ignores the Combat penalty for attacking an adjacent unit (the long-range / behind-wall penalty still applies).", cardImage: hiddenLeafCard("bronze", "anbu", "few") },
-    pack: { attack: 3, defense: 1, health: 2, initiative: 8, cost: { gold: 5 }, abilities: ["ignore-combat-penalties", "teleport-move"], abilityText: "Body Flicker — ignores the adjacent-unit Combat penalty; as a regular move, may move to any empty space.", cardImage: hiddenLeafCard("bronze", "anbu", "pack") },
+    id: "hidden_leaf.anbu", name: "ANBU Black Ops", faction: "hidden_leaf", tier: "bronze", type: "ranged",
+    few: { attack: 2, defense: 1, health: 2, initiative: 8, cost: { gold: 4 }, abilities: ["ignore-combat-penalties"], abilityText: "Shadow Step — ignores the adjacent ranged Combat penalty.", cardImage: hiddenLeafCard("bronze", "anbu", "few") },
+    pack: { attack: 3, defense: 2, health: 3, initiative: 9, cost: { gold: 7 }, abilities: ["ignore-combat-penalties", "teleport-move"], abilityText: "Body Flicker — ignores the adjacent ranged penalty and may move to any empty space.", cardImage: hiddenLeafCard("bronze", "anbu", "pack") },
     source
   },
   // --- SILVER (2) ----------------------------------------------------------
   // LV4 silver RANGED elite.
   "hidden_leaf.jonin": {
-    id: "hidden_leaf.jonin", name: "Jonin", faction: "hidden_leaf", tier: "silver", type: "ranged",
-    few: { attack: 3, defense: 2, health: 3, initiative: 6, cost: { gold: 7 }, abilities: ["ignore-combat-penalties"], abilityText: "Kunai Barrage — ignores the Combat penalty for attacking an adjacent unit (the long-range / behind-wall penalty still applies).", cardImage: hiddenLeafCard("silver", "jonin", "few") },
-    pack: { attack: 4, defense: 2, health: 4, initiative: 7, cost: { gold: 10 }, abilities: ["ignore-all-combat-penalties", "ignores-retaliation"], abilityText: "Jonin Mastery — ignores all ranged Combat penalties; its attacks never provoke a Retaliation Attack.", cardImage: hiddenLeafCard("silver", "jonin", "pack") },
+    id: "hidden_leaf.jonin", name: "Leaf Jōnin", faction: "hidden_leaf", tier: "silver", type: "ranged",
+    few: { attack: 3, defense: 2, health: 4, initiative: 6, cost: { gold: 8 }, abilities: ["ignore-combat-penalties"], abilityText: "Kunai Barrage — ignores the adjacent ranged Combat penalty.", cardImage: hiddenLeafCard("silver", "jonin", "few") },
+    pack: { attack: 4, defense: 2, health: 4, initiative: 7, cost: { gold: 11 }, abilities: ["ignore-all-combat-penalties", "ignores-retaliation"], abilityText: "Jōnin Mastery — ignores all ranged penalties and never provokes Retaliation.", cardImage: hiddenLeafCard("silver", "jonin", "pack") },
     source
   },
   // LV5 silver ground TANK.
   "hidden_leaf.giant_toad": {
-    id: "hidden_leaf.giant_toad", name: "Giant Toad", faction: "hidden_leaf", tier: "silver", type: "ground",
-    few: { attack: 3, defense: 2, health: 4, initiative: 4, cost: { gold: 8 }, abilities: ["commander-defense-token"], abilityText: "Toad Hide — always treated as if it had a Defense token: it rolls the Defend die when attacked (a \"+1\" face gives +1 Defense).", cardImage: hiddenLeafCard("silver", "giant-toad", "few") },
-    pack: { attack: 4, defense: 3, health: 5, initiative: 4, cost: { gold: 11 }, abilities: ["commander-defense-token", "automaton-detonate-1"], abilityText: "Toad Hide — always rolls the Defend die when attacked; Smoke Burst — when this unit is defeated, deal 1 damage to each adjacent unit.", cardImage: hiddenLeafCard("silver", "giant-toad", "pack") },
+    id: "hidden_leaf.giant_toad", name: "Gamabunta", faction: "hidden_leaf", tier: "silver", type: "ground",
+    few: { attack: 3, defense: 3, health: 5, initiative: 4, cost: { gold: 9 }, abilities: ["commander-defense-token"], abilityText: "Toad Hide — always rolls the Defend die when attacked.", cardImage: hiddenLeafCard("silver", "giant-toad", "few") },
+    pack: { attack: 4, defense: 3, health: 6, initiative: 5, cost: { gold: 13 }, abilities: ["commander-defense-token", "automaton-detonate-1"], abilityText: "Toad Hide — always rolls the Defend die; Smoke Bomb deals 1 damage to every adjacent unit when defeated.", cardImage: hiddenLeafCard("silver", "giant-toad", "pack") },
     source
   },
   // --- GOLD (2) ------------------------------------------------------------
   // LV6 gold AoE beast — Few splashes (Chakra Burst), Pack second-attacks all
   // adjacent enemies (the Few→Pack ability swap is the mutation control).
   "hidden_leaf.jinchuriki": {
-    id: "hidden_leaf.jinchuriki", name: "Jinchuriki", faction: "hidden_leaf", tier: "gold", type: "ground",
-    few: { attack: 5, defense: 2, health: 6, initiative: 6, cost: { gold: 14, valuables: 1 }, abilities: ["jinchuriki-chakra-burst"], abilityText: "Chakra Burst — after an attack made by this unit resolves, deal 1 damage to every other unit adjacent to it — friend AND foe. Not an attack: no Retaliation, not reduced by Defense, not subject to per-attack damage caps. Does not fire on a Retaliation Attack.", cardImage: hiddenLeafCard("golden", "jinchuriki", "few") },
-    pack: { attack: 6, defense: 2, health: 7, initiative: 7, cost: { gold: 20, valuables: 2 }, abilities: ["magic-elemental-attack-all-enemies"], abilityText: "Tailed-Beast Cloak — after its attack, this unit makes a full separate attack against every other enemy unit adjacent to it. None of these follow-ups retaliates or chains.", cardImage: hiddenLeafCard("golden", "jinchuriki", "pack") },
+    id: "hidden_leaf.jinchuriki", name: "Nine-Tails Chakra Avatar", faction: "hidden_leaf", tier: "gold", type: "ground",
+    few: { attack: 5, defense: 2, health: 6, initiative: 6, cost: { gold: 15, valuables: 1 }, abilities: ["jinchuriki-chakra-burst"], abilityText: "Chakra Burst — after an attack made by this unit resolves, deal 1 damage to every other unit adjacent to it — friend AND foe. Not an attack: no Retaliation, not reduced by Defense, not subject to per-attack damage caps. Does not fire on a Retaliation Attack.", cardImage: hiddenLeafCard("golden", "jinchuriki", "few") },
+    pack: { attack: 6, defense: 3, health: 7, initiative: 8, cost: { gold: 24, valuables: 2 }, abilities: ["magic-elemental-attack-all-enemies"], abilityText: "Tailed-Beast Cloak — after attacking, make a separate non-chaining attack against every other adjacent enemy; these cannot Retaliate.", cardImage: hiddenLeafCard("golden", "jinchuriki", "pack") },
     source
   },
   // LV7 gold armored avatar.
   "hidden_leaf.susanoo": {
-    id: "hidden_leaf.susanoo", name: "Susanoo Avatar", faction: "hidden_leaf", tier: "gold", type: "ground",
-    few: { attack: 5, defense: 3, health: 6, initiative: 4, cost: { gold: 15, valuables: 1 }, abilities: ["nix-damage-cap"], abilityText: "Ethereal Armor — this unit cannot take more than 4 damage from a single attack (Spell and ability damage are not capped).", cardImage: hiddenLeafCard("golden", "susanoo", "few") },
-    pack: { attack: 6, defense: 3, health: 7, initiative: 4, cost: { gold: 22, valuables: 2 }, abilities: ["nix-damage-cap", "titan-ignore-ongoing"], abilityText: "Ethereal Armor — cannot take more than 4 damage from a single attack; Unbreakable Will — ignore any ongoing effects on this unit.", cardImage: hiddenLeafCard("golden", "susanoo", "pack") },
+    id: "hidden_leaf.susanoo", name: "Perfect Susanoo", faction: "hidden_leaf", tier: "gold", type: "ground",
+    few: { attack: 5, defense: 3, health: 7, initiative: 4, cost: { gold: 16, valuables: 1 }, abilities: ["nix-damage-cap"], abilityText: "Ethereal Armor — a single attack can deal at most 4 damage; Spell and ability damage are not capped.", cardImage: hiddenLeafCard("golden", "susanoo", "few") },
+    pack: { attack: 6, defense: 4, health: 8, initiative: 5, cost: { gold: 25, valuables: 2 }, abilities: ["nix-damage-cap", "titan-ignore-ongoing"], abilityText: "Perfect Armor — attacks deal at most 4 damage; ignore ongoing effects on this unit.", cardImage: hiddenLeafCard("golden", "susanoo", "pack") },
+    source
+  },
+  // Premium multi-character Gold formation. Hidden Leaf's combat rule allows
+  // only two Gold cards at once, so this mobile guard competes directly with
+  // Nine-Tails' area pressure and Susanoo's damage-cap tanking.
+  "hidden_leaf.hokage_vanguard": {
+    id: "hidden_leaf.hokage_vanguard", name: "Hokage Vanguard", faction: "hidden_leaf", tier: "gold", type: "ground",
+    few: { attack: 5, defense: 2, health: 6, initiative: 7, cost: { gold: 13, valuables: 2 }, abilities: ["teleport-move"], abilityText: "Flying Raijin Formation — this unit may move to any empty space.", cardImage: hiddenLeafCard("golden", "hokage-vanguard", "few") },
+    pack: { attack: 6, defense: 2, health: 8, initiative: 8, cost: { gold: 21, valuables: 3 }, abilities: ["teleport-move", "commander-defense-token"], abilityText: "Four Hokage Formation — may move to any empty space and always rolls the Defend die when attacked.", cardImage: hiddenLeafCard("golden", "hokage-vanguard", "pack") },
     source
   },
 
@@ -296,9 +304,9 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
   // --- BRONZE (3) ----------------------------------------------------------
   "heavenly_demon.blood_disciples": {
     id: "heavenly_demon.blood_disciples", name: "Blood Disciples", faction: "heavenly_demon", tier: "bronze", type: "ground",
-    few: { attack: 2, defense: 1, health: 2, initiative: 6, cost: { gold: 2 }, abilities: [], cardImage: demonCard("bronze", "blood-disciples", "few") },
+    few: { attack: 2, defense: 0, health: 3, initiative: 6, cost: { gold: 2 }, abilities: [], cardImage: demonCard("bronze", "blood-disciples", "few") },
     // NEW #1 — Blood Siphon: heal 1 after an OWN attack that DEALS damage.
-    pack: { attack: 3, defense: 1, health: 2, initiative: 6, cost: { gold: 4 }, abilities: ["heavenly-demon-blood-siphon"], abilityText: "Blood Siphon — after this unit's attack deals damage, remove 1 damage from it (a fully-soaked 0-damage attack heals nothing). Never on a Retaliation Attack.", cardImage: demonCard("bronze", "blood-disciples", "pack") },
+    pack: { attack: 3, defense: 0, health: 3, initiative: 7, cost: { gold: 4 }, abilities: ["heavenly-demon-blood-siphon"], abilityText: "Blood Siphon — after this unit's attack deals damage, remove 1 damage from it. Never on Retaliation.", cardImage: demonCard("bronze", "blood-disciples", "pack") },
     source
   },
   // LV2 bronze RANGED gu sorceress.
@@ -310,32 +318,32 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
   },
   // LV3 bronze ground shadow assassin.
   "heavenly_demon.shadow_wraiths": {
-    id: "heavenly_demon.shadow_wraiths", name: "Shadow Wraiths", faction: "heavenly_demon", tier: "bronze", type: "ground",
-    few: { attack: 2, defense: 1, health: 2, initiative: 7, cost: { gold: 3 }, abilities: [], cardImage: demonCard("bronze", "shadow-wraiths", "few") },
-    pack: { attack: 3, defense: 1, health: 2, initiative: 8, cost: { gold: 5 }, abilities: ["ignores-retaliation"], abilityText: "Umbral Step — attacks do not provoke a Retaliation Attack.", cardImage: demonCard("bronze", "shadow-wraiths", "pack") },
+    id: "heavenly_demon.shadow_wraiths", name: "Shadow Sabre Disciples", faction: "heavenly_demon", tier: "bronze", type: "ground",
+    few: { attack: 2, defense: 0, health: 2, initiative: 9, cost: { gold: 4 }, abilities: [], cardImage: demonCard("bronze", "shadow-wraiths", "few") },
+    pack: { attack: 3, defense: 0, health: 3, initiative: 10, cost: { gold: 6 }, abilities: ["ignores-retaliation"], abilityText: "Umbral Step — attacks do not provoke a Retaliation Attack.", cardImage: demonCard("bronze", "shadow-wraiths", "pack") },
     source
   },
   // --- SILVER (2) ----------------------------------------------------------
   // LV4 silver ground undead tank.
   "heavenly_demon.corpse_puppets": {
     id: "heavenly_demon.corpse_puppets", name: "Corpse Puppets", faction: "heavenly_demon", tier: "silver", type: "ground",
-    few: { attack: 3, defense: 2, health: 4, initiative: 4, cost: { gold: 8 }, abilities: ["commander-defense-token"], abilityText: "Grave Ward — always treated as if it had a Defense token: it rolls the Defend die when attacked (a \"+1\" face gives +1 Defense).", cardImage: demonCard("silver", "corpse-puppets", "few") },
-    pack: { attack: 4, defense: 3, health: 5, initiative: 4, cost: { gold: 11 }, abilities: ["commander-defense-token", "automaton-detonate-1"], abilityText: "Grave Ward — always rolls the Defend die when attacked; Corpse Burst — when this unit is defeated, deal 1 damage to each adjacent unit.", cardImage: demonCard("silver", "corpse-puppets", "pack") },
+    few: { attack: 2, defense: 2, health: 5, initiative: 2, cost: { gold: 9 }, abilities: ["commander-defense-token"], abilityText: "Grave Ward — always rolls the Defend die when attacked.", cardImage: demonCard("silver", "corpse-puppets", "few") },
+    pack: { attack: 3, defense: 2, health: 6, initiative: 3, cost: { gold: 13 }, abilities: ["commander-defense-token", "automaton-detonate-1"], abilityText: "Grave Ward — always rolls the Defend die; Corpse Burst — on defeat, deal 1 damage to every adjacent unit.", cardImage: demonCard("silver", "corpse-puppets", "pack") },
     source
   },
   // LV5 silver ground bone raider (fast striker).
   "heavenly_demon.bone_reavers": {
     id: "heavenly_demon.bone_reavers", name: "Bone Reavers", faction: "heavenly_demon", tier: "silver", type: "ground",
-    few: { attack: 3, defense: 2, health: 4, initiative: 6, cost: { gold: 9 }, abilities: ["commander-charge"], abilityText: "Reaping Charge — +1 Attack on its attack after this unit moves.", cardImage: demonCard("silver", "bone-reavers", "few") },
-    pack: { attack: 4, defense: 2, health: 5, initiative: 7, cost: { gold: 13 }, abilities: ["commander-charge", "ignores-retaliation"], abilityText: "Reaping Charge — +1 Attack after moving; Ghost Blades — its attacks do not provoke a Retaliation Attack.", cardImage: demonCard("silver", "bone-reavers", "pack") },
+    few: { attack: 4, defense: 1, health: 4, initiative: 7, cost: { gold: 9 }, abilities: ["commander-charge"], abilityText: "Reaping Charge — +1 Attack on its attack after this unit moves.", cardImage: demonCard("silver", "bone-reavers", "few") },
+    pack: { attack: 5, defense: 1, health: 5, initiative: 8, cost: { gold: 14 }, abilities: ["commander-charge", "ignores-retaliation"], abilityText: "Reaping Charge — +1 Attack after moving; Ghost Blades — ignores Retaliation.", cardImage: demonCard("silver", "bone-reavers", "pack") },
     source
   },
   // --- GOLD (2) ------------------------------------------------------------
-  // LV6 gold ground spectral regenerator.
+  // LV6 gold ranged spectral regenerator.
   "heavenly_demon.ghost_king": {
-    id: "heavenly_demon.ghost_king", name: "Ghost King", faction: "heavenly_demon", tier: "gold", type: "ground",
-    few: { attack: 5, defense: 3, health: 6, initiative: 6, cost: { gold: 14, valuables: 1 }, abilities: ["wraith-heal-1"], abilityText: "Spectral Mending — on activation, remove 1 damage from this unit.", cardImage: demonCard("golden", "ghost-king", "few") },
-    pack: { attack: 6, defense: 3, health: 7, initiative: 6, cost: { gold: 22, valuables: 2 }, abilities: ["wraith-heal-2", "unlimited-retaliation"], abilityText: "Spectral Mending — remove 2 damage on activation; Vengeful Court — may Retaliate any number of times each round.", cardImage: demonCard("golden", "ghost-king", "pack") },
+    id: "heavenly_demon.ghost_king", name: "Ghost King", faction: "heavenly_demon", tier: "gold", type: "ranged",
+    few: { attack: 4, defense: 3, health: 7, initiative: 5, cost: { gold: 14, valuables: 1 }, abilities: ["ignore-combat-penalties", "wraith-heal-1"], abilityText: "Soulfire — ignores adjacent ranged penalty; heal 1 on activation.", cardImage: demonCard("golden", "ghost-king", "few") },
+    pack: { attack: 5, defense: 3, health: 8, initiative: 6, cost: { gold: 22, valuables: 2 }, abilities: ["ignore-all-combat-penalties", "wraith-heal-2"], abilityText: "Royal Soulfire — ignores all Combat penalties; heal 2 on activation.", cardImage: demonCard("golden", "ghost-king", "pack") },
     source
   },
   // LV7 gold ground avatar — carries the faction's second NEW arm on BOTH sides;
@@ -344,8 +352,8 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
   "heavenly_demon.demon_avatar": {
     id: "heavenly_demon.demon_avatar", name: "Heavenly Demon Avatar", faction: "heavenly_demon", tier: "gold", type: "ground",
     // NEW #2 — Reap the Fallen: +1 Attack for the combat whenever an adjacent unit is removed.
-    few: { attack: 5, defense: 3, health: 7, initiative: 4, cost: { gold: 15, valuables: 1 }, abilities: ["heavenly-demon-reap"], abilityText: "Reap the Fallen — whenever a unit adjacent to this unit is removed from Combat (any source), this unit gains +1 Attack for the rest of the Combat (this stacks with each nearby death).", cardImage: demonCard("golden", "demon-avatar", "few") },
-    pack: { attack: 6, defense: 3, health: 8, initiative: 4, cost: { gold: 23, valuables: 2 }, abilities: ["heavenly-demon-reap", "titan-ignore-ongoing"], abilityText: "Reap the Fallen — gains +1 Attack whenever an adjacent unit is removed; Immortal Will — ignore any ongoing effects on this unit.", cardImage: demonCard("golden", "demon-avatar", "pack") },
+    few: { attack: 6, defense: 2, health: 7, initiative: 6, cost: { gold: 16, valuables: 1 }, abilities: ["heavenly-demon-reap"], abilityText: "Reap the Fallen — gain +1 Attack when an adjacent unit is removed, maximum +2 this Combat.", cardImage: demonCard("golden", "demon-avatar", "few") },
+    pack: { attack: 7, defense: 2, health: 8, initiative: 7, cost: { gold: 24, valuables: 2 }, abilities: ["heavenly-demon-reap", "titan-ignore-ongoing"], abilityText: "Reap the Fallen — gain up to +2 Attack from adjacent deaths; Immortal Will — ignore ongoing effects.", cardImage: demonCard("golden", "demon-avatar", "pack") },
     source
   },
 
@@ -564,6 +572,48 @@ export const animeTownBuildingDefinitions: Record<string, TownBuildingDefinition
 };
 
 export const animeTownHeroDefinitions: Record<string, HeroDefinition> = {
+  shirou_emiya: {
+    id: "shirou_emiya", name: "Shirou Emiya", faction: "fuyuki", class: "Resolute Master", type: "might",
+    startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.leadership",
+    specialtyCardIds: { 1: "specialty.shirou_emiya.1", 4: "specialty.shirou_emiya.4", 6: "specialty.shirou_emiya.6" },
+    portrait: "/assets/anime/heroes/shirou-emiya.webp", source
+  },
+  rin_tohsaka: {
+    id: "rin_tohsaka", name: "Rin Tohsaka", faction: "fuyuki", class: "Jewel Magus", type: "magic",
+    startingStats: { attack: 1, defense: 1, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.sorcery",
+    specialtyCardIds: { 1: "specialty.rin_tohsaka.1", 4: "specialty.rin_tohsaka.4", 6: "specialty.rin_tohsaka.6" },
+    portrait: "/assets/anime/heroes/rin-tohsaka.webp", source
+  },
+  illyasviel: {
+    id: "illyasviel", name: "Illyasviel von Einzbern", faction: "fuyuki", class: "Homunculus Master", type: "magic",
+    startingStats: { attack: 1, defense: 1, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.wisdom",
+    specialtyCardIds: { 1: "specialty.illyasviel.1", 4: "specialty.illyasviel.4", 6: "specialty.illyasviel.6" },
+    portrait: "/assets/anime/heroes/illyasviel-von-einzbern.webp", source
+  },
+  kiritsugu_emiya: {
+    id: "kiritsugu_emiya", name: "Kiritsugu Emiya", faction: "fuyuki", class: "Mage Killer", type: "might",
+    startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.tactics",
+    specialtyCardIds: { 1: "specialty.kiritsugu_emiya.1", 4: "specialty.kiritsugu_emiya.4", 6: "specialty.kiritsugu_emiya.6" },
+    portrait: "/assets/anime/heroes/kiritsugu-emiya.webp", source
+  },
+  kirei_kotomine: {
+    id: "kirei_kotomine", name: "Kirei Kotomine", faction: "fuyuki", class: "Church Executor", type: "might",
+    startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.offense",
+    specialtyCardIds: { 1: "specialty.kirei_kotomine.1", 4: "specialty.kirei_kotomine.4", 6: "specialty.kirei_kotomine.6" },
+    portrait: "/assets/anime/heroes/kirei-kotomine.webp", source
+  },
+  sakura_matou: {
+    id: "sakura_matou", name: "Sakura Matou", faction: "fuyuki", class: "Shadow Vessel", type: "magic",
+    startingStats: { attack: 1, defense: 1, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.interference",
+    specialtyCardIds: { 1: "specialty.sakura_matou.1", 4: "specialty.sakura_matou.4", 6: "specialty.sakura_matou.6" },
+    portrait: "/assets/anime/heroes/sakura-matou.webp", source
+  },
   bin: {
     id: "bin", name: "Bin", faction: "fuyuki", class: "Contractor", type: "might",
     startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
@@ -604,6 +654,20 @@ export const animeTownHeroDefinitions: Record<string, HeroDefinition> = {
     specialtyCardIds: { 1: "specialty.lingxi.1", 4: "specialty.lingxi.4", 6: "specialty.lingxi.6" },
     portrait: "/assets/anime/heroes/lingxi.webp", source
   },
+  jianxu: {
+    id: "jianxu", name: "Jianxu", faction: "azure_breeze", class: "Sword-Array Architect", type: "might",
+    startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.tactics",
+    specialtyCardIds: { 1: "specialty.jianxu.1", 4: "specialty.jianxu.4", 6: "specialty.jianxu.6" },
+    portrait: "/assets/anime/heroes/jianxu.webp", source
+  },
+  yulian: {
+    id: "yulian", name: "Yulian", faction: "azure_breeze", class: "Jade-Body Grandmaster", type: "might",
+    startingStats: { attack: 1, defense: 3, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.armorer",
+    specialtyCardIds: { 1: "specialty.yulian.1", 4: "specialty.yulian.4", 6: "specialty.yulian.6" },
+    portrait: "/assets/anime/heroes/yulian.webp", source
+  },
   naruto: {
     id: "naruto", name: "Naruto Uzumaki", faction: "hidden_leaf", class: "Jinchuriki", type: "might",
     startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
@@ -624,6 +688,27 @@ export const animeTownHeroDefinitions: Record<string, HeroDefinition> = {
     startingAbilityCardId: "ability.wisdom",
     specialtyCardIds: { 1: "specialty.tsunade.1", 4: "specialty.tsunade.4", 6: "specialty.tsunade.6" },
     portrait: "/assets/anime/heroes/tsunade.webp", source
+  },
+  kakashi_hatake: {
+    id: "kakashi_hatake", name: "Kakashi Hatake", faction: "hidden_leaf", class: "Copy Ninja", type: "might",
+    startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.tactics",
+    specialtyCardIds: { 1: "specialty.kakashi_hatake.1", 4: "specialty.kakashi_hatake.4", 6: "specialty.kakashi_hatake.6" },
+    portrait: "/assets/anime/heroes/kakashi-hatake.webp", source
+  },
+  shikamaru_nara: {
+    id: "shikamaru_nara", name: "Shikamaru Nara", faction: "hidden_leaf", class: "Shadow Strategist", type: "magic",
+    startingStats: { attack: 1, defense: 1, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.wisdom",
+    specialtyCardIds: { 1: "specialty.shikamaru_nara.1", 4: "specialty.shikamaru_nara.4", 6: "specialty.shikamaru_nara.6" },
+    portrait: "/assets/anime/heroes/shikamaru-nara.webp", source
+  },
+  jiraiya: {
+    id: "jiraiya", name: "Jiraiya", faction: "hidden_leaf", class: "Toad Sage", type: "magic",
+    startingStats: { attack: 1, defense: 1, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.sorcery",
+    specialtyCardIds: { 1: "specialty.jiraiya.1", 4: "specialty.jiraiya.4", 6: "specialty.jiraiya.6" },
+    portrait: "/assets/anime/heroes/jiraiya.webp", source
   },
   enterprise: {
     id: "enterprise", name: "Enterprise", faction: "azur_lane", class: "Grey Ghost", type: "might",
@@ -701,6 +786,20 @@ export const animeTownHeroDefinitions: Record<string, HeroDefinition> = {
     specialtyCardIds: { 1: "specialty.molian.1", 4: "specialty.molian.4", 6: "specialty.molian.6" },
     portrait: "/assets/anime/heroes/molian.webp", source
   },
+  luohun: {
+    id: "luohun", name: "Bai Luohun", faction: "heavenly_demon", class: "Soul Shepherd", type: "magic",
+    startingStats: { attack: 1, defense: 1, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.wisdom",
+    specialtyCardIds: { 1: "specialty.luohun.1", 4: "specialty.luohun.4", 6: "specialty.luohun.6" },
+    portrait: "/assets/anime/heroes/luohun.webp", source
+  },
+  shiyan: {
+    id: "shiyan", name: "Shiyan", faction: "heavenly_demon", class: "Corpse-Furnace Savant", type: "magic",
+    startingStats: { attack: 1, defense: 2, power: 2, knowledge: 1 },
+    startingAbilityCardId: "ability.sorcery",
+    specialtyCardIds: { 1: "specialty.shiyan.1", 4: "specialty.shiyan.4", 6: "specialty.shiyan.6" },
+    portrait: "/assets/anime/heroes/shiyan.webp", source
+  },
   sasami_sasasegawa: {
     id: "sasami_sasasegawa", name: "Sasami Sasasegawa", faction: "little_busters", class: "Softball Captain", type: "might",
     startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
@@ -752,28 +851,28 @@ export const AZURE_BREEZE_UNIT_ORDER = [
   "azure_breeze.spirit_crane", // LV3 bronze
   "azure_breeze.sect_protectors", // LV4 silver
   "azure_breeze.true_inheritors", // LV5 silver (Qingyun specialty)
-  "azure_breeze.core_master", // LV6 gold
+  "azure_breeze.core_master", // LV6 gold ranged
   "azure_breeze.mountain_guardian" // LV7 gold
 ] as const;
 
 export const animeTownFactionDefinitions: Record<string, FactionDefinition> = {
   fuyuki: {
     id: "fuyuki", name: "Fuyuki City", color: "#7256d8", startingTileId: "A-S1",
-    heroes: ["bin", "aoko", "miku"],
+    heroes: ["shirou_emiya", "rin_tohsaka", "illyasviel", "kiritsugu_emiya", "kirei_kotomine", "sakura_matou"],
     buildings: Object.values(animeTownBuildingDefinitions).filter((item) => item.faction === "fuyuki").map((item) => item.id),
     units: Object.values(animeTownUnitDefinitions).filter((item) => item.faction === "fuyuki").map((item) => item.id),
     townImage: "/assets/anime/towns/fuyuki-city-empty-v2.webp", source
   },
   azure_breeze: {
     id: "azure_breeze", name: "Azure Breeze Sect", color: "#27a9a0", startingTileId: "W-S1",
-    heroes: ["qingyun", "lingxi"],
+    heroes: ["qingyun", "lingxi", "jianxu", "yulian"],
     buildings: Object.values(animeTownBuildingDefinitions).filter((item) => item.faction === "azure_breeze").map((item) => item.id),
     units: [...AZURE_BREEZE_UNIT_ORDER],
     townImage: "/assets/anime/towns/azure-breeze-sect-empty-v2.webp", source
   },
   hidden_leaf: {
     id: "hidden_leaf", name: "Hidden Leaf Village", color: "#4f9d45", startingTileId: "L-S1",
-    heroes: ["naruto", "sasuke", "tsunade"],
+    heroes: ["naruto", "sasuke", "tsunade", "kakashi_hatake", "shikamaru_nara", "jiraiya"],
     // `units` derives from the animeTownUnitDefinitions insertion order (bronze →
     // gold), exactly like Fuyuki — no explicit order array (nothing consumes one).
     buildings: Object.values(animeTownBuildingDefinitions).filter((item) => item.faction === "hidden_leaf").map((item) => item.id),
@@ -793,7 +892,7 @@ export const animeTownFactionDefinitions: Record<string, FactionDefinition> = {
     id: "heavenly_demon", name: "Heavenly Demon Palace", color: "#8b1a2b", startingTileId: "D-S1",
     // Five heroes (three MIGHT unit specialists + two MAGIC medic clones), the
     // azur_lane roster shape.
-    heroes: ["xuedao", "guiyan", "xuanming", "yaoji", "molian"],
+    heroes: ["xuedao", "guiyan", "xuanming", "yaoji", "molian", "luohun", "shiyan"],
     // `units` derives from the animeTownUnitDefinitions insertion order (bronze →
     // gold), exactly like Fuyuki / Hidden Leaf / Azur Lane — no explicit order array.
     buildings: Object.values(animeTownBuildingDefinitions).filter((item) => item.faction === "heavenly_demon").map((item) => item.id),

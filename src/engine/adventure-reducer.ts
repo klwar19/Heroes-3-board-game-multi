@@ -287,6 +287,12 @@ import {
   applyHeroGradeRoundStartDamage,
   injectHeroGradeFamiliar
 } from "./hero-grade-combat";
+import { hiddenLeafCombatFormationError, hiddenLeafMissionCompletion } from "./anime-town-mechanics";
+import { applyAzurLaneCombatStartPenalty } from "./anime-faction-penalties";
+import {
+  initializeCultivationFactionCombat,
+  injectSoulBannerShade
+} from "./wuxia-factions";
 import {
   expireCommunityLuckAtTurnEnd,
   expireEffectsForCombatEnd,
@@ -493,6 +499,7 @@ import type {
   BankSize,
   CardDefinition,
   CardId,
+  CombatContext,
   CombatState,
   CombatUnitState,
   DeckId,
@@ -5413,6 +5420,7 @@ function makeCombatShell(state: GameState, attackerPlayerId: PlayerId, defenderP
     },
     units: {}
   };
+  initializeCultivationFactionCombat(state, shell);
 
   // Crag Hack (Astrologers): "For the first Combat this round, all ground units
   // gain +1 attack." This is the single chokepoint every real combat's shell is
@@ -10192,6 +10200,17 @@ export function placeCombatUnit(state: GameState, action: Extract<GameAction, { 
     throw new Error(`Only ${setup.unitLimit} units may join a combat.`);
   }
 
+  const formationError = hiddenLeafCombatFormationError(player, [
+    ...placed.flatMap((armyUnitId) => {
+      const unit = player.army.find((candidate) => candidate.id === armyUnitId);
+      return unit ? [{ side: unit.side, tier: coreUnitDefinitions[unit.unitDefId]?.tier }] : [];
+    }),
+    { side: armyUnit.side, tier: coreUnitDefinitions[armyUnit.unitDefId]?.tier }
+  ]);
+  if (formationError) {
+    throw new Error(formationError);
+  }
+
   const combatUnit = makeCombatUnitFromArmy(
     armyUnit,
     action.playerId,
@@ -10249,6 +10268,18 @@ export function finishCombatPlacement(state: GameState, action: Extract<GameActi
 
   if (combat.prep) {
     throw new Error("Deployment waits until both sides accept the battle.");
+  }
+
+  const player = state.players[action.playerId];
+  const formationError = hiddenLeafCombatFormationError(
+    player,
+    (setup.placedUnitIds[action.playerId] ?? []).flatMap((armyUnitId) => {
+      const unit = player?.army.find((candidate) => candidate.id === armyUnitId);
+      return unit ? [{ side: unit.side, tier: coreUnitDefinitions[unit.unitDefId]?.tier }] : [];
+    })
+  );
+  if (formationError) {
+    throw new Error(formationError);
   }
 
   if (
@@ -10865,6 +10896,7 @@ function resumeCombatStartAfterCommanderPlacement(state: GameState): void {
   // Monster Girl Quest Four Spirits: summon the selected basic/advanced unit
   // for the fighting main hero, based on hero level.
   seedMgqSpiritsForCombat(state);
+  applyAzurLaneCombatStartPenalty(state);
   applyHeroGradeArmyInitiative(state);
   for (const unit of Object.values(combat.units)) {
     unit.initiative += equipmentBronzeInitiativeBonus(state, unit);
@@ -11645,6 +11677,7 @@ function injectHeroGradeFamiliars(state: GameState): void {
   for (const side of sides) {
     if (side.playerId !== NEUTRAL_PLAYER_ID) {
       injectHeroGradeFamiliar(state, side.playerId, side.cells);
+      injectSoulBannerShade(state, side.playerId, side.cells);
     }
   }
 }
@@ -12800,6 +12833,35 @@ function resolveDungeonFloorVictory(
   }
 }
 
+function completeHiddenLeafMission(state: GameState, playerId: PlayerId, context: CombatContext): void {
+  const player = state.players[playerId];
+  if (!player) return;
+  const result = hiddenLeafMissionCompletion(player, context);
+  if (!result) return;
+
+  player.hiddenLeafMissionPoints = result.totalPoints;
+  if (result.bountyGold > 0 || result.promotionValuables > 0) {
+    gainResources(
+      state,
+      playerId,
+      { gold: result.bountyGold, valuables: result.promotionValuables },
+      `Hidden Leaf ${result.rank}-rank mission`
+    );
+  }
+  const promotion = result.rank !== result.previousRank ? ` Promoted ${result.previousRank}→${result.rank}.` : "";
+  const bounty = [
+    result.bountyGold > 0 ? `${result.bountyGold} gold` : "",
+    result.promotionValuables > 0 ? `${result.promotionValuables} valuables` : ""
+  ].filter(Boolean).join(" and ");
+  appendEvent(state, {
+    type: "FACTION_MECHANIC_TRIGGERED",
+    playerId,
+    factionId: "hidden_leaf",
+    mechanicId: "mission-rank",
+    message: `Mission complete: +${result.pointsEarned} point${result.pointsEarned === 1 ? "" : "s"} (${result.totalPoints}, rank ${result.rank}).${promotion}${bounty ? ` Bounty: ${bounty}.` : ""}`
+  });
+}
+
 export function finalizeAdventureCombat(state: GameState): void {
   const combat = state.combat;
   const adventure = state.adventure;
@@ -13097,6 +13159,7 @@ export function finalizeAdventureCombat(state: GameState): void {
 
     if (hero && playerId) {
       if (outcome.winnerPlayerId === playerId) {
+        completeHiddenLeafMission(state, playerId, context);
         // Standard level-3/4/5 Neutral guards may open an optional commander-
         // artifact purchase after the fight. Banks, waves, Raid Bosses and
         // Dungeon floors keep their own reward paths below.

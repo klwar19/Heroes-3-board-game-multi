@@ -193,6 +193,10 @@ const creatureVoices: Record<string, string> = {
   giant_toad: "hidden-leaf-giant-toad",
   jinchuriki: "hidden-leaf-jinchuriki",
   susanoo: "hidden-leaf-susanoo",
+  // Hokage Vanguard (2026-08-25 roster addition) has no dedicated recording
+  // yet — reuse the town's elite-human Jōnin mix so its register matches the
+  // rest of Hidden Leaf (the documented Factory/Fuyuki fallback pattern).
+  hokage_vanguard: "hidden-leaf-jonin",
   // Azur Lane Naval Base — NOTE: these H3 entries do NOT run. unitSoundKey
   // short-circuits every shipgirl to her bespoke Japanese clips
   // (azurLaneUnitVoices below) before ever reading creatureVoices — the same

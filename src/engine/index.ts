@@ -93,6 +93,14 @@ export {
 } from "./chat";
 export { ENGINE_PROTOCOL_VERSION, ENGINE_SIGNATURE } from "./version";
 export {
+  FUYUKI_COMMAND_SEAL_LIMIT,
+  fuyukiCommandSealsOf,
+  hiddenLeafMissionCompletion,
+  hiddenLeafMissionPointsEarned,
+  hiddenLeafMissionRankOf,
+  hiddenLeafNextMissionRank
+} from "./anime-town-mechanics";
+export {
   hasOpenAdventureTurn,
   isParallelActor,
   isRoundStartEventBarrierActive,

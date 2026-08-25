@@ -771,7 +771,18 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // guard (the Subterranean-Gate A↔B shuffle fix). AI-private and self-healing
 // (a stale worker drops the field and only loses the guard), but the runner's
 // behaviour on the same snapshot differs, so the fingerprint moves with it.
-export const ENGINE_PROTOCOL_VERSION = 62;
+// v63 (2026-08-25): Fuyuki Command Seals and Hidden Leaf Mission Rank add
+// authoritative action/state/reward semantics. A v62 worker rejects the new
+// Command Seal action and never advances the persistent mission ladder.
+// v64 (2026-08-25): Hidden Leaf's combat formation is now shinobi-only and may
+// contain at most two Gold unit cards. Placement offers and reducer validation
+// both enforce it; a v63 worker would still accept a forged third-Gold or
+// Neutral placement, so client/server compatibility must fail visibly.
+// v65 (2026-08-25): the seven anime/xianxia town penalties add persistent
+// `PlayerState.otherworldHandLimitLoss`, a per-combat Azur Lane damage latch,
+// and authoritative Resource-round deductions. A v64 worker would accept the
+// same faction pick but silently omit every penalty, so compatibility must fail.
+export const ENGINE_PROTOCOL_VERSION = 65;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

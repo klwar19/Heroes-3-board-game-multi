@@ -192,8 +192,9 @@ function unitCardSvg(card, side, artHref) {
     .join("");
 
   const titleSize = card.name.length > 18 ? 30 : card.name.length > 14 ? 35 : 42;
-  const costBand =
-    side === "few"
+  const costBand = card.summoned
+    ? `<text x="371" y="868" class="disp" fill="#f6dcc2" font-size="28" text-anchor="middle" filter="url(#tsh)">SUMMONED · ROUND 1</text>`
+    : side === "few"
       ? coinRow(150, 863, card.few.cost.gold, card.few.cost.valuables ?? 0, "FEW") +
         coinRow(430, 863, card.pack.cost.gold, card.pack.cost.valuables ?? 0, "PACK")
       : `<text x="371" y="868" class="disp" fill="#f6dcc2" font-size="34" text-anchor="middle" filter="url(#tsh)"># PACK</text>`;
@@ -253,8 +254,10 @@ function unitCardSvg(card, side, artHref) {
       card.name
     )}</text>
     <g>${typeGlyph(card.kind, 200, 176)}<text x="228" y="182" class="sc" fill="#f6e0cf" font-size="15" filter="url(#tsh)">${card.kind}</text></g>
-    <g transform="translate(655 786)"><path d="m0-15 4 10 11 1-8 6 3 11-10-6-10 6 3-11-8-6 11-1z" fill="${P.light}" stroke="${P.dark}" stroke-width="2"/></g>
-    <text x="622" y="791" class="sc" fill="${P.light}" font-size="13" text-anchor="end">LV ${card.level}</text>
+    ${card.summoned
+      ? `<text x="655" y="791" class="sc" fill="${P.light}" font-size="13" text-anchor="end">TOKEN</text>`
+      : `<g transform="translate(655 786)"><path d="m0-15 4 10 11 1-8 6 3 11-10-6-10 6 3-11-8-6 11-1z" fill="${P.light}" stroke="${P.dark}" stroke-width="2"/></g>
+    <text x="622" y="791" class="sc" fill="${P.light}" font-size="13" text-anchor="end">LV ${card.level}</text>`}
     ${costBand}
     <text class="disp" fill="#f8e6cf" font-size="${rFont}" text-anchor="middle" filter="url(#tsh)">${ruleText}</text>
   </g>
@@ -268,8 +271,8 @@ const CARDS = [
   {
     slug: "blood-disciples", tier: "bronze", name: "Blood Disciples", kind: "GROUND", level: 1,
     fewMaster: "units/blood-disciples-master.png", packMaster: "units/blood-disciples-pack-master.png", packFlip: false,
-    few: { attack: 2, defense: 1, health: 2, initiative: 6, cost: { gold: 2 }, rule: "No printed ability." },
-    pack: { attack: 3, defense: 1, health: 2, initiative: 6, cost: { gold: 4 }, rule: "Blood Siphon — after this unit's attack deals damage, remove 1 damage from it (a fully-soaked 0-damage attack heals nothing). Never on a Retaliation Attack." }
+    few: { attack: 2, defense: 0, health: 3, initiative: 6, cost: { gold: 2 }, rule: "No printed ability." },
+    pack: { attack: 3, defense: 0, health: 3, initiative: 7, cost: { gold: 4 }, rule: "Blood Siphon — after its own attack deals damage, heal 1. Never on Retaliation." }
   },
   {
     slug: "gu-witches", tier: "bronze", name: "Gu Witches", kind: "RANGED", level: 2,
@@ -278,34 +281,34 @@ const CARDS = [
     pack: { attack: 3, defense: 1, health: 2, initiative: 6, cost: { gold: 6 }, rule: "Hex Darts — ignores the adjacent-unit penalty; Gu Curse — after attacking, roll a die; on 0 the target is Paralyzed." }
   },
   {
-    slug: "shadow-wraiths", tier: "bronze", name: "Shadow Wraiths", kind: "GROUND", level: 3,
+    slug: "shadow-wraiths", tier: "bronze", name: "Shadow Sabre Disciples", kind: "GROUND", level: 3,
     fewMaster: "units/shadow-wraiths-master.png", packMaster: "units/shadow-wraiths-pack-master.png", packFlip: false,
-    few: { attack: 2, defense: 1, health: 2, initiative: 7, cost: { gold: 3 }, rule: "No printed ability." },
-    pack: { attack: 3, defense: 1, health: 2, initiative: 8, cost: { gold: 5 }, rule: "Umbral Step — attacks do not provoke a Retaliation Attack." }
+    few: { attack: 2, defense: 0, health: 2, initiative: 9, cost: { gold: 4 }, rule: "No printed ability." },
+    pack: { attack: 3, defense: 0, health: 3, initiative: 10, cost: { gold: 6 }, rule: "Umbral Step — attacks do not provoke a Retaliation Attack." }
   },
   {
     slug: "corpse-puppets", tier: "silver", name: "Corpse Puppets", kind: "GROUND", level: 4,
     fewMaster: "units/corpse-puppets-master.png", packMaster: "units/corpse-puppets-pack-master.png", packFlip: false,
-    few: { attack: 3, defense: 2, health: 4, initiative: 4, cost: { gold: 8 }, rule: "Grave Ward — always treated as if it had a Defense token: it rolls the Defend die when attacked." },
-    pack: { attack: 4, defense: 3, health: 5, initiative: 4, cost: { gold: 11 }, rule: "Grave Ward — always rolls the Defend die when attacked; Corpse Burst — when defeated, deal 1 damage to each adjacent unit." }
+    few: { attack: 2, defense: 2, health: 5, initiative: 2, cost: { gold: 9 }, rule: "Grave Ward — always rolls the Defend die when attacked." },
+    pack: { attack: 3, defense: 2, health: 6, initiative: 3, cost: { gold: 13 }, rule: "Grave Ward — always rolls the Defend die; Corpse Burst — on defeat, deal 1 damage to every adjacent unit." }
   },
   {
     slug: "bone-reavers", tier: "silver", name: "Bone Reavers", kind: "GROUND", level: 5,
     fewMaster: "units/bone-reavers-master.png", packMaster: "units/bone-reavers-pack-master.png", packFlip: false,
-    few: { attack: 3, defense: 2, health: 4, initiative: 6, cost: { gold: 9 }, rule: "Reaping Charge — +1 Attack on its attack after this unit moves." },
-    pack: { attack: 4, defense: 2, health: 5, initiative: 7, cost: { gold: 13 }, rule: "Reaping Charge — +1 Attack after moving; Ghost Blades — its attacks do not provoke a Retaliation Attack." }
+    few: { attack: 4, defense: 1, health: 4, initiative: 7, cost: { gold: 9 }, rule: "Reaping Charge — +1 Attack on its attack after this unit moves." },
+    pack: { attack: 5, defense: 1, health: 5, initiative: 8, cost: { gold: 14 }, rule: "Reaping Charge — +1 Attack after moving; Ghost Blades — ignores Retaliation." }
   },
   {
-    slug: "ghost-king", tier: "golden", name: "Ghost King", kind: "GROUND", level: 6,
+    slug: "ghost-king", tier: "golden", name: "Ghost King", kind: "RANGED", level: 6,
     fewMaster: "units/ghost-king-few-master.png", packMaster: "units/ghost-king-pack-master.png", packFlip: false,
-    few: { attack: 5, defense: 3, health: 6, initiative: 6, cost: { gold: 14, valuables: 1 }, rule: "Spectral Mending — on activation, remove 1 damage from this unit." },
-    pack: { attack: 6, defense: 3, health: 7, initiative: 6, cost: { gold: 22, valuables: 2 }, rule: "Spectral Mending — remove 2 damage on activation; Vengeful Court — may Retaliate any number of times each round." }
+    few: { attack: 4, defense: 3, health: 7, initiative: 5, cost: { gold: 14, valuables: 1 }, rule: "Soulfire — ignores adjacent ranged penalty; heal 1 on activation." },
+    pack: { attack: 5, defense: 3, health: 8, initiative: 6, cost: { gold: 22, valuables: 2 }, rule: "Royal Soulfire — ignores all Combat penalties; heal 2 on activation." }
   },
   {
     slug: "demon-avatar", tier: "golden", name: "Heavenly Demon Avatar", kind: "GROUND", level: 7,
     fewMaster: "units/demon-avatar-few-master.png", packMaster: "units/demon-avatar-pack-master.png", packFlip: false,
-    few: { attack: 5, defense: 3, health: 7, initiative: 4, cost: { gold: 15, valuables: 1 }, rule: "Reap the Fallen — whenever a unit adjacent to this unit is removed from Combat, this unit gains +1 Attack for the rest of the Combat (stacks)." },
-    pack: { attack: 6, defense: 3, health: 8, initiative: 4, cost: { gold: 23, valuables: 2 }, rule: "Reap the Fallen — +1 Attack whenever an adjacent unit is removed; Immortal Will — ignore any ongoing effects on this unit." }
+    few: { attack: 6, defense: 2, health: 7, initiative: 6, cost: { gold: 16, valuables: 1 }, rule: "Reap the Fallen — adjacent removals grant +1 Attack, maximum +2 this Combat." },
+    pack: { attack: 7, defense: 2, health: 8, initiative: 7, cost: { gold: 24, valuables: 2 }, rule: "Reap the Fallen — gain up to +2 Attack from adjacent removals; ignore ongoing effects." }
   }
 ];
 
@@ -325,6 +328,19 @@ async function buildUnits() {
       );
     }
   }
+  const boundSoul = {
+    slug: "bound-soul", tier: "bronze", name: "Bound Soul", kind: "FLYING", level: 0,
+    summoned: true,
+    few: { attack: 2, defense: 0, health: 2, initiative: 8, cost: { gold: 0 }, rule: "Soul Banner — expires after round 1. Ignores Retaliation." },
+    pack: { attack: 2, defense: 0, health: 2, initiative: 8, cost: { gold: 0 }, rule: "Soul Banner — expires after round 1. Ignores Retaliation." }
+  };
+  const boundSoulArt = await dataUri("units/bound-soul-master.png");
+  await writeWebp(
+    sharp(await svgToBuf(unitCardSvg(boundSoul, "few", boundSoulArt), CARD_W, CARD_H)),
+    "anime/units/soul-banner-shade-card.webp",
+    { width: CARD_W, height: CARD_H },
+    { minKb: 20, quality: 90 }
+  );
 }
 
 // ---------------------------------------------------------------------------

@@ -37,6 +37,9 @@ scripts/anime-art/refs/
 scripts/anime-art/raw/hidden-leaf/
 scripts/anime-art/previews/hidden-leaf/
 scripts/commander-art/might_guy.png
+# Offline Heavenly Demon compositor deployment scratch; public/ holds the
+# promoted WebPs and scripts/anime-art/raw/heavenly-demon holds source masters.
+scripts/anime-art/raw/heavenly-demon/_staged/
 
 # Machine-local Claude Code session files. The repo intentionally TRACKS
 # .claude/commands/ — ignore only these per-machine session artifacts.

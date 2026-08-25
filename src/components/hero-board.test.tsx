@@ -302,11 +302,11 @@ describe("HeroBoard — progression wording follows the rendered hero's faction"
     });
   }
 
-  const cases: Array<{ factionId: FactionId; heroDefId: string; progress: string; realm: string; grade: string }> = [
+  const cases: Array<{ factionId: FactionId; heroDefId: string; progress: string; realm: string | null; grade: string }> = [
     { factionId: "castle", heroDefId: "catherine", progress: "Level Ⅰ · XP 0/12", realm: "Novice · Tập Sự", grade: "Recruit · Tân Binh" },
     { factionId: "fuyuki", heroDefId: "bin", progress: "Lv Ⅰ · EXP 0/12", realm: "Awakened · Thức Tỉnh", grade: "Rank F · Hạng F" },
-    { factionId: "azure_breeze", heroDefId: "qingyun", progress: "Stage Ⅰ · Cultivation 0/12", realm: "Qi Refinement · Luyện Khí", grade: "Martial Artist · Võ Giả" },
-    { factionId: "heavenly_demon", heroDefId: "xuedao", progress: "Stage Ⅰ · Cultivation 0/12", realm: "Blood Refinement · Luyện Huyết", grade: "Blood Adept · Huyết Đồ" },
+    { factionId: "azure_breeze", heroDefId: "qingyun", progress: "Stage Ⅰ · Cultivation 0/12", realm: null, grade: "Qi Refinement · Luyện Khí" },
+    { factionId: "heavenly_demon", heroDefId: "xuedao", progress: "Stage Ⅰ · Cultivation 0/12", realm: null, grade: "Blood Refinement · Luyện Huyết" },
     { factionId: "azur_lane", heroDefId: "enterprise", progress: "Lv Ⅰ · EXP 0/12", realm: "Awakened · Thức Tỉnh", grade: "Common · Thường" }
   ];
 
@@ -314,8 +314,12 @@ describe("HeroBoard — progression wording follows the rendered hero's faction"
     it(`${factionId} renders its own level, realm and grade vocabulary`, () => {
       const { container, unmount } = renderBoardState(progressionAdventure(factionId, heroDefId));
       expect(container.querySelector(".hbFooter > span")?.textContent?.trim()).toBe(progress);
-      expect(container.querySelector(".hbRealm")?.textContent).toContain(realm);
+      if (realm) expect(container.querySelector(".hbRealm")?.textContent).toContain(realm);
+      else expect(container.querySelector(".hbRealm")).toBeNull();
       expect(container.querySelector(".hbGrade")?.textContent).toContain(grade);
+      if (factionId === "azure_breeze" || factionId === "heavenly_demon") {
+        expect(container.querySelector(".hbGrade")?.getAttribute("title")).toContain("Cultivation Realm");
+      }
       unmount();
     });
   }

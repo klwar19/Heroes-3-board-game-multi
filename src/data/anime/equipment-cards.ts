@@ -86,12 +86,12 @@ function buildEquipmentCard(def: EquipmentDefinition): CardDefinition {
 
 /** Every equipment card definition, keyed by equipment id. */
 export const animeEquipmentCards: CardLibrary = Object.fromEntries(
-  listEquipmentDefinitions().map((def) => [def.id, buildEquipmentCard(def)])
+  listEquipmentDefinitions().filter((def) => !def.intrinsic).map((def) => [def.id, buildEquipmentCard(def)])
 );
 
 function idsForGrade(grade: EquipmentGrade): string[] {
   return listEquipmentDefinitions()
-    .filter((def) => def.grade === grade)
+    .filter((def) => def.grade === grade && !def.intrinsic)
     .map((def) => def.id);
 }
 

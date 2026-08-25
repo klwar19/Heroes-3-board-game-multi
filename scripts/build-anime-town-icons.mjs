@@ -48,8 +48,15 @@ for (const town of towns) {
 // names reserved for the (retired) proof sheets.
 const portraits = [
   ["anime/units/fuyuki/units-fuyuki-golden-sabers-few.webp", "anime/units/portraits/fuyuki-sabers.webp"],
+  // 2026-08-25 roster pass: every Fuyuki / Hidden Leaf unit specialist gets a
+  // portrait of the exact line their specialty doubles on.
+  ["anime/units/fuyuki/units-fuyuki-silver-archers-few.webp", "anime/units/portraits/fuyuki-archers.webp"],
+  ["anime/units/fuyuki/units-fuyuki-golden-berserkers-few.webp", "anime/units/portraits/fuyuki-berserkers.webp"],
+  ["anime/units/fuyuki/units-fuyuki-bronze-assassins-few.webp", "anime/units/portraits/fuyuki-assassins.webp"],
+  ["anime/units/fuyuki/units-fuyuki-bronze-lancers-few.webp", "anime/units/portraits/fuyuki-lancers.webp"],
   [
-    "anime/units/azure-breeze/units-azure-breeze-golden-true-inheritors-few.webp",
+    // True Inheritors moved gold -> silver in the 2026-08-25 Azure roster pass.
+    "anime/units/azure-breeze/units-azure-breeze-silver-true-inheritors-few.webp",
     "anime/units/portraits/azure-breeze-true-inheritors.webp"
   ],
   [
@@ -59,6 +66,18 @@ const portraits = [
   [
     "anime/units/hidden-leaf/units-hidden-leaf-silver-jonin-few.webp",
     "anime/units/portraits/hidden-leaf-jonin.webp"
+  ],
+  [
+    "anime/units/hidden-leaf/units-hidden-leaf-golden-susanoo-few.webp",
+    "anime/units/portraits/hidden-leaf-susanoo.webp"
+  ],
+  [
+    "anime/units/hidden-leaf/units-hidden-leaf-bronze-anbu-few.webp",
+    "anime/units/portraits/hidden-leaf-anbu.webp"
+  ],
+  [
+    "anime/units/hidden-leaf/units-hidden-leaf-silver-giant-toad-few.webp",
+    "anime/units/portraits/hidden-leaf-giant-toad.webp"
   ]
 ];
 

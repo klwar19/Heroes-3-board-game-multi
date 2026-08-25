@@ -70,10 +70,26 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   // from its commissioned card art (scripts/build-anime-town-icons.mjs).
   bin: "/assets/anime/units/portraits/fuyuki-sabers.webp", // Sabers (Fuyuki)
   qingyun: "/assets/anime/units/portraits/azure-breeze-true-inheritors.webp", // True Inheritors (Azure Breeze)
+  jianxu: "/assets/anime/icons/cultivation/sect-qi.webp",
+  yulian: "/assets/anime/icons/cultivation/foundation-establishment.webp",
+  // Fuyuki's Fifth Holy Grail War cast (2026-08-25 roster pass) — each unit
+  // specialist wears the portrait of the Servant line their specialty doubles.
+  shirou_emiya: "/assets/anime/units/portraits/fuyuki-sabers.webp", // Artoria Pendragon
+  rin_tohsaka: "/assets/anime/units/portraits/fuyuki-archers.webp", // EMIYA
+  illyasviel: "/assets/anime/units/portraits/fuyuki-berserkers.webp", // Heracles
+  kiritsugu_emiya: "/assets/anime/units/portraits/fuyuki-assassins.webp", // Sasaki Kojirō
+  kirei_kotomine: "/assets/anime/units/portraits/fuyuki-lancers.webp", // Cú Chulainn
+  // Sakura's Gentle Resolve is a Rion heal/cleanse clone, so she shares the
+  // Cure SPELL icon like Astra and Aoko.
+  sakura_matou: "/assets/specialty-card/icon-cure.webp",
   // Hidden Leaf might specialists — signature unit portraits cropped from the
-  // commissioned unit cards (scripts/build-hidden-leaf-unit-cards.mjs).
-  naruto: "/assets/anime/units/portraits/hidden-leaf-jinchuriki.webp", // Jinchuriki
-  sasuke: "/assets/anime/units/portraits/hidden-leaf-jonin.webp", // Jonin
+  // commissioned unit cards (scripts/build-anime-town-icons.mjs).
+  naruto: "/assets/anime/units/portraits/hidden-leaf-jinchuriki.webp", // Nine-Tails Chakra Avatar
+  // Sasuke's specialty moved to Perfect Susanoo in the 2026-08-25 roster pass.
+  sasuke: "/assets/anime/units/portraits/hidden-leaf-susanoo.webp", // Perfect Susanoo
+  kakashi_hatake: "/assets/anime/units/portraits/hidden-leaf-jonin.webp", // Leaf Jōnin
+  shikamaru_nara: "/assets/anime/units/portraits/hidden-leaf-anbu.webp", // ANBU Black Ops
+  jiraiya: "/assets/anime/units/portraits/hidden-leaf-giant-toad.webp", // Gamabunta
   // Tsunade's Hundred Healings IS the First Aid medic set (Gem clone), like Lingxi.
   tsunade: "/assets/specialty-card/icon-first_aid.webp",
   // Azur Lane hero specialties use the heroes' actual in-game skill emblems,
@@ -99,6 +115,8 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   // cleanse clone, like Aoko) shows the Cure spell icon.
   yaoji: "/assets/specialty-card/icon-first_aid.webp",
   molian: "/assets/specialty-card/icon-cure.webp",
+  luohun: "/assets/anime/equipment/ten_thousand_souls_banner.webp",
+  shiyan: "/assets/anime/icons/cultivation/blood-essence.webp",
   // Little Busters — generated transparent emblems double as clean native-card
   // specialty symbols. Kud's rocket-science crest replaces the unrelated frost icon.
   sasami_sasasegawa: "/assets/anime/icons/little-busters/rank-softball-club.webp",
@@ -197,6 +215,7 @@ export const FACTION_ACCENT: Record<string, string> = {
   // the same town tint as the hero board / commander chrome.
   fuyuki: "#7256d8",
   azure_breeze: "#27a9a0",
+  heavenly_demon: "#8b1a2b",
   azur_lane: "#2f6fc1"
 };
 

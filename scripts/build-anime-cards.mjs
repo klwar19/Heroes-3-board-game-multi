@@ -33,66 +33,80 @@ const TIER = {
 const FUYUKI_CARDS = [
   {
     slug: "assassins",
+    name: "Sasaki Kojirō",
     tier: "bronze",
     kind: "GROUND",
-    stats: { attack: 2, defense: 1, health: 2, initiative: 7 },
+    stats: { attack: 2, defense: 1, health: 2, initiative: 8 },
+    packStats: { initiative: 9 },
     art: "units-fuyuki-bronze-assassins-master.png",
     few: "No printed ability.",
-    pack: "Presence Concealment — +1 Defense against ranged attackers."
+    pack: "Presence Concealment — attacks do not provoke Retaliation."
   },
   {
     slug: "riders",
+    name: "Medusa",
     tier: "bronze",
     kind: "GROUND",
-    stats: { attack: 2, defense: 1, health: 2, initiative: 6 },
+    stats: { attack: 2, defense: 1, health: 2, initiative: 7 },
+    packStats: { attack: 3, health: 3, initiative: 8 },
     art: "units-fuyuki-bronze-riders-master.png",
     few: "No printed ability.",
-    pack: "Trample — A +1 on this unit's Attack die Paralyzes the target."
+    pack: "Mystic Eyes — after attacking, roll a die; on 0 the target is Paralyzed."
   },
   {
     slug: "lancers",
+    name: "Cú Chulainn",
     tier: "bronze",
     kind: "GROUND",
-    stats: { attack: 2, defense: 1, health: 3, initiative: 5 },
+    stats: { attack: 3, defense: 1, health: 3, initiative: 6 },
+    packStats: { defense: 2, initiative: 7 },
     art: "units-fuyuki-bronze-lancers-master.png",
-    few: "Gáe Bolg — May attack a unit 2 spaces away in a straight line.",
-    pack: "Gáe Bolg — May attack a unit 2 spaces away in a straight line. Ignores retaliation."
+    few: "Gáe Bolg — strike through the target for a second Attack 1 hit.",
+    pack: "Gáe Bolg — strike behind the target at Attack 2."
   },
   {
     slug: "archers",
+    name: "EMIYA",
     tier: "silver",
     kind: "RANGED",
-    stats: { attack: 3, defense: 2, health: 3, initiative: 5 },
+    stats: { attack: 3, defense: 2, health: 4, initiative: 6 },
+    packStats: { initiative: 7 },
     art: "units-fuyuki-silver-archers-master.png",
-    few: "Ignore Combat penalties.",
-    pack: "Ignore Combat penalties. If this unit has not moved this activation, it attacks the same target again."
+    few: "Hawkeye — ignores the adjacent ranged Combat penalty.",
+    pack: "Unlimited Blade Works — ignores ranged penalties and attacks a distant target twice."
   },
   {
     slug: "casters",
+    name: "Medea",
     tier: "silver",
     kind: "RANGED",
-    stats: { attack: 2, defense: 2, health: 3, initiative: 4 },
+    stats: { attack: 2, defense: 1, health: 3, initiative: 4 },
+    packStats: { attack: 3, defense: 2, health: 4, initiative: 6 },
     art: "units-fuyuki-silver-casters-master.png",
-    few: "+1 Power to your first Spell each round.",
-    pack: "+1 Power to your first Spell each round. Reduce Spell damage to this unit by 1."
+    few: "Rule Breaker — elemental damage; each attack or Spell deals at most 1 damage.",
+    pack: "Divine Words — damage cap 1; elemental damage; first Spell this round +1 Power."
   },
   {
     slug: "sabers",
+    name: "Artoria Pendragon",
     tier: "golden",
     kind: "GROUND",
-    stats: { attack: 5, defense: 3, health: 5, initiative: 6 },
+    stats: { attack: 5, defense: 3, health: 6, initiative: 6 },
+    packStats: { attack: 6, health: 7, initiative: 7 },
     art: "units-fuyuki-golden-sabers-master.png",
-    few: "Excalibur — After attacking, also attack the unit directly behind the target.",
-    pack: "Excalibur — After attacking, also attack the unit directly behind the target. Charge."
+    few: "Excalibur — a second Attack 2 hit strikes behind the target.",
+    pack: "Excalibur — line strike at Attack 3; +1 Attack after moving."
   },
   {
     slug: "berserkers",
+    name: "Heracles",
     tier: "golden",
     kind: "GROUND",
-    stats: { attack: 6, defense: 2, health: 7, initiative: 4 },
+    stats: { attack: 6, defense: 2, health: 7, initiative: 5 },
+    packStats: { attack: 7, defense: 3, health: 8 },
     art: "units-fuyuki-golden-berserkers-master.png",
-    few: "God Hand — Once per Combat, when this unit's Health would drop to 0, set it to 1.",
-    pack: "God Hand — Once per Combat, when this unit's Health would drop to 0, set it to 1. Immune to all Spells."
+    few: "God Hand — once per Combat, lethal damage leaves this unit at 1 Health.",
+    pack: "God Hand — rebirths once; Spell damage against this unit is reduced by 1."
   }
 ];
 
@@ -100,31 +114,29 @@ const AZURE_BREEZE_CARDS = [
   {
     slug: "outer-sect-disciples", name: "Outer Sect Disciples", vi: "Ngoại môn đệ tử",
     level: 1, tier: "bronze", traits: ["GROUND", "MELEE"], stats: { attack: 2, defense: 1, health: 2, initiative: 5 },
+    packStats: { health: 3, initiative: 6 },
     art: "units-azure-breeze-bronze-outer-sect-disciples-master.png",
     few: ["No printed ability."],
-    pack: ["Sword Array — +1 Attack while adjacent to a friendly unit."]
+    pack: ["Sword Array — adjacent friendly units gain +1 Attack on their own attacks."]
   },
   {
     slug: "inner-sect-swordsmen", name: "Inner Sect Swordsmen", vi: "Nội môn kiếm sĩ",
     level: 2, tier: "bronze", traits: ["GROUND", "MELEE"], stats: { attack: 2, defense: 1, health: 2, initiative: 7 },
-    packStats: { initiative: 9 },
+    packStats: { attack: 3, health: 3, initiative: 8 },
     art: "units-azure-breeze-bronze-inner-sect-swordsmen-master.png",
     few: ["Flowing Step — Ignore Combat penalties."],
     pack: ["Flowing Step — Ignore Combat penalties."]
   },
   {
     slug: "spirit-crane", name: "Spirit Crane", vi: "Linh Cầm",
-    level: 3, tier: "silver", traits: ["FLYING", "MELEE"], stats: { attack: 3, defense: 1, health: 3, initiative: 10 },
-    packStats: { attack: 4, defense: 2, health: 4, initiative: 11 },
-    art: "units-azure-breeze-silver-spirit-crane-master.png",
+    level: 3, tier: "bronze", traits: ["FLYING", "MELEE"], stats: { attack: 2, defense: 1, health: 2, initiative: 9 },
+    packStats: { attack: 3, health: 3, initiative: 10 },
+    art: "units-azure-breeze-bronze-spirit-crane-master.png",
     few: ["Flying — May move over units and obstacles."],
-    pack: [
-      "Flying — May move over units and obstacles.",
-      "Wingbeat — After this unit deals melee damage, push the target 1 space directly away, if free."
-    ]
+    pack: ["Wingbeat — Flying; attacks do not provoke Retaliation."]
   },
   {
-    slug: "sect-protectors", name: "Sect Protectors", vi: "Hộ tông hộ pháp",
+    slug: "sect-protectors", name: "Sect Formation Wardens", vi: "Hộ tông hộ pháp",
     level: 4, tier: "silver", traits: ["GROUND", "MELEE"], stats: { attack: 3, defense: 2, health: 4, initiative: 4 },
     art: "units-azure-breeze-silver-sect-protectors-master.png",
     few: ["Iron Ward — When attacked, roll the Defend die and gain its Defense token."],
@@ -132,32 +144,27 @@ const AZURE_BREEZE_CARDS = [
   },
   {
     slug: "true-inheritors", name: "True Inheritors", vi: "Chân truyền đệ tử",
-    level: 5, tier: "golden", traits: ["GROUND", "MELEE"], stats: { attack: 5, defense: 2, health: 6, initiative: 7 },
-    art: "units-azure-breeze-golden-true-inheritors-master.png",
+    level: 5, tier: "silver", traits: ["GROUND", "MELEE"], stats: { attack: 3, defense: 2, health: 4, initiative: 6 },
+    packStats: { attack: 4, health: 5, initiative: 7 },
+    art: "units-azure-breeze-silver-true-inheritors-master.png",
     few: ["Charge — +1 Attack when attacking after moving."],
     pack: ["Charge — +1 Attack when attacking after moving.", "Peerless Form — Ignores retaliation."]
   },
   {
-    slug: "core-formation-master", name: "Core Formation Master", vi: "Kim Đan Chân Nhân",
-    level: 6, tier: "golden", traits: ["RANGED", "MAGIC"], stats: { attack: 4, defense: 2, health: 5, initiative: 6 },
-    packStats: { attack: 5, defense: 3, health: 6 },
+    slug: "core-formation-master", name: "Golden Core Elders", vi: "Kim Đan Trưởng Lão",
+    level: 6, tier: "golden", traits: ["RANGED", "MAGIC"], stats: { attack: 5, defense: 2, health: 6, initiative: 6 },
+    packStats: { attack: 6, health: 7 },
     art: "units-azure-breeze-golden-core-formation-master.png",
-    few: ["Magic Attack — Ranged; ignores Combat penalties."],
-    pack: [
-      "Magic Attack — Ranged; ignores Combat penalties.",
-      "Talisman Aura — When an adjacent ally is attacked and rolls 0 or −1, it gains +1 Defense."
-    ]
+    few: ["Talisman Arts — ignores penalties; first Spell +1 Power."],
+    pack: ["Talisman Arts — ignores penalties; first Spell +1 Power.", "Talisman Aura — adjacent allies reduce Spell damage by 1."]
   },
   {
     slug: "mountain-guardian", name: "Mountain Guardian", vi: "Thủ sơn linh thú",
     level: 7, tier: "golden", traits: ["GROUND", "MELEE"], stats: { attack: 5, defense: 3, health: 8, initiative: 3 },
-    packStats: { attack: 6 },
+    packStats: { attack: 6, health: 9 },
     art: "units-azure-breeze-golden-mountain-guardian-master.png",
-    few: ["Verdant Pulse — At the start of your turn, heal this unit and every adjacent allied unit 1 Health."],
-    pack: [
-      "Verdant Pulse — At the start of your turn, heal this unit and every adjacent allied unit 1 Health.",
-      "Returning Earth — When removed, heal every adjacent allied unit 1 Health."
-    ]
+    few: ["Verdant Pulse — on activation, heal this unit 1 damage."],
+    pack: ["Returning Earth — heal 2 on activation; unlimited Retaliation."]
   }
 ];
 
@@ -236,7 +243,7 @@ function cardSvg(card, variant, artHref) {
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="${CARD_WIDTH}" height="${CARD_HEIGHT}" viewBox="0 0 ${CARD_WIDTH} ${CARD_HEIGHT}">
-  <title>${xml(`Fuyuki City ${titleCase(card.slug)} ${variantLabel} art proof`)}</title>
+  <title>${xml(`Fuyuki City ${card.name ?? titleCase(card.slug)} ${variantLabel} art proof`)}</title>
   <metadata data-status="art-proof-not-playable" data-source="docs/anime-mod-plan.md" data-master="${xml(card.art)}"/>
   <defs>
     <linearGradient id="outer" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#130d1f"/><stop offset=".48" stop-color="#322247"/><stop offset="1" stop-color="#0b0912"/></linearGradient>
@@ -295,7 +302,7 @@ function cardSvg(card, variant, artHref) {
   </g>
 
   <g inkscape:groupmode="layer" inkscape:label="04 Editable typography" id="layer-type">
-    <text x="363" y="102" class="display" fill="#fff0c2" font-size="43" text-anchor="middle" filter="url(#textShadow)">${xml(titleCase(card.slug))}</text>
+    <text x="363" y="102" class="display" fill="#fff0c2" font-size="${(card.name ?? titleCase(card.slug)).length > 17 ? 34 : 43}" text-anchor="middle" filter="url(#textShadow)">${xml(card.name ?? titleCase(card.slug))}</text>
     <text x="367" y="863" class="smallcaps" fill="#f8edcf" font-size="26" text-anchor="middle">${variantLabel}</text>
     <text x="184" y="177" class="smallcaps" fill="#fff4d2" font-size="17" filter="url(#textShadow)">${card.kind}</text>
     <g transform="translate(657 784)">
@@ -467,10 +474,14 @@ async function buildCard(theme, card, variant) {
     : undefined;
   const renderSvg = theme.render(card, variant, await artDataUri(theme.raw, card.art), renderFrameHref);
   const previewPath = path.join(theme.previews, `${name}.webp`);
-  await sharp(Buffer.from(renderSvg))
+  const previewBuffer = await sharp(Buffer.from(renderSvg))
     .resize(CARD_WIDTH, CARD_HEIGHT, { fit: "fill" })
     .webp(WEBP)
-    .toFile(previewPath);
+    .toBuffer();
+  // Buffer first, then commit with Node's file writer. This avoids intermittent
+  // libvips destination-handle failures on Windows while preserving the exact
+  // same WebP output.
+  await writeFile(previewPath, previewBuffer);
   return { card, variant, previewPath, svgPath };
 }
 
@@ -541,7 +552,7 @@ async function buildTheme(theme, requested) {
   const cols = 4;
   const rows = Math.ceil(outputs.length / cols);
   const tiles = await Promise.all(outputs.map(({ previewPath }) => sharp(previewPath).resize(tileWidth, tileHeight).png().toBuffer()));
-  await sharp({
+  const contactSheetBuffer = await sharp({
     create: {
       width: cols * tileWidth + (cols + 1) * gap,
       height: rows * tileHeight + (rows + 1) * gap,
@@ -555,7 +566,8 @@ async function buildTheme(theme, requested) {
       top: gap + Math.floor(index / cols) * (tileHeight + gap)
     })))
     .webp({ quality: 90, effort: 6 })
-    .toFile(theme.contactSheet);
+    .toBuffer();
+  await writeFile(theme.contactSheet, contactSheetBuffer);
   return outputs;
 }
 

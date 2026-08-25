@@ -2557,6 +2557,7 @@ export const COMMAND_ACTION_TYPES = new Set<GameAction["type"]>([
   // Anime Hero Grades (§3.11): War Cry — a combat active on the active unit,
   // surfaced as a labelled command button (like a unit ability).
   "USE_HERO_SKILL",
+  "USE_FUYUKI_COMMAND_SEAL",
   "COMPLETE_SIMULTANEOUS_TURN",
   "CONTINUE_NEUTRAL_COMBAT",
   // Manual guard control: "Let <guard> act (automatic)" — hands the active

@@ -938,6 +938,15 @@ export function scoreCombatAction(
       // the AI lands the free once-per-combat buff first, then strikes. The map
       // Forced March (no combat) is scored by map-policy instead.
       return combat ? { score: 715, policy: "combat.hero-war-cry" } : null;
+    case "USE_FUYUKI_COMMAND_SEAL": {
+      if (!combat) return null;
+      if (action.mode === "recall") {
+        const target = combat.units[action.unitId];
+        const missing = target ? target.maxHealth - unitRemainingHealth(target) : 0;
+        return { score: missing >= 2 ? 722 : 705, policy: "combat.fuyuki-command-seal-recall" };
+      }
+      return { score: 716, policy: "combat.fuyuki-command-seal-compel" };
+    }
     case "WAIT_UNIT": {
       // Polish Wait: re-queue the unit at the end of the round. Prefer Wait
       // over Defend when the unit has no strike this moment and is healthy —

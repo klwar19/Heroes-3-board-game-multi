@@ -96,6 +96,7 @@ import { attackDeclarationForRoll, makeCombatDiceCue } from "@/components/table/
 import { MoraleOverflowPrompt } from "@/components/table/morale-overflow-prompt";
 import { StoryOverlay, type StoryCue } from "@/components/table/story-overlay";
 import { CommanderIntroOverlay } from "@/components/table/commander-intro-overlay";
+import { AnimeFactionMechanicsOverlay } from "@/components/table/anime-faction-mechanics-overlay";
 import { SinglePlayerSavePanel } from "@/components/single-player-save-panel";
 import {
   clearPendingSinglePlayerLoad,
@@ -5594,6 +5595,7 @@ export default function Home() {
         canForceReset={Boolean(state.room?.hosted && myMember?.isHost)}
         onForceReset={() => void resetRoom("adventure")}
       />
+      <AnimeFactionMechanicsOverlay state={state} viewerPlayerId={isSeated ? viewerPlayerId : null} />
     </>
   );
 

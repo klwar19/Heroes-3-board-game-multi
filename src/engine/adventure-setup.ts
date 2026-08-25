@@ -21,6 +21,7 @@ import {
   animeEquipmentMinorIds,
   animeEquipmentRelicIds
 } from "@/data/anime/equipment-cards";
+import { EQUIPMENT_IDS } from "@/data/anime/equipment";
 import {
   wogArtifactCardIds,
   wogArtifactMajorIds,
@@ -3516,7 +3517,10 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         experience: 0,
         movementPoints: 3,
         movementPointsMax: 3,
-        spaceId: townFieldId
+        spaceId: townFieldId,
+        ...(config.factionId === "heavenly_demon"
+          ? { equipment: { accessory: EQUIPMENT_IDS.soulBanner } }
+          : {})
       };
       adventure.lastVisitedField[heroId] = townFieldId;
 

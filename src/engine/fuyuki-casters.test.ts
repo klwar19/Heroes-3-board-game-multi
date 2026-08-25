@@ -102,13 +102,12 @@ function rangedDuel(options: {
 }
 
 describe("Fuyuki Casters — shipped ability tags", () => {
-  it("Few and Pack carry elemental-damage, casters-damage-cap, and magi-power-boost", () => {
+  it("Medea's Few keeps the hard cap while Pack adds the spell-power rider", () => {
     const def = coreUnitDefinitions["fuyuki.casters"];
     expect(def).toBeDefined();
+    expect(def.few!.abilities).toEqual(["elemental-damage", "casters-damage-cap"]);
+    expect(def.pack!.abilities).toEqual(["elemental-damage", "casters-damage-cap", "magi-power-boost"]);
     for (const side of [def.few!, def.pack!]) {
-      expect(side.abilities).toEqual(
-        expect.arrayContaining(["elemental-damage", "casters-damage-cap", "magi-power-boost"])
-      );
       expect(side.abilities).not.toContain("reduce-spell-damage-1");
       for (const id of side.abilities) {
         expect(unitAbilities[id]?.implementationStatus, id).toBe("implemented");
