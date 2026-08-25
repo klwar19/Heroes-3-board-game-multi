@@ -336,6 +336,14 @@ export const extraAbilityCards: CardLibrary = {
   // hand, so DIPLOMACY_SKIP_COMBAT is a declarative marker, deliberately absent
   // from the playable-effect gate (see startNeutralEncounter /
   // resolveDiplomacySkipChoice in adventure-reducer.ts).
+  //
+  // engine LEVEL BAR (USER RULING 2026-08-25, wider than the printed text): the
+  // skip is offered whenever the hero's level is AT LEAST the Field Difficulty
+  // (`diplomacySkipLevelQualifies`), not only when the two are equal — so the
+  // Ⅵ/Ⅶ centre band, where Quick Combat is barred outright, is reachable by a
+  // level-6/7 hero in BOTH the normal game and with `polish-quick-combat` on.
+  // Fields Ⅰ–Ⅴ in a normal game are unchanged (the classic level > difficulty
+  // Quick Combat resolves first); an UNDER-levelled hero is still refused.
   "ability.diplomacy": {
     id: "ability.diplomacy",
     name: "Diplomacy",
@@ -347,7 +355,8 @@ export const extraAbilityCards: CardLibrary = {
       "map",
       "empowered",
       "Regular (basic): for every Dwelling you have, draw 1 corresponding Neutral Unit card; you may Recruit one by paying its cost. Expert: skip Combat with Neutral Units on a field whose Difficulty equals your Hero's level — claim the field and resolve its effect, gaining no Experience. Empowered: use either side without spending a crown.",
-      "Balance pack: the basic side adds \"Decide for each unpurchased unit: place its card on the top or bottom of its appropriate deck\" — one two-button placement choice per unpurchased draw (the shared deck-card-placement window) instead of the silent return to the discard pile. Expert is unchanged."
+      "Balance pack: the basic side adds \"Decide for each unpurchased unit: place its card on the top or bottom of its appropriate deck\" — one two-button placement choice per unpurchased draw (the shared deck-card-placement window) instead of the silent return to the discard pile. Expert is unchanged.",
+      "House ruling: the Expert skip works on any field whose Field Difficulty is AT MOST your Hero's level — including Ⅵ and Ⅶ, where Quick Combat is never allowed. A hero below the Field Difficulty still has to fight."
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -358,7 +367,8 @@ export const extraAbilityCards: CardLibrary = {
           effect: { type: "DIPLOMACY_RECRUIT" }
         },
         {
-          label: "Expert: skip a matching-level Neutral fight, claim the field and resolve its effect (no Experience)",
+          label:
+            "Expert: skip a Neutral fight whose Field Difficulty your Hero's level reaches, claim the field and resolve its effect (no Experience)",
           effect: { type: "DIPLOMACY_SKIP_COMBAT" }
         }
       ]

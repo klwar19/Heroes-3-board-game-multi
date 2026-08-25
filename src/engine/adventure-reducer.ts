@@ -5584,8 +5584,10 @@ export function startNeutralEncounter(
 
   // Diplomacy's skip is the REGULAR card's Expert side, so it needs an unused
   // Expert-effect crown. Empowered Diplomacy prints the same Instant as a basic
-  // alternative and therefore needs no crown.
-  if (level === difficulty && canUseDiplomacySkip(state.players[playerId])) {
+  // alternative and therefore needs no crown. The level bar is
+  // `diplomacySkipLevelQualifies` (hero level AT LEAST the Field Difficulty), so
+  // the Ⅵ/Ⅶ centre band — where Quick Combat is barred — is reachable too.
+  if (diplomacySkipLevelQualifies(level, difficulty) && canUseDiplomacySkip(state.players[playerId])) {
     openDiplomacySkipChoice(state, hero, field, difficulty);
     return;
   }
@@ -5684,10 +5686,10 @@ export function resolvePolishQuickCombatChoice(state: GameState, playerId: Playe
   }
 
   // Option 1 ("Fight"): proceed exactly like the classic flow after the level
-  // shortcut — Cyra's Diplomacy still gets its matching-level skip offer, then
+  // shortcut — Cyra's Diplomacy still gets its qualifying-level skip offer, then
   // the normal guard Combat Setup.
   const level = neutralBattleLevel(state, hero);
-  if (level === decision.difficulty && canUseDiplomacySkip(state.players[playerId])) {
+  if (diplomacySkipLevelQualifies(level, decision.difficulty) && canUseDiplomacySkip(state.players[playerId])) {
     openDiplomacySkipChoice(state, hero, field, decision.difficulty);
     return;
   }
@@ -5847,7 +5849,41 @@ function beginNeutralCombatPlacement(
   }
 }
 
-/** Whether a matching-level encounter may currently use Diplomacy's Instant side. */
+/**
+ * Whether the hero's level reaches the Field Difficulty for Diplomacy's Expert
+ * skip — THE one shared read behind every Diplomacy-skip offer (the ordinary
+ * guarded-field arrival in `startNeutralEncounter` AND the "Fight" branch of the
+ * Polish Quick-Combat pop-up), so the two can never disagree.
+ *
+ * USER RULING 2026-08-25 ("Diplomacy expert … should [work] for fields VI and
+ * VII also, for both polish rule and normal games"): the printed card reads
+ * "Neutral Units on the same level as your Hero" (base scan) / "a field whose
+ * Field Difficulty is equal to your Hero's level" (Polish reprint), which the
+ * engine used to enforce as an EXACT match. That left a hole exactly where the
+ * card matters most: Quick Combat is barred on Ⅵ/Ⅶ
+ * (`QUICK_COMBAT_MAX_FIELD_DIFFICULTY`), so a level-7 hero — the normal state by
+ * the time the centre band is reachable — could skip NOTHING there, while a
+ * WEAKER level-6 hero could skip the Ⅵ guard. The rule is now "your Hero has
+ * reached that level", i.e. `level >= difficulty`.
+ *
+ * Consequences (deliberate):
+ * - Ⅰ–Ⅴ in a normal game are UNCHANGED: the classic `level > difficulty` Quick
+ *   Combat resolves and returns before the Diplomacy branch is reached, so only
+ *   the equal-level case ever gets here.
+ * - With `polish-quick-combat` ON an UNCOVERED army no longer forces an
+ *   over-levelled hero to fight when they hold Diplomacy and a crown. That is
+ *   intended: the Polish sheet's mandatory fight is a QUICK-COMBAT rule, while
+ *   Diplomacy costs a card plus an Expert crown.
+ * - An UNDER-levelled hero is still refused (nothing below the hero's level bar
+ *   changed), and the exclusions above this branch — Creature Banks, bank-style
+ *   outpost / teleport guards, break fields and designer EXACT armies — still
+ *   return before it, so none of them is Diplomacy-skippable.
+ */
+export function diplomacySkipLevelQualifies(level: number, difficulty: number): boolean {
+  return level >= difficulty;
+}
+
+/** Whether a qualifying-level encounter may currently use Diplomacy's Instant side. */
 function canUseDiplomacySkip(player: PlayerState | undefined): boolean {
   return Boolean(
     player?.hand.includes("ability.diplomacy") &&
@@ -5855,7 +5891,7 @@ function canUseDiplomacySkip(player: PlayerState | undefined): boolean {
   );
 }
 
-/** Opens the Diplomacy skip-or-fight pop-up at a matching-level Neutral field. */
+/** Opens the Diplomacy skip-or-fight pop-up at a qualifying-level Neutral field. */
 function openDiplomacySkipChoice(
   state: GameState,
   hero: HeroState,

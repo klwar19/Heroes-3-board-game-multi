@@ -9,7 +9,8 @@ import {
   type GameState
 } from "./index";
 import { getMainHero, getTownOfPlayer } from "./adventure";
-import { startNeutralEncounter, startPlayerCombat } from "./adventure-reducer";
+import { diplomacySkipLevelQualifies, startNeutralEncounter, startPlayerCombat } from "./adventure-reducer";
+import type { HouseRuleId, MapFieldState } from "./state";
 
 // ---------------------------------------------------------------------------
 // Tactics (Mutare / Cassiopeia) and Diplomacy (Cyra) ability cards.
@@ -17,7 +18,8 @@ import { startNeutralEncounter, startPlayerCombat } from "./adventure-reducer";
 // Tactics: regular side switches any two of your units at the start of Combat;
 // the expert side switches two on your turn before your active unit moves.
 // Diplomacy: the Map side draws from Dwelling tiers (Gold also opens Azure) and
-// lets you recruit one; the Instant side skips a matching-level Neutral fight for no XP.
+// lets you recruit one; the Instant side skips a Neutral fight whose Field Difficulty the
+// hero's level REACHES (`diplomacySkipLevelQualifies`, level >= difficulty) for no XP.
 // ---------------------------------------------------------------------------
 
 function makeGame(): GameState {
@@ -819,5 +821,206 @@ describe("Diplomacy skip is gated on matching level", () => {
     expect(state.players.p1.limits.expertUses).toBe(0);
     // The card is spent for that one use (either side).
     expect(state.players.p1.discard).toContain("ability.diplomacy");
+  });
+});
+
+// ===========================================================================
+// Diplomacy Expert on the Ⅵ/Ⅶ centre band (USER RULING 2026-08-25)
+//
+// "Diplomacy expert - bug, not working now. It should for fields VI and VII
+// also (for both polish rule and normal games)."
+//
+// Quick Combat is barred outright on Ⅵ/Ⅶ (QUICK_COMBAT_MAX_FIELD_DIFFICULTY),
+// so the old EXACT `level === difficulty` bar left a level-7 hero — the normal
+// state by the time the centre band is reachable — with NO way past a Ⅵ guard
+// while a weaker level-6 hero could skip it. The bar is now
+// `diplomacySkipLevelQualifies` (level >= difficulty). Every claim below is
+// mutation-checked: restoring `===` fails the level-7-vs-Ⅵ cases, and the
+// under-levelled / exact-army CONTROLs fail if the bar is dropped entirely.
+// ===========================================================================
+
+describe("Diplomacy Expert skips Ⅵ and Ⅶ guard fields", () => {
+  /** A guarded gold mine of the given Field Difficulty under p1's hero. */
+  function bandGame(options: {
+    level: number;
+    difficulty: number;
+    houseRules?: Partial<Record<HouseRuleId, boolean>>;
+    empowered?: boolean;
+    crowns?: number;
+    exactArmy?: boolean;
+  }): GameState {
+    const state = createAdventureGameState({
+      seed: `diplomacy-band-${options.difficulty}-${options.level}`,
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      ...(options.houseRules ? { houseRules: options.houseRules } : {})
+    });
+    for (const player of Object.values(state.players)) {
+      player.canMulligan = false;
+      player.needsHandRefresh = false;
+    }
+    state.activePlayerId = "p1";
+    const hero = getMainHero(state, "p1")!;
+    hero.level = options.level;
+    hero.spaceId = "band-field";
+    state.players.p1.hand = ["ability.diplomacy"];
+    state.players.p1.limits.expertUses = options.crowns ?? 2;
+    state.players.p1.combatStats.expertUsesSpentThisRound = 0;
+    if (options.empowered) {
+      state.players.p1.empoweredAbilities = ["ability.diplomacy"];
+    }
+    state.adventure!.fields["band-field"] = {
+      spaceId: "band-field",
+      tileInstanceId: "t",
+      slot: 0,
+      location: "mine",
+      resource: "gold",
+      amount: 5,
+      difficulty: options.difficulty,
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null,
+      ...(options.exactArmy ? { customGuardUnits: ["neutral.gold_golems"], designedGuard: true } : {})
+    } as MapFieldState;
+    return state;
+  }
+
+  function encounter(state: GameState): GameState {
+    startNeutralEncounter(state, getMainHero(state, "p1")!, state.adventure!.fields["band-field"]);
+    return state;
+  }
+
+  function skipContext(state: GameState): string | null {
+    return state.pendingChoice?.type === "OPTION_CHOICE" ? (state.pendingChoice.context ?? null) : null;
+  }
+
+  /** Takes option 0 of an open Diplomacy pop-up through the real action pipeline. */
+  function takeSkip(state: GameState): GameState {
+    const choice = state.pendingChoice;
+    expect(skipContext(state)).toBe("diplomacy-skip");
+    return apply(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: (choice as { id: string }).id,
+      optionIndex: 0
+    });
+  }
+
+  it("a level-7 hero really skips a Ⅵ guard field in a NORMAL game (no house rules)", () => {
+    // THE reported bug: level 7 ≠ 6, and Quick Combat is barred at Ⅵ, so the old
+    // exact-match bar forced the fight. Assert the OUTCOME: no combat at all, the
+    // mine is flagged (its effect resolved), and the hero gained no Experience.
+    let state = encounter(bandGame({ level: 7, difficulty: 6 }));
+    const xpBefore = getMainHero(state, "p1")!.experience;
+    state = takeSkip(state);
+
+    expect(state.combat, "the Ⅵ guard fight never opened").toBeNull();
+    expect(state.adventure!.fields["band-field"].flagOwnerId).toBe("p1");
+    expect(getMainHero(state, "p1")!.experience).toBe(xpBefore);
+    expect(state.players.p1.discard).toContain("ability.diplomacy");
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound, "the Expert crown is spent").toBe(1);
+    expect(state.eventLog.some((event) => event.type === "DIPLOMACY_COMBAT_SKIPPED")).toBe(true);
+  });
+
+  it("a level-7 hero really skips a Ⅶ guard field in a NORMAL game", () => {
+    let state = encounter(bandGame({ level: 7, difficulty: 7 }));
+    const xpBefore = getMainHero(state, "p1")!.experience;
+    state = takeSkip(state);
+
+    expect(state.combat).toBeNull();
+    expect(state.adventure!.fields["band-field"].flagOwnerId).toBe("p1");
+    expect(getMainHero(state, "p1")!.experience).toBe(xpBefore);
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+  });
+
+  it("the same Ⅵ/Ⅶ skips work with the POLISH rules on (quick-combat + card balance)", () => {
+    // "for both polish rule and normal games": `polish-quick-combat` classifies a
+    // Ⅵ/Ⅶ field as "fight" whatever the army, so the Diplomacy branch is the one
+    // that must still be reached; the Polish REPRINT of the card prints the same
+    // Expert skip, so the balance pack must not close it either.
+    const rules = { "polish-quick-combat": true, "polish-card-balance": true } as const;
+    for (const difficulty of [6, 7]) {
+      let state = encounter(bandGame({ level: 7, difficulty, houseRules: { ...rules } }));
+      const xpBefore = getMainHero(state, "p1")!.experience;
+      state = takeSkip(state);
+      expect(state.combat, `Ⅵ/Ⅶ=${difficulty}: no combat under the Polish rules`).toBeNull();
+      expect(state.adventure!.fields["band-field"].flagOwnerId).toBe("p1");
+      expect(getMainHero(state, "p1")!.experience).toBe(xpBefore);
+      expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+    }
+  });
+
+  it("a level-6 hero still skips its matching Ⅵ field (the printed equal-level case is untouched)", () => {
+    let state = encounter(bandGame({ level: 6, difficulty: 6 }));
+    state = takeSkip(state);
+    expect(state.combat).toBeNull();
+    expect(state.adventure!.fields["band-field"].flagOwnerId).toBe("p1");
+  });
+
+  it("Empowered Diplomacy skips a Ⅶ field with NO crown available", () => {
+    let state = encounter(
+      bandGame({ level: 7, difficulty: 7, empowered: true, crowns: 0 })
+    );
+    state = takeSkip(state);
+    expect(state.combat).toBeNull();
+    expect(state.adventure!.fields["band-field"].flagOwnerId).toBe("p1");
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound, "Empowered spends no crown").toBe(0);
+  });
+
+  it("CONTROL: an UNDER-levelled hero is still refused on Ⅵ and Ⅶ — the fight opens", () => {
+    // The bar is `level >= difficulty`, not "any level": a level-5 hero at Ⅵ and a
+    // level-6 hero at Ⅶ get no pop-up and no free field.
+    for (const [level, difficulty] of [
+      [5, 6],
+      [6, 7]
+    ] as const) {
+      const state = encounter(bandGame({ level, difficulty }));
+      expect(skipContext(state), `L${level} vs Ⅵ/Ⅶ=${difficulty}: no Diplomacy offer`).toBeNull();
+      expect(state.combat, `L${level} vs Ⅵ/Ⅶ=${difficulty}: the guard fight opened`).not.toBeNull();
+      expect(state.players.p1.hand, "the card is kept").toContain("ability.diplomacy");
+      expect(state.adventure!.fields["band-field"].flagOwnerId).toBeNull();
+    }
+  });
+
+  it("CONTROL: a designer EXACT-army guard on a Ⅵ field is never Diplomacy-skipped", () => {
+    const state = encounter(bandGame({ level: 7, difficulty: 6, exactArmy: true }));
+    expect(skipContext(state)).toBeNull();
+    expect(state.combat, "the exact designed army is always fought").not.toBeNull();
+    expect(state.players.p1.hand).toContain("ability.diplomacy");
+    // ...as the field's own Ⅵ fight (the designed army is still standing on it,
+    // revealed once the hero has placed).
+    expect(state.combat!.context.kind === "neutral" && state.combat!.context.difficulty).toBe(6);
+    expect(state.adventure!.fields["band-field"].customGuardUnits).toEqual(["neutral.gold_golems"]);
+  });
+
+  it("CONTROL: with no crown and no Empowered marker the Ⅵ skip is not offered", () => {
+    const state = encounter(bandGame({ level: 7, difficulty: 6, crowns: 0 }));
+    expect(skipContext(state)).toBeNull();
+    expect(state.combat).not.toBeNull();
+  });
+
+  it("choosing to FIGHT a Ⅶ field keeps the card and the crown", () => {
+    let state = encounter(bandGame({ level: 7, difficulty: 7 }));
+    const choice = state.pendingChoice;
+    expect(skipContext(state)).toBe("diplomacy-skip");
+    state = apply(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: (choice as { id: string }).id,
+      optionIndex: 1
+    });
+    expect(state.combat).not.toBeNull();
+    expect(state.phase).toBe("combat-setup");
+    expect(state.players.p1.hand).toContain("ability.diplomacy");
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(0);
+  });
+
+  it("the level bar itself: diplomacySkipLevelQualifies is 'at least', Ⅰ–Ⅶ", () => {
+    expect(diplomacySkipLevelQualifies(7, 6)).toBe(true);
+    expect(diplomacySkipLevelQualifies(7, 7)).toBe(true);
+    expect(diplomacySkipLevelQualifies(6, 6)).toBe(true);
+    expect(diplomacySkipLevelQualifies(6, 7)).toBe(false);
+    expect(diplomacySkipLevelQualifies(1, 2)).toBe(false);
   });
 });

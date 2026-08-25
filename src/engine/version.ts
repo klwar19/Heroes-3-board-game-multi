@@ -800,7 +800,19 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // it, and withheld where a v66 worker would consume it for an empty prompt), so
 // client/server compatibility must fail visibly instead of rejecting a legal
 // play. `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 67;
+// v68 (2026-08-25, USER RULING "Diplomacy expert … should [work] for fields VI
+// and VII also, for both polish rule and normal games"): the Expert Diplomacy
+// guard-skip level bar is now `diplomacySkipLevelQualifies` — hero level AT
+// LEAST the Field Difficulty, instead of exactly equal. Quick Combat is barred
+// on Ⅵ/Ⅶ, so the old exact bar left a level-7 hero (the normal state by the time
+// the centre band is reachable) with no way past a Ⅵ guard while a WEAKER
+// level-6 hero could skip it. No new action type and no new serialized field,
+// but the AUTHORITATIVE arrival resolution moves: a v67 worker opens the guard
+// combat where a v68 worker opens the `diplomacy-skip` OPTION_CHOICE, so the
+// pop-up the new client shows does not exist on the stale edge (and the
+// CHOOSE_OPTION answering it is rejected) — the silent-divergence class the
+// banner exists to surface. `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 68;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
