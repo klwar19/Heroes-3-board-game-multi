@@ -4,6 +4,7 @@ import { applyAction, createAdventureGameState, createInitialGameState, getLegal
 import { effectiveHandLimit, getMainHero, startAdventureRound } from "./adventure";
 import { startNeutralEncounter } from "./adventure-reducer";
 import { applyAzurLaneCombatStartPenalty } from "./anime-faction-penalties";
+import { animeFactionPenaltyTitle } from "@/data/anime/faction-penalties";
 import type { FactionId, GameState } from "./state";
 
 function resourceState(factionId: FactionId): GameState {
@@ -30,7 +31,10 @@ describe("anime faction Resource-round penalties", () => {
     const state = resourceState(factionId);
     startAdventureRound(state);
     expect(state.players.p1.resources.gold).toBe(6);
-    expect(state.eventLog.some((event) => event.type === "EVENT_NOTE" && event.message.includes("Otherworld Penalty — 4 gold"))).toBe(true);
+    // Each town names its own penalty — never a shared "Otherworld Penalty".
+    const title = animeFactionPenaltyTitle(factionId)!;
+    expect(state.eventLog.some((event) => event.type === "EVENT_NOTE" && event.message.startsWith(`${title} — 4 gold`))).toBe(true);
+    expect(state.eventLog.some((event) => event.type === "EVENT_NOTE" && event.message.includes("Otherworld Penalty"))).toBe(false);
 
     state.players.p1.resources.gold = 2;
     state.round = 5;

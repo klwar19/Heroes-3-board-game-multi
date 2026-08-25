@@ -12,7 +12,10 @@ import type { GameEvent, GameState, PlayerId } from "@/engine/state";
 
 const STORAGE_KEY = "binh-anime-faction-mechanics";
 const CHANGE_EVENT = "binh-anime-faction-mechanics-change";
-const PENALTY_PREFIXES = ["Otherworld Penalty —", "School Contribution Fund —", "Fleet Maintenance —"];
+// Every town names its own penalty; the engine emits `${title} — …` for it, so the
+// per-trigger notice matches an event to a town by its own title (single source of
+// truth in the data table — never a shared "Otherworld Penalty" prefix).
+const PENALTY_PREFIXES = ANIME_FACTION_PENALTIES.map((entry) => `${entry.title} —`);
 
 function readSeen(): string[] {
   if (typeof window === "undefined") return [];
@@ -116,31 +119,45 @@ export function AnimeFactionMechanicsOverlay({
 
   if (!introKey || seen.includes(introKey)) return null;
   const selected = animeFactionPenalty(selectedFactionId);
+  if (!selected) return null;
+  const faction = coreFactionDefinitions[selected.factionId];
   const dismiss = () => markSeen(introKey);
+  const kindLabel = selected.register === "wuxia" ? "CULTIVATION SECT" : "OTHERWORLD TOWN";
 
+  // Per-town briefing: only the VIEWER's own town, explaining its signature
+  // mechanic and its own themed penalty — never the whole roster grouped.
   return createPortal(
-    <div className="animePenaltyBackdrop" role="dialog" aria-modal="true" aria-label="Anime and cultivation faction penalties">
-      <div className="animeMechanicsModal">
-        <header className="animeMechanicsHead">
-          <div><small>OTHERWORLD RULES</small><h2>Anime &amp; Cultivation Town Penalties</h2></div>
-          {selected ? <strong>{coreFactionDefinitions[selected.factionId]?.name}: {selected.short}</strong> : null}
+    <div
+      className="animePenaltyBackdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${faction?.name ?? "Town"} — how your town plays`}
+    >
+      <div
+        className="animeTownBriefing"
+        data-register={selected.register}
+        style={{ backgroundImage: `linear-gradient(160deg, rgba(8,10,16,.9) 0%, rgba(8,10,16,.72) 46%, rgba(8,10,16,.9) 100%), url(${assetUrl(selected.artImage)})` }}
+      >
+        <header className="animeTownBriefingHead">
+          <img alt="" src={assetUrl(townIconUrl(selected.factionId))} />
+          <div>
+            <small>{kindLabel}</small>
+            <h2>{faction?.name ?? selected.factionId}</h2>
+          </div>
         </header>
-        <p className="animeMechanicsLead">These penalties are automatic. Resource losses happen after income and never create debt.</p>
-        <div className="animeMechanicsTable" role="table" aria-label="Faction penalty table">
-          {ANIME_FACTION_PENALTIES.map((entry) => {
-            const faction = coreFactionDefinitions[entry.factionId];
-            const active = entry.factionId === selectedFactionId;
-            return (
-              <div className={`animeMechanicsRow${active ? " selected" : ""}`} key={entry.factionId} role="row">
-                <img alt="" src={assetUrl(townIconUrl(entry.factionId))} />
-                <div className="animeMechanicsTown"><strong>{faction?.name ?? entry.factionId}</strong><small>{entry.title}</small></div>
-                <div className="animeMechanicsRule"><strong>{entry.short}</strong><small>{entry.detail}</small></div>
-                <span className={`animeMechanicsTiming ${entry.timing}`}>{entry.timing === "resource-round" ? "RESOURCE ROUND" : "COMBAT START"}</span>
-              </div>
-            );
-          })}
-        </div>
-        <button type="button" className="animeMechanicsDone" onClick={dismiss}>I understand</button>
+        <section className="animeTownBriefingCard mechanic">
+          <span className="animeTownBriefingTag good">SIGNATURE</span>
+          <h3>{selected.mechanicTitle}</h3>
+          <p>{selected.mechanicDetail}</p>
+        </section>
+        <section className="animeTownBriefingCard penalty">
+          <span className="animeTownBriefingTag warn">
+            {selected.timing === "resource-round" ? "EACH RESOURCE ROUND" : "EACH COMBAT"}
+          </span>
+          <h3>{selected.title}</h3>
+          <p><strong>{selected.short}.</strong> {selected.detail}</p>
+        </section>
+        <button type="button" className="animeMechanicsDone" onClick={dismiss}>Got it</button>
       </div>
     </div>,
     document.body
