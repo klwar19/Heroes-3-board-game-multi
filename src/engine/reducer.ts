@@ -13307,7 +13307,10 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
       const target = state.combat.units[stackItem.action.target.unitId];
-      // Blind may Paralyse a bank unit at its underlying grade (user ruling).
+      // Blind may Paralyse a bank UNIT, but only from its top "+2 SP" rung — the
+      // one printed "ANY" in the Polish reprint (user ruling 2026-08-25):
+      // bankAwareTierGateRank ranks a bank unit at GOLD for PLACE_PARALYSIS, so a
+      // bronze/silver rung fizzles on it whatever its underlying grade is.
       if (target && maxGrade && bankAwareTierGateRank(target, "PLACE_PARALYSIS", houseRuleEnabled(state, "polish-bank-unit-spells")) <= gradeRank(maxGrade)) {
         if (unitImmuneToParalysis(state, target)) {
           appendEvent(state, {

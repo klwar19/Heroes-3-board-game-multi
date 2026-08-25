@@ -1928,6 +1928,24 @@ No protocol bump (no serialized-state shape change beyond the additive `stackTok
   spells never touch a bank unit"; Berserk / Teleport / Clone / tier-gated damage stay
   ∞-blocked (CONTROL-pinned), and it never extends to commanders / heroes.
   `bank-unit-spell-targeting.test.ts` (grade-discriminating, Berserk control).
+  **BLIND IS THE EXCEPTION TO THE EXCEPTION** (2026-08-25 USER RULING "Blind with
+  0 SP should not work for bank units — only Blind with +2 SP work for any unit",
+  protocol v74): Blind's printed ladder is `0: bronze / 1: bronze or silver /
+  2: ANY` (Polish reprint face; the base scan's top rung lists bronze+silver+gold),
+  and it is that TOP "+2 SP" rung which reaches a TIERLESS unit — the named-tier
+  rungs name grades a bank unit does not have. So `bankAwareTierGateRank` ranks a
+  bank unit at GOLD for `PLACE_PARALYSIS` (registry
+  `BANK_TOP_RUNG_ONLY_TIER_GATED_EFFECTS`), reachable only from the top rung in
+  EITHER pack — base Power 2 (gold) and Polish Power 2 (ANY) — which keeps the
+  2026-08-18 "a gold bank guard needs a gold-reaching cast" reading intact while
+  closing the 0/1-Power rungs. LIMITS: the CAST is still OFFERED at any Power (the
+  target filter uses the ladder's CEILING because Power can be pooled in after the
+  declaration — identical to a non-bank gold unit), so the rung is enforced at
+  RESOLUTION and a low-Power cast fizzles rather than being refused; the other four
+  effects keep the underlying-grade read (CONTROL-pinned), Disrupting Ray included
+  even though its Polish reprint prints the same "any tier" top rung (the ruling
+  named Blind only); Ring of the Wayfarer's paralysis side never used the bank-aware
+  read (raw ∞) and is untouched.
 
 ## AI opening is Ⅱ–Ⅲ-first: tile Ⅰ rotation + band-first discovery (2026-08-14)
 

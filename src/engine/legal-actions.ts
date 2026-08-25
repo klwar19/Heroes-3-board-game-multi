@@ -842,12 +842,39 @@ export const BANK_TARGETABLE_TIER_GATED_EFFECTS: ReadonlySet<EffectDefinition["t
 ]);
 
 /**
+ * USER RULING (2026-08-25): "Blind with 0 SP should not work for bank units —
+ * only Blind with +2 SP work for any unit." BLIND is the one allowlisted effect
+ * whose TOP rung prints "ANY" rather than a named tier — the Polish Balance
+ * reprint's ladder is literally `0: bronze / 1: bronze or silver / 2: ANY`
+ * (`public/assets/polish-balance/spell-blind.webp`), and it is that "ANY" rung
+ * which reaches a TIERLESS bank unit. The named-tier rungs (bronze, silver)
+ * name grades a bank unit does not have, so they reach it at NO Power.
+ *
+ * So for `PLACE_PARALYSIS` a bank unit is NOT ranked at its underlying grade:
+ * it ranks at GOLD — the highest real tier — which is reachable only by the
+ * card's top "+2 SP" rung in EITHER pack (base `2: bronze/silver/gold`, Polish
+ * `2: ANY`). This keeps the 2026-08-18 ruling's "a gold bank guard needs a
+ * gold-reaching cast" intact and merely closes the sub-top rungs, which used to
+ * Blind a bronze-underlying bank unit for 0 Power.
+ *
+ * The other four allowlisted effects keep the underlying-grade read (2026-08-18)
+ * and are CONTROL-pinned. NOTE: Disrupting Ray's Polish reprint prints the same
+ * "any tier" top rung, but this ruling named Blind only, so it is deliberately
+ * left alone.
+ */
+const BANK_TOP_RUNG_ONLY_TIER_GATED_EFFECTS: ReadonlySet<EffectDefinition["type"]> = new Set([
+  "PLACE_PARALYSIS" // Blind — only its top "+2 SP" ("ANY") rung reaches a bank unit
+]);
+
+/**
  * Tier-gate rank of a unit AGAINST a specific effect type. Identical to
  * `gradeRankOfUnit` for every unit EXCEPT a Creature-Bank unit under one of the
  * `BANK_TARGETABLE_TIER_GATED_EFFECTS`, which is ranked by its underlying grade
- * (capped at gold) instead of ∞. Every non-allowlisted effect — and every non-bank
- * unit — is byte-identical to `gradeRankOfUnit`. Mirrored in the reducer via this
- * exported helper so the OFFER and the RESOLUTION agree.
+ * (capped at gold) instead of ∞ — or, for a
+ * `BANK_TOP_RUNG_ONLY_TIER_GATED_EFFECTS` effect (Blind), flatly at gold so only
+ * the card's top "+2 SP" rung reaches it. Every non-allowlisted effect — and
+ * every non-bank unit — is byte-identical to `gradeRankOfUnit`. Mirrored in the
+ * reducer via this exported helper so the OFFER and the RESOLUTION agree.
  *
  * This bank-targeting exception is a POLISH BALANCE change: it only applies when
  * `bankTargetingEnabled` (the `polish-card-balance` house rule) is on. With it
@@ -861,6 +888,9 @@ export function bankAwareTierGateRank(
   bankTargetingEnabled: boolean
 ): number {
   if (bankTargetingEnabled && unit.bankUnit && BANK_TARGETABLE_TIER_GATED_EFFECTS.has(effectType)) {
+    if (BANK_TOP_RUNG_ONLY_TIER_GATED_EFFECTS.has(effectType)) {
+      return gradeRank("gold");
+    }
     return Math.min(gradeRank(unit.grade), gradeRank("gold"));
   }
   return gradeRankOfUnit(unit);
@@ -2063,7 +2093,11 @@ function getTargetsForCard(
       const unit = state.combat?.units[candidate.unitId];
       // bankAwareTierGateRank keeps ∞ for a bank unit under every effect EXCEPT the
       // control/enchantment allowlist (Anti-Magic / Blind / Disrupting Ray here),
-      // which the user ruled may reach a bank unit at its underlying grade.
+      // which the user ruled may reach a bank unit at its underlying grade — Blind
+      // at GOLD, so only its top "+2 SP" rung ever lands (user ruling 2026-08-25).
+      // The ceiling (not the paid Power) decides the OFFER here, because Power can
+      // still be pooled in after the cast is declared; the rung is enforced at
+      // RESOLUTION through the same helper.
       return !unit || bankAwareTierGateRank(unit, card.effect.type, houseRuleEnabled(state, "polish-bank-unit-spells")) <= ceiling;
     });
   }

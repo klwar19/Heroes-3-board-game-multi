@@ -249,6 +249,41 @@ describe("Blind on a bank guard", () => {
     return (unit.tokens ?? []).some((token) => token.kind === "paralysis");
   }
 
+  /**
+   * Casts Blind at `power` on `targetId`, with knobs for every axis the 2026-08-25
+   * ruling touches. `bank` marks the target a Creature-Bank unit; `balancePack`
+   * also switches the Polish Balance Pack reprint on, so the ladder's top rung
+   * becomes the printed "ANY" (azure) instead of the base card's gold.
+   */
+  function castBlindAt(
+    targetId: UnitId,
+    power: number,
+    {
+      bank = true,
+      bankSpells = true,
+      balancePack = false
+    }: { bank?: boolean; bankSpells?: boolean; balancePack?: boolean } = {}
+  ): GameState {
+    const state = createInitialGameState(`bank-blind-${targetId}-${power}-${bank}-${balancePack}`);
+    state.adventure = {
+      houseRules: { "polish-bank-unit-spells": bankSpells, "polish-card-balance": balancePack }
+    } as unknown as GameState["adventure"];
+    if (bank) {
+      makeBankUnit(state, targetId);
+    }
+    state.players.p1.hand = ["spell.blind", "stat.power", "stat.power"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    const cast = findCast(state, "p1", "spell.blind", targetId);
+    if (!cast) {
+      return state;
+    }
+    const casted = applyOk(state, cast.action);
+    casted.stack[0]!.modifiers.spellPowerBonus = power;
+    return passAllReactions(casted);
+  }
+
   it("Paralyses a GOLD bank guard at Power 2 (gold), but not at Power 1 (silver)", () => {
     // Blind ladder {0:bronze,1:silver,2:gold}. A gold guard needs Power 2.
     const gold = castBlind(2);
@@ -269,6 +304,133 @@ describe("Blind on a bank guard", () => {
       findCast(state, "p1", "spell.blind", "unit_p2_dread_knights"),
       "without polish-card-balance a bank guard stays ∞-blocked"
     ).toBeUndefined();
+  });
+
+  // -------------------------------------------------------------------------
+  // USER RULING 2026-08-25: "Blind with 0 SP should not work for bank units —
+  // only Blind with +2 SP work for any unit." Blind's TOP rung is the one that
+  // prints "ANY" (Polish reprint) / the full bronze-silver-gold list (base
+  // scan); the sub-top rungs name grades a TIERLESS bank unit does not have,
+  // so they reach it at no Power. bankAwareTierGateRank therefore ranks a bank
+  // unit at GOLD for PLACE_PARALYSIS — reachable only from the "+2 SP" rung in
+  // EITHER pack — instead of at its underlying grade.
+  //
+  // The cast is still OFFERED on a bank unit at any Power (the target filter
+  // uses the ladder's CEILING because Power can be pooled in after the cast is
+  // declared — exactly like a non-bank GOLD unit), so every assertion below is
+  // by OUTCOME: did the Paralysis token actually land.
+  // -------------------------------------------------------------------------
+
+  it("a BRONZE bank guard is Paralysed ONLY by the top +2 Power rung", () => {
+    // skeletons = p2 bronze. Before the ruling the bronze rung (Power 0) landed.
+    expect(
+      hasParalysis(castBlindAt("unit_p2_skeletons", 0), "unit_p2_skeletons"),
+      "0 Power must NOT blind a bank unit"
+    ).toBe(false);
+    expect(
+      hasParalysis(castBlindAt("unit_p2_skeletons", 1), "unit_p2_skeletons"),
+      "the silver rung must NOT blind a bank unit either"
+    ).toBe(false);
+    expect(
+      hasParalysis(castBlindAt("unit_p2_skeletons", 2), "unit_p2_skeletons"),
+      "the top +2 Power rung DOES blind the bank unit"
+    ).toBe(true);
+  });
+
+  it("a SILVER bank guard likewise needs the top rung, not its own silver rung", () => {
+    // vampires = p2 silver: the underlying-grade read used to land at Power 1.
+    expect(hasParalysis(castBlindAt("unit_p2_vampires", 1), "unit_p2_vampires")).toBe(false);
+    expect(hasParalysis(castBlindAt("unit_p2_vampires", 2), "unit_p2_vampires")).toBe(true);
+  });
+
+  it("CONTROL: the SAME bronze unit that is NOT a bank unit is Paralysed at Power 0", () => {
+    // Proves the top-rung demand is scoped to bank units (and that skeletons can
+    // hold a Paralysis token at all), so the cases above measure the rule.
+    expect(
+      hasParalysis(castBlindAt("unit_p2_skeletons", 0, { bank: false }), "unit_p2_skeletons"),
+      "an ordinary bronze unit keeps its bronze rung at 0 Power"
+    ).toBe(true);
+    expect(hasParalysis(castBlindAt("unit_p2_vampires", 1, { bank: false }), "unit_p2_vampires")).toBe(true);
+  });
+
+  it("with the Polish Balance Pack reprint on (top rung = 'ANY'), only +2 Power blinds a bank guard", () => {
+    // The reprint ladder is {0: bronze, 1: silver, 2: azure} — the printed "ANY".
+    expect(hasParalysis(castBlindAt("unit_p2_skeletons", 0, { balancePack: true }), "unit_p2_skeletons")).toBe(false);
+    expect(hasParalysis(castBlindAt("unit_p2_skeletons", 1, { balancePack: true }), "unit_p2_skeletons")).toBe(false);
+    expect(
+      hasParalysis(castBlindAt("unit_p2_skeletons", 2, { balancePack: true }), "unit_p2_skeletons"),
+      "the 'ANY' rung reaches the tierless bank unit"
+    ).toBe(true);
+    // CONTROL: the reprint does not change ordinary units' rungs.
+    expect(
+      hasParalysis(castBlindAt("unit_p2_skeletons", 0, { bank: false, balancePack: true }), "unit_p2_skeletons")
+    ).toBe(true);
+  });
+
+  it("CONTROL: with the Polish bank rule OFF, even +2 Power never blinds a bank guard", () => {
+    expect(
+      hasParalysis(castBlindAt("unit_p2_skeletons", 2, { bankSpells: false }), "unit_p2_skeletons"),
+      "the top rung is not a back door around the ∞ rank when the rule is off"
+    ).toBe(false);
+  });
+
+  it("CONTROL: a WOG commander is never Blind-able, at any Power", () => {
+    const state = withPolishBalance(createInitialGameState("bank-blind-commander"));
+    state.combat!.units.unit_p2_skeletons.commanderSlug = "test-commander";
+    state.players.p1.hand = ["spell.blind", "stat.power", "stat.power"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    expect(
+      findCast(state, "p1", "spell.blind", "unit_p2_skeletons"),
+      "the bank exception never extends to a commander (still ∞-ranked)"
+    ).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CONTROL: the OTHER four allowlisted effects keep the 2026-08-18
+// underlying-grade read — the 2026-08-25 ruling named Blind only.
+// ---------------------------------------------------------------------------
+
+describe("the Blind top-rung rule does not spread to the other four effects", () => {
+  it("Anti-Magic still wards a BRONZE bank unit from its bronze rung (Power 0)", () => {
+    const state = withPolishBalance(createInitialGameState("bank-antimagic-bronze-rung"));
+    makeBankUnit(state, "unit_p1_marksmen"); // p1 bronze
+    state.players.p1.hand = ["spell.anti_magic"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    const cast = findCast(state, "p1", "spell.anti_magic", "unit_p1_marksmen");
+    expect(cast, "Anti-Magic is offered on the bank unit").toBeTruthy();
+    const resolved = passAllReactions(applyOk(state, cast!.action));
+    const ward = resolved.activeEffects.find(
+      (effect) =>
+        effect.target?.type === "unit" &&
+        effect.target.unitId === "unit_p1_marksmen" &&
+        effect.modifiers.some((modifier) => modifier.type === "UNIT_SPELL_IMMUNE")
+    );
+    expect(ward, "Anti-Magic keeps the underlying-grade read: bronze bank unit, bronze rung, 0 Power").toBeTruthy();
+  });
+
+  it("Sorrow still offers its BRONZE option on a bronze bank guard", () => {
+    // dread_knights (gold) needed the gold option above; a BRONZE bank guard must
+    // still be reachable from Sorrow's bronze option — i.e. no top-rung demand.
+    const state = withPolishBalance(createInitialGameState("bank-sorrow-bronze-rung"));
+    makeBankUnit(state, "unit_p2_skeletons");
+    state.players.p1.hand = ["spell.sorrow"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    for (const unit of Object.values(state.combat!.units)) {
+      unit.activatedThisRound = unit.id !== "unit_p1_griffins" && unit.id !== "unit_p2_skeletons";
+    }
+    const defended = applyOk(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
+    expect(defended.combat!.activeUnitId).toBe("unit_p2_skeletons");
+    expect(
+      reactionFor(defended, "p1", "spell.sorrow", 0),
+      "the free bronze Sorrow option still reaches a bronze bank guard"
+    ).toBeTruthy();
   });
 });
 

@@ -902,7 +902,20 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // map Power-tier cast uses, consuming the bank) instead of Power 0. The rung
 // lookup also clamps DOWN to the highest printed breakpoint reached, where the old
 // exact-key read fell back to the LOWEST rung. `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 73;
+// v74: USER RULING "POLISH BALANCE: Blind with 0 SP should not work for bank
+// units — only Blind with +2 SP work for any unit." Blind's printed ladder is
+// `0: bronze / 1: bronze or silver / 2: ANY` (Polish reprint; the base scan's
+// top rung lists bronze+silver+gold), and it is that TOP "+2 SP" rung which
+// reaches a TIERLESS Creature-Bank unit — the named-tier rungs name grades a
+// bank unit does not have. `bankAwareTierGateRank` therefore ranks a bank unit
+// at GOLD for PLACE_PARALYSIS instead of at its underlying grade, so only the
+// top rung lands in EITHER pack. A v73 worker still resolves the bronze/silver
+// rungs onto a bank unit, so the same cast would paralyse on the stale edge and
+// fizzle on a fresh client — an authoritative resolution difference with no
+// state-shape change, hence the explicit bump. The other four allowlisted
+// effects (Anti-Magic, Frenzy, Sorrow, Disrupting Ray) keep the 2026-08-18
+// underlying-grade read. `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 74;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
