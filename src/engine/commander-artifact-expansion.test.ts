@@ -259,7 +259,7 @@ describe("expanded commander artifact behavior", () => {
     expect(healed.combat!.units[fangCommander.id].damage).toBe(1);
   });
 
-  it("Barbed Carapace returns exact attack damage and Stormcleaver hits an adjacent enemy", () => {
+  it("Barbed Carapace returns a fixed 2 damage and Stormcleaver hits an adjacent enemy", () => {
     const thorn = combatWithArtifact("wog.artifact.barbed_carapace", "armor");
     const commander = thorn.combat!.units[commanderUnitId("p1")];
     commander.maxHealth = 30;
@@ -273,7 +273,10 @@ describe("expanded commander artifact behavior", () => {
     thorn.activePlayerId = "p2";
     thorn.combat!.dice.scriptedRolls = [0];
     const reflected = settle(apply(thorn, { type: "ATTACK_UNIT", playerId: "p2", attackerId: attacker.id, defenderId: commander.id }));
-    expect(reflected.combat!.units[attacker.id].damage).toBe(reflected.combat!.units[commander.id].damage);
+    // The attacker dealt 4 to the commander (5 attack vs the paladin's base
+    // Defense 1), but the thorn reflect is a FIXED 2 regardless of that.
+    expect(reflected.combat!.units[commander.id].damage).toBe(4);
+    expect(reflected.combat!.units[attacker.id].damage).toBe(2);
 
     const cleave = combatWithArtifact("wog.artifact.stormcleaver", "weapon");
     const cleaver = cleave.combat!.units[commanderUnitId("p1")];
@@ -294,7 +297,7 @@ describe("expanded commander artifact behavior", () => {
     expect(split.combat!.units[adjacent.id].damage).toBe(1);
   });
 
-  it("Phoenix Plate revives once at 1 Health, while movement and Defend each heal 1", () => {
+  it("Phoenix Plate revives once at 1 Health, while movement heals 1 and Defend heals 2", () => {
     const phoenix = combatWithArtifact("wog.artifact.phoenix_plate", "armor");
     const phoenixCommander = phoenix.combat!.units[commanderUnitId("p1")];
     phoenixCommander.damage = phoenixCommander.maxHealth;
@@ -321,7 +324,7 @@ describe("expanded commander artifact behavior", () => {
     bastion.combat!.activeUnitId = defender.id;
     bastion.activePlayerId = "p1";
     const defended = apply(bastion, { type: "DEFEND_UNIT", playerId: "p1", unitId: defender.id });
-    expect(defended.combat!.units[defender.id].damage).toBe(1);
+    expect(defended.combat!.units[defender.id].damage).toBe(0);
   });
 
   it("Plague Censer damages every adjacent unit when the commander activates", () => {

@@ -78,7 +78,7 @@ const MAIL = "wog.artifact.mithril_mail"; // armor major, +2 Health
 const HELM = "wog.artifact.helm_of_immortality"; // armor relic, free revive
 const BOOTS = "wog.artifact.boots_of_haste"; // trinket minor, +1 Initiative
 const PENDANT = "wog.artifact.pendant_of_sorcery"; // trinket major, +1 cast Power
-const RING = "wog.artifact.dragon_eye_ring"; // trinket relic, line attack behind
+const RING = "wog.artifact.dragon_eye_ring"; // trinket major, line attack behind
 
 function freshCommander(
   slug: CommanderSlug,

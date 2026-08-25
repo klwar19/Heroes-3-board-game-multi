@@ -6172,20 +6172,21 @@ function applyCommanderArtifactAfterAttack(
   }
 
   const defenderArtifact = commanderArtifactBonusesForUnit(state, defender);
-  if (damageDealt > 0 && defenderArtifact.reflectAttackDamage && isUnitAlive(attacker)) {
-    attacker.damage += damageDealt;
+  if (damageDealt > 0 && defenderArtifact.reflectDamage > 0 && isUnitAlive(attacker)) {
+    const reflected = defenderArtifact.reflectDamage;
+    attacker.damage += reflected;
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: defender.id,
       abilityId: "commander-artifact-thorn-aura",
       targetUnitId: attacker.id,
-      message: `Barbed Carapace returns ${damageDealt} damage to ${attacker.cardName}.`
+      message: `Barbed Carapace returns ${reflected} damage to ${attacker.cardName}.`
     });
     appendEvent(state, {
       type: "DAMAGE_ASSIGNED",
       source: { type: "unit", unitId: defender.id, controllerId: defender.controllerId },
       target: { type: "unit", unitId: attacker.id },
-      amount: damageDealt,
+      amount: reflected,
       damageKind: "effect"
     });
     markUnitRemovedIfNeeded(state, attacker);

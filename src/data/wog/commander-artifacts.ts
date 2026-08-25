@@ -98,8 +98,8 @@ export interface CommanderArtifactSpec {
   healAfterDefend?: number;
   /** After an own attack, deal this effect damage to an enemy adjacent to the target. */
   cleaveDamage?: number;
-  /** After taking attack damage, return the exact damage to the attacker. */
-  reflectAttackDamage?: boolean;
+  /** After taking attack damage, return this fixed amount of damage to the attacker. */
+  reflectDamage?: number;
   /** At activation start, deal this damage to every adjacent unit. */
   activationAdjacentDamage?: number;
   /** Map reward paid after every combat won by this commander's main hero. */
@@ -210,7 +210,7 @@ export const COMMANDER_ARTIFACT_SPECS: Record<string, CommanderArtifactSpec> = {
     slug: "dragon_eye_ring",
     name: "Dragon Eye Ring",
     slot: "trinket",
-    tier: "relic",
+    tier: "major",
     // Reuses the Gold-Dragon / Factory-Mechanics SECOND_ATTACK_BEHIND_TARGET arm
     // (`dragon-line-attack-3`): after the commander's attack a full separate
     // attack at attack 3 strikes the unit directly behind the target.
@@ -318,8 +318,8 @@ export const COMMANDER_ARTIFACT_SPECS: Record<string, CommanderArtifactSpec> = {
     name: "Barbed Carapace",
     slot: "armor",
     tier: "major",
-    effectText: "Thorn Aura: after an attack damages the commander, return that exact damage to the attacker.",
-    reflectAttackDamage: true
+    effectText: "Thorn Aura: after an attack damages the commander, return 2 damage to the attacker.",
+    reflectDamage: 2
   },
   "wog.artifact.plague_censer": {
     cardId: "wog.artifact.plague_censer",
@@ -345,7 +345,8 @@ export const COMMANDER_ARTIFACT_SPECS: Record<string, CommanderArtifactSpec> = {
     name: "Traveler's Salve",
     slot: "trinket",
     tier: "relic",
-    effectText: "after the commander moves, heal 1 damage from it.",
+    effectText: "+2 Initiative and after the commander moves, heal 1 damage from it.",
+    initiative: 2,
     healAfterMove: 1
   },
   "wog.artifact.bastion_heart": {
@@ -354,8 +355,8 @@ export const COMMANDER_ARTIFACT_SPECS: Record<string, CommanderArtifactSpec> = {
     name: "Bastion Heart",
     slot: "armor",
     tier: "relic",
-    effectText: "after the commander Defends, heal 1 damage from it.",
-    healAfterDefend: 1
+    effectText: "after the commander Defends, heal 2 damage from it.",
+    healAfterDefend: 2
   },
   "wog.artifact.stormcleaver": {
     cardId: "wog.artifact.stormcleaver",
@@ -363,7 +364,8 @@ export const COMMANDER_ARTIFACT_SPECS: Record<string, CommanderArtifactSpec> = {
     name: "Stormcleaver",
     slot: "weapon",
     tier: "relic",
-    effectText: "after the commander's own attack, deal 1 damage to one enemy adjacent to the target.",
+    effectText: "+1 Attack and after the commander's own attack, deal 1 damage to one enemy adjacent to the target.",
+    attack: 1,
     cleaveDamage: 1
   }
 };
@@ -441,7 +443,7 @@ export interface CommanderArtifactBonuses {
   healAfterMove: number;
   healAfterDefend: number;
   cleaveDamage: number;
-  reflectAttackDamage: boolean;
+  reflectDamage: number;
   activationAdjacentDamage: number;
   goldAfterWonCombat: number;
 }
@@ -470,7 +472,7 @@ export function aggregateCommanderArtifactBonuses(
     healAfterMove: 0,
     healAfterDefend: 0,
     cleaveDamage: 0,
-    reflectAttackDamage: false,
+    reflectDamage: 0,
     activationAdjacentDamage: 0,
     goldAfterWonCombat: 0
   };
@@ -508,7 +510,7 @@ export function aggregateCommanderArtifactBonuses(
     totals.healAfterMove += spec.healAfterMove ?? 0;
     totals.healAfterDefend += spec.healAfterDefend ?? 0;
     totals.cleaveDamage += spec.cleaveDamage ?? 0;
-    totals.reflectAttackDamage ||= Boolean(spec.reflectAttackDamage);
+    totals.reflectDamage += spec.reflectDamage ?? 0;
     totals.activationAdjacentDamage += spec.activationAdjacentDamage ?? 0;
     totals.goldAfterWonCombat += spec.goldAfterWonCombat ?? 0;
     if (spec.abilityIds) {
