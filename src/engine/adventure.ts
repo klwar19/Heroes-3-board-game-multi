@@ -13888,7 +13888,8 @@ function ensureSubterraneanGate(
   subterranean: MapTileState,
   plan?: SubterraneanGatePlan,
   claimed?: Set<MapSpaceId>,
-  forceDesignedCarve = false
+  forceDesignedCarve = false,
+  deferUnchosenDesignedOnTileId?: string
 ): void {
   // A DESIGNER plan may be one of SEVERAL bridging this same tile pair, so its
   // half is identified by the plan's own pinned hex (via `claimed`), not by the
@@ -13919,6 +13920,19 @@ function ensureSubterraneanGate(
   // it. In-play discoveries leave forceDesignedCarve false and use the chooser.
   const deferDesignedGate =
     Boolean(plan?.designed) && Boolean(adventure.chooseGatePlacement) && !forceDesignedCarve;
+  // While the reveal chain for ONE tile is still draining its designed gates
+  // (`deferUnchosenDesignedOnTileId` is that tile), an unchosen designed half ON
+  // THAT TILE is deferred even when it is a COMPLETING half. Without this a
+  // cavern touching two designer-linked Surface tiles that BOTH already carry
+  // their gate half saw its second entrance auto-carved at the nearest hex by the
+  // very recompute that carved the first pick — so only one of the two "path up"
+  // exits was ever the player's (USER RULE 2026-08-26: "I should also be able to
+  // place the exit of my Gate — then I choose the other gate"). The flag is
+  // transient: `offerNextSubterraneanGate`'s terminal carve passes no tile id, so
+  // a half the chooser could not offer (no legal hex) still carves and is never
+  // stranded.
+  const deferDrainingTile = (tile: MapTileState): boolean =>
+    deferDesignedGate && deferUnchosenDesignedOnTileId === tile.id;
 
   // ONE GATE PER TILE: if either tile already hosts a gate to a DIFFERENT
   // neighbour, this pair is never carved — neither a second surface gate nor an
@@ -13948,7 +13962,11 @@ function ensureSubterraneanGate(
   // COMPLETING half (the partner's own half already exists) is constrained to sit
   // edge-adjacent to it, so it always carves, even when its own hex was never
   // chosen (e.g. the partner cavern was discovered through another gate first).
-  if (!surfaceHalf && surfaceUp && !(deferDesignedGate && !plan?.gateHex && !undergroundHalf)) {
+  if (
+    !surfaceHalf &&
+    surfaceUp &&
+    !(deferDesignedGate && !plan?.gateHex && (!undergroundHalf || deferDrainingTile(surface)))
+  ) {
     const spaceId = undergroundHalf
       ? chooseAdjacentGateHex(adventure, surface, undergroundHalf.spaceId, plan?.gateHex)
       : chooseAnchorGateHex(adventure, surface, { row: subterranean.centerRow, col: subterranean.centerCol }, subterranean, plan?.gateHex);
@@ -13965,7 +13983,11 @@ function ensureSubterraneanGate(
   // Carve the underground entrance: adjacent to the surface gate if it exists,
   // otherwise (bootstrapping from below) the slot closest to the surface tile.
   // A plan's `entranceHex` (the player's "path up" pick) overrides the default.
-  if (!undergroundHalf && undergroundUp && !(deferDesignedGate && !plan?.entranceHex && !surfaceHalf)) {
+  if (
+    !undergroundHalf &&
+    undergroundUp &&
+    !(deferDesignedGate && !plan?.entranceHex && (!surfaceHalf || deferDrainingTile(subterranean)))
+  ) {
     const spaceId = surfaceHalf
       ? chooseAdjacentGateHex(adventure, subterranean, surfaceHalf.spaceId, plan?.entranceHex)
       : chooseAnchorGateHex(adventure, subterranean, { row: surface.centerRow, col: surface.centerCol }, surface, plan?.entranceHex);
@@ -14019,7 +14041,7 @@ const EMPTY_MAP_SPACE_SET: ReadonlySet<MapSpaceId> = new Set<MapSpaceId>();
  */
 export function recomputeSubterraneanGates(
   adventure: AdventureState,
-  options: { forceDesignedCarve?: boolean } = {}
+  options: { forceDesignedCarve?: boolean; deferUnchosenDesignedOnTileId?: string } = {}
 ): void {
   // Gates connect TILES (USER RULE), so at most ONE gate per tile pair: collapse
   // any duplicate plans for the same (surface, cavern) pair to the first. (The
@@ -14061,7 +14083,15 @@ export function recomputeSubterraneanGates(
     const surface = adventure.tiles[plan.surfaceTileId];
     const subterranean = adventure.tiles[plan.undergroundTileId];
     if (surface && subterranean) {
-      ensureSubterraneanGate(adventure, surface, subterranean, plan, claimed, options.forceDesignedCarve);
+      ensureSubterraneanGate(
+        adventure,
+        surface,
+        subterranean,
+        plan,
+        claimed,
+        options.forceDesignedCarve,
+        options.deferUnchosenDesignedOnTileId
+      );
     }
   }
 
@@ -14160,7 +14190,8 @@ function tileHasAnyGateHalf(adventure: AdventureState, tile: MapTileState): bool
  */
 export function planGateChoiceForReveal(
   adventure: AdventureState,
-  revealedTile: MapTileState
+  revealedTile: MapTileState,
+  options: { firstPartnerTileId?: string } = {}
 ): SubterraneanGateChoiceCandidate[] {
   // tileLayer buckets every tile as "surface" or "subterranean" (sea tiles ride
   // the surface layer), matching how recomputeSubterraneanGates pairs them, so a
@@ -14186,7 +14217,14 @@ export function planGateChoiceForReveal(
   // a tile linked to several partners fixes each gate in turn, so a tile already
   // hosting an earlier half still offers the NEXT designed partner. AUTOMATIC
   // touch pairings keep the classic strict one-gate-per-tile.
-  const designedPending: { row: number; col: number; candidates: SubterraneanGateChoiceCandidate[] }[] = [];
+  const designedPending: {
+    partnerTileId: string;
+    /** The partner already carries its half — i.e. this is the gate you can walk through. */
+    completing: boolean;
+    row: number;
+    col: number;
+    candidates: SubterraneanGateChoiceCandidate[];
+  }[] = [];
   const autoCandidates: SubterraneanGateChoiceCandidate[] = [];
   for (const other of Object.values(adventure.tiles)) {
     if (tileLayer(other) === revealedLayer) {
@@ -14231,17 +14269,33 @@ export function planGateChoiceForReveal(
     }
     const partnerCandidates = hexes.map((hex) => ({ surfaceTileId, undergroundTileId, hex, role }));
     if (designedPlan) {
-      designedPending.push({ row: other.centerRow, col: other.centerCol, candidates: partnerCandidates });
+      designedPending.push({
+        partnerTileId: other.id,
+        completing: Boolean(otherHalf),
+        row: other.centerRow,
+        col: other.centerCol,
+        candidates: partnerCandidates
+      });
     } else {
       autoCandidates.push(...partnerCandidates);
     }
   }
 
   // A designer-linked tile fixes its gates one partner at a time — return only the
-  // NEXT pending designed partner's hexes (deterministic tile order). The reveal
-  // loop re-calls this after each carve to drain the rest.
+  // NEXT pending designed partner's hexes. The reveal loop re-calls this after each
+  // carve to drain the rest. ORDER (USER RULE 2026-08-26): the gate the revealing
+  // hero came THROUGH goes first (`firstPartnerTileId`), then any other partner that
+  // already carries its half, then the deterministic tile order — so "place the exit
+  // of my Gate, then choose the other gate" is the sequence the player actually gets.
   if (designedPending.length > 0) {
-    designedPending.sort((a, b) => a.row - b.row || a.col - b.col);
+    const { firstPartnerTileId } = options;
+    designedPending.sort(
+      (a, b) =>
+        Number(b.partnerTileId === firstPartnerTileId) - Number(a.partnerTileId === firstPartnerTileId) ||
+        Number(b.completing) - Number(a.completing) ||
+        a.row - b.row ||
+        a.col - b.col
+    );
     return designedPending[0].candidates;
   }
   // Automatic touch pairing — one gate per tile: once the tile hosts any half no

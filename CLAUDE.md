@@ -2081,6 +2081,49 @@ guard intact (`designed-gate-links.test.ts`).
 LIMITS: the pass is PER TRAVEL and collects nothing (the hex is not visited); teleport
 NETWORK arrivals are UNCHANGED and still FIGHT.
 
+## A tile owing TWO Subterranean Gates positions BOTH — your own gate first (2026-08-26, protocol v75)
+
+USER RULE: "When I enter the tile that has 2 gates (and both can be positioned) I should
+ALSO be able to place the exit of my Gate (choose 1 of the red marked tiles) — then I
+choose the other gate." A cavern DESIGNER-linked to two Surface tiles that BOTH already
+carry their gate half owes two COMPLETING "path up" exits. The reveal chain offered only
+the FIRST (ordered by partner tile centre) and then `carveGatesWithWarning`'s recompute —
+the same one that carved the pick — auto-carved the SIBLING at the nearest hex, because
+`ensureSubterraneanGate` deferred an unchosen designed half only while it was an ANCHOR
+(no partner half). So half the crossings were never the player's, and the one they were
+asked about was not necessarily the gate their hero had walked into. TWO seams, both
+transient: `recomputeSubterraneanGates({ deferUnchosenDesignedOnTileId })` (adventure.ts)
+holds an unchosen DESIGNED half on the tile whose reveal chain is still draining — passed
+by `carveGatesWithWarning` from the mid-drain carves only — and
+`planGateChoiceForReveal({ firstPartnerTileId })` drains the ARRIVING gate first (the
+reducer's `arrivalGatePartnerTileId` reads the acting player's hero standing on a
+`subterranean_gate` field pointing at the revealed tile), then any other COMPLETING
+partner, then the old tile order. Pinned in `designed-gate-links.test.ts` ("a tile owing
+TWO completing gates positions BOTH, own gate first": both exits land on non-default
+hexes the player picked, plus a hero-on-the-other-gate order CONTROL, a lone-completing-
+gate no-stranding CONTROL and the chooser-OFF auto CONTROL the picks diverge from).
+Leading with the LIMITS:
+- **Only DESIGNER-linked gates can put two halves on one tile.** An AUTOMATIC touch
+  pairing keeps ONE GATE PER TILE (the BINH house rule): a cavern touching two Surface
+  tiles is still offered one mixed pick and the loser's orphan half is reverted
+  (`subterranean-gate-choice.test.ts` "lets the player connect the cavern to EITHER
+  touching Surface tile"). Nothing here widens that.
+- **The defer can never strand a half.** It is only passed while more picks are owed;
+  `offerNextSubterraneanGate`'s terminal carve passes no tile id, so a designed half the
+  chooser could not offer (no legal hex) still carves at the nearest hex exactly as
+  before — including the starting-tile case, whose home rotation never runs the chain.
+- **A COMPLETING half often has only ONE legal hex** (interlocking lattice neighbours),
+  and then no prompt opens at all — it is recorded and carved as before. The two-pick
+  flow is reachable only where the shared edge gives the partner's gate hex ≥2
+  cavern-side neighbours (freeform designer placement); the test scans for such a
+  layout rather than hard-coding one.
+- **The prompt still does not name WHICH partner tile a "path up" belongs to** — the
+  label is the edge + the sacrificed field ("Path up on the NE edge — sacrifices the
+  Mine"). The order is the only cue that the first pick is your own gate.
+- `chooseGatePlacement` OFF (the deterministic CONTROL) is byte-identical, and no
+  serialized field or action shape changed — but the authoritative placement does, so
+  `npm run deploy:partykit` is OWED (a v74 edge opens one pick and carves the other).
+
 ## A Tome's dig is ONE play, then a two-button deck pick (2026-08-11, protocol v28)
 
 USER RULING: "should work like 1 description, then allow to choose basic or expert deck

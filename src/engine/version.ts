@@ -915,7 +915,22 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // state-shape change, hence the explicit bump. The other four allowlisted
 // effects (Anti-Magic, Frenzy, Sorrow, Disrupting Ray) keep the 2026-08-18
 // underlying-grade read. `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 74;
+// v75: USER RULE "When I enter the tile that has 2 gates (and both can be
+// positioned) I should ALSO be able to place the exit of MY Gate (choose 1 of the
+// red marked tiles) — then I choose the other gate." A cavern designer-linked to
+// two Surface tiles that BOTH already carry their gate half owes TWO COMPLETING
+// "path up" exits; the recompute that carved the first pick auto-carved the
+// sibling at the NEAREST hex, so only one of the two crossings was ever the
+// player's — and the one offered was ordered by partner tile centre, not by the
+// gate the hero had walked through. Two seams:
+// `recomputeSubterraneanGates({ deferUnchosenDesignedOnTileId })` holds an
+// unchosen designed half on the tile whose reveal chain is still draining, and
+// `planGateChoiceForReveal({ firstPartnerTileId })` drains the arriving gate
+// first. A v74 worker opens only ONE of the two picks and carves the other at the
+// nearest hex — an authoritative placement difference (a client would offer a
+// CHOOSE_OPTION the stale edge never created) with no state-shape change, hence
+// the explicit bump. `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 75;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

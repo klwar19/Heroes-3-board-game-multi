@@ -3054,6 +3054,32 @@ function continueRevealAfterBank(state: GameState, tile: MapTileState, playerId:
 }
 
 /**
+ * The tile on the OTHER layer whose Subterranean Gate half `playerId`'s Hero is
+ * standing on while `revealedTile` is being revealed — i.e. the gate they walked
+ * INTO to discover it ("my Gate"). Its pairing is positioned first, so a tile that
+ * owes several designed gates asks about the player's own crossing before the
+ * others. Undefined for an ordinary discovery (no hero on a gate) — the drain then
+ * keeps its deterministic order.
+ */
+function arrivalGatePartnerTileId(
+  state: GameState,
+  playerId: PlayerId,
+  revealedTile: MapTileState
+): string | undefined {
+  const adventure = requireAdventure(state);
+  for (const hero of Object.values(state.heroes)) {
+    if (hero.controllerId !== playerId || !hero.spaceId) {
+      continue;
+    }
+    const field = adventure.fields[hero.spaceId];
+    if (field?.location === "subterranean_gate" && field.gateToTileId === revealedTile.id) {
+      return field.tileInstanceId;
+    }
+  }
+  return undefined;
+}
+
+/**
  * Drains the Subterranean Gate placements a just-revealed tile still owes, one at
  * a time, then offers teleport tokens:
  *  - ≥2 candidate positions for the next gate → open the pick-on-reveal choice
@@ -3064,10 +3090,16 @@ function continueRevealAfterBank(state: GameState, tile: MapTileState, playerId:
  *
  * A DESIGNER-linked tile may owe SEVERAL gates — one per connected tile (USER
  * RULE) — each positioned in turn; an automatic touch pairing owes at most one.
+ * The gate the revealing hero came THROUGH is drained first (see
+ * {@link arrivalGatePartnerTileId}).
  */
 function offerNextSubterraneanGate(state: GameState, tile: MapTileState, playerId: PlayerId): void {
   const adventure = requireAdventure(state);
-  const candidates = adventure.chooseGatePlacement ? planGateChoiceForReveal(adventure, tile) : [];
+  const candidates = adventure.chooseGatePlacement
+    ? planGateChoiceForReveal(adventure, tile, {
+        firstPartnerTileId: arrivalGatePartnerTileId(state, playerId, tile)
+      })
+    : [];
   if (candidates.length >= 2) {
     openSubterraneanGatePlacementChoice(state, tile, playerId, candidates);
     return;
@@ -3084,7 +3116,9 @@ function offerNextSubterraneanGate(state: GameState, tile: MapTileState, playerI
     if (isDesigned) {
       upsertGatePlan(adventure, only);
     }
-    carveGatesWithWarning(state, playerId, false);
+    // Still draining THIS tile's gates: an unchosen designed half on it must not be
+    // auto-carved by this recompute (see `deferUnchosenDesignedOnTileId`).
+    carveGatesWithWarning(state, playerId, false, tile.id);
     offerNextSubterraneanGate(state, tile, playerId);
     return;
   }
@@ -3099,14 +3133,23 @@ function offerNextSubterraneanGate(state: GameState, tile: MapTileState, playerI
  * {@link recomputeSubterraneanGates}, which honours player {@link SubterraneanGatePlan}s)
  * and emits a `SUBTERRANEAN_GATE_PLACED` warning for each hex it newly sacrifices,
  * naming what was lost so the UI can flag "your Gold Mine became a gate".
+ *
+ * `deferUnchosenDesignedOnTileId` is passed while the reveal chain for that tile is
+ * still draining its designed gates, so a sibling half the player has not positioned
+ * yet is left for the next pick instead of being carved at the nearest hex.
  */
-function carveGatesWithWarning(state: GameState, playerId: PlayerId, chosen: boolean): void {
+function carveGatesWithWarning(
+  state: GameState,
+  playerId: PlayerId,
+  chosen: boolean,
+  deferUnchosenDesignedOnTileId?: string
+): void {
   const adventure = requireAdventure(state);
   const before = new Map<MapSpaceId, string>();
   for (const field of Object.values(adventure.fields)) {
     before.set(field.spaceId, field.location);
   }
-  recomputeSubterraneanGates(adventure);
+  recomputeSubterraneanGates(adventure, { ...(deferUnchosenDesignedOnTileId ? { deferUnchosenDesignedOnTileId } : {}) });
   for (const field of Object.values(adventure.fields)) {
     if (field.location === "subterranean_gate" && before.get(field.spaceId) !== "subterranean_gate") {
       appendEvent(state, {
@@ -16514,7 +16557,9 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     // (recompute honours the plan and warns what each sacrifice cost).
     if (data && adventure && candidate) {
       upsertGatePlan(adventure, candidate);
-      carveGatesWithWarning(state, action.playerId, true);
+      // The revealed tile may still owe MORE designed gates; keep their unchosen
+      // halves out of this carve so the player positions each one (USER RULE).
+      carveGatesWithWarning(state, action.playerId, true, data.tileInstanceId);
     }
     state.pendingChoice = null;
     state.phase = choice.returnPhase;

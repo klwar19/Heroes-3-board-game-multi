@@ -23,7 +23,13 @@ import {
   type MapFieldState,
   type MapTileState
 } from "./index";
-import { fieldLayer, gateFieldsLinked, instantiateTile, isFieldGuarded } from "./adventure";
+import {
+  fieldLayer,
+  gateFieldsLinked,
+  instantiateTile,
+  isFieldGuarded,
+  recomputeSubterraneanGates
+} from "./adventure";
 import type { AdventureState } from "./state";
 
 // ---------------------------------------------------------------------------
@@ -805,6 +811,234 @@ describe("designed gate links — positioned at PLAY, each gate in turn", () => 
       expect(surfaceGate?.location, "linked surface gate").toBe("subterranean_gate");
       expect(canCrossEdge(s, entrance!.spaceId, surfaceGate!.spaceId)).toBe(true);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// USER RULE 2026-08-26 — "When I enter the tile that has 2 gates (and both can
+// be positioned) I should ALSO be able to place the exit of MY Gate — then I
+// choose the other gate." A cavern designer-linked to two Surface tiles that BOTH
+// already carry their gate half owes TWO *completing* entrances. Before the fix
+// only the first (by partner tile centre) was offered: the recompute that carved
+// that pick auto-carved the sibling entrance at the nearest hex, so half the
+// crossings were never the player's — and the one offered was not necessarily the
+// gate the hero had walked through.
+// ---------------------------------------------------------------------------
+
+describe("designed gate links — a tile owing TWO completing gates positions BOTH, own gate first", () => {
+  const CAVERN: HexCoord = { row: 24, col: 12 };
+
+  /** Surface gate hexes toward `cavernCenter` that have ≥2 cavern-side partners. */
+  function multiEntranceGateHexes(surfaceCenter: HexCoord, cavernCenter: HexCoord): Map<string, string[]> {
+    const byGate = new Map<string, Set<string>>();
+    for (const pair of legalGateHexPairs(surfaceCenter, cavernCenter)) {
+      const gate = hexSpaceId(pair.gateHex);
+      if (!byGate.has(gate)) {
+        byGate.set(gate, new Set());
+      }
+      byGate.get(gate)!.add(hexSpaceId(pair.entranceHex));
+    }
+    const out = new Map<string, string[]>();
+    for (const [gate, entrances] of byGate) {
+      if (entrances.size >= 2) {
+        out.set(gate, [...entrances]);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Two Surface centres touching {@link CAVERN}, each with a PINNED gate hex whose
+   * cavern-side partners number two — so each COMPLETING "path up" really is a
+   * choice — and whose partner sets are disjoint, so the second pick is never
+   * squeezed out by the first carve.
+   */
+  function twoCompletingLayout(): [{ center: HexCoord; gateHex: string }, { center: HexCoord; gateHex: string }] {
+    const options: { center: HexCoord; gateHex: string; entrances: string[] }[] = [];
+    for (let dRow = -5; dRow <= 5; dRow += 1) {
+      for (let dCol = -5; dCol <= 5; dCol += 1) {
+        const center = { row: CAVERN.row + dRow, col: CAVERN.col + dCol };
+        if (tileCentersOverlap(center, CAVERN) || !tileFootprintsTouch(CAVERN, center)) {
+          continue;
+        }
+        for (const [gateHex, entrances] of multiEntranceGateHexes(center, CAVERN)) {
+          options.push({ center, gateHex, entrances });
+        }
+      }
+    }
+    for (let i = 0; i < options.length; i += 1) {
+      for (let j = i + 1; j < options.length; j += 1) {
+        const [a, b] = [options[i], options[j]];
+        if (tileCentersOverlap(a.center, b.center) || a.gateHex === b.gateHex) {
+          continue;
+        }
+        if (a.entrances.some((hex) => b.entrances.includes(hex))) {
+          continue;
+        }
+        return [
+          { center: a.center, gateHex: a.gateHex },
+          { center: b.center, gateHex: b.gateHex }
+        ];
+      }
+    }
+    throw new Error("no two-completing-gate layout found");
+  }
+
+  /**
+   * Cavern face-DOWN between two face-up Surface tiles, each designer-linked to it
+   * and each already carrying its own gate half at a PINNED hex (as it would after
+   * those tiles were revealed and their gates positioned). Revealing the cavern
+   * therefore owes two "path up" exits, each with two legal hexes.
+   */
+  function twoCompletingSetup(chooser: boolean): {
+    state: GameState;
+    sa: MapTileState;
+    sb: MapTileState;
+    cavern: MapTileState;
+    cavernCenter: HexCoord;
+  } {
+    const [planA, planB] = twoCompletingLayout();
+    const state = makeChoiceGame();
+    if (!chooser) {
+      adv(state).chooseGatePlacement = false;
+    }
+    const sa = instantiateTile(adv(state), "F1", planA.center, 0, false); // face-up
+    const sb = instantiateTile(adv(state), "F2", planB.center, 0, false); // face-up
+    setAllEmpty(state, sa);
+    setAllEmpty(state, sb);
+    const cavern = instantiateTile(adv(state), "U1", CAVERN, 0, true); // face-down
+    adv(state).gatePlans = [
+      { surfaceTileId: sa.id, undergroundTileId: cavern.id, designed: true, gateHex: planA.gateHex },
+      { surfaceTileId: sb.id, undergroundTileId: cavern.id, designed: true, gateHex: planB.gateHex }
+    ];
+    // Both Surface halves carve at their pinned hexes; the cavern is face-down so
+    // neither "path up" exists yet.
+    recomputeSubterraneanGates(adv(state));
+    for (const [surface, pinned] of [
+      [sa, planA.gateHex],
+      [sb, planB.gateHex]
+    ] as const) {
+      const halves = gatesOnTile(state, { row: surface.centerRow, col: surface.centerCol }).filter(
+        (field) => field.gateToTileId === cavern.id
+      );
+      expect(halves.map((field) => field.spaceId), `${surface.id} carries its designed gate half`).toEqual([pinned]);
+    }
+    expect(gatesOnTile(state, CAVERN), "no path up before the cavern is revealed").toHaveLength(0);
+    return { state, sa, sb, cavern, cavernCenter: CAVERN };
+  }
+
+  /** The cavern's entrance half pointing at `surfaceTileId`, if it exists. */
+  function entranceToward(state: GameState, cavernCenter: HexCoord, surfaceTileId: string): MapFieldState | undefined {
+    return gatesOnTile(state, cavernCenter).find((field) => field.gateToTileId === surfaceTileId);
+  }
+
+  function gateChoiceData(state: GameState) {
+    const choice = state.pendingChoice;
+    if (!choice || choice.type !== "OPTION_CHOICE" || choice.context !== "subterranean-gate-placement") {
+      throw new Error("no gate placement choice open");
+    }
+    return choice.subterraneanGate!;
+  }
+
+  it("offers a pick for EACH gate — the one the hero came through first — and both exits land on the player's hexes", () => {
+    // CONTROL (chooser OFF): the same layout auto-carves BOTH entrances at their
+    // nearest hexes with no prompt at all. Those hexes are the defaults each of the
+    // choice run's picks must diverge from.
+    const control = twoCompletingSetup(false);
+    const controlRevealed = revealTile(control.state, control.cavern.id);
+    expect(gatePlacementChoice(controlRevealed), "chooser off → no prompt").toBe(false);
+    const autoEntrance = new Map<string, string>();
+    for (const surfaceId of [control.sa.id, control.sb.id]) {
+      const entrance = entranceToward(controlRevealed, control.cavernCenter, surfaceId);
+      expect(entrance, `auto entrance toward ${surfaceId}`).toBeDefined();
+      autoEntrance.set(surfaceId, entrance!.spaceId);
+    }
+
+    // The hero stands on surface B's gate half — that is "my Gate".
+    const { state, sa, sb, cavern, cavernCenter } = twoCompletingSetup(true);
+    const myGate = gatesOnTile(state, { row: sb.centerRow, col: sb.centerCol }).find(
+      (field) => field.gateToTileId === cavern.id
+    )!;
+    state.heroes.hero_p1.spaceId = myGate.spaceId;
+
+    let s = revealTile(state, cavern.id);
+    expect(gatePlacementChoice(s), "the first path-up pick opens").toBe(true);
+    const first = gateChoiceData(s);
+    expect(
+      first.candidates.every((candidate) => candidate.surfaceTileId === sb.id),
+      "the gate the hero walked through is positioned FIRST"
+    ).toBe(true);
+    const firstPick = first.candidates.findIndex((candidate) => candidate.hex !== autoEntrance.get(sb.id));
+    expect(firstPick, "a non-default candidate for my own gate").toBeGreaterThanOrEqual(0);
+    const myHex = first.candidates[firstPick].hex;
+    s = resolveGateChoice(s, firstPick);
+
+    // THE FIX: the OTHER gate is offered too, instead of being carved at the nearest hex.
+    expect(gatePlacementChoice(s), "the second gate is offered as well").toBe(true);
+    const second = gateChoiceData(s);
+    expect(
+      second.candidates.every((candidate) => candidate.surfaceTileId === sa.id),
+      "the second pick is the other gate"
+    ).toBe(true);
+    const secondPick = second.candidates.findIndex((candidate) => candidate.hex !== autoEntrance.get(sa.id));
+    expect(secondPick, "a non-default candidate for the other gate").toBeGreaterThanOrEqual(0);
+    const otherHex = second.candidates[secondPick].hex;
+    s = resolveGateChoice(s, secondPick);
+    expect(gatePlacementChoice(s), "both gates positioned — no third prompt").toBe(false);
+
+    // Both entrances sit on the hexes the PLAYER chose (neither on the auto default)…
+    const mine = entranceToward(s, cavernCenter, sb.id);
+    const other = entranceToward(s, cavernCenter, sa.id);
+    expect(mine!.spaceId, "my gate's exit is on my pick").toBe(myHex);
+    expect(other!.spaceId, "the other gate's exit is on my pick").toBe(otherHex);
+    expect(otherHex).not.toBe(autoEntrance.get(sa.id));
+    expect(myHex).not.toBe(autoEntrance.get(sb.id));
+    // …and both are real, crossable crossings.
+    for (const [surfaceTileId, entrance] of [
+      [sa.id, other],
+      [sb.id, mine]
+    ] as const) {
+      const surfaceGate = adv(s).fields[entrance!.gateLinkSpaceId ?? ""];
+      expect(surfaceGate?.location, `linked surface gate on ${surfaceTileId}`).toBe("subterranean_gate");
+      expect(canCrossEdge(s, entrance!.spaceId, surfaceGate!.spaceId)).toBe(true);
+    }
+    expect(gatesOnTile(s, cavernCenter), "two entrances on the cavern").toHaveLength(2);
+  });
+
+  it("CONTROL: with the hero on the OTHER gate, that one is positioned first", () => {
+    const { state, sa, cavern } = twoCompletingSetup(true);
+    const myGate = gatesOnTile(state, { row: sa.centerRow, col: sa.centerCol }).find(
+      (field) => field.gateToTileId === cavern.id
+    )!;
+    state.heroes.hero_p1.spaceId = myGate.spaceId;
+    const s = revealTile(state, cavern.id);
+    expect(gatePlacementChoice(s)).toBe(true);
+    expect(gateChoiceData(s).candidates.every((candidate) => candidate.surfaceTileId === sa.id)).toBe(true);
+  });
+
+  it("CONTROL: a LONE completing designed gate is still positioned in one pick and carved (no stranding)", () => {
+    const [planA] = twoCompletingLayout();
+    const cavernCenter = CAVERN;
+    const state = makeChoiceGame();
+    const sa = instantiateTile(adv(state), "F1", planA.center, 0, false);
+    setAllEmpty(state, sa);
+    const cavern = instantiateTile(adv(state), "U1", cavernCenter, 0, true);
+    adv(state).gatePlans = [
+      { surfaceTileId: sa.id, undergroundTileId: cavern.id, designed: true, gateHex: planA.gateHex }
+    ];
+    recomputeSubterraneanGates(adv(state));
+
+    let s = revealTile(state, cavern.id);
+    expect(gatePlacementChoice(s), "the lone completing gate is offered").toBe(true);
+    const chosen = gateChoiceData(s).candidates[0].hex;
+    s = resolveGateChoice(s, 0);
+    expect(gatePlacementChoice(s), "no second prompt for a single gate").toBe(false);
+    const entrance = entranceToward(s, cavernCenter, sa.id);
+    expect(entrance, "the entrance really carved — the defer never strands it").toBeDefined();
+    expect(entrance!.spaceId).toBe(chosen);
+    const surfaceGate = adv(s).fields[entrance!.gateLinkSpaceId ?? ""];
+    expect(surfaceGate?.location).toBe("subterranean_gate");
+    expect(canCrossEdge(s, entrance!.spaceId, surfaceGate!.spaceId)).toBe(true);
   });
 });
 
