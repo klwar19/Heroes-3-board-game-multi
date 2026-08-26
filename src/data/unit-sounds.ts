@@ -193,10 +193,11 @@ const creatureVoices: Record<string, string> = {
   giant_toad: "hidden-leaf-giant-toad",
   jinchuriki: "hidden-leaf-jinchuriki",
   susanoo: "hidden-leaf-susanoo",
-  // Hokage Vanguard (2026-08-25 roster addition) has no dedicated recording
-  // yet — reuse the town's elite-human Jōnin mix so its register matches the
-  // rest of Hidden Leaf (the documented Factory/Fuyuki fallback pattern).
-  hokage_vanguard: "hidden-leaf-jonin",
+  // Hokage Vanguard: real Rock Lee battle voice (E:/voice/Lee) overlaid on the
+  // Leaf Jōnin SFX bed it used to borrow — attack/hurt/death carry Lee's voice;
+  // defend/move are the Jōnin bed copied verbatim (built by
+  // scripts/build-hidden-leaf-voice-overlays.mjs, see docs/anime-town-audio.md).
+  hokage_vanguard: "hidden-leaf-hokage-vanguard",
   // Azur Lane Naval Base — NOTE: these H3 entries do NOT run. unitSoundKey
   // short-circuits every shipgirl to her bespoke Japanese clips
   // (azurLaneUnitVoices below) before ever reading creatureVoices — the same
@@ -252,10 +253,15 @@ const creatureVoices: Record<string, string> = {
  */
 const bossVoices: Record<string, string> = {
   goblin_king: "goblin",
-  colossal_titan: "titan",
+  // Real Gaara battle voice (E:/voice/Gaara) + in-game Earthquake on attack —
+  // the sand juggernaut fits the earthen colossus. Built by
+  // scripts/build-naruto-boss-voices.mjs.
+  colossal_titan: "naruto-boss-gaara",
   abyss_kraken: "hydra",
   calamity_dragon: "black-dragon",
-  avatar_of_erebos: "arch-devil",
+  // Real Kaguya Otsutsuki voice (E:/voice/Kaguya_ActVoice) + her own jutsu SE on
+  // attack — a primordial goddess villain for the apex boss.
+  avatar_of_erebos: "naruto-boss-kaguya",
   cyberdemon_prime: "titan",
   spider_overmind: "hydra",
   lich_archon: "lich",

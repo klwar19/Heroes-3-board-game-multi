@@ -26,6 +26,7 @@ const curatedAnimeTownVoices = [
   ["hidden_leaf.giant_toad", "hidden-leaf-giant-toad"],
   ["hidden_leaf.jinchuriki", "hidden-leaf-jinchuriki"],
   ["hidden_leaf.susanoo", "hidden-leaf-susanoo"],
+  ["hidden_leaf.hokage_vanguard", "hidden-leaf-hokage-vanguard"],
   ["heavenly_demon.blood_disciples", "heavenly-demon-blood-disciples"],
   ["heavenly_demon.gu_witches", "heavenly-demon-gu-witches"],
   ["heavenly_demon.shadow_wraiths", "heavenly-demon-shadow-wraiths"],
@@ -557,5 +558,11 @@ describe("unit combat voices", () => {
     // unmapped boss id stays silent (so the map is doing the work, not a catch-all).
     expect(unitSoundKey("boss.calamity_dragon", "attack")).toBe("units/black-dragon-attack");
     expect(unitSoundKey("boss.not_a_boss", "attack")).toBeUndefined();
+    // Two bosses carry real Naruto character voices (dedicated naruto-boss-*
+    // bases), not a borrowed H3 creature — pin the mapping so a revert is caught.
+    expect(unitSoundKey("boss.avatar_of_erebos", "attack")).toBe("units/naruto-boss-kaguya-attack");
+    expect(unitSoundKey("boss.avatar_of_erebos", "death")).toBe("units/naruto-boss-kaguya-death");
+    expect(unitSoundKey("boss.colossal_titan", "attack")).toBe("units/naruto-boss-gaara-attack");
+    expect(unitSoundKey("boss.colossal_titan", "move")).toBe("units/naruto-boss-gaara-move");
   });
 });

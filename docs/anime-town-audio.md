@@ -17,6 +17,77 @@ ranged attacks for EMIYA/Archers and Medea/Casters. See
 `public/sounds/fuyuki/README.md` for the exact character and source-file map.
 The former Heroes III assignments remain only as missing-asset fallbacks.
 
+## Hidden Leaf real character voices (2026-08-26)
+
+Hidden Leaf's voice-relevant actions (attack kiai, hurt, death) now carry REAL
+Naruto character battle recordings mixed on top of the existing SFX beds; the
+`defend`, `move`, and `shoot` beds are unchanged (they are SFX cues, not voice),
+and `giant_toad` (Gamabunta, a summon) keeps its SFX set entirely. Rebuild with
+`node scripts/build-hidden-leaf-voice-overlays.mjs` (env `BEDS=<pristine dir>`
+so a re-run overlays the clean bed, never an already-overlaid file). The script
+PRINTS the exact source-clip → action pick (a duration heuristic) so the mapping
+can be verified/tuned by ear.
+
+| Unit | Character | Source pack (E:/voice) |
+| --- | --- | --- |
+| Genin Squad | Naruto | `Naruto23` (Ultimate Ninja Storm 2) |
+| Medical-Nin | Sakura | `Sakura` |
+| ANBU Black Ops | Sasuke | `Sasuke` (`char_` clips) |
+| Leaf Jōnin | Kakashi | `Kakashi` |
+| Hokage Vanguard | Rock Lee | `Lee` (own voice base over the Jōnin SFX bed) |
+| Nine-Tails Chakra Avatar | Nine-Tails Naruto | `NarVPae` (Naruto vs Pain) |
+| Susanoo Avatar | Sasuke — Susanoo | `Sasuke` (`sas_str_` dramatic specials) |
+
+Clips are the character's real recordings normalized to -18 LUFS, mono 32 kHz
+48 kbit/s, capped per action, and mixed under/over the bed so the SFX design is
+preserved. Fate/unlimited codes already supplies the Fuyuki Servant voices (see
+`public/sounds/fuyuki/README.md`); this pass does the equivalent for the Leaf.
+
+## Fuyuki (Fate) full rebuild + wuxia real Chinese voices (2026-08-26)
+
+**Fuyuki City (Fate) — rebuilt from the full packs.** The old build used only the
+`se/chrm` action grunts. All 7 Servants are now rebuilt from `E:/voice/<Servant>`
+(`scripts/build-fuyuki-voice-rebuild.mjs`): ATTACK is the character's iconic named
+battle cry (`voice/<pfx>/<pfx>_etc_*`) layered over their weapon SE
+(`chrm_<pfx>00_00002`); DEATH is the real KO line (`<pfx>_ko_00`); EMIYA/Medea get
+their named projectile line for SHOOT (`emy_etc_hrunting` / `cas_etc_koryukion`);
+hurt/defend/move stay the character's short `chrm` combat grunts so frequent play
+doesn't repeat long dialogue. Output overwrites the same
+`public/sounds/fuyuki/voices/<slug>/<action>.ogg`, so wiring is unchanged. All six
+actions × seven Servants are distinct, non-silent, real Fate audio.
+
+**Wuxia (Azure Breeze / Heavenly Demon) — one unified build**
+(`scripts/build-wuxia-all.mjs`) voices EVERY unit and EVERY action, with the voice
+CLEAR on top of the bed (bed low), attacks CONCATENATED into one fuller cry, and
+generous length caps + a tail fade so clips read full like the Fate/Naruto packs
+(attacks ~1.2 s, dragon roars/deaths ~2–2.4 s). Sources, all action-labeled:
+- **7 human MALE units** — Total War Chinese (`E:/voice/Chinese`) Attack×3
+  concatenated → attack and Move → move; Fallout 3 Chinese Soldiers
+  (`E:/voice/PC _ ... Chinese Soldiers`) longest `_hit_`/`_death_`/combat-bark
+  clips → hurt/death/defend. Type per unit: Changdao / IronTroop / IronFlail /
+  MeteorHammer / Keshik / ChuKoNu(ranged) / QiangPikeman. Both packs male → the
+  sword-cultivators read male.
+- **Gu Witches (female)** — No Heroes Allowed! VR Chinese pack, pitch-selected
+  female clips for all six actions (needs the `scripts/analyze-voice-pitch.py`
+  F0 json).
+- **6 NON-HUMAN units** — one Age of Mythology Chinese-myth CREATURE each
+  (`E:/voice/PC _ ... Age of Mythology ... /chinese`): Spirit Crane → vermilion
+  bird, Shadow Wraiths → white tiger, Corpse Puppets → terracotta soldier, Bone
+  Reavers → jiangshi, Ghost King → azure dragon, Demon Avatar → earth dragon.
+  Attack = creature attack+grunt concatenated; death = its long roar; a creature
+  that lacks an action falls back to grunt/select, else keeps the bed.
+
+Reason two human packs are combined: `E:/voice/Chinese` has ONLY Attack/Move/Select
+(no death/hurt/defend), so those states come from the Fallout pack. Picks are
+PRINTED by the script for verification by ear.
+
+**Raid bosses.** Two bosses that borrowed a Heroes III creature voice now speak
+with real Naruto-verse villain voices (`scripts/build-naruto-boss-voices.mjs`,
+data-only wiring in `src/data/unit-sounds.ts` `bossVoices`): Kaguya Otsutsuki →
+**Avatar of Erebos** (her real voice + her own jutsu SE on attack), and Gaara →
+**Colossal Titan** (his voice + the in-game Earthquake on attack). Bosses have no
+bed, so all five core actions are built from the character's recording.
+
 ## Sound design
 
 - Azure Breeze (righteous wuxia sword sect) was rebuilt per unit so a gold

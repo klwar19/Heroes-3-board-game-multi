@@ -4811,6 +4811,66 @@
     "src": "/sounds/units/hidden-leaf-susanoo-move.mp3",
     "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
   },
+  "units/hidden-leaf-hokage-vanguard-attack": {
+    "src": "/sounds/units/hidden-leaf-hokage-vanguard-attack.mp3",
+    "note": "Real Rock Lee voice over the Leaf Jonin SFX bed; see docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-hokage-vanguard-defend": {
+    "src": "/sounds/units/hidden-leaf-hokage-vanguard-defend.mp3",
+    "note": "Leaf Jonin SFX bed (shared); see docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-hokage-vanguard-hurt": {
+    "src": "/sounds/units/hidden-leaf-hokage-vanguard-hurt.mp3",
+    "note": "Real Rock Lee voice; see docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-hokage-vanguard-death": {
+    "src": "/sounds/units/hidden-leaf-hokage-vanguard-death.mp3",
+    "note": "Real Rock Lee voice over the Leaf Jonin SFX bed; see docs/anime-town-audio.md"
+  },
+  "units/hidden-leaf-hokage-vanguard-move": {
+    "src": "/sounds/units/hidden-leaf-hokage-vanguard-move.mp3",
+    "note": "Leaf Jonin SFX bed (shared); see docs/anime-town-audio.md"
+  },
+  "units/naruto-boss-kaguya-attack": {
+    "src": "/sounds/units/naruto-boss-kaguya-attack.mp3",
+    "note": "Raid boss voice: Kaguya (Avatar of Erebos) + her jutsu SE; see docs/anime-town-audio.md"
+  },
+  "units/naruto-boss-kaguya-defend": {
+    "src": "/sounds/units/naruto-boss-kaguya-defend.mp3",
+    "note": "Raid boss voice: Kaguya (Avatar of Erebos); see docs/anime-town-audio.md"
+  },
+  "units/naruto-boss-kaguya-hurt": {
+    "src": "/sounds/units/naruto-boss-kaguya-hurt.mp3",
+    "note": "Raid boss voice: Kaguya (Avatar of Erebos); see docs/anime-town-audio.md"
+  },
+  "units/naruto-boss-kaguya-death": {
+    "src": "/sounds/units/naruto-boss-kaguya-death.mp3",
+    "note": "Raid boss voice: Kaguya (Avatar of Erebos); see docs/anime-town-audio.md"
+  },
+  "units/naruto-boss-kaguya-move": {
+    "src": "/sounds/units/naruto-boss-kaguya-move.mp3",
+    "note": "Raid boss voice: Kaguya (Avatar of Erebos); see docs/anime-town-audio.md"
+  },
+  "units/naruto-boss-gaara-attack": {
+    "src": "/sounds/units/naruto-boss-gaara-attack.mp3",
+    "note": "Raid boss voice: Gaara (Colossal Titan) + in-game Earthquake; see docs/anime-town-audio.md"
+  },
+  "units/naruto-boss-gaara-defend": {
+    "src": "/sounds/units/naruto-boss-gaara-defend.mp3",
+    "note": "Raid boss voice: Gaara (Colossal Titan); see docs/anime-town-audio.md"
+  },
+  "units/naruto-boss-gaara-hurt": {
+    "src": "/sounds/units/naruto-boss-gaara-hurt.mp3",
+    "note": "Raid boss voice: Gaara (Colossal Titan); see docs/anime-town-audio.md"
+  },
+  "units/naruto-boss-gaara-death": {
+    "src": "/sounds/units/naruto-boss-gaara-death.mp3",
+    "note": "Raid boss voice: Gaara (Colossal Titan); see docs/anime-town-audio.md"
+  },
+  "units/naruto-boss-gaara-move": {
+    "src": "/sounds/units/naruto-boss-gaara-move.mp3",
+    "note": "Raid boss voice: Gaara (Colossal Titan); see docs/anime-town-audio.md"
+  },
   "units/heavenly-demon-blood-disciples-attack": {
     "src": "/sounds/units/heavenly-demon-blood-disciples-attack.mp3",
     "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
