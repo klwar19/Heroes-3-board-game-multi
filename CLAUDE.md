@@ -2797,8 +2797,10 @@ LIMITS: the Battle-Test sandbox never offers an anime faction; Hidden Leaf ships
 heroes, not the plan's 6; 9 equipment icons remain procedural placeholders.
 FACTION LIMITS (updated 2026-08-25, protocol v65 — server-authoritative):
 **Fuyuki**, **Azure Breeze**, and **Heavenly Demon** lose up to 4 gold after
-every Resource-round income; **Hidden Leaf** and **MGQ** permanently lose 1
-effective hand-limit point each Resource round (minimum 1); **Little Busters**
+every Resource-round income; **Hidden Leaf** and **MGQ** lose 1 effective
+hand-limit point for the Resource round ONLY (minimum 1) — round-scoped, it
+reverts to normal at the next `startAdventureRound` and never stacks (updated
+2026-08-26; the old permanent-accumulation reading is gone); **Little Busters**
 loses up to 5 gold and 1 building material after income; and at each combat
 start one seeded-random real **Azur Lane** army unit suffers 1 damage (never a
 commander or summon). Every trigger writes a public notice and resource costs
