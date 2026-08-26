@@ -930,7 +930,22 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // nearest hex — an authoritative placement difference (a client would offer a
 // CHOOSE_OPTION the stale edge never created) with no state-shape change, hence
 // the explicit bump. `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 75;
+// v76: USER PROPOSAL "add a parameter if the garrison (or other standalone object)
+// is underground or not — Garrison/keymaster/barrier/monolith: choose 1. normal
+// field 2. water field 3. underground field." A STANDALONE designer object hex used
+// to INFER its layer from the tiles it touches, so a hex touching a Surface AND an
+// Underground tile was ambiguous and refused outright ("implicit layer bridge") —
+// the reported designer block. New optional `CustomMapObject.layer`
+// ("surface" | "sea" | "subterranean", read only through `declaredStandaloneLayer`
+// / `declaredStandaloneMapLayer`): a declared board wins over the inference at the
+// carve, so the hex belongs to that board alone and `validateCustomMapObjects`
+// accepts a both-touching hex; "sea" additionally stamps `MapFieldState.terrain`
+// "water" (a Surface water field — the ordinary coastline halt). ABSENT keeps the
+// old inference AND the old rejection, so every legacy map is byte-identical. Both
+// a serialized preset field and an authoritative movement-legality difference (a
+// v75 worker infers a different `standaloneLayer` for a declared hex and would
+// refuse the map's start), hence the bump. `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 76;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

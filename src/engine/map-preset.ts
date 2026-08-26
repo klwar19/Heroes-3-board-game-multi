@@ -19,7 +19,13 @@ import { coreFactionDefinitions } from "@/data/factions/core";
 import type { TileDefinition } from "@/data/map/types";
 import { getStoryScene, isStoryScene, STORY_SCENE_IDS } from "@/data/story/scenes";
 import { RAID_BOSS_ABILITY_CHOICES } from "@/data/anime/bosses";
-import { seaTileBand, subterraneanTileBand, TILE_GROUP_BAND_LABELS, VII_FIELD_LOCATION } from "./adventure";
+import {
+  CUSTOM_MAP_OBJECT_LAYERS,
+  seaTileBand,
+  subterraneanTileBand,
+  TILE_GROUP_BAND_LABELS,
+  VII_FIELD_LOCATION
+} from "./adventure";
 import { CUSTOM_BOSS_LIMITS, MAX_CUSTOM_RAID_BOSSES } from "./raid-bosses";
 import { VICTORY_MODE_LABELS } from "./ruleset";
 import { DEFAULT_OBELISK_BONUS, MAX_CUSTOM_GUARD_UNITS, MAX_FAR_TILES_PER_PLAYER } from "./state";
@@ -51,6 +57,7 @@ import type {
   CustomMapSettlementFieldPlan,
   CustomMapObject,
   CustomMapObjectKind,
+  CustomMapObjectLayer,
   CustomMapObjectPlacement,
   CustomMapObjectivesConfig,
   CustomMapPreset,
@@ -1736,6 +1743,17 @@ export function sanitizeCustomMapObject(input: unknown): CustomMapObject | null 
     return null;
   }
   const object: CustomMapObject = { kind, placement };
+  // Declared board of a STANDALONE hex (normal land / water / underground).
+  // Absent = the legacy inference from the tiles the hex touches. A tile-slot
+  // object never carries one (it takes its host tile's layer and terrain), and
+  // an unknown value is dropped rather than coerced.
+  const rawLayer = (input as { layer?: unknown }).layer;
+  if (
+    placement.type === "standalone" &&
+    CUSTOM_MAP_OBJECT_LAYERS.includes(rawLayer as CustomMapObjectLayer)
+  ) {
+    object.layer = rawLayer as CustomMapObjectLayer;
+  }
   // A gate / tent / barrier / one-way monolith carries a colored pair 1-4
   // (required); the other kinds never do.
   if (

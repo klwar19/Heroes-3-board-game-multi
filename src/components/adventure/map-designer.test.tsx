@@ -2744,6 +2744,44 @@ describe("MapDesigner — objects palette (gates / monolith / standalone)", () =
     expect(latest[0].garrisonBorderPassage).toBe(false);
   });
 
+  it("the standalone panel declares the object's BOARD (normal / water / underground); a tile-slot object has none", () => {
+    let latest: CustomMapObject[] = [
+      { kind: "garrison", placement: { type: "standalone", row: far.row + 2, col: far.col + 2 } }
+    ];
+    const onObjectsChange = vi.fn((next: CustomMapObject[]) => {
+      latest = next;
+    });
+    const container = renderWithObjects(faceUpMap, latest, onObjectsChange);
+    fireEvent.click(container.querySelector(".designerObjectToken.standalone")!);
+    const select = within(container).getByLabelText("Object board") as HTMLSelectElement;
+    // Absent = Auto (the legacy inference from the touched tiles).
+    expect(select.value).toBe("");
+    fireEvent.change(select, { target: { value: "subterranean" } });
+    expect(latest[0].layer).toBe("subterranean");
+
+    const declared = renderWithObjects(faceUpMap, latest, onObjectsChange);
+    fireEvent.click(declared.querySelector(".designerObjectToken.standalone")!);
+    const declaredSelect = within(declared).getByLabelText("Object board") as HTMLSelectElement;
+    expect(declaredSelect.value).toBe("subterranean");
+    fireEvent.change(declaredSelect, { target: { value: "sea" } });
+    expect(latest[0].layer).toBe("sea");
+    // Back to Auto DELETES the key (a legacy map must stay byte-identical).
+    const seaRender = renderWithObjects(faceUpMap, latest, onObjectsChange);
+    fireEvent.click(seaRender.querySelector(".designerObjectToken.standalone")!);
+    fireEvent.change(within(seaRender).getByLabelText("Object board"), { target: { value: "" } });
+    expect("layer" in latest[0]).toBe(false);
+
+    // CONTROL: a TILE-SLOT object takes its host tile's board — no row at all.
+    const onTile = renderWithObjects(
+      faceUpMap,
+      [{ kind: "monolith", placement: { type: "tile-slot", row: far.row, col: far.col, slot: 0 } }],
+      onObjectsChange
+    );
+    fireEvent.click(onTile.querySelector(".designerObjectToken")!);
+    expect(onTile.querySelector(".designerObjectPopover"), "object panel open").toBeTruthy();
+    expect(within(onTile).queryByLabelText("Object board")).toBeNull();
+  });
+
   it("Creature Bank: places standalone-only with a specific bankId; panel rewrites bank + size", () => {
     let latest: CustomMapObject[] = [];
     const onObjectsChange = vi.fn((next: CustomMapObject[]) => {

@@ -864,6 +864,239 @@ describe("standalone layer rules", () => {
   });
 });
 
+// ---- 2b. A DECLARED board (CustomMapObject.layer) ----------------------------
+// USER PROPOSAL: "add a parameter if the garrison (or other standalone object) is
+// underground or not — normal field / water field / underground field." A declared
+// board wins over the neighbour inference, so a hex touching BOTH layers is legal
+// and belongs to the declared layer ALONE. Every case pairs the declaration with
+// the opposite declaration (or its absence) on the SAME map, so the assertions
+// only pass if the declaration is what decides the outcome.
+
+describe("standalone object board declaration (CustomMapObject.layer)", () => {
+  /** A surface tile interlocked with an underground tile, and the bridge hex between them. */
+  function bridgeFixture(): { plans: CustomMapTilePlan[]; bridge: HexCoord } {
+    const surface = CLUSTER;
+    const underground = tileLatticeNeighbors(surface)[0];
+    return {
+      plans: [
+        { row: surface.row, col: surface.col, group: "far", faceDown: false, tileDefId: "F1" },
+        { row: underground.row, col: underground.col, group: "subterranean", faceDown: false, tileDefId: "U1" }
+      ],
+      // A hex outside both footprints that is crossable from BOTH tiles once the
+      // layer rule is set aside — so a later "cannot enter" is the layer talking,
+      // never a yellow arc.
+      bridge: findLayerBridgeHex(surface, underground)
+    };
+  }
+
+  function garrisonAt(bridge: HexCoord, layer?: CustomMapObject["layer"]): CustomMapObject {
+    return {
+      kind: "garrison",
+      placement: { type: "standalone", row: bridge.row, col: bridge.col },
+      ...(layer ? { layer } : {})
+    };
+  }
+
+  /** The bridge hex's tile neighbour on the given layer (a real ring hex of that tile). */
+  function ringNeighborOnLayer(state: GameState, bridge: HexCoord, layer: "surface" | "subterranean"): MapSpaceId {
+    for (const neighbor of hexNeighbors(bridge)) {
+      const id = hexSpaceId(neighbor);
+      const field = adv(state).fields[id];
+      if (field && !field.standalone && mapFieldLayer(state, field) === layer) {
+        return id;
+      }
+    }
+    throw new Error(`no ${layer} tile neighbour of the bridge hex`);
+  }
+
+  it("REJECTED without a declaration, ACCEPTED once the board is declared", () => {
+    const { plans, bridge } = bridgeFixture();
+    // CONTROL — today's behaviour: no declaration ⇒ the implicit-bridge problem.
+    const undeclared = validateCustomMapObjects(plans, [garrisonAt(bridge)]);
+    expect(undeclared.accepted).toHaveLength(0);
+    expect(undeclared.problems.join(" ")).toMatch(/both a Surface and an Underground/i);
+
+    // Declaring the board removes the ambiguity — accepted, no problem at all.
+    for (const layer of ["surface", "sea", "subterranean"] as const) {
+      const declared = validateCustomMapObjects(plans, [garrisonAt(bridge, layer)]);
+      expect(declared.accepted, `layer ${layer} accepted`).toHaveLength(1);
+      expect(declared.accepted[0].layer).toBe(layer);
+      expect(declared.problems, `layer ${layer} has no problem`).toHaveLength(0);
+    }
+  });
+
+  it("the DECLARED board decides who may walk onto the hex — underground declaration", () => {
+    const { plans, bridge } = bridgeFixture();
+    const state = objectsGame(plans, [garrisonAt(bridge, "subterranean")]);
+    const hex = hexSpaceId(bridge);
+    const field = adv(state).fields[hex]!;
+    expect(field.standaloneLayer).toBe("subterranean");
+    expect(field.terrain).toBeUndefined();
+
+    const surfaceRing = ringNeighborOnLayer(state, bridge, "surface");
+    const undergroundRing = ringNeighborOnLayer(state, bridge, "subterranean");
+    // Underground side may cross; the surface side is refused by the divide.
+    expect(canCrossEdge(state, undergroundRing, hex)).toBe(true);
+    expect(canCrossEdge(state, surfaceRing, hex)).toBe(false);
+    expect(canCrossEdge(state, hex, surfaceRing)).toBe(false);
+
+    // Observable movement, ONE point each way — the two interlocked tiles also
+    // auto-pair a Subterranean Gate, and walking round through it is the ONE
+    // sanctioned crossing; a single point isolates the hex's own edge.
+    let walk = refreshP1(state);
+    walk.heroes.hero_p1.spaceId = undergroundRing;
+    walk.heroes.hero_p1.movementPoints = 1;
+    walk.heroes.hero_p1.movementHaltedThisTurn = false;
+    expect(getReachableHeroPaths(walk, walk.heroes.hero_p1).has(hex)).toBe(true);
+    walk = applyOk(walk, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: hex });
+    expect(walk.heroes.hero_p1.spaceId).toBe(hex);
+
+    // …and cannot from the surface ring: not offered, and the move is refused.
+    const blocked = refreshP1(state);
+    blocked.heroes.hero_p1.spaceId = surfaceRing;
+    blocked.heroes.hero_p1.movementPoints = 1;
+    blocked.heroes.hero_p1.movementHaltedThisTurn = false;
+    expect(getReachableHeroPaths(blocked, blocked.heroes.hero_p1).has(hex)).toBe(false);
+    const refused = applyAction(blocked, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: hex });
+    expect(refused.errors.length).toBeGreaterThan(0);
+    expect(refused.state.heroes.hero_p1.spaceId).toBe(surfaceRing);
+  });
+
+  it("CONTROL: the SAME hex declared 'surface' flips who may walk onto it", () => {
+    const { plans, bridge } = bridgeFixture();
+    const state = objectsGame(plans, [garrisonAt(bridge, "surface")]);
+    const hex = hexSpaceId(bridge);
+    // The neighbour INFERENCE would have said "subterranean" here (an underground
+    // tile touches the hex) — the declaration overrides it.
+    expect(adv(state).fields[hex]!.standaloneLayer).toBe("surface");
+
+    const surfaceRing = ringNeighborOnLayer(state, bridge, "surface");
+    const undergroundRing = ringNeighborOnLayer(state, bridge, "subterranean");
+    expect(canCrossEdge(state, surfaceRing, hex)).toBe(true);
+    expect(canCrossEdge(state, undergroundRing, hex)).toBe(false);
+
+    let walk = refreshP1(state);
+    walk.heroes.hero_p1.spaceId = surfaceRing;
+    walk.heroes.hero_p1.movementPoints = 1;
+    walk.heroes.hero_p1.movementHaltedThisTurn = false;
+    expect(getReachableHeroPaths(walk, walk.heroes.hero_p1).has(hex)).toBe(true);
+    walk = applyOk(walk, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: hex });
+    expect(walk.heroes.hero_p1.spaceId).toBe(hex);
+    // Land declaration: no coastline halt (the "sea" case below diverges here).
+    expect(walk.heroes.hero_p1.movementHaltedThisTurn).not.toBe(true);
+
+    // The underground side gets ONE point too and is refused by the divide.
+    const blocked = refreshP1(state);
+    blocked.heroes.hero_p1.spaceId = undergroundRing;
+    blocked.heroes.hero_p1.movementPoints = 1;
+    blocked.heroes.hero_p1.movementHaltedThisTurn = false;
+    expect(getReachableHeroPaths(blocked, blocked.heroes.hero_p1).has(hex)).toBe(false);
+  });
+
+  it("a 'sea' declaration is a Surface WATER field — entering from land halts the hero", () => {
+    const { plans, bridge } = bridgeFixture();
+    const state = objectsGame(plans, [garrisonAt(bridge, "sea")]);
+    const hex = hexSpaceId(bridge);
+    const field = adv(state).fields[hex]!;
+    expect(field.terrain).toBe("water");
+    expect(field.standaloneLayer).toBe("surface"); // sea is Surface, not a third layer
+    expect(mapFieldLayer(state, field)).toBe("surface");
+
+    const surfaceRing = ringNeighborOnLayer(state, bridge, "surface");
+    let walk = refreshP1(state);
+    walk.heroes.hero_p1.spaceId = surfaceRing;
+    walk.heroes.hero_p1.movementPoints = 1;
+    walk.heroes.hero_p1.movementHaltedThisTurn = false;
+    walk = applyOk(walk, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: hex });
+    // The coastline halt: the hero embarks and stops for the turn.
+    expect(walk.heroes.hero_p1.spaceId).toBe(hex);
+    expect(walk.heroes.hero_p1.movementHaltedThisTurn).toBe(true);
+
+    // Still Underground-blind: the underground side cannot reach a Surface sea hex.
+    expect(canCrossEdge(state, ringNeighborOnLayer(state, bridge, "subterranean"), hex)).toBe(false);
+  });
+
+  it("sanitize: a valid board round-trips, junk and tile-slot declarations are dropped, absence stays absent", () => {
+    const standalone = { type: "standalone" as const, row: 4, col: 5 };
+    for (const layer of ["surface", "sea", "subterranean"] as const) {
+      expect(sanitizeCustomMapObject({ kind: "garrison", placement: standalone, layer })?.layer).toBe(layer);
+    }
+    // Junk value dropped, never coerced.
+    expect(sanitizeCustomMapObject({ kind: "garrison", placement: standalone, layer: "underground" })?.layer)
+      .toBeUndefined();
+    expect(sanitizeCustomMapObject({ kind: "garrison", placement: standalone, layer: 3 })?.layer).toBeUndefined();
+    // LEGACY: absent stays absent (the byte-identical inference path).
+    expect(sanitizeCustomMapObject({ kind: "garrison", placement: standalone })?.layer).toBeUndefined();
+    // A tile-slot object takes its host tile's layer — the declaration is stripped.
+    expect(
+      sanitizeCustomMapObject({
+        kind: "monolith",
+        placement: { type: "tile-slot", row: 4, col: 5, slot: 0 },
+        layer: "subterranean"
+      })?.layer
+    ).toBeUndefined();
+    // A Creature Bank pin (its own sanitize branch) keeps the declaration too.
+    expect(
+      sanitizeCustomMapObject({ kind: "creature_bank", bankId: "imp_cache", placement: standalone, layer: "subterranean" })
+        ?.layer
+    ).toBe("subterranean");
+  });
+});
+
+/**
+ * A hex outside both tiles' footprints, adjacent to BOTH, and crossable from each
+ * of them once the layer rule is set aside (`crossLayers`) — so a refused crossing
+ * in the tests above is the Surface↔Underground divide and never a yellow arc.
+ * It also touches NO Subterranean-Gate half: two interlocked tiles auto-pair a
+ * gate, and a gate half's twin hop is FREE, so a hex wedged between the two halves
+ * is legitimately one point away from BOTH layers (the sanctioned crossing) and
+ * would prove nothing about the declaration.
+ */
+function findLayerBridgeHex(a: HexCoord, b: HexCoord): HexCoord {
+  const footA = new Set(tileFootprint(a, 0).map(hexSpaceId));
+  const footB = new Set(tileFootprint(b, 0).map(hexSpaceId));
+  const plans: CustomMapTilePlan[] = [
+    { row: a.row, col: a.col, group: "far", faceDown: false, tileDefId: "F1" },
+    { row: b.row, col: b.col, group: "subterranean", faceDown: false, tileDefId: "U1" }
+  ];
+  for (let dRow = -3; dRow <= 3; dRow += 1) {
+    for (let dCol = -3; dCol <= 3; dCol += 1) {
+      const cand = { row: a.row + dRow, col: a.col + dCol };
+      const id = hexSpaceId(cand);
+      if (footA.has(id) || footB.has(id)) {
+        continue;
+      }
+      const neighbors = hexNeighbors(cand).map(hexSpaceId);
+      if (!neighbors.some((n) => footA.has(n)) || !neighbors.some((n) => footB.has(n))) {
+        continue;
+      }
+      const probe = objectsGame(plans, [
+        { kind: "garrison", placement: { type: "standalone", row: cand.row, col: cand.col }, layer: "surface" }
+      ]);
+      const touchesGateHalf = hexNeighbors(cand).some(
+        (neighbor) => probe.adventure?.fields[hexSpaceId(neighbor)]?.location === "subterranean_gate"
+      );
+      if (touchesGateHalf) {
+        continue;
+      }
+      const openFrom = (layer: "surface" | "subterranean"): boolean =>
+        hexNeighbors(cand).some((neighbor) => {
+          const nId = hexSpaceId(neighbor);
+          const field = probe.adventure?.fields[nId];
+          if (!field || field.standalone || mapFieldLayer(probe, field) !== layer) {
+            return false;
+          }
+          // crossLayers bypasses ONLY the layer rule, so this probes the seals.
+          return canCrossEdge(probe, nId, id, { moveThrough: false, waterWalk: false, crossLayers: true });
+        });
+      if (openFrom("surface") && openFrom("subterranean")) {
+        return cand;
+      }
+    }
+  }
+  throw new Error("no crossable hex touching both layers");
+}
+
 function findHexTouchingBoth(a: HexCoord, b: HexCoord): HexCoord {
   const footA = new Set(tileFootprint(a, 0).map(hexSpaceId));
   const footB = new Set(tileFootprint(b, 0).map(hexSpaceId));

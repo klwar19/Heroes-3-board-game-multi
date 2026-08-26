@@ -6845,6 +6845,44 @@ export function MapDesigner({
                 ✕
               </button>
             </header>
+            {selectedObject.placement.type === "standalone" ? (
+              <>
+                <div className="popoverSectionLabel">Board</div>
+                <small className="popoverHint">
+                  Which board this separate hex belongs to. Declare it to place the hex between a Surface and an
+                  Underground tile — the hex then belongs to the declared board only (crossing between the layers stays
+                  Subterranean-Gate-only). Auto infers it from the tiles the hex touches and refuses a hex touching
+                  both.
+                </small>
+                <select
+                  aria-label="Object board"
+                  className="popoverSelect"
+                  onChange={(event) =>
+                    onObjectsChange?.(
+                      objects.map((object, i) => {
+                        if (i !== (selectedObjectIndex as number)) {
+                          return object;
+                        }
+                        const next = { ...object };
+                        const raw = event.target.value;
+                        if (raw === "") {
+                          delete next.layer;
+                        } else {
+                          next.layer = raw as CustomMapObject["layer"];
+                        }
+                        return next;
+                      })
+                    )
+                  }
+                  value={selectedObject.layer ?? ""}
+                >
+                  <option value="">Auto — from the tiles it touches (default)</option>
+                  <option value="surface">Normal field (Surface land)</option>
+                  <option value="sea">Water field (Surface sea — entering halts without Water Walk)</option>
+                  <option value="subterranean">Underground field</option>
+                </select>
+              </>
+            ) : null}
             {selectedObject.kind === "creature_bank" ? (
               <>
                 <div className="popoverSectionLabel">Which bank</div>

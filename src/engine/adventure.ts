@@ -259,6 +259,7 @@ import type {
   CustomFieldReward,
   CustomGuardSpec,
   CustomMapObjectKind,
+  CustomMapObjectLayer,
   CustomWinCondition,
   EventDiePoolEntry,
   EventPoolEntry,
@@ -1674,6 +1675,44 @@ export function planIsUnderground(plan: { group?: string; underground?: boolean 
 
 export function tileLayer(tile: MapTileState | undefined): MapLayer {
   return tile && planIsUnderground(tile) ? "subterranean" : "surface";
+}
+
+/** The values a {@link CustomMapObject.layer} declaration may take. */
+export const CUSTOM_MAP_OBJECT_LAYERS: readonly CustomMapObjectLayer[] = ["surface", "sea", "subterranean"];
+
+/**
+ * The board a designer STANDALONE object hex DECLARES, or `undefined` when it
+ * declares nothing (every legacy map) and the layer must be inferred from the
+ * tiles it touches. THE one read of {@link CustomMapObject.layer}: the setup
+ * validator, the carve and the designer UI all go through it instead of testing
+ * the raw string, so "declared" means the same thing everywhere. A declaration
+ * on a TILE-SLOT placement is ignored (the sanitiser strips it) — an on-tile
+ * object takes its host tile's layer.
+ */
+export function declaredStandaloneLayer(object: {
+  layer?: CustomMapObjectLayer;
+  placement?: { type?: string };
+}): CustomMapObjectLayer | undefined {
+  if (object.placement && object.placement.type !== "standalone") {
+    return undefined;
+  }
+  return object.layer && CUSTOM_MAP_OBJECT_LAYERS.includes(object.layer) ? object.layer : undefined;
+}
+
+/**
+ * The {@link MapLayer} a declared standalone object hex sits on — the layer fold
+ * of {@link declaredStandaloneLayer}, with "sea" folding to "surface" (open water
+ * is Surface terrain, not a third layer). `undefined` when nothing is declared.
+ */
+export function declaredStandaloneMapLayer(object: {
+  layer?: CustomMapObjectLayer;
+  placement?: { type?: string };
+}): MapLayer | undefined {
+  const declared = declaredStandaloneLayer(object);
+  if (!declared) {
+    return undefined;
+  }
+  return declared === "subterranean" ? "subterranean" : "surface";
 }
 
 /**

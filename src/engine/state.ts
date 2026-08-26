@@ -14308,7 +14308,35 @@ export type CustomMapObject = {
   exitMode?: OnewayExitMode;
   /** One-way EXIT only ("mix" mode): freely choosable BEFORE the roll. */
   alwaysPickable?: boolean;
+  /**
+   * STANDALONE placements only — which board the object's own hex belongs to,
+   * DECLARED by the designer instead of inferred from the tiles it happens to
+   * touch. ABSENT (every legacy map) keeps the original inference: any
+   * Underground neighbour ⇒ Underground, else Surface, and a hex touching BOTH
+   * layers is REJECTED at validation as an implicit layer bridge. Declaring it
+   * removes that ambiguity, so such a hex is accepted: the hex belongs to the
+   * declared board only and the Surface↔Underground divide holds for it exactly
+   * like a tile hex ({@link MapFieldState.standaloneLayer} /
+   * {@link CustomMapObject} carve). Values:
+   * - "surface": normal land field (the inference default).
+   * - "sea": a Surface WATER field — stamps {@link MapFieldState.terrain}
+   *   "water", so entering it from land is the ordinary coastline halt unless
+   *   the hero has Water Walk.
+   * - "subterranean": an Underground field, reachable only from the Underground
+   *   layer (crossing between layers stays Subterranean-Gate-only).
+   * Stripped from a tile-slot placement at sanitize — an on-tile object takes
+   * its host tile's layer and terrain, as it always did.
+   */
+  layer?: CustomMapObjectLayer;
 };
+
+/**
+ * The board a designer STANDALONE object hex declares
+ * ({@link CustomMapObject.layer}). "sea" is not a third LAYER — it is a Surface
+ * water field — so the layer fold is "subterranean" vs everything else; the
+ * vocabulary matches the tile groups ("sea", "subterranean") deliberately.
+ */
+export type CustomMapObjectLayer = "surface" | "sea" | "subterranean";
 
 /** The Obelisk-role config block of a {@link CustomMapPreset}. */
 export type CustomMapObeliskConfig = NonNullable<CustomMapPreset["obelisks"]>;

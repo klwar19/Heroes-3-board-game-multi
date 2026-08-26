@@ -3230,6 +3230,12 @@ UI in `map-designer.tsx` / `map-preset-editor.tsx`. One line each:
 5. **One-hex objects** (`preset.objects`): standalone Monoliths, 4 colored Teleport-Gate
    networks, one-way halves, the three outposts and a PINNED Creature Bank (always
    border-free — `creature-bank-objects.test.ts`).
+   A standalone object's optional `layer` declaration chooses its board: `surface`
+   (normal land), `sea` (Surface water, including the ordinary coastline halt), or
+   `subterranean`. With a declaration, a hex touching both boards is legal but can be
+   entered only from the declared layer; without one, legacy neighbour inference and
+   the implicit-layer-bridge rejection are unchanged (`map-objects.test.ts`). The
+   designer exposes this only for standalone placements (`map-designer.test.tsx`).
 6. **Ⅶ-field designation** (`viiField`): forces the difficulty-7 objective whatever tile
    lands there, BLOCKING the start on a victory-vs-design conflict; an UNPINNED grail /
    utopia slot now also draws a tile that PRINTS it (`designationCenterTile`) so art and

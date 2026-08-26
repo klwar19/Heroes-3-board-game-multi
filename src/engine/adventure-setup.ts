@@ -65,6 +65,8 @@ import {
   carveColoredGateField,
   carveMapTokenField,
   carveOnewayField,
+  declaredStandaloneLayer,
+  declaredStandaloneMapLayer,
   stampDesignerFieldReward,
   EVENTS_DECK_ID,
   gatePairColor,
@@ -1828,14 +1830,31 @@ export function validateCustomMapObjects(
         }
       }
     }
-    if (touchesSurface && touchesSub) {
+    // A DECLARED board ({@link CustomMapObject.layer}) removes the ambiguity the
+    // bridge rejection exists for: the hex belongs to the declared layer only, so
+    // touching both boards is legal (the far-layer neighbours simply cannot enter
+    // it — the divide stays Subterranean-Gate-only, enforced in canCrossEdge via
+    // the stamped `standaloneLayer`). With NOTHING declared the layer is still
+    // inferred from the neighbours, and a both-touching hex is still refused.
+    const declaredLayer = declaredStandaloneMapLayer(object);
+    if (!declaredLayer && touchesSurface && touchesSub) {
       problems.push(
-        `${label}: a standalone hex may not touch BOTH a Surface and an Underground tile (implicit layer bridge).`
+        `${label}: a standalone hex may not touch BOTH a Surface and an Underground tile (implicit layer bridge). ` +
+          `Declare the object's board (normal / water / underground) to place it here.`
       );
       return;
     }
-    if (!touchesSurface && !touchesSub) {
-      warnings.push(`${label}: a standalone hex at ${row},${col} touches no tile — it is unreachable in game.`);
+    const touchesOwnLayer = declaredLayer
+      ? declaredLayer === "subterranean"
+        ? touchesSub
+        : touchesSurface
+      : touchesSurface || touchesSub;
+    if (!touchesOwnLayer) {
+      warnings.push(
+        declaredLayer && (touchesSurface || touchesSub)
+          ? `${label}: a standalone hex at ${row},${col} declares the ${declaredLayer === "subterranean" ? "Underground" : "Surface"} board but touches no ${declaredLayer === "subterranean" ? "Underground" : "Surface"} tile — it is unreachable in game.`
+          : `${label}: a standalone hex at ${row},${col} touches no tile — it is unreachable in game.`
+      );
     }
     objectHexes.add(hex);
     if (object.kind === "gate" && object.pair !== undefined) {
@@ -1904,6 +1923,20 @@ export function validateCustomMapObjects(
   }
 
   return { accepted, problems, warnings };
+}
+
+/**
+ * The layer a standalone object hex sits on: the object's own DECLARATION when it
+ * has one ({@link CustomMapObject.layer} — the designer said which board this hex
+ * belongs to), otherwise the legacy inference from the ACTUAL tiles it neighbours.
+ * THE one writer of {@link MapFieldState.standaloneLayer}.
+ */
+function standaloneObjectLayer(
+  adventure: AdventureState,
+  spaceId: MapSpaceId,
+  object: CustomMapObject
+): "surface" | "subterranean" {
+  return declaredStandaloneMapLayer(object) ?? standaloneLayerFromLiveState(adventure, spaceId);
 }
 
 /** The layer a standalone hex sits on, from the ACTUAL tiles it neighbours (setup). */
@@ -2039,7 +2072,9 @@ function applyCustomMapObjects(adventure: AdventureState, objects: CustomMapObje
         everFlagged: false,
         settlementResource: null,
         standalone: true,
-        standaloneLayer: standaloneLayerFromLiveState(adventure, spaceId)
+        standaloneLayer: standaloneObjectLayer(adventure, spaceId, object),
+        // A declared "sea" board is a Surface WATER field (never a third layer).
+        ...(declaredStandaloneLayer(object) === "sea" ? { terrain: "water" as const } : {})
       };
       adventure.fields[spaceId] = field;
       continue;
@@ -2054,7 +2089,11 @@ function applyCustomMapObjects(adventure: AdventureState, objects: CustomMapObje
       everFlagged: false,
       settlementResource: null,
       standalone: true,
-      standaloneLayer: standaloneLayerFromLiveState(adventure, spaceId)
+      standaloneLayer: standaloneObjectLayer(adventure, spaceId, object),
+      // A declared "sea" board is a Surface WATER field (never a third layer):
+      // entering it from land is the ordinary coastline halt unless the hero
+      // has Water Walk (`isSeaField` reads exactly this).
+      ...(declaredStandaloneLayer(object) === "sea" ? { terrain: "water" as const } : {})
     };
     // Tents, Barriers and one-way monoliths share the gate COLOR mechanism
     // (`gatePair`) — a tent flag of a color opens same-color barriers, a
