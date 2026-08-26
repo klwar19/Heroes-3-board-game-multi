@@ -24,7 +24,7 @@ import { artifactSetTierAt, type GameAction, type LegalAction } from "@/engine";
 // no offer, so no button renders. Clicking dispatches the exact legal payload.
 // ---------------------------------------------------------------------------
 
-type HeroMapActionKey = "train" | "tribulation" | "revisit" | "build" | "artifact-set";
+type HeroMapActionKey = "train" | "tribulation" | "revisit" | "build" | "artifact-set" | "ally-transfer";
 
 /** EN/VI label + a one-line cost/effect tooltip per hero map action. */
 const HERO_MAP_ACTION_LABELS: Record<HeroMapActionKey, { en: string; vi: string; title: string }> = {
@@ -52,11 +52,16 @@ const HERO_MAP_ACTION_LABELS: Record<HeroMapActionKey, { en: string; vi: string;
     en: "",
     vi: "",
     title: "Artifact set bonus — once per round"
+  },
+  "ally-transfer": {
+    en: "",
+    vi: "",
+    title: "Offer this resource or Artifact to an ally; they must accept"
   }
 };
 
 /** Keys whose button text is the ENGINE's label (several offers may co-exist). */
-const ENGINE_LABELLED_KEYS = new Set<HeroMapActionKey>(["revisit", "build", "artifact-set"]);
+const ENGINE_LABELLED_KEYS = new Set<HeroMapActionKey>(["revisit", "build", "artifact-set", "ally-transfer"]);
 
 /** Which hero map action a legal action is, or null when it is not one of them. */
 function heroMapActionKey(action: GameAction): HeroMapActionKey | null {
@@ -71,6 +76,9 @@ function heroMapActionKey(action: GameAction): HeroMapActionKey | null {
   }
   if (action.type === "BUILD_GRAIL") {
     return "build";
+  }
+  if (action.type === "OFFER_ALLY_TRANSFER") {
+    return "ally-transfer";
   }
   // Polish Set Artifacts: only the MAP tiers reach a map legal-action list at
   // all (the combat tiers live in the command dock) — the engine decides which of
@@ -116,6 +124,8 @@ export function HeroActionsDock({
               ? // One offer per set tier, and the Diplomat's Cloak scry is offered
                 // once per Neutral deck — so the set id alone is not unique.
                 `${offer.key}:${offer.action.setId}:${offer.action.tier}:${offer.action.neutralTier ?? ""}`
+              : offer.action.type === "OFFER_ALLY_TRANSFER"
+                ? `${offer.key}:${offer.action.fromHeroId}:${offer.action.targetPlayerId}:${offer.action.targetHeroId ?? "market"}:${JSON.stringify(offer.action.transfer)}`
               : offer.key;
         return (
           <button

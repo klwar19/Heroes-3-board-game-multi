@@ -966,7 +966,10 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // v80: Polish Alliance mode adds team-total VP scoring to serialized scoring
 // events. A v79 worker would select a different winner for the same snapshot.
 // `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 80;
+// v81: Polish Alliance mode adds the OFFER_ALLY_TRANSFER action and private
+// pending-visit acceptance step. Older workers cannot validate or apply it.
+// `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 81;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

@@ -653,6 +653,11 @@ export type StatisticType = "attack" | "defense" | "power" | "knowledge";
 export type AbilityClass = "might" | "magic" | "economy" | "adventure" | "combat";
 export type AttackRollMode = "normal" | "advantage" | "disadvantage";
 export type ResourceKind = "gold" | "buildingMaterials" | "valuables";
+
+/** One consensual Polish Alliance transfer offer. */
+export type AllyTransfer =
+  | { kind: "resource"; resource: ResourceKind }
+  | { kind: "artifact"; cardId: CardId };
 export type ResourceCost = Partial<Record<ResourceKind, number>>;
 
 export type TargetDefinition =
@@ -4631,6 +4636,16 @@ export type GameAction =
       cardId: CardId;
     }
   | { type: "REVISIT_FIELD"; playerId: PlayerId; heroId: HeroId }
+  | {
+      /** Offer one resource or one hand Artifact to an allied player. */
+      type: "OFFER_ALLY_TRANSFER";
+      playerId: PlayerId;
+      fromHeroId: HeroId;
+      targetPlayerId: PlayerId;
+      /** Required for adjacency; omitted for a resource offer made from a market-capable field. */
+      targetHeroId?: HeroId;
+      transfer: AllyTransfer;
+    }
   /**
    * Build a carried Grail at the hero's current Town/Settlement (map-maker
    * `objectives.grailBuildAt`). Moves grail status to "built", grants the
@@ -10964,6 +10979,14 @@ export type VisitStep =
     }
   | { type: "PAY_TO"; prompt: string; costOptions: ResourceCost[]; steps: VisitStep[] }
   | { type: "GAIN_RESOURCES"; gold?: number; buildingMaterials?: number; valuables?: number }
+  | {
+      /** Accepted Polish Alliance offer; revalidated and applied automatically. */
+      type: "ALLY_TRANSFER";
+      fromPlayerId: PlayerId;
+      fromHeroId: HeroId;
+      targetHeroId?: HeroId;
+      transfer: AllyTransfer;
+    }
   | { type: "GAIN_EXPERIENCE"; amount: number }
   | {
       /**

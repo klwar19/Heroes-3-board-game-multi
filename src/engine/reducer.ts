@@ -105,6 +105,7 @@ import {
   resolveExplorersDiscard,
   mulliganCard,
   openingHandMulligan,
+  offerAllyTransfer,
   autoResolveRandomTownPackChoice,
   resolveVisitStep,
   retreatFromCombat,
@@ -26052,6 +26053,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "OPENING_HAND_MULLIGAN",
   "ASTROLOGERS_HERO_EMPOWER",
   "REVISIT_FIELD",
+  "OFFER_ALLY_TRANSFER",
   "BUILD_GRAIL",
   "OPEN_MARKET",
   "DISCOVER_TILE",
@@ -26561,6 +26563,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "REVISIT_FIELD":
         revisitField(nextState, action);
+        break;
+      case "OFFER_ALLY_TRANSFER":
+        offerAllyTransfer(nextState, action);
         break;
       case "BUILD_GRAIL":
         buildGrail(nextState, action);

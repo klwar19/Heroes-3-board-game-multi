@@ -8889,6 +8889,109 @@ function locationDefinitionsSafe(locationId: string) {
   );
 }
 
+/**
+ * Validate one Polish Alliance transfer against the live board. Returning a
+ * message (rather than a boolean) lets both the offer handler and acceptance
+ * revalidation reject forged/stale payloads with the same authoritative rule.
+ */
+export function allyTransferError(
+  state: GameState,
+  fromPlayerId: PlayerId,
+  fromHeroId: HeroId,
+  targetPlayerId: PlayerId,
+  targetHeroId: HeroId | undefined,
+  transfer: import("./state").AllyTransfer
+): string | null {
+  if (!houseRuleEnabled(state, "polish-alliance-mode")) {
+    return "Polish Alliance mode is not enabled.";
+  }
+  if (fromPlayerId === targetPlayerId || !playersAreAllied(state, fromPlayerId, targetPlayerId)) {
+    return "Only allied players may exchange resources or Artifacts.";
+  }
+  const sourcePlayer = state.players[fromPlayerId];
+  const targetPlayer = state.players[targetPlayerId];
+  const sourceHero = state.heroes[fromHeroId];
+  if (
+    !sourcePlayer ||
+    !targetPlayer ||
+    sourcePlayer.eliminated ||
+    targetPlayer.eliminated ||
+    sourceHero?.controllerId !== fromPlayerId ||
+    !sourceHero.spaceId
+  ) {
+    return "The initiating Hero or allied player is no longer available.";
+  }
+
+  const targetHero = targetHeroId ? state.heroes[targetHeroId] : undefined;
+  const adjacent = Boolean(
+    targetHero?.controllerId === targetPlayerId &&
+      targetHero.spaceId &&
+      parseHexSpaceId(sourceHero.spaceId) &&
+      parseHexSpaceId(targetHero.spaceId) &&
+      hexDistance(parseHexSpaceId(sourceHero.spaceId)!, parseHexSpaceId(targetHero.spaceId)!) === 1
+  );
+  if (targetHeroId && targetHero?.controllerId !== targetPlayerId) {
+    return "That target Hero does not belong to the receiving ally.";
+  }
+
+  if (transfer.kind === "artifact") {
+    if (!adjacent) {
+      return "Artifacts may be transferred only while allied Heroes are on adjacent fields.";
+    }
+    if (!sourcePlayer.hand.includes(transfer.cardId) || cardLibrary[transfer.cardId]?.kind !== "artifact") {
+      return "That Artifact is no longer in the initiating player's hand.";
+    }
+    return null;
+  }
+
+  if ((sourcePlayer.resources[transfer.resource] ?? 0) < 1) {
+    return "The initiating player no longer has that resource.";
+  }
+  const sourceField = state.adventure?.fields[sourceHero.spaceId];
+  const atTradeField =
+    sourceField?.location === "town" ||
+    sourceField?.location === "random_town" ||
+    sourceField?.location === "settlement" ||
+    sourceField?.location === "trading_post";
+  return adjacent || atTradeField
+    ? null
+    : "Resources require adjacent allied Heroes or an initiating Hero at a Town, Settlement, or Trading Post.";
+}
+
+function applyAllyTransfer(state: GameState, visit: PendingVisit, step: Extract<VisitStep, { type: "ALLY_TRANSFER" }>): void {
+  const error = allyTransferError(
+    state,
+    step.fromPlayerId,
+    step.fromHeroId,
+    visit.playerId,
+    step.targetHeroId,
+    step.transfer
+  );
+  if (error) {
+    throw new Error(error);
+  }
+  const source = state.players[step.fromPlayerId]!;
+  const target = state.players[visit.playerId]!;
+  let itemName: string;
+  if (step.transfer.kind === "artifact") {
+    const index = source.hand.indexOf(step.transfer.cardId);
+    source.hand.splice(index, 1);
+    target.hand.push(step.transfer.cardId);
+    // The offer itself is private to the receiver; the public event must not
+    // expose a card that moved between hidden hands.
+    itemName = "an Artifact";
+  } else {
+    source.resources[step.transfer.resource] -= 1;
+    target.resources[step.transfer.resource] += 1;
+    itemName = `1 ${step.transfer.resource.replace(/([A-Z])/g, " $1").toLowerCase()}`;
+  }
+  appendEvent(state, {
+    type: "EVENT_NOTE",
+    playerId: step.fromPlayerId,
+    message: `${source.name} transferred ${itemName} to ${target.name}.`
+  });
+}
+
 /** Steps that need a player decision before they can resolve. */
 function stepNeedsInput(step: VisitStep): boolean {
   return (
@@ -8999,6 +9102,9 @@ export function processPendingVisit(state: GameState): void {
       }
       case "GAIN_RESOURCES":
         gainResources(state, visit.playerId, step, `visited ${fieldName(state, visit.fieldId)}`);
+        break;
+      case "ALLY_TRANSFER":
+        applyAllyTransfer(state, visit, step);
         break;
       case "PRISON":
         // "Gain a Secondary Hero. Place their model on this Field. If you

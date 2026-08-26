@@ -149,6 +149,7 @@ import {
   viewEarthHeroOrigins,
   freeSpellBookActive,
   abilityRollRerollActive,
+  allyTransferError,
   gainExperience,
   gainResources,
   gainTownCube,
@@ -2329,6 +2330,60 @@ export function revisitField(state: GameState, action: Extract<GameAction, { typ
 
   hero.movementPoints -= digCost;
   beginFieldVisit(state, hero.id, hero.spaceId, !freshlyReopenedVisitable);
+}
+
+/** Open a private accept/decline prompt for a Polish Alliance transfer. */
+export function offerAllyTransfer(
+  state: GameState,
+  action: Extract<GameAction, { type: "OFFER_ALLY_TRANSFER" }>
+): void {
+  const adventure = requireAdventure(state);
+  assertActiveTurn(state, action.playerId);
+  assertHandRefreshed(state, action.playerId);
+  assertParallelInteractionFree(state, action.playerId);
+  assertNoPendingInput(state);
+  const error = allyTransferError(
+    state,
+    action.playerId,
+    action.fromHeroId,
+    action.targetPlayerId,
+    action.targetHeroId,
+    action.transfer
+  );
+  if (error) throw new Error(error);
+
+  const sourceHero = state.heroes[action.fromHeroId]!;
+  const targetHero = action.targetHeroId ? state.heroes[action.targetHeroId] : undefined;
+  const item =
+    action.transfer.kind === "artifact"
+      ? cardLibrary[action.transfer.cardId]?.name ?? action.transfer.cardId
+      : `1 ${action.transfer.resource.replace(/([A-Z])/g, " $1").toLowerCase()}`;
+  adventure.pendingVisit = {
+    heroId: targetHero?.id ?? sourceHero.id,
+    playerId: action.targetPlayerId,
+    fieldId: targetHero?.spaceId ?? sourceHero.spaceId!,
+    steps: [
+      {
+        type: "CHOOSE_ONE",
+        prompt: `${state.players[action.playerId]?.name ?? "Your ally"} offers you ${item}. Accept?`,
+        options: [
+          {
+            label: `Accept ${item}`,
+            steps: [
+              {
+                type: "ALLY_TRANSFER",
+                fromPlayerId: action.playerId,
+                fromHeroId: action.fromHeroId,
+                ...(action.targetHeroId ? { targetHeroId: action.targetHeroId } : {}),
+                transfer: action.transfer
+              }
+            ]
+          },
+          { label: "Decline", steps: [] }
+        ]
+      }
+    ]
+  };
 }
 
 /**

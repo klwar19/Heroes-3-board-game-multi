@@ -17,6 +17,7 @@ import { isMarketLocation, locationDefinitions, TRADE_RATES } from "@/data/map/l
 import { sampleBuildings } from "@/data/towns/buildings";
 import {
   adventurePvpTroopLoss,
+  allyTransferError,
   applyRecruitGoldDiscount,
   armyHasMapEffect,
   canDigGrail,
@@ -230,6 +231,7 @@ import {
   controllerOf,
   humanPlayerIdsByController,
   isComputerPlayer,
+  playersAreAllied,
 } from "./computer/control";
 import { computerDecisionOwner } from "./computer/window";
 import { SHARED_DECK_IDS } from "./decks";
@@ -13169,6 +13171,86 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     }
 
     const field = adventure.fields[hero.spaceId];
+
+    // Polish Alliance variant. Every offer names its exact initiating Hero;
+    // target main/secondary Heroes are treated identically. Resource gifts use
+    // one-unit offers so the same safe, consensual prompt can be repeated.
+    if (houseRuleEnabled(state, "polish-alliance-mode")) {
+      for (const targetPlayerId of Object.keys(state.players)) {
+        if (
+          targetPlayerId === playerId ||
+          state.players[targetPlayerId]?.eliminated ||
+          !playersAreAllied(state, playerId, targetPlayerId)
+        ) {
+          continue;
+        }
+        const targetName = state.players[targetPlayerId]?.name ?? targetPlayerId;
+        const targetHeroes = Object.values(state.heroes).filter(
+          (candidate) => candidate.controllerId === targetPlayerId && candidate.spaceId
+        );
+        const tradeField =
+          field?.location === "town" ||
+          field?.location === "random_town" ||
+          field?.location === "settlement" ||
+          field?.location === "trading_post";
+
+        if (tradeField) {
+          for (const resource of ["gold", "buildingMaterials", "valuables"] as const) {
+            const transfer = { kind: "resource" as const, resource };
+            if (!allyTransferError(state, playerId, hero.id, targetPlayerId, undefined, transfer)) {
+              actions.push({
+                label: `Offer ${targetName} 1 ${resource.replace(/([A-Z])/g, " $1").toLowerCase()}${whichHero(hero.kind)}`,
+                action: {
+                  type: "OFFER_ALLY_TRANSFER",
+                  playerId,
+                  fromHeroId: hero.id,
+                  targetPlayerId,
+                  transfer
+                }
+              });
+            }
+          }
+        }
+
+        for (const targetHero of targetHeroes) {
+          for (const cardId of player.hand) {
+            if (cardLibrary[cardId]?.kind !== "artifact") continue;
+            const transfer = { kind: "artifact" as const, cardId };
+            if (!allyTransferError(state, playerId, hero.id, targetPlayerId, targetHero.id, transfer)) {
+              actions.push({
+                label: `Offer ${targetName} ${cardLibrary[cardId]?.name ?? cardId}${whichHero(hero.kind)}`,
+                action: {
+                  type: "OFFER_ALLY_TRANSFER",
+                  playerId,
+                  fromHeroId: hero.id,
+                  targetPlayerId,
+                  targetHeroId: targetHero.id,
+                  transfer
+                }
+              });
+            }
+          }
+          if (!tradeField) {
+            for (const resource of ["gold", "buildingMaterials", "valuables"] as const) {
+              const transfer = { kind: "resource" as const, resource };
+              if (!allyTransferError(state, playerId, hero.id, targetPlayerId, targetHero.id, transfer)) {
+                actions.push({
+                  label: `Offer ${targetName} 1 ${resource.replace(/([A-Z])/g, " $1").toLowerCase()}${whichHero(hero.kind)}`,
+                  action: {
+                    type: "OFFER_ALLY_TRANSFER",
+                    playerId,
+                    fromHeroId: hero.id,
+                    targetPlayerId,
+                    targetHeroId: targetHero.id,
+                    transfer
+                  }
+                });
+              }
+            }
+          }
+        }
+      }
+    }
 
     // A hero parked on a Market may reopen the trade/shop panel any time, for
     // free — no movement point needed, so it stays available even when a
