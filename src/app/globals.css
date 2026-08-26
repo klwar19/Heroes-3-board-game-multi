@@ -14692,7 +14692,11 @@ span.recruitThumb {
 /* Battle prep is a fast visual decision. Keep the full two-tier rules in the
    town panel/tooltips and show only the currently active tier beneath big art. */
 .mgqBattleSpiritPicker { padding: 12px; }
-.mgqBattleSpiritChoices { grid-template-columns: repeat(4, minmax(92px, 1fr)); gap: 9px; }
+/* auto-fit, NOT a fixed 4×92px row: this picker renders in the 248px combat
+   deploy sidebar too, where four forced 92px tracks (~420px min-content)
+   overflowed the column and painted the whole setup layout over itself. In the
+   wide PvP prep panel auto-fit still lays the four Spirits in one row. */
+.mgqBattleSpiritChoices { grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); gap: 9px; }
 .mgqBattleSpiritChoices button { justify-items: center; padding: 8px; text-align: center; border-radius: 10px; }
 .mgqBattleSpiritChoices button .mgqBattleSpiritArt {
   width: min(104px, 100%);
@@ -14715,6 +14719,13 @@ span.recruitThumb {
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
+
+/* Inside the narrow (~248px) combat deploy sidebar: a compact 2×2 with smaller
+   art, so the picker never towers over the unit tiles below it. */
+.placementPanel .mgqBattleSpiritChoices { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.placementPanel .mgqBattleSpiritPicker { padding: 8px; }
+.placementPanel .mgqBattleSpiritChoices button { padding: 6px; }
+.placementPanel .mgqBattleSpiritChoices button .mgqBattleSpiritArt { width: min(72px, 100%); }
 
 @media (max-width: 620px) {
   .mgqBattleSpiritChoices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
