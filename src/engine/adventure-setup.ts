@@ -732,6 +732,10 @@ export function lobbyTeamAssignments(state: GameState): Record<PlayerId, number>
   const lobby = state.setupLobby;
   if (!lobby) return {};
   const seatIds = lobby.seats.map((seat) => seat.playerId);
+  const fixed = lobby.options.customMapPreset?.fixedTeams;
+  if (fixed?.length === seatIds.length) {
+    return Object.fromEntries(seatIds.map((playerId, index) => [playerId, fixed[index]]));
+  }
   const explicit = sanitizeTeamAssignments(lobby.options.teamAssignments, seatIds);
   if (explicit) return explicit;
   if (lobby.options.gameMode === "coop") {
@@ -3356,10 +3360,12 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // of being silently dropped from a 3- or 4-player game.
   let polishObjectiveFarSupply: string[] = [];
 
-  const explicitTeams = sanitizeTeamAssignments(
-    setupOptions.teamAssignments,
-    playerConfigs.map((config) => config.id)
-  );
+  const playerIds = playerConfigs.map((config) => config.id);
+  const fixedTeamNumbers =
+    mapPreset?.fixedTeams?.length === playerIds.length
+      ? Object.fromEntries(playerIds.map((playerId, index) => [playerId, mapPreset.fixedTeams![index]]))
+      : undefined;
+  const explicitTeams = fixedTeamNumbers ?? sanitizeTeamAssignments(setupOptions.teamAssignments, playerIds);
   if (explicitTeams && playerConfigs.length > 1 && new Set(Object.values(explicitTeams)).size < 2) {
     throw new Error("Choose at least two teams before starting the adventure.");
   }
@@ -4895,6 +4901,9 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
   }
 
   if (next.teamAssignments !== undefined) {
+    if (lobby.options.customMapPreset?.fixedTeams?.length === lobby.seats.length) {
+      throw new Error("This scenario fixes the starting-position teams.");
+    }
     if (state.sessionMode !== "single-player" && (next.gameMode ?? lobby.options.gameMode) !== "coop") {
       throw new Error("Custom teams are available in Co-op and single-player setup only.");
     }

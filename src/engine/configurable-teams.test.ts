@@ -156,4 +156,31 @@ describe("configurable setup teams", () => {
       })
     ).toThrow(/at least two teams/i);
   });
+
+  it("makes map-authored S1..SN teams authoritative", () => {
+    const state = createAdventureGameState({
+      seed: "fixed-map-teams",
+      gameMode: "coop",
+      players: players(4),
+      controllers: controllers(["p3", "p4"]),
+      teamAssignments: { p1: 1, p2: 2, p3: 1, p4: 2 },
+      customMapPreset: { fixedTeams: [1, 1, 2, 2] }
+    });
+    expect(state.playerTeams).toEqual({
+      p1: "setup-team-1",
+      p2: "setup-team-1",
+      p3: "setup-team-2",
+      p4: "setup-team-2"
+    });
+
+    const lobby = createAdventureLobbyState({ seed: "fixed-map-team-lobby", scenarioId: "skirmish" });
+    lobby.setupLobby!.options.customMapPreset = { fixedTeams: [1, 2] };
+    expect(lobbyTeamAssignments(lobby)).toEqual({ p1: 1, p2: 2 });
+    const edit = applyAction(lobby, {
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { teamAssignments: { p1: 1, p2: 1 } }
+    });
+    expect(edit.errors[0]?.message).toMatch(/scenario fixes/i);
+  });
 });

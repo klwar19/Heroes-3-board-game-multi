@@ -238,6 +238,7 @@ export function MapPresetEditor({
   const soloComputerStarts = (tiles ?? []).filter(
     (plan) => plan.group === "starting" && plan.singlePlayer?.role === "computer"
   ).length;
+  const startingPositionCount = (tiles ?? []).filter((plan) => plan.group === "starting").length;
   const summary = describeCustomMapPresetEntries(value);
   // Collapsed by default on a fresh/plain map so the tile board stays the
   // page's focus; opens itself when a map WITH conditions is loaded (0 → some),
@@ -672,6 +673,7 @@ export function MapPresetEditor({
   const groupCounts = {
     matchSetup:
       (value.supportedModes ? 1 : 0) +
+      (value.fixedTeams ? 1 : 0) +
       (value.difficulty ? 1 : 0) +
       (value.farTileOpening !== undefined ||
       value.farTilesPerPlayer !== undefined
@@ -2123,6 +2125,52 @@ export function MapPresetEditor({
           ? specificPanel("center", "No Ⅵ–Ⅶ center tile is placed yet — place one to configure its exact Ⅶ field.")
           : null}
       </section>
+
+      {startingPositionCount >= 2 ? (
+        <section className="mapPresetSection" aria-label="Scenario teams">
+          <div className="mapPresetSectionLabel">Fixed teams by starting position</div>
+          <div className="mapPresetChipRow">
+            <button
+              aria-pressed={value.fixedTeams === undefined}
+              className={`mapPresetChip${value.fixedTeams === undefined ? " active" : ""}`}
+              onClick={() => patch({ fixedTeams: undefined })}
+              type="button"
+            >
+              Players choose
+            </button>
+          </div>
+          {Array.from({ length: startingPositionCount }, (_, seatIndex) => (
+            <div className="mapPresetObjectiveRow" key={seatIndex}>
+              <span className="mapPresetObjectiveLabel">S{seatIndex + 1}</span>
+              <div className="mapPresetChipRow" role="group" aria-label={`Fixed team for S${seatIndex + 1}`}>
+                {Array.from({ length: startingPositionCount }, (_, teamIndex) => teamIndex + 1).map((team) => {
+                  const current = value.fixedTeams ?? Array.from({ length: startingPositionCount }, (_, index) => index + 1);
+                  const candidate = [...current];
+                  candidate[seatIndex] = team;
+                  return (
+                    <button
+                      aria-pressed={current[seatIndex] === team}
+                      className={`mapPresetChip${current[seatIndex] === team ? " active" : ""}`}
+                      disabled={new Set(candidate).size < 2}
+                      key={team}
+                      onClick={() => {
+                        patch({ fixedTeams: candidate });
+                      }}
+                      type="button"
+                    >
+                      Team {team}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+          <small className="mapPresetHint">
+            Locks the alliance for S1…S{startingPositionCount}. Choose Players choose to let the lobby decide.
+            A scenario must keep at least two opposing teams.
+          </small>
+        </section>
+      ) : null}
       <section className="mapPresetSection" aria-label="Obelisks">
         <div className="mapPresetSectionLabel">⚱ Obelisks</div>
         {modeTabs("obelisk")}

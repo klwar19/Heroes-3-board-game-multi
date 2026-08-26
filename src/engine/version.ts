@@ -959,7 +959,11 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // and a per-player Astrologers-round Azure recruit-use marker; older workers
 // would ignore both movement legality and the serialized reward entitlement.
 // Absent fields preserve v77 behaviour. `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 78;
+// v79: designed maps may serialize `CustomMapPreset.fixedTeams`, an authoritative
+// S1..SN alliance layout that overrides editable lobby teams at game build.
+// Older workers would ignore it and permit attacks between intended allies.
+// `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 79;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

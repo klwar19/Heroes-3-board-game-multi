@@ -12922,10 +12922,12 @@ function StartingPositionTeams({
   onAction: (action: GameAction) => void;
 }) {
   const lobby = state.setupLobby;
-  if (!lobby || (state.sessionMode !== "single-player" && lobby.options.gameMode !== "coop")) {
+  const hasFixedTeams = Boolean(lobby?.options.customMapPreset?.fixedTeams);
+  if (!lobby || (!hasFixedTeams && state.sessionMode !== "single-player" && lobby.options.gameMode !== "coop")) {
     return null;
   }
   const teams = lobbyTeamAssignments(state);
+  const fixed = lobby.options.customMapPreset?.fixedTeams?.length === lobby.seats.length;
   const custom = Boolean(lobby.options.teamAssignments);
   return (
     <section className="computerSeatPickers teamSetupPicker" aria-label="Starting position teams">
@@ -12938,12 +12940,13 @@ function StartingPositionTeams({
         <button
           aria-pressed={!custom}
           className="draftResetBtn"
+          disabled={fixed}
           onClick={() =>
             onAction({ type: "SET_GAME_OPTIONS", playerId: viewerPlayerId, options: { teamAssignments: {} } })
           }
           type="button"
         >
-          Default teams
+          {fixed ? "Scenario teams" : "Default teams"}
         </button>
       </div>
       {lobby.seats.map((seat, index) => (
@@ -12960,6 +12963,7 @@ function StartingPositionTeams({
                   aria-pressed={teams[seat.playerId] === team}
                   className={teams[seat.playerId] === team ? "selected" : ""}
                   key={team}
+                  disabled={fixed}
                   onClick={() =>
                     onAction({
                       type: "SET_GAME_OPTIONS",
@@ -12977,7 +12981,9 @@ function StartingPositionTeams({
         </div>
       ))}
       <small className="optionHint">
-        {custom
+        {fixed
+          ? "This map locks teams by starting position."
+          : custom
           ? "Custom teams selected. At least two teams are required to start."
           : state.sessionMode === "single-player"
             ? "Default uses the map’s normal single-player computer diplomacy."

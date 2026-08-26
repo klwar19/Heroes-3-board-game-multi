@@ -13681,6 +13681,12 @@ export type CustomRaidBossDef = {
 export type CustomMapPreset = {
   victoryMode?: VictoryMode;
   /**
+   * Scenario-locked alliances by starting-position order (S1, S2, ...).
+   * Each entry is a positive Team number. When present, the lobby displays
+   * these teams read-only and the game build ignores player team edits.
+   */
+  fixedTeams?: number[];
+  /**
    * CO-OP STEP 5 — which TABLE MODES this map is designed for.
    *
    * ABSENT (every legacy map and every built-in scenario sheet) = BOTH modes

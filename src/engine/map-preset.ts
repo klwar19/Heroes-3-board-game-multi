@@ -2294,6 +2294,16 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
   if (typeof raw.victoryMode === "string" && VICTORY_MODES.has(raw.victoryMode as VictoryMode)) {
     preset.victoryMode = raw.victoryMode as VictoryMode;
   }
+  if (Array.isArray(raw.fixedTeams) && raw.fixedTeams.length >= 2 && raw.fixedTeams.length <= 6) {
+    const teams = raw.fixedTeams.map((team) =>
+      typeof team === "number" && Number.isInteger(team) && team >= 1 && team <= raw.fixedTeams!.length
+        ? team
+        : 0
+    );
+    if (!teams.includes(0) && new Set(teams).size >= 2) {
+      preset.fixedTeams = teams;
+    }
+  }
   if (raw.computerDiplomacy === "allied" || raw.computerDiplomacy === "free-for-all") {
     preset.computerDiplomacy = raw.computerDiplomacy;
   }
@@ -2516,6 +2526,7 @@ export function customMapPresetIsActive(preset: CustomMapPreset | null | undefin
   }
   return Boolean(
     preset.victoryMode ||
+      (preset.fixedTeams && preset.fixedTeams.length > 0) ||
       // A narrowed mode list is a real condition (a co-op-only map seeds the
       // table mode), so it must keep the preset ACTIVE or the seed never runs.
       preset.supportedModes ||
@@ -2965,6 +2976,18 @@ export function describeCustomMapPresetEntries(
   }
   if (preset.supportedModes) {
     entries.push({ icon: "🤝", text: `Table mode: ${describeMapSupportedModes(preset)}` });
+  }
+  if (preset.fixedTeams) {
+    const groups = new Map<number, string[]>();
+    preset.fixedTeams.forEach((team, index) => {
+      const seats = groups.get(team) ?? [];
+      seats.push(`S${index + 1}`);
+      groups.set(team, seats);
+    });
+    entries.push({
+      icon: "🤝",
+      text: `Fixed teams: ${[...groups.values()].map((seats) => seats.join(" + ")).join(" vs ")}`
+    });
   }
   if (preset.difficulty) {
     entries.push({ icon: "⚙️", text: `Difficulty: ${DIFFICULTY_LABELS[preset.difficulty]}` });
