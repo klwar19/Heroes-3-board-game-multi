@@ -158,6 +158,44 @@ type ServerMessage =
 const SNAPSHOT_KEY = "snapshot";
 
 /**
+ * Legacy KV-backed Durable Objects reject any single value above 128 KiB.
+ * Keep enough headroom for key/structured-clone overhead and split only rooms
+ * that need it; small and already-persisted rooms retain the legacy value.
+ */
+const SNAPSHOT_CHUNK_BYTES = 64 * 1024;
+const SNAPSHOT_INLINE_BYTES = 64 * 1024;
+const SNAPSHOT_MAX_CHUNKS = 512;
+type SnapshotChunkBank = "a" | "b";
+type StoredSnapshotManifest = {
+  format: "room-snapshot-chunks-v1";
+  bank: SnapshotChunkBank;
+  chunkCount: number;
+  byteLength: number;
+  bankChunkCounts: Record<SnapshotChunkBank, number>;
+};
+
+function isStoredSnapshotManifest(value: unknown): value is StoredSnapshotManifest {
+  if (!value || typeof value !== "object") return false;
+  const raw = value as Partial<StoredSnapshotManifest>;
+  return (
+    raw.format === "room-snapshot-chunks-v1" &&
+    (raw.bank === "a" || raw.bank === "b") &&
+    Number.isInteger(raw.chunkCount) &&
+    Number(raw.chunkCount) > 0 &&
+    Number(raw.chunkCount) <= SNAPSHOT_MAX_CHUNKS &&
+    Number.isInteger(raw.byteLength) &&
+    Number(raw.byteLength) > 0 &&
+    Boolean(raw.bankChunkCounts) &&
+    Number.isInteger(raw.bankChunkCounts?.a) &&
+    Number.isInteger(raw.bankChunkCounts?.b)
+  );
+}
+
+function snapshotChunkKey(bank: SnapshotChunkBank, index: number): string {
+  return `snapshot-chunk-${bank}-${index}`;
+}
+
+/**
  * Storage key of the answered-action ledger (see answeredActionRequests). The
  * client RE-SENDS an unacknowledged frame over a recovered socket, and the
  * repeat may land on a freshly-woken instance whose in-memory ledger is gone —
@@ -185,6 +223,10 @@ export default class GameRoomServer implements Party.Server {
   readonly options: Party.ServerOptions = { hibernate: true };
 
   private snapshot: RoomSnapshot | null = null;
+  /** Active persisted chunk bank, null while the room still uses one inline value. */
+  private persistedSnapshotBank: SnapshotChunkBank | null = null;
+  /** Highest live chunk count in each alternating bank, used for bounded cleanup. */
+  private persistedSnapshotChunkCounts: Record<SnapshotChunkBank, number> = { a: 0, b: 0 };
   private readonly metricsEnabled: boolean;
 
   /**
@@ -506,7 +548,7 @@ export default class GameRoomServer implements Party.Server {
   }
 
   async onStart(): Promise<void> {
-    const stored = (await this.room.storage.get<RoomSnapshot>(SNAPSHOT_KEY)) ?? null;
+    const stored = await this.loadPersistedSnapshot();
     // Reclaim an abandoned single-player game. Its room is a private, isolated
     // Durable Object that no lobby sweeper can reach (it never enters the
     // directory and the per-account cap deliberately never counts it), so if it
@@ -516,7 +558,7 @@ export default class GameRoomServer implements Party.Server {
     // object is reclaimed by the platform's Durable Object lifecycle — nothing
     // in-process can reach one that never wakes.)
     if (stored && isPrivateSinglePlayer(stored.state) && this.isIdlePastStaleTtl(stored.updatedAt)) {
-      await this.room.storage.delete(SNAPSHOT_KEY);
+      await this.deletePersistedSnapshot();
       await this.room.storage.delete(ANSWERED_ACTIONS_KEY);
       this.snapshot = null;
       return;
@@ -639,7 +681,13 @@ export default class GameRoomServer implements Party.Server {
   }
 
   private async persist(): Promise<void> {
-    if (this.snapshot) {
+    if (!this.snapshot) return;
+
+    const encoded = new TextEncoder().encode(JSON.stringify(this.snapshot));
+    // Keep the direct format for small/legacy rooms. Once a room crosses the
+    // boundary it remains chunked so the manifest retains both banks' cleanup
+    // counts even if a reset briefly makes the state small again.
+    if (encoded.byteLength <= SNAPSHOT_INLINE_BYTES && this.persistedSnapshotBank === null) {
       // Both puts are issued in the same microtask, so the Durable Object
       // runtime coalesces them into ONE atomic write — the persisted ledger
       // can never claim "answered" for a snapshot version that was not
@@ -648,7 +696,92 @@ export default class GameRoomServer implements Party.Server {
         this.room.storage.put(SNAPSHOT_KEY, this.snapshot),
         this.room.storage.put(ANSWERED_ACTIONS_KEY, this.persistableAnsweredRequests())
       ]);
+      return;
     }
+
+    const chunkCount = Math.ceil(encoded.byteLength / SNAPSHOT_CHUNK_BYTES);
+    if (chunkCount > SNAPSHOT_MAX_CHUNKS) {
+      throw new Error(`Room snapshot is too large to persist safely (${encoded.byteLength} bytes).`);
+    }
+    const bank: SnapshotChunkBank = this.persistedSnapshotBank === "a" ? "b" : "a";
+    const previousTargetCount = this.persistedSnapshotChunkCounts[bank];
+    const nextCounts = { ...this.persistedSnapshotChunkCounts, [bank]: chunkCount };
+    const manifest: StoredSnapshotManifest = {
+      format: "room-snapshot-chunks-v1",
+      bank,
+      chunkCount,
+      byteLength: encoded.byteLength,
+      bankChunkCounts: nextCounts
+    };
+    const writes: Promise<unknown>[] = [];
+    for (let index = 0; index < chunkCount; index += 1) {
+      const start = index * SNAPSHOT_CHUNK_BYTES;
+      writes.push(this.room.storage.put(snapshotChunkKey(bank, index), encoded.slice(start, start + SNAPSHOT_CHUNK_BYTES)));
+    }
+    // If this alternating bank used to hold a larger state, discard its unused
+    // tail in the SAME coalesced transaction. The other bank remains a bounded
+    // rollback generation until it is overwritten on the following commit.
+    for (let index = chunkCount; index < previousTargetCount; index += 1) {
+      writes.push(this.room.storage.delete(snapshotChunkKey(bank, index)));
+    }
+    writes.push(
+      this.room.storage.put(SNAPSHOT_KEY, manifest),
+      this.room.storage.put(ANSWERED_ACTIONS_KEY, this.persistableAnsweredRequests())
+    );
+    await Promise.all(writes);
+    this.persistedSnapshotBank = bank;
+    this.persistedSnapshotChunkCounts = nextCounts;
+  }
+
+  /** Read both the legacy inline value and the size-safe chunked format. */
+  private async loadPersistedSnapshot(): Promise<RoomSnapshot | null> {
+    const stored = (await this.room.storage.get<RoomSnapshot | StoredSnapshotManifest>(SNAPSHOT_KEY)) ?? null;
+    if (!stored || !isStoredSnapshotManifest(stored)) {
+      this.persistedSnapshotBank = null;
+      this.persistedSnapshotChunkCounts = { a: 0, b: 0 };
+      return stored as RoomSnapshot | null;
+    }
+
+    const chunks = await Promise.all(
+      Array.from({ length: stored.chunkCount }, (_, index) =>
+        this.room.storage.get<Uint8Array>(snapshotChunkKey(stored.bank, index))
+      )
+    );
+    if (chunks.some((chunk) => !(chunk instanceof Uint8Array))) {
+      throw new Error("Persisted room snapshot is missing one or more chunks.");
+    }
+    const encoded = new Uint8Array(stored.byteLength);
+    let offset = 0;
+    for (const chunk of chunks as Uint8Array[]) {
+      if (offset + chunk.byteLength > encoded.byteLength) {
+        throw new Error("Persisted room snapshot chunks exceed the manifest length.");
+      }
+      encoded.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    if (offset !== stored.byteLength) {
+      throw new Error("Persisted room snapshot chunks do not match the manifest length.");
+    }
+    const snapshot = JSON.parse(new TextDecoder().decode(encoded)) as RoomSnapshot;
+    if (!snapshot || typeof snapshot.roomId !== "string" || !snapshot.state) {
+      throw new Error("Persisted room snapshot is invalid.");
+    }
+    this.persistedSnapshotBank = stored.bank;
+    this.persistedSnapshotChunkCounts = { ...stored.bankChunkCounts };
+    return snapshot;
+  }
+
+  /** Delete the manifest/legacy value and every bounded alternating chunk. */
+  private async deletePersistedSnapshot(): Promise<void> {
+    const deletes: Promise<unknown>[] = [this.room.storage.delete(SNAPSHOT_KEY)];
+    for (const bank of ["a", "b"] as const) {
+      for (let index = 0; index < this.persistedSnapshotChunkCounts[bank]; index += 1) {
+        deletes.push(this.room.storage.delete(snapshotChunkKey(bank, index)));
+      }
+    }
+    await Promise.all(deletes);
+    this.persistedSnapshotBank = null;
+    this.persistedSnapshotChunkCounts = { a: 0, b: 0 };
   }
 
   /**
@@ -1715,7 +1848,7 @@ export default class GameRoomServer implements Party.Server {
       clearUndoHistory(this.room.id);
       this.answeredActionRequests.clear();
       try {
-        await this.room.storage.delete(SNAPSHOT_KEY);
+        await this.deletePersistedSnapshot();
         await this.room.storage.delete(ANSWERED_ACTIONS_KEY);
         await this.room.storage.deleteAlarm();
       } catch (error) {
@@ -1779,7 +1912,7 @@ export default class GameRoomServer implements Party.Server {
         this.snapshot = null;
         clearUndoHistory(this.room.id);
         this.answeredActionRequests.clear();
-        await this.room.storage.delete(SNAPSHOT_KEY);
+        await this.deletePersistedSnapshot();
         await this.room.storage.delete(ANSWERED_ACTIONS_KEY);
       });
       // Drop it from the lobby directory too, so the room browser stops listing it.

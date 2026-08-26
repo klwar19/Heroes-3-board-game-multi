@@ -682,6 +682,21 @@ LIMITS: default OFF = zero behaviour change; the history NEVER enters GameState 
 a player view (only the public `MOVES_UNDONE` feed line); restore is a WHOLE-state
 swap; a redone action re-rolls the same seeded dice.
 
+## PartyKit large-room persistence (2026-08-26)
+
+The deployed rooms namespace may still use Cloudflare's legacy KV-backed Durable
+Object storage, whose values are capped at 128 KiB. Six-seat and large-map games
+used to cross that cap earlier than small games because `party/index.ts` wrote the
+whole `RoomSnapshot` under one key; every later action then rolled back with the
+generic “could not commit” message. Snapshots above 64 KiB now serialize into
+64-KiB `Uint8Array` chunks behind a small `room-snapshot-chunks-v1` manifest.
+Alternating `a`/`b` banks keep the manifest switch and answered-action ledger in
+the same coalesced transaction, preserve cold-wake recovery, and bound stale
+storage to two generations. Small and legacy inline snapshots remain readable
+and keep their existing storage shape. Room deletion removes both known banks.
+Regression: `src/server/large-room-snapshot-storage.test.ts` uses a mock enforcing
+the real 128-KiB value cap, commits twice across alternating banks, then cold-wakes.
+
 ## Single player vs computer opponents (EXPERIMENTAL) — what runs vs. limits
 
 Menu → Single player mints a PRIVATE room (128-bit `sp-` id, never in a lobby
