@@ -69,6 +69,7 @@ import {
   designedGuardPreview,
   isBlockedFieldCarve,
   isComputerPlayer,
+  lobbyTeamAssignments,
   printedBordersSurviveCarve,
   isFieldGuarded,
   hasOpenAdventureTurn,
@@ -12906,6 +12907,86 @@ function ComputerOpponentPickers({ state, viewerPlayerId, onAction, onInspect }:
   );
 }
 
+/**
+ * Player-picked alliances keyed to the visible S1..SN starting seats. Co-op
+ * and single-player both expose the same compact matrix, including AI seats;
+ * leaving it on Default preserves the established mode/map grouping.
+ */
+function StartingPositionTeams({
+  state,
+  viewerPlayerId,
+  onAction
+}: {
+  state: GameState;
+  viewerPlayerId: PlayerId;
+  onAction: (action: GameAction) => void;
+}) {
+  const lobby = state.setupLobby;
+  if (!lobby || (state.sessionMode !== "single-player" && lobby.options.gameMode !== "coop")) {
+    return null;
+  }
+  const teams = lobbyTeamAssignments(state);
+  const custom = Boolean(lobby.options.teamAssignments);
+  return (
+    <section className="computerSeatPickers teamSetupPicker" aria-label="Starting position teams">
+      <div className="draftPhaseHead">
+        <strong>Teams by starting position</strong>
+        <small>
+          Seats on the same team are allies, whether controlled by a player or the computer. S1 is the first seat,
+          S2 the second, and so on.
+        </small>
+        <button
+          aria-pressed={!custom}
+          className="draftResetBtn"
+          onClick={() =>
+            onAction({ type: "SET_GAME_OPTIONS", playerId: viewerPlayerId, options: { teamAssignments: {} } })
+          }
+          type="button"
+        >
+          Default teams
+        </button>
+      </div>
+      {lobby.seats.map((seat, index) => (
+        <div className="optionRow teamSetupRow" data-start-position={`S${index + 1}`} key={seat.playerId}>
+          <small>
+            <strong>S{index + 1}</strong> · {state.players[seat.playerId]?.name ?? seat.name}
+            {isComputerPlayer(state, seat.playerId) ? " (Computer)" : " (Player)"}
+          </small>
+          <div className="optionButtons" role="group" aria-label={`Team for S${index + 1}`}>
+            {lobby.seats.map((_, teamIndex) => {
+              const team = teamIndex + 1;
+              return (
+                <button
+                  aria-pressed={teams[seat.playerId] === team}
+                  className={teams[seat.playerId] === team ? "selected" : ""}
+                  key={team}
+                  onClick={() =>
+                    onAction({
+                      type: "SET_GAME_OPTIONS",
+                      playerId: viewerPlayerId,
+                      options: { teamAssignments: { ...teams, [seat.playerId]: team } }
+                    })
+                  }
+                  type="button"
+                >
+                  Team {team}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+      <small className="optionHint">
+        {custom
+          ? "Custom teams selected. At least two teams are required to start."
+          : state.sessionMode === "single-player"
+            ? "Default uses the map’s normal single-player computer diplomacy."
+            : "Default puts all human seats together against all computer seats."}
+      </small>
+    </section>
+  );
+}
+
 // SetupHubBoxId and SETUP_HUB_MODE_NAMES live in setup-hub-summary.ts — shared
 // with the Map window and the cross-window strip.
 
@@ -13127,6 +13208,7 @@ function HeroesDraftModal({
       <SeatCountControl onAction={onAction} state={state} viewerPlayerId={viewerPlayerId} />
       <DraftFlowPanel onAction={onAction} onInspect={onInspect} state={state} viewerPlayerId={viewerPlayerId} />
       <ComputerOpponentPickers onAction={onAction} onInspect={onInspect} state={state} viewerPlayerId={viewerPlayerId} />
+      <StartingPositionTeams onAction={onAction} state={state} viewerPlayerId={viewerPlayerId} />
       {hotSeat ? (
         <small className="optionHint">
           Playing several seats in one browser? Close this window to reach the seat switcher at the top, then open it
@@ -13343,6 +13425,8 @@ export function SetupLobbyScreen({
   const scenarioName = scenarioDefinitions[lobby.options.scenarioId]?.name ?? lobby.scenarioId;
   const singlePlayer = state.sessionMode === "single-player";
   const cooperative = lobby.options.gameMode === "coop";
+  const customTeams = Boolean(lobby.options.teamAssignments);
+  const teamCount = customTeams ? new Set(Object.values(lobby.options.teamAssignments ?? {})).size : 0;
   const computerEnemies = Object.values(state.controllers ?? {}).filter(
     (controller) => controller.kind === "computer"
   ).length;
@@ -13356,7 +13440,13 @@ export function SetupLobbyScreen({
       {cooperative ? (
         <aside className="coopSetupBanner" role="status">
           <span>CO-OP WAR ROOM</span>
-          <strong>Human alliance <em>vs</em> {computerEnemies || "…"} computer enem{computerEnemies === 1 ? "y" : "ies"}</strong>
+          <strong>
+            {customTeams ? (
+              <>{teamCount} custom teams · players and computers may be allies</>
+            ) : (
+              <>Human alliance <em>vs</em> {computerEnemies || "…"} computer enem{computerEnemies === 1 ? "y" : "ies"}</>
+            )}
+          </strong>
           <small>Shared victory · No MMR · Pick heroes and map, then deploy</small>
         </aside>
       ) : null}
@@ -13366,8 +13456,11 @@ export function SetupLobbyScreen({
         <h2>Map setup — {scenarioName}</h2>
         {cooperative ? (
           <p>
-            <strong>Co-op:</strong> every human is allied against the computer enemies. Pick the battlefield and your
-            heroes together; this table never changes MMR.
+            <strong>Co-op:</strong>{" "}
+            {customTeams
+              ? "the selected starting-position teams decide every alliance, including mixed player/computer teams."
+              : "every human is allied against the computer enemies."}{" "}
+            Pick the battlefield and your heroes together; this table never changes MMR.
           </p>
         ) : singlePlayer ? (
           <p>

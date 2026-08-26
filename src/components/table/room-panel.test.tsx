@@ -423,6 +423,15 @@ describe("RoomPanel — computer seats and the co-op ranked note", () => {
     expect(screen.queryByText(/Unranked: this table never counts toward MMR/i)).toBeNull();
   });
 
+  it("names configured mixed teams instead of claiming every computer is an enemy", () => {
+    const state = hostedState();
+    state.gameMode = "coop";
+    state.playerTeams = { p1: "setup-team-1", p2: "setup-team-1" };
+    renderPanel(state, "c1");
+    expect(screen.getByText(/custom player\/computer teams/i)).toBeTruthy();
+    expect(screen.queryByText(/humans vs the computer enemies/i)).toBeNull();
+  });
+
   it("reads the mode off the SETUP LOBBY too, before the game is built", () => {
     let state = createAdventureLobbyState({ seed: "room-panel-coop-lobby", scenarioId: "skirmish" });
     state = applyAction(state, { type: "JOIN_ROOM", clientId: "c1", name: "Alice" }).state;

@@ -56,6 +56,14 @@ export type GameRuleset = "legacy" | "binh";
  */
 export type TableGameMode = "clash" | "coop";
 
+/**
+ * Optional lobby-authored alliance number for each starting seat. Values are
+ * small positive integers (Team 1, Team 2, ...). When absent, the existing
+ * mode defaults remain authoritative: co-op groups humans vs computers, while
+ * solo play follows the map's computer-diplomacy setting.
+ */
+export type SetupTeamAssignments = Record<PlayerId, number>;
+
 /** Which Artifact tier decks a hero may search right now (BINH split decks). */
 export type ArtifactDeckAccess = {
   minor: boolean;
@@ -13332,6 +13340,11 @@ export type GameSetupOptions = {
    * build time; absent ⇒ byte-identical to a pre-feature table.
    */
   gameMode?: TableGameMode;
+  /**
+   * Player-picked teams by lobby seat / starting position (p1 = S1, etc.).
+   * Absent preserves the legacy co-op and single-player alliance defaults.
+   */
+  teamAssignments?: SetupTeamAssignments;
   /** Rules variant: "legacy" (rulebook) or "binh" (house rules). */
   ruleset: GameRuleset;
   /** Wake of Gods modules. Enabled only in BINH mode; absent means fully off. */

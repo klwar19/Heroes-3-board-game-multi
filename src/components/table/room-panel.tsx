@@ -115,6 +115,9 @@ export function RoomPanel({
   // The mode is frozen on a STARTED game; while the lobby is open it lives on
   // the setup options (absent = clash in both places).
   const coopTable = state.gameMode === "coop" || state.setupLobby?.options.gameMode === "coop";
+  const customTeams =
+    Boolean(state.setupLobby?.options.teamAssignments) ||
+    Object.values(state.playerTeams ?? {}).some((teamId) => teamId.startsWith("setup-team-"));
 
   const inviteLink =
     typeof window === "undefined"
@@ -492,7 +495,9 @@ export function RoomPanel({
               cosmetic leftover of the create-time choice at /play. */}
           {coopTable ? (
             <div className="roomModeNote">
-              Co-op — humans vs the computer enemies. Unranked: this table never counts toward MMR.
+              {customTeams
+                ? "Co-op — custom player/computer teams. Unranked: this table never counts toward MMR."
+                : "Co-op — humans vs the computer enemies. Unranked: this table never counts toward MMR."}
             </div>
           ) : null}
 

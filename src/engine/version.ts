@@ -945,7 +945,16 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // a serialized preset field and an authoritative movement-legality difference (a
 // v75 worker infers a different `standaloneLayer` for a declared hex and would
 // refuse the map's start), hence the bump. `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 76;
+// v77: configurable setup alliances. Optional
+// `GameSetupOptions.teamAssignments` is a complete Team 1..N record keyed by
+// lobby seat / starting-position id. At build it overrides only the team stamp,
+// becoming ordinary `GameState.playerTeams`; absent keeps the v76 co-op
+// humans-vs-computers and solo map-diplomacy defaults byte-identical. The lobby
+// SET_GAME_OPTIONS seam validates every live seat and clears the record on a
+// resize / Clash switch. A v76 worker would ignore the serialized choice and
+// enforce different PvP/victory legality, so this is protocol-significant.
+// `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 77;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

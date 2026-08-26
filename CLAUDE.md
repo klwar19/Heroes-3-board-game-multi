@@ -565,6 +565,30 @@ every co-op claim with a clash / single-player / all-human CONTROL) plus
   sub-toggle and the Manual-guard-control row all render disabled in co-op with
   ONE shared reason string.
 
+### Player-configurable teams (2026-08-26, protocol v77)
+
+`GameSetupOptions.teamAssignments` is an OPTIONAL complete Team 1..N record
+keyed by the visible lobby starting seats (p1 = S1, etc.). It is offered in the
+Heroes & Draft window for Co-op and single-player, with every human and computer
+seat on the same matrix. Picking one team writes the whole live-seat record;
+"Default teams" deletes it. At build, an explicit record becomes ordinary
+`GameState.playerTeams` (`setup-team-1`, etc.), so the existing ally movement,
+flag, PvP and last-alliance-standing victory rules enforce it without a second
+team system. Mixed examples such as 1 human + 2 AI vs 2 humans vs 1 AI and 1
+human + 2 allied AI vs 3 AI are engine-tested in
+`src/engine/configurable-teams.test.ts`; the exact S1..S6 UI/action payload is
+pinned in `src/components/adventure/configurable-teams-ui.test.tsx`.
+
+Compatibility and limits: ABSENT preserves the old Co-op human-vs-computer
+teams and the old single-player map `computerDiplomacy` behavior. A seat-count
+change clears the complete record, switching multiplayer back to Clash clears
+it, malformed/partial records are refused, and a game cannot start with every
+seat on one team. This is lobby/player configuration only: it does NOT add
+map-editor-authored fixed teams or starting-position human/AI eligibility. The
+engine still records one winner seat while living teammates remain
+non-eliminated, exactly like the existing co-op alliance machinery. jsdom pins
+the DOM/action contract, not pixel layout; there is no team-picker e2e spec.
+
 ### The Co-op FRONT DOOR (2026-08-25): /coop route + lobby lanes
 
 The main-menu CO-OP button opens a dedicated room browser at `/coop`

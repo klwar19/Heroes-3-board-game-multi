@@ -134,6 +134,7 @@ import {
   COOP_AI_TEAM_ID,
   COOP_HUMAN_TEAM_ID,
   controllerOf,
+  isComputerPlayer,
   standardComputerController
 } from "./computer/control";
 import { normalizeParallelTurnRounds } from "./parallel-turns";
@@ -541,6 +542,8 @@ export type AdventureSetupOptions = {
    * against the computer seats). Only "coop" is frozen onto the built state.
    */
   gameMode?: TableGameMode;
+  /** Explicit Team 1..N assignment by starting seat; absent keeps mode defaults. */
+  teamAssignments?: Record<PlayerId, number>;
   ruleset?: GameRuleset;
   /** Wake of Gods modules; honored only when the BINH ruleset is active. */
   wog?: Partial<WogModOptions>;
@@ -700,6 +703,51 @@ export type AdventureSetupOptions = {
    */
   startingBonus?: boolean;
 };
+
+/**
+ * Accept only a complete, bounded assignment for the supplied live seats.
+ * Complete records make a malformed/old partial payload fail closed to the
+ * established mode defaults instead of accidentally allying an omitted seat.
+ */
+export function sanitizeTeamAssignments(
+  raw: Record<PlayerId, number> | undefined,
+  seatIds: readonly PlayerId[]
+): Record<PlayerId, number> | undefined {
+  if (!raw || seatIds.length === 0 || Object.keys(raw).length !== seatIds.length) {
+    return undefined;
+  }
+  const result: Record<PlayerId, number> = {};
+  for (const playerId of seatIds) {
+    const team = raw[playerId];
+    if (!Number.isInteger(team) || team < 1 || team > seatIds.length) {
+      return undefined;
+    }
+    result[playerId] = team;
+  }
+  return result;
+}
+
+/** Team numbers shown in setup. Explicit picks win; otherwise show the mode's real defaults. */
+export function lobbyTeamAssignments(state: GameState): Record<PlayerId, number> {
+  const lobby = state.setupLobby;
+  if (!lobby) return {};
+  const seatIds = lobby.seats.map((seat) => seat.playerId);
+  const explicit = sanitizeTeamAssignments(lobby.options.teamAssignments, seatIds);
+  if (explicit) return explicit;
+  if (lobby.options.gameMode === "coop") {
+    return Object.fromEntries(
+      seatIds.map((playerId) => [playerId, isComputerPlayer(state, playerId) ? 2 : 1])
+    );
+  }
+  const alliedSoloComputers =
+    state.sessionMode === "single-player" && lobby.options.customMapPreset?.computerDiplomacy === "allied";
+  return Object.fromEntries(
+    seatIds.map((playerId, index) => [
+      playerId,
+      alliedSoloComputers && isComputerPlayer(state, playerId) ? 2 : index + 1
+    ])
+  );
+}
 
 /** Unit levels covered by each tier: bronze 1-3, silver 4-5, gold 6-7. */
 export const TIER_LEVELS: Record<"bronze" | "silver" | "gold", UnitLevel[]> = {
@@ -2709,6 +2757,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   const setupOptions: GameSetupOptions = {
     ...defaultGameSetupOptions(scenario),
     ...(options.gameMode !== undefined ? { gameMode: options.gameMode } : {}),
+    ...(options.teamAssignments !== undefined ? { teamAssignments: options.teamAssignments } : {}),
     ...(options.ruleset ? { ruleset: options.ruleset } : {}),
     ...(options.wog ? { wog: { ...DEFAULT_WOG_OPTIONS, ...options.wog } } : {}),
     ...(options.anime ? { anime: resolveAnimeOptions(options.anime) } : {}),
@@ -3307,13 +3356,20 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // of being silently dropped from a 3- or 4-player game.
   let polishObjectiveFarSupply: string[] = [];
 
+  const explicitTeams = sanitizeTeamAssignments(
+    setupOptions.teamAssignments,
+    playerConfigs.map((config) => config.id)
+  );
+  if (explicitTeams && playerConfigs.length > 1 && new Set(Object.values(explicitTeams)).size < 2) {
+    throw new Error("Choose at least two teams before starting the adventure.");
+  }
   const state: GameState = {
     id: "adventure-game",
     seed,
     mode: "adventure",
     ...(options.sessionMode ? { sessionMode: options.sessionMode } : {}),
     ...(configuredControllers ? { controllers: configuredControllers } : {}),
-    ...(options.sessionMode === "single-player" && mapPreset?.computerDiplomacy === "allied"
+    ...(!explicitTeams && options.sessionMode === "single-player" && mapPreset?.computerDiplomacy === "allied"
       ? {
           playerTeams: Object.fromEntries(
             playerConfigs
@@ -3328,9 +3384,15 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     // `playersAreAllied` gate applies with no per-mode branching. Spread AFTER
     // the single-player block so an (impossible in practice) overlap resolves
     // to the explicit co-op teams. Absent gameMode ⇒ neither key is written.
-    ...(setupOptions.gameMode === "coop"
+    ...(setupOptions.gameMode === "coop" ? { gameMode: "coop" as const } : {}),
+    ...(explicitTeams
       ? {
-          gameMode: "coop" as const,
+          playerTeams: Object.fromEntries(
+            Object.entries(explicitTeams).map(([playerId, team]) => [playerId, `setup-team-${team}`])
+          )
+        }
+      : setupOptions.gameMode === "coop"
+      ? {
           playerTeams: Object.fromEntries(
             playerConfigs.map((config) => [
               config.id,
@@ -4417,6 +4479,9 @@ function resizeLobbySeats(state: GameState, scenario: ScenarioDefinition, target
     state.activePlayerId = state.turnOrder[0];
   }
   lobby.options.playerCount = count;
+  // Team picks name starting positions. A resize changes that set, so clear the
+  // complete record and show the mode's safe defaults until players pick again.
+  delete lobby.options.teamAssignments;
   // A manual player order must never go stale: every seat-count change routes
   // through here, so re-coerce the stored order to the new seat set (closed
   // seats drop out, newly opened ones join at the end).
@@ -4823,7 +4888,27 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
       throw new Error("Unknown table mode.");
     }
     lobby.options.gameMode = next.gameMode;
+    if (next.gameMode === "clash" && state.sessionMode !== "single-player") {
+      delete lobby.options.teamAssignments;
+    }
     changes.push(`table mode ${next.gameMode === "coop" ? "Co-op (humans vs computers)" : "Clash (free-for-all)"}`);
+  }
+
+  if (next.teamAssignments !== undefined) {
+    if (state.sessionMode !== "single-player" && (next.gameMode ?? lobby.options.gameMode) !== "coop") {
+      throw new Error("Custom teams are available in Co-op and single-player setup only.");
+    }
+    if (Object.keys(next.teamAssignments).length === 0) {
+      delete lobby.options.teamAssignments;
+      changes.push("default teams");
+    } else {
+      const sanitized = sanitizeTeamAssignments(next.teamAssignments, lobby.seats.map((seat) => seat.playerId));
+      if (!sanitized) {
+        throw new Error("Every starting position needs a valid team number.");
+      }
+      lobby.options.teamAssignments = sanitized;
+      changes.push("custom starting-position teams");
+    }
   }
 
   if (next.ruleset !== undefined) {
@@ -6510,6 +6595,13 @@ export function startAdventureFromLobby(
   if (lobby.seats.some((seat) => !seat.factionId || !seat.heroDefId)) {
     throw new Error("Every seat needs a faction and hero before the adventure starts.");
   }
+  const pickedTeams = sanitizeTeamAssignments(
+    lobby.options.teamAssignments,
+    lobby.seats.map((seat) => seat.playerId)
+  );
+  if (pickedTeams && new Set(Object.values(pickedTeams)).size < 2) {
+    throw new Error("Choose at least two teams before starting the adventure.");
+  }
 
   // A designed map whose tile layout makes the chosen win condition's objective
   // IMPOSSIBLE (no Grail dig capacity / no Dragon Utopia) is BLOCKED here with a
@@ -6676,6 +6768,7 @@ function buildAdventureFromLobby(state: GameState): void {
     // CO-OP: carried or the host's table-mode choice is silently dropped and the
     // built game has no alliance. Absent (a plain lobby) ⇒ byte-identical.
     gameMode: lobby.options.gameMode,
+    teamAssignments: lobby.options.teamAssignments,
     ruleset: lobby.options.ruleset,
     wog: lobby.options.wog,
     // Anime mod + the GLOBAL Field Override system are set on the lobby (the
