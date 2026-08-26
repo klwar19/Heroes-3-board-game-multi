@@ -44938,7 +44938,7 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
 
 .animeTownBriefing,
 .animePenaltyNotice {
-  width: min(720px, 96vw);
+  width: min(820px, 96vw);
   max-height: min(88vh, 840px);
   overflow: auto;
   color: #f8f1de;
@@ -44956,16 +44956,17 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
   --briefing-accent: #f2c560; /* anime gold */
 }
 .animeTownBriefing[data-register="wuxia"] { --briefing-accent: #7fe0a6; } /* jade */
-.animeTownBriefing h2, .animePenaltyNotice h2 { margin: 2px 0 0; font-family: Georgia, serif; letter-spacing: .035em; }
+.animeTownBriefing h2, .animePenaltyNotice h2 { margin: 2px 0 0; font-family: Georgia, serif; letter-spacing: .035em; text-shadow: 0 2px 10px #000, 0 0 4px rgba(0,0,0,.85); }
 .animeTownBriefingHead { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
 .animeTownBriefingHead > img { width: 60px; height: 60px; object-fit: contain; filter: drop-shadow(0 4px 8px rgba(0,0,0,.6)); }
-.animeTownBriefingHead small, .animePenaltyNotice header small { color: var(--briefing-accent, #d9ad58); letter-spacing: .16em; font-weight: 800; }
+.animeTownBriefingHead small, .animePenaltyNotice header small { color: var(--briefing-accent, #d9ad58); letter-spacing: .16em; font-weight: 800; text-shadow: 0 1px 6px #000; }
 .animeTownBriefingCard {
   margin: 0 0 12px;
   padding: 13px 15px;
   border: 1px solid rgba(255,255,255,.1);
   border-radius: 12px;
-  background: rgba(9, 12, 20, .55);
+  background: rgba(9, 12, 20, .66);
+  backdrop-filter: blur(3px);
 }
 .animeTownBriefingCard.mechanic { border-left: 4px solid var(--briefing-accent, #f2c560); }
 .animeTownBriefingCard.penalty { border-left: 4px solid #e07d7d; }
@@ -44978,7 +44979,7 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
 .animeMechanicsDone, .animePenaltyNotice button { display: block; margin: 18px auto 0; min-width: 180px; padding: 10px 18px; border: 1px solid #e2b657; border-radius: 9px; color: #181008; background: linear-gradient(#ffe8a1, #cf933a); font-weight: 900; cursor: pointer; }
 
 .animePenaltyNotice {
-  min-height: 360px;
+  min-height: 440px;
   padding: 30px;
   display: flex;
   flex-direction: column;

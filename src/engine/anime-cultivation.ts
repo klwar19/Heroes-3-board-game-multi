@@ -27,7 +27,12 @@ import type { GameState, HeroState, PlayerId } from "./state";
 
 export type CultivationRealm = 0 | 1 | 2 | 3;
 export type CultivationRealmLabel = { en: string; vi: string };
-export type CultivationRealmRegisterKey = FactionVisualRegister | "modao";
+export type CultivationRealmRegisterKey =
+  | FactionVisualRegister
+  | "modao"
+  | "kansen"
+  | "seishun"
+  | "mgq";
 
 /** Presentation-only realm names by faction family; mechanics still read 0–3. */
 export const CULTIVATION_REALM_REGISTERS: Record<CultivationRealmRegisterKey, Record<CultivationRealm, CultivationRealmLabel>> = {
@@ -54,14 +59,53 @@ export const CULTIVATION_REALM_REGISTERS: Record<CultivationRealmRegisterKey, Re
     1: { en: "Demon Foundation", vi: "Ma Cơ" },
     2: { en: "Demon Core", vi: "Ma Đan" },
     3: { en: "Devil Soul", vi: "Ma Anh" }
+  },
+  // Azur Lane Naval Base — a bespoke naval-power ladder over the shared "anime"
+  // visual register (mirrors the "kansen" grade register), so its realm chip no
+  // longer borrows the generic "Awakened" anime label. NAMES only.
+  kansen: {
+    0: { en: "Commissioned", vi: "Biên Chế" },
+    1: { en: "Retrofit", vi: "Cải Tạo" },
+    2: { en: "Vanguard", vi: "Tiên Phong" },
+    3: { en: "Decisive", vi: "Quyết Chiến" }
+  },
+  // Little Busters — a bespoke youth/growth ladder (distinct from its Benchwarmer
+  // → Strongest GRADE ranks), so its realm chip is faction-owned. NAMES only.
+  seishun: {
+    0: { en: "Newcomer", vi: "Tân Sinh" },
+    1: { en: "Comrade", vi: "Đồng Đội" },
+    2: { en: "Mainstay", vi: "Trụ Cột" },
+    3: { en: "Legend", vi: "Huyền Thoại" }
+  },
+  // Monster Girl Quest — a bespoke awakening/evolution ladder. NAMES only.
+  mgq: {
+    0: { en: "Awakened", vi: "Thức Tỉnh" },
+    1: { en: "Empowered", vi: "Cường Hóa" },
+    2: { en: "Evolved", vi: "Tiến Hóa" },
+    3: { en: "Transcendent", vi: "Siêu Việt" }
   }
 };
 
 /** Backwards-compatible wuxia ladder for callers that do not own faction context. */
 export const CULTIVATION_REALMS = CULTIVATION_REALM_REGISTERS.wuxia;
 
+/**
+ * BESPOKE per-faction realm registers, resolved BEFORE the ordinary visual
+ * family so factions that share the "anime" / "wuxia" visual register still carry
+ * their own realm names (mirrors BESPOKE_FACTION_GRADE_REGISTERS). Without this,
+ * Azur Lane / Little Busters / MGQ all borrowed the generic "anime" realm label
+ * ("Awakened") beside their own faction-specific GRADE chip. NAMES only.
+ */
+const BESPOKE_FACTION_REALM_REGISTERS: Record<string, CultivationRealmRegisterKey> = {
+  heavenly_demon: "modao",
+  azur_lane: "kansen",
+  little_busters: "seishun",
+  mgq: "mgq"
+};
+
 export function cultivationRealmRegisterKey(factionId: string | undefined): CultivationRealmRegisterKey {
-  return factionId === "heavenly_demon" ? "modao" : factionVisualRegister(factionId);
+  const bespoke = factionId ? BESPOKE_FACTION_REALM_REGISTERS[factionId] : undefined;
+  return bespoke ?? factionVisualRegister(factionId);
 }
 
 export function cultivationRealmLabel(state: GameState, playerId: PlayerId, realm: CultivationRealm): CultivationRealmLabel {

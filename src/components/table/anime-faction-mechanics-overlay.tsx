@@ -103,7 +103,7 @@ export function AnimeFactionMechanicsOverlay({
       <div className="animePenaltyBackdrop" role="dialog" aria-modal="true" aria-label={definition?.title ?? "Faction penalty"}>
         <div
           className={`animePenaltyNotice${definition?.artImage ? " withBackground" : ""}`}
-          style={definition?.artImage ? { backgroundImage: `linear-gradient(90deg, rgba(8,10,16,.9), rgba(8,10,16,.58)), url(${assetUrl(definition.artImage)})` } : undefined}
+          style={definition?.artImage ? { backgroundImage: `linear-gradient(90deg, rgba(8,10,16,.66), rgba(8,10,16,.28)), url(${assetUrl(definition.artImage)})` } : undefined}
         >
           <header>
             {definition ? <img alt="" src={assetUrl(townIconUrl(definition.factionId))} /> : null}
@@ -136,7 +136,7 @@ export function AnimeFactionMechanicsOverlay({
       <div
         className="animeTownBriefing"
         data-register={selected.register}
-        style={{ backgroundImage: `linear-gradient(160deg, rgba(8,10,16,.9) 0%, rgba(8,10,16,.72) 46%, rgba(8,10,16,.9) 100%), url(${assetUrl(selected.artImage)})` }}
+        style={{ backgroundImage: `linear-gradient(160deg, rgba(8,10,16,.62) 0%, rgba(8,10,16,.32) 46%, rgba(8,10,16,.66) 100%), url(${assetUrl(selected.artImage)})` }}
       >
         <header className="animeTownBriefingHead">
           <img alt="" src={assetUrl(townIconUrl(selected.factionId))} />

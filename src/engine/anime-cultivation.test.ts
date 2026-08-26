@@ -52,6 +52,16 @@ describe("anime.cultivation — faction-themed presentation registers", () => {
     expect(cultivationRealmRegisterKey("heavenly_demon")).toBe("modao");
   });
 
+  it("gives Azur Lane / Little Busters / MGQ their OWN realm register, not the generic anime 'Awakened'", () => {
+    // Before the fix these shared the "anime" visual register, so every one of
+    // them showed "Awakened · Thức Tỉnh" beside its faction-specific grade chip.
+    expect(cultivationRealmRegisterKey("azur_lane")).toBe("kansen");
+    expect(cultivationRealmRegisterKey("little_busters")).toBe("seishun");
+    expect(cultivationRealmRegisterKey("mgq")).toBe("mgq");
+    expect(CULTIVATION_REALM_REGISTERS.kansen[0]).toEqual({ en: "Commissioned", vi: "Biên Chế" });
+    expect(CULTIVATION_REALM_REGISTERS.seishun[0]).toEqual({ en: "Newcomer", vi: "Tân Sinh" });
+  });
+
   it("keeps every four-step ladder bilingually complete", () => {
     for (const [key, ladder] of Object.entries(CULTIVATION_REALM_REGISTERS)) {
       expect(Object.keys(ladder), `${key} ladder`).toHaveLength(4);

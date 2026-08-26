@@ -307,7 +307,7 @@ describe("HeroBoard — progression wording follows the rendered hero's faction"
     { factionId: "fuyuki", heroDefId: "bin", progress: "Lv Ⅰ · EXP 0/12", realm: "Awakened · Thức Tỉnh", grade: "Rank F · Hạng F" },
     { factionId: "azure_breeze", heroDefId: "qingyun", progress: "Stage Ⅰ · Cultivation 0/12", realm: null, grade: "Qi Refinement · Luyện Khí" },
     { factionId: "heavenly_demon", heroDefId: "xuedao", progress: "Stage Ⅰ · Cultivation 0/12", realm: null, grade: "Blood Refinement · Luyện Huyết" },
-    { factionId: "azur_lane", heroDefId: "enterprise", progress: "Lv Ⅰ · EXP 0/12", realm: "Awakened · Thức Tỉnh", grade: "Common · Thường" }
+    { factionId: "azur_lane", heroDefId: "enterprise", progress: "Lv Ⅰ · EXP 0/12", realm: "Commissioned · Biên Chế", grade: "Common · Thường" }
   ];
 
   for (const { factionId, heroDefId, progress, realm, grade } of cases) {
