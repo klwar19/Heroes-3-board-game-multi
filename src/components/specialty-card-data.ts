@@ -82,9 +82,9 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   illyasviel: "/assets/anime/units/portraits/fuyuki-berserkers.webp", // Heracles (KEPT unit specialist)
   kiritsugu_emiya: "/assets/anime/icons/fuyuki/specialty-kiritsugu-time-alter.webp", // Time Alter
   kirei_kotomine: "/assets/anime/icons/fuyuki/specialty-kirei-black-keys.webp", // Black Keys
-  // Sakura's Gentle Resolve is a Rion heal/cleanse clone, so she shares the
-  // Cure SPELL icon like Astra and Aoko.
-  sakura_matou: "/assets/specialty-card/icon-cure.webp",
+  // Sakura's Gentle Resolve — bespoke themed heal medallion (pink magic circle +
+  // cherry blossoms + heal heart), replacing the borrowed generic Cure icon.
+  sakura_matou: "/assets/anime/icons/fuyuki/specialty-sakura-gentle-resolve.webp",
   // Hidden Leaf: Naruto keeps his signature unit's portrait (KEPT unit
   // specialist); the redesigned four wear bespoke Codex-imagegen medallions.
   naruto: "/assets/anime/units/portraits/hidden-leaf-jinchuriki.webp", // Nine-Tails Chakra Avatar
@@ -92,8 +92,9 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   kakashi_hatake: "/assets/anime/icons/hidden-leaf/specialty-kakashi-raikiri.webp", // Raikiri · Sharingan
   shikamaru_nara: "/assets/anime/icons/hidden-leaf/specialty-shikamaru-shadow.webp", // Shadow Possession
   jiraiya: "/assets/anime/icons/hidden-leaf/specialty-jiraiya-flame-oil.webp", // Toad Oil Flame Bomb
-  // Tsunade's Hundred Healings IS the First Aid medic set (Gem clone), like Lingxi.
-  tsunade: "/assets/specialty-card/icon-first_aid.webp",
+  // Tsunade's Hundred Healings — bespoke themed heal seal (green medical-chakra
+  // diamond), replacing the borrowed generic First Aid icon.
+  tsunade: "/assets/anime/icons/hidden-leaf/specialty-tsunade-hundred-healings.webp",
   // Azur Lane hero specialties use the heroes' actual in-game skill emblems,
   // redrawn to HD for the native specialty-card icon and hero-board slot.
   enterprise: "/assets/anime/icons/azur-lane/specialty-enterprise.webp",
@@ -110,11 +111,11 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   xuedao: "/assets/anime/icons/cultivation/specialty-xuedao-blood-ripple.webp", // Blood Ripple
   guiyan: "/assets/anime/icons/cultivation/specialty-guiyan-ghostfire.webp", // Ghostfire Coil
   xuanming: "/assets/anime/icons/cultivation/specialty-xuanming-bone-legion.webp", // Legion of Bones
-  // Heavenly Demon Palace magic medics — Yaoji's Blood Renewal (Gem First Aid
-  // clone) shows the First-Aid medallion; Molian's Corpse Suture (Rion heal/
-  // cleanse clone, like Aoko) shows the Cure spell icon.
-  yaoji: "/assets/specialty-card/icon-first_aid.webp",
-  molian: "/assets/specialty-card/icon-cure.webp",
+  // Heavenly Demon Palace magic medics — bespoke themed wuxia heal icons
+  // (Yaoji's blood-essence vial + lotus; Molian's spectral suture needle),
+  // replacing the borrowed generic First Aid / Cure icons.
+  yaoji: "/assets/anime/icons/cultivation/specialty-yaoji-blood-renewal.webp",
+  molian: "/assets/anime/icons/cultivation/specialty-molian-corpse-suture.webp",
   luohun: "/assets/anime/equipment/ten_thousand_souls_banner.webp",
   shiyan: "/assets/anime/icons/cultivation/blood-essence.webp",
   // Little Busters — dedicated clean square SYMBOL specialty icons (codex
@@ -156,10 +157,9 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   aoko: "/assets/specialty-card/icon-cure.webp",
   // Miku's Voice of Angel — teal mic + wings + song notes (Codex imagegen).
   miku: "/assets/specialty-card/icon-voice_of_angel.webp",
-  // Lingxi's Healing Arts set grants/doubles the First Aid Tent — dedicated
-  // specialty-card medallion icon (not the full First Aid ability card scan,
-  // which is unreadable in the specialty icon well).
-  lingxi: "/assets/specialty-card/icon-first_aid.webp",
+  // Lingxi's Healing Arts — bespoke themed wuxia heal icon (jade medicine gourd +
+  // herbs + formation rune), replacing the borrowed generic First Aid icon.
+  lingxi: "/assets/anime/icons/cultivation/specialty-lingxi-healing-arts.webp",
   kriv: "/assets/runes-emblem.webp", // Rune specialist — our own emblem
   // --- Skill / war-machine / spell-themed specialists: the matching printed
   // secondary-skill icon (public/assets/abilities-<skill>.webp) -------------

@@ -158,9 +158,10 @@ describe("hero-board / zoom wiring", () => {
     // Anime Realms magic heroes: dedicated specialty-card medallions (never the
     // full ability-card scan or a borrowed classic hero's baked specialty art).
     expect(specialtyIconSrc("specialty.aoko.1")).toContain("icon-cure.webp");
-    expect(specialtyIconSrc("specialty.lingxi.1")).toContain("icon-first_aid.webp");
+    // Lingxi now wears a bespoke themed wuxia heal icon (was the borrowed First Aid).
+    expect(specialtyIconSrc("specialty.lingxi.1")).toContain("specialty-lingxi-healing-arts.webp");
     expect(specialtyIconSrc("specialty.lingxi.1")).not.toContain("abilities-first_aid");
-    expect(specialtyIconSrc("specialty.lingxi.6")).toContain("icon-first_aid.webp");
+    expect(specialtyIconSrc("specialty.lingxi.6")).toContain("specialty-lingxi-healing-arts.webp");
     expect(specialtyIconSrc("specialty.kudryavka_noumi.1")).toContain(
       "specialty-kud-rocket-launcher.webp"
     );
@@ -253,10 +254,10 @@ describe("SpecialtyCard", () => {
     expect(desc).not.toContain("per Dwelling");
   });
 
-  it("draws Lingxi's Healing Arts natively: themed name, First-Aid medallion icon, her portrait, Azure accent", () => {
+  it("draws Lingxi's Healing Arts natively: themed name, bespoke wuxia heal icon, her portrait, Azure accent", () => {
     // Art-less retheme of Gem's First Aid — must NEVER show Gem's baked scan or
-    // the full First Aid ability card, and must use the dedicated specialty-card
-    // medallion + Lingxi's own portrait (not a crane / wrong art).
+    // the full First Aid ability card, and must use the dedicated themed
+    // specialty icon + Lingxi's own portrait (not a crane / wrong art).
     for (const [id, numeral] of [
       ["specialty.lingxi.1", "I"],
       ["specialty.lingxi.4", "IV"],
@@ -264,7 +265,7 @@ describe("SpecialtyCard", () => {
     ] as const) {
       expect(canRenderSpecialtyCard(id), id).toBe(true);
       expect(cardLibrary[id]?.assets?.cardImage, id).toBeUndefined();
-      expect(specialtyIconSrc(id), id).toContain("/assets/specialty-card/icon-first_aid.webp");
+      expect(specialtyIconSrc(id), id).toContain("specialty-lingxi-healing-arts.webp");
       expect(specialtyIconSrc(id), id).not.toContain("abilities-first_aid");
       expect(specialtyEffectText(id).trim().length, id).toBeGreaterThan(0);
     }
@@ -273,7 +274,7 @@ describe("SpecialtyCard", () => {
     expect(getByText("Healing Arts I")).toBeTruthy();
     expect(container.querySelector(".scLevelBadge")?.textContent).toBe("I");
     const iconSrc = (container.querySelector(".scIcon") as HTMLImageElement | null)?.getAttribute("src") ?? "";
-    expect(iconSrc).toContain("icon-first_aid.webp");
+    expect(iconSrc).toContain("specialty-lingxi-healing-arts.webp");
     expect(iconSrc).not.toContain("abilities-first_aid");
     expect(iconSrc).not.toContain("hero_specialties-gem");
     // Portrait strip is Lingxi's own hero portrait (new Formation Sage art).
