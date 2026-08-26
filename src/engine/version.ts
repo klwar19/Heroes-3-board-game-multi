@@ -954,7 +954,12 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // resize / Clash switch. A v76 worker would ignore the serialized choice and
 // enforce different PvP/victory legality, so this is protocol-significant.
 // `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 77;
+// v78: map-authored Break gates (`CustomMapPreset.breaks`), center-hex Break
+// flags, and opt-in flaggable Dragon Utopias. The latter stamps the field owner
+// and a per-player Astrologers-round Azure recruit-use marker; older workers
+// would ignore both movement legality and the serialized reward entitlement.
+// Absent fields preserve v77 behaviour. `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 78;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

@@ -1562,7 +1562,7 @@ function garrisonDefenderFor(state: GameState, attacker: HeroState, field: MapFi
   // its holder may garrison it (8 gold) when their hero is away.
   const isCapturedUtopia =
     field.location === "dragon_utopia" &&
-    adventureVictoryMode(state) === "dragon-conqueror" &&
+    (adventureVictoryMode(state) === "dragon-conqueror" || field.flaggableDragonUtopia === true) &&
     Boolean(field.flagOwnerId);
   // Built Grail (map-maker): the field is a control contest — its holder may
   // garrison even when the location would not otherwise open that window.

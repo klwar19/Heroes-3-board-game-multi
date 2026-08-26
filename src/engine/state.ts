@@ -9010,6 +9010,8 @@ export type PlayerState = {
    * Darkness, Castle Gate, …), keyed by building id.
    */
   buildingUsedRound?: Record<string, number>;
+  /** Round of the last Dragon-Utopia Search(2) Azure recruit offer. */
+  utopiaAzureRecruitRound?: number;
   /**
    * Ongoing cards held in play while their effect lasts. The card leaves the
    * hand when played but only reaches the discard pile (or, when Knowledge /
@@ -10589,6 +10591,8 @@ export type MapFieldState = {
    * obelisk / center-hex break options. Absent = classic Pathfinding pass-through.
    */
   breakField?: boolean;
+  /** Designer-opted capturable Dragon Utopia with an Astrologers-round recruit benefit. */
+  flaggableDragonUtopia?: boolean;
   /**
    * Persistent certain army: on a lost / retreated neutral fight the living
    * guards stay as `customGuardUnits` for a later re-fight (dead units do not
@@ -11607,6 +11611,10 @@ export type VisitStep =
        */
       type: "NEUTRAL_RECRUIT_OFFER";
       maxDraws: number;
+    }
+  | {
+      /** Flaggable Dragon Utopia: draw two Azure cards and offer one paid recruit. */
+      type: "UTOPIA_AZURE_RECRUIT_OFFER";
     }
   | {
       /**
@@ -13729,6 +13737,17 @@ export type CustomMapPreset = {
   farTileTypeChoice?: boolean;
   farTileTypeChoices?: FarTileType[];
   /**
+   * PC-style Break movement gates. These affect guarded destinations only:
+   * entering a tile from another tile, or entering any difficulty-VII field.
+   * Absent is the legacy movement behaviour. Per-object/per-center `breakField`
+   * remains the exact-field override and composes with these broad gates.
+   */
+  breaks?: {
+    enterNearTiles?: boolean;
+    enterCenterTiles?: boolean;
+    enterViiFields?: boolean;
+  };
+  /**
    * Calamity Waves designer overrides (module `monsterWaves`): `cadence`
    * overrides the lobby wave rhythm for this map; `waves` maps a wave NUMBER
    * (1-based) to an exact guard spec (the {@link CustomGuardSpec} vocabulary)
@@ -14995,6 +15014,18 @@ export type CustomCenterHexPlan = {
   holdRequiresGrail?: boolean;
   /** First player to clear / capture THIS objective wins the game immediately. */
   winCondition?: boolean;
+  /** PC-style break: Pathfinding cannot pass this guarded VII field. */
+  breakField?: boolean;
+  /** Preserve surviving neutral guards after a loss or retreat. */
+  persistentGuard?: boolean;
+  /** This neutral fight has no combat-round limit. */
+  unlimitedRounds?: boolean;
+  /**
+   * Make a Dragon Utopia on this center hex a capturable holding. Its controller
+   * gets one paid Search(2)-Azure recruit offer at each Astrologers round.
+   * Absent keeps every legacy Utopia's existing mode-specific behaviour.
+   */
+  flaggableDragonUtopia?: boolean;
 };
 
 /**

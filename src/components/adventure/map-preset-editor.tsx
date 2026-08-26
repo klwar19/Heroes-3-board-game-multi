@@ -703,6 +703,7 @@ export function MapPresetEditor({
       // The Grail / Dragon-Utopia objective tuning now lives in this group.
       (value.objectives ? describeObjectivesConfig(value.objectives).length : 0),
     mapLocations:
+      (value.breaks ? 1 : 0) +
       (value.obelisks ? 1 : 0) +
       (value.settlements ? 1 : 0) +
       (value.mines ? 1 : 0) +
@@ -2085,6 +2086,43 @@ export function MapPresetEditor({
       </MapPresetGroup>
 
       <MapPresetGroup title="Map objects" glyphSrc={DESIGNER_UI_ICONS.map} count={groupCounts.mapLocations}>
+      <section className="mapPresetSection" aria-label="Break configuration">
+        <div className="mapPresetSectionLabel">🧱 Break configuration</div>
+        <small className="mapPresetHint">
+          A Break stops Pathfinding at a guarded destination. Tile gates apply only when crossing onto that
+          tile; the Ⅶ-field gate applies whenever that field is entered. Exact Dragon Utopia, Grail, Random
+          Town, or other Ⅶ settings live under 📍 Specific → center tile. Mine and Obelisk Break fields use
+          their Global / Specific controls below.
+        </small>
+        <div className="mapPresetChipRow" role="group" aria-label="Break entry gates">
+          {(
+            [
+              ["enterNearTiles", "Entering tiles Ⅳ–Ⅴ"],
+              ["enterCenterTiles", "Entering tiles Ⅵ–Ⅶ"],
+              ["enterViiFields", "Entering fields Ⅶ"]
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              aria-pressed={Boolean(value.breaks?.[key])}
+              className={`mapPresetChip${value.breaks?.[key] ? " active" : ""}`}
+              key={key}
+              onClick={() => {
+                const next = { ...(value.breaks ?? {}) };
+                if (next[key]) delete next[key];
+                else next[key] = true;
+                patch({ breaks: Object.keys(next).length > 0 ? next : undefined });
+              }}
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {modeTabs("center")}
+        {objectMode("center") === "specific"
+          ? specificPanel("center", "No Ⅵ–Ⅶ center tile is placed yet — place one to configure its exact Ⅶ field.")
+          : null}
+      </section>
       <section className="mapPresetSection" aria-label="Obelisks">
         <div className="mapPresetSectionLabel">⚱ Obelisks</div>
         {modeTabs("obelisk")}

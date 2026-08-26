@@ -2677,6 +2677,17 @@ skipped; a Barrier never carries a guard; the center-hex bonus pays ONCE.
 
 ## Map objects Global|Specific, hex events & guard visibility (2026-07) — what runs vs. limits
 
+### Break gates + flaggable Dragon Utopia (2026-08-26, protocol v77→v78)
+
+The map conditions editor's Break section controls three real guarded-entry gates:
+crossing onto Ⅳ–Ⅴ tiles, crossing onto Ⅵ–Ⅶ tiles, and entering any difficulty-Ⅶ
+field (`CustomMapPreset.breaks`, enforced by `isBreakEntry`). Exact Ⅶ objectives use
+the center-tile Specific editor's existing `centerHex` plan, now with the same
+break/persistent/unlimited trio as Mines and Obelisks. A center Utopia may also be
+marked flaggable: clearing or conquering it transfers the flag, makes it garrisonable,
+and its controller gets one non-stacking paid Search(2) Azure-unit recruit offer at
+each Astrologers round. All fields are optional; legacy maps retain prior behaviour.
+
 Three designer systems: per-kind **Global | Specific** plans
 (`CustomMapTilePlan.objectPlans.{obelisk,mine}` = guard / reward / vp / break flags /
 winCondition, merged FIELD-BY-FIELD over the global setting); a designer **"first clear

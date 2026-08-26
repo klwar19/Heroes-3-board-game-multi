@@ -1224,6 +1224,31 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
 // Map objects — Global | Specific tabs, specific lists, hex events (2026-07).
 // ---------------------------------------------------------------------------
 describe("MapPresetEditor — Global | Specific object modes", () => {
+  it("lists and writes every Break entry scope, with the exact-VII route wired to Specific center tiles", () => {
+    const onChange = vi.fn();
+    const center: CustomMapTilePlan = { row: 4, col: 4, group: "center", faceDown: true };
+    const onPickOnMap = vi.fn();
+    render(
+      <MapPresetEditor
+        preset={undefined}
+        onChange={onChange}
+        tiles={[center]}
+        onPickOnMap={onPickOnMap}
+      />
+    );
+    const breakSection = screen.getByRole("region", { name: "Break configuration" });
+    for (const label of ["Entering tiles Ⅳ–Ⅴ", "Entering tiles Ⅵ–Ⅶ", "Entering fields Ⅶ"]) {
+      expect(within(breakSection).getByRole("button", { name: label })).toBeTruthy();
+    }
+    fireEvent.click(within(breakSection).getByRole("button", { name: "Entering tiles Ⅳ–Ⅴ" }));
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ breaks: { enterNearTiles: true } }));
+
+    fireEvent.click(within(breakSection).getByRole("button", { name: /Specific/ }));
+    fireEvent.click(within(breakSection).getByRole("button", { name: /Pick a tile on the map/ }));
+    expect(onPickOnMap).toHaveBeenCalledWith({ kind: "object-plan", objectKind: "center" });
+    expect(breakSection.textContent).toMatch(/Dragon Utopia, Grail, Random Town/);
+  });
+
   const tilesWithMine: CustomMapTilePlan[] = [
     { row: 8, col: 2, group: "starting", faceDown: false },
     { row: 12, col: 6, group: "near", faceDown: false, tileDefId: "N15" }

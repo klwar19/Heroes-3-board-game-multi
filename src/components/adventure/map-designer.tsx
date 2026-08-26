@@ -518,6 +518,10 @@ export function describeTileSpecificPlan(plan: CustomMapTilePlan, kind: Specific
           vp?: number;
           winCondition?: boolean;
           holdRoundsToWin?: number;
+          breakField?: boolean;
+          persistentGuard?: boolean;
+          unlimitedRounds?: boolean;
+          flaggableDragonUtopia?: boolean;
         }
       | undefined
   ) => {
@@ -533,6 +537,10 @@ export function describeTileSpecificPlan(plan: CustomMapTilePlan, kind: Specific
     if (p.vp) bits.push(`+${p.vp} VP`);
     if (p.holdRoundsToWin) bits.push(`hold ${p.holdRoundsToWin}r wins`);
     if (p.winCondition) bits.push("first clear WINS");
+    if (p.breakField) bits.push("Break field");
+    if (p.persistentGuard) bits.push("persistent army");
+    if (p.unlimitedRounds) bits.push("unlimited rounds");
+    if (p.flaggableDragonUtopia) bits.push("flaggable Utopia + Azure recruit");
   };
   if (kind === "obelisk" || kind === "mine") {
     fold(plan.objectPlans?.[kind]);
@@ -6172,6 +6180,53 @@ export function MapDesigner({
                         })
                       }
                     />
+
+                    <div className="popoverSubLabel">Break &amp; control</div>
+                    <div className="popoverGuardRow" role="group" aria-label="Center VII break options">
+                      {(
+                        [
+                          { key: "breakField", label: "Break field", hint: "Pathfinding may not walk through this guarded Ⅶ field." },
+                          { key: "persistentGuard", label: "Persistent army", hint: "A lost fight leaves living guards for a re-fight." },
+                          { key: "unlimitedRounds", label: "No round limit", hint: "The fight continues without the normal round limit." }
+                        ] as const
+                      ).map((flag) => (
+                        <label className="popoverCheckRow popoverCheckChip" key={flag.key} title={flag.hint}>
+                          <input
+                            aria-label={`Center VII ${flag.label}`}
+                            checked={Boolean(selected.centerHex?.[flag.key])}
+                            onChange={(event) =>
+                              updateTile(selectedIndex as number, {
+                                centerHex: nextCenterHex(selected.centerHex, {
+                                  [flag.key]: event.target.checked || undefined
+                                })
+                              })
+                            }
+                            type="checkbox"
+                          />
+                          <span>{flag.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                    {(selected.viiField === "dragon_utopia" || selected.viiFields?.includes("dragon_utopia")) ? (
+                      <label
+                        className="popoverCheckRow"
+                        title="The cleared Utopia is flagged and defendable. Its controller gets one Search(2) Azure recruit offer each Astrologers round."
+                      >
+                        <input
+                          aria-label="Flaggable Dragon Utopia Astrology recruit"
+                          checked={Boolean(selected.centerHex?.flaggableDragonUtopia)}
+                          onChange={(event) =>
+                            updateTile(selectedIndex as number, {
+                              centerHex: nextCenterHex(selected.centerHex, {
+                                flaggableDragonUtopia: event.target.checked || undefined
+                              })
+                            })
+                          }
+                          type="checkbox"
+                        />
+                        <span>🐉 Flaggable Utopia — Astrologers: Search(2) Azure units, recruit one</span>
+                      </label>
+                    ) : null}
 
                     <div className="popoverSubLabel">First-clear reward &amp; Victory Points</div>
                     <small className="popoverHint">

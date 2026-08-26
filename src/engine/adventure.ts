@@ -1158,6 +1158,10 @@ export function materializeTileFields(
       // Shared stamp (sets designedGuard) so a center-hex guard is flagged as
       // designer-altered exactly like a token / settlement / obelisk guard.
       applyCustomGuardToField(field, centerHex?.guard);
+      applyBreakFieldOptions(field, centerHex);
+      if (field.location === "dragon_utopia" && centerHex?.flaggableDragonUtopia) {
+        field.flaggableDragonUtopia = true;
+      }
       if (tile.viiField) {
         // Legacy `viiFieldReward` is resources-only (gold/materials/valuables),
         // so the artifact cap above can never apply to it.
@@ -2438,6 +2442,22 @@ export function isFieldGuarded(field: MapFieldState): boolean {
  */
 export type HeroStepKind = "open" | "stop" | "encounter" | "pass-only" | "block";
 
+/** Broad map-preset Break gates plus the exact-field flag. Guarded fields only. */
+export function isBreakEntry(state: GameState, hero: HeroState, field: MapFieldState): boolean {
+  if (field.breakField) return true;
+  const adventure = state.adventure;
+  const config = adventure?.mapPreset?.breaks;
+  if (!adventure || !config) return false;
+  if (config.enterViiFields && field.difficulty === 7) return true;
+  const destinationTile = adventure.tiles[field.tileInstanceId];
+  const originField = hero.spaceId ? adventure.fields[hero.spaceId] : undefined;
+  if (!destinationTile || originField?.tileInstanceId === field.tileInstanceId) return false;
+  return (
+    (config.enterNearTiles === true && destinationTile.group === "near") ||
+    (config.enterCenterTiles === true && destinationTile.group === "center")
+  );
+}
+
 export function classifyHeroStep(
   state: GameState,
   hero: HeroState,
@@ -2485,7 +2505,7 @@ export function classifyHeroStep(
     // Break fields (PC-style): Pathfinding may NOT walk through — must fight
     // to enter / clear. Angel Wings flies over them all the same ("through ANY
     // fields"). Classic guarded fields still allow Pathfinding pass.
-    if (field.breakField) {
+    if (isBreakEntry(state, hero, field)) {
       return passAnyField(movement) ? "encounter" : "stop";
     }
     // Pathfinding walks through Neutral Units; Combat only if you END here.
@@ -2494,7 +2514,11 @@ export function classifyHeroStep(
 
   // Dragon Conqueror: a captured Dragon Utopia is a stronghold — its holder
   // walks on and off freely, everyone else must stop to besiege it.
-  if (field.location === "dragon_utopia" && field.flagOwnerId && adventureVictoryMode(state) === "dragon-conqueror") {
+  if (
+    field.location === "dragon_utopia" &&
+    field.flagOwnerId &&
+    (adventureVictoryMode(state) === "dragon-conqueror" || field.flaggableDragonUtopia)
+  ) {
     // An ALLY's captured Utopia is walked over like your own (never besieged).
     return field.flagOwnerId === playerId || fieldFlaggedByAlly(state, playerId, field)
       ? "open"
@@ -6087,6 +6111,21 @@ function queueDragonUtopiaArtifactSearches(
   }
 }
 
+function captureFlaggableDragonUtopia(state: GameState, playerId: PlayerId, field: MapFieldState): void {
+  if (!field.flaggableDragonUtopia || field.flagOwnerId === playerId) return;
+  const previousOwnerId = field.flagOwnerId;
+  field.flagOwnerId = playerId;
+  field.everFlagged = true;
+  field.blackCube = false;
+  appendEvent(state, {
+    type: "FIELD_FLAGGED",
+    playerId,
+    fieldId: field.spaceId,
+    location: field.location,
+    previousOwnerId: previousOwnerId && previousOwnerId !== playerId ? previousOwnerId : null
+  });
+}
+
 /**
  * Dragon Utopia visit (after its guards are defeated — the full Field
  * Difficulty Ⅶ table row by default, the fixed four-dragon party in the
@@ -6118,7 +6157,7 @@ function handleDragonUtopiaVisit(state: GameState, hero: HeroState, field: MapFi
   }
 
   if (grailUtopiaFieldRulesEnabled(state)) {
-    if (!field.blackCube) {
+    if (!field.blackCube && !field.everFlagged) {
       field.blackCube = true;
       gainResources(state, hero.controllerId, { gold: 20 }, "cleared the Dragon Utopia");
       queueDragonUtopiaArtifactSearches(state, hero, field);
@@ -6148,6 +6187,7 @@ function handleDragonUtopiaVisit(state: GameState, hero: HeroState, field: MapFi
         ]
       });
     }
+    captureFlaggableDragonUtopia(state, hero.controllerId, field);
     return;
   }
 
@@ -6188,7 +6228,7 @@ function handleDragonUtopiaVisit(state: GameState, hero: HeroState, field: MapFi
     return;
   }
 
-  if (!field.blackCube) {
+  if (!field.blackCube && !field.everFlagged) {
     field.blackCube = true;
     // 10 gold (the generic Lvl-VII bank consolation) + the Utopia's OWN fixed
     // artifact reward. It no longer takes the shared consolation's hardcoded
@@ -6198,6 +6238,7 @@ function handleDragonUtopiaVisit(state: GameState, hero: HeroState, field: MapFi
     queueDragonUtopiaArtifactSearches(state, hero, field);
     grantUtopiaBonusSearch(state, hero.controllerId);
   }
+  captureFlaggableDragonUtopia(state, hero.controllerId, field);
 }
 
 /**
@@ -11703,6 +11744,26 @@ export function processPendingVisit(state: GameState): void {
         visit.steps.unshift({
           type: "NEUTRAL_RECRUIT_MENU",
           prompt: "Charlie and his Circus: recruit one drawn Neutral Unit",
+          candidates: drawn.map((draw) => ({
+            unitDefId: draw.unitDefId,
+            steps: [{ type: "RECRUIT_DRAWN_NEUTRAL", recruit: draw, drawn } as VisitStep]
+          })),
+          decline: {
+            label: "Recruit none",
+            steps: [{ type: "RECRUIT_DRAWN_NEUTRAL", recruit: null, drawn } as VisitStep]
+          },
+          skipWhenEmpty: true
+        });
+        break;
+      }
+      case "UTOPIA_AZURE_RECRUIT_OFFER": {
+        const drawn = [drawFromNeutralDeck(state, "azure"), drawFromNeutralDeck(state, "azure")]
+          .filter((unitDefId): unitDefId is string => Boolean(unitDefId))
+          .map((unitDefId) => ({ unitDefId, tier: "azure" as const }));
+        if (drawn.length === 0) break;
+        visit.steps.unshift({
+          type: "NEUTRAL_RECRUIT_MENU",
+          prompt: "Dragon Utopia: recruit one of the two searched Azure units",
           candidates: drawn.map((draw) => ({
             unitDefId: draw.unitDefId,
             steps: [{ type: "RECRUIT_DRAWN_NEUTRAL", recruit: draw, drawn } as VisitStep]
@@ -18586,6 +18647,24 @@ export function startAdventureRound(state: GameState): void {
       }
       if (heroHasGradeNode(state, playerId, HERO_GRADE_NODE_IDS.astrologersMorale)) {
         changeMorale(state, playerId, 1);
+      }
+
+      // A player controlling one or more designer-flaggable Dragon Utopias gets
+      // ONE Search(2) Azure recruit offer this Astrologers round. Multiple
+      // Utopias never stack, and the round stamp protects re-entry/replay.
+      const controlsFlaggableUtopia = Object.values(state.adventure?.fields ?? {}).some(
+        (field) =>
+          field.location === "dragon_utopia" &&
+          field.flaggableDragonUtopia === true &&
+          field.flagOwnerId === playerId
+      );
+      if (controlsFlaggableUtopia && player.utopiaAzureRecruitRound !== state.round) {
+        player.utopiaAzureRecruitRound = state.round;
+        state.adventure?.rewardQueue.push({
+          playerId,
+          kind: "visit-steps",
+          steps: [{ type: "UTOPIA_AZURE_RECRUIT_OFFER" }]
+        });
       }
 
       const town = getTownOfPlayer(state, playerId);

@@ -464,6 +464,10 @@ export function sanitizeCenterHexPlan(input: unknown): CustomCenterHexPlan | und
   if (raw.winCondition === true) {
     centerHex.winCondition = true;
   }
+  if (raw.breakField === true) centerHex.breakField = true;
+  if (raw.persistentGuard === true) centerHex.persistentGuard = true;
+  if (raw.unlimitedRounds === true) centerHex.unlimitedRounds = true;
+  if (raw.flaggableDragonUtopia === true) centerHex.flaggableDragonUtopia = true;
   return Object.keys(centerHex).length > 0 ? centerHex : undefined;
 }
 
@@ -2335,6 +2339,13 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
       preset.farTileTypeChoices = kinds;
     }
   }
+  if (raw.breaks && typeof raw.breaks === "object") {
+    const breaks: NonNullable<CustomMapPreset["breaks"]> = {};
+    if (raw.breaks.enterNearTiles === true) breaks.enterNearTiles = true;
+    if (raw.breaks.enterCenterTiles === true) breaks.enterCenterTiles = true;
+    if (raw.breaks.enterViiFields === true) breaks.enterViiFields = true;
+    if (Object.keys(breaks).length > 0) preset.breaks = breaks;
+  }
   if (raw.houseRules && typeof raw.houseRules === "object") {
     const houseRules: NonNullable<CustomMapPreset["houseRules"]> = {};
     for (const id of ["no-secondary-heroes", "free-neutral-combat-extend"] as const) {
@@ -2515,6 +2526,7 @@ export function customMapPresetIsActive(preset: CustomMapPreset | null | undefin
       preset.farTilesPerPlayer !== undefined ||
       preset.farTileTypeChoice !== undefined ||
       (preset.farTileTypeChoices && preset.farTileTypeChoices.length > 0) ||
+      Boolean(preset.breaks) ||
       Boolean(preset.houseRules && Object.keys(preset.houseRules).length > 0) ||
       preset.startingResources ||
       preset.computerStartingBonus ||
@@ -3109,6 +3121,13 @@ export function describeCustomMapPresetEntries(
   }
   if (preset.heroDefeatGold) {
     entries.push({ icon: "⚔️", text: `Defeat an enemy Hero: +${preset.heroDefeatGold} gold` });
+  }
+  if (preset.breaks) {
+    const gates: string[] = [];
+    if (preset.breaks.enterNearTiles) gates.push("entering tiles Ⅳ–Ⅴ");
+    if (preset.breaks.enterCenterTiles) gates.push("entering tiles Ⅵ–Ⅶ");
+    if (preset.breaks.enterViiFields) gates.push("entering fields Ⅶ");
+    entries.push({ icon: "🧱", text: `Break: ${gates.join(", ")}` });
   }
   if (preset.obelisks) {
     entries.push({ icon: "🗿", text: describeObeliskRole(preset.obelisks) });
