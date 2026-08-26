@@ -5,7 +5,8 @@ import { sampleCards } from "./sample";
 
 /**
  * Heroes 3 Board Game Community Balance Change (`community-card-balance`) — the
- * reprinted ARTIFACT cards (the sheet's Artifacts tab, 34 cards).
+ * reprinted ARTIFACT cards (the sheet's Artifacts tab plus the Royal Armor of
+ * Nix follow-up, 35 cards).
  *
  * THE COMMITTED CARD FACE IS THE AUTHORITY (`public/assets/community-balance/
  * artifact-<slug>.webp`), not this file's prose. Each entry is the PRINTED
@@ -962,6 +963,30 @@ export const communityBalanceArtifactCards: CardLibrary = {
           label: "+1 Power, then draw a card",
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
           effect: { type: "ADD_SPELL_POWER", amount: 1, drawCards: 1 }
+        }
+      ]
+    }
+  }),
+
+  // Royal Armor of Nix — option A pays +3 Power (was +2), completing the
+  // requested +2/+3 swap with Scales of the Greater Basilisk.
+  "artifact.royal_armor_of_nix": reprint("artifact.royal_armor_of_nix", {
+    tags: tags(
+      "artifact.royal_armor_of_nix",
+      "+3 Power (was +2). — OR — On a Sea tile, Search (2) the Spell deck (unchanged)."
+    ),
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "+3 Power",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 3 }
+        },
+        {
+          label: "On a Sea tile: Search (2) the Spell deck",
+          requiresSeaTile: true,
+          effect: { type: "CARD_DECK_SEARCH", deck: "spells", count: 2 }
         }
       ]
     }

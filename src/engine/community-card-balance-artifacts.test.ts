@@ -1,5 +1,5 @@
 /**
- * Community Balance Change (`community-card-balance`) — the 34 reprinted
+ * Community Balance Change (`community-card-balance`) — the 35 reprinted
  * ARTIFACTS.
  *
  * Every claim is an OBSERVABLE outcome (a resource delta, the damage a blow
@@ -14,7 +14,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, createInitialGameState, getLegalActions } from "./index";
-import { beginFieldVisit, startAdventureRound, reinforceCostFor } from "./adventure";
+import { beginFieldVisit, startAdventureRound, reinforceCostFor, getMainHero } from "./adventure";
 import { openSharedDeckSearch } from "./adventure-reducer";
 import { effectiveArtifactTier } from "./ruleset";
 import { balancedPlayOptionCost, costNeedsCardPicker } from "./card-play-cost";
@@ -42,7 +42,8 @@ function passAllReactions(state: GameState): GameState {
 function combat(community: boolean, seed = "community-artifacts", polish = false): GameState {
   const state = createInitialGameState(`${seed}-${community}-${polish}`);
   state.adventure = {
-    houseRules: { "community-card-balance": community, "polish-card-balance": polish }
+    houseRules: { "community-card-balance": community, "polish-card-balance": polish },
+    fields: {}
   } as unknown as GameState["adventure"];
   state.activePlayerId = "p1";
   state.combat!.activeUnitId = "unit_p1_griffins";
@@ -663,11 +664,36 @@ describe("Community artifacts — combat stat sides", () => {
     expect(powerPaidIntoCast("artifact.sandals_of_the_saint", 0, false)).toBe(0);
   });
 
-  it("Tunic of the Cyclops King (+3 Power) and Scales of the Greater Basilisk (+2 Power) move their flat sides", () => {
+  it("the revised +Power artifacts pay their Community values, with printed-value controls", () => {
     expect(powerPaidIntoCast("artifact.tunic_of_the_cyclops_king", 1, true)).toBe(3);
     expect(powerPaidIntoCast("artifact.tunic_of_the_cyclops_king", 1, false)).toBe(2);
     expect(powerPaidIntoCast("artifact.scales_of_the_greater_basilisk", 0, true)).toBe(2);
     expect(powerPaidIntoCast("artifact.scales_of_the_greater_basilisk", 0, false)).toBe(3);
+    expect(powerPaidIntoCast("artifact.royal_armor_of_nix", 0, true)).toBe(3);
+    expect(powerPaidIntoCast("artifact.royal_armor_of_nix", 0, false)).toBe(2);
+  });
+
+  it("Royal Armor of Nix keeps its Sea-only Search (2) side under the Community rule", () => {
+    const cardId = "artifact.royal_armor_of_nix";
+    const offSea = mapState("royal-armor-community-off-sea", true);
+    offSea.players.p1.hand = [cardId as CardId];
+    expect(findPlay(offSea, cardId, 1)).toBeFalsy();
+
+    const onSea = mapState("royal-armor-community-on-sea", true);
+    onSea.players.p1.hand = [cardId as CardId];
+    onSea.decks.spells.discardPile = [];
+    const hero = getMainHero(onSea, "p1");
+    expect(hero?.spaceId).toBeTruthy();
+    onSea.adventure!.fields[hero!.spaceId!].terrain = "water";
+
+    const search = findPlay(onSea, cardId, 1);
+    expect(search).toBeTruthy();
+    const searching = applyOk(onSea, search!);
+    expect(searching.pendingChoice?.type).toBe("DECK_SEARCH");
+    if (searching.pendingChoice?.type === "DECK_SEARCH") {
+      expect(searching.pendingChoice.deckId).toBe("spells");
+      expect(searching.pendingChoice.revealedCardIds).toHaveLength(2);
+    }
   });
 
   it("Dragon Wing Tabard: option A pays +1 Power (the classic option A discards an enemy card instead)", () => {
@@ -1378,8 +1404,8 @@ describe("Community artifacts — registry hygiene", () => {
     }
   });
 
-  it("ships exactly the sheet's 34 artifacts", () => {
-    expect(Object.keys(communityBalanceArtifactCards)).toHaveLength(34);
+  it("ships the sheet's 34 artifacts plus the Royal Armor follow-up", () => {
+    expect(Object.keys(communityBalanceArtifactCards)).toHaveLength(35);
   });
 });
 

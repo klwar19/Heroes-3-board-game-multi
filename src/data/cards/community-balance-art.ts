@@ -29,7 +29,8 @@ import { cardLibrary } from "@/data/cards/library";
  * gold ring/badge the render surfaces already draw on top.
  *
  * SCOPE: the pack is COMPLETE — all twelve Abilities (plus their Empowered
- * printings), twenty-six Spells, thirty-four Artifacts and the three re-priced
+ * printings), twenty-six Spells, the sheet's thirty-four Artifacts plus the
+ * Royal Armor follow-up, and the three re-priced
  * War Machines are listed below, and the four changed UNIT SIDES have their own
  * registry (`COMMUNITY_BALANCE_UNIT_FACES`) because a unit side is not a library
  * card. `COMMUNITY_BALANCE_NOT_IMPLEMENTED` is EMPTY, and stays here so a future
@@ -87,7 +88,7 @@ export const COMMUNITY_BALANCE_CARD_IDS: readonly string[] = [
   "spell.cure",
   "spell.mirth",
   "spell.prayer",
-  // ---- Artifacts (all THIRTY-FOUR of the sheet's artifact cards are wired) --
+  // ---- Artifacts (the sheet's 34 plus the Royal Armor follow-up are wired) --
   // RELIC
   "artifact.boots_of_polarity",
   "artifact.celestial_necklace_of_bliss",
@@ -109,6 +110,7 @@ export const COMMUNITY_BALANCE_CARD_IDS: readonly string[] = [
   "artifact.head_of_legion",
   "artifact.ogres_club_of_havoc",
   "artifact.pendant_of_second_sight",
+  "artifact.royal_armor_of_nix",
   "artifact.surcoat_of_counterpoise",
   "artifact.targ_of_the_rampaging_ogre",
   "artifact.tunic_of_the_cyclops_king",
@@ -155,8 +157,8 @@ export {
  * `COMMUNITY_BALANCE_CARD_IDS` is the conscious "it is wired now" step.
  */
 export const COMMUNITY_BALANCE_NOT_IMPLEMENTED: Record<string, string> = {
-  // EMPTY for the ARTIFACTS family too: all THIRTY-FOUR of the sheet's artifact
-  // cards are wired. The three readings that are NOT literal transcriptions —
+  // EMPTY for the ARTIFACTS family too: all THIRTY-FOUR sheet artifacts plus
+  // the Royal Armor follow-up are wired. The three readings that are NOT literal transcriptions —
   // Celestial Necklace of Bliss's cross-stat discard (its +X Defense lands on
   // YOUR unit for the combat round, since the blow's defense value is the
   // enemy's), Hourglass of the Evil Hour option B (global, numeric result only)
