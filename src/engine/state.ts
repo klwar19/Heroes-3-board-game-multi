@@ -183,6 +183,9 @@ export type HouseRuleId =
   | "polish-quick-combat"
   // Polish house rule: random Grail/Utopia placement and shared objective rules.
   | "polish-grail-utopia"
+  // Polish Alliance variant: allied seats pool their Victory Points at scoring
+  // and may make consensual resource / Artifact transfers during play.
+  | "polish-alliance-mode"
   // Pit Lords' Summon Demons: while ON, a Pit Lords may summon a new Few even
   // when Demons are already on the field (multiple Demon units). Off (official):
   // only ONE Demons unit may stand on the field (Few or Pack) — summon is
@@ -7446,6 +7449,8 @@ export type GameEvent =
       breakdown: {
         playerId: PlayerId;
         total: number;
+        /** Combined team score under Polish Alliance mode; absent otherwise. */
+        allianceTotal?: number;
         rows: { label: string; vp: number }[];
       }[];
     }

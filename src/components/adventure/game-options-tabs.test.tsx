@@ -687,6 +687,7 @@ describe("Game options — tabbed layout", () => {
       "eversmoking-ring-of-sulfur-major": true,
       "polish-set-artifacts": true,
       "polish-bank-unit-spells": true,
+      "polish-alliance-mode": true,
       "polish-card-balance": true
     };
     const onAction = openOptionsWith((state) => {
@@ -724,6 +725,7 @@ describe("Game options — tabbed layout", () => {
         "eversmoking-ring-of-sulfur-major": true,
         "polish-set-artifacts": true,
         "polish-bank-unit-spells": true,
+        "polish-alliance-mode": true,
         "polish-card-balance": true,
         "discovery-border-gate": true
       };

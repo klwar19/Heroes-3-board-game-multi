@@ -42,7 +42,12 @@ function vpRowGlyph(label: string): string | undefined {
 // final game-over breakdown). No engine change; both read already-public state.
 // ---------------------------------------------------------------------------
 
-type BreakdownRow = { playerId: PlayerId; total: number; rows: { label: string; vp: number }[] };
+type BreakdownRow = {
+  playerId: PlayerId;
+  total: number;
+  allianceTotal?: number;
+  rows: { label: string; vp: number }[];
+};
 
 function seatName(state: GameState, playerId: PlayerId): string {
   const identity = getSeatIdentity(state, playerId);
@@ -68,7 +73,9 @@ function BreakdownCard({
         <span className="seatFactionDot" style={{ background: identity.factionColor ?? "#b08d2f" }} aria-hidden="true" />
         <strong>{seatName(state, row.playerId)}</strong>
         {isWinner ? <Trophy aria-label="Winner" size={14} /> : null}
-        <span className="vpBreakdownTotal">{row.total} VP</span>
+        <span className="vpBreakdownTotal">
+          {row.total} VP{row.allianceTotal !== undefined ? ` · alliance ${row.allianceTotal} VP` : ""}
+        </span>
       </header>
       {row.rows.length > 0 ? (
         <ul className="vpBreakdownRows">
@@ -165,7 +172,7 @@ export function VictoryPointsDock({
         {breakdown.map((row) => (
           <li key={row.playerId} className={row.playerId === viewerPlayerId ? "viewer" : undefined}>
             <span className="vpDockName">{seatName(state, row.playerId)}</span>
-            <b className="vpDockScore">{row.total}</b>
+            <b className="vpDockScore">{row.allianceTotal ?? row.total}</b>
           </li>
         ))}
       </ol>

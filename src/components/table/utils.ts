@@ -807,10 +807,12 @@ export function formatEvent(event: GameEvent, state: GameState): string {
     case "GAME_WON":
       return `${playerName(state, event.playerId)} wins the game: ${event.reason}!`;
     case "VP_SCORING": {
-      const winnerTotal =
-        event.breakdown.find((row) => row.playerId === event.winnerPlayerId)?.total ?? 0;
+      const winnerRow = event.breakdown.find((row) => row.playerId === event.winnerPlayerId);
+      const winnerTotal = winnerRow?.allianceTotal ?? winnerRow?.total ?? 0;
       const standings = event.breakdown
-        .map((row) => `${playerName(state, row.playerId)} ${row.total}`)
+        .map((row) =>
+          `${playerName(state, row.playerId)} ${row.total}${row.allianceTotal !== undefined ? ` (alliance ${row.allianceTotal})` : ""}`
+        )
         .join(", ");
       return `Victory Points scored (${event.reason}): ${playerName(state, event.winnerPlayerId)} leads with ${winnerTotal} VP — ${standings}.`;
     }

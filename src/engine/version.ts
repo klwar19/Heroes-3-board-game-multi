@@ -963,7 +963,10 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // S1..SN alliance layout that overrides editable lobby teams at game build.
 // Older workers would ignore it and permit attacks between intended allies.
 // `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 79;
+// v80: Polish Alliance mode adds team-total VP scoring to serialized scoring
+// events. A v79 worker would select a different winner for the same snapshot.
+// `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 80;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

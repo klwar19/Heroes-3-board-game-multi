@@ -4480,13 +4480,14 @@ export function endGameByVictoryPoints(
     breakdown: result.breakdown.map((row) => ({
       playerId: row.playerId,
       total: row.total,
+      ...(row.allianceTotal !== undefined ? { allianceTotal: row.allianceTotal } : {}),
       rows: row.rows.map((entry) => ({ label: entry.label, vp: entry.vp }))
     }))
   });
   declareAdventureWinner(
     state,
     result.winnerId,
-    `the most Victory Points (${winnerRow?.total ?? 0})`
+    `the most Victory Points (${winnerRow?.allianceTotal ?? winnerRow?.total ?? 0})`
   );
 }
 

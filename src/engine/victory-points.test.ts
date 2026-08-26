@@ -703,6 +703,36 @@ describe("computeVictoryPoints (pure)", () => {
     // Breakdown is winner-first.
     expect(computeVictoryPoints(state, { completerId: "p1" }).breakdown[0]?.playerId).toBe("p1");
   });
+
+  it("Polish Alliance mode ranks allies by their combined VP without changing individual rows", () => {
+    const state = makeGame({ players: THREE_PLAYERS });
+    setVictoryPoints(state, { enabled: true, victoryConditionVp: 0 });
+    zeroBaseVp(state);
+    getMainHero(state, "p1")!.level = 2;
+    getMainHero(state, "p2")!.level = 2;
+    getMainHero(state, "p3")!.level = 3;
+    state.playerTeams = { p1: "allies", p2: "allies", p3: "rival" };
+
+    const control = computeVictoryPoints(state);
+    expect(control.winnerId).toBe("p3");
+    expect(control.breakdown[0]?.allianceTotal).toBeUndefined();
+
+    (state.adventure!.houseRules ??= {})["polish-alliance-mode"] = true;
+    const alliance = computeVictoryPoints(state);
+    expect(alliance.winnerId).toBe("p1");
+    expect(alliance.breakdown.find((row) => row.playerId === "p1")).toMatchObject({
+      total: 2,
+      allianceTotal: 4
+    });
+    expect(alliance.breakdown.find((row) => row.playerId === "p2")).toMatchObject({
+      total: 2,
+      allianceTotal: 4
+    });
+    expect(alliance.breakdown.find((row) => row.playerId === "p3")).toMatchObject({
+      total: 3,
+      allianceTotal: 3
+    });
+  });
 });
 
 // ===========================================================================

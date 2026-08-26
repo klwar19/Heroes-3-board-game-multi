@@ -27,6 +27,7 @@
  */
 
 import { cardLibrary } from "@/data/cards/library";
+import { houseRuleEnabled } from "./house-rules";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import type {
   CustomMapPreset,
@@ -45,7 +46,13 @@ import { grailPossessionVp } from "./map-design-features";
 export type VictoryPointRow = { label: string; vp: number };
 
 /** One player's full VP breakdown (rows sum to `total`). */
-export type VictoryPointBreakdown = { playerId: PlayerId; total: number; rows: VictoryPointRow[] };
+export type VictoryPointBreakdown = {
+  playerId: PlayerId;
+  total: number;
+  /** Combined score for this player's alliance under Polish Alliance mode. */
+  allianceTotal?: number;
+  rows: VictoryPointRow[];
+};
 
 /** The scoring result: per-player breakdown (winner first) + the winning seat. */
 export type VictoryPointsResult = { breakdown: VictoryPointBreakdown[]; winnerId: PlayerId | null };
@@ -510,9 +517,23 @@ export function computeVictoryPoints(
     buildBreakdown(state, playerId, config, completerId)
   );
 
+  if (houseRuleEnabled(state, "polish-alliance-mode")) {
+    const totals = new Map<string, number>();
+    for (const row of rows) {
+      const allianceId = state.playerTeams?.[row.playerId] ?? `solo:${row.playerId}`;
+      totals.set(allianceId, (totals.get(allianceId) ?? 0) + row.total);
+    }
+    for (const row of rows) {
+      const allianceId = state.playerTeams?.[row.playerId] ?? `solo:${row.playerId}`;
+      row.allianceTotal = totals.get(allianceId) ?? row.total;
+    }
+  }
+
   rows.sort((a, b) => {
-    if (b.total !== a.total) {
-      return b.total - a.total;
+    const aScore = a.allianceTotal ?? a.total;
+    const bScore = b.allianceTotal ?? b.total;
+    if (bScore !== aScore) {
+      return bScore - aScore;
     }
     // A tie at the top goes to the completer, if they are one of the tied seats.
     const aCompleter = a.playerId === completerId ? 0 : 1;

@@ -343,6 +343,15 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     legacyDefault: false
   },
   {
+    id: "polish-alliance-mode",
+    label: "Alliance mode",
+    description:
+      "Polish variant: allied players combine their Victory Points at game end. During a turn, allies may transfer Artifacts while any of their main or secondary Heroes are adjacent, and resources while their Heroes are adjacent or the initiating Hero is at a Town, Settlement, or Trading Post. The receiving ally must accept.",
+    category: "polish",
+    default: false,
+    legacyDefault: false
+  },
+  {
     id: "polish-set-artifacts",
     label: "Set Artifacts",
     description:
