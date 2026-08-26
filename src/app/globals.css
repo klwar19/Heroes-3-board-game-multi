@@ -44951,10 +44951,27 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
 /* Per-town briefing (game start): the viewer's own town only. */
 .animeTownBriefing {
   padding: 24px;
-  background-size: cover;
-  background-position: center;
   --briefing-accent: #f2c560; /* anime gold */
 }
+
+/* Clear, undimmed town art shown as its own banner (edge-to-edge across the top
+   of the panel) instead of a darkened full-panel background hidden behind the
+   text cards — so the illustration actually reads. */
+.animeNoticeArt {
+  border-radius: 18px 18px 0 0;
+  overflow: hidden;
+  border-bottom: 1px solid rgba(225, 184, 91, 0.45);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+.animeNoticeArt img {
+  display: block;
+  width: 100%;
+  height: clamp(170px, 27vh, 280px);
+  object-fit: cover;
+  object-position: center 28%;
+}
+.animeTownBriefing .animeNoticeArt { margin: -24px -24px 18px; }
+.animePenaltyNotice .animeNoticeArt { margin: -30px -30px 20px; }
 .animeTownBriefing[data-register="wuxia"] { --briefing-accent: #7fe0a6; } /* jade */
 .animeTownBriefing h2, .animePenaltyNotice h2 { margin: 2px 0 0; font-family: Georgia, serif; letter-spacing: .035em; text-shadow: 0 2px 10px #000, 0 0 4px rgba(0,0,0,.85); }
 .animeTownBriefingHead { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
@@ -44979,13 +44996,10 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
 .animeMechanicsDone, .animePenaltyNotice button { display: block; margin: 18px auto 0; min-width: 180px; padding: 10px 18px; border: 1px solid #e2b657; border-radius: 9px; color: #181008; background: linear-gradient(#ffe8a1, #cf933a); font-weight: 900; cursor: pointer; }
 
 .animePenaltyNotice {
-  min-height: 440px;
   padding: 30px;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
-  background-size: cover;
-  background-position: center;
+  justify-content: flex-start;
 }
 .animePenaltyNotice header { display: flex; align-items: center; gap: 14px; }
 .animePenaltyNotice header img { width: 70px; height: 70px; object-fit: contain; }
@@ -44997,5 +45011,8 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
   .animeTownBriefing { padding: 15px; }
   .animeTownBriefingHead > img { width: 46px; height: 46px; }
   .animeTownBriefingCard h3 { font-size: 18px; }
-  .animePenaltyNotice { min-height: 330px; padding: 20px; }
+  .animePenaltyNotice { padding: 20px; }
+  .animeTownBriefing .animeNoticeArt { margin: -15px -15px 14px; }
+  .animePenaltyNotice .animeNoticeArt { margin: -20px -20px 14px; }
+  .animeNoticeArt img { height: clamp(130px, 22vh, 190px); }
 }

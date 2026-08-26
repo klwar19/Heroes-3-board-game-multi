@@ -51,9 +51,9 @@ export const ANIME_FACTION_PENALTIES: readonly AnimeFactionPenaltyDefinition[] =
     short: "−4 gold each Resource round",
     detail: "After all Resource-round income, the sect tithes up to 4 gold in spirit stones. This never creates debt.",
     timing: "resource-round",
-    mechanicTitle: "Sword Formation",
+    mechanicTitle: "Sect Qi (Sword Formation)",
     mechanicDetail:
-      "A wuxia sword sect: the Sword Array grants adjacent allies +1 Attack, and flowing footwork ignores adjacency combat penalties.",
+      "Move a unit next to a NEW allied unit to circulate +1 Sect Qi (army pool, max 3). When a unit attacks or defends while beside an ally it automatically spends 1 Sect Qi — +1 Attack on the attack, or +1 Defense when defending. Your Hero Grade is shown as your Cultivation Realm.",
     artImage: "/assets/anime/notices/azure-breeze-spirit-tithe.webp"
   },
   {
@@ -63,17 +63,17 @@ export const ANIME_FACTION_PENALTIES: readonly AnimeFactionPenaltyDefinition[] =
     short: "−4 gold each Resource round",
     detail: "After all Resource-round income, the cult levies up to 4 gold in tribute. This never creates debt.",
     timing: "resource-round",
-    mechanicTitle: "Demonic Arts",
+    mechanicTitle: "Blood Essence & Blood Frenzy",
     mechanicDetail:
-      "Blood Siphon heals your units after an attack that deals damage, and Reap grants a stacking Attack bonus whenever an adjacent unit is removed.",
+      "Each real army unit feeds +1 Blood Essence the first time it takes a casualty (pool, max 4). Blood Frenzy then spends 1 Essence on your FIRST friendly attack each combat round for +1 Attack. Your Hero Grade is shown as your Cultivation Realm.",
     artImage: "/assets/anime/notices/heavenly-demon-blood-tribute.webp"
   },
   {
     factionId: "hidden_leaf",
     register: "anime",
     title: "Chakra Strain",
-    short: "−1 hand limit each Resource round",
-    detail: "Every Resource round your effective hand limit permanently falls by 1 (minimum 1) as your shinobi overextend.",
+    short: "−1 hand limit on each Resource round",
+    detail: "On each Resource round your effective hand limit drops by 1 (minimum 1) as your shinobi overextend, then returns to normal.",
     timing: "resource-round",
     mechanicTitle: "Shinobi Missions",
     mechanicDetail:
@@ -84,8 +84,8 @@ export const ANIME_FACTION_PENALTIES: readonly AnimeFactionPenaltyDefinition[] =
     factionId: "mgq",
     register: "anime",
     title: "Paradox Strain",
-    short: "−1 hand limit each Resource round",
-    detail: "Every Resource round the paradox strains your mind: your effective hand limit permanently falls by 1 (minimum 1).",
+    short: "−1 hand limit on each Resource round",
+    detail: "On each Resource round the paradox strains your mind: your effective hand limit drops by 1 (minimum 1), then returns to normal.",
     timing: "resource-round",
     mechanicTitle: "Four Spirits",
     mechanicDetail:

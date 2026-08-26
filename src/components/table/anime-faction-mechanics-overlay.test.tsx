@@ -51,7 +51,7 @@ describe("AnimeFactionMechanicsOverlay", () => {
     const dialog = screen.getByRole("dialog", { name: /how your town plays/i });
     expect(dialog.querySelector<HTMLElement>(".animeTownBriefing")?.getAttribute("data-register")).toBe("wuxia");
     expect(dialog.textContent).toContain("CULTIVATION SECT");
-    expect(dialog.textContent).toContain("Demonic Arts");
+    expect(dialog.textContent).toContain("Blood Essence & Blood Frenzy");
     expect(dialog.textContent).toContain("Demonic Cult Tribute");
   });
 
@@ -68,7 +68,9 @@ describe("AnimeFactionMechanicsOverlay", () => {
     render(<AnimeFactionMechanicsOverlay state={state} viewerPlayerId="p1" />);
     const dialog = screen.getByRole("dialog", { name: /School Contribution Fund/i });
     expect(dialog.textContent).toContain("5 gold and 1 building material");
-    expect(dialog.querySelector<HTMLElement>(".animePenaltyNotice")?.style.backgroundImage).toContain(
+    // The town art shows as a clear dedicated <img> banner (not a dimmed
+    // full-panel background), so the illustration actually reads.
+    expect(dialog.querySelector<HTMLImageElement>(".animeNoticeArt img")?.getAttribute("src")).toContain(
       animeFactionPenalty("little_busters")!.artImage.replace(/^.*\//, "")
     );
   });
@@ -97,7 +99,7 @@ describe("AnimeFactionMechanicsOverlay", () => {
     render(<AnimeFactionMechanicsOverlay state={state} viewerPlayerId="p1" />);
     const dialog = screen.getByRole("dialog", { name: /how your town plays/i });
     expect(dialog.textContent).toContain("Shinobi Missions");
-    expect(dialog.textContent).toContain("−1 hand limit each Resource round");
+    expect(dialog.textContent).toContain("−1 hand limit on each Resource round");
     expect(dialog.textContent).toContain("Chakra Strain");
     expect(animeMechanicsIntroKey(state, "p1")).toContain("pick:");
   });

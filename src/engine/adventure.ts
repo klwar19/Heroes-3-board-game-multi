@@ -18319,6 +18319,16 @@ export function startAdventureRound(state: GameState): void {
 
   const kind = state.round === 1 ? "first" : state.round % 2 === 1 ? "resource" : "astrologers";
 
+  // Anime Chakra/Paradox Strain (Hidden Leaf, MGQ): the −1 hand-limit penalty is
+  // ROUND-SCOPED, not a permanent stacking loss. Clear last round's penalty here
+  // so the hand limit is back to normal; the Resource-round income loop below then
+  // re-applies exactly −1 for the Resource round it names (never accumulating).
+  for (const player of Object.values(state.players)) {
+    if (player.id !== NEUTRAL_PLAYER_ID && player.otherworldHandLimitLoss) {
+      player.otherworldHandLimitLoss = 0;
+    }
+  }
+
   // Round-scoped reinforcement entitlements (the Cove Pub's "during each
   // Astrologers' round" discount) die here, at the start of the NEXT round —
   // they deliberately survive hero movement and turn starts, which is what
@@ -18694,7 +18704,8 @@ export function startAdventureRound(state: GameState): void {
 
     // Anime / xianxia Otherworld penalties resolve only after every automatic
     // Resource-round source has paid. Resource losses floor at zero; the two
-    // hand-limit factions instead accumulate a persistent −1 each Resource round.
+    // hand-limit factions take a round-scoped −1 hand limit for this Resource
+    // round only (cleared at the top of the next startAdventureRound).
     applyAnimeFactionResourceRoundPenalty(state, playerId);
 
     // FO redesign wave 3 — Urahara's Shop credit. Collected at the SAME income

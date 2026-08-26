@@ -236,6 +236,52 @@ describe("Game options — tabbed layout", () => {
     expect(within(dialog).queryByTestId("anime-module-destiny")).toBeNull();
   });
 
+  it("the Anime mod window surfaces a Commander & equipment tick that drives wog.commanders", () => {
+    const onAction = openOptionsWith((state) => {
+      state.setupLobby!.options.anime = { ...state.setupLobby!.options.anime!, enabled: true };
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Mod options/i }));
+    const dialog = screen.getByRole("dialog", { name: /Anime mod options/i });
+    onAction.mockClear();
+    fireEvent.click(within(dialog).getByTestId("anime-module-commanders"));
+    const call = onAction.mock.calls.at(-1)?.[0];
+    // Turning it on enables the shared WOG Commanders module (never a separate
+    // anime commander engine), so the commander + Forge/equip windows appear.
+    expect(call).toMatchObject({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { wog: expect.objectContaining({ enabled: true, commanders: true }) }
+    });
+  });
+
+  it("the Anime mod window 'Enable all' turns on every module AND the commander system in one dispatch", () => {
+    const onAction = openOptionsWith((state) => {
+      state.setupLobby!.options.anime = { ...state.setupLobby!.options.anime!, enabled: true };
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Mod options/i }));
+    const dialog = screen.getByRole("dialog", { name: /Anime mod options/i });
+    onAction.mockClear();
+    fireEvent.click(within(dialog).getByTestId("anime-modules-enable-all"));
+    const call = onAction.mock.calls.at(-1)?.[0];
+    expect(call).toMatchObject({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: {
+        anime: expect.objectContaining({
+          enabled: true,
+          isekaiTowns: true,
+          xianxiaTowns: true,
+          cultivation: true,
+          heroGrades: true,
+          equipment: true,
+          raidBosses: true,
+          dungeon: true
+        }),
+        wog: expect.objectContaining({ enabled: true, commanders: true })
+      }
+    });
+  });
+
   it("the Legacy preset forces BOTH the WOG and Anime mods off", () => {
     const onAction = openOptionsWith((state) => {
       state.setupLobby!.options.wog = { ...state.setupLobby!.options.wog!, enabled: true };

@@ -42,16 +42,31 @@ describe("anime faction Resource-round penalties", () => {
     expect(state.players.p1.resources.gold).toBe(0);
   });
 
-  it.each(["hidden_leaf", "mgq"] as const)("%s cumulatively loses 1 effective hand limit per Resource round", (factionId) => {
+  it.each(["hidden_leaf", "mgq"] as const)("%s loses exactly 1 hand limit on a Resource round, never stacking", (factionId) => {
     const state = resourceState(factionId);
     const base = effectiveHandLimit(state, "p1");
+    // Resource round (round 3): −1 for this round only.
     startAdventureRound(state);
     expect(state.players.p1.otherworldHandLimitLoss).toBe(1);
     expect(effectiveHandLimit(state, "p1")).toBe(Math.max(1, base - 1));
+    // A LATER Resource round re-applies −1 — it never accumulates to −2.
     state.round = 5;
     startAdventureRound(state);
-    expect(state.players.p1.otherworldHandLimitLoss).toBe(2);
-    expect(effectiveHandLimit(state, "p1")).toBe(Math.max(1, base - 2));
+    expect(state.players.p1.otherworldHandLimitLoss).toBe(1);
+    expect(effectiveHandLimit(state, "p1")).toBe(Math.max(1, base - 1));
+  });
+
+  it("clears the round-scoped hand-limit penalty on a round that does not re-apply it", () => {
+    const state = resourceState("hidden_leaf");
+    startAdventureRound(state); // round 3 (resource): loss = 1
+    expect(state.players.p1.otherworldHandLimitLoss).toBe(1);
+    // The round-start clear reverts it for a round the penalty does not touch —
+    // proven with a seat that no longer qualifies, since the clear runs for every
+    // round kind (mutation: remove the clear and the loss stays 1).
+    state.players.p1.factionId = "castle";
+    state.round = 5;
+    startAdventureRound(state);
+    expect(state.players.p1.otherworldHandLimitLoss ?? 0).toBe(0);
   });
 
   it("Little Busters pays 5 gold and 1 material, floored at what is available", () => {

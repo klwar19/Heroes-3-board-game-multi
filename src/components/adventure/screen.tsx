@@ -9688,6 +9688,31 @@ function GameModeSection({
   const send = (next: Partial<GameSetupOptions>) =>
     onAction({ type: "SET_GAME_OPTIONS", playerId: viewerPlayerId, options: next });
 
+  // Anime mod-window "Enable all / Disable all": the boolean module flags the
+  // window renders as ticks, PLUS the commander system (which is the shared WOG
+  // Commanders module — every anime town ships a commander that only appears
+  // when it is on). Toggling in one dispatch keeps anime.* and wog.commanders in
+  // lockstep with the WOG window.
+  const animeEnableAllKeys = [
+    "isekaiTowns", "xianxiaTowns", "doomNeutrals", "mapObjects", "combatEvents",
+    "xianxiaArtifacts", "cultivation", "heroGrades", "equipment", "unitStacks",
+    "unitExperience", "monsterWaves", "raidBosses", "dungeon"
+  ] as const;
+  const commanderModuleOn = Boolean(wog.enabled && wog.commanders);
+  const animeAllModulesOn =
+    commanderModuleOn && animeEnableAllKeys.every((key) => Boolean(anime[key]));
+  const setAllAnimeModules = (on: boolean) => {
+    const updates: Partial<Record<(typeof animeEnableAllKeys)[number], boolean>> = {};
+    for (const key of animeEnableAllKeys) {
+      updates[key] = on;
+    }
+    send({ anime: { ...anime, ...updates }, wog: { ...wog, commanders: on, ...(on ? { enabled: true } : {}) } });
+  };
+  const toggleCommanderModule = () => {
+    const on = !commanderModuleOn;
+    send({ wog: { ...wog, commanders: on, ...(on ? { enabled: true } : {}) } });
+  };
+
   /** Which big mode card is highlighted from the current options. */
   const activeSetupMode = deriveActiveSetupMode(options);
 
@@ -10109,6 +10134,15 @@ function GameModeSection({
               only what you want; each is independent and coexists with WOG and the house rules. Doom is
               available as its own explicit neutral-monster checkbox below.
             </small>
+            <button
+              aria-label={`${animeAllModulesOn ? "Disable" : "Enable"} all anime modules`}
+              className={`houseRuleGroupToggleAll ${animeAllModulesOn ? "on" : "off"}`}
+              data-testid="anime-modules-enable-all"
+              onClick={() => setAllAnimeModules(!animeAllModulesOn)}
+              type="button"
+            >
+              {animeAllModulesOn ? "Disable all" : "Enable all"}
+            </button>
             <div className="wogModuleList">
               {([
                 ["isekaiTowns", "Fuyuki + Hidden Leaf + Azur Lane + Little Busters", "Adds four complete anime towns: Fuyuki City, Hidden Leaf Village, Azur Lane Naval Base, and Little Busters Campus — each with seven units, original heroes, its town board, buildings, starting tile, commander, and themed progression."],
@@ -10144,6 +10178,29 @@ function GameModeSection({
                   </button>
                 );
               })}
+              {/* Commander & equipment: surfaced here because every anime town
+                  ships a WOG commander that only appears with the shared
+                  Commanders module on. This drives wog.commanders (there is no
+                  separate anime commander engine), staying in lockstep with the
+                  WOG window's own Commanders toggle. Turning it on also gives the
+                  Commander Forge / equip-artifact windows (gated on a commander
+                  existing). */}
+              <button
+                aria-pressed={commanderModuleOn}
+                className={`wogModuleToggle ${commanderModuleOn ? "selected" : ""}`}
+                data-testid="anime-module-commanders"
+                onClick={toggleCommanderModule}
+                type="button"
+              >
+                <span className="wogModuleCheck">{commanderModuleOn ? <Check size={15} /> : null}</span>
+                <span>
+                  <strong>Commander &amp; equipment</strong>
+                  <small>
+                    Your faction&apos;s commander fights as the army&apos;s 5th unit, grades up with hero level,
+                    and can be equipped with Commander Artifacts at the Forge (Wake of Gods engine).
+                  </small>
+                </span>
+              </button>
               {anime.monsterWaves ? (
                 <div className="waveCadenceRow" role="group" aria-label="Wave cadence">
                   <strong>Wave cadence</strong>

@@ -45,11 +45,14 @@ export function applyAnimeFactionResourceRoundPenalty(state: GameState, playerId
   }
 
   if (HAND_LIMIT_FACTIONS.has(player.factionId)) {
-    player.otherworldHandLimitLoss = Math.max(0, Math.trunc(player.otherworldHandLimitLoss ?? 0)) + 1;
+    // ROUND-SCOPED, non-cumulative: the hand limit falls by 1 for THIS Resource
+    // round only, then reverts to normal. `startAdventureRound` clears the loss
+    // at the top of every round, so it never stacks to −2/−3 across the game.
+    player.otherworldHandLimitLoss = 1;
     appendEvent(state, {
       type: "EVENT_NOTE",
       playerId,
-      message: `${title} — hand limit permanently reduced by 1 (${player.otherworldHandLimitLoss} total).`
+      message: `${title} — hand limit reduced by 1 for this Resource round.`
     });
     return;
   }
