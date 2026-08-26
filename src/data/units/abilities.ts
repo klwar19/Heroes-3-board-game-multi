@@ -322,6 +322,12 @@ export type UnitAbilityEffectDefinition =
        */
       type: "HEAL_SELF_ON_DAMAGE_DEALT";
       amount: number;
+      /**
+       * Vampiric drain (MGQ Carmilla): when set, the self-heal equals the amount
+       * of damage this attack actually DEALT (still capped at the unit's current
+       * damage), rather than the fixed `amount`. `amount` is ignored/0 then.
+       */
+      byDamageDealt?: boolean;
     }
   | {
       /**
@@ -2970,6 +2976,13 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "REDUCE_SPELL_DAMAGE", amount: 3 },
     implementationStatus: "implemented"
   },
+  "reduce-spell-and-specialty-damage-1": {
+    id: "reduce-spell-and-specialty-damage-1",
+    name: "Magical Resistance",
+    text: "[unit_passive] Reduce any damage this unit takes from spells or Specialty by 1 (to a minimum of 0).",
+    effect: { type: "REDUCE_SPELL_AND_SPECIALTY_DAMAGE", amount: 1 },
+    implementationStatus: "implemented"
+  },
   "reduce-spell-and-specialty-damage-2": {
     id: "reduce-spell-and-specialty-damage-2",
     name: "Magical Resistance",
@@ -3013,6 +3026,13 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Life Drain",
     text: "[unit_attack] After this unit's attack, remove all damage from it.",
     effect: { type: "ON_ATTACK_HEAL_SELF", amount: 9 },
+    implementationStatus: "implemented"
+  },
+  "mgq-carmilla-life-drain": {
+    id: "mgq-carmilla-life-drain",
+    name: "Vampire Life-Drain",
+    text: "[unit_attack] After this unit's attack DEALS damage, heal it by the amount of damage dealt.",
+    effect: { type: "HEAL_SELF_ON_DAMAGE_DEALT", amount: 0, byDamageDealt: true },
     implementationStatus: "implemented"
   },
   "halberdier-defense-aura": {

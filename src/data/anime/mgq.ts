@@ -102,6 +102,7 @@ export const MGQ_NEW_ABILITY_IDS = [
   "mgq-lisa-growth",
   "mgq-maiden-certain-paralysis",
   "mgq-giga-regeneration",
+  "mgq-carmilla-life-drain",
   "mgq-jessie-spear-wall",
   "mgq-undine-heal-1",
   "mgq-undine-heal-2"
@@ -223,7 +224,7 @@ export const mgqUnitDefinitions: Record<string, UnitDefinition> = {
       "bronze",
       "pochi",
       "pack",
-      { attack: 2, defense: 0, health: 3, initiative: 8, gold: 4 },
+      { attack: 2, defense: 0, health: 3, initiative: 8, gold: 2 },
       ["mgq-pack-dig"],
       "Pack Dig — after moving or while stationary, instead of attacking place an obstacle in an adjacent empty cell."
     )
@@ -292,12 +293,12 @@ export const mgqUnitDefinitions: Record<string, UnitDefinition> = {
     "Fleesia",
     "bronze",
     "ground",
-    mgqSide("bronze", "fleesia", "few", { attack: 2, defense: 1, health: 3, initiative: 3, gold: 3 }),
+    mgqSide("bronze", "fleesia", "few", { attack: 2, defense: 1, health: 3, initiative: 3, gold: 2 }),
     mgqSide(
       "bronze",
       "fleesia",
       "pack",
-      { attack: 2, defense: 2, health: 3, initiative: 4, gold: 5 },
+      { attack: 2, defense: 2, health: 3, initiative: 4, gold: 4 },
       ["mgq-trance-pollen"],
       'Trance Pollen — a "+1" on Fleesia\'s Attack die also places 1 Temptation token on the target.'
     )
@@ -402,7 +403,7 @@ export const mgqUnitDefinitions: Record<string, UnitDefinition> = {
       "silver",
       "shizuku",
       "pack",
-      { attack: 5, defense: 1, health: 5, initiative: 5, gold: 12 },
+      { attack: 5, defense: 1, health: 5, initiative: 5, gold: 13 },
       ["mgq-confusion-club"],
       'Confusion Club — a "+1" on Shizuku\'s Attack die also places a Weakness token on the target.'
     )
@@ -412,7 +413,7 @@ export const mgqUnitDefinitions: Record<string, UnitDefinition> = {
     "Regina",
     "silver",
     "ground",
-    mgqSide("silver", "regina", "few", { attack: 3, defense: 2, health: 4, initiative: 5, gold: 7 }),
+    mgqSide("silver", "regina", "few", { attack: 3, defense: 2, health: 4, initiative: 5, gold: 6 }),
     mgqSide(
       "silver",
       "regina",
@@ -432,16 +433,16 @@ export const mgqUnitDefinitions: Record<string, UnitDefinition> = {
       "maiden",
       "few",
       { attack: 3, defense: 1, health: 5, initiative: 5, gold: 7 },
-      ["mgq-nightmares-embrace"],
-      'Nightmare\'s Embrace — a "+1" on Maiden\'s Attack die Paralyzes the target.'
+      ["mgq-nightmares-embrace", "reduce-spell-and-specialty-damage-1"],
+      'Nightmare\'s Embrace — a "+1" on Maiden\'s Attack die Paralyzes the target. Dream Ward — reduces Spell and Specialty damage taken by 1 (minimum 0).'
     ),
     mgqSide(
       "silver",
       "maiden",
       "pack",
       { attack: 4, defense: 1, health: 5, initiative: 6, gold: 10 },
-      ["mgq-maiden-certain-paralysis"],
-      "Nightmare's Embrace — after Maiden attacks, Paralyze the target."
+      ["mgq-maiden-certain-paralysis", "reduce-spell-and-specialty-damage-1"],
+      "Nightmare's Embrace — after Maiden attacks, Paralyze the target. Dream Ward — reduces Spell and Specialty damage taken by 1 (minimum 0)."
     )
   ),
   "mgq.seraphy": mgqUnit(
@@ -468,7 +469,7 @@ export const mgqUnitDefinitions: Record<string, UnitDefinition> = {
       "silver",
       "lisa",
       "few",
-      { attack: 3, defense: 1, health: 4, initiative: 6, gold: 7, buildingMaterials: 1 },
+      { attack: 3, defense: 1, health: 4, initiative: 6, gold: 6, buildingMaterials: 1 },
       ["mgq-lisa-growth"],
       "Soul Growth — when Lisa reduces a unit side or stack layer to 0 HP, she permanently gains +1 maximum Health (maximum +2)."
     ),
@@ -476,7 +477,7 @@ export const mgqUnitDefinitions: Record<string, UnitDefinition> = {
       "silver",
       "lisa",
       "pack",
-      { attack: 3, defense: 1, health: 4, initiative: 7, gold: 8, buildingMaterials: 1 },
+      { attack: 3, defense: 1, health: 4, initiative: 7, gold: 7, buildingMaterials: 1 },
       ["mgq-lisa-growth", "ignores-retaliation"],
       "Soul Growth — gain permanent +1 maximum Health after reducing a side or stack layer to 0 HP (maximum +2); attacks provoke no Retaliation."
     )
@@ -491,7 +492,7 @@ export const mgqUnitDefinitions: Record<string, UnitDefinition> = {
       "silver",
       "tama",
       "pack",
-      { attack: 4, defense: 0, health: 6, initiative: 8, gold: 11 },
+      { attack: 4, defense: 0, health: 6, initiative: 12, gold: 11 },
       ["dread-knight-death-blow"],
       'Critical Claws — a "0" or "+1" on Tama\'s Attack die adds another +1 Attack.'
     )
@@ -506,7 +507,7 @@ export const mgqUnitDefinitions: Record<string, UnitDefinition> = {
       "silver",
       "maya",
       "pack",
-      { attack: 4, defense: 1, health: 4, initiative: 6, gold: 11 },
+      { attack: 4, defense: 1, health: 4, initiative: 6, gold: 10 },
       ["mgq-slow-weave"],
       "Slow Weave — after Maya's attack hits, the target loses 1 Initiative for the current round."
     )
@@ -520,7 +521,7 @@ export const mgqUnitDefinitions: Record<string, UnitDefinition> = {
       "silver",
       "matis",
       "few",
-      { attack: 3, defense: 1, health: 5, initiative: 6, gold: 8 },
+      { attack: 3, defense: 1, health: 6, initiative: 6, gold: 8 },
       ["mgq-reaper-scythe"],
       "Reaper Scythe — +2 Attack against Paralyzed, Weakened or Tempted targets."
     ),
@@ -528,7 +529,7 @@ export const mgqUnitDefinitions: Record<string, UnitDefinition> = {
       "silver",
       "matis",
       "pack",
-      { attack: 4, defense: 1, health: 5, initiative: 7, gold: 12 },
+      { attack: 4, defense: 1, health: 6, initiative: 7, gold: 12 },
       ["mgq-reaper-scythe"],
       "Reaper Scythe — +2 Attack against Paralyzed, Weakened or Tempted targets."
     )
@@ -580,7 +581,7 @@ export const mgqUnitDefinitions: Record<string, UnitDefinition> = {
       "silver",
       "aria",
       "pack",
-      { attack: 4, defense: 2, health: 5, initiative: 5, gold: 11 },
+      { attack: 4, defense: 2, health: 5, initiative: 5, gold: 13 },
       ["mgq-flower-fragrance", "unlimited-retaliation"],
       "Flower Fragrance — Retaliation Attacks place Temptation; Aria may retaliate without a round limit."
     )
@@ -596,16 +597,16 @@ export const mgqUnitDefinitions: Record<string, UnitDefinition> = {
       "carmilla",
       "few",
       { attack: 5, defense: 2, health: 7, initiative: 8, gold: 13, valuables: 1 },
-      ["bank-vampire-life-drain"],
-      "Vampire Life-Drain — after Carmilla attacks, remove all damage from her."
+      ["mgq-carmilla-life-drain"],
+      "Vampire Life-Drain — after Carmilla's attack deals damage, heal her by the amount of damage dealt."
     ),
     mgqSide(
       "gold",
       "carmilla",
       "pack",
       { attack: 6, defense: 2, health: 7, initiative: 9, gold: 21, valuables: 1 },
-      ["bank-vampire-life-drain", "ignores-retaliation"],
-      "Vampire Life-Drain — heal all damage after attacking; Carmilla's attacks do not provoke Retaliation."
+      ["mgq-carmilla-life-drain", "ignores-retaliation"],
+      "Vampire Life-Drain — heal Carmilla by the damage her attack deals; her attacks do not provoke Retaliation."
     )
   ),
   "mgq.giga": mgqUnit(

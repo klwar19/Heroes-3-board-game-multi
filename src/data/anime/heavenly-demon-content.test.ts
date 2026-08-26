@@ -126,9 +126,9 @@ describe("Heavenly Demon Palace — registration & roster shape", () => {
     }
   });
 
-  it("uses the wuxia visual register (same as Azure Breeze) with the Cultivation-Realm lexicon", () => {
+  it("uses the wuxia visual register (same as Azure Breeze); grade lexicon is the Martial Path (hero grade is folded into Cultivation for wuxia)", () => {
     expect(factionVisualRegister(FACTION)).toBe("wuxia");
-    expect(factionUiLexicon(FACTION).grade).toBe("Cultivation Realm");
+    expect(factionUiLexicon(FACTION).grade).toBe("Martial Path");
   });
 });
 

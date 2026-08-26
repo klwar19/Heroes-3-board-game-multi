@@ -2740,7 +2740,9 @@ types + lobby state only — `docs/anime-mod-plan.md` is the contract):**
   contract only).
   LIMITS: **same-slot twins do NOT stack**; equipment combat folds are the MAIN
   hero's fights only; Hearthbound Horseshoe's "your Town" is FLAG-first (a captured
-  Town pays its captor, not its former owner); 9 icons are procedural placeholders.
+  Town pays its captor, not its former owner). All equipment icons now ship real
+  painterly HoMM3-style art (the last 9 procedural "initials" placeholders were
+  regenerated 2026-08-26 via codex image_gen).
   REGISTER-AWARE SHOPS: either outfitter also offers the VISITING hero's register line
   (`equipmentRegisterLineFor`), with `equipmentPackagesForFaction` special-casing
   hidden_leaf → `shinobi`, azur_lane → `kansen`, heavenly_demon → `modao` AHEAD of the
@@ -2794,7 +2796,8 @@ and a WOG commander. Data `src/data/anime/towns.ts`; pinned in `towns.test.ts`,
 `heavenly-demon-content.test.ts`, plus `src/server/hidden-leaf-live.test.ts`,
 `azur-lane-live.test.ts`, `heavenly-demon-live.test.ts`.
 LIMITS: the Battle-Test sandbox never offers an anime faction; Hidden Leaf ships 3
-heroes, not the plan's 6; 9 equipment icons remain procedural placeholders.
+heroes, not the plan's 6; all equipment icons now ship real art (the last 9
+procedural placeholders were regenerated 2026-08-26).
 FACTION LIMITS (updated 2026-08-25, protocol v65 — server-authoritative):
 **Fuyuki**, **Azure Breeze**, and **Heavenly Demon** lose up to 4 gold after
 every Resource-round income; **Hidden Leaf** and **MGQ** lose 1 effective

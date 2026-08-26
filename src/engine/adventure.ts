@@ -53,7 +53,8 @@ import {
   heroGradeResourceRoundMovement,
   heroGradeResourceRoundValuables,
   heroHasGradeNode,
-  heroGradesEnabled
+  heroGradesEnabled,
+  heroGradesEnabledForPlayer
 } from "./anime-hero-grades";
 import {
   HERO_GRADE_MANUAL_SHOP_LOCATION_IDS,
@@ -8727,7 +8728,7 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
   // ADDITION to their printed reward when the module is on. Runtime-gated so the
   // module-OFF visit is byte-identical (the location definitions are untouched);
   // reached only on a FRESH visit (past the black-cube guard above).
-  if (heroGradesEnabled(state) && HERO_GRADE_MERIT_HEX_LOCATION_IDS.has(location.id)) {
+  if (heroGradesEnabledForPlayer(state, playerId) && HERO_GRADE_MERIT_HEX_LOCATION_IDS.has(location.id)) {
     gainGradeProgress(state, playerId, 1, "hex");
   }
 
@@ -8736,7 +8737,7 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
   // optional PAY_TO the visitor resolves after the shop's own menu; the PAY_TO
   // supplies the affordability gate + a Decline, and the inner GAIN_HAND_CARD
   // grants the item straight to hand.
-  if (steps.length > 0 && heroGradesEnabled(state) && HERO_GRADE_MANUAL_SHOP_LOCATION_IDS.has(location.id)) {
+  if (steps.length > 0 && heroGradesEnabledForPlayer(state, playerId) && HERO_GRADE_MANUAL_SHOP_LOCATION_IDS.has(location.id)) {
     steps.push({
       type: "PAY_TO",
       prompt: "Buy the Training Manual (Học Vũ Kinh)?",

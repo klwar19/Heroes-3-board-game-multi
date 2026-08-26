@@ -372,8 +372,12 @@ export function HeroBoard({
   // Anime Cultivation (§5.6): a public realm chip (EN + VI). Renders only with
   // the module on — a module-off / non-anime table shows nothing (CONTROL).
   const cultivationGradeFaction = heroDef.faction === "azure_breeze" || heroDef.faction === "heavenly_demon";
-  const showGrade = heroGradesEnabled(state);
-  const showRealm = cultivationEnabled(state) && !(cultivationGradeFaction && showGrade);
+  // Wuxia towns run Cultivation as their ONLY hero-progression system: the
+  // Hero-Grade chip, picker and tree are fully hidden for them (the engine also
+  // grants them no Merit or grade bonuses — see heroGradesEnabledForPlayer), and
+  // their signature upgrades are folded into the Cultivation Realm. USER RULE.
+  const showRealm = cultivationEnabled(state);
+  const showGrade = heroGradesEnabled(state) && !cultivationGradeFaction;
   const realm = cultivationRealmLabel(state, playerId, cultivationRealmOf(state, playerId));
   // Anime Hero Grades (§3.11): a public grade chip + Merit progress + unspent-
   // point indicator, and a pick-a-node picker. Renders only with the module on.
@@ -643,7 +647,7 @@ export function HeroBoard({
           {showGrade ? (
             <span
               className="hbGrade"
-              title={`${cultivationGradeFaction ? "Cultivation Realm" : "Hero Grade"}: ${grade.en} (${grade.vi}) · Merit ${merit}${nextThreshold ? `/${nextThreshold}` : " (max)"}`}
+              title={`${lexicon.grade}: ${grade.en} (${grade.vi}) · Merit ${merit}${nextThreshold ? `/${nextThreshold}` : " (max)"}`}
             >
               ⚔ {grade.en} · {grade.vi} · Merit {merit}
               {nextThreshold ? `/${nextThreshold}` : ""}

@@ -226,7 +226,7 @@ describe("previously-silent monster abilities now carry a cue", () => {
     expect(spellPresentationMs(plan)).toBeGreaterThan(0);
   });
 
-  it.each(["vampire-heal-on-attack", "bank-vampire-life-drain"])(
+  it.each(["vampire-heal-on-attack", "bank-vampire-life-drain", "mgq-carmilla-life-drain"])(
     "%s uses the supplied Vampire Life Drain frames, never the Cure animation",
     (abilityId) => {
       const plan = abilityFxPlans[abilityId];

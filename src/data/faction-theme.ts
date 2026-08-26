@@ -46,7 +46,7 @@ const WUXIA: FactionUiLexicon = {
   register: "wuxia",
   level: "Stage",
   experience: "Cultivation",
-  grade: "Cultivation Realm",
+  grade: "Martial Path",
   equipment: "Spirit Arsenal",
   commanderEquipment: "Sacred Treasures",
   army: "Sect retinue",

@@ -414,6 +414,9 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   // losslessly into the same sprite-sheet pipeline as the original H3 effects.
   "vampire-heal-on-attack": { affect: [{ key: "vampire-life-drain" }], sound: "effects/drain-life" },
   "bank-vampire-life-drain": { affect: [{ key: "vampire-life-drain" }], sound: "effects/drain-life" },
+  // MGQ Carmilla's Vampire Life-Drain heals her by the damage she deals; fire the
+  // same Vampire drain frames + drain-life chime the other vampire heals use.
+  "mgq-carmilla-life-drain": { affect: [{ key: "vampire-life-drain" }], sound: "effects/drain-life" },
   // Dragon Flies' Dispel: stripping the enemy's own buffs off the target fires a
   // UNIT_ABILITY_TRIGGERED("dragon-fly-dispel"); reuse the same dispel shimmer +
   // sound the spell-counter cue uses (cancelFx) so the cleanse is seen and heard.

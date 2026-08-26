@@ -1,6 +1,7 @@
 import { EQUIPMENT_IDS } from "@/data/anime/equipment";
 import { isAdjacent } from "./battlefield";
 import { playerHasEquipment } from "./anime-equipment";
+import { cultivationRealmOf, type CultivationRealm } from "./anime-cultivation";
 import { appendEvent, nextEventNumber } from "./events";
 import type {
   CombatState,
@@ -33,22 +34,44 @@ function mainHeroDefId(state: Pick<GameState, "heroes">, playerId: PlayerId): st
   )?.heroDefId;
 }
 
-function mainHeroHasNode(state: Pick<GameState, "heroes">, playerId: PlayerId, nodeId: string): boolean {
-  return Object.values(state.heroes).some(
-    (hero) => hero.controllerId === playerId && hero.kind === "main" && hero.gradeNodes?.includes(nodeId)
-  );
+/**
+ * Wuxia towns run the Cultivation Realm track as their ONLY hero-progression
+ * system (USER RULE: "when select wuxia town, no hero grade, only cultivation").
+ * The signature-meter upgrades that USED to be hero-grade nodes are FOLDED into
+ * cultivation: each former node auto-grants the moment the main hero's Cultivation
+ * Realm reaches its mapped threshold, so the faction identity is preserved without
+ * a duplicate grade tree. Realm is 0 when the Cultivation module is off, so the
+ * base meter still works — the upgrades simply never arm.
+ */
+const WUXIA_CULTIVATION_UPGRADE_REALM: Record<string, CultivationRealm> = {
+  // Azure Breeze (Sect Qi): start with +1 Qi at Foundation, +1 cap at Core
+  // Formation, and the easier Sword Domain release at Nascent Soul.
+  "xianxia-meridian-circulation": 1,
+  "xianxia-body-refinement": 2,
+  "xianxia-sword-domain": 3,
+  // Heavenly Demon (Blood Essence): start with 1 Essence at Blood Foundation,
+  // +1 cap at Demon Core, the stronger Blood Frenzy at Demon Soul.
+  "modao-blood-refinement": 1,
+  "modao-corpse-furnace": 2,
+  "modao-forbidden-overreach": 3
+};
+
+/** Whether a wuxia hero has reached the Cultivation Realm that grants an upgrade. */
+function heroHasWuxiaUpgrade(state: GameState, playerId: PlayerId, upgradeId: string): boolean {
+  const threshold = WUXIA_CULTIVATION_UPGRADE_REALM[upgradeId];
+  return threshold !== undefined && cultivationRealmOf(state, playerId) >= threshold;
 }
 
-function sectQiCapacity(state: Pick<GameState, "heroes">, playerId: PlayerId): number {
-  return SECT_QI_MAX + (mainHeroHasNode(state, playerId, "xianxia-body-refinement") ? 1 : 0);
+function sectQiCapacity(state: GameState, playerId: PlayerId): number {
+  return SECT_QI_MAX + (heroHasWuxiaUpgrade(state, playerId, "xianxia-body-refinement") ? 1 : 0);
 }
 
-function bloodEssenceCapacity(state: Pick<GameState, "heroes">, playerId: PlayerId): number {
-  return BLOOD_ESSENCE_MAX + (mainHeroHasNode(state, playerId, "modao-corpse-furnace") ? 1 : 0);
+function bloodEssenceCapacity(state: GameState, playerId: PlayerId): number {
+  return BLOOD_ESSENCE_MAX + (heroHasWuxiaUpgrade(state, playerId, "modao-corpse-furnace") ? 1 : 0);
 }
 
-function swordIntentThreshold(state: Pick<GameState, "heroes">, playerId: PlayerId): number {
-  return mainHeroHasNode(state, playerId, "xianxia-sword-domain") ? 2 : SWORD_INTENT_MAX;
+function swordIntentThreshold(state: GameState, playerId: PlayerId): number {
+  return heroHasWuxiaUpgrade(state, playerId, "xianxia-sword-domain") ? 2 : SWORD_INTENT_MAX;
 }
 
 function livingAdjacentAllies(
@@ -67,27 +90,22 @@ function livingAdjacentAllies(
 
 /** Stamp only the faction meter owned by each fighter. */
 export function initializeCultivationFactionCombat(
-  state: Pick<GameState, "players" | "heroes">,
+  state: GameState,
   combat: CombatState
 ): void {
   const records: NonNullable<CombatState["cultivationFactions"]> = {};
   for (const playerId of [combat.attackerPlayerId, combat.defenderPlayerId]) {
     const factionId = factionOf(state, playerId);
     if (factionId === AZURE_BREEZE_FACTION_ID) {
-      const hero = Object.values(state.heroes).find(
-        (candidate) => candidate.controllerId === playerId && candidate.kind === "main"
-      );
       records[playerId] = {
-        // Meridian Circulation is the town's cultivation-grade starting-Qi node.
-        sectQi: Math.min(SECT_QI_MAX, 1 + (hero?.gradeNodes?.includes("xianxia-meridian-circulation") ? 1 : 0)),
+        // Meridian Circulation (Foundation realm) grants the +1 starting Qi.
+        sectQi: Math.min(SECT_QI_MAX, 1 + (heroHasWuxiaUpgrade(state, playerId, "xianxia-meridian-circulation") ? 1 : 0)),
         swordIntent: 0
       };
     } else if (factionId === HEAVENLY_DEMON_FACTION_ID) {
-      const hero = Object.values(state.heroes).find(
-        (candidate) => candidate.controllerId === playerId && candidate.kind === "main"
-      );
       records[playerId] = {
-        bloodEssence: hero?.gradeNodes?.includes("modao-blood-refinement") ? 1 : 0,
+        // Blood Refinement (Foundation realm) grants the 1 starting Essence.
+        bloodEssence: heroHasWuxiaUpgrade(state, playerId, "modao-blood-refinement") ? 1 : 0,
         swordIntent: 0
       };
     }
@@ -188,12 +206,7 @@ export function applyCultivationAttackDeclaration(
   ) {
     attackerRecord.bloodEssence = Math.max(0, (attackerRecord.bloodEssence ?? 0) - 1);
     attackerRecord.bloodFrenzySpentRound = combat.round;
-    const mastery = Object.values(state.heroes).some(
-      (hero) =>
-        hero.controllerId === attacker.controllerId &&
-        hero.kind === "main" &&
-        hero.gradeNodes?.includes("modao-forbidden-overreach")
-    );
+    const mastery = heroHasWuxiaUpgrade(state, attacker.controllerId, "modao-forbidden-overreach");
     stackItem.modifiers.cultivationAttackBonus =
       (stackItem.modifiers.cultivationAttackBonus ?? 0) + (mastery ? 2 : 1);
     appendEvent(state, {

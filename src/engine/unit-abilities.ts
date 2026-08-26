@@ -1366,10 +1366,15 @@ export function getOnAttackSelfHeal(
  */
 export function getBloodSiphonSelfHeal(
   unit: CombatUnitState
-): { abilityId: string; abilityName: string; amount: number } | null {
+): { abilityId: string; abilityName: string; amount: number; byDamageDealt: boolean } | null {
   for (const ability of getAbilitiesWithEffect(unit, "HEAL_SELF_ON_DAMAGE_DEALT")) {
     if (ability.effect?.type === "HEAL_SELF_ON_DAMAGE_DEALT") {
-      return { abilityId: ability.id, abilityName: ability.name, amount: ability.effect.amount };
+      return {
+        abilityId: ability.id,
+        abilityName: ability.name,
+        amount: ability.effect.amount,
+        byDamageDealt: ability.effect.byDamageDealt === true
+      };
     }
   }
   return null;

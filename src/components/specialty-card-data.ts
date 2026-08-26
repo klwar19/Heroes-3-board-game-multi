@@ -117,14 +117,16 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   molian: "/assets/specialty-card/icon-cure.webp",
   luohun: "/assets/anime/equipment/ten_thousand_souls_banner.webp",
   shiyan: "/assets/anime/icons/cultivation/blood-essence.webp",
-  // Little Busters — generated transparent emblems double as clean native-card
-  // specialty symbols. Kud's rocket-science crest replaces the unrelated frost icon.
-  sasami_sasasegawa: "/assets/anime/icons/little-busters/rank-softball-club.webp",
-  riki_naoe: "/assets/specialty-card/icon-forgetfulness.webp",
-  rin_natsume: "/assets/anime/icons/little-busters/rank-rins-cats.webp",
-  yuiko_kurugaya: "/assets/specialty-card/icon-fortune.webp",
-  kudryavka_noumi: "/assets/anime/icons/little-busters/specialty-kud-rocket-launcher.webp",
-  komari_kamikita: "/assets/specialty-card/icon-first_aid.webp",
+  // Little Busters — dedicated clean square SYMBOL specialty icons (codex
+  // image-gen), one per hero, each suiting the character's theme. These are
+  // distinct files from the unit-rank emblems (rank-softball-club / rank-rins-cats
+  // still back the veterancy display).
+  sasami_sasasegawa: "/assets/anime/icons/little-busters/specialty-sasami-softball.webp", // Perfect Captain (softball)
+  riki_naoe: "/assets/anime/icons/little-busters/specialty-riki-forgetfulness.webp", // Forgetfulness
+  rin_natsume: "/assets/anime/icons/little-busters/specialty-rin-natsume-cats.webp", // Cat Commander
+  yuiko_kurugaya: "/assets/anime/icons/little-busters/specialty-yuiko-fortune.webp", // Fortune
+  kudryavka_noumi: "/assets/anime/icons/little-busters/specialty-kud-rocket-launcher.webp", // Rocket Launcher
+  komari_kamikita: "/assets/anime/icons/little-busters/specialty-komari-smiles.webp", // Everyone Smiles (heal)
   // Monster Girl Quest: dedicated identity-preserving specialty medallions.
   luka: "/assets/specialty-card/icon-mgq-luka.webp",
   alice: "/assets/specialty-card/icon-mgq-alice.webp",

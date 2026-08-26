@@ -7,6 +7,7 @@ import { HERO_GRADE_ICONS } from "@/data/anime/hero-grades";
 import { coreFactionDefinitions } from "@/data/factions/core";
 import { WUXIA_RANK_ABILITY_ICONS, unitRankAbilityIcon } from "@/data/units/experience";
 import { applyAction, createAdventureGameState, createInitialGameState, healLegacyPlayerFields } from "./index";
+import { resolveAnimeOptions } from "./anime";
 import { markUnitRemovedIfNeeded } from "./combat-units";
 import { expireHeroGradeFamiliars } from "./hero-grade-combat";
 import type { CombatUnitState, GameAction, GameEvent, GameState } from "./state";
@@ -61,6 +62,9 @@ function combatState(
   heroDefId: "qingyun" | "xuedao" | "jianxu" | "yulian" | "luohun" | "shiyan"
 ): GameState {
   const state = createInitialGameState(`wuxia-${factionId}-${heroDefId}`);
+  // Wuxia towns run Cultivation as their only progression; the signature-meter
+  // upgrades fold onto the Cultivation Realm, so enable the module here.
+  state.anime = resolveAnimeOptions({ enabled: true, cultivation: true });
   state.players.p1.factionId = factionId;
   state.heroes.hero_p1.heroDefId = heroDefId;
   state.players.p1.hand = [];
@@ -189,13 +193,11 @@ describe("Azure Breeze cultivation combat", () => {
     expect(state.combat!.cultivationFactions?.p1?.swordIntent).toBe(1);
   });
 
-  it("cultivation-realm nodes raise starting/capacity Qi and shorten Sword Domain tempering", () => {
+  it("cultivation-realm upgrades raise starting/capacity Qi and shorten Sword Domain tempering", () => {
     let state = combatState("azure_breeze", "qingyun");
-    state.heroes.hero_p1.gradeNodes = [
-      "xianxia-meridian-circulation",
-      "xianxia-body-refinement",
-      "xianxia-sword-domain"
-    ];
+    // Realm 3 (Nascent Soul) folds in all three former grade nodes: Meridian
+    // Circulation (r1), Body Refinement (r2) and Sword Domain (r3).
+    state.heroes.hero_p1.cultivationRealm = 3;
     initializeCultivationFactionCombat(state, state.combat!);
     expect(state.combat!.cultivationFactions?.p1?.sectQi).toBe(2);
 
@@ -324,13 +326,11 @@ describe("Heavenly Demon cultivation combat", () => {
     expect(state.combat!.cultivationFactions?.p1?.bloodEssence).toBe(1);
   });
 
-  it("demonic-realm nodes start Essence, raise its cap to 5, and empower Blood Frenzy to +2", () => {
+  it("demonic-realm upgrades start Essence, raise its cap to 5, and empower Blood Frenzy to +2", () => {
     let state = combatState("heavenly_demon", "xuedao");
-    state.heroes.hero_p1.gradeNodes = [
-      "modao-blood-refinement",
-      "modao-corpse-furnace",
-      "modao-forbidden-overreach"
-    ];
+    // Realm 3 (Demon Soul) folds in all three former grade nodes: Blood
+    // Refinement (r1), Corpse Furnace (r2) and Forbidden Overreach (r3).
+    state.heroes.hero_p1.cultivationRealm = 3;
     initializeCultivationFactionCombat(state, state.combat!);
     expect(state.combat!.cultivationFactions?.p1?.bloodEssence).toBe(1);
 

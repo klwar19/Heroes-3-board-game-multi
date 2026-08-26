@@ -50,6 +50,26 @@ export function heroGradesEnabled(state: Pick<GameState, "anime">): boolean {
   return animeModuleEnabled(state, "heroGrades");
 }
 
+/**
+ * Wuxia TOWN factions (Azure Breeze Sect, Heavenly Demon Palace) run the
+ * Cultivation Realm track (§5.6) as their ONLY hero-progression system. The
+ * shared Hero-Grade tree is fully OFF for them — no display, no picker, no Merit
+ * accrual and no grade bonuses — so the two never duplicate. USER RULE: "when
+ * select wuxia town, no hero grade, only cultivation, no choice, no duplicate".
+ */
+export function heroGradeFactionExcluded(factionId: string | undefined): boolean {
+  return factionId === "azure_breeze" || factionId === "heavenly_demon";
+}
+
+/**
+ * The per-player Hero-Grade gate: the module is on AND this player's faction is
+ * not a wuxia town. Every per-player read and the Merit arm gate on THIS, not the
+ * bare module flag, so a wuxia-town hero never accrues Merit or a grade bonus.
+ */
+export function heroGradesEnabledForPlayer(state: GameState, playerId: PlayerId): boolean {
+  return heroGradesEnabled(state) && !heroGradeFactionExcluded(state.players[playerId]?.factionId);
+}
+
 /** The player's MAIN hero (inlined to keep this a leaf — see the file header). */
 function mainHeroOf(state: GameState, playerId: PlayerId): HeroState | null {
   for (const hero of Object.values(state.heroes)) {
@@ -132,7 +152,7 @@ export function heroGradeLabel(state: GameState, playerId: PlayerId, grade: numb
 
 /** The grade the player's grants read from — their MAIN hero's grade (0 when off / unstamped). */
 export function heroGradeOf(state: GameState, playerId: PlayerId): number {
-  if (!heroGradesEnabled(state)) {
+  if (!heroGradesEnabledForPlayer(state, playerId)) {
     return 0;
   }
   return mainHeroOf(state, playerId)?.grade ?? 0;
@@ -140,7 +160,7 @@ export function heroGradeOf(state: GameState, playerId: PlayerId): number {
 
 /** Accumulated Merit on the player's main hero (0 when off / unstamped). */
 export function heroGradeProgressOf(state: GameState, playerId: PlayerId): number {
-  if (!heroGradesEnabled(state)) {
+  if (!heroGradesEnabledForPlayer(state, playerId)) {
     return 0;
   }
   return mainHeroOf(state, playerId)?.gradeProgress ?? 0;
@@ -148,7 +168,7 @@ export function heroGradeProgressOf(state: GameState, playerId: PlayerId): numbe
 
 /** Unspent grade points on the player's main hero (0 when off / unstamped). */
 export function heroGradePointsOf(state: GameState, playerId: PlayerId): number {
-  if (!heroGradesEnabled(state)) {
+  if (!heroGradesEnabledForPlayer(state, playerId)) {
     return 0;
   }
   return mainHeroOf(state, playerId)?.gradePoints ?? 0;
@@ -156,7 +176,7 @@ export function heroGradePointsOf(state: GameState, playerId: PlayerId): number 
 
 /** The tree node ids the player's main hero has picked ([] when off / unstamped). */
 export function heroGradeNodesOf(state: GameState, playerId: PlayerId): string[] {
-  if (!heroGradesEnabled(state)) {
+  if (!heroGradesEnabledForPlayer(state, playerId)) {
     return [];
   }
   return mainHeroOf(state, playerId)?.gradeNodes ?? [];
@@ -266,7 +286,7 @@ export function markHeroGradeFirstBloodUsed(state: GameState, playerId: PlayerId
  * HERO_GRADE_MAX (= threshold array length), never a literal.
  */
 export function gainGradeProgress(state: GameState, playerId: PlayerId, amount: number, source: string): void {
-  if (!heroGradesEnabled(state) || amount <= 0) {
+  if (!heroGradesEnabledForPlayer(state, playerId) || amount <= 0) {
     return;
   }
   const hero = mainHeroOf(state, playerId);
@@ -365,7 +385,7 @@ export function heroGradeNode(nodeId: string): HeroGradeNode | undefined {
  * legal-actions (the pick offers) and the pick handler mirrors this exactly.
  */
 export function heroGradePickableNodes(state: GameState, playerId: PlayerId): HeroGradeNode[] {
-  if (!heroGradesEnabled(state) || heroGradePointsOf(state, playerId) <= 0) {
+  if (!heroGradesEnabledForPlayer(state, playerId) || heroGradePointsOf(state, playerId) <= 0) {
     return [];
   }
   return pickableNodesFrom(
@@ -443,7 +463,7 @@ export function markHeroSkillUsedThisRound(state: GameState, playerId: PlayerId,
  * additionally gates on "own open turn, no exclusive interaction".
  */
 export function heroTrainAvailable(state: GameState, playerId: PlayerId): boolean {
-  if (!heroGradesEnabled(state)) {
+  if (!heroGradesEnabledForPlayer(state, playerId)) {
     return false;
   }
   const hero = mainHeroOf(state, playerId);

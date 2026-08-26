@@ -6,7 +6,12 @@ import { effectiveInitiative, getDisplayAttackBonus } from "./active-effects";
 import { applyCombatStartUnitAbilities } from "./adventure-reducer";
 import { makeCombatUnitFromArmy } from "./adventure";
 import { getUnitTokens, noteUnitDamagedForTokens, placeCombatToken, tokenCount } from "./tokens";
-import { maxHealthAfterUnitAbilityEffects } from "./unit-abilities";
+import {
+  getSpecialtyDamageReduction,
+  getSpellDamageReduction,
+  maxHealthAfterUnitAbilityEffects
+} from "./unit-abilities";
+import { mgqUnitDefinitions } from "@/data/anime/mgq";
 import type { CombatUnitState, GameAction, GameEvent, GameState, PlayerId } from "./state";
 
 const IDS = {
@@ -609,5 +614,80 @@ describe("MGQ activation and combat-start abilities", () => {
     expect(state.players.p1.morale).toBe(1);
     expect(state.players.p2.morale).toBe(0);
     expect(state.combat!.units.unit_p1_marksmen.controllerId).toBe("p1");
+  });
+});
+
+const CARMILLA = "mgq-carmilla-life-drain";
+
+describe("Carmilla — Vampire Life-Drain heals by the damage dealt", () => {
+  it("scales with the damage dealt, caps at current damage, and needs a hit", () => {
+    // Attack 6, roll 0, no defence → 6 damage dealt → heal 6 (from 6 damage → 0).
+    const big = attack(duel("carmilla-drain-big", [CARMILLA], { attack: 6, attackerDamage: 6, defenderHealth: 40 }));
+    expect(big.combat!.units.unit_p1_marksmen.damage).toBe(0);
+
+    // Attack 2 → only 2 damage dealt → heal 2 (from 6 damage → 4). This is what
+    // discriminates "heal by damage dealt" from a fixed self-heal amount.
+    const small = attack(duel("carmilla-drain-small", [CARMILLA], { attack: 2, attackerDamage: 6, defenderHealth: 40 }));
+    expect(small.combat!.units.unit_p1_marksmen.damage).toBe(4);
+
+    // A fully soaked attack deals 0 → heals nothing.
+    const soaked = attack(
+      duel("carmilla-drain-soaked", [CARMILLA], { attack: 4, attackerDamage: 6, defenderDefense: 50, defenderHealth: 40 })
+    );
+    expect(soaked.combat!.units.unit_p1_marksmen.damage).toBe(6);
+
+    // CONTROL: without the ability, no heal.
+    const control = attack(duel("carmilla-drain-control", [], { attack: 6, attackerDamage: 6, defenderHealth: 40 }));
+    expect(control.combat!.units.unit_p1_marksmen.damage).toBe(6);
+  });
+
+  it("is the ability Carmilla actually carries on both sides", () => {
+    expect(mgqUnitDefinitions["mgq.carmilla"].few!.abilities).toContain(CARMILLA);
+    expect(mgqUnitDefinitions["mgq.carmilla"].pack!.abilities).toContain(CARMILLA);
+  });
+});
+
+const MAIDEN_WARD = "reduce-spell-and-specialty-damage-1";
+
+describe("Maiden — Dream Ward reduces Spell and Specialty damage by 1", () => {
+  it("both Maiden sides carry the reduction and it softens spell AND specialty damage by 1", () => {
+    expect(mgqUnitDefinitions["mgq.maiden"].few!.abilities).toContain(MAIDEN_WARD);
+    expect(mgqUnitDefinitions["mgq.maiden"].pack!.abilities).toContain(MAIDEN_WARD);
+    const warded = { abilities: [MAIDEN_WARD] } as CombatUnitState;
+    expect(getSpellDamageReduction(warded)).toBe(1);
+    expect(getSpecialtyDamageReduction(warded)).toBe(1);
+  });
+
+  it("shrugs exactly 1 damage off a Magic Arrow compared with an unwarded target", () => {
+    function arrowDamage(abilities: string[]): number {
+      const state = createInitialGameState("maiden-ward-arrow");
+      state.players.p1.hand = [];
+      state.players.p2.hand = [];
+      // Scroll-cast Magic Arrow (fixed elemental damage) so no book/limit gates.
+      state.players.p1.scrolls = [{ id: "scroll_1", spellCardIds: ["spell.magic_arrow"] }];
+      state.activePlayerId = "p1";
+      state.combat!.activeUnitId = "unit_p1_griffins";
+      const target = state.combat!.units.unit_p2_vampires;
+      target.abilities = abilities;
+      target.maxHealth = 20;
+      target.damage = 0;
+      const cast = getLegalActions(state, "p1").find(
+        (legal) =>
+          legal.action.type === "CAST_SPELL" &&
+          legal.action.fromScroll === "scroll_1" &&
+          legal.action.target?.type === "unit" &&
+          legal.action.target.unitId === target.id
+      );
+      let after = applyOk(state, cast!.action);
+      let safety = 40;
+      while (after.reactionWindow && safety-- > 0) {
+        after = applyOk(after, { type: "PASS_REACTION", playerId: after.reactionWindow.priorityPlayerId });
+      }
+      return after.combat!.units.unit_p2_vampires.damage;
+    }
+    const warded = arrowDamage([MAIDEN_WARD]);
+    const bare = arrowDamage([]);
+    expect(bare - warded).toBe(1);
+    expect(warded).toBe(bare - 1);
   });
 });

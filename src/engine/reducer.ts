@@ -6121,13 +6121,16 @@ function applyBloodSiphonSelfHeal(
   if (!siphon || attacker.damage <= 0 || !isUnitAlive(attacker)) {
     return;
   }
-  const healed = Math.min(siphon.amount, attacker.damage);
-  attacker.damage = Math.max(0, attacker.damage - siphon.amount);
+  // Vampiric drain (Carmilla): the heal equals the damage this attack dealt;
+  // the classic Blood Siphon heals a fixed `amount`. Both cap at current damage.
+  const drain = siphon.byDamageDealt ? damageDealt : siphon.amount;
+  const healed = Math.min(drain, attacker.damage);
+  attacker.damage = Math.max(0, attacker.damage - drain);
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: attacker.id,
     abilityId: siphon.abilityId,
-    message: `${attacker.cardName} siphons blood and heals ${healed} damage.`
+    message: `${attacker.cardName} ${siphon.byDamageDealt ? "drains life" : "siphons blood"} and heals ${healed} damage.`
   });
   appendEvent(state, {
     type: "DAMAGE_HEALED",
