@@ -417,6 +417,10 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   // MGQ Carmilla's Vampire Life-Drain heals her by the damage she deals; fire the
   // same Vampire drain frames + drain-life chime the other vampire heals use.
   "mgq-carmilla-life-drain": { affect: [{ key: "vampire-life-drain" }], sound: "effects/drain-life" },
+  // MGQ Pochi's Pack Dig: she claws an obstacle into an adjacent cell. There is
+  // no sprite over Pochi herself — the placed obstacle art IS the visual — so the
+  // cue is the earthy "digging into the ground" shift the Quicksand spell uses.
+  "mgq-pack-dig": { sound: "spells/quicksand" },
   // Dragon Flies' Dispel: stripping the enemy's own buffs off the target fires a
   // UNIT_ABILITY_TRIGGERED("dragon-fly-dispel"); reuse the same dispel shimmer +
   // sound the spell-counter cue uses (cancelFx) so the cleanse is seen and heard.

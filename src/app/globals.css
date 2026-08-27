@@ -10784,6 +10784,7 @@ button.hbSlot:disabled {
 }
 
 .obstacleMark {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -10791,6 +10792,20 @@ button.hbSlot:disabled {
   height: 100%;
   color: #8d8270;
   filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.6));
+}
+
+.obstacleFallback {
+  position: absolute;
+}
+
+/* Painted obstacle art (rocks / dug earth), e.g. an MGQ Pochi Pack Dig obstacle. */
+.obstacleArt {
+  position: relative;
+  z-index: 1;
+  width: 92%;
+  height: 92%;
+  object-fit: contain;
+  pointer-events: none;
 }
 
 /* Spell tokens on a board space (Force Field / Fire Wall / Quicksand / Land Mine). */

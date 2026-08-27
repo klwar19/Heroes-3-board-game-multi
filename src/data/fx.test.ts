@@ -242,6 +242,17 @@ describe("previously-silent monster abilities now carry a cue", () => {
   it("the Fortress Gorgon Death Stare matches its neutral sibling (parity)", () => {
     expect(abilityFxPlans["fortress-gorgon-death-stare"]).toEqual(abilityFxPlans["gorgon-death-stare"]);
   });
+
+  it("MGQ Pochi's Pack Dig plays the earthy Quicksand shift as its placement cue", () => {
+    // reducer.ts emits UNIT_ABILITY_TRIGGERED("mgq-pack-dig") when Pochi digs an
+    // obstacle, so the cue is not dead code. It is sound-only by design — the
+    // placed obstacle art is the visual, not a sprite over Pochi.
+    const plan = abilityFxPlans["mgq-pack-dig"];
+    expect(plan).toBeDefined();
+    expect(plan.affect).toBeUndefined();
+    expect(plan.sound).toBe("spells/quicksand");
+    expect(soundDurationMs(plan.sound)).toBeGreaterThan(0);
+  });
 });
 
 describe("WOG neutral ability cues (mirror reflect, armor block, death-stare proc split)", () => {

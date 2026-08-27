@@ -54,7 +54,7 @@ const EXPECTED_STATS: Record<string, { tier: string; type: string; few: SideSign
   "mgq.regina": { tier: "silver", type: "ground", few: [3, 2, 4, 5, 6, 0], pack: [4, 2, 4, 6, 11, 0] },
   "mgq.maiden": { tier: "silver", type: "ground", few: [3, 1, 5, 5, 7, 0], pack: [4, 1, 5, 6, 10, 0] },
   "mgq.seraphy": { tier: "silver", type: "ground", few: [3, 1, 4, 5, 5, 0], pack: [4, 1, 4, 6, 7, 0] },
-  "mgq.lisa": { tier: "silver", type: "flying", few: [3, 1, 4, 6, 6, 0], pack: [3, 1, 4, 7, 7, 0] },
+  "mgq.lisa": { tier: "silver", type: "flying", few: [3, 1, 4, 6, 5, 0], pack: [3, 1, 4, 7, 6, 0] },
   "mgq.tama": { tier: "silver", type: "ground", few: [3, 0, 6, 7, 7, 0], pack: [4, 0, 6, 12, 11, 0] },
   "mgq.maya": { tier: "silver", type: "ranged", few: [3, 1, 4, 5, 7, 0], pack: [4, 1, 4, 6, 10, 0] },
   "mgq.matis": { tier: "silver", type: "ground", few: [3, 1, 6, 6, 8, 0], pack: [4, 1, 6, 7, 12, 0] },

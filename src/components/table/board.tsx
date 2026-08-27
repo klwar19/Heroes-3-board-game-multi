@@ -1601,7 +1601,17 @@ export function BattlefieldBoard({
                 title="Combat Obstacle — ground and ranged units must go around; flying units pass over"
               >
                 <span className="obstacleMark">
-                  <Mountain aria-hidden="true" size={26} />
+                  <Mountain aria-hidden="true" className="obstacleFallback" size={26} />
+                  <img
+                    alt=""
+                    aria-hidden="true"
+                    className="obstacleArt"
+                    src={assetUrl("/assets/fx/combat/dug-obstacle.webp")}
+                    onError={(event) => {
+                      // Reveal the plain relief glyph beneath if the art is missing.
+                      event.currentTarget.style.display = "none";
+                    }}
+                  />
                 </span>
               </div>
             );
@@ -2768,6 +2778,65 @@ function SandboxCardPicker({
   );
 }
 
+/**
+ * Pochi's Pack Dig is one decision with several legal target cells. Keep that
+ * decision behind one command and let the player explicitly choose the cell in
+ * a modal, instead of flooding the command dock with near-identical buttons.
+ */
+export function PochiPackDigMenu({
+  actions,
+  onAction
+}: {
+  actions: LegalAction[];
+  onAction: (action: GameAction) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  if (actions.length === 0) return null;
+
+  return (
+    <>
+      <button className="commandButton" onClick={() => setOpen(true)} type="button">
+        Pack Dig…
+      </button>
+      {open && typeof document !== "undefined"
+        ? createPortal(
+            <div className="modalBackdrop" onClick={() => setOpen(false)} role="presentation">
+              <div
+                aria-label="Choose where Pochi digs"
+                aria-modal="true"
+                className="searchModal"
+                onClick={(event) => event.stopPropagation()}
+                role="dialog"
+              >
+                <h3>Pack Dig</h3>
+                <p>Choose an adjacent empty cell for the obstacle.</p>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {actions.map((legal) => (
+                    <button
+                      className="commandButton"
+                      key={actionKey(legal.action)}
+                      onClick={() => {
+                        setOpen(false);
+                        onAction(legal.action);
+                      }}
+                      type="button"
+                    >
+                      {legal.label}
+                    </button>
+                  ))}
+                </div>
+                <button className="commandButton ghost" onClick={() => setOpen(false)} type="button">
+                  Cancel
+                </button>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+    </>
+  );
+}
+
 export function CommandDock({
   state,
   viewerPlayerId,
@@ -2788,11 +2857,19 @@ export function CommandDock({
   // owns every prep control (build / recruit / buy spells / Accept / Retreat),
   // so the battlefield dock stays out of its way while the window is open.
   const inBattlePrep = inCombatPrep(state, viewerPlayerId);
+  const packDigActions = inBattlePrep
+    ? []
+    : legalActions.filter(
+        (legal) =>
+          legal.action.type === "USE_UNIT_ABILITY" && legal.action.abilityId === "mgq-pack-dig"
+      );
   const commands = inBattlePrep
     ? []
     : legalActions.filter(
         (legal) =>
-          COMMAND_ACTION_TYPES.has(legal.action.type) && legal.action.type !== "SWAP_COMBAT_UNITS"
+          COMMAND_ACTION_TYPES.has(legal.action.type) &&
+          legal.action.type !== "SWAP_COMBAT_UNITS" &&
+          !(legal.action.type === "USE_UNIT_ABILITY" && legal.action.abilityId === "mgq-pack-dig")
       );
   // First Aid Tent heal, surfaced right by the commands (not only in the
   // under-board effects rail). One button per wounded friendly unit; also
@@ -2940,6 +3017,7 @@ export function CommandDock({
           {commandLabel(legal)}
         </button>
       ))}
+      <PochiPackDigMenu actions={packDigActions} onAction={onAction} />
       {healCommands.map((legal) => (
         <button
           className="commandButton healCommandButton"

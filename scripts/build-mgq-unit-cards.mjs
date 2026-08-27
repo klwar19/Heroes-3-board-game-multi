@@ -22,7 +22,10 @@ const CONTRACT_PATH = path.join(ROOT, "scripts/anime-art/mgq-unit-card-contract.
 const REFERENCE_PATH = path.join(ROOT, "scripts/anime-art/mgq-reference-manifest.json");
 const EDITABLE = path.join(ROOT, "scripts/anime-art/editable/mgq/units");
 const REVIEW = path.join(ROOT, "generated-session-art/mgq/cards");
-const WEBP = { quality: 90, effort: 6 };
+// Match the repository's compression band for text-bearing card faces. Keeping
+// this at the publish quality avoids a second lossy recompression pass whenever
+// a balance edit rebuilds a card.
+const WEBP = { quality: 85, effort: 6, smartSubsample: true };
 const ACTIONS = new Set(["--check-contract", "--list-masters"]);
 
 const contract = JSON.parse(await readFile(CONTRACT_PATH, "utf8"));

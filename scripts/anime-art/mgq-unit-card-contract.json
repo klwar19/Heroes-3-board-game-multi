@@ -58,7 +58,7 @@
           "initiative": 8
         },
         "cost": {
-          "gold": 4
+          "gold": 2
         },
         "abilities": [
           "mgq-pack-dig"
@@ -236,7 +236,7 @@
           "initiative": 3
         },
         "cost": {
-          "gold": 3
+          "gold": 2
         },
         "abilities": [],
         "text": "No printed ability."
@@ -249,7 +249,7 @@
           "initiative": 4
         },
         "cost": {
-          "gold": 5
+          "gold": 4
         },
         "abilities": [
           "mgq-trance-pollen"
@@ -533,7 +533,7 @@
           "initiative": 5
         },
         "cost": {
-          "gold": 12
+          "gold": 13
         },
         "abilities": [
           "mgq-confusion-club"
@@ -566,7 +566,7 @@
           "initiative": 5
         },
         "cost": {
-          "gold": 7
+          "gold": 6
         },
         "abilities": [],
         "text": "No printed ability."
@@ -615,9 +615,10 @@
           "gold": 7
         },
         "abilities": [
-          "mgq-nightmares-embrace"
+          "mgq-nightmares-embrace",
+          "reduce-spell-and-specialty-damage-1"
         ],
-        "text": "Nightmare's Embrace — a \"+1\" on Maiden's Attack die Paralyzes the target."
+        "text": "Nightmare's Embrace — a \"+1\" on Maiden's Attack die Paralyzes the target. Dream Ward — reduces Spell and Specialty damage taken by 1 (minimum 0)."
       },
       "pack": {
         "stats": {
@@ -630,9 +631,10 @@
           "gold": 10
         },
         "abilities": [
-          "mgq-maiden-certain-paralysis"
+          "mgq-maiden-certain-paralysis",
+          "reduce-spell-and-specialty-damage-1"
         ],
-        "text": "Nightmare's Embrace — after Maiden attacks, Paralyze the target."
+        "text": "Nightmare's Embrace — after Maiden attacks, Paralyze the target. Dream Ward — reduces Spell and Specialty damage taken by 1 (minimum 0)."
       }
     },
     {
@@ -706,7 +708,7 @@
           "initiative": 6
         },
         "cost": {
-          "gold": 7,
+          "gold": 5,
           "buildingMaterials": 1
         },
         "abilities": [
@@ -722,7 +724,7 @@
           "initiative": 7
         },
         "cost": {
-          "gold": 8,
+          "gold": 6,
           "buildingMaterials": 1
         },
         "abilities": [
@@ -767,7 +769,7 @@
           "attack": 4,
           "defense": 0,
           "health": 6,
-          "initiative": 8
+          "initiative": 12
         },
         "cost": {
           "gold": 11
@@ -816,7 +818,7 @@
           "initiative": 6
         },
         "cost": {
-          "gold": 11
+          "gold": 10
         },
         "abilities": [
           "mgq-slow-weave"
@@ -845,7 +847,7 @@
         "stats": {
           "attack": 3,
           "defense": 1,
-          "health": 5,
+          "health": 6,
           "initiative": 6
         },
         "cost": {
@@ -860,7 +862,7 @@
         "stats": {
           "attack": 4,
           "defense": 1,
-          "health": 5,
+          "health": 6,
           "initiative": 7
         },
         "cost": {
@@ -1005,7 +1007,7 @@
           "initiative": 5
         },
         "cost": {
-          "gold": 11
+          "gold": 13
         },
         "abilities": [
           "mgq-flower-fragrance",
@@ -1043,9 +1045,9 @@
           "valuables": 1
         },
         "abilities": [
-          "bank-vampire-life-drain"
+          "mgq-carmilla-life-drain"
         ],
-        "text": "Vampire Life-Drain — after Carmilla attacks, remove all damage from her."
+        "text": "Vampire Life-Drain — after Carmilla's attack deals damage, heal her by the amount of damage dealt."
       },
       "pack": {
         "stats": {
@@ -1059,10 +1061,10 @@
           "valuables": 1
         },
         "abilities": [
-          "bank-vampire-life-drain",
+          "mgq-carmilla-life-drain",
           "ignores-retaliation"
         ],
-        "text": "Vampire Life-Drain — heal all damage after attacking; Carmilla's attacks do not provoke Retaliation."
+        "text": "Vampire Life-Drain — heal Carmilla by the damage her attack deals; her attacks do not provoke Retaliation."
       }
     },
     {

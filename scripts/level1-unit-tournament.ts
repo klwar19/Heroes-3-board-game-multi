@@ -67,6 +67,33 @@ function levelRoster(level: number): Entry[] {
   return out;
 }
 
+/**
+ * CHALLENGER-vs-FIELD mode (--challengers <ids> --field-levels 4,5).
+ *
+ * WHY: `levelRoster` reads "level N" as the N-th roster entry, which is the
+ * dwelling ladder for the 18 standard towns but NOT for MGQ — MGQ has a large
+ * FLAT roster (8 bronze / 13 silver / 8 gold recruitables, no 7-slot ladder), so
+ * levels 4-7 picked arbitrary BRONZE bodies and scored ~0%. This mode instead
+ * fights named units against the union of the given level fields, with MGQ
+ * itself excluded from the field so no MGQ-vs-MGQ fight pollutes the win rate.
+ */
+function unitEntry(unitDefId: string): Entry {
+  const def = (coreUnitDefinitions as Record<string, any>)[unitDefId];
+  if (!def) throw new Error(`Unknown unitDefId ${unitDefId}`);
+  return { unitDefId, name: def.name, faction: def.faction, tier: def.tier, type: def.type };
+}
+
+function fieldRoster(levels: number[], excludeFactions: Set<string>): Entry[] {
+  const out: Entry[] = [];
+  for (const level of levels) {
+    for (const entry of levelRoster(level)) {
+      if (excludeFactions.has(entry.faction)) continue;
+      out.push(entry);
+    }
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // Fight construction
 // ---------------------------------------------------------------------------
@@ -402,6 +429,118 @@ function runTournament(roster: Entry[], side: "few" | "pack", seedCount: number)
   return { records: [...records.values()], anomalies, head2head, seeds, rows };
 }
 
+type ChallengerRecord = {
+  entry: Entry;
+  perField: Map<string, { wins: number; losses: number; draws: number; errors: number; fights: number }>;
+  sweeps: string[];
+  swept: string[];
+};
+
+function runChallengerTournament(
+  challengers: Entry[],
+  fields: { label: string; roster: Entry[] }[],
+  side: "few" | "pack",
+  seedCount: number
+) {
+  const seeds = Array.from({ length: seedCount }, (_, index) => `t${index + 1}`);
+  const records = new Map<string, ChallengerRecord>();
+  for (const entry of challengers) {
+    records.set(entry.unitDefId, { entry, perField: new Map(), sweeps: [], swept: [] });
+  }
+  const anomalies: string[] = [];
+
+  for (const challenger of challengers) {
+    const record = records.get(challenger.unitDefId)!;
+    for (const field of fields) {
+      const bucket = { wins: 0, losses: 0, draws: 0, errors: 0, fights: 0 };
+      record.perField.set(field.label, bucket);
+      for (const opponent of field.roster) {
+        let pairWins = 0;
+        let pairTotal = 0;
+        for (const seed of seeds) {
+          for (const [attacker, defender] of [
+            [challenger, opponent],
+            [opponent, challenger]
+          ] as const) {
+            const seedKey = `${side}-${seed}-${attacker.unitDefId}-vs-${defender.unitDefId}`;
+            const result = runFight(stageDuel(seedKey, attacker, defender, side));
+            bucket.fights += 1;
+            pairTotal += 1;
+            const challengerIsAttacker = attacker.unitDefId === challenger.unitDefId;
+            if (result.outcome === "attacker" || result.outcome === "defender") {
+              const challengerWon =
+                (result.outcome === "attacker") === challengerIsAttacker;
+              if (challengerWon) {
+                bucket.wins += 1;
+                pairWins += 1;
+              } else {
+                bucket.losses += 1;
+              }
+            } else if (result.outcome === "draw") {
+              bucket.draws += 1;
+              anomalies.push(
+                `DRAW  ${side}  ${attacker.name} (att) vs ${defender.name} — ${result.note ?? ""}`
+              );
+            } else {
+              bucket.errors += 1;
+              anomalies.push(
+                `ERROR ${side}  ${attacker.name} (att) vs ${defender.name} — ${result.note ?? ""}`
+              );
+            }
+          }
+        }
+        if (pairTotal > 0 && pairWins === pairTotal) {
+          record.sweeps.push(`${opponent.name} (${opponent.faction} ${field.label})`);
+        } else if (pairTotal > 0 && pairWins === 0) {
+          record.swept.push(`${opponent.name} (${opponent.faction} ${field.label})`);
+        }
+      }
+    }
+  }
+  return { records: [...records.values()], anomalies };
+}
+
+function printChallengerTable(
+  side: string,
+  records: ChallengerRecord[],
+  fieldLabels: string[]
+): void {
+  const rate = (r: ChallengerRecord) => {
+    let w = 0;
+    let f = 0;
+    for (const bucket of r.perField.values()) {
+      w += bucket.wins;
+      f += bucket.fights;
+    }
+    return f === 0 ? 0 : w / f;
+  };
+  const sorted = [...records].sort((l, r) => rate(r) - rate(l));
+  console.log(`\n=== CHALLENGER TABLE — ${side.toUpperCase()} side ===`);
+  console.log(
+    `rank  unit                  tier    type     overall   ${fieldLabels.map((l) => l.padEnd(20)).join("")}`
+  );
+  sorted.forEach((record, index) => {
+    const cells = fieldLabels.map((label) => {
+      const bucket = record.perField.get(label);
+      if (!bucket) return "-".padEnd(20);
+      const pct = ((bucket.wins / Math.max(1, bucket.fights)) * 100).toFixed(1);
+      return `${pct}% (${bucket.wins}-${bucket.losses}-${bucket.draws})`.padEnd(20);
+    });
+    console.log(
+      `${String(index + 1).padStart(4)}  ${record.entry.name.padEnd(21)} ${record.entry.tier.padEnd(7)} ${record.entry.type.padEnd(8)} ${`${(rate(record) * 100).toFixed(1)}%`.padStart(7)}   ${cells.join("")}`
+    );
+  });
+  console.log("\n--- clean pairing results (all seeds, both roles, this side) ---");
+  for (const record of sorted) {
+    if (record.sweeps.length) {
+      console.log(`  ${record.entry.name} SWEEPS: ${record.sweeps.join(", ")}`);
+    }
+    if (record.swept.length) {
+      console.log(`  ${record.entry.name} SWEPT BY: ${record.swept.join(", ")}`);
+    }
+  }
+}
+
 function printTable(side: string, records: Record_[]): void {
   const sorted = [...records].sort((left, right) => {
     const lr = left.wins / Math.max(1, left.fights);
@@ -431,6 +570,50 @@ function main(): void {
   SHOOTERS_HOLD = process.argv.includes("--shooters-hold");
   const onlyArg = argValue("--only", "");
   const only = onlyArg ? new Set(onlyArg.split(",")) : null;
+
+  const challengersArg = argValue("--challengers", "");
+  if (challengersArg) {
+    const challengers = challengersArg.split(",").map((id) => unitEntry(id.trim()));
+    const levels = argValue("--field-levels", "4,5")
+      .split(",")
+      .map((n) => Number(n.trim()));
+    const exclude = new Set(
+      argValue("--field-exclude", challengers[0]!.faction).split(",").filter(Boolean)
+    );
+    const fields = levels.map((level) => ({
+      label: `L${level}`,
+      roster: fieldRoster([level], exclude)
+    }));
+    const sidesC: ("few" | "pack")[] =
+      sideArg === "both" ? ["few", "pack"] : [sideArg as "few" | "pack"];
+    console.log(
+      `CHALLENGER-vs-FIELD — ${challengers.length} challengers vs ${fields
+        .map((f) => `${f.label} (${f.roster.length})`)
+        .join(" + ")}, ${seedCount} seeds, both roles, sides: ${sidesC.join("+")}`
+    );
+    console.log(
+      `staging: attacker cell ${ATTACKER_CELL}, defender cell ${DEFENDER_CELL}; shooters-hold=${SHOOTERS_HOLD}; excluded from field: ${[...exclude].join(",")}`
+    );
+    for (const c of challengers)
+      console.log(`  challenger  ${c.tier.padEnd(7)} ${c.type.padEnd(8)} ${c.unitDefId} — ${c.name}`);
+    for (const side of sidesC) {
+      const started = Date.now();
+      const { records, anomalies } = runChallengerTournament(challengers, fields, side, seedCount);
+      printChallengerTable(side, records, fields.map((f) => f.label));
+      const total = records.reduce(
+        (sum, r) => sum + [...r.perField.values()].reduce((s, b) => s + b.fights, 0),
+        0
+      );
+      console.log(`(${total} fights, ${((Date.now() - started) / 1000).toFixed(1)}s)`);
+      console.log(`\n--- ${side} anomalies (draws / step-cap / errors): ${anomalies.length} ---`);
+      const seen = new Map<string, number>();
+      for (const line of anomalies) seen.set(line, (seen.get(line) ?? 0) + 1);
+      for (const [line, count] of [...seen].sort((l, r) => r[1] - l[1]).slice(0, 40))
+        console.log(`  x${count}  ${line}`);
+      if (seen.size > 40) console.log(`  … ${seen.size - 40} more distinct`);
+    }
+    return;
+  }
   let roster = levelRoster(level);
   if (only) roster = roster.filter((entry) => only.has(entry.faction));
   const sides: ("few" | "pack")[] =

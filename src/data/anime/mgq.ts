@@ -469,7 +469,7 @@ export const mgqUnitDefinitions: Record<string, UnitDefinition> = {
       "silver",
       "lisa",
       "few",
-      { attack: 3, defense: 1, health: 4, initiative: 6, gold: 6, buildingMaterials: 1 },
+      { attack: 3, defense: 1, health: 4, initiative: 6, gold: 5, buildingMaterials: 1 },
       ["mgq-lisa-growth"],
       "Soul Growth — when Lisa reduces a unit side or stack layer to 0 HP, she permanently gains +1 maximum Health (maximum +2)."
     ),
@@ -477,7 +477,7 @@ export const mgqUnitDefinitions: Record<string, UnitDefinition> = {
       "silver",
       "lisa",
       "pack",
-      { attack: 3, defense: 1, health: 4, initiative: 7, gold: 7, buildingMaterials: 1 },
+      { attack: 3, defense: 1, health: 4, initiative: 7, gold: 6, buildingMaterials: 1 },
       ["mgq-lisa-growth", "ignores-retaliation"],
       "Soul Growth — gain permanent +1 maximum Health after reducing a side or stack layer to 0 HP (maximum +2); attacks provoke no Retaliation."
     )
