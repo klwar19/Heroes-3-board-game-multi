@@ -121,7 +121,27 @@ function nextHumanAction(state: GameState): GameAction | null {
 }
 
 function storedSnapshot(storage: Map<string, unknown>): RoomSnapshot {
-  return storage.get("snapshot") as RoomSnapshot;
+  const stored = storage.get("snapshot") as
+    | RoomSnapshot
+    | { format?: string; bank?: string; chunkCount?: number; byteLength?: number };
+  if (stored?.format !== "room-snapshot-chunks-v1") return stored as RoomSnapshot;
+
+  const chunkCount = stored.chunkCount ?? 0;
+  const byteLength = stored.byteLength ?? 0;
+  const chunks = Array.from({ length: chunkCount }, (_, index) =>
+    storage.get(`snapshot-chunk-${stored.bank}-${index}`)
+  );
+  if (chunks.some((chunk) => !(chunk instanceof Uint8Array))) {
+    throw new Error("test snapshot is missing one or more persisted chunks");
+  }
+  const encoded = new Uint8Array(byteLength);
+  let offset = 0;
+  for (const chunk of chunks as Uint8Array[]) {
+    encoded.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  if (offset !== byteLength) throw new Error("test snapshot chunk length does not match its manifest");
+  return JSON.parse(new TextDecoder().decode(encoded)) as RoomSnapshot;
 }
 
 async function runEdgeGameStart(tag: string, opponents: number, coldEvery: number): Promise<string | null> {
