@@ -105,7 +105,11 @@ export function computerDecisionOwner(state: GameState): PlayerId | null {
 
     // 1. End-of-combat acknowledgment (also reachable in the "game-over" phase
     //    via combatAwaitingAck above).
-    if (combat.outcome && !combat.endAcknowledged) {
+    if (
+      combat.outcome &&
+      combat.context.kind !== "sandbox" &&
+      !combat.endAcknowledged
+    ) {
       return (
         computer(state, combat.attackerPlayerId) ??
         computer(state, combat.defenderPlayerId)

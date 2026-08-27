@@ -446,6 +446,13 @@ export function formationFitScore(
 
   if (role === "ranged") {
     score += back ? 30 : front ? -20 : -5;
+    // Classic protected-corner deployment: shooters claim the two back-row
+    // corners first, leaving the square directly in front free for a screen.
+    // This outweighs both the generic central-column reach bonus and a screen
+    // that happened to be placed centrally before the shooter took its cell.
+    if (back && (cellColumn(position) === 0 || cellColumn(position) === 3)) {
+      score += 25;
+    }
   } else if (role === "melee") {
     score += front ? 28 : back ? -18 : 5;
     // Durable tanks prefer the front more.
@@ -457,7 +464,8 @@ export function formationFitScore(
     score += front ? 18 : back ? -8 : 8;
   }
 
-  // Prefer central columns (1,2) for reach / less edge waste.
+  // Prefer central columns (1,2) for reach / less edge waste. Ranged units get
+  // a larger protected-corner bonus above and therefore still choose corners.
   const col = cellColumn(position);
   score += col === 1 || col === 2 ? 4 : 0;
 

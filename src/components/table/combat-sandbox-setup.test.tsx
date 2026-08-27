@@ -23,12 +23,24 @@ describe("CombatSandboxSetupScreen", () => {
     expect(onAction).toHaveBeenCalledWith({ type: "SANDBOX_BEGIN_COMBAT", playerId: "p1" });
   });
 
-  it("offers BINH and Tournament rules mode before Begin", () => {
+  it("offers BINH, pure Legacy, and Tournament rules modes before Begin", () => {
     const state = createCombatSandboxLobbyState("ui-mode");
     const onAction = vi.fn();
     render(<CombatSandboxSetupScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
     const modeSelect = screen.getByLabelText(/rules mode/i) as HTMLSelectElement;
     expect(modeSelect.value).toBe("binh");
+    expect(Array.from(modeSelect.options).map((option) => option.value)).toEqual([
+      "binh",
+      "legacy",
+      "tournament"
+    ]);
+    fireEvent.change(modeSelect, { target: { value: "legacy" } });
+    expect(onAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "SANDBOX_SET_OPTIONS",
+        options: expect.objectContaining({ playMode: "legacy" })
+      })
+    );
     fireEvent.change(modeSelect, { target: { value: "tournament" } });
     expect(onAction).toHaveBeenCalledWith(
       expect.objectContaining({

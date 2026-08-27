@@ -84,6 +84,17 @@ describe("formationFitScore", () => {
     expect(meleeFront).toBeGreaterThan(meleeBack);
   });
 
+  it("puts a ranged unit in a protected backline corner before a central back cell", () => {
+    const combat = {
+      attackerPlayerId: "p2",
+      defenderPlayerId: "p1",
+      units: {},
+    } as unknown as CombatState;
+    expect(formationFitScore(combat, "p2", "ranged", 16)).toBeGreaterThan(
+      formationFitScore(combat, "p2", "ranged", 17),
+    );
+  });
+
   it("rewards a melee screen adjacent to a placed ranged ally", () => {
     const combat = {
       attackerPlayerId: "p2",
@@ -137,6 +148,31 @@ describe("placement multi-unit formation", () => {
     expect(
       (decision!.action as { position: number }).position,
     ).toBe(17);
+  });
+
+  it("chooses a backline corner over a central backline cell for a shooter", () => {
+    const legal: LegalAction[] = [
+      {
+        label: "central back",
+        action: {
+          type: "PLACE_COMBAT_UNIT",
+          playerId: "p2",
+          armyUnitId: "army_r",
+          position: 17,
+        } as GameAction,
+      },
+      {
+        label: "corner back",
+        action: {
+          type: "PLACE_COMBAT_UNIT",
+          playerId: "p2",
+          armyUnitId: "army_r",
+          position: 16,
+        } as GameAction,
+      },
+    ];
+    const decision = chooseComputerAction(observation([], legal));
+    expect((decision!.action as { position: number }).position).toBe(16);
   });
 });
 

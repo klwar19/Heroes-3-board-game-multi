@@ -1073,6 +1073,7 @@ export type {
   CardLibrary,
   CombatContext,
   CombatBoardArtId,
+  CombatSandboxPlayMode,
   CombatDice,
   CombatSandboxSeatConfig,
   CombatSandboxSetupState,

@@ -59,12 +59,14 @@ const DEFAULT_HERO_LEVEL = 5;
 
 /** Resolve the sandbox play-mode preset (default BINH for legacy snapshots). */
 export function sandboxPlayMode(setup: CombatSandboxSetupState | null | undefined): CombatSandboxPlayMode {
-  return setup?.playMode === "tournament" ? "tournament" : "binh";
+  return setup?.playMode === "legacy" || setup?.playMode === "tournament"
+    ? setup.playMode
+    : "binh";
 }
 
 /** Ruleset used by the fight: BINH house rules vs legacy (tournament). */
 export function sandboxRulesetForMode(mode: CombatSandboxPlayMode): GameRuleset {
-  return mode === "tournament" ? "legacy" : "binh";
+  return mode === "binh" ? "binh" : "legacy";
 }
 
 const COMBAT_UNIT_LIMIT = 5;
@@ -98,7 +100,7 @@ function without(cardIds: string[], bannedId: string, ban: boolean): string[] {
 }
 
 function makeSandboxDecks(seed: string, mode: CombatSandboxPlayMode): Record<string, DeckState> {
-  if (mode === "tournament") {
+  if (mode === "legacy" || mode === "tournament") {
     // Legacy single decks + tournament Diplomacy / Hourglass bans. The REAL
     // tournament game (the lobby preset / master toggle) splits its decks via
     // the `split-decks` house rule — but the sandbox has NO adventure state to
@@ -108,8 +110,8 @@ function makeSandboxDecks(seed: string, mode: CombatSandboxPlayMode): Record<str
     // The sandbox therefore keeps the single decks its rules layer expects.
     const lists: Record<string, string[]> = {
       spells: spellDeckLegacy,
-      abilities: without(abilityDeckLegacy, TOURNAMENT_REMOVED_ABILITY_ID, true),
-      artifacts: without(artifactDeckLegacy, TOURNAMENT_REMOVED_ARTIFACT_ID, true)
+      abilities: without(abilityDeckLegacy, TOURNAMENT_REMOVED_ABILITY_ID, mode === "tournament"),
+      artifacts: without(artifactDeckLegacy, TOURNAMENT_REMOVED_ARTIFACT_ID, mode === "tournament")
     };
     return Object.fromEntries(
       Object.entries(lists).map(([id, cardIds]) => [id, makeSharedDeck(id, cardIds, seed)])
@@ -568,7 +570,7 @@ export function sandboxSetOptions(
     setup.moraleCards = Boolean(opts.moraleCards);
   }
   if (opts.playMode !== undefined) {
-    if (opts.playMode !== "binh" && opts.playMode !== "tournament") {
+    if (opts.playMode !== "binh" && opts.playMode !== "legacy" && opts.playMode !== "tournament") {
       throw new Error(`Unknown battle play mode ${String(opts.playMode)}.`);
     }
     setup.playMode = opts.playMode;

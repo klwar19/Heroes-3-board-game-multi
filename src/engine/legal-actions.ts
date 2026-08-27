@@ -3321,7 +3321,14 @@ function addPlayableCardActions(
         label: `Play ${card.name} (draw${
           card.effect.type === "ADD_SPELL_POWER" && unitNotMovedYet ? ", next spell +Power" : ""
         })`,
-        action: { type: "PLAY_CARD", playerId, cardId, mode: "basic", target: { type: "none" } }
+        action: {
+          type: "PLAY_CARD",
+          playerId,
+          cardId,
+          mode: "basic",
+          ...(card.effect.type === "ADD_COMBAT_STAT" ? { drawOnly: true as const } : {}),
+          target: { type: "none" }
+        }
       });
       continue;
     }

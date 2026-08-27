@@ -414,6 +414,48 @@ describe("card policy — combat reactions", () => {
   });
 });
 
+describe("card policy — draw-rider cycle guards", () => {
+  const endActivation: LegalAction = {
+    action: { type: "END_ACTIVATION", playerId: "p2", unitId: "A" } as GameAction,
+    label: "end activation",
+  };
+
+  it("does not cycle a full-health Rion IV merely to draw", () => {
+    const healthy = unit({ id: "A", controllerId: "p2", damage: 0 });
+    const medic: LegalAction = {
+      action: {
+        type: "PLAY_CARD",
+        playerId: "p2",
+        cardId: "specialty.rion.4",
+        optionIndex: 0,
+        target: { type: "unit", unitId: "A" },
+      } as GameAction,
+      label: "Rion IV",
+    };
+    const decision = chooseComputerAction(
+      observation([healthy], [medic, endActivation], "p2", ["specialty.rion.4"]),
+    );
+    expect(decision?.action.type).toBe("END_ACTIVATION");
+  });
+
+  it("does not replay a Sorcery draw rider while Spell Power is already banked", () => {
+    const actor = unit({ id: "A", controllerId: "p2" });
+    const sorcery: LegalAction = {
+      action: {
+        type: "PLAY_CARD",
+        playerId: "p2",
+        cardId: "ability.sorcery",
+      } as GameAction,
+      label: "Sorcery",
+    };
+    const observed = observation([actor], [sorcery, endActivation], "p2", ["ability.sorcery"]);
+    (observed.state.players.p2 as { combatStats: { pendingDrawRiderSpellPower: number } }).combatStats = {
+      pendingDrawRiderSpellPower: 1,
+    };
+    expect(chooseComputerAction(observed)?.action.type).toBe("END_ACTIVATION");
+  });
+});
+
 describe("card policy — map plays", () => {
   it("plays a resource artifact on the map instead of ending the turn", () => {
     // Income-style GAIN_RESOURCES artifact — should outrank END_TURN (300).

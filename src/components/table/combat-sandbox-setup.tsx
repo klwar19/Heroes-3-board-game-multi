@@ -13,6 +13,7 @@ import {
   isCombatSandboxSetup,
   sandboxBattlefieldChoices,
   type CombatSandboxSeatConfig,
+  type CombatSandboxPlayMode,
   type CombatSandboxUnitPick,
   type FactionId,
   type GameAction,
@@ -559,10 +560,11 @@ export function CombatSandboxSetupScreen({
     obstacles?: number[];
     moraleCards?: boolean;
     wog?: Partial<WogModOptions>;
-    playMode?: "binh" | "tournament";
+    playMode?: CombatSandboxPlayMode;
   }) => onAction({ type: "SANDBOX_SET_OPTIONS", playerId: actorId, options });
 
-  const playMode = setup.playMode === "tournament" ? "tournament" : "binh";
+  const playMode: CombatSandboxPlayMode =
+    setup.playMode === "legacy" || setup.playMode === "tournament" ? setup.playMode : "binh";
 
   const boardPreview =
     setup.boardArtId === "random"
@@ -597,12 +599,16 @@ export function CombatSandboxSetupScreen({
             value={playMode}
             onChange={(event) =>
               setOptions({
-                playMode: event.target.value === "tournament" ? "tournament" : "binh"
+                playMode:
+                  event.target.value === "legacy" || event.target.value === "tournament"
+                    ? event.target.value
+                    : "binh"
               })
             }
           >
             <option value="binh">BINH (house-rule edition)</option>
-            <option value="tournament">Tournament (competitive / legacy)</option>
+            <option value="legacy">Legacy (printed rulebook)</option>
+            <option value="tournament">Tournament (competitive legacy)</option>
           </select>
         </div>
         <div className="sandboxField">
@@ -670,6 +676,8 @@ export function CombatSandboxSetupScreen({
         <p className="sandboxHint">
           {playMode === "tournament"
             ? "Tournament: legacy decks, Diplomacy and Hourglass banned, printed unit values. "
+            : playMode === "legacy"
+              ? "Legacy: complete legacy decks and printed unit values, with no tournament bans. "
             : "BINH: split Spell/Artifact decks and house-rule unit tweaks. "}
           With Commanders on, each side deploys at most {unitLimit} army units (the commander is the
           extra body). Default armies are Catherine (Castle) vs Sandro (Necropolis).

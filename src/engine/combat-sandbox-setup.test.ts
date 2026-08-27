@@ -70,11 +70,26 @@ describe("Battle Test free setup", () => {
     expect(state.wog?.commanders).toBe(true);
   });
 
-  it("lets the tester pick BINH or Tournament mode before Begin", () => {
+  it("lets the tester pick BINH, pure Legacy, or Tournament mode before Begin", () => {
     let state = createCombatSandboxLobbyState("sandbox-play-mode");
     expect(state.combatSandboxSetup!.playMode ?? "binh").toBe("binh");
     expect(state.ruleset).toBe("binh");
     expect(state.decks["spells-expert"], "BINH ships a split Expert spell deck").toBeTruthy();
+
+    state = applyOk(state, {
+      type: "SANDBOX_SET_OPTIONS",
+      playerId: "p1",
+      options: { playMode: "legacy" }
+    });
+    expect(state.combatSandboxSetup!.playMode).toBe("legacy");
+    expect(state.ruleset, "Legacy uses printed rules").toBe("legacy");
+    expect(state.decks["spells-expert"], "Legacy uses a single Spell deck").toBeUndefined();
+    expect(state.decks.abilities?.drawPile ?? [], "Pure Legacy keeps Diplomacy").toContain(
+      "ability.diplomacy"
+    );
+    expect(state.decks.artifacts?.drawPile ?? [], "Pure Legacy keeps Hourglass").toContain(
+      "artifact.hourglass_of_the_evil_hour"
+    );
 
     state = applyOk(state, {
       type: "SANDBOX_SET_OPTIONS",

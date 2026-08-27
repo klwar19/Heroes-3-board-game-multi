@@ -15205,9 +15205,10 @@ export type CombatSandboxSeatConfig = {
 /**
  * Battle Test play mode chosen before Begin:
  *  - "binh": house-rule edition (split decks, BINH unit/stat tweaks).
+ *  - "legacy": printed rulebook values and complete legacy decks.
  *  - "tournament": competitive preset (legacy decks + Diplomacy/Hourglass bans).
  */
-export type CombatSandboxPlayMode = "binh" | "tournament";
+export type CombatSandboxPlayMode = "binh" | "legacy" | "tournament";
 
 export type CombatSandboxSetupState = {
   seats: Record<PlayerId, CombatSandboxSeatConfig>;

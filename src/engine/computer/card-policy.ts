@@ -695,6 +695,24 @@ function scoreEffect(
     return 300;
   }
 
+  // In combat, a draw-rider heal with no wound and no Paralysis to clear is
+  // pure card cycling. It must sit below END_ACTIVATION or two draw riders can
+  // repeatedly draw and replay each other forever (Rion IV ↔ Sorcery was the
+  // concrete diverse-simulation case).
+  if (
+    observation.state.combat &&
+    (effect.type === "HEAL_DAMAGE" || effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS")
+  ) {
+    const patient = combatUnitFromTarget(observation, target);
+    if (patient) {
+      const missing = patient.maxHealth - unitRemainingHealth(patient);
+      const paralyzed = (patient.tokens ?? []).some((token) => token.kind === "paralysis");
+      const clearsParalysis = "removeParalysis" in effect && Boolean(effect.removeParalysis);
+      if (missing <= 0 && !(clearsParalysis && paralyzed)) return 180;
+      return 660 + Math.min(45, missing * 10) + (paralyzed && clearsParalysis ? 55 : 0);
+    }
+  }
+
   if (COMBAT_BUFF_EFFECTS.has(effect.type)) {
     return scoreBuffTarget(observation, target, 660 + modeBonus(mode));
   }
@@ -1039,8 +1057,23 @@ export function scoreCardAction(
         return { score: 300, policy: "card.draw-rider-only" };
       }
 
-      const mode = "mode" in action ? action.mode : undefined;
+      // Sorcery-style activation play banks Power for the next Spell and draws
+      // a card. Once Power is already banked, replaying another copy is mostly
+      // a cycle and can alternate forever with another draw-rider card. Hold it
+      // below END_ACTIVATION; the bank clears after the intended Spell or when
+      // this activation ends.
       const optionIndex = "optionIndex" in action ? action.optionIndex : undefined;
+      const actionEffect = primaryEffect(card, optionIndex);
+      if (
+        action.type === "PLAY_CARD" &&
+        actionEffect?.type === "ADD_SPELL_POWER" &&
+        actionEffect.drawCards &&
+        (observation.state.players[observation.playerId]?.combatStats?.pendingDrawRiderSpellPower ?? 0) > 0
+      ) {
+        return { score: 180, policy: "card.hold-draw-rider-cycle" };
+      }
+
+      const mode = "mode" in action ? action.mode : undefined;
       const target = "target" in action ? action.target : undefined;
       const isReaction = action.type === "PLAY_REACTION";
       let score = scoreEffect(

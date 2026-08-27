@@ -81,6 +81,20 @@ describe("computer decision ownership", () => {
     expect(computerDecisionOwner(state)).toBe("p2");
   });
 
+  it("does not invent an acknowledgment owner after a sandbox combat ends", () => {
+    const state = neutralControlCombat(null);
+    state.combat!.context = { kind: "sandbox" };
+    state.combat!.outcome = {
+      winnerPlayerId: "p2",
+      defeatedPlayerId: "p1",
+      reason: "all-enemy-units-defeated",
+    };
+
+    expect(getLegalActions(state, "p1")).toEqual([]);
+    expect(getLegalActions(state, "p2")).toEqual([]);
+    expect(computerDecisionOwner(state)).toBeNull();
+  });
+
   it("finds an incomplete computer setup seat only after the human picked, and never claims the human seat", () => {
     const state = createAdventureLobbyState({
       seed: "window-setup",
