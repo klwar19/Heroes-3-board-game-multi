@@ -112,19 +112,20 @@ const TOWN_PNG_TO_WEBP = new Set([
 ]);
 
 function webpQualityFor(r) {
+  // q65 -- balance-pack reprints: aggressively compact but rules-text safe at
+  // their fixed 743x1040 display resolution.
+  if (/^assets\/(polish|community)-balance\//.test(r)) return 65;
+  // q75 -- original board-game card scans: retain the printed look and small
+  // rules text while allowing redundant scan grain to fall away.
+  if (/^assets\/(abilities-|artifacts_(major|minor|relic)-|hero_specialties-|spells-|statistics-|units-|war_machines-)/.test(r)) return 75;
   // q85 — text-bearing card faces
   if (/^assets\/anime\/units\//.test(r)) return 85;
   if (/^assets\/anime\/equipment\/cards\//.test(r)) return 85;
   if (/^assets\/anime\/artifacts\//.test(r)) return 85;
-  if (/^assets\/units-commander-/.test(r)) return 85;
-  if (/^assets\/units-/.test(r)) return 85; // faction unit card faces
-  if (/^assets\/statistics-/.test(r)) return 85;
   if (/^assets\/specialty-card\//.test(r)) return 85;
   if (/^assets\/story\/covers\//.test(r)) return 85;
   if (/^assets\/wog\/artifacts\//.test(r)) return 85;
   if (/^assets\/set-artifacts\//.test(r)) return 85; // Polish set card faces + icons
-  if (/^assets\/polish-balance\//.test(r)) return 85; // Polish Balance Pack reprinted card faces
-  if (/^assets\/community-balance\//.test(r)) return 85; // Community Balance Change reprinted card faces
   if (/^assets\/bosses\//.test(r)) return 85; // Raid Boss / Dungeon warden ornate card faces
   // q80 — scenery / panorama / board / portrait / background
   if (/^assets\/board\//.test(r)) return 80;
@@ -194,9 +195,15 @@ async function processImage(abs) {
   let pipeline;
   if (ext === ".webp") {
     const q = webpQualityFor(r);
-    // effort 6 for the q85 text card faces (as specified); effort 4 for the
-    // bulk scenery/default — near-identical output size, far faster to encode.
-    pipeline = sharp(input).webp({ quality: q, effort: q >= 85 ? 6 : 4, smartSubsample: true });
+    const compactCardFace = /^assets\/((polish|community)-balance\/|(abilities-|artifacts_(major|minor|relic)-|hero_specialties-|spells-|statistics-|units-|war_machines-))/.test(r);
+    // Card faces get maximum encoder effort and a compact but clean alpha edge;
+    // bulk scenery/default uses effort 4 for a much faster near-identical pass.
+    pipeline = sharp(input).webp({
+      quality: q,
+      alphaQuality: compactCardFace ? 90 : 100,
+      effort: compactCardFace || q >= 85 ? 6 : 4,
+      smartSubsample: true
+    });
   } else if (ext === ".png") {
     // keep format, lossless re-encode only (no palette — avoid posterizing art)
     pipeline = sharp(input).png({ compressionLevel: 9, adaptiveFiltering: true });

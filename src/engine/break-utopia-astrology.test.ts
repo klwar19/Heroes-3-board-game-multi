@@ -167,4 +167,32 @@ describe("flaggable Dragon Utopia", () => {
       )
     ).toBe(false);
   });
+
+  it("an ally stopping on a team-captured Utopia keeps the owner's flag; a rival still captures it", () => {
+    const state = game("flaggable-utopia-ally-gate");
+    const utopia = field({
+      spaceId: "utopia-ally",
+      location: "dragon_utopia",
+      difficulty: 7,
+      flaggableDragonUtopia: true,
+      flagOwnerId: "p1",
+      everFlagged: true
+    });
+    state.adventure!.fields[utopia.spaceId] = utopia;
+    const visitor = getMainHero(state, "p2")!;
+    visitor.spaceId = utopia.spaceId;
+
+    // ALLY: p2 shares p1's team, so the visit must NOT steal the flag.
+    state.playerTeams = { p1: "friends", p2: "friends" };
+    beginFieldVisit(state, visitor.id, utopia.spaceId, false);
+    expect(utopia.flagOwnerId).toBe("p1");
+
+    // CONTROL: the same visitor on a rival team DOES capture it.
+    state.playerTeams = { p1: "friends", p2: "foes" };
+    state.adventure!.pendingVisit = null;
+    state.adventure!.rewardQueue = [];
+    state.pendingChoice = null;
+    beginFieldVisit(state, visitor.id, utopia.spaceId, false);
+    expect(utopia.flagOwnerId).toBe("p2");
+  });
 });

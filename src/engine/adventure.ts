@@ -6114,6 +6114,12 @@ function queueDragonUtopiaArtifactSearches(
 
 function captureFlaggableDragonUtopia(state: GameState, playerId: PlayerId, field: MapFieldState): void {
   if (!field.flaggableDragonUtopia || field.flagOwnerId === playerId) return;
+  // ALLY FLAG GATE (same rule as flagField and the Dragon-Conqueror capture
+  // branch above): this writes flagOwnerId DIRECTLY, so it needs its own gate.
+  // Without it an ally stopping on a team-captured Utopia — classifyHeroStep
+  // classifies it "open" and the garrison prompt is skipped for allies — would
+  // steal the flag and its per-round Azure recruit offer from the alliance.
+  if (fieldFlaggedByAlly(state, playerId, field)) return;
   const previousOwnerId = field.flagOwnerId;
   field.flagOwnerId = playerId;
   field.everFlagged = true;

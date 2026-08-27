@@ -15,9 +15,9 @@
  * faces exactly (`public/assets/polish-balance/*.webp`), which is what
  * `src/data/cards/community-balance-art.test.ts` asserts. `fit: contain` on
  * transparent — NEVER crop: the lower half of every card is its rules text.
- * Quality 85 is the repo's text-bearing card-face band (see
- * `scripts/compress-media.mjs` `webpQualityFor`), and the test also refuses any
- * output under 40KB as a stub.
+ * Quality 65 is the deliberately compact balance-reprint band (see
+ * `scripts/compress-media.mjs` `webpQualityFor`). At 743x1040 it keeps the
+ * printed rules legible while discarding scan grain and oversized masters.
  *
  * THE `SOURCES` TABLE IS THE CONTRACT (mirroring
  * `scripts/build-set-artifact-art.mjs`): master filename → card id. It is EMPTY
@@ -225,19 +225,13 @@ async function main() {
     const encodeAt = (quality) =>
       sharp(source)
         .resize(CARD_W, CARD_H, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
-        .webp({ quality, effort: 6, smartSubsample: true })
+        .webp({ quality, alphaQuality: 90, effort: 6, smartSubsample: true })
         .toBuffer();
-    let face = await encodeAt(85);
-    // The face test refuses anything under 40KB as a stub. A few of the SPELL
-    // masters are flat enough that q85 lands just under it, so re-encode those
-    // at a higher quality rather than weakening the shared stub gate.
-    if (face.length < 45 * 1024) {
-      face = await encodeAt(95);
-    }
+    const face = await encodeAt(65);
     const name = `${outBasename(cardId)}.webp`;
     await writeFile(path.join(OUT_DIR, name), face);
     const kb = face.length / 1024;
-    console.log(`${name.padEnd(46)} ${kb.toFixed(0)}KB${kb < 40 ? "   <-- UNDER 40KB, the test will reject it" : ""}`);
+    console.log(`${name.padEnd(46)} ${kb.toFixed(0)}KB`);
   }
   console.log(`\n${entries.length} community-balance card faces written.`);
 }

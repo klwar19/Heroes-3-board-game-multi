@@ -120,16 +120,22 @@ function nextHumanAction(state: GameState): GameAction | null {
   return null;
 }
 
-function storedSnapshot(storage: Map<string, unknown>): RoomSnapshot {
-  const stored = storage.get("snapshot") as
-    | RoomSnapshot
-    | { format?: string; bank?: string; chunkCount?: number; byteLength?: number };
-  if (stored?.format !== "room-snapshot-chunks-v1") return stored as RoomSnapshot;
+type SnapshotChunkManifest = {
+  format: string;
+  bank?: string;
+  chunkCount?: number;
+  byteLength?: number;
+};
 
-  const chunkCount = stored.chunkCount ?? 0;
-  const byteLength = stored.byteLength ?? 0;
+function storedSnapshot(storage: Map<string, unknown>): RoomSnapshot {
+  const stored = storage.get("snapshot") as RoomSnapshot | SnapshotChunkManifest;
+  const manifest = stored as SnapshotChunkManifest | undefined;
+  if (manifest?.format !== "room-snapshot-chunks-v1") return stored as RoomSnapshot;
+
+  const chunkCount = manifest.chunkCount ?? 0;
+  const byteLength = manifest.byteLength ?? 0;
   const chunks = Array.from({ length: chunkCount }, (_, index) =>
-    storage.get(`snapshot-chunk-${stored.bank}-${index}`)
+    storage.get(`snapshot-chunk-${manifest.bank}-${index}`)
   );
   if (chunks.some((chunk) => !(chunk instanceof Uint8Array))) {
     throw new Error("test snapshot is missing one or more persisted chunks");
