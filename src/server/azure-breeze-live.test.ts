@@ -39,7 +39,7 @@ function setup(seed: string): AdventureSetupOptions {
 
 function run(seed: string): { result: SoakRunResult; recruits: string[]; activity: number } {
   const events = new Map<string, GameEvent>();
-  const result = playUntilRound(createAdventureGameState(setup(seed)), 5, {
+  const result = playUntilRound(createAdventureGameState(setup(seed)), 8, {
     maxLoops: 900,
     onLoop: (state) => {
       for (const event of state.eventLog) events.set(event.id, event);
@@ -62,7 +62,7 @@ function run(seed: string): { result: SoakRunResult; recruits: string[]; activit
 }
 
 describe("Azure Breeze Sect — live AI play", () => {
-  it("plays two fixed-seed games through round 5 without stalls or invariant violations", () => {
+  it("plays two fixed-seed games through round 8 without stalls or invariant violations", () => {
     let totalRecruits = 0;
     let totalActivity = 0;
     for (const seed of ["azure-breeze-live-a", "azure-breeze-live-b"]) {
@@ -70,7 +70,7 @@ describe("Azure Breeze Sect — live AI play", () => {
       expect(result.stalled, `[${seed}] ${result.reason}`).toBe(false);
       expect(result.violations, `[${seed}] ${result.violations.join("; ")}`).toEqual([]);
       expect(
-        result.state.round >= 5 || result.state.phase === "game-over" || Boolean(result.state.adventure?.winnerPlayerId),
+        result.state.round >= 8 || result.state.phase === "game-over" || Boolean(result.state.adventure?.winnerPlayerId),
         `[${seed}] only reached round ${result.state.round}`
       ).toBe(true);
       for (const unitId of recruits) expect(AZURE_UNITS.has(unitId), unitId).toBe(true);
