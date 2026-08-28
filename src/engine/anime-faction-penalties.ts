@@ -117,24 +117,40 @@ export function applyAnimeCombatStartPenalties(state: GameState): void {
   if (!combat || combat.context.kind !== "player") return;
   const done = combat.animeCombatStartPenaltyDone ?? (combat.animeCombatStartPenaltyDone = []);
   for (const playerId of [combat.attackerPlayerId, combat.defenderPlayerId]) {
-    if (playerId === "neutrals" || state.players[playerId]?.factionId !== "heavenly_demon") continue;
-    const key = `heavenly_demon:${playerId}`;
+    if (playerId === "neutrals") continue;
+    const factionId = state.players[playerId]?.factionId;
+    const key = `${factionId}:${playerId}`;
     if (done.includes(key)) continue;
-    const candidates = Object.values(combat.units)
-      .filter((unit) => unit.controllerId === playerId && unit.damage < unit.maxHealth)
-      .sort((left, right) => left.id.localeCompare(right.id));
-    if (candidates.length > 0) {
-      const random = createSeededRandom(`${state.seed}#heavenly-demon-opening-loss#${combat.id}#${playerId}`);
-      const unit = random.pick(candidates);
-      unit.damage += 1;
-      markUnitRemovedIfNeeded(state, unit);
+    if (factionId === "heavenly_demon") {
+      const candidates = Object.values(combat.units)
+        .filter((unit) => unit.controllerId === playerId && unit.damage < unit.maxHealth)
+        .sort((left, right) => left.id.localeCompare(right.id));
+      if (candidates.length > 0) {
+        const random = createSeededRandom(`${state.seed}#heavenly-demon-opening-loss#${combat.id}#${playerId}`);
+        const unit = random.pick(candidates);
+        unit.damage += 1;
+        markUnitRemovedIfNeeded(state, unit);
+        appendEvent(state, {
+          type: "EVENT_NOTE",
+          playerId,
+          message: `Demonic Backlash — ${unit.cardName} loses 1 HP at combat start.`
+        });
+      }
+      done.push(key);
+      continue;
+    }
+    if (factionId === "little_busters") {
+      const opponentId = playerId === combat.attackerPlayerId
+        ? combat.defenderPlayerId
+        : combat.attackerPlayerId;
+      if (opponentId !== "neutrals") drawCardsForPlayer(state, opponentId, 1);
       appendEvent(state, {
         type: "EVENT_NOTE",
         playerId,
-        message: `Demonic Backlash — ${unit.cardName} loses 1 HP at combat start.`
+        message: "School Contribution Fund — the enemy draws exactly 1 card at PvP combat start."
       });
+      done.push(key);
     }
-    done.push(key);
   }
 }
 

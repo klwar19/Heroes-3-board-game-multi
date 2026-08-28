@@ -66,7 +66,8 @@ describe("anime/xianxia faction briefings", () => {
     expect(animeFactionPenalty("azure_breeze")?.detail).toContain("no Resource-round gold penalty");
     expect(animeFactionPenalty("heavenly_demon")?.detail).toContain("enemy draws no penalty cards");
     expect(animeFactionPenalty("heavenly_demon")?.detail).toContain("no Resource-round gold penalty");
-    expect(animeFactionPenalty("little_busters")?.detail).toContain("reduce the campus hero to half HP");
+    expect(animeFactionPenalty("little_busters")?.detail).toContain("opposing player draws exactly 1 card");
+    expect(animeFactionPenalty("little_busters")?.detail).toContain("no paid discard, hero-damage, or extra-draw counters");
     expect(animeFactionPenalty("little_busters")?.detail).not.toContain("Paralysis");
     expect(animeFactionPenalty("little_busters")?.detail).not.toContain("−2 Attack");
     expect(animeFactionPenalty("azur_lane")?.detail).toContain("draws 1 card");

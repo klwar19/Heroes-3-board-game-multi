@@ -485,6 +485,7 @@ import {
   commanderDefenseReactionUnit,
   commanderLiveAttackBonus,
   commanderLiveDefenseBonus,
+  latchCommanderFrontLineAttack,
   sonyaBondDefenseBonus,
   commanderRunePool,
 } from "./commanders";
@@ -561,6 +562,7 @@ import {
   spellReactionBlockedByImmunity,
   spellRedirectTargets,
   standingSpellPower,
+  unitBlockedBySpellCard,
   unitIdsThreatenedByDamageEffect,
 } from "./legal-actions";
 import {
@@ -653,6 +655,7 @@ import {
   getSpellAndSpecialtyDamageReductionAura,
   getTriggeredAttackDieBonusAbilities,
   getUnitAbilityDefinitions,
+  getUnitImmuneSpellSchools,
   getUnitAttackRerollSources,
   hasBindAdjacentEnemies,
   hasInnateMagicMirror,
@@ -4460,6 +4463,9 @@ function applyAttackDamageFromCandidate(
   if (defender.unitDefId === "little_busters.mio" && defender.variant === "pack") {
     defender.mioFirstDefenseUsedThisRound = true;
   }
+  if (hasUnitAbilityEffect(defender, "FIRST_ATTACK_DEFENSE_PER_ROUND")) {
+    defender.saberFirstDefenseUsedThisRound = true;
+  }
   // A cancelled die (Shield of the Dwarven Lords) is reported like an unrolled
   // die so the client skips the rolling-dice cinematic.
   const skipDieCinematic = noDie || dieCancelled;
@@ -5048,8 +5054,9 @@ function getAttackStackDetails(
     getActiveDefenseBonus(state, defender) +
     conditionalDefenseBonus +
     attackerTypeDefenseBonus +
-    (hasUnitAbilityEffect(defender, "STACKING_DEFENSE_WHEN_ATTACKED")
-      ? (defender.stackingDefenseWhenAttackedBonus ?? 0)
+    (hasUnitAbilityEffect(defender, "FIRST_ATTACK_DEFENSE_PER_ROUND") &&
+    !defender.saberFirstDefenseUsedThisRound
+      ? 1
       : 0);
   const abilityAttack =
     stackItem.action.type === "ATTACK_UNIT"
@@ -8607,10 +8614,14 @@ function applyFireShieldDamage(
     return;
   }
 
-  let total = 0;
+  // Keep Spell-card shields separate from specialties, commander/set effects,
+  // and printed unit shields. Only the Spell portion is softened by numeric
+  // Spell-damage reduction; full all-Spell immunity blocks either source.
+  let spellTotal = 0;
+  let nonSpellTotal = 0;
   for (const ability of getUnitAbilityDefinitions(defender)) {
     if (ability.effect?.type === "FIRE_SHIELD_DAMAGE") {
-      total += ability.effect.amount;
+      nonSpellTotal += ability.effect.amount;
     }
   }
   for (const effect of state.activeEffects) {
@@ -8622,11 +8633,38 @@ function applyFireShieldDamage(
     }
     for (const modifier of effect.modifiers) {
       if (modifier.type === "FIRE_SHIELD") {
-        total += modifier.amount;
+        const sourceCard =
+          effect.source.type === "card"
+            ? balanceCardLibrary(state, cardLibrary)[effect.source.cardId]
+            : undefined;
+        if (sourceCard?.kind === "spell") {
+          spellTotal += modifier.amount;
+        } else {
+          nonSpellTotal += modifier.amount;
+        }
       }
     }
   }
 
+  if (spellTotal + nonSpellTotal <= 0) {
+    return;
+  }
+
+  // Black/Azure Dragons' printed all-Spell immunity also turns aside the
+  // spell-like Fire Shield recoil from a Specialty or unit effect. Orb of
+  // Vulnerability suppresses that printed immunity exactly as elsewhere.
+  if (unitHasPrintedAllSpellImmunity(state, attacker)) {
+    return;
+  }
+
+  const fireShieldSpell = balanceCardLibrary(state, cardLibrary)["spell.fire_shield"];
+  const total =
+    nonSpellTotal +
+    (spellTotal > 0
+      ? fireShieldSpell && unitBlockedBySpellCard(state, attacker, fireShieldSpell)
+        ? 0
+        : reducedCardDamage(state, attacker, fireShieldSpell, spellTotal)
+      : 0);
   if (total <= 0) {
     return;
   }
@@ -11287,6 +11325,7 @@ function openTokenPlacementChoice(
   state: GameState,
   playerId: PlayerId,
   kind: "quicksand" | "land_mine",
+  sourceSpellCardId: CardId,
   armedSlots: boolean[],
   placedCount: number,
   triggerDamage: number,
@@ -11317,6 +11356,7 @@ function openTokenPlacementChoice(
     context: "place-battlefield-tokens",
     placeTokens: {
       kind,
+      sourceSpellCardId,
       positions,
       armedSlots,
       placedCount,
@@ -11346,6 +11386,7 @@ function beginHiddenTokenPlacement(
   state: GameState,
   playerId: PlayerId,
   kind: "quicksand" | "land_mine",
+  sourceSpellCardId: CardId,
   count: number,
   triggerDamage: number,
 ): void {
@@ -11354,7 +11395,15 @@ function beginHiddenTokenPlacement(
     return;
   }
   const armedSlots = makeArmedSlots(state, count);
-  openTokenPlacementChoice(state, playerId, kind, armedSlots, 0, triggerDamage);
+  openTokenPlacementChoice(
+    state,
+    playerId,
+    kind,
+    sourceSpellCardId,
+    armedSlots,
+    0,
+    triggerDamage,
+  );
 }
 
 /** Resolves one pick of the Quicksand / Land Mine placement picker. */
@@ -11400,6 +11449,9 @@ function resolvePlaceTokensChoice(
       kind: plan.kind,
       position,
       controllerId: action.playerId,
+      sourceSpellCardId:
+        plan.sourceSpellCardId ??
+        (plan.kind === "quicksand" ? "spell.quicksand" : "spell.land_mine"),
       armed: plan.armedSlots[plan.placedCount],
       damage: plan.kind === "land_mine" ? plan.triggerDamage : undefined,
     });
@@ -11407,6 +11459,8 @@ function resolvePlaceTokensChoice(
       state,
       action.playerId,
       plan.kind,
+      plan.sourceSpellCardId ??
+        (plan.kind === "quicksand" ? "spell.quicksand" : "spell.land_mine"),
       plan.armedSlots,
       plan.placedCount + 1,
       plan.triggerDamage,
@@ -13729,6 +13783,7 @@ function resetCombatRound(combat: CombatState): void {
     unit.attacksThisActivation = 0;
     unit.retaliatedThisRound = false;
     unit.fuyukiCasterDamageCapUsedThisRound = false;
+    unit.saberFirstDefenseUsedThisRound = false;
     unit.mioFirstDefenseUsedThisRound = false;
     unit.waitToken = undefined;
     unit.waitPending = undefined;
@@ -16178,6 +16233,7 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
         state,
         stackItem.action.playerId,
         card.effect.tokenKind,
+        card.id,
         count,
         card.effect.triggerDamage,
       );
@@ -28740,20 +28796,6 @@ function declareAttack(
     }
   }
 
-  // Saber Pack's Avalon Guard grows on every attack declaration against the
-  // final defender (including follow-ups and retaliations). The newly gained
-  // point applies to this attack and remains cumulative for the combat.
-  if (hasUnitAbilityEffect(defender, "STACKING_DEFENSE_WHEN_ATTACKED")) {
-    defender.stackingDefenseWhenAttackedBonus =
-      (defender.stackingDefenseWhenAttackedBonus ?? 0) + 1;
-    appendEvent(state, {
-      type: "UNIT_ABILITY_TRIGGERED",
-      unitId: defender.id,
-      abilityId: "saber-stacking-defense",
-      message: `${defender.cardName} gains +1 Defense from Avalon Guard (${defender.stackingDefenseWhenAttackedBonus} cumulative).`
-    });
-  }
-
   // Doom Revenant: its activation mark lands on the chosen target immediately
   // before the attack. Printed follow-up attacks and Retaliation Attacks do not
   // select a fresh activation target, so they never repeat the mark.
@@ -28918,6 +28960,7 @@ function moveAndAttackUnit(
   }
 
   attacker.position = finalPosition;
+  latchCommanderFrontLineAttack(state, attacker);
 
   appendEvent(state, {
     type: "UNIT_MOVED",
@@ -28964,6 +29007,58 @@ const BATTLEFIELD_TOKEN_CARD_ID: Record<BattlefieldTokenKind, CardId> = {
   quicksand: "spell.quicksand",
   land_mine: "spell.land_mine",
 };
+
+/**
+ * Printed immunity to every Spell (Black/Azure Dragons). This is deliberately
+ * narrower than elemental-school immunity: a Fire-immune unit does not ignore
+ * Luna's specialty or a Hell Steed wall merely because those effects look
+ * fiery. Orb of Vulnerability suppresses printed immunity, matching every
+ * other spell-immunity path.
+ */
+function unitHasPrintedAllSpellImmunity(
+  state: GameState,
+  unit: CombatUnitState,
+): boolean {
+  if (spellAbilitiesSuppressed(state)) {
+    return false;
+  }
+  const immune = new Set(getUnitImmuneSpellSchools(unit));
+  return (["any", "air", "earth", "fire", "water"] as const).every((school) =>
+    immune.has(school),
+  );
+}
+
+/** Full immunity for a lasting battlefield spell effect. */
+function unitIgnoresBattlefieldTokenEffect(
+  state: GameState,
+  token: BattlefieldTokenState,
+  unit: CombatUnitState,
+): boolean {
+  if (unitHasPrintedAllSpellImmunity(state, unit)) {
+    return true;
+  }
+  const sourceSpell = token.sourceSpellCardId
+    ? balanceCardLibrary(state, cardLibrary)[token.sourceSpellCardId]
+    : undefined;
+  return sourceSpell
+    ? unitBlockedBySpellCard(state, unit, sourceSpell)
+    : false;
+}
+
+function appendBattlefieldTokenImmune(
+  state: GameState,
+  token: BattlefieldTokenState,
+  unit: CombatUnitState,
+): void {
+  appendEvent(state, {
+    type: "BATTLEFIELD_TOKEN_TRIGGERED",
+    tokenId: token.id,
+    kind: token.kind,
+    position: token.position,
+    unitId: unit.id,
+    outcome: "immune",
+  });
+}
 
 /** Battlefield tokens occupying a given board space. */
 function tokensAtPosition(
@@ -29052,9 +29147,13 @@ function dealBattlefieldTokenDamage(
   if (isUnitDamageImmune(unit)) {
     return;
   }
-  // A wall placed by the Fire Wall SPELL remains a Spell effect when it burns:
-  // full immunity and every spell-damage reduction apply. Luna/Hell Steed walls
-  // carry no sourceSpellCardId and intentionally remain ordinary effect damage.
+  // Every wall/mine remains spell-like for full all-Spell immunity, including
+  // Luna/Hell Steed specialty walls. Numeric Spell-damage reduction remains
+  // source-sensitive and applies only to a token actually created by a Spell.
+  if (unitIgnoresBattlefieldTokenEffect(state, token, unit)) {
+    appendBattlefieldTokenImmune(state, token, unit);
+    return;
+  }
   const sourceSpell = token.sourceSpellCardId
     ? balanceCardLibrary(state, cardLibrary)[token.sourceSpellCardId]
     : undefined;
@@ -29148,6 +29247,10 @@ function walkMoveThroughTokens(
   for (let index = 0; index < enteredSpaces.length; index += 1) {
     const position = enteredSpaces[index];
     finalPosition = position;
+    // Resolve hazards at the space the unit has actually entered. This matters
+    // for adjacency auras (for example Unicorn Spell Ward): the aura test must
+    // use the mine/wall space, not the mover's stale starting position.
+    unit.position = position;
     const isLastStep = index === enteredSpaces.length - 1;
     const tokens = tokensAtPosition(combat, position);
 
@@ -29201,7 +29304,12 @@ function walkMoveThroughTokens(
       if (token.kind !== "quicksand") {
         continue;
       }
-      if (token.armed === true && !armedQuicksand) {
+      if (
+        token.armed === true &&
+        unitIgnoresBattlefieldTokenEffect(state, token, unit)
+      ) {
+        appendBattlefieldTokenImmune(state, token, unit);
+      } else if (token.armed === true && !armedQuicksand) {
         armedQuicksand = token;
         appendEvent(state, {
           type: "BATTLEFIELD_TOKEN_TRIGGERED",
@@ -29366,6 +29474,7 @@ function moveUnit(
   }
 
   unit.position = finalPosition;
+  latchCommanderFrontLineAttack(state, unit);
 
   appendEvent(state, {
     type: "UNIT_MOVED",

@@ -980,7 +980,16 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // source and remain effect damage. A v82 worker would ignore both optional
 // fields and resolve different legal targets/damage. `npm run deploy:partykit`
 // owed.
-export const ENGINE_PROTOCOL_VERSION = 83;
+// v84: Commander Forge Grade III unlocks separately in round 9 with seeded
+// random/base-cost and specific/+2-cost actions; Vanguard Marshal latches its
+// round-1 front-line Attack; Saber uses first-attack-per-round Defense;
+// battlefield hazards and Fire Shield use source-sensitive full immunity and
+// numeric Spell reduction; Little Busters' paid counters are retired in favor
+// of one automatic enemy draw; Diplomacy is no longer permanently Empowered.
+// New optional commander/unit/token fields and changed legal actions mean a v83
+// worker would resolve a materially different game. `npm run deploy:partykit`
+// owed.
+export const ENGINE_PROTOCOL_VERSION = 84;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

@@ -364,6 +364,14 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       if (event.outcome === "decoy") {
         return `${unitName(state, event.unitId)} springs an empty ${event.kind === "quicksand" ? "Quicksand" : "Land Mine"} decoy at ${getBattlefieldLabel(event.position)} — it is cleared away.`;
       }
+      if (event.outcome === "immune") {
+        const name = event.kind === "fire_wall"
+          ? "Fire Wall"
+          : event.kind === "land_mine"
+            ? "Land Mine"
+            : "Quicksand";
+        return `${unitName(state, event.unitId)} is immune to ${name} at ${getBattlefieldLabel(event.position)}.`;
+      }
       return event.outcome === "stop"
         ? `${unitName(state, event.unitId)} is caught in Quicksand at ${getBattlefieldLabel(event.position)} — its activation ends, and the trap is spent.`
         : `${unitName(state, event.unitId)} takes ${event.amount ?? 0} from ${event.kind === "fire_wall" ? "a Fire Wall" : "a Land Mine"} at ${getBattlefieldLabel(event.position)}.`;

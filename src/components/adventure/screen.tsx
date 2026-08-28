@@ -4869,11 +4869,12 @@ function CommanderForgePanel({
       <div className="commanderForgeContent">
         <header>
           <strong>Commander Forge</strong>
-          <small>Two offers · choose one</small>
+          <small>One purchase per grade</small>
         </header>
         <p>
-          Grade I: round 2, 5 gold. One Grade II or III purchase: round 7, 8 or
-          11 gold. Each budget is once per game; only empty slots are offered.
+          Grade I: round 2, 5 gold. Grade II: round 7, 8 gold. Grade III: round
+          9, 11 gold for random or 13 gold for a specific item. Only empty slots
+          are offered.
         </p>
         {tiers.map((tier) => {
           const tierOffers = offers.filter(
@@ -4882,13 +4883,15 @@ function CommanderForgePanel({
           const used =
             tier === "minor"
               ? commander.forgeMinorUsed
-              : commander.forgeHighUsed;
-          const unlockRound = tier === "minor" ? 2 : 7;
+              : tier === "major"
+                ? commander.forgeHighUsed || commander.forgeMajorUsed
+                : commander.forgeHighUsed || commander.forgeRelicUsed;
+          const unlockRound = tier === "minor" ? 2 : tier === "major" ? 7 : 9;
           const cost = tier === "minor" ? 5 : tier === "major" ? 8 : 11;
           return (
             <div className="commanderForgeTier" key={tier}>
               <span>
-                <EquipGradeChip grade={tierToGrade(tier)} /> {cost} gold
+                <EquipGradeChip grade={tierToGrade(tier)} /> {tier === "relic" ? "11 random / 13 chosen" : `${cost} gold`}
               </span>
               {used ? (
                 <small>Use spent</small>
@@ -4897,13 +4900,14 @@ function CommanderForgePanel({
               ) : null}
               {tierOffers.map((offer) => {
                 const spec = COMMANDER_ARTIFACT_SPECS[offer.action.cardId];
+                const randomRelic = tier === "relic" && !offer.action.specific;
                 return (
                   <button
-                    key={offer.action.cardId}
+                    key={`${offer.action.cardId}-${offer.action.specific ? "specific" : "random"}`}
                     onClick={() => onAction?.(offer.action)}
                     type="button"
                   >
-                    {spec ? (
+                    {spec && !randomRelic ? (
                       <img
                         alt=""
                         src={assetUrl(
@@ -4912,8 +4916,14 @@ function CommanderForgePanel({
                       />
                     ) : null}
                     <span>
-                      <strong>{spec?.name ?? offer.action.cardId}</strong>
-                      <small>{spec?.effectText}</small>
+                      <strong>{randomRelic ? "Random Grade III" : spec?.name ?? offer.action.cardId}</strong>
+                      <small>
+                        {randomRelic
+                          ? "11 gold · result is hidden until forged"
+                          : tier === "relic"
+                            ? `13 gold · specific choice · ${spec?.effectText ?? ""}`
+                            : spec?.effectText}
+                      </small>
                     </span>
                   </button>
                 );

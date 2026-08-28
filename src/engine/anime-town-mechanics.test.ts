@@ -95,8 +95,8 @@ describe("Fuyuki City — Command Seals", () => {
     expect(refused.errors.length).toBeGreaterThan(0);
   });
 
-  it("Saber Pack starts at Defense 2 and gains a cumulative +1 whenever attacked", () => {
-    const state = createInitialGameState("fuyuki-saber-stacking-defense");
+  it("Saber Pack gets +1 Defense only against the first attack of each Combat round", () => {
+    const state = createInitialGameState("fuyuki-saber-first-defense");
     state.players.p1.hand = [];
     state.players.p2.hand = [];
     const saber = state.combat!.units.unit_p1_griffins;
@@ -109,7 +109,7 @@ describe("Fuyuki City — Command Seals", () => {
       defense: 2,
       maxHealth: 100,
       damage: 0,
-      abilities: ["saber-stacking-defense"],
+      abilities: ["saber-first-attack-defense"],
       retaliatedThisRound: true
     });
     Object.assign(attacker, {
@@ -127,7 +127,7 @@ describe("Fuyuki City — Command Seals", () => {
     let after = settleAttack(applyOk(state, {
       type: "ATTACK_UNIT", playerId: "p2", attackerId: attacker.id, defenderId: saber.id
     }));
-    expect(after.combat!.units[saber.id].stackingDefenseWhenAttackedBonus).toBe(1);
+    expect(after.combat!.units[saber.id].saberFirstDefenseUsedThisRound).toBe(true);
     expect(after.combat!.units[saber.id].damage).toBe(3);
 
     Object.assign(after.combat!.units[attacker.id], {
@@ -141,8 +141,9 @@ describe("Fuyuki City — Command Seals", () => {
     after = settleAttack(applyOk(after, {
       type: "ATTACK_UNIT", playerId: "p2", attackerId: attacker.id, defenderId: saber.id
     }));
-    expect(after.combat!.units[saber.id].stackingDefenseWhenAttackedBonus).toBe(2);
-    expect(after.combat!.units[saber.id].damage).toBe(5);
+    expect(after.combat!.units[saber.id].saberFirstDefenseUsedThisRound).toBe(true);
+    // The second attack in the same round sees only printed Defense 2: 6 - 2 = 4.
+    expect(after.combat!.units[saber.id].damage).toBe(7);
   });
 });
 

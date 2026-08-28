@@ -256,7 +256,7 @@ describe("Fire Wall spell", () => {
     expect(moveTo(reduced, "unit_p1_crusaders", 1).combat!.units.unit_p1_crusaders.damage).toBe(2);
   });
 
-  it("keeps Luna's specialty wall as effect damage, not Spell damage", () => {
+  it("Black Dragon immunity ignores Luna/Hell Steed walls, but numeric Spell reduction does not soften them", () => {
     const state = createInitialGameState("fw-luna-effect");
     soloMover(state, "unit_p1_crusaders", 0);
     state.combat!.units.unit_p1_crusaders.maxHealth = 40;
@@ -268,7 +268,20 @@ describe("Fire Wall spell", () => {
       damage: 3,
       burnsAtActivation: true
     });
-    expect(moveTo(state, "unit_p1_crusaders", 1).combat!.units.unit_p1_crusaders.damage).toBe(3);
+    expect(moveTo(state, "unit_p1_crusaders", 1).combat!.units.unit_p1_crusaders.damage).toBe(0);
+
+    const reduced = createInitialGameState("fw-luna-numeric-control");
+    soloMover(reduced, "unit_p1_crusaders", 0);
+    reduced.combat!.units.unit_p1_crusaders.maxHealth = 40;
+    reduced.combat!.units.unit_p1_crusaders.abilities = ["reduce-spell-damage-2"];
+    injectToken(reduced, {
+      kind: "fire_wall",
+      position: 1,
+      controllerId: "p2",
+      damage: 3,
+      burnsAtActivation: true
+    });
+    expect(moveTo(reduced, "unit_p1_crusaders", 1).combat!.units.unit_p1_crusaders.damage).toBe(3);
   });
 
   it("burns a RANGED unit that stops on the wall (ranged burns like ground)", () => {
@@ -429,6 +442,26 @@ describe("Quicksand spell", () => {
     expect(moved.combat!.battlefieldTokens ?? []).toHaveLength(0);
   });
 
+  it("full all-Spell immunity springs and removes Quicksand but is not halted", () => {
+    const state = createInitialGameState("qs-all-spell-immune");
+    soloMover(state, "unit_p1_crusaders", 0);
+    state.combat!.units.unit_p1_crusaders.abilities = ["immune-all-spells"];
+    injectToken(state, {
+      kind: "quicksand",
+      position: 1,
+      controllerId: "p2",
+      sourceSpellCardId: "spell.quicksand",
+      armed: true
+    });
+    const moved = moveTo(state, "unit_p1_crusaders", 2);
+    expect(moved.combat!.units.unit_p1_crusaders.position).toBe(2);
+    expect(moved.combat!.units.unit_p1_crusaders.activatedThisRound).toBe(false);
+    expect(moved.combat!.battlefieldTokens ?? []).toHaveLength(0);
+    expect(moved.eventLog.some(
+      (event) => event.type === "BATTLEFIELD_TOKEN_TRIGGERED" && event.outcome === "immune"
+    )).toBe(true);
+  });
+
   it("a decoy Quicksand lets the unit pass through and reach its destination", () => {
     const state = createInitialGameState("qs-decoy");
     soloMover(state, "unit_p1_crusaders", 0);
@@ -484,6 +517,7 @@ describe("Land Mine spell", () => {
     expect(tokens).toHaveLength(4);
     expect(tokens.filter((token) => token.armed === true)).toHaveLength(2);
     expect(tokens.every((token) => token.damage === 2)).toBe(true);
+    expect(tokens.every((token) => token.sourceSpellCardId === "spell.land_mine")).toBe(true);
   });
 
   it("an armed Land Mine deals 2 damage and the unit then continues to its destination", () => {
@@ -497,6 +531,42 @@ describe("Land Mine spell", () => {
     expect(moved.combat!.units.unit_p1_crusaders.damage).toBe(2);
     // The detonated mine is removed from the board.
     expect(moved.combat!.battlefieldTokens ?? []).toHaveLength(0);
+  });
+
+  it("Land Mine Spell damage uses own and allied-aura numeric reduction, while Dwarf die resistance does not", () => {
+    const own = createInitialGameState("lm-own-spell-reduction");
+    soloMover(own, "unit_p1_crusaders", 0);
+    own.combat!.units.unit_p1_crusaders.maxHealth = 40;
+    own.combat!.units.unit_p1_crusaders.abilities = ["reduce-spell-damage-1"];
+    injectToken(own, { kind: "land_mine", position: 1, controllerId: "p2", sourceSpellCardId: "spell.land_mine", armed: true, damage: 2 });
+    expect(moveTo(own, "unit_p1_crusaders", 2).combat!.units.unit_p1_crusaders.damage).toBe(1);
+
+    const aura = createInitialGameState("lm-aura-spell-reduction");
+    soloMover(aura, "unit_p1_crusaders", 0);
+    aura.combat!.units.unit_p1_crusaders.maxHealth = 40;
+    const ally = aura.combat!.units.unit_p1_marksmen;
+    ally.position = 5; // adjacent to the mine space (1)
+    ally.abilities = ["unicorn-spell-ward-aura"];
+    injectToken(aura, { kind: "land_mine", position: 1, controllerId: "p2", sourceSpellCardId: "spell.land_mine", armed: true, damage: 2 });
+    expect(moveTo(aura, "unit_p1_crusaders", 2).combat!.units.unit_p1_crusaders.damage).toBe(1);
+
+    const dwarf = createInitialGameState("lm-dwarf-die-resistance-control");
+    soloMover(dwarf, "unit_p1_crusaders", 0);
+    dwarf.combat!.units.unit_p1_crusaders.maxHealth = 40;
+    dwarf.combat!.units.unit_p1_crusaders.abilities = ["dwarf-magic-resistance"];
+    injectToken(dwarf, { kind: "land_mine", position: 1, controllerId: "p2", sourceSpellCardId: "spell.land_mine", armed: true, damage: 2 });
+    expect(moveTo(dwarf, "unit_p1_crusaders", 2).combat!.units.unit_p1_crusaders.damage).toBe(2);
+  });
+
+  it("full all-Spell immunity ignores Land Mine damage and continues moving", () => {
+    const state = createInitialGameState("lm-all-spell-immune");
+    soloMover(state, "unit_p1_crusaders", 0);
+    state.combat!.units.unit_p1_crusaders.maxHealth = 40;
+    state.combat!.units.unit_p1_crusaders.abilities = ["immune-all-spells"];
+    injectToken(state, { kind: "land_mine", position: 1, controllerId: "p2", sourceSpellCardId: "spell.land_mine", armed: true, damage: 2 });
+    const moved = moveTo(state, "unit_p1_crusaders", 2);
+    expect(moved.combat!.units.unit_p1_crusaders.position).toBe(2);
+    expect(moved.combat!.units.unit_p1_crusaders.damage).toBe(0);
   });
 
   it("a decoy Land Mine deals nothing and is cleared off the board", () => {

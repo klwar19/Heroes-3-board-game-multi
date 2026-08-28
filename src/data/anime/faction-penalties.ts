@@ -41,7 +41,7 @@ export const ANIME_FACTION_PENALTIES: readonly AnimeFactionPenaltyDefinition[] =
     timing: "resource-round",
     mechanicTitle: "Command Seals",
     mechanicDetail:
-      "Begin the campaign with 3 Command Seals, but spend at most one per combat: Compel gives the active unit +1 Attack for its activation, or Recall heals it up to 3. Medea deals fixed 2/3 damage and her 1-damage barrier works once per combat round. Saber Pack has base Defense 2 and gains a stacking +1 Defense whenever attacked.",
+      "Begin the campaign with 3 Command Seals, but spend at most one per combat: Compel gives the active unit +1 Attack for its activation, or Recall heals it up to 3. Medea deals fixed 2/3 damage and her 1-damage barrier works once per combat round. Saber Pack has base Defense 2 and gains +1 Defense against the first attack of each combat round only.",
     artImage: "/assets/anime/notices/fuyuki-grail-upkeep.webp"
   },
   {
@@ -96,8 +96,8 @@ export const ANIME_FACTION_PENALTIES: readonly AnimeFactionPenaltyDefinition[] =
     factionId: "little_busters",
     register: "anime",
     title: "School Contribution Fund",
-    short: "−5 gold/−1 material; three paid enemy counters",
-    detail: "−5 gold and −1 material each Resource round, paid after income without debt. In PvP, the enemy may pay 1 gold for each one-use counter: random discard, draw 2, or reduce the campus hero to half HP (remaining HP rounded up).",
+    short: "−5 gold/−1 material; PvP enemy draws 1",
+    detail: "−5 gold and −1 material each Resource round, paid after income without debt. At PvP combat start, the opposing player draws exactly 1 card. There are no paid discard, hero-damage, or extra-draw counters.",
     timing: "resource-round",
     mechanicTitle: "Campus Hero",
     mechanicDetail:

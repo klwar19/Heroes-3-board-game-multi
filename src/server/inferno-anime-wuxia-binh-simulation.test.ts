@@ -324,7 +324,7 @@ describe("Inferno vs anime/wuxia towns — BINH battle simulation", () => {
     expect(totalSpells, "level-5 heroes should cast spells").toBeGreaterThan(0);
     expect(totalDefends, "AI should defend when tactically appropriate").toBeGreaterThan(0);
     if (ACTIVE_RIVALS.includes("little_busters")) {
-      expect(totalLittleBustersCounters, "the opponent should use Little Busters discard/damage/draw counters").toBeGreaterThan(0);
+      expect(totalLittleBustersCounters, "retired Little Busters paid counters must never be offered").toBe(0);
     }
     console.info("INFERNO_ANIME_WUXIA_BINH_SIMULATION", JSON.stringify({ runsPerTown: RUNS_PER_TOWN, report }, null, 2));
   });

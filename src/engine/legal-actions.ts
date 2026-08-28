@@ -144,6 +144,7 @@ import {
 import { RUNE_MAX } from "./runes";
 import {
   COMMANDER_ARTIFACT_GOLD_COST,
+  availableCommanderArtifactSpecs,
   commanderArtifactBonusesForUnit,
   commanderForgeCandidates,
 } from "./commander-artifacts";
@@ -6099,8 +6100,8 @@ function addCommanderMapActions(
     }
   }
 
-  // Two stable choices per grade. Grade I and the later shared Grade II/III
-  // purchase are independently once per game, and only empty slots are shown.
+  // Grade I/II keep two stable offers. Grade III unlocks later and is either
+  // one hidden seeded-random result at base cost or any specific result for +2.
   const addForgeTier = (tier: "minor" | "major" | "relic") => {
     const cost = COMMANDER_ARTIFACT_GOLD_COST[tier];
     if ((player.resources.gold ?? 0) < cost) return;
@@ -6117,9 +6118,39 @@ function addCommanderMapActions(
     }
   };
   if (state.round >= 2 && !commander.forgeMinorUsed) addForgeTier("minor");
-  if (state.round >= 7 && !commander.forgeHighUsed) {
+  const legacyHighSpent = commander.forgeHighUsed === true;
+  if (state.round >= 7 && !legacyHighSpent && !commander.forgeMajorUsed) {
     addForgeTier("major");
-    addForgeTier("relic");
+  }
+  if (state.round >= 9 && !legacyHighSpent && !commander.forgeRelicUsed) {
+    const baseCost = COMMANDER_ARTIFACT_GOLD_COST.relic;
+    const random = commanderForgeCandidates(state, playerId, "relic")[0];
+    if (random && (player.resources.gold ?? 0) >= baseCost) {
+      actions.push({
+        label: `Commander Forge: random Grade III (${baseCost} gold)`,
+        action: {
+          type: "FORGE_COMMANDER_ARTIFACT",
+          playerId,
+          tier: "relic",
+          cardId: random.cardId,
+        },
+      });
+    }
+    const specificCost = baseCost + 2;
+    if ((player.resources.gold ?? 0) >= specificCost) {
+      for (const spec of availableCommanderArtifactSpecs(state, playerId, "relic", true)) {
+        actions.push({
+          label: `Commander Forge: choose ${spec.name} (${specificCost} gold)`,
+          action: {
+            type: "FORGE_COMMANDER_ARTIFACT",
+            playerId,
+            tier: "relic",
+            cardId: spec.cardId,
+            specific: true,
+          },
+        });
+      }
+    }
   }
 }
 
@@ -15269,9 +15300,8 @@ function getCombatInteractionActions(
       // once-per-combat buffs / debuffs / zaps). All OPTIONAL — nothing is ever
       // forced, so ignoring every offer can never stall a seat. No-op when off.
       addArtifactSetActions(actions, state, playerId);
-      // PvP anti-Little-Busters counters: a fighter facing a Little Busters seat
-      // may spend 1 gold on each of three one-off effects this combat. Optional;
-      // no-op in every other fight. Same shared read the handler re-validates.
+      // Legacy Little Busters counters: the shared availability read now returns
+      // no offers. Kept here only so old saved/wire actions remain decodable.
       for (const offer of availableLittleBustersCounters(state, playerId)) {
         actions.push({
           label: offer.label,

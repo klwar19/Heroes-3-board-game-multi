@@ -451,7 +451,7 @@ const commanderVoices: Record<string, Record<CommanderVoiceActions, string>> = {
   // Bulwark — the Bulwark level-7 unit (Jotunns = Titan voice).
   bulwark: { attack: "titan", move: "titan", defend: "titan", hurt: "titan", death: "titan" },
   // Anime Realms — sword-bearing leaders with fully converted voice sets.
-  ruler: { attack: "swordsman", move: "swordsman", defend: "swordsman", hurt: "swordsman", death: "swordsman" },
+  ruler: { attack: "mage", move: "mage", defend: "mage", hurt: "mage", death: "mage" },
   sword_saint: { attack: "monk", move: "monk", defend: "monk", hurt: "monk", death: "monk" },
   // Hidden Leaf — Might Guy is a bare-fisted taijutsu master → the Monk voice.
   might_guy: { attack: "monk", move: "monk", defend: "monk", hurt: "monk", death: "monk" },

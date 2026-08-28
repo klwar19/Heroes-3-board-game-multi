@@ -46,8 +46,8 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
   },
   "fuyuki.archers": {
     id: "fuyuki.archers", name: "EMIYA", faction: "fuyuki", tier: "silver", type: "ranged",
-    few: { attack: 3, defense: 1, health: 4, initiative: 6, cost: { gold: 8 }, abilities: ["ignore-combat-penalties"], abilityText: "Hawkeye — ignores the adjacent ranged Combat penalty.", cardImage: fuyukiCard("silver", "archers", "few") },
-    pack: { attack: 3, defense: 1, health: 4, initiative: 7, cost: { gold: 11 }, abilities: ["ignore-all-combat-penalties", "double-attack"], abilityText: "Unlimited Blade Works — ignores ranged penalties and attacks a distant target twice.", cardImage: fuyukiCard("silver", "archers", "pack") },
+    few: { attack: 3, defense: 1, health: 4, initiative: 9, cost: { gold: 8 }, abilities: ["ignore-combat-penalties"], abilityText: "Hawkeye — ignores the adjacent ranged Combat penalty.", cardImage: fuyukiCard("silver", "archers", "few") },
+    pack: { attack: 3, defense: 1, health: 4, initiative: 9, cost: { gold: 11 }, abilities: ["ignore-all-combat-penalties", "double-attack"], abilityText: "Unlimited Blade Works — ignores ranged penalties and attacks a distant target twice.", cardImage: fuyukiCard("silver", "archers", "pack") },
     source
   },
   "fuyuki.casters": {
@@ -82,13 +82,13 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
   "fuyuki.sabers": {
     id: "fuyuki.sabers", name: "Artoria Pendragon", faction: "fuyuki", tier: "gold", type: "ground",
     few: { attack: 5, defense: 2, health: 6, initiative: 6, cost: { gold: 14, valuables: 1 }, abilities: ["dragon-line-attack-2"], abilityText: "Excalibur — a second Attack 2 hit strikes behind the target.", cardImage: fuyukiCard("golden", "sabers", "few") },
-    pack: { attack: 6, defense: 2, health: 7, initiative: 7, cost: { gold: 22, valuables: 2 }, abilities: ["dragon-line-attack-3", "commander-charge", "saber-stacking-defense"], abilityText: "Excalibur — line strike at Attack 3; +1 Attack after moving. Avalon Guard — whenever attacked, gain a cumulative +1 Defense for that attack and the rest of Combat.", cardImage: fuyukiCard("golden", "sabers", "pack") },
+    pack: { attack: 6, defense: 2, health: 7, initiative: 7, cost: { gold: 22, valuables: 2 }, abilities: ["dragon-line-attack-3", "commander-charge", "saber-first-attack-defense"], abilityText: "Excalibur — line strike at Attack 3; +1 Attack after moving. Avalon Guard — +1 Defense against the first attack of each Combat round only.", cardImage: fuyukiCard("golden", "sabers", "pack") },
     source
   },
   "fuyuki.berserkers": {
     id: "fuyuki.berserkers", name: "Heracles", faction: "fuyuki", tier: "gold", type: "ground",
-    few: { attack: 6, defense: 2, health: 7, initiative: 5, cost: { gold: 15, valuables: 1 }, abilities: ["phoenix-rebirth"], abilityText: "God Hand — once per Combat, lethal damage leaves this unit at 1 Health.", cardImage: fuyukiCard("golden", "berserkers", "few") },
-    pack: { attack: 7, defense: 2, health: 8, initiative: 5, cost: { gold: 24, valuables: 2 }, abilities: ["reduce-spell-damage-1"], abilityText: "God Hand — Spell damage against this unit is reduced by 1.", cardImage: fuyukiCard("golden", "berserkers", "pack") },
+    few: { attack: 6, defense: 2, health: 7, initiative: 7, cost: { gold: 15, valuables: 1 }, abilities: ["phoenix-rebirth"], abilityText: "God Hand — once per Combat, lethal damage leaves this unit at 1 Health.", cardImage: fuyukiCard("golden", "berserkers", "few") },
+    pack: { attack: 7, defense: 2, health: 8, initiative: 7, cost: { gold: 24, valuables: 2 }, abilities: ["reduce-spell-damage-1"], abilityText: "God Hand — Spell damage against this unit is reduced by 1.", cardImage: fuyukiCard("golden", "berserkers", "pack") },
     source
   },
 

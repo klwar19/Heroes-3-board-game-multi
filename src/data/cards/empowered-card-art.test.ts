@@ -48,10 +48,11 @@ describe("empowered card art registry", () => {
     expect(empoweredCardImage("ability.basic_fire_magic")).toBe(
       "/assets/abilities-basic_fire_magic-empowered.webp"
     );
-    // A card whose printed face is ALREADY the empowered scan has nothing to
-    // swap: the Empowered Statistics, and Diplomacy (printed always-Empowered).
+    // A card whose printed face is ALREADY the empowered scan has nothing to swap.
     expect(empoweredCardImage("stat.attack.empowered")).toBeUndefined();
-    expect(empoweredCardImage("ability.diplomacy")).toBeUndefined();
+    expect(empoweredCardImage("ability.diplomacy")).toBe(
+      "/assets/abilities-diplomacy-empowered.webp"
+    );
     // CONTROL: a card family with no empowered scan at all.
     expect(empoweredCardImage("spell.magic_arrow")).toBeUndefined();
     expect(empoweredCardImage(undefined)).toBeUndefined();
@@ -64,9 +65,17 @@ describe("empowered card art registry", () => {
     );
     // CONTROL: not empowered → the base face, unchanged.
     expect(cardFaceImage("ability.offense", false)).toBe("/assets/abilities-offense.webp");
-    // A card with no empowered scan keeps its base face even when empowered.
-    const base = cardLibrary["ability.diplomacy"]?.assets?.cardImage;
-    expect(cardFaceImage("ability.diplomacy", true)).toBe(base);
+    expect(cardFaceImage("ability.diplomacy", false)).toBe("/assets/abilities-diplomacy.webp");
+    expect(cardFaceImage("ability.diplomacy", true)).toBe(
+      "/assets/abilities-diplomacy-empowered.webp"
+    );
+  });
+
+  it("never wires an ordinary Ability card directly to an Empowered face", () => {
+    const wrong = Object.values(cardLibrary)
+      .filter((card) => card.kind === "ability" && card.assets?.cardImage?.includes("-empowered."))
+      .map((card) => `${card.id} -> ${card.assets?.cardImage}`);
+    expect(wrong).toEqual([]);
   });
 
   it("EVERY ability card whose face is an /assets/abilities-*.webp scan is registered", () => {

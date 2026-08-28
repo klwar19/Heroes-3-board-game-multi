@@ -17769,7 +17769,7 @@ function queueNomadEndTurnMove(state: GameState, playerId: PlayerId): boolean {
   return true;
 }
 
-/** Buy one of the Forge's two stable offers, with handler-side validation. */
+/** Buy a validated Forge offer, including Grade III random/specific pricing. */
 export function forgeCommanderArtifact(
   state: GameState,
   action: Extract<GameAction, { type: "FORGE_COMMANDER_ARTIFACT" }>
@@ -17777,28 +17777,40 @@ export function forgeCommanderArtifact(
   const player = state.players[action.playerId];
   const commander = player?.commander;
   const spec = COMMANDER_ARTIFACT_SPECS[action.cardId];
-  if (!player || !commander || !spec || spec.tier !== action.tier) {
+  if (!player || !commander || !spec || spec.tier !== action.tier || (action.specific && action.tier !== "relic")) {
     throw new Error("That commander Forge offer is not available.");
   }
 
   if (state.combat || state.phase !== "player-turn" || state.activePlayerId !== action.playerId) {
     throw new Error("The Commander Forge is used during your own map turn.");
   }
-  const highTier = action.tier === "major" || action.tier === "relic";
-  if ((!highTier && state.round < 2) || (highTier && state.round < 7)) {
-    throw new Error(highTier ? "Grade II/III forging unlocks in round 7." : "Grade I forging unlocks in round 2.");
+  const unlockRound = action.tier === "minor" ? 2 : action.tier === "major" ? 7 : 9;
+  if (state.round < unlockRound) {
+    throw new Error(`Grade ${action.tier === "minor" ? "I" : action.tier === "major" ? "II" : "III"} forging unlocks in round ${unlockRound}.`);
   }
-  if ((!highTier && commander.forgeMinorUsed) || (highTier && commander.forgeHighUsed)) {
+  const legacyHighSpent = commander.forgeHighUsed === true;
+  const tierUsed =
+    action.tier === "minor"
+      ? commander.forgeMinorUsed
+      : action.tier === "major"
+        ? legacyHighSpent || commander.forgeMajorUsed
+        : legacyHighSpent || commander.forgeRelicUsed;
+  if (tierUsed) {
     throw new Error("That once-per-game Commander Forge use is already spent.");
   }
   if (commander.artifacts?.[spec.slot]) {
     throw new Error(`Your commander's ${spec.slot} slot is already filled.`);
   }
-  const offered = commanderForgeCandidates(state, action.playerId, action.tier).map((candidate) => candidate.cardId);
+  const offered =
+    action.tier === "relic" && action.specific
+      ? availableCommanderArtifactSpecs(state, action.playerId, "relic", true).map((candidate) => candidate.cardId)
+      : action.tier === "relic"
+        ? commanderForgeCandidates(state, action.playerId, "relic").slice(0, 1).map((candidate) => candidate.cardId)
+        : commanderForgeCandidates(state, action.playerId, action.tier).map((candidate) => candidate.cardId);
   if (!offered.includes(action.cardId)) {
-    throw new Error("That artifact is not one of the Forge's two offers.");
+    throw new Error("That artifact is not available from the Forge.");
   }
-  const cost = COMMANDER_ARTIFACT_GOLD_COST[action.tier];
+  const cost = COMMANDER_ARTIFACT_GOLD_COST[action.tier] + (action.tier === "relic" && action.specific ? 2 : 0);
   if (!hasResources(player, { gold: cost })) {
     throw new Error(`Forging that artifact costs ${cost} gold.`);
   }
@@ -17806,8 +17818,9 @@ export function forgeCommanderArtifact(
   if (!grantCommanderArtifactCard(state, action.playerId, action.cardId)) {
     throw new Error("That commander artifact was already claimed.");
   }
-  if (highTier) commander.forgeHighUsed = true;
-  else commander.forgeMinorUsed = true;
+  if (action.tier === "minor") commander.forgeMinorUsed = true;
+  else if (action.tier === "major") commander.forgeMajorUsed = true;
+  else commander.forgeRelicUsed = true;
   appendEvent(state, {
     type: "EVENT_NOTE",
     playerId: action.playerId,

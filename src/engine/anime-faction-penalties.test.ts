@@ -107,6 +107,24 @@ describe("anime faction Resource-round penalties", () => {
 });
 
 describe("new PvP faction penalties", () => {
+  it("Little Busters lets the enemy draw exactly 1 card once, with no paid counters", () => {
+    const state = createInitialGameState("little-busters-opening-penalty");
+    state.combat!.context = { kind: "player", attackerHeroId: "hero_p1", defenderHeroId: "hero_p2", fieldId: "0,0" };
+    state.players.p1.factionId = "little_busters";
+    state.players.p2.hand = [];
+    state.players.p2.deck = ["stat.attack", "stat.defense"];
+    applyAnimeCombatStartPenalties(state);
+    expect(state.players.p2.hand).toHaveLength(1);
+    expect(
+      getLegalActions(state, "p2").filter((legal) => legal.action.type === "LITTLE_BUSTERS_COUNTER")
+    ).toHaveLength(0);
+    applyAnimeCombatStartPenalties(state);
+    expect(state.players.p2.hand).toHaveLength(1);
+    expect(state.eventLog.filter(
+      (event) => event.type === "EVENT_NOTE" && event.message.startsWith("School Contribution Fund —")
+    )).toHaveLength(1);
+  });
+
   it("Heavenly Demon damages one random own unit once and gives the enemy no cards", () => {
     const state = createInitialGameState("heavenly-opening-penalty");
     state.combat!.context = { kind: "player", attackerHeroId: "hero_p1", defenderHeroId: "hero_p2", fieldId: "0,0" };

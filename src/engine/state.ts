@@ -4152,14 +4152,14 @@ export type GameAction =
     }
   | {
       /**
-       * Commander Forge: buy one of the two deterministic, currently offered
-       * artifacts. Grade I is a separate once-per-game use from the shared
-       * once-per-game Grade II/III use.
+       * Commander Forge purchase. Grade III is random at base cost, or a
+       * specific available item for 2 extra gold.
        */
       type: "FORGE_COMMANDER_ARTIFACT";
       playerId: PlayerId;
       tier: "minor" | "major" | "relic";
       cardId: CardId;
+      specific?: boolean;
     }
   | {
       /**
@@ -4282,12 +4282,10 @@ export type GameAction =
     }
   | {
       /**
-       * PvP anti-Little-Busters counter: a fighter facing a Little Busters seat
-       * pays 1 gold for one of three effects — the LB seat discards a random hand
-       * card ("discard"), the LB campus hero is reduced to half HP (round up;
-       * "damage"), or the spender draws 2 cards ("draw").
-       * Each is offered once per combat; computer opponents prioritize all three.
-       * Handler-validated (self-validating; no window opens).
+       * Legacy Little Busters counter action, retained for saved-game/wire
+       * compatibility. It is no longer offered and is rejected by legal-action validation because
+       * the current PvP penalty automatically draws exactly 1 enemy card at
+       * combat start.
        */
       type: "LITTLE_BUSTERS_COUNTER";
       playerId: PlayerId;
@@ -5914,7 +5912,7 @@ export type GameEvent =
       kind: BattlefieldTokenKind;
       position: number;
       unitId: UnitId;
-      outcome: "damage" | "stop" | "decoy";
+      outcome: "damage" | "stop" | "decoy" | "immune";
       amount?: number;
     }
   | {
@@ -8686,6 +8684,9 @@ export type CommanderPlayerState = {
   artifacts?: Partial<Record<CommanderArtifactSlot, string>>;
   /** Commander Forge lifetime budgets (optional for legacy snapshots). */
   forgeMinorUsed?: boolean;
+  forgeMajorUsed?: boolean;
+  forgeRelicUsed?: boolean;
+  /** Legacy shared Grade-II/III budget; true blocks both in old snapshots. */
   forgeHighUsed?: boolean;
 };
 
@@ -9453,8 +9454,10 @@ export type CombatUnitState = {
   fuyukiCasterDamageCapUsedThisRound?: boolean;
   /** Masato: combat round in which Bodyguard redirected an adjacent ally's attack. */
   bodyguardInterceptUsedRound?: number;
-  /** Cumulative Defense gained from STACKING_DEFENSE_WHEN_ATTACKED this combat. */
-  stackingDefenseWhenAttackedBonus?: number;
+  /** Saber Pack: its +1 Defense against the first attack this round has been spent. */
+  saberFirstDefenseUsedThisRound?: boolean;
+  /** Sort-specialty commander reached its own front line during combat round 1. */
+  commanderFrontLineAttackRoundOne?: boolean;
   /** Mio Pack: its +1 Defense against the first attack this round has been spent. */
   mioFirstDefenseUsedThisRound?: boolean;
   /** Phoenixes: set once this unit has spent its once-per-combat Rebirth self-save. */
@@ -16196,6 +16199,8 @@ export type PendingChoice =
        */
       placeTokens?: {
         kind: "quicksand" | "land_mine";
+        /** The Spell card whose lasting battlefield effect created the tokens. */
+        sourceSpellCardId?: CardId;
         positions: number[];
         armedSlots: boolean[];
         placedCount: number;

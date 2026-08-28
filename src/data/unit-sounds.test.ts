@@ -496,6 +496,9 @@ describe("unit combat voices", () => {
     expect(commanderSoundKey("corsair", "attack")).toBe("units/pirate-attack");
     expect(commanderSoundKey("factory", "attack")).toBe("units/crew-mate-attack");
     expect(commanderSoundKey("bulwark", "attack")).toBe("units/titan-attack");
+    // Fuyuki Astral Regent uses the Mage set, not the Castle Swordsman set.
+    expect(commanderSoundKey("ruler", "attack")).toBe("units/mage-attack");
+    expect(commanderSoundKey("ruler", "move")).toBe("units/mage-move");
   });
 
   it("borrows the attack voice for a Sharpshooter-combo commander's shoot", () => {

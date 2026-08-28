@@ -81,7 +81,7 @@ describe("Polish Balance Pack — card faces swap while the rule is ON", () => {
     expect(faceSrc("stat.knowledge.empowered", { balance: true })).toBe(
       "/assets/polish-balance/stat-knowledge-empowered.webp"
     );
-    // Diplomacy (printed always-Empowered) keeps its plain balance face.
+    // Diplomacy has no dedicated Empowered balance reprint, so the balance face wins.
     expect(faceSrc("ability.diplomacy", { balance: true, empowered: true })).toBe(
       "/assets/polish-balance/ability-diplomacy.webp"
     );

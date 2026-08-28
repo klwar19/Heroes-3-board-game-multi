@@ -148,8 +148,8 @@ export type UnitAbilityEffectDefinition =
       amount: number;
     }
   | {
-      /** Gain a permanent, cumulative Defense bonus each time an attack is declared against this unit. */
-      type: "STACKING_DEFENSE_WHEN_ATTACKED";
+      /** Gain Defense against the first attack made against this unit each Combat round. */
+      type: "FIRST_ATTACK_DEFENSE_PER_ROUND";
       amount: number;
     }
   | {
@@ -2662,11 +2662,11 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "INTERCEPT_ADJACENT_ATTACK_ONCE" },
     implementationStatus: "implemented"
   },
-  "saber-stacking-defense": {
-    id: "saber-stacking-defense",
+  "saber-first-attack-defense": {
+    id: "saber-first-attack-defense",
     name: "Avalon Guard",
-    text: "[unit_passive] Whenever this unit is attacked, it gains +1 Defense for that attack and the rest of Combat. This bonus can stack.",
-    effect: { type: "STACKING_DEFENSE_WHEN_ATTACKED", amount: 1 },
+    text: "[unit_passive] Gain +1 Defense against the first attack made against this unit each Combat round only.",
+    effect: { type: "FIRST_ATTACK_DEFENSE_PER_ROUND", amount: 1 },
     implementationStatus: "implemented"
   },
   "mgq-pack-dig": {

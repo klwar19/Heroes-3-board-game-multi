@@ -67,6 +67,6 @@
       <path d="m0-14 4 9 10 1-8 6 3 10-9-6-9 6 3-10-8-6 10-1z" fill="#ffe39a"/>
     </g>
     <text x="622" y="791" class="smallcaps" fill="#ffe39a" font-size="14" text-anchor="end">GOLD</text>
-    <text class="display" fill="#fff1d3" font-size="20.5" text-anchor="middle"><tspan x="418" y="907">Excalibur — line Attack 3; +1 Attack after</tspan><tspan x="418" y="932">moving. Avalon Guard — each attack grants</tspan><tspan x="418" y="957">+1 Defense for the rest of Combat; stacks.</tspan></text>
+    <text class="display" fill="#fff1d3" font-size="20.5" text-anchor="middle"><tspan x="418" y="907">Excalibur — line Attack 3; +1 Attack after</tspan><tspan x="418" y="932">moving. Avalon Guard — +1 Defense against</tspan><tspan x="418" y="957">the first attack of each Combat round only.</tspan></text>
   </g>
 </svg>

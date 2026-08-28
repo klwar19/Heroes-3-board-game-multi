@@ -346,10 +346,9 @@ export const extraAbilityCards: CardLibrary = {
     source: abilitySource("interference"),
   },
   // engine: Diplomacy's two sides map to the printed card — the basic/regular
-  // effect is the Map recruit, the expert effect is the Instant skip. This is an
-  // Empowered card: per the Empowered mechanic the holder may use EITHER side
-  // without spending an expert use (crown), so the skip is offered free at any
-  // hero level (a level-1 hero has 0 crowns yet can still skip). The Map option
+  // effect is the Map recruit, the expert effect is the Instant skip. It is an
+  // ordinary Ability until its owner explicitly empowers it: the Expert side
+  // costs a crown normally and becomes crown-free only while Empowered. The Map option
   // draws one Neutral Unit card per Dwelling and opens a recruit choice
   // (DIPLOMACY_RECRUIT, resolved in openDiplomacyRecruit). The Instant skip is
   // surfaced automatically as a pop-up when a hero meets Neutral Units whose
@@ -375,7 +374,6 @@ export const extraAbilityCards: CardLibrary = {
     tags: [
       "ability",
       "map",
-      "empowered",
       "Regular (basic): for every Dwelling you have, draw 1 corresponding Neutral Unit card; you may Recruit one by paying its cost. Expert: skip Combat with Neutral Units on a field whose Difficulty equals your Hero's level — claim the field and resolve its effect, gaining no Experience. Empowered: use either side without spending a crown.",
       'Balance pack: the basic side adds "Decide for each unpurchased unit: place its card on the top or bottom of its appropriate deck" — one two-button placement choice per unpurchased draw (the shared deck-card-placement window) instead of the silent return to the discard pile. Expert is unchanged.',
       "House ruling: the Expert skip works on any field whose Field Difficulty is AT MOST your Hero's level — including Ⅵ and Ⅶ, where Quick Combat is never allowed. A hero below the Field Difficulty still has to fight.",
@@ -396,13 +394,7 @@ export const extraAbilityCards: CardLibrary = {
         },
       ],
     },
-    // Diplomacy is a PRINTED always-Empowered card ("use either side without
-    // spending a crown" is on the card itself, hence the "empowered" tag above),
-    // so its printed face IS the wiki's Empowered scan — not the plain base one.
-    assets: {
-      cardImage: "/assets/abilities-diplomacy-empowered.webp",
-      imageAlt: "Diplomacy ability card",
-    },
+    assets: abilityAssets("diplomacy", "Diplomacy"),
     implementationStatus: "implemented",
     source: abilitySource("diplomacy"),
   },
@@ -618,11 +610,8 @@ export const extraAbilityCards: CardLibrary = {
   // BALLISTICS_BOMBARD + the ballistics-splash target choice (war-machine
   // damage; spell-damage reduction does not apply). Covered in
   // ballistics-ability.test.ts.
-  // NOT implemented: the card's "Empowered" printing ("Destroy 3 Walls and the
-  // Gate"). This game models no general empower-an-ability action — the only
-  // "empowered" ability (Diplomacy) is a hardcoded tag, not a player choice —
-  // so there is no path to reach an Empowered Ballistics, and another option
-  // would be unreachable/decorative. Left out deliberately.
+  // Ability empowerment is tracked per owner in player.empoweredAbilities; it
+  // must never be encoded as a permanent tag or Empowered base image.
   "ability.ballistics": {
     id: "ability.ballistics",
     name: "Ballistics",

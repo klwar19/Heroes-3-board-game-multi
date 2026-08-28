@@ -41,7 +41,8 @@ import {
 import {
   COMMANDER_FRONT_LINE_SPEED_EFFECT_NAME,
   commanderLiveAttackBonus,
-  finalizeCommandersAfterCombat
+  finalizeCommandersAfterCombat,
+  latchCommanderFrontLineAttack
 } from "./commanders";
 import { finalizeAdventureCombat, startNeutralEncounter } from "./adventure-reducer";
 import { warMachinesForSale } from "./permanents";
@@ -1274,7 +1275,7 @@ describe("WOG commanders — specialties", () => {
 });
 
 // ===========================================================================
-// Vanguard Marshal (Cove Sea Marshal) — the front-line +1 Attack and the
+// Vanguard Marshal (Cove/Fuyuki/Little Busters) — the latched round-1 +1 Attack and the
 // generic pre-combat SORT window (a reusable capability; the Cove specialty
 // is the only source today).
 // ===========================================================================
@@ -1313,7 +1314,7 @@ describe("WOG commanders — sort-ability front-line +1 Attack (round 1)", () =>
     return next.combat!.units.unit_p2_skeletons.damage;
   }
 
-  it("grants +1 Attack while the commander stands on its own front line in round 1, and none off it", () => {
+  it("grants +1 Attack after reaching the front line in round 1, and none before reaching it", () => {
     // On the front line (13) attacking an adjacent enemy (14): base 2 + 1 = 3.
     expect(commanderAttackDamage("corsair", 13, 14)).toBe(3);
     // CONTROL: off the front line (middle row 9, backline 17): base 2 only.
@@ -1337,10 +1338,10 @@ describe("WOG commanders — sort-ability front-line +1 Attack (round 1)", () =>
     }
   });
 
-  it("is a LIVE positional read: moving ONTO the front line mid-combat turns it on", () => {
+  it("moving ONTO the front line during round 1 turns it on", () => {
     // The commander starts on the backline (17) — off the front line — then MOVES
     // onto a front cell (13) and attacks the adjacent enemy (14). The +1 applies
-    // because the read is against its CURRENT (moved-to) position.
+    // because reaching the line latches the round-1 bonus.
     const state = sandboxWithCommander("corsair", {}, 17);
     const skeletons = state.combat!.units.unit_p2_skeletons;
     skeletons.abilities = [];
@@ -1372,6 +1373,19 @@ describe("WOG commanders — sort-ability front-line +1 Attack (round 1)", () =>
     );
     // On the front line after the move → base 2 + 1 = 3.
     expect(moved.combat!.units.unit_p2_skeletons.damage).toBe(3);
+  });
+
+  it("stays on for the rest of round 1 after moving away, for Cove, Fuyuki, and Little Busters", () => {
+    for (const slug of ["corsair", "ruler", "kyousuke_natsume"] as const) {
+      const state = sandboxWithCommander(slug, {}, 13);
+      const unit = state.combat!.units[commanderUnitId("p1")];
+      latchCommanderFrontLineAttack(state, unit);
+      unit.position = 17;
+      expect(commanderOnOwnFrontLine(state, unit), `${slug} moved off line`).toBe(false);
+      expect(commanderLiveAttackBonus(state, unit), `${slug} keeps round-1 bonus`).toBe(1);
+      state.combat!.round = 2;
+      expect(commanderLiveAttackBonus(state, unit), `${slug} expires in round 2`).toBe(0);
+    }
   });
 
   it("CONTROL: a non-Vanguard-Marshal commander gets NO front-line bonus", () => {
@@ -2400,10 +2414,10 @@ describe("WOG commanders — Speed grade unlocks the pre-combat sort", () => {
     // Round 2: expired.
     front.combat!.round = 2;
     expect(commanderLiveAttackBonus(front, unit)).toBe(0);
-    // Off the front line in round 1: no bonus (live positional read).
+    // Moving off the line in round 1 keeps the latched bonus.
     front.combat!.round = 1;
     unit.position = 17;
-    expect(commanderLiveAttackBonus(front, unit)).toBe(0);
+    expect(commanderLiveAttackBonus(front, unit)).toBe(1);
   });
 
   it("the buff is laid ONCE and holds for the whole combat (walking off the line keeps it)", () => {

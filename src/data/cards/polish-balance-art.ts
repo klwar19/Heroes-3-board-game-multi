@@ -149,9 +149,8 @@ export function polishBalanceCardImage(
  * (unlike `stat.knowledge.empowered`, a real distinct library card whose face
  * `polishBalanceCardImage` already derives).
  *
- * Diplomacy is deliberately ABSENT: it is a printed always-Empowered ability
- * whose plain balance face already IS the empowered art, so it needs no `-empowered`
- * variant (see `empoweredCardImage`).
+ * Diplomacy is deliberately absent because no dedicated Empowered balance-pack
+ * reprint is shipped; its plain balance face must win over the classic old-text scan.
  *
  * The `-empowered` faces DO print the NEW rules text (unlike the classic
  * `-empowered` fan scans, which print the OLD text — the reason the plain balance

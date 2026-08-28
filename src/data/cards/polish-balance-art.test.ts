@@ -112,7 +112,7 @@ describe("Polish Balance Pack art", () => {
         `${cardId} empowered balance face looks like a stub`,
       ).toBeGreaterThan(40 * 1024);
     }
-    // Diplomacy is deliberately excluded (printed always-Empowered).
+    // Diplomacy has no dedicated Empowered balance-pack reprint.
     expect(
       polishBalanceEmpoweredCardImage("ability.diplomacy"),
     ).toBeUndefined();

@@ -925,7 +925,7 @@ Leading with the adaptations / deliberate limits:
   THE one shared read behind both surfaces: the integrated troop deployment
   `commanderIntegratedDeploymentSortAvailable` and the separate
   `commanderPreCombatSortAvailable` window). Unlocked by EITHER a sort ABILITY —
-  the Vanguard Marshal specialty (Cove Sea Marshal, Bulwark Ruler, Little Busters
+  the Vanguard Marshal specialty (Cove Sea Marshal, Fuyuki Astral Regent, Little Busters
   Kyousuke) or the Marshal's War Horn equipment (`commanderSortAbilitySource`) —
   OR, since 2026-08-14 (USER RULE), **the commander's SPEED grade being raised
   even once** (`COMMANDER_SORT_SPEED_GRADE` = 1): from then on it is arranged with
@@ -944,7 +944,9 @@ Leading with the adaptations / deliberate limits:
   `commanderFrontLineSpeedBonusActive`). Lead with the limits: the Speed-GRADE
   unlock grants NOTHING here (CONTROL-pinned), and the buff is measured ONCE at
   combat start (`applyCommanderCombatStart`, idempotent by effect name) — walking
-  off the line later keeps it, unlike the Vanguard Marshal's live +1 Attack. It is
+  off the line later keeps it. The same sort-ability sources gain +1 Attack during
+  round 1 once they reach their front line; that Attack is latched for the rest of
+  round 1 even after moving away, then expires in round 2. The Speed bonus is
   a real combat-duration `INITIATIVE_BONUS` on the commander's unit, so
   `effectiveInitiative` / `getActivationOrder` genuinely move (pinned by order, not
   a field read). Creature-Bank fights DO qualify, using the already-documented bank
@@ -993,9 +995,11 @@ the BINH tier gate and the Polish Random Artifacts roll). Deck gate:
 `commander-card.test.ts`.
 ACQUISITION beyond the shared decks (98cf9b08, all engine-granted and each card
 UNIQUE game-wide — `grantCommanderArtifactCard` pulls the copy out of the shared
-decks): the **Commander Forge** (`FORGE_COMMANDER_ARTIFACT`, two seed-stable offers
-per tier in the Town panel / commander window; Grade I from round 2 for 5 gold,
-ONE Grade II/III purchase from round 7 for 8/11 gold, each budget once per game);
+decks): the **Commander Forge** (`FORGE_COMMANDER_ARTIFACT`; Grade I has two
+seed-stable offers from round 2 for 5 gold, Grade II has two seed-stable offers
+from round 7 for 8 gold, and Grade III unlocks in round 9 as either one hidden
+seed-stable random result for 11 gold or a specific available item for 13 gold;
+each grade has its own once-per-game budget, with legacy shared-budget saves honored);
 an optional post-victory PURCHASE offer after difficulty 3–5 neutral wins
 (`queueNeutralCommanderArtifactOffer`); and FREE drops from Raid-Boss kills (relic)
 and Dungeon-floor wins (`commanderArtifactTierForDungeonFloor`).
@@ -2916,7 +2920,8 @@ every Resource-round income; **Hidden Leaf** and **MGQ** lose 1 effective
 hand-limit point for the Resource round ONLY (minimum 1) — round-scoped, it
 reverts to normal at the next `startAdventureRound` and never stacks (updated
 2026-08-26; the old permanent-accumulation reading is gone); **Little Busters**
-loses up to 5 gold and 1 building material after income; and at each combat
+loses up to 5 gold and 1 building material after income, and in PvP its enemy
+draws exactly 1 card once at combat start (the old three paid counters are retired); and at each combat
 start one seeded-random real **Azur Lane** army unit suffers 1 damage (never a
 commander or summon). Every trigger writes a public notice and resource costs
 never create debt (`anime-faction-penalties.test.ts`,
@@ -3705,11 +3710,15 @@ EITHER placed Hero, matching View Earth. Their shared queued step carries
 `fromAnyHero`; the legal-action list and reducer both read `anyHeroAdjacentRevealTargets`,
 and this path never exposes the Observatory-only Far-tile placement action.
 
-A battlefield token placed by a Spell carries `sourceSpellCardId`. Fire Wall burns from
-that token are Spell damage, so all-spell immunity and spell-damage reduction apply. Luna,
-Hell Steed, and other non-Spell walls omit the source and remain effect damage. A Polish
+A battlefield token placed by a Spell carries `sourceSpellCardId`. Fire Wall and Land Mine
+damage from those tokens is Spell damage, so all-spell immunity and every numeric
+spell-damage reduction (including allied auras) apply. Luna, Hell Steed, and other
+non-Spell walls omit the source and remain effect damage: numeric Spell reduction does not
+soften them, but printed all-Spell immunity still ignores them. Quicksand cannot halt a
+fully Spell-immune unit. Fire Shield uses the same source split: numeric reduction applies
+to the Spell card only, while full immunity blocks both Spell and Specialty/innate shields. A Polish
 Book Spell whose sourced token is still present is displayed as **In play**, cannot be
 refreshed, and cannot be cast again even if a stale snapshot already put a copy on the
 refreshed side. The supplied Community Inferno reprint is now the 0/1/3 → 2/3/5-dice face
-with no flat pre-damage. Little Busters' paid half-HP counter no longer adds Paralysis or
-−2 Attack; its faction notice states only the remaining half-HP effect.
+with no flat pre-damage. Little Busters' former paid discard, half-HP, and draw-two counters
+are retired; its faction notice states only the automatic one-card enemy draw.

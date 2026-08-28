@@ -6,26 +6,16 @@ import { noteUnitDamagedForTokens } from "./tokens";
 import type { CombatState, CombatUnitState, GameState, PlayerId } from "./state";
 
 /**
- * PvP anti-Little-Busters counters (USER RULE): a fighter facing a Little
- * Busters seat in a player-vs-player battle may spend gold on up to three
- * one-off effects during the fight, themed on the campus's own "school
- * festival contribution" economy. Each is optional, costs 1 gold, and is
- * offered at most once per fighter per combat:
- *
- *   - "discard": the Little Busters seat discards 1 random hand card.
- *   - "damage":  the Little Busters campus hero UNIT is reduced to half its
- *                 maximum HP, rounding remaining HP up (never healing it).
- *   - "draw":    the spending fighter draws 2 cards.
- *
- * The availability derivation here is THE shared read the legal-action offer
- * and the reducer handler both consult, so a rendered button can never be
- * refused and a refused action can never have been rendered.
+ * Legacy PvP anti-Little-Busters counter action retained for save/wire
+ * compatibility. The current penalty is automatic: the opposing player draws
+ * exactly 1 card at combat start. No paid counters are offered, and a legacy
+ * action is rejected by the shared empty availability read below.
  */
 export type LittleBustersCounter = "discard" | "damage" | "draw";
 
 export const LITTLE_BUSTERS_COUNTER_COST = 1;
 
-export const LITTLE_BUSTERS_COUNTERS: readonly LittleBustersCounter[] = ["discard", "damage", "draw"];
+export const LITTLE_BUSTERS_COUNTERS: readonly LittleBustersCounter[] = [];
 
 /** A unit is alive while it still has Health (removal never clears `position`). */
 function unitAlive(unit: CombatUnitState): boolean {
