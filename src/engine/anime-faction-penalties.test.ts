@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, createInitialGameState, getLegalActions } from "./index";
 import { effectiveHandLimit, getMainHero, startAdventureRound } from "./adventure";
 import { startNeutralEncounter } from "./adventure-reducer";
-import { applyAzurLaneCombatStartPenalty } from "./anime-faction-penalties";
+import { applyAnimeCombatRoundPenalties, applyAnimeCombatStartPenalties, applyAzurLaneCombatStartPenalty } from "./anime-faction-penalties";
 import { animeFactionPenaltyTitle } from "@/data/anime/faction-penalties";
 import type { FactionId, GameState } from "./state";
 
@@ -27,7 +27,8 @@ function resourceState(factionId: FactionId): GameState {
 }
 
 describe("anime faction Resource-round penalties", () => {
-  it.each(["fuyuki", "azure_breeze", "heavenly_demon"] as const)("%s loses 4 gold after income without debt", (factionId) => {
+  it("Fuyuki loses 4 gold after income without debt", () => {
+    const factionId = "fuyuki" as const;
     const state = resourceState(factionId);
     startAdventureRound(state);
     expect(state.players.p1.resources.gold).toBe(6);
@@ -42,7 +43,8 @@ describe("anime faction Resource-round penalties", () => {
     expect(state.players.p1.resources.gold).toBe(0);
   });
 
-  it.each(["hidden_leaf", "mgq"] as const)("%s loses exactly 1 hand limit on a Resource round, never stacking", (factionId) => {
+  it("Hidden Leaf loses exactly 1 hand limit on a Resource round, never stacking", () => {
+    const factionId = "hidden_leaf" as const;
     const state = resourceState(factionId);
     const base = effectiveHandLimit(state, "p1");
     // Resource round (round 3): −1 for this round only.
@@ -54,6 +56,22 @@ describe("anime faction Resource-round penalties", () => {
     startAdventureRound(state);
     expect(state.players.p1.otherworldHandLimitLoss).toBe(1);
     expect(effectiveHandLimit(state, "p1")).toBe(Math.max(1, base - 1));
+  });
+
+  it.each(["azure_breeze", "heavenly_demon"] as const)("%s has no Resource-round economy penalty", (factionId) => {
+    const state = resourceState(factionId);
+    startAdventureRound(state);
+    expect(state.players.p1.resources).toMatchObject({ gold: 10, buildingMaterials: 3 });
+    expect(state.eventLog.some((event) =>
+      event.type === "EVENT_NOTE" && event.message.startsWith(`${animeFactionPenaltyTitle(factionId)} —`)
+    )).toBe(false);
+  });
+
+  it("Monster Girl Quest has no Resource-round penalty", () => {
+    const state = resourceState("mgq");
+    startAdventureRound(state);
+    expect(state.players.p1.resources).toMatchObject({ gold: 10, buildingMaterials: 3 });
+    expect(state.players.p1.otherworldHandLimitLoss ?? 0).toBe(0);
   });
 
   it("clears the round-scoped hand-limit penalty on a round that does not re-apply it", () => {
@@ -88,19 +106,65 @@ describe("anime faction Resource-round penalties", () => {
   });
 });
 
+describe("new PvP faction penalties", () => {
+  it("Heavenly Demon damages one random own unit once and gives the enemy no cards", () => {
+    const state = createInitialGameState("heavenly-opening-penalty");
+    state.combat!.context = { kind: "player", attackerHeroId: "hero_p1", defenderHeroId: "hero_p2", fieldId: "0,0" };
+    state.players.p1.factionId = "heavenly_demon";
+    state.players.p2.hand = [];
+    state.players.p2.deck = ["stat.attack", "stat.defense"];
+    const own = Object.values(state.combat!.units).filter((unit) => unit.controllerId === "p1");
+    applyAnimeCombatStartPenalties(state);
+    expect(state.players.p2.hand).toHaveLength(0);
+    expect(own.reduce((sum, unit) => sum + unit.damage, 0)).toBe(1);
+    applyAnimeCombatStartPenalties(state);
+    expect(state.players.p2.hand).toHaveLength(0);
+    expect(own.reduce((sum, unit) => sum + unit.damage, 0)).toBe(1);
+  });
+
+  it("Azure Breeze gives the enemy one draw in rounds 1 and 3 only", () => {
+    const state = createInitialGameState("azure-round-penalty");
+    state.combat!.context = { kind: "player", attackerHeroId: "hero_p1", defenderHeroId: "hero_p2", fieldId: "0,0" };
+    state.players.p1.factionId = "azure_breeze";
+    state.players.p2.hand = [];
+    state.players.p2.deck = Array(6).fill("stat.attack");
+    for (const round of [1, 1, 2, 3, 4, 5]) {
+      state.combat!.round = round;
+      applyAnimeCombatRoundPenalties(state);
+    }
+    expect(state.players.p2.hand).toHaveLength(2);
+  });
+
+  it("Fuyuki loses 1 HP from every living unit at round 2 only once", () => {
+    const state = createInitialGameState("fuyuki-round-penalty");
+    state.combat!.context = { kind: "player", attackerHeroId: "hero_p1", defenderHeroId: "hero_p2", fieldId: "0,0" };
+    state.players.p1.factionId = "fuyuki";
+    const own = Object.values(state.combat!.units).filter((unit) => unit.controllerId === "p1");
+    state.combat!.round = 2;
+    applyAnimeCombatRoundPenalties(state);
+    expect(own.every((unit) => unit.damage === 1)).toBe(true);
+    applyAnimeCombatRoundPenalties(state);
+    expect(own.every((unit) => unit.damage === 1)).toBe(true);
+  });
+});
+
 describe("Azur Lane Fleet Maintenance", () => {
-  it("damages exactly one real deployed army unit once per combat", () => {
+  it("damages exactly one real deployed army unit and lets the enemy draw 1 once per combat", () => {
     const state = createAdventureGameState({ seed: "azur-maintenance", rollFirstPlayer: false });
     state.players.p1.factionId = "azur_lane";
     state.combat = createInitialGameState("azur-maintenance-combat").combat;
     const own = Object.values(state.combat!.units).filter((unit) => unit.controllerId === "p1");
     own.forEach((unit, index) => { unit.armyUnitId = `azur_army_${index}`; });
+    state.players.p2.hand = [];
+    state.players.p2.deck = ["stat.attack", "stat.defense"];
     const before = own.reduce((sum, unit) => sum + unit.damage, 0);
     applyAzurLaneCombatStartPenalty(state);
     expect(own.reduce((sum, unit) => sum + unit.damage, 0) - before).toBe(1);
     expect(own.filter((unit) => unit.damage > 0)).toHaveLength(1);
+    expect(state.players.p2.hand).toHaveLength(1);
     applyAzurLaneCombatStartPenalty(state);
     expect(own.reduce((sum, unit) => sum + unit.damage, 0) - before).toBe(1);
+    expect(state.players.p2.hand).toHaveLength(1);
     expect(state.eventLog.filter((event) => event.type === "EVENT_NOTE" && event.message.startsWith("Fleet Maintenance —"))).toHaveLength(1);
   });
 

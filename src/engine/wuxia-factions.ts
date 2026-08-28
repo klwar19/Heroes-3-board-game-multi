@@ -13,7 +13,7 @@ import type {
 
 export const AZURE_BREEZE_FACTION_ID = "azure_breeze";
 export const HEAVENLY_DEMON_FACTION_ID = "heavenly_demon";
-export const SECT_QI_MAX = 3;
+export const SECT_QI_MAX = 2;
 export const BLOOD_ESSENCE_MAX = 4;
 export const SWORD_INTENT_MAX = 3;
 export const SWORD_INTENT_HERO_IDS = new Set(["qingyun", "xuedao"]);
@@ -44,8 +44,8 @@ function mainHeroDefId(state: Pick<GameState, "heroes">, playerId: PlayerId): st
  * base meter still works — the upgrades simply never arm.
  */
 const WUXIA_CULTIVATION_UPGRADE_REALM: Record<string, CultivationRealm> = {
-  // Azure Breeze (Sect Qi): start with +1 Qi at Foundation, +1 cap at Core
-  // Formation, and the easier Sword Domain release at Nascent Soul.
+  // Azure Breeze (Sect Qi): start with 1 Qi at Foundation while capacity stays
+  // fixed at 2, and release Sword Domain more easily at Nascent Soul.
   "xianxia-meridian-circulation": 1,
   "xianxia-body-refinement": 2,
   "xianxia-sword-domain": 3,
@@ -62,8 +62,8 @@ function heroHasWuxiaUpgrade(state: GameState, playerId: PlayerId, upgradeId: st
   return threshold !== undefined && cultivationRealmOf(state, playerId) >= threshold;
 }
 
-function sectQiCapacity(state: GameState, playerId: PlayerId): number {
-  return SECT_QI_MAX + (heroHasWuxiaUpgrade(state, playerId, "xianxia-body-refinement") ? 1 : 0);
+function sectQiCapacity(_state: GameState, _playerId: PlayerId): number {
+  return SECT_QI_MAX;
 }
 
 function bloodEssenceCapacity(state: GameState, playerId: PlayerId): number {
@@ -99,7 +99,7 @@ export function initializeCultivationFactionCombat(
     if (factionId === AZURE_BREEZE_FACTION_ID) {
       records[playerId] = {
         // Meridian Circulation (Foundation realm) grants the +1 starting Qi.
-        sectQi: Math.min(SECT_QI_MAX, 1 + (heroHasWuxiaUpgrade(state, playerId, "xianxia-meridian-circulation") ? 1 : 0)),
+        sectQi: heroHasWuxiaUpgrade(state, playerId, "xianxia-meridian-circulation") ? 1 : 0,
         swordIntent: 0
       };
     } else if (factionId === HEAVENLY_DEMON_FACTION_ID) {
@@ -134,8 +134,9 @@ export function gainSectQiAfterMove(
     (ally) => isAdjacent(to, ally.position) && !isAdjacent(from, ally.position)
   );
   const capacity = sectQiCapacity(state, unit.controllerId);
-  if (!formedNewLink || (record.sectQi ?? 0) >= capacity) return;
+  if (!formedNewLink || record.sectQiGainedRound === combat.round || (record.sectQi ?? 0) >= capacity) return;
   record.sectQi = (record.sectQi ?? 0) + 1;
+  record.sectQiGainedRound = combat.round;
   appendEvent(state, {
     type: "HERO_SKILL_USED",
     playerId: unit.controllerId,
@@ -167,16 +168,16 @@ export function applyCultivationAttackDeclaration(
     livingAdjacentAllies(combat, attacker).length > 0
   ) {
     const adjacentAllies = livingAdjacentAllies(combat, attacker).length;
-    const formationAmount =
-      mainHeroDefId(state, attacker.controllerId) === JIANXU_HERO_ID && adjacentAllies >= 2 ? 2 : 1;
+    const sevenStarArray = mainHeroDefId(state, attacker.controllerId) === JIANXU_HERO_ID && adjacentAllies >= 2;
+    const formationAmount = 1;
     attackerRecord.sectQi = Math.max(0, (attackerRecord.sectQi ?? 0) - 1);
     stackItem.modifiers.cultivationAttackBonus =
       (stackItem.modifiers.cultivationAttackBonus ?? 0) + formationAmount;
     appendEvent(state, {
       type: "HERO_SKILL_USED",
       playerId: attacker.controllerId,
-      nodeId: formationAmount === 2 ? "jianxu-seven-star-array" : "azure-sword-formation",
-      message: `${formationAmount === 2 ? "Seven-Star Array" : "Sword Formation"} spends 1 Sect Qi: ${attacker.cardName} gains +${formationAmount} Attack.`
+      nodeId: sevenStarArray ? "jianxu-seven-star-array" : "azure-sword-formation",
+      message: `${sevenStarArray ? "Seven-Star Array" : "Sword Formation"} spends 1 Sect Qi: ${attacker.cardName} gains +1 Attack.`
     });
   }
 
@@ -202,6 +203,7 @@ export function applyCultivationAttackDeclaration(
     attackerFaction === HEAVENLY_DEMON_FACTION_ID &&
     attackerRecord &&
     (attackerRecord.bloodEssence ?? 0) > 0 &&
+    combat.round <= 3 &&
     attackerRecord.bloodFrenzySpentRound !== combat.round
   ) {
     attackerRecord.bloodEssence = Math.max(0, (attackerRecord.bloodEssence ?? 0) - 1);
@@ -280,14 +282,16 @@ export function gainBloodEssenceFromCasualty(state: GameState, unit: CombatUnitS
   ) return;
   const record = combat.cultivationFactions?.[unit.controllerId];
   if (!record) return;
+  if (record.bloodEssenceGainedRound === combat.round) return;
   unit.heavenlyDemonEssenceGranted = true;
   const capacity = bloodEssenceCapacity(state, unit.controllerId);
   const corpseFurnaceSurge =
     mainHeroDefId(state, unit.controllerId) === SHIYAN_HERO_ID &&
     record.corpseFurnaceSurgeRound !== combat.round;
-  const amount = corpseFurnaceSurge ? 2 : 1;
+  const amount = 1;
   if (corpseFurnaceSurge) record.corpseFurnaceSurgeRound = combat.round;
   record.bloodEssence = Math.min(capacity, (record.bloodEssence ?? 0) + amount);
+  record.bloodEssenceGainedRound = combat.round;
   appendEvent(state, {
     type: "HERO_SKILL_USED",
     playerId: unit.controllerId,

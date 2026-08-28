@@ -270,6 +270,7 @@ import {
   playerMainHeroInCombat
 } from "./anime-hero-grades";
 import { fuyukiCommandSealsOf } from "./anime-town-mechanics";
+import { applyAnimeCombatRoundPenalties } from "./anime-faction-penalties";
 import { applyHeroGradeRoundStartDamage, expireHeroGradeFamiliars } from "./hero-grade-combat";
 import {
   applyCultivationAttackDeclaration,
@@ -2939,8 +2940,12 @@ function reducedSpellDamage(
   );
   // Fuyuki Casters (and any CAP_DAMAGE_PER_ATTACK with includeSpells): each
   // single spell-damage hit is hard-capped after reduction.
-  const cap = getDamageCapPerSpell(target);
-  return cap ? Math.min(reduced, cap.amount) : reduced;
+  const cap = availableDamageCap(state, target, true);
+  if (cap && reduced > cap.amount) {
+    markFuyukiCasterDamageCapUsed(state, target, cap.abilityId);
+    return cap.amount;
+  }
+  return reduced;
 }
 
 /**
@@ -3141,8 +3146,9 @@ function reducedCardDamage(
   const reduced = Math.max(0, amount - reduction);
   // Spell cards (not specialty blasts) honour includeSpells damage caps.
   if (card?.kind === "spell") {
-    const cap = getDamageCapPerSpell(unit);
+    const cap = availableDamageCap(state, unit, true);
     if (cap) {
+      if (reduced > cap.amount) markFuyukiCasterDamageCapUsed(state, unit, cap.abilityId);
       return Math.min(reduced, cap.amount);
     }
   }
@@ -3759,22 +3765,48 @@ function getAttackDamagePreview(
   // Siege wall cover: "reduce the attack's damage by 1" comes off the damage,
   // not the defense. The commander's Might dice already rode into attackValue
   // above (they are extra attack dice, not a post-defense bonus).
-  const rawDamage = Math.max(0, Math.max(0, attackValue - defenseValue) - damageReduction);
+  const fuyukiFixedDamage = getFuyukiCasterFixedDamage(attacker);
+  const rawDamage = fuyukiFixedDamage ?? Math.max(0, Math.max(0, attackValue - defenseValue) - damageReduction);
   // Cove Nix (Pack): "cannot take more than N damage from a single attack." The
   // cap clamps the resolved damage of this one attack and is reflected in the
   // lethal-save preview too (both go through here), so a capped blow correctly
   // reads as non-lethal.
-  const cap = getDamageCapPerAttack(defender);
+  const printedCap = getDamageCapPerAttack(defender);
+  const cap = printedCap?.abilityId === "casters-damage-cap" && defender.fuyukiCasterDamageCapUsedThisRound
+    ? null
+    : printedCap;
   const unitCapped = cap ? Math.min(rawDamage, cap.amount) : rawDamage;
   const damage = cardDamageCap === undefined ? unitCapped : Math.min(unitCapped, cardDamageCap);
 
   return {
-    attackValue,
-    defenseValue,
+    attackValue: fuyukiFixedDamage ?? attackValue,
+    defenseValue: fuyukiFixedDamage === undefined ? defenseValue : 0,
     damage,
     dieAttackBonus,
     dieDefenseBonus
   };
+}
+
+function getFuyukiCasterFixedDamage(unit: CombatUnitState): number | undefined {
+  const abilities = getUnitAbilityDefinitions(unit);
+  if (abilities.some((ability) => ability.id === "fuyuki-caster-fixed-3")) return 3;
+  if (abilities.some((ability) => ability.id === "fuyuki-caster-fixed-2")) return 2;
+  return undefined;
+}
+
+function availableDamageCap(state: GameState, unit: CombatUnitState, spell: boolean) {
+  const cap = spell ? getDamageCapPerSpell(unit) : getDamageCapPerAttack(unit);
+  if (
+    cap?.abilityId === "casters-damage-cap" &&
+    unit.fuyukiCasterDamageCapUsedThisRound
+  ) return null;
+  return cap;
+}
+
+function markFuyukiCasterDamageCapUsed(state: GameState, unit: CombatUnitState, abilityId: string): void {
+  if (abilityId === "casters-damage-cap" && state.combat) {
+    unit.fuyukiCasterDamageCapUsedThisRound = true;
+  }
 }
 
 function applyAttackDamageFromCandidate(
@@ -3883,6 +3915,9 @@ function applyAttackDamageFromCandidate(
   // correct, but the visible formula was not. A winning Guarded roll must read
   // printed 1 + die 1 = total 2; a 0/-1 roll stays at printed 1.
   const reportedDefenseBonus = defenseBonus + defendBonus + dieDefenseBonus;
+  if (defender.unitDefId === "little_busters.mio" && defender.variant === "pack") {
+    defender.mioFirstDefenseUsedThisRound = true;
+  }
   // A cancelled die (Shield of the Dwarven Lords) is reported like an unrolled
   // die so the client skips the rolling-dice cinematic.
   const skipDieCinematic = noDie || dieCancelled;
@@ -3962,8 +3997,9 @@ function applyAttackDamageFromCandidate(
   // this hit so the log/FX fire (the clamp itself happened in the preview).
   const uncappedDamage = Math.max(0, Math.max(0, attackValue - defenseValue) - damageReduction);
   if (uncappedDamage > damage) {
-    const cap = getDamageCapPerAttack(defender);
+    const cap = availableDamageCap(state, defender, false);
     if (cap) {
+      markFuyukiCasterDamageCapUsed(state, defender, cap.abilityId);
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: defender.id,
@@ -4396,7 +4432,12 @@ function getAttackStackDetails(
     // token is not required (that is DEFEND_BONUS / Mammoths' Thick Hide).
     getFlatDefenseWhenAttacked(defender);
   const activeDefenseBonus =
-    getActiveDefenseBonus(state, defender) + conditionalDefenseBonus + attackerTypeDefenseBonus;
+    getActiveDefenseBonus(state, defender) +
+    conditionalDefenseBonus +
+    attackerTypeDefenseBonus +
+    (hasUnitAbilityEffect(defender, "STACKING_DEFENSE_WHEN_ATTACKED")
+      ? (defender.stackingDefenseWhenAttackedBonus ?? 0)
+      : 0);
   const abilityAttack = stackItem.action.type === "ATTACK_UNIT" ? stackItem.action.abilityAttack : undefined;
 
   // Combat tokens: Attack/Weakness tokens shift the attacker, Corrosion the
@@ -4426,6 +4467,7 @@ function getAttackStackDetails(
     stackItem.modifiers.defenseBonus +
     (stackItem.modifiers.cultivationDefenseBonus ?? 0) +
     activeDefenseBonus +
+    (defender.unitDefId === "little_busters.mio" && defender.variant === "pack" && !defender.mioFirstDefenseUsedThisRound ? 1 : 0) +
     tokenDefense +
     redirectedDefenseDelta +
     // WOG commander Superior Combat (Shaman) +1 Defense stance, live while it
@@ -4524,7 +4566,9 @@ function getAttackStackDetails(
   // unit's OWN declared attack per living friendly aura carrier it stands
   // adjacent to RIGHT NOW (live positional read, the commanderLiveAttackBonus
   // precedent). Innate ability bonus — added unclamped; never on a retaliation.
-  const fleetFormationAttackBonus = isRetaliation ? 0 : getFleetFormationAuraBonus(combat, attacker);
+  const fleetFormationAttackBonus = isRetaliation
+    ? 0
+    : getFleetFormationAuraBonus(combat, attacker, (stackItem.modifiers.cultivationAttackBonus ?? 0) > 0);
   const bestFriendsAttackBonus = getAttackBonusWhenAllyNamePresent(combat, attacker);
   const astrologersRoundAttackBonus = state.round % 2 === 0 ? getAstrologersRoundFrenzy(attacker) : 0;
 
@@ -4554,6 +4598,7 @@ function getAttackStackDetails(
   // only LOWERED by debuffs. `elementalLocksAttack` is that half, so the Defense
   // bypass below stays unconditional in both readings.
   const dealsElemental = unitDealsElementalDamage(state, attacker, attackKind);
+  const fuyukiFixedDamage = getFuyukiCasterFixedDamage(attacker);
   const elementalLocksAttack = dealsElemental && houseRuleEnabled(state, "elemental-damage-no-die");
   const cardAttackBonus =
     stackItem.modifiers.attackBonus +
@@ -4632,6 +4677,7 @@ function getAttackStackDetails(
     ignorePlusOneDie: attackDiePlusOneIgnored(state),
     ignoreAttackDie:
       Boolean(stackItem.modifiers.ignoreAttackDie) ||
+      fuyukiFixedDamage !== undefined ||
       elementalLocksAttack ||
       // Polish Balance Pack Bless: a lasting buff, so the die is skipped for
       // every attack it covers (own attacks AND retaliations — the reprint
@@ -8207,7 +8253,11 @@ function applyFlatAbilityDamage(
  * stack. Callers gate on `!isRetaliation` (own declared attacks only — the
  * wog-attack-when-attacking convention).
  */
-function getFleetFormationAuraBonus(combat: CombatState, attacker: CombatUnitState): number {
+function getFleetFormationAuraBonus(
+  combat: CombatState,
+  attacker: CombatUnitState,
+  suppressAzureSwordArray = false
+): number {
   let total = 0;
   for (const unit of Object.values(combat.units)) {
     if (unit.id === attacker.id || unit.controllerId !== attacker.controllerId) {
@@ -8217,7 +8267,11 @@ function getFleetFormationAuraBonus(combat: CombatState, attacker: CombatUnitSta
       continue;
     }
     for (const ability of getUnitAbilityDefinitions(unit)) {
-      if (ability.implementationStatus === "implemented" && ability.effect?.type === "ADJACENT_ALLY_ATTACK_AURA") {
+      if (
+        ability.implementationStatus === "implemented" &&
+        ability.effect?.type === "ADJACENT_ALLY_ATTACK_AURA" &&
+        !(suppressAzureSwordArray && ability.id === "azure-sword-array")
+      ) {
         total += ability.effect.amount;
       }
     }
@@ -11787,6 +11841,8 @@ function resetCombatRound(combat: CombatState): void {
     unit.attackedThisActivation = false;
     unit.attacksThisActivation = 0;
     unit.retaliatedThisRound = false;
+    unit.fuyukiCasterDamageCapUsedThisRound = false;
+    unit.mioFirstDefenseUsedThisRound = false;
     unit.waitToken = undefined;
     unit.waitPending = undefined;
     // Defense tokens persist into the next round: they are discarded at the
@@ -17771,6 +17827,13 @@ function applyUnitResurrection(
     !getLethalSaveUnitAbility(saver)
   ) {
     throw new Error("That unit cannot cancel the killing blow.");
+  }
+  const saverArmyUnit = state.players[action.playerId]?.army.find((candidate) => candidate.id === saver.armyUnitId);
+  if (
+    saverArmyUnit?.unitDefId === "little_busters.mio" &&
+    (defender.heroUnit || (defender.grade !== "bronze" && defender.grade !== "silver"))
+  ) {
+    throw new Error("Mio can only save a Bronze or Silver allied unit.");
   }
 
   saver.usedLethalSaveThisCombat = true;
@@ -24142,7 +24205,7 @@ function autoResolveNeutralReaction(state: GameState, cards: CardLibrary): boole
   return true;
 }
 
-/** Masato's automatic, once-per-combat interception for an adjacent ally. */
+/** Masato's automatic, once-per-round interception for any adjacent ally. */
 function adjacentBodyguardFor(combat: CombatState, defender: CombatUnitState): CombatUnitState | null {
   return (
     Object.values(combat.units)
@@ -24151,7 +24214,7 @@ function adjacentBodyguardFor(combat: CombatState, defender: CombatUnitState): C
           unit.id !== defender.id &&
           unit.controllerId === defender.controllerId &&
           isUnitAlive(unit) &&
-          !unit.usedBodyguardInterceptThisCombat &&
+          unit.bodyguardInterceptUsedRound !== combat.round &&
           isAdjacent(unit.position, defender.position) &&
           hasUnitAbilityEffect(unit, "INTERCEPT_ADJACENT_ATTACK_ONCE")
       )
@@ -24201,7 +24264,7 @@ function declareAttack(
   if (!isRetaliation && !abilityAttack && !isInternalFollowUp) {
     const bodyguard = adjacentBodyguardFor(combat, selectedDefender);
     if (bodyguard) {
-      bodyguard.usedBodyguardInterceptThisCombat = true;
+      bodyguard.bodyguardInterceptUsedRound = combat.round;
       defender = bodyguard;
       resolvedAction = { ...action, defenderId: bodyguard.id };
       appendEvent(state, {
@@ -24212,6 +24275,20 @@ function declareAttack(
         message: `${bodyguard.cardName} intercepts the attack aimed at ${selectedDefender.cardName}.`
       });
     }
+  }
+
+  // Saber Pack's Avalon Guard grows on every attack declaration against the
+  // final defender (including follow-ups and retaliations). The newly gained
+  // point applies to this attack and remains cumulative for the combat.
+  if (hasUnitAbilityEffect(defender, "STACKING_DEFENSE_WHEN_ATTACKED")) {
+    defender.stackingDefenseWhenAttackedBonus =
+      (defender.stackingDefenseWhenAttackedBonus ?? 0) + 1;
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: defender.id,
+      abilityId: "saber-stacking-defense",
+      message: `${defender.cardName} gains +1 Defense from Avalon Guard (${defender.stackingDefenseWhenAttackedBonus} cumulative).`
+    });
   }
 
   // Doom Revenant: its activation mark lands on the chosen target immediately
@@ -24897,6 +24974,10 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
   // a lethal pulse ends the fight via the trailing finishCombatIfNeeded below.
   applyCombatScriptRoundStart(state);
   applyHeroGradeRoundStartDamage(state);
+  applyAnimeCombatRoundPenalties(state);
+  if (finishCombatIfNeeded(state)) {
+    return;
+  }
   if (state.combat?.outcome) {
     return;
   }

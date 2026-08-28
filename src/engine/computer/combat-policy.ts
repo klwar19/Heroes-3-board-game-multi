@@ -334,6 +334,11 @@ function attackScore(
   if (hasThreatAbility(defender)) {
     quality += CASTER_TARGET_BONUS;
   }
+  // User-directed anti-Fuyuki doctrine: break the durable front line before
+  // wasting actions on Medea's fixed-damage backliner.
+  if (defender.unitDefId === "fuyuki.berserkers" && defender.variant === "pack") quality += 1200;
+  else if (defender.unitDefId === "fuyuki.sabers" && defender.variant === "pack") quality += 900;
+  else if (defender.unitDefId === "fuyuki.casters") quality -= 350;
 
   // Focus fire: stack onto a body reachable allies can also hit, and especially
   // one this hit plus those allies can FINISH this round — the army removes a
@@ -745,6 +750,7 @@ function moveUnitScore(
   if (enemies.length > 0) {
     const focus = [...enemies].sort(
       (a, b) =>
+        fuyukiFocusPriority(b) - fuyukiFocusPriority(a) ||
         targetPriority(b) - targetPriority(a) ||
         unitRemainingHealth(a) - unitRemainingHealth(b),
     )[0];
@@ -765,6 +771,13 @@ function moveUnitScore(
     return { score, policy: "combat.close-distance" };
   }
   return { score, policy: "combat.reposition-formation" };
+}
+
+function fuyukiFocusPriority(unit: CombatUnitState): number {
+  if (unit.unitDefId === "fuyuki.berserkers" && unit.variant === "pack") return 3;
+  if (unit.unitDefId === "fuyuki.sabers" && unit.variant === "pack") return 2;
+  if (unit.unitDefId === "fuyuki.casters") return -1;
+  return 0;
 }
 
 /**
@@ -954,6 +967,13 @@ export function scoreCombatAction(
         return { score: missing >= 2 ? 722 : 705, policy: "combat.fuyuki-command-seal-recall" };
       }
       return { score: 716, policy: "combat.fuyuki-command-seal-compel" };
+    }
+    case "LITTLE_BUSTERS_COUNTER": {
+      // Each counter is a one-time 1-gold PvP action. Use it before the normal
+      // activation: damaging the campus hero is strongest, forced discard
+      // denies an immediate combat card, and drawing replaces itself in value.
+      const score = action.counter === "damage" ? 5030 : action.counter === "discard" ? 5020 : 5010;
+      return { score, policy: `combat.little-busters-counter-${action.counter}` };
     }
     case "WAIT_UNIT": {
       // Polish Wait: re-queue the unit at the end of the round. Prefer Wait

@@ -5406,7 +5406,7 @@ for (const level of [1, 4, 6] as const) {
   );
   adventureCards[`specialty.shiyan.${level}`] = withInnateHeroRule(
     rethemedSpecialty(adventureCards[`specialty.rion.${level}`], "rion", "shiyan", level, "Corpse-Furnace Sutra"),
-    "Innate — the first real Heavenly Demon casualty each combat round yields 2 Blood Essence instead of 1."
+    "Innate — the first real Heavenly Demon casualty each combat round yields exactly 1 Blood Essence; Shiyan cannot increase that yield."
   );
 }
 
@@ -5484,7 +5484,7 @@ for (const level of [1, 4, 6] as const) {
   }
   adventureCards[`specialty.jianxu.${level}`] = withInnateHeroRule(
     jianxuCard,
-    "Innate — when Sword Formation spends Sect Qi with two adjacent allies, its Attack bonus is +2 instead of +1."
+    "Innate — Seven-Star Array spends 1 Sect Qi for +1 Attack only; it never stacks with Sword Array or another Qi bonus."
   );
   // Yulian (Azure Breeze, might) — Jade Body Arts: tempered-jade defense tokens
   // for the whole line (Merist's Stone Skin set), plus his kept Innate Shared

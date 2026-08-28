@@ -69,7 +69,7 @@ describe("Little Busters production art pack", () => {
       ["little_busters.disciplinary_committee", "ignore-all-combat-penalties", "rank-disciplinary-committee"],
       ["little_busters.masato", "unlimited-retaliation", "rank-masato"],
       ["little_busters.softball_club", "attack-roll-advantage-passive", "rank-softball-club"],
-      ["little_busters.saya", "gorgon-death-stare", "rank-saya"],
+      ["little_busters.saya", "saya-armor-break", "rank-saya"],
       ["little_busters.mio", "gargoyle-spell-ward", "rank-mio"]
     ] as const;
     for (const [unit, ability, icon] of choices) expect(unitRankAbilityIcon(ability, unit)).toContain(icon);

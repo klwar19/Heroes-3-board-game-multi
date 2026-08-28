@@ -8213,6 +8213,11 @@ function getLethalSaveReactions(
     if (!ability) {
       continue;
     }
+    const saverArmyUnit = state.players[playerId]?.army.find((candidate) => candidate.id === unit.armyUnitId);
+    const mioRestricted = saverArmyUnit?.unitDefId === "little_busters.mio";
+    if (mioRestricted && (defender.heroUnit || (defender.grade !== "bronze" && defender.grade !== "silver"))) {
+      continue;
+    }
     reactions.push({
       label: `${unit.cardName}: ${ability.abilityName} (cancel the killing blow, once per Combat)`,
       action: { type: "USE_UNIT_RESURRECTION", playerId, savingUnitId: unit.id }

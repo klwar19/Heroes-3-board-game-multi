@@ -1,8 +1,9 @@
 import { markUnitRemovedIfNeeded } from "./combat-units";
 import { drawCardsForPlayer } from "./decks";
 import { appendEvent, eventSeedNumber } from "./events";
+import { makeActiveEffect } from "./active-effects";
 import { createSeededRandom } from "./random";
-import { noteUnitDamagedForTokens } from "./tokens";
+import { noteUnitDamagedForTokens, placeCombatToken } from "./tokens";
 import type { CombatState, CombatUnitState, GameState, PlayerId } from "./state";
 
 /**
@@ -13,8 +14,9 @@ import type { CombatState, CombatUnitState, GameState, PlayerId } from "./state"
  * offered at most once per fighter per combat:
  *
  *   - "discard": the Little Busters seat discards 1 random hand card.
- *   - "damage":  the Little Busters campus hero UNIT takes 3 effect damage.
- *   - "draw":    the spending fighter draws 1 card.
+ *   - "damage":  the Little Busters campus hero UNIT is reduced to half its
+ *                 maximum HP, rounding remaining HP up (never healing it).
+ *   - "draw":    the spending fighter draws 2 cards.
  *
  * The availability derivation here is THE shared read the legal-action offer
  * and the reducer handler both consult, so a rendered button can never be
@@ -25,8 +27,6 @@ export type LittleBustersCounter = "discard" | "damage" | "draw";
 export const LITTLE_BUSTERS_COUNTER_COST = 1;
 
 export const LITTLE_BUSTERS_COUNTERS: readonly LittleBustersCounter[] = ["discard", "damage", "draw"];
-
-const LITTLE_BUSTERS_HERO_DAMAGE = 3;
 
 /** A unit is alive while it still has Health (removal never clears `position`). */
 function unitAlive(unit: CombatUnitState): boolean {
@@ -69,9 +69,9 @@ function counterLabel(counter: LittleBustersCounter, opponentName: string): stri
     case "discard":
       return `Pay ${LITTLE_BUSTERS_COUNTER_COST} gold: ${opponentName} discards a random card (school festival contribution)`;
     case "damage":
-      return `Pay ${LITTLE_BUSTERS_COUNTER_COST} gold: deal ${LITTLE_BUSTERS_HERO_DAMAGE} damage to ${opponentName}'s hero`;
+      return `Pay ${LITTLE_BUSTERS_COUNTER_COST} gold: reduce ${opponentName}'s hero to half HP (round up)`;
     case "draw":
-      return `Pay ${LITTLE_BUSTERS_COUNTER_COST} gold: draw a card`;
+      return `Pay ${LITTLE_BUSTERS_COUNTER_COST} gold: draw 2 cards`;
   }
 }
 
@@ -143,20 +143,44 @@ export function applyLittleBustersCounter(
     case "damage": {
       const target = littleBustersHeroUnit(combat, opponentId);
       if (!target) return;
-      target.damage += LITTLE_BUSTERS_HERO_DAMAGE;
-      noteUnitDamagedForTokens(state, target, LITTLE_BUSTERS_HERO_DAMAGE);
-      appendEvent(state, {
-        type: "DAMAGE_ASSIGNED",
-        source: { type: "system" },
-        target: { type: "unit", unitId: target.id },
-        amount: LITTLE_BUSTERS_HERO_DAMAGE,
-        damageKind: "effect"
-      });
+      const desiredRemainingHp = Math.ceil(target.maxHealth / 2);
+      const desiredDamage = target.maxHealth - desiredRemainingHp;
+      const appliedDamage = Math.max(0, desiredDamage - target.damage);
+      target.damage = Math.max(target.damage, desiredDamage);
+      if (appliedDamage > 0) {
+        noteUnitDamagedForTokens(state, target, appliedDamage);
+        appendEvent(state, {
+          type: "DAMAGE_ASSIGNED",
+          source: { type: "system" },
+          target: { type: "unit", unitId: target.id },
+          amount: appliedDamage,
+          damageKind: "effect"
+        });
+      }
       markUnitRemovedIfNeeded(state, target);
+      if (target.damage < target.maxHealth) {
+        placeCombatToken(state, target, "paralysis", 0, "Paid Campus Disruption");
+        if (combat.round === 1) {
+          state.activeEffects.push(makeActiveEffect(
+            state,
+            {
+              name: "Paid Campus Disruption",
+              scope: "unit",
+              duration: { type: "current-combat-round" },
+              polarity: "negative",
+              removable: true,
+              modifiers: [{ type: "ATTACK_BONUS", amount: -2 }]
+            },
+            { type: "system" },
+            playerId,
+            { type: "unit", unitId: target.id }
+          ));
+        }
+      }
       break;
     }
     case "draw": {
-      drawCardsForPlayer(state, playerId, 1);
+      drawCardsForPlayer(state, playerId, 2);
       break;
     }
   }

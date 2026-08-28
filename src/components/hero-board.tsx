@@ -655,12 +655,12 @@ export function HeroBoard({
             </span>
           ) : null}
           {combatCultivation?.sectQi !== undefined ? (
-            <span className="hbCultivationMeter" title="Sect Qi: formed by moving into a new allied adjacency; automatically spent by Sword Formation or Shared Ward.">
+            <span className="hbCultivationMeter" title="Sect Qi (capacity 2): starts at 0, or 1 with Foundation; gained at most once per round by forming a new allied adjacency; spent for a non-stacking +1 by Sword Formation or Shared Ward.">
               <img alt="" src={assetUrl("/assets/anime/icons/cultivation/sect-qi.webp")} /> Sect Qi {combatCultivation.sectQi}
             </span>
           ) : null}
           {combatCultivation?.bloodEssence !== undefined ? (
-            <span className="hbCultivationMeter blood" title="Blood Essence: gained when a real Heavenly Demon army unit first flips or is removed; Blood Frenzy spends at most 1 each round.">
+            <span className="hbCultivationMeter blood" title="Blood Essence: gained at most once per round when a real Heavenly Demon army unit first flips or is removed; Shiyan gains exactly 1. Blood Frenzy spends at most 1 in rounds 1–3.">
               <img alt="" src={assetUrl("/assets/anime/icons/cultivation/blood-essence.webp")} /> Essence {combatCultivation.bloodEssence}
             </span>
           ) : null}

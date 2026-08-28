@@ -36,36 +36,36 @@ export const ANIME_FACTION_PENALTIES: readonly AnimeFactionPenaltyDefinition[] =
     factionId: "fuyuki",
     register: "anime",
     title: "Grail War Upkeep",
-    short: "−4 gold each Resource round",
-    detail: "After all Resource-round income, lose up to 4 gold sustaining your magecraft. This never creates debt.",
+    short: "−4 gold; round-2 army attrition",
+    detail: "After Resource-round income, lose up to 4 gold without debt. In PvP, every living Fuyuki combat unit loses 1 HP at the start of combat round 2.",
     timing: "resource-round",
     mechanicTitle: "Command Seals",
     mechanicDetail:
-      "Begin with 3 Command Seals. Once per combat, spend one — Compel to give a unit +1 Attack, or Recall to heal a unit 3.",
+      "Begin the campaign with 3 Command Seals, but spend at most one per combat: Compel gives the active unit +1 Attack for its activation, or Recall heals it up to 3. Medea deals fixed 2/3 damage and her 1-damage barrier works once per combat round. Saber Pack has base Defense 2 and gains a stacking +1 Defense whenever attacked.",
     artImage: "/assets/anime/notices/fuyuki-grail-upkeep.webp"
   },
   {
     factionId: "azure_breeze",
     register: "wuxia",
-    title: "Spirit Stone Tithe",
-    short: "−4 gold each Resource round",
-    detail: "After all Resource-round income, the sect tithes up to 4 gold in spirit stones. This never creates debt.",
-    timing: "resource-round",
+    title: "Formation Exposure",
+    short: "Enemy draws in rounds 1 and 3; no economy penalty",
+    detail: "Azure Breeze has no Resource-round gold penalty. In PvP, the enemy draws exactly 1 card at the start of combat rounds 1 and 3 only.",
+    timing: "combat-start",
     mechanicTitle: "Sect Qi (Sword Formation)",
     mechanicDetail:
-      "Move a unit next to a NEW allied unit to circulate +1 Sect Qi (army pool, max 3). When a unit attacks or defends while beside an ally it automatically spends 1 Sect Qi — +1 Attack on the attack, or +1 Defense when defending. Your Hero Grade is shown as your Cultivation Realm.",
+      "Begin combat with 0 Sect Qi (Foundation cultivation may raise this to 1). Capacity 2; gain Qi at most once per round. Adjacent attacks or defenses spend 1 Qi for +1, with no Sword Array/Qi stacking. Jianxu's Seven-Star Array is +1 Attack and Mountain Guardian heals 1.",
     artImage: "/assets/anime/notices/azure-breeze-spirit-tithe.webp"
   },
   {
     factionId: "heavenly_demon",
     register: "wuxia",
-    title: "Demonic Cult Tribute",
-    short: "−4 gold each Resource round",
-    detail: "After all Resource-round income, the cult levies up to 4 gold in tribute. This never creates debt.",
-    timing: "resource-round",
+    title: "Demonic Backlash",
+    short: "One random unit loses 1 HP; no economy penalty",
+    detail: "Heavenly Demon has no Resource-round gold penalty. At PvP combat start, one random living Heavenly Demon unit loses 1 HP. The enemy draws no penalty cards.",
+    timing: "combat-start",
     mechanicTitle: "Blood Essence & Blood Frenzy",
     mechanicDetail:
-      "Each real army unit feeds +1 Blood Essence the first time it takes a casualty (pool, max 4). Blood Frenzy then spends 1 Essence on your FIRST friendly attack each combat round for +1 Attack. Your Hero Grade is shown as your Cultivation Realm.",
+      "Gain Blood Essence at most once per round; Shiyan generates exactly 1. Blood Frenzy spends Essence only in rounds 1–3, at most once per round and three times per combat (+1 Attack, or +2 at Demon Soul). Ghost King Few does not heal; Pack heals 1 on activation.",
     artImage: "/assets/anime/notices/heavenly-demon-blood-tribute.webp"
   },
   {
@@ -83,33 +83,33 @@ export const ANIME_FACTION_PENALTIES: readonly AnimeFactionPenaltyDefinition[] =
   {
     factionId: "mgq",
     register: "anime",
-    title: "Paradox Strain",
-    short: "−1 hand limit on each Resource round",
-    detail: "On each Resource round the paradox strains your mind: your effective hand limit drops by 1 (minimum 1), then returns to normal.",
-    timing: "resource-round",
+    title: "No Faction Penalty",
+    short: "No recurring penalty",
+    detail: "Monster Girl Quest currently has no faction penalty.",
+    timing: "combat-start",
     mechanicTitle: "Four Spirits",
     mechanicDetail:
-      "Your main hero contracts one elemental spirit — Sylph, Gnome, Undine or Salamander — and summons it into every battle. In return, discard 1 card before you deploy.",
+      "Your main hero contracts one elemental spirit — Sylph, Gnome, Undine or Salamander — and summons it into every battle without an additional faction cost.",
     artImage: "/assets/anime/notices/mgq-paradox-strain.webp"
   },
   {
     factionId: "little_busters",
     register: "anime",
     title: "School Contribution Fund",
-    short: "−5 gold and −1 material each Resource round",
-    detail: "After all Resource-round income, contribute up to 5 gold and 1 building material to the school festival. No debt is created.",
+    short: "−5 gold/−1 material; three paid enemy counters",
+    detail: "−5 gold and −1 material each Resource round, paid after income without debt. In PvP, the enemy may pay 1 gold for each mandatory AI counter: random discard, draw 2, and reduce the campus hero to half HP (remaining HP rounded up) plus Paralysis and −2 Attack in round 1.",
     timing: "resource-round",
     mechanicTitle: "Campus Hero",
     mechanicDetail:
-      "Your main hero fights on the battlefield as a unit, growing stronger with its Seishun grade (+Health, +Initiative, +Attack).",
+      "Your main hero fights on the battlefield as a unit and may retaliate normally. Hero level stats and grade bonuses remain separate, with no level-5 stat penalty. Masato can protect any adjacent ally, including Gold units and the hero, once per round. Mio Pack has Defense 2 and +1 Defense against only the first attack each round.",
     artImage: "/assets/anime/notices/little-busters-contribution-v2.webp"
   },
   {
     factionId: "azur_lane",
     register: "anime",
     title: "Fleet Maintenance",
-    short: "1 unit takes 1 damage each combat",
-    detail: "At combat start, one random deployed Azur Lane army unit suffers 1 damage. Commanders and summons are exempt.",
+    short: "1 unit takes 1 damage; enemy draws 1",
+    detail: "At combat start, one random deployed Azur Lane army unit suffers 1 damage and the opposing player draws 1 card. Commanders and summons are exempt from the damage.",
     timing: "combat-start",
     mechanicTitle: "Fleet Tactics",
     mechanicDetail:

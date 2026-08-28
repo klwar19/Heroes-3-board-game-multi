@@ -46,13 +46,13 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
   },
   "fuyuki.archers": {
     id: "fuyuki.archers", name: "EMIYA", faction: "fuyuki", tier: "silver", type: "ranged",
-    few: { attack: 3, defense: 2, health: 4, initiative: 6, cost: { gold: 8 }, abilities: ["ignore-combat-penalties"], abilityText: "Hawkeye — ignores the adjacent ranged Combat penalty.", cardImage: fuyukiCard("silver", "archers", "few") },
-    pack: { attack: 3, defense: 2, health: 4, initiative: 7, cost: { gold: 11 }, abilities: ["ignore-all-combat-penalties", "double-attack"], abilityText: "Unlimited Blade Works — ignores ranged penalties and attacks a distant target twice.", cardImage: fuyukiCard("silver", "archers", "pack") },
+    few: { attack: 3, defense: 1, health: 4, initiative: 6, cost: { gold: 8 }, abilities: ["ignore-combat-penalties"], abilityText: "Hawkeye — ignores the adjacent ranged Combat penalty.", cardImage: fuyukiCard("silver", "archers", "few") },
+    pack: { attack: 3, defense: 1, health: 4, initiative: 7, cost: { gold: 11 }, abilities: ["ignore-all-combat-penalties", "double-attack"], abilityText: "Unlimited Blade Works — ignores ranged penalties and attacks a distant target twice.", cardImage: fuyukiCard("silver", "archers", "pack") },
     source
   },
   "fuyuki.casters": {
     id: "fuyuki.casters", name: "Medea", faction: "fuyuki", tier: "silver", type: "ranged",
-    // engine: elemental-damage + casters-damage-cap (≤1 from each attack OR Spell)
+    // engine: elemental-damage + a once-per-combat-round 1-damage cap.
     // + magi-power-boost. Pack no longer uses reduce-spell-damage-1 — the hard
     // cap is strictly stronger and covers attacks too.
     few: {
@@ -61,34 +61,34 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
       health: 3,
       initiative: 4,
       cost: { gold: 8 },
-      abilities: ["elemental-damage", "casters-damage-cap"],
+      abilities: ["elemental-damage", "casters-damage-cap", "fuyuki-caster-fixed-2"],
       abilityText:
-        "Rule Breaker — deals elemental damage and cannot take more than 1 damage from a single attack or Spell.",
+        "Rule Breaker — always deals exactly 2 damage without an Attack die or buffs; once per Combat round cap one incoming attack or Spell at 1 damage.",
       cardImage: fuyukiCard("silver", "casters", "few")
     },
     pack: {
       attack: 3,
-      defense: 2,
-      health: 4,
+      defense: 1,
+      health: 3,
       initiative: 6,
       cost: { gold: 13 },
-      abilities: ["elemental-damage", "casters-damage-cap", "magi-power-boost"],
+      abilities: ["elemental-damage", "casters-damage-cap", "magi-power-boost", "fuyuki-caster-fixed-3"],
       abilityText:
-        "High-Speed Divine Words — elemental damage; each attack or Spell deals at most 1 damage; first Spell this round +1 Power.",
+        "High-Speed Divine Words — always deals exactly 3 damage without an Attack die or buffs; once per Combat round cap one incoming attack or Spell at 1 damage; first Spell this round +1 Power.",
       cardImage: fuyukiCard("silver", "casters", "pack")
     },
     source
   },
   "fuyuki.sabers": {
     id: "fuyuki.sabers", name: "Artoria Pendragon", faction: "fuyuki", tier: "gold", type: "ground",
-    few: { attack: 5, defense: 3, health: 6, initiative: 6, cost: { gold: 14, valuables: 1 }, abilities: ["dragon-line-attack-2"], abilityText: "Excalibur — a second Attack 2 hit strikes behind the target.", cardImage: fuyukiCard("golden", "sabers", "few") },
-    pack: { attack: 6, defense: 3, health: 7, initiative: 7, cost: { gold: 22, valuables: 2 }, abilities: ["dragon-line-attack-3", "commander-charge"], abilityText: "Excalibur — line strike at Attack 3; +1 Attack after moving.", cardImage: fuyukiCard("golden", "sabers", "pack") },
+    few: { attack: 5, defense: 2, health: 6, initiative: 6, cost: { gold: 14, valuables: 1 }, abilities: ["dragon-line-attack-2"], abilityText: "Excalibur — a second Attack 2 hit strikes behind the target.", cardImage: fuyukiCard("golden", "sabers", "few") },
+    pack: { attack: 6, defense: 2, health: 7, initiative: 7, cost: { gold: 22, valuables: 2 }, abilities: ["dragon-line-attack-3", "commander-charge", "saber-stacking-defense"], abilityText: "Excalibur — line strike at Attack 3; +1 Attack after moving. Avalon Guard — whenever attacked, gain a cumulative +1 Defense for that attack and the rest of Combat.", cardImage: fuyukiCard("golden", "sabers", "pack") },
     source
   },
   "fuyuki.berserkers": {
     id: "fuyuki.berserkers", name: "Heracles", faction: "fuyuki", tier: "gold", type: "ground",
     few: { attack: 6, defense: 2, health: 7, initiative: 5, cost: { gold: 15, valuables: 1 }, abilities: ["phoenix-rebirth"], abilityText: "God Hand — once per Combat, lethal damage leaves this unit at 1 Health.", cardImage: fuyukiCard("golden", "berserkers", "few") },
-    pack: { attack: 7, defense: 3, health: 8, initiative: 5, cost: { gold: 24, valuables: 2 }, abilities: ["phoenix-rebirth", "reduce-spell-damage-1"], abilityText: "God Hand — rebirths once; Spell damage against this unit is reduced by 1.", cardImage: fuyukiCard("golden", "berserkers", "pack") },
+    pack: { attack: 7, defense: 2, health: 8, initiative: 5, cost: { gold: 24, valuables: 2 }, abilities: ["reduce-spell-damage-1"], abilityText: "God Hand — Spell damage against this unit is reduced by 1.", cardImage: fuyukiCard("golden", "berserkers", "pack") },
     source
   },
 
@@ -135,15 +135,15 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
   // LV 6 gold ranged elders. The Pack deliberately costs only 1 valuable.
   "azure_breeze.core_master": {
     id: "azure_breeze.core_master", name: "Golden Core Elders", faction: "azure_breeze", tier: "gold", type: "ranged",
-    few: { attack: 5, defense: 2, health: 6, initiative: 6, cost: { gold: 14, valuables: 1 }, abilities: ["ignore-all-combat-penalties", "magi-power-boost"], abilityText: "Talisman Arts — ignores penalties; first Spell +1 Power.", cardImage: azureCard("golden", "core-formation-master", "few") },
-    pack: { attack: 6, defense: 2, health: 7, initiative: 6, cost: { gold: 22, valuables: 1 }, abilities: ["ignore-all-combat-penalties", "magi-power-boost", "unicorn-spell-ward-aura"], abilityText: "Talisman Aura — first Spell +1 Power; protects adjacent allies from Spell damage.", cardImage: azureCard("golden", "core-formation-master", "pack") },
+    few: { attack: 4, defense: 1, health: 6, initiative: 6, cost: { gold: 14, valuables: 1 }, abilities: ["ignore-all-combat-penalties", "magi-power-boost"], abilityText: "Talisman Arts — ignores penalties; first Spell +1 Power.", cardImage: azureCard("golden", "core-formation-master", "few") },
+    pack: { attack: 5, defense: 1, health: 7, initiative: 6, cost: { gold: 22, valuables: 1 }, abilities: ["ignore-all-combat-penalties", "magi-power-boost", "unicorn-spell-ward-aura"], abilityText: "Talisman Aura — first Spell +1 Power; protects adjacent allies from Spell damage.", cardImage: azureCard("golden", "core-formation-master", "pack") },
     source
   },
   // LV 7 gold mountain tank.
   "azure_breeze.mountain_guardian": {
     id: "azure_breeze.mountain_guardian", name: "Mountain Guardian", faction: "azure_breeze", tier: "gold", type: "ground",
     few: { attack: 5, defense: 3, health: 8, initiative: 3, cost: { gold: 15, valuables: 1 }, abilities: ["wraith-heal-1"], abilityText: "Verdant Pulse — on activation, heal 1 damage.", cardImage: azureCard("golden", "mountain-guardian", "few") },
-    pack: { attack: 6, defense: 3, health: 9, initiative: 3, cost: { gold: 23, valuables: 2 }, abilities: ["wraith-heal-2", "unlimited-retaliation"], abilityText: "Returning Earth — heal 2 on activation; unlimited Retaliation.", cardImage: azureCard("golden", "mountain-guardian", "pack") },
+    pack: { attack: 6, defense: 3, health: 9, initiative: 3, cost: { gold: 23, valuables: 2 }, abilities: ["wraith-heal-1", "unlimited-retaliation"], abilityText: "Returning Earth — heal 1 on activation; unlimited Retaliation.", cardImage: azureCard("golden", "mountain-guardian", "pack") },
     source
   },
 
@@ -342,8 +342,8 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
   // LV6 gold ranged spectral regenerator.
   "heavenly_demon.ghost_king": {
     id: "heavenly_demon.ghost_king", name: "Ghost King", faction: "heavenly_demon", tier: "gold", type: "ranged",
-    few: { attack: 4, defense: 3, health: 7, initiative: 5, cost: { gold: 14, valuables: 1 }, abilities: ["ignore-combat-penalties", "wraith-heal-1"], abilityText: "Soulfire — ignores adjacent ranged penalty; heal 1 on activation.", cardImage: demonCard("golden", "ghost-king", "few") },
-    pack: { attack: 5, defense: 3, health: 8, initiative: 6, cost: { gold: 22, valuables: 2 }, abilities: ["ignore-all-combat-penalties", "wraith-heal-2"], abilityText: "Royal Soulfire — ignores all Combat penalties; heal 2 on activation.", cardImage: demonCard("golden", "ghost-king", "pack") },
+    few: { attack: 4, defense: 2, health: 7, initiative: 5, cost: { gold: 14, valuables: 1 }, abilities: ["ignore-combat-penalties"], abilityText: "Soulfire — ignores the adjacent ranged penalty.", cardImage: demonCard("golden", "ghost-king", "few") },
+    pack: { attack: 5, defense: 2, health: 8, initiative: 6, cost: { gold: 22, valuables: 2 }, abilities: ["ignore-all-combat-penalties", "wraith-heal-1"], abilityText: "Royal Soulfire — ignores all Combat penalties; heal 1 on activation.", cardImage: demonCard("golden", "ghost-king", "pack") },
     source
   },
   // LV7 gold ground avatar — carries the faction's second NEW arm on BOTH sides;
@@ -381,7 +381,7 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
   "little_busters.masato": {
     id: "little_busters.masato", name: "Masato the Wall", faction: "little_busters", tier: "silver", type: "ground",
     few: { attack: 3, defense: 2, health: 5, initiative: 4, cost: { gold: 8 }, abilities: ["commander-defense-token"], abilityText: "Muscle Wall - always rolls the Defend die when attacked.", cardImage: littleBustersCard("silver", "masato-the-wall", "few") },
-    pack: { attack: 4, defense: 2, health: 6, initiative: 5, cost: { gold: 15 }, abilities: ["commander-defense-token", "masato-bodyguard-intercept"], abilityText: "Bodyguard - always rolls the Defend die; once per Combat, an attack on an adjacent friendly unit is redirected to Masato.", cardImage: littleBustersCard("silver", "masato-the-wall", "pack") },
+    pack: { attack: 4, defense: 2, health: 5, initiative: 5, cost: { gold: 15 }, abilities: ["commander-defense-token", "masato-bodyguard-intercept"], abilityText: "Bodyguard - always rolls the Defend die; once per Combat round, redirect an attack on any adjacent ally to Masato, including Gold units and the battlefield hero.", cardImage: littleBustersCard("silver", "masato-the-wall", "pack") },
     source
   },
   "little_busters.softball_club": {
@@ -393,13 +393,13 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
   "little_busters.saya": {
     id: "little_busters.saya", name: "Saya Tokido", faction: "little_busters", tier: "gold", type: "ground",
     few: { attack: 6, defense: 2, health: 5, initiative: 8, cost: { gold: 14, valuables: 1 }, abilities: ["saya-infiltration", "ignores-retaliation"], abilityText: "Infiltration - as a move, place Saya on any empty Combat space; her attacks do not provoke Retaliation.", cardImage: littleBustersCard("golden", "saya-tokido", "few") },
-    pack: { attack: 7, defense: 2, health: 6, initiative: 9, cost: { gold: 21, valuables: 2 }, abilities: ["saya-infiltration", "ignores-retaliation", "saya-armor-break"], abilityText: "Infiltration - move to any empty space and ignore Retaliation; Armor Break - on a 0 or +1 on Saya's Attack die, the target gets -1 Defense (minimum 0) for the rest of Combat.", cardImage: littleBustersCard("golden", "saya-tokido", "pack") },
+    pack: { attack: 6, defense: 2, health: 6, initiative: 9, cost: { gold: 21, valuables: 2 }, abilities: ["saya-infiltration", "ignores-retaliation", "saya-armor-break"], abilityText: "Infiltration - move to any empty space and ignore Retaliation; Armor Break - only on a -1 on Saya's Attack die, place one non-stacking -1 Defense token (minimum 0) for the rest of Combat.", cardImage: littleBustersCard("golden", "saya-tokido", "pack") },
     source
   },
   "little_busters.mio": {
     id: "little_busters.mio", name: "Mio Nishizono", faction: "little_busters", tier: "gold", type: "ranged",
-    few: { attack: 5, defense: 3, health: 6, initiative: 4, cost: { gold: 19 }, abilities: ["gargoyle-spell-ward", "ignore-all-combat-penalties"], abilityText: "White Parasol - takes 1 less Spell damage and ignores all ranged penalties.", cardImage: littleBustersCard("golden", "mio-nishizono", "few") },
-    pack: { attack: 6, defense: 3, health: 7, initiative: 5, cost: { gold: 28, valuables: 2 }, abilities: ["gargoyle-spell-ward", "ignore-all-combat-penalties", "archangel-lethal-save"], abilityText: "Midori's Shadow - spell ward and no ranged penalties; once per Combat, cancel lethal damage to another friendly unit.", cardImage: littleBustersCard("golden", "mio-nishizono", "pack") },
+    few: { attack: 5, defense: 2, health: 6, initiative: 4, cost: { gold: 19 }, abilities: ["gargoyle-spell-ward", "ignore-all-combat-penalties"], abilityText: "White Parasol - takes 1 less Spell damage and ignores all ranged penalties.", cardImage: littleBustersCard("golden", "mio-nishizono", "few") },
+    pack: { attack: 6, defense: 2, health: 7, initiative: 5, cost: { gold: 28, valuables: 2 }, abilities: ["gargoyle-spell-ward", "ignore-all-combat-penalties", "archangel-lethal-save"], abilityText: "Midori's Shadow - +1 Defense against the first attack each Combat round; spell ward and no ranged penalties; once per Combat, cancel lethal damage to another friendly unit.", cardImage: littleBustersCard("golden", "mio-nishizono", "pack") },
     source
   }
 };

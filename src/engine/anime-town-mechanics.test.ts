@@ -23,6 +23,14 @@ function applyOk(state: GameState, action: GameAction): GameState {
   return result.state;
 }
 
+function settleAttack(state: GameState): GameState {
+  let current = state;
+  for (let safety = 30; safety > 0 && current.reactionWindow; safety -= 1) {
+    current = applyOk(current, { type: "PASS_REACTION", playerId: current.reactionWindow.priorityPlayerId });
+  }
+  return current;
+}
+
 function fuyukiCombat(seed: string): GameState {
   const state = createInitialGameState(seed);
   state.players.p1.factionId = "fuyuki";
@@ -85,6 +93,56 @@ describe("Fuyuki City — Command Seals", () => {
       mode: "recall"
     });
     expect(refused.errors.length).toBeGreaterThan(0);
+  });
+
+  it("Saber Pack starts at Defense 2 and gains a cumulative +1 whenever attacked", () => {
+    const state = createInitialGameState("fuyuki-saber-stacking-defense");
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    const saber = state.combat!.units.unit_p1_griffins;
+    const attacker = state.combat!.units.unit_p2_skeletons;
+    Object.assign(saber, {
+      position: 9,
+      cardName: "Pack of Artoria Pendragon",
+      unitDefId: "fuyuki.sabers",
+      variant: "pack",
+      defense: 2,
+      maxHealth: 100,
+      damage: 0,
+      abilities: ["saber-stacking-defense"],
+      retaliatedThisRound: true
+    });
+    Object.assign(attacker, {
+      position: 13,
+      attack: 6,
+      abilities: [],
+      activatedThisRound: false,
+      attackedThisActivation: false
+    });
+    state.activePlayerId = "p2";
+    state.combat!.activeUnitId = attacker.id;
+    state.combat!.dice.scriptedRolls = [0, 0, 0, 0];
+    state.combat!.dice.rollCount = 0;
+
+    let after = settleAttack(applyOk(state, {
+      type: "ATTACK_UNIT", playerId: "p2", attackerId: attacker.id, defenderId: saber.id
+    }));
+    expect(after.combat!.units[saber.id].stackingDefenseWhenAttackedBonus).toBe(1);
+    expect(after.combat!.units[saber.id].damage).toBe(3);
+
+    Object.assign(after.combat!.units[attacker.id], {
+      activatedThisRound: false,
+      attackedThisActivation: false,
+      attacksThisActivation: 0,
+      movedThisActivation: false
+    });
+    after.activePlayerId = "p2";
+    after.combat!.activeUnitId = attacker.id;
+    after = settleAttack(applyOk(after, {
+      type: "ATTACK_UNIT", playerId: "p2", attackerId: attacker.id, defenderId: saber.id
+    }));
+    expect(after.combat!.units[saber.id].stackingDefenseWhenAttackedBonus).toBe(2);
+    expect(after.combat!.units[saber.id].damage).toBe(5);
   });
 });
 

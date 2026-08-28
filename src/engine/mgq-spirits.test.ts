@@ -100,24 +100,10 @@ describe("MGQ spirit selection gate", () => {
     mgq = applyAction(mgq, place!.action).state;
     expect(getLegalActions(mgq, "p1").some((entry) => entry.action.type === "FINISH_COMBAT_PLACEMENT")).toBe(true);
 
-    const discardedCardId = mgq.players.p1.hand[0];
-    expect(discardedCardId).toBeTruthy();
+    const handBefore = [...mgq.players.p1.hand];
     mgq = applyAction(mgq, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" }).state;
-    expect(mgq.pendingChoice).toMatchObject({
-      type: "OPTION_CHOICE",
-      context: "hand-discard",
-      playerId: "p1",
-      handDiscard: { remaining: 1, mgqSpiritCost: true }
-    });
-    mgq = applyAction(mgq, {
-      type: "CHOOSE_OPTION",
-      playerId: "p1",
-      choiceId: mgq.pendingChoice!.id,
-      optionIndex: 0
-    }).state;
-    expect(mgq.players.p1.discard).toContain(discardedCardId);
-    expect(mgq.combat?.mgqSpiritCostPaidPlayerIds).toContain("p1");
-    expect(getLegalActions(mgq, "p1").some((entry) => entry.action.type === "FINISH_COMBAT_PLACEMENT")).toBe(true);
+    expect(mgq.pendingChoice).toBeNull();
+    expect(mgq.players.p1.hand).toEqual(handBefore);
 
     let castle = deploymentState("castle");
     expect(getLegalActions(castle, "p1").some((entry) => entry.action.type === "SET_MGQ_SPIRIT")).toBe(false);

@@ -43,8 +43,8 @@ const CARDS = CONTRACT.map((card) => ({
   packStats: card.pack.stats,
   cost: card.few.cost,
   packCost: card.pack.cost,
-  few: card.few.text,
-  pack: card.pack.text
+  few: card.few.text ?? "No printed ability.",
+  pack: card.pack.text ?? "No printed ability."
 }));
 
 const esc = (s) => String(s).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
@@ -122,9 +122,16 @@ async function build(card, side) {
 
 await Promise.all([mkdir(EDITABLE, { recursive: true }), mkdir(PUBLIC, { recursive: true }), mkdir(REVIEW, { recursive: true })]);
 const requested = new Set(process.argv.slice(2));
-const selected = requested.size ? CARDS.filter((card) => requested.has(card.slug)) : CARDS;
+const contactOnly = requested.delete("--contact-only");
+const selected = contactOnly ? CARDS : requested.size ? CARDS.filter((card) => requested.has(card.slug)) : CARDS;
 const outputs = [];
-for (const card of selected) for (const side of ["few", "pack"]) outputs.push(await build(card, side));
+for (const card of selected) {
+  for (const side of ["few", "pack"]) {
+    outputs.push(contactOnly
+      ? path.join(PUBLIC, `units-little-busters-${card.tier}-${card.slug}-${side}.webp`)
+      : await build(card, side));
+  }
+}
 
 const thumbW = 223, thumbH = 312, gap = 8, cols = 7;
 const thumbs = await Promise.all(outputs.map((file) => sharp(file).resize(thumbW, thumbH, { fit: "fill" }).png().toBuffer()));

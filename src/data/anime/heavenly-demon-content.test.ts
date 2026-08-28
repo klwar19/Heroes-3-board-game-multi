@@ -56,8 +56,8 @@ const EXPECTED_ABILITIES: Record<string, { few: string[]; pack: string[] }> = {
     pack: ["commander-charge", "ignores-retaliation"]
   },
   "heavenly_demon.ghost_king": {
-    few: ["ignore-combat-penalties", "wraith-heal-1"],
-    pack: ["ignore-all-combat-penalties", "wraith-heal-2"]
+    few: ["ignore-combat-penalties"],
+    pack: ["ignore-all-combat-penalties", "wraith-heal-1"]
   },
   "heavenly_demon.demon_avatar": {
     few: ["heavenly-demon-reap"],

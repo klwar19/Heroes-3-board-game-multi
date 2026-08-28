@@ -9,7 +9,7 @@ export type UnitAbilityEffectDefinition =
   | { type: "RETALIATION_ATTACK_BONUS"; amount: number }
   | { type: "IGNORE_RETALIATION" }
   | {
-      /** Masato the Wall: intercept one normal attack on an adjacent ally per combat. */
+      /** Masato the Wall: intercept one normal attack on any adjacent ally per combat round. */
       type: "INTERCEPT_ADJACENT_ATTACK_ONCE";
     }
   // Ranged combat-penalty waivers. A ranged attack rolls at disadvantage in two
@@ -145,6 +145,11 @@ export type UnitAbilityEffectDefinition =
        * i.e. OUTSIDE the Defend-token gate in resolveDefendBonus.
        */
       type: "FLAT_DEFENSE_WHEN_ATTACKED";
+      amount: number;
+    }
+  | {
+      /** Gain a permanent, cumulative Defense bonus each time an attack is declared against this unit. */
+      type: "STACKING_DEFENSE_WHEN_ATTACKED";
       amount: number;
     }
   | {
@@ -2623,8 +2628,8 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "saya-armor-break": {
     id: "saya-armor-break",
     name: "Armor Break",
-    text: '[unit_attack] On a "0" or "+1" on this unit\'s Attack die, place a Corrosion token on the target: -1 Defense (minimum 0) for the rest of Combat.',
-    effect: { type: "ON_ATTACK_DIE_TOKEN", minRoll: 0, maxRoll: 1, token: "corrosion", amount: 1 },
+    text: '[unit_attack] Only on a "-1" on this unit\'s Attack die, place one non-stacking Corrosion token on the target: -1 Defense (minimum 0) for the rest of Combat.',
+    effect: { type: "ON_ATTACK_DIE_TOKEN", minRoll: -1, maxRoll: -1, token: "corrosion", amount: 1 },
     implementationStatus: "implemented"
   },
   // Save compatibility: a combat saved before Armor Break replaced Double Tap
@@ -2632,15 +2637,36 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "saya-double-tap": {
     id: "saya-double-tap",
     name: "Armor Break",
-    text: '[unit_attack] On a "0" or "+1" on this unit\'s Attack die, place a Corrosion token on the target: -1 Defense (minimum 0) for the rest of Combat.',
-    effect: { type: "ON_ATTACK_DIE_TOKEN", minRoll: 0, maxRoll: 1, token: "corrosion", amount: 1 },
+    text: '[unit_attack] Only on a "-1" on this unit\'s Attack die, place one non-stacking Corrosion token on the target: -1 Defense (minimum 0) for the rest of Combat.',
+    effect: { type: "ON_ATTACK_DIE_TOKEN", minRoll: -1, maxRoll: -1, token: "corrosion", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "fuyuki-caster-fixed-2": {
+    id: "fuyuki-caster-fixed-2",
+    name: "Rule Breaker",
+    text: "[unit_attack] This unit always deals exactly 2 damage. Do not roll an Attack die; Attack buffs and Defense do not change this damage.",
+    effect: { type: "IGNORE_OWN_ATTACK_DIE" },
+    implementationStatus: "implemented"
+  },
+  "fuyuki-caster-fixed-3": {
+    id: "fuyuki-caster-fixed-3",
+    name: "High-Speed Divine Words",
+    text: "[unit_attack] This unit always deals exactly 3 damage. Do not roll an Attack die; Attack buffs and Defense do not change this damage.",
+    effect: { type: "IGNORE_OWN_ATTACK_DIE" },
     implementationStatus: "implemented"
   },
   "masato-bodyguard-intercept": {
     id: "masato-bodyguard-intercept",
     name: "Bodyguard",
-    text: "[unit_passive] Once per Combat, when an adjacent friendly unit is attacked, redirect that attack to this unit.",
+    text: "[unit_passive] Once per Combat round, when any adjacent ally is attacked, redirect that attack to this unit. This can protect Bronze, Silver, Gold and the battlefield hero.",
     effect: { type: "INTERCEPT_ADJACENT_ATTACK_ONCE" },
+    implementationStatus: "implemented"
+  },
+  "saber-stacking-defense": {
+    id: "saber-stacking-defense",
+    name: "Avalon Guard",
+    text: "[unit_passive] Whenever this unit is attacked, it gains +1 Defense for that attack and the rest of Combat. This bonus can stack.",
+    effect: { type: "STACKING_DEFENSE_WHEN_ATTACKED", amount: 1 },
     implementationStatus: "implemented"
   },
   "mgq-pack-dig": {
@@ -3338,12 +3364,12 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "CAP_DAMAGE_PER_ATTACK", amount: 5 },
     implementationStatus: "implemented"
   },
-  // Fuyuki Casters (Few/Pack): hard cap of 1 damage from each single attack OR
-  // Spell hit (stronger than the old Pack-only reduce-spell-damage-1).
+  // Fuyuki Casters (Few/Pack): once each combat round, cap one incoming attack
+  // or Spell hit at 1 damage.
   "casters-damage-cap": {
     id: "casters-damage-cap",
     name: "Leyline Barrier",
-    text: "[unit_passive] This unit cannot take more than 1 damage from a single attack or Spell.",
+    text: "[unit_passive] Once per Combat round, this unit cannot take more than 1 damage from one attack or Spell.",
     effect: { type: "CAP_DAMAGE_PER_ATTACK", amount: 1, includeSpells: true },
     implementationStatus: "implemented"
   },

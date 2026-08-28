@@ -68,8 +68,8 @@ describe("cultivation towns — original-game balance comparison", () => {
     expect(coreUnitDefinitions["azure_breeze.core_master"]).toMatchObject({
       name: "Golden Core Elders",
       type: "ranged",
-      few: { defense: 2 },
-      pack: { defense: 2, cost: { gold: 22, valuables: 1 } }
+      few: { attack: 4, defense: 1 },
+      pack: { attack: 5, defense: 1, cost: { gold: 22, valuables: 1 } }
     });
     expect(coreUnitDefinitions["heavenly_demon.shadow_wraiths"]).toMatchObject({
       name: "Shadow Sabre Disciples",

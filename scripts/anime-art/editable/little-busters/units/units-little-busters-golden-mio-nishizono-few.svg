@@ -10,7 +10,7 @@
   </style>
   <text x="371" y="111" class="title">Mio Nishizono</text>
   <text x="118" y="286" class="stat">5</text>
-  <text x="118" y="435" class="stat">3</text>
+  <text x="118" y="435" class="stat">2</text>
   <text x="118" y="584" class="stat">6</text>
   <text x="118" y="732" class="stat">4</text>
   <g transform="translate(190 171)"><rect width="121" height="38" rx="8" fill="#17130dcc" stroke="#d9bd75" stroke-width="2"/><path d="M12 27Q26 5 40 27M26 6v25M20 23l6 8 6-8" fill="none" stroke="#f4e6b6" stroke-width="2.5" stroke-linecap="round"/><text x="50" y="24" class="kind">RANGED</text></g><text x="291" y="813" class="cost">19</text><text x="566" y="813" class="cost">28</text>

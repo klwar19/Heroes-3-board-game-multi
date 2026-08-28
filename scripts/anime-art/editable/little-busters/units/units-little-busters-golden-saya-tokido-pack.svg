@@ -9,10 +9,10 @@
     .pack{text-anchor:middle;font-size:34px}.rule{text-anchor:middle;font-size:17px;fill:#f6f0df}.kind{font-family:Arial,sans-serif;font-weight:700;font-size:12px;fill:#f4e6b6;letter-spacing:1px;filter:url(#s)}
   </style>
   <text x="371" y="111" class="title">Saya Tokido</text>
-  <text x="118" y="286" class="stat">7</text>
+  <text x="118" y="286" class="stat">6</text>
   <text x="118" y="435" class="stat">2</text>
   <text x="118" y="584" class="stat">6</text>
   <text x="118" y="732" class="stat">9</text>
-  <g transform="translate(190 171)"><rect width="121" height="38" rx="8" fill="#17130dcc" stroke="#d9bd75" stroke-width="2"/><path d="M12 27c4-1 6-6 7-13l8-4 4 5-3 5 12 8c2 2 1 5-2 5H17c-4 0-6-3-5-6Z" fill="#f4e6b6"/><text x="50" y="24" class="kind">GROUND</text></g><rect x="61" y="764" width="622" height="66" fill="#372615" stroke="#b99759" stroke-width="3"/><text x="372" y="810" class="pack"># PACK</text><text x="371" y="884" class="rule">Infiltration - move to any empty space and ignore</text><text x="371" y="907" class="rule">Retaliation; Armor Break - on a 0 or +1 on Saya's Attack</text><text x="371" y="930" class="rule">die, the target gets -1 Defense (minimum 0) for the rest</text><text x="371" y="953" class="rule">of Combat.</text>
+  <g transform="translate(190 171)"><rect width="121" height="38" rx="8" fill="#17130dcc" stroke="#d9bd75" stroke-width="2"/><path d="M12 27c4-1 6-6 7-13l8-4 4 5-3 5 12 8c2 2 1 5-2 5H17c-4 0-6-3-5-6Z" fill="#f4e6b6"/><text x="50" y="24" class="kind">GROUND</text></g><rect x="61" y="764" width="622" height="66" fill="#372615" stroke="#b99759" stroke-width="3"/><text x="372" y="810" class="pack"># PACK</text><text x="371" y="884" class="rule">Infiltration - move to any empty space and ignore</text><text x="371" y="907" class="rule">Retaliation; Armor Break - only on a -1 on Saya's Attack</text><text x="371" y="930" class="rule">die, place one non-stacking -1 Defense token (minimum 0)</text><text x="371" y="953" class="rule">for the rest of Combat.</text>
   </g>
   </svg>

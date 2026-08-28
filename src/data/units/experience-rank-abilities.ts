@@ -596,7 +596,7 @@ export const LITTLE_BUSTERS_RANK_ABILITY_ICON_BY_CHOICE: Record<string, string> 
   "little_busters.disciplinary_committee:ignore-all-combat-penalties": "/assets/anime/icons/little-busters/rank-disciplinary-committee.webp",
   "little_busters.masato:unlimited-retaliation": "/assets/anime/icons/little-busters/rank-masato.webp",
   "little_busters.softball_club:attack-roll-advantage-passive": "/assets/anime/icons/little-busters/rank-softball-club.webp",
-  "little_busters.saya:gorgon-death-stare": "/assets/anime/icons/little-busters/rank-saya.webp",
+  "little_busters.saya:saya-armor-break": "/assets/anime/icons/little-busters/rank-saya.webp",
   "little_busters.mio:gargoyle-spell-ward": "/assets/anime/icons/little-busters/rank-mio.webp"
 };
 

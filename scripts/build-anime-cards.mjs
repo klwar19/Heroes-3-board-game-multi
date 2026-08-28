@@ -69,7 +69,7 @@ const FUYUKI_CARDS = [
     name: "EMIYA",
     tier: "silver",
     kind: "RANGED",
-    stats: { attack: 3, defense: 2, health: 4, initiative: 6 },
+    stats: { attack: 3, defense: 1, health: 4, initiative: 6 },
     packStats: { initiative: 7 },
     art: "units-fuyuki-silver-archers-master.png",
     few: "Hawkeye — ignores the adjacent ranged Combat penalty.",
@@ -81,21 +81,21 @@ const FUYUKI_CARDS = [
     tier: "silver",
     kind: "RANGED",
     stats: { attack: 2, defense: 1, health: 3, initiative: 4 },
-    packStats: { attack: 3, defense: 2, health: 4, initiative: 6 },
+    packStats: { attack: 3, defense: 1, health: 3, initiative: 6 },
     art: "units-fuyuki-silver-casters-master.png",
-    few: "Rule Breaker — elemental damage; each attack or Spell deals at most 1 damage.",
-    pack: "Divine Words — damage cap 1; elemental damage; first Spell this round +1 Power."
+    few: "Rule Breaker — fixed 2 damage; once per round cap one incoming attack or Spell at 1.",
+    pack: "Divine Words — fixed 3 damage; once-per-round damage cap 1; first Spell +1 Power."
   },
   {
     slug: "sabers",
     name: "Artoria Pendragon",
     tier: "golden",
     kind: "GROUND",
-    stats: { attack: 5, defense: 3, health: 6, initiative: 6 },
-    packStats: { attack: 6, health: 7, initiative: 7 },
+    stats: { attack: 5, defense: 2, health: 6, initiative: 6 },
+    packStats: { attack: 6, defense: 2, health: 7, initiative: 7 },
     art: "units-fuyuki-golden-sabers-master.png",
     few: "Excalibur — a second Attack 2 hit strikes behind the target.",
-    pack: "Excalibur — line strike at Attack 3; +1 Attack after moving."
+    pack: "Excalibur — line Attack 3; +1 Attack after moving. Avalon Guard — each attack grants +1 Defense for the rest of Combat; stacks."
   },
   {
     slug: "berserkers",
@@ -103,10 +103,10 @@ const FUYUKI_CARDS = [
     tier: "golden",
     kind: "GROUND",
     stats: { attack: 6, defense: 2, health: 7, initiative: 5 },
-    packStats: { attack: 7, defense: 3, health: 8 },
+    packStats: { attack: 7, defense: 2, health: 8 },
     art: "units-fuyuki-golden-berserkers-master.png",
     few: "God Hand — once per Combat, lethal damage leaves this unit at 1 Health.",
-    pack: "God Hand — rebirths once; Spell damage against this unit is reduced by 1."
+    pack: "God Hand — Spell damage against this unit is reduced by 1; no rebirth."
   }
 ];
 
@@ -152,8 +152,8 @@ const AZURE_BREEZE_CARDS = [
   },
   {
     slug: "core-formation-master", name: "Golden Core Elders", vi: "Kim Đan Trưởng Lão",
-    level: 6, tier: "golden", traits: ["RANGED", "MAGIC"], stats: { attack: 5, defense: 2, health: 6, initiative: 6 },
-    packStats: { attack: 6, health: 7 },
+    level: 6, tier: "golden", traits: ["RANGED", "MAGIC"], stats: { attack: 4, defense: 1, health: 6, initiative: 6 },
+    packStats: { attack: 5, defense: 1, health: 7 },
     art: "units-azure-breeze-golden-core-formation-master.png",
     few: ["Talisman Arts — ignores penalties; first Spell +1 Power."],
     pack: ["Talisman Arts — ignores penalties; first Spell +1 Power.", "Talisman Aura — adjacent allies reduce Spell damage by 1."]
@@ -164,7 +164,7 @@ const AZURE_BREEZE_CARDS = [
     packStats: { attack: 6, health: 9 },
     art: "units-azure-breeze-golden-mountain-guardian-master.png",
     few: ["Verdant Pulse — on activation, heal this unit 1 damage."],
-    pack: ["Returning Earth — heal 2 on activation; unlimited Retaliation."]
+    pack: ["Returning Earth — heal 1 on activation; unlimited Retaliation."]
   }
 ];
 

@@ -53,8 +53,21 @@ describe("anime/xianxia faction briefings", () => {
 
   it("exposes the engine's per-town notice prefix", () => {
     expect(animeFactionPenaltyTitle("fuyuki")).toBe("Grail War Upkeep");
+    expect(animeFactionPenaltyTitle("azure_breeze")).toBe("Formation Exposure");
+    expect(animeFactionPenaltyTitle("heavenly_demon")).toBe("Demonic Backlash");
     expect(animeFactionPenaltyTitle("azur_lane")).toBe("Fleet Maintenance");
     expect(animeFactionPenaltyTitle("castle")).toBeUndefined();
     expect(animeFactionPenalty("mgq")?.mechanicTitle).toBe("Four Spirits");
+  });
+
+  it("prints every cumulative custom-town drawback in the briefing notice", () => {
+    expect(animeFactionPenalty("fuyuki")?.detail).toContain("round 2");
+    expect(animeFactionPenalty("azure_breeze")?.detail).toContain("rounds 1 and 3 only");
+    expect(animeFactionPenalty("azure_breeze")?.detail).toContain("no Resource-round gold penalty");
+    expect(animeFactionPenalty("heavenly_demon")?.detail).toContain("enemy draws no penalty cards");
+    expect(animeFactionPenalty("heavenly_demon")?.detail).toContain("no Resource-round gold penalty");
+    expect(animeFactionPenalty("little_busters")?.detail).toContain("Paralysis and −2 Attack");
+    expect(animeFactionPenalty("azur_lane")?.detail).toContain("draws 1 card");
+    expect(animeFactionPenalty("mgq")?.short).toBe("No recurring penalty");
   });
 });

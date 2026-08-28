@@ -277,12 +277,12 @@ export const XIANXIA_CULTIVATION_NODES = [
   {
     id: "xianxia-meridian-circulation", tier: 1, kind: "passive",
     name: { en: "Meridian Circulation", vi: "Chu Thiên Vận Khí" },
-    summary: "Passive: begin each combat with +1 Sect Qi (2 instead of 1)."
+    summary: "Passive: begin each combat with 1 Sect Qi instead of 0."
   },
   {
     id: "xianxia-body-refinement", tier: 2, kind: "passive",
     name: { en: "Body Refinement", vi: "Luyện Thể" },
-    summary: "Passive: your Sect Qi capacity increases from 3 to 4."
+    summary: "Passive: Sect Qi capacity remains fixed at 2; this realm grants no extra Qi capacity."
   },
   {
     id: "xianxia-sword-domain", tier: 3, kind: "passive",

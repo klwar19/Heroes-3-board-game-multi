@@ -67,6 +67,6 @@
       <path d="m0-14 4 9 10 1-8 6 3 10-9-6-9 6 3-10-8-6 10-1z" fill="#e8edf5"/>
     </g>
     <text x="622" y="791" class="smallcaps" fill="#e8edf5" font-size="14" text-anchor="end">SILVER</text>
-    <text class="display" fill="#fff1d3" font-size="23" text-anchor="middle"><tspan x="418" y="919.5">Rule Breaker — elemental damage; each attack</tspan><tspan x="418" y="944.5">or Spell deals at most 1 damage.</tspan></text>
+    <text class="display" fill="#fff1d3" font-size="23" text-anchor="middle"><tspan x="418" y="919.5">Rule Breaker — fixed 2 damage; once per round</tspan><tspan x="418" y="944.5">cap one incoming attack or Spell at 1.</tspan></text>
   </g>
 </svg>

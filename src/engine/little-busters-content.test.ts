@@ -161,16 +161,16 @@ describe("Little Busters complete playable content", () => {
     });
     expect(coreUnitDefinitions["little_busters.masato"]).toMatchObject({
       few: { attack: 3, defense: 2, health: 5, initiative: 4 },
-      pack: { attack: 4, defense: 2, health: 6, initiative: 5 }
+      pack: { attack: 4, defense: 2, health: 5, initiative: 5 }
     });
     expect(coreUnitDefinitions["little_busters.saya"]).toMatchObject({
       few: { attack: 6, defense: 2, health: 5, initiative: 8, cost: { gold: 14, valuables: 1 } },
-      pack: { attack: 7, defense: 2, health: 6, initiative: 9, cost: { gold: 21, valuables: 2 } }
+      pack: { attack: 6, defense: 2, health: 6, initiative: 9, cost: { gold: 21, valuables: 2 } }
     });
     expect(coreUnitDefinitions["little_busters.mio"]).toMatchObject({
       type: "ranged",
-      few: { attack: 5, defense: 3, health: 6, initiative: 4 },
-      pack: { attack: 6, defense: 3, health: 7, initiative: 5, cost: { gold: 28, valuables: 2 } }
+      few: { attack: 5, defense: 2, health: 6, initiative: 4 },
+      pack: { attack: 6, defense: 2, health: 7, initiative: 5, cost: { gold: 28, valuables: 2 } }
     });
   });
 
@@ -361,7 +361,7 @@ describe("Little Busters complete playable content", () => {
     expect(Object.values(control.combat!.units).some((unit) => unit.heroUnit)).toBe(false);
   });
 
-  it("Masato redirects one attack on an adjacent ally to himself, then is spent for that combat", () => {
+  it("Masato redirects one attack on any adjacent ally, including a Gold battlefield hero, per combat round", () => {
     const state = createInitialGameState("little-busters-masato-bodyguard");
     state.players.p1.hand = [];
     state.players.p2.hand = [];
@@ -370,7 +370,7 @@ describe("Little Busters complete playable content", () => {
     const masato = state.combat!.units.unit_p1_crusaders;
 
     Object.assign(attacker, { position: 13, attack: 3, abilities: [], activatedThisRound: false, attackedThisRound: false });
-    Object.assign(protectedUnit, { position: 9, defense: 0, maxHealth: 100, damage: 0, abilities: [], retaliatedThisRound: true });
+    Object.assign(protectedUnit, { position: 9, defense: 0, maxHealth: 100, damage: 0, abilities: [], grade: "gold", heroUnit: true, retaliatedThisRound: true });
     Object.assign(masato, {
       position: 10,
       cardName: "Pack of Masato the Wall",
@@ -393,7 +393,7 @@ describe("Little Busters complete playable content", () => {
     }));
     expect(after.combat!.units[protectedUnit.id].damage).toBe(0);
     expect(after.combat!.units[masato.id].damage).toBeGreaterThan(0);
-    expect(after.combat!.units[masato.id].usedBodyguardInterceptThisCombat).toBe(true);
+    expect(after.combat!.units[masato.id].bodyguardInterceptUsedRound).toBe(1);
     expect(after.eventLog.some((event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "masato-bodyguard-intercept")).toBe(true);
 
     const firstMasatoDamage = after.combat!.units[masato.id].damage;
@@ -413,6 +413,29 @@ describe("Little Busters complete playable content", () => {
     }));
     expect(after.combat!.units[protectedUnit.id].damage).toBeGreaterThan(0);
     expect(after.combat!.units[masato.id].damage).toBe(firstMasatoDamage);
+  });
+
+  it("the Little Busters battlefield hero retaliates normally", () => {
+    const state = createInitialGameState("little-busters-hero-retaliation");
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    const attacker = state.combat!.units.unit_p2_skeletons;
+    const hero = state.combat!.units.unit_p1_griffins;
+    Object.assign(attacker, { position: 13, attack: 2, defense: 0, maxHealth: 100, damage: 0, abilities: [], activatedThisRound: false, attackedThisActivation: false });
+    Object.assign(hero, { position: 9, attack: 3, defense: 0, maxHealth: 100, damage: 0, abilities: [], heroUnit: true, retaliatedThisRound: false });
+    state.activePlayerId = "p2";
+    state.combat!.activeUnitId = attacker.id;
+    state.combat!.dice.scriptedRolls = [0, 0, 0, 0];
+    state.combat!.dice.rollCount = 0;
+
+    const after = settleAttack(apply(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p2",
+      attackerId: attacker.id,
+      defenderId: hero.id
+    }));
+    expect(after.combat!.units[attacker.id].damage).toBeGreaterThan(0);
+    expect(after.combat!.units[hero.id].retaliatedThisRound).toBe(true);
   });
 
   it("Masato does not redirect an attack when the ally is not adjacent to him", () => {
@@ -447,7 +470,7 @@ describe("Little Busters complete playable content", () => {
     }));
     expect(after.combat!.units[protectedUnit.id].damage).toBeGreaterThan(0);
     expect(after.combat!.units[masato.id].damage).toBe(0);
-    expect(after.combat!.units[masato.id].usedBodyguardInterceptThisCombat).not.toBe(true);
+    expect(after.combat!.units[masato.id].bodyguardInterceptUsedRound).toBeUndefined();
   });
 
   it("Disciplinary Committee Pack chooses a real enemy for -1 Attack in round 1 only", () => {
@@ -527,7 +550,7 @@ describe("Little Busters complete playable content", () => {
     expect(getLegalActions(state, "p1").length).toBeGreaterThan(0);
   });
 
-  it("Saya Pack moves anywhere, ignores Retaliation, and reduces Defense only on a 0 or +1", () => {
+  it("Saya Pack moves anywhere, ignores Retaliation, and applies one non-stacking Armor Break only on -1", () => {
     function sayaAttack(roll: -1 | 0 | 1): GameState {
       const state = createInitialGameState(`little-busters-saya-runtime-${roll}`);
       state.players.p1.hand = [];
@@ -536,7 +559,7 @@ describe("Little Busters complete playable content", () => {
       const target = state.combat!.units.unit_p2_skeletons;
       Object.assign(saya, {
         cardName: "Pack of Saya Tokido",
-        attack: 7,
+        attack: 6,
         defense: 2,
         maxHealth: 100,
         damage: 0,
@@ -553,7 +576,7 @@ describe("Little Busters complete playable content", () => {
       state.combat!.dice.scriptedRolls = [roll, roll, roll, roll];
       state.combat!.dice.rollCount = 0;
 
-      if (roll === 0) {
+      if (roll === -1) {
         const anywhereMove = getLegalActions(state, "p1").find(
           (legal) =>
             legal.action.type === "MOVE_UNIT" &&
@@ -574,20 +597,19 @@ describe("Little Busters complete playable content", () => {
       }));
     }
 
-    for (const roll of [0, 1] as const) {
-      const after = sayaAttack(roll);
-      const target = after.combat!.units.unit_p2_skeletons;
-      expect(target.tokens?.filter((token) => token.kind === "corrosion").map((token) => token.amount)).toEqual([1]);
-      expect(target.damage, "only one attack resolves; Armor Break replaces Attack 4 Double Tap").toBe(4 + roll);
-      expect(after.combat!.units.unit_p1_griffins.damage).toBe(0);
-      expect(target.retaliatedThisRound).toBe(false);
-      expect(after.eventLog.some((event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "saya-armor-break")).toBe(true);
-      expect(after.eventLog.some((event) => event.type === "UNIT_ATTACK_DECLARED" && event.abilityAttack?.abilityId === "saya-double-tap")).toBe(false);
-    }
+    const hit = sayaAttack(-1);
+    const target = hit.combat!.units.unit_p2_skeletons;
+    expect(target.tokens?.filter((token) => token.kind === "corrosion").map((token) => token.amount)).toEqual([1]);
+    expect(target.damage).toBe(2);
+    expect(hit.combat!.units.unit_p1_griffins.damage).toBe(0);
+    expect(target.retaliatedThisRound).toBe(false);
+    expect(hit.eventLog.some((event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "saya-armor-break")).toBe(true);
 
-    const miss = sayaAttack(-1).combat!.units.unit_p2_skeletons;
-    expect(miss.tokens?.some((token) => token.kind === "corrosion") ?? false).toBe(false);
-    expect(miss.damage).toBe(3);
+    for (const roll of [0, 1] as const) {
+      const miss = sayaAttack(roll).combat!.units.unit_p2_skeletons;
+      expect(miss.tokens?.some((token) => token.kind === "corrosion") ?? false).toBe(false);
+      expect(miss.damage).toBe(3 + roll);
+    }
   });
 
   it("Komari's Everyone Smiles reduces spell damage on adjacent units (a non-adjacent unit takes it in full)", () => {

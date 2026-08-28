@@ -301,8 +301,8 @@ const CARDS = [
   {
     slug: "ghost-king", tier: "golden", name: "Ghost King", kind: "RANGED", level: 6,
     fewMaster: "units/ghost-king-few-master.png", packMaster: "units/ghost-king-pack-master.png", packFlip: false,
-    few: { attack: 4, defense: 3, health: 7, initiative: 5, cost: { gold: 14, valuables: 1 }, rule: "Soulfire — ignores adjacent ranged penalty; heal 1 on activation." },
-    pack: { attack: 5, defense: 3, health: 8, initiative: 6, cost: { gold: 22, valuables: 2 }, rule: "Royal Soulfire — ignores all Combat penalties; heal 2 on activation." }
+    few: { attack: 4, defense: 2, health: 7, initiative: 5, cost: { gold: 14, valuables: 1 }, rule: "Soulfire — ignores the adjacent ranged penalty; no healing." },
+    pack: { attack: 5, defense: 2, health: 8, initiative: 6, cost: { gold: 22, valuables: 2 }, rule: "Royal Soulfire — ignores all Combat penalties; heal 1 on activation." }
   },
   {
     slug: "demon-avatar", tier: "golden", name: "Heavenly Demon Avatar", kind: "GROUND", level: 7,

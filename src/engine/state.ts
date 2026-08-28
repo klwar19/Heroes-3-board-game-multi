@@ -4217,8 +4217,10 @@ export type GameAction =
       /**
        * PvP anti-Little-Busters counter: a fighter facing a Little Busters seat
        * pays 1 gold for one of three effects — the LB seat discards a random hand
-       * card ("discard"), the LB campus hero unit takes 3 effect damage ("damage"),
-       * or the spender draws a card ("draw"). Each is offered once per combat.
+       * card ("discard"), the LB campus hero is reduced to half HP (round up)
+       * plus Paralysis and
+       * round-1 −2 Attack ("damage"), or the spender draws 2 cards ("draw").
+       * Each is offered once per combat; computer opponents prioritize all three.
        * Handler-validated (self-validating; no window opens).
        */
       type: "LITTLE_BUSTERS_COUNTER";
@@ -9265,8 +9267,14 @@ export type CombatUnitState = {
   summonedThisCombat?: boolean;
   /** Archangels: set once this unit has spent its once-per-combat lethal save. */
   usedLethalSaveThisCombat?: boolean;
-  /** Masato: set once Bodyguard redirects an adjacent ally's attack. */
-  usedBodyguardInterceptThisCombat?: boolean;
+  /** Fuyuki Medea: her one incoming-damage cap has been spent this combat round. */
+  fuyukiCasterDamageCapUsedThisRound?: boolean;
+  /** Masato: combat round in which Bodyguard redirected an adjacent ally's attack. */
+  bodyguardInterceptUsedRound?: number;
+  /** Cumulative Defense gained from STACKING_DEFENSE_WHEN_ATTACKED this combat. */
+  stackingDefenseWhenAttackedBonus?: number;
+  /** Mio Pack: its +1 Defense against the first attack this round has been spent. */
+  mioFirstDefenseUsedThisRound?: boolean;
   /** Phoenixes: set once this unit has spent its once-per-combat Rebirth self-save. */
   usedRebirthThisCombat?: boolean;
   /** MGQ Mage Job: the pre-movement Magic Arrow has been spent this combat. */
@@ -9715,6 +9723,10 @@ export type CombatState = {
   fuyukiCommandSealUsedPlayerIds?: PlayerId[];
   /** Azur Lane seats whose one random-unit maintenance damage already fired this combat. */
   azurLaneMaintenanceDone?: PlayerId[];
+  /** Anime combat-start penalties already resolved, keyed by faction/player. */
+  animeCombatStartPenaltyDone?: string[];
+  /** Anime round penalties already resolved, keyed by faction/player/round. */
+  animeRoundPenaltyDone?: string[];
   /** Per-side Spirit Shrine choices frozen at setup for this combat. */
   mgqSpirits?: Partial<Record<PlayerId, MgqSpirit>>;
   /**
@@ -9724,7 +9736,9 @@ export type CombatState = {
    */
   cultivationFactions?: Partial<Record<PlayerId, {
     sectQi?: number;
+    sectQiGainedRound?: number;
     bloodEssence?: number;
+    bloodEssenceGainedRound?: number;
     swordIntent?: number;
     bloodFrenzySpentRound?: number;
     /** Yulian's once-per-round Jade Body recovery. */

@@ -104,6 +104,19 @@ describe("anime specialty redesign — clone ↔ source mechanical identity", ()
     }
   });
 
+  it("pins the nerfed Jianxu and Shiyan Innate descriptions on every level", () => {
+    for (const level of LEVELS) {
+      const jianxu = (cardLibrary[`specialty.jianxu.${level}`]?.tags ?? []).join(" ");
+      expect(jianxu).toContain("+1 Attack only");
+      expect(jianxu).toContain("never stacks");
+      expect(jianxu).not.toContain("+2 instead");
+
+      const shiyan = (cardLibrary[`specialty.shiyan.${level}`]?.tags ?? []).join(" ");
+      expect(shiyan).toContain("exactly 1 Blood Essence");
+      expect(shiyan).not.toContain("yields 2");
+    }
+  });
+
   it("Xuanming's labels are re-flavoured while the effects stay Diplomacy's, verbatim", () => {
     for (const level of LEVELS) {
       const clone = cardLibrary[`specialty.xuanming.${level}`];

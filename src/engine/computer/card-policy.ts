@@ -1064,6 +1064,17 @@ export function scoreCardAction(
       // this activation ends.
       const optionIndex = "optionIndex" in action ? action.optionIndex : undefined;
       const actionEffect = primaryEffect(card, optionIndex);
+      if (action.type === "PLAY_REACTION") {
+        const pending = pendingAttackValues(observation);
+        if (
+          pending?.defender.controllerId === observation.playerId &&
+          pending.attacker.abilities?.some((abilityId) =>
+            abilityId === "fuyuki-caster-fixed-2" || abilityId === "fuyuki-caster-fixed-3"
+          )
+        ) {
+          return { score: -1000, policy: "card.hold-defense-vs-fixed-medea" };
+        }
+      }
       if (
         action.type === "PLAY_CARD" &&
         actionEffect?.type === "ADD_SPELL_POWER" &&

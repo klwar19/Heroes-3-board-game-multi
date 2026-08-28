@@ -69,12 +69,13 @@ function setActive(state: GameState, playerId: PlayerId, unitId: string): void {
 
 function rangedDuel(options: {
   attackerAttack?: number;
+  attackerAbilities?: string[];
   defenderAbilities?: string[];
   rolls: number[];
 }): GameState {
   const state = createInitialGameState("fuyuki-casters-attack-seed");
   const attacker = state.combat!.units.unit_p1_marksmen;
-  attacker.abilities = [];
+  attacker.abilities = options.attackerAbilities ?? [];
   attacker.attack = options.attackerAttack ?? 10;
   attacker.position = 1;
 
@@ -102,17 +103,24 @@ function rangedDuel(options: {
 }
 
 describe("Fuyuki Casters — shipped ability tags", () => {
-  it("Medea's Few keeps the hard cap while Pack adds the spell-power rider", () => {
+  it("Medea's Few and Pack carry their exact fixed-damage abilities", () => {
     const def = coreUnitDefinitions["fuyuki.casters"];
     expect(def).toBeDefined();
-    expect(def.few!.abilities).toEqual(["elemental-damage", "casters-damage-cap"]);
-    expect(def.pack!.abilities).toEqual(["elemental-damage", "casters-damage-cap", "magi-power-boost"]);
+    expect(def.few!.abilities).toEqual(["elemental-damage", "casters-damage-cap", "fuyuki-caster-fixed-2"]);
+    expect(def.pack!.abilities).toEqual(["elemental-damage", "casters-damage-cap", "magi-power-boost", "fuyuki-caster-fixed-3"]);
     for (const side of [def.few!, def.pack!]) {
       expect(side.abilities).not.toContain("reduce-spell-damage-1");
       for (const id of side.abilities) {
         expect(unitAbilities[id]?.implementationStatus, id).toBe("implemented");
       }
     }
+  });
+
+  it("Medea attacks deal exactly 2 as Few and 3 as Pack regardless of attack stat or die", () => {
+    const few = rangedDuel({ attackerAttack: 99, attackerAbilities: ["fuyuki-caster-fixed-2"], rolls: [1] });
+    expect(few.combat!.units.unit_p2_skeletons.damage).toBe(2);
+    const pack = rangedDuel({ attackerAttack: 1, attackerAbilities: ["fuyuki-caster-fixed-3"], rolls: [-1] });
+    expect(pack.combat!.units.unit_p2_skeletons.damage).toBe(3);
   });
 
   it("casters-damage-cap is a 1-damage attack+spell hard cap", () => {
@@ -137,7 +145,7 @@ describe("Fuyuki Casters — elemental damage", () => {
   });
 });
 
-describe("Fuyuki Casters — Leyline Barrier (damage cap 1)", () => {
+describe("Fuyuki Casters — Leyline Barrier (one damage cap per combat round)", () => {
   it("getDamageCapPerAttack / getDamageCapPerSpell report amount 1", () => {
     expect(getDamageCapPerAttack(unitWith(["casters-damage-cap"]))?.amount).toBe(1);
     expect(getDamageCapPerSpell(unitWith(["casters-damage-cap"]))?.amount).toBe(1);
@@ -156,6 +164,17 @@ describe("Fuyuki Casters — Leyline Barrier (damage cap 1)", () => {
 
     const control = rangedDuel({ attackerAttack: 10, defenderAbilities: [], rolls: [0] });
     expect(control.combat!.units.unit_p2_skeletons.damage).toBe(10);
+  });
+
+  it("caps only the first qualifying hit in a combat round", () => {
+    const next = rangedDuel({
+      attackerAttack: 10,
+      attackerAbilities: ["double-attack"],
+      defenderAbilities: ["casters-damage-cap"],
+      rolls: [0, 0]
+    });
+    expect(next.combat!.units.unit_p2_skeletons.damage).toBe(11);
+    expect(next.combat!.units.unit_p2_skeletons.fuyukiCasterDamageCapUsedThisRound).toBe(true);
   });
 
   it("does not change a hit that is already ≤1", () => {

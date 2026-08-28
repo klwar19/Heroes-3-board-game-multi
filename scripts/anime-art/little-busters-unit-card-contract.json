@@ -72,10 +72,10 @@
       "text": "Muscle Wall - always rolls the Defend die when attacked."
     },
     "pack": {
-      "stats": { "attack": 4, "defense": 2, "health": 6, "initiative": 5 },
+      "stats": { "attack": 4, "defense": 2, "health": 5, "initiative": 5 },
       "cost": { "gold": 15 },
       "abilities": ["commander-defense-token", "masato-bodyguard-intercept"],
-      "text": "Bodyguard - always rolls the Defend die; once per Combat, an attack on an adjacent friendly unit is redirected to Masato."
+      "text": "Bodyguard - always rolls the Defend die; once per Combat round, redirect an attack on any adjacent ally to Masato, including Gold units and the battlefield hero."
     }
   },
   {
@@ -112,10 +112,10 @@
       "text": "Infiltration - as a move, place Saya on any empty Combat space; her attacks do not provoke Retaliation."
     },
     "pack": {
-      "stats": { "attack": 7, "defense": 2, "health": 6, "initiative": 9 },
+      "stats": { "attack": 6, "defense": 2, "health": 6, "initiative": 9 },
       "cost": { "gold": 21, "valuables": 2 },
       "abilities": ["saya-infiltration", "ignores-retaliation", "saya-armor-break"],
-      "text": "Infiltration - move to any empty space and ignore Retaliation; Armor Break - on a 0 or +1 on Saya's Attack die, the target gets -1 Defense (minimum 0) for the rest of Combat."
+      "text": "Infiltration - move to any empty space and ignore Retaliation; Armor Break - only on a -1 on Saya's Attack die, place one non-stacking -1 Defense token (minimum 0) for the rest of Combat."
     }
   },
   {
@@ -126,16 +126,16 @@
     "type": "RANGED",
     "art": "mio-nishizono-master.png",
     "few": {
-      "stats": { "attack": 5, "defense": 3, "health": 6, "initiative": 4 },
+      "stats": { "attack": 5, "defense": 2, "health": 6, "initiative": 4 },
       "cost": { "gold": 19 },
       "abilities": ["gargoyle-spell-ward", "ignore-all-combat-penalties"],
       "text": "White Parasol - takes 1 less Spell damage and ignores all ranged penalties."
     },
     "pack": {
-      "stats": { "attack": 6, "defense": 3, "health": 7, "initiative": 5 },
+      "stats": { "attack": 6, "defense": 2, "health": 7, "initiative": 5 },
       "cost": { "gold": 28, "valuables": 2 },
       "abilities": ["gargoyle-spell-ward", "ignore-all-combat-penalties", "archangel-lethal-save"],
-      "text": "Midori's Shadow - spell ward and no ranged penalties; once per Combat, cancel lethal damage to another friendly unit."
+      "text": "Midori's Shadow - +1 Defense against the first attack each Combat round; spell ward and no ranged penalties; once per Combat, cancel lethal damage to another friendly unit."
     }
   }
 ]

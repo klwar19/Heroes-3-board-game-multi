@@ -115,7 +115,7 @@ function attack(state: GameState, attackerId: string, defenderId: string): GameS
 }
 
 describe("Azure Breeze cultivation combat", () => {
-  it("Jianxu's Seven-Star Array turns a tight three-unit formation into +2 Attack, not a global bonus", () => {
+  it("Jianxu's Seven-Star Array gives a tight three-unit formation +1 Attack", () => {
     let state = combatState("azure_breeze", "jianxu");
     const attacker = configure(state, "unit_p1_marksmen", 9, "p1", 3);
     configure(state, "unit_p1_griffins", 8, "p1");
@@ -123,9 +123,11 @@ describe("Azure Breeze cultivation combat", () => {
     configure(state, "unit_p2_skeletons", 10, "p2", 0, 1);
     configure(state, "unit_p2_vampires", 16, "p2");
     configure(state, "unit_p2_dread_knights", 19, "p2");
+    state.combat!.cultivationFactions!.p1!.sectQi = 1;
+    state.combat!.units.unit_p1_griffins.abilities = ["azure-sword-array"];
 
     state = attack(state, attacker.id, "unit_p2_skeletons");
-    expect(latestOwnAttack(state, attacker.id).attackValue).toBe(5);
+    expect(latestOwnAttack(state, attacker.id).attackValue).toBe(4);
     expect(state.eventLog.some((event) => event.type === "HERO_SKILL_USED" && event.nodeId === "jianxu-seven-star-array")).toBe(true);
   });
 
@@ -138,6 +140,7 @@ describe("Azure Breeze cultivation combat", () => {
     configure(state, "unit_p1_crusaders", 0, "p1");
     const secondAttacker = configure(state, "unit_p2_vampires", 5, "p2", 0, 0);
     configure(state, "unit_p2_dread_knights", 19, "p2");
+    state.combat!.cultivationFactions!.p1!.sectQi = 1;
 
     state = attack(state, attacker.id, defender.id);
     expect(state.combat!.units[defender.id].damage).toBe(1);
@@ -158,7 +161,8 @@ describe("Azure Breeze cultivation combat", () => {
     configure(state, "unit_p2_vampires", 16, "p2");
     configure(state, "unit_p2_dread_knights", 19, "p2");
 
-    expect(state.combat!.cultivationFactions?.p1?.sectQi).toBe(1);
+    expect(state.combat!.cultivationFactions?.p1?.sectQi).toBe(0);
+    state.combat!.cultivationFactions!.p1!.sectQi = 1;
     state = attack(state, attacker.id, "unit_p2_skeletons");
 
     expect(latestOwnAttack(state, attacker.id).attackValue).toBe(4);
@@ -193,13 +197,13 @@ describe("Azure Breeze cultivation combat", () => {
     expect(state.combat!.cultivationFactions?.p1?.swordIntent).toBe(1);
   });
 
-  it("cultivation-realm upgrades raise starting/capacity Qi and shorten Sword Domain tempering", () => {
+  it("cultivation starts with at most one Qi, caps at two, and shortens Sword Domain tempering", () => {
     let state = combatState("azure_breeze", "qingyun");
     // Realm 3 (Nascent Soul) folds in all three former grade nodes: Meridian
     // Circulation (r1), Body Refinement (r2) and Sword Domain (r3).
     state.heroes.hero_p1.cultivationRealm = 3;
     initializeCultivationFactionCombat(state, state.combat!);
-    expect(state.combat!.cultivationFactions?.p1?.sectQi).toBe(2);
+    expect(state.combat!.cultivationFactions?.p1?.sectQi).toBe(1);
 
     const attacker = configure(state, "unit_p1_marksmen", 9, "p1", 3);
     configure(state, "unit_p1_griffins", 0, "p1");
@@ -207,9 +211,9 @@ describe("Azure Breeze cultivation combat", () => {
     configure(state, "unit_p2_skeletons", 10, "p2", 0, 1);
     configure(state, "unit_p2_vampires", 16, "p2");
     configure(state, "unit_p2_dread_knights", 19, "p2");
-    state.combat!.cultivationFactions!.p1 = { sectQi: 3, swordIntent: 0 };
+    state.combat!.cultivationFactions!.p1 = { sectQi: 1, swordIntent: 0 };
     gainSectQiAfterMove(state, attacker, 9, 5);
-    expect(state.combat!.cultivationFactions?.p1?.sectQi).toBe(4);
+    expect(state.combat!.cultivationFactions?.p1?.sectQi).toBe(2);
 
     attacker.position = 9;
     state.combat!.units.unit_p1_crusaders.position = 0;
@@ -256,7 +260,7 @@ describe("cultivation art contract", () => {
 });
 
 describe("Heavenly Demon cultivation combat", () => {
-  it("Shiyan's Corpse-Furnace Sutra adds one bonus Essence on only the first real casualty each round", () => {
+  it("Shiyan generates only one Essence from the first real casualty each round", () => {
     const state = combatState("heavenly_demon", "shiyan");
     const first = state.combat!.units.unit_p1_marksmen;
     const second = state.combat!.units.unit_p1_griffins;
@@ -267,7 +271,7 @@ describe("Heavenly Demon cultivation combat", () => {
       casualty.damage = casualty.maxHealth;
       markUnitRemovedIfNeeded(state, casualty);
     }
-    expect(state.combat!.cultivationFactions?.p1?.bloodEssence).toBe(3);
+    expect(state.combat!.cultivationFactions?.p1?.bloodEssence).toBe(1);
     expect(state.combat!.cultivationFactions?.p1?.corpseFurnaceSurgeRound).toBe(1);
 
     state.combat!.round = 2;
@@ -275,7 +279,7 @@ describe("Heavenly Demon cultivation combat", () => {
     third.variant = "pack";
     third.damage = third.maxHealth;
     markUnitRemovedIfNeeded(state, third);
-    expect(state.combat!.cultivationFactions?.p1?.bloodEssence).toBe(2);
+    expect(state.combat!.cultivationFactions?.p1?.bloodEssence).toBe(1);
   });
 
   it("Bai Luohun's Soul Shepherd strengthens the Banner shade and keeps it through round 2", () => {

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="743" height="1040" viewBox="0 0 743 1040">
   <title>Azure Breeze Sect Golden Core Elders PACK art proof</title>
-  <metadata data-status="art-proof-not-playable" data-layout="ninefold-board-game-classic-v3" data-source="docs/anime-mod-plan.md" data-master="units-azure-breeze-golden-core-formation-master.png" data-frame="units-azure-breeze-board-game-frame-master.png" data-level="6" data-variant="pack" data-attack="6" data-defense="2" data-health="7" data-initiative="6" data-traits="RANGED,MAGIC" data-rule-capacity-lines="7"/>
+  <metadata data-status="art-proof-not-playable" data-layout="ninefold-board-game-classic-v3" data-source="docs/anime-mod-plan.md" data-master="units-azure-breeze-golden-core-formation-master.png" data-frame="units-azure-breeze-board-game-frame-master.png" data-level="6" data-variant="pack" data-attack="5" data-defense="1" data-health="7" data-initiative="6" data-traits="RANGED,MAGIC" data-rule-capacity-lines="7"/>
   <defs>
     <linearGradient id="variantBand" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4a2d1d"/><stop offset=".52" stop-color="#29170f"/><stop offset="1" stop-color="#1a0d09"/></linearGradient>
     <filter id="textShadow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur in="SourceAlpha" stdDeviation="2"/><feOffset dy="2"/><feComponentTransfer><feFuncA type="linear" slope=".8"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
@@ -38,14 +38,14 @@
       <path d="M24-23-21 22M16-28l13 13-12 1M-15 28l-13-13 12-1"/>
       <path d="m-10 17-7 11M10 17l7 11" stroke="#8ab39a"/>
     </g>
-      <text x="118" y="274" class="statNumber">6</text>
+      <text x="118" y="274" class="statNumber">5</text>
     </g><g id="stat-defense">
       <g id="icon-defense-jade-shield" transform="translate(118 353)" fill="none" stroke="#dce4c5" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round" filter="url(#iconShadow)">
       <path d="M0-30 27-20V1c0 22-11 37-27 45C-16 38-27 23-27 1v-21z" fill="#183d35" stroke="#dce4c5"/>
       <path d="M0-21 17-14V1c0 13-6 24-17 31C-11 25-17 14-17 1v-15z" stroke="#86ad91"/>
       <circle r="8"/><path d="M0-8a8 8 0 0 0 0 16M0-8a4 4 0 0 1 0 8M0 0a4 4 0 0 0 0 8" stroke-width="2.7"/>
     </g>
-      <text x="118" y="422" class="statNumber">2</text>
+      <text x="118" y="422" class="statNumber">1</text>
     </g><g id="stat-health">
       <g id="icon-health-lotus-cross" transform="translate(118 501)" fill="none" stroke="#dce4c5" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round" filter="url(#iconShadow)">
       <path d="M-11-29H11V-11H29V11H11V29H-11V11H-29V-11H-11Z" fill="#d7d7a4" stroke="#f2e7bd"/>

@@ -288,7 +288,7 @@ import {
   injectHeroGradeFamiliar
 } from "./hero-grade-combat";
 import { hiddenLeafCombatFormationError, hiddenLeafMissionCompletion } from "./anime-town-mechanics";
-import { applyAzurLaneCombatStartPenalty } from "./anime-faction-penalties";
+import { applyAnimeCombatRoundPenalties, applyAnimeCombatStartPenalties, applyAzurLaneCombatStartPenalty } from "./anime-faction-penalties";
 import {
   initializeCultivationFactionCombat,
   injectSoulBannerShade
@@ -10680,40 +10680,6 @@ export function finishCombatPlacement(state: GameState, action: Extract<GameActi
     throw new Error("Choose one of the Four Spirits before starting the battle.");
   }
 
-  // Monster Girl Quest faction cost: every main-hero combat pays one hand card
-  // before deployment can be confirmed. The combat-local receipt prevents a
-  // reopened setup or a second participant from charging the same hero twice.
-  if (
-    state.adventure &&
-    state.players[action.playerId]?.factionId === "mgq" &&
-    playerMainHeroInCombat(state, action.playerId) &&
-    !(combat.mgqSpiritCostPaidPlayerIds ?? []).includes(action.playerId)
-  ) {
-    const player = state.players[action.playerId];
-    if (player.hand.length === 0) {
-      combat.mgqSpiritCostPaidPlayerIds = [...(combat.mgqSpiritCostPaidPlayerIds ?? []), action.playerId];
-      appendEvent(state, {
-        type: "EVENT_NOTE",
-        playerId: action.playerId,
-        message: "Spirit summoning cost waived — no card was available to discard."
-      });
-    } else {
-      state.pendingChoice = {
-        id: `choice_${nextEventNumber(state)}`,
-        type: "OPTION_CHOICE",
-        playerId: action.playerId,
-        prompt: "Spirit summoning cost: discard 1 card before the battle begins.",
-        options: player.hand.map((cardId) => ({ label: `Discard ${cardLibrary[cardId]?.name ?? cardId}` })),
-        context: "hand-discard",
-        handDiscard: { cardIds: [...player.hand], remaining: 1, drawnOnly: false, mgqSpiritCost: true },
-        returnPhase: "combat-setup"
-      };
-      state.phase = "choice";
-      state.priorityPlayerId = action.playerId;
-      return;
-    }
-  }
-
   if ((setup.placedUnitIds[action.playerId] ?? []).length === 0) {
     // WOG Commanders: a player whose unit deck is EMPTY (no free restock while
     // the commander lives) fights commander-only — the commander is auto-placed
@@ -11317,10 +11283,8 @@ function resumeCombatStartAfterCommanderPlacement(state: GameState): void {
   // war-machine round, so a charmed/fled defender never soaks a Ballista shot.
   applyCommanderCombatStart(state);
   applyMgqHeroCombatStart(state);
-  // PvP (USER RULE): a fighter facing a Monster Girl Quest seat draws 1 card at
-  // battle start — the campus's monster lore tips the opponent off. One-time,
-  // opponents-of-MGQ only, PvP fights only.
-  applyMgqOpponentBattleStartDraw(state);
+  applyAnimeCombatStartPenalties(state);
+  applyAnimeCombatRoundPenalties(state);
   // Forced Battle Events (Anime mod, §3.12): a fought field's combat-start
   // script events (environment mist, an obstacle formation, an opening pulse)
   // settle LAST — after the commander package, before the first war-machine
@@ -11343,20 +11307,6 @@ function resumeCombatStartAfterCommanderPlacement(state: GameState): void {
  * and only the non-MGQ side benefits (in an MGQ mirror both sides draw). The
  * MGQ seat itself never draws from this.
  */
-function applyMgqOpponentBattleStartDraw(state: GameState): void {
-  const combat = state.combat;
-  if (!combat || combat.context.kind !== "player") return;
-  const done = combat.mgqOpponentBattleStartDrawDone ?? [];
-  for (const playerId of [combat.attackerPlayerId, combat.defenderPlayerId]) {
-    if (playerId === NEUTRAL_PLAYER_ID || done.includes(playerId)) continue;
-    const opponentId = playerId === combat.attackerPlayerId ? combat.defenderPlayerId : combat.attackerPlayerId;
-    if (state.players[opponentId]?.factionId !== "mgq") continue;
-    drawCardsForPlayer(state, playerId, 1);
-    done.push(playerId);
-  }
-  combat.mgqOpponentBattleStartDrawDone = done;
-}
-
 /**
  * FO redesign wave 2 — Đài Luyện Khí (`anime.dai_luyen_khi`) "Temper the body".
  * A player who spent 1 hero movement at the platform banked

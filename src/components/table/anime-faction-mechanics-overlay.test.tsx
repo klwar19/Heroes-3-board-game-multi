@@ -52,7 +52,7 @@ describe("AnimeFactionMechanicsOverlay", () => {
     expect(dialog.querySelector<HTMLElement>(".animeTownBriefing")?.getAttribute("data-register")).toBe("wuxia");
     expect(dialog.textContent).toContain("CULTIVATION SECT");
     expect(dialog.textContent).toContain("Blood Essence & Blood Frenzy");
-    expect(dialog.textContent).toContain("Demonic Cult Tribute");
+    expect(dialog.textContent).toContain("Demonic Backlash");
   });
 
   it("turns a matching engine note into the faction-art penalty notice", () => {
