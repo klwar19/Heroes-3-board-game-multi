@@ -68,6 +68,7 @@ import {
   adventureVictoryMode,
   armyHasMapEffect,
   beginFieldVisit,
+  breakClearedByTeam,
   beginNextPendingStartTileRotation,
   canDigGrail,
   grailObelisksRequired,
@@ -1514,7 +1515,11 @@ function resolveHeroArrival(
     return;
   }
 
-  if (isFieldGuarded(field) && field.flagOwnerId !== hero.controllerId) {
+  if (
+    isFieldGuarded(field) &&
+    field.flagOwnerId !== hero.controllerId &&
+    !breakClearedByTeam(state, hero.controllerId, field)
+  ) {
     if (gateTravel) {
       // Slip past: no Combat, no experience, no reward — and the guard STAYS,
       // so this hex is still a guarded field for every later entry.
@@ -4399,7 +4404,7 @@ setTeleportArrivalHook((state, hero, field, originSpaceId) => {
     startPlayerCombat(state, hero, enemyHero, field.spaceId);
     return;
   }
-  if (isFieldGuarded(field) && field.flagOwnerId !== playerId) {
+  if (isFieldGuarded(field) && field.flagOwnerId !== playerId && !breakClearedByTeam(state, playerId, field)) {
     state.adventure!.lastVisitedField[hero.id] = originSpaceId;
     startNeutralEncounter(state, hero, field, { teleportArrival: true });
   }

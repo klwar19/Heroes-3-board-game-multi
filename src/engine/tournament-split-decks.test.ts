@@ -59,10 +59,12 @@ describe("Tournament Mode forces tier-split decks (engine seam)", () => {
       "tournamentBanDiplomacy",
       "tournamentBanHourglass",
       "tournamentSecondPlayerMorale",
+      "tournamentMoraleSearchAgain",
+      "tournamentRemovedArtifactsVp",
       "tournamentObservatoryRerotate"
     ] as const;
 
-    it("ticking all four granular rules one at a time splits the decks in the BUILT game", () => {
+    it("ticking every granular rule one at a time splits the decks in the BUILT game", () => {
       let state = lobby("tournament-split-granular");
       // Legacy ruleset: split-decks defaults OFF, so nothing but the wiring
       // under test can turn it on.
@@ -103,7 +105,7 @@ describe("Tournament Mode forces tier-split decks (engine seam)", () => {
         playerId: "p1",
         options: { ruleset: "legacy", difficulty: "hard" }
       }).state;
-      // Three of the four rules: the package is NOT on, so nothing is forced.
+      // Only part of the package: it is NOT on, so nothing is forced.
       for (const key of GRANULAR.slice(0, 3)) {
         state = applyAction(state, {
           type: "SET_GAME_OPTIONS",

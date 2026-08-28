@@ -40,6 +40,11 @@ import {
 import { detectFinishedMatch } from "@/server/match-report";
 import { reportFinishedMatch } from "@/server/match-report-trigger";
 import {
+  captureRankedReplayAction,
+  discardRankedReplay,
+  takeFinishedRankedReplay,
+} from "@/server/ranked-replay-buffer";
+import {
   actorIsRoomParticipant,
   applyUndoMove,
   clearUndoHistory,
@@ -603,11 +608,13 @@ export function submitRoomAction(
   // genuinely unpredictable and non-reproducible from the game seed (true random
   // in play). A no-op for the deterministic engine test suite, which calls
   // applyAction directly without it (see random.ts).
+  const replayEntropy = freshEntropy();
+  const replayNow = Date.now();
   const result = applyAction(current.state, action, {
-    entropy: freshEntropy(),
+    entropy: replayEntropy,
     // Server wall clock: the AFK vote-kick's only time source (idle stamps +
     // the 10-minute idle/re-ask gates).
-    now: Date.now(),
+    now: replayNow,
     // Live-stream set for this room: RECLAIM_HOST refuses while the current host
     // is still connected (the reset/close "host absent" rule, applied to host
     // recovery so a restarted guest host can take their own table back).
@@ -623,6 +630,12 @@ export function submitRoomAction(
       result
     };
   }
+
+  captureRankedReplayAction(roomId, current.state, action, result, {
+    ...(actorClientId ? { actorClientId } : {}),
+    entropy: replayEntropy,
+    now: replayNow,
+  });
 
   // A passed AFK kick vote or an expired 10-minute turn: drive the forced
   // resolution through the normal action pipeline until the seat is removed /
@@ -668,7 +681,10 @@ export function submitRoomAction(
   // Read the SETTLED state — an AFK kick driven right after this action may
   // itself have ended the game (last faction standing).
   const finishedMatch = detectFinishedMatch(current.state, settledState);
-  const pendingMatchReport = reportFinishedMatch(current.state, settledState) ?? undefined;
+  const finishedReplay = finishedMatch?.ranked
+    ? takeFinishedRankedReplay(roomId, finishedMatch.matchId, replayNow)
+    : null;
+  const pendingMatchReport = reportFinishedMatch(current.state, settledState, finishedReplay) ?? undefined;
   // RANKED multiplayer only: once a real win/loss is attributed, CLOSE the room
   // so a rematch cannot reuse the same table (same seed / matchSeats edge cases
   // that leave MMR unaccounted). Casual (ranked:false), single-player, sandbox,
@@ -1261,6 +1277,7 @@ export function forceCloseRoom(roomId: string, reason?: string): CloseRoomResult
   }
   cancelComputerPump(roomId);
   clearUndoHistory(roomId);
+  discardRankedReplay(roomId);
   roomStore.delete(roomId);
   deletePersistedRoom(roomId);
   notifyRoomListeners(roomId, withBootId({ ...cloneSerializable(record), closed: true }));

@@ -604,6 +604,10 @@ export type AdventureSetupOptions = {
   tournamentBanHourglass?: boolean;
   /** Tournament rule: second player +1 positive morale at game start. */
   tournamentSecondPlayerMorale?: boolean;
+  /** Tournament rule: spend positive Morale to discard and repeat an open Search. */
+  tournamentMoraleSearchAgain?: boolean;
+  /** Tournament rule: removed Artifact cards count during final VP scoring. */
+  tournamentRemovedArtifactsVp?: boolean;
   /** Tournament option: Redwood Observatory may re-rotate an adjacent no-Hero tile, then still discovers normally. */
   tournamentObservatoryRerotate?: boolean;
   /**
@@ -854,7 +858,7 @@ export const TOURNAMENT_REMOVED_ABILITY_ID = "ability.diplomacy";
 export const TOURNAMENT_REMOVED_ARTIFACT_ID = "artifact.hourglass_of_the_evil_hour";
 
 /**
- * Resolve the three granular Tournament setup rules. An explicit flag wins;
+ * Resolve the granular Tournament setup rules. An explicit flag wins;
  * otherwise the legacy `tournamentMode` convenience boolean turns every rule on.
  */
 export function resolveTournamentRules(
@@ -864,12 +868,16 @@ export function resolveTournamentRules(
     | "tournamentBanDiplomacy"
     | "tournamentBanHourglass"
     | "tournamentSecondPlayerMorale"
+    | "tournamentMoraleSearchAgain"
+    | "tournamentRemovedArtifactsVp"
     | "tournamentObservatoryRerotate"
   >
 ): {
   banDiplomacy: boolean;
   banHourglass: boolean;
   secondPlayerMorale: boolean;
+  moraleSearchAgain: boolean;
+  removedArtifactsVp: boolean;
   observatoryRerotate: boolean;
 } {
   // Explicit granular flags win; absent flags fall back to the master convenience
@@ -883,6 +891,14 @@ export function resolveTournamentRules(
     secondPlayerMorale:
       options.tournamentSecondPlayerMorale !== undefined
         ? Boolean(options.tournamentSecondPlayerMorale)
+        : master,
+    moraleSearchAgain:
+      options.tournamentMoraleSearchAgain !== undefined
+        ? Boolean(options.tournamentMoraleSearchAgain)
+        : master,
+    removedArtifactsVp:
+      options.tournamentRemovedArtifactsVp !== undefined
+        ? Boolean(options.tournamentRemovedArtifactsVp)
         : master,
     observatoryRerotate:
       options.tournamentObservatoryRerotate !== undefined
@@ -899,11 +915,20 @@ export function tournamentRulesAllOn(
     | "tournamentBanDiplomacy"
     | "tournamentBanHourglass"
     | "tournamentSecondPlayerMorale"
+    | "tournamentMoraleSearchAgain"
+    | "tournamentRemovedArtifactsVp"
     | "tournamentObservatoryRerotate"
   >
 ): boolean {
   const rules = resolveTournamentRules(options);
-  return rules.banDiplomacy && rules.banHourglass && rules.secondPlayerMorale && rules.observatoryRerotate;
+  return (
+    rules.banDiplomacy &&
+    rules.banHourglass &&
+    rules.secondPlayerMorale &&
+    rules.moraleSearchAgain &&
+    rules.removedArtifactsVp &&
+    rules.observatoryRerotate
+  );
 }
 
 
@@ -2802,6 +2827,12 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(options.tournamentSecondPlayerMorale !== undefined
       ? { tournamentSecondPlayerMorale: options.tournamentSecondPlayerMorale }
       : {}),
+    ...(options.tournamentMoraleSearchAgain !== undefined
+      ? { tournamentMoraleSearchAgain: options.tournamentMoraleSearchAgain }
+      : {}),
+    ...(options.tournamentRemovedArtifactsVp !== undefined
+      ? { tournamentRemovedArtifactsVp: options.tournamentRemovedArtifactsVp }
+      : {}),
     ...(options.tournamentObservatoryRerotate !== undefined
       ? { tournamentObservatoryRerotate: options.tournamentObservatoryRerotate }
       : {}),
@@ -3246,6 +3277,8 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     tournamentBanDiplomacy: tournamentRules.banDiplomacy,
     tournamentBanHourglass: tournamentRules.banHourglass,
     tournamentSecondPlayerMorale: tournamentRules.secondPlayerMorale,
+    tournamentMoraleSearchAgain: tournamentRules.moraleSearchAgain,
+    tournamentRemovedArtifactsVp: tournamentRules.removedArtifactsVp,
     tournamentObservatoryRerotate: tournamentRules.observatoryRerotate,
     pvpNeutralControl: pvpNeutralControlOn,
     pvpNeutralControlMustAttack: pvpNeutralControlMustAttackOn,
@@ -4744,6 +4777,12 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
   if (options.tournamentSecondPlayerMorale !== undefined) {
     setupOptions.tournamentSecondPlayerMorale = options.tournamentSecondPlayerMorale;
   }
+  if (options.tournamentMoraleSearchAgain !== undefined) {
+    setupOptions.tournamentMoraleSearchAgain = options.tournamentMoraleSearchAgain;
+  }
+  if (options.tournamentRemovedArtifactsVp !== undefined) {
+    setupOptions.tournamentRemovedArtifactsVp = options.tournamentRemovedArtifactsVp;
+  }
   if (options.tournamentObservatoryRerotate !== undefined) {
     setupOptions.tournamentObservatoryRerotate = options.tournamentObservatoryRerotate;
   }
@@ -5157,12 +5196,18 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     if (next.tournamentSecondPlayerMorale === undefined) {
       lobby.options.tournamentSecondPlayerMorale = on;
     }
+    if (next.tournamentMoraleSearchAgain === undefined) {
+      lobby.options.tournamentMoraleSearchAgain = on;
+    }
+    if (next.tournamentRemovedArtifactsVp === undefined) {
+      lobby.options.tournamentRemovedArtifactsVp = on;
+    }
     if (next.tournamentObservatoryRerotate === undefined) {
       lobby.options.tournamentObservatoryRerotate = on;
     }
     changes.push(
       on
-        ? "Tournament Mode on (remove Diplomacy + Hourglass; second player +1 morale; Observatory re-rotate; tier-split decks)"
+        ? "Tournament Mode on (remove Diplomacy + Hourglass; second player +1 morale; Morale Search-again; removed Artifacts count for VP; Observatory re-rotate; tier-split decks)"
         : "Tournament Mode off"
     );
   }
@@ -5181,6 +5226,14 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
       `Tournament second-player morale ${lobby.options.tournamentSecondPlayerMorale ? "on" : "off"}`
     );
   }
+  if (next.tournamentMoraleSearchAgain !== undefined) {
+    lobby.options.tournamentMoraleSearchAgain = Boolean(next.tournamentMoraleSearchAgain);
+    changes.push(`Tournament Morale Search-again ${lobby.options.tournamentMoraleSearchAgain ? "on" : "off"}`);
+  }
+  if (next.tournamentRemovedArtifactsVp !== undefined) {
+    lobby.options.tournamentRemovedArtifactsVp = Boolean(next.tournamentRemovedArtifactsVp);
+    changes.push(`Removed Artifacts count for VP ${lobby.options.tournamentRemovedArtifactsVp ? "on" : "off"}`);
+  }
   if (next.tournamentObservatoryRerotate !== undefined) {
     lobby.options.tournamentObservatoryRerotate = Boolean(next.tournamentObservatoryRerotate);
     changes.push(
@@ -5193,6 +5246,8 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     next.tournamentBanDiplomacy !== undefined ||
     next.tournamentBanHourglass !== undefined ||
     next.tournamentSecondPlayerMorale !== undefined ||
+    next.tournamentMoraleSearchAgain !== undefined ||
+    next.tournamentRemovedArtifactsVp !== undefined ||
     next.tournamentObservatoryRerotate !== undefined
   ) {
     lobby.options.tournamentMode = tournamentRulesAllOn(lobby.options);
@@ -6810,6 +6865,8 @@ function buildAdventureFromLobby(state: GameState): void {
     tournamentBanDiplomacy: lobby.options.tournamentBanDiplomacy,
     tournamentBanHourglass: lobby.options.tournamentBanHourglass,
     tournamentSecondPlayerMorale: lobby.options.tournamentSecondPlayerMorale,
+    tournamentMoraleSearchAgain: lobby.options.tournamentMoraleSearchAgain,
+    tournamentRemovedArtifactsVp: lobby.options.tournamentRemovedArtifactsVp,
     // Every real game takes the rulebook Scenario Difficulty starting bonus
     // (p.10); it is not a lobby toggle, so it is always on for a lobby build.
     startingBonus: true,

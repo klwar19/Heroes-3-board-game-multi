@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
@@ -6,7 +6,9 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 // Stage the built-in store in a throwaway dir BEFORE the route module (and its
 // singleton) loads.
 const ACCOUNT_DIR = mkdtempSync(join(tmpdir(), "homm3bg-match-route-"));
+const REPLAY_DIR = mkdtempSync(join(tmpdir(), "homm3bg-replay-route-"));
 process.env.HOMM3BG_ACCOUNT_DIR = ACCOUNT_DIR;
+process.env.HOMM3BG_REPLAY_DIR = REPLAY_DIR;
 
 /**
  * The /api/matches/report route — the PartyKit edge's only way to write ladder
@@ -26,11 +28,13 @@ describe("/api/matches/report", () => {
   beforeEach(() => {
     (globalThis as Record<string, unknown>).__homm3bgAccountStore = undefined;
     rmSync(join(ACCOUNT_DIR, "accounts.json"), { force: true });
+    rmSync(REPLAY_DIR, { recursive: true, force: true });
     delete process.env.HOMM3BG_MATCH_REPORT_KEY;
   });
   afterAll(() => {
     delete process.env.HOMM3BG_MATCH_REPORT_KEY;
     rmSync(ACCOUNT_DIR, { recursive: true, force: true });
+    rmSync(REPLAY_DIR, { recursive: true, force: true });
   });
 
   it("is a hard 403 with the env key unset — even a 'correct-looking' header never matches", async () => {
@@ -53,7 +57,18 @@ describe("/api/matches/report", () => {
       participants: [
         { accountId: cat.id, result: "win" },
         { accountId: rol.id, result: "loss" }
-      ]
+      ],
+      replay: {
+        format: "homm3bg-ranked-replay-v1",
+        schemaVersion: 1,
+        engineSignature: "test-engine",
+        matchId: "room-9:seed-1",
+        startedAt: new Date(0).toISOString(),
+        initialState: {},
+        entries: [],
+        byteLength: 256,
+        truncated: false
+      }
     };
 
     expect((await POST(report(payload, "wrong"))).status).toBe(403);
@@ -61,7 +76,8 @@ describe("/api/matches/report", () => {
 
     const ok = await POST(report(payload, "shared-secret-9"));
     expect(ok.status).toBe(200);
-    expect((await ok.json()).applied).toBe(true);
+    expect(await ok.json()).toEqual({ applied: true, replayStored: true });
+    expect(existsSync(join(REPLAY_DIR, "room-9_3Aseed-1.json"))).toBe(true);
     expect(store.getProfileById(cat.id)!.mmr).toBe(1216);
     expect(store.getProfileById(rol.id)!.mmr).toBe(1184);
     expect(store.getProfileById(cat.id)!.wins).toBe(1);
@@ -115,5 +131,12 @@ describe("/api/matches/report", () => {
         )
       ).status
     ).toBe(400);
+  });
+
+  it("rejects an oversized replay request before JSON ingestion can grow unbounded", async () => {
+    process.env.HOMM3BG_MATCH_REPORT_KEY = "shared-secret-9";
+    const { POST } = await import("./route");
+    const response = await POST(report({ matchId: "huge", participants: [], padding: "x".repeat(1_700_001) }, "shared-secret-9"));
+    expect(response.status).toBe(413);
   });
 });

@@ -823,18 +823,18 @@ describe("Balance Pack artifacts — Hourglass of the Evil Hour", () => {
 });
 
 // ===========================================================================
-// Centaur's Axe — the tripling is IGNORED on a "-1"
+// Centaur's Axe — first side matches Shield of the Dwarven Lords
 // ===========================================================================
 
 describe("Balance Pack artifacts — Centaur's Axe", () => {
-  const tripledDamage = (balance: boolean, die: number) => {
+  const settleWithAxe = (balance: boolean, playAxe: boolean) => {
     const state = combat(balance);
     state.combat!.units.unit_p1_griffins.attack = 5;
     state.combat!.units.unit_p2_skeletons.defense = 0;
-    state.players.p1.hand = ["artifact.centaurs_axe" as CardId];
+    state.players.p2.hand = ["artifact.centaurs_axe" as CardId];
     state.combat!.units.unit_p1_griffins.position = 13;
     state.combat!.units.unit_p2_skeletons.position = 14;
-    state.combat!.dice.scriptedRolls = [die, die, die];
+    state.combat!.dice.scriptedRolls = [1, 0, 0];
     state.combat!.dice.rollCount = 0;
     let next = applyOk(state, {
       type: "ATTACK_UNIT",
@@ -842,26 +842,30 @@ describe("Balance Pack artifacts — Centaur's Axe", () => {
       attackerId: "unit_p1_griffins",
       defenderId: "unit_p2_skeletons"
     });
-    const offer = getLegalActions(next, "p1").find(
-      (legal) =>
-        legal.action.type === "PLAY_REACTION" &&
-        legal.action.cardId === "artifact.centaurs_axe" &&
-        (legal.action.optionIndex ?? 0) === 0
+    let safety = 20;
+    while (next.reactionWindow?.triggerEvent.type !== "ATTACK_DIE_SETTLED" && next.reactionWindow && safety-- > 0) {
+      next = applyOk(next, { type: "PASS_REACTION", playerId: next.reactionWindow.priorityPlayerId });
+    }
+    const offer = getLegalActions(next, "p2").find(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "artifact.centaurs_axe" && legal.action.optionIndex === 0
     );
-    expect(offer, "the tripling side is offered").toBeTruthy();
-    next = applyOk(next, offer!.action);
+    if (playAxe) {
+      expect(offer, "the defender gets the post-roll die-ignore side").toBeTruthy();
+      next = applyOk(next, offer!.action);
+    }
     next = passAllReactions(next);
     return next.combat!.units.unit_p2_skeletons.damage;
   };
 
-  it("a rolled '-1' counts ONCE (not thrice) while a '+1' is still tripled", () => {
-    expect(tripledDamage(true, -1)).toBe(4); // 5 - 1
-    expect(tripledDamage(true, 1)).toBe(8); // 5 + 3
+  it("ignores the rolled die exactly like Shield of the Dwarven Lords", () => {
+    expect(settleWithAxe(true, false)).toBe(6);
+    expect(settleWithAxe(true, true)).toBe(5);
   });
 
-  it("CONTROL: the printed card triples the '-1' too", () => {
-    expect(tripledDamage(false, -1)).toBe(2); // 5 - 3
-    expect(tripledDamage(false, 1)).toBe(8);
+  it("CONTROL: the printed card does not offer its first side to the defender after the roll", () => {
+    const printed = cardLibrary["artifact.centaurs_axe"]!;
+    const first = printed.effect.type === "CHOOSE_ONE" ? printed.effect.options[0] : undefined;
+    expect(first?.effect.type).toBe("TRIPLE_ATTACK_DIE");
   });
 });
 

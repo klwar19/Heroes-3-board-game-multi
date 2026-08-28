@@ -28,26 +28,33 @@ import {
   queueLegionTierReinforce,
   queueNecromancyReinforce,
   recordLevelUpAbilityPick,
-  grantRegularArtifactOfSameGrade
+  grantRegularArtifactOfSameGrade,
 } from "./adventure";
-import { diluteUnitExperienceForUpgrade, grantArmyUnitExperience, unitExperienceActive } from "./unit-experience";
+import {
+  diluteUnitExperienceForUpgrade,
+  grantArmyUnitExperience,
+  unitExperienceActive,
+} from "./unit-experience";
 import {
   balanceCardLibrary,
   balanceRerollReactionArtifactIds,
-  COMMUNITY_REPRINTED_CARDS
+  COMMUNITY_REPRINTED_CARDS,
 } from "./community-balance-cards";
-import { balanceIntelligenceWindowClosed, polishIntelligenceHandReadingActive } from "./combat-timing";
+import {
+  balanceIntelligenceWindowClosed,
+  polishIntelligenceHandReadingActive,
+} from "./combat-timing";
 import { openHandDiscardChoice } from "./hand-discard-choice";
 import {
   applyUnitCurrentSide,
   canPlaceTransformOn,
   insertUnitTransform,
-  makeUnitTransformState
+  makeUnitTransformState,
 } from "./unit-transforms";
 import {
   sandboxBeginCombat,
   sandboxConfigureSeat,
-  sandboxSetOptions
+  sandboxSetOptions,
 } from "./combat-sandbox-setup";
 import {
   blacksmithAction,
@@ -136,7 +143,7 @@ import {
   spellBookAction,
   spendMorale,
   drawTopArtifact,
-  useAbilityEmpowerToken,
+  useAbilityEmpowerToken as applyAbilityEmpowerToken,
   spendTownCube,
   activateTownBuilding,
   astrologersHeroEmpower,
@@ -144,7 +151,7 @@ import {
   sellScrollSpell,
   queueTownPortalChoice,
   unplaceCombatUnit,
-  endTurnAdventure
+  endTurnAdventure,
 } from "./adventure-reducer";
 import {
   banHero,
@@ -160,7 +167,7 @@ import {
   setComputerOpponents,
   setComputerSeatFaction,
   setGameOptions,
-  startAdventureFromLobby
+  startAdventureFromLobby,
 } from "./adventure-setup";
 import {
   assignSeat,
@@ -175,7 +182,7 @@ import {
   setRoomPassword,
   setRoomRanked,
   setRoomRequireAuth,
-  transferHost
+  transferHost,
 } from "./room";
 import { sendTableReaction } from "./table-reactions";
 import { sendChat } from "./chat";
@@ -186,7 +193,7 @@ import {
   parallelInteractionBlocker,
   parallelSlotSignature,
   parallelWaitMessage,
-  roundStartEventResolver
+  roundStartEventResolver,
 } from "./parallel-turns";
 import {
   artifactSetDefinition,
@@ -200,7 +207,7 @@ import {
   markArtifactSetTierUse,
   setArtifactSetSelection,
   setArtifactsEnabled,
-  syncArtifactSetTiers
+  syncArtifactSetTiers,
 } from "./artifact-sets";
 import {
   ATTACK_DIE_FACES,
@@ -212,24 +219,36 @@ import {
   getBattlefieldLabel,
   getOrthogonalNeighbors,
   isBattlefieldPosition,
-  planMovePath
+  planMovePath,
 } from "./battlefield";
-import { appendExpiredEffectEvents, finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
-import { applyCombatScriptRoundStart, combatScriptStatDelta } from "./combat-scripts";
+import {
+  appendExpiredEffectEvents,
+  finishCombatIfNeeded,
+  markUnitRemovedIfNeeded,
+} from "./combat-units";
+import {
+  applyCombatScriptRoundStart,
+  combatScriptStatDelta,
+} from "./combat-scripts";
 import {
   chooseEnemyForcePlay,
   enemyForceCardName,
   enemyForceFiredKey,
-  enemyForceHandHolder
+  enemyForceHandHolder,
 } from "./enemy-force";
-import { isNeutralUnit, pickNeutralTarget, planNeutralActivation, sortNeutralTargetCandidates } from "./neutral-ai";
+import {
+  isNeutralUnit,
+  pickNeutralTarget,
+  planNeutralActivation,
+  sortNeutralTargetCandidates,
+} from "./neutral-ai";
 import {
   combatUnitDecisionOwnerId,
   isNeutralSplashVictimChoice,
   manualGuardControllerId,
   neutralCombatControllerId,
   neutralControlMustAttack,
-  pvpNeutralControllerId
+  pvpNeutralControllerId,
 } from "./neutral-control";
 import {
   activateBallistas,
@@ -254,7 +273,7 @@ import {
   resolveWarMachineTarget,
   schoolScopedStandingPower,
   spendFirstAidExpert,
-  startWarMachineRound
+  startWarMachineRound,
 } from "./permanents";
 import { cultivationCombatRerollBonus } from "./anime-cultivation";
 import {
@@ -267,15 +286,18 @@ import {
   markHeroSkillUsedThisCombat,
   markHeroGradeFirstBloodUsed,
   markHeroSkillUsedThisRound,
-  playerMainHeroInCombat
+  playerMainHeroInCombat,
 } from "./anime-hero-grades";
 import { fuyukiCommandSealsOf } from "./anime-town-mechanics";
 import { applyAnimeCombatRoundPenalties } from "./anime-faction-penalties";
-import { applyHeroGradeRoundStartDamage, expireHeroGradeFamiliars } from "./hero-grade-combat";
+import {
+  applyHeroGradeRoundStartDamage,
+  expireHeroGradeFamiliars,
+} from "./hero-grade-combat";
 import {
   applyCultivationAttackDeclaration,
   gainSectQiAfterMove,
-  recordSwordIntentAfterAttack
+  recordSwordIntentAfterAttack,
 } from "./wuxia-factions";
 import {
   applyEquipmentStageCostumeDefenseToken,
@@ -305,11 +327,11 @@ import {
   equipmentHealReactionAvailable,
   markEquipmentAdjacentRangedWaiverUsed,
   markEquipmentAttackResolved,
-  markEquipmentFirstSpellCast
+  markEquipmentFirstSpellCast,
 } from "./anime-equipment";
 import {
   markMgqGranberiaAttackResolved,
-  mgqGranberiaFirstAttackAvailable
+  mgqGranberiaFirstAttackAvailable,
 } from "./mgq-hero-specialties";
 import { ensureMgqGoldContractSetupChoice } from "./mgq-contracts";
 import { EQUIPMENT_IDS, getEquipmentDefinition } from "@/data/anime/equipment";
@@ -335,11 +357,14 @@ import {
   spellLimitFor,
   unitSideRuleOverrides,
   SPELL_DECK_BASIC,
-  SPELL_DECK_EXPERT
+  SPELL_DECK_EXPERT,
 } from "./ruleset";
 import { armyUnitStacksActive, houseRuleEnabled } from "./house-rules";
 import { nextWaitTokenNumber } from "./polish-house-rules";
-import { polishArmyUnitCanBuyStack, polishUnitStackCap } from "./polish-unit-stacks";
+import {
+  polishArmyUnitCanBuyStack,
+  polishUnitStackCap,
+} from "./polish-unit-stacks";
 import {
   CAST_A_SPELL_CARD_ID,
   castFromSpellDiscardArm,
@@ -350,13 +375,13 @@ import {
   markPolishSpellRefreshedThisRound,
   polishBookSpellRefreshBlocked,
   polishSpellBookEnabled,
-  takeTarnumOverlimitSpellFromSharedDiscard
+  takeTarnumOverlimitSpellFromSharedDiscard,
 } from "./polish-spell-book";
 import {
   consumeHeldMoraleCard,
   moraleCardsRuleEnabled,
   playerHoldsMoraleCard,
-  returnHeldMoraleCardToDeckBottom
+  returnHeldMoraleCardToDeckBottom,
 } from "./morale-cards";
 import { MORALE_CARD_IDS } from "@/data/cards/morale";
 import {
@@ -370,7 +395,7 @@ import {
   isArrowTowerUnit,
   parseFortificationTargetId,
   removeArrowTower,
-  siegeRangedDamageReduction
+  siegeRangedDamageReduction,
 } from "./siege";
 import {
   expireTokensAtRoundEnd,
@@ -380,7 +405,7 @@ import {
   removeToken,
   tokenCount,
   tokenAttackBonus,
-  tokenDefenseDelta
+  tokenDefenseDelta,
 } from "./tokens";
 import {
   attackRerollsBlocked,
@@ -416,7 +441,7 @@ import {
   specialtyImmunityActive,
   unitIgnoresAttackDieFromEffects,
   unitRangedAttackHalved,
-  unitImmuneToParalysis
+  unitImmuneToParalysis,
 } from "./active-effects";
 import {
   applyAfkBookkeeping,
@@ -426,13 +451,26 @@ import {
   forceTurnTimeout,
   startAfkVote,
   turnClockPausedFor,
-  turnClockRunningSeats
+  turnClockRunningSeats,
 } from "./afk";
-import { cancelRoomReset, confirmRoomReset, requestRoomReset } from "./reset-vote";
+import {
+  cancelRoomReset,
+  confirmRoomReset,
+  requestRoomReset,
+} from "./reset-vote";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { commanderArtifactBonusesForUnit } from "./commander-artifacts";
-import { gainRunes, gainRunesForAttack, gainRunesForDefend, grantStartingRunes, spendRunes } from "./runes";
-import { commanderCastIsInstantReaction, commanderCastTierIndex } from "@/data/commanders";
+import {
+  gainRunes,
+  gainRunesForAttack,
+  gainRunesForDefend,
+  grantStartingRunes,
+  spendRunes,
+} from "./runes";
+import {
+  commanderCastIsInstantReaction,
+  commanderCastTierIndex,
+} from "@/data/commanders";
 import {
   applyCommanderRuneOnMove,
   applyCommanderRuneRitual,
@@ -446,7 +484,7 @@ import {
   commanderLiveAttackBonus,
   commanderLiveDefenseBonus,
   sonyaBondDefenseBonus,
-  commanderRunePool
+  commanderRunePool,
 } from "./commanders";
 import {
   digFromOwnDeckTop,
@@ -454,10 +492,13 @@ import {
   isSharedDeckId,
   refillSharedDeckDiscards,
   reshuffleSharedDeckIfEmpty,
-  shuffleCards
+  shuffleCards,
 } from "./decks";
 import { applyLittleBustersCounter } from "./little-busters-counters";
-import { maybeReturnFirstSpellToHand, noteMapSpellCast } from "./spell-lifecycle";
+import {
+  maybeReturnFirstSpellToHand,
+  noteMapSpellCast,
+} from "./spell-lifecycle";
 import {
   cancelSpellAllowsSchoolAndLevel,
   cardCanBoostPower,
@@ -471,7 +512,7 @@ import {
   heroMovementTopUpHeroId,
   spellMinUsefulPower,
   spellPowerSourceDrawCards,
-  spellPowerValueOfCard
+  spellPowerValueOfCard,
 } from "./effects";
 import {
   canUnitAttack,
@@ -518,7 +559,7 @@ import {
   spellReactionBlockedByImmunity,
   spellRedirectTargets,
   standingSpellPower,
-  unitIdsThreatenedByDamageEffect
+  unitIdsThreatenedByDamageEffect,
 } from "./legal-actions";
 import {
   getActivationAbilities,
@@ -625,7 +666,7 @@ import {
   isUndeadUnit,
   unitImmuneToSpellSchools,
   type AttackDieDamageFollowUp,
-  type DeathStareFollowUp
+  type DeathStareFollowUp,
 } from "./unit-abilities";
 import type {
   ActiveEffectDefinition,
@@ -666,7 +707,7 @@ import type {
   TargetRef,
   UnitGrade,
   UnitId,
-  VisitStep
+  VisitStep,
 } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
 
@@ -726,7 +767,10 @@ export type ReducerOptions = {
 };
 
 type ConcreteEffect = Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>;
-type CreateActiveEffectCardEffect = Extract<ConcreteEffect, { type: "CREATE_ACTIVE_EFFECT" }>;
+type CreateActiveEffectCardEffect = Extract<
+  ConcreteEffect,
+  { type: "CREATE_ACTIVE_EFFECT" }
+>;
 
 /**
  * Morale a `GAIN_MORALE` effect grants in `mode`. Printed cards grant the same
@@ -737,9 +781,11 @@ type CreateActiveEffectCardEffect = Extract<ConcreteEffect, { type: "CREATE_ACTI
  */
 function gainMoraleAmount(
   effect: { amount: number; expertAmount?: number },
-  mode: CardPlayMode | undefined
+  mode: CardPlayMode | undefined,
 ): number {
-  return mode === "expert" && effect.expertAmount !== undefined ? effect.expertAmount : effect.amount;
+  return mode === "expert" && effect.expertAmount !== undefined
+    ? effect.expertAmount
+    : effect.amount;
 }
 
 function cloneState(state: GameState): GameState {
@@ -751,8 +797,10 @@ function ok(state: GameState, startEventNumber: number): EngineResult {
   // decided by the monotonic event number, not by array position.
   return {
     state,
-    events: state.eventLog.filter((event) => Number(event.id.slice(4)) > startEventNumber),
-    errors: []
+    events: state.eventLog.filter(
+      (event) => Number(event.id.slice(4)) > startEventNumber,
+    ),
+    errors: [],
   };
 }
 
@@ -760,7 +808,7 @@ function fail(state: GameState, error: RulesError): EngineResult {
   return {
     state,
     events: [],
-    errors: [error]
+    errors: [error],
   };
 }
 
@@ -785,7 +833,9 @@ function normalizeActionForMatch(action: GameAction): GameAction {
       playerId: action.playerId,
       cardId: action.cardId,
       mode: action.mode ?? "basic",
-      ...(action.optionIndex !== undefined ? { optionIndex: action.optionIndex } : {}),
+      ...(action.optionIndex !== undefined
+        ? { optionIndex: action.optionIndex }
+        : {}),
       ...(action.target ? { target: action.target } : {}),
       ...(action.drawOnly ? { drawOnly: true as const } : {}),
       ...(action.asPowerBoost ? { asPowerBoost: true } : {}),
@@ -796,7 +846,7 @@ function normalizeActionForMatch(action: GameAction): GameAction {
       // spent (the enabler, removed from the game), and the same Spell can sit in
       // hand AND on the Spell-deck discard top at once — so without it the two
       // offers would normalize identically.
-      ...(action.fromSpellDeck ? { fromSpellDeck: action.fromSpellDeck } : {})
+      ...(action.fromSpellDeck ? { fromSpellDeck: action.fromSpellDeck } : {}),
     };
   }
 
@@ -806,9 +856,11 @@ function normalizeActionForMatch(action: GameAction): GameAction {
       playerId: action.playerId,
       cardId: action.cardId,
       mode: action.mode ?? "basic",
-      ...(action.optionIndex !== undefined ? { optionIndex: action.optionIndex } : {}),
+      ...(action.optionIndex !== undefined
+        ? { optionIndex: action.optionIndex }
+        : {}),
       ...(action.target ? { target: action.target } : {}),
-      ...(action.fromSpellBook ? { fromSpellBook: true } : {})
+      ...(action.fromSpellBook ? { fromSpellBook: true } : {}),
     };
   }
 
@@ -816,21 +868,29 @@ function normalizeActionForMatch(action: GameAction): GameAction {
     // The optional `path` is the player's chosen route, validated by moveUnit
     // itself (isLegalExplicitMovePath), not by the legality match — so match on
     // the destination only.
-    return { type: "MOVE_UNIT", playerId: action.playerId, unitId: action.unitId, destination: action.destination };
+    return {
+      type: "MOVE_UNIT",
+      playerId: action.playerId,
+      unitId: action.unitId,
+      destination: action.destination,
+    };
   }
 
   return action;
 }
 
 function actionsMatch(left: GameAction, right: GameAction): boolean {
-  return JSON.stringify(normalizeActionForMatch(left)) === JSON.stringify(normalizeActionForMatch(right));
+  return (
+    JSON.stringify(normalizeActionForMatch(left)) ===
+    JSON.stringify(normalizeActionForMatch(right))
+  );
 }
 
 function assertLegal(
   state: GameState,
   action: GameAction,
   cards: CardLibrary,
-  buildings: BuildingLibrary
+  buildings: BuildingLibrary,
 ): RulesError | null {
   if (action.type === "PLAY_REACTIONS") {
     return assertBatchReactionLegal(state, action, cards, buildings);
@@ -843,23 +903,36 @@ function assertLegal(
     return null;
   }
 
-  const legalActions = getLegalActions(state, action.playerId, cards, buildings);
-  const isLegal = legalActions.some((legal) => actionsMatch(legal.action, action));
+  const legalActions = getLegalActions(
+    state,
+    action.playerId,
+    cards,
+    buildings,
+  );
+  const isLegal = legalActions.some((legal) =>
+    actionsMatch(legal.action, action),
+  );
 
   if (isLegal) {
     return null;
   }
 
-  if (state.reactionWindow && state.reactionWindow.priorityPlayerId !== action.playerId) {
+  if (
+    state.reactionWindow &&
+    state.reactionWindow.priorityPlayerId !== action.playerId
+  ) {
     return {
       code: "NOT_PRIORITY_PLAYER",
-      message: "Only the priority player can act during the current reaction window."
+      message:
+        "Only the priority player can act during the current reaction window.",
     };
   }
 
   if (action.type === "CAST_SPELL" || action.type === "PLAY_CARD") {
     const card = cards[action.cardId];
-    const effect = card ? getEffectiveCardEffect(card, action.optionIndex) : null;
+    const effect = card
+      ? getEffectiveCardEffect(card, action.optionIndex)
+      : null;
     if (
       effect?.type === "CHAIN_LIGHTNING" &&
       Object.values(state.combat?.units ?? {}).filter(
@@ -868,7 +941,8 @@ function assertLegal(
     ) {
       return {
         code: "ACTION_NOT_LEGAL",
-        message: "Chain Lightning requires 3 living units on the battlefield: select 1 unit and the 2 closest units."
+        message:
+          "Chain Lightning requires 3 living units on the battlefield: select 1 unit and the 2 closest units.",
       };
     }
     if (
@@ -878,19 +952,20 @@ function assertLegal(
       state.combat
     ) {
       const center = state.combat.units[action.target.unitId];
-      const adjacent = center && center.position >= 0
-        ? Object.values(state.combat.units).filter(
-            (unit) =>
-              unit.id !== center.id &&
-              unit.position >= 0 &&
-              isUnitAlive(unit) &&
-              isAdjacent(unit.position, center.position)
-          ).length
-        : 0;
+      const adjacent =
+        center && center.position >= 0
+          ? Object.values(state.combat.units).filter(
+              (unit) =>
+                unit.id !== center.id &&
+                unit.position >= 0 &&
+                isUnitAlive(unit) &&
+                isAdjacent(unit.position, center.position),
+            ).length
+          : 0;
       if (adjacent < effect.adjacentPicks) {
         return {
           code: "ACTION_NOT_LEGAL",
-          message: `${card.name} requires the selected unit to have ${effect.adjacentPicks} living adjacent target${effect.adjacentPicks === 1 ? "" : "s"}.`
+          message: `${card.name} requires the selected unit to have ${effect.adjacentPicks} living adjacent target${effect.adjacentPicks === 1 ? "" : "s"}.`,
         };
       }
     }
@@ -898,7 +973,7 @@ function assertLegal(
 
   return {
     code: "ACTION_NOT_LEGAL",
-    message: "That action is not legal in the current game state."
+    message: "That action is not legal in the current game state.",
   };
 }
 
@@ -912,24 +987,36 @@ function assertBatchReactionLegal(
   state: GameState,
   action: Extract<GameAction, { type: "PLAY_REACTIONS" }>,
   cards: CardLibrary,
-  buildings: BuildingLibrary
+  buildings: BuildingLibrary,
 ): RulesError | null {
   if (!state.reactionWindow) {
-    return { code: "NO_REACTION_WINDOW", message: "No reaction window is open." };
+    return {
+      code: "NO_REACTION_WINDOW",
+      message: "No reaction window is open.",
+    };
   }
 
   if (state.reactionWindow.priorityPlayerId !== action.playerId) {
     return {
       code: "NOT_PRIORITY_PLAYER",
-      message: "Only the priority player can act during the current reaction window."
+      message:
+        "Only the priority player can act during the current reaction window.",
     };
   }
 
   if (action.plays.length === 0) {
-    return { code: "ACTION_NOT_LEGAL", message: "A reaction batch needs at least one card." };
+    return {
+      code: "ACTION_NOT_LEGAL",
+      message: "A reaction batch needs at least one card.",
+    };
   }
 
-  const legalActions = getLegalActions(state, action.playerId, cards, buildings);
+  const legalActions = getLegalActions(
+    state,
+    action.playerId,
+    cards,
+    buildings,
+  );
   const player = state.players[action.playerId];
   const handCounts = new Map<string, number>();
   for (const cardId of player?.hand ?? []) {
@@ -955,15 +1042,19 @@ function assertBatchReactionLegal(
       playerId: action.playerId,
       cardId: play.cardId,
       mode: play.mode ?? "basic",
-      ...(play.optionIndex !== undefined ? { optionIndex: play.optionIndex } : {}),
+      ...(play.optionIndex !== undefined
+        ? { optionIndex: play.optionIndex }
+        : {}),
       ...(play.drawOnly ? { drawOnly: true as const } : {}),
-      ...(play.asPowerBoost ? { asPowerBoost: true } : {})
+      ...(play.asPowerBoost ? { asPowerBoost: true } : {}),
     };
 
-    if (!legalActions.some((legal) => actionsMatch(legal.action, singleAction))) {
+    if (
+      !legalActions.some((legal) => actionsMatch(legal.action, singleAction))
+    ) {
       return {
         code: "ACTION_NOT_LEGAL",
-        message: `${cards[play.cardId]?.name ?? play.cardId} is not a legal reaction right now.`
+        message: `${cards[play.cardId]?.name ?? play.cardId} is not a legal reaction right now.`,
       };
     }
 
@@ -973,7 +1064,7 @@ function assertBatchReactionLegal(
     if (copiesLeft <= 0) {
       return {
         code: "CARD_NOT_IN_HAND",
-        message: `Not enough copies of ${card?.name ?? play.cardId} in hand for that batch.`
+        message: `Not enough copies of ${card?.name ?? play.cardId} in hand for that batch.`,
       };
     }
     handCounts.set(play.cardId, copiesLeft - 1);
@@ -984,17 +1075,29 @@ function assertBatchReactionLegal(
     }
 
     const effect = card ? getEffectiveCardEffect(card, play.optionIndex) : null;
-    if (!effect || effect.type === "CANCEL_SPELL" || effect.type === "RECALL_SPELL" || effect.type === "REDIRECT_SPELL") {
+    if (
+      !effect ||
+      effect.type === "CANCEL_SPELL" ||
+      effect.type === "RECALL_SPELL" ||
+      effect.type === "REDIRECT_SPELL"
+    ) {
       return {
         code: "ACTION_NOT_LEGAL",
-        message: "Spell-ending, recall and redirect cards must be played on their own."
+        message:
+          "Spell-ending, recall and redirect cards must be played on their own.",
       };
     }
 
     if (card?.kind === "spell") {
       spellPlays += 1;
     } else if (
-      playConsumesWindowPower(card, effect, card ? getCardPlayVariants(card)[play.optionIndex ?? 0]?.cost : undefined)
+      playConsumesWindowPower(
+        card,
+        effect,
+        card
+          ? getCardPlayVariants(card)[play.optionIndex ?? 0]?.cost
+          : undefined,
+      )
     ) {
       // A non-Spell Power sink justifies a pooled Power play in the same batch
       // exactly like a Spell does (USER RULE 2026-08-26).
@@ -1006,7 +1109,10 @@ function assertBatchReactionLegal(
 
     // An Empowered ability's Expert side costs no crown, so it never counts
     // against the batch's Expert-use budget.
-    if ((play.mode ?? "basic") === "expert" && !abilityExpertIsCrownFree(player, play.cardId)) {
+    if (
+      (play.mode ?? "basic") === "expert" &&
+      !abilityExpertIsCrownFree(player, play.cardId)
+    ) {
       expertUsesNeeded += 1;
     }
   }
@@ -1030,19 +1136,26 @@ function assertBatchReactionLegal(
   ) {
     const stackItem = state.stack.at(-1);
     const attackOwner =
-      stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT"
+      stackItem?.action.type === "ATTACK_UNIT" ||
+      stackItem?.action.type === "MOVE_AND_ATTACK_UNIT"
         ? stackItem.action.playerId
         : undefined;
     const empowerable =
-      (stackItem?.modifiers.powerScaledAttackInstants ?? []).some((record) => record.playerId === action.playerId) ||
-      (stackItem?.modifiers.powerScaledAttackRerolls ?? []).some((record) => record.playerId === action.playerId) ||
-      (attackOwner === action.playerId && stackItem?.modifiers.slayerRollsByPower !== undefined) ||
+      (stackItem?.modifiers.powerScaledAttackInstants ?? []).some(
+        (record) => record.playerId === action.playerId,
+      ) ||
+      (stackItem?.modifiers.powerScaledAttackRerolls ?? []).some(
+        (record) => record.playerId === action.playerId,
+      ) ||
+      (attackOwner === action.playerId &&
+        stackItem?.modifiers.slayerRollsByPower !== undefined) ||
       stackItem?.modifiers.ignoreDefenseCasterId === action.playerId ||
       stackItem?.modifiers.misfortuneCasterId === action.playerId;
     if (!empowerable) {
       return {
         code: "ACTION_NOT_LEGAL",
-        message: "Power can only be played into an attack together with a Spell card."
+        message:
+          "Power can only be played into an attack together with a Spell card.",
       };
     }
   }
@@ -1050,11 +1163,12 @@ function assertBatchReactionLegal(
   // One Spell card per combat round (Knowledge/Necklace raise the limit). Hand
   // and Book casts share this single limit.
   if (player && spellPlays > 0) {
-    const remaining = spellLimitFor(state, player) - player.combatStats.spellsCastThisRound;
+    const remaining =
+      spellLimitFor(state, player) - player.combatStats.spellsCastThisRound;
     if (spellPlays > remaining) {
       return {
         code: "ACTION_NOT_LEGAL",
-        message: "Spell limit reached for this combat round."
+        message: "Spell limit reached for this combat round.",
       };
     }
   }
@@ -1067,7 +1181,8 @@ function assertBatchReactionLegal(
   if (expertUsesNeeded > expertUsesLeft) {
     return {
       code: "ACTION_NOT_LEGAL",
-      message: "Not enough crowns for that many expert plays this combat round."
+      message:
+        "Not enough crowns for that many expert plays this combat round.",
     };
   }
 
@@ -1078,7 +1193,7 @@ function moveCardFromHandToDiscard(
   state: GameState,
   playerId: PlayerId,
   cardId: string,
-  destination: "discard" | "removed" = "discard"
+  destination: "discard" | "removed" = "discard",
 ): RulesError | null {
   const player = state.players[playerId];
   const cardIndex = player?.hand.indexOf(cardId) ?? -1;
@@ -1087,7 +1202,7 @@ function moveCardFromHandToDiscard(
     return {
       code: "CARD_NOT_IN_HAND",
       message: "The selected card is not in that player's hand.",
-      path: `players.${playerId}.hand`
+      path: `players.${playerId}.hand`,
     };
   }
 
@@ -1117,7 +1232,7 @@ function moveSpellFromSpellBookToDiscard(
   state: GameState,
   playerId: PlayerId,
   cardId: string,
-  destination: "discard" | "removed" = "discard"
+  destination: "discard" | "removed" = "discard",
 ): RulesError | null {
   const player = state.players[playerId];
   // Defensive: legacy snapshots may lack spellBook until healLegacyPlayerFields
@@ -1126,7 +1241,7 @@ function moveSpellFromSpellBookToDiscard(
     return {
       code: "CARD_NOT_IN_SPELL_BOOK",
       message: "The selected Spell is not in that player's Spell Book.",
-      path: `players.${playerId}.spellBook`
+      path: `players.${playerId}.spellBook`,
     };
   }
   if (!Array.isArray(player.spellBook)) {
@@ -1138,7 +1253,7 @@ function moveSpellFromSpellBookToDiscard(
     return {
       code: "CARD_NOT_IN_SPELL_BOOK",
       message: "The selected Spell is not in that player's Spell Book.",
-      path: `players.${playerId}.spellBook`
+      path: `players.${playerId}.spellBook`,
     };
   }
 
@@ -1162,14 +1277,15 @@ function consumePolishSpellBookCast(
   state: GameState,
   playerId: PlayerId,
   spellCardId: CardId,
-  castEnablerCardId?: CardId
+  castEnablerCardId?: CardId,
 ): RulesError | null {
   const player = state.players[playerId];
   if (!player) {
     return {
       code: "CARD_NOT_IN_HAND",
-      message: "Casting from the Polish Spell Book needs a Cast a Spell card in hand.",
-      path: `players.${playerId}.hand`
+      message:
+        "Casting from the Polish Spell Book needs a Cast a Spell card in hand.",
+      path: `players.${playerId}.hand`,
     };
   }
 
@@ -1178,13 +1294,16 @@ function consumePolishSpellBookCast(
   // Spell directly, consuming nothing from hand. The offer side strips
   // `castEnablerCardId` while the freedom is held (applyPolishSpellBookActionGate),
   // so a cast that names the enabler still pays it via the normal path below.
-  if (castEnablerCardId === undefined && playerHasSpellTimingFreedom(state, playerId)) {
+  if (
+    castEnablerCardId === undefined &&
+    playerHasSpellTimingFreedom(state, playerId)
+  ) {
     const spellIndex = player.spellBook.indexOf(spellCardId);
     if (spellIndex === -1) {
       return {
         code: "CARD_NOT_IN_SPELL_BOOK",
         message: "That Spell is not refreshed in the Polish Spell Book.",
-        path: `players.${playerId}.spellBook`
+        path: `players.${playerId}.spellBook`,
       };
     }
     player.spellBook.splice(spellIndex, 1);
@@ -1199,8 +1318,9 @@ function consumePolishSpellBookCast(
   if (castEnablerCardId !== CAST_A_SPELL_CARD_ID && !intelligenceEnabler) {
     return {
       code: "CARD_NOT_IN_HAND",
-      message: "Casting from the Polish Spell Book needs a Cast a Spell card in hand.",
-      path: `players.${playerId}.hand`
+      message:
+        "Casting from the Polish Spell Book needs a Cast a Spell card in hand.",
+      path: `players.${playerId}.hand`,
     };
   }
 
@@ -1209,15 +1329,16 @@ function consumePolishSpellBookCast(
   if (enablerIndex === -1) {
     return {
       code: "CARD_NOT_IN_HAND",
-      message: "Casting from the Polish Spell Book needs a Cast a Spell card in hand.",
-      path: `players.${playerId}.hand`
+      message:
+        "Casting from the Polish Spell Book needs a Cast a Spell card in hand.",
+      path: `players.${playerId}.hand`,
     };
   }
   if (spellIndex === -1) {
     return {
       code: "CARD_NOT_IN_SPELL_BOOK",
       message: "That Spell is not refreshed in the Polish Spell Book.",
-      path: `players.${playerId}.spellBook`
+      path: `players.${playerId}.spellBook`,
     };
   }
 
@@ -1232,7 +1353,7 @@ function consumePolishSpellBookCast(
     cardId: castEnablerCardId,
     timing: "instant",
     mode: "basic",
-    optionLabel: `Cast ${cardLibrary[spellCardId]?.name ?? spellCardId} from the Spell Book`
+    optionLabel: `Cast ${cardLibrary[spellCardId]?.name ?? spellCardId} from the Spell Book`,
   });
   return null;
 }
@@ -1245,11 +1366,12 @@ function consumePolishSpellBookCast(
  */
 function assertPolishBookCastEnabled(
   state: GameState,
-  action: { playerId: PlayerId; cardId: CardId; castEnablerCardId?: CardId }
+  action: { playerId: PlayerId; cardId: CardId; castEnablerCardId?: CardId },
 ): void {
   const caster = state.players[action.playerId];
   const viaIntelligence =
-    action.castEnablerCardId === undefined && playerHasSpellTimingFreedom(state, action.playerId);
+    action.castEnablerCardId === undefined &&
+    playerHasSpellTimingFreedom(state, action.playerId);
   const enablerOk =
     viaIntelligence ||
     ((action.castEnablerCardId === CAST_A_SPELL_CARD_ID ||
@@ -1259,7 +1381,7 @@ function assertPolishBookCastEnabled(
       Boolean(caster?.hand.includes(action.castEnablerCardId)));
   if (!enablerOk || !caster?.spellBook.includes(action.cardId)) {
     throw new Error(
-      "Casting from the Polish Spell Book needs a Cast a Spell card (or Intelligence) and a refreshed Book Spell."
+      "Casting from the Polish Spell Book needs a Cast a Spell card (or Intelligence) and a refreshed Book Spell.",
     );
   }
 }
@@ -1270,11 +1392,21 @@ function consumeSpellBookCast(
   playerId: PlayerId,
   spellCardId: CardId,
   castEnablerCardId?: CardId,
-  destination: "discard" | "removed" = "discard"
+  destination: "discard" | "removed" = "discard",
 ): RulesError | null {
   return polishSpellBookEnabled(state)
-    ? consumePolishSpellBookCast(state, playerId, spellCardId, castEnablerCardId)
-    : moveSpellFromSpellBookToDiscard(state, playerId, spellCardId, destination);
+    ? consumePolishSpellBookCast(
+        state,
+        playerId,
+        spellCardId,
+        castEnablerCardId,
+      )
+    : moveSpellFromSpellBookToDiscard(
+        state,
+        playerId,
+        spellCardId,
+        destination,
+      );
 }
 
 /**
@@ -1285,17 +1417,24 @@ function consumeSpellBookCast(
  * draw is unspent (so a UI submission is rejected as not-legal first). A no-op in
  * combat and on anyone else's turn, where the start-of-turn draw is not in play.
  */
-function assertStartOfTurnDrawTaken(state: GameState, playerId: PlayerId): void {
+function assertStartOfTurnDrawTaken(
+  state: GameState,
+  playerId: PlayerId,
+): void {
   // Parallel turns: every open parallel turn owes its start-of-turn draw too.
   if (state.combat || !hasOpenAdventureTurn(state, playerId)) {
     return;
   }
   const player = state.players[playerId];
   if (player?.canMulligan) {
-    throw new Error("Take your start-of-turn draw first (draw new, or discard and draw new).");
+    throw new Error(
+      "Take your start-of-turn draw first (draw new, or discard and draw new).",
+    );
   }
   if (player?.explorersDiscardPending) {
-    throw new Error("Resolve Explorers: choose how many cards to discard first.");
+    throw new Error(
+      "Resolve Explorers: choose how many cards to discard first.",
+    );
   }
 }
 
@@ -1308,7 +1447,7 @@ function assertStartOfTurnDrawTaken(state: GameState, playerId: PlayerId): void 
 function moveSpellToSpellBook(
   state: GameState,
   action: Extract<GameAction, { type: "MOVE_SPELL_TO_SPELL_BOOK" }>,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   if (!spellBookRuleEnabled(state)) {
     throw new Error("The Spell Book house rule is off in this game.");
@@ -1339,7 +1478,7 @@ function moveSpellToSpellBook(
     type: "SPELL_MOVED_TO_SPELL_BOOK",
     playerId: action.playerId,
     cardId: action.cardId,
-    message: `${player.name} sets ${card.name} aside in their Spell Book.`
+    message: `${player.name} sets ${card.name} aside in their Spell Book.`,
   });
 }
 
@@ -1352,10 +1491,12 @@ function consumeScrollSpell(
   state: GameState,
   playerId: PlayerId,
   scrollId: string,
-  cardId: string
+  cardId: string,
 ): boolean {
   const player = state.players[playerId];
-  const scroll = player?.scrolls?.find((candidate) => candidate.id === scrollId);
+  const scroll = player?.scrolls?.find(
+    (candidate) => candidate.id === scrollId,
+  );
   const cardIndex = scroll?.spellCardIds.indexOf(cardId) ?? -1;
   if (!player || !scroll || cardIndex === -1) {
     return false;
@@ -1364,18 +1505,24 @@ function consumeScrollSpell(
   scroll.spellCardIds.splice(cardIndex, 1);
   player.removed.push(cardId);
   if (scroll.spellCardIds.length === 0) {
-    player.scrolls = player.scrolls?.filter((candidate) => candidate.id !== scrollId);
+    player.scrolls = player.scrolls?.filter(
+      (candidate) => candidate.id !== scrollId,
+    );
   }
   return true;
 }
 
 function nextPlayerId(state: GameState, playerId: PlayerId): PlayerId {
   const currentIndex = state.turnOrder.indexOf(playerId);
-  const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % state.turnOrder.length;
+  const nextIndex =
+    currentIndex === -1 ? 0 : (currentIndex + 1) % state.turnOrder.length;
   return state.turnOrder[nextIndex];
 }
 
-function makeStackItem(state: GameState, action: GameAction): ResolutionStackItem {
+function makeStackItem(
+  state: GameState,
+  action: GameAction,
+): ResolutionStackItem {
   // IDs must be unique for the whole game — NOT `stack_${state.stack.length + 1}`.
   // The stack is empty between attacks, so length-based ids always reuse
   // `stack_1`. Expert Luck (and any other consumeEffectOnUse: false Attack-die
@@ -1387,9 +1534,14 @@ function makeStackItem(state: GameState, action: GameAction): ResolutionStackIte
     source:
       action.type === "CAST_SPELL"
         ? { type: "card", cardId: action.cardId, controllerId: action.playerId }
-        : action.type === "ATTACK_UNIT" || action.type === "MOVE_AND_ATTACK_UNIT"
-          ? { type: "unit", unitId: action.attackerId, controllerId: action.playerId }
-        : { type: "system" },
+        : action.type === "ATTACK_UNIT" ||
+            action.type === "MOVE_AND_ATTACK_UNIT"
+          ? {
+              type: "unit",
+              unitId: action.attackerId,
+              controllerId: action.playerId,
+            }
+          : { type: "system" },
     action,
     status: "pending",
     triggerEventIds: [],
@@ -1407,9 +1559,14 @@ function makeStackItem(state: GameState, action: GameAction): ResolutionStackIte
       // drain actually applied, so an unaffected cast leaves the charge for the
       // next enemy Spell. Absent/0 when the rule is off.
       ...(action.type === "CAST_SPELL"
-        ? { artifactSetSpellDrain: lockArtifactSetSpellDrain(state, action.playerId) }
-        : {})
-    }
+        ? {
+            artifactSetSpellDrain: lockArtifactSetSpellDrain(
+              state,
+              action.playerId,
+            ),
+          }
+        : {}),
+    },
   };
 }
 
@@ -1418,7 +1575,10 @@ function makeStackItem(state: GameState, action: GameAction): ResolutionStackIte
  * `playerId` and spend the charge(s) that produced it. Returns 0 (spending
  * nothing) when the rule is off or no enemy holds an unspent charge.
  */
-function lockArtifactSetSpellDrain(state: GameState, playerId: PlayerId): number {
+function lockArtifactSetSpellDrain(
+  state: GameState,
+  playerId: PlayerId,
+): number {
   const drain = artifactSetEnemySpellPowerDrain(state, playerId);
   if (drain > 0) {
     markArtifactSetSpellDrain(state, playerId);
@@ -1429,7 +1589,7 @@ function lockArtifactSetSpellDrain(state: GameState, playerId: PlayerId): number
 function reactionPlayerOrder(
   state: GameState,
   legalReactions: Record<PlayerId, LegalAction[]>,
-  triggerEvent?: GameEvent
+  triggerEvent?: GameEvent,
 ): PlayerId[] {
   // The neutral side is not in turnOrder, but a NEUTRAL unit's innate reaction
   // (the War Zealot's always-on Magic Mirror) must still be offered so the AI can
@@ -1437,10 +1597,13 @@ function reactionPlayerOrder(
   // untouched. Append it only when it actually holds a reaction (the neutral has
   // no hand, so this is empty in every other fight), and let the pump auto-use it.
   const order =
-    (legalReactions[NEUTRAL_PLAYER_ID] ?? []).length > 0 && !state.turnOrder.includes(NEUTRAL_PLAYER_ID)
+    (legalReactions[NEUTRAL_PLAYER_ID] ?? []).length > 0 &&
+    !state.turnOrder.includes(NEUTRAL_PLAYER_ID)
       ? [...state.turnOrder, NEUTRAL_PLAYER_ID]
       : state.turnOrder;
-  const eligible = order.filter((playerId) => (legalReactions[playerId] ?? []).length > 0);
+  const eligible = order.filter(
+    (playerId) => (legalReactions[playerId] ?? []).length > 0,
+  );
 
   // The initiator of a cast or attack acts FIRST so they can finish empowering
   // (paying Power into a spell / attack) before the opponent decides Resistance
@@ -1452,11 +1615,16 @@ function reactionPlayerOrder(
   // retaliation). Other windows (Sorrow activation-skip, lethal saves) keep
   // plain turn order.
   const initiator =
-    triggerEvent && (triggerEvent.type === "SPELL_CAST_STARTED" || triggerEvent.type === "UNIT_ATTACK_DECLARED")
+    triggerEvent &&
+    (triggerEvent.type === "SPELL_CAST_STARTED" ||
+      triggerEvent.type === "UNIT_ATTACK_DECLARED")
       ? triggerEvent.playerId
       : null;
   if (initiator && eligible.includes(initiator)) {
-    return [initiator, ...eligible.filter((playerId) => playerId !== initiator)];
+    return [
+      initiator,
+      ...eligible.filter((playerId) => playerId !== initiator),
+    ];
   }
   return eligible;
 }
@@ -1476,31 +1644,36 @@ function rollAttackDie(combat: CombatState): number {
   // players, who cannot peek at future rolls. `salt: false` keeps roll index i a
   // stable function of `dice.seed` regardless of which action consumes it — the
   // per-game true randomness is baked into `dice.seed` once, at combat creation.
-  const random = createSeededRandom(`${dice.seed}#${rollIndex}`, { salt: false });
+  const random = createSeededRandom(`${dice.seed}#${rollIndex}`, {
+    salt: false,
+  });
   return faces[random.nextInt(0, faces.length - 1)] ?? 0;
 }
 
-function rollAttackDice(combat: CombatState, rollMode: AttackRollMode): { rolls: number[]; selectedRoll: number } {
+function rollAttackDice(
+  combat: CombatState,
+  rollMode: AttackRollMode,
+): { rolls: number[]; selectedRoll: number } {
   const rollCount = rollMode === "normal" ? 1 : 2;
   const rolls = Array.from({ length: rollCount }, () => rollAttackDie(combat));
 
   if (rollMode === "advantage") {
     return {
       rolls,
-      selectedRoll: Math.max(...rolls)
+      selectedRoll: Math.max(...rolls),
     };
   }
 
   if (rollMode === "disadvantage") {
     return {
       rolls,
-      selectedRoll: Math.min(...rolls)
+      selectedRoll: Math.min(...rolls),
     };
   }
 
   return {
     rolls,
-    selectedRoll: rolls[0] ?? 0
+    selectedRoll: rolls[0] ?? 0,
   };
 }
 
@@ -1511,7 +1684,10 @@ function rollAttackDice(combat: CombatState, rollMode: AttackRollMode): { rolls:
  * not "-1" (the wiki notes it rerolls "even multiple times"). The guard caps the
  * loop so a fully-scripted "-1" sequence in a test can never spin forever.
  */
-function rollAttackDieWithMinusReroll(combat: CombatState, rerollMinus: boolean): number {
+function rollAttackDieWithMinusReroll(
+  combat: CombatState,
+  rerollMinus: boolean,
+): number {
   let value = rollAttackDie(combat);
   if (!rerollMinus) {
     return value;
@@ -1551,13 +1727,21 @@ function rollAttackDieWithPlusReroll(combat: CombatState): number {
  * "-1" under the always-on passive, then sum the faces into one resolved roll.
  * The reroll is built in, so no reroll choice is opened.
  */
-function rollApplyBothCandidate(combat: CombatState, count: number, rerollMinus: boolean): AttackRollCandidate {
+function rollApplyBothCandidate(
+  combat: CombatState,
+  count: number,
+  rerollMinus: boolean,
+): AttackRollCandidate {
   const rolls: number[] = [];
   for (let i = 0; i < count; i += 1) {
     rolls.push(rollAttackDieWithMinusReroll(combat, rerollMinus));
   }
   // Every face is summed into the outcome, so the overlay keeps them all lit.
-  return { rolls, roll: rolls.reduce((sum, value) => sum + value, 0), sumAllDice: true };
+  return {
+    rolls,
+    roll: rolls.reduce((sum, value) => sum + value, 0),
+    sumAllDice: true,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1576,7 +1760,11 @@ type MoraleDiceAggregation = AttackRollMode | "sum" | "count-plus";
  * ATTACK_ROLLED event (and the dice overlay) can explain it. Display-only —
  * the candidate's rolls/roll are already mutated by the caller.
  */
-function pushRollModifierNote(candidate: AttackRollCandidate, source: string, text: string): void {
+function pushRollModifierNote(
+  candidate: AttackRollCandidate,
+  source: string,
+  text: string,
+): void {
   candidate.modifierNotes ??= [];
   candidate.modifierNotes.push({ source, text });
 }
@@ -1586,12 +1774,20 @@ function pushRollModifierNote(candidate: AttackRollCandidate, source: string, te
  * overlay can REPLAY the reroll instead of only landing on the kept face. The
  * curse/card already mutated `candidate.rolls[index]`; this is display-only.
  */
-function pushRerollBeat(candidate: AttackRollCandidate, index: number, from: number, to: number): void {
+function pushRerollBeat(
+  candidate: AttackRollCandidate,
+  index: number,
+  from: number,
+  to: number,
+): void {
   candidate.rerollBeats ??= [];
   candidate.rerollBeats.push({ index, from, to });
 }
 
-function aggregateCandidateRoll(rolls: number[], aggregation: MoraleDiceAggregation): number {
+function aggregateCandidateRoll(
+  rolls: number[],
+  aggregation: MoraleDiceAggregation,
+): number {
   if (rolls.length === 0) {
     return 0;
   }
@@ -1634,7 +1830,7 @@ function applyEnemyPlusOneRerolls(
   state: GameState,
   controllerId: PlayerId,
   candidate: AttackRollCandidate,
-  aggregation: MoraleDiceAggregation
+  aggregation: MoraleDiceAggregation,
 ): AttackRollCandidate {
   const combat = state.combat;
   if (!combat) {
@@ -1643,7 +1839,9 @@ function applyEnemyPlusOneRerolls(
   const curses = state.activeEffects.filter(
     (effect) =>
       effect.controllerId !== controllerId &&
-      effect.modifiers.some((modifier) => modifier.type === "REROLL_ENEMY_PLUS_ONE")
+      effect.modifiers.some(
+        (modifier) => modifier.type === "REROLL_ENEMY_PLUS_ONE",
+      ),
   );
   for (const curse of curses) {
     let rerolled = false;
@@ -1684,7 +1882,7 @@ function applyEnemyDieSetCurses(
   state: GameState,
   rollerControllerId: PlayerId,
   candidate: AttackRollCandidate,
-  aggregation: MoraleDiceAggregation
+  aggregation: MoraleDiceAggregation,
 ): AttackRollCandidate {
   if (!state.combat || candidate.rolls.length === 0) {
     return candidate;
@@ -1694,7 +1892,9 @@ function applyEnemyDieSetCurses(
     if (effect.controllerId === rollerControllerId) {
       continue;
     }
-    const setter = effect.modifiers.find((modifier) => modifier.type === "SET_ENEMY_ATTACK_DIE");
+    const setter = effect.modifiers.find(
+      (modifier) => modifier.type === "SET_ENEMY_ATTACK_DIE",
+    );
     if (!setter || setter.type !== "SET_ENEMY_ATTACK_DIE") {
       continue;
     }
@@ -1706,12 +1906,15 @@ function applyEnemyDieSetCurses(
     // negative face is chosen to minimise the roller's outcome, a positive one
     // (never printed today, but the shape is symmetric) to maximise it.
     let bestIndex = -1;
-    let bestOutcome = face < 0 ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
+    let bestOutcome =
+      face < 0 ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
     candidate.rolls.forEach((roll, index) => {
       if (roll === face) {
         return;
       }
-      const flipped = candidate.rolls.map((value, at) => (at === index ? face : value));
+      const flipped = candidate.rolls.map((value, at) =>
+        at === index ? face : value,
+      );
       const outcome = aggregateCandidateRoll(flipped, aggregation);
       if (face < 0 ? outcome < bestOutcome : outcome > bestOutcome) {
         bestOutcome = outcome;
@@ -1728,7 +1931,7 @@ function applyEnemyDieSetCurses(
     pushRollModifierNote(
       candidate,
       effect.name,
-      `one die is set to the "${face > 0 ? `+${face}` : face}" side`
+      `one die is set to the "${face > 0 ? `+${face}` : face}" side`,
     );
     effect.dieSetsRemaining = (effect.dieSetsRemaining ?? 0) - 1;
     if (effect.dieSetsRemaining <= 0) {
@@ -1737,7 +1940,9 @@ function applyEnemyDieSetCurses(
   }
   if (spent.length > 0) {
     const done = new Set(spent);
-    state.activeEffects = state.activeEffects.filter((effect) => !done.has(effect.id));
+    state.activeEffects = state.activeEffects.filter(
+      (effect) => !done.has(effect.id),
+    );
   }
   return candidate;
 }
@@ -1746,18 +1951,26 @@ function applyMoraleDiceCurses(
   state: GameState,
   controllerId: PlayerId,
   candidate: AttackRollCandidate,
-  aggregation: MoraleDiceAggregation
+  aggregation: MoraleDiceAggregation,
 ): AttackRollCandidate {
   const combat = state.combat;
   if (!combat || !moraleCardsRuleEnabled(state)) {
     return candidate;
   }
 
-  if (playerHoldsMoraleCard(state, controllerId, MORALE_CARD_IDS.setAttackDieMinus)) {
+  if (
+    playerHoldsMoraleCard(
+      state,
+      controllerId,
+      MORALE_CARD_IDS.setAttackDieMinus,
+    )
+  ) {
     let flipIndex = -1;
     let flippedOutcome = Number.POSITIVE_INFINITY;
     candidate.rolls.forEach((_, index) => {
-      const flipped = candidate.rolls.map((roll, at) => (at === index ? -1 : roll));
+      const flipped = candidate.rolls.map((roll, at) =>
+        at === index ? -1 : roll,
+      );
       const outcome = aggregateCandidateRoll(flipped, aggregation);
       if (outcome < flippedOutcome) {
         flippedOutcome = outcome;
@@ -1765,10 +1978,18 @@ function applyMoraleDiceCurses(
       }
     });
     if (flipIndex >= 0) {
-      consumeHeldMoraleCard(state, controllerId, MORALE_CARD_IDS.setAttackDieMinus);
+      consumeHeldMoraleCard(
+        state,
+        controllerId,
+        MORALE_CARD_IDS.setAttackDieMinus,
+      );
       candidate.rolls[flipIndex] = -1;
       candidate.roll = aggregateCandidateRoll(candidate.rolls, aggregation);
-      pushRollModifierNote(candidate, "Negative Morale", 'one die is set to the "-1" side');
+      pushRollModifierNote(
+        candidate,
+        "Negative Morale",
+        'one die is set to the "-1" side',
+      );
     }
   }
 
@@ -1785,7 +2006,11 @@ function applyMoraleDiceCurses(
     candidate.roll = aggregateCandidateRoll(candidate.rolls, aggregation);
     // Same "+1" → kept-face reroll as the Hourglass curse: let the overlay replay it.
     pushRerollBeat(candidate, index, 1, to);
-    pushRollModifierNote(candidate, "Negative Morale", 'a "+1" is forcibly rerolled');
+    pushRollModifierNote(
+      candidate,
+      "Negative Morale",
+      'a "+1" is forcibly rerolled',
+    );
   }
 
   return candidate;
@@ -1798,11 +2023,17 @@ function applyMoraleDiceCurses(
  * both collapse to a single straight die (the printed reduction is mandatory,
  * even where it helps), apply-both rolls one die, Slayer rolls N-1.
  */
-function takeMoraleRollOneLess(state: GameState, controllerId: PlayerId, diceCount: number): number {
+function takeMoraleRollOneLess(
+  state: GameState,
+  controllerId: PlayerId,
+  diceCount: number,
+): number {
   if (diceCount < 2 || !moraleCardsRuleEnabled(state)) {
     return diceCount;
   }
-  if (!consumeHeldMoraleCard(state, controllerId, MORALE_CARD_IDS.rollOneLess)) {
+  if (
+    !consumeHeldMoraleCard(state, controllerId, MORALE_CARD_IDS.rollOneLess)
+  ) {
     return diceCount;
   }
   return diceCount - 1;
@@ -1820,12 +2051,18 @@ function takeMoraleRollOneLess(state: GameState, controllerId: PlayerId, diceCou
 function applyMoraleAttackRollPenalty(
   state: GameState,
   stackItem: ResolutionStackItem,
-  details: { attacker: CombatUnitState; attackBonus: number }
+  details: { attacker: CombatUnitState; attackBonus: number },
 ): void {
   if (stackItem.modifiers.moraleRollPenalty) {
     return;
   }
-  if (!consumeHeldMoraleCard(state, details.attacker.controllerId, MORALE_CARD_IDS.nextRollMinusOne)) {
+  if (
+    !consumeHeldMoraleCard(
+      state,
+      details.attacker.controllerId,
+      MORALE_CARD_IDS.nextRollMinusOne,
+    )
+  ) {
     return;
   }
   stackItem.modifiers.moraleRollPenalty = 1;
@@ -1836,8 +2073,9 @@ function hasExpertUseAvailable(state: GameState, playerId: PlayerId): boolean {
   const player = state.players[playerId];
   return Boolean(
     player &&
-      player.combatStats.expertUsesSpentThisRound <
-        player.limits.expertUses + (player.combatStats.expertUseBonusThisRound ?? 0)
+    player.combatStats.expertUsesSpentThisRound <
+      player.limits.expertUses +
+        (player.combatStats.expertUseBonusThisRound ?? 0),
   );
 }
 
@@ -1847,13 +2085,16 @@ function hasExpertUseAvailable(state: GameState, playerId: PlayerId): boolean {
 // appendExpiredEffectEvents / finishCombatIfNeeded / livingControllerIds
 // moved to combat-units.ts so the war machine module can finish combats.
 
-function appendActiveEffectCreatedEvent(state: GameState, activeEffect: ActiveEffectState): void {
+function appendActiveEffectCreatedEvent(
+  state: GameState,
+  activeEffect: ActiveEffectState,
+): void {
   appendEvent(state, {
     type: "ACTIVE_EFFECT_CREATED",
     effectId: activeEffect.id,
     controllerId: activeEffect.controllerId,
     name: activeEffect.name,
-    duration: activeEffect.duration
+    duration: activeEffect.duration,
   });
 }
 
@@ -1862,9 +2103,15 @@ function createActiveEffect(
   effectDefinition: ActiveEffectDefinition,
   source: ActiveEffectState["source"],
   controllerId: PlayerId,
-  target?: { type: "unit"; unitId: UnitId }
+  target?: { type: "unit"; unitId: UnitId },
 ): ActiveEffectState {
-  const activeEffect = makeActiveEffect(state, effectDefinition, source, controllerId, target);
+  const activeEffect = makeActiveEffect(
+    state,
+    effectDefinition,
+    source,
+    controllerId,
+    target,
+  );
   state.activeEffects.push(activeEffect);
   appendActiveEffectCreatedEvent(state, activeEffect);
   return activeEffect;
@@ -1876,19 +2123,20 @@ function createActiveEffectFromCard(
   effect: CreateActiveEffectCardEffect,
   playerId: PlayerId,
   mode: "basic" | "expert",
-  target?: { type: "unit"; unitId: UnitId }
+  target?: { type: "unit"; unitId: UnitId },
 ): void {
-  const effectDefinition = mode === "expert" ? (effect.expertEffect ?? effect.effect) : effect.effect;
+  const effectDefinition =
+    mode === "expert" ? (effect.expertEffect ?? effect.effect) : effect.effect;
   createActiveEffect(
     state,
     effectDefinition,
     {
       type: "card",
       cardId: card.id,
-      controllerId: playerId
+      controllerId: playerId,
     },
     playerId,
-    target
+    target,
   );
   // Expert Pathfinding's effect grants Water Walk: if its controller already
   // waded onto the sea this turn (and was halted), that halt no longer applies.
@@ -1897,7 +2145,13 @@ function createActiveEffectFromCard(
 
 /** Ranks unit grades for tier-gated effects (Anti-Magic, Counterstrike…). */
 function gradeRank(grade: CombatUnitState["grade"]): number {
-  return grade === "bronze" ? 0 : grade === "silver" ? 1 : grade === "gold" ? 2 : 3;
+  return grade === "bronze"
+    ? 0
+    : grade === "silver"
+      ? 1
+      : grade === "gold"
+        ? 2
+        : 3;
 }
 
 /**
@@ -1910,13 +2164,15 @@ function gradeRank(grade: CombatUnitState["grade"]): number {
 function gradeRankOfUnit(unit: CombatUnitState): number {
   // Creature Bank defenders and WOG commanders carry no tier in play, so they
   // sit above every grade gate (a tier-gated cast at them always fizzles).
-  return unit.bankUnit || unit.commanderSlug || unit.heroUnit ? Number.POSITIVE_INFINITY : gradeRank(unit.grade);
+  return unit.bankUnit || unit.commanderSlug || unit.heroUnit
+    ? Number.POSITIVE_INFINITY
+    : gradeRank(unit.grade);
 }
 
 /** Highest grade unlocked by the paid power (e.g. {0:bronze,2:silver,4:gold}). */
 function gradeAtPower(
   gradeByPower: Record<number, CombatUnitState["grade"]>,
-  power: number
+  power: number,
 ): CombatUnitState["grade"] | null {
   const thresholds = Object.keys(gradeByPower)
     .map(Number)
@@ -1929,7 +2185,7 @@ function gradeAtPower(
 /** Mirth: the reroll's duration unlocked by the paid Power. */
 function durationAtPower(
   durationByPower: Record<number, EffectDurationDefinition>,
-  power: number
+  power: number,
 ): EffectDurationDefinition | null {
   const thresholds = Object.keys(durationByPower)
     .map(Number)
@@ -1942,7 +2198,7 @@ function durationAtPower(
 /** Chain Lightning Spell: the damage allocation unlocked by the paid Power. */
 function chainDamagesAtPower(
   damagesByPower: Record<number, number[]>,
-  power: number
+  power: number,
 ): number[] | null {
   const thresholds = Object.keys(damagesByPower)
     .map(Number)
@@ -1955,10 +2211,12 @@ function chainDamagesAtPower(
 /** Resolves a CHAIN_LIGHTNING effect's allocation array for the paid Power. */
 function chainLightningDamages(
   effect: Extract<EffectDefinition, { type: "CHAIN_LIGHTNING" }>,
-  power: number
+  power: number,
 ): number[] {
   if (effect.damagesByPower) {
-    return chainDamagesAtPower(effect.damagesByPower, power) ?? effect.damages ?? [];
+    return (
+      chainDamagesAtPower(effect.damagesByPower, power) ?? effect.damages ?? []
+    );
   }
   return effect.damages ?? [];
 }
@@ -1971,7 +2229,7 @@ function playerHasLethalSave(
   state: GameState,
   defenderId: UnitId,
   cards: CardLibrary,
-  stackLayerOnly = false
+  stackLayerOnly = false,
 ): boolean {
   const reactions = getLegalReactionsForTrigger(
     state,
@@ -1980,9 +2238,9 @@ function playerHasLethalSave(
       type: "UNIT_LETHAL_HIT",
       attackerId: "",
       defenderId,
-      ...(stackLayerOnly ? { stackLayerOnly: true } : {})
+      ...(stackLayerOnly ? { stackLayerOnly: true } : {}),
     },
-    cards
+    cards,
   );
   return Object.values(reactions).some((list) => list.length > 0);
 }
@@ -1994,8 +2252,13 @@ function playerHasLethalSave(
  */
 function armyStacksWouldAbsorbHit(
   state: GameState,
-  unit: { variant?: string; armyStacks?: number; maxHealth: number; damage: number },
-  incomingDamage: number
+  unit: {
+    variant?: string;
+    armyStacks?: number;
+    maxHealth: number;
+    damage: number;
+  },
+  incomingDamage: number,
 ): boolean {
   if (!armyUnitStacksActive(state)) {
     return false;
@@ -2018,7 +2281,11 @@ function armyStacksWouldAbsorbHit(
   return damage < maxHealth;
 }
 
-function getAmountByPower(amountByPower: Record<number, number> | undefined, fallback: number, power: number): number {
+function getAmountByPower(
+  amountByPower: Record<number, number> | undefined,
+  fallback: number,
+  power: number,
+): number {
   if (!amountByPower) {
     return fallback;
   }
@@ -2027,9 +2294,13 @@ function getAmountByPower(amountByPower: Record<number, number> | undefined, fal
     .map(Number)
     .filter((value) => Number.isFinite(value))
     .sort((left, right) => left - right);
-  const matchingPower = powerBreakpoints.filter((value) => value <= power).at(-1) ?? powerBreakpoints[0];
+  const matchingPower =
+    powerBreakpoints.filter((value) => value <= power).at(-1) ??
+    powerBreakpoints[0];
 
-  return matchingPower === undefined ? fallback : (amountByPower[matchingPower] ?? fallback);
+  return matchingPower === undefined
+    ? fallback
+    : (amountByPower[matchingPower] ?? fallback);
 }
 
 /**
@@ -2045,13 +2316,18 @@ function playCardSpellPower(
   card: CardDefinition,
   costCardIds: CardId[] | undefined,
   costCardModes: CardPlayMode[] | undefined,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): number {
   const schools = card.spellSchools ?? [];
   const fromCards = (costCardIds ?? []).reduce(
     (sum, id, index) =>
-      sum + spellPowerValueOfCard(cards[id], schools, costCardModes?.[index] ?? "basic"),
-    0
+      sum +
+      spellPowerValueOfCard(
+        cards[id],
+        schools,
+        costCardModes?.[index] ?? "basic",
+      ),
+    0,
   );
   return card.tags?.includes("meteor-shower")
     ? fromCards
@@ -2060,20 +2336,30 @@ function playCardSpellPower(
 
 /** Whether a stack item is a pending attack (its Power pool is split per side). */
 function isAttackStackItem(
-  stackItem: ResolutionStackItem | undefined
+  stackItem: ResolutionStackItem | undefined,
 ): stackItem is ResolutionStackItem & {
   action: Extract<GameAction, { type: "ATTACK_UNIT" | "MOVE_AND_ATTACK_UNIT" }>;
 } {
-  return stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT";
+  return (
+    stackItem?.action.type === "ATTACK_UNIT" ||
+    stackItem?.action.type === "MOVE_AND_ATTACK_UNIT"
+  );
 }
 
 /** The Power one player has paid into an attack window (statistics, +1s, standing). */
-function attackPowerFor(stackItem: ResolutionStackItem, playerId: PlayerId): number {
+function attackPowerFor(
+  stackItem: ResolutionStackItem,
+  playerId: PlayerId,
+): number {
   return stackItem.modifiers.attackPowerByPlayer?.[playerId] ?? 0;
 }
 
 /** Add Power to one player's attack-window pool (per caster, never shared). */
-function addAttackPower(stackItem: ResolutionStackItem, playerId: PlayerId, amount: number): void {
+function addAttackPower(
+  stackItem: ResolutionStackItem,
+  playerId: PlayerId,
+  amount: number,
+): void {
   const pool = (stackItem.modifiers.attackPowerByPlayer ??= {});
   pool[playerId] = (pool[playerId] ?? 0) + amount;
 }
@@ -2088,7 +2374,7 @@ function addAttackPower(stackItem: ResolutionStackItem, playerId: PlayerId, amou
 function frenzyPierces(
   stackItem: ResolutionStackItem,
   defender: CombatUnitState,
-  bankTargetingEnabled: boolean
+  bankTargetingEnabled: boolean,
 ): boolean {
   const table = stackItem.modifiers.ignoreDefenseGradeByPower;
   if (!table) {
@@ -2096,7 +2382,8 @@ function frenzyPierces(
   }
   const caster =
     stackItem.modifiers.ignoreDefenseCasterId ??
-    (stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT"
+    (stackItem.action.type === "ATTACK_UNIT" ||
+    stackItem.action.type === "MOVE_AND_ATTACK_UNIT"
       ? stackItem.action.playerId
       : undefined);
   if (!caster) {
@@ -2104,10 +2391,15 @@ function frenzyPierces(
   }
   const reached = gradeAtPower(
     table,
-    attackPowerFor(stackItem, caster) + (stackItem.modifiers.ignoreDefenseSchoolPowerBonus ?? 0)
+    attackPowerFor(stackItem, caster) +
+      (stackItem.modifiers.ignoreDefenseSchoolPowerBonus ?? 0),
   );
   // A bank defender is pierced at its underlying grade (Polish balance rule).
-  return reached !== null && bankAwareTierGateRank(defender, "IGNORE_DEFENSE", bankTargetingEnabled) <= gradeRank(reached);
+  return (
+    reached !== null &&
+    bankAwareTierGateRank(defender, "IGNORE_DEFENSE", bankTargetingEnabled) <=
+      gradeRank(reached)
+  );
 }
 
 // `effectScalesWithAttackPool` moved to legal-actions.ts on 2026-08-26 so the
@@ -2121,9 +2413,13 @@ function frenzyPierces(
  * attack window so a Bloodlust/Bless/Precision/Curse/Weakness cast earlier keeps
  * growing instead of being frozen at the Power it had when first played.
  */
-function recomputePowerScaledAttackInstants(state: GameState, stackItem: ResolutionStackItem): void {
+function recomputePowerScaledAttackInstants(
+  state: GameState,
+  stackItem: ResolutionStackItem,
+): void {
   const attackerId =
-    stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT"
+    stackItem.action.type === "ATTACK_UNIT" ||
+    stackItem.action.type === "MOVE_AND_ATTACK_UNIT"
       ? stackItem.action.playerId
       : undefined;
 
@@ -2134,19 +2430,28 @@ function recomputePowerScaledAttackInstants(state: GameState, stackItem: Resolut
     stackItem.modifiers.slayerRolls = getAmountByPower(
       stackItem.modifiers.slayerRollsByPower,
       2,
-      attackPowerFor(stackItem, attackerId) + (stackItem.modifiers.slayerSchoolPowerBonus ?? 0)
+      attackPowerFor(stackItem, attackerId) +
+        (stackItem.modifiers.slayerSchoolPowerBonus ?? 0),
     );
   }
 
-  if (stackItem.modifiers.misfortuneDieByPower && stackItem.modifiers.misfortuneCasterId) {
-    const power = attackPowerFor(stackItem, stackItem.modifiers.misfortuneCasterId);
-    const threshold = Object.keys(stackItem.modifiers.misfortuneDieByPower)
-      .map(Number)
-      .filter((value) => value <= power)
-      .sort((a, b) => b - a)[0] ?? 0;
+  if (
+    stackItem.modifiers.misfortuneDieByPower &&
+    stackItem.modifiers.misfortuneCasterId
+  ) {
+    const power = attackPowerFor(
+      stackItem,
+      stackItem.modifiers.misfortuneCasterId,
+    );
+    const threshold =
+      Object.keys(stackItem.modifiers.misfortuneDieByPower)
+        .map(Number)
+        .filter((value) => value <= power)
+        .sort((a, b) => b - a)[0] ?? 0;
     stackItem.modifiers.misfortuneDie =
       stackItem.modifiers.misfortuneDieByPower[threshold] ?? "negate";
-    stackItem.modifiers.attackDieCancelled = stackItem.modifiers.misfortuneDie === "negate";
+    stackItem.modifiers.attackDieCancelled =
+      stackItem.modifiers.misfortuneDie === "negate";
   }
 
   const records = stackItem.modifiers.powerScaledAttackInstants;
@@ -2154,7 +2459,8 @@ function recomputePowerScaledAttackInstants(state: GameState, stackItem: Resolut
     const scaled = getAmountByPower(
       record.amountByPower,
       record.baseAmount,
-      attackPowerFor(stackItem, record.playerId) + (record.schoolPowerBonus ?? 0)
+      attackPowerFor(stackItem, record.playerId) +
+        (record.schoolPowerBonus ?? 0),
     );
     const newApplied = (scaled + record.fixedBonus) * record.doubleFactor;
     const delta = newApplied - record.appliedAmount;
@@ -2173,15 +2479,19 @@ function recomputePowerScaledAttackInstants(state: GameState, stackItem: Resolut
   // reroll modifier synchronized with the caster's final pooled Power just like
   // Bloodlust/Weakness records above, regardless of declaration order.
   for (const record of stackItem.modifiers.powerScaledAttackRerolls ?? []) {
-    const effect = state.activeEffects.find((candidate) => candidate.id === record.effectId);
-    const modifier = effect?.modifiers.find((candidate) => candidate.type === "ATTACK_DIE_REROLL");
+    const effect = state.activeEffects.find(
+      (candidate) => candidate.id === record.effectId,
+    );
+    const modifier = effect?.modifiers.find(
+      (candidate) => candidate.type === "ATTACK_DIE_REROLL",
+    );
     if (!modifier || modifier.type !== "ATTACK_DIE_REROLL") {
       continue;
     }
     modifier.maxUsesPerRoll = getAmountByPower(
       record.rerollsByPower,
       record.baseRerolls,
-      attackPowerFor(stackItem, record.playerId)
+      attackPowerFor(stackItem, record.playerId),
     );
   }
 }
@@ -2193,7 +2503,11 @@ function recomputePowerScaledAttackInstants(state: GameState, stackItem: Resolut
  * it currently contributes), then clears the per-card flags it set — Bless's
  * ignored die, Precision's ranged-penalty waiver, and Slayer's extra rolls/draw.
  */
-function reverseCancelledInstantSpell(stackItem: ResolutionStackItem, cardId: CardId, cards: CardLibrary): void {
+function reverseCancelledInstantSpell(
+  stackItem: ResolutionStackItem,
+  cardId: CardId,
+  cards: CardLibrary,
+): void {
   const records = stackItem.modifiers.powerScaledAttackInstants;
   if (records) {
     for (let index = records.length - 1; index >= 0; index -= 1) {
@@ -2233,7 +2547,11 @@ function reverseCancelledInstantSpell(stackItem: ResolutionStackItem, cardId: Ca
  * moving to a different unit. A Scroll cast (locked to Power 0, never recorded)
  * falls back to the card's printed base amount.
  */
-function attackInstantSignedAmount(stackItem: ResolutionStackItem, cardId: CardId, cards: CardLibrary): number {
+function attackInstantSignedAmount(
+  stackItem: ResolutionStackItem,
+  cardId: CardId,
+  cards: CardLibrary,
+): number {
   const records = stackItem.modifiers.powerScaledAttackInstants ?? [];
   // Match reverseCancelledInstantSpell, which pulls the LAST record for the card.
   for (let index = records.length - 1; index >= 0; index -= 1) {
@@ -2246,7 +2564,8 @@ function attackInstantSignedAmount(stackItem: ResolutionStackItem, cardId: CardI
         getAmountByPower(
           record.amountByPower,
           record.baseAmount,
-          attackPowerFor(stackItem, record.playerId) + (record.schoolPowerBonus ?? 0)
+          attackPowerFor(stackItem, record.playerId) +
+            (record.schoolPowerBonus ?? 0),
         ) + record.fixedBonus
       );
     }
@@ -2262,7 +2581,10 @@ function attackInstantSignedAmount(stackItem: ResolutionStackItem, cardId: CardI
  * every unit whose name ends in "Dragons" (Black/Gold/Ghost/Azure/Crystal/
  * Faerie/Rust Dragons) but not Dragon Flies.
  */
-export function unitMatchesSpecialtyName(unitName: string | undefined, target: string | undefined): boolean {
+export function unitMatchesSpecialtyName(
+  unitName: string | undefined,
+  target: string | undefined,
+): boolean {
   if (!unitName || !target) {
     return false;
   }
@@ -2287,11 +2609,22 @@ export function unitMatchesSpecialtyName(unitName: string | undefined, target: s
   }
   // Family descriptors like "a Dragons unit": strip the "a … unit" wrapper and
   // match any unit whose name ends with the remaining creature family word.
-  const family = target.replace(/^an?\s+/i, "").replace(/\s+units?$/i, "").trim();
-  return family.length > 0 && family !== target && unitName.toLowerCase().endsWith(family.toLowerCase());
+  const family = target
+    .replace(/^an?\s+/i, "")
+    .replace(/\s+units?$/i, "")
+    .trim();
+  return (
+    family.length > 0 &&
+    family !== target &&
+    unitName.toLowerCase().endsWith(family.toLowerCase())
+  );
 }
 
-function doubleAmountForUnitName(amount: number, unit: CombatUnitState | undefined, unitName: string | undefined): number {
+function doubleAmountForUnitName(
+  amount: number,
+  unit: CombatUnitState | undefined,
+  unitName: string | undefined,
+): number {
   return unitMatchesSpecialtyName(unit?.name, unitName) ? amount * 2 : amount;
 }
 
@@ -2309,7 +2642,7 @@ function applyUnitMaxHealthBonus(
   effectName: string,
   source: ActiveEffectState["source"],
   controllerId: PlayerId,
-  currentUnitLifeOnly = false
+  currentUnitLifeOnly = false,
 ): void {
   if (amount <= 0 || !state.combat) {
     return;
@@ -2327,18 +2660,24 @@ function applyUnitMaxHealthBonus(
       // previous baked-maxHealth behaviour). Dragon Flies still dispel it via
       // the controller-owned path, which also strips combatMaxHealthBonus.
       removable: false,
-      modifiers: [{ type: "HEALTH_BONUS", amount, ...(currentUnitLifeOnly ? { currentUnitLifeOnly: true } : {}) }]
+      modifiers: [
+        {
+          type: "HEALTH_BONUS",
+          amount,
+          ...(currentUnitLifeOnly ? { currentUnitLifeOnly: true } : {}),
+        },
+      ],
     },
     source,
     controllerId,
-    { type: "unit", unitId: unit.id }
+    { type: "unit", unitId: unit.id },
   );
 }
 
 /** When HEALTH_BONUS ongoing effects are stripped, drop the matching unit HP. */
 function stripCombatHealthBonusFromRemovedEffects(
   state: GameState,
-  removed: ActiveEffectState[]
+  removed: ActiveEffectState[],
 ): void {
   if (!state.combat || removed.length === 0) {
     return;
@@ -2360,7 +2699,10 @@ function stripCombatHealthBonusFromRemovedEffects(
     if (healthLoss <= 0) {
       continue;
     }
-    const nextBonus = Math.max(0, (unit.combatMaxHealthBonus ?? 0) - healthLoss);
+    const nextBonus = Math.max(
+      0,
+      (unit.combatMaxHealthBonus ?? 0) - healthLoss,
+    );
     if (nextBonus > 0) {
       unit.combatMaxHealthBonus = nextBonus;
     } else {
@@ -2386,7 +2728,7 @@ function noteSpellCast(
   state: GameState,
   player: PlayerState,
   countsTowardLimit = true,
-  inFlightCardIds: readonly CardId[] = []
+  inFlightCardIds: readonly CardId[] = [],
 ): void {
   // Polish Balance Pack Intelligence (one-shot): the reprinted card grants
   // EXACTLY ONE free cast at the start of the Combat. Consume the effect on the
@@ -2398,7 +2740,10 @@ function noteSpellCast(
   const oneShotIntelligence = state.activeEffects.find(
     (effect) =>
       effect.controllerId === player.id &&
-      effect.modifiers.some((modifier) => modifier.type === "SPELL_CAST_ANYTIME" && modifier.oneShot === true)
+      effect.modifiers.some(
+        (modifier) =>
+          modifier.type === "SPELL_CAST_ANYTIME" && modifier.oneShot === true,
+      ),
   );
   let effectiveCountsTowardLimit = countsTowardLimit;
   if (oneShotIntelligence) {
@@ -2406,12 +2751,16 @@ function noteSpellCast(
       !balanceIntelligenceWindowClosed(state) &&
       oneShotIntelligence.modifiers.some(
         (modifier) =>
-          modifier.type === "SPELL_CAST_ANYTIME" && modifier.oneShot === true && modifier.ignoreSpellLimit === true
+          modifier.type === "SPELL_CAST_ANYTIME" &&
+          modifier.oneShot === true &&
+          modifier.ignoreSpellLimit === true,
       );
     if (waivesLimit) {
       effectiveCountsTowardLimit = false;
     }
-    state.activeEffects = state.activeEffects.filter((effect) => effect.id !== oneShotIntelligence.id);
+    state.activeEffects = state.activeEffects.filter(
+      (effect) => effect.id !== oneShotIntelligence.id,
+    );
   }
   // Neon Microphone: consume the first-spell +1 Power charge on any real spell cast.
   markEquipmentFirstSpellCast(state, player.id);
@@ -2429,7 +2778,9 @@ function noteSpellCast(
     // it just paid for stays covered (the limit must not shrink under the
     // count); the per-round bonus reset then naturally re-arms nothing — only
     // UNSPENT charges carry to later rounds.
-    const charges = state.combat ? (player.combatStats.commanderManaCharges ?? 0) : 0;
+    const charges = state.combat
+      ? (player.combatStats.commanderManaCharges ?? 0)
+      : 0;
     if (charges > 0) {
       const limitWithCharges = spellLimitFor(state, player);
       if (
@@ -2441,7 +2792,8 @@ function noteSpellCast(
       }
     }
   }
-  player.combatStats.spellsCastThisTurn = (player.combatStats.spellsCastThisTurn ?? 0) + 1;
+  player.combatStats.spellsCastThisTurn =
+    (player.combatStats.spellsCastThisTurn ?? 0) + 1;
   // The "first spell this round" Power gate (Tower Magi Pack) closes on the first
   // cast through ANY path — hand cast, reaction, or a free Helm cast — so the
   // bonus lands on whichever spell is genuinely cast first, exactly once.
@@ -2465,7 +2817,7 @@ function noteSpellCast(
 
 function castInFlightCardIds(
   state: GameState,
-  action: Extract<GameAction, { type: "CAST_SPELL" }>
+  action: Extract<GameAction, { type: "CAST_SPELL" }>,
 ): CardId[] {
   if (action.fromScroll) {
     return [];
@@ -2484,13 +2836,14 @@ function castInFlightCardIds(
 function stackInFlightCardIds(
   state: GameState,
   stackItem: ResolutionStackItem | undefined,
-  playerId: PlayerId
+  playerId: PlayerId,
 ): CardId[] {
   if (!stackItem) {
     return [];
   }
   return [
-    ...(stackItem.action.type === "CAST_SPELL" && stackItem.action.playerId === playerId
+    ...(stackItem.action.type === "CAST_SPELL" &&
+    stackItem.action.playerId === playerId
       ? castInFlightCardIds(state, stackItem.action)
       : []),
     ...(stackItem.modifiers.playedCardIdsByPlayer?.[playerId] ?? []),
@@ -2500,7 +2853,7 @@ function stackInFlightCardIds(
     // straight back mid-resolution. A card may appear in BOTH lists; the extra
     // occurrence only over-protects (a genuine duplicate stays put once more),
     // which is the safe direction — never a mid-resolution leak.
-    ...stackItem.modifiers.playedCardIds
+    ...stackItem.modifiers.playedCardIds,
   ];
 }
 
@@ -2512,13 +2865,13 @@ function createAttackBuffFromCard(
   effect: Extract<EffectDefinition, { type: "CREATE_ATTACK_BUFF" }>,
   playerId: PlayerId,
   power: number,
-  target: { type: "unit"; unitId: UnitId }
+  target: { type: "unit"; unitId: UnitId },
 ): void {
   const targetUnit = state.combat?.units[target.unitId];
   const amount = doubleAmountForUnitName(
     getAmountByPower(effect.amountByPower, effect.amount ?? 0, power),
     targetUnit,
-    effect.doubleForUnitName
+    effect.doubleForUnitName,
   );
   const modifiers: ActiveEffectModifier[] = [{ type: "ATTACK_BONUS", amount }];
   // Polish Balance Pack Bless: the buff also skips the unit's Attack die roll
@@ -2539,7 +2892,7 @@ function createAttackBuffFromCard(
           (unit) =>
             unit.controllerId === playerId &&
             isUnitAlive(unit) &&
-            (unit.type === "ground" || unit.type === "flying")
+            (unit.type === "ground" || unit.type === "flying"),
         )
         .map((unit) => ({ type: "unit" as const, unitId: unit.id }))
     : [target];
@@ -2552,15 +2905,15 @@ function createAttackBuffFromCard(
         duration: effect.duration,
         polarity: effect.polarity ?? "positive",
         removable: effect.removable ?? true,
-        modifiers: modifiers.map((modifier) => ({ ...modifier }))
+        modifiers: modifiers.map((modifier) => ({ ...modifier })),
       },
       {
         type: "card",
         cardId: card.id,
-        controllerId: playerId
+        controllerId: playerId,
       },
       playerId,
-      each
+      each,
     );
   }
 }
@@ -2573,18 +2926,28 @@ function createDefenseBuffFromCard(
   target: { type: "unit"; unitId: UnitId },
   // Passed in (not read off card.effect) so it also works as a CHOOSE_ONE
   // option — the Balance Pack's Prayer "+X defense" arm.
-  override?: Extract<EffectDefinition, { type: "CREATE_DEFENSE_BUFF" }>
+  override?: Extract<EffectDefinition, { type: "CREATE_DEFENSE_BUFF" }>,
 ): void {
-  const effect = override ?? (card.effect.type === "CREATE_DEFENSE_BUFF" ? card.effect : null);
+  const effect =
+    override ??
+    (card.effect.type === "CREATE_DEFENSE_BUFF" ? card.effect : null);
   if (!effect) {
     return;
   }
 
-  const amount = getAmountByPower(effect.amountByPower, effect.amount ?? 0, power);
+  const amount = getAmountByPower(
+    effect.amountByPower,
+    effect.amount ?? 0,
+    power,
+  );
   // Shield / Air Shield carry `vsAttackerType`, so their Defense is conditional
   // (read in getAttackerTypeDefenseBonus); a plain buff emits an always-on bonus.
   const modifier: ActiveEffectModifier = effect.vsAttackerType
-    ? { type: "DEFENSE_VS_ATTACKER_TYPE", attackerType: effect.vsAttackerType, amount }
+    ? {
+        type: "DEFENSE_VS_ATTACKER_TYPE",
+        attackerType: effect.vsAttackerType,
+        amount,
+      }
     : { type: "DEFENSE_BONUS", amount };
   createActiveEffect(
     state,
@@ -2594,15 +2957,15 @@ function createDefenseBuffFromCard(
       duration: effect.duration,
       polarity: effect.polarity ?? "positive",
       removable: effect.removable ?? true,
-      modifiers: [modifier]
+      modifiers: [modifier],
     },
     {
       type: "card",
       cardId: card.id,
-      controllerId: playerId
+      controllerId: playerId,
     },
     playerId,
-    target
+    target,
   );
 }
 
@@ -2617,13 +2980,17 @@ function createFireShieldFromCard(
   effect: Extract<EffectDefinition, { type: "CREATE_FIRE_SHIELD" }>,
   playerId: PlayerId,
   power: number,
-  target: { type: "unit"; unitId: UnitId }
+  target: { type: "unit"; unitId: UnitId },
 ): void {
   const targetUnit = state.combat?.units[target.unitId];
   const base = effect.amountByPower
     ? getAmountByPower(effect.amountByPower, effect.amount ?? 1, power)
     : (effect.amount ?? 0);
-  const amount = doubleAmountForUnitName(base, targetUnit, effect.doubleForUnitName);
+  const amount = doubleAmountForUnitName(
+    base,
+    targetUnit,
+    effect.doubleForUnitName,
+  );
   if (amount <= 0) {
     return;
   }
@@ -2635,11 +3002,11 @@ function createFireShieldFromCard(
       duration: effect.duration,
       polarity: "positive",
       removable: effect.removable ?? true,
-      modifiers: [{ type: "FIRE_SHIELD", amount }]
+      modifiers: [{ type: "FIRE_SHIELD", amount }],
     },
     { type: "card", cardId: card.id, controllerId: playerId },
     playerId,
-    target
+    target,
   );
 }
 
@@ -2653,10 +3020,14 @@ function createSpellWardFromCard(
   card: CardDefinition,
   effect: Extract<EffectDefinition, { type: "CREATE_SPELL_WARD" }>,
   playerId: PlayerId,
-  target: { type: "unit"; unitId: UnitId }
+  target: { type: "unit"; unitId: UnitId },
 ): void {
   const targetUnit = state.combat?.units[target.unitId];
-  const amount = doubleAmountForUnitName(effect.amount, targetUnit, effect.doubleForUnitName);
+  const amount = doubleAmountForUnitName(
+    effect.amount,
+    targetUnit,
+    effect.doubleForUnitName,
+  );
   if (amount <= 0) {
     return;
   }
@@ -2668,11 +3039,11 @@ function createSpellWardFromCard(
       duration: effect.duration,
       polarity: "positive",
       removable: effect.removable ?? true,
-      modifiers: [{ type: "SPELL_DAMAGE_REDUCTION", amount }]
+      modifiers: [{ type: "SPELL_DAMAGE_REDUCTION", amount }],
     },
     { type: "card", cardId: card.id, controllerId: playerId },
     playerId,
-    target
+    target,
   );
 }
 
@@ -2681,7 +3052,7 @@ function createAttackRerollEffectFromCard(
   card: CardDefinition,
   playerId: PlayerId,
   mode: "basic" | "expert",
-  power?: number
+  power?: number,
 ): ActiveEffectState | undefined {
   if (card.effect.type !== "CREATE_ATTACK_DIE_REROLL") {
     return;
@@ -2692,7 +3063,11 @@ function createAttackRerollEffectFromCard(
       ? mode === "expert"
         ? (card.effect.expertRerolls ?? card.effect.basicRerolls)
         : card.effect.basicRerolls
-      : getAmountByPower(card.effect.rerollsByPower, card.effect.basicRerolls, power);
+      : getAmountByPower(
+          card.effect.rerollsByPower,
+          card.effect.basicRerolls,
+          power,
+        );
 
   if (maxUsesPerRoll <= 0) {
     return;
@@ -2703,7 +3078,8 @@ function createAttackRerollEffectFromCard(
   // duration at the matched breakpoint.
   const duration =
     power !== undefined && card.effect.durationByPower
-      ? (durationAtPower(card.effect.durationByPower, power) ?? card.effect.duration)
+      ? (durationAtPower(card.effect.durationByPower, power) ??
+        card.effect.duration)
       : card.effect.duration;
 
   const modifiers: ActiveEffectDefinition["modifiers"] = [
@@ -2716,16 +3092,24 @@ function createAttackRerollEffectFromCard(
       chooseResult: card.effect.chooseResult,
       // Community Balance Pack Fortune: the use SETS a die to this face instead
       // of rerolling it ("you may choose the resultant die side").
-      setDieFace: card.effect.setDieFace
-    }
+      setDieFace: card.effect.setDieFace,
+    },
   ];
   // Fortune also rerolls the adventure-map Treasure and Resource dice, sharing
   // a single budget equal to the reroll count (Power 0/1/2 -> 1/2/3). Both die
   // types draw from the same `rerolls` budget on the effect.
   if (card.effect.adventureDice) {
     modifiers.push(
-      { type: "ADVENTURE_DIE_REROLL", dice: "treasure", rerolls: maxUsesPerRoll },
-      { type: "ADVENTURE_DIE_REROLL", dice: "resource", rerolls: maxUsesPerRoll }
+      {
+        type: "ADVENTURE_DIE_REROLL",
+        dice: "treasure",
+        rerolls: maxUsesPerRoll,
+      },
+      {
+        type: "ADVENTURE_DIE_REROLL",
+        dice: "resource",
+        rerolls: maxUsesPerRoll,
+      },
     );
   }
 
@@ -2737,14 +3121,14 @@ function createAttackRerollEffectFromCard(
       duration,
       polarity: "positive",
       removable: false,
-      modifiers
+      modifiers,
     },
     {
       type: "card",
       cardId: card.id,
-      controllerId: playerId
+      controllerId: playerId,
     },
-    playerId
+    playerId,
   );
 }
 
@@ -2752,10 +3136,14 @@ function removeEffectsFromTarget(
   state: GameState,
   source: ActiveEffectState["source"],
   target: { type: "unit"; unitId: UnitId },
-  removePolarity: "negative" | "any-removable"
+  removePolarity: "negative" | "any-removable",
 ): void {
   const removed = state.activeEffects.filter((effect) => {
-    if (effect.target?.type !== "unit" || effect.target.unitId !== target.unitId || effect.removable === false) {
+    if (
+      effect.target?.type !== "unit" ||
+      effect.target.unitId !== target.unitId ||
+      effect.removable === false
+    ) {
       return false;
     }
 
@@ -2771,14 +3159,16 @@ function removeEffectsFromTarget(
   }
 
   const removedIds = new Set(removed.map((effect) => effect.id));
-  state.activeEffects = state.activeEffects.filter((effect) => !removedIds.has(effect.id));
+  state.activeEffects = state.activeEffects.filter(
+    (effect) => !removedIds.has(effect.id),
+  );
   stripCombatHealthBonusFromRemovedEffects(state, removed);
 
   appendEvent(state, {
     type: "ACTIVE_EFFECTS_REMOVED",
     source,
     target,
-    effectIds: [...removedIds]
+    effectIds: [...removedIds],
   });
 }
 
@@ -2792,7 +3182,7 @@ function removeEffectsFromTarget(
 function removeOneEffectFromTarget(
   state: GameState,
   source: ActiveEffectState["source"],
-  target: { type: "unit"; unitId: UnitId }
+  target: { type: "unit"; unitId: UnitId },
 ): boolean {
   for (let index = state.activeEffects.length - 1; index >= 0; index -= 1) {
     const effect = state.activeEffects[index];
@@ -2807,7 +3197,7 @@ function removeOneEffectFromTarget(
         type: "ACTIVE_EFFECTS_REMOVED",
         source,
         target,
-        effectIds: [effect.id]
+        effectIds: [effect.id],
       });
       return true;
     }
@@ -2819,7 +3209,7 @@ function healUnitDamage(
   state: GameState,
   source: ActiveEffectState["source"],
   target: { type: "unit"; unitId: UnitId },
-  amount: number
+  amount: number,
 ): void {
   const unit = state.combat?.units[target.unitId];
   if (!unit) {
@@ -2833,7 +3223,7 @@ function healUnitDamage(
     type: "DAMAGE_HEALED",
     source,
     target,
-    amount: healedAmount
+    amount: healedAmount,
   });
 }
 
@@ -2842,7 +3232,10 @@ function healUnitDamage(
  * every applicable HEAL_AFTER_ATTACKED effect on the defender heals it. Player-
  * scoped effects only match the specialty owner's own units (effectAppliesToUnit).
  */
-function applyHealAfterAttacked(state: GameState, defender: CombatUnitState): void {
+function applyHealAfterAttacked(
+  state: GameState,
+  defender: CombatUnitState,
+): void {
   if (!state.combat || !isUnitAlive(defender) || defender.damage <= 0) {
     return;
   }
@@ -2854,7 +3247,12 @@ function applyHealAfterAttacked(state: GameState, defender: CombatUnitState): vo
       if (modifier.type !== "HEAL_AFTER_ATTACKED" || modifier.amount <= 0) {
         continue;
       }
-      healUnitDamage(state, effect.source, { type: "unit", unitId: defender.id }, modifier.amount);
+      healUnitDamage(
+        state,
+        effect.source,
+        { type: "unit", unitId: defender.id },
+        modifier.amount,
+      );
     }
   }
 }
@@ -2865,7 +3263,10 @@ function applyHealAfterAttacked(state: GameState, defender: CombatUnitState): vo
  * floored at 0. Applied at every Spell-damage site (direct, area and the
  * Faerie Dragon's bolt).
  */
-function totalSpellDamageReduction(state: GameState, target: CombatUnitState): number {
+function totalSpellDamageReduction(
+  state: GameState,
+  target: CombatUnitState,
+): number {
   // Orb of Vulnerability switches off every "reduce Spell damage" passive, so
   // the magic-resistant creature takes the spell's full damage.
   if (spellAbilitiesSuppressed(state)) {
@@ -2916,7 +3317,10 @@ function totalSpellDamageReduction(state: GameState, target: CombatUnitState): n
       if (!isUnitAlive(unit)) {
         continue;
       }
-      if (unit.id !== target.id && !isAdjacent(unit.position, target.position)) {
+      if (
+        unit.id !== target.id &&
+        !isAdjacent(unit.position, target.position)
+      ) {
         continue;
       }
       if (unit.controllerId === target.controllerId) {
@@ -2932,11 +3336,13 @@ function reducedSpellDamage(
   state: GameState,
   target: CombatUnitState,
   amount: number,
-  schools: readonly SpellSchool[] = []
+  schools: readonly SpellSchool[] = [],
 ): number {
   const reduced = Math.max(
     0,
-    amount - totalSpellDamageReduction(state, target) - getSpellSchoolDamageReduction(target, schools)
+    amount -
+      totalSpellDamageReduction(state, target) -
+      getSpellSchoolDamageReduction(target, schools),
   );
   // Fuyuki Casters (and any CAP_DAMAGE_PER_ATTACK with includeSpells): each
   // single spell-damage hit is hard-capped after reduction.
@@ -2956,7 +3362,11 @@ function reducedSpellDamage(
  * all-school-immune unit from being targeted/splashed; this closes the
  * remaining area-damage paths that bypass that filter.
  */
-function unitIgnoresCardDamage(state: GameState, unit: CombatUnitState, card: CardDefinition | undefined): boolean {
+function unitIgnoresCardDamage(
+  state: GameState,
+  unit: CombatUnitState,
+  card: CardDefinition | undefined,
+): boolean {
   if (!card) {
     return false;
   }
@@ -2964,11 +3374,16 @@ function unitIgnoresCardDamage(state: GameState, unit: CombatUnitState, card: Ca
   // Hero-Specialty CARD deals 0 damage to every unit. Checked at this shared
   // card-damage predicate so the direct, area, Xyron and Chain Lightning paths
   // (all of which gate on this function) are covered for both armies at once.
-  if (cardDamageNullified(state) && (card.kind === "spell" || card.kind === "hero-specialty")) {
+  if (
+    cardDamageNullified(state) &&
+    (card.kind === "spell" || card.kind === "hero-specialty")
+  ) {
     return true;
   }
   if (card.kind === "hero-specialty") {
-    return hasImmuneToSpecialtyDamage(unit) || specialtyImmunityActive(state, unit);
+    return (
+      hasImmuneToSpecialtyDamage(unit) || specialtyImmunityActive(state, unit)
+    );
   }
   if (card.kind === "spell") {
     // Pendant of Negativity (option B): an artifact-granted school immunity also
@@ -2979,7 +3394,10 @@ function unitIgnoresCardDamage(state: GameState, unit: CombatUnitState, card: Ca
     }
     // Orb of Vulnerability negates printed spell-school immunity, so the unit
     // takes the spell like any other.
-    return !spellAbilitiesSuppressed(state) && unitImmuneToSpellSchools(unit, card.spellSchools);
+    return (
+      !spellAbilitiesSuppressed(state) &&
+      unitImmuneToSpellSchools(unit, card.spellSchools)
+    );
   }
   return false;
 }
@@ -2989,7 +3407,10 @@ function unitIgnoresCardDamage(state: GameState, unit: CombatUnitState, card: Ca
  * rerolled once when it comes up against the unit's controller. Neutral guards
  * are not "you" — only a unit a real player controls rerolls.
  */
-function bronRerollsAbilityRoll(state: GameState, unit: CombatUnitState): boolean {
+function bronRerollsAbilityRoll(
+  state: GameState,
+  unit: CombatUnitState,
+): boolean {
   return !isNeutralUnit(unit) && abilityRollRerollActive(state);
 }
 
@@ -3008,7 +3429,7 @@ function negatesCardOnDwarfRoll(
   state: GameState,
   target: TargetRef | undefined,
   cardName: string,
-  casterId: PlayerId
+  casterId: PlayerId,
 ): boolean {
   const combat = state.combat;
   if (!combat || !target || target.type !== "unit") {
@@ -3029,12 +3450,25 @@ function negatesCardOnDwarfRoll(
   // window — but it still goes through the shared pipeline: the owner's
   // universal 'reroll a "+1"' morale curse forces even a successful shrug-off
   // to reroll, exactly as the card prints ("On a +1 on an Attack die…").
-  const window: AbilityRollWindow = { minRoll: negate.onRoll, maxRoll: negate.onRoll };
-  let candidate = rollAbilityCandidate(state, combat, unit.controllerId, 1, window, false);
+  const window: AbilityRollWindow = {
+    minRoll: negate.onRoll,
+    maxRoll: negate.onRoll,
+  };
+  let candidate = rollAbilityCandidate(
+    state,
+    combat,
+    unit.controllerId,
+    1,
+    window,
+    false,
+  );
   // Multilingual Bron: the Dwarves' owner rerolls a resistance die that came up
   // against them, once.
   const ownerWantsNegate = casterId !== unit.controllerId;
-  if (abilityRollSucceeds(candidate.rolls, window) !== ownerWantsNegate && bronRerollsAbilityRoll(state, unit)) {
+  if (
+    abilityRollSucceeds(candidate.rolls, window) !== ownerWantsNegate &&
+    bronRerollsAbilityRoll(state, unit)
+  ) {
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: unit.id,
@@ -3046,10 +3480,19 @@ function negatesCardOnDwarfRoll(
         success: false,
         label: negate.abilityName,
         caption: "Multilingual Bron rerolls…",
-        ...(candidate.modifierNotes?.length ? { modifiers: candidate.modifierNotes } : {})
-      }
+        ...(candidate.modifierNotes?.length
+          ? { modifiers: candidate.modifierNotes }
+          : {}),
+      },
     });
-    candidate = rollAbilityCandidate(state, combat, unit.controllerId, 1, window, false);
+    candidate = rollAbilityCandidate(
+      state,
+      combat,
+      unit.controllerId,
+      1,
+      window,
+      false,
+    );
   }
   const negated = abilityRollSucceeds(candidate.rolls, window);
   appendEvent(state, {
@@ -3064,9 +3507,13 @@ function negatesCardOnDwarfRoll(
       rolls: [...candidate.rolls],
       success: negated,
       label: negate.abilityName,
-      caption: negated ? `${cardName} is shrugged off!` : `${cardName} takes hold.`,
-      ...(candidate.modifierNotes?.length ? { modifiers: candidate.modifierNotes } : {})
-    }
+      caption: negated
+        ? `${cardName} is shrugged off!`
+        : `${cardName} takes hold.`,
+      ...(candidate.modifierNotes?.length
+        ? { modifiers: candidate.modifierNotes }
+        : {}),
+    },
   });
   return negated;
 }
@@ -3082,20 +3529,22 @@ function rollSpellCancelDice(
   state: GameState,
   diceRoll: { count: number; successFace: number },
   pendingSpellCardId: CardId,
-  rollerId: PlayerId
+  rollerId: PlayerId,
 ): boolean {
   const combat = state.combat;
   if (!combat) {
     return false;
   }
-  const rolls = Array.from({ length: Math.max(1, diceRoll.count) }, () => rollAttackDie(combat));
+  const rolls = Array.from({ length: Math.max(1, diceRoll.count) }, () =>
+    rollAttackDie(combat),
+  );
   const hits = rolls.filter((value) => value === diceRoll.successFace).length;
   appendEvent(state, {
     type: "SPELL_DICE_ROLLED",
     spellCardId: pendingSpellCardId,
     playerId: rollerId,
     rolls,
-    hits
+    hits,
   });
   return hits > 0;
 }
@@ -3114,7 +3563,7 @@ function reducedCardDamage(
   state: GameState,
   unit: CombatUnitState,
   card: CardDefinition | undefined,
-  amount: number
+  amount: number,
 ): number {
   if (unitIgnoresCardDamage(state, unit, card)) {
     return 0;
@@ -3168,7 +3617,7 @@ function resolveInfernoSpell(
   playerId: PlayerId,
   card: CardDefinition,
   position: number,
-  rollCount: number
+  rollCount: number,
 ): void {
   const combat = state.combat;
   if (!combat) {
@@ -3179,17 +3628,20 @@ function resolveInfernoSpell(
   // BEFORE the dice are rolled. It lands on the unit standing on the SELECTED
   // space only (never the adjacent ring) and resolves even if every die then
   // whiffs; the printed spell has no such clause (`preDamageOnSpace` absent).
-  const preDamage = card.effect.type === "INFERNO" ? (card.effect.preDamageOnSpace ?? 0) : 0;
+  const preDamage =
+    card.effect.type === "INFERNO" ? (card.effect.preDamageOnSpace ?? 0) : 0;
   if (preDamage > 0) {
     const occupant = Object.values(combat.units).find(
-      (unit) => isUnitAlive(unit) && unit.position === position
+      (unit) => isUnitAlive(unit) && unit.position === position,
     );
     if (occupant) {
       dealAreaCardDamage(state, playerId, card, occupant, preDamage);
     }
   }
 
-  const rolls = Array.from({ length: Math.max(1, rollCount) }, () => rollAttackDie(combat));
+  const rolls = Array.from({ length: Math.max(1, rollCount) }, () =>
+    rollAttackDie(combat),
+  );
 
   // Community Balance Pack Inferno: the caster's own Attack-die reroll
   // entitlements (expert Luck, Fortune, Mirth, the morale token, the reroll
@@ -3208,7 +3660,7 @@ function resolveInfernoSpell(
     openInfernoRerollWindow(state, playerId, card, position, {
       rolls,
       roll: rolls[0] ?? 0,
-      sumAllDice: true
+      sumAllDice: true,
     })
   ) {
     return;
@@ -3231,10 +3683,12 @@ function openInfernoRerollWindow(
   playerId: PlayerId,
   card: CardDefinition,
   position: number,
-  candidate: AttackRollCandidate
+  candidate: AttackRollCandidate,
 ): boolean {
   const combat = state.combat;
-  const caster = combat?.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
+  const caster = combat?.activeUnitId
+    ? combat.units[combat.activeUnitId]
+    : undefined;
   if (!combat || !caster || caster.controllerId !== playerId) {
     return false;
   }
@@ -3244,22 +3698,29 @@ function openInfernoRerollWindow(
         effect.controllerId === playerId &&
         effect.scope !== "unit" &&
         effect.modifiers.some(
-          (modifier) => modifier.type === "ATTACK_DIE_REROLL" && modifier.maxUsesPerRoll > 0
-        )
+          (modifier) =>
+            modifier.type === "ATTACK_DIE_REROLL" &&
+            modifier.maxUsesPerRoll > 0,
+        ),
     )
     // Luck is spent last, exactly as in buildRerollSources.
-    .sort((left, right) => Number(left.name.includes("Luck")) - Number(right.name.includes("Luck")))
+    .sort(
+      (left, right) =>
+        Number(left.name.includes("Luck")) -
+        Number(right.name.includes("Luck")),
+    )
     .map((effect) => ({
       name: effect.name,
       effectId: effect.id,
       remaining: getRerollUsesForEffect(effect),
       used: 0,
       chooseResult: effectRerollChoosesResult(effect),
-      setDieFace: effectRerollSetsDieFace(effect)
+      setDieFace: effectRerollSetsDieFace(effect),
     }));
-  const sources = [...effectSources, ...buildAbilityRerollSources(state, caster)].filter(
-    (source) => source.remaining > 0
-  );
+  const sources = [
+    ...effectSources,
+    ...buildAbilityRerollSources(state, caster),
+  ].filter((source) => source.remaining > 0);
   if (countAvailableRerolls(sources, candidate.roll) <= 0) {
     return false;
   }
@@ -3297,10 +3758,10 @@ function openInfernoRerollWindow(
         attackRoll: 0,
         forceAbilityRoll: false,
         fromStep: 0,
-        followUpIndex: 0
+        followUpIndex: 0,
       },
-      spellResume: { cardId: card.id, playerId, position }
-    }
+      spellResume: { cardId: card.id, playerId, position },
+    },
   };
   state.phase = "choice";
   state.priorityPlayerId = playerId;
@@ -3310,7 +3771,7 @@ function openInfernoRerollWindow(
     choiceType: "ATTACK_DIE_REROLL",
     playerId,
     sourceEffectIds: [],
-    message: `${card.name}: you may reroll the Attack dice before the blast lands.`
+    message: `${card.name}: you may reroll the Attack dice before the blast lands.`,
   });
   return true;
 }
@@ -3321,7 +3782,7 @@ function applyInfernoDiceOutcome(
   playerId: PlayerId,
   card: CardDefinition,
   position: number,
-  rolls: number[]
+  rolls: number[],
 ): void {
   const combat = state.combat;
   if (!combat) {
@@ -3338,17 +3799,20 @@ function applyInfernoDiceOutcome(
     playerId,
     rolls,
     hits: damage,
-    position
+    position,
   });
 
   if (damage <= 0) {
     return;
   }
 
-  const blastArea = new Set<number>([position, ...getOrthogonalNeighbors(position)]);
+  const blastArea = new Set<number>([
+    position,
+    ...getOrthogonalNeighbors(position),
+  ]);
   // Snapshot the targets first so removals during the loop never shift it.
   const targets = Object.values(combat.units).filter(
-    (unit) => isUnitAlive(unit) && blastArea.has(unit.position)
+    (unit) => isUnitAlive(unit) && blastArea.has(unit.position),
   );
 
   for (const unit of targets) {
@@ -3363,7 +3827,7 @@ function applyInfernoDiceOutcome(
       source: { type: "card", cardId: card.id, controllerId: playerId },
       target: { type: "unit", unitId: unit.id },
       amount: dealt,
-      damageKind: "spell"
+      damageKind: "spell",
     });
     markUnitRemovedIfNeeded(state, unit);
   }
@@ -3380,7 +3844,7 @@ function dealAreaCardDamage(
   playerId: PlayerId,
   card: CardDefinition | undefined,
   unit: CombatUnitState,
-  amount: number
+  amount: number,
 ): void {
   const dealt = reducedCardDamage(state, unit, card, amount);
   if (dealt <= 0) {
@@ -3390,10 +3854,12 @@ function dealAreaCardDamage(
   noteUnitDamagedForTokens(state, unit, dealt);
   appendEvent(state, {
     type: "DAMAGE_ASSIGNED",
-    source: card ? { type: "card", cardId: card.id, controllerId: playerId } : { type: "system" },
+    source: card
+      ? { type: "card", cardId: card.id, controllerId: playerId }
+      : { type: "system" },
     target: { type: "unit", unitId: unit.id },
     amount: dealt,
-    damageKind: "spell"
+    damageKind: "spell",
   });
   markUnitRemovedIfNeeded(state, unit);
 }
@@ -3412,23 +3878,34 @@ function tryDeferSpecialtyDamageForHeals(
   action: Extract<GameAction, { type: "PLAY_CARD" }>,
   card: CardDefinition,
   effect: ConcreteEffect,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): boolean {
   const combat = state.combat;
   if (!combat || !action.target) {
     return false;
   }
   // Only first-play deferral — never re-park while resolving the stacked play.
-  if (state.stack.some((item) => item.action.type === "PLAY_CARD" && item.status === "resolving")) {
+  if (
+    state.stack.some(
+      (item) => item.action.type === "PLAY_CARD" && item.status === "resolving",
+    )
+  ) {
     return false;
   }
   // Frost Ring / Meteor Shower (and Xyron-style full blasts). War-machine
   // discard damage keeps its own path (discard + damage are one step).
-  if (effect.type !== "AREA_DAMAGE_PICK_ADJACENT" && effect.type !== "AREA_DAMAGE_ALL_ADJACENT") {
+  if (
+    effect.type !== "AREA_DAMAGE_PICK_ADJACENT" &&
+    effect.type !== "AREA_DAMAGE_ALL_ADJACENT"
+  ) {
     return false;
   }
 
-  const threatened = unitIdsThreatenedByDamageEffect(state, effect, action.target);
+  const threatened = unitIdsThreatenedByDamageEffect(
+    state,
+    effect,
+    action.target,
+  );
   if (threatened.length === 0) {
     return false;
   }
@@ -3452,7 +3929,11 @@ function tryDeferSpecialtyDamageForHeals(
   }
 
   const stackItem = makeStackItem(state, action);
-  stackItem.source = { type: "card", cardId: action.cardId, controllerId: action.playerId };
+  stackItem.source = {
+    type: "card",
+    cardId: action.cardId,
+    controllerId: action.playerId,
+  };
   state.stack.push(stackItem);
 
   const spellStarted = appendEvent(state, {
@@ -3460,7 +3941,7 @@ function tryDeferSpecialtyDamageForHeals(
     playerId: action.playerId,
     spellCardId: action.cardId,
     target: action.target,
-    power: 0
+    power: 0,
   });
   stackItem.triggerEventIds.push(spellStarted.id);
 
@@ -3478,7 +3959,7 @@ function applyAreaAllAdjacentPlay(
   state: GameState,
   action: Extract<GameAction, { type: "PLAY_CARD" }>,
   card: CardDefinition,
-  effect: Extract<ConcreteEffect, { type: "AREA_DAMAGE_ALL_ADJACENT" }>
+  effect: Extract<ConcreteEffect, { type: "AREA_DAMAGE_ALL_ADJACENT" }>,
 ): void {
   if (!state.combat || !action.target) {
     return;
@@ -3492,9 +3973,12 @@ function applyAreaAllAdjacentPlay(
   if (center === undefined) {
     return;
   }
-  const blastArea = new Set<number>([center, ...getOrthogonalNeighbors(center)]);
+  const blastArea = new Set<number>([
+    center,
+    ...getOrthogonalNeighbors(center),
+  ]);
   const inBlast = Object.values(state.combat.units).filter(
-    (unit) => isUnitAlive(unit) && blastArea.has(unit.position)
+    (unit) => isUnitAlive(unit) && blastArea.has(unit.position),
   );
   for (const unit of inBlast) {
     dealAreaCardDamage(state, action.playerId, card, unit, effect.amount);
@@ -3507,7 +3991,7 @@ function applyAreaPickAdjacentPlay(
   action: Extract<GameAction, { type: "PLAY_CARD" }>,
   card: CardDefinition,
   effect: Extract<ConcreteEffect, { type: "AREA_DAMAGE_PICK_ADJACENT" }>,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   if (!state.combat || !action.target) {
     return;
@@ -3517,7 +4001,14 @@ function applyAreaPickAdjacentPlay(
     getAmountByPower(
       effect.amountByPower ?? {},
       1,
-      playCardSpellPower(state, action.playerId, card, action.costCardIds, action.costCardModes, cards)
+      playCardSpellPower(
+        state,
+        action.playerId,
+        card,
+        action.costCardIds,
+        action.costCardModes,
+        cards,
+      ),
     );
   const center =
     action.target.type === "space"
@@ -3535,7 +4026,7 @@ function applyAreaPickAdjacentPlay(
     center,
     amount,
     effect.includeCenter,
-    effect.adjacentPicks
+    effect.adjacentPicks,
   );
 }
 
@@ -3548,7 +4039,7 @@ function applyAreaPickAdjacentPlay(
 function grantDefenseTokensToAll(
   state: GameState,
   playerId: PlayerId,
-  sourceCard?: CardDefinition
+  sourceCard?: CardDefinition,
 ): void {
   const combat = state.combat;
   if (!combat) {
@@ -3577,7 +4068,7 @@ function openAreaPickChoice(
   card: CardDefinition | undefined,
   candidateUnitIds: UnitId[],
   picksRemaining: number,
-  amount: number
+  amount: number,
 ): void {
   const choiceId = `choice_${nextEventNumber(state)}`;
   state.pendingChoice = {
@@ -3595,7 +4086,7 @@ function openAreaPickChoice(
     candidateUnitIds,
     amount,
     picksRemaining,
-    sourceCardId: card?.id
+    sourceCardId: card?.id,
   };
   state.phase = "choice";
   state.priorityPlayerId = playerId;
@@ -3605,7 +4096,7 @@ function openAreaPickChoice(
     choiceType: "ABILITY_TARGET_CHOICE",
     playerId,
     sourceEffectIds: [],
-    message: `${card?.name ?? "An area blast"} may scorch ${picksRemaining} of the adjacent units.`
+    message: `${card?.name ?? "An area blast"} may scorch ${picksRemaining} of the adjacent units.`,
   });
 }
 
@@ -3620,7 +4111,7 @@ function applyAdjacentPicks(
   card: CardDefinition | undefined,
   candidateUnitIds: UnitId[],
   picks: number,
-  amount: number
+  amount: number,
 ): void {
   const combat = state.combat;
   if (!combat || picks <= 0) {
@@ -3653,7 +4144,7 @@ function resolveAreaPickDamage(
   centerPosition: number,
   amount: number,
   includeCenter: boolean,
-  adjacentPicks: number
+  adjacentPicks: number,
 ): void {
   const combat = state.combat;
   if (!combat) {
@@ -3662,7 +4153,7 @@ function resolveAreaPickDamage(
 
   if (includeCenter) {
     const centre = Object.values(combat.units).find(
-      (unit) => isUnitAlive(unit) && unit.position === centerPosition
+      (unit) => isUnitAlive(unit) && unit.position === centerPosition,
     );
     if (centre) {
       dealAreaCardDamage(state, playerId, card, centre, amount);
@@ -3672,7 +4163,9 @@ function resolveAreaPickDamage(
   const neighbours = new Set(getOrthogonalNeighbors(centerPosition));
   const candidates = Object.values(combat.units).filter(
     (unit) =>
-      isUnitAlive(unit) && neighbours.has(unit.position) && !unitIgnoresCardDamage(state, unit, card)
+      isUnitAlive(unit) &&
+      neighbours.has(unit.position) &&
+      !unitIgnoresCardDamage(state, unit, card),
   );
   applyAdjacentPicks(
     state,
@@ -3680,15 +4173,18 @@ function resolveAreaPickDamage(
     card,
     candidates.map((unit) => unit.id),
     adjacentPicks,
-    amount
+    amount,
   );
 }
 
-function rollAttackCandidate(combat: CombatState, rollMode: AttackRollMode): AttackRollCandidate {
+function rollAttackCandidate(
+  combat: CombatState,
+  rollMode: AttackRollMode,
+): AttackRollCandidate {
   const { rolls, selectedRoll } = rollAttackDice(combat, rollMode);
   return {
     rolls,
-    roll: selectedRoll
+    roll: selectedRoll,
   };
 }
 
@@ -3720,8 +4216,14 @@ function getAttackDamagePreview(
   // contributes 0 to the attack value — for BOTH armies. Only the NUMERIC result
   // is ignored; "+1"-face abilities still fire (that is the separate
   // IGNORE_ATTACK_DIE_RESULT arm).
-  ignorePlusOneDie = false
-): { attackValue: number; defenseValue: number; damage: number; dieAttackBonus: number; dieDefenseBonus: number } {
+  ignorePlusOneDie = false,
+): {
+  attackValue: number;
+  defenseValue: number;
+  damage: number;
+  dieAttackBonus: number;
+  dieDefenseBonus: number;
+} {
   // Attack-die-face conditioned modifiers, resolved here so the actual hit and
   // the lethal-save preview always agree: Dread Knights' "Death Blow" adds to
   // the attacker's value on 0/+1, Zombies'/Manticores' resilience adds Defense
@@ -3731,8 +4233,13 @@ function getAttackDamagePreview(
   // Death Blow is printed [unit_attack] (own declared attack only), so it drops
   // on a Retaliation Attack; the defender-side resilience (a "when attacked"
   // bonus) still applies whether the incoming hit is an attack or a retaliation.
-  const dieAttackBonus = dieCancelled || isRetaliation ? 0 : getAttackBonusOnAttackDie(attacker, roll);
-  const dieDefenseBonus = dieCancelled ? 0 : getDefenseBonusOnAttackDie(defender, roll);
+  const dieAttackBonus =
+    dieCancelled || isRetaliation
+      ? 0
+      : getAttackBonusOnAttackDie(attacker, roll);
+  const dieDefenseBonus = dieCancelled
+    ? 0
+    : getDefenseBonusOnAttackDie(defender, roll);
   const baseAttack = baseAttackOverride ?? attacker.attack;
   // WOG commander Might (Damage grade): `mightBonus` is the contribution of the
   // extra attack dice the commander rolled for this attack (+1 per "+1" face,
@@ -3740,14 +4247,21 @@ function getAttackDamagePreview(
   // dice, so they ride the attack value beside the normal die (before Defense),
   // rolled once by the caller and passed in so every recompute agrees.
   // Centaur's Axe (Balance Pack): the tripling is ignored on a rolled "-1".
-  const effectiveDieMultiplier = dieMultiplierSkipsNegative && roll < 0 ? 1 : dieMultiplier;
+  const effectiveDieMultiplier =
+    dieMultiplierSkipsNegative && roll < 0 ? 1 : dieMultiplier;
   // Community Balance Change Hourglass of the Evil Hour: the "+1" result is ignored.
   const countedRoll = ignorePlusOneDie && roll > 0 ? 0 : roll;
   const rawAttackValue = Math.max(
     0,
-    baseAttack + attackBonus + dieAttackBonus + countedRoll * effectiveDieMultiplier + mightBonus
+    baseAttack +
+      attackBonus +
+      dieAttackBonus +
+      countedRoll * effectiveDieMultiplier +
+      mightBonus,
   );
-  const attackValue = halveAttack ? Math.ceil(rawAttackValue / 2) : rawAttackValue;
+  const attackValue = halveAttack
+    ? Math.ceil(rawAttackValue / 2)
+    : rawAttackValue;
   // Elemental damage ignores Defense outright; otherwise sum printed Defense,
   // the Defend roll's bonus (0 or +1, rolled per attack by the caller), played
   // Defense buffs and any die-face Defense bonus.
@@ -3761,12 +4275,16 @@ function getAttackDamagePreview(
   // any die-face Defense bonus are separate shields added on top of the floor.
   const defenseValue = ignoreDefense
     ? 0
-    : Math.max(0, defender.defense + defenseBonus) + defendBonus + dieDefenseBonus;
+    : Math.max(0, defender.defense + defenseBonus) +
+      defendBonus +
+      dieDefenseBonus;
   // Siege wall cover: "reduce the attack's damage by 1" comes off the damage,
   // not the defense. The commander's Might dice already rode into attackValue
   // above (they are extra attack dice, not a post-defense bonus).
   const fuyukiFixedDamage = getFuyukiCasterFixedDamage(attacker);
-  const rawDamage = fuyukiFixedDamage ?? Math.max(0, Math.max(0, attackValue - defenseValue) - damageReduction);
+  const rawDamage =
+    fuyukiFixedDamage ??
+    Math.max(0, Math.max(0, attackValue - defenseValue) - damageReduction);
   // Cove Nix (Pack): "cannot take more than N damage from a single attack." The
   // cap clamps the resolved damage of this one attack and is reflected in the
   // lethal-save preview too (both go through here), so a capped blow correctly
@@ -3776,14 +4294,17 @@ function getAttackDamagePreview(
     ? null
     : printedCap;
   const unitCapped = cap ? Math.min(rawDamage, cap.amount) : rawDamage;
-  const damage = cardDamageCap === undefined ? unitCapped : Math.min(unitCapped, cardDamageCap);
+  const damage =
+    cardDamageCap === undefined
+      ? unitCapped
+      : Math.min(unitCapped, cardDamageCap);
 
   return {
     attackValue: fuyukiFixedDamage ?? attackValue,
     defenseValue: fuyukiFixedDamage === undefined ? defenseValue : 0,
     damage,
     dieAttackBonus,
-    dieDefenseBonus
+    dieDefenseBonus,
   };
 }
 
@@ -3834,7 +4355,7 @@ function applyAttackDamageFromCandidate(
   // Centaur's Axe (Balance Pack): ignore the die multiplier on a rolled "-1".
   dieMultiplierSkipsNegative = false,
   // Community Balance Change Hourglass of the Evil Hour: a rolled "+1" counts 0.
-  ignorePlusOneDie = false
+  ignorePlusOneDie = false,
 ): { damage: number; roll: number; cancelled: boolean } {
   if (!state.combat) {
     return { damage: 0, roll: 0, cancelled: false };
@@ -3857,12 +4378,16 @@ function applyAttackDamageFromCandidate(
     cardDamageCap,
     halveAttack,
     dieMultiplierSkipsNegative,
-    ignorePlusOneDie
+    ignorePlusOneDie,
   );
-  const { attackValue, defenseValue, dieAttackBonus, dieDefenseBonus } = preview;
+  const { attackValue, defenseValue, dieAttackBonus, dieDefenseBonus } =
+    preview;
   let damage = preview.damage;
   if (damage > 0) {
-    damage = Math.max(0, damage - consumeEquipmentFirstDamagePrevention(state, defender));
+    damage = Math.max(
+      0,
+      damage - consumeEquipmentFirstDamagePrevention(state, defender),
+    );
   }
   const defensiveRoll = getDefenseDieDamageReduction(defender);
   if (defensiveRoll && damage > 0) {
@@ -3870,8 +4395,18 @@ function applyAttackDamageFromCandidate(
     // interactive reroll window — it still goes through the shared pipeline:
     // the defender's universal 'reroll a "+1"' morale curse can force a
     // reroll (which for a "-1"-keyed armor may even land the soak).
-    const window: AbilityRollWindow = { minRoll: defensiveRoll.onRoll, maxRoll: defensiveRoll.onRoll };
-    const candidate = rollAbilityCandidate(state, state.combat, defender.controllerId, 1, window, false);
+    const window: AbilityRollWindow = {
+      minRoll: defensiveRoll.onRoll,
+      maxRoll: defensiveRoll.onRoll,
+    };
+    const candidate = rollAbilityCandidate(
+      state,
+      state.combat,
+      defender.controllerId,
+      1,
+      window,
+      false,
+    );
     if (abilityRollSucceeds(candidate.rolls, window)) {
       const reduced = Math.min(damage, defensiveRoll.amount);
       damage -= reduced;
@@ -3886,8 +4421,10 @@ function applyAttackDamageFromCandidate(
           success: true,
           label: defensiveRoll.abilityName,
           caption: `${defender.cardName} soaks ${reduced} damage!`,
-          ...(candidate.modifierNotes?.length ? { modifiers: candidate.modifierNotes } : {})
-        }
+          ...(candidate.modifierNotes?.length
+            ? { modifiers: candidate.modifierNotes }
+            : {}),
+        },
       });
     }
   }
@@ -3902,7 +4439,7 @@ function applyAttackDamageFromCandidate(
       unitId: defender.id,
       abilityId: ward?.abilityId ?? "couatl-invulnerability",
       targetUnitId: defender.id,
-      message: `${defender.cardName} is invulnerable and shrugs off the attack.`
+      message: `${defender.cardName} is invulnerable and shrugs off the attack.`,
     });
   }
   // Reported bonuses fold in the die-face-conditioned deltas so the event's
@@ -3942,21 +4479,25 @@ function applyAttackDamageFromCandidate(
       ...(candidate.sumAllDice ? { sumAllDice: true } : {}),
       ...(defendRoll !== undefined ? { defendRoll } : {}),
       ...(mightRolls.length > 0 ? { mightRolls } : {}),
-      ...(candidate.modifierNotes?.length ? { rollModifiers: candidate.modifierNotes } : {}),
-      ...(!skipDieCinematic && candidate.rerollBeats?.length ? { rerollBeats: candidate.rerollBeats } : {}),
+      ...(candidate.modifierNotes?.length
+        ? { rollModifiers: candidate.modifierNotes }
+        : {}),
+      ...(!skipDieCinematic && candidate.rerollBeats?.length
+        ? { rerollBeats: candidate.rerollBeats }
+        : {}),
       rollMode,
       attackBonus: reportedAttackBonus,
       defenseBonus: reportedDefenseBonus,
       attackValue,
       defenseValue,
       damage: 0,
-      isRetaliation
+      isRetaliation,
     });
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: defender.id,
       abilityId: "resurrection",
-      message: `Resurrection cancels the attack that would have destroyed ${defender.cardName}.`
+      message: `Resurrection cancels the attack that would have destroyed ${defender.cardName}.`,
     });
     return { damage: 0, roll: candidate.roll, cancelled: true };
   }
@@ -3965,7 +4506,8 @@ function applyAttackDamageFromCandidate(
   // Seamen's "removes a unit from Combat" reward can tell a real kill from a
   // Pack→Few flip (which leaves the unit alive) below.
   const defenderWasAlive = isUnitAlive(defender);
-  const defeatedSideOrLayer = damage > 0 && defender.damage + damage >= defender.maxHealth;
+  const defeatedSideOrLayer =
+    damage > 0 && defender.damage + damage >= defender.maxHealth;
 
   // Damage is not capped at the pack's health: the rulebook carries any
   // excess over onto the Few side when the pack flips.
@@ -3982,20 +4524,27 @@ function applyAttackDamageFromCandidate(
     ...(candidate.sumAllDice ? { sumAllDice: true } : {}),
     ...(defendRoll !== undefined ? { defendRoll } : {}),
     ...(mightRolls.length > 0 ? { mightRolls } : {}),
-    ...(candidate.modifierNotes?.length ? { rollModifiers: candidate.modifierNotes } : {}),
-    ...(!skipDieCinematic && candidate.rerollBeats?.length ? { rerollBeats: candidate.rerollBeats } : {}),
+    ...(candidate.modifierNotes?.length
+      ? { rollModifiers: candidate.modifierNotes }
+      : {}),
+    ...(!skipDieCinematic && candidate.rerollBeats?.length
+      ? { rerollBeats: candidate.rerollBeats }
+      : {}),
     rollMode,
     attackBonus: reportedAttackBonus,
     defenseBonus: reportedDefenseBonus,
     attackValue,
     defenseValue,
     damage,
-    isRetaliation
+    isRetaliation,
   });
 
   // Cove Nix (Pack): announce when its per-attack damage cap actually softened
   // this hit so the log/FX fire (the clamp itself happened in the preview).
-  const uncappedDamage = Math.max(0, Math.max(0, attackValue - defenseValue) - damageReduction);
+  const uncappedDamage = Math.max(
+    0,
+    Math.max(0, attackValue - defenseValue) - damageReduction,
+  );
   if (uncappedDamage > damage) {
     const cap = availableDamageCap(state, defender, false);
     if (cap) {
@@ -4004,7 +4553,7 @@ function applyAttackDamageFromCandidate(
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: defender.id,
         abilityId: cap.abilityId,
-        message: `${defender.cardName} shrugs it off — ${cap.abilityName} caps the hit at ${cap.amount} damage.`
+        message: `${defender.cardName} shrugs it off — ${cap.abilityName} caps the hit at ${cap.amount} damage.`,
       });
     }
   }
@@ -4012,13 +4561,16 @@ function applyAttackDamageFromCandidate(
   // Dread Knights' "Death Blow": announce the die-triggered Attack bonus so the
   // log and the FX/sound fire (the bonus itself is already folded into damage).
   if (dieAttackBonus > 0) {
-    for (const ability of getTriggeredAttackDieBonusAbilities(attacker, candidate.roll)) {
+    for (const ability of getTriggeredAttackDieBonusAbilities(
+      attacker,
+      candidate.roll,
+    )) {
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: attacker.id,
         abilityId: ability.abilityId,
         targetUnitId: defender.id,
-        message: `${attacker.cardName} lands a ${ability.abilityName} (+${ability.amount} Attack).`
+        message: `${attacker.cardName} lands a ${ability.abilityName} (+${ability.amount} Attack).`,
       });
     }
   }
@@ -4029,11 +4581,11 @@ function applyAttackDamageFromCandidate(
       source: {
         type: "unit",
         unitId: attacker.id,
-        controllerId: attacker.controllerId
+        controllerId: attacker.controllerId,
       },
       target: { type: "unit", unitId: defender.id },
       amount: damage,
-      damageKind: "attack"
+      damageKind: "attack",
     });
   }
 
@@ -4044,7 +4596,9 @@ function applyAttackDamageFromCandidate(
     const draws = consumeEquipmentKillDraw(state, attacker.controllerId);
     if (draws > 0) drawCardsForPlayer(state, attacker.controllerId, draws);
     const xp = equipmentKillXpBonus(state, attacker.controllerId);
-    const armyUnit = state.players[attacker.controllerId]?.army.find((unit) => unit.id === attacker.armyUnitId);
+    const armyUnit = state.players[attacker.controllerId]?.army.find(
+      (unit) => unit.id === attacker.armyUnitId,
+    );
     if (xp > 0 && armyUnit && unitExperienceActive(state)) {
       grantArmyUnitExperience(state, attacker.controllerId, armyUnit, xp);
     }
@@ -4059,7 +4613,7 @@ function applyAttackDamageFromCandidate(
         unitId: attacker.id,
         abilityId: draw.abilityId,
         targetUnitId: defender.id,
-        message: `${attacker.cardName} draws ${draw.amount} card after defeating an enemy side or Stack layer.`
+        message: `${attacker.cardName} draws ${draw.amount} card after defeating an enemy side or Stack layer.`,
       });
     }
   }
@@ -4071,12 +4625,15 @@ function applyAttackDamageFromCandidate(
     const growth = getLethalHitHealthGrowth(attacker);
     if (growth) {
       const current = attacker.permanentHealthBonus ?? 0;
-      const gained = Math.min(growth.amount, Math.max(0, growth.maxBonus - current));
+      const gained = Math.min(
+        growth.amount,
+        Math.max(0, growth.maxBonus - current),
+      );
       if (gained > 0) {
         attacker.permanentHealthBonus = current + gained;
         attacker.maxHealth += gained;
         const armyUnit = state.players[attacker.controllerId]?.army.find(
-          (candidate) => candidate.id === attacker.armyUnitId
+          (candidate) => candidate.id === attacker.armyUnitId,
         );
         if (armyUnit) {
           armyUnit.permanentHealthBonus = attacker.permanentHealthBonus;
@@ -4086,7 +4643,7 @@ function applyAttackDamageFromCandidate(
           unitId: attacker.id,
           abilityId: growth.abilityId,
           targetUnitId: defender.id,
-          message: `${attacker.cardName} grows from the defeated layer and permanently gains +${gained} Health.`
+          message: `${attacker.cardName} grows from the defeated layer and permanently gains +${gained} Health.`,
         });
       }
     }
@@ -4107,7 +4664,11 @@ function applyAttackDamageFromCandidate(
   // Combat, gain 2 gold." Paid only on a real removal (alive → off the board),
   // never on a Pack→Few flip, and only once per fight per Seamen stack. Works on
   // a Retaliation Attack kill too, since every attack funnels through here.
-  if (defenderWasAlive && !isUnitAlive(defender) && !attacker.gainedKillGoldThisCombat) {
+  if (
+    defenderWasAlive &&
+    !isUnitAlive(defender) &&
+    !attacker.gainedKillGoldThisCombat
+  ) {
     const reward = getOnKillResourceGain(attacker);
     const player = reward ? state.players[attacker.controllerId] : undefined;
     if (reward && player) {
@@ -4118,7 +4679,7 @@ function applyAttackDamageFromCandidate(
         unitId: attacker.id,
         abilityId: reward.abilityId,
         targetUnitId: defender.id,
-        message: `${attacker.cardName} plunders ${reward.amount} ${reward.resource} for removing ${defender.cardName}.`
+        message: `${attacker.cardName} plunders ${reward.amount} ${reward.resource} for removing ${defender.cardName}.`,
       });
     }
   }
@@ -4137,7 +4698,7 @@ function applyAttackDamageFromCandidate(
         unitId: attacker.id,
         abilityId: cubeGain.abilityId,
         targetUnitId: defender.id,
-        message: `${attacker.cardName} devours ${defender.cardName} and banks a faction cube (${attacker.factionCubes}).`
+        message: `${attacker.cardName} devours ${defender.cardName} and banks a faction cube (${attacker.factionCubes}).`,
       });
     }
   }
@@ -4148,7 +4709,7 @@ function applyAttackDamageFromCandidate(
 function applyWogOnKillEffects(
   state: GameState,
   attacker: CombatUnitState,
-  defender: CombatUnitState
+  defender: CombatUnitState,
 ): void {
   if (!state.combat || isUnitAlive(defender) || !isUnitAlive(attacker)) {
     return;
@@ -4159,12 +4720,15 @@ function applyWogOnKillEffects(
     const healed = attacker.damage;
     attacker.damage = 0;
     const currentBonus = attacker.permanentHealthBonus ?? 0;
-    const gained = Math.min(harvest.amount, Math.max(0, harvest.maxBonus - currentBonus));
+    const gained = Math.min(
+      harvest.amount,
+      Math.max(0, harvest.maxBonus - currentBonus),
+    );
     if (gained > 0) {
       attacker.permanentHealthBonus = currentBonus + gained;
       attacker.maxHealth += gained;
       const armyUnit = state.players[attacker.controllerId]?.army.find(
-        (candidate) => candidate.id === attacker.armyUnitId
+        (candidate) => candidate.id === attacker.armyUnitId,
       );
       if (armyUnit) {
         armyUnit.permanentHealthBonus = attacker.permanentHealthBonus;
@@ -4175,29 +4739,41 @@ function applyWogOnKillEffects(
       unitId: attacker.id,
       abilityId: harvest.abilityId,
       targetUnitId: defender.id,
-      message: `${attacker.cardName} harvests ${defender.cardName}'s soul, heals all damage${gained > 0 ? ` and gains +${gained} Health` : ""}.`
+      message: `${attacker.cardName} harvests ${defender.cardName}'s soul, heals all damage${gained > 0 ? ` and gains +${gained} Health` : ""}.`,
     });
     if (healed > 0) {
       appendEvent(state, {
         type: "DAMAGE_HEALED",
-        source: { type: "unit", unitId: attacker.id, controllerId: attacker.controllerId },
+        source: {
+          type: "unit",
+          unitId: attacker.id,
+          controllerId: attacker.controllerId,
+        },
         target: { type: "unit", unitId: attacker.id },
-        amount: healed
+        amount: healed,
       });
     }
   }
 
   const weakCopy = getOnKillWeakCopy(attacker);
-  if (!weakCopy || (weakCopy.oncePerCombat && attacker.weakCopySummonedThisCombat) || !attacker.unitDefId) {
+  if (
+    !weakCopy ||
+    (weakCopy.oncePerCombat && attacker.weakCopySummonedThisCombat) ||
+    !attacker.unitDefId
+  ) {
     return;
   }
   const summoned = makeCombatUnitFromArmy(
-    { id: `wog_weak_${nextEventNumber(state)}`, unitDefId: attacker.unitDefId, side: attacker.variant },
+    {
+      id: `wog_weak_${nextEventNumber(state)}`,
+      unitDefId: attacker.unitDefId,
+      side: attacker.variant,
+    },
     attacker.controllerId,
     `unit_${attacker.controllerId}_wog_weak_${nextEventNumber(state)}`,
     defender.position,
     getRuleset(state),
-    unitSideRuleOverrides(state)
+    unitSideRuleOverrides(state),
   );
   if (!summoned) {
     return;
@@ -4218,7 +4794,7 @@ function applyWogOnKillEffects(
     unitId: attacker.id,
     abilityId: weakCopy.abilityId,
     targetUnitId: summoned.id,
-    message: `${attacker.cardName} summons a temporary Weak ${attacker.name}.`
+    message: `${attacker.cardName} summons a temporary Weak ${attacker.name}.`,
   });
 }
 
@@ -4228,7 +4804,7 @@ function applyPostAttackAbilityDamage(
   defender: CombatUnitState,
   attackKind: "melee" | "ranged",
   roll: number,
-  damage: number
+  damage: number,
 ): void {
   const combat = state.combat;
   if (!combat) {
@@ -4240,7 +4816,7 @@ function applyPostAttackAbilityDamage(
     defender,
     attackKind,
     roll,
-    damage
+    damage,
   });
 
   for (const effect of damageEffects) {
@@ -4258,10 +4834,13 @@ function applyPostAttackAbilityDamage(
       unitId: effect.sourceUnitId,
       abilityId: effect.abilityId,
       targetUnitId: effect.targetUnitId,
-      message: effect.message
+      message: effect.message,
     });
 
-    const assignedDamage = Math.min(effect.amount, Math.max(0, target.maxHealth - target.damage));
+    const assignedDamage = Math.min(
+      effect.amount,
+      Math.max(0, target.maxHealth - target.damage),
+    );
     target.damage += effect.amount;
     noteUnitDamagedForTokens(state, target, effect.amount);
 
@@ -4271,11 +4850,11 @@ function applyPostAttackAbilityDamage(
         source: {
           type: "unit",
           unitId: effect.sourceUnitId,
-          controllerId: attacker.controllerId
+          controllerId: attacker.controllerId,
         },
         target: { type: "unit", unitId: target.id },
         amount: assignedDamage,
-        damageKind: effect.damageKind
+        damageKind: effect.damageKind,
       });
     }
 
@@ -4292,61 +4871,69 @@ function applyPostAttackAbilityDamage(
  */
 function attackDiePlusOneIgnored(state: GameState): boolean {
   return state.activeEffects.some((effect) =>
-    effect.modifiers.some((modifier) => modifier.type === "IGNORE_ATTACK_DIE_PLUS_ONE")
+    effect.modifiers.some(
+      (modifier) => modifier.type === "IGNORE_ATTACK_DIE_PLUS_ONE",
+    ),
   );
 }
 
 function getAttackStackDetails(
   state: GameState,
-  stackItem: ResolutionStackItem
-):
-  | {
-      attacker: CombatUnitState;
-      defender: CombatUnitState;
-      isRetaliation: boolean;
-      attackKind: "melee" | "ranged";
-      rollMode: AttackRollMode;
-      attackBonus: number;
-      defenseBonus: number;
-      dieMultiplier: number;
-      /** Bless / Elemental damage: the Attack die is skipped and counts as 0. */
-      ignoreAttackDie: boolean;
-      /**
-       * Elemental damage: the defender's Defense is ignored entirely (printed
-       * Defense, Defense token, and any Defense buffs), so the hit lands for the
-       * attacker's full Attack value.
-       */
-      ignoreDefense: boolean;
-      /** Siege wall cover: damage knocked off a ranged hit (0 or 1). */
-      damageReduction: number;
-      /**
-       * Polish Balance Pack Shield (Power 2): a per-attack damage CAP on this
-       * blow ("takes up to 3 damage"). Undefined on every other attack.
-       */
-      attackDamageCap?: number;
-      /**
-       * Polish Balance Pack Forgetfulness (Power 0): this RANGED attack resolves
-       * at half the attacker's Attack value, rounded up.
-       */
-      halveAttack?: boolean;
-      /**
-       * Community Balance Change Hourglass of the Evil Hour (option B): a GLOBAL
-       * "ignore all +1 Attack die results" effect is live this combat round.
-       */
-      ignorePlusOneDie?: boolean;
-      /**
-       * Polish Balance Pack Centaur's Axe: the die multiplier is IGNORED on a
-       * rolled "-1" ("Ignore on '-1' result").
-       */
-      dieMultiplierSkipsNegative?: boolean;
-      /** Behemoths: the announced defense reduction applied to this attack. */
-      defenseReductionAbility?: { abilityId: string; abilityName: string; amount: number };
-      /** Printed-ability follow-up (Death Cloud): replacement base attack. */
-      abilityAttack?: { abilityId: string; baseAttack: number };
-    }
-  | null {
+  stackItem: ResolutionStackItem,
+): {
+  attacker: CombatUnitState;
+  defender: CombatUnitState;
+  isRetaliation: boolean;
+  attackKind: "melee" | "ranged";
+  rollMode: AttackRollMode;
+  attackBonus: number;
+  defenseBonus: number;
+  dieMultiplier: number;
+  /** Bless / Elemental damage: the Attack die is skipped and counts as 0. */
+  ignoreAttackDie: boolean;
+  /**
+   * Elemental damage: the defender's Defense is ignored entirely (printed
+   * Defense, Defense token, and any Defense buffs), so the hit lands for the
+   * attacker's full Attack value.
+   */
+  ignoreDefense: boolean;
+  /** Siege wall cover: damage knocked off a ranged hit (0 or 1). */
+  damageReduction: number;
+  /**
+   * Polish Balance Pack Shield (Power 2): a per-attack damage CAP on this
+   * blow ("takes up to 3 damage"). Undefined on every other attack.
+   */
+  attackDamageCap?: number;
+  /**
+   * Polish Balance Pack Forgetfulness (Power 0): this RANGED attack resolves
+   * at half the attacker's Attack value, rounded up.
+   */
+  halveAttack?: boolean;
+  /**
+   * Community Balance Change Hourglass of the Evil Hour (option B): a GLOBAL
+   * "ignore all +1 Attack die results" effect is live this combat round.
+   */
+  ignorePlusOneDie?: boolean;
+  /**
+   * Polish Balance Pack Centaur's Axe: the die multiplier is IGNORED on a
+   * rolled "-1" ("Ignore on '-1' result").
+   */
+  dieMultiplierSkipsNegative?: boolean;
+  /** Behemoths: the announced defense reduction applied to this attack. */
+  defenseReductionAbility?: {
+    abilityId: string;
+    abilityName: string;
+    amount: number;
+  };
+  /** Printed-ability follow-up (Death Cloud): replacement base attack. */
+  abilityAttack?: { abilityId: string; baseAttack: number };
+} | null {
   const combat = state.combat;
-  if (!combat || (stackItem.action.type !== "ATTACK_UNIT" && stackItem.action.type !== "MOVE_AND_ATTACK_UNIT")) {
+  if (
+    !combat ||
+    (stackItem.action.type !== "ATTACK_UNIT" &&
+      stackItem.action.type !== "MOVE_AND_ATTACK_UNIT")
+  ) {
     return null;
   }
 
@@ -4358,14 +4945,20 @@ function getAttackStackDetails(
 
   const triggerEvent = stackItem.triggerEventIds
     .map((eventId) => state.eventLog.find((event) => event.id === eventId))
-    .find((event): event is Extract<GameEvent, { type: "UNIT_ATTACK_DECLARED" }> => event?.type === "UNIT_ATTACK_DECLARED");
+    .find(
+      (event): event is Extract<GameEvent, { type: "UNIT_ATTACK_DECLARED" }> =>
+        event?.type === "UNIT_ATTACK_DECLARED",
+    );
   const isRetaliation = triggerEvent?.isRetaliation ?? false;
-  const attackKind = triggerEvent?.attackKind ?? getAttackKind(attacker, defender);
+  const attackKind =
+    triggerEvent?.attackKind ?? getAttackKind(attacker, defender);
   // The Ammo Cart waiver applies inside getAttackRollMode (state param). The
   // "[unit_attack] Ignore the combat penalties" ability waives penalties only on
   // the unit's OWN attack, so pass isRetaliation so a retaliating Sharpshooter /
   // Magi / Halfling still suffers the adjacent/long-range penalty.
-  let rollMode = triggerEvent?.rollMode ?? getAttackRollMode(attacker, defender, state, isRetaliation);
+  let rollMode =
+    triggerEvent?.rollMode ??
+    getAttackRollMode(attacker, defender, state, isRetaliation);
 
   // Precision (this attack) and Golden Bow (whole combat) lift the ranged
   // back-row penalty after the attack was declared.
@@ -4376,7 +4969,9 @@ function getAttackStackDetails(
       state.activeEffects.some(
         (effect) =>
           effect.controllerId === attacker.controllerId &&
-          effect.modifiers.some((modifier) => modifier.type === "RANGED_IGNORE_PENALTY")
+          effect.modifiers.some(
+            (modifier) => modifier.type === "RANGED_IGNORE_PENALTY",
+          ),
       ))
   ) {
     rollMode = "normal";
@@ -4405,12 +5000,21 @@ function getAttackStackDetails(
   // WOG Nightmare's Fear is a defender-side forced disadvantage, not a ranged
   // penalty, so the Precision/Golden Bow waiver above must never lift it either —
   // re-assert it when a real attack targets the Nightmare (never on a retaliation).
-  if (!isRetaliation && hasUnitAbilityEffect(defender, "FEAR_ATTACKER_DISADVANTAGE")) {
+  if (
+    !isRetaliation &&
+    hasUnitAbilityEffect(defender, "FEAR_ATTACKER_DISADVANTAGE")
+  ) {
     rollMode = "disadvantage";
   }
   if (!isRetaliation && defender.commanderSlug) {
-    const protection = commanderArtifactBonusesForUnit(state, defender).incomingAttackDisadvantage;
-    if (protection === "combat" || (protection === "round-1" && combat.round === 1)) {
+    const protection = commanderArtifactBonusesForUnit(
+      state,
+      defender,
+    ).incomingAttackDisadvantage;
+    if (
+      protection === "combat" ||
+      (protection === "round-1" && combat.round === 1)
+    ) {
       rollMode = "disadvantage";
     }
   }
@@ -4418,10 +5022,14 @@ function getAttackStackDetails(
   const activeAttackBonus = getActiveAttackBonus(state, {
     attacker,
     defender,
-    attackKind
+    attackKind,
   });
   // Cyra's Haste VI: +Defense only against an attacker slower than the defender.
-  const conditionalDefenseBonus = getConditionalDefenseBonus(state, defender, attacker);
+  const conditionalDefenseBonus = getConditionalDefenseBonus(
+    state,
+    defender,
+    attacker,
+  );
   // Shield / Air Shield: +Defense only against a ground-or-flying / ranged attacker.
   const attackerTypeDefenseBonus =
     getAttackerTypeDefenseBonus(state, defender, attacker) +
@@ -4438,7 +5046,10 @@ function getAttackStackDetails(
     (hasUnitAbilityEffect(defender, "STACKING_DEFENSE_WHEN_ATTACKED")
       ? (defender.stackingDefenseWhenAttackedBonus ?? 0)
       : 0);
-  const abilityAttack = stackItem.action.type === "ATTACK_UNIT" ? stackItem.action.abilityAttack : undefined;
+  const abilityAttack =
+    stackItem.action.type === "ATTACK_UNIT"
+      ? stackItem.action.abilityAttack
+      : undefined;
 
   // Combat tokens: Attack/Weakness tokens shift the attacker, Corrosion the
   // defender (already floored so printed defense never drops below 0).
@@ -4450,12 +5061,18 @@ function getAttackStackDetails(
   // attackSequence) — read straight off the stack item like the instant it is.
   const redirectedInstants = stackItem.modifiers.redirectedInstants ?? [];
   const redirectedAttackDelta = redirectedInstants.reduce(
-    (sum, entry) => (entry.stat === "attack" && entry.unitId === attacker.id ? sum + entry.amount : sum),
-    0
+    (sum, entry) =>
+      entry.stat === "attack" && entry.unitId === attacker.id
+        ? sum + entry.amount
+        : sum,
+    0,
   );
   const redirectedDefenseDelta = redirectedInstants.reduce(
-    (sum, entry) => (entry.stat === "defense" && entry.unitId === defender.id ? sum + entry.amount : sum),
-    0
+    (sum, entry) =>
+      entry.stat === "defense" && entry.unitId === defender.id
+        ? sum + entry.amount
+        : sum,
+    0,
   );
 
   // Attack-card "ability lowers the target's defense" sources, applied after
@@ -4484,39 +5101,55 @@ function getAttackStackDetails(
       ? getAttackDefenseReductionAbility(attacker, attacker.movedThisActivation)
       : null;
   const ignoreCardDefenseSource =
-    !isRetaliation && !abilityAttack ? getIgnoreTargetCardDefenseAbility(attacker) : null;
+    !isRetaliation && !abilityAttack
+      ? getIgnoreTargetCardDefenseAbility(attacker)
+      : null;
   // The Defend roll's +1 is a separate per-attack shield resolved at damage
   // time, not part of the printed/buffed Defense an ability (Behemoth crush,
   // Manticore "ignore printed Defense") can reduce — so it stays out of this
   // clamp and is simply added on top afterwards.
-  const currentDefenseValue = Math.max(0, defender.defense + defenseBonusBeforeAbility);
-  const artifactDefensePierce = commanderArtifactBonusesForUnit(state, attacker).defensePierce;
+  const currentDefenseValue = Math.max(
+    0,
+    defender.defense + defenseBonusBeforeAbility,
+  );
+  const artifactDefensePierce = commanderArtifactBonusesForUnit(
+    state,
+    attacker,
+  ).defensePierce;
   const requestedDefenseReduction =
     (defenseReductionSource?.amount ?? 0) +
     (ignoreCardDefenseSource ? defender.defense : 0) +
     artifactDefensePierce;
-  const defenseReductionAmount = Math.min(requestedDefenseReduction, currentDefenseValue);
-  const reductionAbilitySource = defenseReductionSource ?? ignoreCardDefenseSource;
+  const defenseReductionAmount = Math.min(
+    requestedDefenseReduction,
+    currentDefenseValue,
+  );
+  const reductionAbilitySource =
+    defenseReductionSource ?? ignoreCardDefenseSource;
   const defenseReductionAbility =
     reductionAbilitySource && defenseReductionAmount > 0
       ? {
           abilityId: reductionAbilitySource.abilityId,
           abilityName: reductionAbilitySource.abilityName,
-          amount: defenseReductionAmount
+          amount: defenseReductionAmount,
         }
       : undefined;
 
   // Ghost Dragons (Pack): "[unit_attack] Add +1 to your Attack die result." The
   // attack trigger is the unit's own declared attack only (distinct from the
   // retaliation symbol per the rules legend), so it drops on a Retaliation Attack.
-  const attackDieResultBonus = isRetaliation ? 0 : getAttackDieResultBonus(attacker);
+  const attackDieResultBonus = isRetaliation
+    ? 0
+    : getAttackDieResultBonus(attacker);
 
   // "Hatred" grudge bonus (Archangels ↔ Arch Devils, Genies → Efreet, Titans →
   // Black Dragons): extra Attack when this unit attacks the named creature. The
   // card prints it with the [unit_attack] icon (own declared attack only), so it
   // drops on a Retaliation Attack — the same convention as unitHasAttackRoll-
   // Advantage / the own-attack flat bonuses below.
-  const hatredAttackBonus = isRetaliation ? 0 : getAttackBonusVsDefenderName(attacker, defender.name);
+  const hatredAttackBonus = isRetaliation
+    ? 0
+    : getAttackBonusVsDefenderName(attacker, defender.name);
 
   // Factory Bounty Hunters: +1/+2 Attack when striking a Marked enemy. An innate
   // ability bonus, added unclamped like Hatred (elemental clamps don't apply).
@@ -4531,13 +5164,18 @@ function getAttackStackDetails(
   // Innate ability bonuses, so (like Hatred) they are added unclamped even for
   // elemental attackers; the helper itself drops the two [unit_attack]-icon
   // members on a Retaliation Attack.
-  const innateFlatAttackBonus = getInnateFlatAttackBonus(attacker, isRetaliation);
+  const innateFlatAttackBonus = getInnateFlatAttackBonus(
+    attacker,
+    isRetaliation,
+  );
 
   // WOG commander Charge combo: +1 Attack when the commander attacks after
   // moving this activation. An innate ability bonus (unclamped, like Hatred);
   // never on a retaliation.
   const chargeAttackBonus =
-    !isRetaliation && attacker.movedThisActivation ? getAttackBonusAfterMove(attacker) : 0;
+    !isRetaliation && attacker.movedThisActivation
+      ? getAttackBonusAfterMove(attacker)
+      : 0;
 
   // WOG commander live positional/stance Attack: the SORT-ability commanders'
   // (Cove Sea Marshal / Bulwark Ruler / Kyousuke / Marshal's War Horn) front-line
@@ -4545,12 +5183,19 @@ function getAttackStackDetails(
   // (Shaman) +1 Attack stance while it holds (combat rounds 1-2). Positional/
   // stance, not attack-type — applies on the commander's own attacks AND its
   // retaliations — and added UNCLAMPED like the other innate commander bonuses.
-  const commanderPositionalAttackBonus = commanderLiveAttackBonus(state, attacker);
+  const commanderPositionalAttackBonus = commanderLiveAttackBonus(
+    state,
+    attacker,
+  );
 
   // WOG commander Haste/Slow riders: signed Attack shift on the buffed/slowed
   // unit when its target is strictly slower/faster (effective Initiative).
   // Spell-borne like Bless, so it rides the elemental clamp with the card bonus.
-  const initiativeConditionalAttackBonus = getConditionalAttackBonus(state, attacker, defender);
+  const initiativeConditionalAttackBonus = getConditionalAttackBonus(
+    state,
+    attacker,
+    defender,
+  );
   const slowerTargetAttackBonus =
     effectiveInitiative(attacker, state.activeEffects, combat) >
     effectiveInitiative(defender, state.activeEffects, combat)
@@ -4561,14 +5206,21 @@ function getAttackStackDetails(
   // unclamped, just like the other printed conditional Attack bonuses. The
   // Black Dragon Stacked +3 and War Zealot own-attack +1 are folded by
   // getInnateFlatAttackBonus (above), so they are NOT re-added here.
-  const targetStatusAttackBonus = getAttackBonusVsTargetTokens(attacker, defender);
+  const targetStatusAttackBonus = getAttackBonusVsTargetTokens(
+    attacker,
+    defender,
+  );
   // Azur Lane "Fleet Formation" (kansen-fleet-formation): +1 Attack on the
   // unit's OWN declared attack per living friendly aura carrier it stands
   // adjacent to RIGHT NOW (live positional read, the commanderLiveAttackBonus
   // precedent). Innate ability bonus — added unclamped; never on a retaliation.
   const fleetFormationAttackBonus = isRetaliation
     ? 0
-    : getFleetFormationAuraBonus(combat, attacker, (stackItem.modifiers.cultivationAttackBonus ?? 0) > 0);
+    : getFleetFormationAuraBonus(
+        combat,
+        attacker,
+        (stackItem.modifiers.cultivationAttackBonus ?? 0) > 0,
+      );
   const bestFriendsAttackBonus = getAttackBonusWhenAllyNamePresent(combat, attacker);
   const astrologersRoundAttackBonus = state.round % 2 === 0 ? getAstrologersRoundFrenzy(attacker) : 0;
 
@@ -4576,14 +5228,22 @@ function getAttackStackDetails(
   // unit (both sides) the latched +Attack. A card-borne buff, so it joins the
   // card bonus below and the elemental clamp applies to it like any other.
   const proclamationGroundAttackBonus =
-    attacker.type === "ground" ? (combat.proclamationGroundAttackBonus ?? 0) : 0;
+    attacker.type === "ground"
+      ? (combat.proclamationGroundAttackBonus ?? 0)
+      : 0;
 
   // Retaliation-only modifiers keyed off the retaliation's defender — i.e. the
   // original attacker being struck back: Dread Knights gain Defense, Dragon
   // Flies sap the retaliator's Attack.
-  const retaliationDefenseBonus = isRetaliation ? getDefenseBonusWhenRetaliated(defender) : 0;
-  const retaliationAttackPenalty = isRetaliation ? getRetaliationAgainstAttackPenalty(defender) : 0;
-  const retaliationAttackBonus = isRetaliation ? getRetaliationAttackBonus(attacker) : 0;
+  const retaliationDefenseBonus = isRetaliation
+    ? getDefenseBonusWhenRetaliated(defender)
+    : 0;
+  const retaliationAttackPenalty = isRetaliation
+    ? getRetaliationAgainstAttackPenalty(defender)
+    : 0;
+  const retaliationAttackBonus = isRetaliation
+    ? getRetaliationAttackBonus(attacker)
+    : 0;
 
   // Elemental damage (Elemental units, Moandor's Liches VI specialty).
   //
@@ -4599,15 +5259,20 @@ function getAttackStackDetails(
   // bypass below stays unconditional in both readings.
   const dealsElemental = unitDealsElementalDamage(state, attacker, attackKind);
   const fuyukiFixedDamage = getFuyukiCasterFixedDamage(attacker);
-  const elementalLocksAttack = dealsElemental && houseRuleEnabled(state, "elemental-damage-no-die");
+  const elementalLocksAttack =
+    dealsElemental && houseRuleEnabled(state, "elemental-damage-no-die");
   const cardAttackBonus =
     stackItem.modifiers.attackBonus +
     activeAttackBonus +
     redirectedAttackDelta +
     initiativeConditionalAttackBonus +
     proclamationGroundAttackBonus;
-  const effectiveCardAttackBonus = elementalLocksAttack ? Math.min(0, cardAttackBonus) : cardAttackBonus;
-  const effectiveTokenAttack = elementalLocksAttack ? Math.min(0, tokenAttack) : tokenAttack;
+  const effectiveCardAttackBonus = elementalLocksAttack
+    ? Math.min(0, cardAttackBonus)
+    : cardAttackBonus;
+  const effectiveTokenAttack = elementalLocksAttack
+    ? Math.min(0, tokenAttack)
+    : tokenAttack;
 
   return {
     attacker,
@@ -4649,7 +5314,12 @@ function getAttackStackDetails(
       heroGradeFirstBloodBonus(state, attacker.controllerId, isRetaliation) +
       equipmentRound1AttackBonus(state, attacker, isRetaliation) -
       equipmentIncomingAttackPenalty(state, defender, isRetaliation) +
-      equipmentActivatedTargetAttackBonus(state, attacker, defender, isRetaliation) +
+      equipmentActivatedTargetAttackBonus(
+        state,
+        attacker,
+        defender,
+        isRetaliation,
+      ) +
       retaliationAttackBonus -
       retaliationAttackPenalty -
       // Negative Morale "-1 to your next Attack … roll": latched onto this
@@ -4657,7 +5327,9 @@ function getAttackStackDetails(
       // into every recompute — arithmetically identical to -1 on the die result.
       (stackItem.modifiers.moraleRollPenalty ?? 0),
     defenseBonus:
-      defenseBonusBeforeAbility - defenseReductionAmount + retaliationDefenseBonus +
+      defenseBonusBeforeAbility -
+      defenseReductionAmount +
+      retaliationDefenseBonus +
       equipmentRowDefenseBonus(state, defender),
     dieMultiplier: stackItem.modifiers.attackDieMultiplier ?? 1,
     // With `elemental-damage-no-die` ON, elemental damage never rolls the Attack
@@ -4670,9 +5342,12 @@ function getAttackStackDetails(
     attackDamageCap: resolvedAttackDamageCap(stackItem),
     // Polish Balance Pack Forgetfulness (Power 0): only the RANGED attack is
     // halved — a melee strike by the same unit is untouched.
-    halveAttack: attackKind === "ranged" && unitRangedAttackHalved(state, attacker),
+    halveAttack:
+      attackKind === "ranged" && unitRangedAttackHalved(state, attacker),
     // Centaur's Axe (Balance Pack): the die multiplier is ignored on a "-1".
-    dieMultiplierSkipsNegative: Boolean(stackItem.modifiers.attackDieMultiplierSkipsNegative),
+    dieMultiplierSkipsNegative: Boolean(
+      stackItem.modifiers.attackDieMultiplierSkipsNegative,
+    ),
     // Community Balance Change Hourglass of the Evil Hour (option B).
     ignorePlusOneDie: attackDiePlusOneIgnored(state),
     ignoreAttackDie:
@@ -4693,16 +5368,29 @@ function getAttackStackDetails(
     ignoreDefense:
       dealsElemental ||
       Boolean(stackItem.modifiers.ignoreDefense) ||
-      frenzyPierces(stackItem, defender, houseRuleEnabled(state, "polish-bank-unit-spells")) ||
+      frenzyPierces(
+        stackItem,
+        defender,
+        houseRuleEnabled(state, "polish-bank-unit-spells"),
+      ) ||
       hasActiveIgnoresDefense(state, attacker),
     // Lord Haart (Necropolis) Dread Knights I/VI: an instant the defender's
     // controller played in this retaliation's window soaks `amount` less damage
     // off the strike (the ×2 for his Dread Knights is folded in when played).
     damageReduction:
-      siegeRangedDamageReduction(combat, attacker, defender, attackKind, state, isRetaliation) +
-      (isRetaliation ? (stackItem.modifiers.retaliationDamageReductionInstant ?? 0) : 0),
+      siegeRangedDamageReduction(
+        combat,
+        attacker,
+        defender,
+        attackKind,
+        state,
+        isRetaliation,
+      ) +
+      (isRetaliation
+        ? (stackItem.modifiers.retaliationDamageReductionInstant ?? 0)
+        : 0),
     defenseReductionAbility,
-    abilityAttack
+    abilityAttack,
   };
 }
 
@@ -4716,7 +5404,8 @@ function getRerollUsesForEffect(effect: ActiveEffectState): number {
  * player keep any rolled candidate rather than the forced latest roll. */
 function effectRerollChoosesResult(effect: ActiveEffectState): boolean {
   return effect.modifiers.some(
-    (modifier) => modifier.type === "ATTACK_DIE_REROLL" && modifier.chooseResult === true
+    (modifier) =>
+      modifier.type === "ATTACK_DIE_REROLL" && modifier.chooseResult === true,
   );
 }
 
@@ -4726,9 +5415,14 @@ function effectRerollChoosesResult(effect: ActiveEffectState): boolean {
  * ("you may choose the resultant die side") instead of rerolling it. Returns
  * undefined for every classic reroll effect, which keeps them plain rerolls.
  */
-function effectRerollSetsDieFace(effect: ActiveEffectState): number | undefined {
+function effectRerollSetsDieFace(
+  effect: ActiveEffectState,
+): number | undefined {
   for (const modifier of effect.modifiers) {
-    if (modifier.type === "ATTACK_DIE_REROLL" && modifier.setDieFace !== undefined) {
+    if (
+      modifier.type === "ATTACK_DIE_REROLL" &&
+      modifier.setDieFace !== undefined
+    ) {
       return modifier.setDieFace;
     }
   }
@@ -4765,7 +5459,7 @@ function buildRerollSources(
   /** Whether this is a Retaliation Attack — drops the unit's [unit_attack] reroll
    * abilities (Crusaders, neutral Minotaurs, Champions' Charge), which fire on the
    * unit's own declared attack only. */
-  isRetaliation = false
+  isRetaliation = false,
 ): AttackRerollSource[] {
   // Spirit of Oppression (option A): a global combat-scoped lockout removes every
   // Attack-die reroll source for BOTH players — unit abilities, Luck/Fortune/Mirth
@@ -4776,11 +5470,17 @@ function buildRerollSources(
     return [];
   }
 
-  const abilitySources: AttackRerollSource[] = getUnitAttackRerollSources(attacker, moved, isRetaliation).map((source) => ({
+  const abilitySources: AttackRerollSource[] = getUnitAttackRerollSources(
+    attacker,
+    moved,
+    isRetaliation,
+  ).map((source) => ({
     name: source.name,
     remaining: source.rerolls,
     used: 0,
-    ...(source.onlyOnRoll !== undefined ? { onlyOnRoll: source.onlyOnRoll } : {})
+    ...(source.onlyOnRoll !== undefined
+      ? { onlyOnRoll: source.onlyOnRoll }
+      : {}),
   }));
 
   // Ammo Cart (Astrologers): while the proclamation is face up, an owner of an
@@ -4792,7 +5492,9 @@ function buildRerollSources(
     attacker.type === "ranged" &&
     proclamation?.type === "WAR_MACHINE_BUFF" &&
     proclamation.rangedAttackReroll &&
-    getPermanentCardIds(state, attacker.controllerId).includes(AMMO_CART_CARD_ID)
+    getPermanentCardIds(state, attacker.controllerId).includes(
+      AMMO_CART_CARD_ID,
+    )
       ? [{ name: "Ammo Cart", remaining: 1, used: 0 }]
       : [];
 
@@ -4805,20 +5507,32 @@ function buildRerollSources(
     state.activeEffects.some(
       (effect) =>
         effect.controllerId === attacker.controllerId &&
-        effect.modifiers.some((modifier) => modifier.type === "RANGED_ATTACK_REROLL")
+        effect.modifiers.some(
+          (modifier) => modifier.type === "RANGED_ATTACK_REROLL",
+        ),
     )
-      ? [{ name: cardLibrary[GOLDEN_BOW_CARD_ID]?.name ?? "Golden Bow", remaining: 1, used: 0 }]
+      ? [
+          {
+            name: cardLibrary[GOLDEN_BOW_CARD_ID]?.name ?? "Golden Bow",
+            remaining: 1,
+            used: 0,
+          },
+        ]
       : [];
 
   const orderedEffects = [...rerollEffects].sort(
-    (left, right) => Number(left.name.includes("Luck")) - Number(right.name.includes("Luck"))
+    (left, right) =>
+      Number(left.name.includes("Luck")) - Number(right.name.includes("Luck")),
   );
 
   const player = state.players[attacker.controllerId];
   // Raid-boss Fear (§6.8): while a living enemy Fear unit stands, every morale
   // USE is locked — the token/card reroll and set-die sources are withheld
   // (morale gains and morale-card draws stay untouched).
-  const attackerMoraleLocked = moraleLockedForPlayer(state.combat, attacker.controllerId);
+  const attackerMoraleLocked = moraleLockedForPlayer(
+    state.combat,
+    attacker.controllerId,
+  );
   // The positive morale token's "reroll any die" use is available in every mode
   // a combat runs in (adventure and the combat sandbox alike).
   const moraleSources: AttackRerollSource[] =
@@ -4829,11 +5543,18 @@ function buildRerollSources(
             name: cardLibrary[cardId]?.name ?? "Positive Morale: Reroll a Die",
             moraleCardId: cardId,
             remaining: 1,
-            used: 0
+            used: 0,
           }))
-    : !attackerMoraleLocked && player && player.morale > 0
-      ? [{ name: "Positive morale token", morale: true, remaining: 1, used: 0 }]
-      : [];
+      : !attackerMoraleLocked && player && player.morale > 0
+        ? [
+            {
+              name: "Positive morale token",
+              morale: true,
+              remaining: 1,
+              used: 0,
+            },
+          ]
+        : [];
 
   // Positive Morale "set one of the dice to the +1 side": offered in the same
   // window but as a SET, spent only by the explicit set-die action (never by a
@@ -4844,11 +5565,12 @@ function buildRerollSources(
       ? (player.moraleCards?.positive ?? [])
           .filter((cardId) => cardId === MORALE_CARD_IDS.setAttackDiePlus)
           .map((cardId) => ({
-            name: cardLibrary[cardId]?.name ?? "Positive Morale: Set Attack Die +1",
+            name:
+              cardLibrary[cardId]?.name ?? "Positive Morale: Set Attack Die +1",
             moraleCardId: cardId,
             setDieFace: 1,
             remaining: 1,
-            used: 0
+            used: 0,
           }))
       : [];
 
@@ -4859,10 +5581,12 @@ function buildRerollSources(
   const artifactSources: AttackRerollSource[] =
     player && !isHandLockedInCombat(state, attacker.controllerId)
       ? balanceRerollReactionArtifactIds(state, REROLL_REACTION_ARTIFACT_IDS)
-        .filter((cardId) => player.hand.includes(cardId) && !prophecyLeavesDieWindow(state, cardId))
-        .map((cardId) =>
-          rerollArtifactSource(state, cardId, "attack")
-        )
+          .filter(
+            (cardId) =>
+              player.hand.includes(cardId) &&
+              !prophecyLeavesDieWindow(state, cardId),
+          )
+          .map((cardId) => rerollArtifactSource(state, cardId, "attack"))
       : [];
 
   // Anime Cultivation Core Formation (realm 2, §5.6): one FREE Attack-die reroll
@@ -4873,11 +5597,24 @@ function buildRerollSources(
   // combatStats and is set when it is spent (rerollPendingChoice). Scoped to
   // Attack-die rolls only (see the note in buildAbilityRerollSources).
   const cultivationSources: AttackRerollSource[] =
-    player && cultivationCombatRerollBonus(state, attacker.controllerId) > 0 && !player.combatStats.cultivationRerollUsed
-      ? [{ name: "Core Formation reroll", cultivation: true, remaining: 1, used: 0 }]
+    player &&
+    cultivationCombatRerollBonus(state, attacker.controllerId) > 0 &&
+    !player.combatStats.cultivationRerollUsed
+      ? [
+          {
+            name: "Core Formation reroll",
+            cultivation: true,
+            remaining: 1,
+            used: 0,
+          },
+        ]
       : [];
 
-  const equipmentSources = equipmentAttackRerollSources(state, attacker.controllerId, true);
+  const equipmentSources = equipmentAttackRerollSources(
+    state,
+    attacker.controllerId,
+    true,
+  );
 
   // Enterprise "Lucky E" (Azur Lane specialty): each HELD level joins the
   // window like the reroll artifacts — I/VI a reroll, IV/VI a set-die-to-"+1".
@@ -4885,7 +5622,9 @@ function buildRerollSources(
   // spending either retires the other (the shared-cardId retire in
   // rerollPendingChoice). Hand-locked combats block them like the artifacts.
   const luckyESources: AttackRerollSource[] =
-    player && !isHandLockedInCombat(state, attacker.controllerId) ? buildLuckyESources(player) : [];
+    player && !isHandLockedInCombat(state, attacker.controllerId)
+      ? buildLuckyESources(player)
+      : [];
 
   return [
     ...abilitySources,
@@ -4899,14 +5638,14 @@ function buildRerollSources(
       chooseResult: effectRerollChoosesResult(effect),
       // Community Balance Pack Fortune: the effect's uses SET a die instead of
       // rerolling it, so the source becomes a set-die source (its own button).
-      setDieFace: effectRerollSetsDieFace(effect)
+      setDieFace: effectRerollSetsDieFace(effect),
     })),
     ...artifactSources,
     ...luckyESources,
     ...moraleSources,
     ...moraleSetSources,
     ...cultivationSources,
-    ...equipmentSources
+    ...equipmentSources,
   ].filter((source) => source.remaining > 0);
 }
 
@@ -4923,10 +5662,21 @@ function buildLuckyESources(player: PlayerState): AttackRerollSource[] {
       continue;
     }
     if (spec.reroll) {
-      sources.push({ name: spec.name, cardId: spec.cardId, remaining: 1, used: 0 });
+      sources.push({
+        name: spec.name,
+        cardId: spec.cardId,
+        remaining: 1,
+        used: 0,
+      });
     }
     if (spec.setDie) {
-      sources.push({ name: spec.name, cardId: spec.cardId, setDieFace: 1, remaining: 1, used: 0 });
+      sources.push({
+        name: spec.name,
+        cardId: spec.cardId,
+        setDieFace: 1,
+        remaining: 1,
+        used: 0,
+      });
     }
   }
   return sources;
@@ -4938,10 +5688,16 @@ function buildLuckyESources(player: PlayerState): AttackRerollSource[] {
  * Crusaders, Yukikaze): `onlyOnRoll` is a pure WHEN gate, never a licence to
  * fire again (see rerollSourceAvailableFor).
  */
-function countAvailableRerolls(sources: AttackRerollSource[], currentRoll: number): number {
+function countAvailableRerolls(
+  sources: AttackRerollSource[],
+  currentRoll: number,
+): number {
   return sources.reduce(
-    (total, source) => (rerollSourceAvailableFor(source, currentRoll) ? total + source.remaining : total),
-    0
+    (total, source) =>
+      rerollSourceAvailableFor(source, currentRoll)
+        ? total + source.remaining
+        : total,
+    0,
   );
 }
 
@@ -4958,12 +5714,19 @@ type AbilityRollWindow = { minRoll: number; maxRoll: number };
 
 /** How many of an ability roll's dice landed inside its success window. */
 function abilityRollScore(rolls: number[], window: AbilityRollWindow): number {
-  return rolls.filter((roll) => roll >= window.minRoll && roll <= window.maxRoll).length;
+  return rolls.filter(
+    (roll) => roll >= window.minRoll && roll <= window.maxRoll,
+  ).length;
 }
 
 /** An ability roll lands only when EVERY die falls inside its success window. */
-function abilityRollSucceeds(rolls: number[], window: AbilityRollWindow): boolean {
-  return rolls.every((roll) => roll >= window.minRoll && roll <= window.maxRoll);
+function abilityRollSucceeds(
+  rolls: number[],
+  window: AbilityRollWindow,
+): boolean {
+  return rolls.every(
+    (roll) => roll >= window.minRoll && roll <= window.maxRoll,
+  );
 }
 
 /**
@@ -4982,12 +5745,19 @@ function abilityRollSucceeds(rolls: number[], window: AbilityRollWindow): boolea
 function abilityRerollDieIndex(
   rolls: number[],
   window: AbilityRollWindow,
-  requested: number | undefined
+  requested: number | undefined,
 ): number {
-  if (requested !== undefined && Number.isInteger(requested) && requested >= 0 && requested < rolls.length) {
+  if (
+    requested !== undefined &&
+    Number.isInteger(requested) &&
+    requested >= 0 &&
+    requested < rolls.length
+  ) {
     return requested;
   }
-  const outside = rolls.findIndex((roll) => roll < window.minRoll || roll > window.maxRoll);
+  const outside = rolls.findIndex(
+    (roll) => roll < window.minRoll || roll > window.maxRoll,
+  );
   return outside >= 0 ? outside : 0;
 }
 
@@ -5003,24 +5773,35 @@ function throwAbilityRerollCandidate(
   source: AttackRerollSource,
   latest: AttackRollCandidate | undefined,
   window: AbilityRollWindow,
-  requestedDieIndex: number | undefined
+  requestedDieIndex: number | undefined,
 ): AttackRollCandidate {
   const diceCount = Math.max(1, context.diceCount);
   const previous = latest?.rolls ?? [];
-  if (source.rerollsWholeRoll === true || diceCount <= 1 || previous.length <= 1) {
-    const rolls = Array.from({ length: diceCount }, () => rollAttackDie(combat));
+  if (
+    source.rerollsWholeRoll === true ||
+    diceCount <= 1 ||
+    previous.length <= 1
+  ) {
+    const rolls = Array.from({ length: diceCount }, () =>
+      rollAttackDie(combat),
+    );
     return { rolls, roll: rolls[0] ?? 0, sumAllDice: true };
   }
   const index = abilityRerollDieIndex(previous, window, requestedDieIndex);
-  const rolls = previous.map((roll, at) => (at === index ? rollAttackDie(combat) : roll));
+  const rolls = previous.map((roll, at) =>
+    at === index ? rollAttackDie(combat) : roll,
+  );
   return {
     rolls,
     roll: rolls[0] ?? 0,
     sumAllDice: true,
     modifierNotes: [
       ...(latest?.modifierNotes ?? []),
-      { source: source.name, text: `die ${index + 1} of ${previous.length} is rerolled` }
-    ]
+      {
+        source: source.name,
+        text: `die ${index + 1} of ${previous.length} is rerolled`,
+      },
+    ],
   };
 }
 
@@ -5043,18 +5824,27 @@ function applyAbilityDiceCurses(
   controllerId: PlayerId,
   candidate: AttackRollCandidate,
   window: AbilityRollWindow,
-  fullKit: boolean
+  fullKit: boolean,
 ): AttackRollCandidate {
   const combat = state.combat;
   if (!combat || !moraleCardsRuleEnabled(state)) {
     return candidate;
   }
 
-  if (fullKit && playerHoldsMoraleCard(state, controllerId, MORALE_CARD_IDS.setAttackDieMinus)) {
+  if (
+    fullKit &&
+    playerHoldsMoraleCard(
+      state,
+      controllerId,
+      MORALE_CARD_IDS.setAttackDieMinus,
+    )
+  ) {
     let flipIndex = -1;
     let flippedScore = Number.POSITIVE_INFINITY;
     candidate.rolls.forEach((_, index) => {
-      const flipped = candidate.rolls.map((roll, at) => (at === index ? -1 : roll));
+      const flipped = candidate.rolls.map((roll, at) =>
+        at === index ? -1 : roll,
+      );
       const score = abilityRollScore(flipped, window);
       if (score < flippedScore) {
         flippedScore = score;
@@ -5062,10 +5852,18 @@ function applyAbilityDiceCurses(
       }
     });
     if (flipIndex >= 0) {
-      consumeHeldMoraleCard(state, controllerId, MORALE_CARD_IDS.setAttackDieMinus);
+      consumeHeldMoraleCard(
+        state,
+        controllerId,
+        MORALE_CARD_IDS.setAttackDieMinus,
+      );
       candidate.rolls[flipIndex] = -1;
       candidate.roll = candidate.rolls[0] ?? 0;
-      pushRollModifierNote(candidate, "Negative Morale", 'one die is set to the "-1" side');
+      pushRollModifierNote(
+        candidate,
+        "Negative Morale",
+        'one die is set to the "-1" side',
+      );
     }
   }
 
@@ -5077,7 +5875,11 @@ function applyAbilityDiceCurses(
     const index = candidate.rolls.indexOf(1);
     candidate.rolls[index] = rollAttackDie(combat);
     candidate.roll = candidate.rolls[0] ?? 0;
-    pushRollModifierNote(candidate, "Negative Morale", 'a "+1" is forcibly rerolled');
+    pushRollModifierNote(
+      candidate,
+      "Negative Morale",
+      'a "+1" is forcibly rerolled',
+    );
   }
 
   return candidate;
@@ -5095,11 +5897,23 @@ function rollAbilityCandidate(
   controllerId: PlayerId,
   diceCount: number,
   window: AbilityRollWindow,
-  fullKit: boolean
+  fullKit: boolean,
 ): AttackRollCandidate {
-  const rolls = Array.from({ length: Math.max(1, diceCount) }, () => rollAttackDie(combat));
-  const candidate: AttackRollCandidate = { rolls, roll: rolls[0] ?? 0, sumAllDice: true };
-  return applyAbilityDiceCurses(state, controllerId, candidate, window, fullKit);
+  const rolls = Array.from({ length: Math.max(1, diceCount) }, () =>
+    rollAttackDie(combat),
+  );
+  const candidate: AttackRollCandidate = {
+    rolls,
+    roll: rolls[0] ?? 0,
+    sumAllDice: true,
+  };
+  return applyAbilityDiceCurses(
+    state,
+    controllerId,
+    candidate,
+    window,
+    fullKit,
+  );
 }
 
 /**
@@ -5144,7 +5958,7 @@ function rollAbilityCandidate(
 function rerollArtifactSource(
   state: GameState,
   cardId: CardId,
-  window: "attack" | "ability"
+  window: "attack" | "ability",
 ): AttackRerollSource {
   const base: AttackRerollSource = {
     name: cardLibrary[cardId]?.name ?? cardId,
@@ -5153,9 +5967,13 @@ function rerollArtifactSource(
     used: 0,
     // "Reroll any die or any roll" — the Ring alone may re-throw a whole
     // multi-die ability roll (both Death Stare dice).
-    ...(cardId === DIPLOMATS_RING_CARD_ID ? { rerollsWholeRoll: true } : {})
+    ...(cardId === DIPLOMATS_RING_CARD_ID ? { rerollsWholeRoll: true } : {}),
   };
-  if (window === "ability" && cardId === PROPHECY_CARD_ID && houseRuleEnabled(state, "polish-card-balance")) {
+  if (
+    window === "ability" &&
+    cardId === PROPHECY_CARD_ID &&
+    houseRuleEnabled(state, "polish-card-balance")
+  ) {
     return { ...base, rollExtraCandidates: 2 };
   }
   return base;
@@ -5174,10 +5992,16 @@ function rerollArtifactSource(
  * card and hands it `rollExtraCandidates` instead.
  */
 function prophecyLeavesDieWindow(state: GameState, cardId: CardId): boolean {
-  return cardId === PROPHECY_CARD_ID && houseRuleEnabled(state, "polish-card-balance");
+  return (
+    cardId === PROPHECY_CARD_ID &&
+    houseRuleEnabled(state, "polish-card-balance")
+  );
 }
 
-function buildAbilityRerollSources(state: GameState, roller: CombatUnitState): AttackRerollSource[] {
+function buildAbilityRerollSources(
+  state: GameState,
+  roller: CombatUnitState,
+): AttackRerollSource[] {
   if (isNeutralUnit(roller) || attackRerollsBlocked(state)) {
     return [];
   }
@@ -5188,7 +6012,10 @@ function buildAbilityRerollSources(state: GameState, roller: CombatUnitState): A
 
   // Raid-boss Fear (§6.8): a living enemy Fear unit locks every morale USE —
   // the ability-roll window loses its morale token/card sources too.
-  const rollerMoraleLocked = moraleLockedForPlayer(state.combat, roller.controllerId);
+  const rollerMoraleLocked = moraleLockedForPlayer(
+    state.combat,
+    roller.controllerId,
+  );
   const moraleSources: AttackRerollSource[] = rollerMoraleLocked
     ? []
     : moraleCardsRuleEnabled(state)
@@ -5198,10 +6025,17 @@ function buildAbilityRerollSources(state: GameState, roller: CombatUnitState): A
             name: cardLibrary[cardId]?.name ?? "Positive Morale: Reroll a Die",
             moraleCardId: cardId,
             remaining: 1,
-            used: 0
+            used: 0,
           }))
       : player.morale > 0
-        ? [{ name: "Positive morale token", morale: true, remaining: 1, used: 0 }]
+        ? [
+            {
+              name: "Positive morale token",
+              morale: true,
+              remaining: 1,
+              used: 0,
+            },
+          ]
         : [];
 
   const moraleSetSources: AttackRerollSource[] =
@@ -5209,11 +6043,12 @@ function buildAbilityRerollSources(state: GameState, roller: CombatUnitState): A
       ? (player.moraleCards?.positive ?? [])
           .filter((cardId) => cardId === MORALE_CARD_IDS.setAttackDiePlus)
           .map((cardId) => ({
-            name: cardLibrary[cardId]?.name ?? "Positive Morale: Set Attack Die +1",
+            name:
+              cardLibrary[cardId]?.name ?? "Positive Morale: Set Attack Die +1",
             moraleCardId: cardId,
             setDieFace: 1,
             remaining: 1,
-            used: 0
+            used: 0,
           }))
       : [];
 
@@ -5221,17 +6056,21 @@ function buildAbilityRerollSources(state: GameState, roller: CombatUnitState): A
   // out here (that is `prophecyLeavesDieWindow`'s attack-window job): with the
   // Balance Pack on it stays and becomes a roll-3-keep-1 source instead of a
   // plain reroll — see `rerollArtifactSource`.
-  const artifactSources: AttackRerollSource[] = !isHandLockedInCombat(state, roller.controllerId)
+  const artifactSources: AttackRerollSource[] = !isHandLockedInCombat(
+    state,
+    roller.controllerId,
+  )
     ? balanceRerollReactionArtifactIds(state, REROLL_REACTION_ARTIFACT_IDS)
         .filter((cardId) => player.hand.includes(cardId))
-        .map((cardId) =>
-        rerollArtifactSource(state, cardId, "ability")
-      )
+        .map((cardId) => rerollArtifactSource(state, cardId, "ability"))
     : [];
 
   // Enterprise "Lucky E" — held-card halves ride the ability-roll window too,
   // exactly like the reroll artifacts (same hand-lock gate).
-  const luckyESources: AttackRerollSource[] = !isHandLockedInCombat(state, roller.controllerId)
+  const luckyESources: AttackRerollSource[] = !isHandLockedInCombat(
+    state,
+    roller.controllerId,
+  )
     ? buildLuckyESources(player)
     : [];
 
@@ -5239,12 +6078,18 @@ function buildAbilityRerollSources(state: GameState, roller: CombatUnitState): A
   // scoped to ATTACK-die rolls (buildRerollSources) and is NOT added here — like
   // the unit reroll abilities / Ammo Cart / Luck-Fortune-Mirth pools, it stays
   // OFF ability rolls (Death Stare & co.). A documented, tested limit.
-  const equipmentSources = equipmentAttackRerollSources(state, roller.controllerId, true).filter(
-    (source) => source.name === "Heavenly Knight's Aegis"
-  );
-  return [...artifactSources, ...luckyESources, ...moraleSources, ...moraleSetSources, ...equipmentSources].filter(
-    (source) => source.remaining > 0
-  );
+  const equipmentSources = equipmentAttackRerollSources(
+    state,
+    roller.controllerId,
+    true,
+  ).filter((source) => source.name === "Heavenly Knight's Aegis");
+  return [
+    ...artifactSources,
+    ...luckyESources,
+    ...moraleSources,
+    ...moraleSetSources,
+    ...equipmentSources,
+  ].filter((source) => source.remaining > 0);
 }
 
 /**
@@ -5259,7 +6104,7 @@ function openAbilityRollWindow(
   roller: CombatUnitState,
   target: CombatUnitState,
   candidate: AttackRollCandidate,
-  context: PendingAbilityRollContext
+  context: PendingAbilityRollContext,
 ): boolean {
   const sources = buildAbilityRerollSources(state, roller);
   if (sources.length === 0) {
@@ -5289,7 +6134,7 @@ function openAbilityRollWindow(
     remainingRerolls,
     rerollSources: sources,
     sourceEffectIds: [],
-    abilityRoll: context
+    abilityRoll: context,
   };
   state.phase = "choice";
   state.priorityPlayerId = roller.controllerId;
@@ -5300,7 +6145,7 @@ function openAbilityRollWindow(
     choiceType: "ATTACK_DIE_REROLL",
     playerId: roller.controllerId,
     sourceEffectIds: [],
-    message: `${roller.name} may reroll the ${context.abilityName} dice.`
+    message: `${roller.name} may reroll the ${context.abilityName} dice.`,
   });
   return true;
 }
@@ -5314,13 +6159,15 @@ function openAttackRerollChoice(
   // Cards of Prophecy's two EXTRA up-front throws (option B, declared pre-roll):
   // they join the window's candidate list and unlock the free pick among all
   // three. Empty for every ordinary attack.
-  extraCandidates: AttackRollCandidate[] = []
+  extraCandidates: AttackRollCandidate[] = [],
 ): void {
   const choiceId = `choice_${nextEventNumber(state)}`;
   const candidates = [candidate, ...extraCandidates];
   const latest = candidates.at(-1) ?? candidate;
   const remainingRerolls = countAvailableRerolls(rerollSources, latest.roll);
-  const sourceEffectIds = rerollSources.flatMap((source) => (source.effectId ? [source.effectId] : []));
+  const sourceEffectIds = rerollSources.flatMap((source) =>
+    source.effectId ? [source.effectId] : [],
+  );
 
   state.pendingChoice = {
     id: choiceId,
@@ -5338,7 +6185,7 @@ function openAttackRerollChoice(
     remainingRerolls,
     rerollSources,
     sourceEffectIds,
-    ...(extraCandidates.length > 0 ? { freeCandidateChoice: true } : {})
+    ...(extraCandidates.length > 0 ? { freeCandidateChoice: true } : {}),
   };
   state.phase = "choice";
   state.priorityPlayerId = details.attacker.controllerId;
@@ -5352,25 +6199,27 @@ function openAttackRerollChoice(
     message:
       extraCandidates.length > 0
         ? `${details.attacker.name} rolls the attack die ${candidates.length} times — resolve 1 chosen result (Cards of Prophecy).`
-        : `${details.attacker.name} may reroll the attack die.`
+        : `${details.attacker.name} may reroll the attack die.`,
   });
 }
 
 function closePendingChoice(
   state: GameState,
   choice: Extract<NonNullable<PendingChoice>, { type: "ATTACK_DIE_REROLL" }>,
-  selectedIndex: number
+  selectedIndex: number,
 ): void {
   // Rerolling is optional: only the sources actually spent are marked used,
   // so declining a reroll keeps one-shot effects like Fortune available.
   const usedEffectIds = new Set(
     choice.rerollSources
       .filter((source) => source.used > 0 && source.effectId)
-      .map((source) => source.effectId as string)
+      .map((source) => source.effectId as string),
   );
 
   for (const effectId of usedEffectIds) {
-    const effect = state.activeEffects.find((candidate) => candidate.id === effectId);
+    const effect = state.activeEffects.find(
+      (candidate) => candidate.id === effectId,
+    );
     if (!effect) {
       continue;
     }
@@ -5384,21 +6233,25 @@ function closePendingChoice(
       .filter((effect) => usedEffectIds.has(effect.id))
       .filter((effect) =>
         effect.modifiers.some(
-          (modifier) => modifier.type === "ATTACK_DIE_REROLL" && modifier.consumeEffectOnUse
-        )
+          (modifier) =>
+            modifier.type === "ATTACK_DIE_REROLL" &&
+            modifier.consumeEffectOnUse,
+        ),
       )
-      .map((effect) => effect.id)
+      .map((effect) => effect.id),
   );
 
   if (consumedEffectIds.size > 0) {
-    state.activeEffects = state.activeEffects.filter((effect) => !consumedEffectIds.has(effect.id));
+    state.activeEffects = state.activeEffects.filter(
+      (effect) => !consumedEffectIds.has(effect.id),
+    );
   }
 
   appendEvent(state, {
     type: "PENDING_CHOICE_RESOLVED",
     choiceId: choice.id,
     playerId: choice.playerId,
-    selectedIndex
+    selectedIndex,
   });
 
   state.pendingChoice = null;
@@ -5410,7 +6263,10 @@ function closePendingChoice(
  * double-attack units strike the same target a second time. Otherwise the
  * activation ends and the next unit comes up.
  */
-function concludeAttackerActivation(state: GameState, attacker: CombatUnitState): void {
+function concludeAttackerActivation(
+  state: GameState,
+  attacker: CombatUnitState,
+): void {
   const combat = state.combat;
 
   // Harpies' "Strike and Return": once the attack (and the enemy's Retaliation
@@ -5477,7 +6333,11 @@ function concludeAttackerActivation(state: GameState, attacker: CombatUnitState)
   markActivatedThisRound(attacker);
   // Activation-bound effects on the attacker end with its activation (Berserk's
   // "in its activation" forced attack, any "this Activation" buff).
-  appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, attacker.id), "activation-ended");
+  appendExpiredEffectEvents(
+    state,
+    expireEffectsForActivationEnd(state, attacker.id),
+    "activation-ended",
+  );
   advanceActiveUnit(state);
   state.phase = "combat";
   state.priorityPlayerId = null;
@@ -5488,25 +6348,37 @@ function concludeAttackerActivation(state: GameState, attacker: CombatUnitState)
  * the "Strike and Return" ability, moved to attack, is still alive, and that
  * origin space is free to land on. Returns null when no return is possible.
  */
-function harpyReturnOrigin(combat: CombatState, attacker: CombatUnitState): number | null {
+function harpyReturnOrigin(
+  combat: CombatState,
+  attacker: CombatUnitState,
+): number | null {
   if (!getReturnAfterAttackAbility(attacker) || !isUnitAlive(attacker)) {
     return null;
   }
   const origin = attacker.activationStartPosition;
-  if (origin === undefined || !attacker.movedThisActivation || origin === attacker.position) {
+  if (
+    origin === undefined ||
+    !attacker.movedThisActivation ||
+    origin === attacker.position
+  ) {
     return null;
   }
   if (combat.obstacles?.includes(origin)) {
     return null;
   }
   const occupied = Object.values(combat.units).some(
-    (unit) => unit.id !== attacker.id && isUnitAlive(unit) && unit.position === origin
+    (unit) =>
+      unit.id !== attacker.id && isUnitAlive(unit) && unit.position === origin,
   );
   return occupied ? null : origin;
 }
 
 /** Flies a unit back to its activation's starting space (Harpy return). */
-function moveUnitToOrigin(state: GameState, unit: CombatUnitState, origin: number): void {
+function moveUnitToOrigin(
+  state: GameState,
+  unit: CombatUnitState,
+  origin: number,
+): void {
   const from = unit.position;
   unit.position = origin;
   unit.movedThisActivation = true;
@@ -5515,12 +6387,16 @@ function moveUnitToOrigin(state: GameState, unit: CombatUnitState, origin: numbe
     playerId: unit.controllerId,
     unitId: unit.id,
     from,
-    to: origin
+    to: origin,
   });
 }
 
 /** Opens the player's "fly back or stay" choice after a Harpy's attack. */
-function openHarpyReturnChoice(state: GameState, unit: CombatUnitState, origin: number): void {
+function openHarpyReturnChoice(
+  state: GameState,
+  unit: CombatUnitState,
+  origin: number,
+): void {
   const choiceId = `choice_${nextEventNumber(state)}`;
   state.pendingChoice = {
     id: choiceId,
@@ -5529,11 +6405,11 @@ function openHarpyReturnChoice(state: GameState, unit: CombatUnitState, origin: 
     prompt: `${unit.cardName}: fly back to ${getBattlefieldLabel(origin)} or hold at ${getBattlefieldLabel(unit.position)}?`,
     options: [
       { label: `Fly back to ${getBattlefieldLabel(origin)}` },
-      { label: `Stay at ${getBattlefieldLabel(unit.position)}` }
+      { label: `Stay at ${getBattlefieldLabel(unit.position)}` },
     ],
     context: "combat-reposition",
     reposition: { unitId: unit.id, originPosition: origin },
-    returnPhase: "combat"
+    returnPhase: "combat",
   };
   state.phase = "choice";
   state.priorityPlayerId = unit.controllerId;
@@ -5544,7 +6420,7 @@ function openHarpyReturnChoice(state: GameState, unit: CombatUnitState, origin: 
     choiceType: "ABILITY_TARGET_CHOICE",
     playerId: unit.controllerId,
     sourceEffectIds: [],
-    message: `${unit.cardName} may return to ${getBattlefieldLabel(origin)} after its attack.`
+    message: `${unit.cardName} may return to ${getBattlefieldLabel(origin)} after its attack.`,
   });
 }
 
@@ -5555,17 +6431,25 @@ function openHarpyReturnChoice(state: GameState, unit: CombatUnitState, origin: 
  * (the ±1 rider never stacks on top — there is one modifier either way).
  */
 function initiativeBuffMovementModifiers(
-  effect: { movementBonus?: number; movementBonusByPower?: Record<number, number> },
-  power: number
+  effect: {
+    movementBonus?: number;
+    movementBonusByPower?: Record<number, number>;
+  },
+  power: number,
 ): ActiveEffectModifier[] {
   const amount = effect.movementBonusByPower
-    ? (balanceLadderAt(effect.movementBonusByPower, power) ?? effect.movementBonus ?? 0)
+    ? (balanceLadderAt(effect.movementBonusByPower, power) ??
+      effect.movementBonus ??
+      0)
     : (effect.movementBonus ?? 0);
   return amount ? [{ type: "MOVEMENT_BONUS", amount }] : [];
 }
 
 /** Highest key at or below `power` in a Balance-Pack ladder, or undefined. */
-function balanceLadderAt<T>(table: Record<number, T>, power: number): T | undefined {
+function balanceLadderAt<T>(
+  table: Record<number, T>,
+  power: number,
+): T | undefined {
   const keys = Object.keys(table)
     .map(Number)
     .filter((value) => Number.isFinite(value))
@@ -5575,7 +6459,10 @@ function balanceLadderAt<T>(table: Record<number, T>, power: number): T | undefi
 }
 
 /** Polish Balance Pack Shield: the damage cap the Power paid buys, if any. */
-function balanceDamageCapAtPower(table: Record<number, number>, power: number): number | undefined {
+function balanceDamageCapAtPower(
+  table: Record<number, number>,
+  power: number,
+): number | undefined {
   return balanceLadderAt(table, power);
 }
 
@@ -5584,13 +6471,18 @@ function balanceDamageCapAtPower(table: Record<number, number>, power: number): 
  * card was played, re-derived from the caster's FINAL pooled Power so Power
  * paid after the card still lifts it to the capping rung.
  */
-function resolvedAttackDamageCap(stackItem: ResolutionStackItem): number | undefined {
+function resolvedAttackDamageCap(
+  stackItem: ResolutionStackItem,
+): number | undefined {
   const stamped = stackItem.modifiers.attackDamageCap;
   const record = stackItem.modifiers.attackDamageCapByPower;
   if (!record) {
     return stamped;
   }
-  const derived = balanceDamageCapAtPower(record.table, attackPowerFor(stackItem, record.playerId));
+  const derived = balanceDamageCapAtPower(
+    record.table,
+    attackPowerFor(stackItem, record.playerId),
+  );
   if (derived === undefined) {
     return stamped;
   }
@@ -5603,7 +6495,7 @@ function resolvedAttackDamageCap(stackItem: ResolutionStackItem): number | undef
  */
 function forgetfulnessRangedModifier(
   table: Record<number, "halve" | "block">,
-  power: number
+  power: number,
 ): ActiveEffectModifier {
   const keys = Object.keys(table)
     .map(Number)
@@ -5611,7 +6503,9 @@ function forgetfulnessRangedModifier(
     .sort((left, right) => left - right);
   const matched = keys.filter((value) => value <= power).at(-1) ?? keys[0];
   const mode = matched === undefined ? "block" : (table[matched] ?? "block");
-  return mode === "halve" ? { type: "RANGED_ATTACK_HALVED" } : { type: "UNIT_CANNOT_RANGED_ATTACK" };
+  return mode === "halve"
+    ? { type: "RANGED_ATTACK_HALVED" }
+    : { type: "UNIT_CANNOT_RANGED_ATTACK" };
 }
 
 /**
@@ -5624,12 +6518,16 @@ function applyDispelToTarget(
   card: CardDefinition,
   playerId: PlayerId,
   target: TargetRef,
-  power: number
+  power: number,
 ): void {
   if (!state.combat || card.effect.type !== "DISPEL_EFFECTS") {
     return;
   }
-  const dispelSource = { type: "card" as const, cardId: card.id, controllerId: playerId };
+  const dispelSource = {
+    type: "card" as const,
+    cardId: card.id,
+    controllerId: playerId,
+  };
   if (target.type === "unit") {
     const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
     const unit = state.combat.units[target.unitId];
@@ -5662,21 +6560,27 @@ function openCommunityDispelPick(
   state: GameState,
   playerId: PlayerId,
   card: CardDefinition,
-  remaining: number
+  remaining: number,
 ): void {
   if (remaining <= 0) {
     return;
   }
-  const effects = state.activeEffects.filter((effect) => effect.removable !== false);
+  const effects = state.activeEffects.filter(
+    (effect) => effect.removable !== false,
+  );
   const paralysed = state.combat
-    ? Object.values(state.combat.units).filter((unit) => isUnitAlive(unit) && hasToken(unit, "paralysis"))
+    ? Object.values(state.combat.units).filter(
+        (unit) => isUnitAlive(unit) && hasToken(unit, "paralysis"),
+      )
     : [];
   if (effects.length === 0 && paralysed.length === 0) {
     return;
   }
   const unitName = (effect: ActiveEffectState): string => {
-    const unitId = effect.target?.type === "unit" ? effect.target.unitId : undefined;
-    const unit = unitId && state.combat ? state.combat.units[unitId] : undefined;
+    const unitId =
+      effect.target?.type === "unit" ? effect.target.unitId : undefined;
+    const unit =
+      unitId && state.combat ? state.combat.units[unitId] : undefined;
     return unit ? ` on ${unit.cardName}` : "";
   };
   openBalanceSpellChoice(
@@ -5687,14 +6591,18 @@ function openCommunityDispelPick(
       cardId: card.id,
       remaining,
       effectIds: effects.map((effect) => effect.id),
-      paralysisUnitIds: paralysed.map((unit) => unit.id)
+      paralysisUnitIds: paralysed.map((unit) => unit.id),
     },
     `${card.name}: discard an ongoing effect or a Paralysis token (${remaining} left).`,
     [
-      ...effects.map((effect) => ({ label: `Discard "${effect.name}"${unitName(effect)}` })),
-      ...paralysed.map((unit) => ({ label: `Remove the Paralysis token from ${unit.cardName}` })),
-      { label: "Stop discarding" }
-    ]
+      ...effects.map((effect) => ({
+        label: `Discard "${effect.name}"${unitName(effect)}`,
+      })),
+      ...paralysed.map((unit) => ({
+        label: `Remove the Paralysis token from ${unit.cardName}`,
+      })),
+      { label: "Stop discarding" },
+    ],
   );
 }
 
@@ -5714,7 +6622,11 @@ const MISFORTUNE_DIE_FACES: readonly number[] = [-1, 0, 1];
 function openBalanceSpellChoice(
   state: GameState,
   playerId: PlayerId,
-  context: "disrupting-ray-mode" | "dispel-scope" | "community-dispel-pick" | "misfortune-face",
+  context:
+    | "disrupting-ray-mode"
+    | "dispel-scope"
+    | "community-dispel-pick"
+    | "misfortune-face",
   payload: {
     cardId: CardId;
     unitId?: UnitId;
@@ -5726,7 +6638,7 @@ function openBalanceSpellChoice(
     dieFaces?: number[];
   },
   prompt: string,
-  options: { label: string }[]
+  options: { label: string }[],
 ): void {
   const choiceId = `choice_${nextEventNumber(state)}`;
   state.pendingChoice = {
@@ -5737,7 +6649,7 @@ function openBalanceSpellChoice(
     options,
     context,
     balanceSpellChoice: payload,
-    returnPhase: "combat"
+    returnPhase: "combat",
   };
   state.phase = "choice";
   state.priorityPlayerId = playerId;
@@ -5747,7 +6659,7 @@ function openBalanceSpellChoice(
     choiceType: "OPTION_CHOICE",
     playerId,
     sourceEffectIds: [],
-    message: prompt
+    message: prompt,
   });
 }
 
@@ -5755,7 +6667,7 @@ function openBalanceSpellChoice(
 function resolveBalanceSpellChoice(
   state: GameState,
   action: Extract<GameAction, { type: "CHOOSE_OPTION" }>,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   const choice = state.pendingChoice;
   if (choice?.type !== "OPTION_CHOICE" || !choice.balanceSpellChoice) {
@@ -5768,7 +6680,12 @@ function resolveBalanceSpellChoice(
   state.phase = choice.returnPhase ?? "combat";
   state.priorityPlayerId = null;
 
-  if (choice.context === "disrupting-ray-mode" && state.combat && payload.unitId && card) {
+  if (
+    choice.context === "disrupting-ray-mode" &&
+    state.combat &&
+    payload.unitId &&
+    card
+  ) {
     const target = { type: "unit" as const, unitId: payload.unitId };
     createActiveEffect(
       state,
@@ -5781,11 +6698,11 @@ function resolveBalanceSpellChoice(
         modifiers:
           picked === 1
             ? [{ type: "DEFENSE_BONUS", amount: -(payload.amount ?? 1) }]
-            : [{ type: "UNIT_ABILITY_SUPPRESSED" }]
+            : [{ type: "UNIT_ABILITY_SUPPRESSED" }],
       },
       { type: "card", cardId: card.id, controllerId: choice.playerId },
       choice.playerId,
-      target
+      target,
     );
     return;
   }
@@ -5798,19 +6715,23 @@ function resolveBalanceSpellChoice(
     if (face === undefined || effectId === undefined) {
       return;
     }
-    const effect = state.activeEffects.find((candidate) => candidate.id === effectId);
+    const effect = state.activeEffects.find(
+      (candidate) => candidate.id === effectId,
+    );
     if (!effect) {
       return;
     }
     effect.modifiers = effect.modifiers.map((modifier) =>
-      modifier.type === "SET_ENEMY_ATTACK_DIE" ? { ...modifier, face } : modifier
+      modifier.type === "SET_ENEMY_ATTACK_DIE"
+        ? { ...modifier, face }
+        : modifier,
     );
     appendEvent(state, {
       type: "EVENT_NOTE",
       playerId: choice.playerId,
       message: `${card.name} dictates the "${face > 0 ? `+${face}` : face}" side on the next ${
         effect.dieSetsRemaining ?? 1
-      } enemy Attack roll${(effect.dieSetsRemaining ?? 1) === 1 ? "" : "s"}.`
+      } enemy Attack roll${(effect.dieSetsRemaining ?? 1) === 1 ? "" : "s"}.`,
     });
     return;
   }
@@ -5826,16 +6747,20 @@ function resolveBalanceSpellChoice(
     }
     if (picked < effectIds.length) {
       const effectId = effectIds[picked]!;
-      const removed = state.activeEffects.filter((effect) => effect.id === effectId);
+      const removed = state.activeEffects.filter(
+        (effect) => effect.id === effectId,
+      );
       if (removed.length === 0) {
         return;
       }
-      state.activeEffects = state.activeEffects.filter((effect) => effect.id !== effectId);
+      state.activeEffects = state.activeEffects.filter(
+        (effect) => effect.id !== effectId,
+      );
       stripCombatHealthBonusFromRemovedEffects(state, removed);
       appendEvent(state, {
         type: "EVENT_NOTE",
         playerId: choice.playerId,
-        message: `${card.name} discards "${removed[0]!.name}".`
+        message: `${card.name} discards "${removed[0]!.name}".`,
       });
     } else {
       const unitId = paralysisUnitIds[picked - effectIds.length]!;
@@ -5858,23 +6783,33 @@ function resolveBalanceSpellChoice(
       // AND every battlefield obstacle/trap token (Fire Wall, Force Field,
       // Quicksand, Land Mine) — those live on combat.battlefieldTokens, not
       // state.activeEffects, so they must be cleared explicitly or they survive.
-      const removed = state.activeEffects.filter((effect) => effect.removable !== false);
+      const removed = state.activeEffects.filter(
+        (effect) => effect.removable !== false,
+      );
       if (removed.length > 0) {
         const removedIds = new Set(removed.map((effect) => effect.id));
-        state.activeEffects = state.activeEffects.filter((effect) => !removedIds.has(effect.id));
+        state.activeEffects = state.activeEffects.filter(
+          (effect) => !removedIds.has(effect.id),
+        );
         stripCombatHealthBonusFromRemovedEffects(state, removed);
       }
       const tokenPositions = [
-        ...new Set((state.combat.battlefieldTokens ?? []).map((token) => token.position))
+        ...new Set(
+          (state.combat.battlefieldTokens ?? []).map((token) => token.position),
+        ),
       ];
       let clearedTokens = 0;
       for (const position of tokenPositions) {
-        clearedTokens += clearBattlefieldTokensAt(state, state.combat, position);
+        clearedTokens += clearBattlefieldTokensAt(
+          state,
+          state.combat,
+          position,
+        );
       }
       if (removed.length > 0 || clearedTokens > 0) {
         appendEvent(state, {
           type: "EVENT_NOTE",
-          message: `${card.name} clears every ongoing effect in the Combat (${removed.length + clearedTokens}).`
+          message: `${card.name} clears every ongoing effect in the Combat (${removed.length + clearedTokens}).`,
         });
       }
     } else if (payload.target) {
@@ -5892,7 +6827,7 @@ function resolveBalanceSpellChoice(
  */
 function resolveCombatReposition(
   state: GameState,
-  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>
+  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>,
 ): void {
   const choice = state.pendingChoice;
   if (
@@ -5912,7 +6847,10 @@ function resolveCombatReposition(
     throw new Error("Combat is not active.");
   }
 
-  if (action.optionIndex === 0 && harpyReturnOrigin(combat, unit) === choice.reposition.originPosition) {
+  if (
+    action.optionIndex === 0 &&
+    harpyReturnOrigin(combat, unit) === choice.reposition.originPosition
+  ) {
     moveUnitToOrigin(state, unit, choice.reposition.originPosition);
   }
 
@@ -5920,7 +6858,7 @@ function resolveCombatReposition(
     type: "PENDING_CHOICE_RESOLVED",
     choiceId: choice.id,
     playerId: action.playerId,
-    selectedIndex: action.optionIndex
+    selectedIndex: action.optionIndex,
   });
 
   state.pendingChoice = null;
@@ -5943,7 +6881,7 @@ function maybeDeclareDoubleAttack(
   defender: CombatUnitState,
   attackKind: "melee" | "ranged",
   roll: number,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): boolean {
   if ((attacker.attacksThisActivation ?? 0) !== 1) {
     return false;
@@ -5975,7 +6913,7 @@ function maybeDeclareDoubleAttack(
     unitId: attacker.id,
     abilityId: doubleAttack.abilityId,
     targetUnitId: defender.id,
-    message: `${attacker.name} attack ${defender.name} a second time.`
+    message: `${attacker.name} attack ${defender.name} a second time.`,
   });
 
   declareAttack(
@@ -5984,20 +6922,31 @@ function maybeDeclareDoubleAttack(
       type: "ATTACK_UNIT",
       playerId: attacker.controllerId,
       attackerId: attacker.id,
-      defenderId: defender.id
+      defenderId: defender.id,
     },
     cards,
     false,
-    true
+    true,
   );
   return true;
 }
 
 function getAfterRetaliationAttack(
   attacker: CombatUnitState,
-  defender: CombatUnitState
-): { abilityId: string; abilityName: string; targetUnitId: UnitId; baseAttack?: number } | undefined {
-  if ((attacker.attacksThisActivation ?? 0) !== 1 || !isUnitAlive(attacker) || !isUnitAlive(defender)) {
+  defender: CombatUnitState,
+):
+  | {
+      abilityId: string;
+      abilityName: string;
+      targetUnitId: UnitId;
+      baseAttack?: number;
+    }
+  | undefined {
+  if (
+    (attacker.attacksThisActivation ?? 0) !== 1 ||
+    !isUnitAlive(attacker) ||
+    !isUnitAlive(defender)
+  ) {
     return undefined;
   }
 
@@ -6006,7 +6955,9 @@ function getAfterRetaliationAttack(
     ? {
         ...ability,
         targetUnitId: defender.id,
-        baseAttack: ability.baseAttack ?? Math.max(0, attacker.attack + (ability.attackModifier ?? 0))
+        baseAttack:
+          ability.baseAttack ??
+          Math.max(0, attacker.attack + (ability.attackModifier ?? 0)),
       }
     : undefined;
 }
@@ -6023,7 +6974,10 @@ function getAfterRetaliationAttack(
  * defender lends it a virtual Defense token. The aura never benefits the
  * Halberdiers' enemies and never the defender from itself.
  */
-function hasAdjacentDefenseAura(state: GameState, defender: CombatUnitState): boolean {
+function hasAdjacentDefenseAura(
+  state: GameState,
+  defender: CombatUnitState,
+): boolean {
   const combat = state.combat;
   if (!combat) {
     return false;
@@ -6034,14 +6988,14 @@ function hasAdjacentDefenseAura(state: GameState, defender: CombatUnitState): bo
       unit.controllerId === defender.controllerId &&
       isUnitAlive(unit) &&
       isAdjacent(unit.position, defender.position) &&
-      hasDefenseTokenAura(unit)
+      hasDefenseTokenAura(unit),
   );
 }
 
 function resolveDefendBonus(
   state: GameState,
   stackItem: ResolutionStackItem,
-  details: NonNullable<ReturnType<typeof getAttackStackDetails>>
+  details: NonNullable<ReturnType<typeof getAttackStackDetails>>,
 ): { roll: number | null; bonus: number } | null {
   // A real Defense token, a virtual one from an adjacent Halberdier's "Phalanx"
   // aura, or a Creature Bank card's "treated as if it had a Defense token while
@@ -6065,12 +7019,18 @@ function resolveDefendBonus(
   // shield-on-zero) never fire, exactly as "roll no Attack dice" prints.
   const proclamation = getActiveAstrologersCard(state)?.effect;
   if (proclamation?.type === "DEFEND_FLAT_BONUS") {
-    return { roll: null, bonus: proclamation.amount + getDefendBonus(details.defender) };
+    return {
+      roll: null,
+      bonus: proclamation.amount + getDefendBonus(details.defender),
+    };
   }
   if (stackItem.modifiers.defendRoll === undefined) {
     // Neutral Champions ([unit_passive], always on): the "-1" reroll applies to
     // EVERY die this unit rolls, including its Defend die — reroll while "-1".
-    let defendRoll = rollAttackDieWithMinusReroll(combat, hasRerollAllMinusOne(details.defender));
+    let defendRoll = rollAttackDieWithMinusReroll(
+      combat,
+      hasRerollAllMinusOne(details.defender),
+    );
     // Morale (defender's own cards, resolved at their Defense roll):
     // - "on a +1 on an Attack die, reroll the die" — the shield face is an
     //   Attack die the defender rolled, so a "+1" is forcibly rerolled;
@@ -6079,20 +7039,34 @@ function resolveDefendBonus(
     //   Merist's on-zero variant reads the same penalized value).
     if (
       defendRoll === 1 &&
-      playerHoldsMoraleCard(state, details.defender.controllerId, MORALE_CARD_IDS.rerollPlusOne)
+      playerHoldsMoraleCard(
+        state,
+        details.defender.controllerId,
+        MORALE_CARD_IDS.rerollPlusOne,
+      )
     ) {
-      consumeHeldMoraleCard(state, details.defender.controllerId, MORALE_CARD_IDS.rerollPlusOne);
+      consumeHeldMoraleCard(
+        state,
+        details.defender.controllerId,
+        MORALE_CARD_IDS.rerollPlusOne,
+      );
       defendRoll = rollAttackDie(combat);
       (stackItem.modifiers.defendRollNotes ??= []).push({
         source: "Negative Morale",
-        text: 'the Defend die\'s "+1" is forcibly rerolled'
+        text: 'the Defend die\'s "+1" is forcibly rerolled',
       });
     }
-    if (consumeHeldMoraleCard(state, details.defender.controllerId, MORALE_CARD_IDS.nextRollMinusOne)) {
+    if (
+      consumeHeldMoraleCard(
+        state,
+        details.defender.controllerId,
+        MORALE_CARD_IDS.nextRollMinusOne,
+      )
+    ) {
       defendRoll -= 1;
       (stackItem.modifiers.defendRollNotes ??= []).push({
         source: "Negative Morale",
-        text: "-1 to the Defend roll"
+        text: "-1 to the Defend roll",
       });
     }
     stackItem.modifiers.defendRoll = defendRoll;
@@ -6104,7 +7078,9 @@ function resolveDefendBonus(
     (effect) =>
       effect.scope === "player" &&
       effect.controllerId === details.defender.controllerId &&
-      effect.modifiers.some((modifier) => modifier.type === "DEFENSE_TOKEN_ON_ZERO")
+      effect.modifiers.some(
+        (modifier) => modifier.type === "DEFENSE_TOKEN_ON_ZERO",
+      ),
   );
   const grantsBonus = shieldOnZero ? roll >= 0 : roll === 1;
   // Mammoths' Thick Hide: a flat extra Defense the unit gets while it is
@@ -6118,7 +7094,11 @@ function resolveDefendBonus(
  * self-heal lands after the unit's own attack — never a Retaliation Attack —
  * and is capped at the damage currently on the unit.
  */
-function applyOnAttackSelfHeal(state: GameState, attacker: CombatUnitState, isRetaliation: boolean): void {
+function applyOnAttackSelfHeal(
+  state: GameState,
+  attacker: CombatUnitState,
+  isRetaliation: boolean,
+): void {
   if (isRetaliation) {
     return;
   }
@@ -6137,13 +7117,17 @@ function applyOnAttackSelfHeal(state: GameState, attacker: CombatUnitState, isRe
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: attacker.id,
     abilityId: heal.abilityId,
-    message: `${attacker.cardName} drains life and heals ${healed} damage.`
+    message: `${attacker.cardName} drains life and heals ${healed} damage.`,
   });
   appendEvent(state, {
     type: "DAMAGE_HEALED",
-    source: { type: "unit", unitId: attacker.id, controllerId: attacker.controllerId },
+    source: {
+      type: "unit",
+      unitId: attacker.id,
+      controllerId: attacker.controllerId,
+    },
     target: { type: "unit", unitId: attacker.id },
-    amount: healed
+    amount: healed,
   });
 }
 
@@ -6159,7 +7143,7 @@ function applyBloodSiphonSelfHeal(
   state: GameState,
   attacker: CombatUnitState,
   isRetaliation: boolean,
-  damageDealt: number
+  damageDealt: number,
 ): void {
   if (isRetaliation || damageDealt <= 0) {
     return;
@@ -6177,13 +7161,17 @@ function applyBloodSiphonSelfHeal(
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: attacker.id,
     abilityId: siphon.abilityId,
-    message: `${attacker.cardName} ${siphon.byDamageDealt ? "drains life" : "siphons blood"} and heals ${healed} damage.`
+    message: `${attacker.cardName} ${siphon.byDamageDealt ? "drains life" : "siphons blood"} and heals ${healed} damage.`,
   });
   appendEvent(state, {
     type: "DAMAGE_HEALED",
-    source: { type: "unit", unitId: attacker.id, controllerId: attacker.controllerId },
+    source: {
+      type: "unit",
+      unitId: attacker.id,
+      controllerId: attacker.controllerId,
+    },
     target: { type: "unit", unitId: attacker.id },
-    amount: healed
+    amount: healed,
   });
 }
 
@@ -6193,7 +7181,7 @@ function applyCommanderArtifactAfterAttack(
   attacker: CombatUnitState,
   defender: CombatUnitState,
   isRetaliation: boolean,
-  damageDealt: number
+  damageDealt: number,
 ): void {
   const combat = state.combat;
   if (!combat) return;
@@ -6202,14 +7190,29 @@ function applyCommanderArtifactAfterAttack(
   if (!isRetaliation && isUnitAlive(defender)) {
     const debuffs = [
       artifact.onAttackDefensePenalty > 0
-        ? { id: "commander-artifact-corrosion", name: "Corrosive Edge", type: "DEFENSE_BONUS" as const, amount: -artifact.onAttackDefensePenalty }
+        ? {
+            id: "commander-artifact-corrosion",
+            name: "Corrosive Edge",
+            type: "DEFENSE_BONUS" as const,
+            amount: -artifact.onAttackDefensePenalty,
+          }
         : null,
       artifact.onAttackAttackPenalty > 0
-        ? { id: "commander-artifact-enfeeble", name: "Enfeebling Mace", type: "ATTACK_BONUS" as const, amount: -artifact.onAttackAttackPenalty }
+        ? {
+            id: "commander-artifact-enfeeble",
+            name: "Enfeebling Mace",
+            type: "ATTACK_BONUS" as const,
+            amount: -artifact.onAttackAttackPenalty,
+          }
         : null,
       artifact.onAttackInitiativePenalty > 0
-        ? { id: "commander-artifact-slow", name: "Chrono Pike", type: "INITIATIVE_BONUS" as const, amount: -artifact.onAttackInitiativePenalty }
-        : null
+        ? {
+            id: "commander-artifact-slow",
+            name: "Chrono Pike",
+            type: "INITIATIVE_BONUS" as const,
+            amount: -artifact.onAttackInitiativePenalty,
+          }
+        : null,
     ].filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
     for (const debuff of debuffs) {
       createActiveEffect(
@@ -6220,23 +7223,33 @@ function applyCommanderArtifactAfterAttack(
           duration: { type: "combat" },
           polarity: "negative",
           removable: true,
-          modifiers: [{ type: debuff.type, amount: debuff.amount }]
+          modifiers: [{ type: debuff.type, amount: debuff.amount }],
         },
-        { type: "unit", unitId: attacker.id, controllerId: attacker.controllerId },
+        {
+          type: "unit",
+          unitId: attacker.id,
+          controllerId: attacker.controllerId,
+        },
         attacker.controllerId,
-        { type: "unit", unitId: defender.id }
+        { type: "unit", unitId: defender.id },
       );
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: attacker.id,
         abilityId: debuff.id,
         targetUnitId: defender.id,
-        message: `${debuff.name} afflicts ${defender.cardName} for the rest of combat.`
+        message: `${debuff.name} afflicts ${defender.cardName} for the rest of combat.`,
       });
     }
   }
 
-  if (!isRetaliation && damageDealt > 0 && artifact.healAfterDamagingAttack > 0 && attacker.damage > 0 && isUnitAlive(attacker)) {
+  if (
+    !isRetaliation &&
+    damageDealt > 0 &&
+    artifact.healAfterDamagingAttack > 0 &&
+    attacker.damage > 0 &&
+    isUnitAlive(attacker)
+  ) {
     const healed = Math.min(artifact.healAfterDamagingAttack, attacker.damage);
     attacker.damage -= healed;
     appendEvent(state, {
@@ -6244,18 +7257,26 @@ function applyCommanderArtifactAfterAttack(
       unitId: attacker.id,
       abilityId: "commander-artifact-vampiric-fang",
       targetUnitId: attacker.id,
-      message: `Vampiric Fang heals ${healed} damage from ${attacker.cardName}.`
+      message: `Vampiric Fang heals ${healed} damage from ${attacker.cardName}.`,
     });
     appendEvent(state, {
       type: "DAMAGE_HEALED",
-      source: { type: "unit", unitId: attacker.id, controllerId: attacker.controllerId },
+      source: {
+        type: "unit",
+        unitId: attacker.id,
+        controllerId: attacker.controllerId,
+      },
       target: { type: "unit", unitId: attacker.id },
-      amount: healed
+      amount: healed,
     });
   }
 
   const defenderArtifact = commanderArtifactBonusesForUnit(state, defender);
-  if (damageDealt > 0 && defenderArtifact.reflectDamage > 0 && isUnitAlive(attacker)) {
+  if (
+    damageDealt > 0 &&
+    defenderArtifact.reflectDamage > 0 &&
+    isUnitAlive(attacker)
+  ) {
     // The reflect can never exceed the damage actually taken (0 taken ⇒ 0 back).
     const reflected = Math.min(defenderArtifact.reflectDamage, damageDealt);
     attacker.damage += reflected;
@@ -6264,21 +7285,30 @@ function applyCommanderArtifactAfterAttack(
       unitId: defender.id,
       abilityId: "commander-artifact-thorn-aura",
       targetUnitId: attacker.id,
-      message: `Barbed Carapace returns ${reflected} damage to ${attacker.cardName}.`
+      message: `Barbed Carapace returns ${reflected} damage to ${attacker.cardName}.`,
     });
     appendEvent(state, {
       type: "DAMAGE_ASSIGNED",
-      source: { type: "unit", unitId: defender.id, controllerId: defender.controllerId },
+      source: {
+        type: "unit",
+        unitId: defender.id,
+        controllerId: defender.controllerId,
+      },
       target: { type: "unit", unitId: attacker.id },
       amount: reflected,
-      damageKind: "effect"
+      damageKind: "effect",
     });
     markUnitRemovedIfNeeded(state, attacker);
   }
 
   if (!isRetaliation && artifact.cleaveDamage > 0) {
     const cleaveTarget = getUnitsAdjacentTo(combat, defender)
-      .filter((unit) => unit.controllerId !== attacker.controllerId && unit.id !== defender.id && isUnitAlive(unit))
+      .filter(
+        (unit) =>
+          unit.controllerId !== attacker.controllerId &&
+          unit.id !== defender.id &&
+          isUnitAlive(unit),
+      )
       .sort((left, right) => left.position - right.position)[0];
     if (cleaveTarget) {
       cleaveTarget.damage += artifact.cleaveDamage;
@@ -6287,14 +7317,18 @@ function applyCommanderArtifactAfterAttack(
         unitId: attacker.id,
         abilityId: "commander-artifact-stormcleaver",
         targetUnitId: cleaveTarget.id,
-        message: `Stormcleaver cleaves ${cleaveTarget.cardName} for ${artifact.cleaveDamage} damage.`
+        message: `Stormcleaver cleaves ${cleaveTarget.cardName} for ${artifact.cleaveDamage} damage.`,
       });
       appendEvent(state, {
         type: "DAMAGE_ASSIGNED",
-        source: { type: "unit", unitId: attacker.id, controllerId: attacker.controllerId },
+        source: {
+          type: "unit",
+          unitId: attacker.id,
+          controllerId: attacker.controllerId,
+        },
         target: { type: "unit", unitId: cleaveTarget.id },
         amount: artifact.cleaveDamage,
-        damageKind: "effect"
+        damageKind: "effect",
       });
       markUnitRemovedIfNeeded(state, cleaveTarget);
     }
@@ -6306,7 +7340,7 @@ function finishResolvedAttack(
   stackItem: ResolutionStackItem,
   details: NonNullable<ReturnType<typeof getAttackStackDetails>>,
   candidate: AttackRollCandidate,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   // A defending defender rolls its Defense die now (once, then reused), so the
   // lethal-save preview and the resolved hit agree on whether the shield held.
@@ -6319,15 +7353,26 @@ function finishResolvedAttack(
   // all read the same dice. Each "+1" raises the attack; at most one "−1"
   // counts. Non-commanders (and Damage grade 0) roll nothing.
   const mightDiceCount = getMightDiceCount(details.attacker);
-  if (mightDiceCount > 0 && stackItem.modifiers.mightRolls === undefined && state.combat) {
-    const rolled = Array.from({ length: mightDiceCount }, () => rollAttackDie(state.combat!));
+  if (
+    mightDiceCount > 0 &&
+    stackItem.modifiers.mightRolls === undefined &&
+    state.combat
+  ) {
+    const rolled = Array.from({ length: mightDiceCount }, () =>
+      rollAttackDie(state.combat!),
+    );
     const protectedDice = Math.min(
       rolled.length,
-      commanderArtifactBonusesForUnit(state, details.attacker).nonNegativeMightDice
+      commanderArtifactBonusesForUnit(state, details.attacker)
+        .nonNegativeMightDice,
     );
     // Artifact-added dice are appended after the commander's native Damage-grade
     // dice. Sword of Sharpness protects only its own added die from the -1 face.
-    for (let index = rolled.length - protectedDice; index < rolled.length; index += 1) {
+    for (
+      let index = rolled.length - protectedDice;
+      index < rolled.length;
+      index += 1
+    ) {
       rolled[index] = Math.max(0, rolled[index] ?? 0);
     }
     stackItem.modifiers.mightRolls = rolled;
@@ -6340,10 +7385,10 @@ function finishResolvedAttack(
   // the resolved hit and the die-triggered abilities below all read it the same.
   const dieCancelled = Boolean(stackItem.modifiers.attackDieCancelled);
   const uncappedCandidate: AttackRollCandidate = dieCancelled
-    // "Ignore the Attack die" is a true cancellation, including a -1 face:
-    // expose a zeroed candidate to every downstream reader, not merely a
-    // selected value of 0 while leaving the original negative face in `rolls`.
-    ? { ...candidate, rolls: candidate.rolls.map(() => 0), roll: 0 }
+    ? // "Ignore the Attack die" is a true cancellation, including a -1 face:
+      // expose a zeroed candidate to every downstream reader, not merely a
+      // selected value of 0 while leaving the original negative face in `rolls`.
+      { ...candidate, rolls: candidate.rolls.map(() => 0), roll: 0 }
     : candidate;
   const abilityMinimumAttackDie = getMinimumAttackDie(details.attacker);
   const minimumAttackDie = abilityMinimumAttackDie;
@@ -6351,32 +7396,39 @@ function finishResolvedAttack(
     minimumAttackDie !== null && uncappedCandidate.roll < minimumAttackDie
       ? {
           ...uncappedCandidate,
-          rolls: uncappedCandidate.rolls.map((roll) => Math.max(minimumAttackDie, roll)),
-          roll: minimumAttackDie
+          rolls: uncappedCandidate.rolls.map((roll) =>
+            Math.max(minimumAttackDie, roll),
+          ),
+          roll: minimumAttackDie,
         }
       : uncappedCandidate;
   // Assemble this attack's visible roll adjustments FRESH on every entry — the
   // lethal-save resume re-runs this function with the same candidate object, so
   // the notes must never be pushed into a shared array twice. Display-only:
   // every number below already includes these adjustments.
-  const rollNotes: AttackRollModifierNote[] = [...(candidate.modifierNotes ?? [])];
+  const rollNotes: AttackRollModifierNote[] = [
+    ...(candidate.modifierNotes ?? []),
+  ];
   if (!dieCancelled && resolvedCandidate.roll !== candidate.roll) {
     rollNotes.push({
       source: details.attacker.name,
-      text: `treats its ${candidate.roll} Attack die as ${resolvedCandidate.roll}`
+      text: `treats its ${candidate.roll} Attack die as ${resolvedCandidate.roll}`,
     });
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: details.attacker.id,
       abilityId: "wog-no-negative-attack-roll",
-      message: `${details.attacker.cardName} treats its ${candidate.roll} Attack die as ${resolvedCandidate.roll}.`
+      message: `${details.attacker.cardName} treats its ${candidate.roll} Attack die as ${resolvedCandidate.roll}.`,
     });
   }
   // Negative Morale "-1 to your next Attack roll": the −1 was folded into the
   // attack bonus when it latched (applyMoraleAttackRollPenalty) — name it here
   // so the dice overlay can explain the lowered bonus.
   if (stackItem.modifiers.moraleRollPenalty) {
-    rollNotes.push({ source: "Negative Morale", text: "-1 to this Attack roll" });
+    rollNotes.push({
+      source: "Negative Morale",
+      text: "-1 to this Attack roll",
+    });
   }
   // Morale adjustments to the defender's Defend die (recorded when it rolled).
   rollNotes.push(...(stackItem.modifiers.defendRollNotes ?? []));
@@ -6387,13 +7439,17 @@ function finishResolvedAttack(
   // MGQ Hunter Job: a low own-attack die exposes a gap in the target's armor.
   // Subtracting from the aggregate Defense bonus here makes the lethal preview
   // and final damage calculation read the exact same one-point pierce.
-  const hunterPierce = !details.isRetaliation && !details.abilityAttack
-    ? getAttackDieDefenseReductionAbility(details.attacker, resolvedCandidate.roll)
-    : null;
+  const hunterPierce =
+    !details.isRetaliation && !details.abilityAttack
+      ? getAttackDieDefenseReductionAbility(
+          details.attacker,
+          resolvedCandidate.roll,
+        )
+      : null;
   if (hunterPierce) {
     details.defenseBonus -= Math.min(
       hunterPierce.amount,
-      Math.max(0, details.defender.defense + details.defenseBonus)
+      Math.max(0, details.defender.defense + details.defenseBonus),
     );
     if (!stackItem.modifiers.mgqHunterPierceAnnounced) {
       stackItem.modifiers.mgqHunterPierceAnnounced = true;
@@ -6402,7 +7458,7 @@ function finishResolvedAttack(
         unitId: details.attacker.id,
         abilityId: hunterPierce.abilityId,
         targetUnitId: details.defender.id,
-        message: `${details.attacker.cardName} finds an opening and ignores ${hunterPierce.amount} Defense.`
+        message: `${details.attacker.cardName} finds an opening and ignores ${hunterPierce.amount} Defense.`,
       });
     }
   }
@@ -6412,7 +7468,10 @@ function finishResolvedAttack(
   // rolled die is stashed so the resumed attack uses the same outcome. A Clone is
   // destroyed by any damage by rule and cannot be rescued, so it is never offered
   // a lethal save (the post-damage hook then removes it for being attacked).
-  if (!details.defender.cloneOfUnitId && !stackItem.modifiers.lethalSaveOffered) {
+  if (
+    !details.defender.cloneOfUnitId &&
+    !stackItem.modifiers.lethalSaveOffered
+  ) {
     const preview = getAttackDamagePreview(
       details.attacker,
       details.defender,
@@ -6430,9 +7489,13 @@ function finishResolvedAttack(
       details.attackDamageCap,
       details.halveAttack,
       details.dieMultiplierSkipsNegative,
-      details.ignorePlusOneDie
+      details.ignorePlusOneDie,
     );
-    const stackLayerOnly = armyStacksWouldAbsorbHit(state, details.defender, preview.damage);
+    const stackLayerOnly = armyStacksWouldAbsorbHit(
+      state,
+      details.defender,
+      preview.damage,
+    );
     if (
       preview.damage > 0 &&
       details.defender.damage + preview.damage >= details.defender.maxHealth &&
@@ -6447,7 +7510,7 @@ function finishResolvedAttack(
         type: "UNIT_LETHAL_HIT",
         attackerId: details.attacker.id,
         defenderId: details.defender.id,
-        ...(stackLayerOnly ? { stackLayerOnly: true } : {})
+        ...(stackLayerOnly ? { stackLayerOnly: true } : {}),
       });
       if (openReactionWindowForTrigger(state, stackItem, lethalEvent, cards)) {
         return;
@@ -6475,7 +7538,7 @@ function finishResolvedAttack(
         unit.id !== details.defender.id &&
         unit.damage < unit.maxHealth &&
         !unit.usedLethalSaveThisCombat &&
-        getLethalSaveUnitAbility(unit)
+        getLethalSaveUnitAbility(unit),
     );
     if (saver) {
       const preview = getAttackDamagePreview(
@@ -6495,7 +7558,7 @@ function finishResolvedAttack(
         details.attackDamageCap,
         details.halveAttack,
         details.dieMultiplierSkipsNegative,
-        details.ignorePlusOneDie
+        details.ignorePlusOneDie,
       );
       if (
         preview.damage > 0 &&
@@ -6504,13 +7567,16 @@ function finishResolvedAttack(
         const saverAbility = getLethalSaveUnitAbility(saver)!;
         saver.usedLethalSaveThisCombat = true;
         stackItem.modifiers.lethalSaveOffered = true;
-        stackItem.modifiers.cancelLethal = { unitId: details.defender.id, grade: details.defender.grade };
+        stackItem.modifiers.cancelLethal = {
+          unitId: details.defender.id,
+          grade: details.defender.grade,
+        };
         appendEvent(state, {
           type: "UNIT_ABILITY_TRIGGERED",
           unitId: saver.id,
           abilityId: saverAbility.abilityId,
           targetUnitId: details.defender.id,
-          message: `${saver.cardName} automatically cancels the killing blow on ${details.defender.cardName}.`
+          message: `${saver.cardName} automatically cancels the killing blow on ${details.defender.cardName}.`,
         });
       }
     }
@@ -6522,13 +7588,15 @@ function finishResolvedAttack(
       unitId: details.attacker.id,
       abilityId: details.defenseReductionAbility.abilityId,
       targetUnitId: details.defender.id,
-      message: `${details.attacker.name} lowers ${details.defender.name}'s defense by ${details.defenseReductionAbility.amount}.`
+      message: `${details.attacker.name} lowers ${details.defender.name}'s defense by ${details.defenseReductionAbility.amount}.`,
     });
   }
 
   const cancelLethal = stackItem.modifiers.cancelLethal;
   const lethalCancel =
-    cancelLethal && cancelLethal.unitId === details.defender.id ? { grade: cancelLethal.grade } : undefined;
+    cancelLethal && cancelLethal.unitId === details.defender.id
+      ? { grade: cancelLethal.grade }
+      : undefined;
 
   // Bulwark "Runes" (Gamefound Update #3): a Bulwark unit's resolved Attack earns
   // its controller +1 Rune, a Retaliation Attack +1 (RUNE_GAIN_*). Credited HERE,
@@ -6562,11 +7630,12 @@ function finishResolvedAttack(
         details.attackDamageCap,
         details.halveAttack,
         details.dieMultiplierSkipsNegative,
-        details.ignorePlusOneDie
+        details.ignorePlusOneDie,
       );
       return (
         preview.damage > 0 &&
-        details.defender.damage + preview.damage >= details.defender.maxHealth &&
+        details.defender.damage + preview.damage >=
+          details.defender.maxHealth &&
         gradeRankOfUnit(details.defender) <= gradeRank(lethalCancel.grade)
       );
     })();
@@ -6574,11 +7643,12 @@ function finishResolvedAttack(
     const runeContext = {
       attacker: details.attacker,
       defender: details.defender,
-      attackKind: details.attackKind
+      attackKind: details.attackKind,
     };
     const attackBonusBeforeRune = getActiveAttackBonus(state, runeContext);
     gainRunesForAttack(state, details.attacker, details.isRetaliation);
-    details.attackBonus += getActiveAttackBonus(state, runeContext) - attackBonusBeforeRune;
+    details.attackBonus +=
+      getActiveAttackBonus(state, runeContext) - attackBonusBeforeRune;
   }
 
   // MGQ Devour reads the victim's status BEFORE damage: damage normally clears
@@ -6610,11 +7680,16 @@ function finishResolvedAttack(
     details.attackDamageCap,
     details.halveAttack,
     details.dieMultiplierSkipsNegative,
-    details.ignorePlusOneDie
+    details.ignorePlusOneDie,
   );
 
   if (!attackResult.cancelled) {
-    recordSwordIntentAfterAttack(state, details.attacker, details.isRetaliation, attackResult.damage);
+    recordSwordIntentAfterAttack(
+      state,
+      details.attacker,
+      details.isRetaliation,
+      attackResult.damage,
+    );
   }
 
   // Alamar's Resurrection cancelled the whole attack: the attacker still spent
@@ -6624,12 +7699,17 @@ function finishResolvedAttack(
     // First Blood keys off the first DECLARED attack. A lethal-save cancellation
     // still spends that strike, so it must not leave the +2 armed for a later
     // attack in the same combat.
-    markHeroGradeFirstBloodUsed(state, details.attacker.controllerId, details.isRetaliation);
+    markHeroGradeFirstBloodUsed(
+      state,
+      details.attacker.controllerId,
+      details.isRetaliation,
+    );
     if (details.isRetaliation) {
       details.attacker.retaliatedThisRound = true;
     } else {
       details.attacker.attackedThisActivation = true;
-      details.attacker.attacksThisActivation = (details.attacker.attacksThisActivation ?? 0) + 1;
+      details.attacker.attacksThisActivation =
+        (details.attacker.attacksThisActivation ?? 0) + 1;
     }
     stackItem.status = "resolved";
     state.stack.pop();
@@ -6639,10 +7719,16 @@ function finishResolvedAttack(
     if (finishCombatIfNeeded(state)) {
       return;
     }
-    if (details.isRetaliation && state.combat?.attackSequence?.attackerId === details.defender.id) {
+    if (
+      details.isRetaliation &&
+      state.combat?.attackSequence?.attackerId === details.defender.id
+    ) {
       state.combat.attackSequence = null;
     }
-    concludeAttackerActivation(state, details.isRetaliation ? details.defender : details.attacker);
+    concludeAttackerActivation(
+      state,
+      details.isRetaliation ? details.defender : details.attacker,
+    );
     return;
   }
 
@@ -6661,17 +7747,17 @@ function finishResolvedAttack(
       unitId: details.attacker.id,
       abilityId: devour.abilityId,
       targetUnitId: details.defender.id,
-      message: `${details.attacker.cardName} devours the defeated side of ${details.defender.cardName} and heals to full.`
+      message: `${details.attacker.cardName} devours the defeated side of ${details.defender.cardName} and heals to full.`,
     });
     appendEvent(state, {
       type: "DAMAGE_HEALED",
       source: {
         type: "unit",
         unitId: details.attacker.id,
-        controllerId: details.attacker.controllerId
+        controllerId: details.attacker.controllerId,
       },
       target: { type: "unit", unitId: details.attacker.id },
-      amount: healed
+      amount: healed,
     });
   }
 
@@ -6680,7 +7766,7 @@ function finishResolvedAttack(
     details.attacker,
     details.defender,
     details.isRetaliation,
-    attackResult.damage
+    attackResult.damage,
   );
   // Miku Voice of Angel IV (and any future HEAL_AFTER_ATTACKED sources): after a
   // resolved attack (not cancelled), heal the defender if the owner's ongoing
@@ -6694,20 +7780,33 @@ function finishResolvedAttack(
     details.attacker,
     details.defender,
     details.isRetaliation,
-    attackResult.damage
+    attackResult.damage,
   );
-  applyOnAttackPoisonCubes(state, details.attacker, details.defender, details.isRetaliation);
-  if (!details.isRetaliation && isUnitAlive(details.defender) && stackItem.modifiers.equipmentCorrosion) {
+  applyOnAttackPoisonCubes(
+    state,
+    details.attacker,
+    details.defender,
+    details.isRetaliation,
+  );
+  if (
+    !details.isRetaliation &&
+    isUnitAlive(details.defender) &&
+    stackItem.modifiers.equipmentCorrosion
+  ) {
     placeCombatToken(state, details.defender, "corrosion", 1, "Corrosion Edge");
   }
-  if (!details.isRetaliation && isUnitAlive(details.defender) && stackItem.modifiers.equipmentPoison) {
+  if (
+    !details.isRetaliation &&
+    isUnitAlive(details.defender) &&
+    stackItem.modifiers.equipmentPoison
+  ) {
     details.defender.poisonCubes = (details.defender.poisonCubes ?? 0) + 1;
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: details.attacker.id,
       abilityId: "equipment-wyvern-needle",
       targetUnitId: details.defender.id,
-      message: `Wyvern Needle plants 1 poison cube on ${details.defender.cardName}.`
+      message: `Wyvern Needle plants 1 poison cube on ${details.defender.cardName}.`,
     });
   }
   // (Bulwark "Runes" are credited above, BEFORE the blow's damage, so a strike
@@ -6719,67 +7818,124 @@ function finishResolvedAttack(
   // CHOOSE which card to discard, parking combat on that choice; it runs both in
   // the non-retaliation follow-up chain AND on the Wraith's Retaliation Attack —
   // see the isRetaliation branch below.)
-  applyOnAttackParalysis(state, details.attacker, details.defender, details.isRetaliation);
-  applyDendroidBindFx(state, details.attacker, details.defender, details.isRetaliation);
+  applyOnAttackParalysis(
+    state,
+    details.attacker,
+    details.defender,
+    details.isRetaliation,
+  );
+  applyDendroidBindFx(
+    state,
+    details.attacker,
+    details.defender,
+    details.isRetaliation,
+  );
   // Shield of the Dwarven Lords ignored the die "and any additional effects it
   // triggered": skip every die-face-conditioned follow-up — the Azure/Basilisk
   // paralysis and die tokens, the Minotaurs' draw, and the ranged low-roll bolt.
   // Tarnum (Fortress) Basilisks VI: the buffed (non-retaliation) attack fires
   // every die-gated after-attack ability regardless of the rolled face.
-  const forceAbilityRoll = !details.isRetaliation && Boolean(stackItem.modifiers.forceAbilityRollsThisAttack);
+  const forceAbilityRoll =
+    !details.isRetaliation &&
+    Boolean(stackItem.modifiers.forceAbilityRollsThisAttack);
   if (!dieCancelled) {
-    applyOnAttackDieTokens(state, details.attacker, details.defender, attackResult.roll, details.isRetaliation, forceAbilityRoll);
+    applyOnAttackDieTokens(
+      state,
+      details.attacker,
+      details.defender,
+      attackResult.roll,
+      details.isRetaliation,
+      forceAbilityRoll,
+    );
     applyOnAttackDiePoisonCubes(
       state,
       details.attacker,
       details.defender,
       attackResult.roll,
       details.isRetaliation,
-      forceAbilityRoll
+      forceAbilityRoll,
     );
     // Dungeon Minotaurs: draw a card when this unit's OWN Attack die resolves
     // "-1" ([unit_attack] — never on a Retaliation Attack).
-    applyOnAttackDieDraw(state, details.attacker, attackResult.roll, details.isRetaliation, forceAbilityRoll);
+    applyOnAttackDieDraw(
+      state,
+      details.attacker,
+      attackResult.roll,
+      details.isRetaliation,
+      forceAbilityRoll,
+    );
     applyPostAttackAbilityDamage(
       state,
       details.attacker,
       details.defender,
       details.attackKind,
       attackResult.roll,
-      attackResult.damage
+      attackResult.damage,
     );
     if (
       equipmentRound1ZeroStuns(
         state,
         details.attacker.controllerId,
         details.isRetaliation,
-        attackResult.roll
+        attackResult.roll,
       ) &&
       isUnitAlive(details.defender) &&
       !unitImmuneToParalysis(state, details.defender)
     ) {
-      placeCombatToken(state, details.defender, "paralysis", 0, "Little Busters Practice Bat");
+      placeCombatToken(
+        state,
+        details.defender,
+        "paralysis",
+        0,
+        "Little Busters Practice Bat",
+      );
     }
   }
-  applyOnAttackFireWall(state, details.attacker, details.defender, details.isRetaliation);
+  applyOnAttackFireWall(
+    state,
+    details.attacker,
+    details.defender,
+    details.isRetaliation,
+  );
   // Fire Shield burns whoever STRUCK the shielded unit — a Retaliation Attack
   // counts (the retaliator is an adjacent unit attacking it), so no isRetaliation
   // gate here. See applyFireShieldDamage.
-  applyFireShieldDamage(state, details.attacker, details.defender, details.attackKind);
+  applyFireShieldDamage(
+    state,
+    details.attacker,
+    details.defender,
+    details.attackKind,
+  );
   // Vampires: drain life back to themselves after their own attack.
   applyOnAttackSelfHeal(state, details.attacker, details.isRetaliation);
   // Heavenly Demon Palace "Blood Siphon": heal 1 after its OWN attack DEALS
   // damage (a fully-soaked 0-damage attack heals nothing — the distinction from
   // the Vampire above). Never on a Retaliation Attack.
-  applyBloodSiphonSelfHeal(state, details.attacker, details.isRetaliation, attackResult.damage);
-  applyCommanderArtifactAfterAttack(state, details.attacker, details.defender, details.isRetaliation, attackResult.damage);
+  applyBloodSiphonSelfHeal(
+    state,
+    details.attacker,
+    details.isRetaliation,
+    attackResult.damage,
+  );
+  applyCommanderArtifactAfterAttack(
+    state,
+    details.attacker,
+    details.defender,
+    details.isRetaliation,
+    attackResult.damage,
+  );
   // Rune Keeper commander: +1 Rune the first time it is attacked this combat.
   applyCommanderRuneRitual(state, details.defender, details.isRetaliation);
 
   // Anime Equipment (§3.13): the attack LANDED (past the lethal-save gate) — mark
   // the Iron-Blood Sword / Black Tortoise Mail per-combat charges spent so only
   // this FIRST qualifying declared attack got the +1 / −1. Retaliations no-op.
-  markEquipmentAttackResolved(state, details.attacker, details.defender, details.isRetaliation);
+  markEquipmentAttackResolved(
+    state,
+    details.attacker,
+    details.defender,
+    details.isRetaliation,
+  );
   if (
     !details.isRetaliation &&
     details.attacker.type === "ranged" &&
@@ -6788,8 +7944,16 @@ function finishResolvedAttack(
   ) {
     markEquipmentAdjacentRangedWaiverUsed(state, details.attacker);
   }
-  markHeroGradeFirstBloodUsed(state, details.attacker.controllerId, details.isRetaliation);
-  markMgqGranberiaAttackResolved(state, details.attacker, details.isRetaliation);
+  markHeroGradeFirstBloodUsed(
+    state,
+    details.attacker.controllerId,
+    details.isRetaliation,
+  );
+  markMgqGranberiaAttackResolved(
+    state,
+    details.attacker,
+    details.isRetaliation,
+  );
 
   if (details.isRetaliation) {
     details.attacker.retaliatedThisRound = true;
@@ -6797,7 +7961,8 @@ function finishResolvedAttack(
     applyRetaliationParalysis(state, details.attacker, details.defender);
   } else {
     details.attacker.attackedThisActivation = true;
-    details.attacker.attacksThisActivation = (details.attacker.attacksThisActivation ?? 0) + 1;
+    details.attacker.attacksThisActivation =
+      (details.attacker.attacksThisActivation ?? 0) + 1;
     // Ash's Bloodlust "places a Black cube" on the buffed attacker: it spends its
     // Retaliation for the round (it can no longer perform a Retaliation Attack).
     if (stackItem.modifiers.setRetaliatedOnAttacker) {
@@ -6828,10 +7993,14 @@ function finishResolvedAttack(
     if (stackItem.modifiers.isPreemptiveRetaliation) {
       const parked = state.stack.at(-1);
       const parkedAttackerId =
-        parked && (parked.action.type === "ATTACK_UNIT" || parked.action.type === "MOVE_AND_ATTACK_UNIT")
+        parked &&
+        (parked.action.type === "ATTACK_UNIT" ||
+          parked.action.type === "MOVE_AND_ATTACK_UNIT")
           ? parked.action.attackerId
           : undefined;
-      const parkedAttacker = parkedAttackerId ? state.combat?.units[parkedAttackerId] : undefined;
+      const parkedAttacker = parkedAttackerId
+        ? state.combat?.units[parkedAttackerId]
+        : undefined;
       if (parked && parkedAttacker && isUnitAlive(parkedAttacker)) {
         // Attacker survived the pre-emptive strike: land its parked blow now.
         resolveTopStack(state, cards);
@@ -6845,7 +8014,10 @@ function finishResolvedAttack(
         // release any held Knowledge/Mysticism recall on it here too.
         processDeferredSpellRecalls(state, parked);
       }
-      if (state.combat && state.combat.attackSequence?.attackerId === parkedAttackerId) {
+      if (
+        state.combat &&
+        state.combat.attackSequence?.attackerId === parkedAttackerId
+      ) {
         state.combat.attackSequence = null;
       }
       if (parkedAttacker) {
@@ -6921,14 +8093,17 @@ function finishResolvedAttack(
         details.defender,
         details.attackKind,
         stackItem.modifiers.ignoresRetaliationThisAttack,
-        state
+        state,
       ),
-      afterRetaliationAbilityAttack: getAfterRetaliationAttack(details.attacker, details.defender),
+      afterRetaliationAbilityAttack: getAfterRetaliationAttack(
+        details.attacker,
+        details.defender,
+      ),
       // A Magic-Mirror-bounced Curse/Weakness on this attack carries to the
       // retaliation so it strikes the new target there too, then is gone.
       ...(stackItem.modifiers.redirectedInstants
         ? { redirectedInstants: stackItem.modifiers.redirectedInstants }
-        : {})
+        : {}),
     };
   }
 
@@ -6940,9 +8115,9 @@ function finishResolvedAttack(
       defenderId: details.defender.id,
       attackKind: details.attackKind,
       attackRoll: attackResult.roll,
-      forceAbilityRoll
+      forceAbilityRoll,
     },
-    0
+    0,
   );
 }
 
@@ -6974,7 +8149,7 @@ function runPostAttackFollowUps(
   state: GameState,
   cards: CardLibrary,
   ctx: PostAttackFollowUpContext,
-  fromStep: number
+  fromStep: number,
 ): void {
   const combat = state.combat;
   const attacker = combat?.units[ctx.attackerId];
@@ -6999,9 +8174,24 @@ function runPostAttackFollowUps(
       return false;
     },
     // 5 — double attack against the same target.
-    () => maybeDeclareDoubleAttack(state, attacker, defender, ctx.attackKind, ctx.attackRoll, cards),
+    () =>
+      maybeDeclareDoubleAttack(
+        state,
+        attacker,
+        defender,
+        ctx.attackKind,
+        ctx.attackRoll,
+        cards,
+      ),
     // 6 — Liches' Death Cloud second attack.
-    () => openSecondAttackFollowUp(state, attacker, defender, ctx.attackRoll, cards),
+    () =>
+      openSecondAttackFollowUp(
+        state,
+        attacker,
+        defender,
+        ctx.attackRoll,
+        cards,
+      ),
     // 7 — Gold Dragons' line attack.
     () => openGoldDragonLineAttack(state, attacker, defender, cards),
     // 8 — Hydras' extra adjacent attack.
@@ -7030,7 +8220,7 @@ function runPostAttackFollowUps(
     // stable.
     () => queueSameTargetAttackFollowUps(state, attacker, defender, cards),
     // 16 — Kudryavka's seeded-random separate attack against another enemy.
-    () => declareRandomOtherEnemyFollowUp(state, attacker, defender, cards)
+    () => declareRandomOtherEnemyFollowUp(state, attacker, defender, cards),
   ];
 
   for (let step = Math.max(0, fromStep); step < steps.length; step += 1) {
@@ -7052,13 +8242,16 @@ function applyOnAttackInitiativeDebuff(
   attacker: CombatUnitState,
   defender: CombatUnitState,
   isRetaliation: boolean,
-  damageDealt: number
+  damageDealt: number,
 ): void {
   if (isRetaliation || !state.combat || !isUnitAlive(defender)) {
     return;
   }
   for (const ability of getUnitAbilityDefinitions(attacker)) {
-    if (ability.implementationStatus !== "implemented" || ability.effect?.type !== "ON_ATTACK_INITIATIVE_DEBUFF") {
+    if (
+      ability.implementationStatus !== "implemented" ||
+      ability.effect?.type !== "ON_ATTACK_INITIATIVE_DEBUFF"
+    ) {
       continue;
     }
     if (ability.effect.requiresDamageDealt && damageDealt <= 0) {
@@ -7069,21 +8262,27 @@ function applyOnAttackInitiativeDebuff(
       {
         name: ability.name,
         scope: "unit",
-        modifiers: [{ type: "INITIATIVE_BONUS", amount: ability.effect.amount }],
+        modifiers: [
+          { type: "INITIATIVE_BONUS", amount: ability.effect.amount },
+        ],
         duration: ability.effect.duration ?? { type: "next-combat-round" },
         polarity: "negative",
-        removable: true
+        removable: true,
       },
-      { type: "unit", unitId: attacker.id, controllerId: attacker.controllerId },
+      {
+        type: "unit",
+        unitId: attacker.id,
+        controllerId: attacker.controllerId,
+      },
       attacker.controllerId,
-      { type: "unit", unitId: defender.id }
+      { type: "unit", unitId: defender.id },
     );
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: attacker.id,
       abilityId: ability.id,
       targetUnitId: defender.id,
-      message: `${attacker.cardName}'s ${ability.name} slows ${defender.cardName}.`
+      message: `${attacker.cardName}'s ${ability.name} slows ${defender.cardName}.`,
     });
   }
 }
@@ -7093,14 +8292,17 @@ function applyOnAttackTokens(
   attacker: CombatUnitState,
   defender: CombatUnitState,
   isRetaliation: boolean,
-  damageDealt: number
+  damageDealt: number,
 ): void {
   if (!state.combat || !isUnitAlive(defender)) {
     return;
   }
 
   for (const ability of getUnitAbilityDefinitions(attacker)) {
-    if (ability.implementationStatus !== "implemented" || ability.effect?.type !== "ON_ATTACK_TOKEN") {
+    if (
+      ability.implementationStatus !== "implemented" ||
+      ability.effect?.type !== "ON_ATTACK_TOKEN"
+    ) {
       continue;
     }
 
@@ -7112,13 +8314,20 @@ function applyOnAttackTokens(
       continue;
     }
 
-    placeCombatToken(state, defender, ability.effect.token, ability.effect.amount, ability.name, ability.effect.rounds);
+    placeCombatToken(
+      state,
+      defender,
+      ability.effect.token,
+      ability.effect.amount,
+      ability.name,
+      ability.effect.rounds,
+    );
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: attacker.id,
       abilityId: ability.id,
       targetUnitId: defender.id,
-      message: `${attacker.cardName} marks ${defender.cardName} with ${ability.name}.`
+      message: `${attacker.cardName} marks ${defender.cardName} with ${ability.name}.`,
     });
   }
 }
@@ -7133,7 +8342,7 @@ function applyOnAttackPoisonCubes(
   state: GameState,
   attacker: CombatUnitState,
   defender: CombatUnitState,
-  isRetaliation: boolean
+  isRetaliation: boolean,
 ): void {
   if (isRetaliation || !state.combat || !isUnitAlive(defender)) {
     return;
@@ -7150,7 +8359,7 @@ function applyOnAttackPoisonCubes(
     unitId: attacker.id,
     abilityId: poison.abilityId,
     targetUnitId: defender.id,
-    message: `${attacker.cardName} plants ${poison.count} poison cube${poison.count === 1 ? "" : "s"} on ${defender.cardName}.`
+    message: `${attacker.cardName} plants ${poison.count} poison cube${poison.count === 1 ? "" : "s"} on ${defender.cardName}.`,
   });
 }
 
@@ -7169,7 +8378,7 @@ function applyOnAttackPoisonCubes(
 function openWraithDiscardChoice(
   state: GameState,
   attacker: CombatUnitState,
-  defender: CombatUnitState
+  defender: CombatUnitState,
 ): boolean {
   const ability = getOnAttackEnemyDiscard(attacker);
   if (!ability) {
@@ -7180,7 +8389,11 @@ function openWraithDiscardChoice(
   // Neutral Control, never the seat driving the guard.
   const chooserId = defender.controllerId;
   const chooser = state.players[chooserId];
-  if (chooserId === NEUTRAL_PLAYER_ID || !chooser || chooser.hand.length === 0) {
+  if (
+    chooserId === NEUTRAL_PLAYER_ID ||
+    !chooser ||
+    chooser.hand.length === 0
+  ) {
     return false;
   }
   return openWraithDiscardPrompt(state, {
@@ -7189,7 +8402,7 @@ function openWraithDiscardChoice(
     sourceName: attacker.name,
     abilityId: ability.abilityId,
     abilityName: ability.abilityName,
-    remaining: Math.min(ability.count, chooser.hand.length)
+    remaining: Math.min(ability.count, chooser.hand.length),
   });
 }
 
@@ -7207,7 +8420,7 @@ function openWraithDiscardPrompt(
     abilityId: string;
     abilityName: string;
     remaining: number;
-  }
+  },
 ): boolean {
   const chooser = state.players[params.chooserId];
   if (!chooser || chooser.hand.length === 0 || params.remaining <= 0) {
@@ -7224,7 +8437,7 @@ function openWraithDiscardPrompt(
     sourceUnitId: params.sourceUnitId,
     prompt: `${params.sourceName}: ${params.abilityName} — choose a card to discard.`,
     powerCardIds: [...chooser.hand],
-    remaining: params.remaining
+    remaining: params.remaining,
   };
   state.phase = "choice";
   state.priorityPlayerId = params.chooserId;
@@ -7235,7 +8448,7 @@ function openWraithDiscardPrompt(
     choiceType: "COMBAT_HAND_DISCARD",
     playerId: params.chooserId,
     sourceEffectIds: [],
-    message: `${chooser.name} chooses a card to discard to ${params.sourceName}'s ${params.abilityName}.`
+    message: `${chooser.name} chooses a card to discard to ${params.sourceName}'s ${params.abilityName}.`,
   });
   return true;
 }
@@ -7252,7 +8465,7 @@ function applyOnAttackParalysis(
   state: GameState,
   attacker: CombatUnitState,
   defender: CombatUnitState,
-  isRetaliation: boolean
+  isRetaliation: boolean,
 ): void {
   if (isRetaliation || !state.combat || !isUnitAlive(defender)) {
     return;
@@ -7267,7 +8480,7 @@ function applyOnAttackParalysis(
       unitId: defender.id,
       abilityId: "ignore-paralysis",
       targetUnitId: defender.id,
-      message: `${defender.cardName} is immune to Paralysis.`
+      message: `${defender.cardName} is immune to Paralysis.`,
     });
     return;
   }
@@ -7277,7 +8490,7 @@ function applyOnAttackParalysis(
     unitId: attacker.id,
     abilityId: ability.abilityId,
     targetUnitId: defender.id,
-    message: `${attacker.cardName} paralyses ${defender.cardName} with ${ability.abilityName}.`
+    message: `${attacker.cardName} paralyses ${defender.cardName} with ${ability.abilityName}.`,
   });
 }
 
@@ -7287,7 +8500,10 @@ function applyOnAttackParalysis(
  * the tick removed the unit (so the caller ends its activation). No-op when the
  * unit carries no cubes.
  */
-function applyPoisonCubesAtActivation(state: GameState, unit: CombatUnitState): boolean {
+function applyPoisonCubesAtActivation(
+  state: GameState,
+  unit: CombatUnitState,
+): boolean {
   const cubes = unit.poisonCubes ?? 0;
   if (cubes <= 0 || !isUnitAlive(unit)) {
     return false;
@@ -7307,7 +8523,7 @@ function applyPoisonCubesAtActivation(state: GameState, unit: CombatUnitState): 
     unitId: unit.id,
     abilityId: "wyvern-poison-cube",
     targetUnitId: unit.id,
-    message: `Poison bleeds ${unit.cardName} for 1 damage (${unit.poisonCubes} cube${unit.poisonCubes === 1 ? "" : "s"} left).`
+    message: `Poison bleeds ${unit.cardName} for 1 damage (${unit.poisonCubes} cube${unit.poisonCubes === 1 ? "" : "s"} left).`,
   });
   if (assigned > 0) {
     appendEvent(state, {
@@ -7315,7 +8531,7 @@ function applyPoisonCubesAtActivation(state: GameState, unit: CombatUnitState): 
       source: { type: "system" },
       target: { type: "unit", unitId: unit.id },
       amount: assigned,
-      damageKind: "effect"
+      damageKind: "effect",
     });
   }
   markUnitRemovedIfNeeded(state, unit);
@@ -7332,9 +8548,14 @@ function applyDendroidBindFx(
   state: GameState,
   attacker: CombatUnitState,
   defender: CombatUnitState,
-  isRetaliation: boolean
+  isRetaliation: boolean,
 ): void {
-  if (isRetaliation || !state.combat || !hasBindAdjacentEnemies(attacker) || !isUnitAlive(defender)) {
+  if (
+    isRetaliation ||
+    !state.combat ||
+    !hasBindAdjacentEnemies(attacker) ||
+    !isUnitAlive(defender)
+  ) {
     return;
   }
   appendEvent(state, {
@@ -7342,7 +8563,7 @@ function applyDendroidBindFx(
     unitId: attacker.id,
     abilityId: "dendroid-bind",
     targetUnitId: defender.id,
-    message: `${attacker.cardName}'s roots ensnare ${defender.cardName}.`
+    message: `${attacker.cardName}'s roots ensnare ${defender.cardName}.`,
   });
 }
 
@@ -7370,7 +8591,7 @@ function applyFireShieldDamage(
   state: GameState,
   attacker: CombatUnitState,
   defender: CombatUnitState,
-  attackKind: "melee" | "ranged"
+  attackKind: "melee" | "ranged",
 ): void {
   if (attackKind !== "melee" || !state.combat || !isUnitAlive(attacker)) {
     return;
@@ -7388,7 +8609,10 @@ function applyFireShieldDamage(
     }
   }
   for (const effect of state.activeEffects) {
-    if (effect.target?.type !== "unit" || effect.target.unitId !== defender.id) {
+    if (
+      effect.target?.type !== "unit" ||
+      effect.target.unitId !== defender.id
+    ) {
       continue;
     }
     for (const modifier of effect.modifiers) {
@@ -7412,17 +8636,21 @@ function applyFireShieldDamage(
     unitId: defender.id,
     abilityId: "fire-shield",
     targetUnitId: attacker.id,
-    message: `${defender.cardName}'s Fire Shield burns ${attacker.cardName} for ${total}.`
+    message: `${defender.cardName}'s Fire Shield burns ${attacker.cardName} for ${total}.`,
   });
 
   attacker.damage += total;
   noteUnitDamagedForTokens(state, attacker, total);
   appendEvent(state, {
     type: "DAMAGE_ASSIGNED",
-    source: { type: "unit", unitId: defender.id, controllerId: defender.controllerId },
+    source: {
+      type: "unit",
+      unitId: defender.id,
+      controllerId: defender.controllerId,
+    },
     target: { type: "unit", unitId: attacker.id },
     amount: total,
-    damageKind: "effect"
+    damageKind: "effect",
   });
   markUnitRemovedIfNeeded(state, attacker);
 }
@@ -7432,7 +8660,7 @@ function applyOnAttackFireWall(
   state: GameState,
   attacker: CombatUnitState,
   defender: CombatUnitState,
-  isRetaliation: boolean
+  isRetaliation: boolean,
 ): void {
   const damage = getOnAttackFireWallDamage(attacker);
   const combat = state.combat;
@@ -7443,7 +8671,7 @@ function applyOnAttackFireWall(
     (token) =>
       token.kind === "fire_wall" &&
       token.position === defender.position &&
-      token.controllerId === attacker.controllerId
+      token.controllerId === attacker.controllerId,
   );
   if (duplicate) {
     return;
@@ -7455,19 +8683,21 @@ function applyOnAttackFireWall(
     damage,
     // The Hell Steed drops its wall on the target's OWN space; it only bites when
     // that unit's activation comes round, so it must burn at activation.
-    burnsAtActivation: true
+    burnsAtActivation: true,
   });
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: attacker.id,
     abilityId: "wog-hell-steed-fire-wall",
     targetUnitId: defender.id,
-    message: `${attacker.cardName} leaves a Fire Wall at ${getBattlefieldLabel(defender.position)}.`
+    message: `${attacker.cardName} leaves a Fire Wall at ${getBattlefieldLabel(defender.position)}.`,
   });
 }
 
 /** The success window an ATTACK_DIE_FLAT_DAMAGE_TO_TARGET follow-up rolls against. */
-function attackDieDamageWindow(followUp: AttackDieDamageFollowUp): AbilityRollWindow {
+function attackDieDamageWindow(
+  followUp: AttackDieDamageFollowUp,
+): AbilityRollWindow {
   return { minRoll: followUp.minRoll, maxRoll: followUp.maxRoll ?? 1 };
 }
 
@@ -7482,9 +8712,12 @@ function resolveAttackDieDamageOutcome(
   defender: CombatUnitState,
   followUp: AttackDieDamageFollowUp,
   candidate: AttackRollCandidate | null,
-  forceRoll: boolean
+  forceRoll: boolean,
 ): void {
-  const lands = forceRoll || (candidate !== null && abilityRollSucceeds(candidate.rolls, attackDieDamageWindow(followUp)));
+  const lands =
+    forceRoll ||
+    (candidate !== null &&
+      abilityRollSucceeds(candidate.rolls, attackDieDamageWindow(followUp)));
   // Death-Stare style: bare ability id only on a landed hit (abilityFxPlans keys
   // thunderbirds-lightning / wyvern-sting), miss announces under `${id}-roll`.
   appendEvent(state, {
@@ -7503,26 +8736,37 @@ function resolveAttackDieDamageOutcome(
             rolls: [...candidate.rolls],
             success: lands,
             label: followUp.abilityName,
-            caption: lands ? `${followUp.amount} extra damage to ${defender.cardName}!` : "No effect.",
-            ...(candidate.modifierNotes?.length ? { modifiers: candidate.modifierNotes } : {})
-          }
-        })
+            caption: lands
+              ? `${followUp.amount} extra damage to ${defender.cardName}!`
+              : "No effect.",
+            ...(candidate.modifierNotes?.length
+              ? { modifiers: candidate.modifierNotes }
+              : {}),
+          },
+        }),
   });
 
   if (!lands) {
     return;
   }
 
-  const assignedDamage = Math.min(followUp.amount, Math.max(0, defender.maxHealth - defender.damage));
+  const assignedDamage = Math.min(
+    followUp.amount,
+    Math.max(0, defender.maxHealth - defender.damage),
+  );
   defender.damage += followUp.amount;
   noteUnitDamagedForTokens(state, defender, followUp.amount);
   if (assignedDamage > 0) {
     appendEvent(state, {
       type: "DAMAGE_ASSIGNED",
-      source: { type: "unit", unitId: attacker.id, controllerId: attacker.controllerId },
+      source: {
+        type: "unit",
+        unitId: attacker.id,
+        controllerId: attacker.controllerId,
+      },
       target: { type: "unit", unitId: defender.id },
       amount: assignedDamage,
-      damageKind: "effect"
+      damageKind: "effect",
     });
   }
   markUnitRemovedIfNeeded(state, defender);
@@ -7542,7 +8786,7 @@ function applyAttackDieDamageFollowUps(
   defender: CombatUnitState,
   ctx: PostAttackFollowUpContext,
   myStep: number,
-  startIndex = 0
+  startIndex = 0,
 ): boolean {
   const combat = state.combat;
   if (!combat || !isUnitAlive(attacker) || !isUnitAlive(defender)) {
@@ -7550,7 +8794,11 @@ function applyAttackDieDamageFollowUps(
   }
 
   const followUps = getAttackDieDamageFollowUps(attacker);
-  for (let index = Math.max(0, startIndex); index < followUps.length; index += 1) {
+  for (
+    let index = Math.max(0, startIndex);
+    index < followUps.length;
+    index += 1
+  ) {
     const followUp = followUps[index];
     if (!isUnitAlive(defender)) {
       break;
@@ -7558,14 +8806,31 @@ function applyAttackDieDamageFollowUps(
 
     // Tarnum (Fortress) Basilisks VI forces the ability regardless of the face.
     if (ctx.forceAbilityRoll) {
-      resolveAttackDieDamageOutcome(state, attacker, defender, followUp, null, true);
+      resolveAttackDieDamageOutcome(
+        state,
+        attacker,
+        defender,
+        followUp,
+        null,
+        true,
+      );
       continue;
     }
 
     const window = attackDieDamageWindow(followUp);
-    let candidate = rollAbilityCandidate(state, combat, attacker.controllerId, 1, window, true);
+    let candidate = rollAbilityCandidate(
+      state,
+      combat,
+      attacker.controllerId,
+      1,
+      window,
+      true,
+    );
     // Multilingual Bron: reroll a missed ability die once.
-    if (!abilityRollSucceeds(candidate.rolls, window) && bronRerollsAbilityRoll(state, attacker)) {
+    if (
+      !abilityRollSucceeds(candidate.rolls, window) &&
+      bronRerollsAbilityRoll(state, attacker)
+    ) {
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: attacker.id,
@@ -7577,10 +8842,19 @@ function applyAttackDieDamageFollowUps(
           success: false,
           label: followUp.abilityName,
           caption: "Multilingual Bron rerolls…",
-          ...(candidate.modifierNotes?.length ? { modifiers: candidate.modifierNotes } : {})
-        }
+          ...(candidate.modifierNotes?.length
+            ? { modifiers: candidate.modifierNotes }
+            : {}),
+        },
       });
-      candidate = rollAbilityCandidate(state, combat, attacker.controllerId, 1, window, true);
+      candidate = rollAbilityCandidate(
+        state,
+        combat,
+        attacker.controllerId,
+        1,
+        window,
+        true,
+      );
     }
 
     if (
@@ -7590,13 +8864,20 @@ function applyAttackDieDamageFollowUps(
         abilityName: followUp.abilityName,
         diceCount: 1,
         ...window,
-        resume: { ...ctx, fromStep: myStep, followUpIndex: index }
+        resume: { ...ctx, fromStep: myStep, followUpIndex: index },
       })
     ) {
       return true;
     }
 
-    resolveAttackDieDamageOutcome(state, attacker, defender, followUp, candidate, false);
+    resolveAttackDieDamageOutcome(
+      state,
+      attacker,
+      defender,
+      followUp,
+      candidate,
+      false,
+    );
   }
 
   return finishCombatIfNeeded(state);
@@ -7614,14 +8895,15 @@ function applyOnAttackDieTokens(
   defender: CombatUnitState,
   attackRoll: number,
   isRetaliation: boolean,
-  forceRoll = false
+  forceRoll = false,
 ): void {
   if (isRetaliation || !state.combat || !isUnitAlive(defender)) {
     return;
   }
   for (const token of getOnAttackDieTokens(attacker)) {
     // Tarnum (Fortress) Basilisks VI forces the token regardless of the face.
-    const matchesExact = token.onRoll !== undefined && attackRoll === token.onRoll;
+    const matchesExact =
+      token.onRoll !== undefined && attackRoll === token.onRoll;
     const matchesRange =
       token.onRoll === undefined &&
       attackRoll >= (token.minRoll ?? Number.NEGATIVE_INFINITY) &&
@@ -7630,14 +8912,20 @@ function applyOnAttackDieTokens(
       continue;
     }
     for (let index = 0; index < token.count; index += 1) {
-      placeCombatToken(state, defender, token.token, token.amount, token.abilityName);
+      placeCombatToken(
+        state,
+        defender,
+        token.token,
+        token.amount,
+        token.abilityName,
+      );
     }
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: attacker.id,
       abilityId: token.abilityId,
       targetUnitId: defender.id,
-      message: `${attacker.cardName} marks ${defender.cardName} with ${token.abilityName}${token.count > 1 ? ` (${token.count} tokens)` : ""}.`
+      message: `${attacker.cardName} marks ${defender.cardName} with ${token.abilityName}${token.count > 1 ? ` (${token.count} tokens)` : ""}.`,
     });
   }
 }
@@ -7655,24 +8943,31 @@ function applyOnAttackDieDraw(
   attacker: CombatUnitState,
   attackRoll: number,
   isRetaliation: boolean,
-  forceRoll = false
+  forceRoll = false,
 ): void {
   if (isRetaliation) {
     return;
   }
   for (const draw of getOnAttackDieDraw(attacker)) {
     // Tarnum (Fortress) Basilisks VI forces the draw regardless of the face.
-    if (!forceRoll && (attackRoll < draw.minRoll || attackRoll > draw.maxRoll)) {
+    if (
+      !forceRoll &&
+      (attackRoll < draw.minRoll || attackRoll > draw.maxRoll)
+    ) {
       continue;
     }
     drawCardsForPlayer(state, attacker.controllerId, draw.amount, {
-      inFlightCardIds: stackInFlightCardIds(state, state.stack.at(-1), attacker.controllerId)
+      inFlightCardIds: stackInFlightCardIds(
+        state,
+        state.stack.at(-1),
+        attacker.controllerId,
+      ),
     });
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: attacker.id,
       abilityId: draw.abilityId,
-      message: `${attacker.name} draws ${draw.amount} card${draw.amount === 1 ? "" : "s"} (${draw.abilityName}).`
+      message: `${attacker.name} draws ${draw.amount} card${draw.amount === 1 ? "" : "s"} (${draw.abilityName}).`,
     });
   }
 }
@@ -7695,11 +8990,15 @@ function resolveDeathStareOutcome(
   defender: CombatUnitState,
   followUp: DeathStareFollowUp,
   candidate: AttackRollCandidate,
-  forceRoll: boolean
+  forceRoll: boolean,
 ): void {
   // Tarnum (Fortress) Basilisks VI forces the Death Stare regardless of the dice.
   const petrifies =
-    forceRoll || abilityRollSucceeds(candidate.rolls, { minRoll: followUp.onRoll, maxRoll: followUp.onRoll });
+    forceRoll ||
+    abilityRollSucceeds(candidate.rolls, {
+      minRoll: followUp.onRoll,
+      maxRoll: followUp.onRoll,
+    });
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: attacker.id,
@@ -7712,9 +9011,13 @@ function resolveDeathStareOutcome(
       rolls: [...candidate.rolls],
       success: petrifies,
       label: followUp.abilityName,
-      caption: petrifies ? `${defender.cardName} is reduced to 0 Health!` : "No effect.",
-      ...(candidate.modifierNotes?.length ? { modifiers: candidate.modifierNotes } : {})
-    }
+      caption: petrifies
+        ? `${defender.cardName} is reduced to 0 Health!`
+        : "No effect.",
+      ...(candidate.modifierNotes?.length
+        ? { modifiers: candidate.modifierNotes }
+        : {}),
+    },
   });
   if (!petrifies) {
     return;
@@ -7725,10 +9028,14 @@ function resolveDeathStareOutcome(
   if (lethal > 0) {
     appendEvent(state, {
       type: "DAMAGE_ASSIGNED",
-      source: { type: "unit", unitId: attacker.id, controllerId: attacker.controllerId },
+      source: {
+        type: "unit",
+        unitId: attacker.id,
+        controllerId: attacker.controllerId,
+      },
       target: { type: "unit", unitId: defender.id },
       amount: lethal,
-      damageKind: "effect"
+      damageKind: "effect",
     });
   }
   markUnitRemovedIfNeeded(state, defender);
@@ -7749,7 +9056,7 @@ function applyDeathStareFollowUps(
   defender: CombatUnitState,
   ctx: PostAttackFollowUpContext,
   myStep: number,
-  startIndex = 0
+  startIndex = 0,
 ): boolean {
   const combat = state.combat;
   if (!combat || !isUnitAlive(attacker) || !isUnitAlive(defender)) {
@@ -7757,7 +9064,11 @@ function applyDeathStareFollowUps(
   }
 
   const followUps = getDeathStareFollowUps(attacker);
-  for (let index = Math.max(0, startIndex); index < followUps.length; index += 1) {
+  for (
+    let index = Math.max(0, startIndex);
+    index < followUps.length;
+    index += 1
+  ) {
     const followUp = followUps[index];
     if (!isUnitAlive(defender)) {
       break;
@@ -7767,19 +9078,41 @@ function applyDeathStareFollowUps(
     if (!deathStareFollowUpAppliesTo(followUp, defender)) {
       continue;
     }
-    const window: AbilityRollWindow = { minRoll: followUp.onRoll, maxRoll: followUp.onRoll };
+    const window: AbilityRollWindow = {
+      minRoll: followUp.onRoll,
+      maxRoll: followUp.onRoll,
+    };
     // Negative Morale "roll 1 die less": the stare is a 2+-Attack-dice roll,
     // so the holder throws one less — mandatory even though fewer stare dice
     // HELP (the engine-wide reading, like a collapsed advantage roll).
     const printedDice = Math.max(1, followUp.diceCount);
-    const diceCount = takeMoraleRollOneLess(state, attacker.controllerId, printedDice);
-    let candidate = rollAbilityCandidate(state, combat, attacker.controllerId, diceCount, window, true);
+    const diceCount = takeMoraleRollOneLess(
+      state,
+      attacker.controllerId,
+      printedDice,
+    );
+    let candidate = rollAbilityCandidate(
+      state,
+      combat,
+      attacker.controllerId,
+      diceCount,
+      window,
+      true,
+    );
     if (diceCount < printedDice) {
-      pushRollModifierNote(candidate, "Negative Morale", "one die less is rolled");
+      pushRollModifierNote(
+        candidate,
+        "Negative Morale",
+        "one die less is rolled",
+      );
     }
     // Multilingual Bron: a missed stare is rerolled once (the whole roll — all
     // its dice — is the ability's one roll).
-    if (!ctx.forceAbilityRoll && !abilityRollSucceeds(candidate.rolls, window) && bronRerollsAbilityRoll(state, attacker)) {
+    if (
+      !ctx.forceAbilityRoll &&
+      !abilityRollSucceeds(candidate.rolls, window) &&
+      bronRerollsAbilityRoll(state, attacker)
+    ) {
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: attacker.id,
@@ -7791,10 +9124,19 @@ function applyDeathStareFollowUps(
           success: false,
           label: followUp.abilityName,
           caption: "Multilingual Bron rerolls…",
-          ...(candidate.modifierNotes?.length ? { modifiers: candidate.modifierNotes } : {})
-        }
+          ...(candidate.modifierNotes?.length
+            ? { modifiers: candidate.modifierNotes }
+            : {}),
+        },
       });
-      candidate = rollAbilityCandidate(state, combat, attacker.controllerId, diceCount, window, true);
+      candidate = rollAbilityCandidate(
+        state,
+        combat,
+        attacker.controllerId,
+        diceCount,
+        window,
+        true,
+      );
     }
 
     if (
@@ -7805,19 +9147,29 @@ function applyDeathStareFollowUps(
         abilityName: followUp.abilityName,
         diceCount,
         ...window,
-        resume: { ...ctx, fromStep: myStep, followUpIndex: index }
+        resume: { ...ctx, fromStep: myStep, followUpIndex: index },
       })
     ) {
       return true;
     }
 
-    resolveDeathStareOutcome(state, attacker, defender, followUp, candidate, ctx.forceAbilityRoll);
+    resolveDeathStareOutcome(
+      state,
+      attacker,
+      defender,
+      followUp,
+      candidate,
+      ctx.forceAbilityRoll,
+    );
   }
 
   return finishCombatIfNeeded(state);
 }
 
-function declareAfterRetaliationAbilityAttack(state: GameState, cards: CardLibrary): boolean {
+function declareAfterRetaliationAbilityAttack(
+  state: GameState,
+  cards: CardLibrary,
+): boolean {
   const combat = state.combat;
   const sequence = combat?.attackSequence;
   const followUp = sequence?.afterRetaliationAbilityAttack;
@@ -7839,9 +9191,9 @@ function declareAfterRetaliationAbilityAttack(state: GameState, cards: CardLibra
     {
       abilityId: followUp.abilityId,
       abilityName: followUp.abilityName,
-      baseAttack: followUp.baseAttack ?? attacker.attack
+      baseAttack: followUp.baseAttack ?? attacker.attack,
     },
-    cards
+    cards,
   );
   return true;
 }
@@ -7855,19 +9207,26 @@ function queueAttackAllFollowUps(
   state: GameState,
   attacker: CombatUnitState,
   defender: CombatUnitState,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): boolean {
   const combat = state.combat;
-  if (!combat || !isUnitAlive(attacker) || (attacker.attacksThisActivation ?? 0) !== 1) {
+  if (
+    !combat ||
+    !isUnitAlive(attacker) ||
+    (attacker.attacksThisActivation ?? 0) !== 1
+  ) {
     return false;
   }
 
   const ability = getUnitAbilityDefinitions(attacker).find(
     (candidate) =>
       candidate.implementationStatus === "implemented" &&
-      candidate.effect?.type === "SECOND_ATTACK_ALL_ADJACENT_TO_SELF"
+      candidate.effect?.type === "SECOND_ATTACK_ALL_ADJACENT_TO_SELF",
   );
-  if (!ability || ability.effect?.type !== "SECOND_ATTACK_ALL_ADJACENT_TO_SELF") {
+  if (
+    !ability ||
+    ability.effect?.type !== "SECOND_ATTACK_ALL_ADJACENT_TO_SELF"
+  ) {
     return false;
   }
 
@@ -7883,7 +9242,13 @@ function queueAttackAllFollowUps(
   // each adjacent unit (a commander Whirlwind Strike inherits this via the same
   // ALL_ADJACENT_TO_SELF kind). A defender's own wall is excluded by the
   // enemy-only filter.
-  if (destroyEnemyFortificationsInCells(state, attacker, getOrthogonalNeighbors(attacker.position)) > 0) {
+  if (
+    destroyEnemyFortificationsInCells(
+      state,
+      attacker,
+      getOrthogonalNeighbors(attacker.position),
+    ) > 0
+  ) {
     if (finishCombatIfNeeded(state)) {
       return true;
     }
@@ -7895,7 +9260,7 @@ function queueAttackAllFollowUps(
       unit.id !== attacker.id &&
       (includeAllies || unit.controllerId !== attacker.controllerId) &&
       isUnitAlive(unit) &&
-      isAdjacent(unit.position, attacker.position)
+      isAdjacent(unit.position, attacker.position),
   );
   if (targets.length === 0) {
     return false;
@@ -7906,7 +9271,7 @@ function queueAttackAllFollowUps(
       abilityId: ability.id,
       abilityName: ability.name,
       baseAttack,
-      targetUnitId: unit.id
+      targetUnitId: unit.id,
     }));
   }
 
@@ -7920,14 +9285,18 @@ function applyOnAttackDiePoisonCubes(
   defender: CombatUnitState,
   attackRoll: number,
   isRetaliation: boolean,
-  forceRoll = false
+  forceRoll = false,
 ): void {
   if (isRetaliation || !state.combat || !isUnitAlive(defender)) {
     return;
   }
 
   for (const poison of getOnAttackDiePoisonCubes(attacker)) {
-    if (!forceRoll && (attackRoll < poison.minRoll || (poison.maxRoll !== undefined && attackRoll > poison.maxRoll))) {
+    if (
+      !forceRoll &&
+      (attackRoll < poison.minRoll ||
+        (poison.maxRoll !== undefined && attackRoll > poison.maxRoll))
+    ) {
       continue;
     }
     defender.poisonCubes = (defender.poisonCubes ?? 0) + poison.count;
@@ -7936,7 +9305,7 @@ function applyOnAttackDiePoisonCubes(
       unitId: attacker.id,
       abilityId: poison.abilityId,
       targetUnitId: defender.id,
-      message: `${attacker.cardName} leaves ${poison.count} burning poison cube${poison.count === 1 ? "" : "s"} on ${defender.cardName}.`
+      message: `${attacker.cardName} leaves ${poison.count} burning poison cube${poison.count === 1 ? "" : "s"} on ${defender.cardName}.`,
     });
   }
 }
@@ -7946,10 +9315,15 @@ function queueSameTargetAttackFollowUps(
   state: GameState,
   attacker: CombatUnitState,
   defender: CombatUnitState,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): boolean {
   const combat = state.combat;
-  if (!combat || !isUnitAlive(attacker) || !isUnitAlive(defender) || (attacker.attacksThisActivation ?? 0) !== 1) {
+  if (
+    !combat ||
+    !isUnitAlive(attacker) ||
+    !isUnitAlive(defender) ||
+    (attacker.attacksThisActivation ?? 0) !== 1
+  ) {
     return false;
   }
 
@@ -7958,18 +9332,20 @@ function queueSameTargetAttackFollowUps(
     return false;
   }
 
-  combat.attackSequence.queuedAbilityAttacks = ability.followUpAttacks.map((baseAttack) => ({
-    abilityId: ability.abilityId,
-    abilityName: ability.abilityName,
-    baseAttack,
-    targetUnitId: defender.id
-  }));
+  combat.attackSequence.queuedAbilityAttacks = ability.followUpAttacks.map(
+    (baseAttack) => ({
+      abilityId: ability.abilityId,
+      abilityName: ability.abilityName,
+      baseAttack,
+      targetUnitId: defender.id,
+    }),
+  );
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: attacker.id,
     abilityId: ability.abilityId,
     targetUnitId: defender.id,
-    message: `${attacker.cardName} fires its remaining plasma strikes at ${defender.cardName}.`
+    message: `${attacker.cardName} fires its remaining plasma strikes at ${defender.cardName}.`,
   });
   return declareNextQueuedAbilityAttack(state, cards);
 }
@@ -7992,7 +9368,9 @@ function summonUnitOnAttack(state: GameState, attacker: CombatUnitState): void {
     return;
   }
 
-  const random = createSeededRandom(`${state.seed}#${ability.abilityId}#${eventSeedNumber(state)}`);
+  const random = createSeededRandom(
+    `${state.seed}#${ability.abilityId}#${eventSeedNumber(state)}`,
+  );
   const position = positions[random.nextInt(0, positions.length - 1)];
   // Minted directly (the borrowed-unit pattern), NOT via placeSummonedUnit: the
   // summoner is usually a NEUTRAL guard — no PlayerState exists for the neutral
@@ -8000,12 +9378,16 @@ function summonUnitOnAttack(state: GameState, attacker: CombatUnitState): void {
   // burst must never push a permanent card into a player's army either. The
   // Lost Soul is a battlefield-only temporary body.
   const summoned = makeCombatUnitFromArmy(
-    { id: `doomsummon_${nextEventNumber(state)}`, unitDefId: ability.unitDefId, side: "neutral" },
+    {
+      id: `doomsummon_${nextEventNumber(state)}`,
+      unitDefId: ability.unitDefId,
+      side: "neutral",
+    },
     attacker.controllerId,
     `unit_${attacker.controllerId}_doomsummon_${nextEventNumber(state)}`,
     position,
     getRuleset(state),
-    unitSideRuleOverrides(state)
+    unitSideRuleOverrides(state),
   );
   if (!summoned) {
     return;
@@ -8022,12 +9404,15 @@ function summonUnitOnAttack(state: GameState, attacker: CombatUnitState): void {
     unitId: attacker.id,
     abilityId: ability.abilityId,
     targetUnitId: summoned.id,
-    message: `${attacker.cardName} randomly summons ${summoned.cardName} at ${getBattlefieldLabel(position)}.`
+    message: `${attacker.cardName} randomly summons ${summoned.cardName} at ${getBattlefieldLabel(position)}.`,
   });
 }
 
 /** Pops and declares the next queued BINH Cerberi follow-up attack. */
-function declareNextQueuedAbilityAttack(state: GameState, cards: CardLibrary): boolean {
+function declareNextQueuedAbilityAttack(
+  state: GameState,
+  cards: CardLibrary,
+): boolean {
   const combat = state.combat;
   const sequence = combat?.attackSequence;
   if (!combat || !sequence?.queuedAbilityAttacks?.length) {
@@ -8051,8 +9436,12 @@ function declareNextQueuedAbilityAttack(state: GameState, cards: CardLibrary): b
       state,
       attacker,
       next.targetUnitId,
-      { abilityId: next.abilityId, abilityName: next.abilityName, baseAttack: next.baseAttack },
-      cards
+      {
+        abilityId: next.abilityId,
+        abilityName: next.abilityName,
+        baseAttack: next.baseAttack,
+      },
+      cards,
     );
     return true;
   }
@@ -8091,7 +9480,10 @@ function resumeAttackSequence(state: GameState, cards: CardLibrary): void {
     return;
   }
 
-  if (sequence.afterRetaliationAbilityAttack && declareAfterRetaliationAbilityAttack(state, cards)) {
+  if (
+    sequence.afterRetaliationAbilityAttack &&
+    declareAfterRetaliationAbilityAttack(state, cards)
+  ) {
     return;
   }
 
@@ -8116,18 +9508,23 @@ function openFlatDamageFollowUps(
   state: GameState,
   attacker: CombatUnitState,
   defender: CombatUnitState,
-  attackKind: "melee" | "ranged"
+  attackKind: "melee" | "ranged",
 ): boolean {
   const combat = state.combat;
   if (!combat) {
     return false;
   }
 
-  const followUps = getFlatDamageFollowUps(combat, { attacker, defender, attackKind });
+  const followUps = getFlatDamageFollowUps(combat, {
+    attacker,
+    defender,
+    attackKind,
+  });
   // Under PvP Neutral Control the human controller answers Magog/Cerberi
   // picks — treat them like a human so the choice opens instead of auto-AI.
   const humanPicks =
-    attacker.controllerId !== NEUTRAL_PLAYER_ID || Boolean(neutralCombatControllerId(state, combat));
+    attacker.controllerId !== NEUTRAL_PLAYER_ID ||
+    Boolean(neutralCombatControllerId(state, combat));
 
   for (const followUp of followUps) {
     const living = followUp.candidateUnitIds.filter((unitId) => {
@@ -8139,13 +9536,14 @@ function openFlatDamageFollowUps(
     // is a CHOOSABLE target of the pick-one splash. Offered only to a besieger a
     // player picks for (humanPicks) — never the pure Neutral AI (its auto-resolve
     // path is untouched) and never a defender's own wall (enemy-only filter).
-    const anchorPosition = followUp.zone === "self" ? attacker.position : defender.position;
+    const anchorPosition =
+      followUp.zone === "self" ? attacker.position : defender.position;
     const fortIds =
       humanPicks && combat.siege
         ? enemyFortificationsInCells(
             combat.siege,
             attacker.controllerId,
-            getOrthogonalNeighbors(anchorPosition)
+            getOrthogonalNeighbors(anchorPosition),
           ).map((fort) => fortificationTargetId(fort.kind, fort.position))
         : [];
 
@@ -8156,7 +9554,14 @@ function openFlatDamageFollowUps(
     // AI-only: a single candidate is mandatory and needs no prompt. (fortIds is
     // always empty on the AI path, so this branch is unchanged for it.)
     if (!humanPicks && living.length === 1) {
-      applyFlatAbilityDamage(state, attacker, living[0], followUp.abilityId, followUp.abilityName, followUp.amount);
+      applyFlatAbilityDamage(
+        state,
+        attacker,
+        living[0],
+        followUp.abilityId,
+        followUp.abilityName,
+        followUp.amount,
+      );
       if (finishCombatIfNeeded(state)) {
         return true;
       }
@@ -8175,7 +9580,7 @@ function openFlatDamageFollowUps(
       sourceUnitId: attacker.id,
       anchorUnitId: defender.id,
       candidateUnitIds: [...living, ...fortIds],
-      amount: followUp.amount
+      amount: followUp.amount,
     };
     state.phase = "choice";
     state.priorityPlayerId = attacker.controllerId;
@@ -8186,7 +9591,7 @@ function openFlatDamageFollowUps(
       choiceType: "ABILITY_TARGET_CHOICE",
       playerId: attacker.controllerId,
       sourceEffectIds: [],
-      message: `${attacker.name} chooses the target of ${followUp.abilityName}.`
+      message: `${attacker.name} chooses the target of ${followUp.abilityName}.`,
     });
     return true;
   }
@@ -8200,7 +9605,7 @@ function applyFlatAbilityDamage(
   targetUnitId: UnitId,
   abilityId: string,
   abilityName: string,
-  amount: number
+  amount: number,
 ): void {
   const combat = state.combat;
   const target = combat?.units[targetUnitId];
@@ -8219,17 +9624,21 @@ function applyFlatAbilityDamage(
     unitId: source.id,
     abilityId,
     targetUnitId,
-    message: `${source.name} hits ${target.cardName} with ${abilityName} for ${amount} damage.`
+    message: `${source.name} hits ${target.cardName} with ${abilityName} for ${amount} damage.`,
   });
 
   target.damage += amount;
   noteUnitDamagedForTokens(state, target, amount);
   appendEvent(state, {
     type: "DAMAGE_ASSIGNED",
-    source: { type: "unit", unitId: source.id, controllerId: source.controllerId },
+    source: {
+      type: "unit",
+      unitId: source.id,
+      controllerId: source.controllerId,
+    },
     target: { type: "unit", unitId: target.id },
     amount,
-    damageKind: "effect"
+    damageKind: "effect",
   });
   markUnitRemovedIfNeeded(state, target);
 }
@@ -8256,11 +9665,14 @@ function applyFlatAbilityDamage(
 function getFleetFormationAuraBonus(
   combat: CombatState,
   attacker: CombatUnitState,
-  suppressAzureSwordArray = false
+  suppressAzureSwordArray = false,
 ): number {
   let total = 0;
   for (const unit of Object.values(combat.units)) {
-    if (unit.id === attacker.id || unit.controllerId !== attacker.controllerId) {
+    if (
+      unit.id === attacker.id ||
+      unit.controllerId !== attacker.controllerId
+    ) {
       continue;
     }
     if (!isUnitAlive(unit) || !isAdjacent(unit.position, attacker.position)) {
@@ -8279,7 +9691,11 @@ function getFleetFormationAuraBonus(
   return total;
 }
 
-function applyAfterAttackSplash(state: GameState, attacker: CombatUnitState, defender: CombatUnitState): void {
+function applyAfterAttackSplash(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+): void {
   const combat = state.combat;
   if (!combat || !isUnitAlive(attacker)) {
     return;
@@ -8290,7 +9706,8 @@ function applyAfterAttackSplash(state: GameState, attacker: CombatUnitState, def
   // via veterancy) resolves each on its own anchor/filter.
   const abilities = getUnitAbilityDefinitions(attacker).filter(
     (candidate) =>
-      candidate.implementationStatus === "implemented" && candidate.effect?.type === "AFTER_ATTACK_SPLASH"
+      candidate.implementationStatus === "implemented" &&
+      candidate.effect?.type === "AFTER_ATTACK_SPLASH",
   );
   for (const ability of abilities) {
     if (ability.effect?.type !== "AFTER_ATTACK_SPLASH") {
@@ -8314,11 +9731,18 @@ function applyAfterAttackSplash(state: GameState, attacker: CombatUnitState, def
           (around !== "target" || unit.id !== defender.id) &&
           isUnitAlive(unit) &&
           (!enemiesOnly || unit.controllerId !== attacker.controllerId) &&
-          isAdjacent(unit.position, anchor.position)
+          isAdjacent(unit.position, anchor.position),
       )
       .map((unit) => unit.id);
     for (const targetId of targetIds) {
-      applyFlatAbilityDamage(state, attacker, targetId, ability.id, ability.name, amount);
+      applyFlatAbilityDamage(
+        state,
+        attacker,
+        targetId,
+        ability.id,
+        ability.name,
+        amount,
+      );
     }
   }
 }
@@ -8335,7 +9759,7 @@ function openDreadnoughtSplashChoice(
   abilityId: string,
   abilityName: string,
   candidateUnitIds: UnitId[],
-  remainingValues: number[]
+  remainingValues: number[],
 ): void {
   const choiceId = `choice_${nextEventNumber(state)}`;
   const nextValue = remainingValues[0] ?? 0;
@@ -8352,7 +9776,7 @@ function openDreadnoughtSplashChoice(
     candidateUnitIds,
     chainRemainingDamages: remainingValues,
     optional: true,
-    skipLabel: "Stop"
+    skipLabel: "Stop",
   };
   state.phase = "choice";
   state.priorityPlayerId = source.controllerId;
@@ -8362,12 +9786,15 @@ function openDreadnoughtSplashChoice(
     choiceType: "ABILITY_TARGET_CHOICE",
     playerId: source.controllerId,
     sourceEffectIds: [],
-    message: `${source.cardName} allocates ${nextValue} splash damage.`
+    message: `${source.cardName} allocates ${nextValue} splash damage.`,
   });
 }
 
 /** The board cell one space beyond the target, in line away from the attacker. */
-function cellBehindTarget(attacker: CombatUnitState, defender: CombatUnitState): number | null {
+function cellBehindTarget(
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+): number | null {
   const from = getBattlefieldCoordinates(attacker.position);
   const at = getBattlefieldCoordinates(defender.position);
   const rowStep = at.row - from.row;
@@ -8379,7 +9806,12 @@ function cellBehindTarget(attacker: CombatUnitState, defender: CombatUnitState):
   }
   const behindRow = at.row + rowStep;
   const behindColumn = at.column + columnStep;
-  if (behindRow < 0 || behindRow >= BATTLEFIELD_ROWS || behindColumn < 0 || behindColumn >= BATTLEFIELD_COLUMNS) {
+  if (
+    behindRow < 0 ||
+    behindRow >= BATTLEFIELD_ROWS ||
+    behindColumn < 0 ||
+    behindColumn >= BATTLEFIELD_COLUMNS
+  ) {
     return null;
   }
   return behindRow * BATTLEFIELD_COLUMNS + behindColumn;
@@ -8389,13 +9821,17 @@ function cellBehindTarget(attacker: CombatUnitState, defender: CombatUnitState):
 function findUnitBehindTarget(
   combat: CombatState,
   attacker: CombatUnitState,
-  defender: CombatUnitState
+  defender: CombatUnitState,
 ): CombatUnitState | null {
   const behindPosition = cellBehindTarget(attacker, defender);
   if (behindPosition === null) {
     return null;
   }
-  return Object.values(combat.units).find((unit) => unit.position === behindPosition && isUnitAlive(unit)) ?? null;
+  return (
+    Object.values(combat.units).find(
+      (unit) => unit.position === behindPosition && isUnitAlive(unit),
+    ) ?? null
+  );
 }
 
 /**
@@ -8410,7 +9846,7 @@ function openGoldDragonLineAttack(
   state: GameState,
   attacker: CombatUnitState,
   defender: CombatUnitState,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): boolean {
   const combat = state.combat;
   if (!combat || !isUnitAlive(attacker)) {
@@ -8441,7 +9877,14 @@ function openGoldDragonLineAttack(
     return false;
   }
   if (ability.fixedDamage) {
-    applyFlatAbilityDamage(state, attacker, behind.id, ability.abilityId, ability.abilityName, ability.baseAttack);
+    applyFlatAbilityDamage(
+      state,
+      attacker,
+      behind.id,
+      ability.abilityId,
+      ability.abilityName,
+      ability.baseAttack,
+    );
     return finishCombatIfNeeded(state);
   }
   declareAbilityAttack(state, attacker, behind.id, ability, cards);
@@ -8459,10 +9902,14 @@ function openHydraSecondAttack(
   state: GameState,
   attacker: CombatUnitState,
   defender: CombatUnitState,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): boolean {
   const combat = state.combat;
-  if (!combat || !isUnitAlive(attacker) || (attacker.attacksThisActivation ?? 0) !== 1) {
+  if (
+    !combat ||
+    !isUnitAlive(attacker) ||
+    (attacker.attacksThisActivation ?? 0) !== 1
+  ) {
     return false;
   }
   const ability = getSelfAdjacentSecondAttackAbility(attacker);
@@ -8484,7 +9931,7 @@ function openHydraSecondAttack(
       unit.id !== attacker.id &&
       unit.controllerId !== attacker.controllerId &&
       isUnitAlive(unit) &&
-      isAdjacent(unit.position, attacker.position)
+      isAdjacent(unit.position, attacker.position),
   );
 
   const baseAttack = ability.baseAttack ?? attacker.attack;
@@ -8503,7 +9950,7 @@ function openHydraSecondAttack(
       : enemyFortificationsInCells(
           combat.siege,
           attacker.controllerId,
-          getOrthogonalNeighbors(attacker.position)
+          getOrthogonalNeighbors(attacker.position),
         ).map((fort) => fortificationTargetId(fort.kind, fort.position));
 
   const candidateIds = [...candidates.map((unit) => unit.id), ...fortIds];
@@ -8520,8 +9967,12 @@ function openHydraSecondAttack(
         state,
         attacker,
         candidateIds[0],
-        { abilityId: ability.abilityId, abilityName: ability.abilityName, baseAttack },
-        cards
+        {
+          abilityId: ability.abilityId,
+          abilityName: ability.abilityName,
+          baseAttack,
+        },
+        cards,
       );
     }
     return true;
@@ -8539,7 +9990,7 @@ function openHydraSecondAttack(
     sourceUnitId: attacker.id,
     anchorUnitId: defender.id,
     candidateUnitIds: candidateIds,
-    baseAttack
+    baseAttack,
   };
   state.phase = "choice";
   state.priorityPlayerId = attacker.controllerId;
@@ -8549,7 +10000,7 @@ function openHydraSecondAttack(
     choiceType: "ABILITY_TARGET_CHOICE",
     playerId: attacker.controllerId,
     sourceEffectIds: [],
-    message: `${attacker.name} chooses a second target for ${ability.abilityName}.`
+    message: `${attacker.name} chooses a second target for ${ability.abilityName}.`,
   });
   return true;
 }
@@ -8563,7 +10014,7 @@ function applyParalysisToTarget(
   state: GameState,
   attacker: CombatUnitState,
   defender: CombatUnitState,
-  followUp: { abilityId: string; abilityName: string }
+  followUp: { abilityId: string; abilityName: string },
 ): void {
   if (unitImmuneToParalysis(state, defender)) {
     appendEvent(state, {
@@ -8571,7 +10022,7 @@ function applyParalysisToTarget(
       unitId: defender.id,
       abilityId: "ignore-paralysis",
       targetUnitId: defender.id,
-      message: `${defender.cardName} is immune to Paralysis.`
+      message: `${defender.cardName} is immune to Paralysis.`,
     });
     return;
   }
@@ -8581,7 +10032,7 @@ function applyParalysisToTarget(
     unitId: attacker.id,
     abilityId: followUp.abilityId,
     targetUnitId: defender.id,
-    message: `${attacker.name} paralyses ${defender.cardName} with ${followUp.abilityName}.`
+    message: `${attacker.name} paralyses ${defender.cardName} with ${followUp.abilityName}.`,
   });
 }
 
@@ -8595,14 +10046,18 @@ function resolveParalysisExtraOutcome(
   defender: CombatUnitState,
   followUp: { abilityId: string; abilityName: string; onRoll: number },
   candidate: AttackRollCandidate,
-  forceRoll: boolean
+  forceRoll: boolean,
 ): void {
   // Death-Stare style id split: the bare ability id fires ONLY when Paralysis
   // actually lands (so abilityFxPlans[id] never freezes a miss), and a failed
   // or shrugged-off roll announces under `${id}-roll` (left unmapped in the FX
   // table, same as gorgon-death-stare-roll).
   const paralyses =
-    forceRoll || abilityRollSucceeds(candidate.rolls, { minRoll: followUp.onRoll, maxRoll: followUp.onRoll });
+    forceRoll ||
+    abilityRollSucceeds(candidate.rolls, {
+      minRoll: followUp.onRoll,
+      maxRoll: followUp.onRoll,
+    });
   const gazeImmune = paralyses && unitImmuneToParalysis(state, defender);
   const lands = paralyses && !gazeImmune;
   appendEvent(state, {
@@ -8622,8 +10077,10 @@ function resolveParalysisExtraOutcome(
           ? `${defender.cardName} is immune to Paralysis.`
           : `${defender.cardName} is Paralyzed!`
         : "No effect.",
-      ...(candidate.modifierNotes?.length ? { modifiers: candidate.modifierNotes } : {})
-    }
+      ...(candidate.modifierNotes?.length
+        ? { modifiers: candidate.modifierNotes }
+        : {}),
+    },
   });
   if (!paralyses) {
     return;
@@ -8634,7 +10091,7 @@ function resolveParalysisExtraOutcome(
       unitId: defender.id,
       abilityId: "ignore-paralysis",
       targetUnitId: defender.id,
-      message: `${defender.cardName} is immune to Paralysis.`
+      message: `${defender.cardName} is immune to Paralysis.`,
     });
     return;
   }
@@ -8655,14 +10112,18 @@ function applyParalysisFollowUps(
   defender: CombatUnitState,
   ctx: PostAttackFollowUpContext,
   myStep: number,
-  startIndex = 0
+  startIndex = 0,
 ): boolean {
   const combat = state.combat;
   if (!combat) {
     return false;
   }
   const followUps = getParalysisFollowUps(attacker);
-  for (let index = Math.max(0, startIndex); index < followUps.length; index += 1) {
+  for (
+    let index = Math.max(0, startIndex);
+    index < followUps.length;
+    index += 1
+  ) {
     const followUp = followUps[index];
     if (!isUnitAlive(defender)) {
       break;
@@ -8676,10 +10137,24 @@ function applyParalysisFollowUps(
       continue;
     }
 
-    const window: AbilityRollWindow = { minRoll: followUp.onRoll, maxRoll: followUp.onRoll };
-    let candidate = rollAbilityCandidate(state, combat, attacker.controllerId, 1, window, true);
+    const window: AbilityRollWindow = {
+      minRoll: followUp.onRoll,
+      maxRoll: followUp.onRoll,
+    };
+    let candidate = rollAbilityCandidate(
+      state,
+      combat,
+      attacker.controllerId,
+      1,
+      window,
+      true,
+    );
     // Multilingual Bron: reroll a missed extra Paralysis die once.
-    if (!ctx.forceAbilityRoll && !abilityRollSucceeds(candidate.rolls, window) && bronRerollsAbilityRoll(state, attacker)) {
+    if (
+      !ctx.forceAbilityRoll &&
+      !abilityRollSucceeds(candidate.rolls, window) &&
+      bronRerollsAbilityRoll(state, attacker)
+    ) {
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: attacker.id,
@@ -8691,10 +10166,19 @@ function applyParalysisFollowUps(
           success: false,
           label: followUp.abilityName,
           caption: "Multilingual Bron rerolls…",
-          ...(candidate.modifierNotes?.length ? { modifiers: candidate.modifierNotes } : {})
-        }
+          ...(candidate.modifierNotes?.length
+            ? { modifiers: candidate.modifierNotes }
+            : {}),
+        },
       });
-      candidate = rollAbilityCandidate(state, combat, attacker.controllerId, 1, window, true);
+      candidate = rollAbilityCandidate(
+        state,
+        combat,
+        attacker.controllerId,
+        1,
+        window,
+        true,
+      );
     }
 
     if (
@@ -8705,13 +10189,20 @@ function applyParalysisFollowUps(
         abilityName: followUp.abilityName,
         diceCount: 1,
         ...window,
-        resume: { ...ctx, fromStep: myStep, followUpIndex: index }
+        resume: { ...ctx, fromStep: myStep, followUpIndex: index },
       })
     ) {
       return true;
     }
 
-    resolveParalysisExtraOutcome(state, attacker, defender, followUp, candidate, ctx.forceAbilityRoll);
+    resolveParalysisExtraOutcome(
+      state,
+      attacker,
+      defender,
+      followUp,
+      candidate,
+      ctx.forceAbilityRoll,
+    );
   }
   return false;
 }
@@ -8724,7 +10215,11 @@ function applyParalysisFollowUps(
  * are left untouched. Ongoing cards behind the removed effects return to their
  * owner's discard via the central `releaseEndedOngoingCards` pass.
  */
-function applyDispelFollowUps(state: GameState, attacker: CombatUnitState, defender: CombatUnitState): void {
+function applyDispelFollowUps(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+): void {
   if (!hasUnitAbilityEffect(attacker, "DISPEL_ENEMY_EFFECTS_ON_TARGET")) {
     return;
   }
@@ -8733,14 +10228,16 @@ function applyDispelFollowUps(state: GameState, attacker: CombatUnitState, defen
     (effect) =>
       effect.controllerId === defender.controllerId &&
       effect.scope !== "global" &&
-      effectAppliesToUnit(effect, defender)
+      effectAppliesToUnit(effect, defender),
   );
   if (removed.length === 0) {
     return;
   }
 
   const removedIds = new Set(removed.map((effect) => effect.id));
-  state.activeEffects = state.activeEffects.filter((effect) => !removedIds.has(effect.id));
+  state.activeEffects = state.activeEffects.filter(
+    (effect) => !removedIds.has(effect.id),
+  );
   stripCombatHealthBonusFromRemovedEffects(state, removed);
 
   appendEvent(state, {
@@ -8750,7 +10247,7 @@ function applyDispelFollowUps(state: GameState, attacker: CombatUnitState, defen
     targetUnitId: defender.id,
     message: `${attacker.name} dispels ${removed.length} ongoing effect(s) on ${defender.name}: ${removed
       .map((effect) => effect.name)
-      .join(", ")}.`
+      .join(", ")}.`,
   });
 }
 
@@ -8763,7 +10260,7 @@ function applyDispelFollowUps(state: GameState, attacker: CombatUnitState, defen
 function applyRetaliationParalysis(
   state: GameState,
   retaliator: CombatUnitState,
-  target: CombatUnitState
+  target: CombatUnitState,
 ): void {
   const combat = state.combat;
   if (!combat || !isUnitAlive(target)) {
@@ -8779,10 +10276,23 @@ function applyRetaliationParalysis(
     // still on the stack), so it cannot pause on the interactive reroll
     // window — the roll still goes through the shared pipeline and suffers
     // the universal 'reroll a "+1"' morale curse, like the Defend die.
-    const window: AbilityRollWindow = { minRoll: ability.onRoll, maxRoll: ability.onRoll };
-    let candidate = rollAbilityCandidate(state, combat, retaliator.controllerId, 1, window, false);
+    const window: AbilityRollWindow = {
+      minRoll: ability.onRoll,
+      maxRoll: ability.onRoll,
+    };
+    let candidate = rollAbilityCandidate(
+      state,
+      combat,
+      retaliator.controllerId,
+      1,
+      window,
+      false,
+    );
     // Multilingual Bron: reroll a missed retaliation-gaze die once.
-    if (!abilityRollSucceeds(candidate.rolls, window) && bronRerollsAbilityRoll(state, retaliator)) {
+    if (
+      !abilityRollSucceeds(candidate.rolls, window) &&
+      bronRerollsAbilityRoll(state, retaliator)
+    ) {
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: retaliator.id,
@@ -8794,10 +10304,19 @@ function applyRetaliationParalysis(
           success: false,
           label: ability.abilityName,
           caption: "Multilingual Bron rerolls…",
-          ...(candidate.modifierNotes?.length ? { modifiers: candidate.modifierNotes } : {})
-        }
+          ...(candidate.modifierNotes?.length
+            ? { modifiers: candidate.modifierNotes }
+            : {}),
+        },
       });
-      candidate = rollAbilityCandidate(state, combat, retaliator.controllerId, 1, window, false);
+      candidate = rollAbilityCandidate(
+        state,
+        combat,
+        retaliator.controllerId,
+        1,
+        window,
+        false,
+      );
     }
     // Death-Stare style id split (same as resolveParalysisExtraOutcome): bare
     // ability id only when Paralysis lands, so abilityFxPlans never freezes a miss.
@@ -8821,8 +10340,10 @@ function applyRetaliationParalysis(
             ? `${target.cardName} is immune to Paralysis.`
             : `${target.cardName} is Paralyzed!`
           : "No effect.",
-        ...(candidate.modifierNotes?.length ? { modifiers: candidate.modifierNotes } : {})
-      }
+        ...(candidate.modifierNotes?.length
+          ? { modifiers: candidate.modifierNotes }
+          : {}),
+      },
     });
     if (!lands) {
       return;
@@ -8833,7 +10354,7 @@ function applyRetaliationParalysis(
         unitId: target.id,
         abilityId: "ignore-paralysis",
         targetUnitId: target.id,
-        message: `${target.cardName} is immune to Paralysis.`
+        message: `${target.cardName} is immune to Paralysis.`,
       });
       return;
     }
@@ -8847,7 +10368,7 @@ function applyRetaliationParalysis(
       unitId: target.id,
       abilityId: "ignore-paralysis",
       targetUnitId: target.id,
-      message: `${target.cardName} is immune to Paralysis.`
+      message: `${target.cardName} is immune to Paralysis.`,
     });
     return;
   }
@@ -8858,7 +10379,7 @@ function applyRetaliationParalysis(
     unitId: retaliator.id,
     abilityId: ability.abilityId,
     targetUnitId: target.id,
-    message: `${retaliator.name} paralyses ${target.cardName} with ${ability.abilityName}.`
+    message: `${retaliator.name} paralyses ${target.cardName} with ${ability.abilityName}.`,
   });
 }
 
@@ -8870,7 +10391,11 @@ function applyRetaliationParalysis(
  * including one tucked inside a choose-one option.
  */
 /** Discards one named card from a player's hand to their discard pile. */
-function discardNamedCardFromHand(state: GameState, playerId: PlayerId, cardId: CardId): boolean {
+function discardNamedCardFromHand(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardId,
+): boolean {
   const player = state.players[playerId];
   if (!player) {
     return false;
@@ -8885,12 +10410,17 @@ function discardNamedCardFromHand(state: GameState, playerId: PlayerId, cardId: 
 }
 
 /** Discards one random card from a player's hand (seeded); returns its id. */
-function discardRandomCardFromHand(state: GameState, playerId: PlayerId): CardId | null {
+function discardRandomCardFromHand(
+  state: GameState,
+  playerId: PlayerId,
+): CardId | null {
   const player = state.players[playerId];
   if (!player || player.hand.length === 0) {
     return null;
   }
-  const random = createSeededRandom(`${state.seed}#magi-drain#${eventSeedNumber(state)}`);
+  const random = createSeededRandom(
+    `${state.seed}#magi-drain#${eventSeedNumber(state)}`,
+  );
   const index = random.nextInt(0, player.hand.length - 1);
   const [discarded] = player.hand.splice(index, 1);
   player.discard.push(discarded);
@@ -8908,7 +10438,7 @@ function openMagiDiscardChoice(
   state: GameState,
   attacker: CombatUnitState,
   defender: CombatUnitState,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): boolean {
   const ability = getEnemyDiscardAbility(attacker);
   if (!ability) {
@@ -8919,11 +10449,17 @@ function openMagiDiscardChoice(
   // with cards is affected; the neutral seat has no hand.
   const chooserId = defender.controllerId;
   const chooser = state.players[chooserId];
-  if (chooserId === NEUTRAL_PLAYER_ID || !chooser || chooser.hand.length === 0) {
+  if (
+    chooserId === NEUTRAL_PLAYER_ID ||
+    !chooser ||
+    chooser.hand.length === 0
+  ) {
     return false;
   }
 
-  const powerCardIds = chooser.hand.filter((cardId) => cardCanBoostPower(cards[cardId]));
+  const powerCardIds = chooser.hand.filter((cardId) =>
+    cardCanBoostPower(cards[cardId]),
+  );
 
   // No Power card to spare: the random discard is forced, no decision to make.
   if (powerCardIds.length === 0) {
@@ -8934,7 +10470,7 @@ function openMagiDiscardChoice(
         unitId: attacker.id,
         abilityId: ability.abilityId,
         targetUnitId: defender.id,
-        message: `${attacker.name}'s ${ability.abilityName} discards a random card from ${chooser.name}'s hand.`
+        message: `${attacker.name}'s ${ability.abilityName} discards a random card from ${chooser.name}'s hand.`,
       });
     }
     return false;
@@ -8950,7 +10486,7 @@ function openMagiDiscardChoice(
     abilityName: ability.abilityName,
     sourceUnitId: attacker.id,
     prompt: `${attacker.name}: ${ability.abilityName} — discard a Power card of your choice, or let a random card be discarded.`,
-    powerCardIds
+    powerCardIds,
   };
   state.phase = "choice";
   state.priorityPlayerId = chooserId;
@@ -8961,7 +10497,7 @@ function openMagiDiscardChoice(
     choiceType: "COMBAT_HAND_DISCARD",
     playerId: chooserId,
     sourceEffectIds: [],
-    message: `${chooser.name} chooses how to answer ${attacker.name}'s ${ability.abilityName}.`
+    message: `${chooser.name} chooses how to answer ${attacker.name}'s ${ability.abilityName}.`,
   });
   return true;
 }
@@ -8974,10 +10510,14 @@ function openMagiDiscardChoice(
 function resolveCombatHandDiscard(
   state: GameState,
   action: Extract<GameAction, { type: "RESOLVE_COMBAT_DISCARD" }>,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   const choice = state.pendingChoice;
-  if (!choice || choice.type !== "COMBAT_HAND_DISCARD" || choice.id !== action.choiceId) {
+  if (
+    !choice ||
+    choice.type !== "COMBAT_HAND_DISCARD" ||
+    choice.id !== action.choiceId
+  ) {
     throw new Error("There is no card-discard choice to resolve.");
   }
   if (choice.playerId !== action.playerId) {
@@ -8993,7 +10533,9 @@ function resolveCombatHandDiscard(
   // Spell. No random option — the caster picks which Power card to pay.
   if (choice.kind === "pegasi-toll") {
     if (action.cardId === "random") {
-      throw new Error("The Pegasi toll must be paid with a chosen card that has Power.");
+      throw new Error(
+        "The Pegasi toll must be paid with a chosen card that has Power.",
+      );
     }
     if (!choice.powerCardIds.includes(action.cardId)) {
       throw new Error("That card cannot pay the Pegasi toll.");
@@ -9006,13 +10548,13 @@ function resolveCombatHandDiscard(
       type: "PENDING_CHOICE_RESOLVED",
       choiceId: choice.id,
       playerId: action.playerId,
-      selectedIndex: choice.powerCardIds.indexOf(action.cardId)
+      selectedIndex: choice.powerCardIds.indexOf(action.cardId),
     });
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: choice.sourceUnitId,
       abilityId: choice.abilityId,
-      message: `${chooser.name} pays ${cards[action.cardId]?.name ?? action.cardId} to the ${choice.abilityName}.`
+      message: `${chooser.name} pays ${cards[action.cardId]?.name ?? action.cardId} to the ${choice.abilityName}.`,
     });
     state.pendingChoice = null;
     state.phase = "combat";
@@ -9021,7 +10563,7 @@ function resolveCombatHandDiscard(
       continueSpellCastAfterPowerTax(
         state,
         spellActionFromDeferred(action.playerId, toll),
-        cards
+        cards,
       );
     }
     return;
@@ -9045,19 +10587,23 @@ function resolveCombatHandDiscard(
       type: "PENDING_CHOICE_RESOLVED",
       choiceId: choice.id,
       playerId: action.playerId,
-      selectedIndex: choice.powerCardIds.indexOf(action.cardId)
+      selectedIndex: choice.powerCardIds.indexOf(action.cardId),
     });
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: choice.sourceUnitId,
       abilityId: choice.abilityId,
-      message: `${chooser.name} discards ${cards[action.cardId]?.name ?? action.cardId} to ${choice.abilityName}.`
+      message: `${chooser.name} discards ${cards[action.cardId]?.name ?? action.cardId} to ${choice.abilityName}.`,
     });
     state.pendingChoice = null;
     state.phase = "combat";
     state.priorityPlayerId = null;
     if (deferredSpell) {
-      performSpellCast(state, spellActionFromDeferred(action.playerId, deferredSpell), cards);
+      performSpellCast(
+        state,
+        spellActionFromDeferred(action.playerId, deferredSpell),
+        cards,
+      );
     }
     return;
   }
@@ -9079,13 +10625,13 @@ function resolveCombatHandDiscard(
       type: "PENDING_CHOICE_RESOLVED",
       choiceId: choice.id,
       playerId: action.playerId,
-      selectedIndex: choice.powerCardIds.indexOf(action.cardId)
+      selectedIndex: choice.powerCardIds.indexOf(action.cardId),
     });
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: choice.sourceUnitId,
       abilityId: choice.abilityId,
-      message: `${chooser.name} discards ${cards[action.cardId]?.name ?? action.cardId} to ${choice.abilityName}.`
+      message: `${chooser.name} discards ${cards[action.cardId]?.name ?? action.cardId} to ${choice.abilityName}.`,
     });
     state.pendingChoice = null;
     state.phase = "combat";
@@ -9101,7 +10647,7 @@ function resolveCombatHandDiscard(
         sourceName: source?.name ?? choice.abilityName,
         abilityId: choice.abilityId,
         abilityName: choice.abilityName,
-        remaining
+        remaining,
       });
       if (state.pendingChoice) {
         return;
@@ -9118,7 +10664,7 @@ function resolveCombatHandDiscard(
       type: "PENDING_CHOICE_RESOLVED",
       choiceId: choice.id,
       playerId: action.playerId,
-      selectedIndex: -1
+      selectedIndex: -1,
     });
     if (discarded) {
       appendEvent(state, {
@@ -9126,7 +10672,7 @@ function resolveCombatHandDiscard(
         unitId: choice.sourceUnitId,
         abilityId: choice.abilityId,
         targetUnitId: choice.sourceUnitId,
-        message: `${chooser.name} lets ${choice.abilityName} discard a random card.`
+        message: `${chooser.name} lets ${choice.abilityName} discard a random card.`,
       });
     }
   } else {
@@ -9140,14 +10686,14 @@ function resolveCombatHandDiscard(
       type: "PENDING_CHOICE_RESOLVED",
       choiceId: choice.id,
       playerId: action.playerId,
-      selectedIndex: choice.powerCardIds.indexOf(action.cardId)
+      selectedIndex: choice.powerCardIds.indexOf(action.cardId),
     });
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: choice.sourceUnitId,
       abilityId: choice.abilityId,
       targetUnitId: choice.sourceUnitId,
-      message: `${chooser.name} discards ${cards[action.cardId]?.name ?? action.cardId} to ${choice.abilityName}.`
+      message: `${chooser.name} discards ${cards[action.cardId]?.name ?? action.cardId} to ${choice.abilityName}.`,
     });
   }
 
@@ -9167,11 +10713,15 @@ function resolveCombatHandDiscard(
 function getKnockbackDestinations(
   combat: CombatState,
   attacker: CombatUnitState,
-  defender: CombatUnitState
+  defender: CombatUnitState,
 ): number[] {
   const occupied = new Set<number>();
   for (const unit of Object.values(combat.units)) {
-    if (unit.id !== defender.id && isUnitAlive(unit) && isBattlefieldPosition(unit.position)) {
+    if (
+      unit.id !== defender.id &&
+      isUnitAlive(unit) &&
+      isBattlefieldPosition(unit.position)
+    ) {
       occupied.add(unit.position);
     }
   }
@@ -9180,7 +10730,7 @@ function getKnockbackDestinations(
       (position) =>
         !occupied.has(position) &&
         !(combat.obstacles?.includes(position) ?? false) &&
-        !isAdjacent(position, attacker.position)
+        !isAdjacent(position, attacker.position),
     )
     .sort((left, right) => left - right);
 }
@@ -9191,7 +10741,7 @@ function applyKnockback(
   attacker: CombatUnitState,
   defender: CombatUnitState,
   destination: number,
-  ability: { abilityId: string; abilityName: string }
+  ability: { abilityId: string; abilityName: string },
 ): void {
   const from = defender.position;
   defender.position = destination;
@@ -9200,14 +10750,14 @@ function applyKnockback(
     unitId: attacker.id,
     abilityId: ability.abilityId,
     targetUnitId: defender.id,
-    message: `${attacker.name}'s ${ability.abilityName} shoves ${defender.cardName} to ${getBattlefieldLabel(destination)}.`
+    message: `${attacker.name}'s ${ability.abilityName} shoves ${defender.cardName} to ${getBattlefieldLabel(destination)}.`,
   });
   appendEvent(state, {
     type: "UNIT_MOVED",
     playerId: defender.controllerId,
     unitId: defender.id,
     from,
-    to: destination
+    to: destination,
   });
 }
 
@@ -9217,7 +10767,7 @@ function openKnockbackChoice(
   attacker: CombatUnitState,
   defender: CombatUnitState,
   destinations: number[],
-  ability: { abilityId: string; abilityName: string }
+  ability: { abilityId: string; abilityName: string },
 ): void {
   const choiceId = `choice_${nextEventNumber(state)}`;
   state.pendingChoice = {
@@ -9225,10 +10775,16 @@ function openKnockbackChoice(
     type: "OPTION_CHOICE",
     playerId: defender.controllerId,
     prompt: `${attacker.name}'s ${ability.abilityName}: choose where ${defender.cardName} is pushed.`,
-    options: destinations.map((position) => ({ label: `Move to ${getBattlefieldLabel(position)}` })),
+    options: destinations.map((position) => ({
+      label: `Move to ${getBattlefieldLabel(position)}`,
+    })),
     context: "combat-knockback",
-    knockback: { unitId: defender.id, attackerId: attacker.id, positions: destinations },
-    returnPhase: "combat"
+    knockback: {
+      unitId: defender.id,
+      attackerId: attacker.id,
+      positions: destinations,
+    },
+    returnPhase: "combat",
   };
   state.phase = "choice";
   state.priorityPlayerId = defender.controllerId;
@@ -9238,7 +10794,7 @@ function openKnockbackChoice(
     choiceType: "ABILITY_TARGET_CHOICE",
     playerId: defender.controllerId,
     sourceEffectIds: [],
-    message: `${defender.cardName} is knocked back — ${state.players[defender.controllerId]?.name ?? defender.controllerId} chooses where.`
+    message: `${defender.cardName} is knocked back — ${state.players[defender.controllerId]?.name ?? defender.controllerId} chooses where.`,
   });
 }
 
@@ -9261,13 +10817,16 @@ function resolveKnockbackOutcome(
   attacker: CombatUnitState,
   defender: CombatUnitState,
   ability: NonNullable<ReturnType<typeof getKnockbackAbility>>,
-  candidate: AttackRollCandidate
+  candidate: AttackRollCandidate,
 ): boolean {
   const combat = state.combat;
   if (!combat) {
     return false;
   }
-  const pushes = abilityRollSucceeds(candidate.rolls, { minRoll: ability.onRoll, maxRoll: ability.onRoll });
+  const pushes = abilityRollSucceeds(candidate.rolls, {
+    minRoll: ability.onRoll,
+    maxRoll: ability.onRoll,
+  });
   // Roll announce always uses `${id}-roll` so a miss never triggers the knockback
   // FX plan; the actual shove (applyKnockback) fires the bare ability id.
   appendEvent(state, {
@@ -9281,8 +10840,10 @@ function resolveKnockbackOutcome(
       success: pushes,
       label: ability.abilityName,
       caption: pushes ? `${defender.cardName} is knocked back!` : "No effect.",
-      ...(candidate.modifierNotes?.length ? { modifiers: candidate.modifierNotes } : {})
-    }
+      ...(candidate.modifierNotes?.length
+        ? { modifiers: candidate.modifierNotes }
+        : {}),
+    },
   });
   if (!pushes) {
     return false;
@@ -9296,7 +10857,7 @@ function resolveKnockbackOutcome(
       unitId: attacker.id,
       abilityId: `${ability.abilityId}-roll`,
       targetUnitId: defender.id,
-      message: `${defender.cardName} has nowhere to be pushed and holds its ground.`
+      message: `${defender.cardName} has nowhere to be pushed and holds its ground.`,
     });
     return false;
   }
@@ -9317,7 +10878,7 @@ function openGhostDragonKnockback(
   attacker: CombatUnitState,
   defender: CombatUnitState,
   ctx: PostAttackFollowUpContext,
-  myStep: number
+  myStep: number,
 ): boolean {
   const combat = state.combat;
   if (!combat || !isUnitAlive(attacker) || !isUnitAlive(defender)) {
@@ -9330,11 +10891,24 @@ function openGhostDragonKnockback(
 
   // "After the attack, roll 1 Attack die" — through the shared ability-roll
   // pipeline (combat dice stream, morale curses, the optional reroll window).
-  const window: AbilityRollWindow = { minRoll: ability.onRoll, maxRoll: ability.onRoll };
-  let candidate = rollAbilityCandidate(state, combat, attacker.controllerId, 1, window, true);
+  const window: AbilityRollWindow = {
+    minRoll: ability.onRoll,
+    maxRoll: ability.onRoll,
+  };
+  let candidate = rollAbilityCandidate(
+    state,
+    combat,
+    attacker.controllerId,
+    1,
+    window,
+    true,
+  );
   // Multilingual Bron: reroll a missed knock-back die once (the push denies the
   // retaliation, so the attacker's controller always wants it to land).
-  if (!abilityRollSucceeds(candidate.rolls, window) && bronRerollsAbilityRoll(state, attacker)) {
+  if (
+    !abilityRollSucceeds(candidate.rolls, window) &&
+    bronRerollsAbilityRoll(state, attacker)
+  ) {
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: attacker.id,
@@ -9346,10 +10920,19 @@ function openGhostDragonKnockback(
         success: false,
         label: ability.abilityName,
         caption: "Multilingual Bron rerolls…",
-        ...(candidate.modifierNotes?.length ? { modifiers: candidate.modifierNotes } : {})
-      }
+        ...(candidate.modifierNotes?.length
+          ? { modifiers: candidate.modifierNotes }
+          : {}),
+      },
     });
-    candidate = rollAbilityCandidate(state, combat, attacker.controllerId, 1, window, true);
+    candidate = rollAbilityCandidate(
+      state,
+      combat,
+      attacker.controllerId,
+      1,
+      window,
+      true,
+    );
   }
 
   if (
@@ -9359,7 +10942,7 @@ function openGhostDragonKnockback(
       abilityName: ability.abilityName,
       diceCount: 1,
       ...window,
-      resume: { ...ctx, fromStep: myStep, followUpIndex: 0 }
+      resume: { ...ctx, fromStep: myStep, followUpIndex: 0 },
     })
   ) {
     return true;
@@ -9372,7 +10955,7 @@ function openGhostDragonKnockback(
 function resolveKnockbackChoice(
   state: GameState,
   action: Extract<GameAction, { type: "CHOOSE_OPTION" }>,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   const choice = state.pendingChoice;
   if (
@@ -9396,7 +10979,7 @@ function resolveKnockbackChoice(
 
   const ability = getKnockbackAbility(attacker) ?? {
     abilityId: "ghost-dragon-knockback",
-    abilityName: "Knock Back"
+    abilityName: "Knock Back",
   };
   applyKnockback(state, attacker, defender, destination, ability);
 
@@ -9404,7 +10987,7 @@ function resolveKnockbackChoice(
     type: "PENDING_CHOICE_RESOLVED",
     choiceId: choice.id,
     playerId: action.playerId,
-    selectedIndex: action.optionIndex
+    selectedIndex: action.optionIndex,
   });
 
   state.pendingChoice = null;
@@ -9424,7 +11007,7 @@ function openTeleportChoice(
   state: GameState,
   playerId: PlayerId,
   unit: CombatUnitState,
-  abilityId?: string
+  abilityId?: string,
 ): boolean {
   const combat = state.combat;
   if (!combat) {
@@ -9447,10 +11030,12 @@ function openTeleportChoice(
     type: "OPTION_CHOICE",
     playerId,
     prompt: `Teleport ${unit.cardName} to an empty space.`,
-    options: positions.map((position) => ({ label: `Teleport to ${getBattlefieldLabel(position)}` })),
+    options: positions.map((position) => ({
+      label: `Teleport to ${getBattlefieldLabel(position)}`,
+    })),
     context: "combat-teleport",
     teleport: { unitId: unit.id, positions, abilityId },
-    returnPhase: "combat"
+    returnPhase: "combat",
   };
   appendEvent(state, {
     type: "PENDING_CHOICE_CREATED",
@@ -9458,7 +11043,7 @@ function openTeleportChoice(
     choiceType: "ABILITY_TARGET_CHOICE",
     playerId,
     sourceEffectIds: [],
-    message: `${state.players[playerId]?.name ?? playerId} teleports ${unit.cardName}.`
+    message: `${state.players[playerId]?.name ?? playerId} teleports ${unit.cardName}.`,
   });
   return true;
 }
@@ -9466,7 +11051,7 @@ function openTeleportChoice(
 /** Resolves the Teleport destination pick: relocate the unit to the chosen space. */
 function resolveTeleportChoice(
   state: GameState,
-  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>
+  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>,
 ): void {
   const choice = state.pendingChoice;
   if (
@@ -9483,7 +11068,12 @@ function resolveTeleportChoice(
   const combat = state.combat;
   const unit = combat?.units[choice.teleport.unitId];
   const destination = choice.teleport.positions[action.optionIndex];
-  if (!combat || !unit || destination === undefined || isSpaceBlockedForSummon(combat, destination)) {
+  if (
+    !combat ||
+    !unit ||
+    destination === undefined ||
+    isSpaceBlockedForSummon(combat, destination)
+  ) {
     throw new Error("That teleport destination is not available.");
   }
 
@@ -9500,7 +11090,7 @@ function resolveTeleportChoice(
       unitId: unit.id,
       abilityId: choice.teleport.abilityId,
       targetUnitId: unit.id,
-      message: `${unit.cardName} blinks across the battlefield.`
+      message: `${unit.cardName} blinks across the battlefield.`,
     });
   }
   appendEvent(state, {
@@ -9508,13 +11098,13 @@ function resolveTeleportChoice(
     playerId: unit.controllerId,
     unitId: unit.id,
     from,
-    to: destination
+    to: destination,
   });
   appendEvent(state, {
     type: "PENDING_CHOICE_RESOLVED",
     choiceId: choice.id,
     playerId: action.playerId,
-    selectedIndex: action.optionIndex
+    selectedIndex: action.optionIndex,
   });
 
   state.pendingChoice = null;
@@ -9533,7 +11123,7 @@ function resolveTeleportChoice(
 function resolveNeutralDestinationChoice(
   state: GameState,
   action: Extract<GameAction, { type: "CHOOSE_OPTION" }>,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   const choice = state.pendingChoice;
   if (
@@ -9559,7 +11149,7 @@ function resolveNeutralDestinationChoice(
     type: "PENDING_CHOICE_RESOLVED",
     choiceId: choice.id,
     playerId: action.playerId,
-    selectedIndex: action.optionIndex
+    selectedIndex: action.optionIndex,
   });
   state.pendingChoice = null;
 
@@ -9577,19 +11167,25 @@ function resolveNeutralDestinationChoice(
 // ---------------------------------------------------------------------------
 
 /** Adds a battlefield token to the combat board and announces it. */
-function addBattlefieldToken(state: GameState, token: Omit<BattlefieldTokenState, "id">): BattlefieldTokenState {
+function addBattlefieldToken(
+  state: GameState,
+  token: Omit<BattlefieldTokenState, "id">,
+): BattlefieldTokenState {
   const combat = state.combat;
   if (!combat) {
     throw new Error("No combat to place a battlefield token in.");
   }
-  const placed: BattlefieldTokenState = { ...token, id: `bftoken_${nextEventNumber(state)}` };
+  const placed: BattlefieldTokenState = {
+    ...token,
+    id: `bftoken_${nextEventNumber(state)}`,
+  };
   combat.battlefieldTokens = [...(combat.battlefieldTokens ?? []), placed];
   appendEvent(state, {
     type: "BATTLEFIELD_TOKEN_PLACED",
     playerId: placed.controllerId,
     tokenId: placed.id,
     kind: placed.kind,
-    position: placed.position
+    position: placed.position,
   });
   return placed;
 }
@@ -9600,28 +11196,38 @@ function addBattlefieldToken(state: GameState, token: Omit<BattlefieldTokenState
  * Quicksand and Land Mine carry no expiry — they last the whole Combat and go
  * when the combat state does.
  */
-function expireBattlefieldTokensAtRoundEnd(state: GameState, finishedRound: number): void {
+function expireBattlefieldTokensAtRoundEnd(
+  state: GameState,
+  finishedRound: number,
+): void {
   const combat = state.combat;
   if (!combat?.battlefieldTokens?.length) {
     return;
   }
-  const expiring = combat.battlefieldTokens.filter((token) => token.expiresAtCombatRoundEnd === finishedRound);
+  const expiring = combat.battlefieldTokens.filter(
+    (token) => token.expiresAtCombatRoundEnd === finishedRound,
+  );
   if (expiring.length === 0) {
     return;
   }
-  combat.battlefieldTokens = combat.battlefieldTokens.filter((token) => token.expiresAtCombatRoundEnd !== finishedRound);
+  combat.battlefieldTokens = combat.battlefieldTokens.filter(
+    (token) => token.expiresAtCombatRoundEnd !== finishedRound,
+  );
   for (const token of expiring) {
     appendEvent(state, {
       type: "BATTLEFIELD_TOKEN_EXPIRED",
       tokenId: token.id,
       kind: token.kind,
-      position: token.position
+      position: token.position,
     });
   }
 }
 
 /** The combat round at whose end a Force Field of the given duration lifts (undefined = whole combat). */
-function forceFieldExpiry(combat: CombatState, duration: EffectDurationDefinition): number | undefined {
+function forceFieldExpiry(
+  combat: CombatState,
+  duration: EffectDurationDefinition,
+): number | undefined {
   if (duration.type === "current-combat-round") {
     return combat.round;
   }
@@ -9655,7 +11261,9 @@ function makeArmedSlots(state: GameState, count: number): boolean[] {
   for (let index = 0; index < count; index += 1) {
     slots.push(index < armedCount);
   }
-  const rng = createSeededRandom(`${state.combat?.dice.seed ?? "tokens"}:armed:${nextEventNumber(state)}`);
+  const rng = createSeededRandom(
+    `${state.combat?.dice.seed ?? "tokens"}:armed:${nextEventNumber(state)}`,
+  );
   for (let index = slots.length - 1; index > 0; index -= 1) {
     const swap = rng.nextInt(0, index);
     [slots[index], slots[swap]] = [slots[swap], slots[index]];
@@ -9676,7 +11284,7 @@ function openTokenPlacementChoice(
   kind: "quicksand" | "land_mine",
   armedSlots: boolean[],
   placedCount: number,
-  triggerDamage: number
+  triggerDamage: number,
 ): boolean {
   const combat = state.combat;
   if (!combat) {
@@ -9696,12 +11304,21 @@ function openTokenPlacementChoice(
     playerId,
     prompt: `${spellName}: place a token on an empty space (${remaining} left), or stop.`,
     options: [
-      ...positions.map((position) => ({ label: `Place at ${getBattlefieldLabel(position)}` })),
-      { label: "Stop placing tokens" }
+      ...positions.map((position) => ({
+        label: `Place at ${getBattlefieldLabel(position)}`,
+      })),
+      { label: "Stop placing tokens" },
     ],
     context: "place-battlefield-tokens",
-    placeTokens: { kind, positions, armedSlots, placedCount, remaining, triggerDamage },
-    returnPhase: "combat"
+    placeTokens: {
+      kind,
+      positions,
+      armedSlots,
+      placedCount,
+      remaining,
+      triggerDamage,
+    },
+    returnPhase: "combat",
   };
   appendEvent(state, {
     type: "PENDING_CHOICE_CREATED",
@@ -9709,7 +11326,7 @@ function openTokenPlacementChoice(
     choiceType: "ABILITY_TARGET_CHOICE",
     playerId,
     sourceEffectIds: [],
-    message: `${state.players[playerId]?.name ?? playerId} places ${spellName} tokens.`
+    message: `${state.players[playerId]?.name ?? playerId} places ${spellName} tokens.`,
   });
   return true;
 }
@@ -9725,7 +11342,7 @@ function beginHiddenTokenPlacement(
   playerId: PlayerId,
   kind: "quicksand" | "land_mine",
   count: number,
-  triggerDamage: number
+  triggerDamage: number,
 ): void {
   const combat = state.combat;
   if (!combat || count <= 0) {
@@ -9736,7 +11353,10 @@ function beginHiddenTokenPlacement(
 }
 
 /** Resolves one pick of the Quicksand / Land Mine placement picker. */
-function resolvePlaceTokensChoice(state: GameState, action: Extract<GameAction, { type: "CHOOSE_OPTION" }>): void {
+function resolvePlaceTokensChoice(
+  state: GameState,
+  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>,
+): void {
   const choice = state.pendingChoice;
   if (
     !choice ||
@@ -9757,7 +11377,7 @@ function resolvePlaceTokensChoice(state: GameState, action: Extract<GameAction, 
     type: "PENDING_CHOICE_RESOLVED",
     choiceId: choice.id,
     playerId: action.playerId,
-    selectedIndex: action.optionIndex
+    selectedIndex: action.optionIndex,
   });
   state.pendingChoice = null;
 
@@ -9766,15 +11386,26 @@ function resolvePlaceTokensChoice(state: GameState, action: Extract<GameAction, 
   // the rulebook allows. Either way the picker re-opens only while tokens and
   // empty spaces both remain.
   let reopened = false;
-  if (combat && position !== undefined && !isSpaceBlockedForSummon(combat, position)) {
+  if (
+    combat &&
+    position !== undefined &&
+    !isSpaceBlockedForSummon(combat, position)
+  ) {
     addBattlefieldToken(state, {
       kind: plan.kind,
       position,
       controllerId: action.playerId,
       armed: plan.armedSlots[plan.placedCount],
-      damage: plan.kind === "land_mine" ? plan.triggerDamage : undefined
+      damage: plan.kind === "land_mine" ? plan.triggerDamage : undefined,
     });
-    reopened = openTokenPlacementChoice(state, action.playerId, plan.kind, plan.armedSlots, plan.placedCount + 1, plan.triggerDamage);
+    reopened = openTokenPlacementChoice(
+      state,
+      action.playerId,
+      plan.kind,
+      plan.armedSlots,
+      plan.placedCount + 1,
+      plan.triggerDamage,
+    );
   }
 
   if (reopened) {
@@ -9794,14 +11425,18 @@ function resolvePlaceTokensChoice(state: GameState, action: Extract<GameAction, 
  * nothing) when the original is hemmed in with no empty neighbour, so the caller
  * can refund the cast rather than waste it.
  */
-function openCloneChoice(state: GameState, playerId: PlayerId, original: CombatUnitState): boolean {
+function openCloneChoice(
+  state: GameState,
+  playerId: PlayerId,
+  original: CombatUnitState,
+): boolean {
   const combat = state.combat;
   if (!combat) {
     return false;
   }
 
   const positions = getOrthogonalNeighbors(original.position).filter(
-    (position) => !isSpaceBlockedForSummon(combat, position)
+    (position) => !isSpaceBlockedForSummon(combat, position),
   );
   if (positions.length === 0) {
     return false;
@@ -9813,10 +11448,12 @@ function openCloneChoice(state: GameState, playerId: PlayerId, original: CombatU
     type: "OPTION_CHOICE",
     playerId,
     prompt: `Place the Clone of ${original.cardName} on an adjacent empty space.`,
-    options: positions.map((position) => ({ label: `Clone to ${getBattlefieldLabel(position)}` })),
+    options: positions.map((position) => ({
+      label: `Clone to ${getBattlefieldLabel(position)}`,
+    })),
     context: "combat-clone",
     clone: { originalUnitId: original.id, positions },
-    returnPhase: "combat"
+    returnPhase: "combat",
   };
   appendEvent(state, {
     type: "PENDING_CHOICE_CREATED",
@@ -9824,7 +11461,7 @@ function openCloneChoice(state: GameState, playerId: PlayerId, original: CombatU
     choiceType: "ABILITY_TARGET_CHOICE",
     playerId,
     sourceEffectIds: [],
-    message: `${state.players[playerId]?.name ?? playerId} clones ${original.cardName}.`
+    message: `${state.players[playerId]?.name ?? playerId} clones ${original.cardName}.`,
   });
   return true;
 }
@@ -9832,11 +11469,15 @@ function openCloneChoice(state: GameState, playerId: PlayerId, original: CombatU
 /** The least Power that a `gradeByPower` ladder needs to reach `grade`. */
 function powerRequiredForGrade(
   gradeByPower: Record<number, CombatUnitState["grade"]>,
-  grade: CombatUnitState["grade"]
+  grade: CombatUnitState["grade"],
 ): number | null {
   const match = Object.entries(gradeByPower)
     .map(([power, atGrade]) => ({ power: Number(power), atGrade }))
-    .filter((entry) => Number.isFinite(entry.power) && gradeRank(entry.atGrade) >= gradeRank(grade))
+    .filter(
+      (entry) =>
+        Number.isFinite(entry.power) &&
+        gradeRank(entry.atGrade) >= gradeRank(grade),
+    )
     .sort((left, right) => left.power - right.power)[0];
   return match ? match.power : null;
 }
@@ -9854,7 +11495,7 @@ function refundInsufficientCloneCast(
   state: GameState,
   stackItem: ResolutionStackItem,
   target: CombatUnitState,
-  reason: string
+  reason: string,
 ): void {
   if (stackItem.action.type !== "CAST_SPELL") {
     return;
@@ -9876,13 +11517,23 @@ function refundInsufficientCloneCast(
 
   // Return the Clone card itself (a scroll cast removed the spell from the game,
   // so there is no card to return — only the Power, handled above).
-  if (player && polishSpellBookEnabled(state) && stackItem.action.fromSpellBook) {
+  if (
+    player &&
+    polishSpellBookEnabled(state) &&
+    stackItem.action.fromSpellBook
+  ) {
     // `undoCast`: this is not a mid-round refresh, it is the cast being undone —
     // so neither the "already refreshed this round" nor the "in effect" gate may
     // swallow the card the notice below promises is coming back.
-    refreshPolishUsedSpell(state, playerId, stackItem.action.cardId, { undoCast: true });
+    refreshPolishUsedSpell(state, playerId, stackItem.action.cardId, {
+      undoCast: true,
+    });
     if (stackItem.action.castEnablerCardId) {
-      returnSpellFromDiscardToHand(state, playerId, stackItem.action.castEnablerCardId);
+      returnSpellFromDiscardToHand(
+        state,
+        playerId,
+        stackItem.action.castEnablerCardId,
+      );
     }
   } else if (player && !stackItem.modifiers.scrollLocked) {
     const discardIndex = player.discard.lastIndexOf(stackItem.action.cardId);
@@ -9904,15 +11555,21 @@ function refundInsufficientCloneCast(
   // happen (a scroll still counts as a Spell cast this turn). So the scroll cast
   // simply fizzles: the scroll is spent, the counters are untouched.
   if (player && !stackItem.modifiers.scrollLocked) {
-    player.combatStats.spellsCastThisRound = Math.max(0, player.combatStats.spellsCastThisRound - 1);
-    player.combatStats.spellsCastThisTurn = Math.max(0, (player.combatStats.spellsCastThisTurn ?? 0) - 1);
+    player.combatStats.spellsCastThisRound = Math.max(
+      0,
+      player.combatStats.spellsCastThisRound - 1,
+    );
+    player.combatStats.spellsCastThisTurn = Math.max(
+      0,
+      (player.combatStats.spellsCastThisTurn ?? 0) - 1,
+    );
   }
 
   appendEvent(state, {
     type: "SPELL_CAST_REFUNDED",
     playerId,
     spellCardId: stackItem.action.cardId,
-    reason
+    reason,
   });
 
   stackItem.status = "cancelled";
@@ -9927,7 +11584,7 @@ function refundInsufficientCloneCast(
 /** Resolves the Clone destination pick: drop the 1-Health Clone Token there. */
 function resolveCloneChoice(
   state: GameState,
-  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>
+  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>,
 ): void {
   const choice = state.pendingChoice;
   if (
@@ -9944,7 +11601,12 @@ function resolveCloneChoice(
   const combat = state.combat;
   const original = combat?.units[choice.clone.originalUnitId];
   const destination = choice.clone.positions[action.optionIndex];
-  if (!combat || !original || destination === undefined || isSpaceBlockedForSummon(combat, destination)) {
+  if (
+    !combat ||
+    !original ||
+    destination === undefined ||
+    isSpaceBlockedForSummon(combat, destination)
+  ) {
     throw new Error("That clone destination is not available.");
   }
 
@@ -9953,14 +11615,14 @@ function resolveCloneChoice(
     type: "PENDING_CHOICE_RESOLVED",
     choiceId: choice.id,
     playerId: action.playerId,
-    selectedIndex: action.optionIndex
+    selectedIndex: action.optionIndex,
   });
   if (clone) {
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: clone.id,
       abilityId: "spell.clone",
-      message: `${original.cardName} is cloned at ${getBattlefieldLabel(destination)} (1 Health).`
+      message: `${original.cardName} is cloned at ${getBattlefieldLabel(destination)} (1 Health).`,
     });
   }
 
@@ -9978,14 +11640,18 @@ function resolveCloneChoice(
  * filtered to a unit with at least one empty neighbour, so a choice always opens
  * for a legal play.
  */
-function openUnitStepChoice(state: GameState, playerId: PlayerId, unit: CombatUnitState): void {
+function openUnitStepChoice(
+  state: GameState,
+  playerId: PlayerId,
+  unit: CombatUnitState,
+): void {
   const combat = state.combat;
   if (!combat) {
     return;
   }
 
   const positions = getOrthogonalNeighbors(unit.position).filter(
-    (position) => !isSpaceBlockedForSummon(combat, position)
+    (position) => !isSpaceBlockedForSummon(combat, position),
   );
   if (positions.length === 0) {
     return;
@@ -9997,10 +11663,12 @@ function openUnitStepChoice(state: GameState, playerId: PlayerId, unit: CombatUn
     type: "OPTION_CHOICE",
     playerId,
     prompt: `Move ${unit.cardName} one space.`,
-    options: positions.map((position) => ({ label: `Move to ${getBattlefieldLabel(position)}` })),
+    options: positions.map((position) => ({
+      label: `Move to ${getBattlefieldLabel(position)}`,
+    })),
     context: "combat-step",
     step: { unitId: unit.id, positions },
-    returnPhase: "combat"
+    returnPhase: "combat",
   };
   state.phase = "choice";
   state.priorityPlayerId = playerId;
@@ -10010,14 +11678,14 @@ function openUnitStepChoice(state: GameState, playerId: PlayerId, unit: CombatUn
     choiceType: "ABILITY_TARGET_CHOICE",
     playerId,
     sourceEffectIds: [],
-    message: `${state.players[playerId]?.name ?? playerId} moves ${unit.cardName} one space.`
+    message: `${state.players[playerId]?.name ?? playerId} moves ${unit.cardName} one space.`,
   });
 }
 
 /** Resolves the Necklace of Swiftness step: relocate the unit to the chosen space. */
 function resolveUnitStepChoice(
   state: GameState,
-  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>
+  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>,
 ): void {
   const choice = state.pendingChoice;
   if (
@@ -10034,7 +11702,12 @@ function resolveUnitStepChoice(
   const combat = state.combat;
   const unit = combat?.units[choice.step.unitId];
   const destination = choice.step.positions[action.optionIndex];
-  if (!combat || !unit || destination === undefined || isSpaceBlockedForSummon(combat, destination)) {
+  if (
+    !combat ||
+    !unit ||
+    destination === undefined ||
+    isSpaceBlockedForSummon(combat, destination)
+  ) {
     throw new Error("That move destination is not available.");
   }
 
@@ -10045,13 +11718,13 @@ function resolveUnitStepChoice(
     playerId: unit.controllerId,
     unitId: unit.id,
     from,
-    to: destination
+    to: destination,
   });
   appendEvent(state, {
     type: "PENDING_CHOICE_RESOLVED",
     choiceId: choice.id,
     playerId: action.playerId,
-    selectedIndex: action.optionIndex
+    selectedIndex: action.optionIndex,
   });
 
   state.pendingChoice = null;
@@ -10070,7 +11743,7 @@ function openSecondAttackFollowUp(
   attacker: CombatUnitState,
   defender: CombatUnitState,
   attackRoll: number,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): boolean {
   const combat = state.combat;
   if (!combat || !isUnitAlive(attacker)) {
@@ -10093,7 +11766,11 @@ function openSecondAttackFollowUp(
   // Lich never demolishes its own fortifications.
   if (
     ability.onRoll === undefined &&
-    destroyEnemyFortificationsInCells(state, attacker, getOrthogonalNeighbors(defender.position)) > 0
+    destroyEnemyFortificationsInCells(
+      state,
+      attacker,
+      getOrthogonalNeighbors(defender.position),
+    ) > 0
   ) {
     if (finishCombatIfNeeded(state)) {
       return true;
@@ -10122,7 +11799,7 @@ function openSecondAttackFollowUp(
     sourceUnitId: attacker.id,
     anchorUnitId: defender.id,
     candidateUnitIds: candidates,
-    baseAttack: ability.baseAttack
+    baseAttack: ability.baseAttack,
   };
   state.phase = "choice";
   state.priorityPlayerId = attacker.controllerId;
@@ -10133,7 +11810,7 @@ function openSecondAttackFollowUp(
     choiceType: "ABILITY_TARGET_CHOICE",
     playerId: attacker.controllerId,
     sourceEffectIds: [],
-    message: `${attacker.name} chooses the target of ${ability.abilityName}.`
+    message: `${attacker.name} chooses the target of ${ability.abilityName}.`,
   });
   return true;
 }
@@ -10143,24 +11820,29 @@ function declareRandomOtherEnemyFollowUp(
   state: GameState,
   attacker: CombatUnitState,
   originalDefender: CombatUnitState,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): boolean {
   const combat = state.combat;
   const ability = getRandomOtherEnemySecondAttackAbility(attacker);
-  if (!combat || !ability || !isUnitAlive(attacker) || (attacker.attacksThisActivation ?? 0) !== 1) {
+  if (
+    !combat ||
+    !ability ||
+    !isUnitAlive(attacker) ||
+    (attacker.attacksThisActivation ?? 0) !== 1
+  ) {
     return false;
   }
   const candidates = Object.values(combat.units).filter(
     (unit) =>
       unit.id !== originalDefender.id &&
       unit.controllerId !== attacker.controllerId &&
-      isUnitAlive(unit)
+      isUnitAlive(unit),
   );
   if (candidates.length === 0) {
     return false;
   }
   const random = createSeededRandom(
-    `${state.seed}#${ability.abilityId}#${attacker.id}#${eventSeedNumber(state)}`
+    `${state.seed}#${ability.abilityId}#${attacker.id}#${eventSeedNumber(state)}`,
   );
   const target = candidates[random.nextInt(0, candidates.length - 1)];
   declareAbilityAttack(
@@ -10168,7 +11850,7 @@ function declareRandomOtherEnemyFollowUp(
     attacker,
     target.id,
     { ...ability, baseAttack: attacker.attack },
-    cards
+    cards,
   );
   return true;
 }
@@ -10178,14 +11860,14 @@ function declareAbilityAttack(
   attacker: CombatUnitState,
   targetUnitId: UnitId,
   ability: { abilityId: string; abilityName: string; baseAttack: number },
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: attacker.id,
     abilityId: ability.abilityId,
     targetUnitId,
-    message: `${attacker.name} unleashes ${ability.abilityName} on ${state.combat?.units[targetUnitId]?.cardName ?? targetUnitId}.`
+    message: `${attacker.name} unleashes ${ability.abilityName} on ${state.combat?.units[targetUnitId]?.cardName ?? targetUnitId}.`,
   });
 
   declareAttack(
@@ -10195,9 +11877,12 @@ function declareAbilityAttack(
       playerId: attacker.controllerId,
       attackerId: attacker.id,
       defenderId: targetUnitId,
-      abilityAttack: { abilityId: ability.abilityId, baseAttack: ability.baseAttack }
+      abilityAttack: {
+        abilityId: ability.abilityId,
+        baseAttack: ability.baseAttack,
+      },
     },
-    cards
+    cards,
   );
 }
 
@@ -10211,7 +11896,7 @@ function resolveSecondAttackFortHit(
   state: GameState,
   attacker: CombatUnitState,
   fort: { kind: "wall" | "gate"; position: number },
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   destroyFortification(state, attacker, fort.kind, fort.position);
   if (finishCombatIfNeeded(state)) {
@@ -10243,7 +11928,11 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   // Sticky initiative band for cross-side alternation (see selectActivationStep):
   // capture NOW, before a mid-activation Pack→Few flip or effect expiry can
   // change effectiveInitiative and drop this unit out of its speed tier.
-  activeUnit.activationInitiative = effectiveInitiative(activeUnit, state.activeEffects, state.combat);
+  activeUnit.activationInitiative = effectiveInitiative(
+    activeUnit,
+    state.activeEffects,
+    state.combat,
+  );
 
   // Prayer / Cards of Prophecy option A ("until its activation in the NEXT
   // combat round"): a positive next-activation buff laid on this unit while it
@@ -10255,7 +11944,7 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   appendExpiredEffectEvents(
     state,
     expireEffectsForActivationStart(state, activeUnit.id),
-    "activation-started"
+    "activation-started",
   );
 
   // Polish Wait: this activation is the unit's deferred RE-activation, not a
@@ -10265,7 +11954,9 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   // regeneration, poison-cube damage, the Fire Wall burn, the negative-morale
   // skip check, a second "[activation]" ability use). Only the Paralysis skip
   // still applies: a token gained while waiting eats the re-activation.
-  const waitedReactivation = Boolean(state.combat.waitPhase && activeUnit?.waitPending);
+  const waitedReactivation = Boolean(
+    state.combat.waitPhase && activeUnit?.waitPending,
+  );
 
   // MGQ Temptation: one marker is pressure only; two consume this activation
   // through the same state transition as Paralysis, then BOTH markers clear.
@@ -10276,11 +11967,15 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
       // Remove every independently displayed marker (the stack is capped at 2).
     }
     markActivatedThisRound(activeUnit);
-    appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, activeUnit.id), "activation-ended");
+    appendExpiredEffectEvents(
+      state,
+      expireEffectsForActivationEnd(state, activeUnit.id),
+      "activation-ended",
+    );
     appendEvent(state, {
       type: "UNIT_ACTIVATION_ENDED",
       playerId: activeUnit.controllerId,
-      unitId: activeUnit.id
+      unitId: activeUnit.id,
     });
     advanceActiveUnit(state);
     return;
@@ -10291,11 +11986,15 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   if (hasToken(activeUnit, "paralysis")) {
     removeToken(state, activeUnit, "paralysis", "activation-skipped");
     markActivatedThisRound(activeUnit);
-    appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, activeUnit.id), "activation-ended");
+    appendExpiredEffectEvents(
+      state,
+      expireEffectsForActivationEnd(state, activeUnit.id),
+      "activation-ended",
+    );
     appendEvent(state, {
       type: "UNIT_ACTIVATION_ENDED",
       playerId: activeUnit.controllerId,
-      unitId: activeUnit.id
+      unitId: activeUnit.id,
     });
     advanceActiveUnit(state);
     return;
@@ -10311,14 +12010,26 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   if (
     !waitedReactivation &&
     moraleCardsRuleEnabled(state) &&
-    playerHoldsMoraleCard(state, activeUnit.controllerId, MORALE_CARD_IDS.skipActivation)
+    playerHoldsMoraleCard(
+      state,
+      activeUnit.controllerId,
+      MORALE_CARD_IDS.skipActivation,
+    )
   ) {
     let checkRoll = rollAttackDie(state.combat);
     if (
       checkRoll === 1 &&
-      playerHoldsMoraleCard(state, activeUnit.controllerId, MORALE_CARD_IDS.rerollPlusOne)
+      playerHoldsMoraleCard(
+        state,
+        activeUnit.controllerId,
+        MORALE_CARD_IDS.rerollPlusOne,
+      )
     ) {
-      consumeHeldMoraleCard(state, activeUnit.controllerId, MORALE_CARD_IDS.rerollPlusOne);
+      consumeHeldMoraleCard(
+        state,
+        activeUnit.controllerId,
+        MORALE_CARD_IDS.rerollPlusOne,
+      );
       checkRoll = rollAttackDie(state.combat);
     }
     const skips = checkRoll === -1;
@@ -10335,17 +12046,27 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
         rolls: [checkRoll],
         success: skips,
         label: "Negative Morale check",
-        caption: skips ? `${activeUnit.cardName}'s activation is skipped!` : `${activeUnit.cardName} activates normally.`
-      }
+        caption: skips
+          ? `${activeUnit.cardName}'s activation is skipped!`
+          : `${activeUnit.cardName} activates normally.`,
+      },
     });
     if (skips) {
-      consumeHeldMoraleCard(state, activeUnit.controllerId, MORALE_CARD_IDS.skipActivation);
+      consumeHeldMoraleCard(
+        state,
+        activeUnit.controllerId,
+        MORALE_CARD_IDS.skipActivation,
+      );
       markActivatedThisRound(activeUnit);
-      appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, activeUnit.id), "activation-ended");
+      appendExpiredEffectEvents(
+        state,
+        expireEffectsForActivationEnd(state, activeUnit.id),
+        "activation-ended",
+      );
       appendEvent(state, {
         type: "UNIT_ACTIVATION_ENDED",
         playerId: activeUnit.controllerId,
-        unitId: activeUnit.id
+        unitId: activeUnit.id,
       });
       advanceActiveUnit(state);
       return;
@@ -10358,7 +12079,11 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   // priorityPlayerId was corrected later by the automation pump; UI/AFK/hosted
   // ownership readers that use activePlayerId still saw "neutral", making a
   // genuinely player-controlled guard look and behave like nobody's turn.
-  state.activePlayerId = combatUnitDecisionOwnerId(state, state.combat, activeUnit);
+  state.activePlayerId = combatUnitDecisionOwnerId(
+    state,
+    state.combat,
+    activeUnit,
+  );
   activeUnit.movedThisActivation = false;
   activeUnit.movementLockedThisActivation = false;
   activeUnit.attackedThisActivation = false;
@@ -10390,7 +12115,7 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   appendEvent(state, {
     type: "UNIT_ACTIVATION_STARTED",
     unitId: activeUnit.id,
-    playerId: activeUnit.controllerId
+    playerId: activeUnit.controllerId,
   });
 
   // Polish Wait re-activation: the once-per-activation start package below
@@ -10409,11 +12134,15 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
       return;
     }
     markActivatedThisRound(activeUnit);
-    appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, activeUnit.id), "activation-ended");
+    appendExpiredEffectEvents(
+      state,
+      expireEffectsForActivationEnd(state, activeUnit.id),
+      "activation-ended",
+    );
     appendEvent(state, {
       type: "UNIT_ACTIVATION_ENDED",
       playerId: activeUnit.controllerId,
-      unitId: activeUnit.id
+      unitId: activeUnit.id,
     });
     advanceActiveUnit(state);
     return;
@@ -10427,11 +12156,15 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
       return;
     }
     markActivatedThisRound(activeUnit);
-    appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, activeUnit.id), "activation-ended");
+    appendExpiredEffectEvents(
+      state,
+      expireEffectsForActivationEnd(state, activeUnit.id),
+      "activation-ended",
+    );
     appendEvent(state, {
       type: "UNIT_ACTIVATION_ENDED",
       playerId: activeUnit.controllerId,
-      unitId: activeUnit.id
+      unitId: activeUnit.id,
     });
     advanceActiveUnit(state);
     return;
@@ -10456,7 +12189,10 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
  * just began: self-regeneration, discarding the enemy's positive morale token,
  * and the random enemy-hand discard. All resolve without player input.
  */
-function clearOwnDebuffsAtActivation(state: GameState, unit: CombatUnitState): void {
+function clearOwnDebuffsAtActivation(
+  state: GameState,
+  unit: CombatUnitState,
+): void {
   if (!hasUnitAbilityEffect(unit, "CLEAR_OWN_DEBUFFS_ON_ACTIVATION")) {
     return;
   }
@@ -10465,7 +12201,7 @@ function clearOwnDebuffsAtActivation(state: GameState, unit: CombatUnitState): v
     state,
     { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
     { type: "unit", unitId: unit.id },
-    "negative"
+    "negative",
   );
   // ...and shake off the negative combat tokens (Weakness / Corrosion).
   for (const kind of ["weakness", "corrosion"] as const) {
@@ -10475,13 +12211,19 @@ function clearOwnDebuffsAtActivation(state: GameState, unit: CombatUnitState): v
   }
 }
 
-function applyActivationStartAbilities(state: GameState, unit: CombatUnitState): void {
+function applyActivationStartAbilities(
+  state: GameState,
+  unit: CombatUnitState,
+): void {
   const combat = state.combat;
   if (!combat) {
     return;
   }
 
-  const artifactPulse = commanderArtifactBonusesForUnit(state, unit).activationAdjacentDamage;
+  const artifactPulse = commanderArtifactBonusesForUnit(
+    state,
+    unit,
+  ).activationAdjacentDamage;
   if (artifactPulse > 0) {
     const targets = getUnitsAdjacentTo(combat, unit).filter(isUnitAlive);
     if (targets.length > 0) {
@@ -10489,16 +12231,20 @@ function applyActivationStartAbilities(state: GameState, unit: CombatUnitState):
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: unit.id,
         abilityId: "commander-artifact-plague-censer",
-        message: `Plague Censer deals ${artifactPulse} damage to every unit surrounding ${unit.cardName}.`
+        message: `Plague Censer deals ${artifactPulse} damage to every unit surrounding ${unit.cardName}.`,
       });
       for (const target of targets) {
         target.damage += artifactPulse;
         appendEvent(state, {
           type: "DAMAGE_ASSIGNED",
-          source: { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
+          source: {
+            type: "unit",
+            unitId: unit.id,
+            controllerId: unit.controllerId,
+          },
           target: { type: "unit", unitId: target.id },
           amount: artifactPulse,
-          damageKind: "effect"
+          damageKind: "effect",
         });
         markUnitRemovedIfNeeded(state, target);
       }
@@ -10514,14 +12260,18 @@ function applyActivationStartAbilities(state: GameState, unit: CombatUnitState):
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: unit.id,
-      abilityId: getInvulnerabilityActivation(unit)?.abilityId ?? "couatl-invulnerability",
+      abilityId:
+        getInvulnerabilityActivation(unit)?.abilityId ??
+        "couatl-invulnerability",
       targetUnitId: unit.id,
-      message: `${unit.cardName}'s invulnerability fades as it activates.`
+      message: `${unit.cardName}'s invulnerability fades as it activates.`,
     });
   }
 
   const enemyId =
-    unit.controllerId === combat.attackerPlayerId ? combat.defenderPlayerId : combat.attackerPlayerId;
+    unit.controllerId === combat.attackerPlayerId
+      ? combat.defenderPlayerId
+      : combat.attackerPlayerId;
 
   for (const ability of getActivationAbilities(unit)) {
     if (ability.kind === "heal-self") {
@@ -10539,13 +12289,17 @@ function applyActivationStartAbilities(state: GameState, unit: CombatUnitState):
         unitId: unit.id,
         abilityId: ability.abilityId,
         targetUnitId: unit.id,
-        message: `${unit.name} regenerates ${healed} damage.`
+        message: `${unit.name} regenerates ${healed} damage.`,
       });
       appendEvent(state, {
         type: "DAMAGE_HEALED",
-        source: { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
+        source: {
+          type: "unit",
+          unitId: unit.id,
+          controllerId: unit.controllerId,
+        },
         target: { type: "unit", unitId: unit.id },
-        amount: healed
+        amount: healed,
       });
       continue;
     }
@@ -10556,12 +12310,17 @@ function applyActivationStartAbilities(state: GameState, unit: CombatUnitState):
         continue;
       }
       enemy.morale = 0;
-      appendEvent(state, { type: "MORALE_CHANGED", playerId: enemyId, amount: -1, total: 0 });
+      appendEvent(state, {
+        type: "MORALE_CHANGED",
+        playerId: enemyId,
+        amount: -1,
+        total: 0,
+      });
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: unit.id,
         abilityId: ability.abilityId,
-        message: `${unit.name} discards the enemy's positive morale token.`
+        message: `${unit.name} discards the enemy's positive morale token.`,
       });
       continue;
     }
@@ -10576,24 +12335,35 @@ function applyActivationStartAbilities(state: GameState, unit: CombatUnitState):
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: unit.id,
         abilityId: ability.abilityId,
-        message: `${unit.name} drains a card from the enemy's hand.`
+        message: `${unit.name} drains a card from the enemy's hand.`,
       });
       continue;
     }
 
     if (ability.kind === "fear-aura") {
-      const window: AbilityRollWindow = { minRoll: ability.amount, maxRoll: ability.amount };
-      const candidate = rollAbilityCandidate(state, combat, unit.controllerId, 1, window, false);
-      const candidates = Object.values(combat.units).filter(
-        (target) => target.controllerId !== unit.controllerId && isUnitAlive(target)
+      const window: AbilityRollWindow = {
+        minRoll: ability.amount,
+        maxRoll: ability.amount,
+      };
+      const candidate = rollAbilityCandidate(
+        state,
+        combat,
+        unit.controllerId,
+        1,
+        window,
+        false,
       );
-      const succeeds = abilityRollSucceeds(candidate.rolls, window) && candidates.length > 0;
+      const candidates = Object.values(combat.units).filter(
+        (target) =>
+          target.controllerId !== unit.controllerId && isUnitAlive(target),
+      );
+      const succeeds =
+        abilityRollSucceeds(candidate.rolls, window) && candidates.length > 0;
       const target = succeeds
         ? candidates[
-            createSeededRandom(`${state.seed}#${ability.abilityId}#${eventSeedNumber(state)}`).nextInt(
-              0,
-              candidates.length - 1
-            )
+            createSeededRandom(
+              `${state.seed}#${ability.abilityId}#${eventSeedNumber(state)}`,
+            ).nextInt(0, candidates.length - 1)
           ]
         : undefined;
       appendEvent(state, {
@@ -10608,8 +12378,10 @@ function applyActivationStartAbilities(state: GameState, unit: CombatUnitState):
           rolls: [...candidate.rolls],
           success: succeeds,
           label: ability.abilityName,
-          caption: succeeds ? `${target!.cardName} is seized by fear!` : "No effect."
-        }
+          caption: succeeds
+            ? `${target!.cardName} is seized by fear!`
+            : "No effect.",
+        },
       });
       if (target) {
         applyParalysisToTarget(state, unit, target, ability);
@@ -10641,7 +12413,7 @@ function advanceActiveUnit(state: GameState): void {
   // Waited re-activation phase (highest token first) before ending the round.
   if (!step && !combat.waitPhase && houseRuleEnabled(state, "polish-wait")) {
     const waited = Object.values(combat.units).filter(
-      (unit) => isUnitAlive(unit) && unit.waitPending && unit.waitToken
+      (unit) => isUnitAlive(unit) && unit.waitPending && unit.waitToken,
     );
     if (waited.length > 0) {
       combat.waitPhase = true;
@@ -10702,7 +12474,9 @@ function advanceActiveUnit(state: GameState): void {
  * of the same card, or a Stacked guard next to an unstacked one, prints
  * different stats/abilities — that tie stays a real order choice.
  */
-function activationOrderCandidatesAreIndistinguishable(candidates: CombatUnitState[]): boolean {
+function activationOrderCandidatesAreIndistinguishable(
+  candidates: CombatUnitState[],
+): boolean {
   if (candidates.length < 2) {
     return true;
   }
@@ -10727,12 +12501,17 @@ function activationOrderCandidatesAreIndistinguishable(candidates: CombatUnitSta
  * unit already mid-move/attack keeps its turn. A tie does NOT steal — the buff
  * must make the unit STRICTLY faster, matching "make your unit faster to cut in".
  */
-function maybeStealActivationAfterInitiativeShift(state: GameState, casterId: PlayerId): void {
+function maybeStealActivationAfterInitiativeShift(
+  state: GameState,
+  casterId: PlayerId,
+): void {
   const combat = state.combat;
   if (!combat || combat.outcome || combat.setup) {
     return;
   }
-  const active = combat.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
+  const active = combat.activeUnitId
+    ? combat.units[combat.activeUnitId]
+    : undefined;
   if (
     !active ||
     !isUnitAlive(active) ||
@@ -10744,13 +12523,17 @@ function maybeStealActivationAfterInitiativeShift(state: GameState, casterId: Pl
   ) {
     return;
   }
-  const activeInitiative = effectiveInitiative(active, state.activeEffects, combat);
+  const activeInitiative = effectiveInitiative(
+    active,
+    state.activeEffects,
+    combat,
+  );
   const fasterFreshUnitExists = Object.values(combat.units).some(
     (unit) =>
       unit.id !== active.id &&
       isUnitAlive(unit) &&
       !unit.activatedThisRound &&
-      effectiveInitiative(unit, state.activeEffects, combat) > activeInitiative
+      effectiveInitiative(unit, state.activeEffects, combat) > activeInitiative,
   );
   if (!fasterFreshUnitExists) {
     return;
@@ -10765,7 +12548,11 @@ function maybeStealActivationAfterInitiativeShift(state: GameState, casterId: Pl
  * Opens the "which of your tied units goes first" choice. Index-aligned with
  * `candidates`; resolveActivationOrderChoice makes the picked unit active.
  */
-function openActivationOrderChoice(state: GameState, playerId: PlayerId, candidates: CombatUnitState[]): void {
+function openActivationOrderChoice(
+  state: GameState,
+  playerId: PlayerId,
+  candidates: CombatUnitState[],
+): void {
   const choiceId = `choice_${nextEventNumber(state)}`;
   const side = candidates[0].controllerId;
   const neutralPick = side === NEUTRAL_PLAYER_ID;
@@ -10777,11 +12564,11 @@ function openActivationOrderChoice(state: GameState, playerId: PlayerId, candida
       ? "Several Neutral units share the same speed — choose which one activates first."
       : "Several of your units share the same speed — choose which activates first.",
     options: candidates.map((unit) => ({
-      label: `Activate ${unit.cardName} (${getBattlefieldLabel(unit.position)})`
+      label: `Activate ${unit.cardName} (${getBattlefieldLabel(unit.position)})`,
     })),
     context: "combat-activation-order",
     activationOrder: { unitIds: candidates.map((unit) => unit.id), side },
-    returnPhase: "combat"
+    returnPhase: "combat",
   };
   state.phase = "choice";
   state.priorityPlayerId = playerId;
@@ -10791,14 +12578,14 @@ function openActivationOrderChoice(state: GameState, playerId: PlayerId, candida
     choiceType: "ABILITY_TARGET_CHOICE",
     playerId,
     sourceEffectIds: [],
-    message: `${state.players[playerId]?.name ?? playerId} chooses which tied unit activates first.`
+    message: `${state.players[playerId]?.name ?? playerId} chooses which tied unit activates first.`,
   });
 }
 
 /** Resolves the tied-activation pick: the chosen unit becomes active. */
 function resolveActivationOrderChoice(
   state: GameState,
-  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>
+  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>,
 ): void {
   const choice = state.pendingChoice;
   if (
@@ -10837,7 +12624,7 @@ function resolveActivationOrderChoice(
     type: "PENDING_CHOICE_RESOLVED",
     choiceId: choice.id,
     playerId: action.playerId,
-    selectedIndex: action.optionIndex
+    selectedIndex: action.optionIndex,
   });
 
   setActiveUnit(state, unit.id);
@@ -10855,11 +12642,15 @@ function skipUnitActivation(state: GameState, unit: CombatUnitState): void {
   }
 
   markActivatedThisRound(unit);
-  appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
+  appendExpiredEffectEvents(
+    state,
+    expireEffectsForActivationEnd(state, unit.id),
+    "activation-ended",
+  );
   appendEvent(state, {
     type: "UNIT_ACTIVATION_ENDED",
     playerId: unit.controllerId,
-    unitId: unit.id
+    unitId: unit.id,
   });
   advanceActiveUnit(state);
 }
@@ -10896,7 +12687,8 @@ function enforceParalysisOnOpenActivation(state: GameState): void {
     combat.setup ||
     combat.awaitingContinue ||
     combat.warMachineRound ||
-    (combat.pendingCommanderPlacement && combat.pendingCommanderPlacement.length > 0) ||
+    (combat.pendingCommanderPlacement &&
+      combat.pendingCommanderPlacement.length > 0) ||
     state.pendingChoice ||
     state.reactionWindow ||
     state.stack.length > 0
@@ -10937,7 +12729,7 @@ function enforceParalysisOnOpenActivation(state: GameState): void {
  */
 function continueNeutralStep(
   state: GameState,
-  action: Extract<GameAction, { type: "CONTINUE_NEUTRAL_STEP" }>
+  action: Extract<GameAction, { type: "CONTINUE_NEUTRAL_STEP" }>,
 ): void {
   const combat = state.combat;
   const pause = combat?.pendingNeutralStep;
@@ -10974,7 +12766,7 @@ function continueNeutralStep(
 function autoNeutralActivation(
   state: GameState,
   action: Extract<GameAction, { type: "AUTO_NEUTRAL_ACTIVATION" }>,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   const combat = state.combat;
   if (!combat || combat.outcome) {
@@ -10986,12 +12778,21 @@ function autoNeutralActivation(
   ) {
     throw new Error("You do not command the Neutral units of this combat.");
   }
-  const active = combat.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
-  if (!active || !isNeutralUnit(active) || !isUnitAlive(active) || active.activatedThisRound) {
+  const active = combat.activeUnitId
+    ? combat.units[combat.activeUnitId]
+    : undefined;
+  if (
+    !active ||
+    !isNeutralUnit(active) ||
+    !isUnitAlive(active) ||
+    active.activatedThisRound
+  ) {
     throw new Error("No Neutral unit is waiting to act.");
   }
   if (active.movedThisActivation || active.attackedThisActivation) {
-    throw new Error("This guard already began its activation — finish it manually.");
+    throw new Error(
+      "This guard already began its activation — finish it manually.",
+    );
   }
   executeNeutralActivation(state, active, cards);
 }
@@ -11000,7 +12801,7 @@ function autoNeutralActivation(
 function enchanterHealCandidates(
   combat: CombatState,
   unit: CombatUnitState,
-  ability?: { adjacentOnly?: boolean; targetTrait?: "mechanical" }
+  ability?: { adjacentOnly?: boolean; targetTrait?: "mechanical" },
 ): CombatUnitState[] {
   return Object.values(combat.units).filter(
     (candidate) =>
@@ -11010,8 +12811,9 @@ function enchanterHealCandidates(
       candidate.damage > 0 &&
       // Factory Mechanics: only ADJACENT + mechanical units can be repaired.
       // Enchanters leave both filters unset, so any wounded ally qualifies.
-      (!ability?.adjacentOnly || isAdjacent(unit.position, candidate.position)) &&
-      (ability?.targetTrait !== "mechanical" || isMechanicalUnit(candidate))
+      (!ability?.adjacentOnly ||
+        isAdjacent(unit.position, candidate.position)) &&
+      (ability?.targetTrait !== "mechanical" || isMechanicalUnit(candidate)),
   );
 }
 
@@ -11019,7 +12821,7 @@ function enchanterHealCandidates(
 function applyEnchanterBuffSelf(
   state: GameState,
   unit: CombatUnitState,
-  ability: { abilityId: string; abilityName: string; attackBonus: number }
+  ability: { abilityId: string; abilityName: string; attackBonus: number },
 ): void {
   // Factory Mechanics FEW have no "+Attack" fallback (attackBonus 0): with no
   // adjacent mechanical unit to repair, the activation ability simply does nothing.
@@ -11034,11 +12836,11 @@ function applyEnchanterBuffSelf(
       duration: { type: "current-combat-round" },
       polarity: "positive",
       removable: true,
-      modifiers: [{ type: "ATTACK_BONUS", amount: ability.attackBonus }]
+      modifiers: [{ type: "ATTACK_BONUS", amount: ability.attackBonus }],
     },
     { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
     unit.controllerId,
-    { type: "unit", unitId: unit.id }
+    { type: "unit", unitId: unit.id },
   );
   // Buff path uses `${id}-buff` so abilityFxPlans keyed on the bare id only fire
   // for a real heal/repair (Enchanters / Mechanics Field Repair), never for the
@@ -11048,7 +12850,7 @@ function applyEnchanterBuffSelf(
     unitId: unit.id,
     abilityId: `${ability.abilityId}-buff`,
     targetUnitId: unit.id,
-    message: `${unit.name} gains +${ability.attackBonus} Attack from ${ability.abilityName}.`
+    message: `${unit.name} gains +${ability.attackBonus} Attack from ${ability.abilityName}.`,
   });
 }
 
@@ -11057,20 +12859,20 @@ function applyEnchanterHeal(
   state: GameState,
   unit: CombatUnitState,
   target: CombatUnitState,
-  ability: { abilityId: string; abilityName: string; healAmount: number }
+  ability: { abilityId: string; abilityName: string; healAmount: number },
 ): void {
   healUnitDamage(
     state,
     { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
     { type: "unit", unitId: target.id },
-    ability.healAmount
+    ability.healAmount,
   );
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: unit.id,
     abilityId: ability.abilityId,
     targetUnitId: target.id,
-    message: `${unit.name} heals ${target.cardName} with ${ability.abilityName}.`
+    message: `${unit.name} heals ${target.cardName} with ${ability.abilityName}.`,
   });
 }
 
@@ -11083,7 +12885,7 @@ function applyActivationDamageSpell(
   state: GameState,
   unit: CombatUnitState,
   target: CombatUnitState,
-  ability: { abilityId: string; abilityName: string; amount: number }
+  ability: { abilityId: string; abilityName: string; amount: number },
 ): void {
   // The Faerie Bolt is a magic ATTACK — "a spell that does not count towards
   // your spell limit" — so it behaves like a real cast for both reduction AND
@@ -11105,23 +12907,26 @@ function applyActivationDamageSpell(
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: target.id,
-      abilityId: getInvulnerabilityActivation(target)?.abilityId ?? "couatl-invulnerability",
+      abilityId:
+        getInvulnerabilityActivation(target)?.abilityId ??
+        "couatl-invulnerability",
       targetUnitId: target.id,
-      message: `${target.cardName} is invulnerable and ignores ${ability.abilityName}.`
+      message: `${target.cardName} is invulnerable and ignores ${ability.abilityName}.`,
     });
     return;
   }
   const boltSchools: readonly SpellSchool[] = ["any"];
   if (
     unitImmuneToSpellSchoolsByEffect(state, target, boltSchools) ||
-    (!spellAbilitiesSuppressed(state) && unitImmuneToSpellSchools(target, boltSchools))
+    (!spellAbilitiesSuppressed(state) &&
+      unitImmuneToSpellSchools(target, boltSchools))
   ) {
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: target.id,
       abilityId: "immune-all-spells",
       targetUnitId: target.id,
-      message: `${target.cardName} is immune to Spells and ignores ${ability.abilityName}.`
+      message: `${target.cardName} is immune to Spells and ignores ${ability.abilityName}.`,
     });
     return;
   }
@@ -11131,7 +12936,7 @@ function applyActivationDamageSpell(
     unitId: unit.id,
     abilityId: ability.abilityId,
     targetUnitId: target.id,
-    message: `${unit.name} casts ${ability.abilityName} at ${target.cardName} for ${dealt} damage.`
+    message: `${unit.name} casts ${ability.abilityName} at ${target.cardName} for ${dealt} damage.`,
   });
   target.damage += dealt;
   noteUnitDamagedForTokens(state, target, dealt);
@@ -11140,14 +12945,19 @@ function applyActivationDamageSpell(
     source: { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
     target: { type: "unit", unitId: target.id },
     amount: dealt,
-    damageKind: "spell"
+    damageKind: "spell",
   });
   // Polish Balance Pack — the reprinted Eagle Eye EXPERT reaches SPELL-CASTING
   // UNITS too (Faerie Dragons): a bolt that dealt spell damage to an opponent's
   // unit lets that opponent (holding Eagle Eye + a crown) "cast back" the same
   // damage to a new enemy unit. The bolt has no spell card, so bank the AMOUNT.
   if (dealt > 0) {
-    noteEagleEyeUnitCopyOpportunity(state, target.controllerId, dealt, ability.abilityName);
+    noteEagleEyeUnitCopyOpportunity(
+      state,
+      target.controllerId,
+      dealt,
+      ability.abilityName,
+    );
   }
   markUnitRemovedIfNeeded(state, target);
   finishCombatIfNeeded(state);
@@ -11172,7 +12982,10 @@ function applyActivationDamageSpell(
  *    damaging play: a bolt that kills the last enemy must end the fight before
  *    the activation continues.
  */
-function resolveEnemyForceCardPlay(state: GameState, unit: CombatUnitState): void {
+function resolveEnemyForceCardPlay(
+  state: GameState,
+  unit: CombatUnitState,
+): void {
   const combat = state.combat;
   const force = combat?.enemyForce;
   if (!combat || !force || combat.outcome || force.cardIds.length === 0) {
@@ -11180,14 +12993,23 @@ function resolveEnemyForceCardPlay(state: GameState, unit: CombatUnitState): voi
   }
   // Only the hand HOLDER spends the hand, and only while it lives. An escort
   // body activating never plays a card.
-  if (!unit.bossUnit || unit.damage >= unit.maxHealth || enemyForceHandHolder(combat)?.id !== unit.id) {
+  if (
+    !unit.bossUnit ||
+    unit.damage >= unit.maxHealth ||
+    enemyForceHandHolder(combat)?.id !== unit.id
+  ) {
     return;
   }
   const firedKey = enemyForceFiredKey(unit.id, combat.round);
   if (force.fired.includes(firedKey)) {
     return;
   }
-  const chosen = chooseEnemyForcePlay(combat, unit, state.seed, state.activeEffects);
+  const chosen = chooseEnemyForcePlay(
+    combat,
+    unit,
+    state.seed,
+    state.activeEffects,
+  );
   if (!chosen) {
     // "It holds." The round is NOT marked fired: nothing was spent, and the
     // board may change before this unit activates again (Polish Wait), so a
@@ -11210,7 +13032,7 @@ function resolveEnemyForceCardPlay(state: GameState, unit: CombatUnitState): voi
       unitId: unit.id,
       cardId: entry.cardId,
       ...(targetUnitId ? { targetUnitId } : {}),
-      message: `${unit.cardName} plays ${cardName} — ${message}.`
+      message: `${unit.cardName} plays ${cardName} — ${message}.`,
     });
   };
 
@@ -11230,7 +13052,8 @@ function resolveEnemyForceCardPlay(state: GameState, unit: CombatUnitState): voi
     const schools: readonly SpellSchool[] = ["any"];
     if (
       unitImmuneToSpellSchoolsByEffect(state, target, schools) ||
-      (!spellAbilitiesSuppressed(state) && unitImmuneToSpellSchools(target, schools))
+      (!spellAbilitiesSuppressed(state) &&
+        unitImmuneToSpellSchools(target, schools))
     ) {
       note(`${target.cardName} is immune to Spells and ignores it`, target.id);
       return;
@@ -11244,10 +13067,14 @@ function resolveEnemyForceCardPlay(state: GameState, unit: CombatUnitState): voi
     noteUnitDamagedForTokens(state, target, dealt);
     appendEvent(state, {
       type: "DAMAGE_ASSIGNED",
-      source: { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
+      source: {
+        type: "unit",
+        unitId: unit.id,
+        controllerId: unit.controllerId,
+      },
       target: { type: "unit", unitId: target.id },
       amount: dealt,
-      damageKind: "spell"
+      damageKind: "spell",
     });
     markUnitRemovedIfNeeded(state, target);
     // A bolt that wiped the last unit of a side ends the fight before the
@@ -11266,9 +13093,13 @@ function resolveEnemyForceCardPlay(state: GameState, unit: CombatUnitState): voi
     unit.damage -= restored;
     appendEvent(state, {
       type: "DAMAGE_HEALED",
-      source: { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
+      source: {
+        type: "unit",
+        unitId: unit.id,
+        controllerId: unit.controllerId,
+      },
       target: { type: "unit", unitId: unit.id },
-      amount: restored
+      amount: restored,
     });
     if (execution.cleanse) {
       // The printed Cure rider: its negative ongoing effects and Paralysis.
@@ -11276,15 +13107,21 @@ function resolveEnemyForceCardPlay(state: GameState, unit: CombatUnitState): voi
         state,
         { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
         { type: "unit", unitId: unit.id },
-        "negative"
+        "negative",
       );
       while (hasToken(unit, "paralysis")) {
         removeToken(state, unit, "paralysis", "dispelled");
       }
-      note(`it removes ${restored} damage and shakes off its negative effects (health bars are never restored)`, unit.id);
+      note(
+        `it removes ${restored} damage and shakes off its negative effects (health bars are never restored)`,
+        unit.id,
+      );
       return;
     }
-    note(`it removes ${restored} damage (health bars are never restored)`, unit.id);
+    note(
+      `it removes ${restored} damage (health bars are never restored)`,
+      unit.id,
+    );
     return;
   }
 
@@ -11309,11 +13146,11 @@ function resolveEnemyForceCardPlay(state: GameState, unit: CombatUnitState): voi
       duration: execution.duration,
       polarity: execution.k === "self-buff" ? "positive" : "negative",
       removable: true,
-      modifiers: [modifier]
+      modifiers: [modifier],
     },
     { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
     unit.controllerId,
-    { type: "unit", unitId: subject.id }
+    { type: "unit", unitId: subject.id },
   );
   state.activeEffects.push(effect);
   appendEvent(state, {
@@ -11321,15 +13158,21 @@ function resolveEnemyForceCardPlay(state: GameState, unit: CombatUnitState): voi
     effectId: effect.id,
     controllerId: unit.controllerId,
     name: effect.name,
-    duration: effect.duration
+    duration: effect.duration,
   });
   const statLabel =
-    execution.stat === "attack" ? "Attack" : execution.stat === "defense" ? "Defense" : "Initiative";
+    execution.stat === "attack"
+      ? "Attack"
+      : execution.stat === "defense"
+        ? "Defense"
+        : "Initiative";
   const scopeLabel =
-    execution.duration.type === "combat" ? "for the rest of the combat" : "this combat round";
+    execution.duration.type === "combat"
+      ? "for the rest of the combat"
+      : "this combat round";
   note(
     `${execution.amount > 0 ? "+" : ""}${execution.amount} ${statLabel} on ${subject.cardName} ${scopeLabel}`,
-    subject.id
+    subject.id,
   );
 }
 
@@ -11342,7 +13185,7 @@ function resolveEnemyForceCardPlay(state: GameState, unit: CombatUnitState): voi
  */
 function applyEagleEyeUnitCopy(
   state: GameState,
-  action: Extract<GameAction, { type: "USE_EAGLE_EYE_UNIT_COPY" }>
+  action: Extract<GameAction, { type: "USE_EAGLE_EYE_UNIT_COPY" }>,
 ): void {
   const player = state.players[action.playerId];
   const combat = state.combat;
@@ -11350,11 +13193,18 @@ function applyEagleEyeUnitCopy(
   if (!player || !combat || !bolt) {
     throw new Error("There is no Eagle Eye unit-bolt copy to cast right now.");
   }
-  if (!player.hand.includes(EAGLE_EYE_ABILITY_ID) || !canPlayExpertMode(player, EAGLE_EYE_ABILITY_ID)) {
+  if (
+    !player.hand.includes(EAGLE_EYE_ABILITY_ID) ||
+    !canPlayExpertMode(player, EAGLE_EYE_ABILITY_ID)
+  ) {
     throw new Error("Eagle Eye's Expert copy is not available.");
   }
   const target = combat.units[action.targetUnitId];
-  if (!target || target.controllerId === action.playerId || !(target.damage < target.maxHealth)) {
+  if (
+    !target ||
+    target.controllerId === action.playerId ||
+    !(target.damage < target.maxHealth)
+  ) {
     throw new Error("Choose a living enemy unit to cast the copied bolt at.");
   }
 
@@ -11378,14 +13228,15 @@ function applyEagleEyeUnitCopy(
   if (
     isUnitDamageImmune(target) ||
     unitImmuneToSpellSchoolsByEffect(state, target, boltSchools) ||
-    (!spellAbilitiesSuppressed(state) && unitImmuneToSpellSchools(target, boltSchools))
+    (!spellAbilitiesSuppressed(state) &&
+      unitImmuneToSpellSchools(target, boltSchools))
   ) {
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: target.id,
       abilityId: "immune-all-spells",
       targetUnitId: target.id,
-      message: `${target.cardName} is immune and ignores the copied ${bolt.label}.`
+      message: `${target.cardName} is immune and ignores the copied ${bolt.label}.`,
     });
     return;
   }
@@ -11396,16 +13247,20 @@ function applyEagleEyeUnitCopy(
     unitId: target.id,
     abilityId: "eagle-eye-copy",
     targetUnitId: target.id,
-    message: `${player.name} copies ${bolt.label} with Eagle Eye at ${target.cardName} for ${dealt} damage.`
+    message: `${player.name} copies ${bolt.label} with Eagle Eye at ${target.cardName} for ${dealt} damage.`,
   });
   target.damage += dealt;
   noteUnitDamagedForTokens(state, target, dealt);
   appendEvent(state, {
     type: "DAMAGE_ASSIGNED",
-    source: { type: "card", cardId: EAGLE_EYE_ABILITY_ID, controllerId: action.playerId },
+    source: {
+      type: "card",
+      cardId: EAGLE_EYE_ABILITY_ID,
+      controllerId: action.playerId,
+    },
     target: { type: "unit", unitId: target.id },
     amount: dealt,
-    damageKind: "spell"
+    damageKind: "spell",
   });
   markUnitRemovedIfNeeded(state, target);
   finishCombatIfNeeded(state);
@@ -11422,7 +13277,7 @@ function noteEagleEyeUnitCopyOpportunity(
   state: GameState,
   damagedControllerId: PlayerId,
   amount: number,
-  label: string
+  label: string,
 ): void {
   if (!houseRuleEnabled(state, "polish-card-balance") || !state.combat) {
     return;
@@ -11448,7 +13303,10 @@ function noteEagleEyeUnitCopyOpportunity(
  * the unit it would attack (normal target priority). Returns true when it did
  * something, so the caller can re-check for a finished combat.
  */
-function applyNeutralActivationAbility(state: GameState, unit: CombatUnitState): boolean {
+function applyNeutralActivationAbility(
+  state: GameState,
+  unit: CombatUnitState,
+): boolean {
   const combat = state.combat;
   if (!combat) {
     return false;
@@ -11463,7 +13321,7 @@ function applyNeutralActivationAbility(state: GameState, unit: CombatUnitState):
     const candidates = enchanterHealCandidates(combat, unit, enchant);
     if (candidates.length > 0) {
       const target = candidates.reduce((best, candidate) =>
-        candidate.damage > best.damage ? candidate : best
+        candidate.damage > best.damage ? candidate : best,
       );
       applyEnchanterHeal(state, unit, target, enchant);
     } else {
@@ -11474,7 +13332,10 @@ function applyNeutralActivationAbility(state: GameState, unit: CombatUnitState):
 
   // Orb of Vulnerability negates it for a NEUTRAL dragon too — the card is
   // global ("all units"), not side-scoped.
-  const faerie = getActivationDamageSpellAbility(unit, spellAbilitiesSuppressed(state));
+  const faerie = getActivationDamageSpellAbility(
+    unit,
+    spellAbilitiesSuppressed(state),
+  );
   if (faerie) {
     const target = pickNeutralTarget(combat, unit);
     if (target) {
@@ -11535,7 +13396,7 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
   // on, or no other friendly unit to move, there is nothing to do, so the
   // ability is simply marked done.
   const teleportAbility = getUnitAbilityDefinitions(unit).find(
-    (def) => def.effect?.type === "TELEPORT_ANY_AT_ACTIVATION"
+    (def) => def.effect?.type === "TELEPORT_ANY_AT_ACTIVATION",
   );
   if (teleportAbility) {
     let hasEmptySpace = false;
@@ -11547,7 +13408,9 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
     }
     const candidates = Object.values(combat.units).filter(
       (candidate) =>
-        isUnitAlive(candidate) && candidate.controllerId === unit.controllerId && candidate.id !== unit.id
+        isUnitAlive(candidate) &&
+        candidate.controllerId === unit.controllerId &&
+        candidate.id !== unit.id,
     );
     if (!hasEmptySpace || candidates.length === 0) {
       unit.activationAbilityDone = true;
@@ -11566,7 +13429,7 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
       anchorUnitId: null,
       candidateUnitIds: candidates.map((candidate) => candidate.id),
       optional: true,
-      skipLabel: "Don't teleport"
+      skipLabel: "Don't teleport",
     };
     state.phase = "choice";
     state.priorityPlayerId = chooser;
@@ -11576,7 +13439,7 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
       choiceType: "ABILITY_TARGET_CHOICE",
       playerId: chooser,
       sourceEffectIds: [],
-      message: `${unit.cardName} may teleport a unit to an empty space.`
+      message: `${unit.cardName} may teleport a unit to an empty space.`,
     });
     return;
   }
@@ -11612,11 +13475,14 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
       sourceUnitId: unit.id,
       anchorUnitId: null,
       candidateUnitIds: candidates.map((candidate) => candidate.id),
-      optional: false
+      optional: false,
     };
     state.phase = "choice";
     state.priorityPlayerId = chooser;
-    const targetNoun = enchant.targetTrait === "mechanical" ? "repair an adjacent mechanical unit" : "heal a friendly unit";
+    const targetNoun =
+      enchant.targetTrait === "mechanical"
+        ? "repair an adjacent mechanical unit"
+        : "heal a friendly unit";
     appendEvent(state, {
       type: "PENDING_CHOICE_CREATED",
       choiceId,
@@ -11626,20 +13492,24 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
       message:
         enchant.attackBonus > 0
           ? `${unit.cardName} chooses: ${targetNoun} or gain +${enchant.attackBonus} Attack.`
-          : `${unit.cardName}: ${targetNoun}.`
+          : `${unit.cardName}: ${targetNoun}.`,
     });
     return;
   }
 
   // With the Orb of Vulnerability in play this is null, so NO target choice is
   // opened at all and the dragon simply moves/attacks like an ability-less unit.
-  const faerie = getActivationDamageSpellAbility(unit, spellAbilitiesSuppressed(state));
+  const faerie = getActivationDamageSpellAbility(
+    unit,
+    spellAbilitiesSuppressed(state),
+  );
   if (faerie) {
     // Any living enemy is a legal target — spell-school immunity is deliberately
     // NOT filtered here (see applyActivationDamageSpell: the bolt is spell
     // damage, not a Spell card).
     const targets = Object.values(combat.units).filter(
-      (candidate) => candidate.controllerId !== unit.controllerId && isUnitAlive(candidate)
+      (candidate) =>
+        candidate.controllerId !== unit.controllerId && isUnitAlive(candidate),
     );
     if (targets.length === 0) {
       // No enemy in range of the spell: the activation ability does nothing.
@@ -11658,7 +13528,7 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
       sourceUnitId: unit.id,
       anchorUnitId: null,
       candidateUnitIds: targets.map((candidate) => candidate.id),
-      amount: faerie.amount
+      amount: faerie.amount,
     };
     state.phase = "choice";
     state.priorityPlayerId = chooser;
@@ -11668,7 +13538,7 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
       choiceType: "ABILITY_TARGET_CHOICE",
       playerId: chooser,
       sourceEffectIds: [],
-      message: `${unit.cardName} chooses a target for ${faerie.abilityName}.`
+      message: `${unit.cardName} chooses a target for ${faerie.abilityName}.`,
     });
     return;
   }
@@ -11694,7 +13564,7 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
       anchorUnitId: null,
       candidateUnitIds: [unit.id],
       optional: true,
-      skipLabel: "Don't activate"
+      skipLabel: "Don't activate",
     };
     state.phase = "choice";
     state.priorityPlayerId = chooser;
@@ -11704,7 +13574,7 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
       choiceType: "ABILITY_TARGET_CHOICE",
       playerId: chooser,
       sourceEffectIds: [],
-      message: `${unit.cardName} may become invulnerable this round.`
+      message: `${unit.cardName} may become invulnerable this round.`,
     });
     return;
   }
@@ -11727,7 +13597,7 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
       anchorUnitId: null,
       candidateUnitIds: [unit.id],
       optional: true,
-      skipLabel: "Don't place a cube"
+      skipLabel: "Don't place a cube",
     };
     state.phase = "choice";
     state.priorityPlayerId = chooser;
@@ -11737,7 +13607,7 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
       choiceType: "ABILITY_TARGET_CHOICE",
       playerId: chooser,
       sourceEffectIds: [],
-      message: `${unit.cardName} may bank a faction cube.`
+      message: `${unit.cardName} may bank a faction cube.`,
     });
     return;
   }
@@ -11752,14 +13622,16 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
  */
 function reactionIsPreActivationInterrupt(
   cards: CardLibrary,
-  action: Extract<GameAction, { type: "PLAY_REACTION" }>
+  action: Extract<GameAction, { type: "PLAY_REACTION" }>,
 ): boolean {
   const card = cards[action.cardId];
   if (!card) {
     return false;
   }
   const effectType = getEffectiveCardEffect(card, action.optionIndex)?.type;
-  return effectType === "SKIP_ACTIVATION" || effectType === "ACTIVATE_RANGED_UNIT";
+  return (
+    effectType === "SKIP_ACTIVATION" || effectType === "ACTIVATE_RANGED_UNIT"
+  );
 }
 
 /**
@@ -11773,7 +13645,10 @@ function reactionIsPreActivationInterrupt(
  * players are handled by the ordinary reaction-window priority/passing, and a
  * resumed or newly-active unit gets a fresh window without ever looping.
  */
-function maybeOpenPreActivationWindow(state: GameState, cards: CardLibrary): void {
+function maybeOpenPreActivationWindow(
+  state: GameState,
+  cards: CardLibrary,
+): void {
   const combat = state.combat;
   if (
     !combat ||
@@ -11806,8 +13681,10 @@ function maybeOpenPreActivationWindow(state: GameState, cards: CardLibrary): voi
   const triggerEvent = [...state.eventLog]
     .reverse()
     .find(
-      (event): event is Extract<GameEvent, { type: "UNIT_ACTIVATION_STARTED" }> =>
-        event.type === "UNIT_ACTIVATION_STARTED" && event.unitId === unit.id
+      (
+        event,
+      ): event is Extract<GameEvent, { type: "UNIT_ACTIVATION_STARTED" }> =>
+        event.type === "UNIT_ACTIVATION_STARTED" && event.unitId === unit.id,
     );
   if (!triggerEvent) {
     return;
@@ -11815,13 +13692,18 @@ function maybeOpenPreActivationWindow(state: GameState, cards: CardLibrary): voi
 
   // Offer the window only when a real pre-activation interrupt is available;
   // mark it offered regardless so we do not recompute it every action.
-  const legalReactions = getLegalReactionsForTrigger(state, triggerEvent, cards);
+  const legalReactions = getLegalReactionsForTrigger(
+    state,
+    triggerEvent,
+    cards,
+  );
   const hasInterrupt = Object.values(legalReactions).some((actions) =>
     actions.some(
       (legal) =>
         legal.action.type === "USE_SCHOOL_PERMANENT_EXPERT" ||
-        (legal.action.type === "PLAY_REACTION" && reactionIsPreActivationInterrupt(cards, legal.action))
-    )
+        (legal.action.type === "PLAY_REACTION" &&
+          reactionIsPreActivationInterrupt(cards, legal.action)),
+    ),
   );
 
   unit.preActivationWindowOffered = true;
@@ -11870,7 +13752,10 @@ function markActivatedThisRound(unit: CombatUnitState, defended = false): void {
  * Polish Wait: the active unit takes the lowest free Wait token, ends its
  * main-phase activation, and will re-activate after every other unit has acted.
  */
-function waitUnit(state: GameState, action: Extract<GameAction, { type: "WAIT_UNIT" }>): void {
+function waitUnit(
+  state: GameState,
+  action: Extract<GameAction, { type: "WAIT_UNIT" }>,
+): void {
   const combat = state.combat;
   const unit = combat?.units[action.unitId];
   if (
@@ -11883,13 +13768,23 @@ function waitUnit(state: GameState, action: Extract<GameAction, { type: "WAIT_UN
     throw new Error("That unit cannot Wait now.");
   }
   if (combat.waitPhase) {
-    throw new Error("A unit cannot Wait during the Waited re-activation phase.");
+    throw new Error(
+      "A unit cannot Wait during the Waited re-activation phase.",
+    );
   }
-  if (unit.movedThisActivation || unit.attackedThisActivation || unit.waitToken) {
-    throw new Error("Wait is only available at the beginning of the unit's activation.");
+  if (
+    unit.movedThisActivation ||
+    unit.attackedThisActivation ||
+    unit.waitToken
+  ) {
+    throw new Error(
+      "Wait is only available at the beginning of the unit's activation.",
+    );
   }
 
-  const token = nextWaitTokenNumber(Object.values(combat.units).map((u) => u.waitToken));
+  const token = nextWaitTokenNumber(
+    Object.values(combat.units).map((u) => u.waitToken),
+  );
   // Main-phase "done" without clearing Wait bookkeeping.
   unit.activatedThisRound = true;
   unit.defendedLastActivation = false;
@@ -11899,7 +13794,7 @@ function waitUnit(state: GameState, action: Extract<GameAction, { type: "WAIT_UN
   appendEvent(state, {
     type: "UNIT_ACTIVATION_ENDED",
     playerId: action.playerId,
-    unitId: unit.id
+    unitId: unit.id,
   });
 
   advanceActiveUnit(state);
@@ -11907,22 +13802,35 @@ function waitUnit(state: GameState, action: Extract<GameAction, { type: "WAIT_UN
   state.priorityPlayerId = null;
 }
 
-function refreshReactionWindowLegalReactions(state: GameState, cards: CardLibrary): void {
+function refreshReactionWindowLegalReactions(
+  state: GameState,
+  cards: CardLibrary,
+): void {
   if (!state.reactionWindow) {
     return;
   }
 
-  const legalReactions = getLegalReactionsForTrigger(state, state.reactionWindow.triggerEvent, cards);
-  const allowedPlayerIds = reactionPlayerOrder(state, legalReactions, state.reactionWindow.triggerEvent);
+  const legalReactions = getLegalReactionsForTrigger(
+    state,
+    state.reactionWindow.triggerEvent,
+    cards,
+  );
+  const allowedPlayerIds = reactionPlayerOrder(
+    state,
+    legalReactions,
+    state.reactionWindow.triggerEvent,
+  );
 
   state.reactionWindow.legalReactions = legalReactions;
   state.reactionWindow.allowedPlayerIds = allowedPlayerIds;
-  state.reactionWindow.passedPlayerIds = state.reactionWindow.passedPlayerIds.filter((playerId) =>
-    allowedPlayerIds.includes(playerId)
-  );
+  state.reactionWindow.passedPlayerIds =
+    state.reactionWindow.passedPlayerIds.filter((playerId) =>
+      allowedPlayerIds.includes(playerId),
+    );
 
   if (!allowedPlayerIds.includes(state.reactionWindow.priorityPlayerId)) {
-    state.reactionWindow.priorityPlayerId = allowedPlayerIds[0] ?? state.reactionWindow.priorityPlayerId;
+    state.reactionWindow.priorityPlayerId =
+      allowedPlayerIds[0] ?? state.reactionWindow.priorityPlayerId;
   }
 
   state.priorityPlayerId = state.reactionWindow.priorityPlayerId;
@@ -11932,10 +13840,18 @@ function openReactionWindowForTrigger(
   state: GameState,
   stackItem: ResolutionStackItem | null,
   triggerEvent: GameEvent,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): boolean {
-  const legalReactions = getLegalReactionsForTrigger(state, triggerEvent, cards);
-  const allowedPlayerIds = reactionPlayerOrder(state, legalReactions, triggerEvent);
+  const legalReactions = getLegalReactionsForTrigger(
+    state,
+    triggerEvent,
+    cards,
+  );
+  const allowedPlayerIds = reactionPlayerOrder(
+    state,
+    legalReactions,
+    triggerEvent,
+  );
 
   if (allowedPlayerIds.length === 0) {
     return false;
@@ -11955,7 +13871,9 @@ function openReactionWindowForTrigger(
   // (reactionOfferOpensWindow, legal-actions.ts) — the two gates diverging is
   // exactly how the "every attack pauses" class of bug happens.
   const opensWindow = allowedPlayerIds.some((playerId) =>
-    (legalReactions[playerId] ?? []).some((legal) => reactionOfferOpensWindow(legal, triggerEvent))
+    (legalReactions[playerId] ?? []).some((legal) =>
+      reactionOfferOpensWindow(legal, triggerEvent),
+    ),
   );
   if (!opensWindow) {
     return false;
@@ -11974,7 +13892,7 @@ function openReactionWindowForTrigger(
     priorityPlayerId: allowedPlayerIds[0],
     legalReactions,
     passedPlayerIds: [],
-    closesWhen: "all-pass"
+    closesWhen: "all-pass",
   };
   state.priorityPlayerId = allowedPlayerIds[0];
   state.phase = "reaction";
@@ -11984,7 +13902,7 @@ function openReactionWindowForTrigger(
     windowId,
     triggerEventId: triggerEvent.id,
     priorityPlayerId: allowedPlayerIds[0],
-    allowedPlayerIds
+    allowedPlayerIds,
   });
 
   return true;
@@ -11999,15 +13917,25 @@ function openReactionWindowForTrigger(
 function resumeAttackWindowAfterRedirect(
   state: GameState,
   stackItem: ResolutionStackItem | undefined,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
-  if (!stackItem || (stackItem.action.type !== "ATTACK_UNIT" && stackItem.action.type !== "MOVE_AND_ATTACK_UNIT")) {
+  if (
+    !stackItem ||
+    (stackItem.action.type !== "ATTACK_UNIT" &&
+      stackItem.action.type !== "MOVE_AND_ATTACK_UNIT")
+  ) {
     return;
   }
   const triggerEvent = stackItem.triggerEventIds
     .map((eventId) => state.eventLog.find((event) => event.id === eventId))
-    .find((event): event is Extract<GameEvent, { type: "UNIT_ATTACK_DECLARED" }> => event?.type === "UNIT_ATTACK_DECLARED");
-  if (!triggerEvent || !openReactionWindowForTrigger(state, stackItem, triggerEvent, cards)) {
+    .find(
+      (event): event is Extract<GameEvent, { type: "UNIT_ATTACK_DECLARED" }> =>
+        event?.type === "UNIT_ATTACK_DECLARED",
+    );
+  if (
+    !triggerEvent ||
+    !openReactionWindowForTrigger(state, stackItem, triggerEvent, cards)
+  ) {
     resolveTopStack(state, cards);
   }
 }
@@ -12024,10 +13952,13 @@ function resumeAttackWindowAfterRedirect(
 function resumeCastWindowForRecall(
   state: GameState,
   stackItem: ResolutionStackItem,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): boolean {
   const triggerEvent = castTriggerEventOf(state, stackItem);
-  if (!triggerEvent || state.combat?.pendingCastReactionRecall?.triggerEventId !== triggerEvent.id) {
+  if (
+    !triggerEvent ||
+    state.combat?.pendingCastReactionRecall?.triggerEventId !== triggerEvent.id
+  ) {
     return false;
   }
   return openReactionWindowForTrigger(state, stackItem, triggerEvent, cards);
@@ -12060,7 +13991,11 @@ function spellMaxPowerBreakpoint(card: CardDefinition | undefined): number {
  * — avoids importing getLegalActions into the reducer (cycle risk). Used only
  * as the escape hatch for the under-min Power pass guard.
  */
-function casterCanFuelPendingSpell(state: GameState, playerId: PlayerId, cards: CardLibrary): boolean {
+function casterCanFuelPendingSpell(
+  state: GameState,
+  playerId: PlayerId,
+  cards: CardLibrary,
+): boolean {
   const player = state.players[playerId];
   if (!player) {
     return false;
@@ -12087,7 +14022,11 @@ function casterCanFuelPendingSpell(state: GameState, playerId: PlayerId, cards: 
   return false;
 }
 
-function getCurrentSpellPower(state: GameState, stackItem: ResolutionStackItem, cards: CardLibrary): number {
+function getCurrentSpellPower(
+  state: GameState,
+  stackItem: ResolutionStackItem,
+  cards: CardLibrary,
+): number {
   // The cast Power formula lives in ONE place — resolvedSpellPowerForStackItem
   // (legal-actions.ts) — so the live UI readout and the Resistance offer gate,
   // which share that helper, can never disagree with the Power the spell
@@ -12105,7 +14044,7 @@ function shouldRetaliate(
   /** Ash's Bloodlust VI: this single attack ignores Retaliation Attacks. */
   ignoreRetaliationOverride = false,
   /** When given, the Counterstrike UNLIMITED_RETALIATION effect is honoured. */
-  state?: GameState
+  state?: GameState,
 ): boolean {
   return (
     isUnitAlive(attacker) &&
@@ -12137,7 +14076,7 @@ function qualifiesForPreemptiveRetaliation(
   defender: CombatUnitState,
   ignoreRetaliationOverride: boolean,
   /** When given, the Bloodlust IV combat-long CANNOT_RETALIATE cube is honoured. */
-  state?: GameState
+  state?: GameState,
 ): boolean {
   return (
     Boolean(getPreemptiveRetaliation(defender)) &&
@@ -12148,7 +14087,8 @@ function qualifiesForPreemptiveRetaliation(
     // A pre-emptive strike is still a Retaliation Attack, so the Bloodlust IV
     // combat-long Black cube suppresses it too.
     !(state ? unitHasCannotRetaliateEffect(state, defender) : false) &&
-    (!defender.retaliatedThisRound || hasUnitAbilityEffect(defender, "ALLOW_UNLIMITED_RETALIATION"))
+    (!defender.retaliatedThisRound ||
+      hasUnitAbilityEffect(defender, "ALLOW_UNLIMITED_RETALIATION"))
   );
 }
 
@@ -12166,7 +14106,7 @@ function openDeclaredAttackWindow(
   state: GameState,
   stackItem: ResolutionStackItem,
   attackDeclared: GameEvent,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   stackItem.modifiers.misfortunePhase = true;
   if (openReactionWindowForTrigger(state, stackItem, attackDeclared, cards)) {
@@ -12186,7 +14126,7 @@ function openRetaliationWindow(
   cards: CardLibrary,
   /** Factory Bounty Hunters' Preemptive Shot: this retaliation fires BEFORE the
    *  attacker's blow, so its resolution resumes the parked original attack. */
-  preemptive = false
+  preemptive = false,
 ): void {
   if (!state.combat) {
     return;
@@ -12195,14 +14135,14 @@ function openRetaliationWindow(
   appendEvent(state, {
     type: "RETALIATION_ATTACKED",
     attackerId: defender.id,
-    defenderId: attacker.id
+    defenderId: attacker.id,
   });
 
   const retaliationAction: Extract<GameAction, { type: "ATTACK_UNIT" }> = {
     type: "ATTACK_UNIT",
     playerId: defender.controllerId,
     attackerId: defender.id,
-    defenderId: attacker.id
+    defenderId: attacker.id,
   };
   const stackItem = makeStackItem(state, retaliationAction);
   if (preemptive) {
@@ -12223,7 +14163,8 @@ function openRetaliationWindow(
   // Haart (Necropolis) Dread Knights IV grants the same disadvantage as a
   // lasting effect on whichever unit he buffed.
   const rollMode =
-    hasRetaliationAgainstDisadvantage(attacker) || hasActiveRetaliationDisadvantage(state, attacker)
+    hasRetaliationAgainstDisadvantage(attacker) ||
+    hasActiveRetaliationDisadvantage(state, attacker)
       ? "disadvantage"
       : // This is the defender's Retaliation Attack, so the "[unit_attack] Ignore
         // the combat penalties" waiver does NOT apply — a retaliating ranged unit
@@ -12236,7 +14177,7 @@ function openRetaliationWindow(
     defenderId: attacker.id,
     isRetaliation: true,
     attackKind,
-    rollMode
+    rollMode,
   });
   stackItem.triggerEventIds.push(attackDeclared.id);
 
@@ -12254,15 +14195,18 @@ function resolveAttackOrOfferDieCancel(
   stackItem: ResolutionStackItem,
   details: NonNullable<ReturnType<typeof getAttackStackDetails>>,
   candidate: AttackRollCandidate,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
-  if (!stackItem.modifiers.dieCancelOffered && !stackItem.modifiers.attackDieCancelled) {
+  if (
+    !stackItem.modifiers.dieCancelOffered &&
+    !stackItem.modifiers.attackDieCancelled
+  ) {
     const probe: GameEvent = {
       id: "die-settled-probe",
       type: "ATTACK_DIE_SETTLED",
       attackerId: details.attacker.id,
       defenderId: details.defender.id,
-      roll: candidate.roll
+      roll: candidate.roll,
     };
     const reactions = getLegalReactionsForTrigger(state, probe, cards);
     if (reactionPlayerOrder(state, reactions).length > 0) {
@@ -12272,7 +14216,7 @@ function resolveAttackOrOfferDieCancel(
         type: "ATTACK_DIE_SETTLED",
         attackerId: details.attacker.id,
         defenderId: details.defender.id,
-        roll: candidate.roll
+        roll: candidate.roll,
       });
       if (openReactionWindowForTrigger(state, stackItem, settled, cards)) {
         return;
@@ -12286,7 +14230,11 @@ function resolveAttackOrOfferDieCancel(
   finishResolvedAttack(state, stackItem, details, candidate, cards);
 }
 
-function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem, cards: CardLibrary): void {
+function resolveAttackStackItem(
+  state: GameState,
+  stackItem: ResolutionStackItem,
+  cards: CardLibrary,
+): void {
   const combat = state.combat;
   const details = getAttackStackDetails(state, stackItem);
   if (!combat || !details) {
@@ -12347,7 +14295,7 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
       details.attacker,
       details.defender,
       Boolean(stackItem.modifiers.ignoresRetaliationThisAttack),
-      state
+      state,
     )
   ) {
     stackItem.modifiers.preemptiveRetaliationTriggered = true;
@@ -12358,24 +14306,42 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
         unitId: details.defender.id,
         abilityId: preempt.abilityId,
         targetUnitId: details.defender.id,
-        message: `${details.defender.cardName} fires a Preemptive Shot at ${details.attacker.cardName}.`
+        message: `${details.defender.cardName} fires a Preemptive Shot at ${details.attacker.cardName}.`,
       });
     }
-    openRetaliationWindow(state, details.attacker, details.defender, cards, true);
+    openRetaliationWindow(
+      state,
+      details.attacker,
+      details.defender,
+      cards,
+      true,
+    );
     return;
   }
 
   // Resuming after the lethal-save window: the die was already rolled, so reuse
   // that outcome instead of rolling again.
   if (stackItem.modifiers.rolledCandidate) {
-    finishResolvedAttack(state, stackItem, details, stackItem.modifiers.rolledCandidate, cards);
+    finishResolvedAttack(
+      state,
+      stackItem,
+      details,
+      stackItem.modifiers.rolledCandidate,
+      cards,
+    );
     return;
   }
 
   // Bless: "Ignores the Attack die roll" — the die never rolls (outcome 0),
   // so reroll effects have nothing to reroll either.
   if (details.ignoreAttackDie) {
-    finishResolvedAttack(state, stackItem, details, { rolls: [0], roll: 0 }, cards);
+    finishResolvedAttack(
+      state,
+      stackItem,
+      details,
+      { rolls: [0], roll: 0 },
+      cards,
+    );
     return;
   }
 
@@ -12386,13 +14352,19 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
   // result resolved (a "-1" subtracts), so the top rung can never add to the
   // attack. Power 0 keeps the classic cancelled die (details.ignoreAttackDie
   // above already returned).
-  if (stackItem.modifiers.misfortuneDie && stackItem.modifiers.misfortuneDie !== "negate") {
+  if (
+    stackItem.modifiers.misfortuneDie &&
+    stackItem.modifiers.misfortuneDie !== "negate"
+  ) {
     const mode = stackItem.modifiers.misfortuneDie;
     const rolls =
       mode === "lower-of-two"
         ? [rollAttackDie(combat), rollAttackDie(combat)]
         : Array.from({ length: 4 }, () => rollAttackDieWithPlusReroll(combat));
-    const value = mode === "lower-of-two" ? Math.min(...rolls) : rolls.reduce((sum, roll) => sum + roll, 0);
+    const value =
+      mode === "lower-of-two"
+        ? Math.min(...rolls)
+        : rolls.reduce((sum, roll) => sum + roll, 0);
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: details.attacker.id,
@@ -12401,14 +14373,14 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
       message:
         mode === "lower-of-two"
           ? `Misfortune: ${details.attacker.cardName} rolls 2 Attack dice and resolves the lower (${value}).`
-          : `Misfortune: ${details.attacker.cardName} rolls 4 Attack dice, rerolling every "+1" until only "-1" and "0" remain — ${rolls.join(", ")} (${value}).`
+          : `Misfortune: ${details.attacker.cardName} rolls 4 Attack dice, rerolling every "+1" until only "-1" and "0" remain — ${rolls.join(", ")} (${value}).`,
     });
     finishResolvedAttack(
       state,
       stackItem,
       details,
       { rolls, roll: value, sumAllDice: mode !== "lower-of-two" },
-      cards
+      cards,
     );
     return;
   }
@@ -12420,9 +14392,15 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
   if (stackItem.modifiers.slayerRolls && stackItem.modifiers.slayerRolls > 0) {
     // Morale: an "about to roll ≥2 Attack dice" holder rolls one Slayer die
     // less; the -1-to-this-roll and the die curses apply to what was rolled.
-    const slayerCount = takeMoraleRollOneLess(state, details.attacker.controllerId, stackItem.modifiers.slayerRolls);
+    const slayerCount = takeMoraleRollOneLess(
+      state,
+      details.attacker.controllerId,
+      stackItem.modifiers.slayerRolls,
+    );
     applyMoraleAttackRollPenalty(state, stackItem, details);
-    const rolls = Array.from({ length: slayerCount }, () => rollAttackDie(combat));
+    const rolls = Array.from({ length: slayerCount }, () =>
+      rollAttackDie(combat),
+    );
     const slayerCandidate = applyEnemyDieSetCurses(
       state,
       details.attacker.controllerId,
@@ -12432,15 +14410,23 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
         applyMoraleDiceCurses(
           state,
           details.attacker.controllerId,
-          { rolls, roll: rolls.filter((roll) => roll === 1).length, sumAllDice: true },
-          "count-plus"
+          {
+            rolls,
+            roll: rolls.filter((roll) => roll === 1).length,
+            sumAllDice: true,
+          },
+          "count-plus",
         ),
-        "count-plus"
+        "count-plus",
       ),
-      "count-plus"
+      "count-plus",
     );
     if (slayerCount < stackItem.modifiers.slayerRolls) {
-      pushRollModifierNote(slayerCandidate, "Negative Morale", "one die less is rolled");
+      pushRollModifierNote(
+        slayerCandidate,
+        "Negative Morale",
+        "one die less is rolled",
+      );
     }
     const bonus = slayerCandidate.roll;
     // Slayer's fire flares over the gold target (the FX layer plays it after the
@@ -12450,7 +14436,7 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
       unitId: details.attacker.id,
       abilityId: "slayer",
       targetUnitId: details.defender.id,
-      message: `Slayer rolls ${slayerCandidate.rolls.length} Attack dice against ${details.defender.cardName} (+${bonus}).`
+      message: `Slayer rolls ${slayerCandidate.rolls.length} Attack dice against ${details.defender.cardName} (+${bonus}).`,
     });
     // sumAllDice: every die counts toward the bonus, so the overlay lights them
     // all (the dice read out before the strike, then the damage lands).
@@ -12458,7 +14444,11 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
     if (stackItem.modifiers.slayerDraw) {
       stackItem.modifiers.slayerDraw = false;
       drawCardsForPlayer(state, details.attacker.controllerId, 1, {
-        inFlightCardIds: stackInFlightCardIds(state, stackItem, details.attacker.controllerId)
+        inFlightCardIds: stackInFlightCardIds(
+          state,
+          stackItem,
+          details.attacker.controllerId,
+        ),
       });
     }
     return;
@@ -12478,9 +14468,14 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
       {
         rolls: [forced],
         roll: forced,
-        modifierNotes: [{ source: "Specialty", text: `the Attack die is fixed at ${forced > 0 ? `+${forced}` : forced}` }]
+        modifierNotes: [
+          {
+            source: "Specialty",
+            text: `the Attack die is fixed at ${forced > 0 ? `+${forced}` : forced}`,
+          },
+        ],
       },
-      cards
+      cards,
     );
     return;
   }
@@ -12497,10 +14492,13 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
         rolls: [forcedDie],
         roll: forcedDie,
         modifierNotes: [
-          { source: details.defender.name, text: `sets the Attack die to ${forcedDie > 0 ? `+${forcedDie}` : forcedDie}` }
-        ]
+          {
+            source: details.defender.name,
+            text: `sets the Attack die to ${forcedDie > 0 ? `+${forcedDie}` : forcedDie}`,
+          },
+        ],
       },
-      cards
+      cards,
     );
     return;
   }
@@ -12513,14 +14511,25 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
   // reroll is intrinsic, so no separate reroll choice is opened.
   if (hasRollTwoDiceApplyBoth(details.attacker)) {
     const rerollMinus = hasRerollAllMinusOne(details.attacker);
-    const doublesThisAttack = !details.isRetaliation || rollsTwoDiceOnRetaliation(details.attacker);
+    const doublesThisAttack =
+      !details.isRetaliation || rollsTwoDiceOnRetaliation(details.attacker);
     // Morale "roll 1 die less" only bites when 2 dice would otherwise be rolled.
-    const reduced = doublesThisAttack && takeMoraleRollOneLess(state, details.attacker.controllerId, 2) < 2;
+    const reduced =
+      doublesThisAttack &&
+      takeMoraleRollOneLess(state, details.attacker.controllerId, 2) < 2;
     const diceCount = doublesThisAttack && !reduced ? 2 : 1;
     applyMoraleAttackRollPenalty(state, stackItem, details);
-    const applyBothCandidate = rollApplyBothCandidate(combat, diceCount, rerollMinus);
+    const applyBothCandidate = rollApplyBothCandidate(
+      combat,
+      diceCount,
+      rerollMinus,
+    );
     if (reduced) {
-      pushRollModifierNote(applyBothCandidate, "Negative Morale", "one die less is rolled");
+      pushRollModifierNote(
+        applyBothCandidate,
+        "Negative Morale",
+        "one die less is rolled",
+      );
     }
     resolveAttackOrOfferDieCancel(
       state,
@@ -12532,12 +14541,17 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
         applyEnemyPlusOneRerolls(
           state,
           details.attacker.controllerId,
-          applyMoraleDiceCurses(state, details.attacker.controllerId, applyBothCandidate, "sum"),
-          "sum"
+          applyMoraleDiceCurses(
+            state,
+            details.attacker.controllerId,
+            applyBothCandidate,
+            "sum",
+          ),
+          "sum",
         ),
-        "sum"
+        "sum",
       ),
-      cards
+      cards,
     );
     return;
   }
@@ -12546,7 +14560,8 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
   // one straight die — mutate details.rollMode so the reroll window (and its
   // rerolls) stay single-die for this attack.
   const collapsedToOneDie =
-    details.rollMode !== "normal" && takeMoraleRollOneLess(state, details.attacker.controllerId, 2) < 2;
+    details.rollMode !== "normal" &&
+    takeMoraleRollOneLess(state, details.attacker.controllerId, 2) < 2;
   if (collapsedToOneDie) {
     details.rollMode = "normal";
   }
@@ -12562,11 +14577,11 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
           state,
           details.attacker.controllerId,
           rollAttackCandidate(combat, details.rollMode),
-          details.rollMode
+          details.rollMode,
         ),
-        details.rollMode
+        details.rollMode,
       ),
-      details.rollMode
+      details.rollMode,
     );
     if (collapsedToOneDie) {
       pushRollModifierNote(thrown, "Negative Morale", "one die less is rolled");
@@ -12587,23 +14602,39 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
   const rerollEffects = getAttackRerollEffects(state, {
     attacker: details.attacker,
     defender: details.defender,
-    attackKind: details.attackKind
+    attackKind: details.attackKind,
   }).filter((effect) => !effect.usedChoiceIds.includes(stackItem.id));
   // Champions' "Charge" only offers its reroll when the unit moved to attack
   // (never on a Retaliation Attack, where it did not move). Every unit reroll
   // ability is [unit_attack] (own declared attack only), so buildRerollSources
   // drops them all on a retaliation.
-  const moved = !details.isRetaliation && Boolean(details.attacker.movedThisActivation);
-  const rerollSources = buildRerollSources(state, details.attacker, rerollEffects, moved, details.isRetaliation);
+  const moved =
+    !details.isRetaliation && Boolean(details.attacker.movedThisActivation);
+  const rerollSources = buildRerollSources(
+    state,
+    details.attacker,
+    rerollEffects,
+    moved,
+    details.isRetaliation,
+  );
 
   // Only pause when a source can actually fire on this roll — the Crusaders'
   // 'every "0"' reroll never interrupts a +1. A declared Cards of Prophecy always
   // pauses: its three throws exist only to be chosen between.
   if (
     prophecyThrows.length > 0 ||
-    rerollSources.some((source) => rerollSourceAvailableFor(source, candidate.roll))
+    rerollSources.some((source) =>
+      rerollSourceAvailableFor(source, candidate.roll),
+    )
   ) {
-    openAttackRerollChoice(state, stackItem, details, candidate, rerollSources, prophecyThrows);
+    openAttackRerollChoice(
+      state,
+      stackItem,
+      details,
+      candidate,
+      rerollSources,
+      prophecyThrows,
+    );
     return;
   }
 
@@ -12619,7 +14650,7 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
 function finalizeSpellCardDestination(
   state: GameState,
   stackItem: ResolutionStackItem,
-  effectCountBeforeCast: number
+  effectCountBeforeCast: number,
 ): void {
   if (stackItem.action.type !== "CAST_SPELL") {
     return;
@@ -12647,11 +14678,13 @@ function finalizeSpellCardDestination(
     // other used Book Spell, and can NOT be cast again immediately.
     if (stackItem.modifiers.inscribeCastToSpellBook) {
       const cardId = stackItem.action.cardId;
-      if (inscribeCastSpellIntoSpellBook(state, stackItem.action.playerId, cardId)) {
+      if (
+        inscribeCastSpellIntoSpellBook(state, stackItem.action.playerId, cardId)
+      ) {
         appendEvent(state, {
           type: "EVENT_NOTE",
           playerId: stackItem.action.playerId,
-          message: `${cardLibrary[cardId]?.name ?? cardId} is added to the Spellbook (used).`
+          message: `${cardLibrary[cardId]?.name ?? cardId} is added to the Spellbook (used).`,
         });
       }
     }
@@ -12688,7 +14721,7 @@ function finalizeSpellCardDestination(
   const recall = stackItem.modifiers.recallSpell;
   const allSupportCards = expertRecallSupportCardIds(
     stackItem.modifiers.playedCardIds,
-    recall?.sourceCardId
+    recall?.sourceCardId,
   );
   // Community Mysticism (basic) recalls only N of the cards played alongside the
   // Spell ("… as well as 1 card played alongside it"); the printed Expert recall
@@ -12707,7 +14740,9 @@ function finalizeSpellCardDestination(
   // exactly as before.
   const pickCandidates =
     recall?.recallPlayedCards && recall.recallPlayedCardLimit === 1
-      ? [...new Set(allSupportCards)].filter((id) => state.players[playerId]?.discard.includes(id))
+      ? [...new Set(allSupportCards)].filter((id) =>
+          state.players[playerId]?.discard.includes(id),
+        )
       : [];
   const opensAlongsidePick = pickCandidates.length > 1;
   if (polishSpellBookEnabled(state) && stackItem.action.fromSpellBook) {
@@ -12715,7 +14750,11 @@ function finalizeSpellCardDestination(
       refreshPolishUsedSpell(state, playerId, cardId);
     }
     if (recall?.polishRecallEnabler && stackItem.action.castEnablerCardId) {
-      returnSpellFromDiscardToHand(state, playerId, stackItem.action.castEnablerCardId);
+      returnSpellFromDiscardToHand(
+        state,
+        playerId,
+        stackItem.action.castEnablerCardId,
+      );
     }
     if (recall?.recallPlayedCards) {
       if (opensAlongsidePick) {
@@ -12736,7 +14775,7 @@ function finalizeSpellCardDestination(
     playerId,
     cardId,
     effectCountBeforeCast,
-    recall?.toHand ? recallZone : "discard"
+    recall?.toHand ? recallZone : "discard",
   );
 
   if (!held) {
@@ -12777,7 +14816,10 @@ function finalizeSpellCardDestination(
  * physical-instance ids, so remove exactly one matching occurrence: another
  * copy with the same id that genuinely was played as support still qualifies.
  */
-function expertRecallSupportCardIds(playedCardIds: CardId[], sourceCardId?: CardId): CardId[] {
+function expertRecallSupportCardIds(
+  playedCardIds: CardId[],
+  sourceCardId?: CardId,
+): CardId[] {
   let skippedSource = false;
   return playedCardIds.filter((cardId) => {
     if (!skippedSource && sourceCardId && cardId === sourceCardId) {
@@ -12802,7 +14844,7 @@ function openRecallAlongsidePick(
   state: GameState,
   playerId: PlayerId,
   candidateIds: CardId[],
-  bookCardIds: CardId[]
+  bookCardIds: CardId[],
 ): void {
   const bookCandidates = bookCardIds.filter((id) => candidateIds.includes(id));
   state.pendingChoice = {
@@ -12810,13 +14852,15 @@ function openRecallAlongsidePick(
     type: "OPTION_CHOICE",
     playerId,
     prompt: "Mysticism: take back one of the cards played alongside the Spell.",
-    options: candidateIds.map((id) => ({ label: `Take back ${cardLibrary[id]?.name ?? id}` })),
+    options: candidateIds.map((id) => ({
+      label: `Take back ${cardLibrary[id]?.name ?? id}`,
+    })),
     context: "recall-alongside-pick",
     recallAlongsidePick: {
       cardIds: candidateIds,
-      ...(bookCandidates.length > 0 ? { bookCardIds: bookCandidates } : {})
+      ...(bookCandidates.length > 0 ? { bookCardIds: bookCandidates } : {}),
     },
-    returnPhase: state.combat ? "combat" : "player-turn"
+    returnPhase: state.combat ? "combat" : "player-turn",
   };
   state.phase = "choice";
   state.priorityPlayerId = playerId;
@@ -12838,7 +14882,7 @@ const EAGLE_EYE_ABILITY_ID = "ability.eagle_eye" as CardId;
 function noteEagleEyeCopyOpportunity(
   state: GameState,
   cast: Extract<GameAction, { type: "CAST_SPELL" }>,
-  eventsBefore: number
+  eventsBefore: number,
 ): void {
   if (!houseRuleEnabled(state, "polish-card-balance") || !state.combat) {
     return;
@@ -12855,7 +14899,11 @@ function noteEagleEyeCopyOpportunity(
       continue;
     }
     const unit = state.combat.units[event.target.unitId];
-    if (unit && unit.controllerId !== cast.playerId && unit.controllerId !== NEUTRAL_PLAYER_ID) {
+    if (
+      unit &&
+      unit.controllerId !== cast.playerId &&
+      unit.controllerId !== NEUTRAL_PLAYER_ID
+    ) {
       damaged.add(unit.controllerId);
     }
   }
@@ -12873,7 +14921,8 @@ function noteEagleEyeCopyOpportunity(
 
 function resolveTopStack(state: GameState, cards: CardLibrary): void {
   const pendingSpellCast = state.stack.at(-1)?.action;
-  const spellCast = pendingSpellCast?.type === "CAST_SPELL" ? pendingSpellCast : undefined;
+  const spellCast =
+    pendingSpellCast?.type === "CAST_SPELL" ? pendingSpellCast : undefined;
   const eventsBefore = spellCast ? state.eventLog.length : 0;
   resolveTopStackCore(state, cards);
   if (spellCast) {
@@ -12897,7 +14946,9 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
   if (stackItem.action.type === "PLAY_CARD") {
     const action = stackItem.action;
     const card = cards[action.cardId];
-    const effect = card ? getEffectiveCardEffect(card, action.optionIndex) : null;
+    const effect = card
+      ? getEffectiveCardEffect(card, action.optionIndex)
+      : null;
     if (card && effect) {
       if (effect.type === "AREA_DAMAGE_PICK_ADJACENT") {
         applyAreaPickAdjacentPlay(state, action, card, effect, cards);
@@ -12926,7 +14977,9 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
       state.combat && stackItem.action.target.type === "unit"
         ? state.combat.units[stackItem.action.target.unitId]
         : undefined;
-    const targetIgnoresNonDamage = Boolean(targetedUnit && unitIgnoresCardNonDamage(targetedUnit, card, state));
+    const targetIgnoresNonDamage = Boolean(
+      targetedUnit && unitIgnoresCardNonDamage(targetedUnit, card, state),
+    );
     // Snapshot for the ongoing rule: effects created below mark this card as
     // staying in play until they end.
     const effectCountBeforeCast = state.activeEffects.length;
@@ -12937,13 +14990,20 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
     // Rampart Dwarves "Magic Resistance": a spell aimed at a Dwarf rolls a die
     // to shrug it off. On the matching face the spell still resolves (and is
     // discarded) but applies none of its effects to the Dwarf.
-    if (negatesCardOnDwarfRoll(state, stackItem.action.target, card?.name ?? "the spell", stackItem.action.playerId)) {
+    if (
+      negatesCardOnDwarfRoll(
+        state,
+        stackItem.action.target,
+        card?.name ?? "the spell",
+        stackItem.action.playerId,
+      )
+    ) {
       appendEvent(state, {
         type: "SPELL_CAST_RESOLVED",
         playerId: stackItem.action.playerId,
         spellCardId: stackItem.action.cardId,
         target: stackItem.action.target,
-        power: getCurrentSpellPower(state, stackItem, cards)
+        power: getCurrentSpellPower(state, stackItem, cards),
       });
       finalizeSpellCardDestination(state, stackItem, effectCountBeforeCast);
       stackItem.status = "resolved";
@@ -12969,13 +15029,18 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
     // resolves and is discarded, applying none of its effects, exactly like a
     // shrugged-off Dwarf roll above. Re-reads the final Power so a Power card
     // played into the cast window lifts an option-A cast over the floor.
-    if (spellNullifiedByRestriction(state, getCurrentSpellPower(state, stackItem, cards))) {
+    if (
+      spellNullifiedByRestriction(
+        state,
+        getCurrentSpellPower(state, stackItem, cards),
+      )
+    ) {
       appendEvent(state, {
         type: "SPELL_CAST_RESOLVED",
         playerId: stackItem.action.playerId,
         spellCardId: stackItem.action.cardId,
         target: stackItem.action.target,
-        power: getCurrentSpellPower(state, stackItem, cards)
+        power: getCurrentSpellPower(state, stackItem, cards),
       });
       finalizeSpellCardDestination(state, stackItem, effectCountBeforeCast);
       stackItem.status = "resolved";
@@ -12996,7 +15061,11 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
     }
 
     if (card?.effect.type === "EARTHQUAKE" && state.combat?.siege) {
-      resolveEarthquakeSpell(state, stackItem.action.playerId, getCurrentSpellPower(state, stackItem, cards));
+      resolveEarthquakeSpell(
+        state,
+        stackItem.action.playerId,
+        getCurrentSpellPower(state, stackItem, cards),
+      );
     }
 
     if (card?.effect.type === "REMOVE_OBSTACLE" && state.combat) {
@@ -13005,7 +15074,11 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
       openRemoveObstacleChoice(state, stackItem.action.playerId, count);
     }
 
-    if (card?.effect.type === "DEAL_DAMAGE" && state.combat && stackItem.action.target.type === "unit") {
+    if (
+      card?.effect.type === "DEAL_DAMAGE" &&
+      state.combat &&
+      stackItem.action.target.type === "unit"
+    ) {
       const target = state.combat.units[stackItem.action.target.unitId];
       if (target) {
         const power = getCurrentSpellPower(state, stackItem, cards);
@@ -13016,7 +15089,12 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
         const amount = unitIgnoresCardDamage(state, target, card)
           ? 0
           : card.effect.damageKind === "spell"
-            ? reducedSpellDamage(state, target, rawAmount, card.spellSchools ?? [])
+            ? reducedSpellDamage(
+                state,
+                target,
+                rawAmount,
+                card.spellSchools ?? [],
+              )
             : rawAmount;
         target.damage += amount;
         noteUnitDamagedForTokens(state, target, amount);
@@ -13025,11 +15103,11 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
           source: {
             type: "card",
             cardId: card.id,
-            controllerId: stackItem.action.playerId
+            controllerId: stackItem.action.playerId,
           },
           target: stackItem.action.target,
           amount,
-          damageKind: card.effect.damageKind
+          damageKind: card.effect.damageKind,
         });
         markUnitRemovedIfNeeded(state, target);
       }
@@ -13050,10 +15128,10 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
           {
             type: "card",
             cardId: card.id,
-            controllerId: stackItem.action.playerId
+            controllerId: stackItem.action.playerId,
           },
           stackItem.action.target,
-          amount
+          amount,
         );
       }
     }
@@ -13069,10 +15147,15 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
       const source = {
         type: "card" as const,
         cardId: card.id,
-        controllerId: stackItem.action.playerId
+        controllerId: stackItem.action.playerId,
       };
       healUnitDamage(state, source, stackItem.action.target, amount);
-      removeEffectsFromTarget(state, source, stackItem.action.target, card.effect.removePolarity);
+      removeEffectsFromTarget(
+        state,
+        source,
+        stackItem.action.target,
+        card.effect.removePolarity,
+      );
       // Cure: "Remove any effect or paralysis …" — the chosen unit also loses
       // its Paralysis token (the effect removes the token, not just ongoing
       // effects). A heal of 0 still clears it.
@@ -13091,26 +15174,34 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
         card.effect,
         stackItem.action.playerId,
         "basic",
-        stackItem.action.target.type === "unit" ? stackItem.action.target : undefined
+        stackItem.action.target.type === "unit"
+          ? stackItem.action.target
+          : undefined,
       );
     }
 
-    if (card?.effect.type === "CREATE_ATTACK_BUFF" && stackItem.action.target.type === "unit") {
+    if (
+      card?.effect.type === "CREATE_ATTACK_BUFF" &&
+      stackItem.action.target.type === "unit"
+    ) {
       createAttackBuffFromCard(
         state,
         card,
         card.effect,
         stackItem.action.playerId,
         getCurrentSpellPower(state, stackItem, cards),
-        stackItem.action.target
+        stackItem.action.target,
       );
     }
 
-    if (card?.effect.type === "CREATE_PRAYER_BUFF" && stackItem.action.target.type === "unit") {
+    if (
+      card?.effect.type === "CREATE_PRAYER_BUFF" &&
+      stackItem.action.target.type === "unit"
+    ) {
       const amount = getAmountByPower(
         card.effect.amountByPower,
         0,
-        getCurrentSpellPower(state, stackItem, cards)
+        getCurrentSpellPower(state, stackItem, cards),
       );
       createActiveEffect(
         state,
@@ -13123,23 +15214,30 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
           modifiers: [
             { type: "ATTACK_BONUS", amount },
             { type: "DEFENSE_BONUS", amount },
-            { type: "INITIATIVE_BONUS", amount }
-          ]
+            { type: "INITIATIVE_BONUS", amount },
+          ],
         },
-        { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
+        {
+          type: "card",
+          cardId: card.id,
+          controllerId: stackItem.action.playerId,
+        },
         stackItem.action.playerId,
-        stackItem.action.target
+        stackItem.action.target,
       );
       appliedCombatInitiativeBuff = true;
     }
 
-    if (card?.effect.type === "CREATE_DEFENSE_BUFF" && stackItem.action.target.type === "unit") {
+    if (
+      card?.effect.type === "CREATE_DEFENSE_BUFF" &&
+      stackItem.action.target.type === "unit"
+    ) {
       createDefenseBuffFromCard(
         state,
         card,
         stackItem.action.playerId,
         getCurrentSpellPower(state, stackItem, cards),
-        stackItem.action.target
+        stackItem.action.target,
       );
     }
 
@@ -13150,7 +15248,11 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
     if (card?.effect.type === "CREATE_ENEMY_DIE_SET") {
       const rolls = Math.max(
         1,
-        getAmountByPower(card.effect.rollsByPower, 1, getCurrentSpellPower(state, stackItem, cards))
+        getAmountByPower(
+          card.effect.rollsByPower,
+          1,
+          getCurrentSpellPower(state, stackItem, cards),
+        ),
       );
       const dieSet = createActiveEffect(
         state,
@@ -13161,10 +15263,14 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
           polarity: "positive",
           removable: true,
           dieSetsRemaining: rolls,
-          modifiers: [{ type: "SET_ENEMY_ATTACK_DIE", face: card.effect.face }]
+          modifiers: [{ type: "SET_ENEMY_ATTACK_DIE", face: card.effect.face }],
         },
-        { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
-        stackItem.action.playerId
+        {
+          type: "card",
+          cardId: card.id,
+          controllerId: stackItem.action.playerId,
+        },
+        stackItem.action.playerId,
       );
       // The card prints "CHOOSE an attack die roll result", so the FACE is the
       // caster's pick, not the engine's: a generic OPTION_CHOICE (answerable by
@@ -13175,13 +15281,17 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
         state,
         stackItem.action.playerId,
         "misfortune-face",
-        { cardId: card.id, effectIds: [dieSet.id], dieFaces: [...MISFORTUNE_DIE_FACES] },
+        {
+          cardId: card.id,
+          effectIds: [dieSet.id],
+          dieFaces: [...MISFORTUNE_DIE_FACES],
+        },
         `${card.name}: choose the Attack die result the next ${rolls} enemy roll${
           rolls === 1 ? "" : "s"
         } must show.`,
         MISFORTUNE_DIE_FACES.map((face) => ({
-          label: `Set one die to "${face > 0 ? `+${face}` : face}"`
-        }))
+          label: `Set one die to "${face > 0 ? `+${face}` : face}"`,
+        })),
       );
     }
 
@@ -13191,23 +15301,40 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
         card,
         stackItem.action.playerId,
         "basic",
-        getCurrentSpellPower(state, stackItem, cards)
+        getCurrentSpellPower(state, stackItem, cards),
       );
     }
 
     if (card?.effect.type === "DRAW_CARDS") {
-      drawCardsForPlayer(state, stackItem.action.playerId, getEffectAmount(card.effect, "basic"), {
-        inFlightCardIds: stackInFlightCardIds(state, stackItem, stackItem.action.playerId)
-      });
+      drawCardsForPlayer(
+        state,
+        stackItem.action.playerId,
+        getEffectAmount(card.effect, "basic"),
+        {
+          inFlightCardIds: stackInFlightCardIds(
+            state,
+            stackItem,
+            stackItem.action.playerId,
+          ),
+        },
+      );
     }
 
-    if (card?.effect.type === "CREATE_INITIATIVE_BUFF" && state.combat && stackItem.action.target.type === "unit") {
+    if (
+      card?.effect.type === "CREATE_INITIATIVE_BUFF" &&
+      state.combat &&
+      stackItem.action.target.type === "unit"
+    ) {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const targetUnit = state.combat.units[stackItem.action.target.unitId];
       const amount = doubleAmountForUnitName(
-        getAmountByPower(card.effect.amountByPower, card.effect.amount ?? 0, power),
+        getAmountByPower(
+          card.effect.amountByPower,
+          card.effect.amount ?? 0,
+          power,
+        ),
         targetUnit,
-        card.effect.doubleForUnitName
+        card.effect.doubleForUnitName,
       );
       createActiveEffect(
         state,
@@ -13215,18 +15342,23 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
           name: card.effect.name,
           scope: "unit",
           duration: card.effect.duration,
-          polarity: card.effect.polarity ?? (amount >= 0 ? "positive" : "negative"),
+          polarity:
+            card.effect.polarity ?? (amount >= 0 ? "positive" : "negative"),
           removable: card.effect.removable ?? true,
           modifiers: [
             { type: "INITIATIVE_BONUS", amount },
             ...(card.effect.movementBonus
               ? initiativeBuffMovementModifiers(card.effect, power)
-              : [])
-          ]
+              : []),
+          ],
         },
-        { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
+        {
+          type: "card",
+          cardId: card.id,
+          controllerId: stackItem.action.playerId,
+        },
         stackItem.action.playerId,
-        stackItem.action.target
+        stackItem.action.target,
       );
       appliedCombatInitiativeBuff = true;
     }
@@ -13239,7 +15371,11 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
     // whole-Combat Initiative buff on the friendly unit, power-scaled exactly
     // like the +attack/+defense arms. Those arms carry triggers and resolve in
     // their reaction window, never reaching this spell-cast resolution.
-    if (card?.effect.type === "CHOOSE_ONE" && state.combat && stackItem.action.target.type === "unit") {
+    if (
+      card?.effect.type === "CHOOSE_ONE" &&
+      state.combat &&
+      stackItem.action.target.type === "unit"
+    ) {
       const chosen = getEffectiveCardEffect(card, stackItem.action.optionIndex);
       if (chosen?.type === "CREATE_INITIATIVE_BUFF") {
         const power = getCurrentSpellPower(state, stackItem, cards);
@@ -13247,7 +15383,7 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
         const amount = doubleAmountForUnitName(
           getAmountByPower(chosen.amountByPower, chosen.amount ?? 0, power),
           targetUnit,
-          chosen.doubleForUnitName
+          chosen.doubleForUnitName,
         );
         createActiveEffect(
           state,
@@ -13255,16 +15391,21 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
             name: chosen.name,
             scope: "unit",
             duration: chosen.duration,
-            polarity: chosen.polarity ?? (amount >= 0 ? "positive" : "negative"),
+            polarity:
+              chosen.polarity ?? (amount >= 0 ? "positive" : "negative"),
             removable: chosen.removable ?? true,
             modifiers: [
               { type: "INITIATIVE_BONUS", amount },
-              ...initiativeBuffMovementModifiers(chosen, power)
-            ]
+              ...initiativeBuffMovementModifiers(chosen, power),
+            ],
           },
-          { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
+          {
+            type: "card",
+            cardId: card.id,
+            controllerId: stackItem.action.playerId,
+          },
           stackItem.action.playerId,
-          stackItem.action.target
+          stackItem.action.target,
         );
         appliedCombatInitiativeBuff = true;
       }
@@ -13278,7 +15419,7 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
           chosen,
           stackItem.action.playerId,
           getCurrentSpellPower(state, stackItem, cards),
-          stackItem.action.target
+          stackItem.action.target,
         );
       }
       if (chosen?.type === "CREATE_DEFENSE_BUFF") {
@@ -13288,18 +15429,30 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
           stackItem.action.playerId,
           getCurrentSpellPower(state, stackItem, cards),
           stackItem.action.target,
-          chosen
+          chosen,
         );
       }
     }
 
-    if (card?.effect.type === "CREATE_SPELL_IMMUNITY" && state.combat && stackItem.action.target.type === "unit") {
+    if (
+      card?.effect.type === "CREATE_SPELL_IMMUNITY" &&
+      state.combat &&
+      stackItem.action.target.type === "unit"
+    ) {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
       const target = state.combat.units[stackItem.action.target.unitId];
       // Anti-Magic may protect a bank unit (guard OR won reward card) at its
       // underlying grade — bankAwareTierGateRank, user ruling 2026-08-18.
-      if (target && maxGrade && bankAwareTierGateRank(target, "CREATE_SPELL_IMMUNITY", houseRuleEnabled(state, "polish-bank-unit-spells")) <= gradeRank(maxGrade)) {
+      if (
+        target &&
+        maxGrade &&
+        bankAwareTierGateRank(
+          target,
+          "CREATE_SPELL_IMMUNITY",
+          houseRuleEnabled(state, "polish-bank-unit-spells"),
+        ) <= gradeRank(maxGrade)
+      ) {
         createActiveEffect(
           state,
           {
@@ -13317,39 +15470,51 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
               ...(card.effect.blocksSpellAndSpecialtyDamage
                 ? ([
                     { type: "SPELL_DAMAGE_REDUCTION", amount: 99 },
-                    { type: "SPECIALTY_IMMUNITY" }
+                    { type: "SPECIALTY_IMMUNITY" },
                   ] as ActiveEffectModifier[])
-                : [])
-            ]
+                : []),
+            ],
           },
-          { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
+          {
+            type: "card",
+            cardId: card.id,
+            controllerId: stackItem.action.playerId,
+          },
           stackItem.action.playerId,
-          stackItem.action.target
+          stackItem.action.target,
         );
       }
     }
 
-    if (card?.effect.type === "CREATE_FIRE_SHIELD" && state.combat && stackItem.action.target.type === "unit") {
+    if (
+      card?.effect.type === "CREATE_FIRE_SHIELD" &&
+      state.combat &&
+      stackItem.action.target.type === "unit"
+    ) {
       createFireShieldFromCard(
         state,
         card,
         card.effect,
         stackItem.action.playerId,
         getCurrentSpellPower(state, stackItem, cards),
-        stackItem.action.target
+        stackItem.action.target,
       );
     }
 
     // Chain Lightning Spell: hit the selected unit, then fork to the units
     // closest to it. The allocation (1/1/1, 2/1/1, 3/2/1) scales with Power.
-    if (card?.effect.type === "CHAIN_LIGHTNING" && state.combat && stackItem.action.target.type === "unit") {
+    if (
+      card?.effect.type === "CHAIN_LIGHTNING" &&
+      state.combat &&
+      stackItem.action.target.type === "unit"
+    ) {
       const power = getCurrentSpellPower(state, stackItem, cards);
       startChainLightning(
         state,
         stackItem.action.playerId,
         card,
         stackItem.action.target.unitId,
-        chainLightningDamages(card.effect, power)
+        chainLightningDamages(card.effect, power),
       );
     }
 
@@ -13371,14 +15536,22 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
       // one printed "ANY" in the Polish reprint (user ruling 2026-08-25):
       // bankAwareTierGateRank ranks a bank unit at GOLD for PLACE_PARALYSIS, so a
       // bronze/silver rung fizzles on it whatever its underlying grade is.
-      if (target && maxGrade && bankAwareTierGateRank(target, "PLACE_PARALYSIS", houseRuleEnabled(state, "polish-bank-unit-spells")) <= gradeRank(maxGrade)) {
+      if (
+        target &&
+        maxGrade &&
+        bankAwareTierGateRank(
+          target,
+          "PLACE_PARALYSIS",
+          houseRuleEnabled(state, "polish-bank-unit-spells"),
+        ) <= gradeRank(maxGrade)
+      ) {
         if (unitImmuneToParalysis(state, target)) {
           appendEvent(state, {
             type: "UNIT_ABILITY_TRIGGERED",
             unitId: target.id,
             abilityId: "ignore-paralysis",
             targetUnitId: target.id,
-            message: `${target.cardName} is immune to Paralysis.`
+            message: `${target.cardName} is immune to Paralysis.`,
           });
         } else {
           placeCombatToken(state, target, "paralysis", 0, card.name);
@@ -13389,13 +15562,21 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
     // Inferno: roll the Attack die N times (by Power) on the chosen space; each
     // "+1" deals 1 damage to every unit on that space and the orthogonally
     // adjacent ones — friend or foe alike.
-    if (card?.effect.type === "INFERNO" && state.combat && stackItem.action.target.type === "space") {
+    if (
+      card?.effect.type === "INFERNO" &&
+      state.combat &&
+      stackItem.action.target.type === "space"
+    ) {
       resolveInfernoSpell(
         state,
         stackItem.action.playerId,
         card,
         stackItem.action.target.position,
-        getAmountByPower(card.effect.rollsByPower, 1, getCurrentSpellPower(state, stackItem, cards))
+        getAmountByPower(
+          card.effect.rollsByPower,
+          1,
+          getCurrentSpellPower(state, stackItem, cards),
+        ),
       );
     }
 
@@ -13405,7 +15586,9 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
     // space, so it may be centred on an occupied cell.
     if (card?.effect.type === "AREA_DAMAGE_PICK_ADJACENT" && state.combat) {
       const power = getCurrentSpellPower(state, stackItem, cards);
-      const amount = card.effect.amount ?? getAmountByPower(card.effect.amountByPower ?? {}, 1, power);
+      const amount =
+        card.effect.amount ??
+        getAmountByPower(card.effect.amountByPower ?? {}, 1, power);
       const center =
         stackItem.action.target.type === "space"
           ? stackItem.action.target.position
@@ -13420,7 +15603,7 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
           center,
           amount,
           card.effect.includeCenter,
-          card.effect.adjacentPicks
+          card.effect.adjacentPicks,
         );
       }
     }
@@ -13441,35 +15624,57 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
           state,
           stackItem.action.playerId,
           card,
-          Math.max(1, getAmountByPower(card.effect.discardCountByPower, 1, dispelPower))
+          Math.max(
+            1,
+            getAmountByPower(card.effect.discardCountByPower, 1, dispelPower),
+          ),
         );
-      } else
-      // Polish Balance Pack (Power 2, "ANY unit or ALL effects"): the caster
-      // picks between the printed unit/space cleanse and wiping every ongoing
-      // effect in the Combat. A generic OPTION_CHOICE, so the AI scorer and the
-      // AFK / turn-timeout driver can always answer it.
-      if (card.effect.allInCombatAtPower !== undefined && dispelPower >= card.effect.allInCombatAtPower) {
+      } else if (
+        card.effect.allInCombatAtPower !== undefined &&
+        dispelPower >= card.effect.allInCombatAtPower
+      ) {
+        // Polish Balance Pack (Power 2, "ANY unit or ALL effects"): the caster
+        // picks between the printed unit/space cleanse and wiping every ongoing
+        // effect in the Combat. A generic OPTION_CHOICE, so the AI scorer and the
+        // AFK / turn-timeout driver can always answer it.
         openBalanceSpellChoice(
           state,
           stackItem.action.playerId,
           "dispel-scope",
           { cardId: card.id, target: stackItem.action.target },
           `${card.name}: clear the selected target, or EVERY ongoing effect in the Combat?`,
-          [{ label: "Clear the selected unit / space" }, { label: "Clear ALL ongoing effects in the Combat" }]
+          [
+            { label: "Clear the selected unit / space" },
+            { label: "Clear ALL ongoing effects in the Combat" },
+          ],
         );
       } else {
-        applyDispelToTarget(state, card, stackItem.action.playerId, stackItem.action.target, dispelPower);
+        applyDispelToTarget(
+          state,
+          card,
+          stackItem.action.playerId,
+          stackItem.action.target,
+          dispelPower,
+        );
       }
     }
 
     // Forgetfulness: the selected enemy ranged unit cannot attack during its
     // next activation. The reachable grade rises with the Power paid; above it
     // the cast does nothing (the Anti-Magic/Blind gate).
-    if (card?.effect.type === "FORGETFULNESS" && state.combat && stackItem.action.target.type === "unit") {
+    if (
+      card?.effect.type === "FORGETFULNESS" &&
+      state.combat &&
+      stackItem.action.target.type === "unit"
+    ) {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
       const target = state.combat.units[stackItem.action.target.unitId];
-      if (target && maxGrade && gradeRankOfUnit(target) <= gradeRank(maxGrade)) {
+      if (
+        target &&
+        maxGrade &&
+        gradeRankOfUnit(target) <= gradeRank(maxGrade)
+      ) {
         createActiveEffect(
           state,
           {
@@ -13483,17 +15688,27 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
             // target's activations. Classic printing: no attack at all, one
             // activation.
             activationsRemaining: card.effect.activationsByPower
-              ? Math.max(1, getAmountByPower(card.effect.activationsByPower, 1, power))
+              ? Math.max(
+                  1,
+                  getAmountByPower(card.effect.activationsByPower, 1, power),
+                )
               : undefined,
             modifiers: [
               card.effect.rangedModeByPower
-                ? forgetfulnessRangedModifier(card.effect.rangedModeByPower, power)
-                : { type: "UNIT_CANNOT_ATTACK" }
-            ]
+                ? forgetfulnessRangedModifier(
+                    card.effect.rangedModeByPower,
+                    power,
+                  )
+                : { type: "UNIT_CANNOT_ATTACK" },
+            ],
           },
-          { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
+          {
+            type: "card",
+            cardId: card.id,
+            controllerId: stackItem.action.playerId,
+          },
           stackItem.action.playerId,
-          stackItem.action.target
+          stackItem.action.target,
         );
       }
     }
@@ -13502,11 +15717,25 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
     // activation. Grade-gated like Blind; above the unlocked grade the cast does
     // nothing. The forced "attack the nearest" rule lives in the legal-action
     // layer and the neutral AI (both read the BERSERK_FORCED_ATTACK effect).
-    if (card?.effect.type === "BERSERK" && state.combat && stackItem.action.target.type === "unit") {
+    if (
+      card?.effect.type === "BERSERK" &&
+      state.combat &&
+      stackItem.action.target.type === "unit"
+    ) {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
       const target = state.combat.units[stackItem.action.target.unitId];
-      if (target && maxGrade && gradeRankOfUnit(target) <= gradeRank(maxGrade)) {
+      const balanceAnyTarget =
+        target &&
+        card.effect.anyUnitAtPower !== undefined &&
+        power >= card.effect.anyUnitAtPower &&
+        !target.commanderSlug &&
+        !target.heroUnit;
+      if (
+        target &&
+        maxGrade &&
+        (balanceAnyTarget || gradeRankOfUnit(target) <= gradeRank(maxGrade))
+      ) {
         createActiveEffect(
           state,
           {
@@ -13515,11 +15744,15 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
             duration: { type: "next-activation" },
             polarity: "negative",
             removable: true,
-            modifiers: [{ type: "BERSERK_FORCED_ATTACK" }]
+            modifiers: [{ type: "BERSERK_FORCED_ATTACK" }],
           },
-          { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
+          {
+            type: "card",
+            cardId: card.id,
+            controllerId: stackItem.action.playerId,
+          },
           stackItem.action.playerId,
-          stackItem.action.target
+          stackItem.action.target,
         );
       }
     }
@@ -13576,7 +15809,11 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
       const cloneRefundTail = stackItem.modifiers.scrollLocked
         ? "the Spell Scroll was spent."
         : "the spell was returned to your hand.";
-      if (target && maxGrade && gradeRankOfUnit(target) <= gradeRank(maxGrade)) {
+      if (
+        target &&
+        maxGrade &&
+        gradeRankOfUnit(target) <= gradeRank(maxGrade)
+      ) {
         // Grade reached: if the unit somehow has no adjacent empty space left,
         // refund too (nothing was placed) rather than swallow the cast.
         if (!openCloneChoice(state, stackItem.action.playerId, target)) {
@@ -13584,18 +15821,21 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
             state,
             stackItem,
             target,
-            `${target.cardName} has no adjacent empty space to place a Clone — ${cloneRefundTail}`
+            `${target.cardName} has no adjacent empty space to place a Clone — ${cloneRefundTail}`,
           );
           return;
         }
       } else if (target) {
-        const required = powerRequiredForGrade(card.effect.gradeByPower, target.grade);
+        const required = powerRequiredForGrade(
+          card.effect.gradeByPower,
+          target.grade,
+        );
         const need = required === null ? "more" : `Power ${required}`;
         refundInsufficientCloneCast(
           state,
           stackItem,
           target,
-          `Not enough Power to Clone ${target.cardName} (a ${target.grade} unit needs ${need}, you paid Power ${power}) — ${cloneRefundTail}`
+          `Not enough Power to Clone ${target.cardName} (a ${target.grade} unit needs ${need}, you paid Power ${power}) — ${cloneRefundTail}`,
         );
         return;
       }
@@ -13607,7 +15847,11 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
     // combat-scoped UNIT_ABILITY_SUPPRESSED effect. The target read here is the
     // pending cast's target, so a Magic-Mirror redirect lands the suppression on
     // the bounced unit instead.
-    if (card?.effect.type === "DISRUPTING_RAY" && state.combat && stackItem.action.target.type === "unit") {
+    if (
+      card?.effect.type === "DISRUPTING_RAY" &&
+      state.combat &&
+      stackItem.action.target.type === "unit"
+    ) {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
       const target = state.combat.units[stackItem.action.target.unitId];
@@ -13618,18 +15862,39 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
         card.effect.defenseChoice !== undefined &&
         target &&
         maxGrade &&
-        bankAwareTierGateRank(target, "DISRUPTING_RAY", houseRuleEnabled(state, "polish-bank-unit-spells")) <= gradeRank(maxGrade)
+        bankAwareTierGateRank(
+          target,
+          "DISRUPTING_RAY",
+          houseRuleEnabled(state, "polish-bank-unit-spells"),
+        ) <= gradeRank(maxGrade)
       ) {
-        openBalanceSpellChoice(state, stackItem.action.playerId, "disrupting-ray-mode", {
-          cardId: card.id,
-          unitId: target.id,
-          amount: card.effect.defenseChoice,
-          target: stackItem.action.target
-        }, `${card.name}: ${target.cardName} cannot use its special ability, or suffers -${card.effect.defenseChoice} Defense?`, [
-          { label: `${target.cardName} cannot use its special ability` },
-          { label: `${target.cardName} suffers -${card.effect.defenseChoice} Defense` }
-        ]);
-      } else if (target && maxGrade && bankAwareTierGateRank(target, "DISRUPTING_RAY", houseRuleEnabled(state, "polish-bank-unit-spells")) <= gradeRank(maxGrade)) {
+        openBalanceSpellChoice(
+          state,
+          stackItem.action.playerId,
+          "disrupting-ray-mode",
+          {
+            cardId: card.id,
+            unitId: target.id,
+            amount: card.effect.defenseChoice,
+            target: stackItem.action.target,
+          },
+          `${card.name}: ${target.cardName} cannot use its special ability, or suffers -${card.effect.defenseChoice} Defense?`,
+          [
+            { label: `${target.cardName} cannot use its special ability` },
+            {
+              label: `${target.cardName} suffers -${card.effect.defenseChoice} Defense`,
+            },
+          ],
+        );
+      } else if (
+        target &&
+        maxGrade &&
+        bankAwareTierGateRank(
+          target,
+          "DISRUPTING_RAY",
+          houseRuleEnabled(state, "polish-bank-unit-spells"),
+        ) <= gradeRank(maxGrade)
+      ) {
         createActiveEffect(
           state,
           {
@@ -13638,11 +15903,15 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
             duration: { type: "combat" },
             polarity: "negative",
             removable: true,
-            modifiers: [{ type: "UNIT_ABILITY_SUPPRESSED" }]
+            modifiers: [{ type: "UNIT_ABILITY_SUPPRESSED" }],
           },
-          { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
+          {
+            type: "card",
+            cardId: card.id,
+            controllerId: stackItem.action.playerId,
+          },
           stackItem.action.playerId,
-          stackItem.action.target
+          stackItem.action.target,
         );
       }
     }
@@ -13672,7 +15941,10 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
       const casterId = stackItem.action.playerId;
       const candidates = eligible
         ? Object.values(state.combat.units).filter(
-            (unit) => unit.id !== healTarget!.id && unit.controllerId === casterId && isUnitAlive(unit)
+            (unit) =>
+              unit.id !== healTarget!.id &&
+              unit.controllerId === casterId &&
+              isUnitAlive(unit),
           )
         : [];
       if (healTarget && candidates.length > 0) {
@@ -13688,7 +15960,7 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
           sourceUnitId: healTarget.id,
           anchorUnitId: healTarget.id,
           candidateUnitIds: candidates.map((unit) => unit.id),
-          optional: false
+          optional: false,
         };
         appendEvent(state, {
           type: "PENDING_CHOICE_CREATED",
@@ -13696,7 +15968,7 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
           choiceType: "ABILITY_TARGET_CHOICE",
           playerId: stackItem.action.playerId,
           sourceEffectIds: [],
-          message: `${card.name}: choose a unit to sacrifice.`
+          message: `${card.name}: choose a unit to sacrifice.`,
         });
       }
     }
@@ -13710,13 +15982,18 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
       const target = state.combat.units[stackItem.action.target.unitId];
-      if (target && maxGrade && gradeRankOfUnit(target) <= gradeRank(maxGrade) && target.retaliatedThisRound) {
+      if (
+        target &&
+        maxGrade &&
+        gradeRankOfUnit(target) <= gradeRank(maxGrade) &&
+        target.retaliatedThisRound
+      ) {
         target.retaliatedThisRound = false;
         appendEvent(state, {
           type: "UNIT_ABILITY_TRIGGERED",
           unitId: target.id,
           abilityId: "counterstrike",
-          message: `${card.name} readies ${target.cardName} to retaliate again.`
+          message: `${card.name} readies ${target.cardName} to retaliate again.`,
         });
       }
     }
@@ -13732,16 +16009,28 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
         applyUnitMaxHealthBonus(
           state,
           target,
-          doubleAmountForUnitName(card.effect.amount, target, card.effect.doubleForUnitName),
+          doubleAmountForUnitName(
+            card.effect.amount,
+            target,
+            card.effect.doubleForUnitName,
+          ),
           card.name,
-          { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
+          {
+            type: "card",
+            cardId: card.id,
+            controllerId: stackItem.action.playerId,
+          },
           stackItem.action.playerId,
-          card.effect.currentUnitLifeOnly
+          card.effect.currentUnitLifeOnly,
         );
       }
     }
 
-    if (card?.effect.type === "AREA_DAMAGE_ADJACENT" && state.combat && stackItem.action.target.type === "unit") {
+    if (
+      card?.effect.type === "AREA_DAMAGE_ADJACENT" &&
+      state.combat &&
+      stackItem.action.target.type === "unit"
+    ) {
       const target = state.combat.units[stackItem.action.target.unitId];
       const power = getCurrentSpellPower(state, stackItem, cards);
       const amount = getAmountByPower(card.effect.amountByPower, 1, power);
@@ -13753,10 +16042,14 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
         noteUnitDamagedForTokens(state, target, dealt);
         appendEvent(state, {
           type: "DAMAGE_ASSIGNED",
-          source: { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
+          source: {
+            type: "card",
+            cardId: card.id,
+            controllerId: stackItem.action.playerId,
+          },
           target: stackItem.action.target,
           amount: dealt,
-          damageKind: "spell"
+          damageKind: "spell",
         });
         markUnitRemovedIfNeeded(state, target);
 
@@ -13769,7 +16062,8 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
             isUnitAlive(unit) &&
             isAdjacent(unit.position, target.position) &&
             !unitImmuneToSpellSchoolsByEffect(state, unit, card.spellSchools) &&
-            (spellAbilitiesSuppressed(state) || !unitImmuneToSpellSchools(unit, card.spellSchools))
+            (spellAbilitiesSuppressed(state) ||
+              !unitImmuneToSpellSchools(unit, card.spellSchools)),
         );
         if (splashCandidates.length > 0) {
           const choiceId = `choice_${nextEventNumber(state)}`;
@@ -13785,7 +16079,7 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
             anchorUnitId: target.id,
             candidateUnitIds: splashCandidates.map((unit) => unit.id),
             amount,
-            optional: true
+            optional: true,
           };
           appendEvent(state, {
             type: "PENDING_CHOICE_CREATED",
@@ -13793,25 +16087,36 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
             choiceType: "ABILITY_TARGET_CHOICE",
             playerId: stackItem.action.playerId,
             sourceEffectIds: [],
-            message: `${card.name} may scorch a second unit.`
+            message: `${card.name} may scorch a second unit.`,
           });
         }
       }
     }
 
-    if (card?.effect.type === "SUMMON_ELEMENTAL" && state.combat && stackItem.action.target.type === "space") {
+    if (
+      card?.effect.type === "SUMMON_ELEMENTAL" &&
+      state.combat &&
+      stackItem.action.target.type === "space"
+    ) {
       // Power 4 summons a Pack, Power 2 a Few; Power 0 has no effect.
       const power = getCurrentSpellPower(state, stackItem, cards);
-      const side: "few" | "pack" | null = power >= 4 ? "pack" : power >= 2 ? "few" : null;
+      const side: "few" | "pack" | null =
+        power >= 4 ? "pack" : power >= 2 ? "few" : null;
       const position = stackItem.action.target.position;
       if (side) {
-        const summoned = placeSummonedUnit(state, stackItem.action.playerId, card.effect.unitDefId, side, position);
+        const summoned = placeSummonedUnit(
+          state,
+          stackItem.action.playerId,
+          card.effect.unitDefId,
+          side,
+          position,
+        );
         if (summoned) {
           appendEvent(state, {
             type: "UNIT_ABILITY_TRIGGERED",
             unitId: summoned.id,
             abilityId: card.id,
-            message: `${state.players[stackItem.action.playerId]?.name ?? "A hero"} casts ${card.name}: ${summoned.cardName} appears at ${getBattlefieldLabel(position)}.`
+            message: `${state.players[stackItem.action.playerId]?.name ?? "A hero"} casts ${card.name}: ${summoned.cardName} appears at ${getBattlefieldLabel(position)}.`,
           });
         }
       }
@@ -13820,20 +16125,30 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
     // Force Field (Basic Earth): drop an Obstacle on the chosen empty space.
     // Its span grows with Power — Power 0: this Combat round, 1: the next, 2: the
     // whole Combat — and while it stands it blocks non-flying movement.
-    if (card?.effect.type === "PLACE_FORCE_FIELD" && state.combat && stackItem.action.target.type === "space") {
+    if (
+      card?.effect.type === "PLACE_FORCE_FIELD" &&
+      state.combat &&
+      stackItem.action.target.type === "space"
+    ) {
       const power = getCurrentSpellPower(state, stackItem, cards);
-      const duration = durationAtPower(card.effect.durationByPower, power) ?? { type: "combat" };
+      const duration = durationAtPower(card.effect.durationByPower, power) ?? {
+        type: "combat",
+      };
       addBattlefieldToken(state, {
         kind: "force_field",
         position: stackItem.action.target.position,
         controllerId: stackItem.action.playerId,
-        expiresAtCombatRoundEnd: forceFieldExpiry(state.combat, duration)
+        expiresAtCombatRoundEnd: forceFieldExpiry(state.combat, duration),
       });
     }
 
     // Fire Wall (Basic Fire): drop an Effect Obstacle on the chosen empty space
     // for the whole Combat; the damage it deals scales with Power (0/2/4 -> 1/2/3).
-    if (card?.effect.type === "PLACE_FIRE_WALL" && state.combat && stackItem.action.target.type === "space") {
+    if (
+      card?.effect.type === "PLACE_FIRE_WALL" &&
+      state.combat &&
+      stackItem.action.target.type === "space"
+    ) {
       const power = getCurrentSpellPower(state, stackItem, cards);
       addBattlefieldToken(state, {
         kind: "fire_wall",
@@ -13843,7 +16158,7 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
         // Community Balance Pack Fire Wall: "…any unit STARTING THEIR ACTIVATION
         // or stopping here…" — the printed spell only bites on stop /
         // pass-through, so the flag is absent there.
-        ...(card.effect.burnsAtActivation ? { burnsAtActivation: true } : {})
+        ...(card.effect.burnsAtActivation ? { burnsAtActivation: true } : {}),
       });
     }
 
@@ -13858,7 +16173,7 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
         stackItem.action.playerId,
         card.effect.tokenKind,
         count,
-        card.effect.triggerDamage
+        card.effect.triggerDamage,
       );
     }
 
@@ -13867,7 +16182,7 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
       playerId: stackItem.action.playerId,
       spellCardId: stackItem.action.cardId,
       target: stackItem.action.target,
-      power: getCurrentSpellPower(state, stackItem, cards)
+      power: getCurrentSpellPower(state, stackItem, cards),
     });
 
     finalizeSpellCardDestination(state, stackItem, effectCountBeforeCast);
@@ -13884,7 +16199,10 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
     // the now-faster friendly unit. No-op for an on-turn cast or any cast that
     // did not raise a unit's Initiative.
     if (appliedCombatInitiativeBuff) {
-      maybeStealActivationAfterInitiativeShift(state, stackItem.action.playerId);
+      maybeStealActivationAfterInitiativeShift(
+        state,
+        stackItem.action.playerId,
+      );
     }
 
     // Fireball's second-target choice stays open after the cast resolves.
@@ -13899,7 +16217,10 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
     return;
   }
 
-  if (stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT") {
+  if (
+    stackItem.action.type === "ATTACK_UNIT" ||
+    stackItem.action.type === "MOVE_AND_ATTACK_UNIT"
+  ) {
     resolveAttackStackItem(state, stackItem, cards);
     return;
   }
@@ -13924,24 +16245,22 @@ function holdOngoingCardIfEffectCreated(
   playerId: PlayerId,
   cardId: CardId,
   effectCountBefore: number,
-  returnTo: "discard" | "hand" | "spellBook"
+  returnTo: "discard" | "hand" | "spellBook",
 ): boolean {
   const player = state.players[playerId];
   if (!player) {
     return false;
   }
 
-  const createdEffects = state.activeEffects
-    .slice(effectCountBefore)
-    .filter(
-      (effect) =>
-        effect.source.type === "card" &&
-        effect.source.cardId === cardId &&
-        // Polish Balance Pack Intelligence (one-shot): a `keepSourceInDiscard`
-        // effect deliberately leaves its card spent in the discard pile — it is
-        // never pulled into the "Permanents & Ongoing" tray.
-        !effect.keepSourceInDiscard
-    );
+  const createdEffects = state.activeEffects.slice(effectCountBefore).filter(
+    (effect) =>
+      effect.source.type === "card" &&
+      effect.source.cardId === cardId &&
+      // Polish Balance Pack Intelligence (one-shot): a `keepSourceInDiscard`
+      // effect deliberately leaves its card spent in the discard pile — it is
+      // never pulled into the "Permanents & Ongoing" tray.
+      !effect.keepSourceInDiscard,
+  );
   if (createdEffects.length === 0) {
     return false;
   }
@@ -13956,7 +16275,7 @@ function holdOngoingCardIfEffectCreated(
   player.ongoingCards.push({
     cardId,
     effectIds: createdEffects.map((effect) => effect.id),
-    returnTo
+    returnTo,
   });
   return true;
 }
@@ -13973,7 +16292,7 @@ function returnSpellFromDiscardToHand(
   state: GameState,
   playerId: PlayerId,
   cardId: CardId,
-  toSpellBook = false
+  toSpellBook = false,
 ): boolean {
   const player = state.players[playerId];
   const discardIndex = player?.discard.lastIndexOf(cardId) ?? -1;
@@ -13991,7 +16310,7 @@ function returnSpellFromDiscardToHand(
     type: "SPELL_RETURNED_TO_HAND",
     playerId,
     cardId,
-    reason: "Knowledge/Mysticism"
+    reason: "Knowledge/Mysticism",
   });
   return true;
 }
@@ -14022,7 +16341,7 @@ function refreshPolishUsedSpell(
   state: GameState,
   playerId: PlayerId,
   cardId: CardId,
-  options: { undoCast?: boolean } = {}
+  options: { undoCast?: boolean } = {},
 ): boolean {
   const player = state.players[playerId];
   const usedIndex = player?.spellBookUsed?.lastIndexOf(cardId) ?? -1;
@@ -14039,7 +16358,7 @@ function refreshPolishUsedSpell(
       message:
         blocked === "in-effect"
           ? `${cardLibrary[cardId]?.name ?? cardId} is still in effect and cannot be refreshed yet.`
-          : `${cardLibrary[cardId]?.name ?? cardId} has already been refreshed this round.`
+          : `${cardLibrary[cardId]?.name ?? cardId} has already been refreshed this round.`,
     });
     return false;
   }
@@ -14052,7 +16371,9 @@ function refreshPolishUsedSpell(
     type: "SPELL_RETURNED_TO_HAND",
     playerId,
     cardId,
-    reason: options.undoCast ? "Polish Spell Book refund" : "Polish Spell Book refresh"
+    reason: options.undoCast
+      ? "Polish Spell Book refund"
+      : "Polish Spell Book refresh",
   });
   return true;
 }
@@ -14066,7 +16387,10 @@ function refreshPolishUsedSpell(
  * their Spell Book when it was cast from the Book. Idempotent: the queue is
  * cleared as it is drained, so a second call is a no-op.
  */
-function processDeferredSpellRecalls(state: GameState, stackItem: ResolutionStackItem): void {
+function processDeferredSpellRecalls(
+  state: GameState,
+  stackItem: ResolutionStackItem,
+): void {
   const deferred = stackItem.modifiers.deferredSpellRecalls;
   if (!deferred || deferred.length === 0) {
     return;
@@ -14076,12 +16400,20 @@ function processDeferredSpellRecalls(state: GameState, stackItem: ResolutionStac
     if (entry.fromPolishUsed) {
       refreshPolishUsedSpell(state, entry.playerId, entry.cardId);
     } else {
-      returnSpellFromDiscardToHand(state, entry.playerId, entry.cardId, entry.toSpellBook);
+      returnSpellFromDiscardToHand(
+        state,
+        entry.playerId,
+        entry.cardId,
+        entry.toSpellBook,
+      );
     }
   }
 }
 
-function closeReactionWindow(state: GameState, reason: "all-pass" | "reaction-played"): void {
+function closeReactionWindow(
+  state: GameState,
+  reason: "all-pass" | "reaction-played",
+): void {
   if (!state.reactionWindow) {
     return;
   }
@@ -14089,7 +16421,7 @@ function closeReactionWindow(state: GameState, reason: "all-pass" | "reaction-pl
   appendEvent(state, {
     type: "REACTION_WINDOW_CLOSED",
     windowId: state.reactionWindow.id,
-    reason
+    reason,
   });
   state.reactionWindow = null;
   state.priorityPlayerId = null;
@@ -14126,23 +16458,33 @@ function consumeActiveUnitSpellPowerBoost(
   state: GameState,
   playerId: PlayerId,
   spellSchools: SpellSchool[] | undefined,
-  firstSpellThisRound: boolean
+  firstSpellThisRound: boolean,
 ): number {
   const combat = state.combat;
-  const activeUnit = combat?.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
+  const activeUnit = combat?.activeUnitId
+    ? combat.units[combat.activeUnitId]
+    : undefined;
   if (!activeUnit || activeUnit.controllerId !== playerId) {
     return 0;
   }
-  const { amount, spendsActivationCharge } = availableActivationSpellPowerBoost(activeUnit, spellSchools, {
-    firstSpellThisRound
-  });
+  const { amount, spendsActivationCharge } = availableActivationSpellPowerBoost(
+    activeUnit,
+    spellSchools,
+    {
+      firstSpellThisRound,
+    },
+  );
   if (spendsActivationCharge) {
     activeUnit.activationSpellPowerUsed = true;
   }
   return amount;
 }
 
-function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_SPELL" }>, cards: CardLibrary): void {
+function castSpell(
+  state: GameState,
+  action: Extract<GameAction, { type: "CAST_SPELL" }>,
+  cards: CardLibrary,
+): void {
   const card = cards[action.cardId];
   if (!card || card.kind !== "spell") {
     throw new Error(`Card ${action.cardId} is not a spell.`);
@@ -14155,9 +16497,12 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
   // hero actually Searched and flagged this combat (guards against a forged
   // tarnumReturn slipping a normal hand spell past the per-round limit).
   if (action.tarnumReturn) {
-    const flagged = state.players[action.playerId]?.combatStats.tarnumOverlimitCards ?? [];
+    const flagged =
+      state.players[action.playerId]?.combatStats.tarnumOverlimitCards ?? [];
     if (!flagged.includes(action.cardId)) {
-      throw new Error("That Spell was not Searched for a Tarnum over-limit cast.");
+      throw new Error(
+        "That Spell was not Searched for a Tarnum over-limit cast.",
+      );
     }
   }
 
@@ -14170,9 +16515,15 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
     const caster = state.players[action.playerId];
     const enablerId = action.fromSpellDeck;
     const castOption = enablerId
-      ? castFromSpellDiscardOption(state, cards, enablerId, action.castEnablerMode)
+      ? castFromSpellDiscardOption(
+          state,
+          cards,
+          enablerId,
+          action.castEnablerMode,
+        )
       : undefined;
-    const authorisedSpellId = castOption?.ownDiscard === true ? castOption.spellId : undefined;
+    const authorisedSpellId =
+      castOption?.ownDiscard === true ? castOption.spellId : undefined;
     // Community Balance Change INTELLIGENCE: "Play a spell from your discard
     // pile." `anySpell` authorises ANY Spell card, so the forgery surface moves
     // from "this exact id" to "a real Spell, really in YOUR discard pile, with
@@ -14181,14 +16532,23 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
     // zone (refreshed / used), never "your discard pile".
     if (castOption?.ownDiscard === true && castOption.anySpell === true) {
       const anyCaster = state.players[action.playerId];
-      const enablerHeld = Boolean(enablerId && anyCaster?.hand.includes(enablerId));
-      if (!anyCaster || !enablerHeld || cards[action.cardId]?.kind !== "spell") {
+      const enablerHeld = Boolean(
+        enablerId && anyCaster?.hand.includes(enablerId),
+      );
+      if (
+        !anyCaster ||
+        !enablerHeld ||
+        cards[action.cardId]?.kind !== "spell"
+      ) {
         throw new Error("That Spell cannot be cast from your discard pile.");
       }
       if (!anyCaster.discard.includes(action.cardId)) {
         throw new Error("That Spell is not in your discard pile.");
       }
-      if (action.castEnablerMode === "expert" && !canPlayExpertMode(anyCaster, enablerId)) {
+      if (
+        action.castEnablerMode === "expert" &&
+        !canPlayExpertMode(anyCaster, enablerId)
+      ) {
         throw new Error("That expert cast needs a crown.");
       }
       // The crown is spent (and the enabler consumed) in performSpellCast, with
@@ -14200,14 +16560,20 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
       // own-discard one — this cast is free of a hand enabler, so an unchecked
       // client could otherwise cast any spell.
       const refreshFromBook =
-        castOption?.polishRefreshFromBook === true && polishSpellBookEnabled(state);
+        castOption?.polishRefreshFromBook === true &&
+        polishSpellBookEnabled(state);
       const sourceHoldsSpell = refreshFromBook
         ? Boolean(caster?.spellBookUsed?.includes(action.cardId)) &&
           Boolean(caster?.discard.includes(CAST_A_SPELL_CARD_ID)) &&
-          polishBookSpellRefreshBlocked(state, action.playerId, action.cardId, caster) === null
+          polishBookSpellRefreshBlocked(
+            state,
+            action.playerId,
+            action.cardId,
+            caster,
+          ) === null
         : polishSpellBookEnabled(state)
-        ? Boolean(caster?.spellBook.includes(action.cardId))
-        : Boolean(caster?.discard.includes(action.cardId));
+          ? Boolean(caster?.spellBook.includes(action.cardId))
+          : Boolean(caster?.discard.includes(action.cardId));
       if (
         !caster ||
         !enablerId ||
@@ -14232,7 +16598,7 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
             type: "SPELL_RETURNED_TO_HAND",
             playerId: action.playerId,
             cardId: action.cardId,
-            reason: "refreshed in the Spell Book"
+            reason: "refreshed in the Spell Book",
           });
         }
       }
@@ -14243,7 +16609,9 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
   // Faerie Dragons forbids any Spell cast. Backstop at resolution so a forced
   // cast (one the legal-action filter never offered) still fails.
   if (combatEnemyLocksSpells(state, action.playerId)) {
-    throw new Error("An enemy Faerie Dragons (Stacked) prevents you from casting Spells.");
+    throw new Error(
+      "An enemy Faerie Dragons (Stacked) prevents you from casting Spells.",
+    );
   }
 
   // Neutral Pegasi "Mystic Toll": a living enemy Pegasi gates this cast behind
@@ -14255,17 +16623,25 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
     // A Book cast (like a Scroll cast) leaves the hand intact — the cast Spell is
     // not in hand — so it never excludes the cast card from the payable Power list.
     const payable = caster
-      ? payablePowerCardIds(caster.hand, cards, action.cardId, Boolean(action.fromScroll || action.fromSpellBook))
+      ? payablePowerCardIds(
+          caster.hand,
+          cards,
+          action.cardId,
+          Boolean(action.fromScroll || action.fromSpellBook),
+        )
       : [];
     // Reserve one physical Cast-a-Spell card for the Polish Book cast. The
     // same card id can pay the toll only if another copy remains in hand.
     const payableWithoutReservedEnabler = payable.filter(
       (cardId) =>
         cardId !== action.castEnablerCardId ||
-        (caster?.hand.filter((heldId) => heldId === action.castEnablerCardId).length ?? 0) >= 2
+        (caster?.hand.filter((heldId) => heldId === action.castEnablerCardId)
+          .length ?? 0) >= 2,
     );
     if (payableWithoutReservedEnabler.length === 0) {
-      throw new Error("An enemy Pegasi blocks this Spell: you must discard a card with Power to cast, and have none to pay.");
+      throw new Error(
+        "An enemy Pegasi blocks this Spell: you must discard a card with Power to cast, and have none to pay.",
+      );
     }
     openPegasiTollChoice(state, action, payableWithoutReservedEnabler, cards);
     return;
@@ -14283,12 +16659,15 @@ function openPegasiTollChoice(
   state: GameState,
   action: Extract<GameAction, { type: "CAST_SPELL" }>,
   payableCardIds: CardId[],
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   const combat = state.combat;
   const pegasi = combat
     ? Object.values(combat.units).find(
-        (unit) => unit.controllerId !== action.playerId && isUnitAlive(unit) && hasSpellCastPowerTax(unit)
+        (unit) =>
+          unit.controllerId !== action.playerId &&
+          isUnitAlive(unit) &&
+          hasSpellCastPowerTax(unit),
       )
     : undefined;
   if (!pegasi) {
@@ -14313,16 +16692,20 @@ function openPegasiTollChoice(
     tollSpell: {
       cardId: action.cardId,
       target: action.target,
-      ...(action.optionIndex !== undefined ? { optionIndex: action.optionIndex } : {}),
+      ...(action.optionIndex !== undefined
+        ? { optionIndex: action.optionIndex }
+        : {}),
       ...(action.fromScroll ? { fromScroll: action.fromScroll } : {}),
       ...(action.fromSpellDeck ? { fromSpellDeck: action.fromSpellDeck } : {}),
       ...(action.fromOwnDiscard ? { fromOwnDiscard: true } : {}),
       ...(action.fromSpellBook ? { fromSpellBook: true } : {}),
-      ...(action.castEnablerCardId ? { castEnablerCardId: action.castEnablerCardId } : {}),
+      ...(action.castEnablerCardId
+        ? { castEnablerCardId: action.castEnablerCardId }
+        : {}),
       ...(action.tarnumReturn ? { tarnumReturn: action.tarnumReturn } : {}),
       ...(action.useSchoolExpert ? { useSchoolExpert: true } : {}),
-      ...(action.useSchoolFetchExpert ? { useSchoolFetchExpert: true } : {})
-    }
+      ...(action.useSchoolFetchExpert ? { useSchoolFetchExpert: true } : {}),
+    },
   };
   state.phase = "choice";
   state.priorityPlayerId = action.playerId;
@@ -14333,28 +16716,36 @@ function openPegasiTollChoice(
     choiceType: "COMBAT_HAND_DISCARD",
     playerId: action.playerId,
     sourceEffectIds: [],
-    message: `${chooser?.name ?? action.playerId} must pay a card with Power to cast ${spellName}.`
+    message: `${chooser?.name ?? action.playerId} must pay a card with Power to cast ${spellName}.`,
   });
 }
 
 function spellActionFromDeferred(
   playerId: PlayerId,
-  deferred: NonNullable<Extract<PendingChoice, { type: "COMBAT_HAND_DISCARD" }>["tollSpell"]>
+  deferred: NonNullable<
+    Extract<PendingChoice, { type: "COMBAT_HAND_DISCARD" }>["tollSpell"]
+  >,
 ): Extract<GameAction, { type: "CAST_SPELL" }> {
   return {
     type: "CAST_SPELL",
     playerId,
     cardId: deferred.cardId,
     target: deferred.target,
-    ...(deferred.optionIndex !== undefined ? { optionIndex: deferred.optionIndex } : {}),
+    ...(deferred.optionIndex !== undefined
+      ? { optionIndex: deferred.optionIndex }
+      : {}),
     ...(deferred.fromScroll ? { fromScroll: deferred.fromScroll } : {}),
-    ...(deferred.fromSpellDeck ? { fromSpellDeck: deferred.fromSpellDeck } : {}),
+    ...(deferred.fromSpellDeck
+      ? { fromSpellDeck: deferred.fromSpellDeck }
+      : {}),
     ...(deferred.fromOwnDiscard ? { fromOwnDiscard: true } : {}),
     ...(deferred.fromSpellBook ? { fromSpellBook: true } : {}),
-    ...(deferred.castEnablerCardId ? { castEnablerCardId: deferred.castEnablerCardId } : {}),
+    ...(deferred.castEnablerCardId
+      ? { castEnablerCardId: deferred.castEnablerCardId }
+      : {}),
     ...(deferred.tarnumReturn ? { tarnumReturn: deferred.tarnumReturn } : {}),
     ...(deferred.useSchoolExpert ? { useSchoolExpert: true } : {}),
-    ...(deferred.useSchoolFetchExpert ? { useSchoolFetchExpert: true } : {})
+    ...(deferred.useSchoolFetchExpert ? { useSchoolFetchExpert: true } : {}),
   };
 }
 
@@ -14366,7 +16757,7 @@ function spellActionFromDeferred(
 function continueSpellCastAfterPowerTax(
   state: GameState,
   action: Extract<GameAction, { type: "CAST_SPELL" }>,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   const normalHandCast =
     !action.fromScroll &&
@@ -14376,7 +16767,9 @@ function continueSpellCastAfterPowerTax(
     !action.tarnumReturn;
   // Shared read with the player-facing "Mana Leech" notice (see
   // `combatEnemyHandTaxUnit`), so the warning and the real toll never disagree.
-  const familiar = normalHandCast ? combatEnemyHandTaxUnit(state, action.playerId) : undefined;
+  const familiar = normalHandCast
+    ? combatEnemyHandTaxUnit(state, action.playerId)
+    : undefined;
   const caster = state.players[action.playerId];
   if (!familiar || !caster) {
     performSpellCast(state, action, cards);
@@ -14408,10 +16801,12 @@ function continueSpellCastAfterPowerTax(
     tollSpell: {
       cardId: action.cardId,
       target: action.target,
-      ...(action.optionIndex !== undefined ? { optionIndex: action.optionIndex } : {}),
+      ...(action.optionIndex !== undefined
+        ? { optionIndex: action.optionIndex }
+        : {}),
       ...(action.useSchoolExpert ? { useSchoolExpert: true } : {}),
-      ...(action.useSchoolFetchExpert ? { useSchoolFetchExpert: true } : {})
-    }
+      ...(action.useSchoolFetchExpert ? { useSchoolFetchExpert: true } : {}),
+    },
   };
   state.phase = "choice";
   state.priorityPlayerId = action.playerId;
@@ -14421,7 +16816,7 @@ function continueSpellCastAfterPowerTax(
     choiceType: "COMBAT_HAND_DISCARD",
     playerId: action.playerId,
     sourceEffectIds: [],
-    message: `${caster.name} chooses a card for ${familiar.cardName}'s Mana Leech.`
+    message: `${caster.name} chooses a card for ${familiar.cardName}'s Mana Leech.`,
   });
 }
 
@@ -14430,7 +16825,11 @@ function continueSpellCastAfterPowerTax(
  * reaction window / resolve. Split from castSpell so Pegasi and Familiars can
  * collect their player-chosen costs before any cast state is mutated.
  */
-function performSpellCast(state: GameState, action: Extract<GameAction, { type: "CAST_SPELL" }>, cards: CardLibrary): void {
+function performSpellCast(
+  state: GameState,
+  action: Extract<GameAction, { type: "CAST_SPELL" }>,
+  cards: CardLibrary,
+): void {
   const card = cards[action.cardId];
   if (!card || card.kind !== "spell") {
     throw new Error(`Card ${action.cardId} is not a spell.`);
@@ -14442,13 +16841,17 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
     !action.fromSpellDeck &&
     !action.tarnumReturn
   ) {
-    throw new Error("Owned Spells must be cast from the Polish Spell Book with Cast a Spell.");
+    throw new Error(
+      "Owned Spells must be cast from the Polish Spell Book with Cast a Spell.",
+    );
   }
   if (action.fromSpellBook && polishSpellBookEnabled(state)) {
     assertPolishBookCastEnabled(state, action);
   }
   if (isCastASpellCard(action.cardId)) {
-    throw new Error("Cast a Spell enables a refreshed Spell Book card; it is not itself cast as a Spell.");
+    throw new Error(
+      "Cast a Spell enables a refreshed Spell Book card; it is not itself cast as a Spell.",
+    );
   }
 
   // Polish Balance Pack — the reprinted EAGLE EYE EXPERT copy: the Spell is the
@@ -14475,10 +16878,17 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
       cardId: EAGLE_EYE_ABILITY_ID,
       timing: cardLibrary[EAGLE_EYE_ABILITY_ID]?.timing ?? "instant",
       mode: "expert",
-      optionLabel: `Eagle Eye: copy ${card.name} at Power 0`
+      optionLabel: `Eagle Eye: copy ${card.name} at Power 0`,
     });
   } else if (action.fromScroll) {
-    if (!consumeScrollSpell(state, action.playerId, action.fromScroll, action.cardId)) {
+    if (
+      !consumeScrollSpell(
+        state,
+        action.playerId,
+        action.fromScroll,
+        action.cardId,
+      )
+    ) {
       throw new Error("That spell is not in the named Spell Scroll.");
     }
   } else if (action.fromSpellDeck) {
@@ -14491,9 +16901,15 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
     const enablerKind = cardLibrary[action.fromSpellDeck]?.kind;
     // A hero-specialty cycles to the discard to be redrawn; so does an ABILITY
     // (Community Intelligence) — only the Helm prints "Remove this card".
-    const enablerCycles = enablerKind === "hero-specialty" || enablerKind === "ability";
+    const enablerCycles =
+      enablerKind === "hero-specialty" || enablerKind === "ability";
     const anySpellCast =
-      castFromSpellDiscardOption(state, cards, action.fromSpellDeck, action.castEnablerMode)?.anySpell === true;
+      castFromSpellDiscardOption(
+        state,
+        cards,
+        action.fromSpellDeck,
+        action.castEnablerMode,
+      )?.anySpell === true;
     // Community Intelligence EXPERT ("does not count toward your Spell limit"):
     // pay the crown, waived while the ability is Empowered. Spent HERE, with the
     // rest of the cast, so a cast that throws earlier costs nothing.
@@ -14507,7 +16923,7 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
       state,
       action.playerId,
       action.fromSpellDeck,
-      enablerCycles ? "discard" : "removed"
+      enablerCycles ? "discard" : "removed",
     );
     if (removeError) {
       throw new Error(removeError.message);
@@ -14519,17 +16935,23 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
         cardId: action.fromSpellDeck,
         timing: cardLibrary[action.fromSpellDeck]?.timing ?? "instant",
         mode: action.castEnablerMode ?? "basic",
-        optionLabel: `Play ${card.name} from your discard pile`
+        optionLabel: `Play ${card.name} from your discard pile`,
       });
     }
     // Ciele's own-discard cast under the Polish Book reads the BOOK as the
     // source; the Community Intelligence deliberately does NOT (its printed
     // "your discard pile" is the plain discard, where the Spell stays).
-    if (action.fromOwnDiscard && !anySpellCast && polishSpellBookEnabled(state)) {
+    if (
+      action.fromOwnDiscard &&
+      !anySpellCast &&
+      polishSpellBookEnabled(state)
+    ) {
       const caster = state.players[action.playerId];
       const bookIndex = caster?.spellBook.indexOf(action.cardId) ?? -1;
       if (!caster || bookIndex === -1) {
-        throw new Error("Ciele needs a refreshed Magic Arrow in the Polish Spell Book.");
+        throw new Error(
+          "Ciele needs a refreshed Magic Arrow in the Polish Spell Book.",
+        );
       }
       caster.spellBook.splice(bookIndex, 1);
       (caster.spellBookUsed ??= []).push(action.cardId);
@@ -14544,7 +16966,7 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
       state,
       action.playerId,
       action.cardId,
-      action.castEnablerCardId
+      action.castEnablerCardId,
     );
     if (moveError) {
       throw new Error(moveError.message);
@@ -14562,20 +16984,29 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
         throw new Error("That Spell is not on the Spell discard pile.");
       }
     } else {
-      const moveError = moveCardFromHandToDiscard(state, action.playerId, action.cardId);
+      const moveError = moveCardFromHandToDiscard(
+        state,
+        action.playerId,
+        action.cardId,
+      );
       if (moveError) {
         throw new Error(moveError.message);
       }
     }
   } else {
-    const moveError = moveCardFromHandToDiscard(state, action.playerId, action.cardId);
+    const moveError = moveCardFromHandToDiscard(
+      state,
+      action.playerId,
+      action.cardId,
+    );
     if (moveError) {
       throw new Error(moveError.message);
     }
   }
 
   const caster = state.players[action.playerId];
-  const isFirstSpellThisTurn = (caster.combatStats.spellsCastThisTurn ?? 0) === 0;
+  const isFirstSpellThisTurn =
+    (caster.combatStats.spellsCastThisTurn ?? 0) === 0;
   // "First spell this round" counts every cast, free Helm casts included, so the
   // Tower Magi Pack Power bonus lands on whichever spell is cast first — never on
   // both a free Helm cast and a later normal cast.
@@ -14590,11 +17021,14 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
   // toward your Spell limit per Combat round".
   // Community Intelligence prints BOTH readings, so the side named on the action
   // decides: basic counts toward the limit, expert does not.
-  const spellDeckCastCountsLimit =
-    action.fromSpellDeck
-      ? castFromSpellDiscardOption(state, cards, action.fromSpellDeck, action.castEnablerMode)
-          ?.countsTowardSpellLimit === true
-      : false;
+  const spellDeckCastCountsLimit = action.fromSpellDeck
+    ? castFromSpellDiscardOption(
+        state,
+        cards,
+        action.fromSpellDeck,
+        action.castEnablerMode,
+      )?.countsTowardSpellLimit === true
+    : false;
   noteSpellCast(
     state,
     caster,
@@ -14604,7 +17038,7 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
       !action.tarnumReturn &&
       !action.fromScroll &&
       !action.eagleEyeCopy,
-    castInFlightCardIds(state, action)
+    castInFlightCardIds(state, action),
   );
 
   const stackItem = makeStackItem(state, action);
@@ -14626,7 +17060,12 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
     // your Spellbook." BOOK-GATED — with the Polish Book on, the cast Spell
     // leaves the shared Spell-deck discard and is inscribed (refreshed) into the
     // caster's Book instead of staying there.
-    const castOption = castFromSpellDiscardOption(state, cards, action.fromSpellDeck, action.castEnablerMode);
+    const castOption = castFromSpellDiscardOption(
+      state,
+      cards,
+      action.fromSpellDeck,
+      action.castEnablerMode,
+    );
     if (
       castOption?.addToSpellBook === true &&
       polishSpellBookEnabled(state) &&
@@ -14657,7 +17096,10 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
     // Astrologers — Grim Warlock: the first spell in each player's turn gets
     // +1 Power.
     const astrologersCard = getActiveAstrologersCard(state);
-    if (isFirstSpellThisTurn && astrologersCard?.effect.type === "FIRST_SPELL_POWER_BONUS") {
+    if (
+      isFirstSpellThisTurn &&
+      astrologersCard?.effect.type === "FIRST_SPELL_POWER_BONUS"
+    ) {
       stackItem.modifiers.spellPowerBonus += astrologersCard.effect.amount;
     }
 
@@ -14673,7 +17115,7 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
       state,
       action.playerId,
       card.spellSchools,
-      isFirstSpellThisRound
+      isFirstSpellThisRound,
     );
     if (activationPower > 0) {
       stackItem.modifiers.spellPowerBonus += activationPower;
@@ -14695,13 +17137,22 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
     // for the SAME school only — baked into schoolPowerBonus so Magic Arrow
     // (wiki: one school at a time) never stacks Water Magic with a Fire tile.
     if (action.useSchoolExpert) {
-      const expert = discardSchoolPermanentForExpert(state, action.playerId, card);
+      const expert = discardSchoolPermanentForExpert(
+        state,
+        action.playerId,
+        card,
+      );
       if (!expert) {
-        throw new Error("That spell cannot discard a School of Magic for its expert bonus right now.");
+        throw new Error(
+          "That spell cannot discard a School of Magic for its expert bonus right now.",
+        );
       }
-      const expertSchool = cardLibrary[expert.cardId]?.permanentEffect?.schoolBonus?.school;
+      const expertSchool =
+        cardLibrary[expert.cardId]?.permanentEffect?.schoolBonus?.school;
       const tileBonus =
-        expertSchool && expertSchool !== "any" ? elementalTileSpellPowerBonus(state, expertSchool) : 0;
+        expertSchool && expertSchool !== "any"
+          ? elementalTileSpellPowerBonus(state, expertSchool)
+          : 0;
       stackItem.modifiers.schoolPowerBonus = expert.expertPower + tileBonus;
       stackItem.modifiers.playedCardIds.push(expert.cardId);
     } else {
@@ -14725,11 +17176,21 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
   // for free. Folded before SPELL_CAST_STARTED so reactions (Resistance) see the
   // final Power, and marking `schoolFetchExpertUsedBy` blocks a second dip.
   if (action.useSchoolFetchExpert) {
-    const school = matchingSchoolFetchForCast(state, action.playerId, card.spellSchools ?? []);
+    const school = matchingSchoolFetchForCast(
+      state,
+      action.playerId,
+      card.spellSchools ?? [],
+    );
     if (!school) {
-      throw new Error("No Basic Magic of a matching school is in play for this cast.");
+      throw new Error(
+        "No Basic Magic of a matching school is in play for this cast.",
+      );
     }
-    applySchoolFetchExpert(state, { type: "USE_SCHOOL_FETCH_EXPERT", playerId: action.playerId, school });
+    applySchoolFetchExpert(state, {
+      type: "USE_SCHOOL_FETCH_EXPERT",
+      playerId: action.playerId,
+      school,
+    });
   }
 
   const spellStarted = appendEvent(state, {
@@ -14737,7 +17198,7 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
     playerId: action.playerId,
     spellCardId: action.cardId,
     target: action.target,
-    power: card.power ?? 0
+    power: card.power ?? 0,
   });
   stackItem.triggerEventIds.push(spellStarted.id);
 
@@ -14772,13 +17233,17 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
  * took over, so the caller does not resolve the attack. A no-op (returns false)
  * for any other window, or when nobody can react in the normal window either.
  */
-function transitionFromMisfortunePhase(state: GameState, cards: CardLibrary): boolean {
+function transitionFromMisfortunePhase(
+  state: GameState,
+  cards: CardLibrary,
+): boolean {
   const window = state.reactionWindow;
   const top = state.stack.at(-1);
   if (
     !window ||
     !top ||
-    (top.action.type !== "ATTACK_UNIT" && top.action.type !== "MOVE_AND_ATTACK_UNIT") ||
+    (top.action.type !== "ATTACK_UNIT" &&
+      top.action.type !== "MOVE_AND_ATTACK_UNIT") ||
     !top.modifiers.misfortunePhase
   ) {
     return false;
@@ -14797,7 +17262,11 @@ function transitionFromMisfortunePhase(state: GameState, cards: CardLibrary): bo
   return true;
 }
 
-function passReaction(state: GameState, action: Extract<GameAction, { type: "PASS_REACTION" }>, cards: CardLibrary): void {
+function passReaction(
+  state: GameState,
+  action: Extract<GameAction, { type: "PASS_REACTION" }>,
+  cards: CardLibrary,
+): void {
   if (!state.reactionWindow) {
     throw new Error("No reaction window is open.");
   }
@@ -14827,9 +17296,12 @@ function passReaction(state: GameState, action: Extract<GameAction, { type: "PAS
     const minUseful = spellMinUsefulPower(spell);
     if (minUseful > 0) {
       const power = getCurrentSpellPower(state, pending, cards);
-      if (power < minUseful && casterCanFuelPendingSpell(state, action.playerId, cards)) {
+      if (
+        power < minUseful &&
+        casterCanFuelPendingSpell(state, action.playerId, cards)
+      ) {
         throw new Error(
-          `${spell?.name ?? "This spell"} needs at least Power ${minUseful} (currently ${power}). Add Power before resolving.`
+          `${spell?.name ?? "This spell"} needs at least Power ${minUseful} (currently ${power}). Add Power before resolving.`,
         );
       }
     }
@@ -14839,7 +17311,7 @@ function passReaction(state: GameState, action: Extract<GameAction, { type: "PAS
   appendEvent(state, {
     type: "REACTION_PASSED",
     playerId: action.playerId,
-    windowId: window.id
+    windowId: window.id,
   });
 
   if (!window.passedPlayerIds.includes(action.playerId)) {
@@ -14847,7 +17319,7 @@ function passReaction(state: GameState, action: Extract<GameAction, { type: "PAS
   }
 
   const remainingPlayers = window.allowedPlayerIds.filter(
-    (playerId) => !window.passedPlayerIds.includes(playerId)
+    (playerId) => !window.passedPlayerIds.includes(playerId),
   );
 
   if (remainingPlayers.length === 0) {
@@ -14865,8 +17337,14 @@ function passReaction(state: GameState, action: Extract<GameAction, { type: "PAS
   state.priorityPlayerId = remainingPlayers[0];
 }
 
-function effectSupportsExpertPlay(effect: NonNullable<ReturnType<typeof getEffectiveCardEffect>>): boolean {
-  if (effect.type === "ADD_COMBAT_STAT" || effect.type === "ADD_SPELL_POWER" || effect.type === "DRAW_CARDS") {
+function effectSupportsExpertPlay(
+  effect: NonNullable<ReturnType<typeof getEffectiveCardEffect>>,
+): boolean {
+  if (
+    effect.type === "ADD_COMBAT_STAT" ||
+    effect.type === "ADD_SPELL_POWER" ||
+    effect.type === "DRAW_CARDS"
+  ) {
     return effect.expertAmount !== undefined;
   }
 
@@ -14881,13 +17359,17 @@ function effectSupportsExpertPlay(effect: NonNullable<ReturnType<typeof getEffec
   if (effect.type === "RECALL_SPELL") {
     // Mysticism's expert side recalls every card played with the spell;
     // Knowledge's expert side raises the spell-per-round limit.
-    return Boolean(effect.expertSpellLimitBonus || effect.expertRecallPlayedCards);
+    return Boolean(
+      effect.expertSpellLimitBonus || effect.expertRecallPlayedCards,
+    );
   }
 
   if (effect.type === "CANCEL_SPELL") {
     // Resistance's expert ignores the power cap; Protection-from-X's expert
     // ignores the spell-level cap. Either makes the card's expert play real.
-    return Boolean(effect.expertIgnoresMaxPower || effect.expertIgnoresMaxSpellLevel);
+    return Boolean(
+      effect.expertIgnoresMaxPower || effect.expertIgnoresMaxSpellLevel,
+    );
   }
 
   // Interference's expert side (+2 instead of +1) exists; Plate of the Dying
@@ -14916,11 +17398,13 @@ function payOptionCardCost(
   costCardIds: CardId[] | undefined,
   cards: CardLibrary,
   /** Index-aligned with costCardIds: "expert" values a Power source at expertAmount and spends a crown. */
-  costCardModes?: CardPlayMode[]
+  costCardModes?: CardPlayMode[],
 ): number {
   const cardName = playedCard.name;
   const paying = costCardIds ?? [];
-  const payModes: CardPlayMode[] = paying.map((_, index) => costCardModes?.[index] ?? "basic");
+  const payModes: CardPlayMode[] = paying.map(
+    (_, index) => costCardModes?.[index] ?? "basic",
+  );
 
   // Resource price (Ballistics' expert bombardment): spend it up front. Charged
   // before any early return so a resource-only cost still resolves.
@@ -14929,18 +17413,28 @@ function payOptionCardCost(
     if (!payer) {
       throw new Error("Unknown player.");
     }
-    for (const [resource, amount] of Object.entries(cost.resources) as [ResourceKind, number][]) {
+    for (const [resource, amount] of Object.entries(cost.resources) as [
+      ResourceKind,
+      number,
+    ][]) {
       if (payer.resources[resource] < amount) {
         throw new Error(`${cardName} needs ${amount} ${resource} to play.`);
       }
     }
     spendResources(payer.resources, cost.resources);
-    appendEvent(state, { type: "RESOURCES_SPENT", playerId, cost: cost.resources, reason: cardName });
+    appendEvent(state, {
+      type: "RESOURCES_SPENT",
+      playerId,
+      cost: cost.resources,
+      reason: cardName,
+    });
   }
 
   if (
     !cost ||
-    (cost.discardCards === undefined && cost.discardCardsUpTo === undefined && cost.powerCost === undefined)
+    (cost.discardCards === undefined &&
+      cost.discardCardsUpTo === undefined &&
+      cost.powerCost === undefined)
   ) {
     if (paying.length > 0) {
       throw new Error(`${cardName} has no card cost to pay.`);
@@ -14949,10 +17443,17 @@ function payOptionCardCost(
   }
 
   if (cost.discardCards !== undefined && paying.length !== cost.discardCards) {
-    throw new Error(`${cardName} needs exactly ${cost.discardCards} card${cost.discardCards === 1 ? "" : "s"} as payment.`);
+    throw new Error(
+      `${cardName} needs exactly ${cost.discardCards} card${cost.discardCards === 1 ? "" : "s"} as payment.`,
+    );
   }
-  if (cost.discardCardsUpTo !== undefined && paying.length > cost.discardCardsUpTo) {
-    throw new Error(`${cardName} accepts at most ${cost.discardCardsUpTo} cards as payment.`);
+  if (
+    cost.discardCardsUpTo !== undefined &&
+    paying.length > cost.discardCardsUpTo
+  ) {
+    throw new Error(
+      `${cardName} accepts at most ${cost.discardCardsUpTo} cards as payment.`,
+    );
   }
 
   const player = state.players[playerId];
@@ -14971,8 +17472,14 @@ function payOptionCardCost(
     cost.removeCostCards
   ) {
     const cardId = paying[0];
-    if (!cardId || cards[cardId]?.kind !== "spell" || isCastASpellCard(cardId)) {
-      throw new Error(`${cardName} must remove an owned Spell from the Polish Spell Book.`);
+    if (
+      !cardId ||
+      cards[cardId]?.kind !== "spell" ||
+      isCastASpellCard(cardId)
+    ) {
+      throw new Error(
+        `${cardName} must remove an owned Spell from the Polish Spell Book.`,
+      );
     }
     const refreshedIndex = player.spellBook.indexOf(cardId);
     const usedIndex = (player.spellBookUsed ?? []).indexOf(cardId);
@@ -14981,7 +17488,9 @@ function payOptionCardCost(
     } else if (usedIndex !== -1) {
       player.spellBookUsed!.splice(usedIndex, 1);
     } else {
-      throw new Error(`${cardName} must remove an owned Spell from the Polish Spell Book.`);
+      throw new Error(
+        `${cardName} must remove an owned Spell from the Polish Spell Book.`,
+      );
     }
     player.removed.push(cardId);
     return paying.length;
@@ -14994,7 +17503,8 @@ function payOptionCardCost(
   // Spell Book (house rule): ONE stashed Book Spell may pay for Power — the
   // once-per-turn Book Power budget, the same limit as the "+1 Power" discard.
   // Every other cost card must come from the hand.
-  const bookRuleOn = spellBookRuleEnabled(state) && spellBookPowerAvailable(player);
+  const bookRuleOn =
+    spellBookRuleEnabled(state) && spellBookPowerAvailable(player);
   const bookCounts = new Map<string, number>();
   if (bookRuleOn) {
     for (const cardId of player.spellBook ?? []) {
@@ -15008,15 +17518,22 @@ function payOptionCardCost(
     if (cost.costCardFilter === "spell" && cards[cardId]?.kind !== "spell") {
       throw new Error(`${cardName} can only be paid with Spell cards.`);
     }
-    if (cost.costCardFilter === "power-source" && !cardCanBoostPower(cards[cardId])) {
-      throw new Error(`${cardName} can only be paid with Power statistics or Spell cards.`);
+    if (
+      cost.costCardFilter === "power-source" &&
+      !cardCanBoostPower(cards[cardId])
+    ) {
+      throw new Error(
+        `${cardName} can only be paid with Power statistics or Spell cards.`,
+      );
     }
     if (
       cost.costCardFilter === "power-source" &&
       playedCard.tags?.includes("meteor-shower") &&
       !cardCanFuelSchoollessPower(cards[cardId])
     ) {
-      throw new Error(`${cardName} cannot use Power that only boosts a School's Spells.`);
+      throw new Error(
+        `${cardName} cannot use Power that only boosts a School's Spells.`,
+      );
     }
     const handLeft = handCounts.get(cardId) ?? 0;
     if (handLeft > 0) {
@@ -15026,7 +17543,12 @@ function payOptionCardCost(
     }
     // Fall back to the Book, capped at one Spell (the Book Power budget).
     const bookLeft = bookCounts.get(cardId) ?? 0;
-    if (bookRuleOn && bookPaid === 0 && bookLeft > 0 && cards[cardId]?.kind === "spell") {
+    if (
+      bookRuleOn &&
+      bookPaid === 0 &&
+      bookLeft > 0 &&
+      cards[cardId]?.kind === "spell"
+    ) {
       bookCounts.set(cardId, bookLeft - 1);
       bookPaid += 1;
       paySources.push("book");
@@ -15035,7 +17557,7 @@ function payOptionCardCost(
     throw new Error(
       bookPaid > 0
         ? "Only one Spell Book Spell may help pay a save per turn — other cost cards must come from your hand."
-        : "Cost cards must come from your hand."
+        : "Cost cards must come from your hand.",
     );
   }
 
@@ -15050,17 +17572,27 @@ function payOptionCardCost(
       continue;
     }
     if (cost.costCardFilter !== "power-source") {
-      throw new Error(`${cardName} cannot use an expert Power payment for this cost.`);
+      throw new Error(
+        `${cardName} cannot use an expert Power payment for this cost.`,
+      );
     }
     const paid = cards[paying[index]];
     const add =
       paid?.effect.type === "ADD_SPELL_POWER"
         ? paid.effect
         : paid?.effect.type === "CHOOSE_ONE"
-          ? paid.effect.options.find((option) => option.effect.type === "ADD_SPELL_POWER")?.effect
+          ? paid.effect.options.find(
+              (option) => option.effect.type === "ADD_SPELL_POWER",
+            )?.effect
           : undefined;
-    if (!add || add.type !== "ADD_SPELL_POWER" || add.expertAmount === undefined) {
-      throw new Error(`${paid?.name ?? paying[index]} has no expert Power side to pay with.`);
+    if (
+      !add ||
+      add.type !== "ADD_SPELL_POWER" ||
+      add.expertAmount === undefined
+    ) {
+      throw new Error(
+        `${paid?.name ?? paying[index]} has no expert Power side to pay with.`,
+      );
     }
     if (!abilityExpertIsCrownFree(player, paying[index])) {
       expertPays += 1;
@@ -15071,7 +17603,9 @@ function payOptionCardCost(
     (player.combatStats.expertUseBonusThisRound ?? 0) -
     player.combatStats.expertUsesSpentThisRound;
   if (expertPays > crownsLeft) {
-    throw new Error(`${cardName} needs ${expertPays} crown${expertPays === 1 ? "" : "s"} for expert Power payment.`);
+    throw new Error(
+      `${cardName} needs ${expertPays} crown${expertPays === 1 ? "" : "s"} for expert Power payment.`,
+    );
   }
 
   if (cost.powerCost !== undefined) {
@@ -15083,7 +17617,11 @@ function payOptionCardCost(
     // The window-committed School expert (+3) counts only for a MATCHING-school
     // Spell — the printed card grants it "to a <School> Spell", never across
     // schools (one shared read with canAffordCardCost and the cost pickers).
-    const schoolBank = committedSchoolExpertPower(state.reactionWindow, playerId, playedCard);
+    const schoolBank = committedSchoolExpertPower(
+      state.reactionWindow,
+      playerId,
+      playedCard,
+    );
     // Power already poured into this window's pending attack (the "+1 Power"
     // Spell discards, a played Power statistic) pays a printed `powerCost` too —
     // USER RULE 2026-08-26 ("still cannot add SP to other effects"): the pool
@@ -15092,18 +17630,28 @@ function payOptionCardCost(
     // ladders. ONE shared read with canAffordCardCost, so a rung this engine
     // accepts is exactly the rung the window offered.
     const windowPool = attackWindowPooledPower(state, playerId);
-    const standing = standingSpellPower(state, playerId, playedCard) + mapBank + schoolBank + windowPool;
-    const values = paying.map((cardId, index) => spellPowerValueOfCard(cards[cardId], schools, payModes[index]));
+    const standing =
+      standingSpellPower(state, playerId, playedCard) +
+      mapBank +
+      schoolBank +
+      windowPool;
+    const values = paying.map((cardId, index) =>
+      spellPowerValueOfCard(cards[cardId], schools, payModes[index]),
+    );
     // An EMPOWERED ability paid at its Expert Power value costs no crown — the
     // same waiver its ordinary Expert play gets, so it is counted out of the
     // budget here AND out of the spend below.
     const total = standing + values.reduce((sum, value) => sum + value, 0);
     if (total < cost.powerCost) {
-      throw new Error(`${cardName} needs at least ${cost.powerCost} Power; this pays only ${total}.`);
+      throw new Error(
+        `${cardName} needs at least ${cost.powerCost} Power; this pays only ${total}.`,
+      );
     }
     for (const value of values) {
       if (total - value >= cost.powerCost) {
-        throw new Error(`${cardName} was paid more Power than it needs — drop a card.`);
+        throw new Error(
+          `${cardName} was paid more Power than it needs — drop a card.`,
+        );
       }
     }
     // Consume the map bank: it paid toward this cast, so it is spent (one Spell,
@@ -15162,10 +17710,13 @@ function payOptionCardCost(
   // discards the card directly, so the draw has to fire here too.
   if (cost.costCardFilter === "power-source") {
     const schools = playedCard.spellSchools ?? [];
-    const draws = paying.reduce((sum, cardId) => sum + spellPowerSourceDrawCards(cards[cardId], schools), 0);
+    const draws = paying.reduce(
+      (sum, cardId) => sum + spellPowerSourceDrawCards(cards[cardId], schools),
+      0,
+    );
     if (draws > 0) {
       drawCardsForPlayer(state, playerId, draws, {
-        inFlightCardIds: [playedCard.id, ...paying]
+        inFlightCardIds: [playedCard.id, ...paying],
       });
     }
   }
@@ -15174,7 +17725,10 @@ function payOptionCardCost(
 }
 
 /** The option chosen by a play, when the card is an "OR" card. */
-function getChosenOption(card: CardDefinition, optionIndex?: number): CardOptionDefinition | undefined {
+function getChosenOption(
+  card: CardDefinition,
+  optionIndex?: number,
+): CardOptionDefinition | undefined {
   return card.effect.type === "CHOOSE_ONE" && optionIndex !== undefined
     ? card.effect.options[optionIndex]
     : undefined;
@@ -15194,11 +17748,20 @@ function heldOpenRecallEligible(
   state: GameState,
   playerId: PlayerId,
   card: CardDefinition,
-  play: { cardId: string; fromScroll?: string; tarnumReturn?: "deck-top" | "discard" },
+  play: {
+    cardId: string;
+    fromScroll?: string;
+    tarnumReturn?: "deck-top" | "discard";
+  },
   option: CardOptionDefinition | undefined,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): boolean {
-  if (card.kind !== "spell" || play.fromScroll || play.tarnumReturn || option?.cost?.removeSelf) {
+  if (
+    card.kind !== "spell" ||
+    play.fromScroll ||
+    play.tarnumReturn ||
+    option?.cost?.removeSelf
+  ) {
     return false;
   }
   const player = state.players[playerId];
@@ -15224,16 +17787,26 @@ function heldOpenRecallEligible(
 function castReactionRecallRecord(
   playerId: PlayerId,
   triggerEventId: string,
-  play: { cardId: string; fromSpellBook?: boolean; castEnablerCardId?: CardId; costCardIds?: CardId[] }
+  play: {
+    cardId: string;
+    fromSpellBook?: boolean;
+    castEnablerCardId?: CardId;
+    costCardIds?: CardId[];
+  },
 ) {
-  const powerCardIds = play.costCardIds && play.costCardIds.length > 0 ? [...play.costCardIds] : undefined;
+  const powerCardIds =
+    play.costCardIds && play.costCardIds.length > 0
+      ? [...play.costCardIds]
+      : undefined;
   return {
     cardId: play.cardId as CardId,
     playerId,
     triggerEventId,
     fromSpellBook: Boolean(play.fromSpellBook),
-    ...(play.castEnablerCardId ? { castEnablerCardId: play.castEnablerCardId } : {}),
-    ...(powerCardIds ? { powerCardIds } : {})
+    ...(play.castEnablerCardId
+      ? { castEnablerCardId: play.castEnablerCardId }
+      : {}),
+    ...(powerCardIds ? { powerCardIds } : {}),
   };
 }
 
@@ -15247,8 +17820,13 @@ function castReactionRecallRecord(
 function startCastReactionRecallWindow(
   state: GameState,
   playerId: PlayerId,
-  play: { cardId: string; fromSpellBook?: boolean; castEnablerCardId?: CardId; costCardIds?: CardId[] },
-  cards: CardLibrary
+  play: {
+    cardId: string;
+    fromSpellBook?: boolean;
+    castEnablerCardId?: CardId;
+    costCardIds?: CardId[];
+  },
+  cards: CardLibrary,
 ): void {
   if (!state.combat || !state.reactionWindow) {
     return;
@@ -15256,7 +17834,7 @@ function startCastReactionRecallWindow(
   state.combat.pendingCastReactionRecall = castReactionRecallRecord(
     playerId,
     state.reactionWindow.triggerEvent.id,
-    play
+    play,
   );
   state.reactionWindow.passedPlayerIds = [];
   refreshReactionWindowLegalReactions(state, cards);
@@ -15265,12 +17843,13 @@ function startCastReactionRecallWindow(
 /** The SPELL_CAST_STARTED event that opened a parked cast's reaction window. */
 function castTriggerEventOf(
   state: GameState,
-  stackItem: ResolutionStackItem
+  stackItem: ResolutionStackItem,
 ): Extract<GameEvent, { type: "SPELL_CAST_STARTED" }> | undefined {
   return stackItem.triggerEventIds
     .map((eventId) => state.eventLog.find((event) => event.id === eventId))
     .find(
-      (event): event is Extract<GameEvent, { type: "SPELL_CAST_STARTED" }> => event?.type === "SPELL_CAST_STARTED"
+      (event): event is Extract<GameEvent, { type: "SPELL_CAST_STARTED" }> =>
+        event?.type === "SPELL_CAST_STARTED",
     );
 }
 
@@ -15299,15 +17878,22 @@ function resolveDeckDigKeepOne(
   cardName: string,
   count: number,
   cards: CardLibrary,
-  inFlightCardIds: CardId[]
+  inFlightCardIds: CardId[],
 ): void {
   // "Discard up to N cards from your deck and return 1 of them to your hand":
   // an empty deck reshuffles the discard pile back in so the dig still reaches
   // its printed count (digFromOwnDeckTop; the revealed cards are held here,
   // never discarded mid-dig, so they can never be dealt twice).
-  const revealed = digFromOwnDeckTop(state, playerId, count, "deck-dig-keep-one", {
-    inFlightCardIds: inFlightCardIds.length > 0 ? inFlightCardIds : [sourceCardId]
-  }).cardIds;
+  const revealed = digFromOwnDeckTop(
+    state,
+    playerId,
+    count,
+    "deck-dig-keep-one",
+    {
+      inFlightCardIds:
+        inFlightCardIds.length > 0 ? inFlightCardIds : [sourceCardId],
+    },
+  ).cardIds;
   if (revealed.length === 1) {
     // Polish Spell Book: owned Spells enter the Book, not hand.
     gainOwnedCard(state, playerId, revealed[0], cards);
@@ -15317,10 +17903,12 @@ function resolveDeckDigKeepOne(
       type: "OPTION_CHOICE",
       playerId,
       prompt: `${cardName}: keep one card; the rest go to your discard pile.`,
-      options: revealed.map((cardId) => ({ label: `Keep ${cards[cardId]?.name ?? cardId}` })),
+      options: revealed.map((cardId) => ({
+        label: `Keep ${cards[cardId]?.name ?? cardId}`,
+      })),
       context: "own-deck-pick",
       ownDeckPick: { cardIds: revealed },
-      returnPhase: state.combat ? "combat" : "player-turn"
+      returnPhase: state.combat ? "combat" : "player-turn",
     };
     state.phase = "choice";
     state.priorityPlayerId = playerId;
@@ -15363,7 +17951,7 @@ function castFromSpellDiscardOption(
    * other enabler prints one side and leaves this undefined, so the old
    * first-match behaviour is byte-identical for them.
    */
-  mode?: "basic" | "expert"
+  mode?: "basic" | "expert",
 ): Extract<ConcreteEffect, { type: "CAST_FROM_SPELL_DISCARD" }> | undefined {
   // House-rule gated arms (Balance Pack Ciele I/IV print a Polish-Book cast AND
   // the classic one): take the first whose gates pass — the SAME leaf read the
@@ -15379,7 +17967,7 @@ function resolveDeckDigKeepMatching(
   sourceCardId: CardId,
   effect: Extract<ConcreteEffect, { type: "DECK_DIG_KEEP_MATCHING" }>,
   cards: CardLibrary,
-  inFlightCardIds: CardId[]
+  inFlightCardIds: CardId[],
 ): void {
   const digPlayer = state.players[playerId];
   if (!digPlayer) {
@@ -15391,9 +17979,16 @@ function resolveDeckDigKeepMatching(
   // The whole dig runs BEFORE anything is routed: the rejects are held here
   // and pushed to the discard pile only afterwards, so the reshuffle can never
   // deal a card this same dig already rejected.
-  const dig = digFromOwnDeckTop(state, playerId, effect.count, "deck-dig-keep-matching", {
-    inFlightCardIds: inFlightCardIds.length > 0 ? inFlightCardIds : [sourceCardId]
-  });
+  const dig = digFromOwnDeckTop(
+    state,
+    playerId,
+    effect.count,
+    "deck-dig-keep-matching",
+    {
+      inFlightCardIds:
+        inFlightCardIds.length > 0 ? inFlightCardIds : [sourceCardId],
+    },
+  );
   const kept: CardId[] = [];
   const discarded: CardId[] = [];
   for (const drawn of dig.cardIds) {
@@ -15405,7 +18000,9 @@ function resolveDeckDigKeepMatching(
     const matches =
       effect.filter === "cast-enabler-or-specialty"
         ? drawnKind === "hero-specialty" ||
-          (polishSpellBookEnabled(state) ? isCastASpellCard(drawn) : drawnKind === "spell")
+          (polishSpellBookEnabled(state)
+            ? isCastASpellCard(drawn)
+            : drawnKind === "spell")
         : drawnKind === "spell" || drawnKind === "hero-specialty";
     if (matches) {
       kept.push(drawn);
@@ -15423,18 +18020,25 @@ function resolveDeckDigKeepMatching(
     playerId,
     count: kept.length,
     requested: effect.count,
-    reshuffledDiscard: dig.reshuffledDiscard
+    reshuffledDiscard: dig.reshuffledDiscard,
   });
 }
 
 /** Tazar's War Hero VI: draw the top Artifact card (owner picks the deck with 2+). */
-function resolveDrawTopArtifactPlay(state: GameState, playerId: PlayerId, cardName: string): void {
+function resolveDrawTopArtifactPlay(
+  state: GameState,
+  playerId: PlayerId,
+  cardName: string,
+): void {
   // Legacy has one Artifact deck ("artifacts"); BINH splits Minor/Major/Relic —
   // when more than one still holds cards the caster picks which to draw from.
   // A deck whose draw pile is empty but whose discard pile still holds cards is
   // still drawable — drawTopArtifact reshuffles it — so it stays on the menu.
   const available = ARTIFACT_DECK_IDS.filter(
-    (deckId) => (state.decks[deckId]?.drawPile.length ?? 0) + (state.decks[deckId]?.discardPile.length ?? 0) > 0
+    (deckId) =>
+      (state.decks[deckId]?.drawPile.length ?? 0) +
+        (state.decks[deckId]?.discardPile.length ?? 0) >
+      0,
   );
   if (available.length === 1) {
     drawTopArtifact(state, playerId, available[0]);
@@ -15444,10 +18048,12 @@ function resolveDrawTopArtifactPlay(state: GameState, playerId: PlayerId, cardNa
       type: "OPTION_CHOICE",
       playerId,
       prompt: `${cardName}: draw the top card of which Artifact deck?`,
-      options: available.map((deckId) => ({ label: `Draw the top ${ARTIFACT_DECK_LABELS[deckId]} Artifact` })),
+      options: available.map((deckId) => ({
+        label: `Draw the top ${ARTIFACT_DECK_LABELS[deckId]} Artifact`,
+      })),
       context: "artifact-deck-pick",
       artifactDeckPick: { deckIds: available },
-      returnPhase: state.combat ? "combat" : "player-turn"
+      returnPhase: state.combat ? "combat" : "player-turn",
     };
     state.phase = "choice";
     state.priorityPlayerId = playerId;
@@ -15465,9 +18071,13 @@ function openCombatRemoveThenSearchChoice(
   playerId: PlayerId,
   cardName: string,
   effect: Extract<ConcreteEffect, { type: "REMOVE_HAND_CARD_THEN_SEARCH" }>,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
-  const removable = removableHandCards(state, playerId, effect.filter ?? "removable");
+  const removable = removableHandCards(
+    state,
+    playerId,
+    effect.filter ?? "removable",
+  );
   if (removable.length === 0) {
     return;
   }
@@ -15477,12 +18087,17 @@ function openCombatRemoveThenSearchChoice(
     playerId,
     prompt: `${cardName}: remove a card to Search (${effect.count}) its deck`,
     options: [
-      ...removable.map(({ cardId }) => ({ label: `Remove ${cards[cardId]?.name ?? cardId}` })),
-      { label: "Skip" }
+      ...removable.map(({ cardId }) => ({
+        label: `Remove ${cards[cardId]?.name ?? cardId}`,
+      })),
+      { label: "Skip" },
     ],
     context: "combat-remove-then-search",
-    removeThenSearch: { cardIds: removable.map(({ cardId }) => cardId), searchCount: effect.count },
-    returnPhase: "combat"
+    removeThenSearch: {
+      cardIds: removable.map(({ cardId }) => cardId),
+      searchCount: effect.count,
+    },
+    returnPhase: "combat",
   };
   state.phase = "choice";
   state.priorityPlayerId = playerId;
@@ -15496,7 +18111,7 @@ function resolveSearchDeckThenReshuffle(
   cardName: string,
   count: number,
   cards: CardLibrary,
-  inFlightCardIds: CardId[]
+  inFlightCardIds: CardId[],
 ): void {
   const searchPlayer = state.players[playerId];
   if (!searchPlayer) {
@@ -15505,19 +18120,28 @@ function resolveSearchDeckThenReshuffle(
   // A deck that runs out mid-reveal reshuffles the discard pile back in, so a
   // Search (N) really reveals N whenever the player owns that many cards (the
   // revealed cards are held out of both piles, so none can be shown twice).
-  const revealed = digFromOwnDeckTop(state, playerId, count, "search-deck-then-reshuffle", {
-    inFlightCardIds: inFlightCardIds.length > 0 ? inFlightCardIds : [sourceCardId]
-  }).cardIds;
+  const revealed = digFromOwnDeckTop(
+    state,
+    playerId,
+    count,
+    "search-deck-then-reshuffle",
+    {
+      inFlightCardIds:
+        inFlightCardIds.length > 0 ? inFlightCardIds : [sourceCardId],
+    },
+  ).cardIds;
   if (revealed.length > 1) {
     state.pendingChoice = {
       id: `choice_${nextEventNumber(state)}`,
       type: "OPTION_CHOICE",
       playerId,
       prompt: `${cardName}: take one card into your hand (the rest go to your discard pile), then your discard pile shuffles into your deck.`,
-      options: revealed.map((cardId) => ({ label: `Take ${cards[cardId]?.name ?? cardId}` })),
+      options: revealed.map((cardId) => ({
+        label: `Take ${cards[cardId]?.name ?? cardId}`,
+      })),
       context: "own-deck-pick",
       ownDeckPick: { cardIds: revealed, thenReshuffleDiscard: true },
-      returnPhase: state.combat ? "combat" : "player-turn"
+      returnPhase: state.combat ? "combat" : "player-turn",
     };
     state.phase = "choice";
     state.priorityPlayerId = playerId;
@@ -15528,7 +18152,7 @@ function resolveSearchDeckThenReshuffle(
     }
     searchPlayer.deck = shuffleCards(
       [...searchPlayer.deck, ...searchPlayer.discard],
-      `${state.seed}#fire-magic-iv#${playerId}#${eventSeedNumber(state)}`
+      `${state.seed}#fire-magic-iv#${playerId}#${eventSeedNumber(state)}`,
     );
     searchPlayer.discard = [];
   }
@@ -15572,7 +18196,7 @@ function applyReactionPlayCore(
     /** Polish Balance Interference: use its enemy-Spell Power reduction arm. */
     interferenceMode?: "damage" | "power";
   },
-  cards: CardLibrary
+  cards: CardLibrary,
 ): { windowEnded: boolean } {
   if (!state.reactionWindow) {
     throw new Error("No reaction window is open.");
@@ -15580,7 +18204,9 @@ function applyReactionPlayCore(
 
   // Garrison / Secondary-Hero hand lock (same backstop as playCard).
   if (isHandLockedInCombat(state, playerId)) {
-    throw new Error("You cannot use your Deck during this Combat (no Main Hero present).");
+    throw new Error(
+      "You cannot use your Deck during this Combat (no Main Hero present).",
+    );
   }
 
   const card = cards[play.cardId];
@@ -15602,7 +18228,9 @@ function applyReactionPlayCore(
     }
     if (play.fromSpellBook) {
       if (polishSpellBookEnabled(state)) {
-        throw new Error("Polish Spell Book cards cannot be spent for Power; use Cast a Spell's printed +1 Power instead.");
+        throw new Error(
+          "Polish Spell Book cards cannot be spent for Power; use Cast a Spell's printed +1 Power instead.",
+        );
       }
       // Spell Book (house rule): only ONE Book Spell may be spent for Power per
       // turn (a crown-style budget). Backstop the per-turn lock here so a forced
@@ -15610,9 +18238,15 @@ function applyReactionPlayCore(
       // and cycle the Spell Book → discard pile (a non-hand zone, like a Scroll).
       const player = state.players[playerId];
       if (!player || !spellBookPowerAvailable(player)) {
-        throw new Error("You have already spent a Spell Book Spell for Power this turn.");
+        throw new Error(
+          "You have already spent a Spell Book Spell for Power this turn.",
+        );
       }
-      const moveError = moveSpellFromSpellBookToDiscard(state, playerId, play.cardId);
+      const moveError = moveSpellFromSpellBookToDiscard(
+        state,
+        playerId,
+        play.cardId,
+      );
       if (moveError) {
         throw new Error(moveError.message);
       }
@@ -15643,7 +18277,7 @@ function applyReactionPlayCore(
       timing: card.timing,
       mode: "basic",
       effectAmount: 1,
-      optionLabel: "+1 Power"
+      optionLabel: "+1 Power",
     });
     return { windowEnded: false };
   }
@@ -15653,7 +18287,9 @@ function applyReactionPlayCore(
     throw new Error(`${card.name} needs a chosen option.`);
   }
   if (isCastASpellCard(play.cardId)) {
-    throw new Error("Cast a Spell enables a refreshed Spell Book card; only its printed +1 Power alternative is played directly.");
+    throw new Error(
+      "Cast a Spell enables a refreshed Spell Book card; only its printed +1 Power alternative is played directly.",
+    );
   }
   if (
     polishSpellBookEnabled(state) &&
@@ -15665,7 +18301,9 @@ function applyReactionPlayCore(
     !play.fromSpellDeck &&
     !play.tarnumReturn
   ) {
-    throw new Error("Owned Spells must be cast from the Polish Spell Book with Cast a Spell.");
+    throw new Error(
+      "Owned Spells must be cast from the Polish Spell Book with Cast a Spell.",
+    );
   }
 
   // The Spell-deck cast (Helm of the Alabaster Unicorn option B, Ciele's Magic
@@ -15682,9 +18320,17 @@ function applyReactionPlayCore(
       throw new Error("That card is not in your hand.");
     }
     if (!spellDeckArm || spellDeckArm.effect.anySpell === true) {
-      throw new Error(`${cards[play.fromSpellDeck]?.name ?? "That card"} cannot cast a Spell from a discard pile now.`);
+      throw new Error(
+        `${cards[play.fromSpellDeck]?.name ?? "That card"} cannot cast a Spell from a discard pile now.`,
+      );
     }
-    if (!castFromSpellDiscardSourceSpellIds(state, holder, spellDeckArm.effect).includes(play.cardId)) {
+    if (
+      !castFromSpellDiscardSourceSpellIds(
+        state,
+        holder,
+        spellDeckArm.effect,
+      ).includes(play.cardId)
+    ) {
       throw new Error(`${card.name} is not the Spell that card may cast.`);
     }
   }
@@ -15704,7 +18350,10 @@ function applyReactionPlayCore(
     }
 
     // An Empowered ability may always use its Expert side without a crown.
-    if (!hasExpertUseAvailable(state, playerId) && !abilityExpertIsCrownFree(state.players[playerId], play.cardId)) {
+    if (
+      !hasExpertUseAvailable(state, playerId) &&
+      !abilityExpertIsCrownFree(state.players[playerId], play.cardId)
+    ) {
       throw new Error("No expert uses are available this combat round.");
     }
   }
@@ -15714,31 +18363,53 @@ function applyReactionPlayCore(
 
   // Tarnum (Conflux) VI: a free over-limit reaction is only legal for a card the
   // hero actually Searched and flagged this combat (guards a forged tarnumReturn).
-  if (play.tarnumReturn && !(player?.combatStats.tarnumOverlimitCards ?? []).includes(play.cardId)) {
-    throw new Error("That Spell was not Searched for a Tarnum over-limit cast.");
+  if (
+    play.tarnumReturn &&
+    !(player?.combatStats.tarnumOverlimitCards ?? []).includes(play.cardId)
+  ) {
+    throw new Error(
+      "That Spell was not Searched for a Tarnum over-limit cast.",
+    );
   }
 
   // A Spell-deck cast is a free bonus too (only the Balance-Pack Ciele I arm
   // prints "counts toward your Spell limit"), matching `performSpellCast`.
-  const spellDeckCastCountsLimit = spellDeckArm?.effect.countsTowardSpellLimit === true;
-  const spellDeckCastIsFree = Boolean(play.fromSpellDeck) && !spellDeckCastCountsLimit;
+  const spellDeckCastCountsLimit =
+    spellDeckArm?.effect.countsTowardSpellLimit === true;
+  const spellDeckCastIsFree =
+    Boolean(play.fromSpellDeck) && !spellDeckCastCountsLimit;
 
   // Spell cards played as instants count toward the printed limit of one
   // Spell card per combat round (Knowledge/Necklace raise it). A Tarnum VI
   // over-limit reaction and a Spell Scroll cast are free bonuses — they ignore
   // the limit (scrolls never consume it either).
-  if (card.kind === "spell" && state.combat && player && !play.tarnumReturn && !play.fromScroll && !spellDeckCastIsFree) {
-    if (player.combatStats.spellsCastThisRound >= spellLimitFor(state, player)) {
+  if (
+    card.kind === "spell" &&
+    state.combat &&
+    player &&
+    !play.tarnumReturn &&
+    !play.fromScroll &&
+    !spellDeckCastIsFree
+  ) {
+    if (
+      player.combatStats.spellsCastThisRound >= spellLimitFor(state, player)
+    ) {
       throw new Error("Spell limit reached for this combat round.");
     }
   }
 
   // Elemental Magic power boosts only empower spells of their school.
-  if (effect.type === "ADD_SPELL_POWER" && effect.schoolOnly && stackItem?.action.type === "CAST_SPELL") {
+  if (
+    effect.type === "ADD_SPELL_POWER" &&
+    effect.schoolOnly &&
+    stackItem?.action.type === "CAST_SPELL"
+  ) {
     const pendingSpell = cards[stackItem.action.cardId];
     const schools = pendingSpell?.spellSchools ?? [];
     if (!schools.includes(effect.schoolOnly) && !schools.includes("any")) {
-      throw new Error(`${card.name} only empowers ${effect.schoolOnly} spells.`);
+      throw new Error(
+        `${card.name} only empowers ${effect.schoolOnly} spells.`,
+      );
     }
   }
 
@@ -15750,7 +18421,9 @@ function applyReactionPlayCore(
     const pendingSpell = cards[stackItem.action.cardId];
     const schools = pendingSpell?.spellSchools ?? [];
     if (!schools.includes(effect.schoolOnly) && !schools.includes("any")) {
-      throw new Error(`${card.name} only empowers ${effect.schoolOnly} spells.`);
+      throw new Error(
+        `${card.name} only empowers ${effect.schoolOnly} spells.`,
+      );
     }
   }
 
@@ -15763,7 +18436,9 @@ function applyReactionPlayCore(
     effect.maxPower !== undefined &&
     getCurrentSpellPower(state, stackItem, cards) > effect.maxPower
   ) {
-    throw new Error(`${card.name} cannot end a spell above power ${effect.maxPower}.`);
+    throw new Error(
+      `${card.name} cannot end a spell above power ${effect.maxPower}.`,
+    );
   }
 
   // Spell-school / Anti-Magic immunity backstop for attack-window and
@@ -15782,25 +18457,37 @@ function applyReactionPlayCore(
     ) {
       const unitId =
         triggerEvent.type === "UNIT_ATTACK_DECLARED"
-          ? spellReactionAffectedUnitId(effect, triggerEvent.attackerId, triggerEvent.defenderId)
+          ? spellReactionAffectedUnitId(
+              effect,
+              triggerEvent.attackerId,
+              triggerEvent.defenderId,
+            )
           : triggerEvent.type === "UNIT_ACTIVATION_STARTED"
             ? triggerEvent.unitId
             : null;
       const unit = unitId ? state.combat?.units[unitId] : undefined;
-      throw new Error(`${unit?.cardName ?? "That unit"} is immune to ${card.name}.`);
+      throw new Error(
+        `${unit?.cardName ?? "That unit"} is immune to ${card.name}.`,
+      );
     }
   }
 
   // Protection-from-X self-defends its School/level gate at resolution: a
   // fabricated reaction can never cancel a spell of the wrong School or, in
   // basic play, an Expert spell (the legal-action layer already filters offers).
-  if (effect.type === "CANCEL_SPELL" && stackItem?.action.type === "CAST_SPELL") {
+  if (
+    effect.type === "CANCEL_SPELL" &&
+    stackItem?.action.type === "CAST_SPELL"
+  ) {
     const pendingSpell = cards[stackItem.action.cardId];
     if (
       !cancelSpellAllowsSchoolAndLevel(
         effect,
-        { schools: pendingSpell?.spellSchools ?? [], level: pendingSpell?.spellLevel },
-        mode
+        {
+          schools: pendingSpell?.spellSchools ?? [],
+          level: pendingSpell?.spellLevel,
+        },
+        mode,
       )
     ) {
       throw new Error(`${card.name} cannot end that spell.`);
@@ -15819,12 +18506,13 @@ function applyReactionPlayCore(
     // ability cycles to the discard pile to be redrawn. Identical to
     // `performSpellCast`'s fromSpellDeck arm.
     const enablerKind = cards[play.fromSpellDeck]?.kind;
-    const enablerCycles = enablerKind === "hero-specialty" || enablerKind === "ability";
+    const enablerCycles =
+      enablerKind === "hero-specialty" || enablerKind === "ability";
     const removeError = moveCardFromHandToDiscard(
       state,
       playerId,
       play.fromSpellDeck,
-      enablerCycles ? "discard" : "removed"
+      enablerCycles ? "discard" : "removed",
     );
     if (removeError) {
       throw new Error(removeError.message);
@@ -15842,7 +18530,7 @@ function applyReactionPlayCore(
       appendEvent(state, {
         type: "EVENT_NOTE",
         playerId,
-        message: `${card.name} is added to the Spellbook (used).`
+        message: `${card.name} is added to the Spellbook (used).`,
       });
     }
   } else if (play.fromSpellBook) {
@@ -15853,7 +18541,7 @@ function applyReactionPlayCore(
       playerId,
       play.cardId,
       play.castEnablerCardId,
-      option?.cost?.removeSelf ? "removed" : "discard"
+      option?.cost?.removeSelf ? "removed" : "discard",
     );
     if (moveError) {
       throw new Error(moveError.message);
@@ -15897,7 +18585,7 @@ function applyReactionPlayCore(
       state,
       playerId,
       play.cardId,
-      option?.cost?.removeSelf ? "removed" : "discard"
+      option?.cost?.removeSelf ? "removed" : "discard",
     );
     if (moveError) {
       throw new Error(moveError.message);
@@ -15909,11 +18597,22 @@ function applyReactionPlayCore(
     : // Power costs (Magic Mirror silver/gold, Sorrow, lethal saves, …) may draw
       // ONE of their Power cost cards from the Spell Book — the once-per-turn
       // Book Power budget (shared with the "+1 Power" discard).
-      payOptionCardCost(state, playerId, card, option?.cost, play.costCardIds, cards, play.costCardModes);
+      payOptionCardCost(
+        state,
+        playerId,
+        card,
+        option?.cost,
+        play.costCardIds,
+        cards,
+        play.costCardModes,
+      );
 
   let effectAmount = getEffectAmount(effect, mode);
   // An Empowered ability's Expert side spends no crown.
-  if (mode === "expert" && !abilityExpertIsCrownFree(state.players[playerId], play.cardId)) {
+  if (
+    mode === "expert" &&
+    !abilityExpertIsCrownFree(state.players[playerId], play.cardId)
+  ) {
     state.players[playerId].combatStats.expertUsesSpentThisRound += 1;
   }
 
@@ -15941,7 +18640,11 @@ function applyReactionPlayCore(
     // MATCHING-school pool-scaling Spell is actually played — never at commit
     // time (the pool is school-generic, so an up-front credit scaled other
     // schools' instants). Consumed on use: one permanent, one Spell.
-    const schoolBank = committedSchoolExpertPower(state.reactionWindow, playerId, card);
+    const schoolBank = committedSchoolExpertPower(
+      state.reactionWindow,
+      playerId,
+      card,
+    );
     const standing = standingSpellPower(state, playerId, card) + schoolBank;
     if (standing > 0) {
       addAttackPower(stackItem, playerId, standing);
@@ -15955,20 +18658,28 @@ function applyReactionPlayCore(
   // A Spell-deck cast leaves no card of the caster's in a recoverable zone (the
   // Spell stays on the shared discard; the enabler was removed or cycled), so it
   // contributes nothing to the in-flight ledger — like a Scroll.
-  const currentReactionInFlightCardIds: CardId[] = !play.fromScroll && !play.tarnumReturn && !play.fromSpellDeck
-    ? play.fromSpellBook && polishSpellBookEnabled(state)
-      ? play.castEnablerCardId
-        ? [play.castEnablerCardId]
-        : []
-      : !option?.cost?.removeSelf
-        ? [play.cardId]
-        : []
-    : [];
+  const currentReactionInFlightCardIds: CardId[] =
+    !play.fromScroll && !play.tarnumReturn && !play.fromSpellDeck
+      ? play.fromSpellBook && polishSpellBookEnabled(state)
+        ? play.castEnablerCardId
+          ? [play.castEnablerCardId]
+          : []
+        : !option?.cost?.removeSelf
+          ? [play.cardId]
+          : []
+      : [];
   if (stackItem && currentReactionInFlightCardIds.length > 0) {
     const byPlayer = (stackItem.modifiers.playedCardIdsByPlayer ??= {});
-    byPlayer[playerId] = [...(byPlayer[playerId] ?? []), ...currentReactionInFlightCardIds];
+    byPlayer[playerId] = [
+      ...(byPlayer[playerId] ?? []),
+      ...currentReactionInFlightCardIds,
+    ];
   }
-  const reactionInFlightCardIds = stackInFlightCardIds(state, stackItem, playerId);
+  const reactionInFlightCardIds = stackInFlightCardIds(
+    state,
+    stackItem,
+    playerId,
+  );
 
   if (card.kind === "spell" && state.combat && player) {
     // A Tarnum VI over-limit reaction and a Spell Scroll instant are free: they
@@ -15979,7 +18690,7 @@ function applyReactionPlayCore(
       state,
       player,
       !play.tarnumReturn && !play.fromScroll && !spellDeckCastIsFree,
-      reactionInFlightCardIds
+      reactionInFlightCardIds,
     );
   }
 
@@ -16006,7 +18717,9 @@ function applyReactionPlayCore(
       playerId,
       // A Book instant recalls back into the Book, not the hand.
       ...(play.fromSpellBook ? { fromSpellBook: true } : {}),
-      ...(play.castEnablerCardId ? { castEnablerCardId: play.castEnablerCardId } : {})
+      ...(play.castEnablerCardId
+        ? { castEnablerCardId: play.castEnablerCardId }
+        : {}),
     });
     if (play.fromSpellBook) {
       (stackItem.modifiers.bookPlayedCardIds ??= []).push(play.cardId);
@@ -16025,7 +18738,11 @@ function applyReactionPlayCore(
   if (card.kind === "spell") {
     if (stackItem && isAttackStackItem(stackItem)) {
       cardPlayTargetUnitId =
-        spellReactionAffectedUnitId(effect, stackItem.action.attackerId, stackItem.action.defenderId) ?? undefined;
+        spellReactionAffectedUnitId(
+          effect,
+          stackItem.action.attackerId,
+          stackItem.action.defenderId,
+        ) ?? undefined;
     } else if (effect.type === "SKIP_ACTIVATION") {
       const te = state.reactionWindow?.triggerEvent;
       if (te?.type === "UNIT_ACTIVATION_STARTED") {
@@ -16042,23 +18759,33 @@ function applyReactionPlayCore(
     mode,
     effectAmount: effectAmount || undefined,
     optionLabel,
-    ...(cardPlayTargetUnitId ? { targetUnitId: cardPlayTargetUnitId } : {})
+    ...(cardPlayTargetUnitId ? { targetUnitId: cardPlayTargetUnitId } : {}),
   });
 
   // Fortune's printed "before a die roll" timing resolves in the declared-
   // attack reaction window. Create the reroll before the parked attack resumes,
   // at this caster's current Power; a record keeps it live-updated if more Power
   // is committed later in the same window (or later in this batch).
-  if (effect.type === "CREATE_ATTACK_DIE_REROLL" && stackItem && isAttackStackItem(stackItem)) {
+  if (
+    effect.type === "CREATE_ATTACK_DIE_REROLL" &&
+    stackItem &&
+    isAttackStackItem(stackItem)
+  ) {
     const power = play.fromScroll ? 0 : attackPowerFor(stackItem, playerId);
-    const active = createAttackRerollEffectFromCard(state, card, playerId, mode, power);
+    const active = createAttackRerollEffectFromCard(
+      state,
+      card,
+      playerId,
+      mode,
+      power,
+    );
     if (active && effect.rerollsByPower && !play.fromScroll) {
       (stackItem.modifiers.powerScaledAttackRerolls ??= []).push({
         cardId: card.id,
         playerId,
         effectId: active.id,
         rerollsByPower: effect.rerollsByPower,
-        baseRerolls: effect.basicRerolls
+        baseRerolls: effect.basicRerolls,
       });
     }
     stackItem.modifiers.playedCardIds.push(play.cardId);
@@ -16074,7 +18801,7 @@ function applyReactionPlayCore(
     }
     stackItem?.modifiers.playedCardIds.push(play.cardId);
     drawCardsForPlayer(state, playerId, drawAmount, {
-      inFlightCardIds: reactionInFlightCardIds
+      inFlightCardIds: reactionInFlightCardIds,
     });
     // Rion VI and clones: "… then draw 2 cards AND discard 1" — the discard runs
     // AFTER the draw, so the drawn cards are candidates. The nested choice
@@ -16098,10 +18825,14 @@ function applyReactionPlayCore(
     const reactingPlayer = state.players[playerId];
     if (reactingPlayer) {
       const playedIndex = reactingPlayer.discard.lastIndexOf(play.cardId);
-      const playedCard = playedIndex >= 0 ? [reactingPlayer.discard[playedIndex]] : [];
+      const playedCard =
+        playedIndex >= 0 ? [reactingPlayer.discard[playedIndex]] : [];
       const candidates =
         playedIndex >= 0
-          ? [...reactingPlayer.discard.slice(0, playedIndex), ...reactingPlayer.discard.slice(playedIndex + 1)]
+          ? [
+              ...reactingPlayer.discard.slice(0, playedIndex),
+              ...reactingPlayer.discard.slice(playedIndex + 1),
+            ]
           : [...reactingPlayer.discard];
       const protectCounts = new Map<CardId, number>();
       let ownEntrySkipped = false;
@@ -16128,24 +18859,40 @@ function applyReactionPlayCore(
       if (toShuffle.length > 0) {
         reactingPlayer.deck = shuffleCards(
           [...reactingPlayer.deck, ...toShuffle],
-          `${state.seed}#reaction-reshuffle-draw#${playerId}#${eventSeedNumber(state)}`
+          `${state.seed}#reaction-reshuffle-draw#${playerId}#${eventSeedNumber(state)}`,
         );
       }
       reactingPlayer.discard = [...heldInFlight, ...playedCard];
-      drawCardsForPlayer(state, playerId, effect.drawCards + consumeEquipmentDrawRiderBonus(state, playerId), {
-        inFlightCardIds: reactionInFlightCardIds
-      });
+      drawCardsForPlayer(
+        state,
+        playerId,
+        effect.drawCards + consumeEquipmentDrawRiderBonus(state, playerId),
+        {
+          inFlightCardIds: reactionInFlightCardIds,
+        },
+      );
     }
     stackItem?.modifiers.playedCardIds.push(play.cardId);
     return { windowEnded: false };
   }
 
-  if (effect.type === "CANCEL_SPELL" && stackItem?.action.type === "CAST_SPELL") {
+  if (
+    effect.type === "CANCEL_SPELL" &&
+    stackItem?.action.type === "CAST_SPELL"
+  ) {
     // Boots of Polarity: a chance-based cancel. Roll its Attack dice; on a
     // failed roll the card is already spent (moved to discard above) but the
     // spell resolves — return without ending the window so the cast continues
     // to resolution and other reactions may still answer it.
-    if (effect.diceRoll && !rollSpellCancelDice(state, effect.diceRoll, stackItem.action.cardId, playerId)) {
+    if (
+      effect.diceRoll &&
+      !rollSpellCancelDice(
+        state,
+        effect.diceRoll,
+        stackItem.action.cardId,
+        playerId,
+      )
+    ) {
       return { windowEnded: false };
     }
     // Resistance-style plays always end the spell once they apply: the stack
@@ -16156,7 +18903,7 @@ function applyReactionPlayCore(
       playerId: stackItem.action.playerId,
       spellCardId: stackItem.action.cardId,
       cancelledByPlayerId: playerId,
-      cancelledByCardId: play.cardId
+      cancelledByCardId: play.cardId,
     });
     // A Knowledge/Mysticism recall declared before the cancel still takes the
     // card back ("instead of discarding it" — no effect ever hit the table).
@@ -16164,20 +18911,32 @@ function applyReactionPlayCore(
     if (polishSpellBookEnabled(state) && stackItem.action.fromSpellBook) {
       const recall = stackItem.modifiers.recallSpell;
       if (recall?.polishRefreshSpell) {
-        refreshPolishUsedSpell(state, stackItem.action.playerId, stackItem.action.cardId);
+        refreshPolishUsedSpell(
+          state,
+          stackItem.action.playerId,
+          stackItem.action.cardId,
+        );
       }
       if (recall?.polishRecallEnabler && stackItem.action.castEnablerCardId) {
-        returnSpellFromDiscardToHand(state, stackItem.action.playerId, stackItem.action.castEnablerCardId);
+        returnSpellFromDiscardToHand(
+          state,
+          stackItem.action.playerId,
+          stackItem.action.castEnablerCardId,
+        );
       }
     } else if (stackItem.modifiers.recallSpell?.toHand) {
       returnSpellFromDiscardToHand(
         state,
         stackItem.action.playerId,
         stackItem.action.cardId,
-        stackItem.modifiers.recallSpell.toSpellBook
+        stackItem.modifiers.recallSpell.toSpellBook,
       );
     } else {
-      maybeReturnFirstSpellToHand(state, stackItem.action.playerId, stackItem.action.cardId);
+      maybeReturnFirstSpellToHand(
+        state,
+        stackItem.action.playerId,
+        stackItem.action.cardId,
+      );
     }
     state.stack.pop();
 
@@ -16189,7 +18948,11 @@ function applyReactionPlayCore(
     // Resistance / the Boots / Surcoat are abilities and artifacts, not Spells,
     // so heldOpenRecallEligible keeps them out (Mysticism takes back "the Spell
     // card").
-    if (heldOpenRecallEligible(state, playerId, card, play, option, cards) && state.combat && state.reactionWindow) {
+    if (
+      heldOpenRecallEligible(state, playerId, card, play, option, cards) &&
+      state.combat &&
+      state.reactionWindow
+    ) {
       startCastReactionRecallWindow(state, playerId, play, cards);
       return { windowEnded: false };
     }
@@ -16208,7 +18971,8 @@ function applyReactionPlayCore(
   // responding (cast another buff, resist again) until both pass.
   if (
     effect.type === "CANCEL_SPELL" &&
-    (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
+    (stackItem?.action.type === "ATTACK_UNIT" ||
+      stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
   ) {
     const instants = stackItem.modifiers.cancellableSpellInstants ?? [];
     let index = -1;
@@ -16222,8 +18986,11 @@ function applyReactionPlayCore(
       if (
         !cancelSpellAllowsSchoolAndLevel(
           effect,
-          { schools: instantSpell?.spellSchools ?? [], level: instantSpell?.spellLevel },
-          mode
+          {
+            schools: instantSpell?.spellSchools ?? [],
+            level: instantSpell?.spellLevel,
+          },
+          mode,
         )
       ) {
         continue;
@@ -16242,7 +19009,7 @@ function applyReactionPlayCore(
       playerId: cancelled.playerId,
       spellCardId: cancelled.cardId,
       cancelledByPlayerId: playerId,
-      cancelledByCardId: play.cardId
+      cancelledByCardId: play.cardId,
     });
     stackItem.modifiers.playedCardIds.push(play.cardId);
     return { windowEnded: false };
@@ -16253,7 +19020,10 @@ function applyReactionPlayCore(
   // controller picks the new target (of the chosen grade or lower) in a
   // follow-up choice while the spell waits on the stack; the reaction window
   // closes and the spell resolves against the chosen unit once it is picked.
-  if (effect.type === "REDIRECT_SPELL" && stackItem?.action.type === "CAST_SPELL") {
+  if (
+    effect.type === "REDIRECT_SPELL" &&
+    stackItem?.action.type === "CAST_SPELL"
+  ) {
     const currentTarget = stackItem.action.target;
     const castCard = cards[stackItem.action.cardId];
     // A space-centred blast (Inferno) has no single "current" unit to exclude —
@@ -16263,7 +19033,7 @@ function applyReactionPlayCore(
       state,
       currentTarget.type === "unit" ? currentTarget.unitId : null,
       effect.grade,
-      castCard
+      castCard,
     );
     if (candidates.length === 0) {
       throw new Error("There is no legal new target for that spell.");
@@ -16280,7 +19050,7 @@ function applyReactionPlayCore(
       sourceUnitId: null,
       anchorUnitId: currentTarget.type === "unit" ? currentTarget.unitId : null,
       candidateUnitIds: candidates.map((unit) => unit.id),
-      optional: false
+      optional: false,
     };
     appendEvent(state, {
       type: "PENDING_CHOICE_CREATED",
@@ -16288,7 +19058,7 @@ function applyReactionPlayCore(
       choiceType: "ABILITY_TARGET_CHOICE",
       playerId,
       sourceEffectIds: [],
-      message: `${card.name}: choose where to bounce ${castCard?.name ?? "the spell"}.`
+      message: `${card.name}: choose where to bounce ${castCard?.name ?? "the spell"}.`,
     });
 
     // Knowledge / Mysticism on the Magic Mirror itself ("play immediately after
@@ -16298,12 +19068,23 @@ function applyReactionPlayCore(
     // spell resolves — the same declare-then-resolve order the ordinary
     // cast-window recall has. Armed AFTER closeReactionWindow, which clears the
     // record by design so a passed/declined window never leaves it dangling.
-    const armRecallTriggerId = heldOpenRecallEligible(state, playerId, card, play, option, cards)
+    const armRecallTriggerId = heldOpenRecallEligible(
+      state,
+      playerId,
+      card,
+      play,
+      option,
+      cards,
+    )
       ? castTriggerEventOf(state, stackItem)?.id
       : undefined;
     closeReactionWindow(state, "reaction-played");
     if (armRecallTriggerId && state.combat) {
-      state.combat.pendingCastReactionRecall = castReactionRecallRecord(playerId, armRecallTriggerId, play);
+      state.combat.pendingCastReactionRecall = castReactionRecallRecord(
+        playerId,
+        armRecallTriggerId,
+        play,
+      );
     }
     state.phase = "choice";
     state.priorityPlayerId = playerId;
@@ -16317,18 +19098,37 @@ function applyReactionPlayCore(
   // token and the attack's reaction window resumes (see chooseAbilityTarget).
   if (
     effect.type === "REDIRECT_SPELL" &&
-    (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
+    (stackItem?.action.type === "ATTACK_UNIT" ||
+      stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
   ) {
-    const found = reflectableAttackInstantForPlayer(state, stackItem, playerId, cards);
-    const affected = found ? state.combat?.units[found.affectedUnitId] : undefined;
+    const found = reflectableAttackInstantForPlayer(
+      state,
+      stackItem,
+      playerId,
+      cards,
+    );
+    const affected = found
+      ? state.combat?.units[found.affectedUnitId]
+      : undefined;
     const instantCard = found ? cards[found.cardId] : undefined;
     const candidates = found
-      ? spellRedirectTargets(state, found.affectedUnitId, effect.grade, instantCard)
+      ? spellRedirectTargets(
+          state,
+          found.affectedUnitId,
+          effect.grade,
+          instantCard,
+        )
       : [];
     if (!found || !affected || candidates.length === 0) {
-      throw new Error("There is no enemy Spell on this attack for Magic Mirror to reflect.");
+      throw new Error(
+        "There is no enemy Spell on this attack for Magic Mirror to reflect.",
+      );
     }
-    const signedAmount = attackInstantSignedAmount(stackItem, found.cardId, cards);
+    const signedAmount = attackInstantSignedAmount(
+      stackItem,
+      found.cardId,
+      cards,
+    );
     reverseCancelledInstantSpell(stackItem, found.cardId, cards);
     stackItem.modifiers.cancellableSpellInstants?.splice(found.index, 1);
 
@@ -16348,8 +19148,8 @@ function applyReactionPlayCore(
       redirectInstant: {
         stat: found.stat,
         amount: signedAmount,
-        sourceCardId: found.cardId
-      }
+        sourceCardId: found.cardId,
+      },
     };
     appendEvent(state, {
       type: "PENDING_CHOICE_CREATED",
@@ -16357,7 +19157,7 @@ function applyReactionPlayCore(
       choiceType: "ABILITY_TARGET_CHOICE",
       playerId,
       sourceEffectIds: [],
-      message: `${card.name}: choose where to bounce ${instantCard?.name ?? "the spell"}.`
+      message: `${card.name}: choose where to bounce ${instantCard?.name ?? "the spell"}.`,
     });
 
     closeReactionWindow(state, "reaction-played");
@@ -16373,13 +19173,24 @@ function applyReactionPlayCore(
   if (effect.type === "SKIP_ACTIVATION") {
     const triggerEvent = state.reactionWindow?.triggerEvent;
     const unit =
-      triggerEvent?.type === "UNIT_ACTIVATION_STARTED" ? state.combat?.units[triggerEvent.unitId] : undefined;
-    if (unit && isUnitAlive(unit) && effect.grade && bankAwareTierGateRank(unit, "SKIP_ACTIVATION", houseRuleEnabled(state, "polish-bank-unit-spells")) <= gradeRank(effect.grade)) {
+      triggerEvent?.type === "UNIT_ACTIVATION_STARTED"
+        ? state.combat?.units[triggerEvent.unitId]
+        : undefined;
+    if (
+      unit &&
+      isUnitAlive(unit) &&
+      effect.grade &&
+      bankAwareTierGateRank(
+        unit,
+        "SKIP_ACTIVATION",
+        houseRuleEnabled(state, "polish-bank-unit-spells"),
+      ) <= gradeRank(effect.grade)
+    ) {
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: unit.id,
         abilityId: card.id,
-        message: `${card.name} skips ${unit.cardName}'s activation.`
+        message: `${card.name} skips ${unit.cardName}'s activation.`,
       });
       skipUnitActivation(state, unit);
     }
@@ -16392,18 +19203,28 @@ function applyReactionPlayCore(
     // caster holds a recall card and the Sorrow was a recallable own spell (not
     // a scroll / Tarnum-return / removeSelf play, which leave no card to take
     // back). getHeldOpenSpellRecallReactions then offers ONLY that recall.
-    const holdsRecall = heldOpenRecallEligible(state, playerId, card, play, option, cards);
+    const holdsRecall = heldOpenRecallEligible(
+      state,
+      playerId,
+      card,
+      play,
+      option,
+      cards,
+    );
     if (holdsRecall && state.combat && state.reactionWindow) {
       // Capture the power-source ("pow") cards spent on a silver/gold Sorrow's
       // cost. They were just discarded by payOptionCardCost above; expert
       // Mysticism ("also take back all other cards played together with it")
       // sweeps them back to hand in the take-back handler below.
-      const powerCardIds = play.costCardIds && play.costCardIds.length > 0 ? [...play.costCardIds] : undefined;
+      const powerCardIds =
+        play.costCardIds && play.costCardIds.length > 0
+          ? [...play.costCardIds]
+          : undefined;
       state.combat.pendingActivationSkipRecall = {
         cardId: play.cardId,
         playerId,
         fromSpellBook: Boolean(play.fromSpellBook),
-        ...(powerCardIds ? { powerCardIds } : {})
+        ...(powerCardIds ? { powerCardIds } : {}),
       };
       // Recompute the window's offers — now ONLY the caster's recall — and hand
       // priority back to them (advanceReactionWindowAfterPlay re-derives this too,
@@ -16438,11 +19259,18 @@ function applyReactionPlayCore(
   ) {
     const recall = state.combat.pendingActivationSkipRecall;
     const caster = state.players[playerId];
-    caster.combatStats.spellLimitBonusThisRound += effect.basicSpellLimitBonus ?? 0;
+    caster.combatStats.spellLimitBonusThisRound +=
+      effect.basicSpellLimitBonus ?? 0;
     if (mode === "expert") {
-      caster.combatStats.spellLimitBonusThisRound += effect.expertSpellLimitBonus ?? 0;
+      caster.combatStats.spellLimitBonusThisRound +=
+        effect.expertSpellLimitBonus ?? 0;
     }
-    returnSpellFromDiscardToHand(state, playerId, recall.cardId, recall.fromSpellBook);
+    returnSpellFromDiscardToHand(
+      state,
+      playerId,
+      recall.cardId,
+      recall.fromSpellBook,
+    );
     if (mode === "expert" && effect.expertRecallPlayedCards) {
       // Sorrow's pow cost cards always come from hand (a Sorrow skip never taps
       // the Book Power budget), so each returns from the discard to the hand.
@@ -16474,22 +19302,28 @@ function applyReactionPlayCore(
   if (
     effect.type === "RECALL_SPELL" &&
     state.combat?.pendingCastReactionRecall?.playerId === playerId &&
-    state.combat.pendingCastReactionRecall.triggerEventId === state.reactionWindow?.triggerEvent.id
+    state.combat.pendingCastReactionRecall.triggerEventId ===
+      state.reactionWindow?.triggerEvent.id
   ) {
     const recall = state.combat.pendingCastReactionRecall;
     const caster = state.players[playerId];
-    caster.combatStats.spellLimitBonusThisRound += effect.basicSpellLimitBonus ?? 0;
+    caster.combatStats.spellLimitBonusThisRound +=
+      effect.basicSpellLimitBonus ?? 0;
     if (mode === "expert") {
-      caster.combatStats.spellLimitBonusThisRound += effect.expertSpellLimitBonus ?? 0;
+      caster.combatStats.spellLimitBonusThisRound +=
+        effect.expertSpellLimitBonus ?? 0;
     }
 
     // Three Book modes, matching the attack-window reading verbatim: a hand cast
     // returns to hand; an old stash-Book cast returns to the Book; a POLISH Book
     // cast leaves the Spell on the used side (Knowledge) or refreshes it
     // (Mysticism), and either way hands the "Cast a Spell" enabler back.
-    const polishBookInstant = polishSpellBookEnabled(state) && recall.fromSpellBook;
+    const polishBookInstant =
+      polishSpellBookEnabled(state) && recall.fromSpellBook;
     const isPolishMysticism =
-      polishBookInstant && !effect.basicSpellLimitBonus && !effect.expertSpellLimitBonus;
+      polishBookInstant &&
+      !effect.basicSpellLimitBonus &&
+      !effect.expertSpellLimitBonus;
     if (polishBookInstant) {
       if (isPolishMysticism) {
         refreshPolishUsedSpell(state, playerId, recall.cardId);
@@ -16498,7 +19332,12 @@ function applyReactionPlayCore(
         returnSpellFromDiscardToHand(state, playerId, recall.castEnablerCardId);
       }
     } else {
-      returnSpellFromDiscardToHand(state, playerId, recall.cardId, recall.fromSpellBook);
+      returnSpellFromDiscardToHand(
+        state,
+        playerId,
+        recall.cardId,
+        recall.fromSpellBook,
+      );
     }
 
     // Mysticism EXPERT: "also take back all other cards played together with it" —
@@ -16530,7 +19369,10 @@ function applyReactionPlayCore(
   // that was about to act was not consumed, so it resumes in initiative order.
   if (effect.type === "ACTIVATE_RANGED_UNIT") {
     const targetRef = play.target;
-    const chosen = targetRef?.type === "unit" ? state.combat?.units[targetRef.unitId] : undefined;
+    const chosen =
+      targetRef?.type === "unit"
+        ? state.combat?.units[targetRef.unitId]
+        : undefined;
     if (
       chosen &&
       isUnitAlive(chosen) &&
@@ -16543,7 +19385,7 @@ function applyReactionPlayCore(
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: chosen.id,
         abilityId: card.id,
-        message: `${card.name} activates ${chosen.cardName} out of order.`
+        message: `${card.name} activates ${chosen.cardName} out of order.`,
       });
       // Valeska's Marksmen VI re-fires a unit that already acted: clear its spent
       // flag so the out-of-order activation is a full, fresh turn.
@@ -16572,15 +19414,21 @@ function applyReactionPlayCore(
     // cast-window school gate above covers CAST_SPELL; this covers attacks.
     if (
       effect.schoolOnly &&
-      (stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT")
+      (stackItem.action.type === "ATTACK_UNIT" ||
+        stackItem.action.type === "MOVE_AND_ATTACK_UNIT")
     ) {
       const matchesSchool = stackItem.modifiers.playedCardIds.some((id) => {
         const played = cards[id];
         const schools = played?.spellSchools ?? [];
-        return played?.kind === "spell" && (schools.includes(effect.schoolOnly!) || schools.includes("any"));
+        return (
+          played?.kind === "spell" &&
+          (schools.includes(effect.schoolOnly!) || schools.includes("any"))
+        );
       });
       if (!matchesSchool) {
-        throw new Error(`${card.name} only empowers ${effect.schoolOnly} spells.`);
+        throw new Error(
+          `${card.name} only empowers ${effect.schoolOnly} spells.`,
+        );
       }
     }
     if (effect.perCostCard) {
@@ -16594,14 +19442,20 @@ function applyReactionPlayCore(
       stackItem.modifiers.spellPowerBonus += effectAmount;
     }
     if (effect.spellLimitBonus && stackItem.action.type === "CAST_SPELL") {
-      state.players[playerId].combatStats.spellLimitBonusThisRound += effect.spellLimitBonus;
+      state.players[playerId].combatStats.spellLimitBonusThisRound +=
+        effect.spellLimitBonus;
     }
     stackItem.modifiers.playedCardIds.push(play.cardId);
     recomputePowerScaledAttackInstants(state, stackItem);
     if (effect.drawCards) {
-      drawCardsForPlayer(state, playerId, effect.drawCards + consumeEquipmentDrawRiderBonus(state, playerId), {
-        inFlightCardIds: reactionInFlightCardIds
-      });
+      drawCardsForPlayer(
+        state,
+        playerId,
+        effect.drawCards + consumeEquipmentDrawRiderBonus(state, playerId),
+        {
+          inFlightCardIds: reactionInFlightCardIds,
+        },
+      );
     }
     // Polish Balance Pack Dragon Wing Tabard / Spirit of Oppression: "…, draw 1
     // card then discard 1 card" — the discard runs AFTER the draw, so the drawn
@@ -16613,7 +19467,10 @@ function applyReactionPlayCore(
   // Top up the pending cast to the spell's maximum Power breakpoint through the
   // normal Power channel, so every readout, the Resistance gate and a later
   // Mysticism recall (this Tome is in playedCardIds) all stay consistent.
-  if (effect.type === "SET_SPELL_POWER_MAX" && stackItem?.action.type === "CAST_SPELL") {
+  if (
+    effect.type === "SET_SPELL_POWER_MAX" &&
+    stackItem?.action.type === "CAST_SPELL"
+  ) {
     const target = spellMaxPowerBreakpoint(cards[stackItem.action.cardId]);
     const current = getCurrentSpellPower(state, stackItem, cards);
     if (target > current) {
@@ -16626,7 +19483,7 @@ function applyReactionPlayCore(
   if (effect.type === "GAIN_MORALE") {
     if (mode === "expert" && effect.expertDrawCards) {
       drawCardsForPlayer(state, playerId, effect.expertDrawCards, {
-        inFlightCardIds: reactionInFlightCardIds
+        inFlightCardIds: reactionInFlightCardIds,
       });
     }
     changeMorale(state, playerId, gainMoraleAmount(effect, mode));
@@ -16636,7 +19493,11 @@ function applyReactionPlayCore(
   // inside the still-open reaction window instead of parking a reward until the
   // fight ends. The option choice is completed by the normal adventure reducer;
   // the dispatcher refreshes reaction offers once the pick resolves.
-  if (effect.type === "TAKE_FROM_DISCARD" && state.combat && !state.combat.prep) {
+  if (
+    effect.type === "TAKE_FROM_DISCARD" &&
+    state.combat &&
+    !state.combat.prep
+  ) {
     openDiscardPickChoice(state, playerId, {
       count: effect.count,
       filter: effect.filter,
@@ -16644,7 +19505,7 @@ function applyReactionPlayCore(
       shuffleRestIntoDeck: effect.shuffleRestIntoDeck,
       polishRecoveryLimit: effect.polishRecoveryLimit,
       excludeCardIds: reactionInFlightCardIds,
-      polishRefreshAfter: effect.polishRefreshAfter
+      polishRefreshAfter: effect.polishRefreshAfter,
     });
   }
 
@@ -16657,10 +19518,25 @@ function applyReactionPlayCore(
   // advanceReactionWindowAfterPlay pauses on and the CHOOSE_OPTION tail resumes.
   if (state.combat && !state.combat.prep) {
     if (effect.type === "DECK_DIG_KEEP_ONE") {
-      resolveDeckDigKeepOne(state, playerId, play.cardId, card.name, effect.count, cards, reactionInFlightCardIds);
+      resolveDeckDigKeepOne(
+        state,
+        playerId,
+        play.cardId,
+        card.name,
+        effect.count,
+        cards,
+        reactionInFlightCardIds,
+      );
     }
     if (effect.type === "DECK_DIG_KEEP_MATCHING") {
-      resolveDeckDigKeepMatching(state, playerId, play.cardId, effect, cards, reactionInFlightCardIds);
+      resolveDeckDigKeepMatching(
+        state,
+        playerId,
+        play.cardId,
+        effect,
+        cards,
+        reactionInFlightCardIds,
+      );
     }
     if (effect.type === "DRAW_TOP_ARTIFACT") {
       resolveDrawTopArtifactPlay(state, playerId, card.name);
@@ -16673,30 +19549,50 @@ function applyReactionPlayCore(
         card.name,
         effect.count,
         cards,
-        reactionInFlightCardIds
+        reactionInFlightCardIds,
       );
     }
     // Eagle Eye / a Tome's School dig opens its own take-or-discard
     // OPTION_CHOICE — the paused shape again. (A Tome's dig may first open the
     // `spell-deck-pick`; same nested shape, same park/resume.)
     if (effect.type === "EAGLE_EYE_DIG") {
-      resolveEagleEyeDig(state, playerId, mode, cards, effect.school, play.cardId);
+      resolveEagleEyeDig(
+        state,
+        playerId,
+        mode,
+        cards,
+        effect.school,
+        play.cardId,
+      );
     }
     // The shared-deck Search family opens a DECK_SEARCH choice, which pauses the
     // window too since 2026-08-10 (advanceReactionWindowAfterPlay + the
     // RESOLVE_DECK_SEARCH resume tail). Same call the own-activation combat play
     // makes, so the window join can never behave differently.
     if (effect.type === "CARD_DECK_SEARCH") {
-      beginSharedDeckSearchNow(state, playerId, effect.deck, effect.count, Boolean(effect.allowRemove));
+      beginSharedDeckSearchNow(
+        state,
+        playerId,
+        effect.deck,
+        effect.count,
+        Boolean(effect.allowRemove),
+      );
     }
     if (effect.type === "REMOVE_HAND_CARD_THEN_SEARCH") {
-      openCombatRemoveThenSearchChoice(state, playerId, card.name, effect, cards);
+      openCombatRemoveThenSearchChoice(
+        state,
+        playerId,
+        card.name,
+        effect,
+        cards,
+      );
     }
   }
 
   if (
     effect.type === "ADD_COMBAT_STAT" &&
-    (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
+    (stackItem?.action.type === "ATTACK_UNIT" ||
+      stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
   ) {
     const attacker = state.combat?.units[stackItem.action.attackerId];
     const defender = state.combat?.units[stackItem.action.defenderId];
@@ -16710,10 +19606,12 @@ function applyReactionPlayCore(
         attacker,
         state.reactionWindow?.triggerEvent.type === "UNIT_ATTACK_DECLARED"
           ? state.reactionWindow.triggerEvent.isRetaliation
-          : false
+          : false,
       )
     ) {
-      throw new Error(`${card.name} can be used only on Granberia's first own attack this combat.`);
+      throw new Error(
+        `${card.name} can be used only on Granberia's first own attack this combat.`,
+      );
     }
 
     // Community Balance Pack Slayer: the bonus is paid only when the ATTACKED
@@ -16725,12 +19623,20 @@ function applyReactionPlayCore(
       defender &&
       gradeRankOfUnit(defender) <= gradeRankOfUnit(attacker)
     ) {
-      throw new Error(`${card.name} only applies when attacking a unit of a higher tier.`);
+      throw new Error(
+        `${card.name} only applies when attacking a unit of a higher tier.`,
+      );
     }
 
     // Bloodlust/Precision/Golden Bow restrict which unit types benefit.
-    if (effect.unitTypes && affectedUnit && !effect.unitTypes.includes(affectedUnit.type)) {
-      throw new Error(`${card.name} only affects ${effect.unitTypes.join("/")} units.`);
+    if (
+      effect.unitTypes &&
+      affectedUnit &&
+      !effect.unitTypes.includes(affectedUnit.type)
+    ) {
+      throw new Error(
+        `${card.name} only affects ${effect.unitTypes.join("/")} units.`,
+      );
     }
 
     // Magic Resistance: the unit the buff/nerf lands on (a Dwarf) rolls to shrug
@@ -16741,7 +19647,12 @@ function applyReactionPlayCore(
     if (
       card.kind === "spell" &&
       affectedUnit &&
-      negatesCardOnDwarfRoll(state, { type: "unit", unitId: affectedUnit.id }, card.name, playerId)
+      negatesCardOnDwarfRoll(
+        state,
+        { type: "unit", unitId: affectedUnit.id },
+        card.name,
+        playerId,
+      )
     ) {
       stackItem.modifiers.playedCardIds.push(play.cardId);
       return { windowEnded: false };
@@ -16764,8 +19675,14 @@ function applyReactionPlayCore(
     // Spell business), and the Meteor Shower family never reaches here (its
     // effect is AREA_DAMAGE_PICK_ADJACENT and stays FUEL-only).
     if (effect.amountByPower) {
-      const power = play.fromScroll ? 0 : attackPowerFor(stackItem, playerId) + instantSchoolPowerBonus;
-      effectAmount = getAmountByPower(effect.amountByPower, effect.amount, power);
+      const power = play.fromScroll
+        ? 0
+        : attackPowerFor(stackItem, playerId) + instantSchoolPowerBonus;
+      effectAmount = getAmountByPower(
+        effect.amountByPower,
+        effect.amount,
+        power,
+      );
     }
     if (effect.perCostCard) {
       effectAmount += effect.perCostCard * costCardsPaid;
@@ -16782,7 +19699,7 @@ function applyReactionPlayCore(
       Boolean(attacker) &&
       Boolean(defender) &&
       effectiveInitiative(defender!, state.activeEffects, state.combat) >
-      effectiveInitiative(attacker!, state.activeEffects, state.combat);
+        effectiveInitiative(attacker!, state.activeEffects, state.combat);
     // Gundula IV: doubles when YOUR (attacking) unit is strictly faster than the
     // attacked unit — the mirror of Cyra's defender-faster condition.
     const attackerIsFaster =
@@ -16790,8 +19707,10 @@ function applyReactionPlayCore(
       Boolean(attacker) &&
       Boolean(defender) &&
       effectiveInitiative(attacker!, state.activeEffects, state.combat) >
-      effectiveInitiative(defender!, state.activeEffects, state.combat);
-    const matchesDoubledType = Boolean(effect.doubleForUnitType) && affectedUnit?.type === effect.doubleForUnitType;
+        effectiveInitiative(defender!, state.activeEffects, state.combat);
+    const matchesDoubledType =
+      Boolean(effect.doubleForUnitType) &&
+      affectedUnit?.type === effect.doubleForUnitType;
     const doubleFactor =
       unitMatchesSpecialtyName(affectedUnit?.name, effect.doubleForUnitName) ||
       matchesDoubledType ||
@@ -16818,11 +19737,17 @@ function applyReactionPlayCore(
     // one winning if several land.
     const balanceCapTable = effect.damageCapByPower;
     const balanceCap = balanceCapTable
-      ? balanceDamageCapAtPower(balanceCapTable, play.fromScroll ? 0 : attackPowerFor(stackItem, playerId))
+      ? balanceDamageCapAtPower(
+          balanceCapTable,
+          play.fromScroll ? 0 : attackPowerFor(stackItem, playerId),
+        )
       : undefined;
     if (balanceCapTable && !play.fromScroll) {
       // Recorded so Power paid LATER in this window still reaches the cap rung.
-      stackItem.modifiers.attackDamageCapByPower = { table: balanceCapTable, playerId };
+      stackItem.modifiers.attackDamageCapByPower = {
+        table: balanceCapTable,
+        playerId,
+      };
     }
     if (balanceCap !== undefined) {
       stackItem.modifiers.attackDamageCap =
@@ -16856,7 +19781,9 @@ function applyReactionPlayCore(
     // above (no card-kind gate since 2026-08-26): a plain Attack/Defense
     // statistic carries no `amountByPower` at all, so it still never records.
     if (effect.amountByPower && !play.fromScroll) {
-      const fixedBonus = effect.perCostCard ? effect.perCostCard * costCardsPaid : 0;
+      const fixedBonus = effect.perCostCard
+        ? effect.perCostCard * costCardsPaid
+        : 0;
       (stackItem.modifiers.powerScaledAttackInstants ??= []).push({
         cardId: card.id,
         playerId,
@@ -16866,7 +19793,7 @@ function applyReactionPlayCore(
         fixedBonus,
         schoolPowerBonus: instantSchoolPowerBonus,
         doubleFactor,
-        appliedAmount
+        appliedAmount,
       });
     }
 
@@ -16883,7 +19810,7 @@ function applyReactionPlayCore(
         source: { type: "card", cardId: card.id, controllerId: playerId },
         target: { type: "unit", unitId: affectedUnit.id },
         amount: effect.selfDamage,
-        damageKind: "effect"
+        damageKind: "effect",
       });
       markUnitRemovedIfNeeded(state, affectedUnit);
     }
@@ -16894,9 +19821,21 @@ function applyReactionPlayCore(
     // Gnoll's Flail. Both are floored at 0 by the attack/defense maths.
     if (effect.selfStatPenalty && affectedUnit && state.combat) {
       if (effect.selfStatPenalty.stat === "attack") {
-        placeCombatToken(state, affectedUnit, "weakness", -effect.selfStatPenalty.amount, card.name);
+        placeCombatToken(
+          state,
+          affectedUnit,
+          "weakness",
+          -effect.selfStatPenalty.amount,
+          card.name,
+        );
       } else {
-        placeCombatToken(state, affectedUnit, "corrosion", effect.selfStatPenalty.amount, card.name);
+        placeCombatToken(
+          state,
+          affectedUnit,
+          "corrosion",
+          effect.selfStatPenalty.amount,
+          card.name,
+        );
       }
     }
 
@@ -16917,9 +19856,14 @@ function applyReactionPlayCore(
     }
 
     if (effect.drawCards) {
-      drawCardsForPlayer(state, playerId, effect.drawCards + consumeEquipmentDrawRiderBonus(state, playerId), {
-        inFlightCardIds: reactionInFlightCardIds
-      });
+      drawCardsForPlayer(
+        state,
+        playerId,
+        effect.drawCards + consumeEquipmentDrawRiderBonus(state, playerId),
+        {
+          inFlightCardIds: reactionInFlightCardIds,
+        },
+      );
     }
 
     // Blackshard of the Dead Knight: the option discarded 1 card; draw 1 only
@@ -16934,20 +19878,27 @@ function applyReactionPlayCore(
       polishSpellBookEnabled(state) &&
       (play.costCardIds ?? []).includes(CAST_A_SPELL_CARD_ID);
     if (paidCastEnabler) {
-      drawCardsForPlayer(state, playerId, 1, { inFlightCardIds: reactionInFlightCardIds });
+      drawCardsForPlayer(state, playerId, 1, {
+        inFlightCardIds: reactionInFlightCardIds,
+      });
     } else if (
       effect.drawIfCostCardSpell &&
       !(effect.drawIfCostCardCastEnabler && polishSpellBookEnabled(state)) &&
       (play.costCardIds ?? []).some((id) => cards[id]?.kind === "spell")
     ) {
-      drawCardsForPlayer(state, playerId, 1, { inFlightCardIds: reactionInFlightCardIds });
+      drawCardsForPlayer(state, playerId, 1, {
+        inFlightCardIds: reactionInFlightCardIds,
+      });
     }
 
     // Spells (Curse/Weakness/Bloodlust/Precision) may be cancelled by the other
     // side's Resistance; the Attack/Defense statistics and Gnoll artifacts that
     // share this effect are not Spells, so they are never recorded.
     if (card.kind === "spell") {
-      (stackItem.modifiers.cancellableSpellInstants ??= []).push({ cardId: card.id, playerId });
+      (stackItem.modifiers.cancellableSpellInstants ??= []).push({
+        cardId: card.id,
+        playerId,
+      });
     }
   }
 
@@ -16956,7 +19907,8 @@ function applyReactionPlayCore(
   // fires none of the effects that die face would have triggered.
   if (
     effect.type === "IGNORE_ATTACK_DIE_RESULT" &&
-    (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
+    (stackItem?.action.type === "ATTACK_UNIT" ||
+      stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
   ) {
     stackItem.modifiers.attackDieCancelled = true;
     stackItem.modifiers.playedCardIds.push(play.cardId);
@@ -16969,9 +19921,13 @@ function applyReactionPlayCore(
   // attack-die face so a stray value can never desync the die-face readers.
   if (
     effect.type === "FORCE_ATTACK_ROLL" &&
-    (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
+    (stackItem?.action.type === "ATTACK_UNIT" ||
+      stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
   ) {
-    stackItem.modifiers.forcedRoll = Math.max(-1, Math.min(1, Math.trunc(effect.value)));
+    stackItem.modifiers.forcedRoll = Math.max(
+      -1,
+      Math.min(1, Math.trunc(effect.value)),
+    );
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
 
@@ -16984,10 +19940,15 @@ function applyReactionPlayCore(
   // consumed when it resolves.
   if (
     effect.type === "REDUCE_RETALIATION_DAMAGE" &&
-    (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
+    (stackItem?.action.type === "ATTACK_UNIT" ||
+      stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
   ) {
     const defender = state.combat?.units[stackItem.action.defenderId];
-    const amount = doubleAmountForUnitName(effect.amount, defender, effect.doubleForUnitName);
+    const amount = doubleAmountForUnitName(
+      effect.amount,
+      defender,
+      effect.doubleForUnitName,
+    );
     stackItem.modifiers.retaliationDamageReductionInstant =
       (stackItem.modifiers.retaliationDamageReductionInstant ?? 0) + amount;
     stackItem.modifiers.playedCardIds.push(play.cardId);
@@ -17002,7 +19963,8 @@ function applyReactionPlayCore(
   // already ran above).
   if (
     effect.type === "NEGATE_ATTACK" &&
-    (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
+    (stackItem?.action.type === "ATTACK_UNIT" ||
+      stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
   ) {
     stackItem.modifiers.negateAttackBuffs = true;
     // Polish Balance Pack Misfortune: the rung the caster paid for decides the
@@ -17023,14 +19985,20 @@ function applyReactionPlayCore(
   // Bless: the pending attack skips its Attack die (and may gain attack).
   if (
     effect.type === "IGNORE_ATTACK_DIE" &&
-    (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
+    (stackItem?.action.type === "ATTACK_UNIT" ||
+      stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
   ) {
     // Magic Resistance: the blessed unit (a Dwarf) rolls to shrug Bless off.
     const blessTarget = state.combat?.units[stackItem.action.attackerId];
     if (
       card.kind === "spell" &&
       blessTarget &&
-      negatesCardOnDwarfRoll(state, { type: "unit", unitId: blessTarget.id }, card.name, playerId)
+      negatesCardOnDwarfRoll(
+        state,
+        { type: "unit", unitId: blessTarget.id },
+        card.name,
+        playerId,
+      )
     ) {
       stackItem.modifiers.playedCardIds.push(play.cardId);
       return { windowEnded: false };
@@ -17044,7 +20012,7 @@ function applyReactionPlayCore(
       const blessBonus = getAmountByPower(
         effect.attackBonusByPower,
         0,
-        play.fromScroll ? 0 : attackPowerFor(stackItem, playerId)
+        play.fromScroll ? 0 : attackPowerFor(stackItem, playerId),
       );
       stackItem.modifiers.attackBonus += blessBonus;
       // Bless's Power-scaled attack bonus can also grow with Power paid later.
@@ -17057,12 +20025,15 @@ function applyReactionPlayCore(
           baseAmount: 0,
           fixedBonus: 0,
           doubleFactor: 1,
-          appliedAmount: blessBonus
+          appliedAmount: blessBonus,
         });
       }
     }
     stackItem.modifiers.playedCardIds.push(play.cardId);
-    (stackItem.modifiers.cancellableSpellInstants ??= []).push({ cardId: card.id, playerId });
+    (stackItem.modifiers.cancellableSpellInstants ??= []).push({
+      cardId: card.id,
+      playerId,
+    });
   }
 
   // Frenzy: the pending attack ignores the attacked unit's Defense (counts as 0).
@@ -17072,7 +20043,8 @@ function applyReactionPlayCore(
   // bronze→silver→gold). The legacy fixed-grade form sets ignoreDefense at once.
   if (
     effect.type === "IGNORE_DEFENSE" &&
-    (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
+    (stackItem?.action.type === "ATTACK_UNIT" ||
+      stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
   ) {
     if (effect.gradeByPower) {
       stackItem.modifiers.ignoreDefenseGradeByPower = effect.gradeByPower;
@@ -17083,7 +20055,14 @@ function applyReactionPlayCore(
         : getSchoolPowerBonus(state, playerId, card);
     } else if (effect.grade) {
       const defender = state.combat?.units[stackItem.action.defenderId];
-      if (defender && bankAwareTierGateRank(defender, "IGNORE_DEFENSE", houseRuleEnabled(state, "polish-bank-unit-spells")) <= gradeRank(effect.grade)) {
+      if (
+        defender &&
+        bankAwareTierGateRank(
+          defender,
+          "IGNORE_DEFENSE",
+          houseRuleEnabled(state, "polish-bank-unit-spells"),
+        ) <= gradeRank(effect.grade)
+      ) {
         stackItem.modifiers.ignoreDefense = true;
       }
     }
@@ -17092,9 +20071,11 @@ function applyReactionPlayCore(
 
   if (
     effect.type === "TRIPLE_ATTACK_DIE" &&
-    (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
+    (stackItem?.action.type === "ATTACK_UNIT" ||
+      stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
   ) {
-    stackItem.modifiers.attackDieMultiplier = (stackItem.modifiers.attackDieMultiplier ?? 1) * 3;
+    stackItem.modifiers.attackDieMultiplier =
+      (stackItem.modifiers.attackDieMultiplier ?? 1) * 3;
     // Polish Balance Pack Centaur's Axe: "Ignore on '-1' result" — the tripling
     // is skipped on a rolled "-1" (which stays a plain -1 instead of -3).
     if (effect.ignoreOnNegative) {
@@ -17111,36 +20092,57 @@ function applyReactionPlayCore(
   // paid into this attack window after Slayer was played.
   if (
     effect.type === "SLAYER_ATTACK" &&
-    (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
+    (stackItem?.action.type === "ATTACK_UNIT" ||
+      stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
   ) {
     stackItem.modifiers.playedCardIds.push(play.cardId);
-    const defenderRef: TargetRef = { type: "unit", unitId: stackItem.action.defenderId };
+    const defenderRef: TargetRef = {
+      type: "unit",
+      unitId: stackItem.action.defenderId,
+    };
     if (!negatesCardOnDwarfRoll(state, defenderRef, card.name, playerId)) {
       // Adrienne's Fire Magic adds her bonus to a fire Slayer's roll-count Power.
-      const slayerSchoolBonus = play.fromScroll ? 0 : getSchoolPowerBonus(state, playerId, card);
-      const power = play.fromScroll ? 0 : attackPowerFor(stackItem, playerId) + slayerSchoolBonus;
-      stackItem.modifiers.slayerRolls = getAmountByPower(effect.rollsByPower, 2, power);
+      const slayerSchoolBonus = play.fromScroll
+        ? 0
+        : getSchoolPowerBonus(state, playerId, card);
+      const power = play.fromScroll
+        ? 0
+        : attackPowerFor(stackItem, playerId) + slayerSchoolBonus;
+      stackItem.modifiers.slayerRolls = getAmountByPower(
+        effect.rollsByPower,
+        2,
+        power,
+      );
       stackItem.modifiers.slayerDraw = true;
       // Scroll casts are locked to power 0 and never grow, so they are not recorded.
       if (!play.fromScroll) {
         stackItem.modifiers.slayerRollsByPower = effect.rollsByPower;
         stackItem.modifiers.slayerSchoolPowerBonus = slayerSchoolBonus;
       }
-      (stackItem.modifiers.cancellableSpellInstants ??= []).push({ cardId: card.id, playerId });
+      (stackItem.modifiers.cancellableSpellInstants ??= []).push({
+        cardId: card.id,
+        playerId,
+      });
     }
   }
 
   if (effect.type === "CREATE_ACTIVE_EFFECT") {
     const effectCountBefore = state.activeEffects.length;
     createActiveEffectFromCard(state, card, effect, playerId, mode);
-    holdOngoingCardIfEffectCreated(state, playerId, play.cardId, effectCountBefore, "discard");
+    holdOngoingCardIfEffectCreated(
+      state,
+      playerId,
+      play.cardId,
+      effectCountBefore,
+      "discard",
+    );
     stackItem?.modifiers.playedCardIds.push(play.cardId);
   }
 
   if (effect.type === "DRAW_CARDS") {
     stackItem?.modifiers.playedCardIds.push(play.cardId);
     drawCardsForPlayer(state, playerId, effectAmount, {
-      inFlightCardIds: reactionInFlightCardIds
+      inFlightCardIds: reactionInFlightCardIds,
     });
   }
 
@@ -17153,16 +20155,25 @@ function applyReactionPlayCore(
   if (effect.type === "GAIN_RUNES") {
     gainRunes(state, playerId, effect.amount);
     if (effect.drawCards) {
-      drawCardsForPlayer(state, playerId, effect.drawCards + consumeEquipmentDrawRiderBonus(state, playerId), {
-        inFlightCardIds: reactionInFlightCardIds
-      });
+      drawCardsForPlayer(
+        state,
+        playerId,
+        effect.drawCards + consumeEquipmentDrawRiderBonus(state, playerId),
+        {
+          inFlightCardIds: reactionInFlightCardIds,
+        },
+      );
     }
     stackItem?.modifiers.playedCardIds.push(play.cardId);
   }
 
-  if (effect.type === "RECALL_SPELL" && stackItem?.action.type === "CAST_SPELL") {
+  if (
+    effect.type === "RECALL_SPELL" &&
+    stackItem?.action.type === "CAST_SPELL"
+  ) {
     const caster = state.players[playerId];
-    const polishBookCast = polishSpellBookEnabled(state) && Boolean(stackItem.action.fromSpellBook);
+    const polishBookCast =
+      polishSpellBookEnabled(state) && Boolean(stackItem.action.fromSpellBook);
     const isPolishMysticism =
       polishBookCast &&
       !effect.basicSpellLimitBonus &&
@@ -17175,11 +20186,13 @@ function applyReactionPlayCore(
     // Community Balance Change's Mysticism BASIC: "… take it back into your hand
     // as well as 1 card played alongside it." Same machinery as the Expert
     // recall, capped at `basicRecallPlayedCards`.
-    const basicAlongside = mode === "expert" ? 0 : (effect.basicRecallPlayedCards ?? 0);
+    const basicAlongside =
+      mode === "expert" ? 0 : (effect.basicRecallPlayedCards ?? 0);
     stackItem.modifiers.recallSpell = {
       toHand: true,
       recallPlayedCards:
-        (mode === "expert" && Boolean(effect.expertRecallPlayedCards)) || basicAlongside > 0,
+        (mode === "expert" && Boolean(effect.expertRecallPlayedCards)) ||
+        basicAlongside > 0,
       ...(basicAlongside > 0 ? { recallPlayedCardLimit: basicAlongside } : {}),
       sourceCardId: play.cardId,
       toSpellBook: Boolean(stackItem.action.fromSpellBook) && !polishBookCast,
@@ -17187,7 +20200,7 @@ function applyReactionPlayCore(
       // Polish Spell Book (reference sheet): BOTH Knowledge and Mysticism return
       // the Cast a Spell enabler to hand ("Cast a Spell returns → Hand"). Knowledge
       // leaves the Spell used; Mysticism additionally refreshes it (polishRefreshSpell).
-      ...(polishBookCast ? { polishRecallEnabler: true } : {})
+      ...(polishBookCast ? { polishRecallEnabler: true } : {}),
     };
 
     // NO Power rider. Mysticism prints a RECALL on both sides — "Basic: … take
@@ -17205,9 +20218,11 @@ function applyReactionPlayCore(
 
     // Empowered Knowledge raises the limit on the basic play; the regular
     // card only on the expert play.
-    caster.combatStats.spellLimitBonusThisRound += effect.basicSpellLimitBonus ?? 0;
+    caster.combatStats.spellLimitBonusThisRound +=
+      effect.basicSpellLimitBonus ?? 0;
     if (mode === "expert") {
-      caster.combatStats.spellLimitBonusThisRound += effect.expertSpellLimitBonus ?? 0;
+      caster.combatStats.spellLimitBonusThisRound +=
+        effect.expertSpellLimitBonus ?? 0;
     }
 
     stackItem.modifiers.playedCardIds.push(play.cardId);
@@ -17224,7 +20239,11 @@ function applyReactionPlayCore(
   // re-cast into it. Only after the spell is used (the attack resolves) does it
   // return, to the hand or (a Book instant) to the Spell Book. The limit raise
   // applies at once, exactly like the cast-window play above.
-  if (effect.type === "RECALL_SPELL" && stackItem && isAttackStackItem(stackItem)) {
+  if (
+    effect.type === "RECALL_SPELL" &&
+    stackItem &&
+    isAttackStackItem(stackItem)
+  ) {
     const caster = state.players[playerId];
     const entries = stackItem.modifiers.recallableSpellReactions ?? [];
     let entryIndex = -1;
@@ -17235,36 +20254,58 @@ function applyReactionPlayCore(
       }
     }
     if (entryIndex === -1) {
-      throw new Error("You have not played a Spell into this attack to take back.");
+      throw new Error(
+        "You have not played a Spell into this attack to take back.",
+      );
     }
     const [entry] = entries.splice(entryIndex, 1);
 
-    caster.combatStats.spellLimitBonusThisRound += effect.basicSpellLimitBonus ?? 0;
+    caster.combatStats.spellLimitBonusThisRound +=
+      effect.basicSpellLimitBonus ?? 0;
     if (mode === "expert") {
-      caster.combatStats.spellLimitBonusThisRound += effect.expertSpellLimitBonus ?? 0;
+      caster.combatStats.spellLimitBonusThisRound +=
+        effect.expertSpellLimitBonus ?? 0;
     }
 
     stackItem.modifiers.playedCardIds.push(play.cardId);
     const deferred = (stackItem.modifiers.deferredSpellRecalls ??= []);
-    const polishBookInstant = polishSpellBookEnabled(state) && Boolean(entry.fromSpellBook);
+    const polishBookInstant =
+      polishSpellBookEnabled(state) && Boolean(entry.fromSpellBook);
     const isPolishMysticism =
       polishBookInstant &&
       !effect.basicSpellLimitBonus &&
       !effect.expertSpellLimitBonus;
     if (polishBookInstant) {
       if (isPolishMysticism) {
-        deferred.push({ cardId: entry.cardId, playerId, toSpellBook: true, fromPolishUsed: true });
+        deferred.push({
+          cardId: entry.cardId,
+          playerId,
+          toSpellBook: true,
+          fromPolishUsed: true,
+        });
         // Polish Mysticism ALSO returns the Cast a Spell enabler to hand (basic and
         // expert alike), matching the cast-window path — the reference sheet's
         // "Cast a Spell returns → Hand. Refresh casted Spell".
         if (entry.castEnablerCardId) {
-          deferred.push({ cardId: entry.castEnablerCardId, playerId, toSpellBook: false });
+          deferred.push({
+            cardId: entry.castEnablerCardId,
+            playerId,
+            toSpellBook: false,
+          });
         }
       } else if (entry.castEnablerCardId) {
-        deferred.push({ cardId: entry.castEnablerCardId, playerId, toSpellBook: false });
+        deferred.push({
+          cardId: entry.castEnablerCardId,
+          playerId,
+          toSpellBook: false,
+        });
       }
     } else {
-      deferred.push({ cardId: entry.cardId, playerId, toSpellBook: Boolean(entry.fromSpellBook) });
+      deferred.push({
+        cardId: entry.cardId,
+        playerId,
+        toSpellBook: Boolean(entry.fromSpellBook),
+      });
     }
 
     // Mysticism expert: the OTHER cards this player played into the attack come
@@ -17293,7 +20334,11 @@ function applyReactionPlayCore(
         const idx = remainingDiscard.lastIndexOf(playedCardId);
         if (idx !== -1) {
           remainingDiscard.splice(idx, 1);
-          deferred.push({ cardId: playedCardId, playerId, toSpellBook: bookPlayed.includes(playedCardId) });
+          deferred.push({
+            cardId: playedCardId,
+            playerId,
+            toSpellBook: bookPlayed.includes(playedCardId),
+          });
         }
       }
       // (The Cast a Spell enabler is already queued for return in the Polish
@@ -17307,24 +20352,40 @@ function applyReactionPlayCore(
   // wiki `<instant>` — reduce THIS cast's Spell damage against the targeted
   // unit by +X (basic 1 / expert 2 / Plate option 4). Stack-scoped only; no
   // combat-long active effect (matches Shield's Instant fix and Lion's Shield).
-  if (effect.type === "INTERFERE_SPELL" && stackItem?.action.type === "CAST_SPELL") {
-    if (play.interferenceMode === "power" && houseRuleEnabled(state, "polish-card-balance")) {
-      const reduction = mode === "expert"
-        ? (effect.balanceExpertPowerReduction ?? effect.balancePowerReduction ?? 0)
-        : (effect.balancePowerReduction ?? 0);
+  if (
+    effect.type === "INTERFERE_SPELL" &&
+    stackItem?.action.type === "CAST_SPELL"
+  ) {
+    if (
+      play.interferenceMode === "power" &&
+      houseRuleEnabled(state, "polish-card-balance")
+    ) {
+      const reduction =
+        mode === "expert"
+          ? (effect.balanceExpertPowerReduction ??
+            effect.balancePowerReduction ??
+            0)
+          : (effect.balancePowerReduction ?? 0);
       stackItem.modifiers.interferencePowerReduction =
         (stackItem.modifiers.interferencePowerReduction ?? 0) + reduction;
       stackItem.modifiers.playedCardIds.push(play.cardId);
     } else {
       const targetRef = stackItem.action.target;
-      const targetUnit = targetRef.type === "unit" ? state.combat?.units[targetRef.unitId] : undefined;
+      const targetUnit =
+        targetRef.type === "unit"
+          ? state.combat?.units[targetRef.unitId]
+          : undefined;
       // The legal-reaction gate already restricts this to the reacting player's
       // own targeted unit; re-checked here so a stale window can never buff an
       // enemy unit or a dead one.
-      if (targetUnit && targetUnit.controllerId === playerId && isUnitAlive(targetUnit)) {
+      if (
+        targetUnit &&
+        targetUnit.controllerId === playerId &&
+        isUnitAlive(targetUnit)
+      ) {
         (stackItem.modifiers.interfereSpellReductions ??= []).push({
           unitId: targetUnit.id,
-          amount: effectAmount
+          amount: effectAmount,
         });
       }
       stackItem.modifiers.playedCardIds.push(play.cardId);
@@ -17337,10 +20398,15 @@ function applyReactionPlayCore(
   // unit buff. The spell-damage half is inert against a physical hit.
   if (
     effect.type === "INTERFERE_SPELL" &&
-    (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
+    (stackItem?.action.type === "ATTACK_UNIT" ||
+      stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
   ) {
     const defendingUnit = state.combat?.units[stackItem.action.defenderId];
-    if (defendingUnit && defendingUnit.controllerId === playerId && isUnitAlive(defendingUnit)) {
+    if (
+      defendingUnit &&
+      defendingUnit.controllerId === playerId &&
+      isUnitAlive(defendingUnit)
+    ) {
       stackItem.modifiers.defenseBonus += effectAmount;
     }
     stackItem.modifiers.playedCardIds.push(play.cardId);
@@ -17352,9 +20418,13 @@ function applyReactionPlayCore(
   // was paid above.
   if (
     effect.type === "CANCEL_LETHAL_ATTACK" &&
-    (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
+    (stackItem?.action.type === "ATTACK_UNIT" ||
+      stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
   ) {
-    stackItem.modifiers.cancelLethal = { unitId: stackItem.action.defenderId, grade: effect.grade };
+    stackItem.modifiers.cancelLethal = {
+      unitId: stackItem.action.defenderId,
+      grade: effect.grade,
+    };
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
 
@@ -17368,7 +20438,8 @@ function applyReactionPlayCore(
   // The First Aid Tent uses USE_ACTIVE_EFFECT (mode "expert" for the volley), not
   // a card play. Naming the card as the heal's source keeps the heal FX/sound.
   if (
-    (effect.type === "HEAL_DAMAGE" || effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS") &&
+    (effect.type === "HEAL_DAMAGE" ||
+      effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS") &&
     play.target?.type === "unit"
   ) {
     const unit = state.combat?.units[play.target.unitId];
@@ -17380,18 +20451,37 @@ function applyReactionPlayCore(
         effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS"
           ? standingSpellPower(state, playerId, card)
           : (card.power ?? 0);
-      const source = { type: "card" as const, cardId: card.id, controllerId: playerId };
-      healUnitDamage(state, source, play.target, getEffectDamageAmount(effect, healPower));
+      const source = {
+        type: "card" as const,
+        cardId: card.id,
+        controllerId: playerId,
+      };
+      healUnitDamage(
+        state,
+        source,
+        play.target,
+        getEffectDamageAmount(effect, healPower),
+      );
       if (effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS") {
-        removeEffectsFromTarget(state, source, play.target, effect.removePolarity);
+        removeEffectsFromTarget(
+          state,
+          source,
+          play.target,
+          effect.removePolarity,
+        );
       }
       if (effect.removeParalysis && hasToken(unit, "paralysis")) {
         removeToken(state, unit, "paralysis", "dispelled");
       }
       if (effect.drawCards) {
-        drawCardsForPlayer(state, playerId, effect.drawCards + consumeEquipmentDrawRiderBonus(state, playerId), {
-          inFlightCardIds: reactionInFlightCardIds
-        });
+        drawCardsForPlayer(
+          state,
+          playerId,
+          effect.drawCards + consumeEquipmentDrawRiderBonus(state, playerId),
+          {
+            inFlightCardIds: reactionInFlightCardIds,
+          },
+        );
       }
       // Rion VI and clones: the printed discard follows the draw, so the just
       // drawn cards may pay it (see drawRiderThenDiscard).
@@ -17404,13 +20494,19 @@ function applyReactionPlayCore(
   // shot the Ballista makes. Mirrors the on-turn resolution in playCard;
   // re-validated here so removing the offer's lowest-initiative filter is caught
   // (a thrown error rolls the whole play back, card included).
-  if (effect.type === "DAMAGE_LOWEST_INITIATIVE_ENEMY" && state.combat && play.target?.type === "unit") {
+  if (
+    effect.type === "DAMAGE_LOWEST_INITIATIVE_ENEMY" &&
+    state.combat &&
+    play.target?.type === "unit"
+  ) {
     const unit = state.combat.units[play.target.unitId];
     if (!unit || !isUnitAlive(unit) || unit.controllerId === playerId) {
       throw new Error("Artillery must hit a living enemy unit.");
     }
     if (!isLowestInitiativeEnemy(state, playerId, unit)) {
-      throw new Error("Artillery hits an enemy unit with the lowest initiative.");
+      throw new Error(
+        "Artillery hits an enemy unit with the lowest initiative.",
+      );
     }
     unit.damage += effect.amount;
     noteUnitDamagedForTokens(state, unit, effect.amount);
@@ -17419,7 +20515,7 @@ function applyReactionPlayCore(
       source: { type: "card", cardId: card.id, controllerId: playerId },
       target: { type: "unit", unitId: unit.id },
       amount: effect.amount,
-      damageKind: "effect"
+      damageKind: "effect",
     });
     markUnitRemovedIfNeeded(state, unit);
     // Balance Pack: the reprinted BASIC side also carries the aim rider.
@@ -17431,7 +20527,11 @@ function applyReactionPlayCore(
   // back into your hand." The card was moved to the discard pile above; now that
   // its effect has applied, pull it back to hand. The cost cards it discarded
   // stay discarded. Never combines with a removeSelf option or a scroll play.
-  if (option?.returnSelfToHand && !play.fromScroll && !option.cost?.removeSelf) {
+  if (
+    option?.returnSelfToHand &&
+    !play.fromScroll &&
+    !option.cost?.removeSelf
+  ) {
     const owner = state.players[playerId];
     const discardIndex = owner?.discard.lastIndexOf(play.cardId) ?? -1;
     if (owner && discardIndex !== -1) {
@@ -17443,7 +20543,11 @@ function applyReactionPlayCore(
   return { windowEnded: false };
 }
 
-function advanceReactionWindowAfterPlay(state: GameState, playerId: PlayerId, cards: CardLibrary): void {
+function advanceReactionWindowAfterPlay(
+  state: GameState,
+  playerId: PlayerId,
+  cards: CardLibrary,
+): void {
   if (!state.reactionWindow) {
     return;
   }
@@ -17485,7 +20589,8 @@ function advanceReactionWindowAfterPlay(state: GameState, playerId: PlayerId, ca
   if (
     state.pendingChoice?.type === "OPTION_CHOICE" ||
     state.pendingChoice?.type === "DECK_SEARCH" ||
-    (state.pendingChoice?.type === "ABILITY_TARGET_CHOICE" && state.pendingChoice.kind === "area-pick")
+    (state.pendingChoice?.type === "ABILITY_TARGET_CHOICE" &&
+      state.pendingChoice.kind === "area-pick")
   ) {
     state.reactionWindow.passedPlayerIds = [];
     state.reactionWindow.priorityPlayerId = playerId;
@@ -17513,7 +20618,9 @@ function advanceReactionWindowAfterPlay(state: GameState, playerId: PlayerId, ca
   // the next allowed player). Previously priority advanced after a single
   // play, stranding a caster who wanted to add a second Power card.
   const allowedPlayerIds = state.reactionWindow.allowedPlayerIds;
-  const keepPriority = allowedPlayerIds.includes(playerId) ? playerId : allowedPlayerIds[0];
+  const keepPriority = allowedPlayerIds.includes(playerId)
+    ? playerId
+    : allowedPlayerIds[0];
   state.reactionWindow.priorityPlayerId = keepPriority;
   state.priorityPlayerId = keepPriority;
 }
@@ -17544,7 +20651,11 @@ function advanceReactionWindowAfterPlay(state: GameState, playerId: PlayerId, ca
  * anything else tomorrow) can never reset the passes or steal priority — it
  * keeps the old bare refresh.
  */
-function noteReactionWindowPlay(state: GameState, playerId: PlayerId, cards: CardLibrary): void {
+function noteReactionWindowPlay(
+  state: GameState,
+  playerId: PlayerId,
+  cards: CardLibrary,
+): void {
   if (!state.reactionWindow) {
     return;
   }
@@ -17573,13 +20684,17 @@ const SCHOOL_FETCH_EXPERT_POWER = 3;
  */
 function applySchoolFetchExpert(
   state: GameState,
-  action: Extract<GameAction, { type: "USE_SCHOOL_FETCH_EXPERT" }>
+  action: Extract<GameAction, { type: "USE_SCHOOL_FETCH_EXPERT" }>,
 ): void {
   const player = state.players[action.playerId];
   if (!player) {
     throw new Error("Unknown player.");
   }
-  if (!activeSchoolFetches(state, action.playerId).includes(action.school as "air" | "earth" | "fire" | "water")) {
+  if (
+    !activeSchoolFetches(state, action.playerId).includes(
+      action.school as "air" | "earth" | "fire" | "water",
+    )
+  ) {
     throw new Error("No Basic Magic of that school is in play.");
   }
 
@@ -17601,18 +20716,25 @@ function applySchoolFetchExpert(
   }
 
   if (stackItem.action.type === "CAST_SPELL") {
-    const castSchools = cardLibrary[stackItem.action.cardId]?.spellSchools ?? [];
-    const matchesCast = castSchools.includes(action.school) || castSchools.includes("any");
+    const castSchools =
+      cardLibrary[stackItem.action.cardId]?.spellSchools ?? [];
+    const matchesCast =
+      castSchools.includes(action.school) || castSchools.includes("any");
     if (stackItem.action.playerId !== action.playerId || !matchesCast) {
       throw new Error("That cast does not match the Basic Magic school.");
     }
     if (stackItem.modifiers.scrollLocked) {
       throw new Error("A Spell Scroll cast is locked to Power 0.");
     }
-    stackItem.modifiers.schoolPowerBonus = (stackItem.modifiers.schoolPowerBonus ?? 0) + SCHOOL_FETCH_EXPERT_POWER;
+    stackItem.modifiers.schoolPowerBonus =
+      (stackItem.modifiers.schoolPowerBonus ?? 0) + SCHOOL_FETCH_EXPERT_POWER;
   } else if (isAttackStackItem(stackItem)) {
-    if (!playerHasAttackInstantOfSchool(stackItem, action.playerId, action.school)) {
-      throw new Error("You have no matching-school spell instant on this attack to empower.");
+    if (
+      !playerHasAttackInstantOfSchool(stackItem, action.playerId, action.school)
+    ) {
+      throw new Error(
+        "You have no matching-school spell instant on this attack to empower.",
+      );
     }
     addAttackPower(stackItem, action.playerId, SCHOOL_FETCH_EXPERT_POWER);
     recomputePowerScaledAttackInstants(state, stackItem);
@@ -17628,7 +20750,11 @@ function applySchoolFetchExpert(
   // the card goes to the owner's discard pile, never out of the game. A legacy
   // SPELL_SCHOOL_FETCH active-effect fetch carries no card — this is then a
   // no-op, and the once-per-stack `usedBy` guard still blocks a second dip.
-  const consumed = discardPermanentFromPlay(state, action.playerId, `ability.basic_${action.school}_magic` as CardId);
+  const consumed = discardPermanentFromPlay(
+    state,
+    action.playerId,
+    `ability.basic_${action.school}_magic` as CardId,
+  );
   appendEvent(state, {
     type: "CARD_PLAYED",
     playerId: action.playerId,
@@ -17638,7 +20764,9 @@ function applySchoolFetchExpert(
     effectAmount: SCHOOL_FETCH_EXPERT_POWER,
     // Say OUT LOUD that the permanent left play — a silent consumption reads as
     // "my Basic Magic stopped working" (the original user bug report).
-    ...(consumed ? { optionLabel: "+3 Power — the permanent is discarded" } : {})
+    ...(consumed
+      ? { optionLabel: "+3 Power — the permanent is discarded" }
+      : {}),
   });
 }
 
@@ -17646,20 +20774,27 @@ function applySchoolFetchExpert(
 function applySchoolPermanentExpert(
   state: GameState,
   action: Extract<GameAction, { type: "USE_SCHOOL_PERMANENT_EXPERT" }>,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   const player = state.players[action.playerId];
   const window = state.reactionWindow;
   const card = cardLibrary[action.cardId];
   const school = card?.permanentEffect?.schoolBonus;
   if (!player || !window || window.priorityPlayerId !== action.playerId) {
-    throw new Error("No matching reaction window is open for that School expert.");
+    throw new Error(
+      "No matching reaction window is open for that School expert.",
+    );
   }
-  if (!school || !getPermanentCardIds(state, action.playerId).includes(action.cardId)) {
+  if (
+    !school ||
+    !getPermanentCardIds(state, action.playerId).includes(action.cardId)
+  ) {
     throw new Error("That School of Magic permanent is not in play.");
   }
   if (window.schoolExpertPowerByPlayer?.[action.playerId]) {
-    throw new Error("A School of Magic expert is already committed to this window.");
+    throw new Error(
+      "A School of Magic expert is already committed to this window.",
+    );
   }
   if (!canPlayExpertMode(player, action.cardId)) {
     throw new Error("No expert uses are available this combat round.");
@@ -17675,8 +20810,15 @@ function applySchoolPermanentExpert(
       trigger.type === "UNIT_ATTACK_DECLARED" ||
       trigger.type === "UNIT_ACTIVATION_STARTED" ||
       trigger.type === "UNIT_LETHAL_HIT") &&
-    getSchoolPermanentExpertActions(state, action.playerId, trigger, cards).some(
-      (legal) => legal.action.type === "USE_SCHOOL_PERMANENT_EXPERT" && legal.action.cardId === action.cardId
+    getSchoolPermanentExpertActions(
+      state,
+      action.playerId,
+      trigger,
+      cards,
+    ).some(
+      (legal) =>
+        legal.action.type === "USE_SCHOOL_PERMANENT_EXPERT" &&
+        legal.action.cardId === action.cardId,
     );
   if (!offered) {
     throw new Error("That School expert is not offered in this window.");
@@ -17691,7 +20833,7 @@ function applySchoolPermanentExpert(
   // MATCHING-school Spell is actually played, and is consumed then.
   (window.schoolExpertPowerByPlayer ??= {})[action.playerId] = {
     school: school.school,
-    power: school.expertPower
+    power: school.expertPower,
   };
   if (!abilityExpertIsCrownFree(player, action.cardId)) {
     player.combatStats.expertUsesSpentThisRound += 1;
@@ -17703,7 +20845,7 @@ function applySchoolPermanentExpert(
     timing: card.timing,
     mode: "expert",
     effectAmount: school.expertPower,
-    optionLabel: `+${school.expertPower} Power (discarded from play)`
+    optionLabel: `+${school.expertPower} Power (discarded from play)`,
   });
 }
 
@@ -17713,7 +20855,7 @@ function applySchoolPermanentExpert(
  */
 function acknowledgeCombatEnd(
   state: GameState,
-  action: Extract<GameAction, { type: "ACKNOWLEDGE_COMBAT_END" }>
+  action: Extract<GameAction, { type: "ACKNOWLEDGE_COMBAT_END" }>,
 ): void {
   const combat = state.combat;
   if (!combat || !combat.outcome) {
@@ -17721,10 +20863,15 @@ function acknowledgeCombatEnd(
   }
 
   if (combat.context.kind === "sandbox") {
-    throw new Error("The battle simulator stays on the table — reset it instead.");
+    throw new Error(
+      "The battle simulator stays on the table — reset it instead.",
+    );
   }
 
-  if (combat.attackerPlayerId !== action.playerId && combat.defenderPlayerId !== action.playerId) {
+  if (
+    combat.attackerPlayerId !== action.playerId &&
+    combat.defenderPlayerId !== action.playerId
+  ) {
     throw new Error("Only a combat participant may close the combat.");
   }
 
@@ -17734,7 +20881,7 @@ function acknowledgeCombatEnd(
 function playReaction(
   state: GameState,
   action: Extract<GameAction, { type: "PLAY_REACTION" }>,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   // Tarnum (Conflux) VI played AS a reaction: consume the specialty (it cycles to
   // the caster's discard) and open the per-search deck choice. The Search runs
@@ -17747,7 +20894,12 @@ function playReaction(
     if (!state.reactionWindow) {
       throw new Error("No reaction window is open.");
     }
-    const moveError = moveCardFromHandToDiscard(state, action.playerId, action.cardId, "discard");
+    const moveError = moveCardFromHandToDiscard(
+      state,
+      action.playerId,
+      action.cardId,
+      "discard",
+    );
     if (moveError) {
       throw new Error(moveError.message);
     }
@@ -17764,11 +20916,18 @@ function playReaction(
   // "dissipates" and is rejected — the same rule the batch validator enforces.
   if (state.reactionWindow?.triggerEvent.type === "UNIT_ATTACK_DECLARED") {
     const card = cards[action.cardId];
-    const effect = card && !action.asPowerBoost ? getEffectiveCardEffect(card, action.optionIndex) : null;
-    if (!action.drawOnly && (action.asPowerBoost || effect?.type === "ADD_SPELL_POWER")) {
+    const effect =
+      card && !action.asPowerBoost
+        ? getEffectiveCardEffect(card, action.optionIndex)
+        : null;
+    if (
+      !action.drawOnly &&
+      (action.asPowerBoost || effect?.type === "ADD_SPELL_POWER")
+    ) {
       const stackItem = state.stack.at(-1);
       const attackOwner =
-        stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT"
+        stackItem?.action.type === "ATTACK_UNIT" ||
+        stackItem?.action.type === "MOVE_AND_ATTACK_UNIT"
           ? stackItem.action.playerId
           : undefined;
       // This player may keep empowering a Power-scaling spell instant THEY cast
@@ -17776,18 +20935,30 @@ function playReaction(
       // defender's Curse/Weakness. Lone Power with nothing of yours to feed still
       // dissipates.
       const empowerable =
-        (stackItem?.modifiers.powerScaledAttackInstants ?? []).some((record) => record.playerId === action.playerId) ||
-        (stackItem?.modifiers.powerScaledAttackRerolls ?? []).some((record) => record.playerId === action.playerId) ||
-        (attackOwner === action.playerId && stackItem?.modifiers.slayerRollsByPower !== undefined) ||
+        (stackItem?.modifiers.powerScaledAttackInstants ?? []).some(
+          (record) => record.playerId === action.playerId,
+        ) ||
+        (stackItem?.modifiers.powerScaledAttackRerolls ?? []).some(
+          (record) => record.playerId === action.playerId,
+        ) ||
+        (attackOwner === action.playerId &&
+          stackItem?.modifiers.slayerRollsByPower !== undefined) ||
         stackItem?.modifiers.ignoreDefenseCasterId === action.playerId ||
         stackItem?.modifiers.misfortuneCasterId === action.playerId;
       if (!empowerable) {
-        throw new Error("Power can only be played into an attack together with a Spell card.");
+        throw new Error(
+          "Power can only be played into an attack together with a Spell card.",
+        );
       }
     }
   }
 
-  const { windowEnded } = applyReactionPlayCore(state, action.playerId, action, cards);
+  const { windowEnded } = applyReactionPlayCore(
+    state,
+    action.playerId,
+    action,
+    cards,
+  );
   if (windowEnded) {
     return;
   }
@@ -17804,17 +20975,23 @@ function playReaction(
 function applyUnitResurrection(
   state: GameState,
   action: Extract<GameAction, { type: "USE_UNIT_RESURRECTION" }>,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   const window = state.reactionWindow;
-  if (!window || window.triggerEvent.type !== "UNIT_LETHAL_HIT" || window.priorityPlayerId !== action.playerId) {
+  if (
+    !window ||
+    window.triggerEvent.type !== "UNIT_LETHAL_HIT" ||
+    window.priorityPlayerId !== action.playerId
+  ) {
     throw new Error("No lethal-save window is open for you.");
   }
   const combat = state.combat;
   const defender = combat?.units[window.triggerEvent.defenderId];
   const saver = combat?.units[action.savingUnitId];
   const pendingAttack = state.stack.find(
-    (item) => item.action.type === "ATTACK_UNIT" || item.action.type === "MOVE_AND_ATTACK_UNIT"
+    (item) =>
+      item.action.type === "ATTACK_UNIT" ||
+      item.action.type === "MOVE_AND_ATTACK_UNIT",
   );
   if (!combat || !defender || !saver || !pendingAttack) {
     throw new Error("That resurrection cannot be used now.");
@@ -17839,13 +21016,16 @@ function applyUnitResurrection(
   saver.usedLethalSaveThisCombat = true;
   // Grade-agnostic: matching the defender's own grade guarantees the cancel
   // passes the grade check at resolution.
-  pendingAttack.modifiers.cancelLethal = { unitId: defender.id, grade: defender.grade };
+  pendingAttack.modifiers.cancelLethal = {
+    unitId: defender.id,
+    grade: defender.grade,
+  };
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: saver.id,
     abilityId: "archangel-lethal-save",
     targetUnitId: defender.id,
-    message: `${saver.cardName} readies to cancel the killing blow on ${defender.cardName}.`
+    message: `${saver.cardName} readies to cancel the killing blow on ${defender.cardName}.`,
   });
 
   advanceReactionWindowAfterPlay(state, action.playerId, cards);
@@ -17863,23 +21043,36 @@ function applyUnitResurrection(
 function applyCommanderCastReaction(
   state: GameState,
   action: Extract<GameAction, { type: "USE_COMMANDER_CAST_REACTION" }>,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   const window = state.reactionWindow;
-  if (!window || window.triggerEvent.type !== "UNIT_ATTACK_DECLARED" || window.priorityPlayerId !== action.playerId) {
+  if (
+    !window ||
+    window.triggerEvent.type !== "UNIT_ATTACK_DECLARED" ||
+    window.priorityPlayerId !== action.playerId
+  ) {
     throw new Error("No attack window is open for your commander.");
   }
   const combat = state.combat;
   const commander = combat?.units[action.commanderUnitId];
   const target = combat?.units[action.targetUnitId];
-  if (!combat || !commander || !target || commander.controllerId !== action.playerId) {
+  if (
+    !combat ||
+    !commander ||
+    !target ||
+    commander.controllerId !== action.playerId
+  ) {
     throw new Error("That commander reaction cannot be used now.");
   }
   // Re-validate against the actual trigger: the target must BE the attacked unit
   // and the offered commander must still be the legal reactor for this hit.
   const attackerUnit = combat.units[window.triggerEvent.attackerId];
   const legal = commanderDefenseReactionUnit(state, target, attackerUnit);
-  if (!legal || legal.id !== commander.id || target.id !== window.triggerEvent.defenderId) {
+  if (
+    !legal ||
+    legal.id !== commander.id ||
+    target.id !== window.triggerEvent.defenderId
+  ) {
     throw new Error("That commander reaction cannot be used now.");
   }
   resolveCommanderCast(state, commander, target);
@@ -17898,7 +21091,7 @@ function applyHeroSkillStatBuff(
   unit: CombatUnitState,
   amount: number,
   duration: "current-activation",
-  label: string
+  label: string,
 ): void {
   createActiveEffect(
     state,
@@ -17908,11 +21101,11 @@ function applyHeroSkillStatBuff(
       duration: { type: duration },
       polarity: "positive",
       removable: true,
-      modifiers: [{ type: "ATTACK_BONUS", amount }]
+      modifiers: [{ type: "ATTACK_BONUS", amount }],
     },
     { type: "unit", unitId: unit.id, controllerId: playerId },
     playerId,
-    { type: "unit", unitId: unit.id }
+    { type: "unit", unitId: unit.id },
   );
 }
 
@@ -17921,7 +21114,10 @@ function applyHeroSkillStatBuff(
  * once per round) or War Cry during your own unit's combat activation (+Attack
  * this activation, once per combat). Self-validating; dispatched by the node.
  */
-function applyHeroSkillActive(state: GameState, action: Extract<GameAction, { type: "USE_HERO_SKILL" }>): void {
+function applyHeroSkillActive(
+  state: GameState,
+  action: Extract<GameAction, { type: "USE_HERO_SKILL" }>,
+): void {
   if (!heroGradesEnabled(state)) {
     throw new Error("Hero Grades is off for this game.");
   }
@@ -17954,7 +21150,7 @@ function applyHeroSkillActive(state: GameState, action: Extract<GameAction, { ty
       type: "HERO_SKILL_USED",
       playerId: action.playerId,
       nodeId: node.id,
-      message: `Forced March: +${node.skill.amount} movement.`
+      message: `Forced March: +${node.skill.amount} movement.`,
     });
     return;
   }
@@ -17962,7 +21158,9 @@ function applyHeroSkillActive(state: GameState, action: Extract<GameAction, { ty
   // War Cry / Encore: combat active during your own unit's activation.
   const combat = state.combat;
   if (!combat || node.skill.mode !== "combat-active") {
-    throw new Error("That combat skill is used during your unit's combat activation.");
+    throw new Error(
+      "That combat skill is used during your unit's combat activation.",
+    );
   }
   const unit = action.unitId ? combat.units[action.unitId] : undefined;
   if (!unit || unit.controllerId !== action.playerId) {
@@ -17972,7 +21170,9 @@ function applyHeroSkillActive(state: GameState, action: Extract<GameAction, { ty
     throw new Error("That skill is used during that unit's activation.");
   }
   if (!playerMainHeroInCombat(state, action.playerId)) {
-    throw new Error("Hero Grade combat skills only aid your main hero's battles.");
+    throw new Error(
+      "Hero Grade combat skills only aid your main hero's battles.",
+    );
   }
   if (!heroSkillAvailableThisCombat(state, action.playerId, node.id)) {
     throw new Error("That skill has already been used this combat.");
@@ -17985,34 +21185,41 @@ function applyHeroSkillActive(state: GameState, action: Extract<GameAction, { ty
       state,
       { type: "system" },
       { type: "unit", unitId: unit.id },
-      node.skill.amount
+      node.skill.amount,
     );
     markHeroSkillUsedThisCombat(state, action.playerId, node.id);
     appendEvent(state, {
       type: "HERO_SKILL_USED",
       playerId: action.playerId,
       nodeId: node.id,
-      message: `${node.name.en}: ${unit.cardName} heals ${node.skill.amount} damage.`
+      message: `${node.name.en}: ${unit.cardName} heals ${node.skill.amount} damage.`,
     });
     return;
   }
   if (unit.attackedThisActivation) {
     throw new Error("Use that Attack skill before the unit attacks.");
   }
-  applyHeroSkillStatBuff(state, action.playerId, unit, node.skill.amount, "current-activation", `${node.name.en} (Hero Grade)`);
+  applyHeroSkillStatBuff(
+    state,
+    action.playerId,
+    unit,
+    node.skill.amount,
+    "current-activation",
+    `${node.name.en} (Hero Grade)`,
+  );
   markHeroSkillUsedThisCombat(state, action.playerId, node.id);
   appendEvent(state, {
     type: "HERO_SKILL_USED",
     playerId: action.playerId,
     nodeId: node.id,
-    message: `${node.name.en}: ${unit.cardName} +${node.skill.amount} Attack this activation.`
+    message: `${node.name.en}: ${unit.cardName} +${node.skill.amount} Attack this activation.`,
   });
 }
 
 /** Fuyuki's finite game-long resource: one pre-attack seal may be spent per fight. */
 function applyFuyukiCommandSeal(
   state: GameState,
-  action: Extract<GameAction, { type: "USE_FUYUKI_COMMAND_SEAL" }>
+  action: Extract<GameAction, { type: "USE_FUYUKI_COMMAND_SEAL" }>,
 ): void {
   const player = state.players[action.playerId];
   const combat = state.combat;
@@ -18020,11 +21227,21 @@ function applyFuyukiCommandSeal(
   if (!player || player.factionId !== "fuyuki") {
     throw new Error("Only a Fuyuki hero may use Command Seals.");
   }
-  if (!combat || !unit || !isUnitAlive(unit) || unit.controllerId !== action.playerId) {
+  if (
+    !combat ||
+    !unit ||
+    !isUnitAlive(unit) ||
+    unit.controllerId !== action.playerId
+  ) {
     throw new Error("Pick your own living active unit.");
   }
-  if (combat.activeUnitId !== unit.id || !playerMainHeroInCombat(state, action.playerId)) {
-    throw new Error("Command Seals are used during your main hero's active unit.");
+  if (
+    combat.activeUnitId !== unit.id ||
+    !playerMainHeroInCombat(state, action.playerId)
+  ) {
+    throw new Error(
+      "Command Seals are used during your main hero's active unit.",
+    );
   }
   if ((combat.fuyukiCommandSealUsedPlayerIds ?? []).includes(action.playerId)) {
     throw new Error("You have already used a Command Seal this combat.");
@@ -18037,18 +21254,30 @@ function applyFuyukiCommandSeal(
     if (unit.attackedThisActivation) {
       throw new Error("Use Compel before this unit attacks.");
     }
-    applyHeroSkillStatBuff(state, action.playerId, unit, 1, "current-activation", "Command Seal — Compel");
+    applyHeroSkillStatBuff(
+      state,
+      action.playerId,
+      unit,
+      1,
+      "current-activation",
+      "Command Seal — Compel",
+    );
   } else {
     if (unit.damage <= 0) {
       throw new Error("That unit has no damage to heal.");
     }
-    healUnitDamage(state, { type: "system" }, { type: "unit", unitId: unit.id }, 3);
+    healUnitDamage(
+      state,
+      { type: "system" },
+      { type: "unit", unitId: unit.id },
+      3,
+    );
   }
 
   player.fuyukiCommandSeals = seals - 1;
   combat.fuyukiCommandSealUsedPlayerIds = [
     ...(combat.fuyukiCommandSealUsedPlayerIds ?? []),
-    action.playerId
+    action.playerId,
   ];
   appendEvent(state, {
     type: "FACTION_MECHANIC_TRIGGERED",
@@ -18058,7 +21287,7 @@ function applyFuyukiCommandSeal(
     message:
       action.mode === "compel"
         ? `Command Seal — Compel: ${unit.cardName} gains +1 Attack this activation (${seals - 1} seals remain).`
-        : `Command Seal — Recall: ${unit.cardName} heals up to 3 damage (${seals - 1} seals remain).`
+        : `Command Seal — Recall: ${unit.cardName} heals up to 3 damage (${seals - 1} seals remain).`,
   });
 }
 
@@ -18071,10 +21300,14 @@ function applyFuyukiCommandSeal(
 function applyHeroSkillReaction(
   state: GameState,
   action: Extract<GameAction, { type: "USE_HERO_SKILL_REACTION" }>,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   const window = state.reactionWindow;
-  if (!window || window.triggerEvent.type !== "UNIT_ATTACK_DECLARED" || window.priorityPlayerId !== action.playerId) {
+  if (
+    !window ||
+    window.triggerEvent.type !== "UNIT_ATTACK_DECLARED" ||
+    window.priorityPlayerId !== action.playerId
+  ) {
     throw new Error("No attack window is open for that skill.");
   }
   if (!heroGradesEnabled(state)) {
@@ -18094,10 +21327,15 @@ function applyHeroSkillReaction(
     throw new Error("You have not learned that skill.");
   }
   if (!playerMainHeroInCombat(state, action.playerId)) {
-    throw new Error("Hero Grade combat skills only aid your main hero's battles.");
+    throw new Error(
+      "Hero Grade combat skills only aid your main hero's battles.",
+    );
   }
   // Role gate: Battle Focus buffs YOUR attacking unit, Iron Will YOUR attacked one.
-  const expectedUnitId = node.skill.role === "attacker" ? window.triggerEvent.attackerId : window.triggerEvent.defenderId;
+  const expectedUnitId =
+    node.skill.role === "attacker"
+      ? window.triggerEvent.attackerId
+      : window.triggerEvent.defenderId;
   if (unit.id !== expectedUnitId) {
     throw new Error("That skill cannot target this unit right now.");
   }
@@ -18107,7 +21345,8 @@ function applyHeroSkillReaction(
   const stackItem = state.stack.at(-1);
   if (
     !stackItem ||
-    (stackItem.action.type !== "ATTACK_UNIT" && stackItem.action.type !== "MOVE_AND_ATTACK_UNIT") ||
+    (stackItem.action.type !== "ATTACK_UNIT" &&
+      stackItem.action.type !== "MOVE_AND_ATTACK_UNIT") ||
     stackItem.action.attackerId !== window.triggerEvent.attackerId ||
     stackItem.action.defenderId !== window.triggerEvent.defenderId
   ) {
@@ -18123,7 +21362,7 @@ function applyHeroSkillReaction(
       type: "HERO_SKILL_USED",
       playerId: action.playerId,
       nodeId: node.id,
-      message: `${node.name.en}: ${unit.cardName} gains a Defense token.`
+      message: `${node.name.en}: ${unit.cardName} gains a Defense token.`,
     });
     advanceReactionWindowAfterPlay(state, action.playerId, cards);
     return;
@@ -18138,7 +21377,7 @@ function applyHeroSkillReaction(
     type: "HERO_SKILL_USED",
     playerId: action.playerId,
     nodeId: node.id,
-    message: `${node.name.en}: ${unit.cardName} +${node.skill.amount} ${node.skill.stat === "attack" ? "Attack" : "Defense"} this attack.`
+    message: `${node.name.en}: ${unit.cardName} +${node.skill.amount} ${node.skill.stat === "attack" ? "Attack" : "Defense"} this attack.`,
   });
   advanceReactionWindowAfterPlay(state, action.playerId, cards);
 }
@@ -18146,16 +21385,19 @@ function applyHeroSkillReaction(
 function applyEquipmentDefenseReaction(
   state: GameState,
   action: Extract<GameAction, { type: "USE_EQUIPMENT_DEFENSE_REACTION" }>,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   const window = state.reactionWindow;
   const stackItem = state.stack.at(-1);
   const defender = state.combat?.units[action.unitId];
   if (
-    !window || window.priorityPlayerId !== action.playerId ||
+    !window ||
+    window.priorityPlayerId !== action.playerId ||
     window.triggerEvent.type !== "UNIT_ATTACK_DECLARED" ||
     window.triggerEvent.defenderId !== action.unitId ||
-    !stackItem || !defender || defender.controllerId !== action.playerId ||
+    !stackItem ||
+    !defender ||
+    defender.controllerId !== action.playerId ||
     !equipmentDefenseReactionAvailable(state, action.playerId)
   ) {
     throw new Error("Reactive Buckler is not available for this attack.");
@@ -18167,44 +21409,64 @@ function applyEquipmentDefenseReaction(
 
 function selectEquipmentCombatUnit(
   state: GameState,
-  action: Extract<GameAction, { type: "SELECT_EQUIPMENT_COMBAT_UNIT" }>
+  action: Extract<GameAction, { type: "SELECT_EQUIPMENT_COMBAT_UNIT" }>,
 ): void {
   const offer = equipmentCombatUnitOffers(state, action.playerId).find(
-    (candidate) => candidate.equipmentId === action.equipmentId && candidate.unitId === action.unitId
+    (candidate) =>
+      candidate.equipmentId === action.equipmentId &&
+      candidate.unitId === action.unitId,
   );
   const unit = state.combat?.units[action.unitId];
   const stats = state.players[action.playerId]?.combatStats;
-  if (!offer || !unit || !stats) throw new Error("That equipment unit selection is not available.");
-  stats.equipmentSelections = { ...(stats.equipmentSelections ?? {}), [action.equipmentId]: action.unitId };
-  state.activeEffects.push(makeActiveEffect(
-    state,
-    {
-      name: offer.name,
-      duration: { type: "combat" },
-      scope: "unit",
-      modifiers: [{ type: offer.stat === "attack" ? "ATTACK_BONUS" : "INITIATIVE_BONUS", amount: offer.amount }]
-    },
-    { type: "system" },
-    action.playerId,
-    { type: "unit", unitId: action.unitId }
-  ));
+  if (!offer || !unit || !stats)
+    throw new Error("That equipment unit selection is not available.");
+  stats.equipmentSelections = {
+    ...(stats.equipmentSelections ?? {}),
+    [action.equipmentId]: action.unitId,
+  };
+  state.activeEffects.push(
+    makeActiveEffect(
+      state,
+      {
+        name: offer.name,
+        duration: { type: "combat" },
+        scope: "unit",
+        modifiers: [
+          {
+            type: offer.stat === "attack" ? "ATTACK_BONUS" : "INITIATIVE_BONUS",
+            amount: offer.amount,
+          },
+        ],
+      },
+      { type: "system" },
+      action.playerId,
+      { type: "unit", unitId: action.unitId },
+    ),
+  );
 }
 
 function applyEquipmentAttackRider(
   state: GameState,
   action: Extract<GameAction, { type: "USE_EQUIPMENT_ATTACK_RIDER" }>,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   const window = state.reactionWindow;
   const stackItem = state.stack.at(-1);
-  if (!window || window.priorityPlayerId !== action.playerId ||
-      window.triggerEvent.type !== "UNIT_ATTACK_DECLARED" || window.triggerEvent.isRetaliation ||
-      window.triggerEvent.attackerId !== action.unitId || !stackItem ||
-      !equipmentAttackRiderAvailable(state, action.playerId, action.equipmentId)) {
+  if (
+    !window ||
+    window.priorityPlayerId !== action.playerId ||
+    window.triggerEvent.type !== "UNIT_ATTACK_DECLARED" ||
+    window.triggerEvent.isRetaliation ||
+    window.triggerEvent.attackerId !== action.unitId ||
+    !stackItem ||
+    !equipmentAttackRiderAvailable(state, action.playerId, action.equipmentId)
+  ) {
     throw new Error("That equipment attack rider is not available.");
   }
-  if (action.equipmentId === EQUIPMENT_IDS.corrosionEdge) stackItem.modifiers.equipmentCorrosion = true;
-  else if (action.equipmentId === EQUIPMENT_IDS.wyvernNeedle) stackItem.modifiers.equipmentPoison = true;
+  if (action.equipmentId === EQUIPMENT_IDS.corrosionEdge)
+    stackItem.modifiers.equipmentCorrosion = true;
+  else if (action.equipmentId === EQUIPMENT_IDS.wyvernNeedle)
+    stackItem.modifiers.equipmentPoison = true;
   else throw new Error("Unknown equipment attack rider.");
   consumeEquipmentCombatUse(state, action.playerId, action.equipmentId);
   advanceReactionWindowAfterPlay(state, action.playerId, cards);
@@ -18213,43 +21475,75 @@ function applyEquipmentAttackRider(
 function applyEquipmentHealReaction(
   state: GameState,
   action: Extract<GameAction, { type: "USE_EQUIPMENT_HEAL_REACTION" }>,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   const window = state.reactionWindow;
   const unit = state.combat?.units[action.unitId];
-  if (!window || window.priorityPlayerId !== action.playerId || !unit ||
-      unit.controllerId !== action.playerId || unit.damage <= 0 || unit.damage >= unit.maxHealth ||
-      !equipmentHealReactionAvailable(state, action.playerId)) {
+  if (
+    !window ||
+    window.priorityPlayerId !== action.playerId ||
+    !unit ||
+    unit.controllerId !== action.playerId ||
+    unit.damage <= 0 ||
+    unit.damage >= unit.maxHealth ||
+    !equipmentHealReactionAvailable(state, action.playerId)
+  ) {
     throw new Error("Field Medic Kit is not available for that unit.");
   }
-  healUnitDamage(state, { type: "system" }, { type: "unit", unitId: unit.id }, 1);
-  consumeEquipmentCombatUse(state, action.playerId, EQUIPMENT_IDS.fieldMedicKit);
+  healUnitDamage(
+    state,
+    { type: "system" },
+    { type: "unit", unitId: unit.id },
+    1,
+  );
+  consumeEquipmentCombatUse(
+    state,
+    action.playerId,
+    EQUIPMENT_IDS.fieldMedicKit,
+  );
   advanceReactionWindowAfterPlay(state, action.playerId, cards);
 }
 
 function applyEquipmentGuardianReaction(
   state: GameState,
   action: Extract<GameAction, { type: "USE_EQUIPMENT_GUARDIAN_REACTION" }>,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   const window = state.reactionWindow;
   const stackItem = state.stack.at(-1);
   const unit = state.combat?.units[action.unitId];
-  if (!window || window.priorityPlayerId !== action.playerId ||
-      window.triggerEvent.type !== "UNIT_ATTACK_DECLARED" || window.triggerEvent.defenderId !== action.unitId ||
-      !stackItem || !unit || unit.controllerId !== action.playerId ||
-      !equipmentGuardianReactionAvailable(state, action.playerId)) {
+  if (
+    !window ||
+    window.priorityPlayerId !== action.playerId ||
+    window.triggerEvent.type !== "UNIT_ATTACK_DECLARED" ||
+    window.triggerEvent.defenderId !== action.unitId ||
+    !stackItem ||
+    !unit ||
+    unit.controllerId !== action.playerId ||
+    !equipmentGuardianReactionAvailable(state, action.playerId)
+  ) {
     throw new Error("Guardian Mirror is not available for this attack.");
   }
   stackItem.modifiers.attackDamageCap = 0;
-  state.activeEffects.push(makeActiveEffect(
+  state.activeEffects.push(
+    makeActiveEffect(
+      state,
+      {
+        name: "Guardian Mirror",
+        duration: { type: "current-combat-round" },
+        scope: "unit",
+        modifiers: [{ type: "CANNOT_RETALIATE" }],
+      },
+      { type: "system" },
+      action.playerId,
+      { type: "unit", unitId: action.unitId },
+    ),
+  );
+  consumeEquipmentCombatUse(
     state,
-    { name: "Guardian Mirror", duration: { type: "current-combat-round" }, scope: "unit", modifiers: [{ type: "CANNOT_RETALIATE" }] },
-    { type: "system" },
     action.playerId,
-    { type: "unit", unitId: action.unitId }
-  ));
-  consumeEquipmentCombatUse(state, action.playerId, EQUIPMENT_IDS.guardianMirror);
+    EQUIPMENT_IDS.guardianMirror,
+  );
   advanceReactionWindowAfterPlay(state, action.playerId, cards);
 }
 
@@ -18257,27 +21551,50 @@ function applyEquipmentGuardianReaction(
 function applyUnitMagicMirror(
   state: GameState,
   action: Extract<GameAction, { type: "USE_UNIT_MAGIC_MIRROR" }>,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   const window = state.reactionWindow;
   const combat = state.combat;
   const unit = combat?.units[action.unitId];
   const stackItem = state.stack.at(-1);
-  if (!window || window.priorityPlayerId !== action.playerId || !combat || !unit || !stackItem) {
+  if (
+    !window ||
+    window.priorityPlayerId !== action.playerId ||
+    !combat ||
+    !unit ||
+    !stackItem
+  ) {
     throw new Error("No innate Magic Mirror window is open for you.");
   }
-  if (unit.controllerId !== action.playerId || !isUnitAlive(unit) || !hasInnateMagicMirror(unit)) {
+  if (
+    unit.controllerId !== action.playerId ||
+    !isUnitAlive(unit) ||
+    !hasInnateMagicMirror(unit)
+  ) {
     throw new Error("That unit cannot use Magic Mirror.");
   }
 
   let reflectedSpell: Pick<CardDefinition, "kind" | "spellSchools"> | undefined;
   if (stackItem.action.type === "CAST_SPELL") {
     reflectedSpell = cards[stackItem.action.cardId];
-  } else if (stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT") {
-    const found = reflectableAttackInstantForPlayer(state, stackItem, action.playerId, cards);
+  } else if (
+    stackItem.action.type === "ATTACK_UNIT" ||
+    stackItem.action.type === "MOVE_AND_ATTACK_UNIT"
+  ) {
+    const found = reflectableAttackInstantForPlayer(
+      state,
+      stackItem,
+      action.playerId,
+      cards,
+    );
     reflectedSpell = found ? cards[found.cardId] : undefined;
   }
-  let candidates = spellRedirectTargets(state, unit.id, "azure", reflectedSpell);
+  let candidates = spellRedirectTargets(
+    state,
+    unit.id,
+    "azure",
+    reflectedSpell,
+  );
   if (candidates.length === 0) {
     throw new Error("There is no legal new target for Magic Mirror.");
   }
@@ -18294,28 +21611,41 @@ function applyUnitMagicMirror(
     sourceUnitId: unit.id,
     anchorUnitId: unit.id,
     candidateUnitIds: candidates.map((candidate) => candidate.id),
-    optional: false
+    optional: false,
   };
 
   if (stackItem.action.type === "CAST_SPELL") {
     const fromTarget = stackItem.action.target;
     state.pendingChoice = {
       ...baseChoice,
-      anchorUnitId: fromTarget.type === "unit" ? fromTarget.unitId : null
+      anchorUnitId: fromTarget.type === "unit" ? fromTarget.unitId : null,
     };
-  } else if (stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT") {
-    const found = reflectableAttackInstantForPlayer(state, stackItem, action.playerId, cards);
+  } else if (
+    stackItem.action.type === "ATTACK_UNIT" ||
+    stackItem.action.type === "MOVE_AND_ATTACK_UNIT"
+  ) {
+    const found = reflectableAttackInstantForPlayer(
+      state,
+      stackItem,
+      action.playerId,
+      cards,
+    );
     if (!found || found.affectedUnitId !== unit.id) {
       throw new Error("There is no enemy Spell on that unit to reflect.");
     }
-    candidates = spellRedirectTargets(state, found.affectedUnitId, "azure", cards[found.cardId]);
+    candidates = spellRedirectTargets(
+      state,
+      found.affectedUnitId,
+      "azure",
+      cards[found.cardId],
+    );
     const amount = attackInstantSignedAmount(stackItem, found.cardId, cards);
     reverseCancelledInstantSpell(stackItem, found.cardId, cards);
     stackItem.modifiers.cancellableSpellInstants?.splice(found.index, 1);
     state.pendingChoice = {
       ...baseChoice,
       candidateUnitIds: candidates.map((candidate) => candidate.id),
-      redirectInstant: { stat: found.stat, amount, sourceCardId: found.cardId }
+      redirectInstant: { stat: found.stat, amount, sourceCardId: found.cardId },
     };
   } else {
     throw new Error("Magic Mirror cannot reflect this effect.");
@@ -18325,7 +21655,7 @@ function applyUnitMagicMirror(
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: unit.id,
     abilityId: "wog-war-zealot-mirror",
-    message: `${unit.cardName} reflects the spell with Magic Mirror.`
+    message: `${unit.cardName} reflects the spell with Magic Mirror.`,
   });
   appendEvent(state, {
     type: "PENDING_CHOICE_CREATED",
@@ -18333,7 +21663,7 @@ function applyUnitMagicMirror(
     choiceType: "ABILITY_TARGET_CHOICE",
     playerId: action.playerId,
     sourceEffectIds: [],
-    message: `${unit.cardName}: choose where to redirect the spell.`
+    message: `${unit.cardName}: choose where to redirect the spell.`,
   });
   closeReactionWindow(state, "reaction-played");
   state.phase = "choice";
@@ -18351,16 +21681,22 @@ function applyUnitMagicMirror(
 function applyUnitDieIgnore(
   state: GameState,
   action: Extract<GameAction, { type: "USE_UNIT_DIE_IGNORE" }>,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   const window = state.reactionWindow;
-  if (!window || window.triggerEvent.type !== "ATTACK_DIE_SETTLED" || window.priorityPlayerId !== action.playerId) {
+  if (
+    !window ||
+    window.triggerEvent.type !== "ATTACK_DIE_SETTLED" ||
+    window.priorityPlayerId !== action.playerId
+  ) {
     throw new Error("No die-cancel window is open for you.");
   }
   const combat = state.combat;
   const defender = combat?.units[action.defenderUnitId];
   const pendingAttack = state.stack.find(
-    (item) => item.action.type === "ATTACK_UNIT" || item.action.type === "MOVE_AND_ATTACK_UNIT"
+    (item) =>
+      item.action.type === "ATTACK_UNIT" ||
+      item.action.type === "MOVE_AND_ATTACK_UNIT",
   );
   const player = state.players[action.playerId];
   if (!combat || !defender || !pendingAttack || !player) {
@@ -18378,7 +21714,9 @@ function applyUnitDieIgnore(
     window.triggerEvent.roll <= 0 ||
     // The printed ability MUST name a card in hand; the free one must NOT try to
     // pay a cost it no longer has.
-    (printedAbilityId && !freeAbilityId && (!action.discardCardId || !player.hand.includes(action.discardCardId))) ||
+    (printedAbilityId &&
+      !freeAbilityId &&
+      (!action.discardCardId || !player.hand.includes(action.discardCardId))) ||
     (freeAbilityId && action.discardCardId)
   ) {
     throw new Error("That unit cannot ignore the Attack die now.");
@@ -18398,7 +21736,7 @@ function applyUnitDieIgnore(
     targetUnitId: defender.id,
     message: freeAbilityId
       ? `${defender.cardName} ignores the Attack die.`
-      : `${defender.cardName} discards ${cards[action.discardCardId!]?.name ?? action.discardCardId} to ignore the Attack die.`
+      : `${defender.cardName} discards ${cards[action.discardCardId!]?.name ?? action.discardCardId} to ignore the Attack die.`,
   });
 
   advanceReactionWindowAfterPlay(state, action.playerId, cards);
@@ -18407,7 +21745,7 @@ function applyUnitDieIgnore(
 function playReactions(
   state: GameState,
   action: Extract<GameAction, { type: "PLAY_REACTIONS" }>,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   // Batch legality (validated up front) excludes window-ending effects, so
   // every play lands in the same window before priority moves on once.
@@ -18432,14 +21770,19 @@ function playTransformCard(
   state: GameState,
   action: Extract<GameAction, { type: "PLAY_CARD" }>,
   card: CardDefinition,
-  effect: Extract<ConcreteEffect, { type: "TRANSFORM_UNIT" }>
+  effect: Extract<ConcreteEffect, { type: "TRANSFORM_UNIT" }>,
 ): void {
   const player = state.players[action.playerId];
   if (!player) {
     throw new Error("Unknown player.");
   }
   const ruleset = getRuleset(state);
-  const entry = makeUnitTransformState(effect, card.id, ruleset, houseRuleEnabled(state, "sandro-skeleton-hp"));
+  const entry = makeUnitTransformState(
+    effect,
+    card.id,
+    ruleset,
+    houseRuleEnabled(state, "sandro-skeleton-hp"),
+  );
   const sideOverrides = unitSideRuleOverrides(state);
 
   const removeFromHand = () => {
@@ -18459,7 +21802,9 @@ function playTransformCard(
     if (!unit || unit.controllerId !== action.playerId) {
       throw new Error(`${card.name} must be placed on one of your units.`);
     }
-    if (!canPlaceTransformOn(unit.name, unit.variant, unit.transforms, effect)) {
+    if (
+      !canPlaceTransformOn(unit.name, unit.variant, unit.transforms, effect)
+    ) {
       throw new Error(`${card.name} cannot be placed on ${unit.cardName}.`);
     }
 
@@ -18468,9 +21813,13 @@ function playTransformCard(
     applyUnitCurrentSide(unit, ruleset, sideOverrides);
 
     // Mirror onto the backing army card so the Cloak rides out of the combat.
-    const armyUnit = player.army.find((candidate) => candidate.id === unit.armyUnitId);
+    const armyUnit = player.army.find(
+      (candidate) => candidate.id === unit.armyUnitId,
+    );
     if (armyUnit) {
-      armyUnit.transforms = insertUnitTransform(armyUnit.transforms, { ...entry });
+      armyUnit.transforms = insertUnitTransform(armyUnit.transforms, {
+        ...entry,
+      });
     }
 
     appendEvent(state, {
@@ -18478,7 +21827,7 @@ function playTransformCard(
       unitId: unit.id,
       playerId: action.playerId,
       newName: effect.newName,
-      byCardId: card.id
+      byCardId: card.id,
     });
     return;
   }
@@ -18507,7 +21856,7 @@ function playTransformCard(
     unitId: armyUnit.id,
     playerId: action.playerId,
     newName: effect.newName,
-    byCardId: card.id
+    byCardId: card.id,
   });
 }
 
@@ -18521,7 +21870,7 @@ function dealChainLightningDamage(
   playerId: PlayerId,
   card: CardDefinition | undefined,
   unitId: UnitId,
-  amount: number
+  amount: number,
 ): void {
   const unit = state.combat?.units[unitId];
   if (!unit || !isUnitAlive(unit) || amount <= 0) {
@@ -18540,7 +21889,7 @@ function dealChainLightningDamage(
     source: { type: "card", cardId: card?.id ?? "", controllerId: playerId },
     target: { type: "unit", unitId: unit.id },
     amount: dealt,
-    damageKind: "spell"
+    damageKind: "spell",
   });
   markUnitRemovedIfNeeded(state, unit);
 }
@@ -18550,37 +21899,63 @@ function dealChainLightningDamage(
  * unit, with every unit tied at the second-nearest distance included so the
  * caster picks which of them are struck. Friendly units count.
  */
-function chainLightningReachable(state: GameState, primaryId: UnitId): UnitId[] {
+function chainLightningReachable(
+  state: GameState,
+  primaryId: UnitId,
+): UnitId[] {
   const combat = state.combat;
   const primary = combat?.units[primaryId];
   if (!combat || !primary) {
     return [];
   }
   const others = Object.values(combat.units)
-    .filter((unit) => unit.id !== primaryId && isUnitAlive(unit) && unit.position >= 0)
-    .map((unit) => ({ id: unit.id, distance: getBattlefieldDistance(primary.position, unit.position) }))
-    .sort((left, right) => left.distance - right.distance || left.id.localeCompare(right.id));
+    .filter(
+      (unit) =>
+        unit.id !== primaryId && isUnitAlive(unit) && unit.position >= 0,
+    )
+    .map((unit) => ({
+      id: unit.id,
+      distance: getBattlefieldDistance(primary.position, unit.position),
+    }))
+    .sort(
+      (left, right) =>
+        left.distance - right.distance || left.id.localeCompare(right.id),
+    );
   if (others.length <= 2) {
     return others.map((entry) => entry.id);
   }
   const boundary = others[1].distance;
-  return others.filter((entry) => entry.distance <= boundary).map((entry) => entry.id);
+  return others
+    .filter((entry) => entry.distance <= boundary)
+    .map((entry) => entry.id);
 }
 
 /** Closest of `candidates` to the selected unit (id breaks ties), for forced hits. */
-function closestChainTarget(state: GameState, primaryId: UnitId, candidates: UnitId[]): UnitId | null {
+function closestChainTarget(
+  state: GameState,
+  primaryId: UnitId,
+  candidates: UnitId[],
+): UnitId | null {
   const combat = state.combat;
   const primary = combat?.units[primaryId];
   if (!combat || !primary || candidates.length === 0) {
     return null;
   }
-  return [...candidates]
-    .filter((id) => combat.units[id] && isUnitAlive(combat.units[id]))
-    .sort((left, right) => {
-      const leftDistance = getBattlefieldDistance(primary.position, combat.units[left]!.position);
-      const rightDistance = getBattlefieldDistance(primary.position, combat.units[right]!.position);
-      return leftDistance - rightDistance || left.localeCompare(right);
-    })[0] ?? null;
+  return (
+    [...candidates]
+      .filter((id) => combat.units[id] && isUnitAlive(combat.units[id]))
+      .sort((left, right) => {
+        const leftDistance = getBattlefieldDistance(
+          primary.position,
+          combat.units[left]!.position,
+        );
+        const rightDistance = getBattlefieldDistance(
+          primary.position,
+          combat.units[right]!.position,
+        );
+        return leftDistance - rightDistance || left.localeCompare(right);
+      })[0] ?? null
+  );
 }
 
 /**
@@ -18595,7 +21970,7 @@ function advanceChainLightning(
   card: CardDefinition | undefined,
   primaryId: UnitId,
   reachable: UnitId[],
-  remaining: number[]
+  remaining: number[],
 ): void {
   const combat = state.combat;
   if (!combat) {
@@ -18605,7 +21980,9 @@ function advanceChainLightning(
   let pool = reachable;
   const values = [...remaining];
   while (values.length > 0) {
-    const candidates = pool.filter((id) => combat.units[id] && isUnitAlive(combat.units[id]));
+    const candidates = pool.filter(
+      (id) => combat.units[id] && isUnitAlive(combat.units[id]),
+    );
     if (candidates.length === 0) {
       break;
     }
@@ -18637,7 +22014,7 @@ function advanceChainLightning(
         candidateUnitIds: candidates,
         amount: value,
         chainReachableUnitIds: pool,
-        chainRemainingDamages: values
+        chainRemainingDamages: values,
       };
       state.phase = "choice";
       state.priorityPlayerId = playerId;
@@ -18647,7 +22024,7 @@ function advanceChainLightning(
         choiceType: "ABILITY_TARGET_CHOICE",
         playerId,
         sourceEffectIds: [],
-        message: `${state.players[playerId]?.name ?? playerId} aims Chain Lightning.`
+        message: `${state.players[playerId]?.name ?? playerId} aims Chain Lightning.`,
       });
       return;
     }
@@ -18670,7 +22047,7 @@ function startChainLightning(
   playerId: PlayerId,
   card: CardDefinition | undefined,
   primaryId: UnitId,
-  damages: number[]
+  damages: number[],
 ): void {
   if (!state.combat) {
     return;
@@ -18688,7 +22065,7 @@ function startChainLightning(
     card,
     primaryId,
     reachable,
-    damages.slice(1).filter((value) => value > 0)
+    damages.slice(1).filter((value) => value > 0),
   );
 }
 
@@ -18708,13 +22085,20 @@ function applyDrawRiderThenDiscard(
   state: GameState,
   playerId: PlayerId,
   effect: EffectDefinition,
-  cardName: string
+  cardName: string,
 ): void {
   const amount = drawRiderThenDiscard(effect);
   if (amount <= 0) {
     return;
   }
-  openHandDiscardChoice(state, playerId, amount, [...(state.players[playerId]?.hand ?? [])], false, cardName);
+  openHandDiscardChoice(
+    state,
+    playerId,
+    amount,
+    [...(state.players[playerId]?.hand ?? [])],
+    false,
+    cardName,
+  );
 }
 
 // ===========================================================================
@@ -18733,7 +22117,10 @@ function applyDrawRiderThenDiscard(
 // ===========================================================================
 
 /** Shared guards: the rule is on, the player exists, and it is a legal moment. */
-function assertArtifactSetActionLegal(state: GameState, playerId: PlayerId): void {
+function assertArtifactSetActionLegal(
+  state: GameState,
+  playerId: PlayerId,
+): void {
   if (!setArtifactsEnabled(state)) {
     throw new Error("Set Artifacts are off for this game.");
   }
@@ -18742,8 +22129,13 @@ function assertArtifactSetActionLegal(state: GameState, playerId: PlayerId): voi
   }
   if (state.combat) {
     // In a fight, only the two sides may act.
-    if (state.combat.attackerPlayerId !== playerId && state.combat.defenderPlayerId !== playerId) {
-      throw new Error("Only a fighter in this combat may use a Set Artifact power.");
+    if (
+      state.combat.attackerPlayerId !== playerId &&
+      state.combat.defenderPlayerId !== playerId
+    ) {
+      throw new Error(
+        "Only a fighter in this combat may use a Set Artifact power.",
+      );
     }
     return;
   }
@@ -18761,10 +22153,17 @@ function assertArtifactSetActionLegal(state: GameState, playerId: PlayerId): voi
  */
 function selectArtifactSetUnit(
   state: GameState,
-  action: Extract<GameAction, { type: "SELECT_ARTIFACT_SET_UNIT" }>
+  action: Extract<GameAction, { type: "SELECT_ARTIFACT_SET_UNIT" }>,
 ): void {
   assertArtifactSetActionLegal(state, action.playerId);
-  const offer = findArtifactSetOffer(state, action.playerId, "select", action.setId, 2, action.unitId);
+  const offer = findArtifactSetOffer(
+    state,
+    action.playerId,
+    "select",
+    action.setId,
+    2,
+    action.unitId,
+  );
   const set = artifactSetDefinition(action.setId);
   if (!offer || !set || offer.tier.effect.kind !== "select-unit") {
     throw new Error("That Set Artifact selection is not available.");
@@ -18787,12 +22186,12 @@ function selectArtifactSetUnit(
           artifactSetId: set.id,
           duration: { type: "combat" },
           scope: "unit",
-          modifiers: [{ type: "INITIATIVE_BONUS", amount }]
+          modifiers: [{ type: "INITIATIVE_BONUS", amount }],
         },
         { type: "system" },
         action.playerId,
-        { type: "unit", unitId: action.unitId }
-      )
+        { type: "unit", unitId: action.unitId },
+      ),
     );
   }
   appendEvent(state, {
@@ -18800,7 +22199,7 @@ function selectArtifactSetUnit(
     playerId: action.playerId,
     setId: set.id,
     setName: set.name,
-    unitId: action.unitId
+    unitId: action.unitId,
   });
 }
 
@@ -18810,7 +22209,7 @@ function noteArtifactSetPower(
   playerId: PlayerId,
   set: { id: string; name: string },
   threshold: number,
-  message: string
+  message: string,
 ): void {
   appendEvent(state, {
     type: "ARTIFACT_SET_POWER_USED",
@@ -18818,7 +22217,7 @@ function noteArtifactSetPower(
     setId: set.id,
     setName: set.name,
     tier: threshold,
-    message
+    message,
   });
 }
 
@@ -18829,7 +22228,7 @@ function pushArtifactSetUnitEffect(
   set: { id: string; name: string },
   unitId: string,
   modifiers: ActiveEffectDefinition["modifiers"],
-  duration: ActiveEffectDefinition["duration"]
+  duration: ActiveEffectDefinition["duration"],
 ): void {
   state.activeEffects.push(
     makeActiveEffect(
@@ -18837,11 +22236,17 @@ function pushArtifactSetUnitEffect(
       // `artifactSetId` is presentation metadata (no rule reads it): it is what
       // lets the battlefield draw the OWNING set's icon beside the unit while
       // this bonus is live, instead of string-matching the effect name.
-      { name: `${set.name} (set)`, artifactSetId: set.id, duration, scope: "unit", modifiers },
+      {
+        name: `${set.name} (set)`,
+        artifactSetId: set.id,
+        duration,
+        scope: "unit",
+        modifiers,
+      },
       { type: "system" },
       playerId,
-      { type: "unit", unitId }
-    )
+      { type: "unit", unitId },
+    ),
   );
 }
 
@@ -18862,19 +22267,31 @@ function pushArtifactSetUnitEffect(
 function applyArtifactSetAttackWindowPower(
   state: GameState,
   action: Extract<GameAction, { type: "USE_ARTIFACT_SET_POWER" }>,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   const window = state.reactionWindow;
-  if (!window || window.triggerEvent.type !== "UNIT_ATTACK_DECLARED" || window.priorityPlayerId !== action.playerId) {
+  if (
+    !window ||
+    window.triggerEvent.type !== "UNIT_ATTACK_DECLARED" ||
+    window.priorityPlayerId !== action.playerId
+  ) {
     throw new Error("No attack window is open for that Set Artifact power.");
   }
   const attackerId = window.triggerEvent.attackerId;
   // The offer names the rolling unit, so a forged action aimed anywhere else is
   // refused by the re-derivation below rather than silently buffing the attacker.
   if (action.unitId !== attackerId) {
-    throw new Error("That Set Artifact power aims at the unit making this attack.");
+    throw new Error(
+      "That Set Artifact power aims at the unit making this attack.",
+    );
   }
-  const offer = findArtifactSetAttackWindowOffer(state, action.playerId, attackerId, action.setId, action.tier);
+  const offer = findArtifactSetAttackWindowOffer(
+    state,
+    action.playerId,
+    attackerId,
+    action.setId,
+    action.tier,
+  );
   const set = artifactSetDefinition(action.setId);
   if (!offer || !set) {
     throw new Error("That Set Artifact power is not available.");
@@ -18883,7 +22300,10 @@ function applyArtifactSetAttackWindowPower(
   // `state.stack.at(-1)` convention). Its trigger event must be this window's, or
   // the flag would ride some other attack.
   const stackItem = state.stack.at(-1);
-  if (!stackItem || !stackItem.triggerEventIds.includes(window.triggerEvent.id)) {
+  if (
+    !stackItem ||
+    !stackItem.triggerEventIds.includes(window.triggerEvent.id)
+  ) {
     throw new Error("That attack is no longer waiting for a reaction.");
   }
   stackItem.modifiers.artifactSetAttackAdvantage = true;
@@ -18894,7 +22314,7 @@ function applyArtifactSetAttackWindowPower(
     action.playerId,
     set,
     offer.tier.threshold,
-    `${attackerName} rolls 2 Attack dice and keeps the higher on this attack.`
+    `${attackerName} rolls 2 Attack dice and keeps the higher on this attack.`,
   );
   advanceReactionWindowAfterPlay(state, action.playerId, cards);
 }
@@ -18916,20 +22336,29 @@ function applyArtifactSetAttackWindowPower(
 function applyProphecyPreRoll(
   state: GameState,
   action: Extract<GameAction, { type: "USE_PROPHECY_PRE_ROLL" }>,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   const window = state.reactionWindow;
-  if (!window || window.triggerEvent.type !== "UNIT_ATTACK_DECLARED" || window.priorityPlayerId !== action.playerId) {
+  if (
+    !window ||
+    window.triggerEvent.type !== "UNIT_ATTACK_DECLARED" ||
+    window.priorityPlayerId !== action.playerId
+  ) {
     throw new Error("No attack window is open for Cards of Prophecy.");
   }
   if (!prophecyPreRollAvailable(state, action.playerId, action.unitId)) {
     throw new Error("Cards of Prophecy cannot be declared on that roll.");
   }
   if (action.unitId !== window.triggerEvent.attackerId) {
-    throw new Error("Cards of Prophecy is declared on the unit making this attack.");
+    throw new Error(
+      "Cards of Prophecy is declared on the unit making this attack.",
+    );
   }
   const stackItem = state.stack.at(-1);
-  if (!stackItem || !stackItem.triggerEventIds.includes(window.triggerEvent.id)) {
+  if (
+    !stackItem ||
+    !stackItem.triggerEventIds.includes(window.triggerEvent.id)
+  ) {
     throw new Error("That attack is no longer waiting for a reaction.");
   }
   const player = state.players[action.playerId];
@@ -18946,7 +22375,7 @@ function applyProphecyPreRoll(
     cardId: PROPHECY_CARD_ID,
     timing: cardLibrary[PROPHECY_CARD_ID]?.timing ?? "instant",
     mode: "basic",
-    optionLabel: "Roll this die 3 times and resolve 1 chosen result"
+    optionLabel: "Roll this die 3 times and resolve 1 chosen result",
   });
   advanceReactionWindowAfterPlay(state, action.playerId, cards);
 }
@@ -18959,7 +22388,7 @@ function applyProphecyPreRoll(
 function applyArtifactSetPower(
   state: GameState,
   action: Extract<GameAction, { type: "USE_ARTIFACT_SET_POWER" }>,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   assertArtifactSetActionLegal(state, action.playerId);
   // A pop-up instant tier is never a pre-emptive activation: route it to the
@@ -18977,7 +22406,7 @@ function applyArtifactSetPower(
     action.setId,
     action.tier,
     action.unitId,
-    action.neutralTier
+    action.neutralTier,
   );
   const set = artifactSetDefinition(action.setId);
   if (!offer || !set) {
@@ -18998,9 +22427,15 @@ function applyArtifactSetPower(
         set,
         unit.id,
         [{ type: "ATTACK_ROLL_ADVANTAGE" }],
-        { type: "combat" }
+        { type: "combat" },
       );
-      noteArtifactSetPower(state, action.playerId, set, tier.threshold, `${unit.name} rolls 2 Attack dice and keeps the higher.`);
+      noteArtifactSetPower(
+        state,
+        action.playerId,
+        set,
+        tier.threshold,
+        `${unit.name} rolls 2 Attack dice and keeps the higher.`,
+      );
       break;
     }
     case "attack-roll-disadvantage": {
@@ -19017,9 +22452,15 @@ function applyArtifactSetPower(
         set,
         unit.id,
         [{ type: "ATTACK_ROLL_DISADVANTAGE" }],
-        { type: "current-combat-round" }
+        { type: "current-combat-round" },
       );
-      noteArtifactSetPower(state, action.playerId, set, tier.threshold, `${unit.name} rolls 2 Attack dice and keeps the lower this round.`);
+      noteArtifactSetPower(
+        state,
+        action.playerId,
+        set,
+        tier.threshold,
+        `${unit.name} rolls 2 Attack dice and keeps the lower this round.`,
+      );
       break;
     }
     case "defense-token": {
@@ -19027,7 +22468,13 @@ function applyArtifactSetPower(
         throw new Error("That Set Artifact power needs a unit target.");
       }
       unit.defenseToken = true;
-      noteArtifactSetPower(state, action.playerId, set, tier.threshold, `${unit.name} gains a Defense token.`);
+      noteArtifactSetPower(
+        state,
+        action.playerId,
+        set,
+        tier.threshold,
+        `${unit.name} gains a Defense token.`,
+      );
       break;
     }
     case "attack-bonus": {
@@ -19043,14 +22490,16 @@ function applyArtifactSetPower(
         set,
         unit.id,
         [{ type: "ATTACK_BONUS", amount: effect.amount }],
-        effect.amount >= 0 ? { type: "combat" } : { type: "current-combat-round" }
+        effect.amount >= 0
+          ? { type: "combat" }
+          : { type: "current-combat-round" },
       );
       noteArtifactSetPower(
         state,
         action.playerId,
         set,
         tier.threshold,
-        `${unit.name} ${effect.amount >= 0 ? "gains" : "suffers"} ${effect.amount >= 0 ? "+" : ""}${effect.amount} Attack.`
+        `${unit.name} ${effect.amount >= 0 ? "gains" : "suffers"} ${effect.amount >= 0 ? "+" : ""}${effect.amount} Attack.`,
       );
       break;
     }
@@ -19064,9 +22513,15 @@ function applyArtifactSetPower(
         set,
         unit.id,
         [{ type: "DEFENSE_BONUS", amount: effect.amount }],
-        { type: "combat" }
+        { type: "combat" },
       );
-      noteArtifactSetPower(state, action.playerId, set, tier.threshold, `${unit.name} gains +${effect.amount} Defense.`);
+      noteArtifactSetPower(
+        state,
+        action.playerId,
+        set,
+        tier.threshold,
+        `${unit.name} gains +${effect.amount} Defense.`,
+      );
       break;
     }
     case "fire-shield": {
@@ -19079,14 +22534,14 @@ function applyArtifactSetPower(
         set,
         unit.id,
         [{ type: "FIRE_SHIELD", amount: effect.amount }],
-        { type: "current-combat-round" }
+        { type: "current-combat-round" },
       );
       noteArtifactSetPower(
         state,
         action.playerId,
         set,
         tier.threshold,
-        `${unit.name} burns adjacent attackers for ${effect.amount} this round.`
+        `${unit.name} burns adjacent attackers for ${effect.amount} this round.`,
       );
       break;
     }
@@ -19107,18 +22562,30 @@ function applyArtifactSetPower(
           source: { type: "system" },
           target: { type: "unit", unitId: unit.id },
           amount: dealt,
-          damageKind: "spell"
+          damageKind: "spell",
         });
         markUnitRemovedIfNeeded(state, unit);
       }
-      noteArtifactSetPower(state, action.playerId, set, tier.threshold, `${unit.name} suffers ${dealt} Spell damage.`);
+      noteArtifactSetPower(
+        state,
+        action.playerId,
+        set,
+        tier.threshold,
+        `${unit.name} suffers ${dealt} Spell damage.`,
+      );
       markArtifactSetTierUse(state, action.playerId, action.setId, tier);
       finishCombatIfNeeded(state);
       return;
     }
     case "draw-then-discard": {
       const drawn = drawCardsForPlayer(state, action.playerId, effect.draw);
-      noteArtifactSetPower(state, action.playerId, set, tier.threshold, `Draws ${drawn} card${drawn === 1 ? "" : "s"}, then discards ${effect.discard}.`);
+      noteArtifactSetPower(
+        state,
+        action.playerId,
+        set,
+        tier.threshold,
+        `Draws ${drawn} card${drawn === 1 ? "" : "s"}, then discards ${effect.discard}.`,
+      );
       markArtifactSetTierUse(state, action.playerId, action.setId, tier);
       openHandDiscardChoice(
         state,
@@ -19126,13 +22593,15 @@ function applyArtifactSetPower(
         effect.discard,
         [...(state.players[action.playerId]?.hand ?? [])],
         false,
-        set.name
+        set.name,
       );
       return;
     }
     case "neutral-scry": {
       const neutralTier = action.neutralTier;
-      const deck = neutralTier ? state.decks[`neutral-${neutralTier}`] : undefined;
+      const deck = neutralTier
+        ? state.decks[`neutral-${neutralTier}`]
+        : undefined;
       if (!neutralTier || !deck) {
         throw new Error("That Set Artifact power needs a Neutral deck.");
       }
@@ -19141,22 +22610,40 @@ function applyArtifactSetPower(
       // stays on the draw pile and only MOVES if the player says "bottom". So no
       // card can be destroyed by this window and an elimination mid-choice needs
       // no return branch.
-      reshuffleSharedDeckIfEmpty(state, `neutral-${neutralTier}`, `set-scry-${neutralTier}`);
+      reshuffleSharedDeckIfEmpty(
+        state,
+        `neutral-${neutralTier}`,
+        `set-scry-${neutralTier}`,
+      );
       const cardId = deck.drawPile[deck.drawPile.length - 1];
       if (!cardId) {
         throw new Error("That Neutral deck is empty.");
       }
       markArtifactSetTierUse(state, action.playerId, action.setId, tier);
-      noteArtifactSetPower(state, action.playerId, set, tier.threshold, `Looks at the top ${neutralTier} Neutral card.`);
+      noteArtifactSetPower(
+        state,
+        action.playerId,
+        set,
+        tier.threshold,
+        `Looks at the top ${neutralTier} Neutral card.`,
+      );
       state.pendingChoice = {
         id: `choice_${nextEventNumber(state)}`,
         type: "OPTION_CHOICE",
         playerId: action.playerId,
         prompt: `${set.name}: ${cardLibrary[cardId]?.name ?? cardId} is on top of the ${neutralTier} Neutral deck.`,
-        options: [{ label: "Leave it on top" }, { label: "Put it on the bottom" }],
+        options: [
+          { label: "Leave it on top" },
+          { label: "Put it on the bottom" },
+        ],
         context: "artifact-set-scry",
-        artifactSetScry: { setId: set.id, tier: tier.threshold, neutralTier, cardId },
-        returnPhase: state.combat ? "combat" : "player-turn"
+        artifactSetScry: {
+          setId: set.id,
+          tier: tier.threshold,
+          neutralTier,
+          cardId,
+        },
+        returnPhase: state.combat ? "combat" : "player-turn",
       };
       state.phase = "choice";
       state.priorityPlayerId = action.playerId;
@@ -19169,30 +22656,48 @@ function applyArtifactSetPower(
 }
 
 /** Every Artifact deck id, Legacy ("artifacts") and BINH split, in draw order. */
-const ARTIFACT_DECK_IDS = ["artifacts", "artifacts-minor", "artifacts-major", "artifacts-relic"] as const;
+const ARTIFACT_DECK_IDS = [
+  "artifacts",
+  "artifacts-minor",
+  "artifacts-major",
+  "artifacts-relic",
+] as const;
 const ARTIFACT_DECK_LABELS: Record<string, string> = {
   artifacts: "Artifact",
   "artifacts-minor": "Minor",
   "artifacts-major": "Major",
-  "artifacts-relic": "Relic"
+  "artifacts-relic": "Relic",
 };
 
-
-function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CARD" }>, cards: CardLibrary): void {
+function playCard(
+  state: GameState,
+  action: Extract<GameAction, { type: "PLAY_CARD" }>,
+  cards: CardLibrary,
+): void {
   const card = cards[action.cardId];
   if (!card) {
     throw new Error(`Unknown card ${action.cardId}.`);
   }
   if (isCastASpellCard(action.cardId)) {
-    throw new Error("Cast a Spell enables a refreshed Spell Book card; its only direct play is the printed +1 Power reaction.");
+    throw new Error(
+      "Cast a Spell enables a refreshed Spell Book card; its only direct play is the printed +1 Power reaction.",
+    );
   }
   // Polish Balance Pack: the reprinted Intelligence is a start-of-combat play.
   // PLAY_CARD is offer-validated, so this is the backstop for a stale client.
   if (balanceIntelligencePlayBlocked(state, action.cardId)) {
-    throw new Error("Intelligence is played at the start of a Combat, before any unit activates.");
+    throw new Error(
+      "Intelligence is played at the start of a Combat, before any unit activates.",
+    );
   }
-  if (polishSpellBookEnabled(state) && card.kind === "spell" && !action.fromSpellBook) {
-    throw new Error("Owned Spells must be played from the Polish Spell Book with Cast a Spell.");
+  if (
+    polishSpellBookEnabled(state) &&
+    card.kind === "spell" &&
+    !action.fromSpellBook
+  ) {
+    throw new Error(
+      "Owned Spells must be played from the Polish Spell Book with Cast a Spell.",
+    );
   }
   if (action.fromSpellBook && polishSpellBookEnabled(state)) {
     const player = state.players[action.playerId];
@@ -19201,7 +22706,9 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       !player?.hand.includes(CAST_A_SPELL_CARD_ID) ||
       !player.spellBook.includes(action.cardId)
     ) {
-      throw new Error("Playing from the Polish Spell Book needs a Cast a Spell card and a refreshed Book Spell.");
+      throw new Error(
+        "Playing from the Polish Spell Book needs a Cast a Spell card and a refreshed Book Spell.",
+      );
     }
   }
 
@@ -19220,7 +22727,9 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       state.combat.attackerPlayerId === action.playerId &&
       heroMovementGrantOption(card) !== null;
     if (!continueTopUp) {
-      throw new Error("You cannot use your Deck during this Combat (no Main Hero present).");
+      throw new Error(
+        "You cannot use your Deck during this Combat (no Main Hero present).",
+      );
     }
   }
 
@@ -19242,17 +22751,21 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       (pendingNecroGain?.gold ?? 0) > 0);
   if (
     pendingNecro &&
-    (pendingNecro.playerId !== action.playerId ||
-      !allowedDuringNecromancy)
+    (pendingNecro.playerId !== action.playerId || !allowedDuringNecromancy)
   ) {
-    throw new Error("Finish the after-combat Necromancy bonuses, then press Resolve.");
+    throw new Error(
+      "Finish the after-combat Necromancy bonuses, then press Resolve.",
+    );
   }
 
   // Dessa's Logistics — and, under the Polish Balance Pack, the reprinted
   // PATHFINDING's basic side (a CHOOSE_ONE option, hence the effective-effect
   // read): playable only during the continue-or-retreat decision against neutral
   // units — the combat extends one round for free.
-  if (getEffectiveCardEffect(card, action.optionIndex)?.type === "CONTINUE_NEUTRAL_FREE") {
+  if (
+    getEffectiveCardEffect(card, action.optionIndex)?.type ===
+    "CONTINUE_NEUTRAL_FREE"
+  ) {
     const combat = state.combat;
     if (
       !combat ||
@@ -19260,10 +22773,17 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       combat.context.kind !== "neutral" ||
       combat.attackerPlayerId !== action.playerId
     ) {
-      throw new Error(`${card.name} is played when deciding to continue a neutral combat.`);
+      throw new Error(
+        `${card.name} is played when deciding to continue a neutral combat.`,
+      );
     }
 
-    const moveError = moveCardFromHandToDiscard(state, action.playerId, action.cardId, "discard");
+    const moveError = moveCardFromHandToDiscard(
+      state,
+      action.playerId,
+      action.cardId,
+      "discard",
+    );
     if (moveError) {
       throw new Error(moveError.message);
     }
@@ -19274,12 +22794,12 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       playerId: action.playerId,
       cardId: action.cardId,
       timing: card.timing,
-      mode: "basic"
+      mode: "basic",
     });
     appendEvent(state, {
       type: "COMBAT_CONTINUED",
       playerId: action.playerId,
-      movementLeft: state.heroes[combat.context.heroId]?.movementPoints ?? 0
+      movementLeft: state.heroes[combat.context.heroId]?.movementPoints ?? 0,
     });
     advanceCombatRound(state, action.playerId);
     return;
@@ -19318,7 +22838,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       cardId: action.cardId,
       timing: card.timing,
       mode: "basic",
-      optionLabel: getChosenOption(card, action.optionIndex)?.label
+      optionLabel: getChosenOption(card, action.optionIndex)?.label,
     });
     // A permanent played while an enemy-hero battle is still awaiting both
     // Accepts belongs to the preparation window. Keep the map-side setup phase
@@ -19344,9 +22864,14 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
           action.playerId,
           action.cardId,
           action.castEnablerCardId,
-          "discard"
+          "discard",
         )
-      : moveCardFromHandToDiscard(state, action.playerId, action.cardId, "discard");
+      : moveCardFromHandToDiscard(
+          state,
+          action.playerId,
+          action.cardId,
+          "discard",
+        );
     if (moveError) {
       throw new Error(moveError.message);
     }
@@ -19355,7 +22880,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       playerId: action.playerId,
       cardId: action.cardId,
       timing: card.timing,
-      mode: action.mode ?? "basic"
+      mode: action.mode ?? "basic",
     });
     // Starting Power = same standing sources as combat (School basic, Astrologers,
     // Pandora, cultivation/grade/equipment, specialty school auras via
@@ -19381,8 +22906,10 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     }
     openMapSpellBoost(state, action.playerId, action.cardId, startingPower, {
       ...(action.fromSpellBook ? { fromSpellBook: true as const } : {}),
-      ...(action.castEnablerCardId ? { castEnablerCardId: action.castEnablerCardId } : {}),
-      inFlightCardIds
+      ...(action.castEnablerCardId
+        ? { castEnablerCardId: action.castEnablerCardId }
+        : {}),
+      inFlightCardIds,
     });
     return;
   }
@@ -19400,17 +22927,21 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       : []),
     ...(isPolishBookPlay && action.castEnablerCardId
       ? [action.castEnablerCardId]
-      : [])
+      : []),
   ];
 
   // Tactics is never played from hand: the swap is offered by the engine in the
   // start-of-combat window or on the holder's turn (SWAP_COMBAT_UNITS), and
   // Diplomacy's skip is offered as a pop-up at a matching-level Neutral field.
   if (effect.type === "TACTICS_SWAP") {
-    throw new Error("Tactics is used through the combat swap window, not played from hand.");
+    throw new Error(
+      "Tactics is used through the combat swap window, not played from hand.",
+    );
   }
   if (effect.type === "DIPLOMACY_SKIP_COMBAT") {
-    throw new Error("Diplomacy's skip is offered when your hero meets matching-level Neutral Units.");
+    throw new Error(
+      "Diplomacy's skip is offered when your hero meets matching-level Neutral Units.",
+    );
   }
   // Classic Learning is never played from hand: the engine offers it when the
   // Hero is about to level up (see the "learning-level-up" pending choice).
@@ -19426,7 +22957,9 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       action.cardId === "ability.learning" &&
       houseRuleEnabled(state, "polish-card-balance");
     if (!learningDrawPlay) {
-      throw new Error("Learning is played when your Hero is about to level up, not from hand.");
+      throw new Error(
+        "Learning is played when your Hero is about to level up, not from hand.",
+      );
     }
     // Fall through: the card moves to the discard, CARD_PLAYED fires, and the
     // `action.drawOnly` branch draws the single card.
@@ -19434,18 +22967,24 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // Artillery's expert side is not played from hand: it is offered when this
   // player's Ballista fires at the start of a combat round (see permanents.ts).
   if (effect.type === "ARTILLERY_BALLISTA_VOLLEY") {
-    throw new Error("Artillery's expert side resolves when your Ballista fires, not from hand.");
+    throw new Error(
+      "Artillery's expert side resolves when your Ballista fires, not from hand.",
+    );
   }
   // Helm of the Alabaster Unicorn's cast side is never played from hand: it is
   // offered as a `fromSpellDeck` CAST_SPELL of the top of the Spell-deck discard
   // pile (see addSpellActions / performSpellCast), which removes the Helm.
   if (effect.type === "CAST_FROM_SPELL_DISCARD") {
-    throw new Error("Helm of the Alabaster Unicorn's cast side is played as a Spell-deck cast, not from hand.");
+    throw new Error(
+      "Helm of the Alabaster Unicorn's cast side is played as a Spell-deck cast, not from hand.",
+    );
   }
   // First Aid's expert side is likewise not played from hand: it is offered when
   // this player activates their First Aid Tent's heal (see permanents.ts).
   if (effect.type === "FIRST_AID_TENT_VOLLEY") {
-    throw new Error("First Aid's expert side resolves when you use your First Aid Tent, not from hand.");
+    throw new Error(
+      "First Aid's expert side resolves when you use your First Aid Tent, not from hand.",
+    );
   }
 
   const option = selectedOption;
@@ -19461,14 +23000,20 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // offer side (addOptionPlays / isOptionEffectPlayable) reads the SAME
   // predicate, and PLAY_CARD is offer-validated, so this is the backstop.
   const combatMovementTopUp =
-    effect.type === "GAIN_HERO_MOVEMENT" && heroMovementTopUpHeroId(state, action.playerId) !== null;
+    effect.type === "GAIN_HERO_MOVEMENT" &&
+    heroMovementTopUpHeroId(state, action.playerId) !== null;
   // PvP preparation deliberately exposes the same non-movement map-side card
   // plays as a normal map turn (Legion recruit vouchers are the key case).
   // Legal-actions already removes movement/teleport plays that could break the
   // pending fight, so the resolver must not reject the safe offer merely
   // because the combat shell was created before both players accepted.
   const combatPrepMapPlay = inCombatPrep(state, action.playerId);
-  if (option?.mapOnly && state.combat && !combatMovementTopUp && !combatPrepMapPlay) {
+  if (
+    option?.mapOnly &&
+    state.combat &&
+    !combatMovementTopUp &&
+    !combatPrepMapPlay
+  ) {
     throw new Error(`${option.label} cannot be used during combat.`);
   }
   // Crown of the Five Seas' sea side: only while this player's main Hero stands
@@ -19476,19 +23021,32 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   if (option?.requiresSeaTile) {
     const hero = getMainHero(state, action.playerId);
     if (!hero?.spaceId || !isSeaField(state, hero.spaceId)) {
-      throw new Error(`${option.label} requires your Hero to be on a Sea tile.`);
+      throw new Error(
+        `${option.label} requires your Hero to be on a Sea tile.`,
+      );
     }
   }
   // Ring of the Wayfarer's paralysis side: only at the opening round of a
   // Combat against Neutral Units.
   if (option?.requiresNeutralCombatStart) {
-    if (!state.combat || state.combat.context.kind !== "neutral" || state.combat.round !== 1) {
-      throw new Error(`${option.label} is played at the start of a Combat with Neutral Units.`);
+    if (
+      !state.combat ||
+      state.combat.context.kind !== "neutral" ||
+      state.combat.round !== 1
+    ) {
+      throw new Error(
+        `${option.label} is played at the start of a Combat with Neutral Units.`,
+      );
     }
   }
   // Jeremy's Cannon IV/VI "use the Cannon" side: requires the war-machine card
   // in play, so the free shot can never fire without a Cannon.
-  if (option?.requiresWarMachine && !getPermanentCardIds(state, action.playerId).includes(option.requiresWarMachine)) {
+  if (
+    option?.requiresWarMachine &&
+    !getPermanentCardIds(state, action.playerId).includes(
+      option.requiresWarMachine,
+    )
+  ) {
     throw new Error(`${option.label} requires that war machine in play.`);
   }
   // WOG Commander Artifact bind (Task 2): legal only with the Commanders module
@@ -19498,10 +23056,14 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   if (effect.type === "BIND_COMMANDER_ARTIFACT") {
     const commander = state.players[action.playerId]?.commander;
     if (!commandersModuleEnabled(state) || !commander) {
-      throw new Error("Commander artifacts need the WOG Commanders module and a commander.");
+      throw new Error(
+        "Commander artifacts need the WOG Commanders module and a commander.",
+      );
     }
     if (commander.artifacts?.[effect.slot]) {
-      throw new Error(`Your commander's ${effect.slot} slot is already filled.`);
+      throw new Error(
+        `Your commander's ${effect.slot} slot is already filled.`,
+      );
     }
   }
   if (effect.type === "EQUIP_HERO_EQUIPMENT") {
@@ -19527,7 +23089,10 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // Spell cards played during combat respect the one-Spell-per-round limit.
   const playerForLimit = state.players[action.playerId];
   if (card.kind === "spell" && state.combat && playerForLimit) {
-    if (playerForLimit.combatStats.spellsCastThisRound >= spellLimitFor(state, playerForLimit)) {
+    if (
+      playerForLimit.combatStats.spellsCastThisRound >=
+      spellLimitFor(state, playerForLimit)
+    ) {
       throw new Error("Spell limit reached for this combat round.");
     }
     // This direct-play path records the cast before moving its physical card,
@@ -19540,7 +23105,10 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // leaves behind a non-blocking reinforcement bank until movement.
   const deferNecromancyDiscard =
     effect.type === "NECROMANCY_REINFORCE" && necromancyResolvesInWindow(state);
-  if (deferNecromancyDiscard && !state.players[action.playerId]?.hand.includes(action.cardId)) {
+  if (
+    deferNecromancyDiscard &&
+    !state.players[action.playerId]?.hand.includes(action.cardId)
+  ) {
     throw new Error(`${card.name} is not in your hand.`);
   }
   const moveError = deferNecromancyDiscard
@@ -19553,13 +23121,13 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
           action.playerId,
           action.cardId,
           action.castEnablerCardId,
-          option?.cost?.removeSelf ? "removed" : "discard"
+          option?.cost?.removeSelf ? "removed" : "discard",
         )
       : moveCardFromHandToDiscard(
           state,
           action.playerId,
           action.cardId,
-          option?.cost?.removeSelf ? "removed" : "discard"
+          option?.cost?.removeSelf ? "removed" : "discard",
         );
   if (moveError) {
     throw new Error(moveError.message);
@@ -19567,10 +23135,21 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
 
   // Map Power tiers (View Air / Fly / Dimension Door, …) may also spend ONE
   // Book Spell toward the Power cost — same once-per-turn Book Power budget.
-  payOptionCardCost(state, action.playerId, card, option?.cost, action.costCardIds, cards, action.costCardModes);
+  payOptionCardCost(
+    state,
+    action.playerId,
+    card,
+    option?.cost,
+    action.costCardIds,
+    cards,
+    action.costCardModes,
+  );
 
   // An Empowered ability's Expert side spends no crown.
-  if (mode === "expert" && !abilityExpertIsCrownFree(state.players[action.playerId], action.cardId)) {
+  if (
+    mode === "expert" &&
+    !abilityExpertIsCrownFree(state.players[action.playerId], action.cardId)
+  ) {
     state.players[action.playerId].combatStats.expertUsesSpentThisRound += 1;
   }
 
@@ -19592,7 +23171,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       timing: card.timing,
       mode,
       effectAmount: getEffectAmount(effect, mode) || undefined,
-      optionLabel
+      optionLabel,
     });
   }
 
@@ -19601,12 +23180,14 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     // ADVANCE_EXPERIENCE, which carries no draw rider, so its draw is fixed here
     // (the ADVANCE_EXPERIENCE guard above already gated it to the rule + card).
     const drawAmount =
-      effect.type === "ADVANCE_EXPERIENCE" ? 1 : instantDrawOnlyRider(effect, mode);
+      effect.type === "ADVANCE_EXPERIENCE"
+        ? 1
+        : instantDrawOnlyRider(effect, mode);
     if (drawAmount <= 0) {
       throw new Error(`${card.name} has no unconditional card-draw rider.`);
     }
     drawCardsForPlayer(state, action.playerId, drawAmount, {
-      inFlightCardIds: playInFlightCardIds
+      inFlightCardIds: playInFlightCardIds,
     });
     // Post-draw discard parity. The `drawOnly` PLAY_CARD branch itself IS
     // reachable for a medic face since 2026-08-08 (the on-turn combat draw-only
@@ -19630,10 +23211,19 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // target makes every unit-targeted branch below a no-op, while the card still
   // resolves and goes to the discard pile as usual.
   const negatedByDwarf =
-    card.kind === "hero-specialty" && negatesCardOnDwarfRoll(state, action.target, card.name, action.playerId);
-  const target = negatedByDwarf ? undefined : action.target?.type === "unit" ? action.target : undefined;
-  const targetUnit = target && state.combat ? state.combat.units[target.unitId] : undefined;
-  const nonDamageTarget = targetUnit && unitIgnoresCardNonDamage(targetUnit, card, state) ? undefined : target;
+    card.kind === "hero-specialty" &&
+    negatesCardOnDwarfRoll(state, action.target, card.name, action.playerId);
+  const target = negatedByDwarf
+    ? undefined
+    : action.target?.type === "unit"
+      ? action.target
+      : undefined;
+  const targetUnit =
+    target && state.combat ? state.combat.units[target.unitId] : undefined;
+  const nonDamageTarget =
+    targetUnit && unitIgnoresCardNonDamage(targetUnit, card, state)
+      ? undefined
+      : target;
 
   // Direct-play damage options on Specialty/Artifact cards do not use the Spell
   // stack. Resolve them here through the same immunity, token and removal seams.
@@ -19648,7 +23238,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       source: { type: "card", cardId: card.id, controllerId: action.playerId },
       target,
       amount,
-      damageKind: effect.damageKind
+      damageKind: effect.damageKind,
     });
     markUnitRemovedIfNeeded(state, targetUnit);
     finishCombatIfNeeded(state);
@@ -19660,10 +23250,10 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       {
         type: "card",
         cardId: card.id,
-        controllerId: action.playerId
+        controllerId: action.playerId,
       },
       nonDamageTarget,
-      getEffectDamageAmount(effect, card.power ?? 0)
+      getEffectDamageAmount(effect, card.power ?? 0),
     );
     // Rion's Battlefield Medic IV/VI: "Remove … damage or paralysis …" — the
     // chosen unit also loses its Paralysis token.
@@ -19675,9 +23265,15 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     }
     // Rion's Battlefield Medic: "Remove 1 damage … then draw 1 card."
     if (effect.drawCards) {
-      drawCardsForPlayer(state, action.playerId, effect.drawCards + consumeEquipmentDrawRiderBonus(state, action.playerId), {
-        inFlightCardIds: playInFlightCardIds
-      });
+      drawCardsForPlayer(
+        state,
+        action.playerId,
+        effect.drawCards +
+          consumeEquipmentDrawRiderBonus(state, action.playerId),
+        {
+          inFlightCardIds: playInFlightCardIds,
+        },
+      );
     }
     // Rion VI and clones: "… then draw 2 cards AND discard 1" — after the draw.
     applyDrawRiderThenDiscard(state, action.playerId, effect, card.name);
@@ -19687,10 +23283,20 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     const source = {
       type: "card" as const,
       cardId: card.id,
-      controllerId: action.playerId
+      controllerId: action.playerId,
     };
-    healUnitDamage(state, source, nonDamageTarget, getEffectDamageAmount(effect, card.power ?? 0));
-    removeEffectsFromTarget(state, source, nonDamageTarget, effect.removePolarity);
+    healUnitDamage(
+      state,
+      source,
+      nonDamageTarget,
+      getEffectDamageAmount(effect, card.power ?? 0),
+    );
+    removeEffectsFromTarget(
+      state,
+      source,
+      nonDamageTarget,
+      effect.removePolarity,
+    );
     // Cure: "Remove any effect or paralysis …" — also clears the Paralysis token.
     if (effect.removeParalysis && state.combat) {
       const unit = state.combat.units[nonDamageTarget.unitId];
@@ -19700,9 +23306,15 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     }
     // Astra's Cure I: "… then draw 1 card."
     if (effect.drawCards) {
-      drawCardsForPlayer(state, action.playerId, effect.drawCards + consumeEquipmentDrawRiderBonus(state, action.playerId), {
-        inFlightCardIds: playInFlightCardIds
-      });
+      drawCardsForPlayer(
+        state,
+        action.playerId,
+        effect.drawCards +
+          consumeEquipmentDrawRiderBonus(state, action.playerId),
+        {
+          inFlightCardIds: playInFlightCardIds,
+        },
+      );
     }
     // Post-draw discard parity. UNREACHABLE TODAY (so unpinned): no shipped
     // HEAL_DAMAGE_AND_REMOVE_EFFECTS face prints a discard after its draw. Kept so
@@ -19717,9 +23329,12 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // (never "no combat"), so a Dwarf-negated or effect-ignoring combat play — both
   // of which drop `nonDamageTarget` while `action.target` still names a unit —
   // keeps its existing no-op behaviour and draws nothing.
-  if (healDrawOnlyRider(effect) > 0 && (!action.target || action.target.type === "none")) {
+  if (
+    healDrawOnlyRider(effect) > 0 &&
+    (!action.target || action.target.type === "none")
+  ) {
     drawCardsForPlayer(state, action.playerId, healDrawOnlyRider(effect), {
-      inFlightCardIds: playInFlightCardIds
+      inFlightCardIds: playInFlightCardIds,
     });
     // Rion VI and clones on the map: the draw resolves, then its printed discard.
     applyDrawRiderThenDiscard(state, action.playerId, effect, card.name);
@@ -19730,18 +23345,33 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     // Paralysis token. 🔄 Selected unit cannot gain Paralysis during this
     // Combat." — ONE play doing BOTH, so the token comes off first and the ward
     // is laid on the same unit right after.
-    if (effect.removeParalysis && state.combat && nonDamageTarget?.type === "unit") {
+    if (
+      effect.removeParalysis &&
+      state.combat &&
+      nonDamageTarget?.type === "unit"
+    ) {
       const paralysed = state.combat.units[nonDamageTarget.unitId];
       if (paralysed && hasToken(paralysed, "paralysis")) {
         removeToken(state, paralysed, "paralysis", "dispelled");
       }
     }
-    createActiveEffectFromCard(state, card, effect, action.playerId, mode, target);
+    createActiveEffectFromCard(
+      state,
+      card,
+      effect,
+      action.playerId,
+      mode,
+      target,
+    );
     // Ash's Bloodlust IV: the ongoing buff also "places a Black cube" on the
     // selected unit. The physical flag below covers the CURRENT round; the
     // whole-combat lock is the effect's own CANNOT_RETALIATE modifier, which
     // shouldRetaliate reads every round while the ongoing card lives.
-    if (effect.placeBlackCube && state.combat && nonDamageTarget?.type === "unit") {
+    if (
+      effect.placeBlackCube &&
+      state.combat &&
+      nonDamageTarget?.type === "unit"
+    ) {
       const cubed = state.combat.units[nonDamageTarget.unitId];
       if (cubed && cubed.controllerId === action.playerId) {
         cubed.retaliatedThisRound = true;
@@ -19753,12 +23383,19 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     removeOneEffectFromTarget(
       state,
       { type: "card", cardId: card.id, controllerId: action.playerId },
-      nonDamageTarget
+      nonDamageTarget,
     );
   }
 
   if (effect.type === "CREATE_ATTACK_BUFF" && target) {
-    createAttackBuffFromCard(state, card, effect, action.playerId, card.power ?? 0, target);
+    createAttackBuffFromCard(
+      state,
+      card,
+      effect,
+      action.playerId,
+      card.power ?? 0,
+      target,
+    );
   }
 
   if (effect.type === "GRANT_ELEMENTAL_DAMAGE" && target) {
@@ -19772,16 +23409,22 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         duration: effect.duration,
         polarity: "positive",
         removable: false,
-        modifiers: [{ type: "ELEMENTAL_DAMAGE" }]
+        modifiers: [{ type: "ELEMENTAL_DAMAGE" }],
       },
       { type: "card", cardId: card.id, controllerId: action.playerId },
       action.playerId,
-      target
+      target,
     );
   }
 
   if (effect.type === "CREATE_DEFENSE_BUFF" && target) {
-    createDefenseBuffFromCard(state, card, action.playerId, card.power ?? 0, target);
+    createDefenseBuffFromCard(
+      state,
+      card,
+      action.playerId,
+      card.power ?? 0,
+      target,
+    );
   }
 
   // Ring of the Wayfarer's paralysis side: place a Paralysis token on the
@@ -19800,10 +23443,21 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // Casmetra's Sorceresses VI (option A): place a Weakness token (−N attack for
   // `rounds` rounds) on the chosen unit. Not tier-gated — reaches any unit, like
   // the Cove Sorceresses' own token.
-  if (effect.type === "PLACE_WEAKNESS_TOKEN" && state.combat && nonDamageTarget) {
+  if (
+    effect.type === "PLACE_WEAKNESS_TOKEN" &&
+    state.combat &&
+    nonDamageTarget
+  ) {
     const unit = state.combat.units[nonDamageTarget.unitId];
     if (unit) {
-      placeCombatToken(state, unit, "weakness", effect.amount, card.name, effect.rounds);
+      placeCombatToken(
+        state,
+        unit,
+        "weakness",
+        effect.amount,
+        card.name,
+        effect.rounds,
+      );
     }
   }
 
@@ -19824,11 +23478,11 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
           duration: { type: "next-activation" },
           polarity: "negative",
           removable: true,
-          modifiers: [{ type: "UNIT_CANNOT_ATTACK" }]
+          modifiers: [{ type: "UNIT_CANNOT_ATTACK" }],
         },
         { type: "card", cardId: card.id, controllerId: action.playerId },
         action.playerId,
-        target
+        target,
       );
     }
   }
@@ -19836,7 +23490,14 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // Rashka's Demoniac specialty (IV/VI): a Fire Shield on the chosen unit —
   // melee attackers take 1 damage (2 for an Efreet at level VI).
   if (effect.type === "CREATE_FIRE_SHIELD" && target && state.combat) {
-    createFireShieldFromCard(state, card, effect, action.playerId, card.power ?? 0, target);
+    createFireShieldFromCard(
+      state,
+      card,
+      effect,
+      action.playerId,
+      card.power ?? 0,
+      target,
+    );
   }
 
   // Clancy's Unicorns specialty (VI): a Spell Ward on the chosen unit — it takes
@@ -19871,10 +23532,10 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
           duration: { type: "combat" },
           polarity: "negative",
           removable: false,
-          modifiers: [{ type: "CANNOT_SURRENDER_COMBAT" }]
+          modifiers: [{ type: "CANNOT_SURRENDER_COMBAT" }],
         },
         { type: "card", cardId: card.id, controllerId: action.playerId },
-        enemyId
+        enemyId,
       );
     }
   }
@@ -19901,7 +23562,8 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       }
       const walls = [...siege.walls].sort(
         (left, right) =>
-          Math.abs(left - (gatePosition ?? left)) - Math.abs(right - (gatePosition ?? right))
+          Math.abs(left - (gatePosition ?? left)) -
+          Math.abs(right - (gatePosition ?? right)),
       );
       for (const position of walls.slice(0, 3)) {
         destroyFortification(state, null, "wall", position);
@@ -19911,7 +23573,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       openSiegeDemolishChoice(
         state,
         action.playerId,
-        effect.target === "two-walls-or-wall-and-gate" ? 2 : 1
+        effect.target === "two-walls-or-wall-and-gate" ? 2 : 1,
       );
     }
   }
@@ -19923,7 +23585,11 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // reduction never applies.
   if (effect.type === "BALLISTICS_BOMBARD" && state.combat) {
     const primary = target ? state.combat.units[target.unitId] : undefined;
-    if (!primary || !isUnitAlive(primary) || primary.controllerId === action.playerId) {
+    if (
+      !primary ||
+      !isUnitAlive(primary) ||
+      primary.controllerId === action.playerId
+    ) {
       throw new Error("Ballistics must bombard a living enemy unit.");
     }
     primary.damage += effect.amount;
@@ -19933,7 +23599,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       source: { type: "card", cardId: card.id, controllerId: action.playerId },
       target: { type: "unit", unitId: primary.id },
       amount: effect.amount,
-      damageKind: "effect"
+      damageKind: "effect",
     });
     markUnitRemovedIfNeeded(state, primary);
 
@@ -19945,7 +23611,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
           unit.id !== primary.id &&
           isUnitAlive(unit) &&
           unit.controllerId !== action.playerId &&
-          isAdjacent(unit.position, primary.position)
+          isAdjacent(unit.position, primary.position),
       );
       if (splashCandidates.length > 0) {
         const choiceId = `choice_${nextEventNumber(state)}`;
@@ -19962,7 +23628,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
           candidateUnitIds: splashCandidates.map((unit) => unit.id),
           amount: effect.amount,
           optional: true,
-          skipLabel: "Skip (no second target)"
+          skipLabel: "Skip (no second target)",
         };
         appendEvent(state, {
           type: "PENDING_CHOICE_CREATED",
@@ -19970,7 +23636,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
           choiceType: "ABILITY_TARGET_CHOICE",
           playerId: action.playerId,
           sourceEffectIds: [],
-          message: `${card.name} may strike a second enemy.`
+          message: `${card.name} may strike a second enemy.`,
         });
       }
     }
@@ -19990,7 +23656,9 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       throw new Error("Artillery must hit a living enemy unit.");
     }
     if (!isLowestInitiativeEnemy(state, action.playerId, unit)) {
-      throw new Error("Artillery hits an enemy unit with the lowest initiative.");
+      throw new Error(
+        "Artillery hits an enemy unit with the lowest initiative.",
+      );
     }
     unit.damage += effect.amount;
     noteUnitDamagedForTokens(state, unit, effect.amount);
@@ -19999,7 +23667,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       source: { type: "card", cardId: card.id, controllerId: action.playerId },
       target: { type: "unit", unitId: unit.id },
       amount: effect.amount,
-      damageKind: "effect"
+      damageKind: "effect",
     });
     markUnitRemovedIfNeeded(state, unit);
     // Balance Pack: the reprinted BASIC side also carries the aim rider — the
@@ -20016,7 +23684,11 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   if (effect.type === "DAMAGE_ENEMY_UNITS_BY_GRADE" && state.combat) {
     const grades = new Set(effect.grades);
     for (const unit of Object.values(state.combat.units)) {
-      if (unit.controllerId !== action.playerId && isUnitAlive(unit) && grades.has(unit.grade)) {
+      if (
+        unit.controllerId !== action.playerId &&
+        isUnitAlive(unit) &&
+        grades.has(unit.grade)
+      ) {
         dealAreaCardDamage(state, action.playerId, card, unit, effect.amount);
       }
     }
@@ -20050,13 +23722,18 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
           modifiers: [
             { type: "INITIATIVE_BONUS", amount: effect.initiative },
             ...(effect.movementBonus !== undefined
-              ? [{ type: "MOVEMENT_BONUS" as const, amount: effect.movementBonus }]
-              : [])
-          ]
+              ? [
+                  {
+                    type: "MOVEMENT_BONUS" as const,
+                    amount: effect.movementBonus,
+                  },
+                ]
+              : []),
+          ],
         },
         { type: "card", cardId: card.id, controllerId: action.playerId },
         action.playerId,
-        { type: "unit", unitId: unit.id }
+        { type: "unit", unitId: unit.id },
       );
     }
   }
@@ -20071,10 +23748,10 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         duration: { type: "combat" },
         polarity: "positive",
         removable: false,
-        modifiers: [{ type: "HEAL_AFTER_ATTACKED", amount: effect.amount }]
+        modifiers: [{ type: "HEAL_AFTER_ATTACKED", amount: effect.amount }],
       },
       { type: "card", cardId: card.id, controllerId: action.playerId },
-      action.playerId
+      action.playerId,
     );
   }
 
@@ -20093,10 +23770,10 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         polarity: "positive",
         removable: false,
         appliesOnlyToVariant: effect.variant,
-        modifiers: [{ type: "ATTACK_BONUS", amount: effect.amount }]
+        modifiers: [{ type: "ATTACK_BONUS", amount: effect.amount }],
       },
       { type: "card", cardId: card.id, controllerId: action.playerId },
-      action.playerId
+      action.playerId,
     );
   }
 
@@ -20107,9 +23784,18 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // immunity apply through dealAreaCardDamage/applyAdjacentPicks.
   if (effect.type === "DAMAGE_CHOSEN_ENEMIES" && state.combat) {
     const enemyIds = Object.values(state.combat.units)
-      .filter((unit) => unit.controllerId !== action.playerId && isUnitAlive(unit))
+      .filter(
+        (unit) => unit.controllerId !== action.playerId && isUnitAlive(unit),
+      )
       .map((unit) => unit.id);
-    applyAdjacentPicks(state, action.playerId, card, enemyIds, effect.count, effect.amount);
+    applyAdjacentPicks(
+      state,
+      action.playerId,
+      card,
+      enemyIds,
+      effect.count,
+      effect.amount,
+    );
     finishCombatIfNeeded(state);
   }
 
@@ -20122,8 +23808,14 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     if (!unit || !isUnitAlive(unit) || unit.controllerId === action.playerId) {
       throw new Error(`${card.name} must hit a living enemy unit.`);
     }
-    if (!getPermanentCardIds(state, action.playerId).includes(effect.warMachineCardId)) {
-      throw new Error(`${card.name} requires an in-play ${effect.warMachineCardId} to discard.`);
+    if (
+      !getPermanentCardIds(state, action.playerId).includes(
+        effect.warMachineCardId,
+      )
+    ) {
+      throw new Error(
+        `${card.name} requires an in-play ${effect.warMachineCardId} to discard.`,
+      );
     }
     discardPermanentFromPlay(state, action.playerId, effect.warMachineCardId);
     applyWarMachineDamage(
@@ -20132,14 +23824,18 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       unit.id,
       effect.amount,
       `${card.name}: the discarded Ballista hits ${unit.cardName} for ${effect.amount} damage.`,
-      effect.warMachineCardId
+      effect.warMachineCardId,
     );
   }
 
   // Tarnum (Dungeon)'s Dragons IV: damage every unit (friend or foe) in the
   // chosen vertical line of 5 spaces — the column of the selected space, the
   // only straight line of 5 on the 4×5 Combat board.
-  if (effect.type === "DAMAGE_BATTLEFIELD_LINE" && state.combat && action.target) {
+  if (
+    effect.type === "DAMAGE_BATTLEFIELD_LINE" &&
+    state.combat &&
+    action.target
+  ) {
     const center =
       action.target.type === "space"
         ? action.target.position
@@ -20149,7 +23845,10 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     if (center !== undefined) {
       const column = getBattlefieldCoordinates(center).column;
       for (const unit of Object.values(state.combat.units)) {
-        if (isUnitAlive(unit) && getBattlefieldCoordinates(unit.position).column === column) {
+        if (
+          isUnitAlive(unit) &&
+          getBattlefieldCoordinates(unit.position).column === column
+        ) {
           dealAreaCardDamage(state, action.playerId, card, unit, effect.amount);
         }
       }
@@ -20161,13 +23860,18 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // this Combat only — placed on an empty cell on the player's side; the card
   // returns to the Neutral discard pile when the Combat ends.
   if (effect.type === "BORROW_NEUTRAL_UNIT" && state.combat) {
-    const borrowed = borrowNeutralUnit(state, action.playerId, effect.unitDefId, effect.tier);
+    const borrowed = borrowNeutralUnit(
+      state,
+      action.playerId,
+      effect.unitDefId,
+      effect.tier,
+    );
     if (borrowed) {
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: borrowed.id,
         abilityId: card.id,
-        message: `${state.players[action.playerId]?.name ?? "A hero"} plays ${card.name}: ${borrowed.cardName} joins the Combat at ${getBattlefieldLabel(borrowed.position)}.`
+        message: `${state.players[action.playerId]?.name ?? "A hero"} plays ${card.name}: ${borrowed.cardName} joins the Combat at ${getBattlefieldLabel(borrowed.position)}.`,
       });
     }
   }
@@ -20175,7 +23879,11 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // Tarnum (Dungeon)'s Dragons VI (option A): toggle the selected Dragons unit's
   // Black cube — remove it if the unit has already spent its Retaliation this
   // round (so it may retaliate again), otherwise place one (so it cannot).
-  if (effect.type === "TOGGLE_RETALIATION_MARKER" && state.combat && nonDamageTarget?.type === "unit") {
+  if (
+    effect.type === "TOGGLE_RETALIATION_MARKER" &&
+    state.combat &&
+    nonDamageTarget?.type === "unit"
+  ) {
     const unit = state.combat.units[nonDamageTarget.unitId];
     if (unit && isUnitAlive(unit)) {
       const removing = unit.retaliatedThisRound;
@@ -20186,7 +23894,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         abilityId: "tarnum-dragons-cube",
         message: removing
           ? `${card.name} removes the Black cube from ${unit.cardName} — it may retaliate again.`
-          : `${card.name} places a Black cube on ${unit.cardName} — it cannot retaliate.`
+          : `${card.name} places a Black cube on ${unit.cardName} — it cannot retaliate.`,
       });
     }
   }
@@ -20211,17 +23919,17 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         duration: { type: "combat" },
         polarity: "positive",
         removable: false,
-        modifiers: [{ type: "DEFENSE_TOKEN_ON_ZERO" }]
+        modifiers: [{ type: "DEFENSE_TOKEN_ON_ZERO" }],
       },
       { type: "card", cardId: card.id, controllerId: action.playerId },
-      action.playerId
+      action.playerId,
     );
   }
 
   if (effect.type === "DRAW_CARDS") {
     const handBefore = state.players[action.playerId].hand.length;
     drawCardsForPlayer(state, action.playerId, getEffectAmount(effect, mode), {
-      inFlightCardIds: playInFlightCardIds
+      inFlightCardIds: playInFlightCardIds,
     });
     // Charm of Mana / Shackles of War: "draw N, then discard M". The discard is
     // a follow-up choice; `thenDiscardDrawnOnly` limits it to the drawn cards.
@@ -20229,7 +23937,14 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       const hand = state.players[action.playerId].hand;
       const drawn = hand.slice(handBefore);
       const candidates = effect.thenDiscardDrawnOnly ? drawn : [...hand];
-      openHandDiscardChoice(state, action.playerId, effect.thenDiscard, candidates, Boolean(effect.thenDiscardDrawnOnly), card.name);
+      openHandDiscardChoice(
+        state,
+        action.playerId,
+        effect.thenDiscard,
+        candidates,
+        Boolean(effect.thenDiscardDrawnOnly),
+        card.name,
+      );
     }
   }
 
@@ -20246,12 +23961,19 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     !state.reactionWindow &&
     state.stack.length === 0
   ) {
-    drawCardsForPlayer(state, action.playerId, effect.drawCards + consumeEquipmentDrawRiderBonus(state, action.playerId), {
-      inFlightCardIds: playInFlightCardIds
-    });
+    drawCardsForPlayer(
+      state,
+      action.playerId,
+      effect.drawCards + consumeEquipmentDrawRiderBonus(state, action.playerId),
+      {
+        inFlightCardIds: playInFlightCardIds,
+      },
+    );
     if (effect.type === "ADD_SPELL_POWER" && state.combat) {
       const combat = state.combat;
-      const active = combat.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
+      const active = combat.activeUnitId
+        ? combat.units[combat.activeUnitId]
+        : undefined;
       const ownFreshActivation =
         active &&
         active.controllerId === action.playerId &&
@@ -20262,7 +23984,8 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         const bank = getEffectAmount(effect, mode);
         if (bank > 0) {
           const stats = state.players[action.playerId].combatStats;
-          stats.pendingDrawRiderSpellPower = (stats.pendingDrawRiderSpellPower ?? 0) + bank;
+          stats.pendingDrawRiderSpellPower =
+            (stats.pendingDrawRiderSpellPower ?? 0) + bank;
         }
       }
     } else if (effect.type === "ADD_SPELL_POWER" && !state.combat) {
@@ -20289,7 +24012,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   if (effect.type === "GAIN_MORALE") {
     if (mode === "expert" && effect.expertDrawCards) {
       drawCardsForPlayer(state, action.playerId, effect.expertDrawCards, {
-        inFlightCardIds: playInFlightCardIds
+        inFlightCardIds: playInFlightCardIds,
       });
     }
     const moraleAmount = gainMoraleAmount(effect, mode);
@@ -20318,18 +24041,28 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     if (necromancyResolvesInWindow(state)) {
       // Old rule: pass the held card so only a successful immediate upgrade
       // consumes it.
-      queueNecromancyReinforce(state, action.playerId, reinforcementMode, action.cardId);
+      queueNecromancyReinforce(
+        state,
+        action.playerId,
+        reinforcementMode,
+        action.cardId,
+      );
     } else {
-      const bank = bankReinforcementDiscount(state, action.playerId, "necromancy", {
-        sourceName: card.name,
-        allowedTiers:
-          reinforcementMode === "expert"
-            ? ["bronze", "silver", "gold", "azure"]
-            : ["bronze", "silver"],
-        allowStack: true,
-        halfGoldOnly: true,
-        roundDown: true
-      });
+      const bank = bankReinforcementDiscount(
+        state,
+        action.playerId,
+        "necromancy",
+        {
+          sourceName: card.name,
+          allowedTiers:
+            reinforcementMode === "expert"
+              ? ["bronze", "silver", "gold", "azure"]
+              : ["bronze", "silver"],
+          allowStack: true,
+          halfGoldOnly: true,
+          roundDown: true,
+        },
+      );
       const pending = state.adventure?.pendingNecromancy;
       if (bank && pending?.playerId === action.playerId) {
         pending.discountIds ??= [];
@@ -20361,7 +24094,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         type: "RESOURCES_SPENT",
         playerId: action.playerId,
         cost: { gold: effect.goldCost },
-        reason: `played ${card.name}`
+        reason: `played ${card.name}`,
       });
     }
     // BINH house rule: Estates is nerfed to 2 / 4 gold (toggle: estates-nerf).
@@ -20370,10 +24103,18 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     // `expertGain` are authoritative and this seam steps aside; otherwise a
     // reprint could never move the number, whichever way `estates-nerf` is set.
     const communityEstates =
-      card.id === "ability.estates" && Boolean(COMMUNITY_REPRINTED_CARDS[card.id]) && houseRuleEnabled(state, "community-card-balance");
+      card.id === "ability.estates" &&
+      Boolean(COMMUNITY_REPRINTED_CARDS[card.id]) &&
+      houseRuleEnabled(state, "community-card-balance");
     const gain =
       card.id === "ability.estates" && !communityEstates
-        ? { gold: estatesGold(getRuleset(state), mode, houseRuleEnabled(state, "estates-nerf")) }
+        ? {
+            gold: estatesGold(
+              getRuleset(state),
+              mode,
+              houseRuleEnabled(state, "estates-nerf"),
+            ),
+          }
         : mode === "expert" && effect.expertGain
           ? effect.expertGain
           : effect.gain;
@@ -20396,15 +24137,18 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
           duration: { type: "current-turn" },
           polarity: "positive",
           removable: false,
-          modifiers: [{ type: "LOCATION_DICE_BONUS", amount: 1 }]
+          modifiers: [{ type: "LOCATION_DICE_BONUS", amount: 1 }],
         },
         { type: "card", cardId: card.id, controllerId: action.playerId },
-        action.playerId
+        action.playerId,
       );
     }
     const fortuneSteps: VisitStep[] = [];
     if (effect.rollResourceDice) {
-      fortuneSteps.push({ type: "ROLL_RESOURCE_DICE", count: effect.rollResourceDice });
+      fortuneSteps.push({
+        type: "ROLL_RESOURCE_DICE",
+        count: effect.rollResourceDice,
+      });
     }
     if (effect.gold) {
       fortuneSteps.push({ type: "GAIN_RESOURCES", gold: effect.gold });
@@ -20413,7 +24157,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       state.adventure?.rewardQueue.unshift({
         playerId: action.playerId,
         kind: "visit-steps",
-        steps: fortuneSteps
+        steps: fortuneSteps,
       });
     }
   }
@@ -20430,7 +24174,13 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     // Community Balance Change Arms / Head of Legion: `valuables` is the printed
     // VALUABLES alternative ("…by 1 <valuables> or 4 <gold>"), shipped as its own
     // CHOOSE_ONE option so the player really picks which currency to knock off.
-    queueLegionDiscountChoice(state, action.playerId, card.id, effect.amount, effect.valuables ?? 0);
+    queueLegionDiscountChoice(
+      state,
+      action.playerId,
+      card.id,
+      effect.amount,
+      effect.valuables ?? 0,
+    );
   }
 
   if (effect.type === "LEGION_TIER_REINFORCE") {
@@ -20442,7 +24192,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       card.name,
       effect.tier,
       effect.goldDiscount,
-      effect.valuablesDiscount ?? 0
+      effect.valuablesDiscount ?? 0,
     );
   }
 
@@ -20473,7 +24223,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         commanderSlug: commander.slug,
         cardId: action.cardId,
         slot: effect.slot,
-        message: `binds ${card.name} to their commander's ${effect.slot} slot.`
+        message: `binds ${card.name} to their commander's ${effect.slot} slot.`,
       });
       grantRegularArtifactOfSameGrade(state, action.playerId, action.cardId);
     }
@@ -20493,9 +24243,12 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     // hero." When both Main and Secondary stand on the map, the player picks
     // which hero gains the points (one of them — not both). A lone hero gets
     // it without a prompt.
-    const amount = mode === "expert" ? (effect.expertAmount ?? effect.amount) : effect.amount;
+    const amount =
+      mode === "expert"
+        ? (effect.expertAmount ?? effect.amount)
+        : effect.amount;
     const heroes = Object.values(state.heroes).filter(
-      (hero) => hero.controllerId === action.playerId && hero.spaceId !== null
+      (hero) => hero.controllerId === action.playerId && hero.spaceId !== null,
     );
     // Played DURING a combat (the 2026-08-11 top-up), the points go straight to
     // the hero IN the fight — no "which Hero?" pick. Two reasons, both real: the
@@ -20525,10 +24278,12 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
             prompt: `Which Hero gains +${amount} movement?`,
             options: heroes.map((hero) => ({
               label: hero.kind === "main" ? "Main Hero" : "Secondary Hero",
-              steps: [{ type: "GAIN_MOVEMENT_FOR_HERO", heroId: hero.id, amount }]
-            }))
-          }
-        ]
+              steps: [
+                { type: "GAIN_MOVEMENT_FOR_HERO", heroId: hero.id, amount },
+              ],
+            })),
+          },
+        ],
       });
       // pumpAdventureQueues is adventure-reducer only; the queue is drained at
       // the end of this action by applyAction's adventure post-pass. If the
@@ -20551,12 +24306,16 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
           // Angel Wings adds HERO_PASS_ANY_FIELD on top of the blocked-field
           // walk-through: "move through any fields without resolving them".
           modifiers: [
-            ...(effect.moveThroughThisTurn ? [{ type: "HERO_MOVE_THROUGH" as const }] : []),
-            ...(effect.passAnyFieldThisTurn ? [{ type: "HERO_PASS_ANY_FIELD" as const }] : [])
-          ]
+            ...(effect.moveThroughThisTurn
+              ? [{ type: "HERO_MOVE_THROUGH" as const }]
+              : []),
+            ...(effect.passAnyFieldThisTurn
+              ? [{ type: "HERO_PASS_ANY_FIELD" as const }]
+              : []),
+          ],
         },
         { type: "card", cardId: card.id, controllerId: action.playerId },
-        action.playerId
+        action.playerId,
       );
     }
     if (effect.waterWalkThisTurn) {
@@ -20568,10 +24327,10 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
           duration: { type: "current-turn" },
           polarity: "positive",
           removable: false,
-          modifiers: [{ type: "HERO_WATER_WALK" }]
+          modifiers: [{ type: "HERO_WATER_WALK" }],
         },
         { type: "card", cardId: card.id, controllerId: action.playerId },
-        action.playerId
+        action.playerId,
       );
       // Cast AFTER wading onto the sea (the natural click-to-move order): the
       // coastline halt set by that step no longer applies now Water Walk is up,
@@ -20580,9 +24339,15 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     }
     // Shield of Naval Glory (Sea side): the +1 movement comes with a card draw.
     if (effect.drawCards) {
-      drawCardsForPlayer(state, action.playerId, effect.drawCards + consumeEquipmentDrawRiderBonus(state, action.playerId), {
-        inFlightCardIds: playInFlightCardIds
-      });
+      drawCardsForPlayer(
+        state,
+        action.playerId,
+        effect.drawCards +
+          consumeEquipmentDrawRiderBonus(state, action.playerId),
+        {
+          inFlightCardIds: playInFlightCardIds,
+        },
+      );
     }
   }
 
@@ -20597,7 +24362,8 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
 
   if (effect.type === "GAIN_EXPERT_USE") {
     const player = state.players[action.playerId];
-    player.combatStats.expertUseBonusThisRound = (player.combatStats.expertUseBonusThisRound ?? 0) + effect.amount;
+    player.combatStats.expertUseBonusThisRound =
+      (player.combatStats.expertUseBonusThisRound ?? 0) + effect.amount;
   }
 
   if (effect.type === "DIPLOMACY_RECRUIT") {
@@ -20607,7 +24373,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       effect.maxDraws,
       effect.goldReduction,
       action.cardId,
-      effect.excludeAzure
+      effect.excludeAzure,
     );
   }
 
@@ -20636,7 +24402,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       effect.cardsByPower,
       standingSpellPower(state, action.playerId, card) +
         getSchoolPowerBonus(state, action.playerId, card) +
-        visionsBank
+        visionsBank,
     );
   }
 
@@ -20648,14 +24414,21 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     state.adventure?.rewardQueue.unshift({
       playerId: action.playerId,
       kind: "visit-steps",
-      steps: [...effect.steps]
+      steps: [...effect.steps],
     });
   }
 
   // Pandora's Box (peek cards): reveal the top of a shared deck, discard up to
   // N, reorder the rest on top, then resolve a resource/Search bonus.
   if (effect.type === "PANDORA_SCRY") {
-    openPandoraScry(state, action.playerId, effect.deck, effect.count, effect.maxDiscard, effect.then ?? []);
+    openPandoraScry(
+      state,
+      action.playerId,
+      effect.deck,
+      effect.count,
+      effect.maxDiscard,
+      effect.then ?? [],
+    );
   }
 
   // Pandora's Box (card 173): with a Silver army unit, choose to reverse one to
@@ -20675,7 +24448,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       excludeCardIds: playInFlightCardIds,
       polishRefreshAfter: effect.polishRefreshAfter,
       // Community Balance Change Crown of Dragontooth: "select UP TO 2".
-      optional: effect.optional
+      optional: effect.optional,
     };
     // The adventure reward queue is parked while a live (non-prep) combat runs —
     // a queued discard-pick would not surface until the fight ended. A mid-Combat
@@ -20683,13 +24456,17 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     // take-a-card side — see discardPickAllowedInCombat) opens the pick straight
     // away here; on the map (or a prep window, where the queue still pumps) it
     // keeps queuing as a reward.
-    if (discardPickAllowedInCombat(card, effect) && state.combat && !state.combat.prep) {
+    if (
+      discardPickAllowedInCombat(card, effect) &&
+      state.combat &&
+      !state.combat.prep
+    ) {
       openDiscardPickChoice(state, action.playerId, pick);
     } else {
       state.adventure?.rewardQueue.unshift({
         playerId: action.playerId,
         kind: "discard-pick",
-        ...pick
+        ...pick,
       });
     }
   }
@@ -20703,8 +24480,12 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       kind: "visit-steps",
       steps: [
         { type: "SCHOLAR_EMPOWER_PICK", remaining: effect.count },
-        { type: "SCHOLAR_EMPOWER_TAKE", remaining: effect.count, takenTypes: [] }
-      ]
+        {
+          type: "SCHOLAR_EMPOWER_TAKE",
+          remaining: effect.count,
+          takenTypes: [],
+        },
+      ],
     });
   }
 
@@ -20716,14 +24497,20 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     // opens the Search straight away; on the map (or a prep window, where the
     // queue still pumps) it keeps queuing as a reward.
     if (state.combat && !state.combat.prep) {
-      beginSharedDeckSearchNow(state, action.playerId, effect.deck, effect.count, Boolean(effect.allowRemove));
+      beginSharedDeckSearchNow(
+        state,
+        action.playerId,
+        effect.deck,
+        effect.count,
+        Boolean(effect.allowRemove),
+      );
     } else {
       state.adventure?.rewardQueue.unshift({
         playerId: action.playerId,
         kind: "shared-deck-search",
         deckId: effect.deck,
         count: effect.count,
-        ...(effect.allowRemove ? { allowRemove: true } : {})
+        ...(effect.allowRemove ? { allowRemove: true } : {}),
       });
     }
   }
@@ -20736,7 +24523,13 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // during a live combat) the removal opens immediately as a combat choice.
   if (effect.type === "REMOVE_HAND_CARD_THEN_SEARCH") {
     if (state.combat && !state.combat.prep) {
-      openCombatRemoveThenSearchChoice(state, action.playerId, card.name, effect, cards);
+      openCombatRemoveThenSearchChoice(
+        state,
+        action.playerId,
+        card.name,
+        effect,
+        cards,
+      );
     } else {
       state.adventure?.rewardQueue.unshift({
         playerId: action.playerId,
@@ -20748,9 +24541,9 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
             filter: effect.filter ?? "removable",
             then: "search-same-deck",
             searchCount: effect.count,
-            tieredReach: effect.tieredReach
-          }
-        ]
+            tieredReach: effect.tieredReach,
+          },
+        ],
       });
     }
   }
@@ -20766,8 +24559,14 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       const seen = new Set<string>();
       const entries: { cardId: CardId; source: "hand" | "discard" }[] = [];
       for (const { cardId, source } of [
-        ...(owner?.hand ?? []).map((cardId) => ({ cardId, source: "hand" as const })),
-        ...(owner?.discard ?? []).map((cardId) => ({ cardId, source: "discard" as const }))
+        ...(owner?.hand ?? []).map((cardId) => ({
+          cardId,
+          source: "hand" as const,
+        })),
+        ...(owner?.discard ?? []).map((cardId) => ({
+          cardId,
+          source: "discard" as const,
+        })),
       ]) {
         const key = `${source}:${cardId}`;
         if (!seen.has(key)) {
@@ -20783,13 +24582,13 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
           prompt: `${card.name}: remove another card from your hand or discard pile`,
           options: [
             ...entries.map(({ cardId, source }) => ({
-              label: `Remove ${cards[cardId]?.name ?? cardId} (${source})`
+              label: `Remove ${cards[cardId]?.name ?? cardId} (${source})`,
             })),
-            { label: "Skip" }
+            { label: "Skip" },
           ],
           context: "combat-remove-another",
           removeAnother: { entries },
-          returnPhase: "combat"
+          returnPhase: "combat",
         };
         state.phase = "choice";
         state.priorityPlayerId = action.playerId;
@@ -20801,9 +24600,9 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         steps: [
           {
             type: "REMOVE_ONE_FROM_HAND_OR_DISCARD",
-            prompt: `${card.name}: remove another card from your hand or discard pile`
-          }
-        ]
+            prompt: `${card.name}: remove another card from your hand or discard pile`,
+          },
+        ],
       });
     }
   }
@@ -20821,7 +24620,9 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   if (effect.type === "ROLL_FOR_MORALE") {
-    const random = createSeededRandom(`${state.seed}#roll-for-morale#${eventSeedNumber(state)}`);
+    const random = createSeededRandom(
+      `${state.seed}#roll-for-morale#${eventSeedNumber(state)}`,
+    );
     const faces = [-1, -1, 0, 0, 1, 1];
     const roll = faces[random.nextInt(0, faces.length - 1)];
     appendEvent(state, {
@@ -20829,7 +24630,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       playerId: action.playerId,
       dice: "attack",
       results: [`${card.name} attack die: ${roll >= 0 ? "+" : ""}${roll}`],
-      attackRolls: [roll]
+      attackRolls: [roll],
     });
     if (roll === effect.onRoll) {
       changeMorale(state, action.playerId, 1);
@@ -20837,7 +24638,14 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   if (effect.type === "EAGLE_EYE_DIG") {
-    resolveEagleEyeDig(state, action.playerId, mode, cards, effect.school, action.cardId);
+    resolveEagleEyeDig(
+      state,
+      action.playerId,
+      mode,
+      cards,
+      effect.school,
+      action.cardId,
+    );
   }
 
   if (effect.type === "TELEPORT_HERO_TO_TOWN") {
@@ -20853,7 +24661,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       state.adventure.rewardQueue.unshift({
         playerId: action.playerId,
         kind: "visit-steps",
-        steps
+        steps,
       });
     }
   }
@@ -20863,7 +24671,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     const amount = doubleAmountForUnitName(
       getAmountByPower(effect.amountByPower, effect.amount ?? 0, 0),
       targetUnit,
-      effect.doubleForUnitName
+      effect.doubleForUnitName,
     );
     createActiveEffect(
       state,
@@ -20876,17 +24684,26 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         modifiers: [
           { type: "INITIATIVE_BONUS", amount },
           ...(effect.movementBonus
-            ? [{ type: "MOVEMENT_BONUS" as const, amount: effect.movementBonus }]
-            : [])
-        ]
+            ? [
+                {
+                  type: "MOVEMENT_BONUS" as const,
+                  amount: effect.movementBonus,
+                },
+              ]
+            : []),
+        ],
       },
       { type: "card", cardId: card.id, controllerId: action.playerId },
       action.playerId,
-      target
+      target,
     );
   }
 
-  if (effect.type === "ADD_UNIT_MAX_HEALTH" && nonDamageTarget && state.combat) {
+  if (
+    effect.type === "ADD_UNIT_MAX_HEALTH" &&
+    nonDamageTarget &&
+    state.combat
+  ) {
     const unit = state.combat.units[nonDamageTarget.unitId];
     if (unit && unit.controllerId === action.playerId) {
       applyUnitMaxHealthBonus(
@@ -20896,7 +24713,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         card.name,
         { type: "card", cardId: card.id, controllerId: action.playerId },
         action.playerId,
-        effect.currentUnitLifeOnly
+        effect.currentUnitLifeOnly,
       );
     }
   }
@@ -20911,7 +24728,11 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     // TELEPORT_UNIT branch: PLAY_CARD is offer-validated and addOptionPlays
     // already drops the Tower, so this is unreachable defence-in-depth rather
     // than a separately-pinned rule.
-    if (unit && unit.controllerId === action.playerId && !arrowTowerRefusesEffect(unit, effect)) {
+    if (
+      unit &&
+      unit.controllerId === action.playerId &&
+      !arrowTowerRefusesEffect(unit, effect)
+    ) {
       openUnitStepChoice(state, action.playerId, unit);
     }
   }
@@ -20923,7 +24744,12 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // centre is read from the chosen space (or, for legacy unit targets, that unit's
   // space). A Dwarf centre that shrugged the Specialty off (negatedByDwarf) is a
   // no-op, like the other unit-targeted branches.
-  if (effect.type === "AREA_DAMAGE_ALL_ADJACENT" && state.combat && action.target && !negatedByDwarf) {
+  if (
+    effect.type === "AREA_DAMAGE_ALL_ADJACENT" &&
+    state.combat &&
+    action.target &&
+    !negatedByDwarf
+  ) {
     if (tryDeferSpecialtyDamageForHeals(state, action, card, effect, cards)) {
       return;
     }
@@ -20939,7 +24765,12 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // `amount` and ignores the Power computation (short-circuited below).
   // When a threatened player holds a pre-hit heal (Cure / First Aid), the blast
   // is deferred onto the stack so they can mend before the damage lands.
-  if (effect.type === "AREA_DAMAGE_PICK_ADJACENT" && state.combat && action.target && !negatedByDwarf) {
+  if (
+    effect.type === "AREA_DAMAGE_PICK_ADJACENT" &&
+    state.combat &&
+    action.target &&
+    !negatedByDwarf
+  ) {
     if (tryDeferSpecialtyDamageForHeals(state, action, card, effect, cards)) {
       return;
     }
@@ -20951,7 +24782,11 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // battlefield token (burns any unit that stops on it, a ground/ranged unit
   // that passes through it, and any unit that begins its activation on it), but
   // the damage is FIXED, not Power-scaled.
-  if (effect.type === "PLACE_FIRE_WALL_FIXED" && state.combat && action.target?.type === "space") {
+  if (
+    effect.type === "PLACE_FIRE_WALL_FIXED" &&
+    state.combat &&
+    action.target?.type === "space"
+  ) {
     addBattlefieldToken(state, {
       kind: "fire_wall",
       position: action.target.position,
@@ -20959,7 +24794,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       damage: effect.damage,
       // Luna's Fire Wall (unlike the base spell) burns a unit that begins its
       // activation standing on it — the printed card says "starting its turn here".
-      burnsAtActivation: true
+      burnsAtActivation: true,
     });
   }
 
@@ -20976,21 +24811,30 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       const playedCard = playedIndex >= 0 ? [player.discard[playedIndex]] : [];
       const toShuffle =
         playedIndex >= 0
-          ? [...player.discard.slice(0, playedIndex), ...player.discard.slice(playedIndex + 1)]
+          ? [
+              ...player.discard.slice(0, playedIndex),
+              ...player.discard.slice(playedIndex + 1),
+            ]
           : [...player.discard];
       if (toShuffle.length > 0) {
         player.deck = shuffleCards(
           [...player.deck, ...toShuffle],
-          `${state.seed}#reshuffle-draw#${action.playerId}#${eventSeedNumber(state)}`
+          `${state.seed}#reshuffle-draw#${action.playerId}#${eventSeedNumber(state)}`,
         );
       }
       // The played card stays in the discard (discarded after the shuffle) — and
       // is held out of the draw's own empty-deck reshuffle too, so it can never
       // be the card drawn even when nothing else is left anywhere.
       player.discard = playedCard;
-      drawCardsForPlayer(state, action.playerId, effect.drawCards + consumeEquipmentDrawRiderBonus(state, action.playerId), {
-        inFlightCardIds: playInFlightCardIds
-      });
+      drawCardsForPlayer(
+        state,
+        action.playerId,
+        effect.drawCards +
+          consumeEquipmentDrawRiderBonus(state, action.playerId),
+        {
+          inFlightCardIds: playInFlightCardIds,
+        },
+      );
     }
   }
 
@@ -21000,9 +24844,15 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   if (effect.type === "GAIN_RUNES") {
     gainRunes(state, action.playerId, effect.amount);
     if (effect.drawCards) {
-      drawCardsForPlayer(state, action.playerId, effect.drawCards + consumeEquipmentDrawRiderBonus(state, action.playerId), {
-        inFlightCardIds: playInFlightCardIds
-      });
+      drawCardsForPlayer(
+        state,
+        action.playerId,
+        effect.drawCards +
+          consumeEquipmentDrawRiderBonus(state, action.playerId),
+        {
+          inFlightCardIds: playInFlightCardIds,
+        },
+      );
     }
   }
 
@@ -21019,7 +24869,13 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // Specialty cards carry a fixed `damages`; a power-scaled `damagesByPower`
   // (the Spell, never reached here) would use the card's printed power.
   if (effect.type === "CHAIN_LIGHTNING" && target && state.combat) {
-    startChainLightning(state, action.playerId, card, target.unitId, chainLightningDamages(effect, card.power ?? 0));
+    startChainLightning(
+      state,
+      action.playerId,
+      card,
+      target.unitId,
+      chainLightningDamages(effect, card.power ?? 0),
+    );
   }
 
   // Torosar's Ballista specialty: a game-round grant can be banked on the map
@@ -21032,21 +24888,36 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         {
           name: "Ballista",
           scope: "player",
-          duration: effect.grant === "game-round" ? { type: "current-game-round" } : { type: "combat" },
+          duration:
+            effect.grant === "game-round"
+              ? { type: "current-game-round" }
+              : { type: "combat" },
           polarity: "positive",
           removable: false,
-          modifiers: [{ type: "EXTRA_BALLISTA" }]
+          modifiers: [{ type: "EXTRA_BALLISTA" }],
         },
         { type: "card", cardId: card.id, controllerId: action.playerId },
-        action.playerId
+        action.playerId,
       );
     }
     // Immediate activation counts the just-granted one too.
     if (state.combat && effect.activate === "all") {
-      activateBallistas(state, action.playerId, countBallistas(state, action.playerId));
+      activateBallistas(
+        state,
+        action.playerId,
+        countBallistas(state, action.playerId),
+      );
     } else if (state.combat && effect.activate === "up-to-two") {
-      activateBallistas(state, action.playerId, Math.min(2, countBallistas(state, action.playerId)));
-    } else if (state.combat && effect.activate === "one" && countBallistas(state, action.playerId) >= 1) {
+      activateBallistas(
+        state,
+        action.playerId,
+        Math.min(2, countBallistas(state, action.playerId)),
+      );
+    } else if (
+      state.combat &&
+      effect.activate === "one" &&
+      countBallistas(state, action.playerId) >= 1
+    ) {
       activateBallistas(state, action.playerId, 1);
     }
   }
@@ -21054,14 +24925,29 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // Solmyr's Chain Lightning IV: dig the top of your own deck, keep 1, discard
   // the rest. One revealed card is auto-kept; with several, the owner chooses.
   if (effect.type === "DECK_DIG_KEEP_ONE") {
-    resolveDeckDigKeepOne(state, action.playerId, action.cardId, card.name, effect.count, cards, [action.cardId]);
+    resolveDeckDigKeepOne(
+      state,
+      action.playerId,
+      action.cardId,
+      card.name,
+      effect.count,
+      cards,
+      [action.cardId],
+    );
   }
 
   // Jeddite's Mysterious Warlock I/VI: dig the top `count` cards of your own
   // deck, keep every Spell and Specialty among them in your hand, discard the
   // rest. No choice — all matches are taken automatically.
   if (effect.type === "DECK_DIG_KEEP_MATCHING") {
-    resolveDeckDigKeepMatching(state, action.playerId, action.cardId, effect, cards, [action.cardId]);
+    resolveDeckDigKeepMatching(
+      state,
+      action.playerId,
+      action.cardId,
+      effect,
+      cards,
+      [action.cardId],
+    );
   }
 
   // Tazar's War Hero VI: draw the top card of the shared Artifact deck (the
@@ -21083,7 +24969,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       card.name,
       effect.count,
       cards,
-      [action.cardId]
+      [action.cardId],
     );
   }
 
@@ -21101,14 +24987,16 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       if (effect.goldCost) {
         const buyer = state.players[action.playerId];
         if (!buyer || buyer.resources.gold < effect.goldCost) {
-          throw new Error(`Not enough gold to gain the ${cards[effect.warMachineCardId]?.name ?? "war machine"}.`);
+          throw new Error(
+            `Not enough gold to gain the ${cards[effect.warMachineCardId]?.name ?? "war machine"}.`,
+          );
         }
         buyer.resources.gold -= effect.goldCost;
         appendEvent(state, {
           type: "RESOURCES_SPENT",
           playerId: action.playerId,
           cost,
-          reason: `gained the ${cards[effect.warMachineCardId]?.name ?? "war machine"}`
+          reason: `gained the ${cards[effect.warMachineCardId]?.name ?? "war machine"}`,
         });
       }
       // Catalog is NOT depleted — other players keep their access to this machine.
@@ -21118,11 +25006,11 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         playerId: action.playerId,
         cardId: effect.warMachineCardId,
         cost,
-        at: "factory"
+        at: "factory",
       });
     } else if (effect.fallbackDrawCards) {
       drawCardsForPlayer(state, action.playerId, effect.fallbackDrawCards, {
-        inFlightCardIds: playInFlightCardIds
+        inFlightCardIds: playInFlightCardIds,
       });
     }
   }
@@ -21153,22 +25041,36 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     const tradesUnit = Boolean(effect.fromUnitDefId);
     const fromIndex = tradesUnit
       ? (player?.army.findIndex(
-          (unit) => unit.unitDefId === effect.fromUnitDefId && unit.side === effect.fromSide
+          (unit) =>
+            unit.unitDefId === effect.fromUnitDefId &&
+            unit.side === effect.fromSide,
         ) ?? -1)
       : -1;
     const alreadyHas = effect.unique
-      ? (player?.army.some((unit) => unit.unitDefId === effect.toUnitDefId) ?? false)
+      ? (player?.army.some((unit) => unit.unitDefId === effect.toUnitDefId) ??
+        false)
       : false;
     const inDraw = deck?.drawPile.indexOf(effect.toUnitDefId) ?? -1;
     const inDiscard = deck?.discardPile.indexOf(effect.toUnitDefId) ?? -1;
     const hasFrom = tradesUnit ? fromIndex >= 0 : true;
-    const canPayGold = effect.goldCost ? (player?.resources.gold ?? 0) >= effect.goldCost : true;
-    if (player && deck && hasFrom && canPayGold && !alreadyHas && (inDraw >= 0 || inDiscard >= 0)) {
+    const canPayGold = effect.goldCost
+      ? (player?.resources.gold ?? 0) >= effect.goldCost
+      : true;
+    if (
+      player &&
+      deck &&
+      hasFrom &&
+      canPayGold &&
+      !alreadyHas &&
+      (inDraw >= 0 || inDiscard >= 0)
+    ) {
       // Polish Balance Pack Dracon IV / Gelu IV: "Gain 13 / 9 gold for each stack
       // of Magi / Elves you had." Read off the card being traded in BEFORE it
       // leaves the army; 0 layers (or a table without Polish Unit Stacks, where
       // `stacks` is never written) pays nothing.
-      const tradedStackLayers = tradesUnit ? Math.max(0, Math.trunc(player.army[fromIndex]?.stacks ?? 0)) : 0;
+      const tradedStackLayers = tradesUnit
+        ? Math.max(0, Math.trunc(player.army[fromIndex]?.stacks ?? 0))
+        : 0;
       if (tradesUnit) {
         player.army.splice(fromIndex, 1);
       }
@@ -21181,7 +25083,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
           gold: stackRefund,
           buildingMaterials: 0,
           valuables: 0,
-          reason: `traded in a Stack (${tradedStackLayers} layer${tradedStackLayers === 1 ? "" : "s"})`
+          reason: `traded in a Stack (${tradedStackLayers} layer${tradedStackLayers === 1 ? "" : "s"})`,
         });
       }
       if (effect.goldCost) {
@@ -21190,7 +25092,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
           type: "RESOURCES_SPENT",
           playerId: action.playerId,
           cost: { gold: effect.goldCost },
-          reason: `acquired the ${cards[effect.toUnitDefId]?.name ?? effect.toUnitDefId}`
+          reason: `acquired the ${cards[effect.toUnitDefId]?.name ?? effect.toUnitDefId}`,
         });
       }
       if (inDraw >= 0) {
@@ -21203,7 +25105,8 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       // every combat it joins starts (and stays) buffed. Gated on the individual
       // `gelu-sharpshooter-buff` toggle — off, the recruit is a plain Sharpshooters.
       const geluAttackBuff =
-        effect.grantAttackBonus && houseRuleEnabled(state, "gelu-sharpshooter-buff")
+        effect.grantAttackBonus &&
+        houseRuleEnabled(state, "gelu-sharpshooter-buff")
           ? effect.grantAttackBonus
           : 0;
       if (geluAttackBuff) {
@@ -21215,15 +25118,20 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         unitDefId: effect.toUnitDefId,
         kind: "recruit",
         cost: effect.goldCost ? { gold: effect.goldCost } : {},
-        ...(geluAttackBuff ? { attackBuff: geluAttackBuff } : {})
+        ...(geluAttackBuff ? { attackBuff: geluAttackBuff } : {}),
       });
     }
   }
 
   if (effect.type === "MGQ_DRAW_AND_SPECIALTY_IMMUNITY" && nonDamageTarget) {
-    drawCardsForPlayer(state, action.playerId, effect.drawCards + consumeEquipmentDrawRiderBonus(state, action.playerId), {
-      inFlightCardIds: playInFlightCardIds
-    });
+    drawCardsForPlayer(
+      state,
+      action.playerId,
+      effect.drawCards + consumeEquipmentDrawRiderBonus(state, action.playerId),
+      {
+        inFlightCardIds: playInFlightCardIds,
+      },
+    );
     createActiveEffect(
       state,
       {
@@ -21232,15 +25140,19 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         duration: { type: "combat" },
         polarity: "positive",
         removable: false,
-        modifiers: [{ type: "SPECIALTY_IMMUNITY" }]
+        modifiers: [{ type: "SPECIALTY_IMMUNITY" }],
       },
       { type: "card", cardId: card.id, controllerId: action.playerId },
       action.playerId,
-      nonDamageTarget
+      nonDamageTarget,
     );
   }
 
-  if (effect.type === "MGQ_DESTROY_UNIT_AND_EMPOWER_SPELLS" && target && state.combat) {
+  if (
+    effect.type === "MGQ_DESTROY_UNIT_AND_EMPOWER_SPELLS" &&
+    target &&
+    state.combat
+  ) {
     const destroyed = state.combat.units[target.unitId];
     if (
       destroyed &&
@@ -21260,10 +25172,10 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
           duration: { type: "combat" },
           polarity: "positive",
           removable: false,
-          modifiers: [{ type: "SPELL_POWER_BONUS", amount: effect.powerBonus }]
+          modifiers: [{ type: "SPELL_POWER_BONUS", amount: effect.powerBonus }],
         },
         { type: "card", cardId: card.id, controllerId: action.playerId },
-        action.playerId
+        action.playerId,
       );
       finishCombatIfNeeded(state);
     }
@@ -21272,26 +25184,31 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   if (effect.type === "MGQ_GRANT_FREE_COMPANION_SEAL") {
     const player = state.players[action.playerId];
     if (player) {
-      player.mgqFreeCompanionSeals = (player.mgqFreeCompanionSeals ?? 0) + Math.max(0, effect.amount);
+      player.mgqFreeCompanionSeals =
+        (player.mgqFreeCompanionSeals ?? 0) + Math.max(0, effect.amount);
     }
   }
 
   if (effect.type === "MGQ_MAD_SCIENCE") {
     const player = state.players[action.playerId];
     const bronzeFew = (player?.army ?? []).filter(
-      (unit) => unit.side === "few" && coreUnitDefinitions[unit.unitDefId]?.tier === "bronze"
+      (unit) =>
+        unit.side === "few" &&
+        coreUnitDefinitions[unit.unitDefId]?.tier === "bronze",
     );
     const silver = (player?.army ?? []).filter(
-      (unit) => coreUnitDefinitions[unit.unitDefId]?.tier === "silver"
+      (unit) => coreUnitDefinitions[unit.unitDefId]?.tier === "silver",
     );
     const pairs = bronzeFew.flatMap((sacrifice) =>
       silver.map((targetUnit) => ({
         sacrificeArmyUnitId: sacrifice.id,
-        targetArmyUnitId: targetUnit.id
-      }))
+        targetArmyUnitId: targetUnit.id,
+      })),
     );
     if (!player || pairs.length === 0) {
-      throw new Error(`${card.name} needs one bronze Few and one silver army card.`);
+      throw new Error(
+        `${card.name} needs one bronze Few and one silver army card.`,
+      );
     }
     state.pendingChoice = {
       id: `choice_${nextEventNumber(state)}`,
@@ -21299,15 +25216,19 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       playerId: action.playerId,
       prompt: `${card.name}: remove a bronze Few, then give a silver card +${effect.attackBonus} permanent Attack.`,
       options: pairs.map((pair) => {
-        const sacrifice = player.army.find((unit) => unit.id === pair.sacrificeArmyUnitId)!;
-        const targetUnit = player.army.find((unit) => unit.id === pair.targetArmyUnitId)!;
+        const sacrifice = player.army.find(
+          (unit) => unit.id === pair.sacrificeArmyUnitId,
+        )!;
+        const targetUnit = player.army.find(
+          (unit) => unit.id === pair.targetArmyUnitId,
+        )!;
         return {
-          label: `Remove ${coreUnitDefinitions[sacrifice.unitDefId]?.name ?? sacrifice.unitDefId} → +${effect.attackBonus} Attack on ${coreUnitDefinitions[targetUnit.unitDefId]?.name ?? targetUnit.unitDefId}`
+          label: `Remove ${coreUnitDefinitions[sacrifice.unitDefId]?.name ?? sacrifice.unitDefId} → +${effect.attackBonus} Attack on ${coreUnitDefinitions[targetUnit.unitDefId]?.name ?? targetUnit.unitDefId}`,
         };
       }),
       context: "mgq-mad-science",
       mgqMadScience: { pairs, attackBonus: effect.attackBonus },
-      returnPhase: "player-turn"
+      returnPhase: "player-turn",
     };
     state.phase = "choice";
     state.priorityPlayerId = action.playerId;
@@ -21323,7 +25244,13 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   if (playedToDiscard) {
-    holdOngoingCardIfEffectCreated(state, action.playerId, action.cardId, effectCountBeforePlay, "discard");
+    holdOngoingCardIfEffectCreated(
+      state,
+      action.playerId,
+      action.cardId,
+      effectCountBeforePlay,
+      "discard",
+    );
   }
 
   // Map Spells do not use the combat spell stack, so their SPELL_CAST_STARTED
@@ -21334,28 +25261,38 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // (there is no per-turn spell limit outside combat). Regular Knowledge's
   // expert limit side is not useful here; expert Mysticism can also recover
   // support cards played into the cast.
-  if (card.kind === "spell" && !state.combat && playedToDiscard && state.adventure) {
+  if (
+    card.kind === "spell" &&
+    !state.combat &&
+    playedToDiscard &&
+    state.adventure
+  ) {
     const player = state.players[action.playerId];
     const knowledgeCardId = player?.hand.find((cardId) => {
       const held = cards[cardId];
-      return (
-        held?.effect.type === "RECALL_SPELL"
-      );
+      return held?.effect.type === "RECALL_SPELL";
     });
     const knowledge = knowledgeCardId ? cards[knowledgeCardId] : undefined;
-    const recallEffect = knowledge?.effect.type === "RECALL_SPELL" ? knowledge.effect : null;
-    const polishBookCast = polishSpellBookEnabled(state) && Boolean(action.fromSpellBook);
+    const recallEffect =
+      knowledge?.effect.type === "RECALL_SPELL" ? knowledge.effect : null;
+    const polishBookCast =
+      polishSpellBookEnabled(state) && Boolean(action.fromSpellBook);
     const spellIsRecallable =
       (polishBookCast
-        ? Boolean(action.castEnablerCardId && player?.discard.includes(action.castEnablerCardId))
+        ? Boolean(
+            action.castEnablerCardId &&
+            player?.discard.includes(action.castEnablerCardId),
+          )
         : Boolean(player?.discard.includes(action.cardId))) ||
-      Boolean(player?.ongoingCards?.some((entry) => entry.cardId === action.cardId));
+      Boolean(
+        player?.ongoingCards?.some((entry) => entry.cardId === action.cardId),
+      );
     if (player && knowledgeCardId && recallEffect && spellIsRecallable) {
       const returnLabel = polishBookCast
         ? "return Cast a Spell to your hand (the Book spell stays used)"
         : action.fromSpellBook
-        ? `return ${card.name} to your Spell Book`
-        : `return ${card.name} to your hand`;
+          ? `return ${card.name} to your Spell Book`
+          : `return ${card.name} to your hand`;
       const bookFlag = polishBookCast
         ? { castEnablerCardId: action.castEnablerCardId }
         : action.fromSpellBook
@@ -21375,12 +25312,13 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
             spellCardId: action.cardId,
             knowledgeCardId,
             mode: "basic",
-            ...bookFlag
-          }
-        ]
+            ...bookFlag,
+          },
+        ],
       });
       const otherPlayedCardIds = playInFlightCardIds.filter(
-        (cardId) => cardId !== action.cardId && cardId !== action.castEnablerCardId
+        (cardId) =>
+          cardId !== action.cardId && cardId !== action.castEnablerCardId,
       );
       if (
         hasExpertUseAvailable(state, action.playerId) &&
@@ -21396,12 +25334,15 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
               knowledgeCardId,
               recallPlayedCardIds: otherPlayedCardIds,
               mode: "expert",
-              ...bookFlag
-            }
-          ]
+              ...bookFlag,
+            },
+          ],
         });
       }
-      options.push({ label: `Keep Knowledge / Mysticism; leave ${card.name} spent`, steps: [] });
+      options.push({
+        label: `Keep Knowledge / Mysticism; leave ${card.name} spent`,
+        steps: [],
+      });
 
       // Append after rewards the Spell itself just queued (notably Town
       // Portal's destination), so "take it back" is always asked after the
@@ -21413,9 +25354,9 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
           {
             type: "CHOOSE_ONE",
             prompt: `Knowledge / Mysticism: recall ${card.name} after casting?`,
-            options
-          }
-        ]
+            options,
+          },
+        ],
       });
     }
   }
@@ -21449,26 +25390,39 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
 }
 
 /** Picks the opposing player: the combat opponent, or the only other seat. */
-function pickEnemyPlayerId(state: GameState, playerId: PlayerId): PlayerId | null {
+function pickEnemyPlayerId(
+  state: GameState,
+  playerId: PlayerId,
+): PlayerId | null {
   if (state.combat) {
     const enemyId =
-      state.combat.attackerPlayerId === playerId ? state.combat.defenderPlayerId : state.combat.attackerPlayerId;
+      state.combat.attackerPlayerId === playerId
+        ? state.combat.defenderPlayerId
+        : state.combat.attackerPlayerId;
     return enemyId !== NEUTRAL_PLAYER_ID ? enemyId : null;
   }
 
-  const others = state.turnOrder.filter((candidate) => candidate !== playerId && candidate !== NEUTRAL_PLAYER_ID);
+  const others = state.turnOrder.filter(
+    (candidate) => candidate !== playerId && candidate !== NEUTRAL_PLAYER_ID,
+  );
   return others[0] ?? null;
 }
 
 /** Dragon Wing Tabard: random discard(s) from the enemy hand. */
-function discardRandomEnemyCards(state: GameState, playerId: PlayerId, count: number): void {
+function discardRandomEnemyCards(
+  state: GameState,
+  playerId: PlayerId,
+  count: number,
+): void {
   const enemyId = pickEnemyPlayerId(state, playerId);
   const enemy = enemyId ? state.players[enemyId] : undefined;
   if (!enemyId || !enemy) {
     return;
   }
 
-  const random = createSeededRandom(`${state.seed}#enemy-discard#${eventSeedNumber(state)}`);
+  const random = createSeededRandom(
+    `${state.seed}#enemy-discard#${eventSeedNumber(state)}`,
+  );
   for (let index = 0; index < count && enemy.hand.length > 0; index += 1) {
     const pick = random.nextInt(0, enemy.hand.length - 1);
     const [cardId] = enemy.hand.splice(pick, 1);
@@ -21478,7 +25432,7 @@ function discardRandomEnemyCards(state: GameState, playerId: PlayerId, count: nu
       playerId: enemyId,
       discarded: 1,
       drawn: 0,
-      discardedCardIds: cardId ? [cardId] : []
+      discardedCardIds: cardId ? [cardId] : [],
     });
   }
 }
@@ -21495,7 +25449,11 @@ function discardRandomEnemyCards(state: GameState, playerId: PlayerId, count: nu
  * nothing), and the player can pay the Expert use (a crown left, or the card is
  * Empowered). Deck draw-pile SIZE is already public, so the filter leaks nothing.
  */
-function tomeDigDeckOptions(state: GameState, playerId: PlayerId, cardId?: CardId): DeckId[] {
+function tomeDigDeckOptions(
+  state: GameState,
+  playerId: PlayerId,
+  cardId?: CardId,
+): DeckId[] {
   const player = state.players[playerId];
   const expert = state.decks["spells-expert"];
   if (
@@ -21529,7 +25487,7 @@ function resolveEagleEyeDig(
   mode: CardPlayMode,
   cards: CardLibrary,
   school?: Exclude<SpellSchool, "any">,
-  cardId?: CardId
+  cardId?: CardId,
 ): void {
   if (school) {
     const deckIds = tomeDigDeckOptions(state, playerId, cardId);
@@ -21552,7 +25510,9 @@ function resolveEagleEyeDig(
   // Spell deck the LEVEL dig (Eagle Eye) reads.
   const wantedLevel = mode === "expert" ? "expert" : "basic";
   const deckId =
-    houseRuleEnabled(state, "split-decks") && wantedLevel === "expert" && state.decks["spells-expert"]
+    houseRuleEnabled(state, "split-decks") &&
+    wantedLevel === "expert" &&
+    state.decks["spells-expert"]
       ? "spells-expert"
       : "spells";
   performSpellDig(state, playerId, deckId, cards, { wantedLevel });
@@ -21570,10 +25530,12 @@ function openEagleEyeLevelPick(
   state: GameState,
   playerId: PlayerId,
   cardId: CardId | undefined,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   const splitExpert =
-    houseRuleEnabled(state, "split-decks") && state.decks["spells-expert"] ? "spells-expert" : "spells";
+    houseRuleEnabled(state, "split-decks") && state.decks["spells-expert"]
+      ? "spells-expert"
+      : "spells";
   const deckIds: DeckId[] = ["spells", splitExpert as DeckId];
   const cardName = cardId ? (cards[cardId]?.name ?? "Eagle Eye") : "Eagle Eye";
   state.pendingChoice = {
@@ -21588,9 +25550,9 @@ function openEagleEyeLevelPick(
       // The reprint's basic side pays nothing for either level.
       crownDeckIds: [],
       wantedLevels: ["basic", "expert"],
-      ...(cardId ? { cardId } : {})
+      ...(cardId ? { cardId } : {}),
     },
-    returnPhase: state.combat ? "combat" : "player-turn"
+    returnPhase: state.combat ? "combat" : "player-turn",
   };
   state.phase = "choice";
   state.priorityPlayerId = playerId;
@@ -21603,7 +25565,7 @@ function openTomeDigDeckPick(
   deckIds: DeckId[],
   school: Exclude<SpellSchool, "any">,
   cardId: CardId | undefined,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   const crownFree = abilityExpertIsCrownFree(state.players[playerId], cardId);
   const schoolName = `${school.charAt(0).toUpperCase()}${school.slice(1)}`;
@@ -21616,18 +25578,20 @@ function openTomeDigDeckPick(
     options: deckIds.map((deckId) =>
       deckId === "spells-expert"
         ? { label: `Expert Spells deck${crownFree ? "" : " (1 crown)"}` }
-        : { label: "Basic Spells deck" }
+        : { label: "Basic Spells deck" },
     ),
     context: "spell-deck-pick",
     spellDeckPick: {
       deckIds,
       // Only the Expert deck costs an Expert use, and an Empowered card waives
       // even that — so the pick and the spend read the same list.
-      crownDeckIds: crownFree ? [] : deckIds.filter((deckId) => deckId === "spells-expert"),
+      crownDeckIds: crownFree
+        ? []
+        : deckIds.filter((deckId) => deckId === "spells-expert"),
       school,
-      ...(cardId ? { cardId } : {})
+      ...(cardId ? { cardId } : {}),
     },
-    returnPhase: state.combat ? "combat" : "player-turn"
+    returnPhase: state.combat ? "combat" : "player-turn",
   };
   state.phase = "choice";
   state.priorityPlayerId = playerId;
@@ -21641,7 +25605,7 @@ function openTomeDigDeckPick(
 function resolveSpellDeckPick(
   state: GameState,
   action: Extract<GameAction, { type: "CHOOSE_OPTION" }>,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   const choice = state.pendingChoice;
   if (
@@ -21665,7 +25629,9 @@ function resolveSpellDeckPick(
   // (or a forged index) can never dig the Expert deck without paying.
   if (pick.crownDeckIds.includes(deckId)) {
     if (!hasExpertUseAvailable(state, action.playerId)) {
-      throw new Error("You have no Expert use (crown) left for the Expert Spell deck.");
+      throw new Error(
+        "You have no Expert use (crown) left for the Expert Spell deck.",
+      );
     }
     player.combatStats.expertUsesSpentThisRound += 1;
   }
@@ -21682,7 +25648,9 @@ function resolveSpellDeckPick(
     action.playerId,
     deckId,
     cards,
-    pick.school ? { school: pick.school } : { wantedLevel: wantedLevel ?? "basic" }
+    pick.school
+      ? { school: pick.school }
+      : { wantedLevel: wantedLevel ?? "basic" },
   );
 }
 
@@ -21692,7 +25660,10 @@ function performSpellDig(
   playerId: PlayerId,
   deckId: DeckId,
   cards: CardLibrary,
-  filter: { school?: Exclude<SpellSchool, "any">; wantedLevel?: "basic" | "expert" }
+  filter: {
+    school?: Exclude<SpellSchool, "any">;
+    wantedLevel?: "basic" | "expert";
+  },
 ): void {
   const school = filter.school;
   const wantedLevel = filter.wantedLevel ?? "basic";
@@ -21723,7 +25694,10 @@ function performSpellDig(
     // starting-only spell — exactly as a shared-deck Search redraws past it.
     // Without this, Eagle Eye / a Tome could hand a player a second copy of a
     // spell already in their hand/deck/discard.
-    if (matches(cards[candidateId]) && canAcquireSharedDeckCard(state, playerId, deckId, candidateId)) {
+    if (
+      matches(cards[candidateId]) &&
+      canAcquireSharedDeckCard(state, playerId, deckId, candidateId)
+    ) {
       foundCardId = candidateId;
       remaining.splice(index, 1);
       break;
@@ -21735,7 +25709,10 @@ function performSpellDig(
   }
 
   const digLabel = school ? `${school} Magic` : "Eagle Eye";
-  deck.drawPile = shuffleCards(remaining, `${state.seed}#eagle-eye#${eventSeedNumber(state)}`);
+  deck.drawPile = shuffleCards(
+    remaining,
+    `${state.seed}#eagle-eye#${eventSeedNumber(state)}`,
+  );
 
   // Polish Balance Pack — the reprinted EAGLE EYE: "Put it into your Spellbook."
   // There is NO discard arm on the reprint (the find is always taken), but it
@@ -21744,7 +25721,8 @@ function performSpellDig(
   // balance dig opens the SAME "Eagle Eye found {name}" window, just with a
   // single take-only option (no discard). A Tome's School dig keeps its printed
   // take-or-discard choice in every mode.
-  const balanceEagleEye = !school && houseRuleEnabled(state, "polish-card-balance");
+  const balanceEagleEye =
+    !school && houseRuleEnabled(state, "polish-card-balance");
   const allowDiscard = !balanceEagleEye;
   const takeDest = polishSpellBookEnabled(state) ? "Spell Book" : "hand";
   const foundName = cards[foundCardId]?.name ?? foundCardId;
@@ -21760,15 +25738,15 @@ function performSpellDig(
       // dig (scan: public/assets/abilities-eagle_eye.webp reads "…Take it into
       // your hand OR DISCARD IT."). The Balance-Pack reprint has no discard arm,
       // so the window is take-only (a single, naming, non-dead confirmation).
-      ...(allowDiscard ? [{ label: `Discard ${foundName}` }] : [])
+      ...(allowDiscard ? [{ label: `Discard ${foundName}` }] : []),
     ],
     context: "eagle-eye",
     eagleEye: {
       deckId,
       cardId: foundCardId,
-      allowDiscard
+      allowDiscard,
     },
-    returnPhase: state.combat ? "combat" : "player-turn"
+    returnPhase: state.combat ? "combat" : "player-turn",
   };
   state.phase = "choice";
   state.priorityPlayerId = playerId;
@@ -21776,15 +25754,24 @@ function performSpellDig(
 
 function applyActiveEffectAction(
   state: GameState,
-  action: Extract<GameAction, { type: "USE_ACTIVE_EFFECT" }>
+  action: Extract<GameAction, { type: "USE_ACTIVE_EFFECT" }>,
 ): void {
   const combat = state.combat;
-  const effect = state.activeEffects.find((candidate) => candidate.id === action.effectId);
-  if (!combat || !effect || effect.controllerId !== action.playerId || action.target.type !== "unit") {
+  const effect = state.activeEffects.find(
+    (candidate) => candidate.id === action.effectId,
+  );
+  if (
+    !combat ||
+    !effect ||
+    effect.controllerId !== action.playerId ||
+    action.target.type !== "unit"
+  ) {
     throw new Error("That active effect cannot be used now.");
   }
 
-  const healModifier = effect.modifiers.find((modifier) => modifier.type === "HEAL_ONCE_PER_COMBAT_ROUND");
+  const healModifier = effect.modifiers.find(
+    (modifier) => modifier.type === "HEAL_ONCE_PER_COMBAT_ROUND",
+  );
   const target = combat.units[action.target.unitId];
   if (
     !healModifier ||
@@ -21804,27 +25791,39 @@ function applyActiveEffectAction(
   // exclusive within a round. The volley size (`expertMax`) is read from the
   // First Aid card, so it stays the source of truth (mirrors Artillery/Ballista).
   const expertMax = firstAidVolleyHeals();
-  const usage = effect.healRound?.round === combat.round ? effect.healRound : undefined;
+  const usage =
+    effect.healRound?.round === combat.round ? effect.healRound : undefined;
   const mode = action.mode ?? "basic";
 
   if (mode === "expert") {
     if (usage || !playerCanUseFirstAidVolley(state, action.playerId)) {
-      throw new Error("First Aid's expert side needs the First Aid card and a free expert use this round.");
+      throw new Error(
+        "First Aid's expert side needs the First Aid card and a free expert use this round.",
+      );
     }
     spendFirstAidExpert(state, action.playerId);
     // Pin the volley to this first target: the card heals "the same target 3
     // times", so the follow-up heals below can only land on this unit.
-    effect.healRound = { round: combat.round, count: 1, expert: true, targetUnitId: action.target.unitId };
+    effect.healRound = {
+      round: combat.round,
+      count: 1,
+      expert: true,
+      targetUnitId: action.target.unitId,
+    };
   } else if (!usage) {
     effect.healRound = { round: combat.round, count: 1, expert: false };
   } else if (usage.expert && usage.count < expertMax) {
     // The expert volley resolves against the SAME target every time.
     if (usage.targetUnitId && usage.targetUnitId !== action.target.unitId) {
-      throw new Error("First Aid's expert volley must heal the same target each time.");
+      throw new Error(
+        "First Aid's expert volley must heal the same target each time.",
+      );
     }
     usage.count += 1;
   } else {
-    throw new Error("That active effect has already been used this combat round.");
+    throw new Error(
+      "That active effect has already been used this combat round.",
+    );
   }
 
   healUnitDamage(state, effect.source, action.target, healModifier.amount);
@@ -21833,7 +25832,7 @@ function applyActiveEffectAction(
     type: "ACTIVE_EFFECT_USED",
     effectId: effect.id,
     playerId: action.playerId,
-    target: action.target
+    target: action.target,
   });
 
   // Used as an instant inside an open reaction window (e.g. mending a wound the
@@ -21848,11 +25847,15 @@ function applyActiveEffectAction(
 
 function applyUnitAbilityAction(
   state: GameState,
-  action: Extract<GameAction, { type: "USE_UNIT_ABILITY" }>
+  action: Extract<GameAction, { type: "USE_UNIT_ABILITY" }>,
 ): void {
   const combat = state.combat;
   const unit = combat?.units[action.unitId];
-  const ability = unit ? getUnitAbilityDefinitions(unit).find((candidate) => candidate.id === action.abilityId) : undefined;
+  const ability = unit
+    ? getUnitAbilityDefinitions(unit).find(
+        (candidate) => candidate.id === action.abilityId,
+      )
+    : undefined;
 
   // The Dreadnought splash is an attack ALTERNATIVE, so — unlike the pre-move
   // "other actions" (token place, Summon Demons) — it stays available after an
@@ -21902,7 +25905,7 @@ function applyUnitAbilityAction(
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: unit.id,
       abilityId: ability.id,
-      message: `${unit.cardName} digs an obstacle at ${getBattlefieldLabel(action.target.position)}.`
+      message: `${unit.cardName} digs an obstacle at ${getBattlefieldLabel(action.target.position)}.`,
     });
     markActivatedThisRound(unit);
     advanceActiveUnit(state);
@@ -21913,7 +25916,10 @@ function applyUnitAbilityAction(
   // The mode is carried by the concrete legal action so healing and empowering
   // remain a real player choice even while a wounded ally is present.
   if (ability.effect?.type === "MGQ_WHITE_MAGIC_ACTION") {
-    const target = action.target.type === "unit" ? combat.units[action.target.unitId] : undefined;
+    const target =
+      action.target.type === "unit"
+        ? combat.units[action.target.unitId]
+        : undefined;
     if (
       unit.attackedThisActivation ||
       !target ||
@@ -21936,14 +25942,14 @@ function applyUnitAbilityAction(
         state,
         { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
         { type: "unit", unitId: target.id },
-        ability.effect.healAmount
+        ability.effect.healAmount,
       );
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: unit.id,
         abilityId: ability.id,
         targetUnitId: target.id,
-        message: `${unit.name} uses ${ability.name} to heal exactly ${ability.effect.healAmount} damage from ${target.name}.`
+        message: `${unit.name} uses ${ability.name} to heal exactly ${ability.effect.healAmount} damage from ${target.name}.`,
       });
     } else {
       createActiveEffect(
@@ -21954,18 +25960,20 @@ function applyUnitAbilityAction(
           duration: { type: "current-combat-round" },
           polarity: "positive",
           removable: true,
-          modifiers: [{ type: "ATTACK_BONUS", amount: ability.effect.attackBonus }]
+          modifiers: [
+            { type: "ATTACK_BONUS", amount: ability.effect.attackBonus },
+          ],
         },
         { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
         unit.controllerId,
-        { type: "unit", unitId: target.id }
+        { type: "unit", unitId: target.id },
       );
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: unit.id,
         abilityId: ability.id,
         targetUnitId: target.id,
-        message: `${unit.name} uses ${ability.name} to give ${target.name} +${ability.effect.attackBonus} Attack this round.`
+        message: `${unit.name} uses ${ability.name} to give ${target.name} +${ability.effect.attackBonus} Attack this round.`,
       });
     }
 
@@ -21977,7 +25985,10 @@ function applyUnitAbilityAction(
   // MGQ Mage Job: one free pre-movement Magic Arrow per combat. It does not
   // consume the activation, so the Mage may still move and attack afterward.
   if (ability.effect?.type === "MGQ_MAGE_MAGIC_ARROW_ACTION") {
-    const target = action.target.type === "unit" ? combat.units[action.target.unitId] : undefined;
+    const target =
+      action.target.type === "unit"
+        ? combat.units[action.target.unitId]
+        : undefined;
     if (
       unit.movedThisActivation ||
       unit.attackedThisActivation ||
@@ -21990,7 +26001,14 @@ function applyUnitAbilityAction(
       throw new Error("That Magic Arrow target or timing is not legal.");
     }
     unit.usedMgqMageMagicArrowThisCombat = true;
-    applyFlatAbilityDamage(state, unit, target.id, ability.id, ability.name, ability.effect.amount);
+    applyFlatAbilityDamage(
+      state,
+      unit,
+      target.id,
+      ability.id,
+      ability.name,
+      ability.effect.amount,
+    );
     finishCombatIfNeeded(state);
     return;
   }
@@ -22007,8 +26025,10 @@ function applyUnitAbilityAction(
       .filter((candidate) => {
         const sideOk =
           effect.targets === "any" ||
-          (effect.targets === "friendly" && candidate.controllerId === unit.controllerId) ||
-          (effect.targets === "enemy" && candidate.controllerId !== unit.controllerId);
+          (effect.targets === "friendly" &&
+            candidate.controllerId === unit.controllerId) ||
+          (effect.targets === "enemy" &&
+            candidate.controllerId !== unit.controllerId);
         return (
           sideOk &&
           isUnitAlive(candidate) &&
@@ -22018,7 +26038,8 @@ function applyUnitAbilityAction(
           // units are never the tower, and it is not a relocation the tower
           // refuses. Every other placement still skips the off-board tower.
           (effect.targets === "enemy" || !isArrowTowerUnit(candidate)) &&
-          (!effect.adjacentOnly || isAdjacent(unit.position, candidate.position)) &&
+          (!effect.adjacentOnly ||
+            isAdjacent(unit.position, candidate.position)) &&
           (!effect.targetTypes || effect.targetTypes.includes(candidate.type))
         );
       })
@@ -22027,7 +26048,12 @@ function applyUnitAbilityAction(
       throw new Error("That unit ability cannot be used now.");
     }
 
-    const sideWord = effect.targets === "enemy" ? "enemy " : effect.targets === "friendly" ? "friendly " : "";
+    const sideWord =
+      effect.targets === "enemy"
+        ? "enemy "
+        : effect.targets === "friendly"
+          ? "friendly "
+          : "";
     const choiceId = `choice_${nextEventNumber(state)}`;
     state.pendingChoice = {
       id: choiceId,
@@ -22044,7 +26070,7 @@ function applyUnitAbilityAction(
       tokenKind: effect.token,
       tokenRounds: effect.rounds,
       optional: true,
-      skipLabel: "Cancel"
+      skipLabel: "Cancel",
     };
     state.phase = "choice";
     state.priorityPlayerId = unit.controllerId;
@@ -22054,7 +26080,7 @@ function applyUnitAbilityAction(
       choiceType: "ABILITY_TARGET_CHOICE",
       playerId: unit.controllerId,
       sourceEffectIds: [],
-      message: `${unit.cardName} chooses where to place a ${ability.name}.`
+      message: `${unit.cardName} chooses where to place a ${ability.name}.`,
     });
     return;
   }
@@ -22069,14 +26095,24 @@ function applyUnitAbilityAction(
     const cast = commanderCastOf(unit);
     // The two defend buffs are instant reactions, never an activation cast
     // (they are played through USE_COMMANDER_CAST_REACTION when a unit is attacked).
-    if (!cast || commanderCastIsInstantReaction(cast) || unit.attackedThisActivation || commanderCastUsedThisRound(state, unit)) {
+    if (
+      !cast ||
+      commanderCastIsInstantReaction(cast) ||
+      unit.attackedThisActivation ||
+      commanderCastUsedThisRound(state, unit)
+    ) {
       throw new Error("That unit ability cannot be used now.");
     }
     const runeCost = commanderCastRuneCost(state, unit);
-    if (runeCost > 0 && commanderRunePool(state, unit.controllerId) < runeCost) {
+    if (
+      runeCost > 0 &&
+      commanderRunePool(state, unit.controllerId) < runeCost
+    ) {
       throw new Error(`${ability.name} needs ${runeCost} Runes.`);
     }
-    const candidateUnitIds = commanderCastCandidates(state, unit).map((candidate) => candidate.id);
+    const candidateUnitIds = commanderCastCandidates(state, unit).map(
+      (candidate) => candidate.id,
+    );
     if (candidateUnitIds.length === 0) {
       throw new Error("That unit ability cannot be used now.");
     }
@@ -22095,7 +26131,7 @@ function applyUnitAbilityAction(
       anchorUnitId: null,
       candidateUnitIds,
       optional: true,
-      skipLabel: "Cancel"
+      skipLabel: "Cancel",
     };
     state.phase = "choice";
     state.priorityPlayerId = unit.controllerId;
@@ -22105,7 +26141,7 @@ function applyUnitAbilityAction(
       choiceType: "ABILITY_TARGET_CHOICE",
       playerId: unit.controllerId,
       sourceEffectIds: [],
-      message: `${unit.cardName} chooses a target for ${ability.name}.`
+      message: `${unit.cardName} chooses a target for ${ability.name}.`,
     });
     return;
   }
@@ -22120,7 +26156,9 @@ function applyUnitAbilityAction(
     if (unit.attackedThisActivation) {
       throw new Error("That unit ability cannot be used now.");
     }
-    const adjacent = getUnitsAdjacentTo(combat, unit).filter((candidate) => !isArrowTowerUnit(candidate));
+    const adjacent = getUnitsAdjacentTo(combat, unit).filter(
+      (candidate) => !isArrowTowerUnit(candidate),
+    );
     if (adjacent.length === 0) {
       throw new Error("That unit ability cannot be used now.");
     }
@@ -22130,12 +26168,15 @@ function applyUnitAbilityAction(
       ability.id,
       ability.name,
       adjacent.map((candidate) => candidate.id),
-      ability.effect.damageValues
+      ability.effect.damageValues,
     );
     return;
   }
 
-  const target = action.target.type === "unit" ? combat.units[action.target.unitId] : undefined;
+  const target =
+    action.target.type === "unit"
+      ? combat.units[action.target.unitId]
+      : undefined;
   if (!target || !isUnitAlive(target)) {
     throw new Error("That unit ability cannot be used now.");
   }
@@ -22144,7 +26185,10 @@ function applyUnitAbilityAction(
     throw new Error("That unit ability cannot be used now.");
   }
 
-  if (target.controllerId !== action.playerId || !ability.effect.targetTypes.includes(target.type)) {
+  if (
+    target.controllerId !== action.playerId ||
+    !ability.effect.targetTypes.includes(target.type)
+  ) {
     throw new Error("That unit ability cannot be used now.");
   }
 
@@ -22159,17 +26203,17 @@ function applyUnitAbilityAction(
       modifiers: [
         {
           type: "ATTACK_BONUS",
-          amount: ability.effect.amount
-        }
-      ]
+          amount: ability.effect.amount,
+        },
+      ],
     },
     {
       type: "unit",
       unitId: unit.id,
-      controllerId: action.playerId
+      controllerId: action.playerId,
     },
     action.playerId,
-    { type: "unit", unitId: target.id }
+    { type: "unit", unitId: target.id },
   );
 
   if (ability.effect.preventsMovement) {
@@ -22181,15 +26225,15 @@ function applyUnitAbilityAction(
         duration: { type: "current-combat-round" },
         polarity: "neutral",
         removable: false,
-        modifiers: [{ type: "UNIT_CANNOT_MOVE" }]
+        modifiers: [{ type: "UNIT_CANNOT_MOVE" }],
       },
       {
         type: "unit",
         unitId: unit.id,
-        controllerId: action.playerId
+        controllerId: action.playerId,
       },
       action.playerId,
-      { type: "unit", unitId: unit.id }
+      { type: "unit", unitId: unit.id },
     );
   }
 
@@ -22198,7 +26242,7 @@ function applyUnitAbilityAction(
     unitId: unit.id,
     abilityId: ability.id,
     targetUnitId: target.id,
-    message: `${unit.name} uses ${ability.name} on ${target.name}.`
+    message: `${unit.name} uses ${ability.name} on ${target.name}.`,
   });
 
   if (ability.effect.endsActivation) {
@@ -22215,7 +26259,10 @@ function applyUnitAbilityAction(
  * living unit, an obstacle token, or a siege Wall/Gate. Shared by the Summon
  * Elemental spell's resolution and its legal-target enumeration.
  */
-export function isSpaceBlockedForSummon(combat: CombatState, position: number): boolean {
+export function isSpaceBlockedForSummon(
+  combat: CombatState,
+  position: number,
+): boolean {
   if (!isBattlefieldPosition(position)) {
     return true;
   }
@@ -22224,13 +26271,22 @@ export function isSpaceBlockedForSummon(combat: CombatState, position: number): 
   }
   // Any spell token (Force Field / Fire Wall / Quicksand / Land Mine) holds a
   // space: a unit cannot be summoned or teleported onto it.
-  if ((combat.battlefieldTokens ?? []).some((token) => token.position === position)) {
+  if (
+    (combat.battlefieldTokens ?? []).some(
+      (token) => token.position === position,
+    )
+  ) {
     return true;
   }
-  if (combat.siege?.walls.includes(position) || combat.siege?.gatePosition === position) {
+  if (
+    combat.siege?.walls.includes(position) ||
+    combat.siege?.gatePosition === position
+  ) {
     return true;
   }
-  return Object.values(combat.units).some((unit) => isUnitAlive(unit) && unit.position === position);
+  return Object.values(combat.units).some(
+    (unit) => isUnitAlive(unit) && unit.position === position,
+  );
 }
 
 /**
@@ -22244,11 +26300,16 @@ function placeSummonedUnit(
   playerId: PlayerId,
   unitDefId: string,
   side: "few" | "pack",
-  position: number
+  position: number,
 ): CombatUnitState | null {
   const combat = state.combat;
   const player = state.players[playerId];
-  if (!combat || !player || isSpaceBlockedForSummon(combat, position) || !getUnitSide(unitDefId, side)) {
+  if (
+    !combat ||
+    !player ||
+    isSpaceBlockedForSummon(combat, position) ||
+    !getUnitSide(unitDefId, side)
+  ) {
     return null;
   }
 
@@ -22259,7 +26320,7 @@ function placeSummonedUnit(
     `unit_${playerId}_${armyUnit.id}`,
     position,
     getRuleset(state),
-    unitSideRuleOverrides(state)
+    unitSideRuleOverrides(state),
   );
   if (!summoned) {
     return null;
@@ -22289,20 +26350,28 @@ function placeCloneUnit(
   state: GameState,
   playerId: PlayerId,
   original: CombatUnitState,
-  position: number
+  position: number,
 ): CombatUnitState | null {
   const combat = state.combat;
-  if (!combat || isSpaceBlockedForSummon(combat, position) || !original.unitDefId) {
+  if (
+    !combat ||
+    isSpaceBlockedForSummon(combat, position) ||
+    !original.unitDefId
+  ) {
     return null;
   }
 
   const clone = makeCombatUnitFromArmy(
-    { id: `clonetoken_${nextEventNumber(state)}`, unitDefId: original.unitDefId, side: original.variant },
+    {
+      id: `clonetoken_${nextEventNumber(state)}`,
+      unitDefId: original.unitDefId,
+      side: original.variant,
+    },
     playerId,
     `unit_${playerId}_clone_${nextEventNumber(state)}`,
     position,
     getRuleset(state),
-    unitSideRuleOverrides(state)
+    unitSideRuleOverrides(state),
   );
   if (!clone) {
     return null;
@@ -22327,10 +26396,17 @@ function placeCloneUnit(
  * First empty cell on the player's side of the board (back row first, so a
  * borrowed ranged unit lands in the back), falling back to any free cell.
  */
-function findBorrowDeploymentCell(combat: CombatState, playerId: PlayerId): number | undefined {
+function findBorrowDeploymentCell(
+  combat: CombatState,
+  playerId: PlayerId,
+): number | undefined {
   const region =
-    playerId === combat.attackerPlayerId ? [16, 17, 18, 19, 12, 13, 14, 15] : [0, 1, 2, 3, 4, 5, 6, 7];
-  const inRegion = region.find((position) => !isSpaceBlockedForSummon(combat, position));
+    playerId === combat.attackerPlayerId
+      ? [16, 17, 18, 19, 12, 13, 14, 15]
+      : [0, 1, 2, 3, 4, 5, 6, 7];
+  const inRegion = region.find(
+    (position) => !isSpaceBlockedForSummon(combat, position),
+  );
   if (inRegion !== undefined) {
     return inRegion;
   }
@@ -22354,7 +26430,7 @@ function borrowNeutralUnit(
   state: GameState,
   playerId: PlayerId,
   unitDefId: string,
-  tier: "bronze" | "silver" | "gold" | "azure"
+  tier: "bronze" | "silver" | "gold" | "azure",
 ): CombatUnitState | null {
   const combat = state.combat;
   const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
@@ -22376,12 +26452,16 @@ function borrowNeutralUnit(
     position === undefined
       ? null
       : makeCombatUnitFromArmy(
-          { id: `borrow_${nextEventNumber(state)}`, unitDefId, side: "neutral" },
+          {
+            id: `borrow_${nextEventNumber(state)}`,
+            unitDefId,
+            side: "neutral",
+          },
           playerId,
           `unit_${playerId}_borrow_${nextEventNumber(state)}`,
           position,
           getRuleset(state),
-          unitSideRuleOverrides(state)
+          unitSideRuleOverrides(state),
         );
   if (!unit) {
     // Could not place it: return the borrowed card to the discard pile and bail.
@@ -22422,7 +26502,7 @@ function cardsAsAttackBonusFor(state: GameState, playerId: PlayerId): number {
  */
 function convertCardToAttack(
   state: GameState,
-  action: Extract<GameAction, { type: "CONVERT_CARD_TO_ATTACK" }>
+  action: Extract<GameAction, { type: "CONVERT_CARD_TO_ATTACK" }>,
 ): void {
   const player = state.players[action.playerId];
   const amount = cardsAsAttackBonusFor(state, action.playerId);
@@ -22435,12 +26515,16 @@ function convertCardToAttack(
   }
   const stackItem = state.stack.at(-1);
   const attackerId =
-    stackItem && (stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT")
+    stackItem &&
+    (stackItem.action.type === "ATTACK_UNIT" ||
+      stackItem.action.type === "MOVE_AND_ATTACK_UNIT")
       ? stackItem.action.attackerId
       : null;
   const attacker = attackerId ? state.combat?.units[attackerId] : undefined;
   if (!stackItem || !attacker || attacker.controllerId !== action.playerId) {
-    throw new Error("Convert a card while one of your units' attacks waits to resolve.");
+    throw new Error(
+      "Convert a card while one of your units' attacks waits to resolve.",
+    );
   }
   if (stackItem.modifiers.negateAttackBuffs) {
     throw new Error("This attack cannot be buffed.");
@@ -22455,7 +26539,7 @@ function convertCardToAttack(
     cardId: action.cardId,
     timing: cardLibrary[action.cardId]?.timing ?? "instant",
     mode: "basic",
-    optionLabel: `Offense VI: +${amount} attack instead`
+    optionLabel: `Offense VI: +${amount} attack instead`,
   });
 }
 
@@ -22473,7 +26557,11 @@ function convertCardToAttack(
  * if it runs out mid-dig (per the rules). Returns the cards dug this way; the
  * caller routes them to the hand/discard.
  */
-function discardFromDeckTop(state: GameState, playerId: PlayerId, count: number): CardId[] {
+function discardFromDeckTop(
+  state: GameState,
+  playerId: PlayerId,
+  count: number,
+): CardId[] {
   return digFromOwnDeckTop(state, playerId, count, "genie-reshuffle").cardIds;
 }
 
@@ -22487,7 +26575,7 @@ function runGenieDeckDraw(
   state: GameState,
   unit: CombatUnitState,
   ability: { abilityId: string; abilityName: string; count: number },
-  mode: "other-action" | "on-attack"
+  mode: "other-action" | "on-attack",
 ): boolean {
   const player = state.players[unit.controllerId];
   if (!player) {
@@ -22513,7 +26601,7 @@ function runGenieDeckDraw(
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: unit.id,
     abilityId: ability.abilityId,
-    message: `${unit.cardName} discards ${dug.length} card${dug.length === 1 ? "" : "s"} from the deck for ${ability.abilityName}.`
+    message: `${unit.cardName} discards ${dug.length} card${dug.length === 1 ? "" : "s"} from the deck for ${ability.abilityName}.`,
   });
 
   // No choice to make: take the single Spell (if any) to hand, the rest to
@@ -22532,7 +26620,7 @@ function runGenieDeckDraw(
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: unit.id,
         abilityId: ability.abilityId,
-        message: `${player.name} takes ${cardLibrary[taken]?.name ?? taken} to hand.`
+        message: `${player.name} takes ${cardLibrary[taken]?.name ?? taken} to hand.`,
       });
     }
     return false;
@@ -22550,10 +26638,17 @@ function runGenieDeckDraw(
     type: "OPTION_CHOICE",
     playerId: unit.controllerId,
     prompt: `${ability.abilityName}: take one Spell to your hand; the rest go to your discard pile.`,
-    options: spells.map((cardId) => ({ label: `Take ${cardLibrary[cardId]?.name ?? cardId}` })),
+    options: spells.map((cardId) => ({
+      label: `Take ${cardLibrary[cardId]?.name ?? cardId}`,
+    })),
     context: "genie-take-spell",
-    genieTakeSpell: { spellCardIds: spells, unitId: unit.id, mode, abilityId: ability.abilityId },
-    returnPhase: "combat"
+    genieTakeSpell: {
+      spellCardIds: spells,
+      unitId: unit.id,
+      mode,
+      abilityId: ability.abilityId,
+    },
+    returnPhase: "combat",
   };
   state.phase = "choice";
   state.priorityPlayerId = unit.controllerId;
@@ -22561,7 +26656,11 @@ function runGenieDeckDraw(
 }
 
 /** Tower Genies (Pack): the after-attack "Wish". Returns true when it paused combat. */
-function openGenieSpellDraw(state: GameState, attacker: CombatUnitState, isRetaliation: boolean): boolean {
+function openGenieSpellDraw(
+  state: GameState,
+  attacker: CombatUnitState,
+  isRetaliation: boolean,
+): boolean {
   if (isRetaliation || !state.combat) {
     return false;
   }
@@ -22575,7 +26674,7 @@ function openGenieSpellDraw(state: GameState, attacker: CombatUnitState, isRetal
 /** Tower Genies (Few): the "Wish" used as an other action (instead of moving/attacking). */
 function applyGenieDeckDraw(
   state: GameState,
-  action: Extract<GameAction, { type: "USE_GENIE_DECK_DRAW" }>
+  action: Extract<GameAction, { type: "USE_GENIE_DECK_DRAW" }>,
 ): void {
   const combat = state.combat;
   const unit = combat?.units[action.unitId];
@@ -22612,7 +26711,7 @@ function applyGenieDeckDraw(
  */
 function resolveGenieTakeSpell(
   state: GameState,
-  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>
+  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>,
 ): void {
   const choice = state.pendingChoice;
   if (
@@ -22637,12 +26736,14 @@ function resolveGenieTakeSpell(
   // runGenieDeckDraw: under that rule the takeable card is a Cast a Spell enabler,
   // and the Wish never refreshes a Book Spell).
   player.hand.push(chosen);
-  player.discard.push(...pick.spellCardIds.filter((_, index) => index !== action.optionIndex));
+  player.discard.push(
+    ...pick.spellCardIds.filter((_, index) => index !== action.optionIndex),
+  );
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: pick.unitId,
     abilityId: pick.abilityId,
-    message: `${player.name} takes ${cardLibrary[chosen]?.name ?? chosen} to hand.`
+    message: `${player.name} takes ${cardLibrary[chosen]?.name ?? chosen} to hand.`,
   });
 
   state.pendingChoice = null;
@@ -22661,12 +26762,17 @@ function resolveGenieTakeSpell(
   }
 }
 
-function summonDemons(state: GameState, action: Extract<GameAction, { type: "SUMMON_DEMONS" }>): void {
+function summonDemons(
+  state: GameState,
+  action: Extract<GameAction, { type: "SUMMON_DEMONS" }>,
+): void {
   const combat = state.combat;
   const unit = combat?.units[action.unitId];
   const player = state.players[action.playerId];
   const ability = unit
-    ? getUnitAbilityDefinitions(unit).find((candidate) => candidate.effect?.type === "SUMMON_OR_REINFORCE_DEMONS")
+    ? getUnitAbilityDefinitions(unit).find(
+        (candidate) => candidate.effect?.type === "SUMMON_OR_REINFORCE_DEMONS",
+      )
     : undefined;
 
   if (
@@ -22697,10 +26803,12 @@ function summonDemons(state: GameState, action: Extract<GameAction, { type: "SUM
         (candidate) =>
           candidate.controllerId === action.playerId &&
           isUnitAlive(candidate) &&
-          candidate.unitDefId === demonDefId
+          candidate.unitDefId === demonDefId,
       );
       if (alreadyHasDemons) {
-        throw new Error("Only one Demons unit may stand on the field (official rule). Reinforce a Few instead, or enable the multi-demon house rule.");
+        throw new Error(
+          "Only one Demons unit may stand on the field (official rule). Reinforce a Few instead, or enable the multi-demon house rule.",
+        );
       }
     }
     const position = action.position;
@@ -22709,7 +26817,10 @@ function summonDemons(state: GameState, action: Extract<GameAction, { type: "SUM
       !isBattlefieldPosition(position) ||
       !getOrthogonalNeighbors(unit.position).includes(position) ||
       (combat.obstacles ?? []).includes(position) ||
-      Object.values(combat.units).some((candidate) => isUnitAlive(candidate) && candidate.position === position)
+      Object.values(combat.units).some(
+        (candidate) =>
+          isUnitAlive(candidate) && candidate.position === position,
+      )
     ) {
       throw new Error("Demons must be summoned onto an empty adjacent space.");
     }
@@ -22724,7 +26835,7 @@ function summonDemons(state: GameState, action: Extract<GameAction, { type: "SUM
       `unit_${action.playerId}_${armyUnit.id}`,
       position,
       ruleset,
-      unitSideRuleOverrides(state)
+      unitSideRuleOverrides(state),
     );
     if (!summoned) {
       throw new Error("Those Demons cannot be summoned.");
@@ -22739,7 +26850,7 @@ function summonDemons(state: GameState, action: Extract<GameAction, { type: "SUM
       unitId: unit.id,
       abilityId: ability.id,
       targetUnitId: summoned.id,
-      message: `${unit.cardName} summons ${summoned.cardName} at ${getBattlefieldLabel(position)}.`
+      message: `${unit.cardName} summons ${summoned.cardName} at ${getBattlefieldLabel(position)}.`,
     });
   } else if (action.mode === "stack") {
     // Polish / Anime Unit Stacks: add one free Stack layer to a living Pack of
@@ -22748,7 +26859,9 @@ function summonDemons(state: GameState, action: Extract<GameAction, { type: "SUM
     if (!armyUnitStacksActive(state)) {
       throw new Error("Unit Stacks are not enabled for this game.");
     }
-    const targetUnit = action.targetUnitId ? combat.units[action.targetUnitId] : undefined;
+    const targetUnit = action.targetUnitId
+      ? combat.units[action.targetUnitId]
+      : undefined;
     if (
       !targetUnit ||
       targetUnit.controllerId !== action.playerId ||
@@ -22756,9 +26869,13 @@ function summonDemons(state: GameState, action: Extract<GameAction, { type: "SUM
       targetUnit.unitDefId !== demonDefId ||
       targetUnit.variant !== "pack"
     ) {
-      throw new Error("Only a friendly Pack of Demons can gain a Stack from Summon Demons.");
+      throw new Error(
+        "Only a friendly Pack of Demons can gain a Stack from Summon Demons.",
+      );
     }
-    const armyUnit = player.army.find((candidate) => candidate.id === targetUnit.armyUnitId);
+    const armyUnit = player.army.find(
+      (candidate) => candidate.id === targetUnit.armyUnitId,
+    );
     if (armyUnit) {
       if (!polishArmyUnitCanBuyStack(armyUnit)) {
         throw new Error("Those Demons are already at their Stack cap.");
@@ -22789,10 +26906,12 @@ function summonDemons(state: GameState, action: Extract<GameAction, { type: "SUM
       targetUnitId: targetUnit.id,
       message: `${unit.cardName} stacks ${targetUnit.cardName} (${targetUnit.armyStacks ?? 0} Stack${
         (targetUnit.armyStacks ?? 0) === 1 ? "" : "s"
-      }).`
+      }).`,
     });
   } else {
-    const targetUnit = action.targetUnitId ? combat.units[action.targetUnitId] : undefined;
+    const targetUnit = action.targetUnitId
+      ? combat.units[action.targetUnitId]
+      : undefined;
     if (
       !targetUnit ||
       targetUnit.controllerId !== action.playerId ||
@@ -22801,18 +26920,27 @@ function summonDemons(state: GameState, action: Extract<GameAction, { type: "SUM
       targetUnit.variant !== "few" ||
       !getUnitSide(demonDefId, "pack")
     ) {
-      throw new Error("Only a friendly Few of Demons can be reinforced to a Pack.");
+      throw new Error(
+        "Only a friendly Few of Demons can be reinforced to a Pack.",
+      );
     }
 
     targetUnit.variant = "pack";
     // Mirror onto the backing army card so the reinforcement survives the combat.
-    const armyUnit = player.army.find((candidate) => candidate.id === targetUnit.armyUnitId);
+    const armyUnit = player.army.find(
+      (candidate) => candidate.id === targetUnit.armyUnitId,
+    );
     if (armyUnit) {
       armyUnit.side = "pack";
       // Unit Experience: the conjured demon bodies dilute the veterans like
       // any other Few→Pack reinforcement; mirror the new XP onto the combat
       // unit BEFORE the side recompute below so its rank folds stay in sync.
-      diluteUnitExperienceForUpgrade(state, action.playerId, armyUnit, "reinforce");
+      diluteUnitExperienceForUpgrade(
+        state,
+        action.playerId,
+        armyUnit,
+        "reinforce",
+      );
       if (armyUnit.experience) {
         targetUnit.unitExperience = armyUnit.experience;
       } else {
@@ -22826,7 +26954,7 @@ function summonDemons(state: GameState, action: Extract<GameAction, { type: "SUM
       unitId: unit.id,
       abilityId: ability.id,
       targetUnitId: targetUnit.id,
-      message: `${unit.cardName} reinforces ${targetUnit.cardName}.`
+      message: `${unit.cardName} reinforces ${targetUnit.cardName}.`,
     });
   }
 
@@ -22843,7 +26971,11 @@ function summonDemons(state: GameState, action: Extract<GameAction, { type: "SUM
  * choice, Power 1 removes 2, Power 2 deals 1 damage to every unit adjacent
  * to a fortification and brings them all down at once.
  */
-function resolveEarthquakeSpell(state: GameState, playerId: PlayerId, power: number): void {
+function resolveEarthquakeSpell(
+  state: GameState,
+  playerId: PlayerId,
+  power: number,
+): void {
   const combat = state.combat;
   const siege = combat?.siege;
   if (!combat || !siege) {
@@ -22867,13 +26999,18 @@ function resolveEarthquakeSpell(state: GameState, playerId: PlayerId, power: num
         source: { type: "system" },
         target: { type: "unit", unitId: unit.id },
         amount: dealt,
-        damageKind: "spell"
+        damageKind: "spell",
       });
       markUnitRemovedIfNeeded(state, unit);
     }
 
     for (const position of positions) {
-      destroyFortification(state, null, siege.gatePosition === position ? "gate" : "wall", position);
+      destroyFortification(
+        state,
+        null,
+        siege.gatePosition === position ? "gate" : "wall",
+        position,
+      );
     }
     finishCombatIfNeeded(state);
     return;
@@ -22890,7 +27027,7 @@ function resolveEarthquakeSpell(state: GameState, playerId: PlayerId, power: num
  */
 function attackFortification(
   state: GameState,
-  action: Extract<GameAction, { type: "ATTACK_FORTIFICATION" }>
+  action: Extract<GameAction, { type: "ATTACK_FORTIFICATION" }>,
 ): void {
   const combat = state.combat;
   const siege = combat?.siege;
@@ -22899,15 +27036,23 @@ function attackFortification(
     throw new Error("There is no siege fortification to attack.");
   }
 
-  if (combat.activeUnitId !== unit.id || unit.activatedThisRound || unit.attackedThisActivation) {
-    throw new Error("Only the active unit may attack fortifications, before its attack.");
+  if (
+    combat.activeUnitId !== unit.id ||
+    unit.activatedThisRound ||
+    unit.attackedThisActivation
+  ) {
+    throw new Error(
+      "Only the active unit may attack fortifications, before its attack.",
+    );
   }
 
   const demolish = getDemolishAbility(unit);
 
   if (action.target.kind === "arrow-tower") {
     if (!demolish?.canTargetArrowTower) {
-      throw new Error("Only a unit with the demolish ability can level the Arrow Tower this way.");
+      throw new Error(
+        "Only a unit with the demolish ability can level the Arrow Tower this way.",
+      );
     }
     if (!siege.arrowTowerUnitId) {
       throw new Error("The Arrow Tower is already gone.");
@@ -22926,14 +27071,21 @@ function attackFortification(
       // "…destroyed by any adjacent ground or flying unit's attack, even by
       // your own defending units."
       if (unit.type === "ranged") {
-        throw new Error("Ranged units cannot tear down walls (the Cyclops' ability is the exception).");
+        throw new Error(
+          "Ranged units cannot tear down walls (the Cyclops' ability is the exception).",
+        );
       }
       if (!isAdjacent(unit.position, action.target.position)) {
         throw new Error("The unit must be adjacent to the Wall or Gate.");
       }
     }
 
-    destroyFortification(state, unit, action.target.kind, action.target.position);
+    destroyFortification(
+      state,
+      unit,
+      action.target.kind,
+      action.target.position,
+    );
   }
 
   // The demolition replaces the unit's attack for this activation.
@@ -22947,7 +27099,7 @@ function attackFortification(
 
 function rerollPendingChoice(
   state: GameState,
-  action: Extract<GameAction, { type: "REROLL_PENDING_CHOICE" }>
+  action: Extract<GameAction, { type: "REROLL_PENDING_CHOICE" }>,
 ): void {
   const choice = state.pendingChoice;
   const combat = state.combat;
@@ -22967,19 +27119,30 @@ function rerollPendingChoice(
   const source = choice.rerollSources.find(
     (candidate) =>
       rerollSourceAvailableFor(candidate, currentRoll) &&
-      (action.useSetDie ? candidate.setDieFace !== undefined : candidate.setDieFace === undefined)
+      (action.useSetDie
+        ? candidate.setDieFace !== undefined
+        : candidate.setDieFace === undefined),
   );
   if (!source) {
-    throw new Error(action.useSetDie ? "No set-die morale card remains for that choice." : "No rerolls remain for that choice.");
+    throw new Error(
+      action.useSetDie
+        ? "No set-die morale card remains for that choice."
+        : "No rerolls remain for that choice.",
+    );
   }
 
   // An ability-roll window ranks dice by the ability's SUCCESS WINDOW (a
   // Death Stare wants "-1"s); the attack window keeps its roll-mode aggregate.
   const abilityWindow: AbilityRollWindow | null = choice.abilityRoll
-    ? { minRoll: choice.abilityRoll.minRoll, maxRoll: choice.abilityRoll.maxRoll }
+    ? {
+        minRoll: choice.abilityRoll.minRoll,
+        maxRoll: choice.abilityRoll.maxRoll,
+      }
     : null;
   const outcomeOf = (rolls: number[]): number =>
-    abilityWindow ? abilityRollScore(rolls, abilityWindow) : aggregateCandidateRoll(rolls, choice.rollMode);
+    abilityWindow
+      ? abilityRollScore(rolls, abilityWindow)
+      : aggregateCandidateRoll(rolls, choice.rollMode);
 
   const latest = choice.candidates.at(-1);
   const candidate =
@@ -22992,17 +27155,23 @@ function rerollPendingChoice(
           let flipIndex = 0;
           let flippedOutcome = Number.NEGATIVE_INFINITY;
           latest.rolls.forEach((_, index) => {
-            const flipped = latest.rolls.map((roll, at) => (at === index ? face : roll));
+            const flipped = latest.rolls.map((roll, at) =>
+              at === index ? face : roll,
+            );
             const outcome = outcomeOf(flipped);
             if (outcome > flippedOutcome) {
               flippedOutcome = outcome;
               flipIndex = index;
             }
           });
-          const rolls = latest.rolls.map((roll, at) => (at === flipIndex ? face : roll));
+          const rolls = latest.rolls.map((roll, at) =>
+            at === flipIndex ? face : roll,
+          );
           return {
             rolls,
-            roll: abilityWindow ? (rolls[0] ?? 0) : aggregateCandidateRoll(rolls, choice.rollMode),
+            roll: abilityWindow
+              ? (rolls[0] ?? 0)
+              : aggregateCandidateRoll(rolls, choice.rollMode),
             ...(abilityWindow ? { sumAllDice: true } : {}),
             // The set die reshapes the LATEST throw, so that throw's earlier
             // adjustments still describe these dice — carry them forward.
@@ -23012,13 +27181,20 @@ function rerollPendingChoice(
                 // Morale set-die cards keep their pinned "Positive Morale"
                 // label; a card-based set source (Lucky E IV/VI) names itself.
                 source: source.cardId ? source.name : "Positive Morale",
-                text: `one die is set to the "${face > 0 ? `+${face}` : face}" side`
-              }
-            ]
+                text: `one die is set to the "${face > 0 ? `+${face}` : face}" side`,
+              },
+            ],
           } satisfies AttackRollCandidate;
         })()
       : choice.abilityRoll && abilityWindow
-        ? throwAbilityRerollCandidate(combat, choice.abilityRoll, source, latest, abilityWindow, action.dieIndex)
+        ? throwAbilityRerollCandidate(
+            combat,
+            choice.abilityRoll,
+            source,
+            latest,
+            abilityWindow,
+            action.dieIndex,
+          )
         : rollAttackCandidate(combat, choice.rollMode);
   if (choice.abilityRoll && source.setDieFace === undefined) {
     candidate.roll = candidate.rolls[0] ?? 0;
@@ -23036,16 +27212,34 @@ function rerollPendingChoice(
     for (let index = 1; index < source.rollExtraCandidates; index += 1) {
       const extra =
         choice.abilityRoll && abilityWindow
-          ? throwAbilityRerollCandidate(combat, choice.abilityRoll, source, latest, abilityWindow, action.dieIndex)
+          ? throwAbilityRerollCandidate(
+              combat,
+              choice.abilityRoll,
+              source,
+              latest,
+              abilityWindow,
+              action.dieIndex,
+            )
           : rollAttackCandidate(combat, choice.rollMode);
       if (choice.abilityRoll) {
         extra.roll = extra.rolls[0] ?? 0;
       }
       if (abilityWindow) {
-        applyAbilityDiceCurses(state, action.playerId, extra, abilityWindow, true);
+        applyAbilityDiceCurses(
+          state,
+          action.playerId,
+          extra,
+          abilityWindow,
+          true,
+        );
       } else {
         applyMoraleDiceCurses(state, action.playerId, extra, choice.rollMode);
-        applyEnemyPlusOneRerolls(state, action.playerId, extra, choice.rollMode);
+        applyEnemyPlusOneRerolls(
+          state,
+          action.playerId,
+          extra,
+          choice.rollMode,
+        );
       }
       extraCandidates.push(extra);
     }
@@ -23061,10 +27255,21 @@ function rerollPendingChoice(
   // A fresh face may be the first "+1" of this attack — the holder's own
   // Negative Morale reroll-the-"+1" curse (if still held) triggers on it.
   if (abilityWindow) {
-    applyAbilityDiceCurses(state, action.playerId, candidate, abilityWindow, true);
+    applyAbilityDiceCurses(
+      state,
+      action.playerId,
+      candidate,
+      abilityWindow,
+      true,
+    );
   } else {
     applyMoraleDiceCurses(state, action.playerId, candidate, choice.rollMode);
-    applyEnemyPlusOneRerolls(state, action.playerId, candidate, choice.rollMode);
+    applyEnemyPlusOneRerolls(
+      state,
+      action.playerId,
+      candidate,
+      choice.rollMode,
+    );
   }
   choice.candidates.push(candidate);
   for (const extra of extraCandidates) {
@@ -23078,7 +27283,7 @@ function rerollPendingChoice(
   source.used += 1;
   choice.remainingRerolls = countAvailableRerolls(
     choice.rerollSources,
-    choice.candidates.at(-1)?.roll ?? candidate.roll
+    choice.candidates.at(-1)?.roll ?? candidate.roll,
   );
 
   // The morale token is discarded the moment its reroll is taken.
@@ -23086,18 +27291,27 @@ function rerollPendingChoice(
     const player = state.players[action.playerId];
     if (player && player.morale > 0) {
       player.morale -= 1;
-      appendEvent(state, { type: "MORALE_SPENT", playerId: action.playerId, benefit: "reroll" });
+      appendEvent(state, {
+        type: "MORALE_SPENT",
+        playerId: action.playerId,
+        benefit: "reroll",
+      });
       appendEvent(state, {
         type: "MORALE_CHANGED",
         playerId: action.playerId,
         amount: -1,
-        total: player.morale
+        total: player.morale,
       });
     }
   }
 
   if (source.moraleCardId && source.used === 1) {
-    returnHeldMoraleCardToDeckBottom(state, action.playerId, source.moraleCardId, "used");
+    returnHeldMoraleCardToDeckBottom(
+      state,
+      action.playerId,
+      source.moraleCardId,
+      "used",
+    );
   }
 
   // Anime Cultivation Core Formation reroll: spent once per combat — latch the
@@ -23113,10 +27327,16 @@ function rerollPendingChoice(
   if (source.equipmentId && source.used === 1) {
     const player = state.players[action.playerId];
     if (player && source.equipmentUseScope === "round") {
-      player.equipmentRoundUses = { ...(player.equipmentRoundUses ?? {}), [source.equipmentId]: state.round };
+      player.equipmentRoundUses = {
+        ...(player.equipmentRoundUses ?? {}),
+        [source.equipmentId]: state.round,
+      };
     } else if (player && source.equipmentUseScope === "combat") {
       player.combatStats.equipmentUsesThisCombat = [
-        ...new Set([...(player.combatStats.equipmentUsesThisCombat ?? []), source.equipmentId])
+        ...new Set([
+          ...(player.combatStats.equipmentUsesThisCombat ?? []),
+          source.equipmentId,
+        ]),
       ];
     }
   }
@@ -23137,7 +27357,10 @@ function rerollPendingChoice(
         cardId: source.cardId,
         timing: cardLibrary[source.cardId]?.timing ?? "instant",
         mode: "basic",
-        optionLabel: source.setDieFace !== undefined ? 'Set a die to the "+1" side' : "Reroll a die"
+        optionLabel:
+          source.setDieFace !== undefined
+            ? 'Set a die to the "+1" side'
+            : "Reroll a die",
       });
     }
     for (const sibling of choice.rerollSources) {
@@ -23145,7 +27368,10 @@ function rerollPendingChoice(
         sibling.remaining = 0;
       }
     }
-    choice.remainingRerolls = countAvailableRerolls(choice.rerollSources, candidate.roll);
+    choice.remainingRerolls = countAvailableRerolls(
+      choice.rerollSources,
+      candidate.roll,
+    );
   }
 
   appendEvent(state, {
@@ -23155,7 +27381,7 @@ function rerollPendingChoice(
     rolls: candidate.rolls,
     roll: candidate.roll,
     remainingRerolls: choice.remainingRerolls,
-    sourceName: source.name
+    sourceName: source.name,
   });
 
   state.phase = "choice";
@@ -23165,7 +27391,7 @@ function rerollPendingChoice(
 function choosePendingRoll(
   state: GameState,
   action: Extract<GameAction, { type: "CHOOSE_PENDING_ROLL" }>,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   const choice = state.pendingChoice;
   if (
@@ -23186,8 +27412,13 @@ function choosePendingRoll(
   // earlier rolls are gone for good. Polish Balance Pack Cards of Prophecy is the
   // ONE exception: its printed "roll it 3 times and resolve 1 chosen result"
   // unlocks a free pick among every candidate in this window.
-  if (!choice.freeCandidateChoice && action.candidateIndex !== choice.candidates.length - 1) {
-    throw new Error("A reroll replaces the previous result — only the latest roll counts.");
+  if (
+    !choice.freeCandidateChoice &&
+    action.candidateIndex !== choice.candidates.length - 1
+  ) {
+    throw new Error(
+      "A reroll replaces the previous result — only the latest roll counts.",
+    );
   }
 
   // An ability-roll window (Death Stare & co.): the attack's stack item is
@@ -23225,7 +27456,7 @@ function resolveAbilityRollKeep(
   state: GameState,
   cards: CardLibrary,
   context: PendingAbilityRollContext,
-  candidate: AttackRollCandidate
+  candidate: AttackRollCandidate,
 ): void {
   // kind "spell-dice" (Community Inferno): the roll belongs to a SPELL whose
   // stack item is long gone — the kept dice land the parked blast and nothing
@@ -23238,7 +27469,7 @@ function resolveAbilityRollKeep(
         context.spellResume.playerId,
         spell,
         context.spellResume.position,
-        candidate.rolls
+        candidate.rolls,
       );
       finishCombatIfNeeded(state);
     }
@@ -23258,7 +27489,7 @@ function resolveAbilityRollKeep(
     defenderId: resume.defenderId,
     attackKind: resume.attackKind,
     attackRoll: resume.attackRoll,
-    forceAbilityRoll: resume.forceAbilityRoll
+    forceAbilityRoll: resume.forceAbilityRoll,
   };
 
   switch (context.kind) {
@@ -23269,12 +27500,28 @@ function resolveAbilityRollKeep(
           ? followUps[resume.followUpIndex]
           : followUps.find((entry) => entry.abilityId === context.abilityId);
       if (followUp) {
-        resolveAttackDieDamageOutcome(state, attacker, defender, followUp, candidate, false);
+        resolveAttackDieDamageOutcome(
+          state,
+          attacker,
+          defender,
+          followUp,
+          candidate,
+          false,
+        );
       }
       if (finishCombatIfNeeded(state)) {
         return;
       }
-      if (applyAttackDieDamageFollowUps(state, attacker, defender, ctx, resume.fromStep, resume.followUpIndex + 1)) {
+      if (
+        applyAttackDieDamageFollowUps(
+          state,
+          attacker,
+          defender,
+          ctx,
+          resume.fromStep,
+          resume.followUpIndex + 1,
+        )
+      ) {
         return;
       }
       break;
@@ -23286,12 +27533,28 @@ function resolveAbilityRollKeep(
           ? followUps[resume.followUpIndex]
           : followUps.find((entry) => entry.abilityId === context.abilityId);
       if (followUp) {
-        resolveDeathStareOutcome(state, attacker, defender, followUp, candidate, false);
+        resolveDeathStareOutcome(
+          state,
+          attacker,
+          defender,
+          followUp,
+          candidate,
+          false,
+        );
       }
       if (finishCombatIfNeeded(state)) {
         return;
       }
-      if (applyDeathStareFollowUps(state, attacker, defender, ctx, resume.fromStep, resume.followUpIndex + 1)) {
+      if (
+        applyDeathStareFollowUps(
+          state,
+          attacker,
+          defender,
+          ctx,
+          resume.fromStep,
+          resume.followUpIndex + 1,
+        )
+      ) {
         return;
       }
       break;
@@ -23301,18 +27564,42 @@ function resolveAbilityRollKeep(
       const followUp =
         followUps[resume.followUpIndex]?.abilityId === context.abilityId
           ? followUps[resume.followUpIndex]
-          : followUps.find((entry) => entry.abilityId === context.abilityId && entry.source === "extra");
+          : followUps.find(
+              (entry) =>
+                entry.abilityId === context.abilityId &&
+                entry.source === "extra",
+            );
       if (followUp && isUnitAlive(defender)) {
-        resolveParalysisExtraOutcome(state, attacker, defender, followUp, candidate, false);
+        resolveParalysisExtraOutcome(
+          state,
+          attacker,
+          defender,
+          followUp,
+          candidate,
+          false,
+        );
       }
-      if (applyParalysisFollowUps(state, attacker, defender, ctx, resume.fromStep, resume.followUpIndex + 1)) {
+      if (
+        applyParalysisFollowUps(
+          state,
+          attacker,
+          defender,
+          ctx,
+          resume.fromStep,
+          resume.followUpIndex + 1,
+        )
+      ) {
         return;
       }
       break;
     }
     case "knockback": {
       const ability = getKnockbackAbility(attacker);
-      if (ability && isUnitAlive(defender) && resolveKnockbackOutcome(state, attacker, defender, ability, candidate)) {
+      if (
+        ability &&
+        isUnitAlive(defender) &&
+        resolveKnockbackOutcome(state, attacker, defender, ability, candidate)
+      ) {
         return;
       }
       break;
@@ -23333,7 +27620,11 @@ function resolveAbilityRollKeep(
  * (commanderCastCandidates); this applies the effect at the commander's
  * current Power and stamps the once-per-combat-round budget.
  */
-function resolveCommanderCast(state: GameState, caster: CombatUnitState, target: CombatUnitState): void {
+function resolveCommanderCast(
+  state: GameState,
+  caster: CombatUnitState,
+  target: CombatUnitState,
+): void {
   const combat = state.combat;
   const cast = commanderCastOf(caster);
   if (!combat || !cast) {
@@ -23342,7 +27633,11 @@ function resolveCommanderCast(state: GameState, caster: CombatUnitState, target:
 
   const power = commanderCastPower(state, caster);
   const tier = commanderCastTierIndex(power);
-  const source = { type: "unit" as const, unitId: caster.id, controllerId: caster.controllerId };
+  const source = {
+    type: "unit" as const,
+    unitId: caster.id,
+    controllerId: caster.controllerId,
+  };
   const targetRef = { type: "unit" as const, unitId: target.id };
 
   // Rune Mend's cost first — the heal never resolves unpaid.
@@ -23362,7 +27657,14 @@ function resolveCommanderCast(state: GameState, caster: CombatUnitState, target:
     // normal removal path. The commander-cast chooser runs finishCombatIfNeeded
     // after this resolves, so a killing salvo ends the combat cleanly.
     case "enemy-damage":
-      applyFlatAbilityDamage(state, caster, target.id, cast.abilityId, cast.name, effect.damageByPower[tier]);
+      applyFlatAbilityDamage(
+        state,
+        caster,
+        target.id,
+        cast.abilityId,
+        cast.name,
+        effect.damageByPower[tier],
+      );
       break;
     case "heal-cleanse": {
       healUnitDamage(state, source, targetRef, effect.healByPower[tier]);
@@ -23387,12 +27689,18 @@ function resolveCommanderCast(state: GameState, caster: CombatUnitState, target:
           removable: true,
           modifiers:
             effect.vs === "melee"
-              ? [{ type: "DEFENSE_VS_ATTACKER_TYPE", attackerType: "ground-or-flying", amount: effect.amountByPower[tier] }]
-              : [{ type: "DEFENSE_BONUS", amount: effect.amountByPower[tier] }]
+              ? [
+                  {
+                    type: "DEFENSE_VS_ATTACKER_TYPE",
+                    attackerType: "ground-or-flying",
+                    amount: effect.amountByPower[tier],
+                  },
+                ]
+              : [{ type: "DEFENSE_BONUS", amount: effect.amountByPower[tier] }],
         },
         source,
         caster.controllerId,
-        targetRef
+        targetRef,
       );
       break;
     case "precision":
@@ -23406,12 +27714,12 @@ function resolveCommanderCast(state: GameState, caster: CombatUnitState, target:
           removable: true,
           modifiers: [
             { type: "ATTACK_BONUS", amount: effect.amountByPower[tier] },
-            { type: "RANGED_IGNORE_ALL_PENALTIES" }
-          ]
+            { type: "RANGED_IGNORE_ALL_PENALTIES" },
+          ],
         },
         source,
         caster.controllerId,
-        targetRef
+        targetRef,
       );
       break;
     case "attack-buff":
@@ -23423,11 +27731,13 @@ function resolveCommanderCast(state: GameState, caster: CombatUnitState, target:
           duration: { type: "current-combat-round" },
           polarity: "positive",
           removable: true,
-          modifiers: [{ type: "ATTACK_BONUS", amount: effect.amountByPower[tier] }]
+          modifiers: [
+            { type: "ATTACK_BONUS", amount: effect.amountByPower[tier] },
+          ],
         },
         source,
         caster.controllerId,
-        targetRef
+        targetRef,
       );
       break;
     case "fire-shield": {
@@ -23445,18 +27755,24 @@ function resolveCommanderCast(state: GameState, caster: CombatUnitState, target:
                 : { type: "current-combat-round" },
           polarity: "positive",
           removable: true,
-          modifiers: [{ type: "FIRE_SHIELD", amount: effect.damageByPower[tier] }]
+          modifiers: [
+            { type: "FIRE_SHIELD", amount: effect.damageByPower[tier] },
+          ],
         },
         source,
         caster.controllerId,
-        targetRef
+        targetRef,
       );
       break;
     }
     case "initiative-shift": {
       const amount = effect.amountByPower[tier];
       const attackModifier = effect.attackVs
-        ? { type: "ATTACK_BONUS_VS_INITIATIVE" as const, comparison: effect.attackVs, amount: effect.attackAmount }
+        ? {
+            type: "ATTACK_BONUS_VS_INITIATIVE" as const,
+            comparison: effect.attackVs,
+            amount: effect.attackAmount,
+          }
         : { type: "ATTACK_BONUS" as const, amount: effect.attackAmount };
       createActiveEffect(
         state,
@@ -23469,14 +27785,11 @@ function resolveCommanderCast(state: GameState, caster: CombatUnitState, target:
               : { type: "current-combat-round" },
           polarity: amount >= 0 ? "positive" : "negative",
           removable: true,
-          modifiers: [
-            { type: "INITIATIVE_BONUS", amount },
-            attackModifier
-          ]
+          modifiers: [{ type: "INITIATIVE_BONUS", amount }, attackModifier],
         },
         source,
         caster.controllerId,
-        targetRef
+        targetRef,
       );
       break;
     }
@@ -23489,11 +27802,11 @@ function resolveCommanderCast(state: GameState, caster: CombatUnitState, target:
           duration: { type: "current-combat-round" },
           polarity: "positive",
           removable: true,
-          modifiers: [{ type: "UNLIMITED_RETALIATION" }]
+          modifiers: [{ type: "UNLIMITED_RETALIATION" }],
         },
         source,
         caster.controllerId,
-        targetRef
+        targetRef,
       );
       break;
   }
@@ -23506,7 +27819,7 @@ function resolveCommanderCast(state: GameState, caster: CombatUnitState, target:
     castName: cast.name,
     power,
     targetUnitId: target.id,
-    message: `${caster.cardName} casts ${cast.name} (Power ${power}) on ${target.cardName}.`
+    message: `${caster.cardName} casts ${cast.name} (Power ${power}) on ${target.cardName}.`,
   });
 
   // A +1-cast-Power artifact that pushes the cast to Power 3 overflows as a
@@ -23514,7 +27827,9 @@ function resolveCommanderCast(state: GameState, caster: CombatUnitState, target:
   // effect damage. The follow-up is serialized as a normal target choice.
   const castArtifact = commanderArtifactBonusesForUnit(state, caster);
   if (power >= 3 && castArtifact.castPowerBonus > 0) {
-    const candidateUnitIds = Object.values(combat.units).filter(isUnitAlive).map((unit) => unit.id);
+    const candidateUnitIds = Object.values(combat.units)
+      .filter(isUnitAlive)
+      .map((unit) => unit.id);
     if (candidateUnitIds.length > 0) {
       const choiceId = `choice_${nextEventNumber(state)}`;
       state.pendingChoice = {
@@ -23528,7 +27843,7 @@ function resolveCommanderCast(state: GameState, caster: CombatUnitState, target:
         sourceUnitId: caster.id,
         anchorUnitId: null,
         candidateUnitIds,
-        amount: 1
+        amount: 1,
       };
       state.phase = "choice";
       state.priorityPlayerId = caster.controllerId;
@@ -23538,7 +27853,7 @@ function resolveCommanderCast(state: GameState, caster: CombatUnitState, target:
         choiceType: "ABILITY_TARGET_CHOICE",
         playerId: caster.controllerId,
         sourceEffectIds: [],
-        message: `${caster.cardName}'s Power 3 command overflows into lightning.`
+        message: `${caster.cardName}'s Power 3 command overflows into lightning.`,
       });
     }
   }
@@ -23547,11 +27862,15 @@ function resolveCommanderCast(state: GameState, caster: CombatUnitState, target:
 function chooseAbilityTarget(
   state: GameState,
   action: Extract<GameAction, { type: "CHOOSE_ABILITY_TARGET" }>,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   const choice = state.pendingChoice;
   const combat = state.combat;
-  if (!choice || choice.type !== "ABILITY_TARGET_CHOICE" || choice.id !== action.choiceId) {
+  if (
+    !choice ||
+    choice.type !== "ABILITY_TARGET_CHOICE" ||
+    choice.id !== action.choiceId
+  ) {
     throw new Error("That ability target choice is not available.");
   }
 
@@ -23574,8 +27893,11 @@ function chooseAbilityTarget(
     const unit = combat.units[unitId];
     return !unit || !isUnitAlive(unit);
   });
-  const isSkip = (choice.optional || noLivingCandidate) && action.targetUnitId === "skip";
-  const selectedIndex = isSkip ? -1 : choice.candidateUnitIds.indexOf(action.targetUnitId);
+  const isSkip =
+    (choice.optional || noLivingCandidate) && action.targetUnitId === "skip";
+  const selectedIndex = isSkip
+    ? -1
+    : choice.candidateUnitIds.indexOf(action.targetUnitId);
   if (selectedIndex === -1 && !isSkip) {
     throw new Error("That unit is not a legal target for the ability.");
   }
@@ -23588,11 +27910,16 @@ function chooseAbilityTarget(
     type: "PENDING_CHOICE_RESOLVED",
     choiceId: choice.id,
     playerId: action.playerId,
-    selectedIndex
+    selectedIndex,
   });
 
   if (choice.kind === "war-machine") {
-    resolveWarMachineTarget(state, action.playerId, action.targetUnitId, choice.amount ?? 1);
+    resolveWarMachineTarget(
+      state,
+      action.playerId,
+      action.targetUnitId,
+      choice.amount ?? 1,
+    );
     finishCombatIfNeeded(state);
     return;
   }
@@ -23602,7 +27929,9 @@ function chooseAbilityTarget(
   // resolved cast).
   if (choice.kind === "commander-cast") {
     if (!isSkip) {
-      const caster = choice.sourceUnitId ? combat.units[choice.sourceUnitId] : undefined;
+      const caster = choice.sourceUnitId
+        ? combat.units[choice.sourceUnitId]
+        : undefined;
       const target = combat.units[action.targetUnitId];
       if (!caster || !target || !isUnitAlive(caster) || !isUnitAlive(target)) {
         throw new Error("That commander cast is no longer possible.");
@@ -23618,7 +27947,9 @@ function chooseAbilityTarget(
 
   if (choice.kind === "commander-overflow-zap") {
     if (!isSkip) {
-      const caster = choice.sourceUnitId ? combat.units[choice.sourceUnitId] : undefined;
+      const caster = choice.sourceUnitId
+        ? combat.units[choice.sourceUnitId]
+        : undefined;
       const target = combat.units[action.targetUnitId];
       if (!caster || !target || !isUnitAlive(target)) {
         throw new Error("That Power Overflow target is no longer available.");
@@ -23630,14 +27961,18 @@ function chooseAbilityTarget(
         unitId: caster.id,
         abilityId: "commander-artifact-power-overflow",
         targetUnitId: target.id,
-        message: `Power Overflow strikes ${target.cardName} for ${amount} lightning damage.`
+        message: `Power Overflow strikes ${target.cardName} for ${amount} lightning damage.`,
       });
       appendEvent(state, {
         type: "DAMAGE_ASSIGNED",
-        source: { type: "unit", unitId: caster.id, controllerId: caster.controllerId },
+        source: {
+          type: "unit",
+          unitId: caster.id,
+          controllerId: caster.controllerId,
+        },
         target: { type: "unit", unitId: target.id },
         amount,
-        damageKind: "effect"
+        damageKind: "effect",
       });
       markUnitRemovedIfNeeded(state, target);
       finishCombatIfNeeded(state);
@@ -23658,7 +27993,7 @@ function chooseAbilityTarget(
           source: { type: "system" },
           target: { type: "unit", unitId: target.id },
           amount: dealt,
-          damageKind: "spell"
+          damageKind: "spell",
         });
         markUnitRemovedIfNeeded(state, target);
       }
@@ -23679,10 +28014,14 @@ function chooseAbilityTarget(
         noteUnitDamagedForTokens(state, target, dealt);
         appendEvent(state, {
           type: "DAMAGE_ASSIGNED",
-          source: { type: "card", cardId: choice.abilityId ?? "", controllerId: action.playerId },
+          source: {
+            type: "card",
+            cardId: choice.abilityId ?? "",
+            controllerId: action.playerId,
+          },
           target: { type: "unit", unitId: target.id },
           amount: dealt,
-          damageKind: "effect"
+          damageKind: "effect",
         });
         markUnitRemovedIfNeeded(state, target);
       }
@@ -23705,9 +28044,16 @@ function chooseAbilityTarget(
       return;
     }
     const rest = choice.candidateUnitIds.filter(
-      (id) => id !== action.targetUnitId && isUnitAlive(combat.units[id])
+      (id) => id !== action.targetUnitId && isUnitAlive(combat.units[id]),
     );
-    applyAdjacentPicks(state, choice.playerId, blastCard, rest, (choice.picksRemaining ?? 1) - 1, amount);
+    applyAdjacentPicks(
+      state,
+      choice.playerId,
+      blastCard,
+      rest,
+      (choice.picksRemaining ?? 1) - 1,
+      amount,
+    );
     finishCombatIfNeeded(state);
     // Resume tail for a blast fired INSIDE a reaction window (Meteor Shower /
     // Frost Ring played before an attack/retaliation). The window was paused
@@ -23737,7 +28083,11 @@ function chooseAbilityTarget(
     // filter (you cannot bounce it onto a spell-immune unit).
     if (choice.redirectInstant && top && chosen && isUnitAlive(chosen)) {
       const { stat, amount } = choice.redirectInstant;
-      (top.modifiers.redirectedInstants ??= []).push({ unitId: chosen.id, stat, amount });
+      (top.modifiers.redirectedInstants ??= []).push({
+        unitId: chosen.id,
+        stat,
+        amount,
+      });
     }
     if (choice.redirectInstant) {
       appendEvent(state, {
@@ -23745,8 +28095,11 @@ function chooseAbilityTarget(
         playerId: action.playerId,
         spellCardId: choice.redirectInstant.sourceCardId,
         byCardId: choice.abilityId ?? "",
-        fromTarget: { type: "unit", unitId: choice.anchorUnitId ?? action.targetUnitId },
-        toTarget: { type: "unit", unitId: action.targetUnitId }
+        fromTarget: {
+          type: "unit",
+          unitId: choice.anchorUnitId ?? action.targetUnitId,
+        },
+        toTarget: { type: "unit", unitId: action.targetUnitId },
       });
       resumeAttackWindowAfterRedirect(state, top, cards);
       return;
@@ -23769,7 +28122,7 @@ function chooseAbilityTarget(
         spellCardId: top.action.cardId,
         byCardId: choice.abilityId ?? "",
         fromTarget,
-        toTarget: top.action.target
+        toTarget: top.action.target,
       });
       // The Magic Mirror is a Spell its caster just cast: if they armed a
       // Knowledge/Mysticism take-back when they played it, re-open the cast
@@ -23777,7 +28130,10 @@ function chooseAbilityTarget(
       // spell stays parked, so the window's all-pass / recall tail resolves it
       // exactly as before). Nothing armed — or nobody left able to react — falls
       // straight through to the old immediate resolution.
-      if (combat.pendingCastReactionRecall && resumeCastWindowForRecall(state, top, cards)) {
+      if (
+        combat.pendingCastReactionRecall &&
+        resumeCastWindowForRecall(state, top, cards)
+      ) {
         return;
       }
       combat.pendingCastReactionRecall = null;
@@ -23791,13 +28147,28 @@ function chooseAbilityTarget(
   if (choice.kind === "chain-lightning") {
     const chainCard = cards[choice.abilityId ?? ""];
     const remaining = choice.chainRemainingDamages ?? [];
-    dealChainLightningDamage(state, action.playerId, chainCard, action.targetUnitId, remaining[0] ?? 0);
+    dealChainLightningDamage(
+      state,
+      action.playerId,
+      chainCard,
+      action.targetUnitId,
+      remaining[0] ?? 0,
+    );
     if (finishCombatIfNeeded(state)) {
       return;
     }
-    const reachable = (choice.chainReachableUnitIds ?? []).filter((id) => id !== action.targetUnitId);
+    const reachable = (choice.chainReachableUnitIds ?? []).filter(
+      (id) => id !== action.targetUnitId,
+    );
     if (choice.anchorUnitId) {
-      advanceChainLightning(state, action.playerId, chainCard, choice.anchorUnitId, reachable, remaining.slice(1));
+      advanceChainLightning(
+        state,
+        action.playerId,
+        chainCard,
+        choice.anchorUnitId,
+        reachable,
+        remaining.slice(1),
+      );
     }
     return;
   }
@@ -23807,13 +28178,32 @@ function chooseAbilityTarget(
   // perish"). The heal target loses that much damage; the sacrifice takes it
   // and perishes (a Pack flips to Few) when it reaches its remaining HP.
   if (choice.kind === "sacrifice-transfer") {
-    const healTarget = choice.sourceUnitId ? combat.units[choice.sourceUnitId] : undefined;
+    const healTarget = choice.sourceUnitId
+      ? combat.units[choice.sourceUnitId]
+      : undefined;
     const sacrifice = combat.units[action.targetUnitId];
-    if (healTarget && sacrifice && isUnitAlive(healTarget) && isUnitAlive(sacrifice)) {
-      const source = { type: "card" as const, cardId: choice.abilityId ?? "", controllerId: action.playerId };
-      const transfer = Math.min(healTarget.damage, sacrifice.maxHealth - sacrifice.damage);
+    if (
+      healTarget &&
+      sacrifice &&
+      isUnitAlive(healTarget) &&
+      isUnitAlive(sacrifice)
+    ) {
+      const source = {
+        type: "card" as const,
+        cardId: choice.abilityId ?? "",
+        controllerId: action.playerId,
+      };
+      const transfer = Math.min(
+        healTarget.damage,
+        sacrifice.maxHealth - sacrifice.damage,
+      );
       if (transfer > 0) {
-        healUnitDamage(state, source, { type: "unit", unitId: healTarget.id }, transfer);
+        healUnitDamage(
+          state,
+          source,
+          { type: "unit", unitId: healTarget.id },
+          transfer,
+        );
         sacrifice.damage += transfer;
         noteUnitDamagedForTokens(state, sacrifice, transfer);
         appendEvent(state, {
@@ -23821,7 +28211,7 @@ function chooseAbilityTarget(
           source,
           target: { type: "unit", unitId: sacrifice.id },
           amount: transfer,
-          damageKind: "effect"
+          damageKind: "effect",
         });
         markUnitRemovedIfNeeded(state, sacrifice);
       }
@@ -23836,15 +28226,24 @@ function chooseAbilityTarget(
   // skip) places nothing and leaves the unit free to act — so the activation is
   // only consumed when a real target is chosen.
   if (choice.kind === "place-token") {
-    const placer = choice.sourceUnitId ? combat.units[choice.sourceUnitId] : undefined;
+    const placer = choice.sourceUnitId
+      ? combat.units[choice.sourceUnitId]
+      : undefined;
     if (isSkip || !placer || !choice.tokenKind) {
       return;
     }
     const target = combat.units[action.targetUnitId];
     if (target && isUnitAlive(target)) {
-      placeCombatToken(state, target, choice.tokenKind, choice.amount ?? 0, choice.abilityName, choice.tokenRounds);
+      placeCombatToken(
+        state,
+        target,
+        choice.tokenKind,
+        choice.amount ?? 0,
+        choice.abilityName,
+        choice.tokenRounds,
+      );
       const placingAbility = getUnitAbilityDefinitions(placer).find(
-        (ability) => ability.id === choice.abilityId
+        (ability) => ability.id === choice.abilityId,
       );
       if (
         placingAbility?.effect?.type === "PLACE_TOKEN_ACTION" &&
@@ -23857,7 +28256,7 @@ function chooseAbilityTarget(
         unitId: placer.id,
         abilityId: choice.abilityId ?? "",
         targetUnitId: target.id,
-        message: `${placer.cardName} places a ${choice.abilityName} on ${target.cardName}.`
+        message: `${placer.cardName} places a ${choice.abilityName} on ${target.cardName}.`,
       });
       markActivatedThisRound(placer);
       advanceActiveUnit(state);
@@ -23865,7 +28264,9 @@ function chooseAbilityTarget(
     return;
   }
 
-  const source = choice.sourceUnitId ? combat.units[choice.sourceUnitId] : undefined;
+  const source = choice.sourceUnitId
+    ? combat.units[choice.sourceUnitId]
+    : undefined;
   if (!source) {
     return;
   }
@@ -23885,8 +28286,18 @@ function chooseAbilityTarget(
       return;
     }
     const target = combat.units[action.targetUnitId];
-    if (target && isUnitAlive(target) && target.controllerId === source.controllerId && target.id !== source.id) {
-      const opened = openTeleportChoice(state, source.controllerId, target, choice.abilityId ?? undefined);
+    if (
+      target &&
+      isUnitAlive(target) &&
+      target.controllerId === source.controllerId &&
+      target.id !== source.id
+    ) {
+      const opened = openTeleportChoice(
+        state,
+        source.controllerId,
+        target,
+        choice.abilityId ?? undefined,
+      );
       if (opened) {
         state.phase = "choice";
         state.priorityPlayerId = source.controllerId;
@@ -23917,7 +28328,10 @@ function chooseAbilityTarget(
     // Backstop: an Orb played between the choice opening and its answer (e.g. in
     // an intervening reaction window) still switches the bolt off — the
     // activation is simply spent with no damage.
-    const ability = getActivationDamageSpellAbility(source, spellAbilitiesSuppressed(state));
+    const ability = getActivationDamageSpellAbility(
+      source,
+      spellAbilitiesSuppressed(state),
+    );
     const target = combat.units[action.targetUnitId];
     if (ability && target && isUnitAlive(target)) {
       applyActivationDamageSpell(state, source, target, ability);
@@ -23941,7 +28355,7 @@ function chooseAbilityTarget(
         unitId: source.id,
         abilityId: ward.abilityId,
         targetUnitId: source.id,
-        message: `${source.cardName} coils into invulnerability — it ignores all damage and spell effects until its next activation.`
+        message: `${source.cardName} coils into invulnerability — it ignores all damage and spell effects until its next activation.`,
       });
       if (ward.endsActivation) {
         markActivatedThisRound(source);
@@ -23955,14 +28369,18 @@ function chooseAbilityTarget(
   if (choice.kind === "automaton-cube") {
     source.activationAbilityDone = true;
     const cubeAbility = getPlaceFactionCubeActivation(source);
-    if (!isSkip && cubeAbility && (source.factionCubes ?? 0) < cubeAbility.maxCubes) {
+    if (
+      !isSkip &&
+      cubeAbility &&
+      (source.factionCubes ?? 0) < cubeAbility.maxCubes
+    ) {
       source.factionCubes = (source.factionCubes ?? 0) + 1;
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: source.id,
         abilityId: cubeAbility.abilityId,
         targetUnitId: source.id,
-        message: `${source.cardName} banks a faction cube (${source.factionCubes}/${cubeAbility.maxCubes}) — its Detonate will hit that much harder.`
+        message: `${source.cardName} banks a faction cube (${source.factionCubes}/${cubeAbility.maxCubes}) — its Detonate will hit that much harder.`,
       });
     }
     return;
@@ -23990,7 +28408,14 @@ function chooseAbilityTarget(
 
     const target = combat.units[action.targetUnitId];
     if (target && isUnitAlive(target) && remaining.length > 0) {
-      applyFlatAbilityDamage(state, source, target.id, choice.abilityId ?? "", choice.abilityName, remaining[0]);
+      applyFlatAbilityDamage(
+        state,
+        source,
+        target.id,
+        choice.abilityId ?? "",
+        choice.abilityName,
+        remaining[0],
+      );
     }
     if (finishCombatIfNeeded(state)) {
       return;
@@ -23998,10 +28423,17 @@ function chooseAbilityTarget(
 
     const restValues = remaining.slice(1);
     const restCandidates = choice.candidateUnitIds.filter(
-      (id) => id !== action.targetUnitId && isUnitAlive(combat.units[id])
+      (id) => id !== action.targetUnitId && isUnitAlive(combat.units[id]),
     );
     if (restValues.length > 0 && restCandidates.length > 0) {
-      openDreadnoughtSplashChoice(state, source, choice.abilityId ?? "", choice.abilityName, restCandidates, restValues);
+      openDreadnoughtSplashChoice(
+        state,
+        source,
+        choice.abilityId ?? "",
+        choice.abilityName,
+        restCandidates,
+        restValues,
+      );
       return;
     }
     // All values spent (or no more adjacent units): the splash ends the turn.
@@ -24029,7 +28461,7 @@ function chooseAbilityTarget(
       action.targetUnitId,
       choice.abilityId ?? "",
       choice.abilityName,
-      choice.amount ?? 1
+      choice.amount ?? 1,
     );
     if (finishCombatIfNeeded(state)) {
       return;
@@ -24054,9 +28486,9 @@ function chooseAbilityTarget(
       {
         abilityId: choice.abilityId ?? "",
         abilityName: choice.abilityName,
-        baseAttack: choice.baseAttack ?? 2
+        baseAttack: choice.baseAttack ?? 2,
       },
-      cards
+      cards,
     );
     return;
   }
@@ -24097,7 +28529,9 @@ function autoResolveNeutralReroll(state: GameState, cards: CardLibrary): void {
   while (safety > 0) {
     safety -= 1;
     const currentRoll = choice.candidates.at(-1)?.roll ?? 0;
-    const source = choice.rerollSources.find((candidate) => rerollSourceAvailableFor(candidate, currentRoll));
+    const source = choice.rerollSources.find((candidate) =>
+      rerollSourceAvailableFor(candidate, currentRoll),
+    );
     // Only face-gated ability rerolls (the Minotaur "-1") ever apply to a
     // neutral; stop once the current face can no longer be rerolled.
     if (!source || source.onlyOnRoll === undefined) {
@@ -24109,7 +28543,10 @@ function autoResolveNeutralReroll(state: GameState, cards: CardLibrary): void {
     // this the neutral rerolls a fresh "-1" forever (the reported bug).
     source.remaining -= 1;
     source.used += 1;
-    choice.remainingRerolls = countAvailableRerolls(choice.rerollSources, candidate.roll);
+    choice.remainingRerolls = countAvailableRerolls(
+      choice.rerollSources,
+      candidate.roll,
+    );
     appendEvent(state, {
       type: "ATTACK_REROLLED",
       choiceId: choice.id,
@@ -24117,7 +28554,7 @@ function autoResolveNeutralReroll(state: GameState, cards: CardLibrary): void {
       rolls: candidate.rolls,
       roll: candidate.roll,
       remainingRerolls: choice.remainingRerolls,
-      sourceName: source.name
+      sourceName: source.name,
     });
   }
 
@@ -24135,7 +28572,10 @@ function autoResolveNeutralReroll(state: GameState, cards: CardLibrary): void {
   resolveAttackOrOfferDieCancel(state, stackItem, details, candidate, cards);
 }
 
-function autoResolveNeutralAbilityChoice(state: GameState, cards: CardLibrary): boolean {
+function autoResolveNeutralAbilityChoice(
+  state: GameState,
+  cards: CardLibrary,
+): boolean {
   const choice = state.pendingChoice;
   const combat = state.combat;
   if (
@@ -24151,14 +28591,18 @@ function autoResolveNeutralAbilityChoice(state: GameState, cards: CardLibrary): 
   const source = combat.units[choice.sourceUnitId];
   const candidates = choice.candidateUnitIds
     .map((unitId) => combat.units[unitId])
-    .filter((unit): unit is CombatUnitState => Boolean(unit) && isUnitAlive(unit));
+    .filter(
+      (unit): unit is CombatUnitState => Boolean(unit) && isUnitAlive(unit),
+    );
   if (!source || candidates.length === 0) {
     state.pendingChoice = null;
     state.phase = "combat";
     return true;
   }
 
-  const enemies = candidates.filter((unit) => unit.controllerId !== source.controllerId);
+  const enemies = candidates.filter(
+    (unit) => unit.controllerId !== source.controllerId,
+  );
   const pool = enemies.length > 0 ? enemies : candidates;
   const sorted = sortNeutralTargetCandidates(combat, source, pool);
   const target =
@@ -24174,9 +28618,9 @@ function autoResolveNeutralAbilityChoice(state: GameState, cards: CardLibrary): 
       type: "CHOOSE_ABILITY_TARGET",
       playerId: NEUTRAL_PLAYER_ID,
       choiceId: choice.id,
-      targetUnitId: target.id
+      targetUnitId: target.id,
     },
-    cards
+    cards,
   );
   return true;
 }
@@ -24189,24 +28633,34 @@ function autoResolveNeutralAbilityChoice(state: GameState, cards: CardLibrary): 
  * if for any reason no innate reaction is offered, auto-pass so the window closes
  * instead of stalling the pump. Returns true when it acted on the neutral's turn.
  */
-function autoResolveNeutralReaction(state: GameState, cards: CardLibrary): boolean {
+function autoResolveNeutralReaction(
+  state: GameState,
+  cards: CardLibrary,
+): boolean {
   const window = state.reactionWindow;
   if (!window || window.priorityPlayerId !== NEUTRAL_PLAYER_ID) {
     return false;
   }
   const mirror = (window.legalReactions[NEUTRAL_PLAYER_ID] ?? []).find(
-    (entry) => entry.action.type === "USE_UNIT_MAGIC_MIRROR"
+    (entry) => entry.action.type === "USE_UNIT_MAGIC_MIRROR",
   );
   if (mirror && mirror.action.type === "USE_UNIT_MAGIC_MIRROR") {
     applyUnitMagicMirror(state, mirror.action, cards);
   } else {
-    passReaction(state, { type: "PASS_REACTION", playerId: NEUTRAL_PLAYER_ID }, cards);
+    passReaction(
+      state,
+      { type: "PASS_REACTION", playerId: NEUTRAL_PLAYER_ID },
+      cards,
+    );
   }
   return true;
 }
 
 /** Masato's automatic, once-per-round interception for any adjacent ally. */
-function adjacentBodyguardFor(combat: CombatState, defender: CombatUnitState): CombatUnitState | null {
+function adjacentBodyguardFor(
+  combat: CombatState,
+  defender: CombatUnitState,
+): CombatUnitState | null {
   return (
     Object.values(combat.units)
       .filter(
@@ -24216,7 +28670,7 @@ function adjacentBodyguardFor(combat: CombatState, defender: CombatUnitState): C
           isUnitAlive(unit) &&
           unit.bodyguardInterceptUsedRound !== combat.round &&
           isAdjacent(unit.position, defender.position) &&
-          hasUnitAbilityEffect(unit, "INTERCEPT_ADJACENT_ATTACK_ONCE")
+          hasUnitAbilityEffect(unit, "INTERCEPT_ADJACENT_ATTACK_ONCE"),
       )
       .sort((left, right) => left.id.localeCompare(right.id))[0] ?? null
   );
@@ -24230,14 +28684,15 @@ function declareAttack(
   /** Marksmen/Elves' ranged double-shot re-enters here after the first attack;
    *  it is an internal follow-up, not a fresh player attack, so it bypasses the
    *  "already attacked" / faction-cube gate below. */
-  isInternalFollowUp = false
+  isInternalFollowUp = false,
 ): void {
   const combat = state.combat;
   if (!combat) {
     throw new Error("Combat is not active.");
   }
 
-  const abilityAttack = action.type === "ATTACK_UNIT" ? action.abilityAttack : undefined;
+  const abilityAttack =
+    action.type === "ATTACK_UNIT" ? action.abilityAttack : undefined;
   const attacker = combat.units[action.attackerId];
   const selectedDefender = combat.units[action.defenderId];
   if (!attacker || !selectedDefender) {
@@ -24251,7 +28706,9 @@ function declareAttack(
     if (!isUnitAlive(attacker) || !isUnitAlive(selectedDefender)) {
       throw new Error("That unit cannot attack the selected target.");
     }
-  } else if (!canUnitAttack(combat, attacker, selectedDefender, state.activeEffects)) {
+  } else if (
+    !canUnitAttack(combat, attacker, selectedDefender, state.activeEffects)
+  ) {
     throw new Error("That unit cannot attack the selected target.");
   }
 
@@ -24272,7 +28729,7 @@ function declareAttack(
         unitId: bodyguard.id,
         abilityId: "masato-bodyguard-intercept",
         targetUnitId: selectedDefender.id,
-        message: `${bodyguard.cardName} intercepts the attack aimed at ${selectedDefender.cardName}.`
+        message: `${bodyguard.cardName} intercepts the attack aimed at ${selectedDefender.cardName}.`,
       });
     }
   }
@@ -24303,7 +28760,7 @@ function declareAttack(
         defender.id,
         preAttackDamage.abilityId,
         preAttackDamage.abilityName,
-        preAttackDamage.amount
+        preAttackDamage.amount,
       );
       if (finishCombatIfNeeded(state)) {
         return;
@@ -24320,7 +28777,12 @@ function declareAttack(
   // again". It costs a cube; a Sandworm that already attacked with no cube left
   // may not attack again. (Other units never reach here twice — after their
   // attack the activation concludes and legal-actions stops offering it.)
-  if (!isRetaliation && !abilityAttack && !isInternalFollowUp && attacker.attackedThisActivation) {
+  if (
+    !isRetaliation &&
+    !abilityAttack &&
+    !isInternalFollowUp &&
+    attacker.attackedThisActivation
+  ) {
     const cubeAttack = getSpendCubeAttackAgain(attacker);
     if (!cubeAttack || (attacker.factionCubes ?? 0) < 1) {
       throw new Error("That unit cannot attack right now.");
@@ -24330,13 +28792,19 @@ function declareAttack(
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: attacker.id,
       abilityId: cubeAttack.abilityId,
-      message: `${attacker.cardName} spends a faction cube to attack again (${attacker.factionCubes} left).`
+      message: `${attacker.cardName} spends a faction cube to attack again (${attacker.factionCubes} left).`,
     });
   }
 
   const stackItem = makeStackItem(state, resolvedAction);
   if (!abilityAttack && !isInternalFollowUp) {
-    applyCultivationAttackDeclaration(state, stackItem, attacker, defender, isRetaliation);
+    applyCultivationAttackDeclaration(
+      state,
+      stackItem,
+      attacker,
+      defender,
+      isRetaliation,
+    );
   }
   state.stack.push(stackItem);
 
@@ -24353,7 +28821,7 @@ function declareAttack(
     isRetaliation,
     attackKind,
     rollMode,
-    ...(abilityAttack ? { abilityAttack } : {})
+    ...(abilityAttack ? { abilityAttack } : {}),
   });
   stackItem.triggerEventIds.push(attackDeclared.id);
 
@@ -24363,7 +28831,7 @@ function declareAttack(
 function attackUnit(
   state: GameState,
   action: Extract<GameAction, { type: "ATTACK_UNIT" }>,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   declareAttack(state, action, cards);
 }
@@ -24371,34 +28839,38 @@ function attackUnit(
 function healCommanderFromArtifactAction(
   state: GameState,
   unit: CombatUnitState,
-  action: "move" | "defend"
+  action: "move" | "defend",
 ): void {
   if (!unit.commanderSlug || unit.damage <= 0 || !isUnitAlive(unit)) return;
   const bonuses = commanderArtifactBonusesForUnit(state, unit);
-  const amount = action === "move" ? bonuses.healAfterMove : bonuses.healAfterDefend;
+  const amount =
+    action === "move" ? bonuses.healAfterMove : bonuses.healAfterDefend;
   if (amount <= 0) return;
   const healed = Math.min(amount, unit.damage);
   unit.damage -= healed;
-  const abilityId = action === "move" ? "commander-artifact-travelers-salve" : "commander-artifact-bastion-heart";
+  const abilityId =
+    action === "move"
+      ? "commander-artifact-travelers-salve"
+      : "commander-artifact-bastion-heart";
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: unit.id,
     abilityId,
     targetUnitId: unit.id,
-    message: `${action === "move" ? "Traveler's Salve" : "Bastion Heart"} heals ${healed} damage from ${unit.cardName}.`
+    message: `${action === "move" ? "Traveler's Salve" : "Bastion Heart"} heals ${healed} damage from ${unit.cardName}.`,
   });
   appendEvent(state, {
     type: "DAMAGE_HEALED",
     source: { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
     target: { type: "unit", unitId: unit.id },
-    amount: healed
+    amount: healed,
   });
 }
 
 function moveAndAttackUnit(
   state: GameState,
   action: Extract<GameAction, { type: "MOVE_AND_ATTACK_UNIT" }>,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   const combat = state.combat;
   const attacker = combat?.units[action.attackerId];
@@ -24432,7 +28904,7 @@ function moveAndAttackUnit(
             destination,
             getUnitMoveRange(attacker, state),
             getBlockedSpaces(combat, attacker),
-            getKnownHazardSpaces(combat, attacker)
+            getKnownHazardSpaces(combat, attacker),
           ) ?? [destination]);
     const walked = walkMoveThroughTokens(state, attacker, enteredSpaces);
     finalPosition = walked.finalPosition;
@@ -24446,7 +28918,7 @@ function moveAndAttackUnit(
     playerId: action.playerId,
     unitId: attacker.id,
     from,
-    to: finalPosition
+    to: finalPosition,
   });
   gainSectQiAfterMove(state, attacker, from, finalPosition);
   healCommanderFromArtifactAction(state, attacker, "move");
@@ -24454,12 +28926,20 @@ function moveAndAttackUnit(
   // A Fire Wall / Land Mine that struck the attacker down, or a Quicksand that
   // swallowed it before it reached the target, ends the activation with no
   // attack — the unit never arrives adjacent to its quarry.
-  if (!isUnitAlive(attacker) || haltedByQuicksand || finalPosition !== destination) {
+  if (
+    !isUnitAlive(attacker) ||
+    haltedByQuicksand ||
+    finalPosition !== destination
+  ) {
     if (isUnitAlive(attacker)) {
       markActivatedThisRound(attacker);
     }
     if (combat.activeUnitId === attacker.id) {
-      appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, attacker.id), "activation-ended");
+      appendExpiredEffectEvents(
+        state,
+        expireEffectsForActivationEnd(state, attacker.id),
+        "activation-ended",
+      );
       advanceActiveUnit(state);
     }
     state.phase = "combat";
@@ -24476,12 +28956,17 @@ const BATTLEFIELD_TOKEN_CARD_ID: Record<BattlefieldTokenKind, CardId> = {
   force_field: "spell.force_field",
   fire_wall: "spell.fire_wall",
   quicksand: "spell.quicksand",
-  land_mine: "spell.land_mine"
+  land_mine: "spell.land_mine",
 };
 
 /** Battlefield tokens occupying a given board space. */
-function tokensAtPosition(combat: CombatState, position: number): BattlefieldTokenState[] {
-  return (combat.battlefieldTokens ?? []).filter((token) => token.position === position);
+function tokensAtPosition(
+  combat: CombatState,
+  position: number,
+): BattlefieldTokenState[] {
+  return (combat.battlefieldTokens ?? []).filter(
+    (token) => token.position === position,
+  );
 }
 
 /**
@@ -24490,7 +28975,10 @@ function tokensAtPosition(combat: CombatState, position: number): BattlefieldTok
  * time"). A hazard-aware path lets a unit dodge these when an equally short
  * route exists; the opponent's blind traps are unknown, so they are not avoided.
  */
-function getKnownHazardSpaces(combat: CombatState, unit: CombatUnitState): Set<number> {
+function getKnownHazardSpaces(
+  combat: CombatState,
+  unit: CombatUnitState,
+): Set<number> {
   const hazards = new Set<number>();
   for (const token of combat.battlefieldTokens ?? []) {
     if (token.kind === "fire_wall") {
@@ -24508,7 +28996,9 @@ function getKnownHazardSpaces(combat: CombatState, unit: CombatUnitState): Set<n
 
 /** Takes a sprung face-down trap (Quicksand / Land Mine) off the board. */
 function removeBattlefieldToken(combat: CombatState, tokenId: string): void {
-  combat.battlefieldTokens = (combat.battlefieldTokens ?? []).filter((token) => token.id !== tokenId);
+  combat.battlefieldTokens = (combat.battlefieldTokens ?? []).filter(
+    (token) => token.id !== tokenId,
+  );
 }
 
 /**
@@ -24516,18 +29006,26 @@ function removeBattlefieldToken(combat: CombatState, tokenId: string): void {
  * token (Force Field, Fire Wall, Quicksand, Land Mine) off `position` and
  * announces each, so the board clears and the log notes it. Returns the count.
  */
-function clearBattlefieldTokensAt(state: GameState, combat: CombatState, position: number): number {
-  const here = (combat.battlefieldTokens ?? []).filter((token) => token.position === position);
+function clearBattlefieldTokensAt(
+  state: GameState,
+  combat: CombatState,
+  position: number,
+): number {
+  const here = (combat.battlefieldTokens ?? []).filter(
+    (token) => token.position === position,
+  );
   if (here.length === 0) {
     return 0;
   }
-  combat.battlefieldTokens = (combat.battlefieldTokens ?? []).filter((token) => token.position !== position);
+  combat.battlefieldTokens = (combat.battlefieldTokens ?? []).filter(
+    (token) => token.position !== position,
+  );
   for (const token of here) {
     appendEvent(state, {
       type: "BATTLEFIELD_TOKEN_EXPIRED",
       tokenId: token.id,
       kind: token.kind,
-      position: token.position
+      position: token.position,
     });
   }
   return here.length;
@@ -24538,7 +29036,7 @@ function dealBattlefieldTokenDamage(
   state: GameState,
   token: BattlefieldTokenState,
   unit: CombatUnitState,
-  amount: number
+  amount: number,
 ): void {
   if (amount <= 0) {
     return;
@@ -24555,18 +29053,22 @@ function dealBattlefieldTokenDamage(
     position: token.position,
     unitId: unit.id,
     outcome: "damage",
-    amount
+    amount,
   });
   unit.damage += amount;
   noteUnitDamagedForTokens(state, unit, amount);
   appendEvent(state, {
     type: "DAMAGE_ASSIGNED",
-    source: { type: "card", cardId: BATTLEFIELD_TOKEN_CARD_ID[token.kind], controllerId: token.controllerId },
+    source: {
+      type: "card",
+      cardId: BATTLEFIELD_TOKEN_CARD_ID[token.kind],
+      controllerId: token.controllerId,
+    },
     target: { type: "unit", unitId: unit.id },
     amount,
     // Flat board-effect damage: the rulebook applies no Spell-damage reduction
     // or immunity to a token strike, so it is "effect", never "spell", damage.
-    damageKind: "effect"
+    damageKind: "effect",
   });
   markUnitRemovedIfNeeded(state, unit);
 }
@@ -24582,7 +29084,10 @@ function dealBattlefieldTokenDamage(
  * unit, flyers included. Returns true when the burn removed the unit (its
  * activation is then skipped by the caller).
  */
-function applyFireWallAtActivation(state: GameState, unit: CombatUnitState): boolean {
+function applyFireWallAtActivation(
+  state: GameState,
+  unit: CombatUnitState,
+): boolean {
   const combat = state.combat;
   if (!combat || !isUnitAlive(unit)) {
     return false;
@@ -24616,7 +29121,7 @@ function applyFireWallAtActivation(state: GameState, unit: CombatUnitState): boo
 function walkMoveThroughTokens(
   state: GameState,
   unit: CombatUnitState,
-  enteredSpaces: number[]
+  enteredSpaces: number[],
 ): { finalPosition: number; haltedByQuicksand: boolean } {
   const combat = state.combat;
   if (!combat || enteredSpaces.length === 0) {
@@ -24667,7 +29172,7 @@ function walkMoveThroughTokens(
           kind: "land_mine",
           position,
           unitId: unit.id,
-          outcome: "decoy"
+          outcome: "decoy",
         });
         removeBattlefieldToken(combat, token.id);
       }
@@ -24688,7 +29193,7 @@ function walkMoveThroughTokens(
           kind: "quicksand",
           position,
           unitId: unit.id,
-          outcome: "stop"
+          outcome: "stop",
         });
       } else if (token.armed !== true) {
         appendEvent(state, {
@@ -24697,7 +29202,7 @@ function walkMoveThroughTokens(
           kind: "quicksand",
           position,
           unitId: unit.id,
-          outcome: "decoy"
+          outcome: "decoy",
         });
       }
       removeBattlefieldToken(combat, token.id);
@@ -24724,7 +29229,7 @@ function planNeutralTokenWalk(
   state: GameState,
   combat: CombatState,
   unit: CombatUnitState,
-  destination: number
+  destination: number,
 ): { finalPosition: number; haltedByQuicksand: boolean } {
   if ((combat.battlefieldTokens ?? []).length === 0) {
     return { finalPosition: destination, haltedByQuicksand: false };
@@ -24737,7 +29242,7 @@ function planNeutralTokenWalk(
           destination,
           getUnitMoveRange(unit, state),
           getBlockedSpaces(combat, unit),
-          getKnownHazardSpaces(combat, unit)
+          getKnownHazardSpaces(combat, unit),
         ) ?? [destination]);
   return walkMoveThroughTokens(state, unit, enteredSpaces);
 }
@@ -24757,7 +29262,7 @@ function isLegalExplicitMovePath(
   unit: CombatUnitState,
   start: number,
   path: number[],
-  destination: number
+  destination: number,
 ): boolean {
   if (path.length === 0 || path.length > getUnitMoveRange(unit, state)) {
     return false;
@@ -24769,7 +29274,12 @@ function isLegalExplicitMovePath(
   const seen = new Set<number>([start]);
   let previous = start;
   for (const cell of path) {
-    if (!isBattlefieldPosition(cell) || !isAdjacent(previous, cell) || blocked.has(cell) || seen.has(cell)) {
+    if (
+      !isBattlefieldPosition(cell) ||
+      !isAdjacent(previous, cell) ||
+      blocked.has(cell) ||
+      seen.has(cell)
+    ) {
       return false;
     }
     seen.add(cell);
@@ -24778,10 +29288,18 @@ function isLegalExplicitMovePath(
   return true;
 }
 
-function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UNIT" }>): void {
+function moveUnit(
+  state: GameState,
+  action: Extract<GameAction, { type: "MOVE_UNIT" }>,
+): void {
   const combat = state.combat;
   const unit = combat?.units[action.unitId];
-  if (!combat || !unit || unit.controllerId !== action.playerId || !canUnitMoveTo(combat, unit, action.destination, state)) {
+  if (
+    !combat ||
+    !unit ||
+    unit.controllerId !== action.playerId ||
+    !canUnitMoveTo(combat, unit, action.destination, state)
+  ) {
     throw new Error("That unit cannot move to the selected space.");
   }
 
@@ -24799,7 +29317,16 @@ function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UN
   // tokens and no chosen path, the walk is skipped and movement is unchanged.
   let enteredSpaces: number[] | null = null;
   if (action.path && unit.type !== "flying") {
-    if (!isLegalExplicitMovePath(state, combat, unit, from, action.path, destination)) {
+    if (
+      !isLegalExplicitMovePath(
+        state,
+        combat,
+        unit,
+        from,
+        action.path,
+        destination,
+      )
+    ) {
       throw new Error("That movement path is not legal.");
     }
     enteredSpaces = action.path;
@@ -24812,7 +29339,7 @@ function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UN
             destination,
             getUnitMoveRange(unit, state),
             getBlockedSpaces(combat, unit),
-            getKnownHazardSpaces(combat, unit)
+            getKnownHazardSpaces(combat, unit),
           ) ?? [destination]);
   }
 
@@ -24829,7 +29356,7 @@ function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UN
     playerId: action.playerId,
     unitId: unit.id,
     from,
-    to: finalPosition
+    to: finalPosition,
   });
   gainSectQiAfterMove(state, unit, from, finalPosition);
   healCommanderFromArtifactAction(state, unit, "move");
@@ -24840,7 +29367,11 @@ function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UN
   // A Fire Wall or Land Mine that struck the mover down ends its activation.
   if (!isUnitAlive(unit)) {
     if (combat.activeUnitId === unit.id) {
-      appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
+      appendExpiredEffectEvents(
+        state,
+        expireEffectsForActivationEnd(state, unit.id),
+        "activation-ended",
+      );
       advanceActiveUnit(state);
     }
     state.phase = "combat";
@@ -24855,7 +29386,11 @@ function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UN
   // an adjacent enemy or hold.
   if (haltedByQuicksand || unit.type === "ranged") {
     markActivatedThisRound(unit);
-    appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
+    appendExpiredEffectEvents(
+      state,
+      expireEffectsForActivationEnd(state, unit.id),
+      "activation-ended",
+    );
     advanceActiveUnit(state);
   }
 
@@ -24863,7 +29398,10 @@ function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UN
   state.priorityPlayerId = null;
 }
 
-function defendUnit(state: GameState, action: Extract<GameAction, { type: "DEFEND_UNIT" }>): void {
+function defendUnit(
+  state: GameState,
+  action: Extract<GameAction, { type: "DEFEND_UNIT" }>,
+): void {
   const combat = state.combat;
   const unit = combat?.units[action.unitId];
   if (!combat || !unit || unit.controllerId !== action.playerId) {
@@ -24871,7 +29409,9 @@ function defendUnit(state: GameState, action: Extract<GameAction, { type: "DEFEN
   }
   // Rule: no consecutive Defend activations — must do something else in between.
   if (unit.defendedLastActivation) {
-    throw new Error("That unit cannot Defend again until it takes another action first.");
+    throw new Error(
+      "That unit cannot Defend again until it takes another action first.",
+    );
   }
 
   unit.defenseToken = true;
@@ -24881,31 +29421,47 @@ function defendUnit(state: GameState, action: Extract<GameAction, { type: "DEFEN
   // source.
   gainRunesForDefend(state, unit);
   healCommanderFromArtifactAction(state, unit, "defend");
-  appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
+  appendExpiredEffectEvents(
+    state,
+    expireEffectsForActivationEnd(state, unit.id),
+    "activation-ended",
+  );
 
   appendEvent(state, {
     type: "UNIT_DEFENDED",
     playerId: action.playerId,
-    unitId: unit.id
+    unitId: unit.id,
   });
 
   advanceActiveUnit(state);
 }
 
-function endActivation(state: GameState, action: Extract<GameAction, { type: "END_ACTIVATION" }>): void {
+function endActivation(
+  state: GameState,
+  action: Extract<GameAction, { type: "END_ACTIVATION" }>,
+): void {
   const combat = state.combat;
   const unit = combat?.units[action.unitId];
-  if (!combat || !unit || unit.controllerId !== action.playerId || combat.activeUnitId !== unit.id) {
+  if (
+    !combat ||
+    !unit ||
+    unit.controllerId !== action.playerId ||
+    combat.activeUnitId !== unit.id
+  ) {
     throw new Error("That unit cannot end its activation now.");
   }
 
   markActivatedThisRound(unit);
-  appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
+  appendExpiredEffectEvents(
+    state,
+    expireEffectsForActivationEnd(state, unit.id),
+    "activation-ended",
+  );
 
   appendEvent(state, {
     type: "UNIT_ACTIVATION_ENDED",
     playerId: action.playerId,
-    unitId: unit.id
+    unitId: unit.id,
   });
 
   advanceActiveUnit(state);
@@ -24922,7 +29478,11 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
   expireHeroGradeFamiliars(state, finishedRound);
   state.combat.round += 1;
   resetCombatRound(state.combat);
-  appendExpiredEffectEvents(state, expireEffectsForCombatRoundEnd(state, finishedRound), "combat-round-ended");
+  appendExpiredEffectEvents(
+    state,
+    expireEffectsForCombatRoundEnd(state, finishedRound),
+    "combat-round-ended",
+  );
   expireTokensAtRoundEnd(state, state.combat, finishedRound);
   expireBattlefieldTokensAtRoundEnd(state, finishedRound);
   for (const player of Object.values(state.players)) {
@@ -24959,13 +29519,13 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
   appendEvent(state, {
     type: "COMBAT_ROUND_ENDED",
     round: finishedRound,
-    nextRound: state.combat.round
+    nextRound: state.combat.round,
   });
 
   appendEvent(state, {
     type: "COMBAT_ROUND_STARTED",
     round: state.combat.round,
-    activeUnitId: null
+    activeUnitId: null,
   });
 
   // Forced Battle Events (Anime mod, §3.12): a fought field's round-start script
@@ -25017,7 +29577,8 @@ function ensureCombatActivation(state: GameState): void {
     combat.activeUnitId ||
     // WOG Commanders pre-combat sort: hold activation while an owner repositions
     // their commander (the deferred start-of-combat package has not run yet).
-    (combat.pendingCommanderPlacement && combat.pendingCommanderPlacement.length > 0) ||
+    (combat.pendingCommanderPlacement &&
+      combat.pendingCommanderPlacement.length > 0) ||
     state.pendingChoice ||
     state.reactionWindow ||
     state.stack.length > 0
@@ -25028,12 +29589,21 @@ function ensureCombatActivation(state: GameState): void {
   advanceActiveUnit(state);
 }
 
-function endCombatRound(state: GameState, action: Extract<GameAction, { type: "END_COMBAT_ROUND" }>): void {
+function endCombatRound(
+  state: GameState,
+  action: Extract<GameAction, { type: "END_COMBAT_ROUND" }>,
+): void {
   advanceCombatRound(state, action.playerId);
 }
 
-function spendResources(resources: Record<ResourceKind, number>, cost: ResourceCost): void {
-  for (const [resource, amount] of Object.entries(cost) as [ResourceKind, number][]) {
+function spendResources(
+  resources: Record<ResourceKind, number>,
+  cost: ResourceCost,
+): void {
+  for (const [resource, amount] of Object.entries(cost) as [
+    ResourceKind,
+    number,
+  ][]) {
     resources[resource] -= amount;
   }
 }
@@ -25041,7 +29611,7 @@ function spendResources(resources: Record<ResourceKind, number>, cost: ResourceC
 function applyBuildingEffect(
   state: GameState,
   action: Extract<GameAction, { type: "BUILD_STRUCTURE" }>,
-  buildings: BuildingLibrary
+  buildings: BuildingLibrary,
 ): void {
   const building = buildings[action.buildingId];
   const effect = building?.effect;
@@ -25063,16 +29633,24 @@ function applyBuildingEffect(
     playerId: action.playerId,
     townId: action.townId,
     buildingId: action.buildingId,
-    effect
+    effect,
   });
 }
 
 function buildStructure(
   state: GameState,
   action: Extract<GameAction, { type: "BUILD_STRUCTURE" }>,
-  buildings: BuildingLibrary
+  buildings: BuildingLibrary,
 ): void {
-  if (!canPlayerBuildStructure(state, action.playerId, action.townId, action.buildingId, buildings)) {
+  if (
+    !canPlayerBuildStructure(
+      state,
+      action.playerId,
+      action.townId,
+      action.buildingId,
+      buildings,
+    )
+  ) {
     throw new Error("That structure cannot be built right now.");
   }
 
@@ -25091,7 +29669,7 @@ function buildStructure(
     playerId: action.playerId,
     townId: action.townId,
     buildingId: action.buildingId,
-    cost: building.cost
+    cost: building.cost,
   });
 
   applyBuildingEffect(state, action, buildings);
@@ -25099,9 +29677,12 @@ function buildStructure(
 
 function completeSimultaneousTurn(
   state: GameState,
-  action: Extract<GameAction, { type: "COMPLETE_SIMULTANEOUS_TURN" }>
+  action: Extract<GameAction, { type: "COMPLETE_SIMULTANEOUS_TURN" }>,
 ): void {
-  if (state.turn.mode !== "simultaneous" || state.round > state.turn.simultaneousRoundLimit) {
+  if (
+    state.turn.mode !== "simultaneous" ||
+    state.round > state.turn.simultaneousRoundLimit
+  ) {
     throw new Error("Simultaneous turns are not active.");
   }
 
@@ -25112,10 +29693,12 @@ function completeSimultaneousTurn(
   appendEvent(state, {
     type: "SIMULTANEOUS_TURN_COMPLETED",
     playerId: action.playerId,
-    completedPlayerIds: [...state.turn.completedPlayerIds]
+    completedPlayerIds: [...state.turn.completedPlayerIds],
   });
 
-  const allPlayersComplete = state.turnOrder.every((playerId) => state.turn.completedPlayerIds.includes(playerId));
+  const allPlayersComplete = state.turnOrder.every((playerId) =>
+    state.turn.completedPlayerIds.includes(playerId),
+  );
   if (!allPlayersComplete) {
     return;
   }
@@ -25129,7 +29712,7 @@ function completeSimultaneousTurn(
     state.turn.observingPlayerId = state.activePlayerId;
     appendEvent(state, {
       type: "ORDERED_TURNS_STARTED",
-      activePlayerId: state.activePlayerId
+      activePlayerId: state.activePlayerId,
     });
     return;
   }
@@ -25149,7 +29732,7 @@ const SANDBOX_ADDABLE_KINDS = new Set<CardDefinition["kind"]>([
   // permanents bought from the Factory/Trading Post in a real game. The sandbox
   // has no market, so they must be addable here or their combat mechanics
   // (round-start shots, the Tent heal) are untestable in combat test mode.
-  "war-machine"
+  "war-machine",
 ]);
 
 /**
@@ -25161,7 +29744,7 @@ const SANDBOX_ADDABLE_KINDS = new Set<CardDefinition["kind"]>([
 function sandboxAddCard(
   state: GameState,
   action: Extract<GameAction, { type: "SANDBOX_ADD_CARD" }>,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   if (state.combat?.context.kind !== "sandbox") {
     throw new Error("Cards can only be added by hand in the combat sandbox.");
@@ -25186,11 +29769,14 @@ function sandboxAddCard(
     type: "SANDBOX_CARD_ADDED",
     playerId: action.playerId,
     cardId: action.cardId,
-    message: `${player.name} adds ${card.name} to hand (sandbox).`
+    message: `${player.name} adds ${card.name} to hand (sandbox).`,
   });
 }
 
-function searchDeck(state: GameState, action: Extract<GameAction, { type: "SEARCH_DECK" }>): void {
+function searchDeck(
+  state: GameState,
+  action: Extract<GameAction, { type: "SEARCH_DECK" }>,
+): void {
   const deck = state.decks[action.deckId];
   if (!deck || !isSharedDeckId(action.deckId)) {
     throw new Error("That deck cannot be searched.");
@@ -25211,7 +29797,11 @@ function searchDeck(state: GameState, action: Extract<GameAction, { type: "SEARC
  * NOT gate play — a Necropolis hero may play a Necromancy obtained this way,
  * per the printed card (wiki p.24). Kept for the level-up board record below.
  */
-function recordDeckDrawnAbility(player: PlayerState, deckId: string, cardId: CardId): void {
+function recordDeckDrawnAbility(
+  player: PlayerState,
+  deckId: string,
+  cardId: CardId,
+): void {
   if (deckId !== "abilities") {
     return;
   }
@@ -25232,7 +29822,11 @@ function recordDeckDrawnAbility(player: PlayerState, deckId: string, cardId: Car
  * the shared Spell DISCARD instead (never hand, never Book) — see
  * `tarnumOverlimitSpellAvailable`.
  */
-function takeTopAcquirableSpellForTarnum(state: GameState, playerId: PlayerId, deckId: string): CardId | null {
+function takeTopAcquirableSpellForTarnum(
+  state: GameState,
+  playerId: PlayerId,
+  deckId: string,
+): CardId | null {
   const deck = state.decks[deckId];
   const player = state.players[playerId];
   if (!deck || !player) {
@@ -25244,7 +29838,10 @@ function takeTopAcquirableSpellForTarnum(state: GameState, playerId: PlayerId, d
     // A draw pile emptied by earlier Searches reshuffles its discard pile back in
     // so this Search(1) still finds a Spell; the skipped cards stay aside until
     // the pull ends, so none is reshuffled in and re-read.
-    if (deck.drawPile.length === 0 && !reshuffleSharedDeckIfEmpty(state, deckId, "tarnum-search-reshuffle")) {
+    if (
+      deck.drawPile.length === 0 &&
+      !reshuffleSharedDeckIfEmpty(state, deckId, "tarnum-search-reshuffle")
+    ) {
       break;
     }
     const cardId = deck.drawPile.pop();
@@ -25286,7 +29883,10 @@ function takeTopAcquirableSpellForTarnum(state: GameState, playerId: PlayerId, d
  */
 function tarnumSearchableDecks(state: GameState): string[] {
   return [SPELL_DECK_BASIC, SPELL_DECK_EXPERT].filter(
-    (deckId) => (state.decks[deckId]?.drawPile.length ?? 0) + (state.decks[deckId]?.discardPile.length ?? 0) > 0
+    (deckId) =>
+      (state.decks[deckId]?.drawPile.length ?? 0) +
+        (state.decks[deckId]?.discardPile.length ?? 0) >
+      0,
   );
 }
 
@@ -25296,7 +29896,11 @@ function tarnumSearchableDecks(state: GameState): string[] {
  * searches left, the choice re-opens after each pick. When no deck holds a card,
  * the step closes (nothing left to Search).
  */
-function openTarnumSearch(state: GameState, playerId: PlayerId, remaining: number): void {
+function openTarnumSearch(
+  state: GameState,
+  playerId: PlayerId,
+  remaining: number,
+): void {
   if (remaining <= 0 || tarnumSearchableDecks(state).length === 0) {
     return;
   }
@@ -25306,7 +29910,7 @@ function openTarnumSearch(state: GameState, playerId: PlayerId, remaining: numbe
     type: "TARNUM_SEARCH",
     playerId,
     remaining,
-    returnPhase: state.combat ? "combat" : "player-turn"
+    returnPhase: state.combat ? "combat" : "player-turn",
   };
   state.phase = "choice";
   state.priorityPlayerId = playerId;
@@ -25316,14 +29920,14 @@ function openTarnumSearch(state: GameState, playerId: PlayerId, remaining: numbe
     choiceType: "TARNUM_SEARCH",
     playerId,
     sourceEffectIds: [],
-    message: `${state.players[playerId]?.name ?? playerId} Searches a Spell deck.`
+    message: `${state.players[playerId]?.name ?? playerId} Searches a Spell deck.`,
   });
 }
 
 function resolveTarnumSearch(
   state: GameState,
   action: Extract<GameAction, { type: "CHOOSE_OPTION" }>,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   const choice = state.pendingChoice;
   if (
@@ -25343,14 +29947,17 @@ function resolveTarnumSearch(
   const player = state.players[action.playerId];
   const taken = takeTopAcquirableSpellForTarnum(state, action.playerId, deckId);
   if (player && taken) {
-    player.combatStats.tarnumOverlimitCards = [...(player.combatStats.tarnumOverlimitCards ?? []), taken];
+    player.combatStats.tarnumOverlimitCards = [
+      ...(player.combatStats.tarnumOverlimitCards ?? []),
+      taken,
+    ];
   }
 
   appendEvent(state, {
     type: "PENDING_CHOICE_RESOLVED",
     choiceId: choice.id,
     playerId: action.playerId,
-    selectedIndex: action.optionIndex
+    selectedIndex: action.optionIndex,
   });
 
   state.pendingChoice = null;
@@ -25372,9 +29979,17 @@ function resolveTarnumSearch(
   }
 }
 
-function resolveDeckSearch(state: GameState, action: Extract<GameAction, { type: "RESOLVE_DECK_SEARCH" }>): void {
+function resolveDeckSearch(
+  state: GameState,
+  action: Extract<GameAction, { type: "RESOLVE_DECK_SEARCH" }>,
+): void {
   const choice = state.pendingChoice;
-  if (!choice || choice.type !== "DECK_SEARCH" || choice.id !== action.choiceId || choice.playerId !== action.playerId) {
+  if (
+    !choice ||
+    choice.type !== "DECK_SEARCH" ||
+    choice.id !== action.choiceId ||
+    choice.playerId !== action.playerId
+  ) {
     throw new Error("That deck search cannot be resolved.");
   }
 
@@ -25406,7 +30021,9 @@ function resolveDeckSearch(state: GameState, action: Extract<GameAction, { type:
   // was already lifted off the draw pile when revealed, so dropping it here is
   // the whole "Remove from the game" — it never reaches the discard pile below.
   const keptIndex = action.pick.index;
-  const discardedCardIds = choice.revealedCardIds.filter((_, index) => index !== keptIndex);
+  const discardedCardIds = choice.revealedCardIds.filter(
+    (_, index) => index !== keptIndex,
+  );
   // A Search that puts 2+ cards back lets the searcher decide WHICH of them ends
   // up face-up on top of the pile — the one every later "take the top discard"
   // offer (and Genie wish, and merchant top-buy) will see. With a single card
@@ -25422,7 +30039,7 @@ function resolveDeckSearch(state: GameState, action: Extract<GameAction, { type:
     deckId: choice.deckId,
     choiceId: choice.id,
     pick: "revealed",
-    discardedCardIds
+    discardedCardIds,
   });
 
   state.pendingChoice = null;
@@ -25437,11 +30054,17 @@ function resolveDeckSearch(state: GameState, action: Extract<GameAction, { type:
     // Interposes BEFORE the post-Search repeat offers; its handler
     // (chooseOption, context "discard-top") places the cards and then opens them,
     // so neither is swallowed.
-    openDiscardTopPick(state, action.playerId, choice.deckId, discardedCardIds, {
-      baseCount: choice.baseCount,
-      keptCardId: removePicked ? undefined : keptCardId,
-      returnPhase: choice.returnPhase
-    });
+    openDiscardTopPick(
+      state,
+      action.playerId,
+      choice.deckId,
+      discardedCardIds,
+      {
+        baseCount: choice.baseCount,
+        keptCardId: removePicked ? undefined : keptCardId,
+        returnPhase: choice.returnPhase,
+      },
+    );
     return;
   }
 
@@ -25454,11 +30077,14 @@ function resolveDeckSearch(state: GameState, action: Extract<GameAction, { type:
     choice.deckId,
     choice.baseCount,
     removePicked ? undefined : keptCardId,
-    choice.returnPhase
+    choice.returnPhase,
   );
 }
 
-function moveHero(state: GameState, action: Extract<GameAction, { type: "MOVE_HERO" }>): void {
+function moveHero(
+  state: GameState,
+  action: Extract<GameAction, { type: "MOVE_HERO" }>,
+): void {
   const hero = state.heroes[action.heroId];
   if (!hero || hero.controllerId !== action.playerId || !hero.spaceId) {
     throw new Error("That hero cannot move now.");
@@ -25483,15 +30109,22 @@ function moveHero(state: GameState, action: Extract<GameAction, { type: "MOVE_HE
     heroId: hero.id,
     from,
     to: action.to,
-    movementLeft: hero.movementPoints
+    movementLeft: hero.movementPoints,
   });
   commitPopulationOnMove(state, hero.controllerId);
 }
 
-function endTurn(state: GameState, action: Extract<GameAction, { type: "END_TURN" }>): void {
+function endTurn(
+  state: GameState,
+  action: Extract<GameAction, { type: "END_TURN" }>,
+): void {
   const nextPlayer = nextPlayerId(state, action.playerId);
   // Ongoing cards expire when their owner's next turn begins.
-  appendExpiredEffectEvents(state, expireEffectsForTurnEnd(state, nextPlayer), "turn-ended");
+  appendExpiredEffectEvents(
+    state,
+    expireEffectsForTurnEnd(state, nextPlayer),
+    "turn-ended",
+  );
   state.activePlayerId = nextPlayer;
   if (state.turn.mode === "ordered") {
     state.turn.observingPlayerId = nextPlayer;
@@ -25499,7 +30132,7 @@ function endTurn(state: GameState, action: Extract<GameAction, { type: "END_TURN
   appendEvent(state, {
     type: "TURN_ENDED",
     playerId: action.playerId,
-    nextPlayerId: nextPlayer
+    nextPlayerId: nextPlayer,
   });
 }
 
@@ -25510,11 +30143,15 @@ function endTurn(state: GameState, action: Extract<GameAction, { type: "END_TURN
  */
 function passNeutralActivation(state: GameState, unit: CombatUnitState): void {
   markActivatedThisRound(unit);
-  appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
+  appendExpiredEffectEvents(
+    state,
+    expireEffectsForActivationEnd(state, unit.id),
+    "activation-ended",
+  );
   appendEvent(state, {
     type: "UNIT_ACTIVATION_ENDED",
     playerId: unit.controllerId,
-    unitId: unit.id
+    unitId: unit.id,
   });
   advanceActiveUnit(state);
 }
@@ -25528,7 +30165,7 @@ function executeNeutralActivation(
   unit: CombatUnitState,
   cards: CardLibrary,
   forcedTargetId?: UnitId,
-  forcedDestination?: number
+  forcedDestination?: number,
 ): void {
   const combat = state.combat;
   if (!combat) {
@@ -25546,7 +30183,13 @@ function executeNeutralActivation(
     }
   }
 
-  const intent = planNeutralActivation(state, combat, unit, forcedTargetId, forcedDestination);
+  const intent = planNeutralActivation(
+    state,
+    combat,
+    unit,
+    forcedTargetId,
+    forcedDestination,
+  );
 
   if (intent.kind === "choose-target") {
     // Rulebook AI: "If there is ever a tie between equally valid targets,
@@ -25563,7 +30206,7 @@ function executeNeutralActivation(
       prompt: `${unit.name} has equally valid targets — you choose which unit it attacks.`,
       sourceUnitId: unit.id,
       anchorUnitId: null,
-      candidateUnitIds: intent.candidateIds
+      candidateUnitIds: intent.candidateIds,
     };
     state.phase = "choice";
     state.priorityPlayerId = chooser;
@@ -25574,7 +30217,7 @@ function executeNeutralActivation(
       choiceType: "ABILITY_TARGET_CHOICE",
       playerId: chooser,
       sourceEffectIds: [],
-      message: `${unit.name} has tied targets: the player chooses which unit is attacked.`
+      message: `${unit.name} has tied targets: the player chooses which unit is attacked.`,
     });
     return;
   }
@@ -25593,10 +30236,16 @@ function executeNeutralActivation(
       type: "OPTION_CHOICE",
       playerId: chooser,
       prompt: `${unit.name} — choose where it moves to attack ${target?.name ?? "its target"}.`,
-      options: intent.destinations.map((cell) => ({ label: `Move to ${getBattlefieldLabel(cell)}` })),
+      options: intent.destinations.map((cell) => ({
+        label: `Move to ${getBattlefieldLabel(cell)}`,
+      })),
       context: "neutral-destination",
-      neutralDestination: { unitId: unit.id, positions: intent.destinations, defenderId: intent.defenderId },
-      returnPhase: "combat"
+      neutralDestination: {
+        unitId: unit.id,
+        positions: intent.destinations,
+        defenderId: intent.defenderId,
+      },
+      returnPhase: "combat",
     };
     state.phase = "choice";
     state.priorityPlayerId = chooser;
@@ -25607,7 +30256,7 @@ function executeNeutralActivation(
       choiceType: "ABILITY_TARGET_CHOICE",
       playerId: chooser,
       sourceEffectIds: [],
-      message: `${unit.name}: the player chooses its move destination.`
+      message: `${unit.name}: the player chooses its move destination.`,
     });
     return;
   }
@@ -25623,7 +30272,12 @@ function executeNeutralActivation(
     // move: a Fire Wall burns it, a Land Mine bites it, a Quicksand can swallow
     // it short of its goal. (Previously the position was set directly, so a
     // monster walking onto a Fire Wall took no damage at all.)
-    const walked = planNeutralTokenWalk(state, combat, unit, intent.destination);
+    const walked = planNeutralTokenWalk(
+      state,
+      combat,
+      unit,
+      intent.destination,
+    );
     unit.position = walked.finalPosition;
     unit.movedThisActivation = true;
     markActivatedThisRound(unit);
@@ -25632,9 +30286,13 @@ function executeNeutralActivation(
       playerId: unit.controllerId,
       unitId: unit.id,
       from,
-      to: walked.finalPosition
+      to: walked.finalPosition,
     });
-    appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
+    appendExpiredEffectEvents(
+      state,
+      expireEffectsForActivationEnd(state, unit.id),
+      "activation-ended",
+    );
     // A token strike may have felled the guard (and, if it was the last enemy,
     // ended the combat). Otherwise the pre-activation reaction pause already
     // paced this guard, so the move just advances to the next unit — whose own
@@ -25651,7 +30309,12 @@ function executeNeutralActivation(
     // The approach is walked through battlefield tokens just like a player's
     // move-and-attack: a Fire Wall / Land Mine bites the guard on the way in,
     // and a Quicksand can halt it short of its target.
-    const walked = planNeutralTokenWalk(state, combat, unit, intent.destination);
+    const walked = planNeutralTokenWalk(
+      state,
+      combat,
+      unit,
+      intent.destination,
+    );
     unit.position = walked.finalPosition;
     unit.movedThisActivation = true;
     appendEvent(state, {
@@ -25659,15 +30322,23 @@ function executeNeutralActivation(
       playerId: unit.controllerId,
       unitId: unit.id,
       from,
-      to: walked.finalPosition
+      to: walked.finalPosition,
     });
     // A Fire Wall / Land Mine that felled the guard, or a Quicksand that stopped
     // it short, ends the activation with no attack — it never reaches its quarry.
-    if (!isUnitAlive(unit) || walked.haltedByQuicksand || walked.finalPosition !== intent.destination) {
+    if (
+      !isUnitAlive(unit) ||
+      walked.haltedByQuicksand ||
+      walked.finalPosition !== intent.destination
+    ) {
       if (isUnitAlive(unit)) {
         markActivatedThisRound(unit);
       }
-      appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
+      appendExpiredEffectEvents(
+        state,
+        expireEffectsForActivationEnd(state, unit.id),
+        "activation-ended",
+      );
       if (finishCombatIfNeeded(state)) {
         return;
       }
@@ -25682,9 +30353,9 @@ function executeNeutralActivation(
       type: "ATTACK_UNIT",
       playerId: unit.controllerId,
       attackerId: unit.id,
-      defenderId: intent.defenderId
+      defenderId: intent.defenderId,
     },
-    cards
+    cards,
   );
 }
 
@@ -25697,7 +30368,7 @@ function executeNeutralActivation(
 function previewNeutralIntent(
   state: GameState,
   combat: CombatState,
-  unit: CombatUnitState
+  unit: CombatUnitState,
 ): NonNullable<NonNullable<CombatState["pendingNeutralStep"]>["intent"]> {
   const intent = planNeutralActivation(state, combat, unit);
   switch (intent.kind) {
@@ -25708,7 +30379,9 @@ function previewNeutralIntent(
         kind: "attack",
         targetUnitId: intent.defenderId,
         targetName: target?.name,
-        ...(intent.kind === "move-and-attack" ? { destination: intent.destination } : {})
+        ...(intent.kind === "move-and-attack"
+          ? { destination: intent.destination }
+          : {}),
       };
     }
     case "move":
@@ -25719,7 +30392,11 @@ function previewNeutralIntent(
       // The neutral is about to move-and-attack; the exact landing cell is the
       // player's choice, so preview it as a plain attack on the fixed target.
       const target = combat.units[intent.defenderId];
-      return { kind: "attack", targetUnitId: intent.defenderId, targetName: target?.name };
+      return {
+        kind: "attack",
+        targetUnitId: intent.defenderId,
+        targetName: target?.name,
+      };
     }
     default:
       return { kind: "pass" };
@@ -25752,7 +30429,7 @@ function reactionPauseReactor(
   state: GameState,
   combat: CombatState,
   active: CombatUnitState,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): PlayerId | null {
   if (combat.context.kind === "sandbox") {
     return null;
@@ -25817,9 +30494,16 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
     // open fight. Re-derived every pass so an elimination hands the guards to
     // the next live seat (or back to the AI) mid-fight.
     const neutralController =
-      combat && !combat.outcome ? neutralCombatControllerId(state, combat) : null;
-    const controlledActive = combat?.activeUnitId ? combat.units[combat.activeUnitId] : null;
-    if (neutralController && controlledActive?.controllerId === NEUTRAL_PLAYER_ID) {
+      combat && !combat.outcome
+        ? neutralCombatControllerId(state, combat)
+        : null;
+    const controlledActive = combat?.activeUnitId
+      ? combat.units[combat.activeUnitId]
+      : null;
+    if (
+      neutralController &&
+      controlledActive?.controllerId === NEUTRAL_PLAYER_ID
+    ) {
       // Heal legacy/reconnected mid-activation snapshots created before
       // setActiveUnit published the decision seat through activePlayerId.
       state.activePlayerId = neutralController;
@@ -25844,7 +30528,11 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
     // PvP Neutral Control seat assigned, hand ANY open Neutral-owned decision
     // to that HUMAN — re-stamp the choice to the controller and stop; without
     // one, the AI resolves it exactly as before (the branches below).
-    if (state.pendingChoice && state.pendingChoice.playerId === NEUTRAL_PLAYER_ID && neutralController) {
+    if (
+      state.pendingChoice &&
+      state.pendingChoice.playerId === NEUTRAL_PLAYER_ID &&
+      neutralController
+    ) {
       state.pendingChoice.playerId = neutralController;
       state.priorityPlayerId = neutralController;
       break;
@@ -25935,7 +30623,10 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
       // WOG Commanders pre-combat sort: the deferred start-of-combat package
       // (Runes/permanents/war machines) has not run yet, so the pump must NOT
       // advance an activation until the owner finishes the sort.
-      !(combat.pendingCommanderPlacement && combat.pendingCommanderPlacement.length > 0) &&
+      !(
+        combat.pendingCommanderPlacement &&
+        combat.pendingCommanderPlacement.length > 0
+      ) &&
       !combat.awaitingContinue &&
       !state.reactionWindow &&
       !state.pendingChoice &&
@@ -25945,8 +30636,13 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
       // off-turn instant (or a neutral-pause cast) that kills the very unit whose
       // pre-activation reaction pause was open. Drop the corpse so activation
       // advances to the next living unit instead of stalling on it.
-      const stalledActive = combat.activeUnitId ? combat.units[combat.activeUnitId] : null;
-      if (combat.activeUnitId && (!stalledActive || !isUnitAlive(stalledActive))) {
+      const stalledActive = combat.activeUnitId
+        ? combat.units[combat.activeUnitId]
+        : null;
+      if (
+        combat.activeUnitId &&
+        (!stalledActive || !isUnitAlive(stalledActive))
+      ) {
         combat.activeUnitId = null;
       }
 
@@ -25962,7 +30658,7 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
           !combat.waitPhase &&
           houseRuleEnabled(state, "polish-wait") &&
           Object.values(combat.units).some(
-            (unit) => isUnitAlive(unit) && unit.waitPending && unit.waitToken
+            (unit) => isUnitAlive(unit) && unit.waitPending && unit.waitToken,
           );
         if (step || waitEntryPending) {
           // Sets the next unit, or opens the tied-order choice for a human side.
@@ -26000,7 +30696,8 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
           // Designer outposts (Garrison / Keymaster's Tent / one-way entrance):
           // "the fight is unlimited, as in Banks" — never a Round limit.
           !combat.context.unlimitedRounds &&
-          (combat.context.bankId === undefined || houseRuleEnabled(state, "bank-move-points"))
+          (combat.context.bankId === undefined ||
+            houseRuleEnabled(state, "bank-move-points"))
         ) {
           combat.awaitingContinue = true;
           state.priorityPlayerId = combat.attackerPlayerId;
@@ -26031,9 +30728,10 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
               reactingPlayerId: reactor,
               // No intent is previewed under PvP Neutral Control — the guard's
               // human commander has not chosen yet (same as a PvP unit).
-              ...(isNeutralUnit(active) && !neutralCombatControllerId(state, combat)
+              ...(isNeutralUnit(active) &&
+              !neutralCombatControllerId(state, combat)
                 ? { intent: previewNeutralIntent(state, combat, active) }
-                : {})
+                : {}),
             };
             state.priorityPlayerId = reactor;
             break;
@@ -26062,7 +30760,11 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
     // Adventure combats wait on the battlefield with the end-of-combat
     // notice up; a participant's ACKNOWLEDGE_COMBAT_END flips the flag and
     // only then do XP, unit flips and the field visit resolve.
-    if (combat?.outcome && combat.context.kind !== "sandbox" && combat.endAcknowledged) {
+    if (
+      combat?.outcome &&
+      combat.context.kind !== "sandbox" &&
+      combat.endAcknowledged
+    ) {
       finalizeAdventureCombat(state);
       continue;
     }
@@ -26071,11 +30773,18 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
     // Spell-deck searches from buying spells / building a Mage Guild, so pump the
     // queue then too (pumpAdventureQueues itself permits the prep exception).
     const pumpDuringPrep = Boolean(state.combat?.prep);
-    if ((!state.combat || pumpDuringPrep) && !state.pendingChoice && !state.reactionWindow) {
+    if (
+      (!state.combat || pumpDuringPrep) &&
+      !state.pendingChoice &&
+      !state.reactionWindow
+    ) {
       const queueLength = state.adventure.rewardQueue.length;
       const hadVisit = Boolean(state.adventure.pendingVisit);
       pumpAdventureQueues(state);
-      if (state.adventure.rewardQueue.length !== queueLength || hadVisit !== Boolean(state.adventure.pendingVisit)) {
+      if (
+        state.adventure.rewardQueue.length !== queueLength ||
+        hadVisit !== Boolean(state.adventure.pendingVisit)
+      ) {
         continue;
       }
     }
@@ -26109,7 +30818,7 @@ function asNeutralSeatCommand<
         | "WAIT_UNIT"
         | "USE_UNIT_ABILITY";
     }
-  >
+  >,
 >(state: GameState, action: T): T {
   const combat = state.combat;
   if (!combat) {
@@ -26266,7 +30975,9 @@ function isHandlerValidated(state: GameState, action: GameAction): boolean {
 
   return (
     state.mode === "adventure" &&
-    (action.type === "MOVE_HERO" || action.type === "BUILD_STRUCTURE" || action.type === "END_TURN")
+    (action.type === "MOVE_HERO" ||
+      action.type === "BUILD_STRUCTURE" ||
+      action.type === "END_TURN")
   );
 }
 
@@ -26287,7 +30998,9 @@ function advanceComputerStep(
   // when a tick is lost. A table with no computer seat still refuses it, so an
   // ordinary all-human game is unchanged.
   if (computerPlayerIds(state).length === 0) {
-    throw new Error("ADVANCE_COMPUTER is only legal in a game with computer seats.");
+    throw new Error(
+      "ADVANCE_COMPUTER is only legal in a game with computer seats.",
+    );
   }
   if (state.mode !== "adventure") {
     throw new Error("ADVANCE_COMPUTER is only legal on the adventure map.");
@@ -26320,8 +31033,13 @@ function acknowledgeFirstPlayerRoll(
   if (!state.adventure?.openingFirstPlayerRollPending) {
     throw new Error("There is no first-player ceremony to dismiss.");
   }
-  if (!state.players[action.playerId] || state.players[action.playerId].eliminated) {
-    throw new Error("Only a live player may dismiss the first-player ceremony.");
+  if (
+    !state.players[action.playerId] ||
+    state.players[action.playerId].eliminated
+  ) {
+    throw new Error(
+      "Only a live player may dismiss the first-player ceremony.",
+    );
   }
   if (isComputerPlayer(state, action.playerId)) {
     throw new Error("A human must dismiss the first-player ceremony.");
@@ -26329,7 +31047,11 @@ function acknowledgeFirstPlayerRoll(
   state.adventure.openingFirstPlayerRollPending = false;
 }
 
-export function applyAction(state: GameState, action: GameAction, options: ReducerOptions = {}): EngineResult {
+export function applyAction(
+  state: GameState,
+  action: GameAction,
+  options: ReducerOptions = {},
+): EngineResult {
   // Balance packs: ONE seam. Every card read below (and in every helper this
   // action reaches) goes through `cards`, so swapping the reprinted definitions
   // in here is what makes the rules real for the whole resolution path.
@@ -26366,7 +31088,10 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
       : !isComputerPlayer(state, computerActor)
         ? "Only a configured computer seat may use computer authority."
         : null
-    : roomActionGuard(state, action, { clientId: options.actorClientId, userId: options.actorUserId });
+    : roomActionGuard(state, action, {
+        clientId: options.actorClientId,
+        userId: options.actorUserId,
+      });
   if (seatError) {
     return fail(state, { code: "ACTION_NOT_LEGAL", message: seatError });
   }
@@ -26377,7 +31102,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
     ensureUniqueArmyUnitIds(base);
   }
 
-  const legalError = isHandlerValidated(base, action) ? null : assertLegal(base, action, cards, buildings);
+  const legalError = isHandlerValidated(base, action)
+    ? null
+    : assertLegal(base, action, cards, buildings);
   if (legalError) {
     return fail(base, legalError);
   }
@@ -26391,14 +31118,20 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
   // idempotent (see healVerifiedMembership); membership handlers below (JOIN)
   // already stamp it themselves, so this only ever helps the other actions.
   if (options.actorUserId) {
-    healVerifiedMembership(nextState, { clientId: options.actorClientId, userId: options.actorUserId });
+    healVerifiedMembership(nextState, {
+      clientId: options.actorClientId,
+      userId: options.actorUserId,
+    });
   }
 
   const startEventNumber = eventSeedNumber(nextState);
   const livingArmyBefore = new Map(
     Object.values(nextState.combat?.units ?? {})
-      .filter((unit) => isUnitAlive(unit) && Boolean(unit.armyUnitId) && !unit.temporary)
-      .map((unit) => [unit.id, unit.controllerId] as const)
+      .filter(
+        (unit) =>
+          isUnitAlive(unit) && Boolean(unit.armyUnitId) && !unit.temporary,
+      )
+      .map((unit) => [unit.id, unit.controllerId] as const),
   );
 
   // Per-turn clock: which open-turn seats are PAUSED right now, read BEFORE the
@@ -26406,7 +31139,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
   // choice) must still forgive the blocked stretch (see applyTurnClockBookkeeping).
   const turnClockPausedBefore =
     options.now !== undefined && nextState.mode === "adventure"
-      ? turnClockRunningSeats(nextState).filter((seat) => turnClockPausedFor(nextState, seat))
+      ? turnClockRunningSeats(nextState).filter((seat) =>
+          turnClockPausedFor(nextState, seat),
+        )
       : [];
 
   // Parallel turns, transactional backstop: when a player acts while ANOTHER
@@ -26418,7 +31153,8 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
   // the open interaction. Null for owners/participants and outside parallel
   // mode, so every other code path pays nothing.
   const actorPlayerId =
-    "playerId" in action && typeof (action as { playerId?: unknown }).playerId === "string"
+    "playerId" in action &&
+    typeof (action as { playerId?: unknown }).playerId === "string"
       ? (action as { playerId: PlayerId }).playerId
       : null;
   // The AFK vote-kick AND new-adventure (room reset) vote actions are
@@ -26442,8 +31178,12 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
     // Human may ADVANCE_COMPUTER while a computer seat owns the map turn.
     action.type === "ADVANCE_COMPUTER";
   const parallelBystanderBlocker =
-    actorPlayerId && !isTableMetaAction ? parallelInteractionBlocker(nextState, actorPlayerId) : null;
-  const parallelSlotBefore = parallelBystanderBlocker ? parallelSlotSignature(nextState) : null;
+    actorPlayerId && !isTableMetaAction
+      ? parallelInteractionBlocker(nextState, actorPlayerId)
+      : null;
+  const parallelSlotBefore = parallelBystanderBlocker
+    ? parallelSlotSignature(nextState)
+    : null;
 
   // Round-start Event / Astrologers barrier (ordered AND parallel play): while
   // the round's Event is being resolved clockwise, the ONLY player who may act
@@ -26452,12 +31192,17 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
   // draw, no town/morale actions, no ending the turn). Read from the PRE-handler
   // clone, so the round-wrap action that first raises the barrier (inside its own
   // handler) is not itself rejected, and chat (no `playerId`) is exempt.
-  if (actorPlayerId && !isTableMetaAction && isRoundStartEventBarrierActive(nextState)) {
+  if (
+    actorPlayerId &&
+    !isTableMetaAction &&
+    isRoundStartEventBarrierActive(nextState)
+  ) {
     const resolver = roundStartEventResolver(nextState);
     if (resolver && resolver !== actorPlayerId) {
       return fail(base, {
         code: "ACTION_NOT_LEGAL",
-        message: "The round's Event is still being resolved — wait until every player has resolved it before acting."
+        message:
+          "The round's Event is still being resolved — wait until every player has resolved it before acting.",
       });
     }
   }
@@ -26470,781 +31215,810 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
   try {
     try {
       switch (action.type) {
-      case "CAST_SPELL":
-        // Mandatory start-of-turn draw: a Map Spell cast is blocked until the
-        // draw is taken (no-op in combat / off-turn). Checked before resolving so
-        // the cast never half-runs.
-        assertStartOfTurnDrawTaken(nextState, action.playerId);
-        castSpell(nextState, action, cards);
-        break;
-      case "PLAY_CARD":
-        // Likewise for any other card played on the quiet map turn.
-        assertStartOfTurnDrawTaken(nextState, action.playerId);
-        playCard(nextState, action, cards);
-        // An "Instant (any time during Combat)" card played INSIDE a reaction
-        // window (Gerwulf's Ballista discard, Deemer's Meteor Shower — see
-        // combatAnytimeInstantWindowJoins) keeps that window open, exactly like
-        // the First Aid Tent's USE_ACTIVE_EFFECT twin below: clear stale passes,
-        // re-derive the offers (the card is spent now, so its own offer drops out
-        // and cannot be replayed), and hand priority back so the player may keep
-        // reacting or pass — then the parked attack/cast resumes. Without this the
-        // window kept a STALE offer list naming a card no longer in hand.
-        //
-        // Gated on PRIORITY: only the priority player's PLAY_CARD can be a
-        // reaction in this window (that is the only offer list getLegalActions
-        // serves). Without the gate, any other card play that ever coexists with
-        // an open window — a parallel-turns bystander's quiet action today, some
-        // future seam tomorrow — would reset the window's passes and hand
-        // priority to a NON-participant, stranding the parked attack.
-        if (nextState.reactionWindow && nextState.reactionWindow.priorityPlayerId === action.playerId) {
-          nextState.phase = "reaction";
-          advanceReactionWindowAfterPlay(nextState, action.playerId, cards);
-        }
-        break;
-      case "ATTACK_UNIT":
-        attackUnit(nextState, asNeutralSeatCommand(nextState, action), cards);
-        break;
-      case "MOVE_AND_ATTACK_UNIT":
-        moveAndAttackUnit(nextState, asNeutralSeatCommand(nextState, action), cards);
-        break;
-      case "MOVE_UNIT":
-        moveUnit(nextState, asNeutralSeatCommand(nextState, action));
-        break;
-      case "USE_UNIT_ABILITY":
-        // PvP Neutral Control: a controlled guard's token "other action" is
-        // issued for the controlling seat, then re-stamped to the neutral seat
-        // so the ownership check (unit.controllerId === action.playerId) passes
-        // and attribution matches the AI pipeline.
-        applyUnitAbilityAction(nextState, asNeutralSeatCommand(nextState, action));
-        break;
-      case "SUMMON_DEMONS":
-        summonDemons(nextState, action);
-        break;
-      case "USE_GENIE_DECK_DRAW":
-        applyGenieDeckDraw(nextState, action);
-        break;
-      case "USE_ACTIVE_EFFECT":
-        applyActiveEffectAction(nextState, action);
-        // A First Aid Tent heal used as an instant during a reaction window
-        // (heal-when-attacked) keeps the window open: clear stale passes, re-derive
-        // the offers (the heal may now be spent) and hand priority back so the
-        // healer can heal again / pass, then the paused attack resumes.
-        if (nextState.reactionWindow) {
-          advanceReactionWindowAfterPlay(nextState, action.playerId, cards);
-        }
-        break;
-      case "DEFEND_UNIT":
-        defendUnit(nextState, asNeutralSeatCommand(nextState, action));
-        break;
-      case "END_ACTIVATION":
-        endActivation(nextState, asNeutralSeatCommand(nextState, action));
-        break;
-      case "WAIT_UNIT":
-        waitUnit(nextState, asNeutralSeatCommand(nextState, action));
-        break;
-      case "END_COMBAT_ROUND":
-        endCombatRound(nextState, action);
-        break;
-      case "BUILD_STRUCTURE":
-        if (nextState.mode === "adventure") {
-          buildStructureAdventure(nextState, action);
-        } else {
-          buildStructure(nextState, action, buildings);
-        }
-        break;
-      case "COMPLETE_SIMULTANEOUS_TURN":
-        completeSimultaneousTurn(nextState, action);
-        break;
-      case "REROLL_PENDING_CHOICE":
-        rerollPendingChoice(nextState, action);
-        break;
-      case "CHOOSE_PENDING_ROLL":
-        choosePendingRoll(nextState, action, cards);
-        break;
-      case "PASS_REACTION":
-        passReaction(nextState, action, cards);
-        break;
-      case "PLAY_REACTION":
-        playReaction(nextState, action, cards);
-        break;
-      case "PLAY_REACTIONS":
-        playReactions(nextState, action, cards);
-        break;
-      case "USE_UNIT_RESURRECTION":
-        applyUnitResurrection(nextState, action, cards);
-        break;
-      case "USE_COMMANDER_CAST_REACTION":
-        applyCommanderCastReaction(nextState, action, cards);
-        break;
-      case "USE_UNIT_MAGIC_MIRROR":
-        applyUnitMagicMirror(nextState, action, cards);
-        break;
-      case "USE_EAGLE_EYE_UNIT_COPY":
-        applyEagleEyeUnitCopy(nextState, action);
-        break;
-      case "USE_UNIT_DIE_IGNORE":
-        applyUnitDieIgnore(nextState, action, cards);
-        break;
-      case "SEARCH_DECK":
-        searchDeck(nextState, action);
-        break;
-      case "SANDBOX_ADD_CARD":
-        sandboxAddCard(nextState, action, cards);
-        break;
-      case "SANDBOX_CONFIGURE_SEAT":
-        sandboxConfigureSeat(nextState, action);
-        break;
-      case "SANDBOX_SET_OPTIONS":
-        sandboxSetOptions(nextState, action);
-        break;
-      case "SANDBOX_BEGIN_COMBAT":
-        sandboxBeginCombat(nextState, action);
-        break;
-      case "RESOLVE_DECK_SEARCH":
-        resolveDeckSearch(nextState, action);
-        // The CHOOSE_OPTION twin of this tail (see its comment): a Search
-        // instant played INTO an open reaction window (2026-08-10) pauses that
-        // window while the shared-deck Search is answered. Once the Search
-        // settles — and only when it opened no further choice of its own — the
-        // window resumes under the SAME advance rules as any other play, so the
-        // card it just handed over is visible to the still-parked attack/cast
-        // and a player left with nothing playable no longer strands it.
-        if (nextState.reactionWindow && !nextState.pendingChoice) {
-          nextState.phase = "reaction";
-          advanceReactionWindowAfterPlay(nextState, action.playerId, cards);
-        }
-        break;
-      case "MOVE_HERO":
-        if (nextState.mode === "adventure") {
-          moveHeroAdventure(nextState, action);
-        } else {
-          moveHero(nextState, action);
-        }
-        break;
-      case "MOVE_HERO_PATH":
-        moveHeroPathAdventure(nextState, action);
-        break;
-      case "REFRESH_HAND":
-        refreshHand(nextState, action);
-        break;
-      case "RESOLVE_EXPLORERS_DISCARD":
-        resolveExplorersDiscard(nextState, action);
-        break;
-      case "MULLIGAN_CARD":
-        mulliganCard(nextState, action);
-        break;
-      case "OPENING_HAND_MULLIGAN":
-        openingHandMulligan(nextState, action);
-        break;
-      case "ASTROLOGERS_HERO_EMPOWER":
-        astrologersHeroEmpower(nextState, action);
-        break;
-      case "MOVE_SPELL_TO_SPELL_BOOK":
-        moveSpellToSpellBook(nextState, action, cards);
-        break;
-      case "REVISIT_FIELD":
-        revisitField(nextState, action);
-        break;
-      case "OFFER_ALLY_TRANSFER":
-        offerAllyTransfer(nextState, action);
-        break;
-      case "BUILD_GRAIL":
-        buildGrail(nextState, action);
-        break;
-      case "OPEN_MARKET":
-        openMarket(nextState, action);
-        break;
-      case "DISCOVER_TILE":
-        discoverTile(nextState, action);
-        break;
-      case "PLACE_TILE":
-        placeTile(nextState, action);
-        break;
-      case "PLACE_OBSERVATORY_TILE":
-        placeObservatoryTile(nextState, action);
-        break;
-      case "SET_TILE_ROTATION":
-        setTileRotation(nextState, action);
-        break;
-      case "CHOOSE_FACTION":
-        chooseFaction(nextState, action);
-        break;
-      case "START_ADVENTURE":
-        startAdventureFromLobby(nextState, action, options.now);
-        break;
-      case "CONFIRM_START_ADVENTURE":
-        confirmStartAdventure(nextState, action, options.now);
-        break;
-      case "CANCEL_START_ADVENTURE":
-        cancelStartAdventure(nextState, action, options.now);
-        break;
-      case "SET_DRAFT_FORMAT":
-        setDraftFormat(nextState, action);
-        break;
-      case "ROLL_TOWN_OPTIONS":
-        rollTownOptions(nextState, action);
-        break;
-      case "CHOOSE_TOWN":
-        chooseTown(nextState, action);
-        break;
-      case "ROLL_HERO_OPTIONS":
-        rollHeroOptions(nextState, action);
-        break;
-      case "BAN_HERO":
-        banHero(nextState, action);
-        break;
-      case "RESET_SEAT_DRAFT":
-        resetSeatDraft(nextState, action);
-        break;
-      case "RANDOM_ASSIGN_SEAT":
-        randomAssignSeat(nextState, action);
-        break;
-      case "JOIN_ROOM":
-        joinRoom(nextState, action, { clientId: options.actorClientId, userId: options.actorUserId });
-        break;
-      case "LEAVE_ROOM":
-        leaveRoom(nextState, action);
-        break;
-      case "SET_ROOM_HOSTED":
-        setRoomHosted(nextState, action);
-        break;
-      case "ASSIGN_SEAT":
-        assignSeat(nextState, action);
-        break;
-      case "KICK_MEMBER":
-        kickMember(nextState, action);
-        break;
-      case "TRANSFER_HOST":
-        transferHost(nextState, action);
-        break;
-      case "RECLAIM_HOST":
-        reclaimHost(
-          nextState,
-          action,
-          { clientId: options.actorClientId, userId: options.actorUserId },
-          options.liveClientIds
-        );
-        break;
-      case "SET_ROOM_NAME":
-        setRoomName(nextState, action);
-        break;
-      case "SET_ROOM_PASSWORD":
-        setRoomPassword(nextState, action);
-        break;
-      case "SET_ROOM_REQUIRE_AUTH":
-        setRoomRequireAuth(nextState, action);
-        break;
-      case "SET_ROOM_RANKED":
-        setRoomRanked(nextState, action);
-        break;
-      case "SEND_TABLE_REACTION":
-        sendTableReaction(nextState, action);
-        break;
-      case "SEND_CHAT":
-        sendChat(nextState, action);
-        break;
-      case "RESOLVE_VISIT_STEP":
-        resolveVisitStep(nextState, action);
-        break;
-      case "TRADE_RESOURCES":
-        tradeResources(nextState, action);
-        break;
-      case "BUY_WAR_MACHINE":
-        buyWarMachine(nextState, action);
-        break;
-      case "SELL_SCROLL_SPELL":
-        sellScrollSpell(nextState, action);
-        break;
-      case "USE_SCHOOL_FETCH_EXPERT":
-        applySchoolFetchExpert(nextState, action);
-        noteReactionWindowPlay(nextState, action.playerId, cards);
-        break;
-      case "USE_SCHOOL_PERMANENT_EXPERT":
-        applySchoolPermanentExpert(nextState, action, cards);
-        noteReactionWindowPlay(nextState, action.playerId, cards);
-        break;
-      case "DISCARD_PERMANENT":
-        discardPermanentVoluntarily(nextState, action);
-        break;
-      case "DISCARD_ONGOING_CARD":
-        discardOngoingCardVoluntarily(nextState, action.playerId, action.cardId);
-        break;
-      case "CRACK_PERMANENT":
-        crackPermanentForInstant(nextState, action);
-        break;
-      case "ACKNOWLEDGE_COMBAT_END":
-        acknowledgeCombatEnd(nextState, action);
-        break;
-      case "ACKNOWLEDGE_FIRST_PLAYER_ROLL":
-        acknowledgeFirstPlayerRoll(nextState, action);
-        break;
-      case "SKIP_NECROMANCY":
-        skipNecromancy(nextState, action);
-        break;
-      case "COMMANDER_GRADE_UP":
-        commanderGradeUp(nextState, action);
-        break;
-      case "FORGE_COMMANDER_ARTIFACT":
-        forgeCommanderArtifact(nextState, action);
-        break;
-      case "REVIVE_COMMANDER":
-        reviveCommander(nextState, action);
-        break;
-      case "HEAVEN_TRIBULATION":
-        beginHeavenlyTribulation(nextState, action);
-        break;
-      case "HERO_TRAIN":
-        heroTrain(nextState, action);
-        break;
-      case "HERO_GRADE_PICK":
-        heroGradePick(nextState, action);
-        break;
-      case "HERO_GRADE_SELL_ARTIFACT":
-        heroGradeSellArtifact(nextState, action);
-        break;
-      case "EQUIP_HERO_ITEM":
-        equipHeroItem(nextState, action);
-        break;
-      case "UNEQUIP_HERO_ITEM":
-        unequipHeroItem(nextState, action);
-        break;
-      case "DRILL_UNIT":
-        drillUnit(nextState, action);
-        break;
-      case "ASSIGN_UNIT_JOB":
-        assignMgqUnitJob(nextState, action);
-        break;
-      case "SET_MGQ_SPIRIT":
-        setMgqSpirit(nextState, action);
-        break;
-      case "RESOLVE_COMPANION_RECRUITMENT":
-        resolveCompanionRecruitment(nextState, action);
-        break;
-      case "SELECT_ARTIFACT_SET_UNIT":
-        selectArtifactSetUnit(nextState, action);
-        break;
-      case "USE_ARTIFACT_SET_POWER":
-        applyArtifactSetPower(nextState, action, cards);
-        break;
-      case "USE_PROPHECY_PRE_ROLL":
-        applyProphecyPreRoll(nextState, action, cards);
-        break;
-      case "LITTLE_BUSTERS_COUNTER":
-        applyLittleBustersCounter(nextState, action);
-        break;
-      case "USE_HERO_SKILL":
-        applyHeroSkillActive(nextState, action);
-        break;
-      case "USE_FUYUKI_COMMAND_SEAL":
-        applyFuyukiCommandSeal(nextState, action);
-        break;
-      case "USE_HERO_SKILL_REACTION":
-        applyHeroSkillReaction(nextState, action, cards);
-        break;
-      case "USE_EQUIPMENT_DEFENSE_REACTION":
-        applyEquipmentDefenseReaction(nextState, action, cards);
-        break;
-      case "SELECT_EQUIPMENT_COMBAT_UNIT":
-        selectEquipmentCombatUnit(nextState, action);
-        break;
-      case "USE_EQUIPMENT_ATTACK_RIDER":
-        applyEquipmentAttackRider(nextState, action, cards);
-        break;
-      case "USE_EQUIPMENT_HEAL_REACTION":
-        applyEquipmentHealReaction(nextState, action, cards);
-        break;
-      case "USE_EQUIPMENT_GUARDIAN_REACTION":
-        applyEquipmentGuardianReaction(nextState, action, cards);
-        break;
-      case "COMMANDER_FIRST_AID":
-        resolveCommanderFirstAid(nextState, action);
-        break;
-      case "COMMANDER_SET_STANCE":
-        commanderSetStance(nextState, action);
-        break;
-      case "COMMANDER_SET_BOND":
-        commanderSetBond(nextState, action);
-        break;
-      case "PLACE_COMBAT_UNIT":
-        placeCombatUnit(nextState, action);
-        break;
-      case "UNPLACE_COMBAT_UNIT":
-        unplaceCombatUnit(nextState, action);
-        break;
-      case "FINISH_COMBAT_PLACEMENT":
-        finishCombatPlacement(nextState, action);
-        break;
-      case "ACCEPT_COMBAT":
-        acceptCombat(nextState, action);
-        break;
-      case "SWAP_COMBAT_UNITS":
-        swapCombatUnits(nextState, action);
-        break;
-      case "TACTICS_MOVE_UNIT":
-        tacticsMoveUnit(nextState, action);
-        break;
-      case "FINISH_TACTICS":
-        finishTactics(nextState, action);
-        break;
-      case "PLACE_NEUTRAL_GUARD":
-        placeNeutralGuard(nextState, action);
-        break;
-      case "FINISH_NEUTRAL_PLACEMENT":
-        finishNeutralPlacement(nextState, action);
-        break;
-      case "PLACE_COMMANDER":
-        placeCommanderUnit(nextState, action);
-        break;
-      case "FINISH_COMMANDER_PLACEMENT":
-        finishCommanderPlacement(nextState, action);
-        break;
-      case "AUTO_NEUTRAL_PLACEMENT":
-        autoNeutralPlacement(nextState, action);
-        break;
-      case "CONTINUE_NEUTRAL_COMBAT":
-        continueNeutralCombat(nextState, action);
-        advanceCombatRound(nextState, action.playerId);
-        break;
-      case "CONTINUE_NEUTRAL_STEP":
-        continueNeutralStep(nextState, action);
-        break;
-      case "AUTO_NEUTRAL_ACTIVATION":
-        autoNeutralActivation(nextState, action, cards);
-        break;
-      case "RETREAT_FROM_COMBAT":
-        retreatFromCombat(nextState, action);
-        break;
-      case "SURRENDER_COMBAT":
-        surrenderFromCombat(nextState, action);
-        break;
-      case "GIVE_UP_COMBAT":
-        giveUpCombat(nextState, action);
-        break;
-      case "POPULATION_ACTION":
-        populationAction(nextState, action);
-        break;
-      case "REDEEM_REINFORCEMENT_DISCOUNT":
-        redeemReinforcementDiscountAction(nextState, action);
-        break;
-      case "HIRE_SECONDARY_HERO":
-        hireSecondaryHero(nextState, action);
-        break;
-      case "SPELL_BOOK_ACTION":
-        spellBookAction(nextState, action);
-        break;
-      case "ROGUES_SCOUT_DECK":
-        roguesScoutDeck(nextState, action);
-        break;
-      case "SATYR_MORALE_ROLL":
-        satyrMoraleRoll(nextState, action);
-        break;
-      case "THIEVES_GUILD_ACTION":
-        thievesGuildAction(nextState, action);
-        break;
-      case "BLACKSMITH_ACTION":
-        blacksmithAction(nextState, action);
-        break;
-      case "MAGIC_UNIVERSITY_ACTION":
-        magicUniversityAction(nextState, action);
-        break;
-      case "USE_TOWN_BUILDING":
-        activateTownBuilding(nextState, action);
-        break;
-      case "SPEND_TOWN_CUBE":
-        spendTownCube(nextState, action);
-        noteReactionWindowPlay(nextState, action.playerId, cards);
-        break;
-      case "HALL_OF_VALHALLA_BOOST":
-        hallOfValhallaBoost(nextState, action);
-        noteReactionWindowPlay(nextState, action.playerId, cards);
-        break;
-      case "CONVERT_CARD_TO_ATTACK":
-        convertCardToAttack(nextState, action);
-        noteReactionWindowPlay(nextState, action.playerId, cards);
-        break;
-      case "ATTACK_FORTIFICATION":
-        attackFortification(nextState, action);
-        break;
-      case "SPEND_MORALE":
-        spendMorale(nextState, action);
-        // A combat-bonus spent inside an open attack/instant window keeps the
-        // window open; re-derive its offers so the just-spent card drops out,
-        // and clear the opponent's standing pass (noteReactionWindowPlay — a
-        // window ends only on CONSECUTIVE passes). No-op with no window open.
-        noteReactionWindowPlay(nextState, action.playerId, cards);
-        break;
-      case "USE_ABILITY_EMPOWER_TOKEN":
-        useAbilityEmpowerToken(nextState, action);
-        break;
-      case "CHOOSE_OPTION":
-        // The combat-only option choices (Harpy fly-back, Genies' Wish spell
-        // pick, Ghost Dragon knock-back) live in the combat reducer; every other
-        // option choice is
-        // handled by the adventure reducer.
-        if (nextState.pendingChoice?.type === "TARNUM_SEARCH") {
-          resolveTarnumSearch(nextState, action, cards);
-        } else if (
-          nextState.pendingChoice?.type === "OPTION_CHOICE" &&
-          (nextState.pendingChoice.context === "disrupting-ray-mode" ||
-            nextState.pendingChoice.context === "dispel-scope" ||
-            nextState.pendingChoice.context === "community-dispel-pick" ||
-            nextState.pendingChoice.context === "misfortune-face")
-        ) {
-          resolveBalanceSpellChoice(nextState, action, cards);
-        } else if (
-          nextState.pendingChoice?.type === "OPTION_CHOICE" &&
-          nextState.pendingChoice.context === "combat-reposition"
-        ) {
-          resolveCombatReposition(nextState, action);
-        } else if (
-          nextState.pendingChoice?.type === "OPTION_CHOICE" &&
-          nextState.pendingChoice.context === "genie-take-spell"
-        ) {
-          resolveGenieTakeSpell(nextState, action);
-        } else if (
-          nextState.pendingChoice?.type === "OPTION_CHOICE" &&
-          nextState.pendingChoice.context === "combat-knockback"
-        ) {
-          resolveKnockbackChoice(nextState, action, cards);
-        } else if (
-          nextState.pendingChoice?.type === "OPTION_CHOICE" &&
-          nextState.pendingChoice.context === "combat-teleport"
-        ) {
-          resolveTeleportChoice(nextState, action);
-        } else if (
-          nextState.pendingChoice?.type === "OPTION_CHOICE" &&
-          nextState.pendingChoice.context === "neutral-destination"
-        ) {
-          resolveNeutralDestinationChoice(nextState, action, cards);
-        } else if (
-          nextState.pendingChoice?.type === "OPTION_CHOICE" &&
-          nextState.pendingChoice.context === "place-battlefield-tokens"
-        ) {
-          resolvePlaceTokensChoice(nextState, action);
-        } else if (
-          nextState.pendingChoice?.type === "OPTION_CHOICE" &&
-          nextState.pendingChoice.context === "combat-clone"
-        ) {
-          resolveCloneChoice(nextState, action);
-        } else if (
-          nextState.pendingChoice?.type === "OPTION_CHOICE" &&
-          nextState.pendingChoice.context === "combat-step"
-        ) {
-          resolveUnitStepChoice(nextState, action);
-        } else if (
-          nextState.pendingChoice?.type === "OPTION_CHOICE" &&
-          nextState.pendingChoice.context === "combat-activation-order"
-        ) {
-          resolveActivationOrderChoice(nextState, action);
-        } else if (
-          nextState.pendingChoice?.type === "OPTION_CHOICE" &&
-          nextState.pendingChoice.context === "spell-deck-pick"
-        ) {
-          // The Tome's "which Spell deck?" pick — its resolver (and the dig it
-          // runs) live here beside resolveEagleEyeDig, not in the adventure
-          // reducer, exactly like the combat-side option choices above.
-          resolveSpellDeckPick(nextState, action, cards);
-        } else {
-          chooseOption(nextState, action);
-        }
-        // Some reaction plays (notably Scholar) open a nested option choice,
-        // which PAUSES the window (advanceReactionWindowAfterPlay). Once that
-        // choice resolves, the newly acquired card must be visible to the
-        // still-open reaction window before priority can continue — and the
-        // window must then follow the SAME advance rules as any other play, so
-        // a player left with nothing playable no longer strands the parked
-        // attack in an offer-less window (the frozen-table shape). Hence the
-        // shared advanceReactionWindowAfterPlay rather than a bare refresh.
-        if (nextState.reactionWindow && !nextState.pendingChoice) {
-          nextState.phase = "reaction";
-          advanceReactionWindowAfterPlay(nextState, action.playerId, cards);
-        }
-        break;
-      case "RESOLVE_COMBAT_DISCARD":
-        resolveCombatHandDiscard(nextState, action, cards);
-        break;
-      case "CHOOSE_ABILITY_TARGET":
-        chooseAbilityTarget(nextState, action, cards);
-        break;
-      case "SET_GAME_OPTIONS":
-        setGameOptions(nextState, action);
-        break;
-      case "SET_COMPUTER_OPPONENTS":
-        setComputerOpponents(nextState, action);
-        break;
-      case "SET_COMPUTER_SEAT_FACTION":
-        setComputerSeatFaction(nextState, action);
-        break;
-      case "END_TURN":
-        if (nextState.mode === "adventure") {
-          endTurnAdventure(nextState, action);
-        } else {
-          endTurn(nextState, action);
-        }
-        break;
-      case "ADVANCE_COMPUTER":
-        advanceComputerStep(nextState, action);
-        break;
-      case "GIVE_UP":
-        giveUpAdventure(nextState, action);
-        break;
-      case "START_AFK_VOTE":
-        startAfkVote(nextState, action, options.now);
-        break;
-      case "CAST_AFK_VOTE":
-        castAfkVote(nextState, action, options.now);
-        break;
-      case "RESOLVE_AFK_DROP":
-        resolveAfkDrop(nextState, action);
-        break;
-      case "FORCE_AFK_KICK":
-        forceAfkKick(nextState, action, options.now);
-        break;
-      case "FORCE_TURN_TIMEOUT":
-        forceTurnTimeout(nextState, action, options.now);
-        break;
-      case "RESOLVE_TURN_TIMEOUT":
-        resolveTurnTimeout(nextState, action);
-        break;
-      case "REQUEST_ROOM_RESET":
-        requestRoomReset(nextState, action, options.now);
-        break;
-      case "CONFIRM_ROOM_RESET":
-        confirmRoomReset(nextState, action);
-        break;
-      case "CANCEL_ROOM_RESET":
-        cancelRoomReset(nextState, action);
-        break;
+        case "CAST_SPELL":
+          // Mandatory start-of-turn draw: a Map Spell cast is blocked until the
+          // draw is taken (no-op in combat / off-turn). Checked before resolving so
+          // the cast never half-runs.
+          assertStartOfTurnDrawTaken(nextState, action.playerId);
+          castSpell(nextState, action, cards);
+          break;
+        case "PLAY_CARD":
+          // Likewise for any other card played on the quiet map turn.
+          assertStartOfTurnDrawTaken(nextState, action.playerId);
+          playCard(nextState, action, cards);
+          // An "Instant (any time during Combat)" card played INSIDE a reaction
+          // window (Gerwulf's Ballista discard, Deemer's Meteor Shower — see
+          // combatAnytimeInstantWindowJoins) keeps that window open, exactly like
+          // the First Aid Tent's USE_ACTIVE_EFFECT twin below: clear stale passes,
+          // re-derive the offers (the card is spent now, so its own offer drops out
+          // and cannot be replayed), and hand priority back so the player may keep
+          // reacting or pass — then the parked attack/cast resumes. Without this the
+          // window kept a STALE offer list naming a card no longer in hand.
+          //
+          // Gated on PRIORITY: only the priority player's PLAY_CARD can be a
+          // reaction in this window (that is the only offer list getLegalActions
+          // serves). Without the gate, any other card play that ever coexists with
+          // an open window — a parallel-turns bystander's quiet action today, some
+          // future seam tomorrow — would reset the window's passes and hand
+          // priority to a NON-participant, stranding the parked attack.
+          if (
+            nextState.reactionWindow &&
+            nextState.reactionWindow.priorityPlayerId === action.playerId
+          ) {
+            nextState.phase = "reaction";
+            advanceReactionWindowAfterPlay(nextState, action.playerId, cards);
+          }
+          break;
+        case "ATTACK_UNIT":
+          attackUnit(nextState, asNeutralSeatCommand(nextState, action), cards);
+          break;
+        case "MOVE_AND_ATTACK_UNIT":
+          moveAndAttackUnit(
+            nextState,
+            asNeutralSeatCommand(nextState, action),
+            cards,
+          );
+          break;
+        case "MOVE_UNIT":
+          moveUnit(nextState, asNeutralSeatCommand(nextState, action));
+          break;
+        case "USE_UNIT_ABILITY":
+          // PvP Neutral Control: a controlled guard's token "other action" is
+          // issued for the controlling seat, then re-stamped to the neutral seat
+          // so the ownership check (unit.controllerId === action.playerId) passes
+          // and attribution matches the AI pipeline.
+          applyUnitAbilityAction(
+            nextState,
+            asNeutralSeatCommand(nextState, action),
+          );
+          break;
+        case "SUMMON_DEMONS":
+          summonDemons(nextState, action);
+          break;
+        case "USE_GENIE_DECK_DRAW":
+          applyGenieDeckDraw(nextState, action);
+          break;
+        case "USE_ACTIVE_EFFECT":
+          applyActiveEffectAction(nextState, action);
+          // A First Aid Tent heal used as an instant during a reaction window
+          // (heal-when-attacked) keeps the window open: clear stale passes, re-derive
+          // the offers (the heal may now be spent) and hand priority back so the
+          // healer can heal again / pass, then the paused attack resumes.
+          if (nextState.reactionWindow) {
+            advanceReactionWindowAfterPlay(nextState, action.playerId, cards);
+          }
+          break;
+        case "DEFEND_UNIT":
+          defendUnit(nextState, asNeutralSeatCommand(nextState, action));
+          break;
+        case "END_ACTIVATION":
+          endActivation(nextState, asNeutralSeatCommand(nextState, action));
+          break;
+        case "WAIT_UNIT":
+          waitUnit(nextState, asNeutralSeatCommand(nextState, action));
+          break;
+        case "END_COMBAT_ROUND":
+          endCombatRound(nextState, action);
+          break;
+        case "BUILD_STRUCTURE":
+          if (nextState.mode === "adventure") {
+            buildStructureAdventure(nextState, action);
+          } else {
+            buildStructure(nextState, action, buildings);
+          }
+          break;
+        case "COMPLETE_SIMULTANEOUS_TURN":
+          completeSimultaneousTurn(nextState, action);
+          break;
+        case "REROLL_PENDING_CHOICE":
+          rerollPendingChoice(nextState, action);
+          break;
+        case "CHOOSE_PENDING_ROLL":
+          choosePendingRoll(nextState, action, cards);
+          break;
+        case "PASS_REACTION":
+          passReaction(nextState, action, cards);
+          break;
+        case "PLAY_REACTION":
+          playReaction(nextState, action, cards);
+          break;
+        case "PLAY_REACTIONS":
+          playReactions(nextState, action, cards);
+          break;
+        case "USE_UNIT_RESURRECTION":
+          applyUnitResurrection(nextState, action, cards);
+          break;
+        case "USE_COMMANDER_CAST_REACTION":
+          applyCommanderCastReaction(nextState, action, cards);
+          break;
+        case "USE_UNIT_MAGIC_MIRROR":
+          applyUnitMagicMirror(nextState, action, cards);
+          break;
+        case "USE_EAGLE_EYE_UNIT_COPY":
+          applyEagleEyeUnitCopy(nextState, action);
+          break;
+        case "USE_UNIT_DIE_IGNORE":
+          applyUnitDieIgnore(nextState, action, cards);
+          break;
+        case "SEARCH_DECK":
+          searchDeck(nextState, action);
+          break;
+        case "SANDBOX_ADD_CARD":
+          sandboxAddCard(nextState, action, cards);
+          break;
+        case "SANDBOX_CONFIGURE_SEAT":
+          sandboxConfigureSeat(nextState, action);
+          break;
+        case "SANDBOX_SET_OPTIONS":
+          sandboxSetOptions(nextState, action);
+          break;
+        case "SANDBOX_BEGIN_COMBAT":
+          sandboxBeginCombat(nextState, action);
+          break;
+        case "RESOLVE_DECK_SEARCH":
+          resolveDeckSearch(nextState, action);
+          // The CHOOSE_OPTION twin of this tail (see its comment): a Search
+          // instant played INTO an open reaction window (2026-08-10) pauses that
+          // window while the shared-deck Search is answered. Once the Search
+          // settles — and only when it opened no further choice of its own — the
+          // window resumes under the SAME advance rules as any other play, so the
+          // card it just handed over is visible to the still-parked attack/cast
+          // and a player left with nothing playable no longer strands it.
+          if (nextState.reactionWindow && !nextState.pendingChoice) {
+            nextState.phase = "reaction";
+            advanceReactionWindowAfterPlay(nextState, action.playerId, cards);
+          }
+          break;
+        case "MOVE_HERO":
+          if (nextState.mode === "adventure") {
+            moveHeroAdventure(nextState, action);
+          } else {
+            moveHero(nextState, action);
+          }
+          break;
+        case "MOVE_HERO_PATH":
+          moveHeroPathAdventure(nextState, action);
+          break;
+        case "REFRESH_HAND":
+          refreshHand(nextState, action);
+          break;
+        case "RESOLVE_EXPLORERS_DISCARD":
+          resolveExplorersDiscard(nextState, action);
+          break;
+        case "MULLIGAN_CARD":
+          mulliganCard(nextState, action);
+          break;
+        case "OPENING_HAND_MULLIGAN":
+          openingHandMulligan(nextState, action);
+          break;
+        case "ASTROLOGERS_HERO_EMPOWER":
+          astrologersHeroEmpower(nextState, action);
+          break;
+        case "MOVE_SPELL_TO_SPELL_BOOK":
+          moveSpellToSpellBook(nextState, action, cards);
+          break;
+        case "REVISIT_FIELD":
+          revisitField(nextState, action);
+          break;
+        case "OFFER_ALLY_TRANSFER":
+          offerAllyTransfer(nextState, action);
+          break;
+        case "BUILD_GRAIL":
+          buildGrail(nextState, action);
+          break;
+        case "OPEN_MARKET":
+          openMarket(nextState, action);
+          break;
+        case "DISCOVER_TILE":
+          discoverTile(nextState, action);
+          break;
+        case "PLACE_TILE":
+          placeTile(nextState, action);
+          break;
+        case "PLACE_OBSERVATORY_TILE":
+          placeObservatoryTile(nextState, action);
+          break;
+        case "SET_TILE_ROTATION":
+          setTileRotation(nextState, action);
+          break;
+        case "CHOOSE_FACTION":
+          chooseFaction(nextState, action);
+          break;
+        case "START_ADVENTURE":
+          startAdventureFromLobby(nextState, action, options.now);
+          break;
+        case "CONFIRM_START_ADVENTURE":
+          confirmStartAdventure(nextState, action, options.now);
+          break;
+        case "CANCEL_START_ADVENTURE":
+          cancelStartAdventure(nextState, action, options.now);
+          break;
+        case "SET_DRAFT_FORMAT":
+          setDraftFormat(nextState, action);
+          break;
+        case "ROLL_TOWN_OPTIONS":
+          rollTownOptions(nextState, action);
+          break;
+        case "CHOOSE_TOWN":
+          chooseTown(nextState, action);
+          break;
+        case "ROLL_HERO_OPTIONS":
+          rollHeroOptions(nextState, action);
+          break;
+        case "BAN_HERO":
+          banHero(nextState, action);
+          break;
+        case "RESET_SEAT_DRAFT":
+          resetSeatDraft(nextState, action);
+          break;
+        case "RANDOM_ASSIGN_SEAT":
+          randomAssignSeat(nextState, action);
+          break;
+        case "JOIN_ROOM":
+          joinRoom(nextState, action, {
+            clientId: options.actorClientId,
+            userId: options.actorUserId,
+          });
+          break;
+        case "LEAVE_ROOM":
+          leaveRoom(nextState, action);
+          break;
+        case "SET_ROOM_HOSTED":
+          setRoomHosted(nextState, action);
+          break;
+        case "ASSIGN_SEAT":
+          assignSeat(nextState, action);
+          break;
+        case "KICK_MEMBER":
+          kickMember(nextState, action);
+          break;
+        case "TRANSFER_HOST":
+          transferHost(nextState, action);
+          break;
+        case "RECLAIM_HOST":
+          reclaimHost(
+            nextState,
+            action,
+            { clientId: options.actorClientId, userId: options.actorUserId },
+            options.liveClientIds,
+          );
+          break;
+        case "SET_ROOM_NAME":
+          setRoomName(nextState, action);
+          break;
+        case "SET_ROOM_PASSWORD":
+          setRoomPassword(nextState, action);
+          break;
+        case "SET_ROOM_REQUIRE_AUTH":
+          setRoomRequireAuth(nextState, action);
+          break;
+        case "SET_ROOM_RANKED":
+          setRoomRanked(nextState, action);
+          break;
+        case "SEND_TABLE_REACTION":
+          sendTableReaction(nextState, action);
+          break;
+        case "SEND_CHAT":
+          sendChat(nextState, action);
+          break;
+        case "RESOLVE_VISIT_STEP":
+          resolveVisitStep(nextState, action);
+          break;
+        case "TRADE_RESOURCES":
+          tradeResources(nextState, action);
+          break;
+        case "BUY_WAR_MACHINE":
+          buyWarMachine(nextState, action);
+          break;
+        case "SELL_SCROLL_SPELL":
+          sellScrollSpell(nextState, action);
+          break;
+        case "USE_SCHOOL_FETCH_EXPERT":
+          applySchoolFetchExpert(nextState, action);
+          noteReactionWindowPlay(nextState, action.playerId, cards);
+          break;
+        case "USE_SCHOOL_PERMANENT_EXPERT":
+          applySchoolPermanentExpert(nextState, action, cards);
+          noteReactionWindowPlay(nextState, action.playerId, cards);
+          break;
+        case "DISCARD_PERMANENT":
+          discardPermanentVoluntarily(nextState, action);
+          break;
+        case "DISCARD_ONGOING_CARD":
+          discardOngoingCardVoluntarily(
+            nextState,
+            action.playerId,
+            action.cardId,
+          );
+          break;
+        case "CRACK_PERMANENT":
+          crackPermanentForInstant(nextState, action);
+          break;
+        case "ACKNOWLEDGE_COMBAT_END":
+          acknowledgeCombatEnd(nextState, action);
+          break;
+        case "ACKNOWLEDGE_FIRST_PLAYER_ROLL":
+          acknowledgeFirstPlayerRoll(nextState, action);
+          break;
+        case "SKIP_NECROMANCY":
+          skipNecromancy(nextState, action);
+          break;
+        case "COMMANDER_GRADE_UP":
+          commanderGradeUp(nextState, action);
+          break;
+        case "FORGE_COMMANDER_ARTIFACT":
+          forgeCommanderArtifact(nextState, action);
+          break;
+        case "REVIVE_COMMANDER":
+          reviveCommander(nextState, action);
+          break;
+        case "HEAVEN_TRIBULATION":
+          beginHeavenlyTribulation(nextState, action);
+          break;
+        case "HERO_TRAIN":
+          heroTrain(nextState, action);
+          break;
+        case "HERO_GRADE_PICK":
+          heroGradePick(nextState, action);
+          break;
+        case "HERO_GRADE_SELL_ARTIFACT":
+          heroGradeSellArtifact(nextState, action);
+          break;
+        case "EQUIP_HERO_ITEM":
+          equipHeroItem(nextState, action);
+          break;
+        case "UNEQUIP_HERO_ITEM":
+          unequipHeroItem(nextState, action);
+          break;
+        case "DRILL_UNIT":
+          drillUnit(nextState, action);
+          break;
+        case "ASSIGN_UNIT_JOB":
+          assignMgqUnitJob(nextState, action);
+          break;
+        case "SET_MGQ_SPIRIT":
+          setMgqSpirit(nextState, action);
+          break;
+        case "RESOLVE_COMPANION_RECRUITMENT":
+          resolveCompanionRecruitment(nextState, action);
+          break;
+        case "SELECT_ARTIFACT_SET_UNIT":
+          selectArtifactSetUnit(nextState, action);
+          break;
+        case "USE_ARTIFACT_SET_POWER":
+          applyArtifactSetPower(nextState, action, cards);
+          break;
+        case "USE_PROPHECY_PRE_ROLL":
+          applyProphecyPreRoll(nextState, action, cards);
+          break;
+        case "LITTLE_BUSTERS_COUNTER":
+          applyLittleBustersCounter(nextState, action);
+          break;
+        case "USE_HERO_SKILL":
+          applyHeroSkillActive(nextState, action);
+          break;
+        case "USE_FUYUKI_COMMAND_SEAL":
+          applyFuyukiCommandSeal(nextState, action);
+          break;
+        case "USE_HERO_SKILL_REACTION":
+          applyHeroSkillReaction(nextState, action, cards);
+          break;
+        case "USE_EQUIPMENT_DEFENSE_REACTION":
+          applyEquipmentDefenseReaction(nextState, action, cards);
+          break;
+        case "SELECT_EQUIPMENT_COMBAT_UNIT":
+          selectEquipmentCombatUnit(nextState, action);
+          break;
+        case "USE_EQUIPMENT_ATTACK_RIDER":
+          applyEquipmentAttackRider(nextState, action, cards);
+          break;
+        case "USE_EQUIPMENT_HEAL_REACTION":
+          applyEquipmentHealReaction(nextState, action, cards);
+          break;
+        case "USE_EQUIPMENT_GUARDIAN_REACTION":
+          applyEquipmentGuardianReaction(nextState, action, cards);
+          break;
+        case "COMMANDER_FIRST_AID":
+          resolveCommanderFirstAid(nextState, action);
+          break;
+        case "COMMANDER_SET_STANCE":
+          commanderSetStance(nextState, action);
+          break;
+        case "COMMANDER_SET_BOND":
+          commanderSetBond(nextState, action);
+          break;
+        case "PLACE_COMBAT_UNIT":
+          placeCombatUnit(nextState, action);
+          break;
+        case "UNPLACE_COMBAT_UNIT":
+          unplaceCombatUnit(nextState, action);
+          break;
+        case "FINISH_COMBAT_PLACEMENT":
+          finishCombatPlacement(nextState, action);
+          break;
+        case "ACCEPT_COMBAT":
+          acceptCombat(nextState, action);
+          break;
+        case "SWAP_COMBAT_UNITS":
+          swapCombatUnits(nextState, action);
+          break;
+        case "TACTICS_MOVE_UNIT":
+          tacticsMoveUnit(nextState, action);
+          break;
+        case "FINISH_TACTICS":
+          finishTactics(nextState, action);
+          break;
+        case "PLACE_NEUTRAL_GUARD":
+          placeNeutralGuard(nextState, action);
+          break;
+        case "FINISH_NEUTRAL_PLACEMENT":
+          finishNeutralPlacement(nextState, action);
+          break;
+        case "PLACE_COMMANDER":
+          placeCommanderUnit(nextState, action);
+          break;
+        case "FINISH_COMMANDER_PLACEMENT":
+          finishCommanderPlacement(nextState, action);
+          break;
+        case "AUTO_NEUTRAL_PLACEMENT":
+          autoNeutralPlacement(nextState, action);
+          break;
+        case "CONTINUE_NEUTRAL_COMBAT":
+          continueNeutralCombat(nextState, action);
+          advanceCombatRound(nextState, action.playerId);
+          break;
+        case "CONTINUE_NEUTRAL_STEP":
+          continueNeutralStep(nextState, action);
+          break;
+        case "AUTO_NEUTRAL_ACTIVATION":
+          autoNeutralActivation(nextState, action, cards);
+          break;
+        case "RETREAT_FROM_COMBAT":
+          retreatFromCombat(nextState, action);
+          break;
+        case "SURRENDER_COMBAT":
+          surrenderFromCombat(nextState, action);
+          break;
+        case "GIVE_UP_COMBAT":
+          giveUpCombat(nextState, action);
+          break;
+        case "POPULATION_ACTION":
+          populationAction(nextState, action);
+          break;
+        case "REDEEM_REINFORCEMENT_DISCOUNT":
+          redeemReinforcementDiscountAction(nextState, action);
+          break;
+        case "HIRE_SECONDARY_HERO":
+          hireSecondaryHero(nextState, action);
+          break;
+        case "SPELL_BOOK_ACTION":
+          spellBookAction(nextState, action);
+          break;
+        case "ROGUES_SCOUT_DECK":
+          roguesScoutDeck(nextState, action);
+          break;
+        case "SATYR_MORALE_ROLL":
+          satyrMoraleRoll(nextState, action);
+          break;
+        case "THIEVES_GUILD_ACTION":
+          thievesGuildAction(nextState, action);
+          break;
+        case "BLACKSMITH_ACTION":
+          blacksmithAction(nextState, action);
+          break;
+        case "MAGIC_UNIVERSITY_ACTION":
+          magicUniversityAction(nextState, action);
+          break;
+        case "USE_TOWN_BUILDING":
+          activateTownBuilding(nextState, action);
+          break;
+        case "SPEND_TOWN_CUBE":
+          spendTownCube(nextState, action);
+          noteReactionWindowPlay(nextState, action.playerId, cards);
+          break;
+        case "HALL_OF_VALHALLA_BOOST":
+          hallOfValhallaBoost(nextState, action);
+          noteReactionWindowPlay(nextState, action.playerId, cards);
+          break;
+        case "CONVERT_CARD_TO_ATTACK":
+          convertCardToAttack(nextState, action);
+          noteReactionWindowPlay(nextState, action.playerId, cards);
+          break;
+        case "ATTACK_FORTIFICATION":
+          attackFortification(nextState, action);
+          break;
+        case "SPEND_MORALE":
+          spendMorale(nextState, action);
+          // A combat-bonus spent inside an open attack/instant window keeps the
+          // window open; re-derive its offers so the just-spent card drops out,
+          // and clear the opponent's standing pass (noteReactionWindowPlay — a
+          // window ends only on CONSECUTIVE passes). No-op with no window open.
+          noteReactionWindowPlay(nextState, action.playerId, cards);
+          break;
+        case "USE_ABILITY_EMPOWER_TOKEN":
+          applyAbilityEmpowerToken(nextState, action);
+          break;
+        case "CHOOSE_OPTION":
+          // The combat-only option choices (Harpy fly-back, Genies' Wish spell
+          // pick, Ghost Dragon knock-back) live in the combat reducer; every other
+          // option choice is
+          // handled by the adventure reducer.
+          if (nextState.pendingChoice?.type === "TARNUM_SEARCH") {
+            resolveTarnumSearch(nextState, action, cards);
+          } else if (
+            nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+            (nextState.pendingChoice.context === "disrupting-ray-mode" ||
+              nextState.pendingChoice.context === "dispel-scope" ||
+              nextState.pendingChoice.context === "community-dispel-pick" ||
+              nextState.pendingChoice.context === "misfortune-face")
+          ) {
+            resolveBalanceSpellChoice(nextState, action, cards);
+          } else if (
+            nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+            nextState.pendingChoice.context === "combat-reposition"
+          ) {
+            resolveCombatReposition(nextState, action);
+          } else if (
+            nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+            nextState.pendingChoice.context === "genie-take-spell"
+          ) {
+            resolveGenieTakeSpell(nextState, action);
+          } else if (
+            nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+            nextState.pendingChoice.context === "combat-knockback"
+          ) {
+            resolveKnockbackChoice(nextState, action, cards);
+          } else if (
+            nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+            nextState.pendingChoice.context === "combat-teleport"
+          ) {
+            resolveTeleportChoice(nextState, action);
+          } else if (
+            nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+            nextState.pendingChoice.context === "neutral-destination"
+          ) {
+            resolveNeutralDestinationChoice(nextState, action, cards);
+          } else if (
+            nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+            nextState.pendingChoice.context === "place-battlefield-tokens"
+          ) {
+            resolvePlaceTokensChoice(nextState, action);
+          } else if (
+            nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+            nextState.pendingChoice.context === "combat-clone"
+          ) {
+            resolveCloneChoice(nextState, action);
+          } else if (
+            nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+            nextState.pendingChoice.context === "combat-step"
+          ) {
+            resolveUnitStepChoice(nextState, action);
+          } else if (
+            nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+            nextState.pendingChoice.context === "combat-activation-order"
+          ) {
+            resolveActivationOrderChoice(nextState, action);
+          } else if (
+            nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+            nextState.pendingChoice.context === "spell-deck-pick"
+          ) {
+            // The Tome's "which Spell deck?" pick — its resolver (and the dig it
+            // runs) live here beside resolveEagleEyeDig, not in the adventure
+            // reducer, exactly like the combat-side option choices above.
+            resolveSpellDeckPick(nextState, action, cards);
+          } else {
+            chooseOption(nextState, action);
+          }
+          // Some reaction plays (notably Scholar) open a nested option choice,
+          // which PAUSES the window (advanceReactionWindowAfterPlay). Once that
+          // choice resolves, the newly acquired card must be visible to the
+          // still-open reaction window before priority can continue — and the
+          // window must then follow the SAME advance rules as any other play, so
+          // a player left with nothing playable no longer strands the parked
+          // attack in an offer-less window (the frozen-table shape). Hence the
+          // shared advanceReactionWindowAfterPlay rather than a bare refresh.
+          if (nextState.reactionWindow && !nextState.pendingChoice) {
+            nextState.phase = "reaction";
+            advanceReactionWindowAfterPlay(nextState, action.playerId, cards);
+          }
+          break;
+        case "RESOLVE_COMBAT_DISCARD":
+          resolveCombatHandDiscard(nextState, action, cards);
+          break;
+        case "CHOOSE_ABILITY_TARGET":
+          chooseAbilityTarget(nextState, action, cards);
+          break;
+        case "SET_GAME_OPTIONS":
+          setGameOptions(nextState, action);
+          break;
+        case "SET_COMPUTER_OPPONENTS":
+          setComputerOpponents(nextState, action);
+          break;
+        case "SET_COMPUTER_SEAT_FACTION":
+          setComputerSeatFaction(nextState, action);
+          break;
+        case "END_TURN":
+          if (nextState.mode === "adventure") {
+            endTurnAdventure(nextState, action);
+          } else {
+            endTurn(nextState, action);
+          }
+          break;
+        case "ADVANCE_COMPUTER":
+          advanceComputerStep(nextState, action);
+          break;
+        case "GIVE_UP":
+          giveUpAdventure(nextState, action);
+          break;
+        case "START_AFK_VOTE":
+          startAfkVote(nextState, action, options.now);
+          break;
+        case "CAST_AFK_VOTE":
+          castAfkVote(nextState, action, options.now);
+          break;
+        case "RESOLVE_AFK_DROP":
+          resolveAfkDrop(nextState, action);
+          break;
+        case "FORCE_AFK_KICK":
+          forceAfkKick(nextState, action, options.now);
+          break;
+        case "FORCE_TURN_TIMEOUT":
+          forceTurnTimeout(nextState, action, options.now);
+          break;
+        case "RESOLVE_TURN_TIMEOUT":
+          resolveTurnTimeout(nextState, action);
+          break;
+        case "REQUEST_ROOM_RESET":
+          requestRoomReset(nextState, action, options.now);
+          break;
+        case "CONFIRM_ROOM_RESET":
+          confirmRoomReset(nextState, action);
+          break;
+        case "CANCEL_ROOM_RESET":
+          cancelRoomReset(nextState, action);
+          break;
+      }
+    } catch (error) {
+      return fail(base, {
+        code: "ACTION_NOT_LEGAL",
+        message:
+          error instanceof Error
+            ? error.message
+            : "The action could not be applied.",
+      });
     }
-  } catch (error) {
-    return fail(base, {
-      code: "ACTION_NOT_LEGAL",
-      message: error instanceof Error ? error.message : "The action could not be applied."
-    });
-  }
 
-  if (nextState.combat) {
-    for (const [unitId, controllerId] of livingArmyBefore) {
-      const unit = nextState.combat.units[unitId];
-      if ((!unit || !isUnitAlive(unit)) && equipmentDrawsOnUnitLoss(nextState, controllerId)) {
-        drawCardsForPlayer(nextState, controllerId, 1);
+    if (nextState.combat) {
+      for (const [unitId, controllerId] of livingArmyBefore) {
+        const unit = nextState.combat.units[unitId];
+        if (
+          (!unit || !isUnitAlive(unit)) &&
+          equipmentDrawsOnUnitLoss(nextState, controllerId)
+        ) {
+          drawCardsForPlayer(nextState, controllerId, 1);
+        }
       }
     }
-  }
 
-  // Disrupting Ray: refresh every unit's ability-suppression flag from the live
-  // UNIT_ABILITY_SUPPRESSED effects, so the ability chokepoint
-  // (getUnitAbilityDefinitions) sees the current state however the effect was
-  // just added (a cast) or removed (Dispel, combat/round end) — before any
-  // automation or future action reads the unit's abilities.
-  syncAbilitySuppression(nextState);
+    // Disrupting Ray: refresh every unit's ability-suppression flag from the live
+    // UNIT_ABILITY_SUPPRESSED effects, so the ability chokepoint
+    // (getUnitAbilityDefinitions) sees the current state however the effect was
+    // just added (a cast) or removed (Dispel, combat/round end) — before any
+    // automation or future action reads the unit's abilities.
+    syncAbilitySuppression(nextState);
 
-  // Paralysis laid on the unit whose activation slot is already open (the
-  // Balance Pack's start-of-combat Intelligence cast of Blind is the everyday
-  // case) skips that activation now — BEFORE the adventure pump can run a
-  // neutral guard's turn with the token still on it.
-  enforceParalysisOnOpenActivation(nextState);
+    // Paralysis laid on the unit whose activation slot is already open (the
+    // Balance Pack's start-of-combat Intelligence cast of Blind is the everyday
+    // case) skips that activation now — BEFORE the adventure pump can run a
+    // neutral guard's turn with the token still on it.
+    enforceParalysisOnOpenActivation(nextState);
 
-  // A revealed Random Town publishes its defending FACTION (USER RULE
-  // 2026-08-22). Stamped at this shared tail so every reveal path is covered;
-  // the fight later reads the same persisted `field.faction`. The gate position
-  // and the defender layout are still decided only at combat setup.
-  ensureRevealedRandomTownFactions(nextState);
+    // A revealed Random Town publishes its defending FACTION (USER RULE
+    // 2026-08-22). Stamped at this shared tail so every reveal path is covered;
+    // the fight later reads the same persisted `field.faction`. The gate position
+    // and the defender layout are still decided only at combat setup.
+    ensureRevealedRandomTownFactions(nextState);
 
-  // Polish Set Artifacts: re-derive every player's active-tier count and announce
-  // the ones that MOVED — a set's tiers change whenever a member card enters or
-  // leaves a player's pool, which can happen inside literally any action (a draw,
-  // a discard, a Search, a card removed from the game). Doing it at this shared
-  // tail is the only way to catch them all without touching 50 call sites. No-op
-  // when the rule is off (`syncArtifactSetTiers` returns [] without walking).
-  for (const change of syncArtifactSetTiers(nextState)) {
-    appendEvent(nextState, {
-      type: "ARTIFACT_SET_TIERS_CHANGED",
-      playerId: change.playerId,
-      setId: change.setId,
-      setName: artifactSetDefinition(change.setId)?.name ?? change.setId,
-      pieces: change.pieces,
-      tiers: change.tiers,
-      previousTiers: change.previousTiers
-    });
-  }
+    // Polish Set Artifacts: re-derive every player's active-tier count and announce
+    // the ones that MOVED — a set's tiers change whenever a member card enters or
+    // leaves a player's pool, which can happen inside literally any action (a draw,
+    // a discard, a Search, a card removed from the game). Doing it at this shared
+    // tail is the only way to catch them all without touching 50 call sites. No-op
+    // when the rule is off (`syncArtifactSetTiers` returns [] without walking).
+    for (const change of syncArtifactSetTiers(nextState)) {
+      appendEvent(nextState, {
+        type: "ARTIFACT_SET_TIERS_CHANGED",
+        playerId: change.playerId,
+        setId: change.setId,
+        setName: artifactSetDefinition(change.setId)?.name ?? change.setId,
+        pieces: change.pieces,
+        tiers: change.tiers,
+        previousTiers: change.previousTiers,
+      });
+    }
 
-  try {
-    runAdventureAutomations(nextState, cards);
-  } catch (error) {
-    return fail(base, {
-      code: "ACTION_NOT_LEGAL",
-      message:
-        error instanceof Error
-          ? `Automation failed: ${error.message}`
-          : "The action could not complete its automatic follow-up."
-    });
-  }
+    try {
+      runAdventureAutomations(nextState, cards);
+    } catch (error) {
+      return fail(base, {
+        code: "ACTION_NOT_LEGAL",
+        message:
+          error instanceof Error
+            ? `Automation failed: ${error.message}`
+            : "The action could not complete its automatic follow-up.",
+      });
+    }
 
-  // A valid save serializes this pending setup choice. The recovery call also
-  // repairs a restored state whose setup-required marker survived but whose
-  // pending window did not, without changing legacy snapshots (marker absent).
-  ensureMgqGoldContractSetupChoice(nextState);
+    // A valid save serializes this pending setup choice. The recovery call also
+    // repairs a restored state whose setup-required marker survived but whose
+    // pending window did not, without changing legacy snapshots (marker absent).
+    ensureMgqGoldContractSetupChoice(nextState);
 
-  // Custom win conditions (map-designer / lobby authored): the first live player
-  // to satisfy any active condition wins immediately. Runs here — after the
-  // END_TURN round-income cascade in runAdventureAutomations, so a round-start
-  // income crossing is seen — and free-early-outs when no condition is set (so
-  // every ordinary game / legacy snapshot is untouched). Deferred while a combat
-  // is open (see checkCustomWinConditions) so the game never ends mid-battle.
-  checkCustomWinConditions(nextState);
+    // Custom win conditions (map-designer / lobby authored): the first live player
+    // to satisfy any active condition wins immediately. Runs here — after the
+    // END_TURN round-income cascade in runAdventureAutomations, so a round-start
+    // income crossing is seen — and free-early-outs when no condition is set (so
+    // every ordinary game / legacy snapshot is untouched). Deferred while a combat
+    // is open (see checkCustomWinConditions) so the game never ends mid-battle.
+    checkCustomWinConditions(nextState);
 
-  // Combat-sandbox combats (and any post-war-machine round start) have no
-  // adventure pump to hand out the activation slot, so settle it here: open the
-  // next unit, or the tied-order choice that picks it.
-  ensureCombatActivation(nextState);
+    // Combat-sandbox combats (and any post-war-machine round start) have no
+    // adventure pump to hand out the activation slot, so settle it here: open the
+    // next unit, or the tied-order choice that picks it.
+    ensureCombatActivation(nextState);
 
-  // Pre-activation interrupts (Sorrow's skip, Bowstring of the Unicorn's Mane's
-  // out-of-order ranged activation): once everything else has settled, open the
-  // shared window before the about-to-act unit moves. Runs before the active
-  // unit's own "[activation]" choice so an interrupt pre-empts it.
-  maybeOpenPreActivationWindow(nextState, cards);
+    // Pre-activation interrupts (Sorrow's skip, Bowstring of the Unicorn's Mane's
+    // out-of-order ranged activation): once everything else has settled, open the
+    // shared window before the about-to-act unit moves. Runs before the active
+    // unit's own "[activation]" choice so an interrupt pre-empts it.
+    maybeOpenPreActivationWindow(nextState, cards);
 
-  // Once everything else has settled, surface a player-controlled unit's
-  // "[activation]" choice (Enchanters' heal-or-buff, Faerie Dragons' Ice Bolt)
-  // before it acts. Runs after the neutral pump and war-machine round-starts.
-  maybeOpenPlayerActivationChoice(nextState);
+    // Once everything else has settled, surface a player-controlled unit's
+    // "[activation]" choice (Enchanters' heal-or-buff, Faerie Dragons' Ice Bolt)
+    // before it acts. Runs after the neutral pump and war-machine round-starts.
+    maybeOpenPlayerActivationChoice(nextState);
 
-  // Ongoing cards, both directions, at one shared tail:
-  //   - a card whose lasting effect only came into being LATER than its own play
-  //     action (a boost/Power prompt answered in a separate action) is pulled out
-  //     of the discard pile into the Ongoing tray, so a live effect is never
-  //     represented by a card lying in the discard;
-  //   - a card whose every effect has ended (expired, consumed, dispelled —
-  //     whatever this action did) finally reaches its discard pile or hand.
-  holdLiveOngoingCardsFromDiscard(nextState);
-  releaseEndedOngoingCards(nextState);
+    // Ongoing cards, both directions, at one shared tail:
+    //   - a card whose lasting effect only came into being LATER than its own play
+    //     action (a boost/Power prompt answered in a separate action) is pulled out
+    //     of the discard pile into the Ongoing tray, so a live effect is never
+    //     represented by a card lying in the discard;
+    //   - a card whose every effect has ended (expired, consumed, dispelled —
+    //     whatever this action did) finally reaches its discard pile or hand.
+    holdLiveOngoingCardsFromDiscard(nextState);
+    releaseEndedOngoingCards(nextState);
 
-  // Shared decks always show one card face-up on their discard pile. Refill
-  // every empty pile immediately, even when it started the action empty or this
-  // action opened a pending choice. Runs last so it sees every deck mutation the
-  // action and its automatic follow-ups produced. `base` (the pre-action state)
-  // lets it leave alone a deck whose draw-pile top this action just returned /
-  // reshuffled there (Tarnum VI's return-to-top, an Eagle Eye / Tome reshuffle),
-  // so that card is drawn next rather than flipped face-up into the discard.
-  refillSharedDeckDiscards(nextState, base);
+    // Shared decks always show one card face-up on their discard pile. Refill
+    // every empty pile immediately, even when it started the action empty or this
+    // action opened a pending choice. Runs last so it sees every deck mutation the
+    // action and its automatic follow-ups produced. `base` (the pre-action state)
+    // lets it leave alone a deck whose draw-pile top this action just returned /
+    // reshuffled there (Tarnum VI's return-to-top, an Eagle Eye / Tome reshuffle),
+    // so that card is drawn next rather than flipped face-up into the discard.
+    refillSharedDeckDiscards(nextState, base);
 
-  // Parallel turns: reject a bystander action that touched the exclusive
-  // interaction machinery (see the fingerprint capture above).
-  if (parallelSlotBefore !== null && parallelSlotSignature(nextState) !== parallelSlotBefore) {
-    return fail(base, {
-      code: "ACTION_NOT_LEGAL",
-      message: parallelWaitMessage(base, parallelBystanderBlocker as PlayerId | "table")
-    });
-  }
+    // Parallel turns: reject a bystander action that touched the exclusive
+    // interaction machinery (see the fingerprint capture above).
+    if (
+      parallelSlotBefore !== null &&
+      parallelSlotSignature(nextState) !== parallelSlotBefore
+    ) {
+      return fail(base, {
+        code: "ACTION_NOT_LEGAL",
+        message: parallelWaitMessage(
+          base,
+          parallelBystanderBlocker as PlayerId | "table",
+        ),
+      });
+    }
 
-  // AFK vote-kick bookkeeping, success path only: stamp the actor's
-  // last-action clock from the server wall time and cancel an open kick vote
-  // the moment its target acts (see src/engine/afk.ts).
-  applyAfkBookkeeping(nextState, action, options.now);
-  // Per-turn clock (10-minute budget): stamp/re-stamp/drop each seat's
-  // turn-open clock from the post-action turn state (see src/engine/afk.ts).
-  applyTurnClockBookkeeping(nextState, options.now, turnClockPausedBefore);
+    // AFK vote-kick bookkeeping, success path only: stamp the actor's
+    // last-action clock from the server wall time and cancel an open kick vote
+    // the moment its target acts (see src/engine/afk.ts).
+    applyAfkBookkeeping(nextState, action, options.now);
+    // Per-turn clock (10-minute budget): stamp/re-stamp/drop each seat's
+    // turn-open clock from the post-action turn state (see src/engine/afk.ts).
+    applyTurnClockBookkeeping(nextState, options.now, turnClockPausedBefore);
 
     return ok(nextState, startEventNumber);
   } finally {
@@ -27254,7 +32028,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
 
 export function findEvent<T extends GameEvent["type"]>(
   state: GameState,
-  type: T
+  type: T,
 ): Extract<GameEvent, { type: T }> | undefined {
-  return state.eventLog.find((event): event is Extract<GameEvent, { type: T }> => event.type === type);
+  return state.eventLog.find(
+    (event): event is Extract<GameEvent, { type: T }> => event.type === type,
+  );
 }

@@ -7,7 +7,7 @@ function artifactSource(slug: string) {
   return {
     product: "Heroes of Might and Magic III: The Board Game",
     credit: wikiCredit,
-    url: `https://en.homm3bg.wiki/artifacts/${slug}/`
+    url: `https://en.homm3bg.wiki/artifacts/${slug}/`,
   };
 }
 
@@ -25,7 +25,7 @@ function artifactSource(slug: string) {
 export const REROLL_REACTION_ARTIFACT_IDS = [
   "artifact.cards_of_prophecy",
   "artifact.diplomats_ring",
-  "artifact.ambassadors_sash"
+  "artifact.ambassadors_sash",
 ] as const;
 
 /**
@@ -35,13 +35,17 @@ export const REROLL_REACTION_ARTIFACT_IDS = [
  */
 export const SCANLESS_ARTIFACTS: ReadonlySet<string> = new Set<string>();
 
-function artifactAssets(tier: "minor" | "major" | "relic", slug: string, name: string) {
+function artifactAssets(
+  tier: "minor" | "major" | "relic",
+  slug: string,
+  name: string,
+) {
   return {
     // Newer print runs without wiki scans show the deck back instead.
     cardImage: SCANLESS_ARTIFACTS.has(slug)
       ? "/assets/player-deck-back.webp"
       : `/assets/artifacts_${tier}-${slug}.webp`,
-    imageAlt: `${name} artifact card`
+    imageAlt: `${name} artifact card`,
   };
 }
 
@@ -59,7 +63,9 @@ function artifactAssets(tier: "minor" | "major" | "relic", slug: string, name: s
 //     the power readout and a Mysticism-expert recall all see the Tome).
 // A school-agnostic "any" spell (Magic Arrow) qualifies for either side of any
 // Tome, exactly as the Orbs and the Basic-School Magic boosts treat it.
-function tomeArtifact(school: Exclude<SpellSchool, "any">): CardLibrary[string] {
+function tomeArtifact(
+  school: Exclude<SpellSchool, "any">,
+): CardLibrary[string] {
   const schoolName = school.charAt(0).toUpperCase() + school.slice(1);
   const slug = `tome_of_${school}`;
   const name = `Tome of ${schoolName}`;
@@ -72,14 +78,14 @@ function tomeArtifact(school: Exclude<SpellSchool, "any">): CardLibrary[string] 
     tags: [
       "artifact",
       "relic",
-      `Find the first ${schoolName} Magic spell in the Spell deck. Take it into your hand or discard it. Then, reshuffle the deck. — OR — When playing a ${schoolName} Magic spell, resolve its effect without paying the Power cost.`
+      `Find the first ${schoolName} Magic spell in the Spell deck. Take it into your hand or discard it. Then, reshuffle the deck. — OR — When playing a ${schoolName} Magic spell, resolve its effect without paying the Power cost.`,
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
           label: `Find the first ${schoolName} Magic spell in the Spell deck (take or discard), then reshuffle`,
-          effect: { type: "EAGLE_EYE_DIG", school }
+          effect: { type: "EAGLE_EYE_DIG", school },
         },
         {
           label: `Resolve a ${schoolName} Magic spell at maximum Power without paying`,
@@ -87,13 +93,13 @@ function tomeArtifact(school: Exclude<SpellSchool, "any">): CardLibrary[string] 
           // tray offers this option only while a matching cast is prepared.
           combatOnly: true,
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "SET_SPELL_POWER_MAX", schoolOnly: school }
-        }
-      ]
+          effect: { type: "SET_SPELL_POWER_MAX", schoolOnly: school },
+        },
+      ],
     },
     assets: artifactAssets("relic", slug, name),
     implementationStatus: "implemented",
-    source: artifactSource(slug)
+    source: artifactSource(slug),
   };
 }
 
@@ -106,25 +112,39 @@ export const artifactCards: CardLibrary = {
     timing: "instant",
     phaseLimit: ["reaction", "combat"],
     artifactTier: "minor",
-    tags: ["artifact", "minor", "Draw 1 card and gain +1 attack. — OR — Draw 1 card and gain +1 defense."],
+    tags: [
+      "artifact",
+      "minor",
+      "Draw 1 card and gain +1 attack. — OR — Draw 1 card and gain +1 defense.",
+    ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
           label: "Draw 1 card and +1 attack",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1, drawCards: 1 }
+          effect: {
+            type: "ADD_COMBAT_STAT",
+            stat: "attack",
+            amount: 1,
+            drawCards: 1,
+          },
         },
         {
           label: "Draw 1 card and +1 defense",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 1, drawCards: 1 }
-        }
-      ]
+          effect: {
+            type: "ADD_COMBAT_STAT",
+            stat: "defense",
+            amount: 1,
+            drawCards: 1,
+          },
+        },
+      ],
     },
     assets: artifactAssets("minor", "armor_of_wonder", "Armor of Wonder"),
     implementationStatus: "implemented",
-    source: artifactSource("armor_of_wonder")
+    source: artifactSource("armor_of_wonder"),
   },
   "artifact.dragon_wing_tabard": {
     id: "artifact.dragon_wing_tabard",
@@ -132,24 +152,28 @@ export const artifactCards: CardLibrary = {
     kind: "artifact",
     timing: "instant",
     artifactTier: "minor",
-    tags: ["artifact", "minor", "Discard 1 random card from the enemy's hand. — OR — +1 Power."],
+    tags: [
+      "artifact",
+      "minor",
+      "Discard 1 random card from the enemy's hand. — OR — +1 Power.",
+    ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
           label: "Discard 1 random card from the enemy's hand",
-          effect: { type: "RANDOM_ENEMY_DISCARD", count: 1 }
+          effect: { type: "RANDOM_ENEMY_DISCARD", count: 1 },
         },
         {
           label: "+1 Power",
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 1 }
-        }
-      ]
+          effect: { type: "ADD_SPELL_POWER", amount: 1 },
+        },
+      ],
     },
     assets: artifactAssets("minor", "dragon_wing_tabard", "Dragon Wing Tabard"),
     implementationStatus: "implemented",
-    source: artifactSource("dragon_wing_tabard")
+    source: artifactSource("dragon_wing_tabard"),
   },
   "artifact.hourglass_of_the_evil_hour": {
     id: "artifact.hourglass_of_the_evil_hour",
@@ -160,24 +184,28 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "minor",
-      "If the enemy has positive morale, they gain negative. — OR — Roll the Attack die. On a \"0\" result, you gain positive morale."
+      'If the enemy has positive morale, they gain negative. — OR — Roll the Attack die. On a "0" result, you gain positive morale.',
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
           label: "If the enemy has positive morale, they gain negative",
-          effect: { type: "ENEMY_MORALE_STRIP" }
+          effect: { type: "ENEMY_MORALE_STRIP" },
         },
         {
           label: "Roll the Attack die: gain morale on a 0",
-          effect: { type: "ROLL_FOR_MORALE", onRoll: 0 }
-        }
-      ]
+          effect: { type: "ROLL_FOR_MORALE", onRoll: 0 },
+        },
+      ],
     },
-    assets: artifactAssets("minor", "hourglass_of_the_evil_hour", "Hourglass of the Evil Hour"),
+    assets: artifactAssets(
+      "minor",
+      "hourglass_of_the_evil_hour",
+      "Hourglass of the Evil Hour",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("hourglass_of_the_evil_hour")
+    source: artifactSource("hourglass_of_the_evil_hour"),
   },
   "artifact.inexhaustible_cart_of_lumber": {
     id: "artifact.inexhaustible_cart_of_lumber",
@@ -185,24 +213,32 @@ export const artifactCards: CardLibrary = {
     kind: "artifact",
     timing: "instant",
     artifactTier: "minor",
-    tags: ["artifact", "minor", "Gain 2 building materials. — OR — Remove this card, then gain 4 building materials."],
+    tags: [
+      "artifact",
+      "minor",
+      "Gain 2 building materials. — OR — Remove this card, then gain 4 building materials.",
+    ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
           label: "Gain 2 building materials",
-          effect: { type: "GAIN_RESOURCES", gain: { buildingMaterials: 2 } }
+          effect: { type: "GAIN_RESOURCES", gain: { buildingMaterials: 2 } },
         },
         {
           label: "Remove this card: gain 4 building materials",
           cost: { removeSelf: true },
-          effect: { type: "GAIN_RESOURCES", gain: { buildingMaterials: 4 } }
-        }
-      ]
+          effect: { type: "GAIN_RESOURCES", gain: { buildingMaterials: 4 } },
+        },
+      ],
     },
-    assets: artifactAssets("minor", "inexhaustible_cart_of_lumber", "Inexhaustible Cart of Lumber"),
+    assets: artifactAssets(
+      "minor",
+      "inexhaustible_cart_of_lumber",
+      "Inexhaustible Cart of Lumber",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("inexhaustible_cart_of_lumber")
+    source: artifactSource("inexhaustible_cart_of_lumber"),
   },
   "artifact.red_dragon_flame_tongue": {
     id: "artifact.red_dragon_flame_tongue",
@@ -218,18 +254,22 @@ export const artifactCards: CardLibrary = {
         {
           label: "+1 defense",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 1 }
+          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 1 },
         },
         {
           label: "+1 attack",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1 }
-        }
-      ]
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1 },
+        },
+      ],
     },
-    assets: artifactAssets("minor", "red_dragon_flame_tongue", "Red Dragon Flame Tongue"),
+    assets: artifactAssets(
+      "minor",
+      "red_dragon_flame_tongue",
+      "Red Dragon Flame Tongue",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("red_dragon_flame_tongue")
+    source: artifactSource("red_dragon_flame_tongue"),
   },
   "artifact.rib_cage": {
     id: "artifact.rib_cage",
@@ -240,25 +280,31 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "minor",
-      "Select 1 Spell card from your discard pile and put it back into your hand. Then, shuffle your discard pile back into your deck. — OR — +1 Power."
+      "Select 1 Spell card from your discard pile and put it back into your hand. Then, shuffle your discard pile back into your deck. — OR — +1 Power.",
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Return a Spell from your discard; shuffle the rest into your deck",
-          effect: { type: "TAKE_FROM_DISCARD", count: 1, filter: "spell", shuffleRestIntoDeck: true }
+          label:
+            "Return a Spell from your discard; shuffle the rest into your deck",
+          effect: {
+            type: "TAKE_FROM_DISCARD",
+            count: 1,
+            filter: "spell",
+            shuffleRestIntoDeck: true,
+          },
         },
         {
           label: "+1 Power",
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 1 }
-        }
-      ]
+          effect: { type: "ADD_SPELL_POWER", amount: 1 },
+        },
+      ],
     },
     assets: artifactAssets("minor", "rib_cage", "Rib Cage"),
     implementationStatus: "implemented",
-    source: artifactSource("rib_cage")
+    source: artifactSource("rib_cage"),
   },
   "artifact.speculum": {
     id: "artifact.speculum",
@@ -269,7 +315,7 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "minor",
-      "Discover any Map tile adjacent to the Map tile your Hero is currently on. — OR — Remove this card, then draw 1 card."
+      "Discover any Map tile adjacent to the Map tile your Hero is currently on. — OR — Remove this card, then draw 1 card.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -277,18 +323,18 @@ export const artifactCards: CardLibrary = {
         {
           label: "Discover an adjacent map tile",
           mapOnly: true,
-          effect: { type: "DISCOVER_TILE_CARD" }
+          effect: { type: "DISCOVER_TILE_CARD" },
         },
         {
           label: "Remove this card: draw 1 card",
           cost: { removeSelf: true },
-          effect: { type: "DRAW_CARDS", amount: 1 }
-        }
-      ]
+          effect: { type: "DRAW_CARDS", amount: 1 },
+        },
+      ],
     },
     assets: artifactAssets("minor", "speculum", "Speculum"),
     implementationStatus: "implemented",
-    source: artifactSource("speculum")
+    source: artifactSource("speculum"),
   },
   "artifact.legs_of_legion": {
     id: "artifact.legs_of_legion",
@@ -296,7 +342,11 @@ export const artifactCards: CardLibrary = {
     kind: "artifact",
     timing: "instant",
     artifactTier: "minor",
-    tags: ["artifact", "minor", "Reduce the Recruitment or Reinforcement cost of a unit by 4 gold. — OR — Gain 2 gold."],
+    tags: [
+      "artifact",
+      "minor",
+      "Reduce the Recruitment or Reinforcement cost of a unit by 4 gold. — OR — Gain 2 gold.",
+    ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
@@ -308,17 +358,17 @@ export const artifactCards: CardLibrary = {
           // other discount sources stack; the same piece cannot be replayed for
           // a second voucher before movement. See queueLegionDiscountChoice.
           mapOnly: true,
-          effect: { type: "GAIN_RECRUIT_DISCOUNT", amount: 4 }
+          effect: { type: "GAIN_RECRUIT_DISCOUNT", amount: 4 },
         },
         {
           label: "Gain 2 gold",
-          effect: { type: "GAIN_RESOURCES", gain: { gold: 2 } }
-        }
-      ]
+          effect: { type: "GAIN_RESOURCES", gain: { gold: 2 } },
+        },
+      ],
     },
     assets: artifactAssets("minor", "legs_of_legion", "Legs of Legion"),
     implementationStatus: "implemented",
-    source: artifactSource("legs_of_legion")
+    source: artifactSource("legs_of_legion"),
   },
   "artifact.loins_of_legion": {
     id: "artifact.loins_of_legion",
@@ -326,7 +376,11 @@ export const artifactCards: CardLibrary = {
     kind: "artifact",
     timing: "instant",
     artifactTier: "minor",
-    tags: ["artifact", "minor", "Reduce the Recruitment or Reinforcement cost of a unit by 5 gold. — OR — Gain 2 gold."],
+    tags: [
+      "artifact",
+      "minor",
+      "Reduce the Recruitment or Reinforcement cost of a unit by 5 gold. — OR — Gain 2 gold.",
+    ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
@@ -338,17 +392,17 @@ export const artifactCards: CardLibrary = {
           // other discount sources stack; the same piece cannot be replayed for
           // a second voucher before movement. See queueLegionDiscountChoice.
           mapOnly: true,
-          effect: { type: "GAIN_RECRUIT_DISCOUNT", amount: 5 }
+          effect: { type: "GAIN_RECRUIT_DISCOUNT", amount: 5 },
         },
         {
           label: "Gain 2 gold",
-          effect: { type: "GAIN_RESOURCES", gain: { gold: 2 } }
-        }
-      ]
+          effect: { type: "GAIN_RESOURCES", gain: { gold: 2 } },
+        },
+      ],
     },
     assets: artifactAssets("minor", "loins_of_legion", "Loins of Legion"),
     implementationStatus: "implemented",
-    source: artifactSource("loins_of_legion")
+    source: artifactSource("loins_of_legion"),
   },
   "artifact.torso_of_legion": {
     id: "artifact.torso_of_legion",
@@ -368,7 +422,7 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "major",
-      "Reduce the cost of Recruitment or Reinforcing a unit by 6 gold. — OR — Gain 1 valuables or 2 building materials."
+      "Reduce the cost of Recruitment or Reinforcing a unit by 6 gold. — OR — Gain 1 valuables or 2 building materials.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -381,21 +435,21 @@ export const artifactCards: CardLibrary = {
           // other discount sources stack; the same piece cannot be replayed for
           // a second voucher before movement. See queueLegionDiscountChoice.
           mapOnly: true,
-          effect: { type: "GAIN_RECRUIT_DISCOUNT", amount: 6 }
+          effect: { type: "GAIN_RECRUIT_DISCOUNT", amount: 6 },
         },
         {
           label: "Gain 1 valuables",
-          effect: { type: "GAIN_RESOURCES", gain: { valuables: 1 } }
+          effect: { type: "GAIN_RESOURCES", gain: { valuables: 1 } },
         },
         {
           label: "Gain 2 building materials",
-          effect: { type: "GAIN_RESOURCES", gain: { buildingMaterials: 2 } }
-        }
-      ]
+          effect: { type: "GAIN_RESOURCES", gain: { buildingMaterials: 2 } },
+        },
+      ],
     },
     assets: artifactAssets("major", "torso_of_legion", "Torso of Legion"),
     implementationStatus: "implemented",
-    source: artifactSource("torso_of_legion")
+    source: artifactSource("torso_of_legion"),
   },
   "artifact.boots_of_speed": {
     id: "artifact.boots_of_speed",
@@ -404,14 +458,18 @@ export const artifactCards: CardLibrary = {
     timing: "instant",
     artifactTier: "minor",
     target: { type: "friendly-unit" },
-    tags: ["artifact", "minor", "Your hero gains +1 movement. — OR — For this Combat, your selected unit gains +1 initiative."],
+    tags: [
+      "artifact",
+      "minor",
+      "Your hero gains +1 movement. — OR — For this Combat, your selected unit gains +1 initiative.",
+    ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
           label: "Your hero gains +1 movement",
           mapOnly: true,
-          effect: { type: "GAIN_HERO_MOVEMENT", amount: 1 }
+          effect: { type: "GAIN_HERO_MOVEMENT", amount: 1 },
         },
         {
           label: "+1 initiative for this combat",
@@ -421,14 +479,14 @@ export const artifactCards: CardLibrary = {
             amount: 1,
             duration: { type: "combat" },
             polarity: "positive",
-            removable: true
-          }
-        }
-      ]
+            removable: true,
+          },
+        },
+      ],
     },
     assets: artifactAssets("minor", "boots_of_speed", "Boots of Speed"),
     implementationStatus: "implemented",
-    source: artifactSource("boots_of_speed")
+    source: artifactSource("boots_of_speed"),
   },
   "artifact.skull_helmet": {
     id: "artifact.skull_helmet",
@@ -440,24 +498,28 @@ export const artifactCards: CardLibrary = {
       "artifact",
       "minor",
       "binh-extra",
-      "Take 1 non-Artifact card from your discard pile to hand. — OR — If the enemy has positive morale, they gain negative."
+      "Take 1 non-Artifact card from your discard pile to hand. — OR — If the enemy has positive morale, they gain negative.",
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
           label: "Take 1 non-Artifact card from your discard pile",
-          effect: { type: "TAKE_FROM_DISCARD", count: 1, filter: "non-artifact" }
+          effect: {
+            type: "TAKE_FROM_DISCARD",
+            count: 1,
+            filter: "non-artifact",
+          },
         },
         {
           label: "If the enemy has positive morale, they gain negative",
-          effect: { type: "ENEMY_MORALE_STRIP" }
-        }
-      ]
+          effect: { type: "ENEMY_MORALE_STRIP" },
+        },
+      ],
     },
     assets: artifactAssets("minor", "skull_helmet", "Skull Helmet"),
     implementationStatus: "implemented",
-    source: artifactSource("skull_helmet")
+    source: artifactSource("skull_helmet"),
   },
   "artifact.equestrians_gloves": {
     id: "artifact.equestrians_gloves",
@@ -470,7 +532,7 @@ export const artifactCards: CardLibrary = {
       "artifact",
       "minor",
       "binh-extra",
-      "For this Combat, your selected unit gains +1 initiative. — OR — Your Hero gains +1 movement."
+      "For this Combat, your selected unit gains +1 initiative. — OR — Your Hero gains +1 movement.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -483,19 +545,23 @@ export const artifactCards: CardLibrary = {
             amount: 1,
             duration: { type: "combat" },
             polarity: "positive",
-            removable: true
-          }
+            removable: true,
+          },
         },
         {
           label: "Your hero gains +1 movement",
           mapOnly: true,
-          effect: { type: "GAIN_HERO_MOVEMENT", amount: 1 }
-        }
-      ]
+          effect: { type: "GAIN_HERO_MOVEMENT", amount: 1 },
+        },
+      ],
     },
-    assets: artifactAssets("minor", "equestrians_gloves", "Equestrian's Gloves"),
+    assets: artifactAssets(
+      "minor",
+      "equestrians_gloves",
+      "Equestrian's Gloves",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("equestrians_gloves")
+    source: artifactSource("equestrians_gloves"),
   },
   "artifact.glyph_of_gallantry": {
     id: "artifact.glyph_of_gallantry",
@@ -503,24 +569,29 @@ export const artifactCards: CardLibrary = {
     kind: "artifact",
     timing: "instant",
     artifactTier: "minor",
-    tags: ["artifact", "minor", "binh-extra", "Gain a positive morale token. — OR — +1 defense."],
+    tags: [
+      "artifact",
+      "minor",
+      "binh-extra",
+      "Gain a positive morale token. — OR — +1 defense.",
+    ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
           label: "Gain a positive morale token",
-          effect: { type: "GAIN_MORALE", amount: 1 }
+          effect: { type: "GAIN_MORALE", amount: 1 },
         },
         {
           label: "+1 defense",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 1 }
-        }
-      ]
+          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 1 },
+        },
+      ],
     },
     assets: artifactAssets("minor", "glyph_of_gallantry", "Glyph of Gallantry"),
     implementationStatus: "implemented",
-    source: artifactSource("glyph_of_gallantry")
+    source: artifactSource("glyph_of_gallantry"),
   },
   "artifact.quiet_eye_of_the_dragon": {
     id: "artifact.quiet_eye_of_the_dragon",
@@ -533,7 +604,7 @@ export const artifactCards: CardLibrary = {
       "artifact",
       "minor",
       "binh-extra",
-      "For this Combat, your selected unit gains +1 attack. — OR — +1 defense."
+      "For this Combat, your selected unit gains +1 attack. — OR — +1 defense.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -546,19 +617,23 @@ export const artifactCards: CardLibrary = {
             amount: 1,
             duration: { type: "combat" },
             polarity: "positive",
-            removable: true
-          }
+            removable: true,
+          },
         },
         {
           label: "+1 defense",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 1 }
-        }
-      ]
+          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 1 },
+        },
+      ],
     },
-    assets: artifactAssets("minor", "quiet_eye_of_the_dragon", "Quiet Eye of the Dragon"),
+    assets: artifactAssets(
+      "minor",
+      "quiet_eye_of_the_dragon",
+      "Quiet Eye of the Dragon",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("quiet_eye_of_the_dragon")
+    source: artifactSource("quiet_eye_of_the_dragon"),
   },
   // Charm of Mana: pure card cycling. Option 0 pays a 2-card discard cost up
   // front, then draws 3 (net +1). Option 1 draws 2 first, then opens a
@@ -573,7 +648,7 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "minor",
-      "Discard 2 cards, then draw 3 cards. — OR — Draw 2 cards, then discard 1 card."
+      "Discard 2 cards, then draw 3 cards. — OR — Draw 2 cards, then discard 1 card.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -581,17 +656,17 @@ export const artifactCards: CardLibrary = {
         {
           label: "Discard 2 cards, then draw 3",
           cost: { discardCards: 2 },
-          effect: { type: "DRAW_CARDS", amount: 3 }
+          effect: { type: "DRAW_CARDS", amount: 3 },
         },
         {
           label: "Draw 2 cards, then discard 1",
-          effect: { type: "DRAW_CARDS", amount: 2, thenDiscard: 1 }
-        }
-      ]
+          effect: { type: "DRAW_CARDS", amount: 2, thenDiscard: 1 },
+        },
+      ],
     },
     assets: artifactAssets("minor", "charm_of_mana", "Charm of Mana"),
     implementationStatus: "implemented",
-    source: artifactSource("charm_of_mana")
+    source: artifactSource("charm_of_mana"),
   },
   // Greater Gnoll's Flail: played while one of your units is attacking. The
   // big swing adds +2 attack but leaves the unit a Corrosion token (−1 defense
@@ -606,7 +681,7 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "minor",
-      "+2 attack, then this unit suffers -1 defense until the end of the Combat. — OR — +1 attack."
+      "+2 attack, then this unit suffers -1 defense until the end of the Combat. — OR — +1 attack.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -614,18 +689,27 @@ export const artifactCards: CardLibrary = {
         {
           label: "+2 attack, then -1 defense until the end of the Combat",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2, selfStatPenalty: { stat: "defense", amount: 1 } }
+          effect: {
+            type: "ADD_COMBAT_STAT",
+            stat: "attack",
+            amount: 2,
+            selfStatPenalty: { stat: "defense", amount: 1 },
+          },
         },
         {
           label: "+1 attack",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1 }
-        }
-      ]
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1 },
+        },
+      ],
     },
-    assets: artifactAssets("minor", "greater_gnolls_flail", "Greater Gnoll's Flail"),
+    assets: artifactAssets(
+      "minor",
+      "greater_gnolls_flail",
+      "Greater Gnoll's Flail",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("greater_gnolls_flail")
+    source: artifactSource("greater_gnolls_flail"),
   },
   // Shield of the Dwarven Lords: the top side is a post-roll defender reaction.
   // It is offered only in the dedicated ATTACK_DIE_SETTLED window (engine:
@@ -644,25 +728,31 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "minor",
-      "Use this after the Attack die roll. Ignore the Attack die and any additional effects it triggered. — OR — +1 defense."
+      "Use this after the Attack die roll. Ignore the Attack die and any additional effects it triggered. — OR — +1 defense.",
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "After the Attack die roll: ignore the die and the effects it triggered",
-          effect: { type: "IGNORE_ATTACK_DIE_RESULT" }
+          label:
+            "After the Attack die roll: ignore the die and the effects it triggered",
+          afterAttackRoll: true,
+          effect: { type: "IGNORE_ATTACK_DIE_RESULT" },
         },
         {
           label: "+1 defense",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 1 }
-        }
-      ]
+          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 1 },
+        },
+      ],
     },
-    assets: artifactAssets("minor", "shield_of_the_dwarven_lords", "Shield of the Dwarven Lords"),
+    assets: artifactAssets(
+      "minor",
+      "shield_of_the_dwarven_lords",
+      "Shield of the Dwarven Lords",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("shield_of_the_dwarven_lords")
+    source: artifactSource("shield_of_the_dwarven_lords"),
   },
   "artifact.shield_of_the_yawning_dead": {
     id: "artifact.shield_of_the_yawning_dead",
@@ -671,7 +761,11 @@ export const artifactCards: CardLibrary = {
     timing: "instant",
     phaseLimit: ["reaction", "combat"],
     artifactTier: "minor",
-    tags: ["artifact", "minor", "Discard 1 card to gain +2 defense. — OR — +1 defense."],
+    tags: [
+      "artifact",
+      "minor",
+      "Discard 1 card to gain +2 defense. — OR — +1 defense.",
+    ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
@@ -679,18 +773,22 @@ export const artifactCards: CardLibrary = {
           label: "Discard 1 card: +2 defense",
           cost: { discardCards: 1 },
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 2 }
+          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 2 },
         },
         {
           label: "+1 defense",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 1 }
-        }
-      ]
+          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 1 },
+        },
+      ],
     },
-    assets: artifactAssets("minor", "shield_of_the_yawning_dead", "Shield of the Yawning Dead"),
+    assets: artifactAssets(
+      "minor",
+      "shield_of_the_yawning_dead",
+      "Shield of the Yawning Dead",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("shield_of_the_yawning_dead")
+    source: artifactSource("shield_of_the_yawning_dead"),
   },
   // Income permanents: option 0 (ENTER_PLAY) keeps the card in play next to the
   // hero board and pays 1 resource at the start of every Resources round
@@ -714,34 +812,40 @@ export const artifactCards: CardLibrary = {
     // the deck-coverage invariant (printed tier == BINH deck) intact.
     artifactTier: "major",
     permanent: true,
-    permanentEffect: { resourceRoundGain: { resource: "valuables", amount: 1 } },
+    permanentEffect: {
+      resourceRoundGain: { resource: "valuables", amount: 1 },
+    },
     tags: [
       "artifact",
       "major",
       "permanent",
       "income",
-      "At the beginning of each Resources round, gain 1 valuables. — OR — Remove this card, then gain 2 valuables."
+      "At the beginning of each Resources round, gain 1 valuables. — OR — Remove this card, then gain 2 valuables.",
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
           label: "At the beginning of each Resources round, gain 1 valuables",
-          effect: { type: "ENTER_PLAY" }
+          effect: { type: "ENTER_PLAY" },
         },
         {
           label: "Remove this card: gain 2 valuables",
           cost: { removeSelf: true },
-          effect: { type: "GAIN_RESOURCES", gain: { valuables: 2 } }
-        }
-      ]
+          effect: { type: "GAIN_RESOURCES", gain: { valuables: 2 } },
+        },
+      ],
     },
     // The card FACE stays the printed Minor scan — only the tier reading and
     // deck placement flip with the house rule (the disk file is
     // artifacts_minor-eversmoking_ring_of_sulfur.webp).
-    assets: artifactAssets("minor", "eversmoking_ring_of_sulfur", "Eversmoking Ring of Sulfur"),
+    assets: artifactAssets(
+      "minor",
+      "eversmoking_ring_of_sulfur",
+      "Eversmoking Ring of Sulfur",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("eversmoking_ring_of_sulfur")
+    source: artifactSource("eversmoking_ring_of_sulfur"),
   },
   "artifact.inexhaustible_cart_of_ore": {
     id: "artifact.inexhaustible_cart_of_ore",
@@ -750,31 +854,38 @@ export const artifactCards: CardLibrary = {
     timing: "ongoing",
     artifactTier: "minor",
     permanent: true,
-    permanentEffect: { resourceRoundGain: { resource: "buildingMaterials", amount: 1 } },
+    permanentEffect: {
+      resourceRoundGain: { resource: "buildingMaterials", amount: 1 },
+    },
     tags: [
       "artifact",
       "minor",
       "permanent",
       "income",
-      "At the beginning of each Resources round, gain 1 building materials. — OR — Remove this card, then gain 3 building materials."
+      "At the beginning of each Resources round, gain 1 building materials. — OR — Remove this card, then gain 3 building materials.",
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "At the beginning of each Resources round, gain 1 building materials",
-          effect: { type: "ENTER_PLAY" }
+          label:
+            "At the beginning of each Resources round, gain 1 building materials",
+          effect: { type: "ENTER_PLAY" },
         },
         {
           label: "Remove this card: gain 3 building materials",
           cost: { removeSelf: true },
-          effect: { type: "GAIN_RESOURCES", gain: { buildingMaterials: 3 } }
-        }
-      ]
+          effect: { type: "GAIN_RESOURCES", gain: { buildingMaterials: 3 } },
+        },
+      ],
     },
-    assets: artifactAssets("minor", "inexhaustible_cart_of_ore", "Inexhaustible Cart of Ore"),
+    assets: artifactAssets(
+      "minor",
+      "inexhaustible_cart_of_ore",
+      "Inexhaustible Cart of Ore",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("inexhaustible_cart_of_ore")
+    source: artifactSource("inexhaustible_cart_of_ore"),
   },
   // Ring of the Wayfarer: option 0 is the familiar combat initiative buff (on a
   // friendly unit, the card-level target). Option 1 is the paralysis side —
@@ -794,7 +905,7 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "minor",
-      "For this Combat, your selected unit gains +1 initiative. — OR — At the start of a Combat with Neutral Units, place a Paralysis token on any unit except Azure."
+      "For this Combat, your selected unit gains +1 initiative. — OR — At the start of a Combat with Neutral Units, place a Paralysis token on any unit except Azure.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -807,21 +918,25 @@ export const artifactCards: CardLibrary = {
             amount: 1,
             duration: { type: "combat" },
             polarity: "positive",
-            removable: true
-          }
+            removable: true,
+          },
         },
         {
           label: "Start of a Neutral combat: Paralyse any non-Azure unit",
           combatOnly: true,
           requiresNeutralCombatStart: true,
           target: { type: "any-unit" },
-          effect: { type: "PLACE_PARALYSIS", gradeByPower: { 0: "gold" } }
-        }
-      ]
+          effect: { type: "PLACE_PARALYSIS", gradeByPower: { 0: "gold" } },
+        },
+      ],
     },
-    assets: artifactAssets("minor", "ring_of_the_wayfarer", "Ring of the Wayfarer"),
+    assets: artifactAssets(
+      "minor",
+      "ring_of_the_wayfarer",
+      "Ring of the Wayfarer",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("ring_of_the_wayfarer")
+    source: artifactSource("ring_of_the_wayfarer"),
   },
   // Scales of the Greater Basilisk (Fortress): both sides are the familiar
   // +Power combat instant played as you cast a spell — a flat +3, or a smaller
@@ -840,18 +955,22 @@ export const artifactCards: CardLibrary = {
         {
           label: "+3 Power",
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 3 }
+          effect: { type: "ADD_SPELL_POWER", amount: 3 },
         },
         {
           label: "+1 Power, then draw a card",
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 1, drawCards: 1 }
-        }
-      ]
+          effect: { type: "ADD_SPELL_POWER", amount: 1, drawCards: 1 },
+        },
+      ],
     },
-    assets: artifactAssets("minor", "scales_of_the_greater_basilisk", "Scales of the Greater Basilisk"),
+    assets: artifactAssets(
+      "minor",
+      "scales_of_the_greater_basilisk",
+      "Scales of the Greater Basilisk",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("scales_of_the_greater_basilisk")
+    source: artifactSource("scales_of_the_greater_basilisk"),
   },
   // Blackshard of the Dead Knight (Necropolis/Fortress): the big side adds +2
   // attack but discards a card from hand; if that discarded card was a Spell,
@@ -867,7 +986,7 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "minor",
-      "+2 attack and discard 1 card. If the discarded card was a Spell, draw 1 card. — OR — +1 attack."
+      "+2 attack and discard 1 card. If the discarded card was a Spell, draw 1 card. — OR — +1 attack.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -876,18 +995,27 @@ export const artifactCards: CardLibrary = {
           label: "+2 attack, discard 1 card (draw 1 if it was a Spell)",
           cost: { discardCards: 1 },
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2, drawIfCostCardSpell: true }
+          effect: {
+            type: "ADD_COMBAT_STAT",
+            stat: "attack",
+            amount: 2,
+            drawIfCostCardSpell: true,
+          },
         },
         {
           label: "+1 attack",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1 }
-        }
-      ]
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1 },
+        },
+      ],
     },
-    assets: artifactAssets("minor", "blackshard_of_the_dead_knight", "Blackshard of the Dead Knight"),
+    assets: artifactAssets(
+      "minor",
+      "blackshard_of_the_dead_knight",
+      "Blackshard of the Dead Knight",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("blackshard_of_the_dead_knight")
+    source: artifactSource("blackshard_of_the_dead_knight"),
   },
   // Helm of the Alabaster Unicorn (Tower expansion). Option A returns a Spell
   // from YOUR discard pile to your hand (the standard TAKE_FROM_DISCARD spell
@@ -910,25 +1038,30 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "minor",
-      "Return 1 Spell of your choice from your discard pile to your hand. — OR — Cast a spell from the top of the spell deck discard pile and Remove this card."
+      "Return 1 Spell of your choice from your discard pile to your hand. — OR — Cast a spell from the top of the spell deck discard pile and Remove this card.",
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
           label: "Return 1 Spell from your discard pile to your hand",
-          effect: { type: "TAKE_FROM_DISCARD", count: 1, filter: "spell" }
+          effect: { type: "TAKE_FROM_DISCARD", count: 1, filter: "spell" },
         },
         {
-          label: "Cast the top spell of the Spell-deck discard pile, then remove this card",
+          label:
+            "Cast the top spell of the Spell-deck discard pile, then remove this card",
           combatOnly: true,
-          effect: { type: "CAST_FROM_SPELL_DISCARD" }
-        }
-      ]
+          effect: { type: "CAST_FROM_SPELL_DISCARD" },
+        },
+      ],
     },
-    assets: artifactAssets("minor", "helm_of_the_alabaster_unicorn", "Helm of the Alabaster Unicorn"),
+    assets: artifactAssets(
+      "minor",
+      "helm_of_the_alabaster_unicorn",
+      "Helm of the Alabaster Unicorn",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("helm_of_the_alabaster_unicorn")
+    source: artifactSource("helm_of_the_alabaster_unicorn"),
   },
   // Bowstring of the Unicorn's Mane (Stronghold expansion). Option A ("Play this
   // card before a unit activates. Activate one of your ranged units that has not
@@ -956,27 +1089,36 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "minor",
-      "Play this card before a unit activates. Activate one of your ranged units that has not been activated this round. — OR — Use this after a ranged unit's Attack die roll. Ignore 1 Attack die."
+      "Play this card before a unit activates. Activate one of your ranged units that has not been activated this round. — OR — Use this after a ranged unit's Attack die roll. Ignore 1 Attack die.",
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Activate one of your ranged units that has not been activated this round",
+          label:
+            "Activate one of your ranged units that has not been activated this round",
           trigger: { event: "UNIT_ACTIVATION_STARTED", controller: "any" },
-          target: { type: "friendly-unit", unitTypes: ["ranged"], notActivatedThisRound: true },
-          effect: { type: "ACTIVATE_RANGED_UNIT" }
+          target: {
+            type: "friendly-unit",
+            unitTypes: ["ranged"],
+            notActivatedThisRound: true,
+          },
+          effect: { type: "ACTIVATE_RANGED_UNIT" },
         },
         {
           label: "After a ranged unit's Attack die roll: ignore the Attack die",
           requiresRangedAttacker: true,
-          effect: { type: "IGNORE_ATTACK_DIE_RESULT" }
-        }
-      ]
+          effect: { type: "IGNORE_ATTACK_DIE_RESULT" },
+        },
+      ],
     },
-    assets: artifactAssets("minor", "bowstring_of_the_unicorns_mane", "Bowstring of the Unicorn's Mane"),
+    assets: artifactAssets(
+      "minor",
+      "bowstring_of_the_unicorns_mane",
+      "Bowstring of the Unicorn's Mane",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("bowstring_of_the_unicorns_mane")
+    source: artifactSource("bowstring_of_the_unicorns_mane"),
   },
   // Crest of Valor (Fortress): option 0 is the plain "gain a positive morale
   // token" instant (the GAIN_MORALE shared with Glyph of Gallantry / Leadership),
@@ -994,14 +1136,14 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "minor",
-      "Gain a positive morale token. — OR — Ignore the negative morale effect from a field."
+      "Gain a positive morale token. — OR — Ignore the negative morale effect from a field.",
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
           label: "Gain a positive morale token",
-          effect: { type: "GAIN_MORALE", amount: 1 }
+          effect: { type: "GAIN_MORALE", amount: 1 },
         },
         {
           label: "Ignore the next negative morale from a field this turn",
@@ -1014,15 +1156,15 @@ export const artifactCards: CardLibrary = {
               duration: { type: "current-turn" },
               polarity: "positive",
               removable: false,
-              modifiers: [{ type: "IGNORE_FIELD_NEGATIVE_MORALE" }]
-            }
-          }
-        }
-      ]
+              modifiers: [{ type: "IGNORE_FIELD_NEGATIVE_MORALE" }],
+            },
+          },
+        },
+      ],
     },
     assets: artifactAssets("minor", "crest_of_valor", "Crest of Valor"),
     implementationStatus: "implemented",
-    source: artifactSource("crest_of_valor")
+    source: artifactSource("crest_of_valor"),
   },
   // Necklace of Swiftness (Stretch Goals 2024): option 0 is the ongoing combat
   // side — a player-scoped, combat-duration effect that raises the Initiative of
@@ -1042,7 +1184,7 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "minor",
-      "During this Combat, the initiative of all your ground units is increased by 1. — OR — Move one of your units 1 space."
+      "During this Combat, the initiative of all your ground units is increased by 1. — OR — Move one of your units 1 space.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -1058,21 +1200,25 @@ export const artifactCards: CardLibrary = {
               duration: { type: "combat" },
               polarity: "positive",
               removable: true,
-              modifiers: [{ type: "GROUND_INITIATIVE_BONUS", amount: 1 }]
-            }
-          }
+              modifiers: [{ type: "GROUND_INITIATIVE_BONUS", amount: 1 }],
+            },
+          },
         },
         {
           label: "Move one of your units 1 space",
           combatOnly: true,
           target: { type: "friendly-unit" },
-          effect: { type: "MOVE_UNIT_ADJACENT" }
-        }
-      ]
+          effect: { type: "MOVE_UNIT_ADJACENT" },
+        },
+      ],
     },
-    assets: artifactAssets("minor", "necklace_of_swiftness", "Necklace of Swiftness"),
+    assets: artifactAssets(
+      "minor",
+      "necklace_of_swiftness",
+      "Necklace of Swiftness",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("necklace_of_swiftness")
+    source: artifactSource("necklace_of_swiftness"),
   },
 
   // ---- Major artifacts ----------------------------------------------------
@@ -1090,18 +1236,22 @@ export const artifactCards: CardLibrary = {
         {
           label: "+2 attack",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 }
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 },
         },
         {
           label: "+2 defense",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 2 }
-        }
-      ]
+          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 2 },
+        },
+      ],
     },
-    assets: artifactAssets("major", "dragon_scale_shield", "Dragon Scale Shield"),
+    assets: artifactAssets(
+      "major",
+      "dragon_scale_shield",
+      "Dragon Scale Shield",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("dragon_scale_shield")
+    source: artifactSource("dragon_scale_shield"),
   },
   "artifact.endless_bag_of_gold": {
     id: "artifact.endless_bag_of_gold",
@@ -1109,24 +1259,32 @@ export const artifactCards: CardLibrary = {
     kind: "artifact",
     timing: "instant",
     artifactTier: "major",
-    tags: ["artifact", "major", "Gain 3 gold. — OR — Remove this card, then gain 6 gold."],
+    tags: [
+      "artifact",
+      "major",
+      "Gain 3 gold. — OR — Remove this card, then gain 6 gold.",
+    ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
           label: "Gain 3 gold",
-          effect: { type: "GAIN_RESOURCES", gain: { gold: 3 } }
+          effect: { type: "GAIN_RESOURCES", gain: { gold: 3 } },
         },
         {
           label: "Remove this card: gain 6 gold",
           cost: { removeSelf: true },
-          effect: { type: "GAIN_RESOURCES", gain: { gold: 6 } }
-        }
-      ]
+          effect: { type: "GAIN_RESOURCES", gain: { gold: 6 } },
+        },
+      ],
     },
-    assets: artifactAssets("major", "endless_bag_of_gold", "Endless Bag of Gold"),
+    assets: artifactAssets(
+      "major",
+      "endless_bag_of_gold",
+      "Endless Bag of Gold",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("endless_bag_of_gold")
+    source: artifactSource("endless_bag_of_gold"),
   },
   // Endless Purse of Gold: like the Bag, but the "crack it open" side both
   // removes the card from the game AND discards 2 other cards from hand
@@ -1140,25 +1298,29 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "major",
-      "Gain 3 gold. — OR — Remove this card and discard 2 cards from your hand, then gain 8 gold."
+      "Gain 3 gold. — OR — Remove this card and discard 2 cards from your hand, then gain 8 gold.",
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
           label: "Gain 3 gold",
-          effect: { type: "GAIN_RESOURCES", gain: { gold: 3 } }
+          effect: { type: "GAIN_RESOURCES", gain: { gold: 3 } },
         },
         {
           label: "Remove this card and discard 2 cards: gain 8 gold",
           cost: { removeSelf: true, discardCards: 2 },
-          effect: { type: "GAIN_RESOURCES", gain: { gold: 8 } }
-        }
-      ]
+          effect: { type: "GAIN_RESOURCES", gain: { gold: 8 } },
+        },
+      ],
     },
-    assets: artifactAssets("major", "endless_purse_of_gold", "Endless Purse of Gold"),
+    assets: artifactAssets(
+      "major",
+      "endless_purse_of_gold",
+      "Endless Purse of Gold",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("endless_purse_of_gold")
+    source: artifactSource("endless_purse_of_gold"),
   },
   "artifact.head_of_legion": {
     id: "artifact.head_of_legion",
@@ -1166,7 +1328,11 @@ export const artifactCards: CardLibrary = {
     kind: "artifact",
     timing: "instant",
     artifactTier: "major",
-    tags: ["artifact", "major", "Reduce the Recruitment or Reinforcement cost of a unit by 6 gold. — OR — Gain 3 gold."],
+    tags: [
+      "artifact",
+      "major",
+      "Reduce the Recruitment or Reinforcement cost of a unit by 6 gold. — OR — Gain 3 gold.",
+    ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
@@ -1178,17 +1344,17 @@ export const artifactCards: CardLibrary = {
           // other discount sources stack; the same piece cannot be replayed for
           // a second voucher before movement. See queueLegionDiscountChoice.
           mapOnly: true,
-          effect: { type: "GAIN_RECRUIT_DISCOUNT", amount: 6 }
+          effect: { type: "GAIN_RECRUIT_DISCOUNT", amount: 6 },
         },
         {
           label: "Gain 3 gold",
-          effect: { type: "GAIN_RESOURCES", gain: { gold: 3 } }
-        }
-      ]
+          effect: { type: "GAIN_RESOURCES", gain: { gold: 3 } },
+        },
+      ],
     },
     assets: artifactAssets("major", "head_of_legion", "Head of Legion"),
     implementationStatus: "implemented",
-    source: artifactSource("head_of_legion")
+    source: artifactSource("head_of_legion"),
   },
   "artifact.arms_of_legion": {
     id: "artifact.arms_of_legion",
@@ -1199,7 +1365,7 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "major",
-      "Reduce the Recruitment or Reinforcement cost of a unit by 5 gold (to a minimum of 0). — OR — Gain 2 building materials."
+      "Reduce the Recruitment or Reinforcement cost of a unit by 5 gold (to a minimum of 0). — OR — Gain 2 building materials.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -1212,17 +1378,17 @@ export const artifactCards: CardLibrary = {
           // other discount sources stack; the same piece cannot be replayed for
           // a second voucher before movement. See queueLegionDiscountChoice.
           mapOnly: true,
-          effect: { type: "GAIN_RECRUIT_DISCOUNT", amount: 5 }
+          effect: { type: "GAIN_RECRUIT_DISCOUNT", amount: 5 },
         },
         {
           label: "Gain 2 building materials",
-          effect: { type: "GAIN_RESOURCES", gain: { buildingMaterials: 2 } }
-        }
-      ]
+          effect: { type: "GAIN_RESOURCES", gain: { buildingMaterials: 2 } },
+        },
+      ],
     },
     assets: artifactAssets("major", "arms_of_legion", "Arms of Legion"),
     implementationStatus: "implemented",
-    source: artifactSource("arms_of_legion")
+    source: artifactSource("arms_of_legion"),
   },
   "artifact.tunic_of_the_cyclops_king": {
     id: "artifact.tunic_of_the_cyclops_king",
@@ -1231,25 +1397,33 @@ export const artifactCards: CardLibrary = {
     timing: "instant",
     phaseLimit: ["reaction", "combat"],
     artifactTier: "major",
-    tags: ["artifact", "major", "Draw 1 card and gain +1 Power. — OR — +2 Power."],
+    tags: [
+      "artifact",
+      "major",
+      "Draw 1 card and gain +1 Power. — OR — +2 Power.",
+    ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
           label: "Draw 1 card and +1 Power",
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 1, drawCards: 1 }
+          effect: { type: "ADD_SPELL_POWER", amount: 1, drawCards: 1 },
         },
         {
           label: "+2 Power",
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 2 }
-        }
-      ]
+          effect: { type: "ADD_SPELL_POWER", amount: 2 },
+        },
+      ],
     },
-    assets: artifactAssets("major", "tunic_of_the_cyclops_king", "Tunic of the Cyclops King"),
+    assets: artifactAssets(
+      "major",
+      "tunic_of_the_cyclops_king",
+      "Tunic of the Cyclops King",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("tunic_of_the_cyclops_king")
+    source: artifactSource("tunic_of_the_cyclops_king"),
   },
   "artifact.vial_of_lifeblood": {
     id: "artifact.vial_of_lifeblood",
@@ -1262,24 +1436,24 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "major",
-      "Remove up to 3 damage from one of your units. — OR — For this Combat, your selected unit gains +1 HP."
+      "Remove up to 3 damage from one of your units. — OR — For this Combat, your selected unit gains +1 HP.",
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
           label: "Remove up to 3 damage from one of your units",
-          effect: { type: "HEAL_DAMAGE", amount: 3 }
+          effect: { type: "HEAL_DAMAGE", amount: 3 },
         },
         {
           label: "+1 HP for this combat",
-          effect: { type: "ADD_UNIT_MAX_HEALTH", amount: 1 }
-        }
-      ]
+          effect: { type: "ADD_UNIT_MAX_HEALTH", amount: 1 },
+        },
+      ],
     },
     assets: artifactAssets("major", "vial_of_lifeblood", "Vial of Lifeblood"),
     implementationStatus: "implemented",
-    source: artifactSource("vial_of_lifeblood")
+    source: artifactSource("vial_of_lifeblood"),
   },
   "artifact.cape_of_velocity": {
     id: "artifact.cape_of_velocity",
@@ -1291,7 +1465,7 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "major",
-      "Until the end of the Combat, this unit gains +2 initiative. — OR — Gain 2 gold."
+      "Until the end of the Combat, this unit gains +2 initiative. — OR — Gain 2 gold.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -1304,18 +1478,18 @@ export const artifactCards: CardLibrary = {
             amount: 2,
             duration: { type: "combat" },
             polarity: "positive",
-            removable: true
-          }
+            removable: true,
+          },
         },
         {
           label: "Gain 2 gold",
-          effect: { type: "GAIN_RESOURCES", gain: { gold: 2 } }
-        }
-      ]
+          effect: { type: "GAIN_RESOURCES", gain: { gold: 2 } },
+        },
+      ],
     },
     assets: artifactAssets("major", "cape_of_velocity", "Cape of Velocity"),
     implementationStatus: "implemented",
-    source: artifactSource("cape_of_velocity")
+    source: artifactSource("cape_of_velocity"),
   },
   "artifact.golden_bow": {
     id: "artifact.golden_bow",
@@ -1327,7 +1501,7 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "major",
-      "During this Combat, your ranged units ignore the combat penalty. — OR — A ranged unit of your choice gains +2 attack."
+      "During this Combat, your ranged units ignore the combat penalty. — OR — A ranged unit of your choice gains +2 attack.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -1343,20 +1517,25 @@ export const artifactCards: CardLibrary = {
               name: "Golden Bow",
               scope: "player",
               duration: { type: "combat" },
-              modifiers: [{ type: "RANGED_IGNORE_PENALTY" }]
-            }
-          }
+              modifiers: [{ type: "RANGED_IGNORE_PENALTY" }],
+            },
+          },
         },
         {
           label: "+2 attack for a ranged unit",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2, unitTypes: ["ranged"] }
-        }
-      ]
+          effect: {
+            type: "ADD_COMBAT_STAT",
+            stat: "attack",
+            amount: 2,
+            unitTypes: ["ranged"],
+          },
+        },
+      ],
     },
     assets: artifactAssets("major", "golden_bow", "Golden Bow"),
     implementationStatus: "implemented",
-    source: artifactSource("golden_bow")
+    source: artifactSource("golden_bow"),
   },
   "artifact.everflowing_crystal_cloak": {
     id: "artifact.everflowing_crystal_cloak",
@@ -1364,24 +1543,32 @@ export const artifactCards: CardLibrary = {
     kind: "artifact",
     timing: "instant",
     artifactTier: "major",
-    tags: ["artifact", "major", "Discard 3 cards to gain 2 valuables. — OR — Gain 1 valuables."],
+    tags: [
+      "artifact",
+      "major",
+      "Discard 3 cards to gain 2 valuables. — OR — Gain 1 valuables.",
+    ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
           label: "Discard 3 cards: gain 2 valuables",
           cost: { discardCards: 3 },
-          effect: { type: "GAIN_RESOURCES", gain: { valuables: 2 } }
+          effect: { type: "GAIN_RESOURCES", gain: { valuables: 2 } },
         },
         {
           label: "Gain 1 valuables",
-          effect: { type: "GAIN_RESOURCES", gain: { valuables: 1 } }
-        }
-      ]
+          effect: { type: "GAIN_RESOURCES", gain: { valuables: 1 } },
+        },
+      ],
     },
-    assets: artifactAssets("major", "everflowing_crystal_cloak", "Everflowing Crystal Cloak"),
+    assets: artifactAssets(
+      "major",
+      "everflowing_crystal_cloak",
+      "Everflowing Crystal Cloak",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("everflowing_crystal_cloak")
+    source: artifactSource("everflowing_crystal_cloak"),
   },
   "artifact.everpouring_vial_of_mercury": {
     id: "artifact.everpouring_vial_of_mercury",
@@ -1389,24 +1576,32 @@ export const artifactCards: CardLibrary = {
     kind: "artifact",
     timing: "instant",
     artifactTier: "major",
-    tags: ["artifact", "major", "Gain 1 valuables. — OR — Remove this card, then gain 2 valuables."],
+    tags: [
+      "artifact",
+      "major",
+      "Gain 1 valuables. — OR — Remove this card, then gain 2 valuables.",
+    ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
           label: "Gain 1 valuables",
-          effect: { type: "GAIN_RESOURCES", gain: { valuables: 1 } }
+          effect: { type: "GAIN_RESOURCES", gain: { valuables: 1 } },
         },
         {
           label: "Remove this card: gain 2 valuables",
           cost: { removeSelf: true },
-          effect: { type: "GAIN_RESOURCES", gain: { valuables: 2 } }
-        }
-      ]
+          effect: { type: "GAIN_RESOURCES", gain: { valuables: 2 } },
+        },
+      ],
     },
-    assets: artifactAssets("major", "everpouring_vial_of_mercury", "Everpouring Vial of Mercury"),
+    assets: artifactAssets(
+      "major",
+      "everpouring_vial_of_mercury",
+      "Everpouring Vial of Mercury",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("everpouring_vial_of_mercury")
+    source: artifactSource("everpouring_vial_of_mercury"),
   },
   "artifact.breastplate_of_brimstone": {
     id: "artifact.breastplate_of_brimstone",
@@ -1417,26 +1612,30 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "major",
-      "Search (2) the Spell deck. — OR — +1 Power, then discard up to 3 cards from your hand to gain +1 Power per card discarded."
+      "Search (2) the Spell deck. — OR — +1 Power, then discard up to 3 cards from your hand to gain +1 Power per card discarded.",
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
           label: "Search (2) the Spell deck",
-          effect: { type: "CARD_DECK_SEARCH", deck: "spells", count: 2 }
+          effect: { type: "CARD_DECK_SEARCH", deck: "spells", count: 2 },
         },
         {
           label: "+1 Power, +1 more per discarded card (up to 3)",
           cost: { discardCardsUpTo: 3 },
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 1, perCostCard: 1 }
-        }
-      ]
+          effect: { type: "ADD_SPELL_POWER", amount: 1, perCostCard: 1 },
+        },
+      ],
     },
-    assets: artifactAssets("major", "breastplate_of_brimstone", "Breastplate of Brimstone"),
+    assets: artifactAssets(
+      "major",
+      "breastplate_of_brimstone",
+      "Breastplate of Brimstone",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("breastplate_of_brimstone")
+    source: artifactSource("breastplate_of_brimstone"),
   },
   "artifact.shield_of_the_damned": {
     id: "artifact.shield_of_the_damned",
@@ -1448,7 +1647,7 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "major",
-      "Target unit gains +3 defense and suffers 1 damage. — OR — Target unit gains +5 defense and suffers 2 damage. Cannot be used on an enemy unit."
+      "Target unit gains +3 defense and suffers 1 damage. — OR — Target unit gains +5 defense and suffers 2 damage. Cannot be used on an enemy unit.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -1456,18 +1655,32 @@ export const artifactCards: CardLibrary = {
         {
           label: "+3 defense, the unit suffers 1 damage",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 3, selfDamage: 1 }
+          effect: {
+            type: "ADD_COMBAT_STAT",
+            stat: "defense",
+            amount: 3,
+            selfDamage: 1,
+          },
         },
         {
           label: "+5 defense, the unit suffers 2 damage",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 5, selfDamage: 2 }
-        }
-      ]
+          effect: {
+            type: "ADD_COMBAT_STAT",
+            stat: "defense",
+            amount: 5,
+            selfDamage: 2,
+          },
+        },
+      ],
     },
-    assets: artifactAssets("major", "shield_of_the_damned", "Shield of the Damned"),
+    assets: artifactAssets(
+      "major",
+      "shield_of_the_damned",
+      "Shield of the Damned",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("shield_of_the_damned")
+    source: artifactSource("shield_of_the_damned"),
   },
   "artifact.pendant_of_courage": {
     id: "artifact.pendant_of_courage",
@@ -1479,7 +1692,7 @@ export const artifactCards: CardLibrary = {
       "artifact",
       "major",
       "binh-extra",
-      "Play immediately after you perform a Search action and perform that action again. — OR — Gain 1 expert use."
+      "Play immediately after you perform a Search action and perform that action again. — OR — Gain 1 expert use.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -1499,19 +1712,19 @@ export const artifactCards: CardLibrary = {
               name: "Pendant of Courage",
               scope: "player",
               duration: { type: "current-turn" },
-              modifiers: [{ type: "SEARCH_REPEAT_ONCE" }]
-            }
-          }
+              modifiers: [{ type: "SEARCH_REPEAT_ONCE" }],
+            },
+          },
         },
         {
           label: "Gain 1 expert use this round",
-          effect: { type: "GAIN_EXPERT_USE", amount: 1 }
-        }
-      ]
+          effect: { type: "GAIN_EXPERT_USE", amount: 1 },
+        },
+      ],
     },
     assets: artifactAssets("major", "pendant_of_courage", "Pendant of Courage"),
     implementationStatus: "implemented",
-    source: artifactSource("pendant_of_courage")
+    source: artifactSource("pendant_of_courage"),
   },
   "artifact.necklace_of_dragonteeth": {
     id: "artifact.necklace_of_dragonteeth",
@@ -1524,7 +1737,7 @@ export const artifactCards: CardLibrary = {
       "artifact",
       "major",
       "binh-extra",
-      "+2 Power. — OR — During this Combat, you can cast 2 spells per Combat round."
+      "+2 Power. — OR — During this Combat, you can cast 2 spells per Combat round.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -1532,7 +1745,7 @@ export const artifactCards: CardLibrary = {
         {
           label: "+2 Power",
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 2 }
+          effect: { type: "ADD_SPELL_POWER", amount: 2 },
         },
         {
           label: "Cast 2 spells per combat round this combat",
@@ -1546,15 +1759,19 @@ export const artifactCards: CardLibrary = {
               name: "Necklace of Dragonteeth",
               scope: "player",
               duration: { type: "combat" },
-              modifiers: [{ type: "SPELL_LIMIT_BONUS", amount: 1 }]
-            }
-          }
-        }
-      ]
+              modifiers: [{ type: "SPELL_LIMIT_BONUS", amount: 1 }],
+            },
+          },
+        },
+      ],
     },
-    assets: artifactAssets("major", "necklace_of_dragonteeth", "Necklace of Dragonteeth"),
+    assets: artifactAssets(
+      "major",
+      "necklace_of_dragonteeth",
+      "Necklace of Dragonteeth",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("necklace_of_dragonteeth")
+    source: artifactSource("necklace_of_dragonteeth"),
   },
   // Shackles of War: option 0 stops the enemy hero Surrendering
   // (BLOCK_ENEMY_SURRENDER → a CANNOT_SURRENDER_COMBAT effect on the enemy).
@@ -1577,25 +1794,31 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "major",
-      "If played at the start of Combat, the Enemy Hero cannot Surrender (house rule: Retreat still allowed). — OR — Draw 2 cards, choose 1 card and discard the other."
+      "If played at the start of Combat, the Enemy Hero cannot Surrender (house rule: Retreat still allowed). — OR — Draw 2 cards, choose 1 card and discard the other.",
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Lock the enemy hero in: no Surrender this combat (they may still Retreat)",
+          label:
+            "Lock the enemy hero in: no Surrender this combat (they may still Retreat)",
           combatOnly: true,
-          effect: { type: "BLOCK_ENEMY_SURRENDER" }
+          effect: { type: "BLOCK_ENEMY_SURRENDER" },
         },
         {
           label: "Draw 2 cards, then discard one of them",
-          effect: { type: "DRAW_CARDS", amount: 2, thenDiscard: 1, thenDiscardDrawnOnly: true }
-        }
-      ]
+          effect: {
+            type: "DRAW_CARDS",
+            amount: 2,
+            thenDiscard: 1,
+            thenDiscardDrawnOnly: true,
+          },
+        },
+      ],
     },
     assets: artifactAssets("major", "shackles_of_war", "Shackles of War"),
     implementationStatus: "implemented",
-    source: artifactSource("shackles_of_war")
+    source: artifactSource("shackles_of_war"),
   },
   // Mystic Orb of Mana: Search (4) the top of your discard pile and take 1 card
   // (the TAKE_FROM_DISCARD `fromTop` machinery is built for exactly this), or,
@@ -1611,25 +1834,25 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "major",
-      "Search (4) your discard pile. — OR — Only if your discard pile is empty: draw 2 cards."
+      "Search (4) your discard pile. — OR — Only if your discard pile is empty: draw 2 cards.",
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
           label: "Search (4) your discard pile",
-          effect: { type: "TAKE_FROM_DISCARD", count: 1, fromTop: 4 }
+          effect: { type: "TAKE_FROM_DISCARD", count: 1, fromTop: 4 },
         },
         {
           label: "Only if your discard pile is empty: draw 2 cards",
           requiresEmptyDiscard: true,
-          effect: { type: "DRAW_CARDS", amount: 2 }
-        }
-      ]
+          effect: { type: "DRAW_CARDS", amount: 2 },
+        },
+      ],
     },
     assets: artifactAssets("major", "mystic_orb_of_mana", "Mystic Orb of Mana"),
     implementationStatus: "implemented",
-    source: artifactSource("mystic_orb_of_mana")
+    source: artifactSource("mystic_orb_of_mana"),
   },
   // Crown of the Five Seas: option 0 returns a Spell from anywhere in your
   // discard pile (the standard TAKE_FROM_DISCARD spell pick, a map play). Option
@@ -1647,25 +1870,30 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "major",
-      "Select 1 Spell card from your discard pile and put it back into your hand. — OR — If this Hero is on a Sea tile, look at the top 3 cards of your discard pile and take 1 of them into your hand."
+      "Select 1 Spell card from your discard pile and put it back into your hand. — OR — If this Hero is on a Sea tile, look at the top 3 cards of your discard pile and take 1 of them into your hand.",
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
           label: "Take 1 Spell card from your discard pile",
-          effect: { type: "TAKE_FROM_DISCARD", count: 1, filter: "spell" }
+          effect: { type: "TAKE_FROM_DISCARD", count: 1, filter: "spell" },
         },
         {
-          label: "On a Sea tile: look at the top 3 of your discard pile, take 1",
+          label:
+            "On a Sea tile: look at the top 3 of your discard pile, take 1",
           requiresSeaTile: true,
-          effect: { type: "TAKE_FROM_DISCARD", count: 1, fromTop: 3 }
-        }
-      ]
+          effect: { type: "TAKE_FROM_DISCARD", count: 1, fromTop: 3 },
+        },
+      ],
     },
-    assets: artifactAssets("major", "crown_of_the_five_seas", "Crown of the Five Seas"),
+    assets: artifactAssets(
+      "major",
+      "crown_of_the_five_seas",
+      "Crown of the Five Seas",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("crown_of_the_five_seas")
+    source: artifactSource("crown_of_the_five_seas"),
   },
   // The four elemental Orbs share one shape, one per School of Magic. Option A
   // is an ongoing combat play: while it is in play this Combat, the engine
@@ -1686,7 +1914,7 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "major",
-      "While in play this Combat, double the Power of your Water Magic spells. — OR — When casting a Water Magic spell, remove this card to gain +5 Power."
+      "While in play this Combat, double the Power of your Water Magic spells. — OR — When casting a Water Magic spell, remove this card to gain +5 Power.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -1700,21 +1928,25 @@ export const artifactCards: CardLibrary = {
               name: "Orb of Driving Rain",
               scope: "player",
               duration: { type: "combat" },
-              modifiers: [{ type: "SPELL_POWER_DOUBLE", school: "water" }]
-            }
-          }
+              modifiers: [{ type: "SPELL_POWER_DOUBLE", school: "water" }],
+            },
+          },
         },
         {
           label: "Remove this card: +5 Power to a Water Magic spell",
           cost: { removeSelf: true },
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 5, schoolOnly: "water" }
-        }
-      ]
+          effect: { type: "ADD_SPELL_POWER", amount: 5, schoolOnly: "water" },
+        },
+      ],
     },
-    assets: artifactAssets("major", "orb_of_driving_rain", "Orb of Driving Rain"),
+    assets: artifactAssets(
+      "major",
+      "orb_of_driving_rain",
+      "Orb of Driving Rain",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("orb_of_driving_rain")
+    source: artifactSource("orb_of_driving_rain"),
   },
   "artifact.orb_of_silt": {
     id: "artifact.orb_of_silt",
@@ -1726,7 +1958,7 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "major",
-      "While in play this Combat, double the Power of your Earth Magic spells. — OR — When casting an Earth Magic spell, remove this card to gain +5 Power."
+      "While in play this Combat, double the Power of your Earth Magic spells. — OR — When casting an Earth Magic spell, remove this card to gain +5 Power.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -1740,21 +1972,21 @@ export const artifactCards: CardLibrary = {
               name: "Orb of Silt",
               scope: "player",
               duration: { type: "combat" },
-              modifiers: [{ type: "SPELL_POWER_DOUBLE", school: "earth" }]
-            }
-          }
+              modifiers: [{ type: "SPELL_POWER_DOUBLE", school: "earth" }],
+            },
+          },
         },
         {
           label: "Remove this card: +5 Power to an Earth Magic spell",
           cost: { removeSelf: true },
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 5, schoolOnly: "earth" }
-        }
-      ]
+          effect: { type: "ADD_SPELL_POWER", amount: 5, schoolOnly: "earth" },
+        },
+      ],
     },
     assets: artifactAssets("major", "orb_of_silt", "Orb of Silt"),
     implementationStatus: "implemented",
-    source: artifactSource("orb_of_silt")
+    source: artifactSource("orb_of_silt"),
   },
   "artifact.orb_of_tempestuous_fire": {
     id: "artifact.orb_of_tempestuous_fire",
@@ -1766,7 +1998,7 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "major",
-      "While in play this Combat, double the Power of your Fire Magic spells. — OR — When casting a Fire Magic spell, remove this card to gain +5 Power."
+      "While in play this Combat, double the Power of your Fire Magic spells. — OR — When casting a Fire Magic spell, remove this card to gain +5 Power.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -1780,21 +2012,25 @@ export const artifactCards: CardLibrary = {
               name: "Orb of Tempestuous Fire",
               scope: "player",
               duration: { type: "combat" },
-              modifiers: [{ type: "SPELL_POWER_DOUBLE", school: "fire" }]
-            }
-          }
+              modifiers: [{ type: "SPELL_POWER_DOUBLE", school: "fire" }],
+            },
+          },
         },
         {
           label: "Remove this card: +5 Power to a Fire Magic spell",
           cost: { removeSelf: true },
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 5, schoolOnly: "fire" }
-        }
-      ]
+          effect: { type: "ADD_SPELL_POWER", amount: 5, schoolOnly: "fire" },
+        },
+      ],
     },
-    assets: artifactAssets("major", "orb_of_tempestuous_fire", "Orb of Tempestuous Fire"),
+    assets: artifactAssets(
+      "major",
+      "orb_of_tempestuous_fire",
+      "Orb of Tempestuous Fire",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("orb_of_tempestuous_fire")
+    source: artifactSource("orb_of_tempestuous_fire"),
   },
   "artifact.orb_of_the_firmament": {
     id: "artifact.orb_of_the_firmament",
@@ -1806,7 +2042,7 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "major",
-      "While in play this Combat, double the Power of your Air Magic spells. — OR — When casting an Air Magic spell, remove this card to gain +5 Power."
+      "While in play this Combat, double the Power of your Air Magic spells. — OR — When casting an Air Magic spell, remove this card to gain +5 Power.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -1820,21 +2056,25 @@ export const artifactCards: CardLibrary = {
               name: "Orb of the Firmament",
               scope: "player",
               duration: { type: "combat" },
-              modifiers: [{ type: "SPELL_POWER_DOUBLE", school: "air" }]
-            }
-          }
+              modifiers: [{ type: "SPELL_POWER_DOUBLE", school: "air" }],
+            },
+          },
         },
         {
           label: "Remove this card: +5 Power to an Air Magic spell",
           cost: { removeSelf: true },
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 5, schoolOnly: "air" }
-        }
-      ]
+          effect: { type: "ADD_SPELL_POWER", amount: 5, schoolOnly: "air" },
+        },
+      ],
     },
-    assets: artifactAssets("major", "orb_of_the_firmament", "Orb of the Firmament"),
+    assets: artifactAssets(
+      "major",
+      "orb_of_the_firmament",
+      "Orb of the Firmament",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("orb_of_the_firmament")
+    source: artifactSource("orb_of_the_firmament"),
   },
   // Pendant of Second Sight: both sides are friendly-unit combat plays. Option A
   // places a combat-long PARALYSIS_IMMUNITY on the chosen unit — every Paralysis
@@ -1853,7 +2093,7 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "major",
-      "Your selected unit cannot gain a Paralysis token during this Combat. — OR — Remove 1 Paralysis token from your selected unit."
+      "Your selected unit cannot gain a Paralysis token during this Combat. — OR — Remove 1 Paralysis token from your selected unit.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -1868,20 +2108,24 @@ export const artifactCards: CardLibrary = {
               scope: "unit",
               duration: { type: "combat" },
               polarity: "positive",
-              modifiers: [{ type: "PARALYSIS_IMMUNITY" }]
-            }
-          }
+              modifiers: [{ type: "PARALYSIS_IMMUNITY" }],
+            },
+          },
         },
         {
           label: "Remove 1 Paralysis token from your selected unit",
           combatOnly: true,
-          effect: { type: "HEAL_DAMAGE", amount: 0, removeParalysis: true }
-        }
-      ]
+          effect: { type: "HEAL_DAMAGE", amount: 0, removeParalysis: true },
+        },
+      ],
     },
-    assets: artifactAssets("major", "pendant_of_second_sight", "Pendant of Second Sight"),
+    assets: artifactAssets(
+      "major",
+      "pendant_of_second_sight",
+      "Pendant of Second Sight",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("pendant_of_second_sight")
+    source: artifactSource("pendant_of_second_sight"),
   },
   // Pendant of Negativity (Tower expansion). Both sides defend against Air Magic.
   // Option A is the reaction counter shared with Protection from Air, but with no
@@ -1903,7 +2147,7 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "major",
-      "Play after an enemy casts an Air Magic spell to ignore its effect. — OR — During this Combat, your selected unit ignores Air Magic spells cast on it."
+      "Play after an enemy casts an Air Magic spell to ignore its effect. — OR — During this Combat, your selected unit ignores Air Magic spells cast on it.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -1911,7 +2155,7 @@ export const artifactCards: CardLibrary = {
         {
           label: "Ignore an enemy Air Magic spell",
           trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
-          effect: { type: "CANCEL_SPELL", schools: ["air"] }
+          effect: { type: "CANCEL_SPELL", schools: ["air"] },
         },
         {
           label: "This Combat: your selected unit ignores Air Magic spells",
@@ -1925,15 +2169,19 @@ export const artifactCards: CardLibrary = {
               duration: { type: "combat" },
               polarity: "positive",
               removable: true,
-              modifiers: [{ type: "SPELL_SCHOOL_IMMUNE", schools: ["air"] }]
-            }
-          }
-        }
-      ]
+              modifiers: [{ type: "SPELL_SCHOOL_IMMUNE", schools: ["air"] }],
+            },
+          },
+        },
+      ],
     },
-    assets: artifactAssets("major", "pendant_of_negativity", "Pendant of Negativity"),
+    assets: artifactAssets(
+      "major",
+      "pendant_of_negativity",
+      "Pendant of Negativity",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("pendant_of_negativity")
+    source: artifactSource("pendant_of_negativity"),
   },
   // Sword of Hellfire (Fortress): the attacking-unit twin of Shield of the
   // Damned — a bigger attack bonus paid for in the attacker's own blood
@@ -1950,7 +2198,7 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "major",
-      "+3 attack, then this unit suffers 1 damage. Cannot be used on an enemy unit. — OR — +4 attack, then this unit suffers 2 damage. Cannot be used on an enemy unit."
+      "+3 attack, then this unit suffers 1 damage. Cannot be used on an enemy unit. — OR — +4 attack, then this unit suffers 2 damage. Cannot be used on an enemy unit.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -1958,18 +2206,28 @@ export const artifactCards: CardLibrary = {
         {
           label: "+3 attack, the unit suffers 1 damage",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 3, selfDamage: 1 }
+          effect: {
+            type: "ADD_COMBAT_STAT",
+            stat: "attack",
+            amount: 3,
+            selfDamage: 1,
+          },
         },
         {
           label: "+4 attack, the unit suffers 2 damage",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 4, selfDamage: 2 }
-        }
-      ]
+          effect: {
+            type: "ADD_COMBAT_STAT",
+            stat: "attack",
+            amount: 4,
+            selfDamage: 2,
+          },
+        },
+      ],
     },
     assets: artifactAssets("major", "sword_of_hellfire", "Sword of Hellfire"),
     implementationStatus: "implemented",
-    source: artifactSource("sword_of_hellfire")
+    source: artifactSource("sword_of_hellfire"),
   },
   // Surcoat of Counterpoise (Tower): option A is a low-power spell counter —
   // played as the enemy casts, it ends that Spell only if it was cast with 1
@@ -1986,7 +2244,7 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "major",
-      "Play immediately after an enemy casts a Spell. If it was cast with 1 Power or less, ignore the Spell's effect. — OR — Remove this card, then Search (1) the Artifact deck."
+      "Play immediately after an enemy casts a Spell. If it was cast with 1 Power or less, ignore the Spell's effect. — OR — Remove this card, then Search (1) the Artifact deck.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -1994,18 +2252,22 @@ export const artifactCards: CardLibrary = {
         {
           label: "Ignore an enemy Spell cast with 1 Power or less",
           trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
-          effect: { type: "CANCEL_SPELL", maxPower: 1 }
+          effect: { type: "CANCEL_SPELL", maxPower: 1 },
         },
         {
           label: "Remove this card: Search (1) the Artifact deck",
           cost: { removeSelf: true },
-          effect: { type: "CARD_DECK_SEARCH", deck: "artifacts", count: 1 }
-        }
-      ]
+          effect: { type: "CARD_DECK_SEARCH", deck: "artifacts", count: 1 },
+        },
+      ],
     },
-    assets: artifactAssets("major", "surcoat_of_counterpoise", "Surcoat of Counterpoise"),
+    assets: artifactAssets(
+      "major",
+      "surcoat_of_counterpoise",
+      "Surcoat of Counterpoise",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("surcoat_of_counterpoise")
+    source: artifactSource("surcoat_of_counterpoise"),
   },
   // Targ of the Rampaging Ogre (Fortress): the top side is a reusable defense
   // reaction — discard 2 cards for +2 defense, then the Targ returns to hand
@@ -2022,28 +2284,33 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "major",
-      "Discard 2 cards to gain +2 defense. Then, instead of discarding, put this card back into your hand. — OR — +1 defense."
+      "Discard 2 cards to gain +2 defense. Then, instead of discarding, put this card back into your hand. — OR — +1 defense.",
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Discard 2 cards: +2 defense, then return this card to your hand",
+          label:
+            "Discard 2 cards: +2 defense, then return this card to your hand",
           cost: { discardCards: 2 },
           returnSelfToHand: true,
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 2 }
+          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 2 },
         },
         {
           label: "+1 defense",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 1 }
-        }
-      ]
+          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 1 },
+        },
+      ],
     },
-    assets: artifactAssets("major", "targ_of_the_rampaging_ogre", "Targ of the Rampaging Ogre"),
+    assets: artifactAssets(
+      "major",
+      "targ_of_the_rampaging_ogre",
+      "Targ of the Rampaging Ogre",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("targ_of_the_rampaging_ogre")
+    source: artifactSource("targ_of_the_rampaging_ogre"),
   },
   // Trident of Dominion (Cove): a plain +2 attack on your attacker, OR — only
   // while this Hero stands on a Sea tile — a 2-card draw (the requiresSeaTile
@@ -2055,25 +2322,33 @@ export const artifactCards: CardLibrary = {
     kind: "artifact",
     timing: "instant",
     artifactTier: "major",
-    tags: ["artifact", "major", "+2 attack. — OR — If this Hero is on a Sea tile, draw 2 cards."],
+    tags: [
+      "artifact",
+      "major",
+      "+2 attack. — OR — If this Hero is on a Sea tile, draw 2 cards.",
+    ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
           label: "+2 attack",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 }
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 },
         },
         {
           label: "On a Sea tile: draw 2 cards",
           requiresSeaTile: true,
-          effect: { type: "DRAW_CARDS", amount: 2 }
-        }
-      ]
+          effect: { type: "DRAW_CARDS", amount: 2 },
+        },
+      ],
     },
-    assets: artifactAssets("major", "trident_of_dominion", "Trident of Dominion"),
+    assets: artifactAssets(
+      "major",
+      "trident_of_dominion",
+      "Trident of Dominion",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("trident_of_dominion")
+    source: artifactSource("trident_of_dominion"),
   },
   // Shield of Naval Glory (Cove): a plain +2 defense reaction, OR — only while
   // this Hero stands on a Sea tile — +1 Hero movement and draw 1 card (the new
@@ -2087,7 +2362,7 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "major",
-      "+2 defense. — OR — If this Hero is on a Sea tile, they gain +1 movement and draw 1 card."
+      "+2 defense. — OR — If this Hero is on a Sea tile, they gain +1 movement and draw 1 card.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -2095,19 +2370,23 @@ export const artifactCards: CardLibrary = {
         {
           label: "+2 defense",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 2 }
+          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 2 },
         },
         {
           label: "On a Sea tile: +1 movement and draw 1 card",
           mapOnly: true,
           requiresSeaTile: true,
-          effect: { type: "GAIN_HERO_MOVEMENT", amount: 1, drawCards: 1 }
-        }
-      ]
+          effect: { type: "GAIN_HERO_MOVEMENT", amount: 1, drawCards: 1 },
+        },
+      ],
     },
-    assets: artifactAssets("major", "shield_of_naval_glory", "Shield of Naval Glory"),
+    assets: artifactAssets(
+      "major",
+      "shield_of_naval_glory",
+      "Shield of Naval Glory",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("shield_of_naval_glory")
+    source: artifactSource("shield_of_naval_glory"),
   },
   // Royal Armor of Nix (Cove): a flat +2 Power as you cast a spell, OR — only
   // while this Hero stands on a Sea tile — Search (2) the Spell deck (playable
@@ -2120,25 +2399,29 @@ export const artifactCards: CardLibrary = {
     kind: "artifact",
     timing: "instant",
     artifactTier: "major",
-    tags: ["artifact", "major", "+2 Power. — OR — If this Hero is on a Sea tile, Search (2) the Spell deck."],
+    tags: [
+      "artifact",
+      "major",
+      "+2 Power. — OR — If this Hero is on a Sea tile, Search (2) the Spell deck.",
+    ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
           label: "+2 Power",
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 2 }
+          effect: { type: "ADD_SPELL_POWER", amount: 2 },
         },
         {
           label: "On a Sea tile: Search (2) the Spell deck",
           requiresSeaTile: true,
-          effect: { type: "CARD_DECK_SEARCH", deck: "spells", count: 2 }
-        }
-      ]
+          effect: { type: "CARD_DECK_SEARCH", deck: "spells", count: 2 },
+        },
+      ],
     },
     assets: artifactAssets("major", "royal_armor_of_nix", "Royal Armor of Nix"),
     implementationStatus: "implemented",
-    source: artifactSource("royal_armor_of_nix")
+    source: artifactSource("royal_armor_of_nix"),
   },
   // Cards of Prophecy (Tower expansion). Its "Reroll any die" half is an instant
   // REACTION offered from hand the moment a die is rolled (the map Resource /
@@ -2176,15 +2459,15 @@ export const artifactCards: CardLibrary = {
               duration: { type: "current-turn" },
               polarity: "positive",
               removable: false,
-              modifiers: [{ type: "ADVENTURE_DIE_SET", dice: "any" }]
-            }
-          }
-        }
-      ]
+              modifiers: [{ type: "ADVENTURE_DIE_SET", dice: "any" }],
+            },
+          },
+        },
+      ],
     },
     assets: artifactAssets("major", "cards_of_prophecy", "Cards of Prophecy"),
     implementationStatus: "implemented",
-    source: artifactSource("cards_of_prophecy")
+    source: artifactSource("cards_of_prophecy"),
   },
   // Diplomat's Ring (Stronghold expansion). The proactive play is the Diplomacy
   // map recruit (DIPLOMACY_RECRUIT — draw one Neutral Unit card per Dwelling,
@@ -2210,15 +2493,16 @@ export const artifactCards: CardLibrary = {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Map: draw 1 Neutral Unit card per Dwelling, then recruit one (pay its cost)",
+          label:
+            "Map: draw 1 Neutral Unit card per Dwelling, then recruit one (pay its cost)",
           mapOnly: true,
-          effect: { type: "DIPLOMACY_RECRUIT" }
-        }
-      ]
+          effect: { type: "DIPLOMACY_RECRUIT" },
+        },
+      ],
     },
     assets: artifactAssets("major", "diplomats_ring", "Diplomat's Ring"),
     implementationStatus: "implemented",
-    source: artifactSource("diplomats_ring")
+    source: artifactSource("diplomats_ring"),
   },
   // Ambassador's Sash (Rampart expansion) — Diplomat's Ring's companion (the
   // wiki cross-links them). The proactive play is the Diplomacy map recruit
@@ -2242,15 +2526,16 @@ export const artifactCards: CardLibrary = {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Map: draw 1 Neutral Unit card per Dwelling, then recruit one (pay its cost)",
+          label:
+            "Map: draw 1 Neutral Unit card per Dwelling, then recruit one (pay its cost)",
           mapOnly: true,
-          effect: { type: "DIPLOMACY_RECRUIT" }
-        }
-      ]
+          effect: { type: "DIPLOMACY_RECRUIT" },
+        },
+      ],
     },
     assets: artifactAssets("major", "ambassadors_sash", "Ambassador's Sash"),
     implementationStatus: "implemented",
-    source: artifactSource("ambassadors_sash")
+    source: artifactSource("ambassadors_sash"),
   },
 
   // ---- Relic artifacts ----------------------------------------------------
@@ -2263,7 +2548,7 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "relic",
-      "Chosen Hero gains +1 movement and can move through any fields without resolving them. The last visited field must be resolved normally. — OR — Draw a card."
+      "Chosen Hero gains +1 movement and can move through any fields without resolving them. The last visited field must be resolved normally. — OR — Draw a card.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -2275,17 +2560,22 @@ export const artifactCards: CardLibrary = {
           // stepped over; only the field the walk ENDS on resolves).
           label: "+1 movement and walk through fields this turn",
           mapOnly: true,
-          effect: { type: "GAIN_HERO_MOVEMENT", amount: 1, moveThroughThisTurn: true, passAnyFieldThisTurn: true }
+          effect: {
+            type: "GAIN_HERO_MOVEMENT",
+            amount: 1,
+            moveThroughThisTurn: true,
+            passAnyFieldThisTurn: true,
+          },
         },
         {
           label: "Draw a card",
-          effect: { type: "DRAW_CARDS", amount: 1 }
-        }
-      ]
+          effect: { type: "DRAW_CARDS", amount: 1 },
+        },
+      ],
     },
     assets: artifactAssets("relic", "angel_wings", "Angel Wings"),
     implementationStatus: "implemented",
-    source: artifactSource("angel_wings")
+    source: artifactSource("angel_wings"),
   },
   "artifact.dragon_scale_armor": {
     id: "artifact.dragon_scale_armor",
@@ -2301,18 +2591,18 @@ export const artifactCards: CardLibrary = {
         {
           label: "+2 attack",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 }
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 },
         },
         {
           label: "+2 defense",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 2 }
-        }
-      ]
+          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 2 },
+        },
+      ],
     },
     assets: artifactAssets("relic", "dragon_scale_armor", "Dragon Scale Armor"),
     implementationStatus: "implemented",
-    source: artifactSource("dragon_scale_armor")
+    source: artifactSource("dragon_scale_armor"),
   },
   "artifact.endless_sack_of_gold": {
     id: "artifact.endless_sack_of_gold",
@@ -2320,24 +2610,32 @@ export const artifactCards: CardLibrary = {
     kind: "artifact",
     timing: "instant",
     artifactTier: "relic",
-    tags: ["artifact", "relic", "Gain 5 gold. — OR — Remove this card, then gain 8 gold."],
+    tags: [
+      "artifact",
+      "relic",
+      "Gain 5 gold. — OR — Remove this card, then gain 8 gold.",
+    ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
           label: "Gain 5 gold",
-          effect: { type: "GAIN_RESOURCES", gain: { gold: 5 } }
+          effect: { type: "GAIN_RESOURCES", gain: { gold: 5 } },
         },
         {
           label: "Remove this card: gain 8 gold",
           cost: { removeSelf: true },
-          effect: { type: "GAIN_RESOURCES", gain: { gold: 8 } }
-        }
-      ]
+          effect: { type: "GAIN_RESOURCES", gain: { gold: 8 } },
+        },
+      ],
     },
-    assets: artifactAssets("relic", "endless_sack_of_gold", "Endless Sack of Gold"),
+    assets: artifactAssets(
+      "relic",
+      "endless_sack_of_gold",
+      "Endless Sack of Gold",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("endless_sack_of_gold")
+    source: artifactSource("endless_sack_of_gold"),
   },
   "artifact.sentinels_shield": {
     id: "artifact.sentinels_shield",
@@ -2346,7 +2644,11 @@ export const artifactCards: CardLibrary = {
     timing: "instant",
     phaseLimit: ["reaction", "combat"],
     artifactTier: "relic",
-    tags: ["artifact", "relic", "Discard 1 card to gain +3 defense. — OR — +2 defense."],
+    tags: [
+      "artifact",
+      "relic",
+      "Discard 1 card to gain +3 defense. — OR — +2 defense.",
+    ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
@@ -2354,18 +2656,18 @@ export const artifactCards: CardLibrary = {
           label: "Discard 1 card: +3 defense",
           cost: { discardCards: 1 },
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 3 }
+          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 3 },
         },
         {
           label: "+2 defense",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 2 }
-        }
-      ]
+          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 2 },
+        },
+      ],
     },
     assets: artifactAssets("relic", "sentinels_shield", "Sentinel's Shield"),
     implementationStatus: "implemented",
-    source: artifactSource("sentinels_shield")
+    source: artifactSource("sentinels_shield"),
   },
   "artifact.sword_of_judgement": {
     id: "artifact.sword_of_judgement",
@@ -2377,7 +2679,7 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "relic",
-      "Discard X cards from hand to gain +X attack. — OR — Discard X cards from hand to gain +X defense."
+      "Discard X cards from hand to gain +X attack. — OR — Discard X cards from hand to gain +X defense.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -2386,19 +2688,29 @@ export const artifactCards: CardLibrary = {
           label: "Discard X cards: +X attack",
           cost: { discardCardsUpTo: 7 },
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 0, perCostCard: 1 }
+          effect: {
+            type: "ADD_COMBAT_STAT",
+            stat: "attack",
+            amount: 0,
+            perCostCard: 1,
+          },
         },
         {
           label: "Discard X cards: +X defense",
           cost: { discardCardsUpTo: 7 },
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 0, perCostCard: 1 }
-        }
-      ]
+          effect: {
+            type: "ADD_COMBAT_STAT",
+            stat: "defense",
+            amount: 0,
+            perCostCard: 1,
+          },
+        },
+      ],
     },
     assets: artifactAssets("relic", "sword_of_judgement", "Sword of Judgement"),
     implementationStatus: "implemented",
-    source: artifactSource("sword_of_judgement")
+    source: artifactSource("sword_of_judgement"),
   },
   "artifact.titans_cuirass": {
     id: "artifact.titans_cuirass",
@@ -2407,7 +2719,11 @@ export const artifactCards: CardLibrary = {
     timing: "instant",
     phaseLimit: ["reaction", "combat"],
     artifactTier: "relic",
-    tags: ["artifact", "relic", "Discard 1 card to gain +4 Power. — OR — +2 Power."],
+    tags: [
+      "artifact",
+      "relic",
+      "Discard 1 card to gain +4 Power. — OR — +2 Power.",
+    ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
@@ -2415,18 +2731,18 @@ export const artifactCards: CardLibrary = {
           label: "Discard 1 card: +4 Power",
           cost: { discardCards: 1 },
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 4 }
+          effect: { type: "ADD_SPELL_POWER", amount: 4 },
         },
         {
           label: "+2 Power",
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 2 }
-        }
-      ]
+          effect: { type: "ADD_SPELL_POWER", amount: 2 },
+        },
+      ],
     },
     assets: artifactAssets("relic", "titans_cuirass", "Titan's Cuirass"),
     implementationStatus: "implemented",
-    source: artifactSource("titans_cuirass")
+    source: artifactSource("titans_cuirass"),
   },
   "artifact.crown_of_dragontooth": {
     id: "artifact.crown_of_dragontooth",
@@ -2437,25 +2753,33 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "relic",
-      "Select 2 Spell cards from your discard pile and put them back in your hand. — OR — Remove 1 Spell from hand, then Search (2) the Spell deck."
+      "Select 2 Spell cards from your discard pile and put them back in your hand. — OR — Remove 1 Spell from hand, then Search (2) the Spell deck.",
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
           label: "Take 2 Spell cards from your discard pile",
-          effect: { type: "TAKE_FROM_DISCARD", count: 2, filter: "spell" }
+          effect: { type: "TAKE_FROM_DISCARD", count: 2, filter: "spell" },
         },
         {
           label: "Remove 1 Spell from hand: Search (2) the Spell deck",
-          cost: { discardCards: 1, costCardFilter: "spell", removeCostCards: true },
-          effect: { type: "CARD_DECK_SEARCH", deck: "spells", count: 2 }
-        }
-      ]
+          cost: {
+            discardCards: 1,
+            costCardFilter: "spell",
+            removeCostCards: true,
+          },
+          effect: { type: "CARD_DECK_SEARCH", deck: "spells", count: 2 },
+        },
+      ],
     },
-    assets: artifactAssets("relic", "crown_of_dragontooth", "Crown of Dragontooth"),
+    assets: artifactAssets(
+      "relic",
+      "crown_of_dragontooth",
+      "Crown of Dragontooth",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("crown_of_dragontooth")
+    source: artifactSource("crown_of_dragontooth"),
   },
   "artifact.helm_of_heavenly_enlightenment": {
     id: "artifact.helm_of_heavenly_enlightenment",
@@ -2463,23 +2787,32 @@ export const artifactCards: CardLibrary = {
     kind: "artifact",
     timing: "instant",
     artifactTier: "relic",
-    tags: ["artifact", "relic", "binh-extra", "Gain 1 expert use. — OR — Draw 2 cards."],
+    tags: [
+      "artifact",
+      "relic",
+      "binh-extra",
+      "Gain 1 expert use. — OR — Draw 2 cards.",
+    ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
           label: "Gain 1 expert use this round",
-          effect: { type: "GAIN_EXPERT_USE", amount: 1 }
+          effect: { type: "GAIN_EXPERT_USE", amount: 1 },
         },
         {
           label: "Draw 2 cards",
-          effect: { type: "DRAW_CARDS", amount: 2 }
-        }
-      ]
+          effect: { type: "DRAW_CARDS", amount: 2 },
+        },
+      ],
     },
-    assets: artifactAssets("relic", "helm_of_heavenly_enlightenment", "Helm of Heavenly Enlightenment"),
+    assets: artifactAssets(
+      "relic",
+      "helm_of_heavenly_enlightenment",
+      "Helm of Heavenly Enlightenment",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("helm_of_heavenly_enlightenment")
+    source: artifactSource("helm_of_heavenly_enlightenment"),
   },
   "artifact.celestial_necklace_of_bliss": {
     id: "artifact.celestial_necklace_of_bliss",
@@ -2492,7 +2825,7 @@ export const artifactCards: CardLibrary = {
       "artifact",
       "relic",
       "binh-extra",
-      "Discard X cards from hand to gain +X attack. — OR — Remove this card, then gain +4 attack."
+      "Discard X cards from hand to gain +X attack. — OR — Remove this card, then gain +4 attack.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -2501,19 +2834,28 @@ export const artifactCards: CardLibrary = {
           label: "Discard X cards: +X attack",
           cost: { discardCardsUpTo: 7 },
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 0, perCostCard: 1 }
+          effect: {
+            type: "ADD_COMBAT_STAT",
+            stat: "attack",
+            amount: 0,
+            perCostCard: 1,
+          },
         },
         {
           label: "Remove this card: +4 attack",
           cost: { removeSelf: true },
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 4 }
-        }
-      ]
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 4 },
+        },
+      ],
     },
-    assets: artifactAssets("relic", "celestial_necklace_of_bliss", "Celestial Necklace of Bliss"),
+    assets: artifactAssets(
+      "relic",
+      "celestial_necklace_of_bliss",
+      "Celestial Necklace of Bliss",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("celestial_necklace_of_bliss")
+    source: artifactSource("celestial_necklace_of_bliss"),
   },
   "artifact.lions_shield_of_courage": {
     id: "artifact.lions_shield_of_courage",
@@ -2526,7 +2868,7 @@ export const artifactCards: CardLibrary = {
       "artifact",
       "relic",
       "binh-extra",
-      "Discard X cards from hand to gain +X defense. — OR — Remove this card, then gain +4 defense."
+      "Discard X cards from hand to gain +X defense. — OR — Remove this card, then gain +4 defense.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -2535,19 +2877,28 @@ export const artifactCards: CardLibrary = {
           label: "Discard X cards: +X defense",
           cost: { discardCardsUpTo: 7 },
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 0, perCostCard: 1 }
+          effect: {
+            type: "ADD_COMBAT_STAT",
+            stat: "defense",
+            amount: 0,
+            perCostCard: 1,
+          },
         },
         {
           label: "Remove this card: +4 defense",
           cost: { removeSelf: true },
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 4 }
-        }
-      ]
+          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 4 },
+        },
+      ],
     },
-    assets: artifactAssets("relic", "lions_shield_of_courage", "Lion's Shield of Courage"),
+    assets: artifactAssets(
+      "relic",
+      "lions_shield_of_courage",
+      "Lion's Shield of Courage",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("lions_shield_of_courage")
+    source: artifactSource("lions_shield_of_courage"),
   },
   "artifact.sandals_of_the_saint": {
     id: "artifact.sandals_of_the_saint",
@@ -2560,7 +2911,7 @@ export const artifactCards: CardLibrary = {
       "artifact",
       "relic",
       "binh-extra",
-      "Discard X cards from hand to gain +X Power. — OR — Remove this card, then gain +4 Power."
+      "Discard X cards from hand to gain +X Power. — OR — Remove this card, then gain +4 Power.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -2569,19 +2920,23 @@ export const artifactCards: CardLibrary = {
           label: "Discard X cards: +X Power",
           cost: { discardCardsUpTo: 7 },
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 0, perCostCard: 1 }
+          effect: { type: "ADD_SPELL_POWER", amount: 0, perCostCard: 1 },
         },
         {
           label: "Remove this card: +4 Power",
           cost: { removeSelf: true },
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 4 }
-        }
-      ]
+          effect: { type: "ADD_SPELL_POWER", amount: 4 },
+        },
+      ],
     },
-    assets: artifactAssets("relic", "sandals_of_the_saint", "Sandals of the Saint"),
+    assets: artifactAssets(
+      "relic",
+      "sandals_of_the_saint",
+      "Sandals of the Saint",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("sandals_of_the_saint")
+    source: artifactSource("sandals_of_the_saint"),
   },
   // Orb of Vulnerability: option A is a combat instant that, for the rest of the
   // Combat, switches off every unit's innate spell-related ability — both armies
@@ -2605,7 +2960,7 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "relic",
-      "During this Combat, negate all units' special abilities related to spells. — OR — +2 Power."
+      "During this Combat, negate all units' special abilities related to spells. — OR — +2 Power.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -2619,20 +2974,24 @@ export const artifactCards: CardLibrary = {
               name: "Orb of Vulnerability",
               scope: "global",
               duration: { type: "combat" },
-              modifiers: [{ type: "SUPPRESS_SPELL_ABILITIES" }]
-            }
-          }
+              modifiers: [{ type: "SUPPRESS_SPELL_ABILITIES" }],
+            },
+          },
         },
         {
           label: "+2 Power",
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 2 }
-        }
-      ]
+          effect: { type: "ADD_SPELL_POWER", amount: 2 },
+        },
+      ],
     },
-    assets: artifactAssets("relic", "orb_of_vulnerability", "Orb of Vulnerability"),
+    assets: artifactAssets(
+      "relic",
+      "orb_of_vulnerability",
+      "Orb of Vulnerability",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("orb_of_vulnerability")
+    source: artifactSource("orb_of_vulnerability"),
   },
   // Orb of Inhibition (Tower expansion): a combat-lockdown relic. Both sides are
   // global, side-agnostic combat plays.
@@ -2659,13 +3018,14 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "relic",
-      "During this Combat, all Spell and Specialty cards deal 0 damage. Remove this card instead of discarding it. — OR — During this Combat round, units cannot use their special abilities."
+      "During this Combat, all Spell and Specialty cards deal 0 damage. Remove this card instead of discarding it. — OR — During this Combat round, units cannot use their special abilities.",
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "This Combat: all Spell and Specialty cards deal 0 damage (remove this card)",
+          label:
+            "This Combat: all Spell and Specialty cards deal 0 damage (remove this card)",
           combatOnly: true,
           cost: { removeSelf: true },
           effect: {
@@ -2674,9 +3034,9 @@ export const artifactCards: CardLibrary = {
               name: "Orb of Inhibition",
               scope: "global",
               duration: { type: "combat" },
-              modifiers: [{ type: "NULLIFY_CARD_DAMAGE" }]
-            }
-          }
+              modifiers: [{ type: "NULLIFY_CARD_DAMAGE" }],
+            },
+          },
         },
         {
           label: "This Combat round: units cannot use their special abilities",
@@ -2687,15 +3047,15 @@ export const artifactCards: CardLibrary = {
               name: "Orb of Inhibition",
               scope: "global",
               duration: { type: "current-combat-round" },
-              modifiers: [{ type: "UNIT_ABILITY_SUPPRESSED" }]
-            }
-          }
-        }
-      ]
+              modifiers: [{ type: "UNIT_ABILITY_SUPPRESSED" }],
+            },
+          },
+        },
+      ],
     },
     assets: artifactAssets("relic", "orb_of_inhibition", "Orb of Inhibition"),
     implementationStatus: "implemented",
-    source: artifactSource("orb_of_inhibition")
+    source: artifactSource("orb_of_inhibition"),
   },
   // ---- Ability-interference batch (wiki import) ---------------------------
   // Three relics/majors whose whole point is interfering with the enemy's
@@ -2724,13 +3084,14 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "major",
-      "During this Combat, no Hero can use spells with Power 0. — OR — During this Combat, no Hero can use Spells. Remove this card after Combat."
+      "During this Combat, no Hero can use spells with Power 0. — OR — During this Combat, no Hero can use Spells. Remove this card after Combat.",
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "This Combat: no Hero can use a spell with Power 0 (every cast must reach Power 1+)",
+          label:
+            "This Combat: no Hero can use a spell with Power 0 (every cast must reach Power 1+)",
           combatOnly: true,
           effect: {
             type: "CREATE_ACTIVE_EFFECT",
@@ -2738,9 +3099,9 @@ export const artifactCards: CardLibrary = {
               name: "Recanter's Cloak",
               scope: "global",
               duration: { type: "combat" },
-              modifiers: [{ type: "SPELL_CAST_RESTRICTION", minPower: 1 }]
-            }
-          }
+              modifiers: [{ type: "SPELL_CAST_RESTRICTION", minPower: 1 }],
+            },
+          },
         },
         {
           label: "This Combat: no Hero can use Spells (remove this card)",
@@ -2752,15 +3113,15 @@ export const artifactCards: CardLibrary = {
               name: "Recanter's Cloak",
               scope: "global",
               duration: { type: "combat" },
-              modifiers: [{ type: "SPELL_CAST_RESTRICTION", lockAll: true }]
-            }
-          }
-        }
-      ]
+              modifiers: [{ type: "SPELL_CAST_RESTRICTION", lockAll: true }],
+            },
+          },
+        },
+      ],
     },
     assets: artifactAssets("major", "recanters_cloak", "Recanter's Cloak"),
     implementationStatus: "implemented",
-    source: artifactSource("recanters_cloak")
+    source: artifactSource("recanters_cloak"),
   },
   // Boots of Polarity (Relic): option A is a chance-based spell counter — react
   // to an enemy cast, roll 2 Attack dice and keep the best; on a "+1" face the
@@ -2778,7 +3139,7 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "relic",
-      "Play after an enemy casts a spell. Roll 2 Attack dice and choose one. On a +1, ignore the spell's effect. — OR — Remove 1 ongoing effect from a unit."
+      "Play after an enemy casts a spell. Roll 2 Attack dice and choose one. On a +1, ignore the spell's effect. — OR — Remove 1 ongoing effect from a unit.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -2786,19 +3147,22 @@ export const artifactCards: CardLibrary = {
         {
           label: "Roll 2 Attack dice; on a +1, ignore the enemy spell",
           trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
-          effect: { type: "CANCEL_SPELL", diceRoll: { count: 2, successFace: 1 } }
+          effect: {
+            type: "CANCEL_SPELL",
+            diceRoll: { count: 2, successFace: 1 },
+          },
         },
         {
           label: "Remove 1 ongoing effect from a unit",
           combatOnly: true,
           target: { type: "any-unit" },
-          effect: { type: "REMOVE_ACTIVE_EFFECT" }
-        }
-      ]
+          effect: { type: "REMOVE_ACTIVE_EFFECT" },
+        },
+      ],
     },
     assets: artifactAssets("relic", "boots_of_polarity", "Boots of Polarity"),
     implementationStatus: "implemented",
-    source: artifactSource("boots_of_polarity")
+    source: artifactSource("boots_of_polarity"),
   },
   // Plate of the Dying Light (Relic): the Interference mechanic as a relic — a
   // Defense bonus that, unusually, also reduces Spell damage. Reuses
@@ -2820,7 +3184,7 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "relic",
-      "Instant: +1 defense, which can also reduce damage from spells. — OR — Instant: +4 defense, which can also reduce damage from spells. Then remove this card."
+      "Instant: +1 defense, which can also reduce damage from spells. — OR — Instant: +4 defense, which can also reduce damage from spells. Then remove this card.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -2828,19 +3192,24 @@ export const artifactCards: CardLibrary = {
         {
           label: "Instant: +1 defense (also reduces this spell's damage)",
           trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
-          effect: { type: "INTERFERE_SPELL", amount: 1 }
+          effect: { type: "INTERFERE_SPELL", amount: 1 },
         },
         {
-          label: "Instant: +4 defense (also reduces this spell's damage); remove this card",
+          label:
+            "Instant: +4 defense (also reduces this spell's damage); remove this card",
           trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
           cost: { removeSelf: true },
-          effect: { type: "INTERFERE_SPELL", amount: 4 }
-        }
-      ]
+          effect: { type: "INTERFERE_SPELL", amount: 4 },
+        },
+      ],
     },
-    assets: artifactAssets("relic", "plate_of_the_dying_light", "Plate of the Dying Light"),
+    assets: artifactAssets(
+      "relic",
+      "plate_of_the_dying_light",
+      "Plate of the Dying Light",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("plate_of_the_dying_light")
+    source: artifactSource("plate_of_the_dying_light"),
   },
   // ---- Wiki import: new-mechanic batch ------------------------------------
   // Three artifacts pulled from the fan wiki, each naming exactly what runs.
@@ -2863,17 +3232,18 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "relic",
-      "Select 1 Spell card from your discard pile and put it back into your hand. — OR — For this Combat, whenever you play a Spell card, draw 1 card from your M&M deck. Then remove this card."
+      "Select 1 Spell card from your discard pile and put it back into your hand. — OR — For this Combat, whenever you play a Spell card, draw 1 card from your M&M deck. Then remove this card.",
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
           label: "Take 1 Spell from your discard pile into your hand",
-          effect: { type: "TAKE_FROM_DISCARD", count: 1, filter: "spell" }
+          effect: { type: "TAKE_FROM_DISCARD", count: 1, filter: "spell" },
         },
         {
-          label: "This Combat: draw 1 card after every Spell you cast (remove this card)",
+          label:
+            "This Combat: draw 1 card after every Spell you cast (remove this card)",
           combatOnly: true,
           cost: { removeSelf: true },
           effect: {
@@ -2883,15 +3253,15 @@ export const artifactCards: CardLibrary = {
               scope: "player",
               duration: { type: "combat" },
               polarity: "positive",
-              modifiers: [{ type: "DRAW_ON_SPELL_CAST", amount: 1 }]
-            }
-          }
-        }
-      ]
+              modifiers: [{ type: "DRAW_ON_SPELL_CAST", amount: 1 }],
+            },
+          },
+        },
+      ],
     },
     assets: artifactAssets("relic", "thunder_helmet", "Thunder Helmet"),
     implementationStatus: "implemented",
-    source: artifactSource("thunder_helmet")
+    source: artifactSource("thunder_helmet"),
   },
   // Spellbinder's Hat (Relic, Tower Expansion). A deck-management relic; both
   // sides play on the map AND mid-combat (a printed Instant — mid-combat the
@@ -2917,25 +3287,26 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "relic",
-      "Remove 1 card from your hand, then Search (2) the card's deck. — OR — Remove this card and another one from your hand or discard pile."
+      "Remove 1 card from your hand, then Search (2) the card's deck. — OR — Remove this card and another one from your hand or discard pile.",
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Remove 1 card from your hand, then Search (2) the card's deck",
-          effect: { type: "REMOVE_HAND_CARD_THEN_SEARCH", count: 2 }
+          label:
+            "Remove 1 card from your hand, then Search (2) the card's deck",
+          effect: { type: "REMOVE_HAND_CARD_THEN_SEARCH", count: 2 },
         },
         {
           label: "Remove this card and another from your hand or discard pile",
           cost: { removeSelf: true },
-          effect: { type: "REMOVE_ANOTHER_CARD_FROM_HAND_OR_DISCARD" }
-        }
-      ]
+          effect: { type: "REMOVE_ANOTHER_CARD_FROM_HAND_OR_DISCARD" },
+        },
+      ],
     },
     assets: artifactAssets("relic", "spellbinders_hat", "Spellbinder's Hat"),
     implementationStatus: "implemented",
-    source: artifactSource("spellbinders_hat")
+    source: artifactSource("spellbinders_hat"),
   },
   // Shaman's Puppet (Minor). Option A places a unit-scoped, next-activation
   // ATTACK_ROLL_DISADVANTAGE effect on a chosen enemy unit: for every attack that
@@ -2958,13 +3329,14 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "minor",
-      "Choose an enemy unit. Until the end of its activation, for its every attack it rolls 2 Attack dice and resolves the lower result. — OR — Remove any effect or Paralysis from your selected unit."
+      "Choose an enemy unit. Until the end of its activation, for its every attack it rolls 2 Attack dice and resolves the lower result. — OR — Remove any effect or Paralysis from your selected unit.",
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Enemy unit rolls the lower of 2 Attack dice until its activation ends",
+          label:
+            "Enemy unit rolls the lower of 2 Attack dice until its activation ends",
           combatOnly: true,
           target: { type: "enemy-unit" },
           effect: {
@@ -2975,9 +3347,9 @@ export const artifactCards: CardLibrary = {
               duration: { type: "next-activation" },
               polarity: "negative",
               removable: true,
-              modifiers: [{ type: "ATTACK_ROLL_DISADVANTAGE" }]
-            }
-          }
+              modifiers: [{ type: "ATTACK_ROLL_DISADVANTAGE" }],
+            },
+          },
         },
         {
           label: "Remove any effect or Paralysis from your selected unit",
@@ -2987,14 +3359,14 @@ export const artifactCards: CardLibrary = {
             type: "HEAL_DAMAGE_AND_REMOVE_EFFECTS",
             amount: 0,
             removePolarity: "negative",
-            removeParalysis: true
-          }
-        }
-      ]
+            removeParalysis: true,
+          },
+        },
+      ],
     },
     assets: artifactAssets("minor", "shamans_puppet", "Shaman's Puppet"),
     implementationStatus: "implemented",
-    source: artifactSource("shamans_puppet")
+    source: artifactSource("shamans_puppet"),
   },
   // Spirit of Oppression (Minor). Option A creates a global, combat-scoped
   // NO_ATTACK_DIE_REROLL effect. The positive morale token is itself just an
@@ -3014,13 +3386,14 @@ export const artifactCards: CardLibrary = {
     tags: [
       "artifact",
       "minor",
-      "During this Combat, neither player can use the positive morale token or reroll Attack dice. — OR — +1 Power."
+      "During this Combat, neither player can use the positive morale token or reroll Attack dice. — OR — +1 Power.",
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "This Combat: neither player may use the positive morale token or reroll Attack dice",
+          label:
+            "This Combat: neither player may use the positive morale token or reroll Attack dice",
           combatOnly: true,
           effect: {
             type: "CREATE_ACTIVE_EFFECT",
@@ -3028,27 +3401,31 @@ export const artifactCards: CardLibrary = {
               name: "Spirit of Oppression",
               scope: "global",
               duration: { type: "combat" },
-              modifiers: [{ type: "NO_ATTACK_DIE_REROLL" }]
-            }
-          }
+              modifiers: [{ type: "NO_ATTACK_DIE_REROLL" }],
+            },
+          },
         },
         {
           label: "+1 Power",
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 1 }
-        }
-      ]
+          effect: { type: "ADD_SPELL_POWER", amount: 1 },
+        },
+      ],
     },
-    assets: artifactAssets("minor", "spirit_of_oppression", "Spirit of Oppression"),
+    assets: artifactAssets(
+      "minor",
+      "spirit_of_oppression",
+      "Spirit of Oppression",
+    ),
     implementationStatus: "implemented",
-    source: artifactSource("spirit_of_oppression")
+    source: artifactSource("spirit_of_oppression"),
   },
 
   // ---- Tome artifacts (Conflux expansion, Relic) --------------------------
   "artifact.tome_of_air": tomeArtifact("air"),
   "artifact.tome_of_earth": tomeArtifact("earth"),
   "artifact.tome_of_fire": tomeArtifact("fire"),
-  "artifact.tome_of_water": tomeArtifact("water")
+  "artifact.tome_of_water": tomeArtifact("water"),
 };
 
 /**
@@ -3150,7 +3527,7 @@ export const artifactDeckLegacy: string[] = [
   "artifact.tome_of_air",
   "artifact.tome_of_earth",
   "artifact.tome_of_fire",
-  "artifact.tome_of_water"
+  "artifact.tome_of_water",
 ];
 
 /** BINH Minor Artifact deck (adds the BINH-extra minors). */
@@ -3162,7 +3539,8 @@ export const artifactDeckLegacy: string[] = [
  * (adventure-setup.ts) moves it from the Major deck to the Minor deck.
  */
 export const TORSO_OF_LEGION_ID = "artifact.torso_of_legion";
-export const EVERSMOKING_RING_OF_SULFUR_ID = "artifact.eversmoking_ring_of_sulfur";
+export const EVERSMOKING_RING_OF_SULFUR_ID =
+  "artifact.eversmoking_ring_of_sulfur";
 
 export const artifactDeckBinhMinor: string[] = [
   "artifact.armor_of_wonder",
@@ -3195,7 +3573,7 @@ export const artifactDeckBinhMinor: string[] = [
   "artifact.crest_of_valor",
   "artifact.necklace_of_swiftness",
   "artifact.shamans_puppet",
-  "artifact.spirit_of_oppression"
+  "artifact.spirit_of_oppression",
 ];
 
 /** BINH Major Artifact deck (adds the BINH-extra majors). */
@@ -3236,7 +3614,7 @@ export const artifactDeckBinhMajor: string[] = [
   "artifact.cards_of_prophecy",
   "artifact.diplomats_ring",
   "artifact.ambassadors_sash",
-  "artifact.recanters_cloak"
+  "artifact.recanters_cloak",
 ];
 
 /** BINH Relic Artifact deck (adds the BINH-extra relics). */
@@ -3262,5 +3640,5 @@ export const artifactDeckBinhRelic: string[] = [
   "artifact.tome_of_air",
   "artifact.tome_of_earth",
   "artifact.tome_of_fire",
-  "artifact.tome_of_water"
+  "artifact.tome_of_water",
 ];

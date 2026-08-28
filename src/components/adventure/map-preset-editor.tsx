@@ -2120,6 +2120,32 @@ export function MapPresetEditor({
             </button>
           ))}
         </div>
+        <small className="mapPresetHint"><strong>In team play: BREAK is</strong></small>
+        <div className="mapPresetChipRow" role="group" aria-label="Break rule in team play">
+          <button
+            aria-pressed={value.breaks?.teamScope !== "team"}
+            className={`mapPresetChip${value.breaks?.teamScope !== "team" ? " active" : ""}`}
+            onClick={() => {
+              const next = { ...(value.breaks ?? {}) };
+              delete next.teamScope;
+              patch({ breaks: Object.keys(next).length > 0 ? next : undefined });
+            }}
+            type="button"
+          >
+            Individual
+          </button>
+          <button
+            aria-pressed={value.breaks?.teamScope === "team"}
+            className={`mapPresetChip${value.breaks?.teamScope === "team" ? " active" : ""}`}
+            onClick={() => patch({ breaks: { ...(value.breaks ?? {}), teamScope: "team" } })}
+            type="button"
+          >
+            Whole team
+          </button>
+        </div>
+        <small className="mapPresetHint">
+          Individual: every player must flag each Break. Whole team: one player flagging it clears that Break for all allies.
+        </small>
         {modeTabs("center")}
         {objectMode("center") === "specific"
           ? specificPanel("center", "No Ⅵ–Ⅶ center tile is placed yet — place one to configure its exact Ⅶ field.")

@@ -13,6 +13,8 @@ import {
   persistAccounts
 } from "@/server/accounts/account-store-instance";
 import { detectFinishedMatch, type FinishedMatch } from "./match-report";
+import { storeRankedReplay } from "./ranked-replay-store";
+import type { RankedReplay } from "./ranked-replay";
 
 /**
  * Detect + record, called by the room store after every successfully applied
@@ -20,17 +22,21 @@ import { detectFinishedMatch, type FinishedMatch } from "./match-report";
  * ended the game. Returns the pending write (the HTTP route awaits it so a
  * serverless host cannot freeze it away), or null when nothing ranked ended.
  */
-export function reportFinishedMatch(prev: GameState, next: GameState): Promise<void> | null {
+export function reportFinishedMatch(
+  prev: GameState,
+  next: GameState,
+  replay?: RankedReplay | null,
+): Promise<void> | null {
   const match = detectFinishedMatch(prev, next);
   if (!match) {
     return null;
   }
-  return recordMatch(match).catch((error) => {
+  return recordMatch(match, replay).catch((error) => {
     console.error(`[match-report] failed to record match ${match.matchId}:`, error);
   });
 }
 
-async function recordMatch(match: FinishedMatch): Promise<void> {
+async function recordMatch(match: FinishedMatch, replay?: RankedReplay | null): Promise<void> {
   const result = await getAccountBackend().recordMatchResult({
     matchId: match.matchId,
     ranked: match.ranked,
@@ -44,5 +50,12 @@ async function recordMatch(match: FinishedMatch): Promise<void> {
       `[match-report] recorded ${match.matchId}: ` +
         match.participants.map((p) => `${p.nickname}=${p.result}`).join(", ")
     );
+  }
+  if (match.ranked && replay) {
+    try {
+      await storeRankedReplay(match.matchId, replay);
+    } catch (error) {
+      console.error(`[ranked-replay] failed to store ${match.matchId}:`, error);
+    }
   }
 }

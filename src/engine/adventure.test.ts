@@ -1658,7 +1658,7 @@ describe("neutral combat", () => {
   // candidate as the CONTROL — if the pump branch is removed, the choice never
   // reaches p1 (a NEUTRAL-owned choice p1 may not resolve), so `apply` throws.
   it("lets the FIGHTER pick a neutral Magog's fireball splash victim (2 candidates)", () => {
-    let state = threeUnitFight(moveOntoGuardedMine(refreshP1(makeGame())));
+    const state = threeUnitFight(moveOntoGuardedMine(refreshP1(makeGame())));
 
     // Reshape the revealed guard into a pack of Magogs aiming down the board.
     const guard = Object.values(state.combat!.units).find((unit) => unit.controllerId === NEUTRAL_PLAYER_ID)!;
@@ -1717,7 +1717,7 @@ describe("neutral combat", () => {
   });
 
   it("lets the FIGHTER pick a neutral Lich's Death Cloud victim (2 candidates)", () => {
-    let state = threeUnitFight(moveOntoGuardedMine(refreshP1(makeGame())));
+    const state = threeUnitFight(moveOntoGuardedMine(refreshP1(makeGame())));
 
     const guard = Object.values(state.combat!.units).find((unit) => unit.controllerId === NEUTRAL_PLAYER_ID)!;
     guard.name = "Liches";

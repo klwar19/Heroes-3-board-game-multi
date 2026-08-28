@@ -36,6 +36,14 @@ import {
 import { deriveLobbyRecord, lobbyRecordSignature, lobbyReportIsDue, LOBBY_SINGLETON_ID, STALE_ROOM_TTL_MS } from "@/server/lobby-registry";
 import { detectFinishedMatch } from "@/server/match-report";
 import {
+  appendRankedReplayEntry,
+  createRankedReplay,
+  finishRankedReplay,
+  rankedClashReplayEligible,
+  rankedReplayEnabled,
+  type RankedReplay,
+} from "@/server/ranked-replay";
+import {
   actorIsRoomParticipant,
   applyUndoMove,
   clearUndoHistory,
@@ -218,6 +226,15 @@ type StoredIdentity = VerifiedIdentity & { expiresAt: number };
 /** Storage key holding the bounded { digest → StoredIdentity } record map. */
 const VERIFIED_IDENTITY_CACHE_KEY = "verified-identity-cache";
 
+const RANKED_REPLAY_META_KEY = "ranked-replay-meta";
+const RANKED_REPLAY_INITIAL_PREFIX = "ranked-replay-initial-";
+const RANKED_REPLAY_ENTRY_PREFIX = "ranked-replay-entry-";
+const RANKED_REPLAY_CHUNK_BYTES = 96 * 1024;
+type StoredRankedReplayMeta = Omit<RankedReplay, "initialState" | "entries"> & {
+  initialChunkCount: number;
+  entryCount: number;
+};
+
 export default class GameRoomServer implements Party.Server {
   /** Snapshots persist across hibernation; connections re-sync on attach. */
   readonly options: Party.ServerOptions = { hibernate: true };
@@ -227,6 +244,8 @@ export default class GameRoomServer implements Party.Server {
   private persistedSnapshotBank: SnapshotChunkBank | null = null;
   /** Highest live chunk count in each alternating bank, used for bounded cleanup. */
   private persistedSnapshotChunkCounts: Record<SnapshotChunkBank, number> = { a: 0, b: 0 };
+  /** Private replay buffer: never included in RoomSnapshot or broadcasts. */
+  private rankedReplay: RankedReplay | null = null;
   private readonly metricsEnabled: boolean;
 
   /**
@@ -547,6 +566,135 @@ export default class GameRoomServer implements Party.Server {
     return (await this.resolveVerifiedIdentity(this.tokenOf(connection)))?.isAdmin === true;
   }
 
+  private rankedReplayCaptureEnabled(): boolean {
+    const env = (this.room as unknown as { env?: Record<string, unknown> }).env;
+    return rankedReplayEnabled(env?.HOMM3BG_RANKED_REPLAY_ENABLED);
+  }
+
+  private replayMeta(replay: RankedReplay, initialChunkCount: number): StoredRankedReplayMeta {
+    const header = { ...replay } as Partial<RankedReplay>;
+    delete header.initialState;
+    delete header.entries;
+    return {
+      ...(header as Omit<RankedReplay, "initialState" | "entries">),
+      initialChunkCount,
+      entryCount: replay.entries.length,
+    };
+  }
+
+  private async persistNewRankedReplay(replay: RankedReplay): Promise<void> {
+    const encoded = new TextEncoder().encode(JSON.stringify(replay.initialState));
+    const initialChunkCount = Math.ceil(encoded.byteLength / RANKED_REPLAY_CHUNK_BYTES);
+    const writes: Promise<unknown>[] = [];
+    for (let index = 0; index < initialChunkCount; index += 1) {
+      const start = index * RANKED_REPLAY_CHUNK_BYTES;
+      writes.push(
+        this.room.storage.put(
+          `${RANKED_REPLAY_INITIAL_PREFIX}${index}`,
+          encoded.slice(start, start + RANKED_REPLAY_CHUNK_BYTES),
+        ),
+      );
+    }
+    writes.push(this.room.storage.put(RANKED_REPLAY_META_KEY, this.replayMeta(replay, initialChunkCount)));
+    await Promise.all(writes);
+  }
+
+  private async persistRankedReplayAppend(previousCount: number, replay: RankedReplay): Promise<void> {
+    const stored = await this.room.storage.get<StoredRankedReplayMeta>(RANKED_REPLAY_META_KEY);
+    const initialChunkCount = stored?.initialChunkCount ?? 0;
+    const writes: Promise<unknown>[] = [
+      this.room.storage.put(RANKED_REPLAY_META_KEY, this.replayMeta(replay, initialChunkCount)),
+    ];
+    for (let index = previousCount; index < replay.entries.length; index += 1) {
+      writes.push(this.room.storage.put(`${RANKED_REPLAY_ENTRY_PREFIX}${index}`, replay.entries[index]!));
+    }
+    await Promise.all(writes);
+  }
+
+  private async loadRankedReplay(): Promise<RankedReplay | null> {
+    const meta = await this.room.storage.get<StoredRankedReplayMeta>(RANKED_REPLAY_META_KEY);
+    if (!meta || meta.format !== "homm3bg-ranked-replay-v1") return null;
+    const chunks = await Promise.all(
+      Array.from({ length: meta.initialChunkCount }, (_, index) =>
+        this.room.storage.get<Uint8Array>(`${RANKED_REPLAY_INITIAL_PREFIX}${index}`),
+      ),
+    );
+    if (chunks.some((chunk) => !(chunk instanceof Uint8Array))) return null;
+    const initialBytes = chunks.reduce((sum, chunk) => sum + chunk!.byteLength, 0);
+    const joined = new Uint8Array(initialBytes);
+    let offset = 0;
+    for (const chunk of chunks as Uint8Array[]) {
+      joined.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    const entries: RankedReplay["entries"] = [];
+    // Read in bounded batches so a long game never creates thousands of live
+    // storage promises at once during a cold wake.
+    for (let start = 0; start < meta.entryCount; start += 100) {
+      const batch = await Promise.all(
+        Array.from({ length: Math.min(100, meta.entryCount - start) }, (_, offsetIndex) =>
+          this.room.storage.get<RankedReplay["entries"][number]>(
+            `${RANKED_REPLAY_ENTRY_PREFIX}${start + offsetIndex}`,
+          ),
+        ),
+      );
+      if (batch.some((entry) => !entry)) return null;
+      entries.push(...(batch as RankedReplay["entries"]));
+    }
+    const header = { ...meta } as Partial<StoredRankedReplayMeta>;
+    delete header.initialChunkCount;
+    delete header.entryCount;
+    return {
+      ...(header as Omit<RankedReplay, "initialState" | "entries">),
+      initialState: JSON.parse(new TextDecoder().decode(joined)) as GameState,
+      entries,
+    };
+  }
+
+  private async clearRankedReplayStorage(replay = this.rankedReplay): Promise<void> {
+    const meta = await this.room.storage.get<StoredRankedReplayMeta>(RANKED_REPLAY_META_KEY);
+    const deletes: Promise<unknown>[] = [this.room.storage.delete(RANKED_REPLAY_META_KEY)];
+    for (let index = 0; index < (meta?.initialChunkCount ?? 0); index += 1) {
+      deletes.push(this.room.storage.delete(`${RANKED_REPLAY_INITIAL_PREFIX}${index}`));
+    }
+    for (let index = 0; index < (meta?.entryCount ?? replay?.entries.length ?? 0); index += 1) {
+      deletes.push(this.room.storage.delete(`${RANKED_REPLAY_ENTRY_PREFIX}${index}`));
+    }
+    await Promise.all(deletes);
+    this.rankedReplay = null;
+  }
+
+  private async captureRankedReplay(
+    before: GameState,
+    action: GameAction,
+    result: ReturnType<typeof applyAction>,
+    options: { actorClientId?: string; entropy: string; now: number },
+  ): Promise<void> {
+    if (!this.rankedReplayCaptureEnabled()) return;
+    if (this.rankedReplay?.truncated) return;
+    if (this.rankedReplay && this.rankedReplay.matchId !== before.seed) {
+      await this.clearRankedReplayStorage();
+    }
+    if (!this.rankedReplay) {
+      if (rankedClashReplayEligible(before)) {
+        const started = createRankedReplay(before, options.now);
+        await this.persistNewRankedReplay(started);
+        this.rankedReplay = started;
+      } else if (rankedClashReplayEligible(result.state)) {
+        const started = createRankedReplay(result.state, options.now);
+        await this.persistNewRankedReplay(started);
+        this.rankedReplay = started;
+        return;
+      } else {
+        return;
+      }
+    }
+    const current = this.rankedReplay;
+    const next = appendRankedReplayEntry(current, before, action, result, options);
+    await this.persistRankedReplayAppend(current.entries.length, next);
+    this.rankedReplay = next;
+  }
+
   async onStart(): Promise<void> {
     const stored = await this.loadPersistedSnapshot();
     // Reclaim an abandoned single-player game. Its room is a private, isolated
@@ -564,6 +712,12 @@ export default class GameRoomServer implements Party.Server {
       return;
     }
     this.snapshot = stored;
+    try {
+      this.rankedReplay = this.rankedReplayCaptureEnabled() ? await this.loadRankedReplay() : null;
+    } catch (error) {
+      console.warn("[ranked-replay] failed to restore capture; starting a fresh bounded buffer", error);
+      this.rankedReplay = null;
+    }
     // Rehydrate the answered-action ledger so a client retry that woke this
     // instance is answered from the recorded outcome, never applied twice.
     try {
@@ -1553,14 +1707,16 @@ export default class GameRoomServer implements Party.Server {
           return { ...undo, acknowledged: true, broadcast: true };
         }
         const applyStartedAt = Date.now();
+        const replayEntropy = freshEntropy();
+        const replayNow = Date.now();
         const result = applyAction(current.state, message.action, {
           // Fresh crypto entropy per action makes every die roll, shuffle and Ⅱ–Ⅲ
           // tile flip genuinely unpredictable and non-reproducible (true random),
           // not derivable from the game seed (see random.ts).
-          entropy: freshEntropy(),
+          entropy: replayEntropy,
           // Server wall clock: the AFK vote-kick's only time source (idle
           // stamps + the 10-minute idle/re-ask gates).
-          now: Date.now(),
+          now: replayNow,
           // Live-socket set for this room: RECLAIM_HOST refuses while the host
           // is still connected (host-recovery mirror of the reset/close rule).
           liveClientIds: this.liveClientIds(),
@@ -1649,6 +1805,17 @@ export default class GameRoomServer implements Party.Server {
           throw error;
         }
         this.metric("room.storage.persist", persistStartedAt, { version: this.snapshot.version });
+        try {
+          await this.captureRankedReplay(current.state, message.action, result, {
+            ...(message.actorClientId ? { actorClientId: message.actorClientId } : {}),
+            entropy: replayEntropy,
+            now: replayNow,
+          });
+        } catch (error) {
+          // Capture is non-critical and separately bounded. A storage failure
+          // must never roll back or reject an already committed game action.
+          console.warn("[ranked-replay] action capture failed", error);
+        }
         // Undo history is also a commit-side effect: record it only after the
         // new timeline is durable, never for a failed storage attempt.
         recordUndoSnapshot(this.room.id, current.state);
@@ -1798,6 +1965,10 @@ export default class GameRoomServer implements Party.Server {
     if (!match) {
       return;
     }
+    const replay =
+      match.ranked && this.rankedReplay?.matchId === match.matchId
+        ? finishRankedReplay(this.rankedReplay)
+        : undefined;
     const config = matchReportConfigOf(this.room);
     if (!config) {
       console.warn(
@@ -1815,7 +1986,8 @@ export default class GameRoomServer implements Party.Server {
       const response = await fetch(`${config.appUrl}/api/matches/report`, {
         method: "POST",
         headers: { "content-type": "application/json", "x-homm3bg-report-key": config.key },
-        body: JSON.stringify(match)
+        // Exactly one bounded final upload. No per-action requests touch Vercel.
+        body: JSON.stringify({ ...match, ...(replay ? { replay } : {}) })
       });
       if (!response.ok) {
         console.error(`[match-report] app rejected match ${match.matchId}: HTTP ${response.status}`);
@@ -1849,6 +2021,7 @@ export default class GameRoomServer implements Party.Server {
       this.answeredActionRequests.clear();
       try {
         await this.deletePersistedSnapshot();
+        await this.clearRankedReplayStorage();
         await this.room.storage.delete(ANSWERED_ACTIONS_KEY);
         await this.room.storage.deleteAlarm();
       } catch (error) {
@@ -1913,6 +2086,7 @@ export default class GameRoomServer implements Party.Server {
         clearUndoHistory(this.room.id);
         this.answeredActionRequests.clear();
         await this.deletePersistedSnapshot();
+        await this.clearRankedReplayStorage();
         await this.room.storage.delete(ANSWERED_ACTIONS_KEY);
       });
       // Drop it from the lobby directory too, so the room browser stops listing it.
@@ -2041,6 +2215,7 @@ export default class GameRoomServer implements Party.Server {
             state
           };
           await this.persist();
+          await this.clearRankedReplayStorage();
           await this.broadcastSnapshot();
           return { denied: null, snapshot: this.snapshot };
         });

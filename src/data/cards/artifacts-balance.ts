@@ -89,7 +89,10 @@ function printed(cardId: string): CardDefinition {
  * Clone `cardId`'s printed definition with `patch` applied. Keys explicitly set
  * to `undefined` in `patch` are DELETED (a plain spread would keep them).
  */
-function reprint(cardId: string, patch: Partial<CardDefinition>): CardDefinition {
+function reprint(
+  cardId: string,
+  patch: Partial<CardDefinition>,
+): CardDefinition {
   const next = { ...printed(cardId), ...patch } as Record<string, unknown>;
   for (const [key, value] of Object.entries(patch)) {
     if (value === undefined) {
@@ -105,7 +108,10 @@ function tags(cardId: string, balanceText: string): string[] {
   // text — and state the reprint instead. The structural tags (tier, "artifact",
   // "binh-extra", "permanent", "income", …) are kept.
   const keep = base.filter(
-    (tag) => !tag.includes(" — OR — ") && !tag.startsWith("Triple the Attack die") && tag !== "wiki-reference"
+    (tag) =>
+      !tag.includes(" — OR — ") &&
+      !tag.startsWith("Triple the Attack die") &&
+      tag !== "wiki-reference",
   );
   return [...keep, `Balance pack: ${balanceText}`];
 }
@@ -120,7 +126,7 @@ export const POLISH_BALANCE_MOVEMENT_ARTIFACT_IDS = [
   "artifact.equestrians_gloves",
   "artifact.ring_of_the_wayfarer",
   "artifact.necklace_of_swiftness",
-  "artifact.cape_of_velocity"
+  "artifact.cape_of_velocity",
 ] as const;
 
 export const polishBalanceArtifactCards: CardLibrary = {
@@ -130,7 +136,7 @@ export const polishBalanceArtifactCards: CardLibrary = {
   "artifact.boots_of_speed": reprint("artifact.boots_of_speed", {
     tags: tags(
       "artifact.boots_of_speed",
-      "Your hero gains +1 movement. — OR — For this Combat, your selected unit gains +1 initiative and can move 1 more space."
+      "Your hero gains +1 movement. — OR — For this Combat, your selected unit gains +1 initiative and can move 1 more space.",
     ),
     effect: {
       type: "CHOOSE_ONE",
@@ -138,7 +144,7 @@ export const polishBalanceArtifactCards: CardLibrary = {
         {
           label: "Your hero gains +1 movement",
           mapOnly: true,
-          effect: { type: "GAIN_HERO_MOVEMENT", amount: 1 }
+          effect: { type: "GAIN_HERO_MOVEMENT", amount: 1 },
         },
         {
           label: "+1 initiative and +1 Combat movement for this combat",
@@ -149,18 +155,18 @@ export const polishBalanceArtifactCards: CardLibrary = {
             movementBonus: 1,
             duration: { type: "combat" },
             polarity: "positive",
-            removable: true
-          }
-        }
-      ]
-    }
+            removable: true,
+          },
+        },
+      ],
+    },
   }),
 
   // Equestrian's Gloves — option A gains "and can move 1 more space".
   "artifact.equestrians_gloves": reprint("artifact.equestrians_gloves", {
     tags: tags(
       "artifact.equestrians_gloves",
-      "For this Combat, your selected unit gains +1 initiative and can move 1 more space. — OR — Your Hero gains +1 movement."
+      "For this Combat, your selected unit gains +1 initiative and can move 1 more space. — OR — Your Hero gains +1 movement.",
     ),
     effect: {
       type: "CHOOSE_ONE",
@@ -174,23 +180,23 @@ export const polishBalanceArtifactCards: CardLibrary = {
             movementBonus: 1,
             duration: { type: "combat" },
             polarity: "positive",
-            removable: true
-          }
+            removable: true,
+          },
         },
         {
           label: "Your hero gains +1 movement",
           mapOnly: true,
-          effect: { type: "GAIN_HERO_MOVEMENT", amount: 1 }
-        }
-      ]
-    }
+          effect: { type: "GAIN_HERO_MOVEMENT", amount: 1 },
+        },
+      ],
+    },
   }),
 
   // Ring of the Wayfarer — option A gains "and can move 1 more space".
   "artifact.ring_of_the_wayfarer": reprint("artifact.ring_of_the_wayfarer", {
     tags: tags(
       "artifact.ring_of_the_wayfarer",
-      "For this Combat, your selected unit gains +1 initiative and can move 1 more space. — OR — At the start of a Combat with Neutral Units, place a Paralysis token on any unit except Azure."
+      "For this Combat, your selected unit gains +1 initiative and can move 1 more space. — OR — At the start of a Combat with Neutral Units, place a Paralysis token on any unit except Azure.",
     ),
     effect: {
       type: "CHOOSE_ONE",
@@ -204,31 +210,32 @@ export const polishBalanceArtifactCards: CardLibrary = {
             movementBonus: 1,
             duration: { type: "combat" },
             polarity: "positive",
-            removable: true
-          }
+            removable: true,
+          },
         },
         {
           label: "Start of a Neutral combat: Paralyse any non-Azure unit",
           combatOnly: true,
           requiresNeutralCombatStart: true,
           target: { type: "any-unit" },
-          effect: { type: "PLACE_PARALYSIS", gradeByPower: { 0: "gold" } }
-        }
-      ]
-    }
+          effect: { type: "PLACE_PARALYSIS", gradeByPower: { 0: "gold" } },
+        },
+      ],
+    },
   }),
 
   // Necklace of Swiftness — option A's army-wide GROUND buff gains "+1 space".
   "artifact.necklace_of_swiftness": reprint("artifact.necklace_of_swiftness", {
     tags: tags(
       "artifact.necklace_of_swiftness",
-      "During this Combat, the initiative of all your ground units is increased by 1 and they can move 1 more space. — OR — Move one of your units 1 space."
+      "During this Combat, the initiative of all your ground units is increased by 1 and they can move 1 more space. — OR — Move one of your units 1 space.",
     ),
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "This Combat: +1 initiative and +1 Combat movement to all your ground units",
+          label:
+            "This Combat: +1 initiative and +1 Combat movement to all your ground units",
           combatOnly: true,
           effect: {
             type: "CREATE_ACTIVE_EFFECT",
@@ -240,26 +247,26 @@ export const polishBalanceArtifactCards: CardLibrary = {
               removable: true,
               modifiers: [
                 { type: "GROUND_INITIATIVE_BONUS", amount: 1 },
-                { type: "GROUND_MOVEMENT_BONUS", amount: 1 }
-              ]
-            }
-          }
+                { type: "GROUND_MOVEMENT_BONUS", amount: 1 },
+              ],
+            },
+          },
         },
         {
           label: "Move one of your units 1 space",
           combatOnly: true,
           target: { type: "friendly-unit" },
-          effect: { type: "MOVE_UNIT_ADJACENT" }
-        }
-      ]
-    }
+          effect: { type: "MOVE_UNIT_ADJACENT" },
+        },
+      ],
+    },
   }),
 
   // Cape of Velocity — option A gains "and can move 2 more spaces".
   "artifact.cape_of_velocity": reprint("artifact.cape_of_velocity", {
     tags: tags(
       "artifact.cape_of_velocity",
-      "Until the end of the Combat, this unit gains +2 initiative and can move 2 more spaces. — OR — Gain 2 gold."
+      "Until the end of the Combat, this unit gains +2 initiative and can move 2 more spaces. — OR — Gain 2 gold.",
     ),
     effect: {
       type: "CHOOSE_ONE",
@@ -273,49 +280,57 @@ export const polishBalanceArtifactCards: CardLibrary = {
             movementBonus: 2,
             duration: { type: "combat" },
             polarity: "positive",
-            removable: true
-          }
+            removable: true,
+          },
         },
         {
           label: "Gain 2 gold",
-          effect: { type: "GAIN_RESOURCES", gain: { gold: 2 } }
-        }
-      ]
-    }
+          effect: { type: "GAIN_RESOURCES", gain: { gold: 2 } },
+        },
+      ],
+    },
   }),
 
   // ---- Flat +1 bases on the "Discard X" relics ----------------------------
 
   // Celestial Necklace of Bliss — option A now reads "+1 attack. Discard X …".
-  "artifact.celestial_necklace_of_bliss": reprint("artifact.celestial_necklace_of_bliss", {
-    tags: tags(
-      "artifact.celestial_necklace_of_bliss",
-      "+1 attack, and discard X cards from hand to gain +X more attack. — OR — Remove this card, then gain +4 attack."
-    ),
-    effect: {
-      type: "CHOOSE_ONE",
-      options: [
-        {
-          label: "+1 attack, discard X cards: +X more attack",
-          cost: { discardCardsUpTo: 7 },
-          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1, perCostCard: 1 }
-        },
-        {
-          label: "Remove this card: +4 attack",
-          cost: { removeSelf: true },
-          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 4 }
-        }
-      ]
-    }
-  }),
+  "artifact.celestial_necklace_of_bliss": reprint(
+    "artifact.celestial_necklace_of_bliss",
+    {
+      tags: tags(
+        "artifact.celestial_necklace_of_bliss",
+        "+1 attack, and discard X cards from hand to gain +X more attack. — OR — Remove this card, then gain +4 attack.",
+      ),
+      effect: {
+        type: "CHOOSE_ONE",
+        options: [
+          {
+            label: "+1 attack, discard X cards: +X more attack",
+            cost: { discardCardsUpTo: 7 },
+            trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+            effect: {
+              type: "ADD_COMBAT_STAT",
+              stat: "attack",
+              amount: 1,
+              perCostCard: 1,
+            },
+          },
+          {
+            label: "Remove this card: +4 attack",
+            cost: { removeSelf: true },
+            trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+            effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 4 },
+          },
+        ],
+      },
+    },
+  ),
 
   // Sword of Judgement — BOTH sides gain the flat +1 base.
   "artifact.sword_of_judgement": reprint("artifact.sword_of_judgement", {
     tags: tags(
       "artifact.sword_of_judgement",
-      "+1 attack, and discard X cards from hand to gain +X more attack. — OR — +1 defense, and discard X cards from hand to gain +X more defense."
+      "+1 attack, and discard X cards from hand to gain +X more attack. — OR — +1 defense, and discard X cards from hand to gain +X more defense.",
     ),
     effect: {
       type: "CHOOSE_ONE",
@@ -324,48 +339,66 @@ export const polishBalanceArtifactCards: CardLibrary = {
           label: "+1 attack, discard X cards: +X more attack",
           cost: { discardCardsUpTo: 7 },
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1, perCostCard: 1 }
+          effect: {
+            type: "ADD_COMBAT_STAT",
+            stat: "attack",
+            amount: 1,
+            perCostCard: 1,
+          },
         },
         {
           label: "+1 defense, discard X cards: +X more defense",
           cost: { discardCardsUpTo: 7 },
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 1, perCostCard: 1 }
-        }
-      ]
-    }
+          effect: {
+            type: "ADD_COMBAT_STAT",
+            stat: "defense",
+            amount: 1,
+            perCostCard: 1,
+          },
+        },
+      ],
+    },
   }),
 
   // Lion's Shield of Courage — option A gains the flat +1 base.
-  "artifact.lions_shield_of_courage": reprint("artifact.lions_shield_of_courage", {
-    tags: tags(
-      "artifact.lions_shield_of_courage",
-      "+1 defense, and discard X cards from hand to gain +X more defense. — OR — Remove this card, then gain +4 defense."
-    ),
-    effect: {
-      type: "CHOOSE_ONE",
-      options: [
-        {
-          label: "+1 defense, discard X cards: +X more defense",
-          cost: { discardCardsUpTo: 7 },
-          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 1, perCostCard: 1 }
-        },
-        {
-          label: "Remove this card: +4 defense",
-          cost: { removeSelf: true },
-          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 4 }
-        }
-      ]
-    }
-  }),
+  "artifact.lions_shield_of_courage": reprint(
+    "artifact.lions_shield_of_courage",
+    {
+      tags: tags(
+        "artifact.lions_shield_of_courage",
+        "+1 defense, and discard X cards from hand to gain +X more defense. — OR — Remove this card, then gain +4 defense.",
+      ),
+      effect: {
+        type: "CHOOSE_ONE",
+        options: [
+          {
+            label: "+1 defense, discard X cards: +X more defense",
+            cost: { discardCardsUpTo: 7 },
+            trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
+            effect: {
+              type: "ADD_COMBAT_STAT",
+              stat: "defense",
+              amount: 1,
+              perCostCard: 1,
+            },
+          },
+          {
+            label: "Remove this card: +4 defense",
+            cost: { removeSelf: true },
+            trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
+            effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 4 },
+          },
+        ],
+      },
+    },
+  ),
 
   // Sandals of the Saint — option A gains the flat +1 base.
   "artifact.sandals_of_the_saint": reprint("artifact.sandals_of_the_saint", {
     tags: tags(
       "artifact.sandals_of_the_saint",
-      "+1 Power, and discard X cards from hand to gain +X more Power. — OR — Remove this card, then gain +4 Power."
+      "+1 Power, and discard X cards from hand to gain +X more Power. — OR — Remove this card, then gain +4 Power.",
     ),
     effect: {
       type: "CHOOSE_ONE",
@@ -374,16 +407,16 @@ export const polishBalanceArtifactCards: CardLibrary = {
           label: "+1 Power, discard X cards: +X more Power",
           cost: { discardCardsUpTo: 7 },
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 1, perCostCard: 1 }
+          effect: { type: "ADD_SPELL_POWER", amount: 1, perCostCard: 1 },
         },
         {
           label: "Remove this card: +4 Power",
           cost: { removeSelf: true },
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 4 }
-        }
-      ]
-    }
+          effect: { type: "ADD_SPELL_POWER", amount: 4 },
+        },
+      ],
+    },
   }),
 
   // ---- Dice manipulation ---------------------------------------------------
@@ -405,13 +438,14 @@ export const polishBalanceArtifactCards: CardLibrary = {
     target: { type: "friendly-unit" },
     tags: tags(
       "artifact.cards_of_prophecy",
-      "Choose one of your units. Until its activation in the next round, for its every attack the unit rolls 2 dice and resolves the HIGHER result. — OR — When you are about to roll any die, play this BEFORE the roll: that die is rolled 3 times and you resolve 1 chosen result."
+      "Choose one of your units. Until its activation in the next round, for its every attack the unit rolls 2 dice and resolves the HIGHER result. — OR — When you are about to roll any die, play this BEFORE the roll: that die is rolled 3 times and you resolve 1 chosen result.",
     ),
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Your unit rolls 2 Attack dice and keeps the higher until its next activation",
+          label:
+            "Your unit rolls 2 Attack dice and keeps the higher until its next activation",
           combatOnly: true,
           target: { type: "friendly-unit" },
           effect: {
@@ -422,12 +456,12 @@ export const polishBalanceArtifactCards: CardLibrary = {
               duration: { type: "next-activation" },
               polarity: "positive",
               removable: true,
-              modifiers: [{ type: "ATTACK_ROLL_ADVANTAGE" }]
-            }
-          }
-        }
-      ]
-    }
+              modifiers: [{ type: "ATTACK_ROLL_ADVANTAGE" }],
+            },
+          },
+        },
+      ],
+    },
   }),
 
   // Shaman's Puppet — option A's duration extends from "until the end of its
@@ -436,13 +470,14 @@ export const polishBalanceArtifactCards: CardLibrary = {
   "artifact.shamans_puppet": reprint("artifact.shamans_puppet", {
     tags: tags(
       "artifact.shamans_puppet",
-      "Choose a unit. Until the end of the next combat round, for its every attack it rolls 2 Attack dice and resolves the lower result. — OR — Remove any effect or Paralysis from your selected unit."
+      "Choose a unit. Until the end of the next combat round, for its every attack it rolls 2 Attack dice and resolves the lower result. — OR — Remove any effect or Paralysis from your selected unit.",
     ),
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Unit rolls the lower of 2 Attack dice until the end of the next round",
+          label:
+            "Unit rolls the lower of 2 Attack dice until the end of the next round",
           combatOnly: true,
           target: { type: "enemy-unit" },
           effect: {
@@ -453,9 +488,9 @@ export const polishBalanceArtifactCards: CardLibrary = {
               duration: { type: "combat-rounds", rounds: 2 },
               polarity: "negative",
               removable: true,
-              modifiers: [{ type: "ATTACK_ROLL_DISADVANTAGE" }]
-            }
-          }
+              modifiers: [{ type: "ATTACK_ROLL_DISADVANTAGE" }],
+            },
+          },
         },
         {
           label: "Remove any effect or Paralysis from your selected unit",
@@ -465,68 +500,74 @@ export const polishBalanceArtifactCards: CardLibrary = {
             type: "HEAL_DAMAGE_AND_REMOVE_EFFECTS",
             amount: 0,
             removePolarity: "negative",
-            removeParalysis: true
-          }
-        }
-      ]
-    }
+            removeParalysis: true,
+          },
+        },
+      ],
+    },
   }),
 
   // Hourglass of the Evil Hour — option B replaces the roll-for-morale gamble
   // with a one-combat-round curse on the ENEMY's Attack dice.
-  "artifact.hourglass_of_the_evil_hour": reprint("artifact.hourglass_of_the_evil_hour", {
-    tags: tags(
-      "artifact.hourglass_of_the_evil_hour",
-      "If the enemy has positive morale, they gain negative. — OR — For this combat round, each \"+1\" result on your enemy's Attack dice is rerolled once."
-    ),
-    effect: {
-      type: "CHOOSE_ONE",
-      options: [
-        {
-          label: "If the enemy has positive morale, they gain negative",
-          effect: { type: "ENEMY_MORALE_STRIP" }
-        },
-        {
-          label: "This combat round: reroll each \"+1\" on the enemy's Attack dice",
-          combatOnly: true,
-          effect: {
-            type: "CREATE_ACTIVE_EFFECT",
+  "artifact.hourglass_of_the_evil_hour": reprint(
+    "artifact.hourglass_of_the_evil_hour",
+    {
+      tags: tags(
+        "artifact.hourglass_of_the_evil_hour",
+        'If the enemy has positive morale, they gain negative. — OR — For this combat round, each "+1" result on your enemy\'s Attack dice is rerolled once.',
+      ),
+      effect: {
+        type: "CHOOSE_ONE",
+        options: [
+          {
+            label: "If the enemy has positive morale, they gain negative",
+            effect: { type: "ENEMY_MORALE_STRIP" },
+          },
+          {
+            label:
+              'This combat round: reroll each "+1" on the enemy\'s Attack dice',
+            combatOnly: true,
             effect: {
-              name: "Hourglass of the Evil Hour",
-              scope: "player",
-              duration: { type: "current-combat-round" },
-              polarity: "positive",
-              removable: true,
-              modifiers: [{ type: "REROLL_ENEMY_PLUS_ONE" }]
-            }
-          }
-        }
-      ]
-    }
-  }),
+              type: "CREATE_ACTIVE_EFFECT",
+              effect: {
+                name: "Hourglass of the Evil Hour",
+                scope: "player",
+                duration: { type: "current-combat-round" },
+                polarity: "positive",
+                removable: true,
+                modifiers: [{ type: "REROLL_ENEMY_PLUS_ONE" }],
+              },
+            },
+          },
+        ],
+      },
+    },
+  ),
 
-  // Centaur's Axe — the tripling is IGNORED on a rolled "-1" (a −1 stays −1
-  // instead of becoming −3).
+  // Centaur's Axe — its first side is now identical to Shield of the Dwarven
+  // Lords: a defender-only post-roll reaction that ignores the die and every
+  // additional effect it triggered.
   "artifact.centaurs_axe": reprint("artifact.centaurs_axe", {
     tags: tags(
       "artifact.centaurs_axe",
-      "Triple the Attack die's outcome — ignored on a \"-1\" result. — OR — +1 attack."
+      "Use this after the Attack die roll. Ignore the Attack die and any additional effects it triggered. — OR — +1 attack.",
     ),
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Triple the Attack die's outcome (ignored on a \"-1\")",
-          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "TRIPLE_ATTACK_DIE", ignoreOnNegative: true }
+          label:
+            "After the Attack die roll: ignore the die and the effects it triggered",
+          afterAttackRoll: true,
+          effect: { type: "IGNORE_ATTACK_DIE_RESULT" },
         },
         {
           label: "+1 attack",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1 }
-        }
-      ]
-    }
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1 },
+        },
+      ],
+    },
   }),
 
   // Golden Bow — option A's ongoing effect also grants the owner's ranged units
@@ -534,13 +575,14 @@ export const polishBalanceArtifactCards: CardLibrary = {
   "artifact.golden_bow": reprint("artifact.golden_bow", {
     tags: tags(
       "artifact.golden_bow",
-      "During this Combat, your ranged units ignore the combat penalty and can reroll 1 Attack die on each of their attacks. — OR — A ranged unit of your choice gains +2 attack."
+      "During this Combat, your ranged units ignore the combat penalty and can reroll 1 Attack die on each of their attacks. — OR — A ranged unit of your choice gains +2 attack.",
     ),
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Your ranged units ignore the combat penalty and may reroll an Attack die this combat",
+          label:
+            "Your ranged units ignore the combat penalty and may reroll an Attack die this combat",
           combatOnly: true,
           effect: {
             type: "CREATE_ACTIVE_EFFECT",
@@ -548,65 +590,76 @@ export const polishBalanceArtifactCards: CardLibrary = {
               name: "Golden Bow",
               scope: "player",
               duration: { type: "combat" },
-              modifiers: [{ type: "RANGED_IGNORE_PENALTY" }, { type: "RANGED_ATTACK_REROLL" }]
-            }
-          }
+              modifiers: [
+                { type: "RANGED_IGNORE_PENALTY" },
+                { type: "RANGED_ATTACK_REROLL" },
+              ],
+            },
+          },
         },
         {
           label: "+2 attack for a ranged unit",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2, unitTypes: ["ranged"] }
-        }
-      ]
-    }
+          effect: {
+            type: "ADD_COMBAT_STAT",
+            stat: "attack",
+            amount: 2,
+            unitTypes: ["ranged"],
+          },
+        },
+      ],
+    },
   }),
 
   // ---- Card / deck economy -------------------------------------------------
 
   // Pendant of Second Sight — a THIRD option: Search (3) your own M&M deck
   // (reveal 3, keep 1 to hand, the rest to the discard — the Solmyr IV dig).
-  "artifact.pendant_of_second_sight": reprint("artifact.pendant_of_second_sight", {
-    tags: tags(
-      "artifact.pendant_of_second_sight",
-      "Your selected unit cannot gain a Paralysis token during this Combat. — OR — Remove 1 Paralysis token from your selected unit. — OR — Search (3) your Might and Magic deck."
-    ),
-    effect: {
-      type: "CHOOSE_ONE",
-      options: [
-        {
-          label: "This Combat: your selected unit cannot gain Paralysis",
-          combatOnly: true,
-          effect: {
-            type: "CREATE_ACTIVE_EFFECT",
+  "artifact.pendant_of_second_sight": reprint(
+    "artifact.pendant_of_second_sight",
+    {
+      tags: tags(
+        "artifact.pendant_of_second_sight",
+        "Your selected unit cannot gain a Paralysis token during this Combat. — OR — Remove 1 Paralysis token from your selected unit. — OR — Search (3) your Might and Magic deck.",
+      ),
+      effect: {
+        type: "CHOOSE_ONE",
+        options: [
+          {
+            label: "This Combat: your selected unit cannot gain Paralysis",
+            combatOnly: true,
             effect: {
-              name: "Pendant of Second Sight",
-              scope: "unit",
-              duration: { type: "combat" },
-              polarity: "positive",
-              modifiers: [{ type: "PARALYSIS_IMMUNITY" }]
-            }
-          }
-        },
-        {
-          label: "Remove 1 Paralysis token from your selected unit",
-          combatOnly: true,
-          effect: { type: "HEAL_DAMAGE", amount: 0, removeParalysis: true }
-        },
-        {
-          label: "Search (3) your Might and Magic deck",
-          target: { type: "none" },
-          effect: { type: "DECK_DIG_KEEP_ONE", count: 3 }
-        }
-      ]
-    }
-  }),
+              type: "CREATE_ACTIVE_EFFECT",
+              effect: {
+                name: "Pendant of Second Sight",
+                scope: "unit",
+                duration: { type: "combat" },
+                polarity: "positive",
+                modifiers: [{ type: "PARALYSIS_IMMUNITY" }],
+              },
+            },
+          },
+          {
+            label: "Remove 1 Paralysis token from your selected unit",
+            combatOnly: true,
+            effect: { type: "HEAL_DAMAGE", amount: 0, removeParalysis: true },
+          },
+          {
+            label: "Search (3) your Might and Magic deck",
+            target: { type: "none" },
+            effect: { type: "DECK_DIG_KEEP_ONE", count: 3 },
+          },
+        ],
+      },
+    },
+  ),
 
   // Speculum — a THIRD option: until the end of this turn every Search you take
   // is Search (X+1) (the Balance-Pack Scouting machinery at delta 1).
   "artifact.speculum": reprint("artifact.speculum", {
     tags: tags(
       "artifact.speculum",
-      "Discover any Map tile adjacent to the Map tile your Hero is currently on. — OR — Until the end of this turn, when you do a Search action do Search (X+1) instead. — OR — Remove this card, then draw 1 card."
+      "Discover any Map tile adjacent to the Map tile your Hero is currently on. — OR — Until the end of this turn, when you do a Search action do Search (X+1) instead. — OR — Remove this card, then draw 1 card.",
     ),
     effect: {
       type: "CHOOSE_ONE",
@@ -614,7 +667,7 @@ export const polishBalanceArtifactCards: CardLibrary = {
         {
           label: "Discover an adjacent map tile",
           mapOnly: true,
-          effect: { type: "DISCOVER_TILE_CARD" }
+          effect: { type: "DISCOVER_TILE_CARD" },
         },
         {
           label: "Until the end of this turn: every Search is Search (X+1)",
@@ -633,52 +686,65 @@ export const polishBalanceArtifactCards: CardLibrary = {
               // with the rule OFF — unreachable here (the whole definition only
               // exists under the rule), so it is pinned to 0 and `balanceDelta`
               // is what `searchCountOverrideFor` reads.
-              modifiers: [{ type: "SEARCH_COUNT_OVERRIDE", count: 0, balanceDelta: 1, balancePersist: true }]
-            }
-          }
+              modifiers: [
+                {
+                  type: "SEARCH_COUNT_OVERRIDE",
+                  count: 0,
+                  balanceDelta: 1,
+                  balancePersist: true,
+                },
+              ],
+            },
+          },
         },
         {
           label: "Remove this card: draw 1 card",
           cost: { removeSelf: true },
-          effect: { type: "DRAW_CARDS", amount: 1 }
-        }
-      ]
-    }
+          effect: { type: "DRAW_CARDS", amount: 1 },
+        },
+      ],
+    },
   }),
 
   // Dragon Wing Tabard — option B gains the "draw 1 card then discard 1" cycle.
   "artifact.dragon_wing_tabard": reprint("artifact.dragon_wing_tabard", {
     tags: tags(
       "artifact.dragon_wing_tabard",
-      "Discard 1 random card from the enemy's hand. — OR — +1 Power, draw 1 card then discard 1 card."
+      "Discard 1 random card from the enemy's hand. — OR — +1 Power, draw 1 card then discard 1 card.",
     ),
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
           label: "Discard 1 random card from the enemy's hand",
-          effect: { type: "RANDOM_ENEMY_DISCARD", count: 1 }
+          effect: { type: "RANDOM_ENEMY_DISCARD", count: 1 },
         },
         {
           label: "+1 Power, draw 1 card then discard 1 card",
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 1, drawCards: 1, thenDiscard: 1 }
-        }
-      ]
-    }
+          effect: {
+            type: "ADD_SPELL_POWER",
+            amount: 1,
+            drawCards: 1,
+            thenDiscard: 1,
+          },
+        },
+      ],
+    },
   }),
 
   // Spirit of Oppression — option B gains the same cycle rider.
   "artifact.spirit_of_oppression": reprint("artifact.spirit_of_oppression", {
     tags: tags(
       "artifact.spirit_of_oppression",
-      "During this Combat, neither player can use the positive morale token or reroll Attack dice. — OR — +1 Power, draw 1 card then discard 1 card."
+      "During this Combat, neither player can use the positive morale token or reroll Attack dice. — OR — +1 Power, draw 1 card then discard 1 card.",
     ),
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "This Combat: neither player may use the positive morale token or reroll Attack dice",
+          label:
+            "This Combat: neither player may use the positive morale token or reroll Attack dice",
           combatOnly: true,
           effect: {
             type: "CREATE_ACTIVE_EFFECT",
@@ -686,70 +752,82 @@ export const polishBalanceArtifactCards: CardLibrary = {
               name: "Spirit of Oppression",
               scope: "global",
               duration: { type: "combat" },
-              modifiers: [{ type: "NO_ATTACK_DIE_REROLL" }]
-            }
-          }
+              modifiers: [{ type: "NO_ATTACK_DIE_REROLL" }],
+            },
+          },
         },
         {
           label: "+1 Power, draw 1 card then discard 1 card",
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 1, drawCards: 1, thenDiscard: 1 }
-        }
-      ]
-    }
+          effect: {
+            type: "ADD_SPELL_POWER",
+            amount: 1,
+            drawCards: 1,
+            thenDiscard: 1,
+          },
+        },
+      ],
+    },
   }),
 
   // Blackshard of the Dead Knight — the draw rider is book-gated (see the header).
-  "artifact.blackshard_of_the_dead_knight": reprint("artifact.blackshard_of_the_dead_knight", {
-    tags: tags(
-      "artifact.blackshard_of_the_dead_knight",
-      "+2 attack and discard 1 card. If the discarded card was a \"Cast a Spell\" (Polish Spell Book) — or a Spell without the Book — draw 1 card. — OR — +1 attack."
-    ),
-    effect: {
-      type: "CHOOSE_ONE",
-      options: [
-        {
-          label: "+2 attack, discard 1 card (draw 1 if it was a Cast a Spell)",
-          cost: { discardCards: 1 },
-          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: {
-            type: "ADD_COMBAT_STAT",
-            stat: "attack",
-            amount: 2,
-            drawIfCostCardSpell: true,
-            drawIfCostCardCastEnabler: true
-          }
-        },
-        {
-          label: "+1 attack",
-          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1 }
-        }
-      ]
-    }
-  }),
+  "artifact.blackshard_of_the_dead_knight": reprint(
+    "artifact.blackshard_of_the_dead_knight",
+    {
+      tags: tags(
+        "artifact.blackshard_of_the_dead_knight",
+        '+2 attack and discard 1 card. If the discarded card was a "Cast a Spell" (Polish Spell Book) — or a Spell without the Book — draw 1 card. — OR — +1 attack.',
+      ),
+      effect: {
+        type: "CHOOSE_ONE",
+        options: [
+          {
+            label:
+              "+2 attack, discard 1 card (draw 1 if it was a Cast a Spell)",
+            cost: { discardCards: 1 },
+            trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+            effect: {
+              type: "ADD_COMBAT_STAT",
+              stat: "attack",
+              amount: 2,
+              drawIfCostCardSpell: true,
+              drawIfCostCardCastEnabler: true,
+            },
+          },
+          {
+            label: "+1 attack",
+            trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+            effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1 },
+          },
+        ],
+      },
+    },
+  ),
 
   // Eversmoking Ring of Sulfur — the remove side pays 1 valuables (was 2).
-  "artifact.eversmoking_ring_of_sulfur": reprint("artifact.eversmoking_ring_of_sulfur", {
-    tags: tags(
-      "artifact.eversmoking_ring_of_sulfur",
-      "At the beginning of each Resources round, gain 1 valuables. — OR — Remove this card, then gain 1 valuables."
-    ),
-    effect: {
-      type: "CHOOSE_ONE",
-      options: [
-        {
-          label: "At the beginning of each Resources round, gain 1 valuables",
-          effect: { type: "ENTER_PLAY" }
-        },
-        {
-          label: "Remove this card: gain 1 valuables",
-          cost: { removeSelf: true },
-          effect: { type: "GAIN_RESOURCES", gain: { valuables: 1 } }
-        }
-      ]
-    }
-  }),
+  "artifact.eversmoking_ring_of_sulfur": reprint(
+    "artifact.eversmoking_ring_of_sulfur",
+    {
+      tags: tags(
+        "artifact.eversmoking_ring_of_sulfur",
+        "At the beginning of each Resources round, gain 1 valuables. — OR — Remove this card, then gain 1 valuables.",
+      ),
+      effect: {
+        type: "CHOOSE_ONE",
+        options: [
+          {
+            label: "At the beginning of each Resources round, gain 1 valuables",
+            effect: { type: "ENTER_PLAY" },
+          },
+          {
+            label: "Remove this card: gain 1 valuables",
+            cost: { removeSelf: true },
+            effect: { type: "GAIN_RESOURCES", gain: { valuables: 1 } },
+          },
+        ],
+      },
+    },
+  ),
 
   // ---- Diplomacy recruits --------------------------------------------------
 
@@ -760,91 +838,109 @@ export const polishBalanceArtifactCards: CardLibrary = {
   "artifact.diplomats_ring": reprint("artifact.diplomats_ring", {
     tags: tags(
       "artifact.diplomats_ring",
-      "Reroll any die or any roll (offered from hand in the die window). — OR — For every Dwelling you have, draw 1 corresponding Neutral Unit card; recruit one of them with a 3 gold discount, then place each unpurchased unit on the top or bottom of its deck."
+      "Reroll any die or any roll (offered from hand in the die window). — OR — For every Dwelling you have, draw 1 corresponding Neutral Unit card; recruit one of them with a 3 gold discount, then place each unpurchased unit on the top or bottom of its deck.",
     ),
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Map: draw 1 Neutral Unit card per Dwelling, then recruit one (3 gold off)",
+          label:
+            "Map: draw 1 Neutral Unit card per Dwelling, then recruit one (3 gold off)",
           mapOnly: true,
           // Polish balance: the Diplomacy ARTIFACTS never ask about Azure creatures.
-          effect: { type: "DIPLOMACY_RECRUIT", goldReduction: 3, excludeAzure: true }
-        }
-      ]
-    }
+          effect: {
+            type: "DIPLOMACY_RECRUIT",
+            goldReduction: 3,
+            excludeAzure: true,
+          },
+        },
+      ],
+    },
   }),
 
   // Ambassador's Sash — the same two additions.
   "artifact.ambassadors_sash": reprint("artifact.ambassadors_sash", {
     tags: tags(
       "artifact.ambassadors_sash",
-      "For every Dwelling you have, draw 1 corresponding Neutral Unit card; recruit one of them with a 3 gold discount, then place each unpurchased unit on the top or bottom of its deck. — OR — Reroll a die (offered from hand in the die window)."
+      "For every Dwelling you have, draw 1 corresponding Neutral Unit card; recruit one of them with a 3 gold discount, then place each unpurchased unit on the top or bottom of its deck. — OR — Reroll a die (offered from hand in the die window).",
     ),
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Map: draw 1 Neutral Unit card per Dwelling, then recruit one (3 gold off)",
+          label:
+            "Map: draw 1 Neutral Unit card per Dwelling, then recruit one (3 gold off)",
           mapOnly: true,
           // Polish balance: the Diplomacy ARTIFACTS never ask about Azure creatures.
-          effect: { type: "DIPLOMACY_RECRUIT", goldReduction: 3, excludeAzure: true }
-        }
-      ]
-    }
+          effect: {
+            type: "DIPLOMACY_RECRUIT",
+            goldReduction: 3,
+            excludeAzure: true,
+          },
+        },
+      ],
+    },
   }),
 
   // ---- Polish-Spell-Book recovery family -----------------------------------
   // The four count-1 `filter: "spell"` recovery artifacts already play EXACTLY
   // their reprinted text under `polish-spell-book` (openDiscardPickChoice's
   // `polishReturnEnabler` path returns a "Cast a Spell" enabler AND offers a used
-  // Book Spell to refresh, once per round). They are reprinted for their TAGS, so
+  // Book Spell to refresh). The shared Spell Book rule enforces the one-refresh-
+  // per-Spell-per-round limit across every source. They are reprinted for their TAGS, so
   // a reader of the definition sees what the face promises; the engine needed no
   // change and a non-book game keeps the printed reading.
 
-  "artifact.crown_of_the_five_seas": reprint("artifact.crown_of_the_five_seas", {
-    tags: tags(
-      "artifact.crown_of_the_five_seas",
-      "Polish Spell Book: take 1 \"Cast a Spell\" card from your discard pile into your hand and Refresh 1 Book Spell, once per round (without the Book: return 1 Spell from your discard pile). — OR — If this Hero is on a Sea tile, look at the top 3 cards of your discard pile and take 1."
-    )
-  }),
+  "artifact.crown_of_the_five_seas": reprint(
+    "artifact.crown_of_the_five_seas",
+    {
+      tags: tags(
+        "artifact.crown_of_the_five_seas",
+        'Polish Spell Book: take 1 "Cast a Spell" card from your discard pile into your hand and Refresh 1 Book Spell (without the Book: return 1 Spell from your discard pile). — OR — If this Hero is on a Sea tile, look at the top 3 cards of your discard pile and take 1.',
+      ),
+    },
+  ),
 
   "artifact.thunder_helmet": reprint("artifact.thunder_helmet", {
     tags: tags(
       "artifact.thunder_helmet",
-      "Polish Spell Book: take 1 \"Cast a Spell\" card from your discard pile into your hand and Refresh 1 Book Spell, once per round (without the Book: return 1 Spell from your discard pile). — OR — For this Combat, whenever you play a Spell card, draw 1 card from your M&M deck; then remove this card."
-    )
+      'Polish Spell Book: take 1 "Cast a Spell" card from your discard pile into your hand and Refresh 1 Book Spell (without the Book: return 1 Spell from your discard pile). — OR — For this Combat, whenever you play a Spell card, draw 1 card from your M&M deck; then remove this card.',
+    ),
   }),
 
   "artifact.rib_cage": reprint("artifact.rib_cage", {
     tags: tags(
       "artifact.rib_cage",
-      "Polish Spell Book: take 1 \"Cast a Spell\" card from your discard pile into your hand and Refresh 1 Book Spell, once per round (without the Book: return 1 Spell from your discard pile); then shuffle your discard pile back into your deck. — OR — +1 Power."
-    )
+      'Polish Spell Book: take 1 "Cast a Spell" card from your discard pile into your hand and Refresh 1 Book Spell (without the Book: return 1 Spell from your discard pile); then shuffle your discard pile back into your deck. — OR — +1 Power.',
+    ),
   }),
 
   // Helm of the Alabaster Unicorn — option B additionally INSCRIBES the cast
   // spell into the caster's Spellbook (Polish Book only).
-  "artifact.helm_of_the_alabaster_unicorn": reprint("artifact.helm_of_the_alabaster_unicorn", {
-    tags: tags(
-      "artifact.helm_of_the_alabaster_unicorn",
-      "Polish Spell Book: take 1 \"Cast a Spell\" card from your discard pile into your hand and Refresh 1 Book Spell, once per round (without the Book: return 1 Spell from your discard pile). — OR — Cast a Spell from the top of the Spell-deck discard pile and Remove this card; with the Polish Spell Book the cast Spell is added to your Spellbook."
-    ),
-    effect: {
-      type: "CHOOSE_ONE",
-      options: [
-        {
-          label: "Return 1 Spell from your discard pile to your hand",
-          effect: { type: "TAKE_FROM_DISCARD", count: 1, filter: "spell" }
-        },
-        {
-          label: "Cast the top spell of the Spell-deck discard pile, then remove this card",
-          combatOnly: true,
-          effect: { type: "CAST_FROM_SPELL_DISCARD", addToSpellBook: true }
-        }
-      ]
-    }
-  }),
+  "artifact.helm_of_the_alabaster_unicorn": reprint(
+    "artifact.helm_of_the_alabaster_unicorn",
+    {
+      tags: tags(
+        "artifact.helm_of_the_alabaster_unicorn",
+        'Polish Spell Book: take 1 "Cast a Spell" card from your discard pile into your hand and Refresh 1 Book Spell (without the Book: return 1 Spell from your discard pile). — OR — Cast a Spell from the top of the Spell-deck discard pile and Remove this card; with the Polish Spell Book the cast Spell is added to your Spellbook.',
+      ),
+      effect: {
+        type: "CHOOSE_ONE",
+        options: [
+          {
+            label: "Return 1 Spell from your discard pile to your hand",
+            effect: { type: "TAKE_FROM_DISCARD", count: 1, filter: "spell" },
+          },
+          {
+            label:
+              "Cast the top spell of the Spell-deck discard pile, then remove this card",
+            combatOnly: true,
+            effect: { type: "CAST_FROM_SPELL_DISCARD", addToSpellBook: true },
+          },
+        ],
+      },
+    },
+  ),
 
   // Crown of Dragontooth — option A doubles the Polish recovery (up to 2
   // enablers returned AND up to 2 Book Spells refreshed). Option B is UNCHANGED
@@ -852,24 +948,35 @@ export const polishBalanceArtifactCards: CardLibrary = {
   "artifact.crown_of_dragontooth": reprint("artifact.crown_of_dragontooth", {
     tags: tags(
       "artifact.crown_of_dragontooth",
-      "Polish Spell Book: take up to 2 \"Cast a Spell\" cards from your discard pile into your hand and Refresh up to 2 Book Spells, once per round (without the Book: return 2 Spells from your discard pile). — OR — Remove 1 Spell from hand, then Search (2) the Spell deck."
+      'Polish Spell Book: take up to 2 "Cast a Spell" cards from your discard pile into your hand and Refresh up to 2 Book Spells (without the Book: return 2 Spells from your discard pile). — OR — Remove 1 Spell from hand, then Search (2) the Spell deck.',
     ),
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
           label: "Take 2 Spell cards from your discard pile",
-          effect: { type: "TAKE_FROM_DISCARD", count: 2, filter: "spell", polishRecoveryLimit: 2 }
+          effect: {
+            type: "TAKE_FROM_DISCARD",
+            count: 2,
+            filter: "spell",
+            polishRecoveryLimit: 2,
+          },
         },
         {
           label: "Remove 1 Spell from hand: Search (2) the Spell deck",
-          cost: { discardCards: 1, costCardFilter: "spell", removeCostCards: true },
-          effect: { type: "CARD_DECK_SEARCH", deck: "spells", count: 2 }
-        }
-      ]
-    }
-  })
+          cost: {
+            discardCards: 1,
+            costCardFilter: "spell",
+            removeCostCards: true,
+          },
+          effect: { type: "CARD_DECK_SEARCH", deck: "spells", count: 2 },
+        },
+      ],
+    },
+  }),
 };
 
 /** Every artifact id whose Balance-Pack reprint this module ships. */
-export const POLISH_BALANCE_ARTIFACT_IDS = Object.keys(polishBalanceArtifactCards) as readonly string[];
+export const POLISH_BALANCE_ARTIFACT_IDS = Object.keys(
+  polishBalanceArtifactCards,
+) as readonly string[];

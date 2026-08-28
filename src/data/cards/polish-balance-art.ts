@@ -23,7 +23,8 @@ import { cardLibrary } from "@/data/cards/library";
 
 /**
  * Every card whose Balance-Pack reprint is WIRED (Abilities, Spells, Artifacts,
- * Specialties, plus Knowledge and its distinct Empowered library card — 74 ids — see
+ * Specialties, plus Knowledge, its distinct Empowered library card, and the
+ * user-supplied Berserk reprint — 75 ids — see
  * the `polish-card-balance` registry entry in `house-rules.ts` for the per-card
  * summary, and `polish-balance-art.test.ts` for the on-disk + wiring pins.
  */
@@ -44,6 +45,7 @@ export const POLISH_BALANCE_CARD_IDS = [
   "stat.knowledge",
   "stat.knowledge.empowered",
   "spell.anti_magic",
+  "spell.berserk",
   "spell.bless",
   "spell.blind",
   "spell.counterstrike",
@@ -101,7 +103,7 @@ export const POLISH_BALANCE_CARD_IDS = [
   "specialty.sandro.1",
   "specialty.sandro.4",
   "specialty.tarnum_conflux.1",
-  "specialty.vidomina.4"
+  "specialty.vidomina.4",
 ] as const;
 
 /**
@@ -111,8 +113,8 @@ export const POLISH_BALANCE_CARD_IDS = [
  * `DISPLAY_ONLY_ABILITIES` pattern) — moving an id from here to
  * `POLISH_BALANCE_CARD_IDS` is the conscious "it is wired now" step.
  *
- * EMPTY: all 13 Abilities, Knowledge (regular + Empowered), 21 Spells,
- * 27 Artifacts AND 11 Specialties are wired — the pack is complete (74 ids).
+ * EMPTY: all 13 Abilities, Knowledge (regular + Empowered), the original 21
+ * Spells plus Berserk, 27 Artifacts AND 11 Specialties are wired (75 ids).
  * A FUTURE unwireable reprint belongs
  * here, never silently in the classic-face fallback.
  */
@@ -130,7 +132,9 @@ export function isPolishBalanceCard(cardId: string | undefined): boolean {
  * reprint. Path is DERIVED from the id (dots → dashes), so a file and its card
  * can never drift apart.
  */
-export function polishBalanceCardImage(cardId: string | undefined): string | undefined {
+export function polishBalanceCardImage(
+  cardId: string | undefined,
+): string | undefined {
   if (!isPolishBalanceCard(cardId)) {
     return undefined;
   }
@@ -166,22 +170,25 @@ export const POLISH_BALANCE_EMPOWERED_ABILITY_IDS = [
   "ability.pathfinding",
   "ability.scouting",
   "ability.tactics",
-  "ability.wisdom"
+  "ability.wisdom",
 ] as const;
 
 const EMPOWERED_COVERED = new Set<string>(POLISH_BALANCE_EMPOWERED_ABILITY_IDS);
 
 /** File basenames (no extension) of every empowered balance face shipped on disk. */
-export const POLISH_BALANCE_EMPOWERED_FACE_NAMES = POLISH_BALANCE_EMPOWERED_ABILITY_IDS.map(
-  (id) => `${id.replaceAll(".", "-")}-empowered`
-);
+export const POLISH_BALANCE_EMPOWERED_FACE_NAMES =
+  POLISH_BALANCE_EMPOWERED_ABILITY_IDS.map(
+    (id) => `${id.replaceAll(".", "-")}-empowered`,
+  );
 
 /**
  * The dedicated empowered balance face for `cardId`, or `undefined` when the card
  * has no such variant (fall back to the plain balance face). Path DERIVED from
  * the id so a file and its card can never drift.
  */
-export function polishBalanceEmpoweredCardImage(cardId: string | undefined): string | undefined {
+export function polishBalanceEmpoweredCardImage(
+  cardId: string | undefined,
+): string | undefined {
   if (!cardId || !EMPOWERED_COVERED.has(cardId)) {
     return undefined;
   }
@@ -193,6 +200,11 @@ export function polishBalanceEmpoweredCardImage(cardId: string | undefined): str
  * when the card has a wired reprint, else the card's own printed face. Never the
  * `-empowered` scan for a covered card — that scan prints the OLD text.
  */
-export function polishBalanceFaceImage(cardId: string | undefined): string | undefined {
-  return polishBalanceCardImage(cardId) ?? (cardId ? cardLibrary[cardId]?.assets?.cardImage : undefined);
+export function polishBalanceFaceImage(
+  cardId: string | undefined,
+): string | undefined {
+  return (
+    polishBalanceCardImage(cardId) ??
+    (cardId ? cardLibrary[cardId]?.assets?.cardImage : undefined)
+  );
 }

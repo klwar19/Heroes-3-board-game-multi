@@ -559,7 +559,7 @@ describe("enemy force — a self-buff card really makes the boss hit harder", ()
         unit.damage = 0;
         unit.abilities = [];
       }
-      let state = runRoundsWithDefends(handOverToBoss(staged.state, staged.openerId), 2);
+      const state = runRoundsWithDefends(handOverToBoss(staged.state, staged.openerId), 2);
       const order = getActivationOrder(state.combat!, state.activeEffects).map((unit) => unit.id);
       return { boss: order.indexOf(staged.bossId), rival: order.indexOf(rival.id) };
     };

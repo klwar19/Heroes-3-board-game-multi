@@ -4,21 +4,62 @@
 
 import Link from "next/link";
 import { assetUrl } from "@/lib/asset-url";
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
-import { Ban, Castle, Check, ChevronDown, ChevronsUp, Crown, Dices, Hammer, HelpCircle, Hourglass, Image as ImageIcon, Info, Layers, Lock, Minus, Plus, RotateCcw, RotateCw, Shield, Sparkles, Swords, Unlock, X } from "lucide-react";
+import {
+  Ban,
+  Castle,
+  Check,
+  ChevronDown,
+  ChevronsUp,
+  Crown,
+  Dices,
+  Hammer,
+  HelpCircle,
+  Hourglass,
+  Image as ImageIcon,
+  Info,
+  Layers,
+  Lock,
+  Minus,
+  Plus,
+  RotateCcw,
+  RotateCw,
+  Shield,
+  Sparkles,
+  Swords,
+  Unlock,
+  X,
+} from "lucide-react";
 import { HelperCoachLobbyPrompt } from "@/components/table/helper-coach-ui";
 import { useHelperCoachPreference } from "@/lib/helper-coach-preference";
 import { cardLibrary } from "@/data/cards/library";
-import { MORALE_NEGATIVE_DECK_ID, MORALE_POSITIVE_DECK_ID } from "@/data/cards/morale";
-import { MORALE_CARD_HINTS, moraleCardRulesText } from "@/components/table/morale-card-cue";
-import { buildingTimingLabel, describeBuildingEffect } from "@/data/towns/describe";
+import {
+  MORALE_NEGATIVE_DECK_ID,
+  MORALE_POSITIVE_DECK_ID,
+} from "@/data/cards/morale";
+import {
+  MORALE_CARD_HINTS,
+  moraleCardRulesText,
+} from "@/components/table/morale-card-cue";
+import {
+  buildingTimingLabel,
+  describeBuildingEffect,
+} from "@/data/towns/describe";
 import { TOWN_TOKEN_ICONS, townIconUrl } from "@/data/towns/boards";
 import {
   coreBuildingDefinitions,
   coreFactionDefinitions,
   coreHeroDefinitions,
-  isPlayableFaction
+  isPlayableFaction,
 } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { locationDefinitions } from "@/data/map/locations";
@@ -26,7 +67,7 @@ import {
   CREATURE_BANKS,
   CREATURE_BANK_UNIT_SIDES,
   stackTokenDelta,
-  type CreatureBankId
+  type CreatureBankId,
 } from "@/data/map/creature-banks";
 import { fieldSymbolOverlayFor } from "@/data/map/field-symbol-modules";
 import { allTileDefinitions } from "@/data/map/tiles";
@@ -127,7 +168,7 @@ import {
   type MapTileState,
   type PlayerId,
   type PlayerVisibleState,
-  type PolishQuickCombatFieldInfo
+  type PolishQuickCombatFieldInfo,
 } from "@/engine";
 import {
   abilitySymbolIcon,
@@ -146,44 +187,84 @@ import {
   subterraneanGateTokenImage,
   tileBackImage,
   TILE_BACK_IMAGES,
-  whirlpoolTokenImage
+  whirlpoolTokenImage,
 } from "@/data/assets/homm-assets";
-import { fieldOverrideGlyph, fieldOverrideImage } from "@/data/map/field-overrides";
-import { fieldOverridePresentation, mapObjectPresentation } from "@/data/map/field-override-presentation";
+import {
+  fieldOverrideGlyph,
+  fieldOverrideImage,
+} from "@/data/map/field-overrides";
+import {
+  fieldOverridePresentation,
+  mapObjectPresentation,
+} from "@/data/map/field-override-presentation";
 // Side-effect: register Anime + Wake of Gods Field Override kinds into the global
 // catalog, so their names/summaries/glyphs resolve for the board tooltip + inspect.
 import "@/data/anime/field-overrides";
 import "@/data/wog/field-overrides";
 import { specialtyIconSrc } from "@/components/specialty-card-data";
-import { CommanderCard, CommanderLevelUpOverlay } from "@/components/commander-card";
+import {
+  CommanderCard,
+  CommanderLevelUpOverlay,
+} from "@/components/commander-card";
 import { EquipGradeChip, tierToGrade } from "@/components/equip-grade-chip";
-import { commanderDefinitions, commanderReviveCost, type CommanderSlug } from "@/data/commanders";
-import { COMMANDER_ARTIFACT_SPECS, COMMANDER_ARTIFACT_SPEC_LIST } from "@/data/wog/commander-artifacts";
+import {
+  commanderDefinitions,
+  commanderReviveCost,
+  type CommanderSlug,
+} from "@/data/commanders";
+import {
+  COMMANDER_ARTIFACT_SPECS,
+  COMMANDER_ARTIFACT_SPEC_LIST,
+} from "@/data/wog/commander-artifacts";
 import { getEquipmentDefinition, equipmentImage } from "@/data/anime/equipment";
-import { UNIT_RANK_THRESHOLDS, unitRankBadgeImage } from "@/data/units/experience";
+import {
+  UNIT_RANK_THRESHOLDS,
+  unitRankBadgeImage,
+} from "@/data/units/experience";
 import { factionUiLexicon } from "@/data/faction-theme";
 import { CARD_BACK_IMAGES, getDeckBack } from "@/data/decks";
-import { actionKey, cardIsEmpoweredFor, cardName, formatCost, titleCase } from "@/components/table/utils";
+import {
+  actionKey,
+  cardIsEmpoweredFor,
+  cardName,
+  formatCost,
+  titleCase,
+} from "@/components/table/utils";
 // Polish Set Artifacts: the ONE badge pair every card-face surface shares — a
 // wrapper for a face in normal flow, a bare corner badge for a face that fills
 // an already-positioned tile. Both render NOTHING with the rule off / a
 // non-member card, so a default table keeps its exact DOM.
-import { CardSetCornerBadge, CardSetFrame } from "@/components/table/artifact-set-badge";
+import {
+  CardSetCornerBadge,
+  CardSetFrame,
+} from "@/components/table/artifact-set-badge";
 import { cardFaceImage } from "@/data/cards/empowered-card-art";
 import {
   resolveCardFaceImage,
   resolveUnitFaceImage,
   useBalanceArtFlags,
-  type BalanceArtFlags
+  type BalanceArtFlags,
 } from "@/components/table/polish-balance-art";
 import { balanceCardForDisplay } from "@/engine/community-balance-cards";
 import { beginUnitPointerDrag } from "@/components/table/pointer-drag";
-import { MAP_SCALE_MAX, MAP_SCALE_MIN, pinchCamera, type PinchStart } from "@/components/adventure/map-pinch";
+import {
+  MAP_SCALE_MAX,
+  MAP_SCALE_MIN,
+  pinchCamera,
+  type PinchStart,
+} from "@/components/adventure/map-pinch";
 import { computeMapFloatPosition } from "@/components/adventure/map-float-position";
 import { HeroBoard } from "@/components/hero-board";
-import { UnitExperienceWindow, armyUnitPrintedSide } from "@/components/adventure/unit-experience-window";
+import {
+  UnitExperienceWindow,
+  armyUnitPrintedSide,
+} from "@/components/adventure/unit-experience-window";
 import { DrillUnitButton } from "@/components/adventure/drill-unit-button";
-import { useCardZoom, useOptionalCardZoom, ZoomButton } from "@/components/table/zoom";
+import {
+  useCardZoom,
+  useOptionalCardZoom,
+  ZoomButton,
+} from "@/components/table/zoom";
 import {
   BuildingDetailPanel,
   HeroPortrait,
@@ -192,7 +273,7 @@ import {
   UnitSideCards,
   hasBuildingEffectPanel,
   activeBuildingActions,
-  buildingPanelReachable
+  buildingPanelReachable,
 } from "@/components/adventure/town-sections";
 import {
   MgqBattleSpiritPicker,
@@ -200,10 +281,14 @@ import {
   MgqGoldContractPanel,
   MgqGoldContractSetupPrompt,
   MgqJobControl,
-  mgqGoldUnavailable
+  mgqGoldUnavailable,
 } from "@/components/adventure/mgq-controls";
 import { fetchSharedMaps, type SharedMapRecord } from "@/lib/shared-maps";
-import { buildCustomSetupFile, customSetupFileName, parseCustomSetupFile } from "@/lib/custom-setup-file";
+import {
+  buildCustomSetupFile,
+  customSetupFileName,
+  parseCustomSetupFile,
+} from "@/lib/custom-setup-file";
 import {
   advancedSettingsChanged,
   deriveActiveSetupMode,
@@ -220,13 +305,16 @@ import {
   tableGameMode,
   tableModeAvailability,
   type SetupHubBoxId,
-  type SetupModeId
+  type SetupModeId,
 } from "@/components/adventure/setup-hub-summary";
 import { MapPickModal } from "@/components/adventure/map-pick-modal";
 import { SetupSummaryRail } from "@/components/adventure/setup-summary-rail";
 import { SetupHubWindow } from "@/components/adventure/setup-hub-window";
 import { SetupSceneArt } from "@/components/adventure/setup-scene";
-import { DIFFICULTY_CHESS_ICONS, SETUP_HUB_ART } from "@/data/assets/homm-assets";
+import {
+  DIFFICULTY_CHESS_ICONS,
+  SETUP_HUB_ART,
+} from "@/data/assets/homm-assets";
 
 /** No slot suppressed: a tile whose PRINTED borders are fixed keeps every line. */
 const EMPTY_SLOT_SET: ReadonlySet<number> = new Set<number>();
@@ -249,7 +337,7 @@ const TERRAIN_COLORS: Record<string, string> = {
   elemental_fire: "#a04a2a",
   elemental_water: "#2a6a9a",
   elemental_air: "#7a9ab8",
-  elemental_earth: "#6a5a3a"
+  elemental_earth: "#6a5a3a",
 };
 
 export const LOCATION_GLYPHS: Record<string, string> = {
@@ -294,7 +382,7 @@ export const LOCATION_GLYPHS: Record<string, string> = {
   "anime.kiem_trung": "⚔",
   "anime.linh_tuyen": "💧",
   "anime.ngo_dao_thach": "🪨",
-  "anime.tran_phap_truyen_tong": "⛩"
+  "anime.tran_phap_truyen_tong": "⛩",
 };
 
 const ROMAN = ["", "Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ", "Ⅵ", "Ⅶ"];
@@ -304,7 +392,7 @@ const GATE_PAIR_COLORS: Record<number, string> = {
   1: "#e0483c",
   2: "#3d7fe0",
   3: "#3caf52",
-  4: "#b04fd6"
+  4: "#b04fd6",
 };
 
 /** Teleport-object locations the unified {@link teleportHexMark} renders. */
@@ -331,13 +419,14 @@ function teleportHexMark(
   spaceId: string,
   x: number,
   y: number,
-  field: Pick<MapFieldState, "location" | "gatePair" | "whirlpoolNumber">
+  field: Pick<MapFieldState, "location" | "gatePair" | "whirlpoolNumber">,
 ): ReactNode {
   const pair = (field.gatePair ?? 1) as 1 | 2 | 3 | 4;
   // Gates and one-way halves belong to a colored network; the plain Monolith /
   // Whirlpool networks are identified by the designer's gold ring instead.
-  const colored = field.location !== "monolith" && field.location !== "whirlpool";
-  const color = colored ? GATE_PAIR_COLORS[pair] ?? "#c9a24b" : "#c9a24b";
+  const colored =
+    field.location !== "monolith" && field.location !== "whirlpool";
+  const color = colored ? (GATE_PAIR_COLORS[pair] ?? "#c9a24b") : "#c9a24b";
   const image =
     field.location === "gate"
       ? teleportGateImage(pair)
@@ -345,12 +434,19 @@ function teleportHexMark(
         ? monolithTokenImage()
         : field.location === "whirlpool"
           ? whirlpoolTokenImage(field.whirlpoolNumber)
-          : onewayMonolithImage(field.location === "oneway_entrance" ? "entrance" : "exit", pair);
+          : onewayMonolithImage(
+              field.location === "oneway_entrance" ? "entrance" : "exit",
+              pair,
+            );
   // A touch smaller than the hex so the token icon sits neatly inside it
   // (the ring + badge keep it identifiable at the reduced size).
   const art = HEX_SIZE * 1.28;
   return (
-    <g className="hexGateMark" key={`${spaceId}-gate-mark`} style={{ pointerEvents: "none" }}>
+    <g
+      className="hexGateMark"
+      key={`${spaceId}-gate-mark`}
+      style={{ pointerEvents: "none" }}
+    >
       {/* The object's own token artwork, undistorted (designer parity). */}
       <image
         className="hexGateMonolith"
@@ -362,11 +458,25 @@ function teleportHexMark(
         y={y - art * 0.72}
       />
       {/* Ring identifying the network (pair colour, or the designer gold). */}
-      <circle cx={x} cy={y} fill="none" r={HEX_SIZE * 0.62} stroke={color} strokeWidth={3} />
+      <circle
+        cx={x}
+        cy={y}
+        fill="none"
+        r={HEX_SIZE * 0.62}
+        stroke={color}
+        strokeWidth={3}
+      />
       {colored ? (
         <>
           {/* Small pair-number badge (top-right). */}
-          <circle cx={x + HEX_SIZE * 0.46} cy={y - HEX_SIZE * 0.46} fill="rgba(12,8,4,0.85)" r={HEX_SIZE * 0.3} stroke={color} strokeWidth={2} />
+          <circle
+            cx={x + HEX_SIZE * 0.46}
+            cy={y - HEX_SIZE * 0.46}
+            fill="rgba(12,8,4,0.85)"
+            r={HEX_SIZE * 0.3}
+            stroke={color}
+            strokeWidth={2}
+          />
           <text
             fill={color}
             fontSize={HEX_SIZE * 0.44}
@@ -383,11 +493,18 @@ function teleportHexMark(
   );
 }
 
-function hexCornerPoints(cx: number, cy: number, size: number): { x: number; y: number }[] {
+function hexCornerPoints(
+  cx: number,
+  cy: number,
+  size: number,
+): { x: number; y: number }[] {
   const corners: { x: number; y: number }[] = [];
   for (let i = 0; i < 6; i += 1) {
     const angle = (Math.PI / 180) * (60 * i - 30);
-    corners.push({ x: cx + size * Math.cos(angle), y: cy + size * Math.sin(angle) });
+    corners.push({
+      x: cx + size * Math.cos(angle),
+      y: cy + size * Math.sin(angle),
+    });
   }
   return corners;
 }
@@ -399,7 +516,12 @@ function hexCorners(cx: number, cy: number, size: number): string {
 }
 
 /** Outer edge segment of a hex facing ring direction 0-5 (NE,E,SE,SW,W,NW). */
-function hexEdgeForDirection(cx: number, cy: number, size: number, direction: number): { x1: number; y1: number; x2: number; y2: number } {
+function hexEdgeForDirection(
+  cx: number,
+  cy: number,
+  size: number,
+  direction: number,
+): { x1: number; y1: number; x2: number; y2: number } {
   const corners = hexCornerPoints(cx, cy, size);
   const edgeIndex = (direction + 5) % 6;
   const a = corners[edgeIndex];
@@ -415,10 +537,14 @@ function hexEdgeForDirection(cx: number, cy: number, size: number, direction: nu
 function pushBorderLines(
   target: ReactNode[],
   keyBase: string,
-  coords: { x1: number; y1: number; x2: number; y2: number }
+  coords: { x1: number; y1: number; x2: number; y2: number },
 ): void {
-  target.push(<line className="tileBorderCasing" key={`${keyBase}-casing`} {...coords} />);
-  target.push(<line className="tileBorderLine" key={`${keyBase}-core`} {...coords} />);
+  target.push(
+    <line className="tileBorderCasing" key={`${keyBase}-casing`} {...coords} />,
+  );
+  target.push(
+    <line className="tileBorderLine" key={`${keyBase}-core`} {...coords} />,
+  );
 }
 
 /** A quiet perimeter around the seven-hex flower of an Underground tile. The
@@ -429,7 +555,7 @@ function pushUndergroundTileOutline(
   target: ReactNode[],
   tileId: string,
   footprint: readonly { row: number; col: number }[],
-  rotation: number
+  rotation: number,
 ): void {
   for (let slot = 1; slot <= 6; slot += 1) {
     const cell = footprint[slot];
@@ -444,7 +570,7 @@ function pushUndergroundTileOutline(
           data-underground-tile-id={tileId}
           key={`${tileId}-underground-outline-${slot}-${direction}`}
           {...hexEdgeForDirection(pixel.x, pixel.y, HEX_SIZE - 1.2, direction)}
-        />
+        />,
       );
     }
   }
@@ -466,7 +592,7 @@ function AbilityEmpowerTokenChip({
   player,
   legalActions,
   onAction,
-  readOnly
+  readOnly,
 }: {
   player: { abilityEmpowerToken?: number; id: string };
   legalActions: LegalAction[];
@@ -477,7 +603,8 @@ function AbilityEmpowerTokenChip({
   const held = (player.abilityEmpowerToken ?? 0) >= 1;
   const offers = legalActions.filter(
     (legal) =>
-      legal.action.type === "USE_ABILITY_EMPOWER_TOKEN" && legal.action.playerId === player.id
+      legal.action.type === "USE_ABILITY_EMPOWER_TOKEN" &&
+      legal.action.playerId === player.id,
   );
   const canSpend = !readOnly && held && offers.length > 0;
 
@@ -530,7 +657,10 @@ function AbilityEmpowerTokenChip({
         >
           <div className="moraleOverflowPopup abilityEmpowerTokenPopup">
             <strong>Spend Ability Empower token</strong>
-            <p>Empower one Ability in your hand. Its Expert side then costs no crown for the rest of the game. Token max is 1.</p>
+            <p>
+              Empower one Ability in your hand. Its Expert side then costs no
+              crown for the rest of the game. Token max is 1.
+            </p>
             <div className="handButtons abilityEmpowerTokenChoices">
               {offers.map((legal) => (
                 <button
@@ -545,7 +675,11 @@ function AbilityEmpowerTokenChip({
                   {legal.label.replace(/^Ability token: /, "")}
                 </button>
               ))}
-              <button className="commandButton ghost" type="button" onClick={() => setPicking(false)}>
+              <button
+                className="commandButton ghost"
+                type="button"
+                onClick={() => setPicking(false)}
+              >
                 Cancel
               </button>
             </div>
@@ -583,7 +717,7 @@ export function HexMapBoard({
   placement,
   moveCue,
   heroPositionOverrides,
-  readOnly = false
+  readOnly = false,
 }: {
   state: GameState;
   view: PlayerVisibleState;
@@ -609,14 +743,25 @@ export function HexMapBoard({
   // button opts into wheel-to-zoom.
   const [wheelZoomEnabled, setWheelZoomEnabled] = useState(false);
   const svgRef = useRef<SVGSVGElement>(null);
-  const dragRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number; moved: boolean } | null>(null);
+  const dragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+    moved: boolean;
+  } | null>(null);
   const suppressClickRef = useRef(false);
   // Touch pinch (zoom + two-finger pan). Every pressed pointer is tracked; the
   // moment a SECOND one lands the single-pointer pan is cancelled and the two
   // fingers drive the camera through the pure pinch math in map-pinch.ts. A
   // mouse only ever has one pointer, so none of this can affect mouse play.
   const pointersRef = useRef(new Map<number, { x: number; y: number }>());
-  const pinchRef = useRef<{ aId: number; bId: number; start: PinchStart } | null>(null);
+  const pinchRef = useRef<{
+    aId: number;
+    bId: number;
+    start: PinchStart;
+  } | null>(null);
 
   // A tap on a would-be move target while the MANDATORY start-of-turn draw is
   // still pending shows a brief, single, auto-fading "draw first" note anchored
@@ -632,7 +777,10 @@ export function HexMapBoard({
     if (drawReminderTimer.current) {
       window.clearTimeout(drawReminderTimer.current);
     }
-    drawReminderTimer.current = window.setTimeout(() => setDrawReminderAt(null), 2600);
+    drawReminderTimer.current = window.setTimeout(
+      () => setDrawReminderAt(null),
+      2600,
+    );
   };
   useEffect(
     () => () => {
@@ -640,7 +788,7 @@ export function HexMapBoard({
         window.clearTimeout(drawReminderTimer.current);
       }
     },
-    []
+    [],
   );
 
   // Tapping a face-down Subterranean tile you can't discover (because you stand on
@@ -661,7 +809,7 @@ export function HexMapBoard({
         window.clearTimeout(gateHintTimer.current);
       }
     },
-    []
+    [],
   );
 
   // Wheel-to-zoom is wired as a native non-passive listener (React routes wheel
@@ -679,7 +827,13 @@ export function HexMapBoard({
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
       const factor = event.deltaY < 0 ? 1.15 : 1 / 1.15;
-      setCamera((current) => ({ ...current, scale: Math.min(MAP_SCALE_MAX, Math.max(MAP_SCALE_MIN, current.scale * factor)) }));
+      setCamera((current) => ({
+        ...current,
+        scale: Math.min(
+          MAP_SCALE_MAX,
+          Math.max(MAP_SCALE_MIN, current.scale * factor),
+        ),
+      }));
     };
     svg.addEventListener("wheel", onWheel, { passive: false });
     return () => svg.removeEventListener("wheel", onWheel);
@@ -699,7 +853,9 @@ export function HexMapBoard({
     const measure = () => {
       const rect = svg.getBoundingClientRect();
       setSvgSize((prev) =>
-        prev.width === rect.width && prev.height === rect.height ? prev : { width: rect.width, height: rect.height }
+        prev.width === rect.width && prev.height === rect.height
+          ? prev
+          : { width: rect.width, height: rect.height },
       );
     };
     measure();
@@ -708,15 +864,18 @@ export function HexMapBoard({
     return () => observer.disconnect();
   }, []);
 
-  const isSeated = Boolean(state.players[viewerPlayerId]) && viewerPlayerId !== "observer";
+  const isSeated =
+    Boolean(state.players[viewerPlayerId]) && viewerPlayerId !== "observer";
   // A player may field a Main Hero and (via Tavern / Prison) one Secondary
   // Hero. The map controls the "active" hero; click a pawn to switch.
   const myHeroes = useMemo(
     () =>
       isSeated
-        ? Object.values(state.heroes).filter((candidate) => candidate.controllerId === viewerPlayerId)
+        ? Object.values(state.heroes).filter(
+            (candidate) => candidate.controllerId === viewerPlayerId,
+          )
         : [],
-    [state.heroes, isSeated, viewerPlayerId]
+    [state.heroes, isSeated, viewerPlayerId],
   );
   const [selectedHeroId, setSelectedHeroId] = useState<string | null>(null);
   const myHero =
@@ -730,20 +889,30 @@ export function HexMapBoard({
   const myTurn = isSeated && hasOpenAdventureTurn(state, viewerPlayerId);
   // Parallel turns: another player's battle/choice is open — I may still take
   // QUIET moves (the engine filters reachable targets to trigger-free fields).
-  const parallelBlocker = isSeated ? parallelInteractionBlocker(state, viewerPlayerId) : null;
+  const parallelBlocker = isSeated
+    ? parallelInteractionBlocker(state, viewerPlayerId)
+    : null;
 
   const pendingTileChoice = rawAdventure?.pendingTileChoice ?? null;
-  const rotatingTile = pendingTileChoice ? rawAdventure?.tiles[pendingTileChoice.tileInstanceId] : null;
-  const iAmRotating = Boolean(pendingTileChoice && pendingTileChoice.playerId === viewerPlayerId && !readOnly);
+  const rotatingTile = pendingTileChoice
+    ? rawAdventure?.tiles[pendingTileChoice.tileInstanceId]
+    : null;
+  const iAmRotating = Boolean(
+    pendingTileChoice &&
+    pendingTileChoice.playerId === viewerPlayerId &&
+    !readOnly,
+  );
 
   // The mandatory start-of-turn draw (or the forced over-limit discard) is still
   // unspent on my own quiet map turn — movement is locked until I draw. A
   // foreign interaction (parallelBlocker) does not park my own draw.
   const drawPending = Boolean(
     myTurn &&
-      !readOnly &&
-      (parallelBlocker || (!state.combat && !pendingTileChoice && !rawAdventure?.pendingVisit)) &&
-      (state.players[viewerPlayerId]?.needsHandRefresh || state.players[viewerPlayerId]?.canMulligan)
+    !readOnly &&
+    (parallelBlocker ||
+      (!state.combat && !pendingTileChoice && !rawAdventure?.pendingVisit)) &&
+    (state.players[viewerPlayerId]?.needsHandRefresh ||
+      state.players[viewerPlayerId]?.canMulligan),
   );
 
   // Reachable click-to-move targets, computed from the live rules.
@@ -753,17 +922,32 @@ export function HexMapBoard({
     }
     // My own pending input locks movement outright; a FOREIGN interaction in
     // parallel mode leaves quiet moves open (getReachableHeroPaths filters).
-    if (!parallelBlocker && (pendingTileChoice || state.combat || rawAdventure?.pendingVisit)) {
+    if (
+      !parallelBlocker &&
+      (pendingTileChoice || state.combat || rawAdventure?.pendingVisit)
+    ) {
       return new Map<MapSpaceId, HeroPathTarget>();
     }
     // The mandatory start-of-turn draw (and the forced over-limit discard) must be
     // resolved before moving — withhold every click-to-move target until then so
     // the board matches what the engine will allow.
-    if (state.players[viewerPlayerId]?.needsHandRefresh || state.players[viewerPlayerId]?.canMulligan) {
+    if (
+      state.players[viewerPlayerId]?.needsHandRefresh ||
+      state.players[viewerPlayerId]?.canMulligan
+    ) {
       return new Map<MapSpaceId, HeroPathTarget>();
     }
     return getReachableHeroPaths(state, myHero);
-  }, [state, myHero, myTurn, readOnly, pendingTileChoice, rawAdventure?.pendingVisit, viewerPlayerId, parallelBlocker]);
+  }, [
+    state,
+    myHero,
+    myTurn,
+    readOnly,
+    pendingTileChoice,
+    rawAdventure?.pendingVisit,
+    viewerPlayerId,
+    parallelBlocker,
+  ]);
 
   // While the draw is unspent, the fields the hero COULD step onto once it draws.
   // These render locked (dimmed) and a tap reminds the player to draw first
@@ -800,12 +984,20 @@ export function HexMapBoard({
     }
     const visit = rawAdventure?.pendingVisit;
     const step = visit?.steps[0];
-    if (!visit || visit.playerId !== viewerPlayerId || step?.type !== "CHOOSE_ONE" || step.teleport) {
+    if (
+      !visit ||
+      visit.playerId !== viewerPlayerId ||
+      step?.type !== "CHOOSE_ONE" ||
+      step.teleport
+    ) {
       return targets;
     }
     const actionByOption = new Map<number, GameAction>();
     for (const legal of legalActions) {
-      if (legal.action.type === "RESOLVE_VISIT_STEP" && legal.action.optionIndex !== undefined) {
+      if (
+        legal.action.type === "RESOLVE_VISIT_STEP" &&
+        legal.action.optionIndex !== undefined
+      ) {
         actionByOption.set(legal.action.optionIndex, legal.action);
       }
     }
@@ -832,12 +1024,20 @@ export function HexMapBoard({
     }
     const visit = rawAdventure?.pendingVisit;
     const step = visit?.steps[0];
-    if (!visit || visit.playerId !== viewerPlayerId || step?.type !== "CHOOSE_ONE" || !step.teleport) {
+    if (
+      !visit ||
+      visit.playerId !== viewerPlayerId ||
+      step?.type !== "CHOOSE_ONE" ||
+      !step.teleport
+    ) {
       return null;
     }
     const actionByOption = new Map<number, GameAction>();
     for (const legal of legalActions) {
-      if (legal.action.type === "RESOLVE_VISIT_STEP" && legal.action.optionIndex !== undefined) {
+      if (
+        legal.action.type === "RESOLVE_VISIT_STEP" &&
+        legal.action.optionIndex !== undefined
+      ) {
         actionByOption.set(legal.action.optionIndex, legal.action);
       }
     }
@@ -846,16 +1046,29 @@ export function HexMapBoard({
     // is left to the tray buttons (mirrors pendingMapChoiceTargets) — a stray tap
     // must never pick the wrong exit.
     const hexForOption = step.options.map((option) => {
-      const inner = option.steps[0] as { type?: string; spaceId?: string; tileInstanceId?: string } | undefined;
-      if (inner?.type === "TELEPORT_HERO" && typeof inner.spaceId === "string") {
+      const inner = option.steps[0] as
+        | { type?: string; spaceId?: string; tileInstanceId?: string }
+        | undefined;
+      if (
+        inner?.type === "TELEPORT_HERO" &&
+        typeof inner.spaceId === "string"
+      ) {
         return inner.spaceId;
       }
-      if (inner?.type === "TOKEN_TELEPORT_REVEAL" && typeof inner.tileInstanceId === "string") {
-        const tile = rawAdventure?.tiles[inner.tileInstanceId] ?? adventure?.tiles[inner.tileInstanceId];
+      if (
+        inner?.type === "TOKEN_TELEPORT_REVEAL" &&
+        typeof inner.tileInstanceId === "string"
+      ) {
+        const tile =
+          rawAdventure?.tiles[inner.tileInstanceId] ??
+          adventure?.tiles[inner.tileInstanceId];
         if (!tile) {
           return null;
         }
-        return tile.pendingToken?.preferredSpaceId ?? hexSpaceId({ row: tile.centerRow, col: tile.centerCol });
+        return (
+          tile.pendingToken?.preferredSpaceId ??
+          hexSpaceId({ row: tile.centerRow, col: tile.centerCol })
+        );
       }
       return null;
     });
@@ -886,7 +1099,11 @@ export function HexMapBoard({
   const pendingMapChoiceTargets = useMemo(() => {
     const targets = new Map<MapSpaceId, GameAction>();
     const choice = state.pendingChoice;
-    if (readOnly || choice?.type !== "OPTION_CHOICE" || choice.playerId !== viewerPlayerId) {
+    if (
+      readOnly ||
+      choice?.type !== "OPTION_CHOICE" ||
+      choice.playerId !== viewerPlayerId
+    ) {
       return targets;
     }
     if (choice.context === "subterranean-gate-placement") {
@@ -907,7 +1124,10 @@ export function HexMapBoard({
     }
     const actionByOption = new Map<number, GameAction>();
     for (const legal of legalActions) {
-      if (legal.action.type === "CHOOSE_OPTION" && legal.action.choiceId === choice.id) {
+      if (
+        legal.action.type === "CHOOSE_OPTION" &&
+        legal.action.choiceId === choice.id
+      ) {
         actionByOption.set(legal.action.optionIndex, legal.action);
       }
     }
@@ -916,7 +1136,9 @@ export function HexMapBoard({
     // click, so leave it to the prompt buttons; a stray tap must never pick the
     // wrong partner. Distinct hexes stay directly clickable.
     const optionsPerHex = new Map<MapSpaceId, number>();
-    spaceIds.forEach((spaceId) => optionsPerHex.set(spaceId, (optionsPerHex.get(spaceId) ?? 0) + 1));
+    spaceIds.forEach((spaceId) =>
+      optionsPerHex.set(spaceId, (optionsPerHex.get(spaceId) ?? 0) + 1),
+    );
     spaceIds.forEach((spaceId, optionIndex) => {
       if ((optionsPerHex.get(spaceId) ?? 0) > 1) {
         return;
@@ -949,14 +1171,35 @@ export function HexMapBoard({
       choiceId: choice.id,
       role,
       candidates,
-      labels: choice.options.map((option) => option.label)
+      labels: choice.options.map((option) => option.label),
     };
   }, [state.pendingChoice, viewerPlayerId, readOnly]);
 
-  const [gatePickIndex, setGatePickIndex] = useState(0);
-  useEffect(() => {
-    setGatePickIndex(0);
-  }, [gatePlacementOpen?.choiceId]);
+  const gatePickChoiceId = gatePlacementOpen?.choiceId ?? null;
+  const [gatePickSelection, setGatePickSelection] = useState<{
+    choiceId: string | null;
+    index: number;
+  }>({
+    choiceId: null,
+    index: 0,
+  });
+  const gatePickIndex =
+    gatePickSelection.choiceId === gatePickChoiceId
+      ? gatePickSelection.index
+      : 0;
+  const setGatePickIndex = useCallback(
+    (next: number | ((value: number) => number)) => {
+      setGatePickSelection((previous) => {
+        const current =
+          previous.choiceId === gatePickChoiceId ? previous.index : 0;
+        return {
+          choiceId: gatePickChoiceId,
+          index: typeof next === "function" ? next(current) : next,
+        };
+      });
+    },
+    [gatePickChoiceId],
+  );
 
   const gatePlacementChoice = useMemo(() => {
     if (!gatePlacementOpen) {
@@ -972,9 +1215,11 @@ export function HexMapBoard({
       role: gatePlacementOpen.role,
       selectedHex: selected.hex as MapSpaceId,
       selectedIndex: index,
-      allHexes: new Set<MapSpaceId>(gatePlacementOpen.candidates.map((candidate) => candidate.hex)),
+      allHexes: new Set<MapSpaceId>(
+        gatePlacementOpen.candidates.map((candidate) => candidate.hex),
+      ),
       label: gatePlacementOpen.labels[index] ?? "",
-      count
+      count,
     };
   }, [gatePlacementOpen, gatePickIndex]);
 
@@ -992,7 +1237,10 @@ export function HexMapBoard({
     ) {
       return null;
     }
-    return { kind: choice.mapToken.kind, hexes: new Set<MapSpaceId>(choice.mapToken.candidates) };
+    return {
+      kind: choice.mapToken.kind,
+      hexes: new Set<MapSpaceId>(choice.mapToken.candidates),
+    };
   }, [state.pendingChoice, viewerPlayerId, readOnly]);
 
   // During a Field Override placement (pool draw / designer pin whose reserved
@@ -1013,7 +1261,7 @@ export function HexMapBoard({
     }
     return {
       kind: choice.fieldOverride.kind,
-      hexes: new Set<MapSpaceId>(choice.fieldOverride.candidates)
+      hexes: new Set<MapSpaceId>(choice.fieldOverride.candidates),
     };
   }, [state.pendingChoice, viewerPlayerId, readOnly]);
 
@@ -1025,7 +1273,12 @@ export function HexMapBoard({
     const placements: { row: number; col: number; action: GameAction }[] = [];
     const visit = rawAdventure?.pendingVisit;
     const step = visit?.steps[0];
-    if (readOnly || !visit || visit.playerId !== viewerPlayerId || step?.type !== "DISCOVER_ADJACENT_TILE") {
+    if (
+      readOnly ||
+      !visit ||
+      visit.playerId !== viewerPlayerId ||
+      step?.type !== "DISCOVER_ADJACENT_TILE"
+    ) {
       return { revealByTile, placements };
     }
     const field = rawAdventure.fields[visit.fieldId];
@@ -1033,19 +1286,28 @@ export function HexMapBoard({
     const hero = state.heroes[visit.heroId];
     const actionByOption = new Map<number, GameAction>();
     for (const legal of legalActions) {
-      if (legal.action.type === "RESOLVE_VISIT_STEP" && legal.action.optionIndex !== undefined) {
+      if (
+        legal.action.type === "RESOLVE_VISIT_STEP" &&
+        legal.action.optionIndex !== undefined
+      ) {
         actionByOption.set(legal.action.optionIndex, legal.action);
       } else if (legal.action.type === "PLACE_OBSERVATORY_TILE") {
-        placements.push({ row: legal.action.centerRow, col: legal.action.centerCol, action: legal.action });
+        placements.push({
+          row: legal.action.centerRow,
+          col: legal.action.centerCol,
+          action: legal.action,
+        });
       }
     }
     if (tile && hero) {
-      observatoryRevealTargets(state, hero, tile).forEach((candidate, optionIndex) => {
-        const action = actionByOption.get(optionIndex);
-        if (action) {
-          revealByTile.set(candidate.id, action);
-        }
-      });
+      observatoryRevealTargets(state, hero, tile).forEach(
+        (candidate, optionIndex) => {
+          const action = actionByOption.get(optionIndex);
+          if (action) {
+            revealByTile.set(candidate.id, action);
+          }
+        },
+      );
     }
     return { revealByTile, placements };
   }, [rawAdventure, state, viewerPlayerId, legalActions, readOnly]);
@@ -1062,18 +1324,31 @@ export function HexMapBoard({
     const byTile = new Map<string, GameAction>();
     const visit = rawAdventure?.pendingVisit;
     const step = visit?.steps[0];
-    if (readOnly || !visit || visit.playerId !== viewerPlayerId || step?.type !== "CHOOSE_ONE") {
+    if (
+      readOnly ||
+      !visit ||
+      visit.playerId !== viewerPlayerId ||
+      step?.type !== "CHOOSE_ONE"
+    ) {
       return byTile;
     }
     const actionByOption = new Map<number, GameAction>();
     for (const legal of legalActions) {
-      if (legal.action.type === "RESOLVE_VISIT_STEP" && legal.action.optionIndex !== undefined) {
+      if (
+        legal.action.type === "RESOLVE_VISIT_STEP" &&
+        legal.action.optionIndex !== undefined
+      ) {
         actionByOption.set(legal.action.optionIndex, legal.action);
       }
     }
     step.options.forEach((option, optionIndex) => {
-      const inner = option.steps[0] as { type?: string; tileInstanceId?: string } | undefined;
-      if (inner?.type !== "GRAIL_TILE_SCRY" || typeof inner.tileInstanceId !== "string") {
+      const inner = option.steps[0] as
+        | { type?: string; tileInstanceId?: string }
+        | undefined;
+      if (
+        inner?.type !== "GRAIL_TILE_SCRY" ||
+        typeof inner.tileInstanceId !== "string"
+      ) {
         return;
       }
       const action = actionByOption.get(optionIndex);
@@ -1116,9 +1391,12 @@ export function HexMapBoard({
 
   // Rotation preview, reset whenever a different tile starts rotating
   // (state-adjustment-during-render pattern, no effect needed).
-  const [rotationPreview, setRotationPreview] = useState<{ tileId: string | null; rotation: number }>({
+  const [rotationPreview, setRotationPreview] = useState<{
+    tileId: string | null;
+    rotation: number;
+  }>({
     tileId: null,
-    rotation: 0
+    rotation: 0,
   });
   const pendingTileId = pendingTileChoice?.tileInstanceId ?? null;
   if (rotationPreview.tileId !== pendingTileId) {
@@ -1127,12 +1405,18 @@ export function HexMapBoard({
   }
   const previewRotation = rotationPreview.rotation;
   const setPreviewRotation = (update: (value: number) => number) =>
-    setRotationPreview((current) => ({ ...current, rotation: update(current.rotation) }));
+    setRotationPreview((current) => ({
+      ...current,
+      rotation: update(current.rotation),
+    }));
 
   // Selected move target, dropped when the hero moves or the turn changes.
-  const [moveSelection, setMoveSelection] = useState<{ key: string; target: HeroPathTarget | null }>({
+  const [moveSelection, setMoveSelection] = useState<{
+    key: string;
+    target: HeroPathTarget | null;
+  }>({
     key: "",
-    target: null
+    target: null,
   });
   // Keyed by the active hero too, so switching heroes (even two standing on the
   // same field) drops a move target picked for the other one.
@@ -1148,14 +1432,18 @@ export function HexMapBoard({
     if (!placement || !rawAdventure || myHeroes.length === 0) {
       return [] as { row: number; col: number; heroId: string }[];
     }
-    const tileDefId = rawAdventure.playerFarTiles?.[viewerPlayerId]?.[placement.supplyIndex];
+    const tileDefId =
+      rawAdventure.playerFarTiles?.[viewerPlayerId]?.[placement.supplyIndex];
     // A Ⅱ–Ⅲ tile may be laid at the border by EITHER of the player's heroes —
     // each opens beside its OWN field (the engine offers PLACE_TILE per hero).
     // Compute every hero's legal spots and tag each ghost with the hero that can
     // place it, so a SECONDARY Hero's border tiles appear too — not only the
     // Main hero's (the default `myHero`, which was the bug: the Secondary Hero,
     // or a non-selected hero, could never place a Far tile).
-    const byKey = new Map<string, { row: number; col: number; heroId: string }>();
+    const byKey = new Map<
+      string,
+      { row: number; col: number; heroId: string }
+    >();
     for (const hero of myHeroes) {
       if (hero.movementPoints <= 0) {
         continue; // placing a Far tile costs 1 movement point
@@ -1190,20 +1478,28 @@ export function HexMapBoard({
     maxY = Math.max(maxY, y + HEX_SIZE * 1.6);
   };
 
-  const heroesBySpace = new Map<string, { playerId: PlayerId; heroId: string; heroDefId?: string }[]>();
+  const heroesBySpace = new Map<
+    string,
+    { playerId: PlayerId; heroId: string; heroDefId?: string }[]
+  >();
   for (const hero of Object.values(state.heroes)) {
     // A replaying computer hero is drawn at its animated cell; every other hero
     // (and every hero when no replay is running) uses its true spaceId.
     const spaceId = heroPositionOverrides?.[hero.id] ?? hero.spaceId;
     if (spaceId) {
       const list = heroesBySpace.get(spaceId) ?? [];
-      list.push({ playerId: hero.controllerId, heroId: hero.id, heroDefId: hero.heroDefId });
+      list.push({
+        playerId: hero.controllerId,
+        heroId: hero.id,
+        heroDefId: hero.heroDefId,
+      });
       heroesBySpace.set(spaceId, list);
     }
   }
 
   const sortedTiles = Object.values(adventure.tiles).sort(
-    (left, right) => left.centerRow - right.centerRow || left.centerCol - right.centerCol
+    (left, right) =>
+      left.centerRow - right.centerRow || left.centerCol - right.centerCol,
   );
 
   const renderTileArt = (tile: MapTileState, rotation: number) => {
@@ -1213,7 +1509,10 @@ export function HexMapBoard({
       return;
     }
 
-    const center = hexToPixel({ row: tile.centerRow, col: tile.centerCol }, HEX_SIZE);
+    const center = hexToPixel(
+      { row: tile.centerRow, col: tile.centerCol },
+      HEX_SIZE,
+    );
     const width = 3 * HEX_WIDTH;
     const height = 5 * HEX_SIZE;
     artLayer.push(
@@ -1231,7 +1530,7 @@ export function HexMapBoard({
         width={width}
         x={center.x - width / 2}
         y={center.y - height / 2}
-      />
+      />,
     );
   };
 
@@ -1268,7 +1567,7 @@ export function HexMapBoard({
           width={backWidth}
           x={centerPixel.x - backWidth / 2}
           y={centerPixel.y - backHeight / 2}
-        />
+        />,
       );
       // Designed Monolith/Whirlpool/colored-Gate tokens riding this face-down
       // tile are public info — including Whirlpools BEFORE the tile is revealed.
@@ -1281,16 +1580,20 @@ export function HexMapBoard({
           : tile.pendingToken
             ? [tile.pendingToken]
             : [];
-      for (const [pendingIndex, pendingToken] of faceDownPendingTokens.entries()) {
+      for (const [
+        pendingIndex,
+        pendingToken,
+      ] of faceDownPendingTokens.entries()) {
         const tokenBackCoord = pendingToken.preferredSpaceId
-          ? parseHexSpaceId(pendingToken.preferredSpaceId) ?? center
+          ? (parseHexSpaceId(pendingToken.preferredSpaceId) ?? center)
           : center;
         const tokenBackPixel = hexToPixel(tokenBackCoord, HEX_SIZE);
         // Legacy multi-token without preferred hex: slight offset so they don't
         // fully stack on the centre.
         const stackOffset =
           !pendingToken.preferredSpaceId && faceDownPendingTokens.length > 1
-            ? (pendingIndex - (faceDownPendingTokens.length - 1) / 2) * (HEX_SIZE * 0.35)
+            ? (pendingIndex - (faceDownPendingTokens.length - 1) / 2) *
+              (HEX_SIZE * 0.35)
             : 0;
         const drawX = tokenBackPixel.x + stackOffset;
         const drawY = tokenBackPixel.y;
@@ -1298,7 +1601,9 @@ export function HexMapBoard({
           pendingToken.kind === "gate" ||
           pendingToken.kind === "oneway_entrance" ||
           pendingToken.kind === "oneway_exit";
-        const gateColor = isGateToken ? GATE_PAIR_COLORS[pendingToken.pair ?? 1] ?? "#c9a24b" : null;
+        const gateColor = isGateToken
+          ? (GATE_PAIR_COLORS[pendingToken.pair ?? 1] ?? "#c9a24b")
+          : null;
         const tokenBackImage =
           pendingToken.kind === "whirlpool"
             ? mapTokenImage("whirlpool", pendingToken.number)
@@ -1319,7 +1624,13 @@ export function HexMapBoard({
               />
             ) : null}
             {gateColor ? (
-              <circle cx={drawX} cy={drawY} fill={gateColor} opacity={0.3} r={HEX_SIZE * 0.55} />
+              <circle
+                cx={drawX}
+                cy={drawY}
+                fill={gateColor}
+                opacity={0.3}
+                r={HEX_SIZE * 0.55}
+              />
             ) : null}
             <image
               className={`tileBackPendingToken${pendingToken.kind === "whirlpool" ? " whirlpoolPending" : ""}`}
@@ -1333,7 +1644,14 @@ export function HexMapBoard({
             />
             {gateColor ? (
               <>
-                <circle cx={drawX} cy={drawY} fill="none" r={HEX_SIZE * 0.55} stroke={gateColor} strokeWidth={2.5} />
+                <circle
+                  cx={drawX}
+                  cy={drawY}
+                  fill="none"
+                  r={HEX_SIZE * 0.55}
+                  stroke={gateColor}
+                  strokeWidth={2.5}
+                />
                 <text
                   fill={gateColor}
                   fontSize={HEX_SIZE * 0.5}
@@ -1346,15 +1664,17 @@ export function HexMapBoard({
                 </text>
               </>
             ) : null}
-          </g>
+          </g>,
         );
         // If this pending token is a live teleport destination for the viewer,
         // overlay a clickable glowing EXIT hex on its back (pushed to `overlays`,
         // which sit above the face-down discovery hexes). The tile face stays
         // hidden — only the token art shows — and clicking dispatches the SAME
         // RESOLVE_VISIT_STEP the tray button would.
-        const tokenBackSpaceId = pendingToken.preferredSpaceId ?? hexSpaceId(center);
-        const teleportBackTarget = teleportChoice?.targets.get(tokenBackSpaceId);
+        const tokenBackSpaceId =
+          pendingToken.preferredSpaceId ?? hexSpaceId(center);
+        const teleportBackTarget =
+          teleportChoice?.targets.get(tokenBackSpaceId);
         if (teleportBackTarget && !readOnly) {
           overlays.push(
             <g key={`teleport-back-${tile.id}-${pendingIndex}`}>
@@ -1370,12 +1690,19 @@ export function HexMapBoard({
                 points={hexCorners(drawX, drawY, HEX_SIZE - 1.2)}
                 style={{ pointerEvents: "all" }}
               >
-                <title>Click to teleport your hero here (reveals this face-down tile)</title>
+                <title>
+                  Click to teleport your hero here (reveals this face-down tile)
+                </title>
               </polygon>
-              <text className="hexTeleportCue" textAnchor="middle" x={drawX} y={drawY + HEX_SIZE * 0.92}>
+              <text
+                className="hexTeleportCue"
+                textAnchor="middle"
+                x={drawX}
+                y={drawY + HEX_SIZE * 0.92}
+              >
                 ⇄ exit here
               </text>
-            </g>
+            </g>,
           );
         }
       }
@@ -1391,7 +1718,8 @@ export function HexMapBoard({
       const undergroundTile = tileLayer(tile) === "subterranean";
       // An open Grail-clue pick owns the tile's click, so it must not also wear
       // the violet "needs a Gate" hint (an underground tile CAN be a candidate).
-      const cavernNeedsGate = undergroundTile && !discover && !grailClue && !readOnly;
+      const cavernNeedsGate =
+        undergroundTile && !discover && !grailClue && !readOnly;
       if (undergroundTile) {
         pushUndergroundTileOutline(overlays, tile.id, footprint, 0);
       }
@@ -1450,14 +1778,16 @@ export function HexMapBoard({
                               ? "Whirlpool"
                               : token.kind === "monolith"
                                 ? "Monolith"
-                                : token.kind
+                                : token.kind,
                         )
-                        .join(", ")} token${faceDownPendingTokens.length === 1 ? "" : "s"} (visible before reveal)`
+                        .join(
+                          ", ",
+                        )} token${faceDownPendingTokens.length === 1 ? "" : "s"} (visible before reveal)`
                     : ""
                 }`}
               </title>
             </polygon>
-          </g>
+          </g>,
         );
         if (slot === 0 && (grailClue || (discover && !readOnly))) {
           overlays.push(
@@ -1473,14 +1803,20 @@ export function HexMapBoard({
                 : normalDiscover
                   ? "🐎 1 movement point: discover"
                   : "Observatory: reveal this tile"}
-            </text>
+            </text>,
           );
         }
         if (slot === 0 && cavernNeedsGate) {
           overlays.push(
-            <text className="hexCavernHint" key={`${tile.id}-cavern-hint`} textAnchor="middle" x={x} y={y + HEX_SIZE * 0.78}>
+            <text
+              className="hexCavernHint"
+              key={`${tile.id}-cavern-hint`}
+              textAnchor="middle"
+              x={x}
+              y={y + HEX_SIZE * 0.78}
+            >
               ⛰ via Subterranean Gate
-            </text>
+            </text>,
           );
         }
       }
@@ -1499,7 +1835,12 @@ export function HexMapBoard({
           pushBorderLines(
             overlays,
             `${tile.id}-back-border-${absolute}-${direction}`,
-            hexEdgeForDirection(ringPixel.x, ringPixel.y, HEX_SIZE - 1.2, direction)
+            hexEdgeForDirection(
+              ringPixel.x,
+              ringPixel.y,
+              HEX_SIZE - 1.2,
+              direction,
+            ),
           );
         }
       }
@@ -1518,18 +1859,22 @@ export function HexMapBoard({
         pushBorderLines(
           overlays,
           `${tile.id}-back-edge-${code}`,
-          hexEdgeForDirection(pixel.x, pixel.y, HEX_SIZE - 1.2, code % 6)
+          hexEdgeForDirection(pixel.x, pixel.y, HEX_SIZE - 1.2, code % 6),
         );
       }
       continue;
     }
 
     const tileDef = allTileDefinitions[tile.tileDefId];
-    const terrain = TERRAIN_COLORS[tileDef?.terrain ?? "dirt"] ?? TERRAIN_COLORS.dirt;
+    const terrain =
+      TERRAIN_COLORS[tileDef?.terrain ?? "dirt"] ?? TERRAIN_COLORS.dirt;
 
     // --- Tiles waiting for their rotation: preview from the definition ----
     if (tile.awaitingRotation) {
-      const rotation = iAmRotating && rotatingTile?.id === tile.id ? previewRotation : tile.rotation;
+      const rotation =
+        iAmRotating && rotatingTile?.id === tile.id
+          ? previewRotation
+          : tile.rotation;
       renderTileArt(tile, rotation);
       // With the printed art visible the built-in icons are redundant —
       // the scan shows the real locations; only game-state markers stay.
@@ -1537,9 +1882,13 @@ export function HexMapBoard({
       // Naval Battles: the Creature Bank this tile drew at reveal is known while
       // it is being rotated. Mark its Blocked Field slot so its border follows the
       // bank rule (border-free by default) and its art + name preview there.
-      const reservedBankId = (tile.reservedBankId as CreatureBankId | undefined) ?? undefined;
+      const reservedBankId =
+        (tile.reservedBankId as CreatureBankId | undefined) ?? undefined;
       const reservedBankOptions = (tile.reservedBankOptions ?? []).filter(
-        (candidate): candidate is typeof candidate & { bankId: CreatureBankId } => candidate.bankId in CREATURE_BANKS
+        (
+          candidate,
+        ): candidate is typeof candidate & { bankId: CreatureBankId } =>
+          candidate.bankId in CREATURE_BANKS,
       );
       const previewBankOptions =
         reservedBankOptions.length > 0
@@ -1548,15 +1897,20 @@ export function HexMapBoard({
             ? [{ bankId: reservedBankId }]
             : [];
       const bankPreviewSlot =
-        reservedBankId && tileDef ? tileDef.fields.findIndex((field) => field.location === "blocked_field") : -1;
-      const previewBankSlots = bankPreviewSlot >= 0 ? new Set([bankPreviewSlot]) : undefined;
+        reservedBankId && tileDef
+          ? tileDef.fields.findIndex(
+              (field) => field.location === "blocked_field",
+            )
+          : -1;
+      const previewBankSlots =
+        bankPreviewSlot >= 0 ? new Set([bankPreviewSlot]) : undefined;
       // Designer yellow borders are absolute: pass the SAME `rotation` the draw
       // below re-applies so they stay put on the board as the preview spins.
       const borderSegments = tileDef
         ? getTileBorderSegments(tileDef, previewBankSlots, {
             extraBorders: tile.extraBorders,
             borderEdges: tile.borderEdges,
-            rotation
+            rotation,
           })
         : [];
       const footprint = tileFootprint(center, rotation);
@@ -1570,7 +1924,7 @@ export function HexMapBoard({
             fill={terrain}
             key={`${tile.id}-rot-${slot}`}
             points={hexCorners(x, y, HEX_SIZE - 1.2)}
-          />
+          />,
         );
         // Preview the reserved Creature Bank right on its Blocked Field: its art
         // fills the hex and its name sits below, so the player sees which bank
@@ -1597,7 +1951,11 @@ export function HexMapBoard({
               {secondCandidate ? (
                 <>
                   <clipPath id={`${clipId}-second`}>
-                    <circle cx={x + HEX_SIZE * 0.43} cy={y - HEX_SIZE * 0.38} r={HEX_SIZE * 0.34} />
+                    <circle
+                      cx={x + HEX_SIZE * 0.43}
+                      cy={y - HEX_SIZE * 0.38}
+                      r={HEX_SIZE * 0.34}
+                    />
                   </clipPath>
                   <circle
                     className="bankPreviewSecondRing"
@@ -1608,7 +1966,9 @@ export function HexMapBoard({
                   <image
                     clipPath={`url(#${clipId}-second)`}
                     height={HEX_SIZE * 0.72}
-                    href={assetUrl(creatureBankFieldImage(secondCandidate.bankId))}
+                    href={assetUrl(
+                      creatureBankFieldImage(secondCandidate.bankId),
+                    )}
                     preserveAspectRatio="xMidYMid slice"
                     style={{ pointerEvents: "none" }}
                     width={HEX_SIZE * 0.72}
@@ -1626,9 +1986,11 @@ export function HexMapBoard({
                   >
                     <circle className="coinOuter" r="10" />
                     <circle className="coinInner" r="7.2" />
-                    <text textAnchor="middle" y="2.4">{candidate.size}</text>
+                    <text textAnchor="middle" y="2.4">
+                      {candidate.size}
+                    </text>
                   </g>
-                ) : null
+                ) : null,
               )}
               {previewBankOptions.map((candidate, index) => (
                 <text
@@ -1638,28 +2000,42 @@ export function HexMapBoard({
                   x={x}
                   y={y + HEX_SIZE * (index === 0 ? 0.55 : 0.75)}
                 >
-                  {previewBankOptions.length > 1 ? `${index === 0 ? "A" : "B"} · ` : ""}
+                  {previewBankOptions.length > 1
+                    ? `${index === 0 ? "A" : "B"} · `
+                    : ""}
                   {CREATURE_BANKS[candidate.bankId]?.name ?? "Creature Bank"}
                   {"size" in candidate ? ` · ${ROMAN[candidate.size]}` : ""}
                 </text>
               ))}
-            </g>
+            </g>,
           );
         }
         if (fieldDef && !artShown) {
           const glyph = LOCATION_GLYPHS[fieldDef.location] ?? "";
           if (glyph && fieldDef.location !== "empty_field") {
             overlays.push(
-              <text className="hexGlyph" key={`${tile.id}-rot-glyph-${slot}`} textAnchor="middle" x={x} y={y + 6}>
+              <text
+                className="hexGlyph"
+                key={`${tile.id}-rot-glyph-${slot}`}
+                textAnchor="middle"
+                x={x}
+                y={y + 6}
+              >
                 {glyph}
-              </text>
+              </text>,
             );
           }
           if (fieldDef.difficulty) {
             overlays.push(
-              <text className="hexDifficulty" key={`${tile.id}-rot-diff-${slot}`} textAnchor="middle" x={x} y={y - HEX_SIZE * 0.45}>
+              <text
+                className="hexDifficulty"
+                key={`${tile.id}-rot-diff-${slot}`}
+                textAnchor="middle"
+                x={x}
+                y={y - HEX_SIZE * 0.45}
+              >
                 {ROMAN[fieldDef.difficulty]}
-              </text>
+              </text>,
             );
           }
         }
@@ -1668,10 +2044,13 @@ export function HexMapBoard({
           const symbol = fieldSymbolOverlayFor(fieldDef);
           if (symbol) {
             const iconScale =
-              symbol.kind === "resource" ? 0.62 :
-              symbol.kind === "treasure" ? 0.6 :
-              0.56;
-            const iconSize = HEX_SIZE * iconScale * (tileDef?.assets?.fieldSymbolScale ?? 1);
+              symbol.kind === "resource"
+                ? 0.62
+                : symbol.kind === "treasure"
+                  ? 0.6
+                  : 0.56;
+            const iconSize =
+              HEX_SIZE * iconScale * (tileDef?.assets?.fieldSymbolScale ?? 1);
             overlays.push(
               <image
                 className="fieldSymbolModule"
@@ -1683,7 +2062,7 @@ export function HexMapBoard({
                 width={iconSize}
                 x={x - iconSize / 2}
                 y={y - iconSize * 0.1}
-              />
+              />,
             );
             if (symbol.difficulty) {
               overlays.push(
@@ -1695,7 +2074,7 @@ export function HexMapBoard({
                   y={y - HEX_SIZE * 0.48}
                 >
                   {ROMAN[symbol.difficulty]}
-                </text>
+                </text>,
               );
             }
             if (symbol.amount != null && symbol.amount > 0) {
@@ -1708,7 +2087,7 @@ export function HexMapBoard({
                   y={y + HEX_SIZE * 0.62}
                 >
                   {`↻${symbol.amount}`}
-                </text>
+                </text>,
               );
             }
           }
@@ -1723,7 +2102,7 @@ export function HexMapBoard({
           pushBorderLines(
             overlays,
             `${tile.id}-rot-border-${slot}-${segment.edge}`,
-            hexEdgeForDirection(x, y, HEX_SIZE - 1.2, direction)
+            hexEdgeForDirection(x, y, HEX_SIZE - 1.2, direction),
           );
         }
       }
@@ -1735,7 +2114,7 @@ export function HexMapBoard({
           cy={centerPixel.y}
           key={`${tile.id}-halo`}
           r={HEX_SIZE * 2.6}
-        />
+        />,
       );
       continue;
     }
@@ -1766,7 +2145,8 @@ export function HexMapBoard({
     const bankSlots = new Set<number>();
     const borderlessOverrideSlots = new Set<number>();
     footprint.forEach((coord, slot) => {
-      const location = adventure.fields[`h:${coord.row}:${coord.col}`]?.location;
+      const location =
+        adventure.fields[`h:${coord.row}:${coord.col}`]?.location;
       if (location === "creature_bank") {
         bankSlots.add(slot);
       }
@@ -1775,7 +2155,11 @@ export function HexMapBoard({
       // open-edge movement/discovery exception they share with the bank
       // (BLOCKED_FIELD_CARVE_LOCATIONS). Without this the printed ring stayed on
       // the hex and the Gate read as impassable.
-      if (location && location !== "creature_bank" && isBlockedFieldCarve({ location })) {
+      if (
+        location &&
+        location !== "creature_bank" &&
+        isBlockedFieldCarve({ location })
+      ) {
         borderlessOverrideSlots.add(slot);
       }
       if (location && fieldOverridePresentation(location)) {
@@ -1784,12 +2168,18 @@ export function HexMapBoard({
     });
     const printedBordersFixed = printedBordersSurviveCarve(tile);
     const borderSegments = tileDef
-      ? getTileBorderSegments(tileDef, printedBordersFixed ? EMPTY_SLOT_SET : bankSlots, {
-          extraBorders: tile.extraBorders,
-          borderEdges: tile.borderEdges,
-          rotation: tile.rotation,
-          borderlessSlots: printedBordersFixed ? EMPTY_SLOT_SET : borderlessOverrideSlots
-        })
+      ? getTileBorderSegments(
+          tileDef,
+          printedBordersFixed ? EMPTY_SLOT_SET : bankSlots,
+          {
+            extraBorders: tile.extraBorders,
+            borderEdges: tile.borderEdges,
+            rotation: tile.rotation,
+            borderlessSlots: printedBordersFixed
+              ? EMPTY_SLOT_SET
+              : borderlessOverrideSlots,
+          },
+        )
       : [];
     for (const [slot, coord] of footprint.entries()) {
       const spaceId = `h:${coord.row}:${coord.col}`;
@@ -1809,14 +2199,18 @@ export function HexMapBoard({
       const revisitAction = revisitActionBySpace.get(spaceId);
       const teleportTarget = teleportChoice?.targets.get(spaceId);
       const gateCandidateIndex =
-        gatePlacementOpen?.candidates.findIndex((candidate) => candidate.hex === spaceId) ?? -1;
+        gatePlacementOpen?.candidates.findIndex(
+          (candidate) => candidate.hex === spaceId,
+        ) ?? -1;
       const isGateCandidate = gateCandidateIndex >= 0;
       const isGateSelected = gatePlacementChoice?.selectedHex === spaceId;
-      const guarded = Boolean(field.difficulty) && !field.blackCube && !field.everFlagged;
+      const guarded =
+        Boolean(field.difficulty) && !field.blackCube && !field.everFlagged;
       // Designer-ALTERED guard (custom army / level / forced settlement fight):
       // surface what the player will face in the hex tooltip so an altered fight
       // reads clearly on the map (the pre-attack confirm float warns again).
-      const alteredGuardPreview = guarded && field.designedGuard ? designedGuardPreview(field) : null;
+      const alteredGuardPreview =
+        guarded && field.designedGuard ? designedGuardPreview(field) : null;
       const alteredGuardTip = alteredGuardPreview
         ? alteredGuardPreview.units.length > 0
           ? ` — ALTERED by the map designer: ${alteredGuardPreview.units.join(", ")}`
@@ -1825,13 +2219,15 @@ export function HexMapBoard({
       // Designer first-clear reward (center / object / token / settlement) —
       // public once revealed; hide after the once-only latch fires.
       const designerRewardClaimed = Boolean(
-        field.centerHexClaimed || field.viiBonusClaimed || field.designerRewardClaimed
+        field.centerHexClaimed ||
+        field.viiBonusClaimed ||
+        field.designerRewardClaimed,
       );
       const designerRewardSummary = !designerRewardClaimed
         ? describeFieldReward({
             ...(field.viiReward ?? {}),
             ...(field.centerHexReward ?? {}),
-            ...(field.designerReward ?? {})
+            ...(field.designerReward ?? {}),
           })
         : "";
       const designerVp = !designerRewardClaimed
@@ -1842,7 +2238,9 @@ export function HexMapBoard({
       // draws from the same value, so the crest is fixed. The GATE position and
       // the defender layout stay hidden until the army is set.
       const randomTownFaction =
-        field.location === "random_town" && field.faction ? field.faction : null;
+        field.location === "random_town" && field.faction
+          ? field.faction
+          : null;
       const randomTownFactionName = randomTownFaction
         ? (coreFactionDefinitions[randomTownFaction]?.name ?? randomTownFaction)
         : "";
@@ -1851,21 +2249,30 @@ export function HexMapBoard({
         : "";
       const designerRewardTip =
         designerRewardSummary || designerVp > 0
-          ? ` — Reward: ${[designerRewardSummary, designerVp > 0 ? `+${designerVp} VP` : ""]
+          ? ` — Reward: ${[
+              designerRewardSummary,
+              designerVp > 0 ? `+${designerVp} VP` : "",
+            ]
               .filter(Boolean)
               .join(" · ")}`
           : "";
       // Field Override kinds without hex art yet fall back to their registered
       // glyph so an art-less carve is a visible hex in icon mode (art wins once
       // it ships — fieldOverrideGlyph returns undefined then).
-      const glyph = LOCATION_GLYPHS[field.location] ?? fieldOverrideGlyph(field.location) ?? "";
+      const glyph =
+        LOCATION_GLYPHS[field.location] ??
+        fieldOverrideGlyph(field.location) ??
+        "";
       // Field Override (WOG / anime) hex OR a PvE-module site (Calamity Gate /
       // Rift Lair / The Dungeon): resolve its name + printed summary so the
       // hover tooltip and the click-to-inspect float can tell the player what
       // visiting does — data-driven, so every kind is covered. (The module
       // sites previously showed NO description anywhere — the 2026-08-19
       // "Dungeon shows no description at all" report.)
-      const overrideInfo = mapObjectPresentation(field.location, adventure.pveTheme);
+      const overrideInfo = mapObjectPresentation(
+        field.location,
+        adventure.pveTheme,
+      );
       const isSelected = selectedTarget?.spaceId === spaceId;
 
       cells.push(
@@ -1877,11 +2284,13 @@ export function HexMapBoard({
             remindMove ? "moveTargetLocked" : "",
             teleportTarget ? "teleportTarget" : "",
             endTurnMove ? "endTurnMoveTarget" : "",
-            mapChoice || revisitAction || isGateSelected ? "mapChoiceTarget" : "",
+            mapChoice || revisitAction || isGateSelected
+              ? "mapChoiceTarget"
+              : "",
             isGateCandidate && !isGateSelected ? "gateExitCandidate" : "",
             isSelected ? "selectedTarget" : "",
             alteredGuardPreview ? "alteredGuard" : "",
-            artShown ? "withArt" : ""
+            artShown ? "withArt" : "",
           ].join(" ")}
           data-space-id={spaceId}
           data-altered-guard={alteredGuardPreview ? "true" : undefined}
@@ -1898,75 +2307,84 @@ export function HexMapBoard({
                     }
                   }
                 : isGateCandidate
-                ? () => {
-                    if (suppressClickRef.current) {
-                      return;
-                    }
-                    // The visual way to set a Subterranean Gate exit: click the
-                    // glowing hex you want and it is placed there right away — no
-                    // dependence on a cycle float that could scroll off-screen or
-                    // hide behind a die animation (the old "the window disappears
-                    // and won't work"). Falls back to just selecting if the engine
-                    // did not offer this option (should not happen).
-                    const place = gatePlacementOpen
-                      ? legalActions.find(
-                          (legal) =>
-                            legal.action.type === "CHOOSE_OPTION" &&
-                            legal.action.choiceId === gatePlacementOpen.choiceId &&
-                            legal.action.optionIndex === gateCandidateIndex
-                        )?.action
-                      : undefined;
-                    if (place) {
-                      onAction(place);
-                    } else {
-                      setGatePickIndex(gateCandidateIndex);
-                    }
-                  }
-                : mapChoice
-                ? () => {
-                    if (!suppressClickRef.current) {
-                      onAction(mapChoice);
-                    }
-                  }
-                : endTurnMove
-                ? () => {
-                    if (suppressClickRef.current) {
-                      return;
-                    }
-                    onAction(endTurnMove);
-                  }
-                : revisitAction
-                  ? () => {
-                      if (!suppressClickRef.current) {
-                        onAction(revisitAction);
-                      }
-                    }
-                : target
                   ? () => {
                       if (suppressClickRef.current) {
                         return;
                       }
-                      setSelectedTarget(selectedTarget?.spaceId === spaceId ? null : target);
-                    }
-                  : remindMove
-                    ? () => {
-                        if (suppressClickRef.current) {
-                          return;
-                        }
-                        remindToDraw(spaceId);
+                      // The visual way to set a Subterranean Gate exit: click the
+                      // glowing hex you want and it is placed there right away — no
+                      // dependence on a cycle float that could scroll off-screen or
+                      // hide behind a die animation (the old "the window disappears
+                      // and won't work"). Falls back to just selecting if the engine
+                      // did not offer this option (should not happen).
+                      const place = gatePlacementOpen
+                        ? legalActions.find(
+                            (legal) =>
+                              legal.action.type === "CHOOSE_OPTION" &&
+                              legal.action.choiceId ===
+                                gatePlacementOpen.choiceId &&
+                              legal.action.optionIndex === gateCandidateIndex,
+                          )?.action
+                        : undefined;
+                      if (place) {
+                        onAction(place);
+                      } else {
+                        setGatePickIndex(gateCandidateIndex);
                       }
-                    : alteredGuardPreview || designerRewardTip || overrideInfo
+                    }
+                  : mapChoice
+                    ? () => {
+                        if (!suppressClickRef.current) {
+                          onAction(mapChoice);
+                        }
+                      }
+                    : endTurnMove
                       ? () => {
-                          // Inspect a designer-altered object OR a Field Override
-                          // (WOG / anime) hex: click toggles a float with the
-                          // guard army / reward / override summary — the hover
-                          // tooltip's touch-friendly, readable twin.
                           if (suppressClickRef.current) {
                             return;
                           }
-                          setInspectGuardAt((current) => (current === spaceId ? null : spaceId));
+                          onAction(endTurnMove);
                         }
-                      : undefined
+                      : revisitAction
+                        ? () => {
+                            if (!suppressClickRef.current) {
+                              onAction(revisitAction);
+                            }
+                          }
+                        : target
+                          ? () => {
+                              if (suppressClickRef.current) {
+                                return;
+                              }
+                              setSelectedTarget(
+                                selectedTarget?.spaceId === spaceId
+                                  ? null
+                                  : target,
+                              );
+                            }
+                          : remindMove
+                            ? () => {
+                                if (suppressClickRef.current) {
+                                  return;
+                                }
+                                remindToDraw(spaceId);
+                              }
+                            : alteredGuardPreview ||
+                                designerRewardTip ||
+                                overrideInfo
+                              ? () => {
+                                  // Inspect a designer-altered object OR a Field Override
+                                  // (WOG / anime) hex: click toggles a float with the
+                                  // guard army / reward / override summary — the hover
+                                  // tooltip's touch-friendly, readable twin.
+                                  if (suppressClickRef.current) {
+                                    return;
+                                  }
+                                  setInspectGuardAt((current) =>
+                                    current === spaceId ? null : spaceId,
+                                  );
+                                }
+                              : undefined
           }
           points={hexCorners(x, y, HEX_SIZE - 1.2)}
         >
@@ -1978,7 +2396,9 @@ export function HexMapBoard({
             }${field.difficulty && guarded ? ` (guard ${ROMAN[field.difficulty]})` : ""}${randomTownFactionTip}${alteredGuardTip}${designerRewardTip}${
               overrideInfo ? ` — ${overrideInfo.summary}` : ""
             }${
-              field.flagOwnerId ? ` — flagged by ${state.players[field.flagOwnerId]?.name}` : ""
+              field.flagOwnerId
+                ? ` — flagged by ${state.players[field.flagOwnerId]?.name}`
+                : ""
             }${
               field.location === "subterranean_gate"
                 ? undergroundTile
@@ -1997,24 +2417,32 @@ export function HexMapBoard({
               teleportTarget
                 ? " — click to teleport your hero here"
                 : mapChoice
-                ? " — click to choose this location"
-                : revisitAction
-                  ? " — click to resolve this field (1 movement point)"
-                : endTurnMove
-                  ? " — click to move your hero here"
-                  : ""
+                  ? " — click to choose this location"
+                  : revisitAction
+                    ? " — click to resolve this field (1 movement point)"
+                    : endTurnMove
+                      ? " — click to move your hero here"
+                      : ""
             }`}
           </title>
-        </polygon>
+        </polygon>,
       );
 
       // Teleport travel picker: mark this destination hex as a glowing exit the
       // traveller can click, matching the tray option they'd otherwise press.
       if (teleportTarget) {
         overlays.push(
-          <text className="hexTeleportCue" key={`${spaceId}-teleport-cue`} textAnchor="middle" x={x} y={y + HEX_SIZE * 0.92}>
-            {teleportChoice?.kind === "whirlpool" ? "🌀 exit here" : "⇄ exit here"}
-          </text>
+          <text
+            className="hexTeleportCue"
+            key={`${spaceId}-teleport-cue`}
+            textAnchor="middle"
+            x={x}
+            y={y + HEX_SIZE * 0.92}
+          >
+            {teleportChoice?.kind === "whirlpool"
+              ? "🌀 exit here"
+              : "⇄ exit here"}
+          </text>,
         );
       }
 
@@ -2023,19 +2451,35 @@ export function HexMapBoard({
       // cave-mouth hex is a doorway they can step onto to open the tile beyond.
       if (field.location === "subterranean_gate" && (target || remindMove)) {
         overlays.push(
-          <text className="hexGateCue" key={`${spaceId}-gate-cue`} textAnchor="middle" x={x} y={y + HEX_SIZE * 0.92}>
+          <text
+            className="hexGateCue"
+            key={`${spaceId}-gate-cue`}
+            textAnchor="middle"
+            x={x}
+            y={y + HEX_SIZE * 0.92}
+          >
             {undergroundTile ? "↥ ascend" : "↧ descend"}
-          </text>
+          </text>,
         );
       }
 
       // A reachable Monolith/Whirlpool/Gate is a doorway too: cue the teleport so
       // players realise stepping on moves them across the map.
-      if ((isMapObjectLocation(field.location) || field.location === "oneway_entrance") && (target || remindMove)) {
+      if (
+        (isMapObjectLocation(field.location) ||
+          field.location === "oneway_entrance") &&
+        (target || remindMove)
+      ) {
         overlays.push(
-          <text className="hexGateCue" key={`${spaceId}-token-cue`} textAnchor="middle" x={x} y={y + HEX_SIZE * 0.92}>
+          <text
+            className="hexGateCue"
+            key={`${spaceId}-token-cue`}
+            textAnchor="middle"
+            x={x}
+            y={y + HEX_SIZE * 0.92}
+          >
             ⇄ teleport
-          </text>
+          </text>,
         );
       }
       // A teleport-object hex (Gate / Monolith / Whirlpool / one-way Monolith):
@@ -2063,7 +2507,7 @@ export function HexMapBoard({
               : tokenPlacementChoice.kind === "gate"
                 ? "⛩ gate here"
                 : "🌀 whirlpool here"}
-          </text>
+          </text>,
         );
       }
 
@@ -2079,7 +2523,7 @@ export function HexMapBoard({
             y={y + HEX_SIZE * 0.92}
           >
             ✨ place here
-          </text>
+          </text>,
         );
       }
 
@@ -2103,7 +2547,7 @@ export function HexMapBoard({
                 ? "🕳 gate"
                 : "🕳 path up"
               : "·"}
-          </text>
+          </text>,
         );
       }
 
@@ -2126,13 +2570,19 @@ export function HexMapBoard({
       // old full-hex stretch distorted the token art).
       const tokenImage =
         field.location === "subterranean_gate"
-          ? subterraneanGateTokenImage(undergroundTile ? "subterranean" : "surface")
+          ? subterraneanGateTokenImage(
+              undergroundTile ? "subterranean" : "surface",
+            )
           : field.location === "creature_bank"
             ? creatureBankFieldImage(field.bankId)
             : (moduleFieldArt ?? overrideArt);
       if (tokenImage) {
         // Clip landscape/field art to the hex (Creature Banks + Field Override objects).
-        if (field.location === "creature_bank" || Boolean(overrideArt) || Boolean(moduleFieldArt)) {
+        if (
+          field.location === "creature_bank" ||
+          Boolean(overrideArt) ||
+          Boolean(moduleFieldArt)
+        ) {
           // The bank's field-tile scan is landscape; clip it to the hex and use
           // "slice" (cover) so the structure fills the cell centred and
           // undistorted — the old "none" stretched it into the tall hex box,
@@ -2158,7 +2608,7 @@ export function HexMapBoard({
                 x={x - HEX_WIDTH / 2}
                 y={y - HEX_SIZE}
               />
-            </g>
+            </g>,
           );
         } else {
           overlays.push(
@@ -2174,12 +2624,15 @@ export function HexMapBoard({
               width={HEX_WIDTH}
               x={x - HEX_WIDTH / 2}
               y={y - HEX_SIZE}
-            />
+            />,
           );
         }
       }
       if (field.location === "dungeon_gate") {
-        const floor = Math.max(1, Math.min(10, state.players[viewerPlayerId]?.dungeonFloor ?? 1));
+        const floor = Math.max(
+          1,
+          Math.min(10, state.players[viewerPlayerId]?.dungeonFloor ?? 1),
+        );
         overlays.push(
           <g
             aria-label={`Your dungeon progress: floor ${floor}`}
@@ -2188,8 +2641,10 @@ export function HexMapBoard({
             transform={`translate(${x} ${y + HEX_SIZE * 0.66})`}
           >
             <rect height="13" rx="5" width="42" x="-21" y="-9" />
-            <text fontSize="6" letterSpacing="0.35" textAnchor="middle" y="0">FLOOR {floor}</text>
-          </g>
+            <text fontSize="6" letterSpacing="0.35" textAnchor="middle" y="0">
+              FLOOR {floor}
+            </text>
+          </g>,
         );
       }
       if (field.location === "creature_bank" && field.bankSize) {
@@ -2202,15 +2657,29 @@ export function HexMapBoard({
           >
             <circle className="coinOuter" r="11" />
             <circle className="coinInner" r="7.9" />
-            <text textAnchor="middle" y="2.5">{field.bankSize}</text>
-          </g>
+            <text textAnchor="middle" y="2.5">
+              {field.bankSize}
+            </text>
+          </g>,
         );
       }
-      if (!artShown && glyph && field.location !== "empty_field" && !tokenImage && !isTeleportMarkLocation(field.location)) {
+      if (
+        !artShown &&
+        glyph &&
+        field.location !== "empty_field" &&
+        !tokenImage &&
+        !isTeleportMarkLocation(field.location)
+      ) {
         overlays.push(
-          <text className="hexGlyph" key={`${spaceId}-glyph`} textAnchor="middle" x={x} y={y + 6}>
+          <text
+            className="hexGlyph"
+            key={`${spaceId}-glyph`}
+            textAnchor="middle"
+            x={x}
+            y={y + 6}
+          >
             {glyph}
-          </text>
+          </text>,
         );
       }
       // Modular field icons for atmosphere tiles that ship no baked bonuses
@@ -2223,10 +2692,13 @@ export function HexMapBoard({
           // enough breathing room to read the Heavenly Demon Palace tile
           // beneath them; the old scale nearly filled the entire hex.
           const iconScale =
-            symbol.kind === "resource" ? 0.62 :
-            symbol.kind === "treasure" ? 0.6 :
-            0.56;
-          const iconSize = HEX_SIZE * iconScale * (tileDef?.assets?.fieldSymbolScale ?? 1);
+            symbol.kind === "resource"
+              ? 0.62
+              : symbol.kind === "treasure"
+                ? 0.6
+                : 0.56;
+          const iconSize =
+            HEX_SIZE * iconScale * (tileDef?.assets?.fieldSymbolScale ?? 1);
           overlays.push(
             <image
               className="fieldSymbolModule"
@@ -2239,7 +2711,7 @@ export function HexMapBoard({
               width={iconSize}
               x={x - iconSize / 2}
               y={y - iconSize * (symbol.kind === "mine" ? 0.15 : 0.05)}
-            />
+            />,
           );
           if (symbol.amount != null && symbol.amount > 0) {
             overlays.push(
@@ -2251,7 +2723,7 @@ export function HexMapBoard({
                 y={y + HEX_SIZE * 0.62}
               >
                 {`↻${symbol.amount}`}
-              </text>
+              </text>,
             );
           }
           if (symbol.difficulty && guarded) {
@@ -2264,7 +2736,7 @@ export function HexMapBoard({
                 y={y - HEX_SIZE * 0.48}
               >
                 {ROMAN[symbol.difficulty]}
-              </text>
+              </text>,
             );
           }
         }
@@ -2281,9 +2753,15 @@ export function HexMapBoard({
         field.location === "subterranean_gate";
       if ((!artShown || designedGuardHex) && field.difficulty && guarded) {
         overlays.push(
-          <text className="hexDifficulty" key={`${spaceId}-diff`} textAnchor="middle" x={x} y={y - HEX_SIZE * 0.45}>
+          <text
+            className="hexDifficulty"
+            key={`${spaceId}-diff`}
+            textAnchor="middle"
+            x={x}
+            y={y - HEX_SIZE * 0.45}
+          >
             {ROMAN[field.difficulty]}
-          </text>
+          </text>,
         );
       }
       // A small gear marks a designer-ALTERED guard so an altered fight is
@@ -2298,7 +2776,7 @@ export function HexMapBoard({
             y={y - HEX_SIZE * 0.4}
           >
             ⚙
-          </text>
+          </text>,
         );
       }
       // A revealed Random Town wears the crest of the faction defending it, so
@@ -2321,7 +2799,7 @@ export function HexMapBoard({
             y={y - crestSize * 1.05}
           >
             <title>{`Defended by ${randomTownFactionName} units`}</title>
-          </image>
+          </image>,
         );
       }
       // A gift mark for an unclaimed designer first-clear reward.
@@ -2336,7 +2814,7 @@ export function HexMapBoard({
             y={y + HEX_SIZE * (alteredGuardPreview ? 0.05 : -0.4)}
           >
             ★
-          </text>
+          </text>,
         );
       }
       // Field Override (WOG / anime) hexes wear distinctive art; this small
@@ -2356,7 +2834,7 @@ export function HexMapBoard({
             <text textAnchor="middle" y="3.2">
               {overrideInfo.glyph}
             </text>
-          </g>
+          </g>,
         );
       }
       if (
@@ -2372,50 +2850,94 @@ export function HexMapBoard({
             transform={`translate(${x + HEX_SIZE * 0.48} ${y + HEX_SIZE * 0.48})`}
           >
             <circle r={9} />
-            <text textAnchor="middle" y={3.5}>🏆</text>
+            <text textAnchor="middle" y={3.5}>
+              🏆
+            </text>
             <title>Grail built here</title>
-          </g>
+          </g>,
         );
       }
       if (field.blackCube) {
         overlays.push(
-          <rect className="blackCube" height={9} key={`${spaceId}-cube`} width={9} x={x + HEX_SIZE * 0.36} y={y - HEX_SIZE * 0.62} />
+          <rect
+            className="blackCube"
+            height={9}
+            key={`${spaceId}-cube`}
+            width={9}
+            x={x + HEX_SIZE * 0.36}
+            y={y - HEX_SIZE * 0.62}
+          />,
         );
       }
       if (field.flagOwnerId) {
         overlays.push(
-          <g key={`${spaceId}-flag`} transform={`translate(${x - HEX_SIZE * 0.62}, ${y - HEX_SIZE * 0.72})`}>
+          <g
+            key={`${spaceId}-flag`}
+            transform={`translate(${x - HEX_SIZE * 0.62}, ${y - HEX_SIZE * 0.72})`}
+          >
             <line className="flagPole" x1={0} x2={0} y1={0} y2={16} />
-            <path d="M0 1 L11 4.5 L0 8 Z" fill={playerColor(state, field.flagOwnerId)} stroke="#1d1206" strokeWidth={0.7} />
-          </g>
+            <path
+              d="M0 1 L11 4.5 L0 8 Z"
+              fill={playerColor(state, field.flagOwnerId)}
+              stroke="#1d1206"
+              strokeWidth={0.7}
+            />
+          </g>,
         );
       }
       // Obelisks and Star Axes hold one cube per visitor: smaller flags for
       // every player beyond the first.
-      for (const [extraIndex, extraOwnerId] of (field.extraFlagOwnerIds ?? []).entries()) {
+      for (const [extraIndex, extraOwnerId] of (
+        field.extraFlagOwnerIds ?? []
+      ).entries()) {
         overlays.push(
           <g
             key={`${spaceId}-extra-flag-${extraOwnerId}`}
             transform={`translate(${x - HEX_SIZE * 0.62 + (extraIndex + 1) * 9}, ${y - HEX_SIZE * 0.6})`}
           >
             <line className="flagPole" x1={0} x2={0} y1={0} y2={12} />
-            <path d="M0 1 L8 3.5 L0 6 Z" fill={playerColor(state, extraOwnerId)} stroke="#1d1206" strokeWidth={0.6} />
-          </g>
+            <path
+              d="M0 1 L8 3.5 L0 6 Z"
+              fill={playerColor(state, extraOwnerId)}
+              stroke="#1d1206"
+              strokeWidth={0.6}
+            />
+          </g>,
         );
       }
       if (field.settlementResource) {
         overlays.push(
-          <text className="hexProduction" key={`${spaceId}-prod`} textAnchor="middle" x={x} y={y + HEX_SIZE * 0.72}>
-            {field.settlementResource === "buildingMaterials" ? "⚒" : field.settlementResource === "gold" ? "🪙" : "♦"}
-          </text>
+          <text
+            className="hexProduction"
+            key={`${spaceId}-prod`}
+            textAnchor="middle"
+            x={x}
+            y={y + HEX_SIZE * 0.72}
+          >
+            {field.settlementResource === "buildingMaterials"
+              ? "⚒"
+              : field.settlementResource === "gold"
+                ? "🪙"
+                : "♦"}
+          </text>,
         );
       }
       if (!artShown && field.resource && field.location === "mine") {
         overlays.push(
-          <text className="hexProduction" key={`${spaceId}-mine`} textAnchor="middle" x={x} y={y + HEX_SIZE * 0.72}>
-            {field.resource === "buildingMaterials" ? "⚒" : field.resource === "gold" ? "🪙" : "♦"}
+          <text
+            className="hexProduction"
+            key={`${spaceId}-mine`}
+            textAnchor="middle"
+            x={x}
+            y={y + HEX_SIZE * 0.72}
+          >
+            {field.resource === "buildingMaterials"
+              ? "⚒"
+              : field.resource === "gold"
+                ? "🪙"
+                : "♦"}
             {field.amount}
-          </text>
+          </text>,
         );
       }
       // Yellow border lines: printed outer arcs, blocked-field rings, internal
@@ -2429,22 +2951,26 @@ export function HexMapBoard({
         pushBorderLines(
           overlays,
           `${spaceId}-border-${segment.edge}`,
-          hexEdgeForDirection(x, y, HEX_SIZE - 1.2, direction)
+          hexEdgeForDirection(x, y, HEX_SIZE - 1.2, direction),
         );
       }
 
       // Hero pawns: separate top layer keyed by hero id so moves glide.
       const occupants = heroesBySpace.get(spaceId) ?? [];
       for (const [index, occupant] of occupants.entries()) {
-        const heroDef = occupant.heroDefId ? coreHeroDefinitions[occupant.heroDefId] : undefined;
+        const heroDef = occupant.heroDefId
+          ? coreHeroDefinitions[occupant.heroDefId]
+          : undefined;
         const portrait = heroDef?.portrait;
         const isOwnHero = occupant.playerId === viewerPlayerId;
         const carriesGrail =
           adventure.grail?.status === "carried" &&
           adventure.grail.carrierHeroId === occupant.heroId;
         // Only offer hero switching when the player actually has a second hero.
-        const canSelectHero = isOwnHero && hasSecondaryHero && myTurn && !readOnly;
-        const isActiveHero = isOwnHero && hasSecondaryHero && myHero?.id === occupant.heroId;
+        const canSelectHero =
+          isOwnHero && hasSecondaryHero && myTurn && !readOnly;
+        const isActiveHero =
+          isOwnHero && hasSecondaryHero && myHero?.id === occupant.heroId;
         heroPawns.push(
           <g
             className="heroPawn"
@@ -2468,7 +2994,7 @@ export function HexMapBoard({
               // through to the hex underneath. Re-enable it on a pawn the viewer
               // may switch to — otherwise its click-to-switch never fires and a
               // Secondary Hero can never be selected.
-              pointerEvents: canSelectHero ? "auto" : "none"
+              pointerEvents: canSelectHero ? "auto" : "none",
             }}
           >
             <circle className="heroPawnBase" r={12} />
@@ -2493,8 +3019,14 @@ export function HexMapBoard({
             ) : (
               <circle fill={playerColor(state, occupant.playerId)} r={9} />
             )}
-            <circle className="heroPawnRing" r={11} stroke={playerColor(state, occupant.playerId)} />
-            {isActiveHero ? <circle fill="none" r={13.5} stroke="#ffd34d" strokeWidth={2} /> : null}
+            <circle
+              className="heroPawnRing"
+              r={11}
+              stroke={playerColor(state, occupant.playerId)}
+            />
+            {isActiveHero ? (
+              <circle fill="none" r={13.5} stroke="#ffd34d" strokeWidth={2} />
+            ) : null}
             <line className="heroFlagPole" x1={0} x2={0} y1={-9} y2={-24} />
             <path
               d="M0 -23 L13 -19 L0 -15 Z"
@@ -2503,13 +3035,20 @@ export function HexMapBoard({
               strokeWidth={0.8}
             />
             {carriesGrail ? (
-              <g aria-label="Carrying the Grail" className="mapGrailToken heroGrailToken" role="img" transform="translate(10 8)">
+              <g
+                aria-label="Carrying the Grail"
+                className="mapGrailToken heroGrailToken"
+                role="img"
+                transform="translate(10 8)"
+              >
                 <circle r={7.5} />
-                <text textAnchor="middle" y={3}>🏆</text>
+                <text textAnchor="middle" y={3}>
+                  🏆
+                </text>
                 <title>Carrying the Grail</title>
               </g>
             ) : null}
-          </g>
+          </g>,
         );
       }
     }
@@ -2535,7 +3074,8 @@ export function HexMapBoard({
     const mapChoice = pendingMapChoiceTargets.get(spaceId);
     const revisitAction = revisitActionBySpace.get(spaceId);
     const teleportTarget = teleportChoice?.targets.get(spaceId);
-    const guarded = Boolean(field.difficulty) && !field.blackCube && !field.everFlagged;
+    const guarded =
+      Boolean(field.difficulty) && !field.blackCube && !field.everFlagged;
     const isSelected = selectedTarget?.spaceId === spaceId;
     cells.push(
       <polygon
@@ -2547,7 +3087,7 @@ export function HexMapBoard({
           teleportTarget ? "teleportTarget" : "",
           endTurnMove ? "endTurnMoveTarget" : "",
           mapChoice || revisitAction ? "mapChoiceTarget" : "",
-          isSelected ? "selectedTarget" : ""
+          isSelected ? "selectedTarget" : "",
         ].join(" ")}
         data-space-id={spaceId}
         fill={TERRAIN_COLORS.dirt}
@@ -2562,47 +3102,55 @@ export function HexMapBoard({
                   }
                 }
               : mapChoice
-              ? () => {
-                  if (!suppressClickRef.current) {
-                    onAction(mapChoice);
-                  }
-                }
-              : endTurnMove
                 ? () => {
                     if (!suppressClickRef.current) {
-                      onAction(endTurnMove);
+                      onAction(mapChoice);
                     }
                   }
-                : revisitAction
+                : endTurnMove
                   ? () => {
                       if (!suppressClickRef.current) {
-                        onAction(revisitAction);
+                        onAction(endTurnMove);
                       }
                     }
-                : target
-                  ? () => {
-                      if (!suppressClickRef.current) {
-                        setSelectedTarget(selectedTarget?.spaceId === spaceId ? null : target);
-                      }
-                    }
-                  : remindMove
+                  : revisitAction
                     ? () => {
                         if (!suppressClickRef.current) {
-                          remindToDraw(spaceId);
+                          onAction(revisitAction);
                         }
                       }
-                    : undefined
+                    : target
+                      ? () => {
+                          if (!suppressClickRef.current) {
+                            setSelectedTarget(
+                              selectedTarget?.spaceId === spaceId
+                                ? null
+                                : target,
+                            );
+                          }
+                        }
+                      : remindMove
+                        ? () => {
+                            if (!suppressClickRef.current) {
+                              remindToDraw(spaceId);
+                            }
+                          }
+                        : undefined
         }
         points={hexCorners(x, y, HEX_SIZE - 1.2)}
       >
         <title>
           {`${
-            field.location === "gate" ? `Gate (pair ${field.gatePair})` : locationDefinitions[field.location]?.name ?? field.location
+            field.location === "gate"
+              ? `Gate (pair ${field.gatePair})`
+              : (locationDefinitions[field.location]?.name ?? field.location)
           }${guarded && field.difficulty ? ` (guard ${ROMAN[field.difficulty]})` : ""} — a standalone object hex${
-            target ? ` — ${target.cost} movement point${target.cost === 1 ? "" : "s"}` : ""
+            target
+              ? ` — ${target.cost} movement point${target.cost === 1 ? "" : "s"}`
+              : ""
           }${revisitAction ? " — click to resolve this field (1 movement point)" : ""}`}
         </title>
-      </polygon>
+      </polygon>,
     );
     if (isTeleportMarkLocation(field.location)) {
       // Teleport objects (Gate / Monolith / one-way halves): the unified
@@ -2624,14 +3172,32 @@ export function HexMapBoard({
           width={HEX_WIDTH}
           x={x - HEX_WIDTH / 2}
           y={y - HEX_SIZE}
-        />
+        />,
       );
       if (field.location !== "garrison" && field.gatePair) {
         const color = GATE_PAIR_COLORS[field.gatePair];
         overlays.push(
-          <g className="hexGateMark" key={`standalone-${spaceId}-outpost-color`} style={{ pointerEvents: "none" }}>
-            <circle cx={x} cy={y} fill="none" r={HEX_SIZE * 0.55} stroke={color} strokeWidth={2.4} />
-            <circle cx={x + HEX_SIZE * 0.52} cy={y - HEX_SIZE * 0.56} fill={color} r={7} stroke="#160f06" strokeWidth={1} />
+          <g
+            className="hexGateMark"
+            key={`standalone-${spaceId}-outpost-color`}
+            style={{ pointerEvents: "none" }}
+          >
+            <circle
+              cx={x}
+              cy={y}
+              fill="none"
+              r={HEX_SIZE * 0.55}
+              stroke={color}
+              strokeWidth={2.4}
+            />
+            <circle
+              cx={x + HEX_SIZE * 0.52}
+              cy={y - HEX_SIZE * 0.56}
+              fill={color}
+              r={7}
+              stroke="#160f06"
+              strokeWidth={1}
+            />
             <text
               fill="#fff"
               fontSize={9}
@@ -2642,28 +3208,43 @@ export function HexMapBoard({
             >
               {field.gatePair}
             </text>
-          </g>
+          </g>,
         );
       }
     }
     // Outposts carry flags (the winner's marker; tents allow several).
     if (field.flagOwnerId) {
       overlays.push(
-        <g key={`standalone-${spaceId}-flag`} transform={`translate(${x - HEX_SIZE * 0.62}, ${y - HEX_SIZE * 0.72})`}>
+        <g
+          key={`standalone-${spaceId}-flag`}
+          transform={`translate(${x - HEX_SIZE * 0.62}, ${y - HEX_SIZE * 0.72})`}
+        >
           <line className="flagPole" x1={0} x2={0} y1={0} y2={16} />
-          <path d="M0 1 L11 4.5 L0 8 Z" fill={playerColor(state, field.flagOwnerId)} stroke="#1d1206" strokeWidth={0.7} />
-        </g>
+          <path
+            d="M0 1 L11 4.5 L0 8 Z"
+            fill={playerColor(state, field.flagOwnerId)}
+            stroke="#1d1206"
+            strokeWidth={0.7}
+          />
+        </g>,
       );
     }
-    for (const [extraIndex, extraOwnerId] of (field.extraFlagOwnerIds ?? []).entries()) {
+    for (const [extraIndex, extraOwnerId] of (
+      field.extraFlagOwnerIds ?? []
+    ).entries()) {
       overlays.push(
         <g
           key={`standalone-${spaceId}-extra-flag-${extraOwnerId}`}
           transform={`translate(${x - HEX_SIZE * 0.62 + (extraIndex + 1) * 9}, ${y - HEX_SIZE * 0.6})`}
         >
           <line className="flagPole" x1={0} x2={0} y1={0} y2={12} />
-          <path d="M0 1 L8 3.5 L0 6 Z" fill={playerColor(state, extraOwnerId)} stroke="#1d1206" strokeWidth={0.6} />
-        </g>
+          <path
+            d="M0 1 L8 3.5 L0 6 Z"
+            fill={playerColor(state, extraOwnerId)}
+            stroke="#1d1206"
+            strokeWidth={0.6}
+          />
+        </g>,
       );
     }
     if (
@@ -2679,16 +3260,24 @@ export function HexMapBoard({
           transform={`translate(${x + HEX_SIZE * 0.48} ${y + HEX_SIZE * 0.48})`}
         >
           <circle r={9} />
-          <text textAnchor="middle" y={3.5}>🏆</text>
+          <text textAnchor="middle" y={3.5}>
+            🏆
+          </text>
           <title>Grail built here</title>
-        </g>
+        </g>,
       );
     }
     if (guarded && field.difficulty) {
       overlays.push(
-        <text className="hexDifficulty" key={`standalone-${spaceId}-diff`} textAnchor="middle" x={x} y={y - HEX_SIZE * 0.45}>
+        <text
+          className="hexDifficulty"
+          key={`standalone-${spaceId}-diff`}
+          textAnchor="middle"
+          x={x}
+          y={y - HEX_SIZE * 0.45}
+        >
           {ROMAN[field.difficulty]}
-        </text>
+        </text>,
       );
     }
     // Designer yellow borders on the object hex — same bold casing+core the
@@ -2697,23 +3286,41 @@ export function HexMapBoard({
       pushBorderLines(
         overlays,
         `standalone-${spaceId}-border-${direction}`,
-        hexEdgeForDirection(x, y, HEX_SIZE - 0.8, direction)
+        hexEdgeForDirection(x, y, HEX_SIZE - 0.8, direction),
       );
     }
-    if ((isMapObjectLocation(field.location) || field.location === "oneway_entrance") && (target || remindMove)) {
+    if (
+      (isMapObjectLocation(field.location) ||
+        field.location === "oneway_entrance") &&
+      (target || remindMove)
+    ) {
       overlays.push(
-        <text className="hexGateCue" key={`standalone-${spaceId}-cue`} textAnchor="middle" x={x} y={y + HEX_SIZE * 0.92}>
+        <text
+          className="hexGateCue"
+          key={`standalone-${spaceId}-cue`}
+          textAnchor="middle"
+          x={x}
+          y={y + HEX_SIZE * 0.92}
+        >
           ⇄ teleport
-        </text>
+        </text>,
       );
     }
     // Teleport travel picker: this standalone object is one of the destinations
     // the traveller may click as an exit.
     if (teleportTarget) {
       overlays.push(
-        <text className="hexTeleportCue" key={`standalone-${spaceId}-teleport-cue`} textAnchor="middle" x={x} y={y + HEX_SIZE * 0.92}>
-          {teleportChoice?.kind === "whirlpool" ? "🌀 exit here" : "⇄ exit here"}
-        </text>
+        <text
+          className="hexTeleportCue"
+          key={`standalone-${spaceId}-teleport-cue`}
+          textAnchor="middle"
+          x={x}
+          y={y + HEX_SIZE * 0.92}
+        >
+          {teleportChoice?.kind === "whirlpool"
+            ? "🌀 exit here"
+            : "⇄ exit here"}
+        </text>,
       );
     }
     // Compact hero pawn(s) standing on the standalone hex. Like the tile-hex
@@ -2721,15 +3328,21 @@ export function HexMapBoard({
     // standalone hex underneath is a teleport object whose click fires its
     // revisit/travel, so a pointer-events:none pawn made an own hero standing
     // on a Monolith unselectable — every click "selected the monolith" instead.
-    for (const [index, occupant] of (heroesBySpace.get(spaceId) ?? []).entries()) {
-      const heroDef = occupant.heroDefId ? coreHeroDefinitions[occupant.heroDefId] : undefined;
+    for (const [index, occupant] of (
+      heroesBySpace.get(spaceId) ?? []
+    ).entries()) {
+      const heroDef = occupant.heroDefId
+        ? coreHeroDefinitions[occupant.heroDefId]
+        : undefined;
       const portrait = heroDef?.portrait;
       const isOwnHero = occupant.playerId === viewerPlayerId;
       const carriesGrail =
         adventure.grail?.status === "carried" &&
         adventure.grail.carrierHeroId === occupant.heroId;
-      const canSelectHero = isOwnHero && hasSecondaryHero && myTurn && !readOnly;
-      const isActiveHero = isOwnHero && hasSecondaryHero && myHero?.id === occupant.heroId;
+      const canSelectHero =
+        isOwnHero && hasSecondaryHero && myTurn && !readOnly;
+      const isActiveHero =
+        isOwnHero && hasSecondaryHero && myHero?.id === occupant.heroId;
       heroPawns.push(
         <g
           className="heroPawn"
@@ -2749,7 +3362,7 @@ export function HexMapBoard({
           style={{
             transform: `translate(${x + index * 10 - 5}px, ${y - 4}px)`,
             cursor: canSelectHero ? "pointer" : undefined,
-            pointerEvents: canSelectHero ? "auto" : "none"
+            pointerEvents: canSelectHero ? "auto" : "none",
           }}
         >
           <circle className="heroPawnBase" r={12} />
@@ -2772,18 +3385,36 @@ export function HexMapBoard({
           ) : (
             <circle fill={playerColor(state, occupant.playerId)} r={9} />
           )}
-          <circle className="heroPawnRing" r={11} stroke={playerColor(state, occupant.playerId)} />
-          {isActiveHero ? <circle fill="none" r={13.5} stroke="#ffd34d" strokeWidth={2} /> : null}
+          <circle
+            className="heroPawnRing"
+            r={11}
+            stroke={playerColor(state, occupant.playerId)}
+          />
+          {isActiveHero ? (
+            <circle fill="none" r={13.5} stroke="#ffd34d" strokeWidth={2} />
+          ) : null}
           <line className="heroFlagPole" x1={0} x2={0} y1={-9} y2={-24} />
-          <path d="M0 -23 L13 -19 L0 -15 Z" fill={playerColor(state, occupant.playerId)} stroke="#160d04" strokeWidth={0.8} />
+          <path
+            d="M0 -23 L13 -19 L0 -15 Z"
+            fill={playerColor(state, occupant.playerId)}
+            stroke="#160d04"
+            strokeWidth={0.8}
+          />
           {carriesGrail ? (
-            <g aria-label="Carrying the Grail" className="mapGrailToken heroGrailToken" role="img" transform="translate(10 8)">
+            <g
+              aria-label="Carrying the Grail"
+              className="mapGrailToken heroGrailToken"
+              role="img"
+              transform="translate(10 8)"
+            >
               <circle r={7.5} />
-              <text textAnchor="middle" y={3}>🏆</text>
+              <text textAnchor="middle" y={3}>
+                🏆
+              </text>
               <title>Carrying the Grail</title>
             </g>
           ) : null}
-        </g>
+        </g>,
       );
     }
   }
@@ -2813,7 +3444,7 @@ export function HexMapBoard({
               heroId: center.heroId,
               supplyIndex: placement.supplyIndex,
               centerRow: center.row,
-              centerCol: center.col
+              centerCol: center.col,
             });
           }}
         >
@@ -2828,10 +3459,16 @@ export function HexMapBoard({
           />
           {footprint.map((cell, index) => {
             const pixel = hexToPixel(cell, HEX_SIZE);
-            return <polygon className="ghostHex" key={index} points={hexCorners(pixel.x, pixel.y, HEX_SIZE - 2)} />;
+            return (
+              <polygon
+                className="ghostHex"
+                key={index}
+                points={hexCorners(pixel.x, pixel.y, HEX_SIZE - 2)}
+              />
+            );
           })}
           <title>Place the Far tile here (1 movement point)</title>
-        </g>
+        </g>,
       );
     }
   }
@@ -2849,16 +3486,19 @@ export function HexMapBoard({
         key="path-preview"
         markerEnd="url(#pathArrowHead)"
         points={points.map((point) => `${point.x},${point.y}`).join(" ")}
-      />
+      />,
     );
     const last = points[points.length - 1];
     pathOverlay.push(
-      <g key="path-cost" transform={`translate(${last.x + HEX_SIZE * 0.65}, ${last.y - HEX_SIZE * 0.65})`}>
+      <g
+        key="path-cost"
+        transform={`translate(${last.x + HEX_SIZE * 0.65}, ${last.y - HEX_SIZE * 0.65})`}
+      >
         <circle className="pathCostBadge" r={11} />
         <text className="pathCostText" textAnchor="middle" y={4}>
           {selectedTarget.cost}
         </text>
-      </g>
+      </g>,
     );
   }
   if (moveCue) {
@@ -2873,13 +3513,16 @@ export function HexMapBoard({
           key={moveCue.id}
           markerEnd="url(#pathArrowHead)"
           points={points.map((point) => `${point.x},${point.y}`).join(" ")}
-        />
+        />,
       );
     }
   }
 
   for (const placementTarget of observatoryTargets.placements) {
-    const { x, y } = hexToPixel({ row: placementTarget.row, col: placementTarget.col }, HEX_SIZE);
+    const { x, y } = hexToPixel(
+      { row: placementTarget.row, col: placementTarget.col },
+      HEX_SIZE,
+    );
     track(x, y);
     overlays.push(
       <g
@@ -2897,7 +3540,7 @@ export function HexMapBoard({
         <text textAnchor="middle" x={x} y={y + 5}>
           Place tile
         </text>
-      </g>
+      </g>,
     );
   }
 
@@ -2937,7 +3580,10 @@ export function HexMapBoard({
       return null;
     }
     if (!myTurn) {
-      if (parallelTurnsActive(state) && state.turn.completedPlayerIds.includes(viewerPlayerId)) {
+      if (
+        parallelTurnsActive(state) &&
+        state.turn.completedPlayerIds.includes(viewerPlayerId)
+      ) {
         const waiting = remainingParallelPlayerIds(state)
           .map((playerId) => state.players[playerId]?.name ?? playerId)
           .join(", ");
@@ -2955,7 +3601,9 @@ export function HexMapBoard({
     // instead of claiming the whole map is locked.
     if (parallelBlocker) {
       const name =
-        parallelBlocker === "table" ? "another player" : (state.players[parallelBlocker]?.name ?? parallelBlocker);
+        parallelBlocker === "table"
+          ? "another player"
+          : (state.players[parallelBlocker]?.name ?? parallelBlocker);
       return `${name}'s ${state.combat ? "battle" : "interaction"} is resolving — quiet moves only (fields that trigger nothing)`;
     }
     if (state.combat) {
@@ -3002,7 +3650,9 @@ export function HexMapBoard({
   // when `polishQuickCombatFieldInfo` returns a value — the rule is on AND the
   // field is an ordinary guarded neutral fight (never a Bank / exact-army /
   // teleport guard) — and the verdict mirrors the engine's own classifier.
-  const renderQuickCombatNote = (info: PolishQuickCombatFieldInfo): ReactNode => {
+  const renderQuickCombatNote = (
+    info: PolishQuickCombatFieldInfo,
+  ): ReactNode => {
     const verdict =
       info.outcome === "mandatory"
         ? "Covered — resolves as a Quick Combat (auto-win, no Experience)."
@@ -3012,10 +3662,13 @@ export function HexMapBoard({
             ? "Fight for Experience — your level matches this field."
             : "Army too weak for Quick Combat — you must fight.";
     return (
-      <div className={`quickCombatNote quickCombatNote-${info.outcome}`} role="note">
+      <div
+        className={`quickCombatNote quickCombatNote-${info.outcome}`}
+        role="note"
+      >
         <strong>
-          <span aria-hidden="true">⚡</span> Quick Combat — army strength {info.armyStrength} / needs{" "}
-          {info.requiredStrength}
+          <span aria-hidden="true">⚡</span> Quick Combat — army strength{" "}
+          {info.armyStrength} / needs {info.requiredStrength}
         </strong>
         <span>{verdict}</span>
       </div>
@@ -3031,28 +3684,42 @@ export function HexMapBoard({
   if (inspectGuardAt) {
     const coord = parseHexSpaceId(inspectGuardAt);
     const field = adventure?.fields[inspectGuardAt];
-    const overrideInspect = field ? mapObjectPresentation(field.location, adventure?.pveTheme) : null;
+    const overrideInspect = field
+      ? mapObjectPresentation(field.location, adventure?.pveTheme)
+      : null;
     const preview = designedGuardPreview(field);
     const inspectGuarded = Boolean(field && isFieldGuarded(field));
-    const inspectQuickCombat = field && myHero ? polishQuickCombatFieldInfo(state, myHero, field) : null;
+    const inspectQuickCombat =
+      field && myHero ? polishQuickCombatFieldInfo(state, myHero, field) : null;
     const inspectClaimed = Boolean(
-      field && (field.centerHexClaimed || field.viiBonusClaimed || field.designerRewardClaimed)
+      field &&
+      (field.centerHexClaimed ||
+        field.viiBonusClaimed ||
+        field.designerRewardClaimed),
     );
     const rewardSummary =
       field && !inspectClaimed
         ? describeFieldReward({
             ...(field.viiReward ?? {}),
             ...(field.centerHexReward ?? {}),
-            ...(field.designerReward ?? {})
+            ...(field.designerReward ?? {}),
           })
         : "";
     const rewardVp =
-      field && !inspectClaimed ? (field.centerHexVp ?? field.viiVp ?? field.designerRewardVp ?? 0) : 0;
+      field && !inspectClaimed
+        ? (field.centerHexVp ?? field.viiVp ?? field.designerRewardVp ?? 0)
+        : 0;
     // Guard line for a plain (non-designer) override guard — bi_canh / emerald_tower
     // etc. carry a printed difficulty but no `designedGuard`, so `preview` is null.
     const overrideGuardLevel =
-      overrideInspect && !preview && inspectGuarded && field?.difficulty ? field.difficulty : 0;
-    if (coord && field && (overrideInspect || preview || rewardSummary || rewardVp > 0)) {
+      overrideInspect && !preview && inspectGuarded && field?.difficulty
+        ? field.difficulty
+        : 0;
+    if (
+      coord &&
+      field &&
+      (overrideInspect || preview || rewardSummary || rewardVp > 0)
+    ) {
       mapFloats.push({
         key: "designed-guard-inspect-float",
         mapPoint: hexToPixel(coord, HEX_SIZE),
@@ -3081,23 +3748,31 @@ export function HexMapBoard({
                     src={assetUrl(overrideInspect.image)}
                   />
                 ) : overrideInspect.glyph ? (
-                  <span aria-hidden="true" className="fieldOverrideInspectGlyph">
+                  <span
+                    aria-hidden="true"
+                    className="fieldOverrideInspectGlyph"
+                  >
                     {overrideInspect.glyph}
                   </span>
                 ) : null}
                 <span className="fieldOverrideInspectName">
                   {overrideInspect.name}
-                  <span className="fieldOverrideInspectTag">{overrideInspect.packageTag}</span>
+                  <span className="fieldOverrideInspectTag">
+                    {overrideInspect.packageTag}
+                  </span>
                 </span>
               </span>
             ) : (
               <span className="mapFloatTitle">
                 <span aria-hidden="true">⚔</span>{" "}
-                {locationDefinitions[field.location]?.name ?? field.location} — altered by the map designer
+                {locationDefinitions[field.location]?.name ?? field.location} —
+                altered by the map designer
               </span>
             )}
             {overrideInspect ? (
-              <span className="fieldOverrideInspectSummary">{overrideInspect.summary}</span>
+              <span className="fieldOverrideInspectSummary">
+                {overrideInspect.summary}
+              </span>
             ) : null}
             {preview ? (
               <span className="designedGuardInspectUnits">
@@ -3111,16 +3786,22 @@ export function HexMapBoard({
               </span>
             ) : overrideGuardLevel ? (
               <span className="designedGuardInspectUnits">
-                Guarded — defeat the guard ({`level ${ROMAN[overrideGuardLevel] ?? overrideGuardLevel}`}) to visit.
+                Guarded — defeat the guard (
+                {`level ${ROMAN[overrideGuardLevel] ?? overrideGuardLevel}`}) to
+                visit.
               </span>
             ) : null}
             {rewardSummary || rewardVp > 0 ? (
               <span className="designedGuardInspectReward">
                 <span aria-hidden="true">★</span> First-clear reward:{" "}
-                {[rewardSummary, rewardVp > 0 ? `+${rewardVp} VP` : ""].filter(Boolean).join(" · ")}
+                {[rewardSummary, rewardVp > 0 ? `+${rewardVp} VP` : ""]
+                  .filter(Boolean)
+                  .join(" · ")}
               </span>
             ) : null}
-            {inspectQuickCombat ? renderQuickCombatNote(inspectQuickCombat) : null}
+            {inspectQuickCombat
+              ? renderQuickCombatNote(inspectQuickCombat)
+              : null}
             <button
               className="commandButton ghost"
               onClick={() => setInspectGuardAt(null)}
@@ -3129,7 +3810,7 @@ export function HexMapBoard({
               Close
             </button>
           </div>
-        )
+        ),
       });
     }
   }
@@ -3144,21 +3825,29 @@ export function HexMapBoard({
       // guard (or an already-owned field) keeps the plain "Move there".
       const destField = adventure?.fields[selectedTarget.spaceId];
       const alteredGuard =
-        destField && isFieldGuarded(destField) && destField.flagOwnerId !== viewerPlayerId
+        destField &&
+        isFieldGuarded(destField) &&
+        destField.flagOwnerId !== viewerPlayerId
           ? designedGuardPreview(destField)
           : null;
-      const quickCombat = destField ? polishQuickCombatFieldInfo(state, myHero, destField) : null;
+      const quickCombat = destField
+        ? polishQuickCombatFieldInfo(state, myHero, destField)
+        : null;
       // Show the destination map object's effect BEFORE the player commits to
       // moving there. Override/PvE-site hexes are reachable move targets now, so
       // clicking them opens THIS float rather than the click-to-inspect card —
       // without this the object's summary was no longer visible before moving.
-      const moveOverride = destField ? mapObjectPresentation(destField.location, adventure?.pveTheme) : null;
+      const moveOverride = destField
+        ? mapObjectPresentation(destField.location, adventure?.pveTheme)
+        : null;
       mapFloats.push({
         key: "move-confirm-float",
         mapPoint: hexToPixel(coord, HEX_SIZE),
         cardWidth: 236,
         cardHeight:
-          (alteredGuard ? 148 + (alteredGuard.units.length > 0 ? 16 : 0) : 104) +
+          (alteredGuard
+            ? 148 + (alteredGuard.units.length > 0 ? 16 : 0)
+            : 104) +
           (quickCombat ? 52 : 0) +
           (moveOverride ? 78 : 0),
         gap: HEX_SIZE * 0.62,
@@ -3182,20 +3871,28 @@ export function HexMapBoard({
                       src={assetUrl(moveOverride.image)}
                     />
                   ) : moveOverride.glyph ? (
-                    <span aria-hidden="true" className="fieldOverrideInspectGlyph">
+                    <span
+                      aria-hidden="true"
+                      className="fieldOverrideInspectGlyph"
+                    >
                       {moveOverride.glyph}
                     </span>
                   ) : null}
                   <span className="fieldOverrideInspectName">
                     {moveOverride.name}
-                    <span className="fieldOverrideInspectTag">{moveOverride.packageTag}</span>
+                    <span className="fieldOverrideInspectTag">
+                      {moveOverride.packageTag}
+                    </span>
                   </span>
                 </span>
-                <span className="fieldOverrideInspectSummary">{moveOverride.summary}</span>
+                <span className="fieldOverrideInspectSummary">
+                  {moveOverride.summary}
+                </span>
               </>
             ) : null}
             <span className="mapFloatLabel">
-              <span aria-hidden="true">🐎</span> Move {cost} field{cost === 1 ? "" : "s"} ({cost} MP)
+              <span aria-hidden="true">🐎</span> Move {cost} field
+              {cost === 1 ? "" : "s"} ({cost} MP)
             </span>
             {alteredGuard ? (
               <div className="alteredGuardWarn" role="note">
@@ -3205,11 +3902,16 @@ export function HexMapBoard({
                 {alteredGuard.units.length > 0 ? (
                   <span>
                     You will face {alteredGuard.units.join(", ")}
-                    {alteredGuard.difficulty ? ` (guard ${ROMAN[alteredGuard.difficulty] ?? alteredGuard.difficulty})` : ""}.
+                    {alteredGuard.difficulty
+                      ? ` (guard ${ROMAN[alteredGuard.difficulty] ?? alteredGuard.difficulty})`
+                      : ""}
+                    .
                   </span>
                 ) : (
                   <span>
-                    A guard {ROMAN[alteredGuard.difficulty] ?? alteredGuard.difficulty} army defends this field.
+                    A guard{" "}
+                    {ROMAN[alteredGuard.difficulty] ?? alteredGuard.difficulty}{" "}
+                    army defends this field.
                   </span>
                 )}
               </div>
@@ -3223,7 +3925,7 @@ export function HexMapBoard({
                     type: "MOVE_HERO_PATH",
                     playerId: viewerPlayerId,
                     heroId: myHero.id,
-                    path: selectedTarget.path
+                    path: selectedTarget.path,
                   });
                   setSelectedTarget(null);
                 }}
@@ -3231,12 +3933,16 @@ export function HexMapBoard({
               >
                 <Check size={13} /> {alteredGuard ? "Attack" : "Move there"}
               </button>
-              <button className="commandButton ghost" onClick={() => setSelectedTarget(null)} type="button">
+              <button
+                className="commandButton ghost"
+                onClick={() => setSelectedTarget(null)}
+                type="button"
+              >
                 <X size={13} /> Cancel
               </button>
             </div>
           </div>
-        )
+        ),
       });
     }
   }
@@ -3254,9 +3960,11 @@ export function HexMapBoard({
         gap: HEX_SIZE * 0.62,
         render: () => (
           <div className="mapFloatCard drawReminderFloat" role="status">
-            <span className="mapFloatLabel">⚠ Take your start-of-turn draw first</span>
+            <span className="mapFloatLabel">
+              ⚠ Take your start-of-turn draw first
+            </span>
           </div>
-        )
+        ),
       });
     }
   }
@@ -3275,11 +3983,12 @@ export function HexMapBoard({
         render: () => (
           <div className="mapFloatCard gateHintFloat" role="status">
             <span className="mapFloatLabel">
-              ⛰ You can&apos;t discover an Underground tile from the Surface. Reach a Subterranean Gate (the cave-mouth
-              hex on a revealed tile) and step onto it — the tile beyond opens for free.
+              ⛰ You can&apos;t discover an Underground tile from the Surface.
+              Reach a Subterranean Gate (the cave-mouth hex on a revealed tile)
+              and step onto it — the tile beyond opens for free.
             </span>
           </div>
-        )
+        ),
       });
     }
   }
@@ -3293,7 +4002,7 @@ export function HexMapBoard({
         (legal) =>
           legal.action.type === "CHOOSE_OPTION" &&
           legal.action.choiceId === gatePlacementOpen.choiceId &&
-          legal.action.optionIndex === gatePlacementChoice.selectedIndex
+          legal.action.optionIndex === gatePlacementChoice.selectedIndex,
       )?.action;
       mapFloats.push({
         key: "gate-exit-float",
@@ -3311,7 +4020,8 @@ export function HexMapBoard({
             role="dialog"
           >
             <span className="mapFloatTitle">
-              {gatePlacementChoice.role === "gate" ? "Gate exit" : "Path up"} — click a glowing hex
+              {gatePlacementChoice.role === "gate" ? "Gate exit" : "Path up"} —
+              click a glowing hex
             </span>
             <small className="mapFloatLabel">{gatePlacementChoice.label}</small>
             <div className="mapFloatButtons rotateFloatRow">
@@ -3320,7 +4030,9 @@ export function HexMapBoard({
                 disabled={gatePlacementChoice.count <= 1}
                 onClick={() =>
                   setGatePickIndex(
-                    (value) => (value + gatePlacementChoice.count - 1) % gatePlacementChoice.count
+                    (value) =>
+                      (value + gatePlacementChoice.count - 1) %
+                      gatePlacementChoice.count,
                   )
                 }
                 title="Previous exit position"
@@ -3329,12 +4041,17 @@ export function HexMapBoard({
                 <RotateCcw size={14} />
               </button>
               <span className="rotateDegrees">
-                {gatePlacementChoice.selectedIndex + 1}/{gatePlacementChoice.count}
+                {gatePlacementChoice.selectedIndex + 1}/
+                {gatePlacementChoice.count}
               </span>
               <button
                 className="commandButton"
                 disabled={gatePlacementChoice.count <= 1}
-                onClick={() => setGatePickIndex((value) => (value + 1) % gatePlacementChoice.count)}
+                onClick={() =>
+                  setGatePickIndex(
+                    (value) => (value + 1) % gatePlacementChoice.count,
+                  )
+                }
                 title="Next exit position"
                 type="button"
               >
@@ -3354,7 +4071,7 @@ export function HexMapBoard({
               </button>
             </div>
           </div>
-        )
+        ),
       });
     }
   }
@@ -3362,7 +4079,10 @@ export function HexMapBoard({
   if (pendingTileChoice && rotatingTile) {
     mapFloats.push({
       key: "rotate-float",
-      mapPoint: hexToPixel({ row: rotatingTile.centerRow, col: rotatingTile.centerCol }, HEX_SIZE),
+      mapPoint: hexToPixel(
+        { row: rotatingTile.centerRow, col: rotatingTile.centerCol },
+        HEX_SIZE,
+      ),
       cardWidth: iAmRotating ? 272 : 230,
       cardHeight: iAmRotating ? 158 : 70,
       // The rotating tile spans a 5-hex-tall flower; clear its top edge so the
@@ -3408,7 +4128,7 @@ export function HexMapBoard({
                     type: "SET_TILE_ROTATION",
                     playerId: viewerPlayerId,
                     tileInstanceId: rotatingTile.id,
-                    rotation: previewRotation
+                    rotation: previewRotation,
                   })
                 }
                 type="button"
@@ -3419,9 +4139,12 @@ export function HexMapBoard({
           </div>
         ) : (
           <div className="mapFloatCard passive">
-            <small>{state.players[pendingTileChoice.playerId]?.name ?? "A player"} is rotating the new tile…</small>
+            <small>
+              {state.players[pendingTileChoice.playerId]?.name ?? "A player"} is
+              rotating the new tile…
+            </small>
           </div>
-        )
+        ),
     });
   }
 
@@ -3447,10 +4170,32 @@ export function HexMapBoard({
       const markWidth = HEX_WIDTH * 0.6;
       const markHeight = 2 * HEX_SIZE * 0.6;
       overlays.push(
-        <g key={`gate-plan-${hex}`} className="gatePlanMarker" style={{ pointerEvents: "none" }}>
-          <title>A Subterranean Gate opens here — descend/ascend once this tile is revealed.</title>
-          <circle cx={x} cy={y} fill="#5b3f24" opacity={0.3} r={HEX_SIZE * 0.52} />
-          <circle cx={x} cy={y} fill="none" opacity={0.85} r={HEX_SIZE * 0.52} stroke="#e0b562" strokeDasharray="4 3" strokeWidth={2} />
+        <g
+          key={`gate-plan-${hex}`}
+          className="gatePlanMarker"
+          style={{ pointerEvents: "none" }}
+        >
+          <title>
+            A Subterranean Gate opens here — descend/ascend once this tile is
+            revealed.
+          </title>
+          <circle
+            cx={x}
+            cy={y}
+            fill="#5b3f24"
+            opacity={0.3}
+            r={HEX_SIZE * 0.52}
+          />
+          <circle
+            cx={x}
+            cy={y}
+            fill="none"
+            opacity={0.85}
+            r={HEX_SIZE * 0.52}
+            stroke="#e0b562"
+            strokeDasharray="4 3"
+            strokeWidth={2}
+          />
           <image
             height={markHeight}
             href={assetUrl(subterraneanGateTokenImage("surface"))}
@@ -3460,7 +4205,7 @@ export function HexMapBoard({
             x={x - markWidth / 2}
             y={y - markHeight / 2}
           />
-        </g>
+        </g>,
       );
     }
   }
@@ -3471,164 +4216,212 @@ export function HexMapBoard({
     // inner z-index below the Far-tile tray overlay, z-index 6) while anchoring
     // to the exact same box.
     <div className="hexMapOuter">
-    <div className="hexMapWrap" aria-label="Adventure map">
-      <svg
-        ref={svgRef}
-        className={`hexMapSvg ${isDragging ? "dragging" : ""}`}
-        onPointerDown={(event) => {
-          if (event.button !== 0) {
-            return;
-          }
-          pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
-          if (pointersRef.current.size === 1) {
-            // A fresh press always re-arms clicking: if a previous gesture was
-            // cancelled mid-drag (tab switch, touch scroll), the suppress flag
-            // must not keep eating every later click on the map.
-            suppressClickRef.current = false;
-            dragRef.current = {
-              pointerId: event.pointerId,
-              startX: event.clientX,
-              startY: event.clientY,
-              originX: camera.x,
-              originY: camera.y,
-              moved: false
-            };
-            return;
-          }
-          // A second (or later) finger: this is a multi-touch gesture, never a
-          // click — and the single-pointer pan hands over to the pinch.
-          suppressClickRef.current = true;
-          if (pointersRef.current.size === 2) {
-            dragRef.current = null;
-            setIsDragging(false);
-            const [[aId, a], [bId, b]] = [...pointersRef.current.entries()];
-            pinchRef.current = { aId, bId, start: { camera, a: { ...a }, b: { ...b } } };
-            const svg = event.currentTarget as Element;
-            try {
-              svg.setPointerCapture(aId);
-              svg.setPointerCapture(bId);
-            } catch {
-              // jsdom / detached element — the gesture still works uncaptured.
-            }
-          }
-        }}
-        onPointerMove={(event) => {
-          const tracked = pointersRef.current.get(event.pointerId);
-          if (tracked) {
-            tracked.x = event.clientX;
-            tracked.y = event.clientY;
-          }
-          const pinch = pinchRef.current;
-          if (pinch) {
-            if (event.pointerId !== pinch.aId && event.pointerId !== pinch.bId) {
+      <div className="hexMapWrap" aria-label="Adventure map">
+        <svg
+          ref={svgRef}
+          className={`hexMapSvg ${isDragging ? "dragging" : ""}`}
+          onPointerDown={(event) => {
+            if (event.button !== 0) {
               return;
             }
-            const a = pointersRef.current.get(pinch.aId);
-            const b = pointersRef.current.get(pinch.bId);
-            const svg = svgRef.current;
-            if (!a || !b || !svg) {
+            pointersRef.current.set(event.pointerId, {
+              x: event.clientX,
+              y: event.clientY,
+            });
+            if (pointersRef.current.size === 1) {
+              // A fresh press always re-arms clicking: if a previous gesture was
+              // cancelled mid-drag (tab switch, touch scroll), the suppress flag
+              // must not keep eating every later click on the map.
+              suppressClickRef.current = false;
+              dragRef.current = {
+                pointerId: event.pointerId,
+                startX: event.clientX,
+                startY: event.clientY,
+                originX: camera.x,
+                originY: camera.y,
+                moved: false,
+              };
               return;
             }
-            const rect = svg.getBoundingClientRect();
-            setCamera(
-              pinchCamera(pinch.start, a, b, rect, {
-                minX,
-                minY,
-                width: maxX - minX,
-                height: maxY - minY
-              })
-            );
-            return;
-          }
-          const drag = dragRef.current;
-          if (!drag || drag.pointerId !== event.pointerId) {
-            return;
-          }
-          const dx = event.clientX - drag.startX;
-          const dy = event.clientY - drag.startY;
-          if (!drag.moved && Math.abs(dx) + Math.abs(dy) > 6) {
-            drag.moved = true;
+            // A second (or later) finger: this is a multi-touch gesture, never a
+            // click — and the single-pointer pan hands over to the pinch.
             suppressClickRef.current = true;
-            setIsDragging(true);
-            // Capture only once a real drag starts, so plain clicks keep
-            // dispatching to the hex cells underneath.
-            (event.currentTarget as Element).setPointerCapture(event.pointerId);
-          }
-          if (drag.moved) {
-            setCamera((current) => ({ ...current, x: drag.originX + dx, y: drag.originY + dy }));
-          }
-        }}
-        onPointerUp={(event) => releaseMapPointer(event.pointerId)}
-        onPointerCancel={(event) => {
-          // Browsers cancel pointers on touch-scroll or focus loss; without
-          // this the drag state lingered and the map stopped taking clicks.
-          releaseMapPointer(event.pointerId);
-        }}
-        onLostPointerCapture={(event) => releaseMapPointer(event.pointerId)}
-        viewBox={`${minX} ${minY} ${maxX - minX} ${maxY - minY}`}
-      >
-        <defs>
-          <marker id="pathArrowHead" markerHeight={7} markerWidth={7} orient="auto-start-reverse" refX={5.4} refY={3}>
-            <path d="M0,0 L7,3 L0,6 Z" fill="#ffd766" />
-          </marker>
-        </defs>
-        <g style={{ transformOrigin: "center" }} transform={`translate(${camera.x} ${camera.y}) scale(${camera.scale})`}>
-          {artLayer}
-          {cells}
-          {overlays}
-          {pathOverlay}
-          {heroPawns}
-        </g>
-      </svg>
+            if (pointersRef.current.size === 2) {
+              dragRef.current = null;
+              setIsDragging(false);
+              const [[aId, a], [bId, b]] = [...pointersRef.current.entries()];
+              pinchRef.current = {
+                aId,
+                bId,
+                start: { camera, a: { ...a }, b: { ...b } },
+              };
+              const svg = event.currentTarget as Element;
+              try {
+                svg.setPointerCapture(aId);
+                svg.setPointerCapture(bId);
+              } catch {
+                // jsdom / detached element — the gesture still works uncaptured.
+              }
+            }
+          }}
+          onPointerMove={(event) => {
+            const tracked = pointersRef.current.get(event.pointerId);
+            if (tracked) {
+              tracked.x = event.clientX;
+              tracked.y = event.clientY;
+            }
+            const pinch = pinchRef.current;
+            if (pinch) {
+              if (
+                event.pointerId !== pinch.aId &&
+                event.pointerId !== pinch.bId
+              ) {
+                return;
+              }
+              const a = pointersRef.current.get(pinch.aId);
+              const b = pointersRef.current.get(pinch.bId);
+              const svg = svgRef.current;
+              if (!a || !b || !svg) {
+                return;
+              }
+              const rect = svg.getBoundingClientRect();
+              setCamera(
+                pinchCamera(pinch.start, a, b, rect, {
+                  minX,
+                  minY,
+                  width: maxX - minX,
+                  height: maxY - minY,
+                }),
+              );
+              return;
+            }
+            const drag = dragRef.current;
+            if (!drag || drag.pointerId !== event.pointerId) {
+              return;
+            }
+            const dx = event.clientX - drag.startX;
+            const dy = event.clientY - drag.startY;
+            if (!drag.moved && Math.abs(dx) + Math.abs(dy) > 6) {
+              drag.moved = true;
+              suppressClickRef.current = true;
+              setIsDragging(true);
+              // Capture only once a real drag starts, so plain clicks keep
+              // dispatching to the hex cells underneath.
+              (event.currentTarget as Element).setPointerCapture(
+                event.pointerId,
+              );
+            }
+            if (drag.moved) {
+              setCamera((current) => ({
+                ...current,
+                x: drag.originX + dx,
+                y: drag.originY + dy,
+              }));
+            }
+          }}
+          onPointerUp={(event) => releaseMapPointer(event.pointerId)}
+          onPointerCancel={(event) => {
+            // Browsers cancel pointers on touch-scroll or focus loss; without
+            // this the drag state lingered and the map stopped taking clicks.
+            releaseMapPointer(event.pointerId);
+          }}
+          onLostPointerCapture={(event) => releaseMapPointer(event.pointerId)}
+          viewBox={`${minX} ${minY} ${maxX - minX} ${maxY - minY}`}
+        >
+          <defs>
+            <marker
+              id="pathArrowHead"
+              markerHeight={7}
+              markerWidth={7}
+              orient="auto-start-reverse"
+              refX={5.4}
+              refY={3}
+            >
+              <path d="M0,0 L7,3 L0,6 Z" fill="#ffd766" />
+            </marker>
+          </defs>
+          <g
+            style={{ transformOrigin: "center" }}
+            transform={`translate(${camera.x} ${camera.y}) scale(${camera.scale})`}
+          >
+            {artLayer}
+            {cells}
+            {overlays}
+            {pathOverlay}
+            {heroPawns}
+          </g>
+        </svg>
 
-      <div className="mapToolbar" aria-label="Map controls">
-        <button onClick={() => setCamera((c) => ({ ...c, scale: Math.min(MAP_SCALE_MAX, c.scale * 1.2) }))} title="Zoom in" type="button">
-          <Plus size={13} />
-        </button>
-        <button onClick={() => setCamera((c) => ({ ...c, scale: Math.max(MAP_SCALE_MIN, c.scale / 1.2) }))} title="Zoom out" type="button">
-          <Minus size={13} />
-        </button>
-        <button
-          aria-pressed={wheelZoomEnabled}
-          className={wheelZoomEnabled ? "selected" : ""}
-          onClick={() => setWheelZoomEnabled((value) => !value)}
-          title={
-            wheelZoomEnabled
-              ? "Mouse-wheel zoom is ON — scroll over the map to zoom. Click to lock it (wheel scrolls the page)."
-              : "Mouse-wheel zoom is locked. Click to unlock and zoom with the scroll wheel."
-          }
-          type="button"
-        >
-          {wheelZoomEnabled ? <Unlock size={13} /> : <Lock size={13} />}
-        </button>
-        <button onClick={() => setCamera({ x: 0, y: 0, scale: 1 })} title="Reset the view" type="button">
-          ⤾
-        </button>
-        <button
-          aria-pressed={showArt}
-          className={showArt ? "selected" : ""}
-          onClick={() => setShowArt((value) => !value)}
-          title="Toggle the printed tile art layer (real graphics drop in here)"
-          type="button"
-        >
-          <ImageIcon size={13} />
-        </button>
+        <div className="mapToolbar" aria-label="Map controls">
+          <button
+            onClick={() =>
+              setCamera((c) => ({
+                ...c,
+                scale: Math.min(MAP_SCALE_MAX, c.scale * 1.2),
+              }))
+            }
+            title="Zoom in"
+            type="button"
+          >
+            <Plus size={13} />
+          </button>
+          <button
+            onClick={() =>
+              setCamera((c) => ({
+                ...c,
+                scale: Math.max(MAP_SCALE_MIN, c.scale / 1.2),
+              }))
+            }
+            title="Zoom out"
+            type="button"
+          >
+            <Minus size={13} />
+          </button>
+          <button
+            aria-pressed={wheelZoomEnabled}
+            className={wheelZoomEnabled ? "selected" : ""}
+            onClick={() => setWheelZoomEnabled((value) => !value)}
+            title={
+              wheelZoomEnabled
+                ? "Mouse-wheel zoom is ON — scroll over the map to zoom. Click to lock it (wheel scrolls the page)."
+                : "Mouse-wheel zoom is locked. Click to unlock and zoom with the scroll wheel."
+            }
+            type="button"
+          >
+            {wheelZoomEnabled ? <Unlock size={13} /> : <Lock size={13} />}
+          </button>
+          <button
+            onClick={() => setCamera({ x: 0, y: 0, scale: 1 })}
+            title="Reset the view"
+            type="button"
+          >
+            ⤾
+          </button>
+          <button
+            aria-pressed={showArt}
+            className={showArt ? "selected" : ""}
+            onClick={() => setShowArt((value) => !value)}
+            title="Toggle the printed tile art layer (real graphics drop in here)"
+            type="button"
+          >
+            <ImageIcon size={13} />
+          </button>
+        </div>
+
+        {moveLockReason ? (
+          <div className="mapLockHint" role="status">
+            <span aria-hidden="true">🔒</span> {moveLockReason}
+          </div>
+        ) : null}
+
+        {hasSecondaryHero && myHero && !readOnly ? (
+          <div className="mapLockHint" role="status">
+            <span aria-hidden="true">🧭</span> Active:{" "}
+            {myHero.kind === "main" ? "Main Hero" : "Secondary Hero"} (
+            {myHero.movementPoints} MP) — click a hero to switch
+          </div>
+        ) : null}
       </div>
-
-      {moveLockReason ? (
-        <div className="mapLockHint" role="status">
-          <span aria-hidden="true">🔒</span> {moveLockReason}
-        </div>
-      ) : null}
-
-      {hasSecondaryHero && myHero && !readOnly ? (
-        <div className="mapLockHint" role="status">
-          <span aria-hidden="true">🧭</span> Active: {myHero.kind === "main" ? "Main Hero" : "Secondary Hero"} (
-          {myHero.movementPoints} MP) — click a hero to switch
-        </div>
-      ) : null}
-
-    </div>
 
       {/* Floating map controls as HTML overlays (see the MapFloat note above):
           positioned in real screen pixels via the shared camera/viewBox math, so
@@ -3646,7 +4439,7 @@ export function HexMapBoard({
           mapPoint: float.mapPoint,
           cardWidth: float.cardWidth,
           cardHeight: float.cardHeight,
-          gap: float.gap
+          gap: float.gap,
         });
         return (
           <div
@@ -3671,7 +4464,7 @@ export function AdventureHud({
   viewerPlayerId,
   legalActions,
   onAction,
-  eventLogControl
+  eventLogControl,
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
@@ -3683,10 +4476,13 @@ export function AdventureHud({
   const [confirmGiveUp, setConfirmGiveUp] = useState(false);
   const player = state.players[viewerPlayerId];
   const hero = Object.values(state.heroes).find(
-    (candidate) => candidate.controllerId === viewerPlayerId && candidate.kind === "main"
+    (candidate) =>
+      candidate.controllerId === viewerPlayerId && candidate.kind === "main",
   );
   const secondaryHero = Object.values(state.heroes).find(
-    (candidate) => candidate.controllerId === viewerPlayerId && candidate.kind === "secondary"
+    (candidate) =>
+      candidate.controllerId === viewerPlayerId &&
+      candidate.kind === "secondary",
   );
   // Crowns (expert uses): remaining / round total, read straight from the engine
   // helpers so the HUD can never diverge from what canPlayExpertMode enforces.
@@ -3697,13 +4493,21 @@ export function AdventureHud({
   // already reads "Hero of Town", so no redundant pick line is shown.
   const activeIdentity = getSeatIdentity(state, state.activePlayerId);
   const activeName = activeIdentity.personName ?? activeIdentity.seatName;
-  const activePick = activeIdentity.personName ? seatPickSummary(activeIdentity) : null;
+  const activePick = activeIdentity.personName
+    ? seatPickSummary(activeIdentity)
+    : null;
   const roundKind =
-    state.round <= 1 ? "first round" : state.round % 2 === 1 ? "resource round" : "astrologers round";
+    state.round <= 1
+      ? "first round"
+      : state.round % 2 === 1
+        ? "resource round"
+        : "astrologers round";
   const astrologersCard = getActiveAstrologersCard(state);
   const eventCard = getActiveEventCard(state);
 
-  const endTurn = legalActions.find((legal) => legal.action.type === "END_TURN");
+  const endTurn = legalActions.find(
+    (legal) => legal.action.type === "END_TURN",
+  );
   const giveUp = legalActions.find((legal) => legal.action.type === "GIVE_UP");
   const winner = state.adventure?.winnerPlayerId;
 
@@ -3713,7 +4517,9 @@ export function AdventureHud({
         <strong>Round {state.round}</strong>
         <small>
           {roundKind}
-          {parallelTurnsActive(state) ? ` · parallel (${state.round}/${state.turn.simultaneousRoundLimit})` : ""}
+          {parallelTurnsActive(state)
+            ? ` · parallel (${state.round}/${state.turn.simultaneousRoundLimit})`
+            : ""}
         </small>
       </div>
       {parallelTurnsActive(state) ? (
@@ -3740,7 +4546,9 @@ export function AdventureHud({
       ) : (
         <div className="advHudCell">
           <strong>{activeName}&apos;s turn</strong>
-          <small>{activePick ? `${activePick} · ${state.phase}` : state.phase}</small>
+          <small>
+            {activePick ? `${activePick} · ${state.phase}` : state.phase}
+          </small>
         </div>
       )}
       {/* The town + hero boards live in the prominent dock above the map now
@@ -3755,7 +4563,7 @@ export function AdventureHud({
               lines: [astrologersCard.text],
               subtitle: astrologersCard.ongoing
                 ? "Active until the next Astrologers round"
-                : "Resolved this round"
+                : "Resolved this round",
             })
           }
           title={astrologersCard.text}
@@ -3773,7 +4581,8 @@ export function AdventureHud({
               title: `Event: ${eventCard.name}`,
               image: eventCard.image,
               lines: [eventCard.text],
-              subtitle: "Drawn this Resource round — resolved in clockwise order from the drawer"
+              subtitle:
+                "Drawn this Resource round — resolved in clockwise order from the drawer",
             })
           }
           title={eventCard.text}
@@ -3785,28 +4594,38 @@ export function AdventureHud({
       ) : null}
       {player && player.id !== "neutrals" ? (
         <div className="advHudCell resources" aria-label="Resources and income">
-          {(
-            [
-              { key: "gold" as const, label: "Gold" },
-              { key: "buildingMaterials" as const, label: "Building materials (ore)" },
-              { key: "valuables" as const, label: "Valuables (crystal)" }
-            ]
-          ).map((resource) => (
+          {[
+            { key: "gold" as const, label: "Gold" },
+            {
+              key: "buildingMaterials" as const,
+              label: "Building materials (ore)",
+            },
+            { key: "valuables" as const, label: "Valuables (crystal)" },
+          ].map((resource) => (
             <span
               className="resourceChip"
               key={resource.key}
               title={`${resource.label}: ${player.resources[resource.key]} — gain +${player.production[resource.key]} every resource round`}
             >
-              <img alt={resource.label} className="resourceIcon" src={assetUrl(RESOURCE_ICONS[resource.key])} />
+              <img
+                alt={resource.label}
+                className="resourceIcon"
+                src={assetUrl(RESOURCE_ICONS[resource.key])}
+              />
               <b>{player.resources[resource.key]}</b>
-              <small className="incomeTag">+{player.production[resource.key]}</small>
+              <small className="incomeTag">
+                +{player.production[resource.key]}
+              </small>
             </span>
           ))}
           <small className="incomeNote">income / resource round</small>
         </div>
       ) : null}
       {hero ? (
-        <div className="advHudCell moveMoraleCell" aria-label="Movement, morale, ability token and crowns">
+        <div
+          className="advHudCell moveMoraleCell"
+          aria-label="Movement, morale, ability token and crowns"
+        >
           <span
             className="statChip"
             aria-label={`Main Hero movement points: ${hero.movementPoints}`}
@@ -3849,10 +4668,16 @@ export function AdventureHud({
               {(player?.morale ?? 0) > 0 ? "+" : ""}
               {player?.morale ?? 0}
             </b>
-            <small>{(player?.morale ?? 0) <= -2 ? "fix or dump" : "morale"}</small>
+            <small>
+              {(player?.morale ?? 0) <= -2 ? "fix or dump" : "morale"}
+            </small>
           </span>
           {player ? (
-            <AbilityEmpowerTokenChip legalActions={legalActions} onAction={onAction} player={player} />
+            <AbilityEmpowerTokenChip
+              legalActions={legalActions}
+              onAction={onAction}
+              player={player}
+            />
           ) : null}
           {player ? (
             <span
@@ -3887,9 +4712,11 @@ export function AdventureHud({
           status = "defeat the Dragon Utopia / beat all heroes";
         } else if (mode === "dragon-conqueror") {
           const holder = Object.values(state.adventure?.fields ?? {}).find(
-            (field) => field.location === "dragon_utopia" && field.flagOwnerId
+            (field) => field.location === "dragon_utopia" && field.flagOwnerId,
           )?.flagOwnerId;
-          status = holder ? `Utopia held by ${state.players[holder]?.name ?? "a rival"}` : "capture the Dragon Utopia";
+          status = holder
+            ? `Utopia held by ${state.players[holder]?.name ?? "a rival"}`
+            : "capture the Dragon Utopia";
         }
         return (
           <div className="advHudCell">
@@ -3913,7 +4740,9 @@ export function AdventureHud({
         {state.adventure?.undoMoves ? (
           <button
             className="commandButton undoMove"
-            onClick={() => onAction({ type: "UNDO_MOVE", playerId: viewerPlayerId })}
+            onClick={() =>
+              onAction({ type: "UNDO_MOVE", playerId: viewerPlayerId })
+            }
             title="Testing aid: roll the game back to before your most recent action. Every undo is announced in the feed."
             type="button"
           >
@@ -3922,7 +4751,11 @@ export function AdventureHud({
         ) : null}
         {eventLogControl}
         {endTurn ? (
-          <button className="commandButton" onClick={() => onAction(endTurn.action)} type="button">
+          <button
+            className="commandButton"
+            onClick={() => onAction(endTurn.action)}
+            type="button"
+          >
             End turn
           </button>
         ) : null}
@@ -3939,12 +4772,20 @@ export function AdventureHud({
               >
                 Confirm: become observer
               </button>
-              <button className="commandButton" onClick={() => setConfirmGiveUp(false)} type="button">
+              <button
+                className="commandButton"
+                onClick={() => setConfirmGiveUp(false)}
+                type="button"
+              >
                 Cancel
               </button>
             </>
           ) : (
-            <button className="commandButton" onClick={() => setConfirmGiveUp(true)} type="button">
+            <button
+              className="commandButton"
+              onClick={() => setConfirmGiveUp(true)}
+              type="button"
+            >
               Give up
             </button>
           )
@@ -3973,7 +4814,11 @@ function TownIcon({ factionId, size }: { factionId: string; size: number }) {
       <span
         aria-hidden="true"
         className="dockTownIconFallback"
-        style={{ width: size, height: size, color: playerFactionColor(factionId) }}
+        style={{
+          width: size,
+          height: size,
+          color: playerFactionColor(factionId),
+        }}
       >
         <Castle size={Math.round(size * 0.55)} />
       </span>
@@ -3996,7 +4841,7 @@ function CommanderForgePanel({
   state,
   playerId,
   legalActions,
-  onAction
+  onAction,
 }: {
   state: GameState;
   playerId: PlayerId;
@@ -4006,31 +4851,70 @@ function CommanderForgePanel({
   const commander = state.players[playerId]?.commander;
   if (!commander || !(state.wog?.enabled && state.wog?.commanders)) return null;
   const offers = legalActions.filter(
-    (legal): legal is LegalAction & { action: Extract<GameAction, { type: "FORGE_COMMANDER_ARTIFACT" }> } =>
-      legal.action.type === "FORGE_COMMANDER_ARTIFACT"
+    (
+      legal,
+    ): legal is LegalAction & {
+      action: Extract<GameAction, { type: "FORGE_COMMANDER_ARTIFACT" }>;
+    } => legal.action.type === "FORGE_COMMANDER_ARTIFACT",
   );
   const tiers = ["minor", "major", "relic"] as const;
   return (
     <section className="commanderForgePanel" aria-label="Commander Forge">
-      <img alt="" aria-hidden="true" className="commanderForgeIcon" src={assetUrl("/assets/ui/commander-forge.webp")} />
+      <img
+        alt=""
+        aria-hidden="true"
+        className="commanderForgeIcon"
+        src={assetUrl("/assets/ui/commander-forge.webp")}
+      />
       <div className="commanderForgeContent">
-        <header><strong>Commander Forge</strong><small>Two offers · choose one</small></header>
-        <p>Grade I: round 2, 5 gold. One Grade II or III purchase: round 7, 8 or 11 gold. Each budget is once per game; only empty slots are offered.</p>
+        <header>
+          <strong>Commander Forge</strong>
+          <small>Two offers · choose one</small>
+        </header>
+        <p>
+          Grade I: round 2, 5 gold. One Grade II or III purchase: round 7, 8 or
+          11 gold. Each budget is once per game; only empty slots are offered.
+        </p>
         {tiers.map((tier) => {
-          const tierOffers = offers.filter((offer) => offer.action.tier === tier);
-          const used = tier === "minor" ? commander.forgeMinorUsed : commander.forgeHighUsed;
+          const tierOffers = offers.filter(
+            (offer) => offer.action.tier === tier,
+          );
+          const used =
+            tier === "minor"
+              ? commander.forgeMinorUsed
+              : commander.forgeHighUsed;
           const unlockRound = tier === "minor" ? 2 : 7;
           const cost = tier === "minor" ? 5 : tier === "major" ? 8 : 11;
           return (
             <div className="commanderForgeTier" key={tier}>
-              <span><EquipGradeChip grade={tierToGrade(tier)} /> {cost} gold</span>
-              {used ? <small>Use spent</small> : state.round < unlockRound ? <small>Unlocks round {unlockRound}</small> : null}
+              <span>
+                <EquipGradeChip grade={tierToGrade(tier)} /> {cost} gold
+              </span>
+              {used ? (
+                <small>Use spent</small>
+              ) : state.round < unlockRound ? (
+                <small>Unlocks round {unlockRound}</small>
+              ) : null}
               {tierOffers.map((offer) => {
                 const spec = COMMANDER_ARTIFACT_SPECS[offer.action.cardId];
                 return (
-                  <button key={offer.action.cardId} onClick={() => onAction?.(offer.action)} type="button">
-                    {spec ? <img alt="" src={assetUrl(`/assets/wog/artifacts/icons/${spec.slug}.webp`)} /> : null}
-                    <span><strong>{spec?.name ?? offer.action.cardId}</strong><small>{spec?.effectText}</small></span>
+                  <button
+                    key={offer.action.cardId}
+                    onClick={() => onAction?.(offer.action)}
+                    type="button"
+                  >
+                    {spec ? (
+                      <img
+                        alt=""
+                        src={assetUrl(
+                          `/assets/wog/artifacts/icons/${spec.slug}.webp`,
+                        )}
+                      />
+                    ) : null}
+                    <span>
+                      <strong>{spec?.name ?? offer.action.cardId}</strong>
+                      <small>{spec?.effectText}</small>
+                    </span>
                   </button>
                 );
               })}
@@ -4053,7 +4937,7 @@ export function TownHeroDock({
   onOpenTown,
   armySeatId,
   onAction,
-  legalActions = []
+  legalActions = [],
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
@@ -4073,10 +4957,14 @@ export function TownHeroDock({
   const [commanderOpen, setCommanderOpen] = useState(false);
   const [commanderEquipmentOpen, setCommanderEquipmentOpen] = useState(false);
   const [commanderEquipHelpOpen, setCommanderEquipHelpOpen] = useState(false);
-  const [draggedCommanderArtifactId, setDraggedCommanderArtifactId] = useState<string | null>(null);
+  const [draggedCommanderArtifactId, setDraggedCommanderArtifactId] = useState<
+    string | null
+  >(null);
   const balanceArt = useBalanceArtFlags();
   const player = state.players[viewerPlayerId];
-  const faction = player?.factionId ? coreFactionDefinitions[player.factionId] : undefined;
+  const faction = player?.factionId
+    ? coreFactionDefinitions[player.factionId]
+    : undefined;
 
   const heroSeats = (heroSeatIds ?? [viewerPlayerId]).filter((seatId) => {
     const seat = state.players[seatId];
@@ -4090,10 +4978,13 @@ export function TownHeroDock({
   // WOG Commanders: the seated viewer's commander tile (module on = the state
   // exists). Everything on it is live: grades, level, death, owed grade-ups.
   const commander = armyPlayer?.commander;
-  const commanderDef = commander ? commanderDefinitions[commander.slug as CommanderSlug] : undefined;
+  const commanderDef = commander
+    ? commanderDefinitions[commander.slug as CommanderSlug]
+    : undefined;
   const commanderHero = armyPlayer
     ? Object.values(state.heroes).find(
-        (candidate) => candidate.controllerId === armyPlayer.id && candidate.kind === "main"
+        (candidate) =>
+          candidate.controllerId === armyPlayer.id && candidate.kind === "main",
       )
     : undefined;
   const commanderGradeUps = commander?.gradePoints ?? 0;
@@ -4105,14 +4996,20 @@ export function TownHeroDock({
   // here hid the "Open Equipment & Forge" button from Commanders-on / deck-off
   // games even though the player could forge — the reported "no access". Align
   // the surface with the engine so the window matches what is actually playable.
-  const commanderArtifactsEnabled = Boolean(state.wog?.enabled && state.wog?.commanders);
+  const commanderArtifactsEnabled = Boolean(
+    state.wog?.enabled && state.wog?.commanders,
+  );
   const heldCommanderArtifacts = armyPlayer
     ? armyPlayer.hand
         .filter((cardId) => Boolean(COMMANDER_ARTIFACT_SPECS[cardId]))
         .sort((a, b) => {
           const aa = COMMANDER_ARTIFACT_SPECS[a];
           const bb = COMMANDER_ARTIFACT_SPECS[b];
-          return aa.slot.localeCompare(bb.slot) || aa.tier.localeCompare(bb.tier) || aa.name.localeCompare(bb.name);
+          return (
+            aa.slot.localeCompare(bb.slot) ||
+            aa.tier.localeCompare(bb.tier) ||
+            aa.name.localeCompare(bb.name)
+          );
         })
     : [];
 
@@ -4145,7 +5042,10 @@ export function TownHeroDock({
   const tokens = player?.townTokens;
 
   return (
-    <div className={`townHeroDock theme-${lexicon.register}`} aria-label="Town and hero">
+    <div
+      className={`townHeroDock theme-${lexicon.register}`}
+      aria-label="Town and hero"
+    >
       {onOpenTown && faction ? (
         <button
           aria-label={`Open your ${faction.name} town`}
@@ -4162,7 +5062,12 @@ export function TownHeroDock({
             {tokens ? (
               // The authentic printed token icons; a spent one dims out.
               <span className="dockTokens" aria-hidden="true">
-                <img alt="" className={tokens.build ? "on" : "off"} src={assetUrl(TOWN_TOKEN_ICONS.build)} title="Build token" />
+                <img
+                  alt=""
+                  className={tokens.build ? "on" : "off"}
+                  src={assetUrl(TOWN_TOKEN_ICONS.build)}
+                  title="Build token"
+                />
                 <img
                   alt=""
                   className={tokens.population ? "on" : "off"}
@@ -4187,9 +5092,12 @@ export function TownHeroDock({
       {heroSeats.map((seatId) => {
         const seat = state.players[seatId];
         const seatHero = Object.values(state.heroes).find(
-          (candidate) => candidate.controllerId === seatId && candidate.kind === "main"
+          (candidate) =>
+            candidate.controllerId === seatId && candidate.kind === "main",
         );
-        const heroDef = seat?.heroDefId ? coreHeroDefinitions[seat.heroDefId] : undefined;
+        const heroDef = seat?.heroDefId
+          ? coreHeroDefinitions[seat.heroDefId]
+          : undefined;
         if (!seat || !heroDef) {
           return null;
         }
@@ -4201,15 +5109,24 @@ export function TownHeroDock({
             className={`dockTile heroDockTile ${open ? "open" : ""}`}
             key={seatId}
             onClick={() => setOpenHeroSeat(open ? null : seatId)}
-            style={{ "--dock-faction": playerFactionColor(seat.factionId) } as CSSProperties}
+            style={
+              {
+                "--dock-faction": playerFactionColor(seat.factionId),
+              } as CSSProperties
+            }
             title={`${heroDef.name} — open the hero board`}
             type="button"
           >
-            <HeroPortrait name={heroDef.name} portrait={heroDef.portrait} size={64} />
+            <HeroPortrait
+              name={heroDef.name}
+              portrait={heroDef.portrait}
+              size={64}
+            />
             <span className="dockTileText">
               <strong>{heroDef.name}</strong>
               <small>
-                {heroSeats.length > 1 ? `${seat.name} · ` : ""}level {seatHero?.level ?? 1}
+                {heroSeats.length > 1 ? `${seat.name} · ` : ""}level{" "}
+                {seatHero?.level ?? 1}
               </small>
               <small className="dockSubtle">Hero board</small>
             </span>
@@ -4226,7 +5143,11 @@ export function TownHeroDock({
           aria-label="Open your unit deck"
           className={`dockTile unitDockTile ${armyOpen ? "open" : ""}`}
           onClick={() => setArmyOpen((value) => !value)}
-          style={{ "--dock-faction": playerFactionColor(armyPlayer.factionId) } as CSSProperties}
+          style={
+            {
+              "--dock-faction": playerFactionColor(armyPlayer.factionId),
+            } as CSSProperties
+          }
           title="Your unit deck — the army your hero carries into battle"
           type="button"
         >
@@ -4239,11 +5160,28 @@ export function TownHeroDock({
                   : armyUnitPrintedSide(def, unit.side, unit.unitDefId);
               // Community Balance Change reprints four Castle unit sides; every
               // surface that paints `side.cardImage` reads the same resolver.
-              const face = resolveUnitFaceImage(balanceArt, unit.unitDefId, unit.side, side?.cardImage);
+              const face = resolveUnitFaceImage(
+                balanceArt,
+                unit.unitDefId,
+                unit.side,
+                side?.cardImage,
+              );
               return face ? (
-                <img alt="" className="dockUnitThumb" decoding="async" key={unit.id} loading="lazy" src={assetUrl(face)} style={{ zIndex: 3 - index }} />
+                <img
+                  alt=""
+                  className="dockUnitThumb"
+                  decoding="async"
+                  key={unit.id}
+                  loading="lazy"
+                  src={assetUrl(face)}
+                  style={{ zIndex: 3 - index }}
+                />
               ) : (
-                <span className={`dockUnitThumb fallback tier-${def?.tier ?? "bronze"}`} key={unit.id} style={{ zIndex: 3 - index }} />
+                <span
+                  className={`dockUnitThumb fallback tier-${def?.tier ?? "bronze"}`}
+                  key={unit.id}
+                  style={{ zIndex: 3 - index }}
+                />
               );
             })}
             {army.length === 0 ? (
@@ -4270,10 +5208,16 @@ export function TownHeroDock({
           aria-expanded={commanderOpen}
           aria-label={`Open your commander, ${commanderDef.name}`}
           className={`dockTile unitDockTile ${commanderOpen ? "open" : ""}${
-            commanderGradeUps > 0 && !commander.dead ? " commanderTilePulse" : ""
+            commanderGradeUps > 0 && !commander.dead
+              ? " commanderTilePulse"
+              : ""
           }${commanderBlink ? " commanderTileBlink" : ""}`}
           onClick={() => setCommanderOpen((value) => !value)}
-          style={{ "--dock-faction": playerFactionColor(armyPlayer.factionId) } as CSSProperties}
+          style={
+            {
+              "--dock-faction": playerFactionColor(armyPlayer.factionId),
+            } as CSSProperties
+          }
           title={`${commanderDef.name} — your WOG commander`}
           type="button"
         >
@@ -4282,7 +5226,11 @@ export function TownHeroDock({
               alt=""
               className="dockUnitThumb"
               src={assetUrl(commanderDef.cardImage)}
-              style={commander.dead ? { filter: "grayscale(0.9) brightness(0.6)" } : undefined}
+              style={
+                commander.dead
+                  ? { filter: "grayscale(0.9) brightness(0.6)" }
+                  : undefined
+              }
             />
           </span>
           <span className="dockTileText">
@@ -4292,8 +5240,17 @@ export function TownHeroDock({
                 ? `Fallen — revive ${commanderReviveCost(commanderHero?.level ?? 1)} gold`
                 : `Commander · Lv ${commanderHero?.level ?? 1}`}
             </small>
-            <small className="dockSubtle" style={commanderGradeUps > 0 ? { color: "#f4d774", fontWeight: 700 } : undefined}>
-              {commanderGradeUps > 0 ? `Grade up available (x${commanderGradeUps})!` : commanderDef.specialty.name}
+            <small
+              className="dockSubtle"
+              style={
+                commanderGradeUps > 0
+                  ? { color: "#f4d774", fontWeight: 700 }
+                  : undefined
+              }
+            >
+              {commanderGradeUps > 0
+                ? `Grade up available (x${commanderGradeUps})!`
+                : commanderDef.specialty.name}
             </small>
           </span>
           <span aria-hidden="true" className="dockOpenHint">
@@ -4304,7 +5261,11 @@ export function TownHeroDock({
 
       {openHeroSeat ? (
         <>
-          <div aria-hidden="true" className="heroDropBackdrop" onClick={() => setOpenHeroSeat(null)} />
+          <div
+            aria-hidden="true"
+            className="heroDropBackdrop"
+            onClick={() => setOpenHeroSeat(null)}
+          />
           <div className="heroDrop" role="dialog" aria-label="Hero board">
             <button
               aria-label="Close the hero board"
@@ -4317,28 +5278,55 @@ export function TownHeroDock({
             <HeroBoard
               playerId={openHeroSeat}
               state={state}
-              legalActions={openHeroSeat === viewerPlayerId ? legalActions : undefined}
-              onAction={onAction && openHeroSeat === viewerPlayerId ? onAction : undefined}
+              legalActions={
+                openHeroSeat === viewerPlayerId ? legalActions : undefined
+              }
+              onAction={
+                onAction && openHeroSeat === viewerPlayerId
+                  ? onAction
+                  : undefined
+              }
             />
           </div>
         </>
       ) : null}
 
-      {commanderLevelUpOpen && commander && commanderDef && armyPlayer && onAction && !state.combat && !commander.dead && commanderGradeUps > 0 ? (
+      {commanderLevelUpOpen &&
+      commander &&
+      commanderDef &&
+      armyPlayer &&
+      onAction &&
+      !state.combat &&
+      !commander.dead &&
+      commanderGradeUps > 0 ? (
         <CommanderLevelUpOverlay
           slug={commander.slug as CommanderSlug}
           grades={commander.grades}
           level={commanderHero?.level ?? 1}
           gradePoints={commanderGradeUps}
-          onGradeUp={(stat) => onAction({ type: "COMMANDER_GRADE_UP", playerId: armyPlayer.id, stat })}
+          onGradeUp={(stat) =>
+            onAction({
+              type: "COMMANDER_GRADE_UP",
+              playerId: armyPlayer.id,
+              stat,
+            })
+          }
           onClose={() => setCommanderLevelUpOpen(false)}
         />
       ) : null}
 
       {commanderOpen && commander && commanderDef && armyPlayer ? (
         <>
-          <div aria-hidden="true" className="heroDropBackdrop" onClick={() => setCommanderOpen(false)} />
-          <div className="heroDrop unitDrop" role="dialog" aria-label="Commander">
+          <div
+            aria-hidden="true"
+            className="heroDropBackdrop"
+            onClick={() => setCommanderOpen(false)}
+          />
+          <div
+            className="heroDrop unitDrop"
+            role="dialog"
+            aria-label="Commander"
+          >
             <button
               aria-label="Close the commander card"
               className="heroDropClose"
@@ -4357,17 +5345,35 @@ export function TownHeroDock({
                 type="button"
               >
                 <span aria-hidden="true" className="commanderEquipButtonIcon">
-                  <img alt="" src={assetUrl("/assets/ui/commander-forge.webp")} />
+                  <img
+                    alt=""
+                    src={assetUrl("/assets/ui/commander-forge.webp")}
+                  />
                 </span>
                 <span>
-                  <small className="commanderEquipEyebrow">Equipment &amp; Forge</small>
+                  <small className="commanderEquipEyebrow">
+                    Equipment &amp; Forge
+                  </small>
                   <strong>Open {lexicon.commanderEquipment}</strong>
-                  <small>{Object.keys(commander.artifacts ?? {}).length}/3 equipped · {heldCommanderArtifacts.length} ready to bind</small>
+                  <small>
+                    {Object.keys(commander.artifacts ?? {}).length}/3 equipped ·{" "}
+                    {heldCommanderArtifacts.length} ready to bind
+                  </small>
                 </span>
-                <ChevronDown aria-hidden="true" className="commanderEquipArrow" size={21} />
+                <ChevronDown
+                  aria-hidden="true"
+                  className="commanderEquipArrow"
+                  size={21}
+                />
               </button>
             ) : null}
-            <div style={{ maxHeight: "min(78vh, 900px)", overflowY: "auto", padding: 4 }}>
+            <div
+              style={{
+                maxHeight: "min(78vh, 900px)",
+                overflowY: "auto",
+                padding: 4,
+              }}
+            >
               <CommanderCard
                 slug={commander.slug as CommanderSlug}
                 grades={commander.grades}
@@ -4377,28 +5383,48 @@ export function TownHeroDock({
                 goldAvailable={armyPlayer.resources.gold}
                 onGradeUp={
                   onAction && !state.combat
-                    ? (stat) => onAction({ type: "COMMANDER_GRADE_UP", playerId: armyPlayer.id, stat })
+                    ? (stat) =>
+                        onAction({
+                          type: "COMMANDER_GRADE_UP",
+                          playerId: armyPlayer.id,
+                          stat,
+                        })
                     : undefined
                 }
                 onRevive={
                   onAction && !state.combat && commander.dead
-                    ? () => onAction({ type: "REVIVE_COMMANDER", playerId: armyPlayer.id })
+                    ? () =>
+                        onAction({
+                          type: "REVIVE_COMMANDER",
+                          playerId: armyPlayer.id,
+                        })
                     : undefined
                 }
                 stance={commander.stance}
                 onSetStance={
                   onAction && !state.combat
-                    ? (stance) => onAction({ type: "COMMANDER_SET_STANCE", playerId: armyPlayer.id, stance })
+                    ? (stance) =>
+                        onAction({
+                          type: "COMMANDER_SET_STANCE",
+                          playerId: armyPlayer.id,
+                          stance,
+                        })
                     : undefined
                 }
                 bondedArmyUnitId={commander.bondedArmyUnitId}
                 bondOptions={armyPlayer.army.map((unit) => ({
                   id: unit.id,
-                  label: coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId
+                  label:
+                    coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId,
                 }))}
                 onSetBond={
                   onAction && !state.combat && commander.slug === "sonya"
-                    ? (armyUnitId) => onAction({ type: "COMMANDER_SET_BOND", playerId: armyPlayer.id, armyUnitId })
+                    ? (armyUnitId) =>
+                        onAction({
+                          type: "COMMANDER_SET_BOND",
+                          playerId: armyPlayer.id,
+                          armyUnitId,
+                        })
                     : undefined
                 }
                 artifacts={commander.artifacts}
@@ -4409,8 +5435,15 @@ export function TownHeroDock({
         </>
       ) : null}
 
-      {commanderEquipmentOpen && commander && commanderDef && armyPlayer && commanderArtifactsEnabled ? (
-        <div className={`commanderEquipmentBackdrop theme-${lexicon.register}`} onMouseDown={() => setCommanderEquipmentOpen(false)}>
+      {commanderEquipmentOpen &&
+      commander &&
+      commanderDef &&
+      armyPlayer &&
+      commanderArtifactsEnabled ? (
+        <div
+          className={`commanderEquipmentBackdrop theme-${lexicon.register}`}
+          onMouseDown={() => setCommanderEquipmentOpen(false)}
+        >
           <section
             aria-label={lexicon.commanderEquipment}
             aria-modal="true"
@@ -4434,19 +5467,58 @@ export function TownHeroDock({
                 >
                   <HelpCircle size={21} />
                 </button>
-                <button aria-label="Close commander equipment" onClick={() => setCommanderEquipmentOpen(false)} type="button"><X size={20} /></button>
+                <button
+                  aria-label="Close commander equipment"
+                  onClick={() => setCommanderEquipmentOpen(false)}
+                  type="button"
+                >
+                  <X size={20} />
+                </button>
               </div>
             </header>
             {commanderEquipHelpOpen ? (
               <aside className="gradeHelpPanel" role="note">
-                <div><b>1</b><span><strong>Win artifacts</strong><small>Earn them at the Commander Forge, from the shared decks, and as raid-boss and dungeon rewards.</small></span></div>
-                <div><b>2</b><span><strong>Bind a slot</strong><small>Drag an artifact in hand onto weapon / armor / trinket, or press Bind. One artifact per slot.</small></span></div>
-                <div><b>3</b><span><strong>Permanent</strong><small>Binding cannot be undone or swapped, and it survives the commander falling and being revived.</small></span></div>
-                <p><Sparkles size={14} /> The full catalog stays visible for planning; only artifacts in hand can be bound.</p>
+                <div>
+                  <b>1</b>
+                  <span>
+                    <strong>Win artifacts</strong>
+                    <small>
+                      Earn them at the Commander Forge, from the shared decks,
+                      and as raid-boss and dungeon rewards.
+                    </small>
+                  </span>
+                </div>
+                <div>
+                  <b>2</b>
+                  <span>
+                    <strong>Bind a slot</strong>
+                    <small>
+                      Drag an artifact in hand onto weapon / armor / trinket, or
+                      press Bind. One artifact per slot.
+                    </small>
+                  </span>
+                </div>
+                <div>
+                  <b>3</b>
+                  <span>
+                    <strong>Permanent</strong>
+                    <small>
+                      Binding cannot be undone or swapped, and it survives the
+                      commander falling and being revived.
+                    </small>
+                  </span>
+                </div>
+                <p>
+                  <Sparkles size={14} /> The full catalog stays visible for
+                  planning; only artifacts in hand can be bound.
+                </p>
               </aside>
             ) : null}
             <div className="commanderEquipmentBody">
-              <div className="commanderPaperdoll" aria-label="Commander paperdoll slots">
+              <div
+                className="commanderPaperdoll"
+                aria-label="Commander paperdoll slots"
+              >
                 {/* Classic: body + card bust. Anime/wuxia: themed body only (no card face). */}
                 <img
                   alt=""
@@ -4457,26 +5529,39 @@ export function TownHeroDock({
                       ? "/assets/ui/commander-paperdoll-body-anime.webp"
                       : lexicon.register === "wuxia"
                         ? "/assets/ui/commander-paperdoll-body-wuxia.webp"
-                        : "/assets/ui/commander-paperdoll-body.webp"
+                        : "/assets/ui/commander-paperdoll-body.webp",
                   )}
                 />
                 {lexicon.register === "classic" ? (
                   <div className="commanderPaperdollBust">
-                    <img alt="" className="commanderPaperdollPortrait" src={assetUrl(commanderDef.cardImage)} />
+                    <img
+                      alt=""
+                      className="commanderPaperdollPortrait"
+                      src={assetUrl(commanderDef.cardImage)}
+                    />
                   </div>
                 ) : null}
                 {(["weapon", "armor", "trinket"] as const).map((slot) => {
                   const cardId = commander.artifacts?.[slot];
-                  const spec = cardId ? COMMANDER_ARTIFACT_SPECS[cardId] : undefined;
+                  const spec = cardId
+                    ? COMMANDER_ARTIFACT_SPECS[cardId]
+                    : undefined;
                   const draggedSpec = draggedCommanderArtifactId
                     ? COMMANDER_ARTIFACT_SPECS[draggedCommanderArtifactId]
                     : undefined;
                   const dropAction = draggedCommanderArtifactId
                     ? legalActions.find(
-                        (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === draggedCommanderArtifactId
+                        (legal) =>
+                          legal.action.type === "PLAY_CARD" &&
+                          legal.action.cardId === draggedCommanderArtifactId,
                       )
                     : undefined;
-                  const acceptsDrop = Boolean(!spec && draggedSpec?.slot === slot && dropAction && onAction);
+                  const acceptsDrop = Boolean(
+                    !spec &&
+                    draggedSpec?.slot === slot &&
+                    dropAction &&
+                    onAction,
+                  );
                   return (
                     <div
                       aria-label={`${slot} commander artifact slot${spec ? `: ${spec.name}` : ": empty"}`}
@@ -4494,7 +5579,12 @@ export function TownHeroDock({
                     >
                       <div className="commanderArtifactSlotWell">
                         {spec ? (
-                          <img alt="" src={assetUrl(`/assets/wog/artifacts/icons/${spec.slug}.webp`)} />
+                          <img
+                            alt=""
+                            src={assetUrl(
+                              `/assets/wog/artifacts/icons/${spec.slug}.webp`,
+                            )}
+                          />
                         ) : (
                           <Shield aria-hidden="true" size={28} />
                         )}
@@ -4502,10 +5592,18 @@ export function TownHeroDock({
                       <div className="commanderArtifactSlotMeta">
                         <small>
                           {slot}
-                          {spec ? <EquipGradeChip grade={tierToGrade(spec.tier)} title={`${spec.tier} · Grade ${tierToGrade(spec.tier)}`} /> : null}
+                          {spec ? (
+                            <EquipGradeChip
+                              grade={tierToGrade(spec.tier)}
+                              title={`${spec.tier} · Grade ${tierToGrade(spec.tier)}`}
+                            />
+                          ) : null}
                         </small>
                         <strong>{spec?.name ?? "Empty"}</strong>
-                        <span>{spec?.effectText ?? "Drag a matching artifact from the bag"}</span>
+                        <span>
+                          {spec?.effectText ??
+                            "Drag a matching artifact from the bag"}
+                        </span>
                       </div>
                     </div>
                   );
@@ -4515,32 +5613,49 @@ export function TownHeroDock({
                 <div className="commanderInventoryHead">
                   <h3>Artifact bag &amp; complete system</h3>
                   <small>
-                    All {COMMANDER_ARTIFACT_SPEC_LIST.length} items shown · {heldCommanderArtifacts.length} in hand ·{" "}
+                    All {COMMANDER_ARTIFACT_SPEC_LIST.length} items shown ·{" "}
+                    {heldCommanderArtifacts.length} in hand ·{" "}
                     {Object.keys(commander.artifacts ?? {}).length}/3 bound
                   </small>
                 </div>
-                <CommanderForgePanel legalActions={legalActions} onAction={onAction} playerId={armyPlayer.id} state={state} />
+                <CommanderForgePanel
+                  legalActions={legalActions}
+                  onAction={onAction}
+                  playerId={armyPlayer.id}
+                  state={state}
+                />
                 {heldCommanderArtifacts.length === 0 ? (
                   <p className="commanderInventoryEmpty">
-                    No commander artifacts in hand. The full catalog remains visible below for inspection.
+                    No commander artifacts in hand. The full catalog remains
+                    visible below for inspection.
                   </p>
                 ) : null}
-                {COMMANDER_ARTIFACT_SPEC_LIST
-                  .slice()
-                  .sort((a, b) => a.slot.localeCompare(b.slot) || a.tier.localeCompare(b.tier) || a.name.localeCompare(b.name))
+                {COMMANDER_ARTIFACT_SPEC_LIST.slice()
+                  .sort(
+                    (a, b) =>
+                      a.slot.localeCompare(b.slot) ||
+                      a.tier.localeCompare(b.tier) ||
+                      a.name.localeCompare(b.name),
+                  )
                   .map((spec) => {
                     const cardId = spec.cardId;
                     const held = heldCommanderArtifacts.includes(cardId);
-                    const bound = Object.values(commander.artifacts ?? {}).includes(cardId);
+                    const bound = Object.values(
+                      commander.artifacts ?? {},
+                    ).includes(cardId);
                     const action = legalActions.find(
-                      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === cardId
+                      (legal) =>
+                        legal.action.type === "PLAY_CARD" &&
+                        legal.action.cardId === cardId,
                     );
                     const occupied = Boolean(commander.artifacts?.[spec.slot]);
                     return (
                       <article
                         aria-label={`${spec.name}: ${bound ? "bound" : held ? "in hand" : "not owned"}`}
                         className={`commanderInventoryCard ${occupied && !bound ? "blocked" : ""} ${bound ? "equipped" : held ? "owned" : "unowned"}`}
-                        draggable={Boolean(held && action && !occupied && onAction)}
+                        draggable={Boolean(
+                          held && action && !occupied && onAction,
+                        )}
                         key={cardId}
                         onDragEnd={() => setDraggedCommanderArtifactId(null)}
                         onDragStart={(event) => {
@@ -4551,13 +5666,26 @@ export function TownHeroDock({
                         }}
                       >
                         {cardLibrary[cardId]?.assets?.cardImage ? (
-                          <img alt={`${spec.name} card`} src={assetUrl(cardLibrary[cardId].assets!.cardImage!)} />
+                          <img
+                            alt={`${spec.name} card`}
+                            src={assetUrl(
+                              cardLibrary[cardId].assets!.cardImage!,
+                            )}
+                          />
                         ) : (
-                          <img alt="" src={assetUrl(`/assets/wog/artifacts/icons/${spec.slug}.webp`)} />
+                          <img
+                            alt=""
+                            src={assetUrl(
+                              `/assets/wog/artifacts/icons/${spec.slug}.webp`,
+                            )}
+                          />
                         )}
                         <div>
                           <span className="commanderArtifactMeta">
-                            <EquipGradeChip grade={tierToGrade(spec.tier)} title={`${spec.tier} · Grade ${tierToGrade(spec.tier)}`} />
+                            <EquipGradeChip
+                              grade={tierToGrade(spec.tier)}
+                              title={`${spec.tier} · Grade ${tierToGrade(spec.tier)}`}
+                            />
                             {spec.slot} · {spec.tier}
                           </span>
                           <strong>{spec.name}</strong>
@@ -4583,15 +5711,26 @@ export function TownHeroDock({
                   })}
               </aside>
             </div>
-            <footer>Binding is permanent. The artifact remains equipped if the commander falls and is revived.</footer>
+            <footer>
+              Binding is permanent. The artifact remains equipped if the
+              commander falls and is revived.
+            </footer>
           </section>
         </div>
       ) : null}
 
       {armyOpen && armyPlayer ? (
         <>
-          <div aria-hidden="true" className="heroDropBackdrop" onClick={() => setArmyOpen(false)} />
-          <div className="heroDrop unitDrop" role="dialog" aria-label="Unit deck">
+          <div
+            aria-hidden="true"
+            className="heroDropBackdrop"
+            onClick={() => setArmyOpen(false)}
+          />
+          <div
+            className="heroDrop unitDrop"
+            role="dialog"
+            aria-label="Unit deck"
+          >
             <button
               aria-label="Close the unit deck"
               className="heroDropClose"
@@ -4600,7 +5739,12 @@ export function TownHeroDock({
             >
               <X aria-hidden="true" size={16} />
             </button>
-            <ArmyPanel legalActions={legalActions} onAction={onAction} playerId={armyPlayer.id} state={state} />
+            <ArmyPanel
+              legalActions={legalActions}
+              onAction={onAction}
+              playerId={armyPlayer.id}
+              state={state}
+            />
           </div>
         </>
       ) : null}
@@ -4608,7 +5752,13 @@ export function TownHeroDock({
   );
 }
 
-export function MoraleCardsDock({ state, viewerPlayerId }: { state: GameState; viewerPlayerId: PlayerId }) {
+export function MoraleCardsDock({
+  state,
+  viewerPlayerId,
+}: {
+  state: GameState;
+  viewerPlayerId: PlayerId;
+}) {
   const { zoomContent } = useCardZoom();
   const player = state.players[viewerPlayerId];
   if (!state.adventure?.moraleCards || !player) {
@@ -4621,11 +5771,16 @@ export function MoraleCardsDock({ state, viewerPlayerId }: { state: GameState; v
   // Every player's held Morale cards are public (face-up beside the hero) —
   // list the other seats' cards under the viewer's own.
   const others = Object.values(state.players)
-    .filter((candidate) => candidate.id !== viewerPlayerId && !candidate.eliminated)
+    .filter(
+      (candidate) => candidate.id !== viewerPlayerId && !candidate.eliminated,
+    )
     .map((candidate) => ({
       playerId: candidate.id,
       name: candidate.name,
-      cards: [...(candidate.moraleCards?.positive ?? []), ...(candidate.moraleCards?.negative ?? [])]
+      cards: [
+        ...(candidate.moraleCards?.positive ?? []),
+        ...(candidate.moraleCards?.negative ?? []),
+      ],
     }))
     .filter((entry) => entry.cards.length > 0);
 
@@ -4634,16 +5789,37 @@ export function MoraleCardsDock({ state, viewerPlayerId }: { state: GameState; v
     zoomContent({
       title: card?.name ?? cardId,
       image: card?.assets?.cardImage,
-      subtitle: cardId.includes(".positive.") ? "Positive Morale" : "Negative Morale",
-      lines: [moraleCardRulesText(cardId), MORALE_CARD_HINTS[cardId] ?? ""].filter(Boolean)
+      subtitle: cardId.includes(".positive.")
+        ? "Positive Morale"
+        : "Negative Morale",
+      lines: [
+        moraleCardRulesText(cardId),
+        MORALE_CARD_HINTS[cardId] ?? "",
+      ].filter(Boolean),
     });
   };
 
-  const deckTile = (deckId: string, label: string, count: number, discardCount: number) => {
+  const deckTile = (
+    deckId: string,
+    label: string,
+    count: number,
+    discardCount: number,
+  ) => {
     const back = getDeckBack(deckId);
     return (
-      <div className="moraleDeckTile" title={`${label}: ${count} in deck, ${discardCount} discarded`}>
-        {back.image ? <img alt="" aria-hidden="true" decoding="async" loading="lazy" src={assetUrl(back.image)} /> : null}
+      <div
+        className="moraleDeckTile"
+        title={`${label}: ${count} in deck, ${discardCount} discarded`}
+      >
+        {back.image ? (
+          <img
+            alt=""
+            aria-hidden="true"
+            decoding="async"
+            loading="lazy"
+            src={assetUrl(back.image)}
+          />
+        ) : null}
         <span>
           <strong>{count}</strong>
           <small>{label}</small>
@@ -4666,15 +5842,30 @@ export function MoraleCardsDock({ state, viewerPlayerId }: { state: GameState; v
               className="moraleHeldCard"
               key={`${cardId}-${index}`}
               onClick={() => showCard(cardId)}
-              title={hint ? `${card?.name ?? cardId} — ${hint}` : card?.name ?? cardId}
+              title={
+                hint
+                  ? `${card?.name ?? cardId} — ${hint}`
+                  : (card?.name ?? cardId)
+              }
               type="button"
             >
-              {card?.assets?.cardImage ? <img alt="" decoding="async" loading="lazy" src={assetUrl(card.assets.cardImage)} /> : <span>{polarity[0].toUpperCase()}</span>}
+              {card?.assets?.cardImage ? (
+                <img
+                  alt=""
+                  decoding="async"
+                  loading="lazy"
+                  src={assetUrl(card.assets.cardImage)}
+                />
+              ) : (
+                <span>{polarity[0].toUpperCase()}</span>
+              )}
             </button>
           );
         })}
         {extra > 0 ? <span className="moraleExtraCount">+{extra}</span> : null}
-        {cardIds.length === 0 ? <span className="moraleEmpty">None</span> : null}
+        {cardIds.length === 0 ? (
+          <span className="moraleEmpty">None</span>
+        ) : null}
       </div>
     );
   };
@@ -4686,8 +5877,18 @@ export function MoraleCardsDock({ state, viewerPlayerId }: { state: GameState; v
         <strong>Morale Cards</strong>
       </header>
       <div className="moraleDeckGrid">
-        {deckTile(MORALE_POSITIVE_DECK_ID, "Positive", positiveDeck?.drawPile.length ?? 0, positiveDeck?.discardPile.length ?? 0)}
-        {deckTile(MORALE_NEGATIVE_DECK_ID, "Negative", negativeDeck?.drawPile.length ?? 0, negativeDeck?.discardPile.length ?? 0)}
+        {deckTile(
+          MORALE_POSITIVE_DECK_ID,
+          "Positive",
+          positiveDeck?.drawPile.length ?? 0,
+          positiveDeck?.discardPile.length ?? 0,
+        )}
+        {deckTile(
+          MORALE_NEGATIVE_DECK_ID,
+          "Negative",
+          negativeDeck?.drawPile.length ?? 0,
+          negativeDeck?.discardPile.length ?? 0,
+        )}
       </div>
       <div className="moraleHeldGroup">
         <span>Positive</span>
@@ -4699,7 +5900,9 @@ export function MoraleCardsDock({ state, viewerPlayerId }: { state: GameState; v
       </div>
       {others.map((entry) => (
         <div className="moraleOthersRow" key={entry.playerId}>
-          <span title={`${entry.name}'s held Morale cards (public)`}>{entry.name}</span>
+          <span title={`${entry.name}'s held Morale cards (public)`}>
+            {entry.name}
+          </span>
           {entry.cards.slice(0, 5).map((cardId, index) => {
             const card = cardLibrary[cardId];
             const negative = cardId.includes(".negative.");
@@ -4712,11 +5915,22 @@ export function MoraleCardsDock({ state, viewerPlayerId }: { state: GameState; v
                 title={card?.name ?? cardId}
                 type="button"
               >
-                {card?.assets?.cardImage ? <img alt="" decoding="async" loading="lazy" src={assetUrl(card.assets.cardImage)} /> : <span>{negative ? "N" : "P"}</span>}
+                {card?.assets?.cardImage ? (
+                  <img
+                    alt=""
+                    decoding="async"
+                    loading="lazy"
+                    src={assetUrl(card.assets.cardImage)}
+                  />
+                ) : (
+                  <span>{negative ? "N" : "P"}</span>
+                )}
               </button>
             );
           })}
-          {entry.cards.length > 5 ? <span className="moraleExtraCount">+{entry.cards.length - 5}</span> : null}
+          {entry.cards.length > 5 ? (
+            <span className="moraleExtraCount">+{entry.cards.length - 5}</span>
+          ) : null}
         </div>
       ))}
     </section>
@@ -4733,10 +5947,15 @@ export function MoraleCardsDock({ state, viewerPlayerId }: { state: GameState; v
  * text so a player can always read what the implementation does (e.g. that
  * Few Medusas carry only "Paralyzing Gaze", not the "No Range Penalty").
  */
-function implementedAbilityLines(abilityIds: readonly string[] | undefined): string[] {
+function implementedAbilityLines(
+  abilityIds: readonly string[] | undefined,
+): string[] {
   return (abilityIds ?? [])
     .map((id) => unitAbilities[id])
-    .filter((ability) => Boolean(ability) && ability.implementationStatus === "implemented")
+    .filter(
+      (ability) =>
+        Boolean(ability) && ability.implementationStatus === "implemented",
+    )
     .map((ability) => `✦ ${ability.name}: ${ability.text}`);
 }
 
@@ -4745,14 +5964,14 @@ const ARMY_STACK_TOKEN_LABELS = {
   attack: "+1 ATK",
   defense: "+1 DEF",
   health: "+1 HP",
-  initiative: "+2 INI"
+  initiative: "+2 INI",
 } as const;
 
 export function ArmyPanel({
   state,
   playerId,
   legalActions = [],
-  onAction
+  onAction,
 }: {
   state: GameState;
   playerId: PlayerId;
@@ -4765,7 +5984,9 @@ export function ArmyPanel({
   const [xpBoardUnitId, setXpBoardUnitId] = useState<string | null>(null);
   const player = state.players[playerId];
   const lexicon = factionUiLexicon(player?.factionId);
-  const faction = player?.factionId ? coreFactionDefinitions[player.factionId] : undefined;
+  const faction = player?.factionId
+    ? coreFactionDefinitions[player.factionId]
+    : undefined;
   // The Unit deck panel shows the player's WHOLE faction roster — owned or not —
   // with printed recruit (Few) / reinforce (Pack) costs, so it reads like a full
   // deck reference (user request "show all units even not available … show cost
@@ -4776,7 +5997,10 @@ export function ArmyPanel({
     return (
       <section className={`armyPanel theme-${lexicon.register}`}>
         <h3>{lexicon.army}</h3>
-        <small>No units. The scenario&apos;s starting units return after the next combat.</small>
+        <small>
+          No units. The scenario&apos;s starting units return after the next
+          combat.
+        </small>
       </section>
     );
   }
@@ -4800,7 +6024,10 @@ export function ArmyPanel({
     | { kind: "unowned"; unitDefId: string }
   )[] = [];
   for (const unitDefId of roster) {
-    const owned = player.army.find((candidate) => candidate.unitDefId === unitDefId && !renderedArmyIds.has(candidate.id));
+    const owned = player.army.find(
+      (candidate) =>
+        candidate.unitDefId === unitDefId && !renderedArmyIds.has(candidate.id),
+    );
     // Once both MGQ Gold Contracts are recorded, the other Gold identities
     // leave this game's roster rather than looking recruitable. The contract
     // panel names the two locks and explains the hidden count.
@@ -4821,8 +6048,13 @@ export function ArmyPanel({
   }
 
   return (
-    <section className={`armyPanel theme-${lexicon.register}`} aria-label={lexicon.army}>
-      <h3>{lexicon.army} ({player.army.length})</h3>
+    <section
+      className={`armyPanel theme-${lexicon.register}`}
+      aria-label={lexicon.army}
+    >
+      <h3>
+        {lexicon.army} ({player.army.length})
+      </h3>
       {experienceActive && player.army.length > 0 ? (
         // The board itself is a POP-UP WINDOW (like the Hero Grade / Hero
         // Equipment windows): this button opens it with per-unit XP, the
@@ -4856,11 +6088,16 @@ export function ArmyPanel({
               (legal) =>
                 legal.action.type === "POPULATION_ACTION" &&
                 legal.action.purchases.some(
-                  (purchase) => purchase.kind === "recruit" && purchase.unitDefId === entry.unitDefId
-                )
+                  (purchase) =>
+                    purchase.kind === "recruit" &&
+                    purchase.unitDefId === entry.unitDefId,
+                ),
             );
             return (
-              <li className="armyRosterUnowned" key={`roster-${entry.unitDefId}`}>
+              <li
+                className="armyRosterUnowned"
+                key={`roster-${entry.unitDefId}`}
+              >
                 {rosterDef?.few || rosterDef?.pack ? (
                   <UnitSideCards
                     fewCost={rosterDef?.few?.cost}
@@ -4876,7 +6113,10 @@ export function ArmyPanel({
                   <small className="armyRosterState">not recruited</small>
                 </span>
                 {onAction && recruitAction ? (
-                  <div className="armyUnitActions" aria-label={`${rosterDef?.name ?? entry.unitDefId} actions`}>
+                  <div
+                    className="armyUnitActions"
+                    aria-label={`${rosterDef?.name ?? entry.unitDefId} actions`}
+                  >
                     <button
                       aria-label={`Recruit Few ${rosterDef?.name ?? entry.unitDefId}`}
                       onClick={() => onAction(recruitAction.action)}
@@ -4898,11 +6138,22 @@ export function ArmyPanel({
           const side = printed
             ? unit.side === "bank"
               ? printed
-              : applyUnitSideRules(ruleset, unit.unitDefId, unit.side, printed, sideOverrides)
+              : applyUnitSideRules(
+                  ruleset,
+                  unit.unitDefId,
+                  unit.side,
+                  printed,
+                  sideOverrides,
+                )
             : printed;
           // Community Balance Change reprints four Castle unit sides — the same
           // resolver every unit-face surface reads (rule off ⇒ the printed scan).
-          const unitFace = resolveUnitFaceImage(balanceArt, unit.unitDefId, unit.side, side?.cardImage);
+          const unitFace = resolveUnitFaceImage(
+            balanceArt,
+            unit.unitDefId,
+            unit.side,
+            side?.cardImage,
+          );
           const stackAttack =
             sideOverrides.polishUnitStacks &&
             (unit.side === "pack" || unit.side === "neutral") &&
@@ -4911,56 +6162,100 @@ export function ArmyPanel({
               : 0;
           // Unit Experience (optional rule): show the same rank-folded stats
           // the engine fights with, plus a WoG-style caret/sword rank badge.
-          const rankInfo = unitExperienceActive(state) ? armyUnitRankInfo(unit) : null;
-          const rankBonus = rankInfo?.bonus ?? { attack: 0, defense: 0, health: 0, initiative: 0 };
+          const rankInfo = unitExperienceActive(state)
+            ? armyUnitRankInfo(unit)
+            : null;
+          const rankBonus = rankInfo?.bonus ?? {
+            attack: 0,
+            defense: 0,
+            health: 0,
+            initiative: 0,
+          };
           const tokenBonus = (stat: NonNullable<typeof unit.stackToken>) =>
             unit.stackToken === stat ? stackTokenDelta(stat) : 0;
           const shownAttack = side
-            ? side.attack + (unit.permanentAttackBonus ?? 0) + stackAttack + rankBonus.attack + tokenBonus("attack")
+            ? side.attack +
+              (unit.permanentAttackBonus ?? 0) +
+              stackAttack +
+              rankBonus.attack +
+              tokenBonus("attack")
             : 0;
-          const shownDefense = side ? side.defense + rankBonus.defense + tokenBonus("defense") : 0;
-          const shownHealth = side ? side.health + rankBonus.health + tokenBonus("health") : 0;
-          const shownInitiative = side ? side.initiative + rankBonus.initiative + tokenBonus("initiative") : 0;
-          const eliteAbility = rankInfo?.eliteActive && rankInfo.eliteAbilityId ? unitAbilities[rankInfo.eliteAbilityId] : null;
-          const elitePreview = rankInfo?.eliteAbilityId ? unitAbilities[rankInfo.eliteAbilityId] : null;
+          const shownDefense = side
+            ? side.defense + rankBonus.defense + tokenBonus("defense")
+            : 0;
+          const shownHealth = side
+            ? side.health + rankBonus.health + tokenBonus("health")
+            : 0;
+          const shownInitiative = side
+            ? side.initiative + rankBonus.initiative + tokenBonus("initiative")
+            : 0;
+          const eliteAbility =
+            rankInfo?.eliteActive && rankInfo.eliteAbilityId
+              ? unitAbilities[rankInfo.eliteAbilityId]
+              : null;
+          const elitePreview = rankInfo?.eliteAbilityId
+            ? unitAbilities[rankInfo.eliteAbilityId]
+            : null;
           const thresholds = def ? UNIT_RANK_THRESHOLDS[def.tier] : null;
           const maxXp = thresholds?.[thresholds.length - 1] ?? 1;
-          const xpPercent = rankInfo ? Math.min(100, (rankInfo.experience / maxXp) * 100) : 0;
+          const xpPercent = rankInfo
+            ? Math.min(100, (rankInfo.experience / maxXp) * 100)
+            : 0;
           const drillAction = legalActions.find(
-            (legal) => legal.action.type === "DRILL_UNIT" && legal.action.armyUnitId === unit.id
+            (legal) =>
+              legal.action.type === "DRILL_UNIT" &&
+              legal.action.armyUnitId === unit.id,
           );
           const populationActions = legalActions.filter(
             (legal) =>
               legal.action.type === "POPULATION_ACTION" &&
-              legal.action.purchases.some((purchase) => purchase.armyUnitId === unit.id)
+              legal.action.purchases.some(
+                (purchase) => purchase.armyUnitId === unit.id,
+              ),
           );
           const bankedReinforceAction = legalActions.find(
             (legal) =>
               legal.action.type === "REDEEM_REINFORCEMENT_DISCOUNT" &&
               legal.action.armyUnitId === unit.id &&
-              legal.action.kind === "reinforce"
+              legal.action.kind === "reinforce",
           );
           const bankedStackAction = legalActions.find(
             (legal) =>
               legal.action.type === "REDEEM_REINFORCEMENT_DISCOUNT" &&
               legal.action.armyUnitId === unit.id &&
-              legal.action.kind === "stack"
+              legal.action.kind === "stack",
           );
-          const reinforceAction = bankedReinforceAction ?? populationActions.find(
-            (legal) => legal.action.type === "POPULATION_ACTION" && legal.action.purchases.some((purchase) => purchase.kind === "reinforce")
-          );
-          const stackAction = bankedStackAction ?? populationActions.find(
-            (legal) => legal.action.type === "POPULATION_ACTION" && legal.action.purchases.some((purchase) => purchase.kind === "stack")
-          );
+          const reinforceAction =
+            bankedReinforceAction ??
+            populationActions.find(
+              (legal) =>
+                legal.action.type === "POPULATION_ACTION" &&
+                legal.action.purchases.some(
+                  (purchase) => purchase.kind === "reinforce",
+                ),
+            );
+          const stackAction =
+            bankedStackAction ??
+            populationActions.find(
+              (legal) =>
+                legal.action.type === "POPULATION_ACTION" &&
+                legal.action.purchases.some(
+                  (purchase) => purchase.kind === "stack",
+                ),
+            );
           const activeRankAbilities = (rankInfo?.rankAbilityIds ?? [])
             .map((id) => unitAbilities[id]?.name)
             .filter(Boolean);
           const rankLine = rankInfo
             ? rankInfo.rank > 0
               ? `${rankInfo.rankName} (rank ${rankInfo.rank}) — ${rankInfo.experience} XP${
-                  rankInfo.nextThreshold !== null ? `, next at ${rankInfo.nextThreshold}` : ", max"
+                  rankInfo.nextThreshold !== null
+                    ? `, next at ${rankInfo.nextThreshold}`
+                    : ", max"
                 } · ${rankInfo.abilityBudget} ability path${
-                  activeRankAbilities.length ? ` · ${activeRankAbilities.join(", ")}` : ""
+                  activeRankAbilities.length
+                    ? ` · ${activeRankAbilities.join(", ")}`
+                    : ""
                 }`
               : rankInfo.experience > 0
                 ? `${rankInfo.experience} XP — first rank at ${rankInfo.nextThreshold}`
@@ -4968,7 +6263,9 @@ export function ArmyPanel({
             : "";
           const engineLines = implementedAbilityLines(side?.abilities);
           const hoverTitle =
-            [rankLine, side?.abilityText, ...engineLines].filter(Boolean).join("\n") || `Read ${def?.name ?? unit.unitDefId}`;
+            [rankLine, side?.abilityText, ...engineLines]
+              .filter(Boolean)
+              .join("\n") || `Read ${def?.name ?? unit.unitDefId}`;
           return (
             <li key={unit.id}>
               {/* Full both-faces card display, identical to the town recruit
@@ -5002,14 +6299,16 @@ export function ArmyPanel({
                     image: unitFace,
                     subtitle: def ? `${def.tier} ${def.type}` : undefined,
                     lines: [
-                      side ? `Attack ${shownAttack} · Defense ${shownDefense} · HP ${shownHealth} · Initiative ${shownInitiative}` : "",
+                      side
+                        ? `Attack ${shownAttack} · Defense ${shownDefense} · HP ${shownHealth} · Initiative ${shownInitiative}`
+                        : "",
                       rankLine,
                       (unit.stacks ?? 0) > 0
                         ? `${unit.stacks} Polish Unit Stack${unit.stacks === 1 ? "" : "s"}: +1 Attack and ${unit.stacks} extra Pack health layer${unit.stacks === 1 ? "" : "s"}.`
                         : "",
                       side?.abilityText ?? "",
-                      ...engineLines
-                    ].filter(Boolean)
+                      ...engineLines,
+                    ].filter(Boolean),
                   })
                 }
                 title={hoverTitle}
@@ -5019,9 +6318,17 @@ export function ArmyPanel({
                     thumb here, since the both-faces display above is skipped. */}
                 {unit.side === "bank" || (!def?.few && !def?.pack) ? (
                   unitFace ? (
-                    <img alt="" aria-hidden="true" className="armyUnitThumb" loading="lazy" src={assetUrl(unitFace)} />
+                    <img
+                      alt=""
+                      aria-hidden="true"
+                      className="armyUnitThumb"
+                      loading="lazy"
+                      src={assetUrl(unitFace)}
+                    />
                   ) : (
-                    <span className={`armyUnitThumb fallback tier-${def?.tier ?? "bronze"}`} />
+                    <span
+                      className={`armyUnitThumb fallback tier-${def?.tier ?? "bronze"}`}
+                    />
                   )
                 ) : null}
                 <span className={`tierDot ${def?.tier}`} />
@@ -5036,7 +6343,10 @@ export function ArmyPanel({
                   {def?.name ?? unit.unitDefId}
                 </strong>
                 {rankInfo && rankInfo.rank > 0 ? (
-                  <span className={`unitRankBadge rank-${rankInfo.rank}`} title={rankLine}>
+                  <span
+                    className={`unitRankBadge rank-${rankInfo.rank}`}
+                    title={rankLine}
+                  >
                     {unitRankBadgeImage(rankInfo.rank) ? (
                       <img
                         alt=""
@@ -5058,7 +6368,11 @@ export function ArmyPanel({
                     className={`armyStackBadge count-${Math.min(3, unit.stacks ?? 0)} active`}
                     title={`${unit.stacks} Unit Stack${unit.stacks === 1 ? "" : "s"} · +1 Attack · max ${polishArmyUnitStackCap(unit) || unit.stacks}`}
                   >
-                    <img alt="" aria-hidden="true" src={assetUrl("/assets/ui/polish-unit-stacks-coin.webp")} />
+                    <img
+                      alt=""
+                      aria-hidden="true"
+                      src={assetUrl("/assets/ui/polish-unit-stacks-coin.webp")}
+                    />
                     ×{unit.stacks}
                   </span>
                 ) : null}
@@ -5072,7 +6386,8 @@ export function ArmyPanel({
                 ) : null}
                 {side ? (
                   <small>
-                    A{shownAttack} D{shownDefense} HP{shownHealth} I{shownInitiative}
+                    A{shownAttack} D{shownDefense} HP{shownHealth} I
+                    {shownInitiative}
                   </small>
                 ) : null}
               </button>
@@ -5094,19 +6409,41 @@ export function ArmyPanel({
                   type="button"
                 >
                   <div className="armyXpHead">
-                    <span><img alt="" src={assetUrl("/assets/spell-icons/slayer.png")} /><strong>{rankInfo.rankName || "Recruit"}</strong></span>
-                    <b>{rankInfo.experience} / {maxXp} XP</b>
+                    <span>
+                      <img
+                        alt=""
+                        src={assetUrl("/assets/spell-icons/slayer.png")}
+                      />
+                      <strong>{rankInfo.rankName || "Recruit"}</strong>
+                    </span>
+                    <b>
+                      {rankInfo.experience} / {maxXp} XP
+                    </b>
                   </div>
-                  <div className="armyXpTrack" aria-label={`${Math.round(xpPercent)} percent to Legend`}>
-                    <span className="armyXpFill" style={{ width: `${xpPercent}%` }} />
+                  <div
+                    className="armyXpTrack"
+                    aria-label={`${Math.round(xpPercent)} percent to Legend`}
+                  >
+                    <span
+                      className="armyXpFill"
+                      style={{ width: `${xpPercent}%` }}
+                    />
                     {thresholds?.map((threshold, index) => (
-                      <span className={`armyXpMilestone ${rankInfo.rank > index ? "reached" : ""}`} key={threshold} style={{ left: `${(threshold / maxXp) * 100}%` }}>
-                        <i>{index + 1}</i><small>{threshold}</small>
+                      <span
+                        className={`armyXpMilestone ${rankInfo.rank > index ? "reached" : ""}`}
+                        key={threshold}
+                        style={{ left: `${(threshold / maxXp) * 100}%` }}
+                      >
+                        <i>{index + 1}</i>
+                        <small>{threshold}</small>
                       </span>
                     ))}
                   </div>
                   <div className="armyXpDetails">
-                    <span>Bonus: A+{rankBonus.attack} D+{rankBonus.defense} HP+{rankBonus.health} I+{rankBonus.initiative}</span>
+                    <span>
+                      Bonus: A+{rankBonus.attack} D+{rankBonus.defense} HP+
+                      {rankBonus.health} I+{rankBonus.initiative}
+                    </span>
                     {rankInfo.rankAbilityIds.length > 0 ? (
                       <span className="eliteAbilityCard active">
                         <Sparkles aria-hidden="true" size={12} />{" "}
@@ -5118,7 +6455,8 @@ export function ArmyPanel({
                     ) : null}
                     {elitePreview && !rankInfo.eliteActive ? (
                       <span className="eliteAbilityCard locked">
-                        <Sparkles aria-hidden="true" size={12} /> Signature: {elitePreview.name} · unlocks at rank 3
+                        <Sparkles aria-hidden="true" size={12} /> Signature:{" "}
+                        {elitePreview.name} · unlocks at rank 3
                         <small>{elitePreview.text}</small>
                       </span>
                     ) : null}
@@ -5126,7 +6464,10 @@ export function ArmyPanel({
                 </button>
               ) : null}
               {onAction && (drillAction || reinforceAction || stackAction) ? (
-                <div className="armyUnitActions" aria-label={`${def?.name ?? unit.unitDefId} actions`}>
+                <div
+                  className="armyUnitActions"
+                  aria-label={`${def?.name ?? unit.unitDefId} actions`}
+                >
                   {drillAction ? (
                     <DrillUnitButton
                       action={drillAction.action}
@@ -5137,8 +6478,28 @@ export function ArmyPanel({
                       unitName={def?.name ?? unit.unitDefId}
                     />
                   ) : null}
-                  {reinforceAction ? <button onClick={() => onAction(reinforceAction.action)} type="button"><ChevronsUp size={13} /> {bankedReinforceAction ? bankedReinforceAction.label : "Reinforce to Pack"}</button> : null}
-                  {stackAction ? <button onClick={() => onAction(stackAction.action)} type="button"><Layers size={13} /> {bankedStackAction ? bankedStackAction.label : "Increase Stack"}</button> : null}
+                  {reinforceAction ? (
+                    <button
+                      onClick={() => onAction(reinforceAction.action)}
+                      type="button"
+                    >
+                      <ChevronsUp size={13} />{" "}
+                      {bankedReinforceAction
+                        ? bankedReinforceAction.label
+                        : "Reinforce to Pack"}
+                    </button>
+                  ) : null}
+                  {stackAction ? (
+                    <button
+                      onClick={() => onAction(stackAction.action)}
+                      type="button"
+                    >
+                      <Layers size={13} />{" "}
+                      {bankedStackAction
+                        ? bankedStackAction.label
+                        : "Increase Stack"}
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
             </li>
@@ -5147,7 +6508,8 @@ export function ArmyPanel({
       </ul>
       {player.army.length === 0 ? (
         <small className="armyEmptyNote">
-          No units in your deck yet — the scenario&apos;s starting units return after the next combat.
+          No units in your deck yet — the scenario&apos;s starting units return
+          after the next combat.
         </small>
       ) : null}
       {xpBoardOpen && typeof document !== "undefined"
@@ -5163,7 +6525,7 @@ export function ArmyPanel({
               playerId={playerId}
               state={state}
             />,
-            document.body
+            document.body,
           )
         : null}
     </section>
@@ -5180,7 +6542,7 @@ export function TownPanel({
   state,
   viewerPlayerId,
   legalActions,
-  onAction
+  onAction,
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
@@ -5195,7 +6557,11 @@ export function TownPanel({
    * a single fixed-position tip anchored to the hovered building instead so it
    * always shows in full.
    */
-  const [buildingTip, setBuildingTip] = useState<{ buildingId: string; left: number; top: number } | null>(null);
+  const [buildingTip, setBuildingTip] = useState<{
+    buildingId: string;
+    left: number;
+    top: number;
+  } | null>(null);
   // The open panel closes when the round advances or the seat changes
   // (state-adjustment-during-render pattern).
   const [panelKey, setPanelKey] = useState("");
@@ -5206,27 +6572,42 @@ export function TownPanel({
   }
 
   const player = state.players[viewerPlayerId];
-  const town = Object.values(state.towns).find((candidate) => candidate.controllerId === viewerPlayerId);
-  const faction = player?.factionId ? coreFactionDefinitions[player.factionId] : undefined;
+  const town = Object.values(state.towns).find(
+    (candidate) => candidate.controllerId === viewerPlayerId,
+  );
+  const faction = player?.factionId
+    ? coreFactionDefinitions[player.factionId]
+    : undefined;
 
   if (!player || !town || !faction) {
     return null;
   }
 
-  const buildActions = legalActions.filter((legal) => legal.action.type === "BUILD_STRUCTURE");
+  const buildActions = legalActions.filter(
+    (legal) => legal.action.type === "BUILD_STRUCTURE",
+  );
   const anchorBuildingTip = (buildingId: string, element: HTMLElement) => {
     const rect = element.getBoundingClientRect();
-    setBuildingTip({ buildingId, left: rect.left + rect.width / 2, top: rect.top - 8 });
+    setBuildingTip({
+      buildingId,
+      left: rect.left + rect.width / 2,
+      top: rect.top - 8,
+    });
   };
   const clearBuildingTip = (buildingId: string) =>
-    setBuildingTip((current) => (current?.buildingId === buildingId ? null : current));
+    setBuildingTip((current) =>
+      current?.buildingId === buildingId ? null : current,
+    );
 
   // A building's use panel opens when it is BUILT — or, unbuilt, while the engine
   // offers an action that belongs to it (the Mages proclamation waiving the Mage
   // Guild for the Spell Book token). ONE shared read with the board view.
-  const openCandidate = openBuildingId ? coreBuildingDefinitions[openBuildingId] : null;
+  const openCandidate = openBuildingId
+    ? coreBuildingDefinitions[openBuildingId]
+    : null;
   const openBuilding =
-    openCandidate && buildingPanelReachable(state, viewerPlayerId, legalActions, openCandidate)
+    openCandidate &&
+    buildingPanelReachable(state, viewerPlayerId, legalActions, openCandidate)
       ? openCandidate
       : null;
 
@@ -5235,11 +6616,17 @@ export function TownPanel({
       <h3>
         {faction.name} town
         <small title="Build / Population / Spell book tokens — each once per round">
-          {player.townTokens.build ? "🔨" : "▫"} {player.townTokens.population ? "👥" : "▫"}{" "}
+          {player.townTokens.build ? "🔨" : "▫"}{" "}
+          {player.townTokens.population ? "👥" : "▫"}{" "}
           {player.townTokens.spellBook ? "📖" : "▫"}
         </small>
       </h3>
-      <CommanderForgePanel legalActions={legalActions} onAction={onAction} playerId={viewerPlayerId} state={state} />
+      <CommanderForgePanel
+        legalActions={legalActions}
+        onAction={onAction}
+        playerId={viewerPlayerId}
+        state={state}
+      />
       <div className="townBuildings">
         {faction.buildings.map((buildingId) => {
           const building = coreBuildingDefinitions[buildingId];
@@ -5248,19 +6635,37 @@ export function TownPanel({
           }
           const built = town.buildings.includes(buildingId);
           const action = buildActions.find(
-            (legal) => legal.action.type === "BUILD_STRUCTURE" && legal.action.buildingId === buildingId
+            (legal) =>
+              legal.action.type === "BUILD_STRUCTURE" &&
+              legal.action.buildingId === buildingId,
           );
           const cubes = town.factionCubes?.[buildingId] ?? 0;
-          const effectPanel = buildingPanelReachable(state, viewerPlayerId, legalActions, building);
+          const effectPanel = buildingPanelReachable(
+            state,
+            viewerPlayerId,
+            legalActions,
+            building,
+          );
           const open = openBuildingId === buildingId;
-          const actionable = effectPanel && activeBuildingActions(state, viewerPlayerId, legalActions, buildingId).length > 0;
+          const actionable =
+            effectPanel &&
+            activeBuildingActions(
+              state,
+              viewerPlayerId,
+              legalActions,
+              buildingId,
+            ).length > 0;
           return (
             <div
               className={`townBuilding ${built ? "built" : ""}`}
               key={buildingId}
               onBlur={() => clearBuildingTip(buildingId)}
-              onFocus={(event) => anchorBuildingTip(buildingId, event.currentTarget)}
-              onMouseEnter={(event) => anchorBuildingTip(buildingId, event.currentTarget)}
+              onFocus={(event) =>
+                anchorBuildingTip(buildingId, event.currentTarget)
+              }
+              onMouseEnter={(event) =>
+                anchorBuildingTip(buildingId, event.currentTarget)
+              }
               onMouseLeave={() => clearBuildingTip(buildingId)}
               tabIndex={0}
             >
@@ -5283,10 +6688,22 @@ export function TownPanel({
                 </span>
               ) : null}
               <strong>{building.name}</strong>
-              <small>{built ? (cubes > 0 ? `built · ${cubes} cube${cubes === 1 ? "" : "s"}` : "built") : formatCost(building.cost)}</small>
-              {building.implementationStatus === "not-implemented" ? <small className="todoTag">data only</small> : null}
+              <small>
+                {built
+                  ? cubes > 0
+                    ? `built · ${cubes} cube${cubes === 1 ? "" : "s"}`
+                    : "built"
+                  : formatCost(building.cost)}
+              </small>
+              {building.implementationStatus === "not-implemented" ? (
+                <small className="todoTag">data only</small>
+              ) : null}
               {action ? (
-                <button className="commandButton" onClick={() => onAction(action.action)} type="button">
+                <button
+                  className="commandButton"
+                  onClick={() => onAction(action.action)}
+                  type="button"
+                >
                   Build
                 </button>
               ) : null}
@@ -5313,7 +6730,10 @@ export function TownPanel({
               return null;
             }
             const prerequisites = (building.prerequisites ?? [])
-              .map((prerequisite) => coreBuildingDefinitions[prerequisite]?.name ?? prerequisite)
+              .map(
+                (prerequisite) =>
+                  coreBuildingDefinitions[prerequisite]?.name ?? prerequisite,
+              )
               .join(", ");
             const timing = buildingTimingLabel(building);
             return (
@@ -5347,9 +6767,18 @@ export function TownPanel({
         />
       ) : null}
 
-      <TownRecruitSection legalActions={legalActions} onAction={onAction} state={state} viewerPlayerId={viewerPlayerId} />
+      <TownRecruitSection
+        legalActions={legalActions}
+        onAction={onAction}
+        state={state}
+        viewerPlayerId={viewerPlayerId}
+      />
 
-      <HireHeroesSection legalActions={legalActions} onAction={onAction} state={state} />
+      <HireHeroesSection
+        legalActions={legalActions}
+        onAction={onAction}
+        state={state}
+      />
     </section>
   );
 }
@@ -5397,7 +6826,10 @@ type VisitRewardArt = {
  * tray tile reads the identical precedence (with both packs off it returns
  * `art.image` unchanged).
  */
-function rewardArtImage(flags: BalanceArtFlags, art: VisitRewardArt): string | undefined {
+function rewardArtImage(
+  flags: BalanceArtFlags,
+  art: VisitRewardArt,
+): string | undefined {
   if (art.cardId) {
     return resolveCardFaceImage(flags, art.cardId, false) ?? art.image;
   }
@@ -5419,7 +6851,7 @@ function rewardArtImage(flags: BalanceArtFlags, art: VisitRewardArt): string | u
 function rewardArtFromVisitSteps(
   state: GameState,
   playerId: PlayerId,
-  steps: { type: string; [key: string]: unknown }[] | undefined
+  steps: { type: string; [key: string]: unknown }[] | undefined,
 ): VisitRewardArt | null {
   if (!steps) {
     return null;
@@ -5430,14 +6862,28 @@ function rewardArtFromVisitSteps(
       buildingMaterials?: unknown;
       valuables?: unknown;
     };
-    const rewards = (["gold", "buildingMaterials", "valuables"] as const).filter(
-      (kind) => typeof resourceStep[kind] === "number" && (resourceStep[kind] as number) > 0
+    const rewards = (
+      ["gold", "buildingMaterials", "valuables"] as const
+    ).filter(
+      (kind) =>
+        typeof resourceStep[kind] === "number" &&
+        (resourceStep[kind] as number) > 0,
     );
     if (rewards.length === 1) {
       const kind = rewards[0];
       const amount = resourceStep[kind] as number;
-      const name = kind === "buildingMaterials" ? "Building materials" : kind === "gold" ? "Gold" : "Valuables";
-      return { image: RESOURCE_ICONS[kind], name, caption: `+${amount}`, resource: true };
+      const name =
+        kind === "buildingMaterials"
+          ? "Building materials"
+          : kind === "gold"
+            ? "Gold"
+            : "Valuables";
+      return {
+        image: RESOURCE_ICONS[kind],
+        name,
+        caption: `+${amount}`,
+        resource: true,
+      };
     }
   }
   for (const step of steps) {
@@ -5460,20 +6906,38 @@ function rewardArtFromVisitSteps(
         | { kind?: "recruit"; unitDefId?: unknown }
         | { kind?: "reinforce"; armyUnitId?: unknown }
         | undefined;
-      if (target?.kind === "recruit" && typeof target.unitDefId === "string" && target.unitDefId) {
+      if (
+        target?.kind === "recruit" &&
+        typeof target.unitDefId === "string" &&
+        target.unitDefId
+      ) {
         return rewardArtForId(target.unitDefId);
       }
-      if (target?.kind === "reinforce" && typeof target.armyUnitId === "string" && target.armyUnitId) {
-        const armyUnit = state.players[playerId]?.army.find((unit) => unit.id === target.armyUnitId);
+      if (
+        target?.kind === "reinforce" &&
+        typeof target.armyUnitId === "string" &&
+        target.armyUnitId
+      ) {
+        const armyUnit = state.players[playerId]?.army.find(
+          (unit) => unit.id === target.armyUnitId,
+        );
         if (armyUnit) {
           const def = coreUnitDefinitions[armyUnit.unitDefId];
-          const side = armyUnitPrintedSide(def, armyUnit.side, armyUnit.unitDefId);
+          const side = armyUnitPrintedSide(
+            def,
+            armyUnit.side,
+            armyUnit.unitDefId,
+          );
           return {
-            image: side?.cardImage ?? def?.few?.cardImage ?? def?.pack?.cardImage ?? def?.neutral?.cardImage,
+            image:
+              side?.cardImage ??
+              def?.few?.cardImage ??
+              def?.pack?.cardImage ??
+              def?.neutral?.cardImage,
             unitDefId: armyUnit.unitDefId,
             unitSide: armyUnit.side,
             name: def?.name ?? armyUnit.unitDefId,
-            caption: def?.name ?? armyUnit.unitDefId
+            caption: def?.name ?? armyUnit.unitDefId,
           };
         }
       }
@@ -5495,7 +6959,7 @@ function rewardArtFromVisitSteps(
           image: equipmentImage(equipmentId),
           name: def.name.en,
           caption: `${def.name.en} · ${def.slot} · Grade ${def.grade}`,
-          detail: def.summary
+          detail: def.summary,
         };
       }
     }
@@ -5513,16 +6977,26 @@ function rewardArtFromVisitSteps(
       }
     }
     if (typeof step.armyUnitId === "string" && step.armyUnitId) {
-      const armyUnit = state.players[playerId]?.army.find((unit) => unit.id === step.armyUnitId);
+      const armyUnit = state.players[playerId]?.army.find(
+        (unit) => unit.id === step.armyUnitId,
+      );
       if (armyUnit) {
         const def = coreUnitDefinitions[armyUnit.unitDefId];
-        const side = armyUnitPrintedSide(def, armyUnit.side, armyUnit.unitDefId);
+        const side = armyUnitPrintedSide(
+          def,
+          armyUnit.side,
+          armyUnit.unitDefId,
+        );
         return {
-          image: side?.cardImage ?? def?.few?.cardImage ?? def?.pack?.cardImage ?? def?.neutral?.cardImage,
+          image:
+            side?.cardImage ??
+            def?.few?.cardImage ??
+            def?.pack?.cardImage ??
+            def?.neutral?.cardImage,
           unitDefId: armyUnit.unitDefId,
           unitSide: armyUnit.side,
           name: def?.name ?? armyUnit.unitDefId,
-          caption: def?.name ?? armyUnit.unitDefId
+          caption: def?.name ?? armyUnit.unitDefId,
         };
       }
     }
@@ -5534,13 +7008,14 @@ function rewardArtFromVisitSteps(
           typeof step.rotation === "number" && Number.isFinite(step.rotation)
             ? ((step.rotation % 6) + 6) % 6
             : tile.rotation;
-        const degrees = typeof step.rotation === "number" ? `${rotation * 60}°` : undefined;
+        const degrees =
+          typeof step.rotation === "number" ? `${rotation * 60}°` : undefined;
         return {
           image: def?.assets?.tileImage,
           // TileDefinition has id (no display name); fall back to the instance's def id.
           name: def?.id ?? tile.tileDefId,
           tileRotation: rotation,
-          caption: degrees ?? def?.id ?? tile.tileDefId
+          caption: degrees ?? def?.id ?? tile.tileDefId,
         };
       }
     }
@@ -5559,15 +7034,17 @@ function rewardArtFromVisitSteps(
 const STARTING_BONUS_ARTIFACT_STEPS = new Set([
   "STARTING_BONUS_ARTIFACT_SEARCH",
   "REVEAL_UNTIL_MINOR_ARTIFACT",
-  "DRAW_CHOOSE_MINOR_ARTIFACTS"
+  "DRAW_CHOOSE_MINOR_ARTIFACTS",
 ]);
 function startingBonusOptionArt(
-  steps: { type: string; [key: string]: unknown }[] | undefined
+  steps: { type: string; [key: string]: unknown }[] | undefined,
 ): VisitRewardArt | null {
   if (!steps || steps.length === 0) {
     return null;
   }
-  if (steps.some((step) => step && STARTING_BONUS_ARTIFACT_STEPS.has(step.type))) {
+  if (
+    steps.some((step) => step && STARTING_BONUS_ARTIFACT_STEPS.has(step.type))
+  ) {
     // HD origin-faithful pendant (normal + reduced polish modes share this art).
     return { image: UI_REWARD_ICONS.startingBonusArtifact, name: "Artifact" };
   }
@@ -5580,25 +7057,39 @@ function startingBonusOptionArt(
 function rewardArtForId(cardId: string): VisitRewardArt {
   const card = cardLibrary[cardId];
   if (card) {
-    return { image: card.assets?.cardImage, name: card.name, caption: card.name, cardId };
+    return {
+      image: card.assets?.cardImage,
+      name: card.name,
+      caption: card.name,
+      cardId,
+    };
   }
   const unit = coreUnitDefinitions[cardId];
   if (unit) {
     // A bare unit-def id (a free recruit / drawn Neutral offer) names no side,
     // so the portrait is whichever face exists — tag THAT side so a reprinted
     // community face can replace it (`rewardArtImage`).
-    const portraitSide = unit.neutral?.cardImage ? "neutral" : unit.few?.cardImage ? "few" : "pack";
+    const portraitSide = unit.neutral?.cardImage
+      ? "neutral"
+      : unit.few?.cardImage
+        ? "few"
+        : "pack";
     return {
-      image: unit.neutral?.cardImage ?? unit.few?.cardImage ?? unit.pack?.cardImage,
+      image:
+        unit.neutral?.cardImage ?? unit.few?.cardImage ?? unit.pack?.cardImage,
       unitDefId: cardId,
       unitSide: portraitSide,
       name: unit.name,
-      caption: unit.name
+      caption: unit.name,
     };
   }
   const eventCard = eventCardDefinitions[cardId];
   if (eventCard) {
-    return { image: eventCard.image, name: eventCard.name, caption: eventCard.name };
+    return {
+      image: eventCard.image,
+      name: eventCard.name,
+      caption: eventCard.name,
+    };
   }
   // Deliberately NOT falling through to astrologersCardDefinitions: a pick option
   // should never render as the proclamation card itself (that is what this tray
@@ -5629,21 +7120,34 @@ type TeleportOptionArt = {
  */
 function teleportOptionArt(
   state: GameState,
-  teleport: { kind: "monolith" | "whirlpool" | "gate" | "oneway"; pair?: 1 | 2 | 3 | 4 },
-  option: { label: string; steps: { type: string; [key: string]: unknown }[] }
+  teleport: {
+    kind: "monolith" | "whirlpool" | "gate" | "oneway";
+    pair?: 1 | 2 | 3 | 4;
+  },
+  option: { label: string; steps: { type: string; [key: string]: unknown }[] },
 ): TeleportOptionArt {
-  const inner = option.steps[0] as { type?: string; spaceId?: string; tileInstanceId?: string } | undefined;
+  const inner = option.steps[0] as
+    | { type?: string; spaceId?: string; tileInstanceId?: string }
+    | undefined;
   let faceDown = false;
   let number: -1 | 0 | 1 | undefined;
   if (inner?.type === "TELEPORT_HERO" && typeof inner.spaceId === "string") {
     number = state.adventure?.fields[inner.spaceId]?.whirlpoolNumber;
-  } else if (inner?.type === "TOKEN_TELEPORT_REVEAL" && typeof inner.tileInstanceId === "string") {
+  } else if (
+    inner?.type === "TOKEN_TELEPORT_REVEAL" &&
+    typeof inner.tileInstanceId === "string"
+  ) {
     faceDown = true;
     number = state.adventure?.tiles[inner.tileInstanceId]?.pendingToken?.number;
   }
   const colored = teleport.kind === "gate" || teleport.kind === "oneway";
-  const image = teleport.kind === "whirlpool" ? mapTokenImage("whirlpool", number) : monolithTokenImage();
-  const ring = colored ? GATE_PAIR_COLORS[teleport.pair ?? 1] ?? "#c9a24b" : undefined;
+  const image =
+    teleport.kind === "whirlpool"
+      ? mapTokenImage("whirlpool", number)
+      : monolithTokenImage();
+  const ring = colored
+    ? (GATE_PAIR_COLORS[teleport.pair ?? 1] ?? "#c9a24b")
+    : undefined;
   const badge = colored
     ? String(teleport.pair ?? 1)
     : teleport.kind === "whirlpool" && number !== undefined
@@ -5681,7 +7185,7 @@ type PandoraCardTile = {
  */
 const KEEP_ONE_DRAWN_STEP_KINDS: Record<string, "pandora" | "artifact"> = {
   RESOLVE_PANDORA_SEARCH: "pandora",
-  RESOLVE_DRAW_CHOOSE_MINOR: "artifact"
+  RESOLVE_DRAW_CHOOSE_MINOR: "artifact",
 };
 
 /**
@@ -5690,7 +7194,7 @@ const KEEP_ONE_DRAWN_STEP_KINDS: Record<string, "pandora" | "artifact"> = {
  * the generic text path.
  */
 function keepOneDrawnCard(
-  steps: { type: string; [key: string]: unknown }[] | undefined
+  steps: { type: string; [key: string]: unknown }[] | undefined,
 ): { cardId: string; kind: "pandora" | "artifact" } | null {
   for (const step of steps ?? []) {
     const kind = step ? KEEP_ONE_DRAWN_STEP_KINDS[step.type] : undefined;
@@ -5719,7 +7223,7 @@ export function PromptTray({
   viewerPlayerId,
   legalActions,
   onAction,
-  onSwitchSeat
+  onSwitchSeat,
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
@@ -5739,19 +7243,30 @@ export function PromptTray({
   const balanceArt = useBalanceArtFlags();
   const visit = state.adventure?.pendingVisit;
   const choice = state.pendingChoice;
-  const balanceSpellCardId = choice?.type === "OPTION_CHOICE" ? choice.balanceSpellChoice?.cardId : undefined;
+  const balanceSpellCardId =
+    choice?.type === "OPTION_CHOICE"
+      ? choice.balanceSpellChoice?.cardId
+      : undefined;
   // A Shady Auction: the open lot (an Artifact card) the viewer is bidding on.
   // It is public to every bidder (only the bids are secret), so the tray must
   // show WHICH artifact is on the block — otherwise the player bids blind.
   const auctionLot = state.adventure?.events?.auction ?? null;
-  const auctionLotCard = auctionLot ? cardLibrary[auctionLot.lotCardId] : undefined;
+  const auctionLotCard = auctionLot
+    ? cardLibrary[auctionLot.lotCardId]
+    : undefined;
   const roundStartEventActive = isRoundStartEventBarrierActive(state);
-  const roundStartBarrierKind =
-    roundStartEventActive ? (state.round % 2 === 0 ? "astrologers" : "event") : null;
+  const roundStartBarrierKind = roundStartEventActive
+    ? state.round % 2 === 0
+      ? "astrologers"
+      : "event"
+    : null;
   const visitStep = visit?.steps[0];
-  const activeRoundEventCard = roundStartBarrierKind === "event" ? getActiveEventCard(state) : null;
+  const activeRoundEventCard =
+    roundStartBarrierKind === "event" ? getActiveEventCard(state) : null;
   const activeRoundAstrologersCard =
-    roundStartBarrierKind === "astrologers" ? getActiveAstrologersCard(state) : null;
+    roundStartBarrierKind === "astrologers"
+      ? getActiveAstrologersCard(state)
+      : null;
   const roundStartEventCard =
     activeRoundEventCard &&
     visitStep &&
@@ -5768,9 +7283,11 @@ export function PromptTray({
     (legal) =>
       legal.action.type === "RESOLVE_VISIT_STEP" ||
       legal.action.type === "TRADE_RESOURCES" ||
-      legal.action.type === "PLACE_OBSERVATORY_TILE"
+      legal.action.type === "PLACE_OBSERVATORY_TILE",
   );
-  const optionActions = legalActions.filter((legal) => legal.action.type === "CHOOSE_OPTION");
+  const optionActions = legalActions.filter(
+    (legal) => legal.action.type === "CHOOSE_OPTION",
+  );
   // Subterranean Gate exit: cycle positions + Confirm (mirrors the map float).
   // Local index — the map board keeps its own copy for the glow.
   const gateExitChoice =
@@ -5780,10 +7297,31 @@ export function PromptTray({
     choice.subterraneanGate
       ? choice
       : null;
-  const [gateTrayIndex, setGateTrayIndex] = useState(0);
-  useEffect(() => {
-    setGateTrayIndex(0);
-  }, [gateExitChoice?.id]);
+  const gateTrayChoiceId = gateExitChoice?.id ?? null;
+  const [gateTraySelection, setGateTraySelection] = useState<{
+    choiceId: string | null;
+    index: number;
+  }>({
+    choiceId: null,
+    index: 0,
+  });
+  const gateTrayIndex =
+    gateTraySelection.choiceId === gateTrayChoiceId
+      ? gateTraySelection.index
+      : 0;
+  const setGateTrayIndex = useCallback(
+    (next: number | ((value: number) => number)) => {
+      setGateTraySelection((previous) => {
+        const current =
+          previous.choiceId === gateTrayChoiceId ? previous.index : 0;
+        return {
+          choiceId: gateTrayChoiceId,
+          index: typeof next === "function" ? next(current) : next,
+        };
+      });
+    },
+    [gateTrayChoiceId],
+  );
   if (gateExitChoice && gateExitChoice.subterraneanGate) {
     const candidates = gateExitChoice.subterraneanGate.candidates;
     const count = Math.max(1, candidates.length);
@@ -5793,7 +7331,7 @@ export function PromptTray({
       (legal) =>
         legal.action.type === "CHOOSE_OPTION" &&
         legal.action.choiceId === gateExitChoice.id &&
-        legal.action.optionIndex === index
+        legal.action.optionIndex === index,
     );
     const role = candidates[0]?.role ?? "gate";
     return (
@@ -5803,16 +7341,21 @@ export function PromptTray({
         aria-label={gateExitChoice.prompt}
       >
         <strong>
-          {role === "gate" ? "Subterranean Gate — fix the gate exit" : "Subterranean Gate — fix the path up"}
+          {role === "gate"
+            ? "Subterranean Gate — fix the gate exit"
+            : "Subterranean Gate — fix the path up"}
         </strong>
         <small>
-          Click a glowing hex on the map to place the exit (or cycle here and Confirm). It is fixed for the rest of the game.
+          Click a glowing hex on the map to place the exit (or cycle here and
+          Confirm). It is fixed for the rest of the game.
         </small>
         <div className="promptOptions rotateFloatRow">
           <button
             className="commandButton"
             disabled={count <= 1}
-            onClick={() => setGateTrayIndex((value) => (value + count - 1) % count)}
+            onClick={() =>
+              setGateTrayIndex((value) => (value + count - 1) % count)
+            }
             type="button"
           >
             <RotateCcw size={14} /> Previous
@@ -5829,7 +7372,11 @@ export function PromptTray({
             Next <RotateCw size={14} />
           </button>
           {confirm ? (
-            <button className="commandButton primary" onClick={() => onAction(confirm.action)} type="button">
+            <button
+              className="commandButton primary"
+              onClick={() => onAction(confirm.action)}
+              type="button"
+            >
               <Check size={13} /> Confirm
             </button>
           ) : null}
@@ -5837,16 +7384,23 @@ export function PromptTray({
       </div>
     );
   }
-  const abilityTargetActions = legalActions.filter((legal) => legal.action.type === "CHOOSE_ABILITY_TARGET");
-  const combatDiscardActions = legalActions.filter((legal) => legal.action.type === "RESOLVE_COMBAT_DISCARD");
+  const abilityTargetActions = legalActions.filter(
+    (legal) => legal.action.type === "CHOOSE_ABILITY_TARGET",
+  );
+  const combatDiscardActions = legalActions.filter(
+    (legal) => legal.action.type === "RESOLVE_COMBAT_DISCARD",
+  );
   // WOG Hierophant commander: the after-combat First Aid window (heal 1
   // bronze/silver casualty, or decline). It is its OWN adventure field
   // (pendingCommanderFirstAid), NOT a pendingChoice/pendingVisit, so no surface
   // below claimed it — the owner saw a blank table and the turn froze (no heal,
   // no End turn, no Give up, because the engine gates every other action behind
   // this now-or-never window). This branch renders the window's own actions.
-  const firstAidActions = legalActions.filter((legal) => legal.action.type === "COMMANDER_FIRST_AID");
-  const firstAidOpen = state.adventure?.pendingCommanderFirstAid?.playerId === viewerPlayerId;
+  const firstAidActions = legalActions.filter(
+    (legal) => legal.action.type === "COMMANDER_FIRST_AID",
+  );
+  const firstAidOpen =
+    state.adventure?.pendingCommanderFirstAid?.playerId === viewerPlayerId;
   // After-combat Necromancy is its OWN adventure field (pendingNecromancy), NOT a
   // pendingChoice/pendingVisit — exactly like the First Aid window above. Because
   // combat is already cleared (state.combat === null) by the time the window opens,
@@ -5857,9 +7411,10 @@ export function PromptTray({
     (legal) =>
       legal.action.type === "SKIP_NECROMANCY" ||
       legal.action.type === "PLAY_CARD" ||
-      legal.action.type === "REDEEM_REINFORCEMENT_DISCOUNT"
+      legal.action.type === "REDEEM_REINFORCEMENT_DISCOUNT",
   );
-  const necromancyOpen = state.adventure?.pendingNecromancy?.playerId === viewerPlayerId;
+  const necromancyOpen =
+    state.adventure?.pendingNecromancy?.playerId === viewerPlayerId;
   const companionRecruitment = state.adventure?.pendingCompanionRecruitment;
   // "The combat round is over" is ONLY the neutral between-rounds gate: spend
   // 1 MP to fight another round, or retreat. RETREAT_FROM_COMBAT *also* appears
@@ -5868,7 +7423,8 @@ export function PromptTray({
   // strictly on the neutral awaitingContinue state so this prompt no longer pops
   // up during every PvP battle's opening window.
   const combatRoundOver =
-    Boolean(state.combat?.awaitingContinue) && state.combat?.context.kind === "neutral";
+    Boolean(state.combat?.awaitingContinue) &&
+    state.combat?.context.kind === "neutral";
   const combatGate = combatRoundOver
     ? legalActions.filter(
         (legal) =>
@@ -5878,7 +7434,7 @@ export function PromptTray({
           // and a +Movement top-up (Boots of Speed, Logistics, …) that buys
           // another round. During awaitingContinue these are the ONLY PLAY_CARD
           // actions legal-actions returns, so surface them all as gate buttons.
-          legal.action.type === "PLAY_CARD"
+          legal.action.type === "PLAY_CARD",
       )
     : [];
 
@@ -5924,14 +7480,22 @@ export function PromptTray({
     choice.playerId === viewerPlayerId
   ) {
     const skip = abilityTargetActions.find(
-      (legal) => legal.action.type === "CHOOSE_ABILITY_TARGET" && legal.action.targetUnitId === "skip"
+      (legal) =>
+        legal.action.type === "CHOOSE_ABILITY_TARGET" &&
+        legal.action.targetUnitId === "skip",
     );
     return (
       <div className="promptTray" role="dialog" aria-label="Teleport a unit">
-        <strong>Teleport — click one of your units on the battlefield to move it.</strong>
+        <strong>
+          Teleport — click one of your units on the battlefield to move it.
+        </strong>
         <div className="promptOptions">
           {skip ? (
-            <button className="commandButton" onClick={() => onAction(skip.action)} type="button">
+            <button
+              className="commandButton"
+              onClick={() => onAction(skip.action)}
+              type="button"
+            >
               {skip.label}
             </button>
           ) : null}
@@ -5950,14 +7514,22 @@ export function PromptTray({
     choice.playerId === viewerPlayerId
   ) {
     const cancel = abilityTargetActions.find(
-      (legal) => legal.action.type === "CHOOSE_ABILITY_TARGET" && legal.action.targetUnitId === "skip"
+      (legal) =>
+        legal.action.type === "CHOOSE_ABILITY_TARGET" &&
+        legal.action.targetUnitId === "skip",
     );
     return (
       <div className="promptTray" role="dialog" aria-label={choice.prompt}>
-        <strong>{choice.prompt} Click a glowing unit on the battlefield.</strong>
+        <strong>
+          {choice.prompt} Click a glowing unit on the battlefield.
+        </strong>
         <div className="promptOptions">
           {cancel ? (
-            <button className="commandButton" onClick={() => onAction(cancel.action)} type="button">
+            <button
+              className="commandButton"
+              onClick={() => onAction(cancel.action)}
+              type="button"
+            >
               {cancel.label}
             </button>
           ) : null}
@@ -5972,28 +7544,43 @@ export function PromptTray({
   // own unit). The Couatl Few's activation ends the turn; the Pack's is free.
   if (
     choice?.type === "ABILITY_TARGET_CHOICE" &&
-    (choice.kind === "couatl-invulnerability" || choice.kind === "automaton-cube") &&
+    (choice.kind === "couatl-invulnerability" ||
+      choice.kind === "automaton-cube") &&
     choice.playerId === viewerPlayerId
   ) {
     const activate = abilityTargetActions.find(
-      (legal) => legal.action.type === "CHOOSE_ABILITY_TARGET" && legal.action.targetUnitId === choice.sourceUnitId
+      (legal) =>
+        legal.action.type === "CHOOSE_ABILITY_TARGET" &&
+        legal.action.targetUnitId === choice.sourceUnitId,
     );
     const skip = abilityTargetActions.find(
-      (legal) => legal.action.type === "CHOOSE_ABILITY_TARGET" && legal.action.targetUnitId === "skip"
+      (legal) =>
+        legal.action.type === "CHOOSE_ABILITY_TARGET" &&
+        legal.action.targetUnitId === "skip",
     );
     const activateLabel =
-      choice.kind === "couatl-invulnerability" ? `Activate ${choice.abilityName}` : "Place a faction cube";
+      choice.kind === "couatl-invulnerability"
+        ? `Activate ${choice.abilityName}`
+        : "Place a faction cube";
     return (
       <div className="promptTray" role="dialog" aria-label={choice.prompt}>
         <strong>{choice.prompt}</strong>
         <div className="promptOptions">
           {activate ? (
-            <button className="commandButton" onClick={() => onAction(activate.action)} type="button">
+            <button
+              className="commandButton"
+              onClick={() => onAction(activate.action)}
+              type="button"
+            >
               {activateLabel}
             </button>
           ) : null}
           {skip ? (
-            <button className="commandButton" onClick={() => onAction(skip.action)} type="button">
+            <button
+              className="commandButton"
+              onClick={() => onAction(skip.action)}
+              type="button"
+            >
               {skip.label}
             </button>
           ) : null}
@@ -6010,14 +7597,20 @@ export function PromptTray({
     choice.playerId === viewerPlayerId
   ) {
     const stop = abilityTargetActions.find(
-      (legal) => legal.action.type === "CHOOSE_ABILITY_TARGET" && legal.action.targetUnitId === "skip"
+      (legal) =>
+        legal.action.type === "CHOOSE_ABILITY_TARGET" &&
+        legal.action.targetUnitId === "skip",
     );
     return (
       <div className="promptTray" role="dialog" aria-label={choice.prompt}>
         <strong>{choice.prompt} Click a glowing adjacent unit.</strong>
         <div className="promptOptions">
           {stop ? (
-            <button className="commandButton" onClick={() => onAction(stop.action)} type="button">
+            <button
+              className="commandButton"
+              onClick={() => onAction(stop.action)}
+              type="button"
+            >
               {stop.label}
             </button>
           ) : null}
@@ -6031,9 +7624,15 @@ export function PromptTray({
     choice.playerId === viewerPlayerId
   ) {
     const movingId = choice.teleport?.unitId;
-    const movingName = movingId ? state.combat?.units[movingId]?.name : undefined;
+    const movingName = movingId
+      ? state.combat?.units[movingId]?.name
+      : undefined;
     return (
-      <div className="promptTray" role="dialog" aria-label="Teleport destination">
+      <div
+        className="promptTray"
+        role="dialog"
+        aria-label="Teleport destination"
+      >
         <strong>
           {movingName
             ? `Teleport — click an empty slot on the battlefield to place ${movingName}.`
@@ -6050,11 +7649,19 @@ export function PromptTray({
     choice.playerId === viewerPlayerId
   ) {
     const movingId = choice.neutralDestination?.unitId;
-    const movingName = movingId ? state.combat?.units[movingId]?.name : undefined;
+    const movingName = movingId
+      ? state.combat?.units[movingId]?.name
+      : undefined;
     const targetId = choice.neutralDestination?.defenderId;
-    const targetName = targetId ? state.combat?.units[targetId]?.name : undefined;
+    const targetName = targetId
+      ? state.combat?.units[targetId]?.name
+      : undefined;
     return (
-      <div className="promptTray" role="dialog" aria-label="Neutral move destination">
+      <div
+        className="promptTray"
+        role="dialog"
+        aria-label="Neutral move destination"
+      >
         <strong>
           {movingName && targetName
             ? `${movingName} attacks ${targetName} — click the empty slot it should move to.`
@@ -6081,18 +7688,26 @@ export function PromptTray({
       (legal) =>
         legal.action.type === "CHOOSE_OPTION" &&
         legal.action.choiceId === choice.id &&
-        legal.action.optionIndex === cancelIndex
+        legal.action.optionIndex === cancelIndex,
     );
     return (
-      <div className="promptTray" role="dialog" aria-label="Dimension Door destination">
+      <div
+        className="promptTray"
+        role="dialog"
+        aria-label="Dimension Door destination"
+      >
         <strong>{choice.prompt}</strong>
         <small>
-          Click one of the glowing hexes on the map to teleport there. The Spell is already spent, so cancelling
-          moves nobody and gives nothing back.
+          Click one of the glowing hexes on the map to teleport there. The Spell
+          is already spent, so cancelling moves nobody and gives nothing back.
         </small>
         {cancel ? (
           <div className="promptOptions">
-            <button className="commandButton" onClick={() => onAction(cancel.action)} type="button">
+            <button
+              className="commandButton"
+              onClick={() => onAction(cancel.action)}
+              type="button"
+            >
               Cancel (no teleport)
             </button>
           </div>
@@ -6112,27 +7727,38 @@ export function PromptTray({
     visit &&
     visit.playerId === viewerPlayerId &&
     visitStep?.type === "CHOOSE_ONE" &&
-    visitStep.options.some((option) => option.steps[0]?.type === "GRAIL_TILE_SCRY")
+    visitStep.options.some(
+      (option) => option.steps[0]?.type === "GRAIL_TILE_SCRY",
+    )
       ? visitStep
       : null;
   if (grailCluePicker) {
-    const declineIndex = grailCluePicker.options.findIndex((option) => option.steps.length === 0);
+    const declineIndex = grailCluePicker.options.findIndex(
+      (option) => option.steps.length === 0,
+    );
     const decline = visitActions.find(
-      (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && legal.action.optionIndex === declineIndex
+      (legal) =>
+        legal.action.type === "RESOLVE_VISIT_STEP" &&
+        legal.action.optionIndex === declineIndex,
     );
     const tileCount = grailCluePicker.options.filter(
-      (option) => option.steps[0]?.type === "GRAIL_TILE_SCRY"
+      (option) => option.steps[0]?.type === "GRAIL_TILE_SCRY",
     ).length;
     return (
       <div className="promptTray" role="dialog" aria-label="Obelisk Grail clue">
         <strong>Obelisk — inspect one hidden Grail / Dragon Utopia tile</strong>
         <small>
-          Click one of the {tileCount} glowing face-down tiles on the map to see its real face. Only tiles that can
-          still host the Grail or a Dragon Utopia are offered, and you get one look per Obelisk.
+          Click one of the {tileCount} glowing face-down tiles on the map to see
+          its real face. Only tiles that can still host the Grail or a Dragon
+          Utopia are offered, and you get one look per Obelisk.
         </small>
         {decline ? (
           <div className="promptOptions">
-            <button className="commandButton" onClick={() => onAction(decline.action)} type="button">
+            <button
+              className="commandButton"
+              onClick={() => onAction(decline.action)}
+              type="button"
+            >
               Do not inspect a tile
             </button>
           </div>
@@ -6154,29 +7780,37 @@ export function PromptTray({
   const tileChoice = state.adventure?.pendingTileChoice;
   const waitingOn =
     companionRecruitment && companionRecruitment.playerId !== viewerPlayerId
-      ? { ownerId: companionRecruitment.playerId, doing: "is choosing a Companion..." }
+      ? {
+          ownerId: companionRecruitment.playerId,
+          doing: "is choosing a Companion...",
+        }
       : choice && choice.playerId !== viewerPlayerId
-      ? choice.type === "OPTION_CHOICE" &&
-        (choice.context === "learning-level-up" ||
-          choice.context === "deck-search-mode" ||
-          choice.context === "map-spell-boost" ||
-          (choice.context === "deck-pick" && Boolean(choice.deckPick?.upFront)))
-        ? null
-        : { ownerId: choice.playerId, doing: "is deciding…" }
-      : !choice && visit && visit.playerId !== viewerPlayerId
-        ? {
-            ownerId: visit.playerId,
-            doing: roundStartEventActive
-              ? roundStartAstrologersCard
-                ? "is resolving the Astrologers proclamation…"
-                : "is resolving the round's Event…"
-              : "is resolving a visit…"
-          }
-        : !choice && !visit && tileChoice && tileChoice.playerId !== viewerPlayerId
-          ? { ownerId: tileChoice.playerId, doing: "is rotating a new tile…" }
-          : null;
+        ? choice.type === "OPTION_CHOICE" &&
+          (choice.context === "learning-level-up" ||
+            choice.context === "deck-search-mode" ||
+            choice.context === "map-spell-boost" ||
+            (choice.context === "deck-pick" &&
+              Boolean(choice.deckPick?.upFront)))
+          ? null
+          : { ownerId: choice.playerId, doing: "is deciding…" }
+        : !choice && visit && visit.playerId !== viewerPlayerId
+          ? {
+              ownerId: visit.playerId,
+              doing: roundStartEventActive
+                ? roundStartAstrologersCard
+                  ? "is resolving the Astrologers proclamation…"
+                  : "is resolving the round's Event…"
+                : "is resolving a visit…",
+            }
+          : !choice &&
+              !visit &&
+              tileChoice &&
+              tileChoice.playerId !== viewerPlayerId
+            ? { ownerId: tileChoice.playerId, doing: "is rotating a new tile…" }
+            : null;
   if (waitingOn) {
-    const ownerName = state.players[waitingOn.ownerId]?.name ?? waitingOn.ownerId;
+    const ownerName =
+      state.players[waitingOn.ownerId]?.name ?? waitingOn.ownerId;
     // Offer the one-click jump for MAP interactions only (a creature-bank
     // placement, an Event/visit option, a tile pick). Never mid-combat —
     // switching seats during a fight is exactly the disorientation we avoid.
@@ -6192,7 +7826,11 @@ export function PromptTray({
           {ownerName} {waitingOn.doing}
         </span>
         {canJumpToOwner ? (
-          <button className="promptSwitchSeat" onClick={() => onSwitchSeat?.(waitingOn.ownerId)} type="button">
+          <button
+            className="promptSwitchSeat"
+            onClick={() => onSwitchSeat?.(waitingOn.ownerId)}
+            type="button"
+          >
             Play as {ownerName}
           </button>
         ) : null}
@@ -6207,11 +7845,16 @@ export function PromptTray({
   // When the open visit step is CHOOSE_ONE, options can carry reward card ids
   // (buy this Artifact / pick this Event / recruit this unit) — render those
   // as graphic tiles, not text-only buttons.
-  let chooseOneOptions: { label: string; steps: { type: string; [key: string]: unknown }[] }[] | null = null;
+  let chooseOneOptions:
+    | { label: string; steps: { type: string; [key: string]: unknown }[] }[]
+    | null = null;
   // The Monolith/Whirlpool/Gate travel picker (`step.teleport`): the tray shows
   // each destination as a themed token card (art + label + number/pair badge)
   // and a "pick your exit on the map" hint, not a bare numbered option list.
-  let teleport: { kind: "monolith" | "whirlpool" | "gate" | "oneway"; pair?: 1 | 2 | 3 | 4 } | null = null;
+  let teleport: {
+    kind: "monolith" | "whirlpool" | "gate" | "oneway";
+    pair?: 1 | 2 | 3 | 4;
+  } | null = null;
 
   if (
     choice?.type === "OPTION_CHOICE" &&
@@ -6228,16 +7871,25 @@ export function PromptTray({
   ) {
     title = choice.prompt;
     body = optionActions;
-  } else if (choice?.type === "ABILITY_TARGET_CHOICE" && choice.playerId === viewerPlayerId) {
+  } else if (
+    choice?.type === "ABILITY_TARGET_CHOICE" &&
+    choice.playerId === viewerPlayerId
+  ) {
     // Magog splash / Cerberi bite / Liches' Death Cloud / neutral target tie:
     // pick from the list here or click a glowing unit on the board.
     title = choice.prompt;
     body = abilityTargetActions;
-  } else if (choice?.type === "COMBAT_HAND_DISCARD" && choice.playerId === viewerPlayerId) {
+  } else if (
+    choice?.type === "COMBAT_HAND_DISCARD" &&
+    choice.playerId === viewerPlayerId
+  ) {
     // Magi Power Drain: discard a chosen Power card or take a random discard.
     title = choice.prompt;
     body = combatDiscardActions;
-  } else if (choice?.type === "TARNUM_SEARCH" && choice.playerId === viewerPlayerId) {
+  } else if (
+    choice?.type === "TARNUM_SEARCH" &&
+    choice.playerId === viewerPlayerId
+  ) {
     // Tarnum (Conflux) VI's over-limit Spell search: pick WHICH Spell deck to
     // Search (basic or expert). It emits CHOOSE_OPTION actions like an option
     // choice but is its OWN pendingChoice type — without this branch no surface
@@ -6257,7 +7909,11 @@ export function PromptTray({
     const remaining = state.adventure?.pendingNecromancy?.remaining ?? 1;
     title = `Necromancy — ${remaining} card${remaining === 1 ? "" : "s"} available; add bonuses, reinforce, then Resolve`;
     body = necromancyActions;
-  } else if (visit && visit.playerId === viewerPlayerId && visitActions.length > 0) {
+  } else if (
+    visit &&
+    visit.playerId === viewerPlayerId &&
+    visitActions.length > 0
+  ) {
     const step = visit.steps[0];
     // The market panel owns the Trading Post / War Machine Factory visits.
     if (step?.type === "TRADING_POST" || step?.type === "WAR_MACHINE_SHOP") {
@@ -6313,10 +7969,16 @@ export function PromptTray({
       // those replace the card scan so the tray shows what you pick, not the
       // trigger card (see hasAnyRewardArt below).
       const pool = state.adventure?.events?.pool ?? [];
-      const faceUpPool = pool.filter((entry) => entry.faceUp !== false && entry.cardId);
+      const faceUpPool = pool.filter(
+        (entry) => entry.faceUp !== false && entry.cardId,
+      );
       if (faceUpPool.length > 0 && !isAuctionBid) {
         preview = (
-          <div className="eventPoolPreview" data-testid="event-pool-preview" aria-label="Cards on offer">
+          <div
+            className="eventPoolPreview"
+            data-testid="event-pool-preview"
+            aria-label="Cards on offer"
+          >
             {faceUpPool.map((entry, index) => {
               const art = rewardArtForId(entry.cardId);
               const artImage = rewardArtImage(balanceArt, art);
@@ -6324,7 +7986,12 @@ export function PromptTray({
                 <div className="eventPoolCard" key={`${entry.cardId}-${index}`}>
                   {artImage ? (
                     <CardSetFrame cardId={entry.cardId}>
-                      <img alt={art.name} loading="lazy" referrerPolicy="no-referrer" src={assetUrl(artImage)} />
+                      <img
+                        alt={art.name}
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
+                        src={assetUrl(artImage)}
+                      />
                     </CardSetFrame>
                   ) : (
                     <span className="marketCardFallback">{art.name}</span>
@@ -6338,7 +8005,10 @@ export function PromptTray({
       }
     }
     if (step?.type === "CHOOSE_ONE") {
-      chooseOneOptions = step.options as { label: string; steps: { type: string; [key: string]: unknown }[] }[];
+      chooseOneOptions = step.options as {
+        label: string;
+        steps: { type: string; [key: string]: unknown }[];
+      }[];
       teleport = step.teleport ?? null;
     }
     body = visitActions;
@@ -6364,9 +8034,13 @@ export function PromptTray({
         (choice.context === "learning-level-up" ||
           choice.context === "deck-search-mode" ||
           choice.context === "map-spell-boost" ||
-          (choice.context === "deck-pick" && Boolean(choice.deckPick?.upFront))));
+          (choice.context === "deck-pick" &&
+            Boolean(choice.deckPick?.upFront))));
     if (!ownedElsewhere && legalActions.length > 0) {
-      title = choice.type === "OPTION_CHOICE" ? choice.prompt : "Choose how to resolve this";
+      title =
+        choice.type === "OPTION_CHOICE"
+          ? choice.prompt
+          : "Choose how to resolve this";
       body = legalActions;
     }
   }
@@ -6383,24 +8057,32 @@ export function PromptTray({
   // discard-pick (take a card from your discard / refresh a used Book Spell) also
   // shows each candidate's face — same "pick by art" vibe as a market pool.
   const discardPickCards =
-    choice?.type === "OPTION_CHOICE" && choice.context === "discard-pick" && choice.playerId === viewerPlayerId
-      ? choice.discardPick?.cardIds ?? null
+    choice?.type === "OPTION_CHOICE" &&
+    choice.context === "discard-pick" &&
+    choice.playerId === viewerPlayerId
+      ? (choice.discardPick?.cardIds ?? null)
       : null;
   const handDiscardCards =
-    choice?.type === "OPTION_CHOICE" && choice.context === "hand-discard" && choice.playerId === viewerPlayerId
-      ? choice.handDiscard?.cardIds ?? null
+    choice?.type === "OPTION_CHOICE" &&
+    choice.context === "hand-discard" &&
+    choice.playerId === viewerPlayerId
+      ? (choice.handDiscard?.cardIds ?? null)
       : null;
   const subterraneanTileCandidates =
     choice?.type === "OPTION_CHOICE" &&
     choice.context === "subterranean-tile-pick" &&
     choice.playerId === viewerPlayerId
-      ? choice.subterraneanTilePick?.candidates ?? null
+      ? (choice.subterraneanTilePick?.candidates ?? null)
       : null;
   // Rule 111 (Polish house rule): options 1..N each replace a bronze guard, so
   // show that bronze unit's Neutral card face (option 0 keeps — a plain button).
   const rule111Draws =
-    choice?.type === "OPTION_CHOICE" && choice.context === "rule-111" && choice.playerId === viewerPlayerId
-      ? (state.combat?.pendingNeutralDraws ?? []).filter((draw) => draw.tier === "bronze" && !draw.bankGuard)
+    choice?.type === "OPTION_CHOICE" &&
+    choice.context === "rule-111" &&
+    choice.playerId === viewerPlayerId
+      ? (state.combat?.pendingNeutralDraws ?? []).filter(
+          (draw) => draw.tier === "bronze" && !draw.bankGuard,
+        )
       : null;
   // Polish Bank Sizes: rolled bank candidates (+ optional Leave-it-blocked).
   // Each bank option shows the bank's field art above the name + size; Leave
@@ -6431,7 +8113,7 @@ export function PromptTray({
     choice?.type === "OPTION_CHOICE" &&
     choice.context === "commander-artifact-offer" &&
     choice.playerId === viewerPlayerId
-      ? choice.commanderArtifactOffer?.cardIds ?? null
+      ? (choice.commanderArtifactOffer?.cardIds ?? null)
       : null;
   // A Tome / Eagle Eye dig (EAGLE_EYE_DIG) revealed ONE spell to take-or-discard;
   // the take AND the discard button are about the SAME found card, so both show
@@ -6441,17 +8123,22 @@ export function PromptTray({
   // render each option's card face — "SHOW THE ICON OF CARDS THAT U CAN GET"
   // (author): the cards already exist under public/assets and rendered blank.
   const eagleEyeCard =
-    choice?.type === "OPTION_CHOICE" && choice.context === "eagle-eye" && choice.playerId === viewerPlayerId
-      ? choice.eagleEye?.cardId ?? null
+    choice?.type === "OPTION_CHOICE" &&
+    choice.context === "eagle-eye" &&
+    choice.playerId === viewerPlayerId
+      ? (choice.eagleEye?.cardId ?? null)
       : null;
   const ownDeckPickCards =
-    choice?.type === "OPTION_CHOICE" && choice.context === "own-deck-pick" && choice.playerId === viewerPlayerId
-      ? choice.ownDeckPick?.cardIds ?? null
+    choice?.type === "OPTION_CHOICE" &&
+    choice.context === "own-deck-pick" &&
+    choice.playerId === viewerPlayerId
+      ? (choice.ownDeckPick?.cardIds ?? null)
       : null;
   // Scenario starting bonus (rulebook p.10): its options carry no card id, so
   // give each kind a representative glyph (artifact / resource die) — scoped to
   // the "Starting bonus" prompt so no other resource-dice / Search prompt changes.
-  const startingBonusStep = visit && visit.playerId === viewerPlayerId ? visit.steps[0] : undefined;
+  const startingBonusStep =
+    visit && visit.playerId === viewerPlayerId ? visit.steps[0] : undefined;
   const startingBonusChoice =
     Boolean(chooseOneOptions) &&
     startingBonusStep?.type === "CHOOSE_ONE" &&
@@ -6460,206 +8147,272 @@ export function PromptTray({
   // The selected Obelisk clue is deliberately carried on the PRIVATE pending
   // visit, rather than on the initial pick options. That lets its owner see the
   // chosen tile's real face only after committing to that position.
-  const grailScry = startingBonusStep?.type === "CHOOSE_ONE" ? startingBonusStep.grailTileScry : undefined;
+  const grailScry =
+    startingBonusStep?.type === "CHOOSE_ONE"
+      ? startingBonusStep.grailTileScry
+      : undefined;
   // The revealed identity comes from the STEP payload, never from
   // state.adventure.tiles: the owner renders a PLAYER VIEW in which every
   // face-down tile is masked to tileDefId "hidden" (the step is owner-only, so
   // this reveals nothing to other seats). The state read is only a fallback
   // for a legacy in-flight step minted before the payload carried the id.
-  const grailScryTile = grailScry ? state.adventure?.tiles[grailScry.tileInstanceId] : undefined;
+  const grailScryTile = grailScry
+    ? state.adventure?.tiles[grailScry.tileInstanceId]
+    : undefined;
   const grailScryDefId = grailScry?.tileDefId ?? grailScryTile?.tileDefId;
-  const grailScryDef = grailScryDefId ? allTileDefinitions[grailScryDefId] : undefined;
+  const grailScryDef = grailScryDefId
+    ? allTileDefinitions[grailScryDefId]
+    : undefined;
   const grailScryArt: VisitRewardArt | null = grailScry
     ? {
         image: grailScryDef?.assets?.tileImage,
         name: grailScryDef?.id ?? grailScryDefId ?? "hidden",
         tileRotation: grailScry.tileRotation ?? grailScryTile?.rotation,
-        caption: grailScryDef?.id ?? grailScryDefId ?? "hidden"
+        caption: grailScryDef?.id ?? grailScryDefId ?? "hidden",
       }
     : null;
   const rewardOptions =
     chooseOneOptions && !teleport
       ? body.map((legal) => {
           const optionIndex =
-            legal.action.type === "RESOLVE_VISIT_STEP" && legal.action.optionIndex !== undefined
+            legal.action.type === "RESOLVE_VISIT_STEP" &&
+            legal.action.optionIndex !== undefined
               ? legal.action.optionIndex
               : undefined;
           const option =
-            optionIndex !== undefined && chooseOneOptions && optionIndex < chooseOneOptions.length
+            optionIndex !== undefined &&
+            chooseOneOptions &&
+            optionIndex < chooseOneOptions.length
               ? chooseOneOptions[optionIndex]
               : undefined;
           const art =
             rewardArtFromVisitSteps(state, viewerPlayerId, option?.steps) ??
             grailScryArt ??
-            (startingBonusChoice ? startingBonusOptionArt(option?.steps) : null);
+            (startingBonusChoice
+              ? startingBonusOptionArt(option?.steps)
+              : null);
           return { legal, art };
         })
       : subterraneanTileCandidates
         ? body.map((legal) => {
             const optionIndex =
-              legal.action.type === "CHOOSE_OPTION" && legal.action.optionIndex !== undefined
+              legal.action.type === "CHOOSE_OPTION" &&
+              legal.action.optionIndex !== undefined
                 ? legal.action.optionIndex
                 : undefined;
-            const tileDefId = optionIndex !== undefined ? subterraneanTileCandidates[optionIndex] : undefined;
+            const tileDefId =
+              optionIndex !== undefined
+                ? subterraneanTileCandidates[optionIndex]
+                : undefined;
             const def = tileDefId ? allTileDefinitions[tileDefId] : undefined;
             const art: VisitRewardArt | null = tileDefId
               ? {
                   name: def?.id ?? tileDefId,
                   image: def?.assets?.tileImage,
                   tileRotation: 0,
-                  caption: optionIndex === 0 ? "Tile A" : "Tile B"
+                  caption: optionIndex === 0 ? "Tile A" : "Tile B",
                 }
               : null;
             return { legal, art };
           })
-      : handDiscardCards
-        ? body.map((legal) => {
-            const optionIndex =
-              legal.action.type === "CHOOSE_OPTION" && legal.action.optionIndex !== undefined
-                ? legal.action.optionIndex
-                : undefined;
-            const cardId = optionIndex !== undefined ? handDiscardCards[optionIndex] : undefined;
-            const card = cardId ? cardLibrary[cardId] : undefined;
-            return {
-              legal,
-              art: cardId
-                ? ({
-                    name: card?.name ?? cardId,
-                    image: card?.assets?.cardImage,
-                    caption: legal.label,
-                    cardId
-                  } as VisitRewardArt)
-                : null
-            };
-          })
-      : discardPickCards
-        ? body.map((legal) => {
-            const optionIndex =
-              legal.action.type === "CHOOSE_OPTION" && legal.action.optionIndex !== undefined
-                ? legal.action.optionIndex
-                : undefined;
-            const cardId =
-              optionIndex !== undefined && optionIndex < discardPickCards.length
-                ? discardPickCards[optionIndex]
-                : undefined;
-            const card = cardId ? cardLibrary[cardId] : undefined;
-            const art: VisitRewardArt | null = cardId
-              ? {
-                  name: card?.name ?? cardId,
-                  image: card?.assets?.cardImage,
-                  caption: legal.label,
-                  cardId
-                }
-              : null;
-            return { legal, art };
-          })
-        : rule111Draws
+        : handDiscardCards
           ? body.map((legal) => {
               const optionIndex =
-                legal.action.type === "CHOOSE_OPTION" && legal.action.optionIndex !== undefined
+                legal.action.type === "CHOOSE_OPTION" &&
+                legal.action.optionIndex !== undefined
                   ? legal.action.optionIndex
                   : undefined;
-              // Option 0 keeps the drawn army (no card); options 1..N each replace
-              // the k-th bronze guard, so show that unit's Neutral card face.
-              const draw = optionIndex !== undefined && optionIndex > 0 ? rule111Draws[optionIndex - 1] : undefined;
-              const art: VisitRewardArt | null = draw
-                ? { ...rewardArtForId(draw.unitDefId), caption: legal.label }
-                : null;
-              return { legal, art };
+              const cardId =
+                optionIndex !== undefined
+                  ? handDiscardCards[optionIndex]
+                  : undefined;
+              const card = cardId ? cardLibrary[cardId] : undefined;
+              return {
+                legal,
+                art: cardId
+                  ? ({
+                      name: card?.name ?? cardId,
+                      image: card?.assets?.cardImage,
+                      caption: legal.label,
+                      cardId,
+                    } as VisitRewardArt)
+                  : null,
+              };
             })
-          : polishBankCandidates
+          : discardPickCards
             ? body.map((legal) => {
                 const optionIndex =
-                  legal.action.type === "CHOOSE_OPTION" && legal.action.optionIndex !== undefined
+                  legal.action.type === "CHOOSE_OPTION" &&
+                  legal.action.optionIndex !== undefined
                     ? legal.action.optionIndex
                     : undefined;
-                const candidate =
-                  optionIndex !== undefined ? polishBankCandidates[optionIndex] : undefined;
-                if (!candidate) {
-                  return { legal, art: null as VisitRewardArt | null };
-                }
-                const bank = CREATURE_BANKS[candidate.bankId as CreatureBankId];
-                const letter = String.fromCharCode(65 + (optionIndex ?? 0));
-                const sizeRoman = ROMAN[candidate.size] ?? String(candidate.size);
-                return {
-                  legal,
-                  art: {
-                    name: bank?.name ?? "Creature Bank",
-                    image: creatureBankFieldImage(candidate.bankId),
-                    caption: `${letter} · size ${sizeRoman}`
-                  } as VisitRewardArt
-                };
+                const cardId =
+                  optionIndex !== undefined &&
+                  optionIndex < discardPickCards.length
+                    ? discardPickCards[optionIndex]
+                    : undefined;
+                const card = cardId ? cardLibrary[cardId] : undefined;
+                const art: VisitRewardArt | null = cardId
+                  ? {
+                      name: card?.name ?? cardId,
+                      image: card?.assets?.cardImage,
+                      caption: legal.label,
+                      cardId,
+                    }
+                  : null;
+                return { legal, art };
               })
-            : diplomacyRecruitCards
+            : rule111Draws
               ? body.map((legal) => {
                   const optionIndex =
-                    legal.action.type === "CHOOSE_OPTION" && legal.action.optionIndex !== undefined
+                    legal.action.type === "CHOOSE_OPTION" &&
+                    legal.action.optionIndex !== undefined
                       ? legal.action.optionIndex
                       : undefined;
-                  const draw = optionIndex !== undefined ? diplomacyRecruitCards[optionIndex] : undefined;
-                  return {
-                    legal,
-                    art: draw ? { ...rewardArtForId(draw.unitDefId), caption: legal.label } : null
-                  };
-                })
-            : ownDeckPickCards
-              ? body.map((legal) => {
-                  const optionIndex =
-                    legal.action.type === "CHOOSE_OPTION" && legal.action.optionIndex !== undefined
-                      ? legal.action.optionIndex
+                  // Option 0 keeps the drawn army (no card); options 1..N each replace
+                  // the k-th bronze guard, so show that unit's Neutral card face.
+                  const draw =
+                    optionIndex !== undefined && optionIndex > 0
+                      ? rule111Draws[optionIndex - 1]
                       : undefined;
-                  const cardId =
-                    optionIndex !== undefined && optionIndex < ownDeckPickCards.length
-                      ? ownDeckPickCards[optionIndex]
-                      : undefined;
-                  const card = cardId ? cardLibrary[cardId] : undefined;
-                  const art: VisitRewardArt | null = cardId
-                    ? { name: card?.name ?? cardId, image: card?.assets?.cardImage, caption: legal.label, cardId }
+                  const art: VisitRewardArt | null = draw
+                    ? {
+                        ...rewardArtForId(draw.unitDefId),
+                        caption: legal.label,
+                      }
                     : null;
                   return { legal, art };
                 })
-              : eagleEyeCard
+              : polishBankCandidates
                 ? body.map((legal) => {
-                    // Both offered actions (Take / Discard) are about the one found
-                    // card, so every option button shows that same card face.
-                    const card = cardLibrary[eagleEyeCard];
-                    const art: VisitRewardArt = {
-                      name: card?.name ?? eagleEyeCard,
-                      image: card?.assets?.cardImage,
-                      caption: legal.label,
-                      cardId: eagleEyeCard
+                    const optionIndex =
+                      legal.action.type === "CHOOSE_OPTION" &&
+                      legal.action.optionIndex !== undefined
+                        ? legal.action.optionIndex
+                        : undefined;
+                    const candidate =
+                      optionIndex !== undefined
+                        ? polishBankCandidates[optionIndex]
+                        : undefined;
+                    if (!candidate) {
+                      return { legal, art: null as VisitRewardArt | null };
+                    }
+                    const bank =
+                      CREATURE_BANKS[candidate.bankId as CreatureBankId];
+                    const letter = String.fromCharCode(65 + (optionIndex ?? 0));
+                    const sizeRoman =
+                      ROMAN[candidate.size] ?? String(candidate.size);
+                    return {
+                      legal,
+                      art: {
+                        name: bank?.name ?? "Creature Bank",
+                        image: creatureBankFieldImage(candidate.bankId),
+                        caption: `${letter} · size ${sizeRoman}`,
+                      } as VisitRewardArt,
                     };
-                    return { legal, art };
                   })
-                : commanderArtifactOfferCards
+                : diplomacyRecruitCards
                   ? body.map((legal) => {
                       const optionIndex =
-                        legal.action.type === "CHOOSE_OPTION" && legal.action.optionIndex !== undefined
+                        legal.action.type === "CHOOSE_OPTION" &&
+                        legal.action.optionIndex !== undefined
                           ? legal.action.optionIndex
                           : undefined;
-                      const cardId =
-                        optionIndex !== undefined && optionIndex < commanderArtifactOfferCards.length
-                          ? commanderArtifactOfferCards[optionIndex]
+                      const draw =
+                        optionIndex !== undefined
+                          ? diplomacyRecruitCards[optionIndex]
                           : undefined;
-                      const spec = cardId ? COMMANDER_ARTIFACT_SPECS[cardId] : undefined;
-                      const art: VisitRewardArt | null = cardId
-                        ? {
-                            name: spec?.name ?? cardLibrary[cardId]?.name ?? cardId,
-                            image: cardLibrary[cardId]?.assets?.cardImage,
-                            caption: legal.label,
-                            cardId,
-                            detail: spec?.effectText
-                          }
-                        : null;
-                      return { legal, art };
+                      return {
+                        legal,
+                        art: draw
+                          ? {
+                              ...rewardArtForId(draw.unitDefId),
+                              caption: legal.label,
+                            }
+                          : null,
+                      };
                     })
-                : body.map((legal) => ({ legal, art: null as VisitRewardArt | null }));
+                  : ownDeckPickCards
+                    ? body.map((legal) => {
+                        const optionIndex =
+                          legal.action.type === "CHOOSE_OPTION" &&
+                          legal.action.optionIndex !== undefined
+                            ? legal.action.optionIndex
+                            : undefined;
+                        const cardId =
+                          optionIndex !== undefined &&
+                          optionIndex < ownDeckPickCards.length
+                            ? ownDeckPickCards[optionIndex]
+                            : undefined;
+                        const card = cardId ? cardLibrary[cardId] : undefined;
+                        const art: VisitRewardArt | null = cardId
+                          ? {
+                              name: card?.name ?? cardId,
+                              image: card?.assets?.cardImage,
+                              caption: legal.label,
+                              cardId,
+                            }
+                          : null;
+                        return { legal, art };
+                      })
+                    : eagleEyeCard
+                      ? body.map((legal) => {
+                          // Both offered actions (Take / Discard) are about the one found
+                          // card, so every option button shows that same card face.
+                          const card = cardLibrary[eagleEyeCard];
+                          const art: VisitRewardArt = {
+                            name: card?.name ?? eagleEyeCard,
+                            image: card?.assets?.cardImage,
+                            caption: legal.label,
+                            cardId: eagleEyeCard,
+                          };
+                          return { legal, art };
+                        })
+                      : commanderArtifactOfferCards
+                        ? body.map((legal) => {
+                            const optionIndex =
+                              legal.action.type === "CHOOSE_OPTION" &&
+                              legal.action.optionIndex !== undefined
+                                ? legal.action.optionIndex
+                                : undefined;
+                            const cardId =
+                              optionIndex !== undefined &&
+                              optionIndex < commanderArtifactOfferCards.length
+                                ? commanderArtifactOfferCards[optionIndex]
+                                : undefined;
+                            const spec = cardId
+                              ? COMMANDER_ARTIFACT_SPECS[cardId]
+                              : undefined;
+                            const art: VisitRewardArt | null = cardId
+                              ? {
+                                  name:
+                                    spec?.name ??
+                                    cardLibrary[cardId]?.name ??
+                                    cardId,
+                                  image: cardLibrary[cardId]?.assets?.cardImage,
+                                  caption: legal.label,
+                                  cardId,
+                                  detail: spec?.effectText,
+                                }
+                              : null;
+                            return { legal, art };
+                          })
+                        : body.map((legal) => ({
+                            legal,
+                            art: null as VisitRewardArt | null,
+                          }));
   const displayedRewardOptions =
-    balanceArt && visitStep?.type === "CHOOSE_ONE" && visitStep.prompt.startsWith("Logistics:")
+    balanceArt &&
+    visitStep?.type === "CHOOSE_ONE" &&
+    visitStep.prompt.startsWith("Logistics:")
       ? rewardOptions.filter(({ legal }) => /stay/i.test(legal.label))
       : rewardOptions;
-  const hasAnyRewardArt = displayedRewardOptions.some((entry) => Boolean(entry.art?.image || entry.art?.name));
-  const hasTileRewardArt = displayedRewardOptions.some((entry) => entry.art?.tileRotation !== undefined);
+  const hasAnyRewardArt = displayedRewardOptions.some((entry) =>
+    Boolean(entry.art?.image || entry.art?.name),
+  );
+  const hasTileRewardArt = displayedRewardOptions.some(
+    (entry) => entry.art?.tileRotation !== undefined,
+  );
 
   // ---- Pandora card decisions: the CARD FACE decides, never its name ----
   // Both Pandora surfaces below used to be word-only lists ("Put <name> back on
@@ -6671,10 +8424,13 @@ export function PromptTray({
   // other viewer in player-view.ts, so this is gated on the OWNER. A masked id
   // resolves to no card in the library and therefore renders no face at all.
   const pandoraScry =
-    choice?.type === "OPTION_CHOICE" && choice.context === "pandora-scry" && choice.playerId === viewerPlayerId
+    choice?.type === "OPTION_CHOICE" &&
+    choice.context === "pandora-scry" &&
+    choice.playerId === viewerPlayerId
       ? (choice.pandoraScry ?? null)
       : null;
-  const pandoraScryChoiceId = pandoraScry && choice?.type === "OPTION_CHOICE" ? choice.id : null;
+  const pandoraScryChoiceId =
+    pandoraScry && choice?.type === "OPTION_CHOICE" ? choice.id : null;
   const pandoraScryTiles: PandoraCardTile[] | null =
     pandoraScry && pandoraScryChoiceId
       ? pandoraScry.remaining.map((cardId, index) => {
@@ -6686,13 +8442,17 @@ export function PromptTray({
               (legal) =>
                 legal.action.type === "CHOOSE_OPTION" &&
                 legal.action.choiceId === pandoraScryChoiceId &&
-                legal.action.optionIndex === optionIndex
+                legal.action.optionIndex === optionIndex,
             );
           const keep = optionFor(index);
           const discard = optionFor(pandoraScry.remaining.length + index);
           const actions: PandoraCardTile["actions"] = [];
           if (keep) {
-            actions.push({ legal: keep, label: "Put back on top", primary: true });
+            actions.push({
+              legal: keep,
+              label: "Put back on top",
+              primary: true,
+            });
           }
           if (discard) {
             actions.push({ legal: discard, label: "Discard" });
@@ -6704,7 +8464,10 @@ export function PromptTray({
   // Minor Artifacts): every option keeps one of the cards already on the table,
   // so the row only takes over when EVERY offer resolved to a card of the SAME
   // kind (a mixed or unrelated CHOOSE_ONE keeps the generic text path).
-  const keepOneDrawn: { tiles: PandoraCardTile[]; kind: "pandora" | "artifact" } | null = (() => {
+  const keepOneDrawn: {
+    tiles: PandoraCardTile[];
+    kind: "pandora" | "artifact";
+  } | null = (() => {
     if (!chooseOneOptions || teleport) {
       return null;
     }
@@ -6712,10 +8475,12 @@ export function PromptTray({
     let kind: "pandora" | "artifact" | null = null;
     for (const legal of body) {
       const optionIndex =
-        legal.action.type === "RESOLVE_VISIT_STEP" && legal.action.optionIndex !== undefined
+        legal.action.type === "RESOLVE_VISIT_STEP" &&
+        legal.action.optionIndex !== undefined
           ? legal.action.optionIndex
           : undefined;
-      const option = optionIndex !== undefined ? chooseOneOptions[optionIndex] : undefined;
+      const option =
+        optionIndex !== undefined ? chooseOneOptions[optionIndex] : undefined;
       const kept = keepOneDrawnCard(option?.steps);
       if (!kept || (kind !== null && kept.kind !== kind)) {
         return null;
@@ -6724,8 +8489,15 @@ export function PromptTray({
       tiles.push({
         cardId: kept.cardId,
         actions: [
-          { legal, label: kept.kind === "artifact" ? "Keep this Artifact" : "Keep this card", primary: true }
-        ]
+          {
+            legal,
+            label:
+              kept.kind === "artifact"
+                ? "Keep this Artifact"
+                : "Keep this card",
+            primary: true,
+          },
+        ],
       });
     }
     return tiles.length > 0 && kind ? { tiles, kind } : null;
@@ -6739,19 +8511,30 @@ export function PromptTray({
     teleport && chooseOneOptions
       ? body.map((legal) => {
           const optionIndex =
-            legal.action.type === "RESOLVE_VISIT_STEP" && legal.action.optionIndex !== undefined
+            legal.action.type === "RESOLVE_VISIT_STEP" &&
+            legal.action.optionIndex !== undefined
               ? legal.action.optionIndex
               : undefined;
           const option =
-            optionIndex !== undefined && chooseOneOptions && optionIndex < chooseOneOptions.length
+            optionIndex !== undefined &&
+            chooseOneOptions &&
+            optionIndex < chooseOneOptions.length
               ? chooseOneOptions[optionIndex]
               : undefined;
           // The trailing "Stay here" option (2026-07-24 rule) has empty steps —
           // it is a DECLINE, not a destination, so it carries no token art (a
           // plain ⇄ fallback card), keeping the destination cards distinct.
           const innerType = option?.steps[0]?.type;
-          const isTravel = innerType === "TELEPORT_HERO" || innerType === "TOKEN_TELEPORT_REVEAL";
-          return { legal, art: option && isTravel ? teleportOptionArt(state, teleport, option) : null };
+          const isTravel =
+            innerType === "TELEPORT_HERO" ||
+            innerType === "TOKEN_TELEPORT_REVEAL";
+          return {
+            legal,
+            art:
+              option && isTravel
+                ? teleportOptionArt(state, teleport, option)
+                : null,
+          };
         })
       : null;
 
@@ -6781,7 +8564,10 @@ export function PromptTray({
       } else if (roundStartAstrologersCard?.image) {
         preview = (
           <>
-            <div className="eventChoicePreview" data-testid="astrologers-choice-card">
+            <div
+              className="eventChoicePreview"
+              data-testid="astrologers-choice-card"
+            >
               <img
                 alt={roundStartAstrologersCard.name}
                 className="eventChoiceCard"
@@ -6807,7 +8593,11 @@ export function PromptTray({
     const kept = pandoraScry?.toReturn ?? [];
     const rowKind = isScry ? "pandora-scry" : (keepOneDrawn?.kind ?? "pandora");
     return (
-      <div className="promptTray pandoraCardTray" role="dialog" aria-label={title}>
+      <div
+        className="promptTray pandoraCardTray"
+        role="dialog"
+        aria-label={title}
+      >
         <strong>{title}</strong>
         <small className="pandoraCardHint">
           {isScry
@@ -6818,11 +8608,15 @@ export function PromptTray({
         </small>
         {kept.length > 0 ? (
           <div className="pandoraKeptStrip" data-testid="pandora-kept-strip">
-            <small className="pandoraKeptHead">Going back on top (first is drawn next)</small>
+            <small className="pandoraKeptHead">
+              Going back on top (first is drawn next)
+            </small>
             <div className="pandoraKeptCards">
               {kept.map((cardId, index) => {
                 const card = cardLibrary[cardId];
-                const image = resolveCardFaceImage(balanceArt, cardId, false) ?? card?.assets?.cardImage;
+                const image =
+                  resolveCardFaceImage(balanceArt, cardId, false) ??
+                  card?.assets?.cardImage;
                 return image ? (
                   <CardSetFrame cardId={cardId} key={`${cardId}-${index}`}>
                     <img
@@ -6834,7 +8628,10 @@ export function PromptTray({
                     />
                   </CardSetFrame>
                 ) : (
-                  <span className="marketCardFallback" key={`${cardId}-${index}`}>
+                  <span
+                    className="marketCardFallback"
+                    key={`${cardId}-${index}`}
+                  >
                     {card?.name ?? cardId}
                   </span>
                 );
@@ -6842,12 +8639,22 @@ export function PromptTray({
             </div>
           </div>
         ) : null}
-        <div className="promptOptions pandoraCardRow" data-row-kind={rowKind} data-testid="pandora-card-row">
+        <div
+          className="promptOptions pandoraCardRow"
+          data-row-kind={rowKind}
+          data-testid="pandora-card-row"
+        >
           {pandoraCardTiles.map((tile, index) => {
             const card = cardLibrary[tile.cardId];
-            const image = resolveCardFaceImage(balanceArt, tile.cardId, false) ?? card?.assets?.cardImage;
+            const image =
+              resolveCardFaceImage(balanceArt, tile.cardId, false) ??
+              card?.assets?.cardImage;
             return (
-              <div className="pandoraCardTile" data-testid="pandora-card-tile" key={`${tile.cardId}-${index}`}>
+              <div
+                className="pandoraCardTile"
+                data-testid="pandora-card-tile"
+                key={`${tile.cardId}-${index}`}
+              >
                 {image ? (
                   <button
                     aria-label={`Enlarge ${card?.name ?? tile.cardId}`}
@@ -6868,9 +8675,13 @@ export function PromptTray({
                     </CardSetFrame>
                   </button>
                 ) : (
-                  <span className="marketCardFallback">{card?.name ?? tile.cardId}</span>
+                  <span className="marketCardFallback">
+                    {card?.name ?? tile.cardId}
+                  </span>
                 )}
-                <small className="pandoraCardName">{card?.name ?? tile.cardId}</small>
+                <small className="pandoraCardName">
+                  {card?.name ?? tile.cardId}
+                </small>
                 <div className="pandoraCardActions">
                   {tile.actions.map((entry) => (
                     <button
@@ -6896,9 +8707,15 @@ export function PromptTray({
 
   if (teleportOptions) {
     return (
-      <div className="promptTray withTeleportCards" role="dialog" aria-label={title}>
+      <div
+        className="promptTray withTeleportCards"
+        role="dialog"
+        aria-label={title}
+      >
         <strong>{title}</strong>
-        <span className="promptTeleportHint">Pick your exit on the glowing map hex — or choose one below.</span>
+        <span className="promptTeleportHint">
+          Pick your exit on the glowing map hex — or choose one below.
+        </span>
         <div className="promptOptions teleportCards">
           {teleportOptions.map(({ legal, art }) => (
             <button
@@ -6911,7 +8728,13 @@ export function PromptTray({
             >
               <span
                 className={`teleportOptionArt${art?.faceDown ? " faceDown" : ""}`}
-                style={art?.ring ? ({ ["--teleport-ring" as string]: art.ring } as CSSProperties) : undefined}
+                style={
+                  art?.ring
+                    ? ({
+                        ["--teleport-ring" as string]: art.ring,
+                      } as CSSProperties)
+                    : undefined
+                }
               >
                 {art?.image ? (
                   <img
@@ -6925,8 +8748,12 @@ export function PromptTray({
                 ) : (
                   <span className="marketCardFallback">⇄</span>
                 )}
-                {art?.badge ? <span className="teleportOptionBadge">{art.badge}</span> : null}
-                {art?.faceDown ? <span className="teleportOptionFaceDownTag">face-down</span> : null}
+                {art?.badge ? (
+                  <span className="teleportOptionBadge">{art.badge}</span>
+                ) : null}
+                {art?.faceDown ? (
+                  <span className="teleportOptionFaceDownTag">face-down</span>
+                ) : null}
               </span>
               <small>{art?.label ?? legal.label}</small>
             </button>
@@ -6942,19 +8769,27 @@ export function PromptTray({
   // third option with a clear X mark (not an empty bank card).
   if (polishBankCandidates) {
     return (
-      <div className="promptTray withPolishBankCards" role="dialog" aria-label={title}>
+      <div
+        className="promptTray withPolishBankCards"
+        role="dialog"
+        aria-label={title}
+      >
         <strong>{title}</strong>
         <span className="promptTeleportHint">
-          Pick a bank — art and size show above the name — or leave the field blocked (X).
+          Pick a bank — art and size show above the name — or leave the field
+          blocked (X).
         </span>
         <div className="promptOptions polishBankCards">
           {body.map((legal) => {
             const optionIndex =
-              legal.action.type === "CHOOSE_OPTION" && legal.action.optionIndex !== undefined
+              legal.action.type === "CHOOSE_OPTION" &&
+              legal.action.optionIndex !== undefined
                 ? legal.action.optionIndex
                 : undefined;
             const candidate =
-              optionIndex !== undefined ? polishBankCandidates[optionIndex] : undefined;
+              optionIndex !== undefined
+                ? polishBankCandidates[optionIndex]
+                : undefined;
             const isLeaveBlocked = !candidate;
             const bank = candidate
               ? CREATURE_BANKS[candidate.bankId as CreatureBankId]
@@ -6977,7 +8812,9 @@ export function PromptTray({
                 title={legal.label}
                 type="button"
               >
-                <span className={`polishBankOptionArt${isLeaveBlocked ? " leaveBlockedArt" : ""}`}>
+                <span
+                  className={`polishBankOptionArt${isLeaveBlocked ? " leaveBlockedArt" : ""}`}
+                >
                   {candidate ? (
                     <img
                       alt=""
@@ -7003,10 +8840,14 @@ export function PromptTray({
                 </span>
                 <strong className="polishBankOptionLetter">{letter}</strong>
                 <small className="polishBankOptionName">
-                  {isLeaveBlocked ? "Leave it blocked" : (bank?.name ?? "Creature Bank")}
+                  {isLeaveBlocked
+                    ? "Leave it blocked"
+                    : (bank?.name ?? "Creature Bank")}
                 </small>
                 {sizeRoman ? (
-                  <small className="polishBankOptionSize">size {sizeRoman}</small>
+                  <small className="polishBankOptionSize">
+                    size {sizeRoman}
+                  </small>
                 ) : isLeaveBlocked ? (
                   <small className="polishBankOptionSize">no bank</small>
                 ) : null}
@@ -7024,13 +8865,16 @@ export function PromptTray({
   // the either/or reads at a glance (keep the guard you see, or gamble on a swap).
   if (rule111Draws) {
     const acceptEntry = rewardOptions.find(
-      (entry) => entry.legal.action.type === "CHOOSE_OPTION" && entry.legal.action.optionIndex === 0
+      (entry) =>
+        entry.legal.action.type === "CHOOSE_OPTION" &&
+        entry.legal.action.optionIndex === 0,
     );
     const replaceEntries = rewardOptions.filter(
       (entry) =>
         entry.legal.action.type === "CHOOSE_OPTION" &&
-        typeof (entry.legal.action as { optionIndex?: number }).optionIndex === "number" &&
-        ((entry.legal.action as { optionIndex?: number }).optionIndex ?? 0) > 0
+        typeof (entry.legal.action as { optionIndex?: number }).optionIndex ===
+          "number" &&
+        ((entry.legal.action as { optionIndex?: number }).optionIndex ?? 0) > 0,
     );
     return (
       <div className="promptTray rule111Tray" role="dialog" aria-label={title}>
@@ -7052,7 +8896,11 @@ export function PromptTray({
                   draggable={false}
                   src={assetUrl(UI_REWARD_ICONS.rule111)}
                 />
-                <span>{replaceEntries.length > 1 ? legal.label : "Use Rule 111: replace the Guard"}</span>
+                <span>
+                  {replaceEntries.length > 1
+                    ? legal.label
+                    : "Use Rule 111: replace the Guard"}
+                </span>
               </button>
             ))}
           </div>
@@ -7108,7 +8956,9 @@ export function PromptTray({
         />
       ) : null}
       {preview}
-      <div className={`promptOptions${hasAnyRewardArt ? " rewardCards" : ""}${hasTileRewardArt ? " tileCards" : ""}`}>
+      <div
+        className={`promptOptions${hasAnyRewardArt ? " rewardCards" : ""}${hasTileRewardArt ? " tileCards" : ""}`}
+      >
         {displayedRewardOptions.map(({ legal, art }) =>
           art ? (
             <button
@@ -7116,7 +8966,9 @@ export function PromptTray({
               className={`promptRewardCard${art.tileRotation !== undefined ? " tileThumb" : ""}${art.resource ? " resourceReward" : ""}`}
               key={actionKey(legal.action)}
               onClick={() => onAction(legal.action)}
-              title={art.detail ? `${legal.label} — ${art.detail}` : legal.label}
+              title={
+                art.detail ? `${legal.label} — ${art.detail}` : legal.label
+              }
               type="button"
             >
               {art.image ? (
@@ -7124,7 +8976,9 @@ export function PromptTray({
                   className="promptRewardArtWrap"
                   style={
                     art.tileRotation !== undefined
-                      ? ({ ["--tile-rot" as string]: `${art.tileRotation * 60}deg` } as CSSProperties)
+                      ? ({
+                          ["--tile-rot" as string]: `${art.tileRotation * 60}deg`,
+                        } as CSSProperties)
                       : undefined
                   }
                 >
@@ -7143,9 +8997,13 @@ export function PromptTray({
                 <span className="marketCardFallback">{art.name}</span>
               )}
               <small>
-                {art.resource || (art.caption && art.caption.endsWith("°")) ? art.caption : legal.label}
+                {art.resource || (art.caption && art.caption.endsWith("°"))
+                  ? art.caption
+                  : legal.label}
               </small>
-              {art.detail ? <small className="promptRewardDetail">{art.detail}</small> : null}
+              {art.detail ? (
+                <small className="promptRewardDetail">{art.detail}</small>
+              ) : null}
             </button>
           ) : (
             <button
@@ -7156,7 +9014,7 @@ export function PromptTray({
             >
               {legal.label}
             </button>
-          )
+          ),
         )}
       </div>
     </div>
@@ -7180,7 +9038,7 @@ export function LearningOfferModal({
   state,
   viewerPlayerId,
   legalActions,
-  onAction
+  onAction,
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
@@ -7188,7 +9046,10 @@ export function LearningOfferModal({
   onAction: (action: GameAction) => void;
 }) {
   const choice = state.pendingChoice;
-  if (choice?.type !== "OPTION_CHOICE" || choice.context !== "learning-level-up") {
+  if (
+    choice?.type !== "OPTION_CHOICE" ||
+    choice.context !== "learning-level-up"
+  ) {
     return null;
   }
 
@@ -7204,15 +9065,23 @@ export function LearningOfferModal({
     return (
       <div className="reactionStrip waiting" role="status">
         <ChevronsUp aria-hidden="true" size={15} />
-        <span>{state.players[choice.playerId]?.name ?? choice.playerId} is {gainingLabel}…</span>
+        <span>
+          {state.players[choice.playerId]?.name ?? choice.playerId} is{" "}
+          {gainingLabel}…
+        </span>
       </div>
     );
   }
 
   const modes = choice.learningLevelUp?.modes ?? [];
   const optionActions = legalActions.filter(
-    (legal): legal is LegalAction & { action: Extract<GameAction, { type: "CHOOSE_OPTION" }> } =>
-      legal.action.type === "CHOOSE_OPTION" && legal.action.choiceId === choice.id
+    (
+      legal,
+    ): legal is LegalAction & {
+      action: Extract<GameAction, { type: "CHOOSE_OPTION" }>;
+    } =>
+      legal.action.type === "CHOOSE_OPTION" &&
+      legal.action.choiceId === choice.id,
   );
   if (optionActions.length === 0) {
     return null;
@@ -7222,11 +9091,18 @@ export function LearningOfferModal({
   const cardImage = card?.assets?.cardImage;
 
   return (
-    <div className="modalBackdrop" role="dialog" aria-label={`Learning — ${gainingLabel}`}>
+    <div
+      className="modalBackdrop"
+      role="dialog"
+      aria-label={`Learning — ${gainingLabel}`}
+    >
       <div className="searchModal learningOfferModal">
         <header>
           <strong>Your Hero is gaining Experience!</strong>
-          <span>You hold Learning. Play it now to advance even further — or keep it for later.</span>
+          <span>
+            You hold Learning. Play it now to advance even further — or keep it
+            for later.
+          </span>
         </header>
         <div className="learningOfferBody">
           {cardImage ? (
@@ -7238,12 +9114,15 @@ export function LearningOfferModal({
               src={assetUrl(cardImage)}
             />
           ) : (
-            <span className="marketCardFallback">{card?.name ?? "Learning"}</span>
+            <span className="marketCardFallback">
+              {card?.name ?? "Learning"}
+            </span>
           )}
           <div className="learningOfferOptions">
             {optionActions.map((legal) => {
               const optionIndex = legal.action.optionIndex;
-              const mode = optionIndex < modes.length ? modes[optionIndex] : undefined;
+              const mode =
+                optionIndex < modes.length ? modes[optionIndex] : undefined;
               const isExpert = mode === "expert";
               return (
                 <button
@@ -7280,7 +9159,7 @@ export function MarketPanel({
   state,
   viewerPlayerId,
   legalActions,
-  onAction
+  onAction,
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
@@ -7296,7 +9175,8 @@ export function MarketPanel({
 
   // Pops open in the player's face on every new market visit; the user may
   // minimize it to a corner chip while they look at the map.
-  const visitKey = isMarket && visit ? `${visit.fieldId}:${step?.type}:${visit.heroId}` : "";
+  const visitKey =
+    isMarket && visit ? `${visit.fieldId}:${step?.type}:${visit.heroId}` : "";
   const [openState, setOpenState] = useState({ key: "", minimized: false });
   if (openState.key !== visitKey) {
     setOpenState({ key: visitKey, minimized: false });
@@ -7308,16 +9188,23 @@ export function MarketPanel({
     // surface it as a persistent, blinking tab so the market is reachable any
     // time without re-walking onto the tile.
     const openAction = legalActions.find(
-      (legal): legal is LegalAction & { action: Extract<GameAction, { type: "OPEN_MARKET" }> } =>
-        legal.action.type === "OPEN_MARKET"
+      (
+        legal,
+      ): legal is LegalAction & {
+        action: Extract<GameAction, { type: "OPEN_MARKET" }>;
+      } => legal.action.type === "OPEN_MARKET",
     );
     if (!openAction) {
       return null;
     }
 
     const parkedHero = state.heroes[openAction.action.heroId];
-    const marketField = parkedHero?.spaceId ? state.adventure?.fields[parkedHero.spaceId] : undefined;
-    const marketName = marketField ? (locationDefinitions[marketField.location]?.name ?? "Market") : "Market";
+    const marketField = parkedHero?.spaceId
+      ? state.adventure?.fields[parkedHero.spaceId]
+      : undefined;
+    const marketName = marketField
+      ? (locationDefinitions[marketField.location]?.name ?? "Market")
+      : "Market";
     return (
       <button
         className="marketTab"
@@ -7335,17 +9222,28 @@ export function MarketPanel({
   const traded = isTradingPost && Boolean(step.traded);
   const title = isTradingPost ? "Trading Post" : "War Machine Factory";
 
-  const tradeActions = legalActions.filter((legal) => legal.action.type === "TRADE_RESOURCES");
-  const sellActions = legalActions.filter(
-    (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && legal.label.startsWith("Sell ")
+  const tradeActions = legalActions.filter(
+    (legal) => legal.action.type === "TRADE_RESOURCES",
   );
-  const scrollSellActions = legalActions.filter((legal) => legal.action.type === "SELL_SCROLL_SPELL");
+  const sellActions = legalActions.filter(
+    (legal) =>
+      legal.action.type === "RESOLVE_VISIT_STEP" &&
+      legal.label.startsWith("Sell "),
+  );
+  const scrollSellActions = legalActions.filter(
+    (legal) => legal.action.type === "SELL_SCROLL_SPELL",
+  );
   const buyActions = legalActions.filter(
-    (legal): legal is LegalAction & { action: Extract<GameAction, { type: "BUY_WAR_MACHINE" }> } =>
-      legal.action.type === "BUY_WAR_MACHINE"
+    (
+      legal,
+    ): legal is LegalAction & {
+      action: Extract<GameAction, { type: "BUY_WAR_MACHINE" }>;
+    } => legal.action.type === "BUY_WAR_MACHINE",
   );
   const done = legalActions.find(
-    (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && legal.action.decline === true
+    (legal) =>
+      legal.action.type === "RESOLVE_VISIT_STEP" &&
+      legal.action.decline === true,
   );
 
   if (openState.minimized) {
@@ -7370,7 +9268,8 @@ export function MarketPanel({
       <header>
         <strong>⚖ {title}</strong>
         <small>
-          🪙 {player?.resources.gold ?? 0} · ⚒ {player?.resources.buildingMaterials ?? 0} · ♦{" "}
+          🪙 {player?.resources.gold ?? 0} · ⚒{" "}
+          {player?.resources.buildingMaterials ?? 0} · ♦{" "}
           {player?.resources.valuables ?? 0}
         </small>
         <div className="marketHeaderButtons">
@@ -7382,7 +9281,11 @@ export function MarketPanel({
             <Minus size={13} />
           </button>
           {done ? (
-            <button onClick={() => onAction(done.action)} title="End the visit" type="button">
+            <button
+              onClick={() => onAction(done.action)}
+              title="End the visit"
+              type="button"
+            >
               <X size={13} />
             </button>
           ) : null}
@@ -7396,19 +9299,29 @@ export function MarketPanel({
             className="marketTradeTable"
             src={assetUrl("/assets/rulebook-trade_table.webp")}
           />
-          <small className="marketCredit">Trade table from the community rulebook rewrite (back cover).</small>
+          <small className="marketCredit">
+            Trade table from the community rulebook rewrite (back cover).
+          </small>
           <div className="marketTradeButtons">
-            {tradeActions.length === 0 ? <small>No affordable trades right now.</small> : null}
+            {tradeActions.length === 0 ? (
+              <small>No affordable trades right now.</small>
+            ) : null}
             {tradeActions.map((legal) => (
-              <button className="commandButton" key={actionKey(legal.action)} onClick={() => onAction(legal.action)} type="button">
+              <button
+                className="commandButton"
+                key={actionKey(legal.action)}
+                onClick={() => onAction(legal.action)}
+                type="button"
+              >
                 {legal.label.replace(/^Trade /, "")}
               </button>
             ))}
           </div>
           {traded ? (
             <small className="marketLock">
-              Resource trading chosen for this visit — keep trading or close the market. Selling cards and buying war
-              machines wait for another visit.
+              Resource trading chosen for this visit — keep trading or close the
+              market. Selling cards and buying war machines wait for another
+              visit.
             </small>
           ) : null}
         </section>
@@ -7418,18 +9331,26 @@ export function MarketPanel({
         <section className="marketSell" aria-label="Sell a card">
           <h4>Sell one card from hand → 1 gold</h4>
           <small>
-            The card is removed from the game. Specialty, Statistic, your starting Ability and Magic Arrow cannot be
-            sold. Selling (or buying a war machine) is this visit&apos;s one action.
+            The card is removed from the game. Specialty, Statistic, your
+            starting Ability and Magic Arrow cannot be sold. Selling (or buying
+            a war machine) is this visit&apos;s one action.
           </small>
           <div className="marketSellCards">
-            {sellActions.length === 0 ? <small>No sellable cards in hand.</small> : null}
+            {sellActions.length === 0 ? (
+              <small>No sellable cards in hand.</small>
+            ) : null}
             {sellActions.map((legal) => {
               const cardId =
-                legal.action.type === "RESOLVE_VISIT_STEP" && legal.action.optionIndex !== undefined
-                  ? state.players[viewerPlayerId]?.hand[legal.action.optionIndex]
+                legal.action.type === "RESOLVE_VISIT_STEP" &&
+                legal.action.optionIndex !== undefined
+                  ? state.players[viewerPlayerId]?.hand[
+                      legal.action.optionIndex
+                    ]
                   : undefined;
               const card = cardId ? cardLibrary[cardId] : undefined;
-              const image = resolveCardFaceImage(balanceArt, cardId, false) ?? card?.assets?.cardImage;
+              const image =
+                resolveCardFaceImage(balanceArt, cardId, false) ??
+                card?.assets?.cardImage;
               return (
                 <button
                   className="marketSellCard"
@@ -7439,9 +9360,16 @@ export function MarketPanel({
                   type="button"
                 >
                   {image ? (
-                    <img alt={card?.name ?? cardId} loading="lazy" referrerPolicy="no-referrer" src={assetUrl(image)} />
+                    <img
+                      alt={card?.name ?? cardId}
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                      src={assetUrl(image)}
+                    />
                   ) : (
-                    <span className="marketCardFallback">{card?.name ?? cardId}</span>
+                    <span className="marketCardFallback">
+                      {card?.name ?? cardId}
+                    </span>
                   )}
                   {/* `.marketSellCard img` is `width: 100%`, so a content-sized
                       wrapper would blow the face up to its intrinsic size — the
@@ -7459,12 +9387,20 @@ export function MarketPanel({
       {isTradingPost && !traded && scrollSellActions.length > 0 ? (
         <section className="marketSell" aria-label="Sell a scroll spell">
           <h4>Sell one Spell Scroll spell → 2 gold</h4>
-          <small>The spell is removed from the scroll (and the game). An emptied scroll is discarded.</small>
+          <small>
+            The spell is removed from the scroll (and the game). An emptied
+            scroll is discarded.
+          </small>
           <div className="marketSellCards">
             {scrollSellActions.map((legal) => {
-              const cardId = legal.action.type === "SELL_SCROLL_SPELL" ? legal.action.cardId : undefined;
+              const cardId =
+                legal.action.type === "SELL_SCROLL_SPELL"
+                  ? legal.action.cardId
+                  : undefined;
               const card = cardId ? cardLibrary[cardId] : undefined;
-              const image = resolveCardFaceImage(balanceArt, cardId, false) ?? card?.assets?.cardImage;
+              const image =
+                resolveCardFaceImage(balanceArt, cardId, false) ??
+                card?.assets?.cardImage;
               return (
                 <button
                   className="marketSellCard"
@@ -7474,9 +9410,16 @@ export function MarketPanel({
                   type="button"
                 >
                   {image ? (
-                    <img alt={card?.name ?? cardId} loading="lazy" referrerPolicy="no-referrer" src={assetUrl(image)} />
+                    <img
+                      alt={card?.name ?? cardId}
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                      src={assetUrl(image)}
+                    />
                   ) : (
-                    <span className="marketCardFallback">📜 {card?.name ?? cardId}</span>
+                    <span className="marketCardFallback">
+                      📜 {card?.name ?? cardId}
+                    </span>
                   )}
                   <small>Sell → 2 🪙</small>
                 </button>
@@ -7488,9 +9431,12 @@ export function MarketPanel({
 
       <section className="marketMachines" aria-label="War machines">
         <h4>
-          War machines {isTradingPost ? "(Trading Post price)" : "(factory price)"}
+          War machines{" "}
+          {isTradingPost ? "(Trading Post price)" : "(factory price)"}
         </h4>
-        {supply.length === 0 ? <small>The war machine supply is empty.</small> : null}
+        {supply.length === 0 ? (
+          <small>The war machine supply is empty.</small>
+        ) : null}
         <div className="marketMachineRow">
           {supply.map((cardId) => {
             // Community Balance Change re-prices three machines at both shops
@@ -7498,20 +9444,42 @@ export function MarketPanel({
             // definition — the engine's own offer (`warMachinesForSale`) already
             // does, and a raw library read here would print a price the buy
             // button does not charge.
-            const card = balanceCardForDisplay(balanceArt.polish, balanceArt.community, cardId);
+            const card = balanceCardForDisplay(
+              balanceArt.polish,
+              balanceArt.community,
+              cardId,
+            );
             const cost = card?.warMachineCosts?.[pricing];
-            const machineFace = resolveCardFaceImage(balanceArt, cardId, false) ?? card?.assets?.cardImage;
-            const buy = buyActions.find((legal) => legal.action.cardId === cardId);
+            const machineFace =
+              resolveCardFaceImage(balanceArt, cardId, false) ??
+              card?.assets?.cardImage;
+            const buy = buyActions.find(
+              (legal) => legal.action.cardId === cardId,
+            );
             const blocked = traded;
             return (
-              <div className={`marketMachine ${buy && !blocked ? "" : "unavailable"}`} key={cardId}>
+              <div
+                className={`marketMachine ${buy && !blocked ? "" : "unavailable"}`}
+                key={cardId}
+              >
                 {machineFace ? (
-                  <img alt={card?.name ?? cardId} loading="lazy" referrerPolicy="no-referrer" src={assetUrl(machineFace)} />
+                  <img
+                    alt={card?.name ?? cardId}
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                    src={assetUrl(machineFace)}
+                  />
                 ) : (
-                  <span className="marketCardFallback">{card?.name ?? cardId}</span>
+                  <span className="marketCardFallback">
+                    {card?.name ?? cardId}
+                  </span>
                 )}
                 <strong>{card?.name ?? cardId}</strong>
-                <small>{card ? describeCardEffect(card).replace(/^Permanent — /, "") : ""}</small>
+                <small>
+                  {card
+                    ? describeCardEffect(card).replace(/^Permanent — /, "")
+                    : ""}
+                </small>
                 <button
                   className="commandButton"
                   disabled={!buy || blocked}
@@ -7525,8 +9493,9 @@ export function MarketPanel({
           })}
         </div>
         <small className="marketNote">
-          War machines are permanent cards: the bought card goes to your hand; play it to put it next to your hero
-          board. Only one permanent may be in play — playing another discards the first.
+          War machines are permanent cards: the bought card goes to your hand;
+          play it to put it next to your hero board. Only one permanent may be
+          in play — playing another discards the first.
         </small>
       </section>
     </div>
@@ -7542,7 +9511,7 @@ export function FarTileTray({
   view,
   viewerPlayerId,
   placement,
-  onTogglePlacement
+  onTogglePlacement,
 }: {
   state: GameState;
   view: PlayerVisibleState;
@@ -7560,18 +9529,28 @@ export function FarTileTray({
   // state, since the view masks the def ids). The supply def ids come from the
   // full state for the same reason; the view only tells us how many remain.
   const supplyDefIds = state.adventure?.playerFarTiles[viewerPlayerId] ?? [];
-  const myHeroes = Object.values(state.heroes).filter((hero) => hero.controllerId === viewerPlayerId);
+  const myHeroes = Object.values(state.heroes).filter(
+    (hero) => hero.controllerId === viewerPlayerId,
+  );
   const usableByIndex = tiles.map((_, index) => {
     const tileDefId = supplyDefIds[index];
     return myHeroes.some(
-      (hero) => hero.movementPoints > 0 && farTilePlacementCenters(state, hero, tileDefId).length > 0
+      (hero) =>
+        hero.movementPoints > 0 &&
+        farTilePlacementCenters(state, hero, tileDefId).length > 0,
     );
   });
   const anyUsable = usableByIndex.some(Boolean);
 
   return (
-    <div className={`farTileTray ${anyUsable ? "usable" : ""}`} aria-label="Your far tiles">
-      <small>Far (Ⅱ–Ⅲ) tiles — 1 movement point 🐎 to place at the border, touching two tiles:</small>
+    <div
+      className={`farTileTray ${anyUsable ? "usable" : ""}`}
+      aria-label="Your far tiles"
+    >
+      <small>
+        Far (Ⅱ–Ⅲ) tiles — 1 movement point 🐎 to place at the border, touching
+        two tiles:
+      </small>
       {tiles.map((_, index) => {
         const usable = usableByIndex[index];
         const selected = placement?.supplyIndex === index;
@@ -7580,7 +9559,9 @@ export function FarTileTray({
             aria-disabled={!usable}
             className={`farTileBack ${selected ? "selected" : ""} ${usable ? "usable" : "idle"}`}
             key={index}
-            onClick={() => onTogglePlacement(selected ? null : { supplyIndex: index })}
+            onClick={() =>
+              onTogglePlacement(selected ? null : { supplyIndex: index })
+            }
             title={
               usable
                 ? "Far tile ready — select it, then click a glowing spot on the map border (1 movement point)"
@@ -7588,11 +9569,18 @@ export function FarTileTray({
             }
             type="button"
           >
-            <img alt="Far tile back (Ⅱ–Ⅲ)" src={assetUrl(TILE_BACK_IMAGES.far)} />
+            <img
+              alt="Far tile back (Ⅱ–Ⅲ)"
+              src={assetUrl(TILE_BACK_IMAGES.far)}
+            />
           </button>
         );
       })}
-      {placement ? <small className="farTileHint">Click a glowing spot on the map border.</small> : null}
+      {placement ? (
+        <small className="farTileHint">
+          Click a glowing spot on the map border.
+        </small>
+      ) : null}
     </div>
   );
 }
@@ -7609,7 +9597,7 @@ export function FarTileTray({
 export function AdventureOwnDeck({
   view,
   viewerPlayerId,
-  onShowPile
+  onShowPile,
 }: {
   view: PlayerVisibleState;
   viewerPlayerId: PlayerId;
@@ -7617,7 +9605,7 @@ export function AdventureOwnDeck({
     title: string,
     cardIds: string[],
     kind: "cards" | "units" | "astrologers" | "events",
-    empoweredAbilities?: string[]
+    empoweredAbilities?: string[],
   ) => void;
 }) {
   // Read the Balance-Pack flag BEFORE any early return (rules of hooks), then
@@ -7631,11 +9619,17 @@ export function AdventureOwnDeck({
   // Top of the discard is face-up — show the actual card graphic (not a bare
   // count); an Empowered ability shows its printed Empowered face (or, under the
   // Polish Balance Pack, the card's reprinted face).
-  const topDiscardId = player.discard.length > 0 ? player.discard[player.discard.length - 1] : undefined;
+  const topDiscardId =
+    player.discard.length > 0
+      ? player.discard[player.discard.length - 1]
+      : undefined;
   const topDiscard = topDiscardId ? cardLibrary[topDiscardId] : undefined;
   const topImage =
-    resolveCardFaceImage(balanceArt, topDiscardId, cardIsEmpoweredFor(topDiscardId, player.empoweredAbilities)) ??
-    topDiscard?.assets?.cardImage;
+    resolveCardFaceImage(
+      balanceArt,
+      topDiscardId,
+      cardIsEmpoweredFor(topDiscardId, player.empoweredAbilities),
+    ) ?? topDiscard?.assets?.cardImage;
 
   return (
     <div className="ownDeckPile" aria-label="Your deck and discard">
@@ -7644,14 +9638,25 @@ export function AdventureOwnDeck({
         data-fx-anchor={`deck:${viewerPlayerId}`}
         title="Your draw deck (face down — reshuffles from the discard when empty)"
       >
-        <img alt="Your deck back" className="ownDeckBack" src={assetUrl(getDeckBack("player").image ?? CARD_BACK_IMAGES.mm)} />
+        <img
+          alt="Your deck back"
+          className="ownDeckBack"
+          src={assetUrl(getDeckBack("player").image ?? CARD_BACK_IMAGES.mm)}
+        />
         <span className="ownDeckCount">{player.deckCount}</span>
         <small>Deck</small>
       </div>
       <button
         className={`ownDiscardSpot${topDiscardId ? " hasCard" : ""}`}
         data-fx-anchor={`discard:${viewerPlayerId}`}
-        onClick={() => onShowPile(`${player.name} — discard pile`, player.discard, "cards", player.empoweredAbilities)}
+        onClick={() =>
+          onShowPile(
+            `${player.name} — discard pile`,
+            player.discard,
+            "cards",
+            player.empoweredAbilities,
+          )
+        }
         title={
           topDiscard
             ? `Discard top: ${topDiscard.name} (${player.discard.length} total) — click to browse`
@@ -7668,7 +9673,9 @@ export function AdventureOwnDeck({
             src={assetUrl(topImage)}
           />
         ) : topDiscardId ? (
-          <span className="ownDiscardFallback">{topDiscard?.name ?? topDiscardId}</span>
+          <span className="ownDiscardFallback">
+            {topDiscard?.name ?? topDiscardId}
+          </span>
         ) : (
           <span className="ownDeckCount">0</span>
         )}
@@ -7687,7 +9694,7 @@ export function AdventureDecksPanel({
   viewerPlayerId,
   onShowPile,
   onAction,
-  scoutableDeckIds
+  scoutableDeckIds,
 }: {
   view: PlayerVisibleState;
   viewerPlayerId: PlayerId;
@@ -7696,7 +9703,7 @@ export function AdventureDecksPanel({
     title: string,
     cardIds: string[],
     kind: "cards" | "units" | "astrologers" | "events",
-    empoweredAbilities?: string[]
+    empoweredAbilities?: string[],
   ) => void;
   onAction?: (action: GameAction) => void;
   /** Deck ids the active player's Rogues may scout this turn. */
@@ -7714,7 +9721,7 @@ export function AdventureDecksPanel({
     "artifacts",
     "artifacts-minor",
     "artifacts-major",
-    "artifacts-relic"
+    "artifacts-relic",
   ];
   const sharedDecks = sharedDeckIds
     .filter((deckId) => Boolean(view.decks[deckId]))
@@ -7738,9 +9745,17 @@ export function AdventureDecksPanel({
         const topImage = topCard?.assets?.cardImage;
         return (
           <div className="advDeckRow" key={deck.id}>
-            <div className="advDeck" title={`${deck.name} deck (face down)`} data-fx-anchor={`deck:shared-${deck.id}`}>
+            <div
+              className="advDeck"
+              title={`${deck.name} deck (face down)`}
+              data-fx-anchor={`deck:shared-${deck.id}`}
+            >
               {getDeckBack(deck.id).image ? (
-                <img alt={`${deck.name} deck back`} className="cardBack small" src={assetUrl(getDeckBack(deck.id).image)} />
+                <img
+                  alt={`${deck.name} deck back`}
+                  className="cardBack small"
+                  src={assetUrl(getDeckBack(deck.id).image)}
+                />
               ) : (
                 <div className={`cardBack small shared back-${deck.id}`}>
                   <span>{deck.name[0]}</span>
@@ -7753,7 +9768,13 @@ export function AdventureDecksPanel({
             <button
               className={`advDiscard${topId ? " hasCard" : ""}`}
               data-fx-anchor={`discard:shared-${deck.id}`}
-              onClick={() => onShowPile(`${deck.name} — discard pile`, deckState.discardPile, "cards")}
+              onClick={() =>
+                onShowPile(
+                  `${deck.name} — discard pile`,
+                  deckState.discardPile,
+                  "cards",
+                )
+              }
               title={
                 topCard
                   ? `${deck.name} discard top: ${topCard.name} (${deckState.discardPile.length}) — click to browse`
@@ -7770,7 +9791,9 @@ export function AdventureDecksPanel({
                   src={assetUrl(topImage)}
                 />
               ) : topId ? (
-                <span className="advDiscardFallback">{topCard?.name ?? "?"}</span>
+                <span className="advDiscardFallback">
+                  {topCard?.name ?? "?"}
+                </span>
               ) : (
                 <span>{deckState.discardPile.length}</span>
               )}
@@ -7778,7 +9801,11 @@ export function AdventureDecksPanel({
                   face on the map. The face fills the relative button, so this is
                   the bare corner badge. */}
               <CardSetCornerBadge cardId={topId} />
-              {topId ? <span className="advDiscardBadge">{deckState.discardPile.length}</span> : null}
+              {topId ? (
+                <span className="advDiscardBadge">
+                  {deckState.discardPile.length}
+                </span>
+              ) : null}
               <small>Discard</small>
             </button>
             {scoutableDeckIds?.has(deck.id) ? (
@@ -7796,8 +9823,15 @@ export function AdventureDecksPanel({
       })}
       {astrologers ? (
         <div className="advDeckRow">
-          <div className="advDeck" title="Astrologers Proclaim deck (drawn every even round)">
-            <img alt="Astrologers deck back" className="cardBack small" src={assetUrl(CARD_BACK_IMAGES.astrologers)} />
+          <div
+            className="advDeck"
+            title="Astrologers Proclaim deck (drawn every even round)"
+          >
+            <img
+              alt="Astrologers deck back"
+              className="cardBack small"
+              src={assetUrl(CARD_BACK_IMAGES.astrologers)}
+            />
             <small>Astrologers {astrologers.drawCount}</small>
           </div>
           {(() => {
@@ -7805,13 +9839,25 @@ export function AdventureDecksPanel({
               astrologers.discardPile.length > 0
                 ? astrologers.discardPile[astrologers.discardPile.length - 1]
                 : undefined;
-            const topCard = topId ? astrologersCardDefinitions[topId] : undefined;
+            const topCard = topId
+              ? astrologersCardDefinitions[topId]
+              : undefined;
             return (
               <button
                 className={`advDiscard${topId ? " hasCard" : ""}`}
-                onClick={() => onShowPile("Astrologers Proclaim — past rounds", astrologers.discardPile, "astrologers")}
+                onClick={() =>
+                  onShowPile(
+                    "Astrologers Proclaim — past rounds",
+                    astrologers.discardPile,
+                    "astrologers",
+                  )
+                }
                 aria-label={`Open Astrologers discard pile (${astrologers.discardPile.length} cards)`}
-                title={topCard ? `Last proclamation: ${topCard.name}` : "Past Astrologers proclamations"}
+                title={
+                  topCard
+                    ? `Last proclamation: ${topCard.name}`
+                    : "Past Astrologers proclamations"
+                }
                 type="button"
               >
                 {topCard?.image ? (
@@ -7825,7 +9871,11 @@ export function AdventureDecksPanel({
                 ) : (
                   <span>{astrologers.discardPile.length}</span>
                 )}
-                {topId ? <span className="advDiscardBadge">{astrologers.discardPile.length}</span> : null}
+                {topId ? (
+                  <span className="advDiscardBadge">
+                    {astrologers.discardPile.length}
+                  </span>
+                ) : null}
                 <small>Past</small>
               </button>
             );
@@ -7834,8 +9884,15 @@ export function AdventureDecksPanel({
       ) : null}
       {eventsDeck ? (
         <div className="advDeckRow">
-          <div className="advDeck" title="Event deck (Fortress expansion, drawn every Resource round)">
-            <img alt="Event deck back" className="cardBack small" src={assetUrl(getDeckBack("events").image)} />
+          <div
+            className="advDeck"
+            title="Event deck (Fortress expansion, drawn every Resource round)"
+          >
+            <img
+              alt="Event deck back"
+              className="cardBack small"
+              src={assetUrl(getDeckBack("events").image)}
+            />
             <small>Events {eventsDeck.drawCount}</small>
           </div>
           {(() => {
@@ -7847,7 +9904,13 @@ export function AdventureDecksPanel({
             return (
               <button
                 className={`advDiscard${topId ? " hasCard" : ""}`}
-                onClick={() => onShowPile("Events — past rounds", eventsDeck.discardPile, "events")}
+                onClick={() =>
+                  onShowPile(
+                    "Events — past rounds",
+                    eventsDeck.discardPile,
+                    "events",
+                  )
+                }
                 title={topCard ? `Last Event: ${topCard.name}` : "Past Events"}
                 type="button"
               >
@@ -7862,7 +9925,11 @@ export function AdventureDecksPanel({
                 ) : (
                   <span>{eventsDeck.discardPile.length}</span>
                 )}
-                {topId ? <span className="advDiscardBadge">{eventsDeck.discardPile.length}</span> : null}
+                {topId ? (
+                  <span className="advDiscardBadge">
+                    {eventsDeck.discardPile.length}
+                  </span>
+                ) : null}
                 <small>Past</small>
               </button>
             );
@@ -7881,8 +9948,16 @@ export function AdventureDecksPanel({
             <div className="neutralDeckCell" key={tier}>
               <button
                 className={`neutralDeck ${tier}`}
-                onClick={() => onShowPile(`Neutral ${tier} — discard pile`, deckState.discardPile, "units")}
-                style={{ backgroundImage: `url(${assetUrl(CARD_BACK_IMAGES.neutral)})` }}
+                onClick={() =>
+                  onShowPile(
+                    `Neutral ${tier} — discard pile`,
+                    deckState.discardPile,
+                    "units",
+                  )
+                }
+                style={{
+                  backgroundImage: `url(${assetUrl(CARD_BACK_IMAGES.neutral)})`,
+                }}
                 title={`Neutral ${tier} deck: ${deckState.drawCount} cards, ${deckState.discardPile.length} discarded`}
                 type="button"
               >
@@ -7921,7 +9996,7 @@ export function PileModal({
   cardIds,
   kind,
   empoweredAbilities,
-  onClose
+  onClose,
 }: {
   title: string;
   cardIds: string[];
@@ -7931,21 +10006,35 @@ export function PileModal({
   onClose: () => void;
 }) {
   return (
-    <div className="pileModalBackdrop" onClick={onClose} role="dialog" aria-label={title}>
+    <div
+      className="pileModalBackdrop"
+      onClick={onClose}
+      role="dialog"
+      aria-label={title}
+    >
       <div className="pileModal" onClick={(event) => event.stopPropagation()}>
         <header>
           <strong>{title}</strong>
-          <button className="commandButton ghost" onClick={onClose} type="button">
+          <button
+            className="commandButton ghost"
+            onClick={onClose}
+            type="button"
+          >
             Close
           </button>
         </header>
         {cardIds.length === 0 ? <small>Empty.</small> : null}
         {kind === "astrologers" && cardIds.length > 0 ? (
           <small className="pileModalHint">
-            Discarded proclamations are shown newest first. The top card is the last resolved Astrologers event.
+            Discarded proclamations are shown newest first. The top card is the
+            last resolved Astrologers event.
           </small>
         ) : null}
-        <PileModalCards cardIds={cardIds} kind={kind} empoweredAbilities={empoweredAbilities} />
+        <PileModalCards
+          cardIds={cardIds}
+          kind={kind}
+          empoweredAbilities={empoweredAbilities}
+        />
       </div>
     </div>
   );
@@ -7954,7 +10043,7 @@ export function PileModal({
 function PileModalCards({
   cardIds,
   kind,
-  empoweredAbilities
+  empoweredAbilities,
 }: {
   cardIds: string[];
   kind: "cards" | "units" | "astrologers" | "events";
@@ -7970,15 +10059,22 @@ function PileModalCards({
       {[...cardIds].reverse().map((cardId, index) => {
         const card = kind === "cards" ? cardLibrary[cardId] : undefined;
         const unit = kind === "units" ? coreUnitDefinitions[cardId] : undefined;
-        const astro = kind === "astrologers" ? astrologersCardDefinitions[cardId] : undefined;
-        const eventCard = kind === "events" ? eventCardDefinitions[cardId] : undefined;
+        const astro =
+          kind === "astrologers"
+            ? astrologersCardDefinitions[cardId]
+            : undefined;
+        const eventCard =
+          kind === "events" ? eventCardDefinitions[cardId] : undefined;
         // Empowered Statistics are intrinsic (flagged from the card alone);
         // Empowered ABILITIES are per-owner — the pile producers pass the
         // owner's empoweredAbilities so a browsed pile shows the printed
         // Empowered face too (shared decks pass nothing: nobody owns those).
-        const empowered = kind === "cards" && cardIsEmpoweredFor(cardId, empoweredAbilities);
+        const empowered =
+          kind === "cards" && cardIsEmpoweredFor(cardId, empoweredAbilities);
         const image =
-          (kind === "cards" ? resolveCardFaceImage(balanceArt, cardId, empowered) : undefined) ??
+          (kind === "cards"
+            ? resolveCardFaceImage(balanceArt, cardId, empowered)
+            : undefined) ??
           card?.assets?.cardImage ??
           unit?.neutral?.cardImage ??
           astro?.image ??
@@ -7989,15 +10085,29 @@ function PileModalCards({
             : zoomContent({
                 title: eventCard?.name ?? astro?.name ?? unit?.name ?? cardId,
                 image,
-                subtitle: eventCard ? "Event" : astro ? "Astrologers Proclaim" : unit ? `${unit.tier} ${unit.type}` : undefined,
+                subtitle: eventCard
+                  ? "Event"
+                  : astro
+                    ? "Astrologers Proclaim"
+                    : unit
+                      ? `${unit.tier} ${unit.type}`
+                      : undefined,
                 lines: [
-                  eventCard?.text ?? astro?.text ?? unit?.neutral?.abilityText ?? "",
-                  ...implementedAbilityLines(unit?.neutral?.abilities)
-                ].filter(Boolean)
+                  eventCard?.text ??
+                    astro?.text ??
+                    unit?.neutral?.abilityText ??
+                    "",
+                  ...implementedAbilityLines(unit?.neutral?.abilities),
+                ].filter(Boolean),
               });
         return (
           <li key={`${cardId}-${index}`}>
-            <button className="pileCardButton" onClick={zoom} title="Read card" type="button">
+            <button
+              className="pileCardButton"
+              onClick={zoom}
+              title="Read card"
+              type="button"
+            >
               {image ? (
                 <img
                   alt={card?.name ?? unit?.name ?? cardId}
@@ -8007,7 +10117,9 @@ function PileModalCards({
                   src={assetUrl(image)}
                 />
               ) : (
-                <div className={`pileFallback${empowered ? " empoweredCard" : ""}`}>
+                <div
+                  className={`pileFallback${empowered ? " empoweredCard" : ""}`}
+                >
                   {astro?.name ?? card?.name ?? unit?.name ?? cardName(cardId)}
                 </div>
               )}
@@ -8019,7 +10131,9 @@ function PileModalCards({
               {/* Same positioned button as the Empowered overlay above, so the
                   set badge rides it too (browsing a discard pile must show which
                   cards are set pieces). */}
-              <CardSetCornerBadge cardId={kind === "cards" ? cardId : undefined} />
+              <CardSetCornerBadge
+                cardId={kind === "cards" ? cardId : undefined}
+              />
               <small>
                 {index === 0 ? "top · " : ""}
                 {astro?.name ?? card?.name ?? unit?.name ?? cardId}
@@ -8051,7 +10165,7 @@ export function PreBattlePanel({
   viewerPlayerId,
   legalActions,
   onAction,
-  onOpenTown
+  onOpenTown,
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
@@ -8077,14 +10191,19 @@ export function PreBattlePanel({
   const siege = combat.context.kind === "player" && combat.context.siege;
   const hasAccepted = (id: PlayerId) => prep.accepted.includes(id);
 
-  const viewerIsParticipant = viewerPlayerId === attackerId || viewerPlayerId === defenderId;
+  const viewerIsParticipant =
+    viewerPlayerId === attackerId || viewerPlayerId === defenderId;
   // A participant who has not yet pressed Accept — still free to spend town actions.
   const viewerPreparing = inCombatPrep(state, viewerPlayerId);
   const opponentId = viewerPlayerId === attackerId ? defenderId : attackerId;
 
-  const accept = legalActions.find((legal) => legal.action.type === "ACCEPT_COMBAT");
+  const accept = legalActions.find(
+    (legal) => legal.action.type === "ACCEPT_COMBAT",
+  );
   const escapeActions = legalActions.filter(
-    (legal) => legal.action.type === "RETREAT_FROM_COMBAT" || legal.action.type === "SURRENDER_COMBAT"
+    (legal) =>
+      legal.action.type === "RETREAT_FROM_COMBAT" ||
+      legal.action.type === "SURRENDER_COMBAT",
   );
   // The town actions this player may still spend before the fight (build a
   // structure, recruit/reinforce a unit, buy spells). They already work from the
@@ -8096,11 +10215,14 @@ export function PreBattlePanel({
     (legal) =>
       legal.action.type === "BUILD_STRUCTURE" ||
       legal.action.type === "POPULATION_ACTION" ||
-      legal.action.type === "SPELL_BOOK_ACTION"
+      legal.action.type === "SPELL_BOOK_ACTION",
   );
 
   const readyChip = (id: PlayerId, name: string, role: string) => (
-    <span className={`prepReadyChip ${hasAccepted(id) ? "ready" : "waiting"}`} key={id}>
+    <span
+      className={`prepReadyChip ${hasAccepted(id) ? "ready" : "waiting"}`}
+      key={id}
+    >
       {hasAccepted(id) ? <Check aria-hidden="true" size={12} /> : null}
       {name} ({role}) — {hasAccepted(id) ? "ready" : "preparing…"}
     </span>
@@ -8121,7 +10243,11 @@ export function PreBattlePanel({
         </strong>
         <button
           aria-expanded={!minimized}
-          aria-label={minimized ? "Restore the battle preparation window" : "Minimize the battle preparation window"}
+          aria-label={
+            minimized
+              ? "Restore the battle preparation window"
+              : "Minimize the battle preparation window"
+          }
           className="preBattleMinimize"
           onClick={() => setMinimized((value) => !value)}
           title={
@@ -8131,7 +10257,11 @@ export function PreBattlePanel({
           }
           type="button"
         >
-          {minimized ? <ChevronsUp aria-hidden="true" size={15} /> : <Minus aria-hidden="true" size={15} />}
+          {minimized ? (
+            <ChevronsUp aria-hidden="true" size={15} />
+          ) : (
+            <Minus aria-hidden="true" size={15} />
+          )}
         </button>
       </div>
       {minimized ? (
@@ -8139,106 +10269,117 @@ export function PreBattlePanel({
           Preparing — buy or equip, then restore to accept.
         </small>
       ) : (
-      <>
-      <div className="prepReadyRow">
-        {readyChip(attackerId, attackerName, "attacker")}
-        {readyChip(defenderId, defenderName, "defender")}
-      </div>
-      {viewerPreparing ? (
         <>
-          <strong className="prepCardReminder">
-            Play artifacts and other available cards from your hand before accepting. Legion discounts apply to troops
-            bought in this window.
-          </strong>
-          <small className="prepNote">
-            Prepare before the fight: spend any town actions you have left this round (build, recruit, buy spells) — right
-            here below, or in your town window (the Town button). Units you recruit now join your army in time to be
-            deployed. When you are ready, accept the battle — deployment begins once both sides accept.
-          </small>
-          <MgqBattleSpiritPicker
-            legalActions={legalActions}
-            onAction={onAction}
-            playerId={viewerPlayerId}
-            state={state}
-          />
-          {townActions.length > 0 || onOpenTown ? (
-            <div className="prepTownActions" aria-label="Spend a town action before the battle">
-              <small className="prepNote">Buy / build now:</small>
+          <div className="prepReadyRow">
+            {readyChip(attackerId, attackerName, "attacker")}
+            {readyChip(defenderId, defenderName, "defender")}
+          </div>
+          {viewerPreparing ? (
+            <>
+              <strong className="prepCardReminder">
+                Play artifacts and other available cards from your hand before
+                accepting. Legion discounts apply to troops bought in this
+                window.
+              </strong>
+              <small className="prepNote">
+                Prepare before the fight: spend any town actions you have left
+                this round (build, recruit, buy spells) — right here below, or
+                in your town window (the Town button). Units you recruit now
+                join your army in time to be deployed. When you are ready,
+                accept the battle — deployment begins once both sides accept.
+              </small>
+              <MgqBattleSpiritPicker
+                legalActions={legalActions}
+                onAction={onAction}
+                playerId={viewerPlayerId}
+                state={state}
+              />
+              {townActions.length > 0 || onOpenTown ? (
+                <div
+                  className="prepTownActions"
+                  aria-label="Spend a town action before the battle"
+                >
+                  <small className="prepNote">Buy / build now:</small>
+                  <div className="prepButtons">
+                    {onOpenTown ? (
+                      <button
+                        className="commandButton"
+                        onClick={onOpenTown}
+                        title="Open the town window to build, recruit and buy spells before the battle"
+                        type="button"
+                      >
+                        <Castle aria-hidden="true" size={12} /> Open town
+                      </button>
+                    ) : null}
+                    {townActions.map((legal) => (
+                      <button
+                        className="commandButton"
+                        key={actionKey(legal.action)}
+                        onClick={() => onAction(legal.action)}
+                        type="button"
+                      >
+                        {legal.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               <div className="prepButtons">
-                {onOpenTown ? (
+                {accept ? (
                   <button
-                    className="commandButton"
-                    onClick={onOpenTown}
-                    title="Open the town window to build, recruit and buy spells before the battle"
+                    className="commandButton primary combatReadyButton"
+                    onClick={() => onAction(accept.action)}
                     type="button"
                   >
-                    <Castle aria-hidden="true" size={12} /> Open town
+                    <img
+                      alt=""
+                      aria-hidden="true"
+                      className="combatButtonIcon"
+                      src={assetUrl("/assets/ui/combat-button.png")}
+                    />
+                    Accept the battle
                   </button>
                 ) : null}
-                {townActions.map((legal) => (
-                  <button
-                    className="commandButton"
-                    key={actionKey(legal.action)}
-                    onClick={() => onAction(legal.action)}
-                    type="button"
-                  >
-                    {legal.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
-          <div className="prepButtons">
-            {accept ? (
-              <button
-                className="commandButton primary combatReadyButton"
-                onClick={() => onAction(accept.action)}
-                type="button"
-              >
-                <img
-                  alt=""
-                  aria-hidden="true"
-                  className="combatButtonIcon"
-                  src={assetUrl("/assets/ui/combat-button.png")}
-                />
-                Accept the battle
-              </button>
-            ) : null}
-            {escapeActions.map((legal) => {
-              const isSurrender = legal.action.type === "SURRENDER_COMBAT";
-              const vpOn = Boolean(state.adventure?.mapPreset?.victoryPoints?.enabled);
-              const label =
-                isSurrender && vpOn
-                  ? `${legal.label} (opponent gains 1 VP)`
-                  : legal.label;
-              return (
-                <button
-                  className="commandButton"
-                  key={actionKey(legal.action)}
-                  onClick={() => onAction(legal.action)}
-                  title={
+                {escapeActions.map((legal) => {
+                  const isSurrender = legal.action.type === "SURRENDER_COMBAT";
+                  const vpOn = Boolean(
+                    state.adventure?.mapPreset?.victoryPoints?.enabled,
+                  );
+                  const label =
                     isSurrender && vpOn
-                      ? "Surrendering awards the opponent 1 Victory Point (not the full 3 VP main-hero defeat)."
-                      : undefined
-                  }
-                  type="button"
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
+                      ? `${legal.label} (opponent gains 1 VP)`
+                      : legal.label;
+                  return (
+                    <button
+                      className="commandButton"
+                      key={actionKey(legal.action)}
+                      onClick={() => onAction(legal.action)}
+                      title={
+                        isSurrender && vpOn
+                          ? "Surrendering awards the opponent 1 Victory Point (not the full 3 VP main-hero defeat)."
+                          : undefined
+                      }
+                      type="button"
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          ) : viewerIsParticipant ? (
+            <small className="prepNote">
+              You are ready. Waiting for{" "}
+              {state.players[opponentId]?.name ?? "your opponent"} to accept the
+              battle…
+            </small>
+          ) : (
+            <small className="prepNote">
+              {attackerName} and {defenderName} are preparing for battle on the
+              map…
+            </small>
+          )}
         </>
-      ) : viewerIsParticipant ? (
-        <small className="prepNote">
-          You are ready. Waiting for {state.players[opponentId]?.name ?? "your opponent"} to accept the battle…
-        </small>
-      ) : (
-        <small className="prepNote">
-          {attackerName} and {defenderName} are preparing for battle on the map…
-        </small>
-      )}
-      </>
       )}
     </div>
   );
@@ -8252,7 +10393,7 @@ export function PlacementPanel({
   state,
   viewerPlayerId,
   legalActions,
-  onAction
+  onAction,
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
@@ -8275,7 +10416,10 @@ export function PlacementPanel({
     return (
       <div className="placementPanel" aria-label="Combat setup">
         <strong>Preparing for battle</strong>
-        <small>Both sides are preparing on the map. Deployment opens once both accept the battle.</small>
+        <small>
+          Both sides are preparing on the map. Deployment opens once both accept
+          the battle.
+        </small>
       </div>
     );
   }
@@ -8285,24 +10429,35 @@ export function PlacementPanel({
   const versusNeutrals = combat.context.kind === "neutral";
   // Creature Bank battlefield: guardians hold the corners, you deploy centrally.
   const versusBank =
-    combat.context.kind === "neutral" && Boolean(combat.context.bankFormation || combat.context.bankId);
+    combat.context.kind === "neutral" &&
+    Boolean(combat.context.bankFormation || combat.context.bankId);
 
   const placeActions = legalActions.filter(
-    (legal): legal is LegalAction & { action: Extract<GameAction, { type: "PLACE_COMBAT_UNIT" }> } =>
-      legal.action.type === "PLACE_COMBAT_UNIT"
+    (
+      legal,
+    ): legal is LegalAction & {
+      action: Extract<GameAction, { type: "PLACE_COMBAT_UNIT" }>;
+    } => legal.action.type === "PLACE_COMBAT_UNIT",
   );
-  const finish = legalActions.find((legal) => legal.action.type === "FINISH_COMBAT_PLACEMENT");
-  const unplaceActions = legalActions.filter((legal) => legal.action.type === "UNPLACE_COMBAT_UNIT");
+  const finish = legalActions.find(
+    (legal) => legal.action.type === "FINISH_COMBAT_PLACEMENT",
+  );
+  const unplaceActions = legalActions.filter(
+    (legal) => legal.action.type === "UNPLACE_COMBAT_UNIT",
+  );
   // A PvP hero may Retreat while still deploying (before any unit fights). Only
   // present in player-vs-player setups (see addPvpRetreatDuringSetup).
-  const retreatDuringSetup = legalActions.find((legal) => legal.action.type === "RETREAT_FROM_COMBAT");
+  const retreatDuringSetup = legalActions.find(
+    (legal) => legal.action.type === "RETREAT_FROM_COMBAT",
+  );
 
   const cellsForSelected = selectedUnitId
     ? placeActions.filter((legal) => legal.action.armyUnitId === selectedUnitId)
     : [];
 
   if (!myTurn) {
-    const waitingOn = state.players[setup.pendingPlayerIds[0]]?.name ?? "the other side";
+    const waitingOn =
+      state.players[setup.pendingPlayerIds[0]]?.name ?? "the other side";
     return (
       <div className="placementPanel" aria-label="Combat setup">
         <strong>Combat setup</strong>
@@ -8318,7 +10473,8 @@ export function PlacementPanel({
       </strong>
       {versusNeutrals ? (
         <small className="placementNote">
-          The guard army is drawn and revealed only after you lock your deployment in (rulebook combat setup).
+          The guard army is drawn and revealed only after you lock your
+          deployment in (rulebook combat setup).
         </small>
       ) : null}
       <MgqBattleSpiritPicker
@@ -8330,9 +10486,15 @@ export function PlacementPanel({
       <div className="placementUnits">
         {player.army.map((unit) => {
           const def = coreUnitDefinitions[unit.unitDefId];
-          const portrait = armyUnitPrintedSide(def, unit.side, unit.unitDefId)?.cardImage;
+          const portrait = armyUnitPrintedSide(
+            def,
+            unit.side,
+            unit.unitDefId,
+          )?.cardImage;
           const isPlaced = placed.includes(unit.id);
-          const canPlace = placeActions.some((legal) => legal.action.armyUnitId === unit.id);
+          const canPlace = placeActions.some(
+            (legal) => legal.action.armyUnitId === unit.id,
+          );
           const canDrag = canPlace || isPlaced;
           return (
             <button
@@ -8342,7 +10504,9 @@ export function PlacementPanel({
               onClick={() => {
                 if (isPlaced) {
                   const unplace = unplaceActions.find(
-                    (legal) => legal.action.type === "UNPLACE_COMBAT_UNIT" && legal.action.armyUnitId === unit.id
+                    (legal) =>
+                      legal.action.type === "UNPLACE_COMBAT_UNIT" &&
+                      legal.action.armyUnitId === unit.id,
                   );
                   if (unplace) {
                     onAction(unplace.action);
@@ -8361,14 +10525,29 @@ export function PlacementPanel({
                 beginUnitPointerDrag(event, {
                   portraitUrl: portrait,
                   onDrop: (position) =>
-                    onAction({ type: "PLACE_COMBAT_UNIT", playerId: viewerPlayerId, armyUnitId: unit.id, position })
+                    onAction({
+                      type: "PLACE_COMBAT_UNIT",
+                      playerId: viewerPlayerId,
+                      armyUnitId: unit.id,
+                      position,
+                    }),
                 });
               }}
-              title={isPlaced ? "Drag to another space, or click to take back" : "Drag onto your two rows (or click, then pick a space)"}
+              title={
+                isPlaced
+                  ? "Drag to another space, or click to take back"
+                  : "Drag onto your two rows (or click, then pick a space)"
+              }
               type="button"
             >
               {portrait ? (
-                <img alt="" className="placementUnitPortrait" draggable={false} loading="lazy" src={assetUrl(portrait)} />
+                <img
+                  alt=""
+                  className="placementUnitPortrait"
+                  draggable={false}
+                  loading="lazy"
+                  src={assetUrl(portrait)}
+                />
               ) : (
                 <span className={`tierDot ${def?.tier}`} />
               )}
@@ -8377,7 +10556,11 @@ export function PlacementPanel({
                   className={`armyStackBadge placement count-${Math.min(3, unit.stacks ?? 0)} active`}
                   title={`${unit.stacks} Polish Unit Stack${unit.stacks === 1 ? "" : "s"}: +1 Attack; each Stack absorbs one full Pack health bar.`}
                 >
-                  <img alt="" aria-hidden="true" src={assetUrl("/assets/ui/polish-unit-stacks-coin.webp")} />
+                  <img
+                    alt=""
+                    aria-hidden="true"
+                    src={assetUrl("/assets/ui/polish-unit-stacks-coin.webp")}
+                  />
                   ×{unit.stacks}
                 </span>
               ) : null}
@@ -8404,7 +10587,9 @@ export function PlacementPanel({
               {legal.label.split(" at ")[1] ?? legal.label}
             </button>
           ))}
-          {cellsForSelected.length === 0 ? <small>No free spaces.</small> : null}
+          {cellsForSelected.length === 0 ? (
+            <small>No free spaces.</small>
+          ) : null}
         </div>
       ) : (
         <small>
@@ -8414,13 +10599,26 @@ export function PlacementPanel({
         </small>
       )}
       {finish ? (
-        <button className="commandButton primary combatReadyButton" onClick={() => onAction(finish.action)} type="button">
-          <img alt="" aria-hidden="true" className="combatButtonIcon" src={assetUrl("/assets/ui/combat-button.png")} />
+        <button
+          className="commandButton primary combatReadyButton"
+          onClick={() => onAction(finish.action)}
+          type="button"
+        >
+          <img
+            alt=""
+            aria-hidden="true"
+            className="combatButtonIcon"
+            src={assetUrl("/assets/ui/combat-button.png")}
+          />
           {versusNeutrals ? "Lock in — reveal the guards" : "Ready for battle"}
         </button>
       ) : null}
       {retreatDuringSetup ? (
-        <button className="commandButton" onClick={() => onAction(retreatDuringSetup.action)} type="button">
+        <button
+          className="commandButton"
+          onClick={() => onAction(retreatDuringSetup.action)}
+          type="button"
+        >
           {retreatDuringSetup.label}
         </button>
       ) : null}
@@ -8442,7 +10640,7 @@ const STARTING_BUILDING_CHOICES: { id: string; label: string }[] = [
   { id: "mage_guild", label: "Mage Guild" },
   { id: "dwelling_bronze", label: "Bronze Dwelling" },
   { id: "dwelling_silver", label: "Silver Dwelling" },
-  { id: "dwelling_gold", label: "Gold Dwelling" }
+  { id: "dwelling_gold", label: "Gold Dwelling" },
 ];
 
 /**
@@ -8462,21 +10660,21 @@ const STARTING_UNIT_PRESETS: {
     hint: "Start with a Pack of your level-1 and level-2 units",
     units: [
       { level: 1, side: "pack" },
-      { level: 2, side: "pack" }
-    ]
+      { level: 2, side: "pack" },
+    ],
   },
   {
     key: "lv3-pack",
     label: "Lv 3 Pack",
     hint: "Start with a Pack of your level-3 unit only",
-    units: [{ level: 3, side: "pack" }]
+    units: [{ level: 3, side: "pack" }],
   },
   {
     key: "lv4-few",
     label: "Lv 4 Few",
     hint: "Start with a Few of your level-4 unit only",
-    units: [{ level: 4, side: "few" }]
-  }
+    units: [{ level: 4, side: "few" }],
+  },
 ];
 
 /**
@@ -8488,7 +10686,7 @@ const STARTING_UNIT_PRESETS: {
 function StartingUnitsPicker({
   startingUnits,
   viewerFactionId,
-  onChange
+  onChange,
 }: {
   startingUnits: CustomStartingUnit[];
   viewerFactionId: string | null;
@@ -8503,21 +10701,28 @@ function StartingUnitsPicker({
 
   const setLevel = (level: UnitLevel, side: "few" | "pack" | null) => {
     const next: CustomStartingUnit[] = UNIT_LEVELS.flatMap((candidate) => {
-      const chosen = candidate === level ? side : (sideOfLevel.get(candidate) ?? null);
+      const chosen =
+        candidate === level ? side : (sideOfLevel.get(candidate) ?? null);
       return chosen ? [{ level: candidate, side: chosen }] : [];
     });
     onChange(next);
   };
 
-  const faction = viewerFactionId ? coreFactionDefinitions[viewerFactionId] : null;
+  const faction = viewerFactionId
+    ? coreFactionDefinitions[viewerFactionId]
+    : null;
 
   const signature = (units: CustomStartingUnit[]) =>
     units
       .map((unit) => `${unit.level}${unit.side[0]}`)
       .sort()
       .join(",");
-  const currentSignature = signature(startingUnits.filter((unit) => unit.level));
-  const activePreset = STARTING_UNIT_PRESETS.find((preset) => signature(preset.units) === currentSignature);
+  const currentSignature = signature(
+    startingUnits.filter((unit) => unit.level),
+  );
+  const activePreset = STARTING_UNIT_PRESETS.find(
+    (preset) => signature(preset.units) === currentSignature,
+  );
 
   return (
     <div className="startingUnits" aria-label="Starting units by level">
@@ -8537,7 +10742,10 @@ function StartingUnitsPicker({
         <button
           className="startingUnitPreset random"
           onClick={() => {
-            const pick = STARTING_UNIT_PRESETS[Math.floor(Math.random() * STARTING_UNIT_PRESETS.length)];
+            const pick =
+              STARTING_UNIT_PRESETS[
+                Math.floor(Math.random() * STARTING_UNIT_PRESETS.length)
+              ];
             onChange(pick.units.map((unit) => ({ ...unit })));
           }}
           title="Roll one of the three starting-army choices at random"
@@ -8549,10 +10757,15 @@ function StartingUnitsPicker({
       {UNIT_LEVELS.map((level) => {
         const side = sideOfLevel.get(level) ?? null;
         const tier = tierOfLevel(level);
-        const unitName = faction ? coreUnitDefinitions[faction.units[level - 1]]?.name : null;
+        const unitName = faction
+          ? coreUnitDefinitions[faction.units[level - 1]]?.name
+          : null;
         return (
           <div className="startingUnitRow" key={level}>
-            <span className="startingUnitLevel" title={`Each player gets their faction's level ${level} unit (${tier})`}>
+            <span
+              className="startingUnitLevel"
+              title={`Each player gets their faction's level ${level} unit (${tier})`}
+            >
               <span className={`tierDot ${tier}`} />
               Level {level}
               {unitName ? <small> {unitName}</small> : null}
@@ -8589,7 +10802,8 @@ function StartingUnitsPicker({
         );
       })}
       <small className="optionHint">
-        One pick per level — every player receives their own faction&apos;s unit of that level
+        One pick per level — every player receives their own faction&apos;s unit
+        of that level
         {viewerFactionId ? " (names shown for your faction)" : ""}.
       </small>
     </div>
@@ -8610,7 +10824,7 @@ function StartingUnitsPicker({
 function MapPicker({
   options,
   send,
-  singlePlayer = false
+  singlePlayer = false,
 }: {
   options: GameSetupOptions;
   send: (next: Partial<GameSetupOptions>) => void;
@@ -8646,10 +10860,13 @@ function MapPicker({
   return (
     <div className="mapPicker">
       <div className="mapPickerGroup">
-        <small className="mapPickerGroupLabel">Scenario sheets · built-in</small>
+        <small className="mapPickerGroupLabel">
+          Scenario sheets · built-in
+        </small>
         <div className="optionButtons">
           {Object.values(scenarioDefinitions).map((scenario) => {
-            const selected = usingScenarioSheet && options.scenarioId === scenario.id;
+            const selected =
+              usingScenarioSheet && options.scenarioId === scenario.id;
             return (
               <button
                 aria-pressed={selected}
@@ -8663,9 +10880,11 @@ function MapPicker({
                 onClick={() =>
                   send({
                     scenarioId: scenario.id,
-                    ...(singlePlayer ? { playerCount: scenario.minPlayers } : {}),
+                    ...(singlePlayer
+                      ? { playerCount: scenario.minPlayers }
+                      : {}),
                     customMap: null,
-                    customMapName: null
+                    customMapName: null,
                   })
                 }
                 title={scenario.description}
@@ -8679,16 +10898,26 @@ function MapPicker({
       </div>
 
       <div className="mapPickerGroup">
-        <small className="mapPickerGroupLabel">Designed maps · custom-made by a person</small>
+        <small className="mapPickerGroupLabel">
+          Designed maps · custom-made by a person
+        </small>
         <div className="optionButtons">
           {savedMaps.length === 0 ? (
-            <small className="optionHint">None yet — create one in the map designer below.</small>
+            <small className="optionHint">
+              None yet — create one in the map designer below.
+            </small>
           ) : (
             savedMaps.map((record) => {
               const scenario = scenarioDefinitions[record.scenarioId];
               const problems = designedMapBlockers(
                 record.tiles.length,
-                scenario ? validateCustomMapPlan(record.tiles, scenario, record.players).problems : ["Unknown scenario."]
+                scenario
+                  ? validateCustomMapPlan(
+                      record.tiles,
+                      scenario,
+                      record.players,
+                    ).problems
+                  : ["Unknown scenario."],
               );
               const selected =
                 designedMapInPlay(options) &&
@@ -8710,17 +10939,25 @@ function MapPicker({
                   // map-pick-modal.tsx: the game MODE is the Game-mode box's.
                   onClick={() =>
                     send({
-                      ...(record.scenarioId !== options.scenarioId ? { scenarioId: record.scenarioId } : {}),
+                      ...(record.scenarioId !== options.scenarioId
+                        ? { scenarioId: record.scenarioId }
+                        : {}),
                       playerCount: singlePlayer
                         ? 1 +
                           (singlePlayerMapDeployment(
                             record.tiles,
-                            scenario ? Math.min(scenario.maxPlayers, scenario.layout.starts.length) - 1 : 0
-                          )?.computers.length ?? Math.max(1, record.players - 1))
+                            scenario
+                              ? Math.min(
+                                  scenario.maxPlayers,
+                                  scenario.layout.starts.length,
+                                ) - 1
+                              : 0,
+                          )?.computers.length ??
+                            Math.max(1, record.players - 1))
                         : record.players,
                       customMap: record.tiles,
                       customMapName: record.name,
-                      customMapPreset: record.preset ?? null
+                      customMapPreset: record.preset ?? null,
                     })
                   }
                   title={
@@ -8748,28 +10985,38 @@ function MapPicker({
       {designedMapInPlay(options) ? (
         <div className="mapPresetLobbyNote">
           <small className="optionHint">
-            Playing the designed map {options.customMapName ? `“${options.customMapName}” ` : ""}with{" "}
-            {options.customMap!.length} tile{options.customMap!.length === 1 ? "" : "s"} — face-down Secret landmarks
-            draw a random matching tile from their pool.
+            Playing the designed map{" "}
+            {options.customMapName ? `“${options.customMapName}” ` : ""}with{" "}
+            {options.customMap!.length} tile
+            {options.customMap!.length === 1 ? "" : "s"} — face-down Secret
+            landmarks draw a random matching tile from their pool.
           </small>
           {(() => {
             const fixedSeats = options.customMap!.filter(
-              (plan) => plan.group === "starting" && plan.lockRotation
+              (plan) => plan.group === "starting" && plan.lockRotation,
             ).length;
             return fixedSeats > 0 ? (
               <small className="optionHint">
-                🔒 {fixedSeats} starting tile{fixedSeats === 1 ? "" : "s"} {fixedSeats === 1 ? "has" : "have"} a fixed
-                orientation — {fixedSeats === 1 ? "that seat skips" : "those seats skip"} the opening free-rotation.
+                🔒 {fixedSeats} starting tile{fixedSeats === 1 ? "" : "s"}{" "}
+                {fixedSeats === 1 ? "has" : "have"} a fixed orientation —{" "}
+                {fixedSeats === 1 ? "that seat skips" : "those seats skip"} the
+                opening free-rotation.
               </small>
             ) : null;
           })()}
           {/* The Ⅶ Grail / Utopia reward-stacking line rides the TILES, so the
               banner can be worth showing even with no preset conditions. */}
-          {describeCustomMapPresetEntries(options.customMapPreset, options.customMap).length > 0 ? (
+          {describeCustomMapPresetEntries(
+            options.customMapPreset,
+            options.customMap,
+          ).length > 0 ? (
             <div className="mapPresetLobbyBanner" role="status">
               <strong>📜 This map has special conditions</strong>
               <ul className="mapPresetEntryList">
-                {describeCustomMapPresetEntries(options.customMapPreset, options.customMap).map((entry) => (
+                {describeCustomMapPresetEntries(
+                  options.customMapPreset,
+                  options.customMap,
+                ).map((entry) => (
                   <li key={entry.text}>
                     <span className="mapPresetEntryIcon" aria-hidden="true">
                       {entry.icon}
@@ -8779,7 +11026,8 @@ function MapPicker({
                 ))}
               </ul>
               <small className="mapPresetLobbyHint">
-                Seeded into the game options — the host can still adjust them before the game starts.
+                Seeded into the game options — the host can still adjust them
+                before the game starts.
               </small>
             </div>
           ) : null}
@@ -8789,8 +11037,9 @@ function MapPicker({
         <Link href="/designer" target="_blank">
           <Hammer aria-hidden="true" size={11} /> Open the map designer
         </Link>{" "}
-        to create, edit and save your own maps (shared with everyone), then pick one above. Picking a designed map opens
-        the seat count it was designed for.
+        to create, edit and save your own maps (shared with everyone), then pick
+        one above. Picking a designed map opens the seat count it was designed
+        for.
       </small>
     </div>
   );
@@ -8806,7 +11055,7 @@ function MapPicker({
  */
 function PersonalCustomSettingsPanel({
   options,
-  send
+  send,
 }: {
   options: GameSetupOptions;
   send: (next: Partial<GameSetupOptions>) => void;
@@ -8818,7 +11067,9 @@ function PersonalCustomSettingsPanel({
   const saveToFile = () => {
     const payload = buildCustomSetupFile(options, name);
     const fileName = customSetupFileName(payload.name);
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
@@ -8845,19 +11096,24 @@ function PersonalCustomSettingsPanel({
         parsed.sameEngineVersion
           ? ""
           : " It was saved by a different game version — options a patch changed are skipped or rejected with a message."
-      }`
+      }`,
     );
   };
 
   return (
-    <div className="personalCustomSettings" aria-label="Custom setting — save or load a file">
+    <div
+      className="personalCustomSettings"
+      aria-label="Custom setting — save or load a file"
+    >
       <div className="mapPickerGroupLabel">
         <strong>Custom setting — file</strong>
         <small>
-          Saves <b>every</b> setting from all four tabs — Mode &amp; Rules, Match, Map &amp; Setup and Town &amp; Resources (mode,
-          mods, house rules, victory, difficulty, the designed map, and starting resources/units/buildings) — to a file;
-          load a file to restore them all. Your faction &amp; hero are picked per game and are not saved. Each player
-          keeps their own files.
+          Saves <b>every</b> setting from all four tabs — Mode &amp; Rules,
+          Match, Map &amp; Setup and Town &amp; Resources (mode, mods, house
+          rules, victory, difficulty, the designed map, and starting
+          resources/units/buildings) — to a file; load a file to restore them
+          all. Your faction &amp; hero are picked per game and are not saved.
+          Each player keeps their own files.
         </small>
       </div>
       <div className="personalCustomSaveRow">
@@ -8873,7 +11129,11 @@ function PersonalCustomSettingsPanel({
           placeholder="Setting name (used in the file name)"
           value={name}
         />
-        <button onClick={saveToFile} title="Download every setting from all four tabs (not faction/hero) as a file" type="button">
+        <button
+          onClick={saveToFile}
+          title="Download every setting from all four tabs (not faction/hero) as a file"
+          type="button"
+        >
           Save to file
         </button>
         <button
@@ -8905,7 +11165,8 @@ function PersonalCustomSettingsPanel({
         </small>
       ) : null}
       <small className="optionHint">
-        Designer maps are shared with the whole table (pick one in the Map box); setting files are only for you.
+        Designer maps are shared with the whole table (pick one in the Map box);
+        setting files are only for you.
       </small>
     </div>
   );
@@ -8915,7 +11176,7 @@ function ResourceStepper({
   label,
   iconSrc,
   value,
-  onChange
+  onChange,
 }: {
   label: string;
   /** Board-game resource token art (gold coin / materials / valuables). */
@@ -8927,16 +11188,30 @@ function ResourceStepper({
     <div className="optionStepper">
       <small className="optionStepperLabel">
         {iconSrc ? (
-          <img alt="" aria-hidden="true" className="optionStepperIcon" decoding="async" src={assetUrl(iconSrc)} />
+          <img
+            alt=""
+            aria-hidden="true"
+            className="optionStepperIcon"
+            decoding="async"
+            src={assetUrl(iconSrc)}
+          />
         ) : null}
         <span>{label}</span>
       </small>
       <div>
-        <button aria-label={`Decrease ${label}`} onClick={() => onChange(Math.max(0, value - 1))} type="button">
+        <button
+          aria-label={`Decrease ${label}`}
+          onClick={() => onChange(Math.max(0, value - 1))}
+          type="button"
+        >
           <Minus size={11} />
         </button>
         <span>{value}</span>
-        <button aria-label={`Increase ${label}`} onClick={() => onChange(value + 1)} type="button">
+        <button
+          aria-label={`Increase ${label}`}
+          onClick={() => onChange(value + 1)}
+          type="button"
+        >
           <Plus size={11} />
         </button>
       </div>
@@ -8951,7 +11226,7 @@ const OPTION_TABS: { id: OptionsTabId; label: string; icon: ReactNode }[] = [
   { id: "rules", label: "Mode & Rules", icon: <Swords size={13} /> },
   { id: "play", label: "Match", icon: <Crown size={13} /> },
   { id: "map", label: "Map & Setup", icon: <ImageIcon size={13} /> },
-  { id: "army", label: "Town & Resources", icon: <Castle size={13} /> }
+  { id: "army", label: "Town & Resources", icon: <Castle size={13} /> },
 ];
 
 /** Every binary setup row uses the same convention: On left, Off right. */
@@ -8975,17 +11250,22 @@ const HOUSE_RULE_CATEGORY_LABELS: Record<string, string> = {
   combat: "Combat & map rules",
   global: "Global map rules",
   polish: "Polish house rule type 1",
-  community: "Community balance"
+  community: "Community balance",
 };
 
 /** Optional crest/icon for a house-rule GROUP header (paths under public/). */
 const HOUSE_RULE_CATEGORY_ICONS: Record<string, string | undefined> = {
-  global: REWARD_GLYPH_ICONS.map
+  global: REWARD_GLYPH_ICONS.map,
 };
 
 // "global" now lives in its OWN collapsible ("Global map rules"), a peer of the
 // BINH / Polish panels (user request) — no longer nested inside BINH house rules.
-const BINH_HOUSE_RULE_CATEGORIES = ["decks", "units", "abilities", "combat"] as const;
+const BINH_HOUSE_RULE_CATEGORIES = [
+  "decks",
+  "units",
+  "abilities",
+  "combat",
+] as const;
 const GLOBAL_HOUSE_RULE_CATEGORIES = ["global"] as const;
 // The community balance package is its OWN collapsible, a peer of the Polish
 // panel and — like it — shown in BOTH modes (BINH and Legacy): every rule in it
@@ -8995,7 +11275,7 @@ const COMMUNITY_HOUSE_RULE_CATEGORIES = ["community"] as const;
 function houseRuleToggleDisabled(
   ruleId: HouseRuleId,
   houseRules: Record<HouseRuleId, boolean>,
-  creatureBanksEnabled: boolean
+  creatureBanksEnabled: boolean,
 ): boolean {
   return (
     (ruleId === "polish-bank-sizes" && !creatureBanksEnabled) ||
@@ -9004,10 +11284,62 @@ function houseRuleToggleDisabled(
 }
 
 /** Optional crest/icon for individual house-rule toggles (paths under public/). */
-const HOUSE_RULE_ICONS: Partial<Record<(typeof HOUSE_RULES)[number]["id"], string>> = {
+const HOUSE_RULE_ICONS: Partial<
+  Record<(typeof HOUSE_RULES)[number]["id"], string>
+> = {
   "polish-rule-111": UI_REWARD_ICONS.rule111,
   "mine-guard-reinforcement": REWARD_GLYPH_ICONS.treasure,
-  "mine-army-defense": REWARD_GLYPH_ICONS.defense
+  "mine-army-defense": REWARD_GLYPH_ICONS.defense,
+};
+
+/** Compact lobby copy; the full engine description stays behind the info button. */
+const POLISH_RULE_SUMMARIES: Partial<Record<HouseRuleId, string>> = {
+  "polish-spell-book":
+    "Spells live in a used/refreshed Book and are cast with Cast-a-Spell cards.",
+  "polish-bank-sizes":
+    "Roll two Creature Banks, choose one; its size sets guard layers and rewards.",
+  "polish-unit-stacks":
+    "Pack Groups and recruited Neutrals may buy persistent Stack layers.",
+  "polish-reduced-starting-bonus":
+    "Choose a reduced Minor-Artifact or resource-die starting bonus.",
+  "polish-rule-111":
+    "Once per game, swap one home-tile bronze guard before combat.",
+  "polish-reduced-surrender":
+    "Surrender starts at 10 gold and drops by 3 each combat round.",
+  "polish-random-artifacts":
+    "Artifact tier access is adjusted by one Attack-die roll.",
+  "polish-pandora-search":
+    "Pandora's Box uses a tier-scaled card Search instead of dice rewards.",
+  "polish-wait":
+    "Units may Wait once per combat round and act after the normal queue.",
+  "polish-quick-combat":
+    "Quick Combat compares army strength with field and game difficulty.",
+  "polish-alliance-mode":
+    "Allies combine VP and may trade when their heroes are in range.",
+  "polish-set-artifacts":
+    "Distinct owned set pieces unlock their set's effects step by step.",
+  "polish-bank-unit-spells":
+    "Selected control spells may target Creature-Bank units.",
+  "polish-card-balance":
+    "Use the Polish Balance Pack rules and matching card faces.",
+  "torso-of-legion-major":
+    "Use the Polish/BINH major-tier placement for Torso of Legion.",
+  "eversmoking-ring-of-sulfur-major":
+    "Use the Polish/BINH major-tier placement for Eversmoking Ring.",
+};
+
+const POLISH_RULE_INFO_IMAGES: Partial<Record<HouseRuleId, string[]>> = {
+  "polish-spell-book": ["/assets/rules/polish/spell-book.webp"],
+  "polish-bank-sizes": ["/assets/rules/polish/map-rules.webp"],
+  "polish-unit-stacks": ["/assets/rules/polish/unit-stacks.webp"],
+  "polish-reduced-starting-bonus": ["/assets/rules/polish/game-rules.webp"],
+  "polish-rule-111": ["/assets/rules/polish/game-rules.webp"],
+  "polish-reduced-surrender": ["/assets/rules/polish/game-rules.webp"],
+  "polish-random-artifacts": ["/assets/rules/polish/artifacts.webp"],
+  "polish-pandora-search": ["/assets/rules/polish/map-rules.webp"],
+  "polish-wait": ["/assets/rules/polish/wait.webp"],
+  "polish-quick-combat": ["/assets/rules/polish/quick-combat.webp"],
+  "polish-alliance-mode": ["/assets/rules/polish/alliance.webp"],
 };
 
 function HouseRuleToggleButton({
@@ -9015,54 +11347,121 @@ function HouseRuleToggleButton({
   on,
   disabled,
   lockedOn = false,
-  onToggle
+  onToggle,
+  onInfo,
 }: {
   rule: (typeof HOUSE_RULES)[number];
   on: boolean;
   disabled: boolean;
   lockedOn?: boolean;
   onToggle: () => void;
+  onInfo?: () => void;
 }) {
   const iconSrc = HOUSE_RULE_ICONS[rule.id];
+  const visibleDescription = POLISH_RULE_SUMMARIES[rule.id] ?? rule.description;
   return (
-    <button
-      aria-pressed={on}
-      className={`houseRuleToggle ${on ? "on" : "off"} ${disabled ? "disabled" : ""}`}
-      disabled={disabled}
-      onClick={onToggle}
-      title={
-        lockedOn
-          ? `${rule.description} This rule is always on in BINH.`
-          : disabled
-          ? rule.id === "polish-random-artifacts"
-            ? `${rule.description} Turn Split Spell/Artifact decks on first.`
-            : `${rule.description} Turn Creature Banks on in Map & Setup first.`
-          : rule.description
-      }
-      type="button"
+    <div className={`houseRuleToggleWrap ${onInfo ? "hasInfo" : ""}`}>
+      <button
+        aria-pressed={on}
+        className={`houseRuleToggle ${on ? "on" : "off"} ${disabled ? "disabled" : ""}`}
+        disabled={disabled}
+        onClick={onToggle}
+        title={
+          lockedOn
+            ? `${rule.description} This rule is always on in BINH.`
+            : disabled
+              ? rule.id === "polish-random-artifacts"
+                ? `${rule.description} Turn Split Spell/Artifact decks on first.`
+                : `${rule.description} Turn Creature Banks on in Map & Setup first.`
+              : visibleDescription
+        }
+        type="button"
+      >
+        <span aria-hidden="true" className="houseRuleCheck">
+          {on ? <Check size={13} /> : null}
+        </span>
+        <span className="houseRuleText">
+          <strong className="houseRuleLabelRow">
+            {iconSrc ? (
+              <img
+                alt=""
+                aria-hidden="true"
+                className="houseRuleToggleIcon"
+                draggable={false}
+                src={assetUrl(iconSrc)}
+              />
+            ) : null}
+            {rule.label}
+          </strong>
+          <small>{visibleDescription}</small>
+        </span>
+        <span className={`houseRuleState ${on ? "on" : "off"}`}>
+          {lockedOn ? "BINH · ON" : disabled ? "BANKS OFF" : on ? "ON" : "OFF"}
+        </span>
+      </button>
+      {onInfo ? (
+        <button
+          aria-label="Open rule information"
+          className="houseRuleInfoButton"
+          onClick={onInfo}
+          title={`Show how ${rule.label} works`}
+          type="button"
+        >
+          <Info aria-hidden="true" size={15} />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function HouseRuleInfoModal({
+  rule,
+  onClose,
+}: {
+  rule: (typeof HOUSE_RULES)[number];
+  onClose: () => void;
+}) {
+  return (
+    <div
+      aria-label={`${rule.label} rules`}
+      aria-modal="true"
+      className="modalBackdrop houseRuleInfoBackdrop"
+      onMouseDown={onClose}
+      role="dialog"
     >
-      <span aria-hidden="true" className="houseRuleCheck">
-        {on ? <Check size={13} /> : null}
-      </span>
-      <span className="houseRuleText">
-        <strong className="houseRuleLabelRow">
-          {iconSrc ? (
-            <img
-              alt=""
-              aria-hidden="true"
-              className="houseRuleToggleIcon"
-              draggable={false}
-              src={assetUrl(iconSrc)}
-            />
-          ) : null}
-          {rule.label}
-        </strong>
-        <small>{rule.description}</small>
-      </span>
-      <span className={`houseRuleState ${on ? "on" : "off"}`}>
-        {lockedOn ? "BINH · ON" : disabled ? "BANKS OFF" : on ? "ON" : "OFF"}
-      </span>
-    </button>
+      <section
+        className="houseRuleInfoModal"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header>
+          <div>
+            <small>Polish house rule</small>
+            <strong>{rule.label}</strong>
+          </div>
+          <button
+            aria-label="Close rule information"
+            onClick={onClose}
+            type="button"
+          >
+            <X aria-hidden="true" size={17} />
+          </button>
+        </header>
+        <p>{rule.description}</p>
+        {(POLISH_RULE_INFO_IMAGES[rule.id] ?? []).map((src) => (
+          <img
+            alt={`${rule.label} reference from H3 BG Rules v1.2`}
+            key={src}
+            loading="lazy"
+            src={assetUrl(src)}
+          />
+        ))}
+        {rule.infoUrl ? (
+          <a href={rule.infoUrl} rel="noopener noreferrer" target="_blank">
+            Open the full card-by-card list ↗
+          </a>
+        ) : null}
+      </section>
+    </div>
   );
 }
 
@@ -9082,7 +11481,7 @@ function HouseRuleCollapsible({
   onCount,
   totalCount,
   children,
-  variant = "binh"
+  variant = "binh",
 }: {
   id: string;
   title: string;
@@ -9098,18 +11497,27 @@ function HouseRuleCollapsible({
 }) {
   const panelId = `${id}-panel`;
   return (
-    <div className={`houseRuleCollapsible ${variant} ${open ? "open" : "collapsed"}`}>
+    <div
+      className={`houseRuleCollapsible ${variant} ${open ? "open" : "collapsed"}`}
+    >
       <button
         aria-controls={panelId}
         aria-expanded={open}
         className="houseRuleCollapsibleHead"
         onClick={onToggle}
-        title={open ? `Collapse ${title}` : `Expand ${title} — show all toggles`}
+        title={
+          open ? `Collapse ${title}` : `Expand ${title} — show all toggles`
+        }
         type="button"
       >
         <span className="houseRuleCollapsibleLead">
           {crestSrc ? (
-            <img alt="" aria-hidden="true" className={crestClassName ?? "houseRuleCollapsibleCrest"} src={crestSrc} />
+            <img
+              alt=""
+              aria-hidden="true"
+              className={crestClassName ?? "houseRuleCollapsibleCrest"}
+              src={crestSrc}
+            />
           ) : null}
           <span className="houseRuleCollapsibleTitles">
             <strong>{title}</strong>
@@ -9117,17 +11525,30 @@ function HouseRuleCollapsible({
           </span>
         </span>
         <span className="houseRuleCollapsibleMeta">
-          <span className={`houseRuleCollapsibleCount ${onCount > 0 ? "hasOn" : ""}`} title={`${onCount} of ${totalCount} on`}>
+          <span
+            className={`houseRuleCollapsibleCount ${onCount > 0 ? "hasOn" : ""}`}
+            title={`${onCount} of ${totalCount} on`}
+          >
             {onCount}/{totalCount} on
           </span>
-          <span className={`houseRuleCollapsibleChevron ${open ? "open" : ""}`} aria-hidden="true">
+          <span
+            className={`houseRuleCollapsibleChevron ${open ? "open" : ""}`}
+            aria-hidden="true"
+          >
             <ChevronDown size={16} strokeWidth={2.5} />
           </span>
-          <span className="houseRuleCollapsibleHint">{open ? "Minimize" : "Expand"}</span>
+          <span className="houseRuleCollapsibleHint">
+            {open ? "Minimize" : "Expand"}
+          </span>
         </span>
       </button>
       {open ? (
-        <div className="houseRuleCollapsibleBody" id={panelId} role="region" aria-label={title}>
+        <div
+          className="houseRuleCollapsibleBody"
+          id={panelId}
+          role="region"
+          aria-label={title}
+        >
           {children}
         </div>
       ) : (
@@ -9156,7 +11577,7 @@ function OptionRowLabel({
   hint,
   iconSrc,
   iconClassName,
-  icons
+  icons,
 }: {
   title: string;
   hint?: string;
@@ -9169,7 +11590,10 @@ function OptionRowLabel({
   return (
     <span className="optionRowLabel" title={hint}>
       {srcs.length > 0 ? (
-        <span className={`optionRowIcons ${srcs.length > 1 ? "pair" : ""}`} aria-hidden="true">
+        <span
+          className={`optionRowIcons ${srcs.length > 1 ? "pair" : ""}`}
+          aria-hidden="true"
+        >
           {srcs.map((src) => (
             <img
               alt=""
@@ -9198,7 +11622,7 @@ function GroupToggleAllButton({
   houseRules,
   creatureBanksEnabled,
   setHouseRules,
-  enableExtras
+  enableExtras,
 }: {
   rules: (typeof HOUSE_RULES)[number][];
   groupLabel: string;
@@ -9219,9 +11643,11 @@ function GroupToggleAllButton({
   // just because Divided decks is currently off.
   const withExtras = { ...houseRules, ...enableExtras };
   const enableable = rules.filter(
-    (rule) => !houseRuleToggleDisabled(rule.id, withExtras, creatureBanksEnabled)
+    (rule) =>
+      !houseRuleToggleDisabled(rule.id, withExtras, creatureBanksEnabled),
   );
-  const allOn = enableable.length > 0 && enableable.every((rule) => houseRules[rule.id]);
+  const allOn =
+    enableable.length > 0 && enableable.every((rule) => houseRules[rule.id]);
   const anyOn = rules.some((rule) => houseRules[rule.id]);
   // Nothing to do only if the group cannot be enabled AND is already all-off.
   const inert = enableable.length === 0 && !anyOn;
@@ -9267,7 +11693,7 @@ function HouseRuleCategoryGroup({
   houseRules,
   creatureBanksEnabled,
   setHouseRule,
-  setHouseRules
+  setHouseRules,
 }: {
   category: string;
   houseRules: Record<HouseRuleId, boolean>;
@@ -9276,9 +11702,13 @@ function HouseRuleCategoryGroup({
   setHouseRules: (updates: Partial<Record<HouseRuleId, boolean>>) => void;
 }) {
   const rules = HOUSE_RULES.filter((rule) => rule.category === category);
+  const [infoRuleId, setInfoRuleId] = useState<HouseRuleId | null>(null);
   if (rules.length === 0) {
     return null;
   }
+  const infoRule = infoRuleId
+    ? rules.find((rule) => rule.id === infoRuleId)
+    : undefined;
   const groupIconSrc = HOUSE_RULE_CATEGORY_ICONS[category];
   return (
     <div className="houseRuleGroup" key={category}>
@@ -9306,15 +11736,28 @@ function HouseRuleCategoryGroup({
       <div className="houseRuleGrid">
         {rules.map((rule) => (
           <HouseRuleToggleButton
-            disabled={houseRuleToggleDisabled(rule.id, houseRules, creatureBanksEnabled)}
+            disabled={houseRuleToggleDisabled(
+              rule.id,
+              houseRules,
+              creatureBanksEnabled,
+            )}
             key={rule.id}
             lockedOn={false}
             on={houseRules[rule.id]}
+            onInfo={
+              category === "polish" ? () => setInfoRuleId(rule.id) : undefined
+            }
             onToggle={() => setHouseRule(rule.id, !houseRules[rule.id])}
             rule={rule}
           />
         ))}
       </div>
+      {infoRule ? (
+        <HouseRuleInfoModal
+          onClose={() => setInfoRuleId(null)}
+          rule={infoRule}
+        />
+      ) : null}
     </div>
   );
 }
@@ -9327,7 +11770,11 @@ function HouseRuleCategoryGroup({
  * there must open the reference, not flip the rule). Returns null when no rule
  * in the group has a link, so ordinary groups are untouched.
  */
-function HouseRuleInfoLinks({ rules }: { rules: (typeof HOUSE_RULES)[number][] }) {
+function HouseRuleInfoLinks({
+  rules,
+}: {
+  rules: (typeof HOUSE_RULES)[number][];
+}) {
   const withLinks = rules.filter((rule) => rule.infoUrl);
   if (withLinks.length === 0) {
     return null;
@@ -9362,7 +11809,7 @@ function HouseRulesSection({
   houseRules,
   creatureBanksEnabled,
   setHouseRule,
-  setHouseRules
+  setHouseRules,
 }: {
   houseRules: Record<HouseRuleId, boolean>;
   creatureBanksEnabled: boolean;
@@ -9374,12 +11821,15 @@ function HouseRulesSection({
   const [globalOpen, setGlobalOpen] = useState(false);
   const [polishOpen, setPolishOpen] = useState(false);
   const [communityOpen, setCommunityOpen] = useState(false);
+  const [polishInfoRuleId, setPolishInfoRuleId] = useState<HouseRuleId | null>(
+    null,
+  );
 
   const binhRules = HOUSE_RULES.filter((rule) =>
-    (BINH_HOUSE_RULE_CATEGORIES as readonly string[]).includes(rule.category)
+    (BINH_HOUSE_RULE_CATEGORIES as readonly string[]).includes(rule.category),
   );
   const globalRules = HOUSE_RULES.filter((rule) =>
-    (GLOBAL_HOUSE_RULE_CATEGORIES as readonly string[]).includes(rule.category)
+    (GLOBAL_HOUSE_RULE_CATEGORIES as readonly string[]).includes(rule.category),
   );
   // The Polish package shares these artifact re-tier switches with BINH: both
   // rows edit the same rules. Grail/Utopia is a map-designer concern now; its
@@ -9388,23 +11838,31 @@ function HouseRulesSection({
     (rule) =>
       rule.id === "torso-of-legion-major" ||
       rule.id === "eversmoking-ring-of-sulfur-major" ||
-      (rule.category === "polish" && rule.id !== "polish-grail-utopia")
+      (rule.category === "polish" && rule.id !== "polish-grail-utopia"),
   );
   const communityRules = HOUSE_RULES.filter((rule) =>
-    (COMMUNITY_HOUSE_RULE_CATEGORIES as readonly string[]).includes(rule.category)
+    (COMMUNITY_HOUSE_RULE_CATEGORIES as readonly string[]).includes(
+      rule.category,
+    ),
   );
-  const communityOn = communityRules.filter((rule) => houseRules[rule.id]).length;
+  const communityOn = communityRules.filter(
+    (rule) => houseRules[rule.id],
+  ).length;
   const binhOn = binhRules.filter((rule) => houseRules[rule.id]).length;
   const globalOn = globalRules.filter((rule) => houseRules[rule.id]).length;
   const polishOn = polishRules.filter((rule) => houseRules[rule.id]).length;
+  const polishInfoRule = polishInfoRuleId
+    ? polishRules.find((rule) => rule.id === polishInfoRuleId)
+    : undefined;
 
   return (
     <div className="houseRuleSection" aria-label="House rules">
       <div className="houseRuleHead">
         <strong>House rules</strong>
         <small>
-          BINH starts with its core tweaks on. Polish house rule type 1 stays opt-in, and Legacy clears every rule.
-          Expand a section to flip individual checkboxes.
+          BINH starts with its core tweaks on. Polish house rule type 1 stays
+          opt-in, and Legacy clears every rule. Expand a section to flip
+          individual checkboxes.
         </small>
       </div>
 
@@ -9433,8 +11891,9 @@ function HouseRulesSection({
         <p className="houseRuleAlwaysOn">
           <Info size={11} aria-hidden="true" />
           <span>
-            Earthquake already matches the wiki, so there is nothing to toggle — its Power-2 collapse of the Arrow Tower
-            is the standard “a full breach fells the tower” rule, not a buff.
+            Earthquake already matches the wiki, so there is nothing to toggle —
+            its Power-2 collapse of the Arrow Tower is the standard “a full
+            breach fells the tower” rule, not a buff.
           </span>
         </p>
       </HouseRuleCollapsible>
@@ -9490,10 +11949,15 @@ function HouseRulesSection({
           <div className="houseRuleGrid">
             {polishRules.map((rule) => (
               <HouseRuleToggleButton
-                disabled={houseRuleToggleDisabled(rule.id, houseRules, creatureBanksEnabled)}
+                disabled={houseRuleToggleDisabled(
+                  rule.id,
+                  houseRules,
+                  creatureBanksEnabled,
+                )}
                 key={rule.id}
                 lockedOn={false}
                 on={houseRules[rule.id]}
+                onInfo={() => setPolishInfoRuleId(rule.id)}
                 onToggle={() => setHouseRule(rule.id, !houseRules[rule.id])}
                 rule={rule}
               />
@@ -9501,6 +11965,12 @@ function HouseRulesSection({
           </div>
           <HouseRuleInfoLinks rules={polishRules} />
         </div>
+        {polishInfoRule ? (
+          <HouseRuleInfoModal
+            onClose={() => setPolishInfoRuleId(null)}
+            rule={polishInfoRule}
+          />
+        ) : null}
       </HouseRuleCollapsible>
 
       <HouseRuleCollapsible
@@ -9527,7 +11997,11 @@ function HouseRulesSection({
           <div className="houseRuleGrid">
             {communityRules.map((rule) => (
               <HouseRuleToggleButton
-                disabled={houseRuleToggleDisabled(rule.id, houseRules, creatureBanksEnabled)}
+                disabled={houseRuleToggleDisabled(
+                  rule.id,
+                  houseRules,
+                  creatureBanksEnabled,
+                )}
                 key={rule.id}
                 lockedOn={false}
                 on={houseRules[rule.id]}
@@ -9557,7 +12031,7 @@ function HouseRulesSection({
 function TableModeSection({
   state,
   viewerPlayerId,
-  onAction
+  onAction,
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
@@ -9585,7 +12059,11 @@ function TableModeSection({
               disabled={!allowed}
               key={mode}
               onClick={() =>
-                onAction({ type: "SET_GAME_OPTIONS", playerId: viewerPlayerId, options: { gameMode: mode } })
+                onAction({
+                  type: "SET_GAME_OPTIONS",
+                  playerId: viewerPlayerId,
+                  options: { gameMode: mode },
+                })
               }
               title={reason ?? TABLE_MODE_BLURBS[mode]}
               type="button"
@@ -9605,7 +12083,9 @@ function TableModeSection({
       )}
       {availability.clash.allowed && availability.coop.allowed ? null : (
         <small className="optionHint">
-          {availability.coop.allowed ? availability.clash.reason : availability.coop.reason}
+          {availability.coop.allowed
+            ? availability.clash.reason
+            : availability.coop.reason}
         </small>
       )}
     </div>
@@ -9627,7 +12107,7 @@ const SETUP_MODE_CARDS: {
     blurb: "Printed rulebook",
     hint: "Turns every house rule off. Toggles stay free — re-enable any rule you want.",
     // Falls back to a book-ish glyph if the crest is not yet present.
-    iconSrc: "/assets/ui/mode-legacy-crest-clear.webp"
+    iconSrc: "/assets/ui/mode-legacy-crest-clear.webp",
   },
   {
     id: "binh",
@@ -9635,21 +12115,21 @@ const SETUP_MODE_CARDS: {
     blurb: "House-rule edition",
     hint: "Default fan edition: every house rule on, Spell Book on. Mods (WOG) stay free to toggle.",
     // Classic griffin-on-blue-shield crest (transparent, blends into the panel).
-    iconSrc: "/assets/ui/mode-binh-crest-clear.webp"
+    iconSrc: "/assets/ui/mode-binh-crest-clear.webp",
   },
   {
     id: "tournament",
     label: "Tournament",
     blurb: "Competitive preset",
     hint: "Tier-split Spell/Artifact decks, other house rules off, tournament bans on, Hard difficulty, human-controlled Neutrals.",
-    iconSrc: "/assets/ui/mode-tournament-crest-clear.webp"
+    iconSrc: "/assets/ui/mode-tournament-crest-clear.webp",
   },
   {
     id: "custom",
     label: "Custom",
     blurb: "Your saved setup",
-    hint: "Save the current map & rules to a file, or load one of your setting files — each player keeps their own."
-  }
+    hint: "Save the current map & rules to a file, or load one of your setting files — each player keeps their own.",
+  },
 ];
 
 /**
@@ -9666,7 +12146,7 @@ function GameModeSection({
   onAction,
   onCustomSelected,
   customNotice,
-  customHint
+  customHint,
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
@@ -9687,7 +12167,11 @@ function GameModeSection({
   const wog = { ...DEFAULT_WOG_OPTIONS, ...options.wog };
   const anime = { ...DEFAULT_ANIME_OPTIONS, ...options.anime };
   const send = (next: Partial<GameSetupOptions>) =>
-    onAction({ type: "SET_GAME_OPTIONS", playerId: viewerPlayerId, options: next });
+    onAction({
+      type: "SET_GAME_OPTIONS",
+      playerId: viewerPlayerId,
+      options: next,
+    });
 
   // Anime mod-window "Enable all / Disable all": the boolean module flags the
   // window renders as ticks, PLUS the commander system (which is the shared WOG
@@ -9695,19 +12179,35 @@ function GameModeSection({
   // when it is on). Toggling in one dispatch keeps anime.* and wog.commanders in
   // lockstep with the WOG window.
   const animeEnableAllKeys = [
-    "isekaiTowns", "xianxiaTowns", "doomNeutrals", "mapObjects", "combatEvents",
-    "xianxiaArtifacts", "cultivation", "heroGrades", "equipment", "unitStacks",
-    "unitExperience", "monsterWaves", "raidBosses", "dungeon"
+    "isekaiTowns",
+    "xianxiaTowns",
+    "doomNeutrals",
+    "mapObjects",
+    "combatEvents",
+    "xianxiaArtifacts",
+    "cultivation",
+    "heroGrades",
+    "equipment",
+    "unitStacks",
+    "unitExperience",
+    "monsterWaves",
+    "raidBosses",
+    "dungeon",
   ] as const;
   const commanderModuleOn = Boolean(wog.enabled && wog.commanders);
   const animeAllModulesOn =
     commanderModuleOn && animeEnableAllKeys.every((key) => Boolean(anime[key]));
   const setAllAnimeModules = (on: boolean) => {
-    const updates: Partial<Record<(typeof animeEnableAllKeys)[number], boolean>> = {};
+    const updates: Partial<
+      Record<(typeof animeEnableAllKeys)[number], boolean>
+    > = {};
     for (const key of animeEnableAllKeys) {
       updates[key] = on;
     }
-    send({ anime: { ...anime, ...updates }, wog: { ...wog, commanders: on, ...(on ? { enabled: true } : {}) } });
+    send({
+      anime: { ...anime, ...updates },
+      wog: { ...wog, commanders: on, ...(on ? { enabled: true } : {}) },
+    });
   };
   const toggleCommanderModule = () => {
     const on = !commanderModuleOn;
@@ -9723,7 +12223,7 @@ function GameModeSection({
       onCustomSelected?.();
       setModeNotice(
         customNotice ??
-          "Custom mode selected: save the current setup to a file, or load a setting file, in Map & Setup."
+          "Custom mode selected: save the current setup to a file, or load a setting file, in Map & Setup.",
       );
       return;
     }
@@ -9731,12 +12231,12 @@ function GameModeSection({
       send({
         ...MODE_PRESET_PAYLOADS.legacy,
         wog: { ...wog, enabled: false },
-        anime: { ...anime, enabled: false }
+        anime: { ...anime, enabled: false },
       });
       setModeNotice(
         "Legacy mode applied: every house rule is off (printed rulebook). " +
           "Nothing is locked — you can re-enable any house rule, Spell Book, or tournament rule below. " +
-          "WOG and Anime (Mods) are off under Legacy."
+          "WOG and Anime (Mods) are off under Legacy.",
       );
       return;
     }
@@ -9751,19 +12251,25 @@ function GameModeSection({
     send({
       ...MODE_PRESET_PAYLOADS.tournament,
       wog: { ...wog, enabled: false },
-      anime: { ...anime, enabled: false }
+      anime: { ...anime, enabled: false },
     });
     setModeNotice(
       "Tournament mode applied: Spell/Artifact decks split by tier, other house rules off, Diplomacy + Hourglass banned, second player +1 morale, " +
-        "Hard difficulty, and Neutrals under human control (next player clockwise). Toggles below stay free if you need to adjust."
+        "Morale can repeat a Search, removed Artifacts count for VP, Observatory re-rotation, Hard difficulty, and Neutrals under human control (next player clockwise). Toggles below stay free if you need to adjust.",
     );
   };
 
   return (
     <>
       <div className="optionRow modePresetRow">
-        <small title="One-click presets. Individual rules below stay editable after any preset.">Game mode</small>
-        <div className="modePresetGrid" role="group" aria-label="Game mode presets">
+        <small title="One-click presets. Individual rules below stay editable after any preset.">
+          Game mode
+        </small>
+        <div
+          className="modePresetGrid"
+          role="group"
+          aria-label="Game mode presets"
+        >
           {SETUP_MODE_CARDS.map((card) => (
             <button
               aria-pressed={activeSetupMode === card.id}
@@ -9792,13 +12298,13 @@ function GameModeSection({
         </div>
         <small className="optionHint">
           {activeSetupMode === "custom"
-            ? customHint ??
-              "Personal custom setup: in Map & Setup, save the current map & rules to a file or load one of your setting files."
+            ? (customHint ??
+              "Personal custom setup: in Map & Setup, save the current map & rules to a file or load one of your setting files.")
             : activeSetupMode === "legacy"
-            ? RULESET_DESCRIPTIONS.legacy
-            : activeSetupMode === "tournament"
-            ? "Competitive preset: rulebook baseline + tournament deck bans + tier-split Spell/Artifact decks + Hard difficulty + human-controlled Neutrals."
-            : RULESET_DESCRIPTIONS.binh}
+              ? RULESET_DESCRIPTIONS.legacy
+              : activeSetupMode === "tournament"
+                ? "Competitive preset: rulebook baseline + tournament deck bans + tier-split Spell/Artifact decks + Hard difficulty + human-controlled Neutrals."
+                : RULESET_DESCRIPTIONS.binh}
         </small>
       </div>
 
@@ -9806,17 +12312,27 @@ function GameModeSection({
         <div className="modeNoticeBanner" role="status">
           <Info size={14} aria-hidden="true" />
           <p>{modeNotice}</p>
-          <button aria-label="Dismiss notice" onClick={() => setModeNotice(null)} type="button">
+          <button
+            aria-label="Dismiss notice"
+            onClick={() => setModeNotice(null)}
+            type="button"
+          >
             <X size={14} />
           </button>
         </div>
       ) : null}
 
       <div className={`optionRow wogOptionRow ${wog.enabled ? "enabled" : ""}`}>
-        <small title="Optional modules you can stack on a game mode (not a separate mode)">Mod</small>
+        <small title="Optional modules you can stack on a game mode (not a separate mode)">
+          Mod
+        </small>
         <div className="wogOptionControls">
           <button
-            aria-label={wog.enabled ? "Disable Wake of Gods mod" : "Enable Wake of Gods mod"}
+            aria-label={
+              wog.enabled
+                ? "Disable Wake of Gods mod"
+                : "Enable Wake of Gods mod"
+            }
             aria-pressed={wog.enabled}
             className={`wogCrestButton ${wog.enabled ? "selected" : ""}`}
             onClick={() => {
@@ -9827,8 +12343,8 @@ function GameModeSection({
                 wog: {
                   ...DEFAULT_WOG_OPTIONS,
                   ...wog,
-                  enabled: nextEnabled
-                }
+                  enabled: nextEnabled,
+                },
               });
               if (nextEnabled) {
                 setWogOptionsOpen(true);
@@ -9867,23 +12383,34 @@ function GameModeSection({
                 : "Optional mod — stack with BINH house rules, Event deck, Morale Cards, …"}
             </small>
             {wog.enabled ? (
-              <button className="wogConfigureButton" onClick={() => setWogOptionsOpen(true)} type="button">
+              <button
+                className="wogConfigureButton"
+                onClick={() => setWogOptionsOpen(true)}
+                type="button"
+              >
                 Mod options
               </button>
             ) : null}
           </div>
         </div>
         <small className="optionHint">
-          WOG is a mod, not a game mode — toggle it on alongside house rules and other optional rules. Enabling it
-          under Legacy switches the table to BINH so the modules can load.
+          WOG is a mod, not a game mode — toggle it on alongside house rules and
+          other optional rules. Enabling it under Legacy switches the table to
+          BINH so the modules can load.
         </small>
       </div>
 
-      <div className={`optionRow wogOptionRow animeOptionRow ${anime.enabled ? "enabled" : ""}`}>
-        <small title="Optional modules you can stack on a game mode (not a separate mode)">Mod</small>
+      <div
+        className={`optionRow wogOptionRow animeOptionRow ${anime.enabled ? "enabled" : ""}`}
+      >
+        <small title="Optional modules you can stack on a game mode (not a separate mode)">
+          Mod
+        </small>
         <div className="wogOptionControls">
           <button
-            aria-label={anime.enabled ? "Disable Anime mod" : "Enable Anime mod"}
+            aria-label={
+              anime.enabled ? "Disable Anime mod" : "Enable Anime mod"
+            }
             aria-pressed={anime.enabled}
             className={`wogCrestButton animeCrestButton ${anime.enabled ? "selected" : ""}`}
             onClick={() => {
@@ -9894,8 +12421,8 @@ function GameModeSection({
                 anime: {
                   ...DEFAULT_ANIME_OPTIONS,
                   ...anime,
-                  enabled: nextEnabled
-                }
+                  enabled: nextEnabled,
+                },
               });
               if (nextEnabled) {
                 setAnimeOptionsOpen(true);
@@ -9934,421 +12461,720 @@ function GameModeSection({
                 : "Optional mod — Ninefold Realms × Otherworld Gate; stack with BINH, WOG and other rules"}
             </small>
             {anime.enabled ? (
-              <button className="wogConfigureButton" onClick={() => setAnimeOptionsOpen(true)} type="button">
+              <button
+                className="wogConfigureButton"
+                onClick={() => setAnimeOptionsOpen(true)}
+                type="button"
+              >
                 Mod options
               </button>
             ) : null}
           </div>
         </div>
         <small className="optionHint">
-          Anime is a mod, not a game mode — stack it alongside WOG, house rules and other optional rules. Enabling it
-          under Legacy switches the table to BINH so the modules can load.
+          Anime is a mod, not a game mode — stack it alongside WOG, house rules
+          and other optional rules. Enabling it under Legacy switches the table
+          to BINH so the modules can load.
         </small>
       </div>
 
       {wog.enabled && wogOptionsOpen && typeof document !== "undefined"
-        ? createPortal((
-          <div className="wogWindowBackdrop" onMouseDown={() => setWogOptionsOpen(false)}>
-          <section
-            aria-label="Wake of Gods mod options"
-            aria-modal="true"
-            className="wogOptionsWindow"
-            onMouseDown={(event) => event.stopPropagation()}
-            role="dialog"
-          >
-            <header>
-              <div>
-                <span className="wogWindowEyebrow">Optional mod</span>
-                <h4>Wake of Gods</h4>
-              </div>
-              <button aria-label="Close WOG options" onClick={() => setWogOptionsOpen(false)} type="button">
-                <X size={16} />
-              </button>
-            </header>
-            <div className="wogModuleList">
-              {([
-                ["newCreatures", "New neutral creatures", "Adds the WOG roster to the Bronze, Silver, Gold and Azure Neutral decks."],
-                ["commanders", "Commanders", "Every player gets their faction's commander: it fights in the main hero's battles as the army's 5th unit (you deploy up to 4), grades up at hero level 2, 4 and 6, and casts a command ability once per combat round."],
-                ["artifacts", "Artifacts", "Shuffles 5 Wake of Gods hero Artifact cards (Magic Wand, Gate Key, Crimson Shield, Warlord's Banner, Dragonheart) into the shared Artifact decks by tier."],
-                ["newObjects", "New adventure objects", "Adds 3 Wake of Gods single-hex map objects to the Field Override pool: Emerald Tower (guarded; trains your commander or hero), Mirror of the Home-Way (pay 2 gold to teleport to a Town), and Junk Merchant (sell weak Artifacts / buy an Artifact search). Turns Field Overrides on."],
-                ["unitExperience", "Unit experience", "WoG Unit Experience System (board adaptation): units surviving won battles gain XP and veteran ranks — stat bonuses, an Elite ability per faction's signature unit, XP dilution on reinforce, and Drill training anywhere (1 movement outside Towns, Settlements and Random Towns)."],
-                ["neutralRankUp", "Neutral rank-up", "Neutral-OWNED guards toughen with the round: bronze Seasoned/Veteran/Elite at rounds 3/5/8; silver at 6/8/12; gold at 6/10/14. Creature Banks use Far 4/6/9 or Near 6/8/12. Winning against Veteran guards adds +1 unit XP; Elite adds +2. This never gates player-controlled recruited Neutral XP."],
-                ["monsterWaves", "Monster waves", "Calamity Waves: every Nth round, EVERY live player fights a themed invasion at round start. A Far-tile Calamity Gate can be visited beforehand to cancel that wave's battle event for you. Standard and Brutal rewards/pillage are configurable below, as is optional elimination after repeated defeats."],
-                ["raidBosses", "Raid bosses", "A persistent multi-layer world boss lairs in a Rift Lair near map center from round 5 (announced one round ahead). Its wounds persist between attempts; every layer YOU break pays 2 gold at once, and the kill pays 5 gold + a relic-tier Artifact search. An ignored boss regrows a layer every 4th round."],
-                ["dungeon", "Dungeon Gate", "Adds one shared Dungeon Gate. Each player tracks their own floor and sees the same seeded rooms. Choose a room, defeat the floor guard, and claim escalating rewards; floors 5 and 10 have bosses. Entering uses normal movement, and continuing after a win uses the cost selected below."]
-              ] as const).map(([key, label, description]) => {
-                const active = wog[key];
-                return (
+        ? createPortal(
+            <div
+              className="wogWindowBackdrop"
+              onMouseDown={() => setWogOptionsOpen(false)}
+            >
+              <section
+                aria-label="Wake of Gods mod options"
+                aria-modal="true"
+                className="wogOptionsWindow"
+                onMouseDown={(event) => event.stopPropagation()}
+                role="dialog"
+              >
+                <header>
+                  <div>
+                    <span className="wogWindowEyebrow">Optional mod</span>
+                    <h4>Wake of Gods</h4>
+                  </div>
                   <button
-                    aria-pressed={active}
-                    className={`wogModuleToggle ${active ? "selected" : ""}`}
-                    key={key}
-                    onClick={() => send({ wog: { ...wog, [key]: !active } })}
+                    aria-label="Close WOG options"
+                    onClick={() => setWogOptionsOpen(false)}
                     type="button"
                   >
-                    <span className="wogModuleCheck">{active ? <Check size={15} /> : null}</span>
-                    <span>
-                      <strong>{label}</strong>
-                      <small>{description}</small>
-                    </span>
+                    <X size={16} />
                   </button>
-                );
-              })}
-              {wog.monsterWaves ? (
-                <div className="waveCadenceRow" role="group" aria-label="Wave cadence">
-                  <strong>Wave cadence</strong>
-                  {([3, 4, 5] as const).map((cadence) => (
-                    <button
-                      aria-pressed={(wog.waveCadence ?? 4) === cadence}
-                      className={`waveCadenceChip ${(wog.waveCadence ?? 4) === cadence ? "selected" : ""}`}
-                      key={cadence}
-                      onClick={() => send({ wog: { ...wog, waveCadence: cadence } })}
-                      type="button"
+                </header>
+                <div className="wogModuleList">
+                  {(
+                    [
+                      [
+                        "newCreatures",
+                        "New neutral creatures",
+                        "Adds the WOG roster to the Bronze, Silver, Gold and Azure Neutral decks.",
+                      ],
+                      [
+                        "commanders",
+                        "Commanders",
+                        "Every player gets their faction's commander: it fights in the main hero's battles as the army's 5th unit (you deploy up to 4), grades up at hero level 2, 4 and 6, and casts a command ability once per combat round.",
+                      ],
+                      [
+                        "artifacts",
+                        "Artifacts",
+                        "Shuffles 5 Wake of Gods hero Artifact cards (Magic Wand, Gate Key, Crimson Shield, Warlord's Banner, Dragonheart) into the shared Artifact decks by tier.",
+                      ],
+                      [
+                        "newObjects",
+                        "New adventure objects",
+                        "Adds 3 Wake of Gods single-hex map objects to the Field Override pool: Emerald Tower (guarded; trains your commander or hero), Mirror of the Home-Way (pay 2 gold to teleport to a Town), and Junk Merchant (sell weak Artifacts / buy an Artifact search). Turns Field Overrides on.",
+                      ],
+                      [
+                        "unitExperience",
+                        "Unit experience",
+                        "WoG Unit Experience System (board adaptation): units surviving won battles gain XP and veteran ranks — stat bonuses, an Elite ability per faction's signature unit, XP dilution on reinforce, and Drill training anywhere (1 movement outside Towns, Settlements and Random Towns).",
+                      ],
+                      [
+                        "neutralRankUp",
+                        "Neutral rank-up",
+                        "Neutral-OWNED guards toughen with the round: bronze Seasoned/Veteran/Elite at rounds 3/5/8; silver at 6/8/12; gold at 6/10/14. Creature Banks use Far 4/6/9 or Near 6/8/12. Winning against Veteran guards adds +1 unit XP; Elite adds +2. This never gates player-controlled recruited Neutral XP.",
+                      ],
+                      [
+                        "monsterWaves",
+                        "Monster waves",
+                        "Calamity Waves: every Nth round, EVERY live player fights a themed invasion at round start. A Far-tile Calamity Gate can be visited beforehand to cancel that wave's battle event for you. Standard and Brutal rewards/pillage are configurable below, as is optional elimination after repeated defeats.",
+                      ],
+                      [
+                        "raidBosses",
+                        "Raid bosses",
+                        "A persistent multi-layer world boss lairs in a Rift Lair near map center from round 5 (announced one round ahead). Its wounds persist between attempts; every layer YOU break pays 2 gold at once, and the kill pays 5 gold + a relic-tier Artifact search. An ignored boss regrows a layer every 4th round.",
+                      ],
+                      [
+                        "dungeon",
+                        "Dungeon Gate",
+                        "Adds one shared Dungeon Gate. Each player tracks their own floor and sees the same seeded rooms. Choose a room, defeat the floor guard, and claim escalating rewards; floors 5 and 10 have bosses. Entering uses normal movement, and continuing after a win uses the cost selected below.",
+                      ],
+                    ] as const
+                  ).map(([key, label, description]) => {
+                    const active = wog[key];
+                    return (
+                      <button
+                        aria-pressed={active}
+                        className={`wogModuleToggle ${active ? "selected" : ""}`}
+                        key={key}
+                        onClick={() =>
+                          send({ wog: { ...wog, [key]: !active } })
+                        }
+                        type="button"
+                      >
+                        <span className="wogModuleCheck">
+                          {active ? <Check size={15} /> : null}
+                        </span>
+                        <span>
+                          <strong>{label}</strong>
+                          <small>{description}</small>
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {wog.monsterWaves ? (
+                    <div
+                      className="waveCadenceRow"
+                      role="group"
+                      aria-label="Wave cadence"
                     >
-                      Every {cadence === 3 ? "3rd" : `${cadence}th`} round
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-              {/* No PvE THEME picker for WOG: the Doom theme is an anime-mod
+                      <strong>Wave cadence</strong>
+                      {([3, 4, 5] as const).map((cadence) => (
+                        <button
+                          aria-pressed={(wog.waveCadence ?? 4) === cadence}
+                          className={`waveCadenceChip ${(wog.waveCadence ?? 4) === cadence ? "selected" : ""}`}
+                          key={cadence}
+                          onClick={() =>
+                            send({ wog: { ...wog, waveCadence: cadence } })
+                          }
+                          type="button"
+                        >
+                          Every {cadence === 3 ? "3rd" : `${cadence}th`} round
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                  {/* No PvE THEME picker for WOG: the Doom theme is an anime-mod
                   feature, so WOG's PvE encounters are always the classic
                   (Erathian) world. The theme picker lives in the Anime mod
                   window instead. */}
-              {wog.raidBosses ? (
-                <div className="waveCadenceRow pveSettingRow" role="group" aria-label="Raid boss arrival">
-                  <strong>Rift Lair arrival</strong>
-                  {([4, 5, 6] as const).map((round) => (
-                    <button
-                      aria-pressed={(wog.raidBossSpawnRound ?? 5) === round}
-                      className={`waveCadenceChip ${(wog.raidBossSpawnRound ?? 5) === round ? "selected" : ""}`}
-                      key={round}
-                      onClick={() => send({ wog: { ...wog, raidBossSpawnRound: round } })}
-                      type="button"
+                  {wog.raidBosses ? (
+                    <div
+                      className="waveCadenceRow pveSettingRow"
+                      role="group"
+                      aria-label="Raid boss arrival"
                     >
-                      Round {round}
-                    </button>
-                  ))}
-                  <small>Warning appears one round earlier.</small>
+                      <strong>Rift Lair arrival</strong>
+                      {([4, 5, 6] as const).map((round) => (
+                        <button
+                          aria-pressed={(wog.raidBossSpawnRound ?? 5) === round}
+                          className={`waveCadenceChip ${(wog.raidBossSpawnRound ?? 5) === round ? "selected" : ""}`}
+                          key={round}
+                          onClick={() =>
+                            send({ wog: { ...wog, raidBossSpawnRound: round } })
+                          }
+                          type="button"
+                        >
+                          Round {round}
+                        </button>
+                      ))}
+                      <small>Warning appears one round earlier.</small>
+                    </div>
+                  ) : null}
+                  {wog.dungeon ? (
+                    <>
+                      <div
+                        className="waveCadenceRow pveSettingRow"
+                        role="group"
+                        aria-label="Dungeon campaign length"
+                      >
+                        <strong>Dungeon campaign</strong>
+                        {([5, 10] as const).map((depth) => (
+                          <button
+                            aria-pressed={(wog.dungeonDepth ?? 10) === depth}
+                            className={`waveCadenceChip ${(wog.dungeonDepth ?? 10) === depth ? "selected" : ""}`}
+                            key={depth}
+                            onClick={() =>
+                              send({ wog: { ...wog, dungeonDepth: depth } })
+                            }
+                            type="button"
+                          >
+                            {depth === 5
+                              ? "5-floor expedition"
+                              : "10-floor campaign"}
+                          </button>
+                        ))}
+                      </div>
+                      <div
+                        className="waveCadenceRow pveSettingRow"
+                        role="group"
+                        aria-label="Continue after a Dungeon win"
+                      >
+                        <strong>Continue after a win</strong>
+                        {([0, 1, 2] as const).map((cost) => (
+                          <button
+                            aria-pressed={
+                              (wog.dungeonDescentCost ?? 1) === cost
+                            }
+                            className={`waveCadenceChip ${(wog.dungeonDescentCost ?? 1) === cost ? "selected" : ""}`}
+                            key={cost}
+                            onClick={() =>
+                              send({
+                                wog: { ...wog, dungeonDescentCost: cost },
+                              })
+                            }
+                            type="button"
+                          >
+                            {cost === 0 ? "Free" : `${cost} movement`}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  ) : null}
+                  {wog.monsterWaves ? (
+                    <>
+                      <div
+                        className="waveCadenceRow"
+                        role="group"
+                        aria-label="Wave pressure"
+                      >
+                        <strong>Rewards &amp; pillage</strong>
+                        {(["standard", "brutal"] as const).map((pressure) => (
+                          <button
+                            aria-pressed={
+                              (wog.wavePressure ?? "standard") === pressure
+                            }
+                            className={`waveCadenceChip ${(wog.wavePressure ?? "standard") === pressure ? "selected" : ""}`}
+                            key={pressure}
+                            onClick={() =>
+                              send({ wog: { ...wog, wavePressure: pressure } })
+                            }
+                            type="button"
+                          >
+                            {pressure === "standard"
+                              ? "Standard"
+                              : "Brutal (+rewards, -1 morale)"}
+                          </button>
+                        ))}
+                      </div>
+                      <div
+                        className="waveCadenceRow"
+                        role="group"
+                        aria-label="Wave loss limit"
+                      >
+                        <strong>Lost waves</strong>
+                        {([0, 3, 2] as const).map((limit) => (
+                          <button
+                            aria-pressed={(wog.waveDefeatLimit ?? 0) === limit}
+                            className={`waveCadenceChip ${(wog.waveDefeatLimit ?? 0) === limit ? "selected" : ""}`}
+                            key={limit}
+                            onClick={() =>
+                              send({ wog: { ...wog, waveDefeatLimit: limit } })
+                            }
+                            type="button"
+                          >
+                            {limit === 0
+                              ? "Pillage only"
+                              : `Eliminate after ${limit}`}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  ) : null}
                 </div>
-              ) : null}
-              {wog.dungeon ? (
-                <>
-                  <div className="waveCadenceRow pveSettingRow" role="group" aria-label="Dungeon campaign length">
-                    <strong>Dungeon campaign</strong>
-                    {([5, 10] as const).map((depth) => (
-                      <button
-                        aria-pressed={(wog.dungeonDepth ?? 10) === depth}
-                        className={`waveCadenceChip ${(wog.dungeonDepth ?? 10) === depth ? "selected" : ""}`}
-                        key={depth}
-                        onClick={() => send({ wog: { ...wog, dungeonDepth: depth } })}
-                        type="button"
-                      >
-                        {depth === 5 ? "5-floor expedition" : "10-floor campaign"}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="waveCadenceRow pveSettingRow" role="group" aria-label="Continue after a Dungeon win">
-                    <strong>Continue after a win</strong>
-                    {([0, 1, 2] as const).map((cost) => (
-                      <button
-                        aria-pressed={(wog.dungeonDescentCost ?? 1) === cost}
-                        className={`waveCadenceChip ${(wog.dungeonDescentCost ?? 1) === cost ? "selected" : ""}`}
-                        key={cost}
-                        onClick={() => send({ wog: { ...wog, dungeonDescentCost: cost } })}
-                        type="button"
-                      >
-                        {cost === 0 ? "Free" : `${cost} movement`}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              ) : null}
-              {wog.monsterWaves ? (
-                <>
-                  <div className="waveCadenceRow" role="group" aria-label="Wave pressure">
-                    <strong>Rewards &amp; pillage</strong>
-                    {(["standard", "brutal"] as const).map((pressure) => (
-                      <button
-                        aria-pressed={(wog.wavePressure ?? "standard") === pressure}
-                        className={`waveCadenceChip ${(wog.wavePressure ?? "standard") === pressure ? "selected" : ""}`}
-                        key={pressure}
-                        onClick={() => send({ wog: { ...wog, wavePressure: pressure } })}
-                        type="button"
-                      >
-                        {pressure === "standard" ? "Standard" : "Brutal (+rewards, -1 morale)"}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="waveCadenceRow" role="group" aria-label="Wave loss limit">
-                    <strong>Lost waves</strong>
-                    {([0, 3, 2] as const).map((limit) => (
-                      <button
-                        aria-pressed={(wog.waveDefeatLimit ?? 0) === limit}
-                        className={`waveCadenceChip ${(wog.waveDefeatLimit ?? 0) === limit ? "selected" : ""}`}
-                        key={limit}
-                        onClick={() => send({ wog: { ...wog, waveDefeatLimit: limit } })}
-                        type="button"
-                      >
-                        {limit === 0 ? "Pillage only" : `Eliminate after ${limit}`}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              ) : null}
-            </div>
-            <div className="wogRosterPreview" aria-label="WOG neutral creature roster">
-              <strong>Neutral roster</strong>
-              <span><i className="tierDot bronze" /> Santa Gremlin</span>
-              <span><i className="tierDot silver" /> Ghost · Messengers · War Zealot · Sharpshooters · Sylvan Centaur · Werewolf</span>
-              <span><i className="tierDot gold" /> Nightmare · Hell Steed · Gorynych</span>
-              <span><i className="tierDot azure" /> Dracolich</span>
-            </div>
-            <footer>
-              <button className="selected" onClick={() => setWogOptionsOpen(false)} type="button">Done</button>
-            </footer>
-          </section>
-          </div>
-        ), document.body)
+                <div
+                  className="wogRosterPreview"
+                  aria-label="WOG neutral creature roster"
+                >
+                  <strong>Neutral roster</strong>
+                  <span>
+                    <i className="tierDot bronze" /> Santa Gremlin
+                  </span>
+                  <span>
+                    <i className="tierDot silver" /> Ghost · Messengers · War
+                    Zealot · Sharpshooters · Sylvan Centaur · Werewolf
+                  </span>
+                  <span>
+                    <i className="tierDot gold" /> Nightmare · Hell Steed ·
+                    Gorynych
+                  </span>
+                  <span>
+                    <i className="tierDot azure" /> Dracolich
+                  </span>
+                </div>
+                <footer>
+                  <button
+                    className="selected"
+                    onClick={() => setWogOptionsOpen(false)}
+                    type="button"
+                  >
+                    Done
+                  </button>
+                </footer>
+              </section>
+            </div>,
+            document.body,
+          )
         : null}
 
       {anime.enabled && animeOptionsOpen && typeof document !== "undefined"
-        ? createPortal((
-          <div className="wogWindowBackdrop" onMouseDown={() => setAnimeOptionsOpen(false)}>
-          <section
-            aria-label="Anime mod options"
-            aria-modal="true"
-            className="wogOptionsWindow animeOptionsWindow"
-            onMouseDown={(event) => event.stopPropagation()}
-            role="dialog"
-          >
-            <header>
-              <div>
-                <span className="wogWindowEyebrow">Optional mod</span>
-                <h4>Anime mod</h4>
-              </div>
-              <button aria-label="Close Anime options" onClick={() => setAnimeOptionsOpen(false)} type="button">
-                <X size={16} />
-              </button>
-            </header>
-            <small className="wogWindowDesc">
-              Ninefold Realms × Otherworld Gate — a stack of BINH-family modules (xianxia + isekai). Tick
-              only what you want; each is independent and coexists with WOG and the house rules. Doom is
-              available as its own explicit neutral-monster checkbox below.
-            </small>
-            <button
-              aria-label={`${animeAllModulesOn ? "Disable" : "Enable"} all anime modules`}
-              className={`houseRuleGroupToggleAll ${animeAllModulesOn ? "on" : "off"}`}
-              data-testid="anime-modules-enable-all"
-              onClick={() => setAllAnimeModules(!animeAllModulesOn)}
-              type="button"
+        ? createPortal(
+            <div
+              className="wogWindowBackdrop"
+              onMouseDown={() => setAnimeOptionsOpen(false)}
             >
-              {animeAllModulesOn ? "Disable all" : "Enable all"}
-            </button>
-            <div className="wogModuleList">
-              {([
-                ["isekaiTowns", "Fuyuki + Hidden Leaf + Azur Lane + Little Busters", "Adds four complete anime towns: Fuyuki City, Hidden Leaf Village, Azur Lane Naval Base, and Little Busters Campus — each with seven units, original heroes, its town board, buildings, starting tile, commander, and themed progression."],
-                ["xianxiaTowns", "Azure Breeze Sect", "Adds the complete wuxia sect: 7-unit cultivation roster, two original heroes, its mountain town board, buildings, starting tile, and wuxia-themed system vocabulary."],
-                ["doomNeutrals", "Doom monsters", "Adds the 16 classic Doom neutral monsters across the exact Bronze, Silver, Gold and Azure decks. Independent checkbox; off by default."],
-                ["mapObjects", "Map objects (Ninefold locations)", "Adds the anime single-hex map locations (Secret Realm, Sword Mound, Merchant Guild Post, gambling den, hot spring, …) to the Field Override pool. Turns Field Overrides on."],
-                ["combatEvents", "Forced battle events", "Scripted combat events on anime fields (the Bí Cảnh spirit-mist / earthvein-surge). Fully automatic — no new prompts."],
-                ["xianxiaArtifacts", "Pháp Bảo artifacts", "Shuffles 5 anime hero Artifact cards (Túi Càn Khôn, Phong Hỏa Luân, Tru Tiên Kiếm, Bát Quái Kính, Tụ Linh Bàn) into the shared Artifact decks by tier."],
-                ["cultivation", "Cultivation realms", "A per-hero Cultivation Realm track (hand limit / reroll / spell Power) plus the Heavenly Tribulation map action."],
-                ["heroGrades", "Hero Grades", "A per-hero Merit → grade track that unlocks a small passive / skill tree (shared by every hero)."],
-                ["equipment", "Hero Equipment", "Always-on hero items in 4 slots (weapon / armor / accessory / mount), bought at outfitter map locations."],
-                ["unitStacks", "Unit Stacks", "Pack / Neutral cards buy persistent Stack layers at the Citadel (+1 Attack, each layer soaks a lethal blow). The Polish Unit Stacks machinery — one pricing, coexists with the house rule."],
-                ["unitExperience", "Unit Experience", "Army unit cards that survive a won combat gain XP, ranking up (Seasoned → Veteran → Elite) for stat bonuses, signature abilities, reinforcements, Stack layers, and Drill training."],
-                ["monsterWaves", "Calamity Waves", "Every Nth round, EVERY live player fights a themed Gate invasion at round start. Visit the Far-tile Calamity Gate beforehand to cancel that wave's battle event for you. Standard and Brutal rewards/pillage are configurable below, as is optional elimination after repeated defeats."],
-                ["raidBosses", "Raid Bosses", "A persistent multi-layer world boss lairs in a Rift Lair near map center from round 5 (announced one round ahead — \"the sky cracks\"). Wounds persist between attempts; every layer YOU break pays 2 gold at once, and the kill pays 5 gold + a relic-tier Artifact search. An ignored boss regrows a layer every 4th round."],
-                ["dungeon", "Dungeon Gate", "Adds one shared Dungeon Gate. Each player tracks their own floor and sees the same seeded rooms. Choose a room, defeat the floor guard, and claim escalating rewards; floors 5 and 10 have bosses. Entering uses normal movement, and continuing after a win uses the cost selected below."]
-              ] as const).map(([key, label, description]) => {
-                const active = anime[key];
-                return (
+              <section
+                aria-label="Anime mod options"
+                aria-modal="true"
+                className="wogOptionsWindow animeOptionsWindow"
+                onMouseDown={(event) => event.stopPropagation()}
+                role="dialog"
+              >
+                <header>
+                  <div>
+                    <span className="wogWindowEyebrow">Optional mod</span>
+                    <h4>Anime mod</h4>
+                  </div>
                   <button
-                    aria-pressed={active}
-                    className={`wogModuleToggle ${active ? "selected" : ""}`}
-                    data-testid={`anime-module-${key}`}
-                    key={key}
-                    onClick={() => send({ anime: { ...anime, [key]: !active } })}
+                    aria-label="Close Anime options"
+                    onClick={() => setAnimeOptionsOpen(false)}
                     type="button"
                   >
-                    <span className="wogModuleCheck">{active ? <Check size={15} /> : null}</span>
-                    <span>
-                      <strong>{label}</strong>
-                      <small>{description}</small>
-                    </span>
+                    <X size={16} />
                   </button>
-                );
-              })}
-              {/* Commander & equipment: surfaced here because every anime town
+                </header>
+                <small className="wogWindowDesc">
+                  Ninefold Realms × Otherworld Gate — a stack of BINH-family
+                  modules (xianxia + isekai). Tick only what you want; each is
+                  independent and coexists with WOG and the house rules. Doom is
+                  available as its own explicit neutral-monster checkbox below.
+                </small>
+                <button
+                  aria-label={`${animeAllModulesOn ? "Disable" : "Enable"} all anime modules`}
+                  className={`houseRuleGroupToggleAll ${animeAllModulesOn ? "on" : "off"}`}
+                  data-testid="anime-modules-enable-all"
+                  onClick={() => setAllAnimeModules(!animeAllModulesOn)}
+                  type="button"
+                >
+                  {animeAllModulesOn ? "Disable all" : "Enable all"}
+                </button>
+                <div className="wogModuleList">
+                  {(
+                    [
+                      [
+                        "isekaiTowns",
+                        "Fuyuki + Hidden Leaf + Azur Lane + Little Busters",
+                        "Adds four complete anime towns: Fuyuki City, Hidden Leaf Village, Azur Lane Naval Base, and Little Busters Campus — each with seven units, original heroes, its town board, buildings, starting tile, commander, and themed progression.",
+                      ],
+                      [
+                        "xianxiaTowns",
+                        "Azure Breeze Sect",
+                        "Adds the complete wuxia sect: 7-unit cultivation roster, two original heroes, its mountain town board, buildings, starting tile, and wuxia-themed system vocabulary.",
+                      ],
+                      [
+                        "doomNeutrals",
+                        "Doom monsters",
+                        "Adds the 16 classic Doom neutral monsters across the exact Bronze, Silver, Gold and Azure decks (including Cyberdemon at Tier IV). Independent checkbox; off by default; Visions cannot reveal them while it is off.",
+                      ],
+                      [
+                        "mapObjects",
+                        "Map objects (Ninefold locations)",
+                        "Adds the anime single-hex map locations (Secret Realm, Sword Mound, Merchant Guild Post, gambling den, hot spring, …) to the Field Override pool. Turns Field Overrides on.",
+                      ],
+                      [
+                        "combatEvents",
+                        "Forced battle events",
+                        "Scripted combat events on anime fields (the Bí Cảnh spirit-mist / earthvein-surge). Fully automatic — no new prompts.",
+                      ],
+                      [
+                        "xianxiaArtifacts",
+                        "Pháp Bảo artifacts",
+                        "Shuffles 5 anime hero Artifact cards (Túi Càn Khôn, Phong Hỏa Luân, Tru Tiên Kiếm, Bát Quái Kính, Tụ Linh Bàn) into the shared Artifact decks by tier.",
+                      ],
+                      [
+                        "cultivation",
+                        "Cultivation realms",
+                        "A per-hero Cultivation Realm track (hand limit / reroll / spell Power) plus the Heavenly Tribulation map action.",
+                      ],
+                      [
+                        "heroGrades",
+                        "Hero Grades",
+                        "A per-hero Merit → grade track that unlocks a small passive / skill tree (shared by every hero).",
+                      ],
+                      [
+                        "equipment",
+                        "Hero Equipment",
+                        "Always-on hero items in 4 slots (weapon / armor / accessory / mount), bought at outfitter map locations.",
+                      ],
+                      [
+                        "unitStacks",
+                        "Unit Stacks",
+                        "Pack / Neutral cards buy persistent Stack layers at the Citadel (+1 Attack, each layer soaks a lethal blow). The Polish Unit Stacks machinery — one pricing, coexists with the house rule.",
+                      ],
+                      [
+                        "unitExperience",
+                        "Unit Experience",
+                        "Army unit cards that survive a won combat gain XP, ranking up (Seasoned → Veteran → Elite) for stat bonuses, signature abilities, reinforcements, Stack layers, and Drill training.",
+                      ],
+                      [
+                        "monsterWaves",
+                        "Calamity Waves",
+                        "Every Nth round, EVERY live player fights a themed Gate invasion at round start. Visit the Far-tile Calamity Gate beforehand to cancel that wave's battle event for you. Standard and Brutal rewards/pillage are configurable below, as is optional elimination after repeated defeats.",
+                      ],
+                      [
+                        "raidBosses",
+                        "Raid Bosses",
+                        'A persistent multi-layer world boss lairs in a Rift Lair near map center from round 5 (announced one round ahead — "the sky cracks"). Wounds persist between attempts; every layer YOU break pays 2 gold at once, and the kill pays 5 gold + a relic-tier Artifact search. An ignored boss regrows a layer every 4th round.',
+                      ],
+                      [
+                        "dungeon",
+                        "Dungeon Gate",
+                        "Adds one shared Dungeon Gate. Each player tracks their own floor and sees the same seeded rooms. Choose a room, defeat the floor guard, and claim escalating rewards; floors 5 and 10 have bosses. Entering uses normal movement, and continuing after a win uses the cost selected below.",
+                      ],
+                    ] as const
+                  ).map(([key, label, description]) => {
+                    const active = anime[key];
+                    return (
+                      <button
+                        aria-pressed={active}
+                        className={`wogModuleToggle ${active ? "selected" : ""}`}
+                        data-testid={`anime-module-${key}`}
+                        key={key}
+                        onClick={() =>
+                          send({ anime: { ...anime, [key]: !active } })
+                        }
+                        type="button"
+                      >
+                        <span className="wogModuleCheck">
+                          {active ? <Check size={15} /> : null}
+                        </span>
+                        <span>
+                          <strong>{label}</strong>
+                          <small>{description}</small>
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {/* Commander & equipment: surfaced here because every anime town
                   ships a WOG commander that only appears with the shared
                   Commanders module on. This drives wog.commanders (there is no
                   separate anime commander engine), staying in lockstep with the
                   WOG window's own Commanders toggle. Turning it on also gives the
                   Commander Forge / equip-artifact windows (gated on a commander
                   existing). */}
-              <button
-                aria-pressed={commanderModuleOn}
-                className={`wogModuleToggle ${commanderModuleOn ? "selected" : ""}`}
-                data-testid="anime-module-commanders"
-                onClick={toggleCommanderModule}
-                type="button"
-              >
-                <span className="wogModuleCheck">{commanderModuleOn ? <Check size={15} /> : null}</span>
-                <span>
-                  <strong>Commander &amp; equipment</strong>
-                  <small>
-                    Your faction&apos;s commander fights as the army&apos;s 5th unit, grades up with hero level,
-                    and can be equipped with Commander Artifacts at the Forge (Wake of Gods engine).
-                  </small>
-                </span>
-              </button>
-              {anime.monsterWaves ? (
-                <div className="waveCadenceRow" role="group" aria-label="Wave cadence">
-                  <strong>Wave cadence</strong>
-                  {([3, 4, 5] as const).map((cadence) => (
-                    <button
-                      aria-pressed={(anime.waveCadence ?? 4) === cadence}
-                      className={`waveCadenceChip ${(anime.waveCadence ?? 4) === cadence ? "selected" : ""}`}
-                      data-testid={`anime-wave-cadence-${cadence}`}
-                      key={cadence}
-                      onClick={() => send({ anime: { ...anime, waveCadence: cadence } })}
-                      type="button"
+                  <button
+                    aria-pressed={commanderModuleOn}
+                    className={`wogModuleToggle ${commanderModuleOn ? "selected" : ""}`}
+                    data-testid="anime-module-commanders"
+                    onClick={toggleCommanderModule}
+                    type="button"
+                  >
+                    <span className="wogModuleCheck">
+                      {commanderModuleOn ? <Check size={15} /> : null}
+                    </span>
+                    <span>
+                      <strong>Commander &amp; equipment</strong>
+                      <small>
+                        Your faction&apos;s commander fights as the army&apos;s
+                        5th unit, grades up with hero level, and can be equipped
+                        with Commander Artifacts at the Forge (Wake of Gods
+                        engine).
+                      </small>
+                    </span>
+                  </button>
+                  {anime.monsterWaves ? (
+                    <div
+                      className="waveCadenceRow"
+                      role="group"
+                      aria-label="Wave cadence"
                     >
-                      Every {cadence === 3 ? "3rd" : `${cadence}th`} round
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-              {anime.monsterWaves || anime.raidBosses || anime.dungeon ? (
-                <div className="pveDirectorPanel">
-                  <div className="pveDirectorHeading">
-                    <span>Encounter director</span>
-                    <strong>Choose the world these battles belong to</strong>
-                  </div>
-                  <div className="pveThemeCards" role="group" aria-label="PvE encounter theme">
-                    {([
-                      ["classic", "Erathian", "Arcane calamity", "/assets/board/battlefield-4x5-pve-calamity-classic-scenery.webp"],
-                      ["doom", "Doom", "Infernal invasion", "/assets/board/battlefield-4x5-pve-calamity-doom-scenery.webp"]
-                    ] as const).map(([theme, label, subtitle, image]) => (
-                      <button
-                        aria-label={label}
-                        aria-pressed={(anime.pveTheme ?? "classic") === theme}
-                        className={(anime.pveTheme ?? "classic") === theme ? "selected" : ""}
-                        data-testid={`anime-pve-theme-${theme}`}
-                        key={theme}
-                        onClick={() => send({ anime: { ...anime, pveTheme: theme } })}
-                        type="button"
+                      <strong>Wave cadence</strong>
+                      {([3, 4, 5] as const).map((cadence) => (
+                        <button
+                          aria-pressed={(anime.waveCadence ?? 4) === cadence}
+                          className={`waveCadenceChip ${(anime.waveCadence ?? 4) === cadence ? "selected" : ""}`}
+                          data-testid={`anime-wave-cadence-${cadence}`}
+                          key={cadence}
+                          onClick={() =>
+                            send({ anime: { ...anime, waveCadence: cadence } })
+                          }
+                          type="button"
+                        >
+                          Every {cadence === 3 ? "3rd" : `${cadence}th`} round
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                  {anime.monsterWaves || anime.raidBosses || anime.dungeon ? (
+                    <div className="pveDirectorPanel">
+                      <div className="pveDirectorHeading">
+                        <span>Encounter director</span>
+                        <strong>
+                          Choose the world these battles belong to
+                        </strong>
+                      </div>
+                      <div
+                        className="pveThemeCards"
+                        role="group"
+                        aria-label="PvE encounter theme"
                       >
-                        <img alt="" aria-hidden="true" src={assetUrl(image)} />
-                        <span><strong>{label}</strong><small>{subtitle}</small></span>
-                      </button>
-                    ))}
-                    <button
-                      aria-label="Random"
-                      aria-pressed={anime.pveTheme === "random"}
-                      className={`pveThemeRandom${anime.pveTheme === "random" ? " selected" : ""}`}
-                      data-testid="anime-pve-theme-random"
-                      onClick={() => send({ anime: { ...anime, pveTheme: "random" } })}
-                      type="button"
+                        {(
+                          [
+                            [
+                              "classic",
+                              "Erathian",
+                              "Arcane calamity",
+                              "/assets/board/battlefield-4x5-pve-calamity-classic-scenery.webp",
+                            ],
+                            [
+                              "doom",
+                              "Doom",
+                              "Infernal invasion",
+                              "/assets/board/battlefield-4x5-pve-calamity-doom-scenery.webp",
+                            ],
+                          ] as const
+                        ).map(([theme, label, subtitle, image]) => (
+                          <button
+                            aria-label={label}
+                            aria-pressed={
+                              (anime.pveTheme ?? "classic") === theme
+                            }
+                            className={
+                              (anime.pveTheme ?? "classic") === theme
+                                ? "selected"
+                                : ""
+                            }
+                            data-testid={`anime-pve-theme-${theme}`}
+                            key={theme}
+                            onClick={() =>
+                              send({ anime: { ...anime, pveTheme: theme } })
+                            }
+                            type="button"
+                          >
+                            <img
+                              alt=""
+                              aria-hidden="true"
+                              src={assetUrl(image)}
+                            />
+                            <span>
+                              <strong>{label}</strong>
+                              <small>{subtitle}</small>
+                            </span>
+                          </button>
+                        ))}
+                        <button
+                          aria-label="Random"
+                          aria-pressed={anime.pveTheme === "random"}
+                          className={`pveThemeRandom${anime.pveTheme === "random" ? " selected" : ""}`}
+                          data-testid="anime-pve-theme-random"
+                          onClick={() =>
+                            send({ anime: { ...anime, pveTheme: "random" } })
+                          }
+                          type="button"
+                        >
+                          <span>
+                            <strong>Random</strong>
+                            <small>Seeded once</small>
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                  {anime.raidBosses ? (
+                    <div
+                      className="waveCadenceRow pveSettingRow"
+                      role="group"
+                      aria-label="Raid boss arrival"
                     >
-                      <span><strong>Random</strong><small>Seeded once</small></span>
-                    </button>
-                  </div>
+                      <strong>Rift Lair arrival</strong>
+                      {([4, 5, 6] as const).map((round) => (
+                        <button
+                          aria-pressed={
+                            (anime.raidBossSpawnRound ?? 5) === round
+                          }
+                          className={`waveCadenceChip ${(anime.raidBossSpawnRound ?? 5) === round ? "selected" : ""}`}
+                          data-testid={`anime-raid-round-${round}`}
+                          key={round}
+                          onClick={() =>
+                            send({
+                              anime: { ...anime, raidBossSpawnRound: round },
+                            })
+                          }
+                          type="button"
+                        >
+                          Round {round}
+                        </button>
+                      ))}
+                      <small>Warning appears one round earlier.</small>
+                    </div>
+                  ) : null}
+                  {anime.dungeon ? (
+                    <>
+                      <div
+                        className="waveCadenceRow pveSettingRow"
+                        role="group"
+                        aria-label="Dungeon campaign length"
+                      >
+                        <strong>Dungeon campaign</strong>
+                        {([5, 10] as const).map((depth) => (
+                          <button
+                            aria-pressed={(anime.dungeonDepth ?? 10) === depth}
+                            className={`waveCadenceChip ${(anime.dungeonDepth ?? 10) === depth ? "selected" : ""}`}
+                            data-testid={`anime-dungeon-depth-${depth}`}
+                            key={depth}
+                            onClick={() =>
+                              send({ anime: { ...anime, dungeonDepth: depth } })
+                            }
+                            type="button"
+                          >
+                            {depth === 5
+                              ? "5-floor expedition"
+                              : "10-floor campaign"}
+                          </button>
+                        ))}
+                      </div>
+                      <div
+                        className="waveCadenceRow pveSettingRow"
+                        role="group"
+                        aria-label="Continue after a Dungeon win"
+                      >
+                        <strong>Continue after a win</strong>
+                        {([0, 1, 2] as const).map((cost) => (
+                          <button
+                            aria-pressed={
+                              (anime.dungeonDescentCost ?? 1) === cost
+                            }
+                            className={`waveCadenceChip ${(anime.dungeonDescentCost ?? 1) === cost ? "selected" : ""}`}
+                            data-testid={`anime-dungeon-cost-${cost}`}
+                            key={cost}
+                            onClick={() =>
+                              send({
+                                anime: { ...anime, dungeonDescentCost: cost },
+                              })
+                            }
+                            type="button"
+                          >
+                            {cost === 0 ? "Free" : `${cost} movement`}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  ) : null}
+                  {anime.monsterWaves ? (
+                    <>
+                      <div
+                        className="waveCadenceRow"
+                        role="group"
+                        aria-label="Wave pressure"
+                      >
+                        <strong>Rewards &amp; pillage</strong>
+                        {(["standard", "brutal"] as const).map((pressure) => (
+                          <button
+                            aria-pressed={
+                              (anime.wavePressure ?? "standard") === pressure
+                            }
+                            className={`waveCadenceChip ${(anime.wavePressure ?? "standard") === pressure ? "selected" : ""}`}
+                            data-testid={`anime-wave-pressure-${pressure}`}
+                            key={pressure}
+                            onClick={() =>
+                              send({
+                                anime: { ...anime, wavePressure: pressure },
+                              })
+                            }
+                            type="button"
+                          >
+                            {pressure === "standard"
+                              ? "Standard"
+                              : "Brutal (+rewards, -1 morale)"}
+                          </button>
+                        ))}
+                      </div>
+                      <div
+                        className="waveCadenceRow"
+                        role="group"
+                        aria-label="Wave loss limit"
+                      >
+                        <strong>Lost waves</strong>
+                        {([0, 3, 2] as const).map((limit) => (
+                          <button
+                            aria-pressed={
+                              (anime.waveDefeatLimit ?? 0) === limit
+                            }
+                            className={`waveCadenceChip ${(anime.waveDefeatLimit ?? 0) === limit ? "selected" : ""}`}
+                            data-testid={`anime-wave-loss-${limit}`}
+                            key={limit}
+                            onClick={() =>
+                              send({
+                                anime: { ...anime, waveDefeatLimit: limit },
+                              })
+                            }
+                            type="button"
+                          >
+                            {limit === 0
+                              ? "Pillage only"
+                              : `Eliminate after ${limit}`}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  ) : null}
                 </div>
-              ) : null}
-              {anime.raidBosses ? (
-                <div className="waveCadenceRow pveSettingRow" role="group" aria-label="Raid boss arrival">
-                  <strong>Rift Lair arrival</strong>
-                  {([4, 5, 6] as const).map((round) => (
-                    <button
-                      aria-pressed={(anime.raidBossSpawnRound ?? 5) === round}
-                      className={`waveCadenceChip ${(anime.raidBossSpawnRound ?? 5) === round ? "selected" : ""}`}
-                      data-testid={`anime-raid-round-${round}`}
-                      key={round}
-                      onClick={() => send({ anime: { ...anime, raidBossSpawnRound: round } })}
-                      type="button"
-                    >
-                      Round {round}
-                    </button>
-                  ))}
-                  <small>Warning appears one round earlier.</small>
-                </div>
-              ) : null}
-              {anime.dungeon ? (
-                <>
-                  <div className="waveCadenceRow pveSettingRow" role="group" aria-label="Dungeon campaign length">
-                    <strong>Dungeon campaign</strong>
-                    {([5, 10] as const).map((depth) => (
-                      <button
-                        aria-pressed={(anime.dungeonDepth ?? 10) === depth}
-                        className={`waveCadenceChip ${(anime.dungeonDepth ?? 10) === depth ? "selected" : ""}`}
-                        data-testid={`anime-dungeon-depth-${depth}`}
-                        key={depth}
-                        onClick={() => send({ anime: { ...anime, dungeonDepth: depth } })}
-                        type="button"
-                      >
-                        {depth === 5 ? "5-floor expedition" : "10-floor campaign"}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="waveCadenceRow pveSettingRow" role="group" aria-label="Continue after a Dungeon win">
-                    <strong>Continue after a win</strong>
-                    {([0, 1, 2] as const).map((cost) => (
-                      <button
-                        aria-pressed={(anime.dungeonDescentCost ?? 1) === cost}
-                        className={`waveCadenceChip ${(anime.dungeonDescentCost ?? 1) === cost ? "selected" : ""}`}
-                        data-testid={`anime-dungeon-cost-${cost}`}
-                        key={cost}
-                        onClick={() => send({ anime: { ...anime, dungeonDescentCost: cost } })}
-                        type="button"
-                      >
-                        {cost === 0 ? "Free" : `${cost} movement`}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              ) : null}
-              {anime.monsterWaves ? (
-                <>
-                  <div className="waveCadenceRow" role="group" aria-label="Wave pressure">
-                    <strong>Rewards &amp; pillage</strong>
-                    {(["standard", "brutal"] as const).map((pressure) => (
-                      <button
-                        aria-pressed={(anime.wavePressure ?? "standard") === pressure}
-                        className={`waveCadenceChip ${(anime.wavePressure ?? "standard") === pressure ? "selected" : ""}`}
-                        data-testid={`anime-wave-pressure-${pressure}`}
-                        key={pressure}
-                        onClick={() => send({ anime: { ...anime, wavePressure: pressure } })}
-                        type="button"
-                      >
-                        {pressure === "standard" ? "Standard" : "Brutal (+rewards, -1 morale)"}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="waveCadenceRow" role="group" aria-label="Wave loss limit">
-                    <strong>Lost waves</strong>
-                    {([0, 3, 2] as const).map((limit) => (
-                      <button
-                        aria-pressed={(anime.waveDefeatLimit ?? 0) === limit}
-                        className={`waveCadenceChip ${(anime.waveDefeatLimit ?? 0) === limit ? "selected" : ""}`}
-                        data-testid={`anime-wave-loss-${limit}`}
-                        key={limit}
-                        onClick={() => send({ anime: { ...anime, waveDefeatLimit: limit } })}
-                        type="button"
-                      >
-                        {limit === 0 ? "Pillage only" : `Eliminate after ${limit}`}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              ) : null}
-            </div>
-            <footer>
-              <button className="selected" onClick={() => setAnimeOptionsOpen(false)} type="button">Done</button>
-            </footer>
-          </section>
-          </div>
-        ), document.body)
+                <footer>
+                  <button
+                    className="selected"
+                    onClick={() => setAnimeOptionsOpen(false)}
+                    type="button"
+                  >
+                    Done
+                  </button>
+                </footer>
+              </section>
+            </div>,
+            document.body,
+          )
         : null}
     </>
   );
@@ -10363,7 +13189,7 @@ function SeatCountControl({
   state,
   viewerPlayerId,
   onAction,
-  footer
+  footer,
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
@@ -10381,21 +13207,38 @@ function SeatCountControl({
   }
   const options = lobby.options;
   const send = (next: Partial<GameSetupOptions>) =>
-    onAction({ type: "SET_GAME_OPTIONS", playerId: viewerPlayerId, options: next });
+    onAction({
+      type: "SET_GAME_OPTIONS",
+      playerId: viewerPlayerId,
+      options: next,
+    });
   const scenario = scenarioDefinitions[options.scenarioId];
-  const max = Math.min(scenario?.maxPlayers ?? 2, scenario?.layout.starts.length ?? 2);
+  const max = Math.min(
+    scenario?.maxPlayers ?? 2,
+    scenario?.layout.starts.length ?? 2,
+  );
   if (state.sessionMode === "single-player") {
     const current = lobby.seats.length - 1;
-    const authoredDeployment = singlePlayerMapDeployment(options.customMap, max - 1);
+    const authoredDeployment = singlePlayerMapDeployment(
+      options.customMap,
+      max - 1,
+    );
     if (!authoredDeployment) {
-      const enemyCounts = Array.from({ length: Math.max(0, max - 1) }, (_, index) => index + 1);
+      const enemyCounts = Array.from(
+        { length: Math.max(0, max - 1) },
+        (_, index) => index + 1,
+      );
       return enemyCounts.length > 0 ? (
         <>
           <div className="optionRow">
             <small title="Choose the exact number of computer enemies for this single-player game">
               Computer enemies
             </small>
-            <div className="optionButtons" role="group" aria-label="Number of computer enemies">
+            <div
+              className="optionButtons"
+              role="group"
+              aria-label="Number of computer enemies"
+            >
               {enemyCounts.map((count) => (
                 <button
                   aria-pressed={current === count}
@@ -10405,7 +13248,7 @@ function SeatCountControl({
                     onAction({
                       type: "SET_COMPUTER_OPPONENTS",
                       playerId: viewerPlayerId,
-                      count
+                      count,
                     })
                   }
                   title={`Fight ${count} computer ${count === 1 ? "enemy" : "enemies"}`}
@@ -10416,8 +13259,10 @@ function SeatCountControl({
               ))}
             </div>
             <small className="optionHint">
-              Opens exactly one human seat plus the selected computer enemies. You can customize each enemy’s Town
-              and hero below. A map with authored solo spawn Towns locks this choice to its designed enemy count.
+              Opens exactly one human seat plus the selected computer enemies.
+              You can customize each enemy’s Town and hero below. A map with
+              authored solo spawn Towns locks this choice to its designed enemy
+              count.
             </small>
           </div>
           {footer}
@@ -10426,21 +13271,27 @@ function SeatCountControl({
     }
     return (
       <>
-      <div className="optionRow">
-        <small title="The selected map determines the solo enemy count and starting locations">
-          Solo deployment
-        </small>
-        <div className="optionButtons" role="group" aria-label="Map-selected computer opponents">
-          <span className="selected">
-            {current} computer opponent{current === 1 ? "" : "s"}
-          </span>
+        <div className="optionRow">
+          <small title="The selected map determines the solo enemy count and starting locations">
+            Solo deployment
+          </small>
+          <div
+            className="optionButtons"
+            role="group"
+            aria-label="Map-selected computer opponents"
+          >
+            <span className="selected">
+              {current} computer opponent{current === 1 ? "" : "s"}
+            </span>
+          </div>
+          <small className="optionHint">
+            Locked by this map’s authored solo spawn Towns. Choose another map
+            to select a different count, or change the You / Enemy AI starting
+            Town markers in Map Designer. These settings are ignored in
+            multiplayer.
+          </small>
         </div>
-        <small className="optionHint">
-          Locked by this map’s authored solo spawn Towns. Choose another map to select a different count, or change
-          the You / Enemy AI starting Town markers in Map Designer. These settings are ignored in multiplayer.
-        </small>
-      </div>
-      {footer}
+        {footer}
       </>
     );
   }
@@ -10471,7 +13322,8 @@ function SeatCountControl({
           ))}
         </div>
         <small className="optionHint">
-          Seats beyond two open empty — anyone can sit in them from the table’s seat switcher and pick a faction.
+          Seats beyond two open empty — anyone can sit in them from the table’s
+          seat switcher and pick a faction.
         </small>
       </div>
     ) : null;
@@ -10483,7 +13335,11 @@ function SeatCountControl({
     <>
       {playersRow}
       {computersRow ? (
-        <MultiplayerComputerEnemiesRow onAction={onAction} state={state} viewerPlayerId={viewerPlayerId} />
+        <MultiplayerComputerEnemiesRow
+          onAction={onAction}
+          state={state}
+          viewerPlayerId={viewerPlayerId}
+        />
       ) : null}
       {footer}
     </>
@@ -10496,14 +13352,21 @@ function SeatCountControl({
  * humans with no computer seat to remove). ONE derivation, shared by the row and
  * by `SeatCountControl`'s footer gate.
  */
-function multiplayerComputerEnemiesChoices(state: GameState): { choices: number[]; current: number } | null {
+function multiplayerComputerEnemiesChoices(
+  state: GameState,
+): { choices: number[]; current: number } | null {
   const lobby = state.setupLobby;
   if (!lobby || state.sessionMode === "single-player") {
     return null;
   }
   const scenario = scenarioDefinitions[lobby.options.scenarioId];
-  const max = Math.min(scenario?.maxPlayers ?? 2, scenario?.layout.starts.length ?? 2);
-  const current = lobby.seats.filter((seat) => isComputerPlayer(state, seat.playerId)).length;
+  const max = Math.min(
+    scenario?.maxPlayers ?? 2,
+    scenario?.layout.starts.length ?? 2,
+  );
+  const current = lobby.seats.filter((seat) =>
+    isComputerPlayer(state, seat.playerId),
+  ).length;
   const humanSeats = Math.max(1, lobby.seats.length - current);
   // The engine clamps `humanSeats + requested` to the scenario capacity, so
   // offering more would silently do nothing.
@@ -10511,7 +13374,10 @@ function multiplayerComputerEnemiesChoices(state: GameState): { choices: number[
   if (maxComputers === 0 && current === 0) {
     return null;
   }
-  return { choices: Array.from({ length: maxComputers + 1 }, (_, index) => index), current };
+  return {
+    choices: Array.from({ length: maxComputers + 1 }, (_, index) => index),
+    current,
+  };
 }
 
 /**
@@ -10531,7 +13397,7 @@ function multiplayerComputerEnemiesChoices(state: GameState): { choices: number[
 function MultiplayerComputerEnemiesRow({
   state,
   viewerPlayerId,
-  onAction
+  onAction,
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
@@ -10552,14 +13418,24 @@ function MultiplayerComputerEnemiesRow({
       <small title="Add computer-controlled enemy seats to this multiplayer table. In Co-op every human is allied against them.">
         Computer enemies
       </small>
-      <div className="optionButtons" role="group" aria-label="Number of computer enemies">
+      <div
+        className="optionButtons"
+        role="group"
+        aria-label="Number of computer enemies"
+      >
         {choices.map((count) => (
           <button
             aria-pressed={computerSeats === count}
             className={computerSeats === count ? "selected" : ""}
             disabled={Boolean(blockedReason) && count > 0}
             key={count}
-            onClick={() => onAction({ type: "SET_COMPUTER_OPPONENTS", playerId: viewerPlayerId, count })}
+            onClick={() =>
+              onAction({
+                type: "SET_COMPUTER_OPPONENTS",
+                playerId: viewerPlayerId,
+                count,
+              })
+            }
             title={
               blockedReason && count > 0
                 ? blockedReason
@@ -10569,7 +13445,9 @@ function MultiplayerComputerEnemiesRow({
             }
             type="button"
           >
-            {count === 0 ? "None" : `${count} ${count === 1 ? "enemy" : "enemies"}`}
+            {count === 0
+              ? "None"
+              : `${count} ${count === 1 ? "enemy" : "enemies"}`}
           </button>
         ))}
       </div>
@@ -10601,7 +13479,7 @@ function MultiplayerComputerEnemiesRow({
 function SameChoiceAsBoxNote({
   box,
   boxLabel,
-  onOpenBox
+  onOpenBox,
 }: {
   box: SetupHubBoxId;
   boxLabel: string;
@@ -10612,7 +13490,8 @@ function SameChoiceAsBoxNote({
   }
   return (
     <small className="optionHint sameChoiceNote">
-      Same choice as the <strong>{boxLabel}</strong> box — changing it here changes it there.{" "}
+      Same choice as the <strong>{boxLabel}</strong> box — changing it here
+      changes it there.{" "}
       <button
         aria-label={`Open the ${SAME_CHOICE_ARIA[box]} window`}
         className="sameChoiceLink"
@@ -10630,14 +13509,14 @@ const SAME_CHOICE_ARIA: Record<SetupHubBoxId, string> = {
   mode: "Game-mode",
   heroes: "Heroes",
   map: "Map",
-  advanced: "Advanced"
+  advanced: "Advanced",
 };
 
 function GameOptionsPanel({
   state,
   viewerPlayerId,
   onAction,
-  onOpenBox
+  onOpenBox,
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
@@ -10655,11 +13534,17 @@ function GameOptionsPanel({
   const options = lobby.options;
   const mapOwnsGrailOrUtopia = mapHasAuthoredGrailOrUtopia(
     options.customMap,
-    options.customMapPreset
+    options.customMapPreset,
   );
-  const viewerFactionId = lobby.seats.find((seat) => seat.playerId === viewerPlayerId)?.factionId ?? null;
+  const viewerFactionId =
+    lobby.seats.find((seat) => seat.playerId === viewerPlayerId)?.factionId ??
+    null;
   const send = (next: Partial<GameSetupOptions>) =>
-    onAction({ type: "SET_GAME_OPTIONS", playerId: viewerPlayerId, options: next });
+    onAction({
+      type: "SET_GAME_OPTIONS",
+      playerId: viewerPlayerId,
+      options: next,
+    });
   // Effective house-rule booleans (explicit toggle, else the chosen mode's
   // default). Flipping one sends just that id; the reducer merges it.
   const houseRules = resolveHouseRules(options);
@@ -10681,14 +13566,66 @@ function GameOptionsPanel({
     send(next);
   };
   const tournamentRules = resolveTournamentRules(options);
+  const rankedClashReplay =
+    state.room?.ranked !== false && options.gameMode !== "coop";
 
   return (
     <div className="gameOptions" aria-label="Game options">
       <header className="gameOptionsHead">
-        <span className="gameOptionsEyebrow">⚜ Fan-made house-rule edition · BINH</span>
+        <span className="gameOptionsEyebrow">
+          ⚜ Fan-made house-rule edition · BINH
+        </span>
         <h3>Game Setup</h3>
-        <small className="gameOptionsHeadSub">Pick a mode, toggle the house rules, and set up your army.</small>
+        <small className="gameOptionsHeadSub">
+          Pick a mode, toggle the house rules, and set up your army.
+        </small>
       </header>
+
+      <div
+        className="optionRow rankedReplayRow"
+        role="group"
+        aria-label="AI learning replay"
+      >
+        <OptionRowLabel
+          hint="A private, bounded server replay used later to train legal map, economy and battle decisions. Ranked Clash requires it; chat and credentials are never collected."
+          iconClassName="optionRowIcon crest"
+          iconSrc="/assets/ui/option-undo-moves-clear.webp"
+          title="AI learning replay"
+        />
+        <div className="optionButtons">
+          <button
+            aria-pressed={rankedClashReplay}
+            className={rankedClashReplay ? "selected" : ""}
+            disabled
+            title={
+              rankedClashReplay
+                ? "Always on for Ranked Clash"
+                : "Only Ranked Clash is collected"
+            }
+            type="button"
+          >
+            On
+          </button>
+          <button
+            aria-pressed={!rankedClashReplay}
+            className={!rankedClashReplay ? "selected" : ""}
+            disabled
+            title={
+              rankedClashReplay
+                ? "Ranked Clash cannot opt out"
+                : "This match is not collected"
+            }
+            type="button"
+          >
+            Off
+          </button>
+        </div>
+        <small className="optionHint">
+          {rankedClashReplay
+            ? "Always On for Ranked Clash: gameplay decisions, legal alternatives, map/build/recruit timing, Neutral control, PvP combat and Spell choices are saved once when the match ends. No live Vercel traffic."
+            : "Off: only completed Ranked Clash matches enter the private AI-learning dataset."}
+        </small>
+      </div>
 
       <nav className="optionTabs" role="tablist" aria-label="Setup sections">
         {OPTION_TABS.map((entry) => (
@@ -10707,1246 +13644,1475 @@ function GameOptionsPanel({
       </nav>
 
       {tab === "rules" ? (
-      <div className="optionTabPanel" role="tabpanel" aria-label="Rules">
+        <div className="optionTabPanel" role="tabpanel" aria-label="Rules">
+          <GameModeSection
+            onAction={onAction}
+            onCustomSelected={() => setTab("map")}
+            state={state}
+            viewerPlayerId={viewerPlayerId}
+          />
+          <SameChoiceAsBoxNote
+            box="mode"
+            boxLabel="Game mode"
+            onOpenBox={onOpenBox}
+          />
 
-      <GameModeSection
-        onAction={onAction}
-        onCustomSelected={() => setTab("map")}
-        state={state}
-        viewerPlayerId={viewerPlayerId}
-      />
-      <SameChoiceAsBoxNote box="mode" boxLabel="Game mode" onOpenBox={onOpenBox} />
-
-      {(() => {
-        const tournamentDefs: {
-          key: string;
-          label: string;
-          on: boolean;
-          hint: string;
-          toggle: () => void;
-        }[] = [
-          {
-            key: "tournamentBanDiplomacy",
-            label: "Ban Diplomacy",
-            on: tournamentRules.banDiplomacy,
-            hint: "Remove Diplomacy from the shared Ability deck (heroes keep a starting copy).",
-            toggle: () => send({ tournamentBanDiplomacy: !tournamentRules.banDiplomacy })
-          },
-          {
-            key: "tournamentBanHourglass",
-            label: "Ban Hourglass",
-            on: tournamentRules.banHourglass,
-            hint: "Remove Hourglass of the Evil Hour from the shared Artifact deck.",
-            toggle: () => send({ tournamentBanHourglass: !tournamentRules.banHourglass })
-          },
-          {
-            key: "tournamentSecondPlayerMorale",
-            label: "2nd player +1 morale",
-            on: tournamentRules.secondPlayerMorale,
-            hint: "The second player gains 1 positive morale at game start.",
-            toggle: () => send({ tournamentSecondPlayerMorale: !tournamentRules.secondPlayerMorale })
-          },
-          {
-            key: "tournamentObservatoryRerotate",
-            label: "Observatory re-rotates a nearby tile",
-            on: tournamentRules.observatoryRerotate,
-            hint: "The Redwood Observatory may rotate one adjacent revealed tile with no Hero on it, then still discovers a face-down tile normally.",
-            toggle: () => send({ tournamentObservatoryRerotate: !tournamentRules.observatoryRerotate })
-          },
-          {
-            // The SAME `split-decks` house rule BINH ticks, shown here as a
-            // Tournament rule too: it is the package's headline (tier-split
-            // Spell / Artifact decks) and was previously invisible — a table
-            // could be "in Tournament rules" with one mixed deck and nothing on
-            // screen said so. Turning any full tournament package on forces it
-            // (adventure-setup's setGameOptions seam); this tick reflects and
-            // may override that.
-            key: "split-decks",
-            label: "Divided Spell & Artifact decks",
-            on: houseRules["split-decks"],
-            hint: "Tournament headline (and the BINH house rule of the same name): separate Basic/Expert Spell decks and Minor/Major/Relic Artifact decks instead of one mixed deck each.",
-            toggle: () => setHouseRule("split-decks", !houseRules["split-decks"])
-          }
-        ];
-        const tournamentOn = tournamentDefs.filter((rule) => rule.on).length;
-        return (
-          <HouseRuleCollapsible
-            crestSrc={assetUrl("/assets/ui/mode-tournament-crest-clear.webp")}
-            crestClassName="houseRuleCollapsibleCrest tournament"
-            id="tournament-rules"
-            onCount={tournamentOn}
-            onToggle={() => setTournamentRulesOpen((v) => !v)}
-            open={tournamentRulesOpen}
-            subtitle="Rulebook Tournament setup (p.54) — each rule toggleable on its own"
-            title="Tournament rules"
-            totalCount={tournamentDefs.length}
-            variant="tournament"
-          >
-            <div className="tournamentRuleGrid">
-              {tournamentDefs.map((rule) => (
-                <button
-                  aria-pressed={rule.on}
-                  className={`tournamentRuleToggle ${rule.on ? "on" : "off"}`}
-                  key={rule.key}
-                  onClick={rule.toggle}
-                  title={rule.hint}
-                  type="button"
-                >
-                  <span aria-hidden="true" className="houseRuleCheck">
-                    {rule.on ? <Check size={13} /> : null}
-                  </span>
-                  <span>
-                    <strong>{rule.label}</strong>
-                    <small>{rule.hint}</small>
-                  </span>
-                  <span className={`houseRuleState ${rule.on ? "on" : "off"}`}>{rule.on ? "ON" : "OFF"}</span>
-                </button>
-              ))}
-            </div>
-            <small className="optionHint">
-              Toggle each Tournament setup rule independently, or use the Tournament mode card above to apply the full
-              competitive package. “Divided Spell &amp; Artifact decks” is the same house rule the BINH list shows (both
-              ticks read and write one setting); turning the whole Tournament package on switches it on for you.
-            </small>
-          </HouseRuleCollapsible>
-        );
-      })()}
-
-      {/* Optional systems clustered together: VP · Event · Morale · Spell Book */}
-      {(() => {
-        const vpOn = options.victoryPoints === true;
-        const vpRoundLimit = options.victoryPointsRoundLimit ?? 0;
-        const presetVpEnabled = options.customMapPreset?.victoryPoints?.enabled === true;
-        const eventsOn = options.events ?? false;
-        const moraleCardsOn = options.moraleCards ?? false;
-        const polishSpellBookOn = houseRules["polish-spell-book"];
-        const spellBookOn = !polishSpellBookOn && (options.spellBook ?? options.ruleset === "binh");
-        const undoMovesOn = options.undoMoves ?? false;
-        const manualGuardControlOn = options.manualGuardControl ?? false;
-        // CO-OP (step 2 engine rule): in co-op NOBODY plays the Neutral units —
-        // `coopDisablesManualNeutralControl` nulls both controllers always. The
-        // row would otherwise sit "On" while doing nothing at all.
-        const coopTable = tableGameMode(options) === "coop";
-        const startingHandMulliganOn = options.startingHandMulligan !== false;
-        const unitExperienceOn = options.unitExperience ?? false;
-        return (
-          <div className="optionalRulesCluster" aria-label="Optional scoring, decks, spell book, and testing aids">
-            <div className="optionalRulesClusterHead">
-              <strong>Optional systems</strong>
-              <small>Victory Points, Event deck, Morale Cards, Spell Book, Unit experience, and Undo moves</small>
-            </div>
-
-            <div className="optionRow">
-              <OptionRowLabel
-                hint="Optional Victory Points scoring: at the round limit (or on victory completion) the player with the most Victory Points wins — the full rulebook scoring table."
-                iconClassName="optionRowIcon crest"
-                iconSrc="/assets/ui/option-victory-points-clear.webp"
-                title="Victory points"
-              />
-              <div className="optionButtons">
-                {BOOLEAN_OPTION_ORDER.map((on) => (
-                  <button
-                    aria-pressed={vpOn === on}
-                    className={vpOn === on ? "selected" : ""}
-                    key={on ? "on" : "off"}
-                    onClick={() => send({ victoryPoints: on })}
-                    title={on ? "Victory Points scoring on" : "Victory Points scoring off"}
-                    type="button"
-                  >
-                    {on ? "On" : "Off"}
-                  </button>
-                ))}
-              </div>
-              {vpOn ? (
-                <div aria-label="Victory points round limit" className="optionButtons" role="group">
-                  {[0, 5, 10, 15, 20, 25].map((rounds) => (
-                    <button
-                      aria-pressed={vpRoundLimit === rounds}
-                      className={vpRoundLimit === rounds ? "selected" : ""}
-                      key={rounds}
-                      onClick={() => send({ victoryPointsRoundLimit: rounds })}
-                      title={rounds === 0 ? "No round limit" : `${rounds} rounds`}
-                      type="button"
-                    >
-                      {rounds === 0 ? "No limit" : rounds}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-              <small className="optionHint">
-                {presetVpEnabled
-                  ? "The designed map already enables Victory Points — its own scoring settings and round limit apply, so this toggle does not govern them."
-                  : "The game ends at the round limit (or when a player completes the victory condition), and the player with the most Victory Points wins — the full rulebook scoring table (heroes defeated, buildings, hero levels, flagged mines/settlements, artifacts). Without a round limit a conquest-style game ends only by completion or last-faction-standing."}
-              </small>
-            </div>
-
-            <div className="optionRow">
-              <OptionRowLabel
-                hint="Fortress expansion optional rule (OFF by default): an Event card is drawn at the start of every Resource round (multiplayer only)"
-                iconClassName="optionRowIcon cardBack"
-                iconSrc="/assets/card_back-events.webp"
-                title="Event deck"
-              />
-              <div className="optionButtons">
-                {BOOLEAN_OPTION_ORDER.map((on) => (
-                  <button
-                    aria-pressed={eventsOn === on}
-                    className={eventsOn === on ? "selected" : ""}
-                    key={String(on)}
-                    onClick={() => send({ events: on })}
-                    title={on ? "Event deck on (Fortress expansion)" : "Event deck off"}
-                    type="button"
-                  >
-                    {on ? "On" : "Off"}
-                  </button>
-                ))}
-              </div>
-              <small className="optionHint">
-                {eventsOn
-                  ? "Each Resource round (after income) the next Event card is drawn and resolved clockwise from its drawer; the drawing player rotates. Multiplayer only — a solo game skips the deck."
-                  : "Off by default. No Event deck — Resource rounds pay income only. Turn it On to add the Fortress-expansion Events (multiplayer only)."}
-              </small>
-            </div>
-
-            <div className="optionRow">
-              <OptionRowLabel
-                hint="Optional rule: replace normal morale tokens with Positive and Negative Morale decks"
-                iconClassName="optionRowIcon cardBack"
-                icons={[
-                  "/assets/morale-cards/morale-positive-back.png",
-                  "/assets/morale-cards/morale-negative-back.png"
-                ]}
-                title="Morale Cards"
-              />
-              <div className="optionButtons">
-                {BOOLEAN_OPTION_ORDER.map((on) => (
-                  <button
-                    aria-pressed={moraleCardsOn === on}
-                    className={moraleCardsOn === on ? "selected" : ""}
-                    key={String(on)}
-                    onClick={() => send({ moraleCards: on })}
-                    title={on ? "Morale Cards on" : "Normal morale tokens"}
-                    type="button"
-                  >
-                    {on ? "On" : "Off"}
-                  </button>
-                ))}
-              </div>
-              <small className="optionHint">
-                {moraleCardsOn
-                  ? "Morale draws cards instead of changing the morale token: positive morale clears one Negative card first, then draws Positive cards (max 2 held)."
-                  : "Normal morale tokens: positive morale can be spent for draw/redraw/reroll, and doubled negative morale discards your hand at turn end."}
-              </small>
-            </div>
-
-            <div className="optionRow">
-              <OptionRowLabel
-                hint="House rule: each player keeps a personal Spell Book to stash, cast and boost Spells from"
-                iconClassName="optionRowIcon spellBook"
-                iconSrc="/assets/ui/spell-book-button.png"
-                title="Spell Book"
-              />
-              <div className="optionButtons">
-                {BOOLEAN_OPTION_ORDER.map((on) => (
-                  <button
-                    aria-pressed={spellBookOn === on}
-                    className={spellBookOn === on ? "selected" : ""}
-                    key={String(on)}
-                    onClick={() =>
-                      send({
-                        spellBook: on,
-                        ...(on ? { houseRules: { "polish-spell-book": false } } : {})
-                      })
-                    }
-                    title={on ? "Spell Book on (house rule)" : "Spell Book off"}
-                    type="button"
-                  >
-                    {on ? "On" : "Off"}
-                  </button>
-                ))}
-              </div>
-              <small className="optionHint">
-                {polishSpellBookOn
-                  ? "Off because Polish Spell Book is selected; the two lifecycles cannot be combined."
-                  : spellBookOn
-                  ? "Each player may set Spells aside in a personal Spell Book to free hand slots, then cast or boost from it (one Book Power boost per turn)."
-                  : "No Spell Book — Spells live only in hand, deck and discard."}
-              </small>
-            </div>
-
-            <div className="optionRow undoMovesRow">
-              <OptionRowLabel
-                hint="Testing/debug aid (OFF by default): lets a player roll the game back to before a recent action, so bugs are easier to reproduce and hunt"
-                iconClassName="optionRowIcon crest"
-                iconSrc="/assets/ui/option-undo-moves-clear.webp"
-                title="Undo moves (testing)"
-              />
-              <div className="optionButtons">
-                {BOOLEAN_OPTION_ORDER.map((on) => (
-                  <button
-                    aria-pressed={undoMovesOn === on}
-                    className={undoMovesOn === on ? "selected" : ""}
-                    key={String(on)}
-                    onClick={() => send({ undoMoves: on })}
-                    title={on ? "Undo moves on (testing aid)" : "Undo moves off"}
-                    type="button"
-                  >
-                    {on ? "On" : "Off"}
-                  </button>
-                ))}
-              </div>
-              <small className="optionHint">
-                {undoMovesOn
-                  ? "Debug/testing only: an Undo button on the map rolls the whole game back to the state before a recent action (up to the last 10). Not for competitive play — every rewind is announced in the feed."
-                  : "Off by default. Turn it On only for manual testing / bug-hunting; it exposes a map Undo button that rewinds recent actions."}
-              </small>
-            </div>
-
-            <div className="optionRow manualGuardControlRow">
-              <OptionRowLabel
-                hint="Fight the Neutral guards yourself: in your own Neutral combats YOU command each guard (it must still attack when it can; with the Polish Wait rule it may Wait instead, but its Waited re-activation must attack) — or press the automatic button to let the rulebook AI play that guard"
-                iconClassName="optionRowIcon crest"
-                iconSrc="/assets/spell-icons/bloodlust.png"
-                title="Manual guard control"
-              />
-              <div className="optionButtons">
-                {BOOLEAN_OPTION_ORDER.map((on) => (
-                  <button
-                    aria-pressed={manualGuardControlOn === on}
-                    className={manualGuardControlOn === on ? "selected" : ""}
-                    disabled={coopTable}
-                    key={String(on)}
-                    onClick={() => send({ manualGuardControl: on })}
-                    title={
-                      coopTable
-                        ? COOP_NEUTRAL_CONTROL_DISABLED_REASON
-                        : on
-                          ? "Manual guard control on"
-                          : "Manual guard control off"
-                    }
-                    type="button"
-                  >
-                    {on ? "On" : "Off"}
-                  </button>
-                ))}
-              </div>
-              <small className="optionHint">
-                {coopTable
-                  ? COOP_NEUTRAL_CONTROL_DISABLED_REASON
-                  : manualGuardControlOn
-                    ? "You play the Neutral units in your own guard and Creature-Bank fights — same must-attack discipline as PvP Neutral Control — with a \u201cLet the unit act\u201d button to hand any single guard back to the automatic player. PvP Neutral Control wins when both modes are on."
-                    : "Off: the rulebook Neutral player plays the guards automatically, exactly as usual."}
-              </small>
-            </div>
-
-            <div className="optionRow startingHandMulliganRow">
-              <OptionRowLabel
-                hint="Default ON: after you fill your hand to the limit (keeping or ditching a difficulty-bonus artifact), you may discard 0–N cards to your deck and redraw that many. OFF: only the fill step — ditch bonus artifact(s) or keep them, then draw to 4; no full-hand Mulligan."
-                iconClassName="optionRowIcon crest"
-                iconSrc="/assets/spell-icons/view_air.png"
-                title="First-round hand Mulligan"
-              />
-              <div className="optionButtons">
-                {BOOLEAN_OPTION_ORDER.map((on) => (
-                  <button
-                    aria-pressed={startingHandMulliganOn === on}
-                    className={startingHandMulliganOn === on ? "selected" : ""}
-                    key={String(on)}
-                    onClick={() => send({ startingHandMulligan: on })}
-                    title={on ? "First-round hand Mulligan on" : "First-round hand Mulligan off"}
-                    type="button"
-                  >
-                    {on ? "On" : "Off"}
-                  </button>
-                ))}
-              </div>
-              <small className="optionHint">
-                {startingHandMulliganOn
-                  ? "On (default): fill to hand limit first (you may ditch a difficulty-bonus artifact), then Mulligan — discard 0–N cards to the bottom of your deck and draw that many."
-                  : "Off: fill to hand limit only — keep or ditch difficulty-bonus card(s), then draw up to 4. No second full-hand Mulligan. Later rounds discard normally."}
-              </small>
-            </div>
-
-            <div className="optionRow unitExperienceRow">
-              <OptionRowLabel
-                hint="WoG Unit Experience (board adaptation): surviving army units gain XP and veteran ranks; Drill is free at Towns, Settlements and Random Towns, or costs 1 movement elsewhere"
-                iconClassName="optionRowIcon crest"
-                iconSrc="/assets/spell-icons/slayer.png"
-                title="Unit experience"
-              />
-              <div className="optionButtons">
-                {BOOLEAN_OPTION_ORDER.map((on) => (
-                  <button
-                    aria-pressed={unitExperienceOn === on}
-                    className={unitExperienceOn === on ? "selected" : ""}
-                    key={on ? "on" : "off"}
-                    onClick={() => send({ unitExperience: on })}
-                    title={on ? "Unit experience on" : "Unit experience off"}
-                    type="button"
-                  >
-                    {on ? "On" : "Off"}
-                  </button>
-                ))}
-              </div>
-              <small className="optionHint">
-                {unitExperienceOn
-                  ? "Survivors of won battles earn XP (guard difficulty / bank size / 2 for PvP), plus +1 against Veteran neutral-owned guards or +2 against Elite. Player-controlled recruited Neutrals always use this XP system. Reinforcing halves XP; Stack layers cost 1 XP. Drill costs 1 gold for bronze or recruited Neutral, 2 for silver, and 3 for gold; heroes may Drill 1/2/3 times per round at levels I/IV/VII."
-                  : "Off by default. Also available as a Wake of Gods module — units level up like in the WoG Unit Experience System, adapted to the board game."}
-              </small>
-            </div>
-          </div>
-        );
-      })()}
-
-      <HouseRulesSection
-        creatureBanksEnabled={options.creatureBanks ?? true}
-        houseRules={houseRules}
-        setHouseRule={setHouseRule}
-        setHouseRules={setHouseRules}
-      />
-      </div>
-      ) : null}
-
-      {tab === "play" ? (
-      <div className="optionTabPanel" role="tabpanel" aria-label="Play">
-
-      {(() => {
-        const victoryMode = options.victoryMode ?? "conquest";
-        return (
-          <div className="optionRow">
-            <small title="How this game is won">Win condition</small>
-            <div className="optionButtons">
-              {(["conquest", "grail", "dragon-hunt", "dragon-conqueror"] as const).map((mode) => (
-                <button
-                  aria-pressed={victoryMode === mode}
-                  className={victoryMode === mode ? "selected" : ""}
-                  disabled={mapOwnsGrailOrUtopia && mode !== "conquest"}
-                  key={mode}
-                  onClick={() => send({ victoryMode: mode })}
-                  title={
-                    mapOwnsGrailOrUtopia && mode !== "conquest"
-                      ? "Unavailable: the selected map already contains Hidden Grail / Dragon Utopia fields."
-                      : VICTORY_MODE_DESCRIPTIONS[mode]
-                  }
-                  type="button"
-                >
-                  {VICTORY_MODE_LABELS[mode]}
-                </button>
-              ))}
-            </div>
-            <small className="optionHint">
-              {mapOwnsGrailOrUtopia
-                ? "This map already owns its Hidden Grail / Dragon Utopia fields. Holy Grail, Dragon Hunt and Dragon Conqueror cannot add a second objective; use Conquest, custom wins, or Victory Points."
-                : VICTORY_MODE_DESCRIPTIONS[victoryMode]}
-            </small>
-          </div>
-        );
-      })()}
-
-      {(() => {
-        // The Dragon Utopia guards: either the explicit four-dragon scenario
-        // party or the complete Field Difficulty table composition.
-        const victoryMode = options.victoryMode ?? "conquest";
-        if (victoryMode !== "dragon-hunt" && victoryMode !== "dragon-conqueror") {
-          return null;
-        }
-        const guards = options.dragonUtopiaGuards ?? "by-difficulty";
-        return (
-          <div className="optionRow">
-            <small title="How the Dragon Utopia objective is guarded">Dragon Utopia guards</small>
-            <div className="optionButtons">
-              <button
-                aria-pressed={guards === "four"}
-                className={guards === "four" ? "selected" : ""}
-                onClick={() => send({ dragonUtopiaGuards: "four" })}
-                title="The full four-dragon party — Azure, Rust, Crystal and Faerie"
-                type="button"
+          {(() => {
+            const tournamentDefs: {
+              key: string;
+              label: string;
+              on: boolean;
+              hint: string;
+              toggle: () => void;
+            }[] = [
+              {
+                key: "tournamentBanDiplomacy",
+                label: "Ban Diplomacy",
+                on: tournamentRules.banDiplomacy,
+                hint: "Remove Diplomacy from the shared Ability deck (heroes keep a starting copy).",
+                toggle: () =>
+                  send({
+                    tournamentBanDiplomacy: !tournamentRules.banDiplomacy,
+                  }),
+              },
+              {
+                key: "tournamentBanHourglass",
+                label: "Ban Hourglass",
+                on: tournamentRules.banHourglass,
+                hint: "Remove Hourglass of the Evil Hour from the shared Artifact deck.",
+                toggle: () =>
+                  send({
+                    tournamentBanHourglass: !tournamentRules.banHourglass,
+                  }),
+              },
+              {
+                key: "tournamentSecondPlayerMorale",
+                label: "2nd player +1 morale",
+                on: tournamentRules.secondPlayerMorale,
+                hint: "The second player gains 1 positive morale at game start.",
+                toggle: () =>
+                  send({
+                    tournamentSecondPlayerMorale:
+                      !tournamentRules.secondPlayerMorale,
+                  }),
+              },
+              {
+                key: "tournamentMoraleSearchAgain",
+                label: "Morale: Search again",
+                on: tournamentRules.moraleSearchAgain,
+                hint: "During any Search, spend a positive Morale token to discard all revealed cards and perform that Search again.",
+                toggle: () =>
+                  send({
+                    tournamentMoraleSearchAgain:
+                      !tournamentRules.moraleSearchAgain,
+                  }),
+              },
+              {
+                key: "tournamentRemovedArtifactsVp",
+                label: "Removed Artifacts still count for VP",
+                on: tournamentRules.removedArtifactsVp,
+                hint: "Keep removed Artifact cards beside your deck; they still count toward your final Victory Points score.",
+                toggle: () =>
+                  send({
+                    tournamentRemovedArtifactsVp:
+                      !tournamentRules.removedArtifactsVp,
+                  }),
+              },
+              {
+                key: "tournamentObservatoryRerotate",
+                label: "Observatory re-rotates a nearby tile",
+                on: tournamentRules.observatoryRerotate,
+                hint: "The Redwood Observatory may rotate one adjacent revealed tile with no Hero on it, then still discovers a face-down tile normally.",
+                toggle: () =>
+                  send({
+                    tournamentObservatoryRerotate:
+                      !tournamentRules.observatoryRerotate,
+                  }),
+              },
+              {
+                // The SAME `split-decks` house rule BINH ticks, shown here as a
+                // Tournament rule too: it is the package's headline (tier-split
+                // Spell / Artifact decks) and was previously invisible — a table
+                // could be "in Tournament rules" with one mixed deck and nothing on
+                // screen said so. Turning any full tournament package on forces it
+                // (adventure-setup's setGameOptions seam); this tick reflects and
+                // may override that.
+                key: "split-decks",
+                label: "Divided Spell & Artifact decks",
+                on: houseRules["split-decks"],
+                hint: "Tournament headline (and the BINH house rule of the same name): separate Basic/Expert Spell decks and Minor/Major/Relic Artifact decks instead of one mixed deck each.",
+                toggle: () =>
+                  setHouseRule("split-decks", !houseRules["split-decks"]),
+              },
+            ];
+            const tournamentOn = tournamentDefs.filter(
+              (rule) => rule.on,
+            ).length;
+            return (
+              <HouseRuleCollapsible
+                crestSrc={assetUrl(
+                  "/assets/ui/mode-tournament-crest-clear.webp",
+                )}
+                crestClassName="houseRuleCollapsibleCrest tournament"
+                id="tournament-rules"
+                onCount={tournamentOn}
+                onToggle={() => setTournamentRulesOpen((v) => !v)}
+                open={tournamentRulesOpen}
+                subtitle="Rulebook Tournament setup (p.54) — each rule toggleable on its own"
+                title="Tournament rules"
+                totalCount={tournamentDefs.length}
+                variant="tournament"
               >
-                4 dragons
-              </button>
-              <button
-                aria-pressed={guards === "by-difficulty"}
-                className={guards === "by-difficulty" ? "selected" : ""}
-                onClick={() => send({ dragonUtopiaGuards: "by-difficulty" })}
-                title="Use the full Field Difficulty table composition (Hard VII: 1 golden + 2 azure)"
-                type="button"
-              >
-                Difficulty table
-              </button>
-            </div>
-            <small className="optionHint">
-              {guards === "four"
-                ? "Four dragons guard the Utopia — Azure, Rust, Crystal and Faerie. The featured lead is a random Azure or Rust Dragon."
-                : "The complete difficulty row is used, including tiers (Hard VII: 1 golden + 2 azure)."}
-            </small>
-          </div>
-        );
-      })()}
-
-      {(() => {
-        // Custom win conditions — rendered HERE, directly beside the Win
-        // condition selector above, so the extra early-end triggers live with
-        // the rest of the victory setup. The map's own list is read-only (the
-        // lobby can only ADD, never remove a map-authored one) plus the
-        // host-added list for THIS game. The first player to satisfy any
-        // condition wins.
-        const mapConditions = options.customMapPreset?.customWinConditions ?? [];
-        const hostConditions = options.customWinConditions ?? [];
-        const effective = mergeCustomWinConditions(mapConditions, hostConditions);
-        const atCap = effective.length >= MAX_CUSTOM_WIN_CONDITIONS;
-        const sendConditions = (nextConditions: CustomWinCondition[]) =>
-          send({ customWinConditions: nextConditions });
-        const addCondition = () => {
-          if (atCap) {
-            return;
-          }
-          sendConditions([...hostConditions, defaultCustomWinCondition("control-towns")]);
-        };
-        const updateCondition = (index: number, condition: CustomWinCondition) =>
-          sendConditions(hostConditions.map((entry, i) => (i === index ? condition : entry)));
-        const removeCondition = (index: number) =>
-          sendConditions(hostConditions.filter((_, i) => i !== index));
-        return (
-          <div className="optionRow">
-            <small title="Extra early-end triggers: the first player to satisfy any listed condition wins immediately, on top of the victory mode. Map-set conditions can't be removed here — you can only add your own for this game.">
-              Custom win condition
-            </small>
-            <div className="customWinConditions" role="group" aria-label="Custom win conditions">
-              {mapConditions.map((condition, index) => (
-                <div className="customWinConditionRow mapSet" key={`map-${index}`}>
-                  <span className="customWinConditionText">🏁 {describeCustomWinCondition(condition)}</span>
-                  <span className="customWinConditionTag">map</span>
-                </div>
-              ))}
-              {hostConditions.map((condition, index) => {
-                const option = CUSTOM_WIN_CONDITION_OPTIONS.find((entry) => entry.id === condition.kind);
-                const paramValue =
-                  condition.kind === "hero-level"
-                    ? condition.level
-                    : condition.kind === "gold"
-                      ? condition.amount
-                      : "count" in condition
-                        ? condition.count
-                        : null;
-                return (
-                  <div className="customWinConditionRow" key={`host-${index}`}>
-                    <select
-                      aria-label={`Custom win condition ${index + 1} kind`}
-                      onChange={(event) =>
-                        updateCondition(
-                          index,
-                          defaultCustomWinCondition(event.target.value as CustomWinCondition["kind"])
-                        )
-                      }
-                      value={condition.kind}
-                    >
-                      {CUSTOM_WIN_CONDITION_OPTIONS.map((entry) => (
-                        <option key={entry.id} value={entry.id}>
-                          {entry.label}
-                        </option>
-                      ))}
-                    </select>
-                    {option?.param && paramValue !== null ? (
-                      <input
-                        aria-label={`Custom win condition ${index + 1} value`}
-                        max={option.param.max}
-                        min={option.param.min}
-                        onChange={(event) => {
-                          const raw = Number(event.target.value) || option.param!.min;
-                          const clamped = Math.max(option.param!.min, Math.min(option.param!.max, raw));
-                          updateCondition(index, {
-                            ...condition,
-                            [option.param!.field]: clamped
-                          } as CustomWinCondition);
-                        }}
-                        type="number"
-                        value={paramValue}
-                      />
-                    ) : null}
+                <div className="tournamentRuleGrid">
+                  {tournamentDefs.map((rule) => (
                     <button
-                      aria-label={`Remove custom win condition ${index + 1}`}
-                      className="customWinConditionRemove"
-                      onClick={() => removeCondition(index)}
+                      aria-pressed={rule.on}
+                      className={`tournamentRuleToggle ${rule.on ? "on" : "off"}`}
+                      key={rule.key}
+                      onClick={rule.toggle}
+                      title={rule.hint}
                       type="button"
                     >
-                      <X size={13} aria-hidden="true" />
-                    </button>
-                  </div>
-                );
-              })}
-              <button
-                className="customWinConditionAdd"
-                disabled={atCap}
-                onClick={addCondition}
-                type="button"
-              >
-                <Plus size={13} aria-hidden="true" /> Add win condition
-              </button>
-            </div>
-            <small className="optionHint">
-              {effective.length === 0
-                ? "None set. Add a condition and the first player to reach it wins immediately — an extra early-end trigger on top of the victory mode."
-                : "The first player to satisfy any condition wins immediately. Map-set conditions can't be removed here — you can only add your own for this game."}
-            </small>
-            {/* CO-OP (step 6): "slay N Raid Bosses" needs a Raid Bosses module —
-                with none on, no lair is ever placed, so the engine DROPS the
-                condition at build with a public feed line. Say so here, before
-                the start, instead of letting it vanish. */}
-            {effective.some((condition) => condition.kind === "slay-raid-boss") &&
-            !raidBossModuleEnabled(options) ? (
-              <small className="optionHint">
-                “Slay the raid boss(es)” needs Raid Bosses — enable the module under Mod (WOG or Anime) or this
-                condition will be dropped at start.
-              </small>
-            ) : null}
-          </div>
-        );
-      })()}
-
-      {(() => {
-        // WHO GOES FIRST — a match-level rule, so it lives beside the win
-        // conditions. Random (default) is the rulebook setup-step-22 Attack-die
-        // roll + its ceremony; Chosen order lets the host write the whole turn
-        // order and skips the roll entirely. The displayed order is re-derived
-        // from the OPEN seats through the engine's own sanitiser, so a stale
-        // stored list (a closed seat) can never render a ghost row.
-        const seatIds = lobby.seats.map((seat) => seat.playerId);
-        const orderMode = options.playerOrderMode ?? "random";
-        const order = sanitizeManualPlayerOrder(seatIds, options.manualPlayerOrder);
-        const seatLabel = (playerId: PlayerId) =>
-          state.players[playerId]?.name ??
-          lobby.seats.find((seat) => seat.playerId === playerId)?.name ??
-          playerId;
-        const moveSeat = (index: number, delta: number) => {
-          const target = index + delta;
-          if (target < 0 || target >= order.length) {
-            return;
-          }
-          const next = [...order];
-          const [moved] = next.splice(index, 1);
-          next.splice(target, 0, moved!);
-          send({ manualPlayerOrder: next });
-        };
-        return (
-          // Styling is BORROWED from the neighbouring Custom-win-condition
-          // section (`customWinConditions` / `customWinConditionRow` /
-          // `customWinConditionText` / `customWinConditionAdd`) rather than
-          // hand-rolled: the two are the same "stacked list of small rows with
-          // pill buttons" shape, and reusing proven values keeps this row from
-          // being the one unstyled thing in the panel. The `playerOrder*`
-          // classes alongside them are semantic/test hooks with no CSS of their
-          // own.
-          <div className="optionRow playerOrderRow">
-            <small title="Who takes the first turn: the rulebook Attack-die roll, or an order you set yourself">
-              Player order
-            </small>
-            <div className="optionButtons">
-              {(["random", "manual"] as const).map((mode) => (
-                <button
-                  aria-pressed={orderMode === mode}
-                  className={orderMode === mode ? "selected" : ""}
-                  key={mode}
-                  onClick={() => send({ playerOrderMode: mode })}
-                  title={
-                    mode === "random"
-                      ? "Roll the Attack die for the starting player (rulebook setup step 22)"
-                      : "Set the whole turn order yourself — no roll, no opening ceremony"
-                  }
-                  type="button"
-                >
-                  {mode === "random" ? "Random roll" : "Chosen order"}
-                </button>
-              ))}
-            </div>
-            {orderMode === "manual" ? (
-              <div className="customWinConditions playerOrderList" role="group" aria-label="Player order">
-                {order.map((playerId, index) => (
-                  <div className="customWinConditionRow playerOrderEntry" key={playerId}>
-                    <span className="customWinConditionText playerOrderSeat">
-                      {index + 1}. {seatLabel(playerId)}
-                    </span>
-                    <button
-                      aria-label={`Move ${seatLabel(playerId)} earlier`}
-                      className="customWinConditionAdd"
-                      disabled={index === 0}
-                      onClick={() => moveSeat(index, -1)}
-                      type="button"
-                    >
-                      ↑
-                    </button>
-                    <button
-                      aria-label={`Move ${seatLabel(playerId)} later`}
-                      className="customWinConditionAdd"
-                      disabled={index === order.length - 1}
-                      onClick={() => moveSeat(index, 1)}
-                      type="button"
-                    >
-                      ↓
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-            <small className="optionHint">
-              {orderMode === "manual"
-                ? "The game uses exactly this order — no Attack die is rolled and the opening first-player ceremony is skipped (a feed line announces the order instead). Position 1 also takes map position 1."
-                : "Default: the Attack die decides the first player after the starting bonuses, announced by the opening ceremony."}
-            </small>
-          </div>
-        );
-      })()}
-
-      {(() => {
-        const pvpTroopLoss = options.pvpTroopLoss ?? "normal";
-        return (
-          <div className="optionRow">
-            <small title="Whether player-vs-player Combat costs the fighters their dead units">PvP combat</small>
-            <div className="optionButtons">
-              {(["normal", "none"] as const).map((mode) => (
-                <button
-                  aria-pressed={pvpTroopLoss === mode}
-                  className={pvpTroopLoss === mode ? "selected" : ""}
-                  key={mode}
-                  onClick={() => send({ pvpTroopLoss: mode })}
-                  title={PVP_TROOP_LOSS_DESCRIPTIONS[mode]}
-                  type="button"
-                >
-                  {PVP_TROOP_LOSS_LABELS[mode]}
-                </button>
-              ))}
-            </div>
-            <small className="optionHint">{PVP_TROOP_LOSS_DESCRIPTIONS[pvpTroopLoss]}</small>
-          </div>
-        );
-      })()}
-
-      {(() => {
-        const neutralControlOn = options.pvpNeutralControl ?? false;
-        const mustAttackOn = options.pvpNeutralControlMustAttack ?? true;
-        // Same co-op engine rule as Manual guard control above.
-        const coopTable = tableGameMode(options) === "coop";
-        return (
-          <>
-            <div className="optionRow">
-              <small title="Optional mode (OFF by default): the next seat clockwise plays the Neutral units in every Neutral combat, including human/computer single-player tables">
-                PvP Neutral Control
-              </small>
-              <div className="optionButtons">
-                {BOOLEAN_OPTION_ORDER.map((on) => (
-                  <button
-                    aria-pressed={neutralControlOn === on}
-                    className={neutralControlOn === on ? "selected" : ""}
-                    disabled={coopTable}
-                    key={String(on)}
-                    onClick={() => send({ pvpNeutralControl: on })}
-                    title={
-                      coopTable
-                        ? COOP_NEUTRAL_CONTROL_DISABLED_REASON
-                        : on
-                          ? "A human plays the Neutral units (next player clockwise)"
-                          : "The Neutral AI plays the guards"
-                    }
-                    type="button"
-                  >
-                    {on ? "On" : "Off"}
-                  </button>
-                ))}
-              </div>
-              <small className="optionHint">
-                {coopTable
-                  ? COOP_NEUTRAL_CONTROL_DISABLED_REASON
-                  : neutralControlOn
-                  ? "Every Neutral combat becomes PvP-like: the NEXT seat clockwise plays the guards — moving and attacking each one, breaking activation ties, and answering ability targets and dice rerolls. In single-player, you control guards in computer heroes' fights; computer seats control them in yours. A one-seat game keeps the Neutral AI."
-                  : "Off by default. The Neutral AI plays the guards by the rulebook (same-tier priority, nearest target); the fighting player only breaks its ties."}
-              </small>
-            </div>
-            {neutralControlOn ? (
-              <div className="optionRow">
-                <small title="Sub-rule of PvP Neutral Control: whether the guards keep the rulebook 'must attack' behaviour">
-                  Neutral Control — guards
-                </small>
-                <div className="optionButtons">
-                  {BOOLEAN_OPTION_ORDER.map((on) => (
-                    <button
-                      aria-pressed={mustAttackOn === on}
-                      className={mustAttackOn === on ? "selected" : ""}
-                      disabled={coopTable}
-                      key={String(on)}
-                      onClick={() => send({ pvpNeutralControlMustAttack: on })}
-                      title={
-                        coopTable
-                          ? COOP_NEUTRAL_CONTROL_DISABLED_REASON
-                          : on
-                            ? "Guards must attack when they can — no defending or stalling"
-                            : "Guards play with no constraint, exactly like the player's own units"
-                      }
-                      type="button"
-                    >
-                      {on ? "Must attack" : "Free"}
+                      <span aria-hidden="true" className="houseRuleCheck">
+                        {rule.on ? <Check size={13} /> : null}
+                      </span>
+                      <span>
+                        <strong>{rule.label}</strong>
+                        <small>{rule.hint}</small>
+                      </span>
+                      <span
+                        className={`houseRuleState ${rule.on ? "on" : "off"}`}
+                      >
+                        {rule.on ? "ON" : "OFF"}
+                      </span>
                     </button>
                   ))}
                 </div>
                 <small className="optionHint">
-                  {coopTable
-                    ? COOP_NEUTRAL_CONTROL_DISABLED_REASON
-                    : mustAttackOn
-                    ? "Rulebook spirit: a guard that can reach an enemy must attack it (pick which), may not Defend, and may only step closer when no attack is reachable — no buying time until the round limit."
-                    : "No constraint: the controlling player moves, defends, attacks or holds each guard entirely freely, exactly like their own units in PvP."}
+                  Toggle each Tournament setup rule independently, or use the
+                  Tournament mode card above to apply the full competitive
+                  package. “Divided Spell &amp; Artifact decks” is the same
+                  house rule the BINH list shows (both ticks read and write one
+                  setting); turning the whole Tournament package on switches it
+                  on for you.
+                </small>
+              </HouseRuleCollapsible>
+            );
+          })()}
+
+          {/* Optional systems clustered together: VP · Event · Morale · Spell Book */}
+          {(() => {
+            const vpOn = options.victoryPoints === true;
+            const vpRoundLimit = options.victoryPointsRoundLimit ?? 0;
+            const presetVpEnabled =
+              options.customMapPreset?.victoryPoints?.enabled === true;
+            const eventsOn = options.events ?? false;
+            const moraleCardsOn = options.moraleCards ?? false;
+            const polishSpellBookOn = houseRules["polish-spell-book"];
+            const spellBookOn =
+              !polishSpellBookOn &&
+              (options.spellBook ?? options.ruleset === "binh");
+            const undoMovesOn = options.undoMoves ?? false;
+            const manualGuardControlOn = options.manualGuardControl ?? false;
+            // CO-OP (step 2 engine rule): in co-op NOBODY plays the Neutral units —
+            // `coopDisablesManualNeutralControl` nulls both controllers always. The
+            // row would otherwise sit "On" while doing nothing at all.
+            const coopTable = tableGameMode(options) === "coop";
+            const startingHandMulliganOn =
+              options.startingHandMulligan !== false;
+            const unitExperienceOn = options.unitExperience ?? false;
+            return (
+              <div
+                className="optionalRulesCluster"
+                aria-label="Optional scoring, decks, spell book, and testing aids"
+              >
+                <div className="optionalRulesClusterHead">
+                  <strong>Optional systems</strong>
+                  <small>
+                    Victory Points, Event deck, Morale Cards, Spell Book, Unit
+                    experience, and Undo moves
+                  </small>
+                </div>
+
+                <div className="optionRow">
+                  <OptionRowLabel
+                    hint="Optional Victory Points scoring: at the round limit (or on victory completion) the player with the most Victory Points wins — the full rulebook scoring table."
+                    iconClassName="optionRowIcon crest"
+                    iconSrc="/assets/ui/option-victory-points-clear.webp"
+                    title="Victory points"
+                  />
+                  <div className="optionButtons">
+                    {BOOLEAN_OPTION_ORDER.map((on) => (
+                      <button
+                        aria-pressed={vpOn === on}
+                        className={vpOn === on ? "selected" : ""}
+                        key={on ? "on" : "off"}
+                        onClick={() => send({ victoryPoints: on })}
+                        title={
+                          on
+                            ? "Victory Points scoring on"
+                            : "Victory Points scoring off"
+                        }
+                        type="button"
+                      >
+                        {on ? "On" : "Off"}
+                      </button>
+                    ))}
+                  </div>
+                  {vpOn ? (
+                    <div
+                      aria-label="Victory points round limit"
+                      className="optionButtons"
+                      role="group"
+                    >
+                      {[0, 5, 10, 15, 20, 25].map((rounds) => (
+                        <button
+                          aria-pressed={vpRoundLimit === rounds}
+                          className={vpRoundLimit === rounds ? "selected" : ""}
+                          key={rounds}
+                          onClick={() =>
+                            send({ victoryPointsRoundLimit: rounds })
+                          }
+                          title={
+                            rounds === 0 ? "No round limit" : `${rounds} rounds`
+                          }
+                          type="button"
+                        >
+                          {rounds === 0 ? "No limit" : rounds}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                  <small className="optionHint">
+                    {presetVpEnabled
+                      ? "The designed map already enables Victory Points — its own scoring settings and round limit apply, so this toggle does not govern them."
+                      : "The game ends at the round limit (or when a player completes the victory condition), and the player with the most Victory Points wins — the full rulebook scoring table (heroes defeated, buildings, hero levels, flagged mines/settlements, artifacts). Without a round limit a conquest-style game ends only by completion or last-faction-standing."}
+                  </small>
+                </div>
+
+                <div className="optionRow">
+                  <OptionRowLabel
+                    hint="Fortress expansion optional rule (OFF by default): an Event card is drawn at the start of every Resource round (multiplayer only)"
+                    iconClassName="optionRowIcon cardBack"
+                    iconSrc="/assets/card_back-events.webp"
+                    title="Event deck"
+                  />
+                  <div className="optionButtons">
+                    {BOOLEAN_OPTION_ORDER.map((on) => (
+                      <button
+                        aria-pressed={eventsOn === on}
+                        className={eventsOn === on ? "selected" : ""}
+                        key={String(on)}
+                        onClick={() => send({ events: on })}
+                        title={
+                          on
+                            ? "Event deck on (Fortress expansion)"
+                            : "Event deck off"
+                        }
+                        type="button"
+                      >
+                        {on ? "On" : "Off"}
+                      </button>
+                    ))}
+                  </div>
+                  <small className="optionHint">
+                    {eventsOn
+                      ? "Each Resource round (after income) the next Event card is drawn and resolved clockwise from its drawer; the drawing player rotates. Multiplayer only — a solo game skips the deck."
+                      : "Off by default. No Event deck — Resource rounds pay income only. Turn it On to add the Fortress-expansion Events (multiplayer only)."}
+                  </small>
+                </div>
+
+                <div className="optionRow">
+                  <OptionRowLabel
+                    hint="Optional rule: replace normal morale tokens with Positive and Negative Morale decks"
+                    iconClassName="optionRowIcon cardBack"
+                    icons={[
+                      "/assets/morale-cards/morale-positive-back.png",
+                      "/assets/morale-cards/morale-negative-back.png",
+                    ]}
+                    title="Morale Cards"
+                  />
+                  <div className="optionButtons">
+                    {BOOLEAN_OPTION_ORDER.map((on) => (
+                      <button
+                        aria-pressed={moraleCardsOn === on}
+                        className={moraleCardsOn === on ? "selected" : ""}
+                        key={String(on)}
+                        onClick={() => send({ moraleCards: on })}
+                        title={on ? "Morale Cards on" : "Normal morale tokens"}
+                        type="button"
+                      >
+                        {on ? "On" : "Off"}
+                      </button>
+                    ))}
+                  </div>
+                  <small className="optionHint">
+                    {moraleCardsOn
+                      ? "Morale draws cards instead of changing the morale token: positive morale clears one Negative card first, then draws Positive cards (max 2 held)."
+                      : "Normal morale tokens: positive morale can be spent for draw/redraw/reroll, and doubled negative morale discards your hand at turn end."}
+                  </small>
+                </div>
+
+                <div className="optionRow">
+                  <OptionRowLabel
+                    hint="House rule: each player keeps a personal Spell Book to stash, cast and boost Spells from"
+                    iconClassName="optionRowIcon spellBook"
+                    iconSrc="/assets/ui/spell-book-button.png"
+                    title="Spell Book"
+                  />
+                  <div className="optionButtons">
+                    {BOOLEAN_OPTION_ORDER.map((on) => (
+                      <button
+                        aria-pressed={spellBookOn === on}
+                        className={spellBookOn === on ? "selected" : ""}
+                        key={String(on)}
+                        onClick={() =>
+                          send({
+                            spellBook: on,
+                            ...(on
+                              ? { houseRules: { "polish-spell-book": false } }
+                              : {}),
+                          })
+                        }
+                        title={
+                          on ? "Spell Book on (house rule)" : "Spell Book off"
+                        }
+                        type="button"
+                      >
+                        {on ? "On" : "Off"}
+                      </button>
+                    ))}
+                  </div>
+                  <small className="optionHint">
+                    {polishSpellBookOn
+                      ? "Off because Polish Spell Book is selected; the two lifecycles cannot be combined."
+                      : spellBookOn
+                        ? "Each player may set Spells aside in a personal Spell Book to free hand slots, then cast or boost from it (one Book Power boost per turn)."
+                        : "No Spell Book — Spells live only in hand, deck and discard."}
+                  </small>
+                </div>
+
+                <div className="optionRow undoMovesRow">
+                  <OptionRowLabel
+                    hint="Testing/debug aid (OFF by default): lets a player roll the game back to before a recent action, so bugs are easier to reproduce and hunt"
+                    iconClassName="optionRowIcon crest"
+                    iconSrc="/assets/ui/option-undo-moves-clear.webp"
+                    title="Undo moves (testing)"
+                  />
+                  <div className="optionButtons">
+                    {BOOLEAN_OPTION_ORDER.map((on) => (
+                      <button
+                        aria-pressed={undoMovesOn === on}
+                        className={undoMovesOn === on ? "selected" : ""}
+                        key={String(on)}
+                        onClick={() => send({ undoMoves: on })}
+                        title={
+                          on ? "Undo moves on (testing aid)" : "Undo moves off"
+                        }
+                        type="button"
+                      >
+                        {on ? "On" : "Off"}
+                      </button>
+                    ))}
+                  </div>
+                  <small className="optionHint">
+                    {undoMovesOn
+                      ? "Debug/testing only: an Undo button on the map rolls the whole game back to the state before a recent action (up to the last 10). Not for competitive play — every rewind is announced in the feed."
+                      : "Off by default. Turn it On only for manual testing / bug-hunting; it exposes a map Undo button that rewinds recent actions."}
+                  </small>
+                </div>
+
+                <div className="optionRow manualGuardControlRow">
+                  <OptionRowLabel
+                    hint="Fight the Neutral guards yourself: in your own Neutral combats YOU command each guard (it must still attack when it can; with the Polish Wait rule it may Wait instead, but its Waited re-activation must attack) — or press the automatic button to let the rulebook AI play that guard"
+                    iconClassName="optionRowIcon crest"
+                    iconSrc="/assets/spell-icons/bloodlust.png"
+                    title="Manual guard control"
+                  />
+                  <div className="optionButtons">
+                    {BOOLEAN_OPTION_ORDER.map((on) => (
+                      <button
+                        aria-pressed={manualGuardControlOn === on}
+                        className={
+                          manualGuardControlOn === on ? "selected" : ""
+                        }
+                        disabled={coopTable}
+                        key={String(on)}
+                        onClick={() => send({ manualGuardControl: on })}
+                        title={
+                          coopTable
+                            ? COOP_NEUTRAL_CONTROL_DISABLED_REASON
+                            : on
+                              ? "Manual guard control on"
+                              : "Manual guard control off"
+                        }
+                        type="button"
+                      >
+                        {on ? "On" : "Off"}
+                      </button>
+                    ))}
+                  </div>
+                  <small className="optionHint">
+                    {coopTable
+                      ? COOP_NEUTRAL_CONTROL_DISABLED_REASON
+                      : manualGuardControlOn
+                        ? "You play the Neutral units in your own guard and Creature-Bank fights — same must-attack discipline as PvP Neutral Control — with a \u201cLet the unit act\u201d button to hand any single guard back to the automatic player. PvP Neutral Control wins when both modes are on."
+                        : "Off: the rulebook Neutral player plays the guards automatically, exactly as usual."}
+                  </small>
+                </div>
+
+                <div className="optionRow startingHandMulliganRow">
+                  <OptionRowLabel
+                    hint="Default ON: after you fill your hand to the limit (keeping or ditching a difficulty-bonus artifact), you may discard 0–N cards to your deck and redraw that many. OFF: only the fill step — ditch bonus artifact(s) or keep them, then draw to 4; no full-hand Mulligan."
+                    iconClassName="optionRowIcon crest"
+                    iconSrc="/assets/spell-icons/view_air.png"
+                    title="First-round hand Mulligan"
+                  />
+                  <div className="optionButtons">
+                    {BOOLEAN_OPTION_ORDER.map((on) => (
+                      <button
+                        aria-pressed={startingHandMulliganOn === on}
+                        className={
+                          startingHandMulliganOn === on ? "selected" : ""
+                        }
+                        key={String(on)}
+                        onClick={() => send({ startingHandMulligan: on })}
+                        title={
+                          on
+                            ? "First-round hand Mulligan on"
+                            : "First-round hand Mulligan off"
+                        }
+                        type="button"
+                      >
+                        {on ? "On" : "Off"}
+                      </button>
+                    ))}
+                  </div>
+                  <small className="optionHint">
+                    {startingHandMulliganOn
+                      ? "On (default): fill to hand limit first (you may ditch a difficulty-bonus artifact), then Mulligan — discard 0–N cards to the bottom of your deck and draw that many."
+                      : "Off: fill to hand limit only — keep or ditch difficulty-bonus card(s), then draw up to 4. No second full-hand Mulligan. Later rounds discard normally."}
+                  </small>
+                </div>
+
+                <div className="optionRow unitExperienceRow">
+                  <OptionRowLabel
+                    hint="WoG Unit Experience (board adaptation): surviving army units gain XP and veteran ranks; Drill is free at Towns, Settlements and Random Towns, or costs 1 movement elsewhere"
+                    iconClassName="optionRowIcon crest"
+                    iconSrc="/assets/spell-icons/slayer.png"
+                    title="Unit experience"
+                  />
+                  <div className="optionButtons">
+                    {BOOLEAN_OPTION_ORDER.map((on) => (
+                      <button
+                        aria-pressed={unitExperienceOn === on}
+                        className={unitExperienceOn === on ? "selected" : ""}
+                        key={on ? "on" : "off"}
+                        onClick={() => send({ unitExperience: on })}
+                        title={
+                          on ? "Unit experience on" : "Unit experience off"
+                        }
+                        type="button"
+                      >
+                        {on ? "On" : "Off"}
+                      </button>
+                    ))}
+                  </div>
+                  <small className="optionHint">
+                    {unitExperienceOn
+                      ? "Survivors of won battles earn XP (guard difficulty / bank size / 2 for PvP), plus +1 against Veteran neutral-owned guards or +2 against Elite. Player-controlled recruited Neutrals always use this XP system. Reinforcing halves XP; Stack layers cost 1 XP. Drill costs 1 gold for bronze or recruited Neutral, 2 for silver, and 3 for gold; heroes may Drill 1/2/3 times per round at levels I/IV/VII."
+                      : "Off by default. Also available as a Wake of Gods module — units level up like in the WoG Unit Experience System, adapted to the board game."}
+                  </small>
+                </div>
+              </div>
+            );
+          })()}
+
+          <HouseRulesSection
+            creatureBanksEnabled={options.creatureBanks ?? true}
+            houseRules={houseRules}
+            setHouseRule={setHouseRule}
+            setHouseRules={setHouseRules}
+          />
+        </div>
+      ) : null}
+
+      {tab === "play" ? (
+        <div className="optionTabPanel" role="tabpanel" aria-label="Play">
+          {(() => {
+            const victoryMode = options.victoryMode ?? "conquest";
+            return (
+              <div className="optionRow">
+                <small title="How this game is won">Win condition</small>
+                <div className="optionButtons">
+                  {(
+                    [
+                      "conquest",
+                      "grail",
+                      "dragon-hunt",
+                      "dragon-conqueror",
+                    ] as const
+                  ).map((mode) => (
+                    <button
+                      aria-pressed={victoryMode === mode}
+                      className={victoryMode === mode ? "selected" : ""}
+                      disabled={mapOwnsGrailOrUtopia && mode !== "conquest"}
+                      key={mode}
+                      onClick={() => send({ victoryMode: mode })}
+                      title={
+                        mapOwnsGrailOrUtopia && mode !== "conquest"
+                          ? "Unavailable: the selected map already contains Hidden Grail / Dragon Utopia fields."
+                          : VICTORY_MODE_DESCRIPTIONS[mode]
+                      }
+                      type="button"
+                    >
+                      {VICTORY_MODE_LABELS[mode]}
+                    </button>
+                  ))}
+                </div>
+                <small className="optionHint">
+                  {mapOwnsGrailOrUtopia
+                    ? "This map already owns its Hidden Grail / Dragon Utopia fields. Holy Grail, Dragon Hunt and Dragon Conqueror cannot add a second objective; use Conquest, custom wins, or Victory Points."
+                    : VICTORY_MODE_DESCRIPTIONS[victoryMode]}
                 </small>
               </div>
-            ) : null}
-          </>
-        );
-      })()}
+            );
+          })()}
 
-      {(() => {
-        const parallelRounds = Math.max(0, Math.min(MAX_PARALLEL_TURN_ROUNDS, options.parallelTurns ?? 0));
-        const presets = [0, 1, 2, 3, 4, 6] as const;
-        return (
-          <div className="optionRow">
-            <small title="Optional: everyone plays their turns at the same time for the first rounds (multiplayer only)">
-              Parallel turns
-            </small>
-            <div className="optionButtons">
-              {presets.map((rounds) => (
-                <button
-                  aria-pressed={parallelRounds === rounds}
-                  className={parallelRounds === rounds ? "selected" : ""}
-                  key={rounds}
-                  onClick={() => send({ parallelTurns: rounds })}
-                  title={
-                    rounds === 0
-                      ? "Classic one-at-a-time turns"
-                      : `Everyone plays at once for the first ${rounds} round${rounds === 1 ? "" : "s"}`
-                  }
-                  type="button"
+          {(() => {
+            // The Dragon Utopia guards: either the explicit four-dragon scenario
+            // party or the complete Field Difficulty table composition.
+            const victoryMode = options.victoryMode ?? "conquest";
+            if (
+              victoryMode !== "dragon-hunt" &&
+              victoryMode !== "dragon-conqueror"
+            ) {
+              return null;
+            }
+            const guards = options.dragonUtopiaGuards ?? "by-difficulty";
+            return (
+              <div className="optionRow">
+                <small title="How the Dragon Utopia objective is guarded">
+                  Dragon Utopia guards
+                </small>
+                <div className="optionButtons">
+                  <button
+                    aria-pressed={guards === "four"}
+                    className={guards === "four" ? "selected" : ""}
+                    onClick={() => send({ dragonUtopiaGuards: "four" })}
+                    title="The full four-dragon party — Azure, Rust, Crystal and Faerie"
+                    type="button"
+                  >
+                    4 dragons
+                  </button>
+                  <button
+                    aria-pressed={guards === "by-difficulty"}
+                    className={guards === "by-difficulty" ? "selected" : ""}
+                    onClick={() =>
+                      send({ dragonUtopiaGuards: "by-difficulty" })
+                    }
+                    title="Use the full Field Difficulty table composition (Hard VII: 1 golden + 2 azure)"
+                    type="button"
+                  >
+                    Difficulty table
+                  </button>
+                </div>
+                <small className="optionHint">
+                  {guards === "four"
+                    ? "Four dragons guard the Utopia — Azure, Rust, Crystal and Faerie. The featured lead is a random Azure or Rust Dragon."
+                    : "The complete difficulty row is used, including tiers (Hard VII: 1 golden + 2 azure)."}
+                </small>
+              </div>
+            );
+          })()}
+
+          {(() => {
+            // Custom win conditions — rendered HERE, directly beside the Win
+            // condition selector above, so the extra early-end triggers live with
+            // the rest of the victory setup. The map's own list is read-only (the
+            // lobby can only ADD, never remove a map-authored one) plus the
+            // host-added list for THIS game. The first player to satisfy any
+            // condition wins.
+            const mapConditions =
+              options.customMapPreset?.customWinConditions ?? [];
+            const hostConditions = options.customWinConditions ?? [];
+            const effective = mergeCustomWinConditions(
+              mapConditions,
+              hostConditions,
+            );
+            const atCap = effective.length >= MAX_CUSTOM_WIN_CONDITIONS;
+            const sendConditions = (nextConditions: CustomWinCondition[]) =>
+              send({ customWinConditions: nextConditions });
+            const addCondition = () => {
+              if (atCap) {
+                return;
+              }
+              sendConditions([
+                ...hostConditions,
+                defaultCustomWinCondition("control-towns"),
+              ]);
+            };
+            const updateCondition = (
+              index: number,
+              condition: CustomWinCondition,
+            ) =>
+              sendConditions(
+                hostConditions.map((entry, i) =>
+                  i === index ? condition : entry,
+                ),
+              );
+            const removeCondition = (index: number) =>
+              sendConditions(hostConditions.filter((_, i) => i !== index));
+            return (
+              <div className="optionRow">
+                <small title="Extra early-end triggers: the first player to satisfy any listed condition wins immediately, on top of the victory mode. Map-set conditions can't be removed here — you can only add your own for this game.">
+                  Custom win condition
+                </small>
+                <div
+                  className="customWinConditions"
+                  role="group"
+                  aria-label="Custom win conditions"
                 >
-                  {rounds === 0 ? "Off" : `${rounds}`}
-                </button>
-              ))}
-            </div>
-            <small className="optionHint">
-              {parallelRounds > 0
-                ? `Everyone plays at the same time for the first ${parallelRounds} round${parallelRounds === 1 ? "" : "s"} — move, build and end your turn independently; battles and choices still resolve one at a time (quiet moves stay open meanwhile), and shared-deck draws go to whoever acts first. The mode STOPS with a warning — and play turns classic — the moment a PvP battle starts or someone steals another player's mine/settlement (e.g. a View Earth capture; hand discards don't count), or when the period ends. Multiplayer only.`
-                : "Classic turns: one player at a time, in seat order."}
-            </small>
-          </div>
-        );
-      })()}
+                  {mapConditions.map((condition, index) => (
+                    <div
+                      className="customWinConditionRow mapSet"
+                      key={`map-${index}`}
+                    >
+                      <span className="customWinConditionText">
+                        🏁 {describeCustomWinCondition(condition)}
+                      </span>
+                      <span className="customWinConditionTag">map</span>
+                    </div>
+                  ))}
+                  {hostConditions.map((condition, index) => {
+                    const option = CUSTOM_WIN_CONDITION_OPTIONS.find(
+                      (entry) => entry.id === condition.kind,
+                    );
+                    const paramValue =
+                      condition.kind === "hero-level"
+                        ? condition.level
+                        : condition.kind === "gold"
+                          ? condition.amount
+                          : "count" in condition
+                            ? condition.count
+                            : null;
+                    return (
+                      <div
+                        className="customWinConditionRow"
+                        key={`host-${index}`}
+                      >
+                        <select
+                          aria-label={`Custom win condition ${index + 1} kind`}
+                          onChange={(event) =>
+                            updateCondition(
+                              index,
+                              defaultCustomWinCondition(
+                                event.target
+                                  .value as CustomWinCondition["kind"],
+                              ),
+                            )
+                          }
+                          value={condition.kind}
+                        >
+                          {CUSTOM_WIN_CONDITION_OPTIONS.map((entry) => (
+                            <option key={entry.id} value={entry.id}>
+                              {entry.label}
+                            </option>
+                          ))}
+                        </select>
+                        {option?.param && paramValue !== null ? (
+                          <input
+                            aria-label={`Custom win condition ${index + 1} value`}
+                            max={option.param.max}
+                            min={option.param.min}
+                            onChange={(event) => {
+                              const raw =
+                                Number(event.target.value) || option.param!.min;
+                              const clamped = Math.max(
+                                option.param!.min,
+                                Math.min(option.param!.max, raw),
+                              );
+                              updateCondition(index, {
+                                ...condition,
+                                [option.param!.field]: clamped,
+                              } as CustomWinCondition);
+                            }}
+                            type="number"
+                            value={paramValue}
+                          />
+                        ) : null}
+                        <button
+                          aria-label={`Remove custom win condition ${index + 1}`}
+                          className="customWinConditionRemove"
+                          onClick={() => removeCondition(index)}
+                          type="button"
+                        >
+                          <X size={13} aria-hidden="true" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                  <button
+                    className="customWinConditionAdd"
+                    disabled={atCap}
+                    onClick={addCondition}
+                    type="button"
+                  >
+                    <Plus size={13} aria-hidden="true" /> Add win condition
+                  </button>
+                </div>
+                <small className="optionHint">
+                  {effective.length === 0
+                    ? "None set. Add a condition and the first player to reach it wins immediately — an extra early-end trigger on top of the victory mode."
+                    : "The first player to satisfy any condition wins immediately. Map-set conditions can't be removed here — you can only add your own for this game."}
+                </small>
+                {/* CO-OP (step 6): "slay N Raid Bosses" needs a Raid Bosses module —
+                with none on, no lair is ever placed, so the engine DROPS the
+                condition at build with a public feed line. Say so here, before
+                the start, instead of letting it vanish. */}
+                {effective.some(
+                  (condition) => condition.kind === "slay-raid-boss",
+                ) && !raidBossModuleEnabled(options) ? (
+                  <small className="optionHint">
+                    “Slay the raid boss(es)” needs Raid Bosses — enable the
+                    module under Mod (WOG or Anime) or this condition will be
+                    dropped at start.
+                  </small>
+                ) : null}
+              </div>
+            );
+          })()}
 
-      </div>
+          {(() => {
+            // WHO GOES FIRST — a match-level rule, so it lives beside the win
+            // conditions. Random (default) is the rulebook setup-step-22 Attack-die
+            // roll + its ceremony; Chosen order lets the host write the whole turn
+            // order and skips the roll entirely. The displayed order is re-derived
+            // from the OPEN seats through the engine's own sanitiser, so a stale
+            // stored list (a closed seat) can never render a ghost row.
+            const seatIds = lobby.seats.map((seat) => seat.playerId);
+            const orderMode = options.playerOrderMode ?? "random";
+            const order = sanitizeManualPlayerOrder(
+              seatIds,
+              options.manualPlayerOrder,
+            );
+            const seatLabel = (playerId: PlayerId) =>
+              state.players[playerId]?.name ??
+              lobby.seats.find((seat) => seat.playerId === playerId)?.name ??
+              playerId;
+            const moveSeat = (index: number, delta: number) => {
+              const target = index + delta;
+              if (target < 0 || target >= order.length) {
+                return;
+              }
+              const next = [...order];
+              const [moved] = next.splice(index, 1);
+              next.splice(target, 0, moved!);
+              send({ manualPlayerOrder: next });
+            };
+            return (
+              // Styling is BORROWED from the neighbouring Custom-win-condition
+              // section (`customWinConditions` / `customWinConditionRow` /
+              // `customWinConditionText` / `customWinConditionAdd`) rather than
+              // hand-rolled: the two are the same "stacked list of small rows with
+              // pill buttons" shape, and reusing proven values keeps this row from
+              // being the one unstyled thing in the panel. The `playerOrder*`
+              // classes alongside them are semantic/test hooks with no CSS of their
+              // own.
+              <div className="optionRow playerOrderRow">
+                <small title="Who takes the first turn: the rulebook Attack-die roll, or an order you set yourself">
+                  Player order
+                </small>
+                <div className="optionButtons">
+                  {(["random", "manual"] as const).map((mode) => (
+                    <button
+                      aria-pressed={orderMode === mode}
+                      className={orderMode === mode ? "selected" : ""}
+                      key={mode}
+                      onClick={() => send({ playerOrderMode: mode })}
+                      title={
+                        mode === "random"
+                          ? "Roll the Attack die for the starting player (rulebook setup step 22)"
+                          : "Set the whole turn order yourself — no roll, no opening ceremony"
+                      }
+                      type="button"
+                    >
+                      {mode === "random" ? "Random roll" : "Chosen order"}
+                    </button>
+                  ))}
+                </div>
+                {orderMode === "manual" ? (
+                  <div
+                    className="customWinConditions playerOrderList"
+                    role="group"
+                    aria-label="Player order"
+                  >
+                    {order.map((playerId, index) => (
+                      <div
+                        className="customWinConditionRow playerOrderEntry"
+                        key={playerId}
+                      >
+                        <span className="customWinConditionText playerOrderSeat">
+                          {index + 1}. {seatLabel(playerId)}
+                        </span>
+                        <button
+                          aria-label={`Move ${seatLabel(playerId)} earlier`}
+                          className="customWinConditionAdd"
+                          disabled={index === 0}
+                          onClick={() => moveSeat(index, -1)}
+                          type="button"
+                        >
+                          ↑
+                        </button>
+                        <button
+                          aria-label={`Move ${seatLabel(playerId)} later`}
+                          className="customWinConditionAdd"
+                          disabled={index === order.length - 1}
+                          onClick={() => moveSeat(index, 1)}
+                          type="button"
+                        >
+                          ↓
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                <small className="optionHint">
+                  {orderMode === "manual"
+                    ? "The game uses exactly this order — no Attack die is rolled and the opening first-player ceremony is skipped (a feed line announces the order instead). Position 1 also takes map position 1."
+                    : "Default: the Attack die decides the first player after the starting bonuses, announced by the opening ceremony."}
+                </small>
+              </div>
+            );
+          })()}
+
+          {(() => {
+            const pvpTroopLoss = options.pvpTroopLoss ?? "normal";
+            return (
+              <div className="optionRow">
+                <small title="Whether player-vs-player Combat costs the fighters their dead units">
+                  PvP combat
+                </small>
+                <div className="optionButtons">
+                  {(["normal", "none"] as const).map((mode) => (
+                    <button
+                      aria-pressed={pvpTroopLoss === mode}
+                      className={pvpTroopLoss === mode ? "selected" : ""}
+                      key={mode}
+                      onClick={() => send({ pvpTroopLoss: mode })}
+                      title={PVP_TROOP_LOSS_DESCRIPTIONS[mode]}
+                      type="button"
+                    >
+                      {PVP_TROOP_LOSS_LABELS[mode]}
+                    </button>
+                  ))}
+                </div>
+                <small className="optionHint">
+                  {PVP_TROOP_LOSS_DESCRIPTIONS[pvpTroopLoss]}
+                </small>
+              </div>
+            );
+          })()}
+
+          {(() => {
+            const neutralControlOn = options.pvpNeutralControl ?? false;
+            const mustAttackOn = options.pvpNeutralControlMustAttack ?? true;
+            // Same co-op engine rule as Manual guard control above.
+            const coopTable = tableGameMode(options) === "coop";
+            return (
+              <>
+                <div className="optionRow">
+                  <small title="Optional mode (OFF by default): the next seat clockwise plays the Neutral units in every Neutral combat, including human/computer single-player tables">
+                    PvP Neutral Control
+                  </small>
+                  <div className="optionButtons">
+                    {BOOLEAN_OPTION_ORDER.map((on) => (
+                      <button
+                        aria-pressed={neutralControlOn === on}
+                        className={neutralControlOn === on ? "selected" : ""}
+                        disabled={coopTable}
+                        key={String(on)}
+                        onClick={() => send({ pvpNeutralControl: on })}
+                        title={
+                          coopTable
+                            ? COOP_NEUTRAL_CONTROL_DISABLED_REASON
+                            : on
+                              ? "A human plays the Neutral units (next player clockwise)"
+                              : "The Neutral AI plays the guards"
+                        }
+                        type="button"
+                      >
+                        {on ? "On" : "Off"}
+                      </button>
+                    ))}
+                  </div>
+                  <small className="optionHint">
+                    {coopTable
+                      ? COOP_NEUTRAL_CONTROL_DISABLED_REASON
+                      : neutralControlOn
+                        ? "Every Neutral combat becomes PvP-like: the NEXT seat clockwise plays the guards — moving and attacking each one, breaking activation ties, and answering ability targets and dice rerolls. In single-player, you control guards in computer heroes' fights; computer seats control them in yours. A one-seat game keeps the Neutral AI."
+                        : "Off by default. The Neutral AI plays the guards by the rulebook (same-tier priority, nearest target); the fighting player only breaks its ties."}
+                  </small>
+                </div>
+                {neutralControlOn ? (
+                  <div className="optionRow">
+                    <small title="Sub-rule of PvP Neutral Control: whether the guards keep the rulebook 'must attack' behaviour">
+                      Neutral Control — guards
+                    </small>
+                    <div className="optionButtons">
+                      {BOOLEAN_OPTION_ORDER.map((on) => (
+                        <button
+                          aria-pressed={mustAttackOn === on}
+                          className={mustAttackOn === on ? "selected" : ""}
+                          disabled={coopTable}
+                          key={String(on)}
+                          onClick={() =>
+                            send({ pvpNeutralControlMustAttack: on })
+                          }
+                          title={
+                            coopTable
+                              ? COOP_NEUTRAL_CONTROL_DISABLED_REASON
+                              : on
+                                ? "Guards must attack when they can — no defending or stalling"
+                                : "Guards play with no constraint, exactly like the player's own units"
+                          }
+                          type="button"
+                        >
+                          {on ? "Must attack" : "Free"}
+                        </button>
+                      ))}
+                    </div>
+                    <small className="optionHint">
+                      {coopTable
+                        ? COOP_NEUTRAL_CONTROL_DISABLED_REASON
+                        : mustAttackOn
+                          ? "Rulebook spirit: a guard that can reach an enemy must attack it (pick which), may not Defend, and may only step closer when no attack is reachable — no buying time until the round limit."
+                          : "No constraint: the controlling player moves, defends, attacks or holds each guard entirely freely, exactly like their own units in PvP."}
+                    </small>
+                  </div>
+                ) : null}
+              </>
+            );
+          })()}
+
+          {(() => {
+            const parallelRounds = Math.max(
+              0,
+              Math.min(MAX_PARALLEL_TURN_ROUNDS, options.parallelTurns ?? 0),
+            );
+            const presets = [0, 1, 2, 3, 4, 6] as const;
+            return (
+              <div className="optionRow">
+                <small title="Optional: everyone plays their turns at the same time for the first rounds (multiplayer only)">
+                  Parallel turns
+                </small>
+                <div className="optionButtons">
+                  {presets.map((rounds) => (
+                    <button
+                      aria-pressed={parallelRounds === rounds}
+                      className={parallelRounds === rounds ? "selected" : ""}
+                      key={rounds}
+                      onClick={() => send({ parallelTurns: rounds })}
+                      title={
+                        rounds === 0
+                          ? "Classic one-at-a-time turns"
+                          : `Everyone plays at once for the first ${rounds} round${rounds === 1 ? "" : "s"}`
+                      }
+                      type="button"
+                    >
+                      {rounds === 0 ? "Off" : `${rounds}`}
+                    </button>
+                  ))}
+                </div>
+                <small className="optionHint">
+                  {parallelRounds > 0
+                    ? `Everyone plays at the same time for the first ${parallelRounds} round${parallelRounds === 1 ? "" : "s"} — move, build and end your turn independently; battles and choices still resolve one at a time (quiet moves stay open meanwhile), and shared-deck draws go to whoever acts first. The mode STOPS with a warning — and play turns classic — the moment a PvP battle starts or someone steals another player's mine/settlement (e.g. a View Earth capture; hand discards don't count), or when the period ends. Multiplayer only.`
+                    : "Classic turns: one player at a time, in seat order."}
+                </small>
+              </div>
+            );
+          })()}
+        </div>
       ) : null}
 
       {tab === "map" ? (
-      <div className="optionTabPanel" role="tabpanel" aria-label="Map">
-
-      {(() => {
-        const creatureBanksOn = options.creatureBanks ?? true;
-        return (
-          <div className="optionRow">
-            <small title="Naval Battles optional rule: discovering a Far/Near tile with a Blocked Field lets you place a Creature Bank there">
-              Creature Banks
-            </small>
-            <div className="optionButtons">
-              {BOOLEAN_OPTION_ORDER.map((on) => (
-                <button
-                  aria-pressed={creatureBanksOn === on}
-                  className={creatureBanksOn === on ? "selected" : ""}
-                  key={String(on)}
-                  onClick={() => send({ creatureBanks: on })}
-                  title={on ? "Creature Banks on" : "Creature Banks off"}
-                  type="button"
-                >
-                  {on ? "On" : "Off"}
-                </button>
-              ))}
-            </div>
-            <small className="optionHint">
-              {creatureBanksOn
-                ? "Discovering a Far/Near tile with a Blocked Field offers a Creature Bank token — a guarded lair with a scaled reward. Off removes the piles and the offer."
-                : "No Creature Banks — Blocked Fields stay bare."}
-            </small>
-          </div>
-        );
-      })()}
-
-      {(() => {
-        // GLOBAL single-hex Field Overrides (not Monolith/Gate/Whirlpool —
-        // those are basic teleports). Auto-ticks ON when a designed map has
-        // fieldOverride pins. Placement: Auto (random) vs Manual (player picks).
-        // A map-objects content module (WOG New Objects / Anime map objects)
-        // FORCES this on — the engine `setGameOptions` chokepoint flips it, and
-        // the row here renders locked-ON so the requirement is visible.
-        const mapObjectsLocked = mapObjectsModuleActive(options);
-        const fieldOverridesOn = (options.fieldOverrides ?? false) || mapObjectsLocked;
-        const placement = options.fieldOverridePlacement ?? "manual-or-refuse";
-        return (
-          <div className="optionRow" data-testid="option-field-overrides">
-            <small title="Global single-hex replacements with real visit mechanics. Content objects come from packages (Anime mod, future mods, core). Monolith/Whirlpool/Gate/Subterranean Gate are basic teleports and do NOT use this toggle.">
-              Field Overrides
-            </small>
-            <div className="optionButtons">
-              {BOOLEAN_OPTION_ORDER.map((on) => (
-                <button
-                  aria-pressed={fieldOverridesOn === on}
-                  className={fieldOverridesOn === on ? "selected" : ""}
-                  disabled={mapObjectsLocked}
-                  key={String(on)}
-                  onClick={() => send({ fieldOverrides: on })}
-                  title={
-                    mapObjectsLocked
-                      ? "On — WOG/Anime map objects are selected"
-                      : on
-                        ? "Field Overrides on"
-                        : "Field Overrides off"
-                  }
-                  type="button"
-                >
-                  {on ? "On" : "Off"}
-                </button>
-              ))}
-            </div>
-            {fieldOverridesOn ? (
-              <div className="optionButtons" data-testid="option-field-override-placement">
-                {(
-                  [
-                    ["random", "Auto"],
-                    ["manual", "Manual"],
-                    ["manual-or-refuse", "Manual / refuse"]
-                  ] as const
-                ).map(([mode, label]) => (
-                  <button
-                    aria-pressed={placement === mode}
-                    className={placement === mode ? "selected" : ""}
-                    key={mode}
-                    onClick={() => send({ fieldOverridePlacement: mode })}
-                    title={
-                      mode === "random"
-                        ? "Engine places the override on a legal hex automatically"
-                        : mode === "manual"
-                          ? "Discovering player must pick a glowing hex"
-                          : "Discovering player picks a hex or may refuse"
-                    }
-                    type="button"
-                  >
-                    {label}
-                  </button>
-                ))}
+        <div className="optionTabPanel" role="tabpanel" aria-label="Map">
+          {(() => {
+            const creatureBanksOn = options.creatureBanks ?? true;
+            return (
+              <div className="optionRow">
+                <small title="Naval Battles optional rule: discovering a Far/Near tile with a Blocked Field lets you place a Creature Bank there">
+                  Creature Banks
+                </small>
+                <div className="optionButtons">
+                  {BOOLEAN_OPTION_ORDER.map((on) => (
+                    <button
+                      aria-pressed={creatureBanksOn === on}
+                      className={creatureBanksOn === on ? "selected" : ""}
+                      key={String(on)}
+                      onClick={() => send({ creatureBanks: on })}
+                      title={on ? "Creature Banks on" : "Creature Banks off"}
+                      type="button"
+                    >
+                      {on ? "On" : "Off"}
+                    </button>
+                  ))}
+                </div>
+                <small className="optionHint">
+                  {creatureBanksOn
+                    ? "Discovering a Far/Near tile with a Blocked Field offers a Creature Bank token — a guarded lair with a scaled reward. Off removes the piles and the offer."
+                    : "No Creature Banks — Blocked Fields stay bare."}
+                </small>
               </div>
-            ) : null}
-            <small className="optionHint">
-              {mapObjectsLocked
-                ? `On — WOG/Anime map objects are selected, so Field Overrides is required (they place the objects). Placement: ${
-                    placement === "random"
-                      ? "Auto"
-                      : placement === "manual"
-                        ? "Manual pick"
-                        : "Manual pick (or refuse)"
-                  }. Untick the map-objects module to unlock this.`
-                : fieldOverridesOn
-                  ? `On — each Far/Near/Center tile open replaces ≥1 hex with a function object. Placement: ${
-                      placement === "random"
-                        ? "Auto"
-                        : placement === "manual"
-                          ? "Manual pick"
-                          : "Manual pick (or refuse)"
-                    }. Designer pins auto-enable this when the map is picked. Not for Monolith/Gate/Whirlpool/underground gates.`
-                  : "Off — no single-hex overrides. Picking a map that already has override objects will tick this On automatically."}
-            </small>
-          </div>
-        );
-      })()}
+            );
+          })()}
 
-      {(() => {
-        const farTileOpeningOn = options.farTileOpening ?? true;
-        return (
+          {(() => {
+            // GLOBAL single-hex Field Overrides (not Monolith/Gate/Whirlpool —
+            // those are basic teleports). Auto-ticks ON when a designed map has
+            // fieldOverride pins. Placement: Auto (random) vs Manual (player picks).
+            // A map-objects content module (WOG New Objects / Anime map objects)
+            // FORCES this on — the engine `setGameOptions` chokepoint flips it, and
+            // the row here renders locked-ON so the requirement is visible.
+            const mapObjectsLocked = mapObjectsModuleActive(options);
+            const fieldOverridesOn =
+              (options.fieldOverrides ?? false) || mapObjectsLocked;
+            const placement =
+              options.fieldOverridePlacement ?? "manual-or-refuse";
+            return (
+              <div className="optionRow" data-testid="option-field-overrides">
+                <small title="Global single-hex replacements with real visit mechanics. Content objects come from packages (Anime mod, future mods, core). Monolith/Whirlpool/Gate/Subterranean Gate are basic teleports and do NOT use this toggle.">
+                  Field Overrides
+                </small>
+                <div className="optionButtons">
+                  {BOOLEAN_OPTION_ORDER.map((on) => (
+                    <button
+                      aria-pressed={fieldOverridesOn === on}
+                      className={fieldOverridesOn === on ? "selected" : ""}
+                      disabled={mapObjectsLocked}
+                      key={String(on)}
+                      onClick={() => send({ fieldOverrides: on })}
+                      title={
+                        mapObjectsLocked
+                          ? "On — WOG/Anime map objects are selected"
+                          : on
+                            ? "Field Overrides on"
+                            : "Field Overrides off"
+                      }
+                      type="button"
+                    >
+                      {on ? "On" : "Off"}
+                    </button>
+                  ))}
+                </div>
+                {fieldOverridesOn ? (
+                  <div
+                    className="optionButtons"
+                    data-testid="option-field-override-placement"
+                  >
+                    {(
+                      [
+                        ["random", "Auto"],
+                        ["manual", "Manual"],
+                        ["manual-or-refuse", "Manual / refuse"],
+                      ] as const
+                    ).map(([mode, label]) => (
+                      <button
+                        aria-pressed={placement === mode}
+                        className={placement === mode ? "selected" : ""}
+                        key={mode}
+                        onClick={() => send({ fieldOverridePlacement: mode })}
+                        title={
+                          mode === "random"
+                            ? "Engine places the override on a legal hex automatically"
+                            : mode === "manual"
+                              ? "Discovering player must pick a glowing hex"
+                              : "Discovering player picks a hex or may refuse"
+                        }
+                        type="button"
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                <small className="optionHint">
+                  {mapObjectsLocked
+                    ? `On — WOG/Anime map objects are selected, so Field Overrides is required (they place the objects). Placement: ${
+                        placement === "random"
+                          ? "Auto"
+                          : placement === "manual"
+                            ? "Manual pick"
+                            : "Manual pick (or refuse)"
+                      }. Untick the map-objects module to unlock this.`
+                    : fieldOverridesOn
+                      ? `On — each Far/Near/Center tile open replaces ≥1 hex with a function object. Placement: ${
+                          placement === "random"
+                            ? "Auto"
+                            : placement === "manual"
+                              ? "Manual pick"
+                              : "Manual pick (or refuse)"
+                        }. Designer pins auto-enable this when the map is picked. Not for Monolith/Gate/Whirlpool/underground gates.`
+                      : "Off — no single-hex overrides. Picking a map that already has override objects will tick this On automatically."}
+                </small>
+              </div>
+            );
+          })()}
+
+          {(() => {
+            const farTileOpeningOn = options.farTileOpening ?? true;
+            return (
+              <div className="optionRow">
+                <small title="Whether players may open their own Ⅱ–Ⅲ Far tiles onto the map">
+                  Ⅱ–Ⅲ tile opening
+                </small>
+                <div className="optionButtons">
+                  {BOOLEAN_OPTION_ORDER.map((on) => (
+                    <button
+                      aria-pressed={farTileOpeningOn === on}
+                      className={farTileOpeningOn === on ? "selected" : ""}
+                      key={String(on)}
+                      onClick={() => send({ farTileOpening: on })}
+                      title={
+                        on
+                          ? "Players may open Ⅱ–Ⅲ tiles"
+                          : "Players cannot open Ⅱ–Ⅲ tiles"
+                      }
+                      type="button"
+                    >
+                      {on ? "On" : "Off"}
+                    </button>
+                  ))}
+                </div>
+                <small className="optionHint">
+                  {farTileOpeningOn
+                    ? "Each player gets a face-down Ⅱ–Ⅲ Far-tile supply they may place onto the map for 1 movement point. The tile is rolled at random when placed."
+                    : "No Ⅱ–Ⅲ supply — players cannot open Far tiles (use this when the map already includes its Ⅱ–Ⅲ tiles)."}
+                </small>
+              </div>
+            );
+          })()}
+
+          {(() => {
+            const farTileOpeningOn = options.farTileOpening ?? true;
+            if (!farTileOpeningOn) {
+              return null;
+            }
+            const scenarioDefault =
+              scenarioDefinitions[options.scenarioId]?.farTiles.perPlayer ?? 2;
+            const current = options.farTilesPerPlayer ?? scenarioDefault;
+            // 0..MAX_FAR_TILES_PER_PLAYER (the engine clamps to this range).
+            const counts = [0, 1, 2, 3, 4, 5, 6];
+            return (
+              <div className="optionRow">
+                <small title="How many NEW Ⅱ–Ⅲ tiles each player may add to the map (their supply size)">
+                  New Ⅱ–Ⅲ tiles / player
+                </small>
+                <div className="optionButtons">
+                  {counts.map((count) => (
+                    <button
+                      aria-pressed={current === count}
+                      className={current === count ? "selected" : ""}
+                      key={count}
+                      onClick={() => send({ farTilesPerPlayer: count })}
+                      title={`Each player may add ${count} new Ⅱ–Ⅲ tile${count === 1 ? "" : "s"}`}
+                      type="button"
+                    >
+                      {count}
+                    </button>
+                  ))}
+                </div>
+                <small className="optionHint">
+                  Each player may add this many new Ⅱ–Ⅲ tiles (default{" "}
+                  {scenarioDefault}). Set 0 when a designed map already places
+                  its own Ⅱ–Ⅲ tiles. Tile replacement for Ore or a missing
+                  Settlement is controlled only by the BINH house rule in Combat
+                  &amp; map rules.
+                </small>
+              </div>
+            );
+          })()}
+
+          {(() => {
+            const farTileOpeningOn = options.farTileOpening ?? true;
+            if (!farTileOpeningOn) {
+              return null;
+            }
+            const blindChoiceOn = options.farTileBlindChoice ?? false;
+            return (
+              <div className="optionRow">
+                <small title="Optional: before seeing any tile, a player opening a Ⅱ–Ⅲ tile blindly picks whether they want one with a gold mine, one with a valuables mine, or no preference — the random draw is filtered by that pick">
+                  Blind Ⅱ–Ⅲ tile choice
+                </small>
+                <div className="optionButtons">
+                  {BOOLEAN_OPTION_ORDER.map((on) => (
+                    <button
+                      aria-pressed={blindChoiceOn === on}
+                      className={blindChoiceOn === on ? "selected" : ""}
+                      key={String(on)}
+                      onClick={() => send({ farTileBlindChoice: on })}
+                      title={
+                        on
+                          ? "Blind tile-type pick before the draw"
+                          : "No blind pick — draw straight away"
+                      }
+                      type="button"
+                    >
+                      {on ? "On" : "Off"}
+                    </button>
+                  ))}
+                </div>
+                <small className="optionHint">
+                  {blindChoiceOn
+                    ? "Opening a Ⅱ–Ⅲ tile first asks — blindly, before any tile is seen — for a GOLD-mine tile, a VALUABLES-mine tile, or no preference; the random draw then matches the pick (falling back to a plain draw, with a note, when none is left)."
+                    : "Off: opening a Ⅱ–Ⅲ tile draws straight from the pool at random, exactly as usual."}
+                </small>
+              </div>
+            );
+          })()}
+
+          {(() => {
+            const farTileOpeningOn = options.farTileOpening ?? true;
+            if (!farTileOpeningOn) {
+              return null;
+            }
+            const typeChoiceOn = options.farTileTypeChoice ?? false;
+            return (
+              <div className="optionRow">
+                <small title="Optional: the undecided Ⅱ–Ⅲ tile in a player's hand works like a hidden tile — placing it asks WHICH KIND of tile they want (gold mine, crystal mine, stone mine, Settlement) and a random tile of that kind is drawn">
+                  Ⅱ–Ⅲ tile type choice
+                </small>
+                <div className="optionButtons">
+                  {BOOLEAN_OPTION_ORDER.map((on) => (
+                    <button
+                      aria-pressed={typeChoiceOn === on}
+                      className={typeChoiceOn === on ? "selected" : ""}
+                      key={String(on)}
+                      onClick={() => send({ farTileTypeChoice: on })}
+                      title={
+                        on
+                          ? "Choose the tile kind when placing"
+                          : "No type pick — draw straight away"
+                      }
+                      type="button"
+                    >
+                      {on ? "On" : "Off"}
+                    </button>
+                  ))}
+                </div>
+                <small className="optionHint">
+                  {typeChoiceOn
+                    ? "Placing a Ⅱ–Ⅲ tile from your hand asks WHICH KIND you want — a GOLD mine, a CRYSTAL (valuables) mine, a STONE (ore) mine or a SETTLEMENT — and a random tile of that kind is drawn. Only kinds still left in the Ⅱ–Ⅲ supply are offered; with none left the tile is drawn at random with a note. A designed map may narrow the list (e.g. crystal or gold). Supersedes the blind choice above while on."
+                    : "Off: opening a Ⅱ–Ⅲ tile draws straight from the pool at random, exactly as usual."}
+                </small>
+              </div>
+            );
+          })()}
+
+          <SeatCountControl
+            footer={
+              <SameChoiceAsBoxNote
+                box="heroes"
+                boxLabel="Heroes & Draft"
+                onOpenBox={onOpenBox}
+              />
+            }
+            onAction={onAction}
+            state={state}
+            viewerPlayerId={viewerPlayerId}
+          />
+
           <div className="optionRow">
-            <small title="Whether players may open their own Ⅱ–Ⅲ Far tiles onto the map">
-              Ⅱ–Ⅲ tile opening
+            <small title="The map you play on — a built-in scenario sheet or a designed map a player saved in the map designer">
+              Map
+            </small>
+            <MapPicker
+              options={options}
+              send={send}
+              singlePlayer={state.sessionMode === "single-player"}
+            />
+          </div>
+          <SameChoiceAsBoxNote box="map" boxLabel="Map" onOpenBox={onOpenBox} />
+          {onOpenBox ? (
+            <small className="optionHint sameChoiceNote">
+              Saving or loading a whole setup as a{" "}
+              <strong>Custom setting</strong> file lives with the game modes —
+              it is what the Custom mode card is.{" "}
+              <button
+                aria-label="Open the Game-mode window for Custom setting files"
+                className="sameChoiceLink"
+                onClick={() => onOpenBox("mode")}
+                type="button"
+              >
+                Open Game mode
+              </button>
+            </small>
+          ) : null}
+
+          <div className="optionRow">
+            <small title="Field Difficulty Level Table column used when guards are drawn, and the printed starting bonus each player receives at setup (rulebook p.10)">
+              Neutral difficulty
             </small>
             <div className="optionButtons">
-              {BOOLEAN_OPTION_ORDER.map((on) => (
+              {DIFFICULTY_CHOICES.map((choice) => (
                 <button
-                  aria-pressed={farTileOpeningOn === on}
-                  className={farTileOpeningOn === on ? "selected" : ""}
-                  key={String(on)}
-                  onClick={() => send({ farTileOpening: on })}
-                  title={on ? "Players may open Ⅱ–Ⅲ tiles" : "Players cannot open Ⅱ–Ⅲ tiles"}
+                  aria-pressed={options.difficulty === choice.id}
+                  className={options.difficulty === choice.id ? "selected" : ""}
+                  key={choice.id}
+                  onClick={() => send({ difficulty: choice.id })}
+                  title={choice.hint}
                   type="button"
                 >
-                  {on ? "On" : "Off"}
+                  {choice.label}
                 </button>
               ))}
             </div>
             <small className="optionHint">
-              {farTileOpeningOn
-                ? "Each player gets a face-down Ⅱ–Ⅲ Far-tile supply they may place onto the map for 1 movement point. The tile is rolled at random when placed."
-                : "No Ⅱ–Ⅲ supply — players cannot open Far tiles (use this when the map already includes its Ⅱ–Ⅲ tiles)."}
+              <strong>Starting bonus ({options.difficulty}):</strong>{" "}
+              {startingBonusDescription(options.difficulty, {
+                polishReduced: Boolean(
+                  options.houseRules?.["polish-reduced-starting-bonus"],
+                ),
+              })}{" "}
+              Guards use the Field Difficulty Level Table column for this
+              difficulty.
             </small>
           </div>
-        );
-      })()}
-
-      {(() => {
-        const farTileOpeningOn = options.farTileOpening ?? true;
-        if (!farTileOpeningOn) {
-          return null;
-        }
-        const scenarioDefault = scenarioDefinitions[options.scenarioId]?.farTiles.perPlayer ?? 2;
-        const current = options.farTilesPerPlayer ?? scenarioDefault;
-        // 0..MAX_FAR_TILES_PER_PLAYER (the engine clamps to this range).
-        const counts = [0, 1, 2, 3, 4, 5, 6];
-        return (
-          <div className="optionRow">
-            <small title="How many NEW Ⅱ–Ⅲ tiles each player may add to the map (their supply size)">
-              New Ⅱ–Ⅲ tiles / player
-            </small>
-            <div className="optionButtons">
-              {counts.map((count) => (
-                <button
-                  aria-pressed={current === count}
-                  className={current === count ? "selected" : ""}
-                  key={count}
-                  onClick={() => send({ farTilesPerPlayer: count })}
-                  title={`Each player may add ${count} new Ⅱ–Ⅲ tile${count === 1 ? "" : "s"}`}
-                  type="button"
-                >
-                  {count}
-                </button>
-              ))}
-            </div>
-            <small className="optionHint">
-              Each player may add this many new Ⅱ–Ⅲ tiles (default {scenarioDefault}). Set 0 when a designed map already
-              places its own Ⅱ–Ⅲ tiles. Tile replacement for Ore or a missing Settlement is controlled only by the
-              BINH house rule in Combat &amp; map rules.
-            </small>
-          </div>
-        );
-      })()}
-
-      {(() => {
-        const farTileOpeningOn = options.farTileOpening ?? true;
-        if (!farTileOpeningOn) {
-          return null;
-        }
-        const blindChoiceOn = options.farTileBlindChoice ?? false;
-        return (
-          <div className="optionRow">
-            <small title="Optional: before seeing any tile, a player opening a Ⅱ–Ⅲ tile blindly picks whether they want one with a gold mine, one with a valuables mine, or no preference — the random draw is filtered by that pick">
-              Blind Ⅱ–Ⅲ tile choice
-            </small>
-            <div className="optionButtons">
-              {BOOLEAN_OPTION_ORDER.map((on) => (
-                <button
-                  aria-pressed={blindChoiceOn === on}
-                  className={blindChoiceOn === on ? "selected" : ""}
-                  key={String(on)}
-                  onClick={() => send({ farTileBlindChoice: on })}
-                  title={on ? "Blind tile-type pick before the draw" : "No blind pick — draw straight away"}
-                  type="button"
-                >
-                  {on ? "On" : "Off"}
-                </button>
-              ))}
-            </div>
-            <small className="optionHint">
-              {blindChoiceOn
-                ? "Opening a Ⅱ–Ⅲ tile first asks — blindly, before any tile is seen — for a GOLD-mine tile, a VALUABLES-mine tile, or no preference; the random draw then matches the pick (falling back to a plain draw, with a note, when none is left)."
-                : "Off: opening a Ⅱ–Ⅲ tile draws straight from the pool at random, exactly as usual."}
-            </small>
-          </div>
-        );
-      })()}
-
-      {(() => {
-        const farTileOpeningOn = options.farTileOpening ?? true;
-        if (!farTileOpeningOn) {
-          return null;
-        }
-        const typeChoiceOn = options.farTileTypeChoice ?? false;
-        return (
-          <div className="optionRow">
-            <small title="Optional: the undecided Ⅱ–Ⅲ tile in a player's hand works like a hidden tile — placing it asks WHICH KIND of tile they want (gold mine, crystal mine, stone mine, Settlement) and a random tile of that kind is drawn">
-              Ⅱ–Ⅲ tile type choice
-            </small>
-            <div className="optionButtons">
-              {BOOLEAN_OPTION_ORDER.map((on) => (
-                <button
-                  aria-pressed={typeChoiceOn === on}
-                  className={typeChoiceOn === on ? "selected" : ""}
-                  key={String(on)}
-                  onClick={() => send({ farTileTypeChoice: on })}
-                  title={on ? "Choose the tile kind when placing" : "No type pick — draw straight away"}
-                  type="button"
-                >
-                  {on ? "On" : "Off"}
-                </button>
-              ))}
-            </div>
-            <small className="optionHint">
-              {typeChoiceOn
-                ? "Placing a Ⅱ–Ⅲ tile from your hand asks WHICH KIND you want — a GOLD mine, a CRYSTAL (valuables) mine, a STONE (ore) mine or a SETTLEMENT — and a random tile of that kind is drawn. Only kinds still left in the Ⅱ–Ⅲ supply are offered; with none left the tile is drawn at random with a note. A designed map may narrow the list (e.g. crystal or gold). Supersedes the blind choice above while on."
-                : "Off: opening a Ⅱ–Ⅲ tile draws straight from the pool at random, exactly as usual."}
-            </small>
-          </div>
-        );
-      })()}
-
-      <SeatCountControl
-        footer={<SameChoiceAsBoxNote box="heroes" boxLabel="Heroes & Draft" onOpenBox={onOpenBox} />}
-        onAction={onAction}
-        state={state}
-        viewerPlayerId={viewerPlayerId}
-      />
-
-      <div className="optionRow">
-        <small title="The map you play on — a built-in scenario sheet or a designed map a player saved in the map designer">
-          Map
-        </small>
-        <MapPicker options={options} send={send} singlePlayer={state.sessionMode === "single-player"} />
-      </div>
-      <SameChoiceAsBoxNote box="map" boxLabel="Map" onOpenBox={onOpenBox} />
-      {onOpenBox ? (
-        <small className="optionHint sameChoiceNote">
-          Saving or loading a whole setup as a <strong>Custom setting</strong> file lives with the game modes — it is
-          what the Custom mode card is.{" "}
-          <button
-            aria-label="Open the Game-mode window for Custom setting files"
-            className="sameChoiceLink"
-            onClick={() => onOpenBox("mode")}
-            type="button"
-          >
-            Open Game mode
-          </button>
-        </small>
-      ) : null}
-
-      <div className="optionRow">
-        <small title="Field Difficulty Level Table column used when guards are drawn, and the printed starting bonus each player receives at setup (rulebook p.10)">
-          Neutral difficulty
-        </small>
-        <div className="optionButtons">
-          {DIFFICULTY_CHOICES.map((choice) => (
-            <button
-              aria-pressed={options.difficulty === choice.id}
-              className={options.difficulty === choice.id ? "selected" : ""}
-              key={choice.id}
-              onClick={() => send({ difficulty: choice.id })}
-              title={choice.hint}
-              type="button"
-            >
-              {choice.label}
-            </button>
-          ))}
+          <SameChoiceAsBoxNote box="map" boxLabel="Map" onOpenBox={onOpenBox} />
         </div>
-        <small className="optionHint">
-          <strong>Starting bonus ({options.difficulty}):</strong>{" "}
-          {startingBonusDescription(options.difficulty, {
-            polishReduced: Boolean(options.houseRules?.["polish-reduced-starting-bonus"])
-          })}
-          {" "}Guards use the Field Difficulty Level Table column for this difficulty.
-        </small>
-      </div>
-      <SameChoiceAsBoxNote box="map" boxLabel="Map" onOpenBox={onOpenBox} />
-
-      </div>
       ) : null}
 
       {tab === "army" ? (
-      <div className="optionTabPanel" role="tabpanel" aria-label="Town & Resources">
-
-      <div className="optionRow">
-        <small>Starting resources</small>
-        <div className="optionSteppers">
-          <ResourceStepper
-            iconSrc={RESOURCE_ICONS.gold}
-            label="gold"
-            onChange={(gold) => send({ startingResources: { ...options.startingResources, gold } })}
-            value={options.startingResources.gold}
-          />
-          <ResourceStepper
-            iconSrc={RESOURCE_ICONS.buildingMaterials}
-            label="materials"
-            onChange={(buildingMaterials) =>
-              send({ startingResources: { ...options.startingResources, buildingMaterials } })
-            }
-            value={options.startingResources.buildingMaterials}
-          />
-          <ResourceStepper
-            iconSrc={RESOURCE_ICONS.valuables}
-            label="valuables"
-            onChange={(valuables) => send({ startingResources: { ...options.startingResources, valuables } })}
-            value={options.startingResources.valuables}
-          />
-        </div>
-      </div>
-
-      <div className="optionRow">
-        <small title="Base resource gain each Resource Round, before mines/settlements/buildings">
-          Resource gain (income base)
-        </small>
-        <div className="optionSteppers">
-          <ResourceStepper
-            iconSrc={RESOURCE_ICONS.gold}
-            label="gold"
-            onChange={(gold) => send({ startingProduction: { ...options.startingProduction, gold } })}
-            value={options.startingProduction.gold}
-          />
-          <ResourceStepper
-            iconSrc={RESOURCE_ICONS.buildingMaterials}
-            label="materials"
-            onChange={(buildingMaterials) =>
-              send({ startingProduction: { ...options.startingProduction, buildingMaterials } })
-            }
-            value={options.startingProduction.buildingMaterials}
-          />
-          <ResourceStepper
-            iconSrc={RESOURCE_ICONS.valuables}
-            label="valuables"
-            onChange={(valuables) => send({ startingProduction: { ...options.startingProduction, valuables } })}
-            value={options.startingProduction.valuables}
-          />
-        </div>
-      </div>
-
-      <div className="optionRow">
-        <small title="One few or pack pick per unit level — each player gets their own faction's unit of that level">
-          Starting units (level 1–7)
-        </small>
-        <StartingUnitsPicker
-          onChange={(startingUnits) => send({ startingUnits })}
-          startingUnits={options.startingUnits ?? []}
-          viewerFactionId={viewerFactionId}
-        />
-      </div>
-
-      <div className="optionRow">
-        <small>Pre-built buildings</small>
-        <div className="optionButtons">
-          {STARTING_BUILDING_CHOICES.map((building) => {
-            const checked = options.startingBuildings.includes(building.id);
-            return (
-              <button
-                aria-pressed={checked}
-                className={checked ? "selected" : ""}
-                key={building.id}
-                onClick={() =>
+        <div
+          className="optionTabPanel"
+          role="tabpanel"
+          aria-label="Town & Resources"
+        >
+          <div className="optionRow">
+            <small>Starting resources</small>
+            <div className="optionSteppers">
+              <ResourceStepper
+                iconSrc={RESOURCE_ICONS.gold}
+                label="gold"
+                onChange={(gold) =>
                   send({
-                    startingBuildings: checked
-                      ? options.startingBuildings.filter((candidate) => candidate !== building.id)
-                      : [...options.startingBuildings, building.id]
+                    startingResources: { ...options.startingResources, gold },
                   })
                 }
-                type="button"
-              >
-                {building.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+                value={options.startingResources.gold}
+              />
+              <ResourceStepper
+                iconSrc={RESOURCE_ICONS.buildingMaterials}
+                label="materials"
+                onChange={(buildingMaterials) =>
+                  send({
+                    startingResources: {
+                      ...options.startingResources,
+                      buildingMaterials,
+                    },
+                  })
+                }
+                value={options.startingResources.buildingMaterials}
+              />
+              <ResourceStepper
+                iconSrc={RESOURCE_ICONS.valuables}
+                label="valuables"
+                onChange={(valuables) =>
+                  send({
+                    startingResources: {
+                      ...options.startingResources,
+                      valuables,
+                    },
+                  })
+                }
+                value={options.startingResources.valuables}
+              />
+            </div>
+          </div>
 
-      </div>
+          <div className="optionRow">
+            <small title="Base resource gain each Resource Round, before mines/settlements/buildings">
+              Resource gain (income base)
+            </small>
+            <div className="optionSteppers">
+              <ResourceStepper
+                iconSrc={RESOURCE_ICONS.gold}
+                label="gold"
+                onChange={(gold) =>
+                  send({
+                    startingProduction: { ...options.startingProduction, gold },
+                  })
+                }
+                value={options.startingProduction.gold}
+              />
+              <ResourceStepper
+                iconSrc={RESOURCE_ICONS.buildingMaterials}
+                label="materials"
+                onChange={(buildingMaterials) =>
+                  send({
+                    startingProduction: {
+                      ...options.startingProduction,
+                      buildingMaterials,
+                    },
+                  })
+                }
+                value={options.startingProduction.buildingMaterials}
+              />
+              <ResourceStepper
+                iconSrc={RESOURCE_ICONS.valuables}
+                label="valuables"
+                onChange={(valuables) =>
+                  send({
+                    startingProduction: {
+                      ...options.startingProduction,
+                      valuables,
+                    },
+                  })
+                }
+                value={options.startingProduction.valuables}
+              />
+            </div>
+          </div>
+
+          <div className="optionRow">
+            <small title="One few or pack pick per unit level — each player gets their own faction's unit of that level">
+              Starting units (level 1–7)
+            </small>
+            <StartingUnitsPicker
+              onChange={(startingUnits) => send({ startingUnits })}
+              startingUnits={options.startingUnits ?? []}
+              viewerFactionId={viewerFactionId}
+            />
+          </div>
+
+          <div className="optionRow">
+            <small>Pre-built buildings</small>
+            <div className="optionButtons">
+              {STARTING_BUILDING_CHOICES.map((building) => {
+                const checked = options.startingBuildings.includes(building.id);
+                return (
+                  <button
+                    aria-pressed={checked}
+                    className={checked ? "selected" : ""}
+                    key={building.id}
+                    onClick={() =>
+                      send({
+                        startingBuildings: checked
+                          ? options.startingBuildings.filter(
+                              (candidate) => candidate !== building.id,
+                            )
+                          : [...options.startingBuildings, building.id],
+                      })
+                    }
+                    type="button"
+                  >
+                    {building.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   );
@@ -11964,11 +15130,17 @@ function cardRulesText(cardId: string | undefined): string {
   // Several abilities/specialties carry their printed wording as a multi-word tag
   // (Wisdom, the unit-specialist helpers); prefer it, exactly like the native
   // specialty card does, and otherwise fall back to the generated effect text.
-  const prose = (card.tags ?? []).filter((tag) => /\s/.test(tag)).sort((a, b) => b.length - a.length)[0];
+  const prose = (card.tags ?? [])
+    .filter((tag) => /\s/.test(tag))
+    .sort((a, b) => b.length - a.length)[0];
   return prose ?? describeCardEffect(card);
 }
 
-const SPECIALTY_LEVEL_NUMERAL: Record<1 | 4 | 6, string> = { 1: "I", 4: "IV", 6: "VI" };
+const SPECIALTY_LEVEL_NUMERAL: Record<1 | 4 | 6, string> = {
+  1: "I",
+  4: "IV",
+  6: "VI",
+};
 
 /**
  * Read-only card for one hero: starting statistics, the starting ability and all
@@ -11977,8 +15149,19 @@ const SPECIALTY_LEVEL_NUMERAL: Record<1 | 4 | 6, string> = { 1: "I", 4: "IV", 6:
  * clicked or its info button is pressed.
  */
 /** The printed statistic symbol (crossed swords / shield / spell book / tomes). */
-function HeroInfoStatIcon({ stat }: { stat: keyof typeof HERO_INFO_STAT_ICONS }) {
-  return <img alt="" aria-hidden="true" className="heroStatSymbol" src={assetUrl(HERO_INFO_STAT_ICONS[stat])} />;
+function HeroInfoStatIcon({
+  stat,
+}: {
+  stat: keyof typeof HERO_INFO_STAT_ICONS;
+}) {
+  return (
+    <img
+      alt=""
+      aria-hidden="true"
+      className="heroStatSymbol"
+      src={assetUrl(HERO_INFO_STAT_ICONS[stat])}
+    />
+  );
 }
 
 /** The starting-ability's real secondary-skill emblem (or nothing if unmapped). */
@@ -12029,7 +15212,7 @@ function HeroSetupDetail({ heroDefId }: { heroDefId: string }) {
     { key: "attack", label: "Attack" },
     { key: "defense", label: "Defense" },
     { key: "power", label: "Power" },
-    { key: "knowledge", label: "Knowledge" }
+    { key: "knowledge", label: "Knowledge" },
   ];
 
   return (
@@ -12039,7 +15222,8 @@ function HeroSetupDetail({ heroDefId }: { heroDefId: string }) {
         <div className="heroDetailTitle">
           <strong style={{ color: faction?.color }}>{hero.name}</strong>
           <small>
-            {hero.class} · {hero.type} · {faction?.name ?? titleCase(hero.faction)}
+            {hero.class} · {hero.type} ·{" "}
+            {faction?.name ?? titleCase(hero.faction)}
           </small>
         </div>
       </div>
@@ -12055,7 +15239,9 @@ function HeroSetupDetail({ heroDefId }: { heroDefId: string }) {
             <span className="heroStatIcon">
               <HeroInfoStatIcon stat={stat.key} />
             </span>
-            <span className="heroStatValue">{hero.startingStats[stat.key]}</span>
+            <span className="heroStatValue">
+              {hero.startingStats[stat.key]}
+            </span>
             <span className="heroStatLabel">{stat.label}</span>
           </div>
         ))}
@@ -12085,7 +15271,9 @@ function HeroSetupDetail({ heroDefId }: { heroDefId: string }) {
             <div className="heroDetailEntry heroDetailEntrySymbol" key={level}>
               <span className="heroSpecArtWrap">
                 <SpecialtySymbol cardId={cardId} />
-                <span className="heroSpecLevel">{SPECIALTY_LEVEL_NUMERAL[level]}</span>
+                <span className="heroSpecLevel">
+                  {SPECIALTY_LEVEL_NUMERAL[level]}
+                </span>
               </span>
               <div className="heroDetailEntryText">
                 <strong>{card?.name ?? cardId ?? "—"}</strong>
@@ -12105,7 +15293,13 @@ function HeroSetupDetail({ heroDefId }: { heroDefId: string }) {
  * dismissed with the ✕, a backdrop click or Escape. This replaces the old inline
  * detail panel so the hero list is never pushed down by a giant card.
  */
-function HeroInfoModal({ heroDefId, onClose }: { heroDefId: string; onClose: () => void }) {
+function HeroInfoModal({
+  heroDefId,
+  onClose,
+}: {
+  heroDefId: string;
+  onClose: () => void;
+}) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -12124,8 +15318,16 @@ function HeroInfoModal({ heroDefId, onClose }: { heroDefId: string; onClose: () 
       onClick={onClose}
       role="dialog"
     >
-      <div className="heroInfoModal" onClick={(event) => event.stopPropagation()}>
-        <button aria-label="Close hero details" className="heroInfoClose" onClick={onClose} type="button">
+      <div
+        className="heroInfoModal"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <button
+          aria-label="Close hero details"
+          className="heroInfoClose"
+          onClick={onClose}
+          type="button"
+        >
           <X aria-hidden="true" size={16} />
         </button>
         <HeroSetupDetail heroDefId={heroDefId} />
@@ -12135,7 +15337,9 @@ function HeroInfoModal({ heroDefId, onClose }: { heroDefId: string; onClose: () 
   // Portal to <body>: the hero grid now lives inside the Setup Hub's own
   // (body-level) window, so an inline modal would be trapped in the lobby's
   // stacking context and render UNDER it however high its z-index.
-  return typeof document === "undefined" ? modal : createPortal(modal, document.body);
+  return typeof document === "undefined"
+    ? modal
+    : createPortal(modal, document.body);
 }
 
 /** One hero in a faction's hero list: a pick button + an info button (popup). */
@@ -12146,7 +15350,7 @@ function LobbyHeroEntry({
   banned,
   pickTitle,
   onPick,
-  onInspect
+  onInspect,
 }: {
   heroDefId: string;
   selected: boolean;
@@ -12166,7 +15370,12 @@ function LobbyHeroEntry({
         title={pickTitle}
         type="button"
       >
-        <HeroPortrait name={hero?.name ?? heroDefId} portrait={hero?.portrait} size={34} style={{ gridRow: "span 2" }} />
+        <HeroPortrait
+          name={hero?.name ?? heroDefId}
+          portrait={hero?.portrait}
+          size={34}
+          style={{ gridRow: "span 2" }}
+        />
         <span>
           {hero?.name ?? heroDefId}
           {banned ? " · banned" : ""}
@@ -12198,14 +15407,19 @@ function FactionPickGrid({
   takenByOthers,
   heroStateFor,
   onPick,
-  onInspect
+  onInspect,
 }: {
   factionIds: FactionId[];
   takenByOthers: Set<FactionId>;
   heroStateFor: (
     factionId: FactionId,
-    heroDefId: string
-  ) => { selected: boolean; banned: boolean; disabled: boolean; title?: string };
+    heroDefId: string,
+  ) => {
+    selected: boolean;
+    banned: boolean;
+    disabled: boolean;
+    title?: string;
+  };
   onPick: (factionId: FactionId, heroDefId: string) => void;
   onInspect: (heroDefId: string) => void;
 }) {
@@ -12218,7 +15432,11 @@ function FactionPickGrid({
         }
         const taken = takenByOthers.has(factionId);
         return (
-          <div className={`factionCard ${taken ? "taken" : ""}`} key={factionId} style={{ borderColor: faction.color }}>
+          <div
+            className={`factionCard ${taken ? "taken" : ""}`}
+            key={factionId}
+            style={{ borderColor: faction.color }}
+          >
             <strong style={{ color: faction.color }}>{faction.name}</strong>
             {faction.ignoresMorale ? <small>ignores morale</small> : null}
             <div className="factionHeroes">
@@ -12250,7 +15468,7 @@ function TownChoiceButton({
   factionId,
   onClick,
   disabled,
-  title
+  title,
 }: {
   factionId: FactionId;
   onClick: () => void;
@@ -12267,7 +15485,9 @@ function TownChoiceButton({
       title={title}
       type="button"
     >
-      <strong style={{ color: faction?.color }}>{faction?.name ?? factionId}</strong>
+      <strong style={{ color: faction?.color }}>
+        {faction?.name ?? factionId}
+      </strong>
       <small>{faction?.heroes.length ?? 0} heroes</small>
     </button>
   );
@@ -12277,7 +15497,7 @@ function TownChoiceButton({
 function ResetSeatButton({
   viewerPlayerId,
   onAction,
-  label = "Reset my pick"
+  label = "Reset my pick",
 }: {
   viewerPlayerId: PlayerId;
   onAction: (action: GameAction) => void;
@@ -12286,7 +15506,9 @@ function ResetSeatButton({
   return (
     <button
       className="draftResetBtn"
-      onClick={() => onAction({ type: "RESET_SEAT_DRAFT", playerId: viewerPlayerId })}
+      onClick={() =>
+        onAction({ type: "RESET_SEAT_DRAFT", playerId: viewerPlayerId })
+      }
       type="button"
     >
       <RotateCcw aria-hidden="true" size={14} /> {label}
@@ -12299,14 +15521,15 @@ const DRAFT_FORMAT_BLURB: Record<DraftFormat, string> = {
   draft:
     "Lock a town (from a rolled pair, or by choosing one), ban heroes from each other’s towns, then pick your hero.",
   random: "Both town and hero are rolled at random for every seat.",
-  "random-choice": "Roll a pair of towns and keep one, then roll a pair of that town’s heroes and keep one."
+  "random-choice":
+    "Roll a pair of towns and keep one, then roll a pair of that town’s heroes and keep one.",
 };
 
 /** The four-way setup-format selector (TYPE 1–4). */
 function SetupFormatSelector({
   format,
   viewerPlayerId,
-  onAction
+  onAction,
 }: {
   format: DraftFormat;
   viewerPlayerId: PlayerId;
@@ -12316,18 +15539,26 @@ function SetupFormatSelector({
     <div className="draftFormatRow" aria-label="Setup format">
       <small className="draftSectionLabel">Setup format</small>
       <div className="optionButtons draftFormatButtons">
-        {(["open", "draft", "random", "random-choice"] as const).map((entry) => (
-          <button
-            aria-pressed={format === entry}
-            className={format === entry ? "selected" : ""}
-            key={entry}
-            onClick={() => onAction({ type: "SET_DRAFT_FORMAT", playerId: viewerPlayerId, format: entry })}
-            title={DRAFT_FORMAT_BLURB[entry]}
-            type="button"
-          >
-            {DRAFT_FORMAT_LABELS[entry]}
-          </button>
-        ))}
+        {(["open", "draft", "random", "random-choice"] as const).map(
+          (entry) => (
+            <button
+              aria-pressed={format === entry}
+              className={format === entry ? "selected" : ""}
+              key={entry}
+              onClick={() =>
+                onAction({
+                  type: "SET_DRAFT_FORMAT",
+                  playerId: viewerPlayerId,
+                  format: entry,
+                })
+              }
+              title={DRAFT_FORMAT_BLURB[entry]}
+              type="button"
+            >
+              {DRAFT_FORMAT_LABELS[entry]}
+            </button>
+          ),
+        )}
       </div>
       <small className="optionHint">{DRAFT_FORMAT_BLURB[format]}</small>
     </div>
@@ -12342,19 +15573,33 @@ type DraftFlowProps = {
 };
 
 /** TYPE 2 — full random: roll the seat's town + hero (and re-roll the hero). */
-function RandomSeatFlow({ state, viewerPlayerId, onAction }: Omit<DraftFlowProps, "onInspect">) {
-  const seat = state.setupLobby?.seats.find((candidate) => candidate.playerId === viewerPlayerId);
+function RandomSeatFlow({
+  state,
+  viewerPlayerId,
+  onAction,
+}: Omit<DraftFlowProps, "onInspect">) {
+  const seat = state.setupLobby?.seats.find(
+    (candidate) => candidate.playerId === viewerPlayerId,
+  );
   if (!seat) {
     return null;
   }
-  const faction = seat.factionId ? coreFactionDefinitions[seat.factionId] : null;
+  const faction = seat.factionId
+    ? coreFactionDefinitions[seat.factionId]
+    : null;
   const hero = seat.heroDefId ? coreHeroDefinitions[seat.heroDefId] : null;
   return (
     <div className="draftFlow" aria-label="Full random">
       <div className="draftRandom">
         <button
           className="draftRollBtn"
-          onClick={() => onAction({ type: "RANDOM_ASSIGN_SEAT", playerId: viewerPlayerId, scope: "faction" })}
+          onClick={() =>
+            onAction({
+              type: "RANDOM_ASSIGN_SEAT",
+              playerId: viewerPlayerId,
+              scope: "faction",
+            })
+          }
           type="button"
         >
           <Dices aria-hidden="true" size={16} />
@@ -12363,8 +15608,18 @@ function RandomSeatFlow({ state, viewerPlayerId, onAction }: Omit<DraftFlowProps
         <button
           className="draftRollBtn"
           disabled={!seat.factionId}
-          onClick={() => onAction({ type: "RANDOM_ASSIGN_SEAT", playerId: viewerPlayerId, scope: "hero" })}
-          title={seat.factionId ? "Re-roll a random hero of your town" : "Roll a town first"}
+          onClick={() =>
+            onAction({
+              type: "RANDOM_ASSIGN_SEAT",
+              playerId: viewerPlayerId,
+              scope: "hero",
+            })
+          }
+          title={
+            seat.factionId
+              ? "Re-roll a random hero of your town"
+              : "Roll a town first"
+          }
           type="button"
         >
           <Dices aria-hidden="true" size={16} />
@@ -12374,10 +15629,13 @@ function RandomSeatFlow({ state, viewerPlayerId, onAction }: Omit<DraftFlowProps
       {faction && hero ? (
         <p className="draftLockNote">
           <Check aria-hidden="true" size={14} /> Rolled{" "}
-          <strong style={{ color: faction.color }}>{hero.name}</strong> of {faction.name}.
+          <strong style={{ color: faction.color }}>{hero.name}</strong> of{" "}
+          {faction.name}.
         </p>
       ) : (
-        <p className="draftHint">Roll the dice to get a random town and hero.</p>
+        <p className="draftHint">
+          Roll the dice to get a random town and hero.
+        </p>
       )}
       {seat.factionId || seat.heroDefId ? (
         <ResetSeatButton onAction={onAction} viewerPlayerId={viewerPlayerId} />
@@ -12387,19 +15645,32 @@ function RandomSeatFlow({ state, viewerPlayerId, onAction }: Omit<DraftFlowProps
 }
 
 /** TYPE 1, step 1 — lock a town: roll a pair and pick, or select one directly. */
-function DraftTownPhase({ state, viewerPlayerId, onAction }: Omit<DraftFlowProps, "onInspect">) {
+function DraftTownPhase({
+  state,
+  viewerPlayerId,
+  onAction,
+}: Omit<DraftFlowProps, "onInspect">) {
   const lobby = state.setupLobby;
-  const seat = lobby?.seats.find((candidate) => candidate.playerId === viewerPlayerId);
+  const seat = lobby?.seats.find(
+    (candidate) => candidate.playerId === viewerPlayerId,
+  );
   if (!lobby || !seat) {
     return null;
   }
-  const lockedCount = lobby.seats.filter((candidate) => candidate.factionId).length;
+  const lockedCount = lobby.seats.filter(
+    (candidate) => candidate.factionId,
+  ).length;
   const takenByOthers = reservedTownIdsForOtherSeats(lobby, viewerPlayerId);
   const untaken = (Object.values(coreFactionDefinitions) as { id: FactionId }[])
     .map((faction) => faction.id)
-    .filter((id) => !takenByOthers.has(id) && isPlayableFaction(id, lobby.options.anime));
+    .filter(
+      (id) =>
+        !takenByOthers.has(id) && isPlayableFaction(id, lobby.options.anime),
+    );
   const options = lobby.draft?.seatRolls?.[viewerPlayerId]?.townOptions ?? [];
-  const lockedFaction = seat.factionId ? coreFactionDefinitions[seat.factionId] : null;
+  const lockedFaction = seat.factionId
+    ? coreFactionDefinitions[seat.factionId]
+    : null;
 
   return (
     <div className="draftFlow" aria-label="Lock your town">
@@ -12413,35 +15684,60 @@ function DraftTownPhase({ state, viewerPlayerId, onAction }: Omit<DraftFlowProps
         <>
           <p className="draftLockNote">
             <Lock aria-hidden="true" size={14} /> Locked to{" "}
-            <strong style={{ color: lockedFaction.color }}>{lockedFaction.name}</strong>. Waiting for the other seats
-            to lock their towns.
+            <strong style={{ color: lockedFaction.color }}>
+              {lockedFaction.name}
+            </strong>
+            . Waiting for the other seats to lock their towns.
           </p>
-          <ResetSeatButton label="Reset my town" onAction={onAction} viewerPlayerId={viewerPlayerId} />
+          <ResetSeatButton
+            label="Reset my town"
+            onAction={onAction}
+            viewerPlayerId={viewerPlayerId}
+          />
         </>
       ) : (
         <>
           <div className="draftRandom">
             <button
               className="draftRollBtn"
-              onClick={() => onAction({ type: "ROLL_TOWN_OPTIONS", playerId: viewerPlayerId })}
+              onClick={() =>
+                onAction({
+                  type: "ROLL_TOWN_OPTIONS",
+                  playerId: viewerPlayerId,
+                })
+              }
               type="button"
             >
               <Dices aria-hidden="true" size={16} />
-              <span>{options.length ? "Re-roll two towns" : "Roll two towns"}</span>
+              <span>
+                {options.length ? "Re-roll two towns" : "Roll two towns"}
+              </span>
             </button>
             {options.length ? (
-              <ResetSeatButton label="Clear roll" onAction={onAction} viewerPlayerId={viewerPlayerId} />
+              <ResetSeatButton
+                label="Clear roll"
+                onAction={onAction}
+                viewerPlayerId={viewerPlayerId}
+              />
             ) : null}
           </div>
           {options.length ? (
             <>
-              <small className="draftHint">Pick one of your two rolled towns:</small>
+              <small className="draftHint">
+                Pick one of your two rolled towns:
+              </small>
               <div className="draftTownChoices">
                 {options.map((factionId) => (
                   <TownChoiceButton
                     factionId={factionId}
                     key={factionId}
-                    onClick={() => onAction({ type: "CHOOSE_TOWN", playerId: viewerPlayerId, factionId })}
+                    onClick={() =>
+                      onAction({
+                        type: "CHOOSE_TOWN",
+                        playerId: viewerPlayerId,
+                        factionId,
+                      })
+                    }
                   />
                 ))}
               </div>
@@ -12454,7 +15750,13 @@ function DraftTownPhase({ state, viewerPlayerId, onAction }: Omit<DraftFlowProps
                   <TownChoiceButton
                     factionId={factionId}
                     key={factionId}
-                    onClick={() => onAction({ type: "CHOOSE_TOWN", playerId: viewerPlayerId, factionId })}
+                    onClick={() =>
+                      onAction({
+                        type: "CHOOSE_TOWN",
+                        playerId: viewerPlayerId,
+                        factionId,
+                      })
+                    }
                   />
                 ))}
               </div>
@@ -12467,23 +15769,37 @@ function DraftTownPhase({ state, viewerPlayerId, onAction }: Omit<DraftFlowProps
 }
 
 /** TYPE 1, step 2 — the ban phase: each seat bans opponents' heroes in turn. */
-function DraftBanPhase({ state, viewerPlayerId, onAction, onInspect }: DraftFlowProps) {
+function DraftBanPhase({
+  state,
+  viewerPlayerId,
+  onAction,
+  onInspect,
+}: DraftFlowProps) {
   const lobby = state.setupLobby;
   if (!lobby) {
     return null;
   }
-  const draft = lobby.draft ?? { format: "draft" as const, bannedHeroDefIds: [] };
+  const draft = lobby.draft ?? {
+    format: "draft" as const,
+    bannedHeroDefIds: [],
+  };
   const phase = getDraftPhase(lobby);
-  const playerName = (playerId: PlayerId) => state.players[playerId]?.name ?? playerId;
+  const playerName = (playerId: PlayerId) =>
+    state.players[playerId]?.name ?? playerId;
   const myTurn = phase.currentBannerPlayerId === viewerPlayerId;
   const byFaction = new Map<FactionId, string[]>();
   if (myTurn) {
     for (const heroDefId of bannableHeroesForSeat(lobby, viewerPlayerId)) {
-      const factionId = coreHeroDefinitions[heroDefId]?.faction as FactionId | undefined;
+      const factionId = coreHeroDefinitions[heroDefId]?.faction as
+        | FactionId
+        | undefined;
       if (!factionId) {
         continue;
       }
-      byFaction.set(factionId, [...(byFaction.get(factionId) ?? []), heroDefId]);
+      byFaction.set(factionId, [
+        ...(byFaction.get(factionId) ?? []),
+        heroDefId,
+      ]);
     }
   }
 
@@ -12492,16 +15808,21 @@ function DraftBanPhase({ state, viewerPlayerId, onAction, onInspect }: DraftFlow
       <div className="draftPhaseHead">
         <strong>Step 2 — ban phase</strong>
         <small>
-          {phase.banPicksMade}/{phase.totalBans} bans · {phase.banBudgetPerSeat} per seat
+          {phase.banPicksMade}/{phase.totalBans} bans · {phase.banBudgetPerSeat}{" "}
+          per seat
         </small>
       </div>
       {myTurn ? (
         <>
-          <p className="draftTurnNote">Your turn — ban one hero from another player’s town.</p>
+          <p className="draftTurnNote">
+            Your turn — ban one hero from another player’s town.
+          </p>
           <div className="draftBans">
             {[...byFaction.entries()].map(([factionId, heroes]) => (
               <div className="draftBanFaction" key={factionId}>
-                <strong style={{ color: coreFactionDefinitions[factionId]?.color }}>
+                <strong
+                  style={{ color: coreFactionDefinitions[factionId]?.color }}
+                >
                   {coreFactionDefinitions[factionId]?.name ?? factionId}
                 </strong>
                 <div className="draftBanHeroes">
@@ -12509,12 +15830,20 @@ function DraftBanPhase({ state, viewerPlayerId, onAction, onInspect }: DraftFlow
                     <span className="draftBanChip" key={heroDefId}>
                       <button
                         className="draftBanHero"
-                        onClick={() => onAction({ type: "BAN_HERO", playerId: viewerPlayerId, heroDefId })}
+                        onClick={() =>
+                          onAction({
+                            type: "BAN_HERO",
+                            playerId: viewerPlayerId,
+                            heroDefId,
+                          })
+                        }
                         title={`Ban ${coreHeroDefinitions[heroDefId]?.name ?? heroDefId}`}
                         type="button"
                       >
                         <Ban aria-hidden="true" size={12} />
-                        <span>{coreHeroDefinitions[heroDefId]?.name ?? heroDefId}</span>
+                        <span>
+                          {coreHeroDefinitions[heroDefId]?.name ?? heroDefId}
+                        </span>
                       </button>
                       <button
                         aria-label="Show hero details"
@@ -12539,7 +15868,9 @@ function DraftBanPhase({ state, viewerPlayerId, onAction, onInspect }: DraftFlow
       {draft.bannedHeroDefIds.length ? (
         <p className="draftBannedList">
           <Ban aria-hidden="true" size={13} /> Banned:{" "}
-          {draft.bannedHeroDefIds.map((id) => coreHeroDefinitions[id]?.name ?? id).join(", ")}
+          {draft.bannedHeroDefIds
+            .map((id) => coreHeroDefinitions[id]?.name ?? id)
+            .join(", ")}
         </p>
       ) : null}
     </div>
@@ -12547,9 +15878,16 @@ function DraftBanPhase({ state, viewerPlayerId, onAction, onInspect }: DraftFlow
 }
 
 /** TYPE 1, step 3 — pick your hero from your own town (banned heroes locked out). */
-function DraftPickPhase({ state, viewerPlayerId, onAction, onInspect }: DraftFlowProps) {
+function DraftPickPhase({
+  state,
+  viewerPlayerId,
+  onAction,
+  onInspect,
+}: DraftFlowProps) {
   const lobby = state.setupLobby;
-  const seat = lobby?.seats.find((candidate) => candidate.playerId === viewerPlayerId);
+  const seat = lobby?.seats.find(
+    (candidate) => candidate.playerId === viewerPlayerId,
+  );
   if (!lobby || !seat?.factionId) {
     return null;
   }
@@ -12559,7 +15897,10 @@ function DraftPickPhase({ state, viewerPlayerId, onAction, onInspect }: DraftFlo
     <div className="draftFlow" aria-label="Pick your hero">
       <div className="draftPhaseHead">
         <strong>Step 3 — pick your hero</strong>
-        <small>{coreFactionDefinitions[factionId]?.name} · banned heroes are greyed out</small>
+        <small>
+          {coreFactionDefinitions[factionId]?.name} · banned heroes are greyed
+          out
+        </small>
       </div>
       <FactionPickGrid
         factionIds={[factionId]}
@@ -12567,11 +15908,16 @@ function DraftPickPhase({ state, viewerPlayerId, onAction, onInspect }: DraftFlo
           selected: seat.heroDefId === heroDefId,
           banned: banned.has(heroDefId),
           disabled: banned.has(heroDefId),
-          title: banned.has(heroDefId) ? "Banned out of this draft" : undefined
+          title: banned.has(heroDefId) ? "Banned out of this draft" : undefined,
         })}
         onInspect={onInspect}
         onPick={(pickFactionId, heroDefId) =>
-          onAction({ type: "CHOOSE_FACTION", playerId: viewerPlayerId, factionId: pickFactionId, heroDefId })
+          onAction({
+            type: "CHOOSE_FACTION",
+            playerId: viewerPlayerId,
+            factionId: pickFactionId,
+            heroDefId,
+          })
         }
         takenByOthers={new Set()}
       />
@@ -12580,9 +15926,16 @@ function DraftPickPhase({ state, viewerPlayerId, onAction, onInspect }: DraftFlo
 }
 
 /** TYPE 3 — random with choice: roll-2-pick-1 for the town, then for the hero. */
-function RandomChoiceFlow({ state, viewerPlayerId, onAction, onInspect }: DraftFlowProps) {
+function RandomChoiceFlow({
+  state,
+  viewerPlayerId,
+  onAction,
+  onInspect,
+}: DraftFlowProps) {
   const lobby = state.setupLobby;
-  const seat = lobby?.seats.find((candidate) => candidate.playerId === viewerPlayerId);
+  const seat = lobby?.seats.find(
+    (candidate) => candidate.playerId === viewerPlayerId,
+  );
   if (!lobby || !seat) {
     return null;
   }
@@ -12599,14 +15952,22 @@ function RandomChoiceFlow({ state, viewerPlayerId, onAction, onInspect }: DraftF
         <div className="draftRandom">
           <button
             className="draftRollBtn"
-            onClick={() => onAction({ type: "ROLL_TOWN_OPTIONS", playerId: viewerPlayerId })}
+            onClick={() =>
+              onAction({ type: "ROLL_TOWN_OPTIONS", playerId: viewerPlayerId })
+            }
             type="button"
           >
             <Dices aria-hidden="true" size={16} />
-            <span>{townOptions.length ? "Re-roll two towns" : "Roll two towns"}</span>
+            <span>
+              {townOptions.length ? "Re-roll two towns" : "Roll two towns"}
+            </span>
           </button>
           {townOptions.length ? (
-            <ResetSeatButton label="Clear roll" onAction={onAction} viewerPlayerId={viewerPlayerId} />
+            <ResetSeatButton
+              label="Clear roll"
+              onAction={onAction}
+              viewerPlayerId={viewerPlayerId}
+            />
           ) : null}
         </div>
         {townOptions.length ? (
@@ -12615,7 +15976,13 @@ function RandomChoiceFlow({ state, viewerPlayerId, onAction, onInspect }: DraftF
               <TownChoiceButton
                 factionId={factionId}
                 key={factionId}
-                onClick={() => onAction({ type: "CHOOSE_TOWN", playerId: viewerPlayerId, factionId })}
+                onClick={() =>
+                  onAction({
+                    type: "CHOOSE_TOWN",
+                    playerId: viewerPlayerId,
+                    factionId,
+                  })
+                }
               />
             ))}
           </div>
@@ -12639,17 +16006,28 @@ function RandomChoiceFlow({ state, viewerPlayerId, onAction, onInspect }: DraftF
         <div className="draftRandom">
           <button
             className="draftRollBtn"
-            onClick={() => onAction({ type: "ROLL_HERO_OPTIONS", playerId: viewerPlayerId })}
+            onClick={() =>
+              onAction({ type: "ROLL_HERO_OPTIONS", playerId: viewerPlayerId })
+            }
             type="button"
           >
             <Dices aria-hidden="true" size={16} />
-            <span>{heroOptions.length ? "Re-roll two heroes" : "Roll two heroes"}</span>
+            <span>
+              {heroOptions.length ? "Re-roll two heroes" : "Roll two heroes"}
+            </span>
           </button>
-          <ResetSeatButton label="Reset town" onAction={onAction} viewerPlayerId={viewerPlayerId} />
+          <ResetSeatButton
+            label="Reset town"
+            onAction={onAction}
+            viewerPlayerId={viewerPlayerId}
+          />
         </div>
         {heroOptions.length ? (
           <div className="factionGrid">
-            <div className="factionCard" style={{ borderColor: faction?.color }}>
+            <div
+              className="factionCard"
+              style={{ borderColor: faction?.color }}
+            >
               <strong style={{ color: faction?.color }}>{faction?.name}</strong>
               <div className="factionHeroes">
                 {heroOptions.map((heroDefId) => (
@@ -12659,7 +16037,14 @@ function RandomChoiceFlow({ state, viewerPlayerId, onAction, onInspect }: DraftF
                     heroDefId={heroDefId}
                     key={heroDefId}
                     onInspect={() => onInspect(heroDefId)}
-                    onPick={() => onAction({ type: "CHOOSE_FACTION", playerId: viewerPlayerId, factionId, heroDefId })}
+                    onPick={() =>
+                      onAction({
+                        type: "CHOOSE_FACTION",
+                        playerId: viewerPlayerId,
+                        factionId,
+                        heroDefId,
+                      })
+                    }
                     selected={false}
                   />
                 ))}
@@ -12677,7 +16062,8 @@ function RandomChoiceFlow({ state, viewerPlayerId, onAction, onInspect }: DraftF
   return (
     <div className="draftFlow">
       <p className="draftLockNote">
-        <Check aria-hidden="true" size={14} /> Locked <strong style={{ color: faction?.color }}>{hero?.name}</strong> of{" "}
+        <Check aria-hidden="true" size={14} /> Locked{" "}
+        <strong style={{ color: faction?.color }}>{hero?.name}</strong> of{" "}
         {faction?.name}.
       </p>
       <ResetSeatButton onAction={onAction} viewerPlayerId={viewerPlayerId} />
@@ -12692,59 +16078,114 @@ function RandomChoiceFlow({ state, viewerPlayerId, onAction, onInspect }: DraftF
  * BAN_HERO / CHOOSE_FACTION / RANDOM_ASSIGN_SEAT), so the result is shared and
  * enforced for every seat.
  */
-function DraftFlowPanel({ state, viewerPlayerId, onAction, onInspect }: DraftFlowProps) {
+function DraftFlowPanel({
+  state,
+  viewerPlayerId,
+  onAction,
+  onInspect,
+}: DraftFlowProps) {
   const lobby = state.setupLobby;
   if (!lobby) {
     return null;
   }
-  const seat = lobby.seats.find((candidate) => candidate.playerId === viewerPlayerId);
-  const draft = lobby.draft ?? { format: "open" as const, bannedHeroDefIds: [] };
+  const seat = lobby.seats.find(
+    (candidate) => candidate.playerId === viewerPlayerId,
+  );
+  const draft = lobby.draft ?? {
+    format: "open" as const,
+    bannedHeroDefIds: [],
+  };
   const phase = getDraftPhase(lobby);
   const takenByOthers = new Set(
     lobby.seats
       .filter((candidate) => candidate.playerId !== viewerPlayerId)
       .map((candidate) => candidate.factionId)
-      .filter((id): id is FactionId => Boolean(id))
+      .filter((id): id is FactionId => Boolean(id)),
   );
 
   let flow: ReactNode = null;
   if (!seat) {
-    flow = <p className="observerNote">Observer — waiting for the players to finish setup.</p>;
+    flow = (
+      <p className="observerNote">
+        Observer — waiting for the players to finish setup.
+      </p>
+    );
   } else if (draft.format === "open") {
     flow = (
       <FactionPickGrid
-        factionIds={(Object.keys(coreFactionDefinitions) as FactionId[]).filter((id) =>
-          isPlayableFaction(id, lobby.options.anime)
+        factionIds={(Object.keys(coreFactionDefinitions) as FactionId[]).filter(
+          (id) => isPlayableFaction(id, lobby.options.anime),
         )}
         heroStateFor={(factionId, heroDefId) => ({
-          selected: seat.factionId === factionId && seat.heroDefId === heroDefId,
+          selected:
+            seat.factionId === factionId && seat.heroDefId === heroDefId,
           banned: false,
-          disabled: false
+          disabled: false,
         })}
         onInspect={onInspect}
         onPick={(factionId, heroDefId) =>
-          onAction({ type: "CHOOSE_FACTION", playerId: viewerPlayerId, factionId, heroDefId })
+          onAction({
+            type: "CHOOSE_FACTION",
+            playerId: viewerPlayerId,
+            factionId,
+            heroDefId,
+          })
         }
         takenByOthers={takenByOthers}
       />
     );
   } else if (draft.format === "random") {
-    flow = <RandomSeatFlow onAction={onAction} state={state} viewerPlayerId={viewerPlayerId} />;
+    flow = (
+      <RandomSeatFlow
+        onAction={onAction}
+        state={state}
+        viewerPlayerId={viewerPlayerId}
+      />
+    );
   } else if (draft.format === "random-choice") {
     flow = (
-      <RandomChoiceFlow onAction={onAction} onInspect={onInspect} state={state} viewerPlayerId={viewerPlayerId} />
+      <RandomChoiceFlow
+        onAction={onAction}
+        onInspect={onInspect}
+        state={state}
+        viewerPlayerId={viewerPlayerId}
+      />
     );
   } else if (phase.banPhaseActive) {
-    flow = <DraftBanPhase onAction={onAction} onInspect={onInspect} state={state} viewerPlayerId={viewerPlayerId} />;
+    flow = (
+      <DraftBanPhase
+        onAction={onAction}
+        onInspect={onInspect}
+        state={state}
+        viewerPlayerId={viewerPlayerId}
+      />
+    );
   } else if (phase.pickPhaseOpen) {
-    flow = <DraftPickPhase onAction={onAction} onInspect={onInspect} state={state} viewerPlayerId={viewerPlayerId} />;
+    flow = (
+      <DraftPickPhase
+        onAction={onAction}
+        onInspect={onInspect}
+        state={state}
+        viewerPlayerId={viewerPlayerId}
+      />
+    );
   } else {
-    flow = <DraftTownPhase onAction={onAction} state={state} viewerPlayerId={viewerPlayerId} />;
+    flow = (
+      <DraftTownPhase
+        onAction={onAction}
+        state={state}
+        viewerPlayerId={viewerPlayerId}
+      />
+    );
   }
 
   return (
     <div className="draftPanel" aria-label="Draft and random">
-      <SetupFormatSelector format={draft.format} onAction={onAction} viewerPlayerId={viewerPlayerId} />
+      <SetupFormatSelector
+        format={draft.format}
+        onAction={onAction}
+        viewerPlayerId={viewerPlayerId}
+      />
       {flow}
     </div>
   );
@@ -12767,7 +16208,12 @@ function DraftFlowPanel({ state, viewerPlayerId, onAction, onInspect }: DraftFlo
  * test goes through `isComputerPlayer`, NOT a raw `controllers[...]` read: a
  * multiplayer HUMAN seat deliberately carries no controller entry at all.
  */
-function ComputerOpponentPickers({ state, viewerPlayerId, onAction, onInspect }: DraftFlowProps) {
+function ComputerOpponentPickers({
+  state,
+  viewerPlayerId,
+  onAction,
+  onInspect,
+}: DraftFlowProps) {
   const [openSeatId, setOpenSeatId] = useState<PlayerId | null>(null);
   const lobby = state.setupLobby;
   const format = lobby?.draft?.format ?? "open";
@@ -12775,7 +16221,9 @@ function ComputerOpponentPickers({ state, viewerPlayerId, onAction, onInspect }:
     return null;
   }
   const singlePlayer = state.sessionMode === "single-player";
-  const computerSeats = lobby.seats.filter((seat) => isComputerPlayer(state, seat.playerId));
+  const computerSeats = lobby.seats.filter((seat) =>
+    isComputerPlayer(state, seat.playerId),
+  );
   if (computerSeats.length === 0) {
     return null;
   }
@@ -12784,36 +16232,58 @@ function ComputerOpponentPickers({ state, viewerPlayerId, onAction, onInspect }:
       lobby.seats
         .filter((candidate) => candidate.playerId !== seatPlayerId)
         .map((candidate) => candidate.factionId)
-        .filter((id): id is FactionId => Boolean(id))
+        .filter((id): id is FactionId => Boolean(id)),
     );
-  const playableFactions = (Object.keys(coreFactionDefinitions) as FactionId[]).filter((id) =>
-    isPlayableFaction(id, lobby.options.anime)
-  );
+  const playableFactions = (
+    Object.keys(coreFactionDefinitions) as FactionId[]
+  ).filter((id) => isPlayableFaction(id, lobby.options.anime));
 
   return (
-    <section className="computerSeatPickers" aria-label="Computer opponents setup">
+    <section
+      className="computerSeatPickers"
+      aria-label="Computer opponents setup"
+    >
       <div className="draftPhaseHead">
-        <strong>{singlePlayer ? "Your computer opponents" : "The table’s computer enemies"}</strong>
-        <small>Hand-pick each one’s town &amp; hero, roll one at random, or leave it on auto (picked at game start).</small>
+        <strong>
+          {singlePlayer
+            ? "Your computer opponents"
+            : "The table’s computer enemies"}
+        </strong>
+        <small>
+          Hand-pick each one’s town &amp; hero, roll one at random, or leave it
+          on auto (picked at game start).
+        </small>
       </div>
       {computerSeats.map((seat) => {
         // A designed map may FORCE this enemy's town type — the seat is then
         // locked (no pick/roll/clear); the engine picks the map's faction.
         const forcedFactionId = mapForcedComputerFaction(state, seat.playerId);
-        const forcedFaction = forcedFactionId ? coreFactionDefinitions[forcedFactionId] : null;
-        const faction = seat.factionId ? coreFactionDefinitions[seat.factionId] : null;
-        const hero = seat.heroDefId ? coreHeroDefinitions[seat.heroDefId] : null;
+        const forcedFaction = forcedFactionId
+          ? coreFactionDefinitions[forcedFactionId]
+          : null;
+        const faction = seat.factionId
+          ? coreFactionDefinitions[seat.factionId]
+          : null;
+        const hero = seat.heroDefId
+          ? coreHeroDefinitions[seat.heroDefId]
+          : null;
         const expanded = openSeatId === seat.playerId;
         const picked = Boolean(seat.factionId || seat.heroDefId);
         if (forcedFaction) {
           return (
-            <div className="computerSeatPicker locked" key={seat.playerId} aria-label={`${seat.name} — town set by map`}>
+            <div
+              className="computerSeatPicker locked"
+              key={seat.playerId}
+              aria-label={`${seat.name} — town set by map`}
+            >
               <div className="computerSeatPickerHead">
                 <span className="computerSeatPickerName">{seat.name}</span>
                 <span className="computerSeatPickerPick">
                   <Lock aria-hidden="true" size={13} />
                   <span className="computerSeatPickerNames">
-                    <strong style={{ color: forcedFaction.color }}>{forcedFaction.name}</strong>
+                    <strong style={{ color: forcedFaction.color }}>
+                      {forcedFaction.name}
+                    </strong>
                     <small>Town set by this map</small>
                   </span>
                 </span>
@@ -12822,14 +16292,24 @@ function ComputerOpponentPickers({ state, viewerPlayerId, onAction, onInspect }:
           );
         }
         return (
-          <div className="computerSeatPicker" key={seat.playerId} aria-label={`Set up ${seat.name}`}>
+          <div
+            className="computerSeatPicker"
+            key={seat.playerId}
+            aria-label={`Set up ${seat.name}`}
+          >
             <div className="computerSeatPickerHead">
               <span className="computerSeatPickerName">{seat.name}</span>
               {faction && hero ? (
                 <span className="computerSeatPickerPick">
-                  <HeroPortrait name={hero.name} portrait={hero.portrait} size={28} />
+                  <HeroPortrait
+                    name={hero.name}
+                    portrait={hero.portrait}
+                    size={28}
+                  />
                   <span className="computerSeatPickerNames">
-                    <strong style={{ color: faction.color }}>{hero.name}</strong>
+                    <strong style={{ color: faction.color }}>
+                      {hero.name}
+                    </strong>
                     <small>{faction.name}</small>
                   </span>
                 </span>
@@ -12846,7 +16326,8 @@ function ComputerOpponentPickers({ state, viewerPlayerId, onAction, onInspect }:
                 onClick={() => setOpenSeatId(expanded ? null : seat.playerId)}
                 type="button"
               >
-                <Castle aria-hidden="true" size={14} /> {expanded ? "Close" : "Pick faction & hero"}
+                <Castle aria-hidden="true" size={14} />{" "}
+                {expanded ? "Close" : "Pick faction & hero"}
               </button>
               <button
                 className="draftResetBtn"
@@ -12855,7 +16336,7 @@ function ComputerOpponentPickers({ state, viewerPlayerId, onAction, onInspect }:
                     type: "SET_COMPUTER_SEAT_FACTION",
                     playerId: viewerPlayerId,
                     seatPlayerId: seat.playerId,
-                    choice: "roll"
+                    choice: "roll",
                   })
                 }
                 type="button"
@@ -12870,7 +16351,7 @@ function ComputerOpponentPickers({ state, viewerPlayerId, onAction, onInspect }:
                       type: "SET_COMPUTER_SEAT_FACTION",
                       playerId: viewerPlayerId,
                       seatPlayerId: seat.playerId,
-                      choice: "clear"
+                      choice: "clear",
                     })
                   }
                   type="button"
@@ -12883,9 +16364,11 @@ function ComputerOpponentPickers({ state, viewerPlayerId, onAction, onInspect }:
               <FactionPickGrid
                 factionIds={playableFactions}
                 heroStateFor={(factionId, heroDefId) => ({
-                  selected: seat.factionId === factionId && seat.heroDefId === heroDefId,
+                  selected:
+                    seat.factionId === factionId &&
+                    seat.heroDefId === heroDefId,
                   banned: false,
-                  disabled: false
+                  disabled: false,
                 })}
                 onInspect={onInspect}
                 onPick={(factionId, heroDefId) => {
@@ -12893,7 +16376,7 @@ function ComputerOpponentPickers({ state, viewerPlayerId, onAction, onInspect }:
                     type: "SET_COMPUTER_SEAT_FACTION",
                     playerId: viewerPlayerId,
                     seatPlayerId: seat.playerId,
-                    choice: { factionId, heroDefId }
+                    choice: { factionId, heroDefId },
                   });
                   setOpenSeatId(null);
                 }}
@@ -12915,7 +16398,7 @@ function ComputerOpponentPickers({ state, viewerPlayerId, onAction, onInspect }:
 function StartingPositionTeams({
   state,
   viewerPlayerId,
-  onAction
+  onAction,
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
@@ -12923,26 +16406,39 @@ function StartingPositionTeams({
 }) {
   const lobby = state.setupLobby;
   const hasFixedTeams = Boolean(lobby?.options.customMapPreset?.fixedTeams);
-  if (!lobby || (!hasFixedTeams && state.sessionMode !== "single-player" && lobby.options.gameMode !== "coop")) {
+  if (
+    !lobby ||
+    (!hasFixedTeams &&
+      state.sessionMode !== "single-player" &&
+      lobby.options.gameMode !== "coop")
+  ) {
     return null;
   }
   const teams = lobbyTeamAssignments(state);
-  const fixed = lobby.options.customMapPreset?.fixedTeams?.length === lobby.seats.length;
+  const fixed =
+    lobby.options.customMapPreset?.fixedTeams?.length === lobby.seats.length;
   const custom = Boolean(lobby.options.teamAssignments);
   return (
-    <section className="computerSeatPickers teamSetupPicker" aria-label="Starting position teams">
+    <section
+      className="computerSeatPickers teamSetupPicker"
+      aria-label="Starting position teams"
+    >
       <div className="draftPhaseHead">
         <strong>Teams by starting position</strong>
         <small>
-          Seats on the same team are allies, whether controlled by a player or the computer. S1 is the first seat,
-          S2 the second, and so on.
+          Seats on the same team are allies, whether controlled by a player or
+          the computer. S1 is the first seat, S2 the second, and so on.
         </small>
         <button
           aria-pressed={!custom}
           className="draftResetBtn"
           disabled={fixed}
           onClick={() =>
-            onAction({ type: "SET_GAME_OPTIONS", playerId: viewerPlayerId, options: { teamAssignments: {} } })
+            onAction({
+              type: "SET_GAME_OPTIONS",
+              playerId: viewerPlayerId,
+              options: { teamAssignments: {} },
+            })
           }
           type="button"
         >
@@ -12950,12 +16446,23 @@ function StartingPositionTeams({
         </button>
       </div>
       {lobby.seats.map((seat, index) => (
-        <div className="optionRow teamSetupRow" data-start-position={`S${index + 1}`} key={seat.playerId}>
+        <div
+          className="optionRow teamSetupRow"
+          data-start-position={`S${index + 1}`}
+          key={seat.playerId}
+        >
           <small>
-            <strong>S{index + 1}</strong> · {state.players[seat.playerId]?.name ?? seat.name}
-            {isComputerPlayer(state, seat.playerId) ? " (Computer)" : " (Player)"}
+            <strong>S{index + 1}</strong> ·{" "}
+            {state.players[seat.playerId]?.name ?? seat.name}
+            {isComputerPlayer(state, seat.playerId)
+              ? " (Computer)"
+              : " (Player)"}
           </small>
-          <div className="optionButtons" role="group" aria-label={`Team for S${index + 1}`}>
+          <div
+            className="optionButtons"
+            role="group"
+            aria-label={`Team for S${index + 1}`}
+          >
             {lobby.seats.map((_, teamIndex) => {
               const team = teamIndex + 1;
               return (
@@ -12968,7 +16475,9 @@ function StartingPositionTeams({
                     onAction({
                       type: "SET_GAME_OPTIONS",
                       playerId: viewerPlayerId,
-                      options: { teamAssignments: { ...teams, [seat.playerId]: team } }
+                      options: {
+                        teamAssignments: { ...teams, [seat.playerId]: team },
+                      },
                     })
                   }
                   type="button"
@@ -12984,10 +16493,10 @@ function StartingPositionTeams({
         {fixed
           ? "This map locks teams by starting position."
           : custom
-          ? "Custom teams selected. At least two teams are required to start."
-          : state.sessionMode === "single-player"
-            ? "Default uses the map’s normal single-player computer diplomacy."
-            : "Default puts all human seats together against all computer seats."}
+            ? "Custom teams selected. At least two teams are required to start."
+            : state.sessionMode === "single-player"
+              ? "Default uses the map’s normal single-player computer diplomacy."
+              : "Default puts all human seats together against all computer seats."}
       </small>
     </section>
   );
@@ -13004,7 +16513,12 @@ function StartingPositionTeams({
 function SetupHubBoxArt({ id }: { id: SetupHubBoxId }) {
   return (
     <span aria-hidden="true" className="setupHubBoxArt">
-      <img alt="" className="setupHubBoxArtImg" decoding="async" src={assetUrl(SETUP_HUB_ART[id])} />
+      <img
+        alt=""
+        className="setupHubBoxArtImg"
+        decoding="async"
+        src={assetUrl(SETUP_HUB_ART[id])}
+      />
       <span className="setupHubBoxArtShade" />
       <span className="setupHubBoxSheen" />
     </span>
@@ -13019,7 +16533,7 @@ function SetupHubBoxArt({ id }: { id: SetupHubBoxId }) {
 function SetupHub({
   state,
   viewerPlayerId,
-  onOpen
+  onOpen,
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
@@ -13051,7 +16565,9 @@ function SetupHub({
         <span className="setupHubBoxPlate">
           <strong className="setupHubBoxTitle">Game mode</strong>
           <span className="setupHubBoxSummary">
-            <span className="setupHubBoxLine">{SETUP_HUB_MODE_NAMES[mode]}</span>
+            <span className="setupHubBoxLine">
+              {SETUP_HUB_MODE_NAMES[mode]}
+            </span>
             {wogOn || animeOn ? (
               <span className="setupHubBoxLine setupHubChips">
                 {wogOn ? <span className="setupHubChip">WOG</span> : null}
@@ -13076,10 +16592,14 @@ function SetupHub({
           <span className="setupHubBoxSummary">
             {heroes ? (
               <>
-                <span className="setupHubBoxLine">{heroes.yourPick ?? "Pick your town & hero"}</span>
+                <span className="setupHubBoxLine">
+                  {heroes.yourPick ?? "Pick your town & hero"}
+                </span>
                 <span className="setupHubBoxLine setupHubBoxDim">
                   {heroes.formatLabel} · {heroes.picked}/{heroes.seats} picked
-                  {heroes.computers > 0 ? ` · ${heroes.computers} computer${heroes.computers === 1 ? "" : "s"}` : ""}
+                  {heroes.computers > 0
+                    ? ` · ${heroes.computers} computer${heroes.computers === 1 ? "" : "s"}`
+                    : ""}
                 </span>
               </>
             ) : null}
@@ -13131,7 +16651,11 @@ function SetupHub({
         <span className="setupHubBoxPlate">
           <strong className="setupHubBoxTitle">Advanced settings</strong>
           <span className="setupHubBoxSummary">
-            <span className={`setupHubBoxLine${advanced.changed ? "" : " setupHubBoxDim"}`}>{advanced.label}</span>
+            <span
+              className={`setupHubBoxLine${advanced.changed ? "" : " setupHubBoxDim"}`}
+            >
+              {advanced.label}
+            </span>
           </span>
         </span>
       </button>
@@ -13144,7 +16668,7 @@ function GameModeModal({
   state,
   viewerPlayerId,
   onAction,
-  onClose
+  onClose,
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
@@ -13157,7 +16681,11 @@ function GameModeModal({
   }
   const options = lobby.options;
   const send = (next: Partial<GameSetupOptions>) =>
-    onAction({ type: "SET_GAME_OPTIONS", playerId: viewerPlayerId, options: next });
+    onAction({
+      type: "SET_GAME_OPTIONS",
+      playerId: viewerPlayerId,
+      options: next,
+    });
   return (
     <SetupHubWindow
       className="setupHubWindow--mode"
@@ -13165,7 +16693,11 @@ function GameModeModal({
       label="Game mode"
       onClose={onClose}
     >
-      <TableModeSection onAction={onAction} state={state} viewerPlayerId={viewerPlayerId} />
+      <TableModeSection
+        onAction={onAction}
+        state={state}
+        viewerPlayerId={viewerPlayerId}
+      />
       <GameModeSection
         customHint="Personal custom setup: save the current map & rules to a file below, or load one of your setting files."
         customNotice="Custom mode selected: save the current setup to a file, or load a setting file, below."
@@ -13192,7 +16724,7 @@ function HeroesDraftModal({
   viewerPlayerId,
   onAction,
   onInspect,
-  onClose
+  onClose,
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
@@ -13203,7 +16735,8 @@ function HeroesDraftModal({
   // Hot-seat (open table, several seats, one browser): the local seat switcher
   // lives in the top bar, which this window covers — say so instead of leaving
   // the player hunting for it.
-  const hotSeat = !state.room?.hosted && (state.setupLobby?.seats.length ?? 0) > 1;
+  const hotSeat =
+    !state.room?.hosted && (state.setupLobby?.seats.length ?? 0) > 1;
   return (
     <SetupHubWindow
       className="setupHubWindow--heroes"
@@ -13211,14 +16744,32 @@ function HeroesDraftModal({
       label="Heroes & Draft"
       onClose={onClose}
     >
-      <SeatCountControl onAction={onAction} state={state} viewerPlayerId={viewerPlayerId} />
-      <DraftFlowPanel onAction={onAction} onInspect={onInspect} state={state} viewerPlayerId={viewerPlayerId} />
-      <ComputerOpponentPickers onAction={onAction} onInspect={onInspect} state={state} viewerPlayerId={viewerPlayerId} />
-      <StartingPositionTeams onAction={onAction} state={state} viewerPlayerId={viewerPlayerId} />
+      <SeatCountControl
+        onAction={onAction}
+        state={state}
+        viewerPlayerId={viewerPlayerId}
+      />
+      <DraftFlowPanel
+        onAction={onAction}
+        onInspect={onInspect}
+        state={state}
+        viewerPlayerId={viewerPlayerId}
+      />
+      <ComputerOpponentPickers
+        onAction={onAction}
+        onInspect={onInspect}
+        state={state}
+        viewerPlayerId={viewerPlayerId}
+      />
+      <StartingPositionTeams
+        onAction={onAction}
+        state={state}
+        viewerPlayerId={viewerPlayerId}
+      />
       {hotSeat ? (
         <small className="optionHint">
-          Playing several seats in one browser? Close this window to reach the seat switcher at the top, then open it
-          again for the next seat.
+          Playing several seats in one browser? Close this window to reach the
+          seat switcher at the top, then open it again for the next seat.
         </small>
       ) : null}
     </SetupHubWindow>
@@ -13231,7 +16782,7 @@ function AdvancedSettingsModal({
   viewerPlayerId,
   onAction,
   onOpenBox,
-  onClose
+  onClose,
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
@@ -13246,7 +16797,12 @@ function AdvancedSettingsModal({
       label="Advanced settings"
       onClose={onClose}
     >
-      <GameOptionsPanel onAction={onAction} onOpenBox={onOpenBox} state={state} viewerPlayerId={viewerPlayerId} />
+      <GameOptionsPanel
+        onAction={onAction}
+        onOpenBox={onOpenBox}
+        state={state}
+        viewerPlayerId={viewerPlayerId}
+      />
     </SetupHubWindow>
   );
 }
@@ -13259,7 +16815,13 @@ function AdvancedSettingsModal({
  * the offender and calls the take-back what it is (cheating). Dismissible, and it
  * re-appears for the next reset (a newer event id clears the dismissal).
  */
-function SetupCheatWarning({ state, viewerPlayerId }: { state: GameState; viewerPlayerId: PlayerId }) {
+function SetupCheatWarning({
+  state,
+  viewerPlayerId,
+}: {
+  state: GameState;
+  viewerPlayerId: PlayerId;
+}) {
   const latest = useMemo(() => {
     for (let index = state.eventLog.length - 1; index >= 0; index -= 1) {
       const event = state.eventLog[index];
@@ -13276,7 +16838,9 @@ function SetupCheatWarning({ state, viewerPlayerId }: { state: GameState; viewer
   }
 
   const actorIsViewer = latest.playerId === viewerPlayerId;
-  const actor = actorIsViewer ? "You" : state.players[latest.playerId]?.name ?? latest.playerId;
+  const actor = actorIsViewer
+    ? "You"
+    : (state.players[latest.playerId]?.name ?? latest.playerId);
   const possessive = actorIsViewer ? "your" : "their";
   const did =
     latest.scope === "pick"
@@ -13293,8 +16857,8 @@ function SetupCheatWarning({ state, viewerPlayerId }: { state: GameState; viewer
       <span className="setupCheatText">
         <strong>Setup take-back — the table remembers.</strong>
         <span>
-          {actor} {did} after seeing the result. Re-rolling or re-picking a revealed result is cheating, and the whole
-          table saw it.
+          {actor} {did} after seeing the result. Re-rolling or re-picking a
+          revealed result is cheating, and the whole table saw it.
         </span>
       </span>
       <button
@@ -13322,7 +16886,7 @@ function SetupCheatWarning({ state, viewerPlayerId }: { state: GameState; viewer
 export function StartReadyCheck({
   state,
   viewerPlayerId,
-  onAction
+  onAction,
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
@@ -13367,12 +16931,19 @@ export function StartReadyCheck({
   }
 
   const secondsLeft = Math.max(0, Math.ceil((check.deadline - now) / 1000));
-  const confirmedCount = confirmers.filter((seat) => check.confirmations.includes(seat)).length;
+  const confirmedCount = confirmers.filter((seat) =>
+    check.confirmations.includes(seat),
+  ).length;
   const viewerConfirmed = check.confirmations.includes(viewerPlayerId);
-  const starterName = state.players[check.startedByPlayerId]?.name ?? check.startedByPlayerId;
+  const starterName =
+    state.players[check.startedByPlayerId]?.name ?? check.startedByPlayerId;
 
   return (
-    <div className="startReadyCheck" role="dialog" aria-label="Start ready check">
+    <div
+      className="startReadyCheck"
+      role="dialog"
+      aria-label="Start ready check"
+    >
       <div className="startReadyCheckBody">
         <Hourglass aria-hidden="true" size={16} />
         <strong>{starterName} wants to start the adventure.</strong>
@@ -13384,21 +16955,34 @@ export function StartReadyCheck({
             <button
               className="commandButton primary"
               disabled={viewerConfirmed}
-              onClick={() => onAction({ type: "CONFIRM_START_ADVENTURE", playerId: viewerPlayerId })}
+              onClick={() =>
+                onAction({
+                  type: "CONFIRM_START_ADVENTURE",
+                  playerId: viewerPlayerId,
+                })
+              }
               type="button"
             >
-              <Check aria-hidden="true" size={14} /> {viewerConfirmed ? "Ready — waiting…" : "Confirm start"}
+              <Check aria-hidden="true" size={14} />{" "}
+              {viewerConfirmed ? "Ready — waiting…" : "Confirm start"}
             </button>
             <button
               className="commandButton danger"
-              onClick={() => onAction({ type: "CANCEL_START_ADVENTURE", playerId: viewerPlayerId })}
+              onClick={() =>
+                onAction({
+                  type: "CANCEL_START_ADVENTURE",
+                  playerId: viewerPlayerId,
+                })
+              }
               type="button"
             >
               <X aria-hidden="true" size={14} /> Cancel
             </button>
           </span>
         ) : (
-          <span className="startReadyCheckWaiting">Waiting for the players to confirm…</span>
+          <span className="startReadyCheckWaiting">
+            Waiting for the players to confirm…
+          </span>
         )}
       </div>
     </div>
@@ -13408,7 +16992,7 @@ export function StartReadyCheck({
 export function SetupLobbyScreen({
   state,
   viewerPlayerId,
-  onAction
+  onAction,
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
@@ -13427,14 +17011,19 @@ export function SetupLobbyScreen({
   }
 
   const mySeat = lobby.seats.find((seat) => seat.playerId === viewerPlayerId);
-  const allChosen = lobby.seats.every((seat) => seat.factionId && seat.heroDefId);
-  const scenarioName = scenarioDefinitions[lobby.options.scenarioId]?.name ?? lobby.scenarioId;
+  const allChosen = lobby.seats.every(
+    (seat) => seat.factionId && seat.heroDefId,
+  );
+  const scenarioName =
+    scenarioDefinitions[lobby.options.scenarioId]?.name ?? lobby.scenarioId;
   const singlePlayer = state.sessionMode === "single-player";
   const cooperative = lobby.options.gameMode === "coop";
   const customTeams = Boolean(lobby.options.teamAssignments);
-  const teamCount = customTeams ? new Set(Object.values(lobby.options.teamAssignments ?? {})).size : 0;
+  const teamCount = customTeams
+    ? new Set(Object.values(lobby.options.teamAssignments ?? {})).size
+    : 0;
   const computerEnemies = Object.values(state.controllers ?? {}).filter(
-    (controller) => controller.kind === "computer"
+    (controller) => controller.kind === "computer",
   ).length;
 
   return (
@@ -13448,16 +17037,26 @@ export function SetupLobbyScreen({
           <span>CO-OP WAR ROOM</span>
           <strong>
             {customTeams ? (
-              <>{teamCount} custom teams · players and computers may be allies</>
+              <>
+                {teamCount} custom teams · players and computers may be allies
+              </>
             ) : (
-              <>Human alliance <em>vs</em> {computerEnemies || "…"} computer enem{computerEnemies === 1 ? "y" : "ies"}</>
+              <>
+                Human alliance <em>vs</em> {computerEnemies || "…"} computer
+                enem{computerEnemies === 1 ? "y" : "ies"}
+              </>
             )}
           </strong>
-          <small>Shared victory · No MMR · Pick heroes and map, then deploy</small>
+          <small>
+            Shared victory · No MMR · Pick heroes and map, then deploy
+          </small>
         </aside>
       ) : null}
       {/* First-visit opt-in: next-step coach + card reasons (local browser pref). */}
-      <HelperCoachLobbyPrompt force={forceHelperPrompt} onClose={() => setForceHelperPrompt(false)} />
+      <HelperCoachLobbyPrompt
+        force={forceHelperPrompt}
+        onClose={() => setForceHelperPrompt(false)}
+      />
       <header>
         <h2>Map setup — {scenarioName}</h2>
         {cooperative ? (
@@ -13466,22 +17065,30 @@ export function SetupLobbyScreen({
             {customTeams
               ? "the selected starting-position teams decide every alliance, including mixed player/computer teams."
               : "every human is allied against the computer enemies."}{" "}
-            Pick the battlefield and your heroes together; this table never changes MMR.
+            Pick the battlefield and your heroes together; this table never
+            changes MMR.
           </p>
         ) : singlePlayer ? (
           <p>
-            <strong>Playing with computer.</strong> Open <strong>Heroes &amp; Draft</strong> for your town, your hero
-            and the computer opponents. Each box shows its current choice.
+            <strong>Playing with computer.</strong> Open{" "}
+            <strong>Heroes &amp; Draft</strong> for your town, your hero and the
+            computer opponents. Each box shows its current choice.
           </p>
         ) : (
           <p>
-            Set the game up through the four boxes — each one shows the table&apos;s current choice.
+            Set the game up through the four boxes — each one shows the
+            table&apos;s current choice.
           </p>
         )}
         {helperCoach.ready && helperCoach.preference !== null ? (
           <p className="helperCoachLobbyNote">
-            Helper tips are <strong>{helperCoach.enabled ? "on" : "off"}</strong>.{" "}
-            <button className="helperCoachLobbyLink" onClick={() => setForceHelperPrompt(true)} type="button">
+            Helper tips are{" "}
+            <strong>{helperCoach.enabled ? "on" : "off"}</strong>.{" "}
+            <button
+              className="helperCoachLobbyLink"
+              onClick={() => setForceHelperPrompt(true)}
+              type="button"
+            >
               Change
             </button>
           </p>
@@ -13492,14 +17099,24 @@ export function SetupLobbyScreen({
 
       <div className="lobbySeats">
         {lobby.seats.map((seat) => {
-          const faction = seat.factionId ? coreFactionDefinitions[seat.factionId] : null;
-          const hero = seat.heroDefId ? coreHeroDefinitions[seat.heroDefId] : null;
-          const isComputer = state.controllers?.[seat.playerId]?.kind === "computer";
+          const faction = seat.factionId
+            ? coreFactionDefinitions[seat.factionId]
+            : null;
+          const hero = seat.heroDefId
+            ? coreHeroDefinitions[seat.heroDefId]
+            : null;
+          const isComputer =
+            state.controllers?.[seat.playerId]?.kind === "computer";
           return (
-            <div className={`lobbySeat ${seat.playerId === viewerPlayerId ? "mine" : ""}`} key={seat.playerId}>
+            <div
+              className={`lobbySeat ${seat.playerId === viewerPlayerId ? "mine" : ""}`}
+              key={seat.playerId}
+            >
               <strong>
                 {state.players[seat.playerId]?.name ?? seat.name}
-                {isComputer ? <span className="computerSeatBadge">Computer</span> : null}
+                {isComputer ? (
+                  <span className="computerSeatBadge">Computer</span>
+                ) : null}
                 {singlePlayer && seat.playerId === viewerPlayerId ? (
                   <span className="computerSeatBadge you">You</span>
                 ) : null}
@@ -13520,10 +17137,18 @@ export function SetupLobbyScreen({
 
       {mySeat ? (
         <>
-          <SetupHub onOpen={setOpenBox} state={state} viewerPlayerId={viewerPlayerId} />
+          <SetupHub
+            onOpen={setOpenBox}
+            state={state}
+            viewerPlayerId={viewerPlayerId}
+          />
           {/* Always-visible consolidated summary, pinned to the right of the
               scene — the painted boxes show only their titles. */}
-          <SetupSummaryRail onOpen={setOpenBox} state={state} viewerPlayerId={viewerPlayerId} />
+          <SetupSummaryRail
+            onOpen={setOpenBox}
+            state={state}
+            viewerPlayerId={viewerPlayerId}
+          />
           {openBox === "mode" ? (
             <GameModeModal
               onAction={onAction}
@@ -13571,26 +17196,41 @@ export function SetupLobbyScreen({
           const openSeatExists =
             Boolean(room?.hosted) &&
             lobby.seats.some(
-              (candidate) => !(room?.members ?? []).some((member) => member.seat === candidate.playerId)
+              (candidate) =>
+                !(room?.members ?? []).some(
+                  (member) => member.seat === candidate.playerId,
+                ),
             );
           return openSeatExists ? (
             <p className="observerNote">
-              You&apos;re observing — <strong>take a seat</strong> using the seat controls at the top of the screen to
-              pick a faction and play.
+              You&apos;re observing — <strong>take a seat</strong> using the
+              seat controls at the top of the screen to pick a faction and play.
             </p>
           ) : (
-            <p className="observerNote">Observer: waiting for the players to finish map setup.</p>
+            <p className="observerNote">
+              Observer: waiting for the players to finish map setup.
+            </p>
           );
         })()
       )}
 
       {mySeat ? (
         <button
-          aria-label={allChosen ? "New Game — Start game" : "Waiting for every seat to pick"}
+          aria-label={
+            allChosen
+              ? "New Game — Start game"
+              : "Waiting for every seat to pick"
+          }
           className="newGameMenuButton setupSceneStartButton"
           disabled={!allChosen || Boolean(lobby.startCheck)}
-          onClick={() => onAction({ type: "START_ADVENTURE", playerId: viewerPlayerId })}
-          title={allChosen ? "Start the adventure" : "Every seat must pick a faction and hero first"}
+          onClick={() =>
+            onAction({ type: "START_ADVENTURE", playerId: viewerPlayerId })
+          }
+          title={
+            allChosen
+              ? "Start the adventure"
+              : "Every seat must pick a faction and hero first"
+          }
           type="button"
         >
           <img
@@ -13606,9 +17246,18 @@ export function SetupLobbyScreen({
         </button>
       ) : null}
 
-      <StartReadyCheck onAction={onAction} state={state} viewerPlayerId={viewerPlayerId} />
+      <StartReadyCheck
+        onAction={onAction}
+        state={state}
+        viewerPlayerId={viewerPlayerId}
+      />
 
-      {infoHeroId ? <HeroInfoModal heroDefId={infoHeroId} onClose={() => setInfoHeroId(null)} /> : null}
+      {infoHeroId ? (
+        <HeroInfoModal
+          heroDefId={infoHeroId}
+          onClose={() => setInfoHeroId(null)}
+        />
+      ) : null}
     </section>
   );
 }
@@ -13626,7 +17275,9 @@ export function titleCaseLocation(location: string): string {
  * names are the future audio hook: when sound lands, map each cue to a file
  * and play it where the feed item is enqueued — nothing else has to change.
  */
-export const ADVENTURE_FEED_CUES: Partial<Record<GameEventType, { icon: string; cue: string }>> = {
+export const ADVENTURE_FEED_CUES: Partial<
+  Record<GameEventType, { icon: string; cue: string }>
+> = {
   FIELD_VISITED: { icon: "📍", cue: "visit" },
   FIELD_FLAGGED: { icon: "🚩", cue: "flag" },
   RESOURCES_GAINED: { icon: "🪙", cue: "coins" },
@@ -13695,7 +17346,7 @@ export const ADVENTURE_FEED_CUES: Partial<Record<GameEventType, { icon: string; 
   COMMANDER_DIED: { icon: "🪦", cue: "defeat" },
   COMMANDER_REVIVED: { icon: "👑", cue: "recruit" },
   COMMANDER_FIRST_AID_USED: { icon: "⛑", cue: "recruit" },
-  COMMANDER_SPECIALTY_TRIGGERED: { icon: "👑", cue: "options" }
+  COMMANDER_SPECIALTY_TRIGGERED: { icon: "👑", cue: "options" },
 };
 
 type GameEventType = GameState["eventLog"][number]["type"];
@@ -13714,7 +17365,7 @@ export type AdventureFeedItem = {
  */
 export function AdventureEventFeed({
   items,
-  onDismiss
+  onDismiss,
 }: {
   items: AdventureFeedItem[];
   onDismiss: (id: string) => void;
@@ -13724,9 +17375,19 @@ export function AdventureEventFeed({
   }
 
   return (
-    <div className="adventureFeed" aria-label="What just happened" aria-live="polite">
+    <div
+      className="adventureFeed"
+      aria-label="What just happened"
+      aria-live="polite"
+    >
       {items.map((item) => (
-        <button className="feedItem" key={item.id} onClick={() => onDismiss(item.id)} title="Dismiss" type="button">
+        <button
+          className="feedItem"
+          key={item.id}
+          onClick={() => onDismiss(item.id)}
+          title="Dismiss"
+          type="button"
+        >
           <span aria-hidden="true" className="feedIcon">
             {item.icon}
           </span>

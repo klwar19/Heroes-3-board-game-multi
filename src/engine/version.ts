@@ -969,7 +969,11 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // v81: Polish Alliance mode adds the OFFER_ALLY_TRANSFER action and private
 // pending-visit acceptance step. Older workers cannot validate or apply it.
 // `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 81;
+// v82: two granular Tournament switches (Morale Search-again and removed
+// Artifact VP credit) plus the map-authored Break team scope are frozen into
+// setup/adventure state. Older workers would apply different Search, scoring,
+// and allied movement legality. `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 82;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

@@ -6,10 +6,16 @@ import {
   createInitialGameState,
   getLegalActions,
   makeActiveEffect,
-  unitDealsElementalDamage
+  unitDealsElementalDamage,
 } from "./index";
 import { unitImmuneToSpellSchools } from "./unit-abilities";
-import type { ActiveEffectModifier, CombatUnitState, GameAction, GameEvent, GameState } from "./state";
+import type {
+  ActiveEffectModifier,
+  CombatUnitState,
+  GameAction,
+  GameEvent,
+  GameState,
+} from "./state";
 
 /**
  * End-to-end guarantees for EVERY Elemental (neutral guards + the four summon
@@ -35,19 +41,32 @@ import type { ActiveEffectModifier, CombatUnitState, GameAction, GameEvent, Game
 // ---------------------------------------------------------------------------
 type SideKey = "few" | "pack" | "neutral";
 
-const elementalSides: { unitId: string; sideKey: SideKey; printedAttack: number; abilities: string[] }[] = [];
+const elementalSides: {
+  unitId: string;
+  sideKey: SideKey;
+  printedAttack: number;
+  abilities: string[];
+}[] = [];
 for (const [unitId, def] of Object.entries(coreUnitDefinitions)) {
   for (const sideKey of ["few", "pack", "neutral"] as SideKey[]) {
     const side = def[sideKey];
     if (side?.abilities?.includes("elemental-damage")) {
-      elementalSides.push({ unitId, sideKey, printedAttack: side.attack, abilities: [...side.abilities] });
+      elementalSides.push({
+        unitId,
+        sideKey,
+        printedAttack: side.attack,
+        abilities: [...side.abilities],
+      });
     }
   }
 }
 
 function applyOk(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
-  expect(result.errors, result.errors.map((error) => error.message).join("; ")).toEqual([]);
+  expect(
+    result.errors,
+    result.errors.map((error) => error.message).join("; "),
+  ).toEqual([]);
   return result.state;
 }
 
@@ -56,7 +75,10 @@ function passAllReactions(state: GameState): GameState {
   let safety = 40;
   while (current.reactionWindow && safety > 0) {
     safety -= 1;
-    current = applyOk(current, { type: "PASS_REACTION", playerId: current.reactionWindow.priorityPlayerId });
+    current = applyOk(current, {
+      type: "PASS_REACTION",
+      playerId: current.reactionWindow.priorityPlayerId,
+    });
   }
   return current;
 }
@@ -65,7 +87,11 @@ function passAllReactions(state: GameState): GameState {
 function settle(state: GameState): GameState {
   let current = state;
   let safety = 60;
-  while (safety > 0 && (current.reactionWindow || current.pendingChoice?.type === "ATTACK_DIE_REROLL")) {
+  while (
+    safety > 0 &&
+    (current.reactionWindow ||
+      current.pendingChoice?.type === "ATTACK_DIE_REROLL")
+  ) {
     safety -= 1;
     if (current.reactionWindow) {
       current = passAllReactions(current);
@@ -77,7 +103,7 @@ function settle(state: GameState): GameState {
         type: "CHOOSE_PENDING_ROLL",
         playerId: choice.playerId,
         choiceId: choice.id,
-        candidateIndex: 0
+        candidateIndex: 0,
       });
     }
   }
@@ -91,11 +117,13 @@ function attackBonus(state: GameState, unitId: string, amount: number): void {
       name: "Offense",
       scope: "unit",
       duration: { type: "combat" },
-      modifiers: [{ type: "ATTACK_BONUS", amount } satisfies ActiveEffectModifier]
+      modifiers: [
+        { type: "ATTACK_BONUS", amount } satisfies ActiveEffectModifier,
+      ],
     },
     { type: "system" },
     "p1",
-    { type: "unit", unitId }
+    { type: "unit", unitId },
   );
   state.activeEffects.push(buff);
 }
@@ -136,10 +164,12 @@ function duel(configure: (state: GameState) => void): GameState {
   return state;
 }
 
-function firstAttack(state: GameState): Extract<GameEvent, { type: "ATTACK_ROLLED" }> {
+function firstAttack(
+  state: GameState,
+): Extract<GameEvent, { type: "ATTACK_ROLLED" }> {
   const rolled = state.eventLog.find(
     (event): event is Extract<GameEvent, { type: "ATTACK_ROLLED" }> =>
-      event.type === "ATTACK_ROLLED" && !event.isRetaliation
+      event.type === "ATTACK_ROLLED" && !event.isRetaliation,
   );
   if (!rolled) {
     throw new Error("no attack was rolled");
@@ -153,8 +183,8 @@ function runAttack(state: GameState): GameState {
       type: "ATTACK_UNIT",
       playerId: "p1",
       attackerId: "unit_p1_griffins",
-      defenderId: "unit_p2_skeletons"
-    })
+      defenderId: "unit_p2_skeletons",
+    }),
   );
 }
 
@@ -191,14 +221,17 @@ describe("every Elemental deals die-proof, fixed damage (real unit data)", () =>
         "neutral.magic_elementals",
         "fuyuki.casters",
         "mgq.spirit_sylph",
-        "mgq.emily"
-      ])
+        "mgq.emily",
+      ]),
     );
     expect(
       [...ids].every(
         (id) =>
-          id.startsWith("neutral.") || id.startsWith("conflux.") || id === "fuyuki.casters" || id.startsWith("mgq.")
-      )
+          id.startsWith("neutral.") ||
+          id.startsWith("conflux.") ||
+          id === "fuyuki.casters" ||
+          id.startsWith("mgq."),
+      ),
     ).toBe(true);
     // 9 neutral sides + 8 summon sides + Fuyuki Casters Few & Pack + MGQ Sylph
     // Few & Pack + MGQ Emily Pack.
@@ -206,7 +239,13 @@ describe("every Elemental deals die-proof, fixed damage (real unit data)", () =>
   });
 
   for (const { unitId, sideKey, printedAttack, abilities } of elementalSides) {
-    it(`${unitId} (${sideKey}): official rule — die + buff apply, only Defense is ignored`, () => {
+    const fuyukiFixedDamage =
+      unitId === "fuyuki.casters" ? (sideKey === "few" ? 2 : 3) : null;
+    it(`${unitId} (${sideKey}): ${
+      fuyukiFixedDamage === null
+        ? "official rule — die + buff apply, only Defense is ignored"
+        : `Medea deals fixed ${fuyukiFixedDamage} damage without a die or buffs`
+    }`, () => {
       const state = duel((draft) => {
         const a = draft.combat!.units.unit_p1_griffins;
         a.attack = printedAttack;
@@ -219,16 +258,35 @@ describe("every Elemental deals die-proof, fixed damage (real unit data)", () =>
       });
 
       const attacker = state.combat!.units.unit_p1_griffins;
-      expect(unitDealsElementalDamage(state, attacker), `${unitId} should deal elemental damage`).toBe(true);
+      expect(
+        unitDealsElementalDamage(state, attacker),
+        `${unitId} should deal elemental damage`,
+      ).toBe(true);
 
       const resolved = runAttack(state);
       const event = firstAttack(resolved);
-      expect(event.noDie ?? false, "the die is rolled like any other attack").toBe(false);
-      expect(event.roll, "the queued +1 face applies").toBe(1);
-      expect(event.attackValue, "printed Attack + the +4 buff + the +1 die").toBe(printedAttack + 5);
-      expect(event.defenseValue, "Defense is ignored entirely — the ONE elemental effect").toBe(0);
-      expect(event.damage, "full attack value lands (no Defense soak)").toBe(printedAttack + 5);
-      expect(resolved.combat!.units.unit_p2_skeletons.damage).toBe(printedAttack + 5);
+      expect(
+        event.noDie ?? false,
+        "only Medea's fixed damage skips the die",
+      ).toBe(fuyukiFixedDamage !== null);
+      expect(event.roll, "Medea ignores the queued die face").toBe(
+        fuyukiFixedDamage === null ? 1 : 0,
+      );
+      expect(
+        event.attackValue,
+        "Medea ignores printed Attack, buffs, and the die",
+      ).toBe(fuyukiFixedDamage ?? printedAttack + 5);
+      expect(
+        event.defenseValue,
+        "Defense is ignored entirely — the ONE elemental effect",
+      ).toBe(0);
+      expect(
+        event.damage,
+        "the resolved attack value lands with no Defense soak",
+      ).toBe(fuyukiFixedDamage ?? printedAttack + 5);
+      expect(resolved.combat!.units.unit_p2_skeletons.damage).toBe(
+        fuyukiFixedDamage ?? printedAttack + 5,
+      );
     });
   }
 
@@ -242,16 +300,20 @@ describe("every Elemental deals die-proof, fixed damage (real unit data)", () =>
       draft.combat!.units.unit_p2_skeletons.defense = 4;
       attackBonus(draft, "unit_p1_griffins", 4);
       draft.adventure = {
-        houseRules: { "elemental-damage-no-die": true }
+        houseRules: { "elemental-damage-no-die": true },
       } as unknown as GameState["adventure"];
     });
 
     const event = firstAttack(runAttack(state));
-    expect(event.noDie, "the die is skipped while the house rule is on").toBe(true);
+    expect(event.noDie, "the die is skipped while the house rule is on").toBe(
+      true,
+    );
     expect(event.roll, "the queued +1 face is not applied").toBe(0);
     expect(event.attackValue, "buff and die both ignored").toBe(air.attack);
     expect(event.defenseValue, "Defense is ignored in both readings").toBe(0);
-    expect(event.damage, "damage is exactly the printed Attack").toBe(air.attack);
+    expect(event.damage, "damage is exactly the printed Attack").toBe(
+      air.attack,
+    );
   });
 
   it("a Sorceress' Weakness lowers an Elemental's damage in BOTH readings", () => {
@@ -261,13 +323,15 @@ describe("every Elemental deals die-proof, fixed damage (real unit data)", () =>
         const a = draft.combat!.units.unit_p1_griffins;
         a.attack = air.attack;
         a.abilities = [...(air.abilities ?? [])];
-        a.tokens = [{ id: "tk", kind: "weakness", amount: -1, sourceName: "Sorceresses" }];
+        a.tokens = [
+          { id: "tk", kind: "weakness", amount: -1, sourceName: "Sorceresses" },
+        ];
         // A 0-face die so the official reading's roll adds nothing — the point
         // here is the debuff, which bites either way.
         draft.combat!.dice.scriptedRolls = [0, 0, 0, 0];
         if (houseRuleOn) {
           draft.adventure = {
-            houseRules: { "elemental-damage-no-die": true }
+            houseRules: { "elemental-damage-no-die": true },
           } as unknown as GameState["adventure"];
         }
       });
@@ -281,7 +345,10 @@ describe("every Elemental deals die-proof, fixed damage (real unit data)", () =>
 // ---------------------------------------------------------------------------
 // Immunity: Magic Arrow + own School of Magic, for every Elemental.
 // ---------------------------------------------------------------------------
-const SCHOOL_BY_UNIT: Record<string, "air" | "earth" | "fire" | "water" | null> = {
+const SCHOOL_BY_UNIT: Record<
+  string,
+  "air" | "earth" | "fire" | "water" | null
+> = {
   "neutral.air_elementals": "air",
   "neutral.storm_elementals": "air",
   "neutral.earth_elementals": "earth",
@@ -290,7 +357,7 @@ const SCHOOL_BY_UNIT: Record<string, "air" | "earth" | "fire" | "water" | null> 
   "neutral.energy_elementals": "fire",
   "neutral.water_elementals": "water",
   "neutral.ice_elementals": "water",
-  "neutral.magic_elementals": null // Magic Arrow only — never a school
+  "neutral.magic_elementals": null, // Magic Arrow only — never a school
 };
 
 const ALL_SCHOOLS = ["air", "earth", "fire", "water"] as const;
@@ -308,11 +375,17 @@ describe("every Elemental is immune to Magic Arrow and its own School (real data
     it(`${unitId}: Magic Arrow always; ${school ?? "no"} school; nothing else`, () => {
       for (const unit of sidesOf(unitId)) {
         // Magic Arrow (school "any") — every Elemental resists it.
-        expect(unitImmuneToSpellSchools(unit, ["any"]), `${unitId} vs Magic Arrow`).toBe(true);
+        expect(
+          unitImmuneToSpellSchools(unit, ["any"]),
+          `${unitId} vs Magic Arrow`,
+        ).toBe(true);
 
         for (const candidate of ALL_SCHOOLS) {
           const shouldResist = candidate === school;
-          expect(unitImmuneToSpellSchools(unit, [candidate]), `${unitId} vs ${candidate}`).toBe(shouldResist);
+          expect(
+            unitImmuneToSpellSchools(unit, [candidate]),
+            `${unitId} vs ${candidate}`,
+          ).toBe(shouldResist);
         }
       }
     });
@@ -330,21 +403,29 @@ describe("every Elemental is immune to Magic Arrow and its own School (real data
 
     // Air resists Magic Arrow + Lightning Bolt, but a Fireball lands.
     expect(unitImmuneToSpellSchools(air, magicArrow.spellSchools)).toBe(true);
-    expect(unitImmuneToSpellSchools(air, lightningBolt.spellSchools)).toBe(true);
+    expect(unitImmuneToSpellSchools(air, lightningBolt.spellSchools)).toBe(
+      true,
+    );
     expect(unitImmuneToSpellSchools(air, fireball.spellSchools)).toBe(false);
 
     // Fire resists Magic Arrow + Fireball, but a Lightning Bolt lands.
     expect(unitImmuneToSpellSchools(fire, fireball.spellSchools)).toBe(true);
-    expect(unitImmuneToSpellSchools(fire, lightningBolt.spellSchools)).toBe(false);
+    expect(unitImmuneToSpellSchools(fire, lightningBolt.spellSchools)).toBe(
+      false,
+    );
 
     // Water resists only Magic Arrow among the shipped damaging Spells.
     expect(unitImmuneToSpellSchools(water, magicArrow.spellSchools)).toBe(true);
-    expect(unitImmuneToSpellSchools(water, lightningBolt.spellSchools)).toBe(false);
+    expect(unitImmuneToSpellSchools(water, lightningBolt.spellSchools)).toBe(
+      false,
+    );
     expect(unitImmuneToSpellSchools(water, fireball.spellSchools)).toBe(false);
 
     // Magic Elementals resist Magic Arrow ONLY — both schooled bolts land.
     expect(unitImmuneToSpellSchools(magic, magicArrow.spellSchools)).toBe(true);
-    expect(unitImmuneToSpellSchools(magic, lightningBolt.spellSchools)).toBe(false);
+    expect(unitImmuneToSpellSchools(magic, lightningBolt.spellSchools)).toBe(
+      false,
+    );
     expect(unitImmuneToSpellSchools(magic, fireball.spellSchools)).toBe(false);
   });
 });
@@ -354,9 +435,14 @@ describe("every Elemental is immune to Magic Arrow and its own School (real data
 // ---------------------------------------------------------------------------
 function spellTargets(state: GameState, cardId: string): string[] {
   return getLegalActions(state, "p1")
-    .filter((legal) => legal.action.type === "CAST_SPELL" && legal.action.cardId === cardId)
+    .filter(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" && legal.action.cardId === cardId,
+    )
     .flatMap((legal) =>
-      legal.action.type === "CAST_SPELL" && legal.action.target?.type === "unit" ? [legal.action.target.unitId] : []
+      legal.action.type === "CAST_SPELL" && legal.action.target?.type === "unit"
+        ? [legal.action.target.unitId]
+        : [],
     );
 }
 
@@ -365,7 +451,9 @@ describe("Elemental immunity blocks real Spell targeting (basic damaging Spells)
     const state = createInitialGameState("elemental-target-seed");
     const def = coreUnitDefinitions[unitId];
     const side = def.neutral ?? def.few ?? def.pack;
-    state.combat!.units.unit_p2_skeletons.abilities = [...(side!.abilities ?? [])];
+    state.combat!.units.unit_p2_skeletons.abilities = [
+      ...(side!.abilities ?? []),
+    ];
     state.players.p1.hand = ["spell.magic_arrow", "spell.lightning_bolt"];
     state.players.p2.hand = [];
     state.activePlayerId = "p1";
@@ -377,9 +465,13 @@ describe("Elemental immunity blocks real Spell targeting (basic damaging Spells)
     it(`${unitId} cannot be hit by Magic Arrow; Lightning Bolt only blocked for Air`, () => {
       const state = combatWithEnemy(unitId);
       // Magic Arrow ("any") never targets an Elemental.
-      expect(spellTargets(state, "spell.magic_arrow")).not.toContain("unit_p2_skeletons");
+      expect(spellTargets(state, "spell.magic_arrow")).not.toContain(
+        "unit_p2_skeletons",
+      );
       // …yet a plain enemy stays targetable, proving the spell is otherwise live.
-      expect(spellTargets(state, "spell.magic_arrow")).toContain("unit_p2_vampires");
+      expect(spellTargets(state, "spell.magic_arrow")).toContain(
+        "unit_p2_vampires",
+      );
 
       // Lightning Bolt (Air) is blocked only for the Air-school Elementals.
       const boltTargets = spellTargets(state, "spell.lightning_bolt");
@@ -406,7 +498,10 @@ describe("Fireball's area damage skips an immune Elemental (end-to-end)", () => 
     combat.units.unit_p2_skeletons.position = 13;
     combat.units.unit_p1_griffins.abilities = []; // plain neighbour → a candidate
     combat.units.unit_p1_griffins.position = 9;
-    combat.units.unit_p2_vampires.abilities = ["elemental-damage", "fire-elemental-immunity"];
+    combat.units.unit_p2_vampires.abilities = [
+      "elemental-damage",
+      "fire-elemental-immunity",
+    ];
     combat.units.unit_p2_vampires.position = 14; // immune neighbour → skipped
     // Keep everyone else out of the blast radius.
     combat.units.unit_p1_marksmen.position = 0;
@@ -418,9 +513,12 @@ describe("Fireball's area damage skips an immune Elemental (end-to-end)", () => 
         legal.action.type === "CAST_SPELL" &&
         legal.action.cardId === "spell.fireball" &&
         legal.action.target?.type === "unit" &&
-        legal.action.target.unitId === "unit_p2_skeletons"
+        legal.action.target.unitId === "unit_p2_skeletons",
     );
-    expect(cast, "Fireball should be castable at the primary target").toBeTruthy();
+    expect(
+      cast,
+      "Fireball should be castable at the primary target",
+    ).toBeTruthy();
 
     const resolved = passAllReactions(applyOk(state, cast!.action));
 

@@ -317,9 +317,9 @@ first printed side, Option B = the second.
   base). B unchanged.
 - **Sandals of the Saint** — A: "+1 SP, Discard X…+X SP." (flat +1 base).
   B unchanged.
-- **Centaur's Axe** (file "Centaur Axe.png") — B: "Triple the Attack die's
-  outcome. **Ignore on '-1' result.**" (a rolled −1 is NOT tripled — it counts
-  as plain −1… read: the tripling is ignored on a −1).
+- **Centaur's Axe** — first side now matches Shield of the Dwarven Lords:
+  "Use this after the Attack die roll. Ignore the Attack die and any additional
+  effects it triggered." The +1 Attack side is unchanged.
 - **Crown of Dragontooth** — A: "Take **up to 2** Cast a Spell cards from your
   discard pile and put them back in your hand. Refresh **up to 2** Spells,
   once per round." B: "Remove 1 spell from **Spellbook**, then Search(2)

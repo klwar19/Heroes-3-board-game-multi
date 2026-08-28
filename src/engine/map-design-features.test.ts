@@ -15,6 +15,7 @@ import {
   getMainHero,
   isFieldGuarded
 } from "./adventure";
+import { flaggedMineSettlementCount } from "./victory-points";
 import { applyAction, createAdventureGameState } from "./index";
 import {
   applyBreakFieldOptions,
@@ -190,6 +191,46 @@ describe("map-design-features — Ability token Obelisk reward", () => {
 });
 
 describe("map-design-features — break field + persistent army", () => {
+  it("sanitises the Break team scope and defaults to individual", () => {
+    expect(sanitizeCustomMapPreset({ breaks: { enterViiFields: true, teamScope: "team" } })?.breaks).toEqual({
+      enterViiFields: true,
+      teamScope: "team"
+    });
+    expect(sanitizeCustomMapPreset({ breaks: { enterViiFields: true, teamScope: "garbage" } })?.breaks).toEqual({
+      enterViiFields: true
+    });
+  });
+
+  it("shares a flagged Break with allies only in whole-team mode", () => {
+    const state = makeGame("break-team-scope");
+    state.playerTeams = { p1: "allies", p2: "allies" };
+    const field = injectField(state, "mine", "10,10", {
+      difficulty: 2,
+      breakField: true,
+      designedGuard: true,
+      persistentGuard: true,
+      flagOwnerId: "p2",
+      everFlagged: true
+    });
+    placeHero(state, "p1", "10,11");
+    const hero = getMainHero(state, "p1")!;
+    state.adventure!.mapPreset = { breaks: { teamScope: "individual" } };
+    expect(classifyHeroStep(state, hero, field.spaceId)).toBe("stop");
+    beginFieldVisit(state, hero.id, field.spaceId, false);
+    expect(field.extraFlagOwnerIds).toContain("p1");
+    expect(flaggedMineSettlementCount(state, "p1")).toBe(1);
+    expect(classifyHeroStep(state, hero, field.spaceId)).toBe("open");
+
+    delete field.extraFlagOwnerIds;
+
+    state.adventure!.mapPreset = { breaks: { teamScope: "team" } };
+    expect(classifyHeroStep(state, hero, field.spaceId)).toBe("open");
+
+    // CONTROL: a rival's flag never clears the Break.
+    state.playerTeams = { p1: "allies", p2: "rivals" };
+    expect(classifyHeroStep(state, hero, field.spaceId)).toBe("stop");
+  });
+
   it("breakField forces stop even with Pathfinding passEncounters", () => {
     const state = makeGame("break-path");
     const field = injectField(state, "mine", "10,10", {

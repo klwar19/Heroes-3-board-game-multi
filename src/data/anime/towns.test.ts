@@ -267,7 +267,7 @@ describe("playable Anime Realms towns", () => {
       expect(card?.assets?.cardImage, id).toBeUndefined();
       expect(canRenderSpecialtyCard(id), id).toBe(true);
       const icon = specialtyIconSrc(id);
-      expect(icon).toBe("/assets/specialty-card/icon-first_aid.webp");
+      expect(icon).toBe("/assets/anime/icons/cultivation/specialty-lingxi-healing-arts.webp");
       expect(existsSync(join(process.cwd(), "public", icon!.replace(/^\//, "")))).toBe(true);
     }
     // Portrait used by the native specialty frame is the hero's own art.

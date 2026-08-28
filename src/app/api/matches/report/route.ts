@@ -6,11 +6,41 @@ import {
   persistAccounts
 } from "@/server/accounts/account-store-instance";
 import type { MatchParticipantInput } from "@/server/accounts/account-store";
+import type { RankedReplay } from "@/server/ranked-replay";
 
 export const dynamic = "force-dynamic";
 
 const RESULTS = new Set(["win", "loss", "draw", "abandon"]);
 const MAX_PARTICIPANTS = 12;
+const MAX_REPORT_BODY_BYTES = 1_700_000;
+
+async function readBoundedJson(request: Request): Promise<{ value: unknown; tooLarge: boolean }> {
+  if (!request.body) return { value: null, tooLarge: false };
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let bytes = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    bytes += value.byteLength;
+    if (bytes > MAX_REPORT_BODY_BYTES) {
+      await reader.cancel().catch(() => undefined);
+      return { value: null, tooLarge: true };
+    }
+    chunks.push(value);
+  }
+  const joined = new Uint8Array(bytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    joined.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return { value: JSON.parse(new TextDecoder().decode(joined)), tooLarge: false };
+  } catch {
+    return { value: null, tooLarge: false };
+  }
+}
 
 /**
  * Finished-match ingestion for the PartyKit edge (Phase 6). The room Durable
@@ -36,8 +66,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "FORBIDDEN", message: "Match reporting is not enabled." }, { status: 403 });
   }
 
-  const body = (await request.json().catch(() => null)) as
-    | { matchId?: unknown; participants?: unknown; ranked?: unknown }
+  const parsed = await readBoundedJson(request);
+  if (parsed.tooLarge) {
+    return NextResponse.json({ error: "TOO_LARGE", message: "Match report exceeds the replay safety limit." }, { status: 413 });
+  }
+  const body = parsed.value as
+    | { matchId?: unknown; participants?: unknown; ranked?: unknown; replay?: unknown }
     | null;
   const matchId = typeof body?.matchId === "string" ? body.matchId.slice(0, 200) : "";
   // Casual games still record win/loss but leave MMR alone. Absent ⇒ ranked
@@ -60,5 +94,20 @@ export async function POST(request: Request) {
   if (outcome.applied && accountsBackendKind() === "builtin") {
     persistAccounts(getAccountStore());
   }
-  return NextResponse.json({ applied: outcome.applied });
+  let replayStored = false;
+  if (ranked && body?.replay && typeof body.replay === "object") {
+    try {
+      // Lazy: ordinary result reports and forbidden requests do not load the
+      // replay/storage module (or the engine types it validates).
+      const { storeRankedReplay } = await import("@/server/ranked-replay-store");
+      replayStored = (await storeRankedReplay(matchId, body.replay as RankedReplay)).stored;
+    } catch (error) {
+      // Replay storage is deliberately non-critical: a missing table, quota, or
+      // temporary DB failure must never roll back MMR or make the winning game
+      // action fail. The edge submits only once, so this also cannot retry-flood
+      // the app deployment.
+      console.error(`[ranked-replay] failed to store ${matchId}:`, error);
+    }
+  }
+  return NextResponse.json({ applied: outcome.applied, replayStored });
 }

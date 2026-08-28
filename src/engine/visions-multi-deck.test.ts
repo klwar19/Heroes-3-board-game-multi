@@ -5,11 +5,12 @@ import { balanceCard } from "./community-balance-cards";
 import {
   applyAction,
   createAdventureGameState,
+  DEFAULT_ANIME_OPTIONS,
   getLegalActions,
   NEUTRAL_DECK_IDS,
   type CardId,
   type GameAction,
-  type GameState
+  type GameState,
 } from "./index";
 import { getPlayerView } from "./player-view";
 import { driveComputerPlayers } from "@/server/computer-runner";
@@ -43,7 +44,10 @@ import { driveComputerPlayers } from "@/server/computer-runner";
 
 function apply(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
-  expect(result.errors, result.errors.map((error) => error.message).join("; ")).toHaveLength(0);
+  expect(
+    result.errors,
+    result.errors.map((error) => error.message).join("; "),
+  ).toHaveLength(0);
   return result.state;
 }
 
@@ -52,22 +56,32 @@ function makeGame(seed: string, polish: boolean): GameState {
     seed,
     difficulty: "normal",
     rollFirstPlayer: false,
-    houseRules: { "polish-card-balance": polish }
+    houseRules: { "polish-card-balance": polish },
   });
   const state =
     base.players.p1.needsHandRefresh || base.players.p1.canMulligan
-      ? apply(base, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
+      ? apply(base, {
+          type: "REFRESH_HAND",
+          playerId: "p1",
+          discardCardIds: [],
+        })
       : base;
   state.activePlayerId = "p1";
   return state;
 }
 
 /** Stocks the four Neutral tier decks with identifiable placeholder cards. */
-function stockDecks(state: GameState, counts: Partial<Record<"bronze" | "silver" | "gold" | "azure", number>>): void {
+function stockDecks(
+  state: GameState,
+  counts: Partial<Record<"bronze" | "silver" | "gold" | "azure", number>>,
+): void {
   for (const tier of ["bronze", "silver", "gold", "azure"] as const) {
     const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
     const size = counts[tier] ?? 0;
-    deck.drawPile = Array.from({ length: size }, (_, index) => `n.${tier}.${index}` as CardId);
+    deck.drawPile = Array.from(
+      { length: size },
+      (_, index) => `n.${tier}.${index}` as CardId,
+    );
     deck.discardPile = [];
   }
 }
@@ -78,7 +92,7 @@ function play(state: GameState): GameState {
     playerId: "p1",
     cardId: "spell.visions",
     mode: "basic",
-    target: { type: "none" }
+    target: { type: "none" },
   });
 }
 
@@ -87,37 +101,51 @@ function choose(state: GameState, optionIndex: number): GameState {
     type: "CHOOSE_OPTION",
     playerId: "p1",
     choiceId: state.pendingChoice!.id,
-    optionIndex
+    optionIndex,
   });
 }
 
 function context(state: GameState): string | undefined {
-  return state.pendingChoice?.type === "OPTION_CHOICE" ? state.pendingChoice.context : undefined;
+  return state.pendingChoice?.type === "OPTION_CHOICE"
+    ? state.pendingChoice.context
+    : undefined;
 }
 
 function deckFrame(state: GameState) {
   const choice = state.pendingChoice;
   if (choice?.type !== "OPTION_CHOICE" || choice.context !== "visions-deck") {
-    throw new Error(`expected a visions-deck window, got ${context(state) ?? "none"}`);
+    throw new Error(
+      `expected a visions-deck window, got ${context(state) ?? "none"}`,
+    );
   }
-  return { ...choice.visionsDeck!, options: choice.options.map((option) => option.label) };
+  return {
+    ...choice.visionsDeck!,
+    options: choice.options.map((option) => option.label),
+  };
 }
 
 function scryFrame(state: GameState) {
   const choice = state.pendingChoice;
   if (choice?.type !== "OPTION_CHOICE" || choice.context !== "visions-scry") {
-    throw new Error(`expected a visions-scry window, got ${context(state) ?? "none"}`);
+    throw new Error(
+      `expected a visions-scry window, got ${context(state) ?? "none"}`,
+    );
   }
   return choice.visionsScry!;
 }
 
 /** Walks the deck-pick loop taking ONE card at a time off the named tiers. */
-function drawOneEach(state: GameState, tiers: ("bronze" | "silver" | "gold" | "azure")[]): GameState {
+function drawOneEach(
+  state: GameState,
+  tiers: ("bronze" | "silver" | "gold" | "azure")[],
+): GameState {
   let next = state;
   for (const tier of tiers) {
     const frame = deckFrame(next);
     const tierIndex = frame.tiers.indexOf(tier);
-    expect(tierIndex, `${tier} deck should be offered`).toBeGreaterThanOrEqual(0);
+    expect(tierIndex, `${tier} deck should be offered`).toBeGreaterThanOrEqual(
+      0,
+    );
     // Options are [draw all from each tier…, draw 1 from each tier…] while more
     // than one card is owed; with one card left only the per-tier half is there.
     const single = frame.count > 1 ? frame.tiers.length + tierIndex : tierIndex;
@@ -164,7 +192,11 @@ describe("Visions — a source pays its PRINTED Power, not a flat +1", () => {
 
   it("the offer LABEL names the printed Power the source really pays", () => {
     const state = makeGame("visions-label", true);
-    state.players.p1.hand = ["spell.visions" as CardId, PLUS_TWO_POWER_CARD, "spell.haste" as CardId];
+    state.players.p1.hand = [
+      "spell.visions" as CardId,
+      PLUS_TWO_POWER_CARD,
+      "spell.haste" as CardId,
+    ];
     stockDecks(state, { bronze: 12 });
     const next = play(state);
     const choice = next.pendingChoice;
@@ -172,14 +204,26 @@ describe("Visions — a source pays its PRINTED Power, not a flat +1", () => {
       throw new Error("expected the boost window");
     }
     const labels = choice.options.map((option) => option.label);
-    expect(labels.some((label) => label.includes("+2 Power") && label.includes("scry 6"))).toBe(true);
+    expect(
+      labels.some(
+        (label) => label.includes("+2 Power") && label.includes("scry 6"),
+      ),
+    ).toBe(true);
     // A plain Spell still brings its generic +1 (rung 1 = 4 cards).
-    expect(labels.some((label) => label.includes("+1 Power") && label.includes("scry 4"))).toBe(true);
+    expect(
+      labels.some(
+        (label) => label.includes("+1 Power") && label.includes("scry 4"),
+      ),
+    ).toBe(true);
   });
 
   it("CONTROL — two generic Spell discards still climb one rung each", () => {
     const state = makeGame("visions-two-spells", true);
-    state.players.p1.hand = ["spell.visions" as CardId, "spell.haste" as CardId, "spell.slow" as CardId];
+    state.players.p1.hand = [
+      "spell.visions" as CardId,
+      "spell.haste" as CardId,
+      "spell.slow" as CardId,
+    ];
     stockDecks(state, { bronze: 12 });
     let next = play(state);
     expect(context(next)).toBe("visions-boost");
@@ -198,7 +242,10 @@ describe("Visions — a source pays its PRINTED Power, not a flat +1", () => {
       state.players.p1.mapSpellPowerBank = 2;
       stockDecks(state, { bronze: 12 });
       const next = play(state);
-      return { count: scryFrame(next).remaining.length, bank: next.players.p1.mapSpellPowerBank };
+      return {
+        count: scryFrame(next).remaining.length,
+        bank: next.players.p1.mapSpellPowerBank,
+      };
     };
     const on = seeded(true);
     expect(on.count).toBe(6);
@@ -220,6 +267,24 @@ describe("Visions — a source pays its PRINTED Power, not a flat +1", () => {
 });
 
 describe("Visions — the draw may span SEVERAL Neutral decks", () => {
+  it("keeps Doom Tier-IV units out unless the existing Doom-monsters option is enabled", () => {
+    const make = (doomNeutrals: boolean) =>
+      createAdventureGameState({
+        seed: `visions-doom-${doomNeutrals}`,
+        difficulty: "normal",
+        rollFirstPlayer: false,
+        anime: { ...DEFAULT_ANIME_OPTIONS, enabled: true, doomNeutrals },
+        houseRules: { "polish-card-balance": true },
+      });
+    const offAzure = make(false).decks[NEUTRAL_DECK_IDS.azure].drawPile;
+    expect(offAzure).toContain("neutral.phoenixes");
+    expect(offAzure).toContain("neutral.faerie_dragons");
+    expect(offAzure).not.toContain("doom.cyberdemon");
+
+    const onAzure = make(true).decks[NEUTRAL_DECK_IDS.azure].drawPile;
+    expect(onAzure).toContain("doom.cyberdemon");
+  });
+
   it("6 cards can be split across four decks, and each goes back to its own", () => {
     const state = makeGame("visions-split", true);
     state.players.p1.hand = ["spell.visions" as CardId];
@@ -228,11 +293,25 @@ describe("Visions — the draw may span SEVERAL Neutral decks", () => {
     let next = play(state);
 
     // Six single-card picks: bronze, silver, gold, azure, bronze, silver.
-    next = drawOneEach(next, ["bronze", "silver", "gold", "azure", "bronze", "silver"]);
+    next = drawOneEach(next, [
+      "bronze",
+      "silver",
+      "gold",
+      "azure",
+      "bronze",
+      "silver",
+    ]);
 
     const frame = scryFrame(next);
     expect(frame.remaining).toHaveLength(6);
-    expect(frame.remainingTiers).toEqual(["bronze", "silver", "gold", "azure", "bronze", "silver"]);
+    expect(frame.remainingTiers).toEqual([
+      "bronze",
+      "silver",
+      "gold",
+      "azure",
+      "bronze",
+      "silver",
+    ]);
     // The lifted cards really left their own decks (not one deck's top six).
     expect(next.decks[NEUTRAL_DECK_IDS.bronze].drawPile).toHaveLength(1);
     expect(next.decks[NEUTRAL_DECK_IDS.silver].drawPile).toHaveLength(1);
@@ -240,9 +319,15 @@ describe("Visions — the draw may span SEVERAL Neutral decks", () => {
     expect(next.decks[NEUTRAL_DECK_IDS.azure].drawPile).toHaveLength(2);
 
     // Keep the two gold/azure cards on top of their decks, discard the rest.
-    for (let guard = 0; guard < 8 && context(next) === "visions-scry"; guard += 1) {
+    for (
+      let guard = 0;
+      guard < 8 && context(next) === "visions-scry";
+      guard += 1
+    ) {
       const scry = scryFrame(next);
-      const keepIndex = scry.remainingTiers!.findIndex((tier) => tier === "gold" || tier === "azure");
+      const keepIndex = scry.remainingTiers!.findIndex(
+        (tier) => tier === "gold" || tier === "azure",
+      );
       next = choose(next, keepIndex >= 0 ? keepIndex : scry.remaining.length);
     }
     expect(next.pendingChoice).toBeNull();
@@ -250,16 +335,27 @@ describe("Visions — the draw may span SEVERAL Neutral decks", () => {
     // Each card went home: the kept gold/azure cards sit on THEIR draw piles,
     // the bronze/silver picks in THEIR discard piles — nothing crossed decks.
     expect(next.decks[NEUTRAL_DECK_IDS.gold].drawPile.at(-1)).toBe("n.gold.2");
-    expect(next.decks[NEUTRAL_DECK_IDS.azure].drawPile.at(-1)).toBe("n.azure.2");
-    expect(next.decks[NEUTRAL_DECK_IDS.bronze].discardPile).toEqual(["n.bronze.2", "n.bronze.1"]);
-    expect(next.decks[NEUTRAL_DECK_IDS.silver].discardPile).toEqual(["n.silver.2", "n.silver.1"]);
+    expect(next.decks[NEUTRAL_DECK_IDS.azure].drawPile.at(-1)).toBe(
+      "n.azure.2",
+    );
+    expect(next.decks[NEUTRAL_DECK_IDS.bronze].discardPile).toEqual([
+      "n.bronze.2",
+      "n.bronze.1",
+    ]);
+    expect(next.decks[NEUTRAL_DECK_IDS.silver].discardPile).toEqual([
+      "n.silver.2",
+      "n.silver.1",
+    ]);
     expect(next.decks[NEUTRAL_DECK_IDS.gold].discardPile).toEqual([]);
     expect(next.decks[NEUTRAL_DECK_IDS.azure].discardPile).toEqual([]);
     // No card was created or destroyed: 12 stocked, 12 still in the decks.
-    const total = (["bronze", "silver", "gold", "azure"] as const).reduce((sum, tier) => {
-      const deck = next.decks[NEUTRAL_DECK_IDS[tier]];
-      return sum + deck.drawPile.length + deck.discardPile.length;
-    }, 0);
+    const total = (["bronze", "silver", "gold", "azure"] as const).reduce(
+      (sum, tier) => {
+        const deck = next.decks[NEUTRAL_DECK_IDS[tier]];
+        return sum + deck.drawPile.length + deck.discardPile.length;
+      },
+      0,
+    );
     expect(total).toBe(12);
   });
 
@@ -275,8 +371,12 @@ describe("Visions — the draw may span SEVERAL Neutral decks", () => {
     next = choose(next, 0);
     next = choose(next, 0);
     expect(next.pendingChoice).toBeNull();
-    expect(next.decks[NEUTRAL_DECK_IDS.silver].drawPile.at(-1)).toBe("n.silver.2");
-    expect(next.decks[NEUTRAL_DECK_IDS.bronze].drawPile.at(-1)).toBe("n.bronze.2");
+    expect(next.decks[NEUTRAL_DECK_IDS.silver].drawPile.at(-1)).toBe(
+      "n.silver.2",
+    );
+    expect(next.decks[NEUTRAL_DECK_IDS.bronze].drawPile.at(-1)).toBe(
+      "n.bronze.2",
+    );
   });
 
   it("the classic single-deck draw is still ONE click (the leading 'draw all' option)", () => {
@@ -326,7 +426,11 @@ describe("Visions — the draw may span SEVERAL Neutral decks", () => {
     state.players.p1.mapSpellPowerBank = 2; // 6 cards
     stockDecks(state, { bronze: 2 });
     const bronze = state.decks[NEUTRAL_DECK_IDS.bronze];
-    bronze.discardPile = ["n.bronze.d0" as CardId, "n.bronze.d1" as CardId, "n.bronze.d2" as CardId];
+    bronze.discardPile = [
+      "n.bronze.d0" as CardId,
+      "n.bronze.d1" as CardId,
+      "n.bronze.d2" as CardId,
+    ];
     const next = play(state);
     const frame = scryFrame(next);
     // 2 in the draw pile + 3 reshuffled from the discard = 5 of the 6 asked for.
@@ -359,7 +463,9 @@ describe("Visions — masking and no-stall guarantees", () => {
     if (scryChoice?.type !== "OPTION_CHOICE") {
       throw new Error("expected the scry window in the opponent view");
     }
-    expect(new Set(scryChoice.visionsScry!.remaining)).toEqual(new Set(["hidden"]));
+    expect(new Set(scryChoice.visionsScry!.remaining)).toEqual(
+      new Set(["hidden"]),
+    );
     expect(scryChoice.visionsScry!.remainingTiers).toHaveLength(6);
   });
 
@@ -386,7 +492,7 @@ describe("Visions — masking and no-stall guarantees", () => {
       playerCount: 2,
       sessionMode: "single-player",
       rollFirstPlayer: false,
-      houseRules: { "polish-card-balance": true }
+      houseRules: { "polish-card-balance": true },
     });
     base.activePlayerId = "p2";
     base.players.p2.needsHandRefresh = false;
@@ -395,8 +501,14 @@ describe("Visions — masking and no-stall guarantees", () => {
     stockDecks(base, { bronze: 6, silver: 6, gold: 6, azure: 6 });
     const played = applyAction(
       base,
-      { type: "PLAY_CARD", playerId: "p2", cardId: "spell.visions", mode: "basic", target: { type: "none" } },
-      { computerActorPlayerId: "p2" }
+      {
+        type: "PLAY_CARD",
+        playerId: "p2",
+        cardId: "spell.visions",
+        mode: "basic",
+        target: { type: "none" },
+      },
+      { computerActorPlayerId: "p2" },
     );
     expect(played.errors.map((error) => error.message).join("; ")).toBe("");
     expect(context(played.state)).toBe("visions-boost");
@@ -422,7 +534,7 @@ describe("Visions — masking and no-stall guarantees", () => {
       (["bronze", "silver", "gold", "azure"] as const).reduce((sum, tier) => {
         const deck = next.decks[NEUTRAL_DECK_IDS[tier]];
         return sum + deck.drawPile.length + deck.discardPile.length;
-      }, 0)
+      }, 0),
     ).toBe(24);
   });
 });
@@ -442,10 +554,12 @@ describe("Visions — the '+2 Power' fixture is really printed +2", () => {
   it("Empowered Power prints ADD_SPELL_POWER 2 with no school restriction", () => {
     expect(cardLibrary[PLUS_TWO_POWER_CARD].effect).toMatchObject({
       type: "ADD_SPELL_POWER",
-      amount: 2
+      amount: 2,
     });
     const effect = cardLibrary[PLUS_TWO_POWER_CARD].effect;
-    expect(effect.type === "ADD_SPELL_POWER" && effect.schoolOnly).toBeUndefined();
+    expect(
+      effect.type === "ADD_SPELL_POWER" && effect.schoolOnly,
+    ).toBeUndefined();
   });
 });
 
@@ -478,9 +592,10 @@ describe("Visions — still offered as a map play", () => {
     expect(
       getLegalActions(state, "p1").some(
         (legal) =>
-          (legal.action.type === "PLAY_CARD" || legal.action.type === "CAST_SPELL") &&
-          legal.action.cardId === "spell.visions"
-      )
+          (legal.action.type === "PLAY_CARD" ||
+            legal.action.type === "CAST_SPELL") &&
+          legal.action.cardId === "spell.visions",
+      ),
     ).toBe(true);
   });
 });

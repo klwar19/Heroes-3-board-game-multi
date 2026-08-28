@@ -64,7 +64,7 @@ function visitWithMainHero(state: GameState, playerId: PlayerId, spaceId: string
 
 /** Drain reward-queue visit-steps until the table is quiet (or a CHOICE opens). */
 function drainRewards(state: GameState): GameState {
-  let s = state;
+  const s = state;
   // Pump automations that open pending visits from the reward queue.
   pumpAdventureQueues(s);
   // Auto-resolve visit steps that need no input; stop when a CHOOSE_ONE / search waits.

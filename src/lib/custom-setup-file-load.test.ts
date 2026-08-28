@@ -20,6 +20,8 @@ function configureAllTabs(state: GameState): GameState {
     moraleCards: true,
     undoMoves: true,
     houseRules: { "griffin-buff": false, "mine-guard-reinforcement": true },
+    tournamentMoraleSearchAgain: true,
+    tournamentRemovedArtifactsVp: true,
     tournamentObservatoryRerotate: true,
     // Match
     victoryMode: "grail",
@@ -60,6 +62,8 @@ describe("Custom setting file — all four tabs round-trip through SET_GAME_OPTI
     expect(o.undoMoves).toBe(true);
     expect(o.houseRules?.["griffin-buff"]).toBe(false);
     expect(o.houseRules?.["mine-guard-reinforcement"]).toBe(true);
+    expect(o.tournamentMoraleSearchAgain).toBe(true);
+    expect(o.tournamentRemovedArtifactsVp).toBe(true);
     expect(o.tournamentObservatoryRerotate).toBe(true);
     // Match
     expect(o.victoryMode).toBe("grail");

@@ -114,6 +114,29 @@ HOMM3BG_MATCH_REPORT_KEY="<same long random string>"
 Unset ⇒ edge match reporting is off (a finished edge game logs a warning and
 records nothing); the built-in backend keeps working regardless.
 
+### Ranked Clash AI-learning replays
+
+Re-run `supabase/schema.sql` after upgrading. It creates the private
+`homm3bg_ranked_replays` table. Ranked Clash map preparation shows **AI learning
+replay: On** and locks it: players cannot disable competitive collection.
+
+The room server keeps the replay outside `GameState`, so it never enlarges live
+snapshots or websocket broadcasts. PartyKit persists bounded 96 KiB-safe replay
+records through hibernation and sends exactly one authenticated payload when the
+match finishes. Each replay is capped at 2,000 accepted actions and about 1.5 MB;
+the payload records an explicit `truncated` reason if it reaches a cap. Database
+RLS has no public policy, so browsers cannot read or write the training data.
+
+To turn collection off later, set this on both Vercel and PartyKit:
+
+```bash
+HOMM3BG_RANKED_REPLAY_ENABLED="false"
+```
+
+The kill switch affects replay collection only. Match results, Elo, gameplay,
+room closing, and the legal-action engine continue normally. Stored data omits
+chat, room passwords, session credentials and real member names/client ids.
+
 ## Step 5 — verify the deployment
 
 1. Register two accounts (two browsers). With mail configured you get real

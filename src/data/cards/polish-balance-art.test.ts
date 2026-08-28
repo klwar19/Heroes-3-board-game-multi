@@ -25,12 +25,13 @@ import {
   isPolishBalanceCard,
   polishBalanceCardImage,
   polishBalanceEmpoweredCardImage,
-  polishBalanceFaceImage
+  polishBalanceFaceImage,
 } from "./polish-balance-art";
 
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 const FACE_DIR = path.join(REPO_ROOT, "public", "assets", "polish-balance");
-const toFile = (url: string) => path.join(REPO_ROOT, "public", url.replace(/^\//, ""));
+const toFile = (url: string) =>
+  path.join(REPO_ROOT, "public", url.replace(/^\//, ""));
 
 describe("Polish Balance Pack art", () => {
   it("ships a real 743×1040 card face for every WIRED card, at the id-derived path", async () => {
@@ -40,13 +41,26 @@ describe("Polish Balance Pack art", () => {
       expect(url, `no balance face resolved for ${cardId}`).toBeTruthy();
       // The path is DERIVED from the id (dots → dashes) — assert that literally,
       // so a hand-written path can never drift from the card it belongs to.
-      expect(url).toBe(`/assets/polish-balance/${cardId.replaceAll(".", "-")}.webp`);
+      expect(url).toBe(
+        `/assets/polish-balance/${cardId.replaceAll(".", "-")}.webp`,
+      );
       const file = toFile(url!);
-      expect(existsSync(file), `missing balance face for ${cardId}: ${file}`).toBe(true);
+      expect(
+        existsSync(file),
+        `missing balance face for ${cardId}: ${file}`,
+      ).toBe(true);
       const meta = await sharp(file).metadata();
-      expect([cardId, meta.format, meta.width, meta.height]).toEqual([cardId, "webp", 743, 1040]);
+      expect([cardId, meta.format, meta.width, meta.height]).toEqual([
+        cardId,
+        "webp",
+        743,
+        1040,
+      ]);
       // A real card scan, never a placeholder stub.
-      expect(statSync(file).size, `${cardId} balance face looks like a stub`).toBeGreaterThan(40 * 1024);
+      expect(
+        statSync(file).size,
+        `${cardId} balance face looks like a stub`,
+      ).toBeGreaterThan(40 * 1024);
     }
   });
 
@@ -56,14 +70,14 @@ describe("Polish Balance Pack art", () => {
     const shipped = new Set(
       readdirSync(FACE_DIR)
         .filter((name) => name.endsWith(".webp"))
-        .map((name) => name.replace(/\.webp$/, ""))
+        .map((name) => name.replace(/\.webp$/, "")),
     );
     // The wired set is every reprinted card PLUS the dedicated empowered ability
     // faces (drawn when the card is shown Empowered — no distinct card id, hence
     // an explicit list).
     const wired = new Set([
       ...POLISH_BALANCE_CARD_IDS.map((id) => id.replaceAll(".", "-")),
-      ...POLISH_BALANCE_EMPOWERED_FACE_NAMES
+      ...POLISH_BALANCE_EMPOWERED_FACE_NAMES,
     ]);
     expect([...shipped].sort()).toEqual([...wired].sort());
   });
@@ -73,17 +87,35 @@ describe("Polish Balance Pack art", () => {
     for (const cardId of POLISH_BALANCE_EMPOWERED_ABILITY_IDS) {
       // Every empowered id must also have a wired plain reprint (the empowered
       // face is the same card's empowered display state).
-      expect(isPolishBalanceCard(cardId), `${cardId} empowered face without a wired reprint`).toBe(true);
+      expect(
+        isPolishBalanceCard(cardId),
+        `${cardId} empowered face without a wired reprint`,
+      ).toBe(true);
       const url = polishBalanceEmpoweredCardImage(cardId);
-      expect(url).toBe(`/assets/polish-balance/${cardId.replaceAll(".", "-")}-empowered.webp`);
+      expect(url).toBe(
+        `/assets/polish-balance/${cardId.replaceAll(".", "-")}-empowered.webp`,
+      );
       const file = toFile(url!);
-      expect(existsSync(file), `missing empowered balance face for ${cardId}: ${file}`).toBe(true);
+      expect(
+        existsSync(file),
+        `missing empowered balance face for ${cardId}: ${file}`,
+      ).toBe(true);
       const meta = await sharp(file).metadata();
-      expect([cardId, meta.format, meta.width, meta.height]).toEqual([cardId, "webp", 743, 1040]);
-      expect(statSync(file).size, `${cardId} empowered balance face looks like a stub`).toBeGreaterThan(40 * 1024);
+      expect([cardId, meta.format, meta.width, meta.height]).toEqual([
+        cardId,
+        "webp",
+        743,
+        1040,
+      ]);
+      expect(
+        statSync(file).size,
+        `${cardId} empowered balance face looks like a stub`,
+      ).toBeGreaterThan(40 * 1024);
     }
     // Diplomacy is deliberately excluded (printed always-Empowered).
-    expect(polishBalanceEmpoweredCardImage("ability.diplomacy")).toBeUndefined();
+    expect(
+      polishBalanceEmpoweredCardImage("ability.diplomacy"),
+    ).toBeUndefined();
     // A card outside the empowered list resolves nothing.
     expect(polishBalanceEmpoweredCardImage("ability.estates")).toBeUndefined();
   });
@@ -92,10 +124,16 @@ describe("Polish Balance Pack art", () => {
 describe("Polish Balance Pack registries", () => {
   it("lists only real library cards, on both sides", () => {
     for (const cardId of POLISH_BALANCE_CARD_IDS) {
-      expect(cardLibrary[cardId], `${cardId} is not a card in the library`).toBeTruthy();
+      expect(
+        cardLibrary[cardId],
+        `${cardId} is not a card in the library`,
+      ).toBeTruthy();
     }
     for (const cardId of Object.keys(POLISH_BALANCE_NOT_IMPLEMENTED)) {
-      expect(cardLibrary[cardId], `${cardId} is not a card in the library`).toBeTruthy();
+      expect(
+        cardLibrary[cardId],
+        `${cardId} is not a card in the library`,
+      ).toBeTruthy();
     }
   });
 
@@ -103,7 +141,7 @@ describe("Polish Balance Pack registries", () => {
     for (const cardId of POLISH_BALANCE_CARD_IDS) {
       expect(
         POLISH_BALANCE_NOT_IMPLEMENTED[cardId],
-        `${cardId} is declared BOTH wired and not-implemented`
+        `${cardId} is declared BOTH wired and not-implemented`,
       ).toBeUndefined();
     }
   });
@@ -128,8 +166,9 @@ describe("Polish Balance Pack registries", () => {
       "ability.wisdom",
       "stat.knowledge",
       "stat.knowledge.empowered",
-      // The pack's Spells folder is exactly these 21 cards (spec §2).
+      // The original pack's 21 Spells plus the user-supplied Berserk reprint.
       "spell.anti_magic",
+      "spell.berserk",
       "spell.bless",
       "spell.blind",
       "spell.counterstrike",
@@ -189,21 +228,31 @@ describe("Polish Balance Pack registries", () => {
       "specialty.sandro.1",
       "specialty.sandro.4",
       "specialty.tarnum_conflux.1",
-      "specialty.vidomina.4"
+      "specialty.vidomina.4",
     ];
     for (const cardId of PACK_ABILITIES) {
       const accounted =
-        POLISH_BALANCE_CARD_IDS.includes(cardId as (typeof POLISH_BALANCE_CARD_IDS)[number]) ||
-        POLISH_BALANCE_NOT_IMPLEMENTED[cardId] !== undefined;
-      expect(accounted, `${cardId} is in the Balance Pack but neither wired nor declared unimplemented`).toBe(true);
+        POLISH_BALANCE_CARD_IDS.includes(
+          cardId as (typeof POLISH_BALANCE_CARD_IDS)[number],
+        ) || POLISH_BALANCE_NOT_IMPLEMENTED[cardId] !== undefined;
+      expect(
+        accounted,
+        `${cardId} is in the Balance Pack but neither wired nor declared unimplemented`,
+      ).toBe(true);
     }
     // And nothing outside the pack has crept into either list.
-    for (const cardId of [...POLISH_BALANCE_CARD_IDS, ...Object.keys(POLISH_BALANCE_NOT_IMPLEMENTED)]) {
-      expect(PACK_ABILITIES, `${cardId} is not one of the pack's Abilities`).toContain(cardId);
+    for (const cardId of [
+      ...POLISH_BALANCE_CARD_IDS,
+      ...Object.keys(POLISH_BALANCE_NOT_IMPLEMENTED),
+    ]) {
+      expect(
+        PACK_ABILITIES,
+        `${cardId} is not one of the pack's Abilities`,
+      ).toContain(cardId);
     }
   });
 
-  it("every WIRED card's tags carry a \"Balance pack:\" note (CLAUDE.md #2)", () => {
+  it('every WIRED card\'s tags carry a "Balance pack:" note (CLAUDE.md #2)', () => {
     for (const cardId of POLISH_BALANCE_CARD_IDS) {
       // Abilities patch their printed definition in place; Spells ship a whole
       // reprinted definition that the engine swaps in under the rule — read
@@ -216,7 +265,7 @@ describe("Polish Balance Pack registries", () => {
         [];
       expect(
         tags.some((tag) => tag.startsWith("Balance pack:")),
-        `${cardId} must state its reprinted text in a "Balance pack: …" tag`
+        `${cardId} must state its reprinted text in a "Balance pack: …" tag`,
       ).toBe(true);
     }
   });
@@ -226,18 +275,24 @@ describe("polishBalanceCardImage / polishBalanceFaceImage", () => {
   it("CONTROL: a card outside the pack resolves no balance face and keeps its printed one", () => {
     expect(isPolishBalanceCard("ability.estates")).toBe(false);
     expect(polishBalanceCardImage("ability.estates")).toBeUndefined();
-    expect(polishBalanceFaceImage("ability.estates")).toBe(cardLibrary["ability.estates"]?.assets?.cardImage);
+    expect(polishBalanceFaceImage("ability.estates")).toBe(
+      cardLibrary["ability.estates"]?.assets?.cardImage,
+    );
   });
 
   it("CONTROL: an unimplemented reprint keeps its CLASSIC face", () => {
     for (const cardId of Object.keys(POLISH_BALANCE_NOT_IMPLEMENTED)) {
       expect(isPolishBalanceCard(cardId)).toBe(false);
-      expect(polishBalanceFaceImage(cardId)).toBe(cardLibrary[cardId]?.assets?.cardImage);
+      expect(polishBalanceFaceImage(cardId)).toBe(
+        cardLibrary[cardId]?.assets?.cardImage,
+      );
     }
   });
 
   it("returns the balance face for a wired card, and nothing at all for no card", () => {
-    expect(polishBalanceFaceImage("ability.scouting")).toBe("/assets/polish-balance/ability-scouting.webp");
+    expect(polishBalanceFaceImage("ability.scouting")).toBe(
+      "/assets/polish-balance/ability-scouting.webp",
+    );
     expect(polishBalanceCardImage(undefined)).toBeUndefined();
     expect(polishBalanceFaceImage(undefined)).toBeUndefined();
   });

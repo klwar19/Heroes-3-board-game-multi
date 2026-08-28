@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { SpellBookModal } from "@/components/adventure/screen";
 
 // Dev preview: the Spell Book grimoire with a spread of real stored Spells, so
@@ -20,11 +20,12 @@ const PREVIEW_SPELLS = [
   "spell.town_portal"
 ];
 
+const subscribeToBrowserMount = () => () => {};
+
 export default function SpellBookPreviewPage() {
   // The Book portals to document.body, so it can only render after mount —
   // rendering it during hydration would mismatch the server's empty markup.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useSyncExternalStore(subscribeToBrowserMount, () => true, () => false);
   return (
     <main style={{ minHeight: "100vh", background: "#181410" }}>
       {mounted ? (

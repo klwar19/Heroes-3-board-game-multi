@@ -843,6 +843,19 @@ the guards' slot is open, the AFK driver can play a dropped controller's slot, a
 
 ## Multiplayer ladder & turn discipline (MMR, quit penalty, 10-min turns) — what runs vs. limits
 
+Ranked Clash also captures a private AI-training replay (`ranked-replay.ts`) outside
+`GameState`: sanitized initial gameplay state, every accepted action, legal action
+candidates, authoritative entropy/time, engine events and state hashes. PartyKit
+persists initial-state chunks plus one bounded entry per action and uploads exactly
+once with the terminal match report; the built-in backend buffers privately and
+writes once at finish. Hard limits are 2,000 actions / ~1.5 MB, overflow marks the
+replay truncated, and `HOMM3BG_RANKED_REPLAY_ENABLED=false` is the operator kill
+switch. The Map Preparation Advanced panel shows the locked On/Off status. Chat,
+passwords and real room/session identity are excluded. Supabase storage is the
+RLS-locked `homm3bg_ranked_replays` table. Pinned by `ranked-replay.test.ts`, the
+hibernation/128-KiB integration in `ranked-replay-edge.test.ts`, the AI-learning
+row case in `game-options-tabs.test.tsx`, and report-route tests.
+
 Every finished win/loss funnels through `declareAdventureWinner` and is REPORTED
 (`detectFinishedMatch`, `src/server/match-report.ts`) on a hosted table with ≥2
 verified accounts, casual games included; only a `ranked` match recomputes Elo
@@ -2650,9 +2663,12 @@ line per sub-rule:
   strength shortcut and both display reads. Polish Quick Combat otherwise keys off
   ARMY strength (5 strongest cards vs `2×FieldDifficulty + X`), making an uncovered
   fight MANDATORY even for a high-level hero.
-- **Tournament Morale "Search again"** (with Morale Cards OFF): spend the positive
-  token to discard the revealed cards and re-run the same Search (X) —
-  `tournament-morale-search-again.test.ts`, `deck-search-mode-modal.test.tsx`.
+- **Granular Tournament rules**: `tournamentMoraleSearchAgain` spends a positive
+  token to discard the revealed cards and re-run the same Search (X), while
+  `tournamentRemovedArtifactsVp` keeps removed Artifact cards in the final
+  1-VP-per-2 count. Both are independent toggles in the Tournament panel and the
+  full Tournament preset enables both. `tournament-morale-search-again.test.ts`,
+  `victory-points.test.ts`, `deck-search-mode-modal.test.tsx`.
 DEFERRED: bank units still carry the underlying unit's `grade` field for placement and
 display, but it never grants them a tier in play.
 
@@ -2702,6 +2718,9 @@ break/persistent/unlimited trio as Mines and Obelisks. A center Utopia may also 
 marked flaggable: clearing or conquering it transfers the flag, makes it garrisonable,
 and its controller gets one non-stacking paid Search(2) Azure-unit recruit offer at
 each Astrologers round. All fields are optional; legacy maps retain prior behaviour.
+`breaks.teamScope` controls team play: absent/`individual` requires every ally to
+place their own Break flag (tracked in `extraFlagOwnerIds` without stealing control),
+while `team` lets one allied flag clear the Break for the whole team.
 
 Three designer systems: per-kind **Global | Specific** plans
 (`CustomMapTilePlan.objectPlans.{obelisk,mine}` = guard / reward / vp / break flags /

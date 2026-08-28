@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { SetupLobbyScreen } from "./screen";
 import { createAdventureLobbyState, type GameState } from "@/engine";
 
@@ -12,20 +18,30 @@ afterEach(cleanup);
  * the engine reads — not merely that the label renders. (The engine half is
  * pinned by house-rules.test.ts.)
  */
-function openOptions(onAction = vi.fn(), optionOverrides: { creatureBanks?: boolean } = {}) {
+function openOptions(
+  onAction = vi.fn(),
+  optionOverrides: { creatureBanks?: boolean } = {},
+) {
   const state = createAdventureLobbyState({ seed: "options-tabs" });
   Object.assign(state.setupLobby!.options, optionOverrides);
-  render(<SetupLobbyScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
+  render(
+    <SetupLobbyScreen onAction={onAction} state={state} viewerPlayerId="p1" />,
+  );
   // The full options panel lives in the Setup Hub's Advanced-settings window.
   fireEvent.click(screen.getByRole("button", { name: /Advanced settings/ }));
   return onAction;
 }
 
 /** Open the options with a chance to mutate the seeded lobby state first. */
-function openOptionsWith(mutate: (state: GameState) => void, onAction = vi.fn()) {
+function openOptionsWith(
+  mutate: (state: GameState) => void,
+  onAction = vi.fn(),
+) {
   const state = createAdventureLobbyState({ seed: "options-tabs-vp" });
   mutate(state);
-  render(<SetupLobbyScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
+  render(
+    <SetupLobbyScreen onAction={onAction} state={state} viewerPlayerId="p1" />,
+  );
   fireEvent.click(screen.getByRole("button", { name: /Advanced settings/ }));
   return onAction;
 }
@@ -40,11 +56,15 @@ function expandGlobalMapRules() {
 }
 
 function expandPolishHouseRules() {
-  fireEvent.click(screen.getByRole("button", { name: /Polish house rule type 1/i }));
+  fireEvent.click(
+    screen.getByRole("button", { name: /Polish house rule type 1/i }),
+  );
 }
 
 function expandCommunityHouseRules() {
-  fireEvent.click(screen.getAllByRole("button", { name: /Community balance/i })[0]);
+  fireEvent.click(
+    screen.getAllByRole("button", { name: /Community balance/i })[0],
+  );
 }
 
 function expandTournamentRules() {
@@ -52,9 +72,54 @@ function expandTournamentRules() {
 }
 
 describe("Game options — tabbed layout", () => {
+  it("locks AI learning replay On for Ranked Clash and Off for Normal matches", () => {
+    openOptionsWith((state) => {
+      state.room = {
+        hosted: true,
+        hostClientId: null,
+        members: [],
+        ranked: true,
+      };
+      state.setupLobby!.options.gameMode = "clash";
+    });
+    let row = screen.getByRole("group", { name: /AI learning replay/i });
+    expect(
+      within(row)
+        .getByRole("button", { name: "On" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(
+      (within(row).getByRole("button", { name: "On" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(within(row).getByText(/Always On for Ranked Clash/i)).toBeTruthy();
+    cleanup();
+
+    openOptionsWith((state) => {
+      state.room = {
+        hosted: true,
+        hostClientId: null,
+        members: [],
+        ranked: false,
+      };
+    });
+    row = screen.getByRole("group", { name: /AI learning replay/i });
+    expect(
+      within(row)
+        .getByRole("button", { name: "Off" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(within(row).getByText(/only completed Ranked Clash/i)).toBeTruthy();
+  });
+
   it("shows the four setup tabs", () => {
     openOptions();
-    for (const name of [/Mode & Rules/, /Match/, /Map & Setup/, /Town & Resources/]) {
+    for (const name of [
+      /Mode & Rules/,
+      /Match/,
+      /Map & Setup/,
+      /Town & Resources/,
+    ]) {
       expect(screen.getByRole("tab", { name })).toBeTruthy();
     }
   });
@@ -62,75 +127,115 @@ describe("Game options — tabbed layout", () => {
   it("renders mode presets, Mod (WOG), and collapsible house-rule panels on Mode & Rules (BINH default)", () => {
     openOptions();
     const modeGrid = screen.getByRole("group", { name: /Game mode presets/i });
-    expect(within(modeGrid).getByRole("button", { name: /Legacy/i }).getAttribute("aria-pressed")).toBe("false");
-    expect(within(modeGrid).getByRole("button", { name: /BINH/i }).getAttribute("aria-pressed")).toBe("true");
+    expect(
+      within(modeGrid)
+        .getByRole("button", { name: /Legacy/i })
+        .getAttribute("aria-pressed"),
+    ).toBe("false");
+    expect(
+      within(modeGrid)
+        .getByRole("button", { name: /BINH/i })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
     // WOG is a Mod line, not a game-mode card.
     expect(screen.queryByRole("button", { name: /^WOG$/i })).toBeNull();
-    expect(screen.getByRole("button", { name: /Enable Wake of Gods mod|Disable Wake of Gods mod/i })).toBeTruthy();
-    expect(within(modeGrid).getByRole("button", { name: /Tournament/i })).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: /Enable Wake of Gods mod|Disable Wake of Gods mod/i,
+      }),
+    ).toBeTruthy();
+    expect(
+      within(modeGrid).getByRole("button", { name: /Tournament/i }),
+    ).toBeTruthy();
 
     // Mode crest icons (BINH griffin + Tournament competitive crest).
-    expect(document.querySelector(".modePresetCard.mode-binh .modePresetIcon")?.getAttribute("src")).toContain(
-      "mode-binh-crest-clear",
-    );
-    expect(document.querySelector(".modePresetCard.mode-tournament .modePresetIcon")?.getAttribute("src")).toContain(
-      "mode-tournament-crest-clear",
-    );
-    expect(document.querySelector(".wogCrestIcon")?.getAttribute("src")).toMatch(/mod-wog-eye-clear|mod-wog-eye/);
+    expect(
+      document
+        .querySelector(".modePresetCard.mode-binh .modePresetIcon")
+        ?.getAttribute("src"),
+    ).toContain("mode-binh-crest-clear");
+    expect(
+      document
+        .querySelector(".modePresetCard.mode-tournament .modePresetIcon")
+        ?.getAttribute("src"),
+    ).toContain("mode-tournament-crest-clear");
+    expect(
+      document.querySelector(".wogCrestIcon")?.getAttribute("src"),
+    ).toMatch(/mod-wog-eye-clear|mod-wog-eye/);
 
     // House-rule checklists are minimized by default (toggles not in the DOM yet).
     const binhPanel = screen.getByRole("button", { name: /BINH house rules/i });
-    const polishPanel = screen.getByRole("button", { name: /Polish house rule type 1/i });
+    const polishPanel = screen.getByRole("button", {
+      name: /Polish house rule type 1/i,
+    });
     expect(binhPanel.getAttribute("aria-expanded")).toBe("false");
     expect(polishPanel.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByRole("button", { name: /Griffin buff/ })).toBeNull();
-    expect(document.querySelector(".houseRuleCollapsibleCrest.polish")?.getAttribute("src")).toContain(
-      "polish-house-rules-flag.webp",
-    );
+    expect(
+      document
+        .querySelector(".houseRuleCollapsibleCrest.polish")
+        ?.getAttribute("src"),
+    ).toContain("polish-house-rules-flag.webp");
 
     expandBinhHouseRules();
     expect(binhPanel.getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByRole("button", { name: /Obelisk die rewards/i })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /Obelisk die rewards/i }),
+    ).toBeTruthy();
     const griffin = screen.getByRole("button", { name: /Griffin buff/ });
     expect(griffin.getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByRole("button", { name: /Split Spell\/Artifact decks by tier/ })).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: /Split Spell\/Artifact decks by tier/,
+      }),
+    ).toBeTruthy();
     expect(screen.getByRole("button", { name: /Estates nerf/ })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Gelu IV Sharpshooter buff/ })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /Gelu IV Sharpshooter buff/ }),
+    ).toBeTruthy();
 
     expandPolishHouseRules();
     expect(polishPanel.getAttribute("aria-expanded")).toBe("true");
-    const bankSizes = screen.getByRole("button", { name: /Rolled Creature Bank sizes/ });
+    const bankSizes = screen.getByRole("button", {
+      name: /Rolled Creature Bank sizes/,
+    });
     expect(bankSizes.getAttribute("aria-pressed")).toBe("false");
     expect((bankSizes as HTMLButtonElement).disabled).toBe(false);
-    expect(screen.getByRole("button", { name: /Polish Spell Book/ })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /Polish Spell Book/ }),
+    ).toBeTruthy();
   });
 
   it("toggling WOG on the Mod line dispatches SET_GAME_OPTIONS with wog.enabled", () => {
     const onAction = openOptions();
-    fireEvent.click(screen.getByRole("button", { name: /Enable Wake of Gods mod/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Enable Wake of Gods mod/i }),
+    );
     expect(onAction).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "SET_GAME_OPTIONS",
         playerId: "p1",
         options: expect.objectContaining({
-          wog: expect.objectContaining({ enabled: true })
-        })
-      })
+          wog: expect.objectContaining({ enabled: true }),
+        }),
+      }),
     );
   });
 
   it("exposes the BINH-only 80% Creature-bank Stack chance, default OFF", () => {
     const onAction = openOptions();
     expandBinhHouseRules();
-    const toggle = screen.getByRole("button", { name: /Creature-bank Stack chance: 80%/i });
+    const toggle = screen.getByRole("button", {
+      name: /Creature-bank Stack chance: 80%/i,
+    });
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(toggle);
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
       options: {
-        houseRules: expect.objectContaining({ "bank-stack-chance-80": true })
-      }
+        houseRules: expect.objectContaining({ "bank-stack-chance-80": true }),
+      },
     });
   });
 
@@ -140,15 +245,19 @@ describe("Game options — tabbed layout", () => {
       state.setupLobby!.options.wog = {
         ...state.setupLobby!.options.wog!,
         enabled: true,
-        artifacts: false
+        artifacts: false,
       };
     });
     // Open the WOG mod-options window (only shown while WOG is enabled).
     fireEvent.click(screen.getByRole("button", { name: /Mod options/i }));
-    const dialog = screen.getByRole("dialog", { name: /Wake of Gods mod options/i });
+    const dialog = screen.getByRole("dialog", {
+      name: /Wake of Gods mod options/i,
+    });
     // The New-adventure-objects row's description also mentions "Artifacts",
     // so anchor on this row's unique card list instead of the bare word.
-    const artifactsRow = within(dialog).getByRole("button", { name: /Shuffles 5 Wake of Gods hero Artifact cards/i });
+    const artifactsRow = within(dialog).getByRole("button", {
+      name: /Shuffles 5 Wake of Gods hero Artifact cards/i,
+    });
     expect(artifactsRow).toBeTruthy();
     expect(artifactsRow.getAttribute("aria-pressed")).toBe("false");
 
@@ -158,20 +267,32 @@ describe("Game options — tabbed layout", () => {
         type: "SET_GAME_OPTIONS",
         playerId: "p1",
         options: expect.objectContaining({
-          wog: expect.objectContaining({ enabled: true, artifacts: true })
-        })
-      })
+          wog: expect.objectContaining({ enabled: true, artifacts: true }),
+        }),
+      }),
     );
   });
 
   it("renders the Anime mod crest row alongside the WOG row (both Mod lines)", () => {
     openOptions();
     // Both crest rows exist and are independent Mod lines (not game-mode cards).
-    expect(screen.getByRole("button", { name: /Enable Wake of Gods mod|Disable Wake of Gods mod/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Enable Anime mod|Disable Anime mod/i })).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: /Enable Wake of Gods mod|Disable Wake of Gods mod/i,
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: /Enable Anime mod|Disable Anime mod/i,
+      }),
+    ).toBeTruthy();
     // The Anime crest icon points at the generated crest art (with the fallback).
-    const animeCrest = document.querySelector(".animeCrestButton .wogCrestIcon");
-    expect(animeCrest?.getAttribute("src")).toMatch(/mod-anime-crest-clear|mod-anime-crest/);
+    const animeCrest = document.querySelector(
+      ".animeCrestButton .wogCrestIcon",
+    );
+    expect(animeCrest?.getAttribute("src")).toMatch(
+      /mod-anime-crest-clear|mod-anime-crest/,
+    );
   });
 
   it("toggling the Anime mod dispatches SET_GAME_OPTIONS with anime.enabled", () => {
@@ -182,9 +303,9 @@ describe("Game options — tabbed layout", () => {
         type: "SET_GAME_OPTIONS",
         playerId: "p1",
         options: expect.objectContaining({
-          anime: expect.objectContaining({ enabled: true })
-        })
-      })
+          anime: expect.objectContaining({ enabled: true }),
+        }),
+      }),
     );
   });
 
@@ -193,7 +314,7 @@ describe("Game options — tabbed layout", () => {
       // Anime must be ON for the mod-options window (and its rows) to render.
       state.setupLobby!.options.anime = {
         ...state.setupLobby!.options.anime!,
-        enabled: true
+        enabled: true,
       };
     });
     // Open the Anime mod-options window (only shown while the mod is enabled).
@@ -216,7 +337,7 @@ describe("Game options — tabbed layout", () => {
       ["anime-module-unitExperience", "unitExperience"],
       ["anime-module-monsterWaves", "monsterWaves"],
       ["anime-module-raidBosses", "raidBosses"],
-      ["anime-module-dungeon", "dungeon"]
+      ["anime-module-dungeon", "dungeon"],
     ];
     for (const [testid, flag] of modules) {
       onAction.mockClear();
@@ -226,7 +347,7 @@ describe("Game options — tabbed layout", () => {
       expect(call).toMatchObject({
         type: "SET_GAME_OPTIONS",
         playerId: "p1",
-        options: { anime: expect.objectContaining({ enabled: true }) }
+        options: { anime: expect.objectContaining({ enabled: true }) },
       });
       // The clicked flag was flipped in the dispatched payload.
       expect(call.options.anime).toHaveProperty(flag);
@@ -238,7 +359,10 @@ describe("Game options — tabbed layout", () => {
 
   it("the Anime mod window surfaces a Commander & equipment tick that drives wog.commanders", () => {
     const onAction = openOptionsWith((state) => {
-      state.setupLobby!.options.anime = { ...state.setupLobby!.options.anime!, enabled: true };
+      state.setupLobby!.options.anime = {
+        ...state.setupLobby!.options.anime!,
+        enabled: true,
+      };
     });
     fireEvent.click(screen.getByRole("button", { name: /Mod options/i }));
     const dialog = screen.getByRole("dialog", { name: /Anime mod options/i });
@@ -250,13 +374,18 @@ describe("Game options — tabbed layout", () => {
     expect(call).toMatchObject({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { wog: expect.objectContaining({ enabled: true, commanders: true }) }
+      options: {
+        wog: expect.objectContaining({ enabled: true, commanders: true }),
+      },
     });
   });
 
   it("the Anime mod window 'Enable all' turns on every module AND the commander system in one dispatch", () => {
     const onAction = openOptionsWith((state) => {
-      state.setupLobby!.options.anime = { ...state.setupLobby!.options.anime!, enabled: true };
+      state.setupLobby!.options.anime = {
+        ...state.setupLobby!.options.anime!,
+        enabled: true,
+      };
     });
     fireEvent.click(screen.getByRole("button", { name: /Mod options/i }));
     const dialog = screen.getByRole("dialog", { name: /Anime mod options/i });
@@ -275,17 +404,23 @@ describe("Game options — tabbed layout", () => {
           heroGrades: true,
           equipment: true,
           raidBosses: true,
-          dungeon: true
+          dungeon: true,
         }),
-        wog: expect.objectContaining({ enabled: true, commanders: true })
-      }
+        wog: expect.objectContaining({ enabled: true, commanders: true }),
+      },
     });
   });
 
   it("the Legacy preset forces BOTH the WOG and Anime mods off", () => {
     const onAction = openOptionsWith((state) => {
-      state.setupLobby!.options.wog = { ...state.setupLobby!.options.wog!, enabled: true };
-      state.setupLobby!.options.anime = { ...state.setupLobby!.options.anime!, enabled: true };
+      state.setupLobby!.options.wog = {
+        ...state.setupLobby!.options.wog!,
+        enabled: true,
+      };
+      state.setupLobby!.options.anime = {
+        ...state.setupLobby!.options.anime!,
+        enabled: true,
+      };
     });
     const modeGrid = screen.getByRole("group", { name: /Game mode presets/i });
     fireEvent.click(within(modeGrid).getByRole("button", { name: /Legacy/i }));
@@ -296,8 +431,8 @@ describe("Game options — tabbed layout", () => {
       options: {
         ruleset: "legacy",
         wog: expect.objectContaining({ enabled: false }),
-        anime: expect.objectContaining({ enabled: false })
-      }
+        anime: expect.objectContaining({ enabled: false }),
+      },
     });
   });
 
@@ -308,28 +443,34 @@ describe("Game options — tabbed layout", () => {
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { houseRules: { "estates-nerf": false } }
+      options: { houseRules: { "estates-nerf": false } },
     });
   });
 
   it("renders the Global map-rules panel (its OWN collapsible, peer of BINH/Polish) with its map icon and wires the Mine-guard reinforcement toggle", () => {
     const onAction = openOptions();
     // Global map rules is now its own panel, NOT nested in BINH house rules.
-    expect(screen.getByRole("button", { name: /Global map rules/i })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /Global map rules/i }),
+    ).toBeTruthy();
     expandGlobalMapRules();
     // The Global group header carries its map glyph (other groups have none).
-    const groupIcon = document.querySelector(".houseRuleGroupIcon") as HTMLImageElement | null;
+    const groupIcon = document.querySelector(
+      ".houseRuleGroupIcon",
+    ) as HTMLImageElement | null;
     expect(groupIcon, "the Global group header shows an icon").toBeTruthy();
     expect(groupIcon!.getAttribute("src")).toContain("map.svg");
     // The rule is OFF by default (an opt-in tweak) and toggling it dispatches
     // only its own flag through the shared registry UI.
-    const toggle = screen.getByRole("button", { name: /Mine guards: \+1 bronze/i });
+    const toggle = screen.getByRole("button", {
+      name: /Mine guards: \+1 bronze/i,
+    });
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(toggle);
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { houseRules: { "mine-guard-reinforcement": true } }
+      options: { houseRules: { "mine-guard-reinforcement": true } },
     });
   });
 
@@ -337,38 +478,51 @@ describe("Game options — tabbed layout", () => {
     const onAction = openOptions();
     expandGlobalMapRules();
     const toggle = screen.getByRole("button", { name: /No Secondary Heroes/i });
-    expect(toggle.getAttribute("aria-pressed"), "an opt-in rule is OFF by default").toBe("false");
+    expect(
+      toggle.getAttribute("aria-pressed"),
+      "an opt-in rule is OFF by default",
+    ).toBe("false");
     fireEvent.click(toggle);
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { houseRules: { "no-secondary-heroes": true } }
+      options: { houseRules: { "no-secondary-heroes": true } },
     });
   });
 
   it("wires the opt-in free Neutral-battle-extension global rule (OFF by default) through the Global panel", () => {
     const onAction = openOptions();
     expandGlobalMapRules();
-    const toggle = screen.getByRole("button", { name: /Neutral battles extend for free/i });
-    expect(toggle.getAttribute("aria-pressed"), "an opt-in rule is OFF by default").toBe("false");
+    const toggle = screen.getByRole("button", {
+      name: /Neutral battles extend for free/i,
+    });
+    expect(
+      toggle.getAttribute("aria-pressed"),
+      "an opt-in rule is OFF by default",
+    ).toBe("false");
     fireEvent.click(toggle);
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { houseRules: { "free-neutral-combat-extend": true } }
+      options: { houseRules: { "free-neutral-combat-extend": true } },
     });
   });
 
   it("wires the opt-in Mine-army-defense global rule (OFF by default) through the Global panel", () => {
     const onAction = openOptions();
     expandGlobalMapRules();
-    const toggle = screen.getByRole("button", { name: /Mines: defend with your army/i });
-    expect(toggle.getAttribute("aria-pressed"), "an opt-in rule is OFF by default").toBe("false");
+    const toggle = screen.getByRole("button", {
+      name: /Mines: defend with your army/i,
+    });
+    expect(
+      toggle.getAttribute("aria-pressed"),
+      "an opt-in rule is OFF by default",
+    ).toBe("false");
     fireEvent.click(toggle);
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { houseRules: { "mine-army-defense": true } }
+      options: { houseRules: { "mine-army-defense": true } },
     });
   });
 
@@ -376,23 +530,31 @@ describe("Game options — tabbed layout", () => {
     const onAction = openOptions();
     expandGlobalMapRules();
     expect(
-      screen.queryByRole("button", { name: /Yellow borders block Tile discovery/i }),
-      "the Global map-rules panel does NOT host it"
+      screen.queryByRole("button", {
+        name: /Yellow borders block Tile discovery/i,
+      }),
+      "the Global map-rules panel does NOT host it",
     ).toBeNull();
     expandBinhHouseRules();
-    const toggle = screen.getByRole("button", { name: /Yellow borders block Tile discovery/i });
+    const toggle = screen.getByRole("button", {
+      name: /Yellow borders block Tile discovery/i,
+    });
     expect(toggle.getAttribute("aria-pressed")).toBe("true");
     expect((toggle as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(toggle);
     expect(onAction).toHaveBeenLastCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { houseRules: { "discovery-border-gate": false } }
+      options: { houseRules: { "discovery-border-gate": false } },
     });
 
     expandBinhHouseRules();
     expandPolishHouseRules();
-    expect(screen.queryByRole("button", { name: /Yellow borders block Tile discovery/i })).toBeNull();
+    expect(
+      screen.queryByRole("button", {
+        name: /Yellow borders block Tile discovery/i,
+      }),
+    ).toBeNull();
   });
 
   it("manually selecting Rule 111 changes only Rule 111", () => {
@@ -401,7 +563,7 @@ describe("Game options — tabbed layout", () => {
       state.setupLobby!.options.houseRules = {
         ...state.setupLobby!.options.houseRules,
         "polish-rule-111": false,
-        "discovery-border-gate": false
+        "discovery-border-gate": false,
       };
     });
     expandPolishHouseRules();
@@ -409,7 +571,7 @@ describe("Game options — tabbed layout", () => {
     expect(onAction).toHaveBeenLastCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { houseRules: { "polish-rule-111": true } }
+      options: { houseRules: { "polish-rule-111": true } },
     });
   });
 
@@ -419,11 +581,13 @@ describe("Game options — tabbed layout", () => {
       state.setupLobby!.options.houseRules = {
         ...state.setupLobby!.options.houseRules,
         "polish-rule-111": true,
-        "discovery-border-gate": false
+        "discovery-border-gate": false,
       };
     });
     expandBinhHouseRules();
-    const toggle = screen.getByRole("button", { name: /Yellow borders block Tile discovery/i });
+    const toggle = screen.getByRole("button", {
+      name: /Yellow borders block Tile discovery/i,
+    });
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     expect((toggle as HTMLButtonElement).disabled).toBe(false);
   });
@@ -431,68 +595,81 @@ describe("Game options — tabbed layout", () => {
   it("renders the Old-Legion/reinforcement row OFF by default (the new adjustable banks are the default)", () => {
     const onAction = openOptions();
     expandBinhHouseRules();
-    const toggle = screen.getByRole("button", { name: /Old Legion \/ reinforcement behavior/i });
+    const toggle = screen.getByRole("button", {
+      name: /Old Legion \/ reinforcement behavior/i,
+    });
     expect(
       toggle.getAttribute("aria-pressed"),
-      "the NEW stacking/banking reading is the default; the old one is opt-in"
+      "the NEW stacking/banking reading is the default; the old one is opt-in",
     ).toBe("false");
     fireEvent.click(toggle);
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { houseRules: { "immediate-reinforcement-prompts": true } }
+      options: { houseRules: { "immediate-reinforcement-prompts": true } },
     });
   });
 
   it("renders the Torso-of-Legion re-tier row ON by default; unticking dispatches just that flag", () => {
     const onAction = openOptions();
     expandBinhHouseRules();
-    const toggle = screen.getByRole("button", { name: /Torso of Legion plays as Major/i });
-    expect(toggle.getAttribute("aria-pressed"), "the re-tier is ON by default").toBe("true");
+    const toggle = screen.getByRole("button", {
+      name: /Torso of Legion plays as Major/i,
+    });
+    expect(
+      toggle.getAttribute("aria-pressed"),
+      "the re-tier is ON by default",
+    ).toBe("true");
     fireEvent.click(toggle);
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { houseRules: { "torso-of-legion-major": false } }
+      options: { houseRules: { "torso-of-legion-major": false } },
     });
   });
 
   it("wires the opt-in Polish bank-size variant through the shared registry UI", () => {
     const onAction = openOptions();
     expandPolishHouseRules();
-    fireEvent.click(screen.getByRole("button", { name: /Rolled Creature Bank sizes/ }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Rolled Creature Bank sizes/ }),
+    );
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { houseRules: { "polish-bank-sizes": true } }
+      options: { houseRules: { "polish-bank-sizes": true } },
     });
   });
 
   it("wires the opt-in Set Artifacts rule through the shared registry UI (default OFF)", () => {
     const onAction = openOptions();
     expandPolishHouseRules();
-    const toggle = screen.getByRole("button", { name: /Set Artifacts/ }) as HTMLButtonElement;
+    const toggle = screen.getByRole("button", {
+      name: /Set Artifacts/,
+    }) as HTMLButtonElement;
     // Default OFF in both modes, and it depends on nothing (never greyed out).
     expect(toggle.disabled).toBe(false);
     fireEvent.click(toggle);
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { houseRules: { "polish-set-artifacts": true } }
+      options: { houseRules: { "polish-set-artifacts": true } },
     });
   });
 
   it("wires the opt-in Balanced cards (Balance Pack) rule through the shared registry UI (default OFF)", () => {
     const onAction = openOptions();
     expandPolishHouseRules();
-    const toggle = screen.getByRole("button", { name: /Balanced cards/ }) as HTMLButtonElement;
+    const toggle = screen.getByRole("button", {
+      name: /Balanced cards/,
+    }) as HTMLButtonElement;
     // Default OFF in both modes, and it depends on nothing (never greyed out).
     expect(toggle.disabled).toBe(false);
     fireEvent.click(toggle);
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { houseRules: { "polish-card-balance": true } }
+      options: { houseRules: { "polish-card-balance": true } },
     });
   });
 
@@ -500,7 +677,7 @@ describe("Game options — tabbed layout", () => {
     const onAction = openOptions();
     expandCommunityHouseRules();
     const toggle = screen.getByRole("button", {
-      name: /Heroes 3 Board Game Community Balance Change/
+      name: /Heroes 3 Board Game Community Balance Change/,
     }) as HTMLButtonElement;
     // Default OFF in both modes, and it depends on nothing (never greyed out).
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
@@ -509,16 +686,21 @@ describe("Game options — tabbed layout", () => {
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { houseRules: { "community-card-balance": true } }
+      options: { houseRules: { "community-card-balance": true } },
     });
   });
 
   it("the Community group has its own Enable-all button, and it leaves the Polish rows alone", () => {
     const onAction = openOptions();
     expandCommunityHouseRules();
-    fireEvent.click(screen.getByRole("button", { name: "Enable all Community rules" }));
-    const hr = (onAction.mock.calls.at(-1)?.[0] as { options: { houseRules: Record<string, boolean> } })
-      .options.houseRules;
+    fireEvent.click(
+      screen.getByRole("button", { name: "Enable all Community rules" }),
+    );
+    const hr = (
+      onAction.mock.calls.at(-1)?.[0] as {
+        options: { houseRules: Record<string, boolean> };
+      }
+    ).options.houseRules;
     expect(hr["community-card-balance"]).toBe(true);
     // CONTROL: the Polish package is untouched by the Community group button.
     expect(hr["polish-card-balance"]).toBeUndefined();
@@ -528,41 +710,57 @@ describe("Game options — tabbed layout", () => {
   it("CONTROL: the Polish Enable-all never turns the Community rule on", () => {
     const onAction = openOptions();
     expandPolishHouseRules();
-    fireEvent.click(screen.getByRole("button", { name: "Enable all Polish rules" }));
-    const hr = (onAction.mock.calls.at(-1)?.[0] as { options: { houseRules: Record<string, boolean> } })
-      .options.houseRules;
+    fireEvent.click(
+      screen.getByRole("button", { name: "Enable all Polish rules" }),
+    );
+    const hr = (
+      onAction.mock.calls.at(-1)?.[0] as {
+        options: { houseRules: Record<string, boolean> };
+      }
+    ).options.houseRules;
     expect(hr["polish-card-balance"]).toBe(true);
-    expect(hr["community-card-balance"], "the Community pack is a separate group").toBeUndefined();
+    expect(
+      hr["community-card-balance"],
+      "the Community pack is a separate group",
+    ).toBeUndefined();
   });
 
   it("shows a 'full card list' spreadsheet link for each balance pack (concise description + external reference)", () => {
     openOptions();
     expandCommunityHouseRules();
     const communityLink = screen.getByRole("link", {
-      name: /Heroes 3 Board Game Community Balance Change: full card list/i
+      name: /Heroes 3 Board Game Community Balance Change: full card list/i,
     }) as HTMLAnchorElement;
-    expect(communityLink.getAttribute("href")).toContain("docs.google.com/spreadsheets");
+    expect(communityLink.getAttribute("href")).toContain(
+      "docs.google.com/spreadsheets",
+    );
     expect(communityLink.getAttribute("target")).toBe("_blank");
     expect(communityLink.getAttribute("rel")).toContain("noopener");
 
     expandPolishHouseRules();
     const polishLink = screen.getByRole("link", {
-      name: /Balanced cards \(Balance Pack\): full card list/i
+      name: /Balanced cards \(Balance Pack\): full card list/i,
     }) as HTMLAnchorElement;
     expect(polishLink.getAttribute("href")).toContain("onedrive.live.com");
     // CONTROL: an ordinary rule with no infoUrl gets no such link.
-    expect(screen.queryByRole("link", { name: /Polish Spell Book: full card list/i })).toBeNull();
+    expect(
+      screen.queryByRole("link", {
+        name: /Polish Spell Book: full card list/i,
+      }),
+    ).toBeNull();
   });
 
   it("the Community toggle reflects a persisted ON value", () => {
     openOptionsWith((state) => {
       state.setupLobby!.options.houseRules = {
         ...state.setupLobby!.options.houseRules,
-        "community-card-balance": true
+        "community-card-balance": true,
       };
     });
     expandCommunityHouseRules();
-    const toggle = screen.getByRole("button", { name: /Heroes 3 Board Game Community Balance Change/ });
+    const toggle = screen.getByRole("button", {
+      name: /Heroes 3 Board Game Community Balance Change/,
+    });
     expect(toggle.getAttribute("aria-pressed")).toBe("true");
   });
 
@@ -573,14 +771,16 @@ describe("Game options — tabbed layout", () => {
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { houseRules: { "polish-spell-book": true }, spellBook: false }
+      options: { houseRules: { "polish-spell-book": true }, spellBook: false },
     });
   });
 
   it("greys out Polish bank sizes while the base Creature Banks option is off", () => {
     openOptions(vi.fn(), { creatureBanks: false });
     expandPolishHouseRules();
-    const toggle = screen.getByRole("button", { name: /Rolled Creature Bank sizes/ }) as HTMLButtonElement;
+    const toggle = screen.getByRole("button", {
+      name: /Rolled Creature Bank sizes/,
+    }) as HTMLButtonElement;
     expect(toggle.disabled).toBe(true);
     expect(toggle.textContent).toContain("BANKS OFF");
   });
@@ -588,7 +788,9 @@ describe("Game options — tabbed layout", () => {
   it("Enable-all turns the whole Polish group on in one dispatch (Spell Book side effect included)", () => {
     const onAction = openOptions();
     expandPolishHouseRules();
-    fireEvent.click(screen.getByRole("button", { name: "Enable all Polish rules" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Enable all Polish rules" }),
+    );
     const call = onAction.mock.calls.at(-1)?.[0] as {
       type: string;
       options: { houseRules: Record<string, boolean>; spellBook?: boolean };
@@ -599,7 +801,9 @@ describe("Game options — tabbed layout", () => {
     expect(call.options.houseRules["polish-wait"]).toBe(true);
     expect(call.options.houseRules["polish-spell-book"]).toBe(true);
     expect(call.options.houseRules["torso-of-legion-major"]).toBe(true);
-    expect(call.options.houseRules["eversmoking-ring-of-sulfur-major"]).toBe(true);
+    expect(call.options.houseRules["eversmoking-ring-of-sulfur-major"]).toBe(
+      true,
+    );
     expect(call.options.houseRules["polish-grail-utopia"]).toBeUndefined();
     // Turning on Polish Spell Book also forces the stash Spell Book off.
     expect(call.options.spellBook).toBe(false);
@@ -610,7 +814,7 @@ describe("Game options — tabbed layout", () => {
       state.setupLobby!.options.houseRules = {
         ...state.setupLobby!.options.houseRules,
         "split-decks": false,
-        "discovery-border-gate": false
+        "discovery-border-gate": false,
       };
     });
     expandPolishHouseRules();
@@ -618,7 +822,7 @@ describe("Game options — tabbed layout", () => {
     expect(onAction).toHaveBeenLastCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { houseRules: { "polish-wait": true } }
+      options: { houseRules: { "polish-wait": true } },
     });
 
     // Turning it off is equally isolated.
@@ -627,7 +831,7 @@ describe("Game options — tabbed layout", () => {
       state.setupLobby!.options.houseRules = {
         ...state.setupLobby!.options.houseRules,
         "split-decks": false,
-        "polish-wait": true
+        "polish-wait": true,
       };
     });
     expandPolishHouseRules();
@@ -635,7 +839,7 @@ describe("Game options — tabbed layout", () => {
     expect(onOff).toHaveBeenLastCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { houseRules: { "polish-wait": false } }
+      options: { houseRules: { "polish-wait": false } },
     });
   });
 
@@ -643,13 +847,18 @@ describe("Game options — tabbed layout", () => {
     const onAction = openOptionsWith((state) => {
       state.setupLobby!.options.houseRules = {
         ...state.setupLobby!.options.houseRules,
-        "split-decks": false
+        "split-decks": false,
       };
     });
     expandPolishHouseRules();
-    fireEvent.click(screen.getByRole("button", { name: "Enable all Polish rules" }));
-    const hr = (onAction.mock.calls.at(-1)?.[0] as { options: { houseRules: Record<string, boolean> } })
-      .options.houseRules;
+    fireEvent.click(
+      screen.getByRole("button", { name: "Enable all Polish rules" }),
+    );
+    const hr = (
+      onAction.mock.calls.at(-1)?.[0] as {
+        options: { houseRules: Record<string, boolean> };
+      }
+    ).options.houseRules;
     // The Polish package pulls in split-decks as its companion (the first BINH
     // house rule — divided Spell/Artifact decks — is the default when playing
     // with Polish rules).
@@ -662,9 +871,14 @@ describe("Game options — tabbed layout", () => {
   it("Enable-all skips a dependency-blocked rule (Rolled Bank Sizes without Creature Banks)", () => {
     const onAction = openOptions(vi.fn(), { creatureBanks: false });
     expandPolishHouseRules();
-    fireEvent.click(screen.getByRole("button", { name: "Enable all Polish rules" }));
-    const hr = (onAction.mock.calls.at(-1)?.[0] as { options: { houseRules: Record<string, boolean> } })
-      .options.houseRules;
+    fireEvent.click(
+      screen.getByRole("button", { name: "Enable all Polish rules" }),
+    );
+    const hr = (
+      onAction.mock.calls.at(-1)?.[0] as {
+        options: { houseRules: Record<string, boolean> };
+      }
+    ).options.houseRules;
     // Blocked (banks off) → not enabled; a free rule alongside it still turns on.
     expect(hr["polish-bank-sizes"]).toBeUndefined();
     expect(hr["polish-reduced-starting-bonus"]).toBe(true);
@@ -688,18 +902,23 @@ describe("Game options — tabbed layout", () => {
       "polish-set-artifacts": true,
       "polish-bank-unit-spells": true,
       "polish-alliance-mode": true,
-      "polish-card-balance": true
+      "polish-card-balance": true,
     };
     const onAction = openOptionsWith((state) => {
       state.setupLobby!.options.houseRules = {
         ...state.setupLobby!.options.houseRules,
-        ...polishOn
+        ...polishOn,
       };
     });
     expandPolishHouseRules();
-    fireEvent.click(screen.getByRole("button", { name: "Disable all Polish rules" }));
-    const hr = (onAction.mock.calls.at(-1)?.[0] as { options: { houseRules: Record<string, boolean> } })
-      .options.houseRules;
+    fireEvent.click(
+      screen.getByRole("button", { name: "Disable all Polish rules" }),
+    );
+    const hr = (
+      onAction.mock.calls.at(-1)?.[0] as {
+        options: { houseRules: Record<string, boolean> };
+      }
+    ).options.houseRules;
     expect(hr["polish-reduced-starting-bonus"]).toBe(false);
     expect(hr["polish-wait"]).toBe(false);
   });
@@ -727,15 +946,23 @@ describe("Game options — tabbed layout", () => {
         "polish-bank-unit-spells": true,
         "polish-alliance-mode": true,
         "polish-card-balance": true,
-        "discovery-border-gate": true
+        "discovery-border-gate": true,
       };
     });
     expandPolishHouseRules();
-    fireEvent.click(screen.getByRole("button", { name: "Disable all Polish rules" }));
-    const hr = (onAction.mock.calls.at(-1)?.[0] as { options: { houseRules: Record<string, boolean> } })
-      .options.houseRules;
+    fireEvent.click(
+      screen.getByRole("button", { name: "Disable all Polish rules" }),
+    );
+    const hr = (
+      onAction.mock.calls.at(-1)?.[0] as {
+        options: { houseRules: Record<string, boolean> };
+      }
+    ).options.houseRules;
     expect(hr["polish-wait"]).toBe(false);
-    expect(hr["discovery-border-gate"], "the separate border rule is absent from the dispatch").toBeUndefined();
+    expect(
+      hr["discovery-border-gate"],
+      "the separate border rule is absent from the dispatch",
+    ).toBeUndefined();
   });
 
   it("Map & Setup exposes the Blind Ⅱ–Ⅲ tile choice toggle, default OFF, wired to farTileBlindChoice", () => {
@@ -743,14 +970,18 @@ describe("Game options — tabbed layout", () => {
     fireEvent.click(screen.getByRole("tab", { name: /Map & Setup/ }));
     const row = screen.getByText("Blind Ⅱ–Ⅲ tile choice").closest(".optionRow");
     expect(row).toBeTruthy();
-    expect(within(row as HTMLElement).getByRole("button", { name: "Off" }).getAttribute("aria-pressed")).toBe(
-      "true"
+    expect(
+      within(row as HTMLElement)
+        .getByRole("button", { name: "Off" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    fireEvent.click(
+      within(row as HTMLElement).getByRole("button", { name: "On" }),
     );
-    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "On" }));
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { farTileBlindChoice: true }
+      options: { farTileBlindChoice: true },
     });
 
     // CONTROL: with Ⅱ–Ⅲ tile opening OFF, the blind-choice row is hidden.
@@ -767,14 +998,18 @@ describe("Game options — tabbed layout", () => {
     fireEvent.click(screen.getByRole("tab", { name: /Map & Setup/ }));
     const row = screen.getByText("Ⅱ–Ⅲ tile type choice").closest(".optionRow");
     expect(row).toBeTruthy();
-    expect(within(row as HTMLElement).getByRole("button", { name: "Off" }).getAttribute("aria-pressed")).toBe(
-      "true"
+    expect(
+      within(row as HTMLElement)
+        .getByRole("button", { name: "Off" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    fireEvent.click(
+      within(row as HTMLElement).getByRole("button", { name: "On" }),
     );
-    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "On" }));
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { farTileTypeChoice: true }
+      options: { farTileTypeChoice: true },
     });
 
     // CONTROL: with Ⅱ–Ⅲ tile opening OFF, the type-choice row is hidden (there
@@ -794,13 +1029,15 @@ describe("Game options — tabbed layout", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: /Mode & Rules/ }));
     expandBinhHouseRules();
-    const toggle = screen.getByRole("button", { name: /Ⅱ–Ⅲ tile Ore \/ Settlement rerolls/i });
+    const toggle = screen.getByRole("button", {
+      name: /Ⅱ–Ⅲ tile Ore \/ Settlement rerolls/i,
+    });
     expect(toggle.getAttribute("aria-pressed")).toBe("true");
     fireEvent.click(toggle);
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { houseRules: { "far-tile-rerolls": false } }
+      options: { houseRules: { "far-tile-rerolls": false } },
     });
   });
 
@@ -810,15 +1047,19 @@ describe("Game options — tabbed layout", () => {
     const row = screen.getByText("Creature Banks").closest(".optionRow");
     expect(row).toBeTruthy();
     // Default (option unset) pre-highlights On.
-    expect(within(row as HTMLElement).getByRole("button", { name: "On" }).getAttribute("aria-pressed")).toBe(
-      "true"
-    );
+    expect(
+      within(row as HTMLElement)
+        .getByRole("button", { name: "On" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
     // Clicking Off dispatches the exact SET_GAME_OPTIONS the engine now reads.
-    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "Off" }));
+    fireEvent.click(
+      within(row as HTMLElement).getByRole("button", { name: "Off" }),
+    );
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { creatureBanks: false }
+      options: { creatureBanks: false },
     });
 
     // A stored creatureBanks:false is reflected as Off pressed (the button sticks).
@@ -826,9 +1067,11 @@ describe("Game options — tabbed layout", () => {
     openOptions(vi.fn(), { creatureBanks: false });
     fireEvent.click(screen.getByRole("tab", { name: /Map & Setup/ }));
     const offRow = screen.getByText("Creature Banks").closest(".optionRow");
-    expect(within(offRow as HTMLElement).getByRole("button", { name: "Off" }).getAttribute("aria-pressed")).toBe(
-      "true"
-    );
+    expect(
+      within(offRow as HTMLElement)
+        .getByRole("button", { name: "Off" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
   });
 
   it("Mode & Rules wires Event deck, Morale Cards, and Ban Diplomacy", () => {
@@ -836,20 +1079,24 @@ describe("Game options — tabbed layout", () => {
 
     const eventRow = screen.getByText("Event deck").closest(".optionRow");
     expect(eventRow).toBeTruthy();
-    fireEvent.click(within(eventRow as HTMLElement).getByRole("button", { name: "On" }));
+    fireEvent.click(
+      within(eventRow as HTMLElement).getByRole("button", { name: "On" }),
+    );
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { events: true }
+      options: { events: true },
     });
 
     onAction.mockClear();
     const moraleRow = screen.getByText("Morale Cards").closest(".optionRow");
-    fireEvent.click(within(moraleRow as HTMLElement).getByRole("button", { name: "On" }));
+    fireEvent.click(
+      within(moraleRow as HTMLElement).getByRole("button", { name: "On" }),
+    );
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { moraleCards: true }
+      options: { moraleCards: true },
     });
 
     onAction.mockClear();
@@ -858,19 +1105,94 @@ describe("Game options — tabbed layout", () => {
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { tournamentBanDiplomacy: true }
+      options: { tournamentBanDiplomacy: true },
     });
 
     // The Observatory re-rotate tournament rule is its own toggle (default off).
     onAction.mockClear();
-    const rerotate = screen.getByRole("button", { name: /Observatory re-rotates a nearby tile/i });
+    const rerotate = screen.getByRole("button", {
+      name: /Observatory re-rotates a nearby tile/i,
+    });
     expect(rerotate.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(rerotate);
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { tournamentObservatoryRerotate: true }
+      options: { tournamentObservatoryRerotate: true },
     });
+
+    onAction.mockClear();
+    fireEvent.click(
+      screen.getByRole("button", { name: /Morale: Search again/i }),
+    );
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { tournamentMoraleSearchAgain: true },
+    });
+
+    onAction.mockClear();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /Removed Artifacts still count for VP/i,
+      }),
+    );
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { tournamentRemovedArtifactsVp: true },
+    });
+  });
+
+  it("keeps Polish rows concise and opens the full rule reference from the info button", () => {
+    openOptions();
+    expandPolishHouseRules();
+    const toggle = screen.getByRole("button", { name: /Polish Spell Book/ });
+    expect(toggle.textContent).toContain(
+      "Spells live in a used/refreshed Book",
+    );
+    expect(toggle.textContent).not.toContain("Mutually exclusive");
+    const row = toggle.closest<HTMLElement>(".houseRuleToggleWrap")!;
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Open rule information" }),
+    );
+    const dialog = screen.getByRole("dialog", {
+      name: /Polish Spell Book rules/i,
+    });
+    expect(dialog.textContent).toContain(
+      "Each physical Spell may be refreshed only once per round",
+    );
+    const reference = within(dialog).getByAltText(
+      /H3 BG Rules v1\.2/i,
+    ) as HTMLImageElement;
+    expect(reference.getAttribute("src")).toContain(
+      "/assets/rules/polish/spell-book.webp",
+    );
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: /Close rule information/i }),
+    );
+    expect(
+      screen.queryByRole("dialog", { name: /Polish Spell Book rules/i }),
+    ).toBeNull();
+
+    const balanceToggle = screen.getByRole("button", {
+      name: /Balanced cards \(Balance Pack\)/,
+    });
+    expect(balanceToggle.textContent).toContain(
+      "Use the Polish Balance Pack rules",
+    );
+    const balanceRow = balanceToggle.closest<HTMLElement>(".houseRuleToggleWrap")!;
+    fireEvent.click(
+      within(balanceRow).getByRole("button", { name: "Open rule information" }),
+    );
+    const balanceDialog = screen.getByRole("dialog", {
+      name: /Balanced cards .* rules/i,
+    });
+    expect(
+      within(balanceDialog).getByRole("link", {
+        name: /full card-by-card list/i,
+      }),
+    ).toBeTruthy();
   });
 
   /**
@@ -884,7 +1206,9 @@ describe("Game options — tabbed layout", () => {
     const onAction = openOptions();
     expandTournamentRules();
 
-    const row = screen.getByRole("button", { name: /Divided Spell & Artifact decks/i });
+    const row = screen.getByRole("button", {
+      name: /Divided Spell & Artifact decks/i,
+    });
     // BINH default: the rule is already on, so the tick reflects it.
     expect(row.getAttribute("aria-pressed")).toBe("true");
     // It sits inside the Tournament rules panel, not the BINH list.
@@ -894,7 +1218,7 @@ describe("Game options — tabbed layout", () => {
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { houseRules: { "split-decks": false } }
+      options: { houseRules: { "split-decks": false } },
     });
   });
 
@@ -907,20 +1231,28 @@ describe("Game options — tabbed layout", () => {
     });
     expandTournamentRules();
 
-    const row = screen.getByRole("button", { name: /Divided Spell & Artifact decks/i });
+    const row = screen.getByRole("button", {
+      name: /Divided Spell & Artifact decks/i,
+    });
     expect(row.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(row);
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { houseRules: { "split-decks": true } }
+      options: { houseRules: { "split-decks": true } },
     });
   });
 
   it("keeps every binary setting in one physical order: On left, Off right", () => {
     openOptions();
 
-    for (const label of ["Victory points", "Event deck", "Morale Cards", "Spell Book", "Unit experience"]) {
+    for (const label of [
+      "Victory points",
+      "Event deck",
+      "Morale Cards",
+      "Spell Book",
+      "Unit experience",
+    ]) {
       const row = screen.getByText(label).closest(".optionRow") as HTMLElement;
       const binary = within(row)
         .getAllByRole("button")
@@ -930,7 +1262,12 @@ describe("Game options — tabbed layout", () => {
     }
 
     fireEvent.click(screen.getByRole("tab", { name: /Map & Setup/ }));
-    for (const label of ["Creature Banks", "Field Overrides", "Ⅱ–Ⅲ tile opening", "Blind Ⅱ–Ⅲ tile choice"]) {
+    for (const label of [
+      "Creature Banks",
+      "Field Overrides",
+      "Ⅱ–Ⅲ tile opening",
+      "Blind Ⅱ–Ⅲ tile choice",
+    ]) {
       const row = screen.getByText(label).closest(".optionRow") as HTMLElement;
       const binary = within(row)
         .getAllByRole("button")
@@ -942,20 +1279,28 @@ describe("Game options — tabbed layout", () => {
 
   it("exposes the OPTIONAL Undo-moves (testing) toggle, default OFF, wired to undoMoves", () => {
     const onAction = openOptions();
-    const undoRow = screen.getByText("Undo moves (testing)").closest(".optionRow");
+    const undoRow = screen
+      .getByText("Undo moves (testing)")
+      .closest(".optionRow");
     expect(undoRow).toBeTruthy();
     // Default OFF: the Off button is pressed, On is not.
     expect(
-      within(undoRow as HTMLElement).getByRole("button", { name: "Off" }).getAttribute("aria-pressed")
+      within(undoRow as HTMLElement)
+        .getByRole("button", { name: "Off" })
+        .getAttribute("aria-pressed"),
     ).toBe("true");
     expect(
-      within(undoRow as HTMLElement).getByRole("button", { name: "On" }).getAttribute("aria-pressed")
+      within(undoRow as HTMLElement)
+        .getByRole("button", { name: "On" })
+        .getAttribute("aria-pressed"),
     ).toBe("false");
-    fireEvent.click(within(undoRow as HTMLElement).getByRole("button", { name: "On" }));
+    fireEvent.click(
+      within(undoRow as HTMLElement).getByRole("button", { name: "On" }),
+    );
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { undoMoves: true }
+      options: { undoMoves: true },
     });
   });
 
@@ -963,17 +1308,23 @@ describe("Game options — tabbed layout", () => {
     const onAction = openOptions();
     const row = screen.getByText("Manual guard control").closest(".optionRow");
     expect(row).toBeTruthy();
-    expect(within(row as HTMLElement).getByRole("button", { name: "Off" }).getAttribute("aria-pressed")).toBe(
-      "true"
+    expect(
+      within(row as HTMLElement)
+        .getByRole("button", { name: "Off" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(
+      within(row as HTMLElement)
+        .getByRole("button", { name: "On" })
+        .getAttribute("aria-pressed"),
+    ).toBe("false");
+    fireEvent.click(
+      within(row as HTMLElement).getByRole("button", { name: "On" }),
     );
-    expect(within(row as HTMLElement).getByRole("button", { name: "On" }).getAttribute("aria-pressed")).toBe(
-      "false"
-    );
-    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "On" }));
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { manualGuardControl: true }
+      options: { manualGuardControl: true },
     });
   });
 
@@ -981,17 +1332,23 @@ describe("Game options — tabbed layout", () => {
     const onAction = openOptions();
     const row = screen.getByText("Unit experience").closest(".optionRow");
     expect(row).toBeTruthy();
-    expect(within(row as HTMLElement).getByRole("button", { name: "Off" }).getAttribute("aria-pressed")).toBe(
-      "true"
+    expect(
+      within(row as HTMLElement)
+        .getByRole("button", { name: "Off" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(
+      within(row as HTMLElement)
+        .getByRole("button", { name: "On" })
+        .getAttribute("aria-pressed"),
+    ).toBe("false");
+    fireEvent.click(
+      within(row as HTMLElement).getByRole("button", { name: "On" }),
     );
-    expect(within(row as HTMLElement).getByRole("button", { name: "On" }).getAttribute("aria-pressed")).toBe(
-      "false"
-    );
-    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "On" }));
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { unitExperience: true }
+      options: { unitExperience: true },
     });
   });
 
@@ -999,12 +1356,16 @@ describe("Game options — tabbed layout", () => {
     const onAction = openOptionsWith((state) => {
       state.setupLobby!.options.wog = {
         ...state.setupLobby!.options.wog!,
-        enabled: true
+        enabled: true,
       };
     });
     fireEvent.click(screen.getByRole("button", { name: /Mod options/i }));
-    const dialog = screen.getByRole("dialog", { name: /Wake of Gods mod options/i });
-    const row = within(dialog).getByRole("button", { name: /WoG Unit Experience System/i });
+    const dialog = screen.getByRole("dialog", {
+      name: /Wake of Gods mod options/i,
+    });
+    const row = within(dialog).getByRole("button", {
+      name: /WoG Unit Experience System/i,
+    });
     expect(row.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(row);
     expect(onAction).toHaveBeenCalledWith(
@@ -1012,9 +1373,9 @@ describe("Game options — tabbed layout", () => {
         type: "SET_GAME_OPTIONS",
         playerId: "p1",
         options: expect.objectContaining({
-          wog: expect.objectContaining({ enabled: true, unitExperience: true })
-        })
-      })
+          wog: expect.objectContaining({ enabled: true, unitExperience: true }),
+        }),
+      }),
     );
   });
 
@@ -1022,12 +1383,16 @@ describe("Game options — tabbed layout", () => {
     const onAction = openOptionsWith((state) => {
       state.setupLobby!.options.wog = {
         ...state.setupLobby!.options.wog!,
-        enabled: true
+        enabled: true,
       };
     });
     fireEvent.click(screen.getByRole("button", { name: /Mod options/i }));
-    const dialog = screen.getByRole("dialog", { name: /Wake of Gods mod options/i });
-    const row = within(dialog).getByRole("button", { name: /Neutral-OWNED guards toughen with the round/i });
+    const dialog = screen.getByRole("dialog", {
+      name: /Wake of Gods mod options/i,
+    });
+    const row = within(dialog).getByRole("button", {
+      name: /Neutral-OWNED guards toughen with the round/i,
+    });
     expect(row.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(row);
     expect(onAction).toHaveBeenCalledWith(
@@ -1035,9 +1400,9 @@ describe("Game options — tabbed layout", () => {
         type: "SET_GAME_OPTIONS",
         playerId: "p1",
         options: expect.objectContaining({
-          wog: expect.objectContaining({ enabled: true, neutralRankUp: true })
-        })
-      })
+          wog: expect.objectContaining({ enabled: true, neutralRankUp: true }),
+        }),
+      }),
     );
   });
 
@@ -1045,18 +1410,20 @@ describe("Game options — tabbed layout", () => {
     const rows: Array<[RegExp, string]> = [
       [/Calamity Waves: every Nth round/i, "monsterWaves"],
       [/persistent multi-layer world boss/i, "raidBosses"],
-      [/Each player tracks their own floor/i, "dungeon"]
+      [/Each player tracks their own floor/i, "dungeon"],
     ];
     for (const [labelPattern, flag] of rows) {
       cleanup();
       const onAction = openOptionsWith((state) => {
         state.setupLobby!.options.wog = {
           ...state.setupLobby!.options.wog!,
-          enabled: true
+          enabled: true,
         };
       });
       fireEvent.click(screen.getByRole("button", { name: /Mod options/i }));
-      const dialog = screen.getByRole("dialog", { name: /Wake of Gods mod options/i });
+      const dialog = screen.getByRole("dialog", {
+        name: /Wake of Gods mod options/i,
+      });
       const row = within(dialog).getByRole("button", { name: labelPattern });
       expect(row.getAttribute("aria-pressed")).toBe("false");
       fireEvent.click(row);
@@ -1065,9 +1432,9 @@ describe("Game options — tabbed layout", () => {
           type: "SET_GAME_OPTIONS",
           playerId: "p1",
           options: expect.objectContaining({
-            wog: expect.objectContaining({ enabled: true, [flag]: true })
-          })
-        })
+            wog: expect.objectContaining({ enabled: true, [flag]: true }),
+          }),
+        }),
       );
     }
   });
@@ -1077,12 +1444,16 @@ describe("Game options — tabbed layout", () => {
     const onAction = openOptionsWith((state) => {
       state.setupLobby!.options.wog = {
         ...state.setupLobby!.options.wog!,
-        enabled: true
+        enabled: true,
       };
     });
     fireEvent.click(screen.getByRole("button", { name: /Mod options/i }));
-    let dialog = screen.getByRole("dialog", { name: /Wake of Gods mod options/i });
-    expect(within(dialog).queryByRole("group", { name: /Wave cadence/i })).toBeNull();
+    let dialog = screen.getByRole("dialog", {
+      name: /Wake of Gods mod options/i,
+    });
+    expect(
+      within(dialog).queryByRole("group", { name: /Wave cadence/i }),
+    ).toBeNull();
     cleanup();
 
     // WOG window with monsterWaves ON → chips render, default 4th pressed, and
@@ -1091,21 +1462,29 @@ describe("Game options — tabbed layout", () => {
       state.setupLobby!.options.wog = {
         ...state.setupLobby!.options.wog!,
         enabled: true,
-        monsterWaves: true
+        monsterWaves: true,
       };
     });
     fireEvent.click(screen.getByRole("button", { name: /Mod options/i }));
     dialog = screen.getByRole("dialog", { name: /Wake of Gods mod options/i });
-    const cadenceRow = within(dialog).getByRole("group", { name: /Wave cadence/i });
-    expect(within(cadenceRow).getByRole("button", { name: /Every 4th round/i }).getAttribute("aria-pressed")).toBe("true");
-    fireEvent.click(within(cadenceRow).getByRole("button", { name: /Every 5th round/i }));
+    const cadenceRow = within(dialog).getByRole("group", {
+      name: /Wave cadence/i,
+    });
+    expect(
+      within(cadenceRow)
+        .getByRole("button", { name: /Every 4th round/i })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    fireEvent.click(
+      within(cadenceRow).getByRole("button", { name: /Every 5th round/i }),
+    );
     expect(onAction2).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "SET_GAME_OPTIONS",
         options: expect.objectContaining({
-          wog: expect.objectContaining({ waveCadence: 5 })
-        })
-      })
+          wog: expect.objectContaining({ waveCadence: 5 }),
+        }),
+      }),
     );
   });
 
@@ -1116,70 +1495,94 @@ describe("Game options — tabbed layout", () => {
         enabled: true,
         monsterWaves: true,
         raidBosses: true,
-        dungeon: true
+        dungeon: true,
       };
     });
     fireEvent.click(screen.getByRole("button", { name: /Mod options/i }));
-    const dialog = screen.getByRole("dialog", { name: /Wake of Gods mod options/i });
+    const dialog = screen.getByRole("dialog", {
+      name: /Wake of Gods mod options/i,
+    });
 
     // The Doom PvE THEME picker is anime-only now, so the WOG window offers no
     // theme choice (its PvE encounters are always the classic world).
-    expect(within(dialog).queryByRole("group", { name: /PvE encounter theme/i })).toBeNull();
+    expect(
+      within(dialog).queryByRole("group", { name: /PvE encounter theme/i }),
+    ).toBeNull();
 
-    const pressure = within(dialog).getByRole("group", { name: /Wave pressure/i });
+    const pressure = within(dialog).getByRole("group", {
+      name: /Wave pressure/i,
+    });
     fireEvent.click(within(pressure).getByRole("button", { name: /Brutal/ }));
     expect(onAction).toHaveBeenCalledWith(
       expect.objectContaining({
         options: expect.objectContaining({
-          wog: expect.objectContaining({ wavePressure: "brutal" })
-        })
-      })
+          wog: expect.objectContaining({ wavePressure: "brutal" }),
+        }),
+      }),
     );
 
-    const losses = within(dialog).getByRole("group", { name: /Wave loss limit/i });
-    fireEvent.click(within(losses).getByRole("button", { name: /Eliminate after 2/i }));
+    const losses = within(dialog).getByRole("group", {
+      name: /Wave loss limit/i,
+    });
+    fireEvent.click(
+      within(losses).getByRole("button", { name: /Eliminate after 2/i }),
+    );
     expect(onAction).toHaveBeenCalledWith(
       expect.objectContaining({
         options: expect.objectContaining({
-          wog: expect.objectContaining({ waveDefeatLimit: 2 })
-        })
-      })
+          wog: expect.objectContaining({ waveDefeatLimit: 2 }),
+        }),
+      }),
     );
 
-    const arrival = within(dialog).getByRole("group", { name: /Raid boss arrival/i });
+    const arrival = within(dialog).getByRole("group", {
+      name: /Raid boss arrival/i,
+    });
     fireEvent.click(within(arrival).getByRole("button", { name: "Round 6" }));
     expect(onAction).toHaveBeenCalledWith(
       expect.objectContaining({
         options: expect.objectContaining({
-          wog: expect.objectContaining({ raidBossSpawnRound: 6 })
-        })
-      })
+          wog: expect.objectContaining({ raidBossSpawnRound: 6 }),
+        }),
+      }),
     );
 
-    const campaign = within(dialog).getByRole("group", { name: /Dungeon campaign length/i });
-    fireEvent.click(within(campaign).getByRole("button", { name: /5-floor expedition/i }));
+    const campaign = within(dialog).getByRole("group", {
+      name: /Dungeon campaign length/i,
+    });
+    fireEvent.click(
+      within(campaign).getByRole("button", { name: /5-floor expedition/i }),
+    );
     expect(onAction).toHaveBeenCalledWith(
       expect.objectContaining({
         options: expect.objectContaining({
-          wog: expect.objectContaining({ dungeonDepth: 5 })
-        })
-      })
+          wog: expect.objectContaining({ dungeonDepth: 5 }),
+        }),
+      }),
     );
 
-    const descent = within(dialog).getByRole("group", { name: /Continue after a Dungeon win/i });
-    fireEvent.click(within(descent).getByRole("button", { name: /2 movement/i }));
+    const descent = within(dialog).getByRole("group", {
+      name: /Continue after a Dungeon win/i,
+    });
+    fireEvent.click(
+      within(descent).getByRole("button", { name: /2 movement/i }),
+    );
     expect(onAction).toHaveBeenCalledWith(
       expect.objectContaining({
         options: expect.objectContaining({
-          wog: expect.objectContaining({ dungeonDescentCost: 2 })
-        })
-      })
+          wog: expect.objectContaining({ dungeonDescentCost: 2 }),
+        }),
+      }),
     );
   });
 
   it("Legacy preset turns house rules off without locking them (notice + free toggle)", () => {
     const onAction = openOptions();
-    fireEvent.click(within(screen.getByRole("group", { name: /Game mode presets/i })).getByRole("button", { name: /Legacy/i }));
+    fireEvent.click(
+      within(
+        screen.getByRole("group", { name: /Game mode presets/i }),
+      ).getByRole("button", { name: /Legacy/i }),
+    );
     expect(onAction).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "SET_GAME_OPTIONS",
@@ -1187,11 +1590,13 @@ describe("Game options — tabbed layout", () => {
         options: expect.objectContaining({
           ruleset: "legacy",
           spellBook: false,
-          tournamentMode: false
-        })
-      })
+          tournamentMode: false,
+        }),
+      }),
     );
-    expect(screen.getByRole("status").textContent).toMatch(/not locked|Nothing is locked|re-enable/i);
+    expect(screen.getByRole("status").textContent).toMatch(
+      /not locked|Nothing is locked|re-enable/i,
+    );
 
     // House-rule chips stay clickable after the preset (soft Legacy).
     onAction.mockClear();
@@ -1200,14 +1605,16 @@ describe("Game options — tabbed layout", () => {
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { houseRules: { "estates-nerf": false } }
+      options: { houseRules: { "estates-nerf": false } },
     });
   });
 
   it("Tournament preset applies competitive package (rules off, bans, hard, human Neutrals)", () => {
     const onAction = openOptions();
     fireEvent.click(
-      within(screen.getByRole("group", { name: /Game mode presets/i })).getByRole("button", { name: /Tournament/i })
+      within(
+        screen.getByRole("group", { name: /Game mode presets/i }),
+      ).getByRole("button", { name: /Tournament/i }),
     );
     expect(onAction).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1221,9 +1628,9 @@ describe("Game options — tabbed layout", () => {
           tournamentSecondPlayerMorale: true,
           houseRules: expect.objectContaining({ "split-decks": true }),
           difficulty: "hard",
-          pvpNeutralControl: true
-        })
-      })
+          pvpNeutralControl: true,
+        }),
+      }),
     );
   });
 
@@ -1235,7 +1642,7 @@ describe("Game options — tabbed layout", () => {
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { startingUnits: [{ level: 3, side: "pack" }] }
+      options: { startingUnits: [{ level: 3, side: "pack" }] },
     });
 
     // Random applies one of the three presets — always a valid non-empty army.
@@ -1244,7 +1651,10 @@ describe("Game options — tabbed layout", () => {
     expect(onAction).toHaveBeenCalledTimes(1);
     const call = onAction.mock.calls[0][0];
     expect(call.type).toBe("SET_GAME_OPTIONS");
-    const units = call.options.startingUnits as { level: number; side: string }[];
+    const units = call.options.startingUnits as {
+      level: number;
+      side: string;
+    }[];
     expect(units.length).toBeGreaterThan(0);
     const signature = units
       .map((unit) => `${unit.level}${unit.side}`)
@@ -1278,21 +1688,23 @@ describe("Game options — Field Overrides row + placement", () => {
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { fieldOverridePlacement: "manual" }
+      options: { fieldOverridePlacement: "manual" },
     });
     onAction.mockClear();
     fireEvent.click(within(chips).getByRole("button", { name: "Auto" }));
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { fieldOverridePlacement: "random" }
+      options: { fieldOverridePlacement: "random" },
     });
   });
 
   it("no placement chips render while FO is off (default)", () => {
     openOptions();
     const row = foRow();
-    expect(within(row).queryByTestId("option-field-override-placement")).toBeNull();
+    expect(
+      within(row).queryByTestId("option-field-override-placement"),
+    ).toBeNull();
   });
 
   it("locks the row ON (both buttons disabled) while WOG New Objects is active", () => {
@@ -1300,20 +1712,26 @@ describe("Game options — Field Overrides row + placement", () => {
       state.setupLobby!.options.wog = {
         ...state.setupLobby!.options.wog!,
         enabled: true,
-        newObjects: true
+        newObjects: true,
       };
       // Deliberately leave fieldOverrides unset — the row must still read ON.
       state.setupLobby!.options.fieldOverrides = undefined;
     });
     const row = foRow();
-    const onBtn = within(row).getByRole("button", { name: "On" }) as HTMLButtonElement;
-    const offBtn = within(row).getByRole("button", { name: "Off" }) as HTMLButtonElement;
+    const onBtn = within(row).getByRole("button", {
+      name: "On",
+    }) as HTMLButtonElement;
+    const offBtn = within(row).getByRole("button", {
+      name: "Off",
+    }) as HTMLButtonElement;
     expect(onBtn.getAttribute("aria-pressed")).toBe("true");
     expect(onBtn.disabled).toBe(true);
     expect(offBtn.disabled).toBe(true);
     // The locked hint is visible, and the placement chips still render.
     expect(row.textContent).toMatch(/map objects are selected/i);
-    expect(within(row).getByTestId("option-field-override-placement")).toBeTruthy();
+    expect(
+      within(row).getByTestId("option-field-override-placement"),
+    ).toBeTruthy();
   });
 
   it("locks the row ON while the Anime Map-objects module is active (absent mapObjects === on)", () => {
@@ -1321,12 +1739,14 @@ describe("Game options — Field Overrides row + placement", () => {
       state.setupLobby!.options.anime = {
         ...state.setupLobby!.options.anime!,
         enabled: true,
-        mapObjects: true
+        mapObjects: true,
       };
       state.setupLobby!.options.fieldOverrides = false;
     });
     const row = foRow();
-    const onBtn = within(row).getByRole("button", { name: "On" }) as HTMLButtonElement;
+    const onBtn = within(row).getByRole("button", {
+      name: "On",
+    }) as HTMLButtonElement;
     expect(onBtn.getAttribute("aria-pressed")).toBe("true");
     expect(onBtn.disabled).toBe(true);
   });
@@ -1334,8 +1754,12 @@ describe("Game options — Field Overrides row + placement", () => {
   it("CONTROL: the row is a normal free toggle when no map-objects module is active", () => {
     const onAction = openOptions();
     const row = foRow();
-    const onBtn = within(row).getByRole("button", { name: "On" }) as HTMLButtonElement;
-    const offBtn = within(row).getByRole("button", { name: "Off" }) as HTMLButtonElement;
+    const onBtn = within(row).getByRole("button", {
+      name: "On",
+    }) as HTMLButtonElement;
+    const offBtn = within(row).getByRole("button", {
+      name: "Off",
+    }) as HTMLButtonElement;
     // Default OFF, both buttons enabled (free), clicking On dispatches it.
     expect(offBtn.getAttribute("aria-pressed")).toBe("true");
     expect(onBtn.disabled).toBe(false);
@@ -1343,7 +1767,7 @@ describe("Game options — Field Overrides row + placement", () => {
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { fieldOverrides: true }
+      options: { fieldOverrides: true },
     });
   });
 });
@@ -1367,32 +1791,46 @@ describe("Game options — Victory points", () => {
     expect(within(cluster).getByText("Undo moves (testing)")).toBeTruthy();
 
     const row = victoryPoints.closest(".optionRow") as HTMLElement;
-    expect(within(row).getByRole("button", { name: "Off" }).getAttribute("aria-pressed")).toBe("true");
-    expect(within(row).getByRole("button", { name: "On" }).getAttribute("aria-pressed")).toBe("false");
+    expect(
+      within(row)
+        .getByRole("button", { name: "Off" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(
+      within(row)
+        .getByRole("button", { name: "On" })
+        .getAttribute("aria-pressed"),
+    ).toBe("false");
   });
 
   it("clicking On dispatches victoryPoints: true", () => {
     const onAction = openOptions();
-    const row = screen.getByText("Victory points").closest(".optionRow") as HTMLElement;
+    const row = screen
+      .getByText("Victory points")
+      .closest(".optionRow") as HTMLElement;
     fireEvent.click(within(row).getByRole("button", { name: "On" }));
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { victoryPoints: true }
+      options: { victoryPoints: true },
     });
   });
 
   it("the round-limit buttons appear only when ON and dispatch the chosen number", () => {
     // Default (Off): no round-limit buttons.
     openOptions();
-    expect(screen.queryByRole("group", { name: "Victory points round limit" })).toBeNull();
+    expect(
+      screen.queryByRole("group", { name: "Victory points round limit" }),
+    ).toBeNull();
     cleanup();
 
     // With the toggle ON in state, the button group shows and dispatches the number.
     const onAction = openOptionsWith((state) => {
       state.setupLobby!.options.victoryPoints = true;
     });
-    const group = screen.getByRole("group", { name: "Victory points round limit" });
+    const group = screen.getByRole("group", {
+      name: "Victory points round limit",
+    });
     expect(group).toBeTruthy();
     // Offers 5..25 in fives (plus "No limit").
     for (const label of ["No limit", "5", "10", "15", "20", "25"]) {
@@ -1402,16 +1840,22 @@ describe("Game options — Victory points", () => {
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { victoryPointsRoundLimit: 20 }
+      options: { victoryPointsRoundLimit: 20 },
     });
   });
 
   it("shows the preset-authoritative note when the selected map preset already enables VP", () => {
     openOptionsWith((state) => {
-      state.setupLobby!.options.customMapPreset = { victoryPoints: { enabled: true } };
+      state.setupLobby!.options.customMapPreset = {
+        victoryPoints: { enabled: true },
+      };
     });
-    const row = screen.getByText("Victory points").closest(".optionRow") as HTMLElement;
-    expect(row.textContent).toMatch(/designed map already enables Victory Points/i);
+    const row = screen
+      .getByText("Victory points")
+      .closest(".optionRow") as HTMLElement;
+    expect(row.textContent).toMatch(
+      /designed map already enables Victory Points/i,
+    );
   });
 });
 
@@ -1425,7 +1869,10 @@ describe("Game options — Victory points", () => {
  */
 describe("Game options — Custom win condition", () => {
   /** Open the options and switch to the Match tab, where the section lives. */
-  function openMatchTab(onAction = vi.fn(), mutate?: (state: GameState) => void) {
+  function openMatchTab(
+    onAction = vi.fn(),
+    mutate?: (state: GameState) => void,
+  ) {
     if (mutate) {
       openOptionsWith(mutate, onAction);
     } else {
@@ -1445,43 +1892,54 @@ describe("Game options — Custom win condition", () => {
     const winCondition = screen.getByText("Win condition");
     const customRow = screen.getByText("Custom win condition");
     expect(
-      winCondition.compareDocumentPosition(customRow) & Node.DOCUMENT_POSITION_FOLLOWING
+      winCondition.compareDocumentPosition(customRow) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 
   it("renders the Custom win condition row and Add dispatches the default control-towns condition", () => {
     const onAction = openMatchTab();
-    const row = screen.getByText("Custom win condition").closest(".optionRow") as HTMLElement;
-    fireEvent.click(within(row).getByRole("button", { name: "Add win condition" }));
+    const row = screen
+      .getByText("Custom win condition")
+      .closest(".optionRow") as HTMLElement;
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Add win condition" }),
+    );
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { customWinConditions: [{ kind: "control-towns", count: 3 }] }
+      options: { customWinConditions: [{ kind: "control-towns", count: 3 }] },
     });
   });
 
   it("shows map-set conditions read-only and Add APPENDS to the host list", () => {
     const onAction = openMatchTab(vi.fn(), (state) => {
       state.setupLobby!.options.customMapPreset = {
-        customWinConditions: [{ kind: "control-towns", count: 3 }]
+        customWinConditions: [{ kind: "control-towns", count: 3 }],
       };
-      state.setupLobby!.options.customWinConditions = [{ kind: "gold", amount: 200 }];
+      state.setupLobby!.options.customWinConditions = [
+        { kind: "gold", amount: 200 },
+      ];
     });
-    const row = screen.getByText("Custom win condition").closest(".optionRow") as HTMLElement;
+    const row = screen
+      .getByText("Custom win condition")
+      .closest(".optionRow") as HTMLElement;
     // The map-set condition is listed with a "map" tag (read-only — no controls).
     expect(within(row).getByText(/control 3 Towns/)).toBeTruthy();
     expect(within(row).getByText("map")).toBeTruthy();
     // Add appends the new condition to the HOST list, keeping the existing host one.
-    fireEvent.click(within(row).getByRole("button", { name: "Add win condition" }));
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Add win condition" }),
+    );
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
       options: {
         customWinConditions: [
           { kind: "gold", amount: 200 },
-          { kind: "control-towns", count: 3 }
-        ]
-      }
+          { kind: "control-towns", count: 3 },
+        ],
+      },
     });
   });
 
@@ -1489,15 +1947,21 @@ describe("Game options — Custom win condition", () => {
     const onAction = openMatchTab(vi.fn(), (state) => {
       state.setupLobby!.options.customWinConditions = [
         { kind: "gold", amount: 200 },
-        { kind: "hero-level", level: 5 }
+        { kind: "hero-level", level: 5 },
       ];
     });
-    const row = screen.getByText("Custom win condition").closest(".optionRow") as HTMLElement;
-    fireEvent.click(within(row).getByRole("button", { name: "Remove custom win condition 1" }));
+    const row = screen
+      .getByText("Custom win condition")
+      .closest(".optionRow") as HTMLElement;
+    fireEvent.click(
+      within(row).getByRole("button", {
+        name: "Remove custom win condition 1",
+      }),
+    );
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { customWinConditions: [{ kind: "hero-level", level: 5 }] }
+      options: { customWinConditions: [{ kind: "hero-level", level: 5 }] },
     });
   });
 
@@ -1506,16 +1970,24 @@ describe("Game options — Custom win condition", () => {
       state.setupLobby!.options.customMapPreset = {
         customWinConditions: [
           { kind: "control-towns", count: 3 },
-          { kind: "gold", amount: 200 }
-        ]
+          { kind: "gold", amount: 200 },
+        ],
       };
       state.setupLobby!.options.customWinConditions = [
         { kind: "hero-level", level: 5 },
-        { kind: "flag-mines", count: 4 }
+        { kind: "flag-mines", count: 4 },
       ];
     });
-    const row = screen.getByText("Custom win condition").closest(".optionRow") as HTMLElement;
-    expect((within(row).getByRole("button", { name: "Add win condition" }) as HTMLButtonElement).disabled).toBe(true);
+    const row = screen
+      .getByText("Custom win condition")
+      .closest(".optionRow") as HTMLElement;
+    expect(
+      (
+        within(row).getByRole("button", {
+          name: "Add win condition",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
   });
 });
 
@@ -1532,46 +2004,79 @@ describe("Game options — Custom win condition", () => {
  */
 describe("Game options — Player order", () => {
   /** Open the options on the Match tab with `seats` open seats. */
-  function openPlayerOrder(onAction = vi.fn(), seats = 3, mutate?: (state: GameState) => void) {
-    const state = createAdventureLobbyState({ seed: "options-order", playerCount: seats });
+  function openPlayerOrder(
+    onAction = vi.fn(),
+    seats = 3,
+    mutate?: (state: GameState) => void,
+  ) {
+    const state = createAdventureLobbyState({
+      seed: "options-order",
+      playerCount: seats,
+    });
     mutate?.(state);
-    render(<SetupLobbyScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
+    render(
+      <SetupLobbyScreen
+        onAction={onAction}
+        state={state}
+        viewerPlayerId="p1"
+      />,
+    );
     fireEvent.click(screen.getByRole("button", { name: /Advanced settings/ }));
     fireEvent.click(screen.getByRole("tab", { name: /Match/ }));
     return onAction;
   }
 
-  const orderRow = () => screen.getByText("Player order").closest(".optionRow") as HTMLElement;
+  const orderRow = () =>
+    screen.getByText("Player order").closest(".optionRow") as HTMLElement;
 
   it("defaults to Random roll and shows NO order picker (CONTROL for the default table)", () => {
     openPlayerOrder();
     const row = orderRow();
-    expect(within(row).getByRole("button", { name: "Random roll" }).getAttribute("aria-pressed")).toBe("true");
-    expect(within(row).getByRole("button", { name: "Chosen order" }).getAttribute("aria-pressed")).toBe("false");
+    expect(
+      within(row)
+        .getByRole("button", { name: "Random roll" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(
+      within(row)
+        .getByRole("button", { name: "Chosen order" })
+        .getAttribute("aria-pressed"),
+    ).toBe("false");
     // The picker only exists in manual mode.
-    expect(within(row).queryByRole("group", { name: "Player order" })).toBeNull();
+    expect(
+      within(row).queryByRole("group", { name: "Player order" }),
+    ).toBeNull();
     expect(row.textContent).toMatch(/the Attack die decides the first player/i);
   });
 
   it("lives on the MATCH tab, after the Custom win condition row — NOT on Mode & Rules", () => {
-    const state = createAdventureLobbyState({ seed: "options-order-tab", playerCount: 2 });
-    render(<SetupLobbyScreen onAction={vi.fn()} state={state} viewerPlayerId="p1" />);
+    const state = createAdventureLobbyState({
+      seed: "options-order-tab",
+      playerCount: 2,
+    });
+    render(
+      <SetupLobbyScreen onAction={vi.fn()} state={state} viewerPlayerId="p1" />,
+    );
     fireEvent.click(screen.getByRole("button", { name: /Advanced settings/ }));
     expect(screen.queryByText("Player order")).toBeNull();
 
     fireEvent.click(screen.getByRole("tab", { name: /Match/ }));
     const custom = screen.getByText("Custom win condition");
     const order = screen.getByText("Player order");
-    expect(custom.compareDocumentPosition(order) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(
+      custom.compareDocumentPosition(order) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("picking Chosen order dispatches the mode (the engine seeds the list)", () => {
     const onAction = openPlayerOrder();
-    fireEvent.click(within(orderRow()).getByRole("button", { name: "Chosen order" }));
+    fireEvent.click(
+      within(orderRow()).getByRole("button", { name: "Chosen order" }),
+    );
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { playerOrderMode: "manual" }
+      options: { playerOrderMode: "manual" },
     });
   });
 
@@ -1582,31 +2087,41 @@ describe("Game options — Player order", () => {
     });
     const row = orderRow();
     const list = within(row).getByRole("group", { name: "Player order" });
-    expect(playerOrderLabels(list)).toEqual(["1. Player 1", "2. Player 2", "3. Player 3"]);
+    expect(playerOrderLabels(list)).toEqual([
+      "1. Player 1",
+      "2. Player 2",
+      "3. Player 3",
+    ]);
 
     // Moving seat 2 EARLIER swaps it ahead of seat 1.
-    fireEvent.click(within(list).getByRole("button", { name: "Move Player 2 earlier" }));
+    fireEvent.click(
+      within(list).getByRole("button", { name: "Move Player 2 earlier" }),
+    );
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { manualPlayerOrder: ["p2", "p1", "p3"] }
+      options: { manualPlayerOrder: ["p2", "p1", "p3"] },
     });
 
     // Moving seat 1 LATER is the mirror move — same resulting order.
-    fireEvent.click(within(list).getByRole("button", { name: "Move Player 1 later" }));
+    fireEvent.click(
+      within(list).getByRole("button", { name: "Move Player 1 later" }),
+    );
     expect(onAction).toHaveBeenLastCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { manualPlayerOrder: ["p2", "p1", "p3"] }
+      options: { manualPlayerOrder: ["p2", "p1", "p3"] },
     });
 
     // …and moving seat 3 EARLIER moves only that seat (the list is a real
     // reorder, not a fixed swap).
-    fireEvent.click(within(list).getByRole("button", { name: "Move Player 3 earlier" }));
+    fireEvent.click(
+      within(list).getByRole("button", { name: "Move Player 3 earlier" }),
+    );
     expect(onAction).toHaveBeenLastCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { manualPlayerOrder: ["p1", "p3", "p2"] }
+      options: { manualPlayerOrder: ["p1", "p3", "p2"] },
     });
   });
 
@@ -1614,9 +2129,15 @@ describe("Game options — Player order", () => {
     openPlayerOrder(vi.fn(), 3, (state) => {
       state.setupLobby!.options.playerOrderMode = "manual";
     });
-    const list = within(orderRow()).getByRole("group", { name: "Player order" });
-    const earlier = within(list).getAllByRole("button", { name: /^Move .* earlier$/ }) as HTMLButtonElement[];
-    const later = within(list).getAllByRole("button", { name: /^Move .* later$/ }) as HTMLButtonElement[];
+    const list = within(orderRow()).getByRole("group", {
+      name: "Player order",
+    });
+    const earlier = within(list).getAllByRole("button", {
+      name: /^Move .* earlier$/,
+    }) as HTMLButtonElement[];
+    const later = within(list).getAllByRole("button", {
+      name: /^Move .* later$/,
+    }) as HTMLButtonElement[];
     expect(earlier[0]!.disabled).toBe(true);
     expect(earlier[1]!.disabled).toBe(false);
     expect(later[later.length - 1]!.disabled).toBe(true);
@@ -1628,7 +2149,9 @@ describe("Game options — Player order", () => {
       // p4 was closed after the order was stored; p2 was never named.
       state.setupLobby!.options.manualPlayerOrder = ["p4", "p1"] as never;
     });
-    const list = within(orderRow()).getByRole("group", { name: "Player order" });
+    const list = within(orderRow()).getByRole("group", {
+      name: "Player order",
+    });
     const rows = list.querySelectorAll(".playerOrderEntry");
     expect(rows).toHaveLength(2);
     expect(list.textContent).not.toMatch(/p4/);
@@ -1639,13 +2162,15 @@ describe("Game options — Player order", () => {
       state.setupLobby!.options.playerOrderMode = "manual";
     });
     const row = orderRow();
-    expect(within(row).getByRole("group", { name: "Player order" })).toBeTruthy();
+    expect(
+      within(row).getByRole("group", { name: "Player order" }),
+    ).toBeTruthy();
     expect(row.textContent).toMatch(/no Attack die is rolled/i);
     fireEvent.click(within(row).getByRole("button", { name: "Random roll" }));
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { playerOrderMode: "random" }
+      options: { playerOrderMode: "random" },
     });
   });
 });
@@ -1653,6 +2178,6 @@ describe("Game options — Player order", () => {
 /** The visible "N. Name" labels of the player-order picker, top to bottom. */
 function playerOrderLabels(list: HTMLElement): string[] {
   return Array.from(list.querySelectorAll(".playerOrderSeat")).map((node) =>
-    (node.textContent ?? "").replace(/\s+/g, " ").trim()
+    (node.textContent ?? "").replace(/\s+/g, " ").trim(),
   );
 }
