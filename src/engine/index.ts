@@ -323,6 +323,7 @@ export {
   CAST_A_SPELL_CARD_ID,
   gainOwnedCard,
   isCastASpellCard,
+  polishBookSpellEffectIsLive,
   polishSpellBookEnabled,
   polishSpellCanEnterBook
 } from "./polish-spell-book";

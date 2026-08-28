@@ -228,6 +228,49 @@ describe("Fire Wall spell", () => {
     expect((moved.combat!.battlefieldTokens ?? []).filter((token) => token.kind === "fire_wall")).toHaveLength(1);
   });
 
+  it("treats a spell-placed wall as Spell damage for immunity and reduction", () => {
+    const immune = createInitialGameState("fw-spell-immune");
+    soloMover(immune, "unit_p1_crusaders", 0);
+    immune.combat!.units.unit_p1_crusaders.maxHealth = 40;
+    immune.combat!.units.unit_p1_crusaders.abilities = ["immune-all-spells"];
+    injectToken(immune, {
+      kind: "fire_wall",
+      position: 1,
+      controllerId: "p2",
+      sourceSpellCardId: "spell.fire_wall",
+      damage: 3
+    });
+    expect(moveTo(immune, "unit_p1_crusaders", 1).combat!.units.unit_p1_crusaders.damage).toBe(0);
+
+    const reduced = createInitialGameState("fw-spell-reduced");
+    soloMover(reduced, "unit_p1_crusaders", 0);
+    reduced.combat!.units.unit_p1_crusaders.maxHealth = 40;
+    reduced.combat!.units.unit_p1_crusaders.abilities = ["reduce-spell-damage-1"];
+    injectToken(reduced, {
+      kind: "fire_wall",
+      position: 1,
+      controllerId: "p2",
+      sourceSpellCardId: "spell.fire_wall",
+      damage: 3
+    });
+    expect(moveTo(reduced, "unit_p1_crusaders", 1).combat!.units.unit_p1_crusaders.damage).toBe(2);
+  });
+
+  it("keeps Luna's specialty wall as effect damage, not Spell damage", () => {
+    const state = createInitialGameState("fw-luna-effect");
+    soloMover(state, "unit_p1_crusaders", 0);
+    state.combat!.units.unit_p1_crusaders.maxHealth = 40;
+    state.combat!.units.unit_p1_crusaders.abilities = ["immune-all-spells", "reduce-spell-damage-2"];
+    injectToken(state, {
+      kind: "fire_wall",
+      position: 1,
+      controllerId: "p2",
+      damage: 3,
+      burnsAtActivation: true
+    });
+    expect(moveTo(state, "unit_p1_crusaders", 1).combat!.units.unit_p1_crusaders.damage).toBe(3);
+  });
+
   it("burns a RANGED unit that stops on the wall (ranged burns like ground)", () => {
     // A ranged unit's Combat move range is 1, so it only ever STOPS on a wall
     // (never crosses it to a farther cell) — and stopping burns it, since it is

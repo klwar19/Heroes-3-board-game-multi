@@ -4284,9 +4284,8 @@ export type GameAction =
       /**
        * PvP anti-Little-Busters counter: a fighter facing a Little Busters seat
        * pays 1 gold for one of three effects — the LB seat discards a random hand
-       * card ("discard"), the LB campus hero is reduced to half HP (round up)
-       * plus Paralysis and
-       * round-1 −2 Attack ("damage"), or the spender draws 2 cards ("draw").
+       * card ("discard"), the LB campus hero is reduced to half HP (round up;
+       * "damage"), or the spender draws 2 cards ("draw").
        * Each is offered once per combat; computer opponents prioritize all three.
        * Handler-validated (self-validating; no window opens).
        */
@@ -9342,6 +9341,8 @@ export type BattlefieldTokenState = {
   kind: BattlefieldTokenKind;
   position: number;
   controllerId: PlayerId;
+  /** Spell card that placed this token. Absent for specialties and unit abilities. */
+  sourceSpellCardId?: CardId;
   /** fire_wall / land_mine: damage dealt to a caught unit. */
   damage?: number;
   /**
@@ -11914,7 +11915,11 @@ export type VisitStep =
       type: "RECRUIT_FACTION_UNIT";
       unitDefId: CardId;
     }
-  | { type: "DISCOVER_ADJACENT_TILE" }
+  | {
+      type: "DISCOVER_ADJACENT_TILE";
+      /** Speculum/View Air: measure adjacency from every placed Hero this player controls. */
+      fromAnyHero?: boolean;
+    }
   | {
       /**
        * Knowledge / Mysticism reaction after a Spell resolves on the map. Basic

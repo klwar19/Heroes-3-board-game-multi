@@ -1856,6 +1856,48 @@ describe("Polish Spell Book — a 'this turn' Spell refreshes at the NEXT round 
     expect(partition.stillInEffect).not.toContain("spell.water_walk");
   });
 
+  it("keeps a Fire Wall Spell in effect while its battlefield token remains", () => {
+    const state = polishCombat("polish-book-fire-wall-in-play");
+    state.players.p1.spellBook = [];
+    state.players.p1.spellBookUsed = ["spell.fire_wall"];
+    state.combat!.battlefieldTokens = [{
+      id: "fire-wall-from-book",
+      kind: "fire_wall",
+      position: 9,
+      controllerId: "p1",
+      sourceSpellCardId: "spell.fire_wall",
+      damage: 1
+    }];
+
+    expect(polishBookSpellEffectIsLive(state, "p1", "spell.fire_wall", state.players.p1)).toBe(true);
+    expect(polishBookSpellRefreshBlocked(state, "p1", "spell.fire_wall", state.players.p1)).toBe("in-effect");
+    const partition = partitionPolishBookAtRoundStart(state, state.players.p1);
+    expect(partition.stillInEffect).toContain("spell.fire_wall");
+    expect(partition.refresh).not.toContain("spell.fire_wall");
+
+    state.combat!.battlefieldTokens = [];
+    expect(polishBookSpellEffectIsLive(state, "p1", "spell.fire_wall", state.players.p1)).toBe(false);
+  });
+
+  it("does not offer a stale refreshed copy while the same Fire Wall is still in play", () => {
+    const state = polishCombat("polish-book-fire-wall-stale-refresh");
+    state.players.p1.hand = [CAST_A_SPELL_CARD_ID];
+    state.players.p1.spellBook = ["spell.fire_wall"];
+    state.players.p1.spellBookUsed = [];
+    state.combat!.battlefieldTokens = [{
+      id: "stale-refreshed-fire-wall",
+      kind: "fire_wall",
+      position: 9,
+      controllerId: "p1",
+      sourceSpellCardId: "spell.fire_wall",
+      damage: 1
+    }];
+
+    expect(getLegalActions(state, "p1").some(
+      (legal) => legal.action.type === "CAST_SPELL" && legal.action.cardId === "spell.fire_wall"
+    )).toBe(false);
+  });
+
   it("CONTROL: the mid-round once-per-round limit is untouched by the round-start reading", () => {
     // The round-start refresh is exempt from the marker AND clears it; a Spell
     // already refreshed mid-round is still blocked from a SECOND mid-round

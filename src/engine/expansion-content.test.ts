@@ -783,6 +783,42 @@ describe("rulebook conformance fixes", () => {
     expect(revealed.adventure!.pendingTileChoice?.heroId).toBeUndefined();
   });
 
+  it("Speculum also discovers a tile adjacent only to the Secondary Hero", () => {
+    const state = createAdventureGameState({ seed: "speculum-secondary", difficulty: "normal", rollFirstPlayer: false });
+    for (const player of Object.values(state.players)) {
+      player.canMulligan = false;
+      player.needsHandRefresh = false;
+    }
+    const adventure = state.adventure!;
+    const center: HexCoord = { row: 40, col: 30 };
+    instantiateTile(adventure, "F7", center, 0, false);
+    const anchor = f7Rings(center).find((ring) => ring.neighborCenter)!;
+    const faceDown = instantiateTile(adventure, "N1", anchor.neighborCenter!, 0, true);
+    const main = state.heroes.hero_p1;
+    state.heroes.hero_p1_secondary = {
+      ...main,
+      id: "hero_p1_secondary",
+      kind: "secondary",
+      spaceId: hexSpaceId(anchor.ringHex)
+    };
+
+    state.players.p1.hand = ["artifact.speculum"];
+    const play = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "artifact.speculum" &&
+        legal.action.optionIndex === 0
+    );
+    expect(play).toBeTruthy();
+    const opened = apply(state, play!.action);
+    const reveal = getLegalActions(opened, "p1").find((legal) =>
+      legal.label.includes(`(${faceDown.centerRow}, ${faceDown.centerCol})`)
+    );
+    expect(reveal, "the secondary Hero's adjacent tile must be offered").toBeTruthy();
+    const revealed = apply(opened, reveal!.action);
+    expect(revealed.adventure!.tiles[faceDown.id].faceDown).toBe(false);
+  });
+
   it("sells one Trading Post card for 1 gold, excluding statistics and Magic Arrow", () => {
     const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal", rotateStartTiles: false });
   for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }

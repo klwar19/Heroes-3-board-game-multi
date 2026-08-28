@@ -1,9 +1,8 @@
 import { markUnitRemovedIfNeeded } from "./combat-units";
 import { drawCardsForPlayer } from "./decks";
 import { appendEvent, eventSeedNumber } from "./events";
-import { makeActiveEffect } from "./active-effects";
 import { createSeededRandom } from "./random";
-import { noteUnitDamagedForTokens, placeCombatToken } from "./tokens";
+import { noteUnitDamagedForTokens } from "./tokens";
 import type { CombatState, CombatUnitState, GameState, PlayerId } from "./state";
 
 /**
@@ -158,25 +157,6 @@ export function applyLittleBustersCounter(
         });
       }
       markUnitRemovedIfNeeded(state, target);
-      if (target.damage < target.maxHealth) {
-        placeCombatToken(state, target, "paralysis", 0, "Paid Campus Disruption");
-        if (combat.round === 1) {
-          state.activeEffects.push(makeActiveEffect(
-            state,
-            {
-              name: "Paid Campus Disruption",
-              scope: "unit",
-              duration: { type: "current-combat-round" },
-              polarity: "negative",
-              removable: true,
-              modifiers: [{ type: "ATTACK_BONUS", amount: -2 }]
-            },
-            { type: "system" },
-            playerId,
-            { type: "unit", unitId: target.id }
-          ));
-        }
-      }
       break;
     }
     case "draw": {

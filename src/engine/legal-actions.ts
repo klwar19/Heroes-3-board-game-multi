@@ -96,6 +96,7 @@ import {
   canHeroDiscoverAdjacentTile,
   isTileRotationConnected,
   TILE_ROTATION_SEAL_GATE_ENABLED,
+  anyHeroAdjacentRevealTargets,
   observatoryPlacementCenters,
   observatoryRevealTargets,
   removableHandCards,
@@ -257,6 +258,7 @@ import {
   castFromSpellDiscardSourceSpellIds,
   discardRecoveryHasWork,
   isCastASpellCard,
+  polishBookSpellEffectIsLive,
   polishSpellBookEnabled,
   tarnumOverlimitSpellAvailable,
 } from "./polish-spell-book";
@@ -8324,6 +8326,9 @@ function applyPolishSpellBookActionGate(
       if (action.type === "PLAY_REACTION" && action.asPowerBoost) {
         continue;
       }
+      if (player && polishBookSpellEffectIsLive(state, playerId, action.cardId, player)) {
+        continue;
+      }
       if (intelligenceFreedom) {
         // Free cast via Intelligence: strip any eagerly-stamped enabler so the
         // resolution takes the no-enabler path (nothing leaves the hand).
@@ -13117,8 +13122,11 @@ function addVisitStepActions(
     // Flip any adjacent face-down tile on the hero's layer — the Observatory /
     // Speculum ignore borders and edges, so there is NO "stand at an open
     // border" requirement here (unlike ordinary movement-driven discovery).
-    const candidates =
-      tile && hero ? observatoryRevealTargets(state, hero, tile) : [];
+    const candidates = step.fromAnyHero
+      ? anyHeroAdjacentRevealTargets(state, playerId)
+      : tile && hero
+        ? observatoryRevealTargets(state, hero, tile)
+        : [];
     candidates.forEach((candidate, index) => {
       actions.push({
         label: `Discover the face-down tile at (${candidate.centerRow}, ${candidate.centerCol})`,
@@ -13130,7 +13138,7 @@ function addVisitStepActions(
     // (that is the whole point of the Observatory). Face-down Far tiles are
     // interchangeable backs, so the top of the supply is offered for each slot.
     const supply = adventure.playerFarTiles[playerId] ?? [];
-    if (tile && hero && supply.length > 0) {
+    if (!step.fromAnyHero && tile && hero && supply.length > 0) {
       const supplyIndex = 0;
       for (const center of observatoryPlacementCenters(
         state,

@@ -840,7 +840,7 @@ describe("Community pack — Bloodlust, Curse & Weakness", () => {
 });
 
 describe("Community pack — Inferno", () => {
-  it("deals a flat 1 to the unit on the chosen space BEFORE the dice — even when every die whiffs", () => {
+  it("deals no guaranteed damage when every die whiffs", () => {
     const blast = (community: boolean) => {
       // Every die shows "0", so the printed spell deals nothing at all.
       const state = combat(community, { die: 0 });
@@ -851,42 +851,28 @@ describe("Community pack — Inferno", () => {
       const next = cast(state, "spell.inferno", 0, { type: "space", position: 3 });
       return next.combat!.units.unit_p2_vampires.damage;
     };
-    expect(blast(true)).toBe(1);
+    expect(blast(true)).toBe(0);
     expect(blast(false)).toBe(0);
   });
 
-  it("its top rung rolls 3 dice, not 4 — one less point of area damage", () => {
-    const blast = (community: boolean) => {
-      // Every die shows "+1", so the area damage IS the roll count.
-      const state = combat(community, { die: 1 });
-      state.combat!.units.unit_p2_vampires.position = 3;
-      state.combat!.units.unit_p2_skeletons.position = 0;
-      state.combat!.units.unit_p2_dread_knights.position = 1;
-      for (const unit of Object.values(state.combat!.units)) {
-        unit.abilities = [];
-        unit.maxHealth = 99;
-      }
-      const next = cast(state, "spell.inferno", 2, { type: "space", position: 3 });
-      return next.combat!.units.unit_p2_vampires.damage;
-    };
-    // Community: 1 pre-damage + 3 rolled "+1"s = 4. Printed: 4 rolled = 4 …
-    // so measure the ROLL count itself, which is the discriminating half.
-    const rolls = (community: boolean) => {
-      const state = combat(community, { die: 1 });
+  it("uses the revised Power 0/1/3 ladder with 2/3/5 dice", () => {
+    const rolls = (power: number) => {
+      const state = combat(true, { die: 1 });
       state.combat!.units.unit_p2_vampires.position = 3;
       for (const unit of Object.values(state.combat!.units)) {
         unit.abilities = [];
         unit.maxHealth = 99;
       }
-      const next = cast(state, "spell.inferno", 2, { type: "space", position: 3 });
+      const next = cast(state, "spell.inferno", power, { type: "space", position: 3 });
       const rolled = next.eventLog.find((event) => event.type === "SPELL_DICE_ROLLED") as
         | { rolls: number[] }
         | undefined;
       return rolled?.rolls.length ?? 0;
     };
-    expect(rolls(true)).toBe(3);
-    expect(rolls(false)).toBe(4);
-    expect(blast(true)).toBeGreaterThan(0);
+    expect(rolls(0)).toBe(2);
+    expect(rolls(1)).toBe(3);
+    expect(rolls(2)).toBe(3);
+    expect(rolls(3)).toBe(5);
   });
 
   // The sheet's playtest report: "Expert Luck doesn't allow reroll" — the
@@ -928,16 +914,16 @@ describe("Community pack — Inferno", () => {
   }
 
   it("opens the standing Attack-die reroll window on its dice — and the reroll really changes the blast", () => {
-    // Scripted: the first die whiffs ("0"), the reroll shows "+1".
-    const state = infernoRig(true, { luck: true, scripted: [0, 1, 0, 0] });
+    // Scripted: both initial dice whiff, then the reroll shows "+1".
+    const state = infernoRig(true, { luck: true, scripted: [0, 0, 1, 0] });
     const parked = cast(state, "spell.inferno", 0, { type: "space", position: 3 });
 
-    // The blast is PARKED: only the flat pre-damage has landed so far.
+    // The blast is PARKED: no damage lands before the dice are kept.
     expect(parked.pendingChoice?.type).toBe("ATTACK_DIE_REROLL");
     expect(parked.pendingChoice?.type === "ATTACK_DIE_REROLL" && parked.pendingChoice.abilityRoll?.kind).toBe(
       "spell-dice"
     );
-    expect(parked.combat!.units.unit_p2_vampires.damage).toBe(1);
+    expect(parked.combat!.units.unit_p2_vampires.damage).toBe(0);
 
     // Expert Luck is the offered source, so the caster may reroll the whiff.
     const reroll = getLegalActions(parked, "p1").find(
@@ -949,19 +935,17 @@ describe("Community pack — Inferno", () => {
     next = applyOk(next, keep.action);
 
     expect(next.pendingChoice).toBeNull();
-    // 1 pre-damage + 1 from the rerolled "+1" — the whiffed original pays none.
-    expect(next.combat!.units.unit_p2_vampires.damage).toBe(2);
+    expect(next.combat!.units.unit_p2_vampires.damage).toBe(1);
   });
 
   it("DECLINING the window resolves the original dice and never freezes the table", () => {
-    const state = infernoRig(true, { luck: true, scripted: [0, 1, 0, 0] });
+    const state = infernoRig(true, { luck: true, scripted: [0, 0, 1, 0] });
     const parked = cast(state, "spell.inferno", 0, { type: "space", position: 3 });
     const keep = getLegalActions(parked, "p1").find((legal) => legal.action.type === "CHOOSE_PENDING_ROLL")!;
     const next = applyOk(parked, keep.action);
     expect(next.pendingChoice).toBeNull();
-    // Kept the whiff: only the pre-damage stands, and the "+1" the reroll would
-    // have found is never spent.
-    expect(next.combat!.units.unit_p2_vampires.damage).toBe(1);
+    // Kept both whiffs; the "+1" the reroll would have found is never spent.
+    expect(next.combat!.units.unit_p2_vampires.damage).toBe(0);
     // The table moves again: p1 has ordinary offers with no choice pending.
     expect(getLegalActions(next, "p1").length).toBeGreaterThan(0);
   });
@@ -975,11 +959,11 @@ describe("Community pack — Inferno", () => {
   });
 
   it("CONTROL: with NO reroll entitlement the reprint resolves inline too", () => {
-    const state = infernoRig(true, { scripted: [0, 1, 0, 0] });
+    const state = infernoRig(true, { scripted: [0, 0, 1, 0] });
     state.players.p1.morale = 0;
     const next = cast(state, "spell.inferno", 0, { type: "space", position: 3 });
     expect(next.pendingChoice).toBeNull();
-    expect(next.combat!.units.unit_p2_vampires.damage).toBe(1);
+    expect(next.combat!.units.unit_p2_vampires.damage).toBe(0);
   });
 });
 

@@ -973,7 +973,14 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // Artifact VP credit) plus the map-authored Break team scope are frozen into
 // setup/adventure state. Older workers would apply different Search, scoring,
 // and allied movement legality. `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 82;
+// v83: Speculum/View Air's queued discovery step may measure from either Hero,
+// and spell-placed battlefield tokens retain their source Spell id. The latter
+// makes Fire Wall burns obey Spell immunity/reduction and keeps a Polish Book
+// Spell locked "in play" while its token remains; specialty/unit walls omit the
+// source and remain effect damage. A v82 worker would ignore both optional
+// fields and resolve different legal targets/damage. `npm run deploy:partykit`
+// owed.
+export const ENGINE_PROTOCOL_VERSION = 83;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

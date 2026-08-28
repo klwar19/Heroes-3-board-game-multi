@@ -20,6 +20,7 @@ import {
   isComputerPlayer,
   playersAreAllied,
   playerSpellCastsIgnoreLimit,
+  polishBookSpellEffectIsLive,
   polishSpellBookEnabled,
   houseRuleEnabled,
   seatPickSummary,
@@ -768,6 +769,13 @@ export function HandFan({
                 <SpellBookModal
                   cardIds={[...new Set(spellBook)]}
                   usedCardIds={polishBook ? spellBookUsed : []}
+                  inPlayCardIds={
+                    polishBook
+                      ? spellBookUsed.filter((cardId) =>
+                          polishBookSpellEffectIsLive(state, viewerPlayerId, cardId, player)
+                        )
+                      : []
+                  }
                   polishMode={polishBook}
                   castsByCard={bookCastsByCard}
                   castLabel={(legal) => {

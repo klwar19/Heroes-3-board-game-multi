@@ -97,7 +97,7 @@ export const ANIME_FACTION_PENALTIES: readonly AnimeFactionPenaltyDefinition[] =
     register: "anime",
     title: "School Contribution Fund",
     short: "−5 gold/−1 material; three paid enemy counters",
-    detail: "−5 gold and −1 material each Resource round, paid after income without debt. In PvP, the enemy may pay 1 gold for each mandatory AI counter: random discard, draw 2, and reduce the campus hero to half HP (remaining HP rounded up) plus Paralysis and −2 Attack in round 1.",
+    detail: "−5 gold and −1 material each Resource round, paid after income without debt. In PvP, the enemy may pay 1 gold for each one-use counter: random discard, draw 2, or reduce the campus hero to half HP (remaining HP rounded up).",
     timing: "resource-round",
     mechanicTitle: "Campus Hero",
     mechanicDetail:

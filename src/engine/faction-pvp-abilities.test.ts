@@ -9,8 +9,7 @@ import type { CombatUnitState, GameAction, GameState, PlayerId } from "./state";
  *
  *  - Little Busters: a fighter facing a Little Busters seat may spend 1 gold on
  *    each of three one-off combat counters (discard a random LB card, reduce
- *    the campus hero to half HP rounded up and
- *    Paralyze the LB campus hero unit, draw two cards).
+ *    the campus hero to half HP rounded up, draw two cards).
  *  - Monster Girl Quest: no longer carries an opponent-draw penalty.
  */
 
@@ -138,12 +137,12 @@ describe("Little Busters PvP counters", () => {
     expect(next.players.p1.resources.gold).toBe(goldBefore - 1);
     expect(next.combat!.units.unit_p2_campus_hero.damage).toBe(before + 4);
     expect(next.combat!.units.unit_p2_campus_hero.maxHealth - next.combat!.units.unit_p2_campus_hero.damage).toBe(5);
-    expect(next.combat!.units.unit_p2_campus_hero.tokens?.some((token) => token.kind === "paralysis")).toBe(true);
+    expect(Boolean(next.combat!.units.unit_p2_campus_hero.tokens?.some((token) => token.kind === "paralysis"))).toBe(false);
     expect(next.activeEffects.some((effect) =>
       effect.target?.type === "unit" &&
       effect.target.unitId === "unit_p2_campus_hero" &&
-      effect.modifiers.some((modifier) => modifier.type === "ATTACK_BONUS" && modifier.amount === -2)
-    )).toBe(true);
+      effect.modifiers.some((modifier) => modifier.type === "ATTACK_BONUS" && modifier.amount < 0)
+    )).toBe(false);
     expect(counterAction(next, "p1", "damage")).toBeUndefined();
   });
 

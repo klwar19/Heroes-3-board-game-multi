@@ -4794,7 +4794,11 @@ export function resolveVisitStep(state: GameState, action: Extract<GameAction, {
     case "DISCOVER_ADJACENT_TILE": {
       visit.steps.shift();
       if (!action.decline) {
-        resolveObservatoryDiscover(state, action, visit.heroId, visit.fieldId);
+        if (step.fromAnyHero) {
+          resolveAnyHeroAdjacentDiscover(state, action);
+        } else {
+          resolveObservatoryDiscover(state, action, visit.heroId, visit.fieldId);
+        }
       }
       break;
     }
@@ -5228,6 +5232,44 @@ function resolveObservatoryDiscover(
   // shifted/cleared by the caller, so the flip's "reveal" finalize never touches
   // it.
   revealOnMapTile(state, action.playerId, target);
+}
+
+/**
+ * Speculum/View Air targets: the union of face-down tiles adjacent to the tile
+ * occupied by either of the player's placed Heroes. Main-Hero targets remain
+ * first, secondary-Hero targets follow, and duplicate tiles are collapsed so
+ * the legal-action list and reducer option indexes stay identical.
+ */
+export function anyHeroAdjacentRevealTargets(
+  state: GameState,
+  playerId: PlayerId
+): MapTileState[] {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return [];
+  }
+  const targets = new Map<string, MapTileState>();
+  for (const hero of [getMainHero(state, playerId), getSecondaryHero(state, playerId)]) {
+    const field = hero?.spaceId ? adventure.fields[hero.spaceId] : undefined;
+    const tile = field ? adventure.tiles[field.tileInstanceId] : undefined;
+    if (!hero || !tile) {
+      continue;
+    }
+    for (const candidate of observatoryRevealTargets(state, hero, tile)) {
+      targets.set(candidate.id, candidate);
+    }
+  }
+  return [...targets.values()];
+}
+
+function resolveAnyHeroAdjacentDiscover(
+  state: GameState,
+  action: Extract<GameAction, { type: "RESOLVE_VISIT_STEP" }>
+): void {
+  const target = anyHeroAdjacentRevealTargets(state, action.playerId)[action.optionIndex ?? 0];
+  if (target) {
+    revealOnMapTile(state, action.playerId, target);
+  }
 }
 
 /**

@@ -403,18 +403,16 @@ export const communityBalanceSpellCards: CardLibrary = {
     }
   }),
 
-  // Inferno — a guaranteed 1 damage on the chosen space before the dice, and
-  // the top rung rolls 3 times instead of 4.
+  // Inferno — revised 0/1/3 ladder: roll 2/3/5 dice, with no flat pre-damage.
   "spell.inferno": reprint("spell.inferno", {
     tags: tags(
       "spell.inferno",
-      "Activation: Select a space. Deal 1 damage to a unit on that space. Now roll an Attack die: Power 0: once; Power 1: twice; Power 2: 3 times. All units on this and the adjacent spaces take 1 damage for every \"+1\" rolled.",
-      "three changes. A flat 1 damage now lands on whatever unit occupies the SELECTED space BEFORE any die is rolled (it resolves even when every die whiffs, and never touches the adjacent ring). The top rung drops from 4 rolls to 3. And the Attack dice are REROLLABLE (`offerDieReroll`, 2026-08-23): the caster's standing Attack-die entitlements — expert Luck, Fortune, Mirth, the positive morale token/card, the reroll artifacts, Lucky E — open the ordinary reroll window on them, one die at a time, before the blast lands. The printed spell rolls inline with no window."
+      "Activation: Select a space. Roll an Attack die: Power 0: 2 times; Power 1: 3 times; Power 3: 5 times. All units on this and the adjacent spaces take 1 damage for every \"+1\" rolled.",
+      "the Power ladder becomes 0/1/3 and rolls 2/3/5 Attack dice, with no guaranteed damage before the roll. The Attack dice remain rerollable (`offerDieReroll`): the caster's standing Attack-die entitlements — expert Luck, Fortune, Mirth, the positive morale token/card, the reroll artifacts, Lucky E — open the ordinary reroll window before the blast lands."
     ),
     effect: {
       type: "INFERNO",
-      rollsByPower: { 0: 1, 1: 2, 2: 3 },
-      preDamageOnSpace: 1,
+      rollsByPower: { 0: 2, 1: 3, 3: 5 },
       offerDieReroll: true
     }
   }),

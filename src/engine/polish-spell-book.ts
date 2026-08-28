@@ -134,7 +134,7 @@ export function takeTarnumOverlimitSpellFromSharedDiscard(
  * the same helper is correct for a classic/old-Book card.
  */
 export function polishBookSpellEffectIsLive(
-  state: Pick<GameState, "activeEffects">,
+  state: Pick<GameState, "activeEffects"> & { combat?: GameState["combat"] },
   playerId: PlayerId,
   cardId: CardId,
   player?: PlayerState,
@@ -162,6 +162,14 @@ export function polishBookSpellEffectIsLive(
   ) {
     return true;
   }
+  if (
+    state.combat?.battlefieldTokens?.some(
+      (token) =>
+        token.controllerId === playerId && token.sourceSpellCardId === cardId
+    )
+  ) {
+    return true;
+  }
   return Boolean(player?.ongoingCards?.some((entry) => entry.cardId === cardId));
 }
 
@@ -175,7 +183,7 @@ export function polishBookSpellEffectIsLive(
  * independent filters at the call site).
  */
 export function partitionPolishBookAtRoundStart(
-  state: Pick<GameState, "activeEffects">,
+  state: Pick<GameState, "activeEffects"> & { combat?: GameState["combat"] },
   player: PlayerState
 ): { refresh: CardId[]; stillInEffect: CardId[] } {
   const refresh: CardId[] = [];
@@ -220,7 +228,7 @@ function polishBookCopyCount(player: PlayerState, cardId: CardId): number {
  * refused, or null when it may proceed.
  */
 export function polishBookSpellRefreshBlocked(
-  state: Pick<GameState, "activeEffects">,
+  state: Pick<GameState, "activeEffects"> & { combat?: GameState["combat"] },
   playerId: PlayerId,
   cardId: CardId,
   player: PlayerState
@@ -252,7 +260,7 @@ export function clearPolishSpellRefreshMarkers(player: PlayerState): void {
  * AND Spells already refreshed this round are both excluded.
  */
 export function midRoundRefreshablePolishUsedSpells(
-  state: Pick<GameState, "activeEffects">,
+  state: Pick<GameState, "activeEffects"> & { combat?: GameState["combat"] },
   player: PlayerState
 ): CardId[] {
   return (player.spellBookUsed ?? []).filter(

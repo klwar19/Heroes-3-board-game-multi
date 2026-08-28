@@ -24,6 +24,7 @@ import {
   isParallelActor,
   isResetVoteApproved,
   houseRuleEnabled,
+  polishBookSpellEffectIsLive,
   polishSpellBookEnabled,
   resetVoteRequired,
   resourceDieFaces,
@@ -6331,6 +6332,18 @@ export default function Home() {
             <SpellBookModal
               cardIds={spellBookCards}
               usedCardIds={polishBook ? spellBookUsedCards : []}
+              inPlayCardIds={
+                polishBook
+                  ? spellBookUsedCards.filter((cardId) =>
+                      polishBookSpellEffectIsLive(
+                        uiState ?? state,
+                        viewerPlayerId,
+                        cardId,
+                        (uiState ?? state).players[viewerPlayerId]
+                      )
+                    )
+                  : []
+              }
               polishMode={polishBook}
               castsByCard={bookPlayActionsByCard}
               shortcuts={spellBookShortcuts}

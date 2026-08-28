@@ -3697,3 +3697,19 @@ where the art really IS a card face), the Shady Auction lot and the face-up even
 (`artifact-set-card-surfaces.test.tsx`).
 NOT badged by design: `fx.tsx`'s card-flight face, `CardFrame`'s art-less fallbacks, the set
 PANEL's own card art, and surfaces a core Artifact can never reach.
+
+## Secondary-Hero discovery + lasting spell tokens (2026-08-28, protocol v83)
+
+Speculum and the Community View Air discovery rung measure adjacent face-down tiles from
+EITHER placed Hero, matching View Earth. Their shared queued step carries
+`fromAnyHero`; the legal-action list and reducer both read `anyHeroAdjacentRevealTargets`,
+and this path never exposes the Observatory-only Far-tile placement action.
+
+A battlefield token placed by a Spell carries `sourceSpellCardId`. Fire Wall burns from
+that token are Spell damage, so all-spell immunity and spell-damage reduction apply. Luna,
+Hell Steed, and other non-Spell walls omit the source and remain effect damage. A Polish
+Book Spell whose sourced token is still present is displayed as **In play**, cannot be
+refreshed, and cannot be cast again even if a stale snapshot already put a copy on the
+refreshed side. The supplied Community Inferno reprint is now the 0/1/3 → 2/3/5-dice face
+with no flat pre-damage. Little Busters' paid half-HP counter no longer adds Paralysis or
+−2 Attack; its faction notice states only the remaining half-HP effect.

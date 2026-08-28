@@ -14,6 +14,7 @@ import {
   gainResources,
   getActiveAstrologersCard,
   getMainHero,
+  getSecondaryHero,
   getUnitSide,
   ensureRevealedRandomTownFactions,
   hasDuplicateArmyUnitIds,
@@ -373,6 +374,7 @@ import {
   inscribeCastSpellIntoSpellBook,
   isCastASpellCard,
   markPolishSpellRefreshedThisRound,
+  polishBookSpellEffectIsLive,
   polishBookSpellRefreshBlocked,
   polishSpellBookEnabled,
   takeTarnumOverlimitSpellFromSharedDiscard,
@@ -1379,6 +1381,9 @@ function assertPolishBookCastEnabled(
         polishIntelligenceHandReadingActive(state) &&
         !balanceIntelligenceWindowClosed(state))) &&
       Boolean(caster?.hand.includes(action.castEnablerCardId)));
+  if (caster && polishBookSpellEffectIsLive(state, action.playerId, action.cardId, caster)) {
+    throw new Error("That Spell is still in play and cannot be cast again until its effect ends.");
+  }
   if (!enablerOk || !caster?.spellBook.includes(action.cardId)) {
     throw new Error(
       "Casting from the Polish Spell Book needs a Cast a Spell card (or Intelligence) and a refreshed Book Spell.",
@@ -16154,6 +16159,7 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
         kind: "fire_wall",
         position: stackItem.action.target.position,
         controllerId: stackItem.action.playerId,
+        sourceSpellCardId: card.id,
         damage: getAmountByPower(card.effect.damageByPower, 1, power),
         // Community Balance Pack Fire Wall: "…any unit STARTING THEIR ACTIVATION
         // or stopping here…" — the printed spell only bites on stop /
@@ -24653,11 +24659,11 @@ function playCard(
   }
 
   if (effect.type === "DISCOVER_TILE_CARD") {
-    const hero = getMainHero(state, action.playerId);
+    const hero = getMainHero(state, action.playerId) ?? getSecondaryHero(state, action.playerId);
     if (state.adventure && hero?.spaceId) {
       // Tournament changes the Redwood Observatory location, not the Speculum
       // artifact: Speculum retains its printed adjacent-tile discovery.
-      const steps: VisitStep[] = [{ type: "DISCOVER_ADJACENT_TILE" }];
+      const steps: VisitStep[] = [{ type: "DISCOVER_ADJACENT_TILE", fromAnyHero: true }];
       state.adventure.rewardQueue.unshift({
         playerId: action.playerId,
         kind: "visit-steps",
@@ -29046,6 +29052,18 @@ function dealBattlefieldTokenDamage(
   if (isUnitDamageImmune(unit)) {
     return;
   }
+  // A wall placed by the Fire Wall SPELL remains a Spell effect when it burns:
+  // full immunity and every spell-damage reduction apply. Luna/Hell Steed walls
+  // carry no sourceSpellCardId and intentionally remain ordinary effect damage.
+  const sourceSpell = token.sourceSpellCardId
+    ? balanceCardLibrary(state, cardLibrary)[token.sourceSpellCardId]
+    : undefined;
+  const appliedAmount = sourceSpell
+    ? reducedCardDamage(state, unit, sourceSpell, amount)
+    : amount;
+  if (appliedAmount <= 0) {
+    return;
+  }
   appendEvent(state, {
     type: "BATTLEFIELD_TOKEN_TRIGGERED",
     tokenId: token.id,
@@ -29053,22 +29071,20 @@ function dealBattlefieldTokenDamage(
     position: token.position,
     unitId: unit.id,
     outcome: "damage",
-    amount,
+    amount: appliedAmount,
   });
-  unit.damage += amount;
-  noteUnitDamagedForTokens(state, unit, amount);
+  unit.damage += appliedAmount;
+  noteUnitDamagedForTokens(state, unit, appliedAmount);
   appendEvent(state, {
     type: "DAMAGE_ASSIGNED",
     source: {
       type: "card",
-      cardId: BATTLEFIELD_TOKEN_CARD_ID[token.kind],
+      cardId: token.sourceSpellCardId ?? BATTLEFIELD_TOKEN_CARD_ID[token.kind],
       controllerId: token.controllerId,
     },
     target: { type: "unit", unitId: unit.id },
-    amount,
-    // Flat board-effect damage: the rulebook applies no Spell-damage reduction
-    // or immunity to a token strike, so it is "effect", never "spell", damage.
-    damageKind: "effect",
+    amount: appliedAmount,
+    damageKind: sourceSpell ? "spell" : "effect",
   });
   markUnitRemovedIfNeeded(state, unit);
 }

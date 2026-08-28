@@ -13,7 +13,7 @@
 
 import { useEffect, useState, type ComponentType, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { BookOpen, Hourglass, Map as MapIcon, Sparkles, Swords, X, Zap } from "lucide-react";
+import { BookOpen, Flame, Hourglass, Map as MapIcon, Sparkles, Swords, X, Zap } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { RESOURCE_ICONS } from "@/data/assets/homm-assets";
 import { playSpellBookPageTurn } from "@/lib/sound";
@@ -117,6 +117,7 @@ function spellRulesText(cardId: string | undefined, balanceFlags: BalanceArtFlag
 export function SpellBookModal({
   cardIds,
   usedCardIds = [],
+  inPlayCardIds = [],
   polishMode = false,
   castsByCard,
   shortcuts = [],
@@ -132,6 +133,8 @@ export function SpellBookModal({
   cardIds: string[];
   /** Polish Book cards already cast this round (shown, but not castable). */
   usedCardIds?: string[];
+  /** Used Book Spells whose lasting effect is still on the table. */
+  inPlayCardIds?: string[];
   /** Use the Polish refreshed/used wording and lifecycle. */
   polishMode?: boolean;
   /** Cast actions available right now for each stored Spell id (from the Book).
@@ -256,6 +259,7 @@ export function SpellBookModal({
                 const school = entry?.spellSchools?.[0];
                 const readyCount = cardIds.filter((candidate) => candidate === id).length;
                 const usedCount = usedCardIds.filter((candidate) => candidate === id).length;
+                const inPlay = inPlayCardIds.includes(id);
                 return (
                   <li key={`${id}-${itemIndex}`}>
                     <button
@@ -269,7 +273,12 @@ export function SpellBookModal({
                       />
                       <span className="spellBookIndexName">{entry?.name ?? id}</span>
                       <span className="spellBookIndexLevel">
-                        {readyCount > 0 ? `Ready${readyCount > 1 ? ` ×${readyCount}` : ""}` : "Used"}
+                        {inPlay ? <Flame aria-hidden className="spellBookInPlayIcon" size={11} /> : null}
+                        {inPlay
+                          ? "In play"
+                          : readyCount > 0
+                            ? `Ready${readyCount > 1 ? ` ×${readyCount}` : ""}`
+                            : "Used"}
                         {usedCount > 0 && readyCount > 0 ? ` · Used ×${usedCount}` : ""}
                       </span>
                     </button>
@@ -351,7 +360,11 @@ export function SpellBookModal({
                   </span>
                 ))}
                 {typeof card.power === "number" ? <span className="spellBookChip power">Power {card.power}</span> : null}
-                {activeId && usedCardIds.includes(activeId) ? (
+                {activeId && inPlayCardIds.includes(activeId) ? (
+                  <span className="spellBookChip inPlay">
+                    <Flame aria-hidden size={11} /> In play — cannot refresh or cast again
+                  </span>
+                ) : activeId && usedCardIds.includes(activeId) ? (
                   <span className={`spellBookChip ${cardIds.includes(activeId) ? "ready" : "used"}`}>
                     {cardIds.includes(activeId) ? "Refreshed copy available" : "Used until next round"}
                   </span>
