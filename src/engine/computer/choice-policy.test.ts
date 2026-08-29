@@ -156,6 +156,43 @@ describe("choice policy — combat discard", () => {
 });
 
 describe("choice policy — ability target", () => {
+  it("uses a Lich-style follow-up to finish a wounded valuable unit now", () => {
+    const wounded = unit({
+      id: "E1",
+      attack: 6,
+      defense: 1,
+      maxHealth: 6,
+      damage: 5,
+      grade: "silver",
+      position: 9,
+    });
+    const fresh = unit({ id: "E2", attack: 8, defense: 1, maxHealth: 8, position: 12 });
+    const choice = {
+      id: "lich-follow-up",
+      type: "ABILITY_TARGET_CHOICE",
+      playerId: "p2",
+      kind: "second-attack",
+      abilityId: "death-cloud",
+      abilityName: "Death Cloud",
+      sourceUnitId: "L",
+      anchorUnitId: null,
+      candidateUnitIds: ["E1", "E2"],
+      baseAttack: 2,
+    } as unknown as PendingChoice;
+    const actions: LegalAction[] = ["E1", "E2"].map((targetUnitId) => ({
+      label: `hit ${targetUnitId}`,
+      action: {
+        type: "CHOOSE_ABILITY_TARGET",
+        playerId: "p2",
+        choiceId: "lich-follow-up",
+        targetUnitId,
+      } as GameAction,
+    }));
+
+    const decision = chooseComputerAction(observation(choice, actions, [wounded, fresh]));
+    expect((decision?.action as { targetUnitId: string }).targetUnitId).toBe("E1");
+  });
+
   it("picks the highest-threat enemy for an offensive ability", () => {
     const weak = unit({ id: "E1", attack: 2, maxHealth: 4, position: 9 });
     const scary = unit({

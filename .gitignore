@@ -45,3 +45,5 @@ scripts/anime-art/raw/heavenly-demon/_staged/
 # .claude/commands/ — ignore only these per-machine session artifacts.
 .claude/launch.json
 .claude/scheduled_tasks.lock
+.env.local
+.env.*.local

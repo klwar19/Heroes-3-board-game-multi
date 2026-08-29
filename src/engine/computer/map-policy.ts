@@ -62,7 +62,6 @@ import {
   isHomeTileOpeningObjective,
   homeTileInstanceId,
   objectiveDistanceField,
-  ownTownSpaceId,
   premiumEconomyResourceBonus,
   primaryMapObjective,
   startTileRotationOpensFarExpansion,
@@ -647,10 +646,6 @@ const OBJECTIVE_PROGRESS_BASE = 700;
 // A step that reaches no objective / makes no progress: below END_TURN (300) so
 // the hero stops instead of wandering back and forth over empty fields.
 const NO_PROGRESS_SCORE = 260;
-// Walking onto the hero's OWN town while marching elsewhere — classic
-// ping-pong. Only allowed when the sticky target IS the town or we are
-// already closer via that cell for the primary objective.
-const OWN_TOWN_DETOUR_SCORE = 240;
 // A secondary hero stepping OUT of the main hero's march lane (see the
 // ally-blockade sidestep in moveScore): above END_TURN and the development
 // noise so the blocker actually moves, below a real march/enter step so a
@@ -726,9 +721,6 @@ function moveScore(
   const distance = objectiveDistanceField(state, hero, marchTargets);
   const here = hero.spaceId ? distance.get(hero.spaceId) ?? Infinity : Infinity;
   const to = distance.get(action.to) ?? Infinity;
-
-  const ownTown = ownTownSpaceId(state, observation.playerId);
-  const steppingOntoOwnTown = ownTown !== null && action.to === ownTown;
 
   // The free hop between the two linked halves of a Subterranean Gate SLIPS
   // PAST a live guard on the far half (engine rule 2026-08-07): this step can
@@ -835,17 +827,11 @@ function moveScore(
 
   // Already walked this field this turn — never thrash back and forth.
   if (visitedThisTurn(memory, action.to) && to >= here) {
-    return Math.min(NO_PROGRESS_SCORE, OWN_TOWN_DETOUR_SCORE);
+    return NO_PROGRESS_SCORE;
   }
 
   // Progress toward the sticky objective: prefer the biggest step in.
   if (to < here) {
-    // Prefer not to path through own town unless that IS the only progress.
-    if (steppingOntoOwnTown && primary && primary.spaceId !== ownTown) {
-      // Still progress, but only barely above END_TURN if every other step is
-      // worse — usually a non-town neighbour with the same distance wins.
-      return OBJECTIVE_PROGRESS_BASE - 40 + Math.max(0, 10 - to);
-    }
     return OBJECTIVE_PROGRESS_BASE + Math.max(0, 10 - to);
   }
 
@@ -864,9 +850,6 @@ function moveScore(
     return GUARD_REENTRY_SETUP_SCORE;
   }
 
-  if (steppingOntoOwnTown) {
-    return OWN_TOWN_DETOUR_SCORE;
-  }
   return NO_PROGRESS_SCORE;
 }
 

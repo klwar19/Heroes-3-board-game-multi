@@ -198,6 +198,44 @@ describe("card policy — combat reactions", () => {
     expect(chooseComputerAction(observed)?.action.type).toBe("PASS_REACTION");
   });
 
+  it("conserves Defense on a still-doomed unit, but spends it when it changes survival", () => {
+    const attacker = unit({ id: "A", controllerId: "p1", attack: 8, position: 8 });
+    const defender = unit({
+      id: "D",
+      controllerId: "p2",
+      defense: 2,
+      maxHealth: 5,
+      damage: 3,
+      position: 9,
+      grade: "silver",
+      type: "ranged",
+    });
+    const playDefense: LegalAction = {
+      label: "Defense +1",
+      action: {
+        type: "PLAY_REACTION",
+        playerId: "p2",
+        cardId: "stat.defense",
+        mode: "basic",
+      } as GameAction,
+    };
+    const observed = observation(
+      [attacker, defender],
+      [pass, playDefense],
+      "p2",
+      ["stat.defense"],
+    );
+    (observed.state as unknown as { stack: unknown[] }).stack = [{
+      action: { type: "ATTACK_UNIT", playerId: "p1", attackerId: "A", defenderId: "D" },
+      modifiers: { spellPowerBonus: 0, attackBonus: 0, defenseBonus: 0 },
+    }];
+
+    expect(chooseComputerAction(observed)?.action.type).toBe("PASS_REACTION");
+
+    attacker.attack = 4;
+    expect(chooseComputerAction(observed)?.action.type).toBe("PLAY_REACTION");
+  });
+
   it("uses a First Aid active effect before passing and heals the best target", () => {
     const scratched = unit({
       id: "A",

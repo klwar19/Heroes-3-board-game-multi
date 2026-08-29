@@ -9791,6 +9791,12 @@ export type CombatContext =
       /** Null when the town owner garrisons without their hero (8 gold defense). */
       defenderHeroId: HeroId | null;
       fieldId: MapSpaceId;
+      /**
+       * The defender controls the Town/Settlement on which this PvP combat is
+       * fought. This is deliberately separate from `siege`: a Settlement is a
+       * defended holding, but never gains Citadel Walls/Gate/Arrow Tower.
+       */
+      holdingDefense?: "town" | "settlement";
       /** Defending a faction town with a Citadel: walls, gate and arrow tower. */
       siege?: boolean;
       /**

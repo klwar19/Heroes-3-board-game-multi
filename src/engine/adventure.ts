@@ -1626,7 +1626,39 @@ export function liftSeaHaltForWaterWalk(state: GameState, playerId: PlayerId): v
  * not the tile's overall terrain.
  */
 export function isSeaField(state: GameState, spaceId: MapSpaceId): boolean {
-  return state.adventure?.fields[spaceId]?.terrain === "water";
+  const adventure = state.adventure;
+  const field = adventure?.fields[spaceId];
+  if (!adventure || !field) {
+    return false;
+  }
+
+  // Explicit runtime water wins. This covers real materialized sea fields,
+  // water Field Overrides/Whirlpools, standalone sea objects, and designer/test
+  // fields that intentionally turn an otherwise-land slot into water.
+  if (field.terrain === "water") {
+    return true;
+  }
+
+  // For an unchanged printed field, derive terrain from the same tile slot that
+  // paints the hex. `field.terrain` is a materialized cache and older/recovered
+  // room snapshots can have that marker missing on only one of two adjacent sea
+  // hexes. Reading the cache alone invents a coastline between two visibly blue
+  // fields and incorrectly sets movementHaltedThisTurn on a sea -> sea step.
+  //
+  // A carved/replaced field (Creature Bank, Gate, Field Override, Whirlpool,
+  // standalone object, etc.) deliberately owns its runtime terrain instead, so
+  // only fields whose live location still matches their printed slot use this
+  // authoritative art/definition path.
+  const tile = adventure.tiles[field.tileInstanceId];
+  const definition = tile ? allTileDefinitions[tile.tileDefId] : undefined;
+  const printedField = definition?.fields[field.slot];
+  if (definition && printedField && field.location === printedField.location) {
+    return printedField.terrain
+      ? printedField.terrain === "water"
+      : definition.terrain === "water";
+  }
+
+  return false;
 }
 
 /**

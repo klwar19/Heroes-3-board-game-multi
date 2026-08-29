@@ -34,7 +34,7 @@ import {
   settleComputerVisibleStep,
 } from "@/server/computer-runner";
 import { deriveLobbyRecord, lobbyRecordSignature, lobbyReportIsDue, LOBBY_SINGLETON_ID, STALE_ROOM_TTL_MS } from "@/server/lobby-registry";
-import { detectFinishedMatch } from "@/server/match-report";
+import { detectFinishedMatch, type FinishedMatch } from "@/server/match-report";
 import {
   appendRankedReplayEntry,
   createRankedReplay,
@@ -230,9 +230,20 @@ const RANKED_REPLAY_META_KEY = "ranked-replay-meta";
 const RANKED_REPLAY_INITIAL_PREFIX = "ranked-replay-initial-";
 const RANKED_REPLAY_ENTRY_PREFIX = "ranked-replay-entry-";
 const RANKED_REPLAY_CHUNK_BYTES = 96 * 1024;
+const RANKED_MATCH_REPORT_OUTBOX_KEY = "ranked-match-report-outbox-v1";
 type StoredRankedReplayMeta = Omit<RankedReplay, "initialState" | "entries"> & {
   initialChunkCount: number;
   entryCount: number;
+};
+type RankedMatchReportOutbox = {
+  format: "homm3bg-ranked-match-report-outbox-v1";
+  match: FinishedMatch;
+  winnerPlayerId?: PlayerId;
+  replayRequired: boolean;
+  attempts: number;
+  createdAt: string;
+  lastAttemptAt?: string;
+  lastError?: string;
 };
 
 export default class GameRoomServer implements Party.Server {
@@ -585,18 +596,29 @@ export default class GameRoomServer implements Party.Server {
   private async persistNewRankedReplay(replay: RankedReplay): Promise<void> {
     const encoded = new TextEncoder().encode(JSON.stringify(replay.initialState));
     const initialChunkCount = Math.ceil(encoded.byteLength / RANKED_REPLAY_CHUNK_BYTES);
-    const writes: Promise<unknown>[] = [];
-    for (let index = 0; index < initialChunkCount; index += 1) {
-      const start = index * RANKED_REPLAY_CHUNK_BYTES;
-      writes.push(
-        this.room.storage.put(
-          `${RANKED_REPLAY_INITIAL_PREFIX}${index}`,
-          encoded.slice(start, start + RANKED_REPLAY_CHUNK_BYTES),
-        ),
-      );
+    const write = async (storage: Pick<Party.Storage, "put">): Promise<void> => {
+      const writes: Promise<unknown>[] = [];
+      for (let index = 0; index < initialChunkCount; index += 1) {
+        const start = index * RANKED_REPLAY_CHUNK_BYTES;
+        writes.push(
+          storage.put(
+            `${RANKED_REPLAY_INITIAL_PREFIX}${index}`,
+            encoded.slice(start, start + RANKED_REPLAY_CHUNK_BYTES),
+          ),
+        );
+      }
+      writes.push(storage.put(RANKED_REPLAY_META_KEY, this.replayMeta(replay, initialChunkCount)));
+      await Promise.all(writes);
+    };
+    // The Round-1 header and every initial-state chunk become visible together.
+    // A failed pre-start write therefore leaves the setup lobby untouched and
+    // never leaves a meta record pointing at half an initial state.
+    if (typeof this.room.storage.transaction === "function") {
+      await this.room.storage.transaction(async (transaction) => write(transaction));
+    } else {
+      // Test/local storage shims predate DurableObjectStorage.transaction.
+      await write(this.room.storage);
     }
-    writes.push(this.room.storage.put(RANKED_REPLAY_META_KEY, this.replayMeta(replay, initialChunkCount)));
-    await Promise.all(writes);
   }
 
   private async persistRankedReplayAppend(previousCount: number, replay: RankedReplay): Promise<void> {
@@ -675,13 +697,27 @@ export default class GameRoomServer implements Party.Server {
     if (this.rankedReplay && this.rankedReplay.matchId !== before.seed) {
       await this.clearRankedReplayStorage();
     }
+    const startsRankedAdventure =
+      !rankedClashReplayEligible(before) && rankedClashReplayEligible(result.state);
+    // START_ADVENTURE is preflighted before the room snapshot commit and then
+    // passes this method once more after that commit. Treat the second call as
+    // an idempotent confirmation, not as replay entry 1.
+    if (
+      this.rankedReplay &&
+      startsRankedAdventure &&
+      this.rankedReplay.matchId === result.state.seed &&
+      this.rankedReplay.captureStart === "adventure-start" &&
+      this.rankedReplay.entries.length === 0
+    ) {
+      return;
+    }
     if (!this.rankedReplay) {
       if (rankedClashReplayEligible(before)) {
-        const started = createRankedReplay(before, options.now);
+        const started = createRankedReplay(before, options.now, "mid-match-recovery");
         await this.persistNewRankedReplay(started);
         this.rankedReplay = started;
-      } else if (rankedClashReplayEligible(result.state)) {
-        const started = createRankedReplay(result.state, options.now);
+      } else if (startsRankedAdventure) {
+        const started = createRankedReplay(result.state, options.now, "adventure-start");
         await this.persistNewRankedReplay(started);
         this.rankedReplay = started;
         return;
@@ -717,6 +753,14 @@ export default class GameRoomServer implements Party.Server {
     } catch (error) {
       console.warn("[ranked-replay] failed to restore capture; starting a fresh bounded buffer", error);
       this.rankedReplay = null;
+    }
+    try {
+      const outbox = await this.room.storage.get<RankedMatchReportOutbox>(RANKED_MATCH_REPORT_OUTBOX_KEY);
+      if (outbox?.format === "homm3bg-ranked-match-report-outbox-v1") {
+        await this.ensureComputerPump(0);
+      }
+    } catch (error) {
+      console.warn("[match-report] failed to restore pending delivery alarm", error);
     }
     // Rehydrate the answered-action ledger so a client retry that woke this
     // instance is answered from the recorded outcome, never applied twice.
@@ -1333,6 +1377,10 @@ export default class GameRoomServer implements Party.Server {
 
   async onAlarm(): Promise<void> {
     try {
+      const reportDelivery = await this.deliverRankedMatchReportOutbox();
+      if (reportDelivery === "pending" || (reportDelivery === "delivered" && !this.snapshot)) {
+        return;
+      }
       await this.runComputerPumpTick();
     } catch (error) {
       // A failed tick (a storage/broadcast hiccup) must NOT kill the pump
@@ -1781,6 +1829,32 @@ export default class GameRoomServer implements Party.Server {
           message.action.type === "ADVANCE_COMPUTER"
             ? applyHumanComputerAdvance(afkSettled).state
             : settleComputerForLiveAction(afkSettled);
+        const startsRankedAdventure =
+          !rankedClashReplayEligible(current.state) && rankedClashReplayEligible(result.state);
+        if (startsRankedAdventure && this.rankedReplayCaptureEnabled()) {
+          try {
+            // Establish the complete Round-1 replay before START_ADVENTURE can
+            // become the durable room state. Failure leaves players in setup;
+            // it never rolls back or damages an already-running match.
+            await this.captureRankedReplay(current.state, message.action, result, {
+              ...(message.actorClientId ? { actorClientId: message.actorClientId } : {}),
+              entropy: replayEntropy,
+              now: replayNow,
+            });
+          } catch (error) {
+            console.error("[ranked-replay] could not initialize Round-1 capture; ranked start remains in setup", error);
+            return {
+              errors: [{
+                code: "ACTION_NOT_LEGAL",
+                message: "The ranked replay could not be initialized. The match has not started; please try Start again.",
+              }],
+              notices: [],
+              version: current.version,
+              applied: false,
+              prev: null as GameState | null,
+            };
+          }
+        }
         this.snapshot = {
           roomId: this.room.id,
           version: current.version + 1,
@@ -1959,46 +2033,92 @@ export default class GameRoomServer implements Party.Server {
     };
   }
 
-  /** Detect a just-finished ranked game and POST it to the app's report route. */
+  private static readonly MATCH_REPORT_RETRY_BASE_MS = 15_000;
+  private static readonly MATCH_REPORT_RETRY_MAX_MS = 15 * 60_000;
+
+  private async scheduleMatchReportRetry(attempts: number): Promise<void> {
+    const exponent = Math.min(6, Math.max(0, attempts - 1));
+    const delay = Math.min(
+      GameRoomServer.MATCH_REPORT_RETRY_MAX_MS,
+      GameRoomServer.MATCH_REPORT_RETRY_BASE_MS * (2 ** exponent),
+    );
+    await this.room.storage.setAlarm(Date.now() + delay);
+  }
+
+  /**
+   * Deliver the durable terminal-report outbox. Success means BOTH the ladder
+   * result and (for Ranked) replay reached durable app storage. Anything else
+   * stays in Durable Object storage and is retried by alarm after hibernation.
+   */
+  private async deliverRankedMatchReportOutbox(): Promise<"none" | "delivered" | "pending"> {
+    const outbox = await this.room.storage.get<RankedMatchReportOutbox>(RANKED_MATCH_REPORT_OUTBOX_KEY);
+    if (!outbox || outbox.format !== "homm3bg-ranked-match-report-outbox-v1") return "none";
+
+    const config = matchReportConfigOf(this.room);
+    const replayRequired = outbox.match.ranked && outbox.replayRequired !== false;
+    let failure = "PartyKit match-report configuration is missing";
+    if (config) {
+      try {
+        const loadedReplay = replayRequired
+          ? (this.rankedReplay ?? await this.loadRankedReplay())
+          : null;
+        const replay = loadedReplay ? finishRankedReplay(loadedReplay, Date.now(), outbox.winnerPlayerId) : undefined;
+        if (replayRequired && !replay) {
+          failure = "Ranked replay buffer is missing";
+        } else {
+          const response = await fetch(`${config.appUrl}/api/matches/report`, {
+            method: "POST",
+            headers: { "content-type": "application/json", "x-homm3bg-report-key": config.key },
+            body: JSON.stringify({ ...outbox.match, ...(replay ? { replay } : {}) }),
+          });
+          const body = await response.json().catch(() => null) as
+            | { applied?: boolean; replayStored?: boolean; error?: string; message?: string }
+            | null;
+          const durable = response.ok && (!replayRequired || body?.replayStored === true);
+          if (durable) {
+            await this.room.storage.delete(RANKED_MATCH_REPORT_OUTBOX_KEY);
+            await this.clearRankedReplayStorage();
+            console.log(`[match-report] durably recorded ${outbox.match.matchId}`);
+            return "delivered";
+          }
+          failure = `HTTP ${response.status}: ${body?.error ?? body?.message ?? "report not acknowledged"}`;
+        }
+      } catch (error) {
+        failure = error instanceof Error ? error.message : String(error);
+      }
+    }
+
+    const attempts = outbox.attempts + 1;
+    await this.room.storage.put(RANKED_MATCH_REPORT_OUTBOX_KEY, {
+      ...outbox,
+      attempts,
+      lastAttemptAt: new Date().toISOString(),
+      lastError: failure.slice(0, 500),
+    } satisfies RankedMatchReportOutbox);
+    await this.scheduleMatchReportRetry(attempts);
+    console.error(`[match-report] delivery pending for ${outbox.match.matchId}: ${failure}`);
+    return "pending";
+  }
+
+  /** Detect a just-finished ranked game and durably enqueue its app report. */
   private async reportFinishedMatchToApp(prev: GameState, next: GameState): Promise<void> {
     const match = detectFinishedMatch(prev, next);
     if (!match) {
       return;
     }
-    const replay =
-      match.ranked && this.rankedReplay?.matchId === match.matchId
-        ? finishRankedReplay(this.rankedReplay)
-        : undefined;
-    const config = matchReportConfigOf(this.room);
-    if (!config) {
-      console.warn(
-        `[match-report] game ${match.matchId} finished but HOMM3BG_APP_URL / HOMM3BG_MATCH_REPORT_KEY ` +
-          "are not configured on the party — the result was NOT recorded."
-      );
-      // Still close a RANKED room even when the report key is missing — staying
-      // open is what lets a rematch double-claim / skip MMR accounting.
-      if (match.ranked) {
-        await this.forceCloseAfterRankedMatch();
-      }
-      return;
-    }
-    try {
-      const response = await fetch(`${config.appUrl}/api/matches/report`, {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-homm3bg-report-key": config.key },
-        // Exactly one bounded final upload. No per-action requests touch Vercel.
-        body: JSON.stringify({ ...match, ...(replay ? { replay } : {}) })
-      });
-      if (!response.ok) {
-        console.error(`[match-report] app rejected match ${match.matchId}: HTTP ${response.status}`);
-      }
-    } catch (error) {
-      console.error(`[match-report] failed to deliver match ${match.matchId}:`, error);
-    }
+    await this.room.storage.put(RANKED_MATCH_REPORT_OUTBOX_KEY, {
+      format: "homm3bg-ranked-match-report-outbox-v1",
+      match,
+      ...(next.adventure?.winnerPlayerId ? { winnerPlayerId: next.adventure.winnerPlayerId } : {}),
+      replayRequired: match.ranked && this.rankedReplayCaptureEnabled(),
+      attempts: 0,
+      createdAt: new Date().toISOString(),
+    } satisfies RankedMatchReportOutbox);
+    const delivery = await this.deliverRankedMatchReportOutbox();
     // RANKED only: close the table after a real attributed win/loss so rematch
     // cannot reuse seed/matchSeats. Casual / single-player / sandbox stay open.
     if (match.ranked) {
-      await this.forceCloseAfterRankedMatch();
+      await this.forceCloseAfterRankedMatch(delivery !== "delivered");
     }
   }
 
@@ -2006,7 +2126,7 @@ export default class GameRoomServer implements Party.Server {
    * System force-close after a ranked match (no host gate). Broadcasts a final
    * closed snapshot, wipes storage, and deregisters from the lobby directory.
    */
-  private async forceCloseAfterRankedMatch(): Promise<void> {
+  private async forceCloseAfterRankedMatch(preservePendingReport = false): Promise<void> {
     await this.serialized(async () => {
       const closing = this.snapshot;
       if (closing) {
@@ -2021,9 +2141,9 @@ export default class GameRoomServer implements Party.Server {
       this.answeredActionRequests.clear();
       try {
         await this.deletePersistedSnapshot();
-        await this.clearRankedReplayStorage();
+        if (!preservePendingReport) await this.clearRankedReplayStorage();
         await this.room.storage.delete(ANSWERED_ACTIONS_KEY);
-        await this.room.storage.deleteAlarm();
+        if (!preservePendingReport) await this.room.storage.deleteAlarm();
       } catch (error) {
         console.error(`[room] ranked force-close storage wipe failed:`, error);
       }

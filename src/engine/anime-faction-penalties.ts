@@ -139,18 +139,6 @@ export function applyAnimeCombatStartPenalties(state: GameState): void {
       done.push(key);
       continue;
     }
-    if (factionId === "little_busters") {
-      const opponentId = playerId === combat.attackerPlayerId
-        ? combat.defenderPlayerId
-        : combat.attackerPlayerId;
-      if (opponentId !== "neutrals") drawCardsForPlayer(state, opponentId, 1);
-      appendEvent(state, {
-        type: "EVENT_NOTE",
-        playerId,
-        message: "School Contribution Fund — the enemy draws exactly 1 card at PvP combat start."
-      });
-      done.push(key);
-    }
   }
 }
 

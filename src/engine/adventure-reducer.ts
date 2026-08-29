@@ -10141,6 +10141,17 @@ export function startPlayerCombat(
   // Dragon Conqueror: assaulting a captured Dragon Utopia is always a siege —
   // the holder defends behind Walls, the Gate and the Arrow Tower.
   const field = state.adventure?.fields[fieldId];
+  // A hero standing on a Town/Settlement they control is defending that
+  // holding, not fighting an ordinary open-field battle. Keep this independent
+  // from `siege`: only a qualifying Town supplies fortifications; a Settlement
+  // never does.
+  const holdingDefense =
+    field?.flagOwnerId === defenderPlayerId && field.location === "settlement"
+      ? "settlement"
+      : town &&
+          (field?.flagOwnerId == null || field.flagOwnerId === defenderPlayerId)
+        ? "town"
+        : undefined;
   const utopiaSiege =
     field?.location === "dragon_utopia" &&
     adventureVictoryMode(state) === "dragon-conqueror" &&
@@ -10171,6 +10182,7 @@ export function startPlayerCombat(
     attackerHeroId: attacker.id,
     defenderHeroId: defender?.id ?? null,
     fieldId,
+    ...(holdingDefense ? { holdingDefense } : {}),
     ...(siege ? { siege: true } : {}),
     ...(mineCardDefense ? { garrisonCardsAllowed: true } : {})
   };

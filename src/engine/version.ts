@@ -989,7 +989,20 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // New optional commander/unit/token fields and changed legal actions mean a v83
 // worker would resolve a materially different game. `npm run deploy:partykit`
 // owed.
-export const ENGINE_PROTOCOL_VERSION = 84;
+// v85: Little Busters keeps all three pay-1-gold PvP counters; only the draw
+// counter is reduced from 2 cards to 1, and the v84 automatic combat-start draw
+// is removed. Computer routing treats an owned town as an ordinary safe corridor
+// toward its objective, and Defense-card policy conserves the card when its
+// expected +Defense still cannot save the attacked unit. A v84 worker would
+// offer/resolve different combat actions, so the protocol must force the room
+// server current. `npm run deploy:partykit` owed.
+// v86: unchanged printed sea fields derive their land/water classification from
+// the authoritative tile slot when a recovered room is missing that field's
+// materialized terrain cache. A v85 worker can invent a coastline between two
+// visibly blue sea hexes and force the hero to end the turn after sea -> sea,
+// while v86 permits the move, so movement legality is protocol-significant.
+// `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 86;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

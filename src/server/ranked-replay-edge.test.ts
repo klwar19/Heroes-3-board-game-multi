@@ -33,6 +33,7 @@ describe("PartyKit Ranked Clash replay persistence", () => {
     };
     const initial: RoomSnapshot = { roomId: "edge-ranked-replay", version: 1, updatedAt: new Date().toISOString(), state };
     const storage = new Map<string, unknown>([["snapshot", initial]]);
+    let replayTransactions = 0;
     const peers = new Map<string, MockConnection>([["c1", connection("c1")], ["c2", connection("c2")]]);
     const encoder = new TextEncoder();
     const room = {
@@ -46,6 +47,26 @@ describe("PartyKit Ranked Clash replay persistence", () => {
           storage.set(key, value);
         },
         delete: async (key: string) => storage.delete(key),
+        transaction: async <T>(run: (transaction: {
+          get: (key: string) => Promise<unknown>;
+          put: (key: string, value: unknown) => Promise<void>;
+          delete: (key: string) => Promise<boolean>;
+        }) => Promise<T>) => {
+          replayTransactions += 1;
+          const staged = new Map(storage);
+          const result = await run({
+            get: async (key) => staged.get(key),
+            put: async (key, value) => {
+              const bytes = value instanceof Uint8Array ? value.byteLength : encoder.encode(JSON.stringify(value)).byteLength;
+              if (bytes > 128 * 1024) throw new RangeError("Durable Object value exceeded 128 KiB");
+              staged.set(key, value);
+            },
+            delete: async (key) => staged.delete(key),
+          });
+          storage.clear();
+          staged.forEach((value, key) => storage.set(key, value));
+          return result;
+        },
         setAlarm: async () => {},
         getAlarm: async () => null,
         deleteAlarm: async () => {},
@@ -78,5 +99,65 @@ describe("PartyKit Ranked Clash replay persistence", () => {
     await submitFirstLegal(server, afterFirst, "replay-2");
     expect(storage.get("ranked-replay-meta")).toMatchObject({ entryCount: 2, truncated: false });
     expect(storage.has("ranked-replay-entry-1")).toBe(true);
+
+    // The production edge must initialize at the setup -> adventure boundary,
+    // before any opening/economy/combat action occurs.
+    const roundOne = createAdventureGameState({
+      seed: "edge-ranked-from-round-one",
+      playerCount: 2,
+      rollFirstPlayer: false,
+    });
+    roundOne.room = structuredClone(state.room);
+    const lobby = structuredClone(roundOne);
+    lobby.adventure = null;
+    lobby.phase = "setup";
+    await (server as unknown as {
+      captureRankedReplay: (
+        before: RoomSnapshot["state"],
+        action: GameAction,
+        result: { state: RoomSnapshot["state"]; events: []; errors: []; notices: [] },
+        options: { actorClientId: string; entropy: string; now: number },
+      ) => Promise<void>;
+    }).captureRankedReplay(
+      lobby,
+      { type: "START_ADVENTURE", playerId: "p1" },
+      { state: roundOne, events: [], errors: [], notices: [] },
+      { actorClientId: "c1", entropy: "round-one", now: 100 },
+    );
+    expect(storage.get("ranked-replay-meta")).toMatchObject({
+      matchId: "edge-ranked-from-round-one",
+      captureStart: "adventure-start",
+      entryCount: 0,
+    });
+    expect(replayTransactions).toBeGreaterThan(0);
+    const roundOneMeta = storage.get("ranked-replay-meta") as { initialChunkCount: number };
+    const initialBytes = Array.from({ length: roundOneMeta.initialChunkCount }, (_, index) =>
+      storage.get(`ranked-replay-initial-${index}`) as Uint8Array,
+    );
+    const joined = new Uint8Array(initialBytes.reduce((sum, chunk) => sum + chunk.byteLength, 0));
+    let joinedOffset = 0;
+    for (const chunk of initialBytes) {
+      joined.set(chunk, joinedOffset);
+      joinedOffset += chunk.byteLength;
+    }
+    expect(JSON.parse(new TextDecoder().decode(joined))).toMatchObject({ round: 1 });
+
+    // The action pipeline invokes capture once in its pre-start gate and once
+    // after the snapshot commit. The second call must be an idempotent no-op.
+    await (server as unknown as {
+      captureRankedReplay: (
+        before: RoomSnapshot["state"],
+        action: GameAction,
+        result: { state: RoomSnapshot["state"]; events: []; errors: []; notices: [] },
+        options: { actorClientId: string; entropy: string; now: number },
+      ) => Promise<void>;
+    }).captureRankedReplay(
+      lobby,
+      { type: "START_ADVENTURE", playerId: "p1" },
+      { state: roundOne, events: [], errors: [], notices: [] },
+      { actorClientId: "c1", entropy: "round-one", now: 100 },
+    );
+    expect(storage.get("ranked-replay-meta")).toMatchObject({ entryCount: 0 });
+    expect(storage.has("ranked-replay-entry-0")).toBe(false);
   });
 });

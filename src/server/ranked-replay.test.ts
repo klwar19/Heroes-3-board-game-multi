@@ -103,6 +103,11 @@ describe("Ranked Clash replay capture", () => {
         source: "human",
         beforeStateHash: expect.stringMatching(/^[0-9a-f]{8}$/),
         afterStateHash: expect.stringMatching(/^[0-9a-f]{8}$/),
+        learningContext: expect.objectContaining({
+          stage: "opening",
+          domains: expect.arrayContaining(["opening"]),
+          legalAlternativeCount: legal.length,
+        }),
       }),
     );
     expect(replay.entries[0]!.legalActions).toContainEqual(action);
@@ -130,8 +135,42 @@ describe("Ranked Clash replay capture", () => {
     captureRankedReplayAction(roomId, before, action, result, { entropy: "buffer-entropy", now: 88 }, true);
     expect(peekRankedReplay(roomId)?.entries).toHaveLength(1);
     expect((before as GameState & { rankedReplay?: unknown }).rankedReplay).toBeUndefined();
-    expect(takeFinishedRankedReplay(roomId, before.seed, 99)?.entries).toHaveLength(1);
+    const finished = takeFinishedRankedReplay(roomId, before.seed, 99, "p1");
+    expect(finished?.entries).toHaveLength(1);
+    expect(finished?.winnerPlayerId).toBe("p1");
     expect(takeFinishedRankedReplay(roomId, before.seed, 100)).toBeNull();
+  });
+
+  it("starts at the exact round-1 adventure state instead of waiting for the first combat", () => {
+    const roomId = "ranked-round-one-start";
+    discardRankedReplay(roomId);
+    const adventure = rankedGame("ranked-round-one-seed");
+    adventure.round = 1;
+    const lobby = structuredClone(adventure);
+    lobby.adventure = null;
+    lobby.phase = "setup";
+    const startAction = { type: "START_ADVENTURE", playerId: "p1" } as Parameters<typeof applyAction>[1];
+    captureRankedReplayAction(
+      roomId,
+      lobby,
+      startAction,
+      { state: adventure, events: [], errors: [] },
+      { now: 77 },
+      true,
+    );
+
+    const started = peekRankedReplay(roomId);
+    expect(started).toMatchObject({
+      matchId: adventure.seed,
+      captureStart: "adventure-start",
+      entries: [],
+      initialState: { round: 1 },
+    });
+
+    const action = getLegalActions(adventure, adventure.activePlayerId)[0]!.action;
+    const result = applyAction(adventure, action, { now: 78 });
+    captureRankedReplayAction(roomId, adventure, action, result, { now: 78 }, true);
+    expect(peekRankedReplay(roomId)?.entries).toHaveLength(1);
   });
 
   it("stores one bounded final file on the built-in backend and deduplicates by match id", async () => {

@@ -6,16 +6,16 @@ import { noteUnitDamagedForTokens } from "./tokens";
 import type { CombatState, CombatUnitState, GameState, PlayerId } from "./state";
 
 /**
- * Legacy PvP anti-Little-Busters counter action retained for save/wire
- * compatibility. The current penalty is automatic: the opposing player draws
- * exactly 1 card at combat start. No paid counters are offered, and a legacy
- * action is rejected by the shared empty availability read below.
+ * PvP anti-Little-Busters counters: a fighter facing a Little Busters seat may
+ * spend 1 gold on each of three one-use effects during that combat. The draw
+ * counter draws exactly one card; the other two counters retain their original
+ * effects.
  */
 export type LittleBustersCounter = "discard" | "damage" | "draw";
 
 export const LITTLE_BUSTERS_COUNTER_COST = 1;
 
-export const LITTLE_BUSTERS_COUNTERS: readonly LittleBustersCounter[] = [];
+export const LITTLE_BUSTERS_COUNTERS: readonly LittleBustersCounter[] = ["discard", "damage", "draw"];
 
 /** A unit is alive while it still has Health (removal never clears `position`). */
 function unitAlive(unit: CombatUnitState): boolean {
@@ -60,7 +60,7 @@ function counterLabel(counter: LittleBustersCounter, opponentName: string): stri
     case "damage":
       return `Pay ${LITTLE_BUSTERS_COUNTER_COST} gold: reduce ${opponentName}'s hero to half HP (round up)`;
     case "draw":
-      return `Pay ${LITTLE_BUSTERS_COUNTER_COST} gold: draw 2 cards`;
+      return `Pay ${LITTLE_BUSTERS_COUNTER_COST} gold: draw 1 card`;
   }
 }
 
@@ -150,7 +150,7 @@ export function applyLittleBustersCounter(
       break;
     }
     case "draw": {
-      drawCardsForPlayer(state, playerId, 2);
+      drawCardsForPlayer(state, playerId, 1);
       break;
     }
   }

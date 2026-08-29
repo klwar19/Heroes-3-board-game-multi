@@ -20,11 +20,39 @@ import {
  */
 export const RANKED_REPLAY_SCHEMA_VERSION = 1;
 export const RANKED_REPLAY_MAX_ACTIONS = 2_000;
-export const RANKED_REPLAY_MAX_BYTES = 1_500_000;
+// Kept below Vercel's compressed/uncompressed request ceiling with headroom for
+// match metadata and headers. This is large enough for long full adventures;
+// the previous 1.5 MB cap could truncate before late-game adaptation.
+export const RANKED_REPLAY_MAX_BYTES = 4_000_000;
 export const RANKED_REPLAY_MAX_LEGAL_ACTIONS = 512;
 export const RANKED_REPLAY_MAX_ENTRY_BYTES = 96 * 1024;
 
 export type RankedReplaySource = "human" | "computer" | "neutral" | "system";
+
+export type RankedReplayLearningDomain =
+  | "opening"
+  | "map-movement"
+  | "economy"
+  | "neutral-combat"
+  | "pvp-combat"
+  | "card-use"
+  | "recovery";
+
+export type RankedReplayLearningContext = {
+  stage: "opening" | "midgame" | "late-game";
+  domains: RankedReplayLearningDomain[];
+  legalAlternativeCount: number;
+  underPressure: boolean;
+  pressureSignals: string[];
+  actorEconomy?: { gold: number; buildingMaterials: number; valuables: number };
+  combat?: {
+    kind: "neutral" | "pvp" | "other";
+    ownLivingUnits: number;
+    enemyLivingUnits: number;
+    ownRemainingHealth: number;
+    enemyRemainingHealth: number;
+  };
+};
 
 export type RankedReplayEntry = {
   sequence: number;
@@ -42,6 +70,8 @@ export type RankedReplayEntry = {
   entropy?: string;
   now?: number;
   events: GameEvent[];
+  /** Bounded semantic features for preference/outcome learning, never policy imitation alone. */
+  learningContext?: RankedReplayLearningContext;
 };
 
 export type RankedReplay = {
@@ -50,12 +80,15 @@ export type RankedReplay = {
   engineSignature: string;
   matchId: string;
   startedAt: string;
+  captureStart: "adventure-start" | "mid-match-recovery";
   finishedAt?: string;
   initialState: GameState;
   entries: RankedReplayEntry[];
   byteLength: number;
   truncated: boolean;
   truncationReason?: "action-limit" | "byte-limit" | "entry-too-large";
+  /** Terminal seat outcome used to credit later consequences, not every isolated move. */
+  winnerPlayerId?: PlayerId;
 };
 
 type ActionWithPlayer = GameAction & { playerId?: unknown };
@@ -189,13 +222,81 @@ function stateHash(state: GameState): string {
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
-export function createRankedReplay(state: GameState, now = Date.now()): RankedReplay {
+function learningContextFor(
+  state: GameState,
+  actorPlayerId: PlayerId | null,
+  action: GameAction,
+  legalAlternativeCount: number,
+): RankedReplayLearningContext {
+  const actionType = action.type;
+  const domains = new Set<RankedReplayLearningDomain>();
+  const stage = state.round <= 3 ? "opening" : state.round >= 8 ? "late-game" : "midgame";
+  if (stage === "opening") domains.add("opening");
+  if (/MOVE|DISCOVER|REVEAL|PLACE_TILE|ROTATE_TILE|TELEPORT|VISIT/.test(actionType)) domains.add("map-movement");
+  if (/BUILD|RECRUIT|REINFORCE|TRADE|BUY|UPGRADE|RESOURCE|POPULATION|TOWN/.test(actionType)) domains.add("economy");
+  if (/CARD|SPELL|REACTION|ABILITY|ARTIFACT|PERMANENT/.test(actionType)) domains.add("card-use");
+
+  const pressureSignals: string[] = [];
+  const player = actorPlayerId ? state.players[actorPlayerId] : undefined;
+  const resources = player?.resources;
+  const actorEconomy = resources
+    ? {
+        gold: Number(resources.gold ?? 0),
+        buildingMaterials: Number(resources.buildingMaterials ?? 0),
+        valuables: Number(resources.valuables ?? 0),
+      }
+    : undefined;
+  if (actorEconomy && actorEconomy.gold <= 2) pressureSignals.push("low-gold");
+
+  let combat: RankedReplayLearningContext["combat"];
+  if (state.combat && actorPlayerId) {
+    const fight = state.combat;
+    const neutral = fight.attackerPlayerId === NEUTRAL_PLAYER_ID || fight.defenderPlayerId === NEUTRAL_PLAYER_ID;
+    const pvp = !neutral && fight.context.kind !== "sandbox";
+    domains.add(neutral ? "neutral-combat" : pvp ? "pvp-combat" : "pvp-combat");
+    const units = Object.values(fight.units).filter((unit) => unit.position >= 0 && unit.damage < unit.maxHealth);
+    const own = units.filter((unit) => unit.controllerId === actorPlayerId);
+    const enemy = units.filter((unit) => unit.controllerId !== actorPlayerId);
+    const health = (group: typeof units) => group.reduce((sum, unit) => sum + Math.max(0, unit.maxHealth - unit.damage), 0);
+    combat = {
+      kind: neutral ? "neutral" : pvp ? "pvp" : "other",
+      ownLivingUnits: own.length,
+      enemyLivingUnits: enemy.length,
+      ownRemainingHealth: health(own),
+      enemyRemainingHealth: health(enemy),
+    };
+    if (combat.ownLivingUnits < combat.enemyLivingUnits) pressureSignals.push("outnumbered");
+    if (combat.ownRemainingHealth < combat.enemyRemainingHealth) pressureSignals.push("health-disadvantage");
+    if (fight.defenderPlayerId === actorPlayerId && pvp) pressureSignals.push("defending-pvp");
+  }
+  const recentEvents = state.eventLog.slice(-12).map((event) => event.type).join(" ");
+  if (/DEFEAT|LOSS|DESTROYED|ELIMINATED|RETREAT/.test(recentEvents)) pressureSignals.push("recent-setback");
+  if (pressureSignals.length > 0) domains.add("recovery");
+  if (domains.size === 0) domains.add("map-movement");
+
+  return {
+    stage,
+    domains: [...domains],
+    legalAlternativeCount,
+    underPressure: pressureSignals.length > 0,
+    pressureSignals,
+    ...(actorEconomy ? { actorEconomy } : {}),
+    ...(combat ? { combat } : {}),
+  };
+}
+
+export function createRankedReplay(
+  state: GameState,
+  now = Date.now(),
+  captureStart: RankedReplay["captureStart"] = "mid-match-recovery",
+): RankedReplay {
   const replay: RankedReplay = {
     format: "homm3bg-ranked-replay-v1",
     schemaVersion: RANKED_REPLAY_SCHEMA_VERSION,
     engineSignature: ENGINE_SIGNATURE,
     matchId: state.seed,
     startedAt: new Date(now).toISOString(),
+    captureStart,
     initialState: sanitizeReplayState(state),
     entries: [],
     byteLength: 0,
@@ -243,6 +344,7 @@ export function appendRankedReplayEntry(
     ...(options.entropy ? { entropy: options.entropy } : {}),
     ...(options.now != null ? { now: options.now } : {}),
     events: sanitizeReplayValue(result.events, before) as GameEvent[],
+    learningContext: learningContextFor(before, actorPlayerId, action, legal.length),
   };
   const entryBytes = encodedBytes(entry);
   // A pathological legal-action fanout must never break the room. Preserve the
@@ -262,7 +364,7 @@ export function appendRankedReplayEntry(
   return { ...replay, entries: [...replay.entries, entry], byteLength: nextBytes };
 }
 
-export function finishRankedReplay(replay: RankedReplay, now = Date.now()): RankedReplay {
-  const finished = { ...replay, finishedAt: new Date(now).toISOString() };
+export function finishRankedReplay(replay: RankedReplay, now = Date.now(), winnerPlayerId?: PlayerId): RankedReplay {
+  const finished = { ...replay, finishedAt: new Date(now).toISOString(), ...(winnerPlayerId ? { winnerPlayerId } : {}) };
   return { ...finished, byteLength: encodedBytes(finished) };
 }

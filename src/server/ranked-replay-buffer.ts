@@ -1,4 +1,4 @@
-import type { EngineResult, GameAction, GameState } from "@/engine";
+import type { EngineResult, GameAction, GameState, PlayerId } from "@/engine";
 import {
   appendRankedReplayEntry,
   createRankedReplay,
@@ -32,11 +32,11 @@ export function captureRankedReplayAction(
   }
   if (!replay) {
     if (rankedClashReplayEligible(before)) {
-      replay = createRankedReplay(before, options.now);
+      replay = createRankedReplay(before, options.now, "mid-match-recovery");
     } else if (rankedClashReplayEligible(result.state)) {
       // START_ADVENTURE is setup, not a strategy sample. The freshly built map
       // becomes the exact initial state for all later decisions.
-      buffers.set(roomId, createRankedReplay(result.state, options.now));
+      buffers.set(roomId, createRankedReplay(result.state, options.now, "adventure-start"));
       return;
     } else {
       return;
@@ -45,10 +45,15 @@ export function captureRankedReplayAction(
   buffers.set(roomId, appendRankedReplayEntry(replay, before, action, result, options));
 }
 
-export function takeFinishedRankedReplay(roomId: string, matchId: string, now = Date.now()): RankedReplay | null {
+export function takeFinishedRankedReplay(
+  roomId: string,
+  matchId: string,
+  now = Date.now(),
+  winnerPlayerId?: PlayerId,
+): RankedReplay | null {
   const replay = buffers.get(roomId);
   buffers.delete(roomId);
-  return replay?.matchId === matchId ? finishRankedReplay(replay, now) : null;
+  return replay?.matchId === matchId ? finishRankedReplay(replay, now, winnerPlayerId) : null;
 }
 
 export function discardRankedReplay(roomId: string): void {

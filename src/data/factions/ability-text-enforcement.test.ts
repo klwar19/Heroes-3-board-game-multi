@@ -55,6 +55,13 @@ function allSides(): Map<SideKey, { abilities: string[]; abilityText?: string }>
 }
 
 describe("ability-text enforcement (CLAUDE.md rule #3)", () => {
+  it("keeps the printed Manticore Pack free of a crystal cost", () => {
+    const pack = coreUnitDefinitions["dungeon.manticores"].pack!;
+    expect(pack.cost).toEqual({ gold: 18 });
+    expect(pack.abilityText).not.toContain("[valuables]");
+    expect(pack.abilities).toContain("manticore-ignore-defense");
+  });
+
   it("resolves every abilities tag on every side to an implemented engine ability", () => {
     for (const [key, side] of allSides()) {
       for (const tag of side.abilities) {

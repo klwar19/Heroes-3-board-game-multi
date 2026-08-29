@@ -2,9 +2,9 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { Check, CircleOff, Crosshair, Crown, Dices, Hourglass, Layers, Plus, Sparkles, Sunrise, Swords, Undo2, Zap } from "lucide-react";
+import { Check, CircleOff, Crosshair, Crown, Dices, GripHorizontal, Hourglass, Layers, Maximize2, Minus, Plus, Sparkles, Sunrise, Swords, Zap } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { RESOURCE_ICONS } from "@/data/assets/homm-assets";
 import { cardLibrary } from "@/data/cards/library";
 import { getFxSheet } from "@/data/fx";
@@ -680,6 +680,60 @@ export function ReactionTray({
   // both packs cover (see `balanceCardForDisplay`).
   const communityEnabled = houseRuleEnabled(state, "community-card-balance");
   const [selections, setSelections] = useState<TraySelection[]>([]);
+  // This is a timing window, not a blocking modal: players must be able to
+  // inspect the board underneath it without accidentally resolving or passing.
+  // Moving/minimizing changes local presentation only; the reaction window and
+  // every selection remain untouched until an actual game action is pressed.
+  const [trayMinimized, setTrayMinimized] = useState(false);
+  const [trayOffset, setTrayOffset] = useState({ x: 0, y: 0 });
+  const trayRef = useRef<HTMLDivElement>(null);
+  const trayDrag = useRef<null | {
+    pointerId: number;
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+    minDx: number;
+    maxDx: number;
+    minDy: number;
+    maxDy: number;
+  }>(null);
+
+  const startTrayDrag = (event: ReactPointerEvent<HTMLElement>) => {
+    if (event.button !== 0 || (event.target as HTMLElement).closest("button")) return;
+    const rect = trayRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    trayDrag.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: trayOffset.x,
+      originY: trayOffset.y,
+      minDx: -rect.left,
+      maxDx: globalThis.window.innerWidth - rect.right,
+      minDy: -rect.top,
+      maxDy: globalThis.window.innerHeight - rect.bottom
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  };
+
+  const moveTray = (event: ReactPointerEvent<HTMLElement>) => {
+    const drag = trayDrag.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const dx = Math.max(drag.minDx, Math.min(drag.maxDx, event.clientX - drag.startX));
+    const dy = Math.max(drag.minDy, Math.min(drag.maxDy, event.clientY - drag.startY));
+    setTrayOffset({ x: drag.originX + dx, y: drag.originY + dy });
+    event.preventDefault();
+  };
+
+  const stopTrayDrag = (event: ReactPointerEvent<HTMLElement>) => {
+    if (trayDrag.current?.pointerId !== event.pointerId) return;
+    trayDrag.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
   /**
    * Cast-window Power gate dialog: when the caster tries to Pass while under
    * the spell's min useful Power, or over the top tier, show a modal so they
@@ -1433,13 +1487,40 @@ export function ReactionTray({
     onAction({ type: "PASS_REACTION", playerId: viewerPlayerId });
   };
 
+  const trayStyle = {
+    "--reaction-tray-x": `${trayOffset.x}px`,
+    "--reaction-tray-y": `${trayOffset.y}px`
+  } as CSSProperties;
+
   return (
-    <div className="reactionTray" role="dialog" aria-label="Instant window">
-      <header>
-        <Undo2 aria-hidden="true" size={15} />
+    <div
+      className={`reactionTray movableReactionTray${trayMinimized ? " minimized" : ""}`}
+      ref={trayRef}
+      role="dialog"
+      aria-label="Instant window"
+      style={trayStyle}
+    >
+      <header
+        onPointerDown={startTrayDrag}
+        onPointerMove={moveTray}
+        onPointerUp={stopTrayDrag}
+        onPointerCancel={stopTrayDrag}
+        title="Drag to move this window"
+      >
+        <GripHorizontal aria-hidden="true" className="reactionTrayGrip" size={15} />
         <strong>Instant window</strong>
-        <span>{triggerText}</span>
-        <PendingPowerReadout state={state} />
+        <span>{trayMinimized ? "Waiting for your reaction — restore to resolve." : triggerText}</span>
+        {!trayMinimized ? <PendingPowerReadout state={state} /> : null}
+        <button
+          aria-expanded={!trayMinimized}
+          aria-label={trayMinimized ? "Restore the instant window" : "Minimize the instant window"}
+          className="reactionTrayMinimize"
+          onClick={() => setTrayMinimized((value) => !value)}
+          title={trayMinimized ? "Restore — the reaction is still waiting" : "Minimize — the reaction will keep waiting"}
+          type="button"
+        >
+          {trayMinimized ? <Maximize2 aria-hidden="true" size={15} /> : <Minus aria-hidden="true" size={15} />}
+        </button>
       </header>
       <div className="trayTiles">
         {tiles.length === 0 &&

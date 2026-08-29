@@ -9,7 +9,7 @@ import type { CombatUnitState, GameAction, GameState, PlayerId } from "./state";
  *
  *  - Little Busters: a fighter facing a Little Busters seat may spend 1 gold on
  *    each of three one-off combat counters (discard a random LB card, reduce
- *    the campus hero to half HP rounded up, draw two cards).
+ *    the campus hero to half HP rounded up, draw one card).
  *  - Monster Girl Quest: no longer carries an opponent-draw penalty.
  */
 
@@ -25,7 +25,7 @@ const KNOWN_DECK = ["artifact.crest_of_valor", "artifact.necklace_of_swiftness",
 // Little Busters PvP counters
 // ---------------------------------------------------------------------------
 
-describe("retired Little Busters PvP counters", () => {
+describe("Little Busters PvP counters", () => {
   /**
    * A round-1 PvP combat (phase "combat") where p1 (Castle) fights p2 (Little
    * Busters). p2 gets a battlefield HERO unit (the "damage" target). Faction is
@@ -85,9 +85,17 @@ describe("retired Little Busters PvP counters", () => {
   const counters = (state: GameState, playerId: PlayerId) =>
     getLegalActions(state, playerId).filter((legal) => legal.action.type === "LITTLE_BUSTERS_COUNTER");
 
-  it("offers no paid counters to the fighter facing Little Busters", () => {
+  const counterAction = (state: GameState, playerId: PlayerId, counter: "discard" | "damage" | "draw") =>
+    counters(state, playerId).find(
+      (legal) => legal.action.type === "LITTLE_BUSTERS_COUNTER" && legal.action.counter === counter
+    )?.action;
+
+  it("offers all three counters to the fighter facing Little Busters", () => {
     const state = lbFight("lb-offer");
-    expect(counters(state, "p1")).toHaveLength(0);
+    const kinds = counters(state, "p1").map((legal) =>
+      legal.action.type === "LITTLE_BUSTERS_COUNTER" ? legal.action.counter : ""
+    );
+    expect(kinds.sort()).toEqual(["damage", "discard", "draw"]);
   });
 
   it("CONTROL: no counters when the opponent is NOT Little Busters", () => {
@@ -103,43 +111,44 @@ describe("retired Little Busters PvP counters", () => {
     expect(counters(state, "p1")).toHaveLength(0);
   });
 
-  it("rejects a legacy discard-counter action without changing state", () => {
+  it("the discard counter costs 1 gold and moves one LB card to their discard", () => {
     const state = lbFight("lb-discard");
+    const discardCardId = state.players.p2.hand[0];
     const goldBefore = state.players.p1.resources.gold;
-    const handBefore = [...state.players.p2.hand];
-    const result = applyAction(state, { type: "LITTLE_BUSTERS_COUNTER", playerId: "p1", counter: "discard" });
-    expect(result.errors.map((error) => error.code)).toContain("ACTION_NOT_LEGAL");
-    const next = result.state;
-    expect(next.players.p1.resources.gold).toBe(goldBefore);
-    expect(next.players.p2.hand).toEqual(handBefore);
-    expect(next.players.p2.discard).toHaveLength(0);
+
+    const next = apply(state, counterAction(state, "p1", "discard")!);
+    expect(next.players.p1.resources.gold).toBe(goldBefore - 1);
+    expect(next.players.p2.hand).toHaveLength(0);
+    expect(next.players.p2.discard).toContain(discardCardId);
+    expect(counterAction(next, "p1", "discard")).toBeUndefined();
+    expect(counterAction(next, "p1", "damage")).toBeTruthy();
+    expect(counterAction(next, "p1", "draw")).toBeTruthy();
   });
 
-  it("rejects a legacy damage-counter action without changing state", () => {
+  it("the damage counter reduces the LB hero to half HP rounded up for 1 gold", () => {
     const state = lbFight("lb-damage");
     state.combat!.units.unit_p2_campus_hero.maxHealth = 9;
     const goldBefore = state.players.p1.resources.gold;
     const before = state.combat!.units.unit_p2_campus_hero.damage;
 
-    const result = applyAction(state, { type: "LITTLE_BUSTERS_COUNTER", playerId: "p1", counter: "damage" });
-    expect(result.errors.map((error) => error.code)).toContain("ACTION_NOT_LEGAL");
-    const next = result.state;
-    expect(next.players.p1.resources.gold).toBe(goldBefore);
-    expect(next.combat!.units.unit_p2_campus_hero.damage).toBe(before);
+    const next = apply(state, counterAction(state, "p1", "damage")!);
+    expect(next.players.p1.resources.gold).toBe(goldBefore - 1);
+    expect(next.combat!.units.unit_p2_campus_hero.damage).toBe(before + 4);
+    expect(next.combat!.units.unit_p2_campus_hero.maxHealth - next.combat!.units.unit_p2_campus_hero.damage).toBe(5);
+    expect(counterAction(next, "p1", "damage")).toBeUndefined();
   });
 
-  it("rejects a legacy draw-counter action without changing state", () => {
+  it("the draw counter draws exactly 1 card for 1 gold", () => {
     const state = lbFight("lb-draw");
     const goldBefore = state.players.p1.resources.gold;
     const handBefore = state.players.p1.hand.length;
     const deckBefore = state.players.p1.deck.length;
 
-    const result = applyAction(state, { type: "LITTLE_BUSTERS_COUNTER", playerId: "p1", counter: "draw" });
-    expect(result.errors.map((error) => error.code)).toContain("ACTION_NOT_LEGAL");
-    const next = result.state;
-    expect(next.players.p1.resources.gold).toBe(goldBefore);
-    expect(next.players.p1.hand.length).toBe(handBefore);
-    expect(next.players.p1.deck.length).toBe(deckBefore);
+    const next = apply(state, counterAction(state, "p1", "draw")!);
+    expect(next.players.p1.resources.gold).toBe(goldBefore - 1);
+    expect(next.players.p1.hand.length).toBe(handBefore + 1);
+    expect(next.players.p1.deck.length).toBe(deckBefore - 1);
+    expect(counterAction(next, "p1", "draw")).toBeUndefined();
   });
 });
 

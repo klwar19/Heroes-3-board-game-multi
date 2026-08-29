@@ -70,9 +70,16 @@ export type ZoomContent = {
   empowered?: boolean;
 };
 
+type LiveUnitStats = {
+  attack: number;
+  defense: number;
+  health: number;
+  initiative: number;
+};
+
 type CardZoomContextValue = {
   zoomCard: (cardId: string, empowered?: boolean) => void;
-  zoomUnit: (unit: CombatUnitState, ruleset?: GameRuleset) => void;
+  zoomUnit: (unit: CombatUnitState, ruleset?: GameRuleset, liveStats?: LiveUnitStats) => void;
   zoomContent: (content: ZoomContent) => void;
 };
 
@@ -163,7 +170,11 @@ export function cardZoomContent(
   };
 }
 
-export function unitZoomContent(unit: CombatUnitState, ruleset: GameRuleset = "legacy"): ZoomContent {
+export function unitZoomContent(
+  unit: CombatUnitState,
+  ruleset: GameRuleset = "legacy",
+  liveStats?: LiveUnitStats
+): ZoomContent {
   const health = Math.max(0, unit.maxHealth - unit.damage);
   const abilities = getUnitAbilityDefinitions(unit);
   // A Pack card's other side: lethal damage flips it to its Few side. Shown as a
@@ -180,7 +191,10 @@ export function unitZoomContent(unit: CombatUnitState, ruleset: GameRuleset = "l
   // Attack tokens are still NOT folded here — the board card and the inspector
   // are the live-total surfaces for those.
   const innateAttackBonus = getInnateFlatAttackBonus(unit, false);
-  const liveAttack = unit.attack + innateAttackBonus;
+  const liveAttack = liveStats?.attack ?? unit.attack + innateAttackBonus;
+  const liveDefense = liveStats?.defense ?? unit.defense;
+  const liveHealth = liveStats?.health ?? unit.maxHealth;
+  const liveInitiative = liveStats?.initiative ?? unit.initiative;
 
   return {
     title: unit.cardName,
@@ -190,7 +204,7 @@ export function unitZoomContent(unit: CombatUnitState, ruleset: GameRuleset = "l
         ? {
             slug: unit.commanderSlug as CommanderSlug,
             grades: unit.commanderGrades,
-            statValues: { attack: unit.attack, defense: unit.defense, health: unit.maxHealth, speed: unit.initiative },
+            statValues: { attack: liveAttack, defense: liveDefense, health: liveHealth, speed: liveInitiative },
             dead: unit.damage >= unit.maxHealth
           }
         : undefined,
@@ -211,7 +225,7 @@ export function unitZoomContent(unit: CombatUnitState, ruleset: GameRuleset = "l
       ? `commander (tierless) ${unit.type} · initiative ${unit.initiative}`
       : `${titleCase(unit.grade)} ${unit.type} · initiative ${unit.initiative}`,
     lines: [
-      `Attack ${liveAttack}${innateAttackBonus !== 0 ? ` (base ${unit.attack})` : ""} · Defense ${unit.defense}${unit.defenseToken ? " (defending: rolls +1 for +1 Defense)" : ""} · HP ${health}/${unit.maxHealth}`,
+      `Attack ${liveAttack}${liveAttack !== unit.attack ? ` (base ${unit.attack})` : ""} · Defense ${liveDefense}${unit.defenseToken ? " (defending: rolls +1 for +1 Defense)" : ""} · HP ${health}/${liveHealth}`,
       flip
         ? `Lethal damage flips this card to its ${flip.cardName} side: Attack ${
             flip.attack + flip.flippedAttackBonus
@@ -469,7 +483,7 @@ export function CardZoomProvider({ children }: { children: ReactNode }) {
     () => ({
       zoomCard: (cardId, empowered) =>
         setContent(cardZoomContent(cardId, empowered, balanceFlags.polish, balanceFlags.community)),
-      zoomUnit: (unit, ruleset) => setContent(unitZoomContent(unit, ruleset)),
+      zoomUnit: (unit, ruleset, liveStats) => setContent(unitZoomContent(unit, ruleset, liveStats)),
       zoomContent: (next) => setContent(next)
     }),
     [balanceFlags.polish, balanceFlags.community]

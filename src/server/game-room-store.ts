@@ -682,7 +682,7 @@ export function submitRoomAction(
   // itself have ended the game (last faction standing).
   const finishedMatch = detectFinishedMatch(current.state, settledState);
   const finishedReplay = finishedMatch?.ranked
-    ? takeFinishedRankedReplay(roomId, finishedMatch.matchId, replayNow)
+      ? takeFinishedRankedReplay(roomId, finishedMatch.matchId, replayNow, settledState.adventure?.winnerPlayerId ?? undefined)
     : null;
   const pendingMatchReport = reportFinishedMatch(current.state, settledState, finishedReplay) ?? undefined;
   // RANKED multiplayer only: once a real win/loss is attributed, CLOSE the room

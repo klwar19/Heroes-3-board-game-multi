@@ -96,8 +96,8 @@ export const ANIME_FACTION_PENALTIES: readonly AnimeFactionPenaltyDefinition[] =
     factionId: "little_busters",
     register: "anime",
     title: "School Contribution Fund",
-    short: "−5 gold/−1 material; PvP enemy draws 1",
-    detail: "−5 gold and −1 material each Resource round, paid after income without debt. At PvP combat start, the opposing player draws exactly 1 card. There are no paid discard, hero-damage, or extra-draw counters.",
+    short: "−5 gold/−1 material; three paid enemy counters",
+    detail: "−5 gold and −1 material each Resource round, paid after income without debt. In PvP, the enemy may pay 1 gold for each one-use counter: random discard, draw 1 card, or reduce the campus hero to half HP (remaining HP rounded up).",
     timing: "resource-round",
     mechanicTitle: "Campus Hero",
     mechanicDetail:

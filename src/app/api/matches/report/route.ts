@@ -3,16 +3,17 @@ import {
   accountsBackendKind,
   getAccountBackend,
   getAccountStore,
-  persistAccounts
+  persistAccounts,
+  supabaseConfigFromEnv,
 } from "@/server/accounts/account-store-instance";
 import type { MatchParticipantInput } from "@/server/accounts/account-store";
-import type { RankedReplay } from "@/server/ranked-replay";
+import { rankedReplayEnabled, type RankedReplay } from "@/server/ranked-replay";
 
 export const dynamic = "force-dynamic";
 
 const RESULTS = new Set(["win", "loss", "draw", "abandon"]);
 const MAX_PARTICIPANTS = 12;
-const MAX_REPORT_BODY_BYTES = 1_700_000;
+const MAX_REPORT_BODY_BYTES = 4_200_000;
 
 async function readBoundedJson(request: Request): Promise<{ value: unknown; tooLarge: boolean }> {
   if (!request.body) return { value: null, tooLarge: false };
@@ -90,24 +91,47 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "INVALID", message: "A match needs a matchId and at least two participants." }, { status: 400 });
   }
 
+  const replayRequired = ranked && rankedReplayEnabled(process.env.HOMM3BG_RANKED_REPLAY_ENABLED);
+  let replayStored = !replayRequired;
+  if (replayRequired) {
+    if (!body?.replay || typeof body.replay !== "object") {
+      return NextResponse.json(
+        { error: "REPLAY_REQUIRED", message: "A ranked result is accepted only with its training replay." },
+        { status: 400 },
+      );
+    }
+    // Vercel's filesystem is ephemeral. Accepting a ranked result there while
+    // Supabase is absent would acknowledge—and then lose—the only replay.
+    if (process.env.VERCEL === "1" && !supabaseConfigFromEnv()) {
+      return NextResponse.json(
+        { error: "REPLAY_STORE_UNAVAILABLE", message: "Production Supabase replay storage is not configured." },
+        { status: 503 },
+      );
+    }
+    try {
+      const { storeRankedReplay } = await import("@/server/ranked-replay-store");
+      const stored = await storeRankedReplay(matchId, body.replay as RankedReplay);
+      // A retry after the replay write but before the ladder write observes a
+      // duplicate. That is durable success, not a reason to retry forever.
+      replayStored = stored.stored || stored.reason === "duplicate";
+      if (!replayStored) {
+        const status = stored.reason === "invalid" ? 400 : 503;
+        return NextResponse.json(
+          { error: "REPLAY_NOT_STORED", reason: stored.reason ?? "unknown" },
+          { status },
+        );
+      }
+    } catch (error) {
+      console.error(`[ranked-replay] failed to store ${matchId}:`, error);
+      return NextResponse.json({ error: "REPLAY_STORE_FAILED" }, { status: 503 });
+    }
+  }
+
+  // Replay first, result second: a retry can safely observe a duplicate replay
+  // and continue, but acknowledging Elo first could permanently orphan data.
   const outcome = await getAccountBackend().recordMatchResult({ matchId, participants, ranked });
   if (outcome.applied && accountsBackendKind() === "builtin") {
     persistAccounts(getAccountStore());
-  }
-  let replayStored = false;
-  if (ranked && body?.replay && typeof body.replay === "object") {
-    try {
-      // Lazy: ordinary result reports and forbidden requests do not load the
-      // replay/storage module (or the engine types it validates).
-      const { storeRankedReplay } = await import("@/server/ranked-replay-store");
-      replayStored = (await storeRankedReplay(matchId, body.replay as RankedReplay)).stored;
-    } catch (error) {
-      // Replay storage is deliberately non-critical: a missing table, quota, or
-      // temporary DB failure must never roll back MMR or make the winning game
-      // action fail. The edge submits only once, so this also cannot retry-flood
-      // the app deployment.
-      console.error(`[ranked-replay] failed to store ${matchId}:`, error);
-    }
   }
   return NextResponse.json({ applied: outcome.applied, replayStored });
 }

@@ -10199,6 +10199,13 @@ export function PreBattlePanel({
   const attackerName = state.players[attackerId]?.name ?? "Attacker";
   const defenderName = state.players[defenderId]?.name ?? "Defender";
   const siege = combat.context.kind === "player" && combat.context.siege;
+  const defenseLabel = siege
+    ? " (siege)"
+    : combat.context.holdingDefense === "settlement"
+      ? " (settlement defense)"
+      : combat.context.holdingDefense === "town"
+        ? " (town defense)"
+        : "";
   const hasAccepted = (id: PlayerId) => prep.accepted.includes(id);
 
   const viewerIsParticipant =
@@ -10249,7 +10256,7 @@ export function PreBattlePanel({
         <Swords aria-hidden="true" size={16} />
         <strong>
           Battle! {attackerName} attacks {defenderName}
-          {siege ? " (siege)" : ""}
+          {defenseLabel}
         </strong>
         <button
           aria-expanded={!minimized}
