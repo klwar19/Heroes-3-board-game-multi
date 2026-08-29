@@ -92,7 +92,7 @@ function enterNeutralFight(factionId: "little_busters" | "fuyuki", heroDefId: st
 }
 
 describe("Little Busters complete playable content", () => {
-  it("pays the 5-gold and 1-material school contribution every Resource round without creating debt", () => {
+  it("pays the 6-gold and 1-material school contribution every Resource round without creating debt", () => {
     const state = createAdventureGameState({
       seed: "little-busters-school-fund",
       difficulty: "normal",
@@ -114,10 +114,10 @@ describe("Little Busters complete playable content", () => {
 
     startAdventureRound(state);
 
-    expect(state.players.p1.resources.gold).toBe(2); // 1 + 6 income - 5 fund
+    expect(state.players.p1.resources.gold).toBe(1); // 1 + 6 income - 6 fund
     expect(state.players.p1.resources.buildingMaterials).toBe(1);
     expect(state.players.p2.resources.gold).toBe(7); // control: no faction cost
-    expect(state.eventLog.some((event) => event.type === "EVENT_NOTE" && event.message.includes("School Contribution Fund — 5 gold and 1 building material"))).toBe(true);
+    expect(state.eventLog.some((event) => event.type === "EVENT_NOTE" && event.message.includes("School Contribution Fund — 6 gold and 1 building material"))).toBe(true);
 
     state.players.p1.resources.gold = 0;
     state.players.p1.production.gold = 2;
@@ -165,12 +165,12 @@ describe("Little Busters complete playable content", () => {
     });
     expect(coreUnitDefinitions["little_busters.saya"]).toMatchObject({
       few: { attack: 6, defense: 2, health: 5, initiative: 8, cost: { gold: 14, valuables: 1 } },
-      pack: { attack: 6, defense: 2, health: 6, initiative: 9, cost: { gold: 21, valuables: 2 } }
+      pack: { attack: 6, defense: 2, health: 7, initiative: 12, cost: { gold: 21, valuables: 2 } }
     });
     expect(coreUnitDefinitions["little_busters.mio"]).toMatchObject({
       type: "ranged",
       few: { attack: 5, defense: 2, health: 6, initiative: 4 },
-      pack: { attack: 6, defense: 2, health: 7, initiative: 5, cost: { gold: 28, valuables: 2 } }
+      pack: { attack: 6, defense: 2, health: 8, initiative: 5, cost: { gold: 28, valuables: 2 } }
     });
   });
 

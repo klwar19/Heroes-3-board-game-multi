@@ -393,13 +393,13 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
   "little_busters.saya": {
     id: "little_busters.saya", name: "Saya Tokido", faction: "little_busters", tier: "gold", type: "ground",
     few: { attack: 6, defense: 2, health: 5, initiative: 8, cost: { gold: 14, valuables: 1 }, abilities: ["saya-infiltration", "ignores-retaliation"], abilityText: "Infiltration - as a move, place Saya on any empty Combat space; her attacks do not provoke Retaliation.", cardImage: littleBustersCard("golden", "saya-tokido", "few") },
-    pack: { attack: 6, defense: 2, health: 6, initiative: 9, cost: { gold: 21, valuables: 2 }, abilities: ["saya-infiltration", "ignores-retaliation", "saya-armor-break"], abilityText: "Infiltration - move to any empty space and ignore Retaliation; Armor Break - only on a -1 on Saya's Attack die, place one non-stacking -1 Defense token (minimum 0) for the rest of Combat.", cardImage: littleBustersCard("golden", "saya-tokido", "pack") },
+    pack: { attack: 6, defense: 2, health: 7, initiative: 12, cost: { gold: 21, valuables: 2 }, abilities: ["saya-infiltration", "ignores-retaliation", "saya-armor-break"], abilityText: "Infiltration - move to any empty space and ignore Retaliation; Armor Break - only on a -1 on Saya's Attack die, place one non-stacking -1 Defense token (minimum 0) for the rest of Combat.", cardImage: littleBustersCard("golden", "saya-tokido", "pack") },
     source
   },
   "little_busters.mio": {
     id: "little_busters.mio", name: "Mio Nishizono", faction: "little_busters", tier: "gold", type: "ranged",
     few: { attack: 5, defense: 2, health: 6, initiative: 4, cost: { gold: 19 }, abilities: ["gargoyle-spell-ward", "ignore-all-combat-penalties"], abilityText: "White Parasol - takes 1 less Spell damage and ignores all ranged penalties.", cardImage: littleBustersCard("golden", "mio-nishizono", "few") },
-    pack: { attack: 6, defense: 2, health: 7, initiative: 5, cost: { gold: 28, valuables: 2 }, abilities: ["gargoyle-spell-ward", "ignore-all-combat-penalties", "archangel-lethal-save"], abilityText: "Midori's Shadow - +1 Defense against the first attack each Combat round; spell ward and no ranged penalties; once per Combat, cancel lethal damage to another friendly unit.", cardImage: littleBustersCard("golden", "mio-nishizono", "pack") },
+    pack: { attack: 6, defense: 2, health: 8, initiative: 5, cost: { gold: 28, valuables: 2 }, abilities: ["gargoyle-spell-ward", "ignore-all-combat-penalties", "archangel-lethal-save"], abilityText: "Midori's Shadow - +1 Defense against the first attack each Combat round; spell ward and no ranged penalties; once per Combat, cancel lethal damage to another friendly unit.", cardImage: littleBustersCard("golden", "mio-nishizono", "pack") },
     source
   }
 };

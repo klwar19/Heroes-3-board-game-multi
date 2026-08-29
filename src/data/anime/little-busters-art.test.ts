@@ -52,6 +52,7 @@ describe("Little Busters production art pack", () => {
     for (const slug of ["rank-haruka", "rank-rins-cats", "rank-disciplinary-committee", "rank-masato", "rank-softball-club", "rank-saya", "rank-mio", "rank-shared", "grade-benchwarmer", "grade-regular", "grade-ace", "grade-strongest-in-school"]) {
       await expectImage(`anime/icons/little-busters/${slug}.webp`, 512, 512, true);
     }
+    await expectImage("anime/icons/little-busters/rank-rins-cats-heal.webp", 512, 512, true);
   });
 
   it("registers the seishun ladder and the seven unit-specific XP icons", () => {
@@ -75,5 +76,6 @@ describe("Little Busters production art pack", () => {
       ["little_busters.mio", "gargoyle-spell-ward", "rank-mio"]
     ] as const;
     for (const [unit, ability, icon] of choices) expect(unitRankAbilityIcon(ability, unit)).toContain(icon);
+    expect(unitRankAbilityIcon("veteran-soul-feast", "little_busters.rins_cats")).toContain("rank-rins-cats-heal");
   });
 });

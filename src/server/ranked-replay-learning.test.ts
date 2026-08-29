@@ -45,8 +45,38 @@ describe("ranked replay strategic learning extraction", () => {
   it("labels outcomes but never labels unchosen alternatives as mistakes", () => {
     const [sample] = extractStrategicDecisionSamples(replay("one", "p1"));
     expect(sample.terminalOutcome).toBe("win");
+    expect(sample.decisionOutcome).toBe("win");
+    expect(sample.outcomeBasis).toBe("match");
     expect(sample.unchosenAlternatives).toEqual([move("END_TURN")]);
     expect(sample.completeTrajectory).toBe(true);
+  });
+
+  it("credits combat choices to their battle result instead of blindly using the match result", () => {
+    const wonMatchAfterLosingBattle = replay("battle-local", "p1", "mid-match-recovery");
+    wonMatchAfterLosingBattle.entries[0] = {
+      ...wonMatchAfterLosingBattle.entries[0]!,
+      round: 9,
+      phase: "combat",
+      learningContext: {
+        stage: "late-game",
+        domains: ["pvp-combat"],
+        legalAlternativeCount: 2,
+        underPressure: false,
+        pressureSignals: [],
+      },
+      events: [{
+        id: "battle-ended",
+        type: "COMBAT_ENDED",
+        winnerPlayerId: "p2",
+        defeatedPlayerId: "p1",
+        reason: "all-enemy-units-defeated",
+      }],
+    };
+
+    const [sample] = extractStrategicDecisionSamples(wonMatchAfterLosingBattle);
+    expect(sample.terminalOutcome).toBe("win");
+    expect(sample.decisionOutcome).toBe("loss");
+    expect(sample.outcomeBasis).toBe("battle");
   });
 
   it("does not invent opening evidence from a mid-match recovery capture", () => {

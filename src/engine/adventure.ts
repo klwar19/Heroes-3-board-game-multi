@@ -40,7 +40,10 @@ import {
   releaseEndedOngoingCards
 } from "./active-effects";
 import { digFromOwnDeckTop, drawCardsForPlayer, reshuffleSharedDeckIfEmpty, shuffleCards } from "./decks";
-import { applyAnimeFactionResourceRoundPenalty } from "./anime-faction-penalties";
+import {
+  applyAnimeFactionAstrologersRoundPenalty,
+  applyAnimeFactionResourceRoundPenalty
+} from "./anime-faction-penalties";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { cultivationEnabled, cultivationHandLimitBonus, maybeAdvanceCultivationRealm } from "./anime-cultivation";
 import {
@@ -18688,10 +18691,10 @@ export function startAdventureRound(state: GameState): void {
 
   const kind = state.round === 1 ? "first" : state.round % 2 === 1 ? "resource" : "astrologers";
 
-  // Anime Chakra/Paradox Strain (Hidden Leaf, MGQ): the −1 hand-limit penalty is
-  // ROUND-SCOPED, not a permanent stacking loss. Clear last round's penalty here
-  // so the hand limit is back to normal; the Resource-round income loop below then
-  // re-applies exactly −1 for the Resource round it names (never accumulating).
+  // Anime faction hand-limit penalties (Hidden Leaf on Resource rounds, Little
+  // Busters on Astrologers rounds) are ROUND-SCOPED, not permanent stacking
+  // losses. Clear the previous round here; the matching round hook below then
+  // re-applies exactly −1 for the round it names (never accumulating).
   for (const player of Object.values(state.players)) {
     if (player.id !== NEUTRAL_PLAYER_ID && player.otherworldHandLimitLoss) {
       player.otherworldHandLimitLoss = 0;
@@ -18839,6 +18842,8 @@ export function startAdventureRound(state: GameState): void {
       if (!player || playerId === NEUTRAL_PLAYER_ID) {
         continue;
       }
+
+      applyAnimeFactionAstrologersRoundPenalty(state, playerId);
 
       const astrologersOre = heroGradeAstrologersRoundMaterials(state, playerId);
       if (astrologersOre > 0) {

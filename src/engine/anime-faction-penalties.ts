@@ -59,13 +59,25 @@ export function applyAnimeFactionResourceRoundPenalty(state: GameState, playerId
   }
 
   if (player.factionId === "little_busters") {
-    const paid = spendAvailable(state, playerId, { gold: 5, buildingMaterials: 1 });
+    const paid = spendAvailable(state, playerId, { gold: 6, buildingMaterials: 1 });
     appendEvent(state, {
       type: "EVENT_NOTE",
       playerId,
-      message: `${title} — ${paid.gold} gold and ${paid.buildingMaterials} building material paid${paid.gold < 5 || paid.buildingMaterials < 1 ? " (all available resources)" : ""}.`
+      message: `${title} — ${paid.gold} gold and ${paid.buildingMaterials} building material paid${paid.gold < 6 || paid.buildingMaterials < 1 ? " (all available resources)" : ""}.`
     });
   }
+}
+
+/** Little Busters: the contribution also cuts hand size during each Astrologers round. */
+export function applyAnimeFactionAstrologersRoundPenalty(state: GameState, playerId: PlayerId): void {
+  const player = state.players[playerId];
+  if (player?.factionId !== "little_busters") return;
+  player.otherworldHandLimitLoss = 1;
+  appendEvent(state, {
+    type: "EVENT_NOTE",
+    playerId,
+    message: `${animeFactionPenaltyTitle(player.factionId) ?? "School Contribution Fund"} — hand limit reduced by 1 for this Astrologers round.`
+  });
 }
 /** One random real Azur Lane army card suffers 1 damage and its enemy draws 1 at combat start. */
 export function applyAzurLaneCombatStartPenalty(state: GameState): void {

@@ -260,6 +260,10 @@ describe("Unit Experience — rank math & either/or rewards", () => {
   });
 
   it("explicit signature examples resolve exactly at their requested ranks", () => {
+    expect(rankScheduleFor("little_busters.rins_cats")[2]).toMatchObject({
+      kind: "ability",
+      choices: ["veteran-soul-feast"]
+    });
     expect(unitRankAbilityIds("necropolis.skeletons", 4)).toContain("veteran-rebirth");
     expect(unitRankAbilityIds("tower.magi", 4)).toContain("veteran-spell-sunder");
     expect(unitRankAbilityIds("rampart.unicorns", 4)).toContain("veteran-low-roll-insight");
@@ -733,7 +737,7 @@ function resolveArmyAttack(
   defenderArmy?: { unitDefId: string; side: "few" | "pack" | "neutral"; experience?: number },
   defenderAttack = 0,
   defenderInitiative?: number,
-  options: { defenderMaxHealth?: number; attackerMoved?: boolean; attackerDeck?: string[] } = {}
+  options: { defenderMaxHealth?: number; attackerMoved?: boolean; attackerDeck?: string[]; attackerDamage?: number } = {}
 ): GameState {
   let state = createInitialGameState(seed);
   const attacker = makeCombatUnitFromArmy(
@@ -745,6 +749,7 @@ function resolveArmyAttack(
   )!;
   attacker.type = "ground";
   attacker.position = 9;
+  attacker.damage = options.attackerDamage ?? 0;
   attacker.movedThisActivation = options.attackerMoved ?? false;
   state.combat!.units.unit_p1_griffins = attacker;
   if (defenderArmy) {
@@ -804,6 +809,27 @@ function resolveArmyAttack(
 }
 
 describe("Unit Experience — observable redesigned effects in combat", () => {
+  it("Rin's Cats Grade II heals exactly 1 HP after its own attack", () => {
+    const gradeOne = resolveArmyAttack(
+      "uxp-rins-cats-grade-one",
+      { unitDefId: "little_busters.rins_cats", side: "few", experience: 5 },
+      undefined,
+      0,
+      undefined,
+      { attackerDamage: 1 }
+    );
+    const gradeTwo = resolveArmyAttack(
+      "uxp-rins-cats-grade-two",
+      { unitDefId: "little_busters.rins_cats", side: "few", experience: 9 },
+      undefined,
+      0,
+      undefined,
+      { attackerDamage: 1 }
+    );
+    expect(gradeOne.combat!.units.unit_p1_griffins.damage).toBe(1);
+    expect(gradeTwo.combat!.units.unit_p1_griffins.damage).toBe(0);
+  });
+
   it("halberdiers R1 adds +1 Attack only when they initiate", () => {
     const control = resolveArmyAttack("uxp-r1-attack-ctl", {
       unitDefId: "castle.halberdiers",

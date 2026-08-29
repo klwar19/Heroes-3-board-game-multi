@@ -426,6 +426,54 @@ describe("card policy — combat reactions", () => {
     );
   });
 
+  it("learns from the Absolution–VuHy replay not to overbuff into a damage cap", () => {
+    const hydras = unit({
+      id: "HYDRAS",
+      controllerId: "p2",
+      attack: 7,
+      position: 10,
+    });
+    const nix = unit({
+      id: "NIX",
+      controllerId: "p1",
+      defense: 2,
+      maxHealth: 8,
+      position: 9,
+      abilities: ["nix-damage-cap"],
+    });
+    const offense: LegalAction = {
+      action: {
+        type: "PLAY_REACTION",
+        playerId: "p2",
+        cardId: "ability.offense",
+        mode: "expert",
+      } as GameAction,
+      label: "Offense +2",
+    };
+    const observed = observation(
+      [hydras, nix],
+      [pass, offense],
+      "p2",
+      ["ability.offense"],
+    );
+    (observed.state as unknown as { stack: unknown[] }).stack = [{
+      action: {
+        type: "ATTACK_UNIT",
+        playerId: "p2",
+        attackerId: "HYDRAS",
+        defenderId: "NIX",
+      },
+      modifiers: { attackBonus: 0, defenseBonus: 0 },
+    }];
+
+    expect(chooseComputerAction(observed)?.action.type).toBe("PASS_REACTION");
+
+    // CONTROL: below the cap, +Attack still increases the real damage and is
+    // correctly preferred over passing.
+    hydras.attack = 4;
+    expect(chooseComputerAction(observed)?.action.type).toBe("PLAY_REACTION");
+  });
+
   it("casts a combat damage spell rather than only defending", () => {
     const attacker = unit({ id: "A", controllerId: "p2", position: 8 });
     const enemy = unit({ id: "E", attack: 4, defense: 1, maxHealth: 6, position: 9 });

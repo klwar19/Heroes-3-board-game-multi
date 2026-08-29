@@ -359,6 +359,7 @@ function rankOneStepFor(unitDefId: string): RankStep {
 
 function explicitRankTwo(unitDefId: string): RankStep | null {
   if (unitDefId === "castle.champions") return S({ ...Z, health: 1 });
+  if (unitDefId === "little_busters.rins_cats") return A("veteran-soul-feast");
   return null;
 }
 
@@ -593,6 +594,7 @@ export const LITTLE_BUSTERS_RANK_ABILITY_ICONS: Record<string, string> = {
 export const LITTLE_BUSTERS_RANK_ABILITY_ICON_BY_CHOICE: Record<string, string> = {
   "little_busters.haruka:attack-roll-advantage": "/assets/anime/icons/little-busters/rank-haruka.webp",
   "little_busters.rins_cats:sandworm-strike-again": "/assets/anime/icons/little-busters/rank-rins-cats.webp",
+  "little_busters.rins_cats:veteran-soul-feast": "/assets/anime/icons/little-busters/rank-rins-cats-heal.webp",
   "little_busters.disciplinary_committee:ignore-all-combat-penalties": "/assets/anime/icons/little-busters/rank-disciplinary-committee.webp",
   "little_busters.masato:unlimited-retaliation": "/assets/anime/icons/little-busters/rank-masato.webp",
   "little_busters.softball_club:attack-roll-advantage-passive": "/assets/anime/icons/little-busters/rank-softball-club.webp",

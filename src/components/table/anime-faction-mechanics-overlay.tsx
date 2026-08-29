@@ -156,7 +156,13 @@ export function AnimeFactionMechanicsOverlay({
         </section>
         <section className="animeTownBriefingCard penalty">
           <span className="animeTownBriefingTag warn">
-            {selected.timing === "resource-round" ? "EACH RESOURCE ROUND" : "EACH COMBAT"}
+            {selected.timing === "resource-round"
+              ? "EACH RESOURCE ROUND"
+              : selected.timing === "astrologers-round"
+                ? "EACH ASTROLOGERS ROUND"
+                : selected.timing === "alternating-rounds"
+                  ? "RESOURCE + ASTROLOGERS ROUNDS"
+                  : "EACH COMBAT"}
           </span>
           <h3>{selected.title}</h3>
           <p><strong>{selected.short}.</strong> {selected.detail}</p>

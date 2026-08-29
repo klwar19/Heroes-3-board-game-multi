@@ -1,4 +1,5 @@
 import { cardLibrary } from "@/data/cards/library";
+import { unitAbilities } from "@/data/units/abilities";
 import {
   getBattlefieldCoordinates,
   getOrthogonalNeighbors,
@@ -471,6 +472,39 @@ function scoreStatReaction(
   }
   if (effect.type === "ADD_COMBAT_STAT") {
     const stat = effect.stat;
+    if (stat === "attack") {
+      const combat = observation.state.combat;
+      const top = observation.state.stack?.at(-1);
+      const attack = top?.action;
+      if (
+        combat &&
+        attack &&
+        (attack.type === "ATTACK_UNIT" || attack.type === "MOVE_AND_ATTACK_UNIT")
+      ) {
+        const attacker = combat.units[attack.attackerId];
+        const defender = combat.units[attack.defenderId];
+        if (attacker?.controllerId === observation.playerId && defender) {
+          const cap = (defender.abilities ?? []).reduce((lowest, abilityId) => {
+            const abilityEffect = unitAbilities[abilityId]?.effect;
+            return abilityEffect?.type === "CAP_DAMAGE_PER_ATTACK"
+              ? Math.min(lowest, abilityEffect.amount)
+              : lowest;
+          }, Number.POSITIVE_INFINITY);
+          const currentDamage = Math.max(
+            0,
+            attacker.attack + (top.modifiers.attackBonus ?? 0) -
+              defender.defense - (top.modifiers.defenseBonus ?? 0),
+          );
+          // The Absolution–VuHy replay showed Offense + Sword of Hellfire
+          // stacked onto Hydras even though Nix's Hardened Shell already capped
+          // the hit at 4. Preserve every extra Attack card once the current hit
+          // has reached the target's per-attack cap.
+          if (Number.isFinite(cap) && currentDamage >= cap) {
+            return 1_020;
+          }
+        }
+      }
+    }
     if (stat === "defense") {
       const combat = observation.state.combat;
       const top = observation.state.stack?.at(-1);

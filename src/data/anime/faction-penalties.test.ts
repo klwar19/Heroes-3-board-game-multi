@@ -68,6 +68,9 @@ describe("anime/xianxia faction briefings", () => {
     expect(animeFactionPenalty("heavenly_demon")?.detail).toContain("no Resource-round gold penalty");
     expect(animeFactionPenalty("little_busters")?.detail).toContain("each one-use counter");
     expect(animeFactionPenalty("little_busters")?.detail).toContain("draw 1 card");
+    expect(animeFactionPenalty("little_busters")?.detail).toContain("−6 gold");
+    expect(animeFactionPenalty("little_busters")?.detail).toContain("Astrologers round");
+    expect(animeFactionPenalty("little_busters")?.detail).toContain("returns to normal");
     expect(animeFactionPenalty("little_busters")?.detail).not.toContain("Paralysis");
     expect(animeFactionPenalty("little_busters")?.detail).not.toContain("−2 Attack");
     expect(animeFactionPenalty("azur_lane")?.detail).toContain("draws 1 card");

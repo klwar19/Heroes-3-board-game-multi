@@ -26,7 +26,9 @@ describe("AnimeFactionMechanicsOverlay", () => {
     expect(text).toContain("Campus Hero");
     expect(text).toMatch(/fights on the battlefield as a unit/i);
     // …and this town's OWN penalty (not a grouped roster).
-    expect(text).toContain("−5 gold and −1 material each Resource round");
+    expect(text).toContain("−6 gold and −1 material each Resource round");
+    expect(text).toContain("hand limit is reduced by 1");
+    expect(text).toContain("RESOURCE + ASTROLOGERS ROUNDS");
     expect(text).toContain("School Contribution Fund");
     // It is per-town: no OTHER anime town's penalty appears.
     expect(text).not.toContain("Fleet Maintenance");
@@ -64,10 +66,10 @@ describe("AnimeFactionMechanicsOverlay", () => {
         { id: "p2", name: "Catherine", factionId: "castle", heroDefId: "catherine" }
       ]
     });
-    state.eventLog.push({ id: "event_penalty", type: "EVENT_NOTE", playerId: "p1", message: "School Contribution Fund — 5 gold and 1 building material paid." });
+    state.eventLog.push({ id: "event_penalty", type: "EVENT_NOTE", playerId: "p1", message: "School Contribution Fund — 6 gold and 1 building material paid." });
     render(<AnimeFactionMechanicsOverlay state={state} viewerPlayerId="p1" />);
     const dialog = screen.getByRole("dialog", { name: /School Contribution Fund/i });
-    expect(dialog.textContent).toContain("5 gold and 1 building material");
+    expect(dialog.textContent).toContain("6 gold and 1 building material");
     // The town art shows as a clear dedicated <img> banner (not a dimmed
     // full-panel background), so the illustration actually reads.
     expect(dialog.querySelector<HTMLImageElement>(".animeNoticeArt img")?.getAttribute("src")).toContain(
