@@ -57,6 +57,10 @@ export function getUnitAbilityDefinitions(unit: CombatUnitState): UnitAbilityDef
   return unit.abilities
     .map((abilityId) => unitAbilities[abilityId])
     .filter(Boolean)
+    // Key Authority cancels one activation ability for this activation only.
+    // The ids reset at the next fresh activation, so every downstream helper
+    // sees the cancellation without special-case checks.
+    .filter((ability) => !(unit.keyAuthorityCancelledAbilityIds ?? []).includes(ability.id))
     // "As long as this unit is Stacked …": a Creature Bank card's Stacked-only
     // ability vanishes — for every read, combat or display — the instant the
     // unit is not Stacked (never given a token, or it was discarded on a lethal
@@ -166,16 +170,25 @@ export function getUnitAttackRerollSources(
   /** Whether this is a Retaliation Attack — every unit reroll ability is
    * printed [unit_attack] (own declared attack only, a distinct symbol from
    * retaliation per the rules legend), so none is offered on a retaliation. */
-  isRetaliation = false
-): { name: string; rerolls: number; onlyOnRoll?: number }[] {
+  isRetaliation = false,
+  defender?: CombatUnitState
+): { name: string; abilityId: string; rerolls: number; onlyOnRoll?: number; drawIfRerollResult?: number; drawCount?: number }[] {
   if (isRetaliation) {
     return [];
   }
   return getAbilitiesWithEffect(unit, "ATTACK_DIE_REROLL").flatMap((ability) =>
     ability.effect?.type === "ATTACK_DIE_REROLL" &&
     ability.effect.rerollsPerAttack > 0 &&
-    (!ability.effect.requiresMoved || moved)
-      ? [{ name: ability.name, rerolls: ability.effect.rerollsPerAttack, onlyOnRoll: ability.effect.onlyOnRoll }]
+    (!ability.effect.requiresMoved || moved) &&
+    (!ability.effect.requiresNonAdjacentTarget || Boolean(defender && !isAdjacent(unit.position, defender.position)))
+      ? [{
+          name: ability.name,
+          abilityId: ability.id,
+          rerolls: ability.effect.rerollsPerAttack,
+          onlyOnRoll: ability.effect.onlyOnRoll,
+          drawIfRerollResult: ability.effect.drawIfRerollResult,
+          drawCount: ability.effect.drawCount
+        }]
       : []
   );
 }
@@ -199,14 +212,15 @@ export function getDoubleAttackAbility(
  */
 export function getSecondAttackAbility(
   unit: CombatUnitState
-): { abilityId: string; abilityName: string; baseAttack: number; onRoll?: number } | null {
+): { abilityId: string; abilityName: string; baseAttack: number; onRoll?: number; requiresNonAdjacentTarget?: boolean } | null {
   for (const ability of getAbilitiesWithEffect(unit, "SECOND_ATTACK_ADJACENT_TO_TARGET")) {
     if (ability.effect?.type === "SECOND_ATTACK_ADJACENT_TO_TARGET") {
       return {
         abilityId: ability.id,
         abilityName: ability.name,
         baseAttack: ability.effect.baseAttack,
-        onRoll: ability.effect.onRoll
+        onRoll: ability.effect.onRoll,
+        requiresNonAdjacentTarget: ability.effect.requiresNonAdjacentTarget
       };
     }
   }
@@ -499,6 +513,50 @@ export function getAttackBonusVsMarked(attacker: CombatUnitState, defender: Comb
   );
 }
 
+/** Azusa Sagitta Mortis: one point of pierce on one non-adjacent attack each round. */
+export function getSagittaMortisDefenseReduction(
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  combatRound: number
+): { abilityId: string; abilityName: string; amount: number } | null {
+  if (isAdjacent(attacker.position, defender.position) || attacker.sagittaMortisUsedRound === combatRound) return null;
+  for (const ability of getAbilitiesWithEffect(attacker, "DEFENSE_REDUCTION_NONADJ_ONCE_PER_ROUND")) {
+    if (ability.effect?.type === "DEFENSE_REDUCTION_NONADJ_ONCE_PER_ROUND") {
+      return { abilityId: ability.id, abilityName: ability.name, amount: ability.effect.amount };
+    }
+  }
+  return null;
+}
+
+/** Kivotos Railgun Charge: +Attack only after the target spent its retaliation this round. */
+export function getAttackBonusVsRetaliatedTarget(attacker: CombatUnitState, defender: CombatUnitState): number {
+  if (!defender.retaliatedThisRound) return 0;
+  return getAbilitiesWithEffect(attacker, "ATTACK_BONUS_VS_RETALIATED_TARGET").reduce(
+    (total, ability) =>
+      total + (ability.effect?.type === "ATTACK_BONUS_VS_RETALIATED_TARGET" ? ability.effect.amount : 0),
+    0
+  );
+}
+
+/** Saori Vanitas: +Attack against a unit that has not activated this round. */
+export function getVanitasAttackBonus(attacker: CombatUnitState, defender: CombatUnitState): number {
+  if (defender.activatedThisRound) return 0;
+  return getAbilitiesWithEffect(attacker, "VANITAS_VS_UNACTIVATED").reduce(
+    (total, ability) => total + (ability.effect?.type === "VANITAS_VS_UNACTIVATED" ? ability.effect.attackBonus : 0),
+    0
+  );
+}
+
+/** Iori Prefect Snipe: +Attack only against a damaged target at range. */
+export function getDamagedNonAdjacentAttackBonus(attacker: CombatUnitState, defender: CombatUnitState): number {
+  if (defender.damage <= 0 || isAdjacent(attacker.position, defender.position)) return 0;
+  return getAbilitiesWithEffect(attacker, "ATTACK_BONUS_VS_DAMAGED_NON_ADJACENT").reduce(
+    (total, ability) =>
+      total + (ability.effect?.type === "ATTACK_BONUS_VS_DAMAGED_NON_ADJACENT" ? ability.effect.amount : 0),
+    0
+  );
+}
+
 /**
  * "Hatred" Attack bonus: extra Attack this unit gains when its target's
  * creature name matches a printed grudge (Archangels ↔ Arch Devils, Genies →
@@ -528,6 +586,214 @@ export function getDefenseBonusOnAttackDie(defender: CombatUnitState, roll: numb
         : total,
     0
   );
+}
+
+/** Toki Abi-Eshuh: +Defense against only the first attack targeting her per combat. */
+export function getFirstAttackDefenseOncePerCombat(defender: CombatUnitState): number {
+  if (defender.tokiFirstDefenseUsedThisCombat) return 0;
+  return getAbilitiesWithEffect(defender, "FIRST_ATTACK_DEFENSE_ONCE_PER_COMBAT").reduce(
+    (total, ability) =>
+      total + (ability.effect?.type === "FIRST_ATTACK_DEFENSE_ONCE_PER_COMBAT" ? ability.effect.amount : 0),
+    0
+  );
+}
+
+/** Mutsuki Trick Mine: one damage before the first enemy melee attack against her. */
+export function getFirstMeleeAttackerDamage(defender: CombatUnitState): {
+  abilityId: string;
+  abilityName: string;
+  amount: number;
+} | null {
+  if (defender.mutsukiTrickMineUsedThisCombat) return null;
+  for (const ability of getAbilitiesWithEffect(defender, "DAMAGE_FIRST_MELEE_ATTACKER_ON_DECLARE")) {
+    if (ability.effect?.type === "DAMAGE_FIRST_MELEE_ATTACKER_ON_DECLARE") {
+      return { abilityId: ability.id, abilityName: ability.name, amount: ability.effect.amount };
+    }
+  }
+  return null;
+}
+
+/** Seia Tea Party Order: unused adjacent allied aura sources for this attack. */
+export function getTeaPartyDefenseSources(
+  combat: CombatState,
+  defender: CombatUnitState
+): Array<{ source: CombatUnitState; abilityId: string; abilityName: string; amount: number }> {
+  return Object.values(combat.units).flatMap((source) => {
+    if (
+      source.id === defender.id ||
+      source.controllerId !== defender.controllerId ||
+      !isAlive(source) ||
+      source.teaPartyOrderUsedThisCombat ||
+      !isAdjacent(source.position, defender.position)
+    ) {
+      return [];
+    }
+    return getAbilitiesWithEffect(source, "FIRST_ADJACENT_ALLY_ATTACK_DEFENSE_AURA").flatMap((ability) =>
+      ability.effect?.type === "FIRST_ADJACENT_ALLY_ATTACK_DEFENSE_AURA"
+        ? [{ source, abilityId: ability.id, abilityName: ability.name, amount: ability.effect.amount }]
+        : []
+    );
+  });
+}
+
+/** Hoshino Abyssal Shield: a live self/adjacent aura source for this unit's first attack of the round. */
+export function getAbyssalShieldSource(
+  combat: CombatState,
+  defender: CombatUnitState
+): { source: CombatUnitState; abilityId: string; abilityName: string } | null {
+  if (defender.abyssalShieldUsedRound === combat.round) return null;
+  for (const source of Object.values(combat.units)) {
+    if (
+      source.controllerId !== defender.controllerId ||
+      !isAlive(source) ||
+      (source.id !== defender.id && !isAdjacent(source.position, defender.position))
+    ) {
+      continue;
+    }
+    const ability = getAbilitiesWithEffect(source, "SELF_AND_ADJACENT_FIRST_ATTACK_DEFENSE_TOKEN_PER_ROUND")[0];
+    if (ability) return { source, abilityId: ability.id, abilityName: ability.name };
+  }
+  return null;
+}
+
+/** Miyo Survey Route: choose one allied unit to teleport after deployment. */
+export function getCombatStartTeleportAbility(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string } | null {
+  const ability = getAbilitiesWithEffect(unit, "TELEPORT_ALLY_AT_COMBAT_START")[0];
+  return ability ? { abilityId: ability.id, abilityName: ability.name } : null;
+}
+
+/** Seia Prophetic Dream: inspect the top N own-deck cards and keep one. */
+export function getCombatStartOwnDeckPickAbility(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; count: number } | null {
+  const ability = getAbilitiesWithEffect(unit, "PICK_ONE_FROM_OWN_DECK_AT_COMBAT_START")[0];
+  return ability?.effect?.type === "PICK_ONE_FROM_OWN_DECK_AT_COMBAT_START"
+    ? { abilityId: ability.id, abilityName: ability.name, count: ability.effect.count }
+    : null;
+}
+
+/** Shiroko Cycle Scout / Saori Arius Ambush: optional self move after deployment. */
+export function getCombatStartSelfMoveAbility(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; spaces: number } | null {
+  const ability = getAbilitiesWithEffect(unit, "SELF_MOVE_AT_COMBAT_START")[0];
+  return ability?.effect?.type === "SELF_MOVE_AT_COMBAT_START"
+    ? { abilityId: ability.id, abilityName: ability.name, spaces: ability.effect.spaces }
+    : null;
+}
+
+/** Mutsuki Explosive Prank: adjacent mine placed at activation start. */
+export function getExplosivePrankAbility(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; primaryDamage: number; adjacentEnemyDamage: number } | null {
+  const ability = getAbilitiesWithEffect(unit, "PLACE_SPLASH_MINE_AT_ACTIVATION")[0];
+  return ability?.effect?.type === "PLACE_SPLASH_MINE_AT_ACTIVATION"
+    ? {
+        abilityId: ability.id,
+        abilityName: ability.name,
+        primaryDamage: ability.effect.primaryDamage,
+        adjacentEnemyDamage: ability.effect.adjacentEnemyDamage
+      }
+    : null;
+}
+
+/** Live Drone Support sources whose stored mark is this defender. */
+export function getDroneSupportSources(
+  combat: CombatState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState
+): Array<{ source: CombatUnitState; abilityId: string; abilityName: string; attackBonus: number }> {
+  return Object.values(combat.units).flatMap((source) => {
+    if (
+      !isAlive(source) ||
+      source.controllerId !== attacker.controllerId ||
+      source.droneSupportMarkedTargetId !== defender.id
+    ) {
+      return [];
+    }
+    const ability = getAbilitiesWithEffect(source, "MARK_ENEMY_FOR_NEXT_FRIENDLY_ATTACK")[0];
+    return ability?.effect?.type === "MARK_ENEMY_FOR_NEXT_FRIENDLY_ATTACK"
+      ? [{ source, abilityId: ability.id, abilityName: ability.name, attackBonus: ability.effect.attackBonus }]
+      : [];
+  });
+}
+
+/** Every living, unspent Seia Future Sight that may react to this Attack die. */
+export function getFutureSightSources(
+  combat: CombatState
+): Array<{ source: CombatUnitState; abilityId: string; abilityName: string }> {
+  return Object.values(combat.units).flatMap((source) => {
+    if (!isAlive(source) || source.futureSightUsedThisCombat) return [];
+    const ability = getAbilitiesWithEffect(source, "FORCE_ANY_ATTACK_DIE_REROLL_ONCE_PER_COMBAT")[0];
+    return ability ? [{ source, abilityId: ability.id, abilityName: ability.name }] : [];
+  });
+}
+
+/** Living, unspent enemy Kei units that may cancel an activation ability. */
+export function getKeyAuthoritySources(
+  combat: CombatState,
+  activatingUnit: CombatUnitState
+): Array<{ source: CombatUnitState; abilityId: string; abilityName: string; draw: number }> {
+  return Object.values(combat.units).flatMap((source) => {
+    if (
+      !isAlive(source) ||
+      source.controllerId === activatingUnit.controllerId ||
+      source.keyAuthorityUsedThisCombat
+    ) return [];
+    const ability = getAbilitiesWithEffect(source, "CANCEL_ENEMY_ACTIVATION_ABILITY_ONCE_PER_COMBAT")[0];
+    return ability?.effect?.type === "CANCEL_ENEMY_ACTIVATION_ABILITY_ONCE_PER_COMBAT"
+      ? [{ source, abilityId: ability.id, abilityName: ability.name, draw: ability.effect.draw }]
+      : [];
+  });
+}
+
+
+/** Yuuka Calculated Cover: optional one-space movement after her own attack. */
+export function getPostAttackMoveAbility(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; spaces: number } | null {
+  const ability = getAbilitiesWithEffect(unit, "POST_ATTACK_OPTIONAL_MOVE")[0];
+  return ability?.effect?.type === "POST_ATTACK_OPTIONAL_MOVE"
+    ? { abilityId: ability.id, abilityName: ability.name, spaces: ability.effect.spaces }
+    : null;
+}
+
+/** Toki Mode Change definition and currently selected stance bonuses. */
+export function getModeChangeAbility(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; amount: number } | null {
+  const ability = getAbilitiesWithEffect(unit, "ACTIVATION_CHOOSE_ATTACK_OR_DEFENSE")[0];
+  return ability?.effect?.type === "ACTIVATION_CHOOSE_ATTACK_OR_DEFENSE"
+    ? { abilityId: ability.id, abilityName: ability.name, amount: ability.effect.amount }
+    : null;
+}
+
+export function getModeChangeAttackBonus(unit: CombatUnitState): number {
+  const ability = getModeChangeAbility(unit);
+  return ability && unit.tokiMode === "attack" ? ability.amount : 0;
+}
+
+export function getModeChangeDefenseBonus(unit: CombatUnitState): number {
+  const ability = getModeChangeAbility(unit);
+  return ability && unit.tokiMode === "guard" ? ability.amount : 0;
+}
+
+/** Wakamo Foxfire: bonus against her first damaged target, starting next attack. */
+export function getWakamoMarkedTargetAttackBonus(attacker: CombatUnitState, defender: CombatUnitState): number {
+  if (!attacker.wakamoMarkArmed || attacker.wakamoMarkedTargetId !== defender.id) return 0;
+  return getAbilitiesWithEffect(attacker, "MARK_FIRST_DAMAGED_TARGET").reduce(
+    (total, ability) => total + (ability.effect?.type === "MARK_FIRST_DAMAGED_TARGET" ? ability.effect.attackBonus : 0),
+    0
+  );
+}
+
+/** Returns Foxfire's marking source while Wakamo still has no marked enemy. */
+export function getWakamoMarkAbility(attacker: CombatUnitState): { abilityId: string; abilityName: string } | null {
+  if (attacker.wakamoMarkedTargetId) return null;
+  const ability = getAbilitiesWithEffect(attacker, "MARK_FIRST_DAMAGED_TARGET")[0];
+  return ability ? { abilityId: ability.id, abilityName: ability.name } : null;
 }
 
 /**
@@ -681,6 +947,7 @@ export type FlatDamageFollowUp = {
    * Consumed by the siege house rule to find enemy fortifications in the zone.
    */
   zone: "target" | "self";
+  oncePerCombat?: boolean;
 };
 
 /**
@@ -692,7 +959,7 @@ export type FlatDamageFollowUp = {
  */
 export function getFlatDamageFollowUps(
   combat: CombatState,
-  context: { attacker: CombatUnitState; defender: CombatUnitState; attackKind: "melee" | "ranged" }
+  context: { attacker: CombatUnitState; defender: CombatUnitState; attackKind: "melee" | "ranged"; damage?: number }
 ): FlatDamageFollowUp[] {
   const followUps: FlatDamageFollowUp[] = [];
   const { attacker, defender } = context;
@@ -700,6 +967,9 @@ export function getFlatDamageFollowUps(
 
   for (const ability of getAbilitiesWithEffect(attacker, "FLAT_DAMAGE_ADJACENT_TO_TARGET")) {
     if (ability.effect?.type !== "FLAT_DAMAGE_ADJACENT_TO_TARGET") {
+      continue;
+    }
+    if (ability.effect.oncePerCombat && attacker.kivotosKyrieUsedThisCombat) {
       continue;
     }
 
@@ -727,7 +997,8 @@ export function getFlatDamageFollowUps(
         abilityName: ability.name,
         amount: ability.effect.amount,
         candidateUnitIds: candidates.map((unit) => unit.id),
-        zone: "target"
+        zone: "target",
+        oncePerCombat: ability.effect.oncePerCombat
       });
     }
   }
@@ -753,6 +1024,29 @@ export function getFlatDamageFollowUps(
         candidateUnitIds: candidates.map((unit) => unit.id),
         zone: "self"
       });
+    }
+  }
+
+  if ((context.damage ?? 0) > 0 && attacker.wakamoMarkedTargetId === defender.id) {
+    for (const ability of getAbilitiesWithEffect(attacker, "FLAT_DAMAGE_ADJACENT_TO_MARKED_TARGET")) {
+      if (ability.effect?.type !== "FLAT_DAMAGE_ADJACENT_TO_MARKED_TARGET") continue;
+      const candidates = units.filter(
+        (unit) =>
+          unit.id !== defender.id &&
+          unit.id !== attacker.id &&
+          unit.controllerId !== attacker.controllerId &&
+          isAlive(unit) &&
+          isAdjacent(unit.position, defender.position)
+      );
+      if (candidates.length > 0) {
+        followUps.push({
+          abilityId: ability.id,
+          abilityName: ability.name,
+          amount: ability.effect.amount,
+          candidateUnitIds: candidates.map((unit) => unit.id),
+          zone: "target"
+        });
+      }
     }
   }
 

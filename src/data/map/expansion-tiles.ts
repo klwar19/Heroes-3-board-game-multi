@@ -178,6 +178,32 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
       fieldSymbolScale: 0.62
     }
   },
+  "BA-S1": {
+    id: "BA-S1",
+    group: "starting",
+    content: "regular_stretch_goals",
+    terrain: "highlands",
+    fields: [
+      { location: "town", faction: "blue_archive" },
+      { location: "resource_symbol" },
+      { location: "blocked_field" },
+      { location: "empty_field" },
+      { location: "treasure_symbol", difficulty: 1 },
+      { location: "mine", difficulty: 1, resource: "buildingMaterials", amount: 2 },
+      { location: "empty_field" }
+    ],
+    outerImpassable: [false, true, false, true, true, true],
+    source: {
+      product: "Anime Realms module",
+      credit:
+        "Kivotos Academy Domain starting tile. Hex roles and outer borders copy Rampart S4; generated Kivotos academy-city atmosphere art uses a transparent seven-hex flower cutout and runtime-attached field symbols."
+    },
+    assets: {
+      tileImage: "/assets/anime/tiles/ba-s1.webp",
+      attachFieldSymbols: true,
+      fieldSymbolScale: 0.62
+    }
+  },
   "MGQ-S1": {
     id: "MGQ-S1",
     group: "starting",

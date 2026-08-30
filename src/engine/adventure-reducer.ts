@@ -336,6 +336,9 @@ import {
   getCombatStartEnemyAttackPenalty,
   getCombatStartMark,
   getCombatStartMoraleGains,
+  getCombatStartOwnDeckPickAbility,
+  getCombatStartSelfMoveAbility,
+  getCombatStartTeleportAbility,
   moraleLockedForPlayer
 } from "./unit-abilities";
 import {
@@ -12322,6 +12325,21 @@ export function applyCombatStartUnitAbilities(state: GameState): void {
         });
       }
     }
+    if (unit.controllerId !== NEUTRAL_PLAYER_ID) {
+      const queue = (combat.kivotosCombatStartQueue ??= []);
+      const deckPick = getCombatStartOwnDeckPickAbility(unit);
+      if (deckPick) {
+        queue.push({ kind: "own-deck-pick", sourceUnitId: unit.id, playerId: unit.controllerId, ...deckPick });
+      }
+      const selfMove = getCombatStartSelfMoveAbility(unit);
+      if (selfMove) {
+        queue.push({ kind: "self-move", sourceUnitId: unit.id, playerId: unit.controllerId, ...selfMove });
+      }
+      const teleport = getCombatStartTeleportAbility(unit);
+      if (teleport) {
+        queue.push({ kind: "teleport-ally", sourceUnitId: unit.id, playerId: unit.controllerId, ...teleport });
+      }
+    }
   }
 }
 
@@ -13402,6 +13420,27 @@ export function finalizeAdventureCombat(state: GameState): void {
   // Aid flip-up BELOW deliberately never dilutes this award — it restores this
   // battle's own casualties, not fresh recruits. No-op while the rule is off.
   awardUnitExperienceAfterCombat(state);
+
+  // Kivotos' Schale Training Ground remains useful when the optional Unit
+  // Experience system is disabled: its training contracts pay 2 gold instead.
+  if (
+    outcome.winnerPlayerId !== NEUTRAL_PLAYER_ID &&
+    !unitExperienceActive(state) &&
+    getTownOfPlayer(state, outcome.winnerPlayerId)?.buildings.some((buildingId) => {
+      const effect = coreBuildingDefinitions[buildingId]?.effect;
+      return effect?.type === "HALL_OF_VALHALLA" && effect.trainingWinGoldWhenXpOff === 2;
+    })
+  ) {
+    if (playerCanPlayNecromancy(state, outcome.winnerPlayerId)) {
+      adventure.rewardQueue.push({
+        playerId: outcome.winnerPlayerId,
+        kind: "visit-steps",
+        steps: [{ type: "GAIN_RESOURCES", gold: 2 }]
+      });
+    } else {
+      gainResources(state, outcome.winnerPlayerId, { gold: 2 }, "Schale Training Ground");
+    }
+  }
 
   // Brute "Soul Reformer": the winner gains 2 gold after each combat won while
   // the Brute survived it (the board adaptation of "50% of battle experience

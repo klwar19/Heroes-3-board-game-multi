@@ -2956,6 +2956,7 @@ export function isPlayableFaction(
   if (id === "hidden_leaf") return Boolean(anime?.enabled && anime.isekaiTowns);
   if (id === "azur_lane") return Boolean(anime?.enabled && anime.isekaiTowns);
   if (id === "little_busters") return Boolean(anime?.enabled && anime.isekaiTowns);
+  if (id === "blue_archive") return Boolean(anime?.enabled && anime.isekaiTowns);
   if (id === "mgq") return Boolean(anime?.enabled && anime.isekaiTowns);
   if (id === "azure_breeze") return Boolean(anime?.enabled && anime.xianxiaTowns);
   if (id === "heavenly_demon") return Boolean(anime?.enabled && anime.xianxiaTowns);

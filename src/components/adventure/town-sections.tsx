@@ -178,6 +178,9 @@ export function buildingPanelNote(
       return `${cubes} of ${effect.max} faction cube${cubes === 1 ? "" : "s"} stored — remove them during any combat for ${bonus}.`;
     }
     case "HALL_OF_VALHALLA":
+      if (effect.trainingWinXp) {
+        return `Automatic after a win — +${effect.trainingWinXp} XP to surviving deployed units, or +${effect.trainingWinGoldWhenXpOff ?? 0} gold while Unit Experience is off.`;
+      }
       return usedThisRound
         ? "Already used this round — offered again next round."
         : `Ready — offered in combat when one of your units attacks (+${effect.amount} attack, once per round).`;

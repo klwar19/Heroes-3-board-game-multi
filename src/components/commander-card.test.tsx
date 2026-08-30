@@ -139,6 +139,30 @@ describe("CommanderCardFace — themed commander layouts", () => {
     expect(getByText("Demon Ancestor")).toBeTruthy();
     expect(getByText(/Blood Frenzy/)).toBeTruthy();
   });
+
+  it("renders Ibuki's real commander card art and complete AP command panel", () => {
+    const face = render(<CommanderCardFace slug="ibuki" grades={{}} />);
+    const art = face.container.querySelector('img[src*="/assets/units-commander-ibuki.webp"]') as HTMLImageElement;
+    expect(art).toBeTruthy();
+    expect(art.alt).toBe("Ibuki — Kivotos Academy Domain Commander");
+    expect(face.getByText("AP CONTROL")).toBeTruthy();
+    expect(face.getByText(/Start with 1 AP; gain \+1 after moving, attacking, Defending, or being attacked/i)).toBeTruthy();
+    expect(face.queryByText(/Executive Order/i)).toBeNull();
+    cleanup();
+
+    const panel = render(<CommanderStatsPanel slug="ibuki" grades={{}} />);
+    expect(panel.getByText(/AP CONTROL · starts combat at 1 AP/i)).toBeTruthy();
+    for (const skill of ["Sniper Shot", "Up to Mischief", "Gadabout"]) {
+      expect(panel.getByText(skill)).toBeTruthy();
+    }
+    // Executive Order appears once, inside AP Control; Ibuki has no duplicate
+    // generic Power ladder beneath it.
+    expect(panel.getAllByText("Executive Order")).toHaveLength(1);
+    expect(panel.queryByText(/^Pow 0$/i)).toBeNull();
+    expect(panel.getByText(/Deal 1 flat damage.*at Power 2, deal 2 instead/i)).toBeTruthy();
+    expect(panel.getByText(/at Power 1\+, it also has −1 Defense/i)).toBeTruthy();
+    expect(panel.getByText(/Schale Mission Briefing/i)).toBeTruthy();
+  });
 });
 
 // The clearer level-up picker: one separated, highlighted option per stat.

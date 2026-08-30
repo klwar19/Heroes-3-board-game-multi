@@ -588,6 +588,23 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
     ],
     geometry: DESIGNED_GEOMETRY
   },
+  blue_archive: {
+    factionId: "blue_archive",
+    panoramaImage: "/assets/anime/blue-archive/town/blue-archive-town-empty.png",
+    fullImage: "/assets/anime/blue-archive/town/blue-archive-town-full.png",
+    barTileImages: Array.from({ length: 7 }, (_, index) => `/assets/anime/blue-archive/town-bars/blue-archive-built-bar-${index + 1}.png`),
+    panelImage: DESIGNED_PANEL_IMAGE,
+    bars: [
+      ["blue_archive.city_hall"],
+      ["blue_archive.dwelling_bronze"],
+      ["blue_archive.research_workshop"],
+      ["blue_archive.dwelling_silver", "blue_archive.training_ground"],
+      ["blue_archive.mage_guild"],
+      ["blue_archive.citadel"],
+      ["blue_archive.dwelling_gold"]
+    ],
+    geometry: DESIGNED_GEOMETRY
+  },
   mgq: {
     factionId: "mgq",
     panoramaImage: "/assets/anime/towns/mgq-paradox-town-empty.webp",

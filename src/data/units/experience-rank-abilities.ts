@@ -650,8 +650,10 @@ export const MGQ_JOB_RANK_ABILITY_ICONS: Record<string, string> = {
 };
 
 const RANK_ABILITY_ICON_FALLBACK = "/assets/spell-icons/slayer.png";
+export const BLUE_ARCHIVE_RANK_ABILITY_ICON = "/assets/anime/icons/blue-archive/rank-shared.webp";
 
 export function unitRankAbilityIcon(abilityId: string, unitDefId?: string, mgqJob?: string): string {
+  if (unitDefId?.startsWith("blue_archive.")) return BLUE_ARCHIVE_RANK_ABILITY_ICON;
   if (unitDefId?.startsWith("mgq.") || mgqJob) {
     const jobIcon = MGQ_JOB_RANK_ABILITY_ICONS[abilityId];
     if (jobIcon) return jobIcon;

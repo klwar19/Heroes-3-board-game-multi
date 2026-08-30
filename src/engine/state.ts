@@ -629,6 +629,7 @@ export type FactionId =
   | "azur_lane"
   | "heavenly_demon"
   | "little_busters"
+  | "blue_archive"
   | "mgq";
 
 export type TargetRef =
@@ -1048,6 +1049,11 @@ export type ActiveEffectModifier =
       amount: number;
     }
   | {
+      /** Mika IV: after the bound unit is attacked, the attacker suffers damage. */
+      type: "DAMAGE_ATTACKER_AFTER_ATTACKED";
+      amount: number;
+    }
+  | {
       /**
        * Cyra's Haste VI: the unit gains this much Defense, but only against
        * attacks made by a unit with strictly lower (effective) Initiative.
@@ -1398,6 +1404,10 @@ export type ActiveEffectModifier =
       type: "ATTACK_ROLL_DISADVANTAGE";
     }
   | {
+      /** Seia VI: every Attack die result produced by the affected unit is fixed at -1. */
+      type: "ATTACK_ROLL_FIXED_MINUS_ONE";
+    }
+  | {
       /**
        * The mirror of ATTACK_ROLL_DISADVANTAGE: the affected unit rolls two Attack
        * dice and resolves the HIGHER result. Read in getAttackRollMode at the same
@@ -1611,6 +1621,12 @@ export type EffectDefinition =
       perCostCard?: number;
       /** Offense/Armorer: "Then draw 1 card." */
       drawCards?: number;
+      /** Draw-rider cards such as Kei IV discard only after the new cards enter hand. */
+      thenDiscard?: number;
+      /** Yuuka VI: after the defense reaction, discard random cards from the opponent. */
+      randomEnemyDiscard?: number;
+      /** Mika VI: after this attack, heal the attacker by half the damage dealt (rounded up). */
+      healHalfDamageDealt?: boolean;
       /**
        * Blackshard of the Dead Knight: "discard 1 card. If the discarded card
        * was a spell, draw 1 card." When set, the play draws 1 card only if one
@@ -2484,7 +2500,9 @@ export type EffectDefinition =
        * a +2 statistic) can reach a grade instead of forcing N separate discards.
        */
       type: "SKIP_ACTIVATION";
-      grade: UnitGrade;
+      grade?: UnitGrade;
+      /** Kei VI reaches a unit of any tier without a Power payment. */
+      anyGrade?: boolean;
     }
   | {
       /**
@@ -2759,6 +2777,10 @@ export type EffectDefinition =
       name: string;
       initiative: number;
       movementBonus?: number;
+      /** Chise IV: damage dealt to every enemy before applying the slow. */
+      damage?: number;
+      /** Chise I: card draw after the mass slow is created. */
+      drawCards?: number;
     }
   | {
       /**
@@ -7644,6 +7666,8 @@ export type ResolutionStackItem = {
      */
     schoolPowerBonus?: number;
     attackBonus: number;
+    /** Drone Support bonus frozen and consumed when this attack was declared. */
+    droneSupportAttackBonus?: number;
     defenseBonus: number;
     /** Azure formations / Sword Intent and Heavenly Blood Frenzy, latched at declaration. */
     cultivationAttackBonus?: number;
@@ -7978,6 +8002,8 @@ export type ResolutionStackItem = {
      * the `ignores-retaliation` ability. Set from ADD_COMBAT_STAT.ignoresRetaliation.
      */
     ignoresRetaliationThisAttack?: boolean;
+    /** Mika VI: source specialty whose attack heals half the damage it deals. */
+    healHalfDamageDealtCardId?: CardId;
     /**
      * Tarnum (Fortress) Basilisks VI: "your selected unit uses its special
      * ability regardless of the required roll's result". For this single attack
@@ -9171,6 +9197,13 @@ export type BattlefieldTokenState = {
   burnsAtActivation?: boolean;
   /** quicksand / land_mine: true = real trap, false = decoy. Hidden from non-controllers. */
   armed?: boolean;
+  /** Explosive Prank ignores friendly units and remains armed until an enemy enters. */
+  enemyOnly?: boolean;
+  /** Explosive Prank splash dealt to every other enemy adjacent to the triggering unit. */
+  adjacentEnemyDamage?: number;
+  /** Unit ability that created this token, for exact event/FX attribution. */
+  sourceUnitId?: UnitId;
+  sourceAbilityId?: string;
   /** force_field: combat round at whose end it lifts; absent = lasts the whole Combat. */
   expiresAtCombatRoundEnd?: number;
 };
@@ -9267,6 +9300,8 @@ export type CombatUnitState = {
   summonedThisCombat?: boolean;
   /** Archangels: set once this unit has spent its once-per-combat lethal save. */
   usedLethalSaveThisCombat?: boolean;
+  /** Mika Pack: Kyrie Eleison's once-per-combat adjacent splash has fired. */
+  kivotosKyrieUsedThisCombat?: boolean;
   /** Fuyuki Medea: her one incoming-damage cap has been spent this combat round. */
   fuyukiCasterDamageCapUsedThisRound?: boolean;
   /** Masato: combat round in which Bodyguard redirected an adjacent ally's attack. */
@@ -9275,6 +9310,35 @@ export type CombatUnitState = {
   stackingDefenseWhenAttackedBonus?: number;
   /** Mio Pack: its +1 Defense against the first attack this round has been spent. */
   mioFirstDefenseUsedThisRound?: boolean;
+  /** Toki Few: the first incoming attack's +1 Defense has been spent this combat. */
+  tokiFirstDefenseUsedThisCombat?: boolean;
+  /** Azusa Pack: combat round in which Sagitta Mortis pierced Defense. */
+  sagittaMortisUsedRound?: number;
+  /** Mutsuki Few: its first-melee-attacker Trick Mine has triggered this combat. */
+  mutsukiTrickMineUsedThisCombat?: boolean;
+  /** Seia Pack: Tea Party Order has protected its first adjacent ally this combat. */
+  teaPartyOrderUsedThisCombat?: boolean;
+  /** Round in which this unit spent an Abyssal Shield virtual Defense token. */
+  abyssalShieldUsedRound?: number;
+  /** Wakamo: the first enemy she damaged this combat. */
+  wakamoMarkedTargetId?: UnitId;
+  /** Foxfire's +Attack is armed only after the marking blow has been calculated. */
+  wakamoMarkArmed?: boolean;
+  /** Toki Pack's currently selected Mode Change stance. */
+  tokiMode?: "attack" | "guard";
+  /** Shiroko's Drone Support use gate and currently marked enemy. */
+  droneSupportUsedRound?: number;
+  droneSupportMarkedTargetId?: UnitId;
+  /** Combat round in which Iron Horus reduced this unit's first damage assignment. */
+  ironHorusUsedRound?: number;
+  /** Seia's Future Sight has forced one Attack-die reroll this combat. */
+  futureSightUsedThisCombat?: boolean;
+  /** Kei has cancelled one enemy activation ability this combat. */
+  keyAuthorityUsedThisCombat?: boolean;
+  /** Key Authority sources that declined this exact ability trigger. */
+  keyAuthorityPasses?: string[];
+  /** Auto activation abilities cancelled for this activation; reset at its start. */
+  keyAuthorityCancelledAbilityIds?: string[];
   /** Phoenixes: set once this unit has spent its once-per-combat Rebirth self-save. */
   usedRebirthThisCombat?: boolean;
   /** MGQ Mage Job: the pre-movement Magic Arrow has been spent this combat. */
@@ -9504,6 +9568,8 @@ export type CombatUnitState = {
    * cast is once per combat round ("may cast"), free during its own activation.
    */
   commanderCastRound?: number;
+  /** Ibuki's persistent per-combat command resource. Starts at 1. */
+  ibukiActionPoints?: number;
   /** A real hero body on the battlefield. Tierless and rebuilt at full Health each combat. */
   heroUnit?: boolean;
   heroDefId?: string;
@@ -9718,6 +9784,12 @@ export type CombatState = {
   attackerPlayerId: PlayerId;
   defenderPlayerId: PlayerId;
   activeUnitId: UnitId | null;
+  /** Ordered interactive Blue Archive combat-start abilities still waiting to resolve. */
+  kivotosCombatStartQueue?: Array<
+    | { kind: "teleport-ally"; sourceUnitId: UnitId; playerId: PlayerId; abilityId: string; abilityName: string }
+    | { kind: "own-deck-pick"; sourceUnitId: UnitId; playerId: PlayerId; abilityId: string; abilityName: string; count: number }
+    | { kind: "self-move"; sourceUnitId: UnitId; playerId: PlayerId; abilityId: string; abilityName: string; spaces: number }
+  >;
   context: CombatContext;
   /** Fuyuki seats that have already spent their one Command Seal this combat. */
   fuyukiCommandSealUsedPlayerIds?: PlayerId[];
@@ -15484,6 +15556,13 @@ export type PendingAbilityRollContext = {
 export type AttackRerollSource = {
   /** Display name shown to the player (unit ability, Fortune, Luck, …). */
   name: string;
+  /** Backing unit ability for result riders such as Hardboiled Boss. */
+  abilityId?: string;
+  sourceUnitId?: UnitId;
+  /** Seia Future Sight: spending this source latches its once-per-combat gate. */
+  futureSight?: boolean;
+  drawIfRerollResult?: number;
+  drawCount?: number;
   /** Backing active effect; unit-ability rerolls have none. */
   effectId?: string;
   /** Positive morale token: spending the reroll discards the token. */
@@ -15582,6 +15661,8 @@ export type PendingChoice =
       freeCandidateChoice?: boolean;
       /** Reroll pools in spend order — Luck is always sorted last. */
       rerollSources: AttackRerollSource[];
+      /** Controller-separated reroll windows that resolve after this window. */
+      followUpRerollStages?: Array<{ playerId: PlayerId; rerollSources: AttackRerollSource[] }>;
       sourceEffectIds: string[];
       /**
        * Present when this window rerolls an ABILITY's own dice (Death Stare…)
@@ -15655,6 +15736,10 @@ export type PendingChoice =
         | "genie-take-spell"
         | "combat-knockback"
         | "combat-teleport"
+        | "kivotos-prophetic-dream"
+        | "kivotos-explosive-prank"
+        | "kivotos-key-authority"
+        | "kivotos-mode-change"
         | "neutral-destination"
         | "place-battlefield-tokens"
         | "combat-clone"
@@ -15794,6 +15879,29 @@ export type PendingChoice =
        * plays that ability's teleport sound; absent for the Spell.
        */
       teleport?: { unitId: UnitId; positions: number[]; abilityId?: string };
+      /** Prophetic Dream cards held outside the deck until one is selected. */
+      propheticDream?: { sourceUnitId: UnitId; abilityId: string; abilityName: string; cardIds: CardId[] };
+      /** Explosive Prank's adjacent empty placement cells. */
+      explosivePrank?: {
+        unitId: UnitId;
+        abilityId: string;
+        abilityName: string;
+        positions: number[];
+        primaryDamage: number;
+        adjacentEnemyDamage: number;
+      };
+      /** Kei reaction, with enough data to resume or cancel the triggering ability. */
+      keyAuthority?: {
+        sourceUnitId: UnitId;
+        targetUnitId: UnitId;
+        targetAbilityId: string;
+        targetAbilityName: string;
+        draw: number;
+        resume: "interactive" | "unit-action" | "automatic";
+        deferredAction?: Extract<GameAction, { type: "USE_UNIT_ABILITY" }>;
+      };
+      /** Toki Mode Change: the unit choosing Attack or Guard stance. */
+      modeChange?: { unitId: UnitId; abilityId: string; abilityName: string; amount: number };
       /**
        * neutral-destination (BINH house rule): a neutral guard `unitId` must
        * move to reach its chosen target and several legal cells work; the
@@ -15829,7 +15937,15 @@ export type PendingChoice =
        * controller picks which empty orthogonally-adjacent space (index-aligned
        * with the options) it steps to.
        */
-      step?: { unitId: UnitId; positions: number[] };
+      step?: {
+        unitId: UnitId;
+        positions: number[];
+        optional?: boolean;
+        abilityId?: string;
+        abilityName?: string;
+        resumeAttackSequence?: boolean;
+        combatStart?: boolean;
+      };
       /**
        * combat-activation-order: several units of one side are tied for the next
        * activation slot (same effective initiative); the chooser picks which one
@@ -16516,6 +16632,7 @@ export type PendingChoice =
         | "enchanter-activation"
         | "faerie-damage"
         | "jotunn-teleport"
+        | "combat-start-teleport"
         | "chain-lightning"
         | "place-token"
         | "sacrifice-transfer"

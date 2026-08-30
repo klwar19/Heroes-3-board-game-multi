@@ -55,6 +55,7 @@ export type SpellFxPlan = {
 };
 
 export const spellFxPlans: Record<string, SpellFxPlan> = {
+  "commander.ibuki.executive": { affect: [{ key: "counterstrike" }], sound: "blue-archive/voices/ibuki/executive-order" },
   "spell.magic_arrow": {
     // projectile-0 is the horizontal arrow; the stage rotates it in flight.
     projectile: "magic-arrow-projectile-0",
@@ -267,7 +268,37 @@ export const spellFxPlans: Record<string, SpellFxPlan> = {
 export const cancelFx = { key: "dispel", sound: "spells/dispel" };
 
 /** Unit abilities that have a matching original effect. */
+const blueArchiveAbilityVoiceSources: readonly (readonly [string, readonly string[]])[] = [
+  ["mika", ["kivotos-piercing-judgment", "kivotos-kyrie-eleison"]],
+  ["seia", ["kivotos-prophetic-dream", "kivotos-future-sight"]],
+  ["nagisa", ["kivotos-tea-party-order", "kivotos-royal-artillery"]],
+  ["aris", ["kivotos-railgun-charge", "kivotos-hero-mode"]],
+  ["kei", ["kivotos-system-intrusion", "kivotos-key-authority"]],
+  ["hoshino", ["kivotos-iron-horus", "kivotos-abyssal-shield"]],
+  ["shiroko", ["kivotos-cycle-scout", "kivotos-drone-support"]],
+  ["hina", ["kivotos-prefect-barrage", "kivotos-end-of-vacation"]],
+  ["yuuka", ["kivotos-calculated-cover", "kivotos-perfect-balance"]],
+  ["aru", ["kivotos-outlaw-shot", "kivotos-hardboiled-boss"]],
+  ["neru", ["kivotos-cleaner-rush", "kivotos-cqc-overdrive"]],
+  ["toki", ["kivotos-abi-eshuh", "kivotos-mode-change"]],
+  ["azusa", ["kivotos-silent-faith", "kivotos-sagitta-mortis"]],
+  ["wakamo", ["kivotos-foxfire-mark", "kivotos-crimson-calamity"]],
+  ["saori", ["kivotos-arius-ambush", "kivotos-vanitas"]],
+  ["iori", ["kivotos-prefect-snipe", "kivotos-rapid-reposition"]],
+  ["mutsuki", ["kivotos-trick-mine", "kivotos-explosive-prank"]],
+  ["miyo", ["kivotos-survey-route", "kivotos-cartographers-plan"]],
+  ["hasumi", ["kivotos-eagle-eye", "kivotos-winged-pursuit"]]
+];
+const blueArchiveAbilityVoicePlans: Record<string, SpellFxPlan> = Object.fromEntries(
+  blueArchiveAbilityVoiceSources.flatMap(([slug, ids]) => ids.map((id) => [id, { sound: `blue-archive/voices/${slug}/ability` }]))
+);
+
 export const abilityFxPlans: Record<string, SpellFxPlan> = {
+  ...blueArchiveAbilityVoicePlans,
+  "commander-ibuki-sniper-shot": { projectile: "magic-arrow-projectile-0", hit: "magic-arrow-hit", sound: "blue-archive/voices/ibuki/sniper-shot" },
+  "commander-ibuki-up-to-mischief": { affect: [{ key: "misfortune" }], sound: "blue-archive/voices/ibuki/up-to-mischief" },
+  "commander-ibuki-gadabout": { affect: [{ key: "haste" }], sound: "blue-archive/voices/ibuki/gadabout" },
+  "commander-ibuki-gadabout-landing-damage": { hit: "frost-ring", hitSound: "spells/frost-ring" },
   // MGQ Mage Job uses the original Magic Arrow flight, impact and sound.
   "mgq-mage-magic-arrow": {
     projectile: "magic-arrow-projectile-0",
@@ -629,7 +660,9 @@ export const MAX_PROJECTILE_FLIGHT_MS = 560;
  * longest sound of any kind (Azure Dragon's Fear, a no-damage debuff) is ~3.4s
  * — so it never trims one in practice.
  */
-export const MAX_PRESENTATION_MS = 3600;
+// Long voiced ability lines (notably the sourced Blue Archive EX lines) need
+// enough room to finish before their queued damage/heal presentation lands.
+export const MAX_PRESENTATION_MS = 5500;
 
 /** How long a sprite sheet plays on screen, in ms. */
 export function spriteDurationMs(key: string | undefined): number {

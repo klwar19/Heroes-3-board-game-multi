@@ -1,4 +1,5 @@
 import type { UnitTier } from "@/data/factions/types";
+import { coreBuildingDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitAbilities } from "@/data/units/abilities";
 import {
@@ -602,9 +603,18 @@ export function awardUnitExperienceAfterCombat(state: GameState): void {
   // bonus — a fixed wave reward, deliberately outside the base cap.
   const waveBonus =
     combat.context.kind === "neutral" && combat.context.waveAssault ? WAVE_WIN_UNIT_XP : 0;
+  const trainingGroundBonus = Object.values(state.towns).some(
+    (town) =>
+      town.controllerId === winnerId &&
+      town.buildings.some((buildingId) => {
+        const effect = coreBuildingDefinitions[buildingId]?.effect;
+        return effect?.type === "HALL_OF_VALHALLA" && Boolean(effect.trainingWinXp);
+      })
+  ) ? 1 : 0;
   const gained =
     base +
     waveBonus +
+    trainingGroundBonus +
     equipmentVeteranBonusXp(state, winnerId) +
     (heroHasGradeNode(state, winnerId, HERO_GRADE_NODE_IDS.combatScholar) ? 1 : 0) +
     neutralGuardExperienceBonusAfterCombat(state);

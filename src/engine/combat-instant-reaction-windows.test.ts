@@ -514,6 +514,10 @@ const COMBAT_ANYTIME_FACES: { cardId: CardId; optionIndex: number }[] = [
   { cardId: "specialty.alice.4", optionIndex: 0 },
   { cardId: "specialty.alice.4", optionIndex: 1 },
   { cardId: "specialty.alice.4", optionIndex: 2 },
+  // Blue Archive: Chise I and IV are explicit beginning-of-combat instant
+  // reactions, so both faces must remain available in every reaction window.
+  { cardId: "specialty.chise_blue_archive.1", optionIndex: 0 },
+  { cardId: "specialty.chise_blue_archive.4", optionIndex: 0 },
   { cardId: "specialty.granberia.4", optionIndex: 0 },
   { cardId: "specialty.ilias.4", optionIndex: 0 },
   { cardId: "specialty.kudryavka_noumi.1", optionIndex: 0 },

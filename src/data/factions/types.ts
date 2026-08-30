@@ -19,6 +19,7 @@ export type FactionId =
   | "azur_lane"
   | "heavenly_demon"
   | "little_busters"
+  | "blue_archive"
   | "mgq";
 export type UnitTier = "bronze" | "silver" | "gold" | "azure";
 
@@ -226,6 +227,10 @@ export type TownBuildingEffect =
        */
       type: "HALL_OF_VALHALLA";
       amount: number;
+      /** Variant: no combat boost; instead grant this much extra XP after wins. */
+      trainingWinXp?: number;
+      /** Alternative reward after wins while Unit Experience is disabled. */
+      trainingWinGoldWhenXpOff?: number;
     }
   | {
       /**

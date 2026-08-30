@@ -4,6 +4,8 @@ import type {
   TownBuildingDefinition,
   UnitDefinition
 } from "@/data/factions/types";
+import { blueArchiveCharacters } from "@/data/anime/blue-archive-content";
+import { unitAbilities } from "@/data/units/abilities";
 
 const source = {
   product: "Anime Mod — Ninefold Realms × Otherworld Gate",
@@ -25,7 +27,56 @@ const littleBustersCard = (tier: "bronze" | "silver" | "golden", slug: string, s
   `/assets/anime/units/little-busters/units-little-busters-${tier}-${slug}-${side}.webp`;
 
 /** Two complete seven-line faction rosters: one anime/isekai, one wuxia. */
+const blueArchiveSource = {
+  product: "Blue Archive — Kivotos Academy Domain",
+  credit: "Character names and supplied reference art belong to NEXON Games / Yostar. Original board-game adaptation for this project.",
+  url: "https://bluearchive.wiki/wiki/Characters"
+} as const;
+
+export const blueArchiveUnitDefinitions: Record<string, UnitDefinition> = Object.fromEntries(
+  blueArchiveCharacters.map((unit) => {
+    // Never substitute a nearby generic mechanic for the authored Kivotos
+    // effect. A tag is live only after that exact ability is engine-wired and
+    // behavior-tested; pending abilities remain visible in the reference text
+    // but do not silently execute a different rule.
+    const wired = (abilityId: string): string[] =>
+      unitAbilities[abilityId]?.implementationStatus === "implemented" ? [abilityId] : [];
+    const fewText = `${unit.few.abilityName} — ${unit.few.abilityText}`;
+    const packText = `${fewText}\n${unit.pack.abilityName} — ${unit.pack.abilityText}`;
+    return [unit.id, {
+      id: unit.id,
+      name: unit.name,
+      faction: "blue_archive",
+      tier: unit.tier,
+      type: unit.type,
+      few: {
+        attack: unit.few.attack,
+        defense: unit.few.defense,
+        health: unit.few.health,
+        initiative: unit.few.initiative,
+        cost: { gold: unit.few.gold, ...(unit.few.materials ? { buildingMaterials: unit.few.materials } : {}), ...(unit.few.valuables ? { valuables: unit.few.valuables } : {}) },
+        abilities: wired(unit.few.ability),
+        abilityText: fewText,
+        cardImage: unit.few.art
+      },
+      pack: {
+        attack: unit.pack.attack,
+        defense: unit.pack.defense,
+        health: unit.pack.health,
+        initiative: unit.pack.initiative,
+        cost: { gold: unit.pack.gold, ...(unit.pack.materials ? { buildingMaterials: unit.pack.materials } : {}), ...(unit.pack.valuables ? { valuables: unit.pack.valuables } : {}) },
+        abilities: [...wired(unit.few.ability), ...wired(unit.pack.ability)],
+        abilityText: packText,
+        cardImage: unit.pack.art
+      },
+      wikiUrl: `https://bluearchive.wiki/wiki/${encodeURIComponent(unit.name)}`,
+      source: blueArchiveSource
+    } satisfies UnitDefinition];
+  })
+);
+
 export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
+  ...blueArchiveUnitDefinitions,
   "fuyuki.assassins": {
     id: "fuyuki.assassins", name: "Sasaki Kojirō", faction: "fuyuki", tier: "bronze", type: "ground",
     few: { attack: 2, defense: 1, health: 2, initiative: 8, cost: { gold: 2 }, abilities: [], cardImage: fuyukiCard("bronze", "assassins", "few") },
@@ -463,9 +514,17 @@ const animeTownBuildingBar: Record<string, number> = {
   "little_busters.mage_guild": 5,
   "little_busters.citadel": 6,
   "little_busters.dwelling_gold": 7
+  ,"blue_archive.city_hall": 1
+  ,"blue_archive.dwelling_bronze": 2
+  ,"blue_archive.research_workshop": 3
+  ,"blue_archive.dwelling_silver": 4
+  ,"blue_archive.training_ground": 4
+  ,"blue_archive.mage_guild": 5
+  ,"blue_archive.citadel": 6
+  ,"blue_archive.dwelling_gold": 7
 };
 
-type AnimeTownFactionId = "fuyuki" | "azure_breeze" | "hidden_leaf" | "azur_lane" | "heavenly_demon" | "little_busters";
+type AnimeTownFactionId = "fuyuki" | "azure_breeze" | "hidden_leaf" | "azur_lane" | "heavenly_demon" | "little_busters" | "blue_archive";
 
 /** The dashed art-file prefix for a faction's bar slices (id keeps the underscore). */
 const barArtPrefix = (faction: AnimeTownFactionId): string =>
@@ -496,9 +555,9 @@ const building = (
   effect,
   prerequisites,
   implementationStatus: "implemented",
-  assets: {
-    image: `/assets/town-board/${barArtPrefix(faction)}-bar-${animeTownBuildingBar[id]}.webp`
-  },
+  assets: { image: faction === "blue_archive"
+    ? `/assets/anime/blue-archive/town-bars/blue-archive-built-bar-${animeTownBuildingBar[id]}.png`
+    : `/assets/town-board/${barArtPrefix(faction)}-bar-${animeTownBuildingBar[id]}.webp` },
   source
 });
 
@@ -569,9 +628,47 @@ export const animeTownBuildingDefinitions: Record<string, TownBuildingDefinition
   "little_busters.dwelling_gold": building("little_busters.dwelling_gold", "Secret World Passage", "little_busters", { gold: 10, buildingMaterials: 9, valuables: 4 }, { type: "UNLOCK_RECRUIT_TIER", tier: "gold" }, ["little_busters.dwelling_silver"]),
   "little_busters.clubhouse": building("little_busters.clubhouse", "Cat & Baseball Clubhouse", "little_busters", { gold: 7, buildingMaterials: 4, valuables: 1 }, { type: "TURN_START_PORTAL_SUMMON" }),
   "little_busters.practice_field": building("little_busters.practice_field", "After-School Practice Field", "little_busters", { gold: 7, buildingMaterials: 4 }, { type: "HALL_OF_VALHALLA", amount: 1 })
+  ,"blue_archive.city_hall": building("blue_archive.city_hall", "General Student Council", "blue_archive", { gold: 10, buildingMaterials: 4 }, { type: "RESOURCE_ROUND_CHOICE", options: [{ label: "Secure academy funding: gain 5 gold", gold: 5 }, { label: "Schale intelligence: draw 3 cards", drawCards: 3 }] })
+  ,"blue_archive.citadel": building("blue_archive.citadel", "Sanctum Citadel", "blue_archive", { gold: 8, buildingMaterials: 5, valuables: 1 }, { type: "UNLOCK_REINFORCE" })
+  ,"blue_archive.mage_guild": { ...building("blue_archive.mage_guild", "Halo Research Tower", "blue_archive", { gold: 4, buildingMaterials: 2, valuables: 1 }, { type: "MAGE_GUILD" }), spellBookCost: 5 }
+  ,"blue_archive.dwelling_bronze": building("blue_archive.dwelling_bronze", "District Academy", "blue_archive", { gold: 5, buildingMaterials: 3, valuables: 1 }, { type: "UNLOCK_RECRUIT_TIER", tier: "bronze" })
+  ,"blue_archive.dwelling_silver": building("blue_archive.dwelling_silver", "Advanced Academy", "blue_archive", { gold: 8, buildingMaterials: 6, valuables: 3 }, { type: "UNLOCK_RECRUIT_TIER", tier: "silver" }, ["blue_archive.dwelling_bronze"])
+  ,"blue_archive.dwelling_gold": building("blue_archive.dwelling_gold", "Elite Sanctuary", "blue_archive", { gold: 10, buildingMaterials: 9, valuables: 4 }, { type: "UNLOCK_RECRUIT_TIER", tier: "gold" }, ["blue_archive.dwelling_silver"])
+  ,"blue_archive.research_workshop": building("blue_archive.research_workshop", "Millennium Workshop", "blue_archive", { gold: 6, buildingMaterials: 4 }, { type: "ARTIFACT_SMITH", searchCost: 5, sellGold: 3 })
+  ,"blue_archive.training_ground": building("blue_archive.training_ground", "Schale Training Ground", "blue_archive", { gold: 7, buildingMaterials: 4 }, { type: "HALL_OF_VALHALLA", amount: 0, trainingWinXp: 1, trainingWinGoldWhenXpOff: 2 })
 };
 
 export const animeTownHeroDefinitions: Record<string, HeroDefinition> = {
+  mika_blue_archive: {
+    id: "mika_blue_archive", name: "Mika", faction: "blue_archive", class: "Tea Party Enforcer", type: "might",
+    startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 }, startingAbilityCardId: "ability.offense",
+    specialtyCardIds: { 1: "specialty.mika_blue_archive.1", 4: "specialty.mika_blue_archive.4", 6: "specialty.mika_blue_archive.6" },
+    portrait: "/assets/anime/heroes/blue-archive-mika.png", source: blueArchiveSource
+  },
+  yuuka_blue_archive: {
+    id: "yuuka_blue_archive", name: "Yuuka", faction: "blue_archive", class: "Seminar Treasurer", type: "might",
+    startingStats: { attack: 1, defense: 2, power: 1, knowledge: 2 }, startingAbilityCardId: "ability.armorer",
+    specialtyCardIds: { 1: "specialty.yuuka_blue_archive.1", 4: "specialty.yuuka_blue_archive.4", 6: "specialty.yuuka_blue_archive.6" },
+    portrait: "/assets/anime/heroes/blue-archive-yuuka.png", source: blueArchiveSource
+  },
+  seia_blue_archive: {
+    id: "seia_blue_archive", name: "Seia", faction: "blue_archive", class: "Prophetic Councilor", type: "magic",
+    startingStats: { attack: 1, defense: 1, power: 2, knowledge: 2 }, startingAbilityCardId: "ability.wisdom",
+    specialtyCardIds: { 1: "specialty.seia_blue_archive.1", 4: "specialty.seia_blue_archive.4", 6: "specialty.seia_blue_archive.6" },
+    portrait: "/assets/anime/heroes/blue-archive-seia.png", source: blueArchiveSource
+  },
+  chise_blue_archive: {
+    id: "chise_blue_archive", name: "Chise", faction: "blue_archive", class: "Hyakkiyako Mystic", type: "magic",
+    startingStats: { attack: 1, defense: 1, power: 2, knowledge: 2 }, startingAbilityCardId: "ability.sorcery",
+    specialtyCardIds: { 1: "specialty.chise_blue_archive.1", 4: "specialty.chise_blue_archive.4", 6: "specialty.chise_blue_archive.6" },
+    portrait: "/assets/anime/heroes/blue-archive-chise.png", source: blueArchiveSource
+  },
+  kei_blue_archive: {
+    id: "kei_blue_archive", name: "Kei", faction: "blue_archive", class: "Millennium System", type: "magic",
+    startingStats: { attack: 1, defense: 2, power: 2, knowledge: 1 }, startingAbilityCardId: "ability.interference",
+    specialtyCardIds: { 1: "specialty.kei_blue_archive.1", 4: "specialty.kei_blue_archive.4", 6: "specialty.kei_blue_archive.6" },
+    portrait: "/assets/anime/heroes/blue-archive-kei.png", source: blueArchiveSource
+  },
   shirou_emiya: {
     id: "shirou_emiya", name: "Shirou Emiya", faction: "fuyuki", class: "Resolute Master", type: "might",
     startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
@@ -856,6 +953,13 @@ export const AZURE_BREEZE_UNIT_ORDER = [
 ] as const;
 
 export const animeTownFactionDefinitions: Record<string, FactionDefinition> = {
+  blue_archive: {
+    id: "blue_archive", name: "Kivotos Academy Domain", color: "#63c8f2", startingTileId: "BA-S1",
+    heroes: ["mika_blue_archive", "yuuka_blue_archive", "seia_blue_archive", "chise_blue_archive", "kei_blue_archive"],
+    buildings: Object.values(animeTownBuildingDefinitions).filter((item) => item.faction === "blue_archive").map((item) => item.id),
+    units: blueArchiveCharacters.map((unit) => unit.id),
+    townImage: "/assets/anime/blue-archive/town/blue-archive-town-empty.png", source: blueArchiveSource
+  },
   fuyuki: {
     id: "fuyuki", name: "Fuyuki City", color: "#7256d8", startingTileId: "A-S1",
     heroes: ["shirou_emiya", "rin_tohsaka", "illyasviel", "kiritsugu_emiya", "kirei_kotomine", "sakura_matou"],

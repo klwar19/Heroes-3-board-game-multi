@@ -34,30 +34,33 @@ function assertRealArt(assetPath: string, minBytes = 50_000) {
   expect(statSync(file).size).toBeGreaterThan(minBytes);
 }
 
-describe("anime starting tiles A-S1 / W-S1 / L-S1 / P-S1 / D-S1 — hex + border assignment", () => {
+describe("anime starting tiles — hex + border assignment", () => {
   const s4 = allTileDefinitions.S4;
   const a = allTileDefinitions["A-S1"];
   const w = allTileDefinitions["W-S1"];
   const l = allTileDefinitions["L-S1"];
   const p = allTileDefinitions["P-S1"];
   const d = allTileDefinitions["D-S1"];
+  const ba = allTileDefinitions["BA-S1"];
 
-  it("all five seats mirror S4 field roles (only town faction differs)", () => {
+  it("all anime seats mirror S4 field roles (only town faction differs)", () => {
     expect(s4.fields.map((f) => f.location)).toEqual([...S4_LOCATIONS]);
     expect(a.fields.map((f) => f.location)).toEqual([...S4_LOCATIONS]);
     expect(w.fields.map((f) => f.location)).toEqual([...S4_LOCATIONS]);
     expect(l.fields.map((f) => f.location)).toEqual([...S4_LOCATIONS]);
     expect(p.fields.map((f) => f.location)).toEqual([...S4_LOCATIONS]);
     expect(d.fields.map((f) => f.location)).toEqual([...S4_LOCATIONS]);
+    expect(ba.fields.map((f) => f.location)).toEqual([...S4_LOCATIONS]);
 
     expect(a.fields[0].faction).toBe("fuyuki");
     expect(w.fields[0].faction).toBe("azure_breeze");
     expect(l.fields[0].faction).toBe("hidden_leaf");
     expect(p.fields[0].faction).toBe("azur_lane");
     expect(d.fields[0].faction).toBe("heavenly_demon");
+    expect(ba.fields[0].faction).toBe("blue_archive");
     expect(s4.fields[0].faction).toBe("rampart");
 
-    for (const def of [s4, a, w, l, p, d]) {
+    for (const def of [s4, a, w, l, p, d, ba]) {
       const treasure = def.fields[4];
       const mine = def.fields[5];
       expect(treasure.location).toBe("treasure_symbol");
@@ -69,13 +72,14 @@ describe("anime starting tiles A-S1 / W-S1 / L-S1 / P-S1 / D-S1 — hex + border
     }
   });
 
-  it("all five seats mirror S4 outerImpassable (yellow outer arcs)", () => {
+  it("all anime seats mirror S4 outerImpassable (yellow outer arcs)", () => {
     expect(s4.outerImpassable).toEqual([...S4_OUTER]);
     expect(a.outerImpassable).toEqual([...S4_OUTER]);
     expect(w.outerImpassable).toEqual([...S4_OUTER]);
     expect(l.outerImpassable).toEqual([...S4_OUTER]);
     expect(p.outerImpassable).toEqual([...S4_OUTER]);
     expect(d.outerImpassable).toEqual([...S4_OUTER]);
+    expect(ba.outerImpassable).toEqual([...S4_OUTER]);
   });
 
   it("border segments are identical to S4 (blocked ring + outer arcs)", () => {
@@ -90,6 +94,7 @@ describe("anime starting tiles A-S1 / W-S1 / L-S1 / P-S1 / D-S1 — hex + border
     expect(key(getTileBorderSegments(l))).toBe(s4Key);
     expect(key(getTileBorderSegments(p))).toBe(s4Key);
     expect(key(getTileBorderSegments(d))).toBe(s4Key);
+    expect(key(getTileBorderSegments(ba))).toBe(s4Key);
 
     // Blocked is on slot 2 (E) — its full ring is present.
     const blockedEdges = getTileBorderSegments(a)
@@ -99,7 +104,7 @@ describe("anime starting tiles A-S1 / W-S1 / L-S1 / P-S1 / D-S1 — hex + border
     expect(blockedEdges.length).toBeGreaterThanOrEqual(3);
   });
 
-  it("ships real tile art for all five seats and attaches only missing Demon symbols", () => {
+  it("ships real tile art for anime seats and attaches only missing symbols", () => {
     assertRealArt(a.assets!.tileImage!);
     assertRealArt(w.assets!.tileImage!);
     // L-S1 now ships the full-size real board image too (2026-07) — hold it to
@@ -108,13 +113,16 @@ describe("anime starting tiles A-S1 / W-S1 / L-S1 / P-S1 / D-S1 — hex + border
     // P-S1 ships the full-size board image.
     assertRealArt(p.assets!.tileImage!);
     assertRealArt(d.assets!.tileImage!);
+    assertRealArt(ba.assets!.tileImage!);
     // These four bake their symbols into the WebP.
     expect(a.assets?.attachFieldSymbols).toBeFalsy();
     expect(w.assets?.attachFieldSymbols).toBeFalsy();
     expect(l.assets?.attachFieldSymbols).toBeFalsy();
     expect(p.assets?.attachFieldSymbols).toBeFalsy();
-    // D-S1 is atmosphere-only, so its standard starting bonuses attach at runtime.
+    // D-S1 and BA-S1 are atmosphere-only, so their standard starting bonuses
+    // attach at runtime instead of being baked into generated art.
     expect(d.assets?.attachFieldSymbols).toBe(true);
+    expect(ba.assets?.attachFieldSymbols).toBe(true);
   });
 
   it("a Field Override removes the PRINTED edges touching its hex — but never a designer border", () => {

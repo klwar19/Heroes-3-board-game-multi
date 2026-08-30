@@ -12,6 +12,19 @@ export type UnitSoundAction = "attack" | "shoot" | "defend" | "hurt" | "death" |
 
 const soundLibrary = soundManifest as Record<string, { src?: string }>;
 
+const blueArchiveUnitVoices: Record<string, string> = {
+  mika: "mika", seia: "seia", nagisa: "nagisa", aris: "aris", kei: "kei",
+  hoshino: "hoshino", shiroko: "shiroko", hina: "hina", yuuka: "yuuka", aru: "aru",
+  neru: "neru", toki: "toki", azusa: "azusa", wakamo: "wakamo", saori: "saori",
+  iori: "iori", mutsuki: "mutsuki", miyo: "miyo", hasumi: "hasumi"
+};
+
+function blueArchiveVoiceKey(slug: string, action: UnitSoundAction): string | undefined {
+  const resolvedAction = action === "shoot" ? "attack" : action;
+  const key = `blue-archive/voices/${slug}/${resolvedAction}`;
+  return soundLibrary[key] ? key : undefined;
+}
+
 /**
  * Keyed by the unit's bare name (the definition id without its faction
  * prefix) because a faction unit and its neutral twin are the same creature:
@@ -652,6 +665,7 @@ const actionSoundOverrides: Partial<Record<string, Partial<Record<UnitSoundActio
  * unknown slug / missing clip so callers degrade to silence.
  */
 export function commanderSoundKey(slug: string, action: UnitSoundAction): string | undefined {
+  if (slug === "ibuki") return blueArchiveVoiceKey("ibuki", action);
   if (slug === "belfast") {
     return azurLaneVoiceKey("belfast", action);
   }
@@ -686,6 +700,10 @@ export function unitSoundKey(unitDefId: string, action: UnitSoundAction): string
     return commanderSoundKey(unitDefId.slice(COMMANDER_VOICE_PREFIX.length), action);
   }
   const bareName = unitDefId.split(".")[1] ?? unitDefId;
+  if (unitDefId.startsWith("blue_archive.")) {
+    const slug = blueArchiveUnitVoices[bareName];
+    return slug ? blueArchiveVoiceKey(slug, action) : undefined;
+  }
   if (unitDefId.startsWith("little_busters.")) {
     const slug = littleBustersUnitVoices[bareName];
     return slug ? littleBustersVoiceKey(slug, action) : undefined;

@@ -975,6 +975,15 @@ export function unitAttackRollDisadvantaged(state: GameState, unit: CombatUnitSt
   );
 }
 
+/** Prophetic Counsel VI fixes every Attack die result of the affected unit at -1. */
+export function unitAttackRollFixedMinusOne(state: GameState, unit: CombatUnitState): boolean {
+  return state.activeEffects.some(
+    (effect) =>
+      effectAppliesToUnit(effect, unit) &&
+      effect.modifiers.some((modifier) => modifier.type === "ATTACK_ROLL_FIXED_MINUS_ONE")
+  );
+}
+
 /**
  * The mirror of `unitAttackRollDisadvantaged`: whether `unit` currently holds an
  * ATTACK_ROLL_ADVANTAGE effect, letting it roll two Attack dice and keep the

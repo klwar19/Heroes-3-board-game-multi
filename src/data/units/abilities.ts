@@ -8,6 +8,21 @@ export type UnitAbilityEffectDefinition =
   | { type: "ALLOW_UNLIMITED_RETALIATION" }
   | { type: "RETALIATION_ATTACK_BONUS"; amount: number }
   | { type: "IGNORE_RETALIATION" }
+  | { type: "IGNORE_RETALIATION_AFTER_MOVE" }
+  | {
+      /** Saori Vanitas: both clauses share the same not-yet-activated target gate. */
+      type: "VANITAS_VS_UNACTIVATED";
+      attackBonus: number;
+    }
+  | {
+      /** Iori Prefect Snipe: damaged and non-adjacent targets only. */
+      type: "ATTACK_BONUS_VS_DAMAGED_NON_ADJACENT";
+      amount: number;
+    }
+  | {
+      /** Iori Rapid Reposition: adjacent ranged penalty + all retaliation waiver. */
+      type: "IGNORE_ADJACENT_RANGED_PENALTY_AND_RETALIATION";
+    }
   | {
       /** Masato the Wall: intercept one normal attack on any adjacent ally per combat round. */
       type: "INTERCEPT_ADJACENT_ATTACK_ONCE";
@@ -148,6 +163,85 @@ export type UnitAbilityEffectDefinition =
       amount: number;
     }
   | {
+      /** Toki Abi-Eshuh: +Defense against the first attack targeting her per combat. */
+      type: "FIRST_ATTACK_DEFENSE_ONCE_PER_COMBAT";
+      amount: number;
+    }
+  | {
+      /** Mutsuki Trick Mine: damage the first enemy that attacks her in melee each combat. */
+      type: "DAMAGE_FIRST_MELEE_ATTACKER_ON_DECLARE";
+      amount: number;
+    }
+  | {
+      /** Seia Tea Party Order: first attacked adjacent ally gains Defense for that attack. */
+      type: "FIRST_ADJACENT_ALLY_ATTACK_DEFENSE_AURA";
+      amount: number;
+    }
+  | {
+      /** Hoshino Pack: self and adjacent allies get a virtual Defense token on their first incoming attack each round. */
+      type: "SELF_AND_ADJACENT_FIRST_ATTACK_DEFENSE_TOKEN_PER_ROUND";
+    }
+  | {
+      /** Miyo Few: teleport one allied unit after combat deployment. */
+      type: "TELEPORT_ALLY_AT_COMBAT_START";
+    }
+  | {
+      /** Seia Pack: inspect the controller's top cards and keep exactly one. */
+      type: "PICK_ONE_FROM_OWN_DECK_AT_COMBAT_START";
+      count: number;
+    }
+  | {
+      /** Shiroko/Saori: optional self movement after all combat deployment. */
+      type: "SELF_MOVE_AT_COMBAT_START";
+      spaces: number;
+    }
+  | {
+      /** Mutsuki Pack: mandatory adjacent mine placement at activation start. */
+      type: "PLACE_SPLASH_MINE_AT_ACTIVATION";
+      primaryDamage: number;
+      adjacentEnemyDamage: number;
+    }
+  | {
+      /** Shiroko Pack: free once-per-round mark during her activation. */
+      type: "MARK_ENEMY_FOR_NEXT_FRIENDLY_ATTACK";
+      range: number;
+      attackBonus: number;
+    }
+  | {
+      /** Hoshino Few: reduce the first positive damage assignment each round. */
+      type: "REDUCE_FIRST_DAMAGE_EACH_ROUND";
+      amount: number;
+    }
+  | {
+      /** Seia Few: once per combat force any attack die to be rerolled. */
+      type: "FORCE_ANY_ATTACK_DIE_REROLL_ONCE_PER_COMBAT";
+    }
+  | {
+      /** Kei Pack: cancel one enemy activation ability, then draw. */
+      type: "CANCEL_ENEMY_ACTIVATION_ABILITY_ONCE_PER_COMBAT";
+      draw: number;
+    }
+  | {
+      /** Yuuka Few: optional one-space move after her attack resolves. */
+      type: "POST_ATTACK_OPTIONAL_MOVE";
+      spaces: number;
+    }
+  | {
+      /** Toki Pack: choose one of two mutually exclusive stances each activation. */
+      type: "ACTIVATION_CHOOSE_ATTACK_OR_DEFENSE";
+      amount: number;
+    }
+  | {
+      /** Wakamo: first damaged enemy becomes her personal target for later attacks. */
+      type: "MARK_FIRST_DAMAGED_TARGET";
+      attackBonus: number;
+    }
+  | {
+      /** Wakamo Pack: damaging her marked target splashes an adjacent enemy. */
+      type: "FLAT_DAMAGE_ADJACENT_TO_MARKED_TARGET";
+      amount: number;
+    }
+  | {
       /** Gain a permanent, cumulative Defense bonus each time an attack is declared against this unit. */
       type: "STACKING_DEFENSE_WHEN_ATTACKED";
       amount: number;
@@ -235,6 +329,8 @@ export type UnitAbilityEffectDefinition =
       amount: number;
       /** Printed condition: only fires when the target is not adjacent. */
       requiresNonAdjacentTarget: boolean;
+      /** Kivotos Kyrie Eleison: this splash can trigger only once per combat. */
+      oncePerCombat?: boolean;
     }
   | {
       /**
@@ -362,6 +458,8 @@ export type UnitAbilityEffectDefinition =
       baseAttack: number;
       /** Optional die face that gates the follow-up (Spider Mastermind: -1). */
       onRoll?: number;
+      /** Kivotos Royal Artillery: only after attacking a non-adjacent target. */
+      requiresNonAdjacentTarget?: boolean;
     }
   | {
       /**
@@ -454,6 +552,11 @@ export type UnitAbilityEffectDefinition =
        * Retaliation Attack, where it did not move).
        */
       requiresMoved?: boolean;
+      /** Azusa Silent Faith: only when the target is not adjacent. */
+      requiresNonAdjacentTarget?: boolean;
+      /** Aru Hardboiled Boss: draw when the replacement result matches this face. */
+      drawIfRerollResult?: number;
+      drawCount?: number;
     }
   | {
       /**
@@ -975,6 +1078,11 @@ export type UnitAbilityEffectDefinition =
       amount: number;
     }
   | {
+      /** Azusa Sagitta Mortis: one non-adjacent Defense pierce per combat round. */
+      type: "DEFENSE_REDUCTION_NONADJ_ONCE_PER_ROUND";
+      amount: number;
+    }
+  | {
       /**
        * Neutral Halberdiers: "Treat allied adjacent units as if they had a
        * Defense token." While this unit is alive, every friendly unit adjacent
@@ -1240,6 +1348,11 @@ export type UnitAbilityEffectDefinition =
        * the Retaliation Attack.
        */
       type: "OWN_ATTACK_FLAT_BONUS";
+      amount: number;
+    }
+  | {
+      /** Railgun Charge: bonus only against a target that already retaliated this round. */
+      type: "ATTACK_BONUS_VS_RETALIATED_TARGET";
       amount: number;
     }
   | {
@@ -3880,7 +3993,55 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     text: "[activation] Once per combat round: spend 1/2/2 Runes (Power 0/1/2) to remove 1/2/3 damage from a friendly unit. Does not end the activation.",
     effect: { type: "COMMANDER_CAST" },
     implementationStatus: "implemented"
-  }
+  },
+  "commander-cast-executive-order": {
+    id: "commander-cast-executive-order",
+    name: "Executive Order",
+    text: "[activation] Spend 3 AP: refresh an ally that already activated — Bronze at Power 0, up to Silver at Power 1, or any unit tier at Power 2. A refreshed Silver or Gold unit has −2 Attack during its extra activation. Ends Ibuki's further movement this activation.",
+    effect: { type: "COMMANDER_CAST" },
+    implementationStatus: "implemented"
+  },
+  "commander-ibuki-sniper-shot": { id: "commander-ibuki-sniper-shot", name: "Sniper Shot", text: "[activation] Spend 1 AP: deal 1 flat damage to an enemy unit, or 2 flat damage at Power 2.", implementationStatus: "implemented" },
+  "commander-ibuki-up-to-mischief": { id: "commander-ibuki-up-to-mischief", name: "Up to Mischief", text: "[activation] Spend 2 AP: an enemy unit has −1 Attack this combat round; at Power 1 or higher, it also has −1 Defense.", implementationStatus: "implemented" },
+  "commander-ibuki-gadabout": { id: "commander-ibuki-gadabout", name: "Gadabout", text: "[activation] Spend 2 AP: teleport anywhere and deal 1 damage to every adjacent enemy.", implementationStatus: "implemented" },
+  "kivotos-piercing-judgment": { id: "kivotos-piercing-judgment", name: "Piercing Judgment", text: "After moving, reroll one -1 Attack die.", effect: { type: "ATTACK_DIE_REROLL", rerollsPerAttack: 1, onlyOnRoll: -1, requiresMoved: true }, implementationStatus: "implemented" },
+  "kivotos-kyrie-eleison": { id: "kivotos-kyrie-eleison", name: "Kyrie Eleison", text: "Once per Combat after attacking, deal 1 damage to a second enemy adjacent to the target.", effect: { type: "FLAT_DAMAGE_ADJACENT_TO_TARGET", amount: 1, requiresNonAdjacentTarget: false, oncePerCombat: true }, implementationStatus: "implemented" },
+  "kivotos-prophetic-dream": { id: "kivotos-prophetic-dream", name: "Prophetic Dream", text: "At Combat start, examine the top 3 cards of your deck, take 1 into your hand, then return the rest to the deck.", effect: { type: "PICK_ONE_FROM_OWN_DECK_AT_COMBAT_START", count: 3 }, implementationStatus: "implemented" },
+  "kivotos-future-sight": { id: "kivotos-future-sight", name: "Future Sight", text: "Once per Combat after any Attack die is rolled, you may force that die to be rerolled, whether an ally or enemy rolled it.", effect: { type: "FORCE_ANY_ATTACK_DIE_REROLL_ONCE_PER_COMBAT" }, implementationStatus: "implemented" },
+  "kivotos-tea-party-order": { id: "kivotos-tea-party-order", name: "Tea Party Order", text: "The first time each Combat an adjacent ally is attacked, it gains +1 Defense for that attack.", effect: { type: "FIRST_ADJACENT_ALLY_ATTACK_DEFENSE_AURA", amount: 1 }, implementationStatus: "implemented" },
+  "kivotos-royal-artillery": { id: "kivotos-royal-artillery", name: "Royal Artillery", text: "After attacking a non-adjacent target, attack one unit adjacent to it with 3 Attack.", effect: { type: "SECOND_ATTACK_ADJACENT_TO_TARGET", baseAttack: 3, requiresNonAdjacentTarget: true }, implementationStatus: "implemented" },
+  "kivotos-railgun-charge": { id: "kivotos-railgun-charge", name: "Railgun Charge", text: "Gain +1 Attack when attacking an enemy that has already retaliated this round.", effect: { type: "ATTACK_BONUS_VS_RETALIATED_TARGET", amount: 1 }, implementationStatus: "implemented" },
+  "kivotos-hero-mode": { id: "kivotos-hero-mode", name: "Hero Mode", text: "Ignore all ranged Combat penalties.", effect: { type: "IGNORE_RANGED_PENALTIES" }, implementationStatus: "implemented" },
+  "kivotos-system-intrusion": { id: "kivotos-system-intrusion", name: "System Intrusion", text: "On +1, ignore a Spell or Specialty targeting Kei.", effect: { type: "NEGATE_CARD_ON_DIE", onRoll: 1 }, implementationStatus: "implemented" },
+  "kivotos-key-authority": { id: "kivotos-key-authority", name: "Key Authority", text: "Once per Combat, cancel an enemy activation ability as it triggers, then draw 1 card.", effect: { type: "CANCEL_ENEMY_ACTIVATION_ABILITY_ONCE_PER_COMBAT", draw: 1 }, implementationStatus: "implemented" },
+  "kivotos-iron-horus": { id: "kivotos-iron-horus", name: "Iron Horus", text: "The first time each round Hoshino takes damage, reduce that damage by 1.", effect: { type: "REDUCE_FIRST_DAMAGE_EACH_ROUND", amount: 1 }, implementationStatus: "implemented" },
+  "kivotos-abyssal-shield": { id: "kivotos-abyssal-shield", name: "Abyssal Shield", text: "Hoshino and adjacent allies gain a Defense token against the first attack targeting them each round.", effect: { type: "SELF_AND_ADJACENT_FIRST_ATTACK_DEFENSE_TOKEN_PER_ROUND" }, implementationStatus: "implemented" },
+  "kivotos-cycle-scout": { id: "kivotos-cycle-scout", name: "Cycle Scout", text: "At Combat start after deployment, move Shiroko up to 2 spaces.", effect: { type: "SELF_MOVE_AT_COMBAT_START", spaces: 2 }, implementationStatus: "implemented" },
+  "kivotos-drone-support": { id: "kivotos-drone-support", name: "Drone Support", text: "Once per round, mark an enemy within 3 spaces; the next friendly attack against it gains +1 Attack.", effect: { type: "MARK_ENEMY_FOR_NEXT_FRIENDLY_ATTACK", range: 3, attackBonus: 1 }, implementationStatus: "implemented" },
+  "kivotos-prefect-barrage": { id: "kivotos-prefect-barrage", name: "Prefect Barrage", text: "After Hina attacks, attack the same target again with 3 Attack.", effect: { type: "SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION", baseAttack: 3 }, implementationStatus: "implemented" },
+  "kivotos-end-of-vacation": { id: "kivotos-end-of-vacation", name: "End of Vacation", text: "On a 0 or +1 Attack-die result, ignore 1 Defense of the target.", effect: { type: "DEFENSE_REDUCTION_ON_ATTACK_DIE", minRoll: 0, maxRoll: 1, amount: 1 }, implementationStatus: "implemented" },
+  "kivotos-calculated-cover": { id: "kivotos-calculated-cover", name: "Calculated Cover", text: "After Yuuka attacks, she may move 1 space.", effect: { type: "POST_ATTACK_OPTIONAL_MOVE", spaces: 1 }, implementationStatus: "implemented" },
+  "kivotos-perfect-balance": { id: "kivotos-perfect-balance", name: "Perfect Balance", text: "Discard a card to ignore the attacker's Attack-die result.", effect: { type: "DISCARD_TO_IGNORE_ATTACK_DIE" }, implementationStatus: "implemented" },
+  "kivotos-outlaw-shot": { id: "kivotos-outlaw-shot", name: "Outlaw Shot", text: "On +1, deal 1 additional damage.", effect: { type: "ATTACK_DIE_FLAT_DAMAGE_TO_TARGET", minRoll: 1, maxRoll: 1, amount: 1 }, implementationStatus: "implemented" },
+  "kivotos-hardboiled-boss": { id: "kivotos-hardboiled-boss", name: "Hardboiled Boss", text: "Reroll a -1 result; if the reroll is also -1, draw 1 card.", effect: { type: "ATTACK_DIE_REROLL", rerollsPerAttack: 1, onlyOnRoll: -1, drawIfRerollResult: -1, drawCount: 1 }, implementationStatus: "implemented" },
+  "kivotos-cleaner-rush": { id: "kivotos-cleaner-rush", name: "Cleaner Rush", text: "If Neru moved and then attacks, ignore Retaliation.", effect: { type: "IGNORE_RETALIATION_AFTER_MOVE" }, implementationStatus: "implemented" },
+  "kivotos-cqc-overdrive": { id: "kivotos-cqc-overdrive", name: "CQC Overdrive", text: "On a 0 or -1, attack the same target a second time.", effect: { type: "DOUBLE_ATTACK", maxRoll: 0, anyRange: true }, implementationStatus: "implemented" },
+  "kivotos-abi-eshuh": { id: "kivotos-abi-eshuh", name: "Abi-Eshuh", text: "Once per Combat, Toki gains +1 Defense against the first attack targeting her.", effect: { type: "FIRST_ATTACK_DEFENSE_ONCE_PER_COMBAT", amount: 1 }, implementationStatus: "implemented" },
+  "kivotos-mode-change": { id: "kivotos-mode-change", name: "Mode Change", text: "At activation, choose Attack Mode (+1 Attack) or Guard Mode (+1 Defense) until Toki's next activation.", effect: { type: "ACTIVATION_CHOOSE_ATTACK_OR_DEFENSE", amount: 1 }, implementationStatus: "implemented" },
+  "kivotos-silent-faith": { id: "kivotos-silent-faith", name: "Silent Faith", text: "Against a non-adjacent target, reroll one -1 Attack-die result.", effect: { type: "ATTACK_DIE_REROLL", rerollsPerAttack: 1, onlyOnRoll: -1, requiresNonAdjacentTarget: true }, implementationStatus: "implemented" },
+  "kivotos-sagitta-mortis": { id: "kivotos-sagitta-mortis", name: "Sagitta Mortis", text: "Once per Combat round, a non-adjacent attack ignores 1 Defense of the target.", effect: { type: "DEFENSE_REDUCTION_NONADJ_ONCE_PER_ROUND", amount: 1 }, implementationStatus: "implemented" },
+  "kivotos-foxfire-mark": { id: "kivotos-foxfire-mark", name: "Foxfire Mark", text: "The first enemy Wakamo damages becomes marked. Wakamo gains +1 Attack against it for the rest of the Combat, beginning with her next attack.", effect: { type: "MARK_FIRST_DAMAGED_TARGET", attackBonus: 1 }, implementationStatus: "implemented" },
+  "kivotos-crimson-calamity": { id: "kivotos-crimson-calamity", name: "Crimson Calamity", text: "When Wakamo damages her marked unit, deal 1 damage to one enemy adjacent to it.", effect: { type: "FLAT_DAMAGE_ADJACENT_TO_MARKED_TARGET", amount: 1 }, implementationStatus: "implemented" },
+  "kivotos-arius-ambush": { id: "kivotos-arius-ambush", name: "Arius Ambush", text: "At Combat start after all units deploy, move Saori up to 2 spaces.", effect: { type: "SELF_MOVE_AT_COMBAT_START", spaces: 2 }, implementationStatus: "implemented" },
+  "kivotos-vanitas": { id: "kivotos-vanitas", name: "Vanitas", text: "Against a unit that has not activated this round, gain +1 Attack and ignore Retaliation.", effect: { type: "VANITAS_VS_UNACTIVATED", attackBonus: 1 }, implementationStatus: "implemented" },
+  "kivotos-prefect-snipe": { id: "kivotos-prefect-snipe", name: "Prefect Snipe", text: "Gain +1 Attack against a damaged non-adjacent target.", effect: { type: "ATTACK_BONUS_VS_DAMAGED_NON_ADJACENT", amount: 1 }, implementationStatus: "implemented" },
+  "kivotos-rapid-reposition": { id: "kivotos-rapid-reposition", name: "Rapid Reposition", text: "Ignore the adjacent ranged Combat penalty and all Retaliation Attacks.", effect: { type: "IGNORE_ADJACENT_RANGED_PENALTY_AND_RETALIATION" }, implementationStatus: "implemented" },
+  "kivotos-trick-mine": { id: "kivotos-trick-mine", name: "Trick Mine", text: "Once per Combat, before the first enemy attacks Mutsuki in melee, that enemy suffers 1 damage.", effect: { type: "DAMAGE_FIRST_MELEE_ATTACKER_ON_DECLARE", amount: 1 }, implementationStatus: "implemented" },
+  "kivotos-explosive-prank": { id: "kivotos-explosive-prank", name: "Explosive Prank", text: "At activation, place a mine adjacent to Mutsuki. Its first enemy suffers 2 damage and every enemy adjacent to it suffers 1 damage.", effect: { type: "PLACE_SPLASH_MINE_AT_ACTIVATION", primaryDamage: 2, adjacentEnemyDamage: 1 }, implementationStatus: "implemented" },
+  "kivotos-survey-route": { id: "kivotos-survey-route", name: "Survey Route", text: "At Combat start, teleport 1 allied unit to an empty space.", effect: { type: "TELEPORT_ALLY_AT_COMBAT_START" }, implementationStatus: "implemented" },
+  "kivotos-cartographers-plan": { id: "kivotos-cartographers-plan", name: "Cartographer's Plan", text: "At activation, teleport another allied unit.", effect: { type: "TELEPORT_ANY_AT_ACTIVATION" }, implementationStatus: "implemented" },
+  "kivotos-eagle-eye": { id: "kivotos-eagle-eye", name: "Eagle Eye", text: "After moving, gain +1 Attack.", effect: { type: "ATTACK_BONUS_AFTER_MOVE", amount: 1 }, implementationStatus: "implemented" },
+  "kivotos-winged-pursuit": { id: "kivotos-winged-pursuit", name: "Winged Pursuit", text: "On 0 or +1, deal 1 additional damage.", effect: { type: "ATTACK_DIE_FLAT_DAMAGE_TO_TARGET", minRoll: 0, amount: 1 }, implementationStatus: "implemented" }
 };
 
 /**

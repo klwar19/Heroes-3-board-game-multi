@@ -50,6 +50,7 @@ export const COMMANDER_SLUGS = [
   "corsair", "factory", "bulwark", "ruler", "sword_saint", "might_guy", "belfast",
   "demon_ancestor",
   "kyousuke_natsume",
+  "ibuki",
   "sonya"
 ] as const;
 
@@ -412,6 +413,8 @@ export interface CommanderCastTargeting {
   mechanical?: boolean;
   /** Target must carry at least 1 damage (heals). */
   damagedOnly?: boolean;
+  /** Target must already have completed its activation this combat round. */
+  activatedOnly?: boolean;
   /**
    * Highest target tier allowed at Power 0/1/2 (Animate Dead, Counterstrike).
    * Tierless targets (other commanders, bank guards, summons) never qualify.
@@ -448,6 +451,7 @@ export type CommanderCastEffect =
       attackAmount: number;
     }
   | { kind: "unlimited-retaliation" }
+  | { kind: "reactivate" }
   | {
       /**
        * Belfast "Royal Salvo" (2026-07 Azur Lane upgrade): flat EFFECT damage
@@ -487,6 +491,7 @@ export interface CommanderSpecialtyDefinition {
     | "elemental-scourge"
     | "tinkerer"
     | "rune-ritual"
+    | "mission-briefing"
     | "unbreakable-bond";
   name: string;
   text: string;
@@ -512,6 +517,13 @@ export interface CommanderDefinition {
   /** Built card asset (frame + art only; name, abilities and stats are overlaid). */
   cardImage: string;
 }
+
+export const IBUKI_COMMAND_SKILLS = [
+  { id: "commander-ibuki-sniper-shot", name: "Sniper Shot", ap: 1, icon: "/assets/anime/icons/blue-archive/ibuki-sniper-shot.png", text: "Deal 1 flat damage to an enemy unit; at Power 2, deal 2 instead." },
+  { id: "commander-ibuki-up-to-mischief", name: "Up to Mischief", ap: 2, icon: "/assets/anime/icons/blue-archive/ibuki-up-to-mischief.png", text: "An enemy has −1 Attack this combat round; at Power 1+, it also has −1 Defense." },
+  { id: "commander-ibuki-gadabout", name: "Gadabout", ap: 2, icon: "/assets/anime/icons/blue-archive/ibuki-gadabout.png", text: "Teleport anywhere; enemies adjacent to the landing space take 1 damage." },
+  { id: "commander-cast-executive-order", name: "Executive Order", ap: 3, icon: "/assets/anime/icons/blue-archive/ibuki-executive-order.png", text: "Reactivate an ally that already activated: Bronze at Power 0, up to Silver at Power 1, or any tier at Power 2. Silver and Gold have −2 Attack for that extra activation." }
+] as const;
 
 export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = {
   paladin: {
@@ -957,6 +969,32 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     },
     cardImage: "/assets/units-commander-kyousuke_natsume.webp"
   },
+  ibuki: {
+    slug: "ibuki", name: "Ibuki", faction: "Kivotos Academy Domain", original: true,
+    cast: {
+      abilityId: "commander-cast-executive-order",
+      name: "Executive Order",
+      icon: "/assets/anime/icons/blue-archive/ibuki-executive-order.png",
+      targeting: {
+        side: "friendly",
+        canTargetSelf: false,
+        activatedOnly: true,
+        maxTierByPower: ["bronze", "silver", "gold"]
+      },
+      effect: { kind: "reactivate" },
+      tierText: [
+        "Choose a Bronze ally that already activated this round. It may activate again.",
+        "Choose a Bronze or Silver ally that already activated this round. It may activate again; a Silver unit has −2 Attack during that activation.",
+        "Choose any non-commander ally that already activated this round. It may activate again; a Silver or Gold unit has −2 Attack during that activation."
+      ]
+    },
+    specialty: {
+      id: "mission-briefing",
+      name: "Schale Mission Briefing",
+      text: "At the start of each combat, take the top card of your discard pile into your hand. If your discard pile is empty, draw 1 card from your deck instead."
+    },
+    cardImage: "/assets/units-commander-ibuki.webp"
+  },
   sonya: {
     slug: "sonya",
     name: "Sonya",
@@ -1008,6 +1046,7 @@ export const COMMANDER_SLUG_BY_FACTION: Record<string, CommanderSlug> = {
   azur_lane: "belfast",
   heavenly_demon: "demon_ancestor",
   little_busters: "kyousuke_natsume",
+  blue_archive: "ibuki",
   mgq: "sonya"
 };
 

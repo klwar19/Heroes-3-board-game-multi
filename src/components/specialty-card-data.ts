@@ -25,6 +25,11 @@ import { coreHeroDefinitions } from "@/data/factions/core";
  * Factory and anime heroes still render natively.
  */
 export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
+  mika_blue_archive: "/assets/anime/icons/blue-archive/mika-specialty.webp",
+  yuuka_blue_archive: "/assets/anime/icons/blue-archive/yuuka-specialty.webp",
+  seia_blue_archive: "/assets/anime/icons/blue-archive/seia-specialty.webp",
+  chise_blue_archive: "/assets/anime/icons/blue-archive/chise-specialty.webp",
+  kei_blue_archive: "/assets/anime/icons/blue-archive/kei-specialty.webp",
   // --- Unit specialists: the creature the specialty names ------------------
   // Bulwark — the unit's own wiki creature portrait (heroes.thelazy.net,
   // downloaded to units-bulwark-<slug>-portrait.webp).

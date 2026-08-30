@@ -53,6 +53,9 @@ export function describeBuildingEffect(building: TownBuildingDefinition): string
         ? `When built and at the beginning of each ${effect.gainOn === "astrologers" ? "Astrologers'" : "Resource"} round, place a faction cube here (max ${effect.max}). During any combat, remove a cube while casting a spell to gain +1 Power (max 1 cube per spell).`
         : `When built and at the beginning of each ${effect.gainOn === "astrologers" ? "Astrologers'" : "Resource"} round, place a faction cube here (max ${effect.max}). During any combat, remove cubes for +1 attack or +1 defense per cube.`;
     case "HALL_OF_VALHALLA":
+      if (effect.trainingWinXp) {
+        return `After each won combat, surviving deployed units gain +${effect.trainingWinXp} unit experience. If Unit Experience is off, gain ${effect.trainingWinGoldWhenXpOff ?? 0} gold instead.`;
+      }
       return `Once per round during a combat, one of your units gains +${effect.amount} attack on a single attack (chosen while the attack is waiting to resolve).`;
     case "FREELANCERS_GUILD":
       return `Always on: each time you win against Neutral Units, gain ${effect.winGold} gold. When recruiting or reinforcing you may also pay the gold cost with building materials and valuables at market rates (1 building material = 1 gold, 1 valuables = 3 gold).`;
@@ -117,8 +120,9 @@ export function buildingTimingLabel(building: TownBuildingDefinition): string | 
     case "THIEVES_GUILD":
       return "during your turn";
     case "COMBAT_CUBES":
-    case "HALL_OF_VALHALLA":
       return "during combat";
+    case "HALL_OF_VALHALLA":
+      return building.effect.trainingWinXp ? "after won combat" : "during combat";
     case "RUNE_ALTAR":
       return "combat (Runes)";
     case "FREELANCERS_GUILD":

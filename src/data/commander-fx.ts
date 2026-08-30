@@ -33,6 +33,7 @@ export const COMMANDER_CAST_FX_KEY: Record<CommanderSlug, string> = {
   belfast: "spell.magic_arrow", // Royal Salvo (enemy damage → the Magic Arrow bolt + impact fx)
   demon_ancestor: "spell.bloodlust", // Blood Frenzy (reuses the Brute's Bloodlust cast + fx)
   kyousuke_natsume: "spell.shield", // Mission Start (instant defensive reaction)
+  ibuki: "commander.ibuki.executive", // Executive Order
   sonya: "spell.haste" // Cheer (Shaman Haste reuse)
 };
 

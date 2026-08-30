@@ -5,7 +5,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cardLibrary } from "@/data/cards/library";
 
 import { SpecialtyCard } from "./specialty-card";
-import { canRenderSpecialtyCard, parseSpecialtyCardId, specialtyEffectText, specialtyIconSrc } from "./specialty-card-data";
+import {
+  canRenderSpecialtyCard,
+  parseSpecialtyCardId,
+  specialtyEffectText,
+  specialtyIconSrc
+} from "./specialty-card-data";
 import { cardZoomContent } from "./table/zoom";
 
 afterEach(cleanup);

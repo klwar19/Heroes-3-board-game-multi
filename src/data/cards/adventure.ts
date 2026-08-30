@@ -5347,6 +5347,296 @@ function rethemedSpecialty(
   return next;
 }
 
+const blueArchiveSpecialtySource = {
+  product: "Anime Mod — Kivotos Academy Domain",
+  credit: "Original Blue Archive hero specialty for this digital module."
+};
+
+adventureCards["specialty.mika_blue_archive.1"] = {
+  id: "specialty.mika_blue_archive.1",
+  name: "Kyrie Eleison I",
+  kind: "hero-specialty",
+  timing: "instant",
+  phaseLimit: ["reaction", "combat"],
+  tags: ["hero-specialty", "instant", "mika_blue_archive", "kyrie-eleison", "Instant: Your selected ground or flying unit gains +2 Attack for this attack."],
+  trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+  effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2, unitTypes: ["ground", "flying"] },
+  implementationStatus: "implemented",
+  source: blueArchiveSpecialtySource
+};
+
+adventureCards["specialty.mika_blue_archive.4"] = {
+  id: "specialty.mika_blue_archive.4",
+  name: "Kyrie Eleison IV",
+  kind: "hero-specialty",
+  timing: "combat",
+  phaseLimit: ["combat"],
+  tags: ["hero-specialty", "combat", "ongoing", "mika_blue_archive", "kyrie-eleison", "Ongoing: Select a unit. For this Combat, every unit that attacks it suffers 1 damage after the attack."],
+  target: { type: "any-unit" },
+  effect: {
+    type: "CREATE_ACTIVE_EFFECT",
+    effect: {
+      name: "Kyrie Eleison IV",
+      scope: "unit",
+      duration: { type: "combat" },
+      polarity: "positive",
+      removable: true,
+      modifiers: [{ type: "DAMAGE_ATTACKER_AFTER_ATTACKED", amount: 1 }]
+    }
+  },
+  implementationStatus: "implemented",
+  source: blueArchiveSpecialtySource
+};
+
+adventureCards["specialty.mika_blue_archive.6"] = {
+  id: "specialty.mika_blue_archive.6",
+  name: "Kyrie Eleison VI",
+  kind: "hero-specialty",
+  timing: "instant",
+  phaseLimit: ["reaction", "combat"],
+  tags: ["hero-specialty", "instant", "mika_blue_archive", "kyrie-eleison", "Instant: Your selected ground or flying unit gains +2 Attack, then heals half the damage it deals (rounded up)."],
+  trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+  effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2, unitTypes: ["ground", "flying"], healHalfDamageDealt: true },
+  implementationStatus: "implemented",
+  source: blueArchiveSpecialtySource
+};
+
+adventureCards["specialty.yuuka_blue_archive.1"] = withoutArt(
+  lethalSaveSpecialty("yuuka_blue_archive", "Perfect Calculation", 1, { bronze: 1, silver: 2, gold: 4 })
+);
+adventureCards["specialty.yuuka_blue_archive.1"].source = blueArchiveSpecialtySource;
+
+adventureCards["specialty.yuuka_blue_archive.4"] = {
+  id: "specialty.yuuka_blue_archive.4",
+  name: "Perfect Calculation IV",
+  kind: "hero-specialty",
+  timing: "combat",
+  phaseLimit: ["combat"],
+  tags: ["hero-specialty", "combat", "ongoing", "yuuka_blue_archive", "perfect-calculation", "Ongoing: Select a unit. It has -1 Defense for this Combat."],
+  target: { type: "any-unit" },
+  effect: {
+    type: "CREATE_ACTIVE_EFFECT",
+    effect: {
+      name: "Perfect Calculation IV",
+      scope: "unit",
+      duration: { type: "combat" },
+      polarity: "negative",
+      removable: true,
+      modifiers: [{ type: "DEFENSE_BONUS", amount: -1 }]
+    }
+  },
+  implementationStatus: "implemented",
+  source: blueArchiveSpecialtySource
+};
+
+adventureCards["specialty.yuuka_blue_archive.6"] = {
+  id: "specialty.yuuka_blue_archive.6",
+  name: "Perfect Calculation VI",
+  kind: "hero-specialty",
+  timing: "instant",
+  phaseLimit: ["reaction", "combat"],
+  tags: ["hero-specialty", "instant", "yuuka_blue_archive", "perfect-calculation", "Instant: Your selected unit gains +2 Defense for this attack, then the enemy discards 1 random card."],
+  trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
+  effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 2, randomEnemyDiscard: 1 },
+  implementationStatus: "implemented",
+  source: blueArchiveSpecialtySource
+};
+
+adventureCards["specialty.seia_blue_archive.1"] = {
+  id: "specialty.seia_blue_archive.1",
+  name: "Prophetic Counsel I",
+  kind: "hero-specialty",
+  timing: "instant",
+  phaseLimit: ["reaction", "combat"],
+  tags: ["hero-specialty", "instant", "seia_blue_archive", "prophetic-counsel", "Instant: Add +1 Power to your Spell — OR — discard 1 card to add +2 Power."],
+  effect: {
+    type: "CHOOSE_ONE",
+    options: [
+      { label: "+1 Power", trigger: { event: "SPELL_CAST_STARTED", controller: "self" }, effect: { type: "ADD_SPELL_POWER", amount: 1 } },
+      { label: "Discard 1 card for +2 Power", trigger: { event: "SPELL_CAST_STARTED", controller: "self" }, cost: { discardCards: 1 }, effect: { type: "ADD_SPELL_POWER", amount: 2 } }
+    ]
+  },
+  implementationStatus: "implemented",
+  source: blueArchiveSpecialtySource
+};
+
+adventureCards["specialty.seia_blue_archive.4"] = {
+  id: "specialty.seia_blue_archive.4",
+  name: "Prophetic Counsel IV",
+  kind: "hero-specialty",
+  timing: "instant",
+  tags: [
+    "hero-specialty",
+    "instant",
+    "seia_blue_archive",
+    "prophetic-counsel",
+    "Remove an Ability, Artifact, or Spell card from your hand to Search (3) its corresponding deck. Artifact and Spell deck access depends on your hero's location. You may also Remove this Specialty card."
+  ],
+  target: { type: "none" },
+  effect: {
+    type: "CHOOSE_ONE",
+    options: [
+      {
+        label: "Remove an Ability, Artifact, or Spell card to Search (3) its corresponding deck",
+        effect: { type: "REMOVE_HAND_CARD_THEN_SEARCH", count: 3, filter: "removable" }
+      },
+      {
+        label: "Remove a card to Search (3), then Remove this Specialty card",
+        cost: { removeSelf: true },
+        effect: { type: "REMOVE_HAND_CARD_THEN_SEARCH", count: 3, filter: "removable" }
+      }
+    ]
+  },
+  implementationStatus: "implemented",
+  source: blueArchiveSpecialtySource
+};
+
+adventureCards["specialty.seia_blue_archive.6"] = {
+  id: "specialty.seia_blue_archive.6",
+  name: "Prophetic Counsel VI",
+  kind: "hero-specialty",
+  timing: "combat",
+  phaseLimit: ["combat"],
+  tags: ["hero-specialty", "combat", "ongoing", "seia_blue_archive", "prophetic-counsel", "Ongoing: Select a unit. Its Attack die result is always -1 for this Combat."],
+  target: { type: "any-unit" },
+  effect: {
+    type: "CREATE_ACTIVE_EFFECT",
+    effect: {
+      name: "Prophetic Counsel VI",
+      scope: "unit",
+      duration: { type: "combat" },
+      polarity: "negative",
+      removable: true,
+      modifiers: [{ type: "ATTACK_ROLL_FIXED_MINUS_ONE" }]
+    }
+  },
+  implementationStatus: "implemented",
+  source: blueArchiveSpecialtySource
+};
+
+adventureCards["specialty.chise_blue_archive.1"] = {
+  id: "specialty.chise_blue_archive.1",
+  name: "Mystic Chill I",
+  kind: "hero-specialty",
+  timing: "instant",
+  phaseLimit: ["reaction", "combat"],
+  tags: ["hero-specialty", "instant", "chise_blue_archive", "mystic-chill", "At the beginning of Combat, as an Instant reaction: all enemy units get -1 Initiative for this Combat, then draw 1 card."],
+  effect: {
+    type: "CHOOSE_ONE",
+    options: [{
+      label: "Beginning-of-Combat Instant reaction",
+      combatOnly: true,
+      combatStartOnly: true,
+      combatAnytime: true,
+      effect: { type: "SLOW_ALL_ENEMIES", name: "Mystic Chill I", initiative: -1, drawCards: 1 }
+    }]
+  },
+  implementationStatus: "implemented",
+  source: blueArchiveSpecialtySource
+};
+
+adventureCards["specialty.chise_blue_archive.4"] = {
+  id: "specialty.chise_blue_archive.4",
+  name: "Mystic Chill IV",
+  kind: "hero-specialty",
+  timing: "instant",
+  phaseLimit: ["reaction", "combat"],
+  tags: ["hero-specialty", "instant", "chise_blue_archive", "mystic-chill", "At the beginning of Combat, as an Instant reaction: deal 1 damage to every enemy unit and give each -1 Initiative for this Combat."],
+  effect: {
+    type: "CHOOSE_ONE",
+    options: [{
+      label: "Beginning-of-Combat Instant reaction",
+      combatOnly: true,
+      combatStartOnly: true,
+      combatAnytime: true,
+      effect: { type: "SLOW_ALL_ENEMIES", name: "Mystic Chill IV", initiative: -1, damage: 1 }
+    }]
+  },
+  implementationStatus: "implemented",
+  source: blueArchiveSpecialtySource
+};
+
+adventureCards["specialty.chise_blue_archive.6"] = {
+  id: "specialty.chise_blue_archive.6",
+  name: "Mystic Chill VI",
+  kind: "hero-specialty",
+  timing: "instant",
+  phaseLimit: ["reaction", "combat"],
+  tags: ["hero-specialty", "instant", "chise_blue_archive", "mystic-chill", "Instant: Your selected unit gains +2 Defense for this attack, then draw 1 card."],
+  trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
+  effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 2, drawCards: 1 },
+  implementationStatus: "implemented",
+  source: blueArchiveSpecialtySource
+};
+
+adventureCards["specialty.kei_blue_archive.1"] = {
+  id: "specialty.kei_blue_archive.1",
+  name: "Hacking I",
+  kind: "hero-specialty",
+  timing: "combat",
+  phaseLimit: ["combat"],
+  tags: ["hero-specialty", "combat", "ongoing", "kei_blue_archive", "hacking", "Ongoing: Select an enemy unit. It rolls its Attack die at disadvantage for this Combat."],
+  target: { type: "enemy-unit" },
+  effect: {
+    type: "CREATE_ACTIVE_EFFECT",
+    effect: {
+      name: "Hacking I",
+      scope: "unit",
+      duration: { type: "combat" },
+      polarity: "negative",
+      removable: true,
+      modifiers: [{ type: "ATTACK_ROLL_DISADVANTAGE" }]
+    }
+  },
+  implementationStatus: "implemented",
+  source: blueArchiveSpecialtySource
+};
+
+adventureCards["specialty.kei_blue_archive.4"] = {
+  id: "specialty.kei_blue_archive.4",
+  name: "Hacking IV",
+  kind: "hero-specialty",
+  timing: "instant",
+  phaseLimit: ["reaction", "combat"],
+  tags: ["hero-specialty", "instant", "kei_blue_archive", "hacking", "Instant: Your selected unit gains +2 Attack for this attack, then draw 2 cards and discard 1. It may also be played only for the draw on the map or in battle."],
+  trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+  effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2, drawCards: 2, thenDiscard: 1 },
+  implementationStatus: "implemented",
+  source: blueArchiveSpecialtySource
+};
+
+adventureCards["specialty.kei_blue_archive.6"] = {
+  id: "specialty.kei_blue_archive.6",
+  name: "Hacking VI",
+  kind: "hero-specialty",
+  timing: "instant",
+  phaseLimit: ["reaction", "combat"],
+  tags: ["hero-specialty", "instant", "kei_blue_archive", "hacking", "Instant: When an enemy unit is about to activate, it skips that activation."],
+  trigger: { event: "UNIT_ACTIVATION_STARTED", controller: "opponent" },
+  effect: { type: "SKIP_ACTIVATION", anyGrade: true },
+  implementationStatus: "implemented",
+  source: blueArchiveSpecialtySource
+};
+
+// Blue Archive specialty scans — all five heroes use the approved, generated
+// I/IV/VI card art instead of the fallback DOM renderer.
+for (const heroSlug of [
+  "mika_blue_archive",
+  "yuuka_blue_archive",
+  "seia_blue_archive",
+  "chise_blue_archive",
+  "kei_blue_archive"
+] as const) {
+  const fileHero = heroSlug.replace("_blue_archive", "");
+  for (const [level, fileLevel] of [[1, "i"], [4, "iv"], [6, "vi"]] as const) {
+    const card = adventureCards[`specialty.${heroSlug}.${level}`];
+    card.assets = {
+      cardImage: `/assets/anime/cards/blue-archive/approved-style/${fileHero}-${fileLevel}.png`,
+      imageAlt: `${card.name} specialty card`
+    };
+  }
+}
+
 // Aoko (Fuyuki, magic): Rion's generic medic set — heal/cleanse + card draw.
 adventureCards["specialty.aoko.1"] = rethemedSpecialty(adventureCards["specialty.rion.1"], "rion", "aoko", 1, "Leyline Mending");
 adventureCards["specialty.aoko.4"] = rethemedSpecialty(adventureCards["specialty.rion.4"], "rion", "aoko", 4, "Leyline Mending");

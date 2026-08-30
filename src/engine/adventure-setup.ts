@@ -2940,6 +2940,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         id === "hidden_leaf" ||
         id === "azur_lane" ||
         id === "little_busters" ||
+        id === "blue_archive" ||
         String(id) === "mgq"
     );
   if (animeTownsOn && ruleset === "binh") {

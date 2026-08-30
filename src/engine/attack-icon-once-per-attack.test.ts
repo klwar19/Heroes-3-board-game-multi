@@ -507,9 +507,12 @@ describe("SWEEP — every printed unit reroll ability is bounded within one atta
     .filter((ability) => ability.effect?.type === "ATTACK_DIE_REROLL")
     .map((ability) => ability.id);
 
-  it("finds the four shipped reroll abilities", () => {
+  it("finds every shipped reroll ability", () => {
     expect([...rerollAbilityIds].sort()).toEqual(
-      ["attack-die-reroll", "champion-move-reroll", "minotaur-reroll", "yukikaze-torpedo-run"].sort()
+      [
+        "attack-die-reroll", "champion-move-reroll", "kivotos-hardboiled-boss", "minotaur-reroll", "yukikaze-torpedo-run",
+        "kivotos-piercing-judgment", "kivotos-silent-faith"
+      ].sort()
     );
   });
 

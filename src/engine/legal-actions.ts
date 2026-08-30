@@ -130,6 +130,7 @@ import {
   commanderDefenseReactionUnit,
   commanderGradeUpChoices,
   commanderIntegratedDeploymentSortAvailable,
+  ibukiActionPoints,
   commanderStandsInCurrentCombat,
   commanderUnitId
 } from "./commanders";
@@ -266,7 +267,11 @@ import {
   WISDOM_BALANCE_SEARCH_DELTA
 } from "./ruleset";
 import { armyUnitStacksActive, houseRuleEnabled } from "./house-rules";
-import { balanceIntelligenceWindowClosed, polishIntelligenceHandReadingActive } from "./combat-timing";
+import {
+  balanceIntelligenceWindowClosed,
+  combatStartWindowOpen,
+  polishIntelligenceHandReadingActive
+} from "./combat-timing";
 import { artifactSetAttackWindowOffers, artifactSetPowerOffers } from "./artifact-sets";
 import { availableLittleBustersCounters } from "./little-busters-counters";
 import {
@@ -1619,6 +1624,7 @@ export function getAttackRollMode(
   const ignoresMeleePenalty =
     ignoresAllPenalties ||
     hasUnitAbilityEffect(attacker, "IGNORE_RANGED_MELEE_PENALTY") ||
+    hasUnitAbilityEffect(attacker, "IGNORE_ADJACENT_RANGED_PENALTY_AND_RETALIATION") ||
     Boolean(state && equipmentIgnoresAdjacentRangedPenalty(state, attacker, isRetaliation));
 
   // The ranged Combat penalty ("throw two Attack dice and apply the smaller
@@ -4265,7 +4271,7 @@ function addOptionPlays(
     if (option.combatOnly && context !== "combat") {
       continue;
     }
-    if (option.combatStartOnly && balanceIntelligenceWindowClosed(state)) {
+    if (option.combatStartOnly && (!state.combat || !combatStartWindowOpen(state.combat))) {
       continue;
     }
     // Shackles of War's "block the enemy's Surrender" side is never played from
@@ -4570,6 +4576,8 @@ export function drawRiderThenDiscard(effect: EffectDefinition): number {
   if (
     effect.type === "HEAL_DAMAGE" ||
     effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS" ||
+    // Kei's Hacking IV: +Attack, draw 2, then discard 1.
+    effect.type === "ADD_COMBAT_STAT" ||
     // Polish Balance Pack Dragon Wing Tabard / Spirit of Oppression: "+1 SP,
     // draw 1 card then discard 1 card" — the same draw-then-discard order.
     effect.type === "ADD_SPELL_POWER"
@@ -5852,8 +5860,41 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
     // Pochi's Dig replaces the attack, not the move, so it remains available
     // after an optional move. Other pre-move activation abilities retain their
     // existing gate.
-    if (activeUnit.movedThisActivation && ability.effect?.type !== "PLACE_ADJACENT_OBSTACLE_ACTION") {
+    if (
+      activeUnit.movedThisActivation &&
+      ability.effect?.type !== "PLACE_ADJACENT_OBSTACLE_ACTION" &&
+      ability.effect?.type !== "MARK_ENEMY_FOR_NEXT_FRIENDLY_ATTACK"
+    ) {
       continue;
+    }
+
+    // Shiroko Drone Support is a free once-per-round activation ability. It may
+    // be used before or after moving, but never after attacking; each in-range
+    // living enemy is exposed as a concrete target action.
+    if (
+      ability.effect?.type === "MARK_ENEMY_FOR_NEXT_FRIENDLY_ATTACK" &&
+      !activeUnit.attackedThisActivation &&
+      activeUnit.droneSupportUsedRound !== combat.round
+    ) {
+      for (const target of Object.values(combat.units)) {
+        if (
+          target.controllerId === activeUnit.controllerId ||
+          !isUnitAlive(target) ||
+          getBattlefieldDistance(activeUnit.position, target.position) > ability.effect.range
+        ) {
+          continue;
+        }
+        actions.push({
+          label: `${activeUnit.name}: ${ability.name} — mark ${target.name}`,
+          action: {
+            type: "USE_UNIT_ABILITY",
+            playerId,
+            unitId: activeUnit.id,
+            abilityId: ability.id,
+            target: { type: "unit", unitId: target.id }
+          }
+        });
+      }
     }
 
     if (ability.effect?.type === "ACTIVATION_ATTACK_BUFF") {
@@ -6112,11 +6153,29 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
       }
     }
 
+    if (activeUnit.commanderSlug === "ibuki" && !activeUnit.attackedThisActivation) {
+      const ap = ibukiActionPoints(activeUnit);
+      const power = commanderCastPower(state, activeUnit);
+      const enemies = Object.values(combat.units).filter((unit) => unit.controllerId !== playerId && isUnitAlive(unit));
+      if (ability.id === "commander-ibuki-sniper-shot" && ap >= 1) {
+        for (const target of enemies) actions.push({ label: `Sniper Shot · 1 AP · ${power >= 2 ? 2 : 1} damage to ${target.cardName}`, action: { type: "USE_UNIT_ABILITY", playerId, unitId: activeUnit.id, abilityId: ability.id, target: { type: "unit", unitId: target.id } } });
+      }
+      if (ability.id === "commander-ibuki-up-to-mischief" && ap >= 2) {
+        for (const target of enemies) actions.push({ label: `Up to Mischief · 2 AP · −1 Attack${power >= 1 ? " and Defense" : ""} to ${target.cardName}`, action: { type: "USE_UNIT_ABILITY", playerId, unitId: activeUnit.id, abilityId: ability.id, target: { type: "unit", unitId: target.id } } });
+      }
+      if (ability.id === "commander-ibuki-gadabout" && ap >= 2) {
+        const occupied = new Set(Object.values(combat.units).filter(isUnitAlive).map((unit) => unit.position));
+        for (let position = 0; position < BATTLEFIELD_CELL_COUNT; position += 1) {
+          if (!occupied.has(position)) actions.push({ label: `Gadabout · 2 AP · teleport to ${getBattlefieldLabel(position)}`, action: { type: "USE_UNIT_ABILITY", playerId, unitId: activeUnit.id, abilityId: ability.id, target: { type: "space", position } } });
+        }
+      }
+    }
+
     // WOG commander command ability: a single "cast" command that opens the
     // board target picker. Offered only during the commander's own activation,
     // before it moves/attacks, once per combat round, with the rune cost
     // payable and at least one legal target (commanderCastAvailable).
-    if (ability.effect?.type === "COMMANDER_CAST" && commanderCastAvailable(state, activeUnit)) {
+    if (ability.effect?.type === "COMMANDER_CAST" && commanderCastAvailable(state, activeUnit) && (activeUnit.commanderSlug !== "ibuki" || ibukiActionPoints(activeUnit) >= 3)) {
       const power = commanderCastPower(state, activeUnit);
       const runeCost = commanderCastRuneCost(state, activeUnit);
       actions.push({
@@ -9164,6 +9223,7 @@ export function getLegalReactionsForTrigger(
           const building = coreBuildingDefinitions[buildingId];
           if (
             building?.effect?.type === "HALL_OF_VALHALLA" &&
+            !building.effect.trainingWinXp &&
             (player.buildingUsedRound?.[buildingId] ?? 0) !== state.round
           ) {
             reactions.push({
@@ -10470,7 +10530,7 @@ export function isEffectLegalForTrigger(
         getActivateRangedUnitTargets(state, playerId, triggerEvent.unitId, effect.allowAlreadyActivated).length > 0
       );
     }
-    if (effect.type !== "SKIP_ACTIVATION" || !effect.grade) {
+    if (effect.type !== "SKIP_ACTIVATION" || (!effect.grade && !effect.anyGrade)) {
       return false;
     }
     if (triggerEvent.playerId === playerId) {
@@ -10479,7 +10539,14 @@ export function isEffectLegalForTrigger(
     const unit = state.combat?.units[triggerEvent.unitId];
     // A bank guard (e.g. Nagas) is Sorrow-able at its underlying grade, so the
     // matching grade option (gold for a gold Naga) is offered — user ruling.
-    return Boolean(unit && isUnitAlive(unit) && bankAwareTierGateRank(unit, effect.type, houseRuleEnabled(state, "polish-bank-unit-spells")) === gradeRank(effect.grade));
+    return Boolean(
+      unit &&
+      isUnitAlive(unit) &&
+      (effect.anyGrade ||
+        (effect.grade &&
+          bankAwareTierGateRank(unit, effect.type, houseRuleEnabled(state, "polish-bank-unit-spells")) ===
+            gradeRank(effect.grade)))
+    );
   }
 
   // Card draws are timing-free instants: they fit inside any open window.

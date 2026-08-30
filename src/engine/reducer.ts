@@ -211,6 +211,7 @@ import {
   getBattlefieldDistance,
   getBattlefieldLabel,
   getOrthogonalNeighbors,
+  getReachableDestinations,
   isBattlefieldPosition,
   planMovePath
 } from "./battlefield";
@@ -388,6 +389,7 @@ import {
   effectAppliesToUnit,
   effectiveInitiative,
   unitAttackRollDisadvantaged,
+  unitAttackRollFixedMinusOne,
   unitImmuneToSpellSchoolsByEffect,
   expireEffectsForActivationEnd,
   expireEffectsForActivationStart,
@@ -429,7 +431,7 @@ import {
   turnClockRunningSeats
 } from "./afk";
 import { cancelRoomReset, confirmRoomReset, requestRoomReset } from "./reset-vote";
-import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
+import { appendEvent, eventSeedNumber, nextEventNumber, reduceFirstDamageEachRound } from "./events";
 import { commanderArtifactBonusesForUnit } from "./commander-artifacts";
 import { gainRunes, gainRunesForAttack, gainRunesForDefend, grantStartingRunes, spendRunes } from "./runes";
 import { commanderCastIsInstantReaction, commanderCastTierIndex } from "@/data/commanders";
@@ -445,6 +447,8 @@ import {
   commanderDefenseReactionUnit,
   commanderLiveAttackBonus,
   commanderLiveDefenseBonus,
+  gainIbukiActionPoint,
+  ibukiActionPoints,
   sonyaBondDefenseBonus,
   commanderRunePool
 } from "./commanders";
@@ -533,7 +537,11 @@ import {
   getAttackBonusVsTargetTokens,
   getAttackBonusVsDefenderName,
   getAttackBonusVsMarked,
+  getAttackBonusVsRetaliatedTarget,
+  getVanitasAttackBonus,
+  getDamagedNonAdjacentAttackBonus,
   getAttackDefenseReductionAbility,
+  getSagittaMortisDefenseReduction,
   getAttackDieDefenseReductionAbility,
   getMightDiceCount,
   mightDiceAttackBonus,
@@ -547,6 +555,20 @@ import {
   getDeathStareFollowUps,
   moraleLockedForPlayer,
   getDefenseBonusOnAttackDie,
+  getFirstAttackDefenseOncePerCombat,
+  getFirstMeleeAttackerDamage,
+  getTeaPartyDefenseSources,
+  getAbyssalShieldSource,
+  getWakamoMarkedTargetAttackBonus,
+  getWakamoMarkAbility,
+  getPostAttackMoveAbility,
+  getExplosivePrankAbility,
+  getDroneSupportSources,
+  getFutureSightSources,
+  getKeyAuthoritySources,
+  getModeChangeAbility,
+  getModeChangeAttackBonus,
+  getModeChangeDefenseBonus,
   getDefenseBonusWhenRetaliated,
   getDefenseDieDamageReduction,
   getDoubleAttackAbility,
@@ -3787,6 +3809,37 @@ function getAttackDamagePreview(
   };
 }
 
+/** Mika IV: each attacker that strikes the protected unit suffers the listed damage. */
+function applyDamageAttackerAfterAttacked(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState
+): void {
+  if (!state.combat || !isUnitAlive(attacker)) {
+    return;
+  }
+  for (const effect of state.activeEffects) {
+    if (!effectAppliesToUnit(effect, defender)) {
+      continue;
+    }
+    for (const modifier of effect.modifiers) {
+      if (modifier.type !== "DAMAGE_ATTACKER_AFTER_ATTACKED" || modifier.amount <= 0) {
+        continue;
+      }
+      attacker.damage += modifier.amount;
+      noteUnitDamagedForTokens(state, attacker, modifier.amount);
+      appendEvent(state, {
+        type: "DAMAGE_ASSIGNED",
+        source: effect.source,
+        target: { type: "unit", unitId: attacker.id },
+        amount: modifier.amount,
+        damageKind: "effect"
+      });
+      markUnitRemovedIfNeeded(state, attacker);
+    }
+  }
+}
+
 function getFuyukiCasterFixedDamage(unit: CombatUnitState): number | undefined {
   const abilities = getUnitAbilityDefinitions(unit);
   if (abilities.some((ability) => ability.id === "fuyuki-caster-fixed-3")) return 3;
@@ -3918,9 +3971,27 @@ function applyAttackDamageFromCandidate(
   if (defender.unitDefId === "little_busters.mio" && defender.variant === "pack") {
     defender.mioFirstDefenseUsedThisRound = true;
   }
+  if (hasUnitAbilityEffect(defender, "FIRST_ATTACK_DEFENSE_ONCE_PER_COMBAT")) {
+    defender.tokiFirstDefenseUsedThisCombat = true;
+  }
   // A cancelled die (Shield of the Dwarven Lords) is reported like an unrolled
   // die so the client skips the rolling-dice cinematic.
   const skipDieCinematic = noDie || dieCancelled;
+
+  // Iron Horus must reduce the attack before lethal-save checks, Pack/Few layer
+  // previews and damage-dependent follow-ups. Non-attack damage uses the same
+  // helper automatically at the DAMAGE_ASSIGNED seam in events.ts.
+  const ironHorusReduction = reduceFirstDamageEachRound(state, defender.id, damage);
+  if (ironHorusReduction.reduced > 0) {
+    damage = ironHorusReduction.amount;
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: defender.id,
+      abilityId: "kivotos-iron-horus",
+      targetUnitId: defender.id,
+      message: `${defender.cardName}'s Iron Horus reduces the first damage it takes this round by 1.`
+    });
+  }
 
   // Alamar's Resurrection: if this blow would reduce the defender to 0 HP and
   // its grade is within reach, the whole attack is cancelled — no damage, and
@@ -4341,6 +4412,8 @@ function getAttackStackDetails(
       dieMultiplierSkipsNegative?: boolean;
       /** Behemoths: the announced defense reduction applied to this attack. */
       defenseReductionAbility?: { abilityId: string; abilityName: string; amount: number };
+      /** Seia sources spending Tea Party Order on this incoming attack. */
+      teaPartyDefenseSources: Array<{ source: CombatUnitState; abilityId: string; abilityName: string; amount: number }>;
       /** Printed-ability follow-up (Death Cloud): replacement base attack. */
       abilityAttack?: { abilityId: string; baseAttack: number };
     }
@@ -4433,11 +4506,13 @@ function getAttackStackDetails(
     getFlatDefenseWhenAttacked(defender);
   const activeDefenseBonus =
     getActiveDefenseBonus(state, defender) +
+    getModeChangeDefenseBonus(defender) +
     conditionalDefenseBonus +
     attackerTypeDefenseBonus +
     (hasUnitAbilityEffect(defender, "STACKING_DEFENSE_WHEN_ATTACKED")
       ? (defender.stackingDefenseWhenAttackedBonus ?? 0)
       : 0);
+  const teaPartyDefenseSources = getTeaPartyDefenseSources(combat, defender);
   const abilityAttack = stackItem.action.type === "ATTACK_UNIT" ? stackItem.action.abilityAttack : undefined;
 
   // Combat tokens: Attack/Weakness tokens shift the attacker, Corrosion the
@@ -4468,6 +4543,8 @@ function getAttackStackDetails(
     (stackItem.modifiers.cultivationDefenseBonus ?? 0) +
     activeDefenseBonus +
     (defender.unitDefId === "little_busters.mio" && defender.variant === "pack" && !defender.mioFirstDefenseUsedThisRound ? 1 : 0) +
+    getFirstAttackDefenseOncePerCombat(defender) +
+    teaPartyDefenseSources.reduce((total, source) => total + source.amount, 0) +
     tokenDefense +
     redirectedDefenseDelta +
     // WOG commander Superior Combat (Shaman) +1 Defense stance, live while it
@@ -4483,6 +4560,10 @@ function getAttackStackDetails(
     !isRetaliation && !abilityAttack
       ? getAttackDefenseReductionAbility(attacker, attacker.movedThisActivation)
       : null;
+  const sagittaMortisSource =
+    !isRetaliation && !abilityAttack
+      ? getSagittaMortisDefenseReduction(attacker, defender, combat.round)
+      : null;
   const ignoreCardDefenseSource =
     !isRetaliation && !abilityAttack ? getIgnoreTargetCardDefenseAbility(attacker) : null;
   // The Defend roll's +1 is a separate per-attack shield resolved at damage
@@ -4493,10 +4574,11 @@ function getAttackStackDetails(
   const artifactDefensePierce = commanderArtifactBonusesForUnit(state, attacker).defensePierce;
   const requestedDefenseReduction =
     (defenseReductionSource?.amount ?? 0) +
+    (sagittaMortisSource?.amount ?? 0) +
     (ignoreCardDefenseSource ? defender.defense : 0) +
     artifactDefensePierce;
   const defenseReductionAmount = Math.min(requestedDefenseReduction, currentDefenseValue);
-  const reductionAbilitySource = defenseReductionSource ?? ignoreCardDefenseSource;
+  const reductionAbilitySource = defenseReductionSource ?? sagittaMortisSource ?? ignoreCardDefenseSource;
   const defenseReductionAbility =
     reductionAbilitySource && defenseReductionAmount > 0
       ? {
@@ -4521,6 +4603,10 @@ function getAttackStackDetails(
   // Factory Bounty Hunters: +1/+2 Attack when striking a Marked enemy. An innate
   // ability bonus, added unclamped like Hatred (elemental clamps don't apply).
   const markAttackBonus = getAttackBonusVsMarked(attacker, defender);
+  const wakamoMarkAttackBonus = getWakamoMarkedTargetAttackBonus(attacker, defender);
+  const retaliatedTargetAttackBonus = isRetaliation ? 0 : getAttackBonusVsRetaliatedTarget(attacker, defender);
+  const vanitasAttackBonus = isRetaliation ? 0 : getVanitasAttackBonus(attacker, defender);
+  const damagedNonAdjacentAttackBonus = isRetaliation ? 0 : getDamagedNonAdjacentAttackBonus(attacker, defender);
 
   // The INNATE, target-independent flat Attack bonuses live on the attacker
   // right now — Cove Haspids' "[unit_attack] Vengeance" (+2 once the Pack has
@@ -4625,6 +4711,12 @@ function getAttackStackDetails(
       attackDieResultBonus +
       hatredAttackBonus +
       markAttackBonus +
+      wakamoMarkAttackBonus +
+      retaliatedTargetAttackBonus +
+      vanitasAttackBonus +
+      damagedNonAdjacentAttackBonus +
+      (stackItem.modifiers.droneSupportAttackBonus ?? 0) +
+      getModeChangeAttackBonus(attacker) +
       innateFlatAttackBonus +
       chargeAttackBonus +
       commanderPositionalAttackBonus +
@@ -4702,6 +4794,7 @@ function getAttackStackDetails(
       siegeRangedDamageReduction(combat, attacker, defender, attackKind, state, isRetaliation) +
       (isRetaliation ? (stackItem.modifiers.retaliationDamageReductionInstant ?? 0) : 0),
     defenseReductionAbility,
+    teaPartyDefenseSources,
     abilityAttack
   };
 }
@@ -4759,6 +4852,7 @@ const DIPLOMATS_RING_CARD_ID = "artifact.diplomats_ring" as CardId;
 function buildRerollSources(
   state: GameState,
   attacker: CombatUnitState,
+  defender: CombatUnitState,
   rerollEffects: ActiveEffectState[],
   /** Whether the attacker moved this attack — gates Champions' "Charge" reroll. */
   moved = false,
@@ -4776,11 +4870,15 @@ function buildRerollSources(
     return [];
   }
 
-  const abilitySources: AttackRerollSource[] = getUnitAttackRerollSources(attacker, moved, isRetaliation).map((source) => ({
+  const abilitySources: AttackRerollSource[] = getUnitAttackRerollSources(attacker, moved, isRetaliation, defender).map((source) => ({
     name: source.name,
+    abilityId: source.abilityId,
+    sourceUnitId: attacker.id,
     remaining: source.rerolls,
     used: 0,
-    ...(source.onlyOnRoll !== undefined ? { onlyOnRoll: source.onlyOnRoll } : {})
+    ...(source.onlyOnRoll !== undefined ? { onlyOnRoll: source.onlyOnRoll } : {}),
+    ...(source.drawIfRerollResult !== undefined ? { drawIfRerollResult: source.drawIfRerollResult } : {}),
+    ...(source.drawCount !== undefined ? { drawCount: source.drawCount } : {})
   }));
 
   // Ammo Cart (Astrologers): while the proclamation is face up, an owner of an
@@ -5314,7 +5412,9 @@ function openAttackRerollChoice(
   // Cards of Prophecy's two EXTRA up-front throws (option B, declared pre-roll):
   // they join the window's candidate list and unlock the free pick among all
   // three. Empty for every ordinary attack.
-  extraCandidates: AttackRollCandidate[] = []
+  extraCandidates: AttackRollCandidate[] = [],
+  playerId: PlayerId = details.attacker.controllerId,
+  followUpRerollStages: Array<{ playerId: PlayerId; rerollSources: AttackRerollSource[] }> = []
 ): void {
   const choiceId = `choice_${nextEventNumber(state)}`;
   const candidates = [candidate, ...extraCandidates];
@@ -5325,7 +5425,7 @@ function openAttackRerollChoice(
   state.pendingChoice = {
     id: choiceId,
     type: "ATTACK_DIE_REROLL",
-    playerId: details.attacker.controllerId,
+    playerId,
     stackItemId: stackItem.id,
     attackerId: details.attacker.id,
     defenderId: details.defender.id,
@@ -5337,6 +5437,7 @@ function openAttackRerollChoice(
     candidates,
     remainingRerolls,
     rerollSources,
+    ...(followUpRerollStages.length > 0 ? { followUpRerollStages } : {}),
     sourceEffectIds,
     ...(extraCandidates.length > 0 ? { freeCandidateChoice: true } : {})
   };
@@ -5347,7 +5448,7 @@ function openAttackRerollChoice(
     type: "PENDING_CHOICE_CREATED",
     choiceId,
     choiceType: "ATTACK_DIE_REROLL",
-    playerId: details.attacker.controllerId,
+    playerId,
     sourceEffectIds,
     message:
       extraCandidates.length > 0
@@ -6048,16 +6149,29 @@ function resolveDefendBonus(
   // Stacked" (Dwarven Treasury Dwarves, Dragon Utopia Crystal Dragons) lets the
   // defender roll the Defend die (a "+1" face → +1 Defense). The shield is moot
   // when the attack ignores Defense (Elemental).
+  const abyssalShield = state.combat ? getAbyssalShieldSource(state.combat, details.defender) : null;
   const hasShield =
+    stackItem.modifiers.defendRoll !== undefined ||
     details.defender.defenseToken ||
     hasAdjacentDefenseAura(state, details.defender) ||
-    hasSelfDefenseToken(details.defender);
+    hasSelfDefenseToken(details.defender) ||
+    Boolean(abyssalShield);
   if (!hasShield || details.ignoreDefense) {
     return null;
   }
   const combat = state.combat;
   if (!combat) {
     return null;
+  }
+  if (abyssalShield) {
+    details.defender.abyssalShieldUsedRound = combat.round;
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: abyssalShield.source.id,
+      abilityId: abyssalShield.abilityId,
+      targetUnitId: details.defender.id,
+      message: `${abyssalShield.source.cardName}'s ${abyssalShield.abilityName} grants ${details.defender.cardName} a Defense token against this attack.`
+    });
   }
   // Plastic Tray (Astrologers): while face up, a defending unit's shield pays a
   // FLAT +1 Defense and NO Defend die is rolled at all — so die-triggered
@@ -6517,6 +6631,9 @@ function finishResolvedAttack(
   }
 
   if (details.defenseReductionAbility) {
+    if (details.defenseReductionAbility.abilityId === "kivotos-sagitta-mortis" && state.combat) {
+      details.attacker.sagittaMortisUsedRound = state.combat.round;
+    }
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: details.attacker.id,
@@ -6587,6 +6704,16 @@ function finishResolvedAttack(
     ? getDevourAbility(details.attacker, details.defender)
     : null;
   const devourTargetVariant = details.defender.variant;
+  for (const teaParty of details.teaPartyDefenseSources) {
+    teaParty.source.teaPartyOrderUsedThisCombat = true;
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: teaParty.source.id,
+      abilityId: teaParty.abilityId,
+      targetUnitId: details.defender.id,
+      message: `${teaParty.source.cardName}'s ${teaParty.abilityName} grants ${details.defender.cardName} +${teaParty.amount} Defense for this attack.`
+    });
+  }
   const attackResult = applyAttackDamageFromCandidate(
     state,
     details.attacker,
@@ -6612,6 +6739,22 @@ function finishResolvedAttack(
     details.dieMultiplierSkipsNegative,
     details.ignorePlusOneDie
   );
+  if (!details.isRetaliation && !details.abilityAttack && attackResult.damage > 0) {
+    const foxfire = getWakamoMarkAbility(details.attacker);
+    if (foxfire) {
+      details.attacker.wakamoMarkedTargetId = details.defender.id;
+      // The marking blow's Attack was already calculated; arming now makes the
+      // +1 begin with Wakamo's next attack exactly as printed.
+      details.attacker.wakamoMarkArmed = true;
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: details.attacker.id,
+        abilityId: foxfire.abilityId,
+        targetUnitId: details.defender.id,
+        message: `${details.attacker.cardName}'s ${foxfire.abilityName} marks ${details.defender.cardName}.`
+      });
+    }
+  }
 
   if (!attackResult.cancelled) {
     recordSwordIntentAfterAttack(state, details.attacker, details.isRetaliation, attackResult.damage);
@@ -6675,6 +6818,26 @@ function finishResolvedAttack(
     });
   }
 
+  // Mika VI: heal half the damage this strike actually dealt. Rounding up lets
+  // a successful 1-damage hit heal 1; a soaked attack heals nothing.
+  if (
+    stackItem.modifiers.healHalfDamageDealtCardId &&
+    attackResult.damage > 0 &&
+    isUnitAlive(details.attacker) &&
+    details.attacker.damage > 0
+  ) {
+    healUnitDamage(
+      state,
+      {
+        type: "card",
+        cardId: stackItem.modifiers.healHalfDamageDealtCardId,
+        controllerId: details.attacker.controllerId
+      },
+      { type: "unit", unitId: details.attacker.id },
+      Math.ceil(attackResult.damage / 2)
+    );
+  }
+
   applyOnAttackTokens(
     state,
     details.attacker,
@@ -6686,6 +6849,7 @@ function finishResolvedAttack(
   // resolved attack (not cancelled), heal the defender if the owner's ongoing
   // effect is active. Runs for declared attacks AND retaliations.
   applyHealAfterAttacked(state, details.defender);
+  applyDamageAttackerAfterAttacked(state, details.attacker, details.defender);
   // Stage Costume: first attack against the owner's unit this combat → Defense token.
   applyEquipmentStageCostumeDefenseToken(state, details.defender);
   // Great Shamans' Freezing Shot: their attack also slows the target next round.
@@ -6775,6 +6939,8 @@ function finishResolvedAttack(
   applyCommanderArtifactAfterAttack(state, details.attacker, details.defender, details.isRetaliation, attackResult.damage);
   // Rune Keeper commander: +1 Rune the first time it is attacked this combat.
   applyCommanderRuneRitual(state, details.defender, details.isRetaliation);
+  gainIbukiActionPoint(state, details.attacker, "attacking");
+  gainIbukiActionPoint(state, details.defender, "being attacked");
 
   // Anime Equipment (§3.13): the attack LANDED (past the lethal-save gate) — mark
   // the Iron-Blood Sword / Black Tortoise Mail per-combat charges spent so only
@@ -6940,6 +7106,7 @@ function finishResolvedAttack(
       defenderId: details.defender.id,
       attackKind: details.attackKind,
       attackRoll: attackResult.roll,
+      attackDamage: attackResult.damage,
       forceAbilityRoll
     },
     0
@@ -6957,6 +7124,8 @@ type PostAttackFollowUpContext = {
   attackKind: "melee" | "ranged";
   /** The resolved attack die (the "own"-die Paralysis and double attacks read it). */
   attackRoll: number;
+  /** Damage dealt by the primary attack; marked-target splash requires a real hit. */
+  attackDamage?: number;
   /** Tarnum (Fortress) Basilisks VI: die-gated follow-ups fire regardless. */
   forceAbilityRoll: boolean;
 };
@@ -6986,7 +7155,7 @@ function runPostAttackFollowUps(
 
   const steps: (() => boolean)[] = [
     // 0 — printed flat-damage follow-ups (Magog splash, Cerberi second head).
-    () => openFlatDamageFollowUps(state, attacker, defender, ctx.attackKind),
+    () => openFlatDamageFollowUps(state, attacker, defender, ctx.attackKind, ctx.attackDamage ?? 0),
     // 1 — Thunderbirds' lightning / Wyverns' sting extra die.
     () => applyAttackDieDamageFollowUps(state, attacker, defender, ctx, 1),
     // 2 — Gorgons' Death Stare (may reduce the target to 0 Health).
@@ -7030,7 +7199,20 @@ function runPostAttackFollowUps(
     // stable.
     () => queueSameTargetAttackFollowUps(state, attacker, defender, cards),
     // 16 — Kudryavka's seeded-random separate attack against another enemy.
-    () => declareRandomOtherEnemyFollowUp(state, attacker, defender, cards)
+    () => declareRandomOtherEnemyFollowUp(state, attacker, defender, cards),
+    // 17 — Yuuka Calculated Cover: optional one-space move after attacking,
+    // before the parked retaliation resumes.
+    () => {
+      const ability = getPostAttackMoveAbility(attacker);
+      return ability
+        ? openUnitStepChoice(state, attacker.controllerId, attacker, {
+            optional: true,
+            abilityId: ability.abilityId,
+            abilityName: ability.abilityName,
+            resumeAttackSequence: true
+          })
+        : false;
+    }
   ];
 
   for (let step = Math.max(0, fromStep); step < steps.length; step += 1) {
@@ -8116,14 +8298,15 @@ function openFlatDamageFollowUps(
   state: GameState,
   attacker: CombatUnitState,
   defender: CombatUnitState,
-  attackKind: "melee" | "ranged"
+  attackKind: "melee" | "ranged",
+  damage: number
 ): boolean {
   const combat = state.combat;
   if (!combat) {
     return false;
   }
 
-  const followUps = getFlatDamageFollowUps(combat, { attacker, defender, attackKind });
+  const followUps = getFlatDamageFollowUps(combat, { attacker, defender, attackKind, damage });
   // Under PvP Neutral Control the human controller answers Magog/Cerberi
   // picks — treat them like a human so the choice opens instead of auto-AI.
   const humanPicks =
@@ -8151,6 +8334,9 @@ function openFlatDamageFollowUps(
 
     if (living.length === 0 && fortIds.length === 0) {
       continue;
+    }
+    if (followUp.oncePerCombat) {
+      attacker.kivotosKyrieUsedThisCombat = true;
     }
 
     // AI-only: a single candidate is mandatory and needs no prompt. (fortIds is
@@ -9978,17 +10164,34 @@ function resolveCloneChoice(
  * filtered to a unit with at least one empty neighbour, so a choice always opens
  * for a legal play.
  */
-function openUnitStepChoice(state: GameState, playerId: PlayerId, unit: CombatUnitState): void {
+function openUnitStepChoice(
+  state: GameState,
+  playerId: PlayerId,
+  unit: CombatUnitState,
+  options?: {
+    optional?: boolean;
+    abilityId?: string;
+    abilityName?: string;
+    resumeAttackSequence?: boolean;
+    range?: number;
+    combatStart?: boolean;
+  }
+): boolean {
   const combat = state.combat;
   if (!combat) {
-    return;
+    return false;
   }
 
-  const positions = getOrthogonalNeighbors(unit.position).filter(
-    (position) => !isSpaceBlockedForSummon(combat, position)
-  );
+  const positions = options?.range && options.range > 1
+    ? getReachableDestinations(
+        unit.position,
+        options.range,
+        getBlockedSpaces(combat, unit),
+        unit.type === "flying"
+      )
+    : getOrthogonalNeighbors(unit.position).filter((position) => !isSpaceBlockedForSummon(combat, position));
   if (positions.length === 0) {
-    return;
+    return false;
   }
 
   const choiceId = `choice_${nextEventNumber(state)}`;
@@ -9996,10 +10199,23 @@ function openUnitStepChoice(state: GameState, playerId: PlayerId, unit: CombatUn
     id: choiceId,
     type: "OPTION_CHOICE",
     playerId,
-    prompt: `Move ${unit.cardName} one space.`,
-    options: positions.map((position) => ({ label: `Move to ${getBattlefieldLabel(position)}` })),
+    prompt: options?.abilityName
+      ? `${unit.cardName}: ${options.abilityName} — move up to ${options.range ?? 1} space${(options.range ?? 1) === 1 ? "" : "s"} or stay.`
+      : `Move ${unit.cardName} one space.`,
+    options: [
+      ...positions.map((position) => ({ label: `Move to ${getBattlefieldLabel(position)}` })),
+      ...(options?.optional ? [{ label: "Stay here" }] : [])
+    ],
     context: "combat-step",
-    step: { unitId: unit.id, positions },
+    step: {
+      unitId: unit.id,
+      positions,
+      optional: options?.optional,
+      abilityId: options?.abilityId,
+      abilityName: options?.abilityName,
+      resumeAttackSequence: options?.resumeAttackSequence,
+      combatStart: options?.combatStart
+    },
     returnPhase: "combat"
   };
   state.phase = "choice";
@@ -10010,14 +10226,116 @@ function openUnitStepChoice(state: GameState, playerId: PlayerId, unit: CombatUn
     choiceType: "ABILITY_TARGET_CHOICE",
     playerId,
     sourceEffectIds: [],
-    message: `${state.players[playerId]?.name ?? playerId} moves ${unit.cardName} one space.`
+    message: `${state.players[playerId]?.name ?? playerId} chooses where ${unit.cardName} moves.`
   });
+  return true;
+}
+
+/** Toki Mode Change: select exactly one stance for the coming activation. */
+function resolveModeChangeChoice(
+  state: GameState,
+  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>
+): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "kivotos-mode-change" ||
+    choice.id !== action.choiceId ||
+    choice.playerId !== action.playerId ||
+    !choice.modeChange ||
+    (action.optionIndex !== 0 && action.optionIndex !== 1)
+  ) {
+    throw new Error("There is no Mode Change choice to resolve.");
+  }
+  const unit = state.combat?.units[choice.modeChange.unitId];
+  if (!unit || !isUnitAlive(unit)) throw new Error("Toki is not available for Mode Change.");
+  unit.tokiMode = action.optionIndex === 0 ? "attack" : "guard";
+  unit.activationAbilityDone = true;
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: unit.id,
+    abilityId: choice.modeChange.abilityId,
+    targetUnitId: unit.id,
+    message: `${unit.cardName} enters ${unit.tokiMode === "attack" ? "Attack" : "Guard"} Mode (+${choice.modeChange.amount} ${unit.tokiMode === "attack" ? "Attack" : "Defense"}).`
+  });
+  appendEvent(state, {
+    type: "PENDING_CHOICE_RESOLVED",
+    choiceId: choice.id,
+    playerId: action.playerId,
+    selectedIndex: action.optionIndex
+  });
+  state.pendingChoice = null;
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+}
+
+/** Mutsuki Explosive Prank: place one always-armed, enemy-only splash mine. */
+function resolveExplosivePrankChoice(
+  state: GameState,
+  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>
+): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "kivotos-explosive-prank" ||
+    choice.id !== action.choiceId ||
+    choice.playerId !== action.playerId ||
+    !choice.explosivePrank
+  ) {
+    throw new Error("There is no Explosive Prank placement to resolve.");
+  }
+  const combat = state.combat;
+  const plan = choice.explosivePrank;
+  const unit = combat?.units[plan.unitId];
+  const position = plan.positions[action.optionIndex];
+  if (
+    !combat ||
+    !unit ||
+    !isUnitAlive(unit) ||
+    position === undefined ||
+    !getOrthogonalNeighbors(unit.position).includes(position) ||
+    isSpaceBlockedForSummon(combat, position)
+  ) {
+    throw new Error("That mine position is no longer available.");
+  }
+
+  addBattlefieldToken(state, {
+    kind: "land_mine",
+    position,
+    controllerId: unit.controllerId,
+    armed: true,
+    damage: plan.primaryDamage,
+    enemyOnly: true,
+    adjacentEnemyDamage: plan.adjacentEnemyDamage,
+    sourceUnitId: unit.id,
+    sourceAbilityId: plan.abilityId
+  });
+  unit.activationAbilityDone = true;
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: unit.id,
+    abilityId: plan.abilityId,
+    targetUnitId: unit.id,
+    message: `${unit.cardName} plants ${plan.abilityName} at ${getBattlefieldLabel(position)}.`
+  });
+  appendEvent(state, {
+    type: "PENDING_CHOICE_RESOLVED",
+    choiceId: choice.id,
+    playerId: action.playerId,
+    selectedIndex: action.optionIndex
+  });
+  state.pendingChoice = null;
+  state.phase = "combat";
+  state.priorityPlayerId = null;
 }
 
 /** Resolves the Necklace of Swiftness step: relocate the unit to the chosen space. */
 function resolveUnitStepChoice(
   state: GameState,
-  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>
+  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>,
+  cards: CardLibrary
 ): void {
   const choice = state.pendingChoice;
   if (
@@ -10034,19 +10352,33 @@ function resolveUnitStepChoice(
   const combat = state.combat;
   const unit = combat?.units[choice.step.unitId];
   const destination = choice.step.positions[action.optionIndex];
-  if (!combat || !unit || destination === undefined || isSpaceBlockedForSummon(combat, destination)) {
+  const stayed = choice.step.optional && action.optionIndex === choice.step.positions.length;
+  if (!combat || !unit || (!stayed && (destination === undefined || isSpaceBlockedForSummon(combat, destination)))) {
     throw new Error("That move destination is not available.");
   }
 
-  const from = unit.position;
-  unit.position = destination;
-  appendEvent(state, {
-    type: "UNIT_MOVED",
-    playerId: unit.controllerId,
-    unitId: unit.id,
-    from,
-    to: destination
-  });
+  if (!stayed && destination !== undefined) {
+    const from = unit.position;
+    unit.position = destination;
+    appendEvent(state, {
+      type: "UNIT_MOVED",
+      playerId: unit.controllerId,
+      unitId: unit.id,
+      from,
+      to: destination
+    });
+    if (choice.step.abilityId) {
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: unit.id,
+        abilityId: choice.step.abilityId,
+        targetUnitId: unit.id,
+        message: choice.step.combatStart
+          ? `${unit.cardName}'s ${choice.step.abilityName ?? "ability"} moves it after deployment.`
+          : `${unit.cardName}'s ${choice.step.abilityName ?? "ability"} moves it one space after attacking.`
+      });
+    }
+  }
   appendEvent(state, {
     type: "PENDING_CHOICE_RESOLVED",
     choiceId: choice.id,
@@ -10057,7 +10389,10 @@ function resolveUnitStepChoice(
   state.pendingChoice = null;
   state.phase = "combat";
   state.priorityPlayerId = null;
-  finishCombatIfNeeded(state);
+  if (finishCombatIfNeeded(state)) return;
+  if (choice.step.resumeAttackSequence) {
+    resumeAttackSequence(state, cards);
+  }
 }
 
 /**
@@ -10081,7 +10416,8 @@ function openSecondAttackFollowUp(
   if (
     !ability ||
     (attacker.attacksThisActivation ?? 0) !== 1 ||
-    (ability.onRoll !== undefined && ability.onRoll !== attackRoll)
+    (ability.onRoll !== undefined && ability.onRoll !== attackRoll) ||
+    (ability.requiresNonAdjacentTarget && isAdjacent(attacker.position, defender.position))
   ) {
     return false;
   }
@@ -10376,6 +10712,8 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   activeUnit.activationStartPosition = activeUnit.position;
   if (!waitedReactivation) {
     activeUnit.activationAbilityDone = false;
+    activeUnit.keyAuthorityPasses = [];
+    activeUnit.keyAuthorityCancelledAbilityIds = [];
     // Conflux Pack Elementals: a fresh activation re-arms the "+1 Power to the
     // first <School> Magic spell you cast during this Activation" charge. A
     // Polish-Wait re-activation keeps it spent, exactly like
@@ -10437,12 +10775,15 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
     return;
   }
 
+  // Auto-resolving "[activation]" abilities fire as the unit's turn opens:
+  // Key Authority gets its cancellation window before any of them — including
+  // Yeti cleanse and first-spell Power — changes state.
+  if (maybeOpenAutomaticKeyAuthority(state, activeUnit)) {
+    return;
+  }
   // Yetis ("recover from negative effects in one round"): shake off negative
   // ongoing effects and Weakness/Corrosion tokens as the unit's turn opens.
   clearOwnDebuffsAtActivation(state, activeUnit);
-  // Auto-resolving "[activation]" abilities fire as the unit's turn opens:
-  // Wraith/Troll regeneration, Ghost Dragon morale drain and the Wraith-pack
-  // enemy hand discard. A paralysed unit (handled above) never reaches here.
   applyActivationStartAbilities(state, activeUnit);
   // PvE ENEMY FORCE: a raid boss / Dungeon warden holding a hand may spend ONE
   // card here — at its own activation start, the moment a player would use it.
@@ -10524,6 +10865,9 @@ function applyActivationStartAbilities(state: GameState, unit: CombatUnitState):
     unit.controllerId === combat.attackerPlayerId ? combat.defenderPlayerId : combat.attackerPlayerId;
 
   for (const ability of getActivationAbilities(unit)) {
+    if ((unit.keyAuthorityCancelledAbilityIds ?? []).includes(ability.abilityId)) {
+      continue;
+    }
     if (ability.kind === "heal-self") {
       if (unit.damage <= 0) {
         continue;
@@ -11487,6 +11831,317 @@ function applyNeutralActivationAbility(state: GameState, unit: CombatUnitState):
 }
 
 /**
+ * Drains the ordered Blue Archive combat-start queue one interactive ability at
+ * a time. The entry is removed only when its prompt is opened (or it has no
+ * legal effect), so resolving one prompt naturally exposes the next at the
+ * shared reducer tail without losing simultaneous start-of-combat triggers.
+ */
+export function maybeOpenKivotosCombatStartChoice(state: GameState): void {
+  const combat = state.combat;
+  if (
+    !combat ||
+    combat.outcome ||
+    combat.setup ||
+    combat.awaitingContinue ||
+    state.pendingChoice ||
+    state.reactionWindow ||
+    state.stack.length > 0
+  ) {
+    return;
+  }
+
+  const queue = combat.kivotosCombatStartQueue;
+  while (queue && queue.length > 0 && !state.pendingChoice) {
+    const entry = queue.shift()!;
+    const source = combat.units[entry.sourceUnitId];
+    if (!source || !isUnitAlive(source) || source.controllerId !== entry.playerId) {
+      continue;
+    }
+
+    if (entry.kind === "teleport-ally") {
+      const candidates = Object.values(combat.units).filter(
+        (candidate) => isUnitAlive(candidate) && candidate.controllerId === entry.playerId
+      );
+      if (candidates.length === 0) continue;
+      const choiceId = `choice_${nextEventNumber(state)}`;
+      state.pendingChoice = {
+        id: choiceId,
+        type: "ABILITY_TARGET_CHOICE",
+        playerId: entry.playerId,
+        kind: "combat-start-teleport",
+        abilityId: entry.abilityId,
+        abilityName: entry.abilityName,
+        prompt: `${source.cardName}: ${entry.abilityName} — choose an allied unit to teleport.`,
+        sourceUnitId: source.id,
+        anchorUnitId: null,
+        candidateUnitIds: candidates.map((candidate) => candidate.id),
+        optional: false
+      };
+      state.phase = "choice";
+      state.priorityPlayerId = entry.playerId;
+      appendEvent(state, {
+        type: "PENDING_CHOICE_CREATED",
+        choiceId,
+        choiceType: "ABILITY_TARGET_CHOICE",
+        playerId: entry.playerId,
+        sourceEffectIds: [],
+        message: `${source.cardName}'s ${entry.abilityName} chooses an allied unit to teleport.`
+      });
+      continue;
+    }
+
+    if (entry.kind === "self-move") {
+      openUnitStepChoice(state, entry.playerId, source, {
+        optional: true,
+        abilityId: entry.abilityId,
+        abilityName: entry.abilityName,
+        range: entry.spaces,
+        combatStart: true
+      });
+      continue;
+    }
+
+    const player = state.players[entry.playerId];
+    if (!player) continue;
+    const revealed = digFromOwnDeckTop(
+      state,
+      entry.playerId,
+      entry.count,
+      `kivotos-prophetic-dream#${source.id}`
+    ).cardIds;
+    if (revealed.length === 0) continue;
+    if (revealed.length === 1) {
+      player.hand.push(revealed[0]);
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: source.id,
+        abilityId: entry.abilityId,
+        message: `${source.cardName}: ${entry.abilityName} takes the only examined card into hand.`
+      });
+      continue;
+    }
+    const choiceId = `choice_${nextEventNumber(state)}`;
+    state.pendingChoice = {
+      id: choiceId,
+      type: "OPTION_CHOICE",
+      playerId: entry.playerId,
+      prompt: `${source.cardName}: ${entry.abilityName} — take one examined card into your hand.`,
+      options: revealed.map((cardId) => ({ label: `Take ${cardLibrary[cardId]?.name ?? cardId}` })),
+      context: "kivotos-prophetic-dream",
+      propheticDream: {
+        sourceUnitId: source.id,
+        abilityId: entry.abilityId,
+        abilityName: entry.abilityName,
+        cardIds: revealed
+      },
+      returnPhase: "combat"
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = entry.playerId;
+    appendEvent(state, {
+      type: "PENDING_CHOICE_CREATED",
+      choiceId,
+      choiceType: "ABILITY_TARGET_CHOICE",
+      playerId: entry.playerId,
+      sourceEffectIds: [],
+      message: `${source.cardName}'s ${entry.abilityName} examines ${revealed.length} cards.`
+    });
+  }
+
+  if (queue && queue.length === 0) delete combat.kivotosCombatStartQueue;
+}
+
+/** Opens Kei's optional cancellation window before an enemy activation ability resolves. */
+function resumeAutomaticActivationAbilities(state: GameState, target: CombatUnitState): void {
+  if (maybeOpenAutomaticKeyAuthority(state, target)) {
+    return;
+  }
+  clearOwnDebuffsAtActivation(state, target);
+  applyActivationStartAbilities(state, target);
+  if (!state.pendingChoice && !state.combat?.outcome) {
+    resolveEnemyForceCardPlay(state, target);
+  }
+}
+
+function maybeOpenAutomaticKeyAuthority(state: GameState, target: CombatUnitState): boolean {
+  const automaticTypes = new Set([
+    "CLEAR_OWN_DEBUFFS_ON_ACTIVATION",
+    "ON_ACTIVATION_HEAL_SELF",
+    "ON_ACTIVATION_DISCARD_ENEMY_MORALE",
+    "ON_ACTIVATION_DISCARD_ENEMY_CARD",
+    "ON_ACTIVATION_ROLL_PARALYZE_RANDOM_ENEMY",
+    "ON_ACTIVATION_SPELL_POWER_FIRST_CAST"
+  ]);
+  for (const ability of getUnitAbilityDefinitions(target)) {
+    if (
+      ability.effect &&
+      automaticTypes.has(ability.effect.type) &&
+      maybeOpenKeyAuthorityChoice(state, target, ability.id, ability.name, "automatic")
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Opens Kei's optional cancellation window before an enemy activation ability resolves. */
+function maybeOpenKeyAuthorityChoice(
+  state: GameState,
+  target: CombatUnitState,
+  targetAbilityId: string,
+  targetAbilityName: string,
+  resume: "interactive" | "unit-action" | "automatic",
+  deferredAction?: Extract<GameAction, { type: "USE_UNIT_ABILITY" }>
+): boolean {
+  const combat = state.combat;
+  if (!combat || state.pendingChoice) return false;
+  const source = getKeyAuthoritySources(combat, target).find(
+    (entry) => !(target.keyAuthorityPasses ?? []).includes(`${entry.source.id}:${targetAbilityId}`)
+  );
+  if (!source || source.source.controllerId === NEUTRAL_PLAYER_ID) return false;
+
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "OPTION_CHOICE",
+    playerId: source.source.controllerId,
+    prompt: `${source.source.cardName}: ${source.abilityName} — cancel ${target.cardName}'s ${targetAbilityName}?`,
+    options: [{ label: `Cancel ${targetAbilityName} and draw ${source.draw}` }, { label: `Allow ${targetAbilityName}` }],
+    context: "kivotos-key-authority",
+    keyAuthority: {
+      sourceUnitId: source.source.id,
+      targetUnitId: target.id,
+      targetAbilityId,
+      targetAbilityName,
+      draw: source.draw,
+      resume,
+      ...(deferredAction ? { deferredAction } : {})
+    },
+    returnPhase: "combat"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = source.source.controllerId;
+  appendEvent(state, {
+    type: "PENDING_CHOICE_CREATED",
+    choiceId,
+    choiceType: "ABILITY_TARGET_CHOICE",
+    playerId: source.source.controllerId,
+    sourceEffectIds: [],
+    message: `${source.source.cardName} may cancel ${target.cardName}'s ${targetAbilityName}.`
+  });
+  return true;
+}
+
+/** Resolves Key Authority, then resumes the enemy ability only when Kei allowed it. */
+function resolveKeyAuthorityChoice(
+  state: GameState,
+  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>
+): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "kivotos-key-authority" ||
+    choice.id !== action.choiceId ||
+    choice.playerId !== action.playerId ||
+    !choice.keyAuthority ||
+    (action.optionIndex !== 0 && action.optionIndex !== 1)
+  ) throw new Error("There is no Key Authority choice to resolve.");
+
+  const plan = choice.keyAuthority;
+  const combat = state.combat;
+  const source = combat?.units[plan.sourceUnitId];
+  const target = combat?.units[plan.targetUnitId];
+  if (!combat || !source || !target || !isUnitAlive(source) || !isUnitAlive(target)) {
+    throw new Error("Key Authority's source or target is no longer available.");
+  }
+  appendEvent(state, {
+    type: "PENDING_CHOICE_RESOLVED",
+    choiceId: choice.id,
+    playerId: action.playerId,
+    selectedIndex: action.optionIndex
+  });
+  state.pendingChoice = null;
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+
+  if (action.optionIndex === 0) {
+    source.keyAuthorityUsedThisCombat = true;
+    if (plan.resume === "automatic") {
+      target.keyAuthorityCancelledAbilityIds = [
+        ...(target.keyAuthorityCancelledAbilityIds ?? []),
+        plan.targetAbilityId
+      ];
+    } else {
+      target.activationAbilityDone = true;
+    }
+    const drawn = drawCardsForPlayer(state, source.controllerId, plan.draw);
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: source.id,
+      abilityId: "kivotos-key-authority",
+      targetUnitId: target.id,
+      message: `${source.cardName}'s Key Authority cancels ${target.cardName}'s ${plan.targetAbilityName} and draws ${drawn} card${drawn === 1 ? "" : "s"}.`
+    });
+    if (plan.resume === "automatic") {
+      resumeAutomaticActivationAbilities(state, target);
+    }
+    return;
+  }
+
+  target.keyAuthorityPasses = [
+    ...(target.keyAuthorityPasses ?? []),
+    `${source.id}:${plan.targetAbilityId}`
+  ];
+  if (plan.resume === "unit-action" && plan.deferredAction) {
+    applyUnitAbilityAction(state, plan.deferredAction);
+  } else if (plan.resume === "automatic") {
+    resumeAutomaticActivationAbilities(state, target);
+  }
+}
+
+/** Seia Prophetic Dream: keep the selected card and put every other card back on top in its prior order. */
+function resolvePropheticDreamChoice(
+  state: GameState,
+  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>
+): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "kivotos-prophetic-dream" ||
+    choice.id !== action.choiceId ||
+    choice.playerId !== action.playerId ||
+    !choice.propheticDream
+  ) {
+    throw new Error("There is no Prophetic Dream choice to resolve.");
+  }
+  const pick = choice.propheticDream;
+  const player = state.players[action.playerId];
+  const selected = pick.cardIds[action.optionIndex];
+  if (!player || !selected) throw new Error("Choose one of the examined cards.");
+
+  player.hand.push(selected);
+  const unchosen = pick.cardIds.filter((_, index) => index !== action.optionIndex);
+  player.deck.push(...unchosen.reverse());
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: pick.sourceUnitId,
+    abilityId: pick.abilityId,
+    message: `${pick.abilityName} takes one examined card into hand and returns the rest to the deck.`
+  });
+  appendEvent(state, {
+    type: "PENDING_CHOICE_RESOLVED",
+    choiceId: choice.id,
+    playerId: action.playerId,
+    selectedIndex: action.optionIndex
+  });
+  state.pendingChoice = null;
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+}
+
+/**
  * Opens a player-controlled unit's "[activation]" choice when its turn comes
  * up (before it acts): Enchanters pick heal-a-friendly vs +1 Attack, Faerie
  * Dragons pick the unit their Ice Bolt hits. Trivial cases (no friendly to
@@ -11494,7 +12149,7 @@ function applyNeutralActivationAbility(state: GameState, unit: CombatUnitState):
  * end of every action so it never collides with reaction windows, war-machine
  * round-starts or the neutral pump.
  */
-function maybeOpenPlayerActivationChoice(state: GameState): void {
+export function maybeOpenPlayerActivationChoice(state: GameState): void {
   const combat = state.combat;
   if (
     !combat ||
@@ -11537,6 +12192,83 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
   const teleportAbility = getUnitAbilityDefinitions(unit).find(
     (def) => def.effect?.type === "TELEPORT_ANY_AT_ACTIVATION"
   );
+  const interactiveActivation = getUnitAbilityDefinitions(unit).find((ability) =>
+    ability.effect && [
+      "TELEPORT_ANY_AT_ACTIVATION",
+      "PLACE_SPLASH_MINE_AT_ACTIVATION",
+      "ACTIVATION_CHOOSE_ATTACK_OR_DEFENSE",
+      "ON_ACTIVATION_HEAL_FRIENDLY_OR_BUFF_SELF",
+      "ON_ACTIVATION_DAMAGE_SPELL",
+      "ON_ACTIVATION_INVULNERABILITY",
+      "ON_ACTIVATION_PLACE_FACTION_CUBE"
+    ].includes(ability.effect.type)
+  );
+  if (
+    interactiveActivation &&
+    maybeOpenKeyAuthorityChoice(state, unit, interactiveActivation.id, interactiveActivation.name, "interactive")
+  ) {
+    return;
+  }
+  const explosivePrank = getExplosivePrankAbility(unit);
+  if (explosivePrank) {
+    const positions = getOrthogonalNeighbors(unit.position).filter(
+      (position) => !isSpaceBlockedForSummon(combat, position)
+    );
+    if (positions.length === 0) {
+      unit.activationAbilityDone = true;
+      return;
+    }
+    const choiceId = `choice_${nextEventNumber(state)}`;
+    state.pendingChoice = {
+      id: choiceId,
+      type: "OPTION_CHOICE",
+      playerId: chooser,
+      prompt: `${unit.cardName}: ${explosivePrank.abilityName} — place the mine in an adjacent empty space.`,
+      options: positions.map((position) => ({ label: `Place mine at ${getBattlefieldLabel(position)}` })),
+      context: "kivotos-explosive-prank",
+      explosivePrank: { unitId: unit.id, positions, ...explosivePrank },
+      returnPhase: "combat"
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = chooser;
+    appendEvent(state, {
+      type: "PENDING_CHOICE_CREATED",
+      choiceId,
+      choiceType: "ABILITY_TARGET_CHOICE",
+      playerId: chooser,
+      sourceEffectIds: [],
+      message: `${unit.cardName} places an Explosive Prank mine.`
+    });
+    return;
+  }
+  const modeChange = getModeChangeAbility(unit);
+  if (modeChange) {
+    const choiceId = `choice_${nextEventNumber(state)}`;
+    state.pendingChoice = {
+      id: choiceId,
+      type: "OPTION_CHOICE",
+      playerId: chooser,
+      prompt: `${unit.cardName}: ${modeChange.abilityName} — choose a mode until this unit's next activation.`,
+      options: [
+        { label: `Attack Mode (+${modeChange.amount} Attack)` },
+        { label: `Guard Mode (+${modeChange.amount} Defense)` }
+      ],
+      context: "kivotos-mode-change",
+      modeChange: { unitId: unit.id, ...modeChange },
+      returnPhase: "combat"
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = chooser;
+    appendEvent(state, {
+      type: "PENDING_CHOICE_CREATED",
+      choiceId,
+      choiceType: "ABILITY_TARGET_CHOICE",
+      playerId: chooser,
+      sourceEffectIds: [],
+      message: `${unit.cardName} chooses Attack Mode or Guard Mode.`
+    });
+    return;
+  }
   if (teleportAbility) {
     let hasEmptySpace = false;
     for (let position = 0; position < BATTLEFIELD_CELL_COUNT; position += 1) {
@@ -12114,6 +12846,9 @@ function shouldRetaliate(
     isAdjacent(attacker.position, defender.position) &&
     !ignoreRetaliationOverride &&
     !hasUnitAbilityEffect(attacker, "IGNORE_RETALIATION") &&
+    !(attacker.movedThisActivation && hasUnitAbilityEffect(attacker, "IGNORE_RETALIATION_AFTER_MOVE")) &&
+    !(hasUnitAbilityEffect(attacker, "VANITAS_VS_UNACTIVATED") && !defender.activatedThisRound) &&
+    !hasUnitAbilityEffect(attacker, "IGNORE_ADJACENT_RANGED_PENALTY_AND_RETALIATION") &&
     // Ash's Bloodlust IV: the ongoing card's Black cube — the unit cannot
     // retaliate at all while the effect lives (beats unlimited retaliation).
     !(state ? unitHasCannotRetaliateEffect(state, defender) : false) &&
@@ -12145,6 +12880,9 @@ function qualifiesForPreemptiveRetaliation(
     isUnitAlive(defender) &&
     !ignoreRetaliationOverride &&
     !hasUnitAbilityEffect(attacker, "IGNORE_RETALIATION") &&
+    !(attacker.movedThisActivation && hasUnitAbilityEffect(attacker, "IGNORE_RETALIATION_AFTER_MOVE")) &&
+    !(hasUnitAbilityEffect(attacker, "VANITAS_VS_UNACTIVATED") && !defender.activatedThisRound) &&
+    !hasUnitAbilityEffect(attacker, "IGNORE_ADJACENT_RANGED_PENALTY_AND_RETALIATION") &&
     // A pre-emptive strike is still a Retaliation Attack, so the Bloodlust IV
     // combat-long Black cube suppresses it too.
     !(state ? unitHasCannotRetaliateEffect(state, defender) : false) &&
@@ -12291,6 +13029,27 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
   const details = getAttackStackDetails(state, stackItem);
   if (!combat || !details) {
     return;
+  }
+
+  // Mutsuki Trick Mine fires before the first enemy melee attack reaches her.
+  // Spending is recorded before damage so a lethal/flip path cannot retrigger it.
+  if (
+    details.attackKind === "melee" &&
+    details.attacker.controllerId !== details.defender.controllerId
+  ) {
+    const mine = getFirstMeleeAttackerDamage(details.defender);
+    if (mine) {
+      details.defender.mutsukiTrickMineUsedThisCombat = true;
+      details.attacker.damage += mine.amount;
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: details.defender.id,
+        abilityId: mine.abilityId,
+        targetUnitId: details.attacker.id,
+        message: `${details.defender.cardName}'s ${mine.abilityName} deals ${mine.amount} damage to ${details.attacker.cardName} before its melee attack.`
+      });
+      markUnitRemovedIfNeeded(state, details.attacker);
+    }
   }
 
   // The attacker FELL while its blow was parked on the stack (an Artillery
@@ -12485,6 +13244,23 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
     return;
   }
 
+  // Seia's Prophetic Counsel VI is stronger than advantage/disadvantage: the
+  // affected unit does not roll and its Attack die result is fixed at -1.
+  if (unitAttackRollFixedMinusOne(state, details.attacker)) {
+    finishResolvedAttack(
+      state,
+      stackItem,
+      details,
+      {
+        rolls: [-1],
+        roll: -1,
+        modifierNotes: [{ source: "Prophetic Counsel VI", text: "the Attack die is fixed at -1" }]
+      },
+      cards
+    );
+    return;
+  }
+
   // Mummies (defence): "set the opponent's Attack die to -1." While a Mummy is
   // the defender the attacker's die is forced — no roll, no reroll.
   const forcedDie = getForcedAttackerDie(details.defender);
@@ -12594,16 +13370,46 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
   // ability is [unit_attack] (own declared attack only), so buildRerollSources
   // drops them all on a retaliation.
   const moved = !details.isRetaliation && Boolean(details.attacker.movedThisActivation);
-  const rerollSources = buildRerollSources(state, details.attacker, rerollEffects, moved, details.isRetaliation);
+  const rerollSources = buildRerollSources(state, details.attacker, details.defender, rerollEffects, moved, details.isRetaliation);
+  const futureSightByPlayer = new Map<PlayerId, AttackRerollSource[]>();
+  if (!attackRerollsBlocked(state)) {
+    for (const future of getFutureSightSources(combat)) {
+      const sources = futureSightByPlayer.get(future.source.controllerId) ?? [];
+      sources.push({
+        name: future.abilityName,
+        abilityId: future.abilityId,
+        sourceUnitId: future.source.id,
+        futureSight: true,
+        remaining: 1,
+        used: 0
+      });
+      futureSightByPlayer.set(future.source.controllerId, sources);
+    }
+  }
+  const futureSightStages = [...futureSightByPlayer].map(([playerId, sources]) => ({
+    playerId,
+    rerollSources: sources
+  }));
 
   // Only pause when a source can actually fire on this roll — the Crusaders'
   // 'every "0"' reroll never interrupts a +1. A declared Cards of Prophecy always
   // pauses: its three throws exist only to be chosen between.
-  if (
-    prophecyThrows.length > 0 ||
-    rerollSources.some((source) => rerollSourceAvailableFor(source, candidate.roll))
-  ) {
-    openAttackRerollChoice(state, stackItem, details, candidate, rerollSources, prophecyThrows);
+  if (prophecyThrows.length > 0 || rerollSources.some((source) => rerollSourceAvailableFor(source, candidate.roll))) {
+    openAttackRerollChoice(
+      state,
+      stackItem,
+      details,
+      candidate,
+      rerollSources,
+      prophecyThrows,
+      details.attacker.controllerId,
+      futureSightStages
+    );
+    return;
+  }
+  if (futureSightStages.length > 0) {
+    const [first, ...rest] = futureSightStages;
+    openAttackRerollChoice(state, stackItem, details, candidate, first.rerollSources, [], first.playerId, rest);
     return;
   }
 
@@ -16374,7 +17180,14 @@ function applyReactionPlayCore(
     const triggerEvent = state.reactionWindow?.triggerEvent;
     const unit =
       triggerEvent?.type === "UNIT_ACTIVATION_STARTED" ? state.combat?.units[triggerEvent.unitId] : undefined;
-    if (unit && isUnitAlive(unit) && effect.grade && bankAwareTierGateRank(unit, "SKIP_ACTIVATION", houseRuleEnabled(state, "polish-bank-unit-spells")) <= gradeRank(effect.grade)) {
+    if (
+      unit &&
+      isUnitAlive(unit) &&
+      (effect.anyGrade ||
+        (effect.grade &&
+          bankAwareTierGateRank(unit, "SKIP_ACTIVATION", houseRuleEnabled(state, "polish-bank-unit-spells")) <=
+            gradeRank(effect.grade)))
+    ) {
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: unit.id,
@@ -16910,6 +17723,9 @@ function applyReactionPlayCore(
     if (effect.ignoresRetaliation) {
       stackItem.modifiers.ignoresRetaliationThisAttack = true;
     }
+    if (effect.healHalfDamageDealt) {
+      stackItem.modifiers.healHalfDamageDealtCardId = card.id;
+    }
     // Tarnum (Fortress) Basilisks VI: this buffed attack also fires every
     // die-gated after-attack ability of the attacker regardless of the roll.
     if (effect.forceAbilityRolls) {
@@ -16920,6 +17736,10 @@ function applyReactionPlayCore(
       drawCardsForPlayer(state, playerId, effect.drawCards + consumeEquipmentDrawRiderBonus(state, playerId), {
         inFlightCardIds: reactionInFlightCardIds
       });
+    }
+    applyDrawRiderThenDiscard(state, playerId, effect, card.name);
+    if (effect.randomEnemyDiscard) {
+      discardRandomEnemyCards(state, playerId, effect.randomEnemyDiscard);
     }
 
     // Blackshard of the Dead Knight: the option discarded 1 card; draw 1 only
@@ -20039,6 +20859,12 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       if (unit.controllerId === action.playerId || !isUnitAlive(unit)) {
         continue;
       }
+      if (effect.damage && effect.damage > 0) {
+        dealAreaCardDamage(state, action.playerId, card, unit, effect.damage);
+      }
+      if (!isUnitAlive(unit)) {
+        continue;
+      }
       createActiveEffect(
         state,
         {
@@ -20059,6 +20885,10 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         { type: "unit", unitId: unit.id }
       );
     }
+    if (effect.drawCards) {
+      drawCardsForPlayer(state, action.playerId, effect.drawCards, { inFlightCardIds: playInFlightCardIds });
+    }
+    finishCombatIfNeeded(state);
   }
 
   // Miku Voice of Angel IV: player-scoped heal-after-attacked for the owner's army.
@@ -21859,7 +22689,9 @@ function applyUnitAbilityAction(
   // optional move (just never once the unit has attacked).
   const mayBeUsedAfterMoving =
     ability?.effect?.type === "SPLASH_ALLOCATION_ATTACK" ||
-    ability?.effect?.type === "PLACE_ADJACENT_OBSTACLE_ACTION";
+    ability?.effect?.type === "PLACE_ADJACENT_OBSTACLE_ACTION" ||
+    ability?.effect?.type === "MARK_ENEMY_FOR_NEXT_FRIENDLY_ATTACK" ||
+    unit?.commanderSlug === "ibuki";
 
   if (
     !combat ||
@@ -21871,6 +22703,68 @@ function applyUnitAbilityAction(
     ability?.implementationStatus !== "implemented"
   ) {
     throw new Error("That unit ability cannot be used now.");
+  }
+
+  if (maybeOpenKeyAuthorityChoice(state, unit, ability.id, ability.name, "unit-action", action)) {
+    return;
+  }
+
+  if (unit.commanderSlug === "ibuki" && action.abilityId.startsWith("commander-ibuki-")) {
+    const cost = action.abilityId === "commander-ibuki-sniper-shot" ? 1 : 2;
+    const power = commanderCastPower(state, unit);
+    if (ibukiActionPoints(unit) < cost || unit.attackedThisActivation) throw new Error("Ibuki does not have enough AP for that command.");
+    if (action.abilityId === "commander-ibuki-sniper-shot" && action.target.type === "unit") {
+      const target = combat.units[action.target.unitId];
+      if (!target || target.controllerId === unit.controllerId || !isUnitAlive(target)) throw new Error("Choose a living enemy unit.");
+      applyFlatAbilityDamage(state, unit, target.id, action.abilityId, ability.name, power >= 2 ? 2 : 1);
+    } else if (action.abilityId === "commander-ibuki-up-to-mischief" && action.target.type === "unit") {
+      const target = combat.units[action.target.unitId];
+      if (!target || target.controllerId === unit.controllerId || !isUnitAlive(target)) throw new Error("Choose a living enemy unit.");
+      createActiveEffect(state, { name: `${ability.name} (Ibuki)`, scope: "unit", duration: { type: "current-combat-round" }, polarity: "negative", removable: true, modifiers: [{ type: "ATTACK_BONUS", amount: -1 }, ...(power >= 1 ? [{ type: "DEFENSE_BONUS" as const, amount: -1 }] : [])] }, { type: "unit", unitId: unit.id, controllerId: unit.controllerId }, unit.controllerId, { type: "unit", unitId: target.id });
+      appendEvent(state, { type: "UNIT_ABILITY_TRIGGERED", unitId: unit.id, abilityId: action.abilityId, targetUnitId: target.id, message: `Ibuki's ${ability.name} gives ${target.cardName} −1 Attack${power >= 1 ? " and −1 Defense" : ""} this round.` });
+    } else if (action.abilityId === "commander-ibuki-gadabout" && action.target.type === "space") {
+      const destination = action.target.position;
+      const occupied = Object.values(combat.units).some((other) => isUnitAlive(other) && other.position === destination);
+      if (!isBattlefieldPosition(destination) || occupied) throw new Error("Choose an empty battlefield space.");
+      const from = unit.position;
+      unit.position = destination;
+      unit.movedThisActivation = true;
+      appendEvent(state, { type: "UNIT_MOVED", playerId: unit.controllerId, unitId: unit.id, from, to: unit.position });
+      appendEvent(state, { type: "UNIT_ABILITY_TRIGGERED", unitId: unit.id, abilityId: action.abilityId, targetUnitId: unit.id, message: `Ibuki uses ${ability.name} and teleports across the battlefield.` });
+      for (const target of Object.values(combat.units).filter((other) => other.controllerId !== unit.controllerId && isUnitAlive(other) && isAdjacent(unit.position, other.position))) {
+        applyFlatAbilityDamage(state, unit, target.id, "commander-ibuki-gadabout-landing-damage", ability.name, 1);
+      }
+    } else {
+      throw new Error("That Ibuki command target is invalid.");
+    }
+    unit.ibukiActionPoints = ibukiActionPoints(unit) - cost;
+    unit.movementLockedThisActivation = true;
+    finishCombatIfNeeded(state);
+    return;
+  }
+
+  if (ability.effect?.type === "MARK_ENEMY_FOR_NEXT_FRIENDLY_ATTACK") {
+    const target = action.target.type === "unit" ? combat.units[action.target.unitId] : undefined;
+    if (
+      unit.attackedThisActivation ||
+      unit.droneSupportUsedRound === combat.round ||
+      !target ||
+      !isUnitAlive(target) ||
+      target.controllerId === unit.controllerId ||
+      getBattlefieldDistance(unit.position, target.position) > ability.effect.range
+    ) {
+      throw new Error("That enemy cannot be marked by Drone Support.");
+    }
+    unit.droneSupportUsedRound = combat.round;
+    unit.droneSupportMarkedTargetId = target.id;
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: unit.id,
+      abilityId: ability.id,
+      targetUnitId: target.id,
+      message: `${unit.cardName}'s ${ability.name} marks ${target.cardName} for the next friendly attack.`
+    });
+    return;
   }
 
   // MGQ Pochi: dig one adjacent empty cell into a normal Combat obstacle and
@@ -22069,7 +22963,7 @@ function applyUnitAbilityAction(
     const cast = commanderCastOf(unit);
     // The two defend buffs are instant reactions, never an activation cast
     // (they are played through USE_COMMANDER_CAST_REACTION when a unit is attacked).
-    if (!cast || commanderCastIsInstantReaction(cast) || unit.attackedThisActivation || commanderCastUsedThisRound(state, unit)) {
+    if (!cast || commanderCastIsInstantReaction(cast) || unit.attackedThisActivation || (unit.commanderSlug !== "ibuki" && commanderCastUsedThisRound(state, unit))) {
       throw new Error("That unit ability cannot be used now.");
     }
     const runeCost = commanderCastRuneCost(state, unit);
@@ -23076,6 +23970,34 @@ function rerollPendingChoice(
   // `onlyOnRoll` only says WHEN the one use may be taken.
   source.remaining -= 1;
   source.used += 1;
+  if (source.futureSight && source.sourceUnitId && source.used === 1) {
+    const seia = combat.units[source.sourceUnitId];
+    if (seia) {
+      seia.futureSightUsedThisCombat = true;
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: seia.id,
+        abilityId: source.abilityId ?? "kivotos-future-sight",
+        targetUnitId: choice.attackerId,
+        message: `${seia.cardName}'s Future Sight forces the Attack die to be rerolled.`
+      });
+    }
+  }
+  if (
+    source.abilityId &&
+    source.sourceUnitId &&
+    source.drawIfRerollResult !== undefined &&
+    candidate.roll === source.drawIfRerollResult &&
+    (source.drawCount ?? 0) > 0
+  ) {
+    drawCardsForPlayer(state, action.playerId, source.drawCount ?? 0);
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: source.sourceUnitId,
+      abilityId: source.abilityId,
+      message: `${source.name} rerolled the same result, so its controller draws ${source.drawCount} card.`
+    });
+  }
   choice.remainingRerolls = countAvailableRerolls(
     choice.rerollSources,
     choice.candidates.at(-1)?.roll ?? candidate.roll
@@ -23210,7 +24132,22 @@ function choosePendingRoll(
     throw new Error("The pending attack cannot be resolved.");
   }
 
+  const followUpStages = choice.followUpRerollStages ?? [];
   closePendingChoice(state, choice, action.candidateIndex);
+  if (followUpStages.length > 0) {
+    const [nextStage, ...rest] = followUpStages;
+    openAttackRerollChoice(
+      state,
+      stackItem,
+      details,
+      candidate,
+      nextStage.rerollSources,
+      [],
+      nextStage.playerId,
+      rest
+    );
+    return;
+  }
   resolveAttackOrOfferDieCancel(state, stackItem, details, candidate, cards);
 }
 
@@ -23496,9 +24433,35 @@ function resolveCommanderCast(state: GameState, caster: CombatUnitState, target:
         targetRef
       );
       break;
+    case "reactivate":
+      target.activatedThisRound = false;
+      target.movedThisActivation = false;
+      target.attackedThisActivation = false;
+      if (target.grade === "silver" || target.grade === "gold") {
+        createActiveEffect(
+          state,
+          {
+            name: `${cast.name} exertion (${caster.cardName})`,
+            scope: "unit",
+            duration: { type: "next-activation" },
+            polarity: "negative",
+            removable: true,
+            modifiers: [{ type: "ATTACK_BONUS", amount: -2 }]
+          },
+          source,
+          caster.controllerId,
+          targetRef
+        );
+      }
+      break;
   }
 
   caster.commanderCastRound = combat.round;
+  if (caster.commanderSlug === "ibuki") {
+    if (ibukiActionPoints(caster) < 3) throw new Error("Executive Order needs 3 AP.");
+    caster.ibukiActionPoints = ibukiActionPoints(caster) - 3;
+    caster.movementLockedThisActivation = true;
+  }
   appendEvent(state, {
     type: "COMMANDER_CAST_USED",
     playerId: caster.controllerId,
@@ -23886,6 +24849,19 @@ function chooseAbilityTarget(
     }
     const target = combat.units[action.targetUnitId];
     if (target && isUnitAlive(target) && target.controllerId === source.controllerId && target.id !== source.id) {
+      const opened = openTeleportChoice(state, source.controllerId, target, choice.abilityId ?? undefined);
+      if (opened) {
+        state.phase = "choice";
+        state.priorityPlayerId = source.controllerId;
+      }
+    }
+    return;
+  }
+
+  // Miyo Survey Route: combat-start relocation, separate from activation state.
+  if (choice.kind === "combat-start-teleport") {
+    const target = combat.units[action.targetUnitId];
+    if (target && isUnitAlive(target) && target.controllerId === source.controllerId) {
       const opened = openTeleportChoice(state, source.controllerId, target, choice.abilityId ?? undefined);
       if (opened) {
         state.phase = "choice";
@@ -24335,6 +25311,28 @@ function declareAttack(
   }
 
   const stackItem = makeStackItem(state, resolvedAction);
+  // Consume Drone Support only when a normal friendly attack has the marked
+  // unit as its final defender. The frozen stack modifier survives reactions
+  // without allowing the mark to benefit a second attack.
+  if (!isRetaliation && !abilityAttack && !isInternalFollowUp) {
+    const droneSources = getDroneSupportSources(combat, attacker, defender);
+    if (droneSources.length > 0) {
+      stackItem.modifiers.droneSupportAttackBonus = droneSources.reduce(
+        (sum, entry) => sum + entry.attackBonus,
+        0
+      );
+      for (const entry of droneSources) {
+        entry.source.droneSupportMarkedTargetId = undefined;
+        appendEvent(state, {
+          type: "UNIT_ABILITY_TRIGGERED",
+          unitId: entry.source.id,
+          abilityId: entry.abilityId,
+          targetUnitId: defender.id,
+          message: `${entry.source.cardName}'s ${entry.abilityName} grants +${entry.attackBonus} Attack against ${defender.cardName}.`
+        });
+      }
+    }
+  }
   if (!abilityAttack && !isInternalFollowUp) {
     applyCultivationAttackDeclaration(state, stackItem, attacker, defender, isRetaliation);
   }
@@ -24654,8 +25652,42 @@ function walkMoveThroughTokens(
       if (token.kind !== "land_mine") {
         continue;
       }
+      // Explosive Prank is explicitly waiting for its first ENEMY. Friendly
+      // movers neither reveal nor consume it.
+      if (token.enemyOnly && token.controllerId === unit.controllerId) {
+        continue;
+      }
       if (token.armed === true) {
+        const prankSource = token.sourceUnitId ? combat.units[token.sourceUnitId] : undefined;
+        if (prankSource && token.sourceAbilityId) {
+          appendEvent(state, {
+            type: "UNIT_ABILITY_TRIGGERED",
+            unitId: prankSource.id,
+            abilityId: token.sourceAbilityId,
+            targetUnitId: unit.id,
+            message: `${prankSource.cardName}'s Explosive Prank detonates under ${unit.cardName}.`
+          });
+        }
         dealBattlefieldTokenDamage(state, token, unit, token.damage ?? 0);
+        if (prankSource && token.sourceAbilityId && (token.adjacentEnemyDamage ?? 0) > 0) {
+          const splashTargets = Object.values(combat.units).filter(
+            (candidate) =>
+              isUnitAlive(candidate) &&
+              candidate.id !== unit.id &&
+              candidate.controllerId !== token.controllerId &&
+              getOrthogonalNeighbors(position).includes(candidate.position)
+          );
+          for (const target of splashTargets) {
+            applyFlatAbilityDamage(
+              state,
+              prankSource,
+              target.id,
+              token.sourceAbilityId,
+              "Explosive Prank splash",
+              token.adjacentEnemyDamage ?? 0
+            );
+          }
+        }
         removeBattlefieldToken(combat, token.id);
         if (!isUnitAlive(unit)) {
           return { finalPosition, haltedByQuicksand: false };
@@ -24836,6 +25868,7 @@ function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UN
 
   // Rune Keeper commander (Rune Ritual, move half): +1 Rune whenever it moves.
   applyCommanderRuneOnMove(state, unit);
+  gainIbukiActionPoint(state, unit, "moving");
 
   // A Fire Wall or Land Mine that struck the mover down ends its activation.
   if (!isUnitAlive(unit)) {
@@ -24880,6 +25913,7 @@ function defendUnit(state: GameState, action: Extract<GameAction, { type: "DEFEN
   // Bulwark unit's controller +2 Runes (RUNE_GAIN_DEFEND) — the richest Rune
   // source.
   gainRunesForDefend(state, unit);
+  gainIbukiActionPoint(state, unit, "defending");
   healCommanderFromArtifactAction(state, unit, "defend");
   appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
 
@@ -24978,6 +26012,7 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
   if (finishCombatIfNeeded(state)) {
     return;
   }
+
   if (state.combat?.outcome) {
     return;
   }
@@ -25539,6 +26574,16 @@ function executeNeutralActivation(
   // Enchanters take +1 Attack, Faerie Dragons zap their normal target (and may
   // end the combat outright). It never ends the activation otherwise.
   if (!unit.activationAbilityDone) {
+    const neutralActivation = getUnitAbilityDefinitions(unit).find((ability) =>
+      ability.effect?.type === "ON_ACTIVATION_HEAL_FRIENDLY_OR_BUFF_SELF" ||
+      ability.effect?.type === "ON_ACTIVATION_DAMAGE_SPELL"
+    );
+    if (
+      neutralActivation &&
+      maybeOpenKeyAuthorityChoice(state, unit, neutralActivation.id, neutralActivation.name, "interactive")
+    ) {
+      return;
+    }
     unit.activationAbilityDone = true;
     applyNeutralActivationAbility(state, unit);
     if (combat.outcome) {
@@ -27013,6 +28058,26 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
           resolveTeleportChoice(nextState, action);
         } else if (
           nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+          nextState.pendingChoice.context === "kivotos-mode-change"
+        ) {
+          resolveModeChangeChoice(nextState, action);
+        } else if (
+          nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+          nextState.pendingChoice.context === "kivotos-explosive-prank"
+        ) {
+          resolveExplosivePrankChoice(nextState, action);
+        } else if (
+          nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+          nextState.pendingChoice.context === "kivotos-key-authority"
+        ) {
+          resolveKeyAuthorityChoice(nextState, action);
+        } else if (
+          nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+          nextState.pendingChoice.context === "kivotos-prophetic-dream"
+        ) {
+          resolvePropheticDreamChoice(nextState, action);
+        } else if (
+          nextState.pendingChoice?.type === "OPTION_CHOICE" &&
           nextState.pendingChoice.context === "neutral-destination"
         ) {
           resolveNeutralDestinationChoice(nextState, action, cards);
@@ -27030,7 +28095,7 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
           nextState.pendingChoice?.type === "OPTION_CHOICE" &&
           nextState.pendingChoice.context === "combat-step"
         ) {
-          resolveUnitStepChoice(nextState, action);
+          resolveUnitStepChoice(nextState, action, cards);
         } else if (
           nextState.pendingChoice?.type === "OPTION_CHOICE" &&
           nextState.pendingChoice.context === "combat-activation-order"
@@ -27199,10 +28264,14 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
   // next unit, or the tied-order choice that picks it.
   ensureCombatActivation(nextState);
 
+  // Interactive Blue Archive combat-start abilities resolve in deterministic
+  // deployment order and always finish before the first activation choice.
+  maybeOpenKivotosCombatStartChoice(nextState);
+
   // Pre-activation interrupts (Sorrow's skip, Bowstring of the Unicorn's Mane's
   // out-of-order ranged activation): once everything else has settled, open the
-  // shared window before the about-to-act unit moves. Runs before the active
-  // unit's own "[activation]" choice so an interrupt pre-empts it.
+  // shared window before the about-to-act unit moves. Runs after combat-start
+  // abilities, but before the active unit's own "[activation]" choice.
   maybeOpenPreActivationWindow(nextState, cards);
 
   // Once everything else has settled, surface a player-controlled unit's

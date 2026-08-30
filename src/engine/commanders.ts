@@ -28,7 +28,7 @@ import {
 import { makeActiveEffect, unitImmuneToParalysis } from "./active-effects";
 import { isAdjacent } from "./battlefield";
 import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
-import { shuffleCards } from "./decks";
+import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { appendEvent, nextEventNumber } from "./events";
 import { gainRunes } from "./runes";
 import { noteUnitDamagedForTokens, placeCombatToken } from "./tokens";
@@ -297,6 +297,9 @@ export function commanderAbilityIds(commander: CommanderPlayerState): string[] {
   // The command ability itself (offered as a USE_UNIT_ABILITY during its
   // activation; see legal-actions/reducer).
   if (definition) {
+    if (commander.slug === "ibuki") {
+      ids.push("commander-ibuki-sniper-shot", "commander-ibuki-up-to-mischief", "commander-ibuki-gadabout");
+    }
     ids.push(definition.cast.abilityId);
   }
 
@@ -354,6 +357,7 @@ export function makeCommanderCombatUnit(
     defenseToken: false,
     abilities: [...commanderAbilityIds(commander), ...artifacts.abilityIds],
     commanderSlug: commander.slug,
+    ...(commander.slug === "ibuki" ? { ibukiActionPoints: 1 } : {}),
     // Grade snapshot for the UI (inspect/zoom render the dynamic card face
     // from it). Grades cannot change mid-combat, so the copy stays true.
     commanderGrades: { ...grades },
@@ -362,6 +366,22 @@ export function makeCommanderCombatUnit(
       imageAlt: `${definition.name} commander card`
     }
   };
+}
+
+export function ibukiActionPoints(unit: CombatUnitState): number {
+  return unit.commanderSlug === "ibuki" ? Math.max(0, unit.ibukiActionPoints ?? 1) : 0;
+}
+
+export function gainIbukiActionPoint(state: GameState, unit: CombatUnitState, reason: string): void {
+  if (unit.commanderSlug !== "ibuki" || unit.damage >= unit.maxHealth) return;
+  unit.ibukiActionPoints = ibukiActionPoints(unit) + 1;
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: unit.id,
+    abilityId: "ibuki-action-point",
+    targetUnitId: unit.id,
+    message: `Ibuki gains 1 AP for ${reason} (${unit.ibukiActionPoints} AP).`
+  });
 }
 
 /**
@@ -810,6 +830,9 @@ export function commanderCastCandidates(state: GameState, unit: CombatUnitState)
     if (targeting.damagedOnly && target.damage <= 0) {
       return false;
     }
+    if (targeting.activatedOnly && !target.activatedThisRound) {
+      return false;
+    }
     if (targeting.maxTierByPower) {
       // Tierless bodies never pass a tier ladder — the same set gradeRankOfUnit
       // excludes (a Little Busters battlefield hero joins commanders/banks/
@@ -850,10 +873,10 @@ export function commanderCastAvailable(state: GameState, unit: CombatUnitState):
   if (commanderCastIsInstantReaction(cast)) {
     return false;
   }
-  if (unit.activatedThisRound || unit.movedThisActivation || unit.attackedThisActivation) {
+  if (unit.activatedThisRound || (unit.movedThisActivation && unit.commanderSlug !== "ibuki") || unit.attackedThisActivation) {
     return false;
   }
-  if (commanderCastUsedThisRound(state, unit)) {
+  if (unit.commanderSlug !== "ibuki" && commanderCastUsedThisRound(state, unit)) {
     return false;
   }
   const runeCost = commanderCastRuneCost(state, unit);
@@ -1048,6 +1071,29 @@ export function applyCommanderCombatStart(state: GameState): void {
       case "astral_spirit":
         applyElementalScourge(state, playerId, unit);
         break;
+      case "ibuki": {
+        const playerDiscard = state.players[playerId]?.discard;
+        const recovered = playerDiscard?.pop();
+        let gained = 0;
+        if (recovered) {
+          state.players[playerId]?.hand.push(recovered);
+          gained = 1;
+        } else {
+          gained = drawCardsForPlayer(state, playerId, 1);
+        }
+        if (gained > 0) {
+          emitSpecialty(
+            state,
+            playerId,
+            "ibuki",
+            "mission-briefing",
+            recovered
+              ? "Ibuki opens the Schale mission briefing — recover the top card of your discard pile."
+              : "Ibuki opens the Schale mission briefing — the discard pile is empty, so draw 1 card."
+          );
+        }
+        break;
+      }
       default:
         break;
     }
