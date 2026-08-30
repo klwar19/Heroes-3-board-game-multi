@@ -64,6 +64,7 @@ import {
 import type { UnitTier } from "@/data/factions/types";
 import { scoreMapAction } from "./map-policy";
 import { chooseComputerAction } from "./policy";
+import { emptyComputerMemory } from "./memory";
 import type { ComputerObservation } from "./types";
 
 /**
@@ -912,6 +913,29 @@ describe("army-tier guard engagement reference (Step 5)", () => {
 });
 
 describe("collectMapObjectives", () => {
+  it("treats an owned town as a normal corridor when it shortens the route", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    establishP2PackCore(state);
+    hero.spaceId = RESOURCE;
+    // The hero has already collected the resource it is standing on; otherwise
+    // the opening sweep correctly keeps that current-cell payoff as primary.
+    state.adventure!.fields[RESOURCE]!.blackCube = true;
+    // Keep a concrete march target on the opposite side of the home town.
+    // RESOURCE -> TOWN -> MINE is the direct route.
+    const memory = emptyComputerMemory(state.round);
+    memory.stickyObjectiveSpaceId = MINE;
+    const scored = scoreMapAction(
+      { ...observe(state), memory },
+      { type: "MOVE_HERO", playerId: "p2", heroId: hero.id, to: TOWN },
+    );
+
+    expect(scored?.policy).toBe("map.move-to-objective");
+    // Ordinary progress lives at 700+. The former owned-town detour penalty
+    // lowered this exact step and caused equal routes to avoid the town.
+    expect(scored!.score).toBeGreaterThanOrEqual(700);
+  });
+
   it("counts beatable guards and unowned locations, not owned or enemy fields", () => {
     const state = game();
     const hero = p2Hero(state);

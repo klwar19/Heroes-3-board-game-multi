@@ -78,7 +78,7 @@ function levelRoster(level: number): Entry[] {
  * itself excluded from the field so no MGQ-vs-MGQ fight pollutes the win rate.
  */
 function unitEntry(unitDefId: string): Entry {
-  const def = (coreUnitDefinitions as Record<string, any>)[unitDefId];
+  const def = coreUnitDefinitions[unitDefId];
   if (!def) throw new Error(`Unknown unitDefId ${unitDefId}`);
   return { unitDefId, name: def.name, faction: def.faction, tier: def.tier, type: def.type };
 }

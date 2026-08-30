@@ -112,17 +112,47 @@ describe("Commander Forge", () => {
     expect(forgeActions(after).filter((offer) => offer.action.tier === "minor")).toHaveLength(0);
   });
 
-  it("unlocks two Grade-II and two Grade-III choices in round 7, sharing one later use", () => {
+  it("unlocks Grade II in round 7 and Grade III in round 9 with random-or-+2-specific pricing", () => {
     const state = mapState("forge-high");
     state.round = 7;
-    const offers = forgeActions(state);
+    let offers = forgeActions(state);
     expect(offers.filter((offer) => offer.action.tier === "major")).toHaveLength(2);
-    expect(offers.filter((offer) => offer.action.tier === "relic")).toHaveLength(2);
-    const major = offers.find((offer) => offer.action.tier === "major")!;
-    const after = apply(state, major.action);
-    expect(after.players.p1.resources.gold).toBe(22);
-    expect(after.players.p1.commander?.forgeHighUsed).toBe(true);
-    expect(forgeActions(after).every((offer) => offer.action.tier === "minor")).toBe(true);
+    expect(offers.filter((offer) => offer.action.tier === "relic")).toHaveLength(0);
+
+    state.round = 9;
+    offers = forgeActions(state);
+    const randomRelics = offers.filter((offer) => offer.action.tier === "relic" && !offer.action.specific);
+    const specificRelics = offers.filter((offer) => offer.action.tier === "relic" && offer.action.specific);
+    expect(randomRelics).toHaveLength(1);
+    expect(specificRelics.length).toBeGreaterThan(1);
+
+    const randomAfter = apply(state, randomRelics[0]!.action);
+    expect(randomAfter.players.p1.resources.gold).toBe(19);
+    expect(randomAfter.players.p1.commander?.forgeRelicUsed).toBe(true);
+    expect(forgeActions(randomAfter).some((offer) => offer.action.tier === "major")).toBe(true);
+
+    const chosenState = mapState("forge-high-specific");
+    chosenState.round = 9;
+    const chosen = forgeActions(chosenState).find(
+      (offer) => offer.action.tier === "relic" && offer.action.specific
+    )!;
+    const chosenAfter = apply(chosenState, chosen.action);
+    expect(chosenAfter.players.p1.resources.gold).toBe(17);
+    expect(chosenAfter.players.p1.commander?.forgeRelicUsed).toBe(true);
+  });
+
+  it("keeps Grade II and III as separate uses while respecting old shared-budget saves", () => {
+    const state = mapState("forge-separate-high");
+    state.round = 9;
+    const major = forgeActions(state).find((offer) => offer.action.tier === "major")!;
+    const afterMajor = apply(state, major.action);
+    expect(afterMajor.players.p1.commander?.forgeMajorUsed).toBe(true);
+    expect(forgeActions(afterMajor).some((offer) => offer.action.tier === "relic")).toBe(true);
+
+    const legacy = mapState("forge-legacy-high");
+    legacy.round = 9;
+    legacy.players.p1.commander!.forgeHighUsed = true;
+    expect(forgeActions(legacy).some((offer) => offer.action.tier !== "minor")).toBe(false);
   });
 
   it("maps victory difficulty to grade and buys a queued Grade-II offer for 8 gold", () => {

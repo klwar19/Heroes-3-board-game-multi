@@ -148,7 +148,9 @@ function acknowledgeCombat(state: GameState, playerId: PlayerId): GameState {
 
 describe("Population token in the PvP prep window: unlimited buys, committed when prep ENDS", () => {
   it("BUG 2 — an ATTACKED player may keep buying and reinforcing after the first purchase", () => {
-    let { state, p1Field } = pvpReady("pop-prep-defender-multi");
+    const ready = pvpReady("pop-prep-defender-multi");
+    let { state } = ready;
+    const { p1Field } = ready;
     // p2 is on the clock and attacks p1, so the defender p1 has moved nothing at
     // all this round — exactly the reporter's seat.
     state.activePlayerId = "p2";
@@ -186,7 +188,9 @@ describe("Population token in the PvP prep window: unlimited buys, committed whe
   });
 
   it("BUG 2 — the ATTACKER may keep buying in its own prep window too", () => {
-    let { state, p2Field } = pvpReady("pop-prep-attacker-multi");
+    const ready = pvpReady("pop-prep-attacker-multi");
+    let { state } = ready;
+    const { p2Field } = ready;
     state = apply(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: p2Field });
     expect(state.combat?.context.kind, "walking onto the enemy hero opens a PvP battle").toBe("player");
 
@@ -199,7 +203,9 @@ describe("Population token in the PvP prep window: unlimited buys, committed whe
   });
 
   it("BUG 1 — readying up ENDS the shopping: the window is committed, not leaked", () => {
-    let { state, p1Field } = pvpReady("pop-prep-accept-commits");
+    const ready = pvpReady("pop-prep-accept-commits");
+    let { state } = ready;
+    const { p1Field } = ready;
     state.activePlayerId = "p2";
     state = apply(state, { type: "MOVE_HERO", playerId: "p2", heroId: "hero_p2", to: p1Field });
     state = apply(state, recruitOffer(state, "p1", "castle.marksmen")!);
@@ -221,7 +227,9 @@ describe("Population token in the PvP prep window: unlimited buys, committed whe
   });
 
   it("BUG 1 — the ATTACKER's prep recruit does not leak past the battle (end to end)", () => {
-    let { state, p2Field } = pvpReady("pop-prep-attacker");
+    const ready = pvpReady("pop-prep-attacker");
+    let { state } = ready;
+    const { p2Field } = ready;
 
     // 1. The reporter's sequence: march onto the enemy hero (a REAL move — the one
     //    that can never close the window, nothing having been bought yet).
@@ -255,7 +263,9 @@ describe("Population token in the PvP prep window: unlimited buys, committed whe
   it("BUG 1 — a fight that ends straight out of prep (nobody accepted) still commits", () => {
     // The finalize backstop: p1 (defender) buys, then the attacker retreats before
     // either side pressed ACCEPT_COMBAT, so the accept-time commit never runs.
-    let { state, p1Field } = pvpReady("pop-prep-escape-commits");
+    const ready = pvpReady("pop-prep-escape-commits");
+    let { state } = ready;
+    const { p1Field } = ready;
     state.activePlayerId = "p2";
     state = apply(state, { type: "MOVE_HERO", playerId: "p2", heroId: "hero_p2", to: p1Field });
     state = apply(state, recruitOffer(state, "p1", "castle.marksmen")!);
@@ -276,7 +286,9 @@ describe("Population token in the PvP prep window: unlimited buys, committed whe
   it("CONTROL: a participant who bought NOTHING in prep keeps an open window", () => {
     // The commit is gated on `populationPurchasedThisRound`, exactly like the move
     // lock — being dragged into a battle must not cost an unused Population action.
-    let { state, p1Field } = pvpReady("pop-prep-no-purchase");
+    const ready = pvpReady("pop-prep-no-purchase");
+    let { state } = ready;
+    const { p1Field } = ready;
     state.activePlayerId = "p2";
     state = apply(state, { type: "MOVE_HERO", playerId: "p2", heroId: "hero_p2", to: p1Field });
     state = apply(state, { type: "ACCEPT_COMBAT", playerId: "p1" });
@@ -293,7 +305,9 @@ describe("Population token in the PvP prep window: unlimited buys, committed whe
     // The BINH house rule is untouched off the battlefield: unlimited recruiting
     // until a hero moves after a purchase. (If the prep commit leaked out of its
     // window, the second recruit here would be refused.)
-    let { state, p2Field } = pvpReady("pop-prep-control");
+    const ready = pvpReady("pop-prep-control");
+    let { state } = ready;
+    const { p2Field } = ready;
     expect(state.combat ?? null, "no combat: an ordinary map turn").toBeNull();
 
     state = apply(state, forcedRecruit("p1", "castle.marksmen"));
@@ -330,7 +344,9 @@ describe("Population token in the PvP prep window: unlimited buys, committed whe
   });
 
   it("CONTROL: the token refreshes with the round after a prep recruit", () => {
-    let { state, p2Field } = pvpReady("pop-prep-refresh");
+    const ready = pvpReady("pop-prep-refresh");
+    let { state } = ready;
+    const { p2Field } = ready;
     state = apply(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: p2Field });
     state = apply(state, recruitOffer(state, "p1", "castle.marksmen")!);
     state = apply(state, { type: "ACCEPT_COMBAT", playerId: "p1" });

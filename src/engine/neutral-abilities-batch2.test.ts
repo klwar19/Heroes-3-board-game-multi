@@ -299,7 +299,9 @@ describe("Champion 'Charge' movement reroll (Pack)", () => {
   it("is offered only when the unit moved", () => {
     const champ = unitWith(["champion-move-reroll"]);
     expect(getUnitAttackRerollSources(champ, false)).toEqual([]);
-    expect(getUnitAttackRerollSources(champ, true)).toEqual([{ name: "Charge", rerolls: 1, onlyOnRoll: undefined }]);
+    expect(getUnitAttackRerollSources(champ, true)).toEqual([
+      { name: "Charge", abilityId: "champion-move-reroll", rerolls: 1 }
+    ]);
   });
 });
 

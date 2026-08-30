@@ -5,7 +5,7 @@
 import { Crown, Layers, Search, Sparkles } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { playSpellBookOpen } from "@/lib/sound";
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cardLibrary } from "@/data/cards/library";
 import { useBalanceArtFlags, useCardFaceImage } from "./polish-balance-art";
@@ -20,6 +20,7 @@ import {
   isComputerPlayer,
   playersAreAllied,
   playerSpellCastsIgnoreLimit,
+  polishBookSpellEffectIsLive,
   polishSpellBookEnabled,
   houseRuleEnabled,
   seatPickSummary,
@@ -596,10 +597,16 @@ export function HandFan({
 }) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const [shelfOpen, setShelfOpen] = useState<"book" | "scroll" | null>(null);
-  const [shelfHost, setShelfHost] = useState<HTMLElement | null>(null);
-  useEffect(() => {
-    setShelfHost(document.getElementById(`combat-spell-shelf-${viewerPlayerId}`));
-  }, [viewerPlayerId]);
+  const subscribeShelfHost = useCallback((notify: () => void) => {
+    const observer = new MutationObserver(notify);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
+  const readShelfHost = useCallback(
+    () => document.getElementById(`combat-spell-shelf-${viewerPlayerId}`),
+    [viewerPlayerId]
+  );
+  const shelfHost = useSyncExternalStore(subscribeShelfHost, readShelfHost, () => null);
   // Polish Spell Book: a Cast a Spell card's popover can expand an inline
   // shortcut list of the currently castable Book Spells (the "List the spells"
   // option). Tracks which hand slot has that list open.
@@ -762,6 +769,13 @@ export function HandFan({
                 <SpellBookModal
                   cardIds={[...new Set(spellBook)]}
                   usedCardIds={polishBook ? spellBookUsed : []}
+                  inPlayCardIds={
+                    polishBook
+                      ? spellBookUsed.filter((cardId) =>
+                          polishBookSpellEffectIsLive(state, viewerPlayerId, cardId, player)
+                        )
+                      : []
+                  }
                   polishMode={polishBook}
                   castsByCard={bookCastsByCard}
                   castLabel={(legal) => {

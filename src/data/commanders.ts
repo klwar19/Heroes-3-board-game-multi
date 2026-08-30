@@ -519,10 +519,10 @@ export interface CommanderDefinition {
 }
 
 export const IBUKI_COMMAND_SKILLS = [
-  { id: "commander-ibuki-sniper-shot", name: "Sniper Shot", ap: 1, icon: "/assets/anime/icons/blue-archive/ibuki-sniper-shot.png", text: "Deal 1 flat damage to an enemy unit; at Power 2, deal 2 instead." },
-  { id: "commander-ibuki-up-to-mischief", name: "Up to Mischief", ap: 2, icon: "/assets/anime/icons/blue-archive/ibuki-up-to-mischief.png", text: "An enemy has −1 Attack this combat round; at Power 1+, it also has −1 Defense." },
-  { id: "commander-ibuki-gadabout", name: "Gadabout", ap: 2, icon: "/assets/anime/icons/blue-archive/ibuki-gadabout.png", text: "Teleport anywhere; enemies adjacent to the landing space take 1 damage." },
-  { id: "commander-cast-executive-order", name: "Executive Order", ap: 3, icon: "/assets/anime/icons/blue-archive/ibuki-executive-order.png", text: "Reactivate an ally that already activated: Bronze at Power 0, up to Silver at Power 1, or any tier at Power 2. Silver and Gold have −2 Attack for that extra activation." }
+  { id: "commander-ibuki-sniper-shot", name: "Sniper Shot", ap: 1, icon: "/assets/anime/icons/blue-archive/ibuki-sniper-shot.webp", text: "Deal 1 flat damage to an enemy unit; at Power 2, deal 2 instead." },
+  { id: "commander-ibuki-up-to-mischief", name: "Up to Mischief", ap: 2, icon: "/assets/anime/icons/blue-archive/ibuki-up-to-mischief.webp", text: "An enemy has −1 Attack this combat round; at Power 1+, it also has −1 Defense." },
+  { id: "commander-ibuki-gadabout", name: "Gadabout", ap: 2, icon: "/assets/anime/icons/blue-archive/ibuki-gadabout.webp", text: "Teleport anywhere; enemies adjacent to the landing space take 1 damage." },
+  { id: "commander-cast-executive-order", name: "Executive Order", ap: 3, icon: "/assets/anime/icons/blue-archive/ibuki-executive-order.webp", text: "Reactivate an ally that already activated: Bronze at Power 0, up to Silver at Power 1, or any tier at Power 2. Silver and Gold have −2 Attack for that extra activation." }
 ] as const;
 
 export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = {
@@ -760,7 +760,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     specialty: {
       id: "vanguard-marshal",
       name: "Vanguard Marshal",
-      text: "At combat setup you may sort the commander together with allied units in your deployment zone. If it is on your FRONT LINE (the row nearest the enemy) during combat round 1, it has +1 Attack that round; moving on or off that line changes the bonus immediately."
+      text: "At combat setup you may sort the commander together with allied units in your deployment zone. During combat round 1, once it reaches your FRONT LINE (the row nearest the enemy), it has +1 Attack for the rest of that round, even after moving away."
     },
     cardImage: "/assets/units-commander-corsair.webp"
   },
@@ -834,7 +834,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     specialty: {
       id: "vanguard-marshal",
       name: "Unbroken Contract",
-      text: "At combat setup you may sort the Regent together with allied units in your deployment zone. If the Regent is on your front line during combat round 1, it has +1 Attack that round."
+      text: "At combat setup you may sort the Regent together with allied units in your deployment zone. During combat round 1, once the Regent reaches your front line, it has +1 Attack for the rest of that round, even after moving away."
     },
     cardImage: "/assets/units-commander-ruler.webp"
   },
@@ -965,7 +965,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     specialty: {
       id: "vanguard-marshal",
       name: "Team Captain",
-      text: "At combat setup you may sort Kyousuke together with allied units in your deployment zone. If he is on your front line during combat round 1, he has +1 Attack that round."
+      text: "At combat setup you may sort Kyousuke together with allied units in your deployment zone. During combat round 1, once he reaches your front line, he has +1 Attack for the rest of that round, even after moving away."
     },
     cardImage: "/assets/units-commander-kyousuke_natsume.webp"
   },
@@ -974,7 +974,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     cast: {
       abilityId: "commander-cast-executive-order",
       name: "Executive Order",
-      icon: "/assets/anime/icons/blue-archive/ibuki-executive-order.png",
+      icon: "/assets/anime/icons/blue-archive/ibuki-executive-order.webp",
       targeting: {
         side: "friendly",
         canTargetSelf: false,

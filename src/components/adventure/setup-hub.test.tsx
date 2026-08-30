@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { SetupLobbyScreen } from "./screen";
 import { MODE_PRESET_PAYLOADS } from "./setup-hub-summary";
-import { createAdventureLobbyState, DEFAULT_WOG_OPTIONS, type GameState } from "@/engine";
+import { createAdventureLobbyState, DEFAULT_WOG_OPTIONS, scenarioDefinitions, type GameState } from "@/engine";
 
 // The Map window fetches the shared map library on mount; keep it offline.
 vi.mock("@/lib/shared-maps", () => ({ fetchSharedMaps: vi.fn(async () => []) }));
@@ -243,6 +243,14 @@ describe("Setup Hub — Heroes & Draft window", () => {
       sessionMode: "single-player",
       computerOpponents: 2
     });
+    state.setupLobby!.options.customMap = scenarioDefinitions.skirmish.layout.starts
+      .slice(0, 3)
+      .map((start, index) => ({
+        ...start,
+        group: "starting" as const,
+        faceDown: false,
+        singlePlayer: { role: index === 0 ? ("human" as const) : ("computer" as const) }
+      }));
     render(<SetupLobbyScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
     fireEvent.click(box(/Heroes & Draft/));
     const dialog = screen.getByRole("dialog", { name: "Heroes & Draft" });

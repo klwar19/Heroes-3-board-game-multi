@@ -185,9 +185,11 @@ export function getUnitAttackRerollSources(
           name: ability.name,
           abilityId: ability.id,
           rerolls: ability.effect.rerollsPerAttack,
-          onlyOnRoll: ability.effect.onlyOnRoll,
-          drawIfRerollResult: ability.effect.drawIfRerollResult,
-          drawCount: ability.effect.drawCount
+          ...(ability.effect.onlyOnRoll !== undefined ? { onlyOnRoll: ability.effect.onlyOnRoll } : {}),
+          ...(ability.effect.drawIfRerollResult !== undefined
+            ? { drawIfRerollResult: ability.effect.drawIfRerollResult }
+            : {}),
+          ...(ability.effect.drawCount !== undefined ? { drawCount: ability.effect.drawCount } : {})
         }]
       : []
   );

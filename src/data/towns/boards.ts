@@ -590,9 +590,9 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
   },
   blue_archive: {
     factionId: "blue_archive",
-    panoramaImage: "/assets/anime/blue-archive/town/blue-archive-town-empty.png",
-    fullImage: "/assets/anime/blue-archive/town/blue-archive-town-full.png",
-    barTileImages: Array.from({ length: 7 }, (_, index) => `/assets/anime/blue-archive/town-bars/blue-archive-built-bar-${index + 1}.png`),
+    panoramaImage: "/assets/anime/blue-archive/town/blue-archive-town-empty.webp",
+    fullImage: "/assets/anime/blue-archive/town/blue-archive-town-full.webp",
+    barTileImages: Array.from({ length: 7 }, (_, index) => `/assets/anime/blue-archive/town-bars/blue-archive-built-bar-${index + 1}.webp`),
     panelImage: DESIGNED_PANEL_IMAGE,
     bars: [
       ["blue_archive.city_hall"],

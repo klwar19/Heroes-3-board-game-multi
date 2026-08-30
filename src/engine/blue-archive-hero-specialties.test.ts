@@ -60,7 +60,7 @@ describe("Blue Archive bespoke specialty mechanics", () => {
       for (const [level, fileLevel] of [[1, "i"], [4, "iv"], [6, "vi"]] as const) {
         const card = adventureCards[`specialty.${hero}_blue_archive.${level}`];
         expect(card.assets?.cardImage).toBe(
-          `/assets/anime/cards/blue-archive/approved-style/${hero}-${fileLevel}.png`
+          `/assets/anime/cards/blue-archive/approved-style/${hero}-${fileLevel}.webp`
         );
       }
     }

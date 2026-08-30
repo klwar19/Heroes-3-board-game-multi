@@ -17,6 +17,7 @@ import {
   BATTLEFIELD_COLUMNS,
   BATTLEFIELD_ROWS,
   combatUnitDecisionOwnerId,
+  commanderLiveAttackBonus,
   effectiveInitiative,
   getActivationOrder,
   getActiveDefenseBonus,
@@ -157,6 +158,20 @@ export function BattlefieldHeroUnitFace({
  *  - "ready": has not retaliated yet → will counter a melee hit.
  */
 export type RetaliationStatus = "unlimited" | "used" | "ready";
+
+/**
+ * The Attack number shown on every live combat surface. The attack resolver
+ * already consumes `commanderLiveAttackBonus`; include that same round/position
+ * fold here so a Vanguard Marshal's visible number matches its real dice.
+ */
+export function displayedCombatAttack(state: GameState, unit: CombatUnitState): number {
+  return (
+    unit.attack +
+    getDisplayAttackBonus(state, unit) +
+    commanderLiveAttackBonus(state, unit) +
+    tokenAttackBonus(unit)
+  );
+}
 
 export function retaliationStatus(state: GameState, unit: CombatUnitState): RetaliationStatus {
   if (hasUnitAbilityEffect(unit, "ALLOW_UNLIMITED_RETALIATION") || unitHasUnlimitedRetaliationEffect(state, unit)) {
@@ -1501,7 +1516,7 @@ export function BattlefieldBoard({
           // `data-fx-cell` lookups and tests are unaffected.
           const cellStyle = battlefieldCellPlacement(index, flipped);
           const health = unit ? Math.max(0, unit.maxHealth - shownDamage(unit)) : 0;
-          const attackTotal = unit ? unit.attack + getDisplayAttackBonus(state, unit) + tokenAttackBonus(unit) : 0;
+          const attackTotal = unit ? displayedCombatAttack(state, unit) : 0;
           const defenseTotal = unit ? unit.defense + getActiveDefenseBonus(state, unit) + tokenDefenseDelta(unit) : 0;
           const initiativeTotal = unit ? effectiveInitiative(unit, state.activeEffects, state.combat) : 0;
           const attackDelta = unit ? attackTotal - unit.attack : 0;
@@ -2250,7 +2265,20 @@ export function InitiativeRail({ state }: { state: GameState }) {
               isDone ? "done" : ""
             } ${unit.waitPending ? "waited" : ""} ${unit.defenseToken ? "defending" : ""}`}
             key={unit.id}
-            onClick={() => zoomUnit(unit, state.ruleset)}
+            onClick={() =>
+              zoomUnit(
+                unit,
+                state.ruleset,
+                unit.commanderSlug
+                  ? {
+                      attack: displayedCombatAttack(state, unit),
+                      defense: unit.defense + getActiveDefenseBonus(state, unit) + tokenDefenseDelta(unit),
+                      health: unit.maxHealth,
+                      initiative: init
+                    }
+                  : undefined
+              )
+            }
             title={`${index + 1}. ${unit.cardName} — initiative ${init}${
               delta !== 0 ? ` (base ${unit.initiative}, ${delta > 0 ? "+" : ""}${delta} from effects)` : ""
             }${isDone ? " (already activated)" : ""}${
@@ -2355,8 +2383,8 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
   // Effective Attack/Defense fold in the army-wide Bulwark Rune buffs (and Bless /
   // Bloodlust / Offense and the like) the same way, so a unit visibly reflects a
   // buff the instant it turns on instead of reading its printed base.
-  const attackBonus = getDisplayAttackBonus(state, unit) + tokenAttackBonus(unit);
-  const attack = unit.attack + attackBonus;
+  const attack = displayedCombatAttack(state, unit);
+  const attackBonus = attack - unit.attack;
   const defenseBonus = getActiveDefenseBonus(state, unit) + tokenDefenseDelta(unit);
   const defense = unit.defense + defenseBonus;
   // Whether this unit will counter-attack a melee blow right now (the same
@@ -2373,7 +2401,20 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
       <button
         aria-label={`Read ${unit.cardName} at full size`}
         className="inspectZoom"
-        onClick={() => zoomUnit(unit, state.ruleset)}
+        onClick={() =>
+          zoomUnit(
+            unit,
+            state.ruleset,
+            unit.commanderSlug
+              ? {
+                  attack,
+                  defense,
+                  health: unit.maxHealth,
+                  initiative: init
+                }
+              : undefined
+          )
+        }
         title="Click to enlarge"
         type="button"
       >

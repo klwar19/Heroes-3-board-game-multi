@@ -87,15 +87,34 @@ describe("anime faction Resource-round penalties", () => {
     expect(state.players.p1.otherworldHandLimitLoss ?? 0).toBe(0);
   });
 
-  it("Little Busters pays 5 gold and 1 material, floored at what is available", () => {
+  it("Little Busters pays 6 gold and 1 material, floored at what is available", () => {
     const state = resourceState("little_busters");
     startAdventureRound(state);
-    expect(state.players.p1.resources).toMatchObject({ gold: 5, buildingMaterials: 2 });
+    expect(state.players.p1.resources).toMatchObject({ gold: 4, buildingMaterials: 2 });
     state.players.p1.resources.gold = 2;
     state.players.p1.resources.buildingMaterials = 0;
     state.round = 5;
     startAdventureRound(state);
     expect(state.players.p1.resources).toMatchObject({ gold: 0, buildingMaterials: 0 });
+  });
+
+  it("Little Busters loses 1 hand limit only during each Astrologers round", () => {
+    const state = resourceState("little_busters");
+    state.round = 2;
+    startAdventureRound(state);
+    expect(state.players.p1.otherworldHandLimitLoss).toBe(1);
+    const astrologersLimit = effectiveHandLimit(state, "p1");
+    state.players.p1.otherworldHandLimitLoss = 0;
+    expect(astrologersLimit).toBe(Math.max(1, effectiveHandLimit(state, "p1") - 1));
+    state.players.p1.otherworldHandLimitLoss = 1;
+
+    state.round = 3;
+    startAdventureRound(state);
+    expect(state.players.p1.otherworldHandLimitLoss ?? 0).toBe(0);
+
+    state.round = 4;
+    startAdventureRound(state);
+    expect(state.players.p1.otherworldHandLimitLoss).toBe(1);
   });
 
   it("leaves ordinary towns unchanged", () => {

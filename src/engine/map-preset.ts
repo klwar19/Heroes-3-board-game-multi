@@ -2354,6 +2354,7 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
     if (raw.breaks.enterNearTiles === true) breaks.enterNearTiles = true;
     if (raw.breaks.enterCenterTiles === true) breaks.enterCenterTiles = true;
     if (raw.breaks.enterViiFields === true) breaks.enterViiFields = true;
+    if (raw.breaks.teamScope === "team") breaks.teamScope = "team";
     if (Object.keys(breaks).length > 0) preset.breaks = breaks;
   }
   if (raw.houseRules && typeof raw.houseRules === "object") {
@@ -3150,7 +3151,11 @@ export function describeCustomMapPresetEntries(
     if (preset.breaks.enterNearTiles) gates.push("entering tiles Ⅳ–Ⅴ");
     if (preset.breaks.enterCenterTiles) gates.push("entering tiles Ⅵ–Ⅶ");
     if (preset.breaks.enterViiFields) gates.push("entering fields Ⅶ");
-    entries.push({ icon: "🧱", text: `Break: ${gates.join(", ")}` });
+    const teamScope = preset.breaks.teamScope === "team" ? "whole team" : "individual players";
+    entries.push({
+      icon: "🧱",
+      text: gates.length > 0 ? `Break: ${gates.join(", ")} · ${teamScope}` : `Break team rule: ${teamScope}`
+    });
   }
   if (preset.obelisks) {
     entries.push({ icon: "🗿", text: describeObeliskRole(preset.obelisks) });

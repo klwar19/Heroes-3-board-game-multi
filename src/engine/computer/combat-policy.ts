@@ -93,6 +93,14 @@ const SUICIDAL_ATTACK_SCORE = 545;
 // save (550) so a threatened key unit turtles instead, while plain-defend
 // chaff (≤530) still takes the trade.
 const BAD_TRADE_ATTACK_SCORE = 548;
+// Ranked replay room-room-nciy4l (Absolution vs VuHy, 2026-08-29) exposed a
+// terminal version of the same mistake: a 4-Health Shaman chipped a Haspid for
+// 1, invited a 4-damage retaliation, and died, immediately losing the PvP
+// battle. A commander is not an ordinary tradeable stack—its removal ends the
+// fight and leaves a costly persistent death—so a non-lethal attack that is
+// expected to kill it on retaliation must lose even to END_ACTIVATION (400).
+// Lethal attacks are unaffected because a removed defender cannot retaliate.
+const COMMANDER_RETALIATION_DEATH_SCORE = 350;
 // Enemy shooters strike every round without exposing themselves to melee
 // retaliation — removing (or pressuring) them first is the classic opening.
 const RANGED_TARGET_BONUS = 18;
@@ -294,6 +302,13 @@ function attackScore(
     if (provokesRetaliation(attacker, defender, attackFromPosition)) {
       const retaliation = expectedAttackDamage(defender, attacker);
       retaliationDamage = retaliation;
+      if (
+        attacker.commanderSlug &&
+        retaliation >= ownRemaining &&
+        !lethal
+      ) {
+        return COMMANDER_RETALIATION_DEATH_SCORE;
+      }
       quality -= Math.min(50, retaliation * 4);
       if (damage === 0 && retaliation >= ownRemaining) {
         return SUICIDAL_ATTACK_SCORE;

@@ -872,7 +872,7 @@ describe("Polish Mage Guild", () => {
     // The fix must not have removed (or blanket-skipped) the take-the-top-discard
     // proposition: a Spell that reached the shared discard WITHOUT a roll — a
     // cast, a bin — is still the card the next Search offers.
-    let state = rollGame("polish-roll-control-top");
+    const state = rollGame("polish-roll-control-top");
     state.decks.spells.discardPile = ["spell.magic_arrow", "spell.bless"];
     // The classic route onto a shared discard: pushed on top.
     state.decks.spells.discardPile.push("spell.slow");
@@ -1156,7 +1156,7 @@ describe("Polish Spell Book — discard-recovery artifacts", () => {
   });
 
   function playRecoveryArtifact(seed: string, artifactId: string, extraDiscard: string[]): GameState {
-    let state = createAdventureGameState({ startingBuildings: [],
+    const state = createAdventureGameState({ startingBuildings: [],
       seed,
       ruleset: "binh",
       rollFirstPlayer: false,
@@ -1629,7 +1629,7 @@ describe("Polish Spell Book — a Spell IN EFFECT cannot be refreshed", () => {
   it("CONTROL: an INSTANT Book Spell cast the same way still refreshes at the round start", () => {
     const state = polishMapGame("polish-book-in-effect-control");
     // View Air resolves at once (resources) and leaves no lasting effect.
-    let next = castOngoingBookSpell(state, "spell.view_air");
+    const next = castOngoingBookSpell(state, "spell.view_air");
     expect(next.players.p1.spellBookUsed).toContain("spell.view_air");
     expect(effectLive(next, "spell.view_air")).toBe(false);
     next.round = 2;
@@ -1678,7 +1678,7 @@ describe("Polish Spell Book — a Spell IN EFFECT cannot be refreshed", () => {
   it("Mysticism cannot refresh a Book Spell whose combat effect is still live", () => {
     // Haste leaves a combat-long effect: the Mysticism recall ("refresh the cast
     // Spell") is refused while it lasts, and the Spell stays used.
-    let state = polishCombat("polish-book-in-effect-mysticism");
+    const state = polishCombat("polish-book-in-effect-mysticism");
     state.players.p1.hand = [CAST_A_SPELL_CARD_ID, "ability.mysticism"];
     state.players.p1.spellBook = ["spell.haste"];
     state.players.p1.limits.expertUses = 0;
@@ -1690,7 +1690,7 @@ describe("Polish Spell Book — a Spell IN EFFECT cannot be refreshed", () => {
         legal.action.fromSpellBook === true
     );
     expect(cast, "Haste should be castable from the Polish Book").toBeTruthy();
-    let opened = applyOk(state, cast!.action);
+    const opened = applyOk(state, cast!.action);
     const myst = getLegalActions(opened, "p1").find(
       (legal) =>
         legal.action.type === "PLAY_REACTION" && legal.action.cardId === "ability.mysticism"
@@ -1854,6 +1854,48 @@ describe("Polish Spell Book — a 'this turn' Spell refreshes at the NEXT round 
     const partition = partitionPolishBookAtRoundStart(state, state.players.p1);
     expect(partition.refresh).toContain("spell.water_walk");
     expect(partition.stillInEffect).not.toContain("spell.water_walk");
+  });
+
+  it("keeps a Fire Wall Spell in effect while its battlefield token remains", () => {
+    const state = polishCombat("polish-book-fire-wall-in-play");
+    state.players.p1.spellBook = [];
+    state.players.p1.spellBookUsed = ["spell.fire_wall"];
+    state.combat!.battlefieldTokens = [{
+      id: "fire-wall-from-book",
+      kind: "fire_wall",
+      position: 9,
+      controllerId: "p1",
+      sourceSpellCardId: "spell.fire_wall",
+      damage: 1
+    }];
+
+    expect(polishBookSpellEffectIsLive(state, "p1", "spell.fire_wall", state.players.p1)).toBe(true);
+    expect(polishBookSpellRefreshBlocked(state, "p1", "spell.fire_wall", state.players.p1)).toBe("in-effect");
+    const partition = partitionPolishBookAtRoundStart(state, state.players.p1);
+    expect(partition.stillInEffect).toContain("spell.fire_wall");
+    expect(partition.refresh).not.toContain("spell.fire_wall");
+
+    state.combat!.battlefieldTokens = [];
+    expect(polishBookSpellEffectIsLive(state, "p1", "spell.fire_wall", state.players.p1)).toBe(false);
+  });
+
+  it("does not offer a stale refreshed copy while the same Fire Wall is still in play", () => {
+    const state = polishCombat("polish-book-fire-wall-stale-refresh");
+    state.players.p1.hand = [CAST_A_SPELL_CARD_ID];
+    state.players.p1.spellBook = ["spell.fire_wall"];
+    state.players.p1.spellBookUsed = [];
+    state.combat!.battlefieldTokens = [{
+      id: "stale-refreshed-fire-wall",
+      kind: "fire_wall",
+      position: 9,
+      controllerId: "p1",
+      sourceSpellCardId: "spell.fire_wall",
+      damage: 1
+    }];
+
+    expect(getLegalActions(state, "p1").some(
+      (legal) => legal.action.type === "CAST_SPELL" && legal.action.cardId === "spell.fire_wall"
+    )).toBe(false);
   });
 
   it("CONTROL: the mid-round once-per-round limit is untouched by the round-start reading", () => {

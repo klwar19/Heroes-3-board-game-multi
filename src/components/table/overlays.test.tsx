@@ -867,6 +867,34 @@ describe("ReactionTray — in-progress selection survives only until the hand ch
     expect(screen.getAllByRole("button", { name: /add to play/i })).toHaveLength(1);
     expect(screen.getAllByRole("button").some((button) => button.getAttribute("aria-pressed") === "true")).toBe(false);
   });
+
+  it("minimizes and restores without passing, playing, or closing the reaction", () => {
+    const state = attackWindowState(["stat.attack"]);
+    const windowId = state.reactionWindow?.id;
+    const onAction = vi.fn();
+    render(
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={getLegalActions(state, "p1")}
+          onAction={onAction}
+          state={state}
+          view={getPlayerView(state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Minimize the instant window" }));
+    expect(screen.getByText(/waiting for your reaction/i)).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "Instant window" }).className).toContain("minimized");
+    expect(onAction).not.toHaveBeenCalled();
+    expect(state.reactionWindow?.id).toBe(windowId);
+
+    fireEvent.click(screen.getByRole("button", { name: "Restore the instant window" }));
+    expect(screen.getByRole("button", { name: /add to play/i })).toBeTruthy();
+    expect(onAction).not.toHaveBeenCalled();
+    expect(state.reactionWindow?.id).toBe(windowId);
+  });
 });
 
 describe("ReactionTray — Balance-Pack Celestial Necklace shows its +1 base", () => {

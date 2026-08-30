@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createInitialGameState, getLegalActions } from "./index";
 import { makeActiveEffect } from "./active-effects";
-import type { ActiveEffectDefinition, GameAction, GameEvent, GameState, PlayerId } from "./state";
+import type {
+  ActiveEffectDefinition,
+  GameAction,
+  GameEvent,
+  GameState,
+  PlayerId,
+} from "./state";
 
 /**
  * Two artifacts that touch the deepest parts of the combat engine:
@@ -18,7 +24,10 @@ import type { ActiveEffectDefinition, GameAction, GameEvent, GameState, PlayerId
 
 function applyOk(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
-  expect(result.errors, result.errors.map((error) => error.message).join("; ")).toEqual([]);
+  expect(
+    result.errors,
+    result.errors.map((error) => error.message).join("; "),
+  ).toEqual([]);
   return result.state;
 }
 
@@ -34,7 +43,12 @@ function script(state: GameState, rolls: number[]): void {
 
 function abilityEventIds(state: GameState): string[] {
   return state.eventLog
-    .filter((event): event is Extract<GameEvent, { type: "UNIT_ABILITY_TRIGGERED" }> => event.type === "UNIT_ABILITY_TRIGGERED")
+    .filter(
+      (
+        event,
+      ): event is Extract<GameEvent, { type: "UNIT_ABILITY_TRIGGERED" }> =>
+        event.type === "UNIT_ABILITY_TRIGGERED",
+    )
     .map((event) => event.abilityId);
 }
 
@@ -42,9 +56,16 @@ function abilityEventIds(state: GameState): string[] {
 function settle(state: GameState): GameState {
   let current = state;
   let safety = 40;
-  while (safety-- > 0 && (current.reactionWindow || current.pendingChoice?.type === "ATTACK_DIE_REROLL")) {
+  while (
+    safety-- > 0 &&
+    (current.reactionWindow ||
+      current.pendingChoice?.type === "ATTACK_DIE_REROLL")
+  ) {
     if (current.reactionWindow) {
-      current = applyOk(current, { type: "PASS_REACTION", playerId: current.reactionWindow.priorityPlayerId });
+      current = applyOk(current, {
+        type: "PASS_REACTION",
+        playerId: current.reactionWindow.priorityPlayerId,
+      });
       continue;
     }
     const choice = current.pendingChoice;
@@ -53,7 +74,7 @@ function settle(state: GameState): GameState {
         type: "CHOOSE_PENDING_ROLL",
         playerId: choice.playerId,
         choiceId: choice.id,
-        candidateIndex: choice.candidates.length - 1
+        candidateIndex: choice.candidates.length - 1,
       });
     }
   }
@@ -67,11 +88,16 @@ type AttackOpts = {
   attackerAbilities?: string[];
   attackerDeck?: string[];
   defenderDefense?: number;
+  p1Hand?: string[];
   p2Hand?: string[];
 };
 
 /** Griffins (p1) melee the Skeletons (p2); returns the declared-attack state. */
-function declareAttack(seed: string, rolls: number[], opts: AttackOpts = {}): GameState {
+function declareAttack(
+  seed: string,
+  rolls: number[],
+  opts: AttackOpts = {},
+): GameState {
   const state = createInitialGameState(seed);
   const attacker = state.combat!.units.unit_p1_griffins;
   attacker.type = "ground";
@@ -84,7 +110,7 @@ function declareAttack(seed: string, rolls: number[], opts: AttackOpts = {}): Ga
   defender.maxHealth = 40;
   defender.damage = 0;
   defender.abilities = [];
-  state.players.p1.hand = [];
+  state.players.p1.hand = opts.p1Hand ?? [];
   if (opts.attackerDeck) {
     state.players.p1.deck = opts.attackerDeck;
   }
@@ -95,7 +121,7 @@ function declareAttack(seed: string, rolls: number[], opts: AttackOpts = {}): Ga
     type: "ATTACK_UNIT",
     playerId: "p1",
     attackerId: "unit_p1_griffins",
-    defenderId: "unit_p2_skeletons"
+    defenderId: "unit_p2_skeletons",
   });
 }
 
@@ -108,7 +134,10 @@ function passToDieSettledWindow(state: GameState): GameState {
     current.reactionWindow &&
     current.reactionWindow.triggerEvent.type === "UNIT_ATTACK_DECLARED"
   ) {
-    current = applyOk(current, { type: "PASS_REACTION", playerId: current.reactionWindow.priorityPlayerId });
+    current = applyOk(current, {
+      type: "PASS_REACTION",
+      playerId: current.reactionWindow.priorityPlayerId,
+    });
   }
   return current;
 }
@@ -123,27 +152,81 @@ function skeletonDamage(state: GameState): number {
 
 describe("Shield of the Dwarven Lords — ignore the Attack die (option A)", () => {
   it("opens a post-roll window for the defender once the die is rolled", () => {
-    const declared = declareAttack("dwarven-lords-window", [1, 0, 0], { p2Hand: [SHIELD] });
+    const declared = declareAttack("dwarven-lords-window", [1, 0, 0], {
+      p2Hand: [SHIELD],
+    });
     const atDie = passToDieSettledWindow(declared);
 
     expect(atDie.reactionWindow?.triggerEvent.type).toBe("ATTACK_DIE_SETTLED");
     const offered = atDie.reactionWindow?.legalReactions.p2 ?? [];
     expect(
       offered.some(
-        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === SHIELD && legal.action.optionIndex === 0
-      )
+        (legal) =>
+          legal.action.type === "PLAY_REACTION" &&
+          legal.action.cardId === SHIELD &&
+          legal.action.optionIndex === 0,
+      ),
+    ).toBe(true);
+  });
+
+  it("also asks the owner after their own unit rolls an attack", () => {
+    const atDie = passToDieSettledWindow(
+      declareAttack("dwarven-lords-own-attack", [1, 0, 0], {
+        p1Hand: [SHIELD],
+      }),
+    );
+    expect(atDie.reactionWindow?.triggerEvent.type).toBe("ATTACK_DIE_SETTLED");
+    const shield = (atDie.reactionWindow?.legalReactions.p1 ?? []).find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === SHIELD &&
+        legal.action.optionIndex === 0,
+    );
+    expect(
+      shield,
+      "the attacking owner must be asked after the roll",
+    ).toBeTruthy();
+    const after = settle(applyOk(atDie, shield!.action));
+    // 5 Attack, ignored die, 1 Defense = 4. Without the Shield the +1 roll is 5.
+    expect(skeletonDamage(after)).toBe(4);
+    expect(after.players.p1.hand).not.toContain(SHIELD);
+  });
+
+  it.each([-1, 0, 1])("offers the choice after every die face (%i)", (face) => {
+    const atDie = passToDieSettledWindow(
+      declareAttack(`dwarven-lords-every-face-${face}`, [face, 0, 0], {
+        p2Hand: [SHIELD],
+      }),
+    );
+    expect(atDie.reactionWindow?.triggerEvent.type).toBe("ATTACK_DIE_SETTLED");
+    expect(
+      (atDie.reactionWindow?.legalReactions.p2 ?? []).some(
+        (legal) =>
+          legal.action.type === "PLAY_REACTION" &&
+          legal.action.cardId === SHIELD &&
+          legal.action.optionIndex === 0,
+      ),
     ).toBe(true);
   });
 
   it("ignoring a '+1' die drops the die bonus from the resolved hit", () => {
     // Control: nobody cancels, the +1 die lands → 5 attack + 1 − 1 defense = 5.
-    const control = settle(passToDieSettledWindow(declareAttack("dwarven-lords-control", [1, 0, 0], { p2Hand: [] })));
+    const control = settle(
+      passToDieSettledWindow(
+        declareAttack("dwarven-lords-control", [1, 0, 0], { p2Hand: [] }),
+      ),
+    );
     expect(skeletonDamage(control)).toBe(5);
 
     // The defender ignores the die → 5 attack + 0 − 1 defense = 4.
-    const atDie = passToDieSettledWindow(declareAttack("dwarven-lords-cancel", [1, 0, 0], { p2Hand: [SHIELD] }));
+    const atDie = passToDieSettledWindow(
+      declareAttack("dwarven-lords-cancel", [1, 0, 0], { p2Hand: [SHIELD] }),
+    );
     const shield = (atDie.reactionWindow?.legalReactions.p2 ?? []).find(
-      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === SHIELD && legal.action.optionIndex === 0
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === SHIELD &&
+        legal.action.optionIndex === 0,
     );
     expect(shield, "the die-cancel option should be offered").toBeTruthy();
     const after = settle(applyOk(atDie, shield!.action));
@@ -162,9 +245,9 @@ describe("Shield of the Dwarven Lords — ignore the Attack die (option A)", () 
         declareAttack("dwarven-lords-minotaur-control", [-1, 0, 0], {
           attackerAbilities: ["minotaur-draw-on-miss"],
           attackerDeck: ["stat.attack"],
-          p2Hand: []
-        })
-      )
+          p2Hand: [],
+        }),
+      ),
     );
     expect(control.players.p1.hand).toContain("stat.attack");
     expect(abilityEventIds(control)).toContain("minotaur-draw-on-miss");
@@ -175,11 +258,14 @@ describe("Shield of the Dwarven Lords — ignore the Attack die (option A)", () 
       declareAttack("dwarven-lords-minotaur-cancel", [-1, 0, 0], {
         attackerAbilities: ["minotaur-draw-on-miss"],
         attackerDeck: ["stat.attack"],
-        p2Hand: [SHIELD]
-      })
+        p2Hand: [SHIELD],
+      }),
     );
     const shield = (atDie.reactionWindow?.legalReactions.p2 ?? []).find(
-      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === SHIELD && legal.action.optionIndex === 0
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === SHIELD &&
+        legal.action.optionIndex === 0,
     );
     const after = settle(applyOk(atDie, shield!.action));
 
@@ -189,14 +275,22 @@ describe("Shield of the Dwarven Lords — ignore the Attack die (option A)", () 
   });
 
   it("never offers option A in the ordinary attack-declared window (only the +1 defense side)", () => {
-    const declared = declareAttack("dwarven-lords-declared", [1, 0, 0], { p2Hand: [SHIELD] });
-    expect(declared.reactionWindow?.triggerEvent.type).toBe("UNIT_ATTACK_DECLARED");
+    const declared = declareAttack("dwarven-lords-declared", [1, 0, 0], {
+      p2Hand: [SHIELD],
+    });
+    expect(declared.reactionWindow?.triggerEvent.type).toBe(
+      "UNIT_ATTACK_DECLARED",
+    );
     const offered = declared.reactionWindow?.legalReactions.p2 ?? [];
     const shieldOffers = offered.filter(
-      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === SHIELD
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" && legal.action.cardId === SHIELD,
     );
     expect(shieldOffers).toHaveLength(1);
-    expect(shieldOffers[0]?.action.type === "PLAY_REACTION" && shieldOffers[0].action.optionIndex).toBe(1);
+    expect(
+      shieldOffers[0]?.action.type === "PLAY_REACTION" &&
+        shieldOffers[0].action.optionIndex,
+    ).toBe(1);
   });
 
   it("never offers option A as a free combat play", () => {
@@ -204,7 +298,10 @@ describe("Shield of the Dwarven Lords — ignore the Attack die (option A)", () 
     state.players.p1.hand = [SHIELD];
     setActive(state, "p1", "unit_p1_griffins");
     const plays = getLegalActions(state, "p1").filter(
-      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === SHIELD && legal.action.optionIndex === 0
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === SHIELD &&
+        legal.action.optionIndex === 0,
     );
     expect(plays).toHaveLength(0);
   });
@@ -213,13 +310,22 @@ describe("Shield of the Dwarven Lords — ignore the Attack die (option A)", () 
 describe("Shield of the Dwarven Lords — +1 defense (option B)", () => {
   it("adds +1 defense to the incoming attack", () => {
     // Control: 5 attack + 0 die − 1 defense = 4.
-    const control = settle(passToDieSettledWindow(declareAttack("dwarven-lords-def-control", [0, 0, 0], { p2Hand: [] })));
+    const control = settle(
+      passToDieSettledWindow(
+        declareAttack("dwarven-lords-def-control", [0, 0, 0], { p2Hand: [] }),
+      ),
+    );
     expect(skeletonDamage(control)).toBe(4);
 
     // Play +1 defense in the attack-declared window → 5 − (1 + 1) = 3.
-    const declared = declareAttack("dwarven-lords-def", [0, 0, 0], { p2Hand: [SHIELD] });
+    const declared = declareAttack("dwarven-lords-def", [0, 0, 0], {
+      p2Hand: [SHIELD],
+    });
     const defense = (declared.reactionWindow?.legalReactions.p2 ?? []).find(
-      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === SHIELD && legal.action.optionIndex === 1
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === SHIELD &&
+        legal.action.optionIndex === 1,
     );
     expect(defense, "the +1 defense option should be offered").toBeTruthy();
     const after = settle(applyOk(declared, defense!.action));
@@ -237,12 +343,17 @@ const ORB_EFFECT: ActiveEffectDefinition = {
   name: "Orb of Vulnerability",
   scope: "global",
   duration: { type: "combat" },
-  modifiers: [{ type: "SUPPRESS_SPELL_ABILITIES" }]
+  modifiers: [{ type: "SUPPRESS_SPELL_ABILITIES" }],
 };
 
 function addOrbSuppression(state: GameState): void {
   state.activeEffects.push(
-    makeActiveEffect(state, ORB_EFFECT, { type: "card", cardId: ORB, controllerId: "p1" }, "p1")
+    makeActiveEffect(
+      state,
+      ORB_EFFECT,
+      { type: "card", cardId: ORB, controllerId: "p1" },
+      "p1",
+    ),
   );
 }
 
@@ -252,7 +363,7 @@ function castArrow(state: GameState): GameState {
     type: "CAST_SPELL",
     playerId: "p1",
     cardId: "spell.magic_arrow",
-    target: { type: "unit", unitId: "unit_p2_skeletons" }
+    target: { type: "unit", unitId: "unit_p2_skeletons" },
   });
   return settle(next);
 }
@@ -310,7 +421,7 @@ describe("Orb of Vulnerability — negate spell-related abilities (option A)", (
       type: "CAST_SPELL",
       playerId: "p1",
       cardId: "spell.magic_arrow",
-      target: { type: "unit", unitId: "unit_p2_skeletons" }
+      target: { type: "unit", unitId: "unit_p2_skeletons" },
     });
     expect(blocked.errors.length).toBeGreaterThan(0);
 
@@ -336,10 +447,12 @@ describe("Orb of Vulnerability — negate spell-related abilities (option A)", (
         type: "CAST_SPELL",
         playerId: "p1",
         cardId: "spell.magic_arrow",
-        target: { type: "unit", unitId: "unit_p2_skeletons" }
+        target: { type: "unit", unitId: "unit_p2_skeletons" },
       });
       const boost = (next.reactionWindow?.legalReactions.p1 ?? []).find(
-        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.asPowerBoost === true
+        (legal) =>
+          legal.action.type === "PLAY_REACTION" &&
+          legal.action.asPowerBoost === true,
       );
       next = settle(applyOk(next, boost!.action));
       return skeletonDamage(next);
@@ -358,23 +471,33 @@ describe("Orb of Vulnerability — negate spell-related abilities (option A)", (
     setActive(state, "p1", "unit_p1_griffins");
 
     const play = getLegalActions(state, "p1").find(
-      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === ORB && legal.action.optionIndex === 0
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === ORB &&
+        legal.action.optionIndex === 0,
     );
     expect(play, "Orb option A should be a legal combat play").toBeTruthy();
     const after = applyOk(state, play!.action);
 
     expect(
       after.activeEffects.some((effect) =>
-        effect.modifiers.some((modifier) => modifier.type === "SUPPRESS_SPELL_ABILITIES")
-      )
+        effect.modifiers.some(
+          (modifier) => modifier.type === "SUPPRESS_SPELL_ABILITIES",
+        ),
+      ),
     ).toBe(true);
     // The printed card has no remove-from-game clause. Its combat-long
     // suppression effect keeps the card physically in play; once the effect
     // ends it returns to the discard pile — never to the removed-from-game zone.
     expect(after.players.p1.removed).not.toContain(ORB);
     expect(after.players.p1.hand).not.toContain(ORB);
-    const held = (after.players.p1.ongoingCards ?? []).find((entry) => entry.cardId === ORB);
-    expect(held, "Orb should be held in play by its ongoing suppression effect").toBeTruthy();
+    const held = (after.players.p1.ongoingCards ?? []).find(
+      (entry) => entry.cardId === ORB,
+    );
+    expect(
+      held,
+      "Orb should be held in play by its ongoing suppression effect",
+    ).toBeTruthy();
     expect(held?.returnTo).toBe("discard");
   });
 });
@@ -393,12 +516,18 @@ describe("Orb of Vulnerability — +2 Power (option B)", () => {
       type: "CAST_SPELL",
       playerId: "p1",
       cardId: "spell.magic_arrow",
-      target: { type: "unit", unitId: "unit_p2_skeletons" }
+      target: { type: "unit", unitId: "unit_p2_skeletons" },
     });
     const power = (cast.reactionWindow?.legalReactions.p1 ?? []).find(
-      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === ORB && legal.action.optionIndex === 1
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === ORB &&
+        legal.action.optionIndex === 1,
     );
-    expect(power, "Orb's +2 Power option should be offered toward the cast").toBeTruthy();
+    expect(
+      power,
+      "Orb's +2 Power option should be offered toward the cast",
+    ).toBeTruthy();
     const after = settle(applyOk(cast, power!.action));
 
     // Magic Arrow at power 2 deals 3 damage.

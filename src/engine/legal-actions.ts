@@ -1,7 +1,10 @@
 import { cardLibrary } from "@/data/cards/library";
 import { POLISH_BALANCE_PRINTED_MOVEMENT_IDS } from "./polish-balance-spells";
 import { COMMUNITY_BALANCE_PRINTED_MOVEMENT_IDS } from "@/data/cards/community-spells-balance";
-import { balanceCardLibrary, balanceRerollReactionArtifactIds } from "./community-balance-cards";
+import {
+  balanceCardLibrary,
+  balanceRerollReactionArtifactIds,
+} from "./community-balance-cards";
 import { MORALE_CARD_IDS } from "@/data/cards/morale";
 import { hasToken as unitHasToken } from "./tokens";
 import { moraleCardsRuleEnabled } from "./morale-cards";
@@ -10,10 +13,14 @@ import {
   coreFactionDefinitions,
   coreHeroDefinitions,
   factoryGoldUnitConflict,
-  isPlayableFaction
+  isPlayableFaction,
 } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
-import { isMarketLocation, locationDefinitions, TRADE_RATES } from "@/data/map/locations";
+import {
+  isMarketLocation,
+  locationDefinitions,
+  TRADE_RATES,
+} from "@/data/map/locations";
 import { sampleBuildings } from "@/data/towns/buildings";
 import {
   adventurePvpTroopLoss,
@@ -58,14 +65,14 @@ import {
   unitDrillGoldCostFor,
   unitDrillMovementCost,
   unitDrillAvailable,
-  heroHasFreeGateStep
+  heroHasFreeGateStep,
 } from "./adventure";
 import {
   MGQ_JOB_LABELS,
   mgqEffectiveJob,
   mgqJobAssignmentCost,
   mgqJobEligible,
-  mgqJobsForUnit
+  mgqJobsForUnit,
 } from "./mgq-jobs";
 import { MGQ_SPIRIT_LABELS, mgqContractedSpirits } from "./mgq-spirits";
 import { mgqGoldContractAllows } from "./mgq-contracts";
@@ -89,10 +96,11 @@ import {
   canHeroDiscoverAdjacentTile,
   isTileRotationConnected,
   TILE_ROTATION_SEAL_GATE_ENABLED,
+  anyHeroAdjacentRevealTargets,
   observatoryPlacementCenters,
   observatoryRevealTargets,
   removableHandCards,
-  tacticsMoveDestinations
+  tacticsMoveDestinations,
 } from "./adventure-reducer";
 import {
   effectAppliesToUnit,
@@ -107,7 +115,7 @@ import {
   unitAttackRollAdvantaged,
   unitAttackRollDisadvantaged,
   unitImmuneToSpellSchoolsByEffect,
-  unitIsBerserk
+  unitIsBerserk,
 } from "./active-effects";
 import {
   cancelSpellAllowsSchoolAndLevel,
@@ -118,7 +126,7 @@ import {
   heroMovementTopUpHeroId,
   spellMinUsefulPower,
   spellMaxUsefulPower,
-  spellPowerValueOfCard
+  spellPowerValueOfCard,
 } from "./effects";
 import { commanderReviveCost } from "@/data/commanders";
 import {
@@ -132,13 +140,14 @@ import {
   commanderIntegratedDeploymentSortAvailable,
   ibukiActionPoints,
   commanderStandsInCurrentCombat,
-  commanderUnitId
+  commanderUnitId,
 } from "./commanders";
 import { RUNE_MAX } from "./runes";
 import {
   COMMANDER_ARTIFACT_GOLD_COST,
+  availableCommanderArtifactSpecs,
   commanderArtifactBonusesForUnit,
-  commanderForgeCandidates
+  commanderForgeCandidates,
 } from "./commander-artifacts";
 import {
   BATTLEFIELD_CELL_COUNT,
@@ -149,7 +158,7 @@ import {
   getOrthogonalNeighbors,
   getReachableDestinations,
   isAdjacent,
-  isBattlefieldPosition
+  isBattlefieldPosition,
 } from "./battlefield";
 import {
   ballisticsOpeningBombardAvailable,
@@ -163,9 +172,12 @@ import {
   permanentSpellPowerBonus,
   playerCanUseFirstAidVolley,
   schoolScopedStandingPower,
-  warMachinesForSale
+  warMachinesForSale,
 } from "./permanents";
-import { cultivationSpellPowerBonus, tribulationAvailable } from "./anime-cultivation";
+import {
+  cultivationSpellPowerBonus,
+  tribulationAvailable,
+} from "./anime-cultivation";
 import {
   heroGradeSpellPowerBonus,
   heroGradePickableNodes,
@@ -175,9 +187,12 @@ import {
   heroSkillAvailableThisCombat,
   heroSkillAvailableThisRound,
   heroTrainAvailable,
-  playerMainHeroInCombat
+  playerMainHeroInCombat,
 } from "./anime-hero-grades";
-import { fuyukiCommandSealsOf, hiddenLeafCombatFormationError } from "./anime-town-mechanics";
+import {
+  fuyukiCommandSealsOf,
+  hiddenLeafCombatFormationError,
+} from "./anime-town-mechanics";
 import {
   equipmentEnabled,
   equipmentAttackRiderAvailable,
@@ -190,10 +205,13 @@ import {
   equipmentGuardianReactionAvailable,
   equipmentHealReactionAvailable,
   equipmentSpellPowerBonus,
-  equipmentTradeGoldDiscount
+  equipmentTradeGoldDiscount,
 } from "./anime-equipment";
 import { EQUIPMENT_IDS, getEquipmentDefinition } from "@/data/anime/equipment";
-import { HERO_GRADE_NODES, HERO_GRADE_NODE_IDS } from "@/data/anime/hero-grades";
+import {
+  HERO_GRADE_NODES,
+  HERO_GRADE_NODE_IDS,
+} from "@/data/anime/hero-grades";
 import {
   arrowTowerRefusesEffect,
   defenderOnFortification,
@@ -202,20 +220,20 @@ import {
   intactFortificationPositions,
   isArrowTowerUnit,
   parseFortificationTargetId,
-  siegeBlockedPositions
+  siegeBlockedPositions,
 } from "./siege";
 import {
   manualGuardControllerId,
   neutralCombatControllerId,
   neutralControlMustAttack,
-  pvpNeutralControllerId
+  pvpNeutralControllerId,
 } from "./neutral-control";
 import {
   hasOpenAdventureTurn,
   isParallelActor,
   isRoundStartEventBarrierActive,
   parallelInteractionBlocker,
-  roundStartEventResolver
+  roundStartEventResolver,
 } from "./parallel-turns";
 import { pvpEscapeWindowOpen } from "./combat-units";
 import { canPlaceTransformOn } from "./unit-transforms";
@@ -224,7 +242,7 @@ import {
   DRAFT_FORMAT_LABELS,
   getDraftPhase,
   getScenario,
-  mapForcedComputerFaction
+  mapForcedComputerFaction,
 } from "./adventure-setup";
 import {
   combatHasHumanParticipant,
@@ -242,8 +260,9 @@ import {
   castFromSpellDiscardSourceSpellIds,
   discardRecoveryHasWork,
   isCastASpellCard,
+  polishBookSpellEffectIsLive,
   polishSpellBookEnabled,
-  tarnumOverlimitSpellAvailable
+  tarnumOverlimitSpellAvailable,
 } from "./polish-spell-book";
 import {
   abilityExpertIsCrownFree,
@@ -264,20 +283,23 @@ import {
   SPELL_DECK_EXPERT,
   wisdomGoldDiscount,
   wisdomSearchCount,
-  WISDOM_BALANCE_SEARCH_DELTA
+  WISDOM_BALANCE_SEARCH_DELTA,
 } from "./ruleset";
 import { armyUnitStacksActive, houseRuleEnabled } from "./house-rules";
 import {
   balanceIntelligenceWindowClosed,
   combatStartWindowOpen,
-  polishIntelligenceHandReadingActive
+  polishIntelligenceHandReadingActive,
 } from "./combat-timing";
-import { artifactSetAttackWindowOffers, artifactSetPowerOffers } from "./artifact-sets";
+import {
+  artifactSetAttackWindowOffers,
+  artifactSetPowerOffers,
+} from "./artifact-sets";
 import { availableLittleBustersCounters } from "./little-busters-counters";
 import {
   polishArmyUnitCanBuyStack,
   polishArmyUnitStackCost,
-  polishUnitStackCap
+  polishUnitStackCap,
 } from "./polish-unit-stacks";
 import type {
   AttackRerollSource,
@@ -310,7 +332,7 @@ import type {
   TargetRef,
   TownId,
   TriggerDefinition,
-  UnitId
+  UnitId,
 } from "./state";
 import { NEUTRAL_PLAYER_ID, UNOPENED_FAR_TILE } from "./state";
 import {
@@ -332,7 +354,7 @@ import {
   hasUnitAbilityEffect,
   moraleLockedForPlayer,
   unitHasAttackRollAdvantage,
-  unitImmuneToSpellSchools
+  unitImmuneToSpellSchools,
 } from "./unit-abilities";
 
 type ConcreteEffect = Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>;
@@ -376,15 +398,15 @@ export function getCardPlayVariants(card: CardDefinition): CardPlayVariant[] {
       combatOnly: option.combatOnly,
       combatStartOnly: option.combatStartOnly,
       afterAttackRoll: option.afterAttackRoll,
-      expertOnly: option.expertOnly
+      expertOnly: option.expertOnly,
     }));
   }
 
   return [
     {
       trigger: card.trigger,
-      effect: card.effect
-    }
+      effect: card.effect,
+    },
   ];
 }
 
@@ -396,7 +418,11 @@ export function getCardPlayVariants(card: CardDefinition): CardPlayVariant[] {
  * a spell played as an instant/reaction (Slayer, Sorrow…) or a Power-value cost
  * (Sorrow's silver/gold) counts the same standing Power a normal cast would.
  */
-export function standingSpellPower(state: GameState, playerId: PlayerId, card: CardDefinition): number {
+export function standingSpellPower(
+  state: GameState,
+  playerId: PlayerId,
+  card: CardDefinition,
+): number {
   const player = state.players[playerId];
   // Hero specialties that pay or scale by Power (Deemer's Meteor Shower, the
   // Alamar/Jeddite lethal-saves) draw standing spell Power too — per the wiki
@@ -418,7 +444,10 @@ export function standingSpellPower(state: GameState, playerId: PlayerId, card: C
     return 0;
   }
   let bonus = 0;
-  if (card.kind === "spell" && (player.combatStats.spellsCastThisTurn ?? 0) === 0) {
+  if (
+    card.kind === "spell" &&
+    (player.combatStats.spellsCastThisTurn ?? 0) === 0
+  ) {
     const astrologers = getActiveAstrologersCard(state);
     if (astrologers?.effect.type === "FIRST_SPELL_POWER_BONUS") {
       bonus += astrologers.effect.amount;
@@ -426,7 +455,9 @@ export function standingSpellPower(state: GameState, playerId: PlayerId, card: C
   }
   if (card.kind === "spell") {
     const combat = state.combat;
-    const activeUnit = combat?.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
+    const activeUnit = combat?.activeUnitId
+      ? combat.units[combat.activeUnitId]
+      : undefined;
     if (activeUnit && activeUnit.controllerId === playerId) {
       // Pass the card's schools so the school-scoped Conflux Pack Elemental boost
       // ("+1 Power to the first <School> Magic spell") is counted for a matching
@@ -440,9 +471,13 @@ export function standingSpellPower(state: GameState, playerId: PlayerId, card: C
       // free Helm/Scroll casts included, exactly as performSpellCast reads it, not
       // the limit-only spellsCastThisRound counter), while the Elementals' printed
       // "during this Activation" charge is spent per activation.
-      bonus += availableActivationSpellPowerBoost(activeUnit, card.spellSchools, {
-        firstSpellThisRound: !player.combatStats.anySpellCastThisRound
-      }).amount;
+      bonus += availableActivationSpellPowerBoost(
+        activeUnit,
+        card.spellSchools,
+        {
+          firstSpellThisRound: !player.combatStats.anySpellCastThisRound,
+        },
+      ).amount;
     }
   }
   // School-of-Magic permanent basic + Conflux Elemental-tile +1 for the spell's
@@ -493,7 +528,10 @@ export function standingSpellPower(state: GameState, playerId: PlayerId, card: C
  * combatStats.pendingDrawRiderSpellPower, folded in performSpellCast) so a
  * map-banked value can never leak into a combat cast.
  */
-export function mapSpellPowerBankAvailable(state: GameState, playerId: PlayerId): number {
+export function mapSpellPowerBankAvailable(
+  state: GameState,
+  playerId: PlayerId,
+): number {
   if (state.combat) {
     return 0;
   }
@@ -513,7 +551,7 @@ export function mapSpellPowerBankAvailable(state: GameState, playerId: PlayerId)
  * batch validator, the resolver and the tray all share ONE predicate.
  */
 export function effectScalesWithAttackPool(
-  effect: ReturnType<typeof getEffectiveCardEffect> | null | undefined
+  effect: ReturnType<typeof getEffectiveCardEffect> | null | undefined,
 ): boolean {
   if (!effect) {
     return false;
@@ -561,7 +599,7 @@ export function effectScalesWithAttackPool(
 export function playConsumesWindowPower(
   card: CardDefinition | undefined,
   effect: ReturnType<typeof getEffectiveCardEffect> | null | undefined,
-  cost?: CardPlayCost
+  cost?: CardPlayCost,
 ): boolean {
   if (!card || card.tags?.includes("meteor-shower")) {
     return false;
@@ -587,7 +625,10 @@ export function playConsumesWindowPower(
  * and zero for a CAST_SPELL stack item, whose `spellPowerBonus` belongs to the
  * cast it was paid into.
  */
-export function attackWindowPooledPower(state: GameState, playerId: PlayerId): number {
+export function attackWindowPooledPower(
+  state: GameState,
+  playerId: PlayerId,
+): number {
   if (!state.combat) {
     return 0;
   }
@@ -600,7 +641,10 @@ export function attackWindowPooledPower(state: GameState, playerId: PlayerId): n
   // window, which is why this is not just `at(-1)`.
   for (let index = state.stack.length - 1; index >= 0; index -= 1) {
     const item = state.stack[index];
-    if (item.action.type === "ATTACK_UNIT" || item.action.type === "MOVE_AND_ATTACK_UNIT") {
+    if (
+      item.action.type === "ATTACK_UNIT" ||
+      item.action.type === "MOVE_AND_ATTACK_UNIT"
+    ) {
       return item.modifiers.attackPowerByPlayer?.[playerId] ?? 0;
     }
   }
@@ -628,7 +672,7 @@ function canAffordCardCost(
    * (net gain = expertPower − basicPower: the standing +1 leaves with the
    * permanent while the window bank adds the +3).
    */
-  extraStandingPower = 0
+  extraStandingPower = 0,
 ): boolean {
   const player = state.players[playerId];
   if (!player) {
@@ -642,7 +686,9 @@ function canAffordCardCost(
 
   if (
     !cost ||
-    (cost.discardCards === undefined && cost.discardCardsUpTo === undefined && cost.powerCost === undefined)
+    (cost.discardCards === undefined &&
+      cost.discardCardsUpTo === undefined &&
+      cost.powerCost === undefined)
   ) {
     return true;
   }
@@ -658,7 +704,7 @@ function canAffordCardCost(
     cost.removeCostCards
   ) {
     return [...(player.spellBook ?? []), ...(player.spellBookUsed ?? [])].some(
-      (id) => cardLibrary[id]?.kind === "spell" && !isCastASpellCard(id)
+      (id) => cardLibrary[id]?.kind === "spell" && !isCastASpellCard(id),
     );
   }
 
@@ -683,7 +729,9 @@ function canAffordCardCost(
   // source (a Spell counts as +1), and never the very card being played.
   const bookPowerSourceId =
     spellBookRuleEnabled(state) && spellBookPowerAvailable(player)
-      ? (player.spellBook ?? []).find((id) => id !== cardId && passesFilter(id)) ?? null
+      ? ((player.spellBook ?? []).find(
+          (id) => id !== cardId && passesFilter(id),
+        ) ?? null)
       : null;
 
   // Power-value cost (Sorrow, Alamar's Resurrection, map View Air / Dimension
@@ -699,7 +747,10 @@ function canAffordCardCost(
     // Power exactly like standing Power, so a banked +1 makes a higher tier
     // affordable with one fewer discard. Zero in combat (guarded in the helper).
     const standing =
-      (card ? standingSpellPower(state, playerId, card) + getSchoolPowerBonus(state, playerId, card) : 0) +
+      (card
+        ? standingSpellPower(state, playerId, card) +
+          getSchoolPowerBonus(state, playerId, card)
+        : 0) +
       mapSpellPowerBankAvailable(state, playerId) +
       // Window-committed School expert: only a MATCHING-school Spell may spend
       // it (one shared read with payOptionCardCost, so offer and payment agree).
@@ -726,7 +777,7 @@ function canAffordCardCost(
       return {
         basic,
         expertGain: Math.max(0, expert - basic),
-        crownFree: abilityExpertIsCrownFree(player, id)
+        crownFree: abilityExpertIsCrownFree(player, id),
       };
     });
     if (!state.combat && card) {
@@ -735,7 +786,7 @@ function canAffordCardCost(
         valued.push({
           basic: 0,
           expertGain: Math.max(0, school.expertPower - school.basicPower),
-          crownFree: abilityExpertIsCrownFree(player, school.card.id)
+          crownFree: abilityExpertIsCrownFree(player, school.card.id),
         });
       }
       const matches = (schoolName: "air" | "earth" | "fire" | "water") =>
@@ -745,7 +796,10 @@ function canAffordCardCost(
         valued.push({
           basic: 0,
           expertGain: 3,
-          crownFree: abilityExpertIsCrownFree(player, `ability.basic_${fetchSchool}_magic` as CardId)
+          crownFree: abilityExpertIsCrownFree(
+            player,
+            `ability.basic_${fetchSchool}_magic` as CardId,
+          ),
         });
       }
       // Polish Spell Book: the map boost window offers a SPARE "Cast a Spell"
@@ -755,7 +809,10 @@ function canAffordCardCost(
       // and one copy is consumed as the cast's own enabler, so only the rest
       // add Power. Without this a Book Spell whose only useful tier needs +1
       // was hidden from the offer list even though the window could pay it.
-      if (polishSpellBookEnabled(state) && (player.spellBook ?? []).includes(cardId)) {
+      if (
+        polishSpellBookEnabled(state) &&
+        (player.spellBook ?? []).includes(cardId)
+      ) {
         const spare = rest.filter((id) => isCastASpellCard(id)).length - 1;
         for (let index = 0; index < spare; index += 1) {
           valued.push({ basic: 1, expertGain: 0, crownFree: false });
@@ -777,7 +834,9 @@ function canAffordCardCost(
         fromCards += entry.basic;
       }
     }
-    const fromBook = bookPowerSourceId ? spellPowerValueOfCard(cardLibrary[bookPowerSourceId], schools) : 0;
+    const fromBook = bookPowerSourceId
+      ? spellPowerValueOfCard(cardLibrary[bookPowerSourceId], schools)
+      : 0;
     return standing + fromCards + fromBook >= cost.powerCost;
   }
 
@@ -787,7 +846,13 @@ function canAffordCardCost(
 
 /** Grade ordering shared by spell-immunity and Magic Mirror grade gates. */
 export function gradeRank(grade: CombatUnitState["grade"]): number {
-  return grade === "bronze" ? 0 : grade === "silver" ? 1 : grade === "gold" ? 2 : 3;
+  return grade === "bronze"
+    ? 0
+    : grade === "silver"
+      ? 1
+      : grade === "gold"
+        ? 2
+        : 3;
 }
 
 /**
@@ -797,7 +862,9 @@ export function gradeRank(grade: CombatUnitState["grade"]): number {
  * gate; neither can ever be such an effect's target.
  */
 function gradeRankOfUnit(unit: CombatUnitState): number {
-  return unit.bankUnit || unit.commanderSlug || unit.heroUnit ? Number.POSITIVE_INFINITY : gradeRank(unit.grade);
+  return unit.bankUnit || unit.commanderSlug || unit.heroUnit
+    ? Number.POSITIVE_INFINITY
+    : gradeRank(unit.grade);
 }
 
 /**
@@ -820,7 +887,9 @@ function effectIsTierGated(effect: EffectDefinition): boolean {
  */
 function maxTierGateRank(effect: EffectDefinition): number {
   if ("gradeByPower" in effect && effect.gradeByPower) {
-    const ranks = Object.values(effect.gradeByPower).map((grade) => gradeRank(grade));
+    const ranks = Object.values(effect.gradeByPower).map((grade) =>
+      gradeRank(grade),
+    );
     return ranks.length > 0 ? Math.max(...ranks) : gradeRank("gold");
   }
   if ("grade" in effect && effect.grade !== undefined) {
@@ -840,12 +909,14 @@ function maxTierGateRank(effect: EffectDefinition): number {
  * a bank unit"; it does NOT extend to WOG commanders / heroes, and Berserk / Teleport
  * / Clone / tier-gated damage spells stay blocked on every bank unit.
  */
-export const BANK_TARGETABLE_TIER_GATED_EFFECTS: ReadonlySet<EffectDefinition["type"]> = new Set([
+export const BANK_TARGETABLE_TIER_GATED_EFFECTS: ReadonlySet<
+  EffectDefinition["type"]
+> = new Set([
   "CREATE_SPELL_IMMUNITY", // Anti-Magic
   "PLACE_PARALYSIS", // Blind
   "DISRUPTING_RAY", // Disrupting Ray
   "IGNORE_DEFENSE", // Frenzy
-  "SKIP_ACTIVATION" // Sorrow
+  "SKIP_ACTIVATION", // Sorrow
 ]);
 
 /**
@@ -869,8 +940,10 @@ export const BANK_TARGETABLE_TIER_GATED_EFFECTS: ReadonlySet<EffectDefinition["t
  * "any tier" top rung, but this ruling named Blind only, so it is deliberately
  * left alone.
  */
-const BANK_TOP_RUNG_ONLY_TIER_GATED_EFFECTS: ReadonlySet<EffectDefinition["type"]> = new Set([
-  "PLACE_PARALYSIS" // Blind — only its top "+2 SP" ("ANY") rung reaches a bank unit
+const BANK_TOP_RUNG_ONLY_TIER_GATED_EFFECTS: ReadonlySet<
+  EffectDefinition["type"]
+> = new Set([
+  "PLACE_PARALYSIS", // Blind — only its top "+2 SP" ("ANY") rung reaches a bank unit
 ]);
 
 /**
@@ -892,9 +965,13 @@ const BANK_TOP_RUNG_ONLY_TIER_GATED_EFFECTS: ReadonlySet<EffectDefinition["type"
 export function bankAwareTierGateRank(
   unit: CombatUnitState,
   effectType: EffectDefinition["type"],
-  bankTargetingEnabled: boolean
+  bankTargetingEnabled: boolean,
 ): number {
-  if (bankTargetingEnabled && unit.bankUnit && BANK_TARGETABLE_TIER_GATED_EFFECTS.has(effectType)) {
+  if (
+    bankTargetingEnabled &&
+    unit.bankUnit &&
+    BANK_TARGETABLE_TIER_GATED_EFFECTS.has(effectType)
+  ) {
     if (BANK_TOP_RUNG_ONLY_TIER_GATED_EFFECTS.has(effectType)) {
       return gradeRank("gold");
     }
@@ -910,12 +987,17 @@ export function bankAwareTierGateRank(
  */
 export function spellAbilitiesSuppressed(state: GameState): boolean {
   return state.activeEffects.some((effect) =>
-    effect.modifiers.some((modifier) => modifier.type === "SUPPRESS_SPELL_ABILITIES")
+    effect.modifiers.some(
+      (modifier) => modifier.type === "SUPPRESS_SPELL_ABILITIES",
+    ),
   );
 }
 
 /** Whether a unit currently has spell immunity covering its grade. */
-export function isUnitSpellImmune(state: GameState, unit: CombatUnitState): boolean {
+export function isUnitSpellImmune(
+  state: GameState,
+  unit: CombatUnitState,
+): boolean {
   return state.activeEffects.some(
     (effect) =>
       // A Gargoyle/Titan that ignores ongoing (Spell) effects ignores an
@@ -924,8 +1006,10 @@ export function isUnitSpellImmune(state: GameState, unit: CombatUnitState): bool
       effect.target?.type === "unit" &&
       effect.target.unitId === unit.id &&
       effect.modifiers.some(
-        (modifier) => modifier.type === "UNIT_SPELL_IMMUNE" && gradeRank(unit.grade) <= gradeRank(modifier.maxGrade)
-      )
+        (modifier) =>
+          modifier.type === "UNIT_SPELL_IMMUNE" &&
+          gradeRank(unit.grade) <= gradeRank(modifier.maxGrade),
+      ),
   );
 }
 
@@ -940,7 +1024,7 @@ export function isUnitSpellImmune(state: GameState, unit: CombatUnitState): bool
 export function unitBlockedBySpellCard(
   state: GameState,
   unit: CombatUnitState,
-  card: Pick<CardDefinition, "kind" | "spellSchools">
+  card: Pick<CardDefinition, "kind" | "spellSchools">,
 ): boolean {
   if (card.kind !== "spell") {
     return false;
@@ -951,7 +1035,10 @@ export function unitBlockedBySpellCard(
   if (unitImmuneToSpellSchoolsByEffect(state, unit, card.spellSchools)) {
     return true;
   }
-  return !spellAbilitiesSuppressed(state) && unitImmuneToSpellSchools(unit, card.spellSchools);
+  return (
+    !spellAbilitiesSuppressed(state) &&
+    unitImmuneToSpellSchools(unit, card.spellSchools)
+  );
 }
 
 /**
@@ -963,7 +1050,7 @@ export function unitBlockedBySpellCard(
 export function spellReactionAffectedUnitId(
   effect: ConcreteEffect,
   attackerId: UnitId,
-  defenderId: UnitId
+  defenderId: UnitId,
 ): UnitId | null {
   switch (effect.type) {
     case "ADD_COMBAT_STAT":
@@ -990,15 +1077,30 @@ export function spellReactionBlockedByImmunity(
   state: GameState,
   card: Pick<CardDefinition, "kind" | "spellSchools">,
   effect: ConcreteEffect,
-  triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" | "UNIT_ACTIVATION_STARTED" }>
+  triggerEvent: Extract<
+    GameEvent,
+    {
+      type:
+        | "SPELL_CAST_STARTED"
+        | "UNIT_ATTACK_DECLARED"
+        | "UNIT_ACTIVATION_STARTED";
+    }
+  >,
 ): boolean {
   if (card.kind !== "spell" || !state.combat) {
     return false;
   }
   let unitId: UnitId | null = null;
   if (triggerEvent.type === "UNIT_ATTACK_DECLARED") {
-    unitId = spellReactionAffectedUnitId(effect, triggerEvent.attackerId, triggerEvent.defenderId);
-  } else if (triggerEvent.type === "UNIT_ACTIVATION_STARTED" && effect.type === "SKIP_ACTIVATION") {
+    unitId = spellReactionAffectedUnitId(
+      effect,
+      triggerEvent.attackerId,
+      triggerEvent.defenderId,
+    );
+  } else if (
+    triggerEvent.type === "UNIT_ACTIVATION_STARTED" &&
+    effect.type === "SKIP_ACTIVATION"
+  ) {
     unitId = triggerEvent.unitId;
   }
   if (!unitId) {
@@ -1018,7 +1120,7 @@ export function spellRedirectTargets(
   state: GameState,
   currentTargetUnitId: UnitId | null,
   maxGrade: CombatUnitState["grade"],
-  spellCard?: Pick<CardDefinition, "kind" | "spellSchools">
+  spellCard?: Pick<CardDefinition, "kind" | "spellSchools">,
 ): CombatUnitState[] {
   const combat = state.combat;
   if (!combat) {
@@ -1027,10 +1129,11 @@ export function spellRedirectTargets(
   // When the reflected card is unknown, treat the redirect as "any Spell" so
   // full-school-immune units (Black/Azure Dragons, Oceanids Pack, …) still drop
   // out; partial elemental immunities need the real card's schools at the call site.
-  const reflected: Pick<CardDefinition, "kind" | "spellSchools"> = spellCard ?? {
-    kind: "spell",
-    spellSchools: ["any", "air", "earth", "fire", "water"]
-  };
+  const reflected: Pick<CardDefinition, "kind" | "spellSchools"> =
+    spellCard ?? {
+      kind: "spell",
+      spellSchools: ["any", "air", "earth", "fire", "water"],
+    };
   return Object.values(combat.units).filter(
     (unit) =>
       // `currentTargetUnitId` is null for a space-targeted blast (Inferno), where
@@ -1038,12 +1141,15 @@ export function spellRedirectTargets(
       unit.id !== currentTargetUnitId &&
       isUnitAlive(unit) &&
       gradeRank(unit.grade) <= gradeRank(maxGrade) &&
-      !unitBlockedBySpellCard(state, unit, reflected)
+      !unitBlockedBySpellCard(state, unit, reflected),
   );
 }
 
 /** Living units standing on any of `positions`. */
-function unitsOnPositions(combat: CombatState, positions: Set<number>): UnitId[] {
+function unitsOnPositions(
+  combat: CombatState,
+  positions: Set<number>,
+): UnitId[] {
   return Object.values(combat.units)
     .filter((unit) => isUnitAlive(unit) && positions.has(unit.position))
     .map((unit) => unit.id);
@@ -1069,7 +1175,7 @@ function unitsOnPositions(combat: CombatState, positions: Set<number>): UnitId[]
 export function spellPotentialBlastUnitIds(
   state: GameState,
   stackItem: ResolutionStackItem,
-  cards: CardLibrary = cardLibrary
+  cards: CardLibrary = cardLibrary,
 ): UnitId[] {
   const combat = state.combat;
   if (!combat || stackItem.action.type !== "CAST_SPELL") {
@@ -1084,7 +1190,10 @@ export function spellPotentialBlastUnitIds(
 
   // Inferno: the centre space and all orthogonal neighbours.
   if (effect.type === "INFERNO" && target.type === "space") {
-    return unitsOnPositions(combat, new Set([target.position, ...getOrthogonalNeighbors(target.position)]));
+    return unitsOnPositions(
+      combat,
+      new Set([target.position, ...getOrthogonalNeighbors(target.position)]),
+    );
   }
 
   // Fireball: the primary unit plus every unit adjacent to it (the caster picks
@@ -1096,7 +1205,10 @@ export function spellPotentialBlastUnitIds(
     }
     return Object.values(combat.units)
       .filter(
-        (unit) => isUnitAlive(unit) && (unit.id === primary.id || isAdjacent(unit.position, primary.position))
+        (unit) =>
+          isUnitAlive(unit) &&
+          (unit.id === primary.id ||
+            isAdjacent(unit.position, primary.position)),
       )
       .map((unit) => unit.id);
   }
@@ -1136,9 +1248,17 @@ export function reflectableAttackInstantForPlayer(
   state: GameState,
   stackItem: ResolutionStackItem,
   playerId: PlayerId,
-  cards: CardLibrary = cardLibrary
-): { index: number; cardId: CardId; stat: "attack" | "defense"; affectedUnitId: UnitId } | null {
-  if (stackItem.action.type !== "ATTACK_UNIT" && stackItem.action.type !== "MOVE_AND_ATTACK_UNIT") {
+  cards: CardLibrary = cardLibrary,
+): {
+  index: number;
+  cardId: CardId;
+  stat: "attack" | "defense";
+  affectedUnitId: UnitId;
+} | null {
+  if (
+    stackItem.action.type !== "ATTACK_UNIT" &&
+    stackItem.action.type !== "MOVE_AND_ATTACK_UNIT"
+  ) {
     return null;
   }
   const combat = state.combat;
@@ -1160,10 +1280,19 @@ export function reflectableAttackInstantForPlayer(
       continue;
     }
     const affected = effect.stat === "attack" ? attacker : defender;
-    if (!affected || affected.controllerId !== playerId || !isUnitAlive(affected)) {
+    if (
+      !affected ||
+      affected.controllerId !== playerId ||
+      !isUnitAlive(affected)
+    ) {
       continue;
     }
-    return { index, cardId: entry.cardId, stat: effect.stat, affectedUnitId: affected.id };
+    return {
+      index,
+      cardId: entry.cardId,
+      stat: effect.stat,
+      affectedUnitId: affected.id,
+    };
   }
   return null;
 }
@@ -1177,10 +1306,16 @@ export function reflectableAttackInstantForPlayer(
 export function pendingSpellTargetForPlayer(
   state: GameState,
   triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" }>,
-  playerId: PlayerId
+  playerId: PlayerId,
 ): CombatUnitState | null {
-  const stackItem = state.stack.find((item) => item.triggerEventIds.includes(triggerEvent.id));
-  if (!stackItem || stackItem.action.type !== "CAST_SPELL" || stackItem.action.target.type !== "unit") {
+  const stackItem = state.stack.find((item) =>
+    item.triggerEventIds.includes(triggerEvent.id),
+  );
+  if (
+    !stackItem ||
+    stackItem.action.type !== "CAST_SPELL" ||
+    stackItem.action.target.type !== "unit"
+  ) {
     return null;
   }
   const targetUnit = state.combat?.units[stackItem.action.target.unitId];
@@ -1199,8 +1334,12 @@ export { isAdjacent } from "./battlefield";
  * Printed movement values: ground and flying units move up to 3 spaces,
  * ranged units up to 1 space (after shooting or instead of attacking).
  */
-export function getUnitMoveRange(unit: CombatUnitState, state?: GameState): number {
-  const base = (unit.type === "ranged" ? 1 : 3) + getUnitAbilityMoveRangeBonus(unit);
+export function getUnitMoveRange(
+  unit: CombatUnitState,
+  state?: GameState,
+): number {
+  const base =
+    (unit.type === "ranged" ? 1 : 3) + getUnitAbilityMoveRangeBonus(unit);
 
   // House rule ("combat-move-initiative"): Haste / Slow (and the initiative-buff
   // hero specialties — Cyra, Catherine VI, …) also shift Combat movement by ±1
@@ -1216,12 +1355,18 @@ export function getUnitMoveRange(unit: CombatUnitState, state?: GameState): numb
   // switch the classic rider on for cards it does not reprint. A reprint's own
   // amount REPLACES the ±1 rider (initiativeBuffMovementModifiers), so nothing
   // double-counts when both rules are on.
-  const classicRider = Boolean(state && houseRuleEnabled(state, "combat-move-initiative"));
-  const balancePrinted = Boolean(state && houseRuleEnabled(state, "polish-card-balance"));
+  const classicRider = Boolean(
+    state && houseRuleEnabled(state, "combat-move-initiative"),
+  );
+  const balancePrinted = Boolean(
+    state && houseRuleEnabled(state, "polish-card-balance"),
+  );
   // Community Balance Pack: its Haste ("+1 space") and Slow ("N fewer spaces")
   // reprints PRINT the movement half too, so they get the same exemption from
   // the classic `combat-move-initiative` gate as the Polish reprints.
-  const communityPrinted = Boolean(state && houseRuleEnabled(state, "community-card-balance"));
+  const communityPrinted = Boolean(
+    state && houseRuleEnabled(state, "community-card-balance"),
+  );
   if (!state || (!classicRider && !balancePrinted && !communityPrinted)) {
     return base;
   }
@@ -1274,7 +1419,10 @@ export function getForceFieldPositions(combat: CombatState): number[] {
  * Every unit card and obstacle token on the board is a Combat Obstacle.
  * They block movement paths for non-flying units and nobody can stop on them.
  */
-export function getBlockedSpaces(combat: CombatState, movingUnit?: CombatUnitState): Set<number> {
+export function getBlockedSpaces(
+  combat: CombatState,
+  movingUnit?: CombatUnitState,
+): Set<number> {
   const blocked = new Set<number>(getCombatObstacles(combat));
 
   for (const position of getForceFieldPositions(combat)) {
@@ -1305,7 +1453,11 @@ export function getBlockedSpaces(combat: CombatState, movingUnit?: CombatUnitSta
  * in a straight line — a unit boxed off the direct line still closes the gap.
  * Squares the mover can never reach are absent from the result.
  */
-export function getPathDistances(combat: CombatState, mover: CombatUnitState, origin: number): Map<number, number> {
+export function getPathDistances(
+  combat: CombatState,
+  mover: CombatUnitState,
+  origin: number,
+): Map<number, number> {
   const blocked = getBlockedSpaces(combat, mover);
   // The origin (the target's own square) seeds the flood even though it is
   // occupied — we want the distance to stand *next to* the target.
@@ -1320,7 +1472,10 @@ export function getPathDistances(combat: CombatState, mover: CombatUnitState, or
     const next: number[] = [];
     for (const position of frontier) {
       for (const neighbor of getOrthogonalNeighbors(position)) {
-        if (distances.has(neighbor) || (!ignoresObstacles && blocked.has(neighbor))) {
+        if (
+          distances.has(neighbor) ||
+          (!ignoresObstacles && blocked.has(neighbor))
+        ) {
           continue;
         }
         distances.set(neighbor, step);
@@ -1333,13 +1488,18 @@ export function getPathDistances(combat: CombatState, mover: CombatUnitState, or
   return distances;
 }
 
-function hasCannotMoveEffect(state: GameState | undefined, unit: CombatUnitState): boolean {
+function hasCannotMoveEffect(
+  state: GameState | undefined,
+  unit: CombatUnitState,
+): boolean {
   return Boolean(
     state?.activeEffects.some(
       (effect) =>
         effectAppliesToUnit(effect, unit) &&
-        effect.modifiers.some((modifier) => modifier.type === "UNIT_CANNOT_MOVE")
-    )
+        effect.modifiers.some(
+          (modifier) => modifier.type === "UNIT_CANNOT_MOVE",
+        ),
+    ),
   );
 }
 
@@ -1347,7 +1507,7 @@ export function canUnitMoveTo(
   combat: CombatState,
   unit: CombatUnitState,
   destination: number,
-  state?: GameState
+  state?: GameState,
 ): boolean {
   return getLegalMoveDestinations(combat, unit, state).includes(destination);
 }
@@ -1358,18 +1518,29 @@ export function canUnitMoveTo(
  * position — callers only reach here before the active unit has moved, so its
  * position is exactly where its activation began.
  */
-function isBoundByAdjacentEnemy(combat: CombatState, unit: CombatUnitState): boolean {
+function isBoundByAdjacentEnemy(
+  combat: CombatState,
+  unit: CombatUnitState,
+): boolean {
   return Object.values(combat.units).some(
     (binder) =>
       binder.controllerId !== unit.controllerId &&
       isUnitAlive(binder) &&
       hasBindAdjacentEnemies(binder) &&
-      isAdjacent(binder.position, unit.position)
+      isAdjacent(binder.position, unit.position),
   );
 }
 
-export function getLegalMoveDestinations(combat: CombatState, unit: CombatUnitState, state?: GameState): number[] {
-  if (!isUnitAlive(unit) || unit.activatedThisRound || unit.movedThisActivation) {
+export function getLegalMoveDestinations(
+  combat: CombatState,
+  unit: CombatUnitState,
+  state?: GameState,
+): number[] {
+  if (
+    !isUnitAlive(unit) ||
+    unit.activatedThisRound ||
+    unit.movedThisActivation
+  ) {
     return [];
   }
 
@@ -1392,8 +1563,11 @@ export function getLegalMoveDestinations(combat: CombatState, unit: CombatUnitSt
 
   // Arch Devils teleport: a regular move may land on any empty space.
   if (hasUnitAbilityEffect(unit, "MOVE_ANYWHERE")) {
-    return Array.from({ length: BATTLEFIELD_CELL_COUNT }, (_, position) => position).filter(
-      (position) => position !== unit.position && !blocked.has(position)
+    return Array.from(
+      { length: BATTLEFIELD_CELL_COUNT },
+      (_, position) => position,
+    ).filter(
+      (position) => position !== unit.position && !blocked.has(position),
     );
   }
 
@@ -1401,7 +1575,7 @@ export function getLegalMoveDestinations(combat: CombatState, unit: CombatUnitSt
     unit.position,
     getUnitMoveRange(unit, state),
     blocked,
-    unit.type === "flying"
+    unit.type === "flying",
   ).filter(isBattlefieldPosition);
 }
 
@@ -1436,7 +1610,7 @@ function selectActivationStep(
   units: CombatUnitState[],
   attackerId: PlayerId,
   initiativeOf: (unit: CombatUnitState) => number,
-  hasActed: (unit: CombatUnitState) => boolean
+  hasActed: (unit: CombatUnitState) => boolean,
 ): ActivationStep | null {
   const eligible = units.filter((unit) => isUnitAlive(unit) && !hasActed(unit));
   if (eligible.length === 0) {
@@ -1452,10 +1626,18 @@ function selectActivationStep(
   const tierOthers = tier.filter((unit) => unit.controllerId !== attackerId);
 
   if (tierOthers.length === 0) {
-    return { side: attackerId, candidates: tierAttackers, initiative: topInitiative };
+    return {
+      side: attackerId,
+      candidates: tierAttackers,
+      initiative: topInitiative,
+    };
   }
   if (tierAttackers.length === 0) {
-    return { side: tierOthers[0].controllerId, candidates: tierOthers, initiative: topInitiative };
+    return {
+      side: tierOthers[0].controllerId,
+      candidates: tierOthers,
+      initiative: topInitiative,
+    };
   }
 
   // Both sides are present at this initiative: alternate, ATTACKER-first on
@@ -1469,26 +1651,39 @@ function selectActivationStep(
   // not their current effective initiative — a Pack→Few flip mid-activation
   // drops printed initiative (5→4) and would otherwise erase the attacker from
   // the tier count, handing the next slot to another attacker unit.
-  const bandOf = (unit: CombatUnitState) => unit.activationInitiative ?? initiativeOf(unit);
+  const bandOf = (unit: CombatUnitState) =>
+    unit.activationInitiative ?? initiativeOf(unit);
   const actedAtTier = (predicate: (unit: CombatUnitState) => boolean) =>
-    units.filter((unit) => hasActed(unit) && bandOf(unit) === topInitiative && predicate(unit)).length;
+    units.filter(
+      (unit) =>
+        hasActed(unit) && bandOf(unit) === topInitiative && predicate(unit),
+    ).length;
   const attackerActed = actedAtTier((unit) => unit.controllerId === attackerId);
   const othersActed = actedAtTier((unit) => unit.controllerId !== attackerId);
 
   if (othersActed < attackerActed) {
-    return { side: tierOthers[0].controllerId, candidates: tierOthers, initiative: topInitiative };
+    return {
+      side: tierOthers[0].controllerId,
+      candidates: tierOthers,
+      initiative: topInitiative,
+    };
   }
-  return { side: attackerId, candidates: tierAttackers, initiative: topInitiative };
+  return {
+    side: attackerId,
+    candidates: tierAttackers,
+    initiative: topInitiative,
+  };
 }
 
 export function getActivationStep(
   combat: CombatState,
-  activeEffects: ActiveEffectState[] = []
+  activeEffects: ActiveEffectState[] = [],
 ): ActivationStep | null {
   // Polish Wait phase: re-activate waited units from highest token number down.
   if (combat.waitPhase) {
     const pending = Object.values(combat.units).filter(
-      (unit) => isUnitAlive(unit) && unit.waitPending && !unit.activatedThisRound
+      (unit) =>
+        isUnitAlive(unit) && unit.waitPending && !unit.activatedThisRound,
     );
     if (pending.length === 0) {
       return null;
@@ -1500,20 +1695,24 @@ export function getActivationStep(
     return {
       side: tier[0]!.controllerId,
       candidates: tier,
-      initiative: topToken
+      initiative: topToken,
     };
   }
 
-  const initiativeOf = (unit: CombatUnitState) => effectiveInitiative(unit, activeEffects, combat);
+  const initiativeOf = (unit: CombatUnitState) =>
+    effectiveInitiative(unit, activeEffects, combat);
   return selectActivationStep(
     Object.values(combat.units),
     combat.attackerPlayerId,
     initiativeOf,
-    (unit) => unit.activatedThisRound
+    (unit) => unit.activatedThisRound,
   );
 }
 
-export function getNextUnitToActivate(combat: CombatState, activeEffects: ActiveEffectState[] = []): CombatUnitState | null {
+export function getNextUnitToActivate(
+  combat: CombatState,
+  activeEffects: ActiveEffectState[] = [],
+): CombatUnitState | null {
   return getActivationStep(combat, activeEffects)?.candidates[0] ?? null;
 }
 
@@ -1533,10 +1732,11 @@ export function getNextUnitToActivate(combat: CombatState, activeEffects: Active
  */
 export function getActivationOrder(
   combat: CombatState,
-  activeEffects: ActiveEffectState[] = []
+  activeEffects: ActiveEffectState[] = [],
 ): CombatUnitState[] {
   const alive = Object.values(combat.units).filter(isUnitAlive);
-  const initiativeOf = (unit: CombatUnitState) => effectiveInitiative(unit, activeEffects, combat);
+  const initiativeOf = (unit: CombatUnitState) =>
+    effectiveInitiative(unit, activeEffects, combat);
 
   // Polish Wait: a unit that Waited has finished its MAIN-phase turn but will
   // re-activate AFTER every other unit, highest wait token first (the engine's
@@ -1544,23 +1744,37 @@ export function getActivationOrder(
   // upcoming list, and counts as already-acted for the main-phase ordering below.
   const waited = alive
     .filter((unit) => unit.waitPending)
-    .sort((left, right) => (right.waitToken ?? 0) - (left.waitToken ?? 0) || left.id.localeCompare(right.id));
+    .sort(
+      (left, right) =>
+        (right.waitToken ?? 0) - (left.waitToken ?? 0) ||
+        left.id.localeCompare(right.id),
+    );
 
   // Truly finished this round (won't act again): activated and NOT waiting.
   const done = alive
     .filter((unit) => unit.activatedThisRound && !unit.waitPending)
-    .sort((left, right) => initiativeOf(right) - initiativeOf(left) || left.id.localeCompare(right.id));
+    .sort(
+      (left, right) =>
+        initiativeOf(right) - initiativeOf(left) ||
+        left.id.localeCompare(right.id),
+    );
 
   // Remaining MAIN-phase units, in the engine's true (alternating) order. A
   // waited unit is treated as acted here so it never appears in this bucket.
   const acted = new Set<UnitId>(
-    alive.filter((unit) => unit.activatedThisRound || unit.waitPending).map((unit) => unit.id)
+    alive
+      .filter((unit) => unit.activatedThisRound || unit.waitPending)
+      .map((unit) => unit.id),
   );
   const upcoming: CombatUnitState[] = [];
   // Bounded by the unit count: each pass marks exactly one more unit acted.
   for (let guard = alive.length; guard > 0; guard -= 1) {
-    const next = selectActivationStep(alive, combat.attackerPlayerId, initiativeOf, (unit) => acted.has(unit.id))
-      ?.candidates[0];
+    const next = selectActivationStep(
+      alive,
+      combat.attackerPlayerId,
+      initiativeOf,
+      (unit) => acted.has(unit.id),
+    )?.candidates[0];
     if (!next) {
       break;
     }
@@ -1577,12 +1791,18 @@ function hasAdjacentEnemy(combat: CombatState, unit: CombatUnitState): boolean {
     (candidate) =>
       candidate.controllerId !== unit.controllerId &&
       isUnitAlive(candidate) &&
-      isAdjacent(candidate.position, unit.position)
+      isAdjacent(candidate.position, unit.position),
   );
 }
 
-export function getAttackKind(attacker: CombatUnitState, defender: CombatUnitState): "melee" | "ranged" {
-  return attacker.type === "ranged" && !isAdjacent(attacker.position, defender.position) ? "ranged" : "melee";
+export function getAttackKind(
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+): "melee" | "ranged" {
+  return attacker.type === "ranged" &&
+    !isAdjacent(attacker.position, defender.position)
+    ? "ranged"
+    : "melee";
 }
 
 function isBackRow(position: number): boolean {
@@ -1590,7 +1810,10 @@ function isBackRow(position: number): boolean {
   return row === 0 || row === BATTLEFIELD_ROWS - 1;
 }
 
-function isOppositeBackRow(leftPosition: number, rightPosition: number): boolean {
+function isOppositeBackRow(
+  leftPosition: number,
+  rightPosition: number,
+): boolean {
   const leftRow = Math.floor(leftPosition / BATTLEFIELD_COLUMNS);
   const rightRow = Math.floor(rightPosition / BATTLEFIELD_COLUMNS);
 
@@ -1604,7 +1827,7 @@ export function getAttackRollMode(
   attacker: CombatUnitState,
   defender: CombatUnitState,
   state?: GameState,
-  isRetaliation = false
+  isRetaliation = false,
 ): AttackRollMode {
   // A full waiver (Ammo Cart, or the "ignore the combat penalties" units —
   // Magi / Sharpshooters / Halflings) drops both the adjacent-attack and the
@@ -1620,12 +1843,22 @@ export function getAttackRollMode(
   // so it also stays on when retaliating.
   // ONE shared read with the siege behind-Wall −1 damage penalty
   // (`siegeRangedDamageReduction`), so a Magi exempt from one is exempt from both.
-  const ignoresAllPenalties = ignoresAllRangedCombatPenalties(attacker, state, isRetaliation);
+  const ignoresAllPenalties = ignoresAllRangedCombatPenalties(
+    attacker,
+    state,
+    isRetaliation,
+  );
   const ignoresMeleePenalty =
     ignoresAllPenalties ||
     hasUnitAbilityEffect(attacker, "IGNORE_RANGED_MELEE_PENALTY") ||
-    hasUnitAbilityEffect(attacker, "IGNORE_ADJACENT_RANGED_PENALTY_AND_RETALIATION") ||
-    Boolean(state && equipmentIgnoresAdjacentRangedPenalty(state, attacker, isRetaliation));
+    hasUnitAbilityEffect(
+      attacker,
+      "IGNORE_ADJACENT_RANGED_PENALTY_AND_RETALIATION",
+    ) ||
+    Boolean(
+      state &&
+      equipmentIgnoresAdjacentRangedPenalty(state, attacker, isRetaliation),
+    );
 
   // The ranged Combat penalty ("throw two Attack dice and apply the smaller
   // result", rulebook p.28): a ranged unit either attacking an adjacent enemy or
@@ -1633,7 +1866,10 @@ export function getAttackRollMode(
   // NOT returned immediately — the "resolve the higher" advantage below overrides
   // it (see the ATTACK_ROLL_ADVANTAGE block).
   const attackKind = getAttackKind(attacker, defender);
-  const hasMeleePenalty = attacker.type === "ranged" && attackKind === "melee" && !ignoresMeleePenalty;
+  const hasMeleePenalty =
+    attacker.type === "ranged" &&
+    attackKind === "melee" &&
+    !ignoresMeleePenalty;
   const hasLongRangePenalty =
     attackKind === "ranged" &&
     !ignoresAllPenalties &&
@@ -1658,15 +1894,24 @@ export function getAttackRollMode(
   // the ATTACK_ROLL_ADVANTAGE block. It fires only on a real attack ON the
   // Nightmare (the `defender`), never when the current attack is a Retaliation
   // Attack — so a foe's retaliation back against the Nightmare rolls normally.
-  if (!isRetaliation && hasUnitAbilityEffect(defender, "FEAR_ATTACKER_DISADVANTAGE")) {
+  if (
+    !isRetaliation &&
+    hasUnitAbilityEffect(defender, "FEAR_ATTACKER_DISADVANTAGE")
+  ) {
     return "disadvantage";
   }
 
   // Commander armor is a defender-side forced disadvantage, so it has the
   // same precedence as Fear and beats the attacker's own advantage.
   if (state && !isRetaliation && defender.commanderSlug) {
-    const protection = commanderArtifactBonusesForUnit(state, defender).incomingAttackDisadvantage;
-    if (protection === "combat" || (protection === "round-1" && state.combat?.round === 1)) {
+    const protection = commanderArtifactBonusesForUnit(
+      state,
+      defender,
+    ).incomingAttackDisadvantage;
+    if (
+      protection === "combat" ||
+      (protection === "round-1" && state.combat?.round === 1)
+    ) {
       return "disadvantage";
     }
   }
@@ -1688,7 +1933,10 @@ export function getAttackRollMode(
   if (unitHasAttackRollAdvantage(attacker, isRetaliation)) {
     return "advantage";
   }
-  if (state && commanderArtifactBonusesForUnit(state, attacker).attackRollAdvantage) {
+  if (
+    state &&
+    commanderArtifactBonusesForUnit(state, attacker).attackRollAdvantage
+  ) {
     return "advantage";
   }
 
@@ -1725,7 +1973,10 @@ export function getAttackRollMode(
  * the reroll therefore offers nothing more in THAT attack; the next declared
  * attack (a follow-up included) rebuilds the sources and re-arms it.
  */
-export function rerollSourceAvailableFor(source: AttackRerollSource, currentRoll: number): boolean {
+export function rerollSourceAvailableFor(
+  source: AttackRerollSource,
+  currentRoll: number,
+): boolean {
   if (source.remaining <= 0) {
     return false;
   }
@@ -1747,7 +1998,7 @@ export function canUnitAttack(
   combat: CombatState,
   attacker: CombatUnitState,
   defender: CombatUnitState,
-  activeEffects: ActiveEffectState[] = []
+  activeEffects: ActiveEffectState[] = [],
 ): boolean {
   if (!isUnitAlive(attacker) || !isUnitAlive(defender)) {
     return false;
@@ -1756,7 +2007,10 @@ export function canUnitAttack(
   // Berserk forces a unit onto the nearest unit, friend or foe — so a berserked
   // attacker may strike its own ally (which still retaliates). Every other unit
   // can only attack an enemy.
-  if (attacker.controllerId === defender.controllerId && !unitIsBerserk(activeEffects, attacker)) {
+  if (
+    attacker.controllerId === defender.controllerId &&
+    !unitIsBerserk(activeEffects, attacker)
+  ) {
     return false;
   }
 
@@ -1765,7 +2019,9 @@ export function canUnitAttack(
     activeEffects.some(
       (effect) =>
         effectAppliesToUnit(effect, attacker) &&
-        effect.modifiers.some((modifier) => modifier.type === "UNIT_CANNOT_ATTACK")
+        effect.modifiers.some(
+          (modifier) => modifier.type === "UNIT_CANNOT_ATTACK",
+        ),
     )
   ) {
     return false;
@@ -1780,7 +2036,9 @@ export function canUnitAttack(
     activeEffects.some(
       (effect) =>
         effectAppliesToUnit(effect, attacker) &&
-        effect.modifiers.some((modifier) => modifier.type === "UNIT_CANNOT_RANGED_ATTACK")
+        effect.modifiers.some(
+          (modifier) => modifier.type === "UNIT_CANNOT_RANGED_ATTACK",
+        ),
     )
   ) {
     return false;
@@ -1808,25 +2066,33 @@ export function canUnitMoveAndAttack(
   attacker: CombatUnitState,
   destination: number,
   defender: CombatUnitState,
-  state?: GameState
+  state?: GameState,
 ): boolean {
-  if (attacker.type === "ranged" || !canUnitMoveTo(combat, attacker, destination, state)) {
+  if (
+    attacker.type === "ranged" ||
+    !canUnitMoveTo(combat, attacker, destination, state)
+  ) {
     return false;
   }
 
   const movedAttacker = {
     ...attacker,
-    position: destination
+    position: destination,
   };
   const virtualCombat = {
     ...combat,
     units: {
       ...combat.units,
-      [attacker.id]: movedAttacker
-    }
+      [attacker.id]: movedAttacker,
+    },
   };
 
-  return canUnitAttack(virtualCombat, movedAttacker, defender, state?.activeEffects ?? []);
+  return canUnitAttack(
+    virtualCombat,
+    movedAttacker,
+    defender,
+    state?.activeEffects ?? [],
+  );
 }
 
 /**
@@ -1836,25 +2102,34 @@ export function canUnitMoveAndAttack(
  * "the player owning the unit decides the direction." Distance is the orthogonal
  * board distance, the same "closest" measure the neutral AI uses elsewhere.
  */
-export function getBerserkNearestTargets(combat: CombatState, unit: CombatUnitState): CombatUnitState[] {
+export function getBerserkNearestTargets(
+  combat: CombatState,
+  unit: CombatUnitState,
+): CombatUnitState[] {
   const others = Object.values(combat.units).filter(
-    (candidate) => candidate.id !== unit.id && isUnitAlive(candidate)
+    (candidate) => candidate.id !== unit.id && isUnitAlive(candidate),
   );
   if (others.length === 0) {
     return [];
   }
   const nearest = Math.min(
-    ...others.map((candidate) => getBattlefieldDistance(unit.position, candidate.position))
+    ...others.map((candidate) =>
+      getBattlefieldDistance(unit.position, candidate.position),
+    ),
   );
   return others.filter(
-    (candidate) => getBattlefieldDistance(unit.position, candidate.position) === nearest
+    (candidate) =>
+      getBattlefieldDistance(unit.position, candidate.position) === nearest,
   );
 }
 
 /** A target definition that resolves to units (not "none", a space, or an obstacle). */
 type UnitTargetDefinition = Exclude<
   TargetDefinition,
-  { type: "none" } | { type: "empty-space" } | { type: "any-space" } | { type: "unit-or-obstacle" }
+  | { type: "none" }
+  | { type: "empty-space" }
+  | { type: "any-space" }
+  | { type: "unit-or-obstacle" }
 >;
 
 /**
@@ -1862,12 +2137,17 @@ type UnitTargetDefinition = Exclude<
  * legal-actions -> reducer import cycle): exact name, "X and/or Y" descriptors,
  * and "a … unit" family suffixes all match.
  */
-function matchesUnitName(unitName: string | undefined, target: string): boolean {
+function matchesUnitName(
+  unitName: string | undefined,
+  target: string,
+): boolean {
   if (!unitName) {
     return false;
   }
   if (/\s+(?:and|or)\s+/i.test(target)) {
-    return target.split(/\s+(?:and|or)\s+/i).some((part) => matchesUnitName(unitName, part.trim()));
+    return target
+      .split(/\s+(?:and|or)\s+/i)
+      .some((part) => matchesUnitName(unitName, part.trim()));
   }
   if (unitName === target) {
     return true;
@@ -1878,11 +2158,21 @@ function matchesUnitName(unitName: string | undefined, target: string): boolean 
   if (target.toLowerCase() === "dragon girl") {
     return unitName === "Giga" || unitName.toLowerCase().endsWith("dragons");
   }
-  const family = target.replace(/^an?\s+/i, "").replace(/\s+units?$/i, "").trim();
-  return family.length > 0 && family !== target && unitName.toLowerCase().endsWith(family.toLowerCase());
+  const family = target
+    .replace(/^an?\s+/i, "")
+    .replace(/\s+units?$/i, "")
+    .trim();
+  return (
+    family.length > 0 &&
+    family !== target &&
+    unitName.toLowerCase().endsWith(family.toLowerCase())
+  );
 }
 
-function unitMatchesTarget(unit: CombatUnitState, target: UnitTargetDefinition): boolean {
+function unitMatchesTarget(
+  unit: CombatUnitState,
+  target: UnitTargetDefinition,
+): boolean {
   if (target.unitTypes && !target.unitTypes.includes(unit.type)) {
     return false;
   }
@@ -1893,7 +2183,11 @@ function unitMatchesTarget(unit: CombatUnitState, target: UnitTargetDefinition):
 
   // Bowstring of the Unicorn's Mane: only a ranged unit that has not yet taken
   // its turn this round can be activated.
-  if (target.type === "friendly-unit" && target.notActivatedThisRound && unit.activatedThisRound) {
+  if (
+    target.type === "friendly-unit" &&
+    target.notActivatedThisRound &&
+    unit.activatedThisRound
+  ) {
     return false;
   }
 
@@ -1913,7 +2207,7 @@ function unitMatchesTarget(unit: CombatUnitState, target: UnitTargetDefinition):
 function getEnemyTargets(
   state: GameState,
   playerId: PlayerId,
-  target: UnitTargetDefinition
+  target: UnitTargetDefinition,
 ): TargetRef[] {
   if (!state.combat) {
     return [];
@@ -1926,9 +2220,20 @@ function getEnemyTargets(
 
   // Artillery: only the enemy unit(s) with the lowest effective initiative are
   // legal targets (a tie offers each, so the controller picks which is hit).
-  if (target.type === "enemy-unit" && target.lowestInitiativeOnly && units.length > 0) {
-    const lowest = Math.min(...units.map((unit) => effectiveInitiative(unit, state.activeEffects, state.combat)));
-    units = units.filter((unit) => effectiveInitiative(unit, state.activeEffects, state.combat) === lowest);
+  if (
+    target.type === "enemy-unit" &&
+    target.lowestInitiativeOnly &&
+    units.length > 0
+  ) {
+    const lowest = Math.min(
+      ...units.map((unit) =>
+        effectiveInitiative(unit, state.activeEffects, state.combat),
+      ),
+    );
+    units = units.filter(
+      (unit) =>
+        effectiveInitiative(unit, state.activeEffects, state.combat) === lowest,
+    );
   }
 
   return units.map<TargetRef>((unit) => ({ type: "unit", unitId: unit.id }));
@@ -1937,7 +2242,7 @@ function getEnemyTargets(
 function getFriendlyTargets(
   state: GameState,
   playerId: PlayerId,
-  target: UnitTargetDefinition
+  target: UnitTargetDefinition,
 ): TargetRef[] {
   if (!state.combat) {
     return [];
@@ -1959,7 +2264,7 @@ function getTargetsForCard(
    * Per-option target override (Ring of the Wayfarer): when a CHOOSE_ONE option
    * carries its own `target`, it is used instead of the card-level one.
    */
-  overrideTarget?: TargetDefinition
+  overrideTarget?: TargetDefinition,
 ): TargetRef[] {
   const card = cards[cardId];
   // Self-resolving effects (Leadership's morale token, active effects) never
@@ -2053,7 +2358,8 @@ function getTargetsForCard(
 
   // Dispel targets any unit OR an obstacle space: its unit half behaves like
   // "any-unit"; the obstacle spaces are appended after the unit filtering below.
-  const unitTargetType = targetType === "unit-or-obstacle" ? "any-unit" : targetType;
+  const unitTargetType =
+    targetType === "unit-or-obstacle" ? "any-unit" : targetType;
   const target =
     cardTarget &&
     cardTarget.type !== "none" &&
@@ -2067,7 +2373,10 @@ function getTargetsForCard(
     target.type === "friendly-unit"
       ? getFriendlyTargets(state, playerId, target)
       : target.type === "any-unit"
-        ? [...getFriendlyTargets(state, playerId, target), ...getEnemyTargets(state, playerId, target)]
+        ? [
+            ...getFriendlyTargets(state, playerId, target),
+            ...getEnemyTargets(state, playerId, target),
+          ]
         : getEnemyTargets(state, playerId, target);
 
   // Anti-Magic, printed school immunity, and artifact school immunity: a unit
@@ -2099,6 +2408,15 @@ function getTargetsForCard(
         return true;
       }
       const unit = state.combat?.units[candidate.unitId];
+      // Polish Balance Berserk's Power-4 "any" rung deliberately reaches
+      // Azure and tierless Creature-Bank units. It still does not turn heroes
+      // or WOG commanders into ordinary spell-tier targets.
+      if (
+        card.effect.type === "BERSERK" &&
+        card.effect.anyUnitAtPower !== undefined
+      ) {
+        return !unit || (!unit.commanderSlug && !unit.heroUnit);
+      }
       // bankAwareTierGateRank keeps ∞ for a bank unit under every effect EXCEPT the
       // control/enchantment allowlist (Anti-Magic / Blind / Disrupting Ray here),
       // which the user ruled may reach a bank unit at its underlying grade — Blind
@@ -2106,7 +2424,14 @@ function getTargetsForCard(
       // The ceiling (not the paid Power) decides the OFFER here, because Power can
       // still be pooled in after the cast is declared; the rung is enforced at
       // RESOLUTION through the same helper.
-      return !unit || bankAwareTierGateRank(unit, card.effect.type, houseRuleEnabled(state, "polish-bank-unit-spells")) <= ceiling;
+      return (
+        !unit ||
+        bankAwareTierGateRank(
+          unit,
+          card.effect.type,
+          houseRuleEnabled(state, "polish-bank-unit-spells"),
+        ) <= ceiling
+      );
     });
   }
 
@@ -2152,7 +2477,9 @@ function getTargetsForCard(
       if (!unit || !unit.unitDefId) {
         return false;
       }
-      return getOrthogonalNeighbors(unit.position).some((position) => !blocked.has(position));
+      return getOrthogonalNeighbors(unit.position).some(
+        (position) => !blocked.has(position),
+      );
     });
   }
 
@@ -2190,21 +2517,22 @@ function getTargetsForCard(
 function dropArrowTowerFromRelocation(
   state: GameState,
   targets: TargetRef[],
-  effect: EffectDefinition | undefined
+  effect: EffectDefinition | undefined,
 ): TargetRef[] {
   if (!effectRelocatesUnitOnBoard(effect)) {
     return targets;
   }
   return targets.filter(
     (candidate) =>
-      candidate.type !== "unit" || !arrowTowerRefusesEffect(state.combat?.units[candidate.unitId], effect)
+      candidate.type !== "unit" ||
+      !arrowTowerRefusesEffect(state.combat?.units[candidate.unitId], effect),
   );
 }
 
 function targetHasAdjacentUnits(
   state: GameState,
   target: TargetRef,
-  required: number
+  required: number,
 ): boolean {
   if (!state.combat || target.type !== "unit") {
     return false;
@@ -2213,16 +2541,21 @@ function targetHasAdjacentUnits(
   if (!center || center.position < 0 || !isUnitAlive(center)) {
     return false;
   }
-  return Object.values(state.combat.units).filter(
-    (unit) =>
-      unit.id !== center.id &&
-      unit.position >= 0 &&
-      isUnitAlive(unit) &&
-      isAdjacent(unit.position, center.position)
-  ).length >= required;
+  return (
+    Object.values(state.combat.units).filter(
+      (unit) =>
+        unit.id !== center.id &&
+        unit.position >= 0 &&
+        isUnitAlive(unit) &&
+        isAdjacent(unit.position, center.position),
+    ).length >= required
+  );
 }
 
-function isPhaseAllowedForCard(state: GameState, card: CardDefinition): boolean {
+function isPhaseAllowedForCard(
+  state: GameState,
+  card: CardDefinition,
+): boolean {
   return !card.phaseLimit || card.phaseLimit.includes(state.phase);
 }
 
@@ -2234,8 +2567,14 @@ function isPhaseAllowedForCard(state: GameState, card: CardDefinition): boolean 
  * thing the waiver can surface in combat is the rule-gated Balance expert option.
  * With the rule off nothing changes (Wisdom is never a PLAY_CARD anywhere).
  */
-export function balanceCardWaivesCombatTiming(state: GameState, card: CardDefinition): boolean {
-  return card.id === "ability.wisdom" && houseRuleEnabled(state, "polish-card-balance");
+export function balanceCardWaivesCombatTiming(
+  state: GameState,
+  card: CardDefinition,
+): boolean {
+  return (
+    card.id === "ability.wisdom" &&
+    houseRuleEnabled(state, "polish-card-balance")
+  );
 }
 
 /**
@@ -2246,7 +2585,7 @@ export function balanceCardWaivesCombatTiming(state: GameState, card: CardDefini
  */
 export function continueNeutralFreeOption(
   state: GameState,
-  card: CardDefinition | undefined
+  card: CardDefinition | undefined,
 ): { optionIndex?: number } | null {
   if (!card || card.implementationStatus !== "implemented") {
     return null;
@@ -2261,10 +2600,16 @@ export function continueNeutralFreeOption(
     if (option.effect.type !== "CONTINUE_NEUTRAL_FREE") {
       continue;
     }
-    if (option.requiresHouseRule && !houseRuleEnabled(state, option.requiresHouseRule)) {
+    if (
+      option.requiresHouseRule &&
+      !houseRuleEnabled(state, option.requiresHouseRule)
+    ) {
       continue;
     }
-    if (option.forbidsHouseRule && houseRuleEnabled(state, option.forbidsHouseRule)) {
+    if (
+      option.forbidsHouseRule &&
+      houseRuleEnabled(state, option.forbidsHouseRule)
+    ) {
       continue;
     }
     return { optionIndex };
@@ -2277,8 +2622,13 @@ export function continueNeutralFreeOption(
  * start of a Combat, before any unit activates. Read by the combat card offer AND
  * by `playCard`'s backstop, so a stale client cannot slip it in mid-fight.
  */
-export function balanceIntelligencePlayBlocked(state: GameState, cardId: CardId): boolean {
-  return cardId === "ability.intelligence" && balanceIntelligenceWindowClosed(state);
+export function balanceIntelligencePlayBlocked(
+  state: GameState,
+  cardId: CardId,
+): boolean {
+  return (
+    cardId === "ability.intelligence" && balanceIntelligenceWindowClosed(state)
+  );
 }
 
 /**
@@ -2288,7 +2638,10 @@ export function balanceIntelligencePlayBlocked(state: GameState, cardId: CardId)
  * (`noteEagleEyeCopyOpportunity`); re-checked here so a card or crown spent since
  * then withdraws the offer. The ONE read the offer AND the resolution share.
  */
-export function balanceEagleEyeCopySpellId(state: GameState, playerId: PlayerId): CardId | undefined {
+export function balanceEagleEyeCopySpellId(
+  state: GameState,
+  playerId: PlayerId,
+): CardId | undefined {
   if (!houseRuleEnabled(state, "polish-card-balance")) {
     return undefined;
   }
@@ -2305,7 +2658,10 @@ export function balanceEagleEyeCopySpellId(state: GameState, playerId: PlayerId)
   return spellId;
 }
 
-function getAttackRerollsForMode(card: CardDefinition, mode: CardPlayMode): number {
+function getAttackRerollsForMode(
+  card: CardDefinition,
+  mode: CardPlayMode,
+): number {
   if (card.effect.type !== "CREATE_ATTACK_DIE_REROLL") {
     return 0;
   }
@@ -2317,13 +2673,20 @@ function getAttackRerollsForMode(card: CardDefinition, mode: CardPlayMode): numb
   return card.effect.basicRerolls;
 }
 
-function getPlayableModesForCard(state: GameState, playerId: PlayerId, card: CardDefinition): CardPlayMode[] {
+function getPlayableModesForCard(
+  state: GameState,
+  playerId: PlayerId,
+  card: CardDefinition,
+): CardPlayMode[] {
   // An Empowered ability may take its Expert side without a crown; otherwise a
   // spare Expert use (crown) is required.
   const player = state.players[playerId];
   const expertCrownFree = Boolean(player) && canPlayExpertMode(player, card.id);
 
-  if (card.effect.type === "CREATE_ATTACK_DIE_REROLL" && card.effect.basicRerolls <= 0) {
+  if (
+    card.effect.type === "CREATE_ATTACK_DIE_REROLL" &&
+    card.effect.basicRerolls <= 0
+  ) {
     return card.effect.expertRerolls && expertCrownFree ? ["expert"] : [];
   }
 
@@ -2336,10 +2699,15 @@ function getPlayableModesForCard(state: GameState, playerId: PlayerId, card: Car
       card.effect.type === "CREATE_ATTACK_DIE_REROLL" ||
       // Leadership: the expert side (draw 2) is usable mid-battle for an expert use.
       card.effect.type === "GAIN_MORALE") &&
-    ((card.effect.type === "CREATE_ACTIVE_EFFECT" && card.effect.expertEffect) ||
-      (card.effect.type === "CREATE_ATTACK_DIE_REROLL" && card.effect.expertRerolls && card.effect.expertRerolls > 0) ||
-      (card.effect.type === "GAIN_MORALE" && card.effect.expertDrawCards !== undefined) ||
-      ("expertAmount" in card.effect && card.effect.expertAmount !== undefined)) &&
+    ((card.effect.type === "CREATE_ACTIVE_EFFECT" &&
+      card.effect.expertEffect) ||
+      (card.effect.type === "CREATE_ATTACK_DIE_REROLL" &&
+        card.effect.expertRerolls &&
+        card.effect.expertRerolls > 0) ||
+      (card.effect.type === "GAIN_MORALE" &&
+        card.effect.expertDrawCards !== undefined) ||
+      ("expertAmount" in card.effect &&
+        card.effect.expertAmount !== undefined)) &&
     expertCrownFree
   ) {
     modes.push("expert");
@@ -2373,7 +2741,11 @@ function getPlayableModesForCard(state: GameState, playerId: PlayerId, card: Car
   // card unplayable. No shipped registry entry reaches this seam today
   // (Necromancy is offered only in its own window, addNecromancyPlays); the rule
   // lives in both places so a future entry cannot behave differently in the two.
-  if (player && empoweredExpertSupersedesBasic(player, card.id) && usable.includes("expert")) {
+  if (
+    player &&
+    empoweredExpertSupersedesBasic(player, card.id) &&
+    usable.includes("expert")
+  ) {
     return ["expert"];
   }
   return usable;
@@ -2383,19 +2755,24 @@ function getPlayableModesForCard(state: GameState, playerId: PlayerId, card: Car
 export function isCombatCardWindowOpen(state: GameState): boolean {
   return Boolean(
     state.combat &&
-      !state.combat.outcome &&
-      !state.combat.setup &&
-      !state.combat.awaitingContinue &&
-      state.phase === "combat" &&
-      state.stack.length === 0 &&
-      !state.reactionWindow &&
-      !state.pendingChoice
+    !state.combat.outcome &&
+    !state.combat.setup &&
+    !state.combat.awaitingContinue &&
+    state.phase === "combat" &&
+    state.stack.length === 0 &&
+    !state.reactionWindow &&
+    !state.pendingChoice,
   );
 }
 
-export function isCombatParticipant(state: GameState, playerId: PlayerId): boolean {
+export function isCombatParticipant(
+  state: GameState,
+  playerId: PlayerId,
+): boolean {
   return Boolean(
-    state.combat && (state.combat.attackerPlayerId === playerId || state.combat.defenderPlayerId === playerId)
+    state.combat &&
+    (state.combat.attackerPlayerId === playerId ||
+      state.combat.defenderPlayerId === playerId),
   );
 }
 
@@ -2438,15 +2815,26 @@ export const PROPHECY_PRE_ROLL_CARD_ID = "artifact.cards_of_prophecy" as CardId;
  * stay covered — with the ability half missing the reprint was strictly worse
  * than the rule OFF (the 2026-08-26 "lower part effect still not working" report).
  */
-export function prophecyPreRollAvailable(state: GameState, playerId: PlayerId, unitId: string): boolean {
-  if (playerId === NEUTRAL_PLAYER_ID || !houseRuleEnabled(state, "polish-card-balance")) {
+export function prophecyPreRollAvailable(
+  state: GameState,
+  playerId: PlayerId,
+  unitId: string,
+): boolean {
+  if (
+    playerId === NEUTRAL_PLAYER_ID ||
+    !houseRuleEnabled(state, "polish-card-balance")
+  ) {
     return false;
   }
   // COMMUNITY WINS over Polish for a card both packs reprint: the Community
   // Balance Change replaces Cards of Prophecy's die half with a Search, so its
   // reroll/pre-roll half does not exist on that table (the ONE shared list
   // `balanceRerollReactionArtifactIds`, which every other die surface reads).
-  if (!balanceRerollReactionArtifactIds(state, [PROPHECY_PRE_ROLL_CARD_ID]).includes(PROPHECY_PRE_ROLL_CARD_ID)) {
+  if (
+    !balanceRerollReactionArtifactIds(state, [
+      PROPHECY_PRE_ROLL_CARD_ID,
+    ]).includes(PROPHECY_PRE_ROLL_CARD_ID)
+  ) {
     return false;
   }
   const unit = state.combat?.units[unitId];
@@ -2454,14 +2842,20 @@ export function prophecyPreRollAvailable(state: GameState, playerId: PlayerId, u
     return false;
   }
   const player = state.players[playerId];
-  if (!player?.hand.includes(PROPHECY_PRE_ROLL_CARD_ID) || isHandLockedInCombat(state, playerId)) {
+  if (
+    !player?.hand.includes(PROPHECY_PRE_ROLL_CARD_ID) ||
+    isHandLockedInCombat(state, playerId)
+  ) {
     return false;
   }
   // Already declared on this very attack — one card, one arming.
   return state.stack.at(-1)?.modifiers.prophecyThreeRoll !== true;
 }
 
-export function isHandLockedInCombat(state: GameState, playerId: PlayerId): boolean {
+export function isHandLockedInCombat(
+  state: GameState,
+  playerId: PlayerId,
+): boolean {
   const combat = state.combat;
   if (!combat) {
     return false;
@@ -2508,17 +2902,26 @@ export function isHandLockedInCombat(state: GameState, playerId: PlayerId): bool
  * Neutral Pegasi "Mystic Toll": a living enemy Pegasi forces this player to pay
  * (discard) one extra Power card whenever they cast a Spell. Combat-only.
  */
-export function combatEnemyPowerTaxUnit(state: GameState, casterId: PlayerId): CombatUnitState | undefined {
+export function combatEnemyPowerTaxUnit(
+  state: GameState,
+  casterId: PlayerId,
+): CombatUnitState | undefined {
   const combat = state.combat;
   if (!combat) {
     return undefined;
   }
   return Object.values(combat.units).find(
-    (unit) => unit.controllerId !== casterId && isUnitAlive(unit) && hasSpellCastPowerTax(unit)
+    (unit) =>
+      unit.controllerId !== casterId &&
+      isUnitAlive(unit) &&
+      hasSpellCastPowerTax(unit),
   );
 }
 
-export function combatEnemyImposesPowerTax(state: GameState, casterId: PlayerId): boolean {
+export function combatEnemyImposesPowerTax(
+  state: GameState,
+  casterId: PlayerId,
+): boolean {
   return Boolean(combatEnemyPowerTaxUnit(state, casterId));
 }
 
@@ -2528,13 +2931,19 @@ export function combatEnemyImposesPowerTax(state: GameState, casterId: PlayerId)
  * reducer's toll (`continueSpellCastAfterPowerTax`) and the player-facing notice
  * both use, so the warning and the toll can never disagree about who taxes whom.
  */
-export function combatEnemyHandTaxUnit(state: GameState, casterId: PlayerId): CombatUnitState | undefined {
+export function combatEnemyHandTaxUnit(
+  state: GameState,
+  casterId: PlayerId,
+): CombatUnitState | undefined {
   const combat = state.combat;
   if (!combat) {
     return undefined;
   }
   return Object.values(combat.units).find(
-    (unit) => unit.controllerId !== casterId && isUnitAlive(unit) && hasSpellCastHandTax(unit)
+    (unit) =>
+      unit.controllerId !== casterId &&
+      isUnitAlive(unit) &&
+      hasSpellCastHandTax(unit),
   );
 }
 
@@ -2544,17 +2953,26 @@ export function combatEnemyHandTaxUnit(state: GameState, casterId: PlayerId): Co
  * Combat-only; the Stacked gate lives in `getUnitAbilityDefinitions`, so the
  * lock lifts the moment the Faerie Dragons lose their Stack Token.
  */
-export function combatEnemySpellLockUnit(state: GameState, casterId: PlayerId): CombatUnitState | undefined {
+export function combatEnemySpellLockUnit(
+  state: GameState,
+  casterId: PlayerId,
+): CombatUnitState | undefined {
   const combat = state.combat;
   if (!combat) {
     return undefined;
   }
   return Object.values(combat.units).find(
-    (unit) => unit.controllerId !== casterId && isUnitAlive(unit) && hasSpellCastLock(unit)
+    (unit) =>
+      unit.controllerId !== casterId &&
+      isUnitAlive(unit) &&
+      hasSpellCastLock(unit),
   );
 }
 
-export function combatEnemyLocksSpells(state: GameState, casterId: PlayerId): boolean {
+export function combatEnemyLocksSpells(
+  state: GameState,
+  casterId: PlayerId,
+): boolean {
   return Boolean(combatEnemySpellLockUnit(state, casterId));
 }
 
@@ -2567,7 +2985,7 @@ export function payablePowerCardIds(
   hand: readonly CardId[],
   cards: CardLibrary,
   castCardId: CardId,
-  fromScroll: boolean
+  fromScroll: boolean,
 ): CardId[] {
   let remaining: readonly CardId[] = hand;
   if (!fromScroll) {
@@ -2584,7 +3002,7 @@ export function handCanPayPowerTax(
   hand: readonly CardId[],
   cards: CardLibrary,
   castCardId: CardId,
-  fromScroll: boolean
+  fromScroll: boolean,
 ): boolean {
   return payablePowerCardIds(hand, cards, castCardId, fromScroll).length > 0;
 }
@@ -2598,9 +3016,11 @@ export function handCanPayPowerTax(
 function cardEnablesSpellDeckCast(card: CardDefinition | undefined): boolean {
   return Boolean(
     card &&
-      card.implementationStatus === "implemented" &&
-      card.effect.type === "CHOOSE_ONE" &&
-      card.effect.options.some((option) => option.effect.type === "CAST_FROM_SPELL_DISCARD")
+    card.implementationStatus === "implemented" &&
+    card.effect.type === "CHOOSE_ONE" &&
+    card.effect.options.some(
+      (option) => option.effect.type === "CAST_FROM_SPELL_DISCARD",
+    ),
   );
 }
 
@@ -2611,14 +3031,18 @@ function cardEnablesSpellDeckCast(card: CardDefinition | undefined): boolean {
  * its own offer block (and skipped by the single-arm Helm/Ciele loop), because
  * that loop resolves exactly one option and one source spell per enabler.
  */
-function cardOffersAnySpellDiscardCast(card: CardDefinition | undefined): boolean {
+function cardOffersAnySpellDiscardCast(
+  card: CardDefinition | undefined,
+): boolean {
   return Boolean(
     card &&
-      card.implementationStatus === "implemented" &&
-      card.effect.type === "CHOOSE_ONE" &&
-      card.effect.options.some(
-        (option) => option.effect.type === "CAST_FROM_SPELL_DISCARD" && option.effect.anySpell === true
-      )
+    card.implementationStatus === "implemented" &&
+    card.effect.type === "CHOOSE_ONE" &&
+    card.effect.options.some(
+      (option) =>
+        option.effect.type === "CAST_FROM_SPELL_DISCARD" &&
+        option.effect.anySpell === true,
+    ),
   );
 }
 
@@ -2631,15 +3055,20 @@ function cardOffersAnySpellDiscardCast(card: CardDefinition | undefined): boolea
  * "no unit of yours is active" notice share, so the warning and the offer can
  * never disagree about whether the activation window is open.
  */
-export function playerActivationSpellWindowOpen(state: GameState, playerId: PlayerId): boolean {
+export function playerActivationSpellWindowOpen(
+  state: GameState,
+  playerId: PlayerId,
+): boolean {
   const combat = state.combat;
-  const activeUnit = combat?.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
+  const activeUnit = combat?.activeUnitId
+    ? combat.units[combat.activeUnitId]
+    : undefined;
   return (
     Boolean(
       activeUnit &&
-        activeUnit.controllerId === playerId &&
-        !activeUnit.activatedThisRound &&
-        !activeUnit.attackedThisActivation
+      activeUnit.controllerId === playerId &&
+      !activeUnit.activatedThisRound &&
+      !activeUnit.attackedThisActivation,
     ) ||
     playerHasSpellTimingFreedom(state, playerId) ||
     // POLISH-only: the community reprint replaces Intelligence with a
@@ -2652,13 +3081,17 @@ export function playerActivationSpellWindowOpen(state: GameState, playerId: Play
 }
 
 /** A Spell cannot be cast again while one of that player's lasting copies is live. */
-function spellEffectIsAlreadyOngoing(state: GameState, playerId: PlayerId, cardId: CardId): boolean {
+function spellEffectIsAlreadyOngoing(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardId,
+): boolean {
   return state.activeEffects.some(
     (effect) =>
       effect.source.type === "card" &&
       effect.source.cardId === cardId &&
       effect.source.controllerId === playerId &&
-      effect.duration.type !== "instant"
+      effect.duration.type !== "instant",
   );
 }
 
@@ -2669,7 +3102,11 @@ function spellEffectIsAlreadyOngoing(state: GameState, playerId: PlayerId, cardI
  * Eye with a crown. Optional off-turn actions — a computer seat simply never
  * takes them (no window opens, so nothing can stall).
  */
-function addEagleEyeUnitCopyActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+function addEagleEyeUnitCopyActions(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+): void {
   if (!houseRuleEnabled(state, "polish-card-balance") || !state.combat) {
     return;
   }
@@ -2691,8 +3128,12 @@ function addEagleEyeUnitCopyActions(actions: LegalAction[], state: GameState, pl
       continue;
     }
     actions.push({
-      action: { type: "USE_EAGLE_EYE_UNIT_COPY", playerId, targetUnitId: target.id },
-      label: `Eagle Eye: cast back ${bolt.amount} damage at ${target.cardName}`
+      action: {
+        type: "USE_EAGLE_EYE_UNIT_COPY",
+        playerId,
+        targetUnitId: target.id,
+      },
+      label: `Eagle Eye: cast back ${bolt.amount} damage at ${target.cardName}`,
     });
   }
 }
@@ -2701,9 +3142,13 @@ function addSpellActions(
   actions: LegalAction[],
   state: GameState,
   playerId: PlayerId,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
-  if (!isCombatCardWindowOpen(state) || !isCombatParticipant(state, playerId) || isHandLockedInCombat(state, playerId)) {
+  if (
+    !isCombatCardWindowOpen(state) ||
+    !isCombatParticipant(state, playerId) ||
+    isHandLockedInCombat(state, playerId)
+  ) {
     return;
   }
 
@@ -2721,7 +3166,8 @@ function addSpellActions(
   // casts and the Helm of the Alabaster Unicorn cast are free bonuses that do
   // not count toward the limit, so they are still offered even once the limit
   // is reached.
-  const spellLimitReached = player.combatStats.spellsCastThisRound >= spellLimitFor(state, player);
+  const spellLimitReached =
+    player.combatStats.spellsCastThisRound >= spellLimitFor(state, player);
 
   // Recanter's Cloak (option B): "no Hero can use Spells" this Combat — a global
   // lock that binds both heroes, so no cast is offered at all. (Option A's
@@ -2776,19 +3222,27 @@ function addSpellActions(
     ...(spellLimitReached
       ? []
       : [
-          ...[...new Set(player.hand)].filter((cardId) => !tarnumFlagged.has(cardId)).map((cardId) => ({ cardId })),
+          ...[...new Set(player.hand)]
+            .filter((cardId) => !tarnumFlagged.has(cardId))
+            .map((cardId) => ({ cardId })),
           // Spell Book (house rule): a Book Spell casts like a hand Spell and SHARES
           // the same one-Spell-per-round cast limit — full Power, same timing/
           // targeting gates. (The Book's separate once-per-round budget is only its
           // +1-Power discard, spellBookPowerUsedThisTurn — see the reaction path.)
           ...(bookCastSourcesEnabled(state)
-            ? [...new Set(player.spellBook ?? [])].map((cardId) => ({ cardId, fromSpellBook: true }))
-            : [])
+            ? [...new Set(player.spellBook ?? [])].map((cardId) => ({
+                cardId,
+                fromSpellBook: true,
+              }))
+            : []),
         ]),
     // Scrolls stay available after the hand/Book limit is spent.
     ...(player.scrolls ?? []).flatMap((scroll) =>
-      [...new Set(scroll.spellCardIds)].map((cardId) => ({ cardId, fromScroll: scroll.id }))
-    )
+      [...new Set(scroll.spellCardIds)].map((cardId) => ({
+        cardId,
+        fromScroll: scroll.id,
+      })),
+    ),
   ];
 
   // Polish Balance Pack — the reprinted EAGLE EYE EXPERT: an enemy Spell that just
@@ -2821,22 +3275,39 @@ function addSpellActions(
   // crown unless the ability is Empowered). It gets its own block because the
   // single-arm loop below resolves exactly ONE option and ONE source spell per
   // enabler. The reducer re-validates all of this (`castSpell`'s anySpell arm).
-  for (const enablerId of [...new Set(player.hand)].filter((id) => cardOffersAnySpellDiscardCast(cards[id]))) {
+  for (const enablerId of [...new Set(player.hand)].filter((id) =>
+    cardOffersAnySpellDiscardCast(cards[id]),
+  )) {
     const enabler = cards[enablerId];
-    const options = enabler?.effect.type === "CHOOSE_ONE" ? enabler.effect.options : [];
+    const options =
+      enabler?.effect.type === "CHOOSE_ONE" ? enabler.effect.options : [];
     for (const option of options) {
       const optionEffect = option.effect;
-      if (optionEffect.type !== "CAST_FROM_SPELL_DISCARD" || optionEffect.anySpell !== true) {
+      if (
+        optionEffect.type !== "CAST_FROM_SPELL_DISCARD" ||
+        optionEffect.anySpell !== true
+      ) {
         continue;
       }
-      if (option.requiresHouseRule && !houseRuleEnabled(state, option.requiresHouseRule)) {
+      if (
+        option.requiresHouseRule &&
+        !houseRuleEnabled(state, option.requiresHouseRule)
+      ) {
         continue;
       }
-      if (option.forbidsHouseRule && houseRuleEnabled(state, option.forbidsHouseRule)) {
+      if (
+        option.forbidsHouseRule &&
+        houseRuleEnabled(state, option.forbidsHouseRule)
+      ) {
         continue;
       }
-      const discardCastMode: "basic" | "expert" = option.expertOnly ? "expert" : "basic";
-      if (discardCastMode === "expert" && !canPlayExpertMode(player, enablerId)) {
+      const discardCastMode: "basic" | "expert" = option.expertOnly
+        ? "expert"
+        : "basic";
+      if (
+        discardCastMode === "expert" &&
+        !canPlayExpertMode(player, enablerId)
+      ) {
         continue;
       }
       // The basic side counts toward the limit, so it disappears once spent;
@@ -2852,7 +3323,7 @@ function addSpellActions(
           cardId: spellId,
           fromSpellDeck: enablerId,
           fromOwnDiscard: true,
-          discardCastMode
+          discardCastMode,
         });
       }
     }
@@ -2870,7 +3341,9 @@ function addSpellActions(
   // pile. Both are free bonus casts sourced from the Spell-deck discard pile and
   // consume the enabling card (see performSpellCast).
   for (const enablerId of [...new Set(player.hand)].filter(
-    (id) => cardEnablesSpellDeckCast(cards[id]) && !cardOffersAnySpellDiscardCast(cards[id])
+    (id) =>
+      cardEnablesSpellDeckCast(cards[id]) &&
+      !cardOffersAnySpellDiscardCast(cards[id]),
   )) {
     // The card may print SEVERAL cast arms gated on a house rule (the Balance
     // Pack Ciele I/IV carry a Polish-Book arm AND the classic one) — the shared
@@ -2892,8 +3365,16 @@ function addSpellActions(
     const fromOwnDiscard = arm.effect.ownDiscard === true;
     // One candidate per shared Spell-deck discard TOP (BINH splits the Spell deck
     // into basic + expert, so both face-up tops are castable).
-    for (const sourceSpell of castFromSpellDiscardSourceSpellIds(state, player, arm.effect)) {
-      castCandidates.push({ cardId: sourceSpell, fromSpellDeck: enablerId, ...(fromOwnDiscard ? { fromOwnDiscard: true } : {}) });
+    for (const sourceSpell of castFromSpellDiscardSourceSpellIds(
+      state,
+      player,
+      arm.effect,
+    )) {
+      castCandidates.push({
+        cardId: sourceSpell,
+        fromSpellDeck: enablerId,
+        ...(fromOwnDiscard ? { fromOwnDiscard: true } : {}),
+      });
     }
   }
 
@@ -2905,10 +3386,14 @@ function addSpellActions(
     fromSpellBook,
     tarnumReturn,
     eagleEyeCopy,
-    discardCastMode
+    discardCastMode,
   } of castCandidates) {
     const card = cards[cardId];
-    if (!card || card.kind !== "spell" || card.implementationStatus !== "implemented") {
+    if (
+      !card ||
+      card.kind !== "spell" ||
+      card.implementationStatus !== "implemented"
+    ) {
       continue;
     }
     if (spellEffectIsAlreadyOngoing(state, playerId, cardId)) {
@@ -2933,13 +3418,22 @@ function addSpellActions(
     // The Community Intelligence cast is likewise exempt: its printed ⚡ makes
     // the play an INSTANT, so the spell it pulls out of the discard is castable
     // off-turn without one of the caster's own units being active.
-    const needsOwnActivation = card.timing === "combat" || card.timing === "action";
-    if (needsOwnActivation && !ownActivationOpen && !eagleEyeCopy && !discardCastMode) {
+    const needsOwnActivation =
+      card.timing === "combat" || card.timing === "action";
+    if (
+      needsOwnActivation &&
+      !ownActivationOpen &&
+      !eagleEyeCopy &&
+      !discardCastMode
+    ) {
       continue;
     }
 
     // Neutral Pegasi toll: cannot cast without a separate Power card to pay.
-    if (powerTaxed && !handCanPayPowerTax(player.hand, cards, cardId, Boolean(fromScroll))) {
+    if (
+      powerTaxed &&
+      !handCanPayPowerTax(player.hand, cards, cardId, Boolean(fromScroll))
+    ) {
       continue;
     }
 
@@ -2950,14 +3444,22 @@ function addSpellActions(
     // resolveTopStack. Its +attack/+defense arms carry triggers and were skipped
     // above, so they stay on the reaction-window path and are never offered here.
     if (card.effect.type === "CHOOSE_ONE") {
-      addChooseOneSpellInstantCasts(actions, state, playerId, card, cardId, cards, {
-        fromScroll,
-        fromSpellDeck,
-        fromOwnDiscard,
-        fromSpellBook,
-        tarnumReturn,
-        castEnablerMode: discardCastMode
-      });
+      addChooseOneSpellInstantCasts(
+        actions,
+        state,
+        playerId,
+        card,
+        cardId,
+        cards,
+        {
+          fromScroll,
+          fromSpellDeck,
+          fromOwnDiscard,
+          fromSpellBook,
+          tarnumReturn,
+          castEnablerMode: discardCastMode,
+        },
+      );
       continue;
     }
 
@@ -2976,7 +3478,9 @@ function addSpellActions(
       const siege = combat?.siege;
       const hasObstacleMarker = (combat?.obstacles ?? []).length > 0;
       const hasToken = (combat?.battlefieldTokens ?? []).length > 0;
-      const hasFortification = Boolean(siege && (siege.walls.length > 0 || siege.gatePosition !== null));
+      const hasFortification = Boolean(
+        siege && (siege.walls.length > 0 || siege.gatePosition !== null),
+      );
       if (!hasObstacleMarker && !hasToken && !hasFortification) {
         continue;
       }
@@ -3029,9 +3533,12 @@ function addSpellActions(
     // offered at 0 crowns too — the permanent-school read comes first so the
     // waiver can be keyed off the actual School card being discarded.
     const schoolExpertCandidate =
-      !fromScroll && !fromSpellDeck ? getPermanentSchoolBonus(state, playerId, card) : null;
+      !fromScroll && !fromSpellDeck
+        ? getPermanentSchoolBonus(state, playerId, card)
+        : null;
     const schoolExpert =
-      schoolExpertCandidate && canPlayExpertMode(player, schoolExpertCandidate.card.id)
+      schoolExpertCandidate &&
+      canPlayExpertMode(player, schoolExpertCandidate.card.id)
         ? schoolExpertCandidate
         : null;
 
@@ -3049,7 +3556,10 @@ function addSpellActions(
         : null;
     const fetchExpertSchool =
       fetchExpertCandidate &&
-      canPlayExpertMode(player, `ability.basic_${fetchExpertCandidate}_magic` as CardId)
+      canPlayExpertMode(
+        player,
+        `ability.basic_${fetchExpertCandidate}_magic` as CardId,
+      )
         ? fetchExpertCandidate
         : null;
 
@@ -3058,22 +3568,24 @@ function addSpellActions(
         label: eagleEyeCopy
           ? `Copy ${card.name} with Eagle Eye (expert; Power 0, new target)`
           : fromScroll
-          ? `Cast ${card.name} (Scroll)`
-          : discardCastMode
-            ? `${cards[fromSpellDeck!]?.name ?? "Intelligence"}${
-                discardCastMode === "expert" ? " (expert, crown)" : ""
-              }: play ${card.name} from your discard pile${
-                discardCastMode === "expert" ? " — it does not count toward your Spell limit" : ""
-              }`
-          : fromOwnDiscard
-            ? `Cast ${card.name} from your discard pile (free)`
-            : fromSpellDeck
-              ? `Cast ${card.name} (Helm of the Alabaster Unicorn)`
-              : fromSpellBook
-                ? `Cast ${card.name} (Spell Book)`
-                : tarnumReturn
-                  ? `Cast ${card.name} (free; ${tarnumReturn === "deck-top" ? "to Spell deck top" : "to Spell discard"})`
-                  : `Cast ${card.name}`,
+            ? `Cast ${card.name} (Scroll)`
+            : discardCastMode
+              ? `${cards[fromSpellDeck!]?.name ?? "Intelligence"}${
+                  discardCastMode === "expert" ? " (expert, crown)" : ""
+                }: play ${card.name} from your discard pile${
+                  discardCastMode === "expert"
+                    ? " — it does not count toward your Spell limit"
+                    : ""
+                }`
+              : fromOwnDiscard
+                ? `Cast ${card.name} from your discard pile (free)`
+                : fromSpellDeck
+                  ? `Cast ${card.name} (Helm of the Alabaster Unicorn)`
+                  : fromSpellBook
+                    ? `Cast ${card.name} (Spell Book)`
+                    : tarnumReturn
+                      ? `Cast ${card.name} (free; ${tarnumReturn === "deck-top" ? "to Spell deck top" : "to Spell discard"})`
+                      : `Cast ${card.name}`,
         action: {
           type: "CAST_SPELL",
           playerId,
@@ -3085,8 +3597,8 @@ function addSpellActions(
           ...(fromSpellBook ? { fromSpellBook: true } : {}),
           ...(tarnumReturn ? { tarnumReturn } : {}),
           ...(eagleEyeCopy ? { eagleEyeCopy: true } : {}),
-          ...(discardCastMode ? { castEnablerMode: discardCastMode } : {})
-        }
+          ...(discardCastMode ? { castEnablerMode: discardCastMode } : {}),
+        },
       });
 
       if (schoolExpert) {
@@ -3101,8 +3613,8 @@ function addSpellActions(
             target,
             useSchoolExpert: true,
             ...(fromSpellBook ? { fromSpellBook: true } : {}),
-            ...(tarnumReturn ? { tarnumReturn } : {})
-          }
+            ...(tarnumReturn ? { tarnumReturn } : {}),
+          },
         });
       }
 
@@ -3120,8 +3632,8 @@ function addSpellActions(
             useSchoolFetchExpert: true,
             ...(fromOwnDiscard ? { fromOwnDiscard: true } : {}),
             ...(fromSpellBook ? { fromSpellBook: true } : {}),
-            ...(tarnumReturn ? { tarnumReturn } : {})
-          }
+            ...(tarnumReturn ? { tarnumReturn } : {}),
+          },
         });
       }
     }
@@ -3169,7 +3681,7 @@ function addChooseOneSpellInstantCasts(
     tarnumReturn?: "deck-top" | "discard";
     /** Community Intelligence: which side of the enabler authorised this cast. */
     castEnablerMode?: "basic" | "expert";
-  }
+  },
 ): void {
   if (card.effect.type !== "CHOOSE_ONE") {
     return;
@@ -3177,10 +3689,20 @@ function addChooseOneSpellInstantCasts(
   for (const [optionIndex, option] of card.effect.options.entries()) {
     // Triggered arms route through reaction windows; map-only arms never apply in
     // combat; everything the spell-cast dispatch can't resolve is left alone.
-    if (option.trigger || option.mapOnly || !optionCastableAsCombatSpell(option.effect)) {
+    if (
+      option.trigger ||
+      option.mapOnly ||
+      !optionCastableAsCombatSpell(option.effect)
+    ) {
       continue;
     }
-    for (const target of getTargetsForCard(state, playerId, cardId, cards, option.target)) {
+    for (const target of getTargetsForCard(
+      state,
+      playerId,
+      cardId,
+      cards,
+      option.target,
+    )) {
       actions.push({
         label: source.fromScroll
           ? `Cast ${card.name} — ${option.label} (Scroll)`
@@ -3190,7 +3712,9 @@ function addChooseOneSpellInstantCasts(
               ? `Cast ${card.name} — ${option.label} (Spell Book)`
               : source.tarnumReturn
                 ? `Cast ${card.name} — ${option.label} (free; ${
-                    source.tarnumReturn === "deck-top" ? "to Spell deck top" : "to Spell discard"
+                    source.tarnumReturn === "deck-top"
+                      ? "to Spell deck top"
+                      : "to Spell discard"
                   })`
                 : `Cast ${card.name} — ${option.label}`,
         action: {
@@ -3200,12 +3724,16 @@ function addChooseOneSpellInstantCasts(
           target,
           optionIndex,
           ...(source.fromScroll ? { fromScroll: source.fromScroll } : {}),
-          ...(source.fromSpellDeck ? { fromSpellDeck: source.fromSpellDeck } : {}),
+          ...(source.fromSpellDeck
+            ? { fromSpellDeck: source.fromSpellDeck }
+            : {}),
           ...(source.fromOwnDiscard ? { fromOwnDiscard: true } : {}),
           ...(source.fromSpellBook ? { fromSpellBook: true } : {}),
           ...(source.tarnumReturn ? { tarnumReturn: source.tarnumReturn } : {}),
-          ...(source.castEnablerMode ? { castEnablerMode: source.castEnablerMode } : {})
-        }
+          ...(source.castEnablerMode
+            ? { castEnablerMode: source.castEnablerMode }
+            : {}),
+        },
       });
     }
   }
@@ -3214,7 +3742,7 @@ function addChooseOneSpellInstantCasts(
 function getTransformTargets(
   state: GameState,
   playerId: PlayerId,
-  effect: Extract<ConcreteEffect, { type: "TRANSFORM_UNIT" }>
+  effect: Extract<ConcreteEffect, { type: "TRANSFORM_UNIT" }>,
 ): TargetRef[] {
   if (!state.combat) {
     return [];
@@ -3225,7 +3753,7 @@ function getTransformTargets(
       (unit) =>
         unit.controllerId === playerId &&
         isUnitAlive(unit) &&
-        canPlaceTransformOn(unit.name, unit.variant, unit.transforms, effect)
+        canPlaceTransformOn(unit.name, unit.variant, unit.transforms, effect),
     )
     .map<TargetRef>((unit) => ({ type: "unit", unitId: unit.id }));
 }
@@ -3241,11 +3769,16 @@ function addPlayableCardActions(
   actions: LegalAction[],
   state: GameState,
   playerId: PlayerId,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   const player = state.players[playerId];
   const combat = state.combat;
-  if (!player || !combat || !isCombatCardWindowOpen(state) || !isCombatParticipant(state, playerId)) {
+  if (
+    !player ||
+    !combat ||
+    !isCombatCardWindowOpen(state) ||
+    !isCombatParticipant(state, playerId)
+  ) {
     return;
   }
 
@@ -3254,18 +3787,26 @@ function addPlayableCardActions(
     return;
   }
 
-  const activeUnit = combat.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
+  const activeUnit = combat.activeUnitId
+    ? combat.units[combat.activeUnitId]
+    : undefined;
   const ownActivationOpen = Boolean(
     activeUnit &&
-      activeUnit.controllerId === playerId &&
-      !activeUnit.activatedThisRound &&
-      !activeUnit.attackedThisActivation
+    activeUnit.controllerId === playerId &&
+    !activeUnit.activatedThisRound &&
+    !activeUnit.attackedThisActivation,
   );
-  const unitNotMovedYet = Boolean(activeUnit && !activeUnit.movedThisActivation);
+  const unitNotMovedYet = Boolean(
+    activeUnit && !activeUnit.movedThisActivation,
+  );
 
   for (const cardId of new Set(player.hand)) {
     const card = cards[cardId];
-    if (!card || card.kind === "spell" || card.implementationStatus !== "implemented") {
+    if (
+      !card ||
+      card.kind === "spell" ||
+      card.implementationStatus !== "implemented"
+    ) {
       continue;
     }
 
@@ -3289,8 +3830,8 @@ function addPlayableCardActions(
             cardId,
             mode: "basic",
             drawOnly: true,
-            target: { type: "none" }
-          }
+            target: { type: "none" },
+          },
         });
       }
       continue;
@@ -3306,7 +3847,13 @@ function addPlayableCardActions(
       if (ownActivationOpen) {
         actions.push({
           label: `Put ${card.name} into play`,
-          action: { type: "PLAY_CARD", playerId, cardId, mode: "basic", target: { type: "none" } }
+          action: {
+            type: "PLAY_CARD",
+            playerId,
+            cardId,
+            mode: "basic",
+            target: { type: "none" },
+          },
         });
       }
       continue;
@@ -3319,22 +3866,27 @@ function addPlayableCardActions(
     // moved yet (see playCard).
     const combatDrawOnly =
       ownActivationOpen &&
-      (card.effect.type === "ADD_COMBAT_STAT" || card.effect.type === "ADD_SPELL_POWER") &&
+      (card.effect.type === "ADD_COMBAT_STAT" ||
+        card.effect.type === "ADD_SPELL_POWER") &&
       Boolean(card.effect.drawCards) &&
       Boolean(card.trigger);
     if (combatDrawOnly && isPhaseAllowedForCard(state, card)) {
       actions.push({
         label: `Play ${card.name} (draw${
-          card.effect.type === "ADD_SPELL_POWER" && unitNotMovedYet ? ", next spell +Power" : ""
+          card.effect.type === "ADD_SPELL_POWER" && unitNotMovedYet
+            ? ", next spell +Power"
+            : ""
         })`,
         action: {
           type: "PLAY_CARD",
           playerId,
           cardId,
           mode: "basic",
-          ...(card.effect.type === "ADD_COMBAT_STAT" ? { drawOnly: true as const } : {}),
-          target: { type: "none" }
-        }
+          ...(card.effect.type === "ADD_COMBAT_STAT"
+            ? { drawOnly: true as const }
+            : {}),
+          target: { type: "none" },
+        },
       });
       continue;
     }
@@ -3380,7 +3932,8 @@ function addPlayableCardActions(
         for (const [optionIndex, option] of card.effect.options.entries()) {
           if (
             !option.trigger ||
-            (option.effect.type !== "ADD_COMBAT_STAT" && option.effect.type !== "ADD_SPELL_POWER") ||
+            (option.effect.type !== "ADD_COMBAT_STAT" &&
+              option.effect.type !== "ADD_SPELL_POWER") ||
             !option.effect.drawCards
           ) {
             continue;
@@ -3390,9 +3943,18 @@ function addPlayableCardActions(
           }
           actions.push({
             label: `${card.name}: ${option.label} (draw only${
-              option.effect.type === "ADD_SPELL_POWER" && unitNotMovedYet ? ", next spell +Power" : ""
+              option.effect.type === "ADD_SPELL_POWER" && unitNotMovedYet
+                ? ", next spell +Power"
+                : ""
             })`,
-            action: { type: "PLAY_CARD", playerId, cardId, mode: "basic", optionIndex, target: { type: "none" } }
+            action: {
+              type: "PLAY_CARD",
+              playerId,
+              cardId,
+              mode: "basic",
+              optionIndex,
+              target: { type: "none" },
+            },
           });
         }
       }
@@ -3414,7 +3976,13 @@ function addPlayableCardActions(
       for (const target of getTransformTargets(state, playerId, card.effect)) {
         actions.push({
           label: `Play ${card.name}`,
-          action: { type: "PLAY_CARD", playerId, cardId, mode: "basic", target }
+          action: {
+            type: "PLAY_CARD",
+            playerId,
+            cardId,
+            mode: "basic",
+            target,
+          },
         });
       }
       continue;
@@ -3435,8 +4003,8 @@ function addPlayableCardActions(
             playerId,
             cardId,
             mode,
-            target
-          }
+            target,
+          },
         });
       }
     }
@@ -3463,8 +4031,8 @@ function addPlayableCardActions(
           cardId,
           mode: "basic",
           drawOnly: true,
-          target: { type: "none" }
-        }
+          target: { type: "none" },
+        },
       });
     }
   }
@@ -3491,7 +4059,7 @@ function addPlayableCardActions(
 export function getOffTurnCombatReactions(
   state: GameState,
   playerId: PlayerId,
-  cards: CardLibrary = cardLibrary
+  cards: CardLibrary = cardLibrary,
 ): LegalAction[] {
   const actions: LegalAction[] = [];
   addActiveEffectActions(actions, state, playerId);
@@ -3521,10 +4089,15 @@ function addCombatAnytimeSpecialtyPlays(
   actions: LegalAction[],
   state: GameState,
   playerId: PlayerId,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): void {
   const combat = state.combat;
-  if (!combat || combat.outcome || combat.setup || !isCombatParticipant(state, playerId)) {
+  if (
+    !combat ||
+    combat.outcome ||
+    combat.setup ||
+    !isCombatParticipant(state, playerId)
+  ) {
     return;
   }
   if (isHandLockedInCombat(state, playerId)) {
@@ -3536,12 +4109,14 @@ function addCombatAnytimeSpecialtyPlays(
   }
   // On-turn (this player's own fresh unit is active), the standard card pass
   // offers every option, including these — skip to avoid offering them twice.
-  const activeUnit = combat.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
+  const activeUnit = combat.activeUnitId
+    ? combat.units[combat.activeUnitId]
+    : undefined;
   const ownActivationOpen = Boolean(
     activeUnit &&
-      activeUnit.controllerId === playerId &&
-      !activeUnit.activatedThisRound &&
-      !activeUnit.attackedThisActivation
+    activeUnit.controllerId === playerId &&
+    !activeUnit.activatedThisRound &&
+    !activeUnit.attackedThisActivation,
   );
   if (ownActivationOpen) {
     return;
@@ -3558,8 +4133,15 @@ function addCombatAnytimeSpecialtyPlays(
     ) {
       continue;
     }
-    addOptionPlays(actions, state, playerId, card, cardId, "combat", cards, (option) =>
-      Boolean(option.combatAnytime)
+    addOptionPlays(
+      actions,
+      state,
+      playerId,
+      card,
+      cardId,
+      "combat",
+      cards,
+      (option) => Boolean(option.combatAnytime),
     );
   }
 }
@@ -3595,11 +4177,16 @@ function addCombatAnytimeSpecialtyPlays(
 export function combatAnytimeInstantWindowJoins(
   state: GameState,
   playerId: PlayerId,
-  cards: CardLibrary = cardLibrary
+  cards: CardLibrary = cardLibrary,
 ): LegalAction[] {
   const actions: LegalAction[] = [];
   const combat = state.combat;
-  if (!combat || combat.outcome || combat.setup || !isCombatParticipant(state, playerId)) {
+  if (
+    !combat ||
+    combat.outcome ||
+    combat.setup ||
+    !isCombatParticipant(state, playerId)
+  ) {
     return actions;
   }
   if (isHandLockedInCombat(state, playerId)) {
@@ -3619,22 +4206,34 @@ export function combatAnytimeInstantWindowJoins(
     ) {
       continue;
     }
-    addOptionPlays(actions, state, playerId, card, cardId, "combat", cards, (option) =>
-      Boolean(option.combatAnytime)
+    addOptionPlays(
+      actions,
+      state,
+      playerId,
+      card,
+      cardId,
+      "combat",
+      cards,
+      (option) => Boolean(option.combatAnytime),
     );
   }
   return actions;
 }
 
 /** One occurrence of each of this player's cards still resolving on the combat stack. */
-function recoveryInFlightCardIds(state: GameState, playerId: PlayerId): CardId[] {
+function recoveryInFlightCardIds(
+  state: GameState,
+  playerId: PlayerId,
+): CardId[] {
   return state.stack.flatMap((item) => [
     // The cast's own in-flight footprint. A scroll cast leaves nothing in the
     // discard, but a Book cast's ENABLER and a hero-specialty deck cast's
     // specialty card DO land there mid-resolution — those enablers must be
     // unrecoverable while the cast resolves (they mirror castInFlightCardIds
     // in reducer.ts).
-    ...(item.action.type === "CAST_SPELL" && item.action.playerId === playerId && !item.action.fromScroll
+    ...(item.action.type === "CAST_SPELL" &&
+    item.action.playerId === playerId &&
+    !item.action.fromScroll
       ? item.action.fromSpellDeck
         ? cardLibrary[item.action.fromSpellDeck]?.kind === "hero-specialty"
           ? [item.action.fromSpellDeck]
@@ -3649,7 +4248,7 @@ function recoveryInFlightCardIds(state: GameState, playerId: PlayerId): CardId[]
     // The flat ledger too — several push sites never reach the by-player map
     // (asPowerBoost discards, USE_SCHOOL_FETCH_EXPERT). Over-inclusion only
     // hides one extra occurrence of a duplicate, never leaks a resolving card.
-    ...item.modifiers.playedCardIds
+    ...item.modifiers.playedCardIds,
   ]);
 }
 
@@ -3663,13 +4262,16 @@ function isOptionEffectPlayable(
   effect: ConcreteEffect,
   context: "combat" | "map",
   /** The card being played, excluded from "is there a card to remove" counts. */
-  excludeCardId?: CardId
+  excludeCardId?: CardId,
 ): boolean {
   switch (effect.type) {
     case "GAIN_RESOURCES":
       // Sephinroth's Valuables I: "Pay N gold to gain …" is only offered when the
       // player can actually afford the gold cost.
-      return !effect.goldCost || (state.players[playerId]?.resources.gold ?? 0) >= effect.goldCost;
+      return (
+        !effect.goldCost ||
+        (state.players[playerId]?.resources.gold ?? 0) >= effect.goldCost
+      );
     case "DRAW_CARDS":
     // Legion artifacts' discount side: banking the one-shot recruit discount is
     // always a valid choice (it is spent later, on the map, by a recruit/reinforce).
@@ -3697,7 +4299,9 @@ function isOptionEffectPlayable(
       }
       const commander = state.players[playerId]?.commander;
       return (
-        commandersModuleEnabled(state) && Boolean(commander) && !commander?.artifacts?.[effect.slot]
+        commandersModuleEnabled(state) &&
+        Boolean(commander) &&
+        !commander?.artifacts?.[effect.slot]
       );
     }
     case "EQUIP_HERO_EQUIPMENT": {
@@ -3724,7 +4328,11 @@ function isOptionEffectPlayable(
       // discard" side is a click-to-use combat play too (Skull Helmet, Helm of
       // the Alabaster Unicorn, …), not a map-only one. See discardPickAllowedInCombat.
       const playedCard = excludeCardId ? cardLibrary[excludeCardId] : undefined;
-      if (context === "map" ? !state.adventure : !(discardPickAllowedInCombat(playedCard, effect) && state.combat)) {
+      if (
+        context === "map"
+          ? !state.adventure
+          : !(discardPickAllowedInCombat(playedCard, effect) && state.combat)
+      ) {
         return false;
       }
       const player = state.players[playerId];
@@ -3743,14 +4351,18 @@ function isOptionEffectPlayable(
         player,
         effect,
         player.discard,
-        inFlight
+        inFlight,
       );
     }
     case "SCHOLAR_EMPOWER_SWAP": {
       // Scholar expert: map-only. Both phases are "up to N" (including zero), so
       // there is no Statistic-in-hand gate — you may remove nothing and still
       // take Empowered cards, or remove without taking.
-      return context === "map" && Boolean(state.adventure) && Boolean(state.players[playerId]);
+      return (
+        context === "map" &&
+        Boolean(state.adventure) &&
+        Boolean(state.players[playerId])
+      );
     }
     case "CARD_DECK_SEARCH":
     case "EAGLE_EYE_DIG":
@@ -3761,14 +4373,20 @@ function isOptionEffectPlayable(
       // choice immediately (the reward queue is parked during a live combat).
       // See instantSideAllowedInCombat.
       if (context === "combat") {
-        return Boolean(state.combat) && instantSideAllowedInCombat(excludeCardId ? cardLibrary[excludeCardId] : undefined);
+        return (
+          Boolean(state.combat) &&
+          instantSideAllowedInCombat(
+            excludeCardId ? cardLibrary[excludeCardId] : undefined,
+          )
+        );
       }
       return Boolean(state.adventure);
     case "TELEPORT_HERO_TO_TOWN":
       return (
         context === "map" &&
         Boolean(state.adventure) &&
-        townPortalDestinations(state, playerId, effect.movementBonus ?? 0).length > 0
+        townPortalDestinations(state, playerId, effect.movementBonus ?? 0)
+          .length > 0
       );
     case "GAIN_HERO_MOVEMENT":
       // A map play — AND (2026-08-11 user ruling "you shoold be able to add '+1
@@ -3792,13 +4410,13 @@ function isOptionEffectPlayable(
     case "DIMENSION_DOOR": {
       return Boolean(
         context === "map" &&
-          state.adventure &&
-          Object.values(state.heroes).some(
-            (hero) =>
-              hero.controllerId === playerId &&
-              hero.spaceId !== null &&
-              dimensionDoorDestinations(state, hero, effect.fields).length > 0
-          )
+        state.adventure &&
+        Object.values(state.heroes).some(
+          (hero) =>
+            hero.controllerId === playerId &&
+            hero.spaceId !== null &&
+            dimensionDoorDestinations(state, hero, effect.fields).length > 0,
+        ),
       );
     }
     case "REMOVE_HAND_CARD_THEN_SEARCH": {
@@ -3811,12 +4429,20 @@ function isOptionEffectPlayable(
       // is offered only for an INSTANT artifact (the Hat — same house rule as
       // the Search side above); Miriam's specialty stays map-only.
       const removeFilter = effect.filter ?? "removable";
-      const removable = removableHandCards(state, playerId, removeFilter).filter(
-        (candidate) => candidate.cardId !== excludeCardId
-      );
+      const removable = removableHandCards(
+        state,
+        playerId,
+        removeFilter,
+      ).filter((candidate) => candidate.cardId !== excludeCardId);
       if (context === "combat") {
-        const playedCard = excludeCardId ? cardLibrary[excludeCardId] : undefined;
-        return Boolean(state.combat) && instantSideAllowedInCombat(playedCard) && removable.length >= 1;
+        const playedCard = excludeCardId
+          ? cardLibrary[excludeCardId]
+          : undefined;
+        return (
+          Boolean(state.combat) &&
+          instantSideAllowedInCombat(playedCard) &&
+          removable.length >= 1
+        );
       }
       return Boolean(state.adventure) && removable.length >= 1;
     }
@@ -3825,10 +4451,18 @@ function isOptionEffectPlayable(
       // alongside the Hat (which is still in hand at this point). Playable
       // mid-Combat too — the Hat is an INSTANT artifact (house rule above).
       const player = state.players[playerId];
-      const hasAnother = Boolean(player && player.hand.length + player.discard.length >= 2);
+      const hasAnother = Boolean(
+        player && player.hand.length + player.discard.length >= 2,
+      );
       if (context === "combat") {
-        const playedCard = excludeCardId ? cardLibrary[excludeCardId] : undefined;
-        return Boolean(state.combat) && instantSideAllowedInCombat(playedCard) && hasAnother;
+        const playedCard = excludeCardId
+          ? cardLibrary[excludeCardId]
+          : undefined;
+        return (
+          Boolean(state.combat) &&
+          instantSideAllowedInCombat(playedCard) &&
+          hasAnother
+        );
       }
       return Boolean(state.adventure) && hasAnother;
     }
@@ -3838,11 +4472,16 @@ function isOptionEffectPlayable(
       return (
         context === "map" &&
         Boolean(state.adventure) &&
-        capturableEnemyMinesWithin(state, playerId, effect.withinFields).length > 0
+        capturableEnemyMinesWithin(state, playerId, effect.withinFields)
+          .length > 0
       );
     case "DIPLOMACY_RECRUIT":
       // Diplomacy's Map side only does something with at least one Dwelling.
-      return context === "map" && Boolean(state.adventure) && unlockedRecruitTiers(state, playerId).size > 0;
+      return (
+        context === "map" &&
+        Boolean(state.adventure) &&
+        unlockedRecruitTiers(state, playerId).size > 0
+      );
     case "VISIONS_SCRY":
       // Visions scrys a Neutral Unit deck — only useful when at least one tier
       // deck still holds cards.
@@ -3851,7 +4490,9 @@ function isOptionEffectPlayable(
         Boolean(state.adventure) &&
         (["bronze", "silver", "gold", "azure"] as const).some((tier) => {
           const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
-          return Boolean(deck) && deck.drawPile.length + deck.discardPile.length > 0;
+          return (
+            Boolean(deck) && deck.drawPile.length + deck.discardPile.length > 0
+          );
         })
       );
     case "CREATE_INITIATIVE_BUFF":
@@ -3901,7 +4542,11 @@ function isOptionEffectPlayable(
       return context === "combat" && Boolean(state.combat);
     case "GAIN_RUNES":
       // Kriv (Bulwark): bank Runes mid-combat — only a Bulwark caster benefits.
-      return context === "combat" && Boolean(state.combat) && state.players[playerId]?.factionId === "bulwark";
+      return (
+        context === "combat" &&
+        Boolean(state.combat) &&
+        state.players[playerId]?.factionId === "bulwark"
+      );
     case "GAIN_STARTING_RUNES":
       // Kriv (Bulwark): become Rune-Empowered on the MAP — only a Bulwark caster
       // benefits, and only while the starting-rune flag is below the cap (so the
@@ -3931,7 +4576,16 @@ function isOptionEffectPlayable(
       // synchronously either way). Useful while the deck OR its discard pile (which
       // reshuffles in mid-dig, like every other draw) still holds a card — an
       // emptied deck must never make the specialty unplayable.
-      if (context === "combat" ? !(state.combat && instantSideAllowedInCombat(excludeCardId ? cardLibrary[excludeCardId] : undefined)) : !state.adventure) {
+      if (
+        context === "combat"
+          ? !(
+              state.combat &&
+              instantSideAllowedInCombat(
+                excludeCardId ? cardLibrary[excludeCardId] : undefined,
+              )
+            )
+          : !state.adventure
+      ) {
         return false;
       }
       const player = state.players[playerId];
@@ -3967,7 +4621,16 @@ function isOptionEffectPlayable(
       // (instantSideAllowedInCombat — the reducer opens the own-deck pick with a
       // combat returnPhase). Useful whenever there is a card to reveal or a
       // discard pile to shuffle back.
-      if (context === "combat" ? !(state.combat && instantSideAllowedInCombat(excludeCardId ? cardLibrary[excludeCardId] : undefined)) : !state.adventure) {
+      if (
+        context === "combat"
+          ? !(
+              state.combat &&
+              instantSideAllowedInCombat(
+                excludeCardId ? cardLibrary[excludeCardId] : undefined,
+              )
+            )
+          : !state.adventure
+      ) {
         return false;
       }
       const player = state.players[playerId];
@@ -3980,12 +4643,28 @@ function isOptionEffectPlayable(
       // a combat returnPhase). Useful while any Artifact deck (the Legacy deck, or
       // a BINH Minor/Major/Relic deck) still holds a card in its draw pile OR its
       // discard pile — an emptied draw pile reshuffles its discard back in.
-      if (context === "combat" ? !(state.combat && instantSideAllowedInCombat(excludeCardId ? cardLibrary[excludeCardId] : undefined)) : !state.adventure) {
+      if (
+        context === "combat"
+          ? !(
+              state.combat &&
+              instantSideAllowedInCombat(
+                excludeCardId ? cardLibrary[excludeCardId] : undefined,
+              )
+            )
+          : !state.adventure
+      ) {
         return false;
       }
-      return ["artifacts", "artifacts-minor", "artifacts-major", "artifacts-relic"].some(
+      return [
+        "artifacts",
+        "artifacts-minor",
+        "artifacts-major",
+        "artifacts-relic",
+      ].some(
         (deckId) =>
-          (state.decks[deckId]?.drawPile.length ?? 0) + (state.decks[deckId]?.discardPile.length ?? 0) > 0
+          (state.decks[deckId]?.drawPile.length ?? 0) +
+            (state.decks[deckId]?.discardPile.length ?? 0) >
+          0,
       );
     }
     case "PLACE_PARALYSIS":
@@ -4003,7 +4682,11 @@ function isOptionEffectPlayable(
     case "BLOCK_ENEMY_SURRENDER":
       // Shackles of War (house rule): only at the start of a player-vs-player
       // combat, where there is an enemy hero who could otherwise surrender.
-      return context === "combat" && state.combat?.context.kind === "player" && state.combat.round === 1;
+      return (
+        context === "combat" &&
+        state.combat?.context.kind === "player" &&
+        state.combat.round === 1
+      );
     case "BORROW_NEUTRAL_UNIT": {
       // Tarnum (Rampart) Sharpshooters VI: "Play at the start of Combat" — only on
       // combat round 1, and only while the unit is still available to borrow from
@@ -4025,7 +4708,9 @@ function isOptionEffectPlayable(
         state.activeEffects.some(
           (active) =>
             active.controllerId === playerId &&
-            active.modifiers.some((modifier) => modifier.type === "HEAL_ONCE_PER_COMBAT_ROUND")
+            active.modifiers.some(
+              (modifier) => modifier.type === "HEAL_ONCE_PER_COMBAT_ROUND",
+            ),
         )
       );
     case "CONVERT_ARMY_UNIT": {
@@ -4042,15 +4727,23 @@ function isOptionEffectPlayable(
       // from-unit requirement only applies when fromUnitDefId is set.
       const hasFrom = effect.fromUnitDefId
         ? player.army.some(
-            (unit) => unit.unitDefId === effect.fromUnitDefId && unit.side === effect.fromSide
+            (unit) =>
+              unit.unitDefId === effect.fromUnitDefId &&
+              unit.side === effect.fromSide,
           )
         : true;
-      const canPayGold = !effect.goldCost || player.resources.gold >= effect.goldCost;
+      const canPayGold =
+        !effect.goldCost || player.resources.gold >= effect.goldCost;
       const blockedByUnique =
-        Boolean(effect.unique) && player.army.some((unit) => unit.unitDefId === effect.toUnitDefId);
+        Boolean(effect.unique) &&
+        player.army.some((unit) => unit.unitDefId === effect.toUnitDefId);
       // SHARED neutralDeckHas — hosted-client-safe (masked draw piles), so the
       // fetch half is no longer hidden in every single-player / closed game.
-      const deckHasTarget = neutralDeckHas(state, effect.toTier, effect.toUnitDefId);
+      const deckHasTarget = neutralDeckHas(
+        state,
+        effect.toTier,
+        effect.toUnitDefId,
+      );
       return hasFrom && canPayGold && !blockedByUnique && deckHasTarget;
     }
     case "SIEGE_DEMOLISH": {
@@ -4071,11 +4764,17 @@ function isOptionEffectPlayable(
       if (context !== "map" || !state.adventure) {
         return false;
       }
-      if (!(state.adventure.warMachineSupply ?? []).includes(effect.warMachineCardId)) {
+      if (
+        !(state.adventure.warMachineSupply ?? []).includes(
+          effect.warMachineCardId,
+        )
+      ) {
         return false;
       }
       const buyer = state.players[playerId];
-      return !effect.goldCost || (buyer?.resources.gold ?? 0) >= effect.goldCost;
+      return (
+        !effect.goldCost || (buyer?.resources.gold ?? 0) >= effect.goldCost
+      );
     }
     case "BALLISTA_SPECIALTY":
       // Torosar's current-game-round grants may be banked on the map before a
@@ -4106,7 +4805,8 @@ function isOptionEffectPlayable(
         context === "combat" &&
         Boolean(state.combat) &&
         state.activeEffects.some(
-          (active) => active.target?.type === "unit" && active.removable !== false
+          (active) =>
+            active.target?.type === "unit" && active.removable !== false,
         )
       );
     default:
@@ -4163,7 +4863,7 @@ function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
 /** Highest grade unlocked by the paid power (mirrors the reducer's gate). */
 function gradeAtPower(
   gradeByPower: Record<number, CombatUnitState["grade"]>,
-  power: number
+  power: number,
 ): CombatUnitState["grade"] | null {
   const thresholds = Object.keys(gradeByPower)
     .map(Number)
@@ -4193,7 +4893,7 @@ function addOptionPlays(
   filter?: (option: CardOptionDefinition) => boolean,
   // Spell Book (house rule): when true the card is an "OR" Map Spell played from
   // the Book, so every PLAY_CARD offer here carries `fromSpellBook`.
-  fromSpellBook?: boolean
+  fromSpellBook?: boolean,
 ): void {
   if (card.effect.type !== "CHOOSE_ONE") {
     return;
@@ -4205,7 +4905,11 @@ function addOptionPlays(
   }
 
   // Spell "OR" cards (Prayer) still respect the combat spell limit.
-  if (card.kind === "spell" && state.combat && player.combatStats.spellsCastThisRound >= spellLimitFor(state, player)) {
+  if (
+    card.kind === "spell" &&
+    state.combat &&
+    player.combatStats.spellsCastThisRound >= spellLimitFor(state, player)
+  ) {
     return;
   }
 
@@ -4218,7 +4922,7 @@ function addOptionPlays(
     const anyPlayable = card.effect.options.some(
       (option) =>
         isOptionEffectPlayable(state, playerId, option.effect, "map", cardId) &&
-        canAffordCardCost(state, playerId, cardId, option.cost)
+        canAffordCardCost(state, playerId, cardId, option.cost),
     );
     if (!anyPlayable) {
       return;
@@ -4236,10 +4940,10 @@ function addOptionPlays(
               fromSpellBook: true as const,
               ...(polishSpellBookEnabled(state)
                 ? { castEnablerCardId: CAST_A_SPELL_CARD_ID }
-                : {})
+                : {}),
             }
-          : {})
-      }
+          : {}),
+      },
     });
     return;
   }
@@ -4271,7 +4975,10 @@ function addOptionPlays(
     if (option.combatOnly && context !== "combat") {
       continue;
     }
-    if (option.combatStartOnly && (!state.combat || !combatStartWindowOpen(state.combat))) {
+    if (
+      option.combatStartOnly &&
+      (!state.combat || !combatStartWindowOpen(state.combat))
+    ) {
       continue;
     }
     // Shackles of War's "block the enemy's Surrender" side is never played from
@@ -4294,7 +5001,10 @@ function addOptionPlays(
       continue;
     }
     // Mystic Orb of Mana's "draw 2" option is offered only on an empty discard.
-    if (option.requiresEmptyDiscard && (state.players[playerId]?.discard.length ?? 0) > 0) {
+    if (
+      option.requiresEmptyDiscard &&
+      (state.players[playerId]?.discard.length ?? 0) > 0
+    ) {
       continue;
     }
     // Crown of the Five Seas' sea side: only while this player's main Hero is on
@@ -4315,23 +5025,34 @@ function addOptionPlays(
     }
     // Jeremy's Cannon IV/VI "use the Cannon" side: only while the player has the
     // war-machine card in play (the same gate as Torosar's "if you have one").
-    if (option.requiresWarMachine && !getPermanentCardIds(state, playerId).includes(option.requiresWarMachine)) {
+    if (
+      option.requiresWarMachine &&
+      !getPermanentCardIds(state, playerId).includes(option.requiresWarMachine)
+    ) {
       continue;
     }
     // House-rule-gated option (Ballistics' Expert bombard, Pathfinding's Expert
     // coastline/layer crossing): offered only while the named rule is ON. Dropped
     // from the offer when off — and, since seat actions are validated against this
     // offer, rejected at play too.
-    if (option.requiresHouseRule && !houseRuleEnabled(state, option.requiresHouseRule)) {
+    if (
+      option.requiresHouseRule &&
+      !houseRuleEnabled(state, option.requiresHouseRule)
+    ) {
       continue;
     }
     // The inverse gate (Polish Balance Pack): a CLASSIC side the reprinted card
     // replaces is dropped while the rule is ON, so only the reprint's own sides
     // are on the table. Same offer-validated legality, so it is rejected at play.
-    if (option.forbidsHouseRule && houseRuleEnabled(state, option.forbidsHouseRule)) {
+    if (
+      option.forbidsHouseRule &&
+      houseRuleEnabled(state, option.forbidsHouseRule)
+    ) {
       continue;
     }
-    if (!isOptionEffectPlayable(state, playerId, option.effect, context, cardId)) {
+    if (
+      !isOptionEffectPlayable(state, playerId, option.effect, context, cardId)
+    ) {
       continue;
     }
     // Legion artifacts' discount side: hide it unless there is a unit to spend it
@@ -4361,7 +5082,7 @@ function addOptionPlays(
         playerId,
         option.effect.tier,
         option.effect.goldDiscount,
-        option.effect.valuablesDiscount ?? 0
+        option.effect.valuablesDiscount ?? 0,
       ).length === 0
     ) {
       continue;
@@ -4377,7 +5098,8 @@ function addOptionPlays(
     // side under the buff, but the printed/wiki Expert side without it.
     const expertOnly =
       option.expertOnly ||
-      (option.expertUnlessHouseRule !== undefined && !houseRuleEnabled(state, option.expertUnlessHouseRule));
+      (option.expertUnlessHouseRule !== undefined &&
+        !houseRuleEnabled(state, option.expertUnlessHouseRule));
     const modes: CardPlayMode[] = expertOnly
       ? expertOk
         ? ["expert"]
@@ -4399,17 +5121,21 @@ function addOptionPlays(
     ) {
       const adjacentPicks = option.effect.adjacentPicks;
       targets = targets.filter((target) =>
-        targetHasAdjacentUnits(state, target, adjacentPicks)
+        targetHasAdjacentUnits(state, target, adjacentPicks),
       );
     }
 
     // Some options only land on a named unit (Moandor's elemental grant reads
     // "your Liches unit").
     const restrictName =
-      option.effect.type === "GRANT_ELEMENTAL_DAMAGE" ? option.effect.targetUnitName : undefined;
+      option.effect.type === "GRANT_ELEMENTAL_DAMAGE"
+        ? option.effect.targetUnitName
+        : undefined;
     if (restrictName) {
       targets = targets.filter(
-        (candidate) => candidate.type === "unit" && state.combat?.units[candidate.unitId]?.name === restrictName
+        (candidate) =>
+          candidate.type === "unit" &&
+          state.combat?.units[candidate.unitId]?.name === restrictName,
       );
     }
 
@@ -4420,7 +5146,10 @@ function addOptionPlays(
     // Zilare's Forgetfulness specialty shares the same grade gate: its option
     // unlocks a fixed top grade (I -> silver, IV/VI -> gold), so units above it
     // are never offered rather than offering a no-op.
-    if (option.effect.type === "PLACE_PARALYSIS" || option.effect.type === "FORGETFULNESS") {
+    if (
+      option.effect.type === "PLACE_PARALYSIS" ||
+      option.effect.type === "FORGETFULNESS"
+    ) {
       const gradeByPower = option.effect.gradeByPower;
       targets = targets.filter((candidate) => {
         if (candidate.type !== "unit") {
@@ -4431,7 +5160,9 @@ function addOptionPlays(
           return false;
         }
         const maxGrade = gradeAtPower(gradeByPower, card.power ?? 0);
-        return maxGrade !== null && gradeRankOfUnit(unit) <= gradeRank(maxGrade);
+        return (
+          maxGrade !== null && gradeRankOfUnit(unit) <= gradeRank(maxGrade)
+        );
       });
     }
     // Necklace of Swiftness's "Move one of your units 1 space": only offer a
@@ -4460,7 +5191,12 @@ function addOptionPlays(
           return false;
         }
         const unit = combat.units[candidate.unitId];
-        return Boolean(unit) && getOrthogonalNeighbors(unit!.position).some((position) => !blocked.has(position));
+        return (
+          Boolean(unit) &&
+          getOrthogonalNeighbors(unit!.position).some(
+            (position) => !blocked.has(position),
+          )
+        );
       });
     }
     // The option-level twin of the card-level relocation filter in
@@ -4476,8 +5212,8 @@ function addOptionPlays(
             (active) =>
               active.target?.type === "unit" &&
               active.target.unitId === candidate.unitId &&
-              active.removable !== false
-          )
+              active.removable !== false,
+          ),
       );
     }
     if (targets.length === 0) {
@@ -4486,7 +5222,8 @@ function addOptionPlays(
 
     for (const mode of modes) {
       for (const target of targets) {
-        const modeLabel = mode === "expert" && !option.expertOnly ? " (expert)" : "";
+        const modeLabel =
+          mode === "expert" && !option.expertOnly ? " (expert)" : "";
         actions.push({
           label: `${card.name}: ${option.label}${modeLabel}${
             fromSpellBook ? " (Spell Book)" : ""
@@ -4498,8 +5235,8 @@ function addOptionPlays(
             mode,
             optionIndex,
             target,
-            ...(fromSpellBook ? { fromSpellBook: true } : {})
-          }
+            ...(fromSpellBook ? { fromSpellBook: true } : {}),
+          },
         });
       }
     }
@@ -4553,7 +5290,10 @@ function effectSupportsExpertOption(effect: ConcreteEffect): boolean {
  * (playCard's target-less draw-rider branch) so they cannot disagree.
  */
 export function healDrawOnlyRider(effect: EffectDefinition): number {
-  if (effect.type === "HEAL_DAMAGE" || effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS") {
+  if (
+    effect.type === "HEAL_DAMAGE" ||
+    effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS"
+  ) {
     return effect.drawCards ?? 0;
   }
   return 0;
@@ -4588,7 +5328,10 @@ export function drawRiderThenDiscard(effect: EffectDefinition): number {
 }
 
 /** Unconditional card-draw rider that remains useful when an Instant's primary effect cannot apply. */
-export function instantDrawOnlyRider(effect: EffectDefinition, mode: CardPlayMode = "basic"): number {
+export function instantDrawOnlyRider(
+  effect: EffectDefinition,
+  mode: CardPlayMode = "basic",
+): number {
   switch (effect.type) {
     case "DRAW_CARDS":
       return getEffectAmount(effect, mode);
@@ -4648,13 +5391,22 @@ function isInstantReactionUtility(effect: ConcreteEffect): boolean {
 }
 
 /** Effects that do something useful when played on the adventure map. */
-function isMapPlayableEffect(state: GameState, playerId: PlayerId, card: CardDefinition, effect: ConcreteEffect): boolean {
+function isMapPlayableEffect(
+  state: GameState,
+  playerId: PlayerId,
+  card: CardDefinition,
+  effect: ConcreteEffect,
+): boolean {
   if (effect.type === "MGQ_MAD_SCIENCE") {
     const army = state.players[playerId]?.army ?? [];
     const hasBronzeFew = army.some(
-      (unit) => unit.side === "few" && coreUnitDefinitions[unit.unitDefId]?.tier === "bronze"
+      (unit) =>
+        unit.side === "few" &&
+        coreUnitDefinitions[unit.unitDefId]?.tier === "bronze",
     );
-    const hasSilver = army.some((unit) => coreUnitDefinitions[unit.unitDefId]?.tier === "silver");
+    const hasSilver = army.some(
+      (unit) => coreUnitDefinitions[unit.unitDefId]?.tier === "silver",
+    );
     return Boolean(state.adventure && hasBronzeFew && hasSilver);
   }
   if (card.timing === "map") {
@@ -4668,7 +5420,10 @@ function isMapPlayableEffect(state: GameState, playerId: PlayerId, card: CardDef
   // Offense/Armorer (ADD_COMBAT_STAT) and Sorcery (ADD_SPELL_POWER) carry a
   // "then draw a card" rider: "may be played outside Combat just for the draw."
   // On the map the stat/Power has nothing to apply to and fizzles; the draw runs.
-  if ((effect.type === "ADD_COMBAT_STAT" || effect.type === "ADD_SPELL_POWER") && effect.drawCards) {
+  if (
+    (effect.type === "ADD_COMBAT_STAT" || effect.type === "ADD_SPELL_POWER") &&
+    effect.drawCards
+  ) {
     return true;
   }
 
@@ -4692,7 +5447,10 @@ function isMapPlayableEffect(state: GameState, playerId: PlayerId, card: CardDef
     return true;
   }
 
-  if (isOptionEffectPlayable(state, playerId, effect, "map") && effect.type !== "CREATE_ACTIVE_EFFECT") {
+  if (
+    isOptionEffectPlayable(state, playerId, effect, "map") &&
+    effect.type !== "CREATE_ACTIVE_EFFECT"
+  ) {
     return true;
   }
 
@@ -4711,7 +5469,7 @@ function isMapPlayableEffect(state: GameState, playerId: PlayerId, card: CardDef
         modifier.type === "SEARCH_COUNT_OVERRIDE" ||
         modifier.type === "SPELL_SCHOOL_FETCH" ||
         modifier.type === "END_TURN_ADJACENT_MOVE" ||
-        modifier.type === "HERO_MOVE_THROUGH"
+        modifier.type === "HERO_MOVE_THROUGH",
     )
   );
 }
@@ -4734,13 +5492,16 @@ function addTurnCardActions(
   // the player is a participant still in prep; the live combat / active-player
   // gates below are relaxed for it, and map-MOVEMENT Spells (Town Portal) are
   // dropped since teleporting the hero out would break the pending battle.
-  context: "map" | "combat-prep" | "post-combat" = "map"
+  context: "map" | "combat-prep" | "post-combat" = "map",
 ): void {
   const player = state.players[playerId];
   if (!player || state.pendingChoice || state.reactionWindow) {
     return;
   }
-  if (context === "map" && (state.combat || !hasOpenAdventureTurn(state, playerId))) {
+  if (
+    context === "map" &&
+    (state.combat || !hasOpenAdventureTurn(state, playerId))
+  ) {
     return;
   }
   // Parallel turns: card plays can open choices/windows of their own, so they
@@ -4756,8 +5517,11 @@ function addTurnCardActions(
   const turnCardSources: { cardId: CardId; fromSpellBook?: true }[] = [
     ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
     ...(context !== "post-combat" && bookCastSourcesEnabled(state)
-      ? [...new Set(player.spellBook ?? [])].map((cardId) => ({ cardId, fromSpellBook: true as const }))
-      : [])
+      ? [...new Set(player.spellBook ?? [])].map((cardId) => ({
+          cardId,
+          fromSpellBook: true as const,
+        }))
+      : []),
   ];
 
   for (const { cardId, fromSpellBook } of turnCardSources) {
@@ -4765,7 +5529,10 @@ function addTurnCardActions(
     if (!card || card.implementationStatus !== "implemented") {
       continue;
     }
-    if (card.kind === "spell" && spellEffectIsAlreadyOngoing(state, playerId, cardId)) {
+    if (
+      card.kind === "spell" &&
+      spellEffectIsAlreadyOngoing(state, playerId, cardId)
+    ) {
       continue;
     }
 
@@ -4775,7 +5542,11 @@ function addTurnCardActions(
     // so the generic pass below skips it; the draw play is added here. With the
     // rule OFF Learning is never a hand play (classic = the level-up window only).
     if (card.effect.type === "ADVANCE_EXPERIENCE") {
-      if (!fromSpellBook && cardId === "ability.learning" && houseRuleEnabled(state, "polish-card-balance")) {
+      if (
+        !fromSpellBook &&
+        cardId === "ability.learning" &&
+        houseRuleEnabled(state, "polish-card-balance")
+      ) {
         actions.push({
           label: `Play ${card.name} (draw 1 card)`,
           action: {
@@ -4784,26 +5555,35 @@ function addTurnCardActions(
             cardId,
             mode: "basic",
             drawOnly: true,
-            target: { type: "none" }
-          }
+            target: { type: "none" },
+          },
         });
       }
       continue;
     }
 
-    if (context === "map" && !fromSpellBook && canUseAstrologersHeroEmpower(state, playerId, cardId)) {
+    if (
+      context === "map" &&
+      !fromSpellBook &&
+      canUseAstrologersHeroEmpower(state, playerId, cardId)
+    ) {
       const effect = getActiveAstrologersCard(state)?.effect;
-      const costGold = effect?.type === "PAID_EMPOWER_PER_TURN" ? effect.costGold : 4;
+      const costGold =
+        effect?.type === "PAID_EMPOWER_PER_TURN" ? effect.costGold : 4;
       actions.push({
         label: `Hero: pay ${costGold} gold to Empower ${card.name}`,
-        action: { type: "ASTROLOGERS_HERO_EMPOWER", playerId, cardId }
+        action: { type: "ASTROLOGERS_HERO_EMPOWER", playerId, cardId },
       });
     }
 
     // PvP prep: a map-movement Spell (Town Portal et al.) would relocate the hero
     // out of the pending fight, so it is never offered in the prep window. Every
     // other card a map turn allows (permanents, instants, Sandro's Cloak …) is.
-    if (context === "combat-prep" && card.kind === "spell" && card.timing === "map") {
+    if (
+      context === "combat-prep" &&
+      card.kind === "spell" &&
+      card.timing === "map"
+    ) {
       continue;
     }
 
@@ -4816,7 +5596,13 @@ function addTurnCardActions(
     if (card.permanent && card.effect.type !== "CHOOSE_ONE") {
       actions.push({
         label: `Put ${card.name} into play`,
-        action: { type: "PLAY_CARD", playerId, cardId, mode: "basic", target: { type: "none" } }
+        action: {
+          type: "PLAY_CARD",
+          playerId,
+          cardId,
+          mode: "basic",
+          target: { type: "none" },
+        },
       });
       continue;
     }
@@ -4827,7 +5613,8 @@ function addTurnCardActions(
     // card draw: with no attack/spell to apply it to the stat/Power fizzles, but
     // the draw rider still resolves (see the matching reducer handler).
     const drawOnly =
-      (card.effect.type === "ADD_COMBAT_STAT" || card.effect.type === "ADD_SPELL_POWER") &&
+      (card.effect.type === "ADD_COMBAT_STAT" ||
+        card.effect.type === "ADD_SPELL_POWER") &&
       Boolean(card.effect.drawCards);
     if (card.trigger && !drawOnly) {
       continue;
@@ -4838,13 +5625,18 @@ function addTurnCardActions(
     // rerolls — same gate isMapPlayableEffect applies to non-spell cards).
     if (card.kind === "spell" && card.timing !== "map") {
       const mapUsable =
-        card.effect.type !== "CHOOSE_ONE" && isMapPlayableEffect(state, playerId, card, card.effect);
+        card.effect.type !== "CHOOSE_ONE" &&
+        isMapPlayableEffect(state, playerId, card, card.effect);
       if (!mapUsable) {
         continue;
       }
     }
 
-    if (card.timing !== "instant" && card.timing !== "ongoing" && card.timing !== "map") {
+    if (
+      card.timing !== "instant" &&
+      card.timing !== "ongoing" &&
+      card.timing !== "map"
+    ) {
       continue;
     }
 
@@ -4860,7 +5652,13 @@ function addTurnCardActions(
       if (healDraw > 0) {
         actions.push({
           label: `Play ${card.name} (draw ${healDraw}, no unit to heal)`,
-          action: { type: "PLAY_CARD", playerId, cardId, mode: "basic", target: { type: "none" } }
+          action: {
+            type: "PLAY_CARD",
+            playerId,
+            cardId,
+            mode: "basic",
+            target: { type: "none" },
+          },
         });
         continue;
       }
@@ -4910,8 +5708,8 @@ function addTurnCardActions(
               mode: "basic",
               optionIndex,
               drawOnly: true,
-              target: { type: "none" }
-            }
+              target: { type: "none" },
+            },
           });
         }
       }
@@ -4922,7 +5720,10 @@ function addTurnCardActions(
       // Helmet, and future cards discovered by the invariant test).
       if (!fromSpellBook && card.timing === "instant") {
         for (const [optionIndex, option] of card.effect.options.entries()) {
-          if (option.effect.type !== "DRAW_CARDS" && option.effect.type !== "TAKE_FROM_DISCARD") {
+          if (
+            option.effect.type !== "DRAW_CARDS" &&
+            option.effect.type !== "TAKE_FROM_DISCARD"
+          ) {
             continue;
           }
           if (option.requiresEmptyDiscard && player.discard.length > 0) {
@@ -4936,7 +5737,13 @@ function addTurnCardActions(
           }
           if (
             !canAffordCardCost(state, playerId, cardId, option.cost) ||
-            !isOptionEffectPlayable(state, playerId, option.effect, "map", cardId)
+            !isOptionEffectPlayable(
+              state,
+              playerId,
+              option.effect,
+              "map",
+              cardId,
+            )
           ) {
             continue;
           }
@@ -4953,8 +5760,8 @@ function addTurnCardActions(
               cardId,
               mode: option.expertOnly ? "expert" : "basic",
               optionIndex,
-              target: { type: "none" }
-            }
+              target: { type: "none" },
+            },
           });
         }
       }
@@ -4968,12 +5775,22 @@ function addTurnCardActions(
       if (!fromSpellBook) {
         for (const [optionIndex, option] of card.effect.options.entries()) {
           const healDraw = healDrawOnlyRider(option.effect);
-          if (healDraw <= 0 || !canAffordCardCost(state, playerId, cardId, option.cost)) {
+          if (
+            healDraw <= 0 ||
+            !canAffordCardCost(state, playerId, cardId, option.cost)
+          ) {
             continue;
           }
           actions.push({
             label: `${card.name}: ${option.label} (draw ${healDraw}, no unit to heal)`,
-            action: { type: "PLAY_CARD", playerId, cardId, mode: "basic", optionIndex, target: { type: "none" } }
+            action: {
+              type: "PLAY_CARD",
+              playerId,
+              cardId,
+              mode: "basic",
+              optionIndex,
+              target: { type: "none" },
+            },
           });
         }
       }
@@ -4990,7 +5807,8 @@ function addTurnCardActions(
         for (const [optionIndex, option] of card.effect.options.entries()) {
           if (
             !option.trigger ||
-            (option.effect.type !== "ADD_COMBAT_STAT" && option.effect.type !== "ADD_SPELL_POWER") ||
+            (option.effect.type !== "ADD_COMBAT_STAT" &&
+              option.effect.type !== "ADD_SPELL_POWER") ||
             !option.effect.drawCards ||
             !canAffordCardCost(state, playerId, cardId, option.cost)
           ) {
@@ -4998,13 +5816,32 @@ function addTurnCardActions(
           }
           actions.push({
             label: `${card.name}: ${option.label} (draw only${
-              option.effect.type === "ADD_SPELL_POWER" ? ", next Spell +Power" : ""
+              option.effect.type === "ADD_SPELL_POWER"
+                ? ", next Spell +Power"
+                : ""
             })`,
-            action: { type: "PLAY_CARD", playerId, cardId, mode: "basic", optionIndex, target: { type: "none" } }
+            action: {
+              type: "PLAY_CARD",
+              playerId,
+              cardId,
+              mode: "basic",
+              optionIndex,
+              target: { type: "none" },
+            },
           });
         }
       }
-      addOptionPlays(actions, state, playerId, card, cardId, "map", cards, undefined, fromSpellBook);
+      addOptionPlays(
+        actions,
+        state,
+        playerId,
+        card,
+        cardId,
+        "map",
+        cards,
+        undefined,
+        fromSpellBook,
+      );
       continue;
     }
 
@@ -5025,7 +5862,12 @@ function addTurnCardActions(
         if (
           def &&
           armyUnit.side !== "bank" &&
-          canPlaceTransformOn(def.name, armyUnit.side, armyUnit.transforms, effectDef)
+          canPlaceTransformOn(
+            def.name,
+            armyUnit.side,
+            armyUnit.transforms,
+            effectDef,
+          )
         ) {
           actions.push({
             label: `Place ${card.name} on ${def.name}`,
@@ -5035,8 +5877,8 @@ function addTurnCardActions(
               cardId,
               mode: "basic",
               target: { type: "none" },
-              armyUnitId: armyUnit.id
-            }
+              armyUnitId: armyUnit.id,
+            },
           });
         }
       }
@@ -5054,7 +5896,10 @@ function addTurnCardActions(
     const modes: CardPlayMode[] =
       effectSupportsExpertOption(effect) &&
       canPlayExpertMode(player, cardId) &&
-      !(effect.type === "EAGLE_EYE_DIG" && houseRuleEnabled(state, "polish-card-balance"))
+      !(
+        effect.type === "EAGLE_EYE_DIG" &&
+        houseRuleEnabled(state, "polish-card-balance")
+      )
         ? ["basic", "expert"]
         : ["basic"];
     for (const mode of modes) {
@@ -5066,8 +5911,8 @@ function addTurnCardActions(
           cardId,
           mode,
           target: { type: "none" },
-          ...(fromSpellBook ? { fromSpellBook: true } : {})
-        }
+          ...(fromSpellBook ? { fromSpellBook: true } : {}),
+        },
       });
     }
   }
@@ -5091,7 +5936,7 @@ function formatResourceCost(cost: ResourceCost): string {
 function addBankedReinforcementActions(
   actions: LegalAction[],
   state: GameState,
-  playerId: PlayerId
+  playerId: PlayerId,
 ): void {
   const player = state.players[playerId];
   const resolvingNecromancy =
@@ -5107,8 +5952,17 @@ function addBankedReinforcementActions(
   for (const discount of player.reinforcementDiscounts ?? []) {
     for (const unit of player.army) {
       const name = coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId;
-      const reinforceCost = reinforcementDiscountCostFor(state, playerId, discount.id, unit.id, "reinforce");
-      if (reinforceCost && hasRecruitResources(state, playerId, reinforceCost)) {
+      const reinforceCost = reinforcementDiscountCostFor(
+        state,
+        playerId,
+        discount.id,
+        unit.id,
+        "reinforce",
+      );
+      if (
+        reinforceCost &&
+        hasRecruitResources(state, playerId, reinforceCost)
+      ) {
         actions.push({
           label: `${discount.sourceName}: reinforce ${name} (${formatResourceCost(reinforceCost)})`,
           action: {
@@ -5116,12 +5970,18 @@ function addBankedReinforcementActions(
             playerId,
             discountId: discount.id,
             armyUnitId: unit.id,
-            kind: "reinforce"
-          }
+            kind: "reinforce",
+          },
         });
       }
 
-      const stackCost = reinforcementDiscountCostFor(state, playerId, discount.id, unit.id, "stack");
+      const stackCost = reinforcementDiscountCostFor(
+        state,
+        playerId,
+        discount.id,
+        unit.id,
+        "stack",
+      );
       if (stackCost && hasRecruitResources(state, playerId, stackCost)) {
         actions.push({
           label: `${discount.sourceName}: increase ${name} stack (${formatResourceCost(stackCost)})`,
@@ -5130,8 +5990,8 @@ function addBankedReinforcementActions(
             playerId,
             discountId: discount.id,
             armyUnitId: unit.id,
-            kind: "stack"
-          }
+            kind: "stack",
+          },
         });
       }
     }
@@ -5144,12 +6004,23 @@ function addBankedReinforcementActions(
  * Offered only outside combat / reaction windows / pending choices — the same
  * "your map turn" gate addTurnCardActions uses.
  */
-function addSpellBookStashActions(actions: LegalAction[], state: GameState, playerId: PlayerId, cards: CardLibrary): void {
+function addSpellBookStashActions(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+  cards: CardLibrary,
+): void {
   if (!spellBookRuleEnabled(state)) {
     return;
   }
   const player = state.players[playerId];
-  if (!player || state.combat || !hasOpenAdventureTurn(state, playerId) || state.pendingChoice || state.reactionWindow) {
+  if (
+    !player ||
+    state.combat ||
+    !hasOpenAdventureTurn(state, playerId) ||
+    state.pendingChoice ||
+    state.reactionWindow
+  ) {
     return;
   }
   // Over the hand limit at the start of the turn, the forced discard
@@ -5166,7 +6037,7 @@ function addSpellBookStashActions(actions: LegalAction[], state: GameState, play
     if (card?.kind === "spell" && spellCanEnterSpellBook(cardId)) {
       actions.push({
         label: `Move ${card.name} to your Spell Book`,
-        action: { type: "MOVE_SPELL_TO_SPELL_BOOK", playerId, cardId }
+        action: { type: "MOVE_SPELL_TO_SPELL_BOOK", playerId, cardId },
       });
     }
   }
@@ -5186,7 +6057,11 @@ function addSpellBookStashActions(actions: LegalAction[], state: GameState, play
  *    has at least one unspent stat point;
  *  - REVIVE_COMMANDER: pay 2 + 2x hero level gold to bring a dead commander back.
  */
-function addCommanderMapActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+function addCommanderMapActions(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+): void {
   const player = state.players[playerId];
   const commander = player?.commander;
   if (!player || !commander || state.combat) {
@@ -5203,8 +6078,8 @@ function addCommanderMapActions(actions: LegalAction[], state: GameState, player
         action: {
           type: "COMMANDER_GRADE_UP",
           playerId,
-          stat
-        }
+          stat,
+        },
       });
     }
   }
@@ -5215,7 +6090,7 @@ function addCommanderMapActions(actions: LegalAction[], state: GameState, player
     if ((player.resources.gold ?? 0) >= cost) {
       actions.push({
         label: `Revive the commander (${cost} gold)`,
-        action: { type: "REVIVE_COMMANDER", playerId }
+        action: { type: "REVIVE_COMMANDER", playerId },
       });
     }
   }
@@ -5223,30 +6098,75 @@ function addCommanderMapActions(actions: LegalAction[], state: GameState, player
   if (commander.slug === "sonya") {
     for (const armyUnit of player.army) {
       if (armyUnit.id === commander.bondedArmyUnitId) continue;
-      const unitName = coreUnitDefinitions[armyUnit.unitDefId]?.name ?? armyUnit.unitDefId;
+      const unitName =
+        coreUnitDefinitions[armyUnit.unitDefId]?.name ?? armyUnit.unitDefId;
       actions.push({
         label: `Unbreakable Bond: ${unitName}`,
-        action: { type: "COMMANDER_SET_BOND", playerId, armyUnitId: armyUnit.id }
+        action: {
+          type: "COMMANDER_SET_BOND",
+          playerId,
+          armyUnitId: armyUnit.id,
+        },
       });
     }
   }
 
-  // Two stable choices per grade. Grade I and the later shared Grade II/III
-  // purchase are independently once per game, and only empty slots are shown.
+  // Grade I/II keep two stable offers. Grade III unlocks later and is either
+  // one hidden seeded-random result at base cost or any specific result for +2.
   const addForgeTier = (tier: "minor" | "major" | "relic") => {
     const cost = COMMANDER_ARTIFACT_GOLD_COST[tier];
     if ((player.resources.gold ?? 0) < cost) return;
     for (const spec of commanderForgeCandidates(state, playerId, tier)) {
       actions.push({
         label: `Commander Forge: ${spec.name} (${cost} gold)`,
-        action: { type: "FORGE_COMMANDER_ARTIFACT", playerId, tier, cardId: spec.cardId }
+        action: {
+          type: "FORGE_COMMANDER_ARTIFACT",
+          playerId,
+          tier,
+          cardId: spec.cardId,
+        },
       });
     }
   };
   if (state.round >= 2 && !commander.forgeMinorUsed) addForgeTier("minor");
-  if (state.round >= 7 && !commander.forgeHighUsed) {
+  const legacyHighSpent = commander.forgeHighUsed === true;
+  if (state.round >= 7 && !legacyHighSpent && !commander.forgeMajorUsed) {
     addForgeTier("major");
-    addForgeTier("relic");
+  }
+  if (state.round >= 9 && !legacyHighSpent && !commander.forgeRelicUsed) {
+    const baseCost = COMMANDER_ARTIFACT_GOLD_COST.relic;
+    const random = commanderForgeCandidates(state, playerId, "relic")[0];
+    if (random && (player.resources.gold ?? 0) >= baseCost) {
+      actions.push({
+        label: `Commander Forge: random Grade III (${baseCost} gold)`,
+        action: {
+          type: "FORGE_COMMANDER_ARTIFACT",
+          playerId,
+          tier: "relic",
+          cardId: random.cardId,
+        },
+      });
+    }
+    const specificCost = baseCost + 2;
+    if ((player.resources.gold ?? 0) >= specificCost) {
+      for (const spec of availableCommanderArtifactSpecs(
+        state,
+        playerId,
+        "relic",
+        true,
+      )) {
+        actions.push({
+          label: `Commander Forge: choose ${spec.name} (${specificCost} gold)`,
+          action: {
+            type: "FORGE_COMMANDER_ARTIFACT",
+            playerId,
+            tier: "relic",
+            cardId: spec.cardId,
+            specific: true,
+          },
+        });
+      }
+    }
   }
 }
 
@@ -5259,7 +6179,12 @@ function getMainHeroOf(state: GameState, playerId: PlayerId): HeroState | null {
   return null;
 }
 
-function addNecromancyPlays(actions: LegalAction[], state: GameState, playerId: PlayerId, cards: CardLibrary): void {
+function addNecromancyPlays(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+  cards: CardLibrary,
+): void {
   const player = state.players[playerId];
   if (!player || player.factionId !== "necropolis") {
     return;
@@ -5282,14 +6207,23 @@ function addNecromancyPlays(actions: LegalAction[], state: GameState, playerId: 
     if (card.effect.forceMode) {
       actions.push({
         label: `Play ${card.name}`,
-        action: { type: "PLAY_CARD", playerId, cardId, mode: "basic", target: { type: "none" } }
+        action: {
+          type: "PLAY_CARD",
+          playerId,
+          cardId,
+          mode: "basic",
+          target: { type: "none" },
+        },
       });
     } else {
       // An EMPOWERED Necromancy plays its Expert side (any tier) for free, and
       // the basic side (bronze/silver only, same cost, same discard) is then a
       // strictly-worse trap button — so the choice collapses to Expert alone.
       // See EXPERT_SUPERSEDES_BASIC_CARD_IDS for why this is a per-card registry.
-      const modes: CardPlayMode[] = empoweredExpertSupersedesBasic(player, cardId)
+      const modes: CardPlayMode[] = empoweredExpertSupersedesBasic(
+        player,
+        cardId,
+      )
         ? ["expert"]
         : canPlayExpertMode(player, cardId)
           ? ["basic", "expert"]
@@ -5297,7 +6231,13 @@ function addNecromancyPlays(actions: LegalAction[], state: GameState, playerId: 
       for (const mode of modes) {
         actions.push({
           label: `Play ${card.name}${mode === "expert" ? " (expert)" : ""}`,
-          action: { type: "PLAY_CARD", playerId, cardId, mode, target: { type: "none" } }
+          action: {
+            type: "PLAY_CARD",
+            playerId,
+            cardId,
+            mode,
+            target: { type: "none" },
+          },
         });
       }
     }
@@ -5310,7 +6250,10 @@ function addNecromancyPlays(actions: LegalAction[], state: GameState, playerId: 
  * Legion pieces reduce the selected unit's price. Everything else remains
  * blocked until the player explicitly resolves the window.
  */
-function isNecromancySupportPlay(legal: LegalAction, cards: CardLibrary): boolean {
+function isNecromancySupportPlay(
+  legal: LegalAction,
+  cards: CardLibrary,
+): boolean {
   const action = legal.action;
   if (action.type !== "PLAY_CARD") {
     return false;
@@ -5333,7 +6276,10 @@ function isNecromancySupportPlay(legal: LegalAction, cards: CardLibrary): boolea
   return (gain.gold ?? 0) > 0;
 }
 
-function isSimultaneousTurnAvailable(state: GameState, playerId: PlayerId): boolean {
+function isSimultaneousTurnAvailable(
+  state: GameState,
+  playerId: PlayerId,
+): boolean {
   return (
     state.turn.mode === "simultaneous" &&
     state.round <= state.turn.simultaneousRoundLimit &&
@@ -5347,7 +6293,11 @@ function isSimultaneousTurnAvailable(state: GameState, playerId: PlayerId): bool
  * Rulebook voluntary removal: the owner may put an in-play permanent into
  * the discard pile at any open moment (no reaction window or choice pending).
  */
-function addPermanentDiscardActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+function addPermanentDiscardActions(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+): void {
   if (state.reactionWindow || state.pendingChoice || state.stack.length > 0) {
     return;
   }
@@ -5356,7 +6306,7 @@ function addPermanentDiscardActions(actions: LegalAction[], state: GameState, pl
     const name = cardLibrary[cardId]?.name ?? cardId;
     actions.push({
       label: `Discard ${name} from play`,
-      action: { type: "DISCARD_PERMANENT", playerId, cardId }
+      action: { type: "DISCARD_PERMANENT", playerId, cardId },
     });
 
     // Income permanents (Eversmoking Ring of Sulfur, Inexhaustible Cart of Ore)
@@ -5368,12 +6318,14 @@ function addPermanentDiscardActions(actions: LegalAction[], state: GameState, pl
     if (crackGain) {
       const parts = [
         crackGain.gold ? `${crackGain.gold} gold` : null,
-        crackGain.buildingMaterials ? `${crackGain.buildingMaterials} building materials` : null,
-        crackGain.valuables ? `${crackGain.valuables} valuables` : null
+        crackGain.buildingMaterials
+          ? `${crackGain.buildingMaterials} building materials`
+          : null,
+        crackGain.valuables ? `${crackGain.valuables} valuables` : null,
       ].filter((part): part is string => part !== null);
       actions.push({
         label: `Crack ${name} open: gain ${parts.join(", ")}`,
-        action: { type: "CRACK_PERMANENT", playerId, cardId }
+        action: { type: "CRACK_PERMANENT", playerId, cardId },
       });
     }
   }
@@ -5382,14 +6334,24 @@ function addPermanentDiscardActions(actions: LegalAction[], state: GameState, pl
     const name = cardLibrary[held.cardId]?.name ?? held.cardId;
     actions.push({
       label: `Discard ${name} from play`,
-      action: { type: "DISCARD_ONGOING_CARD", playerId, cardId: held.cardId }
+      action: { type: "DISCARD_ONGOING_CARD", playerId, cardId: held.cardId },
     });
   }
 }
 
-function addActiveEffectActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+function addActiveEffectActions(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+): void {
   const combat = state.combat;
-  if (!combat || state.phase !== "combat" || state.stack.length > 0 || state.reactionWindow || state.pendingChoice) {
+  if (
+    !combat ||
+    state.phase !== "combat" ||
+    state.stack.length > 0 ||
+    state.reactionWindow ||
+    state.pendingChoice
+  ) {
     return;
   }
   actions.push(...firstAidHealActions(state, playerId));
@@ -5404,7 +6366,10 @@ function addActiveEffectActions(actions: LegalAction[], state: GameState, player
  * (getLegalReactionsForTrigger), letting the owner mend a wound BEFORE the
  * incoming attack's damage is calculated.
  */
-export function firstAidHealActions(state: GameState, playerId: PlayerId): LegalAction[] {
+export function firstAidHealActions(
+  state: GameState,
+  playerId: PlayerId,
+): LegalAction[] {
   const combat = state.combat;
   if (!combat) {
     return [];
@@ -5416,7 +6381,9 @@ export function firstAidHealActions(state: GameState, playerId: PlayerId): Legal
       continue;
     }
 
-    const healModifier = effect.modifiers.find((modifier) => modifier.type === "HEAL_ONCE_PER_COMBAT_ROUND");
+    const healModifier = effect.modifiers.find(
+      (modifier) => modifier.type === "HEAL_ONCE_PER_COMBAT_ROUND",
+    );
     if (!healModifier || healModifier.type !== "HEAL_ONCE_PER_COMBAT_ROUND") {
       continue;
     }
@@ -5425,17 +6392,23 @@ export function firstAidHealActions(state: GameState, playerId: PlayerId): Legal
     // First Aid ability card with a free expert use — spend it (discarding the
     // card) to heal the same target several times this round. The volley size is
     // read from that card (firstAidVolleyHeals), mirroring Artillery/Ballista.
-    const usage = effect.healRound?.round === combat.round ? effect.healRound : undefined;
+    const usage =
+      effect.healRound?.round === combat.round ? effect.healRound : undefined;
     const expertMax = firstAidVolleyHeals();
     const canBasic = !usage;
-    const canExpertActivate = !usage && playerCanUseFirstAidVolley(state, playerId);
+    const canExpertActivate =
+      !usage && playerCanUseFirstAidVolley(state, playerId);
     const canExpertContinue = Boolean(usage?.expert && usage.count < expertMax);
     if (!canBasic && !canExpertActivate && !canExpertContinue) {
       continue;
     }
 
     for (const unit of Object.values(combat.units)) {
-      if (unit.controllerId !== playerId || !isUnitAlive(unit) || unit.damage <= 0) {
+      if (
+        unit.controllerId !== playerId ||
+        !isUnitAlive(unit) ||
+        unit.damage <= 0
+      ) {
         continue;
       }
       const target = { type: "unit" as const, unitId: unit.id };
@@ -5445,7 +6418,12 @@ export function firstAidHealActions(state: GameState, playerId: PlayerId): Legal
       if (canBasic) {
         out.push({
           label: `${effect.name} heal ${unit.name}`,
-          action: { type: "USE_ACTIVE_EFFECT", playerId, effectId: effect.id, target }
+          action: {
+            type: "USE_ACTIVE_EFFECT",
+            playerId,
+            effectId: effect.id,
+            target,
+          },
         });
       }
       if (canExpertActivate) {
@@ -5453,15 +6431,29 @@ export function firstAidHealActions(state: GameState, playerId: PlayerId): Legal
           label: houseRuleEnabled(state, "polish-card-balance")
             ? `First Aid ability: use First Aid Tent on ${unit.name} ${expertMax} times`
             : `${effect.name} expert: heal ${unit.name} (1/${expertMax}, spend 1 crown)`,
-          action: { type: "USE_ACTIVE_EFFECT", playerId, effectId: effect.id, target, mode: "expert" }
+          action: {
+            type: "USE_ACTIVE_EFFECT",
+            playerId,
+            effectId: effect.id,
+            target,
+            mode: "expert",
+          },
         });
       }
       // The expert volley resolves against the SAME target each time, so only
       // the unit pinned by the first expert heal is offered the continuation.
-      if (canExpertContinue && (!usage?.targetUnitId || usage.targetUnitId === unit.id)) {
+      if (
+        canExpertContinue &&
+        (!usage?.targetUnitId || usage.targetUnitId === unit.id)
+      ) {
         out.push({
           label: `${effect.name} heal ${unit.name} (${(usage?.count ?? 0) + 1}/${expertMax})`,
-          action: { type: "USE_ACTIVE_EFFECT", playerId, effectId: effect.id, target }
+          action: {
+            type: "USE_ACTIVE_EFFECT",
+            playerId,
+            effectId: effect.id,
+            target,
+          },
         });
       }
     }
@@ -5484,7 +6476,10 @@ const ARTILLERY_ABILITY_CARD_ID = "ability.artillery" as CardId;
  * rides the Tent's heal (USE_ACTIVE_EFFECT, mode "expert"), so only the basic
  * side (option 0) is offered here.
  */
-export function firstAidCardHealReactions(state: GameState, playerId: PlayerId): LegalAction[] {
+export function firstAidCardHealReactions(
+  state: GameState,
+  playerId: PlayerId,
+): LegalAction[] {
   const combat = state.combat;
   const player = state.players[playerId];
   if (!combat || !player || isHandLockedInCombat(state, playerId)) {
@@ -5500,7 +6495,11 @@ export function firstAidCardHealReactions(state: GameState, playerId: PlayerId):
 
   const out: LegalAction[] = [];
   for (const unit of Object.values(combat.units)) {
-    if (unit.controllerId !== playerId || !isUnitAlive(unit) || unit.damage <= 0) {
+    if (
+      unit.controllerId !== playerId ||
+      !isUnitAlive(unit) ||
+      unit.damage <= 0
+    ) {
       continue;
     }
     out.push(
@@ -5510,8 +6509,8 @@ export function firstAidCardHealReactions(state: GameState, playerId: PlayerId):
         cardId: FIRST_AID_ABILITY_CARD_ID,
         mode: "basic",
         optionIndex: 0,
-        target: { type: "unit", unitId: unit.id }
-      })
+        target: { type: "unit", unitId: unit.id },
+      }),
     );
   }
   return out;
@@ -5525,7 +6524,10 @@ export function firstAidCardHealReactions(state: GameState, playerId: PlayerId):
  * side (option 0) is a reaction; the expert side rides the war-machine Ballista.
  * Mirrors `firstAidCardHealReactions`.
  */
-export function artilleryCardReactions(state: GameState, playerId: PlayerId): LegalAction[] {
+export function artilleryCardReactions(
+  state: GameState,
+  playerId: PlayerId,
+): LegalAction[] {
   const combat = state.combat;
   const player = state.players[playerId];
   if (!combat || !player || isHandLockedInCombat(state, playerId)) {
@@ -5560,8 +6562,8 @@ export function artilleryCardReactions(state: GameState, playerId: PlayerId): Le
         cardId: ARTILLERY_ABILITY_CARD_ID,
         mode: "basic",
         optionIndex: 0,
-        target: { type: "unit", unitId: unit.id }
-      })
+        target: { type: "unit", unitId: unit.id },
+      }),
     );
   }
   return out;
@@ -5577,7 +6579,7 @@ export function artilleryCardReactions(state: GameState, playerId: PlayerId): Le
 export function instantHealSpellReactions(
   state: GameState,
   playerId: PlayerId,
-  cards: CardLibrary = cardLibrary
+  cards: CardLibrary = cardLibrary,
 ): LegalAction[] {
   const combat = state.combat;
   const player = state.players[playerId];
@@ -5588,13 +6590,17 @@ export function instantHealSpellReactions(
   // gate SPELL-kind heals only; a non-Spell heal instant (if any) would still be
   // offerable without burning the Spell slot.
   const spellsLocked = getSpellCastRestriction(state).lockAll;
-  const spellLimitLeft = spellLimitFor(state, player) - player.combatStats.spellsCastThisRound;
+  const spellLimitLeft =
+    spellLimitFor(state, player) - player.combatStats.spellsCastThisRound;
 
   const sources: { cardId: CardId; fromSpellBook?: true }[] = [
     ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
     ...(bookCastSourcesEnabled(state)
-      ? [...new Set(player.spellBook ?? [])].map((cardId) => ({ cardId, fromSpellBook: true as const }))
-      : [])
+      ? [...new Set(player.spellBook ?? [])].map((cardId) => ({
+          cardId,
+          fromSpellBook: true as const,
+        }))
+      : []),
   ];
 
   const out: LegalAction[] = [];
@@ -5615,7 +6621,8 @@ export function instantHealSpellReactions(
       if (
         variant.mapOnly ||
         variant.expertOnly ||
-        (variant.effect.type !== "HEAL_DAMAGE" && variant.effect.type !== "HEAL_DAMAGE_AND_REMOVE_EFFECTS") ||
+        (variant.effect.type !== "HEAL_DAMAGE" &&
+          variant.effect.type !== "HEAL_DAMAGE_AND_REMOVE_EFFECTS") ||
         !canAffordCardCost(state, playerId, cardId, variant.cost)
       ) {
         continue;
@@ -5630,20 +6637,30 @@ export function instantHealSpellReactions(
         if (unit.controllerId !== playerId || !isUnitAlive(unit)) {
           continue;
         }
-        if (unit.damage <= 0 && !(cleansesParalysis && unitHasToken(unit, "paralysis"))) {
+        if (
+          unit.damage <= 0 &&
+          !(cleansesParalysis && unitHasToken(unit, "paralysis"))
+        ) {
           continue;
         }
-        const variantName = variant.optionLabel ? `${card.name}: ${variant.optionLabel}` : card.name;
+        const variantName = variant.optionLabel
+          ? `${card.name}: ${variant.optionLabel}`
+          : card.name;
         out.push(
-          makeReactionAction(`${variantName} heal ${unit.name}${fromSpellBook ? " (Spell Book)" : ""}`, {
-            type: "PLAY_REACTION",
-            playerId,
-            cardId,
-            mode: "basic",
-            ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {}),
-            ...(fromSpellBook ? { fromSpellBook: true } : {}),
-            target: { type: "unit", unitId: unit.id }
-          })
+          makeReactionAction(
+            `${variantName} heal ${unit.name}${fromSpellBook ? " (Spell Book)" : ""}`,
+            {
+              type: "PLAY_REACTION",
+              playerId,
+              cardId,
+              mode: "basic",
+              ...(variant.optionIndex !== undefined
+                ? { optionIndex: variant.optionIndex }
+                : {}),
+              ...(fromSpellBook ? { fromSpellBook: true } : {}),
+              target: { type: "unit", unitId: unit.id },
+            },
+          ),
         );
       }
     }
@@ -5654,7 +6671,9 @@ export function instantHealSpellReactions(
 type ConcreteEffectDef = Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>;
 
 /** Concrete effects that assign combat damage to units when resolved. */
-function effectDealsCombatDamage(effect: ConcreteEffectDef | null | undefined): boolean {
+function effectDealsCombatDamage(
+  effect: ConcreteEffectDef | null | undefined,
+): boolean {
   if (!effect) {
     return false;
   }
@@ -5681,7 +6700,7 @@ export function playerThreatenedByPendingDamage(
   state: GameState,
   triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" }>,
   playerId: PlayerId,
-  cards: CardLibrary = cardLibrary
+  cards: CardLibrary = cardLibrary,
 ): boolean {
   const combat = state.combat;
   const stackItem = getPendingStackItem(state, triggerEvent);
@@ -5700,13 +6719,16 @@ export function playerThreatenedByPendingDamage(
     // Area / multi-target: any of our units in the predicted blast.
     if (
       spellPotentialBlastUnitIds(state, stackItem, cards).some(
-        (unitId) => combat.units[unitId]?.controllerId === playerId
+        (unitId) => combat.units[unitId]?.controllerId === playerId,
       )
     ) {
       return true;
     }
     // Single-target damaging Spell aimed at one of our units.
-    if (effectDealsCombatDamage(effect) && pendingSpellTargetForPlayer(state, triggerEvent, playerId)) {
+    if (
+      effectDealsCombatDamage(effect) &&
+      pendingSpellTargetForPlayer(state, triggerEvent, playerId)
+    ) {
       return true;
     }
     // CHAIN_LIGHTNING and other unit-primary damages that are not in the blast
@@ -5717,7 +6739,11 @@ export function playerThreatenedByPendingDamage(
       stackItem.action.target.type === "unit"
     ) {
       const primary = combat.units[stackItem.action.target.unitId];
-      if (primary && primary.controllerId === playerId && isUnitAlive(primary)) {
+      if (
+        primary &&
+        primary.controllerId === playerId &&
+        isUnitAlive(primary)
+      ) {
         return true;
       }
     }
@@ -5735,9 +6761,11 @@ export function playerThreatenedByPendingDamage(
     if (!effectDealsCombatDamage(effect)) {
       return false;
     }
-    return unitIdsThreatenedByDamageEffect(state, effect!, stackItem.action.target).some(
-      (unitId) => combat.units[unitId]?.controllerId === playerId
-    );
+    return unitIdsThreatenedByDamageEffect(
+      state,
+      effect!,
+      stackItem.action.target,
+    ).some((unitId) => combat.units[unitId]?.controllerId === playerId);
   }
 
   return false;
@@ -5750,7 +6778,7 @@ export function playerThreatenedByPendingDamage(
 export function unitIdsThreatenedByDamageEffect(
   state: GameState,
   effect: ConcreteEffectDef,
-  target: TargetRef | undefined
+  target: TargetRef | undefined,
 ): UnitId[] {
   const combat = state.combat;
   if (!combat || !target) {
@@ -5774,7 +6802,10 @@ export function unitIdsThreatenedByDamageEffect(
     }
     return Object.values(combat.units)
       .filter(
-        (unit) => isUnitAlive(unit) && (unit.id === primary.id || isAdjacent(unit.position, primary.position))
+        (unit) =>
+          isUnitAlive(unit) &&
+          (unit.id === primary.id ||
+            isAdjacent(unit.position, primary.position)),
       )
       .map((unit) => unit.id);
   }
@@ -5789,7 +6820,10 @@ export function unitIdsThreatenedByDamageEffect(
     if (center === undefined) {
       return [];
     }
-    return unitsOnPositions(combat, new Set([center, ...getOrthogonalNeighbors(center)]));
+    return unitsOnPositions(
+      combat,
+      new Set([center, ...getOrthogonalNeighbors(center)]),
+    );
   }
 
   if (effect.type === "AREA_DAMAGE_PICK_ADJACENT") {
@@ -5820,12 +6854,12 @@ export function unitIdsThreatenedByDamageEffect(
 export function preHitHealReactions(
   state: GameState,
   playerId: PlayerId,
-  cards: CardLibrary = cardLibrary
+  cards: CardLibrary = cardLibrary,
 ): LegalAction[] {
   return [
     ...firstAidHealActions(state, playerId),
     ...firstAidCardHealReactions(state, playerId),
-    ...instantHealSpellReactions(state, playerId, cards)
+    ...instantHealSpellReactions(state, playerId, cards),
   ];
 }
 
@@ -5841,13 +6875,23 @@ function placeTokenCommandLabel(
   unitName: string,
   abilityName: string,
   targets: "any" | "friendly" | "enemy",
-  amount: number
+  amount: number,
 ): string {
-  const sideWord = targets === "enemy" ? "an enemy" : targets === "friendly" ? "a friendly" : "a";
+  const sideWord =
+    targets === "enemy"
+      ? "an enemy"
+      : targets === "friendly"
+        ? "a friendly"
+        : "a";
   return `${unitName}: ${abilityName} — place it on ${sideWord} unit (${amount >= 0 ? "+" : ""}${amount})`;
 }
 
-function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerId: PlayerId, activeUnit: CombatUnitState): void {
+function addUnitAbilityActions(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+  activeUnit: CombatUnitState,
+): void {
   const combat = state.combat;
   if (!combat) {
     return;
@@ -5880,7 +6924,8 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
         if (
           target.controllerId === activeUnit.controllerId ||
           !isUnitAlive(target) ||
-          getBattlefieldDistance(activeUnit.position, target.position) > ability.effect.range
+          getBattlefieldDistance(activeUnit.position, target.position) >
+            ability.effect.range
         ) {
           continue;
         }
@@ -5891,8 +6936,8 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
             playerId,
             unitId: activeUnit.id,
             abilityId: ability.id,
-            target: { type: "unit", unitId: target.id }
-          }
+            target: { type: "unit", unitId: target.id },
+          },
         });
       }
     }
@@ -5914,8 +6959,8 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
             playerId,
             unitId: activeUnit.id,
             abilityId: ability.id,
-            target: { type: "unit", unitId: target.id }
-          }
+            target: { type: "unit", unitId: target.id },
+          },
         });
       }
     }
@@ -5936,7 +6981,7 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
         (candidate) =>
           candidate.controllerId === playerId &&
           isUnitAlive(candidate) &&
-          candidate.unitDefId === demonDefId
+          candidate.unitDefId === demonDefId,
       );
       const multiDemonOk = houseRuleEnabled(state, "multi-demon-summon");
       const canSummonNew = multiDemonOk || livingDemons.length === 0;
@@ -5946,7 +6991,7 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
         const occupied = new Set<number>(
           Object.values(combat.units)
             .filter(isUnitAlive)
-            .map((candidate) => candidate.position)
+            .map((candidate) => candidate.position),
         );
         for (const position of combat.obstacles ?? []) {
           occupied.add(position);
@@ -5957,7 +7002,13 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
           }
           actions.push({
             label: `${activeUnit.name}: Summon a Few of ${demonName} at ${getBattlefieldLabel(position)}`,
-            action: { type: "SUMMON_DEMONS", playerId, unitId: activeUnit.id, mode: "summon", position }
+            action: {
+              type: "SUMMON_DEMONS",
+              playerId,
+              unitId: activeUnit.id,
+              mode: "summon",
+              position,
+            },
           });
         }
       }
@@ -5973,8 +7024,8 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
                 playerId,
                 unitId: activeUnit.id,
                 mode: "reinforce",
-                targetUnitId: candidate.id
-              }
+                targetUnitId: candidate.id,
+              },
             });
           }
         }
@@ -5991,13 +7042,14 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
             continue;
           }
           const armyCard = state.players[playerId]?.army.find(
-            (entry) => entry.id === candidate.armyUnitId
+            (entry) => entry.id === candidate.armyUnitId,
           );
           // Prefer the army card (cap + side), fall back to the combat unit's
           // live stack count when the army card is missing (shouldn't happen).
           const canStack = armyCard
             ? polishArmyUnitCanBuyStack(armyCard)
-            : (candidate.armyStacks ?? 0) < polishUnitStackCap(demonDefId, "pack");
+            : (candidate.armyStacks ?? 0) <
+              polishUnitStackCap(demonDefId, "pack");
           if (!canStack) {
             continue;
           }
@@ -6008,8 +7060,8 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
               playerId,
               unitId: activeUnit.id,
               mode: "stack",
-              targetUnitId: candidate.id
-            }
+              targetUnitId: candidate.id,
+            },
           });
         }
       }
@@ -6025,8 +7077,10 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
       const hasCandidate = Object.values(combat.units).some((target) => {
         const sideOk =
           effect.targets === "any" ||
-          (effect.targets === "friendly" && target.controllerId === activeUnit.controllerId) ||
-          (effect.targets === "enemy" && target.controllerId !== activeUnit.controllerId);
+          (effect.targets === "friendly" &&
+            target.controllerId === activeUnit.controllerId) ||
+          (effect.targets === "enemy" &&
+            target.controllerId !== activeUnit.controllerId);
         return (
           sideOk &&
           isUnitAlive(target) &&
@@ -6034,20 +7088,26 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
           // Tower; friendly BUFFS (Ogres' Bloodlust) still skip the off-board
           // tower. Matches the enforcement in reducer.ts.
           (effect.targets === "enemy" || !isArrowTowerUnit(target)) &&
-          (!effect.adjacentOnly || isAdjacent(activeUnit.position, target.position)) &&
+          (!effect.adjacentOnly ||
+            isAdjacent(activeUnit.position, target.position)) &&
           (!effect.targetTypes || effect.targetTypes.includes(target.type))
         );
       });
       if (hasCandidate) {
         actions.push({
-          label: placeTokenCommandLabel(activeUnit.name, ability.name, effect.targets, effect.amount),
+          label: placeTokenCommandLabel(
+            activeUnit.name,
+            ability.name,
+            effect.targets,
+            effect.amount,
+          ),
           action: {
             type: "USE_UNIT_ABILITY",
             playerId,
             unitId: activeUnit.id,
             abilityId: ability.id,
-            target: { type: "none" }
-          }
+            target: { type: "none" },
+          },
         });
       }
     }
@@ -6079,8 +7139,8 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
             playerId,
             unitId: activeUnit.id,
             abilityId: ability.id,
-            target: { type: "space", position }
-          }
+            target: { type: "space", position },
+          },
         });
       }
     }
@@ -6089,7 +7149,10 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
     // activation trigger: choose a different adjacent friendly unit, then
     // choose either its heal or its Attack buff. Healthy allies only expose
     // the meaningful buff option.
-    if (ability.effect?.type === "MGQ_WHITE_MAGIC_ACTION" && !activeUnit.attackedThisActivation) {
+    if (
+      ability.effect?.type === "MGQ_WHITE_MAGIC_ACTION" &&
+      !activeUnit.attackedThisActivation
+    ) {
       for (const target of Object.values(combat.units)) {
         if (
           target.id === activeUnit.id ||
@@ -6109,21 +7172,22 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
               unitId: activeUnit.id,
               abilityId: ability.id,
               target: { type: "unit", unitId: target.id },
-              mode: "heal"
-            }
+              mode: "heal",
+            },
           });
         }
-        if (ability.effect.attackBonus > 0) actions.push({
-          label: `${activeUnit.name}: ${ability.name} — give ${target.name} +1 Attack`,
-          action: {
-            type: "USE_UNIT_ABILITY",
-            playerId,
-            unitId: activeUnit.id,
-            abilityId: ability.id,
-            target: { type: "unit", unitId: target.id },
-            mode: "attack"
-          }
-        });
+        if (ability.effect.attackBonus > 0)
+          actions.push({
+            label: `${activeUnit.name}: ${ability.name} — give ${target.name} +1 Attack`,
+            action: {
+              type: "USE_UNIT_ABILITY",
+              playerId,
+              unitId: activeUnit.id,
+              abilityId: ability.id,
+              target: { type: "unit", unitId: target.id },
+              mode: "attack",
+            },
+          });
       }
     }
 
@@ -6147,26 +7211,69 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
             playerId,
             unitId: activeUnit.id,
             abilityId: ability.id,
-            target: { type: "unit", unitId: target.id }
-          }
+            target: { type: "unit", unitId: target.id },
+          },
         });
       }
     }
 
-    if (activeUnit.commanderSlug === "ibuki" && !activeUnit.attackedThisActivation) {
+    if (
+      activeUnit.commanderSlug === "ibuki" &&
+      !activeUnit.attackedThisActivation
+    ) {
       const ap = ibukiActionPoints(activeUnit);
       const power = commanderCastPower(state, activeUnit);
-      const enemies = Object.values(combat.units).filter((unit) => unit.controllerId !== playerId && isUnitAlive(unit));
+      const enemies = Object.values(combat.units).filter(
+        (unit) => unit.controllerId !== playerId && isUnitAlive(unit),
+      );
       if (ability.id === "commander-ibuki-sniper-shot" && ap >= 1) {
-        for (const target of enemies) actions.push({ label: `Sniper Shot · 1 AP · ${power >= 2 ? 2 : 1} damage to ${target.cardName}`, action: { type: "USE_UNIT_ABILITY", playerId, unitId: activeUnit.id, abilityId: ability.id, target: { type: "unit", unitId: target.id } } });
+        for (const target of enemies)
+          actions.push({
+            label: `Sniper Shot · 1 AP · ${power >= 2 ? 2 : 1} damage to ${target.cardName}`,
+            action: {
+              type: "USE_UNIT_ABILITY",
+              playerId,
+              unitId: activeUnit.id,
+              abilityId: ability.id,
+              target: { type: "unit", unitId: target.id },
+            },
+          });
       }
       if (ability.id === "commander-ibuki-up-to-mischief" && ap >= 2) {
-        for (const target of enemies) actions.push({ label: `Up to Mischief · 2 AP · −1 Attack${power >= 1 ? " and Defense" : ""} to ${target.cardName}`, action: { type: "USE_UNIT_ABILITY", playerId, unitId: activeUnit.id, abilityId: ability.id, target: { type: "unit", unitId: target.id } } });
+        for (const target of enemies)
+          actions.push({
+            label: `Up to Mischief · 2 AP · −1 Attack${power >= 1 ? " and Defense" : ""} to ${target.cardName}`,
+            action: {
+              type: "USE_UNIT_ABILITY",
+              playerId,
+              unitId: activeUnit.id,
+              abilityId: ability.id,
+              target: { type: "unit", unitId: target.id },
+            },
+          });
       }
       if (ability.id === "commander-ibuki-gadabout" && ap >= 2) {
-        const occupied = new Set(Object.values(combat.units).filter(isUnitAlive).map((unit) => unit.position));
-        for (let position = 0; position < BATTLEFIELD_CELL_COUNT; position += 1) {
-          if (!occupied.has(position)) actions.push({ label: `Gadabout · 2 AP · teleport to ${getBattlefieldLabel(position)}`, action: { type: "USE_UNIT_ABILITY", playerId, unitId: activeUnit.id, abilityId: ability.id, target: { type: "space", position } } });
+        const occupied = new Set(
+          Object.values(combat.units)
+            .filter(isUnitAlive)
+            .map((unit) => unit.position),
+        );
+        for (
+          let position = 0;
+          position < BATTLEFIELD_CELL_COUNT;
+          position += 1
+        ) {
+          if (!occupied.has(position))
+            actions.push({
+              label: `Gadabout · 2 AP · teleport to ${getBattlefieldLabel(position)}`,
+              action: {
+                type: "USE_UNIT_ABILITY",
+                playerId,
+                unitId: activeUnit.id,
+                abilityId: ability.id,
+                target: { type: "space", position },
+              },
+            });
         }
       }
     }
@@ -6175,7 +7282,12 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
     // board target picker. Offered only during the commander's own activation,
     // before it moves/attacks, once per combat round, with the rune cost
     // payable and at least one legal target (commanderCastAvailable).
-    if (ability.effect?.type === "COMMANDER_CAST" && commanderCastAvailable(state, activeUnit) && (activeUnit.commanderSlug !== "ibuki" || ibukiActionPoints(activeUnit) >= 3)) {
+    if (
+      ability.effect?.type === "COMMANDER_CAST" &&
+      commanderCastAvailable(state, activeUnit) &&
+      (activeUnit.commanderSlug !== "ibuki" ||
+        ibukiActionPoints(activeUnit) >= 3)
+    ) {
       const power = commanderCastPower(state, activeUnit);
       const runeCost = commanderCastRuneCost(state, activeUnit);
       actions.push({
@@ -6185,8 +7297,8 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
           playerId,
           unitId: activeUnit.id,
           abilityId: ability.id,
-          target: { type: "none" }
-        }
+          target: { type: "none" },
+        },
       });
     }
 
@@ -6199,7 +7311,8 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
       !activeUnit.attackedThisActivation
     ) {
       const player = state.players[playerId];
-      const hasDeckCards = (player?.deck.length ?? 0) + (player?.discard.length ?? 0) > 0;
+      const hasDeckCards =
+        (player?.deck.length ?? 0) + (player?.discard.length ?? 0) > 0;
       // The printed dig IS the whole ability in every mode, so it needs cards to
       // dig. Under the Polish Spell Book the card it can take out of the deck is
       // a "Cast a Spell" enabler (owned Spells live in the Book) — it never
@@ -6209,7 +7322,11 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
           label: polishSpellBookEnabled(state)
             ? `${activeUnit.name}: ${ability.name} (discard ${ability.effect.count} from your deck, take a Cast a Spell)`
             : `${activeUnit.name}: ${ability.name} (discard ${ability.effect.count} from your deck, take a Spell)`,
-          action: { type: "USE_GENIE_DECK_DRAW", playerId, unitId: activeUnit.id }
+          action: {
+            type: "USE_GENIE_DECK_DRAW",
+            playerId,
+            unitId: activeUnit.id,
+          },
         });
       }
     }
@@ -6221,7 +7338,12 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
  * attack — adjacent ground/flying units always, Cyclops-style units at any
  * range (their pack version also levels the Arrow Tower).
  */
-function addFortificationActions(actions: LegalAction[], state: GameState, playerId: PlayerId, activeUnit: CombatUnitState): void {
+function addFortificationActions(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+  activeUnit: CombatUnitState,
+): void {
   const combat = state.combat;
   const siege = combat?.siege;
   if (!combat || !siege || activeUnit.attackedThisActivation) {
@@ -6231,12 +7353,15 @@ function addFortificationActions(actions: LegalAction[], state: GameState, playe
   const demolish = getDemolishAbility(activeUnit);
   const targets: { kind: "wall" | "gate"; position: number }[] = [
     ...siege.walls.map((position) => ({ kind: "wall" as const, position })),
-    ...(siege.gatePosition !== null ? [{ kind: "gate" as const, position: siege.gatePosition }] : [])
+    ...(siege.gatePosition !== null
+      ? [{ kind: "gate" as const, position: siege.gatePosition }]
+      : []),
   ];
 
   for (const target of targets) {
     const adjacentDemolisher =
-      activeUnit.type !== "ranged" && isAdjacent(activeUnit.position, target.position);
+      activeUnit.type !== "ranged" &&
+      isAdjacent(activeUnit.position, target.position);
     if (!adjacentDemolisher && !demolish) {
       continue;
     }
@@ -6248,14 +7373,24 @@ function addFortificationActions(actions: LegalAction[], state: GameState, playe
 
     actions.push({
       label: `${activeUnit.cardName} destroy the ${target.kind === "wall" ? "Wall" : "Gate"} at ${getBattlefieldLabel(target.position)}`,
-      action: { type: "ATTACK_FORTIFICATION", playerId, attackerId: activeUnit.id, target }
+      action: {
+        type: "ATTACK_FORTIFICATION",
+        playerId,
+        attackerId: activeUnit.id,
+        target,
+      },
     });
   }
 
   if (demolish?.canTargetArrowTower && siege.arrowTowerUnitId) {
     actions.push({
       label: `${activeUnit.cardName} destroy the Arrow Tower`,
-      action: { type: "ATTACK_FORTIFICATION", playerId, attackerId: activeUnit.id, target: { kind: "arrow-tower" } }
+      action: {
+        type: "ATTACK_FORTIFICATION",
+        playerId,
+        attackerId: activeUnit.id,
+        target: { kind: "arrow-tower" },
+      },
     });
   }
 }
@@ -6264,14 +7399,14 @@ function addFortificationActions(actions: LegalAction[], state: GameState, playe
 function berserkApproachSquares(
   unit: CombatUnitState,
   nearest: CombatUnitState[],
-  moveDestinations: number[]
+  moveDestinations: number[],
 ): number[] {
   return moveDestinations.filter((space) =>
     nearest.some(
       (target) =>
         getBattlefieldDistance(space, target.position) <
-        getBattlefieldDistance(unit.position, target.position)
-    )
+        getBattlefieldDistance(unit.position, target.position),
+    ),
   );
 }
 
@@ -6289,7 +7424,7 @@ function addBerserkUnitActions(
   actions: LegalAction[],
   state: GameState,
   playerId: PlayerId,
-  activeUnit: CombatUnitState
+  activeUnit: CombatUnitState,
 ): void {
   const combat = state.combat;
   if (!combat) {
@@ -6298,7 +7433,7 @@ function addBerserkUnitActions(
 
   const hold: LegalAction = {
     label: `${activeUnit.name} hold position`,
-    action: { type: "END_ACTIVATION", playerId, unitId: activeUnit.id }
+    action: { type: "END_ACTIVATION", playerId, unitId: activeUnit.id },
   };
 
   // Its forced strike is spent — the activation is over.
@@ -6320,7 +7455,12 @@ function addBerserkUnitActions(
       canStrikeNow = true;
       actions.push({
         label: `${activeUnit.name} attack ${target.name}`,
-        action: { type: "ATTACK_UNIT", playerId, attackerId: activeUnit.id, defenderId: target.id }
+        action: {
+          type: "ATTACK_UNIT",
+          playerId,
+          attackerId: activeUnit.id,
+          defenderId: target.id,
+        },
       });
     }
   }
@@ -6338,7 +7478,10 @@ function addBerserkUnitActions(
   const strikeSquares = new Set<number>();
   for (const target of nearest) {
     for (const space of moveDestinations) {
-      if (isAdjacent(space, target.position) && canUnitMoveAndAttack(combat, activeUnit, space, target, state)) {
+      if (
+        isAdjacent(space, target.position) &&
+        canUnitMoveAndAttack(combat, activeUnit, space, target, state)
+      ) {
         strikeSquares.add(space);
         actions.push({
           label: `${activeUnit.name} move to ${getBattlefieldLabel(space)} and attack ${target.name}`,
@@ -6347,8 +7490,8 @@ function addBerserkUnitActions(
             playerId,
             attackerId: activeUnit.id,
             destination: space,
-            defenderId: target.id
-          }
+            defenderId: target.id,
+          },
         });
       }
     }
@@ -6357,14 +7500,23 @@ function addBerserkUnitActions(
     for (const space of strikeSquares) {
       actions.push({
         label: `${activeUnit.name} move to ${getBattlefieldLabel(space)}`,
-        action: { type: "MOVE_UNIT", playerId, unitId: activeUnit.id, destination: space }
+        action: {
+          type: "MOVE_UNIT",
+          playerId,
+          unitId: activeUnit.id,
+          destination: space,
+        },
       });
     }
     return;
   }
 
   // 3. Cannot reach a strike — advance on a nearest unit (closing squares only).
-  const approaches = berserkApproachSquares(activeUnit, nearest, moveDestinations);
+  const approaches = berserkApproachSquares(
+    activeUnit,
+    nearest,
+    moveDestinations,
+  );
   if (approaches.length === 0) {
     actions.push(hold);
     return;
@@ -6372,7 +7524,12 @@ function addBerserkUnitActions(
   for (const space of approaches) {
     actions.push({
       label: `${activeUnit.name} move to ${getBattlefieldLabel(space)}`,
-      action: { type: "MOVE_UNIT", playerId, unitId: activeUnit.id, destination: space }
+      action: {
+        type: "MOVE_UNIT",
+        playerId,
+        unitId: activeUnit.id,
+        destination: space,
+      },
     });
   }
 }
@@ -6396,7 +7553,7 @@ function addControlledNeutralTokenActions(
   actions: LegalAction[],
   state: GameState,
   playerId: PlayerId,
-  activeUnit: CombatUnitState
+  activeUnit: CombatUnitState,
 ): void {
   const combat = state.combat;
   // A token "other action" is used INSTEAD of moving/attacking — never once the
@@ -6406,22 +7563,28 @@ function addControlledNeutralTokenActions(
   }
 
   for (const ability of getUnitAbilityDefinitions(activeUnit)) {
-    if (ability.implementationStatus !== "implemented" || ability.effect?.type !== "PLACE_TOKEN_ACTION") {
+    if (
+      ability.implementationStatus !== "implemented" ||
+      ability.effect?.type !== "PLACE_TOKEN_ACTION"
+    ) {
       continue;
     }
     const effect = ability.effect;
     const hasCandidate = Object.values(combat.units).some((target) => {
       const sideOk =
         effect.targets === "any" ||
-        (effect.targets === "friendly" && target.controllerId === activeUnit.controllerId) ||
-        (effect.targets === "enemy" && target.controllerId !== activeUnit.controllerId);
+        (effect.targets === "friendly" &&
+          target.controllerId === activeUnit.controllerId) ||
+        (effect.targets === "enemy" &&
+          target.controllerId !== activeUnit.controllerId);
       return (
         sideOk &&
         isUnitAlive(target) &&
         // Enemy-DEBUFF tokens (Sorceresses' Weakness) may land on the Arrow
         // Tower; friendly BUFFS still skip it. Matches the enforcement above.
         (effect.targets === "enemy" || !isArrowTowerUnit(target)) &&
-        (!effect.adjacentOnly || isAdjacent(activeUnit.position, target.position)) &&
+        (!effect.adjacentOnly ||
+          isAdjacent(activeUnit.position, target.position)) &&
         (!effect.targetTypes || effect.targetTypes.includes(target.type))
       );
     });
@@ -6429,14 +7592,19 @@ function addControlledNeutralTokenActions(
       continue;
     }
     actions.push({
-      label: placeTokenCommandLabel(activeUnit.name, ability.name, effect.targets, effect.amount),
+      label: placeTokenCommandLabel(
+        activeUnit.name,
+        ability.name,
+        effect.targets,
+        effect.amount,
+      ),
       action: {
         type: "USE_UNIT_ABILITY",
         playerId,
         unitId: activeUnit.id,
         abilityId: ability.id,
-        target: { type: "none" }
-      }
+        target: { type: "none" },
+      },
     });
   }
 }
@@ -6464,7 +7632,7 @@ function addControlledNeutralUnitActions(
   actions: LegalAction[],
   state: GameState,
   playerId: PlayerId,
-  activeUnit: CombatUnitState
+  activeUnit: CombatUnitState,
 ): void {
   const combat = state.combat;
   if (!combat) {
@@ -6478,7 +7646,9 @@ function addControlledNeutralUnitActions(
   const mustAttack =
     waitMustAttack ||
     neutralControlMustAttack(state, combat) ||
-    (state.round % 2 === 0 && getAstrologersRoundFrenzy(activeUnit) > 0 && !alreadyAttacked);
+    (state.round % 2 === 0 &&
+      getAstrologersRoundFrenzy(activeUnit) > 0 &&
+      !alreadyAttacked);
 
   // Attacks the guard can make from where it stands (any enemy, engine-legal).
   const attacks: LegalAction[] = [];
@@ -6489,7 +7659,12 @@ function addControlledNeutralUnitActions(
       }
       attacks.push({
         label: `${activeUnit.name} attack ${defender.name}`,
-        action: { type: "ATTACK_UNIT", playerId, attackerId: activeUnit.id, defenderId: defender.id }
+        action: {
+          type: "ATTACK_UNIT",
+          playerId,
+          attackerId: activeUnit.id,
+          defenderId: defender.id,
+        },
       });
     }
   }
@@ -6498,11 +7673,16 @@ function addControlledNeutralUnitActions(
   const pushMove = (destination: number) =>
     actions.push({
       label: `${activeUnit.name} move to ${getBattlefieldLabel(destination)}`,
-      action: { type: "MOVE_UNIT", playerId, unitId: activeUnit.id, destination }
+      action: {
+        type: "MOVE_UNIT",
+        playerId,
+        unitId: activeUnit.id,
+        destination,
+      },
     });
   const hold: LegalAction = {
     label: `${activeUnit.name} hold position`,
-    action: { type: "END_ACTIVATION", playerId, unitId: activeUnit.id }
+    action: { type: "END_ACTIVATION", playerId, unitId: activeUnit.id },
   };
 
   // A guard that already fired keeps only the PvP tail: the optional post-shot
@@ -6529,7 +7709,7 @@ function addControlledNeutralUnitActions(
     if (!isArrowTowerUnit(activeUnit) && !activeUnit.defendedLastActivation) {
       actions.push({
         label: `${activeUnit.name} defend`,
-        action: { type: "DEFEND_UNIT", playerId, unitId: activeUnit.id }
+        action: { type: "DEFEND_UNIT", playerId, unitId: activeUnit.id },
       });
     }
     addControlledNeutralTokenActions(actions, state, playerId, activeUnit);
@@ -6550,15 +7730,19 @@ function addControlledNeutralUnitActions(
   }
 
   const enemies = Object.values(combat.units).filter(
-    (candidate) => candidate.controllerId !== activeUnit.controllerId && isUnitAlive(candidate)
+    (candidate) =>
+      candidate.controllerId !== activeUnit.controllerId &&
+      isUnitAlive(candidate),
   );
 
   // No strike from here — cells from which the guard CAN strike this
   // activation come first (the move half of a forced move-and-attack)…
   const strikeCells = moveDestinations.filter((space) =>
     enemies.some(
-      (target) => isAdjacent(space, target.position) && canUnitMoveAndAttack(combat, activeUnit, space, target, state)
-    )
+      (target) =>
+        isAdjacent(space, target.position) &&
+        canUnitMoveAndAttack(combat, activeUnit, space, target, state),
+    ),
   );
   if (strikeCells.length > 0) {
     for (const destination of strikeCells) {
@@ -6576,7 +7760,7 @@ function addControlledNeutralUnitActions(
       const here = field.get(activeUnit.position);
       const there = field.get(space);
       return here !== undefined && there !== undefined && there < here;
-    })
+    }),
   );
   if (approaches.length > 0) {
     for (const destination of approaches) {
@@ -6589,17 +7773,25 @@ function addControlledNeutralUnitActions(
   actions.push(hold);
 }
 
-function addUnitActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+function addUnitActions(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+): void {
   const combat = state.combat;
   if (combat && (combat.setup || combat.awaitingContinue)) {
     return;
   }
 
   if (!combat?.activeUnitId) {
-    if (combat && playerId === combat.attackerPlayerId && state.mode !== "adventure") {
+    if (
+      combat &&
+      playerId === combat.attackerPlayerId &&
+      state.mode !== "adventure"
+    ) {
       actions.push({
         label: "Start next combat round",
-        action: { type: "END_COMBAT_ROUND", playerId }
+        action: { type: "END_COMBAT_ROUND", playerId },
       });
     }
     return;
@@ -6613,7 +7805,8 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
   // with the normal unit actions (the dispatch re-stamps the acting seat — see
   // asNeutralSeatCommand in reducer.ts). Everyone else needs real ownership.
   const controlsNeutral =
-    activeUnit.controllerId === NEUTRAL_PLAYER_ID && neutralCombatControllerId(state, combat) === playerId;
+    activeUnit.controllerId === NEUTRAL_PLAYER_ID &&
+    neutralCombatControllerId(state, combat) === playerId;
   if (activeUnit.controllerId !== playerId && !controlsNeutral) {
     return;
   }
@@ -6641,7 +7834,7 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
     ) {
       actions.push({
         label: `Let ${activeUnit.name} act (automatic)`,
-        action: { type: "AUTO_NEUTRAL_ACTIVATION", playerId }
+        action: { type: "AUTO_NEUTRAL_ACTIVATION", playerId },
       });
     }
     return;
@@ -6657,20 +7850,38 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
   ) {
     const forced: LegalAction[] = [];
     const enemies = Object.values(combat.units).filter(
-      (unit) => unit.controllerId !== activeUnit.controllerId && isUnitAlive(unit)
+      (unit) =>
+        unit.controllerId !== activeUnit.controllerId && isUnitAlive(unit),
     );
     for (const defender of enemies) {
       if (canUnitAttack(combat, activeUnit, defender, state.activeEffects)) {
         forced.push({
           label: `${activeUnit.name} attack ${defender.name}`,
-          action: { type: "ATTACK_UNIT", playerId, attackerId: activeUnit.id, defenderId: defender.id }
+          action: {
+            type: "ATTACK_UNIT",
+            playerId,
+            attackerId: activeUnit.id,
+            defenderId: defender.id,
+          },
         });
       }
     }
     if (forced.length === 0) {
-      for (const destination of getLegalMoveDestinations(combat, activeUnit, state)) {
+      for (const destination of getLegalMoveDestinations(
+        combat,
+        activeUnit,
+        state,
+      )) {
         for (const defender of enemies) {
-          if (canUnitMoveAndAttack(combat, activeUnit, destination, defender, state)) {
+          if (
+            canUnitMoveAndAttack(
+              combat,
+              activeUnit,
+              destination,
+              defender,
+              state,
+            )
+          ) {
             forced.push({
               label: `${activeUnit.name} move to ${getBattlefieldLabel(destination)} and attack ${defender.name}`,
               action: {
@@ -6678,8 +7889,8 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
                 playerId,
                 attackerId: activeUnit.id,
                 destination,
-                defenderId: defender.id
-              }
+                defenderId: defender.id,
+              },
             });
           }
         }
@@ -6698,7 +7909,9 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
   // beyond the normal once-per-activation attack (each declared attack spends a
   // cube in declareAttack).
   const cubeAttackAvailable =
-    alreadyAttacked && Boolean(getSpendCubeAttackAgain(activeUnit)) && (activeUnit.factionCubes ?? 0) >= 1;
+    alreadyAttacked &&
+    Boolean(getSpendCubeAttackAgain(activeUnit)) &&
+    (activeUnit.factionCubes ?? 0) >= 1;
 
   if (!alreadyAttacked) {
     addUnitAbilityActions(actions, state, playerId, activeUnit);
@@ -6712,7 +7925,10 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
   if (!controlsNeutral && playerMainHeroInCombat(state, playerId)) {
     for (const nodeId of heroGradeNodesOf(state, playerId)) {
       const node = heroGradeNode(nodeId);
-      if (node?.skill?.mode !== "combat-active" || !heroSkillAvailableThisCombat(state, playerId, nodeId)) {
+      if (
+        node?.skill?.mode !== "combat-active" ||
+        !heroSkillAvailableThisCombat(state, playerId, nodeId)
+      ) {
         continue;
       }
       if (node.skill.stat === "attack" && alreadyAttacked) continue;
@@ -6723,7 +7939,12 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
           : `${node.name.en}: ${activeUnit.name} +${node.skill.amount} Attack this activation`;
       actions.push({
         label,
-        action: { type: "USE_HERO_SKILL", playerId, nodeId, unitId: activeUnit.id }
+        action: {
+          type: "USE_HERO_SKILL",
+          playerId,
+          nodeId,
+          unitId: activeUnit.id,
+        },
       });
     }
   }
@@ -6738,26 +7959,40 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
     if (!alreadyAttacked) {
       actions.push({
         label: `Command Seal (${commandSeals}): Compel ${activeUnit.name} for +1 Attack`,
-        action: { type: "USE_FUYUKI_COMMAND_SEAL", playerId, unitId: activeUnit.id, mode: "compel" }
+        action: {
+          type: "USE_FUYUKI_COMMAND_SEAL",
+          playerId,
+          unitId: activeUnit.id,
+          mode: "compel",
+        },
       });
     }
     if (activeUnit.damage > 0) {
       actions.push({
         label: `Command Seal (${commandSeals}): Recall ${activeUnit.name} and heal 3`,
-        action: { type: "USE_FUYUKI_COMMAND_SEAL", playerId, unitId: activeUnit.id, mode: "recall" }
+        action: {
+          type: "USE_FUYUKI_COMMAND_SEAL",
+          playerId,
+          unitId: activeUnit.id,
+          mode: "recall",
+        },
       });
     }
   }
 
-  for (const destination of getLegalMoveDestinations(combat, activeUnit, state)) {
+  for (const destination of getLegalMoveDestinations(
+    combat,
+    activeUnit,
+    state,
+  )) {
     actions.push({
       label: `${activeUnit.name} move to ${getBattlefieldLabel(destination)}`,
       action: {
         type: "MOVE_UNIT",
         playerId,
         unitId: activeUnit.id,
-        destination
-      }
+        destination,
+      },
     });
   }
 
@@ -6779,8 +8014,8 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
           type: "ATTACK_UNIT",
           playerId,
           attackerId: activeUnit.id,
-          defenderId: defender.id
-        }
+          defenderId: defender.id,
+        },
       });
     }
   }
@@ -6799,7 +8034,7 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
           candidate.id !== activeUnit.id &&
           isUnitAlive(candidate) &&
           !isArrowTowerUnit(candidate) &&
-          isAdjacent(candidate.position, activeUnit.position)
+          isAdjacent(candidate.position, activeUnit.position),
       )
     ) {
       actions.push({
@@ -6809,13 +8044,17 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
           playerId,
           unitId: activeUnit.id,
           abilityId: splash.abilityId,
-          target: { type: "none" }
-        }
+          target: { type: "none" },
+        },
       });
     }
   }
 
-  if (!alreadyAttacked && !isArrowTowerUnit(activeUnit) && !activeUnit.defendedLastActivation) {
+  if (
+    !alreadyAttacked &&
+    !isArrowTowerUnit(activeUnit) &&
+    !activeUnit.defendedLastActivation
+  ) {
     // Defend replaces the attack, so a unit that already moved may still
     // defend. The Arrow Tower never defends — it only shoots or holds.
     // Consecutive-Defend ban: after Defending, the next activation must do
@@ -6825,8 +8064,8 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
       action: {
         type: "DEFEND_UNIT",
         playerId,
-        unitId: activeUnit.id
-      }
+        unitId: activeUnit.id,
+      },
     });
   }
 
@@ -6845,8 +8084,8 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
     action: {
       type: "END_ACTIVATION",
       playerId,
-      unitId: activeUnit.id
-    }
+      unitId: activeUnit.id,
+    },
   });
 
   // Polish Wait: once per combat round, at the beginning of activation (no
@@ -6865,8 +8104,8 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
       action: {
         type: "WAIT_UNIT",
         playerId,
-        unitId: activeUnit.id
-      }
+        unitId: activeUnit.id,
+      },
     });
   }
 }
@@ -6876,7 +8115,7 @@ function maybeAddControlledNeutralWait(
   actions: LegalAction[],
   state: GameState,
   playerId: PlayerId,
-  activeUnit: CombatUnitState
+  activeUnit: CombatUnitState,
 ): void {
   const combat = state.combat;
   if (
@@ -6892,11 +8131,15 @@ function maybeAddControlledNeutralWait(
   }
   actions.push({
     label: `${activeUnit.name} wait`,
-    action: { type: "WAIT_UNIT", playerId, unitId: activeUnit.id }
+    action: { type: "WAIT_UNIT", playerId, unitId: activeUnit.id },
   });
 }
 
-function addDeckSearchActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+function addDeckSearchActions(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+): void {
   // Searches are normally granted by rewards (level ups, treasure fields,
   // town actions). Until the adventure-map reward loop is implemented, the
   // active player may demo the full search flow from the table decks.
@@ -6906,7 +8149,10 @@ function addDeckSearchActions(actions: LegalAction[], state: GameState, playerId
 
   // A search opens the deck-search choice — parallel turns take those one at a
   // time, and only a player whose turn is open may start one.
-  if (!hasOpenAdventureTurn(state, playerId) || parallelInteractionBlocker(state, playerId)) {
+  if (
+    !hasOpenAdventureTurn(state, playerId) ||
+    parallelInteractionBlocker(state, playerId)
+  ) {
     return;
   }
 
@@ -6922,8 +8168,8 @@ function addDeckSearchActions(actions: LegalAction[], state: GameState, playerId
         type: "SEARCH_DECK",
         playerId,
         deckId,
-        count: 2
-      }
+        count: 2,
+      },
     });
   }
 }
@@ -6933,15 +8179,31 @@ function addDeckSearchActions(actions: LegalAction[], state: GameState, playerId
  * deck. Offered per shared/neutral deck that has cards, only while it's your
  * uninterrupted turn and the scout has not been used yet.
  */
-function addRoguesScoutActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
-  if (state.combat || state.reactionWindow || state.pendingChoice || state.stack.length > 0) {
+function addRoguesScoutActions(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+): void {
+  if (
+    state.combat ||
+    state.reactionWindow ||
+    state.pendingChoice ||
+    state.stack.length > 0
+  ) {
     return;
   }
-  if (!hasOpenAdventureTurn(state, playerId) || parallelInteractionBlocker(state, playerId)) {
+  if (
+    !hasOpenAdventureTurn(state, playerId) ||
+    parallelInteractionBlocker(state, playerId)
+  ) {
     return;
   }
   const player = state.players[playerId];
-  if (!player || player.rogueScoutUsedThisTurn || !armyHasMapEffect(state, playerId, "MAP_TURN_DECK_PEEK")) {
+  if (
+    !player ||
+    player.rogueScoutUsedThisTurn ||
+    !armyHasMapEffect(state, playerId, "MAP_TURN_DECK_PEEK")
+  ) {
     return;
   }
 
@@ -6951,7 +8213,7 @@ function addRoguesScoutActions(actions: LegalAction[], state: GameState, playerI
     }
     actions.push({
       label: `Rogues: scout the top of the ${deckId} deck`,
-      action: { type: "ROGUES_SCOUT_DECK", playerId, deckId }
+      action: { type: "ROGUES_SCOUT_DECK", playerId, deckId },
     });
   }
 }
@@ -6961,26 +8223,49 @@ function addRoguesScoutActions(actions: LegalAction[], state: GameState, playerI
  * on "+1" gain positive morale. Offered only while it's your uninterrupted
  * turn and the roll has not been used yet this turn.
  */
-function addSatyrMoraleRollActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
-  if (state.combat || state.reactionWindow || state.pendingChoice || state.stack.length > 0) {
+function addSatyrMoraleRollActions(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+): void {
+  if (
+    state.combat ||
+    state.reactionWindow ||
+    state.pendingChoice ||
+    state.stack.length > 0
+  ) {
     return;
   }
-  if (!hasOpenAdventureTurn(state, playerId) || parallelInteractionBlocker(state, playerId)) {
+  if (
+    !hasOpenAdventureTurn(state, playerId) ||
+    parallelInteractionBlocker(state, playerId)
+  ) {
     return;
   }
   const player = state.players[playerId];
-  if (!player || player.satyrMoraleRollUsedThisTurn || !armyHasMapEffect(state, playerId, "MAP_TURN_MORALE_ROLL")) {
+  if (
+    !player ||
+    player.satyrMoraleRollUsedThisTurn ||
+    !armyHasMapEffect(state, playerId, "MAP_TURN_MORALE_ROLL")
+  ) {
     return;
   }
 
   actions.push({
     label: "Satyrs: roll an Attack die — on '+1' gain positive morale",
-    action: { type: "SATYR_MORALE_ROLL", playerId }
+    action: { type: "SATYR_MORALE_ROLL", playerId },
   });
 }
 
-function addHeroMoveActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
-  if (state.combat || (state.phase !== "map" && state.phase !== "player-turn")) {
+function addHeroMoveActions(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+): void {
+  if (
+    state.combat ||
+    (state.phase !== "map" && state.phase !== "player-turn")
+  ) {
     return;
   }
 
@@ -7003,8 +8288,8 @@ function addHeroMoveActions(actions: LegalAction[], state: GameState, playerId: 
           type: "MOVE_HERO",
           playerId,
           heroId: hero.id,
-          to: adjacentSpaceId
-        }
+          to: adjacentSpaceId,
+        },
       });
     }
   }
@@ -7012,10 +8297,10 @@ function addHeroMoveActions(actions: LegalAction[], state: GameState, playerId: 
 
 function hasResources(
   resources: Record<ResourceKind, number>,
-  cost: ResourceCost
+  cost: ResourceCost,
 ): boolean {
   return (Object.entries(cost) as [ResourceKind, number][]).every(
-    ([resource, amount]) => resources[resource] >= amount
+    ([resource, amount]) => resources[resource] >= amount,
   );
 }
 
@@ -7024,13 +8309,18 @@ export function canPlayerBuildStructure(
   playerId: PlayerId,
   townId: TownId,
   buildingId: BuildingId,
-  buildings: BuildingLibrary = sampleBuildings
+  buildings: BuildingLibrary = sampleBuildings,
 ): boolean {
   const player = state.players[playerId];
   const town = state.towns[townId];
   const building = buildings[buildingId];
 
-  if (!player || !town || !building || building.implementationStatus !== "implemented") {
+  if (
+    !player ||
+    !town ||
+    !building ||
+    building.implementationStatus !== "implemented"
+  ) {
     return false;
   }
 
@@ -7042,14 +8332,16 @@ export function canPlayerBuildStructure(
     return false;
   }
 
-  return (building.prerequisites ?? []).every((prerequisiteId) => town.buildings.includes(prerequisiteId));
+  return (building.prerequisites ?? []).every((prerequisiteId) =>
+    town.buildings.includes(prerequisiteId),
+  );
 }
 
 function addTownBuildActions(
   actions: LegalAction[],
   state: GameState,
   playerId: PlayerId,
-  buildings: BuildingLibrary
+  buildings: BuildingLibrary,
 ): void {
   for (const town of Object.values(state.towns)) {
     if (town.controllerId !== playerId) {
@@ -7057,7 +8349,15 @@ function addTownBuildActions(
     }
 
     for (const building of Object.values(buildings)) {
-      if (!canPlayerBuildStructure(state, playerId, town.id, building.id, buildings)) {
+      if (
+        !canPlayerBuildStructure(
+          state,
+          playerId,
+          town.id,
+          building.id,
+          buildings,
+        )
+      ) {
         continue;
       }
 
@@ -7067,8 +8367,8 @@ function addTownBuildActions(
           type: "BUILD_STRUCTURE",
           playerId,
           townId: town.id,
-          buildingId: building.id
-        }
+          buildingId: building.id,
+        },
       });
     }
   }
@@ -7078,7 +8378,7 @@ export function getLegalActions(
   state: GameState,
   playerId: PlayerId,
   cards: CardLibrary = cardLibrary,
-  buildings: BuildingLibrary = sampleBuildings
+  buildings: BuildingLibrary = sampleBuildings,
 ): LegalAction[] {
   const coreActions = getLegalActionsCore(state, playerId, cards, buildings);
   return withComputerAdvanceOffer(
@@ -7104,14 +8404,14 @@ function bookCastSourcesEnabled(state: GameState): boolean {
 function applyPolishSpellBookActionGate(
   state: GameState,
   playerId: PlayerId,
-  actions: LegalAction[]
+  actions: LegalAction[],
 ): LegalAction[] {
   const player = state.players[playerId];
   const hasEnabler = Boolean(player?.hand.includes(CAST_A_SPELL_CARD_ID));
   const hasIntelligenceEnabler = Boolean(
     player?.hand.includes("ability.intelligence") &&
-      polishIntelligenceHandReadingActive(state) &&
-      !balanceIntelligenceWindowClosed(state)
+    polishIntelligenceHandReadingActive(state) &&
+    !balanceIntelligenceWindowClosed(state),
   );
   // Intelligence (combat-long): the ability stands in for the Cast a Spell
   // enabler — Book Spells are selected and cast directly, nothing consumed
@@ -7126,33 +8426,51 @@ function applyPolishSpellBookActionGate(
       continue;
     }
     if (
-      (action.type === "CAST_SPELL" || action.type === "PLAY_CARD" || action.type === "PLAY_REACTION") &&
+      (action.type === "CAST_SPELL" ||
+        action.type === "PLAY_CARD" ||
+        action.type === "PLAY_REACTION") &&
       isCastASpellCard(action.cardId) &&
       !(action.type === "PLAY_REACTION" && action.asPowerBoost)
     ) {
       continue;
     }
     if (
-      (action.type === "CAST_SPELL" || action.type === "PLAY_CARD" || action.type === "PLAY_REACTION") &&
+      (action.type === "CAST_SPELL" ||
+        action.type === "PLAY_CARD" ||
+        action.type === "PLAY_REACTION") &&
       cardLibrary[action.cardId]?.kind === "spell" &&
       !isCastASpellCard(action.cardId) &&
       !action.fromSpellBook &&
-      !(action.type === "CAST_SPELL" && (action.fromScroll || action.fromSpellDeck || action.tarnumReturn)) &&
+      !(
+        action.type === "CAST_SPELL" &&
+        (action.fromScroll || action.fromSpellDeck || action.tarnumReturn)
+      ) &&
       // A Spell-deck cast (Helm of the Alabaster Unicorn option B / Ciele) is not
       // an OWNED Spell either — it is cast off a shared discard pile through its
       // enabler, so it passes the Cast-a-Spell gate like a Scroll. Listed for
       // BOTH shapes: the on-turn CAST_SPELL and the ⚡ instant PLAY_REACTION.
-      !(action.type === "PLAY_REACTION" && (action.fromScroll || action.fromSpellDeck || action.tarnumReturn))
+      !(
+        action.type === "PLAY_REACTION" &&
+        (action.fromScroll || action.fromSpellDeck || action.tarnumReturn)
+      )
     ) {
       // Owned Polish Spells live only in the Book. This also heals legacy saves
       // defensively: a stray hand Spell cannot bypass the Cast-a-Spell gate.
       continue;
     }
     if (
-      (action.type === "CAST_SPELL" || action.type === "PLAY_CARD" || action.type === "PLAY_REACTION") &&
+      (action.type === "CAST_SPELL" ||
+        action.type === "PLAY_CARD" ||
+        action.type === "PLAY_REACTION") &&
       action.fromSpellBook
     ) {
       if (action.type === "PLAY_REACTION" && action.asPowerBoost) {
+        continue;
+      }
+      if (
+        player &&
+        polishBookSpellEffectIsLive(state, playerId, action.cardId, player)
+      ) {
         continue;
       }
       if (intelligenceFreedom) {
@@ -7163,18 +8481,20 @@ function applyPolishSpellBookActionGate(
         gated.push({
           ...legal,
           label: `${legal.label.replace(" (Spell Book)", "")} (Spell Book · Intelligence)`,
-          action: freeAction
+          action: freeAction,
         });
         continue;
       }
       if (!hasEnabler && !hasIntelligenceEnabler) {
         continue;
       }
-      const enablerCardId = hasEnabler ? CAST_A_SPELL_CARD_ID : ("ability.intelligence" as CardId);
+      const enablerCardId = hasEnabler
+        ? CAST_A_SPELL_CARD_ID
+        : ("ability.intelligence" as CardId);
       gated.push({
         ...legal,
         label: `${legal.label.replace(" (Spell Book)", "")} (Spell Book · ${hasEnabler ? "Cast a Spell" : "Intelligence"})`,
-        action: { ...action, castEnablerCardId: enablerCardId }
+        action: { ...action, castEnablerCardId: enablerCardId },
       });
       continue;
     }
@@ -7203,7 +8523,10 @@ function withComputerAdvanceOffer(
   if (computerPlayerIds(state).length === 0) {
     return actions;
   }
-  if (isComputerPlayer(state, playerId) || state.players[playerId]?.eliminated) {
+  if (
+    isComputerPlayer(state, playerId) ||
+    state.players[playerId]?.eliminated
+  ) {
     return actions;
   }
   if (!computerDecisionOwner(state) || combatHasHumanParticipant(state)) {
@@ -7225,7 +8548,7 @@ function getLegalActionsCore(
   state: GameState,
   playerId: PlayerId,
   baseCards: CardLibrary = cardLibrary,
-  buildings: BuildingLibrary = sampleBuildings
+  buildings: BuildingLibrary = sampleBuildings,
 ): LegalAction[] {
   // Balance packs (Polish, then Community on top): the offer layer reads the
   // SAME reprinted definitions the reducer resolves, so a ladder can never be
@@ -7246,8 +8569,8 @@ function getLegalActionsCore(
       return [
         {
           label: "Return to the adventure map",
-          action: { type: "ACKNOWLEDGE_COMBAT_END", playerId }
-        }
+          action: { type: "ACKNOWLEDGE_COMBAT_END", playerId },
+        },
       ];
     }
     return [];
@@ -7306,8 +8629,8 @@ function getLegalActionsCore(
           type: "CHOOSE_OPTION",
           playerId,
           choiceId: choice.id,
-          optionIndex
-        }
+          optionIndex,
+        },
       }));
     }
 
@@ -7319,8 +8642,8 @@ function getLegalActionsCore(
           type: "RESOLVE_COMBAT_DISCARD",
           playerId,
           choiceId: choice.id,
-          cardId
-        }
+          cardId,
+        },
       }));
       // The Magi drain also offers a random discard; the Pegasi toll is a pure
       // "pay a Power card of your choice" — no random option.
@@ -7331,8 +8654,8 @@ function getLegalActionsCore(
             type: "RESOLVE_COMBAT_DISCARD",
             playerId,
             choiceId: choice.id,
-            cardId: "random"
-          }
+            cardId: "random",
+          },
         });
       }
       return actions;
@@ -7347,12 +8670,17 @@ function getLegalActionsCore(
         (deckId) =>
           (state.decks[deckId]?.drawPile.length ?? 0) +
             (state.decks[deckId]?.discardPile.length ?? 0) >
-          0
+          0,
       );
       for (const [optionIndex, deckId] of decks.entries()) {
         actions.push({
           label: `Search the ${deckId === SPELL_DECK_EXPERT ? "expert" : "basic"} Spell deck`,
-          action: { type: "CHOOSE_OPTION", playerId, choiceId: choice.id, optionIndex }
+          action: {
+            type: "CHOOSE_OPTION",
+            playerId,
+            choiceId: choice.id,
+            optionIndex,
+          },
         });
       }
       return actions;
@@ -7364,15 +8692,17 @@ function getLegalActionsCore(
       // alternatives are resolved up front (the "deck-search-mode" option
       // choice), so once a player is looking at the revealed cards they only
       // keep one of those — no fall back to the discard pile or a fetch here.
-      const actions: LegalAction[] = choice.revealedCardIds.map((cardId, index) => ({
-        label: `Keep ${cards[cardId]?.name ?? cardId}`,
-        action: {
-          type: "RESOLVE_DECK_SEARCH",
-          playerId,
-          choiceId: choice.id,
-          pick: { kind: "revealed", index }
-        }
-      }));
+      const actions: LegalAction[] = choice.revealedCardIds.map(
+        (cardId, index) => ({
+          label: `Keep ${cards[cardId]?.name ?? cardId}`,
+          action: {
+            type: "RESOLVE_DECK_SEARCH",
+            playerId,
+            choiceId: choice.id,
+            pick: { kind: "revealed", index },
+          },
+        }),
+      );
 
       // Tarnum (Conflux) I: each revealed card may instead be Removed from the
       // game rather than kept in hand.
@@ -7384,8 +8714,8 @@ function getLegalActionsCore(
               type: "RESOLVE_DECK_SEARCH",
               playerId,
               choiceId: choice.id,
-              pick: { kind: "revealed", index, remove: true }
-            }
+              pick: { kind: "revealed", index, remove: true },
+            },
           });
         }
       }
@@ -7399,12 +8729,17 @@ function getLegalActionsCore(
         !moraleCardsRuleEnabled(state)
       ) {
         const seer = state.players[playerId];
-        const hasToken = (seer?.morale ?? 0) >= 1 || (seer?.moraleOverflow ?? 0) > 0;
+        const hasToken =
+          (seer?.morale ?? 0) >= 1 || (seer?.moraleOverflow ?? 0) > 0;
         if (hasToken) {
           const x = choice.baseCount ?? choice.revealedCardIds.length;
           actions.push({
             label: `Spend Morale token — discard all revealed, Search (${x}) again`,
-            action: { type: "SPEND_MORALE", playerId, benefit: "repeat-search" }
+            action: {
+              type: "SPEND_MORALE",
+              playerId,
+              benefit: "repeat-search",
+            },
           });
         }
       }
@@ -7425,25 +8760,25 @@ function getLegalActionsCore(
               ? `${choice.abilityName}: teleport`
               : choice.kind === "place-token"
                 ? `${choice.abilityName}: place on`
-              : choice.kind === "spell-redirect"
-              ? `${choice.abilityName}: redirect to`
-              : choice.kind === "dreadnought-splash"
-                ? `${choice.abilityName}: deal ${choice.chainRemainingDamages?.[0] ?? 0} to`
-              : choice.kind === "couatl-invulnerability"
-                ? "Become invulnerable —"
-              : choice.kind === "automaton-cube"
-                ? "Place a faction cube on"
-              : choice.kind === "commander-cast"
-                ? `${choice.abilityName}: cast on`
-              : choice.kind === "flat-damage" ||
-                  choice.kind === "spell-splash" ||
-                  choice.kind === "ballistics-splash" ||
-                  choice.kind === "area-pick" ||
-                  choice.kind === "faerie-damage" ||
-                  choice.kind === "chain-lightning" ||
-                  choice.kind === "war-machine"
-                ? `${choice.abilityName}: hit`
-                : "Neutrals attack";
+                : choice.kind === "spell-redirect"
+                  ? `${choice.abilityName}: redirect to`
+                  : choice.kind === "dreadnought-splash"
+                    ? `${choice.abilityName}: deal ${choice.chainRemainingDamages?.[0] ?? 0} to`
+                    : choice.kind === "couatl-invulnerability"
+                      ? "Become invulnerable —"
+                      : choice.kind === "automaton-cube"
+                        ? "Place a faction cube on"
+                        : choice.kind === "commander-cast"
+                          ? `${choice.abilityName}: cast on`
+                          : choice.kind === "flat-damage" ||
+                              choice.kind === "spell-splash" ||
+                              choice.kind === "ballistics-splash" ||
+                              choice.kind === "area-pick" ||
+                              choice.kind === "faerie-damage" ||
+                              choice.kind === "chain-lightning" ||
+                              choice.kind === "war-machine"
+                            ? `${choice.abilityName}: hit`
+                            : "Neutrals attack";
       const targetActions = choice.candidateUnitIds.flatMap((unitId) => {
         // Catapult bombardment: a Wall/Gate target is a pseudo-id, not a unit.
         const fort = parseFortificationTargetId(unitId);
@@ -7455,9 +8790,9 @@ function getLegalActionsCore(
                 type: "CHOOSE_ABILITY_TARGET",
                 playerId,
                 choiceId: choice.id,
-                targetUnitId: unitId
-              }
-            } satisfies LegalAction
+                targetUnitId: unitId,
+              },
+            } satisfies LegalAction,
           ];
         }
         const unit = state.combat?.units[unitId];
@@ -7471,9 +8806,9 @@ function getLegalActionsCore(
               type: "CHOOSE_ABILITY_TARGET",
               playerId,
               choiceId: choice.id,
-              targetUnitId: unitId
-            }
-          } satisfies LegalAction
+              targetUnitId: unitId,
+            },
+          } satisfies LegalAction,
         ];
       });
 
@@ -7490,8 +8825,8 @@ function getLegalActionsCore(
             type: "CHOOSE_ABILITY_TARGET",
             playerId,
             choiceId: choice.id,
-            targetUnitId: "skip"
-          }
+            targetUnitId: "skip",
+          },
         });
       }
 
@@ -7512,7 +8847,9 @@ function getLegalActionsCore(
     // An ability-roll window (Death Stare & co.) names the ability and shows
     // every die — its outcome is the faces, not a single kept value.
     const abilityRoll = state.pendingChoice.abilityRoll;
-    const facesLabel = latest.rolls.map((roll) => (roll >= 0 ? `+${roll}` : `${roll}`)).join(", ");
+    const facesLabel = latest.rolls
+      .map((roll) => (roll >= 0 ? `+${roll}` : `${roll}`))
+      .join(", ");
     const actions: LegalAction[] = [
       {
         label: abilityRoll
@@ -7522,9 +8859,9 @@ function getLegalActionsCore(
           type: "CHOOSE_PENDING_ROLL",
           playerId,
           choiceId: state.pendingChoice?.id ?? "",
-          candidateIndex: latestIndex
-        }
-      }
+          candidateIndex: latestIndex,
+        },
+      },
     ];
 
     // Polish Balance Pack Cards of Prophecy: "roll it 3 times and resolve 1
@@ -7535,7 +8872,9 @@ function getLegalActionsCore(
         if (index === latestIndex) {
           return;
         }
-        const faces = candidate.rolls.map((roll) => (roll >= 0 ? `+${roll}` : `${roll}`)).join(", ");
+        const faces = candidate.rolls
+          .map((roll) => (roll >= 0 ? `+${roll}` : `${roll}`))
+          .join(", ");
         actions.push({
           label: abilityRoll
             ? `Keep the ${abilityRoll.abilityName} roll ${faces} (throw ${index + 1})`
@@ -7544,14 +8883,16 @@ function getLegalActionsCore(
             type: "CHOOSE_PENDING_ROLL",
             playerId,
             choiceId: state.pendingChoice?.id ?? "",
-            candidateIndex: index
-          }
+            candidateIndex: index,
+          },
         });
       });
     }
 
     const nextSource = state.pendingChoice.rerollSources.find(
-      (source) => rerollSourceAvailableFor(source, latest.roll) && source.setDieFace === undefined
+      (source) =>
+        rerollSourceAvailableFor(source, latest.roll) &&
+        source.setDieFace === undefined,
     );
     if (nextSource) {
       // USER RULE: Death Stare rolls TWO SEPARATE dice, so an ordinary reroll
@@ -7565,9 +8906,14 @@ function getLegalActionsCore(
         nextSource.rerollsWholeRoll !== true &&
         latest.rolls.length > 1;
       if (perDie && abilityRoll) {
-        const inWindow = (roll: number): boolean => roll >= abilityRoll.minRoll && roll <= abilityRoll.maxRoll;
+        const inWindow = (roll: number): boolean =>
+          roll >= abilityRoll.minRoll && roll <= abilityRoll.maxRoll;
         const indexes = latest.rolls.map((_, index) => index);
-        indexes.sort((left, right) => Number(inWindow(latest.rolls[left]!)) - Number(inWindow(latest.rolls[right]!)));
+        indexes.sort(
+          (left, right) =>
+            Number(inWindow(latest.rolls[left]!)) -
+            Number(inWindow(latest.rolls[right]!)),
+        );
         for (const index of indexes) {
           const face = latest.rolls[index]!;
           actions.push({
@@ -7576,8 +8922,8 @@ function getLegalActionsCore(
               type: "REROLL_PENDING_CHOICE",
               playerId,
               choiceId: state.pendingChoice.id,
-              dieIndex: index
-            }
+              dieIndex: index,
+            },
           });
         }
       } else {
@@ -7588,8 +8934,8 @@ function getLegalActionsCore(
           action: {
             type: "REROLL_PENDING_CHOICE",
             playerId,
-            choiceId: state.pendingChoice.id
-          }
+            choiceId: state.pendingChoice.id,
+          },
         });
       }
     }
@@ -7597,7 +8943,9 @@ function getLegalActionsCore(
     // Positive Morale "set one of the dice to the +1 side": its own button —
     // a set, not a reroll, so neither spends the other.
     const setSource = state.pendingChoice.rerollSources.find(
-      (source) => rerollSourceAvailableFor(source, latest.roll) && source.setDieFace !== undefined
+      (source) =>
+        rerollSourceAvailableFor(source, latest.roll) &&
+        source.setDieFace !== undefined,
     );
     if (setSource) {
       actions.push({
@@ -7606,8 +8954,8 @@ function getLegalActionsCore(
           type: "REROLL_PENDING_CHOICE",
           playerId,
           choiceId: state.pendingChoice.id,
-          useSetDie: true
-        }
+          useSetDie: true,
+        },
       });
     }
 
@@ -7621,7 +8969,9 @@ function getLegalActionsCore(
       return getParallelBystanderActions(state, playerId);
     }
 
-    const reactionActions = [...(state.reactionWindow.legalReactions[playerId] ?? [])];
+    const reactionActions = [
+      ...(state.reactionWindow.legalReactions[playerId] ?? []),
+    ];
     return [
       ...reactionActions,
       {
@@ -7629,8 +8979,8 @@ function getLegalActionsCore(
           state.reactionWindow.triggerEvent.type === "UNIT_ATTACK_DECLARED"
             ? "Keep normal attack"
             : "Pass reaction",
-        action: { type: "PASS_REACTION", playerId }
-      }
+        action: { type: "PASS_REACTION", playerId },
+      },
     ];
   }
 
@@ -7661,7 +9011,7 @@ function getLegalActionsCore(
     addTownBuildActions(actions, state, playerId, buildings);
     actions.push({
       label: "Complete simultaneous turn",
-      action: { type: "COMPLETE_SIMULTANEOUS_TURN", playerId }
+      action: { type: "COMPLETE_SIMULTANEOUS_TURN", playerId },
     });
     return actions;
   }
@@ -7695,7 +9045,7 @@ function getLegalActionsCore(
     addTownBuildActions(actions, state, playerId, buildings);
     actions.push({
       label: "End turn",
-      action: { type: "END_TURN", playerId }
+      action: { type: "END_TURN", playerId },
     });
     return actions;
   }
@@ -7707,7 +9057,7 @@ function getLegalActionsCore(
     addSatyrMoraleRollActions(actions, state, playerId);
     actions.push({
       label: "End turn",
-      action: { type: "END_TURN", playerId }
+      action: { type: "END_TURN", playerId },
     });
     return actions;
   }
@@ -7735,8 +9085,8 @@ function getLegalActionsCore(
           type: "SELECT_EQUIPMENT_COMBAT_UNIT",
           playerId,
           equipmentId: offer.equipmentId,
-          unitId: offer.unitId
-        }
+          unitId: offer.unitId,
+        },
       });
     }
   }
@@ -7761,7 +9111,7 @@ function addArtifactSetActions(
    * without it the combat-start window would be unreachable whenever a guard is
    * faster than every one of the player's units.
    */
-  combatStartOnly = false
+  combatStartOnly = false,
 ): void {
   for (const offer of artifactSetPowerOffers(state, playerId)) {
     if (combatStartOnly && offer.tier.timing !== "combat-start") {
@@ -7773,7 +9123,12 @@ function addArtifactSetActions(
       }
       actions.push({
         label: offer.label,
-        action: { type: "SELECT_ARTIFACT_SET_UNIT", playerId, setId: offer.setId, unitId: offer.unitId }
+        action: {
+          type: "SELECT_ARTIFACT_SET_UNIT",
+          playerId,
+          setId: offer.setId,
+          unitId: offer.unitId,
+        },
       });
       continue;
     }
@@ -7785,8 +9140,8 @@ function addArtifactSetActions(
         setId: offer.setId,
         tier: offer.threshold,
         ...(offer.unitId ? { unitId: offer.unitId } : {}),
-        ...(offer.neutralTier ? { neutralTier: offer.neutralTier } : {})
-      }
+        ...(offer.neutralTier ? { neutralTier: offer.neutralTier } : {}),
+      },
     });
   }
 }
@@ -7813,7 +9168,7 @@ function getActivateRangedUnitTargets(
   aboutToActivateUnitId: UnitId,
   // Valeska's Marksmen VI may re-fire a ranged unit that has already acted; the
   // Bowstring leaves this false so it only reaches not-yet-activated units.
-  allowAlreadyActivated = false
+  allowAlreadyActivated = false,
 ): UnitId[] {
   const combat = state.combat;
   if (!combat) {
@@ -7826,7 +9181,7 @@ function getActivateRangedUnitTargets(
         isUnitAlive(unit) &&
         unit.type === "ranged" &&
         (allowAlreadyActivated || !unit.activatedThisRound) &&
-        unit.id !== aboutToActivateUnitId
+        unit.id !== aboutToActivateUnitId,
     )
     .map((unit) => unit.id);
 }
@@ -7836,7 +9191,7 @@ function getDieCancelReactions(
   defenderId: UnitId,
   attackerId: UnitId,
   cards: CardLibrary,
-  roll: number
+  roll: number,
 ): Record<PlayerId, LegalAction[]> {
   const combat = state.combat;
   const defender = combat?.units[defenderId];
@@ -7850,7 +9205,9 @@ function getDieCancelReactions(
 
   // Only one die-cancel per attack: if it is already armed, offer nothing more.
   const pendingAttack = state.stack.find(
-    (item) => item.action.type === "ATTACK_UNIT" || item.action.type === "MOVE_AND_ATTACK_UNIT"
+    (item) =>
+      item.action.type === "ATTACK_UNIT" ||
+      item.action.type === "MOVE_AND_ATTACK_UNIT",
   );
   if (pendingAttack?.modifiers.attackDieCancelled) {
     return {};
@@ -7863,7 +9220,11 @@ function getDieCancelReactions(
   // `stackItem.modifiers.attackDieMultiplier`, which `getAttackStackDetails`
   // re-reads when the parked blow resumes — so the stashed rolled candidate is
   // multiplied exactly as a pre-roll play would have been.
-  const attackerOffers = getAfterRollAttackerReactions(state, attackerId, cards);
+  const attackerOffers = getAfterRollAttackerReactions(
+    state,
+    attackerId,
+    cards,
+  );
 
   const reactions: LegalAction[] = [];
   if (!player || playerId === NEUTRAL_PLAYER_ID) {
@@ -7881,15 +9242,25 @@ function getDieCancelReactions(
   if (roll > 0 && getFreeIgnoreAttackDieAbility(defender)) {
     reactions.push({
       label: `${defender.cardName}: ignore the Attack die`,
-      action: { type: "USE_UNIT_DIE_IGNORE", playerId, defenderUnitId: defender.id }
+      action: {
+        type: "USE_UNIT_DIE_IGNORE",
+        playerId,
+        defenderUnitId: defender.id,
+      },
     });
   }
   if (isHandLockedInCombat(state, playerId)) {
-    return reactions.length > 0 ? { ...attackerOffers, [playerId]: reactions } : attackerOffers;
+    return reactions.length > 0
+      ? { ...attackerOffers, [playerId]: reactions }
+      : attackerOffers;
   }
   for (const cardId of new Set(player.hand)) {
     const card = cards[cardId];
-    if (!card || card.implementationStatus !== "implemented" || card.effect.type !== "CHOOSE_ONE") {
+    if (
+      !card ||
+      card.implementationStatus !== "implemented" ||
+      card.effect.type !== "CHOOSE_ONE"
+    ) {
       continue;
     }
     for (const [optionIndex, option] of card.effect.options.entries()) {
@@ -7910,8 +9281,8 @@ function getDieCancelReactions(
           playerId,
           cardId,
           mode: "basic",
-          optionIndex
-        })
+          optionIndex,
+        }),
       );
     }
   }
@@ -7921,11 +9292,20 @@ function getDieCancelReactions(
   // cancelling — ignoring a 0/−1 never helps the defender) and only while the
   // controller still holds a card to pay the discard cost. Not a card play, so
   // it is pushed as a plain unit-ability reaction (like the Archangels' save).
-  if (roll > 0 && player.hand.length > 0 && getDiscardToIgnoreAttackDieAbility(defender)) {
+  if (
+    roll > 0 &&
+    player.hand.length > 0 &&
+    getDiscardToIgnoreAttackDieAbility(defender)
+  ) {
     for (const discardCardId of new Set(player.hand)) {
       reactions.push({
         label: `${defender.cardName}: discard ${cards[discardCardId]?.name ?? discardCardId} to ignore the Attack die`,
-        action: { type: "USE_UNIT_DIE_IGNORE", playerId, defenderUnitId: defender.id, discardCardId }
+        action: {
+          type: "USE_UNIT_DIE_IGNORE",
+          playerId,
+          defenderUnitId: defender.id,
+          discardCardId,
+        },
       });
     }
   }
@@ -7933,7 +9313,9 @@ function getDieCancelReactions(
   // (The Community Balance Change's FREE Parry is pushed ABOVE the hand-lock
   // gate — it is a unit ability with no cost.)
 
-  return reactions.length > 0 ? { ...attackerOffers, [playerId]: reactions } : attackerOffers;
+  return reactions.length > 0
+    ? { ...attackerOffers, [playerId]: reactions }
+    : attackerOffers;
 }
 
 /**
@@ -7946,22 +9328,35 @@ function getDieCancelReactions(
 function getAfterRollAttackerReactions(
   state: GameState,
   attackerId: UnitId,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): Record<PlayerId, LegalAction[]> {
   const attacker = state.combat?.units[attackerId];
   const playerId = attacker?.controllerId;
   const player = playerId ? state.players[playerId] : undefined;
-  if (!attacker || !playerId || !player || playerId === NEUTRAL_PLAYER_ID || isHandLockedInCombat(state, playerId)) {
+  if (
+    !attacker ||
+    !playerId ||
+    !player ||
+    playerId === NEUTRAL_PLAYER_ID ||
+    isHandLockedInCombat(state, playerId)
+  ) {
     return {};
   }
   const reactions: LegalAction[] = [];
   for (const cardId of new Set(player.hand)) {
     const card = cards[cardId];
-    if (!card || card.implementationStatus !== "implemented" || card.effect.type !== "CHOOSE_ONE") {
+    if (
+      !card ||
+      card.implementationStatus !== "implemented" ||
+      card.effect.type !== "CHOOSE_ONE"
+    ) {
       continue;
     }
     for (const [optionIndex, option] of card.effect.options.entries()) {
-      if (!option.afterAttackRoll || !canAffordCardCost(state, playerId, cardId, option.cost)) {
+      if (
+        !option.afterAttackRoll ||
+        !canAffordCardCost(state, playerId, cardId, option.cost)
+      ) {
         continue;
       }
       reactions.push(
@@ -7970,8 +9365,8 @@ function getAfterRollAttackerReactions(
           playerId,
           cardId,
           mode: "basic",
-          optionIndex
-        })
+          optionIndex,
+        }),
       );
     }
   }
@@ -7990,7 +9385,7 @@ function getAfterRollAttackerReactions(
 function getMisfortunePreWindowReactions(
   state: GameState,
   triggerEvent: Extract<GameEvent, { type: "UNIT_ATTACK_DECLARED" }>,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): Record<PlayerId, LegalAction[]> {
   const combat = state.combat;
   const attacker = combat?.units[triggerEvent.attackerId];
@@ -8000,11 +9395,18 @@ function getMisfortunePreWindowReactions(
   }
   const playerId = defender.controllerId;
   const player = state.players[playerId];
-  if (!player || playerId === NEUTRAL_PLAYER_ID || isHandLockedInCombat(state, playerId)) {
+  if (
+    !player ||
+    playerId === NEUTRAL_PLAYER_ID ||
+    isHandLockedInCombat(state, playerId)
+  ) {
     return {};
   }
   // Misfortune is a Spell, so it respects the one-Spell-per-round limit.
-  if (spellLimitFor(state, player) - player.combatStats.spellsCastThisRound <= 0) {
+  if (
+    spellLimitFor(state, player) - player.combatStats.spellsCastThisRound <=
+    0
+  ) {
     return {};
   }
 
@@ -8014,14 +9416,21 @@ function getMisfortunePreWindowReactions(
   const sources: { cardId: CardId; fromSpellBook?: true }[] = [
     ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
     ...(bookCastSourcesEnabled(state)
-      ? [...new Set(player.spellBook ?? [])].map((cardId) => ({ cardId, fromSpellBook: true as const }))
-      : [])
+      ? [...new Set(player.spellBook ?? [])].map((cardId) => ({
+          cardId,
+          fromSpellBook: true as const,
+        }))
+      : []),
   ];
 
   const reactions: LegalAction[] = [];
   for (const { cardId, fromSpellBook } of sources) {
     const card = cards[cardId];
-    if (!card || card.kind !== "spell" || card.implementationStatus !== "implemented") {
+    if (
+      !card ||
+      card.kind !== "spell" ||
+      card.implementationStatus !== "implemented"
+    ) {
       continue;
     }
     // Polish Balance Pack Misfortune: the reprint has NO tier gate and no "OR"
@@ -8032,13 +9441,16 @@ function getMisfortunePreWindowReactions(
         continue;
       }
       reactions.push(
-        makeReactionAction(`${card.name}${fromSpellBook ? " (Spell Book)" : ""}`, {
-          type: "PLAY_REACTION",
-          playerId,
-          cardId,
-          mode: "basic",
-          ...(fromSpellBook ? { fromSpellBook: true } : {})
-        })
+        makeReactionAction(
+          `${card.name}${fromSpellBook ? " (Spell Book)" : ""}`,
+          {
+            type: "PLAY_REACTION",
+            playerId,
+            cardId,
+            mode: "basic",
+            ...(fromSpellBook ? { fromSpellBook: true } : {}),
+          },
+        ),
       );
       continue;
     }
@@ -8065,14 +9477,17 @@ function getMisfortunePreWindowReactions(
         continue;
       }
       reactions.push(
-        makeReactionAction(`${card.name}: ${option.label}${fromSpellBook ? " (Spell Book)" : ""}`, {
-          type: "PLAY_REACTION",
-          playerId,
-          cardId,
-          mode: "basic",
-          optionIndex,
-          ...(fromSpellBook ? { fromSpellBook: true } : {})
-        })
+        makeReactionAction(
+          `${card.name}: ${option.label}${fromSpellBook ? " (Spell Book)" : ""}`,
+          {
+            type: "PLAY_REACTION",
+            playerId,
+            cardId,
+            mode: "basic",
+            optionIndex,
+            ...(fromSpellBook ? { fromSpellBook: true } : {}),
+          },
+        ),
       );
     }
   }
@@ -8081,7 +9496,9 @@ function getMisfortunePreWindowReactions(
   // this dedicated pre-window refreshes and the matching Misfortune appears at
   // the full +3 Power. Keep the pre-buff ordering intact by offering nothing
   // else here.
-  reactions.unshift(...getSchoolPermanentExpertActions(state, playerId, triggerEvent, cards));
+  reactions.unshift(
+    ...getSchoolPermanentExpertActions(state, playerId, triggerEvent, cards),
+  );
 
   return reactions.length > 0 ? { [playerId]: reactions } : {};
 }
@@ -8096,7 +9513,7 @@ function getMisfortunePreWindowReactions(
  */
 function spellRecallReactionOffers(
   player: PlayerState,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): LegalAction[] {
   const expertUsesLeft =
     player.limits.expertUses +
@@ -8113,15 +9530,25 @@ function spellRecallReactionOffers(
     ) {
       continue;
     }
-    offers.push(makeReactionAction(card.name, { type: "PLAY_REACTION", playerId: player.id, cardId, mode: "basic" }));
-    if (effectHasExpertMode(card.effect) && (expertUsesLeft > 0 || abilityExpertIsCrownFree(player, cardId))) {
+    offers.push(
+      makeReactionAction(card.name, {
+        type: "PLAY_REACTION",
+        playerId: player.id,
+        cardId,
+        mode: "basic",
+      }),
+    );
+    if (
+      effectHasExpertMode(card.effect) &&
+      (expertUsesLeft > 0 || abilityExpertIsCrownFree(player, cardId))
+    ) {
       offers.push(
         makeReactionAction(`${card.name} expert`, {
           type: "PLAY_REACTION",
           playerId: player.id,
           cardId,
-          mode: "expert"
-        })
+          mode: "expert",
+        }),
       );
     }
   }
@@ -8142,7 +9569,7 @@ function spellRecallReactionOffers(
 function getHeldOpenSpellRecallReactions(
   state: GameState,
   cards: CardLibrary,
-  recall: { playerId: PlayerId } | null | undefined
+  recall: { playerId: PlayerId } | null | undefined,
 ): Record<PlayerId, LegalAction[]> {
   const player = recall ? state.players[recall.playerId] : undefined;
   if (!recall || !player || isHandLockedInCombat(state, recall.playerId)) {
@@ -8155,7 +9582,7 @@ function getHeldOpenSpellRecallReactions(
 function getLethalSaveReactions(
   state: GameState,
   triggerEvent: Extract<GameEvent, { type: "UNIT_LETHAL_HIT" }>,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): Record<PlayerId, LegalAction[]> {
   const combat = state.combat;
   const defender = combat?.units[triggerEvent.defenderId];
@@ -8177,12 +9604,14 @@ function getLethalSaveReactions(
   // recallable Spell recorded on this attack; a Book Resurrection routes back
   // into the Book on resolution (recallableSpellReactions carries fromSpellBook).
   const pendingAttack = state.stack.find(
-    (item) => item.action.type === "ATTACK_UNIT" || item.action.type === "MOVE_AND_ATTACK_UNIT"
+    (item) =>
+      item.action.type === "ATTACK_UNIT" ||
+      item.action.type === "MOVE_AND_ATTACK_UNIT",
   );
   if (pendingAttack?.modifiers.cancelLethal) {
-    const hasOwnRecallable = (pendingAttack.modifiers.recallableSpellReactions ?? []).some(
-      (entry) => entry.playerId === playerId
-    );
+    const hasOwnRecallable = (
+      pendingAttack.modifiers.recallableSpellReactions ?? []
+    ).some((entry) => entry.playerId === playerId);
     if (!hasOwnRecallable || isHandLockedInCombat(state, playerId)) {
       return {};
     }
@@ -8196,7 +9625,9 @@ function getLethalSaveReactions(
   // This can open an otherwise-unaffordable save window; after the permanent is
   // consumed, the refreshed window evaluates Resurrection against the banked
   // expert Power just like other Power-gated reaction Spells.
-  reactions.push(...getSchoolPermanentExpertActions(state, playerId, triggerEvent, cards));
+  reactions.push(
+    ...getSchoolPermanentExpertActions(state, playerId, triggerEvent, cards),
+  );
 
   // Deck-based saves (the Resurrection Spell, Alamar's Resurrection specialty)
   // are played from the controller's hand, so they are unavailable whenever
@@ -8207,7 +9638,8 @@ function getLethalSaveReactions(
     // A Resurrection-style Spell counts against the one-Spell-per-combat-round
     // limit (Expert Knowledge / Intelligence raise it); the specialty and the
     // Archangels' ability do not.
-    const spellLimitReached = player.combatStats.spellsCastThisRound >= spellLimitFor(state, player);
+    const spellLimitReached =
+      player.combatStats.spellsCastThisRound >= spellLimitFor(state, player);
 
     // Spell Book (house rule): a Resurrection Spell you stashed in the Book is
     // still yours to cast, so the save window offers it exactly like a hand
@@ -8217,13 +9649,20 @@ function getLethalSaveReactions(
     const saveSources: { cardId: CardId; fromSpellBook?: true }[] = [
       ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
       ...(bookCastSourcesEnabled(state)
-        ? [...new Set(player.spellBook ?? [])].map((cardId) => ({ cardId, fromSpellBook: true as const }))
-        : [])
+        ? [...new Set(player.spellBook ?? [])].map((cardId) => ({
+            cardId,
+            fromSpellBook: true as const,
+          }))
+        : []),
     ];
 
     for (const { cardId, fromSpellBook } of saveSources) {
       const card = cards[cardId];
-      if (!card || card.implementationStatus !== "implemented" || card.effect.type !== "CHOOSE_ONE") {
+      if (
+        !card ||
+        card.implementationStatus !== "implemented" ||
+        card.effect.type !== "CHOOSE_ONE"
+      ) {
         continue;
       }
       if (card.kind === "spell" && spellLimitReached) {
@@ -8242,14 +9681,17 @@ function getLethalSaveReactions(
           continue;
         }
         reactions.push(
-          makeReactionAction(`${card.name}: ${option.label}${fromSpellBook ? " (Spell Book)" : ""}`, {
-            type: "PLAY_REACTION",
-            playerId,
-            cardId,
-            mode: "basic",
-            optionIndex,
-            ...(fromSpellBook ? { fromSpellBook: true } : {})
-          })
+          makeReactionAction(
+            `${card.name}: ${option.label}${fromSpellBook ? " (Spell Book)" : ""}`,
+            {
+              type: "PLAY_REACTION",
+              playerId,
+              cardId,
+              mode: "basic",
+              optionIndex,
+              ...(fromSpellBook ? { fromSpellBook: true } : {}),
+            },
+          ),
         );
       }
     }
@@ -8272,14 +9714,24 @@ function getLethalSaveReactions(
     if (!ability) {
       continue;
     }
-    const saverArmyUnit = state.players[playerId]?.army.find((candidate) => candidate.id === unit.armyUnitId);
+    const saverArmyUnit = state.players[playerId]?.army.find(
+      (candidate) => candidate.id === unit.armyUnitId,
+    );
     const mioRestricted = saverArmyUnit?.unitDefId === "little_busters.mio";
-    if (mioRestricted && (defender.heroUnit || (defender.grade !== "bronze" && defender.grade !== "silver"))) {
+    if (
+      mioRestricted &&
+      (defender.heroUnit ||
+        (defender.grade !== "bronze" && defender.grade !== "silver"))
+    ) {
       continue;
     }
     reactions.push({
       label: `${unit.cardName}: ${ability.abilityName} (cancel the killing blow, once per Combat)`,
-      action: { type: "USE_UNIT_RESURRECTION", playerId, savingUnitId: unit.id }
+      action: {
+        type: "USE_UNIT_RESURRECTION",
+        playerId,
+        savingUnitId: unit.id,
+      },
     });
   }
 
@@ -8296,9 +9748,17 @@ function getLethalSaveReactions(
  */
 function magicMirrorRedirectContext(
   state: GameState,
-  triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" | "UNIT_ACTIVATION_STARTED" }>,
+  triggerEvent: Extract<
+    GameEvent,
+    {
+      type:
+        | "SPELL_CAST_STARTED"
+        | "UNIT_ATTACK_DECLARED"
+        | "UNIT_ACTIVATION_STARTED";
+    }
+  >,
   playerId: PlayerId,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): { excludeUnitId: UnitId | null } | null {
   if (triggerEvent.type === "SPELL_CAST_STARTED") {
     // Magic Mirror answers an ENEMY Spell only — never the caster's own.
@@ -8315,7 +9775,7 @@ function magicMirrorRedirectContext(
     const stackItem = getPendingStackItem(state, triggerEvent);
     if (stackItem?.action.type === "CAST_SPELL") {
       const hitsMine = spellPotentialBlastUnitIds(state, stackItem, cards).some(
-        (unitId) => state.combat?.units[unitId]?.controllerId === playerId
+        (unitId) => state.combat?.units[unitId]?.controllerId === playerId,
       );
       if (hitsMine) {
         const target = stackItem.action.target;
@@ -8328,7 +9788,9 @@ function magicMirrorRedirectContext(
   // (c) an enemy instant combat debuff layered onto the pending attack.
   if (triggerEvent.type === "UNIT_ATTACK_DECLARED") {
     const stackItem = state.stack.at(-1);
-    const instant = stackItem ? reflectableAttackInstantForPlayer(state, stackItem, playerId, cards) : null;
+    const instant = stackItem
+      ? reflectableAttackInstantForPlayer(state, stackItem, playerId, cards)
+      : null;
     return instant ? { excludeUnitId: instant.affectedUnitId } : null;
   }
 
@@ -8350,14 +9812,27 @@ function magicMirrorRedirectContext(
 function getMagicMirrorReactions(
   state: GameState,
   player: PlayerState,
-  triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" | "UNIT_ACTIVATION_STARTED" }>,
+  triggerEvent: Extract<
+    GameEvent,
+    {
+      type:
+        | "SPELL_CAST_STARTED"
+        | "UNIT_ATTACK_DECLARED"
+        | "UNIT_ACTIVATION_STARTED";
+    }
+  >,
   spellLimitLeft: number,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): LegalAction[] {
   if (spellLimitLeft <= 0) {
     return [];
   }
-  const context = magicMirrorRedirectContext(state, triggerEvent, player.id, cards);
+  const context = magicMirrorRedirectContext(
+    state,
+    triggerEvent,
+    player.id,
+    cards,
+  );
   if (!context) {
     return [];
   }
@@ -8365,14 +9840,21 @@ function getMagicMirrorReactions(
   const sources: { cardId: CardId; fromSpellBook?: true }[] = [
     ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
     ...(bookCastSourcesEnabled(state)
-      ? [...new Set(player.spellBook ?? [])].map((cardId) => ({ cardId, fromSpellBook: true as const }))
-      : [])
+      ? [...new Set(player.spellBook ?? [])].map((cardId) => ({
+          cardId,
+          fromSpellBook: true as const,
+        }))
+      : []),
   ];
 
   const offers: LegalAction[] = [];
   for (const { cardId, fromSpellBook } of sources) {
     const card = cards[cardId];
-    if (!card || card.kind !== "spell" || card.implementationStatus !== "implemented") {
+    if (
+      !card ||
+      card.kind !== "spell" ||
+      card.implementationStatus !== "implemented"
+    ) {
       continue;
     }
     if (card.timing !== "reaction" && card.timing !== "instant") {
@@ -8392,13 +9874,26 @@ function getMagicMirrorReactions(
         pendingStack?.action.type === "CAST_SPELL"
           ? cards[pendingStack.action.cardId]
           : pendingStack &&
-              (pendingStack.action.type === "ATTACK_UNIT" || pendingStack.action.type === "MOVE_AND_ATTACK_UNIT")
+              (pendingStack.action.type === "ATTACK_UNIT" ||
+                pendingStack.action.type === "MOVE_AND_ATTACK_UNIT")
             ? (() => {
-                const found = reflectableAttackInstantForPlayer(state, pendingStack, player.id, cards);
+                const found = reflectableAttackInstantForPlayer(
+                  state,
+                  pendingStack,
+                  player.id,
+                  cards,
+                );
                 return found ? cards[found.cardId] : undefined;
               })()
             : undefined;
-      if (spellRedirectTargets(state, context.excludeUnitId, variant.effect.grade, reflectedSpell).length === 0) {
+      if (
+        spellRedirectTargets(
+          state,
+          context.excludeUnitId,
+          variant.effect.grade,
+          reflectedSpell,
+        ).length === 0
+      ) {
         continue;
       }
       const variantName = variant.optionLabel
@@ -8410,9 +9905,11 @@ function getMagicMirrorReactions(
           playerId: player.id,
           cardId,
           mode: "basic",
-          ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {}),
-          ...(fromSpellBook ? { fromSpellBook: true } : {})
-        })
+          ...(variant.optionIndex !== undefined
+            ? { optionIndex: variant.optionIndex }
+            : {}),
+          ...(fromSpellBook ? { fromSpellBook: true } : {}),
+        }),
       );
     }
   }
@@ -8423,8 +9920,16 @@ function getMagicMirrorReactions(
 function getInnateMagicMirrorReactions(
   state: GameState,
   playerId: PlayerId,
-  triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" | "UNIT_ACTIVATION_STARTED" }>,
-  cards: CardLibrary
+  triggerEvent: Extract<
+    GameEvent,
+    {
+      type:
+        | "SPELL_CAST_STARTED"
+        | "UNIT_ATTACK_DECLARED"
+        | "UNIT_ACTIVATION_STARTED";
+    }
+  >,
+  cards: CardLibrary,
 ): LegalAction[] {
   const combat = state.combat;
   if (!combat) {
@@ -8432,7 +9937,10 @@ function getInnateMagicMirrorReactions(
   }
 
   let affectedUnitId: UnitId | null = null;
-  if (triggerEvent.type === "SPELL_CAST_STARTED" && triggerEvent.playerId !== playerId) {
+  if (
+    triggerEvent.type === "SPELL_CAST_STARTED" &&
+    triggerEvent.playerId !== playerId
+  ) {
     const primary = pendingSpellTargetForPlayer(state, triggerEvent, playerId);
     if (primary && hasInnateMagicMirror(primary)) {
       affectedUnitId = primary.id;
@@ -8442,13 +9950,17 @@ function getInnateMagicMirrorReactions(
         affectedUnitId =
           spellPotentialBlastUnitIds(state, stackItem, cards).find((unitId) => {
             const unit = combat.units[unitId];
-            return unit?.controllerId === playerId && hasInnateMagicMirror(unit);
+            return (
+              unit?.controllerId === playerId && hasInnateMagicMirror(unit)
+            );
           }) ?? null;
       }
     }
   } else if (triggerEvent.type === "UNIT_ATTACK_DECLARED") {
     const stackItem = state.stack.at(-1);
-    const instant = stackItem ? reflectableAttackInstantForPlayer(state, stackItem, playerId, cards) : null;
+    const instant = stackItem
+      ? reflectableAttackInstantForPlayer(state, stackItem, playerId, cards)
+      : null;
     const affected = instant ? combat.units[instant.affectedUnitId] : undefined;
     if (affected && hasInnateMagicMirror(affected)) {
       affectedUnitId = affected.id;
@@ -8459,21 +9971,34 @@ function getInnateMagicMirrorReactions(
   const reflectedSpell =
     stackItem?.action.type === "CAST_SPELL"
       ? cards[stackItem.action.cardId]
-      : stackItem && (stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT")
+      : stackItem &&
+          (stackItem.action.type === "ATTACK_UNIT" ||
+            stackItem.action.type === "MOVE_AND_ATTACK_UNIT")
         ? (() => {
-            const found = reflectableAttackInstantForPlayer(state, stackItem, playerId, cards);
+            const found = reflectableAttackInstantForPlayer(
+              state,
+              stackItem,
+              playerId,
+              cards,
+            );
             return found ? cards[found.cardId] : undefined;
           })()
         : undefined;
-  if (!affectedUnitId || spellRedirectTargets(state, affectedUnitId, "azure", reflectedSpell).length === 0) {
+  if (
+    !affectedUnitId ||
+    spellRedirectTargets(state, affectedUnitId, "azure", reflectedSpell)
+      .length === 0
+  ) {
     return [];
   }
   const unit = combat.units[affectedUnitId];
   return unit
-    ? [{
-        label: `${unit.cardName}: Magic Mirror`,
-        action: { type: "USE_UNIT_MAGIC_MIRROR", playerId, unitId: unit.id }
-      }]
+    ? [
+        {
+          label: `${unit.cardName}: Magic Mirror`,
+          action: { type: "USE_UNIT_MAGIC_MIRROR", playerId, unitId: unit.id },
+        },
+      ]
     : [];
 }
 
@@ -8483,7 +10008,7 @@ function tarnumSearchableDeckExists(state: GameState): boolean {
     (deckId) =>
       (state.decks[deckId]?.drawPile.length ?? 0) +
         (state.decks[deckId]?.discardPile.length ?? 0) >
-      0
+      0,
   );
 }
 
@@ -8517,8 +10042,14 @@ function tarnumSearchableDeckExists(state: GameState): boolean {
  * same target, and the Sandworm's repeat is a fresh action its own player
  * declares (so that player DID have the on-turn moment).
  */
-function followUpAttackInstantOpener(state: GameState, triggerEvent: GameEvent): PlayerId | undefined {
-  if (triggerEvent.type !== "UNIT_ATTACK_DECLARED" || !triggerEvent.abilityAttack) {
+function followUpAttackInstantOpener(
+  state: GameState,
+  triggerEvent: GameEvent,
+): PlayerId | undefined {
+  if (
+    triggerEvent.type !== "UNIT_ATTACK_DECLARED" ||
+    !triggerEvent.abilityAttack
+  ) {
     return undefined;
   }
   return state.combat?.units[triggerEvent.attackerId]?.controllerId;
@@ -8527,7 +10058,7 @@ function followUpAttackInstantOpener(state: GameState, triggerEvent: GameEvent):
 export function getLegalReactionsForTrigger(
   state: GameState,
   triggerEvent: GameEvent,
-  baseCards: CardLibrary = cardLibrary
+  baseCards: CardLibrary = cardLibrary,
 ): Record<PlayerId, LegalAction[]> {
   // Balance packs: same composed reprinted library the reducer resolves with.
   const cards = balanceCardLibrary(state, baseCards);
@@ -8539,7 +10070,13 @@ export function getLegalReactionsForTrigger(
   // Shield of the Dwarven Lords: the defender's post-roll window to ignore the
   // Attack die and the effects it triggered.
   if (triggerEvent.type === "ATTACK_DIE_SETTLED") {
-    return getDieCancelReactions(state, triggerEvent.defenderId, triggerEvent.attackerId, cards, triggerEvent.roll);
+    return getDieCancelReactions(
+      state,
+      triggerEvent.defenderId,
+      triggerEvent.attackerId,
+      cards,
+      triggerEvent.roll,
+    );
   }
 
   if (
@@ -8570,8 +10107,15 @@ export function getLegalReactionsForTrigger(
   // Sorrow take-back: while the activation-skip window is being held open for the
   // caster's Knowledge/Mysticism recall, offer ONLY that recall (see the reducer's
   // SKIP_ACTIVATION handler) — nothing else on the already-skipped unit.
-  if (triggerEvent.type === "UNIT_ACTIVATION_STARTED" && state.combat?.pendingActivationSkipRecall) {
-    return getHeldOpenSpellRecallReactions(state, cards, state.combat.pendingActivationSkipRecall);
+  if (
+    triggerEvent.type === "UNIT_ACTIVATION_STARTED" &&
+    state.combat?.pendingActivationSkipRecall
+  ) {
+    return getHeldOpenSpellRecallReactions(
+      state,
+      cards,
+      state.combat.pendingActivationSkipRecall,
+    );
   }
 
   // Cast-window reaction-Spell take-back: while a cast window is held open (or
@@ -8582,7 +10126,11 @@ export function getLegalReactionsForTrigger(
     triggerEvent.type === "SPELL_CAST_STARTED" &&
     state.combat?.pendingCastReactionRecall?.triggerEventId === triggerEvent.id
   ) {
-    return getHeldOpenSpellRecallReactions(state, cards, state.combat.pendingCastReactionRecall);
+    return getHeldOpenSpellRecallReactions(
+      state,
+      cards,
+      state.combat.pendingCastReactionRecall,
+    );
   }
 
   for (const player of Object.values(state.players)) {
@@ -8596,7 +10144,12 @@ export function getLegalReactionsForTrigger(
     if (state.combat && !isCombatParticipant(state, player.id)) {
       continue;
     }
-    const innateMirrorReactions = getInnateMagicMirrorReactions(state, player.id, triggerEvent, cards);
+    const innateMirrorReactions = getInnateMagicMirrorReactions(
+      state,
+      player.id,
+      triggerEvent,
+      cards,
+    );
     // Garrison defense: "You cannot use your Deck during this Combat, as
     // your Main Hero is not present" — no card plays for that defender.
     if (isHandLockedInCombat(state, player.id)) {
@@ -8609,11 +10162,14 @@ export function getLegalReactionsForTrigger(
       player.limits.expertUses +
       (player.combatStats.expertUseBonusThisRound ?? 0) -
       player.combatStats.expertUsesSpentThisRound;
-    const spellLimitLeft = spellLimitFor(state, player) - player.combatStats.spellsCastThisRound;
+    const spellLimitLeft =
+      spellLimitFor(state, player) - player.combatStats.spellsCastThisRound;
     // Tarnum (Conflux) VI: just-Searched flagged Spells are offered as free
     // over-limit reactions through a dedicated pass below, so the normal
     // (limit-counting, own-discard) reaction path skips them here.
-    const tarnumFlagged = new Set(player.combatStats.tarnumOverlimitCards ?? []);
+    const tarnumFlagged = new Set(
+      player.combatStats.tarnumOverlimitCards ?? [],
+    );
 
     const reactions: LegalAction[] = [...innateMirrorReactions];
     // Power has no effect of its own during an attack: it may only be paid
@@ -8629,8 +10185,11 @@ export function getLegalReactionsForTrigger(
     const reactionSources: { cardId: CardId; fromSpellBook?: true }[] = [
       ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
       ...(bookCastSourcesEnabled(state)
-        ? [...new Set(player.spellBook ?? [])].map((cardId) => ({ cardId, fromSpellBook: true as const }))
-        : [])
+        ? [...new Set(player.spellBook ?? [])].map((cardId) => ({
+            cardId,
+            fromSpellBook: true as const,
+          }))
+        : []),
     ];
 
     for (const { cardId, fromSpellBook } of reactionSources) {
@@ -8648,10 +10207,17 @@ export function getLegalReactionsForTrigger(
           card.timing === "instant" ||
           Boolean(card.permanent) ||
           balanceCardWaivesCombatTiming(state, card));
-      if (!card || !allowedTiming || card.implementationStatus !== "implemented") {
+      if (
+        !card ||
+        !allowedTiming ||
+        card.implementationStatus !== "implemented"
+      ) {
         continue;
       }
-      if (card.kind === "spell" && spellEffectIsAlreadyOngoing(state, player.id, cardId)) {
+      if (
+        card.kind === "spell" &&
+        spellEffectIsAlreadyOngoing(state, player.id, cardId)
+      ) {
         continue;
       }
       // Every implemented Instant whose face draws cards or recovers from the
@@ -8688,7 +10254,9 @@ export function getLegalReactionsForTrigger(
         sibling.effect.type === "ADD_SPELL_POWER" &&
         sibling.trigger?.event === "SPELL_CAST_STARTED";
       const cardHasPrintedTriggerMatch = getCardPlayVariants(card).some(
-        (sibling) => variantMatchesTrigger(sibling, triggerEvent, player.id, false) && !powerCrossOverOnly(sibling)
+        (sibling) =>
+          variantMatchesTrigger(sibling, triggerEvent, player.id, false) &&
+          !powerCrossOverOnly(sibling),
       );
 
       for (const variant of getCardPlayVariants(card)) {
@@ -8700,8 +10268,14 @@ export function getLegalReactionsForTrigger(
         ) {
           continue;
         }
-        const matchesPrintedTrigger = variantMatchesTrigger(variant, triggerEvent, player.id, false);
-        const allowUtilityJoin = allowTriggerlessUtility && !cardHasPrintedTriggerMatch;
+        const matchesPrintedTrigger = variantMatchesTrigger(
+          variant,
+          triggerEvent,
+          player.id,
+          false,
+        );
+        const allowUtilityJoin =
+          allowTriggerlessUtility && !cardHasPrintedTriggerMatch;
         // GAIN_MORALE (Leadership) and TAKE_FROM_DISCARD (Scholar) are the
         // HISTORICAL trigger-free opt-ins: they keep their unflagged,
         // window-OPENING status (reactionOfferOpensWindow treats an unflagged
@@ -8709,7 +10283,8 @@ export function getLegalReactionsForTrigger(
         // must still be playable on an attack with no other reaction at the
         // table (pinned in unit-ability-interactions.test.ts).
         const historicalWindowOpener =
-          variant.effect.type === "GAIN_MORALE" || variant.effect.type === "TAKE_FROM_DISCARD";
+          variant.effect.type === "GAIN_MORALE" ||
+          variant.effect.type === "TAKE_FROM_DISCARD";
         const utilityOnly =
           !matchesPrintedTrigger &&
           allowUtilityJoin &&
@@ -8739,7 +10314,12 @@ export function getLegalReactionsForTrigger(
         // "On a Sea tile" side would otherwise become a combat reaction).
         if (
           variant.mapOnly ||
-          !variantMatchesTrigger(variant, triggerEvent, player.id, allowUtilityJoin)
+          !variantMatchesTrigger(
+            variant,
+            triggerEvent,
+            player.id,
+            allowUtilityJoin,
+          )
         ) {
           continue;
         }
@@ -8752,11 +10332,20 @@ export function getLegalReactionsForTrigger(
         // window and activation-skip Spell reactions on the affected unit —
         // Bless / Bloodlust / Curse / Weakness / Shield / Sorrow / …, own or
         // enemy. Non-Spell reactions (Offense, Armorer, artifacts) are untouched.
-        if (spellReactionBlockedByImmunity(state, card, variant.effect, triggerEvent)) {
+        if (
+          spellReactionBlockedByImmunity(
+            state,
+            card,
+            variant.effect,
+            triggerEvent,
+          )
+        ) {
           continue;
         }
 
-        const variantName = variant.optionLabel ? `${card.name}: ${variant.optionLabel}` : card.name;
+        const variantName = variant.optionLabel
+          ? `${card.name}: ${variant.optionLabel}`
+          : card.name;
         const isPowerPlay = variant.effect.type === "ADD_SPELL_POWER";
         const push = (action: LegalAction) => {
           if (isAttackWindow && isPowerPlay) {
@@ -8781,9 +10370,20 @@ export function getLegalReactionsForTrigger(
         if (
           !variant.expertOnly &&
           !card.permanent &&
-          (basicDrawOnly || isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "basic", cardId))
+          (basicDrawOnly ||
+            isEffectLegalForTrigger(
+              state,
+              player.id,
+              variant.effect,
+              triggerEvent,
+              "basic",
+              cardId,
+            ))
         ) {
-          if (variant.effect.type === "ACTIVATE_RANGED_UNIT" && triggerEvent.type === "UNIT_ACTIVATION_STARTED") {
+          if (
+            variant.effect.type === "ACTIVATE_RANGED_UNIT" &&
+            triggerEvent.type === "UNIT_ACTIVATION_STARTED"
+          ) {
             // Bowstring of the Unicorn's Mane / Valeska's Marksmen VI: one play
             // per eligible ranged unit — the chosen unit travels on the reaction's
             // `target`. Valeska may also re-fire an already-activated unit.
@@ -8791,33 +10391,43 @@ export function getLegalReactionsForTrigger(
               state,
               player.id,
               triggerEvent.unitId,
-              variant.effect.allowAlreadyActivated
+              variant.effect.allowAlreadyActivated,
             )) {
               const targetUnit = state.combat?.units[unitId];
               push(
-                makeReactionAction(`${variantName} (${targetUnit?.cardName ?? unitId})${fromSpellBook ? " (Spell Book)" : ""}`, {
-                  type: "PLAY_REACTION",
-                  playerId: player.id,
-                  cardId,
-                  mode: "basic",
-                  ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {}),
-                  ...(fromSpellBook ? { fromSpellBook: true } : {}),
-                  target: { type: "unit", unitId }
-                })
+                makeReactionAction(
+                  `${variantName} (${targetUnit?.cardName ?? unitId})${fromSpellBook ? " (Spell Book)" : ""}`,
+                  {
+                    type: "PLAY_REACTION",
+                    playerId: player.id,
+                    cardId,
+                    mode: "basic",
+                    ...(variant.optionIndex !== undefined
+                      ? { optionIndex: variant.optionIndex }
+                      : {}),
+                    ...(fromSpellBook ? { fromSpellBook: true } : {}),
+                    target: { type: "unit", unitId },
+                  },
+                ),
               );
             }
           } else {
             push(
-              makeReactionAction(`${variantName}${fromSpellBook ? " (Spell Book)" : ""}`, {
-                type: "PLAY_REACTION",
-                playerId: player.id,
-                cardId,
-                mode: "basic",
-                ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {}),
-                ...(basicDrawOnly ? { drawOnly: true as const } : {}),
-                ...(utilityOnly ? { utilityOnly: true as const } : {}),
-                ...(fromSpellBook ? { fromSpellBook: true } : {})
-              })
+              makeReactionAction(
+                `${variantName}${fromSpellBook ? " (Spell Book)" : ""}`,
+                {
+                  type: "PLAY_REACTION",
+                  playerId: player.id,
+                  cardId,
+                  mode: "basic",
+                  ...(variant.optionIndex !== undefined
+                    ? { optionIndex: variant.optionIndex }
+                    : {}),
+                  ...(basicDrawOnly ? { drawOnly: true as const } : {}),
+                  ...(utilityOnly ? { utilityOnly: true as const } : {}),
+                  ...(fromSpellBook ? { fromSpellBook: true } : {}),
+                },
+              ),
             );
           }
         }
@@ -8835,17 +10445,23 @@ export function getLegalReactionsForTrigger(
           const pending = getPendingStackItem(state, triggerEvent);
           if (
             pending?.action.type === "CAST_SPELL" &&
-            resolvedSpellPowerForStackItem(state, pending, cards) > spellMinUsefulPower(cards[pending.action.cardId])
+            resolvedSpellPowerForStackItem(state, pending, cards) >
+              spellMinUsefulPower(cards[pending.action.cardId])
           ) {
             push(
-              makeReactionAction(`${variantName}: reduce enemy Spell Power by up to ${variant.effect.balancePowerReduction}`, {
-                type: "PLAY_REACTION",
-                playerId: player.id,
-                cardId,
-                mode: "basic",
-                interferenceMode: "power",
-                ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {})
-              })
+              makeReactionAction(
+                `${variantName}: reduce enemy Spell Power by up to ${variant.effect.balancePowerReduction}`,
+                {
+                  type: "PLAY_REACTION",
+                  playerId: player.id,
+                  cardId,
+                  mode: "basic",
+                  interferenceMode: "power",
+                  ...(variant.optionIndex !== undefined
+                    ? { optionIndex: variant.optionIndex }
+                    : {}),
+                },
+              ),
             );
           }
         }
@@ -8869,16 +10485,21 @@ export function getLegalReactionsForTrigger(
           instantDrawOnlyRider(variant.effect, "basic") > 0
         ) {
           reactions.push(
-            makeReactionAction(`${variantName} (draw only)${fromSpellBook ? " (Spell Book)" : ""}`, {
-              type: "PLAY_REACTION",
-              playerId: player.id,
-              cardId,
-              mode: "basic",
-              ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {}),
-              drawOnly: true as const,
-              utilityOnly: true as const,
-              ...(fromSpellBook ? { fromSpellBook: true } : {})
-            })
+            makeReactionAction(
+              `${variantName} (draw only)${fromSpellBook ? " (Spell Book)" : ""}`,
+              {
+                type: "PLAY_REACTION",
+                playerId: player.id,
+                cardId,
+                mode: "basic",
+                ...(variant.optionIndex !== undefined
+                  ? { optionIndex: variant.optionIndex }
+                  : {}),
+                drawOnly: true as const,
+                utilityOnly: true as const,
+                ...(fromSpellBook ? { fromSpellBook: true } : {}),
+              },
+            ),
           );
         }
 
@@ -8886,19 +10507,32 @@ export function getLegalReactionsForTrigger(
           (effectHasExpertMode(variant.effect) || variant.expertOnly) &&
           // An Empowered ability may take its Expert side without a crown.
           (expertUsesLeft > 0 || abilityExpertIsCrownFree(player, cardId)) &&
-          (expertDrawOnly || isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "expert", cardId))
+          (expertDrawOnly ||
+            isEffectLegalForTrigger(
+              state,
+              player.id,
+              variant.effect,
+              triggerEvent,
+              "expert",
+              cardId,
+            ))
         ) {
           push(
-            makeReactionAction(`${variantName} expert${fromSpellBook ? " (Spell Book)" : ""}`, {
-              type: "PLAY_REACTION",
-              playerId: player.id,
-              cardId,
-              mode: "expert",
-              ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {}),
-              ...(expertDrawOnly ? { drawOnly: true as const } : {}),
-              ...(utilityOnly ? { utilityOnly: true as const } : {}),
-              ...(fromSpellBook ? { fromSpellBook: true } : {})
-            })
+            makeReactionAction(
+              `${variantName} expert${fromSpellBook ? " (Spell Book)" : ""}`,
+              {
+                type: "PLAY_REACTION",
+                playerId: player.id,
+                cardId,
+                mode: "expert",
+                ...(variant.optionIndex !== undefined
+                  ? { optionIndex: variant.optionIndex }
+                  : {}),
+                ...(expertDrawOnly ? { drawOnly: true as const } : {}),
+                ...(utilityOnly ? { utilityOnly: true as const } : {}),
+                ...(fromSpellBook ? { fromSpellBook: true } : {}),
+              },
+            ),
           );
         }
 
@@ -8913,17 +10547,23 @@ export function getLegalReactionsForTrigger(
           const pending = getPendingStackItem(state, triggerEvent);
           if (
             pending?.action.type === "CAST_SPELL" &&
-            resolvedSpellPowerForStackItem(state, pending, cards) > spellMinUsefulPower(cards[pending.action.cardId])
+            resolvedSpellPowerForStackItem(state, pending, cards) >
+              spellMinUsefulPower(cards[pending.action.cardId])
           ) {
             push(
-              makeReactionAction(`${variantName}: reduce enemy Spell Power by up to ${variant.effect.balanceExpertPowerReduction} (expert)`, {
-                type: "PLAY_REACTION",
-                playerId: player.id,
-                cardId,
-                mode: "expert",
-                interferenceMode: "power",
-                ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {})
-              })
+              makeReactionAction(
+                `${variantName}: reduce enemy Spell Power by up to ${variant.effect.balanceExpertPowerReduction} (expert)`,
+                {
+                  type: "PLAY_REACTION",
+                  playerId: player.id,
+                  cardId,
+                  mode: "expert",
+                  interferenceMode: "power",
+                  ...(variant.optionIndex !== undefined
+                    ? { optionIndex: variant.optionIndex }
+                    : {}),
+                },
+              ),
             );
           }
         }
@@ -8933,7 +10573,13 @@ export function getLegalReactionsForTrigger(
     // Magic Mirror: its own pass, covering all three windows it fires in. Kept
     // out of the variant loop above (whose trigger gate is tied to the cast
     // window) so an attack-instant or area-damage reflection is offered too.
-    for (const offer of getMagicMirrorReactions(state, player, triggerEvent, spellLimitLeft, cards)) {
+    for (const offer of getMagicMirrorReactions(
+      state,
+      player,
+      triggerEvent,
+      spellLimitLeft,
+      cards,
+    )) {
       reactions.push(offer);
     }
 
@@ -8947,7 +10593,12 @@ export function getLegalReactionsForTrigger(
           const card = cards[cardId];
           const allowedTiming =
             card && (card.timing === "reaction" || card.timing === "instant");
-          if (!card || card.kind !== "spell" || !allowedTiming || card.implementationStatus !== "implemented") {
+          if (
+            !card ||
+            card.kind !== "spell" ||
+            !allowedTiming ||
+            card.implementationStatus !== "implemented"
+          ) {
             continue;
           }
           if (spellEffectIsAlreadyOngoing(state, player.id, cardId)) {
@@ -8961,8 +10612,19 @@ export function getLegalReactionsForTrigger(
               variant.cost ||
               variant.effect.type === "ADD_SPELL_POWER" ||
               !variantMatchesTrigger(variant, triggerEvent, player.id) ||
-              !isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "basic") ||
-              spellReactionBlockedByImmunity(state, card, variant.effect, triggerEvent)
+              !isEffectLegalForTrigger(
+                state,
+                player.id,
+                variant.effect,
+                triggerEvent,
+                "basic",
+              ) ||
+              spellReactionBlockedByImmunity(
+                state,
+                card,
+                variant.effect,
+                triggerEvent,
+              )
             ) {
               continue;
             }
@@ -8977,8 +10639,10 @@ export function getLegalReactionsForTrigger(
                 cardId,
                 mode: "basic",
                 fromScroll: scroll.id,
-                ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {})
-              })
+                ...(variant.optionIndex !== undefined
+                  ? { optionIndex: variant.optionIndex }
+                  : {}),
+              }),
             );
           }
         }
@@ -9006,7 +10670,9 @@ export function getLegalReactionsForTrigger(
     // Recanter's Cloak still locks it out with every other Spell.
     if (!castLocked) {
       for (const enablerId of [...new Set(player.hand)].filter(
-        (id) => cardEnablesSpellDeckCast(cards[id]) && !cardOffersAnySpellDiscardCast(cards[id])
+        (id) =>
+          cardEnablesSpellDeckCast(cards[id]) &&
+          !cardOffersAnySpellDiscardCast(cards[id]),
       )) {
         const arm = castFromSpellDiscardArm(state, cards, enablerId);
         if (!arm) {
@@ -9017,52 +10683,74 @@ export function getLegalReactionsForTrigger(
         if (arm.effect.countsTowardSpellLimit === true && spellLimitLeft <= 0) {
           continue;
         }
-        for (const spellId of castFromSpellDiscardSourceSpellIds(state, player, arm.effect)) {
-        const card = cards[spellId];
-        if (!card || card.kind !== "spell" || card.implementationStatus !== "implemented") {
-          continue;
-        }
-        if (card.timing !== "reaction" && card.timing !== "instant") {
-          continue;
-        }
-        if (spellEffectIsAlreadyOngoing(state, player.id, spellId)) {
-          continue;
-        }
-        for (const variant of getCardPlayVariants(card)) {
+        for (const spellId of castFromSpellDiscardSourceSpellIds(
+          state,
+          player,
+          arm.effect,
+        )) {
+          const card = cards[spellId];
           if (
-            variant.mapOnly ||
-            variant.expertOnly ||
-            // A cost-bearing reaction Spell (Sorrow / Resurrection / Misfortune)
-            // and Magic Mirror's redirect are OUT, exactly as they are for a
-            // Scroll: their cost pickers and dedicated passes read the player's
-            // own cards, and a Spell that is not theirs has no hand entry to
-            // hang that on. Documented limit, not an oversight.
-            variant.cost ||
-            variant.effect.type === "ADD_SPELL_POWER" ||
-            variant.effect.type === "REDIRECT_SPELL" ||
-            !variantMatchesTrigger(variant, triggerEvent, player.id) ||
-            !isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "basic", spellId) ||
-            spellReactionBlockedByImmunity(state, card, variant.effect, triggerEvent)
+            !card ||
+            card.kind !== "spell" ||
+            card.implementationStatus !== "implemented"
           ) {
             continue;
           }
-          const enablerName = cards[enablerId]?.name ?? "Spell-deck cast";
-          reactions.push(
-            makeReactionAction(
-              variant.optionLabel
-                ? `${card.name}: ${variant.optionLabel} (${enablerName})`
-                : `${card.name} (${enablerName})`,
-              {
-                type: "PLAY_REACTION",
-                playerId: player.id,
-                cardId: spellId,
-                mode: "basic",
-                fromSpellDeck: enablerId,
-                ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {})
-              }
-            )
-          );
-        }
+          if (card.timing !== "reaction" && card.timing !== "instant") {
+            continue;
+          }
+          if (spellEffectIsAlreadyOngoing(state, player.id, spellId)) {
+            continue;
+          }
+          for (const variant of getCardPlayVariants(card)) {
+            if (
+              variant.mapOnly ||
+              variant.expertOnly ||
+              // A cost-bearing reaction Spell (Sorrow / Resurrection / Misfortune)
+              // and Magic Mirror's redirect are OUT, exactly as they are for a
+              // Scroll: their cost pickers and dedicated passes read the player's
+              // own cards, and a Spell that is not theirs has no hand entry to
+              // hang that on. Documented limit, not an oversight.
+              variant.cost ||
+              variant.effect.type === "ADD_SPELL_POWER" ||
+              variant.effect.type === "REDIRECT_SPELL" ||
+              !variantMatchesTrigger(variant, triggerEvent, player.id) ||
+              !isEffectLegalForTrigger(
+                state,
+                player.id,
+                variant.effect,
+                triggerEvent,
+                "basic",
+                spellId,
+              ) ||
+              spellReactionBlockedByImmunity(
+                state,
+                card,
+                variant.effect,
+                triggerEvent,
+              )
+            ) {
+              continue;
+            }
+            const enablerName = cards[enablerId]?.name ?? "Spell-deck cast";
+            reactions.push(
+              makeReactionAction(
+                variant.optionLabel
+                  ? `${card.name}: ${variant.optionLabel} (${enablerName})`
+                  : `${card.name} (${enablerName})`,
+                {
+                  type: "PLAY_REACTION",
+                  playerId: player.id,
+                  cardId: spellId,
+                  mode: "basic",
+                  fromSpellDeck: enablerId,
+                  ...(variant.optionIndex !== undefined
+                    ? { optionIndex: variant.optionIndex }
+                    : {}),
+                },
+              ),
+            );
+          }
         }
       }
     }
@@ -9070,7 +10758,12 @@ export function getLegalReactionsForTrigger(
     // School of Magic in play: normal CAST_SPELL actions keep their up-front
     // expert variant; reaction Spells instead commit the permanent here before
     // the Spell, which also makes the +3 available to stack-less Sorrow costs.
-    for (const offer of getSchoolPermanentExpertActions(state, player.id, triggerEvent, cards)) {
+    for (const offer of getSchoolPermanentExpertActions(
+      state,
+      player.id,
+      triggerEvent,
+      cards,
+    )) {
       reactions.push(offer);
     }
 
@@ -9078,7 +10771,12 @@ export function getLegalReactionsForTrigger(
     // matching-school spell — a normal cast or an instant on the attack — without
     // discarding the permanent. Once per stack per player, and only while you
     // hold an expert use.
-    for (const offer of getSchoolFetchExpertActions(state, player.id, triggerEvent, cards)) {
+    for (const offer of getSchoolFetchExpertActions(
+      state,
+      player.id,
+      triggerEvent,
+      cards,
+    )) {
       reactions.push(offer);
     }
 
@@ -9090,16 +10788,28 @@ export function getLegalReactionsForTrigger(
       triggerEvent.playerId === player.id &&
       state.stack.at(-1)?.action.type === "CAST_SPELL"
     ) {
-      const town = Object.values(state.towns).find((candidate) => candidate.controllerId === player.id);
+      const town = Object.values(state.towns).find(
+        (candidate) => candidate.controllerId === player.id,
+      );
       for (const buildingId of town?.buildings ?? []) {
         const building = coreBuildingDefinitions[buildingId];
         const cubes = town?.factionCubes?.[buildingId] ?? 0;
         const stackItem = state.stack.at(-1);
-        const alreadySpent = (stackItem?.modifiers.townCubePowerBonus ?? 0) >= 1;
-        if (building?.effect?.type === "COMBAT_CUBES" && building.effect.spend === "spell-power" && cubes > 0 && !alreadySpent) {
+        const alreadySpent =
+          (stackItem?.modifiers.townCubePowerBonus ?? 0) >= 1;
+        if (
+          building?.effect?.type === "COMBAT_CUBES" &&
+          building.effect.spend === "spell-power" &&
+          cubes > 0 &&
+          !alreadySpent
+        ) {
           reactions.push({
             label: `${building.name}: remove 1 cube for +1 Power (${cubes} stored)`,
-            action: { type: "SPEND_TOWN_CUBE", playerId: player.id, buildingId }
+            action: {
+              type: "SPEND_TOWN_CUBE",
+              playerId: player.id,
+              buildingId,
+            },
           });
         }
       }
@@ -9114,23 +10824,32 @@ export function getLegalReactionsForTrigger(
     if (triggerEvent.type === "UNIT_ATTACK_DECLARED") {
       const attackItem = state.stack.at(-1);
       const instants =
-        attackItem?.action.type === "ATTACK_UNIT" || attackItem?.action.type === "MOVE_AND_ATTACK_UNIT"
+        attackItem?.action.type === "ATTACK_UNIT" ||
+        attackItem?.action.type === "MOVE_AND_ATTACK_UNIT"
           ? (attackItem.modifiers.cancellableSpellInstants ?? [])
           : [];
-      const enemyInstants = instants.filter((entry) => entry.playerId !== player.id);
+      const enemyInstants = instants.filter(
+        (entry) => entry.playerId !== player.id,
+      );
       if (enemyInstants.length > 0) {
         // Resistance's basic power cap is judged against the CASTER's own attack
         // Power pool, not a shared total, so one side's Power can't push the
         // other's spell above a cap that should still be cancellable. (In a
         // two-player attack every enemy instant shares the one opposing caster.)
-        const spellPower = attackItem?.modifiers.attackPowerByPlayer?.[enemyInstants[0]!.playerId] ?? 0;
+        const spellPower =
+          attackItem?.modifiers.attackPowerByPlayer?.[
+            enemyInstants[0]!.playerId
+          ] ?? 0;
         // Spell Book (house rule): Protection / Resistance Spells stashed in the
         // Book cancel an enemy attack-instant the same way a hand copy does.
         const cancelSources: { cardId: CardId; fromSpellBook?: true }[] = [
           ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
           ...(bookCastSourcesEnabled(state)
-            ? [...new Set(player.spellBook ?? [])].map((cardId) => ({ cardId, fromSpellBook: true as const }))
-            : [])
+            ? [...new Set(player.spellBook ?? [])].map((cardId) => ({
+                cardId,
+                fromSpellBook: true as const,
+              }))
+            : []),
         ];
         for (const { cardId, fromSpellBook } of cancelSources) {
           const card = cards[cardId];
@@ -9150,35 +10869,48 @@ export function getLegalReactionsForTrigger(
             enemyInstants.some((entry) =>
               cancelSpellAllowsSchoolAndLevel(
                 cancel,
-                { schools: cards[entry.cardId]?.spellSchools ?? [], level: cards[entry.cardId]?.spellLevel },
-                mode
-              )
+                {
+                  schools: cards[entry.cardId]?.spellSchools ?? [],
+                  level: cards[entry.cardId]?.spellLevel,
+                },
+                mode,
+              ),
             );
           // Basic still respects Resistance's power cap (Protection has none).
-          if ((cancel.maxPower === undefined || spellPower <= cancel.maxPower) && matchesAt("basic")) {
+          if (
+            (cancel.maxPower === undefined || spellPower <= cancel.maxPower) &&
+            matchesAt("basic")
+          ) {
             reactions.push(
-              makeReactionAction(`${card.name}${fromSpellBook ? " (Spell Book)" : ""}`, {
-                type: "PLAY_REACTION",
-                playerId: player.id,
-                cardId,
-                mode: "basic",
-                ...(fromSpellBook ? { fromSpellBook: true } : {})
-              })
+              makeReactionAction(
+                `${card.name}${fromSpellBook ? " (Spell Book)" : ""}`,
+                {
+                  type: "PLAY_REACTION",
+                  playerId: player.id,
+                  cardId,
+                  mode: "basic",
+                  ...(fromSpellBook ? { fromSpellBook: true } : {}),
+                },
+              ),
             );
           }
           if (
-            (cancel.expertIgnoresMaxPower || cancel.expertIgnoresMaxSpellLevel) &&
+            (cancel.expertIgnoresMaxPower ||
+              cancel.expertIgnoresMaxSpellLevel) &&
             (expertUsesLeft > 0 || abilityExpertIsCrownFree(player, cardId)) &&
             matchesAt("expert")
           ) {
             reactions.push(
-              makeReactionAction(`${card.name} expert${fromSpellBook ? " (Spell Book)" : ""}`, {
-                type: "PLAY_REACTION",
-                playerId: player.id,
-                cardId,
-                mode: "expert",
-                ...(fromSpellBook ? { fromSpellBook: true } : {})
-              })
+              makeReactionAction(
+                `${card.name} expert${fromSpellBook ? " (Spell Book)" : ""}`,
+                {
+                  type: "PLAY_REACTION",
+                  playerId: player.id,
+                  cardId,
+                  mode: "expert",
+                  ...(fromSpellBook ? { fromSpellBook: true } : {}),
+                },
+              ),
             );
           }
         }
@@ -9205,8 +10937,11 @@ export function getLegalReactionsForTrigger(
     if (triggerEvent.type === "UNIT_ATTACK_DECLARED") {
       const attackItem = state.stack.at(-1);
       const hasOwnRecallable =
-        (attackItem?.action.type === "ATTACK_UNIT" || attackItem?.action.type === "MOVE_AND_ATTACK_UNIT") &&
-        (attackItem.modifiers.recallableSpellReactions ?? []).some((entry) => entry.playerId === player.id);
+        (attackItem?.action.type === "ATTACK_UNIT" ||
+          attackItem?.action.type === "MOVE_AND_ATTACK_UNIT") &&
+        (attackItem.modifiers.recallableSpellReactions ?? []).some(
+          (entry) => entry.playerId === player.id,
+        );
       if (hasOwnRecallable) {
         reactions.push(...spellRecallReactionOffers(player, cards));
       }
@@ -9216,9 +10951,13 @@ export function getLegalReactionsForTrigger(
     // Misfortune-locked attacks cannot be buffed, so it is not offered then.
     if (triggerEvent.type === "UNIT_ATTACK_DECLARED") {
       const attacker = state.combat?.units[triggerEvent.attackerId];
-      const attackLocked = Boolean(state.stack.at(-1)?.modifiers.negateAttackBuffs);
+      const attackLocked = Boolean(
+        state.stack.at(-1)?.modifiers.negateAttackBuffs,
+      );
       if (attacker && attacker.controllerId === player.id && !attackLocked) {
-        const town = Object.values(state.towns).find((candidate) => candidate.controllerId === player.id);
+        const town = Object.values(state.towns).find(
+          (candidate) => candidate.controllerId === player.id,
+        );
         for (const buildingId of town?.buildings ?? []) {
           const building = coreBuildingDefinitions[buildingId];
           if (
@@ -9228,7 +10967,11 @@ export function getLegalReactionsForTrigger(
           ) {
             reactions.push({
               label: `${building.name}: +${building.effect.amount} attack on this attack (once per round)`,
-              action: { type: "HALL_OF_VALHALLA_BOOST", playerId: player.id, buildingId }
+              action: {
+                type: "HALL_OF_VALHALLA_BOOST",
+                playerId: player.id,
+                buildingId,
+              },
             });
           }
         }
@@ -9241,18 +10984,37 @@ export function getLegalReactionsForTrigger(
     // reopens after each conversion, so several cards can stack on one attack.
     if (triggerEvent.type === "UNIT_ATTACK_DECLARED") {
       const attacker = state.combat?.units[triggerEvent.attackerId];
-      const attackLocked = Boolean(state.stack.at(-1)?.modifiers.negateAttackBuffs);
+      const attackLocked = Boolean(
+        state.stack.at(-1)?.modifiers.negateAttackBuffs,
+      );
       const auraAmount = state.activeEffects.reduce((sum, effect) => {
         if (effect.scope !== "player" || effect.controllerId !== player.id) {
           return sum;
         }
-        return sum + effect.modifiers.reduce((inner, modifier) => inner + (modifier.type === "CARDS_AS_ATTACK_BONUS" ? modifier.amount : 0), 0);
+        return (
+          sum +
+          effect.modifiers.reduce(
+            (inner, modifier) =>
+              inner +
+              (modifier.type === "CARDS_AS_ATTACK_BONUS" ? modifier.amount : 0),
+            0,
+          )
+        );
       }, 0);
-      if (attacker && attacker.controllerId === player.id && !attackLocked && auraAmount > 0) {
+      if (
+        attacker &&
+        attacker.controllerId === player.id &&
+        !attackLocked &&
+        auraAmount > 0
+      ) {
         for (const cardId of [...new Set(player.hand)]) {
           reactions.push({
             label: `Offense VI: discard ${cardLibrary[cardId]?.name ?? cardId} for +${auraAmount} attack`,
-            action: { type: "CONVERT_CARD_TO_ATTACK", playerId: player.id, cardId }
+            action: {
+              type: "CONVERT_CARD_TO_ATTACK",
+              playerId: player.id,
+              cardId,
+            },
           });
         }
       }
@@ -9264,26 +11026,44 @@ export function getLegalReactionsForTrigger(
     if (triggerEvent.type === "UNIT_ATTACK_DECLARED") {
       const attacker = state.combat?.units[triggerEvent.attackerId];
       const defender = state.combat?.units[triggerEvent.defenderId];
-      const town = Object.values(state.towns).find((candidate) => candidate.controllerId === player.id);
+      const town = Object.values(state.towns).find(
+        (candidate) => candidate.controllerId === player.id,
+      );
       for (const buildingId of town?.buildings ?? []) {
         const building = coreBuildingDefinitions[buildingId];
         const cubes = town?.factionCubes?.[buildingId] ?? 0;
-        if (building?.effect?.type !== "COMBAT_CUBES" || building.effect.spend !== "attack-or-defense" || cubes <= 0) {
+        if (
+          building?.effect?.type !== "COMBAT_CUBES" ||
+          building.effect.spend !== "attack-or-defense" ||
+          cubes <= 0
+        ) {
           continue;
         }
         // A Misfortune-locked attack cannot be buffed: the attacker's +attack
         // option is withheld, but the defender's +defense option stands.
-        const attackLocked = Boolean(state.stack.at(-1)?.modifiers.negateAttackBuffs);
+        const attackLocked = Boolean(
+          state.stack.at(-1)?.modifiers.negateAttackBuffs,
+        );
         if (attacker && attacker.controllerId === player.id && !attackLocked) {
           reactions.push({
             label: `${building.name}: remove 1 cube for +1 attack (${cubes} stored)`,
-            action: { type: "SPEND_TOWN_CUBE", playerId: player.id, buildingId, boost: "attack" }
+            action: {
+              type: "SPEND_TOWN_CUBE",
+              playerId: player.id,
+              buildingId,
+              boost: "attack",
+            },
           });
         }
         if (defender && defender.controllerId === player.id) {
           reactions.push({
             label: `${building.name}: remove 1 cube for +1 defense (${cubes} stored)`,
-            action: { type: "SPEND_TOWN_CUBE", playerId: player.id, buildingId, boost: "defense" }
+            action: {
+              type: "SPEND_TOWN_CUBE",
+              playerId: player.id,
+              buildingId,
+              boost: "defense",
+            },
           });
         }
       }
@@ -9308,17 +11088,29 @@ export function getLegalReactionsForTrigger(
       const held = player.moraleCards?.positive ?? [];
       if (held.includes(MORALE_CARD_IDS.combatBonus)) {
         const attacker = state.combat?.units[triggerEvent.attackerId];
-        const attackLocked = Boolean(state.stack.at(-1)?.modifiers.negateAttackBuffs);
+        const attackLocked = Boolean(
+          state.stack.at(-1)?.modifiers.negateAttackBuffs,
+        );
         const isOwnAttack = attacker?.controllerId === player.id;
         if (!(isOwnAttack && attackLocked)) {
           reactions.push({
             label: "Positive Morale: +1 Attack for this Combat",
-            action: { type: "SPEND_MORALE", playerId: player.id, benefit: "combat-bonus", bonus: "attack" }
+            action: {
+              type: "SPEND_MORALE",
+              playerId: player.id,
+              benefit: "combat-bonus",
+              bonus: "attack",
+            },
           });
         }
         reactions.push({
           label: "Positive Morale: +1 Defense for this Combat",
-          action: { type: "SPEND_MORALE", playerId: player.id, benefit: "combat-bonus", bonus: "defense" }
+          action: {
+            type: "SPEND_MORALE",
+            playerId: player.id,
+            benefit: "combat-bonus",
+            bonus: "defense",
+          },
         });
       }
     }
@@ -9347,7 +11139,7 @@ export function getLegalReactionsForTrigger(
             playerId: player.id,
             cardId,
             mode: "basic",
-            asPowerBoost: true
+            asPowerBoost: true,
           });
           if (isAttackWindow) {
             powerReactions.push(boost);
@@ -9365,14 +11157,17 @@ export function getLegalReactionsForTrigger(
         for (const cardId of new Set(player.spellBook ?? [])) {
           const card = cards[cardId];
           if (card?.kind === "spell") {
-            const boost = makeReactionAction(`Discard ${card.name}: +1 Power (Spell Book)`, {
-              type: "PLAY_REACTION",
-              playerId: player.id,
-              cardId,
-              mode: "basic",
-              asPowerBoost: true,
-              fromSpellBook: true
-            });
+            const boost = makeReactionAction(
+              `Discard ${card.name}: +1 Power (Spell Book)`,
+              {
+                type: "PLAY_REACTION",
+                playerId: player.id,
+                cardId,
+                mode: "basic",
+                asPowerBoost: true,
+                fromSpellBook: true,
+              },
+            );
             if (isAttackWindow) {
               powerReactions.push(boost);
             } else {
@@ -9406,7 +11201,9 @@ export function getLegalReactionsForTrigger(
       }
       const variants = offered ? getCardPlayVariants(offered) : [];
       const variant =
-        legal.action.optionIndex !== undefined ? variants[legal.action.optionIndex] : variants[0];
+        legal.action.optionIndex !== undefined
+          ? variants[legal.action.optionIndex]
+          : variants[0];
       return playConsumesWindowPower(offered, variant?.effect, variant?.cost);
     });
     // …or while a Power-scaling spell this player already cast into the attack
@@ -9414,16 +11211,22 @@ export function getLegalReactionsForTrigger(
     // keep empowering a Bloodlust/Bless after playing it).
     const attackStackItem = isAttackWindow ? state.stack.at(-1) : undefined;
     const attackOwner =
-      attackStackItem?.action.type === "ATTACK_UNIT" || attackStackItem?.action.type === "MOVE_AND_ATTACK_UNIT"
+      attackStackItem?.action.type === "ATTACK_UNIT" ||
+      attackStackItem?.action.type === "MOVE_AND_ATTACK_UNIT"
         ? attackStackItem.action.playerId
         : undefined;
     // Either side may keep empowering a Power-scaling spell instant THEY already
     // cast into this attack (the attacker's Bloodlust/Slayer/Frenzy, the
     // defender's Curse/Weakness) — each pays into their own Power pool.
     const hasEmpowerablePlayed =
-      (attackStackItem?.modifiers.powerScaledAttackInstants ?? []).some((record) => record.playerId === player.id) ||
-      (attackStackItem?.modifiers.powerScaledAttackRerolls ?? []).some((record) => record.playerId === player.id) ||
-      (attackOwner === player.id && attackStackItem?.modifiers.slayerRollsByPower !== undefined) ||
+      (attackStackItem?.modifiers.powerScaledAttackInstants ?? []).some(
+        (record) => record.playerId === player.id,
+      ) ||
+      (attackStackItem?.modifiers.powerScaledAttackRerolls ?? []).some(
+        (record) => record.playerId === player.id,
+      ) ||
+      (attackOwner === player.id &&
+        attackStackItem?.modifiers.slayerRollsByPower !== undefined) ||
       attackStackItem?.modifiers.ignoreDefenseCasterId === player.id ||
       attackStackItem?.modifiers.misfortuneCasterId === player.id;
     if (!isAttackWindow || hasPairablePowerSink || hasEmpowerablePlayed) {
@@ -9435,7 +11238,10 @@ export function getLegalReactionsForTrigger(
     // then — once the window re-derives its offers — immediately cast an
     // applicable Searched instant into the SAME window. Offered to either side
     // (the attacker's buffs, the defender's debuffs).
-    if (triggerEvent.type === "UNIT_ATTACK_DECLARED" && tarnumSearchableDeckExists(state)) {
+    if (
+      triggerEvent.type === "UNIT_ATTACK_DECLARED" &&
+      tarnumSearchableDeckExists(state)
+    ) {
       for (const cardId of new Set(player.hand)) {
         const card = cards[cardId];
         if (
@@ -9448,8 +11254,8 @@ export function getLegalReactionsForTrigger(
               type: "PLAY_REACTION",
               playerId: player.id,
               cardId,
-              mode: "basic"
-            })
+              mode: "basic",
+            }),
           );
         }
       }
@@ -9467,7 +11273,11 @@ export function getLegalReactionsForTrigger(
           continue;
         }
         const card = cards[cardId];
-        if (!card || card.kind !== "spell" || card.implementationStatus !== "implemented") {
+        if (
+          !card ||
+          card.kind !== "spell" ||
+          card.implementationStatus !== "implemented"
+        ) {
           continue;
         }
         for (const variant of getCardPlayVariants(card)) {
@@ -9478,12 +11288,25 @@ export function getLegalReactionsForTrigger(
             variant.effect.type === "ADD_SPELL_POWER" ||
             variant.effect.type === "REDIRECT_SPELL" ||
             !variantMatchesTrigger(variant, triggerEvent, player.id) ||
-            !isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "basic") ||
-            spellReactionBlockedByImmunity(state, card, variant.effect, triggerEvent)
+            !isEffectLegalForTrigger(
+              state,
+              player.id,
+              variant.effect,
+              triggerEvent,
+              "basic",
+            ) ||
+            spellReactionBlockedByImmunity(
+              state,
+              card,
+              variant.effect,
+              triggerEvent,
+            )
           ) {
             continue;
           }
-          const base = variant.optionLabel ? `${card.name}: ${variant.optionLabel}` : card.name;
+          const base = variant.optionLabel
+            ? `${card.name}: ${variant.optionLabel}`
+            : card.name;
           for (const tarnumReturn of ["deck-top", "discard"] as const) {
             reactions.push(
               makeReactionAction(
@@ -9493,10 +11316,12 @@ export function getLegalReactionsForTrigger(
                   playerId: player.id,
                   cardId,
                   mode: "basic",
-                  ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {}),
-                  tarnumReturn
-                }
-              )
+                  ...(variant.optionIndex !== undefined
+                    ? { optionIndex: variant.optionIndex }
+                    : {}),
+                  tarnumReturn,
+                },
+              ),
             );
           }
         }
@@ -9524,7 +11349,8 @@ export function getLegalReactionsForTrigger(
   // and take the hit. Offered only to the side(s) about to be damaged so a
   // non-damaging cast (Haste, buff) never forces a heal window.
   if (triggerEvent.type === "UNIT_ATTACK_DECLARED") {
-    const defenderId = state.combat?.units[triggerEvent.defenderId]?.controllerId;
+    const defenderId =
+      state.combat?.units[triggerEvent.defenderId]?.controllerId;
     if (defenderId) {
       const heals = preHitHealReactions(state, defenderId, cards);
       if (heals.length > 0) {
@@ -9548,14 +11374,22 @@ export function getLegalReactionsForTrigger(
     // behaviour: an attacker holding Artillery does not pause their own attack)
     // — EXCEPT on a printed FOLLOW-UP attack, where the attacker gets the
     // opener too (see followUpAttackInstantOpener below).
-    const attackerOwner = state.combat?.units[triggerEvent.attackerId]?.controllerId;
+    const attackerOwner =
+      state.combat?.units[triggerEvent.attackerId]?.controllerId;
     if (attackerOwner && attackerOwner !== defenderId) {
-      const followUpOpener = attackerOwner === followUpAttackInstantOpener(state, triggerEvent);
-      const attackerArtillery = artilleryCardReactions(state, attackerOwner).map((legal) =>
-        followUpOpener ? legal : { ...legal, windowJoinOnly: true }
+      const followUpOpener =
+        attackerOwner === followUpAttackInstantOpener(state, triggerEvent);
+      const attackerArtillery = artilleryCardReactions(
+        state,
+        attackerOwner,
+      ).map((legal) =>
+        followUpOpener ? legal : { ...legal, windowJoinOnly: true },
       );
       if (attackerArtillery.length > 0) {
-        result[attackerOwner] = [...(result[attackerOwner] ?? []), ...attackerArtillery];
+        result[attackerOwner] = [
+          ...(result[attackerOwner] ?? []),
+          ...attackerArtillery,
+        ];
       }
     }
 
@@ -9566,7 +11400,11 @@ export function getLegalReactionsForTrigger(
     const defenderUnit = state.combat?.units[triggerEvent.defenderId];
     const attackerUnit = state.combat?.units[triggerEvent.attackerId];
     if (defenderUnit) {
-      const commander = commanderDefenseReactionUnit(state, defenderUnit, attackerUnit);
+      const commander = commanderDefenseReactionUnit(
+        state,
+        defenderUnit,
+        attackerUnit,
+      );
       const cast = commander ? commanderCastOf(commander) : null;
       if (commander && cast) {
         const owner = defenderUnit.controllerId;
@@ -9578,60 +11416,102 @@ export function getLegalReactionsForTrigger(
               type: "USE_COMMANDER_CAST_REACTION",
               playerId: owner,
               commanderUnitId: commander.id,
-              targetUnitId: defenderUnit.id
-            }
-          }
+              targetUnitId: defenderUnit.id,
+            },
+          },
         ];
       }
     }
 
-    if (defenderUnit && equipmentDefenseReactionAvailable(state, defenderUnit.controllerId)) {
+    if (
+      defenderUnit &&
+      equipmentDefenseReactionAvailable(state, defenderUnit.controllerId)
+    ) {
       const owner = defenderUnit.controllerId;
       result[owner] = [
         ...(result[owner] ?? []),
         {
           label: `Reactive Buckler: ${defenderUnit.cardName} gets +1 Defense for this attack`,
-          action: { type: "USE_EQUIPMENT_DEFENSE_REACTION", playerId: owner, unitId: defenderUnit.id }
-        }
+          action: {
+            type: "USE_EQUIPMENT_DEFENSE_REACTION",
+            playerId: owner,
+            unitId: defenderUnit.id,
+          },
+        },
       ];
     }
 
-    if (defenderUnit && equipmentGuardianReactionAvailable(state, defenderUnit.controllerId)) {
+    if (
+      defenderUnit &&
+      equipmentGuardianReactionAvailable(state, defenderUnit.controllerId)
+    ) {
       const owner = defenderUnit.controllerId;
       result[owner] = [
         ...(result[owner] ?? []),
         {
           label: `Guardian Mirror: cancel all damage to ${defenderUnit.cardName}`,
-          action: { type: "USE_EQUIPMENT_GUARDIAN_REACTION", playerId: owner, unitId: defenderUnit.id }
-        }
+          action: {
+            type: "USE_EQUIPMENT_GUARDIAN_REACTION",
+            playerId: owner,
+            unitId: defenderUnit.id,
+          },
+        },
       ];
     }
 
     if (attackerUnit && !triggerEvent.isRetaliation) {
       const owner = attackerUnit.controllerId;
-      for (const equipmentId of [EQUIPMENT_IDS.corrosionEdge, EQUIPMENT_IDS.wyvernNeedle]) {
+      for (const equipmentId of [
+        EQUIPMENT_IDS.corrosionEdge,
+        EQUIPMENT_IDS.wyvernNeedle,
+      ]) {
         if (!equipmentAttackRiderAvailable(state, owner, equipmentId)) continue;
-        const name = equipmentId === EQUIPMENT_IDS.corrosionEdge ? "Corrosion Edge" : "Wyvern Needle";
+        const name =
+          equipmentId === EQUIPMENT_IDS.corrosionEdge
+            ? "Corrosion Edge"
+            : "Wyvern Needle";
         result[owner] = [
           ...(result[owner] ?? []),
           {
             label: `${name}: apply its rider to this attack`,
-            action: { type: "USE_EQUIPMENT_ATTACK_RIDER", playerId: owner, equipmentId, unitId: attackerUnit.id }
-          }
+            action: {
+              type: "USE_EQUIPMENT_ATTACK_RIDER",
+              playerId: owner,
+              equipmentId,
+              unitId: attackerUnit.id,
+            },
+          },
         ];
       }
     }
 
-    for (const owner of [state.combat?.attackerPlayerId, state.combat?.defenderPlayerId]) {
-      if (!owner || owner === NEUTRAL_PLAYER_ID || !equipmentHealReactionAvailable(state, owner)) continue;
+    for (const owner of [
+      state.combat?.attackerPlayerId,
+      state.combat?.defenderPlayerId,
+    ]) {
+      if (
+        !owner ||
+        owner === NEUTRAL_PLAYER_ID ||
+        !equipmentHealReactionAvailable(state, owner)
+      )
+        continue;
       for (const unit of Object.values(state.combat?.units ?? {})) {
-        if (unit.controllerId !== owner || unit.damage <= 0 || unit.damage >= unit.maxHealth) continue;
+        if (
+          unit.controllerId !== owner ||
+          unit.damage <= 0 ||
+          unit.damage >= unit.maxHealth
+        )
+          continue;
         result[owner] = [
           ...(result[owner] ?? []),
           {
             label: `Field Medic Kit: heal 1 damage on ${unit.cardName}`,
-            action: { type: "USE_EQUIPMENT_HEAL_REACTION", playerId: owner, unitId: unit.id }
-          }
+            action: {
+              type: "USE_EQUIPMENT_HEAL_REACTION",
+              playerId: owner,
+              unitId: unit.id,
+            },
+          },
         ];
       }
     }
@@ -9652,19 +11532,30 @@ export function getLegalReactionsForTrigger(
     // NOT `windowJoinOnly` (in a neutral fight the guards open nothing, so a
     // join-only offer would be unreachable — the 2026-08-08 class). Passing costs
     // nothing; the card is spent only by taking it.
-    if (rollingUnit && prophecyPreRollAvailable(state, rollingUnit.controllerId, rollingUnit.id)) {
+    if (
+      rollingUnit &&
+      prophecyPreRollAvailable(state, rollingUnit.controllerId, rollingUnit.id)
+    ) {
       const rollOwner = rollingUnit.controllerId;
       result[rollOwner] = [
         ...(result[rollOwner] ?? []),
         {
           label: `Cards of Prophecy: roll ${rollingUnit.cardName ?? rollingUnit.name}'s attack die 3 times and resolve 1 chosen result`,
-          action: { type: "USE_PROPHECY_PRE_ROLL", playerId: rollOwner, unitId: rollingUnit.id }
-        }
+          action: {
+            type: "USE_PROPHECY_PRE_ROLL",
+            playerId: rollOwner,
+            unitId: rollingUnit.id,
+          },
+        },
       ];
     }
     if (rollingUnit) {
       const rollOwner = rollingUnit.controllerId;
-      for (const offer of artifactSetAttackWindowOffers(state, rollOwner, rollingUnit.id)) {
+      for (const offer of artifactSetAttackWindowOffers(
+        state,
+        rollOwner,
+        rollingUnit.id,
+      )) {
         result[rollOwner] = [
           ...(result[rollOwner] ?? []),
           {
@@ -9674,9 +11565,9 @@ export function getLegalReactionsForTrigger(
               playerId: rollOwner,
               setId: offer.setId,
               tier: offer.threshold,
-              unitId: rollingUnit.id
-            }
-          }
+              unitId: rollingUnit.id,
+            },
+          },
         ];
       }
     }
@@ -9687,15 +11578,24 @@ export function getLegalReactionsForTrigger(
     // (no spell/limit gate), only in the main hero's battle, once per combat.
     for (const [reactUnit, role] of [
       [state.combat?.units[triggerEvent.attackerId], "attacker"],
-      [state.combat?.units[triggerEvent.defenderId], "defender"]
+      [state.combat?.units[triggerEvent.defenderId], "defender"],
     ] as const) {
       const owner = reactUnit?.controllerId;
-      if (!reactUnit || !owner || owner === NEUTRAL_PLAYER_ID || !playerMainHeroInCombat(state, owner)) {
+      if (
+        !reactUnit ||
+        !owner ||
+        owner === NEUTRAL_PLAYER_ID ||
+        !playerMainHeroInCombat(state, owner)
+      ) {
         continue;
       }
       for (const nodeId of heroGradeNodesOf(state, owner)) {
         const node = heroGradeNode(nodeId);
-        if (node?.skill?.mode !== "reaction" || node.skill.role !== role || !heroSkillAvailableThisCombat(state, owner, nodeId)) {
+        if (
+          node?.skill?.mode !== "reaction" ||
+          node.skill.role !== role ||
+          !heroSkillAvailableThisCombat(state, owner, nodeId)
+        ) {
           continue;
         }
         // Defense tokens do not stack. Offering Harmony Ward here would spend
@@ -9711,8 +11611,13 @@ export function getLegalReactionsForTrigger(
           ...(result[owner] ?? []),
           {
             label: `${node.name.en}: ${reactUnit.cardName} ${effectLabel}`,
-            action: { type: "USE_HERO_SKILL_REACTION", playerId: owner, nodeId, unitId: reactUnit.id }
-          }
+            action: {
+              type: "USE_HERO_SKILL_REACTION",
+              playerId: owner,
+              nodeId,
+              unitId: reactUnit.id,
+            },
+          },
         ];
       }
     }
@@ -9723,7 +11628,9 @@ export function getLegalReactionsForTrigger(
       if (state.combat && !isCombatParticipant(state, player.id)) {
         continue;
       }
-      if (!playerThreatenedByPendingDamage(state, triggerEvent, player.id, cards)) {
+      if (
+        !playerThreatenedByPendingDamage(state, triggerEvent, player.id, cards)
+      ) {
         continue;
       }
       const heals = preHitHealReactions(state, player.id, cards);
@@ -9749,9 +11656,9 @@ export function getLegalReactionsForTrigger(
           state.combat?.units[triggerEvent.defenderId]?.controllerId,
           // A printed FOLLOW-UP attack gives its OWNER an opener too — the
           // attacker never gets a moment between the first hit and this one.
-          followUpAttackInstantOpener(state, triggerEvent)
+          followUpAttackInstantOpener(state, triggerEvent),
         ].filter((playerId): playerId is PlayerId => Boolean(playerId))
-      : []
+      : [],
   );
   for (const player of Object.values(state.players)) {
     const joins = combatAnytimeInstantWindowJoins(state, player.id, cards);
@@ -9768,20 +11675,28 @@ export function getLegalReactionsForTrigger(
   // pause every attack/cast merely because somebody holds a draw/recovery card.
   // Once the window exists, refreshes keep exposing them so they can feed a
   // later reaction in the same exchange.
-  const matchingWindowOpen = state.reactionWindow?.triggerEvent.id === triggerEvent.id;
+  const matchingWindowOpen =
+    state.reactionWindow?.triggerEvent.id === triggerEvent.id;
   for (const [playerId, reactions] of Object.entries(result)) {
     const realCardFaces = new Set(
       reactions
         .filter(
-          (legal): legal is LegalAction & { action: Extract<GameAction, { type: "PLAY_REACTION" }> } =>
-            legal.action.type === "PLAY_REACTION" && !legal.action.utilityOnly
+          (
+            legal,
+          ): legal is LegalAction & {
+            action: Extract<GameAction, { type: "PLAY_REACTION" }>;
+          } =>
+            legal.action.type === "PLAY_REACTION" && !legal.action.utilityOnly,
         )
-        .map((legal) => `${legal.action.cardId}:${legal.action.optionIndex ?? -1}:${legal.action.mode ?? "basic"}`)
+        .map(
+          (legal) =>
+            `${legal.action.cardId}:${legal.action.optionIndex ?? -1}:${legal.action.mode ?? "basic"}`,
+        ),
     );
     result[playerId] = reactions.filter((legal) => {
       if (legal.action.type === "PLAY_REACTION" && legal.action.utilityOnly) {
         return !realCardFaces.has(
-          `${legal.action.cardId}:${legal.action.optionIndex ?? -1}:${legal.action.mode ?? "basic"}`
+          `${legal.action.cardId}:${legal.action.optionIndex ?? -1}:${legal.action.mode ?? "basic"}`,
         );
       }
       // A `combatAnytime` PLAY_CARD window join for a face this window already
@@ -9791,19 +11706,20 @@ export function getLegalReactionsForTrigger(
       // AFK pricing and pins predate the join — and drop the duplicate button.
       if (legal.action.type === "PLAY_CARD") {
         return !realCardFaces.has(
-          `${legal.action.cardId}:${legal.action.optionIndex ?? -1}:${legal.action.mode ?? "basic"}`
+          `${legal.action.cardId}:${legal.action.optionIndex ?? -1}:${legal.action.mode ?? "basic"}`,
         );
       }
       return true;
     });
   }
   const hasWindowOpeningReaction = Object.values(result).some((reactions) =>
-    reactions.some((legal) => reactionOfferOpensWindow(legal, triggerEvent))
+    reactions.some((legal) => reactionOfferOpensWindow(legal, triggerEvent)),
   );
   if (!matchingWindowOpen && !hasWindowOpeningReaction) {
     for (const [playerId, reactions] of Object.entries(result)) {
       const withoutUtilities = reactions.filter(
-        (legal) => legal.action.type !== "PLAY_REACTION" || !legal.action.utilityOnly
+        (legal) =>
+          legal.action.type !== "PLAY_REACTION" || !legal.action.utilityOnly,
       );
       if (withoutUtilities.length > 0) {
         result[playerId] = withoutUtilities;
@@ -9854,18 +11770,28 @@ export function getLegalReactionsForTrigger(
  * opener (the retaliating side's only pre-roll moment, pinned in
  * morale-in-combat.test.ts both directions).
  */
-export function reactionOfferOpensWindow(legal: LegalAction, triggerEvent: GameEvent): boolean {
+export function reactionOfferOpensWindow(
+  legal: LegalAction,
+  triggerEvent: GameEvent,
+): boolean {
   const attackWindow = triggerEvent.type === "UNIT_ATTACK_DECLARED";
   if (
     legal.action.type === "SPEND_MORALE" &&
     (legal.action.benefit === "draw" || legal.action.benefit === "redraw")
   ) {
-    return !legal.windowJoinOnly && attackWindow && Boolean(triggerEvent.isRetaliation);
+    return (
+      !legal.windowJoinOnly &&
+      attackWindow &&
+      Boolean(triggerEvent.isRetaliation)
+    );
   }
   if (legal.windowJoinOnly) {
     return attackWindow;
   }
-  if (legal.action.type === "PLAY_REACTION" && (legal.action.utilityOnly || legal.action.drawOnly)) {
+  if (
+    legal.action.type === "PLAY_REACTION" &&
+    (legal.action.utilityOnly || legal.action.drawOnly)
+  ) {
     return attackWindow;
   }
   return true;
@@ -9886,26 +11812,38 @@ function cardMatchesSchool(cardId: CardId, school: SpellSchool): boolean {
 export function playerHasAttackInstantOfSchool(
   stackItem: ResolutionStackItem,
   playerId: PlayerId,
-  school: SpellSchool
+  school: SpellSchool,
 ): boolean {
   const records = stackItem.modifiers.powerScaledAttackInstants ?? [];
-  if (records.some((record) => record.playerId === playerId && cardMatchesSchool(record.cardId, school))) {
+  if (
+    records.some(
+      (record) =>
+        record.playerId === playerId &&
+        cardMatchesSchool(record.cardId, school),
+    )
+  ) {
     return true;
   }
   if (
     (stackItem.modifiers.powerScaledAttackRerolls ?? []).some(
-      (record) => record.playerId === playerId && cardMatchesSchool(record.cardId, school)
+      (record) =>
+        record.playerId === playerId &&
+        cardMatchesSchool(record.cardId, school),
     )
   ) {
     return true;
   }
   const attackerId =
-    stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT"
+    stackItem.action.type === "ATTACK_UNIT" ||
+    stackItem.action.type === "MOVE_AND_ATTACK_UNIT"
       ? stackItem.action.playerId
       : undefined;
   // Slayer and Frenzy are Fire and do not create scaling records.
   if (school === "fire") {
-    if (stackItem.modifiers.slayerRollsByPower !== undefined && attackerId === playerId) {
+    if (
+      stackItem.modifiers.slayerRollsByPower !== undefined &&
+      attackerId === playerId
+    ) {
       return true;
     }
     if (stackItem.modifiers.ignoreDefenseCasterId === playerId) {
@@ -9927,18 +11865,35 @@ export function playerHasAttackInstantOfSchool(
 function getSchoolFetchExpertActions(
   state: GameState,
   playerId: PlayerId,
-  triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" | "UNIT_ACTIVATION_STARTED" }>,
-  cards: CardLibrary
+  triggerEvent: Extract<
+    GameEvent,
+    {
+      type:
+        | "SPELL_CAST_STARTED"
+        | "UNIT_ATTACK_DECLARED"
+        | "UNIT_ACTIVATION_STARTED";
+    }
+  >,
+  cards: CardLibrary,
 ): LegalAction[] {
-  if (triggerEvent.type !== "SPELL_CAST_STARTED" && triggerEvent.type !== "UNIT_ATTACK_DECLARED") {
+  if (
+    triggerEvent.type !== "SPELL_CAST_STARTED" &&
+    triggerEvent.type !== "UNIT_ATTACK_DECLARED"
+  ) {
     return [];
   }
   const player = state.players[playerId];
   if (!player) {
     return [];
   }
-  const stackItem = triggerEvent.type === "UNIT_ATTACK_DECLARED" ? state.stack.at(-1) : getPendingStackItem(state, triggerEvent);
-  if (!stackItem || (stackItem.modifiers.schoolFetchExpertUsedBy ?? []).includes(playerId)) {
+  const stackItem =
+    triggerEvent.type === "UNIT_ATTACK_DECLARED"
+      ? state.stack.at(-1)
+      : getPendingStackItem(state, triggerEvent);
+  if (
+    !stackItem ||
+    (stackItem.modifiers.schoolFetchExpertUsedBy ?? []).includes(playerId)
+  ) {
     return [];
   }
 
@@ -9951,7 +11906,10 @@ function getSchoolFetchExpertActions(
     }
     let matches = false;
     if (stackItem.action.type === "CAST_SPELL") {
-      if (stackItem.action.playerId === playerId && !stackItem.modifiers.scrollLocked) {
+      if (
+        stackItem.action.playerId === playerId &&
+        !stackItem.modifiers.scrollLocked
+      ) {
         const schools = cards[stackItem.action.cardId]?.spellSchools ?? [];
         matches = schools.includes(school) || schools.includes("any");
       }
@@ -9964,7 +11922,7 @@ function getSchoolFetchExpertActions(
     if (matches) {
       offers.push({
         label: `Basic ${school.charAt(0).toUpperCase()}${school.slice(1)} Magic: +3 Power (expert — discards the permanent)`,
-        action: { type: "USE_SCHOOL_FETCH_EXPERT", playerId, school }
+        action: { type: "USE_SCHOOL_FETCH_EXPERT", playerId, school },
       });
     }
   }
@@ -9982,9 +11940,15 @@ export function getSchoolPermanentExpertActions(
   playerId: PlayerId,
   triggerEvent: Extract<
     GameEvent,
-    { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" | "UNIT_ACTIVATION_STARTED" | "UNIT_LETHAL_HIT" }
+    {
+      type:
+        | "SPELL_CAST_STARTED"
+        | "UNIT_ATTACK_DECLARED"
+        | "UNIT_ACTIVATION_STARTED"
+        | "UNIT_LETHAL_HIT";
+    }
   >,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): LegalAction[] {
   const player = state.players[playerId];
   if (
@@ -9998,14 +11962,15 @@ export function getSchoolPermanentExpertActions(
   ) {
     return [];
   }
-  const spellLimitLeft = spellLimitFor(state, player) - player.combatStats.spellsCastThisRound;
+  const spellLimitLeft =
+    spellLimitFor(state, player) - player.combatStats.spellsCastThisRound;
   if (spellLimitLeft <= 0) {
     return [];
   }
 
   const sources: CardId[] = [
     ...player.hand,
-    ...(bookCastSourcesEnabled(state) ? (player.spellBook ?? []) : [])
+    ...(bookCastSourcesEnabled(state) ? (player.spellBook ?? []) : []),
   ];
   const offers = new Map<CardId, LegalAction>();
   for (const spellId of new Set(sources)) {
@@ -10028,8 +11993,16 @@ export function getSchoolPermanentExpertActions(
     // instead of the generic trigger matcher that intentionally excludes it.
     const mirrorMatches =
       triggerEvent.type !== "UNIT_LETHAL_HIT" &&
-      getMagicMirrorReactions(state, player, triggerEvent, spellLimitLeft, cards).some(
-        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === spellId
+      getMagicMirrorReactions(
+        state,
+        player,
+        triggerEvent,
+        spellLimitLeft,
+        cards,
+      ).some(
+        (legal) =>
+          legal.action.type === "PLAY_REACTION" &&
+          legal.action.cardId === spellId,
       );
     // A cost-bearing variant counts only if it becomes AFFORDABLE once the
     // commit lands (net standing gain = expert − basic, since the permanent's
@@ -10038,37 +12011,64 @@ export function getSchoolPermanentExpertActions(
     // stayed unaffordable at +3 — the permanent and crown burned for nothing.
     const affordableAfterCommit = (variant: CardPlayVariant) =>
       variant.cost === undefined ||
-      canAffordCardCost(state, playerId, spellId, variant.cost, school.expertPower - school.basicPower);
-    const matchesWindow = mirrorMatches || getCardPlayVariants(spell).some((variant) => {
-      if (triggerEvent.type === "UNIT_LETHAL_HIT") {
-        const defender = state.combat?.units[triggerEvent.defenderId];
+      canAffordCardCost(
+        state,
+        playerId,
+        spellId,
+        variant.cost,
+        school.expertPower - school.basicPower,
+      );
+    const matchesWindow =
+      mirrorMatches ||
+      getCardPlayVariants(spell).some((variant) => {
+        if (triggerEvent.type === "UNIT_LETHAL_HIT") {
+          const defender = state.combat?.units[triggerEvent.defenderId];
+          return (
+            !variant.mapOnly &&
+            variant.effect.type === "CANCEL_LETHAL_ATTACK" &&
+            defender?.controllerId === playerId &&
+            variant.effect.grade === defender.grade &&
+            affordableAfterCommit(variant)
+          );
+        }
+        const inMisfortunePreWindow =
+          triggerEvent.type === "UNIT_ATTACK_DECLARED" &&
+          Boolean(state.stack.at(-1)?.modifiers.misfortunePhase);
+        const misfortunePreWindow =
+          inMisfortunePreWindow &&
+          variant.effect.type === "NEGATE_ATTACK" &&
+          state.combat?.units[triggerEvent.defenderId]?.controllerId ===
+            playerId &&
+          (variant.effect.grade === undefined ||
+            gradeRankOfUnit(state.combat.units[triggerEvent.attackerId]!) ===
+              gradeRank(variant.effect.grade));
         return (
           !variant.mapOnly &&
-          variant.effect.type === "CANCEL_LETHAL_ATTACK" &&
-          defender?.controllerId === playerId &&
-          variant.effect.grade === defender.grade &&
+          (inMisfortunePreWindow
+            ? misfortunePreWindow
+            : variantMatchesTrigger(
+                variant,
+                triggerEvent,
+                playerId,
+                spell.timing === "instant",
+              ) &&
+              isEffectLegalForTrigger(
+                state,
+                playerId,
+                variant.effect,
+                triggerEvent,
+                "basic",
+                spellId,
+              )) &&
+          !spellReactionBlockedByImmunity(
+            state,
+            spell,
+            variant.effect,
+            triggerEvent,
+          ) &&
           affordableAfterCommit(variant)
         );
-      }
-      const inMisfortunePreWindow =
-        triggerEvent.type === "UNIT_ATTACK_DECLARED" &&
-        Boolean(state.stack.at(-1)?.modifiers.misfortunePhase);
-      const misfortunePreWindow =
-        inMisfortunePreWindow &&
-        variant.effect.type === "NEGATE_ATTACK" &&
-        state.combat?.units[triggerEvent.defenderId]?.controllerId === playerId &&
-        (variant.effect.grade === undefined ||
-          gradeRankOfUnit(state.combat.units[triggerEvent.attackerId]!) === gradeRank(variant.effect.grade));
-      return (
-        !variant.mapOnly &&
-        (inMisfortunePreWindow
-          ? misfortunePreWindow
-          : variantMatchesTrigger(variant, triggerEvent, playerId, spell.timing === "instant") &&
-            isEffectLegalForTrigger(state, playerId, variant.effect, triggerEvent, "basic", spellId)) &&
-        !spellReactionBlockedByImmunity(state, spell, variant.effect, triggerEvent) &&
-        affordableAfterCommit(variant)
-      );
-    });
+      });
     if (!matchesWindow || offers.has(school.card.id)) {
       continue;
     }
@@ -10077,8 +12077,8 @@ export function getSchoolPermanentExpertActions(
       action: {
         type: "USE_SCHOOL_PERMANENT_EXPERT",
         playerId,
-        cardId: school.card.id
-      }
+        cardId: school.card.id,
+      },
     });
   }
   return [...offers.values()];
@@ -10086,9 +12086,17 @@ export function getSchoolPermanentExpertActions(
 
 function variantMatchesTrigger(
   variant: CardPlayVariant,
-  triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" | "UNIT_ACTIVATION_STARTED" }>,
+  triggerEvent: Extract<
+    GameEvent,
+    {
+      type:
+        | "SPELL_CAST_STARTED"
+        | "UNIT_ATTACK_DECLARED"
+        | "UNIT_ACTIVATION_STARTED";
+    }
+  >,
   playerId: PlayerId,
-  allowTriggerlessUtility = false
+  allowTriggerlessUtility = false,
 ): boolean {
   // Community Balance Change Centaur's Axe: an "after the Attack die roll"
   // option is withheld from EVERY pre-roll window. Its only surface is the
@@ -10096,7 +12104,8 @@ function variantMatchesTrigger(
   if (variant.afterAttackRoll) {
     return false;
   }
-  const utilityFallback = allowTriggerlessUtility && isInstantReactionUtility(variant.effect);
+  const utilityFallback =
+    allowTriggerlessUtility && isInstantReactionUtility(variant.effect);
   const attackInstantFallback =
     allowTriggerlessUtility &&
     triggerEvent.type === "UNIT_ATTACK_DECLARED" &&
@@ -10144,7 +12153,9 @@ function variantMatchesTrigger(
 }
 
 function getPendingStackItem(state: GameState, triggerEvent: GameEvent) {
-  return state.stack.find((item) => item.triggerEventIds.includes(triggerEvent.id));
+  return state.stack.find((item) =>
+    item.triggerEventIds.includes(triggerEvent.id),
+  );
 }
 
 /**
@@ -10174,7 +12185,7 @@ function getPendingStackItem(state: GameState, triggerEvent: GameEvent) {
 export function resolvedSpellPowerForStackItem(
   state: GameState,
   stackItem: ResolutionStackItem | undefined,
-  cards: CardLibrary = cardLibrary
+  cards: CardLibrary = cardLibrary,
 ): number {
   if (!stackItem || stackItem.action.type !== "CAST_SPELL") {
     return 0;
@@ -10197,7 +12208,7 @@ export function resolvedSpellPowerForStackItem(
       0,
       stackItem.modifiers.spellPowerBonus +
         (stackItem.modifiers.schoolPowerBonus ?? 0) +
-        (stackItem.modifiers.townCubePowerBonus ?? 0)
+        (stackItem.modifiers.townCubePowerBonus ?? 0),
     );
   }
   const playerId = stackItem.action.playerId;
@@ -10221,7 +12232,10 @@ export function resolvedSpellPowerForStackItem(
     // too, agreeing with the standingSpellPower preview above.
     equipmentSpellPowerBonus(state, playerId);
   const doubled = base * getSchoolPowerMultiplier(state, playerId, card);
-  const drained = Math.max(0, doubled - enemySpellPowerReductionFor(state, playerId));
+  const drained = Math.max(
+    0,
+    doubled - enemySpellPowerReductionFor(state, playerId),
+  );
   // Polish Set Artifacts — Pendant of Reflection: an enemy holding the set drains
   // this cast by 1 SP, but never below the spell's WEAKEST useful effect (the
   // printed "to a minimum of its weakest effect"), unlike the Pegasi drain above
@@ -10245,7 +12259,8 @@ export function resolvedSpellPowerForStackItem(
   // breakpoint before subtracting; a spell with no Power ladder is unaffected.
   if (interferenceDrain > 0) {
     const maxUseful = spellMaxUsefulPower(card);
-    const effective = maxUseful == null ? reduced : Math.min(reduced, maxUseful);
+    const effective =
+      maxUseful == null ? reduced : Math.min(reduced, maxUseful);
     reduced = Math.max(floor, effective - interferenceDrain);
   }
   return reduced;
@@ -10258,13 +12273,18 @@ export function resolvedSpellPowerForStackItem(
  * mirroring getSchoolPowerBonus. Replicated here (the reducer keeps its own copy
  * private) so the readout and the cast stay byte-for-byte equal.
  */
-function astrologersSchoolPowerBonusFor(state: GameState, spellCard: CardDefinition | undefined): number {
+function astrologersSchoolPowerBonusFor(
+  state: GameState,
+  spellCard: CardDefinition | undefined,
+): number {
   const active = getActiveAstrologersCard(state);
   if (active?.effect.type !== "SCHOOL_SPELL_POWER_BONUS") {
     return 0;
   }
   const schools = spellCard?.spellSchools ?? [];
-  const matches = schools.includes("any") || active.effect.schools.some((school) => schools.includes(school));
+  const matches =
+    schools.includes("any") ||
+    active.effect.schools.some((school) => schools.includes(school));
   return matches ? active.effect.amount : 0;
 }
 
@@ -10273,7 +12293,10 @@ function astrologersSchoolPowerBonusFor(state: GameState, spellCard: CardDefinit
  * a minimum of 0); Orb of Vulnerability suppresses the drain. Mirrors the
  * reducer's enemySpellPowerReduction so the readout/gate match the cast.
  */
-function enemySpellPowerReductionFor(state: GameState, casterPlayerId: PlayerId): number {
+function enemySpellPowerReductionFor(
+  state: GameState,
+  casterPlayerId: PlayerId,
+): number {
   const combat = state.combat;
   if (!combat || spellAbilitiesSuppressed(state)) {
     return 0;
@@ -10288,7 +12311,10 @@ function enemySpellPowerReductionFor(state: GameState, casterPlayerId: PlayerId)
 }
 
 /** Whether a spell of `school` (or "any") has already been played into this attack. */
-function attackStackHasSpellOfSchool(stackItem: ResolutionStackItem | undefined, school: SpellSchool): boolean {
+function attackStackHasSpellOfSchool(
+  stackItem: ResolutionStackItem | undefined,
+  school: SpellSchool,
+): boolean {
   if (!stackItem) {
     return false;
   }
@@ -10302,8 +12328,14 @@ function attackStackHasSpellOfSchool(stackItem: ResolutionStackItem | undefined,
   });
 }
 
-function getPendingSpellPower(state: GameState, triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" }>): number {
-  return resolvedSpellPowerForStackItem(state, getPendingStackItem(state, triggerEvent));
+function getPendingSpellPower(
+  state: GameState,
+  triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" }>,
+): number {
+  return resolvedSpellPowerForStackItem(
+    state,
+    getPendingStackItem(state, triggerEvent),
+  );
 }
 
 /**
@@ -10329,14 +12361,17 @@ export type PendingReactionPower = {
 
 export function getPendingReactionPower(
   state: GameState,
-  cards: CardLibrary = cardLibrary
+  cards: CardLibrary = cardLibrary,
 ): PendingReactionPower | null {
   const window = state.reactionWindow;
   if (!window) {
     return null;
   }
   const trigger = window.triggerEvent;
-  if (trigger.type !== "SPELL_CAST_STARTED" && trigger.type !== "UNIT_ATTACK_DECLARED") {
+  if (
+    trigger.type !== "SPELL_CAST_STARTED" &&
+    trigger.type !== "UNIT_ATTACK_DECLARED"
+  ) {
     return null;
   }
 
@@ -10346,7 +12381,9 @@ export function getPendingReactionPower(
   }
 
   if (stackItem.action.type === "CAST_SPELL") {
-    const basePower = stackItem.modifiers.scrollLocked ? 0 : cards[stackItem.action.cardId]?.power ?? 0;
+    const basePower = stackItem.modifiers.scrollLocked
+      ? 0
+      : (cards[stackItem.action.cardId]?.power ?? 0);
     // The resolved Power (with Orb doubling / school + flat bonuses / Pegasi
     // reduction) drives the displayed total and the damage preview; the fuelled
     // portion is the remainder so the "base + fuelled" line still sums to it.
@@ -10356,15 +12393,19 @@ export function getPendingReactionPower(
       spellCardId: stackItem.action.cardId,
       basePower,
       fueledPower: totalPower - basePower,
-      totalPower
+      totalPower,
     };
   }
 
-  if (stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT") {
+  if (
+    stackItem.action.type === "ATTACK_UNIT" ||
+    stackItem.action.type === "MOVE_AND_ATTACK_UNIT"
+  ) {
     // Attack windows pool Power per caster, so the readout reports the Power the
     // player currently on priority has fuelled into their own spell instant
     // (the attacker's Bloodlust/Bless/Slayer or the defender's Curse/Weakness).
-    const fueledPower = stackItem.modifiers.attackPowerByPlayer?.[window.priorityPlayerId] ?? 0;
+    const fueledPower =
+      stackItem.modifiers.attackPowerByPlayer?.[window.priorityPlayerId] ?? 0;
     // An attack only has a Power to report while a Power-scaling spell instant
     // (Bloodlust/Bless/Slayer) sits on it — otherwise a plain attack has none.
     const hasPowerSubject =
@@ -10374,14 +12415,24 @@ export function getPendingReactionPower(
     if (!hasPowerSubject) {
       return null;
     }
-    return { kind: "attack", spellCardId: null, basePower: 0, fueledPower, totalPower: fueledPower };
+    return {
+      kind: "attack",
+      spellCardId: null,
+      basePower: 0,
+      fueledPower,
+      totalPower: fueledPower,
+    };
   }
 
   return null;
 }
 
 export function effectHasExpertMode(effect: ConcreteEffect): boolean {
-  if (effect.type === "ADD_COMBAT_STAT" || effect.type === "ADD_SPELL_POWER" || effect.type === "DRAW_CARDS") {
+  if (
+    effect.type === "ADD_COMBAT_STAT" ||
+    effect.type === "ADD_SPELL_POWER" ||
+    effect.type === "DRAW_CARDS"
+  ) {
     return effect.expertAmount !== undefined;
   }
 
@@ -10397,13 +12448,17 @@ export function effectHasExpertMode(effect: ConcreteEffect): boolean {
     // Mysticism's expert side recalls every card played with the spell;
     // Knowledge's expert side raises the spell-per-round limit. Either makes the
     // expert play real.
-    return Boolean(effect.expertSpellLimitBonus || effect.expertRecallPlayedCards);
+    return Boolean(
+      effect.expertSpellLimitBonus || effect.expertRecallPlayedCards,
+    );
   }
 
   if (effect.type === "CANCEL_SPELL") {
     // Resistance's expert ignores the power cap; Protection-from-X's expert
     // ignores the spell-level cap. Either makes the card's expert play real.
-    return Boolean(effect.expertIgnoresMaxPower || effect.expertIgnoresMaxSpellLevel);
+    return Boolean(
+      effect.expertIgnoresMaxPower || effect.expertIgnoresMaxSpellLevel,
+    );
   }
 
   // Interference has an expert side (+2 instead of +1); Plate of the Dying
@@ -10415,11 +12470,14 @@ export function effectHasExpertMode(effect: ConcreteEffect): boolean {
   return false;
 }
 
-function makeReactionAction(label: string, action: Extract<GameAction, { type: "PLAY_REACTION" }>): LegalAction {
+function makeReactionAction(
+  label: string,
+  action: Extract<GameAction, { type: "PLAY_REACTION" }>,
+): LegalAction {
   const modeLabel = action.mode === "expert" ? " (expert)" : "";
   return {
     label: `Play ${label}${modeLabel}`,
-    action
+    action,
   };
 }
 
@@ -10427,7 +12485,15 @@ export function isEffectLegalForTrigger(
   state: GameState,
   playerId: PlayerId,
   effect: ConcreteEffect,
-  triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" | "UNIT_ACTIVATION_STARTED" }>,
+  triggerEvent: Extract<
+    GameEvent,
+    {
+      type:
+        | "SPELL_CAST_STARTED"
+        | "UNIT_ATTACK_DECLARED"
+        | "UNIT_ACTIVATION_STARTED";
+    }
+  >,
   mode: CardPlayMode,
   /**
    * The card being played, excluded from "is there another card to remove"
@@ -10435,7 +12501,7 @@ export function isEffectLegalForTrigger(
    * historical call shape keeps working; only the remove-then-Search gate
    * reads it.
    */
-  sourceCardId?: CardId
+  sourceCardId?: CardId,
 ): boolean {
   // These two trigger-free utility cards are explicitly allowed only when a
   // window already exists (the caller opts them in by card id). Scholar also
@@ -10458,12 +12524,14 @@ export function isEffectLegalForTrigger(
       player,
       effect,
       player.discard,
-      inFlight
+      inFlight,
     );
   }
   if (effect.type === "RESHUFFLE_DISCARD_THEN_DRAW") {
     const player = state.players[playerId];
-    return Boolean(player && state.combat && player.deck.length + player.discard.length > 0);
+    return Boolean(
+      player && state.combat && player.deck.length + player.discard.length > 0,
+    );
   }
 
   // The own-deck card-gain family joining an open window (2026-08-10). Gated on
@@ -10479,16 +12547,26 @@ export function isEffectLegalForTrigger(
   ) {
     const player = state.players[playerId];
     return Boolean(
-      player && state.combat && !state.combat.prep && player.deck.length + player.discard.length > 0
+      player &&
+      state.combat &&
+      !state.combat.prep &&
+      player.deck.length + player.discard.length > 0,
     );
   }
   if (effect.type === "DRAW_TOP_ARTIFACT") {
     if (!state.combat || state.combat.prep) {
       return false;
     }
-    return ["artifacts", "artifacts-minor", "artifacts-major", "artifacts-relic"].some(
+    return [
+      "artifacts",
+      "artifacts-minor",
+      "artifacts-major",
+      "artifacts-relic",
+    ].some(
       (deckId) =>
-        (state.decks[deckId]?.drawPile.length ?? 0) + (state.decks[deckId]?.discardPile.length ?? 0) > 0
+        (state.decks[deckId]?.drawPile.length ?? 0) +
+          (state.decks[deckId]?.discardPile.length ?? 0) >
+        0,
     );
   }
   // The shared-deck Search half. Both gates mirror what the own-activation
@@ -10507,10 +12585,10 @@ export function isEffectLegalForTrigger(
     // isOptionEffectPlayable applies to the map / own-activation play.
     return Boolean(
       state.combat &&
-        !state.combat.prep &&
-        removableHandCards(state, playerId, effect.filter ?? "removable").some(
-          (candidate) => candidate.cardId !== sourceCardId
-        )
+      !state.combat.prep &&
+      removableHandCards(state, playerId, effect.filter ?? "removable").some(
+        (candidate) => candidate.cardId !== sourceCardId,
+      ),
     );
   }
 
@@ -10527,10 +12605,18 @@ export function isEffectLegalForTrigger(
     // exists; the offer loop enumerates one play per eligible unit.
     if (effect.type === "ACTIVATE_RANGED_UNIT") {
       return (
-        getActivateRangedUnitTargets(state, playerId, triggerEvent.unitId, effect.allowAlreadyActivated).length > 0
+        getActivateRangedUnitTargets(
+          state,
+          playerId,
+          triggerEvent.unitId,
+          effect.allowAlreadyActivated,
+        ).length > 0
       );
     }
-    if (effect.type !== "SKIP_ACTIVATION" || (!effect.grade && !effect.anyGrade)) {
+    if (
+      effect.type !== "SKIP_ACTIVATION" ||
+      (!effect.grade && !effect.anyGrade)
+    ) {
       return false;
     }
     if (triggerEvent.playerId === playerId) {
@@ -10544,8 +12630,11 @@ export function isEffectLegalForTrigger(
       isUnitAlive(unit) &&
       (effect.anyGrade ||
         (effect.grade &&
-          bankAwareTierGateRank(unit, effect.type, houseRuleEnabled(state, "polish-bank-unit-spells")) ===
-            gradeRank(effect.grade)))
+          bankAwareTierGateRank(
+            unit,
+            effect.type,
+            houseRuleEnabled(state, "polish-bank-unit-spells"),
+          ) === gradeRank(effect.grade))),
     );
   }
 
@@ -10584,7 +12673,9 @@ export function isEffectLegalForTrigger(
       }
       const stackItem = getPendingStackItem(state, triggerEvent);
       const pendingSpell =
-        stackItem?.action.type === "CAST_SPELL" ? cardLibrary[stackItem.action.cardId] : undefined;
+        stackItem?.action.type === "CAST_SPELL"
+          ? cardLibrary[stackItem.action.cardId]
+          : undefined;
       const schools = pendingSpell?.spellSchools ?? [];
       return schools.includes(effect.schoolOnly) || schools.includes("any");
     }
@@ -10609,8 +12700,11 @@ export function isEffectLegalForTrigger(
       if (
         !cancelSpellAllowsSchoolAndLevel(
           effect,
-          { schools: pendingSpell?.spellSchools ?? [], level: pendingSpell?.spellLevel },
-          mode
+          {
+            schools: pendingSpell?.spellSchools ?? [],
+            level: pendingSpell?.spellLevel,
+          },
+          mode,
         )
       ) {
         return false;
@@ -10623,7 +12717,10 @@ export function isEffectLegalForTrigger(
         return true;
       }
 
-      if (effect.maxPower !== undefined && getPendingSpellPower(state, triggerEvent) > effect.maxPower) {
+      if (
+        effect.maxPower !== undefined &&
+        getPendingSpellPower(state, triggerEvent) > effect.maxPower
+      ) {
         return false;
       }
 
@@ -10653,11 +12750,13 @@ export function isEffectLegalForTrigger(
       }
       const stackItem = getPendingStackItem(state, triggerEvent);
       const pendingSpell =
-        stackItem?.action.type === "CAST_SPELL" ? cardLibrary[stackItem.action.cardId] : undefined;
+        stackItem?.action.type === "CAST_SPELL"
+          ? cardLibrary[stackItem.action.cardId]
+          : undefined;
       return Boolean(
         pendingSpell &&
-          pendingSpell.effect.type === "DEAL_DAMAGE" &&
-          pendingSpell.effect.damageKind === "spell"
+        pendingSpell.effect.type === "DEAL_DAMAGE" &&
+        pendingSpell.effect.damageKind === "spell",
       );
     }
 
@@ -10705,7 +12804,10 @@ export function isEffectLegalForTrigger(
           return false;
         }
 
-        return !modifier.nonAdjacentOnly || !isAdjacent(attacker.position, defender.position);
+        return (
+          !modifier.nonAdjacentOnly ||
+          !isAdjacent(attacker.position, defender.position)
+        );
       });
     }
 
@@ -10714,7 +12816,8 @@ export function isEffectLegalForTrigger(
     // source). The defender's debuffs and the attacker's defense-ignore (Frenzy)
     // are untouched — only increases to the attacker's attack are negated.
     const attackBuffsNegated = Boolean(
-      attacker.controllerId === playerId && state.stack.at(-1)?.modifiers.negateAttackBuffs
+      attacker.controllerId === playerId &&
+      state.stack.at(-1)?.modifiers.negateAttackBuffs,
     );
 
     // Bless targets the attacking ground/flying unit and never a ranged unit.
@@ -10773,7 +12876,11 @@ export function isEffectLegalForTrigger(
       return (
         attacker.controllerId === playerId &&
         effect.grade !== undefined &&
-        bankAwareTierGateRank(defender, effect.type, houseRuleEnabled(state, "polish-bank-unit-spells")) <= gradeRank(effect.grade)
+        bankAwareTierGateRank(
+          defender,
+          effect.type,
+          houseRuleEnabled(state, "polish-bank-unit-spells"),
+        ) <= gradeRank(effect.grade)
       );
     }
 
@@ -10783,7 +12890,12 @@ export function isEffectLegalForTrigger(
     // Power may be paid into an attack window so a spell instant in the same
     // declaration can consume it (the batch validator enforces the pairing).
     if (effect.type === "ADD_SPELL_POWER") {
-      if (!(attacker.controllerId === playerId || defender.controllerId === playerId)) {
+      if (
+        !(
+          attacker.controllerId === playerId ||
+          defender.controllerId === playerId
+        )
+      ) {
         return false;
       }
       // School-restricted Power (Elemental Orbs, Basic-School Magic abilities)
@@ -10791,7 +12903,10 @@ export function isEffectLegalForTrigger(
       // been played into this attack — Slayer, Bloodlust and Frenzy are Fire,
       // so a Fire Orb fuels them. Generic Power needs no school match.
       if (effect.schoolOnly) {
-        return attackStackHasSpellOfSchool(getPendingStackItem(state, triggerEvent), effect.schoolOnly);
+        return attackStackHasSpellOfSchool(
+          getPendingStackItem(state, triggerEvent),
+          effect.schoolOnly,
+        );
       }
       return true;
     }
@@ -10819,7 +12934,8 @@ export function isEffectLegalForTrigger(
     // Curse (−defense) is played by the attacker against the defender;
     // Weakness (−attack) by the defender against the attacker. Positive
     // bonuses belong to the unit's own side as before.
-    const benefitsAttacker = effect.stat === "attack" ? effect.amount >= 0 : effect.amount < 0;
+    const benefitsAttacker =
+      effect.stat === "attack" ? effect.amount >= 0 : effect.amount < 0;
     const owner = benefitsAttacker ? attacker : defender;
     if (owner.controllerId !== playerId) {
       return false;
@@ -10830,7 +12946,14 @@ export function isEffectLegalForTrigger(
     if (effect.unitTypes && !effect.unitTypes.includes(affected.type)) {
       return false;
     }
-    if (effect.firstOwnAttackOnly && !mgqGranberiaFirstAttackAvailable(state, attacker, triggerEvent.isRetaliation)) {
+    if (
+      effect.firstOwnAttackOnly &&
+      !mgqGranberiaFirstAttackAvailable(
+        state,
+        attacker,
+        triggerEvent.isRetaliation,
+      )
+    ) {
       return false;
     }
 
@@ -10838,14 +12961,20 @@ export function isEffectLegalForTrigger(
     // Offered only while the attacked unit outranks the attacker; a gradeless
     // Creature-Bank / boss defender outranks every graded attacker (and a
     // gradeless attacker can never satisfy it).
-    if (effect.requiresDefenderHigherTier && gradeRankOfUnit(defender) <= gradeRankOfUnit(attacker)) {
+    if (
+      effect.requiresDefenderHigherTier &&
+      gradeRankOfUnit(defender) <= gradeRankOfUnit(attacker)
+    ) {
       return false;
     }
 
     // Shield (instant): +Defense only against a ground/flying attacker. Gate on
     // the ATTACKER's type, not the buffed defender's (the unitTypes check above).
     // A ranged shot slips past Shield — that is Air Shield's (Ongoing) job.
-    if (effect.vsAttackerType === "ground-or-flying" && attacker.type === "ranged") {
+    if (
+      effect.vsAttackerType === "ground-or-flying" &&
+      attacker.type === "ranged"
+    ) {
       return false;
     }
     if (effect.vsAttackerType === "ranged" && attacker.type !== "ranged") {
@@ -10871,7 +13000,12 @@ export function getActiveUnitId(state: GameState): UnitId | null {
 // Adventure mode legal actions
 // ---------------------------------------------------------------------------
 
-function addVisitStepActions(actions: LegalAction[], state: GameState, playerId: PlayerId, cards: CardLibrary): void {
+function addVisitStepActions(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+  cards: CardLibrary,
+): void {
   const adventure = state.adventure;
   const visit = adventure?.pendingVisit;
   const step = visit?.steps[0];
@@ -10888,7 +13022,10 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
     for (const [optionIndex, option] of step.options.entries()) {
       if (
         option.steps.some(
-          (inner) => inner.type === "EMPOWER_STATISTIC" && (inner.costGold ?? 0) > 0 && inner.source !== "hand"
+          (inner) =>
+            inner.type === "EMPOWER_STATISTIC" &&
+            (inner.costGold ?? 0) > 0 &&
+            inner.source !== "hand",
         )
       ) {
         continue;
@@ -10903,7 +13040,9 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
       // Anime Equipment (§3.13): a BUY_EQUIPMENT option is offered only when the
       // hero can afford it — gold-gated like a PAY_TO option. An unaffordable
       // item drops out (the "poor hero → option absent" rule); "Leave" remains.
-      const buyStep = option.steps.find((inner) => inner.type === "BUY_EQUIPMENT");
+      const buyStep = option.steps.find(
+        (inner) => inner.type === "BUY_EQUIPMENT",
+      );
       if (buyStep && buyStep.type === "BUY_EQUIPMENT") {
         const cost = getEquipmentDefinition(buyStep.equipmentId)?.cost ?? 0;
         if (!playerHasResources(player, { gold: cost })) {
@@ -10912,7 +13051,7 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
       }
       actions.push({
         label: option.label,
-        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex }
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex },
       });
     }
     return;
@@ -10929,12 +13068,12 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
         .join(" + ");
       actions.push({
         label: `Pay ${label}`,
-        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex }
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex },
       });
     }
     actions.push({
       label: "Decline",
-      action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true }
+      action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true },
     });
     return;
   }
@@ -10945,16 +13084,16 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
     actions.push(
       {
         label: `Increase gold income by ${RESOURCE_GAIN_LEVEL_AMOUNTS.gold}`,
-        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 0 }
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 0 },
       },
       {
         label: `Increase building materials income by ${RESOURCE_GAIN_LEVEL_AMOUNTS.buildingMaterials}`,
-        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 1 }
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 1 },
       },
       {
         label: `Increase valuables income by ${RESOURCE_GAIN_LEVEL_AMOUNTS.valuables}`,
-        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 2 }
-      }
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 2 },
+      },
     );
 
     const fewUnits = player.army.filter((unit) => {
@@ -10967,15 +13106,22 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
     fewUnits.forEach((unit, index) => {
       // Half cost (rounded up) applies first, then every distinct Legion voucher
       // reserved for this unit reduces the remaining gold.
-      const halfCost = Object.entries(reinforceCostFor(state, playerId, unit.id, true, false, false) ?? {})
-        .filter(([, amount]) => amount)
-        .map(([resource, amount]) => `${amount} ${resource}`)
-        .join(" + ") || "free";
+      const halfCost =
+        Object.entries(
+          reinforceCostFor(state, playerId, unit.id, true, false, false) ?? {},
+        )
+          .filter(([, amount]) => amount)
+          .map(([resource, amount]) => `${amount} ${resource}`)
+          .join(" + ") || "free";
       actions.push({
         label: free
           ? `Reinforce ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} for free`
           : `Reinforce ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} (${halfCost})`,
-        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 3 + index }
+        action: {
+          type: "RESOLVE_VISIT_STEP",
+          playerId,
+          optionIndex: 3 + index,
+        },
       });
     });
     if (armyUnitStacksActive(state)) {
@@ -10989,7 +13135,9 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
       });
       stackTargets.forEach((unit, index) => {
         const baseCost = polishArmyUnitStackCost(unit);
-        const cost: ResourceCost = free ? {} : { gold: Math.ceil((baseCost?.gold ?? 0) / 2) };
+        const cost: ResourceCost = free
+          ? {}
+          : { gold: Math.ceil((baseCost?.gold ?? 0) / 2) };
         if (!free && !hasRecruitResources(state, playerId, cost)) {
           return;
         }
@@ -11000,8 +13148,8 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
           action: {
             type: "RESOLVE_VISIT_STEP",
             playerId,
-            optionIndex: 3 + fewUnits.length + index
-          }
+            optionIndex: 3 + fewUnits.length + index,
+          },
         });
       });
     }
@@ -11012,16 +13160,16 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
     actions.push(
       {
         label: `Raise Gold income by ${RESOURCE_GAIN_LEVEL_AMOUNTS.gold} (one level)`,
-        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 0 }
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 0 },
       },
       {
         label: `Raise Building Materials income by ${RESOURCE_GAIN_LEVEL_AMOUNTS.buildingMaterials} (one level)`,
-        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 1 }
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 1 },
       },
       {
         label: `Raise Valuables income by ${RESOURCE_GAIN_LEVEL_AMOUNTS.valuables} (one level)`,
-        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 2 }
-      }
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 2 },
+      },
     );
     return;
   }
@@ -11031,21 +13179,32 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
     topThree.forEach((cardId, index) => {
       actions.push({
         label: `Return ${cards[cardId]?.name ?? cardId} to hand`,
-        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: index }
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: index },
       });
     });
-    actions.push({ label: "Skip", action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true } });
+    actions.push({
+      label: "Skip",
+      action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true },
+    });
     return;
   }
 
   if (step.type === "TRADING_POST") {
     for (const [rateIndex, rate] of TRADE_RATES.entries()) {
-      const discount = rate.sell.gold ? Math.min(rate.sell.gold, equipmentTradeGoldDiscount(state, playerId)) : 0;
-      const sell = discount > 0 ? { ...rate.sell, gold: Math.max(0, (rate.sell.gold ?? 0) - discount) } : rate.sell;
+      const discount = rate.sell.gold
+        ? Math.min(rate.sell.gold, equipmentTradeGoldDiscount(state, playerId))
+        : 0;
+      const sell =
+        discount > 0
+          ? {
+              ...rate.sell,
+              gold: Math.max(0, (rate.sell.gold ?? 0) - discount),
+            }
+          : rate.sell;
       if (playerHasResources(player, sell)) {
         actions.push({
           label: `Trade ${discount > 0 ? `${sell.gold} gold instead of ${rate.sell.gold} gold` : rate.label}`,
-          action: { type: "TRADE_RESOURCES", playerId, rateIndex }
+          action: { type: "TRADE_RESOURCES", playerId, rateIndex },
         });
       }
     }
@@ -11056,17 +13215,21 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
     // machine at the higher price. The Marketplace Event's "Trade resources
     // using Trading Post rules" is the exchange alone — tradesOnly hides both.
     if (!step.traded && !step.tradesOnly) {
-      for (const { index, cardId } of removableHandCards(state, playerId, "sellable")) {
+      for (const { index, cardId } of removableHandCards(
+        state,
+        playerId,
+        "sellable",
+      )) {
         actions.push({
           label: `Sell ${cards[cardId]?.name ?? cardId} → gain 1 gold`,
-          action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: index }
+          action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: index },
         });
       }
       for (const offer of warMachinesForSale(state, "trading-post")) {
         if (playerHasResources(player, offer.cost)) {
           actions.push({
             label: `Buy ${offer.card.name} (${offer.cost.gold ?? 0} gold)`,
-            action: { type: "BUY_WAR_MACHINE", playerId, cardId: offer.cardId }
+            action: { type: "BUY_WAR_MACHINE", playerId, cardId: offer.cardId },
           });
         }
       }
@@ -11075,12 +13238,20 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
         for (const cardId of new Set(scroll.spellCardIds)) {
           actions.push({
             label: `Sell ${cards[cardId]?.name ?? cardId} (Scroll) → gain 2 gold`,
-            action: { type: "SELL_SCROLL_SPELL", playerId, scrollId: scroll.id, cardId }
+            action: {
+              type: "SELL_SCROLL_SPELL",
+              playerId,
+              scrollId: scroll.id,
+              cardId,
+            },
           });
         }
       }
     }
-    actions.push({ label: "Done trading", action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true } });
+    actions.push({
+      label: "Done trading",
+      action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true },
+    });
     return;
   }
 
@@ -11089,11 +13260,14 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
       if (playerHasResources(player, offer.cost)) {
         actions.push({
           label: `Buy ${offer.card.name} (${offer.cost.gold ?? 0} gold)`,
-          action: { type: "BUY_WAR_MACHINE", playerId, cardId: offer.cardId }
+          action: { type: "BUY_WAR_MACHINE", playerId, cardId: offer.cardId },
         });
       }
     }
-    actions.push({ label: "Leave the factory", action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true } });
+    actions.push({
+      label: "Leave the factory",
+      action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true },
+    });
     return;
   }
 
@@ -11104,11 +13278,15 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
     // Flip any adjacent face-down tile on the hero's layer — the Observatory /
     // Speculum ignore borders and edges, so there is NO "stand at an open
     // border" requirement here (unlike ordinary movement-driven discovery).
-    const candidates = tile && hero ? observatoryRevealTargets(state, hero, tile) : [];
+    const candidates = step.fromAnyHero
+      ? anyHeroAdjacentRevealTargets(state, playerId)
+      : tile && hero
+        ? observatoryRevealTargets(state, hero, tile)
+        : [];
     candidates.forEach((candidate, index) => {
       actions.push({
         label: `Discover the face-down tile at (${candidate.centerRow}, ${candidate.centerCol})`,
-        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: index }
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: index },
       });
     });
     // Or open a brand-new tile by dropping a Far (Ⅱ–Ⅲ) supply tile into an empty
@@ -11116,9 +13294,14 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
     // (that is the whole point of the Observatory). Face-down Far tiles are
     // interchangeable backs, so the top of the supply is offered for each slot.
     const supply = adventure.playerFarTiles[playerId] ?? [];
-    if (tile && hero && supply.length > 0) {
+    if (!step.fromAnyHero && tile && hero && supply.length > 0) {
       const supplyIndex = 0;
-      for (const center of observatoryPlacementCenters(state, hero, tile, supply[supplyIndex])) {
+      for (const center of observatoryPlacementCenters(
+        state,
+        hero,
+        tile,
+        supply[supplyIndex],
+      )) {
         actions.push({
           label: `Place a Far (Ⅱ–Ⅲ) tile at (${center.row}, ${center.col})`,
           action: {
@@ -11126,23 +13309,33 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
             playerId,
             supplyIndex,
             centerRow: center.row,
-            centerCol: center.col
-          }
+            centerCol: center.col,
+          },
         });
       }
     }
-    actions.push({ label: "Skip", action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true } });
+    actions.push({
+      label: "Skip",
+      action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true },
+    });
     return;
   }
 
   if (step.type === "REMOVE_HAND_CARD") {
-    for (const { index, cardId } of removableHandCards(state, playerId, step.filter)) {
+    for (const { index, cardId } of removableHandCards(
+      state,
+      playerId,
+      step.filter,
+    )) {
       actions.push({
         label: `Remove ${cards[cardId]?.name ?? cardId}`,
-        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: index }
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: index },
       });
     }
-    actions.push({ label: "Skip", action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true } });
+    actions.push({
+      label: "Skip",
+      action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true },
+    });
     return;
   }
 
@@ -11152,10 +13345,13 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
     topCards.forEach((cardId, index) => {
       actions.push({
         label: `Take ${cards[cardId]?.name ?? cardId}`,
-        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: index }
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: index },
       });
     });
-    actions.push({ label: "Take nothing", action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true } });
+    actions.push({
+      label: "Take nothing",
+      action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true },
+    });
     return;
   }
 
@@ -11173,12 +13369,20 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
     });
     let offered = 0;
     fewUnits.forEach((unit, index) => {
-      const cost = reinforceCostFor(state, playerId, unit.id, false, false, false, 3);
+      const cost = reinforceCostFor(
+        state,
+        playerId,
+        unit.id,
+        false,
+        false,
+        false,
+        3,
+      );
       if (cost && hasRecruitResources(state, playerId, cost)) {
         offered += 1;
         actions.push({
           label: `Reinforce ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} (${formatResourceCost(cost)}) — Hill Fort −3 gold`,
-          action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: index }
+          action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: index },
         });
       }
     });
@@ -11189,7 +13393,7 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
         offered > 0
           ? "Skip"
           : "Skip (no bronze or silver Few unit you can afford to reinforce)",
-      action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true }
+      action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true },
     });
     return;
   }
@@ -11206,23 +13410,34 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
       if (enemies.length === 0) {
         actions.push({
           label: "Pay 7 gold to gain a Secondary Hero",
-          action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 0 }
+          action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 0 },
         });
       } else {
         enemies.forEach((enemyId, index) => {
           actions.push({
             label: `Pay 7 gold — ${state.players[enemyId]?.name ?? enemyId} discards a card`,
-            action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: index }
+            action: {
+              type: "RESOLVE_VISIT_STEP",
+              playerId,
+              optionIndex: index,
+            },
           });
         });
       }
     }
-    actions.push({ label: "Decline", action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true } });
+    actions.push({
+      label: "Decline",
+      action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true },
+    });
     return;
   }
 }
 
-function addCombatSetupActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+function addCombatSetupActions(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+): void {
   const combat = state.combat;
   const setup = combat?.setup;
   const player = state.players[playerId];
@@ -11232,25 +13447,35 @@ function addCombatSetupActions(actions: LegalAction[], state: GameState, playerI
 
   const placed = setup.placedUnitIds[playerId] ?? [];
   const cells = placementCellsFor(state, playerId);
-  const takenPositions = new Set(Object.values(combat.units).map((unit) => unit.position));
+  const takenPositions = new Set(
+    Object.values(combat.units).map((unit) => unit.position),
+  );
 
   if (placed.length < setup.unitLimit) {
     const placedFormation = placed.flatMap((armyUnitId) => {
       const unit = player.army.find((candidate) => candidate.id === armyUnitId);
-      return unit ? [{ side: unit.side, tier: coreUnitDefinitions[unit.unitDefId]?.tier }] : [];
+      return unit
+        ? [{ side: unit.side, tier: coreUnitDefinitions[unit.unitDefId]?.tier }]
+        : [];
     });
     for (const armyUnit of player.army) {
       if (placed.includes(armyUnit.id)) {
         continue;
       }
-      if (hiddenLeafCombatFormationError(player, [
-        ...placedFormation,
-        { side: armyUnit.side, tier: coreUnitDefinitions[armyUnit.unitDefId]?.tier }
-      ])) {
+      if (
+        hiddenLeafCombatFormationError(player, [
+          ...placedFormation,
+          {
+            side: armyUnit.side,
+            tier: coreUnitDefinitions[armyUnit.unitDefId]?.tier,
+          },
+        ])
+      ) {
         continue;
       }
 
-      const unitName = coreUnitDefinitions[armyUnit.unitDefId]?.name ?? armyUnit.unitDefId;
+      const unitName =
+        coreUnitDefinitions[armyUnit.unitDefId]?.name ?? armyUnit.unitDefId;
       for (const position of cells) {
         if (takenPositions.has(position)) {
           continue;
@@ -11258,17 +13483,25 @@ function addCombatSetupActions(actions: LegalAction[], state: GameState, playerI
 
         actions.push({
           label: `Place ${armyUnit.side} ${unitName} at ${getBattlefieldLabel(position)}`,
-          action: { type: "PLACE_COMBAT_UNIT", playerId, armyUnitId: armyUnit.id, position }
+          action: {
+            type: "PLACE_COMBAT_UNIT",
+            playerId,
+            armyUnitId: armyUnit.id,
+            position,
+          },
         });
       }
     }
   }
 
   for (const armyUnitId of placed) {
-    const unitName = coreUnitDefinitions[player.army.find((unit) => unit.id === armyUnitId)?.unitDefId ?? ""]?.name;
+    const unitName =
+      coreUnitDefinitions[
+        player.army.find((unit) => unit.id === armyUnitId)?.unitDefId ?? ""
+      ]?.name;
     actions.push({
       label: `Take back ${unitName ?? armyUnitId}`,
-      action: { type: "UNPLACE_COMBAT_UNIT", playerId, armyUnitId }
+      action: { type: "UNPLACE_COMBAT_UNIT", playerId, armyUnitId },
     });
   }
 
@@ -11285,28 +13518,44 @@ function addCombatSetupActions(actions: LegalAction[], state: GameState, playerI
   // WOG Commanders: an EMPTY unit deck (no free restock while the commander
   // lives) may deploy commander-only — the commander is auto-placed at combat
   // start, so "Ready" with zero placed units is legal for that player.
-  const commanderOnly = player.army.length === 0 && commanderStandsInCurrentCombat(state, playerId);
+  const commanderOnly =
+    player.army.length === 0 && commanderStandsInCurrentCombat(state, playerId);
   const spiritSelected =
     player.factionId !== "mgq" ||
     !playerMainHeroInCombat(state, playerId) ||
     Boolean(player.mgqSpirit);
   if ((placed.length > 0 || commanderOnly) && spiritSelected) {
     actions.push({
-      label: commanderOnly && placed.length === 0 ? "Ready for battle (commander only)" : "Ready for battle",
-      action: { type: "FINISH_COMBAT_PLACEMENT", playerId }
+      label:
+        commanderOnly && placed.length === 0
+          ? "Ready for battle (commander only)"
+          : "Ready for battle",
+      action: { type: "FINISH_COMBAT_PLACEMENT", playerId },
     });
   }
 }
 
 /** A player's living, swappable (non-Arrow-Tower) units, left-to-right. */
-function tacticsSwappableUnits(combat: CombatState, playerId: PlayerId): CombatUnitState[] {
+function tacticsSwappableUnits(
+  combat: CombatState,
+  playerId: PlayerId,
+): CombatUnitState[] {
   return Object.values(combat.units)
-    .filter((unit) => unit.controllerId === playerId && isUnitAlive(unit) && !isArrowTowerUnit(unit))
+    .filter(
+      (unit) =>
+        unit.controllerId === playerId &&
+        isUnitAlive(unit) &&
+        !isArrowTowerUnit(unit),
+    )
     .sort((left, right) => left.position - right.position);
 }
 
 /** Start-of-combat Tactics window: every two-unit switch, plus "keep". */
-function addTacticsSetupActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+function addTacticsSetupActions(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+): void {
   const combat = state.combat;
   if (!combat || combat.pendingTacticsSwaps?.[0] !== playerId) {
     return;
@@ -11317,7 +13566,12 @@ function addTacticsSetupActions(actions: LegalAction[], state: GameState, player
     for (let j = i + 1; j < units.length; j += 1) {
       actions.push({
         label: `Tactics: switch ${units[i].cardName} (${getBattlefieldLabel(units[i].position)}) and ${units[j].cardName} (${getBattlefieldLabel(units[j].position)})`,
-        action: { type: "SWAP_COMBAT_UNITS", playerId, unitIdA: units[i].id, unitIdB: units[j].id }
+        action: {
+          type: "SWAP_COMBAT_UNITS",
+          playerId,
+          unitIdA: units[i].id,
+          unitIdB: units[j].id,
+        },
       });
     }
   }
@@ -11326,7 +13580,7 @@ function addTacticsSetupActions(actions: LegalAction[], state: GameState, player
 
   actions.push({
     label: "Tactics: keep your current positions",
-    action: { type: "FINISH_TACTICS", playerId }
+    action: { type: "FINISH_TACTICS", playerId },
   });
 }
 
@@ -11342,7 +13596,7 @@ function addTacticsMoveActions(
   state: GameState,
   playerId: PlayerId,
   units: CombatUnitState[],
-  labelPrefix: string
+  labelPrefix: string,
 ): void {
   const combat = state.combat;
   if (!combat || !houseRuleEnabled(state, "polish-card-balance")) {
@@ -11352,7 +13606,12 @@ function addTacticsMoveActions(
     for (const position of tacticsMoveDestinations(combat, unit)) {
       actions.push({
         label: `${labelPrefix}: move ${unit.cardName} to ${getBattlefieldLabel(position)}`,
-        action: { type: "TACTICS_MOVE_UNIT", playerId, unitId: unit.id, position }
+        action: {
+          type: "TACTICS_MOVE_UNIT",
+          playerId,
+          unitId: unit.id,
+          position,
+        },
       });
     }
   }
@@ -11366,14 +13625,21 @@ function addTacticsMoveActions(
  * The board also drives this by drag/click; enumerating keeps the AFK driver and
  * tests exercising the exact same commands.
  */
-function addNeutralPlacementActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+function addNeutralPlacementActions(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+): void {
   const combat = state.combat;
   if (!combat || combat.pendingNeutralPlacement !== playerId) {
     return;
   }
 
   const guards = Object.values(combat.units).filter(
-    (unit) => unit.controllerId === NEUTRAL_PLAYER_ID && isUnitAlive(unit) && !isArrowTowerUnit(unit)
+    (unit) =>
+      unit.controllerId === NEUTRAL_PLAYER_ID &&
+      isUnitAlive(unit) &&
+      !isArrowTowerUnit(unit),
   );
   const occupantAt = new Map<number, CombatUnitState>();
   for (const unit of Object.values(combat.units)) {
@@ -11390,19 +13656,31 @@ function addNeutralPlacementActions(actions: LegalAction[], state: GameState, pl
       }
       const occupant = occupantAt.get(position);
       // An empty cell (move) or a fellow guard (swap); anything else stays blocked.
-      if (occupant && (occupant.controllerId !== NEUTRAL_PLAYER_ID || isArrowTowerUnit(occupant))) {
+      if (
+        occupant &&
+        (occupant.controllerId !== NEUTRAL_PLAYER_ID ||
+          isArrowTowerUnit(occupant))
+      ) {
         continue;
       }
       // A swap must also respect the partner's rule: a shooter cannot be pushed
       // off the back row (it would land on the mover's old cell).
-      if (occupant && !neutralFormationCellsForGuard(state, occupant).includes(guard.position)) {
+      if (
+        occupant &&
+        !neutralFormationCellsForGuard(state, occupant).includes(guard.position)
+      ) {
         continue;
       }
       actions.push({
         label: occupant
           ? `Swap ${guard.cardName} (${getBattlefieldLabel(guard.position)}) with ${occupant.cardName} (${getBattlefieldLabel(position)})`
           : `Move ${guard.cardName} to ${getBattlefieldLabel(position)}`,
-        action: { type: "PLACE_NEUTRAL_GUARD", playerId, unitId: guard.id, position }
+        action: {
+          type: "PLACE_NEUTRAL_GUARD",
+          playerId,
+          unitId: guard.id,
+          position,
+        },
       });
     }
   }
@@ -11412,13 +13690,13 @@ function addNeutralPlacementActions(actions: LegalAction[], state: GameState, pl
   if (neutralPlacementIsManual(state)) {
     actions.push({
       label: "Let the AI place them",
-      action: { type: "AUTO_NEUTRAL_PLACEMENT", playerId }
+      action: { type: "AUTO_NEUTRAL_PLACEMENT", playerId },
     });
   }
 
   actions.push({
     label: "Ready for battle",
-    action: { type: "FINISH_NEUTRAL_PLACEMENT", playerId }
+    action: { type: "FINISH_NEUTRAL_PLACEMENT", playerId },
   });
 }
 
@@ -11434,14 +13712,18 @@ function addCommanderPlacementActions(
   actions: LegalAction[],
   state: GameState,
   playerId: PlayerId,
-  includeReady = true
+  includeReady = true,
 ): void {
   const combat = state.combat;
   const integratedDeployment = Boolean(
     combat?.setup?.pendingPlayerIds[0] === playerId &&
-      combat.integratedCommanderDeploymentPlayerIds?.includes(playerId)
+    combat.integratedCommanderDeploymentPlayerIds?.includes(playerId),
   );
-  if (!combat || (combat.pendingCommanderPlacement?.[0] !== playerId && !integratedDeployment)) {
+  if (
+    !combat ||
+    (combat.pendingCommanderPlacement?.[0] !== playerId &&
+      !integratedDeployment)
+  ) {
     return;
   }
   const commander = combat.units[commanderUnitId(playerId)];
@@ -11453,7 +13735,10 @@ function addCommanderPlacementActions(
     }
     const obstacles = new Set(combat.obstacles ?? []);
     const movers = Object.values(combat.units).filter(
-      (unit) => unit.controllerId === playerId && isUnitAlive(unit) && cells.includes(unit.position)
+      (unit) =>
+        unit.controllerId === playerId &&
+        isUnitAlive(unit) &&
+        cells.includes(unit.position),
     );
     for (const moving of movers) {
       for (const position of cells) {
@@ -11461,7 +13746,10 @@ function addCommanderPlacementActions(
           continue;
         }
         const occupant = occupantAt.get(position);
-        if (occupant && (occupant.controllerId !== playerId || !isUnitAlive(occupant))) {
+        if (
+          occupant &&
+          (occupant.controllerId !== playerId || !isUnitAlive(occupant))
+        ) {
           continue;
         }
         actions.push({
@@ -11472,18 +13760,17 @@ function addCommanderPlacementActions(
             type: "PLACE_COMMANDER",
             playerId,
             ...(moving.id === commander.id ? {} : { unitId: moving.id }),
-            position
-          }
+            position,
+          },
         });
       }
     }
-
   }
 
   if (includeReady) {
     actions.push({
       label: "Ready for battle",
-      action: { type: "FINISH_COMMANDER_PLACEMENT", playerId }
+      action: { type: "FINISH_COMMANDER_PLACEMENT", playerId },
     });
   }
 }
@@ -11500,12 +13787,17 @@ function addCommanderPlacementActions(
  * Classic / Polish Tactics has only the Expert mid-combat side, so this is
  * always true with the community pack off.
  */
-export function tacticsCombatOfferIsExpert(state: GameState, playerId: PlayerId): boolean {
+export function tacticsCombatOfferIsExpert(
+  state: GameState,
+  playerId: PlayerId,
+): boolean {
   if (!houseRuleEnabled(state, "community-card-balance")) {
     return true;
   }
   const combat = state.combat;
-  const active = combat?.activeUnitId ? combat.units[combat.activeUnitId] : null;
+  const active = combat?.activeUnitId
+    ? combat.units[combat.activeUnitId]
+    : null;
   // The reprint's basic side is "During Combat" on your own unit's moment; any
   // OTHER unit about to activate is the expert ⚡ side.
   return active?.controllerId !== playerId;
@@ -11515,9 +13807,19 @@ export function tacticsCombatOfferIsExpert(state: GameState, playerId: PlayerId)
  * Expert Tactics mid-combat: on the holder's turn, before their active unit has
  * moved or attacked, spend one expert use to switch any two of their units.
  */
-function addTacticsCombatActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+function addTacticsCombatActions(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+): void {
   const combat = state.combat;
-  if (!combat || state.phase !== "combat" || state.pendingChoice || state.reactionWindow || state.stack.length > 0) {
+  if (
+    !combat ||
+    state.phase !== "combat" ||
+    state.pendingChoice ||
+    state.reactionWindow ||
+    state.stack.length > 0
+  ) {
     return;
   }
   const player = state.players[playerId];
@@ -11550,7 +13852,12 @@ function addTacticsCombatActions(actions: LegalAction[], state: GameState, playe
     for (let j = i + 1; j < units.length; j += 1) {
       actions.push({
         label: `${sideLabel}: switch ${units[i].cardName} (${getBattlefieldLabel(units[i].position)}) and ${units[j].cardName} (${getBattlefieldLabel(units[j].position)})`,
-        action: { type: "SWAP_COMBAT_UNITS", playerId, unitIdA: units[i].id, unitIdB: units[j].id }
+        action: {
+          type: "SWAP_COMBAT_UNITS",
+          playerId,
+          unitIdA: units[i].id,
+          unitIdB: units[j].id,
+        },
       });
     }
   }
@@ -11558,7 +13865,11 @@ function addTacticsCombatActions(actions: LegalAction[], state: GameState, playe
   addTacticsMoveActions(actions, state, playerId, units, sideLabel);
 }
 
-function addTownActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+function addTownActions(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+): void {
   const player = state.players[playerId];
   const town = getTownOfPlayer(state, playerId);
   // Town actions are normally blocked during a combat, with one exception: a
@@ -11570,13 +13881,16 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
   }
 
   if (player.townTokens.build) {
-    for (const buildingId of coreFactionDefinitions[player.factionId ?? ""]?.buildings ?? []) {
+    for (const buildingId of coreFactionDefinitions[player.factionId ?? ""]
+      ?.buildings ?? []) {
       const building = coreBuildingDefinitions[buildingId];
       if (
         !building ||
         building.implementationStatus !== "implemented" ||
         town.buildings.includes(buildingId) ||
-        (building.prerequisites ?? []).some((prerequisite) => !town.buildings.includes(prerequisite)) ||
+        (building.prerequisites ?? []).some(
+          (prerequisite) => !town.buildings.includes(prerequisite),
+        ) ||
         !playerHasResources(player, building.cost)
       ) {
         continue;
@@ -11584,15 +13898,26 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
 
       actions.push({
         label: `Build ${building.name}`,
-        action: { type: "BUILD_STRUCTURE", playerId, townId: town.id, buildingId }
+        action: {
+          type: "BUILD_STRUCTURE",
+          playerId,
+          townId: town.id,
+          buildingId,
+        },
       });
     }
   }
 
   if (player.townTokens.population) {
     const tiers = unlockedRecruitTiers(state, playerId);
-    const canReinforce = townHasBuildingEffect(state, playerId, "UNLOCK_REINFORCE");
-    const faction = player.factionId ? coreFactionDefinitions[player.factionId] : undefined;
+    const canReinforce = townHasBuildingEffect(
+      state,
+      playerId,
+      "UNLOCK_REINFORCE",
+    );
+    const faction = player.factionId
+      ? coreFactionDefinitions[player.factionId]
+      : undefined;
 
     for (const unitDefId of faction?.units ?? []) {
       const unit = coreUnitDefinitions[unitDefId];
@@ -11604,29 +13929,41 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
       // Each unit card exists once: a type already in the army cannot be
       // recruited again — only its Few card may be reinforced to the Pack.
       const owned = player.army.some(
-        (armyUnit) => armyUnit.side !== "bank" && armyUnit.unitDefId === unitDefId
+        (armyUnit) =>
+          armyUnit.side !== "bank" && armyUnit.unitDefId === unitDefId,
       );
       // Factory: Couatls and Juggernauts are mutually exclusive — owning one
       // hides the other from the recruit offer.
       const goldChoiceBlocked = factoryGoldUnitConflict(player.army, unitDefId);
       // A Legion voucher reserved for this unit may make it affordable — fold in
       // the total gold discount when offering the action.
-      const recruitCost = applyRecruitGoldDiscount(state, playerId, { kind: "recruit", unitDefId }, fewSide.cost);
+      const recruitCost = applyRecruitGoldDiscount(
+        state,
+        playerId,
+        { kind: "recruit", unitDefId },
+        fewSide.cost,
+      );
       const mgqContractBlocked = !mgqGoldContractAllows(player, unitDefId);
-      if (!owned && !goldChoiceBlocked && !mgqContractBlocked && hasRecruitResources(state, playerId, recruitCost)) {
+      if (
+        !owned &&
+        !goldChoiceBlocked &&
+        !mgqContractBlocked &&
+        hasRecruitResources(state, playerId, recruitCost)
+      ) {
         actions.push({
           label: `Recruit few ${unit.name}`,
           action: {
             type: "POPULATION_ACTION",
             playerId,
-            purchases: [{ kind: "recruit", unitDefId }]
-          }
+            purchases: [{ kind: "recruit", unitDefId }],
+          },
         });
       }
 
       if (canReinforce) {
         const target = player.army.find(
-          (armyUnit) => armyUnit.unitDefId === unitDefId && armyUnit.side === "few"
+          (armyUnit) =>
+            armyUnit.unitDefId === unitDefId && armyUnit.side === "few",
         );
         const packSide = unit.pack;
         // The gold paid drops by the TOTAL discount: a Legion voucher reserved for
@@ -11638,17 +13975,24 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
                 state,
                 playerId,
                 { kind: "reinforce", unitDefId, armyUnitId: target.id },
-                packSide.cost
+                packSide.cost,
               )
             : undefined;
-        if (target && packSide && reinforceCost && hasRecruitResources(state, playerId, reinforceCost)) {
+        if (
+          target &&
+          packSide &&
+          reinforceCost &&
+          hasRecruitResources(state, playerId, reinforceCost)
+        ) {
           actions.push({
             label: `Reinforce ${unit.name} to a pack`,
             action: {
               type: "POPULATION_ACTION",
               playerId,
-              purchases: [{ kind: "reinforce", unitDefId, armyUnitId: target.id }]
-            }
+              purchases: [
+                { kind: "reinforce", unitDefId, armyUnitId: target.id },
+              ],
+            },
           });
         }
       }
@@ -11669,21 +14013,32 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
           ? applyRecruitGoldDiscount(
               state,
               playerId,
-              { kind: "stack", unitDefId: target.unitDefId, armyUnitId: target.id },
-              baseCost
+              {
+                kind: "stack",
+                unitDefId: target.unitDefId,
+                armyUnitId: target.id,
+              },
+              baseCost,
             )
           : null;
         if (!cost || !hasRecruitResources(state, playerId, cost)) {
           continue;
         }
-        const unitName = coreUnitDefinitions[target.unitDefId]?.name ?? target.unitDefId;
+        const unitName =
+          coreUnitDefinitions[target.unitDefId]?.name ?? target.unitDefId;
         actions.push({
           label: `Add Stack to ${unitName} (${formatResourceCost(cost)})`,
           action: {
             type: "POPULATION_ACTION",
             playerId,
-            purchases: [{ kind: "stack", unitDefId: target.unitDefId, armyUnitId: target.id }]
-          }
+            purchases: [
+              {
+                kind: "stack",
+                unitDefId: target.unitDefId,
+                armyUnitId: target.id,
+              },
+            ],
+          },
         });
       }
     }
@@ -11693,7 +14048,10 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
   // without a Mage Guild — so it is offered without one, at 0 gold, ignoring the
   // "same round the guild was built" restriction (which is about the guild).
   const magesFree = freeSpellBookActive(state);
-  if (player.townTokens.spellBook && (townHasBuildingEffect(state, playerId, "MAGE_GUILD") || magesFree)) {
+  if (
+    player.townTokens.spellBook &&
+    (townHasBuildingEffect(state, playerId, "MAGE_GUILD") || magesFree)
+  ) {
     const mageGuild = town.buildings
       .map((buildingId) => coreBuildingDefinitions[buildingId])
       .find((building) => building?.effect?.type === "MAGE_GUILD");
@@ -11703,43 +14061,67 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
       if (player.resources.gold >= cost) {
         actions.push({
           label: `${cost} gold: Buy spell — search (${baseSearchCount})`,
-          action: { type: "SPELL_BOOK_ACTION", playerId }
+          action: { type: "SPELL_BOOK_ACTION", playerId },
         });
         if (polishSpellBookEnabled(state)) {
           actions.push({
             label: `${cost} gold: Buy "Cast a Spell" instead`,
-            action: { type: "SPELL_BOOK_ACTION", playerId, takeCastCard: true }
+            action: { type: "SPELL_BOOK_ACTION", playerId, takeCastCard: true },
           });
         }
       }
 
       // Wisdom rides on the purchase: cheaper spells and a bigger search.
       const ruleset = getRuleset(state);
-      const wisdomCardId = player.hand.find((cardId) => cardLibrary[cardId]?.name === "Wisdom");
+      const wisdomCardId = player.hand.find(
+        (cardId) => cardLibrary[cardId]?.name === "Wisdom",
+      );
       if (wisdomCardId) {
         // Polish Balance Pack: the reprinted basic side is RELATIVE — "Search
         // (X+2) instead of Search (X)" — and its town EXPERT side is gone (the
         // reprint's Expert is a combat play), so only the basic arm is offered.
         const balance = houseRuleEnabled(state, "polish-card-balance");
-        const basicCost = Math.max(0, cost - wisdomGoldDiscount(ruleset, "basic"));
+        const basicCost = Math.max(
+          0,
+          cost - wisdomGoldDiscount(ruleset, "basic"),
+        );
         if (player.resources.gold >= basicCost) {
           actions.push({
             label: `${basicCost} gold: Buy spell with Wisdom — search (${
-              balance ? baseSearchCount + WISDOM_BALANCE_SEARCH_DELTA : wisdomSearchCount("basic")
+              balance
+                ? baseSearchCount + WISDOM_BALANCE_SEARCH_DELTA
+                : wisdomSearchCount("basic")
             })`,
-            action: { type: "SPELL_BOOK_ACTION", playerId, wisdom: { cardId: wisdomCardId, mode: "basic" } }
+            action: {
+              type: "SPELL_BOOK_ACTION",
+              playerId,
+              wisdom: { cardId: wisdomCardId, mode: "basic" },
+            },
           });
         }
 
         const expertCost = Math.max(
           0,
-          cost - wisdomGoldDiscount(ruleset, "expert", houseRuleEnabled(state, "wisdom-expert-discount"))
+          cost -
+            wisdomGoldDiscount(
+              ruleset,
+              "expert",
+              houseRuleEnabled(state, "wisdom-expert-discount"),
+            ),
         );
         // Empowered Wisdom skips the crown but still pays the gold.
-        if (!balance && canPlayExpertMode(player, wisdomCardId) && player.resources.gold >= expertCost) {
+        if (
+          !balance &&
+          canPlayExpertMode(player, wisdomCardId) &&
+          player.resources.gold >= expertCost
+        ) {
           actions.push({
             label: `${expertCost} gold: Buy spell with Wisdom expert — search (${wisdomSearchCount("expert")})`,
-            action: { type: "SPELL_BOOK_ACTION", playerId, wisdom: { cardId: wisdomCardId, mode: "expert" } }
+            action: {
+              type: "SPELL_BOOK_ACTION",
+              playerId,
+              wisdom: { cardId: wisdomCardId, mode: "expert" },
+            },
           });
         }
       }
@@ -11753,14 +14135,20 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
     player.polishSpellRollUsedRound !== state.round
   ) {
     const rollCandidates = [
-      ...player.spellBook.map((cardId) => ({ cardId, source: "refreshed" as const })),
-      ...(player.spellBookUsed ?? []).map((cardId) => ({ cardId, source: "used" as const }))
+      ...player.spellBook.map((cardId) => ({
+        cardId,
+        source: "refreshed" as const,
+      })),
+      ...(player.spellBookUsed ?? []).map((cardId) => ({
+        cardId,
+        source: "used" as const,
+      })),
     ];
     for (const candidate of rollCandidates) {
       const name = cardLibrary[candidate.cardId]?.name ?? candidate.cardId;
       actions.push({
         label: `3 gold: Roll spell — remove ${name}${candidate.source === "used" ? " (used)" : ""}, search (2)`,
-        action: { type: "SPELL_BOOK_ACTION", playerId, rollSpell: candidate }
+        action: { type: "SPELL_BOOK_ACTION", playerId, rollSpell: candidate },
       });
     }
   }
@@ -11773,18 +14161,27 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
   const smith = town.buildings
     .map((buildingId) => coreBuildingDefinitions[buildingId])
     .find((building) => building?.effect?.type === "ARTIFACT_SMITH");
-  if (!state.combat && smith?.effect?.type === "ARTIFACT_SMITH" && player.blacksmithUsedRound !== state.round) {
+  if (
+    !state.combat &&
+    smith?.effect?.type === "ARTIFACT_SMITH" &&
+    player.blacksmithUsedRound !== state.round
+  ) {
     if (player.resources.gold >= smith.effect.searchCost) {
       actions.push({
         label: `Blacksmith: pay ${smith.effect.searchCost} gold, Search (2) Artifacts`,
-        action: { type: "BLACKSMITH_ACTION", playerId, option: "search" }
+        action: { type: "BLACKSMITH_ACTION", playerId, option: "search" },
       });
     }
     for (const cardId of new Set(player.hand)) {
       if (cardLibrary[cardId]?.kind === "artifact") {
         actions.push({
           label: `Blacksmith: sell ${cardLibrary[cardId]?.name} for ${smith.effect.sellGold} gold`,
-          action: { type: "BLACKSMITH_ACTION", playerId, option: "sell", artifactCardId: cardId }
+          action: {
+            type: "BLACKSMITH_ACTION",
+            playerId,
+            option: "sell",
+            artifactCardId: cardId,
+          },
         });
       }
     }
@@ -11806,7 +14203,7 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
     for (const school of schools) {
       actions.push({
         label: `Magic University: search your deck for a ${school[0].toUpperCase()}${school.slice(1)} Magic spell`,
-        action: { type: "MAGIC_UNIVERSITY_ACTION", playerId, school }
+        action: { type: "MAGIC_UNIVERSITY_ACTION", playerId, school },
       });
     }
   }
@@ -11825,28 +14222,49 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
   ) {
     for (const buildingId of town.buildings) {
       const building = coreBuildingDefinitions[buildingId];
-      if (!building || (player.buildingUsedRound?.[buildingId] ?? 0) === state.round) {
+      if (
+        !building ||
+        (player.buildingUsedRound?.[buildingId] ?? 0) === state.round
+      ) {
         continue;
       }
 
-      if (building.effect?.type === "COVER_OF_DARKNESS" && player.hand.length > 0) {
+      if (
+        building.effect?.type === "COVER_OF_DARKNESS" &&
+        player.hand.length > 0
+      ) {
         actions.push({
           label: `${building.name}: discard up to 2 cards, draw that many`,
-          action: { type: "USE_TOWN_BUILDING", playerId, buildingId, optionIndex: 0, cardIds: [] }
+          action: {
+            type: "USE_TOWN_BUILDING",
+            playerId,
+            buildingId,
+            optionIndex: 0,
+            cardIds: [],
+          },
         });
       }
 
       // A clean map turn action only — never mid-combat (incl. the PvP prep
       // window, where addTownActions also runs) or mid-reaction, matching
       // thievesGuildAction's assertNoPendingInput so the offer can never be rejected.
-      if (building.effect?.type === "THIEVES_GUILD" && !state.combat && !state.reactionWindow) {
+      if (
+        building.effect?.type === "THIEVES_GUILD" &&
+        !state.combat &&
+        !state.reactionWindow
+      ) {
         // "Any one deck in the game": every shared deck with at least 2 cards on
         // top to look at...
         for (const [deckId, deck] of Object.entries(state.decks)) {
           if (deck.drawPile.length >= 2) {
             actions.push({
               label: `${building.name}: look at the top 2 of the ${deckDisplayName(state, deckId)} deck`,
-              action: { type: "THIEVES_GUILD_ACTION", playerId, buildingId, target: { kind: "shared", deckId } }
+              action: {
+                type: "THIEVES_GUILD_ACTION",
+                playerId,
+                buildingId,
+                target: { kind: "shared", deckId },
+              },
             });
           }
         }
@@ -11858,7 +14276,12 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
           }
           actions.push({
             label: `${building.name}: look at the top 2 of ${ownerId === playerId ? "your own" : `${owner.name}'s`} Might & Magic deck`,
-            action: { type: "THIEVES_GUILD_ACTION", playerId, buildingId, target: { kind: "player", ownerId } }
+            action: {
+              type: "THIEVES_GUILD_ACTION",
+              playerId,
+              buildingId,
+              target: { kind: "player", ownerId },
+            },
           });
         }
       }
@@ -11867,18 +14290,30 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
         if (player.resources.gold >= building.effect.discardCost) {
           for (const opponentId of state.turnOrder) {
             const opponent = state.players[opponentId];
-            if (opponentId === playerId || opponentId === "neutrals" || !opponent || opponent.hand.length === 0) {
+            if (
+              opponentId === playerId ||
+              opponentId === "neutrals" ||
+              !opponent ||
+              opponent.hand.length === 0
+            ) {
               continue;
             }
             actions.push({
               label: `${building.name}: pay ${building.effect.discardCost} gold — random discard from ${opponent.name}`,
-              action: { type: "USE_TOWN_BUILDING", playerId, buildingId, optionIndex: 0, targetPlayerId: opponentId }
+              action: {
+                type: "USE_TOWN_BUILDING",
+                playerId,
+                buildingId,
+                optionIndex: 0,
+                targetPlayerId: opponentId,
+              },
             });
           }
         }
 
         const hero = Object.values(state.heroes).find(
-          (candidate) => candidate.controllerId === playerId && candidate.kind === "main"
+          (candidate) =>
+            candidate.controllerId === playerId && candidate.kind === "main",
         );
         if (hero?.spaceId && state.adventure) {
           const here = hero.spaceId;
@@ -11886,13 +14321,20 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
           // so a CAPTURED Town is a legal origin AND destination while a Town
           // captured from you is neither) — an inline copy here is exactly how
           // the two drifted apart.
-          const isOwnHolding = (spaceId: string) => isOwnTownOrSettlementField(state, playerId, spaceId);
+          const isOwnHolding = (spaceId: string) =>
+            isOwnTownOrSettlementField(state, playerId, spaceId);
           if (isOwnHolding(here)) {
             for (const field of Object.values(state.adventure.fields)) {
               if (field.spaceId !== here && isOwnHolding(field.spaceId)) {
                 actions.push({
                   label: `${building.name}: move the hero to ${field.location === "settlement" ? "the settlement" : "the town"} at ${field.spaceId}`,
-                  action: { type: "USE_TOWN_BUILDING", playerId, buildingId, optionIndex: 1, spaceId: field.spaceId }
+                  action: {
+                    type: "USE_TOWN_BUILDING",
+                    playerId,
+                    buildingId,
+                    optionIndex: 1,
+                    spaceId: field.spaceId,
+                  },
                 });
               }
             }
@@ -11917,10 +14359,13 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
     player.townTokens.population &&
     playerHasResources(player, { gold: 10 })
   ) {
-    const faction = player.factionId ? coreFactionDefinitions[player.factionId] : undefined;
+    const faction = player.factionId
+      ? coreFactionDefinitions[player.factionId]
+      : undefined;
     const placements = secondaryHeroPlacementFields(state, playerId);
     const mainHeroDefId = Object.values(state.heroes).find(
-      (candidate) => candidate.controllerId === playerId && candidate.kind === "main"
+      (candidate) =>
+        candidate.controllerId === playerId && candidate.kind === "main",
     )?.heroDefId;
     for (const heroDefId of faction?.heroes ?? []) {
       if (heroDefId === mainHeroDefId) {
@@ -11929,7 +14374,12 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
       for (const placement of placements) {
         actions.push({
           label: `Hire ${coreHeroDefinitions[heroDefId]?.name ?? heroDefId} at ${placement.label} (10 gold)`,
-          action: { type: "HIRE_SECONDARY_HERO", playerId, heroDefId, fieldId: placement.fieldId }
+          action: {
+            type: "HIRE_SECONDARY_HERO",
+            playerId,
+            heroDefId,
+            fieldId: placement.fieldId,
+          },
         });
       }
     }
@@ -11953,7 +14403,11 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
  *   Offered only with the full 10 gold in hand and while Shackles of War has
  *   not locked it.
  */
-function addPvpEscapeActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+function addPvpEscapeActions(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+): void {
   const combat = state.combat;
   if (!combat || combat.context.kind !== "player") {
     return;
@@ -11967,7 +14421,8 @@ function addPvpEscapeActions(actions: LegalAction[], state: GameState, playerId:
   // surrender it is also offered mid-fight (so the dropping cost can matter).
   const inPrep = inCombatPrep(state, playerId);
   const polishMidFight = houseRuleEnabled(state, "polish-reduced-surrender");
-  const earlyEscape = inPrep || (pvpEscapeWindowOpen(combat) && isCombatCardWindowOpen(state));
+  const earlyEscape =
+    inPrep || (pvpEscapeWindowOpen(combat) && isCombatCardWindowOpen(state));
   const midFightSurrender =
     polishMidFight &&
     !inPrep &&
@@ -11978,14 +14433,16 @@ function addPvpEscapeActions(actions: LegalAction[], state: GameState, playerId:
     return;
   }
   const heroId =
-    playerId === combat.attackerPlayerId ? combat.context.attackerHeroId : combat.context.defenderHeroId;
+    playerId === combat.attackerPlayerId
+      ? combat.context.attackerHeroId
+      : combat.context.defenderHeroId;
   if (!heroId) {
     return;
   }
   if (earlyEscape) {
     actions.push({
       label: "Retreat (lose the combat: pay 5 gold, -1 morale, fall back home)",
-      action: { type: "RETREAT_FROM_COMBAT", playerId }
+      action: { type: "RETREAT_FROM_COMBAT", playerId },
     });
   }
   // Surrender: prep (always) or mid-fight under polish-reduced-surrender. Never
@@ -12003,15 +14460,16 @@ function addPvpEscapeActions(actions: LegalAction[], state: GameState, playerId:
       // gold, keep your army — instead of paying the gold toll. Same
       // SURRENDER_COMBAT action; escapePvpCombat routes it by hero kind.
       actions.push({
-        label: "Surrender the Secondary Hero (lose only the 2nd hero — no gold, keep your army)",
-        action: { type: "SURRENDER_COMBAT", playerId }
+        label:
+          "Surrender the Secondary Hero (lose only the 2nd hero — no gold, keep your army)",
+        action: { type: "SURRENDER_COMBAT", playerId },
       });
     } else {
       const toll = currentSurrenderGoldCost(state);
       if (gold >= toll) {
         actions.push({
           label: `Surrender (pay ${toll} gold, keep your whole army, return home)`,
-          action: { type: "SURRENDER_COMBAT", playerId }
+          action: { type: "SURRENDER_COMBAT", playerId },
         });
       }
     }
@@ -12025,9 +14483,18 @@ function addPvpEscapeActions(actions: LegalAction[], state: GameState, playerId:
  * post-deployment window. Surrender is NOT offered here — it is a prep-only
  * ("before battle") option.
  */
-function addPvpRetreatDuringSetup(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+function addPvpRetreatDuringSetup(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+): void {
   const combat = state.combat;
-  if (!combat || combat.context.kind !== "player" || combat.outcome || !combat.setup) {
+  if (
+    !combat ||
+    combat.context.kind !== "player" ||
+    combat.outcome ||
+    !combat.setup
+  ) {
     return;
   }
   // Offered to the player whose turn it is to place (the one looking at the
@@ -12037,13 +14504,15 @@ function addPvpRetreatDuringSetup(actions: LegalAction[], state: GameState, play
     return;
   }
   const heroId =
-    playerId === combat.attackerPlayerId ? combat.context.attackerHeroId : combat.context.defenderHeroId;
+    playerId === combat.attackerPlayerId
+      ? combat.context.attackerHeroId
+      : combat.context.defenderHeroId;
   if (!heroId) {
     return;
   }
   actions.push({
     label: "Retreat (lose the combat: pay 5 gold, -1 morale, fall back home)",
-    action: { type: "RETREAT_FROM_COMBAT", playerId }
+    action: { type: "RETREAT_FROM_COMBAT", playerId },
   });
 }
 
@@ -12064,7 +14533,11 @@ function addPvpRetreatDuringSetup(actions: LegalAction[], state: GameState, play
  * "Retreat"), so the player always sees exactly one Retreat button. This concede
  * surfaces only once fighting has begun and that window has closed.
  */
-function addGiveUpCombatActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+function addGiveUpCombatActions(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+): void {
   const combat = state.combat;
   if (!combat || combat.outcome || combat.context.kind !== "player") {
     return;
@@ -12075,9 +14548,13 @@ function addGiveUpCombatActions(actions: LegalAction[], state: GameState, player
   if (pvpEscapeWindowOpen(combat)) {
     return;
   }
-  const isParticipant = combat.attackerPlayerId === playerId || combat.defenderPlayerId === playerId;
+  const isParticipant =
+    combat.attackerPlayerId === playerId ||
+    combat.defenderPlayerId === playerId;
   const heroId =
-    playerId === combat.attackerPlayerId ? combat.context.attackerHeroId : combat.context.defenderHeroId;
+    playerId === combat.attackerPlayerId
+      ? combat.context.attackerHeroId
+      : combat.context.defenderHeroId;
   // The `mine-army-defense` Mine defender concedes with no hero in the fight, so
   // the game can end quickly instead of playing the garrison out to the last unit.
   const herolessMine = isHerolessMineDefender(state, playerId);
@@ -12093,7 +14570,7 @@ function addGiveUpCombatActions(actions: LegalAction[], state: GameState, player
       : losesTroops
         ? "Retreat (lose the combat — your fallen so far stay lost, survivors fall back home)"
         : "Retreat (lose the combat and discard your hand, fall back home)",
-    action: { type: "GIVE_UP_COMBAT", playerId }
+    action: { type: "GIVE_UP_COMBAT", playerId },
   });
 }
 
@@ -12102,7 +14579,11 @@ function addGiveUpCombatActions(actions: LegalAction[], state: GameState, player
  * one non-Empowered Ability currently in hand. Max storage 1; surplus auto-use
  * is handled at gain time, not here.
  */
-function addAbilityEmpowerTokenActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+function addAbilityEmpowerTokenActions(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+): void {
   const player = state.players[playerId];
   if (!player || (player.abilityEmpowerToken ?? 0) < 1) {
     return;
@@ -12119,12 +14600,16 @@ function addAbilityEmpowerTokenActions(actions: LegalAction[], state: GameState,
     const name = cardLibrary[cardId]?.name ?? cardId;
     actions.push({
       label: `Ability token: Empower ${name}`,
-      action: { type: "USE_ABILITY_EMPOWER_TOKEN", playerId, cardId }
+      action: { type: "USE_ABILITY_EMPOWER_TOKEN", playerId, cardId },
     });
   }
 }
 
-function addMoraleActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+function addMoraleActions(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+): void {
   const player = state.players[playerId];
   // Raid-boss Fear (§6.8): while a living enemy Fear unit stands in the
   // player's open combat, NO morale use is offered (token or cards alike);
@@ -12134,16 +14619,27 @@ function addMoraleActions(actions: LegalAction[], state: GameState, playerId: Pl
   }
   if (moraleCardsRuleEnabled(state)) {
     const held = player?.moraleCards?.positive ?? [];
-    if (held.includes("morale.positive.redraw_hand") && (player?.hand.length ?? 0) > 0) {
+    if (
+      held.includes("morale.positive.redraw_hand") &&
+      (player?.hand.length ?? 0) > 0
+    ) {
       actions.push({
         label: "Positive Morale: discard any cards, draw that many",
-        action: { type: "SPEND_MORALE", playerId, benefit: "redraw", discardCardIds: [] }
+        action: {
+          type: "SPEND_MORALE",
+          playerId,
+          benefit: "redraw",
+          discardCardIds: [],
+        },
       });
     }
 
     const combat = state.combat;
     const inOwnCombat =
-      combat && !combat.outcome && (combat.attackerPlayerId === playerId || combat.defenderPlayerId === playerId);
+      combat &&
+      !combat.outcome &&
+      (combat.attackerPlayerId === playerId ||
+        combat.defenderPlayerId === playerId);
 
     // "+1 Attack, +1 Defense, or +1 Combat Power during the next Combat":
     // played while the holder fights; Combat Power is a Battlefield-mode value
@@ -12152,12 +14648,22 @@ function addMoraleActions(actions: LegalAction[], state: GameState, playerId: Pl
       actions.push(
         {
           label: "Positive Morale: +1 Attack for this Combat",
-          action: { type: "SPEND_MORALE", playerId, benefit: "combat-bonus", bonus: "attack" }
+          action: {
+            type: "SPEND_MORALE",
+            playerId,
+            benefit: "combat-bonus",
+            bonus: "attack",
+          },
         },
         {
           label: "Positive Morale: +1 Defense for this Combat",
-          action: { type: "SPEND_MORALE", playerId, benefit: "combat-bonus", bonus: "defense" }
-        }
+          action: {
+            type: "SPEND_MORALE",
+            playerId,
+            benefit: "combat-bonus",
+            bonus: "defense",
+          },
+        },
       );
     }
 
@@ -12173,7 +14679,13 @@ function addMoraleActions(actions: LegalAction[], state: GameState, playerId: Pl
           if (unitHasToken(unit, kind)) {
             actions.push({
               label: `Positive Morale: remove the ${kind} token from ${unit.cardName}`,
-              action: { type: "SPEND_MORALE", playerId, benefit: "remove-token", unitId: unit.id, tokenKind: kind }
+              action: {
+                type: "SPEND_MORALE",
+                playerId,
+                benefit: "remove-token",
+                unitId: unit.id,
+                tokenKind: kind,
+              },
             });
           }
         }
@@ -12183,23 +14695,34 @@ function addMoraleActions(actions: LegalAction[], state: GameState, playerId: Pl
   }
   // The stored +1 token, or an overflow token gained past the cap that must be
   // spent now — both resolve through the same draw / discard-redraw actions.
-  if (!player || ((player.morale ?? 0) <= 0 && (player.moraleOverflow ?? 0) <= 0)) {
+  if (
+    !player ||
+    ((player.morale ?? 0) <= 0 && (player.moraleOverflow ?? 0) <= 0)
+  ) {
     return;
   }
 
   actions.push({
     label: "Spend morale: draw a card",
-    action: { type: "SPEND_MORALE", playerId, benefit: "draw" }
+    action: { type: "SPEND_MORALE", playerId, benefit: "draw" },
   });
   if (player.hand.length > 0) {
     actions.push({
       label: "Spend morale: discard any cards, draw that many",
-      action: { type: "SPEND_MORALE", playerId, benefit: "redraw", discardCardIds: [] }
+      action: {
+        type: "SPEND_MORALE",
+        playerId,
+        benefit: "redraw",
+        discardCardIds: [],
+      },
     });
   }
 }
 
-function getSetupLobbyLegalActions(state: GameState, playerId: PlayerId): LegalAction[] {
+function getSetupLobbyLegalActions(
+  state: GameState,
+  playerId: PlayerId,
+): LegalAction[] {
   const lobby = state.setupLobby;
   const actions: LegalAction[] = [];
   if (!lobby) {
@@ -12211,27 +14734,38 @@ function getSetupLobbyLegalActions(state: GameState, playerId: PlayerId): LegalA
     return actions;
   }
 
-  const draft = lobby.draft ?? { format: "open" as const, bannedHeroDefIds: [] };
+  const draft = lobby.draft ?? {
+    format: "open" as const,
+    bannedHeroDefIds: [],
+  };
   const phase = getDraftPhase(lobby);
   const banned = new Set(draft.bannedHeroDefIds ?? []);
   const takenFactions = new Set(
     lobby.seats
       .filter((candidate) => candidate.playerId !== playerId)
       .map((candidate) => candidate.factionId)
-      .filter((id): id is FactionId => Boolean(id))
+      .filter((id): id is FactionId => Boolean(id)),
   );
-  const untakenFactions = (Object.values(coreFactionDefinitions) as { id: FactionId }[])
+  const untakenFactions = (
+    Object.values(coreFactionDefinitions) as { id: FactionId }[]
+  )
     .map((faction) => faction.id)
-    .filter((id) => !takenFactions.has(id) && isPlayableFaction(id, lobby.options.anime));
+    .filter(
+      (id) =>
+        !takenFactions.has(id) && isPlayableFaction(id, lobby.options.anime),
+    );
 
   // Single player: the ONE human owner seat. Multiplayer (co-op step 1): ANY
   // seated human, exactly like SET_GAME_OPTIONS — a multiplayer lobby only holds
   // computer seats once SET_COMPUTER_OPPONENTS created them, so a plain table
   // enumerates nothing new here.
-  if (controllerOf(state, playerId).kind === "human" && !lobby.startCheck &&
-      (state.sessionMode === "single-player"
-        ? humanPlayerIdsByController(state).length === 1
-        : lobby.seats.some((seat) => seat.playerId === playerId))) {
+  if (
+    controllerOf(state, playerId).kind === "human" &&
+    !lobby.startCheck &&
+    (state.sessionMode === "single-player"
+      ? humanPlayerIdsByController(state).length === 1
+      : lobby.seats.some((seat) => seat.playerId === playerId))
+  ) {
     // The human owner may hand-pick, roll, or clear each COMPUTER seat's faction
     // + hero (Free-pick format only). Mirrors how CHOOSE_FACTION enumerates
     // untaken factions × heroes, but targets a computer seat via seatPlayerId.
@@ -12249,14 +14783,23 @@ function getSetupLobbyLegalActions(state: GameState, playerId: PlayerId): LegalA
           lobby.seats
             .filter((candidate) => candidate.playerId !== computerSeat.playerId)
             .map((candidate) => candidate.factionId)
-            .filter((id): id is FactionId => Boolean(id))
+            .filter((id): id is FactionId => Boolean(id)),
         );
-        for (const factionId of (Object.values(coreFactionDefinitions) as { id: FactionId }[])
+        for (const factionId of (
+          Object.values(coreFactionDefinitions) as { id: FactionId }[]
+        )
           .map((faction) => faction.id)
-          .filter((id) => !takenForSeat.has(id) && isPlayableFaction(id, lobby.options.anime))) {
+          .filter(
+            (id) =>
+              !takenForSeat.has(id) &&
+              isPlayableFaction(id, lobby.options.anime),
+          )) {
           const faction = coreFactionDefinitions[factionId];
           for (const heroDefId of faction.heroes) {
-            if (computerSeat.factionId === factionId && computerSeat.heroDefId === heroDefId) {
+            if (
+              computerSeat.factionId === factionId &&
+              computerSeat.heroDefId === heroDefId
+            ) {
               continue;
             }
             actions.push({
@@ -12265,19 +14808,29 @@ function getSetupLobbyLegalActions(state: GameState, playerId: PlayerId): LegalA
                 type: "SET_COMPUTER_SEAT_FACTION",
                 playerId,
                 seatPlayerId: computerSeat.playerId,
-                choice: { factionId, heroDefId }
-              }
+                choice: { factionId, heroDefId },
+              },
             });
           }
         }
         actions.push({
           label: `Roll a random town & hero for ${computerSeat.name}`,
-          action: { type: "SET_COMPUTER_SEAT_FACTION", playerId, seatPlayerId: computerSeat.playerId, choice: "roll" }
+          action: {
+            type: "SET_COMPUTER_SEAT_FACTION",
+            playerId,
+            seatPlayerId: computerSeat.playerId,
+            choice: "roll",
+          },
         });
         if (computerSeat.factionId || computerSeat.heroDefId) {
           actions.push({
             label: `Set ${computerSeat.name} back to auto`,
-            action: { type: "SET_COMPUTER_SEAT_FACTION", playerId, seatPlayerId: computerSeat.playerId, choice: "clear" }
+            action: {
+              type: "SET_COMPUTER_SEAT_FACTION",
+              playerId,
+              seatPlayerId: computerSeat.playerId,
+              choice: "clear",
+            },
           });
         }
       }
@@ -12288,7 +14841,7 @@ function getSetupLobbyLegalActions(state: GameState, playerId: PlayerId): LegalA
   for (const format of ["open", "draft", "random", "random-choice"] as const) {
     actions.push({
       label: `Setup format: ${DRAFT_FORMAT_LABELS[format]}`,
-      action: { type: "SET_DRAFT_FORMAT", playerId, format }
+      action: { type: "SET_DRAFT_FORMAT", playerId, format },
     });
   }
 
@@ -12298,7 +14851,9 @@ function getSetupLobbyLegalActions(state: GameState, playerId: PlayerId): LegalA
     // faction (its heroes), so the AI setup pump can pick nothing else.
     const forcedForSeat = mapForcedComputerFaction(state, playerId);
     const factionsForSeat =
-      forcedForSeat && untakenFactions.includes(forcedForSeat) ? [forcedForSeat] : untakenFactions;
+      forcedForSeat && untakenFactions.includes(forcedForSeat)
+        ? [forcedForSeat]
+        : untakenFactions;
     for (const factionId of factionsForSeat) {
       const faction = coreFactionDefinitions[factionId];
       for (const heroDefId of faction.heroes) {
@@ -12307,7 +14862,7 @@ function getSetupLobbyLegalActions(state: GameState, playerId: PlayerId): LegalA
         }
         actions.push({
           label: `Play ${faction.name} — ${heroDefId}`,
-          action: { type: "CHOOSE_FACTION", playerId, factionId, heroDefId }
+          action: { type: "CHOOSE_FACTION", playerId, factionId, heroDefId },
         });
       }
     }
@@ -12316,32 +14871,43 @@ function getSetupLobbyLegalActions(state: GameState, playerId: PlayerId): LegalA
     if (untakenFactions.length > 0) {
       actions.push({
         label: "Roll a random town and hero",
-        action: { type: "RANDOM_ASSIGN_SEAT", playerId, scope: "faction" }
+        action: { type: "RANDOM_ASSIGN_SEAT", playerId, scope: "faction" },
       });
     }
     if (seat.factionId) {
       actions.push({
         label: "Roll a random hero",
-        action: { type: "RANDOM_ASSIGN_SEAT", playerId, scope: "hero" }
+        action: { type: "RANDOM_ASSIGN_SEAT", playerId, scope: "hero" },
       });
     }
   } else if (phase.format === "draft") {
     // TYPE 1 — town two-choice, then ban phase, then pick.
     if (!seat.factionId) {
       if (untakenFactions.length > 0) {
-        actions.push({ label: "Roll two town options", action: { type: "ROLL_TOWN_OPTIONS", playerId } });
+        actions.push({
+          label: "Roll two town options",
+          action: { type: "ROLL_TOWN_OPTIONS", playerId },
+        });
       }
       const rolled = draft.seatRolls?.[playerId]?.townOptions ?? [];
-      const townChoices = (rolled.length > 0 ? rolled : untakenFactions).filter((id) => !takenFactions.has(id));
+      const townChoices = (rolled.length > 0 ? rolled : untakenFactions).filter(
+        (id) => !takenFactions.has(id),
+      );
       for (const factionId of townChoices) {
         actions.push({
           label: `Lock the ${coreFactionDefinitions[factionId]?.name ?? factionId} town`,
-          action: { type: "CHOOSE_TOWN", playerId, factionId }
+          action: { type: "CHOOSE_TOWN", playerId, factionId },
         });
       }
-    } else if (phase.banPhaseActive && phase.currentBannerPlayerId === playerId) {
+    } else if (
+      phase.banPhaseActive &&
+      phase.currentBannerPlayerId === playerId
+    ) {
       for (const heroDefId of bannableHeroesForSeat(lobby, playerId)) {
-        actions.push({ label: `Ban ${heroDefId}`, action: { type: "BAN_HERO", playerId, heroDefId } });
+        actions.push({
+          label: `Ban ${heroDefId}`,
+          action: { type: "BAN_HERO", playerId, heroDefId },
+        });
       }
     } else if (phase.pickPhaseOpen) {
       const faction = coreFactionDefinitions[seat.factionId];
@@ -12351,7 +14917,12 @@ function getSetupLobbyLegalActions(state: GameState, playerId: PlayerId): LegalA
         }
         actions.push({
           label: `Play ${faction.name} — ${heroDefId}`,
-          action: { type: "CHOOSE_FACTION", playerId, factionId: seat.factionId, heroDefId }
+          action: {
+            type: "CHOOSE_FACTION",
+            playerId,
+            factionId: seat.factionId,
+            heroDefId,
+          },
         });
       }
     }
@@ -12359,21 +14930,34 @@ function getSetupLobbyLegalActions(state: GameState, playerId: PlayerId): LegalA
     // TYPE 3 — town two-choice, then hero two-choice.
     if (!seat.factionId) {
       if (untakenFactions.length > 0) {
-        actions.push({ label: "Roll two town options", action: { type: "ROLL_TOWN_OPTIONS", playerId } });
+        actions.push({
+          label: "Roll two town options",
+          action: { type: "ROLL_TOWN_OPTIONS", playerId },
+        });
       }
-      for (const factionId of (draft.seatRolls?.[playerId]?.townOptions ?? []).filter((id) => !takenFactions.has(id))) {
+      for (const factionId of (
+        draft.seatRolls?.[playerId]?.townOptions ?? []
+      ).filter((id) => !takenFactions.has(id))) {
         actions.push({
           label: `Lock the ${coreFactionDefinitions[factionId]?.name ?? factionId} town`,
-          action: { type: "CHOOSE_TOWN", playerId, factionId }
+          action: { type: "CHOOSE_TOWN", playerId, factionId },
         });
       }
     } else if (!seat.heroDefId) {
-      actions.push({ label: "Roll two hero options", action: { type: "ROLL_HERO_OPTIONS", playerId } });
+      actions.push({
+        label: "Roll two hero options",
+        action: { type: "ROLL_HERO_OPTIONS", playerId },
+      });
       const faction = coreFactionDefinitions[seat.factionId];
       for (const heroDefId of draft.seatRolls?.[playerId]?.heroOptions ?? []) {
         actions.push({
           label: `Play ${faction?.name ?? seat.factionId} — ${heroDefId}`,
-          action: { type: "CHOOSE_FACTION", playerId, factionId: seat.factionId, heroDefId }
+          action: {
+            type: "CHOOSE_FACTION",
+            playerId,
+            factionId: seat.factionId,
+            heroDefId,
+          },
         });
       }
     }
@@ -12384,13 +14968,18 @@ function getSetupLobbyLegalActions(state: GameState, playerId: PlayerId): LegalA
   const hasPendingRoll = Boolean(draft.seatRolls?.[playerId]);
   const resetBlocked = phase.format === "draft" && phase.townLockedAll;
   if ((seat.factionId || seat.heroDefId || hasPendingRoll) && !resetBlocked) {
-    actions.push({ label: "Reset this seat's pick", action: { type: "RESET_SEAT_DRAFT", playerId } });
+    actions.push({
+      label: "Reset this seat's pick",
+      action: { type: "RESET_SEAT_DRAFT", playerId },
+    });
   }
 
-  if (lobby.seats.every((candidate) => candidate.factionId && candidate.heroDefId)) {
+  if (
+    lobby.seats.every((candidate) => candidate.factionId && candidate.heroDefId)
+  ) {
     actions.push({
       label: "Start the adventure",
-      action: { type: "START_ADVENTURE", playerId }
+      action: { type: "START_ADVENTURE", playerId },
     });
   }
 
@@ -12408,11 +14997,19 @@ function getSetupLobbyLegalActions(state: GameState, playerId: PlayerId): LegalA
  * player is not an open-turn parallel actor, so every non-parallel code path
  * behaves exactly as before.
  */
-function getParallelBystanderActions(state: GameState, playerId: PlayerId): LegalAction[] {
+function getParallelBystanderActions(
+  state: GameState,
+  playerId: PlayerId,
+): LegalAction[] {
   const actions: LegalAction[] = [];
   const adventure = state.adventure;
   const player = state.players[playerId];
-  if (state.mode !== "adventure" || !adventure || !player || !isParallelActor(state, playerId)) {
+  if (
+    state.mode !== "adventure" ||
+    !adventure ||
+    !player ||
+    !isParallelActor(state, playerId)
+  ) {
     return actions;
   }
 
@@ -12421,7 +15018,10 @@ function getParallelBystanderActions(state: GameState, playerId: PlayerId): Lega
   // player whose event choice is open (and the rest of the table) has resolved
   // it. Reached here via the pendingChoice branch of getLegalActions too, which
   // is why the gate lives at this common sink as well as in getAdventureLegalActions.
-  if (isRoundStartEventBarrierActive(state) && roundStartEventResolver(state) !== playerId) {
+  if (
+    isRoundStartEventBarrierActive(state) &&
+    roundStartEventResolver(state) !== playerId
+  ) {
     return actions;
   }
 
@@ -12431,8 +15031,8 @@ function getParallelBystanderActions(state: GameState, playerId: PlayerId): Lega
     return [
       {
         label: "Discard down to your hand limit, then draw",
-        action: { type: "REFRESH_HAND", playerId, discardCardIds: [] }
-      }
+        action: { type: "REFRESH_HAND", playerId, discardCardIds: [] },
+      },
     ];
   }
 
@@ -12440,8 +15040,12 @@ function getParallelBystanderActions(state: GameState, playerId: PlayerId): Lega
     return [
       {
         label: "Explorers: discard any number of cards (or discard none)",
-        action: { type: "RESOLVE_EXPLORERS_DISCARD", playerId, discardCardIds: [] }
-      }
+        action: {
+          type: "RESOLVE_EXPLORERS_DISCARD",
+          playerId,
+          discardCardIds: [],
+        },
+      },
     ];
   }
 
@@ -12457,8 +15061,9 @@ function getParallelBystanderActions(state: GameState, playerId: PlayerId): Lega
   // interactions — but movement stays locked behind it, as on an ordered turn.
   if (player.canMulligan) {
     actions.push({
-      label: "Draw new — or discard some and draw up to your hand limit (start of turn)",
-      action: { type: "REFRESH_HAND", playerId, discardCardIds: [] }
+      label:
+        "Draw new — or discard some and draw up to your hand limit (start of turn)",
+      action: { type: "REFRESH_HAND", playerId, discardCardIds: [] },
     });
     return actions;
   }
@@ -12466,8 +15071,9 @@ function getParallelBystanderActions(state: GameState, playerId: PlayerId): Lega
   // First-round opening Mulligan (option ON) — optional, non-blocking.
   if (player.canOpeningMulligan) {
     actions.push({
-      label: "Opening Mulligan — discard 0 or more cards to your deck and draw that many (or keep your hand)",
-      action: { type: "OPENING_HAND_MULLIGAN", playerId, discardCardIds: [] }
+      label:
+        "Opening Mulligan — discard 0 or more cards to your deck and draw that many (or keep your hand)",
+      action: { type: "OPENING_HAND_MULLIGAN", playerId, discardCardIds: [] },
     });
   }
 
@@ -12484,7 +15090,12 @@ function getParallelBystanderActions(state: GameState, playerId: PlayerId): Lega
     for (const destination of getHeroMoveDestinations(state, hero)) {
       actions.push({
         label: `Move hero to ${destination}`,
-        action: { type: "MOVE_HERO", playerId, heroId: hero.id, to: destination }
+        action: {
+          type: "MOVE_HERO",
+          playerId,
+          heroId: hero.id,
+          to: destination,
+        },
       });
     }
   }
@@ -12510,7 +15121,7 @@ function getParallelBystanderActions(state: GameState, playerId: PlayerId): Lega
 function getCombatInteractionActions(
   state: GameState,
   playerId: PlayerId,
-  cards: CardLibrary
+  cards: CardLibrary,
 ): LegalAction[] | null {
   const combat = state.combat;
   if (!combat) {
@@ -12531,7 +15142,7 @@ function getCombatInteractionActions(
     if (isCombatParticipant(state, playerId)) {
       actions.push({
         label: "Return to the adventure map",
-        action: { type: "ACKNOWLEDGE_COMBAT_END", playerId }
+        action: { type: "ACKNOWLEDGE_COMBAT_END", playerId },
       });
     }
     return actions;
@@ -12558,12 +15169,15 @@ function getCombatInteractionActions(
       // without this a spiritless MGQ participant could neither ready up nor
       // pick a Spirit (with escapes blocked, e.g. Shackles of War, a hard
       // stall). setMgqSpirit already accepts the prep window (inCombatPrep).
-      if (state.players[playerId]?.factionId === "mgq" && playerMainHeroInCombat(state, playerId)) {
+      if (
+        state.players[playerId]?.factionId === "mgq" &&
+        playerMainHeroInCombat(state, playerId)
+      ) {
         for (const spirit of mgqContractedSpirits(state, playerId)) {
           if (state.players[playerId]?.mgqSpirit === spirit) continue;
           actions.push({
             label: `Summon ${MGQ_SPIRIT_LABELS[spirit]} in the next combat`,
-            action: { type: "SET_MGQ_SPIRIT", playerId, spirit }
+            action: { type: "SET_MGQ_SPIRIT", playerId, spirit },
           });
         }
       }
@@ -12571,10 +15185,12 @@ function getCombatInteractionActions(
         state.players[playerId]?.factionId !== "mgq" ||
         !playerMainHeroInCombat(state, playerId) ||
         state.players[playerId]?.mgqSpirit
-      ) actions.push({
-        label: "Accept the battle (ready up — deployment begins when both sides accept)",
-        action: { type: "ACCEPT_COMBAT", playerId }
-      });
+      )
+        actions.push({
+          label:
+            "Accept the battle (ready up — deployment begins when both sides accept)",
+          action: { type: "ACCEPT_COMBAT", playerId },
+        });
     }
     return actions;
   }
@@ -12601,7 +15217,10 @@ function getCombatInteractionActions(
   // WOG Commanders pre-combat SORT window: the head owner repositions their
   // commander in their deployment zone, then Ready — the LAST setup window,
   // after the Neutral sort / Tactics have already resolved.
-  if (combat.pendingCommanderPlacement && combat.pendingCommanderPlacement.length > 0) {
+  if (
+    combat.pendingCommanderPlacement &&
+    combat.pendingCommanderPlacement.length > 0
+  ) {
     if (combat.pendingCommanderPlacement[0] === playerId) {
       addCommanderPlacementActions(actions, state, playerId);
     }
@@ -12622,7 +15241,7 @@ function getCombatInteractionActions(
         if (state.players[playerId]?.mgqSpirit === spirit) continue;
         actions.push({
           label: `Summon ${MGQ_SPIRIT_LABELS[spirit]} in this combat`,
-          action: { type: "SET_MGQ_SPIRIT", playerId, spirit }
+          action: { type: "SET_MGQ_SPIRIT", playerId, spirit },
         });
       }
     }
@@ -12681,7 +15300,7 @@ function getCombatInteractionActions(
               ? "Continue — you command this unit"
               : "Let the unit act"
             : "Continue the enemy turn",
-        action: { type: "CONTINUE_NEUTRAL_STEP", playerId }
+        action: { type: "CONTINUE_NEUTRAL_STEP", playerId },
       });
     }
     return actions;
@@ -12693,12 +15312,15 @@ function getCombatInteractionActions(
     if (context.kind === "neutral") {
       const hero = state.heroes[context.heroId];
       if (hero?.controllerId === playerId) {
-        if (hero.movementPoints > 0 || houseRuleEnabled(state, "free-neutral-combat-extend")) {
+        if (
+          hero.movementPoints > 0 ||
+          houseRuleEnabled(state, "free-neutral-combat-extend")
+        ) {
           actions.push({
             label: houseRuleEnabled(state, "free-neutral-combat-extend")
               ? "Fight another combat round (no movement cost)"
               : "Spend 1 movement point: fight another combat round",
-            action: { type: "CONTINUE_NEUTRAL_COMBAT", playerId }
+            action: { type: "CONTINUE_NEUTRAL_COMBAT", playerId },
           });
         }
         // Dessa's Logistics specialty — and, under the Polish Balance Pack, the
@@ -12715,8 +15337,10 @@ function getCombatInteractionActions(
                 playerId,
                 cardId,
                 target: { type: "none" },
-                ...(free.optionIndex !== undefined ? { optionIndex: free.optionIndex } : {})
-              }
+                ...(free.optionIndex !== undefined
+                  ? { optionIndex: free.optionIndex }
+                  : {}),
+              },
             });
           }
         }
@@ -12737,7 +15361,11 @@ function getCombatInteractionActions(
           if (!grant || !player) {
             continue;
           }
-          if (grant.mode === "expert" && expertUsesLeft <= 0 && !abilityExpertIsCrownFree(player, cardId)) {
+          if (
+            grant.mode === "expert" &&
+            expertUsesLeft <= 0 &&
+            !abilityExpertIsCrownFree(player, cardId)
+          ) {
             continue;
           }
           if (grant.option?.requiresSeaTile) {
@@ -12752,15 +15380,17 @@ function getCombatInteractionActions(
               type: "PLAY_CARD",
               playerId,
               cardId,
-              ...(grant.optionIndex !== undefined ? { optionIndex: grant.optionIndex } : {}),
+              ...(grant.optionIndex !== undefined
+                ? { optionIndex: grant.optionIndex }
+                : {}),
               ...(grant.mode === "expert" ? { mode: "expert" as const } : {}),
-              target: { type: "none" }
-            }
+              target: { type: "none" },
+            },
           });
         }
         actions.push({
           label: "Retreat to the last visited field",
-          action: { type: "RETREAT_FROM_COMBAT", playerId }
+          action: { type: "RETREAT_FROM_COMBAT", playerId },
         });
       }
     }
@@ -12795,13 +15425,16 @@ function getCombatInteractionActions(
       // once-per-combat buffs / debuffs / zaps). All OPTIONAL — nothing is ever
       // forced, so ignoring every offer can never stall a seat. No-op when off.
       addArtifactSetActions(actions, state, playerId);
-      // PvP anti-Little-Busters counters: a fighter facing a Little Busters seat
-      // may spend 1 gold on each of three one-off effects this combat. Optional;
-      // no-op in every other fight. Same shared read the handler re-validates.
+      // Legacy Little Busters counters: the shared availability read now returns
+      // no offers. Kept here only so old saved/wire actions remain decodable.
       for (const offer of availableLittleBustersCounters(state, playerId)) {
         actions.push({
           label: offer.label,
-          action: { type: "LITTLE_BUSTERS_COUNTER", playerId, counter: offer.counter }
+          action: {
+            type: "LITTLE_BUSTERS_COUNTER",
+            playerId,
+            counter: offer.counter,
+          },
         });
       }
       addPvpEscapeActions(actions, state, playerId);
@@ -12815,7 +15448,11 @@ function getCombatInteractionActions(
   return null;
 }
 
-function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: CardLibrary): LegalAction[] {
+function getAdventureLegalActions(
+  state: GameState,
+  playerId: PlayerId,
+  cards: CardLibrary,
+): LegalAction[] {
   const actions: LegalAction[] = [];
   const adventure = state.adventure;
   const player = state.players[playerId];
@@ -12858,7 +15495,10 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     // handler-validated purchases cannot touch the open visit. Card plays stay
     // withheld (a second Legion play would collide with the open visit).
     // Mirrors the pendingChoice branch in getLegalActionsCore.
-    if (adventure.pendingVisit.playerId !== playerId && inCombatPrep(state, playerId)) {
+    if (
+      adventure.pendingVisit.playerId !== playerId &&
+      inCombatPrep(state, playerId)
+    ) {
       addTownActions(actions, state, playerId);
     }
     return actions;
@@ -12884,17 +15524,27 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       // (matches setTileRotation).
       const anyConnected =
         TILE_ROTATION_SEAL_GATE_ENABLED &&
-        [0, 1, 2, 3, 4, 5].some((rotation) => isTileRotationConnected(state, tile, rotation));
+        [0, 1, 2, 3, 4, 5].some((rotation) =>
+          isTileRotationConnected(state, tile, rotation),
+        );
       // On-foot Far placements also require a rotation the placing hero can cross
       // onto (matches setTileRotation). Redwood Observatory openings carry no
       // heroId — they only need to connect to the map, no hero-access gate.
-      const placingHero = tileChoice.heroId ? state.heroes[tileChoice.heroId] : null;
+      const placingHero = tileChoice.heroId
+        ? state.heroes[tileChoice.heroId]
+        : null;
       const center = { row: tile.centerRow, col: tile.centerCol };
       const anyReachable =
         TILE_ROTATION_SEAL_GATE_ENABLED &&
         placingHero != null &&
         [0, 1, 2, 3, 4, 5].some((rotation) =>
-          canHeroReachPlacedTile(state, placingHero, tile.tileDefId, center, rotation)
+          canHeroReachPlacedTile(
+            state,
+            placingHero,
+            tile.tileDefId,
+            center,
+            rotation,
+          ),
         );
       for (let rotation = 0; rotation < 6; rotation += 1) {
         if (anyConnected && !isTileRotationConnected(state, tile, rotation)) {
@@ -12904,13 +15554,24 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
           TILE_ROTATION_SEAL_GATE_ENABLED &&
           placingHero &&
           anyReachable &&
-          !canHeroReachPlacedTile(state, placingHero, tile.tileDefId, center, rotation)
+          !canHeroReachPlacedTile(
+            state,
+            placingHero,
+            tile.tileDefId,
+            center,
+            rotation,
+          )
         ) {
           continue;
         }
         actions.push({
           label: `Confirm tile rotation ${rotation * 60}°`,
-          action: { type: "SET_TILE_ROTATION", playerId, tileInstanceId: tile.id, rotation }
+          action: {
+            type: "SET_TILE_ROTATION",
+            playerId,
+            tileInstanceId: tile.id,
+            rotation,
+          },
         });
       }
     }
@@ -12935,19 +15596,24 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       for (const option of pending.options) {
         const cost = freeSeal ? {} : option.cost;
         if (!playerHasResources(player, cost)) continue;
-        const name = coreUnitDefinitions[option.unitDefId]?.name ?? option.unitDefId;
+        const name =
+          coreUnitDefinitions[option.unitDefId]?.name ?? option.unitDefId;
         actions.push({
           label: `Seal ${name} as a Companion (${freeSeal ? "free charge" : formatResourceCost(cost)})`,
           action: {
             type: "RESOLVE_COMPANION_RECRUITMENT",
             playerId,
-            unitDefId: option.unitDefId
-          }
+            unitDefId: option.unitDefId,
+          },
         });
       }
       actions.push({
         label: "Decline Companion Recruitment",
-        action: { type: "RESOLVE_COMPANION_RECRUITMENT", playerId, unitDefId: null }
+        action: {
+          type: "RESOLVE_COMPANION_RECRUITMENT",
+          playerId,
+          unitDefId: null,
+        },
       });
     }
     return actions;
@@ -12963,12 +15629,12 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       firstAid.options.forEach((option, index) => {
         actions.push({
           label: `First Aid: ${option.label}`,
-          action: { type: "COMMANDER_FIRST_AID", playerId, optionIndex: index }
+          action: { type: "COMMANDER_FIRST_AID", playerId, optionIndex: index },
         });
       });
       actions.push({
         label: "Decline First Aid",
-        action: { type: "COMMANDER_FIRST_AID", playerId, optionIndex: null }
+        action: { type: "COMMANDER_FIRST_AID", playerId, optionIndex: null },
       });
     }
     return actions;
@@ -12981,22 +15647,16 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     if (adventure.pendingNecromancy.playerId === playerId) {
       addNecromancyPlays(actions, state, playerId, cards);
       const supportActions: LegalAction[] = [];
-      addTurnCardActions(
-        supportActions,
-        state,
-        playerId,
-        cards,
-        "post-combat"
-      );
+      addTurnCardActions(supportActions, state, playerId, cards, "post-combat");
       actions.push(
         ...supportActions.filter((legal) =>
-          isNecromancySupportPlay(legal, cards)
-        )
+          isNecromancySupportPlay(legal, cards),
+        ),
       );
       addBankedReinforcementActions(actions, state, playerId);
       actions.push({
         label: "Resolve bonuses and continue",
-        action: { type: "SKIP_NECROMANCY", playerId }
+        action: { type: "SKIP_NECROMANCY", playerId },
       });
     }
     return actions;
@@ -13012,8 +15672,12 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     return [
       {
         label: "Explorers: discard any number of cards (or discard none)",
-        action: { type: "RESOLVE_EXPLORERS_DISCARD", playerId, discardCardIds: [] }
-      }
+        action: {
+          type: "RESOLVE_EXPLORERS_DISCARD",
+          playerId,
+          discardCardIds: [],
+        },
+      },
     ];
   }
 
@@ -13042,7 +15706,7 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   ) {
     actions.push({
       label: "Give up (become an observer)",
-      action: { type: "GIVE_UP", playerId }
+      action: { type: "GIVE_UP", playerId },
     });
   }
 
@@ -13059,8 +15723,8 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     return [
       {
         label: "Discard down to your hand limit, then draw",
-        action: { type: "REFRESH_HAND", playerId, discardCardIds: [] }
-      }
+        action: { type: "REFRESH_HAND", playerId, discardCardIds: [] },
+      },
     ];
   }
 
@@ -13086,13 +15750,14 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   // astrologers-recruit-explorers.test.ts.
   if (player.canMulligan) {
     actions.push({
-      label: "Draw new — or discard some and draw up to your hand limit (start of turn)",
-      action: { type: "REFRESH_HAND", playerId, discardCardIds: [] }
+      label:
+        "Draw new — or discard some and draw up to your hand limit (start of turn)",
+      action: { type: "REFRESH_HAND", playerId, discardCardIds: [] },
     });
     if (!explorersHandStepActive(state)) {
       actions.push({
         label: "End turn",
-        action: { type: "END_TURN", playerId }
+        action: { type: "END_TURN", playerId },
       });
     }
     return actions;
@@ -13103,8 +15768,9 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   // offered alongside normal map play until used or the turn ends.
   if (player.canOpeningMulligan) {
     actions.push({
-      label: "Opening Mulligan — discard 0 or more cards to your deck and draw that many (or keep your hand)",
-      action: { type: "OPENING_HAND_MULLIGAN", playerId, discardCardIds: [] }
+      label:
+        "Opening Mulligan — discard 0 or more cards to your deck and draw that many (or keep your hand)",
+      action: { type: "OPENING_HAND_MULLIGAN", playerId, discardCardIds: [] },
     });
   }
 
@@ -13114,7 +15780,7 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     for (const cardId of new Set(player.hand)) {
       actions.push({
         label: `Replace ${cards[cardId]?.name ?? cardId} (starting-hand Mulligan)`,
-        action: { type: "MULLIGAN_CARD", playerId, cardId }
+        action: { type: "MULLIGAN_CARD", playerId, cardId },
       });
     }
   }
@@ -13137,7 +15803,7 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   if (tribulationAvailable(state, playerId)) {
     actions.push({
       label: "Brave the Heavenly Tribulation (Độ kiếp)",
-      action: { type: "HEAVEN_TRIBULATION", playerId }
+      action: { type: "HEAVEN_TRIBULATION", playerId },
     });
   }
 
@@ -13146,7 +15812,7 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   if (heroTrainAvailable(state, playerId)) {
     actions.push({
       label: "Train (2 movement → +1 Merit)",
-      action: { type: "HERO_TRAIN", playerId }
+      action: { type: "HERO_TRAIN", playerId },
     });
   }
 
@@ -13156,26 +15822,37 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     for (const armyUnit of drillableArmyUnits(state, playerId)) {
       const cost = unitDrillGoldCostFor(state, playerId, armyUnit);
       if ((player.resources.gold ?? 0) < cost) continue;
-      const unitName = coreUnitDefinitions[armyUnit.unitDefId]?.name ?? armyUnit.unitDefId;
+      const unitName =
+        coreUnitDefinitions[armyUnit.unitDefId]?.name ?? armyUnit.unitDefId;
       const movementCost = unitDrillMovementCost(state, playerId) ?? 0;
       actions.push({
         label: `Drill ${unitName} (${cost} gold${movementCost ? " + 1 movement" : ""} → +1 unit XP)`,
-        action: { type: "DRILL_UNIT", playerId, armyUnitId: armyUnit.id }
+        action: { type: "DRILL_UNIT", playerId, armyUnitId: armyUnit.id },
       });
     }
   }
   // MGQ Job System: one explicit action per eligible card/job pairing. The
   // reducer repeats every ownership, town, window and resource check.
-  if (player.factionId === "mgq" && !state.combat && mainHeroInOwnTown(state, playerId)) {
+  if (
+    player.factionId === "mgq" &&
+    !state.combat &&
+    mainHeroInOwnTown(state, playerId)
+  ) {
     const cost = mgqJobAssignmentCost(state, playerId);
     if ((player.resources.gold ?? 0) >= cost) {
       for (const armyUnit of player.army.filter(mgqJobEligible)) {
-        const unitName = coreUnitDefinitions[armyUnit.unitDefId]?.name ?? armyUnit.unitDefId;
+        const unitName =
+          coreUnitDefinitions[armyUnit.unitDefId]?.name ?? armyUnit.unitDefId;
         for (const job of mgqJobsForUnit(armyUnit.unitDefId)) {
           if (mgqEffectiveJob(armyUnit) === job) continue;
           actions.push({
             label: `Assign ${MGQ_JOB_LABELS[job]} to ${unitName} (${cost} gold)`,
-            action: { type: "ASSIGN_UNIT_JOB", playerId, armyUnitId: armyUnit.id, job }
+            action: {
+              type: "ASSIGN_UNIT_JOB",
+              playerId,
+              armyUnitId: armyUnit.id,
+              job,
+            },
           });
         }
       }
@@ -13185,13 +15862,14 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   // combat on the hero's turn; no Shrine or separately built contracts gate it.
   if (
     player.factionId === "mgq" &&
-    ((!state.combat && hasOpenAdventureTurn(state, playerId)) || inCombatPrep(state, playerId))
+    ((!state.combat && hasOpenAdventureTurn(state, playerId)) ||
+      inCombatPrep(state, playerId))
   ) {
     for (const spirit of mgqContractedSpirits(state, playerId)) {
       if (player.mgqSpirit === spirit) continue;
       actions.push({
         label: `Summon ${MGQ_SPIRIT_LABELS[spirit]} in the next combat`,
-        action: { type: "SET_MGQ_SPIRIT", playerId, spirit }
+        action: { type: "SET_MGQ_SPIRIT", playerId, spirit },
       });
     }
   }
@@ -13203,7 +15881,7 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   for (const node of heroGradePickableNodes(state, playerId)) {
     actions.push({
       label: `Grade up: learn ${node.name.en} (${node.name.vi})`,
-      action: { type: "HERO_GRADE_PICK", playerId, nodeId: node.id }
+      action: { type: "HERO_GRADE_PICK", playerId, nodeId: node.id },
     });
   }
   if (heroHasGradeNode(state, playerId, HERO_GRADE_NODE_IDS.artifactBroker)) {
@@ -13211,7 +15889,7 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       if (cardLibrary[cardId]?.kind === "artifact") {
         actions.push({
           label: `Artifact Broker: sell ${cardLibrary[cardId]?.name ?? cardId} for 4 gold`,
-          action: { type: "HERO_GRADE_SELL_ARTIFACT", playerId, cardId }
+          action: { type: "HERO_GRADE_SELL_ARTIFACT", playerId, cardId },
         });
       }
     }
@@ -13227,7 +15905,7 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       if (hero?.spaceId) {
         actions.push({
           label: `${node.name.en}: +${node.skill.amount} movement`,
-          action: { type: "USE_HERO_SKILL", playerId, nodeId }
+          action: { type: "USE_HERO_SKILL", playerId, nodeId },
         });
       }
     }
@@ -13239,10 +15917,12 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   // on two Monoliths they would read identically — so name the acting hero
   // whenever there is more than one. A single hero keeps the classic label.
   const mapHeroCount = Object.values(state.heroes).filter(
-    (candidate) => candidate.controllerId === playerId && candidate.spaceId
+    (candidate) => candidate.controllerId === playerId && candidate.spaceId,
   ).length;
   const whichHero = (kind: "main" | "secondary"): string =>
-    mapHeroCount > 1 ? ` — ${kind === "secondary" ? "2nd Hero" : "Main Hero"}` : "";
+    mapHeroCount > 1
+      ? ` — ${kind === "secondary" ? "2nd Hero" : "Main Hero"}`
+      : "";
 
   for (const hero of Object.values(state.heroes)) {
     if (hero.controllerId !== playerId || !hero.spaceId) {
@@ -13263,9 +15943,11 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
         ) {
           continue;
         }
-        const targetName = state.players[targetPlayerId]?.name ?? targetPlayerId;
+        const targetName =
+          state.players[targetPlayerId]?.name ?? targetPlayerId;
         const targetHeroes = Object.values(state.heroes).filter(
-          (candidate) => candidate.controllerId === targetPlayerId && candidate.spaceId
+          (candidate) =>
+            candidate.controllerId === targetPlayerId && candidate.spaceId,
         );
         const tradeField =
           field?.location === "town" ||
@@ -13274,9 +15956,22 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
           field?.location === "trading_post";
 
         if (tradeField) {
-          for (const resource of ["gold", "buildingMaterials", "valuables"] as const) {
+          for (const resource of [
+            "gold",
+            "buildingMaterials",
+            "valuables",
+          ] as const) {
             const transfer = { kind: "resource" as const, resource };
-            if (!allyTransferError(state, playerId, hero.id, targetPlayerId, undefined, transfer)) {
+            if (
+              !allyTransferError(
+                state,
+                playerId,
+                hero.id,
+                targetPlayerId,
+                undefined,
+                transfer,
+              )
+            ) {
               actions.push({
                 label: `Offer ${targetName} 1 ${resource.replace(/([A-Z])/g, " $1").toLowerCase()}${whichHero(hero.kind)}`,
                 action: {
@@ -13284,8 +15979,8 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
                   playerId,
                   fromHeroId: hero.id,
                   targetPlayerId,
-                  transfer
-                }
+                  transfer,
+                },
               });
             }
           }
@@ -13295,7 +15990,16 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
           for (const cardId of player.hand) {
             if (cardLibrary[cardId]?.kind !== "artifact") continue;
             const transfer = { kind: "artifact" as const, cardId };
-            if (!allyTransferError(state, playerId, hero.id, targetPlayerId, targetHero.id, transfer)) {
+            if (
+              !allyTransferError(
+                state,
+                playerId,
+                hero.id,
+                targetPlayerId,
+                targetHero.id,
+                transfer,
+              )
+            ) {
               actions.push({
                 label: `Offer ${targetName} ${cardLibrary[cardId]?.name ?? cardId}${whichHero(hero.kind)}`,
                 action: {
@@ -13304,15 +16008,28 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
                   fromHeroId: hero.id,
                   targetPlayerId,
                   targetHeroId: targetHero.id,
-                  transfer
-                }
+                  transfer,
+                },
               });
             }
           }
           if (!tradeField) {
-            for (const resource of ["gold", "buildingMaterials", "valuables"] as const) {
+            for (const resource of [
+              "gold",
+              "buildingMaterials",
+              "valuables",
+            ] as const) {
               const transfer = { kind: "resource" as const, resource };
-              if (!allyTransferError(state, playerId, hero.id, targetPlayerId, targetHero.id, transfer)) {
+              if (
+                !allyTransferError(
+                  state,
+                  playerId,
+                  hero.id,
+                  targetPlayerId,
+                  targetHero.id,
+                  transfer,
+                )
+              ) {
                 actions.push({
                   label: `Offer ${targetName} 1 ${resource.replace(/([A-Z])/g, " $1").toLowerCase()}${whichHero(hero.kind)}`,
                   action: {
@@ -13321,8 +16038,8 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
                     fromHeroId: hero.id,
                     targetPlayerId,
                     targetHeroId: targetHero.id,
-                    transfer
-                  }
+                    transfer,
+                  },
                 });
               }
             }
@@ -13337,7 +16054,7 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     if (field && isMarketLocation(field.location)) {
       actions.push({
         label: `Open the ${locationDefinitions[field.location]?.name ?? field.location}`,
-        action: { type: "OPEN_MARKET", playerId, heroId: hero.id }
+        action: { type: "OPEN_MARKET", playerId, heroId: hero.id },
       });
     }
 
@@ -13347,7 +16064,12 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       for (const destination of getHeroMoveDestinations(state, hero)) {
         actions.push({
           label: `Move hero to ${destination}`,
-          action: { type: "MOVE_HERO", playerId, heroId: hero.id, to: destination }
+          action: {
+            type: "MOVE_HERO",
+            playerId,
+            heroId: hero.id,
+            to: destination,
+          },
         });
       }
     }
@@ -13357,7 +16079,12 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
         if (canHeroDiscoverAdjacentTile(state, hero, tile)) {
           actions.push({
             label: `Discover the face-down tile at (${tile.centerRow}, ${tile.centerCol}) (free)`,
-            action: { type: "DISCOVER_TILE", playerId, heroId: hero.id, tileInstanceId: tile.id }
+            action: {
+              type: "DISCOVER_TILE",
+              playerId,
+              heroId: hero.id,
+              tileInstanceId: tile.id,
+            },
           });
         }
       }
@@ -13372,8 +16099,9 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
           label:
             (cost === 0
               ? "Dig the Grail (free)"
-              : `Dig the Grail (${cost} movement point${cost === 1 ? "" : "s"})`) + whichHero(hero.kind),
-          action: { type: "REVISIT_FIELD", playerId, heroId: hero.id }
+              : `Dig the Grail (${cost} movement point${cost === 1 ? "" : "s"})`) +
+            whichHero(hero.kind),
+          action: { type: "REVISIT_FIELD", playerId, heroId: hero.id },
         });
       }
     }
@@ -13387,21 +16115,26 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
         grail.carrierHeroId === hero.id &&
         field
       ) {
-        const isTown = field.location === "town" || field.location === "random_town";
+        const isTown =
+          field.location === "town" || field.location === "random_town";
         const isSettlement = field.location === "settlement";
         const town = getTownOfPlayer(state, playerId);
-        const isStartingTown = Boolean(isTown && town?.fieldId === field.spaceId);
+        const isStartingTown = Boolean(
+          isTown && town?.fieldId === field.spaceId,
+        );
         const owned =
-          field.flagOwnerId === playerId || (isTown && town?.fieldId === field.spaceId);
+          field.flagOwnerId === playerId ||
+          (isTown && town?.fieldId === field.spaceId);
         let legal = false;
         if (buildAt === "town" && isTown && owned) legal = true;
         if (buildAt === "settlement" && isSettlement && owned) legal = true;
-        if (buildAt === "both" && (isTown || isSettlement) && owned) legal = true;
+        if (buildAt === "both" && (isTown || isSettlement) && owned)
+          legal = true;
         if (buildAt === "starting-town" && isStartingTown) legal = true;
         if (legal) {
           actions.push({
             label: "Build the Grail here",
-            action: { type: "BUILD_GRAIL", playerId, heroId: hero.id }
+            action: { type: "BUILD_GRAIL", playerId, heroId: hero.id },
           });
         }
       }
@@ -13411,7 +16144,12 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       for (const destination of getHeroMoveDestinations(state, hero)) {
         actions.push({
           label: `Move hero to ${destination}`,
-          action: { type: "MOVE_HERO", playerId, heroId: hero.id, to: destination }
+          action: {
+            type: "MOVE_HERO",
+            playerId,
+            heroId: hero.id,
+            to: destination,
+          },
         });
       }
 
@@ -13436,13 +16174,14 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       ) {
         actions.push({
           label:
-            (locationDefinitions[field.location]?.category === "visitable" && !field.blackCube
+            (locationDefinitions[field.location]?.category === "visitable" &&
+            !field.blackCube
               ? `Resolve ${locationDefinitions[field.location]?.name ?? field.location}`
               : field.location === "obelisk"
                 ? "Revisit the Obelisk (Monolith travel)"
                 : `Revisit ${locationDefinitions[field.location]?.name ?? field.location}`) +
             whichHero(hero.kind),
-          action: { type: "REVISIT_FIELD", playerId, heroId: hero.id }
+          action: { type: "REVISIT_FIELD", playerId, heroId: hero.id },
         });
       }
 
@@ -13453,7 +16192,12 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
         if (canHeroDiscoverAdjacentTile(state, hero, tile)) {
           actions.push({
             label: `Discover the face-down tile at (${tile.centerRow}, ${tile.centerCol})`,
-            action: { type: "DISCOVER_TILE", playerId, heroId: hero.id, tileInstanceId: tile.id }
+            action: {
+              type: "DISCOVER_TILE",
+              playerId,
+              heroId: hero.id,
+              tileInstanceId: tile.id,
+            },
           });
         }
       }
@@ -13464,7 +16208,9 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       // are sealed off and only a new Ⅱ–Ⅲ notch opens a path.
       if (playerHasPlaceableFarTile(state, playerId)) {
         const supply = adventure.playerFarTiles[playerId] ?? [];
-        const supplyIndex = supply.findIndex((entry) => entry === UNOPENED_FAR_TILE);
+        const supplyIndex = supply.findIndex(
+          (entry) => entry === UNOPENED_FAR_TILE,
+        );
         if (supplyIndex >= 0) {
           for (const center of farTilePlacementCenters(state, hero)) {
             actions.push({
@@ -13475,8 +16221,8 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
                 heroId: hero.id,
                 supplyIndex,
                 centerRow: center.row,
-                centerCol: center.col
-              }
+                centerCol: center.col,
+              },
             });
           }
         }
@@ -13488,7 +16234,7 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
 
   actions.push({
     label: "End turn",
-    action: { type: "END_TURN", playerId }
+    action: { type: "END_TURN", playerId },
   });
 
   // Concede: only on your own quiet map turn (never mid-Combat — "you cannot
@@ -13503,7 +16249,7 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   ) {
     actions.push({
       label: "Give up (become an observer)",
-      action: { type: "GIVE_UP", playerId }
+      action: { type: "GIVE_UP", playerId },
     });
   }
 

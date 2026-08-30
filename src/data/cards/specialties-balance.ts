@@ -63,7 +63,10 @@ function printed(cardId: string): CardDefinition {
  * Clone `cardId`'s printed definition with `patch` applied. Keys explicitly set
  * to `undefined` in `patch` are DELETED (a plain spread would keep them).
  */
-function reprint(cardId: string, patch: Partial<CardDefinition>): CardDefinition {
+function reprint(
+  cardId: string,
+  patch: Partial<CardDefinition>,
+): CardDefinition {
   const next = { ...printed(cardId), ...patch } as Record<string, unknown>;
   for (const [key, value] of Object.entries(patch)) {
     if (value === undefined) {
@@ -87,17 +90,21 @@ function warlockDigReprint(level: 1 | 6, count: number): CardDefinition {
   return reprint(cardId, {
     tags: tags(
       cardId,
-      `Draw up to ${count} cards from your deck, take any Cast a Spell and Specialty cards to your hand, and discard the rest. (Without the Polish Spell Book there is no Cast a Spell card, so the dig keeps Spells and Specialties, as printed.)`
+      `Draw up to ${count} cards from your deck, take any Cast a Spell and Specialty cards to your hand, and discard the rest. (Without the Polish Spell Book there is no Cast a Spell card, so the dig keeps Spells and Specialties, as printed.)`,
     ),
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
           label: `Dig ${count} cards; keep Cast a Spell and Specialties`,
-          effect: { type: "DECK_DIG_KEEP_MATCHING", count, filter: "cast-enabler-or-specialty" }
-        }
-      ]
-    }
+          effect: {
+            type: "DECK_DIG_KEEP_MATCHING",
+            count,
+            filter: "cast-enabler-or-specialty",
+          },
+        },
+      ],
+    },
   });
 }
 
@@ -109,10 +116,14 @@ function cieleArrowReprint(level: 1 | 4): CardDefinition {
     tags: tags(
       cardId,
       `Instant: if you have a Cast a Spell card on your discard pile, Refresh up to 1 Magic Arrow spell and cast it${
-        overLimit ? " — this spell does not count toward your Spell limit per Combat round" : ""
+        overLimit
+          ? " — this spell does not count toward your Spell limit per Combat round"
+          : ""
       } (no Cast a Spell card is spent). Without the Polish Spell Book the card keeps its printed ${
-        overLimit ? "free cast from your own discard pile" : "recall of a Magic Arrow to your hand"
-      }. — OR — Instant: +1 Power.`
+        overLimit
+          ? "free cast from your own discard pile"
+          : "recall of a Magic Arrow to your hand"
+      }. — OR — Instant: +1 Power.`,
     ),
     effect: {
       type: "CHOOSE_ONE",
@@ -131,8 +142,8 @@ function cieleArrowReprint(level: 1 | 4): CardDefinition {
             ownDiscard: true,
             polishRefreshFromBook: true,
             // Only level IV prints "does not count toward your Spell limit".
-            ...(overLimit ? {} : { countsTowardSpellLimit: true })
-          }
+            ...(overLimit ? {} : { countsTowardSpellLimit: true }),
+          },
         },
         // The classic side, kept for a table WITHOUT the Polish Book (there is no
         // Cast a Spell card there, so the reprint's own arm can never resolve).
@@ -140,27 +151,37 @@ function cieleArrowReprint(level: 1 | 4): CardDefinition {
           ? {
               label: "Take a Magic Arrow from your discard pile",
               forbidsHouseRule: "polish-spell-book",
-              effect: { type: "TAKE_FROM_DISCARD", count: 1, filter: "magic-arrow", allowInCombat: true }
+              effect: {
+                type: "TAKE_FROM_DISCARD",
+                count: 1,
+                filter: "magic-arrow",
+                allowInCombat: true,
+              },
             }
           : {
               label: "Cast a Magic Arrow from your discard pile (free)",
               forbidsHouseRule: "polish-spell-book",
               combatOnly: true,
-              effect: { type: "CAST_FROM_SPELL_DISCARD", spellId: "spell.magic_arrow", ownDiscard: true }
+              effect: {
+                type: "CAST_FROM_SPELL_DISCARD",
+                spellId: "spell.magic_arrow",
+                ownDiscard: true,
+              },
             },
         {
           label: "+1 Power",
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 1 }
-        }
-      ]
-    }
+          effect: { type: "ADD_SPELL_POWER", amount: 1 },
+        },
+      ],
+    },
   });
 }
 
 export const polishBalanceSpecialtyCards: CardLibrary = {
   // Adelaide IV — "Take Cast a Spell or Specialty card from your discard pile
-  // and put it back in your hand. Refresh 1 Spell, once per round." The take is
+  // and put it back in your hand. Refresh 1 Spell." The shared Spell Book rule
+  // owns the one-refresh-per-Spell-per-round limit. The take is
   // BOOK-AWARE (`cast-enabler-or-specialty`); the refresh is a SECOND pick the
   // take opens (`polishRefreshAfter`), so both printed sentences resolve. Off
   // the Book the filter falls back to the printed classic "Spell or Specialty"
@@ -168,7 +189,7 @@ export const polishBalanceSpecialtyCards: CardLibrary = {
   "specialty.adelaide.4": reprint("specialty.adelaide.4", {
     tags: tags(
       "specialty.adelaide.4",
-      "Instant (map or Combat): take a Cast a Spell or Specialty card from your discard pile back into your hand, then refresh 1 Spell in your Spell Book (once per round per Spell). Without the Polish Spell Book it takes a Spell or Specialty card, as printed."
+      "Instant (map or Combat): take a Cast a Spell or Specialty card from your discard pile back into your hand, then refresh 1 Spell in your Spell Book. Without the Polish Spell Book it takes a Spell or Specialty card, as printed.",
     ),
     effect: {
       type: "CHOOSE_ONE",
@@ -180,11 +201,11 @@ export const polishBalanceSpecialtyCards: CardLibrary = {
             count: 1,
             filter: "cast-enabler-or-specialty",
             allowInCombat: true,
-            polishRefreshAfter: true
-          }
-        }
-      ]
-    }
+            polishRefreshAfter: true,
+          },
+        },
+      ],
+    },
   }),
 
   "specialty.jeddite.1": warlockDigReprint(1, 3),
@@ -196,7 +217,7 @@ export const polishBalanceSpecialtyCards: CardLibrary = {
   "specialty.sandro.1": reprint("specialty.sandro.1", {
     tags: tags(
       "specialty.sandro.1",
-      "Put this card on the Stack or Pack of Skeletons Unit card; it replaces the card's statistics until defeated. On a Stack (a Pack carrying Polish Unit-Stack layers) it gives an additional +1 Attack while a layer remains."
+      "Put this card on the Stack or Pack of Skeletons Unit card; it replaces the card's statistics until defeated. On a Stack (a Pack carrying Polish Unit-Stack layers) it gives an additional +1 Attack while a layer remains.",
     ),
     effect: {
       type: "TRANSFORM_UNIT",
@@ -208,8 +229,8 @@ export const polishBalanceSpecialtyCards: CardLibrary = {
       health: 2,
       initiative: 6,
       stackAttackBonus: 1,
-      cardImage: "/assets/hero_specialties-sandro-1.webp"
-    }
+      cardImage: "/assets/hero_specialties-sandro-1.webp",
+    },
   }),
 
   // Sandro IV — "Put this card on the Pack or Stack of Zombies Unit card…" The
@@ -218,8 +239,8 @@ export const polishBalanceSpecialtyCards: CardLibrary = {
   "specialty.sandro.4": reprint("specialty.sandro.4", {
     tags: tags(
       "specialty.sandro.4",
-      "Put this card on the Pack or Stack of Zombies Unit card; it replaces the card's statistics until defeated. No Stack rider is printed on this level."
-    )
+      "Put this card on the Pack or Stack of Zombies Unit card; it replaces the card's statistics until defeated. No Stack rider is printed on this level.",
+    ),
   }),
 
   // Vidomina IV — the Skeletons cover with the same Stack rider as Sandro I, and
@@ -227,7 +248,7 @@ export const polishBalanceSpecialtyCards: CardLibrary = {
   "specialty.vidomina.4": reprint("specialty.vidomina.4", {
     tags: tags(
       "specialty.vidomina.4",
-      "Put this card on the Stack or Pack of Skeletons Unit card; it replaces the card's statistics (Horde of Skeletons) until its HP drops to 0. On a Stack it gives an additional +1 Attack while a layer remains."
+      "Put this card on the Stack or Pack of Skeletons Unit card; it replaces the card's statistics (Horde of Skeletons) until its HP drops to 0. On a Stack it gives an additional +1 Attack while a layer remains.",
     ),
     effect: {
       type: "TRANSFORM_UNIT",
@@ -239,8 +260,8 @@ export const polishBalanceSpecialtyCards: CardLibrary = {
       health: 2,
       initiative: 6,
       stackAttackBonus: 1,
-      cardImage: "/assets/hero_specialties-vidomina-4.webp"
-    }
+      cardImage: "/assets/hero_specialties-vidomina-4.webp",
+    },
   }),
 
   // Dracon IV — "If you have a Stack or Pack of Magi Unit card, discard it …
@@ -249,13 +270,14 @@ export const polishBalanceSpecialtyCards: CardLibrary = {
   "specialty.dracon.4": reprint("specialty.dracon.4", {
     tags: tags(
       "specialty.dracon.4",
-      "Map: discard a Stack or Pack of Magi, then search the Neutral Unit gold deck for the Enchanters card and add it to your Unit deck (only 1 Enchanters at a time). Gain 13 gold for each Unit-Stack layer that Magi card carried. — OR — Draw a card. — OR — (house rule) discard a Few of Magi AND pay 6 gold to take the Enchanters."
+      "Map: discard a Stack or Pack of Magi, then search the Neutral Unit gold deck for the Enchanters card and add it to your Unit deck (only 1 Enchanters at a time). Gain 13 gold for each Unit-Stack layer that Magi card carried. — OR — Draw a card. — OR — (house rule) discard a Few of Magi AND pay 6 gold to take the Enchanters.",
     ),
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Discard a Stack or Pack of Magi → take the Enchanters (13 gold per Stack layer)",
+          label:
+            "Discard a Stack or Pack of Magi → take the Enchanters (13 gold per Stack layer)",
           mapOnly: true,
           effect: {
             type: "CONVERT_ARMY_UNIT",
@@ -264,12 +286,12 @@ export const polishBalanceSpecialtyCards: CardLibrary = {
             toUnitDefId: "neutral.enchanters",
             toTier: "gold",
             unique: true,
-            goldPerStackLayer: 13
-          }
+            goldPerStackLayer: 13,
+          },
         },
         {
           label: "Draw a card",
-          effect: { type: "DRAW_CARDS", amount: 1 }
+          effect: { type: "DRAW_CARDS", amount: 1 },
         },
         {
           label: "Discard a Few of Magi + 6 gold → take the Enchanters",
@@ -282,11 +304,11 @@ export const polishBalanceSpecialtyCards: CardLibrary = {
             toUnitDefId: "neutral.enchanters",
             toTier: "gold",
             unique: true,
-            goldCost: 6
-          }
-        }
-      ]
-    }
+            goldCost: 6,
+          },
+        },
+      ],
+    },
   }),
 
   // Gelu IV — the same shape with Elves → Sharpshooters at 9 gold per layer
@@ -295,13 +317,14 @@ export const polishBalanceSpecialtyCards: CardLibrary = {
   "specialty.gelu.4": reprint("specialty.gelu.4", {
     tags: tags(
       "specialty.gelu.4",
-      "Map: discard a Stack or Pack of Elves, then search the Neutral Unit silver deck for the Sharpshooters card and add it to your Unit deck (only 1 Sharpshooters at a time). Gain 9 gold for each Unit-Stack layer that Elves card carried. — OR — Draw a card."
+      "Map: discard a Stack or Pack of Elves, then search the Neutral Unit silver deck for the Sharpshooters card and add it to your Unit deck (only 1 Sharpshooters at a time). Gain 9 gold for each Unit-Stack layer that Elves card carried. — OR — Draw a card.",
     ),
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Discard a Stack or Pack of Elves → take the Sharpshooters (9 gold per Stack layer)",
+          label:
+            "Discard a Stack or Pack of Elves → take the Sharpshooters (9 gold per Stack layer)",
           mapOnly: true,
           effect: {
             type: "CONVERT_ARMY_UNIT",
@@ -313,15 +336,15 @@ export const polishBalanceSpecialtyCards: CardLibrary = {
             goldPerStackLayer: 9,
             // House rule (BINH, `gelu-sharpshooter-buff`) — a separate toggle the
             // Balance Pack must not switch off. Inert while that rule is off.
-            grantAttackBonus: 1
-          }
+            grantAttackBonus: 1,
+          },
         },
         {
           label: "Draw a card",
-          effect: { type: "DRAW_CARDS", amount: 1 }
-        }
-      ]
-    }
+          effect: { type: "DRAW_CARDS", amount: 1 },
+        },
+      ],
+    },
   }),
 
   "specialty.ciele.1": cieleArrowReprint(1),
@@ -333,11 +356,13 @@ export const polishBalanceSpecialtyCards: CardLibrary = {
   "specialty.tarnum_conflux.1": reprint("specialty.tarnum_conflux.1", {
     tags: tags(
       "specialty.tarnum_conflux.1",
-      "Map: Search (1) Spell and add it to your Spellbook (your hand without the Polish Spell Book). The card can no longer be Removed from the game instead."
+      "Map: Search (1) Spell and add it to your Spellbook (your hand without the Polish Spell Book). The card can no longer be Removed from the game instead.",
     ),
-    effect: { type: "CARD_DECK_SEARCH", deck: "spells", count: 1 }
-  })
+    effect: { type: "CARD_DECK_SEARCH", deck: "spells", count: 1 },
+  }),
 };
 
 /** Every specialty id the Balance Pack reprints. */
-export const POLISH_BALANCE_SPECIALTY_IDS: readonly string[] = Object.keys(polishBalanceSpecialtyCards);
+export const POLISH_BALANCE_SPECIALTY_IDS: readonly string[] = Object.keys(
+  polishBalanceSpecialtyCards,
+);

@@ -52,7 +52,7 @@ describe("CardFrame — art-less specialties render the native card in the tray"
     expect(container.querySelector(".cardFaceFallback")).toBeNull();
     expect(container.textContent ?? "").toContain("Healing Arts I");
     const iconSrc = (container.querySelector(".scIcon") as HTMLImageElement | null)?.getAttribute("src") ?? "";
-    expect(iconSrc).toContain("icon-first_aid.webp");
+    expect(iconSrc).toContain("specialty-lingxi-healing-arts.webp");
     expect(iconSrc).not.toContain("abilities-first_aid");
     expect(iconSrc).not.toContain("hero_specialties-gem");
   });

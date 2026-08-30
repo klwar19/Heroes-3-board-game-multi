@@ -1240,6 +1240,8 @@ describe("MapPresetEditor — Global | Specific object modes", () => {
     for (const label of ["Entering tiles Ⅳ–Ⅴ", "Entering tiles Ⅵ–Ⅶ", "Entering fields Ⅶ"]) {
       expect(within(breakSection).getByRole("button", { name: label })).toBeTruthy();
     }
+    expect(within(breakSection).getByRole("button", { name: "Individual" }).getAttribute("aria-pressed")).toBe("true");
+    expect(within(breakSection).getByRole("button", { name: "Whole team" })).toBeTruthy();
     fireEvent.click(within(breakSection).getByRole("button", { name: "Entering tiles Ⅳ–Ⅴ" }));
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ breaks: { enterNearTiles: true } }));
 

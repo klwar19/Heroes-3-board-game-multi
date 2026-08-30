@@ -1,5 +1,5 @@
 /**
- * Polish Balance Pack (`polish-card-balance`) — the 21 reprinted SPELLS.
+ * Polish Balance Pack (`polish-card-balance`) spell reprints.
  *
  * Every claim is an OBSERVABLE outcome (the damage a blow really deals, which
  * unit a cast may legally reach, how many cards a scry really reveals, when an
@@ -20,21 +20,33 @@ import {
   createInitialGameState,
   describeCardEffect,
   getLegalActions,
-  spellPowerLadder
+  spellPowerLadder,
 } from "./index";
 import { getUnitMoveRange } from "./legal-actions";
-import { expireEffectsForActivationEnd, expireEffectsForActivationStart } from "./active-effects";
+import {
+  expireEffectsForActivationEnd,
+  expireEffectsForActivationStart,
+} from "./active-effects";
 import { hasToken } from "./tokens";
 import { nextTurnTimeoutAction } from "./afk-drop";
 import { chooseComputerAction } from "./computer/policy";
 import type { ComputerObservation } from "./computer/types";
 import { cardLibrary } from "@/data/cards/library";
 import { polishBalanceSpellCards } from "@/data/cards/spells-balance";
-import type { CardDefinition, CardId, GameAction, GameState, UnitId } from "./state";
+import type {
+  CardDefinition,
+  CardId,
+  GameAction,
+  GameState,
+  UnitId,
+} from "./state";
 
 function applyOk(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
-  expect(result.errors, result.errors.map((error) => error.message).join("; ")).toEqual([]);
+  expect(
+    result.errors,
+    result.errors.map((error) => error.message).join("; "),
+  ).toEqual([]);
   return result.state;
 }
 
@@ -43,7 +55,10 @@ function passAllReactions(state: GameState): GameState {
   let safety = 60;
   while (current.reactionWindow && safety > 0) {
     safety -= 1;
-    current = applyOk(current, { type: "PASS_REACTION", playerId: current.reactionWindow.priorityPlayerId });
+    current = applyOk(current, {
+      type: "PASS_REACTION",
+      playerId: current.reactionWindow.priorityPlayerId,
+    });
   }
   return current;
 }
@@ -54,7 +69,10 @@ function combat(balance: boolean, seed = "polish-balance-spells"): GameState {
   state.adventure = {
     // `combat-move-initiative` is pinned OFF so the printed Combat-movement
     // half of Haste / Slow can only come from the Balance Pack.
-    houseRules: { "polish-card-balance": balance, "combat-move-initiative": false }
+    houseRules: {
+      "polish-card-balance": balance,
+      "combat-move-initiative": false,
+    },
   } as unknown as GameState["adventure"];
   state.activePlayerId = "p1";
   state.combat!.activeUnitId = "unit_p1_griffins";
@@ -73,27 +91,42 @@ function cast(
   state: GameState,
   cardId: string,
   power: number,
-  target: GameAction extends never ? never : { type: "unit"; unitId: UnitId } | { type: "space"; position: number } | { type: "none" },
-  optionIndex?: number
+  target: GameAction extends never
+    ? never
+    :
+        | { type: "unit"; unitId: UnitId }
+        | { type: "space"; position: number }
+        | { type: "none" },
+  optionIndex?: number,
 ): GameState {
   let next = state;
-  next.players.p1.hand = [cardId as CardId, ...Array.from({ length: power }, () => "stat.power" as CardId)];
+  next.players.p1.hand = [
+    cardId as CardId,
+    ...Array.from({ length: power }, () => "stat.power" as CardId),
+  ];
   const offer = getLegalActions(next, "p1").find(
     (legal) =>
       legal.action.type === "CAST_SPELL" &&
       legal.action.cardId === cardId &&
       (optionIndex === undefined || legal.action.optionIndex === optionIndex) &&
       (target.type === "none" ||
-        (target.type === "unit" && legal.action.target.type === "unit" && legal.action.target.unitId === target.unitId) ||
+        (target.type === "unit" &&
+          legal.action.target.type === "unit" &&
+          legal.action.target.unitId === target.unitId) ||
         (target.type === "space" &&
           legal.action.target.type === "space" &&
-          legal.action.target.position === target.position))
+          legal.action.target.position === target.position)),
   );
-  expect(offer, `${cardId} should be castable at ${JSON.stringify(target)}`).toBeTruthy();
+  expect(
+    offer,
+    `${cardId} should be castable at ${JSON.stringify(target)}`,
+  ).toBeTruthy();
   next = applyOk(next, offer!.action);
   for (let i = 0; i < power; i += 1) {
     const boost = getLegalActions(next, "p1").find(
-      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "stat.power"
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === "stat.power",
     );
     expect(boost, `power boost ${i + 1} should be offered`).toBeTruthy();
     next = applyOk(next, boost!.action);
@@ -103,12 +136,18 @@ function cast(
 
 function castOffers(state: GameState, cardId: string): GameAction[] {
   return getLegalActions(state, "p1")
-    .filter((legal) => legal.action.type === "CAST_SPELL" && legal.action.cardId === cardId)
+    .filter(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" && legal.action.cardId === cardId,
+    )
     .map((legal) => legal.action);
 }
 
 function effectsOn(state: GameState, unitId: UnitId) {
-  return state.activeEffects.filter((effect) => effect.target?.type === "unit" && effect.target.unitId === unitId);
+  return state.activeEffects.filter(
+    (effect) =>
+      effect.target?.type === "unit" && effect.target.unitId === unitId,
+  );
 }
 
 // ===========================================================================
@@ -117,55 +156,103 @@ function effectsOn(state: GameState, unitId: UnitId) {
 
 describe("Balance Pack — Haste & Slow", () => {
   it("Haste: +2 initiative AND +1 Combat movement, for 3 combat rounds", () => {
-    const state = cast(combat(true), "spell.haste", 0, { type: "unit", unitId: "unit_p1_marksmen" });
-    const buff = effectsOn(state, "unit_p1_marksmen").find((effect) => effect.name === "Haste");
+    const state = cast(combat(true), "spell.haste", 0, {
+      type: "unit",
+      unitId: "unit_p1_marksmen",
+    });
+    const buff = effectsOn(state, "unit_p1_marksmen").find(
+      (effect) => effect.name === "Haste",
+    );
     expect(buff, "Haste laid its buff").toBeTruthy();
     expect(buff!.modifiers).toEqual(
-      expect.arrayContaining([{ type: "INITIATIVE_BONUS", amount: 2 }, { type: "MOVEMENT_BONUS", amount: 1 }])
+      expect.arrayContaining([
+        { type: "INITIATIVE_BONUS", amount: 2 },
+        { type: "MOVEMENT_BONUS", amount: 1 },
+      ]),
     );
     // Observable: three combat rounds from now (the classic card is combat-long,
     // this one really has an end).
     expect(buff!.expiresAtCombatRoundEnd).toBe(state.combat!.round + 2);
     // And the movement really moved (a ranged unit's printed range is 1).
-    expect(getUnitMoveRange(state.combat!.units.unit_p1_marksmen, state)).toBe(2);
+    expect(getUnitMoveRange(state.combat!.units.unit_p1_marksmen, state)).toBe(
+      2,
+    );
   });
 
   it("CONTROL: with the rule OFF Haste is +1 initiative, combat-long, and moves nothing", () => {
-    const state = cast(combat(false), "spell.haste", 0, { type: "unit", unitId: "unit_p1_marksmen" });
-    const buff = effectsOn(state, "unit_p1_marksmen").find((effect) => effect.name === "Haste")!;
+    const state = cast(combat(false), "spell.haste", 0, {
+      type: "unit",
+      unitId: "unit_p1_marksmen",
+    });
+    const buff = effectsOn(state, "unit_p1_marksmen").find(
+      (effect) => effect.name === "Haste",
+    )!;
     // The MOVEMENT_BONUS modifier is printed on the classic card too — the
     // house-rule gate is at getUnitMoveRange, which is the observable half.
-    expect(buff.modifiers).toEqual(expect.arrayContaining([{ type: "INITIATIVE_BONUS", amount: 1 }]));
+    expect(buff.modifiers).toEqual(
+      expect.arrayContaining([{ type: "INITIATIVE_BONUS", amount: 1 }]),
+    );
     expect(buff.duration.type).toBe("combat");
-    expect(getUnitMoveRange(state.combat!.units.unit_p1_marksmen, state)).toBe(1);
+    expect(getUnitMoveRange(state.combat!.units.unit_p1_marksmen, state)).toBe(
+      1,
+    );
   });
 
   it("Haste scales its printed ladder (Power 1 → +4 initiative / +2 spaces)", () => {
-    const state = cast(combat(true), "spell.haste", 1, { type: "unit", unitId: "unit_p1_marksmen" });
-    const buff = effectsOn(state, "unit_p1_marksmen").find((effect) => effect.name === "Haste")!;
+    const state = cast(combat(true), "spell.haste", 1, {
+      type: "unit",
+      unitId: "unit_p1_marksmen",
+    });
+    const buff = effectsOn(state, "unit_p1_marksmen").find(
+      (effect) => effect.name === "Haste",
+    )!;
     expect(buff.modifiers).toEqual(
-      expect.arrayContaining([{ type: "INITIATIVE_BONUS", amount: 4 }, { type: "MOVEMENT_BONUS", amount: 2 }])
+      expect.arrayContaining([
+        { type: "INITIATIVE_BONUS", amount: 4 },
+        { type: "MOVEMENT_BONUS", amount: 2 },
+      ]),
     );
-    expect(getUnitMoveRange(state.combat!.units.unit_p1_marksmen, state)).toBe(3);
+    expect(getUnitMoveRange(state.combat!.units.unit_p1_marksmen, state)).toBe(
+      3,
+    );
   });
 
   it("Slow: -1 initiative AND -1 Combat movement (floored at 1), for 3 combat rounds", () => {
-    const state = cast(combat(true), "spell.slow", 0, { type: "unit", unitId: "unit_p2_vampires" });
-    const debuff = effectsOn(state, "unit_p2_vampires").find((effect) => effect.name === "Slow")!;
+    const state = cast(combat(true), "spell.slow", 0, {
+      type: "unit",
+      unitId: "unit_p2_vampires",
+    });
+    const debuff = effectsOn(state, "unit_p2_vampires").find(
+      (effect) => effect.name === "Slow",
+    )!;
     expect(debuff.modifiers).toEqual(
-      expect.arrayContaining([{ type: "INITIATIVE_BONUS", amount: -1 }, { type: "MOVEMENT_BONUS", amount: -1 }])
+      expect.arrayContaining([
+        { type: "INITIATIVE_BONUS", amount: -1 },
+        { type: "MOVEMENT_BONUS", amount: -1 },
+      ]),
     );
     expect(debuff.expiresAtCombatRoundEnd).toBe(state.combat!.round + 2);
     // A ground unit's printed range is 3 → 2 under the reprint.
-    expect(getUnitMoveRange(state.combat!.units.unit_p2_vampires, state)).toBe(2);
+    expect(getUnitMoveRange(state.combat!.units.unit_p2_vampires, state)).toBe(
+      2,
+    );
   });
 
   it("CONTROL: rule OFF, Slow moves the initiative only", () => {
-    const state = cast(combat(false), "spell.slow", 0, { type: "unit", unitId: "unit_p2_vampires" });
-    const debuff = effectsOn(state, "unit_p2_vampires").find((effect) => effect.name === "Slow")!;
-    expect(debuff.modifiers).toEqual(expect.arrayContaining([{ type: "INITIATIVE_BONUS", amount: -1 }]));
+    const state = cast(combat(false), "spell.slow", 0, {
+      type: "unit",
+      unitId: "unit_p2_vampires",
+    });
+    const debuff = effectsOn(state, "unit_p2_vampires").find(
+      (effect) => effect.name === "Slow",
+    )!;
+    expect(debuff.modifiers).toEqual(
+      expect.arrayContaining([{ type: "INITIATIVE_BONUS", amount: -1 }]),
+    );
     expect(debuff.duration.type).toBe("combat");
-    expect(getUnitMoveRange(state.combat!.units.unit_p2_vampires, state)).toBe(3);
+    expect(getUnitMoveRange(state.combat!.units.unit_p2_vampires, state)).toBe(
+      3,
+    );
   });
 });
 
@@ -175,18 +262,35 @@ describe("Balance Pack — Haste & Slow", () => {
 
 describe("Balance Pack — Bless", () => {
   it("is a targeted combat cast that lays a 1-combat-round die-skipping buff", () => {
-    const state = cast(combat(true), "spell.bless", 1, { type: "unit", unitId: "unit_p1_griffins" });
-    const buff = effectsOn(state, "unit_p1_griffins").find((effect) => effect.name === "Bless")!;
+    const state = cast(combat(true), "spell.bless", 1, {
+      type: "unit",
+      unitId: "unit_p1_griffins",
+    });
+    const buff = effectsOn(state, "unit_p1_griffins").find(
+      (effect) => effect.name === "Bless",
+    )!;
     expect(buff.modifiers).toEqual(
-      expect.arrayContaining([{ type: "ATTACK_BONUS", amount: 1 }, { type: "IGNORE_ATTACK_DIE_ROLL" }])
+      expect.arrayContaining([
+        { type: "ATTACK_BONUS", amount: 1 },
+        { type: "IGNORE_ATTACK_DIE_ROLL" },
+      ]),
     );
     expect(buff.duration.type).toBe("current-combat-round");
   });
 
   it("Power 3 buffs EVERY ground/flying unit you control, never the enemy", () => {
-    const state = cast(combat(true), "spell.bless", 3, { type: "unit", unitId: "unit_p1_griffins" });
-    const blessed = state.activeEffects.filter((effect) => effect.name === "Bless");
-    const targets = new Set(blessed.map((effect) => (effect.target?.type === "unit" ? effect.target.unitId : "")));
+    const state = cast(combat(true), "spell.bless", 3, {
+      type: "unit",
+      unitId: "unit_p1_griffins",
+    });
+    const blessed = state.activeEffects.filter(
+      (effect) => effect.name === "Bless",
+    );
+    const targets = new Set(
+      blessed.map((effect) =>
+        effect.target?.type === "unit" ? effect.target.unitId : "",
+      ),
+    );
     expect(targets.has("unit_p1_griffins")).toBe(true);
     expect(targets.has("unit_p1_crusaders")).toBe(true);
     // Marksmen are RANGED — the printed card says ground or flying only.
@@ -200,14 +304,28 @@ describe("Balance Pack — Bless", () => {
   // chosen unit — so a mutation of `allGroundFlyingAtPower` from 3 to 2 fails
   // here while the Power-3 test above stays green.
   it("Power 2 buffs ONLY the selected unit — the army-wide effect needs a full 3 SP", () => {
-    const state = cast(combat(true), "spell.bless", 2, { type: "unit", unitId: "unit_p1_griffins" });
-    const blessed = state.activeEffects.filter((effect) => effect.name === "Bless");
-    const targets = new Set(blessed.map((effect) => (effect.target?.type === "unit" ? effect.target.unitId : "")));
+    const state = cast(combat(true), "spell.bless", 2, {
+      type: "unit",
+      unitId: "unit_p1_griffins",
+    });
+    const blessed = state.activeEffects.filter(
+      (effect) => effect.name === "Bless",
+    );
+    const targets = new Set(
+      blessed.map((effect) =>
+        effect.target?.type === "unit" ? effect.target.unitId : "",
+      ),
+    );
     expect(targets).toEqual(new Set(["unit_p1_griffins"]));
     // The single-unit rung still skips the Attack die and grants +1.
-    const buff = effectsOn(state, "unit_p1_griffins").find((effect) => effect.name === "Bless")!;
+    const buff = effectsOn(state, "unit_p1_griffins").find(
+      (effect) => effect.name === "Bless",
+    )!;
     expect(buff.modifiers).toEqual(
-      expect.arrayContaining([{ type: "ATTACK_BONUS", amount: 1 }, { type: "IGNORE_ATTACK_DIE_ROLL" }])
+      expect.arrayContaining([
+        { type: "ATTACK_BONUS", amount: 1 },
+        { type: "IGNORE_ATTACK_DIE_ROLL" },
+      ]),
     );
   });
 
@@ -237,7 +355,9 @@ describe("Balance Pack — Bless", () => {
     const classic = cardLibrary["spell.bless"];
     const ladder = spellPowerLadder(classic);
     expect(ladder.map((row) => row.power)).toEqual([0, 1, 2]);
-    expect(ladder.every((row) => !row.text.includes("all your ground/flying units"))).toBe(true);
+    expect(
+      ladder.every((row) => !row.text.includes("all your ground/flying units")),
+    ).toBe(true);
   });
 
   it("CONTROL: with the rule OFF Bless is a reaction instant with no own-turn cast", () => {
@@ -252,21 +372,82 @@ describe("Balance Pack — Bless", () => {
 // ===========================================================================
 
 describe("Balance Pack — tier ladders", () => {
+  it("Berserk at Power 4 affects Azure and Creature-Bank units only with the Balance Pack", () => {
+    for (const kind of ["azure", "bank"] as const) {
+      const on = combat(true, `berserk-${kind}-on`);
+      const target = on.combat!.units.unit_p2_skeletons;
+      if (kind === "azure") target.grade = "azure";
+      else target.bankUnit = true;
+      const berserked = cast(on, "spell.berserk", 4, {
+        type: "unit",
+        unitId: target.id,
+      });
+      expect(
+        effectsOn(berserked, target.id).some((effect) =>
+          effect.modifiers.some(
+            (modifier) => modifier.type === "BERSERK_FORCED_ATTACK",
+          ),
+        ),
+        `${kind} target must really receive Berserk`,
+      ).toBe(true);
+
+      const off = combat(false, `berserk-${kind}-off`);
+      const offTarget = off.combat!.units.unit_p2_skeletons;
+      if (kind === "azure") offTarget.grade = "azure";
+      else offTarget.bankUnit = true;
+      off.players.p1.hand = [
+        "spell.berserk" as CardId,
+        ...Array.from({ length: 4 }, () => "stat.power" as CardId),
+      ];
+      expect(
+        castOffers(off, "spell.berserk").some(
+          (action) =>
+            action.type === "CAST_SPELL" &&
+            action.target.type === "unit" &&
+            action.target.unitId === offTarget.id,
+        ),
+        `classic Berserk must not offer the ${kind} target`,
+      ).toBe(false);
+    }
+  });
+
+  it("Berserk still needs the full Power 4 before its Azure/Bank effect lands", () => {
+    const state = combat(true, "berserk-top-rung");
+    state.combat!.units.unit_p2_skeletons.grade = "azure";
+    const underpowered = cast(state, "spell.berserk", 3, {
+      type: "unit",
+      unitId: "unit_p2_skeletons",
+    });
+    expect(effectsOn(underpowered, "unit_p2_skeletons")).toEqual([]);
+  });
+
   it("Blind at Power 2 paralyses an AZURE unit; the classic card cannot", () => {
     const on = combat(true);
     on.combat!.units.unit_p2_vampires.grade = "azure";
-    const blinded = cast(on, "spell.blind", 2, { type: "unit", unitId: "unit_p2_vampires" });
-    expect(hasToken(blinded.combat!.units.unit_p2_vampires, "paralysis")).toBe(true);
+    const blinded = cast(on, "spell.blind", 2, {
+      type: "unit",
+      unitId: "unit_p2_vampires",
+    });
+    expect(hasToken(blinded.combat!.units.unit_p2_vampires, "paralysis")).toBe(
+      true,
+    );
 
     // CONTROL: the classic ladder tops out at gold, so an azure unit is not even
     // a legal target for the classic card at any Power.
     const off = combat(false);
     off.combat!.units.unit_p2_vampires.grade = "azure";
-    off.players.p1.hand = ["spell.blind" as CardId, "stat.power" as CardId, "stat.power" as CardId];
+    off.players.p1.hand = [
+      "spell.blind" as CardId,
+      "stat.power" as CardId,
+      "stat.power" as CardId,
+    ];
     expect(
       castOffers(off, "spell.blind").some(
-        (action) => action.type === "CAST_SPELL" && action.target.type === "unit" && action.target.unitId === "unit_p2_vampires"
-      )
+        (action) =>
+          action.type === "CAST_SPELL" &&
+          action.target.type === "unit" &&
+          action.target.unitId === "unit_p2_vampires",
+      ),
     ).toBe(false);
   });
 
@@ -277,29 +458,47 @@ describe("Balance Pack — tier ladders", () => {
       state.combat!.units.unit_p1_crusaders.retaliatedThisRound = true;
       return state;
     };
-    const on = cast(setup(true), "spell.counterstrike", 1, { type: "unit", unitId: "unit_p1_crusaders" });
+    const on = cast(setup(true), "spell.counterstrike", 1, {
+      type: "unit",
+      unitId: "unit_p1_crusaders",
+    });
     expect(on.combat!.units.unit_p1_crusaders.retaliatedThisRound).toBe(false);
 
-    const off = cast(setup(false), "spell.counterstrike", 1, { type: "unit", unitId: "unit_p1_crusaders" });
+    const off = cast(setup(false), "spell.counterstrike", 1, {
+      type: "unit",
+      unitId: "unit_p1_crusaders",
+    });
     expect(off.combat!.units.unit_p1_crusaders.retaliatedThisRound).toBe(true);
   });
 
   it("Anti-Magic's ward blocks Spell DAMAGE, not only targeting", () => {
     const onState = combat(true);
     onState.combat!.units.unit_p1_crusaders.grade = "bronze";
-    const on = cast(onState, "spell.anti_magic", 0, { type: "unit", unitId: "unit_p1_crusaders" });
+    const on = cast(onState, "spell.anti_magic", 0, {
+      type: "unit",
+      unitId: "unit_p1_crusaders",
+    });
     const ward = effectsOn(on, "unit_p1_crusaders")[0]!;
     expect(ward.modifiers.map((modifier) => modifier.type)).toEqual(
-      expect.arrayContaining(["UNIT_SPELL_IMMUNE", "SPELL_DAMAGE_REDUCTION", "SPECIALTY_IMMUNITY"])
+      expect.arrayContaining([
+        "UNIT_SPELL_IMMUNE",
+        "SPELL_DAMAGE_REDUCTION",
+        "SPECIALTY_IMMUNITY",
+      ]),
     );
 
     // CONTROL: the classic ward is targeting-only.
     const offState = combat(false);
     offState.combat!.units.unit_p1_crusaders.grade = "bronze";
-    const off = cast(offState, "spell.anti_magic", 0, { type: "unit", unitId: "unit_p1_crusaders" });
-    expect(effectsOn(off, "unit_p1_crusaders")[0]!.modifiers.map((modifier) => modifier.type)).toEqual([
-      "UNIT_SPELL_IMMUNE"
-    ]);
+    const off = cast(offState, "spell.anti_magic", 0, {
+      type: "unit",
+      unitId: "unit_p1_crusaders",
+    });
+    expect(
+      effectsOn(off, "unit_p1_crusaders")[0]!.modifiers.map(
+        (modifier) => modifier.type,
+      ),
+    ).toEqual(["UNIT_SPELL_IMMUNE"]);
   });
 });
 
@@ -309,42 +508,85 @@ describe("Balance Pack — tier ladders", () => {
 
 describe("Balance Pack — number ladders", () => {
   it("Fire Shield burns for this AND the next combat round", () => {
-    const on = cast(combat(true), "spell.fire_shield", 0, { type: "unit", unitId: "unit_p1_crusaders" });
+    const on = cast(combat(true), "spell.fire_shield", 0, {
+      type: "unit",
+      unitId: "unit_p1_crusaders",
+    });
     const shield = effectsOn(on, "unit_p1_crusaders")[0]!;
     expect(shield.expiresAtCombatRoundEnd).toBe(on.combat!.round + 1);
 
-    const off = cast(combat(false), "spell.fire_shield", 0, { type: "unit", unitId: "unit_p1_crusaders" });
-    expect(effectsOn(off, "unit_p1_crusaders")[0]!.expiresAtCombatRoundEnd).toBe(off.combat!.round);
+    const off = cast(combat(false), "spell.fire_shield", 0, {
+      type: "unit",
+      unitId: "unit_p1_crusaders",
+    });
+    expect(
+      effectsOn(off, "unit_p1_crusaders")[0]!.expiresAtCombatRoundEnd,
+    ).toBe(off.combat!.round);
   });
 
   it("Fire Wall deals 2 at Power 1 (the classic wall needs Power 2)", () => {
-    const on = cast(combat(true), "spell.fire_wall", 1, { type: "space", position: 9 });
-    expect(on.combat!.battlefieldTokens?.find((token) => token.kind === "fire_wall")?.damage).toBe(2);
+    const on = cast(combat(true), "spell.fire_wall", 1, {
+      type: "space",
+      position: 9,
+    });
+    expect(
+      on.combat!.battlefieldTokens?.find((token) => token.kind === "fire_wall")
+        ?.damage,
+    ).toBe(2);
 
-    const off = cast(combat(false), "spell.fire_wall", 1, { type: "space", position: 9 });
-    expect(off.combat!.battlefieldTokens?.find((token) => token.kind === "fire_wall")?.damage).toBe(1);
+    const off = cast(combat(false), "spell.fire_wall", 1, {
+      type: "space",
+      position: 9,
+    });
+    expect(
+      off.combat!.battlefieldTokens?.find((token) => token.kind === "fire_wall")
+        ?.damage,
+    ).toBe(1);
   });
 
   it("Fortune grants 2 rerolls at Power 0 (the classic card grants 1)", () => {
     const on = cast(combat(true), "spell.fortune", 0, { type: "none" });
-    const fortuneOn = on.activeEffects.find((effect) => effect.name === "Fortune")!;
+    const fortuneOn = on.activeEffects.find(
+      (effect) => effect.name === "Fortune",
+    )!;
     expect(fortuneOn.modifiers).toEqual(
-      expect.arrayContaining([{ type: "ATTACK_DIE_REROLL", maxUsesPerRoll: 2, consumeEffectOnUse: true, chooseResult: true }])
+      expect.arrayContaining([
+        {
+          type: "ATTACK_DIE_REROLL",
+          maxUsesPerRoll: 2,
+          consumeEffectOnUse: true,
+          chooseResult: true,
+        },
+      ]),
     );
 
     const off = cast(combat(false), "spell.fortune", 0, { type: "none" });
-    const fortuneOff = off.activeEffects.find((effect) => effect.name === "Fortune")!;
+    const fortuneOff = off.activeEffects.find(
+      (effect) => effect.name === "Fortune",
+    )!;
     expect(fortuneOff.modifiers).toEqual(
-      expect.arrayContaining([{ type: "ATTACK_DIE_REROLL", maxUsesPerRoll: 1, consumeEffectOnUse: true, chooseResult: true }])
+      expect.arrayContaining([
+        {
+          type: "ATTACK_DIE_REROLL",
+          maxUsesPerRoll: 1,
+          consumeEffectOnUse: true,
+          chooseResult: true,
+        },
+      ]),
     );
   });
 
   it("Mirth reaches 'this Combat round' at Power 1 (the classic card needs Power 2)", () => {
     const on = cast(combat(true), "spell.mirth", 1, { type: "none" });
-    expect(on.activeEffects.find((effect) => effect.name === "Mirth")!.duration.type).toBe("current-combat-round");
+    expect(
+      on.activeEffects.find((effect) => effect.name === "Mirth")!.duration.type,
+    ).toBe("current-combat-round");
 
     const off = cast(combat(false), "spell.mirth", 1, { type: "none" });
-    expect(off.activeEffects.find((effect) => effect.name === "Mirth")!.duration.type).toBe("current-activation");
+    expect(
+      off.activeEffects.find((effect) => effect.name === "Mirth")!.duration
+        .type,
+    ).toBe("current-activation");
   });
 });
 
@@ -353,7 +595,10 @@ describe("Balance Pack — number ladders", () => {
 // ===========================================================================
 
 /** p1's griffins declare an attack on p2's vampires, opening the window. */
-function declaredAttack(balance: boolean, prepare?: (state: GameState) => void): GameState {
+function declaredAttack(
+  balance: boolean,
+  prepare?: (state: GameState) => void,
+): GameState {
   const state = combat(balance);
   state.combat!.units.unit_p1_griffins.position = 9;
   state.combat!.units.unit_p2_vampires.position = 10;
@@ -362,20 +607,29 @@ function declaredAttack(balance: boolean, prepare?: (state: GameState) => void):
     (legal) =>
       legal.action.type === "ATTACK_UNIT" &&
       legal.action.attackerId === "unit_p1_griffins" &&
-      legal.action.defenderId === "unit_p2_vampires"
+      legal.action.defenderId === "unit_p2_vampires",
   );
   expect(attack, "the attack should be declarable").toBeTruthy();
   return applyOk(state, attack!.action);
 }
 
-function reactionOffers(state: GameState, cardId: string, playerId: "p1" | "p2") {
+function reactionOffers(
+  state: GameState,
+  cardId: string,
+  playerId: "p1" | "p2",
+) {
   return getLegalActions(state, playerId).filter(
-    (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === cardId
+    (legal) =>
+      legal.action.type === "PLAY_REACTION" && legal.action.cardId === cardId,
   );
 }
 
 /** Standing spell Power for `playerId` — the Power an instant scales off. */
-function grantPower(state: GameState, playerId: "p1" | "p2", amount: number): void {
+function grantPower(
+  state: GameState,
+  playerId: "p1" | "p2",
+  amount: number,
+): void {
   state.activeEffects.push({
     id: `effect_power_${playerId}_${amount}`,
     name: "Test Power",
@@ -389,7 +643,7 @@ function grantPower(state: GameState, playerId: "p1" | "p2", amount: number): vo
     startedRound: state.round,
     usedRollEventIds: [],
     usedChoiceIds: [],
-    usedCombatRoundNumbers: []
+    usedCombatRoundNumbers: [],
   } as unknown as GameState["activeEffects"][number]);
 }
 
@@ -403,7 +657,10 @@ describe("Balance Pack — reaction reprints", () => {
         grantPower(s, "p1", 1);
       });
       const offers = reactionOffers(state, "spell.frenzy", "p1");
-      expect(offers.length, "Frenzy answers your own declared attack").toBeGreaterThan(0);
+      expect(
+        offers.length,
+        "Frenzy answers your own declared attack",
+      ).toBeGreaterThan(0);
       return passAllReactions(applyOk(state, offers[0]!.action));
     };
     const pierced = play(true).combat!.units.unit_p2_vampires.damage;
@@ -418,10 +675,14 @@ describe("Balance Pack — reaction reprints", () => {
       s.players.p1.hand = ["spell.slayer" as CardId];
     });
     const offers = reactionOffers(on, "spell.slayer", "p1");
-    expect(offers.length, "Slayer must answer an azure target under the reprint").toBeGreaterThan(0);
+    expect(
+      offers.length,
+      "Slayer must answer an azure target under the reprint",
+    ).toBeGreaterThan(0);
     const played = passAllReactions(applyOk(on, offers[0]!.action));
     const rolled = played.eventLog.find(
-      (event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "slayer"
+      (event) =>
+        event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "slayer",
     ) as { message: string } | undefined;
     expect(rolled?.message).toContain("3 Attack dice");
 
@@ -446,7 +707,8 @@ describe("Balance Pack — reaction reprints", () => {
     expect(offers.length).toBeGreaterThan(0);
     const played = passAllReactions(applyOk(on, offers[0]!.action));
     const rolled = played.eventLog.find(
-      (event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "slayer"
+      (event) =>
+        event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "slayer",
     ) as { message: string } | undefined;
     expect(rolled?.message).toContain("7 Attack dice");
   });
@@ -454,7 +716,10 @@ describe("Balance Pack — reaction reprints", () => {
   it("Sorrow's silver skip costs 1 Power (the classic card charges 2)", () => {
     const priceOf = (card: CardDefinition | undefined) => {
       expect(card?.effect.type).toBe("CHOOSE_ONE");
-      const effect = card!.effect as Extract<CardDefinition["effect"], { type: "CHOOSE_ONE" }>;
+      const effect = card!.effect as Extract<
+        CardDefinition["effect"],
+        { type: "CHOOSE_ONE" }
+      >;
       return effect.options.map((option) => option.cost?.powerCost ?? 0);
     };
     expect(priceOf(polishBalanceSpellCards["spell.sorrow"])).toEqual([0, 1, 3]);
@@ -473,18 +738,30 @@ describe("Balance Pack — reaction reprints", () => {
   // The crown budget is zeroed on BOTH arms: a Power statistic can be upgraded to
   // its expert +2 with a crown, which would let ONE card buy the classic 2-Power
   // rung too and hide the price change under test.
-  function aboutToActivate(balance: boolean, targetId: string, hand: string[], seed: string): GameState {
+  function aboutToActivate(
+    balance: boolean,
+    targetId: string,
+    hand: string[],
+    seed: string,
+  ): GameState {
     const state = combat(balance, seed);
     state.players.p1.hand = hand as CardId[];
-    state.players.p1.combatStats.expertUsesSpentThisRound = state.players.p1.limits.expertUses;
+    state.players.p1.combatStats.expertUsesSpentThisRound =
+      state.players.p1.limits.expertUses;
     for (const unit of Object.values(state.combat!.units)) {
       unit.activatedThisRound =
-        unit.id !== "unit_p1_griffins" && unit.id !== "unit_p1_marksmen" && unit.id !== targetId;
+        unit.id !== "unit_p1_griffins" &&
+        unit.id !== "unit_p1_marksmen" &&
+        unit.id !== targetId;
     }
     // …and the target activates before it, so the skip window is about the unit
     // under test rather than the spare body.
     state.combat!.units[targetId as UnitId].initiative = 99;
-    const opened = applyOk(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
+    const opened = applyOk(state, {
+      type: "DEFEND_UNIT",
+      playerId: "p1",
+      unitId: "unit_p1_griffins",
+    });
     expect(opened.combat!.activeUnitId).toBe(targetId);
     return opened;
   }
@@ -496,8 +773,14 @@ describe("Balance Pack — reaction reprints", () => {
     const on = silverAboutToActivate(true, ["spell.sorrow", "stat.power"]);
     expect(on.combat!.activeUnitId).toBe("unit_p2_vampires");
     const offer = reactionOffers(on, "spell.sorrow", "p1")[0];
-    expect(offer, "one Power card reaches the reprint's silver rung").toBeTruthy();
-    const played = applyAction(on, { ...offer!.action, costCardIds: ["stat.power"] } as GameAction);
+    expect(
+      offer,
+      "one Power card reaches the reprint's silver rung",
+    ).toBeTruthy();
+    const played = applyAction(on, {
+      ...offer!.action,
+      costCardIds: ["stat.power"],
+    } as GameAction);
     expect(played.errors.map((error) => error.message)).toEqual([]);
     // The observable outcome: the vampires' activation was consumed without them
     // moving or attacking, and exactly one Power card paid for it.
@@ -511,31 +794,60 @@ describe("Balance Pack — reaction reprints", () => {
     // even enough to open the window.
     const off = silverAboutToActivate(false, ["spell.sorrow", "stat.power"]);
     expect(off.combat!.activeUnitId).toBe("unit_p2_vampires");
-    expect(reactionOffers(off, "spell.sorrow", "p1"), "1 Power cannot buy the classic silver rung").toEqual([]);
+    expect(
+      reactionOffers(off, "spell.sorrow", "p1"),
+      "1 Power cannot buy the classic silver rung",
+    ).toEqual([]);
     expect(off.combat!.units.unit_p2_vampires.activatedThisRound).toBe(false);
   });
 
   it("CONTROL: the reprint's rungs still gate by GRADE — a gold unit needs 3, a bronze is free", () => {
     const goldTurn = (hand: string[]): GameState =>
-      aboutToActivate(true, "unit_p2_dread_knights", hand, "polish-sorrow-gold");
+      aboutToActivate(
+        true,
+        "unit_p2_dread_knights",
+        hand,
+        "polish-sorrow-gold",
+      );
     // Two Power cards cannot reach the gold rung (3) …
-    expect(reactionOffers(goldTurn(["spell.sorrow", "stat.power", "stat.power"]), "spell.sorrow", "p1")).toEqual([]);
+    expect(
+      reactionOffers(
+        goldTurn(["spell.sorrow", "stat.power", "stat.power"]),
+        "spell.sorrow",
+        "p1",
+      ),
+    ).toEqual([]);
     // … three can, and the play is the gold option (index 2), never the silver one.
-    const rich = goldTurn(["spell.sorrow", "stat.power", "stat.power", "stat.power"]);
+    const rich = goldTurn([
+      "spell.sorrow",
+      "stat.power",
+      "stat.power",
+      "stat.power",
+    ]);
     const goldOffer = reactionOffers(rich, "spell.sorrow", "p1")[0];
     expect(goldOffer?.action).toMatchObject({ optionIndex: 2 });
     const played = applyAction(rich, {
       ...goldOffer!.action,
-      costCardIds: ["stat.power", "stat.power", "stat.power"]
+      costCardIds: ["stat.power", "stat.power", "stat.power"],
     } as GameAction);
     expect(played.errors.map((error) => error.message)).toEqual([]);
-    expect(played.state.combat!.units.unit_p2_dread_knights.activatedThisRound).toBe(true);
+    expect(
+      played.state.combat!.units.unit_p2_dread_knights.activatedThisRound,
+    ).toBe(true);
 
     // A BRONZE unit is still the FREE rung under the reprint (unchanged at 0).
-    const bronzeWindow = aboutToActivate(true, "unit_p2_skeletons", ["spell.sorrow"], "polish-sorrow-bronze");
+    const bronzeWindow = aboutToActivate(
+      true,
+      "unit_p2_skeletons",
+      ["spell.sorrow"],
+      "polish-sorrow-bronze",
+    );
     const bronzeOffer = reactionOffers(bronzeWindow, "spell.sorrow", "p1")[0];
     expect(bronzeOffer?.action).toMatchObject({ optionIndex: 0 });
-    expect(applyOk(bronzeWindow, bronzeOffer!.action).combat!.units.unit_p2_skeletons.activatedThisRound).toBe(true);
+    expect(
+      applyOk(bronzeWindow, bronzeOffer!.action).combat!.units.unit_p2_skeletons
+        .activatedThisRound,
+    ).toBe(true);
   });
 });
 
@@ -561,13 +873,13 @@ describe("Balance Pack — Misfortune", () => {
     state.combat!.units.unit_p1_griffins.position = 10;
     state.players.p1.hand = [
       "spell.misfortune" as CardId,
-      ...Array.from({ length: rung }, () => "stat.power" as CardId)
+      ...Array.from({ length: rung }, () => "stat.power" as CardId),
     ];
     const attack = getLegalActions(state, "p2").find(
       (legal) =>
         legal.action.type === "ATTACK_UNIT" &&
         legal.action.attackerId === "unit_p2_vampires" &&
-        legal.action.defenderId === "unit_p1_griffins"
+        legal.action.defenderId === "unit_p1_griffins",
     );
     expect(attack, "the enemy attack should be declarable").toBeTruthy();
     let next = applyOk(state, attack!.action);
@@ -575,7 +887,7 @@ describe("Balance Pack — Misfortune", () => {
       (legal) =>
         legal.action.type === "PLAY_REACTION" &&
         legal.action.cardId === "spell.misfortune" &&
-        (balance || (legal.action.optionIndex ?? 0) === rung)
+        (balance || (legal.action.optionIndex ?? 0) === rung),
     );
     if (!offer) {
       return null;
@@ -585,19 +897,30 @@ describe("Balance Pack — Misfortune", () => {
       !balance && rung > 0 && offer.action.type === "PLAY_REACTION"
         ? {
             ...offer.action,
-            costCardIds: Array.from({ length: rung }, () => "stat.power" as CardId)
+            costCardIds: Array.from(
+              { length: rung },
+              () => "stat.power" as CardId,
+            ),
           }
         : offer.action;
     next = applyOk(next, action);
     if (balance) {
       for (let index = 0; index < rung; index += 1) {
         if (next.reactionWindow?.priorityPlayerId !== "p1") {
-          next = applyOk(next, { type: "PASS_REACTION", playerId: next.reactionWindow!.priorityPlayerId });
+          next = applyOk(next, {
+            type: "PASS_REACTION",
+            playerId: next.reactionWindow!.priorityPlayerId,
+          });
         }
         const power = getLegalActions(next, "p1").find(
-          (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "stat.power"
+          (legal) =>
+            legal.action.type === "PLAY_REACTION" &&
+            legal.action.cardId === "stat.power",
         );
-        expect(power, `Misfortune Power boost ${index + 1} is offered after choosing the Spell`).toBeTruthy();
+        expect(
+          power,
+          `Misfortune Power boost ${index + 1} is offered after choosing the Spell`,
+        ).toBeTruthy();
         next = applyOk(next, power!.action);
       }
     }
@@ -606,14 +929,19 @@ describe("Balance Pack — Misfortune", () => {
 
   function misfortuneNote(state: GameState): string | undefined {
     const event = state.eventLog.find(
-      (entry) => entry.type === "UNIT_ABILITY_TRIGGERED" && entry.abilityId === "misfortune"
+      (entry) =>
+        entry.type === "UNIT_ABILITY_TRIGGERED" &&
+        entry.abilityId === "misfortune",
     ) as { message: string } | undefined;
     return event?.message;
   }
 
   it("rung 1 rolls 2 dice and resolves the LOWER result", () => {
     const state = cursedAttack(true, 1);
-    expect(state, "the reprint's second rung is offered against a bronze attacker").not.toBeNull();
+    expect(
+      state,
+      "the reprint's second rung is offered against a bronze attacker",
+    ).not.toBeNull();
     const note = misfortuneNote(state!);
     expect(note).toContain("2 Attack dice");
     expect(note).toContain("lower");
@@ -628,7 +956,10 @@ describe("Balance Pack — Misfortune", () => {
   it("CONTROL: rung 0 still negates the die, and the classic card offers no rung above its tier match", () => {
     const rungZero = cursedAttack(true, 0);
     expect(rungZero).not.toBeNull();
-    expect(misfortuneNote(rungZero!), "rung 0 cancels the die, it does not roll one").toBeUndefined();
+    expect(
+      misfortuneNote(rungZero!),
+      "rung 0 cancels the die, it does not roll one",
+    ).toBeUndefined();
 
     // With the rule OFF the card is tier-gated: against a BRONZE attacker only
     // its bronze rung is offered, so the punished-die rungs are unreachable.
@@ -657,26 +988,45 @@ describe("Balance Pack — the post-cast picks", () => {
     let state = combat(true);
     state.combat!.units.unit_p2_vampires.grade = "bronze";
     // Two live buffs, one on each side.
-    state = cast(state, "spell.haste", 0, { type: "unit", unitId: "unit_p1_marksmen" });
-    state = cast(readyToCastAgain(state), "spell.slow", 0, { type: "unit", unitId: "unit_p2_vampires" });
+    state = cast(state, "spell.haste", 0, {
+      type: "unit",
+      unitId: "unit_p1_marksmen",
+    });
+    state = cast(readyToCastAgain(state), "spell.slow", 0, {
+      type: "unit",
+      unitId: "unit_p2_vampires",
+    });
     expect(state.activeEffects.length).toBeGreaterThanOrEqual(2);
     // Plus two battlefield obstacles sitting on OTHER (empty) spaces, NOT on the
     // dispel target — so only the board-wide "ALL" clear can lift them.
     state.combat!.battlefieldTokens = [
-      { id: "bft_fw", kind: "fire_wall", position: 9, controllerId: "p2", damage: 3 },
-      { id: "bft_ff", kind: "force_field", position: 3, controllerId: "p2" }
+      {
+        id: "bft_fw",
+        kind: "fire_wall",
+        position: 9,
+        controllerId: "p2",
+        damage: 3,
+      },
+      { id: "bft_ff", kind: "force_field", position: 3, controllerId: "p2" },
     ];
 
-    state = cast(readyToCastAgain(state), "spell.dispel", 2, { type: "unit", unitId: "unit_p2_vampires" });
+    state = cast(readyToCastAgain(state), "spell.dispel", 2, {
+      type: "unit",
+      unitId: "unit_p2_vampires",
+    });
     expect(state.pendingChoice?.type).toBe("OPTION_CHOICE");
-    expect((state.pendingChoice as { context?: string }).context).toBe("dispel-scope");
+    expect((state.pendingChoice as { context?: string }).context).toBe(
+      "dispel-scope",
+    );
     const cleared = applyOk(state, {
       type: "CHOOSE_OPTION",
       playerId: "p1",
       choiceId: state.pendingChoice!.id,
-      optionIndex: 1
+      optionIndex: 1,
     });
-    expect(cleared.activeEffects.filter((effect) => effect.removable !== false)).toEqual([]);
+    expect(
+      cleared.activeEffects.filter((effect) => effect.removable !== false),
+    ).toEqual([]);
     // Firewall and Force Field are cleared too (they live on battlefieldTokens).
     expect(cleared.combat!.battlefieldTokens ?? []).toEqual([]);
   });
@@ -687,25 +1037,44 @@ describe("Balance Pack — the post-cast picks", () => {
     // Vampires at their own space; a Fire Wall sits elsewhere (space 9).
     const vampiresPos = state.combat!.units.unit_p2_vampires.position;
     state.combat!.battlefieldTokens = [
-      { id: "bft_fw_far", kind: "fire_wall", position: vampiresPos === 9 ? 3 : 9, controllerId: "p2", damage: 3 }
+      {
+        id: "bft_fw_far",
+        kind: "fire_wall",
+        position: vampiresPos === 9 ? 3 : 9,
+        controllerId: "p2",
+        damage: 3,
+      },
     ];
-    state = cast(readyToCastAgain(state), "spell.dispel", 2, { type: "unit", unitId: "unit_p2_vampires" });
+    state = cast(readyToCastAgain(state), "spell.dispel", 2, {
+      type: "unit",
+      unitId: "unit_p2_vampires",
+    });
     // Pick option 0 = the printed unit/space cleanse (only the target's own space).
     const cleared = applyOk(state, {
       type: "CHOOSE_OPTION",
       playerId: "p1",
       choiceId: state.pendingChoice!.id,
-      optionIndex: 0
+      optionIndex: 0,
     });
     // The distant wall survives — only the board-wide "ALL" pick clears it.
-    expect((cleared.combat!.battlefieldTokens ?? []).some((token) => token.kind === "fire_wall")).toBe(true);
+    expect(
+      (cleared.combat!.battlefieldTokens ?? []).some(
+        (token) => token.kind === "fire_wall",
+      ),
+    ).toBe(true);
   });
 
   it("CONTROL: with the rule OFF Dispel opens no scope pick and clears only its target", () => {
     let state = combat(false);
     state.combat!.units.unit_p2_vampires.grade = "bronze";
-    state = cast(state, "spell.haste", 0, { type: "unit", unitId: "unit_p1_marksmen" });
-    state = cast(readyToCastAgain(state), "spell.dispel", 2, { type: "unit", unitId: "unit_p2_vampires" });
+    state = cast(state, "spell.haste", 0, {
+      type: "unit",
+      unitId: "unit_p1_marksmen",
+    });
+    state = cast(readyToCastAgain(state), "spell.dispel", 2, {
+      type: "unit",
+      unitId: "unit_p2_vampires",
+    });
     expect(state.pendingChoice).toBeNull();
     // The friendly Haste survives — the classic card only touches its target.
     expect(effectsOn(state, "unit_p1_marksmen").length).toBe(1);
@@ -715,53 +1084,74 @@ describe("Balance Pack — the post-cast picks", () => {
     const base = combat(balance);
     base.combat!.units.unit_p2_vampires.grade = "bronze";
     base.combat!.units.unit_p2_vampires.defense = 3;
-    return cast(base, "spell.disrupting_ray", 0, { type: "unit", unitId: "unit_p2_vampires" });
+    return cast(base, "spell.disrupting_ray", 0, {
+      type: "unit",
+      unitId: "unit_p2_vampires",
+    });
   }
 
   it("Disrupting Ray lets the caster take -1 Defense instead of the ability lock", () => {
     const state = disruptingRay(true);
-    expect((state.pendingChoice as { context?: string }).context).toBe("disrupting-ray-mode");
+    expect((state.pendingChoice as { context?: string }).context).toBe(
+      "disrupting-ray-mode",
+    );
     const chosen = applyOk(state, {
       type: "CHOOSE_OPTION",
       playerId: "p1",
       choiceId: state.pendingChoice!.id,
-      optionIndex: 1
+      optionIndex: 1,
     });
-    expect(effectsOn(chosen, "unit_p2_vampires")[0]!.modifiers).toEqual([{ type: "DEFENSE_BONUS", amount: -1 }]);
+    expect(effectsOn(chosen, "unit_p2_vampires")[0]!.modifiers).toEqual([
+      { type: "DEFENSE_BONUS", amount: -1 },
+    ]);
 
     // Option 0 keeps the classic ability lock.
     const locked = applyOk(state, {
       type: "CHOOSE_OPTION",
       playerId: "p1",
       choiceId: state.pendingChoice!.id,
-      optionIndex: 0
+      optionIndex: 0,
     });
-    expect(effectsOn(locked, "unit_p2_vampires")[0]!.modifiers).toEqual([{ type: "UNIT_ABILITY_SUPPRESSED" }]);
+    expect(effectsOn(locked, "unit_p2_vampires")[0]!.modifiers).toEqual([
+      { type: "UNIT_ABILITY_SUPPRESSED" },
+    ]);
   });
 
   it("CONTROL: with the rule OFF Disrupting Ray opens no pick and always suppresses", () => {
     const state = disruptingRay(false);
     expect(state.pendingChoice).toBeNull();
-    expect(effectsOn(state, "unit_p2_vampires")[0]!.modifiers).toEqual([{ type: "UNIT_ABILITY_SUPPRESSED" }]);
+    expect(effectsOn(state, "unit_p2_vampires")[0]!.modifiers).toEqual([
+      { type: "UNIT_ABILITY_SUPPRESSED" },
+    ]);
   });
 
   it("both new picks are answerable by the AI and by the forced-resolution driver (never a stall)", () => {
     const picks: GameState[] = [disruptingRay(true)];
-    let dispel = combat(true);
+    const dispel = combat(true);
     dispel.combat!.units.unit_p2_vampires.grade = "bronze";
-    picks.push(cast(dispel, "spell.dispel", 2, { type: "unit", unitId: "unit_p2_vampires" }));
+    picks.push(
+      cast(dispel, "spell.dispel", 2, {
+        type: "unit",
+        unitId: "unit_p2_vampires",
+      }),
+    );
 
     for (const state of picks) {
       const context = (state.pendingChoice as { context?: string }).context;
       expect(["dispel-scope", "disrupting-ray-mode"]).toContain(context);
       const driver = nextTurnTimeoutAction(state, "p1");
-      expect(driver?.type, `${context}: the AFK / timeout driver answers it`).toBe("CHOOSE_OPTION");
+      expect(
+        driver?.type,
+        `${context}: the AFK / timeout driver answers it`,
+      ).toBe("CHOOSE_OPTION");
       const ai = chooseComputerAction({
         playerId: "p1",
         state: state as unknown as ComputerObservation["state"],
-        legalActions: getLegalActions(state, "p1")
+        legalActions: getLegalActions(state, "p1"),
       });
-      expect(ai?.action.type, `${context}: a computer seat answers it`).toBe("CHOOSE_OPTION");
+      expect(ai?.action.type, `${context}: a computer seat answers it`).toBe(
+        "CHOOSE_OPTION",
+      );
     }
   });
 });
@@ -782,8 +1172,13 @@ describe("Balance Pack — the remaining reprints", () => {
 
   it("Forgetfulness blocks only the RANGED attack — melee still works", () => {
     let state = withEnemyShooter(true);
-    state = cast(state, "spell.forgetfulness", 1, { type: "unit", unitId: "unit_p2_skeletons" });
-    expect(effectsOn(state, "unit_p2_skeletons")[0]!.modifiers).toEqual([{ type: "UNIT_CANNOT_RANGED_ATTACK" }]);
+    state = cast(state, "spell.forgetfulness", 1, {
+      type: "unit",
+      unitId: "unit_p2_skeletons",
+    });
+    expect(effectsOn(state, "unit_p2_skeletons")[0]!.modifiers).toEqual([
+      { type: "UNIT_CANNOT_RANGED_ATTACK" },
+    ]);
 
     // Observable: it may not shoot a distant enemy, but it may hit an adjacent one.
     state.activePlayerId = "p2";
@@ -793,16 +1188,31 @@ describe("Balance Pack — the remaining reprints", () => {
     state.combat!.units.unit_p1_griffins.position = 19;
     state.combat!.units.unit_p1_crusaders.position = 0;
     const targets = getLegalActions(state, "p2")
-      .filter((legal) => legal.action.type === "ATTACK_UNIT" && legal.action.attackerId === "unit_p2_skeletons")
-      .map((legal) => (legal.action.type === "ATTACK_UNIT" ? legal.action.defenderId : ""));
-    expect(targets, "the adjacent melee strike survives").toContain("unit_p1_crusaders");
-    expect(targets, "the distant shot does not").not.toContain("unit_p1_griffins");
+      .filter(
+        (legal) =>
+          legal.action.type === "ATTACK_UNIT" &&
+          legal.action.attackerId === "unit_p2_skeletons",
+      )
+      .map((legal) =>
+        legal.action.type === "ATTACK_UNIT" ? legal.action.defenderId : "",
+      );
+    expect(targets, "the adjacent melee strike survives").toContain(
+      "unit_p1_crusaders",
+    );
+    expect(targets, "the distant shot does not").not.toContain(
+      "unit_p1_griffins",
+    );
   });
 
   it("CONTROL: with the rule OFF Forgetfulness blocks EVERY attack", () => {
     let state = withEnemyShooter(false);
-    state = cast(state, "spell.forgetfulness", 1, { type: "unit", unitId: "unit_p2_skeletons" });
-    expect(effectsOn(state, "unit_p2_skeletons")[0]!.modifiers).toEqual([{ type: "UNIT_CANNOT_ATTACK" }]);
+    state = cast(state, "spell.forgetfulness", 1, {
+      type: "unit",
+      unitId: "unit_p2_skeletons",
+    });
+    expect(effectsOn(state, "unit_p2_skeletons")[0]!.modifiers).toEqual([
+      { type: "UNIT_CANNOT_ATTACK" },
+    ]);
 
     state.activePlayerId = "p2";
     state.combat!.activeUnitId = "unit_p2_skeletons";
@@ -810,24 +1220,36 @@ describe("Balance Pack — the remaining reprints", () => {
     state.combat!.units.unit_p1_crusaders.position = 0;
     expect(
       getLegalActions(state, "p2").filter(
-        (legal) => legal.action.type === "ATTACK_UNIT" && legal.action.attackerId === "unit_p2_skeletons"
-      )
+        (legal) =>
+          legal.action.type === "ATTACK_UNIT" &&
+          legal.action.attackerId === "unit_p2_skeletons",
+      ),
     ).toEqual([]);
   });
 
   it("Forgetfulness at Power 2 lasts TWO of the target's activations", () => {
     let state = withEnemyShooter(true);
-    state = cast(state, "spell.forgetfulness", 2, { type: "unit", unitId: "unit_p2_skeletons" });
-    expect(effectsOn(state, "unit_p2_skeletons")[0]!.activationsRemaining).toBe(2);
+    state = cast(state, "spell.forgetfulness", 2, {
+      type: "unit",
+      unitId: "unit_p2_skeletons",
+    });
+    expect(effectsOn(state, "unit_p2_skeletons")[0]!.activationsRemaining).toBe(
+      2,
+    );
   });
 
   it("Prayer is a lasting buff on the selected unit, not a one-attack rider", () => {
-    const state = cast(combat(true), "spell.prayer", 0, { type: "unit", unitId: "unit_p1_crusaders" });
-    const buff = effectsOn(state, "unit_p1_crusaders").find((effect) => effect.name === "Prayer")!;
+    const state = cast(combat(true), "spell.prayer", 0, {
+      type: "unit",
+      unitId: "unit_p1_crusaders",
+    });
+    const buff = effectsOn(state, "unit_p1_crusaders").find(
+      (effect) => effect.name === "Prayer",
+    )!;
     expect(buff.modifiers).toEqual([
       { type: "ATTACK_BONUS", amount: 1 },
       { type: "DEFENSE_BONUS", amount: 1 },
-      { type: "INITIATIVE_BONUS", amount: 1 }
+      { type: "INITIATIVE_BONUS", amount: 1 },
     ]);
     expect(buff.duration.type).toBe("next-activation");
   });
@@ -837,8 +1259,8 @@ describe("Balance Pack — the remaining reprints", () => {
     state.players.p1.hand = ["spell.prayer" as CardId];
     expect(
       castOffers(state, "spell.prayer").filter(
-        (action) => action.type === "CAST_SPELL" && action.optionIndex === 0
-      )
+        (action) => action.type === "CAST_SPELL" && action.optionIndex === 0,
+      ),
     ).toEqual([]);
   });
 
@@ -852,8 +1274,13 @@ describe("Balance Pack — the remaining reprints", () => {
   // the effect fields; each fails if that survival rule reverts.
 
   it("Prayer laid on the active unit survives its own activation-end and never expires at round-end", () => {
-    const state = cast(combat(true), "spell.prayer", 0, { type: "unit", unitId: "unit_p1_griffins" });
-    const buff = effectsOn(state, "unit_p1_griffins").find((effect) => effect.name === "Prayer")!;
+    const state = cast(combat(true), "spell.prayer", 0, {
+      type: "unit",
+      unitId: "unit_p1_griffins",
+    });
+    const buff = effectsOn(state, "unit_p1_griffins").find(
+      (effect) => effect.name === "Prayer",
+    )!;
     // Cast on the active unit → it must live through ONE extra activation-end so
     // "next activation" means the unit's NEXT-ROUND activation, not this one.
     expect(buff.activationsRemaining).toBe(2);
@@ -865,8 +1292,10 @@ describe("Balance Pack — the remaining reprints", () => {
     // activation-end). The buff must survive it.
     expireEffectsForActivationEnd(state, "unit_p1_griffins");
     expect(
-      effectsOn(state, "unit_p1_griffins").some((effect) => effect.name === "Prayer"),
-      "Prayer survives the buffed unit's own activation-end"
+      effectsOn(state, "unit_p1_griffins").some(
+        (effect) => effect.name === "Prayer",
+      ),
+      "Prayer survives the buffed unit's own activation-end",
     ).toBe(true);
   });
 
@@ -878,7 +1307,10 @@ describe("Balance Pack — the remaining reprints", () => {
    * to go" and 2 = "acted again next round" (buff gone).
    */
   function prayerRetaliationDamage(endedActivations: number): number {
-    const on = cast(combat(true), "spell.prayer", 0, { type: "unit", unitId: "unit_p1_griffins" });
+    const on = cast(combat(true), "spell.prayer", 0, {
+      type: "unit",
+      unitId: "unit_p1_griffins",
+    });
     const griffins = on.combat!.units.unit_p1_griffins;
     const skeletons = on.combat!.units.unit_p2_skeletons;
     griffins.attack = 5;
@@ -908,16 +1340,21 @@ describe("Balance Pack — the remaining reprints", () => {
         type: "ATTACK_UNIT",
         playerId: "p2",
         attackerId: "unit_p2_skeletons",
-        defenderId: "unit_p1_griffins"
-      })
+        defenderId: "unit_p1_griffins",
+      }),
     );
     return resolved.combat!.units.unit_p2_skeletons.damage;
   }
 
   it("Prayer ENDS at the buffed unit's next-round activation START — before it acts (user ruling 2026-08-20)", () => {
     // Cast on the active griffins in combat round 1.
-    const state = cast(combat(true), "spell.prayer", 0, { type: "unit", unitId: "unit_p1_griffins" });
-    const buff = effectsOn(state, "unit_p1_griffins").find((effect) => effect.name === "Prayer")!;
+    const state = cast(combat(true), "spell.prayer", 0, {
+      type: "unit",
+      unitId: "unit_p1_griffins",
+    });
+    const buff = effectsOn(state, "unit_p1_griffins").find(
+      (effect) => effect.name === "Prayer",
+    )!;
     // makeActiveEffect must bind the activation-START expiry to the unit (fails if
     // the field is not set for a positive next-activation buff on the active unit).
     expect(buff.expiresAtActivationStartUnitId).toBe("unit_p1_griffins");
@@ -928,16 +1365,25 @@ describe("Balance Pack — the remaining reprints", () => {
     // this round's retaliations.
     expireEffectsForActivationStart(state, "unit_p1_griffins");
     expect(
-      effectsOn(state, "unit_p1_griffins").some((effect) => effect.name === "Prayer"),
-      "Prayer survives a SAME-round activation start"
+      effectsOn(state, "unit_p1_griffins").some(
+        (effect) => effect.name === "Prayer",
+      ),
+      "Prayer survives a SAME-round activation start",
     ).toBe(true);
 
     // Next combat round: the unit activates → the buff is gone BEFORE it acts, so
     // its own attack this round is unbuffed (it cannot attack twice buffed).
     state.combat!.round = 2;
     const expired = expireEffectsForActivationStart(state, "unit_p1_griffins");
-    expect(expired.length, "the buff expires at the next-round activation start").toBe(1);
-    expect(effectsOn(state, "unit_p1_griffins").some((effect) => effect.name === "Prayer")).toBe(false);
+    expect(
+      expired.length,
+      "the buff expires at the next-round activation start",
+    ).toBe(1);
+    expect(
+      effectsOn(state, "unit_p1_griffins").some(
+        (effect) => effect.name === "Prayer",
+      ),
+    ).toBe(false);
   });
 
   it("Prayer covers the buffed unit's retaliation after it has acted (into the next round), then ends when it acts again", () => {
@@ -956,11 +1402,20 @@ describe("Balance Pack — the remaining reprints", () => {
     // The one-extra-activation survival is scoped to the CURRENTLY ACTIVE target
     // (the griffins is active in the fixture; the crusaders are not). On a
     // non-active unit Prayer is an ordinary next-activation buff.
-    const state = cast(combat(true), "spell.prayer", 0, { type: "unit", unitId: "unit_p1_crusaders" });
-    const buff = effectsOn(state, "unit_p1_crusaders").find((effect) => effect.name === "Prayer")!;
+    const state = cast(combat(true), "spell.prayer", 0, {
+      type: "unit",
+      unitId: "unit_p1_crusaders",
+    });
+    const buff = effectsOn(state, "unit_p1_crusaders").find(
+      (effect) => effect.name === "Prayer",
+    )!;
     expect(buff.activationsRemaining ?? 1).toBe(1);
     expireEffectsForActivationEnd(state, "unit_p1_crusaders");
-    expect(effectsOn(state, "unit_p1_crusaders").some((effect) => effect.name === "Prayer")).toBe(false);
+    expect(
+      effectsOn(state, "unit_p1_crusaders").some(
+        (effect) => effect.name === "Prayer",
+      ),
+    ).toBe(false);
   });
 
   it("Remove Obstacle clears 2 at Power 0 (the classic spell clears 1)", () => {
@@ -975,7 +1430,7 @@ describe("Balance Pack — the remaining reprints", () => {
           type: "CHOOSE_OPTION",
           playerId: "p1",
           choiceId: state.pendingChoice.id,
-          optionIndex: 0
+          optionIndex: 0,
         });
       }
       return 3 - (state.combat!.obstacles ?? []).length;
@@ -1004,17 +1459,19 @@ describe("Balance Pack — Shield", () => {
     state.combat!.units.unit_p1_crusaders.abilities = [];
     state.players.p1.hand = [
       "spell.shield" as CardId,
-      ...Array.from({ length: power }, () => "stat.power" as CardId)
+      ...Array.from({ length: power }, () => "stat.power" as CardId),
     ];
     const attack = getLegalActions(state, "p2").find(
       (legal) =>
         legal.action.type === "ATTACK_UNIT" &&
         legal.action.attackerId === "unit_p2_vampires" &&
-        legal.action.defenderId === "unit_p1_crusaders"
+        legal.action.defenderId === "unit_p1_crusaders",
     );
     let next = applyOk(state, attack!.action);
     const shield = getLegalActions(next, "p1").find(
-      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "spell.shield"
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === "spell.shield",
     );
     expect(shield, "Shield answers a ground attacker").toBeTruthy();
     next = applyOk(next, shield!.action);
@@ -1022,9 +1479,14 @@ describe("Balance Pack — Shield", () => {
     // power-scaled attack instants for exactly this).
     for (let i = 0; i < power; i += 1) {
       const boost = getLegalActions(next, "p1").find(
-        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "stat.power"
+        (legal) =>
+          legal.action.type === "PLAY_REACTION" &&
+          legal.action.cardId === "stat.power",
       );
-      expect(boost, "Power boost " + (i + 1) + " should be offered to the defender").toBeTruthy();
+      expect(
+        boost,
+        "Power boost " + (i + 1) + " should be offered to the defender",
+      ).toBeTruthy();
       next = applyOk(next, boost!.action);
     }
     next = passAllReactions(next);
@@ -1053,23 +1515,33 @@ describe("Balance Pack — Visions", () => {
       seed: `balance-visions-${balance}`,
       difficulty: "normal",
       rollFirstPlayer: false,
-      houseRules: { "polish-card-balance": balance }
+      houseRules: { "polish-card-balance": balance },
     });
     state.activePlayerId = "p1";
     if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
-      state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+      state = applyOk(state, {
+        type: "REFRESH_HAND",
+        playerId: "p1",
+        discardCardIds: [],
+      });
       state.activePlayerId = "p1";
     }
     state.players.p1.hand = ["spell.visions" as CardId];
     const offer = getLegalActions(state, "p1").find(
       (legal) =>
-        (legal.action.type === "CAST_SPELL" || legal.action.type === "PLAY_CARD") &&
-        legal.action.cardId === "spell.visions"
+        (legal.action.type === "CAST_SPELL" ||
+          legal.action.type === "PLAY_CARD") &&
+        legal.action.cardId === "spell.visions",
     );
     expect(offer, "Visions should be playable on the map").toBeTruthy();
     const next = applyOk(state, offer!.action);
-    const choice = next.pendingChoice as { visionsDeck?: { count: number } } | null;
-    expect(choice?.visionsDeck, "the Visions deck pick should open").toBeTruthy();
+    const choice = next.pendingChoice as {
+      visionsDeck?: { count: number };
+    } | null;
+    expect(
+      choice?.visionsDeck,
+      "the Visions deck pick should open",
+    ).toBeTruthy();
     return choice!.visionsDeck!.count;
   }
 
@@ -1090,25 +1562,32 @@ describe("Balance Pack — Bless in action", () => {
     state.combat!.units.unit_p1_griffins.position = 9;
     state.combat!.units.unit_p2_vampires.position = 10;
     if (balance) {
-      state = cast(state, "spell.bless", 1, { type: "unit", unitId: "unit_p1_griffins" });
+      state = cast(state, "spell.bless", 1, {
+        type: "unit",
+        unitId: "unit_p1_griffins",
+      });
       state.combat!.activeUnitId = "unit_p1_griffins";
       state.combat!.units.unit_p1_griffins.activatedThisRound = false;
     }
     state.players.p1.hand = [];
     if (balance) {
       expect(
-        effectsOn(state, "unit_p1_griffins").flatMap((effect) => effect.modifiers.map((m) => m.type))
+        effectsOn(state, "unit_p1_griffins").flatMap((effect) =>
+          effect.modifiers.map((m) => m.type),
+        ),
       ).toContain("IGNORE_ATTACK_DIE_ROLL");
     }
     const attack = getLegalActions(state, "p1").find(
       (legal) =>
         legal.action.type === "ATTACK_UNIT" &&
         legal.action.attackerId === "unit_p1_griffins" &&
-        legal.action.defenderId === "unit_p2_vampires"
+        legal.action.defenderId === "unit_p2_vampires",
     );
     expect(attack, "the blessed unit should be able to attack").toBeTruthy();
     const resolved = passAllReactions(applyOk(state, attack!.action));
-    const rolled = resolved.eventLog.filter((event) => event.type === "ATTACK_ROLLED") as {
+    const rolled = resolved.eventLog.filter(
+      (event) => event.type === "ATTACK_ROLLED",
+    ) as {
       rolls?: number[];
       roll?: number;
     }[];
@@ -1157,7 +1636,10 @@ describe("Balance Pack — Forgetfulness (Power 0)", () => {
     victim.abilities = [];
     victim.defenseToken = false;
     if (hex) {
-      state = cast(state, "spell.forgetfulness", 0, { type: "unit", unitId: "unit_p2_skeletons" });
+      state = cast(state, "spell.forgetfulness", 0, {
+        type: "unit",
+        unitId: "unit_p2_skeletons",
+      });
     }
     state.players.p1.hand = [];
     state.players.p2.hand = [];
@@ -1169,10 +1651,14 @@ describe("Balance Pack — Forgetfulness (Power 0)", () => {
       (legal) =>
         legal.action.type === "ATTACK_UNIT" &&
         legal.action.attackerId === "unit_p2_skeletons" &&
-        legal.action.defenderId === "unit_p1_crusaders"
+        legal.action.defenderId === "unit_p1_crusaders",
     );
-    expect(shot, "the hexed shooter may still SHOOT at Power 0 (only its value is halved)").toBeTruthy();
-    return passAllReactions(applyOk(state, shot!.action)).combat!.units.unit_p1_crusaders.damage;
+    expect(
+      shot,
+      "the hexed shooter may still SHOOT at Power 0 (only its value is halved)",
+    ).toBeTruthy();
+    return passAllReactions(applyOk(state, shot!.action)).combat!.units
+      .unit_p1_crusaders.damage;
   }
 
   it("halves the shot (rounded up) instead of blocking it", () => {

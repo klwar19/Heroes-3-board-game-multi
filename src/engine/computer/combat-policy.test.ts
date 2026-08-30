@@ -161,6 +161,57 @@ describe("combat policy — attack target selection", () => {
     expect((chipped?.action as { defenderId: string }).defenderId).toBe("E1");
   });
 
+  it("learns from the Absolution–VuHy replay not to lose a commander to retaliation", () => {
+    // VuHy's final battle action: a 4-Health Shaman attacked a wounded Haspid,
+    // dealt only 1, then died to the Haspid's 4-damage retaliation. Commander
+    // death ended the battle. The AI must end its activation instead.
+    const shaman = unit({
+      id: "SHAMAN",
+      controllerId: "p2",
+      commanderSlug: "shaman",
+      attack: 4,
+      defense: 2,
+      maxHealth: 4,
+      position: 9,
+    });
+    const haspid = unit({
+      id: "HASPID",
+      controllerId: "p1",
+      attack: 6,
+      defense: 3,
+      maxHealth: 8,
+      damage: 5,
+      position: 5,
+    });
+    const endActivation: LegalAction = {
+      action: { type: "END_ACTIVATION", playerId: "p2", unitId: "SHAMAN" },
+      label: "End activation",
+    };
+
+    const decision = chooseComputerAction(
+      observation(
+        [shaman, haspid],
+        [attackOn("SHAMAN", "HASPID"), endActivation],
+      ),
+    );
+    expect(decision?.action.type).toBe("END_ACTIVATION");
+
+    // CONTROL: if the same commander attack removes the target, there is no
+    // retaliation and the AI correctly takes the winning hit.
+    const fragileHaspid = unit({
+      ...haspid,
+      maxHealth: 6,
+      damage: 5,
+    });
+    const lethal = chooseComputerAction(
+      observation(
+        [shaman, fragileHaspid],
+        [attackOn("SHAMAN", "HASPID"), endActivation],
+      ),
+    );
+    expect(lethal?.action.type).toBe("ATTACK_UNIT");
+  });
+
   it("among lethal removals, deletes the higher-threat enemy", () => {
     // Both enemies die to the att-10 attacker; E2 is the far scarier unit.
     const attacker = unit({ id: "A", controllerId: "p2", attack: 10, position: 8 });

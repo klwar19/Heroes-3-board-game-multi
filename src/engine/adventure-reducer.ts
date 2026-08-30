@@ -68,6 +68,7 @@ import {
   adventureVictoryMode,
   armyHasMapEffect,
   beginFieldVisit,
+  breakClearedByTeam,
   beginNextPendingStartTileRotation,
   canDigGrail,
   grailObelisksRequired,
@@ -1517,7 +1518,11 @@ function resolveHeroArrival(
     return;
   }
 
-  if (isFieldGuarded(field) && field.flagOwnerId !== hero.controllerId) {
+  if (
+    isFieldGuarded(field) &&
+    field.flagOwnerId !== hero.controllerId &&
+    !breakClearedByTeam(state, hero.controllerId, field)
+  ) {
     if (gateTravel) {
       // Slip past: no Combat, no experience, no reward — and the guard STAYS,
       // so this hex is still a guarded field for every later entry.
@@ -4402,7 +4407,7 @@ setTeleportArrivalHook((state, hero, field, originSpaceId) => {
     startPlayerCombat(state, hero, enemyHero, field.spaceId);
     return;
   }
-  if (isFieldGuarded(field) && field.flagOwnerId !== playerId) {
+  if (isFieldGuarded(field) && field.flagOwnerId !== playerId && !breakClearedByTeam(state, playerId, field)) {
     state.adventure!.lastVisitedField[hero.id] = originSpaceId;
     startNeutralEncounter(state, hero, field, { teleportArrival: true });
   }
@@ -4792,7 +4797,11 @@ export function resolveVisitStep(state: GameState, action: Extract<GameAction, {
     case "DISCOVER_ADJACENT_TILE": {
       visit.steps.shift();
       if (!action.decline) {
+        if (step.fromAnyHero) {
+          resolveAnyHeroAdjacentDiscover(state, action);
+        } else {
         resolveObservatoryDiscover(state, action, visit.heroId, visit.fieldId);
+      }
       }
       break;
     }
@@ -5226,6 +5235,44 @@ function resolveObservatoryDiscover(
   // shifted/cleared by the caller, so the flip's "reveal" finalize never touches
   // it.
   revealOnMapTile(state, action.playerId, target);
+}
+
+/**
+ * Speculum/View Air targets: the union of face-down tiles adjacent to the tile
+ * occupied by either of the player's placed Heroes. Main-Hero targets remain
+ * first, secondary-Hero targets follow, and duplicate tiles are collapsed so
+ * the legal-action list and reducer option indexes stay identical.
+ */
+export function anyHeroAdjacentRevealTargets(
+  state: GameState,
+  playerId: PlayerId
+): MapTileState[] {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return [];
+  }
+  const targets = new Map<string, MapTileState>();
+  for (const hero of [getMainHero(state, playerId), getSecondaryHero(state, playerId)]) {
+    const field = hero?.spaceId ? adventure.fields[hero.spaceId] : undefined;
+    const tile = field ? adventure.tiles[field.tileInstanceId] : undefined;
+    if (!hero || !tile) {
+      continue;
+    }
+    for (const candidate of observatoryRevealTargets(state, hero, tile)) {
+      targets.set(candidate.id, candidate);
+    }
+  }
+  return [...targets.values()];
+}
+
+function resolveAnyHeroAdjacentDiscover(
+  state: GameState,
+  action: Extract<GameAction, { type: "RESOLVE_VISIT_STEP" }>
+): void {
+  const target = anyHeroAdjacentRevealTargets(state, action.playerId)[action.optionIndex ?? 0];
+  if (target) {
+    revealOnMapTile(state, action.playerId, target);
+  }
 }
 
 /**
@@ -10097,6 +10144,17 @@ export function startPlayerCombat(
   // Dragon Conqueror: assaulting a captured Dragon Utopia is always a siege —
   // the holder defends behind Walls, the Gate and the Arrow Tower.
   const field = state.adventure?.fields[fieldId];
+  // A hero standing on a Town/Settlement they control is defending that
+  // holding, not fighting an ordinary open-field battle. Keep this independent
+  // from `siege`: only a qualifying Town supplies fortifications; a Settlement
+  // never does.
+  const holdingDefense =
+    field?.flagOwnerId === defenderPlayerId && field.location === "settlement"
+      ? "settlement"
+      : town &&
+          (field?.flagOwnerId == null || field.flagOwnerId === defenderPlayerId)
+        ? "town"
+        : undefined;
   const utopiaSiege =
     field?.location === "dragon_utopia" &&
     adventureVictoryMode(state) === "dragon-conqueror" &&
@@ -10127,6 +10185,7 @@ export function startPlayerCombat(
     attackerHeroId: attacker.id,
     defenderHeroId: defender?.id ?? null,
     fieldId,
+    ...(holdingDefense ? { holdingDefense } : {}),
     ...(siege ? { siege: true } : {}),
     ...(mineCardDefense ? { garrisonCardsAllowed: true } : {})
   };
@@ -17761,7 +17820,7 @@ function queueNomadEndTurnMove(state: GameState, playerId: PlayerId): boolean {
   return true;
 }
 
-/** Buy one of the Forge's two stable offers, with handler-side validation. */
+/** Buy a validated Forge offer, including Grade III random/specific pricing. */
 export function forgeCommanderArtifact(
   state: GameState,
   action: Extract<GameAction, { type: "FORGE_COMMANDER_ARTIFACT" }>
@@ -17769,28 +17828,40 @@ export function forgeCommanderArtifact(
   const player = state.players[action.playerId];
   const commander = player?.commander;
   const spec = COMMANDER_ARTIFACT_SPECS[action.cardId];
-  if (!player || !commander || !spec || spec.tier !== action.tier) {
+  if (!player || !commander || !spec || spec.tier !== action.tier || (action.specific && action.tier !== "relic")) {
     throw new Error("That commander Forge offer is not available.");
   }
 
   if (state.combat || state.phase !== "player-turn" || state.activePlayerId !== action.playerId) {
     throw new Error("The Commander Forge is used during your own map turn.");
   }
-  const highTier = action.tier === "major" || action.tier === "relic";
-  if ((!highTier && state.round < 2) || (highTier && state.round < 7)) {
-    throw new Error(highTier ? "Grade II/III forging unlocks in round 7." : "Grade I forging unlocks in round 2.");
+  const unlockRound = action.tier === "minor" ? 2 : action.tier === "major" ? 7 : 9;
+  if (state.round < unlockRound) {
+    throw new Error(`Grade ${action.tier === "minor" ? "I" : action.tier === "major" ? "II" : "III"} forging unlocks in round ${unlockRound}.`);
   }
-  if ((!highTier && commander.forgeMinorUsed) || (highTier && commander.forgeHighUsed)) {
+  const legacyHighSpent = commander.forgeHighUsed === true;
+  const tierUsed =
+    action.tier === "minor"
+      ? commander.forgeMinorUsed
+      : action.tier === "major"
+        ? legacyHighSpent || commander.forgeMajorUsed
+        : legacyHighSpent || commander.forgeRelicUsed;
+  if (tierUsed) {
     throw new Error("That once-per-game Commander Forge use is already spent.");
   }
   if (commander.artifacts?.[spec.slot]) {
     throw new Error(`Your commander's ${spec.slot} slot is already filled.`);
   }
-  const offered = commanderForgeCandidates(state, action.playerId, action.tier).map((candidate) => candidate.cardId);
+  const offered =
+    action.tier === "relic" && action.specific
+      ? availableCommanderArtifactSpecs(state, action.playerId, "relic", true).map((candidate) => candidate.cardId)
+      : action.tier === "relic"
+        ? commanderForgeCandidates(state, action.playerId, "relic").slice(0, 1).map((candidate) => candidate.cardId)
+        : commanderForgeCandidates(state, action.playerId, action.tier).map((candidate) => candidate.cardId);
   if (!offered.includes(action.cardId)) {
-    throw new Error("That artifact is not one of the Forge's two offers.");
+    throw new Error("That artifact is not available from the Forge.");
   }
-  const cost = COMMANDER_ARTIFACT_GOLD_COST[action.tier];
+  const cost = COMMANDER_ARTIFACT_GOLD_COST[action.tier] + (action.tier === "relic" && action.specific ? 2 : 0);
   if (!hasResources(player, { gold: cost })) {
     throw new Error(`Forging that artifact costs ${cost} gold.`);
   }
@@ -17798,8 +17869,9 @@ export function forgeCommanderArtifact(
   if (!grantCommanderArtifactCard(state, action.playerId, action.cardId)) {
     throw new Error("That commander artifact was already claimed.");
   }
-  if (highTier) commander.forgeHighUsed = true;
-  else commander.forgeMinorUsed = true;
+  if (action.tier === "minor") commander.forgeMinorUsed = true;
+  else if (action.tier === "major") commander.forgeMajorUsed = true;
+  else commander.forgeRelicUsed = true;
   appendEvent(state, {
     type: "EVENT_NOTE",
     playerId: action.playerId,

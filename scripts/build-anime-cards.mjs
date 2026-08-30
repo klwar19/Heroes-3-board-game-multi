@@ -69,8 +69,8 @@ const FUYUKI_CARDS = [
     name: "EMIYA",
     tier: "silver",
     kind: "RANGED",
-    stats: { attack: 3, defense: 1, health: 4, initiative: 6 },
-    packStats: { initiative: 7 },
+    stats: { attack: 3, defense: 1, health: 4, initiative: 9 },
+    packStats: { initiative: 9 },
     art: "units-fuyuki-silver-archers-master.png",
     few: "Hawkeye — ignores the adjacent ranged Combat penalty.",
     pack: "Unlimited Blade Works — ignores ranged penalties and attacks a distant target twice."
@@ -95,15 +95,15 @@ const FUYUKI_CARDS = [
     packStats: { attack: 6, defense: 2, health: 7, initiative: 7 },
     art: "units-fuyuki-golden-sabers-master.png",
     few: "Excalibur — a second Attack 2 hit strikes behind the target.",
-    pack: "Excalibur — line Attack 3; +1 Attack after moving. Avalon Guard — each attack grants +1 Defense for the rest of Combat; stacks."
+    pack: "Excalibur — line Attack 3; +1 Attack after moving. Avalon Guard — +1 Defense against the first attack of each Combat round only."
   },
   {
     slug: "berserkers",
     name: "Heracles",
     tier: "golden",
     kind: "GROUND",
-    stats: { attack: 6, defense: 2, health: 7, initiative: 5 },
-    packStats: { attack: 7, defense: 2, health: 8 },
+    stats: { attack: 6, defense: 2, health: 7, initiative: 7 },
+    packStats: { attack: 7, defense: 2, health: 8, initiative: 7 },
     art: "units-fuyuki-golden-berserkers-master.png",
     few: "God Hand — once per Combat, lethal damage leaves this unit at 1 Health.",
     pack: "God Hand — Spell damage against this unit is reduced by 1; no rebirth."

@@ -64,9 +64,26 @@ create table if not exists public.homm3bg_matches (
   participants jsonb not null default '[]'::jsonb
 );
 
+-- Private AI-training replays for Ranked Clash. One bounded JSON payload is
+-- inserted only when the match finishes; it never rides live room snapshots.
+-- The app service role is the only reader/writer (RLS with no public policy).
+create table if not exists public.homm3bg_ranked_replays (
+  match_id text primary key references public.homm3bg_matches (match_id) on delete cascade,
+  recorded_at text not null,
+  schema_version integer not null,
+  engine_signature text not null,
+  action_count integer not null check (action_count >= 0 and action_count <= 2000),
+  byte_length integer not null check (byte_length >= 0 and byte_length <= 1516384),
+  truncated boolean not null default false,
+  payload jsonb not null
+);
+create index if not exists homm3bg_ranked_replays_recorded_idx
+  on public.homm3bg_ranked_replays (recorded_at);
+
 -- Lock everything down: RLS on, no policies ⇒ anon/authenticated see nothing;
 -- the server's service-role key bypasses RLS by design.
 alter table public.homm3bg_accounts enable row level security;
 alter table public.homm3bg_sessions enable row level security;
 alter table public.homm3bg_email_tokens enable row level security;
 alter table public.homm3bg_matches enable row level security;
+alter table public.homm3bg_ranked_replays enable row level security;

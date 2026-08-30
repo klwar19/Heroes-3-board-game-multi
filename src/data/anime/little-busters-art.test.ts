@@ -9,10 +9,10 @@ import { unitRankAbilityIcon } from "../units/experience-rank-abilities";
 const ROOT = process.cwd();
 const asset = (rel: string) => path.join(ROOT, "public/assets", rel);
 
-async function expectImage(rel: string, width: number, height: number, alpha?: boolean) {
+async function expectImage(rel: string, width: number, height: number, alpha?: boolean, minBytes = 10_000) {
   const file = asset(rel);
   expect(existsSync(file), rel).toBe(true);
-  expect(statSync(file).size, `${rel} should be real art`).toBeGreaterThan(10_000);
+  expect(statSync(file).size, `${rel} should be real art`).toBeGreaterThan(minBytes);
   const meta = await sharp(file).metadata();
   expect([meta.width, meta.height], rel).toEqual([width, height]);
   if (alpha !== undefined) expect(meta.hasAlpha, `${rel} alpha`).toBe(alpha);
@@ -45,11 +45,14 @@ describe("Little Busters production art pack", () => {
     }
     await expectImage("units-commander-kyousuke_natsume.webp", 743, 1040, false);
     for (const slug of ["harukas-glass-marbles", "lennons-mission-letter", "mios-parasol", "kuds-flight-goggles", "little-busters-practice-bat", "school-revolution-watch"]) {
-      await expectImage(`anime/equipment/little-busters-${slug}.webp`, 512, 512, true);
+      // These are deliberately compact transparent equipment emblems, not
+      // full-card scans; dimensions and alpha are the production safeguards.
+      await expectImage(`anime/equipment/little-busters-${slug}.webp`, 192, 192, true, 4_000);
     }
     for (const slug of ["rank-haruka", "rank-rins-cats", "rank-disciplinary-committee", "rank-masato", "rank-softball-club", "rank-saya", "rank-mio", "rank-shared", "grade-benchwarmer", "grade-regular", "grade-ace", "grade-strongest-in-school"]) {
       await expectImage(`anime/icons/little-busters/${slug}.webp`, 512, 512, true);
     }
+    await expectImage("anime/icons/little-busters/rank-rins-cats-heal.webp", 512, 512, true);
   });
 
   it("registers the seishun ladder and the seven unit-specific XP icons", () => {
@@ -73,5 +76,6 @@ describe("Little Busters production art pack", () => {
       ["little_busters.mio", "gargoyle-spell-ward", "rank-mio"]
     ] as const;
     for (const [unit, ability, icon] of choices) expect(unitRankAbilityIcon(ability, unit)).toContain(icon);
+    expect(unitRankAbilityIcon("veteran-soul-feast", "little_busters.rins_cats")).toContain("rank-rins-cats-heal");
   });
 });

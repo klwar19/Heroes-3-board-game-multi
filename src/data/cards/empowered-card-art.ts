@@ -66,8 +66,7 @@ const STATISTIC_FACE = /^\/assets\/statistics-([a-z0-9_]+)\.webp$/;
 /**
  * The printed Empowered face for a card, or `undefined` when there is none to
  * swap in — either the card has no registered empowered scan, or its printed
- * face IS already an empowered scan (the Empowered Statistics, and Diplomacy,
- * which is printed always-Empowered).
+ * face is already an empowered Statistic scan.
  */
 export function empoweredCardImage(cardId: string | undefined): string | undefined {
   if (!cardId) {

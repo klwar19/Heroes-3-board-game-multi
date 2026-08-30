@@ -15,6 +15,13 @@ import { unitAbilities } from "@/data/units/abilities";
 const MOD_FACTIONS = ["fuyuki", "azure_breeze", "hidden_leaf", "azur_lane", "little_busters"] as const;
 
 describe("playable Anime Realms towns", () => {
+  it("pins Fuyuki EMIYA and Heracles Speed on both card sides", () => {
+    expect(coreUnitDefinitions["fuyuki.archers"]!.few!.initiative).toBe(9);
+    expect(coreUnitDefinitions["fuyuki.archers"]!.pack!.initiative).toBe(9);
+    expect(coreUnitDefinitions["fuyuki.berserkers"]!.few!.initiative).toBe(7);
+    expect(coreUnitDefinitions["fuyuki.berserkers"]!.pack!.initiative).toBe(7);
+  });
+
   it.each(MOD_FACTIONS)("registers a complete playable %s faction", (factionId) => {
     const faction = coreFactionDefinitions[factionId];
     expect(faction).toBeDefined();
@@ -267,7 +274,7 @@ describe("playable Anime Realms towns", () => {
       expect(card?.assets?.cardImage, id).toBeUndefined();
       expect(canRenderSpecialtyCard(id), id).toBe(true);
       const icon = specialtyIconSrc(id);
-      expect(icon).toBe("/assets/specialty-card/icon-first_aid.webp");
+      expect(icon).toBe("/assets/anime/icons/cultivation/specialty-lingxi-healing-arts.webp");
       expect(existsSync(join(process.cwd(), "public", icon!.replace(/^\//, "")))).toBe(true);
     }
     // Portrait used by the native specialty frame is the hero's own art.

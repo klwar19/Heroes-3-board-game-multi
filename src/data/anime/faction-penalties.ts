@@ -13,7 +13,7 @@ export type AnimeFactionPenaltyDefinition = {
   title: string;
   short: string;
   detail: string;
-  timing: "resource-round" | "combat-start";
+  timing: "resource-round" | "astrologers-round" | "alternating-rounds" | "combat-start";
   /** The signature POSITIVE mechanic that defines how this town plays. */
   mechanicTitle: string;
   mechanicDetail: string;
@@ -41,7 +41,7 @@ export const ANIME_FACTION_PENALTIES: readonly AnimeFactionPenaltyDefinition[] =
     timing: "resource-round",
     mechanicTitle: "Command Seals",
     mechanicDetail:
-      "Begin the campaign with 3 Command Seals, but spend at most one per combat: Compel gives the active unit +1 Attack for its activation, or Recall heals it up to 3. Medea deals fixed 2/3 damage and her 1-damage barrier works once per combat round. Saber Pack has base Defense 2 and gains a stacking +1 Defense whenever attacked.",
+      "Begin the campaign with 3 Command Seals, but spend at most one per combat: Compel gives the active unit +1 Attack for its activation, or Recall heals it up to 3. Medea deals fixed 2/3 damage and her 1-damage barrier works once per combat round. Saber Pack has base Defense 2 and gains +1 Defense against the first attack of each combat round only.",
     artImage: "/assets/anime/notices/fuyuki-grail-upkeep.webp"
   },
   {
@@ -96,9 +96,9 @@ export const ANIME_FACTION_PENALTIES: readonly AnimeFactionPenaltyDefinition[] =
     factionId: "little_busters",
     register: "anime",
     title: "School Contribution Fund",
-    short: "−5 gold/−1 material; three paid enemy counters",
-    detail: "−5 gold and −1 material each Resource round, paid after income without debt. In PvP, the enemy may pay 1 gold for each mandatory AI counter: random discard, draw 2, and reduce the campus hero to half HP (remaining HP rounded up) plus Paralysis and −2 Attack in round 1.",
-    timing: "resource-round",
+    short: "−6 gold/−1 material; −1 hand limit in Astrologers rounds; three paid enemy counters",
+    detail: "−6 gold and −1 material each Resource round, paid after income without debt. During each Astrologers round, your hand limit is reduced by 1, then returns to normal afterward. In PvP, the enemy may pay 1 gold for each one-use counter: random discard, draw 1 card, or reduce the campus hero to half HP (remaining HP rounded up).",
+    timing: "alternating-rounds",
     mechanicTitle: "Campus Hero",
     mechanicDetail:
       "Your main hero fights on the battlefield as a unit and may retaliate normally. Hero level stats and grade bonuses remain separate, with no level-5 stat penalty. Masato can protect any adjacent ally, including Gold units and the hero, once per round. Mio Pack has Defense 2 and +1 Defense against only the first attack each round.",

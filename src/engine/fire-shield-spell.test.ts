@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createInitialGameState, getLegalActions } from "./index";
-import type { GameAction, GameState, UnitId } from "./state";
+import type { CardId, GameAction, GameState, UnitId } from "./state";
 
 /**
  * Engine tests for the Fire Shield spell (Expert Fire). It is an Ongoing buff:
@@ -30,7 +30,12 @@ function passAllReactions(state: GameState): GameState {
 }
 
 /** Push a Fire Shield active effect (amount) onto a unit, bypassing the cast. */
-function pushFireShield(state: GameState, unitId: UnitId, amount: number): void {
+function pushFireShield(
+  state: GameState,
+  unitId: UnitId,
+  amount: number,
+  sourceCardId?: CardId,
+): void {
   state.activeEffects.push({
     id: `fireshield_${unitId}`,
     name: "Fire Shield",
@@ -39,7 +44,9 @@ function pushFireShield(state: GameState, unitId: UnitId, amount: number): void 
     polarity: "positive",
     removable: true,
     modifiers: [{ type: "FIRE_SHIELD", amount }],
-    source: { type: "system" },
+    source: sourceCardId
+      ? { type: "card", cardId: sourceCardId, controllerId: state.combat!.units[unitId].controllerId }
+      : { type: "system" },
     controllerId: state.combat!.units[unitId].controllerId,
     target: { type: "unit", unitId },
     startedRound: state.round,
@@ -239,6 +246,55 @@ describe("Fire Shield spell — burning the attacker", () => {
     const burns = burnDamageEvents(result, "unit_p1_crusaders");
     expect(burns.length).toBe(1);
     expect(burns[0]).toMatchObject({ amount: 1 });
+  });
+
+  it("numeric Spell reduction softens only the Fire Shield spell, including an allied Unicorn aura", () => {
+    const own = meleeAttackScene("fireshield-own-reduction", 3);
+    own.activeEffects = [];
+    pushFireShield(own, "unit_p2_skeletons", 3, "spell.fire_shield");
+    own.combat!.units.unit_p1_crusaders.abilities = ["reduce-spell-damage-1"];
+    const ownResult = passAllReactions(applyOk(own, {
+      type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_crusaders", defenderId: "unit_p2_skeletons"
+    }));
+    expect(burnDamageEvents(ownResult, "unit_p1_crusaders")).toHaveLength(1);
+    expect(burnDamageEvents(ownResult, "unit_p1_crusaders")[0]).toMatchObject({ amount: 2 });
+
+    const aura = meleeAttackScene("fireshield-aura-reduction", 3);
+    aura.activeEffects = [];
+    pushFireShield(aura, "unit_p2_skeletons", 3, "spell.fire_shield");
+    const ally = aura.combat!.units.unit_p1_marksmen;
+    ally.position = 8;
+    ally.abilities = ["unicorn-spell-ward-aura"];
+    const auraResult = passAllReactions(applyOk(aura, {
+      type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_crusaders", defenderId: "unit_p2_skeletons"
+    }));
+    expect(burnDamageEvents(auraResult, "unit_p1_crusaders")[0]).toMatchObject({ amount: 2 });
+  });
+
+  it("numeric Spell reduction does not soften Specialty Fire Shield, but all-Spell immunity blocks both sources", () => {
+    const specialty = meleeAttackScene("fireshield-specialty-control", 3);
+    specialty.activeEffects = [];
+    pushFireShield(specialty, "unit_p2_skeletons", 3, "specialty.rashka.4");
+    specialty.combat!.units.unit_p1_crusaders.abilities = ["reduce-spell-damage-2"];
+    const specialtyResult = passAllReactions(applyOk(specialty, {
+      type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_crusaders", defenderId: "unit_p2_skeletons"
+    }));
+    expect(burnDamageEvents(specialtyResult, "unit_p1_crusaders")[0]).toMatchObject({ amount: 3 });
+
+    for (const [seed, source] of [
+      ["fireshield-immune-spell", "spell.fire_shield"],
+      ["fireshield-immune-specialty", "specialty.rashka.4"],
+    ] as const) {
+      const immune = meleeAttackScene(seed, 3);
+      immune.activeEffects = [];
+      pushFireShield(immune, "unit_p2_skeletons", 3, source);
+      immune.combat!.units.unit_p1_crusaders.abilities = ["immune-all-spells"];
+      const result = passAllReactions(applyOk(immune, {
+        type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_crusaders", defenderId: "unit_p2_skeletons"
+      }));
+      expect(burnDamageEvents(result, "unit_p1_crusaders")).toHaveLength(0);
+      expect(fireShieldBurnEvents(result, "unit_p1_crusaders")).toHaveLength(0);
+    }
   });
 });
 

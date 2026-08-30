@@ -643,11 +643,11 @@ function commanderStanceRoundActive(state: GameState): boolean {
  * (folded into getAttackStackDetails). Positional / stance-based, not
  * attack-type-based, so it applies on the commander's own attacks AND its
  * retaliations. Two sources:
- *  - The SORT-granting abilities (Vanguard Marshal — Cove Sea Marshal, Bulwark
- *    Ruler, Little Busters Kyousuke — and the Marshal's War Horn equipment, the
+ *  - The SORT-granting abilities (Vanguard Marshal — Cove Sea Marshal, Fuyuki
+ *    Astral Regent, Little Busters Kyousuke — and the Marshal's War Horn equipment, the
  *    same set that carries the +2 front-line Speed): +1 Attack while the
- *    commander stands on its own FRONT LINE during combat ROUND 1 only (a live
- *    position read — walking on/off it flips the bonus; from round 2 it is gone).
+ *    commander has reached its own FRONT LINE during combat ROUND 1. This is
+ *    latched for the rest of round 1, so moving away does not remove the bonus.
  *    The Speed-grade sort unlock deliberately grants no combat bonus, mirroring
  *    `commanderFrontLineSpeedBonusActive`.
  *  - Superior Combat (Shaman): the chosen +1 Attack stance, but ONLY during
@@ -665,7 +665,7 @@ export function commanderLiveAttackBonus(state: GameState, unit: CombatUnitState
   let bonus = 0;
   if (
     commanderSortAbilitySource(state, unit.controllerId) &&
-    commanderOnOwnFrontLine(state, unit) &&
+    (unit.commanderFrontLineAttackRoundOne || commanderOnOwnFrontLine(state, unit)) &&
     (state.combat?.round ?? 1) === 1
   ) {
     bonus += 1;
@@ -678,6 +678,22 @@ export function commanderLiveAttackBonus(state: GameState, unit: CombatUnitState
     bonus += 1;
   }
   return bonus;
+}
+
+/**
+ * Remember that a sort-specialty commander occupied its own front line during
+ * round 1. The +1 Attack then lasts for the remainder of round 1 even if the
+ * commander moves away; commanderLiveAttackBonus still expires it in round 2.
+ */
+export function latchCommanderFrontLineAttack(state: GameState, unit: CombatUnitState): void {
+  if (
+    unit.commanderSlug &&
+    (state.combat?.round ?? 1) === 1 &&
+    commanderSortAbilitySource(state, unit.controllerId) &&
+    commanderOnOwnFrontLine(state, unit)
+  ) {
+    unit.commanderFrontLineAttackRoundOne = true;
+  }
 }
 
 /**
@@ -1058,6 +1074,7 @@ export function applyCommanderCombatStart(state: GameState): void {
     // the whole fight. Read here, after the sort window has drained, so the
     // position it measures is the one the owner actually chose.
     applyCommanderFrontLineSpeed(state, playerId, unit);
+    latchCommanderFrontLineAttack(state, unit);
 
     switch (unit.commanderSlug) {
       case "temple_guardian":

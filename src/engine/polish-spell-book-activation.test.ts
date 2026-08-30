@@ -4,16 +4,9 @@ import {
   createAdventureGameState,
   createInitialGameState,
   getLegalActions,
-  type GameAction,
   type GameState,
 } from "./index";
 import { CAST_A_SPELL_CARD_ID } from "./polish-spell-book";
-
-function applyOk(state: GameState, action: GameAction): GameState {
-  const result = applyAction(state, action);
-  expect(result.errors, result.errors.map((e) => e.message).join("; ")).toEqual([]);
-  return result.state;
-}
 
 function polishState(seed: string): GameState {
   const state = createInitialGameState(seed);
@@ -93,8 +86,10 @@ describe("Polish Spell Book — cast across successive unit activations", () => 
       playerId: "p1",
       prompt: "pick",
       options: [{ label: "a" }, { label: "b" }],
+      context: "combat-activation-order",
       activationOrder: { unitIds: ["unit_p1_griffins", "unit_p1_crusaders"], side: "p1" },
-    } as any;
+      returnPhase: "combat",
+    };
     expect(canCastBook(state), "no cast during order pick").toBe(false);
   });
 });

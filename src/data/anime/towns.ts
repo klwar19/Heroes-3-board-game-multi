@@ -97,8 +97,8 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
   },
   "fuyuki.archers": {
     id: "fuyuki.archers", name: "EMIYA", faction: "fuyuki", tier: "silver", type: "ranged",
-    few: { attack: 3, defense: 1, health: 4, initiative: 6, cost: { gold: 8 }, abilities: ["ignore-combat-penalties"], abilityText: "Hawkeye — ignores the adjacent ranged Combat penalty.", cardImage: fuyukiCard("silver", "archers", "few") },
-    pack: { attack: 3, defense: 1, health: 4, initiative: 7, cost: { gold: 11 }, abilities: ["ignore-all-combat-penalties", "double-attack"], abilityText: "Unlimited Blade Works — ignores ranged penalties and attacks a distant target twice.", cardImage: fuyukiCard("silver", "archers", "pack") },
+    few: { attack: 3, defense: 1, health: 4, initiative: 9, cost: { gold: 8 }, abilities: ["ignore-combat-penalties"], abilityText: "Hawkeye — ignores the adjacent ranged Combat penalty.", cardImage: fuyukiCard("silver", "archers", "few") },
+    pack: { attack: 3, defense: 1, health: 4, initiative: 9, cost: { gold: 11 }, abilities: ["ignore-all-combat-penalties", "double-attack"], abilityText: "Unlimited Blade Works — ignores ranged penalties and attacks a distant target twice.", cardImage: fuyukiCard("silver", "archers", "pack") },
     source
   },
   "fuyuki.casters": {
@@ -133,13 +133,13 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
   "fuyuki.sabers": {
     id: "fuyuki.sabers", name: "Artoria Pendragon", faction: "fuyuki", tier: "gold", type: "ground",
     few: { attack: 5, defense: 2, health: 6, initiative: 6, cost: { gold: 14, valuables: 1 }, abilities: ["dragon-line-attack-2"], abilityText: "Excalibur — a second Attack 2 hit strikes behind the target.", cardImage: fuyukiCard("golden", "sabers", "few") },
-    pack: { attack: 6, defense: 2, health: 7, initiative: 7, cost: { gold: 22, valuables: 2 }, abilities: ["dragon-line-attack-3", "commander-charge", "saber-stacking-defense"], abilityText: "Excalibur — line strike at Attack 3; +1 Attack after moving. Avalon Guard — whenever attacked, gain a cumulative +1 Defense for that attack and the rest of Combat.", cardImage: fuyukiCard("golden", "sabers", "pack") },
+    pack: { attack: 6, defense: 2, health: 7, initiative: 7, cost: { gold: 22, valuables: 2 }, abilities: ["dragon-line-attack-3", "commander-charge", "saber-first-attack-defense"], abilityText: "Excalibur — line strike at Attack 3; +1 Attack after moving. Avalon Guard — +1 Defense against the first attack of each Combat round only.", cardImage: fuyukiCard("golden", "sabers", "pack") },
     source
   },
   "fuyuki.berserkers": {
     id: "fuyuki.berserkers", name: "Heracles", faction: "fuyuki", tier: "gold", type: "ground",
-    few: { attack: 6, defense: 2, health: 7, initiative: 5, cost: { gold: 15, valuables: 1 }, abilities: ["phoenix-rebirth"], abilityText: "God Hand — once per Combat, lethal damage leaves this unit at 1 Health.", cardImage: fuyukiCard("golden", "berserkers", "few") },
-    pack: { attack: 7, defense: 2, health: 8, initiative: 5, cost: { gold: 24, valuables: 2 }, abilities: ["reduce-spell-damage-1"], abilityText: "God Hand — Spell damage against this unit is reduced by 1.", cardImage: fuyukiCard("golden", "berserkers", "pack") },
+    few: { attack: 6, defense: 2, health: 7, initiative: 7, cost: { gold: 15, valuables: 1 }, abilities: ["phoenix-rebirth"], abilityText: "God Hand — once per Combat, lethal damage leaves this unit at 1 Health.", cardImage: fuyukiCard("golden", "berserkers", "few") },
+    pack: { attack: 7, defense: 2, health: 8, initiative: 7, cost: { gold: 24, valuables: 2 }, abilities: ["reduce-spell-damage-1"], abilityText: "God Hand — Spell damage against this unit is reduced by 1.", cardImage: fuyukiCard("golden", "berserkers", "pack") },
     source
   },
 
@@ -444,13 +444,13 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
   "little_busters.saya": {
     id: "little_busters.saya", name: "Saya Tokido", faction: "little_busters", tier: "gold", type: "ground",
     few: { attack: 6, defense: 2, health: 5, initiative: 8, cost: { gold: 14, valuables: 1 }, abilities: ["saya-infiltration", "ignores-retaliation"], abilityText: "Infiltration - as a move, place Saya on any empty Combat space; her attacks do not provoke Retaliation.", cardImage: littleBustersCard("golden", "saya-tokido", "few") },
-    pack: { attack: 6, defense: 2, health: 6, initiative: 9, cost: { gold: 21, valuables: 2 }, abilities: ["saya-infiltration", "ignores-retaliation", "saya-armor-break"], abilityText: "Infiltration - move to any empty space and ignore Retaliation; Armor Break - only on a -1 on Saya's Attack die, place one non-stacking -1 Defense token (minimum 0) for the rest of Combat.", cardImage: littleBustersCard("golden", "saya-tokido", "pack") },
+    pack: { attack: 6, defense: 2, health: 7, initiative: 12, cost: { gold: 21, valuables: 2 }, abilities: ["saya-infiltration", "ignores-retaliation", "saya-armor-break"], abilityText: "Infiltration - move to any empty space and ignore Retaliation; Armor Break - only on a -1 on Saya's Attack die, place one non-stacking -1 Defense token (minimum 0) for the rest of Combat.", cardImage: littleBustersCard("golden", "saya-tokido", "pack") },
     source
   },
   "little_busters.mio": {
     id: "little_busters.mio", name: "Mio Nishizono", faction: "little_busters", tier: "gold", type: "ranged",
     few: { attack: 5, defense: 2, health: 6, initiative: 4, cost: { gold: 19 }, abilities: ["gargoyle-spell-ward", "ignore-all-combat-penalties"], abilityText: "White Parasol - takes 1 less Spell damage and ignores all ranged penalties.", cardImage: littleBustersCard("golden", "mio-nishizono", "few") },
-    pack: { attack: 6, defense: 2, health: 7, initiative: 5, cost: { gold: 28, valuables: 2 }, abilities: ["gargoyle-spell-ward", "ignore-all-combat-penalties", "archangel-lethal-save"], abilityText: "Midori's Shadow - +1 Defense against the first attack each Combat round; spell ward and no ranged penalties; once per Combat, cancel lethal damage to another friendly unit.", cardImage: littleBustersCard("golden", "mio-nishizono", "pack") },
+    pack: { attack: 6, defense: 2, health: 8, initiative: 5, cost: { gold: 28, valuables: 2 }, abilities: ["gargoyle-spell-ward", "ignore-all-combat-penalties", "archangel-lethal-save"], abilityText: "Midori's Shadow - +1 Defense against the first attack each Combat round; spell ward and no ranged penalties; once per Combat, cancel lethal damage to another friendly unit.", cardImage: littleBustersCard("golden", "mio-nishizono", "pack") },
     source
   }
 };
@@ -556,7 +556,7 @@ const building = (
   prerequisites,
   implementationStatus: "implemented",
   assets: { image: faction === "blue_archive"
-    ? `/assets/anime/blue-archive/town-bars/blue-archive-built-bar-${animeTownBuildingBar[id]}.png`
+    ? `/assets/anime/blue-archive/town-bars/blue-archive-built-bar-${animeTownBuildingBar[id]}.webp`
     : `/assets/town-board/${barArtPrefix(faction)}-bar-${animeTownBuildingBar[id]}.webp` },
   source
 });
@@ -643,31 +643,31 @@ export const animeTownHeroDefinitions: Record<string, HeroDefinition> = {
     id: "mika_blue_archive", name: "Mika", faction: "blue_archive", class: "Tea Party Enforcer", type: "might",
     startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 }, startingAbilityCardId: "ability.offense",
     specialtyCardIds: { 1: "specialty.mika_blue_archive.1", 4: "specialty.mika_blue_archive.4", 6: "specialty.mika_blue_archive.6" },
-    portrait: "/assets/anime/heroes/blue-archive-mika.png", source: blueArchiveSource
+    portrait: "/assets/anime/heroes/blue-archive-mika.webp", source: blueArchiveSource
   },
   yuuka_blue_archive: {
     id: "yuuka_blue_archive", name: "Yuuka", faction: "blue_archive", class: "Seminar Treasurer", type: "might",
     startingStats: { attack: 1, defense: 2, power: 1, knowledge: 2 }, startingAbilityCardId: "ability.armorer",
     specialtyCardIds: { 1: "specialty.yuuka_blue_archive.1", 4: "specialty.yuuka_blue_archive.4", 6: "specialty.yuuka_blue_archive.6" },
-    portrait: "/assets/anime/heroes/blue-archive-yuuka.png", source: blueArchiveSource
+    portrait: "/assets/anime/heroes/blue-archive-yuuka.webp", source: blueArchiveSource
   },
   seia_blue_archive: {
     id: "seia_blue_archive", name: "Seia", faction: "blue_archive", class: "Prophetic Councilor", type: "magic",
     startingStats: { attack: 1, defense: 1, power: 2, knowledge: 2 }, startingAbilityCardId: "ability.wisdom",
     specialtyCardIds: { 1: "specialty.seia_blue_archive.1", 4: "specialty.seia_blue_archive.4", 6: "specialty.seia_blue_archive.6" },
-    portrait: "/assets/anime/heroes/blue-archive-seia.png", source: blueArchiveSource
+    portrait: "/assets/anime/heroes/blue-archive-seia.webp", source: blueArchiveSource
   },
   chise_blue_archive: {
     id: "chise_blue_archive", name: "Chise", faction: "blue_archive", class: "Hyakkiyako Mystic", type: "magic",
     startingStats: { attack: 1, defense: 1, power: 2, knowledge: 2 }, startingAbilityCardId: "ability.sorcery",
     specialtyCardIds: { 1: "specialty.chise_blue_archive.1", 4: "specialty.chise_blue_archive.4", 6: "specialty.chise_blue_archive.6" },
-    portrait: "/assets/anime/heroes/blue-archive-chise.png", source: blueArchiveSource
+    portrait: "/assets/anime/heroes/blue-archive-chise.webp", source: blueArchiveSource
   },
   kei_blue_archive: {
     id: "kei_blue_archive", name: "Kei", faction: "blue_archive", class: "Millennium System", type: "magic",
     startingStats: { attack: 1, defense: 2, power: 2, knowledge: 1 }, startingAbilityCardId: "ability.interference",
     specialtyCardIds: { 1: "specialty.kei_blue_archive.1", 4: "specialty.kei_blue_archive.4", 6: "specialty.kei_blue_archive.6" },
-    portrait: "/assets/anime/heroes/blue-archive-kei.png", source: blueArchiveSource
+    portrait: "/assets/anime/heroes/blue-archive-kei.webp", source: blueArchiveSource
   },
   shirou_emiya: {
     id: "shirou_emiya", name: "Shirou Emiya", faction: "fuyuki", class: "Resolute Master", type: "might",
@@ -958,7 +958,7 @@ export const animeTownFactionDefinitions: Record<string, FactionDefinition> = {
     heroes: ["mika_blue_archive", "yuuka_blue_archive", "seia_blue_archive", "chise_blue_archive", "kei_blue_archive"],
     buildings: Object.values(animeTownBuildingDefinitions).filter((item) => item.faction === "blue_archive").map((item) => item.id),
     units: blueArchiveCharacters.map((unit) => unit.id),
-    townImage: "/assets/anime/blue-archive/town/blue-archive-town-empty.png", source: blueArchiveSource
+    townImage: "/assets/anime/blue-archive/town/blue-archive-town-empty.webp", source: blueArchiveSource
   },
   fuyuki: {
     id: "fuyuki", name: "Fuyuki City", color: "#7256d8", startingTileId: "A-S1",

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getTileFootprintSpaceIds, instantiateTile } from "./adventure";
+import { moveHeroAdventure } from "./adventure-reducer";
 import {
   createAdventureGameState,
   eligibleCombatBoardArtIds,
@@ -155,6 +156,49 @@ describe("crossing a sea tile's own coastline follows the selected ruleset (per-
     expect(sea).toBeDefined();
     expect(seaStepHalts(state, sea!, land)).toBe(true);
     expect(seaStepHalts(state, land, sea!)).toBe(true);
+  });
+
+  it("does not invent a coastline between two printed sea hexes when one live field lost its cached terrain", () => {
+    // Exact reported failure shape: after leaving a Naga Bank and ending that
+    // halted turn, a later blue-water -> blue-water step halted again. The tile
+    // definition/art is authoritative; MapFieldState.terrain is only its cached
+    // materialization and old/recovered room snapshots can contain a mixed pair
+    // where one water marker is absent.
+    const state = makeState("binh");
+    const ids = placeSeaTile(state, "W7", 420); // W7 is seven printed sea hexes.
+    const from = ids[0];
+    const to = ids[1]; // centre -> NE: adjacent sea -> sea
+
+    // Reproduce the corrupt/mixed live pair without changing either printed
+    // field or its art. Before the fix, isSeaField read only this cache and
+    // misclassified `to` as land, making the move look like a coastline step.
+    delete state.adventure!.fields[to].terrain;
+    expect(state.adventure!.fields[from].terrain).toBe("water");
+    expect(isSeaField(state, to), "W7 slot 1 is still printed open sea").toBe(true);
+    expect(seaStepHalts(state, from, to)).toBe(false);
+
+    const hero = Object.values(state.heroes).find((candidate) => candidate.controllerId === "p1")!;
+    hero.spaceId = from;
+    hero.movementPoints = 2;
+    hero.movementHaltedThisTurn = false;
+    state.activePlayerId = "p1";
+    state.phase = "player-turn";
+    state.pendingChoice = null;
+    state.reactionWindow = null;
+    state.adventure!.pendingVisit = null;
+    state.adventure!.pendingTileChoice = null;
+    state.adventure!.rewardQueue = [];
+    state.players.p1.canMulligan = false;
+    state.players.p1.needsHandRefresh = false;
+
+    moveHeroAdventure(state, { type: "MOVE_HERO", playerId: "p1", heroId: hero.id, to });
+    expect(hero.spaceId).toBe(to);
+    expect(hero.movementPoints).toBe(1);
+    expect(hero.movementHaltedThisTurn).toBe(false);
+
+    // CONTROL: a missing runtime marker must not drown an actual green island.
+    const w2 = placeSeaTile(state, "W2", 430);
+    expect(isSeaField(state, w2[1]), "W2 mystical-garden island stays land").toBe(false);
   });
 });
 

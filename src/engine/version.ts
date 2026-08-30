@@ -969,7 +969,40 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // v81: Polish Alliance mode adds the OFFER_ALLY_TRANSFER action and private
 // pending-visit acceptance step. Older workers cannot validate or apply it.
 // `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 81;
+// v82: two granular Tournament switches (Morale Search-again and removed
+// Artifact VP credit) plus the map-authored Break team scope are frozen into
+// setup/adventure state. Older workers would apply different Search, scoring,
+// and allied movement legality. `npm run deploy:partykit` owed.
+// v83: Speculum/View Air's queued discovery step may measure from either Hero,
+// and spell-placed battlefield tokens retain their source Spell id. The latter
+// makes Fire Wall burns obey Spell immunity/reduction and keeps a Polish Book
+// Spell locked "in play" while its token remains; specialty/unit walls omit the
+// source and remain effect damage. A v82 worker would ignore both optional
+// fields and resolve different legal targets/damage. `npm run deploy:partykit`
+// owed.
+// v84: Commander Forge Grade III unlocks separately in round 9 with seeded
+// random/base-cost and specific/+2-cost actions; Vanguard Marshal latches its
+// round-1 front-line Attack; Saber uses first-attack-per-round Defense;
+// battlefield hazards and Fire Shield use source-sensitive full immunity and
+// numeric Spell reduction; Little Busters' paid counters are retired in favor
+// of one automatic enemy draw; Diplomacy is no longer permanently Empowered.
+// New optional commander/unit/token fields and changed legal actions mean a v83
+// worker would resolve a materially different game. `npm run deploy:partykit`
+// owed.
+// v85: Little Busters keeps all three pay-1-gold PvP counters; only the draw
+// counter is reduced from 2 cards to 1, and the v84 automatic combat-start draw
+// is removed. Computer routing treats an owned town as an ordinary safe corridor
+// toward its objective, and Defense-card policy conserves the card when its
+// expected +Defense still cannot save the attacked unit. A v84 worker would
+// offer/resolve different combat actions, so the protocol must force the room
+// server current. `npm run deploy:partykit` owed.
+// v86: unchanged printed sea fields derive their land/water classification from
+// the authoritative tile slot when a recovered room is missing that field's
+// materialized terrain cache. A v85 worker can invent a coastline between two
+// visibly blue sea hexes and force the hero to end the turn after sea -> sea,
+// while v86 permits the move, so movement legality is protocol-significant.
+// `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 86;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

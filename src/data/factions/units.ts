@@ -312,7 +312,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     tier: "gold",
     type: "flying",
     few: { attack: 5, defense: 1, health: 6, initiative: 7, cost: { gold: 10 }, abilities: [], cardImage: "/assets/units-dungeon-golden-manticores-few.webp" },
-    pack: { attack: 5, defense: 1, health: 6, initiative: 11, cost: { gold: 18, valuables: 1 }, abilities: ["manticore-ignore-defense"], abilityText: "1 [valuables] [unit_attack] For this attack, ignore the [defense] value from the target unit's card.", cardImage: "/assets/units-dungeon-golden-manticores-pack.webp" },
+    pack: { attack: 5, defense: 1, health: 6, initiative: 11, cost: { gold: 18 }, abilities: ["manticore-ignore-defense"], abilityText: "[unit_attack] For this attack, ignore the [defense] value from the target unit's card.", cardImage: "/assets/units-dungeon-golden-manticores-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/manticores/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",

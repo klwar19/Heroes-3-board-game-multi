@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createAdventureGameState, getMainHero } from "./index";
-import { finalizeAdventureCombat } from "./adventure-reducer";
+import { finalizeAdventureCombat, startPlayerCombat } from "./adventure-reducer";
 import type { AdventurePlayerConfig } from "./adventure-setup";
 import { ATTACK_DIE_FACES } from "./battlefield";
 import type {
@@ -82,6 +82,29 @@ function injectSettlement(state: GameState, spaceId: string, ownerId: PlayerId):
   state.adventure!.fields[spaceId] = field;
   return field;
 }
+
+describe("PvP on a controlled Settlement", () => {
+  it("records the owner as defending the Settlement without granting siege fortifications", () => {
+    const state = makeGame();
+    const settlement = injectSettlement(state, "20,20", "p2");
+    const attacker = getMainHero(state, "p1")!;
+    const defender = getMainHero(state, "p2")!;
+    attacker.spaceId = settlement.spaceId;
+    defender.spaceId = settlement.spaceId;
+
+    startPlayerCombat(state, attacker, defender, settlement.spaceId);
+
+    expect(state.combat?.defenderPlayerId).toBe("p2");
+    expect(state.combat?.context).toMatchObject({
+      kind: "player",
+      defenderHeroId: defender.id,
+      fieldId: settlement.spaceId,
+      holdingDefense: "settlement"
+    });
+    expect(state.combat?.context.kind === "player" && state.combat.context.siege).toBeFalsy();
+    expect(state.combat?.siege ?? null).toBeNull();
+  });
+});
 
 function unit(
   over: Partial<CombatUnitState> & { id: string; controllerId: PlayerId; armyUnitId: string }

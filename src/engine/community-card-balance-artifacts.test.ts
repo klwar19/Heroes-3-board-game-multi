@@ -20,6 +20,7 @@ import { effectiveArtifactTier } from "./ruleset";
 import { balancedPlayOptionCost, costNeedsCardPicker } from "./card-play-cost";
 import { cardLibrary } from "@/data/cards/library";
 import { communityBalanceArtifactCards } from "@/data/cards/community-artifacts-balance";
+import { balanceCard } from "./community-balance-cards";
 import type { CardId, GameAction, GameState, PlayerId, UnitId } from "./state";
 
 function applyOk(state: GameState, action: GameAction): GameState {
@@ -1316,29 +1317,15 @@ describe("Community artifacts — precedence over the Polish Balance Pack", () =
     ]);
   });
 
-  it("Centaur's Axe: with BOTH packs on the tripling is POST-roll and a -1 is tripled again", () => {
-    const build = (community: boolean, polish: boolean) => {
-      const state = combat(community, `axe-prec-${community}-${polish}`, polish);
-      state.combat!.units.unit_p1_griffins.attack = 8;
-      state.combat!.units.unit_p2_skeletons.defense = 0;
-      state.players.p1.hand = ["artifact.centaurs_axe" as CardId];
-      return state;
-    };
-    // Polish alone: pre-roll offer, and the tripling is IGNORED on a -1.
-    const polishOnly = build(false, true);
-    const polishDeclared = declareAttack(polishOnly, [-1, 0]);
-    const polishOffer = reaction(polishDeclared, "artifact.centaurs_axe", 0);
-    expect(polishOffer, "polish keeps the pre-roll play").toBeTruthy();
-    const polishDamage = passAllReactions(applyOk(polishDeclared, polishOffer!)).combat!.units
-      .unit_p2_skeletons.damage;
-    const polishPlain = passAllReactions(declareAttack(build(false, true), [-1, 0])).combat!.units
-      .unit_p2_skeletons.damage;
-    expect(polishDamage - polishPlain, "polish: a -1 stays a -1").toBe(0);
+  it("Centaur's Axe: Community still wins over the new Polish die-ignore side", () => {
+    const polishOnly = balanceCard(combat(false, "axe-polish", true), "artifact.centaurs_axe")!;
+    const polishOption = polishOnly.effect.type === "CHOOSE_ONE" ? polishOnly.effect.options[0] : undefined;
+    expect(polishOption?.effect.type).toBe("IGNORE_ATTACK_DIE_RESULT");
 
-    // Both on: no pre-roll offer at all (the community printing moved it).
-    const both = build(true, true);
-    const bothDeclared = declareAttack(both, [-1, 0]);
-    expect(reaction(bothDeclared, "artifact.centaurs_axe", 0), "community wins: no pre-roll offer").toBeFalsy();
+    const both = balanceCard(combat(true, "axe-both", true), "artifact.centaurs_axe")!;
+    const communityOption = both.effect.type === "CHOOSE_ONE" ? both.effect.options[0] : undefined;
+    expect(communityOption?.effect.type).toBe("TRIPLE_ATTACK_DIE");
+    expect(communityOption?.afterAttackRoll).toBe(true);
   });
 
   it("Crown of Dragontooth: with BOTH packs on the pick is the COMMUNITY \"up to 2\"", () => {

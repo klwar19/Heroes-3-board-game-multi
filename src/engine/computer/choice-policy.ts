@@ -234,10 +234,28 @@ function scoreAbilityTarget(
     const missing = unit.maxHealth - remaining;
     return CHOICE_BASE + missing * 8 + Math.min(20, Math.round(unitThreatValue(unit) / 5)) + catapultPairAdjustment;
   }
-  // Enemy: highest threat, slight bonus if nearly dead.
+  // Enemy: highest threat, with a decisive removal bonus when this particular
+  // follow-up can finish it. Ranked-PvP lesson v1: a Lich/flat-damage tie should
+  // spend the follow-up on the wounded valuable body it can remove now, rather
+  // than merely choosing the largest fresh stat block.
+  const abilityDamage =
+    choice?.type === "ABILITY_TARGET_CHOICE"
+      ? choice.kind === "second-attack"
+        ? Math.max(0, (choice.baseAttack ?? 0) - unit.defense)
+        : choice.kind === "flat-damage" ||
+            choice.kind === "faerie-damage" ||
+            choice.kind === "spell-splash" ||
+            choice.kind === "ballistics-splash" ||
+            choice.kind === "area-pick" ||
+            choice.kind === "dreadnought-splash"
+          ? (choice.amount ?? 0)
+          : 0
+      : 0;
+  const removesNow = abilityDamage > 0 && abilityDamage >= remaining;
   return (
     CHOICE_BASE +
     Math.min(60, Math.round(unitThreatValue(unit) / 2)) +
+    (removesNow ? 45 : 0) +
     (remaining <= 2 ? 15 : 0) +
     catapultPairAdjustment
   );

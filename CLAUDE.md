@@ -843,6 +843,19 @@ the guards' slot is open, the AFK driver can play a dropped controller's slot, a
 
 ## Multiplayer ladder & turn discipline (MMR, quit penalty, 10-min turns) — what runs vs. limits
 
+Ranked Clash also captures a private AI-training replay (`ranked-replay.ts`) outside
+`GameState`: sanitized initial gameplay state, every accepted action, legal action
+candidates, authoritative entropy/time, engine events and state hashes. PartyKit
+persists initial-state chunks plus one bounded entry per action and uploads exactly
+once with the terminal match report; the built-in backend buffers privately and
+writes once at finish. Hard limits are 2,000 actions / ~1.5 MB, overflow marks the
+replay truncated, and `HOMM3BG_RANKED_REPLAY_ENABLED=false` is the operator kill
+switch. The Map Preparation Advanced panel shows the locked On/Off status. Chat,
+passwords and real room/session identity are excluded. Supabase storage is the
+RLS-locked `homm3bg_ranked_replays` table. Pinned by `ranked-replay.test.ts`, the
+hibernation/128-KiB integration in `ranked-replay-edge.test.ts`, the AI-learning
+row case in `game-options-tabs.test.tsx`, and report-route tests.
+
 Every finished win/loss funnels through `declareAdventureWinner` and is REPORTED
 (`detectFinishedMatch`, `src/server/match-report.ts`) on a hosted table with ≥2
 verified accounts, casual games included; only a `ranked` match recomputes Elo
@@ -912,7 +925,7 @@ Leading with the adaptations / deliberate limits:
   THE one shared read behind both surfaces: the integrated troop deployment
   `commanderIntegratedDeploymentSortAvailable` and the separate
   `commanderPreCombatSortAvailable` window). Unlocked by EITHER a sort ABILITY —
-  the Vanguard Marshal specialty (Cove Sea Marshal, Bulwark Ruler, Little Busters
+  the Vanguard Marshal specialty (Cove Sea Marshal, Fuyuki Astral Regent, Little Busters
   Kyousuke) or the Marshal's War Horn equipment (`commanderSortAbilitySource`) —
   OR, since 2026-08-14 (USER RULE), **the commander's SPEED grade being raised
   even once** (`COMMANDER_SORT_SPEED_GRADE` = 1): from then on it is arranged with
@@ -931,7 +944,9 @@ Leading with the adaptations / deliberate limits:
   `commanderFrontLineSpeedBonusActive`). Lead with the limits: the Speed-GRADE
   unlock grants NOTHING here (CONTROL-pinned), and the buff is measured ONCE at
   combat start (`applyCommanderCombatStart`, idempotent by effect name) — walking
-  off the line later keeps it, unlike the Vanguard Marshal's live +1 Attack. It is
+  off the line later keeps it. The same sort-ability sources gain +1 Attack during
+  round 1 once they reach their front line; that Attack is latched for the rest of
+  round 1 even after moving away, then expires in round 2. The Speed bonus is
   a real combat-duration `INITIATIVE_BONUS` on the commander's unit, so
   `effectiveInitiative` / `getActivationOrder` genuinely move (pinned by order, not
   a field read). Creature-Bank fights DO qualify, using the already-documented bank
@@ -980,9 +995,11 @@ the BINH tier gate and the Polish Random Artifacts roll). Deck gate:
 `commander-card.test.ts`.
 ACQUISITION beyond the shared decks (98cf9b08, all engine-granted and each card
 UNIQUE game-wide — `grantCommanderArtifactCard` pulls the copy out of the shared
-decks): the **Commander Forge** (`FORGE_COMMANDER_ARTIFACT`, two seed-stable offers
-per tier in the Town panel / commander window; Grade I from round 2 for 5 gold,
-ONE Grade II/III purchase from round 7 for 8/11 gold, each budget once per game);
+decks): the **Commander Forge** (`FORGE_COMMANDER_ARTIFACT`; Grade I has two
+seed-stable offers from round 2 for 5 gold, Grade II has two seed-stable offers
+from round 7 for 8 gold, and Grade III unlocks in round 9 as either one hidden
+seed-stable random result for 11 gold or a specific available item for 13 gold;
+each grade has its own once-per-game budget, with legacy shared-budget saves honored);
 an optional post-victory PURCHASE offer after difficulty 3–5 neutral wins
 (`queueNeutralCommanderArtifactOffer`); and FREE drops from Raid-Boss kills (relic)
 and Dungeon-floor wins (`commanderArtifactTierForDungeonFloor`).
@@ -2650,9 +2667,12 @@ line per sub-rule:
   strength shortcut and both display reads. Polish Quick Combat otherwise keys off
   ARMY strength (5 strongest cards vs `2×FieldDifficulty + X`), making an uncovered
   fight MANDATORY even for a high-level hero.
-- **Tournament Morale "Search again"** (with Morale Cards OFF): spend the positive
-  token to discard the revealed cards and re-run the same Search (X) —
-  `tournament-morale-search-again.test.ts`, `deck-search-mode-modal.test.tsx`.
+- **Granular Tournament rules**: `tournamentMoraleSearchAgain` spends a positive
+  token to discard the revealed cards and re-run the same Search (X), while
+  `tournamentRemovedArtifactsVp` keeps removed Artifact cards in the final
+  1-VP-per-2 count. Both are independent toggles in the Tournament panel and the
+  full Tournament preset enables both. `tournament-morale-search-again.test.ts`,
+  `victory-points.test.ts`, `deck-search-mode-modal.test.tsx`.
 DEFERRED: bank units still carry the underlying unit's `grade` field for placement and
 display, but it never grants them a tier in play.
 
@@ -2702,6 +2722,9 @@ break/persistent/unlimited trio as Mines and Obelisks. A center Utopia may also 
 marked flaggable: clearing or conquering it transfers the flag, makes it garrisonable,
 and its controller gets one non-stacking paid Search(2) Azure-unit recruit offer at
 each Astrologers round. All fields are optional; legacy maps retain prior behaviour.
+`breaks.teamScope` controls team play: absent/`individual` requires every ally to
+place their own Break flag (tracked in `extraFlagOwnerIds` without stealing control),
+while `team` lets one allied flag clear the Break for the whole team.
 
 Three designer systems: per-kind **Global | Specific** plans
 (`CustomMapTilePlan.objectPlans.{obelisk,mine}` = guard / reward / vp / break flags /
@@ -2897,7 +2920,8 @@ every Resource-round income; **Hidden Leaf** and **MGQ** lose 1 effective
 hand-limit point for the Resource round ONLY (minimum 1) — round-scoped, it
 reverts to normal at the next `startAdventureRound` and never stacks (updated
 2026-08-26; the old permanent-accumulation reading is gone); **Little Busters**
-loses up to 5 gold and 1 building material after income; and at each combat
+loses up to 5 gold and 1 building material after income, and in PvP its enemy
+draws exactly 1 card once at combat start (the old three paid counters are retired); and at each combat
 start one seeded-random real **Azur Lane** army unit suffers 1 damage (never a
 commander or summon). Every trigger writes a public notice and resource costs
 never create debt (`anime-faction-penalties.test.ts`,
@@ -3678,3 +3702,23 @@ where the art really IS a card face), the Shady Auction lot and the face-up even
 (`artifact-set-card-surfaces.test.tsx`).
 NOT badged by design: `fx.tsx`'s card-flight face, `CardFrame`'s art-less fallbacks, the set
 PANEL's own card art, and surfaces a core Artifact can never reach.
+
+## Secondary-Hero discovery + lasting spell tokens (2026-08-28, protocol v83)
+
+Speculum and the Community View Air discovery rung measure adjacent face-down tiles from
+EITHER placed Hero, matching View Earth. Their shared queued step carries
+`fromAnyHero`; the legal-action list and reducer both read `anyHeroAdjacentRevealTargets`,
+and this path never exposes the Observatory-only Far-tile placement action.
+
+A battlefield token placed by a Spell carries `sourceSpellCardId`. Fire Wall and Land Mine
+damage from those tokens is Spell damage, so all-spell immunity and every numeric
+spell-damage reduction (including allied auras) apply. Luna, Hell Steed, and other
+non-Spell walls omit the source and remain effect damage: numeric Spell reduction does not
+soften them, but printed all-Spell immunity still ignores them. Quicksand cannot halt a
+fully Spell-immune unit. Fire Shield uses the same source split: numeric reduction applies
+to the Spell card only, while full immunity blocks both Spell and Specialty/innate shields. A Polish
+Book Spell whose sourced token is still present is displayed as **In play**, cannot be
+refreshed, and cannot be cast again even if a stale snapshot already put a copy on the
+refreshed side. The supplied Community Inferno reprint is now the 0/1/3 → 2/3/5-dice face
+with no flat pre-damage. Little Busters' former paid discard, half-HP, and draw-two counters
+are retired; its faction notice states only the automatic one-card enemy draw.

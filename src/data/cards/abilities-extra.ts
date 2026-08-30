@@ -7,19 +7,21 @@ function abilitySource(slug: string) {
   return {
     product: "Heroes of Might and Magic III: The Board Game",
     credit: wikiCredit,
-    url: `https://en.homm3bg.wiki/abilities/${slug}/`
+    url: `https://en.homm3bg.wiki/abilities/${slug}/`,
   };
 }
 
 function abilityAssets(slug: string, name: string) {
   return {
     cardImage: `/assets/abilities-${slug}.webp`,
-    imageAlt: `${name} ability card`
+    imageAlt: `${name} ability card`,
   };
 }
 
 /** Conflux "Basic X Magic": permanent school fetch OR expert +3 school power. */
-function basicSchoolMagic(school: Exclude<SpellSchool, "any">): CardLibrary[string] {
+function basicSchoolMagic(
+  school: Exclude<SpellSchool, "any">,
+): CardLibrary[string] {
   const schoolName = school.charAt(0).toUpperCase() + school.slice(1);
   // "an Air"/"an Earth" but "a Fire"/"a Water": pick the article from the
   // school's leading vowel sound, not a single hard-coded special case.
@@ -40,7 +42,7 @@ function basicSchoolMagic(school: Exclude<SpellSchool, "any">): CardLibrary[stri
       "ability",
       "magic-school",
       "permanent",
-      `Permanent: Instead of Searching the Spell deck, find the first ${schoolName} Magic spell in it and take it into your hand. Then, reshuffle the deck. Expert: +3 Power for ${article} ${schoolName} Magic spell.`
+      `Permanent: Instead of Searching the Spell deck, find the first ${schoolName} Magic spell in it and take it into your hand. Then, reshuffle the deck. Expert: +3 Power for ${article} ${schoolName} Magic spell.`,
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -50,19 +52,19 @@ function basicSchoolMagic(school: Exclude<SpellSchool, "any">): CardLibrary[stri
           // while it sits in the slot (permanentEffect.schoolFetch, read by
           // activeSchoolFetches), so replacing it stops the fetch.
           label: `Permanent: fetch ${schoolName} spells instead of searching`,
-          effect: { type: "ENTER_PLAY" }
+          effect: { type: "ENTER_PLAY" },
         },
         {
           label: `+3 Power for ${article} ${schoolName} Magic spell`,
           expertOnly: true,
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 3, schoolOnly: school }
-        }
-      ]
+          effect: { type: "ADD_SPELL_POWER", amount: 3, schoolOnly: school },
+        },
+      ],
     },
     assets: abilityAssets(`basic_${school}_magic`, `Basic ${schoolName} Magic`),
     implementationStatus: "implemented",
-    source: abilitySource(`basic_${school}_magic`)
+    source: abilitySource(`basic_${school}_magic`),
   };
 }
 
@@ -73,15 +75,20 @@ export const extraAbilityCards: CardLibrary = {
     kind: "ability",
     timing: "instant",
     abilityClass: "economy",
-    tags: ["ability", "instant", "gold", "Basic: Gain 3 gold. Expert: Gain 6 gold. (BINH: 2 / 4 gold.)"],
+    tags: [
+      "ability",
+      "instant",
+      "gold",
+      "Basic: Gain 3 gold. Expert: Gain 6 gold. (BINH: 2 / 4 gold.)",
+    ],
     effect: {
       type: "GAIN_RESOURCES",
       gain: { gold: 3 },
-      expertGain: { gold: 6 }
+      expertGain: { gold: 6 },
     },
     assets: abilityAssets("estates", "Estates"),
     implementationStatus: "implemented",
-    source: abilitySource("estates")
+    source: abilitySource("estates"),
   },
   "ability.logistics": {
     id: "ability.logistics",
@@ -92,13 +99,14 @@ export const extraAbilityCards: CardLibrary = {
     tags: [
       "ability",
       "map",
-      "Basic (Ongoing): At the end of your turn, move your Hero's model to an adjacent empty field. Expert: Your Hero gains +1 Movement."
+      "Basic (Ongoing): At the end of your turn, move your Hero's model to an adjacent empty field. Expert: Your Hero gains +1 Movement.",
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Ongoing: step to an adjacent empty field at the end of your turn",
+          label:
+            "Ongoing: step to an adjacent empty field at the end of your turn",
           mapOnly: true,
           effect: {
             type: "CREATE_ACTIVE_EFFECT",
@@ -108,21 +116,21 @@ export const extraAbilityCards: CardLibrary = {
               duration: { type: "current-turn" },
               polarity: "positive",
               removable: false,
-              modifiers: [{ type: "END_TURN_ADJACENT_MOVE" }]
-            }
-          }
+              modifiers: [{ type: "END_TURN_ADJACENT_MOVE" }],
+            },
+          },
         },
         {
           label: "Expert: your hero gains +1 movement",
           mapOnly: true,
           expertOnly: true,
-          effect: { type: "GAIN_HERO_MOVEMENT", amount: 1 }
-        }
-      ]
+          effect: { type: "GAIN_HERO_MOVEMENT", amount: 1 },
+        },
+      ],
     },
     assets: abilityAssets("logistics", "Logistics"),
     implementationStatus: "implemented",
-    source: abilitySource("logistics")
+    source: abilitySource("logistics"),
   },
   "ability.scouting": {
     id: "ability.scouting",
@@ -134,7 +142,7 @@ export const extraAbilityCards: CardLibrary = {
       "ability",
       "search",
       "Basic: Play this card before taking a Search action, then do Search (3) instead. Expert: Search (5) instead.",
-      "Balance pack: both sides read Search (X+2) instead of a flat 3 / 5, and the Expert side widens EVERY Search until the end of your turn instead of only the next one."
+      "Balance pack: both sides read Search (X+2) instead of a flat 3 / 5, and the Expert side widens EVERY Search until the end of your turn instead of only the next one.",
     ],
     // Both printings ride the SAME modifier: the classic flat `count`, plus the
     // Balance-Pack `balanceDelta` / `balancePersist`. `searchCountOverrideFor`
@@ -148,7 +156,9 @@ export const extraAbilityCards: CardLibrary = {
         duration: { type: "current-turn" },
         polarity: "positive",
         removable: false,
-        modifiers: [{ type: "SEARCH_COUNT_OVERRIDE", count: 3, balanceDelta: 2 }]
+        modifiers: [
+          { type: "SEARCH_COUNT_OVERRIDE", count: 3, balanceDelta: 2 },
+        ],
       },
       expertEffect: {
         name: "Expert Scouting",
@@ -156,12 +166,19 @@ export const extraAbilityCards: CardLibrary = {
         duration: { type: "current-turn" },
         polarity: "positive",
         removable: false,
-        modifiers: [{ type: "SEARCH_COUNT_OVERRIDE", count: 5, balanceDelta: 2, balancePersist: true }]
-      }
+        modifiers: [
+          {
+            type: "SEARCH_COUNT_OVERRIDE",
+            count: 5,
+            balanceDelta: 2,
+            balancePersist: true,
+          },
+        ],
+      },
     },
     assets: abilityAssets("scouting", "Scouting"),
     implementationStatus: "implemented",
-    source: abilitySource("scouting")
+    source: abilitySource("scouting"),
   },
   "ability.mysticism": {
     id: "ability.mysticism",
@@ -174,19 +191,19 @@ export const extraAbilityCards: CardLibrary = {
       "ability",
       "spell-recall",
       "Basic: Play immediately after casting a spell; take the Spell card back into your hand instead of discarding it. Expert: also take back all other cards played together with it.",
-      "Balance pack: the reprint is the SAME behaviour in Polish-Spell-Book vocabulary — take the \"Cast a Spell\" card back instead of discarding it and refresh the cast Spell (once per round). Under polish-spell-book that is exactly what this card already does; without the Book the closest reading is the printed one above (the Spell card itself returns), so the reprint changes no engine rule — only the face."
+      'Balance pack: the reprint is the SAME behaviour in Polish-Spell-Book vocabulary — take the "Cast a Spell" card back instead of discarding it and refresh the cast Spell. The shared Spell Book rule prevents every Spell from being refreshed more than once in a round, regardless of the source. Without the Book the closest reading is the printed one above (the Spell card itself returns), so the reprint changes no engine rule — only the face.',
     ],
     trigger: {
       event: "SPELL_CAST_STARTED",
-      controller: "self"
+      controller: "self",
     },
     effect: {
       type: "RECALL_SPELL",
-      expertRecallPlayedCards: true
+      expertRecallPlayedCards: true,
     },
     assets: abilityAssets("mysticism", "Mysticism"),
     implementationStatus: "implemented",
-    source: abilitySource("mysticism")
+    source: abilitySource("mysticism"),
   },
   "ability.eagle_eye": {
     id: "ability.eagle_eye",
@@ -198,12 +215,12 @@ export const extraAbilityCards: CardLibrary = {
       "ability",
       "spell-deck",
       "Basic: Draw cards from the Spell deck until you find a Basic Spell card. Take it into your hand or discard it; reshuffle the rest. Expert: the same for an Expert Spell card.",
-      "Balance pack: ONE play, then a two-button \"Basic or Expert Spell?\" pick (no crown), and the find is always TAKEN — into your hand, or into the Spellbook under polish-spell-book. The reprinted EXPERT side is a different card entirely: after an ENEMY Spell that dealt damage to one of your units RESOLVES, you may discard Eagle Eye (spend a crown) to copy that spell at Power 0 against a new target of your choice, boostable through the normal Power window and free of the per-round Spell limit."
+      'Balance pack: ONE play, then a two-button "Basic or Expert Spell?" pick (no crown), and the find is always TAKEN — into your hand, or into the Spellbook under polish-spell-book. The reprinted EXPERT side is a different card entirely: after an ENEMY Spell that dealt damage to one of your units RESOLVES, you may discard Eagle Eye (spend a crown) to copy that spell at Power 0 against a new target of your choice, boostable through the normal Power window and free of the per-round Spell limit.',
     ],
     effect: { type: "EAGLE_EYE_DIG" },
     assets: abilityAssets("eagle_eye", "Eagle Eye"),
     implementationStatus: "implemented",
-    source: abilitySource("eagle_eye")
+    source: abilitySource("eagle_eye"),
   },
   "ability.armorer": {
     id: "ability.armorer",
@@ -212,21 +229,26 @@ export const extraAbilityCards: CardLibrary = {
     timing: "instant",
     phaseLimit: ["reaction", "combat"],
     abilityClass: "might",
-    tags: ["ability", "instant", "defense", "Basic: +1 defense, then draw 1 card. Expert: +2 defense, then draw 1 card."],
+    tags: [
+      "ability",
+      "instant",
+      "defense",
+      "Basic: +1 defense, then draw 1 card. Expert: +2 defense, then draw 1 card.",
+    ],
     trigger: {
       event: "UNIT_ATTACK_DECLARED",
-      controller: "opponent"
+      controller: "opponent",
     },
     effect: {
       type: "ADD_COMBAT_STAT",
       stat: "defense",
       amount: 1,
       expertAmount: 2,
-      drawCards: 1
+      drawCards: 1,
     },
     assets: abilityAssets("armorer", "Armorer"),
     implementationStatus: "implemented",
-    source: abilitySource("armorer")
+    source: abilitySource("armorer"),
   },
   "ability.basic_air_magic": basicSchoolMagic("air"),
   "ability.basic_earth_magic": basicSchoolMagic("earth"),
@@ -252,7 +274,7 @@ export const extraAbilityCards: CardLibrary = {
       "magic",
       "spell-timing",
       "Instant (Combat): Until the end of the Combat you may cast a Spell at any time — even off-turn, without one of your units being active (still one Spell per Combat round). Expert: your Spell casts no longer count toward that limit.",
-      "Balance pack: the free cast is scoped to the START of a Combat — the card is playable, and the freedom it grants only lasts, while no unit has activated yet (the shared combatStartWindowOpen read). Under polish-spell-book the cast needs no \"Cast a Spell\" card. Expert keeps its no-limit rider, likewise only inside that window."
+      'Balance pack: the free cast is scoped to the START of a Combat — the card is playable, and the freedom it grants only lasts, while no unit has activated yet (the shared combatStartWindowOpen read). Under polish-spell-book the cast needs no "Cast a Spell" card. Expert keeps its no-limit rider, likewise only inside that window.',
     ],
     effect: {
       type: "CREATE_ACTIVE_EFFECT",
@@ -262,7 +284,7 @@ export const extraAbilityCards: CardLibrary = {
         duration: { type: "combat" },
         polarity: "positive",
         removable: false,
-        modifiers: [{ type: "SPELL_CAST_ANYTIME" }]
+        modifiers: [{ type: "SPELL_CAST_ANYTIME" }],
       },
       expertEffect: {
         name: "Expert Intelligence",
@@ -270,12 +292,12 @@ export const extraAbilityCards: CardLibrary = {
         duration: { type: "combat" },
         polarity: "positive",
         removable: false,
-        modifiers: [{ type: "SPELL_CAST_ANYTIME", ignoreSpellLimit: true }]
-      }
+        modifiers: [{ type: "SPELL_CAST_ANYTIME", ignoreSpellLimit: true }],
+      },
     },
     assets: abilityAssets("intelligence", "Intelligence"),
     implementationStatus: "implemented",
-    source: abilitySource("intelligence")
+    source: abilitySource("intelligence"),
   },
   // Interference shares Armorer's identical "+X defense" base, so it is BOTH a
   // normal defense reaction to a physical attack AND a spell-damage reduction:
@@ -297,21 +319,21 @@ export const extraAbilityCards: CardLibrary = {
     abilityClass: "magic",
     trigger: {
       event: "SPELL_CAST_STARTED",
-      controller: "opponent"
+      controller: "opponent",
     },
     tags: [
       "ability",
       "magic",
       "defense",
       "Basic: Instant +1 defense — a reaction to an attack on your unit OR to an enemy damaging Spell on your unit (the same +1 also reduces that Spell's damage). Expert: Instant +2 defense.",
-      "Balance pack: Basic may instead decrease an enemy Spell's Power by up to 2 (minimum its weakest effect); Expert may instead decrease it by up to 4."
+      "Balance pack: Basic may instead decrease an enemy Spell's Power by up to 2 (minimum its weakest effect); Expert may instead decrease it by up to 4.",
     ],
     effect: {
       type: "INTERFERE_SPELL",
       amount: 1,
       expertAmount: 2,
       balancePowerReduction: 2,
-      balanceExpertPowerReduction: 4
+      balanceExpertPowerReduction: 4,
     },
     // Real printed-card scan at /assets/abilities-interference.webp, so noScan
     // stays off (default false) and the baked art is used. Refreshed 2026-08-04
@@ -321,13 +343,12 @@ export const extraAbilityCards: CardLibrary = {
     // (NAVAL BATTLES 078/082).
     assets: abilityAssets("interference", "Interference"),
     implementationStatus: "implemented",
-    source: abilitySource("interference")
+    source: abilitySource("interference"),
   },
   // engine: Diplomacy's two sides map to the printed card — the basic/regular
-  // effect is the Map recruit, the expert effect is the Instant skip. This is an
-  // Empowered card: per the Empowered mechanic the holder may use EITHER side
-  // without spending an expert use (crown), so the skip is offered free at any
-  // hero level (a level-1 hero has 0 crowns yet can still skip). The Map option
+  // effect is the Map recruit, the expert effect is the Instant skip. It is an
+  // ordinary Ability until its owner explicitly empowers it: the Expert side
+  // costs a crown normally and becomes crown-free only while Empowered. The Map option
   // draws one Neutral Unit card per Dwelling and opens a recruit choice
   // (DIPLOMACY_RECRUIT, resolved in openDiplomacyRecruit). The Instant skip is
   // surfaced automatically as a pop-up when a hero meets Neutral Units whose
@@ -353,35 +374,29 @@ export const extraAbilityCards: CardLibrary = {
     tags: [
       "ability",
       "map",
-      "empowered",
       "Regular (basic): for every Dwelling you have, draw 1 corresponding Neutral Unit card; you may Recruit one by paying its cost. Expert: skip Combat with Neutral Units on a field whose Difficulty equals your Hero's level — claim the field and resolve its effect, gaining no Experience. Empowered: use either side without spending a crown.",
-      "Balance pack: the basic side adds \"Decide for each unpurchased unit: place its card on the top or bottom of its appropriate deck\" — one two-button placement choice per unpurchased draw (the shared deck-card-placement window) instead of the silent return to the discard pile. Expert is unchanged.",
-      "House ruling: the Expert skip works on any field whose Field Difficulty is AT MOST your Hero's level — including Ⅵ and Ⅶ, where Quick Combat is never allowed. A hero below the Field Difficulty still has to fight."
+      'Balance pack: the basic side adds "Decide for each unpurchased unit: place its card on the top or bottom of its appropriate deck" — one two-button placement choice per unpurchased draw (the shared deck-card-placement window) instead of the silent return to the discard pile. Expert is unchanged.',
+      "House ruling: the Expert skip works on any field whose Field Difficulty is AT MOST your Hero's level — including Ⅵ and Ⅶ, where Quick Combat is never allowed. A hero below the Field Difficulty still has to fight.",
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Regular: draw 1 Neutral Unit card per Dwelling, then recruit one (pay its cost)",
+          label:
+            "Regular: draw 1 Neutral Unit card per Dwelling, then recruit one (pay its cost)",
           mapOnly: true,
-          effect: { type: "DIPLOMACY_RECRUIT" }
+          effect: { type: "DIPLOMACY_RECRUIT" },
         },
         {
           label:
             "Expert: skip a Neutral fight whose Field Difficulty your Hero's level reaches, claim the field and resolve its effect (no Experience)",
-          effect: { type: "DIPLOMACY_SKIP_COMBAT" }
-        }
-      ]
+          effect: { type: "DIPLOMACY_SKIP_COMBAT" },
+        },
+      ],
     },
-    // Diplomacy is a PRINTED always-Empowered card ("use either side without
-    // spending a crown" is on the card itself, hence the "empowered" tag above),
-    // so its printed face IS the wiki's Empowered scan — not the plain base one.
-    assets: {
-      cardImage: "/assets/abilities-diplomacy-empowered.webp",
-      imageAlt: "Diplomacy ability card"
-    },
+    assets: abilityAssets("diplomacy", "Diplomacy"),
     implementationStatus: "implemented",
-    source: abilitySource("diplomacy")
+    source: abilitySource("diplomacy"),
   },
   "ability.necromancy": {
     id: "ability.necromancy",
@@ -393,12 +408,12 @@ export const extraAbilityCards: CardLibrary = {
       "ability",
       "map",
       "necropolis-only",
-      "Basic: Play after winning Combat other than Quick Combat. You can Reinforce a bronze or silver unit of your choice for half the gold cost (rounded down). Expert: any unit. Necropolis heroes only — needs no Citadel, Dwelling or Population token."
+      "Basic: Play after winning Combat other than Quick Combat. You can Reinforce a bronze or silver unit of your choice for half the gold cost (rounded down). Expert: any unit. Necropolis heroes only — needs no Citadel, Dwelling or Population token.",
     ],
     effect: { type: "NECROMANCY_REINFORCE" },
     assets: abilityAssets("necromancy", "Necromancy"),
     implementationStatus: "implemented",
-    source: abilitySource("necromancy")
+    source: abilitySource("necromancy"),
   },
   // Pathfinding (Rampart Ranger Clancy's starting ability).
   // engine: a current-turn HERO_PATHFINDING active effect drives the adventure
@@ -429,7 +444,7 @@ export const extraAbilityCards: CardLibrary = {
       "ability",
       "map",
       "Basic (Map): This turn your Hero can move through fields with Neutral Units and enemy Heroes — ending on such a field starts Combat. Expert (spend a crown): also move over yellow borders and blocked fields (never ending on a blocked field). BINH house rule (pathfinding-expert, on by default): the basic side already crosses yellow borders & blocked fields, and the expert side additionally crosses between land and sea with no penalty and steps directly between the Surface and a Subterranean Tile without a Gate (unlike Dimension Door or Fly).",
-      "Balance pack: a complete restructure, and it WINS over the pathfinding-expert house rule (both classic sides are withheld while polish-card-balance is on). BASIC is no longer a movement card at all — it is played in a neutral combat's continue-or-retreat window to fight one more round for free (the Dessa Logistics CONTINUE_NEUTRAL_FREE arm). EXPERT (spend a crown) is the whole movement package for the turn: cross yellow borders and blocked fields without ending on them, pass through Neutral Units and enemy Heroes (Combat only if the Hero ENDS there), and entering a Sea field from land no longer halts the move. It deliberately does NOT step Surface↔Subterranean without a Gate (that is the pathfinding-expert rule's own extra, not on this card)."
+      "Balance pack: a complete restructure, and it WINS over the pathfinding-expert house rule (both classic sides are withheld while polish-card-balance is on). BASIC is no longer a movement card at all — it is played in a neutral combat's continue-or-retreat window to fight one more round for free (the Dessa Logistics CONTINUE_NEUTRAL_FREE arm). EXPERT (spend a crown) is the whole movement package for the turn: cross yellow borders and blocked fields without ending on them, pass through Neutral Units and enemy Heroes (Combat only if the Hero ENDS there), and entering a Sea field from land no longer halts the move. It deliberately does NOT step Surface↔Subterranean without a Gate (that is the pathfinding-expert rule's own extra, not on this card).",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -438,7 +453,8 @@ export const extraAbilityCards: CardLibrary = {
           // Capabilities read decides what this grants: rule OFF → only the
           // pass-through; rule ON (BINH) → also crosses yellow borders & blocked
           // fields (both printed halves bundled).
-          label: "Basic: this turn move through Neutral & enemy Hero fields (and, with the BINH crossing rule, over yellow borders & blocked fields)",
+          label:
+            "Basic: this turn move through Neutral & enemy Hero fields (and, with the BINH crossing rule, over yellow borders & blocked fields)",
           mapOnly: true,
           // The Balance Pack reprints this card with entirely different sides.
           forbidsHouseRule: "polish-card-balance",
@@ -450,9 +466,9 @@ export const extraAbilityCards: CardLibrary = {
               duration: { type: "current-turn" },
               polarity: "positive",
               removable: false,
-              modifiers: [{ type: "HERO_PATHFINDING" }]
-            }
-          }
+              modifiers: [{ type: "HERO_PATHFINDING" }],
+            },
+          },
         },
         {
           // Always offered when a crown is available (no house-rule gate). What
@@ -474,9 +490,9 @@ export const extraAbilityCards: CardLibrary = {
               duration: { type: "current-turn" },
               polarity: "positive",
               removable: false,
-              modifiers: [{ type: "HERO_PATHFINDING", expert: true }]
-            }
-          }
+              modifiers: [{ type: "HERO_PATHFINDING", expert: true }],
+            },
+          },
         },
         // The two Balance-Pack sides are APPENDED, never inserted, so every
         // pre-existing `optionIndex` keeps its meaning.
@@ -484,10 +500,11 @@ export const extraAbilityCards: CardLibrary = {
           // Balance Pack basic: "Extend your Combat against a Neutral Army for 1
           // round (without spending any MP)." A card play in the continue-or-
           // retreat window, reusing Dessa's Logistics arm verbatim.
-          label: "Balance: fight another round of this neutral combat for free (no movement point)",
+          label:
+            "Balance: fight another round of this neutral combat for free (no movement point)",
           requiresHouseRule: "polish-card-balance",
           combatOnly: true,
-          effect: { type: "CONTINUE_NEUTRAL_FREE" }
+          effect: { type: "CONTINUE_NEUTRAL_FREE" },
         },
         {
           // Balance Pack expert: the movement package, independent of the
@@ -505,15 +522,15 @@ export const extraAbilityCards: CardLibrary = {
               duration: { type: "current-turn" },
               polarity: "positive",
               removable: false,
-              modifiers: [{ type: "HERO_PATHFINDING", expert: true }]
-            }
-          }
-        }
-      ]
+              modifiers: [{ type: "HERO_PATHFINDING", expert: true }],
+            },
+          },
+        },
+      ],
     },
     assets: abilityAssets("pathfinding", "Pathfinding"),
     implementationStatus: "implemented",
-    source: abilitySource("pathfinding")
+    source: abilitySource("pathfinding"),
   },
   "ability.learning": {
     id: "ability.learning",
@@ -525,7 +542,7 @@ export const extraAbilityCards: CardLibrary = {
       "ability",
       "level-up",
       "Basic: Play when the Hero is about to level up; advance an additional half level. Expert: advance an additional full level, then Remove this card.",
-      "Balance pack: the basic timing widens to \"Play when the Hero gains experience\" (ANY gain, not only one that crosses a level — and it is offered at the Experience cap too), and the basic play ALSO draws 1 card, so it is worth playing even when the extra half level cannot apply. Expert is unchanged (+1 full level, then Remove)."
+      'Balance pack: the basic timing widens to "Play when the Hero gains experience" (ANY gain, not only one that crosses a level — and it is offered at the Experience cap too), and the basic play ALSO draws 1 card, so it is worth playing even when the extra half level cannot apply. Expert is unchanged (+1 full level, then Remove).',
     ],
     // Never played from hand: the engine offers it (a "learning-level-up" pending
     // choice) whenever the Hero GAINS EXPERIENCE from any source while this card
@@ -536,7 +553,7 @@ export const extraAbilityCards: CardLibrary = {
     effect: { type: "ADVANCE_EXPERIENCE", amount: 1, expertAmount: 2 },
     assets: abilityAssets("learning", "Learning"),
     implementationStatus: "implemented",
-    source: abilitySource("learning")
+    source: abilitySource("learning"),
   },
   "ability.artillery": {
     id: "ability.artillery",
@@ -555,7 +572,7 @@ export const extraAbilityCards: CardLibrary = {
       "war-machine",
       "wiki-reference",
       "Basic: Deal 1 damage to an enemy unit with the lowest initiative. Expert: when using the Ballista card, resolve its effect against the same target 3 times.",
-      "Balance pack: BOTH sides also carry an ongoing rider — while you have a Ballista in play, you choose its targets for the rest of this combat (the same freedom Gerwulf's Ballista VI grants). Because a Ballista fires at round start, the aim first applies from the next combat round. CONSEQUENCE: the rider is a real lasting effect, so a played Artillery is HELD in the public Permanents & Ongoing tray until the combat ends (the engine-wide \"a live ongoing card is never in the discard pile\" rule) instead of going straight to the discard; with the rule off it discards immediately as before."
+      'Balance pack: BOTH sides also carry an ongoing rider — while you have a Ballista in play, you choose its targets for the rest of this combat (the same freedom Gerwulf\'s Ballista VI grants). Because a Ballista fires at round start, the aim first applies from the next combat round. CONSEQUENCE: the rider is a real lasting effect, so a played Artillery is HELD in the public Permanents & Ongoing tray until the combat ends (the engine-wide "a live ongoing card is never in the discard pile" rule) instead of going straight to the discard; with the rule off it discards immediately as before.',
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -564,22 +581,23 @@ export const extraAbilityCards: CardLibrary = {
           label: "Deal 1 damage to the enemy unit with the lowest initiative",
           combatOnly: true,
           combatAnytime: true,
-          effect: { type: "DAMAGE_LOWEST_INITIATIVE_ENEMY", amount: 1 }
+          effect: { type: "DAMAGE_LOWEST_INITIATIVE_ENEMY", amount: 1 },
         },
         {
           // Expert: never played from hand (PLAY_CARD throws). When this player's
           // Ballista fires at the start of a combat round, they may play Artillery
           // — spending one expert use — to resolve that shot against the SAME
           // target 3×. The engine reads `shots` from here; see permanents.ts.
-          label: "When your Ballista fires: resolve it against the same target 3×",
+          label:
+            "When your Ballista fires: resolve it against the same target 3×",
           expertOnly: true,
-          effect: { type: "ARTILLERY_BALLISTA_VOLLEY", shots: 3 }
-        }
-      ]
+          effect: { type: "ARTILLERY_BALLISTA_VOLLEY", shots: 3 },
+        },
+      ],
     },
     assets: abilityAssets("artillery", "Artillery"),
     implementationStatus: "implemented",
-    source: abilitySource("artillery")
+    source: abilitySource("artillery"),
   },
   // engine (HOUSE RULE buff): both demolition sides are now BASIC (no crown) —
   // destroy 1 Wall or the Gate, OR the Arrow Tower (the Arrow-Tower demolition
@@ -592,11 +610,8 @@ export const extraAbilityCards: CardLibrary = {
   // BALLISTICS_BOMBARD + the ballistics-splash target choice (war-machine
   // damage; spell-damage reduction does not apply). Covered in
   // ballistics-ability.test.ts.
-  // NOT implemented: the card's "Empowered" printing ("Destroy 3 Walls and the
-  // Gate"). This game models no general empower-an-ability action — the only
-  // "empowered" ability (Diplomacy) is a hardcoded tag, not a player choice —
-  // so there is no path to reach an Empowered Ballistics, and another option
-  // would be unreachable/decorative. Left out deliberately.
+  // Ability empowerment is tracked per owner in player.empoweredAbilities; it
+  // must never be encoded as a permanent tag or Empowered base image.
   "ability.ballistics": {
     id: "ability.ballistics",
     name: "Ballistics",
@@ -609,7 +624,7 @@ export const extraAbilityCards: CardLibrary = {
       "instant",
       "siege",
       "wiki-reference",
-      "Balance pack: the reprint WINS over the ballistics-buff house rule. BASIC: at the beginning of Combat, pay 1 building material to deal 1 damage to two adjacent targets (units, Walls, or Gate) — OR during a siege destroy 2 Walls or 1 Wall and the Gate. EXPERT: when using the Catapult, resolve it twice on the same targets without paying its cost — OR during a siege destroy 3 Walls and the Gate."
+      "Balance pack: the reprint WINS over the ballistics-buff house rule. BASIC: at the beginning of Combat, pay 1 building material to deal 1 damage to two adjacent targets (units, Walls, or Gate) — OR during a siege destroy 2 Walls or 1 Wall and the Gate. EXPERT: when using the Catapult, resolve it twice on the same targets without paying its cost — OR during a siege destroy 3 Walls and the Gate.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -617,7 +632,7 @@ export const extraAbilityCards: CardLibrary = {
         {
           label: "Destroy 1 Wall or the Gate",
           forbidsHouseRule: "polish-card-balance",
-          effect: { type: "SIEGE_DEMOLISH", target: "wall-or-gate" }
+          effect: { type: "SIEGE_DEMOLISH", target: "wall-or-gate" },
         },
         {
           // House-rule buff ("ballistics-buff"): the Arrow-Tower demolition is a
@@ -627,20 +642,21 @@ export const extraAbilityCards: CardLibrary = {
           expertUnlessHouseRule: "ballistics-buff",
           // Not on the Balance Pack reprint (its sides replace it).
           forbidsHouseRule: "polish-card-balance",
-          effect: { type: "SIEGE_DEMOLISH", target: "arrow-tower" }
+          effect: { type: "SIEGE_DEMOLISH", target: "arrow-tower" },
         },
         {
           // House-rule expert ("ballistics-buff"): spend a crown AND pay 1
           // building material to deal 1 damage to an enemy unit and an enemy
           // adjacent to it. Offered only while the buff is on.
-          label: "Pay 1 building material: 1 damage to an enemy unit and an enemy adjacent to it",
+          label:
+            "Pay 1 building material: 1 damage to an enemy unit and an enemy adjacent to it",
           expertOnly: true,
           requiresHouseRule: "ballistics-buff",
           // The Balance Pack's own basic bombard replaces it.
           forbidsHouseRule: "polish-card-balance",
           cost: { resources: { buildingMaterials: 1 } },
           target: { type: "enemy-unit" },
-          effect: { type: "BALLISTICS_BOMBARD", amount: 1 }
+          effect: { type: "BALLISTICS_BOMBARD", amount: 1 },
         },
         // The two Balance-Pack sides are APPENDED, never inserted, so every
         // pre-existing `optionIndex` (and every client / test that names one)
@@ -649,36 +665,42 @@ export const extraAbilityCards: CardLibrary = {
           // Balance Pack basic: the recurring paid bombard. Entering play is what
           // makes it recur — `startWarMachineRound` queues every in-play card that
           // carries a `roundStart`, so the Catapult's own machinery drives it.
-          label: "Balance: during a siege, destroy 2 Walls or 1 Wall and the Gate",
+          label:
+            "Balance: during a siege, destroy 2 Walls or 1 Wall and the Gate",
           requiresHouseRule: "polish-card-balance",
           combatOnly: true,
-          effect: { type: "SIEGE_DEMOLISH", target: "two-walls-or-wall-and-gate" }
+          effect: {
+            type: "SIEGE_DEMOLISH",
+            target: "two-walls-or-wall-and-gate",
+          },
         },
         {
           // Balance Pack expert siege arm: no target pick — it fells the Gate and
           // up to 3 standing Walls at once.
-          label: "Balance (spend a crown): during a siege, destroy 3 Walls and the Gate",
+          label:
+            "Balance (spend a crown): during a siege, destroy 3 Walls and the Gate",
           requiresHouseRule: "polish-card-balance",
           expertOnly: true,
-          effect: { type: "SIEGE_DEMOLISH", target: "three-walls-and-gate" }
+          effect: { type: "SIEGE_DEMOLISH", target: "three-walls-and-gate" },
         },
         {
-          label: "Balance: at the beginning of Combat pay 1 building material to hit 2 adjacent targets",
+          label:
+            "Balance: at the beginning of Combat pay 1 building material to hit 2 adjacent targets",
           requiresHouseRule: "polish-card-balance",
           combatOnly: true,
           combatStartOnly: true,
           cost: { resources: { buildingMaterials: 1 } },
-          effect: { type: "BALLISTICS_OPENING_BOMBARD", amount: 1 }
-        }
-      ]
+          effect: { type: "BALLISTICS_OPENING_BOMBARD", amount: 1 },
+        },
+      ],
     },
     assets: {
       cardImage: "/assets/abilities-ballistics.webp",
-      imageAlt: "Ballistics ability card"
+      imageAlt: "Ballistics ability card",
     },
     implementationStatus: "implemented",
-    source: abilitySource("ballistics")
-  }
+    source: abilitySource("ballistics"),
+  },
 };
 
 /**
@@ -727,17 +749,23 @@ export const abilityDeckUnique: string[] = [
   "ability.water_magic",
   // Necropolis-only (rulebook p.24): a non-Necropolis hero can never draw it —
   // the Ability-deck search redraws past it (see `canAcquireSharedDeckCard`).
-  "ability.necromancy"
+  "ability.necromancy",
 ];
 
 /**
  * Shared Ability deck (legacy): two copies of every implemented Ability, so two
  * players can each hold the same ability while no hero ever owns a duplicate.
  */
-export const abilityDeckLegacy: string[] = abilityDeckUnique.flatMap((id) => [id, id]);
+export const abilityDeckLegacy: string[] = abilityDeckUnique.flatMap((id) => [
+  id,
+  id,
+]);
 
 /**
  * BINH Ability deck. Same membership as the legacy deck (every implemented
  * Ability is reachable in both), again two copies of each.
  */
-export const abilityDeckBinh: string[] = abilityDeckUnique.flatMap((id) => [id, id]);
+export const abilityDeckBinh: string[] = abilityDeckUnique.flatMap((id) => [
+  id,
+  id,
+]);

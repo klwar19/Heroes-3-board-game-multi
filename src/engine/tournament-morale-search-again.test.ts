@@ -18,7 +18,10 @@ function applyOk(state: GameState, action: GameAction): GameState {
   return result.state;
 }
 
-function makeTournamentGame(seed: string, extras?: { tournament?: boolean; moraleCards?: boolean }): GameState {
+function makeTournamentGame(
+  seed: string,
+  extras?: { tournament?: boolean; moraleCards?: boolean; moraleSearchAgain?: boolean }
+): GameState {
   const tournament = extras?.tournament !== false;
   return createAdventureGameState({
     seed,
@@ -28,6 +31,9 @@ function makeTournamentGame(seed: string, extras?: { tournament?: boolean; moral
     tournamentBanDiplomacy: tournament,
     tournamentBanHourglass: tournament,
     tournamentSecondPlayerMorale: tournament,
+    ...(extras?.moraleSearchAgain !== undefined
+      ? { tournamentMoraleSearchAgain: extras.moraleSearchAgain }
+      : {}),
     moraleCards: extras?.moraleCards ?? false
   });
 }
@@ -81,6 +87,9 @@ describe("tournamentMoraleSearchAgainEnabled", () => {
 
     const off = makeTournamentGame("t-morale-gate-off", { tournament: false });
     expect(tournamentMoraleSearchAgainEnabled(off)).toBe(false);
+
+    const granularOff = makeTournamentGame("t-morale-gate-granular-off", { moraleSearchAgain: false });
+    expect(tournamentMoraleSearchAgainEnabled(granularOff)).toBe(false);
   });
 });
 

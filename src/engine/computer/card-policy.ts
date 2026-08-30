@@ -1,4 +1,5 @@
 import { cardLibrary } from "@/data/cards/library";
+import { unitAbilities } from "@/data/units/abilities";
 import {
   getBattlefieldCoordinates,
   getOrthogonalNeighbors,
@@ -471,6 +472,69 @@ function scoreStatReaction(
   }
   if (effect.type === "ADD_COMBAT_STAT") {
     const stat = effect.stat;
+    if (stat === "attack") {
+      const combat = observation.state.combat;
+      const top = observation.state.stack?.at(-1);
+      const attack = top?.action;
+      if (
+        combat &&
+        attack &&
+        (attack.type === "ATTACK_UNIT" || attack.type === "MOVE_AND_ATTACK_UNIT")
+      ) {
+        const attacker = combat.units[attack.attackerId];
+        const defender = combat.units[attack.defenderId];
+        if (attacker?.controllerId === observation.playerId && defender) {
+          const cap = (defender.abilities ?? []).reduce((lowest, abilityId) => {
+            const abilityEffect = unitAbilities[abilityId]?.effect;
+            return abilityEffect?.type === "CAP_DAMAGE_PER_ATTACK"
+              ? Math.min(lowest, abilityEffect.amount)
+              : lowest;
+          }, Number.POSITIVE_INFINITY);
+          const currentDamage = Math.max(
+            0,
+            attacker.attack + (top.modifiers.attackBonus ?? 0) -
+              defender.defense - (top.modifiers.defenseBonus ?? 0),
+          );
+          // The Absolution–VuHy replay showed Offense + Sword of Hellfire
+          // stacked onto Hydras even though Nix's Hardened Shell already capped
+          // the hit at 4. Preserve every extra Attack card once the current hit
+          // has reached the target's per-attack cap.
+          if (Number.isFinite(cap) && currentDamage >= cap) {
+            return 1_020;
+          }
+        }
+      }
+    }
+    if (stat === "defense") {
+      const combat = observation.state.combat;
+      const top = observation.state.stack?.at(-1);
+      const attack = top?.action;
+      if (
+        combat &&
+        attack &&
+        (attack.type === "ATTACK_UNIT" || attack.type === "MOVE_AND_ATTACK_UNIT")
+      ) {
+        const attacker = combat.units[attack.attackerId];
+        const defender = combat.units[attack.defenderId];
+        if (attacker && defender?.controllerId === observation.playerId) {
+          const attackValue = attacker.attack + (top.modifiers.attackBonus ?? 0);
+          const defenseValue = defender.defense + (top.modifiers.defenseBonus ?? 0);
+          const beforeDamage = Math.max(0, attackValue - defenseValue);
+          const afterDamage = Math.max(0, attackValue - defenseValue - amount);
+          const remaining = unitRemainingHealth(defender);
+          // Ranked-PvP lesson v1: preserve a scarce Defense card when its
+          // expected reduction still leaves the attacked unit dead. This is
+          // outcome-aware conservation, not imitation of a named unit/faction;
+          // if the card turns lethal into survival, it remains the top play.
+          if (beforeDamage >= remaining && afterDamage >= remaining) {
+            return 1_020;
+          }
+          if (beforeDamage >= remaining && afterDamage < remaining) {
+            return 1_150 + Math.min(25, Math.round(unitThreatValue(defender) / 3)) + modeBonus(mode);
+          }
+        }
+      }
+    }
     // Attack window for self / defense window for opponent — both are offered
     // only when useful. Prefer expert when crowns allow (already gated).
     if (stat === "attack" || stat === "defense") {

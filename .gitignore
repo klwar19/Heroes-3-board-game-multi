@@ -27,6 +27,8 @@ out/
 scripts/redeploy-vercel.mjs
 
 .vercel
+.tmp-prod-env-check
+supabase/.temp/
 # Private/source visual references are research inputs only. Generated masters
 # live under scripts/anime-art/raw; downloaded official references never ship.
 scripts/anime-art/refs/
@@ -45,3 +47,5 @@ scripts/anime-art/raw/heavenly-demon/_staged/
 # .claude/commands/ — ignore only these per-machine session artifacts.
 .claude/launch.json
 .claude/scheduled_tasks.lock
+.env.local
+.env.*.local

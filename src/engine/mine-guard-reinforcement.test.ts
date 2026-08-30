@@ -245,7 +245,7 @@ describe("mine-guard-reinforcement — combat flow", () => {
     state.decks[BRONZE]!.drawPile = ["neutral.harpies", "neutral.orcs", "neutral.gnolls"];
     const before = state.decks[BRONZE]!.discardPile.length;
 
-    let fight = fightOn(state, fieldFor("mine-field", 2));
+    const fight = fightOn(state, fieldFor("mine-field", 2));
     // Win: wipe the neutral guards, leaving the placed player unit alive.
     for (const unit of Object.values(fight.combat!.units)) {
       if (unit.controllerId === NEUTRAL_PLAYER_ID) {
@@ -267,7 +267,7 @@ describe("mine-guard-reinforcement — combat flow", () => {
     state.decks[BRONZE]!.drawPile = ["neutral.harpies", "neutral.orcs", "neutral.gnolls"];
     const before = state.decks[BRONZE]!.discardPile.length;
 
-    let fight = fightOn(state, fieldFor("mine-field", 2));
+    const fight = fightOn(state, fieldFor("mine-field", 2));
     for (const unit of Object.values(fight.combat!.units)) {
       if (unit.controllerId === NEUTRAL_PLAYER_ID) {
         unit.damage = unit.maxHealth;

@@ -59,13 +59,25 @@ export function applyAnimeFactionResourceRoundPenalty(state: GameState, playerId
   }
 
   if (player.factionId === "little_busters") {
-    const paid = spendAvailable(state, playerId, { gold: 5, buildingMaterials: 1 });
+    const paid = spendAvailable(state, playerId, { gold: 6, buildingMaterials: 1 });
     appendEvent(state, {
       type: "EVENT_NOTE",
       playerId,
-      message: `${title} — ${paid.gold} gold and ${paid.buildingMaterials} building material paid${paid.gold < 5 || paid.buildingMaterials < 1 ? " (all available resources)" : ""}.`
+      message: `${title} — ${paid.gold} gold and ${paid.buildingMaterials} building material paid${paid.gold < 6 || paid.buildingMaterials < 1 ? " (all available resources)" : ""}.`
     });
   }
+}
+
+/** Little Busters: the contribution also cuts hand size during each Astrologers round. */
+export function applyAnimeFactionAstrologersRoundPenalty(state: GameState, playerId: PlayerId): void {
+  const player = state.players[playerId];
+  if (player?.factionId !== "little_busters") return;
+  player.otherworldHandLimitLoss = 1;
+  appendEvent(state, {
+    type: "EVENT_NOTE",
+    playerId,
+    message: `${animeFactionPenaltyTitle(player.factionId) ?? "School Contribution Fund"} — hand limit reduced by 1 for this Astrologers round.`
+  });
 }
 /** One random real Azur Lane army card suffers 1 damage and its enemy draws 1 at combat start. */
 export function applyAzurLaneCombatStartPenalty(state: GameState): void {
@@ -117,24 +129,28 @@ export function applyAnimeCombatStartPenalties(state: GameState): void {
   if (!combat || combat.context.kind !== "player") return;
   const done = combat.animeCombatStartPenaltyDone ?? (combat.animeCombatStartPenaltyDone = []);
   for (const playerId of [combat.attackerPlayerId, combat.defenderPlayerId]) {
-    if (playerId === "neutrals" || state.players[playerId]?.factionId !== "heavenly_demon") continue;
-    const key = `heavenly_demon:${playerId}`;
+    if (playerId === "neutrals") continue;
+    const factionId = state.players[playerId]?.factionId;
+    const key = `${factionId}:${playerId}`;
     if (done.includes(key)) continue;
-    const candidates = Object.values(combat.units)
-      .filter((unit) => unit.controllerId === playerId && unit.damage < unit.maxHealth)
-      .sort((left, right) => left.id.localeCompare(right.id));
-    if (candidates.length > 0) {
-      const random = createSeededRandom(`${state.seed}#heavenly-demon-opening-loss#${combat.id}#${playerId}`);
-      const unit = random.pick(candidates);
-      unit.damage += 1;
-      markUnitRemovedIfNeeded(state, unit);
-      appendEvent(state, {
-        type: "EVENT_NOTE",
-        playerId,
-        message: `Demonic Backlash — ${unit.cardName} loses 1 HP at combat start.`
-      });
+    if (factionId === "heavenly_demon") {
+      const candidates = Object.values(combat.units)
+        .filter((unit) => unit.controllerId === playerId && unit.damage < unit.maxHealth)
+        .sort((left, right) => left.id.localeCompare(right.id));
+      if (candidates.length > 0) {
+        const random = createSeededRandom(`${state.seed}#heavenly-demon-opening-loss#${combat.id}#${playerId}`);
+        const unit = random.pick(candidates);
+        unit.damage += 1;
+        markUnitRemovedIfNeeded(state, unit);
+        appendEvent(state, {
+          type: "EVENT_NOTE",
+          playerId,
+          message: `Demonic Backlash — ${unit.cardName} loses 1 HP at combat start.`
+        });
+      }
+      done.push(key);
+      continue;
     }
-    done.push(key);
   }
 }
 

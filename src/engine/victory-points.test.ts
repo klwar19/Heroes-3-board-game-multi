@@ -539,7 +539,7 @@ describe("VP table rows", () => {
     expect(rowVp(state, "p1", "Settlement bonus VP")).toBe(0);
   });
 
-  it("artifacts = 1 VP per 2 (floor), counting both owned zones AND removed-from-play", () => {
+  it("Tournament option counts removed Artifacts; OFF counts owned zones only", () => {
     const state = makeGame();
     zeroBaseVp(state);
     // 3 artifacts across owned zones → floor(3/2) = 1.
@@ -547,8 +547,13 @@ describe("VP table rows", () => {
     state.players.p1.discard = ["artifact.armor_of_wonder"];
     expect(rowVp(state, "p1", "Artifacts (1 VP per 2)")).toBe(1);
 
-    // A 4th artifact REMOVED FROM PLAY still counts → floor(4/2) = 2 (seam test).
+    // With the granular Tournament rule OFF, a removed 4th Artifact does not count.
     state.players.p1.removed = ["artifact.dragon_wing_tabard"];
+    state.adventure!.tournamentRemovedArtifactsVp = false;
+    expect(rowVp(state, "p1", "Artifacts (1 VP per 2)")).toBe(1);
+
+    // With the rule ON it counts at final scoring → floor(4/2) = 2.
+    state.adventure!.tournamentRemovedArtifactsVp = true;
     expect(rowVp(state, "p1", "Artifacts (1 VP per 2)")).toBe(2);
 
     // CONTROL: a non-artifact card in the same zone does NOT count.

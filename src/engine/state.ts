@@ -396,7 +396,7 @@ export const DEFAULT_WOG_OPTIONS: WogModOptions = {
   waveDefeatLimit: 0,
   raidBossSpawnRound: 5,
   dungeonDepth: 10,
-  dungeonDescentCost: 1
+  dungeonDescentCost: 1,
 };
 
 /**
@@ -531,14 +531,22 @@ export type RaidBossState = {
  * Add a slot here and TypeScript forces every Record<AnimeEquipmentSlot, …> to
  * cover it.
  */
-export const ANIME_EQUIPMENT_SLOTS = ["weapon", "armor", "accessory", "mount"] as const;
+export const ANIME_EQUIPMENT_SLOTS = [
+  "weapon",
+  "armor",
+  "accessory",
+  "mount",
+] as const;
 export type AnimeEquipmentSlot = (typeof ANIME_EQUIPMENT_SLOTS)[number];
 
 /**
  * How pool-drawn Field Overrides place when a tile is revealed.
  * Designer pins never refuse. Global feature — not anime-mod-specific.
  */
-export type FieldOverridePlacementMode = "random" | "manual" | "manual-or-refuse";
+export type FieldOverridePlacementMode =
+  | "random"
+  | "manual"
+  | "manual-or-refuse";
 /**
  * How the scenario is won:
  *  - "conquest": flag an enemy faction Town (the classic skirmish goal).
@@ -555,7 +563,11 @@ export type FieldOverridePlacementMode = "random" | "manual" | "manual-or-refuse
  *    The holder garrisons it; rivals must besiege it (Walls, Gate, Arrow
  *    Tower) to take it. Controlling the Utopia at the start of your turn wins.
  */
-export type VictoryMode = "conquest" | "grail" | "dragon-hunt" | "dragon-conqueror";
+export type VictoryMode =
+  | "conquest"
+  | "grail"
+  | "dragon-hunt"
+  | "dragon-conqueror";
 
 /**
  * Who goes first ({@link GameSetupOptions.playerOrderMode}, default "random").
@@ -575,7 +587,11 @@ export type PlayerOrderMode = "random" | "manual";
  *   - "dragon_utopia" → Dragon Utopia
  *   - "grail" → Holy Grail dig site
  */
-export type ViiFieldDesignation = "town" | "settlement" | "dragon_utopia" | "grail";
+export type ViiFieldDesignation =
+  | "town"
+  | "settlement"
+  | "dragon_utopia"
+  | "grail";
 
 /** Holy Grail: distinct Obelisks a player must visit before they may dig. */
 export const GRAIL_OBELISKS_REQUIRED = 2;
@@ -651,7 +667,12 @@ export type SpellLevel = "basic" | "expert";
 export type SpellSchool = "air" | "earth" | "fire" | "water" | "any";
 export type ArtifactTier = "minor" | "major" | "relic";
 export type StatisticType = "attack" | "defense" | "power" | "knowledge";
-export type AbilityClass = "might" | "magic" | "economy" | "adventure" | "combat";
+export type AbilityClass =
+  | "might"
+  | "magic"
+  | "economy"
+  | "adventure"
+  | "combat";
 export type AttackRollMode = "normal" | "advantage" | "disadvantage";
 export type ResourceKind = "gold" | "buildingMaterials" | "valuables";
 
@@ -2282,7 +2303,10 @@ export type EffectDefinition =
        */
       dieMode?: "negate" | "lower-of-two" | "four-reroll-plus";
       /** Balance reprint: the die mode follows Power added in this attack window. */
-      dieModeByPower?: Record<number, "negate" | "lower-of-two" | "four-reroll-plus">;
+      dieModeByPower?: Record<
+        number,
+        "negate" | "lower-of-two" | "four-reroll-plus"
+      >;
     }
   | {
       /** Anti-Magic: spell immunity for a unit (tier rises with Power). */
@@ -2575,6 +2599,11 @@ export type EffectDefinition =
        */
       type: "BERSERK";
       gradeByPower: Record<number, UnitGrade>;
+      /**
+       * Polish Balance Pack: at this Power the target may also be Azure or a
+       * tierless Creature-Bank unit. Commanders and hero units stay excluded.
+       */
+      anyUnitAtPower?: number;
     }
   | {
       /**
@@ -3191,7 +3220,11 @@ export type EffectDefinition =
        * siege arm ("During the siege: destroy 3 Walls and Gate") — it fells the
        * Gate plus up to 3 standing Walls at once, so it needs no target pick.
        */
-      target: "wall-or-gate" | "two-walls-or-wall-and-gate" | "arrow-tower" | "three-walls-and-gate";
+      target:
+        | "wall-or-gate"
+        | "two-walls-or-wall-and-gate"
+        | "arrow-tower"
+        | "three-walls-and-gate";
     }
   | {
       /**
@@ -3571,7 +3604,10 @@ export type CardPlayCost = {
 };
 
 export type TriggerDefinition = {
-  event: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" | "UNIT_ACTIVATION_STARTED";
+  event:
+    | "SPELL_CAST_STARTED"
+    | "UNIT_ATTACK_DECLARED"
+    | "UNIT_ACTIVATION_STARTED";
   controller: "self" | "opponent" | "any";
 };
 
@@ -3612,7 +3648,11 @@ export type PermanentEffectDefinition = {
    * in play; the expert effect discards the card during one of the owner's
    * casts for +expertPower instead (never both on the same spell).
    */
-  schoolBonus?: { school: SpellSchool; basicPower: number; expertPower: number };
+  schoolBonus?: {
+    school: SpellSchool;
+    basicPower: number;
+    expertPower: number;
+  };
   /** Active effect applied for the owner's combats while the card is in play. */
   combatEffect?: ActiveEffectDefinition;
   /** Initiative added to the owner's ranged units while in combat. */
@@ -3629,7 +3669,11 @@ export type PermanentEffectDefinition = {
    * that player's own Towns. Absent/false = unconditional income (the core
    * cards). Enforced at the single income chokepoint in `startAdventureRound`.
    */
-  resourceRoundGain?: { resource: ResourceKind; amount: number; requiresHeroInTown?: boolean };
+  resourceRoundGain?: {
+    resource: ResourceKind;
+    amount: number;
+    requiresHeroInTown?: boolean;
+  };
   /**
    * Pandora's Gift: Income (card 174 — a PERMANENT, the printed ∞): entering
    * play rolls 1 Resource die and raises the rolled production track by one
@@ -3799,8 +3843,25 @@ export type CardOptionDefinition = {
 export type CardDefinition = {
   id: CardId;
   name: string;
-  kind: "spell" | "ability" | "artifact" | "hero-specialty" | "ai" | "unit" | "statistic" | "war-machine" | "pandora";
-  timing: "action" | "instant" | "reaction" | "ongoing" | "passive" | "map" | "combat" | "town";
+  kind:
+    | "spell"
+    | "ability"
+    | "artifact"
+    | "hero-specialty"
+    | "ai"
+    | "unit"
+    | "statistic"
+    | "war-machine"
+    | "pandora";
+  timing:
+    | "action"
+    | "instant"
+    | "reaction"
+    | "ongoing"
+    | "passive"
+    | "map"
+    | "combat"
+    | "town";
   phaseLimit?: GamePhase[];
   spellLevel?: SpellLevel;
   spellSchools?: SpellSchool[];
@@ -4087,7 +4148,13 @@ export type GameAction =
       playerId: PlayerId;
       unitId: UnitId;
     }
-  | { type: "USE_ACTIVE_EFFECT"; playerId: PlayerId; effectId: string; target: TargetRef; mode?: CardPlayMode }
+  | {
+      type: "USE_ACTIVE_EFFECT";
+      playerId: PlayerId;
+      effectId: string;
+      target: TargetRef;
+      mode?: CardPlayMode;
+    }
   | {
       /**
        * WOG Commanders: spend ONE stat point to raise a single stat by one
@@ -4107,14 +4174,14 @@ export type GameAction =
     }
   | {
       /**
-       * Commander Forge: buy one of the two deterministic, currently offered
-       * artifacts. Grade I is a separate once-per-game use from the shared
-       * once-per-game Grade II/III use.
+       * Commander Forge purchase. Grade III is random at base cost, or a
+       * specific available item for 2 extra gold.
        */
       type: "FORGE_COMMANDER_ARTIFACT";
       playerId: PlayerId;
       tier: "minor" | "major" | "relic";
       cardId: CardId;
+      specific?: boolean;
     }
   | {
       /**
@@ -4237,13 +4304,10 @@ export type GameAction =
     }
   | {
       /**
-       * PvP anti-Little-Busters counter: a fighter facing a Little Busters seat
-       * pays 1 gold for one of three effects — the LB seat discards a random hand
-       * card ("discard"), the LB campus hero is reduced to half HP (round up)
-       * plus Paralysis and
-       * round-1 −2 Attack ("damage"), or the spender draws 2 cards ("draw").
-       * Each is offered once per combat; computer opponents prioritize all three.
-       * Handler-validated (self-validating; no window opens).
+       * Legacy Little Busters counter action, retained for saved-game/wire
+       * compatibility. It is no longer offered and is rejected by legal-action validation because
+       * the current PvP penalty automatically draws exactly 1 enemy card at
+       * combat start.
        */
       type: "LITTLE_BUSTERS_COUNTER";
       playerId: PlayerId;
@@ -4357,7 +4421,12 @@ export type GameAction =
       unitId: UnitId;
     }
   | { type: "END_COMBAT_ROUND"; playerId: PlayerId }
-  | { type: "BUILD_STRUCTURE"; playerId: PlayerId; townId: TownId; buildingId: BuildingId }
+  | {
+      type: "BUILD_STRUCTURE";
+      playerId: PlayerId;
+      townId: TownId;
+      buildingId: BuildingId;
+    }
   | { type: "COMPLETE_SIMULTANEOUS_TURN"; playerId: PlayerId }
   | {
       type: "REROLL_PENDING_CHOICE";
@@ -4382,7 +4451,12 @@ export type GameAction =
        */
       dieIndex?: number;
     }
-  | { type: "CHOOSE_PENDING_ROLL"; playerId: PlayerId; choiceId: string; candidateIndex: number }
+  | {
+      type: "CHOOSE_PENDING_ROLL";
+      playerId: PlayerId;
+      choiceId: string;
+      candidateIndex: number;
+    }
   | {
       type: "PLAY_REACTION";
       playerId: PlayerId;
@@ -4536,7 +4610,12 @@ export type GameAction =
       discardCardId?: CardId;
     }
   | { type: "SEARCH_DECK"; playerId: PlayerId; deckId: DeckId; count: number }
-  | { type: "RESOLVE_DECK_SEARCH"; playerId: PlayerId; choiceId: string; pick: DeckSearchPick }
+  | {
+      type: "RESOLVE_DECK_SEARCH";
+      playerId: PlayerId;
+      choiceId: string;
+      pick: DeckSearchPick;
+    }
   /**
    * Combat test mode only: drop any card straight into a player's hand so a
    * tester can exercise its mechanic without searching for it. Rejected outside
@@ -4687,7 +4766,12 @@ export type GameAction =
       playerId: PlayerId;
       heroId: HeroId;
     }
-  | { type: "DISCOVER_TILE"; playerId: PlayerId; heroId: HeroId; tileInstanceId: string }
+  | {
+      type: "DISCOVER_TILE";
+      playerId: PlayerId;
+      heroId: HeroId;
+      tileInstanceId: string;
+    }
   | {
       /** Place one of the player's face-down Far (II–III) tiles from supply. */
       type: "PLACE_TILE";
@@ -4805,7 +4889,12 @@ export type GameAction =
       playerId: PlayerId;
       cardId: CardId;
     }
-  | { type: "PLACE_COMBAT_UNIT"; playerId: PlayerId; armyUnitId: string; position: number }
+  | {
+      type: "PLACE_COMBAT_UNIT";
+      playerId: PlayerId;
+      armyUnitId: string;
+      position: number;
+    }
   | { type: "UNPLACE_COMBAT_UNIT"; playerId: PlayerId; armyUnitId: string }
   | { type: "FINISH_COMBAT_PLACEMENT"; playerId: PlayerId }
   | {
@@ -4955,7 +5044,11 @@ export type GameAction =
       /** Population token: recruit, reinforce, or buy Pack Stack layers. */
       type: "POPULATION_ACTION";
       playerId: PlayerId;
-      purchases: { kind: "recruit" | "reinforce" | "stack"; unitDefId: string; armyUnitId?: string }[];
+      purchases: {
+        kind: "recruit" | "reinforce" | "stack";
+        unitDefId: string;
+        armyUnitId?: string;
+      }[];
     }
   | {
       /**
@@ -5106,7 +5199,9 @@ export type GameAction =
       type: "ATTACK_FORTIFICATION";
       playerId: PlayerId;
       attackerId: UnitId;
-      target: { kind: "wall" | "gate"; position: number } | { kind: "arrow-tower" };
+      target:
+        | { kind: "wall" | "gate"; position: number }
+        | { kind: "arrow-tower" };
     }
   | {
       /**
@@ -5127,7 +5222,12 @@ export type GameAction =
        * card equivalent of repeat-search is the post-Search
        * morale.positive.repeat_search offer, not SPEND_MORALE.
        */
-      benefit: "draw" | "redraw" | "combat-bonus" | "remove-token" | "repeat-search";
+      benefit:
+        | "draw"
+        | "redraw"
+        | "combat-bonus"
+        | "remove-token"
+        | "repeat-search";
       discardCardIds?: CardId[];
       bonus?: "attack" | "defense";
       unitId?: UnitId;
@@ -5143,7 +5243,12 @@ export type GameAction =
       playerId: PlayerId;
       cardId: CardId;
     }
-  | { type: "CHOOSE_OPTION"; playerId: PlayerId; choiceId: string; optionIndex: number }
+  | {
+      type: "CHOOSE_OPTION";
+      playerId: PlayerId;
+      choiceId: string;
+      optionIndex: number;
+    }
   | {
       /**
        * Resolves a COMBAT_HAND_DISCARD (Magi Power Drain): the defender either
@@ -5765,7 +5870,11 @@ export type GameEvent =
       id: string;
       type: "PENDING_CHOICE_CREATED";
       choiceId: string;
-      choiceType: "ATTACK_DIE_REROLL" | "ABILITY_TARGET_CHOICE" | "COMBAT_HAND_DISCARD" | "TARNUM_SEARCH";
+      choiceType:
+        | "ATTACK_DIE_REROLL"
+        | "ABILITY_TARGET_CHOICE"
+        | "COMBAT_HAND_DISCARD"
+        | "TARNUM_SEARCH";
       playerId: PlayerId;
       sourceEffectIds: string[];
       message: string;
@@ -5825,7 +5934,7 @@ export type GameEvent =
       kind: BattlefieldTokenKind;
       position: number;
       unitId: UnitId;
-      outcome: "damage" | "stop" | "decoy";
+      outcome: "damage" | "stop" | "decoy" | "immune";
       amount?: number;
     }
   | {
@@ -5907,7 +6016,12 @@ export type GameEvent =
       type: "COMBAT_ENDED";
       winnerPlayerId: PlayerId;
       defeatedPlayerId: PlayerId;
-      reason: "all-enemy-units-defeated" | "retreat" | "surrender" | "surrender-secondary" | "give-up";
+      reason:
+        | "all-enemy-units-defeated"
+        | "retreat"
+        | "surrender"
+        | "surrender-secondary"
+        | "give-up";
     }
   | {
       id: string;
@@ -6559,7 +6673,12 @@ export type GameEvent =
       results: string[];
       /** Structured faces so the table can animate the physical dice. */
       resourceRolls?: { resource: ResourceKind; amount: number }[];
-      treasureRolls?: ("experience" | "artifact-search" | "resource-die" | "double-resource-die")[];
+      treasureRolls?: (
+        | "experience"
+        | "artifact-search"
+        | "resource-die"
+        | "double-resource-die"
+      )[];
       attackRolls?: number[];
       /** This Resource roll was caused by a Treasure-die face. */
       origin?: "treasure";
@@ -7438,7 +7557,13 @@ export type GameEvent =
        * "cracked": removed from the game for its instant gain (income rings/carts).
        * "destruction": removed from the game by the Destruction Astrologers card.
        */
-      reason: "voluntary" | "limit" | "expert" | "replaced" | "cracked" | "destruction";
+      reason:
+        | "voluntary"
+        | "limit"
+        | "expert"
+        | "replaced"
+        | "cracked"
+        | "destruction";
     }
   | {
       /** Pandora's Box: the visiting hero drew a Pandora deck card. */
@@ -7582,7 +7707,9 @@ export type GameEvent =
        */
       id: string;
       type: "FIRST_PLAYER_ROLLED";
-      attempts: { rolls: { playerId: PlayerId; name: string; value: number }[] }[];
+      attempts: {
+        rolls: { playerId: PlayerId; name: string; value: number }[];
+      }[];
       winnerPlayerId: PlayerId;
     }
   | {
@@ -7599,7 +7726,12 @@ export type GameEvent =
       type: "COMBAT_TOKEN_REMOVED";
       unitId: UnitId;
       kind: CombatTokenKind;
-      reason: "expired" | "replaced" | "damage" | "activation-skipped" | "dispelled";
+      reason:
+        | "expired"
+        | "replaced"
+        | "damage"
+        | "activation-skipped"
+        | "dispelled";
     }
   | {
       /** Siege: the defender's Walls, Gate and Arrow Tower hit the board. */
@@ -7647,7 +7779,12 @@ export type ResolutionStackItem = {
   id: string;
   source: SourceRef;
   action: GameAction;
-  status: "pending" | "waiting-for-reaction" | "resolving" | "resolved" | "cancelled";
+  status:
+    | "pending"
+    | "waiting-for-reaction"
+    | "resolving"
+    | "resolved"
+    | "cancelled";
   triggerEventIds: string[];
   modifiers: {
     spellPowerBonus: number;
@@ -7687,7 +7824,10 @@ export type ResolutionStackItem = {
      * window AFTER the card was played still re-derives the rung — the
      * `slayerRollsByPower` pattern.
      */
-    attackDamageCapByPower?: { table: Record<number, number>; playerId: PlayerId };
+    attackDamageCapByPower?: {
+      table: Record<number, number>;
+      playerId: PlayerId;
+    };
     /**
      * Polish Balance Pack Misfortune: how the negated attack's Attack DIE is
      * rolled. "negate" is the classic cancelled die; "lower-of-two" rolls 2 dice
@@ -7696,7 +7836,10 @@ export type ResolutionStackItem = {
      * faces can survive), and resolves every result (a "-1" subtracts).
      */
     misfortuneDie?: "negate" | "lower-of-two" | "four-reroll-plus";
-    misfortuneDieByPower?: Record<number, "negate" | "lower-of-two" | "four-reroll-plus">;
+    misfortuneDieByPower?: Record<
+      number,
+      "negate" | "lower-of-two" | "four-reroll-plus"
+    >;
     misfortuneCasterId?: PlayerId;
     /**
      * Interference / Plate of the Dying Light played as an INSTANT reaction to
@@ -7830,7 +7973,11 @@ export type ResolutionStackItem = {
      * vanish with the stack item. So nothing can Dispel or ignore them — only
      * spell-immunity stops them, enforced by the redirect's target filter.
      */
-    redirectedInstants?: { unitId: UnitId; stat: "attack" | "defense"; amount: number }[];
+    redirectedInstants?: {
+      unitId: UnitId;
+      stat: "attack" | "defense";
+      amount: number;
+    }[];
     /**
      * Knowledge / Mysticism was played on this cast. The recall resolves
      * after the spell does: instants come back at once, ongoing spells only
@@ -8084,7 +8231,9 @@ export type ReactionWindow = {
    * matching-school Spell and is consumed by the first such Spell it serves
    * (cost payment or the attack-Power pool, whichever comes first).
    */
-  schoolExpertPowerByPlayer?: Partial<Record<PlayerId, { school: SpellSchool; power: number }>>;
+  schoolExpertPowerByPlayer?: Partial<
+    Record<PlayerId, { school: SpellSchool; power: number }>
+  >;
 };
 
 export type ActiveEffectState = ActiveEffectDefinition & {
@@ -8129,7 +8278,12 @@ export type ActiveEffectState = ActiveEffectDefinition & {
    * volley to the unit its first heal mended — the card resolves "against the
    * same target 3 times", so the follow-up heals can only land on that unit.
    */
-  healRound?: { round: number; count: number; expert: boolean; targetUnitId?: UnitId };
+  healRound?: {
+    round: number;
+    count: number;
+    expert: boolean;
+    targetUnitId?: UnitId;
+  };
 };
 
 export type TurnState = {
@@ -8501,7 +8655,13 @@ export type ReinforcementDiscountBank = {
 };
 
 /** The six gradeable stats of a WOG commander (see src/data/commanders.ts). */
-export type CommanderStatKey = "attack" | "defense" | "health" | "damage" | "magic" | "speed";
+export type CommanderStatKey =
+  | "attack"
+  | "defense"
+  | "health"
+  | "damage"
+  | "magic"
+  | "speed";
 
 /**
  * WOG Commander Artifact slots (Task 2). A commander wears at most one artifact
@@ -8550,6 +8710,9 @@ export type CommanderPlayerState = {
   artifacts?: Partial<Record<CommanderArtifactSlot, string>>;
   /** Commander Forge lifetime budgets (optional for legacy snapshots). */
   forgeMinorUsed?: boolean;
+  forgeMajorUsed?: boolean;
+  forgeRelicUsed?: boolean;
+  /** Legacy shared Grade-II/III budget; true blocks both in old snapshots. */
   forgeHighUsed?: boolean;
 };
 
@@ -9048,7 +9211,12 @@ export type PlayerState = {
    * Derived bookkeeping — never a rules input. Every engine read goes to the
    * live zones through `artifactSetPieceCount`.
    */
-  artifactSetStatus?: { setId: string; pieces: number; activeTiers: number; memberCount: number }[];
+  artifactSetStatus?: {
+    setId: string;
+    pieces: number;
+    activeTiers: number;
+    memberCount: number;
+  }[];
   /** Round the Blacksmith action was last used ("once per your turn"). */
   blacksmithUsedRound?: number;
   /** Round the Magic University deck-dig was last used ("once per round"). */
@@ -9067,7 +9235,11 @@ export type PlayerState = {
    * so a recalled Summon/Clone-style spell cannot be recast while its first
    * casting is still on the table.
    */
-  ongoingCards?: { cardId: CardId; effectIds: string[]; returnTo: "discard" | "hand" | "spellBook" }[];
+  ongoingCards?: {
+    cardId: CardId;
+    effectIds: string[];
+    returnTo: "discard" | "hand" | "spellBook";
+  }[];
   /**
    * Necromancy timing window: set when this player wins a Combat other than
    * a Quick Combat, cleared by the next movement / town action / turn end —
@@ -9147,7 +9319,12 @@ export type PlayerState = {
  *  - "temptation": MGQ pressure token. Two tokens skip the unit's next
  *    activation, then both clear. One token is inert and damage does not clear it.
  */
-export type CombatTokenKind = "attack" | "weakness" | "corrosion" | "paralysis" | "temptation";
+export type CombatTokenKind =
+  | "attack"
+  | "weakness"
+  | "corrosion"
+  | "paralysis"
+  | "temptation";
 
 export type CombatTokenState = {
   id: string;
@@ -9160,7 +9337,11 @@ export type CombatTokenState = {
   sourceName: string;
 };
 
-export type BattlefieldTokenKind = "force_field" | "fire_wall" | "quicksand" | "land_mine";
+export type BattlefieldTokenKind =
+  | "force_field"
+  | "fire_wall"
+  | "quicksand"
+  | "land_mine";
 
 /**
  * A token (or card) occupying a Combat-board space, placed by a Spell:
@@ -9187,6 +9368,8 @@ export type BattlefieldTokenState = {
   kind: BattlefieldTokenKind;
   position: number;
   controllerId: PlayerId;
+  /** Spell card that placed this token. Absent for specialties and unit abilities. */
+  sourceSpellCardId?: CardId;
   /** fire_wall / land_mine: damage dealt to a caught unit. */
   damage?: number;
   /**
@@ -9306,8 +9489,10 @@ export type CombatUnitState = {
   fuyukiCasterDamageCapUsedThisRound?: boolean;
   /** Masato: combat round in which Bodyguard redirected an adjacent ally's attack. */
   bodyguardInterceptUsedRound?: number;
-  /** Cumulative Defense gained from STACKING_DEFENSE_WHEN_ATTACKED this combat. */
-  stackingDefenseWhenAttackedBonus?: number;
+  /** Saber Pack: its +1 Defense against the first attack this round has been spent. */
+  saberFirstDefenseUsedThisRound?: boolean;
+  /** Sort-specialty commander reached its own front line during combat round 1. */
+  commanderFrontLineAttackRoundOne?: boolean;
   /** Mio Pack: its +1 Defense against the first attack this round has been spent. */
   mioFirstDefenseUsedThisRound?: boolean;
   /** Toki Few: the first incoming attack's +1 Defense has been spent this combat. */
@@ -9672,6 +9857,12 @@ export type CombatContext =
       /** Null when the town owner garrisons without their hero (8 gold defense). */
       defenderHeroId: HeroId | null;
       fieldId: MapSpaceId;
+      /**
+       * The defender controls the Town/Settlement on which this PvP combat is
+       * fought. This is deliberately separate from `siege`: a Settlement is a
+       * defended holding, but never gains Citadel Walls/Gate/Arrow Tower.
+       */
+      holdingDefense?: "town" | "settlement";
       /** Defending a faction town with a Citadel: walls, gate and arrow tower. */
       siege?: boolean;
       /**
@@ -9739,7 +9930,11 @@ export type AttackSequenceState = {
    * this attack: carried here so the same one-shot stat delta also applies to
    * the retaliation, then vanishes (it is never an ongoing effect or token).
    */
-  redirectedInstants?: { unitId: UnitId; stat: "attack" | "defense"; amount: number }[];
+  redirectedInstants?: {
+    unitId: UnitId;
+    stat: "attack" | "defense";
+    amount: number;
+  }[];
   /**
    * BINH Cerberi: remaining printed follow-up attacks (one full attack per
    * adjacent enemy), resolved one at a time before the retaliation.
@@ -9806,7 +10001,10 @@ export type CombatState = {
    * legacy saves loadable; combat creation stamps only the relevant faction.
    * Sect Qi and Blood Essence are combat-scoped and never become map economy.
    */
-  cultivationFactions?: Partial<Record<PlayerId, {
+  cultivationFactions?: Partial<
+    Record<
+      PlayerId,
+      {
     sectQi?: number;
     sectQiGainedRound?: number;
     bloodEssence?: number;
@@ -9817,7 +10015,9 @@ export type CombatState = {
     jadeBodyTemperingRound?: number;
     /** Shiyan's once-per-round extra Corpse Furnace yield. */
     corpseFurnaceSurgeRound?: number;
-  }>>;
+      }
+    >
+  >;
   /** MGQ heroes who paid this combat's mandatory 1-card Spirit summon cost. */
   mgqSpiritCostPaidPlayerIds?: PlayerId[];
   /**
@@ -9988,7 +10188,12 @@ export type CombatState = {
      * `granted` entries are Torosar's temporary Ballistas (no permanent card) —
      * they fire a basic shot and skip the in-play check.
      */
-    pending: { playerId: PlayerId; cardId: CardId; granted?: boolean; openingBallistics?: boolean }[];
+    pending: {
+      playerId: PlayerId;
+      cardId: CardId;
+      granted?: boolean;
+      openingBallistics?: boolean;
+    }[];
     firstTargetUnitId?: UnitId | null;
     /**
      * Artillery expert: while a Ballista tie-break choice is open for the
@@ -10012,7 +10217,12 @@ export type CombatState = {
      * removed from the game — instead of paying gold, and the opponent gets no
      * victory credit (see finalizeAdventureCombat).
      */
-    reason: "all-enemy-units-defeated" | "retreat" | "surrender" | "surrender-secondary" | "give-up";
+    reason:
+      | "all-enemy-units-defeated"
+      | "retreat"
+      | "surrender"
+      | "surrender-secondary"
+      | "give-up";
   } | null;
   /**
    * Adventure combats stay on the battlefield after the outcome until a
@@ -11049,22 +11259,39 @@ export type VisitStep =
        * `RESOLVE_VISIT_STEP` the tray button would. It reaches only the traveller
        * (getVisiblePendingVisit masks every other seat's visit steps to []).
        */
-      teleport?: { kind: "monolith" | "whirlpool" | "gate" | "oneway"; pair?: 1 | 2 | 3 | 4 };
+      teleport?: {
+        kind: "monolith" | "whirlpool" | "gate" | "oneway";
+        pair?: 1 | 2 | 3 | 4;
+      };
       /**
        * Private Obelisk Grail-tile reveal shown only after the visitor selects
        * it. Carries the revealed identity itself because the visitor's PLAYER
        * VIEW masks every face-down tile to `tileDefId: "hidden"` — the step
        * rides the owner-only pendingVisit, so this leaks to nobody else.
        */
-      grailTileScry?: { tileInstanceId: string; tileDefId?: string; tileRotation?: number };
+      grailTileScry?: {
+        tileInstanceId: string;
+        tileDefId?: string;
+        tileRotation?: number;
+      };
     }
   | {
       /** Obelisk clue: privately show this selected face-down tile, then re-hide it. */
       type: "GRAIL_TILE_SCRY";
       tileInstanceId: string;
     }
-  | { type: "PAY_TO"; prompt: string; costOptions: ResourceCost[]; steps: VisitStep[] }
-  | { type: "GAIN_RESOURCES"; gold?: number; buildingMaterials?: number; valuables?: number }
+  | {
+      type: "PAY_TO";
+      prompt: string;
+      costOptions: ResourceCost[];
+      steps: VisitStep[];
+    }
+  | {
+      type: "GAIN_RESOURCES";
+      gold?: number;
+      buildingMaterials?: number;
+      valuables?: number;
+    }
   | {
       /** Accepted Polish Alliance offer; revalidated and applied automatically. */
       type: "ALLY_TRANSFER";
@@ -11353,7 +11580,12 @@ export type VisitStep =
        */
       prophecyThreePick?: boolean;
     }
-  | { type: "RESUME_FIELD_VISIT"; heroId: HeroId; fieldId: MapSpaceId; revisit: boolean }
+  | {
+      type: "RESUME_FIELD_VISIT";
+      heroId: HeroId;
+      fieldId: MapSpaceId;
+      revisit: boolean;
+    }
   | {
       type: "ROLL_TREASURE_DICE";
       count: number;
@@ -11737,8 +11969,14 @@ export type VisitStep =
        * declines and shuffles all of `drawn` back.
        */
       type: "RECRUIT_DRAWN_NEUTRAL";
-      recruit: { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" } | null;
-      drawn: { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" }[];
+      recruit: {
+        unitDefId: string;
+        tier: "bronze" | "silver" | "gold" | "azure";
+      } | null;
+      drawn: {
+        unitDefId: string;
+        tier: "bronze" | "silver" | "gold" | "azure";
+      }[];
     }
   | {
       /**
@@ -11758,7 +11996,11 @@ export type VisitStep =
       type: "RECRUIT_FACTION_UNIT";
       unitDefId: CardId;
     }
-  | { type: "DISCOVER_ADJACENT_TILE" }
+  | {
+      type: "DISCOVER_ADJACENT_TILE";
+      /** Speculum/View Air: measure adjacency from every placed Hero this player controls. */
+      fromAnyHero?: boolean;
+    }
   | {
       /**
        * Knowledge / Mysticism reaction after a Spell resolves on the map. Basic
@@ -11798,7 +12040,11 @@ export type VisitStep =
       type: "REMOVE_HAND_CARD";
       prompt: string;
       filter: "any" | "ability" | "statistic" | "removable";
-      then: "none" | "gain-valuables" | "search-same-deck" | "choose-deck-search";
+      then:
+        | "none"
+        | "gain-valuables"
+        | "search-same-deck"
+        | "choose-deck-search";
       /** Depth of the follow-up Search (Miriam's Scouting VI digs 4); defaults to 2. */
       searchCount?: number;
       /**
@@ -12082,7 +12328,12 @@ export type VisitStep =
       /** Queue a discard-pile pick through the shared reward pipeline. */
       type: "DISCARD_PICK";
       count: number;
-      filter?: "spell" | "non-artifact" | "specialty" | "power-or-knowledge-statistic" | "spell-or-specialty";
+      filter?:
+        | "spell"
+        | "non-artifact"
+        | "specialty"
+        | "power-or-knowledge-statistic"
+        | "spell-or-specialty";
     }
   | {
       /**
@@ -12753,7 +13004,14 @@ export type EventPoolEntry = {
 
 /** One rolled die waiting in the Mischievous Leprechaun pool. */
 export type EventDiePoolEntry =
-  | { kind: "treasure"; face: "experience" | "artifact-search" | "resource-die" | "double-resource-die" }
+  | {
+      kind: "treasure";
+      face:
+        | "experience"
+        | "artifact-search"
+        | "resource-die"
+        | "double-resource-die";
+    }
   | { kind: "resource"; resource: ResourceKind; amount: number };
 
 /**
@@ -12782,9 +13040,18 @@ export type EventsState = {
   /** Mischievous Leprechaun: rolled dice still up for grabs. */
   dicePool: EventDiePoolEntry[];
   /** A Shady Auction: the open lot + hidden bids (masked in others' views). */
-  auction: { lotCardId: CardId; lotDeckId: DeckId; bids: Record<PlayerId, number> } | null;
+  auction: {
+    lotCardId: CardId;
+    lotDeckId: DeckId;
+    bids: Record<PlayerId, number>;
+  } | null;
   /** Marketplace: the open 1-for-1 resource deal; the first accept closes it. */
-  deal: { proposerId: PlayerId; give: ResourceKind; get: ResourceKind; done: boolean } | null;
+  deal: {
+    proposerId: PlayerId;
+    give: ResourceKind;
+    get: ResourceKind;
+    done: boolean;
+  } | null;
   /**
    * Forty Thieves (Astrologers): the two Event cards drawn together, waiting
    * for the drawer's "which one resolves" pick (the other goes to the bottom
@@ -12870,7 +13137,11 @@ export const MAX_FAR_TILES_PER_PLAYER = 6;
  * `engine/far-tile-types.ts` (`farTileTypeMatches`), which delegates to the same
  * predicates the Settlement guarantee and the Ore-Mine reroll already use.
  */
-export type FarTileType = "gold" | "valuables" | "buildingMaterials" | "settlement";
+export type FarTileType =
+  | "gold"
+  | "valuables"
+  | "buildingMaterials"
+  | "settlement";
 
 export type PendingFarTileFlip = {
   playerId: PlayerId;
@@ -13121,7 +13392,12 @@ export type AdventureState = {
         }
       | { kind: "wave"; wave: number }
       | { kind: "raid-boss"; bossInstanceId: string }
-      | { kind: "dungeon-floor"; floor: number; heroId?: HeroId; fieldId?: MapSpaceId };
+      | {
+          kind: "dungeon-floor";
+          floor: number;
+          heroId?: HeroId;
+          fieldId?: MapSpaceId;
+        };
     /** Necromancy banks created in this window; unused ones expire on Resolve. */
     discountIds?: string[];
   } | null;
@@ -13141,10 +13417,20 @@ export type AdventureState = {
     }[];
     deferredReward?:
       | { kind: "field-visit"; heroId: HeroId; fieldId: MapSpaceId }
-      | { kind: "creature-bank"; heroId: HeroId; fieldId: MapSpaceId; stackCount: number }
+      | {
+          kind: "creature-bank";
+          heroId: HeroId;
+          fieldId: MapSpaceId;
+          stackCount: number;
+        }
       | { kind: "wave"; wave: number }
       | { kind: "raid-boss"; bossInstanceId: string }
-      | { kind: "dungeon-floor"; floor: number; heroId?: HeroId; fieldId?: MapSpaceId };
+      | {
+          kind: "dungeon-floor";
+          floor: number;
+          heroId?: HeroId;
+          fieldId?: MapSpaceId;
+        };
   } | null;
   /**
    * Hierophant commander (First Aid Master): after a combat in which the
@@ -13212,8 +13498,7 @@ export type AdventureState = {
   fieldOverridePlacement?: FieldOverridePlacementMode;
   /**
    * Tournament Mode setup rules (default OFF). When on, Diplomacy and Hourglass
-   * of the Evil Hour are removed from shared decks, and the second player gains
-   * 1 positive morale at game start. Prefer the granular flags below when set;
+   * the full granular Tournament package. Prefer the individual flags below when set;
    * this boolean is the all-on convenience / legacy snapshot flag.
    * See GameSetupOptions.tournamentMode.
    */
@@ -13224,6 +13509,10 @@ export type AdventureState = {
   tournamentBanHourglass?: boolean;
   /** Second player gains +1 positive morale at game start (Tournament rule). */
   tournamentSecondPlayerMorale?: boolean;
+  /** Positive Morale may discard and repeat an open Search (Tournament rule). */
+  tournamentMoraleSearchAgain?: boolean;
+  /** Removed Artifact cards still count during final VP scoring (Tournament rule). */
+  tournamentRemovedArtifactsVp?: boolean;
   /**
    * Tournament option: the Redwood Observatory may rotate one adjacent revealed
    * tile with no Hero, then continues its normal face-down-tile discovery.
@@ -13420,7 +13709,10 @@ export type AdventureState = {
    * possession breaks. Field-stamped holds use {@link MapFieldState.holdControlRounds}
    * instead.
    */
-  holdWithGrailProgress?: Record<string, { playerId: PlayerId; rounds: number }>;
+  holdWithGrailProgress?: Record<
+    string,
+    { playerId: PlayerId; rounds: number }
+  >;
   /** Tile awaiting its rotation choice after a reveal or placement. */
   pendingTileChoice?: PendingTileChoice | null;
   /** Astrologers Proclaim deck state (even rounds). */
@@ -13570,8 +13862,7 @@ export type GameSetupOptions = {
   moraleCards?: boolean;
   /**
    * Tournament Mode convenience flag (default OFF, rulebook p.54). When on
-   * without granular overrides, enables every tournament rule below (ban
-   * Diplomacy, ban Hourglass, second-player +1 morale). The UI "Tournament
+   * without granular overrides, enables every tournament rule below. The UI "Tournament
    * mode" preset also turns off house rules, sets Hard difficulty, and keeps
    * Neutral AI control. Does NOT implement the rest of printed Tournament Mode
    * (player-built map, VP scoring, round-1 mulligan, etc.).
@@ -13593,6 +13884,10 @@ export type GameSetupOptions = {
    * 1 positive morale at game start. Absent falls back to `tournamentMode`.
    */
   tournamentSecondPlayerMorale?: boolean;
+  /** Tournament rule: positive Morale may discard and repeat an open Search. */
+  tournamentMoraleSearchAgain?: boolean;
+  /** Tournament rule: removed Artifact cards still count during final VP scoring. */
+  tournamentRemovedArtifactsVp?: boolean;
   /**
    * Tournament option: the Redwood Observatory may re-rotate one adjacent,
    * already-revealed tile with no Hero on it, then continues normal discovery.
@@ -13724,8 +14019,16 @@ export type GameSetupOptions = {
    */
   farTileTypeChoice?: boolean;
   difficulty: GameDifficulty;
-  startingResources: { gold: number; buildingMaterials: number; valuables: number };
-  startingProduction: { gold: number; buildingMaterials: number; valuables: number };
+  startingResources: {
+    gold: number;
+    buildingMaterials: number;
+    valuables: number;
+  };
+  startingProduction: {
+    gold: number;
+    buildingMaterials: number;
+    valuables: number;
+  };
   startingUnitTiers: ("bronze" | "silver" | "gold")[];
   /**
    * Starting army by unit level: one optional few/pack entry per level 1-7.
@@ -13866,6 +14169,8 @@ export type CustomMapPreset = {
     enterNearTiles?: boolean;
     enterCenterTiles?: boolean;
     enterViiFields?: boolean;
+    /** Whether one ally's flag clears a Break for the whole team. Absent = individual. */
+    teamScope?: "individual" | "team";
   };
   /**
    * Calamity Waves designer overrides (module `monsterWaves`): `cadence`
@@ -13901,18 +14206,39 @@ export type CustomMapPreset = {
     descentCost?: DungeonDescentCost;
     floorBosses?: Partial<Record<5 | 10, string>>;
   };
-  startingResources?: { gold: number; buildingMaterials: number; valuables: number };
+  startingResources?: {
+    gold: number;
+    buildingMaterials: number;
+    valuables: number;
+  };
   /** Extra opening resources granted to every computer-controlled seat in
    * SINGLE-PLAYER only. This is explicit scenario pressure (and is surfaced in
    * the briefing), never a hidden global difficulty modifier. Per-enemy extras
    * may also live on a starting tile's `singlePlayer.bonus`. */
-  computerStartingBonus?: { gold: number; buildingMaterials: number; valuables: number };
-  startingProduction?: { gold: number; buildingMaterials: number; valuables: number };
+  computerStartingBonus?: {
+    gold: number;
+    buildingMaterials: number;
+    valuables: number;
+  };
+  startingProduction?: {
+    gold: number;
+    buildingMaterials: number;
+    valuables: number;
+  };
   startingBuildings?: string[];
   startingUnits?: CustomStartingUnit[];
   startingBonuses?: Array<
-    | { kind: "resources"; gold?: number; buildingMaterials?: number; valuables?: number }
-    | { kind: "search"; deck: "artifacts" | "spells" | "abilities"; count: number }
+    | {
+        kind: "resources";
+        gold?: number;
+        buildingMaterials?: number;
+        valuables?: number;
+      }
+    | {
+        kind: "search";
+        deck: "artifacts" | "spells" | "abilities";
+        count: number;
+      }
     | { kind: "morale"; amount: 1 | -1 }
   >;
   /**
@@ -13931,9 +14257,18 @@ export type CustomMapPreset = {
     round: number;
     repeatEveryRounds?: number;
     effect:
-      | { kind: "resources"; gold?: number; buildingMaterials?: number; valuables?: number }
+      | {
+          kind: "resources";
+          gold?: number;
+          buildingMaterials?: number;
+          valuables?: number;
+        }
       | { kind: "experience"; amount: number }
-      | { kind: "search"; deck: "artifacts" | "spells" | "abilities"; count: number }
+      | {
+          kind: "search";
+          deck: "artifacts" | "spells" | "abilities";
+          count: number;
+        }
       | {
           kind: "clear_visitable_cubes";
           /** Windmill also clears Prospector; Water Wheel also clears Derrick (Factory). */
@@ -13947,7 +14282,14 @@ export type CustomMapPreset = {
            * Creature Bank (it keeps its defeat cube — hard rule) nor the Grail /
            * Dragon Utopia victory fields (conservative safety).
            */
-          groups: ("starting" | "far" | "near" | "center" | "sea" | "subterranean")[];
+          groups: (
+            | "starting"
+            | "far"
+            | "near"
+            | "center"
+            | "sea"
+            | "subterranean"
+          )[];
           /** Skip EVERY field of a Tile that currently contains a Settlement. */
           excludeSettlementTiles?: boolean;
         }
@@ -14070,7 +14412,11 @@ export type CustomMapPreset = {
    */
   randomTowns?: {
     guard?: CustomGuardSpec;
-    captureReward?: { gold?: number; buildingMaterials?: number; valuables?: number };
+    captureReward?: {
+      gold?: number;
+      buildingMaterials?: number;
+      valuables?: number;
+    };
     incomeGold?: number;
     /**
      * Extra Victory Points per Random Town a player controls (VP mode only),
@@ -14158,7 +14504,11 @@ export type CustomMapPreset = {
     /** Movement points to dig the Grail (0 free / 1 classic / 2 costly). */
     grailDigCost?: 0 | 1 | 2;
     /** One-shot resources granted when the Grail is successfully dug. */
-    grailDigReward?: { gold?: number; buildingMaterials?: number; valuables?: number };
+    grailDigReward?: {
+      gold?: number;
+      buildingMaterials?: number;
+      valuables?: number;
+    };
     /**
      * Victory Points for possessing the Grail at scoring time (carrier OR the
      * owner of the Town/Settlement where it was built). 0 / absent = no bonus.
@@ -14494,27 +14844,42 @@ export type CustomMapObjectLayer = "surface" | "sea" | "subterranean";
 export type CustomMapObeliskConfig = NonNullable<CustomMapPreset["obelisks"]>;
 
 /** The MAP-WIDE settlement options block of a {@link CustomMapPreset}. */
-export type CustomMapSettlementConfig = NonNullable<CustomMapPreset["settlements"]>;
+export type CustomMapSettlementConfig = NonNullable<
+  CustomMapPreset["settlements"]
+>;
 
 /** The Grail / Dragon Utopia options block of a {@link CustomMapPreset}. */
-export type CustomMapObjectivesConfig = NonNullable<CustomMapPreset["objectives"]>;
+export type CustomMapObjectivesConfig = NonNullable<
+  CustomMapPreset["objectives"]
+>;
 
 /** The MAP-WIDE mine options block of a {@link CustomMapPreset}. */
 export type CustomMapMinesConfig = NonNullable<CustomMapPreset["mines"]>;
 
 /** The MAP-WIDE Random Town options block of a {@link CustomMapPreset}. */
-export type CustomMapRandomTownsConfig = NonNullable<CustomMapPreset["randomTowns"]>;
+export type CustomMapRandomTownsConfig = NonNullable<
+  CustomMapPreset["randomTowns"]
+>;
 
 /** One designer-chosen Obelisk visit bonus (role "bonus"). */
 export type CustomMapObeliskBonus =
   | { kind: "morale"; amount: 1 }
-  | { kind: "search"; deck: "artifacts" | "spells" | "abilities"; count: number }
+  | {
+      kind: "search";
+      deck: "artifacts" | "spells" | "abilities";
+      count: number;
+    }
   /**
    * Ability token — Search (1) the Ability deck (a clearer designer-facing
    * alias of `search` with deck "abilities"; engine grants the same step).
    */
   | { kind: "ability_token" }
-  | { kind: "resources"; gold?: number; buildingMaterials?: number; valuables?: number }
+  | {
+      kind: "resources";
+      gold?: number;
+      buildingMaterials?: number;
+      valuables?: number;
+    }
   | { kind: "movement"; amount: number }
   | { kind: "experience"; amount: number }
   | { kind: "dice"; treasure: number; resource: number }
@@ -14533,7 +14898,10 @@ export type CustomMapObeliskBonus =
  * the engine (handleObeliskVisit fallback) AND the config layer (sanitize /
  * describe / editor) so the default can never drift between them.
  */
-export const DEFAULT_OBELISK_BONUS: CustomMapObeliskBonus = { kind: "morale", amount: 1 };
+export const DEFAULT_OBELISK_BONUS: CustomMapObeliskBonus = {
+  kind: "morale",
+  amount: 1,
+};
 
 /**
  * One designer HEX EVENT ({@link CustomMapPreset.hexEvents}) — an invisible
@@ -15153,7 +15521,11 @@ export type CustomCenterHexPlan = {
  * mid-game snapshots and saved maps from that build keep working — persistence
  * folds it into {@link CustomCenterHexPlan.reward}).
  */
-export type ViiFieldReward = { gold?: number; buildingMaterials?: number; valuables?: number };
+export type ViiFieldReward = {
+  gold?: number;
+  buildingMaterials?: number;
+  valuables?: number;
+};
 
 /**
  * One designer-committed Subterranean Gate link on a cavern tile: which Surface
@@ -15213,7 +15585,10 @@ export type GameSetupDraft = {
    * "random-choice") and the two rolled hero options ("random-choice") the seat
    * must pick from. Cleared once the seat locks that step.
    */
-  seatRolls?: Record<PlayerId, { townOptions?: FactionId[]; heroOptions?: string[] }>;
+  seatRolls?: Record<
+    PlayerId,
+    { townOptions?: FactionId[]; heroOptions?: string[] }
+  >;
 };
 
 /**
@@ -15518,7 +15893,12 @@ export type AbilityDiceRoll = {
  * post-attack follow-up tail (runPostAttackFollowUps) rather than the stack.
  */
 export type PendingAbilityRollContext = {
-  kind: "attack-die-damage" | "death-stare" | "paralysis-extra" | "knockback" | "spell-dice";
+  kind:
+    | "attack-die-damage"
+    | "death-stare"
+    | "paralysis-extra"
+    | "knockback"
+    | "spell-dice";
   abilityId: string;
   abilityName: string;
   /** Dice thrown per (re)roll — after any "roll 1 die less" reduction. */
@@ -15790,7 +16170,11 @@ export type PendingChoice =
         | "combat-remove-another"
         | "commander-artifact-offer"
         | "polish-spell-or-cast";
-      commanderArtifactOffer?: { cardIds: CardId[]; cost: number; source: string };
+      commanderArtifactOffer?: {
+        cardIds: CardId[];
+        cost: number;
+        source: string;
+      };
       /**
        * grail-free-building: one free Town building after BUILD_GRAIL when
        * `grailBuildReward.freeBuilding` is set. `buildingIds` is index-aligned
@@ -15864,7 +16248,12 @@ export type PendingChoice =
        * (index-aligned with `options`); the chosen one goes to hand, the rest to
        * discard. `mode` decides how combat resumes afterwards.
        */
-      genieTakeSpell?: { spellCardIds: CardId[]; unitId: UnitId; mode: "other-action" | "on-attack"; abilityId: string };
+      genieTakeSpell?: {
+        spellCardIds: CardId[];
+        unitId: UnitId;
+        mode: "other-action" | "on-attack";
+        abilityId: string;
+      };
       /**
        * combat-knockback: the Ghost Dragons shoved `unitId` after their attack;
        * the defender picks which empty space (index-aligned with the options) to
@@ -15908,7 +16297,11 @@ export type PendingChoice =
        * attacking player picks which (index-aligned with the options). It still
        * attacks `defenderId` — only the landing cell is the player's choice.
        */
-      neutralDestination?: { unitId: UnitId; positions: number[]; defenderId: UnitId };
+      neutralDestination?: {
+        unitId: UnitId;
+        positions: number[];
+        defenderId: UnitId;
+      };
       /**
        * place-battlefield-tokens: the caster places the rest of a Quicksand /
        * Land Mine set, one token per pick. `positions` are the empty spaces still
@@ -15920,6 +16313,8 @@ export type PendingChoice =
        */
       placeTokens?: {
         kind: "quicksand" | "land_mine";
+        /** The Spell card whose lasting battlefield effect created the tokens. */
+        sourceSpellCardId?: CardId;
         positions: number[];
         armedSlots: boolean[];
         placedCount: number;
@@ -15989,7 +16384,9 @@ export type PendingChoice =
        * every hand and discard card, index-aligned with the options (a trailing
        * "Skip" carries none). The picked card is removed from the game.
        */
-      removeAnother?: { entries: { cardId: CardId; source: "hand" | "discard" }[] };
+      removeAnother?: {
+        entries: { cardId: CardId; source: "hand" | "discard" }[];
+      };
       /**
        * deck-search-mode: a "Search X" with a non-empty discard pile, waiting on
        * the up-front either/or — Search the deck (reveal the top X, keep one) OR
@@ -16188,7 +16585,11 @@ export type PendingChoice =
        * many more the caster may remove.
        */
       removeObstacle?: {
-        items: { position: number; kind: "obstacle" | "wall" | "gate" | "token"; tokenId?: string }[];
+        items: {
+          position: number;
+          kind: "obstacle" | "wall" | "gate" | "token";
+          tokenId?: string;
+        }[];
         remaining: number;
       };
       /**
@@ -16278,14 +16679,23 @@ export type PendingChoice =
        * `crownFree` is true only for Empowered Diplomacy, whose alternative
        * Instant side does not consume an Expert-effect use.
        */
-      diplomacySkip?: { heroId: HeroId; fieldId: MapSpaceId; difficulty: number; crownFree?: boolean };
+      diplomacySkip?: {
+        heroId: HeroId;
+        fieldId: MapSpaceId;
+        difficulty: number;
+        crownFree?: boolean;
+      };
       /**
        * polish-quick-combat: a covered neutral fight the Polish strength-based
        * Quick Combat rule lets the player resolve unfought. Option 0 resolves
        * the Quick Combat (win, no Experience); option 1 fights normally (Cyra's
        * Diplomacy is still offered afterwards at a matching level).
        */
-      polishQuickCombat?: { heroId: HeroId; fieldId: MapSpaceId; difficulty: number };
+      polishQuickCombat?: {
+        heroId: HeroId;
+        fieldId: MapSpaceId;
+        difficulty: number;
+      };
       /**
        * diplomacy-recruit: the Neutral Unit cards drawn (one per Dwelling) and
        * the affordable subset offered as recruit options, in option order. The
@@ -16293,8 +16703,14 @@ export type PendingChoice =
        * declined draws return to their tier deck's discard pile.
        */
       diplomacyRecruit?: {
-        draws: { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" }[];
-        recruitable: { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" }[];
+        draws: {
+          unitDefId: string;
+          tier: "bronze" | "silver" | "gold" | "azure";
+        }[];
+        recruitable: {
+          unitDefId: string;
+          tier: "bronze" | "silver" | "gold" | "azure";
+        }[];
         /** Oidana IV's gold discount, applied to the recruited unit's cost. */
         goldReduction?: number;
         /**
@@ -16376,7 +16792,11 @@ export type PendingChoice =
                * Cuirass "Discard 1 card: +4", Breastplate of Brimstone "up to 3,
                * +1 each") — resolving it opens the cost-discard follow-ups below.
                */
-              costDiscards?: { required: number; upTo: number; perCard: number };
+              costDiscards?: {
+                required: number;
+                upTo: number;
+                perCard: number;
+              };
             }
           | {
               /**
@@ -16454,7 +16874,12 @@ export type PendingChoice =
          * spell may resolve, `upTo` more allowed, `perCard` Power each adds.
          * `sourceCardId` names the side's card for the offer labels.
          */
-        costDiscards?: { sourceCardId: CardId; required: number; upTo: number; perCard: number };
+        costDiscards?: {
+          sourceCardId: CardId;
+          required: number;
+          upTo: number;
+          perCard: number;
+        };
       };
       /**
        * visions-deck: the Neutral tier decks Visions may scry (index-aligned with
@@ -16585,7 +17010,12 @@ export type PendingChoice =
        */
       mapToken?: {
         tileInstanceId: string;
-        kind: "monolith" | "whirlpool" | "gate" | "oneway_entrance" | "oneway_exit";
+        kind:
+          | "monolith"
+          | "whirlpool"
+          | "gate"
+          | "oneway_entrance"
+          | "oneway_exit";
         number?: -1 | 0 | 1;
         pair?: 1 | 2 | 3 | 4;
         candidates: MapSpaceId[];
@@ -16724,7 +17154,11 @@ export type PendingChoice =
       id: string;
       type: "COMBAT_HAND_DISCARD";
       playerId: PlayerId;
-      kind: "magi-power-or-random" | "pegasi-toll" | "familiar-choose-discard" | "wraith-choose-discard";
+      kind:
+        | "magi-power-or-random"
+        | "pegasi-toll"
+        | "familiar-choose-discard"
+        | "wraith-choose-discard";
       abilityId: string;
       abilityName: string;
       sourceUnitId: UnitId;
@@ -17034,7 +17468,10 @@ export const NEUTRAL_PLAYER_ID: PlayerId = "neutrals";
  */
 export const HIDDEN_CARD_ID: CardId = "hidden";
 
-export type PlayerVisiblePlayerState = Omit<PlayerState, "hand" | "deck" | "spellBook"> & {
+export type PlayerVisiblePlayerState = Omit<
+  PlayerState,
+  "hand" | "deck" | "spellBook"
+> & {
   hand: CardId[];
   handCount: number;
   /** Deck order is hidden from every seat, including the owner. */
@@ -17082,7 +17519,10 @@ export type PlayerVisibleDeckState = Omit<DeckState, "drawPile"> & {
   drawCount: number;
 };
 
-export type PlayerVisibleState = Omit<GameState, "players" | "decks" | "reactionWindow" | "pendingChoice"> & {
+export type PlayerVisibleState = Omit<
+  GameState,
+  "players" | "decks" | "reactionWindow" | "pendingChoice"
+> & {
   viewerPlayerId: PlayerId;
   players: Record<PlayerId, PlayerVisiblePlayerState>;
   decks: Record<DeckId, PlayerVisibleDeckState>;

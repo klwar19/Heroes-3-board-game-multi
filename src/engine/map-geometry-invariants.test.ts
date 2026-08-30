@@ -414,7 +414,7 @@ describe("LOCKED: opening a Ⅱ–Ⅲ tile needs the hero's OWN open edge, not a
     }
     expect(heroSpace, "must construct a hero field sealed toward the notch").toBeTruthy();
 
-    state.heroes.hero_p1.spaceId = heroSpace as any;
+    state.heroes.hero_p1.spaceId = heroSpace;
     state.heroes.hero_p1.movementPoints = 5;
 
     // The hero's own edge toward the notch is a printed yellow line → NO opening,

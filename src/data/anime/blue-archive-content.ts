@@ -13,7 +13,7 @@ export interface BlueArchiveCharacter {
   few: BlueArchiveSide; pack: BlueArchiveSide;
 }
 
-const art = (file: string) => `/assets/anime/blue-archive/characters/${file}`;
+const art = (file: string) => `/assets/anime/blue-archive/characters/${file.replace(/\.png$/, ".webp")}`;
 const side = (
   attack: number, defense: number, health: number, initiative: number,
   gold: number, valuables: number | undefined, image: string,
@@ -124,10 +124,10 @@ export const blueArchiveCharacters: readonly BlueArchiveCharacter[] = [
 
 export const blueArchiveTown = {
   id: "blue_archive", name: "Kivotos Academy Domain", color: "#63c8f2",
-  panoramaEmpty: "/assets/anime/blue-archive/town/blue-archive-town-empty.png",
-  panoramaFull: "/assets/anime/blue-archive/town/blue-archive-town-full.png",
-  emptyBars: Array.from({ length: 7 }, (_, i) => `/assets/anime/blue-archive/town-bars/blue-archive-empty-bar-${i + 1}.png`),
-  builtBars: Array.from({ length: 7 }, (_, i) => `/assets/anime/blue-archive/town-bars/blue-archive-built-bar-${i + 1}.png`),
+  panoramaEmpty: "/assets/anime/blue-archive/town/blue-archive-town-empty.webp",
+  panoramaFull: "/assets/anime/blue-archive/town/blue-archive-town-full.webp",
+  emptyBars: Array.from({ length: 7 }, (_, i) => `/assets/anime/blue-archive/town-bars/blue-archive-empty-bar-${i + 1}.webp`),
+  builtBars: Array.from({ length: 7 }, (_, i) => `/assets/anime/blue-archive/town-bars/blue-archive-built-bar-${i + 1}.webp`),
   buildings: [
     { id: "blue_archive.city_hall", name: "General Student Council", bar: 1, gold: 10, materials: 4, effect: "Choose 5 gold or draw 3 cards each resource round." },
     { id: "blue_archive.dwelling_bronze", name: "District Academy", bar: 2, gold: 5, materials: 3, effect: "Unlock bronze Kivotos students." },

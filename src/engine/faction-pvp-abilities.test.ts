@@ -9,8 +9,7 @@ import type { CombatUnitState, GameAction, GameState, PlayerId } from "./state";
  *
  *  - Little Busters: a fighter facing a Little Busters seat may spend 1 gold on
  *    each of three one-off combat counters (discard a random LB card, reduce
- *    the campus hero to half HP rounded up and
- *    Paralyze the LB campus hero unit, draw two cards).
+ *    the campus hero to half HP rounded up, draw one card).
  *  - Monster Girl Quest: no longer carries an opponent-draw penalty.
  */
 
@@ -121,9 +120,7 @@ describe("Little Busters PvP counters", () => {
     expect(next.players.p1.resources.gold).toBe(goldBefore - 1);
     expect(next.players.p2.hand).toHaveLength(0);
     expect(next.players.p2.discard).toContain(discardCardId);
-    // Once per combat: the discard counter is no longer offered.
     expect(counterAction(next, "p1", "discard")).toBeUndefined();
-    // …but the other two counters remain available.
     expect(counterAction(next, "p1", "damage")).toBeTruthy();
     expect(counterAction(next, "p1", "draw")).toBeTruthy();
   });
@@ -138,16 +135,10 @@ describe("Little Busters PvP counters", () => {
     expect(next.players.p1.resources.gold).toBe(goldBefore - 1);
     expect(next.combat!.units.unit_p2_campus_hero.damage).toBe(before + 4);
     expect(next.combat!.units.unit_p2_campus_hero.maxHealth - next.combat!.units.unit_p2_campus_hero.damage).toBe(5);
-    expect(next.combat!.units.unit_p2_campus_hero.tokens?.some((token) => token.kind === "paralysis")).toBe(true);
-    expect(next.activeEffects.some((effect) =>
-      effect.target?.type === "unit" &&
-      effect.target.unitId === "unit_p2_campus_hero" &&
-      effect.modifiers.some((modifier) => modifier.type === "ATTACK_BONUS" && modifier.amount === -2)
-    )).toBe(true);
     expect(counterAction(next, "p1", "damage")).toBeUndefined();
   });
 
-  it("the draw counter draws 2 cards off the fighter's own deck for 1 gold", () => {
+  it("the draw counter draws exactly 1 card for 1 gold", () => {
     const state = lbFight("lb-draw");
     const goldBefore = state.players.p1.resources.gold;
     const handBefore = state.players.p1.hand.length;
@@ -155,8 +146,8 @@ describe("Little Busters PvP counters", () => {
 
     const next = apply(state, counterAction(state, "p1", "draw")!);
     expect(next.players.p1.resources.gold).toBe(goldBefore - 1);
-    expect(next.players.p1.hand.length).toBe(handBefore + 2);
-    expect(next.players.p1.deck.length).toBe(deckBefore - 2);
+    expect(next.players.p1.hand.length).toBe(handBefore + 1);
+    expect(next.players.p1.deck.length).toBe(deckBefore - 1);
     expect(counterAction(next, "p1", "draw")).toBeUndefined();
   });
 });

@@ -160,7 +160,9 @@ export const MODE_PRESET_PAYLOADS: Record<Exclude<SetupModeId, "custom">, Partia
     tournamentMode: false,
     tournamentBanDiplomacy: false,
     tournamentBanHourglass: false,
-    tournamentSecondPlayerMorale: false
+    tournamentSecondPlayerMorale: false,
+    tournamentMoraleSearchAgain: false,
+    tournamentRemovedArtifactsVp: false
   },
   binh: {
     customMode: false,
@@ -169,7 +171,9 @@ export const MODE_PRESET_PAYLOADS: Record<Exclude<SetupModeId, "custom">, Partia
     tournamentMode: false,
     tournamentBanDiplomacy: false,
     tournamentBanHourglass: false,
-    tournamentSecondPlayerMorale: false
+    tournamentSecondPlayerMorale: false,
+    tournamentMoraleSearchAgain: false,
+    tournamentRemovedArtifactsVp: false
   },
   tournament: {
     customMode: false,
@@ -187,6 +191,8 @@ export const MODE_PRESET_PAYLOADS: Record<Exclude<SetupModeId, "custom">, Partia
     tournamentBanDiplomacy: true,
     tournamentBanHourglass: true,
     tournamentSecondPlayerMorale: true,
+    tournamentMoraleSearchAgain: true,
+    tournamentRemovedArtifactsVp: true,
     tournamentObservatoryRerotate: true,
     difficulty: "hard",
     pvpNeutralControl: true,

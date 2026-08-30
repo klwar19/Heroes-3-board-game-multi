@@ -5631,7 +5631,7 @@ for (const heroSlug of [
   for (const [level, fileLevel] of [[1, "i"], [4, "iv"], [6, "vi"]] as const) {
     const card = adventureCards[`specialty.${heroSlug}.${level}`];
     card.assets = {
-      cardImage: `/assets/anime/cards/blue-archive/approved-style/${fileHero}-${fileLevel}.png`,
+      cardImage: `/assets/anime/cards/blue-archive/approved-style/${fileHero}-${fileLevel}.webp`,
       imageAlt: `${card.name} specialty card`
     };
   }

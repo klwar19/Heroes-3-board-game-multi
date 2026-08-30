@@ -40,7 +40,10 @@ import {
   releaseEndedOngoingCards
 } from "./active-effects";
 import { digFromOwnDeckTop, drawCardsForPlayer, reshuffleSharedDeckIfEmpty, shuffleCards } from "./decks";
-import { applyAnimeFactionResourceRoundPenalty } from "./anime-faction-penalties";
+import {
+  applyAnimeFactionAstrologersRoundPenalty,
+  applyAnimeFactionResourceRoundPenalty
+} from "./anime-faction-penalties";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { cultivationEnabled, cultivationHandLimitBonus, maybeAdvanceCultivationRealm } from "./anime-cultivation";
 import {
@@ -1626,7 +1629,39 @@ export function liftSeaHaltForWaterWalk(state: GameState, playerId: PlayerId): v
  * not the tile's overall terrain.
  */
 export function isSeaField(state: GameState, spaceId: MapSpaceId): boolean {
-  return state.adventure?.fields[spaceId]?.terrain === "water";
+  const adventure = state.adventure;
+  const field = adventure?.fields[spaceId];
+  if (!adventure || !field) {
+    return false;
+  }
+
+  // Explicit runtime water wins. This covers real materialized sea fields,
+  // water Field Overrides/Whirlpools, standalone sea objects, and designer/test
+  // fields that intentionally turn an otherwise-land slot into water.
+  if (field.terrain === "water") {
+    return true;
+  }
+
+  // For an unchanged printed field, derive terrain from the same tile slot that
+  // paints the hex. `field.terrain` is a materialized cache and older/recovered
+  // room snapshots can have that marker missing on only one of two adjacent sea
+  // hexes. Reading the cache alone invents a coastline between two visibly blue
+  // fields and incorrectly sets movementHaltedThisTurn on a sea -> sea step.
+  //
+  // A carved/replaced field (Creature Bank, Gate, Field Override, Whirlpool,
+  // standalone object, etc.) deliberately owns its runtime terrain instead, so
+  // only fields whose live location still matches their printed slot use this
+  // authoritative art/definition path.
+  const tile = adventure.tiles[field.tileInstanceId];
+  const definition = tile ? allTileDefinitions[tile.tileDefId] : undefined;
+  const printedField = definition?.fields[field.slot];
+  if (definition && printedField && field.location === printedField.location) {
+    return printedField.terrain
+      ? printedField.terrain === "water"
+      : definition.terrain === "water";
+  }
+
+  return false;
 }
 
 /**
@@ -2458,6 +2493,39 @@ export function isBreakEntry(state: GameState, hero: HeroState, field: MapFieldS
   );
 }
 
+function fieldUsesBreakRule(state: GameState, field: MapFieldState): boolean {
+  const config = state.adventure?.mapPreset?.breaks;
+  const tile = state.adventure?.tiles[field.tileInstanceId];
+  return Boolean(
+    field.breakField === true ||
+    (config?.enterViiFields === true && field.difficulty === 7) ||
+    (config?.enterNearTiles === true && tile?.group === "near") ||
+    (config?.enterCenterTiles === true && tile?.group === "center")
+  );
+}
+
+/** Whether an allied flag clears this specific Break under the map's team rule. */
+export function breakClearedByTeam(
+  state: GameState,
+  playerId: PlayerId,
+  field: MapFieldState
+): boolean {
+  if (state.adventure?.mapPreset?.breaks?.teamScope !== "team") {
+    return false;
+  }
+  return fieldUsesBreakRule(state, field) && fieldFlaggedByAlly(state, playerId, field);
+}
+
+/** Individual mode: an ally's cube does not satisfy this player's Break flag. */
+function breakNeedsIndividualFlag(state: GameState, playerId: PlayerId, field: MapFieldState): boolean {
+  return (
+    state.adventure?.mapPreset?.breaks?.teamScope !== "team" &&
+    fieldUsesBreakRule(state, field) &&
+    fieldFlaggedByAlly(state, playerId, field) &&
+    !field.extraFlagOwnerIds?.includes(playerId)
+  );
+}
+
 export function classifyHeroStep(
   state: GameState,
   hero: HeroState,
@@ -2501,7 +2569,11 @@ export function classifyHeroStep(
     return movement.passEncounters || passAnyField(movement) ? "encounter" : "stop";
   }
 
-  if (isFieldGuarded(field) && field.flagOwnerId !== playerId) {
+  if (
+    isFieldGuarded(field) &&
+    field.flagOwnerId !== playerId &&
+    !breakClearedByTeam(state, playerId, field)
+  ) {
     // Break fields (PC-style): Pathfinding may NOT walk through — must fight
     // to enter / clear. Angel Wings flies over them all the same ("through ANY
     // fields"). Classic guarded fields still allow Pathfinding pass.
@@ -2510,6 +2582,10 @@ export function classifyHeroStep(
     }
     // Pathfinding walks through Neutral Units; Combat only if you END here.
     return movement.passEncounters || passAnyField(movement) ? "encounter" : "stop";
+  }
+
+  if (breakNeedsIndividualFlag(state, playerId, field)) {
+    return passAnyField(movement) ? "encounter" : "stop";
   }
 
   // Dragon Conqueror: a captured Dragon Utopia is a stronghold — its holder
@@ -3996,6 +4072,17 @@ export function flagField(state: GameState, playerId: PlayerId, field: MapFieldS
   // branches + capturableEnemyMinesWithin), so this is the defensive backstop
   // that makes a FORGED or future call path harmless: the flag simply stays put.
   if (fieldFlaggedByAlly(state, playerId, field)) {
+    if (breakNeedsIndividualFlag(state, playerId, field)) {
+      field.extraFlagOwnerIds = [...(field.extraFlagOwnerIds ?? []), playerId];
+      appendEvent(state, {
+        type: "FIELD_FLAGGED",
+        playerId,
+        fieldId: field.spaceId,
+        location: field.location,
+        previousOwnerId: null
+      });
+      return;
+    }
     appendEvent(state, {
       type: "EVENT_NOTE",
       playerId,
@@ -4346,6 +4433,11 @@ export function tournamentMoraleSearchAgainEnabled(
   if (!a) {
     return false;
   }
+  if (a.tournamentMoraleSearchAgain !== undefined) {
+    return a.tournamentMoraleSearchAgain;
+  }
+  // Legacy snapshots predate the granular switch; preserve their former
+  // tournament-derived behaviour until they are rebuilt with an explicit flag.
   return Boolean(
     a.tournamentMode ||
       a.tournamentBanDiplomacy ||
@@ -8671,7 +8763,9 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
   // Walking through your own garrison does nothing.
   if (location.id === "garrison") {
     field.everFlagged = true;
-    if (field.flagOwnerId !== playerId && !fieldFlaggedByAlly(state, playerId, field)) {
+    if (breakNeedsIndividualFlag(state, playerId, field)) {
+      flagField(state, playerId, field);
+    } else if (field.flagOwnerId !== playerId && !fieldFlaggedByAlly(state, playerId, field)) {
       flagField(state, playerId, field);
     }
     return;
@@ -8695,27 +8789,37 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
   const allyHolding = fieldFlaggedByAlly(state, playerId, field);
 
   if (location.id === "mine") {
-    if (field.flagOwnerId !== playerId && !allyHolding) {
+    if (breakNeedsIndividualFlag(state, playerId, field)) {
+      flagField(state, playerId, field);
+    } else if (field.flagOwnerId !== playerId && !allyHolding) {
       applyMineFlag(state, playerId, field);
     }
     return;
   }
 
   if (location.id === "random_town") {
-    if (field.flagOwnerId !== playerId && !allyHolding) {
+    if (breakNeedsIndividualFlag(state, playerId, field)) {
+      flagField(state, playerId, field);
+    } else if (field.flagOwnerId !== playerId && !allyHolding) {
       applyRandomTownFlag(state, playerId, field);
     }
     return;
   }
 
   if (location.id === "town") {
-    if (field.flagOwnerId !== playerId && !allyHolding) {
+    if (breakNeedsIndividualFlag(state, playerId, field)) {
+      flagField(state, playerId, field);
+    } else if (field.flagOwnerId !== playerId && !allyHolding) {
       applyTownFlag(state, playerId, field);
     }
     return;
   }
 
   if (location.id === "settlement") {
+    if (breakNeedsIndividualFlag(state, playerId, field)) {
+      flagField(state, playerId, field);
+      return;
+    }
     // An ally's settlement is theirs: never re-tokened, never reinforced from.
     if (allyHolding) {
       return;
@@ -18587,10 +18691,10 @@ export function startAdventureRound(state: GameState): void {
 
   const kind = state.round === 1 ? "first" : state.round % 2 === 1 ? "resource" : "astrologers";
 
-  // Anime Chakra/Paradox Strain (Hidden Leaf, MGQ): the −1 hand-limit penalty is
-  // ROUND-SCOPED, not a permanent stacking loss. Clear last round's penalty here
-  // so the hand limit is back to normal; the Resource-round income loop below then
-  // re-applies exactly −1 for the Resource round it names (never accumulating).
+  // Anime faction hand-limit penalties (Hidden Leaf on Resource rounds, Little
+  // Busters on Astrologers rounds) are ROUND-SCOPED, not permanent stacking
+  // losses. Clear the previous round here; the matching round hook below then
+  // re-applies exactly −1 for the round it names (never accumulating).
   for (const player of Object.values(state.players)) {
     if (player.id !== NEUTRAL_PLAYER_ID && player.otherworldHandLimitLoss) {
       player.otherworldHandLimitLoss = 0;
@@ -18738,6 +18842,8 @@ export function startAdventureRound(state: GameState): void {
       if (!player || playerId === NEUTRAL_PLAYER_ID) {
         continue;
       }
+
+      applyAnimeFactionAstrologersRoundPenalty(state, playerId);
 
       const astrologersOre = heroGradeAstrologersRoundMaterials(state, playerId);
       if (astrologersOre > 0) {

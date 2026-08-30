@@ -215,6 +215,23 @@ describe("SpellBookModal — the data-derived Power ladder and timing badge", ()
     expect(document.querySelectorAll(".spellBookLadderRow").length).toBe(3);
     expect(document.querySelector(".spellBookChip.timing.combat")).toBeTruthy();
   });
+
+  it("marks a lasting Spell as in play and unavailable until its effect ends", () => {
+    render(
+      <SpellBookModal
+        cardIds={[]}
+        usedCardIds={["spell.fire_wall"]}
+        inPlayCardIds={["spell.fire_wall"]}
+        polishMode
+        castsByCard={EMPTY}
+        onCast={() => {}}
+        onClose={() => {}}
+      />
+    );
+    expect(document.querySelector(".spellBookIndexLevel")?.textContent).toContain("In play");
+    expect(document.querySelector(".spellBookInPlayIcon")).toBeTruthy();
+    expect(document.querySelector(".spellBookChip.inPlay")?.textContent).toContain("cannot refresh or cast again");
+  });
 });
 
 describe("spellPowerLadder / spellTimingKind (engine helpers)", () => {

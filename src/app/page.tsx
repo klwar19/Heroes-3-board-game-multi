@@ -24,6 +24,7 @@ import {
   isParallelActor,
   isResetVoteApproved,
   houseRuleEnabled,
+  polishBookSpellEffectIsLive,
   polishSpellBookEnabled,
   resetVoteRequired,
   resourceDieFaces,
@@ -748,7 +749,7 @@ export default function Home() {
   // seeds nothing at creation, so the first client sets it).
   const pendingRoomRankedRef = useRef<{ roomId: string; ranked: boolean } | null>(null);
   // Password typed in the lobby Join dialog for a locked room.
-  const pendingRoomPasswordRef = useRef<{ roomId: string; password: string } | null>(null);
+  const [pendingRoomPassword, setPendingRoomPassword] = useState<{ roomId: string; password: string } | null>(null);
   // Dedicated /coop front door: once seated, authoritatively stamp Co-op and
   // add the selected number of trailing computer-controlled enemy seats.
   const pendingCoopRoomSetupRef = useRef<PendingCoopRoomSetup | null>(null);
@@ -1012,11 +1013,13 @@ export default function Home() {
   // browser recovery watchdog and automatic presentation playback.
   const autoAdvanceEnabled = computerAutoAdvanceEnabled(state?.sessionMode);
   const startComputerReplayRef = useRef(computerReplay.start);
-  startComputerReplayRef.current = computerReplay.start;
   const cancelComputerReplayRef = useRef(computerReplay.cancel);
-  cancelComputerReplayRef.current = computerReplay.cancel;
   const stepComputerReplayRef = useRef(computerReplay.stepNext);
-  stepComputerReplayRef.current = computerReplay.stepNext;
+  useEffect(() => {
+    startComputerReplayRef.current = computerReplay.start;
+    cancelComputerReplayRef.current = computerReplay.cancel;
+    stepComputerReplayRef.current = computerReplay.stepNext;
+  }, [computerReplay.start, computerReplay.cancel, computerReplay.stepNext]);
   // Single-player: computers pace live (one action per broadcast). Battle recaps
   // still use this overlay; multi-hop catch-up batches can still queue a replay.
   const [opponentTurnSummary, setOpponentTurnSummary] = useState<{
@@ -1175,7 +1178,7 @@ export default function Home() {
       // room never auto-joins without a typed password (host online or not).
       const pendingPassword = takePendingRoomPassword();
       if (pendingPassword && pendingPassword.roomId === initialRoom) {
-        pendingRoomPasswordRef.current = pendingPassword;
+        setPendingRoomPassword(pendingPassword);
       }
     }
     // Prefer the signed-in nickname (localStorage cache) so a verified player
@@ -4408,8 +4411,8 @@ export default function Home() {
   });
   // Prefer a password the player typed in the lobby (or re-typed in-room).
   const pendingLobbyPassword =
-    pendingRoomPasswordRef.current && pendingRoomPasswordRef.current.roomId === roomId
-      ? pendingRoomPasswordRef.current.password
+    pendingRoomPassword && pendingRoomPassword.roomId === roomId
+      ? pendingRoomPassword.password
       : "";
   const joinRoomPassword =
     joinPasswordEntry.roomId === roomId && joinPasswordEntry.value
@@ -5087,10 +5090,7 @@ export default function Home() {
   // UI-check: ?demoTray=1 injects real permanent + ongoing cards for the seated
   // player so the tray boxes show real card art. Re-applied each render so a
   // server snapshot cannot wipe the preview while the flag is on.
-  const [demoTrayOn, setDemoTrayOn] = useState(false);
-  useEffect(() => {
-    setDemoTrayOn(isDemoTrayEnabled());
-  }, [roomId]);
+  const demoTrayOn = isDemoTrayEnabled();
   const uiState = useMemo(() => {
     if (!state || !isSeated || !demoTrayOn) {
       return state;
@@ -6332,6 +6332,18 @@ export default function Home() {
             <SpellBookModal
               cardIds={spellBookCards}
               usedCardIds={polishBook ? spellBookUsedCards : []}
+              inPlayCardIds={
+                polishBook
+                  ? spellBookUsedCards.filter((cardId) =>
+                      polishBookSpellEffectIsLive(
+                        uiState ?? state,
+                        viewerPlayerId,
+                        cardId,
+                        (uiState ?? state).players[viewerPlayerId]
+                      )
+                    )
+                  : []
+              }
               polishMode={polishBook}
               castsByCard={bookPlayActionsByCard}
               shortcuts={spellBookShortcuts}
@@ -6805,6 +6817,10 @@ export default function Home() {
               ) : null}
               <div className="adventureHandCards" data-fx-anchor={`hand:${viewerPlayerId}`}>
                 {handCards.length === 0 ? <small className="emptyHand">No cards in hand.</small> : null}
+                {/* The React refs rule currently misidentifies setState updater
+                    parameters named `current` inside this render map as refs;
+                    this block does not read or pass a React ref. */}
+                {/* eslint-disable react-hooks/refs */}
                 {handCards.map((cardId, index) => {
                   const plays = playActionsByCard.get(cardId) ?? [];
                   // Empowered abilities (and intrinsic Empowered Statistics) wear
@@ -7084,6 +7100,7 @@ export default function Home() {
                     </div>
                   );
                 })}
+                {/* eslint-enable react-hooks/refs */}
               </div>
               </div>
               </div>

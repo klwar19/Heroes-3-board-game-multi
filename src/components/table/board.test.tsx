@@ -1,16 +1,19 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { BattlefieldBoard, COMBAT_BOARD_ART_VARIANTS, CommandDock, InspectPanel, battlefieldCellPlacement, pickCombatBoardArt } from "./board";
+import { BattlefieldBoard, COMBAT_BOARD_ART_VARIANTS, CommandDock, InspectPanel, battlefieldCellPlacement, displayedCombatAttack, pickCombatBoardArt } from "./board";
 import { CardZoomProvider, HeroBattlefieldCard } from "./zoom";
 import {
   applyCombatBoardArtObstacles,
   assignCombatBoardArt,
   commanderUnitId,
   createInitialGameState,
+  DEFAULT_ANIME_OPTIONS,
   eligibleCombatBoardArtIds,
+  EQUIPMENT_IDS,
   fortificationTargetId,
   gainRunes,
+  getMainHero,
   getLegalActions,
   makeActiveEffect,
   RUNE_LEVEL_THRESHOLDS,
@@ -917,6 +920,59 @@ describe("BattlefieldBoard — WOG Commanders pre-combat sort", () => {
     const button = [...container.querySelectorAll("button")].find((entry) => /ready for battle/i.test(entry.textContent ?? ""));
     expect(button).toBeUndefined();
     expect(onAction).not.toHaveBeenCalled();
+  });
+
+  it("shows the real round-1 Vanguard Marshal +1 Attack for Cove and every town sharing the specialty", () => {
+    for (const slug of ["corsair", "ruler", "kyousuke_natsume"] as const) {
+      const state = commanderSortState();
+      state.players.p1.commander!.slug = slug;
+      const unit = makeCommanderCombatUnit(state.players.p1, 13)!;
+      state.combat!.units = { [unit.id]: unit };
+      state.combat!.round = 1;
+
+      expect(displayedCombatAttack(state, unit), `${slug} visible Attack`).toBe(unit.attack + 1);
+      const { container, unmount } = render(
+        <CardZoomProvider>
+          <InspectPanel state={state} unitId={unit.id} />
+        </CardZoomProvider>
+      );
+      expect(container.querySelector(".inspectStats")?.textContent, `${slug} inspector`).toContain(
+        `⚔ ${unit.attack + 1} (base ${unit.attack})`
+      );
+      unmount();
+    }
+
+    // The equipment source is shared by every town, not hard-coded to Cove.
+    const hornState = commanderSortState();
+    hornState.players.p1.commander!.slug = "paladin";
+    hornState.anime = { ...DEFAULT_ANIME_OPTIONS, enabled: true, equipment: true };
+    getMainHero(hornState, "p1")!.equipment = { accessory: EQUIPMENT_IDS.marshalsWarHorn };
+    const hornCommander = makeCommanderCombatUnit(hornState.players.p1, 13)!;
+    hornState.combat!.units = { [hornCommander.id]: hornCommander };
+    hornState.combat!.round = 1;
+    expect(displayedCombatAttack(hornState, hornCommander), "War Horn visible Attack").toBe(
+      hornCommander.attack + 1
+    );
+  });
+
+  it("keeps the visible +1 after leaving the front line, expires it in round 2, and preserves it in zoom", () => {
+    const state = commanderSortState();
+    const unit = makeCommanderCombatUnit(state.players.p1, 17)!;
+    unit.commanderFrontLineAttackRoundOne = true;
+    state.combat!.units = { [unit.id]: unit };
+    state.combat!.round = 1;
+
+    expect(displayedCombatAttack(state, unit)).toBe(unit.attack + 1);
+    const view = render(
+      <CardZoomProvider>
+        <InspectPanel state={state} unitId={unit.id} />
+      </CardZoomProvider>
+    );
+    fireEvent.click(view.getByRole("button", { name: /read sea marshal at full size/i }));
+    expect(view.getAllByTitle(`Attack ${unit.attack + 1} (grade base)`).length).toBeGreaterThanOrEqual(2);
+
+    state.combat!.round = 2;
+    expect(displayedCombatAttack(state, unit)).toBe(unit.attack);
   });
 });
 

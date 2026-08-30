@@ -217,7 +217,7 @@ export function flaggedMineSettlementCount(state: GameState, playerId: PlayerId)
   let count = 0;
   for (const field of Object.values(adventure.fields)) {
     if (
-      field.flagOwnerId === playerId &&
+      (field.flagOwnerId === playerId || field.extraFlagOwnerIds?.includes(playerId)) &&
       (field.location === "mine" || field.location === "settlement")
     ) {
       count += 1;
@@ -249,11 +249,18 @@ export function controlledSettlementCount(state: GameState, playerId: PlayerId):
  * removed from play" means; the removed zone is the state the rulebook's
  * removed-from-play clause reads.
  */
-export function artifactCountOf(player: PlayerState | undefined): number {
+export function artifactCountOf(player: PlayerState | undefined, includeRemoved = true): number {
   if (!player) {
     return 0;
   }
-  const zones = [player.hand, player.deck, player.discard, player.spellBook, player.removed, player.permanents];
+  const zones = [
+    player.hand,
+    player.deck,
+    player.discard,
+    player.spellBook,
+    ...(includeRemoved ? [player.removed] : []),
+    player.permanents
+  ];
   let count = 0;
   for (const zone of zones) {
     for (const cardId of zone ?? []) {
@@ -481,7 +488,13 @@ function buildBreakdown(
   if (grailVp > 0 && playerPossessesGrail(state, playerId)) {
     add("Possessing the Grail", grailVp);
   }
-  add("Artifacts (1 VP per 2)", Math.floor(artifactCountOf(state.players[playerId]) / 2));
+  // New games freeze this Tournament rule explicitly. Missing on legacy
+  // snapshots preserves the historical scoring read (removed cards counted).
+  const countRemovedArtifacts = state.adventure?.tournamentRemovedArtifactsVp ?? true;
+  add(
+    "Artifacts (1 VP per 2)",
+    Math.floor(artifactCountOf(state.players[playerId], countRemovedArtifacts) / 2)
+  );
 
   for (const objective of config?.objectives ?? []) {
     if (playerMeetsObjective(state, playerId, objective, ledger)) {

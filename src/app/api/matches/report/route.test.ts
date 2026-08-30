@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
@@ -6,7 +6,9 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 // Stage the built-in store in a throwaway dir BEFORE the route module (and its
 // singleton) loads.
 const ACCOUNT_DIR = mkdtempSync(join(tmpdir(), "homm3bg-match-route-"));
+const REPLAY_DIR = mkdtempSync(join(tmpdir(), "homm3bg-replay-route-"));
 process.env.HOMM3BG_ACCOUNT_DIR = ACCOUNT_DIR;
+process.env.HOMM3BG_REPLAY_DIR = REPLAY_DIR;
 
 /**
  * The /api/matches/report route — the PartyKit edge's only way to write ladder
@@ -26,11 +28,17 @@ describe("/api/matches/report", () => {
   beforeEach(() => {
     (globalThis as Record<string, unknown>).__homm3bgAccountStore = undefined;
     rmSync(join(ACCOUNT_DIR, "accounts.json"), { force: true });
+    rmSync(REPLAY_DIR, { recursive: true, force: true });
     delete process.env.HOMM3BG_MATCH_REPORT_KEY;
+    delete process.env.VERCEL;
+    delete process.env.HOMM3BG_RANKED_REPLAY_ENABLED;
   });
   afterAll(() => {
     delete process.env.HOMM3BG_MATCH_REPORT_KEY;
+    delete process.env.VERCEL;
+    delete process.env.HOMM3BG_RANKED_REPLAY_ENABLED;
     rmSync(ACCOUNT_DIR, { recursive: true, force: true });
+    rmSync(REPLAY_DIR, { recursive: true, force: true });
   });
 
   it("is a hard 403 with the env key unset — even a 'correct-looking' header never matches", async () => {
@@ -53,7 +61,18 @@ describe("/api/matches/report", () => {
       participants: [
         { accountId: cat.id, result: "win" },
         { accountId: rol.id, result: "loss" }
-      ]
+      ],
+      replay: {
+        format: "homm3bg-ranked-replay-v1",
+        schemaVersion: 1,
+        engineSignature: "test-engine",
+        matchId: "room-9:seed-1",
+        startedAt: new Date(0).toISOString(),
+        initialState: {},
+        entries: [],
+        byteLength: 256,
+        truncated: false
+      }
     };
 
     expect((await POST(report(payload, "wrong"))).status).toBe(403);
@@ -61,7 +80,8 @@ describe("/api/matches/report", () => {
 
     const ok = await POST(report(payload, "shared-secret-9"));
     expect(ok.status).toBe(200);
-    expect((await ok.json()).applied).toBe(true);
+    expect(await ok.json()).toEqual({ applied: true, replayStored: true });
+    expect(existsSync(join(REPLAY_DIR, "room-9_3Aseed-1.json"))).toBe(true);
     expect(store.getProfileById(cat.id)!.mmr).toBe(1216);
     expect(store.getProfileById(rol.id)!.mmr).toBe(1184);
     expect(store.getProfileById(cat.id)!.wins).toBe(1);
@@ -115,5 +135,80 @@ describe("/api/matches/report", () => {
         )
       ).status
     ).toBe(400);
+  });
+
+  it("fails closed on Vercel when Supabase is unavailable and never applies Elo", async () => {
+    process.env.HOMM3BG_MATCH_REPORT_KEY = "shared-secret-9";
+    process.env.VERCEL = "1";
+    delete process.env.SUPABASE_URL;
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const { POST } = await import("./route");
+    const { getAccountStore } = await import("@/server/accounts/account-store-instance");
+    const store = getAccountStore();
+    const cat = store.ensureAdminAccount({ nickname: "Catherine", email: "cat@erathia.io", password: "griffins7" });
+    const rol = store.ensureAdminAccount({ nickname: "Roland", email: "rol@erathia.io", password: "swordsman1" });
+    const response = await POST(report({
+      matchId: "production-missing-db",
+      participants: [
+        { accountId: cat.id, result: "win" },
+        { accountId: rol.id, result: "loss" },
+      ],
+      replay: {
+        format: "homm3bg-ranked-replay-v1",
+        schemaVersion: 1,
+        engineSignature: "test-engine",
+        matchId: "production-missing-db",
+        startedAt: new Date(0).toISOString(),
+        initialState: {},
+        entries: [],
+        byteLength: 256,
+        truncated: false,
+      },
+    }, "shared-secret-9"));
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ error: "REPLAY_STORE_UNAVAILABLE" });
+    expect(store.getProfileById(cat.id)!.mmr).toBe(1200);
+    expect(store.getProfileById(cat.id)!.wins).toBe(0);
+  });
+
+  it("refuses a ranked result without its replay", async () => {
+    process.env.HOMM3BG_MATCH_REPORT_KEY = "shared-secret-9";
+    const { POST } = await import("./route");
+    const response = await POST(report({
+      matchId: "missing-replay",
+      participants: [
+        { accountId: "u_one", result: "win" },
+        { accountId: "u_two", result: "loss" },
+      ],
+    }, "shared-secret-9"));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: "REPLAY_REQUIRED" });
+  });
+
+  it("keeps ladder reporting available when replay capture is explicitly disabled", async () => {
+    process.env.HOMM3BG_MATCH_REPORT_KEY = "shared-secret-9";
+    process.env.HOMM3BG_RANKED_REPLAY_ENABLED = "false";
+    const { POST } = await import("./route");
+    const { getAccountStore } = await import("@/server/accounts/account-store-instance");
+    const store = getAccountStore();
+    const one = store.ensureAdminAccount({ nickname: "Crag Hack", email: "crag@erathia.io", password: "barbarian9" });
+    const two = store.ensureAdminAccount({ nickname: "Solmyr", email: "solmyr@erathia.io", password: "chainlightning9" });
+    const response = await POST(report({
+      matchId: "operator-disabled-replay",
+      participants: [
+        { accountId: one.id, result: "win" },
+        { accountId: two.id, result: "loss" },
+      ],
+    }, "shared-secret-9"));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ applied: true, replayStored: true });
+  });
+
+  it("rejects an oversized replay request before JSON ingestion can grow unbounded", async () => {
+    process.env.HOMM3BG_MATCH_REPORT_KEY = "shared-secret-9";
+    const { POST } = await import("./route");
+    const response = await POST(report({ matchId: "huge", participants: [], padding: "x".repeat(4_200_001) }, "shared-secret-9"));
+    expect(response.status).toBe(413);
   });
 });

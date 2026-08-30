@@ -1,26 +1,15 @@
 import { markUnitRemovedIfNeeded } from "./combat-units";
 import { drawCardsForPlayer } from "./decks";
 import { appendEvent, eventSeedNumber } from "./events";
-import { makeActiveEffect } from "./active-effects";
 import { createSeededRandom } from "./random";
-import { noteUnitDamagedForTokens, placeCombatToken } from "./tokens";
+import { noteUnitDamagedForTokens } from "./tokens";
 import type { CombatState, CombatUnitState, GameState, PlayerId } from "./state";
 
 /**
- * PvP anti-Little-Busters counters (USER RULE): a fighter facing a Little
- * Busters seat in a player-vs-player battle may spend gold on up to three
- * one-off effects during the fight, themed on the campus's own "school
- * festival contribution" economy. Each is optional, costs 1 gold, and is
- * offered at most once per fighter per combat:
- *
- *   - "discard": the Little Busters seat discards 1 random hand card.
- *   - "damage":  the Little Busters campus hero UNIT is reduced to half its
- *                 maximum HP, rounding remaining HP up (never healing it).
- *   - "draw":    the spending fighter draws 2 cards.
- *
- * The availability derivation here is THE shared read the legal-action offer
- * and the reducer handler both consult, so a rendered button can never be
- * refused and a refused action can never have been rendered.
+ * PvP anti-Little-Busters counters: a fighter facing a Little Busters seat may
+ * spend 1 gold on each of three one-use effects during that combat. The draw
+ * counter draws exactly one card; the other two counters retain their original
+ * effects.
  */
 export type LittleBustersCounter = "discard" | "damage" | "draw";
 
@@ -71,7 +60,7 @@ function counterLabel(counter: LittleBustersCounter, opponentName: string): stri
     case "damage":
       return `Pay ${LITTLE_BUSTERS_COUNTER_COST} gold: reduce ${opponentName}'s hero to half HP (round up)`;
     case "draw":
-      return `Pay ${LITTLE_BUSTERS_COUNTER_COST} gold: draw 2 cards`;
+      return `Pay ${LITTLE_BUSTERS_COUNTER_COST} gold: draw 1 card`;
   }
 }
 
@@ -158,29 +147,10 @@ export function applyLittleBustersCounter(
         });
       }
       markUnitRemovedIfNeeded(state, target);
-      if (target.damage < target.maxHealth) {
-        placeCombatToken(state, target, "paralysis", 0, "Paid Campus Disruption");
-        if (combat.round === 1) {
-          state.activeEffects.push(makeActiveEffect(
-            state,
-            {
-              name: "Paid Campus Disruption",
-              scope: "unit",
-              duration: { type: "current-combat-round" },
-              polarity: "negative",
-              removable: true,
-              modifiers: [{ type: "ATTACK_BONUS", amount: -2 }]
-            },
-            { type: "system" },
-            playerId,
-            { type: "unit", unitId: target.id }
-          ));
-        }
-      }
       break;
     }
     case "draw": {
-      drawCardsForPlayer(state, playerId, 2);
+      drawCardsForPlayer(state, playerId, 1);
       break;
     }
   }
