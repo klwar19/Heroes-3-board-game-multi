@@ -3,6 +3,7 @@ import { wogUnitDefinitions } from "@/data/wog";
 import { doomUnitDefinitions } from "@/data/doom";
 import { animeTownUnitDefinitions } from "@/data/anime/towns";
 import { mgqUnitDefinitions } from "@/data/anime/mgq";
+import { imperiumUnitDefinitions } from "@/data/warhammer/imperium";
 
 /**
  * Core-box unit roster: the three core factions plus the four neutral tiers.
@@ -16,6 +17,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
   ...doomUnitDefinitions,
   ...animeTownUnitDefinitions,
   ...mgqUnitDefinitions,
+  ...imperiumUnitDefinitions,
   "castle.halberdiers": {
     id: "castle.halberdiers",
     name: "Halberdiers",

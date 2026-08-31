@@ -440,6 +440,7 @@ import {
   syncAbilitySuppression,
   unitDealsElementalDamage,
   unitHasCannotRetaliateEffect,
+  unitHasVirtualDefenseToken,
   unitHasUnlimitedRetaliationEffect,
   unitIgnoresCardNonDamage,
   specialtyImmunityActive,
@@ -466,7 +467,7 @@ import {
   appendEvent,
   eventSeedNumber,
   nextEventNumber,
-  reduceFirstDamageEachRound,
+  reduceFirstDamageByAbility,
 } from "./events";
 import { commanderArtifactBonusesForUnit } from "./commander-artifacts";
 import {
@@ -481,6 +482,7 @@ import {
   commanderCastTierIndex,
 } from "@/data/commanders";
 import {
+  applyLionRoundStartBarrage,
   applyCommanderRuneOnMove,
   applyCommanderRuneRitual,
   commandersModuleEnabled,
@@ -4592,7 +4594,7 @@ function applyAttackDamageFromCandidate(
   // Iron Horus must reduce the attack before lethal-save checks, Pack/Few layer
   // previews and damage-dependent follow-ups. Non-attack damage uses the same
   // helper automatically at the DAMAGE_ASSIGNED seam in events.ts.
-  const ironHorusReduction = reduceFirstDamageEachRound(
+  const ironHorusReduction = reduceFirstDamageByAbility(
     state,
     defender.id,
     damage,
@@ -4602,9 +4604,9 @@ function applyAttackDamageFromCandidate(
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: defender.id,
-      abilityId: "kivotos-iron-horus",
+      abilityId: ironHorusReduction.abilityId ?? "kivotos-iron-horus",
       targetUnitId: defender.id,
-      message: `${defender.cardName}'s Iron Horus reduces the first damage it takes this round by 1.`,
+      message: `${defender.cardName}'s damage reduction prevents ${ironHorusReduction.reduced} damage.`,
     });
   }
 
@@ -7209,6 +7211,7 @@ function resolveDefendBonus(
   const hasShield =
     stackItem.modifiers.defendRoll !== undefined ||
     details.defender.defenseToken ||
+    unitHasVirtualDefenseToken(state, details.defender) ||
     hasAdjacentDefenseAura(state, details.defender) ||
     hasSelfDefenseToken(details.defender) ||
     Boolean(abyssalShield);
@@ -20936,7 +20939,21 @@ function applyReactionPlayCore(
       isAdjacent(affectedUnit.position, attacker.position)
         ? effect.extraIfAdjacentToAttacker
         : 0;
-    const appliedAmount = effectAmount * doubleFactor + adjacencyDefenseBonus;
+    const adjacentFriendlyDefenseBonus =
+      effect.stat === "defense" &&
+      effect.extraIfAdjacentFriendly &&
+      affectedUnit &&
+      state.combat &&
+      Object.values(state.combat.units).some(
+        (unit) =>
+          unit.id !== affectedUnit.id &&
+          unit.controllerId === affectedUnit.controllerId &&
+          isUnitAlive(unit) &&
+          isAdjacent(unit.position, affectedUnit.position)
+      )
+        ? effect.extraIfAdjacentFriendly
+        : 0;
+    const appliedAmount = effectAmount * doubleFactor + adjacencyDefenseBonus + adjacentFriendlyDefenseBonus;
 
     // Polish Balance Pack Shield (Power 2): "takes up to 3 damage" replaces the
     // Defense bonus for this one blow — a per-attack damage cap, the tightest
@@ -27500,7 +27517,7 @@ function applyUnitAbilityAction(
   // rune cost) all live in commanderCastCandidates/commanderCastAvailable.
   // Cancelling the pick costs nothing.
   if (ability.effect?.type === "COMMANDER_CAST") {
-    const cast = commanderCastOf(unit);
+    const cast = commanderCastOf(unit, ability.id);
     // The two defend buffs are instant reactions, never an activation cast
     // (they are played through USE_COMMANDER_CAST_REACTION when a unit is attacked).
     if (
@@ -27512,14 +27529,14 @@ function applyUnitAbilityAction(
     ) {
       throw new Error("That unit ability cannot be used now.");
     }
-    const runeCost = commanderCastRuneCost(state, unit);
+    const runeCost = commanderCastRuneCost(state, unit, ability.id);
     if (
       runeCost > 0 &&
       commanderRunePool(state, unit.controllerId) < runeCost
     ) {
       throw new Error(`${ability.name} needs ${runeCost} Runes.`);
     }
-    const candidateUnitIds = commanderCastCandidates(state, unit).map(
+    const candidateUnitIds = commanderCastCandidates(state, unit, ability.id).map(
       (candidate) => candidate.id,
     );
     if (candidateUnitIds.length === 0) {
@@ -29088,9 +29105,10 @@ function resolveCommanderCast(
   state: GameState,
   caster: CombatUnitState,
   target: CombatUnitState,
+  abilityId?: string,
 ): void {
   const combat = state.combat;
-  const cast = commanderCastOf(caster);
+  const cast = commanderCastOf(caster, abilityId);
   if (!combat || !cast) {
     throw new Error("That commander cast is no longer possible.");
   }
@@ -29105,7 +29123,7 @@ function resolveCommanderCast(
   const targetRef = { type: "unit" as const, unitId: target.id };
 
   // Rune Mend's cost first — the heal never resolves unpaid.
-  const runeCost = commanderCastRuneCost(state, caster);
+  const runeCost = commanderCastRuneCost(state, caster, abilityId);
   if (runeCost > 0 && !spendRunes(state, caster.controllerId, runeCost)) {
     throw new Error(`${cast.name} needs ${runeCost} Runes.`);
   }
@@ -29263,7 +29281,7 @@ function resolveCommanderCast(
         {
           name: `${cast.name} (${caster.cardName})`,
           scope: "unit",
-          duration: { type: "current-combat-round" },
+          duration: effect.duration === "combat" ? { type: "combat" } : { type: "current-combat-round" },
           polarity: "positive",
           removable: true,
           modifiers: [{ type: "UNLIMITED_RETALIATION" }],
@@ -29427,7 +29445,7 @@ function chooseAbilityTarget(
       if (!caster || !target || !isUnitAlive(caster) || !isUnitAlive(target)) {
         throw new Error("That commander cast is no longer possible.");
       }
-      resolveCommanderCast(state, caster, target);
+      resolveCommanderCast(state, caster, target, choice.abilityId ?? undefined);
       // User spec: casting a (non-reaction) command ability ends the commander's
       // movement for this activation — it may still attack, but no longer move.
       caster.movementLockedThisActivation = true;
@@ -30169,11 +30187,11 @@ function autoResolveNeutralReaction(
   return true;
 }
 
-/** Masato's automatic, once-per-round interception for any adjacent ally. */
+/** Automatic once-per-round interception, including any printed protected-tier cap. */
 function adjacentBodyguardFor(
   combat: CombatState,
   defender: CombatUnitState,
-): CombatUnitState | null {
+): { unit: CombatUnitState; abilityId: string } | null {
   return (
     Object.values(combat.units)
       .filter(
@@ -30182,10 +30200,20 @@ function adjacentBodyguardFor(
           unit.controllerId === defender.controllerId &&
           isUnitAlive(unit) &&
           unit.bodyguardInterceptUsedRound !== combat.round &&
-          isAdjacent(unit.position, defender.position) &&
-          hasUnitAbilityEffect(unit, "INTERCEPT_ADJACENT_ATTACK_ONCE"),
+          isAdjacent(unit.position, defender.position)
       )
-      .sort((left, right) => left.id.localeCompare(right.id))[0] ?? null
+      .map((unit) => {
+        const ability = getUnitAbilityDefinitions(unit).find((definition) => {
+          const effect = definition.effect;
+          if (definition.implementationStatus !== "implemented" || effect?.type !== "INTERCEPT_ADJACENT_ATTACK_ONCE") {
+            return false;
+          }
+          return !effect.maxProtectedTier || gradeRankOfUnit(defender) <= gradeRank(effect.maxProtectedTier);
+        });
+        return ability ? { unit, abilityId: ability.id } : null;
+      })
+      .filter((entry): entry is { unit: CombatUnitState; abilityId: string } => entry !== null)
+      .sort((left, right) => left.unit.id.localeCompare(right.unit.id))[0] ?? null
   );
 }
 
@@ -30234,15 +30262,15 @@ function declareAttack(
   if (!isRetaliation && !abilityAttack && !isInternalFollowUp) {
     const bodyguard = adjacentBodyguardFor(combat, selectedDefender);
     if (bodyguard) {
-      bodyguard.bodyguardInterceptUsedRound = combat.round;
-      defender = bodyguard;
-      resolvedAction = { ...action, defenderId: bodyguard.id };
+      bodyguard.unit.bodyguardInterceptUsedRound = combat.round;
+      defender = bodyguard.unit;
+      resolvedAction = { ...action, defenderId: bodyguard.unit.id };
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
-        unitId: bodyguard.id,
-        abilityId: "masato-bodyguard-intercept",
+        unitId: bodyguard.unit.id,
+        abilityId: bodyguard.abilityId,
         targetUnitId: selectedDefender.id,
-        message: `${bodyguard.cardName} intercepts the attack aimed at ${selectedDefender.cardName}.`,
+        message: `${bodyguard.unit.cardName} intercepts the attack aimed at ${selectedDefender.cardName}.`,
       });
     }
   }
@@ -31172,6 +31200,7 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
   // a lethal pulse ends the fight via the trailing finishCombatIfNeeded below.
   applyCombatScriptRoundStart(state);
   applyHeroGradeRoundStartDamage(state);
+  applyLionRoundStartBarrage(state);
   applyAnimeCombatRoundPenalties(state);
   if (finishCombatIfNeeded(state)) {
     return;

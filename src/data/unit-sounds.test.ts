@@ -284,6 +284,25 @@ describe("unit combat voices", () => {
     expect(unitSoundKey("commander:soul_eater", "move")).toBe("units/zombie-lord-move");
   });
 
+  it("voices every Imperium unit and gives the female Lion commander the Sea Witch set", () => {
+    const expectedUnitVoices: Record<string, string> = {
+      astra_militarum: "sharpshooter",
+      apothecary: "zealot",
+      space_marines: "crusader",
+      rhino: "iron-golem",
+      terminators: "crusader",
+      dreadnought: "titan",
+      titan: "titan"
+    };
+    for (const [slug, voice] of Object.entries(expectedUnitVoices)) {
+      expect(unitSoundKey(`imperium.${slug}`, "attack")).toBe(`units/${voice}-attack`);
+      expect(unitSoundKey(`imperium.${slug}`, "move")).toBe(`units/${voice}-move`);
+    }
+    for (const action of coreActions) {
+      expect(commanderSoundKey("lion_el_jonson", action)).toBe(`units/sea-witch-${action}`);
+    }
+  });
+
   it("uses the bespoke Japanese voices for every Azur Lane shipgirl and Belfast", () => {
     for (const slug of ["laffey", "javelin", "honolulu", "unicorn", "yukikaze", "prinz_eugen", "i19"]) {
       expect(unitSoundKey(`azur_lane.${slug}`, "attack")).toBe(`azur-lane/voices/${slug}/attack`);

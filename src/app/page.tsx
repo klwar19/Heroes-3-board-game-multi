@@ -3167,7 +3167,7 @@ export default function Home() {
               // matching H3 spell's sprite + sound over the buffed/healed target
               // so every commander cast animates and sounds (Bloodlust tints red,
               // Animate Dead falls back to a heal shimmer).
-              const plan = commanderCastFxPlan(event.commanderSlug);
+              const plan = commanderCastFxPlan(event.commanderSlug, event.castName);
               queueBoardFx(plan, event.id, `hand:${event.playerId}`, event.targetUnitId);
               if (inCombat) {
                 combatFxActive = true;

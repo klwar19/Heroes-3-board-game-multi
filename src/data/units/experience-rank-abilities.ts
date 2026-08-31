@@ -120,6 +120,12 @@ export function inferFlavour(unitDefId: string): Flavour {
   const name = def.name.toLowerCase();
   const type = def.type;
   if (name.includes("dragon")) return "dragon";
+  // Imperium roles need explicit advancement identities. Without these names,
+  // support infantry and armoured vehicles fall through to the generic melee
+  // track even though their printed battlefield roles are very different.
+  if (name.includes("apothecary")) return "mystic";
+  if (name.includes("rhino") || name.includes("titan")) return "machine";
+  if (name.includes("terminator")) return "warden";
   if (faction === "necropolis" || name.includes("skeleton") || name.includes("zombie") || name.includes("wraith") || name.includes("vampire") || name.includes("lich") || name.includes("mummy")) {
     return "undead";
   }

@@ -26,6 +26,8 @@ export type UnitAbilityEffectDefinition =
   | {
       /** Masato the Wall: intercept one normal attack on any adjacent ally per combat round. */
       type: "INTERCEPT_ADJACENT_ATTACK_ONCE";
+      /** Optional highest printed tier this bodyguard may protect. */
+      maxProtectedTier?: "bronze" | "silver" | "gold";
     }
   // Ranged combat-penalty waivers. A ranged attack rolls at disadvantage in two
   // distinct cases: (1) striking an ADJACENT unit (the "combat penalty against
@@ -210,6 +212,11 @@ export type UnitAbilityEffectDefinition =
   | {
       /** Hoshino Few: reduce the first positive damage assignment each round. */
       type: "REDUCE_FIRST_DAMAGE_EACH_ROUND";
+      amount: number;
+    }
+  | {
+      /** Dreadnought: reduce only the first positive damage assignment of the Combat. */
+      type: "REDUCE_FIRST_DAMAGE_EACH_COMBAT";
       amount: number;
     }
   | {
@@ -4007,6 +4014,20 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "COMMANDER_CAST" },
     implementationStatus: "implemented"
   },
+  "commander-cast-lion-slash": {
+    id: "commander-cast-lion-slash",
+    name: "Lion's Slash",
+    text: "[activation] Once per combat round: deal 1/2/3 flat damage (Power 0/1/2) to an adjacent enemy unit. Does not end the activation.",
+    effect: { type: "COMMANDER_CAST" },
+    implementationStatus: "implemented"
+  },
+  "commander-cast-lion-counterstroke": {
+    id: "commander-cast-lion-counterstroke",
+    name: "Deathwing Counterstroke",
+    text: "[activation] Once per combat round: a friendly Bronze unit (Power 1: Bronze or Silver; Power 2: any tier) may retaliate without limit for the whole Combat. Shares the command budget with Lion's Slash.",
+    effect: { type: "COMMANDER_CAST" },
+    implementationStatus: "implemented"
+  },
   "commander-cast-executive-order": {
     id: "commander-cast-executive-order",
     name: "Executive Order",
@@ -4017,6 +4038,21 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "commander-ibuki-sniper-shot": { id: "commander-ibuki-sniper-shot", name: "Sniper Shot", text: "[activation] Spend 1 AP: deal 1 flat damage to an enemy unit, or 2 flat damage at Power 2.", implementationStatus: "implemented" },
   "commander-ibuki-up-to-mischief": { id: "commander-ibuki-up-to-mischief", name: "Up to Mischief", text: "[activation] Spend 2 AP: an enemy unit has −1 Attack this combat round; at Power 1 or higher, it also has −1 Defense.", implementationStatus: "implemented" },
   "commander-ibuki-gadabout": { id: "commander-ibuki-gadabout", name: "Gadabout", text: "[activation] Spend 2 AP: teleport anywhere and deal 1 damage to every adjacent enemy.", implementationStatus: "implemented" },
+  "imperium-vox-fire-mission-few": { id: "imperium-vox-fire-mission-few", name: "Vox Fire Mission", text: "Once per round, mark an enemy within 2 spaces; the next friendly attack against it gains +1 Attack.", effect: { type: "MARK_ENEMY_FOR_NEXT_FRIENDLY_ATTACK", range: 2, attackBonus: 1 }, implementationStatus: "implemented" },
+  "imperium-vox-fire-mission-pack": { id: "imperium-vox-fire-mission-pack", name: "Veteran Vox Net", text: "Once per round, mark an enemy within 3 spaces; the next friendly attack against it gains +1 Attack.", effect: { type: "MARK_ENEMY_FOR_NEXT_FRIENDLY_ATTACK", range: 3, attackBonus: 1 }, implementationStatus: "implemented" },
+  "imperium-narthecium-few": { id: "imperium-narthecium-few", name: "Narthecium Protocol", text: "At activation, heal another ally 1 damage or gain +1 Attack this round.", effect: { type: "ON_ACTIVATION_HEAL_FRIENDLY_OR_BUFF_SELF", healAmount: 1, attackBonus: 1 }, implementationStatus: "implemented" },
+  "imperium-narthecium-pack": { id: "imperium-narthecium-pack", name: "Master Narthecium", text: "At activation, heal another ally 2 damage or gain +1 Attack this round.", effect: { type: "ON_ACTIVATION_HEAL_FRIENDLY_OR_BUFF_SELF", healAmount: 2, attackBonus: 1 }, implementationStatus: "implemented" },
+  "imperium-shock-assault": { id: "imperium-shock-assault", name: "Shock Assault", text: "After moving, gain +1 Attack.", effect: { type: "ATTACK_BONUS_AFTER_MOVE", amount: 1 }, implementationStatus: "implemented" },
+  "imperium-jump-pack-withdrawal": { id: "imperium-jump-pack-withdrawal", name: "Jump-pack Withdrawal", text: "After moving, ignore Retaliation.", effect: { type: "IGNORE_RETALIATION_AFTER_MOVE" }, implementationStatus: "implemented" },
+  "imperium-armoured-escort": { id: "imperium-armoured-escort", name: "Armoured Escort", text: "Once per Combat round, intercept an attack against an adjacent Bronze or Silver ally.", effect: { type: "INTERCEPT_ADJACENT_ATTACK_ONCE", maxProtectedTier: "silver" }, implementationStatus: "implemented" },
+  "imperium-mobile-cover": { id: "imperium-mobile-cover", name: "Mobile Cover", text: "The first time each Combat an adjacent ally is attacked, it gains +1 Defense for that attack.", effect: { type: "FIRST_ADJACENT_ALLY_ATTACK_DEFENSE_AURA", amount: 1 }, implementationStatus: "implemented" },
+  "imperium-teleport-assault": { id: "imperium-teleport-assault", name: "Teleport Assault", text: "This unit may move to any empty Combat space.", effect: { type: "MOVE_ANYWHERE" }, implementationStatus: "implemented" },
+  "imperium-crux-terminatus": { id: "imperium-crux-terminatus", name: "Crux Terminatus", text: "Gain +1 Defense against the first attack targeting this unit each Combat.", effect: { type: "FIRST_ATTACK_DEFENSE_ONCE_PER_COMBAT", amount: 1 }, implementationStatus: "implemented" },
+  "imperium-duty-eternal-few": { id: "imperium-duty-eternal-few", name: "Duty Eternal", text: "Once per Combat, reduce one damage assignment to this unit by 1.", effect: { type: "REDUCE_FIRST_DAMAGE_EACH_COMBAT", amount: 1 }, implementationStatus: "implemented" },
+  "imperium-duty-eternal-pack": { id: "imperium-duty-eternal-pack", name: "Venerable Duty Eternal", text: "Once per Combat, reduce one damage assignment to this unit by 2.", effect: { type: "REDUCE_FIRST_DAMAGE_EACH_COMBAT", amount: 2 }, implementationStatus: "implemented" },
+  "imperium-target-acquisition": { id: "imperium-target-acquisition", name: "Target Acquisition", text: "Gain +1 Attack against a damaged non-adjacent target.", effect: { type: "ATTACK_BONUS_VS_DAMAGED_NON_ADJACENT", amount: 1 }, implementationStatus: "implemented" },
+  "imperium-god-engine-sweep-few": { id: "imperium-god-engine-sweep-few", name: "God-Engine Sweep", text: "After attacking, attack every adjacent enemy with 3 Attack.", effect: { type: "SECOND_ATTACK_ALL_ADJACENT_TO_SELF", baseAttack: 3 }, implementationStatus: "implemented" },
+  "imperium-god-engine-sweep-pack": { id: "imperium-god-engine-sweep-pack", name: "Exalted God-Engine", text: "After attacking, attack every adjacent enemy with 4 Attack.", effect: { type: "SECOND_ATTACK_ALL_ADJACENT_TO_SELF", baseAttack: 4 }, implementationStatus: "implemented" },
   "kivotos-piercing-judgment": { id: "kivotos-piercing-judgment", name: "Piercing Judgment", text: "After moving, reroll one -1 Attack die.", effect: { type: "ATTACK_DIE_REROLL", rerollsPerAttack: 1, onlyOnRoll: -1, requiresMoved: true }, implementationStatus: "implemented" },
   "kivotos-kyrie-eleison": { id: "kivotos-kyrie-eleison", name: "Kyrie Eleison", text: "Once per Combat after attacking, deal 1 damage to a second enemy adjacent to the target.", effect: { type: "FLAT_DAMAGE_ADJACENT_TO_TARGET", amount: 1, requiresNonAdjacentTarget: false, oncePerCombat: true }, implementationStatus: "implemented" },
   "kivotos-prophetic-dream": { id: "kivotos-prophetic-dream", name: "Prophetic Dream", text: "At Combat start, examine the top 3 cards of your deck, take 1 into your hand, then return the rest to the deck.", effect: { type: "PICK_ONE_FROM_OWN_DECK_AT_COMBAT_START", count: 3 }, implementationStatus: "implemented" },

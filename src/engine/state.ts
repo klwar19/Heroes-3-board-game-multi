@@ -653,6 +653,7 @@ export type FactionId =
   | "heavenly_demon"
   | "little_busters"
   | "blue_archive"
+  | "imperium"
   | "mgq";
 
 export type TargetRef =
@@ -823,6 +824,10 @@ export type ActiveEffectModifier =
   | {
       type: "DEFENSE_BONUS";
       amount: number;
+    }
+  | {
+      /** Dorn VI: every friendly unit rolls the Defend die without receiving a physical token. */
+      type: "VIRTUAL_DEFENSE_TOKEN";
     }
   | {
       /**
@@ -1710,6 +1715,8 @@ export type EffectDefinition =
        * Only meaningful for a `defense` reaction played in the attack window.
        */
       extraIfAdjacentToAttacker?: number;
+      /** Imperium Dorn I: extra Defense when another living friendly unit stands adjacent to the defender. */
+      extraIfAdjacentFriendly?: number;
       /**
        * Cyra's Haste IV: the bonus doubles when the attacked unit has strictly
        * higher (effective) Initiative than the attacker — rewards striking
@@ -9529,6 +9536,8 @@ export type CombatUnitState = {
   droneSupportMarkedTargetId?: UnitId;
   /** Combat round in which Iron Horus reduced this unit's first damage assignment. */
   ironHorusUsedRound?: number;
+  /** Duty Eternal has reduced this Dreadnought's one damage assignment this Combat. */
+  dutyEternalUsedThisCombat?: boolean;
   /** Seia's Future Sight has forced one Attack-die reroll this combat. */
   futureSightUsedThisCombat?: boolean;
   /** Kei has cancelled one enemy activation ability this combat. */

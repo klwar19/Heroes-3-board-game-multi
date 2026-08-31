@@ -20,6 +20,7 @@ export type FactionId =
   | "heavenly_demon"
   | "little_busters"
   | "blue_archive"
+  | "imperium"
   | "mgq";
 export type UnitTier = "bronze" | "silver" | "gold" | "azure";
 

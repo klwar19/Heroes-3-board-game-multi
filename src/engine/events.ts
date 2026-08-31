@@ -1,4 +1,5 @@
 import type { GameEvent, GameState } from "./state";
+import { unitAbilities } from "@/data/units/abilities";
 
 type EventDraft = Omit<GameEvent, "id">;
 
@@ -9,26 +10,33 @@ type EventDraft = Omit<GameEvent, "id">;
  * Calling this before an attack mutates HP also keeps lethal previews and
  * attack follow-ups aligned; the event seam covers every non-attack caller.
  */
-export function reduceFirstDamageEachRound(
+export function reduceFirstDamageByAbility(
   state: GameState,
   unitId: string,
   incoming: number
-): { amount: number; reduced: number } {
+): { amount: number; reduced: number; abilityId?: string } {
   const combat = state.combat;
   const unit = combat?.units[unitId];
-  if (
-    !combat ||
-    !unit ||
-    incoming <= 0 ||
-    unit.abilitiesSuppressed ||
-    unit.ironHorusUsedRound === combat.round ||
-    !unit.abilities.includes("kivotos-iron-horus")
-  ) {
+  if (!combat || !unit || incoming <= 0 || unit.abilitiesSuppressed) {
     return { amount: incoming, reduced: 0 };
   }
-  const reduced = Math.min(1, incoming);
-  unit.ironHorusUsedRound = combat.round;
-  return { amount: incoming - reduced, reduced };
+  const ability = unit.abilities
+    .map((id) => unitAbilities[id])
+    .find((definition) => {
+      const effect = definition?.effect;
+      if (definition?.implementationStatus !== "implemented") return false;
+      if (effect?.type === "REDUCE_FIRST_DAMAGE_EACH_ROUND") return unit.ironHorusUsedRound !== combat.round;
+      if (effect?.type === "REDUCE_FIRST_DAMAGE_EACH_COMBAT") return !unit.dutyEternalUsedThisCombat;
+      return false;
+    });
+  const effect = ability?.effect;
+  if (!ability || !effect || (effect.type !== "REDUCE_FIRST_DAMAGE_EACH_ROUND" && effect.type !== "REDUCE_FIRST_DAMAGE_EACH_COMBAT")) {
+    return { amount: incoming, reduced: 0 };
+  }
+  const reduced = Math.min(effect.amount, incoming);
+  if (effect.type === "REDUCE_FIRST_DAMAGE_EACH_ROUND") unit.ironHorusUsedRound = combat.round;
+  else unit.dutyEternalUsedThisCombat = true;
+  return { amount: incoming - reduced, reduced, abilityId: ability.id };
 }
 
 /**
@@ -60,7 +68,7 @@ export function appendEvent<T extends EventDraft>(
   event: T
 ): Extract<GameEvent, { type: T["type"] }> {
   let eventDraft: EventDraft = event;
-  let ironHorusUnitId: string | undefined;
+  let damageReduction: { unitId: string; amount: number; abilityId: string } | undefined;
   const damageEvent = event as unknown as {
     type: string;
     target?: { type: string; unitId?: string };
@@ -72,12 +80,16 @@ export function appendEvent<T extends EventDraft>(
     damageEvent.target.unitId &&
     (damageEvent.amount ?? 0) > 0
   ) {
-    const reduction = reduceFirstDamageEachRound(state, damageEvent.target.unitId, damageEvent.amount ?? 0);
+    const reduction = reduceFirstDamageByAbility(state, damageEvent.target.unitId, damageEvent.amount ?? 0);
     if (reduction.reduced > 0) {
       const unit = state.combat?.units[damageEvent.target.unitId];
       if (unit) unit.damage = Math.max(0, unit.damage - reduction.reduced);
       eventDraft = { ...event, amount: reduction.amount };
-      ironHorusUnitId = damageEvent.target.unitId;
+      damageReduction = {
+        unitId: damageEvent.target.unitId,
+        amount: reduction.reduced,
+        abilityId: reduction.abilityId ?? "kivotos-iron-horus"
+      };
     }
   }
   const nextEvent = {
@@ -89,15 +101,15 @@ export function appendEvent<T extends EventDraft>(
   if (state.eventLog.length > EVENT_LOG_LIMIT) {
     state.eventLog.splice(0, state.eventLog.length - EVENT_LOG_LIMIT);
   }
-  if (ironHorusUnitId) {
-    const unit = state.combat?.units[ironHorusUnitId];
+  if (damageReduction) {
+    const unit = state.combat?.units[damageReduction.unitId];
     if (unit) {
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: unit.id,
-        abilityId: "kivotos-iron-horus",
+        abilityId: damageReduction.abilityId,
         targetUnitId: unit.id,
-        message: `${unit.cardName}'s Iron Horus reduces the first damage it takes this round by 1.`
+        message: `${unit.cardName}'s damage reduction prevents ${damageReduction.amount} damage.`
       });
     }
   }

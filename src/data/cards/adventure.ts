@@ -1,4 +1,5 @@
 import type { CardLibrary, UnitType } from "@/engine/state";
+import { imperiumSpecialtyCards } from "@/data/warhammer/imperium-specialties";
 
 const wikiCredit =
   "Card text from the fan wiki ability/hero pages; verify against official owned components before full content import.";
@@ -5814,6 +5815,9 @@ for (const level of [1, 4, 6] as const) {
   }
   adventureCards[`specialty.xuanming.${level}`] = xuanmingCard;
 }
+
+// Twelve original, engine-backed Imperium specialties (three per Hero).
+Object.assign(adventureCards, imperiumSpecialtyCards);
 
 // Little Busters specialty identities. These are native-card rethemes of fully
 // implemented mechanics: Riki uses Forgetfulness, Yuiko Fortune, and Kud's

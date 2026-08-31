@@ -602,6 +602,14 @@ const COMBAT_ANYTIME_FACES: { cardId: CardId; optionIndex: number }[] = [
   { cardId: "specialty.jeremy.6", optionIndex: 1 },
   { cardId: "specialty.melodia.1", optionIndex: 1 },
   { cardId: "specialty.promestein.6", optionIndex: 0 },
+  // Imperium originals: explicit Instant sides that may be played during any
+  // open Combat exchange. Triggered attack/defense sides use the normal
+  // PLAY_REACTION path and therefore do not belong in this anytime registry.
+  { cardId: "specialty.emperor_of_mankind.4", optionIndex: 0 },
+  { cardId: "specialty.emperor_of_mankind.4", optionIndex: 1 },
+  { cardId: "specialty.emperor_of_mankind.6", optionIndex: 1 },
+  { cardId: "specialty.rogal_dorn.6", optionIndex: 1 },
+  { cardId: "specialty.sanguinius.1", optionIndex: 0 },
   { cardId: "specialty.tarnum_castle.1", optionIndex: 1 },
   { cardId: "specialty.tarnum_castle.4", optionIndex: 0 },
   { cardId: "specialty.tarnum_castle.4", optionIndex: 1 },

@@ -68,4 +68,22 @@ describe("attachFieldSymbols draws the shared symbol modules on an atmosphere-on
     const container = boardWithTile("A-S1", "a-s1-symbols");
     expect(container.querySelectorAll("image.fieldSymbolModule")).toHaveLength(0);
   });
+
+  it("IM-S1 uses Castle S3's field order and attaches exactly its three printed modules", () => {
+    const tile = allTileDefinitions["IM-S1"];
+    expect(tile.fields.map((field) => field.location)).toEqual([
+      "town",
+      "empty_field",
+      "resource_symbol",
+      "empty_field",
+      "mine",
+      "treasure_symbol",
+      "blocked_field"
+    ]);
+    expect(tile.outerImpassable).toEqual(allTileDefinitions.S3.outerImpassable);
+    const container = boardWithTile("IM-S1", "imperium-s3-format");
+    const kinds = [...container.querySelectorAll("image.fieldSymbolModule")].map((node) => node.getAttribute("data-symbol-kind"));
+    expect(kinds.sort()).toEqual(["mine", "resource", "treasure"]);
+    expect([...container.querySelectorAll("text.hexProduction")].some((node) => node.textContent?.includes("↻2"))).toBe(true);
+  });
 });

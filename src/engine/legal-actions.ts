@@ -7285,12 +7285,12 @@ function addUnitAbilityActions(
     // payable and at least one legal target (commanderCastAvailable).
     if (
       ability.effect?.type === "COMMANDER_CAST" &&
-      commanderCastAvailable(state, activeUnit) &&
+      commanderCastAvailable(state, activeUnit, ability.id) &&
       (activeUnit.commanderSlug !== "ibuki" ||
         ibukiActionPoints(activeUnit) >= 3)
     ) {
       const power = commanderCastPower(state, activeUnit);
-      const runeCost = commanderCastRuneCost(state, activeUnit);
+      const runeCost = commanderCastRuneCost(state, activeUnit, ability.id);
       actions.push({
         label: `${activeUnit.cardName}: cast ${ability.name} (Power ${power}${runeCost > 0 ? `, ${runeCost} Runes` : ""})`,
         action: {

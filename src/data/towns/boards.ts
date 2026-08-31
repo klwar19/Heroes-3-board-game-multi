@@ -605,6 +605,23 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
     ],
     geometry: DESIGNED_GEOMETRY
   },
+  imperium: {
+    factionId: "imperium",
+    panoramaImage: "/assets/warhammer/town/imperium-town-empty.webp",
+    fullImage: "/assets/warhammer/town/imperium-town-full.webp",
+    barTileImages: Array.from({ length: 7 }, (_, index) => `/assets/warhammer/town-bars/imperium-built-bar-${index + 1}.webp`),
+    panelImage: DESIGNED_PANEL_IMAGE,
+    bars: [
+      ["imperium.city_hall"],
+      ["imperium.dwelling_bronze"],
+      ["imperium.armoury"],
+      ["imperium.dwelling_silver", "imperium.apothecarion"],
+      ["imperium.mage_guild"],
+      ["imperium.citadel"],
+      ["imperium.dwelling_gold"]
+    ],
+    geometry: DESIGNED_GEOMETRY
+  },
   mgq: {
     factionId: "mgq",
     panoramaImage: "/assets/anime/towns/mgq-paradox-town-empty.webp",

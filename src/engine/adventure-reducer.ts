@@ -264,6 +264,7 @@ import {
   type CommanderSlug
 } from "@/data/commanders";
 import {
+  applyLionRoundStartBarrage,
   applyCommanderCombatStart,
   collectFirstAidCandidates,
   commanderGradesOf,
@@ -11455,6 +11456,7 @@ function resumeCombatStartAfterCommanderPlacement(state: GameState): void {
   // round-start events configured for the opening round.
   applyCombatScriptCombatStart(state);
   applyHeroGradeRoundStartDamage(state);
+  applyLionRoundStartBarrage(state);
   if (state.combat?.outcome) {
     return;
   }

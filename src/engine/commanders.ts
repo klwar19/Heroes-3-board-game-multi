@@ -31,6 +31,7 @@ import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { appendEvent, nextEventNumber } from "./events";
 import { gainRunes } from "./runes";
+import { createSeededRandom } from "./random";
 import { noteUnitDamagedForTokens, placeCombatToken } from "./tokens";
 import { isMechanicalUnit } from "./unit-abilities";
 import { NEUTRAL_PLAYER_ID } from "./state";
@@ -300,7 +301,7 @@ export function commanderAbilityIds(commander: CommanderPlayerState): string[] {
     if (commander.slug === "ibuki") {
       ids.push("commander-ibuki-sniper-shot", "commander-ibuki-up-to-mischief", "commander-ibuki-gadabout");
     }
-    ids.push(definition.cast.abilityId);
+    ids.push(definition.cast.abilityId, ...(definition.additionalCasts?.map((cast) => cast.abilityId) ?? []));
   }
 
   return ids;
@@ -366,6 +367,53 @@ export function makeCommanderCombatUnit(
       imageAlt: `${definition.name} commander card`
     }
   };
+}
+
+/** Lion El'Jonson: one deterministic-random enemy takes 1 flat damage at every combat-round start. */
+export function applyLionRoundStartBarrage(state: GameState): void {
+  const combat = state.combat;
+  if (!combat || combat.round < 1 || combat.round > 3) {
+    return;
+  }
+  const owners = [combat.attackerPlayerId, combat.defenderPlayerId].filter(
+    (id, index, all) => all.indexOf(id) === index
+  );
+  for (const playerId of owners) {
+    const lion = findCommanderUnit(state, playerId);
+    if (lion?.commanderSlug !== "lion_el_jonson" || lion.damage >= lion.maxHealth) {
+      continue;
+    }
+    const candidates = Object.values(combat.units)
+      .filter((unit) => unit.controllerId !== playerId && unit.damage < unit.maxHealth && unit.position >= 0)
+      .sort((a, b) => a.id.localeCompare(b.id));
+    if (candidates.length === 0) {
+      continue;
+    }
+    const random = createSeededRandom(
+      `${state.seed}#lion-round-barrage#${combat.round}#${playerId}#${nextEventNumber(state)}`
+    );
+    const target = candidates[random.nextInt(0, candidates.length - 1)];
+    target.damage += 1;
+    noteUnitDamagedForTokens(state, target, 1);
+    appendEvent(state, {
+      type: "DAMAGE_ASSIGNED",
+      source: { type: "unit", unitId: lion.id, controllerId: lion.controllerId },
+      target: { type: "unit", unitId: target.id },
+      amount: 1,
+      damageKind: "effect"
+    });
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: lion.id,
+      abilityId: "lion-round-barrage",
+      targetUnitId: target.id,
+      message: `${lion.cardName}'s Lion's Barrage deals 1 damage to random enemy ${target.cardName}.`
+    });
+    markUnitRemovedIfNeeded(state, target);
+    if (finishCombatIfNeeded(state)) {
+      return;
+    }
+  }
 }
 
 export function ibukiActionPoints(unit: CombatUnitState): number {
@@ -743,9 +791,16 @@ export function sonyaBondDefenseBonus(state: GameState, unit: CombatUnitState): 
 // The command ability (once per combat round, free during its activation).
 // ---------------------------------------------------------------------------
 
-export function commanderCastOf(unit: CombatUnitState): CommanderCastDefinition | null {
+export function commanderCastOf(unit: CombatUnitState, abilityId?: string): CommanderCastDefinition | null {
   const slug = unit.commanderSlug as CommanderSlug | undefined;
-  return slug ? (commanderDefinitions[slug]?.cast ?? null) : null;
+  const definition = slug ? commanderDefinitions[slug] : undefined;
+  if (!definition) {
+    return null;
+  }
+  if (!abilityId || definition.cast.abilityId === abilityId) {
+    return definition.cast;
+  }
+  return definition.additionalCasts?.find((cast) => cast.abilityId === abilityId) ?? null;
 }
 
 /**
@@ -764,8 +819,8 @@ export function commanderCastPower(state: GameState, unit: CombatUnitState): num
 }
 
 /** Runes the cast costs at the current Power (0 for every non-rune cast). */
-export function commanderCastRuneCost(state: GameState, unit: CombatUnitState): number {
-  const cast = commanderCastOf(unit);
+export function commanderCastRuneCost(state: GameState, unit: CombatUnitState, abilityId?: string): number {
+  const cast = commanderCastOf(unit, abilityId);
   if (!cast?.targeting.runeCostByPower) {
     return 0;
   }
@@ -795,9 +850,9 @@ export function commanderCastUsedThisRound(state: GameState, unit: CombatUnitSta
  * below-Power adjacency gate, and the no-self / no-commander rule for
  * ongoing-effect casts (a commander's ongoing immunity would fizzle them).
  */
-export function commanderCastCandidates(state: GameState, unit: CombatUnitState): CombatUnitState[] {
+export function commanderCastCandidates(state: GameState, unit: CombatUnitState, abilityId?: string): CombatUnitState[] {
   const combat = state.combat;
-  const cast = commanderCastOf(unit);
+  const cast = commanderCastOf(unit, abilityId);
   if (!combat || !cast) {
     return [];
   }
@@ -878,9 +933,9 @@ export function commanderCastCandidates(state: GameState, unit: CombatUnitState)
  * yet moved/attacked, once per combat round, rune cost payable, and at least
  * one legal target on the board.
  */
-export function commanderCastAvailable(state: GameState, unit: CombatUnitState): boolean {
+export function commanderCastAvailable(state: GameState, unit: CombatUnitState, abilityId?: string): boolean {
   const combat = state.combat;
-  const cast = commanderCastOf(unit);
+  const cast = commanderCastOf(unit, abilityId);
   if (!combat || !unit.commanderSlug || !cast || combat.activeUnitId !== unit.id) {
     return false;
   }
@@ -895,11 +950,11 @@ export function commanderCastAvailable(state: GameState, unit: CombatUnitState):
   if (unit.commanderSlug !== "ibuki" && commanderCastUsedThisRound(state, unit)) {
     return false;
   }
-  const runeCost = commanderCastRuneCost(state, unit);
+  const runeCost = commanderCastRuneCost(state, unit, abilityId);
   if (runeCost > 0 && commanderRunePool(state, unit.controllerId) < runeCost) {
     return false;
   }
-  return commanderCastCandidates(state, unit).length > 0;
+  return commanderCastCandidates(state, unit, abilityId).length > 0;
 }
 
 /**

@@ -929,7 +929,7 @@ export function scoreCombatAction(
       // WOG commander activation cast (target picked after, no board target yet):
       // score by whether the cast swings the fight, factoring the movement lock.
       const actor = combat.units[action.unitId];
-      const cast = actor ? commanderCastOf(actor) : null;
+      const cast = actor ? commanderCastOf(actor, action.abilityId) : null;
       if (
         actor &&
         cast &&

@@ -51,6 +51,7 @@ export const COMMANDER_SLUGS = [
   "demon_ancestor",
   "kyousuke_natsume",
   "ibuki",
+  "lion_el_jonson",
   "sonya"
 ] as const;
 
@@ -450,7 +451,7 @@ export type CommanderCastEffect =
       attackVs?: "slower" | "faster";
       attackAmount: number;
     }
-  | { kind: "unlimited-retaliation" }
+  | { kind: "unlimited-retaliation"; duration?: "round" | "combat" }
   | { kind: "reactivate" }
   | {
       /**
@@ -492,7 +493,8 @@ export interface CommanderSpecialtyDefinition {
     | "tinkerer"
     | "rune-ritual"
     | "mission-briefing"
-    | "unbreakable-bond";
+    | "unbreakable-bond"
+    | "lion-round-barrage";
   name: string;
   text: string;
 }
@@ -513,6 +515,8 @@ export interface CommanderDefinition {
   /** true for the three non-WoG originals (Cove/Factory/Bulwark). */
   original?: boolean;
   cast: CommanderCastDefinition;
+  /** Optional additional commands sharing the normal once-per-round cast budget. */
+  additionalCasts?: readonly CommanderCastDefinition[];
   specialty: CommanderSpecialtyDefinition;
   /** Built card asset (frame + art only; name, abilities and stats are overlaid). */
   cardImage: string;
@@ -995,6 +999,47 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     },
     cardImage: "/assets/units-commander-ibuki.webp"
   },
+  lion_el_jonson: {
+    slug: "lion_el_jonson", name: "Lion El'Jonson", faction: "Imperium of Man", original: true,
+    cast: {
+      abilityId: "commander-cast-lion-slash",
+      name: "Lion's Slash",
+      icon: "/assets/warhammer/icons/lions-slash.webp",
+      targeting: {
+        side: "enemy",
+        adjacentBelowPower: 3,
+        canTargetSelf: false
+      },
+      effect: { kind: "enemy-damage", damageByPower: [1, 2, 3] },
+      tierText: [
+        "Choose an adjacent enemy: deal 1 flat damage, ignoring Defense and Retaliation.",
+        "Choose an adjacent enemy: deal 2 flat damage, ignoring Defense and Retaliation.",
+        "Choose an adjacent enemy: deal 3 flat damage, ignoring Defense and Retaliation."
+      ]
+    },
+    additionalCasts: [{
+      abilityId: "commander-cast-lion-counterstroke",
+      name: "Deathwing Counterstroke",
+      icon: "/assets/warhammer/icons/deathwing-counterstroke.webp",
+      targeting: {
+        side: "friendly",
+        maxTierByPower: ["bronze", "silver", "gold"],
+        canTargetSelf: false
+      },
+      effect: { kind: "unlimited-retaliation", duration: "combat" },
+      tierText: [
+        "Choose a Bronze ally: it may retaliate without limit for the rest of this Combat.",
+        "Choose a Bronze or Silver ally: it may retaliate without limit for the rest of this Combat.",
+        "Choose a Bronze, Silver, or Gold ally: it may retaliate without limit for the rest of this Combat."
+      ]
+    }],
+    specialty: {
+      id: "lion-round-barrage",
+      name: "The Lion's Barrage",
+      text: "At the start of Combat rounds 1–3, one random living enemy takes 1 flat damage. This effect ignores Defense and causes no Retaliation."
+    },
+    cardImage: "/assets/units-commander-lion_el_jonson.webp"
+  },
   sonya: {
     slug: "sonya",
     name: "Sonya",
@@ -1047,6 +1092,7 @@ export const COMMANDER_SLUG_BY_FACTION: Record<string, CommanderSlug> = {
   heavenly_demon: "demon_ancestor",
   little_busters: "kyousuke_natsume",
   blue_archive: "ibuki",
+  imperium: "lion_el_jonson",
   mgq: "sonya"
 };
 

@@ -10,6 +10,11 @@ import {
   mgqFactionDefinitions,
   mgqHeroDefinitions
 } from "@/data/anime/mgq";
+import {
+  imperiumBuildingDefinitions,
+  imperiumFactionDefinition,
+  imperiumHeroDefinitions
+} from "@/data/warhammer/imperium";
 import type { FactionDefinition, FactionId, HeroDefinition, TownBuildingDefinition } from "./types";
 import { coreUnitDefinitions } from "./units";
 
@@ -150,6 +155,7 @@ function coveHeroSource(slug: string) {
 export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
   ...animeTownBuildingDefinitions,
   ...mgqBuildingDefinitions,
+  ...imperiumBuildingDefinitions,
   // ---- Castle ----------------------------------------------------------
   "castle.city_hall": {
     id: "castle.city_hall",
@@ -1308,6 +1314,7 @@ for (const spec of Object.values(townBoardSpecs)) {
 export const coreHeroDefinitions: Record<string, HeroDefinition> = {
   ...animeTownHeroDefinitions,
   ...mgqHeroDefinitions,
+  ...imperiumHeroDefinitions,
   catherine: {
     id: "catherine",
     name: "Catherine",
@@ -2694,6 +2701,7 @@ function buildingsOfFaction(faction: string): string[] {
 export const coreFactionDefinitions: Record<string, FactionDefinition> = {
   ...animeTownFactionDefinitions,
   ...mgqFactionDefinitions,
+  imperium: imperiumFactionDefinition,
   castle: {
     id: "castle",
     name: "Castle",

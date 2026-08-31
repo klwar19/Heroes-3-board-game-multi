@@ -8,7 +8,7 @@ import {
   commanderUnitId
 } from "./index";
 import { effectiveInitiative, expireEffectsForActivationEnd, getActiveDefenseBonus, getDisplayAttackBonus } from "./active-effects";
-import { applyCommanderCombatStart } from "./commanders";
+import { applyCommanderCombatStart, applyLionRoundStartBarrage } from "./commanders";
 import type { GameAction, GameState } from "./state";
 
 /**
@@ -90,6 +90,39 @@ function castOffer(state: GameState, slug: CommanderSlug) {
       legal.action.type === "USE_UNIT_ABILITY" &&
       legal.action.abilityId === commanderDefinitions[slug].cast.abilityId
   );
+}
+
+function castOfferByAbility(state: GameState, abilityId: string) {
+  return getLegalActions(state, "p1").find(
+    (legal) => legal.action.type === "USE_UNIT_ABILITY" && legal.action.abilityId === abilityId
+  );
+}
+
+function castOnByAbility(state: GameState, abilityId: string, targetUnitId: string): GameState {
+  const offer = castOfferByAbility(state, abilityId);
+  expect(offer, `${abilityId} offered`).toBeTruthy();
+  const opened = apply(state, offer!.action);
+  const choice = opened.pendingChoice;
+  if (choice?.type !== "ABILITY_TARGET_CHOICE") {
+    throw new Error("expected the commander-cast target choice");
+  }
+  return apply(opened, {
+    type: "CHOOSE_ABILITY_TARGET",
+    playerId: "p1",
+    choiceId: choice.id,
+    targetUnitId
+  });
+}
+
+function castCandidateIdsByAbility(state: GameState, abilityId: string): string[] {
+  const offer = castOfferByAbility(state, abilityId);
+  expect(offer, `${abilityId} offered`).toBeTruthy();
+  const opened = apply(state, offer!.action);
+  const choice = opened.pendingChoice;
+  if (choice?.type !== "ABILITY_TARGET_CHOICE") {
+    throw new Error("expected the commander-cast target choice");
+  }
+  return choice.candidateUnitIds;
 }
 
 /** Open the cast picker and land it on `targetUnitId`. */
@@ -1049,5 +1082,57 @@ describe("commander casts — Ibuki's Executive Order", () => {
     fallback.players.p1.deck = ["ability.defense"];
     applyCommanderCombatStart(fallback);
     expect(fallback.players.p1.hand).toEqual(["ability.defense"]);
+  });
+});
+
+describe("Imperium commander — Lion command table", () => {
+  it("Lion's Slash deals 1/2/3 flat adjacent damage at Power 0/1/2", () => {
+    for (const [magic, expected] of [[0, 1], [2, 2], [3, 3]] as const) {
+      let state = castState("lion_el_jonson", { magic });
+      state.combat!.units.unit_p2_skeletons.defense = 99;
+      state = castOnByAbility(state, "commander-cast-lion-slash", "unit_p2_skeletons");
+      expect(state.combat!.units.unit_p2_skeletons.damage).toBe(expected);
+    }
+  });
+
+  it("Deathwing Counterstroke follows the Bronze/Silver/Gold Power ladder and lasts the whole Combat", () => {
+    let low = castState("lion_el_jonson");
+    const ally = low.combat!.units.unit_p1_marksmen;
+    ally.position = 8;
+    low = castOnByAbility(low, "commander-cast-lion-counterstroke", ally.id);
+    const buff = low.activeEffects.find((effect) =>
+      effect.modifiers.some((modifier) => modifier.type === "UNLIMITED_RETALIATION")
+    );
+    expect(buff?.duration).toEqual({ type: "combat" });
+
+    const silverBlocked = castState("lion_el_jonson");
+    silverBlocked.combat!.units.unit_p1_marksmen.grade = "silver";
+    expect(castCandidateIdsByAbility(silverBlocked, "commander-cast-lion-counterstroke")).not.toContain("unit_p1_marksmen");
+
+    const silverAllowed = castState("lion_el_jonson", { magic: 2 });
+    silverAllowed.combat!.units.unit_p1_marksmen.grade = "silver";
+    expect(castCandidateIdsByAbility(silverAllowed, "commander-cast-lion-counterstroke")).toContain("unit_p1_marksmen");
+
+    const goldAllowed = castState("lion_el_jonson", { magic: 3 });
+    goldAllowed.combat!.units.unit_p1_marksmen.grade = "gold";
+    expect(castCandidateIdsByAbility(goldAllowed, "commander-cast-lion-counterstroke")).toContain("unit_p1_marksmen");
+  });
+
+  it("Lion's Barrage deals 1 round-start damage to a random living enemy", () => {
+    const state = castState("lion_el_jonson");
+    for (const unit of Object.values(state.combat!.units)) {
+      if (unit.controllerId === "p2" && unit.id !== "unit_p2_skeletons") {
+        unit.damage = unit.maxHealth;
+      }
+    }
+    applyLionRoundStartBarrage(state);
+    expect(state.combat!.units.unit_p2_skeletons.damage).toBe(1);
+    expect(state.eventLog.some((event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "lion-round-barrage")).toBe(true);
+
+    const roundFour = castState("lion_el_jonson");
+    roundFour.combat!.round = 4;
+    applyLionRoundStartBarrage(roundFour);
+    expect(Object.values(roundFour.combat!.units).every((unit) => unit.damage === 0)).toBe(true);
+    expect(roundFour.eventLog.some((event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "lion-round-barrage")).toBe(false);
   });
 });

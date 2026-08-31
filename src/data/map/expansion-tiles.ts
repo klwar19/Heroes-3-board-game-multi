@@ -202,6 +202,31 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
       tileImage: "/assets/anime/tiles/ba-s1-v2.webp"
     }
   },
+  "IM-S1": {
+    id: "IM-S1",
+    group: "starting",
+    content: "regular_stretch_goals",
+    terrain: "highlands",
+    fields: [
+      { location: "town", faction: "imperium" },
+      { location: "empty_field" },
+      { location: "resource_symbol" },
+      { location: "empty_field" },
+      { location: "mine", difficulty: 1, resource: "buildingMaterials", amount: 2 },
+      { location: "treasure_symbol", difficulty: 1 },
+      { location: "blocked_field" }
+    ],
+    outerImpassable: [false, true, true, true, false, true],
+    source: {
+      product: "Imperium of Man fan expansion",
+      credit: "Imperial fortress-world starting tile using Castle S3's exact flat-top 2-3-2 geometry, field order, and outer-border rules, with runtime-attached field symbols."
+    },
+    assets: {
+      tileImage: "/assets/warhammer/tiles/imperium-s1.webp",
+      attachFieldSymbols: true,
+      fieldSymbolScale: 0.62
+    }
+  },
   "MGQ-S1": {
     id: "MGQ-S1",
     group: "starting",

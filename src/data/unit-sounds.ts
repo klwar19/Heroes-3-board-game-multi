@@ -176,6 +176,16 @@ const creatureVoices: Record<string, string> = {
   gunslingers: "sharpshooter",
   couatls: "wyvern",
   dreadnoughts: "behemoth",
+  // Imperium of Man: reuse complete, role-matched H3 sets. Ranged profiles
+  // deliberately map to sets with real shoot clips; vehicles use mechanical
+  // or heavy-creature sets so every combat action remains audible.
+  astra_militarum: "sharpshooter",
+  apothecary: "zealot",
+  space_marines: "crusader",
+  rhino: "iron-golem",
+  terminators: "crusader",
+  dreadnought: "titan",
+  titan: "titan",
   // Fuyuki City fallbacks. unitSoundKey short-circuits fuyuki.* to the
   // Fate/unlimited codes package below; these complete H3 sets remain as a
   // defensive fallback if a bespoke manifest entry is ever absent.
@@ -478,7 +488,10 @@ const commanderVoices: Record<string, Record<CommanderVoiceActions, string>> = {
   // Heavenly Demon Palace — the Demon Ancestor is a bestial blood-cultivation
   // fiend → the Dungeon Minotaur voice (the brute precedent proves the full set
   // resolves, and it ties to the reused Bloodlust cast).
-  demon_ancestor: { attack: "minotaur", move: "minotaur", defend: "minotaur", hurt: "minotaur", death: "minotaur" }
+  demon_ancestor: { attack: "minotaur", move: "minotaur", defend: "minotaur", hurt: "minotaur", death: "minotaur" },
+  // The Imperium commander uses the requested female presentation. Sea Witch
+  // is the complete female H3 battle set and includes every required action.
+  lion_el_jonson: { attack: "sea-witch", move: "sea-witch", defend: "sea-witch", hurt: "sea-witch", death: "sea-witch" }
 };
 
 /** The voice id the table uses for a commander combat unit ("commander:<slug>"). */

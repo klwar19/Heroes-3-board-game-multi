@@ -25,6 +25,10 @@ import { coreHeroDefinitions } from "@/data/factions/core";
  * Factory and anime heroes still render natively.
  */
 export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
+  emperor_of_mankind: "/assets/warhammer/icons/specialty-emperor-protects.webp",
+  roboute_guilliman: "/assets/warhammer/icons/specialty-codex-astartes.webp",
+  rogal_dorn: "/assets/warhammer/icons/specialty-praetorian-bulwark.webp",
+  sanguinius: "/assets/warhammer/icons/specialty-angelic-descent.webp",
   mika_blue_archive: "/assets/anime/icons/blue-archive/mika-specialty.webp",
   yuuka_blue_archive: "/assets/anime/icons/blue-archive/yuuka-specialty.webp",
   seia_blue_archive: "/assets/anime/icons/blue-archive/seia-specialty.webp",
@@ -216,6 +220,7 @@ export const LEVEL_STYLE: Record<1 | 4 | 6, { border: string; numeral: string }>
 
 /** The level-panel accent (the Hero Creator tints it by town colour). */
 export const FACTION_ACCENT: Record<string, string> = {
+  imperium: "#174c35",
   bulwark: "#1f3a5f",
   conflux: "#2b6c6c",
   // Anime Realms towns — match faction.color so native specialty cards wear

@@ -109,6 +109,25 @@ function IbukiCommandTable() {
   );
 }
 
+function LionCommandTable({ tierIndex }: { tierIndex: number }) {
+  const def = commanderDefinitions.lion_el_jonson;
+  const skills = [def.cast, ...(def.additionalCasts ?? [])];
+  return (
+    <div style={{ background: "#16271d", border: "1px solid #8fb16e", borderRadius: 7, padding: 8, marginBottom: 7 }}>
+      <div style={{ color: "#d9ed9c", fontWeight: 800, fontSize: 12, marginBottom: 5 }}>LION COMMAND TABLE · choose one before moving or attacking, once per round</div>
+      <div style={{ display: "grid", gap: 5 }}>
+        {skills.map((skill, index) => (
+          <div key={skill.abilityId} style={{ display: "grid", gridTemplateColumns: "26px 112px 1fr", gap: 6, alignItems: "center", fontSize: 10.5 }}>
+            <img alt="" src={assetUrl(skill.icon)} style={{ width: 24, height: 24, objectFit: "contain", borderRadius: 4 }} />
+            <b style={{ color: "#ffe58b" }}>Skill {index + 1} · {skill.name}</b>
+            <span style={{ color: "#eff8e5" }}>{skill.tierText[tierIndex]}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 type CommanderCardLayout = "classic" | "azur-lane" | "wuxia";
 
 /**
@@ -572,12 +591,14 @@ export function CommanderCardFace({
         />
         <span style={{ textAlign: "left", lineHeight: 1.25 }}>
           <b style={{ color: "#e6c56a", fontSize: "2.8cqw", letterSpacing: "0.2cqw" }}>
-              {slug === "ibuki" ? "AP CONTROL" : `${def.cast.name} · once per combat round`}
+              {slug === "ibuki" ? "AP CONTROL" : slug === "lion_el_jonson" ? "LION COMMAND TABLE" : `${def.cast.name} · once per combat round`}
           </b>
           <br />
           <span style={{ fontSize: "2.45cqw", textShadow: "1px 1px 0 #160e08" }}>
             {slug === "ibuki"
               ? "Start with 1 AP; gain +1 after moving, attacking, Defending, or being attacked. Spend AP on commands."
+              : slug === "lion_el_jonson"
+                ? `1 Slash: adjacent enemy takes ${tierIndex + 1} flat damage. · 2 Counterstroke: ${["Bronze", "Bronze/Silver", "Bronze/Silver/Gold"][tierIndex]} ally gains unlimited Retaliation for this Combat. · Passive Rounds 1–3: random living enemy takes 1 flat damage.`
               : def.cast.tierText[tierIndex]}
           </span>
         </span>
@@ -814,10 +835,10 @@ export function CommanderStatsPanel({
         })}
       </div>
 
-      {slug === "ibuki" ? <IbukiCommandTable /> : null}
+      {slug === "ibuki" ? <IbukiCommandTable /> : slug === "lion_el_jonson" ? <LionCommandTable tierIndex={tierIndex} /> : null}
       {/* Other commanders show their Power ladder here. Ibuki's four AP
           commands—including Executive Order—live in the single AP panel above. */}
-      {slug !== "ibuki" ? <div style={{ background: ROW_BG, borderRadius: 6, padding: "7px 9px" }}>
+      {slug !== "ibuki" && slug !== "lion_el_jonson" ? <div style={{ background: ROW_BG, borderRadius: 6, padding: "7px 9px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
           <img
             alt=""

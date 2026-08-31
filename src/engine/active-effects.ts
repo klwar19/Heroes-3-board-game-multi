@@ -977,6 +977,17 @@ export function unitAttackRollDisadvantaged(state: GameState, unit: CombatUnitSt
   );
 }
 
+/** Player/unit ongoing effects that treat a unit as Defended without placing or consuming a token. */
+export function unitHasVirtualDefenseToken(state: GameState | undefined, unit: CombatUnitState): boolean {
+  return Boolean(
+    state?.activeEffects.some(
+      (effect) =>
+        effectAppliesToUnit(effect, unit) &&
+        effect.modifiers.some((modifier) => modifier.type === "VIRTUAL_DEFENSE_TOKEN")
+    )
+  );
+}
+
 /** Prophetic Counsel VI fixes every Attack die result of the affected unit at -1. */
 export function unitAttackRollFixedMinusOne(state: GameState, unit: CombatUnitState): boolean {
   return state.activeEffects.some(

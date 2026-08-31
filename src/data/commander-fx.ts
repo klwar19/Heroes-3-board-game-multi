@@ -34,6 +34,7 @@ export const COMMANDER_CAST_FX_KEY: Record<CommanderSlug, string> = {
   demon_ancestor: "spell.bloodlust", // Blood Frenzy (reuses the Brute's Bloodlust cast + fx)
   kyousuke_natsume: "spell.shield", // Mission Start (instant defensive reaction)
   ibuki: "commander.ibuki.executive", // Executive Order
+  lion_el_jonson: "spell.magic_arrow", // Lion's Slash (Counterstroke is selected by cast name below)
   sonya: "spell.haste" // Cheer (Shaman Haste reuse)
 };
 
@@ -53,8 +54,10 @@ export const COMMANDER_CAST_FALLBACK_FX: SpellFxPlan = {
  * sound when the mapped spell has no plan (Animate Dead), so every commander
  * cast animates and sounds — never a silent, invisible resolution.
  */
-export function commanderCastFxPlan(commanderSlug: string): SpellFxPlan {
-  const key = COMMANDER_CAST_FX_KEY[commanderSlug as CommanderSlug];
+export function commanderCastFxPlan(commanderSlug: string, castName?: string): SpellFxPlan {
+  const key = commanderSlug === "lion_el_jonson" && castName === "Deathwing Counterstroke"
+    ? "spell.counterstrike"
+    : COMMANDER_CAST_FX_KEY[commanderSlug as CommanderSlug];
   return (key ? spellFxPlans[key] : undefined) ?? COMMANDER_CAST_FALLBACK_FX;
 }
 
