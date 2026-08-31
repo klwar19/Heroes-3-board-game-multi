@@ -16,7 +16,7 @@ const BUILTIN_MAX_TOTAL_BYTES = 250 * 1024 * 1024;
 
 export type RankedReplayStoreOutcome = { stored: boolean; reason?: string };
 
-function validReplay(matchId: string, replay: RankedReplay): boolean {
+export function validRankedReplay(matchId: string, replay: RankedReplay): boolean {
   if (!replay || replay.format !== "homm3bg-ranked-replay-v1" || replay.matchId !== matchId) return false;
   const bytes = new TextEncoder().encode(JSON.stringify(replay)).byteLength;
   return bytes <= RANKED_REPLAY_MAX_BYTES + 16_384;
@@ -59,7 +59,7 @@ export async function storeRankedReplay(
   if (!rankedReplayEnabled(env.HOMM3BG_RANKED_REPLAY_ENABLED)) {
     return { stored: false, reason: "disabled" };
   }
-  if (!validReplay(matchId, replay)) return { stored: false, reason: "invalid" };
+  if (!validRankedReplay(matchId, replay)) return { stored: false, reason: "invalid" };
 
   const config = supabaseConfigFromEnv(env);
   if (config) {

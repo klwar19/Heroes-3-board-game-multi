@@ -93,6 +93,8 @@ export async function POST(request: Request) {
 
   const replayRequired = ranked && rankedReplayEnabled(process.env.HOMM3BG_RANKED_REPLAY_ENABLED);
   let replayStored = !replayRequired;
+  let replayStore: typeof import("@/server/ranked-replay-store") | null = null;
+  let rankedReplay: RankedReplay | null = null;
   if (replayRequired) {
     if (!body?.replay || typeof body.replay !== "object") {
       return NextResponse.json(
@@ -108,30 +110,37 @@ export async function POST(request: Request) {
         { status: 503 },
       );
     }
+    replayStore = await import("@/server/ranked-replay-store");
+    rankedReplay = body.replay as RankedReplay;
+    if (!replayStore.validRankedReplay(matchId, rankedReplay)) {
+      return NextResponse.json(
+        { error: "REPLAY_NOT_STORED", reason: "invalid" },
+        { status: 400 },
+      );
+    }
+  }
+
+  // The replay table has a foreign key to this match row. If replay insertion
+  // fails after this idempotent write, PartyKit's durable outbox retries; the
+  // next request observes the duplicate match and fills the missing replay.
+  const outcome = await getAccountBackend().recordMatchResult({ matchId, participants, ranked });
+  if (outcome.applied && accountsBackendKind() === "builtin") {
+    persistAccounts(getAccountStore());
+  }
+  if (replayRequired && replayStore && rankedReplay) {
     try {
-      const { storeRankedReplay } = await import("@/server/ranked-replay-store");
-      const stored = await storeRankedReplay(matchId, body.replay as RankedReplay);
-      // A retry after the replay write but before the ladder write observes a
-      // duplicate. That is durable success, not a reason to retry forever.
+      const stored = await replayStore.storeRankedReplay(matchId, rankedReplay);
       replayStored = stored.stored || stored.reason === "duplicate";
       if (!replayStored) {
-        const status = stored.reason === "invalid" ? 400 : 503;
         return NextResponse.json(
           { error: "REPLAY_NOT_STORED", reason: stored.reason ?? "unknown" },
-          { status },
+          { status: 503 },
         );
       }
     } catch (error) {
       console.error(`[ranked-replay] failed to store ${matchId}:`, error);
       return NextResponse.json({ error: "REPLAY_STORE_FAILED" }, { status: 503 });
     }
-  }
-
-  // Replay first, result second: a retry can safely observe a duplicate replay
-  // and continue, but acknowledging Elo first could permanently orphan data.
-  const outcome = await getAccountBackend().recordMatchResult({ matchId, participants, ranked });
-  if (outcome.applied && accountsBackendKind() === "builtin") {
-    persistAccounts(getAccountStore());
   }
   return NextResponse.json({ applied: outcome.applied, replayStored });
 }

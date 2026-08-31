@@ -2399,9 +2399,11 @@ export default class GameRoomServer implements Party.Server {
             };
           }
           recordUndoSnapshot(this.room.id, current.state);
+          const replayEntropy = freshEntropy();
+          const replayNow = Date.now();
           const result = applyAction(current.state, action, {
-            entropy: freshEntropy(),
-            now: Date.now(),
+            entropy: replayEntropy,
+            now: replayNow,
             liveClientIds: this.liveClientIds(),
             ...(actorClientId ? { actorClientId } : {}),
             ...(actorUserId ? { actorUserId } : {})
@@ -2416,6 +2418,39 @@ export default class GameRoomServer implements Party.Server {
               action.type === "ADVANCE_COMPUTER"
                 ? applyHumanComputerAdvance(afkSettled).state
                 : settleComputerForLiveAction(afkSettled);
+            const startsRankedAdventure =
+              !rankedClashReplayEligible(current.state) && rankedClashReplayEligible(result.state);
+            if (startsRankedAdventure && this.rankedReplayCaptureEnabled()) {
+              try {
+                // HTTP action submissions are a real production transport too
+                // (recovery clients and operational E2E checks use it). Start
+                // the replay before the Round-1 snapshot becomes durable, just
+                // like the WebSocket action pipeline above.
+                await this.captureRankedReplay(current.state, action, result, {
+                  ...(actorClientId ? { actorClientId } : {}),
+                  entropy: replayEntropy,
+                  now: replayNow,
+                });
+              } catch (error) {
+                console.error("[ranked-replay] could not initialize Round-1 capture over HTTP; ranked start remains in setup", error);
+                return {
+                  result: {
+                    state: current.state,
+                    events: [],
+                    errors: [{
+                      code: "ACTION_NOT_LEGAL" as const,
+                      message: "The ranked replay could not be initialized. The match has not started; please try Start again.",
+                    }],
+                    notices: [],
+                  },
+                  prev: current.state,
+                  applied: false,
+                  replyBase: current,
+                  scheduleComputer: false,
+                  computerDelayMs: 0,
+                };
+              }
+            }
             this.snapshot = {
               roomId: this.room.id,
               version: current.version + 1,
@@ -2424,6 +2459,15 @@ export default class GameRoomServer implements Party.Server {
               state: settled
             };
             await this.persist();
+            try {
+              await this.captureRankedReplay(current.state, action, result, {
+                ...(actorClientId ? { actorClientId } : {}),
+                entropy: replayEntropy,
+                now: replayNow,
+              });
+            } catch (error) {
+              console.warn("[ranked-replay] HTTP action capture failed", error);
+            }
             await this.broadcastSnapshot();
             return {
               result,
