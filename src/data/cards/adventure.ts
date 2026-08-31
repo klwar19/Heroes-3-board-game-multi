@@ -3784,8 +3784,8 @@ export const adventureCards: CardLibrary = {
   // Oidana (Elder): the diplomat. Her starting ability is Diplomacy; each specialty
   // is a CHOOSE_ONE. The card-draw side (DRAW_CARDS, a trigger-free instant) scales
   // 1 / 2 / 2. The OTHER side scales with her Diplomacy mastery:
-  //   I  — Map: draw 1 Neutral Unit card (DIPLOMACY_RECRUIT maxDraws 1), recruit one.
-  //   IV — Map: draw up to 2 Neutral Unit cards (maxDraws 2), recruit one for 4 gold
+  //   I  — Map: use the full Diplomacy Dwelling draw, then recruit one.
+  //   IV — Map: use the full Diplomacy Dwelling draw, then recruit one for 4 gold
   //        less (goldReduction 4 — applied to the affordability check, label AND spend).
   //   VI — Combat (ongoing): +1 Attack to every NEUTRAL (Diplomacy-recruited) unit she
   //        controls, for the whole battle (CREATE_VARIANT_ATTACK_BUFF variant "neutral").
@@ -3796,13 +3796,13 @@ export const adventureCards: CardLibrary = {
     name: "Diplomacy I",
     kind: "hero-specialty",
     timing: "instant",
-    tags: ["hero-specialty", "instant", "oidana", "diplomacy", "Instant: draw 1 card. — OR — Map: draw 1 Neutral Unit card, then recruit one (pay its cost)."],
+    tags: ["hero-specialty", "instant", "oidana", "diplomacy", "Instant: draw 1 card. — OR — Map: for every Dwelling, draw its corresponding Neutral Unit card (Gold also reveals Azure), then recruit one (pay its cost)."],
     target: { type: "none" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
         { label: "Draw 1 card", effect: { type: "DRAW_CARDS", amount: 1 } },
-        { label: "Diplomacy: draw 1 Neutral Unit card, then recruit one (pay its cost)", mapOnly: true, effect: { type: "DIPLOMACY_RECRUIT", maxDraws: 1 } }
+        { label: "Diplomacy: reveal every Dwelling's Neutral choices, then recruit one (pay its cost)", mapOnly: true, effect: { type: "DIPLOMACY_RECRUIT" } }
       ]
     },
     implementationStatus: "implemented",
@@ -3813,13 +3813,13 @@ export const adventureCards: CardLibrary = {
     name: "Diplomacy IV",
     kind: "hero-specialty",
     timing: "instant",
-    tags: ["hero-specialty", "instant", "oidana", "diplomacy", "Instant: draw 2 cards. — OR — Map: draw up to 2 Neutral Unit cards, then recruit one (pay its cost, −4 gold)."],
+    tags: ["hero-specialty", "instant", "oidana", "diplomacy", "Instant: draw 2 cards. — OR — Map: for every Dwelling, draw its corresponding Neutral Unit card (Gold also reveals Azure), then recruit one (pay its cost, −4 gold)."],
     target: { type: "none" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
         { label: "Draw 2 cards", effect: { type: "DRAW_CARDS", amount: 2 } },
-        { label: "Diplomacy: draw up to 2 Neutral Unit cards, then recruit one (4 gold off)", mapOnly: true, effect: { type: "DIPLOMACY_RECRUIT", maxDraws: 2, goldReduction: 4 } }
+        { label: "Diplomacy: reveal every Dwelling's Neutral choices, then recruit one (4 gold off)", mapOnly: true, effect: { type: "DIPLOMACY_RECRUIT", goldReduction: 4 } }
       ]
     },
     implementationStatus: "implemented",

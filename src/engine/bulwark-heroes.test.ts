@@ -746,16 +746,16 @@ describe("Bulwark hero — Oidana the diplomat (Diplomacy + card draw)", () => {
       expect(draw.effect.type === "DRAW_CARDS" && draw.effect.amount, `${id} draw amount`).toBe(amount);
     }
 
-    // I: recruit from 1 drawn Neutral (maxDraws 1, full price).
+    // I: full Dwelling-derived Diplomacy choice, full price.
     const i = optionWith("specialty.oidana.1", "DIPLOMACY_RECRUIT");
     expect(i.mapOnly).toBe(true);
-    expect(i.effect.type === "DIPLOMACY_RECRUIT" && i.effect.maxDraws).toBe(1);
+    expect(i.effect.type === "DIPLOMACY_RECRUIT" && i.effect.maxDraws).toBeUndefined();
     expect(i.effect.type === "DIPLOMACY_RECRUIT" && (i.effect.goldReduction ?? 0)).toBe(0);
 
-    // IV: recruit from up to 2 drawn Neutrals, 4 gold off.
+    // IV: full Dwelling-derived Diplomacy choice, 4 gold off.
     const iv = optionWith("specialty.oidana.4", "DIPLOMACY_RECRUIT");
     expect(iv.mapOnly).toBe(true);
-    expect(iv.effect.type === "DIPLOMACY_RECRUIT" && iv.effect.maxDraws).toBe(2);
+    expect(iv.effect.type === "DIPLOMACY_RECRUIT" && iv.effect.maxDraws).toBeUndefined();
     expect(iv.effect.type === "DIPLOMACY_RECRUIT" && iv.effect.goldReduction).toBe(4);
 
     // VI: ongoing combat aura on the caster's neutral units — and NO recruit side.
@@ -767,20 +767,24 @@ describe("Bulwark hero — Oidana the diplomat (Diplomacy + card draw)", () => {
     expect(vi6.type === "CHOOSE_ONE" && vi6.options.some((o) => o.effect.type === "DIPLOMACY_RECRUIT")).toBe(false);
   });
 
-  it("the recruit side caps the Neutral draw at maxDraws (I=1, IV=2) however many Dwellings she owns", () => {
-    // Three Dwelling tiers: Cyra's UNCAPPED Diplomacy draws bronze, silver,
-    // gold, and the Azure card opened by the Gold Dwelling (4). Oidana's caps
-    // that draw. (The cap is the only difference, so this CONTROL is what proves
-    // maxDraws actually does the limiting.)
-    const drawsFor = (cardId: string, optionIndex: number): number => {
+  it("the recruit side reveals every Dwelling choice, including Gold and Azure", () => {
+    const drawsFor = (cardId: string, optionIndex: number): GameState => {
       const state = oidanaMap(`cap-${cardId}`, cardId, ["bronze", "silver", "gold"]);
       const play = findPlay(state, cardId, optionIndex);
       expect(play, `${cardId} recruit option offered`).toBeTruthy();
-      return neutralsDrawn(applyOk(state, play!.action));
+      return applyOk(state, play!.action);
     };
-    expect(drawsFor("ability.diplomacy", 0), "uncapped control draws 4").toBe(4);
-    expect(drawsFor("specialty.oidana.1", 1), "I caps at 1").toBe(1);
-    expect(drawsFor("specialty.oidana.4", 1), "IV caps at 2").toBe(2);
+    for (const [cardId, optionIndex] of [
+      ["ability.diplomacy", 0],
+      ["specialty.oidana.1", 1],
+      ["specialty.oidana.4", 1]
+    ] as const) {
+      const state = drawsFor(cardId, optionIndex);
+      expect(neutralsDrawn(state), `${cardId} draws bronze, silver, gold and azure`).toBe(4);
+      expect(state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.diplomacyRecruit?.draws.map((draw) => draw.tier)).toEqual([
+        "bronze", "silver", "gold", "azure"
+      ]);
+    }
   });
 
   it("Oidana IV recruits for 4 gold less than the printed cost; I (and Cyra) pay full price", () => {

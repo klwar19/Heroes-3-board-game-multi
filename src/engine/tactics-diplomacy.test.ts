@@ -907,20 +907,17 @@ describe("Diplomacy Expert skips Ⅵ and Ⅶ guard fields", () => {
     });
   }
 
-  it("a level-7 hero really skips a Ⅵ guard field in a NORMAL game (no house rules)", () => {
-    // THE reported bug: level 7 ≠ 6, and Quick Combat is barred at Ⅵ, so the old
-    // exact-match bar forced the fight. Assert the OUTCOME: no combat at all, the
-    // mine is flagged (its effect resolved), and the hero gained no Experience.
-    let state = encounter(bandGame({ level: 7, difficulty: 6 }));
+  it("a level-7 hero classically Quick-Combats a Ⅵ guard in a NORMAL game without spending Diplomacy", () => {
+    const state = bandGame({ level: 7, difficulty: 6 });
     const xpBefore = getMainHero(state, "p1")!.experience;
-    state = takeSkip(state);
+    encounter(state);
 
     expect(state.combat, "the Ⅵ guard fight never opened").toBeNull();
     expect(state.adventure!.fields["band-field"].flagOwnerId).toBe("p1");
     expect(getMainHero(state, "p1")!.experience).toBe(xpBefore);
-    expect(state.players.p1.discard).toContain("ability.diplomacy");
-    expect(state.players.p1.combatStats.expertUsesSpentThisRound, "the Expert crown is spent").toBe(1);
-    expect(state.eventLog.some((event) => event.type === "DIPLOMACY_COMBAT_SKIPPED")).toBe(true);
+    expect(state.players.p1.hand).toContain("ability.diplomacy");
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound, "no crown is needed").toBe(0);
+    expect(state.eventLog.some((event) => event.type === "QUICK_COMBAT_WON")).toBe(true);
   });
 
   it("a level-7 hero really skips a Ⅶ guard field in a NORMAL game", () => {
@@ -994,10 +991,12 @@ describe("Diplomacy Expert skips Ⅵ and Ⅶ guard fields", () => {
     expect(state.adventure!.fields["band-field"].customGuardUnits).toEqual(["neutral.gold_golems"]);
   });
 
-  it("CONTROL: with no crown and no Empowered marker the Ⅵ skip is not offered", () => {
+  it("classic level-7 versus Ⅵ needs neither a crown nor Empowered Diplomacy", () => {
     const state = encounter(bandGame({ level: 7, difficulty: 6, crowns: 0 }));
     expect(skipContext(state)).toBeNull();
-    expect(state.combat).not.toBeNull();
+    expect(state.combat).toBeNull();
+    expect(state.eventLog.some((event) => event.type === "QUICK_COMBAT_WON")).toBe(true);
+    expect(state.players.p1.hand).toContain("ability.diplomacy");
   });
 
   it("choosing to FIGHT a Ⅶ field keeps the card and the crown", () => {

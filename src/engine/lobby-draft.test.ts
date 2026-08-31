@@ -304,33 +304,68 @@ describe("TYPE 1 — draft ban budgets scale with player count", () => {
     return state;
   }
 
-  it("3 players → 1 ban each (3 total), going around in seat order", () => {
+  it("3 players → 2 bans each (6 total), one from each opponent", () => {
     let state = lockAllTowns("draft-3p", 3, ["castle", "necropolis", "rampart"]);
     let phase = getDraftPhase(lobby(state));
     expect(phase.seatCount).toBe(3);
-    expect(phase.banBudgetPerSeat).toBe(1);
-    expect(phase.totalBans).toBe(3);
+    expect(phase.banBudgetPerSeat).toBe(2);
+    expect(phase.totalBans).toBe(6);
     expect(phase.currentBannerPlayerId).toBe("p1");
+    expect(phase.currentBanTargetPlayerId).toBe("p2");
 
     state = apply(state, { type: "BAN_HERO", playerId: "p1", heroDefId: "sandro" }); // p1 bans a necro (p2)
     expect(getDraftPhase(lobby(state)).currentBannerPlayerId).toBe("p2");
+    expect(getDraftPhase(lobby(state)).currentBanTargetPlayerId).toBe("p3");
     state = apply(state, { type: "BAN_HERO", playerId: "p2", heroDefId: "gelu" }); // p2 bans a rampart (p3)
     expect(getDraftPhase(lobby(state)).currentBannerPlayerId).toBe("p3");
+    expect(getDraftPhase(lobby(state)).currentBanTargetPlayerId).toBe("p1");
     state = apply(state, { type: "BAN_HERO", playerId: "p3", heroDefId: "catherine" }); // p3 bans a castle (p1)
 
+    // Round two targets the other opponent for every player.
+    expect(getDraftPhase(lobby(state)).currentBanTargetPlayerId).toBe("p3");
+    state = apply(state, { type: "BAN_HERO", playerId: "p1", heroDefId: "gem" });
+    expect(getDraftPhase(lobby(state)).currentBanTargetPlayerId).toBe("p1");
+    state = apply(state, { type: "BAN_HERO", playerId: "p2", heroDefId: "rion" });
+    expect(getDraftPhase(lobby(state)).currentBanTargetPlayerId).toBe("p2");
+    state = apply(state, { type: "BAN_HERO", playerId: "p3", heroDefId: "tamika" });
+
     phase = getDraftPhase(lobby(state));
-    expect(phase.banPicksMade).toBe(3);
+    expect(phase.banPicksMade).toBe(6);
     expect(phase.pickPhaseOpen).toBe(true);
   });
 
-  it("4 players → 1 ban each (4 total), going around in seat order", () => {
+  it("4 players → 2 bans each (8 total), in two full rotations", () => {
     const state = lockAllTowns("draft-4p", 4, ["castle", "necropolis", "rampart", "tower"]);
     const phase = getDraftPhase(lobby(state));
     expect(phase.seatCount).toBe(4);
-    expect(phase.banBudgetPerSeat).toBe(1);
-    expect(phase.totalBans).toBe(4);
+    expect(phase.banBudgetPerSeat).toBe(2);
+    expect(phase.totalBans).toBe(8);
     expect(["p1", "p2", "p3", "p4"]).toContain(phase.currentBannerPlayerId);
     expect(phase.currentBannerPlayerId).toBe("p1");
+    expect(phase.currentBanTargetPlayerId).toBe("p2");
+
+    const expectedTurns = [
+      ["p1", "p2"], ["p2", "p3"], ["p3", "p4"], ["p4", "p1"],
+      ["p1", "p3"], ["p2", "p4"], ["p3", "p1"], ["p4", "p2"],
+    ];
+    for (const [banPicksMade, [banner, target]] of expectedTurns.entries()) {
+      state.setupLobby!.draft!.banPicksMade = banPicksMade;
+      const turn = getDraftPhase(lobby(state));
+      expect([turn.currentBannerPlayerId, turn.currentBanTargetPlayerId]).toEqual([banner, target]);
+    }
+  });
+
+  it.each([
+    [5, 2, 10],
+    [6, 2, 12],
+  ])("%i players → %i bans each (%i total)", (playerCount, perSeat, total) => {
+    const factions = ["castle", "necropolis", "rampart", "tower", "inferno", "dungeon"];
+    const state = lockAllTowns(`draft-${playerCount}p`, playerCount, factions);
+    const phase = getDraftPhase(lobby(state));
+    expect(phase.banBudgetPerSeat).toBe(perSeat);
+    expect(phase.totalBans).toBe(total);
+    expect(phase.currentBannerPlayerId).toBe("p1");
+    expect(phase.currentBanTargetPlayerId).toBe("p2");
   });
 });
 

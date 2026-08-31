@@ -402,14 +402,25 @@ describe("computer setup formats", () => {
     ).toBe(true);
 
     const next = humanFirst(townsRun.state, "BAN_HERO");
-    const finishRun = driveComputerPlayers(next);
-    expect(finishRun.stalled).toBe(false);
-    // Two computer bans in rotation, then both computer hero picks.
+    const firstBanRound = driveComputerPlayers(next);
+    expect(firstBanRound.stalled).toBe(false);
+    // The computers finish round one, then correctly wait for the human to
+    // start round two (three players now make six bans in total).
     expect(
-      finishRun.decisions.map((decision) => decision.action.type),
-    ).toEqual(["BAN_HERO", "BAN_HERO", "CHOOSE_FACTION", "CHOOSE_FACTION"]);
+      firstBanRound.decisions.map((decision) => decision.action.type),
+    ).toEqual(["BAN_HERO", "BAN_HERO"]);
+
+    const secondRound = humanFirst(firstBanRound.state, "BAN_HERO");
+    const finishRun = driveComputerPlayers(secondRound);
+    expect(finishRun.stalled).toBe(false);
+    expect(finishRun.decisions.map((decision) => decision.action.type)).toEqual([
+      "BAN_HERO",
+      "BAN_HERO",
+      "CHOOSE_FACTION",
+      "CHOOSE_FACTION",
+    ]);
     const lobby = finishRun.state.setupLobby!;
-    expect(lobby.draft?.bannedHeroDefIds).toHaveLength(3);
+    expect(lobby.draft?.bannedHeroDefIds).toHaveLength(6);
     expect(
       lobby.seats
         .slice(1)

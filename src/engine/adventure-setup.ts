@@ -1145,13 +1145,22 @@ function makePlayer(
   const deck = shuffleCards(makeStartingDeck(heroDefId, polishSpellBook), `${seed}#starting-deck#${config.id}`);
   const startingSpellCount = hero?.type === "magic" ? 2 : 1;
   const mgqStartingRandom = createSeededRandom(`${seed}#mgq-starting-units#${config.id}`, { salt: false });
+  const blueArchiveStartingRandom = createSeededRandom(`${seed}#blue-archive-starting-units#${config.id}`, { salt: false });
   const mgqStartingPools: Partial<Record<"bronze" | "silver", string[]>> = {};
+  const blueArchiveStartingPools: Partial<Record<"bronze" | "silver" | "gold", string[]>> = {};
   const takeRandomMgqStartingUnit = (tier: "bronze" | "silver"): string | undefined => {
     const pool = mgqStartingPools[tier] ??= coreFactionDefinitions.mgq.units.filter(
       (unitDefId) => coreUnitDefinitions[unitDefId]?.tier === tier
     );
     if (pool.length === 0) return undefined;
     return pool.splice(mgqStartingRandom.nextInt(0, pool.length - 1), 1)[0];
+  };
+  const takeRandomBlueArchiveStartingUnit = (tier: "bronze" | "silver" | "gold"): string | undefined => {
+    const pool = blueArchiveStartingPools[tier] ??= coreFactionDefinitions.blue_archive.units.filter(
+      (unitDefId) => coreUnitDefinitions[unitDefId]?.tier === tier
+    );
+    if (pool.length === 0) return undefined;
+    return pool.splice(blueArchiveStartingRandom.nextInt(0, pool.length - 1), 1)[0];
   };
 
   const player: PlayerState = {
@@ -1204,7 +1213,14 @@ function makePlayer(
     for (const choice of options.startingUnits) {
       let unitDefId = choice.unitDefId;
       const choiceTier = choice.level ? tierOfLevel(choice.level) : choice.tier;
-      if (
+      if (!choice.unitDefId && config.factionId === "blue_archive" && choiceTier) {
+        // Blue Archive has a 19-card roster rather than a fixed seven-unit
+        // ladder. A selected level therefore determines only its authored
+        // grade (1–3 bronze, 4–5 silver, 6–7 gold), then draws a seeded random
+        // identity from that grade without replacement. Unit grades themselves
+        // are never rewritten.
+        unitDefId = takeRandomBlueArchiveStartingUnit(choiceTier);
+      } else if (
         !choice.unitDefId &&
         config.factionId === "mgq" &&
         (choiceTier === "bronze" || choiceTier === "silver")
@@ -5907,9 +5923,9 @@ export type DraftPhaseInfo = {
   seatCount: number;
   /** Every seat has locked a town (the gate into the "draft" ban phase). */
   townLockedAll: boolean;
-  /** Bans each seat gets in the "draft" format: 2 in a 2-player game, else 1. */
+  /** Every seat gets exactly two hero bans. */
   banBudgetPerSeat: number;
-  /** Total bans the "draft" phase runs (`banBudgetPerSeat * seatCount`). */
+  /** Total bans: exactly two per seated player. */
   totalBans: number;
   banPicksMade: number;
   /** "draft": all towns locked and bans still remaining. */
@@ -5918,27 +5934,36 @@ export type DraftPhaseInfo = {
   pickPhaseOpen: boolean;
   /** Whose ban turn it is right now (round-robin by seat order), else null. */
   currentBannerPlayerId: PlayerId | null;
+  /** The specific opponent whose town the current player must ban from. */
+  currentBanTargetPlayerId: PlayerId | null;
 };
 
 /**
  * Single source of truth for where a "draft"-format lobby is in its flow, reused
  * by the engine handlers, the legal-action list and the setup UI so they never
  * disagree. Town locking is per-seat and parallel; once ALL towns are locked the
- * ban phase opens and goes around the table in seat order (each seat bans
- * `banBudgetPerSeat` heroes); once every ban is in, the pick phase opens.
+ * ban phase opens and goes around the table in seat order for exactly two full
+ * rotations. Every player therefore bans two heroes. With three or more seats,
+ * those two turns target two different opponents.
  */
 export function getDraftPhase(lobby: GameSetupState): DraftPhaseInfo {
   const draft = lobbyDraft(lobby);
   const seatOrder = lobby.seats.map((seat) => seat.playerId);
   const seatCount = seatOrder.length;
   const townLockedAll = seatCount > 0 && lobby.seats.every((seat) => Boolean(seat.factionId));
-  const banBudgetPerSeat = draft.format === "draft" ? (seatCount === 2 ? 2 : 1) : 0;
+  const banBudgetPerSeat = draft.format === "draft" && seatCount >= 2 ? 2 : 0;
   const totalBans = banBudgetPerSeat * seatCount;
   const banPicksMade = draft.banPicksMade ?? 0;
   const banPhaseActive = draft.format === "draft" && townLockedAll && banPicksMade < totalBans;
   const pickPhaseOpen = draft.format === "draft" && townLockedAll && banPicksMade >= totalBans;
   const currentBannerPlayerId =
     banPhaseActive && seatCount > 0 ? (seatOrder[banPicksMade % seatCount] ?? null) : null;
+  // Round one targets the next opponent and round two the following opponent,
+  // so a player cannot spend both bans against the same town.
+  const currentBanTargetPlayerId =
+    banPhaseActive && seatCount >= 3
+      ? (seatOrder[(banPicksMade + 1 + Math.floor(banPicksMade / seatCount)) % seatCount] ?? null)
+      : null;
   return {
     format: draft.format,
     seatCount,
@@ -5948,7 +5973,8 @@ export function getDraftPhase(lobby: GameSetupState): DraftPhaseInfo {
     banPicksMade,
     banPhaseActive,
     pickPhaseOpen,
-    currentBannerPlayerId
+    currentBannerPlayerId,
+    currentBanTargetPlayerId
   };
 }
 
@@ -5960,9 +5986,14 @@ export function getDraftPhase(lobby: GameSetupState): DraftPhaseInfo {
 export function bannableHeroesForSeat(lobby: GameSetupState, playerId: PlayerId): string[] {
   const draft = lobbyDraft(lobby);
   const banned = new Set(draft.bannedHeroDefIds);
+  const requiredTarget = getDraftPhase(lobby).currentBanTargetPlayerId;
   const heroes: string[] = [];
   for (const seat of lobby.seats) {
-    if (seat.playerId === playerId || !seat.factionId) {
+    if (
+      seat.playerId === playerId ||
+      !seat.factionId ||
+      (requiredTarget !== null && seat.playerId !== requiredTarget)
+    ) {
       continue;
     }
     const faction = coreFactionDefinitions[seat.factionId];

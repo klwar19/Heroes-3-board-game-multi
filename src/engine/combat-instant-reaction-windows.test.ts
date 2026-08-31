@@ -149,6 +149,41 @@ function declaredPastPrimary(state: GameState): GameState {
 // ===========================================================================
 
 describe("the Ballista discard is playable before the counter-attack", () => {
+  it.each([
+    "specialty.adelaide.1",
+    "specialty.adelaide.4",
+    "specialty.adelaide.6",
+    "specialty.glacius.1",
+    "specialty.glacius.4",
+    "specialty.glacius.6",
+    "specialty.deemer.1",
+    "specialty.deemer.6",
+    "specialty.kudryavka_noumi.1",
+    "specialty.kudryavka_noumi.6",
+    "specialty.tarnum_dungeon.4"
+  ] as CardId[])("offers %s in the window before an enemy Retaliation Attack", (cardId) => {
+    const state = aboutToAttack([
+      cardId,
+      "stat.attack",
+      "stat.defense",
+      "stat.power",
+      "stat.knowledge"
+    ]);
+    // Frost Ring IV needs a Spell/Specialty in discard to recall. The extra
+    // payment cards make every discard-priced I/VI face genuinely payable.
+    state.players.p1.discard = ["spell.magic_arrow"];
+    const declared = declaredPastPrimary(state);
+    expect(retaliationWindow(declared), `${cardId}: retaliation window opens`).toBeTruthy();
+    expect(
+      getLegalActions(declared, "p1").some(
+        (legal) =>
+          (legal.action.type === "PLAY_CARD" || legal.action.type === "PLAY_REACTION") &&
+          legal.action.cardId === cardId
+      ),
+      `${cardId}: offered before retaliation damage`
+    ).toBe(true);
+  });
+
   it("opens the retaliation window and offers it; with the join removed the whole exchange resolves at once (CONTROL)", () => {
     // Fails if the combatAnytimeInstantWindowJoins block is removed from
     // getLegalReactionsForTrigger, or if its offers are flagged windowJoinOnly

@@ -4,6 +4,7 @@
 
 import Link from "next/link";
 import { assetUrl } from "@/lib/asset-url";
+import { playLibrarySound } from "@/lib/sound";
 import {
   useCallback,
   useEffect,
@@ -8105,15 +8106,23 @@ export function PromptTray({
     choice.creatureBank.candidates.length >= 1
       ? choice.creatureBank.candidates
       : null;
-  // Diplomacy exposes only cards the player can currently afford. Show those
-  // actual neutral card faces beside the recruit buttons instead of a blind
-  // text-only list.
+  // Diplomacy's buttons expose the affordable subset, but every drawn card is
+  // public to its player. Keep both lists: recruitable preserves option-index
+  // alignment, while draws lets the tray visibly reveal an unaffordable Gold
+  // or Azure result instead of hiding it.
   const diplomacyRecruitCards =
     choice?.type === "OPTION_CHOICE" &&
     choice.context === "diplomacy-recruit" &&
     choice.playerId === viewerPlayerId &&
     choice.diplomacyRecruit
       ? choice.diplomacyRecruit.recruitable
+      : null;
+  const diplomacyDrawnCards =
+    choice?.type === "OPTION_CHOICE" &&
+    choice.context === "diplomacy-recruit" &&
+    choice.playerId === viewerPlayerId &&
+    choice.diplomacyRecruit
+      ? choice.diplomacyRecruit.draws
       : null;
   // The post-victory / drop commander-artifact purchase offer: its cardIds are
   // index-aligned with the options (the trailing Decline has none), and each is
@@ -8959,6 +8968,42 @@ export function PromptTray({
       aria-label={title}
     >
       <strong>{title}</strong>
+      {diplomacyDrawnCards ? (
+        <>
+          <small className="diplomacyDrawHint">
+            All Neutral cards drawn from your Dwellings are shown. Dimmed cards
+            were drawn but cannot currently be afforded.
+          </small>
+          <div className="diplomacyDrawnCards" aria-label="Diplomacy cards drawn">
+            {diplomacyDrawnCards.map((draw) => {
+              const art = rewardArtForId(draw.unitDefId);
+              const affordable = diplomacyRecruitCards?.some(
+                (candidate) => candidate.unitDefId === draw.unitDefId,
+              );
+              return (
+                <div
+                  className={`diplomacyDrawnCard${affordable ? "" : " unaffordable"}`}
+                  key={`${draw.tier}:${draw.unitDefId}`}
+                  title={`${art.name} — ${draw.tier}${affordable ? "" : " (cannot afford)"}`}
+                >
+                  {art.image ? (
+                    <img
+                      alt={art.name}
+                      draggable={false}
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                      src={assetUrl(rewardArtImage(balanceArt, art))}
+                    />
+                  ) : (
+                    <span className="marketCardFallback">{art.name}</span>
+                  )}
+                  <small>{draw.tier}{affordable ? "" : " · cannot afford"}</small>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      ) : null}
       {balanceSpellCardId && zoom ? (
         <ZoomButton
           label={`Zoom ${cardLibrary[balanceSpellCardId]?.name ?? "Spell"}`}
@@ -10774,7 +10819,7 @@ function StartingUnitsPicker({
       {UNIT_LEVELS.map((level) => {
         const side = sideOfLevel.get(level) ?? null;
         const tier = tierOfLevel(level);
-        const unitName = faction
+        const unitName = faction && viewerFactionId !== "blue_archive"
           ? coreUnitDefinitions[faction.units[level - 1]]?.name
           : null;
         return (
@@ -10785,7 +10830,9 @@ function StartingUnitsPicker({
             >
               <span className={`tierDot ${tier}`} />
               Level {level}
-              {unitName ? <small> {unitName}</small> : null}
+              {viewerFactionId === "blue_archive" ? (
+                <small> Random {tier} unit</small>
+              ) : unitName ? <small> {unitName}</small> : null}
             </span>
             <span className="optionButtons">
               <button
@@ -15804,6 +15851,9 @@ function DraftBanPhase({
   const playerName = (playerId: PlayerId) =>
     state.players[playerId]?.name ?? playerId;
   const myTurn = phase.currentBannerPlayerId === viewerPlayerId;
+  const targetName = phase.currentBanTargetPlayerId
+    ? playerName(phase.currentBanTargetPlayerId)
+    : null;
   const byFaction = new Map<FactionId, string[]>();
   if (myTurn) {
     for (const heroDefId of bannableHeroesForSeat(lobby, viewerPlayerId)) {
@@ -15825,14 +15875,13 @@ function DraftBanPhase({
       <div className="draftPhaseHead">
         <strong>Step 2 — ban phase</strong>
         <small>
-          {phase.banPicksMade}/{phase.totalBans} bans · {phase.banBudgetPerSeat}{" "}
-          per seat
+          {phase.banPicksMade}/{phase.totalBans} bans · {phase.banBudgetPerSeat} per seat
         </small>
       </div>
       {myTurn ? (
         <>
           <p className="draftTurnNote">
-            Your turn — ban one hero from another player’s town.
+            Your turn — ban one hero from {targetName ? `${targetName}’s town` : "another player’s town"}.
           </p>
           <div className="draftBans">
             {[...byFaction.entries()].map(([factionId, heroes]) => (
@@ -15891,6 +15940,50 @@ function DraftBanPhase({
         </p>
       ) : null}
     </div>
+  );
+}
+
+type DraftAnnouncement = {
+  key: string;
+  eyebrow: string;
+  title: string;
+  detail: string;
+  sound: string;
+  tone: "draft" | "ban" | "pick";
+};
+
+/** A short, audible transition card so no player can miss a draft phase change. */
+function DraftPhaseAnnouncement({
+  announcement,
+}: {
+  announcement: DraftAnnouncement;
+}) {
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    setVisible(true);
+    playLibrarySound(announcement.sound, 0.58);
+    const timer = window.setTimeout(() => setVisible(false), 2800);
+    return () => window.clearTimeout(timer);
+  }, [announcement]);
+
+  if (!visible) {
+    return null;
+  }
+
+  return createPortal(
+    <div className={`draftPhaseAnnouncement draftPhaseAnnouncement--${announcement.tone}`} role="status" aria-live="assertive">
+      <div className="draftPhaseAnnouncementCard">
+        <div className="draftPhaseAnnouncementSeal" aria-hidden="true">
+          {announcement.tone === "ban" ? <Ban size={34} /> : announcement.tone === "pick" ? <Crown size={34} /> : <Swords size={34} />}
+        </div>
+        <small>{announcement.eyebrow}</small>
+        <strong>{announcement.title}</strong>
+        <p>{announcement.detail}</p>
+        <button onClick={() => setVisible(false)} type="button">Continue</button>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -16113,6 +16206,37 @@ function DraftFlowPanel({
     bannedHeroDefIds: [],
   };
   const phase = getDraftPhase(lobby);
+  const announcement = useMemo<DraftAnnouncement | null>(() => {
+    if (draft.format !== "draft") return null;
+    if (phase.pickPhaseOpen) {
+      return {
+        key: "pick",
+        eyebrow: "Draft mode · Final phase",
+        title: "PICK YOUR HERO",
+        detail: `All ${phase.totalBans} bans are locked. Choose one surviving hero from your town.`,
+        sound: "ui/your-turn",
+        tone: "pick",
+      };
+    }
+    if (phase.banPhaseActive) {
+      return {
+        key: "ban",
+        eyebrow: "Draft mode · Ban phase",
+        title: "HERO BANS BEGIN",
+        detail: `${phase.totalBans} heroes will be banned before anyone may pick. Watch the turn banner.`,
+        sound: "effects/danger",
+        tone: "ban",
+      };
+    }
+    return {
+      key: "draft",
+      eyebrow: "Setup format changed",
+      title: "DRAFT MODE",
+      detail: "Lock towns first. The ban phase begins as soon as every player is ready.",
+      sound: "effects/horn-altar",
+      tone: "draft",
+    };
+  }, [draft.format, phase.banPhaseActive, phase.pickPhaseOpen, phase.totalBans]);
   const takenByOthers = new Set(
     lobby.seats
       .filter((candidate) => candidate.playerId !== viewerPlayerId)
@@ -16198,6 +16322,7 @@ function DraftFlowPanel({
 
   return (
     <div className="draftPanel" aria-label="Draft and random">
+      {announcement ? <DraftPhaseAnnouncement announcement={announcement} key={announcement.key} /> : null}
       <SetupFormatSelector
         format={draft.format}
         onAction={onAction}

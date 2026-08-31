@@ -9,6 +9,7 @@ import { unitAbilities } from "@/data/units/abilities";
 import { unitRankAbilityIcon } from "@/data/units/experience-rank-abilities";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { townBoardSpecs, townIconUrl } from "@/data/towns/boards";
+import { createAdventureGameState, tierOfLevel } from "@/engine";
 import { blueArchiveCharacters } from "./blue-archive-content";
 import { animeTownFactionDefinitions, animeTownHeroDefinitions, blueArchiveUnitDefinitions } from "./towns";
 
@@ -73,10 +74,10 @@ describe("Blue Archive live faction integration", () => {
     expect(board.bars).toHaveLength(7);
     expect(board.bars.filter((bar) => bar.length === 2)).toHaveLength(1);
     expect(allTileDefinitions["BA-S1"]?.assets).toMatchObject({
-      tileImage: "/assets/anime/tiles/ba-s1.webp",
-      attachFieldSymbols: true
+      tileImage: "/assets/anime/tiles/ba-s1-v2.webp"
     });
-    expect(fs.existsSync(path.join(process.cwd(), "public", "assets/anime/tiles/ba-s1.webp"))).toBe(true);
+    expect(allTileDefinitions["BA-S1"]?.assets?.attachFieldSymbols).not.toBe(true);
+    expect(fs.existsSync(path.join(process.cwd(), "public", "assets/anime/tiles/ba-s1-v2.webp"))).toBe(true);
     expect(fs.existsSync(path.join(process.cwd(), "public", townIconUrl("blue_archive").slice(1)))).toBe(true);
     const council = coreBuildingDefinitions["blue_archive.city_hall"];
     expect(council.effect?.type).toBe("RESOURCE_ROUND_CHOICE");
@@ -86,6 +87,31 @@ describe("Blue Archive live faction integration", () => {
         expect.objectContaining({ drawCards: 3 })
       ]));
     }
+  });
+
+  it("draws Blue Archive level slots randomly inside the unchanged bronze/silver/gold grades", () => {
+    const make = (seed: string) => createAdventureGameState({
+      seed,
+      rollFirstPlayer: false,
+      startingUnits: [1, 2, 3, 4, 5, 6, 7].map((level) => ({
+        level: level as 1 | 2 | 3 | 4 | 5 | 6 | 7,
+        side: "few" as const
+      })),
+      players: [
+        { id: "p1", name: "Sensei", factionId: "blue_archive", heroDefId: "mika_blue_archive" },
+        { id: "p2", name: "Catherine", factionId: "castle", heroDefId: "catherine" }
+      ]
+    }).players.p1.startingArmy;
+
+    const first = make("blue-archive-random-start-a");
+    const replay = make("blue-archive-random-start-a");
+    const second = make("blue-archive-random-start-b");
+    expect(first).toEqual(replay);
+    expect(new Set(first.map((unit) => unit.unitDefId)).size).toBe(7);
+    first.forEach((unit, index) => {
+      expect(blueArchiveUnitDefinitions[unit.unitDefId]?.tier).toBe(tierOfLevel((index + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7));
+    });
+    expect(second.map((unit) => unit.unitDefId)).not.toEqual(first.map((unit) => unit.unitDefId));
   });
 
   it("ships Ibuki plus five distinct non-unit specialty sets", () => {

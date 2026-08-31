@@ -112,6 +112,8 @@ export async function POST(request: Request) {
     }
     replayStore = await import("@/server/ranked-replay-store");
     rankedReplay = body.replay as RankedReplay;
+    // Validate before Elo can move. The actual insert must happen after the
+    // parent match row because production enforces the replay -> match FK.
     if (!replayStore.validRankedReplay(matchId, rankedReplay)) {
       return NextResponse.json(
         { error: "REPLAY_NOT_STORED", reason: "invalid" },

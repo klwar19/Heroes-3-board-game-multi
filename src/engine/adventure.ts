@@ -2722,15 +2722,10 @@ function heroMoveResolvesAsQuickCombat(state: GameState, hero: HeroState, field:
     return false;
   }
 
-  // Ⅵ/Ⅶ centre-band guards are never Quick Combat (user rule) — always the full
-  // fight the warning describes.
-  if (!quickCombatAllowedAtDifficulty(difficulty)) {
-    return false;
-  }
-
   const level = neutralBattleLevel(state, hero);
   if (polishQuickCombatEnabled(state)) {
     return (
+      quickCombatAllowedAtDifficulty(difficulty) &&
       level !== difficulty &&
       polishQuickCombatArmyStrength(state, hero.controllerId) >=
         polishQuickCombatFieldStrength(state, difficulty)
@@ -3754,7 +3749,8 @@ export function polishQuickCombatFieldInfo(
   if (difficulty <= 0 || !isFieldGuarded(field)) {
     return null;
   }
-  // No Quick-Combat readout on a Ⅵ/Ⅶ field — it is always a full fight (user rule).
+  // Under the Polish strength rule, Ⅵ/Ⅶ stays a full fight. The classic
+  // level-based rule is handled elsewhere and is deliberately not capped.
   if (!quickCombatAllowedAtDifficulty(difficulty)) {
     return null;
   }

@@ -336,18 +336,16 @@ describe("polish-quick-combat — mandatory Quick Combat when covered with no XP
     expect(secondary.experience).toBe(0);
   });
 
-  it("no Quick Combat on a Ⅵ field with the Polish rule OFF — a level-7 hero must FIGHT it", () => {
-    // The reported bug: classic `level > difficulty` auto-won a Ⅵ (difficulty 6)
-    // field for a level-7 hero. Ⅵ/Ⅶ are now always fought out.
+  it("classic Quick Combat lets a level-7 hero skip a Ⅵ field when the Polish rule is OFF", () => {
     const state = makeGame("pqc-classic-vi", { houseRules: { "polish-quick-combat": false } });
     state.heroes.hero_p1.level = 7;
     setArmy(state, [armyCard("castle.griffins", "few")]);
     encounter(state, guardField(state, 6));
-    expect(quickCombatWon(state), "a Ⅵ field is never skipped by level").toBe(false);
-    expect(state.combat?.context.kind).toBe("neutral");
+    expect(quickCombatWon(state), "level 7 beats field Ⅵ").toBe(true);
+    expect(state.combat).toBeNull();
 
     // CONTROL: the SAME level-7 hero DOES auto-win a Ⅴ field (difficulty ≤ 5),
-    // proving it is the Ⅵ/Ⅶ cap that forces the fight.
+    // proving the ordinary lower-field behavior remains unchanged.
     const control = makeGame("pqc-classic-v", { houseRules: { "polish-quick-combat": false } });
     control.heroes.hero_p1.level = 7;
     setArmy(control, [armyCard("castle.griffins", "few")]);

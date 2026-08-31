@@ -2219,26 +2219,30 @@ USER RULING: "Diplomacy expert - bug, not working now. It should for fields VI a
 also (for both polish rule and normal games)." Both printed faces say EQUAL (base scan
 "Neutral Units on the same level as your Hero"; the Polish reprint "a field whose Field
 Difficulty is equal to your Hero's level") and the engine enforced exactly that — but
-Quick Combat is barred on Ⅵ/Ⅶ (`QUICK_COMBAT_MAX_FIELD_DIFFICULTY`), so a level-7 hero
-(the normal state by the time the centre band is reachable) could skip NOTHING there
-while a WEAKER level-6 hero could skip the Ⅵ guard. ONE shared seam
+The Polish strength rule bars Quick Combat on Ⅵ/Ⅶ (`QUICK_COMBAT_MAX_FIELD_DIFFICULTY`).
+In the classic rule (Polish option OFF), the level comparison spans the full ladder, so
+a level-7 hero Quick-Combats a Ⅵ guard without spending Diplomacy. ONE shared seam
 `diplomacySkipLevelQualifies(level, difficulty)` = `level >= difficulty`
 (adventure-reducer.ts) now backs BOTH offer sites — the ordinary guarded arrival in
 `startNeutralEncounter` and the "Fight" branch of the Polish Quick-Combat pop-up — so
 they can never disagree. Pinned in `tactics-diplomacy.test.ts` ("Diplomacy Expert skips
-Ⅵ and Ⅶ guard fields": the level-7-vs-Ⅵ and Ⅶ skips by OUTCOME — no combat, mine
-flagged, no XP, crown spent — with and without `polish-quick-combat` +
-`polish-card-balance`, an Empowered no-crown case, and CONTROLs for an under-levelled
-hero, a designer EXACT army, a crownless holder and the fight-instead choice).
-LIMITS / deliberate consequences: fields Ⅰ–Ⅴ in a NORMAL game are unchanged (the classic
-`level > difficulty` Quick Combat resolves and returns before this branch); with
+Ⅵ and Ⅶ guard fields": classic level-7-vs-Ⅵ resolves as Quick Combat with no card/crown;
+equal-level Ⅵ/Ⅶ and Polish-forced fights reach the Diplomacy choice, alongside an
+Empowered no-crown case and CONTROLs for an under-levelled hero, a designer EXACT army,
+a crownless equal-level holder and the fight-instead choice).
+LIMITS / deliberate consequences: in a NORMAL game the classic `level > difficulty`
+Quick Combat resolves and returns before this branch across Ⅰ–Ⅶ; with
 `polish-quick-combat` ON an UNCOVERED army no longer forces an over-levelled Diplomacy
 holder to fight on Ⅰ–Ⅴ either (the sheet's mandatory fight is a QUICK-COMBAT rule, while
 Diplomacy costs a card plus a crown); an UNDER-levelled hero is still refused; and every
 exclusion above the branch still returns first — Creature Banks, bank-style outpost /
 teleport guards, break fields and designer EXACT armies are never Diplomacy-skipped. The
-pre-move "you can still buy troops" warning (`heroMoveResolvesAsQuickCombat`) was NOT
-widened, so a Ⅵ/Ⅶ arrival still warns about a battle before the skip pop-up opens.
+pre-move "you can still buy troops" warning (`heroMoveResolvesAsQuickCombat`) uses the
+same split: classic level-7-vs-Ⅵ predicts Quick Combat, while Polish Ⅵ/Ⅶ predicts a fight.
+
+UPDATE 2026-08-31: the global Ⅵ/Ⅶ cap introduced by commit `648da4c` was incorrect.
+`quickCombatAllowedAtDifficulty` now gates only the Polish strength classifier/readout;
+classic Quick Combat is simply `hero level > field difficulty` across Ⅰ–Ⅶ.
 
 ## Ⅶ Utopia / Grail reward STACKING — warned, never blocked (2026-08-03)
 

@@ -24,8 +24,7 @@ import {
   polishQuickCombatArmyStrength,
   polishQuickCombatEnabled,
   polishQuickCombatFieldStrength,
-  polishQuickCombatOutcome,
-  quickCombatAllowedAtDifficulty
+  polishQuickCombatOutcome
 } from "./polish-quick-combat";
 import { unitAbilities } from "@/data/units/abilities";
 import { COMMANDER_ARTIFACT_SPECS, aggregateCommanderArtifactBonuses } from "@/data/wog/commander-artifacts";
@@ -5724,10 +5723,11 @@ export function startNeutralEncounter(
     // outcome "fight": the shortcut does not apply (the army is too weak) —
     // fall through to the Diplomacy check / normal guard combat below. The
     // classic level > difficulty auto-win deliberately does NOT apply here.
-  } else if (quickCombatAllowedAtDifficulty(difficulty) && level > difficulty) {
+  } else if (level > difficulty) {
     // Quick Combat: a hero whose level beats the field difficulty wins outright.
-    // NEVER on a Ⅵ/Ⅶ field (difficulty ≥ 6) — a level-7 hero cannot skip a Ⅵ
-    // guard; the centre-band fight is always fought out (user rule).
+    // The classic rule is level-based across the full Ⅰ–Ⅶ ladder: in
+    // particular, a level-7 hero skips a level-6 guard. The Ⅰ–Ⅴ cap belongs
+    // only to the optional Polish strength-based rule above.
     resolveQuickCombatWin(state, hero, field, difficulty);
     return;
   }
@@ -5736,7 +5736,7 @@ export function startNeutralEncounter(
   // Expert-effect crown. Empowered Diplomacy prints the same Instant as a basic
   // alternative and therefore needs no crown. The level bar is
   // `diplomacySkipLevelQualifies` (hero level AT LEAST the Field Difficulty), so
-  // the Ⅵ/Ⅶ centre band — where Quick Combat is barred — is reachable too.
+  // the Ⅵ/Ⅶ centre band remains reachable when the Polish rule forces a fight.
   if (diplomacySkipLevelQualifies(level, difficulty) && canUseDiplomacySkip(state.players[playerId])) {
     openDiplomacySkipChoice(state, hero, field, difficulty);
     return;
