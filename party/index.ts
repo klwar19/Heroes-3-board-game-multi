@@ -624,13 +624,22 @@ export default class GameRoomServer implements Party.Server {
   private async persistRankedReplayAppend(previousCount: number, replay: RankedReplay): Promise<void> {
     const stored = await this.room.storage.get<StoredRankedReplayMeta>(RANKED_REPLAY_META_KEY);
     const initialChunkCount = stored?.initialChunkCount ?? 0;
-    const writes: Promise<unknown>[] = [
-      this.room.storage.put(RANKED_REPLAY_META_KEY, this.replayMeta(replay, initialChunkCount)),
-    ];
-    for (let index = previousCount; index < replay.entries.length; index += 1) {
-      writes.push(this.room.storage.put(`${RANKED_REPLAY_ENTRY_PREFIX}${index}`, replay.entries[index]!));
+    const write = async (storage: Pick<Party.Storage, "put">): Promise<void> => {
+      // Entries must become durable no later than the meta count that exposes
+      // them. A cold wake that sees entryCount=N with entry N-1 missing treats
+      // the buffer as corrupt and used to restart capture at the current round.
+      for (let index = previousCount; index < replay.entries.length; index += 1) {
+        await storage.put(`${RANKED_REPLAY_ENTRY_PREFIX}${index}`, replay.entries[index]!);
+      }
+      await storage.put(RANKED_REPLAY_META_KEY, this.replayMeta(replay, initialChunkCount));
+    };
+    if (typeof this.room.storage.transaction === "function") {
+      await this.room.storage.transaction(async (transaction) => write(transaction));
+    } else {
+      // Legacy/test shims: entry-first ordering leaves an ignored extra entry
+      // on interruption, never a meta record that points past durable data.
+      await write(this.room.storage);
     }
-    await Promise.all(writes);
   }
 
   private async loadRankedReplay(): Promise<RankedReplay | null> {
