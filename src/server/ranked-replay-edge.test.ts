@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import GameRoomServer, { type RoomSnapshot } from "../../party/index";
-import { createAdventureGameState, getLegalActions, type GameAction, type PlayerId } from "@/engine";
+import { applyAction, createAdventureGameState, getLegalActions, type GameAction, type PlayerId } from "@/engine";
 
 type EdgeRoom = ConstructorParameters<typeof GameRoomServer>[0];
 type EdgeConnection = Parameters<GameRoomServer["onConnect"]>[0];
@@ -159,5 +159,24 @@ describe("PartyKit Ranked Clash replay persistence", () => {
     );
     expect(storage.get("ranked-replay-meta")).toMatchObject({ entryCount: 0 });
     expect(storage.has("ranked-replay-entry-0")).toBe(false);
+
+    // A WebSocket submit and its HTTP recovery twin can deliver the exact same
+    // accepted transition. It must remain one replay entry with a continuous
+    // hash chain, not two copies of the same before/after pair.
+    const duplicateAction = getLegalActions(roundOne, roundOne.activePlayerId as PlayerId)[0]!.action as GameAction;
+    const duplicateResult = applyAction(roundOne, duplicateAction, { entropy: "duplicate", now: 200 });
+    const capture = (server as unknown as {
+      captureRankedReplay: (
+        before: RoomSnapshot["state"],
+        action: GameAction,
+        result: ReturnType<typeof applyAction>,
+        options: { actorClientId: string; entropy: string; now: number },
+      ) => Promise<void>;
+    }).captureRankedReplay.bind(server);
+    await capture(roundOne, duplicateAction, duplicateResult, { actorClientId: "c1", entropy: "duplicate", now: 200 });
+    await capture(roundOne, duplicateAction, duplicateResult, { actorClientId: "c1", entropy: "duplicate", now: 200 });
+    expect(storage.get("ranked-replay-meta")).toMatchObject({ entryCount: 1 });
+    expect(storage.has("ranked-replay-entry-0")).toBe(true);
+    expect(storage.has("ranked-replay-entry-1")).toBe(false);
   });
 });

@@ -727,6 +727,22 @@ export default class GameRoomServer implements Party.Server {
     }
     const current = this.rankedReplay;
     const next = appendRankedReplayEntry(current, before, action, result, options);
+    const previousEntry = current.entries.at(-1);
+    const candidateEntry = next.entries.at(-1);
+    // A terminal UI can race its WebSocket submit with HTTP recovery and hand
+    // us the exact same accepted transition twice. The room state/result is
+    // already idempotent, so keep the replay idempotent too; otherwise the
+    // duplicate's old before-hash creates a false chain break.
+    if (
+      previousEntry &&
+      candidateEntry &&
+      previousEntry.beforeStateHash === candidateEntry.beforeStateHash &&
+      previousEntry.afterStateHash === candidateEntry.afterStateHash &&
+      previousEntry.actorPlayerId === candidateEntry.actorPlayerId &&
+      JSON.stringify(previousEntry.action) === JSON.stringify(candidateEntry.action)
+    ) {
+      return;
+    }
     await this.persistRankedReplayAppend(current.entries.length, next);
     this.rankedReplay = next;
   }
