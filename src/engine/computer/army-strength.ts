@@ -122,13 +122,14 @@ export function bankUnitStrength(unitDefId: string, bankSideKey?: string): numbe
 export function creatureBankStrength(
   bankId: string,
   difficultyOrSize: keyof typeof STACK_TOKENS_BY_DIFFICULTY | BankSize = "normal",
+  polishCards = typeof difficultyOrSize === "number",
 ): number {
-  const polish = typeof difficultyOrSize === "number";
-  const bank = (polish ? POLISH_CREATURE_BANKS : CREATURE_BANKS)[bankId as CreatureBankId];
+  const sized = typeof difficultyOrSize === "number";
+  const bank = (polishCards ? POLISH_CREATURE_BANKS : CREATURE_BANKS)[bankId as CreatureBankId];
   if (!bank) return Number.POSITIVE_INFINITY;
-  const entries = polish && bank.buildUnits
+  const entries = polishCards && sized && bank.buildUnits
     ? bank.buildUnits(difficultyOrSize as BankSize)
-    : bank.units.map((unitDefId, index) => ({ unitDefId, bankSideKey: polish ? bank.unitSideKeys?.[index] : undefined }));
+    : bank.units.map((unitDefId, index) => ({ unitDefId, bankSideKey: polishCards ? bank.unitSideKeys?.[index] : undefined }));
   const base = entries.reduce(
     (sum, entry) => sum + bankUnitStrength(entry.unitDefId, entry.bankSideKey),
     0,
@@ -156,7 +157,11 @@ export function canBeatCreatureBank(
     field.bankSize ??
     ((state.adventure?.difficulty as keyof typeof STACK_TOKENS_BY_DIFFICULTY) ??
       "normal");
-  const bankStr = creatureBankStrength(bankId, difficultyOrSize);
+  const bankStr = creatureBankStrength(
+    bankId,
+    difficultyOrSize,
+    Boolean(state.adventure?.houseRules?.["polish-creature-banks"]),
+  );
   if (!Number.isFinite(bankStr) || bankStr <= 0) return false;
   return playerArmyStrength(state, playerId) >= bankStr * BANK_ENGAGE_RATIO;
 }

@@ -2944,7 +2944,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // Black Tower names a fixed Minor/Major pile. The rule cannot be represented
   // honestly by the legacy merged Artifact deck, so enabling Polish Banks also
   // enables the existing split-deck infrastructure for this game only.
-  if (houseRules["polish-bank-sizes"]) {
+  if (houseRules["polish-creature-banks"]) {
     houseRules["split-decks"] = true;
   }
   const polishSpellBookOn = houseRules["polish-spell-book"];
@@ -3276,14 +3276,14 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(creatureBanksOn
       ? {
           creatureBankTokensFar: shuffleCards(
-            (houseRules["polish-bank-sizes"] ? POLISH_CREATURE_BANK_IDS : CREATURE_BANK_IDS).filter(
-              (id) => (houseRules["polish-bank-sizes"] ? POLISH_CREATURE_BANKS : CREATURE_BANKS)[id].tier === "far"
+            (houseRules["polish-creature-banks"] ? POLISH_CREATURE_BANK_IDS : CREATURE_BANK_IDS).filter(
+              (id) => (houseRules["polish-creature-banks"] ? POLISH_CREATURE_BANKS : CREATURE_BANKS)[id].tier === "far"
             ),
             `${seed}#creature-banks#far`
           ),
           creatureBankTokensNear: shuffleCards(
-            (houseRules["polish-bank-sizes"] ? POLISH_CREATURE_BANK_IDS : CREATURE_BANK_IDS).filter(
-              (id) => (houseRules["polish-bank-sizes"] ? POLISH_CREATURE_BANKS : CREATURE_BANKS)[id].tier === "near"
+            (houseRules["polish-creature-banks"] ? POLISH_CREATURE_BANK_IDS : CREATURE_BANK_IDS).filter(
+              (id) => (houseRules["polish-creature-banks"] ? POLISH_CREATURE_BANKS : CREATURE_BANKS)[id].tier === "near"
             ),
             `${seed}#creature-banks#near`
           )

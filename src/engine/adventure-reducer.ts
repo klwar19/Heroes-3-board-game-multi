@@ -2889,7 +2889,7 @@ function openPolishBankChoiceBeforeRotation(state: GameState, tile: MapTileState
   const hostLabel = hostLocation === "empty_field" ? "Empty Field" : "Blocked Field";
   const leaveLabel = hostLocation === "empty_field" ? "Leave it empty" : "Leave it blocked";
   const bankOptions = candidates.map((candidate, index) => ({
-    label: `${String.fromCharCode(65 + index)} · ${getCreatureBankDefinition(candidate.bankId as CreatureBankId, true).name} · size ${BANK_SIZE_ROMAN[candidate.size]}`
+    label: `${String.fromCharCode(65 + index)} · ${getCreatureBankDefinition(candidate.bankId as CreatureBankId, houseRuleEnabled(state, "polish-creature-banks")).name} · size ${BANK_SIZE_ROMAN[candidate.size]}`
   }));
   const prompt =
     candidates.length > 1
@@ -3425,7 +3425,7 @@ function offerCreatureBankPlacement(state: GameState, tile: MapTileState, player
     tile.reservedBankId && isCreatureBankId(tile.reservedBankId) ? tile.reservedBankId : pile[pile.length - 1];
   tile.reservedBankId = isCreatureBankId(reservedBankId) ? reservedBankId : undefined;
   const bankName = isCreatureBankId(reservedBankId)
-    ? getCreatureBankDefinition(reservedBankId, houseRuleEnabled(state, "polish-bank-sizes")).name
+    ? getCreatureBankDefinition(reservedBankId, houseRuleEnabled(state, "polish-creature-banks")).name
     : "Creature Bank";
   const tierLabel =
     tile.group === "subterranean" ? "cavern" : tile.group === "sea" ? "Sea IV–V tile" : tier === "far" ? "Far tile" : "Near tile";
@@ -3436,7 +3436,7 @@ function offerCreatureBankPlacement(state: GameState, tile: MapTileState, player
     sizedCandidates.length > 0
       ? [
           ...sizedCandidates.map((candidate, index) => ({
-            label: `${String.fromCharCode(65 + index)} · Place ${getCreatureBankDefinition(candidate.bankId as CreatureBankId, true).name} · size ${BANK_SIZE_ROMAN[candidate.size]}`
+            label: `${String.fromCharCode(65 + index)} · Place ${getCreatureBankDefinition(candidate.bankId as CreatureBankId, houseRuleEnabled(state, "polish-creature-banks")).name} · size ${BANK_SIZE_ROMAN[candidate.size]}`
           })),
           { label: leaveLabel }
         ]

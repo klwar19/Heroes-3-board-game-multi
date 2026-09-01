@@ -14,12 +14,29 @@ import * as sound from "@/lib/sound";
 import { cardLibrary } from "@/data/cards/library";
 import { spellPowerLadder, spellTimingKind } from "@/engine";
 import type { LegalAction } from "@/engine/state";
+import { CardZoomProvider } from "@/components/table/zoom";
+import { PolishBalanceArtProvider } from "@/components/table/polish-balance-art";
 
 afterEach(cleanup);
 
 const EMPTY = new Map<string, LegalAction[]>();
 
 describe("SpellBookModal — the openable Spell Book", () => {
+  it("uses the active Polish definition for Frenzy's ladder and offers Read Large", () => {
+    render(
+      <PolishBalanceArtProvider enabled>
+        <CardZoomProvider>
+          <SpellBookModal cardIds={["spell.frenzy"]} castsByCard={EMPTY} onCast={() => {}} onClose={() => {}} />
+        </CardZoomProvider>
+      </PolishBalanceArtProvider>
+    );
+    expect(
+      [...document.querySelectorAll(".spellBookLadderPower")].map((node) => node.textContent)
+    ).toEqual(["Power 0", "Power 1", "Power 3"]);
+    fireEvent.click(screen.getByRole("button", { name: "Read Frenzy large" }));
+    expect(screen.getByRole("dialog", { name: "Frenzy enlarged" })).toBeTruthy();
+  });
+
   it("lists stored spells and shows the first spell's illustrated plate", () => {
     render(
       <SpellBookModal cardIds={["spell.haste", "spell.slow"]} castsByCard={EMPTY} onCast={() => {}} onClose={() => {}} />

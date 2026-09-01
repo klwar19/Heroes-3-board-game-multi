@@ -24,13 +24,14 @@ import {
   type LegalAction,
   type SpellTimingKind
 } from "@/engine";
+import { balanceCardForDisplay } from "@/engine/community-balance-cards";
 import { actionKey, titleCase } from "@/components/table/utils";
 import {
   resolveCardFaceImage,
   useBalanceArtFlags,
   type BalanceArtFlags
 } from "@/components/table/polish-balance-art";
-import { cardZoomContent } from "@/components/table/zoom";
+import { cardZoomContent, useOptionalCardZoom, ZoomButton } from "@/components/table/zoom";
 
 /**
  * Render a Mage Guild / Spell Book shortcut label ("<n> gold: …search (n)")
@@ -161,6 +162,7 @@ export function SpellBookModal({
   castLabel?: (legal: LegalAction) => string;
 }) {
   const balanceArt = useBalanceArtFlags();
+  const cardZoom = useOptionalCardZoom();
   const [selected, setSelected] = useState(0);
   const [artFailed, setArtFailed] = useState<string | null>(null);
   // Bumped on every index change: keys the right page so the paper leaf
@@ -188,7 +190,12 @@ export function SpellBookModal({
   const allCardIds = [...new Set([...cardIds, ...usedCardIds])];
   const index = Math.min(selected, Math.max(0, allCardIds.length - 1));
   const activeId = allCardIds[index];
-  const card = activeId ? cardLibrary[activeId] : undefined;
+  // Use the same composed display definition as the card face/rules reader.
+  // Otherwise Polish cards show reprinted prose but a ladder derived from the
+  // original card (Frenzy used to read 0/1/3 beside a stale 0/2/4 ladder).
+  const card = activeId
+    ? balanceCardForDisplay(balanceArt.polish, balanceArt.community, activeId)
+    : undefined;
   const art = activeId ? spellBookArtFor(activeId, balanceArt) : undefined;
   const casts = activeId ? castsByCard.get(activeId) ?? [] : [];
   const purchaseShortcuts = shortcuts.filter(
@@ -334,6 +341,12 @@ export function SpellBookModal({
                     <span>{card.name}</span>
                   </div>
                 )}
+                {cardZoom ? (
+                  <ZoomButton
+                    label={`Read ${card.name} large`}
+                    onZoom={() => cardZoom.zoomCard(activeId)}
+                  />
+                ) : null}
                 <span aria-hidden="true" className="spellBookArtFrame" />
               </div>
               <h3 className="spellBookSpellTitle">{card.name}</h3>

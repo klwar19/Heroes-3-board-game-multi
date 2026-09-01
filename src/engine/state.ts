@@ -146,10 +146,13 @@ export type HouseRuleId =
   // and require generic Cast-a-Spell cards. Mutually exclusive with the
   // existing stash-style `adventure.spellBook` rule.
   | "polish-spell-book"
-  // Polish house rule: a bank-eligible tile reveals two face-up bank
-  // candidates with independently rolled sizes I-IV before rotation. Size gives
-  // all four bank units 0/1/2/3 layers; rewards: Ⅰ base only, Ⅱ full 4-stack
-  // extras, Ⅲ/Ⅳ = Ⅱ + 1/2 base GOLD layers (not valuables).
+  // Polish Creature Bank content pack: the 20-bank roster, guardian/reward
+  // cards and printed rewards. Independent from the I-IV size procedure.
+  | "polish-creature-banks"
+  // Polish procedure rule: a bank-eligible tile reveals up to two face-up bank
+  // candidates with independently rolled sizes I-IV before rotation. The size
+  // fixes its count of ordinary Creature Bank Stack Tokens and is passed to the
+  // active bank card set. Independent from `polish-creature-banks` content.
   | "polish-bank-sizes"
   // Polish house rule: Pack Groups and recruited Neutrals may buy Stack layers
   // at a Citadel (bank-guard Neutrals use the higher bank max). +1 Attack while
@@ -254,13 +257,10 @@ export type HouseRuleId =
   // the effect banks its reinforcement discount; the player may add Legion
   // pieces and redeem it later, until one of their heroes moves a step.
   | "immediate-reinforcement-prompts"
-  // BINH house rule (default OFF in BOTH modes — the OFFICIAL reading is the
-  // default): while ON, elemental damage ALSO skips the Attack die entirely and
-  // can never be RAISED by attack cards / Attack tokens (only lowered) — the old
-  // engine reading. OFF (official): elemental damage does exactly ONE thing —
-  // ignore the target's Defense (including any Defense cards played). The attack
-  // otherwise happens normally: the die IS rolled and +⚔ / −⚔ cards change the
-  // value like on any other attack. See `getAttackStackDetails` (reducer.ts).
+  // BINH house rule (default OFF): elemental attacks still roll the Attack die
+  // normally and ignore Defense, but positive Attack buffs from the instant
+  // window cannot raise them (debuffs still lower them; Attack tokens work).
+  // The historical id is retained so saved setup payloads remain compatible.
   | "elemental-damage-no-die"
   // BINH house rule (default OFF in BOTH modes — the OFFICIAL reading is the
   // default): while ON, DISCOVERING a face-down Tile (and OPENING a new Ⅱ–Ⅲ one)

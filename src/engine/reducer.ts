@@ -5407,10 +5407,9 @@ function getAttackStackDetails(
   // rolled and +⚔ / −⚔ cards (Bloodlust, Bless, Weakness…) change the value like
   // on any other attack.
   //
-  // With the house rule ON (the engine's earlier reading): the attack ALSO skips
-  // the Attack die and can never be RAISED by attack cards or Attack tokens —
-  // only LOWERED by debuffs. `elementalLocksAttack` is that half, so the Defense
-  // bypass below stays unconditional in both readings.
+  // With the BINH house rule ON, positive attack-window buffs cannot raise the
+  // hit (debuffs still lower it). The die and Attack tokens still work normally;
+  // Defense bypass remains unconditional in both readings.
   const dealsElemental = unitDealsElementalDamage(state, attacker, attackKind);
   const fuyukiFixedDamage = getFuyukiCasterFixedDamage(attacker);
   const elementalLocksAttack =
@@ -5424,9 +5423,6 @@ function getAttackStackDetails(
   const effectiveCardAttackBonus = elementalLocksAttack
     ? Math.min(0, cardAttackBonus)
     : cardAttackBonus;
-  const effectiveTokenAttack = elementalLocksAttack
-    ? Math.min(0, tokenAttack)
-    : tokenAttack;
 
   return {
     attacker,
@@ -5435,12 +5431,11 @@ function getAttackStackDetails(
     attackKind,
     rollMode,
     attackBonus:
-      // With `elemental-damage-no-die` ON, elemental units clamp card/token buffs
-      // to ≤0 (main); innate ability bonuses (Ghost Dragon die result, Hatred) are
-      // added unclamped. OFF (official): no clamp at all — +⚔ cards work normally.
+      // With the BINH elemental toggle ON, attack-window buffs clamp to ≤0.
+      // Attack tokens, the die and innate bonuses remain normal.
       effectiveCardAttackBonus +
       (stackItem.modifiers.cultivationAttackBonus ?? 0) +
-      effectiveTokenAttack +
+      tokenAttack +
       attackDieResultBonus +
       hatredAttackBonus +
       markAttackBonus +
@@ -5492,9 +5487,8 @@ function getAttackStackDetails(
       retaliationDefenseBonus +
       equipmentRowDefenseBonus(state, defender),
     dieMultiplier: stackItem.modifiers.attackDieMultiplier ?? 1,
-    // With `elemental-damage-no-die` ON, elemental damage never rolls the Attack
-    // die: the hit lands for the (un-buffable) Attack value. OFF (official): the
-    // die is rolled exactly like any other attack — only Defense is ignored.
+    // Elemental attacks roll the Attack die normally in both modes. The BINH
+    // toggle only controls whether positive attack-window buffs are clamped.
     // Mummies "[unit_attack] ignore the result on the Attack die" — their OWN
     // attack die is treated as 0, exactly like Bless. The [unit_attack] icon means
     // own declared attack only, so a Mummy's Retaliation Attack rolls a normal die
@@ -5513,7 +5507,6 @@ function getAttackStackDetails(
     ignoreAttackDie:
       Boolean(stackItem.modifiers.ignoreAttackDie) ||
       fuyukiFixedDamage !== undefined ||
-      elementalLocksAttack ||
       // Polish Balance Pack Bless: a lasting buff, so the die is skipped for
       // every attack it covers (own attacks AND retaliations — the reprint
       // carries no [unit_attack] icon).

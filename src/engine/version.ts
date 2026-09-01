@@ -1006,7 +1006,12 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // match report can select the sole MMR loser in 3+ player games. A v86 worker
 // would omit that order and score the wrong ladder result.
 // `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 87;
+// v88: Polish Creature Bank card content is now a serialized, independent
+// house-rule toggle from the I-IV reveal/size procedure, and the BINH elemental
+// rule keeps the normal Attack-die roll while suppressing positive instant
+// Attack buffs. A v87 worker would merge the bank switches and skip the die.
+// `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 88;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

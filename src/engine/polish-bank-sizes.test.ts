@@ -39,6 +39,39 @@ function apply(state: GameState, action: GameAction): GameState {
   return result.state;
 }
 
+describe("Polish Creature Bank controls are independent", () => {
+  it("card roster and I–IV procedure can be enabled separately", () => {
+    const sizeOnly = createAdventureGameState({
+      seed: "polish-bank-size-only",
+      ruleset: "legacy",
+      rollFirstPlayer: false,
+      creatureBanks: true,
+      houseRules: { "polish-bank-sizes": true },
+    });
+    const sizeOnlyPile = [
+      ...(sizeOnly.adventure!.creatureBankTokensFar ?? []),
+      ...(sizeOnly.adventure!.creatureBankTokensNear ?? []),
+    ].sort();
+    expect(sizeOnlyPile).toEqual([...CREATURE_BANK_IDS].sort());
+    expect(sizeOnly.adventure!.houseRules?.["split-decks"]).toBe(false);
+
+    const cardsOnly = createAdventureGameState({
+      seed: "polish-bank-cards-only",
+      ruleset: "legacy",
+      rollFirstPlayer: false,
+      creatureBanks: true,
+      houseRules: { "polish-creature-banks": true },
+    });
+    const cardsOnlyPile = [
+      ...(cardsOnly.adventure!.creatureBankTokensFar ?? []),
+      ...(cardsOnly.adventure!.creatureBankTokensNear ?? []),
+    ].sort();
+    expect(cardsOnlyPile).toEqual([...POLISH_CREATURE_BANK_IDS].sort());
+    expect(cardsOnly.adventure!.houseRules?.["polish-bank-sizes"]).toBe(false);
+    expect(cardsOnly.adventure!.houseRules?.["split-decks"]).toBe(true);
+  });
+});
+
 function placeFarTileAwaitingRotation({
   enabled = true,
   openings = 0,
@@ -55,7 +88,10 @@ function placeFarTileAwaitingRotation({
     difficulty: "normal",
     rollFirstPlayer: false,
     creatureBanks: true,
-    houseRules: { "polish-bank-sizes": enabled },
+    houseRules: {
+      "polish-creature-banks": enabled,
+      "polish-bank-sizes": enabled,
+    },
   });
   for (const player of Object.values(state.players)) {
     player.canMulligan = false;
@@ -512,7 +548,11 @@ describe("Polish bank size rewards (back to the normal X-scaled reward)", () => 
       difficulty: "normal",
       rollFirstPlayer: false,
       creatureBanks: true,
-      houseRules: { "polish-bank-sizes": size !== undefined, "polish-unit-stacks": unitStacks },
+      houseRules: {
+        "polish-creature-banks": size !== undefined,
+        "polish-bank-sizes": size !== undefined,
+        "polish-unit-stacks": unitStacks,
+      },
     });
     for (const player of Object.values(state.players)) {
       player.canMulligan = false;
@@ -538,7 +578,7 @@ describe("Polish bank size rewards (back to the normal X-scaled reward)", () => 
       seed: "bank-size-reward-routing",
       difficulty: "normal",
       rollFirstPlayer: false,
-      houseRules: { "polish-bank-sizes": true },
+      houseRules: { "polish-creature-banks": true, "polish-bank-sizes": true },
     });
     // The new Imp Cache card pays 2 + 2X gold.
     for (const size of [1, 2, 3, 4] as const) {

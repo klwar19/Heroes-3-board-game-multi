@@ -514,7 +514,7 @@ export const polishBalanceArtifactCards: CardLibrary = {
     {
       tags: tags(
         "artifact.hourglass_of_the_evil_hour",
-        'If the enemy has positive morale, they gain negative. — OR — For this combat round, each "+1" result on your enemy\'s Attack dice is rerolled once.',
+        'If the enemy has positive morale, they gain negative. — OR — For this combat round, reroll once each "+1" result on your enemy\'s Attack die.',
       ),
       effect: {
         type: "CHOOSE_ONE",
@@ -525,7 +525,7 @@ export const polishBalanceArtifactCards: CardLibrary = {
           },
           {
             label:
-              'This combat round: reroll each "+1" on the enemy\'s Attack dice',
+              'For this combat round, reroll once each "+1" result on your enemy\'s Attack die',
             combatOnly: true,
             effect: {
               type: "CREATE_ACTIVE_EFFECT",

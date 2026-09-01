@@ -951,6 +951,14 @@ export function ReactionTray({
     (legal) => legal.action.type === "USE_UNIT_DIE_IGNORE"
   );
 
+  // Innate Magic Mirror uses the same standalone-reaction shape as Parry: the
+  // engine offers a USE_UNIT_* action rather than a card play. Keep a dedicated
+  // tile so recruited/player-controlled units with the trait are not left with
+  // a Pass-only instant window.
+  const unitMirrorReactions = legalActions.filter(
+    (legal) => legal.action.type === "USE_UNIT_MAGIC_MIRROR"
+  );
+
   // WOG Commander instant-reaction casts (USE_COMMANDER_CAST_REACTION) — the
   // defense-buff casts that fire when your unit is attacked: Rampart Hierophant's
   // Shield, Stronghold Ogre Leader's Stone Skin, Little Busters Kyousuke's Mission
@@ -1548,6 +1556,7 @@ export function ReactionTray({
         prophecyPreRollReactions.length === 0 &&
         moraleDrawOffers.length === 0 &&
         dieCancelReactions.length === 0 &&
+        unitMirrorReactions.length === 0 &&
         commanderCastReactions.length === 0 &&
         combatInstantJoins.length === 0 &&
         meteorAimOffers.length === 0 &&
@@ -1743,6 +1752,16 @@ export function ReactionTray({
             </div>
           );
         })}
+        {unitMirrorReactions.map((legal) => (
+          <div className="trayTile permanentTile" key={JSON.stringify(legal.action)}>
+            <div className="trayTileBody">
+              <strong>Magic Mirror</strong>
+              <button className="trayInstant" onClick={() => onAction(legal.action)} type="button">
+                {legal.label}
+              </button>
+            </div>
+          </div>
+        ))}
         {buildingBoosts.map((legal) => (
           <div className="trayTile permanentTile" key={JSON.stringify(legal.action)}>
             <div className="trayTileBody">

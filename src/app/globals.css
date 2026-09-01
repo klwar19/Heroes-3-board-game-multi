@@ -29986,6 +29986,12 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
   box-shadow: inset 0 0 0 1px rgba(60, 40, 18, 0.5);
 }
 
+/* The Book is already an inspection surface, so its loupe stays discoverable
+   instead of appearing only on hover like compact hand/tray cards. */
+.spellBookArtSlot .zoomButton {
+  opacity: 1;
+}
+
 .spellBookArt {
   width: 100%;
   height: 100%;

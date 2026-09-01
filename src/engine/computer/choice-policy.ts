@@ -655,7 +655,11 @@ function scorePositionOption(
       );
       const beatable = candidates.map((candidate) =>
         armyStrength >=
-        creatureBankStrength(candidate.bankId, candidate.size) *
+        creatureBankStrength(
+          candidate.bankId,
+          candidate.size,
+          Boolean(observation.state.adventure?.houseRules?.["polish-creature-banks"]),
+        ) *
           BANK_ENGAGE_RATIO,
       );
       const candidate = candidates[optionIndex];

@@ -504,8 +504,10 @@ export function spellNullifiedByRestriction(state: GameState, finalPower: number
 /**
  * Whether a unit deals "elemental damage" right now — either its printed trait
  * (the Elemental units) or a granted effect (Moandor's Liches VI specialty).
- * Elemental damage cannot be raised by attack cards or Attack tokens; debuffs
- * such as a Sorceress' Weakness still lower it (handled in the attack maths).
+ * With the optional BINH elemental-damage toggle, elemental damage cannot be
+ * raised by attack-window buffs; debuffs still lower it and Attack tokens still
+ * work normally. The
+ * toggle's arithmetic is handled by the attack maths, not this trait query.
  *
  * `attackKind` is the kind of the attack currently being resolved. The WOG Santa
  * Gremlin's Ice Bolt is `rangedOnly`: it deals elemental damage on a ranged shot

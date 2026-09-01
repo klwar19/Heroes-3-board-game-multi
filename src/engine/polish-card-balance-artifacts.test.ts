@@ -731,7 +731,7 @@ describe("Balance Pack artifacts — Hourglass of the Evil Hour", () => {
           legal.action.cardId === "artifact.hourglass_of_the_evil_hour"
       )
       .map((legal) => legal.label);
-    expect(labels.some((label) => label.includes('reroll each "+1"'))).toBe(true);
+    expect(labels.some((label) => label.includes('reroll once each "+1" result'))).toBe(true);
     expect(labels.some((label) => /roll the attack die|gain morale on a 0/i.test(label))).toBe(false);
   });
 

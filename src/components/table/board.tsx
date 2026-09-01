@@ -2589,6 +2589,9 @@ export const COMMAND_ACTION_TYPES = new Set<GameAction["type"]>([
   "END_ACTIVATION",
   "END_COMBAT_ROUND",
   "USE_UNIT_ABILITY",
+  // Eagle Eye's expert copy of a unit-cast bolt is an optional combat action
+  // with no reaction window; the dock is its human control surface.
+  "USE_EAGLE_EYE_UNIT_COPY",
   // Tactics: the start-of-combat swap window and the expert mid-combat swap both
   // surface as command buttons (their legal-action labels name the two units).
   "SWAP_COMBAT_UNITS",
@@ -3094,7 +3097,9 @@ export function LogDrawer({
 }) {
   const singlePlayer = state.sessionMode === "single-player";
   const battle = surface === "battle";
-  const [open, setOpen] = useState(battle);
+  // Logs are useful on demand, but the battlefield must open unobstructed.
+  // Keep both surfaces collapsed initially and let the player opt in.
+  const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<"all" | "dice" | "cards" | "events">("all");
   const logState = useMemo(() => {
     if (singlePlayer || !viewerPlayerId) {

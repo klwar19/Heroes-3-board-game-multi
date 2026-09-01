@@ -290,7 +290,7 @@ describe("every Elemental deals die-proof, fixed damage (real unit data)", () =>
     });
   }
 
-  it("HOUSE RULE ON (elemental-damage-no-die): the die and the +4 buff are both ignored", () => {
+  it("HOUSE RULE ON: the Attack die still rolls, but the +4 instant buff is ignored", () => {
     const air = coreUnitDefinitions["neutral.air_elementals"].neutral!;
     const state = duel((draft) => {
       const a = draft.combat!.units.unit_p1_griffins;
@@ -305,15 +305,31 @@ describe("every Elemental deals die-proof, fixed damage (real unit data)", () =>
     });
 
     const event = firstAttack(runAttack(state));
-    expect(event.noDie, "the die is skipped while the house rule is on").toBe(
-      true,
-    );
-    expect(event.roll, "the queued +1 face is not applied").toBe(0);
-    expect(event.attackValue, "buff and die both ignored").toBe(air.attack);
+    expect(event.noDie, "the die is not skipped by the house rule").not.toBe(true);
+    expect(event.roll, "the queued +1 face is applied normally").toBe(1);
+    expect(event.attackValue, "the buff is ignored but the die applies").toBe(air.attack + 1);
     expect(event.defenseValue, "Defense is ignored in both readings").toBe(0);
-    expect(event.damage, "damage is exactly the printed Attack").toBe(
-      air.attack,
+    expect(event.damage, "damage is printed Attack plus the normal die").toBe(
+      air.attack + 1,
     );
+  });
+
+  it("HOUSE RULE ON: an Attack token still raises an elemental attack", () => {
+    const air = coreUnitDefinitions["neutral.air_elementals"].neutral!;
+    const state = duel((draft) => {
+      const attacker = draft.combat!.units.unit_p1_griffins;
+      attacker.attack = air.attack;
+      attacker.abilities = [...(air.abilities ?? [])];
+      attacker.tokens = [{ id: "attack-token", kind: "attack", amount: 2, sourceName: "Attack token" }];
+      draft.combat!.dice.scriptedRolls = [0];
+      draft.adventure = {
+        houseRules: { "elemental-damage-no-die": true },
+      } as unknown as GameState["adventure"];
+    });
+    const event = firstAttack(runAttack(state));
+    expect(event.roll).toBe(0);
+    expect(event.attackValue).toBe(air.attack + 2);
+    expect(event.defenseValue).toBe(0);
   });
 
   it("a Sorceress' Weakness lowers an Elemental's damage in BOTH readings", () => {

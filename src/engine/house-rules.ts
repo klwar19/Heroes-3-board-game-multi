@@ -281,10 +281,19 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     legacyDefault: false,
   },
   {
-    id: "polish-bank-sizes",
-    label: "Polish Creature Banks (I–IV)",
+    id: "polish-creature-banks",
+    label: "Polish Creature Bank cards",
     description:
-      "Polish house rule: use the 20-bank Polish roster, exact guardian cards and printed rewards. Reveal up to two Banks, roll size I–IV, then choose one. Size selects Stack Tokens, Black Tower dragon, and the I–IV unit reward card; unit banks also grant 1 Empower token. Black Tower searches its fixed Minor/Major pile. Requires Creature Banks and automatically uses split Artifact piles.",
+      "Polish content rule: replace the official bank roster/cards with the 20-bank Polish set, exact guardians, abilities and printed rewards. Independent from the I–IV reveal-and-size procedure. Black Tower automatically enables split Artifact piles for its fixed Minor/Major reward.",
+    category: "polish",
+    default: false,
+    legacyDefault: false,
+  },
+  {
+    id: "polish-bank-sizes",
+    label: "Creature Bank sizes (I–IV)",
+    description:
+      "Polish procedure rule: reveal up to two Banks, roll size I–IV, then choose one. The rolled size fixes the number of Stack Tokens and supplies the size value used by the active bank card set. Independent from the Polish Creature Bank cards toggle; requires Creature Banks.",
     category: "polish",
     default: false,
     legacyDefault: false,
@@ -464,9 +473,9 @@ export const HOUSE_RULES: HouseRuleDef[] = [
   },
   {
     id: "elemental-damage-no-die",
-    label: "Elemental damage skips the Attack die",
+    label: "Elemental damage cannot take +Attack buffs",
     description:
-      "On (old BINH reading): a unit dealing elemental damage never rolls the Attack die, and its attack can never be RAISED by attack cards or Attack tokens (debuffs still lower it). Off (official rules, default): elemental damage does exactly one thing — it ignores the target's Defense value, including any Defense cards played. The attack otherwise happens as normal: you DO roll the die, and +⚔ / −⚔ cards (Bloodlust, Bless, Weakness…) change the value like on any other attack.",
+      "On (BINH house rule): elemental attacks still roll the Attack die normally and ignore Defense, but positive Attack buffs played in the instant window cannot raise them; debuffs still lower them. Attack tokens still work normally. Off (official): elemental attacks roll normally, ignore Defense, and can be raised or lowered like any other attack.",
     category: "combat",
     // OFF in both modes: the official reading is the default. Turning it ON
     // restores the engine's previous behaviour for tables that prefer it.

@@ -17032,8 +17032,8 @@ function buildCreatureBankDrawsForState(
   bankId: CreatureBankId,
   bankSize?: BankSize
 ): NeutralDraw[] {
-  const polishMode = houseRuleEnabled(state, "polish-bank-sizes");
-  const bank = getCreatureBankDefinition(bankId, polishMode);
+  const polishCards = houseRuleEnabled(state, "polish-creature-banks");
+  const bank = getCreatureBankDefinition(bankId, polishCards);
   const entries = bank.buildUnits && bankSize ? bank.buildUnits(bankSize) : bank.units.map((unitDefId, index) => ({
     unitDefId,
     ...(bank.unitSideKeys?.[index] ? { bankSideKey: bank.unitSideKeys[index] } : {})
@@ -17078,6 +17078,7 @@ export function buildCreatureBankCombatUnits(
   const ruleset = getRuleset(state);
   const sideOverrides = unitSideRuleOverrides(state);
   const polishMode = houseRuleEnabled(state, "polish-bank-sizes");
+  const polishCards = houseRuleEnabled(state, "polish-creature-banks");
   // Imported/designer maps made before this mode may omit bankSize. Treat such
   // a Polish bank consistently as size I rather than fighting one roster and
   // paying another or silently falling back to Scenario Difficulty.
@@ -17137,7 +17138,7 @@ export function buildCreatureBankCombatUnits(
   // Every neutral-owned bank defender uses its bank token's Far/Near schedule;
   // Stack Tokens remain their ordinary independent stat/absorb mechanic.
   if (neutralRankUpActive(state)) {
-    const bankTier = getCreatureBankDefinition(bankId, houseRuleEnabled(state, "polish-bank-sizes")).tier;
+    const bankTier = getCreatureBankDefinition(bankId, polishCards).tier;
     for (const unit of units) {
       if (!unit.unitDefId) continue;
       const mirroredXp = neutralBankMirrorXp(unit.unitDefId, bankTier, state.round);
@@ -17224,7 +17225,8 @@ export function grantCreatureBankReward(
   }
   const playerId = hero.controllerId;
   const polishMode = houseRuleEnabled(state, "polish-bank-sizes");
-  const bank = getCreatureBankDefinition(bankId, polishMode);
+  const polishCards = houseRuleEnabled(state, "polish-creature-banks");
+  const bank = getCreatureBankDefinition(bankId, polishCards);
 
   appendEvent(state, {
     type: "FIELD_VISITED",

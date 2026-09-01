@@ -2007,7 +2007,7 @@ export function HexMapBoard({
                   {previewBankOptions.length > 1
                     ? `${index === 0 ? "A" : "B"} · `
                     : ""}
-                  {getCreatureBankDefinition(candidate.bankId, Boolean(state.adventure?.houseRules?.["polish-bank-sizes"])).name}
+                  {getCreatureBankDefinition(candidate.bankId, Boolean(state.adventure?.houseRules?.["polish-creature-banks"])).name}
                   {"size" in candidate ? ` · ${ROMAN[candidate.size]}` : ""}
                 </text>
               ))}
@@ -2396,7 +2396,7 @@ export function HexMapBoard({
           <title>
             {`${
               field.location === "creature_bank" && field.bankId
-                ? `${getCreatureBankDefinition(field.bankId as CreatureBankId, Boolean(state.adventure?.houseRules?.["polish-bank-sizes"])).name} (Creature Bank${field.bankSize ? `, size ${ROMAN[field.bankSize]}` : ""})`
+                ? `${getCreatureBankDefinition(field.bankId as CreatureBankId, Boolean(state.adventure?.houseRules?.["polish-creature-banks"])).name} (Creature Bank${field.bankSize ? `, size ${ROMAN[field.bankSize]}` : ""})`
                 : (location?.name ?? field.location)
             }${field.difficulty && guarded ? ` (guard ${ROMAN[field.difficulty]})` : ""}${randomTownFactionTip}${alteredGuardTip}${designerRewardTip}${
               overrideInfo ? ` — ${overrideInfo.summary}` : ""
@@ -8329,7 +8329,7 @@ export function PromptTray({
                     }
                     const bank = getCreatureBankDefinition(
                       candidate.bankId as CreatureBankId,
-                      Boolean(state.adventure?.houseRules?.["polish-bank-sizes"]),
+                      Boolean(state.adventure?.houseRules?.["polish-creature-banks"]),
                     );
                     const letter = String.fromCharCode(65 + (optionIndex ?? 0));
                     const sizeRoman =
@@ -8824,7 +8824,7 @@ export function PromptTray({
                 : undefined;
             const isLeaveBlocked = !candidate;
             const bank = candidate
-              ? getCreatureBankDefinition(candidate.bankId as CreatureBankId, Boolean(state.adventure?.houseRules?.["polish-bank-sizes"]))
+              ? getCreatureBankDefinition(candidate.bankId as CreatureBankId, Boolean(state.adventure?.houseRules?.["polish-creature-banks"]))
               : undefined;
             const letter =
               optionIndex !== undefined
@@ -11356,7 +11356,7 @@ function houseRuleToggleDisabled(
   creatureBanksEnabled: boolean,
 ): boolean {
   return (
-    (ruleId === "polish-bank-sizes" && !creatureBanksEnabled) ||
+    ((ruleId === "polish-creature-banks" || ruleId === "polish-bank-sizes") && !creatureBanksEnabled) ||
     (ruleId === "polish-random-artifacts" && !houseRules["split-decks"])
   );
 }
@@ -11374,8 +11374,10 @@ const HOUSE_RULE_ICONS: Partial<
 const POLISH_RULE_SUMMARIES: Partial<Record<HouseRuleId, string>> = {
   "polish-spell-book":
     "Spells live in a used/refreshed Book and are cast with Cast-a-Spell cards.",
+  "polish-creature-banks":
+    "Use the Polish 20-bank roster, guardian cards, abilities and rewards.",
   "polish-bank-sizes":
-    "Roll two Creature Banks, choose one; its size sets guard layers and rewards.",
+    "Reveal up to two Banks; the chosen I–IV size fixes its Stack Tokens.",
   "polish-unit-stacks":
     "Pack Groups and recruited Neutrals may buy persistent Stack layers.",
   "polish-reduced-starting-bonus":
@@ -11408,6 +11410,7 @@ const POLISH_RULE_SUMMARIES: Partial<Record<HouseRuleId, string>> = {
 
 const POLISH_RULE_INFO_IMAGES: Partial<Record<HouseRuleId, string[]>> = {
   "polish-spell-book": ["/assets/rules/polish/spell-book.webp"],
+  "polish-creature-banks": ["/assets/rules/polish/map-rules.webp"],
   "polish-bank-sizes": ["/assets/rules/polish/map-rules.webp"],
   "polish-unit-stacks": ["/assets/rules/polish/unit-stacks.webp"],
   "polish-reduced-starting-bonus": ["/assets/rules/polish/game-rules.webp"],

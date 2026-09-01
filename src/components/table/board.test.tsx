@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { BattlefieldBoard, COMBAT_BOARD_ART_VARIANTS, CommandDock, InspectPanel, battlefieldCellPlacement, displayedCombatAttack, pickCombatBoardArt } from "./board";
+import { BattlefieldBoard, COMBAT_BOARD_ART_VARIANTS, CommandDock, InspectPanel, LogDrawer, battlefieldCellPlacement, displayedCombatAttack, pickCombatBoardArt } from "./board";
 import { CardZoomProvider, HeroBattlefieldCard } from "./zoom";
 import {
   applyCombatBoardArtObstacles,
@@ -35,6 +35,19 @@ import { placeCombatToken } from "@/engine/tokens";
 import type { CardBoardAction } from "./utils";
 
 afterEach(cleanup);
+
+describe("battle log drawer", () => {
+  it("starts auto-hidden on the battlefield and opens only when requested", () => {
+    const state = createInitialGameState("battle-log-hidden");
+    render(<LogDrawer state={state} viewerPlayerId="p1" surface="battle" />);
+    const toggle = document.querySelector<HTMLButtonElement>('.battleLogDrawer .logToggle');
+    expect(toggle?.getAttribute("aria-expanded")).toBe("false");
+    expect(document.querySelector(".battleLogDrawer .logPopover")).toBeNull();
+    fireEvent.click(toggle!);
+    expect(toggle?.getAttribute("aria-expanded")).toBe("true");
+    expect(document.querySelector(".battleLogDrawer .logPopover")).toBeTruthy();
+  });
+});
 
 describe("combat board art variants", () => {
   function waterCombatState(seed = "board-art-water"): GameState {

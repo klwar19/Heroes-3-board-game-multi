@@ -196,9 +196,14 @@ describe("Game options — tabbed layout", () => {
 
     expandPolishHouseRules();
     expect(polishPanel.getAttribute("aria-expanded")).toBe("true");
-    const bankSizes = screen.getByRole("button", {
-      name: /Polish Creature Banks \(I–IV\)/,
+    const bankCards = screen.getByRole("button", {
+      name: /Polish Creature Bank cards/,
     });
+    const bankSizes = screen.getByRole("button", {
+      name: /Creature Bank sizes \(I–IV\)/,
+    });
+    expect(bankCards.getAttribute("aria-pressed")).toBe("false");
+    expect((bankCards as HTMLButtonElement).disabled).toBe(false);
     expect(bankSizes.getAttribute("aria-pressed")).toBe("false");
     expect((bankSizes as HTMLButtonElement).disabled).toBe(false);
     expect(
@@ -628,11 +633,19 @@ describe("Game options — tabbed layout", () => {
     });
   });
 
-  it("wires the opt-in Polish bank-size variant through the shared registry UI", () => {
+  it("wires the Polish bank cards and I–IV procedure as independent toggles", () => {
     const onAction = openOptions();
     expandPolishHouseRules();
     fireEvent.click(
-      screen.getByRole("button", { name: /Polish Creature Banks \(I–IV\)/ }),
+      screen.getByRole("button", { name: /Polish Creature Bank cards/ }),
+    );
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { houseRules: { "polish-creature-banks": true } },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /Creature Bank sizes \(I–IV\)/ }),
     );
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
@@ -775,14 +788,14 @@ describe("Game options — tabbed layout", () => {
     });
   });
 
-  it("greys out Polish bank sizes while the base Creature Banks option is off", () => {
+  it("greys out both independent Polish bank toggles while base Creature Banks is off", () => {
     openOptions(vi.fn(), { creatureBanks: false });
     expandPolishHouseRules();
-    const toggle = screen.getByRole("button", {
-      name: /Polish Creature Banks \(I–IV\)/,
-    }) as HTMLButtonElement;
-    expect(toggle.disabled).toBe(true);
-    expect(toggle.textContent).toContain("BANKS OFF");
+    for (const name of [/Polish Creature Bank cards/, /Creature Bank sizes \(I–IV\)/]) {
+      const toggle = screen.getByRole("button", { name }) as HTMLButtonElement;
+      expect(toggle.disabled).toBe(true);
+      expect(toggle.textContent).toContain("BANKS OFF");
+    }
   });
 
   it("Enable-all turns the whole Polish group on in one dispatch (Spell Book side effect included)", () => {
@@ -880,6 +893,7 @@ describe("Game options — tabbed layout", () => {
       }
     ).options.houseRules;
     // Blocked (banks off) → not enabled; a free rule alongside it still turns on.
+    expect(hr["polish-creature-banks"]).toBeUndefined();
     expect(hr["polish-bank-sizes"]).toBeUndefined();
     expect(hr["polish-reduced-starting-bonus"]).toBe(true);
   });
@@ -888,6 +902,7 @@ describe("Game options — tabbed layout", () => {
     const polishOn: Record<string, boolean> = {
       "split-decks": true,
       "polish-spell-book": true,
+      "polish-creature-banks": true,
       "polish-bank-sizes": true,
       "polish-unit-stacks": true,
       "polish-reduced-starting-bonus": true,
@@ -931,6 +946,7 @@ describe("Game options — tabbed layout", () => {
         ...state.setupLobby!.options.houseRules,
         "split-decks": true,
         "polish-spell-book": true,
+        "polish-creature-banks": true,
         "polish-bank-sizes": true,
         "polish-unit-stacks": true,
         "polish-reduced-starting-bonus": true,
