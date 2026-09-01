@@ -73,6 +73,23 @@ describe("Ranked Clash replay capture", () => {
     expect(rankedReplayEnabled("0")).toBe(false);
   });
 
+  it("keeps capture eligible through a combat result screen and stops only when the adventure ends", () => {
+    const combatResult = rankedGame("ranked-transient-combat-result");
+    combatResult.phase = "game-over";
+    combatResult.combat = {} as NonNullable<GameState["combat"]>;
+    expect(combatResult.combat).not.toBeNull();
+    expect(combatResult.adventure?.winnerPlayerId).toBeNull();
+    expect(rankedClashReplayEligible(combatResult)).toBe(true);
+
+    const afterCombatAcknowledgement = structuredClone(combatResult);
+    afterCombatAcknowledgement.phase = "player-turn";
+    expect(rankedClashReplayEligible(afterCombatAcknowledgement)).toBe(true);
+
+    const finishedAdventure = structuredClone(afterCombatAcknowledgement);
+    finishedAdventure.adventure!.winnerPlayerId = "p1";
+    expect(rankedClashReplayEligible(finishedAdventure)).toBe(false);
+  });
+
   it("removes chat, credentials and real identity from the initial gameplay state", () => {
     const clean = sanitizeReplayState(rankedGame());
     expect(Array.isArray(clean.eventLog)).toBe(true);

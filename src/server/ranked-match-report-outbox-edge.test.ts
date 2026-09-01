@@ -47,8 +47,12 @@ describe("PartyKit ranked match durable report outbox", () => {
       storage.set(`ranked-replay-initial-${index}`, encodedInitial.slice(index * chunkBytes, (index + 1) * chunkBytes));
     }
     const alarms: number[] = [];
+    let alarmContext = false;
     const room = {
-      id: "durable-report",
+      get id() {
+        if (alarmContext) throw new Error("You can not access `Party.id` in the `onAlarm` handler.");
+        return "durable-report";
+      },
       env: {
         HOMM3BG_RANKED_REPLAY_ENABLED: "true",
         HOMM3BG_APP_URL: "https://app.example",
@@ -73,11 +77,24 @@ describe("PartyKit ranked match durable report outbox", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const server = new GameRoomServer(room);
+    alarmContext = true;
+    // PartyKit constructs a fresh server for a cold alarm and invokes onStart
+    // while Party.id is already forbidden. Replay/outbox restoration must not
+    // discard the durable buffer in that lifecycle.
     await server.onStart();
     await server.onAlarm();
     expect(storage.has("ranked-match-report-outbox-v1")).toBe(true);
     expect(storage.has("ranked-replay-meta")).toBe(true);
     expect(alarms.length).toBeGreaterThan(0);
+
+    // A browser can reconnect and immediately reset/delete the just-closed
+    // room while the report endpoint is retrying. That cleanup must not erase
+    // the terminal outbox's only replay copy.
+    const clearedWhilePending = await (server as unknown as {
+      clearRankedReplayStorage: () => Promise<boolean>;
+    }).clearRankedReplayStorage();
+    expect(clearedWhilePending).toBe(false);
+    expect(storage.has("ranked-replay-meta")).toBe(true);
 
     await server.onAlarm();
     expect(storage.has("ranked-match-report-outbox-v1")).toBe(false);

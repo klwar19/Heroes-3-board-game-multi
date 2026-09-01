@@ -91,6 +91,16 @@ export type RankedReplay = {
   winnerPlayerId?: PlayerId;
 };
 
+export type RankedReplayAppendCursor = Pick<
+  RankedReplay,
+  "byteLength" | "truncated" | "truncationReason"
+> & { entryCount: number };
+
+export type RankedReplayCursorAppend = {
+  cursor: RankedReplayAppendCursor;
+  entry?: RankedReplayEntry;
+};
+
 type ActionWithPlayer = GameAction & { playerId?: unknown };
 
 export function rankedReplayEnabled(value: unknown): boolean {
@@ -99,14 +109,17 @@ export function rankedReplayEnabled(value: unknown): boolean {
 }
 
 export function rankedClashReplayEligible(state: GameState): boolean {
+  // Adventure combat temporarily uses `phase === "game-over"` while its
+  // result overlay is open. The adventure itself remains live until it has a
+  // winner, so excluding that phase makes the following ACK look like a new
+  // adventure and can replace the Round-1 replay with a late-round buffer.
   return (
     state.sessionMode !== "single-player" &&
     state.gameMode !== "coop" &&
     state.room?.visibility !== "private" &&
     state.room?.ranked !== false &&
     Boolean(state.adventure) &&
-    !state.adventure?.winnerPlayerId &&
-    state.phase !== "game-over"
+    !state.adventure?.winnerPlayerId
   );
 }
 
@@ -316,22 +329,18 @@ export function createRankedReplay(
   return replay;
 }
 
-export function appendRankedReplayEntry(
-  replay: RankedReplay,
+function buildRankedReplayEntry(
+  sequence: number,
   before: GameState,
   action: GameAction,
   result: EngineResult,
   options: { actorClientId?: string; entropy?: string; now?: number } = {},
-): RankedReplay {
-  if (replay.truncated) return replay;
-  if (replay.entries.length >= RANKED_REPLAY_MAX_ACTIONS) {
-    return { ...replay, truncated: true, truncationReason: "action-limit" };
-  }
+): { entry?: RankedReplayEntry; byteLength: number } {
   const actorPlayerId = actorForAction(before, action, options.actorClientId);
   const legal = actorPlayerId ? getLegalActions(before, actorPlayerId).map((entry) => sanitizeAction(entry.action, before)) : [];
   const legalActions = legal.slice(0, RANKED_REPLAY_MAX_LEGAL_ACTIONS);
   const entry: RankedReplayEntry = {
-    sequence: replay.entries.length + 1,
+    sequence,
     round: before.round,
     phase: before.phase,
     actorPlayerId,
@@ -355,13 +364,76 @@ export function appendRankedReplayEntry(
   }
   const compactEntryBytes = encodedBytes(entry);
   if (compactEntryBytes > RANKED_REPLAY_MAX_ENTRY_BYTES) {
-    return { ...replay, truncated: true, truncationReason: "entry-too-large" };
+    return { byteLength: compactEntryBytes };
   }
-  const nextBytes = replay.byteLength + compactEntryBytes;
+  return { entry, byteLength: compactEntryBytes };
+}
+
+/**
+ * Append from the small durable replay header without hydrating every prior
+ * entry. PartyKit's HTTP path can construct a fresh handler for every action;
+ * replaying N storage reads per action becomes O(N²) and eventually trips the
+ * Durable Object concurrent-operation throttle near the end of real battles.
+ */
+export function appendRankedReplayEntryFromCursor(
+  cursor: RankedReplayAppendCursor,
+  before: GameState,
+  action: GameAction,
+  result: EngineResult,
+  options: { actorClientId?: string; entropy?: string; now?: number } = {},
+): RankedReplayCursorAppend {
+  if (cursor.truncated) return { cursor };
+  if (cursor.entryCount >= RANKED_REPLAY_MAX_ACTIONS) {
+    return { cursor: { ...cursor, truncated: true, truncationReason: "action-limit" } };
+  }
+  const built = buildRankedReplayEntry(cursor.entryCount + 1, before, action, result, options);
+  if (!built.entry) {
+    return { cursor: { ...cursor, truncated: true, truncationReason: "entry-too-large" } };
+  }
+  const nextBytes = cursor.byteLength + built.byteLength;
   if (nextBytes > RANKED_REPLAY_MAX_BYTES) {
-    return { ...replay, truncated: true, truncationReason: "byte-limit" };
+    return { cursor: { ...cursor, truncated: true, truncationReason: "byte-limit" } };
   }
-  return { ...replay, entries: [...replay.entries, entry], byteLength: nextBytes };
+  return {
+    entry: built.entry,
+    cursor: { entryCount: cursor.entryCount + 1, byteLength: nextBytes, truncated: false },
+  };
+}
+
+export function appendRankedReplayEntry(
+  replay: RankedReplay,
+  before: GameState,
+  action: GameAction,
+  result: EngineResult,
+  options: { actorClientId?: string; entropy?: string; now?: number } = {},
+): RankedReplay {
+  const appended = appendRankedReplayEntryFromCursor(
+    {
+      entryCount: replay.entries.length,
+      byteLength: replay.byteLength,
+      truncated: replay.truncated,
+      ...(replay.truncationReason ? { truncationReason: replay.truncationReason } : {}),
+    },
+    before,
+    action,
+    result,
+    options,
+  );
+  if (!appended.entry) {
+    return {
+      ...replay,
+      byteLength: appended.cursor.byteLength,
+      truncated: appended.cursor.truncated,
+      ...(appended.cursor.truncationReason
+        ? { truncationReason: appended.cursor.truncationReason }
+        : {}),
+    };
+  }
+  return {
+    ...replay,
+    byteLength: appended.cursor.byteLength,
+    entries: [...replay.entries, appended.entry],
+  };
 }
 
 export function finishRankedReplay(replay: RankedReplay, now = Date.now(), winnerPlayerId?: PlayerId): RankedReplay {
