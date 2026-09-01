@@ -50,7 +50,7 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import { DOOM_UNIT_IDS_BY_TIER } from "@/data/doom";
 import { WOG_UNIT_IDS_BY_TIER } from "@/data/wog";
 import { allTileDefinitions, DEFAULT_TILE_CONTENT, tilePoolIds } from "@/data/map/tiles";
-import { CREATURE_BANK_IDS, CREATURE_BANKS } from "@/data/map/creature-banks";
+import { CREATURE_BANK_IDS, CREATURE_BANKS, POLISH_CREATURE_BANK_IDS, POLISH_CREATURE_BANKS } from "@/data/map/creature-banks";
 import type { TileContent } from "@/data/map/types";
 import {
   DEFAULT_SCENARIO_ID,
@@ -2941,6 +2941,12 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // game (explicit flag if set, else the chosen mode's default). Frozen onto
   // adventure state so the engine reads plain booleans during play.
   const houseRules = resolveHouseRules(setupOptions);
+  // Black Tower names a fixed Minor/Major pile. The rule cannot be represented
+  // honestly by the legacy merged Artifact deck, so enabling Polish Banks also
+  // enables the existing split-deck infrastructure for this game only.
+  if (houseRules["polish-bank-sizes"]) {
+    houseRules["split-decks"] = true;
+  }
   const polishSpellBookOn = houseRules["polish-spell-book"];
   // The two Spell Book lifecycles can never coexist. A direct setup payload
   // that asks for both resolves in favour of the explicit Polish variant; the
@@ -3270,11 +3276,15 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(creatureBanksOn
       ? {
           creatureBankTokensFar: shuffleCards(
-            CREATURE_BANK_IDS.filter((id) => CREATURE_BANKS[id].tier === "far"),
+            (houseRules["polish-bank-sizes"] ? POLISH_CREATURE_BANK_IDS : CREATURE_BANK_IDS).filter(
+              (id) => (houseRules["polish-bank-sizes"] ? POLISH_CREATURE_BANKS : CREATURE_BANKS)[id].tier === "far"
+            ),
             `${seed}#creature-banks#far`
           ),
           creatureBankTokensNear: shuffleCards(
-            CREATURE_BANK_IDS.filter((id) => CREATURE_BANKS[id].tier === "near"),
+            (houseRules["polish-bank-sizes"] ? POLISH_CREATURE_BANK_IDS : CREATURE_BANK_IDS).filter(
+              (id) => (houseRules["polish-bank-sizes"] ? POLISH_CREATURE_BANKS : CREATURE_BANKS)[id].tier === "near"
+            ),
             `${seed}#creature-banks#near`
           )
         }
@@ -5782,7 +5792,7 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
  * format. The per-format gate enforces the flow:
  *  - "open" (TYPE 4): any untaken town + any of its heroes.
  *  - "draft" (TYPE 1): only in the pick phase, only the seat's own locked town,
- *    and never a banned hero.
+ *    and only one of the three candidates rolled after the final ban.
  *  - "random-choice" (TYPE 3): only the seat's locked town and only a hero from
  *    its two rolled options.
  *  - "random" (TYPE 2): manual picks are refused — roll the dice instead.
@@ -5835,6 +5845,13 @@ export function chooseFaction(state: GameState, action: Extract<GameAction, { ty
     }
     if (draft.bannedHeroDefIds.includes(action.heroDefId)) {
       throw new Error("That hero is banned out of this draft.");
+    }
+    const options = draft.seatRolls?.[action.playerId]?.heroOptions ?? [];
+    if (options.length === 0) {
+      throw new Error("The draft hero candidates have not been rolled yet.");
+    }
+    if (!options.includes(action.heroDefId)) {
+      throw new Error("Choose one of your three draft hero candidates.");
     }
   } else if (draft.format === "random-choice") {
     if (seat.factionId !== action.factionId) {
@@ -6266,6 +6283,32 @@ export function banHero(state: GameState, action: Extract<GameAction, { type: "B
     playerId: action.playerId,
     message: `${seatedPlayerName(state, action.playerId)} bans ${hero.name}.`
   });
+
+  // The final ban deterministically deals each seat three choices from its own
+  // remaining heroes. Storing the deal in shared setup state makes reconnects,
+  // observers, computers, and every client see the exact same candidates.
+  if (draft.banPicksMade >= phase.totalBans) {
+    const banned = new Set(draft.bannedHeroDefIds);
+    for (const candidateSeat of lobby.seats) {
+      if (!candidateSeat.factionId) continue;
+      const pool = (coreFactionDefinitions[candidateSeat.factionId]?.heroes ?? []).filter(
+        (heroDefId) => !banned.has(heroDefId),
+      );
+      const random = createSeededRandom(
+        `${state.seed}#draft-hero-options#${candidateSeat.playerId}#${eventSeedNumber(state)}`,
+      );
+      const options = pickDistinct(random, pool, 3);
+      draft.seatRolls[candidateSeat.playerId] = {
+        ...draft.seatRolls[candidateSeat.playerId],
+        heroOptions: options,
+      };
+      appendEvent(state, {
+        type: "GAME_OPTIONS_CHANGED",
+        playerId: candidateSeat.playerId,
+        message: `${seatedPlayerName(state, candidateSeat.playerId)} receives three draft choices: ${options.map(heroName).join(", ")}.`,
+      });
+    }
+  }
 }
 
 /**

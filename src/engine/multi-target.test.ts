@@ -509,6 +509,16 @@ describe("printed tile borders", () => {
     }
   });
 
+  it("BINH bank rendering restores only the three outward edges, not the inward ring", () => {
+    const edges = getTileBorderSegments(coreTileDefinitions.S1, new Set([6]), {
+      preserveBankOuterArcs: true,
+    })
+      .filter((segment) => segment.slot === 6)
+      .map((segment) => segment.edge)
+      .sort();
+    expect(edges).toEqual([0, 4, 5]);
+  });
+
   it("computes the shared hex edge of two slots", () => {
     expect(internalBorderSegment(0, 3)).toEqual({ slot: 0, edge: 2 });
     expect(internalBorderSegment(1, 2)).toEqual({ slot: 1, edge: 2 });

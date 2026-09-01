@@ -226,6 +226,16 @@ describe("Torosar Ballista I — the printed card (buy on the map / activate in 
     expect(plays(state, cardId)).toHaveLength(0);
   });
 
+  it("can buy another physical Ballista when one is already owned", () => {
+    const state = torosarMap(cardId, { gold: 12 });
+    state.players.p1.permanents = ["war_machine.ballista"];
+    const offer = plays(state, cardId)[0];
+    expect(offer?.label).toBe("Ballista I: Pay 5 gold to gain a Ballista");
+    const next = apply(state, offer.action);
+    expect(next.players.p1.permanents).toEqual(["war_machine.ballista"]);
+    expect(next.players.p1.hand.filter((id) => id === "war_machine.ballista")).toHaveLength(1);
+  });
+
   it("in combat it ACTIVATES a Ballista you own — real damage on the slowest enemy", () => {
     const state = createInitialGameState("torosar-i-activate");
     state.players.p1.hand = [cardId];
@@ -420,6 +430,22 @@ describe("Torosar Ballista VI — a combat-scoped grant that fires every Ballist
     const next = apply(state, plays(state, cardId)[0].action);
     expect(warMachineHits(next)).toHaveLength(1);
     expect(next.combat!.units.unit_p2_skeletons.damage).toBe(1);
+  });
+
+  it("activates every owned copy plus the specialty's granted Ballista", () => {
+    const state = createInitialGameState("torosar-vi-multiple-owned");
+    state.players.p1.hand = [cardId];
+    state.players.p1.permanents = ["war_machine.ballista", "war_machine.ballista"];
+    state.players.p2.hand = [];
+    state.combat!.units.unit_p2_skeletons.initiative = 1;
+    state.combat!.units.unit_p2_skeletons.maxHealth = 20;
+    state.combat!.units.unit_p2_vampires.initiative = 5;
+    state.combat!.units.unit_p2_dread_knights.initiative = 5;
+
+    const next = apply(state, plays(state, cardId)[0].action);
+    expect(warMachineHits(next)).toHaveLength(3);
+    expect(next.combat!.units.unit_p2_skeletons.damage).toBe(3);
+    expect(countBallistas(next, "p1")).toBe(3);
   });
 
   it("the grant DIES with the combat — it never carries into the next fight this round", () => {

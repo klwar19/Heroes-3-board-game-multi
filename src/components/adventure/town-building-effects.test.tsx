@@ -199,6 +199,38 @@ describe("TownPanel — in-place special-building effect / use buttons", () => {
     expect(pub.textContent).not.toMatch(/No special effect/i);
   });
 
+  it("redeems the Pub reinforcement directly from the Town menu", () => {
+    const { state } = townWith("cove", ["cove.pub", "cove.citadel"]);
+    state.players.p1.needsHandRefresh = false;
+    state.players.p1.canMulligan = false;
+    state.players.p1.resources.gold = 10;
+    state.players.p1.army = [{ id: "army_sea_dogs", unitDefId: "cove.sea_dogs", side: "few" }];
+    state.players.p1.reinforcementDiscounts = [{
+      id: "pub_ui_discount",
+      source: "pub",
+      sourceName: "Pub",
+      allowedTiers: ["bronze", "silver", "gold"],
+      flatGoldDiscount: 3,
+      requiresReinforceUnlock: true,
+      expiresAfterRound: state.round
+    }];
+    const onAction = vi.fn();
+    render(<TownPanel legalActions={getLegalActions(state, "p1")} onAction={onAction} state={state} viewerPlayerId="p1" />);
+
+    fireEvent.click(within(tileFor("Pub")).getByRole("button", { name: /Use/ }));
+    const panel = screen.getByLabelText("Pub effect");
+    fireEvent.click(within(panel).getByRole("button", { name: /Pub: reinforce Sea Dogs/i }));
+
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(onAction.mock.calls[0][0]).toMatchObject({
+      type: "REDEEM_REINFORCEMENT_DISCOUNT",
+      playerId: "p1",
+      discountId: "pub_ui_discount",
+      armyUnitId: "army_sea_dogs",
+      kind: "reinforce"
+    });
+  });
+
   it("lets a Conflux player run the Magic University in place and dispatches the per-school dig", () => {
     const { state } = townWith("conflux", ["conflux.magic_university"]);
     const onAction = vi.fn();

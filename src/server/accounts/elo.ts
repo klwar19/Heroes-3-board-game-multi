@@ -1,8 +1,9 @@
 /**
  * Elo rating maths (plan §D5). Pure and self-contained so it is trivially
  * table-tested. K=32, floor 100. Two-player games use ordinary Elo. In games
- * with 3+ rated finishers, only last place loses MMR and that zero-sum pool is
- * distributed to every higher finisher with strictly descending place weights.
+ * with 3+ rated finishers, the winner receives one balanced Elo gain and every
+ * loser pays a placement-weighted share of it. The runner-up loses the least,
+ * last place loses the most, and the rounded result remains zero-sum.
  *
  * This is the rating groundwork. Auto-reporting a finished game from the engine
  * (detecting the terminal state in the action pipeline) is Phase 6 and is NOT
@@ -52,44 +53,72 @@ export function computeRatings(participants: EloParticipant[]): Map<string, numb
         return aPlace - bPlace || a.inputIndex - b.inputIndex;
       })
       .map(({ participant }) => participant);
-    const explicitLast = ordered.find((participant) => participant.mmrRole === "last");
-    const last = explicitLast ?? (participants.some((participant) => participant.mmrRole) ? null : ordered.at(-1)!);
-    const finishers = ordered.filter((participant) => participant !== last && participant.mmrRole !== "neutral");
-    if (!last) {
-      const champion = finishers.find((participant) => participant.mmrRole === "winner" || participant.result === "win");
-      if (champion) {
-        const opponents = ordered.filter((participant) => participant !== champion);
-        const averageOpponent = opponents.reduce((sum, participant) => sum + participant.rating, 0) / opponents.length;
-        const gain = Math.max(1, Math.round(ELO_K * (1 - expectedScore(champion.rating, averageOpponent))));
-        result.set(champion.id, champion.rating + gain);
-      }
-      return result;
-    }
-    const rawLoss = Math.round(
-      finishers.reduce(
-        (sum, finisher) => sum + ELO_K * expectedScore(last.rating, finisher.rating),
-        0
-      )
+    const champion = ordered.find(
+      (participant) => participant.mmrRole === "winner" && participant.result === "win",
+    ) ?? ordered.find((participant) => participant.result === "win");
+    if (!champion) return result;
+    const rankedLosers = ordered.filter((participant) => participant !== champion && participant.result === "loss");
+    if (rankedLosers.length === 0) return result;
+
+    // A multiplayer win is worth one ordinary Elo result against the average
+    // opposition. Adding one full K pairing per opponent made large tables
+    // inflate wildly; this keeps a 3/4-player win comparable to a duel.
+    const averageOpponent = rankedLosers.reduce((sum, participant) => sum + participant.rating, 0) / rankedLosers.length;
+    const targetGain = Math.max(
+      1,
+      Math.round(ELO_K * (1 - expectedScore(champion.rating, averageOpponent))),
     );
-    const loss = Math.min(rawLoss, Math.max(0, last.rating - ELO_FLOOR));
-    const distinctPlaces = [...new Set(finishers.map((finisher, index) => finisher.placement ?? index + 1))]
+
+    // Later finishing places carry a larger share. Equal placements receive
+    // equal place weight; rating expectation then makes an over-rated loser pay
+    // slightly more than an underdog without overwhelming the finish order.
+    const distinctPlaces = [...new Set(rankedLosers.map((loser, index) => loser.placement ?? index + 2))]
       .sort((a, b) => a - b);
-    const weights = finishers.map((finisher, index) => {
-      const place = finisher.placement ?? index + 1;
-      return distinctPlaces.length - distinctPlaces.indexOf(place);
+    const weights = rankedLosers.map((loser, index) => {
+      const place = loser.placement ?? index + 2;
+      const placementWeight = distinctPlaces.indexOf(place) + 1;
+      // Keep rating strength a modest ±25% adjustment. Placement remains the
+      // dominant signal, so an unusually high-rated runner-up cannot be charged
+      // more than a lower finisher merely because of the pre-game ratings.
+      const ratingFactor = 0.75 + 0.5 * expectedScore(loser.rating, champion.rating);
+      return placementWeight * ratingFactor;
     });
-    const weightTotal = weights.reduce((sum, weight) => sum + weight, 0);
-    const exact = weights.map((weight) => (loss * weight) / weightTotal);
-    const gains = exact.map(Math.floor);
-    const remainder = loss - gains.reduce((sum, gain) => sum + gain, 0);
-    const remainderOrder = exact
-      .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
-      .sort((a, b) => b.fraction - a.fraction || a.index - b.index);
-    for (let index = 0; index < remainder; index += 1) gains[remainderOrder[index]!.index] += 1;
-    finishers.forEach((finisher, index) => {
-      result.set(finisher.id, finisher.rating + gains[index]!);
+    const losses = Array(rankedLosers.length).fill(0) as number[];
+    let remaining = Math.min(
+      targetGain,
+      rankedLosers.reduce((sum, loser) => sum + Math.max(0, loser.rating - ELO_FLOOR), 0),
+    );
+
+    // Allocate one point at a time by greatest weighted deficit. The rating
+    // changes are tiny (normally <= 16 total), so this is clearer and handles
+    // floor-capped players without rounding drift or a non-zero-sum result.
+    while (remaining > 0) {
+      let pick = -1;
+      let bestDeficit = Number.NEGATIVE_INFINITY;
+      const weightTotal = weights.reduce((sum, weight, index) =>
+        losses[index]! < Math.max(0, rankedLosers[index]!.rating - ELO_FLOOR) ? sum + weight : sum, 0);
+      if (weightTotal <= 0) break;
+      const allocated = losses.reduce((sum, loss) => sum + loss, 0);
+      for (let index = 0; index < rankedLosers.length; index += 1) {
+        const cap = Math.max(0, rankedLosers[index]!.rating - ELO_FLOOR);
+        if (losses[index]! >= cap) continue;
+        const ideal = ((allocated + 1) * weights[index]!) / weightTotal;
+        const deficit = ideal - losses[index]!;
+        if (deficit > bestDeficit) {
+          bestDeficit = deficit;
+          pick = index;
+        }
+      }
+      if (pick < 0) break;
+      losses[pick] += 1;
+      remaining -= 1;
+    }
+
+    rankedLosers.forEach((loser, index) => {
+      result.set(loser.id, loser.rating - losses[index]!);
     });
-    result.set(last.id, last.rating - loss);
+    const actualGain = losses.reduce((sum, loss) => sum + loss, 0);
+    result.set(champion.id, champion.rating + actualGain);
     return result;
   }
   let winnerDelta = 0;

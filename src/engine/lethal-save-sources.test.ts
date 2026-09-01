@@ -242,6 +242,7 @@ describe("Resurrection spell", () => {
     expect(save, "the bronze Resurrection option should be offered").toBeTruthy();
     const saved = applyOk(declared, save!.action);
     expect(hasAbilityEvent(saved, "resurrection")).toBe(true);
+    expect(griffins(saved).variant, "Resurrection preserves the Pack side").toBe("pack");
     expect(griffins(saved).damage).toBe(griffins(saved).maxHealth - 1);
     expect(saved.players.p1.discard).toContain("spell.resurrection");
     expect(saved.players.p1.combatStats.spellsCastThisRound).toBe(1); // counts as a spell

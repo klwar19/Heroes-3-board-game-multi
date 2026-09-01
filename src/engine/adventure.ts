@@ -20,9 +20,11 @@ import type { UnitDefinition, UnitSideDefinition } from "@/data/factions/types";
 import { hasInternalBorder } from "@/data/map/borders";
 import {
   CREATURE_BANKS,
-  CREATURE_BANK_UNIT_SIDES,
+  getCreatureBankDefinition,
   BINH_STACK_TOKEN_PLACEMENT_PERCENT,
   STACK_TOKENS_BY_DIFFICULTY,
+  getCreatureBankUnitSide,
+  polishCreatureBankCardName,
   rollStackTokenStat,
   stackTokenDelta,
   type CreatureBankId
@@ -861,10 +863,11 @@ export function getUnitDefinition(unitDefId: string): UnitDefinition | undefined
 
 export function getUnitSide(
   unitDefId: string,
-  side: "few" | "pack" | "neutral" | "bank"
+  side: "few" | "pack" | "neutral" | "bank",
+  bankSideKey?: string
 ): UnitSideDefinition | undefined {
   if (side === "bank") {
-    return CREATURE_BANK_UNIT_SIDES[unitDefId];
+    return getCreatureBankUnitSide(unitDefId, bankSideKey);
   }
   const def = coreUnitDefinitions[unitDefId];
   if (!def) {
@@ -880,7 +883,7 @@ export function getUnitSide(
  * from the unit's Few/Pack/Neutral sides.
  */
 export function getBankSide(unitDefId: string): UnitSideDefinition | undefined {
-  return CREATURE_BANK_UNIT_SIDES[unitDefId];
+  return getCreatureBankUnitSide(unitDefId);
 }
 
 function adventureRandom(state: GameState, label: string) {
@@ -1857,6 +1860,18 @@ export function canCrossEdge(
   const fromField = adventure.fields[from];
   const toField = adventure.fields[to];
   if (!fromField || !toField) {
+    return false;
+  }
+
+  // BINH Creature-Bank entrance rule: the carved bank hex belongs to its host
+  // tile. Its inward seams are open, but its outer seam is never a shortcut in
+  // or out. Check both directions explicitly so path previews, movement offers,
+  // and authoritative resolution cannot disagree.
+  if (
+    fromField.tileInstanceId !== toField.tileInstanceId &&
+    houseRuleEnabled(state, "bank-interior-entry-only") &&
+    (fromField.location === "creature_bank" || toField.location === "creature_bank")
+  ) {
     return false;
   }
 
@@ -3899,7 +3914,8 @@ function interactionToSteps(interaction: LocationInteraction, extraLocationDice 
           unitDefId: interaction.unitDefId,
           side: interaction.side,
           ...(interaction.stacks && interaction.stacks > 0 ? { stacks: interaction.stacks } : {}),
-          ...(interaction.stacked ? { stacked: true } : {})
+          ...(interaction.stacked ? { stacked: true } : {}),
+          ...(interaction.bankSideKey ? { bankSideKey: interaction.bankSideKey } : {})
         }
       ];
     case "ROLL_RESOURCE_DICE":
@@ -10360,6 +10376,9 @@ export function processPendingVisit(state: GameState): void {
         const recruitPlayer = state.players[visit.playerId];
         if (recruitPlayer) {
           const added = addArmyUnit(recruitPlayer, step.unitDefId, step.side ?? "few");
+          if (step.bankSideKey && step.side === "bank") {
+            added.bankSideKey = step.bankSideKey;
+          }
           if (
             armyUnitStacksActive(state) &&
             step.stacks &&
@@ -15771,6 +15790,8 @@ export type NeutralDraw = {
    * side. Implies bankGuard.
    */
   bankUnit?: boolean;
+  /** Exact alternate Creature-Bank face used by a Polish bank guardian. */
+  bankSideKey?: string;
   /**
    * Random Town: THIS is the printed card's choosable BRONZE Pack slot ("chosen
    * by the player who controls the defense during this Combat"). The reveal chain
@@ -16998,7 +17019,26 @@ export function fieldCreatureBankId(field: MapFieldState | null | undefined): Cr
 /** Builds the minted bank defenders (no Stack Tokens yet) for a Creature Bank. */
 export function buildCreatureBankDraws(bankId: CreatureBankId): NeutralDraw[] {
   const bank = CREATURE_BANKS[bankId];
-  return bank.units.map((unitDefId) => ({ unitDefId, tier: "bronze" as const, bankUnit: true }));
+  return bank.units.map((unitDefId, index) => ({
+    unitDefId,
+    tier: "bronze" as const,
+    bankUnit: true,
+    ...(bank.unitSideKeys?.[index] ? { bankSideKey: bank.unitSideKeys[index] } : {})
+  }));
+}
+
+function buildCreatureBankDrawsForState(
+  state: GameState,
+  bankId: CreatureBankId,
+  bankSize?: BankSize
+): NeutralDraw[] {
+  const polishMode = houseRuleEnabled(state, "polish-bank-sizes");
+  const bank = getCreatureBankDefinition(bankId, polishMode);
+  const entries = bank.buildUnits && bankSize ? bank.buildUnits(bankSize) : bank.units.map((unitDefId, index) => ({
+    unitDefId,
+    ...(bank.unitSideKeys?.[index] ? { bankSideKey: bank.unitSideKeys[index] } : {})
+  }));
+  return entries.map((entry) => ({ ...entry, tier: "bronze" as const, bankUnit: true }));
 }
 
 /**
@@ -17037,7 +17077,12 @@ export function buildCreatureBankCombatUnits(
 ): { units: CombatUnitState[]; stackedCount: number } {
   const ruleset = getRuleset(state);
   const sideOverrides = unitSideRuleOverrides(state);
-  const draws = buildCreatureBankDraws(bankId);
+  const polishMode = houseRuleEnabled(state, "polish-bank-sizes");
+  // Imported/designer maps made before this mode may omit bankSize. Treat such
+  // a Polish bank consistently as size I rather than fighting one roster and
+  // paying another or silently falling back to Scenario Difficulty.
+  const effectiveBankSize = polishMode ? (bankSize ?? 1) : bankSize;
+  const draws = buildCreatureBankDrawsForState(state, bankId, effectiveBankSize);
   const units = draws.flatMap((draw, index) => {
     const unit = makeCombatUnitFromNeutral(draw, `bank_${index + 1}_${draw.unitDefId.split(".")[1]}`, 0, ruleset, sideOverrides);
     return unit ? [unit] : [];
@@ -17046,11 +17091,11 @@ export function buildCreatureBankCombatUnits(
   // Polish Bank Sizes: the rolled size (a stored `field.bankSize`) is the
   // GUARANTEED number of Stacked defenders. Otherwise Scenario Difficulty gives
   // the official guaranteed count unless the BINH 80%-chance toggle is on.
-  const polishSized = houseRuleEnabled(state, "polish-bank-sizes") && bankSize !== undefined;
+  const polishSized = polishMode;
   const binhPlacementChance = !polishSized && houseRuleEnabled(state, "bank-stack-chance-80");
   const difficulty = state.adventure?.difficulty ?? "normal";
   // The count caps how many DISTINCT defenders are candidates for a token.
-  const tokenRolls = Math.min(bankSize ?? STACK_TOKENS_BY_DIFFICULTY[difficulty], units.length, 4);
+  const tokenRolls = Math.min(effectiveBankSize ?? STACK_TOKENS_BY_DIFFICULTY[difficulty], units.length, 4);
 
   const random = adventureRandom(state, `creature-bank-stack-${bankId}`);
   // Partial Fisher-Yates: pick `tokenRolls` DISTINCT candidate defenders.
@@ -17092,7 +17137,7 @@ export function buildCreatureBankCombatUnits(
   // Every neutral-owned bank defender uses its bank token's Far/Near schedule;
   // Stack Tokens remain their ordinary independent stat/absorb mechanic.
   if (neutralRankUpActive(state)) {
-    const bankTier = CREATURE_BANKS[bankId].tier;
+    const bankTier = getCreatureBankDefinition(bankId, houseRuleEnabled(state, "polish-bank-sizes")).tier;
     for (const unit of units) {
       if (!unit.unitDefId) continue;
       const mirroredXp = neutralBankMirrorXp(unit.unitDefId, bankTier, state.round);
@@ -17178,7 +17223,8 @@ export function grantCreatureBankReward(
     return;
   }
   const playerId = hero.controllerId;
-  const bank = CREATURE_BANKS[bankId];
+  const polishMode = houseRuleEnabled(state, "polish-bank-sizes");
+  const bank = getCreatureBankDefinition(bankId, polishMode);
 
   appendEvent(state, {
     type: "FIELD_VISITED",
@@ -17196,7 +17242,11 @@ export function grantCreatureBankReward(
   // The reward scales by X = the number of Stacked defenders (rulebook p.66-67).
   // Under Polish Bank Sizes that count equals the rolled size, so the SAME normal
   // reward builder pays out — size Ⅳ simply means all four defenders were Stacked.
-  const reward = bank.buildReward(stackedCount);
+  // In this mode X is the printed bank size. Black Tower deliberately has one
+  // guardian, so deriving X from the number of token-bearing defenders would
+  // underpay sizes II–IV.
+  const rewardX = polishMode && field.bankSize ? field.bankSize : stackedCount;
+  const reward = bank.buildReward(rewardX);
   const steps = interactionToSteps(reward, locationDiceBonusFor(state, playerId));
   // This is a victory reward, never a shop. Far grants Grade I. Near rolls
   // Grade II versus III at equal probability, then grants that grade for free.
@@ -17217,7 +17267,9 @@ export function grantCreatureBankReward(
       ? "Far Creature Bank reward — take 1 Grade I equipment item for free:"
       : `Near Creature Bank reward — Grade ${rewardGrade} won (50/50 roll); take 1 item for free:`
   );
-  if (equipmentOffer) steps.push(equipmentOffer);
+  // The Polish Bank cards print no extra equipment payout. Preserve the
+  // official equipment rider byte-for-byte outside this house rule.
+  if (equipmentOffer && !polishMode) steps.push(equipmentOffer);
   if (steps.length === 0) {
     return;
   }
@@ -17432,7 +17484,7 @@ export function makeCombatUnitFromNeutral(
   // Creature Bank defenders fight from their own bank card; Random Town /
   // designer Pack slots fight on the faction Pack side; designer Few slots on
   // the Few side; every other guard uses the single-sided Neutral card.
-  const bankSide = draw.bankUnit ? getBankSide(draw.unitDefId) : undefined;
+  const bankSide = draw.bankUnit ? getCreatureBankUnitSide(draw.unitDefId, draw.bankSideKey) : undefined;
   const variant: "neutral" | "pack" | "few" = draw.factionPack
     ? "pack"
     : draw.factionFew
@@ -17452,14 +17504,15 @@ export function makeCombatUnitFromNeutral(
   // Bank cards carry no ruleset (legacy/binh) tweaks; their printed side is
   // used verbatim. Other guards run through the ruleset side adjustments.
   const side = draw.bankUnit ? printed : applyUnitSideRules(ruleset, draw.unitDefId, variant, printed, overrides);
+  const bankCardName = draw.bankSideKey ? polishCreatureBankCardName(draw.bankSideKey) : undefined;
   const cardName = draw.bankUnit
-    ? `${def.name} (Creature Bank)`
+    ? `${bankCardName ?? def.name} (Creature Bank)`
     : `${draw.factionPack ? "Pack of" : draw.factionFew ? "Few of" : "Neutral"} ${def.name}`;
 
   return {
     id: unitId,
     controllerId: NEUTRAL_PLAYER_ID,
-    name: def.name,
+    name: bankCardName ?? def.name,
     cardName,
     variant,
     // Designer few-slot: survive a retreat as Few (not re-promoted to Pack).
@@ -17480,9 +17533,10 @@ export function makeCombatUnitFromNeutral(
     unitDefId: draw.unitDefId,
     // Bank defenders are minted (never deck-drawn) and follow the bank rules.
     ...(draw.bankUnit ? { bankUnit: true, bankGuard: true } : draw.bankGuard ? { bankGuard: true } : {}),
+    ...(draw.bankSideKey ? { bankSideKey: draw.bankSideKey } : {}),
     assets: {
       cardImage: side.cardImage,
-      imageAlt: `${def.name} unit card`,
+      imageAlt: `${bankCardName ?? def.name} unit card`,
       wikiUrl: def.wikiUrl
     }
   };
@@ -17498,6 +17552,7 @@ export function makeCombatUnitFromArmy(
     permanentHealthBonus?: number;
     stacks?: number;
     stackToken?: StackTokenStat;
+    bankSideKey?: string;
     experience?: number;
     job?: MgqJob;
     companion?: boolean;
@@ -17517,7 +17572,7 @@ export function makeCombatUnitFromArmy(
   const def = coreUnitDefinitions[armyUnit.unitDefId];
   const printed =
     armyUnit.side === "bank"
-      ? getBankSide(armyUnit.unitDefId)
+      ? getCreatureBankUnitSide(armyUnit.unitDefId, armyUnit.bankSideKey)
       : armyUnit.side === "few"
         ? def?.few
         : armyUnit.side === "pack"
@@ -17531,6 +17586,7 @@ export function makeCombatUnitFromArmy(
     armyUnit.side === "bank"
       ? printed
       : applyUnitSideRules(ruleset, armyUnit.unitDefId, armyUnit.side, printed, overrides);
+  const bankCardName = armyUnit.bankSideKey ? polishCreatureBankCardName(armyUnit.bankSideKey) : undefined;
   const variant = armyUnit.side === "bank" ? "neutral" : armyUnit.side;
   // House rule (BINH) — Gelu IV: a permanent +Attack baked onto this army card is
   // folded into the unit's printed Attack every combat (start to end).
@@ -17562,10 +17618,10 @@ export function makeCombatUnitFromArmy(
   const unit: CombatUnitState = {
     id: unitId,
     controllerId,
-    name: def.name,
+    name: bankCardName ?? def.name,
     cardName:
       armyUnit.side === "bank"
-        ? `${def.name} (Creature Bank)`
+        ? `${bankCardName ?? def.name} (Creature Bank)`
         : `${armyUnit.side === "few" ? "Few" : armyUnit.side === "pack" ? "Pack of" : "Neutral"} ${def.name}`,
     variant,
     grade: def.tier,
@@ -17584,6 +17640,7 @@ export function makeCombatUnitFromArmy(
     unitDefId: armyUnit.unitDefId,
     armyUnitId: armyUnit.id,
     ...(armyUnit.side === "bank" ? { bankUnit: true } : {}),
+    ...(armyUnit.bankSideKey ? { bankSideKey: armyUnit.bankSideKey } : {}),
     ...(permanentAttackBonus ? { permanentAttackBonus } : {}),
     ...(permanentHealthBonus ? { permanentHealthBonus } : {}),
     ...(armyStacks ? { armyStacks } : {}),
@@ -17593,7 +17650,7 @@ export function makeCombatUnitFromArmy(
     ...(effectiveJob ? { job: effectiveJob } : {}),
     assets: {
       cardImage: side.cardImage,
-      imageAlt: `${def.name} unit card`,
+      imageAlt: `${bankCardName ?? def.name} unit card`,
       wikiUrl: def.wikiUrl
     }
   };

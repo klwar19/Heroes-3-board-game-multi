@@ -8,7 +8,7 @@ import {
   UI_REWARD_ICONS,
   moraleIcon
 } from "@/data/assets/homm-assets";
-import { CREATURE_BANKS } from "@/data/map/creature-banks";
+import { getCreatureBankDefinition, type CreatureBankId } from "@/data/map/creature-banks";
 import { getEquipmentDefinition } from "@/data/anime/equipment";
 import { UNIT_RANK_NAMES } from "@/data/units/experience";
 import { unitAbilities } from "@/data/units/abilities";
@@ -664,14 +664,14 @@ export function formatEvent(event: GameEvent, state: GameState): string {
         .map((unitDefId) => unitDefId.split(".")[1] ?? unitDefId)
         .join(", ")}.`;
     case "CREATURE_BANK_PLACED":
-      return `A ${CREATURE_BANKS[event.bankId as keyof typeof CREATURE_BANKS]?.name ?? "Creature Bank"} token is placed${event.bankSize ? ` at size ${["", "I", "II", "III", "IV"][event.bankSize]}` : ""}.`;
+      return `A ${getCreatureBankDefinition(event.bankId as CreatureBankId, Boolean(state.adventure?.houseRules?.["polish-bank-sizes"])).name} token is placed${event.bankSize ? ` at size ${["", "I", "II", "III", "IV"][event.bankSize]}` : ""}.`;
     case "SUBTERRANEAN_GATE_PLACED":
       return `${playerName(state, event.playerId)} ${event.chosen ? "places" : "opens"} a Subterranean Gate${
         event.sacrificed && event.sacrificed !== "empty_field" ? `, sacrificing ${titleCase(event.sacrificed)}` : ""
       }.`;
     case "CREATURE_BANK_COMBAT_STARTED":
       return `${playerName(state, event.playerId)} raids the ${
-        CREATURE_BANKS[event.bankId as keyof typeof CREATURE_BANKS]?.name ?? "Creature Bank"
+        getCreatureBankDefinition(event.bankId as CreatureBankId, Boolean(state.adventure?.houseRules?.["polish-bank-sizes"])).name
       } (${event.stackedCount} Stacked defender${event.stackedCount === 1 ? "" : "s"}).`;
     case "ABILITY_EMPOWERED":
       return `${playerName(state, event.playerId)} empowers ${cardName(

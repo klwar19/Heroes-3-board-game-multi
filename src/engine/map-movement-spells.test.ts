@@ -1504,7 +1504,7 @@ describe("Town Portal spell", () => {
     expect(townPortalOptions(state).some((option) => /h:-?\d+:-?\d+/.test(option.label))).toBe(false);
   });
 
-  it("lets the player choose main or secondary hero and never targets a Random Town", () => {
+  it("lets either hero target a controlled Random Town and labels settlements with factions", () => {
     let state = withHand(makeGame(), ["spell.town_portal"]);
     const main = heroP1(state);
     const footprint = heroTileFootprint(state);
@@ -1512,10 +1512,10 @@ describe("Town Portal spell", () => {
     const settlement = footprint[4];
     const randomTown = footprint[5];
     flagSettlement(state, settlement);
+    state.adventure!.fields[settlement]!.faction = "cove";
     setField(state, randomTown, "random_town");
     state.adventure!.fields[randomTown]!.flagOwnerId = "p1";
-    // Regression: even a stale/hand-authored TownState may not make a Random
-    // Town a Town Portal target.
+    state.adventure!.fields[randomTown]!.faction = "castle";
     state.towns.random_town_record = {
       id: "random_town_record",
       controllerId: "p1",
@@ -1540,7 +1540,9 @@ describe("Town Portal spell", () => {
     const secondaryIndex = townPortalHeroDestinationIndex(state, "hero_p1_secondary", settlement);
     expect(mainIndex).toBeGreaterThanOrEqual(0);
     expect(secondaryIndex).toBeGreaterThanOrEqual(0);
-    expect(townPortalDestinationIndex(state, randomTown)).toBe(-1);
+    expect(townPortalDestinationIndex(state, randomTown)).toBeGreaterThanOrEqual(0);
+    expect(townPortalOptions(state).some((option) => option.label.includes("Settlement (Cove)"))).toBe(true);
+    expect(townPortalOptions(state).some((option) => option.label.includes("Random Town (Castle)"))).toBe(true);
     expect(townPortalOptions(state).some((option) => option.label.startsWith("Main Hero →"))).toBe(true);
     expect(townPortalOptions(state).some((option) => option.label.startsWith("Secondary Hero →"))).toBe(true);
 

@@ -1,7 +1,9 @@
 import {
   CREATURE_BANKS,
   CREATURE_BANK_UNIT_SIDES,
+  POLISH_CREATURE_BANKS,
   STACK_TOKENS_BY_DIFFICULTY,
+  getCreatureBankUnitSide,
   type CreatureBankId,
 } from "@/data/map/creature-banks";
 import { coreBuildingDefinitions, coreFactionDefinitions } from "@/data/factions/core";
@@ -96,8 +98,8 @@ export function shouldEngageEnemy(
  * Combat value of one Creature Bank unit card (bank column stats, not Few/Pack).
  * Unknown ids score 0 so a missing definition never invents a free fight.
  */
-export function bankUnitStrength(unitDefId: string): number {
-  const side = CREATURE_BANK_UNIT_SIDES[unitDefId];
+export function bankUnitStrength(unitDefId: string, bankSideKey?: string): number {
+  const side = bankSideKey ? getCreatureBankUnitSide(unitDefId, bankSideKey) : CREATURE_BANK_UNIT_SIDES[unitDefId];
   if (!side) return 0;
   return (
     side.attack * 3 +
@@ -121,10 +123,14 @@ export function creatureBankStrength(
   bankId: string,
   difficultyOrSize: keyof typeof STACK_TOKENS_BY_DIFFICULTY | BankSize = "normal",
 ): number {
-  const bank = CREATURE_BANKS[bankId as CreatureBankId];
+  const polish = typeof difficultyOrSize === "number";
+  const bank = (polish ? POLISH_CREATURE_BANKS : CREATURE_BANKS)[bankId as CreatureBankId];
   if (!bank) return Number.POSITIVE_INFINITY;
-  const base = bank.units.reduce(
-    (sum, unitDefId) => sum + bankUnitStrength(unitDefId),
+  const entries = polish && bank.buildUnits
+    ? bank.buildUnits(difficultyOrSize as BankSize)
+    : bank.units.map((unitDefId, index) => ({ unitDefId, bankSideKey: polish ? bank.unitSideKeys?.[index] : undefined }));
+  const base = entries.reduce(
+    (sum, entry) => sum + bankUnitStrength(entry.unitDefId, entry.bankSideKey),
     0,
   );
   const expectedStacks =

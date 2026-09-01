@@ -112,6 +112,15 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     default: true,
   },
   {
+    id: "arch-devil-pack-damage-6",
+    label: "Arch Devils Pack: 6 damage",
+    description:
+      "BINH house rule: the Pack of Arch Devils fights with 6 Attack instead of the printed 7. The Few and Neutral Arch Devils are unchanged.",
+    category: "units",
+    default: true,
+    legacyDefault: false,
+  },
+  {
     id: "sandro-skeleton-hp",
     label: "Sandro skeleton Health",
     description:
@@ -229,6 +238,15 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     default: true,
   },
   {
+    id: "bank-interior-entry-only",
+    label: "Creature-bank entrance faces inward",
+    description:
+      "BINH house rule: enter a Creature Bank only from another field on its host tile. A hero cannot enter from an adjacent tile or leave the bank across its outer tile edge.",
+    category: "combat",
+    default: true,
+    legacyDefault: false,
+  },
+  {
     id: "bank-stack-chance-80",
     label: "Creature-bank Stack chance: 80%",
     description:
@@ -264,9 +282,9 @@ export const HOUSE_RULES: HouseRuleDef[] = [
   },
   {
     id: "polish-bank-sizes",
-    label: "Rolled Creature Bank sizes",
+    label: "Polish Creature Banks (I–IV)",
     description:
-      "Polish house rule: reveal up to two Banks, roll size for each (1 Attack die on the first Ⅱ–Ⅲ opening, 2 dice later), choose one, then rotate. Size I–IV sets guard layers and rewards; replaces normal Bank Stack Tokens. Requires Creature Banks.",
+      "Polish house rule: use the 20-bank Polish roster, exact guardian cards and printed rewards. Reveal up to two Banks, roll size I–IV, then choose one. Size selects Stack Tokens, Black Tower dragon, and the I–IV unit reward card; unit banks also grant 1 Empower token. Black Tower searches its fixed Minor/Major pile. Requires Creature Banks and automatically uses split Artifact piles.",
     category: "polish",
     default: false,
     legacyDefault: false,

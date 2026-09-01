@@ -306,11 +306,15 @@ describe("Seamen Plunder — gold on a kill, once per combat", () => {
  * first; if that target is removed, the Ayssid follow-up strikes the second
  * (the only other adjacent enemy → resolved automatically, no target choice).
  */
-function ayssidStrike(options: { firstTargetHealth: number }): GameState {
+function ayssidStrike(options: {
+  firstTargetHealth: number;
+  firstTargetVariant?: "few" | "pack";
+  attackerAttack?: number;
+}): GameState {
   const state = createInitialGameState("cove-ayssid-seed");
   const attacker = state.combat!.units.unit_p1_griffins;
   attacker.abilities = ["ayssid-pounce"];
-  attacker.attack = 10;
+  attacker.attack = options.attackerAttack ?? 10;
   attacker.position = 5; // row 1, col 1
 
   const first = state.combat!.units.unit_p2_skeletons;
@@ -319,7 +323,7 @@ function ayssidStrike(options: { firstTargetHealth: number }): GameState {
   first.defense = 0;
   first.maxHealth = options.firstTargetHealth;
   first.damage = 0;
-  first.variant = "few";
+  first.variant = options.firstTargetVariant ?? "few";
 
   const second = state.combat!.units.unit_p2_vampires;
   second.abilities = [];
@@ -368,5 +372,30 @@ describe("Ayssids Killer Instinct — pounce on a kill", () => {
     ).toBe(false);
     expect(next.combat!.units.unit_p2_vampires.damage).toBe(0);
     expect(abilityEvents(next).some((event) => event.abilityId === "ayssid-pounce")).toBe(false);
+  });
+
+  it("a Pack reduced to 0 flips to Few, retaliates, then Ayssids still pounce another unit", () => {
+    const next = ayssidStrike({
+      firstTargetHealth: 3,
+      firstTargetVariant: "pack",
+      attackerAttack: 3
+    });
+    const first = next.combat!.units.unit_p2_skeletons;
+    expect(first.variant).toBe("few");
+    expect(first.damage).toBe(0);
+
+    const rolls = next.eventLog.filter(
+      (event): event is Extract<(typeof next.eventLog)[number], { type: "ATTACK_ROLLED" }> =>
+        event.type === "ATTACK_ROLLED"
+    );
+    const retaliationIndex = rolls.findIndex(
+      (event) => event.attackerId === "unit_p2_skeletons" && event.isRetaliation
+    );
+    const pounceIndex = rolls.findIndex(
+      (event) => event.attackerId === "unit_p1_griffins" && event.defenderId === "unit_p2_vampires"
+    );
+    expect(retaliationIndex, "the surviving Few group retaliates").toBeGreaterThanOrEqual(0);
+    expect(pounceIndex, "Ayssids attack the other adjacent unit").toBeGreaterThan(retaliationIndex);
+    expect(next.combat!.units.unit_p2_vampires.damage).toBeGreaterThan(0);
   });
 });

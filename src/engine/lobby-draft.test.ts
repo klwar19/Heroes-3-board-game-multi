@@ -259,7 +259,7 @@ describe("TYPE 1 — draft: ban phase (2 players → 2 bans each, round-robin)",
     expect(p2Bans).not.toContain("sandro");
   });
 
-  it("the pick phase: each seat picks its own non-banned hero; a banned hero or a wrong town is refused", () => {
+  it("the pick phase: each seat gets 3 random survivors; outside, banned, and wrong-town picks are refused", () => {
     let state = lockedTwoPlayerDraft("draft-pick");
     state = apply(state, { type: "BAN_HERO", playerId: "p1", heroDefId: "sandro" });
     state = apply(state, { type: "BAN_HERO", playerId: "p2", heroDefId: "catherine" });
@@ -271,14 +271,27 @@ describe("TYPE 1 — draft: ban phase (2 players → 2 bans each, round-robin)",
     // ... and cannot pick a hero from a town that is not theirs.
     reject(state, { type: "CHOOSE_FACTION", playerId: "p1", factionId: "necropolis", heroDefId: "moandor" });
 
-    // A surviving castle hero is pickable. (Mutation control: if the ban filter
-    // were dropped, the rejected catherine pick above would have succeeded.)
-    const survivor = CASTLE.heroes.find((id) => !["catherine", "rion"].includes(id))!;
+    const castleOptions = state.setupLobby!.draft!.seatRolls!.p1!.heroOptions!;
+    const necroOptions = state.setupLobby!.draft!.seatRolls!.p2!.heroOptions!;
+    expect(castleOptions).toHaveLength(3);
+    expect(necroOptions).toHaveLength(3);
+    expect(castleOptions.some((id) => ["catherine", "rion"].includes(id))).toBe(false);
+    expect(necroOptions.some((id) => ["sandro", "tamika"].includes(id))).toBe(false);
+
+    const outsideDeal = CASTLE.heroes.find(
+      (id) => !["catherine", "rion"].includes(id) && !castleOptions.includes(id),
+    );
+    if (outsideDeal) {
+      reject(state, { type: "CHOOSE_FACTION", playerId: "p1", factionId: "castle", heroDefId: outsideDeal });
+    }
+
+    // A dealt castle survivor is pickable.
+    const survivor = castleOptions[0]!;
     state = apply(state, { type: "CHOOSE_FACTION", playerId: "p1", factionId: "castle", heroDefId: survivor });
     expect(seatOf(state, "p1")?.heroDefId).toBe(survivor);
 
     // p2 (necropolis) takes a surviving necro hero, then the adventure builds.
-    const necroSurvivor = NECRO.heroes.find((id) => !["sandro", "tamika"].includes(id))!;
+    const necroSurvivor = necroOptions[0]!;
     state = apply(state, { type: "CHOOSE_FACTION", playerId: "p2", factionId: "necropolis", heroDefId: necroSurvivor });
 
     const started = apply(state, { type: "START_ADVENTURE", playerId: "p1" });

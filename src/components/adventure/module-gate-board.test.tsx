@@ -19,8 +19,10 @@ afterEach(cleanup);
  * The Calamity Gate / Dungeon Gate are carved ONTO a printed Blocked Field, whose
  * slot also carries the tile's sealed outer arc. The board must stop drawing that
  * hex's ring once it is a Gate, or the site reads as impassable — the reported
- * "borders all around it, can't access". Creature Banks follow the same
- * permanent no-border presentation.
+ * "borders all around it, can't access". Creature Banks are different under
+ * BINH rules: their inward seams stay open, while only the three outward edges
+ * remain drawn to communicate that the bank cannot be entered from (or exited
+ * toward) the surrounding map.
  */
 const TILE = "F3"; // far tile: blocked field on slot 3, sealed outer arc
 const SLOT = 3;
@@ -76,7 +78,13 @@ describe("a Gate carved over a Blocked Field draws no printed border on the boar
       const carvedLines = carved.querySelectorAll("line.tileBorderLine").length;
       const printedLines = printed.querySelectorAll("line.tileBorderLine").length;
       expect(printedLines, "a plain Blocked Field is ringed").toBeGreaterThan(carvedLines);
-      expect(carvedLines, "the Gate's ring and arc are gone").toBe(printedLines - 6);
+      const removedLines = location === "creature_bank" ? 3 : 6;
+      expect(
+        carvedLines,
+        location === "creature_bank"
+          ? "the bank keeps only its outward containment arc"
+          : "the Gate's ring and arc are gone",
+      ).toBe(printedLines - removedLines);
     });
 
     // USER RULE 2026-08-22 (supersedes the v24 "designer edges are inert at a

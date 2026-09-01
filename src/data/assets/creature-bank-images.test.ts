@@ -6,7 +6,7 @@ import {
   CREATURE_BANK_FIELD_IMAGES,
   creatureBankFieldImage
 } from "./homm-assets";
-import { CREATURE_BANK_IDS } from "@/data/map/creature-banks";
+import { CREATURE_BANK_IDS, POLISH_CREATURE_BANK_IDS } from "@/data/map/creature-banks";
 
 /**
  * Locks the per-bank Creature Bank field-tile art. Before this, every bank hex
@@ -28,8 +28,20 @@ describe("Creature Bank field-tile art", () => {
         `/assets/locations-${id}.webp`
       );
     }
-    // No stray keys beyond the twelve banks.
-    expect(Object.keys(CREATURE_BANK_FIELD_IMAGES).sort()).toEqual([...CREATURE_BANK_IDS].sort());
+    // The Polish set adds eight unique locations while reusing the matching
+    // official art for its twelve shared structures.
+    expect(Object.keys(CREATURE_BANK_FIELD_IMAGES).sort()).toEqual([...POLISH_CREATURE_BANK_IDS].sort());
+  });
+
+  it("ships distinct, compressed field art for every new Polish location", () => {
+    const added = POLISH_CREATURE_BANK_IDS.filter((id) => !CREATURE_BANK_IDS.includes(id));
+    expect(added).toHaveLength(8);
+    const paths = added.map((id) => creatureBankFieldImage(id));
+    expect(new Set(paths).size).toBe(8);
+    for (const path of paths) {
+      expect(path).toContain("/assets/polish-banks/location-");
+      expect(statSync(publicAsset(path)).size).toBeLessThan(100_000);
+    }
   });
 
   it("gives each bank a DISTINCT image — none silently shares another's art or the generic token", () => {

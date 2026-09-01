@@ -122,12 +122,14 @@ export type LocationInteraction =
       side: "few" | "pack" | "neutral" | "bank";
       stacks?: number;
       stacked?: boolean;
+      /** Exact alternate Creature-Bank face (Polish Banks guardian/reward set). */
+      bankSideKey?: string;
     }
   | { type: "ROLL_RESOURCE_DICE"; count: number }
   | { type: "ROLL_TREASURE_DICE"; count: number }
   | {
       type: "SEARCH_SHARED_DECK";
-      deckId: "spells" | "abilities" | "artifacts";
+      deckId: "spells" | "abilities" | "artifacts" | "artifacts-minor" | "artifacts-major";
       count: number;
       times?: number;
       /**

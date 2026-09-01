@@ -362,7 +362,7 @@ describe("Creature Bank — reserved (known) before the tile is rotated", () => 
 // ===========================================================================
 
 describe("Creature Bank movement", () => {
-  function twoTileState(): GameState {
+  function twoTileState(inwardOnly = true): GameState {
     const state = createAdventureGameState({ seed: "bank-move", difficulty: "normal", rollFirstPlayer: false });
     const template = Object.values(state.adventure!.tiles)[0];
     // Two surface tiles with unknown defs (no internal borders, no sealed edges).
@@ -382,10 +382,11 @@ describe("Creature Bank movement", () => {
     state.adventure!.fields["A"] = field("A", "T1", "empty_field", 1);
     state.adventure!.fields["B"] = field("B", "T1", "creature_bank", 2, "crypt");
     state.adventure!.fields["C"] = field("C", "T2", "empty_field", 1);
+    state.adventure!.houseRules!["bank-interior-entry-only"] = inwardOnly;
     return state;
   }
 
-  it("is reachable from a same-tile field AND from an adjacent Tile (open bank edges)", () => {
+  it("BINH: enters and exits on the host tile, never across the bank's outer tile edge", () => {
     const state = twoTileState();
     // Control: two ordinary fields on different tiles ARE crossable.
     expect(canCrossEdge(state, "C", "A")).toBe(true);
@@ -394,9 +395,12 @@ describe("Creature Bank movement", () => {
     expect(canCrossEdge(state, "A", "B")).toBe(true);
     expect(canCrossEdge(state, "B", "A")).toBe(true);
 
-    // Across a tile edge: Creature Banks draw no borders, so a hero may enter
-    // the bank from outside its Tile and leave the same way. A guarded bank
-    // still forces a combat stop (classifyHeroStep), so it is not a free bridge.
+    expect(canCrossEdge(state, "C", "B")).toBe(false);
+    expect(canCrossEdge(state, "B", "C")).toBe(false);
+  });
+
+  it("CONTROL: with the BINH entrance rule off, the old cross-tile bank edge stays open", () => {
+    const state = twoTileState(false);
     expect(canCrossEdge(state, "C", "B")).toBe(true);
     expect(canCrossEdge(state, "B", "C")).toBe(true);
   });

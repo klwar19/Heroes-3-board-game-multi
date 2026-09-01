@@ -30,7 +30,7 @@ describe("Creature Bank definitions", () => {
   });
 
   it("fields exactly the rulebook defenders for each bank", () => {
-    const expected: Record<CreatureBankId, string[]> = {
+    const expected: Partial<Record<CreatureBankId, string[]>> = {
       imp_cache: ["neutral.familiars", "neutral.familiars", "neutral.familiars", "neutral.familiars"],
       crypt: ["neutral.skeletons", "neutral.zombies", "neutral.wraiths", "neutral.vampires"],
       dwarven_treasury: ["neutral.dwarves", "neutral.dwarves", "neutral.dwarves", "neutral.dwarves"],

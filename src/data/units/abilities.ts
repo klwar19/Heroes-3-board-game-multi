@@ -3172,6 +3172,14 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "ON_ATTACK_HEAL_SELF", amount: 9 },
     implementationStatus: "implemented"
   },
+  "polish-bank-vampire-heal-stacked": {
+    id: "polish-bank-vampire-heal-stacked",
+    name: "Vampire Lord Life Drain",
+    text: "While Stacked, after this unit attacks, remove up to 2 damage from it.",
+    effect: { type: "ON_ATTACK_HEAL_SELF", amount: 2 },
+    requiresStacked: true,
+    implementationStatus: "implemented"
+  },
   "mgq-carmilla-life-drain": {
     id: "mgq-carmilla-life-drain",
     name: "Vampire Life-Drain",

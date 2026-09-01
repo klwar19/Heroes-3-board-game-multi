@@ -176,7 +176,7 @@ describe("SetupLobbyScreen — TYPE 1 draft", () => {
     expect(screen.queryByRole("button", { name: /^Catherine$/ })).toBeNull();
   });
 
-  it("in the pick phase a banned hero's pick button is disabled while a sibling stays enabled", () => {
+  it("in the pick phase banned and undealt heroes are disabled while the three dealt survivors stay enabled", () => {
     const state = build("ui-draft-pick", [
       { type: "SET_DRAFT_FORMAT", playerId: "p1", format: "draft" },
       { type: "CHOOSE_TOWN", playerId: "p1", factionId: "castle" },
@@ -190,17 +190,20 @@ describe("SetupLobbyScreen — TYPE 1 draft", () => {
     render(<SetupLobbyScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
     openHeroes();
 
+    const candidates = state.setupLobby!.draft!.seatRolls!.p1!.heroOptions!;
+    expect(candidates).toHaveLength(3);
     // Catherine + Rion were banned by p2 → disabled in p1's castle pick grid.
     expect((screen.getByRole("button", { name: /Catherine/ }) as HTMLButtonElement).disabled).toBe(true);
-    // Adelaide (un-banned castle sibling) is pickable.
-    const adelaide = screen.getByRole("button", { name: /Adelaide/ }) as HTMLButtonElement;
-    expect(adelaide.disabled).toBe(false);
-    fireEvent.click(adelaide);
+    const candidate = candidates[0]!;
+    const candidateName = coreHeroDefinitions[candidate]!.name;
+    const candidateButton = screen.getByRole("button", { name: new RegExp(candidateName) }) as HTMLButtonElement;
+    expect(candidateButton.disabled).toBe(false);
+    fireEvent.click(candidateButton);
     expect(onAction).toHaveBeenCalledWith({
       type: "CHOOSE_FACTION",
       playerId: "p1",
       factionId: "castle",
-      heroDefId: "adelaide"
+      heroDefId: candidate
     });
   });
 });

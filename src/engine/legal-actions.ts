@@ -4757,7 +4757,8 @@ function isOptionEffectPlayable(
     }
     case "GAIN_WAR_MACHINE": {
       // Torosar's Ballista I "Pay 5 gold to gain a Ballista": needs the machine in
-      // the catalog, NOT already owned by this player, and enough gold (a map play).
+      // the catalog and enough gold (a map play). Ballistas are deliberately
+      // stackable; other GAIN_WAR_MACHINE cards retain their unique/fallback rule.
       // The catalog is per-player and never depletes — another player owning a
       // Ballista never blocks this one. (It still offers the fallback draw at
       // resolution when the player already holds it — see GAIN_WAR_MACHINE.)
@@ -14911,7 +14912,7 @@ function getSetupLobbyLegalActions(
       }
     } else if (phase.pickPhaseOpen) {
       const faction = coreFactionDefinitions[seat.factionId];
-      for (const heroDefId of faction?.heroes ?? []) {
+      for (const heroDefId of draft.seatRolls?.[playerId]?.heroOptions ?? []) {
         if (banned.has(heroDefId) || seat.heroDefId === heroDefId) {
           continue;
         }

@@ -275,8 +275,15 @@ describe("applyCustomMapObjects — creature_bank carve", () => {
     expect(adv(withGarrison).fields[hexSpaceId(garrisonHex)]?.borderEdges).toEqual([0, 3]);
   });
 
-  it("a bank field never seals movement or tile discovery even with stale borderEdges", () => {
+  it("stale bank borderEdges never seal movement or tile discovery", () => {
     const state = bankGame([bankObject({ bankId: "crypt" })], "bank-open");
+    // Isolate stale edge handling from the separate BINH rule that intentionally
+    // contains cross-tile bank entry/exit.
+    state.adventure!.houseRules = {
+      ...(state.adventure!.houseRules ?? {}),
+      "bank-interior-entry-only": false,
+      "discovery-border-gate": true,
+    } as never;
     const field = adv(state).fields[BANK_ID]!;
     // Smuggle edges onto the live bank field (as if a hand-edit tried to seal it).
     field.borderEdges = [0, 1, 2, 3, 4, 5];
@@ -291,7 +298,6 @@ describe("applyCustomMapObjects — creature_bank carve", () => {
     // `discovery-border-gate` house rule ON (its BINH default since 2026-08-02;
     // still a Legacy toggle) — with it OFF adjacency alone already allows every
     // discovery, so the bank exception would be vacuous here.
-    state.adventure!.houseRules = { ...(state.adventure!.houseRules ?? {}), "discovery-border-gate": true } as never;
     expect(
       heroCanDiscoverTileAcrossBorders(state, BANK_ID, field, {
         id: "fake-discover",

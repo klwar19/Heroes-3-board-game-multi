@@ -66,7 +66,9 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import { locationDefinitions } from "@/data/map/locations";
 import {
   CREATURE_BANKS,
-  CREATURE_BANK_UNIT_SIDES,
+  getCreatureBankDefinition,
+  getCreatureBankUnitSide,
+  polishCreatureBankCardName,
   stackTokenDelta,
   type CreatureBankId,
 } from "@/data/map/creature-banks";
@@ -1912,6 +1914,7 @@ export function HexMapBoard({
             extraBorders: tile.extraBorders,
             borderEdges: tile.borderEdges,
             rotation,
+            preserveBankOuterArcs: houseRuleEnabled(state, "bank-interior-entry-only"),
           })
         : [];
       const footprint = tileFootprint(center, rotation);
@@ -2004,7 +2007,7 @@ export function HexMapBoard({
                   {previewBankOptions.length > 1
                     ? `${index === 0 ? "A" : "B"} · `
                     : ""}
-                  {CREATURE_BANKS[candidate.bankId]?.name ?? "Creature Bank"}
+                  {getCreatureBankDefinition(candidate.bankId, Boolean(state.adventure?.houseRules?.["polish-bank-sizes"])).name}
                   {"size" in candidate ? ` · ${ROMAN[candidate.size]}` : ""}
                 </text>
               ))}
@@ -2176,6 +2179,7 @@ export function HexMapBoard({
             extraBorders: tile.extraBorders,
             borderEdges: tile.borderEdges,
             rotation: tile.rotation,
+            preserveBankOuterArcs: houseRuleEnabled(state, "bank-interior-entry-only"),
             borderlessSlots: printedBordersFixed
               ? EMPTY_SLOT_SET
               : borderlessOverrideSlots,
@@ -2392,7 +2396,7 @@ export function HexMapBoard({
           <title>
             {`${
               field.location === "creature_bank" && field.bankId
-                ? `${CREATURE_BANKS[field.bankId as CreatureBankId]?.name ?? "Creature Bank"} (Creature Bank${field.bankSize ? `, size ${ROMAN[field.bankSize]}` : ""})`
+                ? `${getCreatureBankDefinition(field.bankId as CreatureBankId, Boolean(state.adventure?.houseRules?.["polish-bank-sizes"])).name} (Creature Bank${field.bankSize ? `, size ${ROMAN[field.bankSize]}` : ""})`
                 : (location?.name ?? field.location)
             }${field.difficulty && guarded ? ` (guard ${ROMAN[field.difficulty]})` : ""}${randomTownFactionTip}${alteredGuardTip}${designerRewardTip}${
               overrideInfo ? ` — ${overrideInfo.summary}` : ""
@@ -5167,8 +5171,8 @@ export function TownHeroDock({
               const def = coreUnitDefinitions[unit.unitDefId];
               const side =
                 unit.side === "bank"
-                  ? CREATURE_BANK_UNIT_SIDES[unit.unitDefId]
-                  : armyUnitPrintedSide(def, unit.side, unit.unitDefId);
+                  ? getCreatureBankUnitSide(unit.unitDefId, unit.bankSideKey)
+                  : armyUnitPrintedSide(def, unit.side, unit.unitDefId, unit.bankSideKey);
               // Community Balance Change reprints four Castle unit sides; every
               // surface that paints `side.cardImage` reads the same resolver.
               const face = resolveUnitFaceImage(
@@ -6144,7 +6148,7 @@ export function ArmyPanel({
           const def = coreUnitDefinitions[unit.unitDefId];
           // Few/Pack printed sides, with a recruited Neutral card's own side
           // (it used to fall through to `pack`, hiding a Neutral's stats).
-          const printed = armyUnitPrintedSide(def, unit.side, unit.unitDefId);
+          const printed = armyUnitPrintedSide(def, unit.side, unit.unitDefId, unit.bankSideKey);
           // BINH stat tweaks (Griffins, Marksmen) show live values.
           const side = printed
             ? unit.side === "bank"
@@ -6938,6 +6942,7 @@ function rewardArtFromVisitSteps(
             def,
             armyUnit.side,
             armyUnit.unitDefId,
+            armyUnit.bankSideKey,
           );
           return {
             image:
@@ -6977,6 +6982,11 @@ function rewardArtFromVisitSteps(
     if (typeof step.cardId === "string" && step.cardId) {
       return rewardArtForId(step.cardId);
     }
+    if (typeof step.unitDefId === "string" && step.unitDefId && typeof step.bankSideKey === "string") {
+      const side = getCreatureBankUnitSide(step.unitDefId, step.bankSideKey);
+      const name = polishCreatureBankCardName(step.bankSideKey) ?? step.unitDefId;
+      return { image: side?.cardImage, unitDefId: step.unitDefId, unitSide: "bank", name, caption: name };
+    }
     if (typeof step.unitDefId === "string" && step.unitDefId) {
       return rewardArtForId(step.unitDefId);
     }
@@ -6997,6 +7007,7 @@ function rewardArtFromVisitSteps(
           def,
           armyUnit.side,
           armyUnit.unitDefId,
+          armyUnit.bankSideKey,
         );
         return {
           image:
@@ -8316,8 +8327,10 @@ export function PromptTray({
                     if (!candidate) {
                       return { legal, art: null as VisitRewardArt | null };
                     }
-                    const bank =
-                      CREATURE_BANKS[candidate.bankId as CreatureBankId];
+                    const bank = getCreatureBankDefinition(
+                      candidate.bankId as CreatureBankId,
+                      Boolean(state.adventure?.houseRules?.["polish-bank-sizes"]),
+                    );
                     const letter = String.fromCharCode(65 + (optionIndex ?? 0));
                     const sizeRoman =
                       ROMAN[candidate.size] ?? String(candidate.size);
@@ -8811,7 +8824,7 @@ export function PromptTray({
                 : undefined;
             const isLeaveBlocked = !candidate;
             const bank = candidate
-              ? CREATURE_BANKS[candidate.bankId as CreatureBankId]
+              ? getCreatureBankDefinition(candidate.bankId as CreatureBankId, Boolean(state.adventure?.houseRules?.["polish-bank-sizes"]))
               : undefined;
             const letter =
               optionIndex !== undefined
@@ -10552,6 +10565,7 @@ export function PlacementPanel({
             def,
             unit.side,
             unit.unitDefId,
+            unit.bankSideKey,
           )?.cardImage;
           const isPlaced = placed.includes(unit.id);
           const canPlace = placeActions.some(
@@ -15583,7 +15597,7 @@ function ResetSeatButton({
 const DRAFT_FORMAT_BLURB: Record<DraftFormat, string> = {
   open: "Free pick — choose any untaken town and any of its heroes.",
   draft:
-    "Lock a town (from a rolled pair, or by choosing one), ban heroes from each other’s towns, then pick your hero.",
+    "Lock a town, take two round-robin bans, then pick from three randomly dealt remaining heroes.",
   random: "Both town and hero are rolled at random for every seat.",
   "random-choice":
     "Roll a pair of towns and keep one, then roll a pair of that town’s heroes and keep one.",
@@ -15987,7 +16001,7 @@ function DraftPhaseAnnouncement({
   );
 }
 
-/** TYPE 1, step 3 — pick your hero from your own town (banned heroes locked out). */
+/** TYPE 1, step 3 — pick from the three remaining heroes dealt to this seat. */
 function DraftPickPhase({
   state,
   viewerPlayerId,
@@ -16003,13 +16017,13 @@ function DraftPickPhase({
   }
   const factionId = seat.factionId;
   const banned = new Set(lobby.draft?.bannedHeroDefIds ?? []);
+  const candidates = new Set(lobby.draft?.seatRolls?.[viewerPlayerId]?.heroOptions ?? []);
   return (
     <div className="draftFlow" aria-label="Pick your hero">
       <div className="draftPhaseHead">
         <strong>Step 3 — pick your hero</strong>
         <small>
-          {coreFactionDefinitions[factionId]?.name} · banned heroes are greyed
-          out
+          {coreFactionDefinitions[factionId]?.name} · choose 1 of your 3 random remaining heroes
         </small>
       </div>
       <FactionPickGrid
@@ -16017,8 +16031,12 @@ function DraftPickPhase({
         heroStateFor={(_factionId, heroDefId) => ({
           selected: seat.heroDefId === heroDefId,
           banned: banned.has(heroDefId),
-          disabled: banned.has(heroDefId),
-          title: banned.has(heroDefId) ? "Banned out of this draft" : undefined,
+          disabled: banned.has(heroDefId) || !candidates.has(heroDefId),
+          title: banned.has(heroDefId)
+            ? "Banned out of this draft"
+            : candidates.has(heroDefId)
+              ? "One of your three draft candidates"
+              : "Not included in your three random candidates",
         })}
         onInspect={onInspect}
         onPick={(pickFactionId, heroDefId) =>

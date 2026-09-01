@@ -33,27 +33,54 @@ describe("Elo ratings", () => {
     expect(easyGain).toBeLessThan(closeGain);
   });
 
-  it("3+ players: winner gains most, middle gains less, and only last loses", () => {
+  it("3+ players: winner gains most, every loser loses, and later places lose more", () => {
     const out = computeRatings([
       { id: "W", rating: 1200, result: "win", placement: 1, mmrRole: "winner" },
       { id: "P2", rating: 1200, result: "loss", placement: 2, mmrRole: "minor" },
       { id: "P3", rating: 1200, result: "loss", placement: 3, mmrRole: "last" }
     ]);
-    expect(out.get("W")).toBe(1221);
-    expect(out.get("P2")).toBe(1211);
-    expect(out.get("P3")).toBe(1168);
+    expect(out.get("W")).toBe(1216);
+    expect(out.get("P2")).toBe(1195);
+    expect(out.get("P3")).toBe(1189);
     expect([...out.values()].reduce((sum, rating) => sum + rating, 0)).toBe(3600);
   });
 
-  it("keeps tied non-winners neutral when no sole last place can be decided", () => {
+  it("charges tied non-winners the same small loss when no sole last can be decided", () => {
     const out = computeRatings([
       { id: "W", rating: 1200, result: "win", placement: 1, mmrRole: "winner" },
       { id: "A", rating: 1200, result: "loss", placement: 2, mmrRole: "neutral" },
       { id: "B", rating: 1200, result: "loss", placement: 2, mmrRole: "neutral" }
     ]);
     expect(out.get("W")).toBe(1216);
-    expect(out.get("A")).toBe(1200);
-    expect(out.get("B")).toBe(1200);
+    expect(out.get("A")).toBe(1192);
+    expect(out.get("B")).toBe(1192);
+    expect([...out.values()].reduce((sum, rating) => sum + rating, 0)).toBe(3600);
+  });
+
+  it("4 players stays balanced: winner +16, ordered losers pay only 3/5/8", () => {
+    const out = computeRatings([
+      { id: "W", rating: 1200, result: "win", placement: 1, mmrRole: "winner" },
+      { id: "P2", rating: 1200, result: "loss", placement: 2, mmrRole: "minor" },
+      { id: "P3", rating: 1200, result: "loss", placement: 3, mmrRole: "minor" },
+      { id: "P4", rating: 1200, result: "loss", placement: 4, mmrRole: "last" },
+    ]);
+    expect([out.get("W"), out.get("P2"), out.get("P3"), out.get("P4")]).toEqual([
+      1216, 1197, 1195, 1192,
+    ]);
+    expect([...out.values()].reduce((sum, rating) => sum + rating, 0)).toBe(4800);
+  });
+
+  it("keeps placement order dominant even when loser ratings are far apart", () => {
+    const out = computeRatings([
+      { id: "W", rating: 1200, result: "win", placement: 1 },
+      { id: "P2", rating: 2400, result: "loss", placement: 2 },
+      { id: "P3", rating: 500, result: "loss", placement: 3 },
+    ]);
+    const runnerUpLoss = 2400 - out.get("P2")!;
+    const lastPlaceLoss = 500 - out.get("P3")!;
+    expect(runnerUpLoss).toBeGreaterThan(0);
+    expect(lastPlaceLoss).toBeGreaterThanOrEqual(runnerUpLoss);
+    expect(out.get("W")! - 1200).toBe(runnerUpLoss + lastPlaceLoss);
   });
 
   it("never falls below the floor", () => {

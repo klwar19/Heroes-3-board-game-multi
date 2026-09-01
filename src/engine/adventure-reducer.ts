@@ -37,7 +37,7 @@ import {
   queueNeutralCommanderArtifactOffer
 } from "./commander-artifacts";
 import type { RaidBossDefinition } from "@/data/anime/bosses";
-import { CREATURE_BANKS, rollStackTokenStat, type CreatureBankId } from "@/data/map/creature-banks";
+import { getCreatureBankDefinition, rollStackTokenStat, type CreatureBankId } from "@/data/map/creature-banks";
 import { isMarketLocation, locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { recordVpHeroDefeat, recordVpSurrender, recordVpUtopiaDefeat } from "./victory-points";
 import {
@@ -2889,7 +2889,7 @@ function openPolishBankChoiceBeforeRotation(state: GameState, tile: MapTileState
   const hostLabel = hostLocation === "empty_field" ? "Empty Field" : "Blocked Field";
   const leaveLabel = hostLocation === "empty_field" ? "Leave it empty" : "Leave it blocked";
   const bankOptions = candidates.map((candidate, index) => ({
-    label: `${String.fromCharCode(65 + index)} · ${CREATURE_BANKS[candidate.bankId as CreatureBankId]?.name ?? "Creature Bank"} · size ${BANK_SIZE_ROMAN[candidate.size]}`
+    label: `${String.fromCharCode(65 + index)} · ${getCreatureBankDefinition(candidate.bankId as CreatureBankId, true).name} · size ${BANK_SIZE_ROMAN[candidate.size]}`
   }));
   const prompt =
     candidates.length > 1
@@ -3424,7 +3424,9 @@ function offerCreatureBankPlacement(state: GameState, tile: MapTileState, player
   const reservedBankId =
     tile.reservedBankId && isCreatureBankId(tile.reservedBankId) ? tile.reservedBankId : pile[pile.length - 1];
   tile.reservedBankId = isCreatureBankId(reservedBankId) ? reservedBankId : undefined;
-  const bankName = isCreatureBankId(reservedBankId) ? CREATURE_BANKS[reservedBankId]?.name ?? "Creature Bank" : "Creature Bank";
+  const bankName = isCreatureBankId(reservedBankId)
+    ? getCreatureBankDefinition(reservedBankId, houseRuleEnabled(state, "polish-bank-sizes")).name
+    : "Creature Bank";
   const tierLabel =
     tile.group === "subterranean" ? "cavern" : tile.group === "sea" ? "Sea IV–V tile" : tier === "far" ? "Far tile" : "Near tile";
   const sizedCandidates = houseRuleEnabled(state, "polish-bank-sizes")
@@ -3434,7 +3436,7 @@ function offerCreatureBankPlacement(state: GameState, tile: MapTileState, player
     sizedCandidates.length > 0
       ? [
           ...sizedCandidates.map((candidate, index) => ({
-            label: `${String.fromCharCode(65 + index)} · Place ${CREATURE_BANKS[candidate.bankId as CreatureBankId]?.name ?? "Creature Bank"} · size ${BANK_SIZE_ROMAN[candidate.size]}`
+            label: `${String.fromCharCode(65 + index)} · Place ${getCreatureBankDefinition(candidate.bankId as CreatureBankId, true).name} · size ${BANK_SIZE_ROMAN[candidate.size]}`
           })),
           { label: leaveLabel }
         ]
@@ -8003,20 +8005,22 @@ export function townPortalDestinations(
       ? `${hero.kind === "main" ? "Main Hero" : "Secondary Hero"} → `
       : "";
     const seen = new Set<string>();
+    const factionLabel = (factionId: string | undefined): string =>
+      factionId ? (coreFactionDefinitions[factionId]?.name ?? factionId) : "Unknown faction";
     for (const town of Object.values(state.towns)) {
-      // Town Portal targets a real controlled Town. A stale TownState pointing
-      // at a Random Town must never turn that VII field into a legal target.
+      // A controlled Random Town is a Town Portal destination too. Prefer the
+      // flag on the physical field because Random Town ownership is field-first.
       const townField = town.fieldId ? adventure.fields[town.fieldId] : undefined;
       if (
         town.fieldId &&
-        townField?.location === "town" &&
+        (townField?.location === "town" || townField?.location === "random_town") &&
         (townField.flagOwnerId ? townField.flagOwnerId === playerId : town.controllerId === playerId) &&
         town.fieldId !== hero.spaceId &&
         destinationAllowed(town.fieldId)
       ) {
         seen.add(town.fieldId);
         destinations.push({
-          label: `${heroPrefix}Town (${town.factionId ?? town.id})${distanceSuffix(town.fieldId)}`,
+          label: `${heroPrefix}${townField.location === "random_town" ? "Random Town" : "Town"} (${factionLabel(town.factionId ?? townField.faction)})${distanceSuffix(town.fieldId)}`,
           spaceId: town.fieldId,
           heroId: hero.id
         });
@@ -8024,14 +8028,14 @@ export function townPortalDestinations(
     }
     for (const field of Object.values(adventure.fields)) {
       if (
-        field.location === "settlement" &&
+        (field.location === "settlement" || field.location === "random_town") &&
         field.flagOwnerId === playerId &&
         field.spaceId !== hero.spaceId &&
         !seen.has(field.spaceId) &&
         destinationAllowed(field.spaceId)
       ) {
         destinations.push({
-          label: `${heroPrefix}Settlement${distanceSuffix(field.spaceId)}`,
+          label: `${heroPrefix}${field.location === "random_town" ? "Random Town" : "Settlement"} (${factionLabel(field.faction ?? state.players[playerId]?.factionId)})${distanceSuffix(field.spaceId)}`,
           spaceId: field.spaceId,
           heroId: hero.id
         });

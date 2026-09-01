@@ -83,6 +83,9 @@ export type HouseRuleId =
   | "mystical-garden-gold"
   | "griffin-buff"
   | "marksman-buff"
+  // BINH house rule: the Pack side of Arch Devils deals 6 damage instead of
+  // the printed 7. The Few and Neutral cards remain unchanged.
+  | "arch-devil-pack-damage-6"
   | "wisdom-expert-discount"
   | "estates-nerf"
   | "sandro-skeleton-hp"
@@ -106,6 +109,10 @@ export type HouseRuleId =
   // point-to-extend rule, like an ordinary neutral fight. Off: a bank has no
   // Round limit (rulebook) and rolls straight into the next round.
   | "bank-move-points"
+  // BINH house rule: a Creature Bank carved into a tile may only be entered
+  // from another field of that host tile. Its outer tile edge is never an
+  // entrance or exit.
+  | "bank-interior-entry-only"
   // BINH house rule: each of the difficulty's Creature-Bank Stack Tokens lands
   // only 80% of the time. Off (official): every token is placed, so the fixed
   // count is Easy 1 / Normal 2 / Hard 3 / Impossible 4.
@@ -8502,6 +8509,8 @@ export type ArmyUnitState = {
    * CREATURE_BANK_UNIT_SIDES and is a physically distinct card.
    */
   side: "few" | "pack" | "neutral" | "bank";
+  /** Exact alternate Creature-Bank face used by Polish Banks reward cards. */
+  bankSideKey?: string;
   /**
    * Specialty cards stacked on this unit card (Sandro's Cloak), bottom-up.
    * The top entry's statistics replace the printed side between and during
@@ -9402,6 +9411,8 @@ export type CombatUnitState = {
   name: string;
   cardName: string;
   variant: "few" | "pack" | "neutral";
+  /** Exact alternate Creature-Bank face used by a Polish guardian/reward card. */
+  bankSideKey?: string;
   /**
    * Designer `few:` / `random-few:` guard: minted as a faction Few. Distinguishes
    * a designed Few from a Pack that flipped mid-fight, so retreat survivors keep
@@ -9956,6 +9967,18 @@ export type AttackSequenceState = {
     abilityName: string;
     targetUnitId: UnitId;
     /** Optional fixed Attack value for the printed follow-up strike. */
+    baseAttack?: number;
+  };
+  /**
+   * Ayssids Killer Instinct: destroying the target's current group/layer arms
+   * one attack against another adjacent enemy. The target is chosen only after
+   * the original target's Retaliation Attack resolves (if it can), so a
+   * Pack→Few flip still retaliates before the pounce.
+   */
+  afterRetaliationSelfAdjacentAttack?: {
+    abilityId: string;
+    abilityName: string;
+    originalDefenderId: UnitId;
     baseAttack?: number;
   };
 };
@@ -11821,6 +11844,7 @@ export type VisitStep =
       stacks?: number;
       stacked?: boolean;
       stackToken?: StackTokenStat;
+      bankSideKey?: string;
     }
   | {
       /**
@@ -15558,7 +15582,7 @@ export type CustomMapGateLink = {
  *  - "open"          TYPE 4 — free pick: any untaken town + any of its heroes.
  *  - "draft"         TYPE 1 — pick a town from a rolled pair (or select one
  *                    directly), then a turn-order ban phase on opponents' heroes,
- *                    then each seat picks its own (non-banned) hero.
+ *                    then each seat picks from 3 randomly dealt non-banned heroes.
  *  - "random"        TYPE 2 — town AND hero rolled at random for every seat.
  *  - "random-choice" TYPE 3 — pick a town from a rolled pair, then pick a hero
  *                    from a rolled pair of that town's heroes.
@@ -15579,13 +15603,14 @@ export type GameSetupDraft = {
   /**
    * "draft" ban phase progress: how many bans have been committed. Bans go around
    * the table in seat (turn) order; each seat bans 2 heroes in a 2-player game,
-   * otherwise 1. The phase ends once this reaches `banBudgetPerSeat * seats`.
+   * and each seat also receives exactly 2 incoming bans. The phase ends once
+   * this reaches `banBudgetPerSeat * seats`.
    */
   banPicksMade?: number;
   /**
-   * Per-seat pending roll choices: the two rolled town options ("draft" /
-   * "random-choice") and the two rolled hero options ("random-choice") the seat
-   * must pick from. Cleared once the seat locks that step.
+   * Per-seat pending roll choices: two town options ("draft" / "random-choice"),
+   * two hero options ("random-choice"), or three post-ban hero options ("draft").
+   * Cleared once the seat locks that step.
    */
   seatRolls?: Record<
     PlayerId,
@@ -15915,6 +15940,10 @@ export type PendingAbilityRollContext = {
     attackKind: "melee" | "ranged";
     /** The resolved attack die (some later follow-ups read it). */
     attackRoll: number;
+    /** Damage dealt by the primary attack. */
+    attackDamage?: number;
+    /** The primary hit destroyed a Pack/Few/Neutral/Stack health layer. */
+    defeatedSideOrLayer?: boolean;
     /** Tarnum (Fortress) Basilisks VI: die-gated follow-ups fire regardless. */
     forceAbilityRoll: boolean;
     /** The tail step this roll belongs to (the tail continues at fromStep + 1). */

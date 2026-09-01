@@ -793,6 +793,13 @@ sealingDescribe("a FIXED yellow border is respected at a runtime border-free hex
 
   it("CONTROL: the Ⅱ–Ⅲ tile's PRINTED border around the carved bank still does not block — the DESIGNER arc / edge on the same hex does", () => {
     const { state, tile, bank, outside, dir } = bankOnPrintedBlockedSlot("db-bank-printed-vs-designed");
+    // This test isolates printed-vs-designer border semantics. Disable the
+    // separate BINH bank containment rule, whose cross-tile movement block is
+    // covered by creature-bank-combat/bugfix-player-report tests.
+    adv(state).houseRules = {
+      ...(adv(state).houseRules ?? {}),
+      "bank-interior-entry-only": false,
+    } as never;
 
     // CONTROL: printed-only — the bank is enterable/leavable across the Tile edge
     // and the hero standing on it may still flip an adjacent face-down Tile.
@@ -830,6 +837,10 @@ sealingDescribe("a FIXED yellow border is respected at a runtime border-free hex
   // is fixed too") is pinned so a future carve source cannot silently erase it.
   it("a carve on a STARTING tile keeps the tile's PRINTED border (CONTROL: the same carve on a far tile does not)", () => {
     const { state, tile, bank, outside } = bankOnPrintedBlockedSlot("db-bank-starting-tile");
+    adv(state).houseRules = {
+      ...(adv(state).houseRules ?? {}),
+      "bank-interior-entry-only": false,
+    } as never;
 
     // CONTROL: as a far tile the printed arc is suppressed by the carve.
     tile.group = "far";

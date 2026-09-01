@@ -197,7 +197,7 @@ describe("Game options — tabbed layout", () => {
     expandPolishHouseRules();
     expect(polishPanel.getAttribute("aria-expanded")).toBe("true");
     const bankSizes = screen.getByRole("button", {
-      name: /Rolled Creature Bank sizes/,
+      name: /Polish Creature Banks \(I–IV\)/,
     });
     expect(bankSizes.getAttribute("aria-pressed")).toBe("false");
     expect((bankSizes as HTMLButtonElement).disabled).toBe(false);
@@ -632,7 +632,7 @@ describe("Game options — tabbed layout", () => {
     const onAction = openOptions();
     expandPolishHouseRules();
     fireEvent.click(
-      screen.getByRole("button", { name: /Rolled Creature Bank sizes/ }),
+      screen.getByRole("button", { name: /Polish Creature Banks \(I–IV\)/ }),
     );
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
@@ -779,7 +779,7 @@ describe("Game options — tabbed layout", () => {
     openOptions(vi.fn(), { creatureBanks: false });
     expandPolishHouseRules();
     const toggle = screen.getByRole("button", {
-      name: /Rolled Creature Bank sizes/,
+      name: /Polish Creature Banks \(I–IV\)/,
     }) as HTMLButtonElement;
     expect(toggle.disabled).toBe(true);
     expect(toggle.textContent).toContain("BANKS OFF");

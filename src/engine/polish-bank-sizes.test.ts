@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   CREATURE_BANKS,
-  CREATURE_BANK_UNIT_SIDES,
+  CREATURE_BANK_IDS,
+  POLISH_CREATURE_BANKS,
+  POLISH_CREATURE_BANK_IDS,
+  getCreatureBankUnitSide,
   type CreatureBankId,
 } from "@/data/map/creature-banks";
 import {
@@ -323,7 +326,7 @@ function stackTokenDelta(stat: NonNullable<CombatUnitState["stackToken"]>): numb
 
 /** A Stacked bank defender's fighting stats include its token's stat bonus. */
 function expectStackTokenBaked(unit: CombatUnitState): void {
-  const base = CREATURE_BANK_UNIT_SIDES[unit.unitDefId!]!;
+  const base = getCreatureBankUnitSide(unit.unitDefId!, unit.bankSideKey)!;
   const token = unit.stackToken;
   if (!token) {
     throw new Error("expected a Stacked bank defender (a stackToken)");
@@ -350,7 +353,7 @@ describe("Polish bank size combat and AI", () => {
     // 12 banks × 4 sizes that is ~120 placements; if the guarantee were reverted
     // to the BINH 80% roll at least one would drop and the exact-count
     // assertion would fail (mutation control for the guaranteed placement).
-    for (const bankId of Object.keys(CREATURE_BANKS) as CreatureBankId[]) {
+    for (const bankId of POLISH_CREATURE_BANK_IDS) {
       for (const size of [1, 2, 3, 4] as const) {
         const { units, stackedCount } = buildCreatureBankCombatUnits(state, bankId, size);
         const expected = Math.min(size, units.length);
@@ -445,7 +448,7 @@ describe("Polish bank size combat and AI", () => {
     });
     // Rule OFF: the count comes from Scenario Difficulty, not a Polish size.
     // Impossible officially places all 4 Stack Tokens.
-    const counts = (Object.keys(CREATURE_BANKS) as CreatureBankId[]).map(
+    const counts = CREATURE_BANK_IDS.map(
       (bankId) => buildCreatureBankCombatUnits(state, bankId).stackedCount,
     );
     expect(counts.every((count) => count === 4)).toBe(true);
@@ -530,76 +533,69 @@ describe("Polish bank size rewards (back to the normal X-scaled reward)", () => 
     return state;
   }
 
-  it("routes the win reward through the normal bank.buildReward(X), X = the Stacked count = size", () => {
+  it("routes the win reward through the printed Polish bank builder, X = size", () => {
     const state = createAdventureGameState({
       seed: "bank-size-reward-routing",
       difficulty: "normal",
       rollFirstPlayer: false,
       houseRules: { "polish-bank-sizes": true },
     });
-    // Guaranteed placement makes the combat's Stacked count equal the size, and
-    // the reward is the classic per-bank builder scaled by that X — there is no
-    // bespoke Polish reward scale any more. Imp Cache pays its printed 3 + X gold.
+    // The new Imp Cache card pays 2 + 2X gold.
     for (const size of [1, 2, 3, 4] as const) {
       const { stackedCount } = buildCreatureBankCombatUnits(state, "imp_cache", size);
       expect(stackedCount).toBe(size);
-      expect(CREATURE_BANKS.imp_cache.buildReward(stackedCount)).toEqual({
+      expect(POLISH_CREATURE_BANKS.imp_cache.buildReward(stackedCount)).toEqual({
         type: "GAIN_RESOURCES",
-        gold: 3 + size,
+        gold: 2 + 2 * size,
       });
     }
   });
 
-  it("a resource-bank win actually lands the normal X-scaled gold (end to end)", () => {
+  it("a resource-bank win lands the printed Polish X-scaled gold (end to end)", () => {
     const state = bankRewardState("imp_cache", 3, "polish-bank-reward-gold");
     const goldBefore = state.players.p1.resources.gold ?? 0;
     grantCreatureBankReward(state, "hero_p1", "bank-field", 3);
-    expect((state.players.p1.resources.gold ?? 0) - goldBefore).toBe(6); // 3 + X(3)
+    expect((state.players.p1.resources.gold ?? 0) - goldBefore).toBe(8); // 2 + 2×X(3)
     expect(state.adventure!.fields["bank-field"].blackCube).toBe(true);
   });
 
-  it("a Dragon Fly Hive win grants the bank card — plain at size Ⅰ, RANDOM Stack Token from size Ⅱ", () => {
-    // Size Ⅲ (X = 3 ≥ 2): the dedicated bank card joins the army at once, flagged
-    // for a per-fight RANDOM Stack Token (user rule 2026-08-18 — no more pick). It
-    // never becomes a faction, Neutral-deck, or Polish Unit-Stack card.
+  it("Ogre's Stronghold grants the exact size-matched Wyverns card", () => {
     const stackedState = bankRewardState("dragon_fly_hive", 3, "polish-bank-reward-stacked");
     const stackedBefore = new Set(stackedState.players.p1.army.map((unit) => unit.id));
     grantCreatureBankReward(stackedState, "hero_p1", "bank-field", 3);
     const stackedGained = stackedState.players.p1.army.filter((unit) => !stackedBefore.has(unit.id));
     expect(stackedGained).toHaveLength(1);
     expect(stackedGained[0]).toMatchObject({
-      unitDefId: "neutral.dragon_flies",
+      unitDefId: "neutral.wyverns",
       side: "bank",
-      stackTokenRandom: true
+      bankSideKey: "reward:wyverns:3"
     });
-    expect(stackedGained[0].stackToken, "no fixed token — rolled fresh each fight").toBeUndefined();
+    expect(stackedGained[0].stackToken).toBeUndefined();
     expect(stackedGained[0].stacks, "never a Polish layer").toBeUndefined();
 
-    // Size Ⅰ (X = 0): a plain bank card, no token and no prompt.
+    // The field's stored size is authoritative even if a stale caller passes X=0.
     const fewState = bankRewardState("dragon_fly_hive", 1, "polish-bank-reward-few");
     const fewBefore = new Set(fewState.players.p1.army.map((unit) => unit.id));
     grantCreatureBankReward(fewState, "hero_p1", "bank-field", 0);
     const fewGained = fewState.players.p1.army.filter((unit) => !fewBefore.has(unit.id));
     expect(fewGained).toHaveLength(1);
-    expect(fewGained[0]).toMatchObject({ unitDefId: "neutral.dragon_flies", side: "bank" });
-    expect(fewGained[0].stackToken, "size Ⅰ → plain bank card, no token").toBeUndefined();
+    expect(fewGained[0]).toMatchObject({ unitDefId: "neutral.wyverns", side: "bank", bankSideKey: "reward:wyverns:1" });
+    expect(fewGained[0].stackToken).toBeUndefined();
     expect(fewGained[0].stacks).toBeUndefined();
   });
 
-  it("CONTROL (don't confuse Polish stacks): with polish-unit-stacks ON the Stacked reward STILL has NO layers — only the Stack Token", () => {
-    // The user's explicit warning: even with the Polish Unit-Stacks house rule on,
-    // these two banks must grant a normal-game Stack Token, never Polish layers.
+  it("CONTROL: Polish unit-stack layers never leak onto a size-matched reward card", () => {
     const state = bankRewardState("dragon_fly_hive", 3, "polish-bank-reward-both-on", /* unitStacks */ true);
     const before = new Set(state.players.p1.army.map((unit) => unit.id));
     grantCreatureBankReward(state, "hero_p1", "bank-field", 3);
     const gained = state.players.p1.army.filter((unit) => !before.has(unit.id));
     expect(gained).toHaveLength(1);
     expect(gained[0]).toMatchObject({
-      unitDefId: "neutral.dragon_flies",
+      unitDefId: "neutral.wyverns",
       side: "bank",
-      stackTokenRandom: true
+      bankSideKey: "reward:wyverns:3"
     });
-    expect(gained[0].stackToken, "a random token, never a fixed one").toBeUndefined();
+    expect(gained[0].stackToken).toBeUndefined();
     expect(gained[0].stacks, "NO Polish layer, even with polish-unit-stacks on").toBeUndefined();
   });
 

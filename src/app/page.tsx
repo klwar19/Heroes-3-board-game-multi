@@ -7561,7 +7561,11 @@ export default function Home() {
       </div>
 
       {/* Bottom combat deck/discard rail — map-mode parity: full discard browse. */}
-      <LogDrawer state={state} viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT} />
+      <LogDrawer
+        state={state}
+        surface="battle"
+        viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT}
+      />
 
       <AdventureEventFeed
         items={feedItems}

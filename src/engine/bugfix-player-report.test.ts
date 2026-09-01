@@ -448,11 +448,11 @@ describe("Field Difficulty 7", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Bank entry from outside
+// Bank entry from inside only (BINH)
 // ---------------------------------------------------------------------------
 
-describe("Creature Bank — enter from an adjacent Tile", () => {
-  it("canCrossEdge allows bank entry/exit across a tile edge", () => {
+describe("Creature Bank — enter from its host Tile", () => {
+  it("allows the inward seam but blocks entry and exit across an outer tile edge", () => {
     const state = createAdventureGameState({
       seed: "bank-outside",
       difficulty: "normal",
@@ -497,6 +497,13 @@ describe("Creature Bank — enter from an adjacent Tile", () => {
     state.adventure!.fields["C"] = field("C", "T2", "empty_field", 1);
 
     expect(canCrossEdge(state, "A", "B")).toBe(true);
+    expect(canCrossEdge(state, "C", "B")).toBe(false);
+    expect(canCrossEdge(state, "B", "C")).toBe(false);
+
+    state.adventure!.houseRules = {
+      ...(state.adventure!.houseRules ?? {}),
+      "bank-interior-entry-only": false,
+    } as never;
     expect(canCrossEdge(state, "C", "B")).toBe(true);
     expect(canCrossEdge(state, "B", "C")).toBe(true);
   });

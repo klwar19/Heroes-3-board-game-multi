@@ -229,6 +229,44 @@ describe("the Ballista discard is playable before the counter-attack", () => {
     expect(fired.players.p1.permanents ?? []).not.toContain("war_machine.ballista");
   });
 
+  it.each([
+    ["specialty.glacius.1", "space"],
+    ["specialty.deemer.1", "unit"],
+    ["specialty.kudryavka_noumi.1", "unit"]
+  ] as const)("%s can kill the retaliator before its counter-attack", (cardId, targetType) => {
+    const declared = declaredPastPrimary(
+      aboutToAttack([cardId, "stat.power"], { skeletonHealth: 2 })
+    );
+    expect(retaliationWindow(declared), "the retaliation is parked before damage").toBeTruthy();
+    expect(declared.combat!.units.unit_p2_skeletons.damage).toBe(1);
+
+    const offer = getLegalActions(declared, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === cardId &&
+        legal.action.target?.type === targetType &&
+        (legal.action.target.type === "unit"
+          ? legal.action.target.unitId === "unit_p2_skeletons"
+          : legal.action.target.position === 9)
+    );
+    expect(offer, `${cardId} is available in the pre-retaliation window`).toBeTruthy();
+    const fired = applyOk(declared, {
+      ...(offer!.action as Extract<GameAction, { type: "PLAY_CARD" }>),
+      ...(targetType === "space" ? { costCardIds: ["stat.power"] } : {})
+    });
+
+    expect(fired.combat!.units.unit_p2_skeletons.damage).toBeGreaterThanOrEqual(2);
+    expect(fired.combat!.units.unit_p1_marksmen.damage, "a dead creature cannot retaliate").toBe(0);
+    expect(
+      fired.eventLog.some(
+        (event) =>
+          event.type === "ATTACK_ROLLED" &&
+          event.attackerId === "unit_p2_skeletons" &&
+          event.isRetaliation
+      )
+    ).toBe(false);
+  });
+
   it("a retaliator that survives the shot still counters — and the shot landed first", () => {
     // Fails if the join is removed (no window ⇒ no shot at all) — the assertion
     // is on the ORDER, so it also fails if the shot resolved after the counter.

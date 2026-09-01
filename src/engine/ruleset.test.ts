@@ -54,6 +54,7 @@ describe("ruleset numbers", () => {
     const fewGriffins = coreUnitDefinitions["castle.griffins"].few!;
     const packGriffins = coreUnitDefinitions["castle.griffins"].pack!;
     const packMarksmen = coreUnitDefinitions["castle.marksmen"].pack!;
+    const packArchDevils = coreUnitDefinitions["inferno.arch_devils"].pack!;
     const packCerberi = coreUnitDefinitions["inferno.cerberi"].pack!;
 
     expect(applyUnitSideRules("legacy", "castle.griffins", "few", fewGriffins).attack).toBe(2);
@@ -64,6 +65,11 @@ describe("ruleset numbers", () => {
 
     expect(applyUnitSideRules("legacy", "castle.marksmen", "pack", packMarksmen).health).toBe(2);
     expect(applyUnitSideRules("binh", "castle.marksmen", "pack", packMarksmen).health).toBe(3);
+
+    expect(packArchDevils.attack).toBe(7);
+    expect(applyUnitSideRules("legacy", "inferno.arch_devils", "pack", packArchDevils).attack).toBe(7);
+    expect(applyUnitSideRules("binh", "inferno.arch_devils", "pack", packArchDevils).attack).toBe(6);
+    expect(applyUnitSideRules("binh", "inferno.arch_devils", "few", coreUnitDefinitions["inferno.arch_devils"].few!).attack).toBe(6);
 
     // Cerberi follow the printed card in BOTH modes (1 flat damage to one
     // adjacent enemy) — no BINH attack-all swap any more.

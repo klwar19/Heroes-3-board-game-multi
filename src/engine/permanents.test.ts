@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createInitialGameState, effectiveInitiative, getLegalActions } from "./index";
 import { activeSchoolFetches } from "./ruleset";
+import { countBallistas } from "./permanents";
 import type { GameAction, GameState, PlayerId } from "./state";
 
 function applyOk(state: GameState, action: GameAction): GameState {
@@ -34,6 +35,35 @@ function endRound(state: GameState, playerId: PlayerId): GameState {
 }
 
 describe("permanent cards", () => {
+  it("allows multiple physical Ballistas to share one permanent slot", () => {
+    let state = createInitialGameState("multi-ballista-slot");
+    state.players.p1.hand = ["war_machine.ballista", "war_machine.ballista"];
+    state = applyOk(state, {
+      type: "PLAY_CARD", playerId: "p1", cardId: "war_machine.ballista", target: { type: "none" }
+    });
+    state = applyOk(state, {
+      type: "PLAY_CARD", playerId: "p1", cardId: "war_machine.ballista", target: { type: "none" }
+    });
+    expect(state.players.p1.permanents).toEqual([
+      "war_machine.ballista",
+      "war_machine.ballista",
+    ]);
+    expect(countBallistas(state, "p1")).toBe(2);
+  });
+
+  it("replaces the whole shared Ballista slot when a different permanent is played", () => {
+    let state = createInitialGameState("replace-multi-ballista-slot");
+    state.players.p1.permanents = ["war_machine.ballista", "war_machine.ballista"];
+    state.players.p1.hand = ["war_machine.first_aid_tent"];
+
+    state = applyOk(state, {
+      type: "PLAY_CARD", playerId: "p1", cardId: "war_machine.first_aid_tent", target: { type: "none" }
+    });
+
+    expect(state.players.p1.permanents).toEqual(["war_machine.first_aid_tent"]);
+    expect(state.players.p1.discard.filter((cardId) => cardId === "war_machine.ballista")).toHaveLength(2);
+  });
+
   it("replaces the previous permanent, which goes to the discard pile", () => {
     const state = createInitialGameState();
     state.players.p1.hand = ["war_machine.first_aid_tent", "ability.fire_magic"];

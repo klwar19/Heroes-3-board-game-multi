@@ -1731,6 +1731,45 @@ describe("ReactionTray — Sorrow pays its skip with a Power-value cost picker",
     });
   });
 
+  it("shows one Frost Ring reaction action and sends space targeting to the battlefield", () => {
+    const state = silverSkipWindow(["stat.power", "ability.basic_water_magic"]);
+    state.players.p1.hand[0] = "specialty.glacius.1";
+    const onSelectCardAction = vi.fn();
+    const ring = (position: number) => ({
+      label: `Frost Ring at space ${position}`,
+      action: {
+        type: "PLAY_CARD" as const,
+        playerId: "p1" as const,
+        cardId: "specialty.glacius.1",
+        mode: "basic" as const,
+        optionIndex: 0,
+        target: { type: "space" as const, position }
+      }
+    });
+    render(
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={[ring(0), ring(1), ring(2)]}
+          onAction={vi.fn()}
+          onSelectCardAction={onSelectCardAction}
+          state={state}
+          view={getPlayerView(state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+
+    const aim = screen.getAllByRole("button", { name: "Pay & choose space" });
+    expect(aim).toHaveLength(1);
+    expect(screen.queryByText(/Frost Ring at space/i)).toBeNull();
+    act(() => fireEvent.click(aim[0]));
+    expect(onSelectCardAction).toHaveBeenCalledTimes(1);
+    expect(onSelectCardAction.mock.calls[0][0]).toMatchObject({
+      cardId: "specialty.glacius.1",
+      target: { type: "space" }
+    });
+  });
+
   it("CONTROL: with no crowns the +1 Power source shows no Crown toggle and cannot reach the skip", () => {
     const state = silverSkipWindow(["stat.power"]);
     state.players.p1.limits.expertUses = 0;

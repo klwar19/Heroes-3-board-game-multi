@@ -27,12 +27,20 @@ export type { StackTokenStat };
 
 export type CreatureBankId =
   | "imp_cache"
+  | "graveyard"
   | "crypt"
+  | "ruins"
+  | "black_tower"
+  | "sanctuary_of_zealots"
   | "dwarven_treasury"
   | "medusa_stores"
   | "dragon_fly_hive"
   | "shipwreck"
+  | "wolves_den"
+  | "red_tower"
+  | "training_grounds"
   | "derelict_ship"
+  | "mansion"
   | "pyramid"
   | "griffin_conservatory"
   | "naga_bank"
@@ -276,6 +284,60 @@ export const CREATURE_BANK_UNIT_SIDES: Record<string, UnitSideDefinition> = {
   }
 };
 
+/** Alternate faces supplied by the Polish Banks set. Keys are deliberately
+ * bank-specific: the new Graveyard Zombies must never replace Crypt/Ruins'
+ * original Zombie face, and Black Tower dragons must never replace Utopia's. */
+export const POLISH_CREATURE_BANK_UNIT_SIDES: Record<string, UnitSideDefinition> = {
+  "guardian:zombies": { attack: 1, defense: 0, health: 2, initiative: 3, type: "ground", cost: {}, abilities: ["zombie-resilience"], abilityText: "[unit_passive] On a 0 or +1 Attack-die result against this unit, it gains +1 [defense].", cardImage: "/assets/polish-banks/guardian-zombies.webp" },
+  "guardian:evil-eyes": { attack: 2, defense: 1, health: 2, initiative: 6, type: "ranged", cost: {}, abilities: ["ignore-combat-penalties"], abilityText: "[unit_passive] Ignore the combat penalty against adjacent units.", cardImage: "/assets/polish-banks/guardian-evil-eyes.webp" },
+  "guardian:fire-elementals": { attack: 3, defense: 1, health: 3, initiative: 6, type: "ground", cost: {}, abilities: ["fire-elemental-immunity"], abilityText: "[unit_passive] Immune to Magic Arrow and Fire Magic [spell].", cardImage: "/assets/polish-banks/guardian-fire-elementals.webp" },
+  "guardian:liches": { attack: 3, defense: 0, health: 4, initiative: 6, type: "ranged", cost: {}, abilities: ["lich-death-cloud"], abilityText: "[unit_attack] Also attack a unit adjacent to the target with 2 [attack].", cardImage: "/assets/polish-banks/guardian-liches.webp" },
+  "guardian:steel-golems": { attack: 3, defense: 1, health: 3, initiative: 5, type: "ground", cost: {}, abilities: ["reduce-spell-damage-1"], abilityText: "[unit_passive] Reduce damage from [spell] by 1 (minimum 0).", cardImage: "/assets/polish-banks/guardian-steel-golems.webp" },
+  "guardian:vampire-lords": { attack: 3, defense: 0, health: 4, initiative: 7, type: "flying", cost: {}, abilities: ["ignores-retaliation", "polish-bank-vampire-heal-stacked"], abilityText: "[unit_attack] Ignore Retaliation. While Stacked, after attacking remove up to 2 damage from this unit.", cardImage: "/assets/polish-banks/guardian-vampire-lords.webp" },
+  "guardian:wolf-riders": { attack: 2, defense: 0, health: 5, initiative: 7, type: "ground", cost: {}, abilities: ["wolf-raiders-strike-twice"], abilityText: "[unit_attack] After the target retaliates, attack it again.", cardImage: "/assets/polish-banks/guardian-wolf-riders.webp" },
+  "guardian:green-dragon": { attack: 4, defense: 1, health: 5, initiative: 7, type: "flying", cost: {}, abilities: [], cardImage: "/assets/polish-banks/guardian-green-dragon.webp" },
+  "guardian:red-dragon": { attack: 4, defense: 1, health: 6, initiative: 8, type: "flying", cost: {}, abilities: [], cardImage: "/assets/polish-banks/guardian-red-dragon.webp" },
+  "guardian:gold-dragon": { attack: 4, defense: 1, health: 7, initiative: 9, type: "flying", cost: {}, abilities: ["dragon-line-attack-2"], abilityText: "[unit_attack] Attack 2 spaces in a line; the second attack has 2 [attack].", cardImage: "/assets/polish-banks/guardian-gold-dragon.webp" },
+  "guardian:black-dragon": { attack: 5, defense: 1, health: 6, initiative: 9, type: "flying", cost: {}, abilities: ["reduce-spell-damage-1"], abilityText: "[unit_passive] Reduce damage from [spell] by 1 (minimum 0).", cardImage: "/assets/polish-banks/guardian-black-dragon.webp" },
+
+  "reward:angels:1": { attack: 4, defense: 1, health: 5, initiative: 10, type: "flying", cost: {}, abilities: ["archangel-hate-devils"], abilityText: "[unit_attack] When attacking Arch Devils, gain +2 [attack].", cardImage: "/assets/polish-banks/reward-angels-i.webp" },
+  "reward:angels:2": { attack: 4, defense: 2, health: 5, initiative: 10, type: "flying", cost: {}, abilities: ["archangel-hate-devils"], abilityText: "[unit_attack] When attacking Arch Devils, gain +2 [attack].", cardImage: "/assets/polish-banks/reward-angels-ii.webp" },
+  "reward:angels:3": { attack: 4, defense: 2, health: 6, initiative: 10, type: "flying", cost: {}, abilities: ["archangel-hate-devils"], abilityText: "[unit_attack] When attacking Arch Devils, gain +2 [attack].", cardImage: "/assets/polish-banks/reward-angels-iii.webp" },
+  "reward:angels:4": { attack: 5, defense: 2, health: 6, initiative: 10, type: "flying", cost: {}, abilities: ["archangel-hate-devils"], abilityText: "[unit_attack] When attacking Arch Devils, gain +2 [attack].", cardImage: "/assets/polish-banks/reward-angels-iv.webp" },
+  "reward:cyclopes:1": { attack: 4, defense: 0, health: 5, initiative: 6, type: "ranged", cost: {}, abilities: ["cyclops-demolish"], abilityText: "[unit_other] Destroy the Gate or a Wall.", cardImage: "/assets/polish-banks/reward-cyclopes-i.webp" },
+  "reward:cyclopes:2": { attack: 4, defense: 0, health: 6, initiative: 6, type: "ranged", cost: {}, abilities: ["cyclops-demolish"], abilityText: "[unit_other] Destroy the Gate or a Wall.", cardImage: "/assets/polish-banks/reward-cyclopes-ii.webp" },
+  "reward:cyclopes:3": { attack: 4, defense: 1, health: 5, initiative: 6, type: "ranged", cost: {}, abilities: ["cyclops-demolish"], abilityText: "[unit_other] Destroy the Gate or a Wall.", cardImage: "/assets/polish-banks/reward-cyclopes-iii.webp" },
+  "reward:cyclopes:4": { attack: 5, defense: 1, health: 5, initiative: 6, type: "ranged", cost: {}, abilities: ["cyclops-demolish"], abilityText: "[unit_other] Destroy the Gate or a Wall.", cardImage: "/assets/polish-banks/reward-cyclopes-iv.webp" },
+  "reward:fire-birds:1": { attack: 4, defense: 0, health: 6, initiative: 9, type: "flying", cost: {}, abilities: ["dragon-line-attack-2", "magic-elemental-immunity"], abilityText: "[unit_attack] Attack 2 spaces in a line; the second attack has 2 [attack]. [unit_passive] Ignore damage from Magic Arrow.", cardImage: "/assets/polish-banks/reward-fire-birds-i.webp" },
+  "reward:fire-birds:2": { attack: 4, defense: 1, health: 5, initiative: 9, type: "flying", cost: {}, abilities: ["dragon-line-attack-2", "magic-elemental-immunity"], abilityText: "[unit_attack] Attack 2 spaces in a line; the second attack has 2 [attack]. [unit_passive] Ignore damage from Magic Arrow.", cardImage: "/assets/polish-banks/reward-fire-birds-ii.webp" },
+  "reward:fire-birds:3": { attack: 4, defense: 1, health: 6, initiative: 9, type: "flying", cost: {}, abilities: ["dragon-line-attack-2", "magic-elemental-immunity"], abilityText: "[unit_attack] Attack 2 spaces in a line; the second attack has 2 [attack]. [unit_passive] Ignore damage from Magic Arrow.", cardImage: "/assets/polish-banks/reward-fire-birds-iii.webp" },
+  "reward:fire-birds:4": { attack: 5, defense: 1, health: 6, initiative: 9, type: "flying", cost: {}, abilities: ["dragon-line-attack-2", "magic-elemental-immunity"], abilityText: "[unit_attack] Attack 2 spaces in a line; the second attack has 2 [attack]. [unit_passive] Ignore damage from Magic Arrow.", cardImage: "/assets/polish-banks/reward-fire-birds-iv.webp" },
+  "reward:giants:1": { attack: 4, defense: 0, health: 7, initiative: 7, type: "ground", cost: {}, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Ignore Retaliation effects on this unit.", cardImage: "/assets/polish-banks/reward-giants-i.webp" },
+  "reward:giants:2": { attack: 4, defense: 1, health: 6, initiative: 7, type: "ground", cost: {}, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Ignore Retaliation effects on this unit.", cardImage: "/assets/polish-banks/reward-giants-ii.webp" },
+  "reward:giants:3": { attack: 4, defense: 1, health: 6, initiative: 7, type: "ground", cost: {}, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Ignore Retaliation effects on this unit.", cardImage: "/assets/polish-banks/reward-giants-iii.webp" },
+  "reward:giants:4": { attack: 5, defense: 1, health: 7, initiative: 7, type: "ground", cost: {}, abilities: ["ignores-retaliation"], abilityText: "[unit_attack] Ignore Retaliation effects on this unit.", cardImage: "/assets/polish-banks/reward-giants-iv.webp" },
+  "reward:wyverns:1": { attack: 4, defense: 0, health: 6, initiative: 8, type: "flying", cost: {}, abilities: ["wyvern-sting"], cardImage: "/assets/polish-banks/reward-wyverns-i.webp" },
+  "reward:wyverns:2": { attack: 4, defense: 0, health: 7, initiative: 8, type: "flying", cost: {}, abilities: ["wyvern-sting"], cardImage: "/assets/polish-banks/reward-wyverns-ii.webp" },
+  "reward:wyverns:3": { attack: 4, defense: 1, health: 6, initiative: 8, type: "flying", cost: {}, abilities: ["wyvern-sting"], cardImage: "/assets/polish-banks/reward-wyverns-iii.webp" },
+  "reward:wyverns:4": { attack: 4, defense: 1, health: 7, initiative: 8, type: "flying", cost: {}, abilities: ["wyvern-sting"], cardImage: "/assets/polish-banks/reward-wyverns-iv.webp" }
+};
+
+export const POLISH_CREATURE_BANK_CARD_NAMES: Record<string, string> = {
+  "guardian:zombies": "Zombies", "guardian:evil-eyes": "Evil Eyes", "guardian:fire-elementals": "Fire Elementals",
+  "guardian:liches": "Liches", "guardian:steel-golems": "Steel Golems", "guardian:vampire-lords": "Vampire Lords",
+  "guardian:wolf-riders": "Wolf Riders", "guardian:green-dragon": "Green Dragon", "guardian:red-dragon": "Red Dragon",
+  "guardian:gold-dragon": "Gold Dragon", "guardian:black-dragon": "Black Dragon",
+  ...Object.fromEntries([1, 2, 3, 4].flatMap((size) => [
+    [`reward:angels:${size}`, "Angels"], [`reward:cyclopes:${size}`, "Cyclopes"],
+    [`reward:fire-birds:${size}`, "Fire Birds"], [`reward:giants:${size}`, "Giants"],
+    [`reward:wyverns:${size}`, "Wyverns"]
+  ]))
+};
+
+export function polishCreatureBankCardName(key: string): string | undefined {
+  return POLISH_CREATURE_BANK_CARD_NAMES[key];
+}
+
 /** Reward status, mirroring the card-implementation honesty rules in CLAUDE.md. */
 export type CreatureBankRewardStatus = "implemented" | "partial" | "not-implemented";
 
@@ -285,6 +347,10 @@ export type CreatureBankDefinition = {
   tier: CreatureBankTier;
   /** Defending party as underlying neutral unit def ids (with repeats). */
   units: string[];
+  /** Optional alternate bank face key for each matching `units` entry. */
+  unitSideKeys?: (string | undefined)[];
+  /** Size-dependent guardian party (Black Tower). */
+  buildUnits?: (bankSize: 1 | 2 | 3 | 4) => { unitDefId: string; bankSideKey?: string }[];
   /** Printed reward text (display/reference). */
   rewardText: string;
   rewardStatus: CreatureBankRewardStatus;
@@ -299,8 +365,19 @@ export type CreatureBankDefinition = {
 };
 
 /** Search (count) the given shared deck — skipped when count <= 0. */
-function search(deckId: "spells" | "abilities" | "artifacts", count: number): LocationInteraction {
+function search(deckId: "spells" | "abilities" | "artifacts" | "artifacts-minor" | "artifacts-major", count: number): LocationInteraction {
   return count > 0 ? { type: "SEARCH_SHARED_DECK", deckId, count } : { type: "NONE" };
+}
+
+function polishUnitReward(unitDefId: string, family: string, size: number): LocationInteraction {
+  const exactSize = Math.max(1, Math.min(4, Math.trunc(size)));
+  return {
+    type: "SEQUENCE",
+    interactions: [
+      { type: "GAIN_UNIT", unitDefId, side: "bank", bankSideKey: `reward:${family}:${exactSize}` },
+      { type: "GAIN_ABILITY_EMPOWER_TOKEN" }
+    ]
+  };
 }
 
 export const CREATURE_BANKS: Record<CreatureBankId, CreatureBankDefinition> = {
@@ -535,8 +612,141 @@ export const CREATURE_BANKS: Record<CreatureBankId, CreatureBankDefinition> = {
         )
       ]
     })
+  },
+
+  // Polish Banks additions. They are deliberately absent from
+  // CREATURE_BANK_IDS, so official/normal token piles never draw them.
+  graveyard: {
+    id: "graveyard", name: "Graveyard", tier: "far",
+    units: Array(6).fill("neutral.zombies"), unitSideKeys: Array(6).fill("guardian:zombies"),
+    rewardText: "−1 morale and 2 gold. Extra: +3X gold.", rewardStatus: "implemented",
+    buildReward: (x) => ({ type: "SEQUENCE", interactions: [{ type: "GAIN_MORALE", amount: -1 }, { type: "GAIN_RESOURCES", gold: 2 + 3 * x }] })
+  },
+  ruins: {
+    id: "ruins", name: "Ruins", tier: "far",
+    units: ["neutral.skeletons", "neutral.zombies", "neutral.wraiths", "neutral.liches"],
+    rewardText: "6 gold and reveal any adjacent map space. Extra: +2X gold.", rewardStatus: "implemented",
+    buildReward: (x) => ({ type: "SEQUENCE", interactions: [{ type: "GAIN_RESOURCES", gold: 6 + 2 * x }, { type: "DISCOVER_ADJACENT_TILE" }] })
+  },
+  black_tower: {
+    id: "black_tower", name: "Black Tower", tier: "far",
+    units: ["neutral.gold_dragons"],
+    buildUnits: (size) => [{
+      unitDefId: size === 4 ? "neutral.black_dragons" : "neutral.gold_dragons",
+      bankSideKey: ["", "guardian:green-dragon", "guardian:red-dragon", "guardian:gold-dragon", "guardian:black-dragon"][size]
+    }],
+    rewardText: "I: 5 gold + Minor Search (2); II: 6 gold + Minor Search (3); III: 7 gold + Major Search (2); IV: 8 gold + Major Search (3).",
+    rewardStatus: "implemented",
+    buildReward: (size) => ({ type: "SEQUENCE", interactions: [
+      { type: "GAIN_RESOURCES", gold: Math.min(8, 4 + size) },
+      search(size <= 2 ? "artifacts-minor" : "artifacts-major", size === 1 || size === 3 ? 2 : 3)
+    ] })
+  },
+  sanctuary_of_zealots: {
+    id: "sanctuary_of_zealots", name: "Sanctuary of Zealots", tier: "far",
+    units: Array(4).fill("neutral.cyclopes"),
+    rewardText: "5 gold. Extra: +3X gold.", rewardStatus: "implemented",
+    buildReward: (x) => ({ type: "GAIN_RESOURCES", gold: 5 + 3 * x })
+  },
+  wolves_den: {
+    id: "wolves_den", name: "Wolves' Den", tier: "near",
+    units: Array(4).fill("neutral.wolf_raiders"), unitSideKeys: Array(4).fill("guardian:wolf-riders"),
+    rewardText: "Gain the size-matched Cyclopes card and 1 Empower token.", rewardStatus: "implemented",
+    buildReward: (size) => polishUnitReward("neutral.cyclopes", "cyclopes", size)
+  },
+  red_tower: {
+    id: "red_tower", name: "Red Tower", tier: "near",
+    units: Array(4).fill("neutral.fire_elementals"), unitSideKeys: Array(4).fill("guardian:fire-elementals"),
+    rewardText: "Gain the size-matched Fire Birds card and 1 Empower token.", rewardStatus: "implemented",
+    buildReward: (size) => polishUnitReward("neutral.phoenixes", "fire-birds", size)
+  },
+  training_grounds: {
+    id: "training_grounds", name: "Training Grounds", tier: "near",
+    units: Array(4).fill("neutral.steel_golems"), unitSideKeys: Array(4).fill("guardian:steel-golems"),
+    rewardText: "Gain the size-matched Giants card and 1 Empower token.", rewardStatus: "implemented",
+    buildReward: (size) => polishUnitReward("neutral.titans", "giants", size)
+  },
+  mansion: {
+    id: "mansion", name: "Mansion", tier: "near",
+    units: Array(4).fill("neutral.vampires"), unitSideKeys: Array(4).fill("guardian:vampire-lords"),
+    rewardText: "3 gold, 2 valuables. Extra: +3X gold, +X building materials and Search (X) Artifacts.",
+    rewardStatus: "implemented",
+    buildReward: (x) => ({ type: "SEQUENCE", interactions: [
+      { type: "GAIN_RESOURCES", gold: 3 + 3 * x, valuables: 2, buildingMaterials: x }, search("artifacts", x)
+    ] })
   }
 };
+
+/** The 20-card Polish Banks roster. Existing ids are overridden only while the
+ * `polish-bank-sizes` rule is active; the official map above remains unchanged. */
+export const POLISH_CREATURE_BANKS: Record<CreatureBankId, CreatureBankDefinition> = {
+  ...CREATURE_BANKS,
+  imp_cache: {
+    ...CREATURE_BANKS.imp_cache,
+    rewardText: "2 gold. Extra: +2X gold.",
+    buildReward: (x) => ({ type: "GAIN_RESOURCES", gold: 2 + 2 * x })
+  },
+  crypt: {
+    ...CREATURE_BANKS.crypt,
+    rewardText: "6 gold. Extra: +2X gold.",
+    buildReward: (x) => ({ type: "GAIN_RESOURCES", gold: 6 + 2 * x })
+  },
+  ruins: {
+    ...CREATURE_BANKS.ruins,
+    unitSideKeys: [undefined, undefined, undefined, "guardian:liches"]
+  },
+  dwarven_treasury: { ...CREATURE_BANKS.dwarven_treasury, name: "Rampart of the Dwarves" },
+  medusa_stores: {
+    ...CREATURE_BANKS.medusa_stores,
+    name: "Medusa's Lair",
+    rewardText: "6 gold, 1 valuables. Extra: choose +3X gold or +X valuables.",
+    buildReward: (x) => ({
+      type: "SEQUENCE",
+      interactions: [
+        { type: "GAIN_RESOURCES", gold: 6, valuables: 1 },
+        ...(x > 0 ? [{
+          type: "CHOOSE_ONE" as const,
+          options: [
+            { label: `Gain ${3 * x} gold`, interaction: { type: "GAIN_RESOURCES" as const, gold: 3 * x } },
+            { label: `Gain ${x} valuables`, interaction: { type: "GAIN_RESOURCES" as const, valuables: x } }
+          ]
+        }] : [])
+      ]
+    })
+  },
+  dragon_fly_hive: {
+    ...CREATURE_BANKS.dragon_fly_hive,
+    name: "Ogre's Stronghold",
+    rewardText: "Gain the size-matched Wyverns card and 1 Empower token.",
+    buildReward: (size) => polishUnitReward("neutral.wyverns", "wyverns", size)
+  },
+  griffin_conservatory: {
+    ...CREATURE_BANKS.griffin_conservatory,
+    name: "Gryphon Conservatory",
+    rewardText: "Gain the size-matched Angels card and 1 Empower token.",
+    buildReward: (size) => polishUnitReward("neutral.archangels", "angels", size)
+  },
+  derelict_ship: { ...CREATURE_BANKS.derelict_ship, name: "Abandoned Ship" },
+  cyclops_stockpile: { ...CREATURE_BANKS.cyclops_stockpile, name: "Cyclops Hideout" }
+};
+
+/** Official supply — intentionally frozen at the original twelve banks. */
+export const CREATURE_BANK_IDS: CreatureBankId[] = [
+  "imp_cache", "crypt", "dwarven_treasury", "medusa_stores", "dragon_fly_hive", "shipwreck",
+  "derelict_ship", "pyramid", "griffin_conservatory", "naga_bank", "cyclops_stockpile", "dragon_utopia"
+];
+
+/** Polish supply in the exact Bank Cards 1–4 order (10 Far, 10 Near). */
+export const POLISH_CREATURE_BANK_IDS: CreatureBankId[] = [
+  "imp_cache", "graveyard", "crypt", "ruins", "shipwreck",
+  "black_tower", "sanctuary_of_zealots", "dwarven_treasury", "medusa_stores", "dragon_fly_hive",
+  "wolves_den", "red_tower", "training_grounds", "griffin_conservatory", "derelict_ship",
+  "mansion", "pyramid", "naga_bank", "cyclops_stockpile", "dragon_utopia"
+];
+
+export function getCreatureBankDefinition(bankId: CreatureBankId, polishMode = false): CreatureBankDefinition {
+  return (polishMode ? POLISH_CREATURE_BANKS : CREATURE_BANKS)[bankId];
+}
 
 /** Stack Tokens placed on the bank by Scenario Difficulty (rulebook p.66). */
 export const STACK_TOKENS_BY_DIFFICULTY = {
@@ -571,8 +781,6 @@ export function rollStackTokenStat(random: SeededRandom): StackTokenStat {
   return STACK_TOKEN_STATS[random.nextInt(0, STACK_TOKEN_STATS.length - 1)]!;
 }
 
-export function getCreatureBankUnitSide(unitDefId: string): UnitSideDefinition | undefined {
-  return CREATURE_BANK_UNIT_SIDES[unitDefId];
+export function getCreatureBankUnitSide(unitDefId: string, bankSideKey?: string): UnitSideDefinition | undefined {
+  return bankSideKey ? POLISH_CREATURE_BANK_UNIT_SIDES[bankSideKey] : CREATURE_BANK_UNIT_SIDES[unitDefId];
 }
-
-export const CREATURE_BANK_IDS = Object.keys(CREATURE_BANKS) as CreatureBankId[];

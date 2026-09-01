@@ -4444,9 +4444,9 @@ function applyAttackDamageFromCandidate(
   dieMultiplierSkipsNegative = false,
   // Community Balance Change Hourglass of the Evil Hour: a rolled "+1" counts 0.
   ignorePlusOneDie = false,
-): { damage: number; roll: number; cancelled: boolean } {
+): { damage: number; roll: number; cancelled: boolean; defeatedSideOrLayer: boolean } {
   if (!state.combat) {
-    return { damage: 0, roll: 0, cancelled: false };
+    return { damage: 0, roll: 0, cancelled: false, defeatedSideOrLayer: false };
   }
 
   const preview = getAttackDamagePreview(
@@ -4615,7 +4615,7 @@ function applyAttackDamageFromCandidate(
       abilityId: "resurrection",
       message: `Resurrection cancels the attack that would have destroyed ${defender.cardName}.`,
     });
-    return { damage: 0, roll: candidate.roll, cancelled: true };
+    return { damage: 0, roll: candidate.roll, cancelled: true, defeatedSideOrLayer: false };
   }
 
   // Remember whether the defender was on the board before this hit, so Cove
@@ -4818,7 +4818,7 @@ function applyAttackDamageFromCandidate(
       });
     }
   }
-  return { damage, roll: candidate.roll, cancelled: false };
+  return { damage, roll: candidate.roll, cancelled: false, defeatedSideOrLayer };
 }
 
 /** WOG kill-triggered passives shared by normal attacks and retaliations. */
@@ -8294,9 +8294,12 @@ function finishResolvedAttack(
 
     // The retaliation has resolved; hand the activation back to the original
     // attacker, who may still owe a post-attack step (ranged units).
-    if (declareAfterRetaliationAbilityAttack(state, cards)) {
-      return;
-    }
+      if (declareAfterRetaliationAbilityAttack(state, cards)) {
+        return;
+      }
+      if (declareAfterRetaliationSelfAdjacentAttack(state, cards)) {
+        return;
+      }
     if (state.combat?.attackSequence?.attackerId === details.defender.id) {
       state.combat.attackSequence = null;
     }
@@ -8365,6 +8368,7 @@ function finishResolvedAttack(
       attackKind: details.attackKind,
       attackRoll: attackResult.roll,
       attackDamage: attackResult.damage,
+      defeatedSideOrLayer: attackResult.defeatedSideOrLayer,
       forceAbilityRoll,
     },
     0,
@@ -8384,6 +8388,8 @@ type PostAttackFollowUpContext = {
   attackRoll: number;
   /** Damage dealt by the primary attack; marked-target splash requires a real hit. */
   attackDamage?: number;
+  /** The primary attack destroyed a Pack/Few/Neutral/Stack health layer. */
+  defeatedSideOrLayer?: boolean;
   /** Tarnum (Fortress) Basilisks VI: die-gated follow-ups fire regardless. */
   forceAbilityRoll: boolean;
 };
@@ -8454,7 +8460,7 @@ function runPostAttackFollowUps(
     // 7 — Gold Dragons' line attack.
     () => openGoldDragonLineAttack(state, attacker, defender, cards),
     // 8 — Hydras' extra adjacent attack.
-    () => openHydraSecondAttack(state, attacker, defender, cards),
+    () => openHydraSecondAttack(state, attacker, defender, cards, Boolean(ctx.defeatedSideOrLayer)),
     // 9 — the multi-attack queue (attack-all mechanics).
     () => queueAttackAllFollowUps(state, attacker, defender, cards),
     // 10 — Neutral Magi Power Drain discard choice.
@@ -9505,6 +9511,86 @@ function declareAfterRetaliationAbilityAttack(
 }
 
 /**
+ * Ayssids: resolve the pounce that was armed when the primary attack destroyed
+ * a group/layer. This is called only after the original target's retaliation
+ * has resolved or been skipped. Candidates are read live at that moment.
+ */
+function declareAfterRetaliationSelfAdjacentAttack(
+  state: GameState,
+  cards: CardLibrary,
+): boolean {
+  const combat = state.combat;
+  const sequence = combat?.attackSequence;
+  const followUp = sequence?.afterRetaliationSelfAdjacentAttack;
+  if (!combat || !sequence || !followUp) {
+    return false;
+  }
+
+  const attacker = combat.units[sequence.attackerId];
+  const originalDefender = combat.units[followUp.originalDefenderId];
+  const candidates = attacker
+    ? Object.values(combat.units).filter(
+        (unit) =>
+          unit.id !== followUp.originalDefenderId &&
+          unit.id !== attacker.id &&
+          unit.controllerId !== attacker.controllerId &&
+          isUnitAlive(unit) &&
+          isAdjacent(unit.position, attacker.position),
+      )
+    : [];
+
+  // The original exchange is complete before the pounce starts. Clearing the
+  // sequence prevents the printed follow-up from trying to resume the already
+  // spent retaliation when its own attack resolves.
+  combat.attackSequence = null;
+  if (!attacker || !isUnitAlive(attacker) || candidates.length === 0) {
+    return false;
+  }
+
+  const baseAttack = followUp.baseAttack ?? attacker.attack;
+  if (candidates.length === 1) {
+    declareAbilityAttack(
+      state,
+      attacker,
+      candidates[0].id,
+      {
+        abilityId: followUp.abilityId,
+        abilityName: followUp.abilityName,
+        baseAttack,
+      },
+      cards,
+    );
+    return true;
+  }
+
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "ABILITY_TARGET_CHOICE",
+    playerId: attacker.controllerId,
+    kind: "second-attack",
+    abilityId: followUp.abilityId,
+    abilityName: followUp.abilityName,
+    prompt: `${attacker.name}: ${followUp.abilityName} — choose another adjacent enemy to attack after the retaliation.`,
+    sourceUnitId: attacker.id,
+    anchorUnitId: originalDefender?.id ?? null,
+    candidateUnitIds: candidates.map((unit) => unit.id),
+    baseAttack,
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = attacker.controllerId;
+  appendEvent(state, {
+    type: "PENDING_CHOICE_CREATED",
+    choiceId,
+    choiceType: "ABILITY_TARGET_CHOICE",
+    playerId: attacker.controllerId,
+    sourceEffectIds: [],
+    message: `${attacker.name} chooses the target of ${followUp.abilityName} after the retaliation.`,
+  });
+  return true;
+}
+
+/**
  * BINH Cerberi "Three-Headed Assault": collect every other living enemy unit
  * adjacent to the attacker and queue one full follow-up attack per target.
  * Returns true when a follow-up attack was declared.
@@ -9789,6 +9875,12 @@ function resumeAttackSequence(state: GameState, cards: CardLibrary): void {
   if (
     sequence.afterRetaliationAbilityAttack &&
     declareAfterRetaliationAbilityAttack(state, cards)
+  ) {
+    return;
+  }
+  if (
+    sequence.afterRetaliationSelfAdjacentAttack &&
+    declareAfterRetaliationSelfAdjacentAttack(state, cards)
   ) {
     return;
   }
@@ -10214,6 +10306,7 @@ function openHydraSecondAttack(
   attacker: CombatUnitState,
   defender: CombatUnitState,
   cards: CardLibrary,
+  defeatedSideOrLayer: boolean,
 ): boolean {
   const combat = state.combat;
   if (
@@ -10228,11 +10321,22 @@ function openHydraSecondAttack(
     return false;
   }
 
-  // Cove Ayssids (Pack): the follow-up only fires "if the target is reduced to 0
-  // Health" — i.e. the primary attack removed the original target. A target that
-  // merely flipped a Pack down to its Few side is still alive and grants nothing.
-  // (Hydras leave this flag unset and always follow up.)
-  if (ability.requiresTargetRemoved && isUnitAlive(defender)) {
+  // Cove Ayssids: "reduced to 0 Health" destroys the current group/layer, not
+  // necessarily the whole army card. Pack→Few and paid Stack-layer losses both
+  // qualify. Arm the pounce now, but choose/resolve it only AFTER the original
+  // target's retaliation (if applicable), exactly as the printed timing says.
+  // Hydras have no requiresTargetRemoved flag and keep their existing immediate
+  // post-attack follow-up timing.
+  if (ability.requiresTargetRemoved) {
+    if (!defeatedSideOrLayer || !combat.attackSequence) {
+      return false;
+    }
+    combat.attackSequence.afterRetaliationSelfAdjacentAttack = {
+      abilityId: ability.abilityId,
+      abilityName: ability.abilityName,
+      originalDefenderId: defender.id,
+      ...(ability.baseAttack !== undefined ? { baseAttack: ability.baseAttack } : {}),
+    };
     return false;
   }
 
@@ -15234,9 +15338,12 @@ function resolveAttackStackItem(
       }
       // A cancelled ordinary retaliation still hands the activation back to the
       // original attacker (the retaliation's target), as if it had resolved.
-      if (declareAfterRetaliationAbilityAttack(state, cards)) {
-        return;
-      }
+    if (declareAfterRetaliationAbilityAttack(state, cards)) {
+      return;
+    }
+    if (declareAfterRetaliationSelfAdjacentAttack(state, cards)) {
+      return;
+    }
       if (combat.attackSequence?.attackerId === details.defender.id) {
         combat.attackSequence = null;
       }
@@ -26056,13 +26163,15 @@ function playCard(
 
   // Gem's First Aid: take the war machine from the catalog for free (Torosar's
   // Ballista I pays gold), or draw the fallback when the player already owns it.
-  // The catalog is per-player (not a shared depleting pool): a grant is available
-  // as long as THIS player does not already hold that machine.
+  // The catalog is per-player (not a shared depleting pool). Ballistas may be
+  // gained repeatedly for multi-Ballista specialties; other machines keep the
+  // unique-copy/fallback rule.
   if (effect.type === "GAIN_WAR_MACHINE") {
     const supply = state.adventure?.warMachineSupply ?? [];
     const available =
       supply.includes(effect.warMachineCardId) &&
-      !playerOwnsWarMachine(state, action.playerId, effect.warMachineCardId);
+      (effect.warMachineCardId === "war_machine.ballista" ||
+        !playerOwnsWarMachine(state, action.playerId, effect.warMachineCardId));
     if (state.adventure && available) {
       const cost = effect.goldCost ? { gold: effect.goldCost } : {};
       if (effect.goldCost) {
@@ -28782,6 +28891,8 @@ function resolveAbilityRollKeep(
     defenderId: resume.defenderId,
     attackKind: resume.attackKind,
     attackRoll: resume.attackRoll,
+    attackDamage: resume.attackDamage,
+    defeatedSideOrLayer: resume.defeatedSideOrLayer,
     forceAbilityRoll: resume.forceAbilityRoll,
   };
 

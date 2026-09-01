@@ -323,6 +323,51 @@ describe("every printed follow-up attack, not just the Phoenix", () => {
   });
 });
 
+describe("Marksmen / Elves DOUBLE_ATTACK has an instant window between its two shots", () => {
+  it.each([
+    ["specialty.glacius.1", "space"],
+    ["specialty.deemer.1", "unit"],
+    ["specialty.kudryavka_noumi.1", "unit"]
+  ] as const)("offers %s after the first shot and before the second", (cardId, targetType) => {
+    const state = phoenixLineAttack({ ability: "double-attack", hand1: [cardId, "stat.power"] });
+    const attacker = state.combat!.units.unit_p1_marksmen;
+    const target = state.combat!.units.unit_p2_skeletons;
+    attacker.type = "ranged";
+    attacker.position = 12;
+    target.position = 15; // non-adjacent, so Marksmen/Elves double-shot applies
+    state.combat!.units.unit_p2_vampires.position = 14; // legal Meteor/Rocket neighbour
+
+    let next = applyOk(state, DECLARE);
+    for (
+      let guard = 0;
+      guard < 10 && next.reactionWindow && next.combat!.units.unit_p2_skeletons.damage === 0;
+      guard += 1
+    ) {
+      next = applyOk(next, {
+        type: "PASS_REACTION",
+        playerId: next.reactionWindow.priorityPlayerId
+      });
+    }
+
+    expect(next.combat!.units.unit_p2_skeletons.damage, "the first shot has landed").toBe(3);
+    expect(next.reactionWindow?.triggerEvent.type, "the second shot is parked in its own window").toBe(
+      "UNIT_ATTACK_DECLARED"
+    );
+    const offer = getLegalActions(next, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === cardId &&
+        legal.action.target?.type === targetType
+    );
+    expect(offer, `${cardId} must be playable between the two attacks`).toBeTruthy();
+    expect(
+      next.eventLog.filter(
+        (event) => event.type === "ATTACK_ROLLED" && event.attackerId === attacker.id
+      )
+    ).toHaveLength(1);
+  });
+});
+
 // ===========================================================================
 // The defending side is unchanged — and really changes the second hit
 // ===========================================================================

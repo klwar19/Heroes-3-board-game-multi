@@ -884,10 +884,12 @@ export function ReactionTray({
   // printed discard cost is NOT paid here: the shared submit path opens the cost
   // picker for any PLAY_CARD with a printed cost and no `costCardIds`, and the
   // engine's legality match ignores `costCardIds`, so the enriched play is legal.
-  // DELIBERATE LIMIT: space-target joins (Adelaide's / Glacius' Frost Ring ring,
-  // Tarnum-Dungeon's row blast) are ~20 offers, one per board cell — the tray does
-  // not list twenty look-alike tiles; those keep the board's existing space-target
-  // arming as their pick surface.
+  // Targeted instant joins are emitted once per legal board target. Collapse
+  // them to one "aim" tile per card face; otherwise Meteor/Rocket would list one
+  // tile per unit and Frost Ring one per battlefield cell. The hand fan is muted
+  // while this tray owns priority, so the tray itself MUST expose space-target
+  // instants too — relying on the hand fan made every Frost Ring reaction
+  // engine-legal but impossible for a human to select.
   const isMeteorTargetPlay = (
     legal: LegalAction
   ): legal is LegalAction & { action: Extract<GameAction, { type: "PLAY_CARD" }> } =>
@@ -897,6 +899,16 @@ export function ReactionTray({
   const meteorTargetPlays = legalActions.filter(isMeteorTargetPlay);
   const meteorAimOffers = [...new Map(
     meteorTargetPlays.map((legal) => [
+      `${legal.action.cardId}:${legal.action.optionIndex ?? -1}:${legal.action.mode ?? "basic"}`,
+      legal
+    ])
+  ).values()];
+  const spaceTargetPlays = legalActions.filter(
+    (legal): legal is LegalAction & { action: Extract<GameAction, { type: "PLAY_CARD" }> } =>
+      legal.action.type === "PLAY_CARD" && legal.action.target?.type === "space"
+  );
+  const spaceAimOffers = [...new Map(
+    spaceTargetPlays.map((legal) => [
       `${legal.action.cardId}:${legal.action.optionIndex ?? -1}:${legal.action.mode ?? "basic"}`,
       legal
     ])
@@ -1539,6 +1551,7 @@ export function ReactionTray({
         commanderCastReactions.length === 0 &&
         combatInstantJoins.length === 0 &&
         meteorAimOffers.length === 0 &&
+        spaceAimOffers.length === 0 &&
         firstAidReactions.length === 0 ? (
           <div className="trayEmpty">No playable instants — pass to continue.</div>
         ) : null}
@@ -1579,6 +1592,24 @@ export function ReactionTray({
                   type="button"
                 >
                   Choose Power &amp; target
+                </button>
+              </div>
+            </div>
+          );
+        })}
+        {spaceAimOffers.map((legal) => {
+          const action = legal.action;
+          return (
+            <div className="trayTile permanentTile" key={`space-aim-${action.cardId}-${action.optionIndex ?? -1}`}>
+              <CardFrame cardId={action.cardId} className="trayCardImage" />
+              <div className="trayTileBody">
+                <strong>{cardName(action.cardId)}</strong>
+                <button
+                  className="trayInstant"
+                  onClick={() => onSelectCardAction?.(action)}
+                  type="button"
+                >
+                  Pay &amp; choose space
                 </button>
               </div>
             </div>

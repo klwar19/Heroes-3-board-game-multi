@@ -5203,6 +5203,60 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
   text-transform: uppercase;
 }
 
+/* The battlefield has no map HUD to host the log button. Keep a compact,
+   always-visible combat chronicle above the lower edge of the table instead of
+   leaving it after the full board where it falls below the viewport. */
+.battleLogDrawer {
+  position: fixed;
+  z-index: 88;
+  left: 12px;
+  bottom: 12px;
+  width: min(440px, calc(100vw - 24px));
+  overflow: visible;
+  border-color: rgb(202 154 65 / 78%);
+  box-shadow: 0 12px 34px rgb(0 0 0 / 62%);
+}
+
+.battleLogDrawer .logPopover {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid rgb(202 154 65 / 62%);
+  border-radius: 9px;
+  background: rgb(16 12 8 / 98%);
+}
+
+.battleLogDrawer .logPopover ol {
+  max-height: min(48vh, 430px);
+}
+
+.battleLogDrawer .battleLogEvent.you {
+  border-left: 3px solid #65a9ef;
+}
+
+.battleLogDrawer .battleLogEvent.enemy {
+  border-left: 3px solid #d65a4b;
+  background: rgb(76 20 16 / 30%);
+}
+
+.battleLogDrawer .battleLogEvent.enemy .logEventMeta {
+  color: #ff9a89;
+}
+
+@media (max-width: 720px) {
+  .battleLogDrawer {
+    left: 8px;
+    bottom: 58px;
+    width: calc(100vw - 16px);
+  }
+
+  .battleLogDrawer .logPopover ol {
+    max-height: 38vh;
+  }
+}
+
 /* The event log rides the top command band as ONE compact scroll button, and its
    open chronicle is a POPOVER — never an in-flow block that would inflate the
    command band and shove the map down. These base rules cover every non-phone

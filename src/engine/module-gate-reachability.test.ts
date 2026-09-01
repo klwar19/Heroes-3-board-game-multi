@@ -72,12 +72,13 @@ describe("PvE module Gates carved onto a Blocked Field are reachable and border-
   });
 
   for (const location of ["dungeon_gate", "calamity_gate", "creature_bank"] as const) {
-    it(`a ${location} may be entered from the neighbouring Tile and walked out of`, () => {
+    it(`a ${location} follows its cross-tile entrance rule while remaining reachable from its host Tile`, () => {
       const state = twoTileState(`gate-cross-${location}`);
       carveOnBlockedSlot(state, location);
 
-      expect(canCrossEdge(state, "NEIGHBOUR", "GATE"), "walk IN across the Tile edge").toBe(true);
-      expect(canCrossEdge(state, "GATE", "NEIGHBOUR"), "walk OUT across the Tile edge").toBe(true);
+      const crossTileOpen = location !== "creature_bank";
+      expect(canCrossEdge(state, "NEIGHBOUR", "GATE"), "walk IN across the Tile edge").toBe(crossTileOpen);
+      expect(canCrossEdge(state, "GATE", "NEIGHBOUR"), "walk OUT across the Tile edge").toBe(crossTileOpen);
       expect(canCrossEdge(state, "INSIDE", "GATE"), "walk in from its own Tile").toBe(true);
       // A hero standing on it may still flip an adjacent face-down Tile.
       expect(heroFieldSealedForDiscovery(state.adventure!, state.adventure!.fields["GATE"])).toBe(

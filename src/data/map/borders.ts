@@ -43,6 +43,8 @@ export function getTileBorderSegments(
     extraBorders?: readonly number[];
     borderEdges?: readonly number[];
     rotation?: number;
+    /** BINH: keep only a carved bank slot's outward three-edge arc. */
+    preserveBankOuterArcs?: boolean;
     /**
      * Runtime objects that replace a printed field hide every PRINTED border
      * touching that field. Designer-added arcs / per-edge lines survive (USER
@@ -154,6 +156,21 @@ export function getTileBorderSegments(
     const slot = footprintIndex === 0 ? 0 : (((footprintIndex - 1 - rotation) % 6) + 6) % 6 + 1;
     const edge = (((absolute - rotation) % 6) + 6) % 6;
     addDesigned(slot, edge);
+  }
+
+  // BINH bank entrances face the host tile: the inner half of the old blocked
+  // ring stays carved open, while the outward tile arc remains visible and
+  // impassable. Treat this retained arc like a fixed line so the suppression
+  // pass below does not erase it with the rest of the carved ring.
+  if (options.preserveBankOuterArcs) {
+    for (const slot of bankSlots) {
+      if (slot < 1 || slot > 6) continue;
+      const direction = slot - 1;
+      if (!def.outerImpassable[direction]) continue;
+      addDesigned(slot, direction - 1);
+      addDesigned(slot, direction);
+      addDesigned(slot, direction + 1);
+    }
   }
 
   // The PRINTED art around a carved hex is filtered by physical adjacency, not

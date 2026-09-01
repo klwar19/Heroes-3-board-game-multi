@@ -493,7 +493,7 @@ export function discardPermanentFromPlay(
   setPermanentCardIds(
     state,
     playerId,
-    inPlay.filter((candidate) => candidate !== discardId)
+    inPlay.filter((_candidate, index) => index !== inPlay.indexOf(discardId))
   );
   // Pandora's Box permanents are one-time use — like the Pandora one-shots, they
   // come from the Pandora deck, so when they leave play (replaced over the limit,
@@ -537,7 +537,7 @@ export function removePermanentFromPlayToRemoved(
   setPermanentCardIds(
     state,
     playerId,
-    inPlay.filter((candidate) => candidate !== removeId)
+    inPlay.filter((_candidate, index) => index !== inPlay.indexOf(removeId))
   );
   // "Remove" leaves the GAME (removed pile), not the discard — matching the
   // income-permanent "crack open" side and the rulebook keyword.
@@ -552,8 +552,12 @@ export function removePermanentFromPlayToRemoved(
  * itself leaves play while it was holding the door open.
  */
 export function enforcePermanentLimit(state: GameState, playerId: PlayerId): void {
-  let safety = 8;
-  while (safety > 0 && getPermanentCardIds(state, playerId).length > permanentLimitFor(state, playerId)) {
+  // A Ballista specialty may legally have more than the old fixed safety count
+  // of physical cards in its shared slot. Bound the loop by the actual list so
+  // replacing that slot can discard every old Ballista and still keep the newly
+  // played permanent.
+  let safety = getPermanentCardIds(state, playerId).length + 1;
+  while (safety > 0 && permanentSlotUsage(state, playerId) > permanentLimitFor(state, playerId)) {
     safety -= 1;
     const discarded = discardPermanentFromPlay(state, playerId);
     if (!discarded) {
@@ -617,8 +621,16 @@ export function putPermanentIntoPlay(state: GameState, playerId: PlayerId, cardI
     permanentLimitFor(state, playerId),
     card.permanentEffect?.permanentLimitOverride ?? 1
   );
+  const ballistaAlreadyInPlay = getPermanentCardIds(state, playerId).some(isBallistaCard);
+  const addsPermanentSlot = !isBallistaCard(cardId) || !ballistaAlreadyInPlay;
   const replacedCardId =
-    getPermanentCardIds(state, playerId).length >= limit ? discardPermanentFromPlay(state, playerId) : null;
+    addsPermanentSlot && permanentSlotUsage(state, playerId) >= limit
+      ? discardPermanentFromPlay(
+          state,
+          playerId,
+          getPermanentCardIds(state, playerId)[0],
+        )
+      : null;
   player.hand.splice(handIndex, 1);
   setPermanentCardIds(state, playerId, [...getPermanentCardIds(state, playerId), cardId]);
 
@@ -818,6 +830,12 @@ function activeWarMachineEntry(
 /** Whether an in-play permanent is a Ballista (a round-start single-shot machine). */
 function isBallistaCard(cardId: CardId): boolean {
   return getRoundStartDefinitionForCard(cardId)?.kind === "damage-lowest-initiative";
+}
+
+/** Any number of physical Ballista cards share one war-machine permanent slot. */
+function permanentSlotUsage(state: GameState, playerId: PlayerId): number {
+  const cards = getPermanentCardIds(state, playerId);
+  return cards.filter((cardId) => !isBallistaCard(cardId)).length + (cards.some(isBallistaCard) ? 1 : 0);
 }
 
 /**
@@ -1774,10 +1792,9 @@ export function resolveWarMachineTarget(state: GameState, playerId: PlayerId, ta
  * deck, discard, or in play as a permanent. HOUSE RULE: the War Machine supply
  * is NOT a shared single-copy pool that empties for the whole table when one
  * player buys a machine ("1 player buys the Tent → nobody else ever can" was the
- * bug). Each player may buy every machine ONCE; the only limit is that a player
- * never holds two copies of the SAME machine. A removed (out-of-game) copy does
- * not count, so a player who removed their Tent may buy another. Buying never
- * depletes the catalog, so another player is never shut out.
+ * bug). Non-Ballista machines stay unique per player. Ballistas are stackable,
+ * allowing Ballista specialties to activate several physical cards. Buying
+ * never depletes the catalog, so another player is never shut out.
  */
 export function playerOwnsWarMachine(state: GameState, playerId: PlayerId, cardId: CardId): boolean {
   const player = state.players[playerId];
@@ -1793,10 +1810,9 @@ export function playerOwnsWarMachine(state: GameState, playerId: PlayerId, cardI
 }
 
 /**
- * Machines this player may still buy at this shop, with the shop's price. The
- * catalog (`warMachineSupply`) never depletes; a machine drops out only when
- * THIS player already owns a copy (per-player uniqueness), so one buyer can
- * never remove a machine from everyone else's menu.
+ * Machines this player may buy at this shop, with the shop's price. The catalog
+ * (`warMachineSupply`) never depletes. Unique machines drop out once this player
+ * owns one; Ballistas remain available for multi-Ballista specialty builds.
  */
 export function warMachinesForSale(
   state: GameState,
@@ -1820,7 +1836,7 @@ export function warMachinesForSale(
     if (!card || !costs) {
       return [];
     }
-    if (playerId && playerOwnsWarMachine(state, playerId, cardId)) {
+    if (playerId && !isBallistaCard(cardId) && playerOwnsWarMachine(state, playerId, cardId)) {
       return [];
     }
     const printed = pricing === "factory" ? costs.factory : costs.tradingPost;
@@ -1870,8 +1886,8 @@ export function buyWarMachine(state: GameState, action: Extract<GameAction, { ty
   }
 
   spendResources(state, action.playerId, offer.cost, `bought the ${offer.card.name}`);
-  // The catalog is NOT depleted (each player may buy each machine once — see
-  // playerOwnsWarMachine); the card goes to the buyer's hand.
+  // The catalog is NOT depleted; the card goes to the buyer's hand. Unique
+  // machines disappear from this player's next menu, while Ballistas remain.
   player.hand.push(action.cardId);
 
   appendEvent(state, {

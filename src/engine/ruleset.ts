@@ -43,7 +43,8 @@ export const RULESET_DESCRIPTIONS: Record<GameRuleset, string> = {
   binh:
     "BINH house rules: Basic/Expert Spell decks and Minor/Major/Relic Artifact decks with level and map gating, " +
     "Wisdom expert −3 gold, Estates 2/4 gold, Few Griffins 3 attack, Pack Griffins 1 defense, Pack Marksmen 3 HP, " +
-    "Sandro's Horde/Legion of Skeletons fight with 3 HP, and both embarking and disembarking end movement."
+    "Pack Arch Devils 6 attack, inward-only Creature Bank entrances, Sandro's Horde/Legion of Skeletons fight " +
+    "with 3 HP, and both embarking and disembarking end movement."
 };
 
 export const VICTORY_MODE_LABELS: Record<VictoryMode, string> = {
@@ -90,6 +91,7 @@ export const PVP_TROOP_LOSS_DESCRIPTIONS: Record<"normal" | "none", string> = {
  *  - Few Griffins: 3 attack (printed 2)
  *  - Pack Griffins: 1 defense (printed 0)
  *  - Pack Marksmen: 3 HP (printed 2)
+ *  - Pack Arch Devils: 6 Attack (printed 7)
  *
  * Cerberi play by the printed card (1 flat damage to one adjacent enemy) in
  * both modes — no longer a BINH override.
@@ -108,6 +110,7 @@ export function applyUnitSideRules(
   overrides?: {
     griffinBuff?: boolean;
     marksmanBuff?: boolean;
+    archDevilPackDamage6?: boolean;
     phoenixPackRebirth?: boolean;
     /** `community-card-balance` — the Community Balance Change's Units tab. */
     communityBalance?: boolean;
@@ -115,6 +118,7 @@ export function applyUnitSideRules(
 ): UnitSideDefinition {
   const griffinBuff = overrides?.griffinBuff ?? ruleset === "binh";
   const marksmanBuff = overrides?.marksmanBuff ?? ruleset === "binh";
+  const archDevilPackDamage6 = overrides?.archDevilPackDamage6 ?? ruleset === "binh";
   const phoenixPackRebirth = overrides?.phoenixPackRebirth ?? ruleset === "binh";
   // The Community Balance Change is a plain OFF-by-default house rule in both
   // modes, so — unlike the three BINH tweaks above — it never falls back to the
@@ -185,6 +189,9 @@ export function applyUnitSideRules(
   if (marksmanBuff && unitDefId === "castle.marksmen" && side === "pack") {
     return { ...definition, health: 3 };
   }
+  if (archDevilPackDamage6 && unitDefId === "inferno.arch_devils" && side === "pack") {
+    return { ...definition, attack: 6 };
+  }
   // BINH-only house rule: Pack Phoenixes also get Rebirth (the Few always has it
   // in printed data). Base game / Legacy plays the printed Pack — no Rebirth.
   if (
@@ -212,6 +219,7 @@ export function unitSideRuleOverrides(
 ): {
   griffinBuff: boolean;
   marksmanBuff: boolean;
+  archDevilPackDamage6: boolean;
   polishUnitStacks: boolean;
   neutralRankUp: boolean;
   phoenixPackRebirth: boolean;
@@ -220,6 +228,7 @@ export function unitSideRuleOverrides(
   return {
     griffinBuff: houseRuleEnabled(state, "griffin-buff"),
     marksmanBuff: houseRuleEnabled(state, "marksman-buff"),
+    archDevilPackDamage6: houseRuleEnabled(state, "arch-devil-pack-damage-6"),
     // Community Balance Change (default OFF in BOTH modes): the sheet's Units
     // tab — Griffins Few+Pack 1 defense, Marksmen Pack 3 health, and the
     // Halberdier Pack's Parry losing its discard cost.

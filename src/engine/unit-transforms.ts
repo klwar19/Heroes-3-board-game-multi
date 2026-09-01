@@ -1,5 +1,5 @@
 import { coreUnitDefinitions } from "@/data/factions/units";
-import { CREATURE_BANK_UNIT_SIDES, stackTokenDelta } from "@/data/map/creature-banks";
+import { getCreatureBankUnitSide, stackTokenDelta } from "@/data/map/creature-banks";
 import { applyUnitSideRules, specialtyTransformHealth } from "./ruleset";
 import { attackBonusIfFlippedForAbilityIds } from "./unit-abilities";
 import { combatUnitRankFold, withRankAbilities } from "./unit-experience";
@@ -230,7 +230,7 @@ export function applyUnitCurrentSide(
   // Stack Token bonus (won cards roll a random token each fight; bank defenders use
   // the setup result, and Polish Bank Sizes can guarantee the token count).
   if (unit.bankUnit && unit.unitDefId) {
-    const bankSide = CREATURE_BANK_UNIT_SIDES[unit.unitDefId];
+    const bankSide = getCreatureBankUnitSide(unit.unitDefId, unit.bankSideKey);
     if (!bankSide) {
       return;
     }

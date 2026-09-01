@@ -81,6 +81,18 @@ export function activeBuildingActions(
   if (building.id === "mgq.spirit_shrine") {
     return legalActions.filter((legal) => legal.action.type === "SET_MGQ_SPIRIT");
   }
+  if (building.effect?.type === "ASTROLOGERS_FLAT_GOLD_REINFORCE") {
+    const pubDiscountIds = new Set(
+      (state.players[viewerPlayerId]?.reinforcementDiscounts ?? [])
+        .filter((discount) => discount.source === "pub")
+        .map((discount) => discount.id)
+    );
+    return legalActions.filter(
+      (legal) =>
+        legal.action.type === "REDEEM_REINFORCEMENT_DISCOUNT" &&
+        pubDiscountIds.has(legal.action.discountId)
+    );
+  }
   return legalActions.filter((legal) => {
     const action = legal.action;
     if (action.type === "USE_TOWN_BUILDING" || action.type === "THIEVES_GUILD_ACTION") {
@@ -211,6 +223,10 @@ export function buildingPanelNote(
         : "Select one built Spirit contract for the next combat.";
     case "MGQ_SPIRIT_CONTRACT":
       return "Built contracts are selected from the Spirit Shrine panel.";
+    case "ASTROLOGERS_FLAT_GOLD_REINFORCE":
+      return hasActions
+        ? "Ready this Astrologers' round — choose the unit to reinforce with the Pub discount."
+        : "Available during each Astrologers' round; the Citadel is required to reinforce.";
     default:
       // Round / turn-start automatic effects (City Hall, Brotherhood, Mystic
       // Pond, Saplings, Necromancy Amplifier, Portal, Mana Vortex…).

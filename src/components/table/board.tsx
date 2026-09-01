@@ -3083,9 +3083,18 @@ export function CommandDock({
 /** How many events the single-player history drawer renders (newest kept). */
 const SINGLE_PLAYER_HISTORY_LIMIT = 500;
 
-export function LogDrawer({ state, viewerPlayerId }: { state: GameState; viewerPlayerId?: PlayerId }) {
+export function LogDrawer({
+  state,
+  viewerPlayerId,
+  surface = "game",
+}: {
+  state: GameState;
+  viewerPlayerId?: PlayerId;
+  surface?: "game" | "battle";
+}) {
   const singlePlayer = state.sessionMode === "single-player";
-  const [open, setOpen] = useState(false);
+  const battle = surface === "battle";
+  const [open, setOpen] = useState(battle);
   const [filter, setFilter] = useState<"all" | "dice" | "cards" | "events">("all");
   const logState = useMemo(() => {
     if (singlePlayer || !viewerPlayerId) {
@@ -3116,7 +3125,19 @@ export function LogDrawer({ state, viewerPlayerId }: { state: GameState; viewerP
   const events = useMemo(() => {
     // Single-player history goes deep but stays bounded: a late-game log holds
     // thousands of events, and rendering them all janks the drawer open/close.
-    const source = singlePlayer ? logState.eventLog.slice(-SINGLE_PLAYER_HISTORY_LIMIT) : logState.eventLog.slice(-30);
+    const combatStartIndex = battle
+      ? logState.eventLog
+          .map((event) =>
+            event.type === "PLAYER_COMBAT_STARTED" ||
+            event.type === "CREATURE_BANK_COMBAT_STARTED" ||
+            event.type === "SANDBOX_COMBAT_BEGUN"
+          )
+          .lastIndexOf(true)
+      : -1;
+    const battleEvents = battle
+      ? logState.eventLog.slice(Math.max(0, combatStartIndex))
+      : logState.eventLog;
+    const source = singlePlayer ? battleEvents.slice(-SINGLE_PLAYER_HISTORY_LIMIT) : battleEvents.slice(-60);
     const reversed = [...source].reverse();
     if (filter === "all") {
       return reversed;
@@ -3149,22 +3170,22 @@ export function LogDrawer({ state, viewerPlayerId }: { state: GameState; viewerP
       events: new Set(["EVENT_CARD_DRAWN", "EVENT_AUCTION_BID_PLACED", "EVENT_AUCTION_RESOLVED", "EVENT_NOTE", "ASTROLOGERS_DRAWN", "ASTROLOGERS_DISCARDED"]),
     };
     return reversed.filter((event) => groups[filter].has(event.type));
-  }, [filter, logState.eventLog, singlePlayer]);
+  }, [battle, filter, logState.eventLog, singlePlayer]);
   const latest = logState.eventLog.at(-1);
   const truncated = singlePlayer && logState.eventLog.length > SINGLE_PLAYER_HISTORY_LIMIT;
 
   return (
-    <section className={`logDrawer ${open ? "open" : ""}${singlePlayer ? " singlePlayerHistory" : ""}`} aria-label={singlePlayer ? "Single-player history" : "Game log"}>
+    <section className={`logDrawer${battle ? " battleLogDrawer" : ""} ${open ? "open" : ""}${singlePlayer ? " singlePlayerHistory" : ""}`} aria-label={battle ? "Battle log" : singlePlayer ? "Single-player history" : "Game log"}>
       <button
         aria-expanded={open}
-        aria-label={open ? "Close event log" : "Open event log"}
+        aria-label={open ? `Close ${battle ? "battle" : "event"} log` : `Open ${battle ? "battle" : "event"} log`}
         className="logToggle"
         onClick={() => setOpen(!open)}
-        title={open ? "Close event log" : "Open event log"}
+        title={open ? `Close ${battle ? "battle" : "event"} log` : `Open ${battle ? "battle" : "event"} log`}
         type="button"
       >
         <ScrollText aria-hidden="true" size={14} />
-        <span className="logToggleLabel">Event log</span>
+        <span className="logToggleLabel">{battle ? "Battle log" : "Event log"}</span>
         {/* The collapsed bar doubles as a one-line live ticker on every surface
             that has room for it (phone, combat, setup). The desktop map HUD
             renders this drawer as a narrow pill and hides the ticker there. */}
@@ -3193,14 +3214,28 @@ export function LogDrawer({ state, viewerPlayerId }: { state: GameState; viewerP
             </div>
           ) : null}
           <ol>
-            {events.map((event) => (
-              <li key={event.id}>
+            {events.map((event) => {
+              const actorId =
+                "playerId" in event && typeof event.playerId === "string"
+                  ? event.playerId
+                  : "attackerId" in event && typeof event.attackerId === "string"
+                    ? logState.combat?.units[event.attackerId]?.controllerId
+                    : "unitId" in event && typeof event.unitId === "string"
+                      ? logState.combat?.units[event.unitId]?.controllerId
+                      : undefined;
+              const perspective = battle && actorId
+                ? actorId === viewerPlayerId ? "you" : "enemy"
+                : "battle";
+              return (
+              <li className={battle ? `battleLogEvent ${perspective}` : undefined} key={event.id}>
                 <span className="logEventMeta">
-                  {event.id}{"round" in event && typeof event.round === "number" ? ` · R${event.round}` : ""}
+                  {battle ? (perspective === "you" ? "You" : perspective === "enemy" ? "Enemy" : "Battle") : event.id}
+                  {"round" in event && typeof event.round === "number" ? ` · R${event.round}` : ""}
                 </span>
                 {formatEvent(event, logState)}
               </li>
-            ))}
+              );
+            })}
           </ol>
         </div>
       ) : null}
