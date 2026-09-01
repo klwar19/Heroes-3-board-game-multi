@@ -1002,7 +1002,11 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // visibly blue sea hexes and force the hero to end the turn after sea -> sea,
 // while v86 permits the move, so movement legality is protocol-significant.
 // `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 86;
+// v87: eliminated adventure players retain their Give-Up order so the trusted
+// match report can select the sole MMR loser in 3+ player games. A v86 worker
+// would omit that order and score the wrong ladder result.
+// `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 87;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

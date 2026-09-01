@@ -5301,10 +5301,10 @@ export function healDrawOnlyRider(effect: EffectDefinition): number {
 
 /**
  * The "and discard N card(s) from your hand" a face resolves AFTER its draw
- * rider, or 0 — Rion's Battlefield Medic VI and its clones, the ONLY faces in
- * the whole card library whose printed text puts a draw BEFORE a discard
- * (verified by a library sweep in medic-specialty-heal-draw.test.ts, which fails
- * if a new such face ships without joining this read).
+ * rider, or 0 — Rion's Battlefield Medic VI and its clones, Kei's Hacking, and
+ * the Balance-Pack Power riders. Plain DRAW_CARDS effects (Charm of Mana and
+ * Shackles of War) carry an additional drawn-only rule and are handled directly
+ * by the shared post-draw resolver rather than flattened into this numeric read.
  *
  * Why it is a rider and not a `cost.discardCards`: an up-front cost is
  * affordability-gated, so the specialty was unplayable as the last card in hand

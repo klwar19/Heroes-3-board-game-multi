@@ -41,7 +41,14 @@
 // ISOMORPHIC — this module is bundled into the PartyKit Worker (party/index.ts
 // imports the detector), so it must never import Node built-ins or the account
 // store; the Node-side trigger lives in match-report-trigger.ts.
-import { isComputerPlayer, NEUTRAL_PLAYER_ID, type GameState } from "@/engine";
+import {
+  isComputerPlayer,
+  NEUTRAL_PLAYER_ID,
+  victoryPointTotalForPlayer,
+  victoryPointsModeActive,
+  type GameState
+} from "@/engine";
+import { playerArmyStrength } from "@/engine/computer/army-strength";
 import type { MatchParticipantInput } from "@/server/accounts/account-store";
 
 export type FinishedMatch = {
@@ -144,9 +151,11 @@ export function detectFinishedMatch(prev: GameState, next: GameState): FinishedM
   // faction won by last-standing after they left) they still get the win.
   // Games started before the snapshot existed simply have no extra entries.
   const participants: FinishedMatch["participants"] = [];
+  const seatByAccount = new Map<string, string>();
   for (const [accountId, live] of liveByAccount) {
     const result: FinishedMatch["participants"][number]["result"] =
       live.seat === winnerSeat ? "win" : next.players?.[live.seat]?.kickedByVote ? "abandon" : "loss";
+    seatByAccount.set(accountId, live.seat);
     participants.push({ accountId, nickname: live.nickname, result });
   }
   for (const [seat, bound] of Object.entries(next.room?.matchSeats ?? {})) {
@@ -156,6 +165,7 @@ export function detectFinishedMatch(prev: GameState, next: GameState): FinishedM
     if (liveByAccount.has(bound.userId) || participants.some((p) => p.accountId === bound.userId)) {
       continue; // the account is already attributed (still here, or moved seats).
     }
+    seatByAccount.set(bound.userId, seat);
     participants.push({
       accountId: bound.userId,
       nickname: bound.name,
@@ -166,6 +176,64 @@ export function detectFinishedMatch(prev: GameState, next: GameState): FinishedM
   const hasLoser = participants.some((p) => p.result === "loss" || p.result === "abandon");
   if (participants.length < 2 || !hasWinner || !hasLoser) {
     return null;
+  }
+  if (participants.length >= 3) {
+    const vpMode = victoryPointsModeActive(next);
+    const rankedRows = participants.map((participant, inputIndex) => {
+      const seat = seatByAccount.get(participant.accountId)!;
+      const player = next.players?.[seat];
+      const ledger = next.adventure?.vpLedger?.[seat];
+      const metrics = vpMode
+        ? [victoryPointTotalForPlayer(next, seat)]
+        : [
+            (ledger?.mainHeroDefeats?.length ?? 0) + (ledger?.secondaryHeroDefeats ?? 0) + (ledger?.surrenders ?? 0),
+            Object.values(next.heroes ?? {}).find((hero) => hero.controllerId === seat && hero.kind === "main")?.level ?? 0,
+            next.players ? playerArmyStrength(next, seat) : 0
+          ];
+      return { participant, inputIndex, seat, gaveUpAt: player?.gaveUpAt, metrics };
+    });
+    const compareMetrics = (a: number[], b: number[]) => {
+      for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
+        const difference = (b[index] ?? 0) - (a[index] ?? 0);
+        if (difference !== 0) return difference;
+      }
+      return 0;
+    };
+    const sameMetrics = (a: number[], b: number[]) => compareMetrics(a, b) === 0;
+    const winnerRow = rankedRows.find((row) => row.seat === winnerSeat)!;
+    winnerRow.participant.placement = 1;
+    winnerRow.participant.mmrRole = "winner";
+
+    const losers = rankedRows.filter((row) => row !== winnerRow);
+    const firstGiveUp = losers
+      .filter((row) => row.gaveUpAt !== undefined || row.participant.result === "abandon")
+      .sort((a, b) => (a.gaveUpAt ?? Number.MAX_SAFE_INTEGER) - (b.gaveUpAt ?? Number.MAX_SAFE_INTEGER) || a.inputIndex - b.inputIndex)[0];
+    const ordered = losers
+      .filter((row) => row !== firstGiveUp)
+      .sort((a, b) => compareMetrics(a.metrics, b.metrics) || a.inputIndex - b.inputIndex);
+    let place = 2;
+    for (let index = 0; index < ordered.length;) {
+      let end = index + 1;
+      while (end < ordered.length && sameMetrics(ordered[index]!.metrics, ordered[end]!.metrics)) end += 1;
+      for (let tied = index; tied < end; tied += 1) {
+        ordered[tied]!.participant.placement = place;
+        ordered[tied]!.participant.mmrRole = "minor";
+      }
+      place += end - index;
+      index = end;
+    }
+    if (firstGiveUp) {
+      firstGiveUp.participant.placement = participants.length;
+      firstGiveUp.participant.mmrRole = "last";
+    } else if (ordered.length > 0) {
+      const worst = ordered.at(-1)!;
+      const worstGroup = ordered.filter((row) => sameMetrics(row.metrics, worst.metrics));
+      if (worstGroup.length === 1) {
+        worst.participant.mmrRole = "last";
+      } else {
+        for (const tied of worstGroup) tied.participant.mmrRole = "neutral";
+      }
+    }
   }
   return { matchId: next.seed, ranked, participants };
 }

@@ -495,6 +495,22 @@ describe("AccountStore — Hall of Fame + match results", () => {
     store.banAccount(a.id);
     expect(store.hallOfFame().map((p) => p.nickname)).toEqual(["Bravo"]);
   });
+
+  it("keeps only the six exact proof/load nicknames out of MMR and W/L", () => {
+    const store = new AccountStore();
+    const proof = confirmedUser(store, { nickname: "R1ProofA8160618", email: "proof@e.io" });
+    const real = confirmedUser(store, { nickname: "RealPlayer", email: "real@e.io" });
+    store.recordMatchResult({
+      matchId: "proof-exempt-1",
+      participants: [
+        { accountId: proof.id, result: "win" },
+        { accountId: real.id, result: "loss" }
+      ]
+    });
+    expect(store.getProfileById(proof.id)).toMatchObject({ mmr: 1200, wins: 0, losses: 0, matches: 0 });
+    expect(store.hallOfFame().map((profile) => profile.nickname)).toEqual(["RealPlayer"]);
+    expect(store.getProfileById(real.id)).toMatchObject({ losses: 1, matches: 1 });
+  });
 });
 
 describe("AccountStore — persistence round-trip", () => {

@@ -5164,6 +5164,9 @@ export function eliminatePlayer(
     return;
   }
 
+  if (gaveUp) {
+    player.gaveUpAt = state.eventCounter ?? state.eventLog.length;
+  }
   player.eliminated = true;
   player.eliminationCountdown = null;
   // A level-up Ability Search the seat had in flight is abandoned with the seat;

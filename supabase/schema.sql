@@ -30,6 +30,20 @@ create table if not exists public.homm3bg_accounts (
   last_confirm_sent_at bigint
 );
 
+-- Operator-designated proof/load accounts never carry ladder history. Safe to
+-- re-run: application code also keeps these exact nicknames out of future MMR
+-- and W/L updates.
+update public.homm3bg_accounts
+set mmr = 1200, wins = 0, losses = 0, matches = 0
+where lower(nickname) in (
+  'r1proofa8160618',
+  'proofa1788188791',
+  'proofb1788188791',
+  'r1battlea8170184',
+  'r1proofb8160618',
+  'r1livea8160074'
+);
+
 -- Login sessions (kind = 'session', 30-day sliding) and short-lived PartyKit
 -- socket tickets (kind = 'ticket', ~10 min). Only SHA-256 digests are stored —
 -- a database dump cannot be replayed to impersonate anyone.

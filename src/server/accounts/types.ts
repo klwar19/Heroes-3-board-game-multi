@@ -1,3 +1,5 @@
+import { isLadderExemptNickname } from "./ladder-policy";
+
 /**
  * Account system types (expansion plan Phase 1 — accounts, store, admin, mail).
  *
@@ -132,15 +134,16 @@ export class AccountError extends Error {
 
 /** Convert an internal record to the safe public profile. */
 export function toProfile(record: AccountRecord): AccountProfile {
+  const ladderExempt = isLadderExemptNickname(record.nickname);
   return {
     id: record.id,
     nickname: record.nickname,
     role: record.role,
     contact: { ...record.contact },
-    mmr: record.mmr,
-    wins: record.wins,
-    losses: record.losses,
-    matches: record.matches,
+    mmr: ladderExempt ? 1200 : record.mmr,
+    wins: ladderExempt ? 0 : record.wins,
+    losses: ladderExempt ? 0 : record.losses,
+    matches: ladderExempt ? 0 : record.matches,
     createdAt: record.createdAt,
     emailConfirmed: record.emailConfirmed,
     ...(record.bannedAt ? { bannedAt: record.bannedAt, banReason: record.banReason } : {})

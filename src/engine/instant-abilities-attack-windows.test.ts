@@ -138,6 +138,60 @@ function windowShape(state: GameState): { retaliation: boolean; ability: string 
 // ===========================================================================
 
 describe("gap A: a held instant OPENS an attack window", () => {
+  it("Charm of Mana cannot skip its discard in the DEFENSE instant window", () => {
+    const declared = applyOk(enemyAboutToAttack(["artifact.charm_of_mana"]), ENEMY_STRIKE);
+    const offer = reactionOffers(declared, "p1", "artifact.charm_of_mana").find(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.optionIndex === 1
+    );
+    expect(offer, "the draw-2 / discard-1 side should be offered").toBeTruthy();
+
+    let state = applyOk(declared, offer!.action);
+    expect(state.players.p1.hand).toHaveLength(2);
+    expect(state.pendingChoice?.type).toBe("OPTION_CHOICE");
+    expect(state.pendingChoice?.type === "OPTION_CHOICE" ? state.pendingChoice.context : null).toBe("hand-discard");
+    expect(state.combat!.units.unit_p1_crusaders.damage, "the attack stays parked until the discard").toBe(0);
+
+    const discard = getLegalActions(state, "p1").find((legal) => legal.action.type === "CHOOSE_OPTION");
+    expect(discard, "discarding one card is mandatory and answerable").toBeTruthy();
+    state = applyOk(state, discard!.action);
+    expect(state.players.p1.hand).toHaveLength(1);
+    expect(state.pendingChoice).toBeNull();
+    expect(state.reactionWindow, "no further reactions means the resumed window closes").toBeNull();
+    expect(state.combat!.units.unit_p1_crusaders.damage, "the parked attack resumes after the discard").toBe(1);
+  });
+
+  it("Charm of Mana cannot skip its discard in the ATTACK instant window", () => {
+    const declared = applyOk(ownAttack(["artifact.charm_of_mana"]), OWN_STRIKE);
+    const offer = reactionOffers(declared, "p1", "artifact.charm_of_mana").find(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.optionIndex === 1
+    );
+    expect(offer).toBeTruthy();
+
+    let state = applyOk(declared, offer!.action);
+    expect(state.pendingChoice?.type).toBe("OPTION_CHOICE");
+    const discard = getLegalActions(state, "p1").find((legal) => legal.action.type === "CHOOSE_OPTION");
+    state = applyOk(state, discard!.action);
+    expect(state.players.p1.hand).toHaveLength(1);
+    expect(state.reactionWindow, "no further reactions means the resumed window closes").toBeNull();
+    expect(state.combat!.units.unit_p2_skeletons.damage, "the attack resumes after the discard").toBe(1);
+  });
+
+  it("Shackles of War discards only one of the two cards drawn in an instant window", () => {
+    const state = enemyAboutToAttack(["artifact.shackles_of_war", "stat.attack"]);
+    state.players.p1.deck = ["spell.bless", "spell.haste", "spell.curse"] as CardId[];
+    const declared = applyOk(state, ENEMY_STRIKE);
+    const offer = reactionOffers(declared, "p1", "artifact.shackles_of_war").find(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.optionIndex === 1
+    );
+    expect(offer).toBeTruthy();
+
+    const drawn = applyOk(declared, offer!.action);
+    expect(drawn.pendingChoice?.type).toBe("OPTION_CHOICE");
+    const labels = getLegalActions(drawn, "p1").map((legal) => legal.label);
+    expect(labels).toHaveLength(2);
+    expect(labels.some((label) => label.includes("Attack")), "the pre-existing card is not discardable").toBe(false);
+  });
+
   it("REPRO: defending with only a medic draw rider used to get NO window at all", () => {
     // The reported symptom, as an observable: p2 strikes, p1 holds only Rion I
     // and has nothing wounded. Before the fix `reactionOfferOpensWindow`

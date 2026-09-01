@@ -321,6 +321,20 @@ describe("SupabaseAccountStore — Postgres-backed accounts", () => {
     expect(loser.mmr).toBe(1200);
   });
 
+  it("does not update or rank an exact operator-designated proof nickname", async () => {
+    const proof = await store.ensureAdminAccount({ nickname: "ProofB1788188791", email: "proof@erathia.io", password: "password1" });
+    const real = await store.ensureAdminAccount({ nickname: "RealPlayer", email: "real@erathia.io", password: "password2" });
+    await store.recordMatchResult({
+      matchId: "proof-exempt-1",
+      participants: [
+        { accountId: proof.id, result: "win" },
+        { accountId: real.id, result: "loss" }
+      ]
+    });
+    expect(await store.getProfileById(proof.id)).toMatchObject({ mmr: 1200, wins: 0, losses: 0, matches: 0 });
+    expect((await store.hallOfFame()).map((profile) => profile.nickname)).toEqual(["RealPlayer"]);
+  });
+
   it("hall of fame: best first, banned accounts excluded", async () => {
     const a = await store.ensureAdminAccount({ nickname: "Alpha", email: "a@erathia.io", password: "password1" });
     const b = await store.ensureAdminAccount({ nickname: "Beta", email: "b@erathia.io", password: "password2" });

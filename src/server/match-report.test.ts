@@ -206,9 +206,9 @@ describe("detectFinishedMatch — the shared game-over → ranked-result detecto
       stateWith({ over: true, winnerSeat: "p1", members: withReplacement, matchSeats })
     );
     expect(match!.participants).toEqual([
-      { accountId: "u_cat", nickname: "Catherine", result: "win" },
-      { accountId: "u_xer", nickname: "Xeron", result: "loss" },
-      { accountId: "u_rol", nickname: "Roland", result: "abandon" }
+      { accountId: "u_cat", nickname: "Catherine", result: "win", placement: 1, mmrRole: "winner" },
+      { accountId: "u_xer", nickname: "Xeron", result: "loss", placement: 2, mmrRole: "minor" },
+      { accountId: "u_rol", nickname: "Roland", result: "abandon", placement: 3, mmrRole: "last" }
     ]);
   });
 
@@ -289,6 +289,84 @@ describe("detectFinishedMatch — the shared game-over → ranked-result detecto
     // CONTROL: pure self-play (the duplicated account was the only opponent) → null.
     const pureSelfPlay = selfPlayPlusOne.slice(0, 3);
     expect(detectFinishedMatch(prev, stateWith({ over: true, winnerSeat: "p3", members: pureSelfPlay }))).toBeNull();
+  });
+
+  it("3+ players: the first giver-up is the sole MMR loser; PvP wins outrank hero level and army", () => {
+    const members = [
+      member({ clientId: "c1", name: "Winner", seat: "p1", userId: "u1" }),
+      member({ clientId: "c2", name: "Fighter", seat: "p2", userId: "u2" }),
+      member({ clientId: "c3", name: "Leveler", seat: "p3", userId: "u3" }),
+      member({ clientId: "c4", name: "Quitter", seat: "p4", userId: "u4" })
+    ];
+    const next = stateWith({ over: true, winnerSeat: "p1", members });
+    next.players = {
+      p1: { army: [] },
+      p2: { army: [] },
+      p3: { army: [] },
+      p4: { army: [], gaveUpAt: 10 }
+    } as unknown as GameState["players"];
+    next.heroes = {
+      h1: { controllerId: "p1", kind: "main", level: 2 },
+      h2: { controllerId: "p2", kind: "main", level: 2 },
+      h3: { controllerId: "p3", kind: "main", level: 7 },
+      h4: { controllerId: "p4", kind: "main", level: 7 }
+    } as unknown as GameState["heroes"];
+    next.adventure!.vpLedger = {
+      p2: { mainHeroDefeats: ["p3", "p4"] },
+      p3: {},
+      p4: { mainHeroDefeats: ["p1", "p2", "p3"] }
+    };
+    const match = detectFinishedMatch(stateWith({ over: false, members }), next)!;
+    expect(match.participants.map(({ nickname, placement, mmrRole }) => ({ nickname, placement, mmrRole }))).toEqual([
+      { nickname: "Winner", placement: 1, mmrRole: "winner" },
+      { nickname: "Fighter", placement: 2, mmrRole: "minor" },
+      { nickname: "Leveler", placement: 3, mmrRole: "minor" },
+      { nickname: "Quitter", placement: 4, mmrRole: "last" }
+    ]);
+  });
+
+  it("3+ players: a fully tied non-winner group is MMR-neutral", () => {
+    const members = [
+      member({ clientId: "c1", name: "Winner", seat: "p1", userId: "u1" }),
+      member({ clientId: "c2", name: "TieA", seat: "p2", userId: "u2" }),
+      member({ clientId: "c3", name: "TieB", seat: "p3", userId: "u3" })
+    ];
+    const next = stateWith({ over: true, winnerSeat: "p1", members });
+    next.players = { p1: { army: [] }, p2: { army: [] }, p3: { army: [] } } as unknown as GameState["players"];
+    next.heroes = {};
+    const match = detectFinishedMatch(stateWith({ over: false, members }), next)!;
+    expect(match.participants.map(({ mmrRole }) => mmrRole)).toEqual(["winner", "neutral", "neutral"]);
+  });
+
+  it("Victory Points games rank only by VP, without the non-VP tiebreakers", () => {
+    const members = [
+      member({ clientId: "c1", name: "Winner", seat: "p1", userId: "u1" }),
+      member({ clientId: "c2", name: "LowVP", seat: "p2", userId: "u2" }),
+      member({ clientId: "c3", name: "HighVP", seat: "p3", userId: "u3" })
+    ];
+    const next = stateWith({ over: true, winnerSeat: "p1", members });
+    next.adventure!.mapPreset = { victoryPoints: { enabled: true } } as NonNullable<GameState["adventure"]>["mapPreset"];
+    next.players = { p1: { army: [] }, p2: { army: [] }, p3: { army: [] } } as unknown as GameState["players"];
+    next.heroes = { h2: { controllerId: "p2", kind: "main", level: 7 } } as unknown as GameState["heroes"];
+    next.eventLog = [{
+      id: "evt_1",
+      type: "VP_SCORING",
+      completerPlayerId: "p1",
+      reason: "test",
+      winnerPlayerId: "p1",
+      breakdown: [
+        { playerId: "p1", total: 10, rows: [] },
+        { playerId: "p2", total: 2, rows: [] },
+        { playerId: "p3", total: 6, rows: [] }
+      ]
+    }] as GameState["eventLog"];
+    next.adventure!.vpLedger = { p2: { mainHeroDefeats: ["p1", "p3"] }, p3: {} };
+    const match = detectFinishedMatch(stateWith({ over: false, members }), next)!;
+    expect(match.participants.map(({ nickname, placement, mmrRole }) => ({ nickname, placement, mmrRole }))).toEqual([
+      { nickname: "Winner", placement: 1, mmrRole: "winner" },
+      { nickname: "LowVP", placement: 3, mmrRole: "last" },
+      { nickname: "HighVP", placement: 2, mmrRole: "minor" }
+    ]);
   });
 });
 

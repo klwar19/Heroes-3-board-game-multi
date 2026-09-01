@@ -559,3 +559,16 @@ export function computeVictoryPoints(
 
   return { breakdown: rows, winnerId: rows[0]?.playerId ?? null };
 }
+
+/** Final VP total for one seat, including an eliminated seat omitted by normal scoring. */
+export function victoryPointTotalForPlayer(state: GameState, playerId: PlayerId): number {
+  const scored = [...(state.eventLog ?? [])].reverse().find((event) => event.type === "VP_SCORING");
+  const recorded = scored?.type === "VP_SCORING"
+    ? scored.breakdown.find((row) => row.playerId === playerId)?.total
+    : undefined;
+  if (recorded !== undefined) {
+    return recorded;
+  }
+  const completerId = scored?.type === "VP_SCORING" ? scored.completerPlayerId : null;
+  return buildBreakdown(state, playerId, victoryPointsConfig(state), completerId).total;
+}

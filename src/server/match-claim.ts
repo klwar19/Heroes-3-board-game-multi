@@ -42,7 +42,7 @@ export type MatchClaimOutcome = {
 /** Stable fingerprint so two clients must agree on the exact outcome. */
 export function matchClaimFingerprint(input: MatchClaimInput): string {
   const parts = [...input.participants]
-    .map((p) => `${p.accountId}:${p.result}`)
+    .map((p) => `${p.accountId}:${p.result}:${p.placement ?? "?"}:${p.mmrRole ?? "?"}`)
     .sort();
   return `${input.ranked ? "R" : "N"}|${parts.join(",")}`;
 }
@@ -84,6 +84,14 @@ export function validateMatchClaim(
         ? (entry as { accountId: string }).accountId.slice(0, 64)
         : "";
     const result = (entry as { result?: unknown }).result;
+    const rawPlacement = (entry as { placement?: unknown }).placement;
+    const placement = typeof rawPlacement === "number" && Number.isInteger(rawPlacement) && rawPlacement >= 1 && rawPlacement <= 12
+      ? rawPlacement
+      : undefined;
+    const rawMmrRole = (entry as { mmrRole?: unknown }).mmrRole;
+    const mmrRole = typeof rawMmrRole === "string" && ["winner", "minor", "last", "neutral"].includes(rawMmrRole)
+      ? rawMmrRole as MatchParticipantInput["mmrRole"]
+      : undefined;
     if (
       !accountId ||
       seen.has(accountId) ||
@@ -93,7 +101,7 @@ export function validateMatchClaim(
       continue;
     }
     seen.add(accountId);
-    participants.push({ accountId, result: result as MatchParticipantInput["result"] });
+    participants.push({ accountId, result: result as MatchParticipantInput["result"], ...(placement ? { placement } : {}), ...(mmrRole ? { mmrRole } : {}) });
   }
   if (participants.length < 2) {
     return { ok: false, reason: "A match needs at least two participants." };
@@ -114,7 +122,12 @@ export function finishedMatchToClaimBody(match: FinishedMatch): MatchClaimInput 
   return {
     matchId: match.matchId,
     ranked: match.ranked,
-    participants: match.participants.map(({ accountId, result }) => ({ accountId, result }))
+    participants: match.participants.map(({ accountId, result, placement, mmrRole }) => ({
+      accountId,
+      result,
+      ...(placement ? { placement } : {}),
+      ...(mmrRole ? { mmrRole } : {})
+    }))
   };
 }
 

@@ -860,7 +860,13 @@ Every finished win/loss funnels through `declareAdventureWinner` and is REPORTED
 (`detectFinishedMatch`, `src/server/match-report.ts`) on a hosted table with ≥2
 verified accounts, casual games included; only a `ranked` match recomputes Elo
 (`accounts/elo.ts`). `room.matchSeats` is frozen at map build so a leaver is
-reported as **abandon**. All time controls are CLOSED-table only
+reported as **abandon**. Two-player Elo stays the classic ± pairing. At 3+
+players the first Give Up / abandon is the sole MMR loser; otherwise placement
+uses Victory Points alone in VP mode, or PvP wins → main-hero level → army power
+outside VP mode. The winner gains most, higher non-winners gain less, and an
+undecidable tied-lowest group is MMR-neutral. The six operator proof/load
+nicknames in `accounts/ladder-policy.ts` are excluded from MMR, W/L and the Hall
+of Fame; `supabase/schema.sql` clears their old counters. All time controls are CLOSED-table only
 (`timeControlsActive`, `afk.ts`): the AFK vote-kick, the 30-minute auto-kick and the
 10-minute per-turn budget (`TURN_TIME_LIMIT_MS`, `resolveTurnTimeout`) never run on
 an OPEN table. Pinned in `match-report.test.ts`, `match-claim.test.ts`,

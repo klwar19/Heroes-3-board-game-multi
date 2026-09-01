@@ -83,8 +83,16 @@ export async function POST(request: Request) {
   for (const entry of rawParticipants.slice(0, MAX_PARTICIPANTS)) {
     const accountId = typeof (entry as { accountId?: unknown }).accountId === "string" ? (entry as { accountId: string }).accountId : "";
     const result = (entry as { result?: unknown }).result;
+    const rawPlacement = (entry as { placement?: unknown }).placement;
+    const placement = typeof rawPlacement === "number" && Number.isInteger(rawPlacement) && rawPlacement >= 1 && rawPlacement <= MAX_PARTICIPANTS
+      ? rawPlacement
+      : undefined;
+    const rawMmrRole = (entry as { mmrRole?: unknown }).mmrRole;
+    const mmrRole = typeof rawMmrRole === "string" && ["winner", "minor", "last", "neutral"].includes(rawMmrRole)
+      ? rawMmrRole as MatchParticipantInput["mmrRole"]
+      : undefined;
     if (accountId && accountId.length <= 64 && typeof result === "string" && RESULTS.has(result)) {
-      participants.push({ accountId, result: result as MatchParticipantInput["result"] });
+      participants.push({ accountId, result: result as MatchParticipantInput["result"], ...(placement ? { placement } : {}), ...(mmrRole ? { mmrRole } : {}) });
     }
   }
   if (!matchId || participants.length < 2) {

@@ -938,6 +938,40 @@ describe("Community pack — Inferno", () => {
     expect(next.combat!.units.unit_p2_vampires.damage).toBe(1);
   });
 
+  it("Diplomat's Ring reroll returns to the active unit instead of leaking Hero movement", () => {
+    const state = infernoRig(true, { scripted: [0, 0, 1, 1] });
+    state.players.p1.hand = ["spell.inferno", "artifact.diplomats_ring"] as CardId[];
+
+    const castOffer = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.inferno" &&
+        legal.action.target.type === "space" &&
+        legal.action.target.position === 3
+    );
+    expect(castOffer, "Inferno should be castable on the vampires' space").toBeTruthy();
+    let next = passAllReactions(applyOk(state, castOffer!.action));
+
+    const reroll = getLegalActions(next, "p1").find(
+      (legal) => legal.action.type === "REROLL_PENDING_CHOICE" && legal.label.includes("Diplomat's Ring")
+    );
+    expect(reroll, "Diplomat's Ring should reroll Inferno's whole roll").toBeTruthy();
+    next = applyOk(next, reroll!.action);
+    const keep = getLegalActions(next, "p1").find((legal) => legal.action.type === "CHOOSE_PENDING_ROLL");
+    expect(keep).toBeTruthy();
+    next = applyOk(next, keep!.action);
+
+    expect(next.pendingChoice).toBeNull();
+    expect(next.phase).toBe("combat");
+    expect(next.priorityPlayerId).toBeNull();
+    expect(next.players.p1.hand).not.toContain("artifact.diplomats_ring");
+    expect(next.players.p1.discard).toContain("artifact.diplomats_ring");
+
+    const actions = getLegalActions(next, "p1").map((legal) => legal.action);
+    expect(actions.some((action) => action.type === "MOVE_UNIT" || action.type === "ATTACK_UNIT")).toBe(true);
+    expect(actions.some((action) => action.type === "MOVE_HERO" || action.type === "MOVE_HERO_PATH")).toBe(false);
+  });
+
   it("DECLINING the window resolves the original dice and never freezes the table", () => {
     const state = infernoRig(true, { luck: true, scripted: [0, 0, 1, 0] });
     const parked = cast(state, "spell.inferno", 0, { type: "space", position: 3 });

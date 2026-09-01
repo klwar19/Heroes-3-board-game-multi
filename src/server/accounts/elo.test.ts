@@ -33,16 +33,27 @@ describe("Elo ratings", () => {
     expect(easyGain).toBeLessThan(closeGain);
   });
 
-  it("winner-takes-field: winner gains against EACH loser", () => {
+  it("3+ players: winner gains most, middle gains less, and only last loses", () => {
     const out = computeRatings([
-      { id: "W", rating: 1200, result: "win" },
-      { id: "L1", rating: 1200, result: "loss" },
-      { id: "L2", rating: 1200, result: "loss" }
+      { id: "W", rating: 1200, result: "win", placement: 1, mmrRole: "winner" },
+      { id: "P2", rating: 1200, result: "loss", placement: 2, mmrRole: "minor" },
+      { id: "P3", rating: 1200, result: "loss", placement: 3, mmrRole: "last" }
     ]);
-    // Two equal pairings → +16 each → +32.
-    expect(out.get("W")).toBe(1200 + 32);
-    expect(out.get("L1")).toBe(1200 - 16);
-    expect(out.get("L2")).toBe(1200 - 16);
+    expect(out.get("W")).toBe(1221);
+    expect(out.get("P2")).toBe(1211);
+    expect(out.get("P3")).toBe(1168);
+    expect([...out.values()].reduce((sum, rating) => sum + rating, 0)).toBe(3600);
+  });
+
+  it("keeps tied non-winners neutral when no sole last place can be decided", () => {
+    const out = computeRatings([
+      { id: "W", rating: 1200, result: "win", placement: 1, mmrRole: "winner" },
+      { id: "A", rating: 1200, result: "loss", placement: 2, mmrRole: "neutral" },
+      { id: "B", rating: 1200, result: "loss", placement: 2, mmrRole: "neutral" }
+    ]);
+    expect(out.get("W")).toBe(1216);
+    expect(out.get("A")).toBe(1200);
+    expect(out.get("B")).toBe(1200);
   });
 
   it("never falls below the floor", () => {

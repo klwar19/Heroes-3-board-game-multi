@@ -8944,6 +8944,8 @@ export type PlayerState = {
    * turns. Rulebook p.11: "Eliminated players are immediately removed."
    */
   eliminated?: boolean;
+  /** Monotonic event position when this seat chose Give Up; absent otherwise. */
+  gaveUpAt?: number;
   /**
    * True when this player's elimination came from a passed AFK kick vote.
    * The ladder reports them as "abandon" (a loss for Elo, tracked distinctly)

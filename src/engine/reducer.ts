@@ -19831,6 +19831,7 @@ function applyReactionPlayCore(
       throw new Error(`${card.name} has no unconditional card-draw rider.`);
     }
     stackItem?.modifiers.playedCardIds.push(play.cardId);
+    const handBeforeDraw = state.players[playerId]?.hand.length ?? 0;
     drawCardsForPlayer(state, playerId, drawAmount, {
       inFlightCardIds: reactionInFlightCardIds,
     });
@@ -19838,7 +19839,13 @@ function applyReactionPlayCore(
     // AFTER the draw, so the drawn cards are candidates. The nested choice
     // resolves inside the still-open window (the Scholar precedent; the
     // CHOOSE_OPTION dispatcher re-derives the window's offers afterwards).
-    applyDrawRiderThenDiscard(state, playerId, effect, card.name);
+    applyDrawRiderThenDiscard(
+      state,
+      playerId,
+      effect,
+      card.name,
+      handBeforeDraw,
+    );
     return { windowEnded: false };
   }
 
@@ -21180,9 +21187,21 @@ function applyReactionPlayCore(
 
   if (effect.type === "DRAW_CARDS") {
     stackItem?.modifiers.playedCardIds.push(play.cardId);
+    const handBeforeDraw = state.players[playerId]?.hand.length ?? 0;
     drawCardsForPlayer(state, playerId, effectAmount, {
       inFlightCardIds: reactionInFlightCardIds,
     });
+    // Charm of Mana / Shackles of War: a plain DRAW_CARDS instant still owes
+    // its printed post-draw discard while it is joining an attack/defense
+    // window. Keep that obligation inside the parked reaction window; the
+    // CHOOSE_OPTION tail resumes the attack only after the discard is answered.
+    applyDrawRiderThenDiscard(
+      state,
+      playerId,
+      effect,
+      card.name,
+      handBeforeDraw,
+    );
   }
 
   // Kriv (Bulwark)'s rune-synergy specialty played as a REACTION to an enemy
@@ -23112,12 +23131,13 @@ function startChainLightning(
 }
 
 /**
- * A draw rider's printed "…, then discard N card(s) from your hand" — Rion's
- * Battlefield Medic VI and its rethemed clones. It runs AFTER the draw (that is
- * the printed order), so the cards just drawn are legal candidates and the play
- * is legal even when the specialty was the last card in hand. Any hand card
- * qualifies ("from your hand", not "of them"), and an empty hand forgives it
- * (openHandDiscardChoice no-ops on zero candidates).
+ * A card's printed "…, then discard N card(s)" after a draw — Charm of Mana,
+ * Shackles of War, Rion's Battlefield Medic VI and their related rider shapes.
+ * It runs AFTER the draw (the printed order), so newly drawn cards may pay it
+ * and the play remains legal as the last card in hand. Most effects may discard
+ * any hand card; `DRAW_CARDS.thenDiscardDrawnOnly` restricts the candidates to
+ * the cards from this draw (Shackles: "discard the other"). An empty hand
+ * forgives the obligation because openHandDiscardChoice has no candidates.
  *
  * Called at EVERY seam that resolves such a rider — the reaction heal, the
  * reaction draw-only join, the combat/map unit-targeted play and the target-less
@@ -23128,17 +23148,26 @@ function applyDrawRiderThenDiscard(
   playerId: PlayerId,
   effect: EffectDefinition,
   cardName: string,
+  handBeforeDraw?: number,
 ): void {
-  const amount = drawRiderThenDiscard(effect);
+  const amount =
+    effect.type === "DRAW_CARDS"
+      ? (effect.thenDiscard ?? 0)
+      : drawRiderThenDiscard(effect);
   if (amount <= 0) {
     return;
   }
+  const hand = [...(state.players[playerId]?.hand ?? [])];
+  const candidates =
+    effect.type === "DRAW_CARDS" && effect.thenDiscardDrawnOnly
+      ? hand.slice(handBeforeDraw ?? hand.length)
+      : hand;
   openHandDiscardChoice(
     state,
     playerId,
     amount,
-    [...(state.players[playerId]?.hand ?? [])],
-    false,
+    candidates,
+    effect.type === "DRAW_CARDS" && Boolean(effect.thenDiscardDrawnOnly),
     cardName,
   );
 }
@@ -24987,19 +25016,13 @@ function playCard(
     });
     // Charm of Mana / Shackles of War: "draw N, then discard M". The discard is
     // a follow-up choice; `thenDiscardDrawnOnly` limits it to the drawn cards.
-    if (effect.thenDiscard) {
-      const hand = state.players[action.playerId].hand;
-      const drawn = hand.slice(handBefore);
-      const candidates = effect.thenDiscardDrawnOnly ? drawn : [...hand];
-      openHandDiscardChoice(
-        state,
-        action.playerId,
-        effect.thenDiscard,
-        candidates,
-        Boolean(effect.thenDiscardDrawnOnly),
-        card.name,
-      );
-    }
+    applyDrawRiderThenDiscard(
+      state,
+      action.playerId,
+      effect,
+      card.name,
+      handBefore,
+    );
   }
 
   // Offense/Armorer (ADD_COMBAT_STAT) and Sorcery (ADD_SPELL_POWER) played
@@ -28724,6 +28747,16 @@ function resolveAbilityRollKeep(
   if (context.kind === "spell-dice" && context.spellResume) {
     const spell = cards[context.spellResume.cardId];
     if (spell && state.combat) {
+      // The Inferno die window temporarily moves the table from `combat` to
+      // `choice`. Unlike an attack ability roll, there is no attack-sequence
+      // resume below to restore that phase for us: the spell's stack item was
+      // already consumed before this window opened. Restore the combat seam
+      // explicitly before applying the kept blast. Without this, closing the
+      // choice left an adventure combat in phase `choice` with no pendingChoice;
+      // getLegalActions then fell through to map actions (Hero movement) instead
+      // of the active unit's actions, permanently stranding the combat.
+      state.phase = "combat";
+      state.priorityPlayerId = null;
       applyInfernoDiceOutcome(
         state,
         context.spellResume.playerId,

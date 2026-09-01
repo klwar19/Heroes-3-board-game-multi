@@ -22,6 +22,7 @@ import {
 } from "./crypto";
 import { computeRatings, ELO_START, type EloParticipant } from "./elo";
 import { compareHallOfFame } from "./leaderboard-order";
+import { isLadderExemptNickname } from "./ladder-policy";
 import {
   buildAccountActionLink,
   buildConfirmMail,
@@ -88,6 +89,10 @@ type RateWindow = { count: number; resetAt: number };
 export type MatchParticipantInput = {
   accountId: string;
   result: "win" | "loss" | "draw" | "abandon";
+  /** 1-based finish order; used only for placement-aware 3+ player MMR. */
+  placement?: number;
+  /** Explicit 3+ player rating treatment computed by the trusted game state. */
+  mmrRole?: "winner" | "minor" | "last" | "neutral";
 };
 
 export type RecordMatchResult = {
@@ -623,7 +628,7 @@ export class AccountStore implements AccountBackend {
    */
   hallOfFame(limit = 100): AccountProfile[] {
     return [...this.accounts.values()]
-      .filter((r) => !r.bannedAt)
+      .filter((r) => !r.bannedAt && !isLadderExemptNickname(r.nickname))
       .map(toProfile)
       .sort(compareHallOfFame)
       .slice(0, Math.max(0, limit));
@@ -631,8 +636,8 @@ export class AccountStore implements AccountBackend {
 
   /**
    * Apply a finished match's ratings idempotently (same matchId → no-op).
-   * Winner-takes-field Elo (elo.ts). Abandon counts as a loss for the leaver;
-   * draws leave MMR unchanged but still count as a match played.
+   * Placement-aware Elo (elo.ts). In 3+ player games the trusted report marks
+   * one last-place loser and smaller gains above them; draws stay unchanged.
    */
   recordMatchResult(input: {
     matchId: string;
@@ -649,13 +654,13 @@ export class AccountStore implements AccountBackend {
     if (ranked) {
       for (const p of input.participants) {
         const record = this.accounts.get(p.accountId);
-        if (!record) {
+        if (!record || isLadderExemptNickname(record.nickname)) {
           continue;
         }
         if (p.result === "win") {
-          eloInputs.push({ id: p.accountId, rating: record.mmr, result: "win" });
+          eloInputs.push({ id: p.accountId, rating: record.mmr, result: "win", ...(p.placement ? { placement: p.placement } : {}), ...(p.mmrRole ? { mmrRole: p.mmrRole } : {}) });
         } else if (p.result === "loss" || p.result === "abandon") {
-          eloInputs.push({ id: p.accountId, rating: record.mmr, result: "loss" });
+          eloInputs.push({ id: p.accountId, rating: record.mmr, result: "loss", ...(p.placement ? { placement: p.placement } : {}), ...(p.mmrRole ? { mmrRole: p.mmrRole } : {}) });
         }
         // draws contribute no rating pairing.
       }
@@ -664,7 +669,7 @@ export class AccountStore implements AccountBackend {
     const changes: RecordMatchResult["changes"] = [];
     for (const p of input.participants) {
       const record = this.accounts.get(p.accountId);
-      if (!record) {
+      if (!record || isLadderExemptNickname(record.nickname)) {
         continue;
       }
       const before = record.mmr;
@@ -802,6 +807,12 @@ export class AccountStore implements AccountBackend {
     this.sessions.clear();
     this.recordedMatches.clear();
     for (const record of snapshot.accounts) {
+      if (isLadderExemptNickname(record.nickname)) {
+        record.mmr = ELO_START;
+        record.wins = 0;
+        record.losses = 0;
+        record.matches = 0;
+      }
       this.accounts.set(record.id, record);
       this.byNickname.set(record.nicknameKey, record.id);
       this.byEmail.set(record.email, record.id);

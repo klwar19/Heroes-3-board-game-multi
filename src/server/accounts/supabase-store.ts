@@ -26,6 +26,7 @@
  */
 import type { AccountBackend, RegisterOutcome } from "./backend";
 import { computeRatings, ELO_START, type EloParticipant } from "./elo";
+import { isLadderExemptNickname, LADDER_EXEMPT_NICKNAME_COUNT } from "./ladder-policy";
 import { HALL_OF_FAME_ORDER_CLAUSE } from "./leaderboard-order";
 import type { MatchParticipantInput, RecordMatchResult } from "./account-store";
 import {
@@ -606,9 +607,12 @@ export class SupabaseAccountStore implements AccountBackend {
       ACCOUNTS_TABLE,
       { banned_at: null },
       // WINS lead — the one ordering both backends share (leaderboard-order.ts).
-      { order: HALL_OF_FAME_ORDER_CLAUSE, limit: Math.max(0, limit) }
+      { order: HALL_OF_FAME_ORDER_CLAUSE, limit: Math.max(0, limit) + LADDER_EXEMPT_NICKNAME_COUNT }
     );
-    return rows.map((row) => toProfile(rowToRecord(row)));
+    return rows
+      .filter((row) => !isLadderExemptNickname(row.nickname))
+      .map((row) => toProfile(rowToRecord(row)))
+      .slice(0, Math.max(0, limit));
   }
 
   async recordMatchResult(input: {
@@ -633,13 +637,13 @@ export class SupabaseAccountStore implements AccountBackend {
     if (ranked) {
       for (const p of input.participants) {
         const row = rows.get(p.accountId);
-        if (!row) {
+        if (!row || isLadderExemptNickname(row.nickname)) {
           continue;
         }
         if (p.result === "win") {
-          eloInputs.push({ id: p.accountId, rating: row.mmr, result: "win" });
+          eloInputs.push({ id: p.accountId, rating: row.mmr, result: "win", ...(p.placement ? { placement: p.placement } : {}), ...(p.mmrRole ? { mmrRole: p.mmrRole } : {}) });
         } else if (p.result === "loss" || p.result === "abandon") {
-          eloInputs.push({ id: p.accountId, rating: row.mmr, result: "loss" });
+          eloInputs.push({ id: p.accountId, rating: row.mmr, result: "loss", ...(p.placement ? { placement: p.placement } : {}), ...(p.mmrRole ? { mmrRole: p.mmrRole } : {}) });
         }
       }
     }
@@ -654,7 +658,7 @@ export class SupabaseAccountStore implements AccountBackend {
     }[] = [];
     for (const p of input.participants) {
       const row = rows.get(p.accountId);
-      if (!row) {
+      if (!row || isLadderExemptNickname(row.nickname)) {
         continue;
       }
       const before = row.mmr;
@@ -676,7 +680,7 @@ export class SupabaseAccountStore implements AccountBackend {
 
     for (const p of input.participants) {
       const row = rows.get(p.accountId);
-      if (!row) {
+      if (!row || isLadderExemptNickname(row.nickname)) {
         continue;
       }
       const after = ratings.get(p.accountId) ?? row.mmr;

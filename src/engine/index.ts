@@ -577,7 +577,8 @@ export {
   victoryPointObjectiveProgress,
   victoryConditionVp,
   victoryPointsConfig,
-  victoryPointsModeActive
+  victoryPointsModeActive,
+  victoryPointTotalForPlayer
 } from "./victory-points";
 export type {
   VictoryPointBreakdown,
