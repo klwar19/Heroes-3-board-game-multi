@@ -111,16 +111,15 @@ describe("hall-of-fame ordering — the memory/file backend end to end", () => {
     store.recordMatchResult({
       matchId: "three-way",
       participants: [
-        { accountId: carol.id, result: "win" },
-        { accountId: alpha.id, result: "loss" },
-        { accountId: bravo.id, result: "loss" }
+        { accountId: carol.id, result: "win", placement: 1, mmrRole: "winner" },
+        { accountId: alpha.id, result: "loss", placement: 2, mmrRole: "neutral" },
+        { accountId: bravo.id, result: "loss", placement: 2, mmrRole: "neutral" }
       ]
     });
     const board = store.hallOfFame().map((p) => p.nickname);
     expect(board[0]).toBe("Carol"); // the only winner
-    // Alpha and Bravo are both winless with one loss each: rating decides, and
-    // with identical ratings the nickname does — i.e. the old tiebreak chain
-    // still runs underneath the new primary key.
+    // Alpha and Bravo are tied for the undecidable lowest placement, so both
+    // are MMR-neutral; nickname remains the final Hall-of-Fame tiebreak.
     expect(board.slice(1)).toEqual(["Alpha", "Bravo"]);
     expect(store.getProfileById(alpha.id)!.mmr).toBe(store.getProfileById(bravo.id)!.mmr);
   });

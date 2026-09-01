@@ -212,7 +212,9 @@ describe("co-op step 4 — computer seats are invisible to the ladder in CLASH",
       stateWith({ over: false, members: TWO_HUMANS, matchSeats }),
       stateWith({ over: true, winnerSeat: "p1", members: TWO_HUMANS, matchSeats })
     );
-    expect(asHuman!.participants).toContainEqual({ accountId: "u_bot", nickname: "Computer 1", result: "abandon" });
+    expect(asHuman!.participants).toContainEqual(
+      expect.objectContaining({ accountId: "u_bot", nickname: "Computer 1", result: "abandon" })
+    );
   });
 
   it("a member row forged ONTO a computer seat is not a participant either", () => {
