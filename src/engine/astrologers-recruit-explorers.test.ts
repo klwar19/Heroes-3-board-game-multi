@@ -113,8 +113,31 @@ describe("Astrologers — Explorers (empower per 3 discarded)", () => {
     const empowered = chooseVisitOption(refreshed, "p1", /Empower Attack/);
     expect(empowered.players.p1.hand).toContain("stat.attack.empowered");
     expect(empowered.players.p1.hand).not.toContain("stat.attack");
+    expect(empowered.players.p1.removed).toContain("stat.attack");
     // floor(3/3) = 1 empower — the visit closes after the single swap.
     expect(empowered.adventure?.pendingVisit).toBeNull();
+  });
+
+  it("can Remove a Statistic only from hand, never from the discard pile", () => {
+    const state = explorersGame();
+    state.players.p1.hand = Array.from({ length: 4 }, () => "spell.magic_arrow");
+    state.players.p1.discard = ["stat.attack"];
+
+    let refreshed = applyOk(state, {
+      type: "REFRESH_HAND",
+      playerId: "p1",
+      discardCardIds: []
+    });
+    refreshed = applyOk(refreshed, {
+      type: "RESOLVE_EXPLORERS_DISCARD",
+      playerId: "p1",
+      discardCardIds: ["spell.magic_arrow", "spell.magic_arrow", "spell.magic_arrow"]
+    });
+
+    expect(refreshed.adventure?.pendingVisit).toBeNull();
+    expect(refreshed.players.p1.discard).toContain("stat.attack");
+    expect(refreshed.players.p1.removed).not.toContain("stat.attack");
+    expect(refreshed.players.p1.hand).not.toContain("stat.attack.empowered");
   });
 
   it("scales: discarding 6 cards allows two empowers in the same refresh", () => {
@@ -379,8 +402,8 @@ describe("Astrologers — Unexpected Reinforcements (free associated-neutral rec
     expect(after.players.p1.army.length).toBe(armyBefore + 1);
     // "for free" — no resources spent despite having none.
     expect(after.players.p1.resources).toEqual({ gold: 0, buildingMaterials: 0, valuables: 0 });
-    // The card is taken out of the Neutral Units deck (a search-and-take), never
-    // duplicated — it only returns to the discard pile if the unit is defeated.
+    // The single card is taken out of the shared Neutral deck; it returns to
+    // the discard pile only if the recruited unit is lost.
     expect(after.decks[NEUTRAL_GOLD_DECK]!.drawPile).not.toContain("neutral.archangels");
     expect(after.decks[NEUTRAL_GOLD_DECK]!.discardPile).not.toContain("neutral.archangels");
     expect(after.decks[NEUTRAL_GOLD_DECK]!.drawPile.length).toBe(deckBefore - 1);

@@ -196,6 +196,14 @@ describe("A draw-rider Power bank never leaks out of the fight it was banked in"
       "artifact.scales_of_the_greater_basilisk"
     ]);
     const target = liveEnemy(state);
+    // The duplicate-aware physical Neutral deck changes the seeded guard. This
+    // fixture measures carried spell Power, so remove unrelated innate spell
+    // immunity/resistance/taxes from whichever guards were drawn.
+    for (const unit of Object.values(state.combat!.units)) {
+      if (unit.controllerId !== "p1") unit.abilities = [];
+    }
+    target.unitDefId = "neutral.skeletons";
+    target.cardName = "Pack of Skeletons";
     state = castMagicArrow(state, target.id);
     expect(castPower(state), "the cast starts at the spell's printed Power").toBe(0);
     state = apply(state, reaction(state, "ability.sorcery"));

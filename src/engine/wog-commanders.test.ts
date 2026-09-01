@@ -2065,7 +2065,20 @@ describe("WOG commanders — commander-only combat start with an empty unit deck
     expect(ready, "Ready for battle offered with zero units").toBeTruthy();
     expect(ready!.label).toContain("commander only");
 
-    const started = apply(state, ready!.action);
+    let started = apply(state, ready!.action);
+    // A corrected physical Neutral deck can draw equal-speed guards for this
+    // seed. Resolve that legitimate pre-combat ordering prompt; this test is
+    // about commander-only deployment, not the guards' tie-break order.
+    if (
+      started.pendingChoice?.type === "OPTION_CHOICE" &&
+      started.pendingChoice.context === "combat-activation-order"
+    ) {
+      const order = getLegalActions(started, started.pendingChoice.playerId).find(
+        (legal) => legal.action.type === "CHOOSE_OPTION"
+      );
+      expect(order, "equal-speed guard order can be chosen").toBeTruthy();
+      started = apply(started, order!.action);
+    }
     expect(started.combat!.units[commanderUnitId("p1")], "the commander stands in the fight").toBeTruthy();
     expect(started.phase).toBe("combat");
   });

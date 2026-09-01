@@ -830,6 +830,26 @@ export function getScenario(scenarioId?: string): ScenarioDefinition {
   return scenarioDefinitions[scenarioId ?? DEFAULT_SCENARIO_ID] ?? scenarioDefinitions[DEFAULT_SCENARIO_ID];
 }
 
+/** Physical Neutral Unit cards that have a second copy in the component set. */
+export const TWO_COPY_NEUTRAL_UNIT_IDS: ReadonlySet<string> = new Set([
+  "neutral.lizardmen",
+  "neutral.centaurs",
+  "neutral.elves",
+  "neutral.halflings",
+  "neutral.magi",
+  "neutral.gorgons",
+  "neutral.mummies",
+  "neutral.nomads",
+  "neutral.wyverns",
+  "neutral.gold_golems",
+  "neutral.diamond_golems",
+  "neutral.rust_dragons",
+  "neutral.faerie_dragons",
+  "neutral.titans",
+  "neutral.crystal_dragons",
+  "neutral.azure_dragons"
+]);
+
 function makeNeutralDecks(seed: string, wog: WogModOptions, anime: AnimeModOptions): Record<string, DeckState> {
   const decks: Record<string, DeckState> = {};
   const wogCreaturesOn = Boolean(wog.enabled && wog.newCreatures);
@@ -840,10 +860,15 @@ function makeNeutralDecks(seed: string, wog: WogModOptions, anime: AnimeModOptio
   for (const tier of ["bronze", "silver", "gold", "azure"] as const) {
     const deckId = NEUTRAL_DECK_IDS[tier];
     const unitIds = [
-      ...neutralUnitIdsByTier[tier],
+      ...neutralUnitIdsByTier[tier].flatMap((unitId) =>
+        TWO_COPY_NEUTRAL_UNIT_IDS.has(unitId) ? [unitId, unitId] : [unitId]
+      ),
       ...(wogCreaturesOn ? WOG_UNIT_IDS_BY_TIER[tier] : []),
       ...(doomCreaturesOn ? DOOM_UNIT_IDS_BY_TIER[tier] : [])
     ].filter(isRecruitableNeutralUnit);
+    // The decks are shared by the table. Only the explicitly listed physical
+    // duplicates get two cards; every other core/expansion, WOG and Doom unit
+    // stays at one copy.
     decks[deckId] = {
       id: deckId,
       drawPile: shuffleCards(unitIds, `${seed}#neutral#${tier}`),

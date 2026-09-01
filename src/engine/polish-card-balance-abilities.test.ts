@@ -741,6 +741,9 @@ describe("Balance Pack — Pathfinding", () => {
     next.combat!.awaitingContinue = true;
     next.phase = "combat";
     next.pendingChoice = null;
+    next.reactionWindow = null;
+    next.stack = [];
+    next.combat!.pendingNeutralStep = null;
 
     const free = getLegalActions(next, "p1").filter(
       (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.pathfinding"

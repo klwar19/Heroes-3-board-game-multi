@@ -83,6 +83,9 @@ describe("Doom neutral monster slice", () => {
     const cardsOn = Object.values(NEUTRAL_DECK_IDS).flatMap((deckId) => on.decks[deckId].drawPile);
     // The WOG roster IS present…
     expect(cardsOn).toEqual(expect.arrayContaining(WOG_UNIT_IDS));
+    for (const id of WOG_UNIT_IDS) {
+      expect(cardsOn.filter((cardId) => cardId === id), id).toHaveLength(1);
+    }
     // …but the Doom slice is NOT (anime-only now).
     expect(cardsOn.filter((id) => id.startsWith("doom."))).toEqual([]);
 
@@ -103,6 +106,9 @@ describe("Doom neutral monster slice", () => {
     });
     const animeCardsOn = Object.values(NEUTRAL_DECK_IDS).flatMap((deckId) => animeOn.decks[deckId].drawPile);
     expect(animeCardsOn).toEqual(expect.arrayContaining(DOOM_UNIT_IDS));
+    for (const id of DOOM_UNIT_IDS) {
+      expect(animeCardsOn.filter((cardId) => cardId === id), id).toHaveLength(1);
+    }
 
     const animeNoDoom = createAdventureGameState({
       seed: "doom-decks-anime-no-doom",

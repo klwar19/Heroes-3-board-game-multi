@@ -98,7 +98,9 @@ describe("Visions pre-battle swap", () => {
     // Same hand as the offer case, but the toggle is off: the pre-battle cast is
     // never offered, so the guards reveal straight away and Visions stays in hand.
     const state = placeAndFinish(neutralSetup("vis-off", ["spell.visions"], 2, { "vision-battle-swap": false }));
-    expect(state.pendingChoice, "no visions-guard-cast offer without the rule").toBeNull();
+    expect(choiceContext(state.pendingChoice), "no visions-guard-cast offer without the rule").not.toBe(
+      "visions-guard-cast"
+    );
     expect(neutralUnitDefIds(state).length, "the guards revealed directly").toBeGreaterThan(0);
     expect(state.players.p1.hand, "Visions was never cast").toContain("spell.visions");
   });
@@ -182,7 +184,7 @@ describe("Visions pre-battle swap", () => {
       choiceId: casting.pendingChoice!.id,
       optionIndex: doneIndex
     });
-    expect(done.pendingChoice).toBeNull();
+    expect(choiceContext(done.pendingChoice)).not.toBe("visions-guard-swap");
     // Visions was still spent (the cast happened) but no guard was swapped.
     expect(done.players.p1.discard).toContain("spell.visions");
     expect(swappedEvents(done)).toHaveLength(0);

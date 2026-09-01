@@ -167,7 +167,7 @@ describe("elemental damage — attack maths", () => {
     expect(firstAttackValue(attack(state))).toBe(5); // 3 + 2
   });
 
-  it("HOUSE RULE ON: the attack card and the Attack token are both ignored", () => {
+  it("HOUSE RULE ON: positive attack-window buffs are ignored but Attack tokens still apply", () => {
     const withRule = (configure: (draft: GameState) => void) =>
       duel((draft) => {
         draft.combat!.units.unit_p1_griffins.abilities = ["elemental-damage"];
@@ -188,7 +188,7 @@ describe("elemental damage — attack maths", () => {
           })
         )
       )
-    ).toBe(3);
+    ).toBe(5);
   });
 
   it("an elemental unit's attack IS lowered by a Sorceress' Weakness token", () => {
@@ -260,20 +260,21 @@ describe("elemental damage — attack maths", () => {
     expect(event.damage).toBe(4);
   });
 
-  it("HOUSE RULE ON: an elemental unit never rolls the Attack die — damage is just its Attack", () => {
+  it("HOUSE RULE ON: an elemental unit still rolls the Attack die normally", () => {
     const state = duel((draft) => {
       draft.combat!.units.unit_p1_griffins.abilities = ["elemental-damage"];
-      // A +1 face is queued; with the house rule on the die is skipped entirely.
+      // A +1 face is queued; the current BINH rule only blocks positive
+      // instant-window buffs, not the normal Attack die.
       draft.combat!.dice.scriptedRolls = [1, 1, 1, 1];
       draft.adventure = {
         houseRules: { "elemental-damage-no-die": true }
       } as unknown as GameState["adventure"];
     });
     const event = firstAttack(attack(state));
-    expect(event.noDie).toBe(true);
-    expect(event.roll).toBe(0); // the die was skipped, not the scripted +1
-    expect(event.attackValue).toBe(3); // attack only, no die swing
-    expect(event.damage).toBe(3);
+    expect(event.noDie ?? false).toBe(false);
+    expect(event.roll).toBe(1);
+    expect(event.attackValue).toBe(4); // printed Attack 3 + rolled +1
+    expect(event.damage).toBe(4);
   });
 
   it("the printed neutral Air Elemental deals elemental damage", () => {

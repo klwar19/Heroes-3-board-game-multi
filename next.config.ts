@@ -14,7 +14,12 @@ const assetBaseUrl = resolveAssetBaseUrl(process.env);
 // brand-new edge/browser cache key on the next deploy — visible immediately,
 // no Cloudflare purge token required. Computed only when assets are actually
 // served from a CDN; same-origin builds (dev/CI) stay unversioned.
-const assetVersion = assetBaseUrl ? computeMediaVersion() : "";
+// The Vercel build wrapper computes this before temporarily staging CDN-only
+// binaries out of public/ (see scripts/vercel-build.mjs). Normal local/CI
+// builds keep deriving it directly from the complete media tree.
+const assetVersion = assetBaseUrl
+  ? process.env.NEXT_PUBLIC_ASSET_VERSION?.trim() || computeMediaVersion()
+  : "";
 
 const nextConfig: NextConfig = {
   env: {

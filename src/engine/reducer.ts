@@ -4487,7 +4487,7 @@ function applyAttackDamageFromCandidate(
       minRoll: defensiveRoll.onRoll,
       maxRoll: defensiveRoll.onRoll,
     };
-    const candidate = rollAbilityCandidate(
+    let candidate = rollAbilityCandidate(
       state,
       state.combat,
       defender.controllerId,
@@ -4495,6 +4495,39 @@ function applyAttackDamageFromCandidate(
       window,
       false,
     );
+    // Multilingual Bron applies to every unit ability's own roll, including a
+    // defensive roll made inside damage calculation. This site cannot pause
+    // for an interactive window, so—as with Dwarven resistance—the automatic
+    // miss reroll is announced as a structured dice event for the UI.
+    if (
+      !abilityRollSucceeds(candidate.rolls, window) &&
+      bronRerollsAbilityRoll(state, defender)
+    ) {
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: defender.id,
+        abilityId: `${defensiveRoll.abilityId}-roll`,
+        targetUnitId: defender.id,
+        message: `${defender.cardName} rolls ${candidate.roll} for ${defensiveRoll.abilityName} — Multilingual Bron rerolls.`,
+        dice: {
+          rolls: [...candidate.rolls],
+          success: false,
+          label: defensiveRoll.abilityName,
+          caption: "Multilingual Bron rerolls…",
+          ...(candidate.modifierNotes?.length
+            ? { modifiers: candidate.modifierNotes }
+            : {}),
+        },
+      });
+      candidate = rollAbilityCandidate(
+        state,
+        state.combat,
+        defender.controllerId,
+        1,
+        window,
+        false,
+      );
+    }
     if (abilityRollSucceeds(candidate.rolls, window)) {
       const reduced = Math.min(damage, defensiveRoll.amount);
       damage -= reduced;
@@ -12932,7 +12965,7 @@ function applyActivationStartAbilities(
         minRoll: ability.amount,
         maxRoll: ability.amount,
       };
-      const candidate = rollAbilityCandidate(
+      let candidate = rollAbilityCandidate(
         state,
         combat,
         unit.controllerId,
@@ -12940,6 +12973,37 @@ function applyActivationStartAbilities(
         window,
         false,
       );
+      // Multilingual Bron: Fear Aura is a unit special ability with its own
+      // die, so a player-controlled unit rerolls a miss once. Keep the first
+      // throw visible—the client presents this structured event as a dice cue.
+      if (
+        !abilityRollSucceeds(candidate.rolls, window) &&
+        bronRerollsAbilityRoll(state, unit)
+      ) {
+        appendEvent(state, {
+          type: "UNIT_ABILITY_TRIGGERED",
+          unitId: unit.id,
+          abilityId: `${ability.abilityId}-roll`,
+          message: `${unit.name} rolls ${candidate.roll} for ${ability.abilityName} — Multilingual Bron rerolls.`,
+          dice: {
+            rolls: [...candidate.rolls],
+            success: false,
+            label: ability.abilityName,
+            caption: "Multilingual Bron rerolls…",
+            ...(candidate.modifierNotes?.length
+              ? { modifiers: candidate.modifierNotes }
+              : {}),
+          },
+        });
+        candidate = rollAbilityCandidate(
+          state,
+          combat,
+          unit.controllerId,
+          1,
+          window,
+          false,
+        );
+      }
       const candidates = Object.values(combat.units).filter(
         (target) =>
           target.controllerId !== unit.controllerId && isUnitAlive(target),
@@ -12968,6 +13032,9 @@ function applyActivationStartAbilities(
           caption: succeeds
             ? `${target!.cardName} is seized by fear!`
             : "No effect.",
+          ...(candidate.modifierNotes?.length
+            ? { modifiers: candidate.modifierNotes }
+            : {}),
         },
       });
       if (target) {

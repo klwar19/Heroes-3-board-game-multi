@@ -253,7 +253,7 @@ function artilleryCombat(
 ): GameState {
   let state = adventure(seed, balance);
   state.activePlayerId = "p1";
-  if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
+  for (let guard = 0; guard < 3 && (state.players.p1.needsHandRefresh || state.players.p1.canMulligan); guard += 1) {
     state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
     state.activePlayerId = "p1";
   }
@@ -300,8 +300,17 @@ function artilleryCombat(
   }
   const own = Object.values(next.combat!.units).find((unit) => unit.controllerId === "p1");
   expect(own, "p1 must have a unit in the fight").toBeTruthy();
+  // The test deliberately takes over at p1's own activation. Discard any
+  // seed-dependent guard follow-up that the corrected Neutral deck exposed.
+  if (opts.drainChoices !== false) {
+    next.pendingChoice = null;
+    next.reactionWindow = null;
+    next.stack = [];
+    next.combat!.pendingNeutralStep = null;
+  }
   next.combat!.activeUnitId = own!.id;
   next.activePlayerId = "p1";
+  next.phase = "combat";
   return next;
 }
 

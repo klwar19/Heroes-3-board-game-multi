@@ -1,7 +1,7 @@
 # Cloudflare + own domain: begin-to-end CDN plan (`cdn.<your-domain>`)
 
-Goal: move the game's static weight — `public/assets` (225 MB, ~1,555 files)
-and `public/sounds` (~1,281 clips) — off the Vercel app origin onto Cloudflare
+Goal: move the game's static weight — currently about 408 MiB across 5,433
+files under `public/assets|sounds|fonts` — off the Vercel app origin onto Cloudflare
 R2 behind **your own domain**, so that
 
 - Vercel stops paying bandwidth for art/audio (its free tier is 100 GB/month;
@@ -12,7 +12,7 @@ R2 behind **your own domain**, so that
   `*.vercel.app`, and
 - live multiplayer (PartyKit WebSockets) is untouched.
 
-## Live rollout status — `hamthefirt.xyz` (verified 2026-07-14)
+## Live rollout status — `hamthefirt.xyz` (verified 2026-09-02)
 
 The domain is live: `hamthefirt.xyz` + `cdn.hamthefirt.xyz`. Leading with what
 does **NOT** work / still needs a hand in a dashboard:
@@ -24,15 +24,6 @@ does **NOT** work / still needs a hand in a dashboard:
   **Always Use HTTPS: On**; while there confirm SSL/TLS mode is
   **Full (strict)** — the mode is origin-side and cannot be probed from
   outside, so it must be eyeballed once.
-- **The edge cache rule is NOT taking effect**: every request to
-  `cdn.hamthefirt.xyz` answers `cf-cache-status: DYNAMIC` (files serve fine,
-  but every hit goes back to R2 — no `MISS`→`HIT`). R2 custom-domain traffic
-  is only edge-cached once a Cache Rule marks it *Eligible for cache*. Fix
-  (dashboard, Phase 6.1): zone → Caching → Cache Rules → Create — When
-  `Hostname equals cdn.hamthefirt.xyz` → **Eligible for cache**, Edge TTL
-  *Override origin* 30 days, Browser TTL *Respect origin*. Verify with two
-  `curl -sI https://cdn.hamthefirt.xyz/assets/ui/map-backdrop.jpg | grep -i
-  cf-cache-status` — first `MISS`, second `HIT`.
 - **The `HOMM3BG_APP_URL` repository secret must be updated to
   `https://hamthefirt.xyz`** (GitHub → Settings → Secrets → Actions). The
   deploy workflow passes that secret as `--var`, which OVERRIDES
@@ -49,6 +40,17 @@ does **NOT** work / still needs a hand in a dashboard:
 
 Verified working (probed live from this repo):
 
+- The active Cache Rule `CDN edge cache - cdn.hamthefirt.xyz` matches the CDN
+  hostname, marks responses Eligible for cache, overrides the edge TTL to 30
+  days, sets Browser TTL to Respect origin, and keeps query strings in the cache
+  key. Fresh JPG, MP3, and MP4 URLs were each verified `MISS` → `HIT` on
+  2026-09-02. Keep `?v=<media version>` in the key; it is the deploy-safe
+  invalidation mechanism.
+- Vercel builds use `scripts/vercel-build.mjs` to stage CDN-only binaries out
+  of the ephemeral `public/` tree after computing the media version. A full
+  proof build reduced the deployable public tree from 408.4 MiB / 5,433 media
+  files to 1.91 MiB / 9 required files while generating all application routes.
+  Source media, Git, R2 sync, local builds, and PartyKit remain unchanged.
 - `dig NS` → `nero.ns.cloudflare.com` / `selah.ns.cloudflare.com`; zone Active.
 - Apex `hamthefirt.xyz` serves the app from Vercel over grey-cloud (DNS-only)
   records (A 64.29.17.1 / 216.198.79.1 — Vercel's anycast IPs, not proxied).

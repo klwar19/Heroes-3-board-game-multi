@@ -314,6 +314,18 @@ for (const mode of ["pvp", "manual"] as const) {
       state = revealArmy(state);
       expect(state.combat!.pendingNeutralPlacement).toBe(controller);
       expect(state.eventLog.some((event) => event.type === "NEUTRAL_FORMATION_SORT_OPENED")).toBe(true);
+      // Equal-speed guards may now open their activation-order choice before
+      // formation actions are listed. Resolve only that unrelated tie-break.
+      if (
+        state.pendingChoice?.type === "OPTION_CHOICE" &&
+        state.pendingChoice.context === "combat-activation-order"
+      ) {
+        const order = getLegalActions(state, state.pendingChoice.playerId).find(
+          (entry) => entry.action.type === "CHOOSE_OPTION"
+        );
+        expect(order, "equal-speed guard order can be chosen").toBeTruthy();
+        state = applyOk(state, order!.action);
+      }
       expect(neutralDrivingOffers(state, controller).length).toBeGreaterThan(0);
       for (const guard of neutralUnitsOf(state)) {
         expect(combatUnitDecisionOwnerId(state, state.combat!, guard)).toBe(controller);

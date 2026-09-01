@@ -153,4 +153,39 @@ describe("Neutral guard recycle — deck conservation", () => {
     expect(neutralDiscardSizes(state), "no bank card leaked into any neutral discard").toEqual(discardsBefore);
     expect(neutralDeckTotals(state)).toEqual(totalsBefore);
   });
+
+  it("a defeated Elemental returns to the top of its shared deck while Elementals is active", () => {
+    let state = createAdventureGameState({ seed: "elemental-recycle", difficulty: "normal", rollFirstPlayer: false });
+    state = refreshIfNeeded(state);
+    state.adventure!.astrologers = {
+      activeCardId: "astrologers.elementals",
+      nextResourceModifiers: { gold: 0, valuables: 0 },
+      crazyWizardUsedBy: [],
+      swiftWeaselUsedBy: []
+    };
+    const bronzeDeck = state.decks[NEUTRAL_DECK_IDS.bronze]!;
+    bronzeDeck.drawPile = ["neutral.storm_elementals"];
+    bronzeDeck.discardPile = [];
+
+    const hero = getMainHero(state, "p1")!;
+    hero.level = 1;
+    hero.spaceId = "elemental-field";
+    state.adventure!.fields["elemental-field"] = {
+      spaceId: "elemental-field",
+      tileInstanceId: "t",
+      slot: 0,
+      location: "guard",
+      difficulty: 1,
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null
+    };
+
+    startNeutralEncounter(state, hero, state.adventure!.fields["elemental-field"]);
+    state = winAndFinalize(state);
+
+    expect(state.decks[NEUTRAL_DECK_IDS.bronze]!.drawPile.at(-1)).toBe("neutral.storm_elementals");
+    expect(state.decks[NEUTRAL_DECK_IDS.bronze]!.discardPile).not.toContain("neutral.storm_elementals");
+  });
 });

@@ -778,8 +778,8 @@ export function explorersHandStepActive(state: GameState): boolean {
  * that came up against them is rerolled once. "Until the next Astrologers'
  * round" — active the whole time the card is face up (no round-parity gate).
  * Read at each ability-roll site (Death Stare, Thunderbird/Wyvern die, extra-die
- * Paralysis, Ghost Dragon knockback, Dwarven Magic Resistance, the Satyr map
- * morale roll).
+ * Paralysis, Ghost Dragon knockback, defensive/activation ability dice,
+ * Dwarven Magic Resistance, and the Satyr map morale roll).
  */
 export function abilityRollRerollActive(state: GameState): boolean {
   return getActiveAstrologersCard(state)?.effect.type === "ABILITY_ROLL_REROLL";
@@ -20396,6 +20396,27 @@ function seedNeutralElementals(state: GameState): void {
   }
 }
 
+/** Discard the face-up Elementals when their proclamation is replaced. */
+function discardSeededNeutralElementals(state: GameState): void {
+  const discarded: string[] = [];
+  for (const tier of ["bronze", "silver", "gold"] as const) {
+    const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
+    const top = deck?.drawPile[deck.drawPile.length - 1];
+    if (!deck || !top || !isNeutralElementalUnit(top)) {
+      continue;
+    }
+    deck.drawPile.pop();
+    deck.discardPile.push(top);
+    discarded.push(coreUnitDefinitions[top]?.name ?? top);
+  }
+  if (discarded.length > 0) {
+    appendEvent(state, {
+      type: "EVENT_NOTE",
+      message: `Elementals replaced: ${discarded.join(", ")} discarded from the tops of the Neutral decks.`
+    });
+  }
+}
+
 function expireActiveAstrologersCard(state: GameState): void {
   const astrologers = getAstrologersState(state);
   const deck = state.decks[ASTROLOGERS_DECK_ID];
@@ -20404,6 +20425,9 @@ function expireActiveAstrologersCard(state: GameState): void {
   }
 
   const card = astrologersCardDefinitions[astrologers.activeCardId];
+  if (card?.effect.type === "SEED_NEUTRAL_ELEMENTALS") {
+    discardSeededNeutralElementals(state);
+  }
   appendEvent(state, {
     type: "ASTROLOGERS_DISCARDED",
     cardId: astrologers.activeCardId,
@@ -20914,13 +20938,13 @@ function queueEmpowerStatisticChoice(state: GameState, playerId: PlayerId): void
 
 /**
  * Explorers (Astrologers): after a start-of-turn hand refresh that discarded
- * some cards, queue up to `count` free same-type Statistic empowers (hand or
- * discard), where `count` is floor(discarded / 3). Only queued when the player
+ * some cards, queue up to `count` free same-type Statistic empowers from HAND,
+ * where `count` is floor(discarded / 3). Only queued when the player
  * actually holds something to empower, so it never opens an empty prompt.
  */
 export function queueExplorersEmpower(state: GameState, playerId: PlayerId, count: number): void {
   const player = state.players[playerId];
-  if (!player || count <= 0 || !hasEmpowerableStatistic(player, ["hand", "discard"])) {
+  if (!player || count <= 0 || !hasEmpowerableStatistic(player, ["hand"])) {
     return;
   }
   state.adventure?.rewardQueue.push({
@@ -20929,9 +20953,9 @@ export function queueExplorersEmpower(state: GameState, playerId: PlayerId, coun
     steps: [
       {
         type: "STAT_EMPOWER_OFFER",
-        sources: ["hand", "discard"],
+        sources: ["hand"],
         remaining: count,
-        prompt: `Explorers: empower up to ${count} Statistic card(s) (hand or discard)`
+        prompt: `Explorers: Remove and empower up to ${count} Statistic card(s) from your hand`
       }
     ]
   });

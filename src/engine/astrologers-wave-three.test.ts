@@ -12,7 +12,7 @@ import {
 import { pumpAdventureQueues, startNeutralEncounter } from "./adventure-reducer";
 import { hasToken } from "./tokens";
 import { NEUTRAL_PLAYER_ID } from "./state";
-import type { AdventureState, GameAction, GameState, MapTileState, PlayerId } from "./state";
+import type { AdventureState, GameAction, GameEvent, GameState, MapTileState, PlayerId } from "./state";
 
 /**
  * Third-wave Astrologers proclamations, engine-enforced end to end (CLAUDE.md
@@ -34,6 +34,16 @@ function applyOk(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
   expect(result.errors, result.errors.map((error) => error.message).join("; ")).toEqual([]);
   return result.state;
+}
+
+function abilityDiceEvents(
+  state: GameState,
+  label: string
+): Extract<GameEvent, { type: "UNIT_ABILITY_TRIGGERED" }>[] {
+  return state.eventLog.filter(
+    (event): event is Extract<GameEvent, { type: "UNIT_ABILITY_TRIGGERED" }> =>
+      event.type === "UNIT_ABILITY_TRIGGERED" && event.dice?.label === label
+  );
 }
 
 function setActive(state: GameState, activeCardId: string): void {
@@ -262,6 +272,134 @@ describe("Astrologers — Multilingual Bron (reroll a unit's ability roll once)"
 
   it("a missed Sting die is rerolled once and lands (+1 damage over the control)", () => {
     expect(stingDamage("astrologers.multilingual_bron") - stingDamage("astrologers.dead_silence")).toBe(1);
+  });
+
+  it("rerolls Thunderbird Lightning and exposes both throws to the game UI", () => {
+    const state = createInitialGameState("bron-thunderbird-ui");
+    setSandboxProclamation(state, "astrologers.multilingual_bron");
+    const attacker = state.combat!.units.unit_p1_griffins;
+    attacker.abilities = ["thunderbirds-lightning"];
+    attacker.attack = 3;
+    attacker.position = 1;
+    const defender = state.combat!.units.unit_p2_skeletons;
+    defender.abilities = [];
+    defender.defense = 0;
+    defender.position = 2;
+    defender.maxHealth = 30;
+    defender.damage = 0;
+    defender.retaliatedThisRound = true;
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = attacker.id;
+    // attack 0, lightning -1 (miss), Bron reroll 0 (hit)
+    state.combat!.dice.scriptedRolls = [0, -1, 0];
+    state.combat!.dice.rollCount = 0;
+
+    const next = settle(
+      applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: attacker.id, defenderId: defender.id })
+    );
+    expect(next.combat!.units[defender.id].damage).toBe(4);
+    const diceEvents = abilityDiceEvents(next, "Lightning Strike");
+    expect(diceEvents.map((event) => event.dice?.rolls)).toEqual([[-1], [0]]);
+    expect(diceEvents.map((event) => event.dice?.caption)).toEqual([
+      "Multilingual Bron rerolls…",
+      "1 extra damage to Pack of Skeletons!"
+    ]);
+  });
+
+  it("rerolls the Basilisk's extra Stone Gaze die and Paralyzes the target", () => {
+    const state = createInitialGameState("bron-basilisk");
+    setSandboxProclamation(state, "astrologers.multilingual_bron");
+    const attacker = state.combat!.units.unit_p1_griffins;
+    attacker.abilities = ["basilisk-paralysis"];
+    attacker.attack = 3;
+    attacker.position = 1;
+    const defender = state.combat!.units.unit_p2_skeletons;
+    defender.abilities = [];
+    defender.defense = 0;
+    defender.position = 2;
+    defender.maxHealth = 30;
+    defender.damage = 0;
+    defender.retaliatedThisRound = true;
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = attacker.id;
+    // attack 0, gaze +1 (miss), Bron reroll 0 (hit)
+    state.combat!.dice.scriptedRolls = [0, 1, 0];
+    state.combat!.dice.rollCount = 0;
+
+    const next = settle(
+      applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: attacker.id, defenderId: defender.id })
+    );
+    expect(hasToken(next.combat!.units[defender.id], "paralysis")).toBe(true);
+    expect(
+      next.eventLog.some(
+        (event) =>
+          event.type === "UNIT_ABILITY_TRIGGERED" &&
+          event.abilityId === "basilisk-paralysis-roll" &&
+          event.dice?.caption === "Multilingual Bron rerolls…"
+      )
+    ).toBe(true);
+  });
+
+  it("rerolls a missed defensive ability die before damage is finalized", () => {
+    const state = createInitialGameState("bron-defensive-roll");
+    setSandboxProclamation(state, "astrologers.multilingual_bron");
+    const attacker = state.combat!.units.unit_p1_griffins;
+    attacker.abilities = [];
+    attacker.attack = 3;
+    attacker.position = 1;
+    const defender = state.combat!.units.unit_p2_skeletons;
+    defender.abilities = ["wog-dracolich-armor"];
+    defender.defense = 0;
+    defender.position = 2;
+    defender.maxHealth = 30;
+    defender.damage = 0;
+    defender.retaliatedThisRound = true;
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = attacker.id;
+    // attack 0, armor 0 (miss), Bron reroll -1 (soak 2)
+    state.combat!.dice.scriptedRolls = [0, 0, -1];
+    state.combat!.dice.rollCount = 0;
+
+    const next = settle(
+      applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: attacker.id, defenderId: defender.id })
+    );
+    expect(next.combat!.units[defender.id].damage).toBe(1);
+    const diceEvents = abilityDiceEvents(next, "Necrotic Armor");
+    expect(diceEvents.map((event) => event.dice?.rolls)).toEqual([[0], [-1]]);
+  });
+
+  it("rerolls a missed Fear Aura activation roll once", () => {
+    const state = createInitialGameState("bron-fear-aura");
+    setSandboxProclamation(state, "astrologers.multilingual_bron");
+    const current = state.combat!.units.unit_p1_griffins;
+    const fearUnit = state.combat!.units.unit_p2_skeletons;
+    fearUnit.abilities = ["veteran-fear-aura"];
+    fearUnit.initiative = 99;
+    // Leave only the current unit and Fear Aura unit eligible in this round;
+    // ending the current activation opens Fear Aura's activation immediately.
+    for (const unit of Object.values(state.combat!.units)) {
+      unit.activatedThisRound = unit.id !== current.id && unit.id !== fearUnit.id;
+    }
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = current.id;
+    // Fear Aura 0 (miss), Bron reroll -1 (hit).
+    state.combat!.dice.scriptedRolls = [0, -1];
+    state.combat!.dice.rollCount = 0;
+
+    const next = applyOk(state, { type: "END_ACTIVATION", playerId: "p1", unitId: current.id });
+    expect(
+      Object.values(next.combat!.units).some(
+        (unit) => unit.controllerId === "p1" && hasToken(unit, "paralysis")
+      )
+    ).toBe(true);
+    const diceEvents = abilityDiceEvents(next, "Fear Aura");
+    expect(diceEvents.map((event) => event.dice?.rolls)).toEqual([[0], [-1]]);
   });
 
   it("a SUCCESSFUL ability roll is never rerolled (no die is consumed for it)", () => {

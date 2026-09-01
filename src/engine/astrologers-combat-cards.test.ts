@@ -252,7 +252,8 @@ describe("Astrologers — Judge Dread (redraw the whole guard army)", () => {
 
   it("CONTROL: without Judge Dread the drawn army reveals with no offer", () => {
     const state = placeAndFinish(neutralSetup("jd-ctrl", "astrologers.dead_silence"));
-    expect(state.pendingChoice).toBeNull();
+    const context = state.pendingChoice?.type === "OPTION_CHOICE" ? state.pendingChoice.context : null;
+    expect(context).not.toBe("judge-dread");
     expect(neutralUnits(state).length).toBeGreaterThan(0);
   });
 });

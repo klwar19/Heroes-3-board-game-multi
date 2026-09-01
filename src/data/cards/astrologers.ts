@@ -71,8 +71,8 @@ export type AstrologersEffect =
   // war-machine round (permanents.ts) and the attack-reroll builder (reducer.ts).
   | { type: "WAR_MACHINE_BUFF"; ballistaDamageBonus: number; firstAidHealBonus: number; rangedAttackReroll: boolean }
   // Explorers: ongoing — for every `per` cards a player discards during their
-  // start-of-turn hand refresh, they may empower one Statistic (hand or discard)
-  // into its same-type Empowered version, for free. Resolved in refreshHand.
+  // start-of-turn hand refresh, they may Remove one Statistic FROM THEIR HAND
+  // and take its same-type Empowered version into hand. Resolved in refreshHand.
   | { type: "EMPOWER_PER_DISCARD"; per: number }
   // Charlie and his Circus: each player may recruit one Neutral Unit they can
   // afford, drawn one per Dwelling tier they control (capped at `maxDraws`); the
@@ -406,16 +406,12 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
   "astrologers.elementals": {
     id: "astrologers.elementals",
     name: "Elementals",
-    text: "For each Neutral Unit deck except Azure, discard until you find an Elemental. Place each Elemental face up on top of its deck.",
-    // Instant deck seeding at draw: each non-Azure Neutral tier deck (bronze/
-    // silver/gold) is dug through top-down until an Elemental shows, which then
-    // stays on top — the next guard drawn from that deck. A deck that exhausts
-    // mid-dig reshuffles its discards back in once (the printed reshuffle rule)
-    // and keeps digging; a deck with no Elemental left anywhere (all at large
-    // in armies) is skipped. The engine has no face-up deck display, so a feed
-    // note names the seeded Elementals — the same public information the
-    // physical face-up cards give the table.
-    ongoing: false,
+    text: "For each Neutral Unit deck except Azure, discard until you find an Elemental. Place each Elemental face up on top of its deck. When defeated in Combat, put it back on top of its deck. Discard these Elementals when this card is replaced.",
+    // Ongoing lifecycle: seed one Elemental atop each non-Azure Neutral deck;
+    // defeated seeded Elementals return to that shared deck's top, and whatever
+    // Elemental is still face up there is discarded when this proclamation is
+    // replaced. The normal exhausted-deck rule reshuffles discards while digging.
+    ongoing: true,
     effect: { type: "SEED_NEUTRAL_ELEMENTALS" },
     expansion: "Conflux Expansion",
     // Art pending (see ART_PENDING_PROCLAMATIONS) — renders via the text face.
@@ -605,8 +601,9 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     // Passive while face up, read at every ability-ROLL site — the dice an
     // ability rolls itself: Death Stare, the Thunderbird/Wyvern extra die, the
     // extra-die Paralysis (incl. the retaliation variant), the Ghost Dragon
-    // knockback, the Rampart Dwarves' Magic Resistance and the Satyrs' map
-    // morale roll. Engine reading: "you can reroll it once" resolves as ONE
+    // knockback, defensive ability dice, the Rampart Dwarves' Magic Resistance,
+    // activation-roll abilities such as Fear Aura, and the Satyrs' map morale
+    // roll. Engine reading: "you can reroll it once" resolves as ONE
     // automatic reroll whenever the first roll came up AGAINST the ability's
     // controller (a player would always reroll a miss and never a success; for
     // the Dwarves' resistance "against" depends on whether the rolled-at card

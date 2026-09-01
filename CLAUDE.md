@@ -134,6 +134,13 @@ Cloudflare R2 CDN at `https://cdn.hamthefirt.xyz` (runbook + live status:
   — a raw `/assets/…` literal in a consumption position fails
   `src/lib/asset-url-coverage.test.ts`. `globals.css` url() refs are covered
   by the `next.config.ts` CDN redirects instead (`src/lib/asset-cdn.ts`).
+- **Vercel does not package the CDN binary tree** (2026-09-02): `vercel.json`
+  runs `scripts/vercel-build.mjs`, which verifies the CDN setting, computes the
+  media version, then stages `public/assets` and binary sounds out of the
+  ephemeral build before Next packages static files. It retains the two sound
+  JSON imports and restores all media if the build fails. Normal local builds,
+  Git, the R2 sync workflow, and PartyKit are unchanged. Do not replace this
+  with `.vercelignore`: the version must be computed before media is staged.
 - `partykit.json`'s `HOMM3BG_APP_URL` (canonical: `https://hamthefirt.xyz`)
   must stay in lockstep with the `HOMM3BG_APP_URL` GitHub Actions secret —
   the secret OVERRIDES the json at deploy time.

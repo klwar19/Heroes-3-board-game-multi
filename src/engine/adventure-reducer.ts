@@ -13386,7 +13386,18 @@ export function finalizeAdventureCombat(state: GameState): void {
       if (unit.unitDefId && !unit.bankGuard) {
         const def = unit.grade === "gold" ? "gold" : unit.grade;
         const deck = state.decks[NEUTRAL_DECK_IDS[def as "bronze" | "silver" | "gold" | "azure"]];
-        deck?.discardPile.push(unit.unitDefId);
+        const returnsToElementalsTop =
+          getActiveAstrologersCard(state)?.effect.type === "SEED_NEUTRAL_ELEMENTALS" &&
+          def !== "azure" &&
+          unit.damage >= unit.maxHealth &&
+          Boolean(coreUnitDefinitions[unit.unitDefId]?.name.includes("Elemental"));
+        if (returnsToElementalsTop) {
+          // Draw piles pop from the end, so push makes the defeated Elemental
+          // the next shared Neutral card encountered at this tier.
+          deck?.drawPile.push(unit.unitDefId);
+        } else {
+          deck?.discardPile.push(unit.unitDefId);
+        }
       }
       continue;
     }

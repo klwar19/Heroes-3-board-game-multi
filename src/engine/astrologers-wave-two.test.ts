@@ -11,6 +11,7 @@ import {
   startAdventureRound
 } from "./adventure";
 import { pumpAdventureQueues } from "./adventure-reducer";
+import { TWO_COPY_NEUTRAL_UNIT_IDS } from "./adventure-setup";
 import { astrologersDeckCardIds } from "@/data/cards/astrologers";
 import { neutralUnitIdsByTier } from "@/data/factions/core";
 import type { AdventureState, GameAction, GameState, PlayerId } from "./state";
@@ -172,6 +173,60 @@ describe("Astrologers — Elementals (seed an Elemental on top of each Neutral d
     // card drawn is the seeded deck top.
     const draws = drawNeutralArmy(state, 2);
     expect(draws[0]?.unitDefId).toBe("neutral.storm_elementals");
+  });
+
+  it("discards each face-up Elemental when the proclamation is replaced", () => {
+    const state = craftedGame("elementals-replaced");
+    drawElementals(state);
+    const seeded = {
+      bronze: topOf(state, "bronze")!,
+      silver: topOf(state, "silver")!,
+      gold: topOf(state, "gold")!
+    };
+
+    state.round = 4;
+    state.decks.astrologers!.drawPile = ["astrologers.dead_silence"];
+    // Replacement happens at the next Astrologers-round boundary: expire the
+    // old card (and its face-up units), then draw the new proclamation.
+    startAdventureRound(state);
+
+    expect(state.adventure?.astrologers?.activeCardId).toBe("astrologers.dead_silence");
+    for (const tier of ["bronze", "silver", "gold"] as const) {
+      expect(topOf(state, tier)).not.toBe(seeded[tier]);
+      expect(state.decks[NEUTRAL_DECK_IDS[tier]]!.discardPile).toContain(seeded[tier]);
+    }
+  });
+
+  it("builds shared Neutral decks with the physical one-copy/two-copy composition", () => {
+    const state = createAdventureGameState({ seed: "neutral-two-copies", difficulty: "normal", rollFirstPlayer: false });
+    for (const tier of ["bronze", "silver", "gold", "azure"] as const) {
+      const deck = state.decks[NEUTRAL_DECK_IDS[tier]]!;
+      const allCards = [...deck.drawPile, ...deck.discardPile];
+      for (const unitDefId of neutralUnitIdsByTier[tier]) {
+        const expected = TWO_COPY_NEUTRAL_UNIT_IDS.has(unitDefId) ? 2 : 1;
+        expect(allCards.filter((cardId) => cardId === unitDefId), `${tier}: ${unitDefId}`).toHaveLength(expected);
+      }
+    }
+    expect([...TWO_COPY_NEUTRAL_UNIT_IDS].sort()).toEqual(
+      [
+        "neutral.azure_dragons",
+        "neutral.centaurs",
+        "neutral.crystal_dragons",
+        "neutral.diamond_golems",
+        "neutral.elves",
+        "neutral.faerie_dragons",
+        "neutral.gold_golems",
+        "neutral.gorgons",
+        "neutral.halflings",
+        "neutral.lizardmen",
+        "neutral.magi",
+        "neutral.mummies",
+        "neutral.nomads",
+        "neutral.rust_dragons",
+        "neutral.titans",
+        "neutral.wyverns"
+      ].sort()
+    );
   });
 
   it("a deck with no Elemental left anywhere is skipped without losing a card", () => {
