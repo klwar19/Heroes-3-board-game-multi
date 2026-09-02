@@ -42,6 +42,7 @@ import { playersAreAllied } from "./control";
 import { cardTier } from "./card-values";
 import { isPremiumEconomyField, playerArmyStrength } from "./army-strength";
 import { polishArmyUnitStackCost, polishUnitStackCost } from "../polish-unit-stacks";
+import { effectiveTownBuildingCost } from "../house-rules";
 import { armyUnitRankInfo } from "../unit-experience";
 import {
   armyDevelopmentProfile,
@@ -421,7 +422,8 @@ function buildingScore(
       development.reinforceUnlocked &&
       development.bronzeUnlocked)
   ) {
-    const cost = coreBuildingDefinitions[buildingId]?.cost ?? {};
+    const building = coreBuildingDefinitions[buildingId];
+    const cost = building ? effectiveTownBuildingCost(state, building) : {};
     const resources = playerResources(state, playerId);
     const target = developmentResourceTargets(state, playerId);
     const protectsDwellingFund =
@@ -437,7 +439,8 @@ function buildingScore(
   // Gold unit has joined the army, do not let a side building consume its exact
   // recruit fund.
   if (development.goldUnlocked && development.goldUnits === 0) {
-    const cost = coreBuildingDefinitions[buildingId]?.cost ?? {};
+    const building = coreBuildingDefinitions[buildingId];
+    const cost = building ? effectiveTownBuildingCost(state, building) : {};
     const resources = playerResources(state, playerId);
     const target = developmentResourceTargets(state, playerId);
     const protectsGoldRecruit =

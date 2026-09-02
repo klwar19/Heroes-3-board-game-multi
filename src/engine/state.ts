@@ -78,6 +78,9 @@ export type ArtifactDeckAccess = {
  */
 export type HouseRuleId =
   | "split-decks"
+  // Optional BINH town-economy rule: side buildings cost only their printed
+  // building materials plus one additional material per printed valuable.
+  | "side-buildings-materials-only"
   // BINH Mystical Garden reward: its gold choice grants 3 instead of the
   // printed 2. Off restores the official card value.
   | "mystical-garden-gold"
@@ -16152,6 +16155,7 @@ export type PendingChoice =
         | "rogues-scout"
         | "thieves-guild"
         | "combat-reposition"
+        | "combat-transport"
         | "disrupting-ray-mode"
         | "dispel-scope"
         | "community-dispel-pick"
@@ -16258,6 +16262,20 @@ export type PendingChoice =
       };
       /** combat-reposition: Harpies' optional fly-back after their attack. */
       reposition?: { unitId: UnitId; originPosition: number };
+      /**
+       * combat-transport: optional passenger placement after a Rhino move.
+       * Each option is index-aligned with the leading choice options; the
+       * trailing option declines transport. `resumeAttack` is present when the
+       * move came from MOVE_AND_ATTACK_UNIT and is declared after this choice.
+       */
+      moveTransport?: {
+        moverUnitId: UnitId;
+        originPosition: number;
+        placements: Array<{ unitId: UnitId; destination: number }>;
+        /** Preserve normal move cleanup while the optional placement is open. */
+        endActivationAfterChoice?: boolean;
+        resumeAttack?: Extract<GameAction, { type: "MOVE_AND_ATTACK_UNIT" }>;
+      };
       /**
        * Polish Balance Pack: the caster's pick after a reprinted Spell resolves.
        * "disrupting-ray-mode" — suppress the ability (option 0) or lay the

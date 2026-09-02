@@ -64,11 +64,10 @@ describe("Imperium component set", () => {
       baseAttack: 3
     });
     expect(imperiumUnitDefinitions["imperium.space_marines"].pack?.abilities).toEqual(["imperium-shock-assault"]);
-    expect(imperiumUnitDefinitions["imperium.rhino"].few?.abilities).toEqual(["imperium-armoured-escort"]);
-    expect(imperiumUnitDefinitions["imperium.rhino"].pack?.abilities).toEqual(["imperium-armoured-escort"]);
-    expect(unitAbilities["imperium-armoured-escort"].effect).toEqual({
-      type: "INTERCEPT_ADJACENT_ATTACK_ONCE",
-      maxProtectedTier: "silver"
+    expect(imperiumUnitDefinitions["imperium.rhino"].few?.abilities).toEqual(["imperium-rhino-transport"]);
+    expect(imperiumUnitDefinitions["imperium.rhino"].pack?.abilities).toEqual(["imperium-rhino-transport"]);
+    expect(unitAbilities["imperium-rhino-transport"].effect).toEqual({
+      type: "TRANSPORT_ADJACENT_ALLY_ON_MOVE"
     });
   });
 

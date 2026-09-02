@@ -85,12 +85,12 @@ export const imperiumSpecialtyCards: CardLibrary = {
   },
   "specialty.rogal_dorn.6": {
     id: "specialty.rogal_dorn.6", name: "Fortress Protocol VI", kind: "hero-specialty",
-    timing: "combat", phaseLimit: ["reaction", "combat"],
-    tags: ["hero-specialty", "combat", "ongoing", "rogal_dorn", "Choose one: Ongoing — until the end of this Combat round, all your units are treated as having a Defense token; OR Instant — draw 1 card."],
+    timing: "instant", phaseLimit: ["reaction", "combat"],
+    tags: ["hero-specialty", "instant", "combat", "ongoing", "rogal_dorn", "Choose one: Ongoing — until the end of this Combat round, all your units are treated as having a Defense token; OR Instant — draw 1 card."],
     target: { type: "none" },
     effect: { type: "CHOOSE_ONE", options: [
       { label: "Fortify: all your units count as Defended this round", combatOnly: true, effect: { type: "CREATE_ACTIVE_EFFECT", effect: { name: "Fortress Protocol", scope: "player", duration: { type: "current-combat-round" }, polarity: "positive", removable: true, modifiers: [{ type: "VIRTUAL_DEFENSE_TOKEN" }] } } },
-      { label: "Contingency: draw 1 card", combatOnly: true, combatAnytime: true, target: { type: "none" }, effect: { type: "DRAW_CARDS", amount: 1 } }
+      { label: "Contingency: draw 1 card", target: { type: "none" }, effect: { type: "DRAW_CARDS", amount: 1 } }
     ] }, implementationStatus: "implemented", source
   },
 

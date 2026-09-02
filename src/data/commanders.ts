@@ -512,7 +512,7 @@ export interface CommanderDefinition {
   slug: CommanderSlug;
   name: string;
   faction: string;
-  /** true for the three non-WoG originals (Cove/Factory/Bulwark). */
+  /** True for project-original commanders outside the official WoG roster. */
   original?: boolean;
   cast: CommanderCastDefinition;
   /** Optional additional commands sharing the normal once-per-round cast budget. */

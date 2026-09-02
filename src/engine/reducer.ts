@@ -30498,7 +30498,9 @@ function moveAndAttackUnit(
     return;
   }
 
-  declareAttack(state, action, cards);
+  if (!openMoveTransportChoice(state, attacker, from, action)) {
+    declareAttack(state, action, cards);
+  }
 }
 
 /** The spell a battlefield token's damage is attributed to (for damage events / FX). */
@@ -30951,6 +30953,172 @@ function isLegalExplicitMovePath(
   return true;
 }
 
+type MoveTransportPlacement = { unitId: UnitId; destination: number };
+
+/** Legal passenger/landing pairs after a transport moves from `originPosition`. */
+function moveTransportPlacements(
+  combat: CombatState,
+  mover: CombatUnitState,
+  originPosition: number,
+): MoveTransportPlacement[] {
+  if (
+    !isUnitAlive(mover) ||
+    mover.position === originPosition ||
+    !hasUnitAbilityEffect(mover, "TRANSPORT_ADJACENT_ALLY_ON_MOVE")
+  ) {
+    return [];
+  }
+
+  return Object.values(combat.units)
+    .filter(
+      (unit) =>
+        unit.id !== mover.id &&
+        unit.controllerId === mover.controllerId &&
+        isUnitAlive(unit) &&
+        isAdjacent(unit.position, originPosition),
+    )
+    .sort((left, right) => left.id.localeCompare(right.id))
+    .flatMap((passenger) => {
+      const blocked = getBlockedSpaces(combat, passenger);
+      return getOrthogonalNeighbors(mover.position)
+        .filter((destination) => !blocked.has(destination))
+        .map((destination) => ({ unitId: passenger.id, destination }));
+    });
+}
+
+/** Opens the optional Rhino passenger placement after a completed move. */
+function openMoveTransportChoice(
+  state: GameState,
+  mover: CombatUnitState,
+  originPosition: number,
+  resumeAttack?: Extract<GameAction, { type: "MOVE_AND_ATTACK_UNIT" }>,
+  endActivationAfterChoice = false,
+): boolean {
+  const combat = state.combat;
+  if (!combat) return false;
+  const placements = moveTransportPlacements(combat, mover, originPosition);
+  if (placements.length === 0) return false;
+
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "OPTION_CHOICE",
+    playerId: mover.controllerId,
+    prompt: `${mover.cardName}: carry one unit that started adjacent?`,
+    options: [
+      ...placements.map((placement) => ({
+        label: `Carry ${combat.units[placement.unitId]?.cardName ?? placement.unitId} to ${getBattlefieldLabel(placement.destination)}`,
+      })),
+      { label: "Do not carry a unit" },
+    ],
+    context: "combat-transport",
+    moveTransport: {
+      moverUnitId: mover.id,
+      originPosition,
+      placements,
+      ...(endActivationAfterChoice ? { endActivationAfterChoice: true } : {}),
+      ...(resumeAttack ? { resumeAttack } : {}),
+    },
+    returnPhase: "combat",
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = mover.controllerId;
+  appendEvent(state, {
+    type: "PENDING_CHOICE_CREATED",
+    choiceId,
+    choiceType: "OPTION_CHOICE",
+    playerId: mover.controllerId,
+    sourceEffectIds: [],
+    message: `${mover.cardName} may carry one adjacent friendly unit.`,
+  });
+  return true;
+}
+
+/** Resolves a Rhino transport placement, then resumes a queued move-and-attack. */
+function resolveMoveTransportChoice(
+  state: GameState,
+  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>,
+  cards: CardLibrary,
+): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "combat-transport" ||
+    choice.id !== action.choiceId ||
+    choice.playerId !== action.playerId ||
+    !choice.moveTransport
+  ) {
+    throw new Error("There is no transport choice to resolve.");
+  }
+
+  const combat = state.combat;
+  const mover = combat?.units[choice.moveTransport.moverUnitId];
+  if (!combat || !mover || !isUnitAlive(mover)) {
+    throw new Error("The transporting unit is no longer available.");
+  }
+
+  const placement = choice.moveTransport.placements[action.optionIndex];
+  if (placement) {
+    const passenger = combat.units[placement.unitId];
+    if (
+      !passenger ||
+      passenger.id === mover.id ||
+      passenger.controllerId !== mover.controllerId ||
+      !isUnitAlive(passenger) ||
+      !isAdjacent(passenger.position, choice.moveTransport.originPosition) ||
+      !isAdjacent(placement.destination, mover.position) ||
+      getBlockedSpaces(combat, passenger).has(placement.destination) ||
+      !hasUnitAbilityEffect(mover, "TRANSPORT_ADJACENT_ALLY_ON_MOVE")
+    ) {
+      throw new Error("That transport placement is no longer legal.");
+    }
+    const from = passenger.position;
+    passenger.position = placement.destination;
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: mover.id,
+      abilityId: "imperium-rhino-transport",
+      targetUnitId: passenger.id,
+      message: `${mover.cardName} carries ${passenger.cardName} to ${getBattlefieldLabel(placement.destination)}.`,
+    });
+    appendEvent(state, {
+      type: "UNIT_MOVED",
+      playerId: passenger.controllerId,
+      unitId: passenger.id,
+      from,
+      to: placement.destination,
+    });
+  } else if (action.optionIndex !== choice.moveTransport.placements.length) {
+    throw new Error("That transport option is not available.");
+  }
+
+  const resumeAttack = choice.moveTransport.resumeAttack;
+  appendEvent(state, {
+    type: "PENDING_CHOICE_RESOLVED",
+    choiceId: choice.id,
+    playerId: action.playerId,
+    selectedIndex: action.optionIndex,
+  });
+  state.pendingChoice = null;
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+
+  if (resumeAttack) {
+    declareAttack(state, resumeAttack, cards);
+  } else if (choice.moveTransport.endActivationAfterChoice) {
+    markActivatedThisRound(mover);
+    appendExpiredEffectEvents(
+      state,
+      expireEffectsForActivationEnd(state, mover.id),
+      "activation-ended",
+    );
+    if (combat.activeUnitId === mover.id) {
+      advanceActiveUnit(state);
+    }
+  }
+}
+
 function moveUnit(
   state: GameState,
   action: Extract<GameAction, { type: "MOVE_UNIT" }>,
@@ -31028,6 +31196,18 @@ function moveUnit(
   // Rune Keeper commander (Rune Ritual, move half): +1 Rune whenever it moves.
   applyCommanderRuneOnMove(state, unit);
   gainIbukiActionPoint(state, unit, "moving");
+
+  if (
+    openMoveTransportChoice(
+      state,
+      unit,
+      from,
+      undefined,
+      haltedByQuicksand || unit.type === "ranged",
+    )
+  ) {
+    return;
+  }
 
   // A Fire Wall or Land Mine that struck the mover down ends its activation.
   if (!isUnitAlive(unit)) {
@@ -33443,6 +33623,11 @@ export function applyAction(
             nextState.pendingChoice.context === "combat-reposition"
           ) {
             resolveCombatReposition(nextState, action);
+          } else if (
+            nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+            nextState.pendingChoice.context === "combat-transport"
+          ) {
+            resolveMoveTransportChoice(nextState, action, cards);
           } else if (
             nextState.pendingChoice?.type === "OPTION_CHOICE" &&
             nextState.pendingChoice.context === "genie-take-spell"

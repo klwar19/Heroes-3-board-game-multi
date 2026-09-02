@@ -35,8 +35,8 @@ export const imperiumUnitDefinitions: Record<string, UnitDefinition> = {
   },
   "imperium.rhino": {
     id: "imperium.rhino", name: "Rhino", faction: "imperium", tier: "silver", type: "ground",
-    few: { attack: 3, defense: 1, health: 5, initiative: 5, cost: { gold: 6 }, abilities: ["imperium-armoured-escort"], abilityText: "[unit_passive] Armoured Escort — once per combat round, intercept an attack against an adjacent Bronze or Silver ally.", cardImage: unitCard("silver", "rhino", "few") },
-    pack: { attack: 4, defense: 1, health: 6, initiative: 6, cost: { gold: 10 }, abilities: ["imperium-armoured-escort"], abilityText: "[unit_passive] Armoured Escort — once per combat round, intercept an attack against an adjacent Bronze or Silver ally.", cardImage: unitCard("silver", "rhino", "pack") },
+    few: { attack: 3, defense: 1, health: 5, initiative: 5, cost: { gold: 6 }, abilities: ["imperium-rhino-transport"], abilityText: "[movement] Armoured Transport — when this unit moves, it may carry one adjacent friendly unit and place it in an empty space adjacent to where this unit lands.", cardImage: unitCard("silver", "rhino", "few") },
+    pack: { attack: 4, defense: 1, health: 6, initiative: 6, cost: { gold: 10 }, abilities: ["imperium-rhino-transport"], abilityText: "[movement] Armoured Transport — when this unit moves, it may carry one adjacent friendly unit and place it in an empty space adjacent to where this unit lands.", cardImage: unitCard("silver", "rhino", "pack") },
     source
   },
   "imperium.terminators": {

@@ -1011,7 +1011,12 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // rule keeps the normal Attack-die roll while suppressing positive instant
 // Attack buffs. A v87 worker would merge the bank switches and skip the die.
 // `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 88;
+// v89: Imperium Rhino movement opens a serialized `combat-transport` choice and
+// the opt-in `side-buildings-materials-only` rule changes authoritative build
+// legality/resource spending. A v88 room server cannot resolve the transport
+// choice and would charge the printed cost, so client/server parity requires a
+// protocol bump and PartyKit redeploy.
+export const ENGINE_PROTOCOL_VERSION = 89;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

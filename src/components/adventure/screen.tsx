@@ -94,6 +94,7 @@ import {
   describeCustomMapPresetEntries,
   describeCustomWinCondition,
   expertUsesAvailable,
+  effectiveTownBuildingCost,
   expertUsesTotalThisRound,
   mapObjectsModuleActive,
   mapHasAuthoredGrailOrUtopia,
@@ -6649,6 +6650,7 @@ export function TownPanel({
             return null;
           }
           const built = town.buildings.includes(buildingId);
+          const cost = effectiveTownBuildingCost(state, building);
           const action = buildActions.find(
             (legal) =>
               legal.action.type === "BUILD_STRUCTURE" &&
@@ -6708,7 +6710,7 @@ export function TownPanel({
                   ? cubes > 0
                     ? `built · ${cubes} cube${cubes === 1 ? "" : "s"}`
                     : "built"
-                  : formatCost(building.cost)}
+                  : formatCost(cost)}
               </small>
               {building.implementationStatus === "not-implemented" ? (
                 <small className="todoTag">data only</small>
@@ -6751,6 +6753,7 @@ export function TownPanel({
               )
               .join(", ");
             const timing = buildingTimingLabel(building);
+            const cost = effectiveTownBuildingCost(state, building);
             return (
               <div
                 className="buildingTip floating"
@@ -6759,7 +6762,7 @@ export function TownPanel({
               >
                 <strong>{building.name}</strong>
                 <small className="buildingTipCost">
-                  {formatCost(building.cost)}
+                  {formatCost(cost)}
                   {prerequisites ? ` · needs ${prerequisites}` : ""}
                   {timing ? ` · ${timing}` : ""}
                 </small>

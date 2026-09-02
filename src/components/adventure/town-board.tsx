@@ -20,6 +20,7 @@ import {
 import type { TownBuildingDefinition } from "@/data/factions/types";
 import { RESOURCE_ICONS } from "@/data/assets/homm-assets";
 import {
+  effectiveTownBuildingCost,
   inCombatPrep,
   type GameAction,
   type GameState,
@@ -215,11 +216,17 @@ function DesignedTile({
 }
 
 /** The empty-bar plate (name + cost) drawn on designed boards. */
-function DesignedPlate({ building }: { building: TownBuildingDefinition }) {
+function DesignedPlate({
+  building,
+  cost = building.cost,
+}: {
+  building: TownBuildingDefinition;
+  cost?: TownBuildingDefinition["cost"];
+}) {
   return (
     <span className="tbPlate">
       <b>{building.name}</b>
-      <CostLine cost={building.cost} />
+      <CostLine cost={cost} />
     </span>
   );
 }
@@ -232,10 +239,12 @@ function DesignedPlate({ building }: { building: TownBuildingDefinition }) {
  */
 function DesignedTileUnbuilt({
   building,
+  cost,
   compact,
   buildable
 }: {
   building: TownBuildingDefinition;
+  cost: TownBuildingDefinition["cost"];
   compact: boolean;
   buildable: boolean;
 }) {
@@ -250,7 +259,7 @@ function DesignedTileUnbuilt({
       {building.assets?.image ? (
         <LoadedImg className="tbTilePcArt tbUnbuiltArt" src={building.assets.image} />
       ) : null}
-      <DesignedPlate building={building} />
+      <DesignedPlate building={building} cost={cost} />
       <span className="tbUnbuiltPlaque">
         <Hammer aria-hidden="true" size={compact ? 10 : 12} />
         not built{buildable ? " · buildable" : ""}
@@ -367,10 +376,12 @@ function RealBuiltTile({ building, compact }: { building: TownBuildingDefinition
 
 function RealUnbuiltTile({
   building,
+  cost,
   compact,
   buildable
 }: {
   building: TownBuildingDefinition;
+  cost: TownBuildingDefinition["cost"];
   compact: boolean;
   buildable: boolean;
 }) {
@@ -381,7 +392,7 @@ function RealUnbuiltTile({
     >
       <span className="tbRealPlate" aria-hidden="true">
         <b>{building.name}</b>
-        <CostLine cost={building.cost} />
+        <CostLine cost={cost} />
       </span>
       <TileImg src={townBoardUnbuiltTileArt(building.id)} />
       {buildable ? (
@@ -399,11 +410,13 @@ function RealTileBar({
   bar,
   built,
   buildableOf,
+  costOf,
   compact
 }: {
   bar: readonly string[];
   built: (buildingId: string) => boolean;
   buildableOf: (buildingId: string) => boolean;
+  costOf: (building: TownBuildingDefinition) => TownBuildingDefinition["cost"];
   compact: boolean;
 }) {
   return (
@@ -416,7 +429,7 @@ function RealTileBar({
         return built(buildingId) ? (
           <RealBuiltTile building={building} compact={compact} key={buildingId} />
         ) : (
-          <RealUnbuiltTile building={building} buildable={buildableOf(buildingId)} compact={compact} key={buildingId} />
+          <RealUnbuiltTile building={building} cost={costOf(building)} buildable={buildableOf(buildingId)} compact={compact} key={buildingId} />
         );
       })}
     </div>
@@ -474,6 +487,8 @@ export function TownBoardView({
   const geometry = spec.geometry;
   const isScan = Boolean(spec.emptyImage);
   const built = (buildingId: string) => town.buildings.includes(buildingId);
+  const buildingCost = (building: TownBuildingDefinition) =>
+    effectiveTownBuildingCost(state, building);
   const missionPoints = Math.max(0, player.hiddenLeafMissionPoints ?? 0);
   const nextMissionRank = hiddenLeafNextMissionRank(missionPoints);
   const factionMechanicStatus =
@@ -584,8 +599,9 @@ export function TownBoardView({
     const prereqNames = (building.prerequisites ?? []).map(
       (prerequisite) => coreBuildingDefinitions[prerequisite]?.name ?? prerequisite
     );
+    const cost = buildingCost(building);
     const costEntries = RESOURCE_ORDER.map(
-      (resource) => [resource, building.cost[resource] ?? 0] as const
+      (resource) => [resource, cost[resource] ?? 0] as const
     ).filter(([, amount]) => amount > 0);
     const cannotAfford = costEntries.some(([resource, amount]) => (player.resources[resource] ?? 0) < amount);
     return (
@@ -600,7 +616,7 @@ export function TownBoardView({
           ) : (
             // Cost vs. what you actually have, per resource — green when you can
             // cover it, red when you are short, so "can I build this?" is legible.
-            <span className="tbBuildCostGrid" aria-label={`cost: ${formatCost(building.cost) || "free"}`}>
+            <span className="tbBuildCostGrid" aria-label={`cost: ${formatCost(cost) || "free"}`}>
               {costEntries.length === 0 ? (
                 <small className="tbCostFree">free</small>
               ) : (
@@ -771,7 +787,7 @@ export function TownBoardView({
               <h4>
                 {building.name}
                 <small>
-                  {formatCost(building.cost) || "free"}
+                  {formatCost(buildingCost(building)) || "free"}
                   {timing ? ` · ${timing}` : ""}
                 </small>
               </h4>
@@ -886,6 +902,7 @@ export function TownBoardView({
                   bar={bar}
                   built={built}
                   buildableOf={(buildingId) => Boolean(buildActionFor(buildingId))}
+                  costOf={buildingCost}
                   compact={bar.length > 1}
                 />
               ) : combinedBar && builtIds.length > 0 ? (
@@ -955,6 +972,7 @@ export function TownBoardView({
                       ) : (
                         <DesignedTileUnbuilt
                           building={building}
+                          cost={buildingCost(building)}
                           buildable={Boolean(buildActionFor(buildingId))}
                           compact={bar.length > 1}
                           key={buildingId}
@@ -976,7 +994,7 @@ export function TownBoardView({
                   ) : null}
                   {bar.map((buildingId) => {
                     const building = coreBuildingDefinitions[buildingId];
-                    return building ? <DesignedPlate building={building} key={buildingId} /> : null;
+                    return building ? <DesignedPlate building={building} cost={buildingCost(building)} key={buildingId} /> : null;
                   })}
                   <span className="tbUnbuiltPlaque">
                     <Hammer aria-hidden="true" size={12} />

@@ -1,9 +1,11 @@
 import { animeModuleEnabled } from "./anime";
+import type { TownBuildingDefinition } from "@/data/factions/types";
 import type {
   GameRuleset,
   GameState,
   GameSetupOptions,
   HouseRuleId,
+  ResourceCost,
 } from "./state";
 
 /**
@@ -56,6 +58,16 @@ export type HouseRuleDef = {
 };
 
 export const HOUSE_RULES: HouseRuleDef[] = [
+  {
+    id: "side-buildings-materials-only",
+    label: "Side buildings: materials only",
+    description:
+      "Optional BINH rule: each town's side buildings cost only building materials. Ignore their printed gold cost and convert each printed valuable into 1 additional building material. City Hall, Citadel, Dwellings and Mage Guild are unchanged.",
+    category: "combat",
+    // Explicit opt-in so existing BINH and Legacy games retain printed costs.
+    default: false,
+    legacyDefault: false,
+  },
   {
     id: "split-decks",
     label: "Split Spell/Artifact decks by tier",
@@ -594,6 +606,36 @@ export function houseRuleEnabled(
     return frozen[id]!;
   }
   return houseRuleDefaultFor(state.ruleset ?? "legacy", id);
+}
+
+/** The two faction-specific building slots, excluding the four core roles. */
+export function isSideTownBuilding(
+  building: Pick<TownBuildingDefinition, "id">,
+): boolean {
+  const role = building.id.split(".").at(-1) ?? building.id;
+  return !(
+    role === "city_hall" ||
+    role === "citadel" ||
+    role === "mage_guild" ||
+    role.startsWith("dwelling_")
+  );
+}
+
+/** Cost actually charged and displayed for a building in this game. */
+export function effectiveTownBuildingCost(
+  state: Pick<GameState, "ruleset" | "adventure">,
+  building: Pick<TownBuildingDefinition, "id" | "cost">,
+): ResourceCost {
+  if (
+    !houseRuleEnabled(state, "side-buildings-materials-only") ||
+    !isSideTownBuilding(building)
+  ) {
+    return building.cost;
+  }
+  return {
+    buildingMaterials:
+      (building.cost.buildingMaterials ?? 0) + (building.cost.valuables ?? 0),
+  };
 }
 
 /**

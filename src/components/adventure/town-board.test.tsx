@@ -332,6 +332,25 @@ describe("TownBoardView — token wells", () => {
     expect(onAction).toHaveBeenCalledWith(expect.objectContaining({ type: "BUILD_STRUCTURE", playerId: "p1" }));
   });
 
+  it("shows and enables the materials-only side-building cost when its rule is on", () => {
+    const state = freshState();
+    state.adventure!.houseRules!["side-buildings-materials-only"] = true;
+    state.towns.town_p1.buildings.push("castle.dwelling_bronze");
+    state.players.p1.resources = { gold: 0, buildingMaterials: 3, valuables: 0 };
+    const { container } = render(viewFor(state));
+
+    fireEvent.click(container.querySelector(".tbToken.build") as HTMLElement);
+    const blacksmith = Array.from(container.querySelectorAll(".tbBuildRow")).find(
+      (row) => row.textContent?.includes("Blacksmith"),
+    ) as HTMLElement;
+    expect(blacksmith).toBeTruthy();
+    expect(blacksmith.querySelectorAll(".tbCostChip")).toHaveLength(1);
+    expect(blacksmith.querySelector(".tbCostChip")?.getAttribute("title")).toMatch(
+      /Building materials \(ore\): costs 3, you have 3/,
+    );
+    expect(within(blacksmith).getByRole("button", { name: "Build" })).toBeTruthy();
+  });
+
   it("population well opens the recruit basket; spell well explains the missing Mage Guild", () => {
     const state = freshState();
     const legalActions = getLegalActions(state, "p1");

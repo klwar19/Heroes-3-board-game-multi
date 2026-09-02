@@ -42,6 +42,15 @@ export type UnitAbilityEffectDefinition =
   | { type: "MOVE_ANYWHERE" }
   | { type: "UNIT_MOVE_RANGE_BONUS"; amount: number }
   | {
+      /**
+       * Rhino transport: whenever this unit moves, its controller may relocate
+       * one friendly unit that started adjacent to it onto an empty space
+       * adjacent to the Rhino's landing space. The passenger is placed by the
+       * transport and does not spend or alter its own activation movement.
+       */
+      type: "TRANSPORT_ADJACENT_ALLY_ON_MOVE";
+    }
+  | {
       /** Veterancy: treat this unit as Flying for ordinary combat movement. */
       type: "GRANT_FLYING_MOVEMENT";
     }
@@ -4044,7 +4053,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "imperium-narthecium-pack": { id: "imperium-narthecium-pack", name: "Master Narthecium", text: "At activation, heal another ally 2 damage or gain +1 Attack this round.", effect: { type: "ON_ACTIVATION_HEAL_FRIENDLY_OR_BUFF_SELF", healAmount: 2, attackBonus: 1 }, implementationStatus: "implemented" },
   "imperium-shock-assault": { id: "imperium-shock-assault", name: "Shock Assault", text: "After moving, gain +1 Attack.", effect: { type: "ATTACK_BONUS_AFTER_MOVE", amount: 1 }, implementationStatus: "implemented" },
   "imperium-jump-pack-withdrawal": { id: "imperium-jump-pack-withdrawal", name: "Jump-pack Withdrawal", text: "After moving, ignore Retaliation.", effect: { type: "IGNORE_RETALIATION_AFTER_MOVE" }, implementationStatus: "implemented" },
-  "imperium-armoured-escort": { id: "imperium-armoured-escort", name: "Armoured Escort", text: "Once per Combat round, intercept an attack against an adjacent Bronze or Silver ally.", effect: { type: "INTERCEPT_ADJACENT_ATTACK_ONCE", maxProtectedTier: "silver" }, implementationStatus: "implemented" },
+  "imperium-rhino-transport": { id: "imperium-rhino-transport", name: "Armoured Transport", text: "When this unit moves, it may carry one friendly unit that started adjacent to it. Place that unit in an empty space adjacent to this unit's landing space.", effect: { type: "TRANSPORT_ADJACENT_ALLY_ON_MOVE" }, implementationStatus: "implemented" },
   "imperium-mobile-cover": { id: "imperium-mobile-cover", name: "Mobile Cover", text: "The first time each Combat an adjacent ally is attacked, it gains +1 Defense for that attack.", effect: { type: "FIRST_ADJACENT_ALLY_ATTACK_DEFENSE_AURA", amount: 1 }, implementationStatus: "implemented" },
   "imperium-teleport-assault": { id: "imperium-teleport-assault", name: "Teleport Assault", text: "This unit may move to any empty Combat space.", effect: { type: "MOVE_ANYWHERE" }, implementationStatus: "implemented" },
   "imperium-crux-terminatus": { id: "imperium-crux-terminatus", name: "Crux Terminatus", text: "Gain +1 Defense against the first attack targeting this unit each Combat.", effect: { type: "FIRST_ATTACK_DEFENSE_ONCE_PER_COMBAT", amount: 1 }, implementationStatus: "implemented" },

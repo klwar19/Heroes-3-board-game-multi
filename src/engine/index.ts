@@ -283,8 +283,10 @@ export {
   HOUSE_RULES,
   HOUSE_RULE_BY_ID,
   armyUnitStacksActive,
+  effectiveTownBuildingCost,
   houseRuleDefaultFor,
   houseRuleEnabled,
+  isSideTownBuilding,
   resolveHouseRules
 } from "./house-rules";
 export type { HouseRuleCategory, HouseRuleDef } from "./house-rules";

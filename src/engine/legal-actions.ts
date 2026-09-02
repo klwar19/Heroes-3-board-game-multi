@@ -285,7 +285,11 @@ import {
   wisdomSearchCount,
   WISDOM_BALANCE_SEARCH_DELTA,
 } from "./ruleset";
-import { armyUnitStacksActive, houseRuleEnabled } from "./house-rules";
+import {
+  armyUnitStacksActive,
+  effectiveTownBuildingCost,
+  houseRuleEnabled,
+} from "./house-rules";
 import {
   balanceIntelligenceWindowClosed,
   combatStartWindowOpen,
@@ -8329,7 +8333,7 @@ export function canPlayerBuildStructure(
     return false;
   }
 
-  if (!hasResources(player.resources, building.cost)) {
+  if (!hasResources(player.resources, effectiveTownBuildingCost(state, building))) {
     return false;
   }
 
@@ -13892,7 +13896,7 @@ function addTownActions(
         (building.prerequisites ?? []).some(
           (prerequisite) => !town.buildings.includes(prerequisite),
         ) ||
-        !playerHasResources(player, building.cost)
+        !playerHasResources(player, effectiveTownBuildingCost(state, building))
       ) {
         continue;
       }

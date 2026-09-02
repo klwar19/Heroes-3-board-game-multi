@@ -464,7 +464,11 @@ import {
   wisdomSearchCount,
   WISDOM_BALANCE_SEARCH_DELTA
 } from "./ruleset";
-import { armyUnitStacksActive, houseRuleEnabled } from "./house-rules";
+import {
+  armyUnitStacksActive,
+  effectiveTownBuildingCost,
+  houseRuleEnabled,
+} from "./house-rules";
 import {
   polishArmyUnitCanBuyStack,
   polishArmyUnitStackCost,
@@ -15106,11 +15110,12 @@ export function buildStructureAdventure(
     throw new Error("Lower-level dwellings must be built first.");
   }
 
-  if (!hasResources(player, building.cost)) {
+  const cost = effectiveTownBuildingCost(state, building);
+  if (!hasResources(player, cost)) {
     throw new Error("Not enough resources for that building.");
   }
 
-  spendResources(state, action.playerId, building.cost, `built ${building.name}`);
+  spendResources(state, action.playerId, cost, `built ${building.name}`);
   player.townTokens.build = false;
   town.buildings.push(action.buildingId);
 
@@ -15119,7 +15124,7 @@ export function buildStructureAdventure(
     playerId: action.playerId,
     townId: action.townId,
     buildingId: action.buildingId,
-    cost: building.cost
+    cost
   });
 
   if (building.effect?.type === "MAGE_GUILD") {
