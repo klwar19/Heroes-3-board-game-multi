@@ -1178,8 +1178,28 @@
     "src": "/sounds/music/battle-07.mp3",
     "loop": true
   },
+  "music/castle-town": {
+    "src": "/sounds/music/castle-town.mp3",
+    "loop": true
+  },
   "music/combat-02": {
     "src": "/sounds/music/combat-02.mp3",
+    "loop": true
+  },
+  "music/combat-03": {
+    "src": "/sounds/music/combat-03.mp3",
+    "loop": true
+  },
+  "music/combat-04": {
+    "src": "/sounds/music/combat-04.mp3",
+    "loop": true
+  },
+  "music/cove-town": {
+    "src": "/sounds/music/cove-town.mp3",
+    "loop": true
+  },
+  "music/dirt": {
+    "src": "/sounds/music/dirt.mp3",
     "loop": true
   },
   "music/grass": {
@@ -1188,6 +1208,38 @@
   },
   "music/main-menu": {
     "src": "/sounds/music/main-menu.mp3",
+    "loop": true
+  },
+  "music/necro-town": {
+    "src": "/sounds/music/necro-town.mp3",
+    "loop": true
+  },
+  "music/rampart": {
+    "src": "/sounds/music/rampart.mp3",
+    "loop": true
+  },
+  "music/rough": {
+    "src": "/sounds/music/rough.mp3",
+    "loop": true
+  },
+  "music/sand": {
+    "src": "/sounds/music/sand.mp3",
+    "loop": true
+  },
+  "music/snow": {
+    "src": "/sounds/music/snow.mp3",
+    "loop": true
+  },
+  "music/stronghold": {
+    "src": "/sounds/music/stronghold.mp3",
+    "loop": true
+  },
+  "music/swamp": {
+    "src": "/sounds/music/swamp.mp3",
+    "loop": true
+  },
+  "music/water": {
+    "src": "/sounds/music/water.mp3",
     "loop": true
   },
   "spells/air-elemental": {

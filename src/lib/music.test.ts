@@ -1,11 +1,14 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { GameState } from "@/engine/state";
 import soundManifest from "../../public/sounds/manifest.json";
 import {
   MUSIC_VOLUME,
+  MUSIC_TRACKS,
   SCENE_TRACK,
   __resetMusicForTests,
   isMusicMuted,
+  mapMusicContext,
   setMusicMuted,
   setMusicScene,
   subscribeMusic,
@@ -26,6 +29,7 @@ class FakeAudio {
   paused = true;
   playCount = 0;
   pauseCount = 0;
+  private events = new Map<string, Array<() => void>>();
   constructor() {
     FakeAudio.instances.push(this);
   }
@@ -38,6 +42,12 @@ class FakeAudio {
     this.paused = true;
     this.pauseCount += 1;
   }
+  addEventListener(name: string, listener: () => void): void {
+    this.events.set(name, [...(this.events.get(name) ?? []), listener]);
+  }
+  fireEnded(): void {
+    for (const listener of this.events.get("ended") ?? []) listener();
+  }
 }
 
 const library = soundManifest as Record<string, { src?: string; loop?: boolean }>;
@@ -46,6 +56,7 @@ beforeEach(() => {
   window.localStorage.clear();
   FakeAudio.instances = [];
   vi.stubGlobal("Audio", FakeAudio as unknown as typeof Audio);
+  vi.spyOn(Math, "random").mockReturnValue(0);
   __resetMusicForTests();
 });
 
@@ -68,10 +79,45 @@ describe("scene → track mapping", () => {
     }
   });
 
-  it("uses the three requested themes", () => {
+  it("maps every playlist member to a real manifest entry", () => {
+    for (const tracks of Object.values(MUSIC_TRACKS)) {
+      for (const track of tracks) {
+        const entry = library[track];
+        expect(entry, `manifest missing ${track}`).toBeTruthy();
+        expect(entry.src).toMatch(/\.mp3$/);
+      }
+    }
+  });
+
+  it("uses the requested representative scene tracks", () => {
     expect(SCENE_TRACK.menu).toBe("music/main-menu");
-    expect(SCENE_TRACK.map).toBe("music/grass");
+    expect(SCENE_TRACK.map).toBe("music/rough");
     expect(SCENE_TRACK.combat).toBe("music/combat-02");
+  });
+});
+
+describe("authoritative map context", () => {
+  it("reads the active faction and the main hero's field/tile layer", () => {
+    const state = {
+      round: 4,
+      activePlayerId: "p1",
+      players: { p1: { factionId: "tower" } },
+      heroes: { h1: { controllerId: "p1", kind: "main", spaceId: "sea-1" } },
+      adventure: {
+        fields: { "sea-1": { tileInstanceId: "tile-1", terrain: "water" } },
+        tiles: { "tile-1": { group: "sea" } },
+      },
+    } as unknown as GameState;
+
+    expect(mapMusicContext(state)).toEqual({
+      turnKey: "4:p1",
+      factionId: "tower",
+      environment: "water",
+    });
+
+    delete state.adventure!.fields["sea-1"]!.terrain;
+    state.adventure!.tiles["tile-1"]!.underground = true;
+    expect(mapMusicContext(state).environment).toBe("underground");
   });
 });
 
@@ -99,10 +145,41 @@ describe("playback", () => {
   it("swaps the source when the scene changes", () => {
     setMusicScene("map");
     const a = only();
-    expect(a.src).toContain("grass.mp3");
+    expect(a.src).toContain("rough.mp3");
     setMusicScene("combat");
     expect(a.src).toContain("combat-02.mp3");
     expect(a.playCount).toBe(2);
+  });
+
+  it("randomly rotates combat tracks without an immediate repeat", () => {
+    setMusicScene("combat");
+    const a = only();
+    expect(a.src).toContain("combat-02.mp3");
+    expect(a.loop).toBe(false);
+    a.fireEnded();
+    expect(a.src).toContain("combat-03.mp3");
+    expect(a.playCount).toBe(2);
+  });
+
+  it("uses water and underground movement themes ahead of faction themes", () => {
+    setMusicScene("map", { turnKey: "1:p1", factionId: "castle", environment: "water" });
+    const a = only();
+    expect(a.src).toContain("water.mp3");
+    setMusicScene("map", { turnKey: "1:p1", factionId: "castle", environment: "underground" });
+    expect(a.src).toContain("dirt.mp3");
+  });
+
+  it.each([
+    ["necropolis", "necro-town.mp3"],
+    ["rampart", "rampart.mp3"],
+    ["cove", "cove-town.mp3"],
+    ["castle", "castle-town.mp3"],
+    ["stronghold", "stronghold.mp3"],
+    ["tower", "snow.mp3"],
+    ["fortress", "swamp.mp3"],
+  ])("uses the prioritized %s turn theme", (factionId, file) => {
+    setMusicScene("map", { turnKey: `1:${factionId}`, factionId, environment: "surface" });
+    expect(only().src).toContain(file);
   });
 
   it("stops playback when the scene goes null", () => {

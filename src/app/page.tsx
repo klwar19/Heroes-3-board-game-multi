@@ -259,7 +259,7 @@ import {
   playUnitSound
 } from "@/lib/sound";
 import { commanderVoiceId, unitAttackFlourish } from "@/data/unit-sounds";
-import { useBackgroundMusic, type MusicScene } from "@/lib/music";
+import { mapMusicContext, useBackgroundMusic, type MusicScene } from "@/lib/music";
 import { MusicToggle } from "@/components/music-toggle";
 import {
   connectRoom,
@@ -5192,8 +5192,8 @@ export default function Home() {
   });
 
   // Background-music scene, mirroring the three render branches below: the
-  // map-setup lobby (menu theme), the adventure map (grass theme) and the
-  // combat table (combat theme). Computed before the early return so the music
+  // map-setup lobby (menu theme), the state-driven adventure-map playlist and
+  // the randomized combat playlist. Computed before the early return so the music
   // hook runs on every render (rules of hooks); a null state plays nothing.
   const musicScene: MusicScene | null = !state
     ? null
@@ -5211,7 +5211,8 @@ export default function Home() {
             (state.sessionMode === "single-player" && !combatHasHumanParticipant(state)))
           ? "map"
           : "combat";
-  useBackgroundMusic(musicScene);
+  const currentMapMusic = state && musicScene === "map" ? mapMusicContext(state) : undefined;
+  useBackgroundMusic(musicScene, currentMapMusic);
 
   // No room selected → this page has nothing to show anymore: the effect
   // above is already replacing it with /menu (the room browser lives on
