@@ -589,7 +589,7 @@ function playerColor(state: GameState, playerId: PlayerId | null): string {
 }
 
 /**
- * HUD chip for the Ability Empower token (max 1), displayed like morale.
+ * HUD chip for stacked Ability Empower tokens, displayed like morale.
  * Click opens a picker of legal hand-Ability spends when the engine offers them.
  */
 function AbilityEmpowerTokenChip({
@@ -604,7 +604,8 @@ function AbilityEmpowerTokenChip({
   readOnly?: boolean;
 }) {
   const [picking, setPicking] = useState(false);
-  const held = (player.abilityEmpowerToken ?? 0) >= 1;
+  const count = Math.max(0, player.abilityEmpowerToken ?? 0);
+  const held = count >= 1;
   const offers = legalActions.filter(
     (legal) =>
       legal.action.type === "USE_ABILITY_EMPOWER_TOKEN" &&
@@ -622,7 +623,7 @@ function AbilityEmpowerTokenChip({
           held
             ? canSpend
               ? "Ability Empower token: click to Empower one Ability in your hand (Expert free forever)."
-              : "Ability Empower token held (max 1). Spend when you have a non-Empowered Ability in hand."
+              : `${count} Ability Empower token${count === 1 ? "" : "s"} held. Spend when you have a non-Empowered Ability in hand.`
             : "No Ability Empower token. Win a Dragon Fly Hive or Griffin Conservatory (house rule) to gain one."
         }
         aria-label={
@@ -649,7 +650,7 @@ function AbilityEmpowerTokenChip({
           referrerPolicy="no-referrer"
           src={assetUrl(ABILITY_EMPOWER_TOKEN_ICON)}
         />
-        <b>{held ? 1 : 0}</b>
+        <b>{count}</b>
         <small>empower</small>
       </button>
       {picking ? (
@@ -663,7 +664,7 @@ function AbilityEmpowerTokenChip({
             <strong>Spend Ability Empower token</strong>
             <p>
               Empower one Ability in your hand. Its Expert side then costs no
-              crown for the rest of the game. Token max is 1.
+              crown for the rest of the game. One token will be spent.
             </p>
             <div className="handButtons abilityEmpowerTokenChoices">
               {offers.map((legal) => (

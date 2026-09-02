@@ -258,7 +258,7 @@ export function FieldRewardEditor({
             />
             <span>
               Ability Empower token
-              <small>Max 1 · spend anytime on a hand Ability</small>
+              <small>Stackable · spend one anytime on a hand Ability</small>
             </span>
           </label>
 

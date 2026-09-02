@@ -7572,6 +7572,11 @@ export default function Home() {
           </div>
         ) : null}
         <div className="rightRail">
+          <LogDrawer
+            state={state}
+            surface="battle"
+            viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT}
+          />
           {!adventureMode
             ? // Battle simulator: both level 5 hero boards stay on the table.
               seatIds.map((playerId) => <HeroBoard key={playerId} playerId={playerId} state={state} />)
@@ -7587,13 +7592,6 @@ export default function Home() {
           ) : null}
         </div>
       </div>
-
-      {/* Bottom combat deck/discard rail — map-mode parity: full discard browse. */}
-      <LogDrawer
-        state={state}
-        surface="battle"
-        viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT}
-      />
 
       <AdventureEventFeed
         items={feedItems}

@@ -10,9 +10,9 @@ import type { GameAction, GameState, PlayerId, UnitId } from "./state";
  *    selected enemy unit "cannot use their special ability" — ALL of them, now
  *    and any gained later. Grade-gated 0/1/2 → bronze/silver/gold, and (as a
  *    single-target unit cast) deflectable by Magic Mirror onto a new target.
- *  - Sacrifice (Expert Fire, Activation): transfer one of your units' damage
- *    onto another of your units, which perishes — min(heal's damage, the
- *    sacrifice's remaining HP) is moved. Grade-gated 0/2/4 on the heal target.
+ *  - Sacrifice (Expert Fire, Activation): transfer a chosen amount of damage,
+ *    up to min(heal's damage, the sacrifice's remaining HP). Grade-gated 0/2/4
+ *    on the heal target.
  *
  * Sandbox grades/types (createInitialGameState):
  *   p1 marksmen bronze/ranged (double-attack), griffins bronze/flying
@@ -62,6 +62,19 @@ function abilityChoice(state: GameState) {
     throw new Error("expected an ABILITY_TARGET_CHOICE to be open");
   }
   return choice;
+}
+
+function chooseSacrificeAmount(state: GameState, amount: number): GameState {
+  const choice = state.pendingChoice;
+  if (!choice || choice.type !== "OPTION_CHOICE" || choice.context !== "sacrifice-transfer-amount") {
+    throw new Error("expected a Sacrifice amount choice to be open");
+  }
+  return applyOk(state, {
+    type: "CHOOSE_OPTION",
+    playerId: choice.playerId,
+    choiceId: choice.id,
+    optionIndex: amount - 1
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -317,7 +330,7 @@ describe("Sacrifice spell", () => {
     expect(targets).not.toContain("unit_p2_skeletons"); // enemy → not
   });
 
-  it("transfers the heal target's wounds onto the sacrifice (heal's damage is the cap)", () => {
+  it("lets the caster choose an amount below the maximum transfer", () => {
     const state = createInitialGameState("sac-basic");
     state.players.p1.hand = ["spell.sacrifice"];
     state.players.p2.hand = [];
@@ -347,10 +360,14 @@ describe("Sacrifice spell", () => {
       choiceId: choice.id,
       targetUnitId: "unit_p1_crusaders"
     });
+    expect(s.pendingChoice?.type).toBe("OPTION_CHOICE");
+    if (s.pendingChoice?.type === "OPTION_CHOICE") {
+      expect(s.pendingChoice.options).toHaveLength(4);
+    }
+    s = chooseSacrificeAmount(s, 2);
 
-    // transfer = min(heal.damage 4, sacrifice remaining HP 10) = 4.
-    expect(s.combat!.units.unit_p1_griffins.damage).toBe(0); // fully healed
-    expect(s.combat!.units.unit_p1_crusaders.damage).toBe(4); // took the 4 wounds, survives
+    expect(s.combat!.units.unit_p1_griffins.damage).toBe(2); // healed exactly 2
+    expect(s.combat!.units.unit_p1_crusaders.damage).toBe(2); // took exactly 2
     expect(s.pendingChoice).toBeNull();
   });
 
@@ -377,6 +394,7 @@ describe("Sacrifice spell", () => {
       choiceId: choice.id,
       targetUnitId: "unit_p1_crusaders"
     });
+    s = chooseSacrificeAmount(s, 1);
 
     // transfer = min(heal.damage 8, sacrifice remaining HP 1) = 1.
     expect(s.combat!.units.unit_p1_griffins.damage).toBe(7); // healed by exactly 1
@@ -421,6 +439,7 @@ describe("Sacrifice spell", () => {
       choiceId: choice.id,
       targetUnitId: "unit_p1_griffins"
     });
+    powered = chooseSacrificeAmount(powered, 6);
     // transfer = min(6, 10) = 6 → the gold heal target is fully healed.
     expect(powered.combat!.units.unit_p1_crusaders.damage).toBe(0);
     expect(powered.combat!.units.unit_p1_griffins.damage).toBe(6);

@@ -266,6 +266,10 @@ describe("a +Movement card is playable DURING a neutral combat", () => {
       state.players.p1.limits.expertUses = 3;
       state.players.p1.combatStats.expertUsesSpentThisRound = 0;
       if (face.requiresSeaTile) {
+        // Creature Banks are always land. For a sea-gated card's isolated
+        // eligibility check, model the hero as standing on an ordinary water
+        // field while retaining the already-started neutral combat fixture.
+        state.adventure!.fields[hero.spaceId!]!.location = "empty_field";
         state.adventure!.fields[hero.spaceId!]!.terrain = "water";
       }
 
@@ -338,7 +342,9 @@ describe("a +Movement card is playable DURING a neutral combat", () => {
     } as GameAction);
     expect(forged.errors.length, "and a forged play is rejected").toBeGreaterThan(0);
 
-    // Same fight, hero standing on water: the printed condition now holds.
+    // Same fight, hero standing on an ordinary water field: the printed
+    // condition now holds. A Creature Bank itself remains land.
+    state.adventure!.fields[hero.spaceId!]!.location = "empty_field";
     state.adventure!.fields[hero.spaceId!]!.terrain = "water";
     expect(movementOffers(state, "artifact.shield_of_naval_glory")).toHaveLength(1);
   });

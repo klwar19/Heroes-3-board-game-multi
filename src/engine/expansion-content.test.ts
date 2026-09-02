@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { TOWN_BUILDING_IMAGES } from "@/data/assets/homm-assets";
 import { cardLibrary } from "@/data/cards/library";
-import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
+import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions, isPlayableFaction } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitAbilities } from "@/data/units/abilities";
 import { coreTileDefinitions } from "@/data/map/tile-defs";
@@ -32,6 +32,14 @@ import {
 } from "./adventure-reducer";
 import { beginFieldVisit, instantiateTile, startAdventureRound } from "./adventure";
 import { hexEquals, hexNeighbor, hexSpaceId, type HexCoord } from "./hex";
+
+describe("Anime-only crossover factions", () => {
+  it("offers Imperium only while Anime Mod is enabled", () => {
+    expect(isPlayableFaction("imperium")).toBe(false);
+    expect(isPlayableFaction("imperium", { enabled: false })).toBe(false);
+    expect(isPlayableFaction("imperium", { enabled: true })).toBe(true);
+  });
+});
 
 function apply(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);

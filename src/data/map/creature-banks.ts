@@ -452,7 +452,7 @@ export const CREATURE_BANKS: Record<CreatureBankId, CreatureBankDefinition> = {
     // It is never a faction/Neutral-deck card or Polish Unit-Stack layer, even with
     // polish-unit-stacks on. (The wiki notes the Stacked version needs at least
     // Normal difficulty — Easy rolls a single token, so X can never reach 2.)
-    // HOUSE RULE bonus: Ability Empower token (max 1; spend anytime to Empower
+    // HOUSE RULE bonus: stackable Ability Empower token (spend one anytime to Empower
     // one Ability in hand — Expert then costs no crown).
     buildReward: (x) => ({
       type: "SEQUENCE",
@@ -541,7 +541,7 @@ export const CREATURE_BANKS: Record<CreatureBankId, CreatureBankDefinition> = {
     // Gain the dedicated Griffins Creature Bank card. When 2+ defenders were
     // Stacked, it carries a Stack Token re-ROLLED at RANDOM every fight (USER RULE
     // 2026-08-18) — never a faction/Neutral-deck card or Polish Unit-Stack layer. HOUSE RULE bonus: Ability
-    // Empower token (max 1; spend anytime to Empower one Ability in hand — Expert
+    // stackable Empower token (spend one anytime to Empower one Ability in hand — Expert
     // then costs no crown).
     buildReward: (x) => ({
       type: "SEQUENCE",

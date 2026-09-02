@@ -237,7 +237,7 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     id: "bank-empower-ability",
     label: "Creature-bank Ability Empower token",
     description:
-      "Winning the Dragon Fly Hive or Griffin Conservatory also grants an Ability Empower token (max 1; spend anytime to Empower one Ability in hand — Expert then costs no crown). Off: those banks grant only the unit (wiki).",
+      "Winning the Dragon Fly Hive or Griffin Conservatory also grants a stackable Ability Empower token; spend one anytime to Empower one Ability in hand — Expert then costs no crown. Off: those banks grant only the unit (wiki).",
     category: "combat",
     default: true,
   },

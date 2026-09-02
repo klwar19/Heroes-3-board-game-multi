@@ -82,7 +82,8 @@ export function CombatMoralePanel({
     (legal) =>
       legal.action.type === "USE_ABILITY_EMPOWER_TOKEN" && legal.action.playerId === viewerPlayerId
   );
-  const holdsAbilityToken = (state.players[viewerPlayerId]?.abilityEmpowerToken ?? 0) >= 1;
+  const abilityTokenCount = Math.max(0, state.players[viewerPlayerId]?.abilityEmpowerToken ?? 0);
+  const holdsAbilityToken = abilityTokenCount >= 1;
 
   if (!moraleCardsOn && !drawAction && !redrawAction && abilityTokenOffers.length === 0 && !holdsAbilityToken) {
     return null;
@@ -153,17 +154,17 @@ export function CombatMoralePanel({
             onClick={() => onAction(abilityTokenOffers[0].action)}
             type="button"
           >
-            👑 Ability token: {abilityTokenOffers[0].label.replace(/^Ability token: /, "")}
+            👑 Ability token ×{abilityTokenCount}: {abilityTokenOffers[0].label.replace(/^Ability token: /, "")}
           </button>
         ) : (
           <button className="commandButton" onClick={() => setAbilityPicking(true)} type="button">
-            👑 Ability token: Empower a hand Ability…
+            👑 Ability tokens ×{abilityTokenCount}: Empower a hand Ability…
           </button>
         )}
       </div>
     ) : holdsAbilityToken ? (
       <div className="handButtons" aria-label="Ability Empower token">
-        <span className="combatMoraleHint">👑 Ability token held — put a non-Empowered Ability in hand to spend it.</span>
+        <span className="combatMoraleHint">👑 Ability token ×{abilityTokenCount} — put a non-Empowered Ability in hand to spend one.</span>
       </div>
     ) : null;
 
@@ -171,7 +172,7 @@ export function CombatMoralePanel({
     <div className="moraleOverflowBackdrop" role="dialog" aria-modal="true" aria-label="Empower an ability with token">
       <div className="moraleOverflowPopup abilityEmpowerTokenPopup">
         <strong>Spend Ability Empower token</strong>
-        <p>Empower one Ability in your hand. Expert then costs no crown forever. Max 1 token.</p>
+        <p>Empower one Ability in your hand. Expert then costs no crown forever. One of your {abilityTokenCount} tokens will be spent.</p>
         <div className="handButtons abilityEmpowerTokenChoices">
           {abilityTokenOffers.map((legal) => (
             <button

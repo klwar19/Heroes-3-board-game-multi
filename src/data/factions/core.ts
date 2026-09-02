@@ -2966,6 +2966,9 @@ export function isPlayableFaction(
   if (id === "little_busters") return Boolean(anime?.enabled && anime.isekaiTowns);
   if (id === "blue_archive") return Boolean(anime?.enabled && anime.isekaiTowns);
   if (id === "mgq") return Boolean(anime?.enabled && anime.isekaiTowns);
+  // Imperium is fan/anime crossover content, not part of the ordinary Heroes
+  // III faction pool. It needs Anime Mod, but no town-family sub-toggle.
+  if (id === "imperium") return Boolean(anime?.enabled);
   if (id === "azure_breeze") return Boolean(anime?.enabled && anime.xianxiaTowns);
   if (id === "heavenly_demon") return Boolean(anime?.enabled && anime.xianxiaTowns);
   return true;

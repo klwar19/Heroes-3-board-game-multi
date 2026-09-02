@@ -14581,8 +14581,8 @@ function addGiveUpCombatActions(
 
 /**
  * Ability Empower token: spend anytime (map or combat participant) to Empower
- * one non-Empowered Ability currently in hand. Max storage 1; surplus auto-use
- * is handled at gain time, not here.
+ * one non-Empowered Ability currently in hand. Tokens stack; each spend removes
+ * exactly one.
  */
 function addAbilityEmpowerTokenActions(
   actions: LegalAction[],

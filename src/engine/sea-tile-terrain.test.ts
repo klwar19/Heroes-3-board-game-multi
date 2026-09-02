@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getTileFootprintSpaceIds, instantiateTile } from "./adventure";
+import { getTileFootprintSpaceIds, instantiateTile, placeCreatureBank } from "./adventure";
 import { moveHeroAdventure } from "./adventure-reducer";
 import {
   createAdventureGameState,
@@ -123,6 +123,28 @@ describe("sea tiles mix land islands with open ocean (per-hex terrain)", () => {
 });
 
 describe("crossing a sea tile's own coastline follows the selected ruleset (per-hex)", () => {
+  it("a Creature Bank is always land, including recovered water-marked banks", () => {
+    const state = makeState("binh");
+    const ids = placeSeaTile(state, "W3", 390);
+    const waterBank = ids[1]; // printed Shipwreck water hex
+    const land = ids[0];
+
+    expect(isSeaField(state, waterBank)).toBe(true);
+    expect(isSeaField(state, land)).toBe(false);
+    expect(placeCreatureBank(state, waterBank, "shipwreck")).not.toBeNull();
+    expect(state.adventure!.fields[waterBank].terrain).toBeUndefined();
+    expect(isSeaField(state, waterBank)).toBe(false);
+    expect(seaStepHalts(state, waterBank, land)).toBe(false);
+
+    state.adventure!.fields[waterBank].terrain = "water";
+    expect(isSeaField(state, waterBank)).toBe(false);
+    expect(seaStepHalts(state, waterBank, land)).toBe(false);
+
+    expect(placeCreatureBank(state, land, "crypt")).not.toBeNull();
+    expect(state.adventure!.fields[land].terrain).toBeUndefined();
+    expect(isSeaField(state, land)).toBe(false);
+  });
+
   it("Legacy permits disembarking to continue but still halts on embark", () => {
     const state = makeState("legacy");
     const ids = placeSeaTile(state, "W2", 400); // land: mystical_garden(1), mine(2)

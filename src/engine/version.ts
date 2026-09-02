@@ -1016,7 +1016,12 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // legality/resource spending. A v88 room server cannot resolve the transport
 // choice and would charge the printed cost, so client/server parity requires a
 // protocol bump and PartyKit redeploy.
-export const ENGINE_PROTOCOL_VERSION = 89;
+// v90: Creature Banks are always land regardless of the hex they replace; Ability
+// Empower tokens stack instead of forcing a max-one surplus spend; Sacrifice
+// serializes a second exact-HP OPTION_CHOICE; and Imperium faction selection is
+// gated by Anime Mod. A v89 worker would disagree on movement, legal choices,
+// token totals and faction setup, so PartyKit must be redeployed.
+export const ENGINE_PROTOCOL_VERSION = 90;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

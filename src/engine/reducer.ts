@@ -6827,12 +6827,14 @@ function openBalanceSpellChoice(
   playerId: PlayerId,
   context:
     | "disrupting-ray-mode"
+    | "sacrifice-transfer-amount"
     | "dispel-scope"
     | "community-dispel-pick"
     | "misfortune-face",
   payload: {
     cardId: CardId;
     unitId?: UnitId;
+    sacrificeUnitId?: UnitId;
     amount?: number;
     target?: TargetRef;
     remaining?: number;
@@ -6907,6 +6909,49 @@ function resolveBalanceSpellChoice(
       choice.playerId,
       target,
     );
+    return;
+  }
+
+  if (
+    choice.context === "sacrifice-transfer-amount" &&
+    state.combat &&
+    payload.unitId &&
+    payload.sacrificeUnitId
+  ) {
+    const healTarget = state.combat.units[payload.unitId];
+    const sacrifice = state.combat.units[payload.sacrificeUnitId];
+    const requested = picked + 1;
+    const maximum =
+      healTarget && sacrifice
+        ? Math.min(healTarget.damage, sacrifice.maxHealth - sacrifice.damage)
+        : 0;
+    if (
+      !healTarget ||
+      !sacrifice ||
+      !isUnitAlive(healTarget) ||
+      !isUnitAlive(sacrifice) ||
+      requested < 1 ||
+      requested > maximum
+    ) {
+      return;
+    }
+    const source = {
+      type: "card" as const,
+      cardId: payload.cardId,
+      controllerId: choice.playerId,
+    };
+    healUnitDamage(state, source, { type: "unit", unitId: healTarget.id }, requested);
+    sacrifice.damage += requested;
+    noteUnitDamagedForTokens(state, sacrifice, requested);
+    appendEvent(state, {
+      type: "DAMAGE_ASSIGNED",
+      source,
+      target: { type: "unit", unitId: sacrifice.id },
+      amount: requested,
+      damageKind: "effect",
+    });
+    markUnitRemovedIfNeeded(state, sacrifice);
+    finishCombatIfNeeded(state);
     return;
   }
 
@@ -29682,10 +29727,9 @@ function chooseAbilityTarget(
     return;
   }
 
-  // Sacrifice: move the heal target's damage onto the chosen sacrifice unit —
-  // up to the sacrifice's remaining HP ("as much as is needed for it to
-  // perish"). The heal target loses that much damage; the sacrifice takes it
-  // and perishes (a Pack flips to Few) when it reaches its remaining HP.
+  // Sacrifice: choose the receiving unit first, then choose exactly how much
+  // damage to transfer (1..N). N is capped by the wounded unit's damage and the
+  // receiving unit's remaining HP, implementing the printed "up to" wording.
   if (choice.kind === "sacrifice-transfer") {
     const healTarget = choice.sourceUnitId
       ? combat.units[choice.sourceUnitId]
@@ -29697,35 +29741,27 @@ function chooseAbilityTarget(
       isUnitAlive(healTarget) &&
       isUnitAlive(sacrifice)
     ) {
-      const source = {
-        type: "card" as const,
-        cardId: choice.abilityId ?? "",
-        controllerId: action.playerId,
-      };
-      const transfer = Math.min(
+      const maximum = Math.min(
         healTarget.damage,
         sacrifice.maxHealth - sacrifice.damage,
       );
-      if (transfer > 0) {
-        healUnitDamage(
+      if (maximum > 0) {
+        openBalanceSpellChoice(
           state,
-          source,
-          { type: "unit", unitId: healTarget.id },
-          transfer,
+          action.playerId,
+          "sacrifice-transfer-amount",
+          {
+            cardId: choice.abilityId ?? "spell.sacrifice",
+            unitId: healTarget.id,
+            sacrificeUnitId: sacrifice.id,
+          },
+          `Sacrifice: how much HP should ${healTarget.cardName} recover?`,
+          Array.from({ length: maximum }, (_, index) => ({
+            label: `Heal ${index + 1} HP — transfer ${index + 1} damage to ${sacrifice.cardName}`,
+          })),
         );
-        sacrifice.damage += transfer;
-        noteUnitDamagedForTokens(state, sacrifice, transfer);
-        appendEvent(state, {
-          type: "DAMAGE_ASSIGNED",
-          source,
-          target: { type: "unit", unitId: sacrifice.id },
-          amount: transfer,
-          damageKind: "effect",
-        });
-        markUnitRemovedIfNeeded(state, sacrifice);
       }
     }
-    finishCombatIfNeeded(state);
     return;
   }
 
@@ -33613,6 +33649,7 @@ export function applyAction(
           } else if (
             nextState.pendingChoice?.type === "OPTION_CHOICE" &&
             (nextState.pendingChoice.context === "disrupting-ray-mode" ||
+              nextState.pendingChoice.context === "sacrifice-transfer-amount" ||
               nextState.pendingChoice.context === "dispel-scope" ||
               nextState.pendingChoice.context === "community-dispel-pick" ||
               nextState.pendingChoice.context === "misfortune-face")

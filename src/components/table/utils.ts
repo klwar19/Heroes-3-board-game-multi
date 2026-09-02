@@ -678,9 +678,7 @@ export function formatEvent(event: GameEvent, state: GameState): string {
         event.cardId
       )} — its expert side now costs no crown.`;
     case "ABILITY_EMPOWER_TOKEN_GAINED":
-      return event.surplus
-        ? `${playerName(state, event.playerId)} gains an Ability Empower token (already full — surplus must empower a hand ability; keeps 1).`
-        : `${playerName(state, event.playerId)} gains an Ability Empower token (now ${event.total}).`;
+      return `${playerName(state, event.playerId)} gains an Ability Empower token (now ${event.total}).`;
     case "ABILITY_EMPOWER_TOKEN_SPENT":
       return `${playerName(state, event.playerId)} spends an Ability Empower token on ${cardName(
         event.cardId
@@ -1262,10 +1260,8 @@ export function noticeRewardsFromEvents(
       case "ABILITY_EMPOWER_TOKEN_GAINED": {
         rewards.push({
           icon: ABILITY_EMPOWER_TOKEN_ICON,
-          label: event.surplus ? "token (full)" : "+1 token",
-          title: event.surplus
-            ? "Ability Empower token (already full — surplus auto-use)"
-            : "Ability Empower token",
+          label: `+1 token · ${event.total}`,
+          title: `Ability Empower token (now ${event.total})`,
           tone: "gain"
         });
         break;

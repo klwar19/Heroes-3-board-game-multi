@@ -105,8 +105,8 @@ export type HouseRuleId =
   // their first Settlement. Off (official): the revealed tile is final.
   | "far-tile-rerolls"
   // Winning the Dragon Fly Hive / Griffin Conservatory bank ALSO grants an
-  // Ability Empower token (max 1; spend anytime to Empower one hand Ability —
-  // Expert then costs no crown). Off: those banks grant only the unit, as printed.
+  // Ability Empower token (tokens stack; spend one anytime to Empower one hand
+  // Ability — Expert then costs no crown). Off: banks grant only the printed unit.
   | "bank-empower-ability"
   // A Creature-Bank fight obeys the one-Round time limit and the spend-1-move-
   // point-to-extend rule, like an ordinary neutral fight. Off: a bank has no
@@ -5252,7 +5252,7 @@ export type GameAction =
     }
   | {
       /**
-       * Spend the Ability Empower token (max 1) to permanently Empower one
+       * Spend one Ability Empower token to permanently Empower one
        * Ability card currently in hand. Expert side then costs no crown.
        * Handler-validated (self-validating).
        */
@@ -7079,8 +7079,8 @@ export type GameEvent =
     }
   | {
       /**
-       * A player Empowered an ability (Ability Empower token, bank surplus
-       * auto-use, …): its Expert side may henceforth be played without a crown.
+       * A player Empowered an ability with a token: its Expert side may
+       * henceforth be played without a crown.
        */
       id: string;
       type: "ABILITY_EMPOWERED";
@@ -7088,12 +7088,12 @@ export type GameEvent =
       cardId: CardId;
     }
   | {
-      /** Player gained an Ability Empower token (cap 1). */
+      /** Player gained an Ability Empower token. */
       id: string;
       type: "ABILITY_EMPOWER_TOKEN_GAINED";
       playerId: PlayerId;
       total: number;
-      /** True when already at cap and the surplus forced an auto-use menu. */
+      /** @deprecated Old max-1 events only. */
       surplus?: boolean;
     }
   | {
@@ -8792,11 +8792,9 @@ export type PlayerState = {
    */
   empoweredAbilities?: CardId[];
   /**
-   * Empowered Ability Token on the hero (rulebook token; max storage 1). Spend
-   * anytime to permanently Empower ONE Ability card currently in hand. Banks
-   * (Dragon Fly Hive / Griffin Conservatory house rule) grant these instead of
-   * an immediate empower pick. A surplus gain while already holding 1 forces an
-   * auto-use (empower a hand ability) then leaves the count at 1.
+   * Empowered Ability Tokens on the hero. Spend one anytime to permanently
+   * Empower ONE Ability card currently in hand. Banks each add one; tokens have
+   * no storage cap.
    */
   abilityEmpowerToken?: number;
   /**
@@ -12143,8 +12141,7 @@ export type VisitStep =
     }
   | {
       /**
-       * Grant one Ability Empower token (cap 1). Surplus while already holding
-       * one forces an auto-use pick on a hand ability, then leaves the count at 1.
+       * Grant one Ability Empower token. Tokens stack without a storage cap.
        * Without `force`, gated by the bank house rule (`bank-empower-ability`).
        * Designer field rewards set `force: true` so a map author can always grant
        * the token even when that house rule is off.
@@ -15462,7 +15459,7 @@ export type CustomMapTileToken = {
  *
  * Special arms (all optional, additive with resources/searches):
  *  - `morale` ±1 — same GAIN_MORALE pipeline as Temples / timed events
- *  - `abilityEmpowerToken` — grant one Ability Empower token (max 1; designer
+ *  - `abilityEmpowerToken` — grant one stackable Ability Empower token (designer
  *    always grants, even when the bank house rule is off)
  *  - `empowerStatistic` — free one-shot Statistic empower menu (hand+discard)
  *  - `experience` / `movement` / `resourceDice` — XP, MP, Resource-die rolls
@@ -15489,8 +15486,8 @@ export type CustomFieldReward = {
   /** ±1 morale (token mode or Morale Cards). */
   morale?: 1 | -1;
   /**
-   * Grant one Ability Empower token (cap 1; surplus auto-uses on a hand Ability
-   * when already holding one). Designer grants ignore the bank house rule.
+   * Grant one stackable Ability Empower token. Designer grants ignore the bank
+   * house rule.
    */
   abilityEmpowerToken?: true;
   /**
@@ -16157,6 +16154,7 @@ export type PendingChoice =
         | "combat-reposition"
         | "combat-transport"
         | "disrupting-ray-mode"
+        | "sacrifice-transfer-amount"
         | "dispel-scope"
         | "community-dispel-pick"
         | "misfortune-face"
@@ -16286,6 +16284,8 @@ export type PendingChoice =
       balanceSpellChoice?: {
         cardId: CardId;
         unitId?: UnitId;
+        /** Sacrifice amount pick: the other unit receiving transferred wounds. */
+        sacrificeUnitId?: UnitId;
         amount?: number;
         target?: TargetRef;
         /**

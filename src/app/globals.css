@@ -5203,33 +5203,60 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
   text-transform: uppercase;
 }
 
-/* The battlefield has no map HUD to host the log button. Keep a compact,
-   always-visible combat chronicle above the lower edge of the table instead of
-   leaving it after the full board where it falls below the viewport. */
+/* The battle log lives in the right rail so opening it never covers battlefield
+   cells. It expands inside its own column and remains readable while scrolling. */
 .battleLogDrawer {
-  position: fixed;
-  z-index: 88;
-  left: 12px;
-  bottom: 12px;
-  width: min(440px, calc(100vw - 24px));
-  overflow: visible;
-  border-color: rgb(202 154 65 / 78%);
-  box-shadow: 0 12px 34px rgb(0 0 0 / 62%);
+  position: sticky;
+  z-index: 8;
+  top: 10px;
+  width: 100%;
+  overflow: hidden;
+  border-color: rgb(220 175 82 / 72%);
+  background:
+    linear-gradient(145deg, rgb(46 35 20 / 96%), rgb(15 18 23 / 98%));
+  box-shadow:
+    inset 0 1px 0 rgb(255 231 173 / 12%),
+    0 10px 24px rgb(0 0 0 / 38%);
+}
+
+.rightRail > .battleLogDrawer {
+  grid-column: 1 / -1;
 }
 
 .battleLogDrawer .logPopover {
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 0;
+  position: static;
   width: 100%;
   overflow: hidden;
-  border: 1px solid rgb(202 154 65 / 62%);
-  border-radius: 9px;
-  background: rgb(16 12 8 / 98%);
+  border-top: 1px solid rgb(220 175 82 / 36%);
+  background: rgb(10 13 18 / 72%);
 }
 
 .battleLogDrawer .logPopover ol {
-  max-height: min(48vh, 430px);
+  max-height: min(52vh, 520px);
+  padding: 10px;
+  scrollbar-color: rgb(202 154 65 / 70%) rgb(0 0 0 / 18%);
+}
+
+.battleLogDrawer .logToggle {
+  min-height: 42px;
+  color: #e6c77e;
+  background: linear-gradient(90deg, rgb(121 78 24 / 24%), transparent);
+}
+
+.battleLogDrawer .logToggle:hover {
+  background: linear-gradient(90deg, rgb(155 104 34 / 34%), rgb(24 29 37 / 24%));
+}
+
+.battleLogDrawer .logToggleLabel {
+  color: #f2d791;
+  font-weight: 800;
+}
+
+.battleLogDrawer li {
+  grid-template-columns: 54px minmax(0, 1fr);
+  border-color: rgb(220 175 82 / 14%);
+  background: rgb(8 12 17 / 62%);
+  line-height: 1.35;
 }
 
 .battleLogDrawer .battleLogEvent.you {
@@ -5247,9 +5274,9 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
 
 @media (max-width: 720px) {
   .battleLogDrawer {
-    left: 8px;
-    bottom: 58px;
-    width: calc(100vw - 16px);
+    position: relative;
+    top: auto;
+    grid-column: 1 / -1;
   }
 
   .battleLogDrawer .logPopover ol {
@@ -38103,6 +38130,25 @@ details.mapPresetGroup > summary::-webkit-details-marker {
     --desktop-library-width: clamp(104px, 6.2vw, 116px);
     --desktop-edge: max(14px, calc((100vw - 1680px) / 2 + 14px));
     padding-bottom: calc(var(--desktop-hand-height) + 18px);
+  }
+
+  /* Frequent map actions stay attached below the fixed command HUD. They used
+     to be absolute children of the map canvas and disappeared when the player
+     scrolled down to inspect lower tiles. Keep the tile supply and Morale
+     actions together as a small top-left action dock. */
+  .adventureRoot:not(.phoneMode) .farTileTray {
+    position: fixed;
+    top: calc(var(--desktop-hud-height) + 14px);
+    left: var(--desktop-edge);
+    z-index: 58;
+    max-width: 232px;
+  }
+
+  .adventureRoot:not(.phoneMode) .mapMoraleSpend.handDirectives {
+    position: fixed;
+    top: calc(var(--desktop-hud-height) + 14px);
+    left: calc(var(--desktop-edge) + 242px);
+    z-index: 59;
   }
 
   /* Status and resources remain readable while the map scrolls. The old

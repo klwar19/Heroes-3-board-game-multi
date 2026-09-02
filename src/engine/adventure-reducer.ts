@@ -15954,7 +15954,7 @@ export function hallOfValhallaBoost(
  * (The third option, rerolling a die, is offered inside the dice flows.)
  */
 /**
- * Spend the Ability Empower token (max 1) to permanently Empower one Ability
+ * Spend one Ability Empower token to permanently Empower one Ability
  * currently in hand. Expert then costs no crown for the rest of the game.
  */
 export function useAbilityEmpowerToken(
@@ -15978,7 +15978,7 @@ export function useAbilityEmpowerToken(
     throw new Error("That Ability is already Empowered.");
   }
   markAbilityEmpowered(player, action.cardId);
-  player.abilityEmpowerToken = 0;
+  player.abilityEmpowerToken = Math.max(0, (player.abilityEmpowerToken ?? 0) - 1);
   appendEvent(state, {
     type: "ABILITY_EMPOWERED",
     playerId: action.playerId,
@@ -15988,7 +15988,7 @@ export function useAbilityEmpowerToken(
     type: "ABILITY_EMPOWER_TOKEN_SPENT",
     playerId: action.playerId,
     cardId: action.cardId,
-    total: 0
+    total: player.abilityEmpowerToken
   });
 }
 

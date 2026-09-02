@@ -1638,6 +1638,13 @@ export function isSeaField(state: GameState, spaceId: MapSpaceId): boolean {
     return false;
   }
 
+  // Creature Bank tokens are always placed on land. Keep this authoritative
+  // even for recovered/older snapshots that retained `terrain: "water"` from
+  // the printed field the token replaced.
+  if (field.location === "creature_bank") {
+    return false;
+  }
+
   // Explicit runtime water wins. This covers real materialized sea fields,
   // water Field Overrides/Whirlpools, standalone sea objects, and designer/test
   // fields that intentionally turn an otherwise-land slot into water.
@@ -6422,8 +6429,8 @@ function obeliskBonusVisitSteps(bonus: CustomMapObeliskBonus): VisitStep[] {
     case "search":
       return [{ type: "SEARCH_SHARED_DECK", deckId: bonus.deck, count: bonus.count }];
     case "ability_token":
-      // Grant an Ability Empower token (respects its own max-1 / auto-use
-      // handling). NOT a deck Search — this is the "Empowered Ability" reward.
+      // Grant one stackable Ability Empower token. NOT a deck Search — this is
+      // the "Empowered Ability" reward.
       return [{ type: "GAIN_ABILITY_EMPOWER_TOKEN", force: true }];
     case "resources":
       return [
@@ -11789,9 +11796,8 @@ export function processPendingVisit(state: GameState): void {
       }
       case "GAIN_ABILITY_EMPOWER_TOKEN": {
         // Dragon Fly Hive / Griffin Conservatory (house rule "bank-empower-ability"):
-        // grant one Ability Empower token (max 1). Spend anytime to Empower a
-        // hand Ability. Surplus while already holding 1 forces auto-use on a
-        // hand ability (if any), then leaves the count at 1.
+        // grant one Ability Empower token. Tokens stack without a storage cap;
+        // each can later Empower one Ability currently in hand.
         // Designer field rewards set force:true so the map author can grant the
         // token even when the bank house rule is off.
         if (!step.force && !houseRuleEnabled(state, "bank-empower-ability")) {
@@ -11801,39 +11807,12 @@ export function processPendingVisit(state: GameState): void {
         if (!player) {
           break;
         }
-        const held = player.abilityEmpowerToken ?? 0;
-        if (held < 1) {
-          player.abilityEmpowerToken = 1;
-          appendEvent(state, {
-            type: "ABILITY_EMPOWER_TOKEN_GAINED",
-            playerId: visit.playerId,
-            total: 1
-          });
-          break;
-        }
-        // Surplus: auto-use one (empower a hand ability) and keep 1.
-        const options = buildHandAbilityEmpowerOptions(player);
-        if (options.length === 0) {
-          // No eligible hand ability — surplus cannot be used; stay at 1.
-          appendEvent(state, {
-            type: "ABILITY_EMPOWER_TOKEN_GAINED",
-            playerId: visit.playerId,
-            total: 1,
-            surplus: true
-          });
-          break;
-        }
+        const total = (player.abilityEmpowerToken ?? 0) + 1;
+        player.abilityEmpowerToken = total;
         appendEvent(state, {
           type: "ABILITY_EMPOWER_TOKEN_GAINED",
           playerId: visit.playerId,
-          total: 1,
-          surplus: true
-        });
-        visit.steps.unshift({
-          type: "CHOOSE_ONE",
-          prompt:
-            "Ability Empower token is full (max 1). Empower one ability in hand to spend the surplus — you keep 1 token.",
-          options
+          total
         });
         break;
       }
@@ -17187,6 +17166,9 @@ export function placeCreatureBank(
   delete field.resource;
   delete field.amount;
   delete field.faction;
+  // Creature Bank tokens are always land, regardless of the printed terrain
+  // on the field they replace. Runtime fields encode land by omitting the
+  // water-only terrain marker.
   delete field.terrain;
   // Banks never wear borders (movement + discovery always open on the bank side).
   delete field.borderEdges;

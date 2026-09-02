@@ -214,10 +214,9 @@ export type LocationInteraction =
   | {
       /**
        * Dragon Fly Hive / Griffin Conservatory (Creature Bank) bonus reward
-       * (HOUSE RULE): gain one Ability Empower token (max storage 1). Spend
+       * (HOUSE RULE): gain one Ability Empower token. Tokens stack; spend one
        * anytime to Empower one Ability card in hand — Expert then costs no
-       * crown. Surplus while already holding 1 auto-uses on a hand ability
-       * then leaves you with 1.
+       * crown.
        */
       type: "GAIN_ABILITY_EMPOWER_TOKEN";
       /** Printed/mandatory grant; bypasses the optional official-bank toggle. */

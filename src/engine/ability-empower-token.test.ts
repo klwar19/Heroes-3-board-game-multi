@@ -23,9 +23,8 @@ function mainHeroId(state: GameState): string {
 
 /**
  * Ability Empower token (rulebook token; house rule on bank wins):
- * - Max storage 1; spend anytime to Empower one Ability currently in HAND.
- * - Surplus while already holding 1 forces auto-use on a hand ability, keeps 1.
- * Each claim mutation-checked; CONTROLs prove hand-only and max-1.
+ * - Tokens stack; spend one anytime to Empower one Ability currently in HAND.
+ * Each claim mutation-checked; CONTROLs prove hand-only and exact decrement.
  */
 describe("Ability Empower token", () => {
   it("spends the token to Empower a hand Ability; Expert is then crown-free", () => {
@@ -97,7 +96,7 @@ describe("Ability Empower token", () => {
     expect(forced.errors.length).toBeGreaterThan(0);
   });
 
-  it("surplus while holding 1 forces Empower of a hand Ability and leaves the token at 1", () => {
+  it("a second bank reward stacks a second token without forcing an immediate Empower", () => {
     let state = quietMap("ability-token-surplus");
     state.players.p1.hand = ["ability.archery", "ability.luck"];
     state.players.p1.empoweredAbilities = [];
@@ -113,30 +112,21 @@ describe("Ability Empower token", () => {
 
     processPendingVisit(state);
 
-    // Surplus fires a forced CHOOSE_ONE (no skip) over hand abilities.
-    expect(state.players.p1.abilityEmpowerToken).toBe(1);
-    expect(state.eventLog.some((e) => e.type === "ABILITY_EMPOWER_TOKEN_GAINED" && e.surplus)).toBe(
-      true
-    );
-    expect(state.adventure!.pendingVisit?.steps[0]?.type).toBe("CHOOSE_ONE");
-    const step = state.adventure!.pendingVisit!.steps[0];
-    if (step.type !== "CHOOSE_ONE") {
-      throw new Error("expected CHOOSE_ONE");
-    }
-    expect(step.options.every((opt) => opt.label !== "Skip empowering an ability")).toBe(true);
-    expect(step.options.some((opt) => opt.label.includes("Archery"))).toBe(true);
+    expect(state.players.p1.abilityEmpowerToken).toBe(2);
+    expect(state.players.p1.empoweredAbilities).toEqual([]);
+    expect(state.adventure!.pendingVisit?.steps.length ?? 0).toBe(0);
+    expect(state.eventLog.some((e) => e.type === "ABILITY_EMPOWER_TOKEN_GAINED" && e.total === 2)).toBe(true);
 
-    // Pick Archery via the visit CHOOSE_ONE legal action.
-    const pick = getLegalActions(state, "p1").find((legal) => legal.label.includes("Empower Archery"));
+    const pick = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "USE_ABILITY_EMPOWER_TOKEN" && legal.action.cardId === "ability.archery"
+    );
     expect(pick).toBeTruthy();
     state = applyOk(state, pick!.action);
-
     expect(state.players.p1.empoweredAbilities).toContain("ability.archery");
-    // Token stays at 1 after surplus auto-use.
     expect(state.players.p1.abilityEmpowerToken).toBe(1);
   });
 
-  it("surplus with no hand Ability wastes the extra gain and stays at 1 (no force menu)", () => {
+  it("stacks a token even when no Ability is currently in hand", () => {
     const state = quietMap("ability-token-surplus-empty");
     state.players.p1.hand = ["stat.attack"];
     state.players.p1.discard = ["ability.archery"];
@@ -152,12 +142,10 @@ describe("Ability Empower token", () => {
 
     processPendingVisit(state);
 
-    expect(state.players.p1.abilityEmpowerToken).toBe(1);
+    expect(state.players.p1.abilityEmpowerToken).toBe(2);
     expect(state.players.p1.empoweredAbilities ?? []).toHaveLength(0);
     // No force menu when nothing in hand can be empowered.
     expect(state.adventure!.pendingVisit?.steps.length ?? 0).toBe(0);
-    expect(state.eventLog.some((e) => e.type === "ABILITY_EMPOWER_TOKEN_GAINED" && e.surplus)).toBe(
-      true
-    );
+    expect(state.eventLog.some((e) => e.type === "ABILITY_EMPOWER_TOKEN_GAINED" && e.total === 2)).toBe(true);
   });
 });
