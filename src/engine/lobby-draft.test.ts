@@ -285,10 +285,15 @@ describe("TYPE 1 — draft: ban phase (2 players → 2 bans each, round-robin)",
       reject(state, { type: "CHOOSE_FACTION", playerId: "p1", factionId: "castle", heroDefId: outsideDeal });
     }
 
-    // A dealt castle survivor is pickable.
+    // A dealt castle survivor is pickable, and the same seat can change to one
+    // of its other dealt candidates before the adventure starts.
     const survivor = castleOptions[0]!;
     state = apply(state, { type: "CHOOSE_FACTION", playerId: "p1", factionId: "castle", heroDefId: survivor });
     expect(seatOf(state, "p1")?.heroDefId).toBe(survivor);
+    expect(state.setupLobby!.draft!.seatRolls!.p1!.heroOptions).toEqual(castleOptions);
+    const replacement = castleOptions[1]!;
+    state = apply(state, { type: "CHOOSE_FACTION", playerId: "p1", factionId: "castle", heroDefId: replacement });
+    expect(seatOf(state, "p1")?.heroDefId).toBe(replacement);
 
     // p2 (necropolis) takes a surviving necro hero, then the adventure builds.
     const necroSurvivor = necroOptions[0]!;
@@ -297,7 +302,7 @@ describe("TYPE 1 — draft: ban phase (2 players → 2 bans each, round-robin)",
     const started = apply(state, { type: "START_ADVENTURE", playerId: "p1" });
     expect(started.adventure).not.toBeNull();
     expect(Object.values(started.heroes).map((hero) => hero.heroDefId).sort()).toEqual(
-      [survivor, necroSurvivor].sort()
+      [replacement, necroSurvivor].sort()
     );
   });
 

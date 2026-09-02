@@ -5905,7 +5905,12 @@ export function chooseFaction(state: GameState, action: Extract<GameAction, { ty
 
   seat.factionId = action.factionId;
   seat.heroDefId = action.heroDefId;
-  clearSeatRolls(draft, action.playerId);
+  // Keep the shared candidate deal in Draft mode. Clearing it after the first
+  // click makes the next render disable the other two candidates and prevents
+  // a player from changing their pick before the game starts.
+  if (draft.format !== "draft") {
+    clearSeatRolls(draft, action.playerId);
+  }
   const hero = coreHeroDefinitions[action.heroDefId];
   const player = state.players[action.playerId];
   if (player && hero) {
