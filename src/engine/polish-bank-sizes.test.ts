@@ -612,6 +612,7 @@ describe("Polish bank size rewards (back to the normal X-scaled reward)", () => 
     });
     expect(stackedGained[0].stackToken).toBeUndefined();
     expect(stackedGained[0].stacks, "never a Polish layer").toBeUndefined();
+    expect(stackedState.players.p1.abilityEmpowerToken).toBe(1);
 
     // The field's stored size is authoritative even if a stale caller passes X=0.
     const fewState = bankRewardState("dragon_fly_hive", 1, "polish-bank-reward-few");
@@ -622,6 +623,36 @@ describe("Polish bank size rewards (back to the normal X-scaled reward)", () => 
     expect(fewGained[0]).toMatchObject({ unitDefId: "neutral.wyverns", side: "bank", bankSideKey: "reward:wyverns:1" });
     expect(fewGained[0].stackToken).toBeUndefined();
     expect(fewGained[0].stacks).toBeUndefined();
+    expect(fewState.players.p1.abilityEmpowerToken).toBe(1);
+  });
+
+  it("always grants the printed Empowered Token with every Polish creature reward", () => {
+    for (const bankId of [
+      "dragon_fly_hive",
+      "wolves_den",
+      "red_tower",
+      "training_grounds",
+      "griffin_conservatory",
+    ] as const) {
+      const state = bankRewardState(bankId, 2, `mandatory-empowered-token-${bankId}`);
+      state.adventure!.houseRules!["bank-empower-ability"] = false;
+      expect(state.players.p1.abilityEmpowerToken ?? 0).toBe(0);
+      grantCreatureBankReward(state, "hero_p1", "bank-field", 2);
+      expect(state.players.p1.abilityEmpowerToken, bankId).toBe(1);
+      expect(
+        state.eventLog.some(
+          (event) => event.type === "ABILITY_EMPOWER_TOKEN_GAINED" && event.playerId === "p1"
+        ),
+        `${bankId} must resolve the printed crown, not only describe it`,
+      ).toBe(true);
+    }
+  });
+
+  it("pays 10 gold for a size-II Graveyard", () => {
+    const state = bankRewardState("graveyard", 2, "graveyard-size-two-reward");
+    const before = state.players.p1.resources.gold ?? 0;
+    grantCreatureBankReward(state, "hero_p1", "bank-field", 2);
+    expect((state.players.p1.resources.gold ?? 0) - before).toBe(10);
   });
 
   it("CONTROL: Polish unit-stack layers never leak onto a size-matched reward card", () => {

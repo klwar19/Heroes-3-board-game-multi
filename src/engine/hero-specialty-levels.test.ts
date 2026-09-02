@@ -211,6 +211,7 @@ describe("Gelu IV — trade a Pack of Elves for the Sharpshooters", () => {
     state.players.p1.army = [{ id: "army_elves", unitDefId: "rampart.elves", side: "pack" }];
     const silver = state.decks[NEUTRAL_DECK_IDS.silver];
     expect(silver.drawPile).toContain("neutral.sharpshooters");
+    const sharpshootersBefore = silver.drawPile.filter((cardId) => cardId === "neutral.sharpshooters").length;
 
     const convert = findPlay(state, "specialty.gelu.4", 0);
     expect(convert, "the Elves→Sharpshooters trade should be offered").toBeTruthy();
@@ -218,7 +219,9 @@ describe("Gelu IV — trade a Pack of Elves for the Sharpshooters", () => {
 
     expect(state.players.p1.army.some((unit) => unit.unitDefId === "rampart.elves")).toBe(false);
     expect(state.players.p1.army.some((unit) => unit.unitDefId === "neutral.sharpshooters")).toBe(true);
-    expect(state.decks[NEUTRAL_DECK_IDS.silver].drawPile).not.toContain("neutral.sharpshooters");
+    expect(
+      state.decks[NEUTRAL_DECK_IDS.silver].drawPile.filter((cardId) => cardId === "neutral.sharpshooters")
+    ).toHaveLength(sharpshootersBefore - 1);
   });
 
   it("does not offer the trade without a Pack of Elves, but always offers the draw", () => {

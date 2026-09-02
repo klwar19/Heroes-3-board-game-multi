@@ -242,6 +242,9 @@ describe("Tower content", () => {
     state.players.p1.hand = ["specialty.dracon.4"];
     state.players.p1.army = [{ id: "army_magi", unitDefId: "tower.magi", side: "pack" }];
     expect(state.decks[NEUTRAL_DECK_IDS.gold].drawPile).toContain("neutral.enchanters");
+    const enchantersBefore = state.decks[NEUTRAL_DECK_IDS.gold].drawPile.filter(
+      (cardId) => cardId === "neutral.enchanters"
+    ).length;
 
     const convert = getLegalActions(state, "p1").find(
       (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.dracon.4" && legal.action.optionIndex === 0
@@ -250,7 +253,9 @@ describe("Tower content", () => {
     const next = applyOk(state, convert!.action);
     expect(next.players.p1.army.some((unit) => unit.unitDefId === "tower.magi")).toBe(false);
     expect(next.players.p1.army.some((unit) => unit.unitDefId === "neutral.enchanters")).toBe(true);
-    expect(next.decks[NEUTRAL_DECK_IDS.gold].drawPile).not.toContain("neutral.enchanters");
+    expect(
+      next.decks[NEUTRAL_DECK_IDS.gold].drawPile.filter((cardId) => cardId === "neutral.enchanters")
+    ).toHaveLength(enchantersBefore - 1);
   });
 
   // House rule (BINH): Dracon IV may ALSO upgrade the cheaper Few of Magi into the
@@ -260,6 +265,9 @@ describe("Tower content", () => {
     state.players.p1.army = [{ id: "army_magi_few", unitDefId: "tower.magi", side: "few" }];
     state.players.p1.resources.gold = 6;
     expect(state.decks[NEUTRAL_DECK_IDS.gold].drawPile).toContain("neutral.enchanters");
+    const enchantersBefore = state.decks[NEUTRAL_DECK_IDS.gold].drawPile.filter(
+      (cardId) => cardId === "neutral.enchanters"
+    ).length;
 
     const convert = findDraconOption(state, 2);
     expect(convert, "the Few-of-Magi + 6 gold trade should be offered").toBeTruthy();
@@ -270,7 +278,9 @@ describe("Tower content", () => {
     );
     expect(next.players.p1.army.some((unit) => unit.unitDefId === "neutral.enchanters")).toBe(true);
     expect(next.players.p1.resources.gold, "exactly 6 gold spent (6 → 0)").toBe(0);
-    expect(next.decks[NEUTRAL_DECK_IDS.gold].drawPile).not.toContain("neutral.enchanters");
+    expect(
+      next.decks[NEUTRAL_DECK_IDS.gold].drawPile.filter((cardId) => cardId === "neutral.enchanters")
+    ).toHaveLength(enchantersBefore - 1);
   });
 
   it("gates the Few trade on 6 gold: not offered at 5 (the draw option still is)", () => {

@@ -832,6 +832,8 @@ export function getScenario(scenarioId?: string): ScenarioDefinition {
 
 /** Physical Neutral Unit cards that have a second copy in the component set. */
 export const TWO_COPY_NEUTRAL_UNIT_IDS: ReadonlySet<string> = new Set([
+  "neutral.cyclopes",
+  "neutral.earth_elementals",
   "neutral.lizardmen",
   "neutral.centaurs",
   "neutral.elves",
@@ -840,6 +842,7 @@ export const TWO_COPY_NEUTRAL_UNIT_IDS: ReadonlySet<string> = new Set([
   "neutral.gorgons",
   "neutral.mummies",
   "neutral.nomads",
+  "neutral.sharpshooters",
   "neutral.wyverns",
   "neutral.gold_golems",
   "neutral.diamond_golems",
@@ -848,6 +851,11 @@ export const TWO_COPY_NEUTRAL_UNIT_IDS: ReadonlySet<string> = new Set([
   "neutral.titans",
   "neutral.crystal_dragons",
   "neutral.azure_dragons"
+]);
+
+/** Physical Neutral Unit cards that have three copies in the component set. */
+export const THREE_COPY_NEUTRAL_UNIT_IDS: ReadonlySet<string> = new Set([
+  "neutral.enchanters"
 ]);
 
 function makeNeutralDecks(seed: string, wog: WogModOptions, anime: AnimeModOptions): Record<string, DeckState> {
@@ -861,14 +869,18 @@ function makeNeutralDecks(seed: string, wog: WogModOptions, anime: AnimeModOptio
     const deckId = NEUTRAL_DECK_IDS[tier];
     const unitIds = [
       ...neutralUnitIdsByTier[tier].flatMap((unitId) =>
-        TWO_COPY_NEUTRAL_UNIT_IDS.has(unitId) ? [unitId, unitId] : [unitId]
+        THREE_COPY_NEUTRAL_UNIT_IDS.has(unitId)
+          ? [unitId, unitId, unitId]
+          : TWO_COPY_NEUTRAL_UNIT_IDS.has(unitId)
+            ? [unitId, unitId]
+            : [unitId]
       ),
       ...(wogCreaturesOn ? WOG_UNIT_IDS_BY_TIER[tier] : []),
       ...(doomCreaturesOn ? DOOM_UNIT_IDS_BY_TIER[tier] : [])
     ].filter(isRecruitableNeutralUnit);
     // The decks are shared by the table. Only the explicitly listed physical
-    // duplicates get two cards; every other core/expansion, WOG and Doom unit
-    // stays at one copy.
+    // duplicates get two cards, Enchanters get their three physical cards, and
+    // every other core/expansion, WOG and Doom unit stays at one copy.
     decks[deckId] = {
       id: deckId,
       drawPile: shuffleCards(unitIds, `${seed}#neutral#${tier}`),

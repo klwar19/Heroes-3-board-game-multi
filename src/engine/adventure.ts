@@ -4008,7 +4008,7 @@ function interactionToSteps(interaction: LocationInteraction, extraLocationDice 
     case "EMPOWER_ABILITY":
       return [{ type: "EMPOWER_ABILITY" }];
     case "GAIN_ABILITY_EMPOWER_TOKEN":
-      return [{ type: "GAIN_ABILITY_EMPOWER_TOKEN" }];
+      return [{ type: "GAIN_ABILITY_EMPOWER_TOKEN", ...(interaction.force ? { force: true } : {}) }];
     case "HILL_FORT":
       return [{ type: "HILL_FORT" }];
     case "SUBTERRANEAN_GATE":
@@ -17030,11 +17030,13 @@ export function buildCreatureBankDraws(bankId: CreatureBankId): NeutralDraw[] {
 function buildCreatureBankDrawsForState(
   state: GameState,
   bankId: CreatureBankId,
-  bankSize?: BankSize
+  bankSize?: BankSize,
+  bankVariant?: BankSize
 ): NeutralDraw[] {
   const polishCards = houseRuleEnabled(state, "polish-creature-banks");
   const bank = getCreatureBankDefinition(bankId, polishCards);
-  const entries = bank.buildUnits && bankSize ? bank.buildUnits(bankSize) : bank.units.map((unitDefId, index) => ({
+  const unitVariant = bankId === "black_tower" ? (bankVariant ?? bankSize) : bankSize;
+  const entries = bank.buildUnits && unitVariant ? bank.buildUnits(unitVariant) : bank.units.map((unitDefId, index) => ({
     unitDefId,
     ...(bank.unitSideKeys?.[index] ? { bankSideKey: bank.unitSideKeys[index] } : {})
   }));
@@ -17073,7 +17075,8 @@ export function polishBankSizeForAttackRolls(rolls: readonly number[]): BankSize
 export function buildCreatureBankCombatUnits(
   state: GameState,
   bankId: CreatureBankId,
-  bankSize?: BankSize
+  bankSize?: BankSize,
+  bankVariant?: BankSize
 ): { units: CombatUnitState[]; stackedCount: number } {
   const ruleset = getRuleset(state);
   const sideOverrides = unitSideRuleOverrides(state);
@@ -17083,7 +17086,7 @@ export function buildCreatureBankCombatUnits(
   // a Polish bank consistently as size I rather than fighting one roster and
   // paying another or silently falling back to Scenario Difficulty.
   const effectiveBankSize = polishMode ? (bankSize ?? 1) : bankSize;
-  const draws = buildCreatureBankDrawsForState(state, bankId, effectiveBankSize);
+  const draws = buildCreatureBankDrawsForState(state, bankId, effectiveBankSize, bankVariant);
   const units = draws.flatMap((draw, index) => {
     const unit = makeCombatUnitFromNeutral(draw, `bank_${index + 1}_${draw.unitDefId.split(".")[1]}`, 0, ruleset, sideOverrides);
     return unit ? [unit] : [];
@@ -17179,6 +17182,7 @@ export function placeCreatureBank(
   } else {
     delete field.bankSize;
   }
+  delete field.bankVariant;
   delete field.difficulty;
   delete field.resource;
   delete field.amount;
@@ -17247,7 +17251,14 @@ export function grantCreatureBankReward(
   // In this mode X is the printed bank size. Black Tower deliberately has one
   // guardian, so deriving X from the number of token-bearing defenders would
   // underpay sizes II–IV.
-  const rewardX = polishMode && field.bankSize ? field.bankSize : stackedCount;
+  // Black Tower's four printed rows are alternatives (OR), so its selected
+  // Dragon row—not its rolled Stack size—selects the matching gold/artifact
+  // payout. Other banks continue to scale with X = rolled size/Stack count.
+  const rewardX = bankId === "black_tower" && field.bankVariant
+    ? field.bankVariant
+    : polishMode && field.bankSize
+      ? field.bankSize
+      : stackedCount;
   const reward = bank.buildReward(rewardX);
   const steps = interactionToSteps(reward, locationDiceBonusFor(state, playerId));
   // This is a victory reward, never a shop. Far grants Grade I. Near rolls

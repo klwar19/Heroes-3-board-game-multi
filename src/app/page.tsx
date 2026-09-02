@@ -238,6 +238,7 @@ import {
   planMoveArrivalBeats,
   planReturnMoveDelays
 } from "@/components/table/fx-sequence";
+import { buildBigCleanupHandFx } from "@/components/table/astrologers-hand-fx";
 import {
   heroMoveSoundKey,
   locationVisitSoundCue,
@@ -4054,6 +4055,32 @@ export default function Home() {
     setFxCues((current) => current.filter((cue) => cue.id !== id));
   }, []);
 
+  const dismissAstrologerCue = useCallback(() => {
+    const dismissed = astrologerCue;
+    setAstrologerCue(null);
+    if (
+      dismissed?.cardId !== "astrologers.big_cleanup" ||
+      !dismissed.reshuffle ||
+      viewerPlayerId === OBSERVER_SEAT
+    ) {
+      return;
+    }
+
+    // The authoritative discard/redraw happens before this modal opens. Replay
+    // its physical order only after acknowledgement, otherwise the z=96
+    // proclamation hides the table's z=89 card flights and the effect appears
+    // silent even though the cards really moved between engine zones.
+    const plan = buildBigCleanupHandFx(
+      dismissed.id,
+      viewerPlayerId,
+      dismissed.reshuffle.discarded,
+      dismissed.reshuffle.drawn
+    );
+    if (plan.cues.length > 0) {
+      setFxCues((current) => [...current, ...plan.cues]);
+    }
+  }, [astrologerCue, viewerPlayerId]);
+
   const presentationStartedAtRef = useRef<number | null>(null);
   const skipPresentation = useCallback((reason: "manual" | "watchdog") => {
     const startedAt = presentationStartedAtRef.current;
@@ -7211,7 +7238,7 @@ export default function Home() {
             <AstrologersProclamationOverlay
               cue={astrologerCue}
               key={astrologerCue.id}
-              onDone={() => setAstrologerCue(null)}
+              onDone={dismissAstrologerCue}
             />
           ) : null}
           {!firstRoll && !newDay.current && !astrologerCue && eventCue ? (
@@ -7680,7 +7707,7 @@ export default function Home() {
         <AstrologersProclamationOverlay
           cue={astrologerCue}
           key={astrologerCue.id}
-          onDone={() => setAstrologerCue(null)}
+          onDone={dismissAstrologerCue}
         />
       ) : null}
       {!firstRoll && !dice.current && !newDay.current && !astrologerCue && eventCue ? (

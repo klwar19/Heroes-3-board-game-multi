@@ -1317,7 +1317,7 @@ describe("Creature Bank combat lifecycle", () => {
     expect(card.stackToken, "no fixed token is ever written back").toBeUndefined();
   });
 
-  it("Pyramid: a Stacked win grants the base Search plus a remove-a-card-then-Search(5) per Stacked defender", () => {
+  it("Pyramid: a Stacked win grants the base Search plus a remove-a-card-then-Search(6) per Stacked defender", () => {
     expect(CREATURE_BANKS.pyramid.rewardStatus).toBe("implemented");
 
     let state = createAdventureGameState({ seed: "bank-pyramid", difficulty: "normal", rollFirstPlayer: false });
@@ -1372,10 +1372,10 @@ describe("Creature Bank combat lifecycle", () => {
 
     state = apply(state, removeOptions[0].action);
 
-    // The Spell left the game and a matching Search (5) of the Spell deck fired.
+    // The Spell left the game and a matching Search (6) of the Spell deck fired.
     expect(state.players.p1.removed).toContain("spell.magic_arrow");
     const searched = state.adventure?.rewardQueue.some(
-      (reward) => reward.kind === "shared-deck-search" && reward.deckId === "spells" && reward.count === 5
+      (reward) => reward.kind === "shared-deck-search" && reward.deckId === "spells" && reward.count === 6
     );
     const choosing = state.pendingChoice?.type === "DECK_SEARCH";
     expect(searched || choosing).toBe(true);

@@ -10677,6 +10677,8 @@ export type MapFieldState = {
   bankId?: string;
   /** Polish Bank Sizes: I-IV; replaces scenario difficulty for this bank. */
   bankSize?: BankSize;
+  /** Black Tower's selected OR-row: Green / Red / Gold / Black Dragon. */
+  bankVariant?: BankSize;
   resource?: ResourceKind;
   amount?: number;
   faction?: string;
@@ -16121,6 +16123,7 @@ export type PendingChoice =
         | "city-hall"
         | "satyr-swap"
         | "random-town-pack"
+        | "black-tower-dragon"
         | "war-machine"
         | "deck-pick"
         | "deck-search-mode"
@@ -16206,6 +16209,8 @@ export type PendingChoice =
         cost: number;
         source: string;
       };
+      /** Black Tower: the visitor chooses one of the four printed OR rows. */
+      blackTowerDragon?: { fieldId: MapSpaceId; heroId: HeroId };
       /**
        * grail-free-building: one free Town building after BUILD_GRAIL when
        * `grailBuildReward.freeBuilding` is set. `buildingIds` is index-aligned

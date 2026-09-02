@@ -24,7 +24,9 @@ describe("Polish Banks guardian and reward scans", () => {
       expect(existsSync(file), `${side.cardImage} must exist`).toBe(true);
       const bytes = statSync(file).size;
       expect(bytes, `${side.cardImage} must not be a placeholder`).toBeGreaterThan(20_000);
-      expect(bytes, `${side.cardImage} must remain compressed`).toBeLessThan(200_000);
+      expect(bytes, `${side.cardImage} must remain compressed and web-sized`).toBeLessThan(50_000);
     }
+    const totalBytes = paths.reduce((sum, assetPath) => sum + statSync(publicAsset(assetPath)).size, 0);
+    expect(totalBytes, "all 31 readable Polish bank cards must stay lightweight together").toBeLessThan(1_100_000);
   });
 });

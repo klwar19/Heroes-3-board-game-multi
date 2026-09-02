@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { eliminatePlayer, getMainHero, placeCreatureBank } from "./adventure";
-import { startNeutralEncounter } from "./adventure-reducer";
+import {
+  ATTACKER_BACKLINE,
+  ATTACKER_FRONTLINE,
+  BLACK_TOWER_GUARD_CELLS,
+  CREATURE_BANK_GUARD_CORNERS,
+  GRAVEYARD_EXTRA_GUARD_CELLS,
+  placementCellsFor,
+  startNeutralEncounter,
+} from "./adventure-reducer";
 import { nextAfkDropAction } from "./afk-drop";
 import { seatIsAwaitedInOrderedPlay, turnClockPausedFor } from "./afk";
 import { applyAction, createAdventureGameState, NEUTRAL_PLAYER_ID, redactStateForSeat } from "./index";
@@ -843,6 +851,67 @@ describe("PvP Neutral Control — pre-battle formation sort", () => {
     off = applyOk(off, offPlace.action);
     off = applyOk(off, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
     expect(off.combat!.pendingNeutralPlacement ?? null).toBeNull();
+  });
+
+  it("uses Graveyard's six printed spaces, including the corrected two middle cells", () => {
+    let state = makeGame("graveyard-six-space-formation", { pvpNeutralControl: false });
+    state.activePlayerId = "p1";
+    state.players.p1.hand = [];
+    state.adventure!.houseRules!["polish-creature-banks"] = true;
+    state.adventure!.houseRules!["polish-bank-sizes"] = true;
+    const hero = getMainHero(state, "p1")!;
+    hero.spaceId = "bank-field";
+    state.adventure!.fields["bank-field"] = {
+      spaceId: "bank-field", tileInstanceId: "t", slot: 0, location: "blocked_field",
+      blackCube: false, flagOwnerId: null, everFlagged: false, settlementResource: null,
+    };
+    placeCreatureBank(state, "bank-field", "graveyard", 2);
+    startNeutralEncounter(state, hero, state.adventure!.fields["bank-field"]);
+    const place = getLegalActions(state, "p1").find((offer) => offer.action.type === "PLACE_COMBAT_UNIT")!;
+    state = applyOk(state, place.action);
+    state = applyOk(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+    expect(guardsOf(state).map((unit) => unit.position).sort((a, b) => a - b)).toEqual(
+      [...CREATURE_BANK_GUARD_CORNERS, ...GRAVEYARD_EXTRA_GUARD_CELLS].sort((a, b) => a - b)
+    );
+  });
+
+  it("gives Black Tower the normal player area and lets a human choose either Dragon space", () => {
+    let state = makeGame("black-tower-two-space-formation", { players: 3 });
+    state.activePlayerId = "p1";
+    state.players.p1.hand = [];
+    state.adventure!.houseRules!["polish-creature-banks"] = true;
+    state.adventure!.houseRules!["polish-bank-sizes"] = true;
+    const hero = getMainHero(state, "p1")!;
+    hero.spaceId = "bank-field";
+    state.adventure!.fields["bank-field"] = {
+      spaceId: "bank-field", tileInstanceId: "t", slot: 0, location: "blocked_field",
+      blackCube: false, flagOwnerId: null, everFlagged: false, settlementResource: null,
+    };
+    placeCreatureBank(state, "bank-field", "black_tower", 2);
+    startNeutralEncounter(state, hero, state.adventure!.fields["bank-field"]);
+    expect(state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context).toBe("black-tower-dragon");
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice!.id,
+      optionIndex: 2,
+    });
+    expect(state.adventure!.fields["bank-field"].bankVariant).toBe(3);
+    expect(placementCellsFor(state, "p1").sort((a, b) => a - b)).toEqual(
+      [...ATTACKER_FRONTLINE, ...ATTACKER_BACKLINE].sort((a, b) => a - b)
+    );
+    const place = getLegalActions(state, "p1").find((offer) => offer.action.type === "PLACE_COMBAT_UNIT")!;
+    state = applyOk(state, place.action);
+    state = applyOk(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+    const dragon = guardsOf(state)[0]!;
+    expect(dragon.bankSideKey).toBe("guardian:gold-dragon");
+    expect(BLACK_TOWER_GUARD_CELLS).toContain(dragon.position);
+    expect(sortWindowOpenFor(state, "p2")).toBe(true);
+    const other = BLACK_TOWER_GUARD_CELLS.find((cell) => cell !== dragon.position)!;
+    state = applyOk(state, {
+      type: "PLACE_NEUTRAL_GUARD", playerId: "p2", unitId: dragon.id, position: other,
+    });
+    expect(state.combat!.units[dragon.id].position).toBe(other);
   });
 
   it("hands the sort window to the NEXT controller when the current one is eliminated", () => {

@@ -10506,6 +10506,7 @@ export function PlacementPanel({
   const versusBank =
     combat.context.kind === "neutral" &&
     Boolean(combat.context.bankFormation || combat.context.bankId);
+  const versusBlackTower = combat.context.kind === "neutral" && combat.context.bankId === "black_tower";
 
   const placeActions = legalActions.filter(
     (
@@ -10669,8 +10670,10 @@ export function PlacementPanel({
         </div>
       ) : (
         <small>
-          {versusBank
-            ? "Drag units into the central six squares — the bank's four guardians hold the corners. Placed units can be dragged around freely until you lock in."
+          {versusBlackTower
+            ? "Drag units onto your back and front lines — the Black Tower Dragon starts in one of its two spaces on the opposite side. Placed units can be dragged around freely until you lock in."
+            : versusBank
+            ? "Drag units into the central six squares — the bank's guardians hold the outer formation. Placed units can be dragged around freely until you lock in."
             : "Drag units onto your back and front lines — placed units can be dragged around freely until you lock in."}
         </small>
       )}

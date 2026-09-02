@@ -40,8 +40,9 @@ describe("Creature Bank field-tile art", () => {
     expect(new Set(paths).size).toBe(8);
     for (const path of paths) {
       expect(path).toContain("/assets/polish-banks/location-");
-      expect(statSync(publicAsset(path)).size).toBeLessThan(100_000);
+      expect(statSync(publicAsset(path)).size).toBeLessThan(5_000);
     }
+    expect(paths.reduce((sum, path) => sum + statSync(publicAsset(path)).size, 0)).toBeLessThan(25_000);
   });
 
   it("gives each bank a DISTINCT image — none silently shares another's art or the generic token", () => {

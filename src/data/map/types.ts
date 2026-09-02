@@ -220,6 +220,8 @@ export type LocationInteraction =
        * then leaves you with 1.
        */
       type: "GAIN_ABILITY_EMPOWER_TOKEN";
+      /** Printed/mandatory grant; bypasses the optional official-bank toggle. */
+      force?: boolean;
     }
   | {
       /** Hill Fort: reinforce one Few unit, cost reduced by 3 gold (min 0). */

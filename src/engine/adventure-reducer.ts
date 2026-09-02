@@ -937,6 +937,10 @@ export function combatUnitLimit(state: GameState): number {
  */
 export const CREATURE_BANK_GUARD_CORNERS = [0, 3, 16, 19];
 export const CREATURE_BANK_ATTACKER_CELLS = [5, 6, 9, 10, 13, 14];
+/** Graveyard's two extra Zombies sit at the top/bottom of the middle column. */
+export const GRAVEYARD_EXTRA_GUARD_CELLS = [8, 11];
+/** Black Tower's one Dragon starts in either of the two middle defender cells. */
+export const BLACK_TOWER_GUARD_CELLS = [1, 2];
 /**
  * Free board cells (neither a guard corner nor an attacker cell) that seat a
  * bank/Dragon-Utopia guard party LARGER than the four corners — a Dragon Utopia
@@ -954,6 +958,17 @@ function usesBankFormation(combat: CombatState): boolean {
     combat.context.kind === "neutral" &&
     (Boolean(combat.context.bankFormation) || isCreatureBankId(combat.context.bankId))
   );
+}
+
+function usesBlackTowerFormation(combat: CombatState): boolean {
+  return combat.context.kind === "neutral" && combat.context.bankId === "black_tower";
+}
+
+/** Black Tower keeps the ordinary attacker-side two rows; other banks use the central six. */
+function bankAttackerDeploymentCells(combat: CombatState): readonly number[] {
+  return usesBlackTowerFormation(combat)
+    ? [...ATTACKER_FRONTLINE, ...ATTACKER_BACKLINE]
+    : CREATURE_BANK_ATTACKER_CELLS;
 }
 
 function requireAdventure(state: GameState) {
@@ -5653,7 +5668,13 @@ export function startNeutralEncounter(
 
   // Creature Banks have no Field Difficulty, so they skip Quick Combat and the
   // Diplomacy shortcut entirely (rulebook p.66): you always fight the bank.
-  if (fieldCreatureBankId(field)) {
+  const creatureBankId = fieldCreatureBankId(field);
+  if (creatureBankId) {
+    if (creatureBankId === "black_tower" && houseRuleEnabled(state, "polish-creature-banks")) {
+      if (maybeOpenBlackTowerDragonChoice(state, hero, field)) {
+        return;
+      }
+    }
     beginNeutralCombatPlacement(state, hero, field, 0);
     return;
   }
@@ -5745,6 +5766,59 @@ export function startNeutralEncounter(
   }
 
   beginNeutralCombatPlacement(state, hero, field, difficulty);
+}
+
+const BLACK_TOWER_DRAGON_OPTIONS = [
+  "Green Dragon",
+  "Red Dragon",
+  "Gold Dragon",
+  "Black Dragon",
+] as const;
+
+/** Black Tower's four guardian/reward rows are alternatives joined by OR. */
+function maybeOpenBlackTowerDragonChoice(state: GameState, hero: HeroState, field: MapFieldState): boolean {
+  if (field.bankVariant) {
+    return false;
+  }
+  const playerId = hero.controllerId;
+  if (state.controllers?.[playerId]?.kind === "computer") {
+    const random = createSeededRandom(
+      `${state.seed}#black-tower-dragon#${field.spaceId}#${eventSeedNumber(state)}`
+    );
+    field.bankVariant = (random.nextInt(0, BLACK_TOWER_DRAGON_OPTIONS.length - 1) + 1) as BankSize;
+    return false;
+  }
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: "Black Tower — choose one of the four Dragon guardians (OR). Its row also sets the reward.",
+    options: BLACK_TOWER_DRAGON_OPTIONS.map((name) => ({ label: name })),
+    context: "black-tower-dragon",
+    blackTowerDragon: { fieldId: field.spaceId, heroId: hero.id },
+    returnPhase: state.phase,
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+  return true;
+}
+
+function resolveBlackTowerDragonChoice(state: GameState, optionIndex: number): void {
+  const choice = state.pendingChoice;
+  const data = choice?.type === "OPTION_CHOICE" ? choice.blackTowerDragon : undefined;
+  if (!choice || choice.type !== "OPTION_CHOICE" || choice.context !== "black-tower-dragon" || !data) {
+    throw new Error("There is no Black Tower Dragon choice to resolve.");
+  }
+  const field = state.adventure?.fields[data.fieldId];
+  const hero = state.heroes[data.heroId];
+  if (!field || !hero || fieldCreatureBankId(field) !== "black_tower") {
+    throw new Error("The Black Tower is no longer available.");
+  }
+  field.bankVariant = (Math.max(0, Math.min(3, optionIndex)) + 1) as BankSize;
+  state.pendingChoice = null;
+  state.phase = choice.returnPhase;
+  state.priorityPlayerId = null;
+  startNeutralEncounter(state, hero, field);
 }
 
 /**
@@ -9354,6 +9428,9 @@ export function neutralFormationCellsFor(state: GameState): number[] {
     return [];
   }
   if (usesBankFormation(combat)) {
+    if (usesBlackTowerFormation(combat)) {
+      return [...BLACK_TOWER_GUARD_CELLS];
+    }
     return [...CREATURE_BANK_GUARD_CORNERS];
   }
   // Field fight: any cell on the defender side (both rows).
@@ -9410,13 +9487,16 @@ export function placeNeutralGuard(state: GameState, action: Extract<GameAction, 
     throw new Error("That unit is not a Neutral guard you can reposition.");
   }
   // Field = any defender-row cell (shooters restricted to the back row under
-  // Manual guard control); bank = the four corners only.
+  // Manual guard control); most banks = four corners; Black Tower = either of
+  // its two printed Dragon cells.
   const isBank = usesBankFormation(combat);
   const shooterRestricted = !isBank && guard.type === "ranged" && neutralPlacementIsManual(state);
   if (!neutralFormationCellsForGuard(state, guard).includes(action.position)) {
     throw new Error(
       isBank
-        ? "A Creature Bank guard must stay on one of the four corner cells."
+        ? usesBlackTowerFormation(combat)
+          ? "The Black Tower Dragon must stay on one of its two defender spaces."
+          : "A Creature Bank guard must stay on one of the four corner cells."
         : shooterRestricted
           ? "A shooter must be placed on the defender's back row."
           : "A Neutral guard must stay on the defender's back or front line."
@@ -9535,6 +9615,14 @@ function placeCreatureBankGuards(state: GameState, units: CombatUnitState[]): vo
     // salt it again or "return to AI placement" would reshuffle the formation.
     { salt: false }
   );
+  if (combat && usesBlackTowerFormation(combat)) {
+    // With human Neutral control the placement window can move the Dragon to
+    // either printed space. With AI control this seeded choice is authoritative.
+    if (units[0]) {
+      units[0].position = BLACK_TOWER_GUARD_CELLS[random.nextInt(0, BLACK_TOWER_GUARD_CELLS.length - 1)]!;
+    }
+    return;
+  }
   const corners = [...CREATURE_BANK_GUARD_CORNERS];
   for (let index = corners.length - 1; index > 0; index -= 1) {
     const swapIndex = random.nextInt(0, index);
@@ -9544,7 +9632,10 @@ function placeCreatureBankGuards(state: GameState, units: CombatUnitState[]): vo
     // The four corners first; a larger party (Dragon Utopia / designer exact
     // army) spills onto the free non-attacker cells so no guard is left at the
     // minted default cell 0.
-    const cell = index < corners.length ? corners[index] : CREATURE_BANK_GUARD_OVERFLOW_CELLS[index - corners.length];
+    const overflow = bankId === "graveyard"
+      ? GRAVEYARD_EXTRA_GUARD_CELLS
+      : CREATURE_BANK_GUARD_OVERFLOW_CELLS;
+    const cell = index < corners.length ? corners[index] : overflow[index - corners.length];
     if (cell !== undefined) {
       unit.position = cell;
     }
@@ -9565,7 +9656,12 @@ function revealCreatureBankArmy(state: GameState, bankId: CreatureBankId): void 
   }
 
   const bankField = state.adventure?.fields[combat.context.fieldId];
-  const { units, stackedCount } = buildCreatureBankCombatUnits(state, bankId, bankField?.bankSize);
+  const { units, stackedCount } = buildCreatureBankCombatUnits(
+    state,
+    bankId,
+    bankField?.bankSize,
+    bankField?.bankVariant
+  );
   combat.context.bankStackCount = stackedCount;
   // Bank defenders carry no tier, so the azure "no time limit" rule never fires.
   combat.context.hasAzure = false;
@@ -10540,7 +10636,7 @@ export function placementCellsFor(state: GameState, playerId: PlayerId): number[
   }
 
   if (usesBankFormation(combat)) {
-    return [...CREATURE_BANK_ATTACKER_CELLS];
+    return [...bankAttackerDeploymentCells(combat)];
   }
 
   return [...ATTACKER_FRONTLINE, ...ATTACKER_BACKLINE];
@@ -11845,7 +11941,7 @@ export function commanderDeploymentCellsFor(state: GameState, playerId: PlayerId
   }
   const isBankAttacker = usesBankFormation(combat) && playerId === combat.attackerPlayerId;
   if (isBankAttacker) {
-    return [...CREATURE_BANK_ATTACKER_CELLS];
+    return [...bankAttackerDeploymentCells(combat)];
   }
   if (playerId === combat.defenderPlayerId && playerId !== combat.attackerPlayerId) {
     return [...DEFENDER_BACKLINE, ...DEFENDER_FRONTLINE];
@@ -11956,7 +12052,7 @@ function injectCombatCommanders(state: GameState, onlyPlayerIds?: ReadonlySet<Pl
     sides.push({
       playerId: heroBrings(context.heroId),
       cells: usesBankFormation(combat)
-        ? CREATURE_BANK_ATTACKER_CELLS
+        ? bankAttackerDeploymentCells(combat)
         : [...ATTACKER_BACKLINE, ...ATTACKER_FRONTLINE]
     });
   } else if (context.kind === "player") {
@@ -11999,7 +12095,7 @@ function injectCombatHeroes(state: GameState): void {
     {
       playerId: combat.attackerPlayerId,
       cells: usesBankFormation(combat)
-        ? CREATURE_BANK_ATTACKER_CELLS
+        ? bankAttackerDeploymentCells(combat)
         : [...ATTACKER_BACKLINE, ...ATTACKER_FRONTLINE]
     },
     { playerId: combat.defenderPlayerId, cells: [...DEFENDER_BACKLINE, ...DEFENDER_FRONTLINE] }
@@ -12074,7 +12170,7 @@ function injectHeroGradeFamiliars(state: GameState): void {
     {
       playerId: combat.attackerPlayerId,
       cells: usesBankFormation(combat)
-        ? CREATURE_BANK_ATTACKER_CELLS
+        ? bankAttackerDeploymentCells(combat)
         : [...ATTACKER_BACKLINE, ...ATTACKER_FRONTLINE]
     },
     { playerId: combat.defenderPlayerId, cells: [...DEFENDER_BACKLINE, ...DEFENDER_FRONTLINE] }
@@ -16729,6 +16825,11 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
 
   if (choice.context === "random-town-pack") {
     resolveRandomTownPackChoice(state, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "black-tower-dragon") {
+    resolveBlackTowerDragonChoice(state, action.optionIndex);
     return;
   }
 

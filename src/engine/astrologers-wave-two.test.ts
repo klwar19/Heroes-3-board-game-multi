@@ -11,7 +11,7 @@ import {
   startAdventureRound
 } from "./adventure";
 import { pumpAdventureQueues } from "./adventure-reducer";
-import { TWO_COPY_NEUTRAL_UNIT_IDS } from "./adventure-setup";
+import { THREE_COPY_NEUTRAL_UNIT_IDS, TWO_COPY_NEUTRAL_UNIT_IDS } from "./adventure-setup";
 import { astrologersDeckCardIds } from "@/data/cards/astrologers";
 import { neutralUnitIdsByTier } from "@/data/factions/core";
 import type { AdventureState, GameAction, GameState, PlayerId } from "./state";
@@ -203,7 +203,11 @@ describe("Astrologers — Elementals (seed an Elemental on top of each Neutral d
       const deck = state.decks[NEUTRAL_DECK_IDS[tier]]!;
       const allCards = [...deck.drawPile, ...deck.discardPile];
       for (const unitDefId of neutralUnitIdsByTier[tier]) {
-        const expected = TWO_COPY_NEUTRAL_UNIT_IDS.has(unitDefId) ? 2 : 1;
+        const expected = THREE_COPY_NEUTRAL_UNIT_IDS.has(unitDefId)
+          ? 3
+          : TWO_COPY_NEUTRAL_UNIT_IDS.has(unitDefId)
+            ? 2
+            : 1;
         expect(allCards.filter((cardId) => cardId === unitDefId), `${tier}: ${unitDefId}`).toHaveLength(expected);
       }
     }
@@ -212,7 +216,9 @@ describe("Astrologers — Elementals (seed an Elemental on top of each Neutral d
         "neutral.azure_dragons",
         "neutral.centaurs",
         "neutral.crystal_dragons",
+        "neutral.cyclopes",
         "neutral.diamond_golems",
+        "neutral.earth_elementals",
         "neutral.elves",
         "neutral.faerie_dragons",
         "neutral.gold_golems",
@@ -223,10 +229,12 @@ describe("Astrologers — Elementals (seed an Elemental on top of each Neutral d
         "neutral.mummies",
         "neutral.nomads",
         "neutral.rust_dragons",
+        "neutral.sharpshooters",
         "neutral.titans",
         "neutral.wyverns"
       ].sort()
     );
+    expect([...THREE_COPY_NEUTRAL_UNIT_IDS]).toEqual(["neutral.enchanters"]);
   });
 
   it("a deck with no Elemental left anywhere is skipped without losing a card", () => {

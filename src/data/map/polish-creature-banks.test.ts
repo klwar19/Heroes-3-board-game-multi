@@ -76,7 +76,7 @@ describe("Polish Banks printed set", () => {
           type: "SEQUENCE",
           interactions: [
             { type: "GAIN_UNIT", unitDefId, side: "bank", bankSideKey: `reward:${family}:${size}` },
-            { type: "GAIN_ABILITY_EMPOWER_TOKEN" }
+            { type: "GAIN_ABILITY_EMPOWER_TOKEN", force: true }
           ]
         });
         expect(POLISH_CREATURE_BANK_UNIT_SIDES[`reward:${family}:${size}`]).toBeTruthy();
@@ -110,6 +110,27 @@ describe("Polish Banks printed set", () => {
       ]
     });
     expect(JSON.stringify(POLISH_CREATURE_BANKS.dragon_utopia.buildReward(4))).toContain('"maxArtifactTier":"major"');
+  });
+
+  it("uses the corrected Graveyard payout and the printed Pyramid Search (6)", () => {
+    expect(POLISH_CREATURE_BANKS.graveyard.buildReward(2)).toEqual({
+      type: "SEQUENCE",
+      interactions: [
+        { type: "GAIN_MORALE", amount: -1 },
+        { type: "GAIN_RESOURCES", gold: 10 }
+      ]
+    });
+    expect(POLISH_CREATURE_BANKS.pyramid.buildReward(2)).toEqual({
+      type: "SEQUENCE",
+      interactions: [
+        { type: "SEARCH_SHARED_DECK", deckId: "spells", count: 5 },
+        { type: "REMOVE_THEN_SEARCH_REPEAT", times: 2, searchCount: 6 }
+      ]
+    });
+  });
+
+  it("names the Steel Golem bank Experimental Shop", () => {
+    expect(POLISH_CREATURE_BANKS.training_grounds.name).toBe("Experimental Shop");
   });
 
   it("treats Medusa's printed 3X-gold OR X-valuables as one whole reward choice", () => {

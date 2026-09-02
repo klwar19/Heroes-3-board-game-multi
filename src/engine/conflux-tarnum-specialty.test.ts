@@ -163,6 +163,9 @@ describe("Tarnum IV — pay 10 gold for the Enchanters", () => {
     const state = tarnumIvState("tarnum-iv-pay");
     state.players.p1.resources.gold = 10;
     const before = state.players.p1.resources.gold;
+    const enchantersBefore = state.decks[NEUTRAL_DECK_IDS.gold].drawPile.filter(
+      (cardId) => cardId === "neutral.enchanters"
+    ).length;
 
     const pay = getLegalActions(state, "p1").find(
       (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === T4 && legal.action.optionIndex === 0
@@ -171,7 +174,9 @@ describe("Tarnum IV — pay 10 gold for the Enchanters", () => {
     const after = applyOk(state, pay!.action);
     expect(after.players.p1.resources.gold).toBe(before - 10);
     expect(after.players.p1.army.some((u) => u.unitDefId === "neutral.enchanters")).toBe(true);
-    expect(after.decks[NEUTRAL_DECK_IDS.gold].drawPile).not.toContain("neutral.enchanters");
+    expect(
+      after.decks[NEUTRAL_DECK_IDS.gold].drawPile.filter((cardId) => cardId === "neutral.enchanters")
+    ).toHaveLength(enchantersBefore - 1);
   });
 
   it("offers the Enchanters purchase with Tarnum's normal starting army intact", () => {

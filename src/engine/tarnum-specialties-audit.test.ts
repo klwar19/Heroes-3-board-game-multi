@@ -152,6 +152,10 @@ describe("REPORT 1: Tarnum IV recruits the Enchanters on a HOSTED table", () => 
 
   it("REPRO: the browser's own frame offers the pay-10-gold Enchanters, and it really joins the army", () => {
     const state = conflux4("tc4-hosted");
+    const enchantersBefore = [
+      ...state.decks[GOLD_DECK].drawPile,
+      ...state.decks[GOLD_DECK].discardPile,
+    ].filter((cardId) => cardId === "neutral.enchanters").length;
 
     // The client derives its buttons from the redacted frame — this is the exact
     // list the player sees. Before the fix it was [1] (Draw a card) alone.
@@ -167,8 +171,11 @@ describe("REPORT 1: Tarnum IV recruits the Enchanters on a HOSTED table", () => 
     const after = applyOk(state, fetch!.action);
     expect(after.players.p1.army.some((unit) => unit.unitDefId === "neutral.enchanters")).toBe(true);
     expect(after.players.p1.resources.gold).toBe(20);
-    expect(after.decks[GOLD_DECK].drawPile).not.toContain("neutral.enchanters");
-    expect(after.decks[GOLD_DECK].discardPile).not.toContain("neutral.enchanters");
+    expect(
+      [...after.decks[GOLD_DECK].drawPile, ...after.decks[GOLD_DECK].discardPile].filter(
+        (cardId) => cardId === "neutral.enchanters"
+      )
+    ).toHaveLength(enchantersBefore - 1);
   });
 
   it("CONTROL: on the real (unmasked) state a truly emptied gold deck offers ONLY the draw", () => {

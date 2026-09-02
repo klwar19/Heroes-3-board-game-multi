@@ -375,7 +375,10 @@ function polishUnitReward(unitDefId: string, family: string, size: number): Loca
     type: "SEQUENCE",
     interactions: [
       { type: "GAIN_UNIT", unitDefId, side: "bank", bankSideKey: `reward:${family}:${exactSize}` },
-      { type: "GAIN_ABILITY_EMPOWER_TOKEN" }
+      // The crown printed beside each Polish creature reward is mandatory.
+      // `force` bypasses the separate legacy/official-bank house-rule toggle;
+      // otherwise the visit resolver silently discards this printed reward.
+      { type: "GAIN_ABILITY_EMPOWER_TOKEN", force: true }
     ]
   };
 }
@@ -511,10 +514,10 @@ export const CREATURE_BANKS: Record<CreatureBankId, CreatureBankDefinition> = {
     tier: "near",
     units: ["neutral.gold_golems", "neutral.gold_golems", "neutral.diamond_golems", "neutral.diamond_golems"],
     rewardText:
-      "Search (5) the Spell Deck. Extra: up to X times, remove 1 Spell/Ability/Artifact card from your hand or discard pile, then Search (5) the appropriate Deck.",
+      "Search (5) the Spell Deck. Extra: up to X times, remove 1 Spell/Ability/Artifact card from your hand or discard pile, then Search (6) the appropriate Deck.",
     rewardStatus: "implemented",
     // Base Search (5) the Spell Deck, then the per-Stack extra: up to X times,
-    // remove a Spell/Ability/Artifact card (hand or discard) and Search (5) the
+    // remove a Spell/Ability/Artifact card (hand or discard) and Search (6) the
     // deck matching the removed card. X = 0 collapses to just the base search.
     buildReward: (x) =>
       x > 0
@@ -522,7 +525,7 @@ export const CREATURE_BANKS: Record<CreatureBankId, CreatureBankDefinition> = {
             type: "SEQUENCE",
             interactions: [
               { type: "SEARCH_SHARED_DECK", deckId: "spells", count: 5 },
-              { type: "REMOVE_THEN_SEARCH_REPEAT", times: x, searchCount: 5 }
+              { type: "REMOVE_THEN_SEARCH_REPEAT", times: x, searchCount: 6 }
             ]
           }
         : { type: "SEARCH_SHARED_DECK", deckId: "spells", count: 5 }
@@ -619,8 +622,8 @@ export const CREATURE_BANKS: Record<CreatureBankId, CreatureBankDefinition> = {
   graveyard: {
     id: "graveyard", name: "Graveyard", tier: "far",
     units: Array(6).fill("neutral.zombies"), unitSideKeys: Array(6).fill("guardian:zombies"),
-    rewardText: "−1 morale and 2 gold. Extra: +3X gold.", rewardStatus: "implemented",
-    buildReward: (x) => ({ type: "SEQUENCE", interactions: [{ type: "GAIN_MORALE", amount: -1 }, { type: "GAIN_RESOURCES", gold: 2 + 3 * x }] })
+    rewardText: "−1 morale and 6 gold. Extra: +2X gold.", rewardStatus: "implemented",
+    buildReward: (x) => ({ type: "SEQUENCE", interactions: [{ type: "GAIN_MORALE", amount: -1 }, { type: "GAIN_RESOURCES", gold: 6 + 2 * x }] })
   },
   ruins: {
     id: "ruins", name: "Ruins", tier: "far",
@@ -661,7 +664,7 @@ export const CREATURE_BANKS: Record<CreatureBankId, CreatureBankDefinition> = {
     buildReward: (size) => polishUnitReward("neutral.phoenixes", "fire-birds", size)
   },
   training_grounds: {
-    id: "training_grounds", name: "Training Grounds", tier: "near",
+    id: "training_grounds", name: "Experimental Shop", tier: "near",
     units: Array(4).fill("neutral.steel_golems"), unitSideKeys: Array(4).fill("guardian:steel-golems"),
     rewardText: "Gain the size-matched Giants card and 1 Empower token.", rewardStatus: "implemented",
     buildReward: (size) => polishUnitReward("neutral.titans", "giants", size)
