@@ -1122,7 +1122,7 @@ export function coopMapDesignProblems(
   }
   if (capacity.computer + capacity.flexible === 0) {
     problems.push(
-      "No starting position is open to a computer — mark at least one Town “Only AI” or “Free (random)”, so no table with computer seats can start here."
+      "No starting position is open to a computer — mark at least one Town “Only AI” or “Free (random)”, so no multiplayer table with computer seats can start here (a solo game may still seat its AI on a leftover “Only player” Town)."
     );
   }
   return problems;
