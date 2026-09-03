@@ -1098,12 +1098,14 @@ function fireShotsAtUnit(
 
 const ARTILLERY_ABILITY_ID = "ability.artillery" as CardId;
 
-/** How many shots the Artillery expert side resolves, read from its card. */
-function artilleryVolleyShots(): number {
-  const effect = cardLibrary[ARTILLERY_ABILITY_ID]?.effect;
+/** How many shots one Artillery Ballista side resolves, read from the active printing. */
+function artilleryVolleyShots(state: GameState, expert: boolean): number {
+  // Community reprints take precedence over Polish reprints everywhere else,
+  // so run the same two-stage resolver here instead of reading the base card.
+  const effect = balanceCard(state, ARTILLERY_ABILITY_ID)?.effect;
   if (effect?.type === "CHOOSE_ONE") {
     for (const option of effect.options) {
-      if (option.effect.type === "ARTILLERY_BALLISTA_VOLLEY") {
+      if (option.effect.type === "ARTILLERY_BALLISTA_VOLLEY" && Boolean(option.expertOnly) === expert) {
         return option.effect.shots;
       }
     }
@@ -1124,7 +1126,18 @@ export function playerCanUseArtilleryVolley(state: GameState, playerId: PlayerId
       // An EMPOWERED Artillery plays its Expert volley with no crown, so it must
       // be offered at 0 crowns too (canPlayExpertMode is the shared read).
       canPlayExpertMode(player, ARTILLERY_ABILITY_ID) &&
-      artilleryVolleyShots() > 1
+      artilleryVolleyShots(state, true) > 1
+  );
+}
+
+/** Polish Balance Artillery's crown-free Basic two-shot Ballista alternative. */
+export function playerCanUseBasicArtilleryVolley(state: GameState, playerId: PlayerId): boolean {
+  const player = state.players[playerId];
+  return Boolean(
+    houseRuleEnabled(state, "polish-card-balance") &&
+      !houseRuleEnabled(state, "community-card-balance") &&
+      player?.hand.includes(ARTILLERY_ABILITY_ID) &&
+      artilleryVolleyShots(state, false) > 1
   );
 }
 
@@ -1195,7 +1208,7 @@ function spendBallisticsExpert(state: GameState, playerId: PlayerId): void {
 export function grantBalanceBallistaAim(state: GameState, playerId: PlayerId): boolean {
   // The Community Balance Change prints the aim on its EXPERT side only ("…
   // resolve its effect against the same target 3 times. You may select the
-  // target."), which is exactly the call from `spendArtilleryExpert`. Its BASIC
+  // target."), which is exactly the call from `spendArtillery`. Its BASIC
   // side is a plain DEAL_DAMAGE and never reaches the other call site (the
   // printed `DAMAGE_LOWEST_INITIATIVE_ENEMY` branch, which only the classic /
   // Polish Artillery resolves).
@@ -1229,13 +1242,13 @@ export function grantBalanceBallistaAim(state: GameState, playerId: PlayerId): b
   return true;
 }
 
-/** Pays the Artillery expert cost: spend a crown (unless Empowered) and play (discard) the card. */
-function spendArtilleryExpert(state: GameState, playerId: PlayerId): void {
+/** Plays Artillery for a Ballista volley; only Expert spends a crown. */
+function spendArtillery(state: GameState, playerId: PlayerId, mode: "basic" | "expert"): void {
   const player = state.players[playerId];
   if (!player) {
     return;
   }
-  if (!abilityExpertIsCrownFree(player, ARTILLERY_ABILITY_ID)) {
+  if (mode === "expert" && !abilityExpertIsCrownFree(player, ARTILLERY_ABILITY_ID)) {
     player.combatStats.expertUsesSpentThisRound += 1;
   }
   // Balance Pack: the reprinted EXPERT side also carries the aim rider
@@ -1251,7 +1264,7 @@ function spendArtilleryExpert(state: GameState, playerId: PlayerId): void {
     playerId,
     cardId: ARTILLERY_ABILITY_ID,
     timing: cardLibrary[ARTILLERY_ABILITY_ID]?.timing ?? "instant",
-    mode: "expert"
+    mode
   });
 }
 
@@ -1502,17 +1515,31 @@ export function processWarMachineRound(state: GameState): void {
         continue;
       }
 
-      // Artillery (expert): a Ballista owner holding the Artillery ability may
-      // play it for one expert use, resolving this shot against the SAME target
-      // 3×. Offered only with both the card and a free crown in hand.
-      if (playerCanUseArtilleryVolley(state, playerId)) {
-        const shots = artilleryVolleyShots();
+      // Artillery: the Polish reprint adds a crown-free Basic 2-shot choice;
+      // classic/community retain only the crown-costed Expert 3-shot choice.
+      const basicArtillery = playerCanUseBasicArtilleryVolley(state, playerId);
+      const expertArtillery = playerCanUseArtilleryVolley(state, playerId);
+      if (basicArtillery || expertArtillery) {
+        const basicShots = artilleryVolleyShots(state, false);
+        const expertShots = artilleryVolleyShots(state, true);
+        const labels = [
+          ...(expertArtillery
+            ? [`Artillery: hit the same target ${expertShots}× (expert)`]
+            : [])
+        ];
         openWarMachineOffer(
           state,
           playerId,
-          `${name}: play Artillery (expert) to resolve it against the same target ${shots}×, or fire once?`,
-          `Artillery: hit the same target ${shots}× (expert)`,
-          "Fire once"
+          basicArtillery && expertArtillery
+            ? `${name}: play Artillery to fire twice, use Expert to fire three times, or fire once?`
+            : basicArtillery
+              ? `${name}: play Artillery to resolve it twice against one chosen target, or fire once?`
+            : `${name}: play Artillery (expert) to resolve it against the same target ${expertShots}×, or fire once?`,
+          basicArtillery
+            ? `Artillery: hit the same target ${basicShots}× (basic)`
+            : `Artillery: hit the same target ${expertShots}× (expert)`,
+          "Fire once",
+          labels
         );
         return;
       }
@@ -1596,14 +1623,20 @@ export function resolveWarMachineOption(state: GameState, playerId: PlayerId, op
     throw new Error("That war machine has no offer to resolve.");
   }
 
-  // Ballista offer: option 0 plays Artillery (expert) for the same-target volley
-  // — spend a crown and discard the card — any other option fires one basic
-  // shot. Either may need a tie-break choice before the Ballista is done.
+  // Ballista offer: Polish Basic is option 0 and Expert (when available) is
+  // option 2; classic/community Expert remains option 0. Option 1 fires once.
   if (roundStart.kind === "damage-lowest-initiative") {
     const name = warMachineName(state, playerId);
-    if (optionIndex === 0 && playerCanUseArtilleryVolley(state, playerId)) {
-      const shots = artilleryVolleyShots();
-      spendArtilleryExpert(state, playerId);
+    const basicAvailable = playerCanUseBasicArtilleryVolley(state, playerId);
+    const expertSelected = (basicAvailable && optionIndex === 2) || (!basicAvailable && optionIndex === 0);
+    const basicSelected = basicAvailable && optionIndex === 0;
+    if (
+      (basicSelected && playerCanUseBasicArtilleryVolley(state, playerId)) ||
+      (expertSelected && playerCanUseArtilleryVolley(state, playerId))
+    ) {
+      const mode = expertSelected ? "expert" : "basic";
+      const shots = artilleryVolleyShots(state, expertSelected);
+      spendArtillery(state, playerId, mode);
       const candidates = hasBallistaChooseTarget(state, playerId)
         ? Object.values(state.combat?.units ?? {}).filter(
             (unit) => unit.controllerId !== playerId && isAlive(unit)

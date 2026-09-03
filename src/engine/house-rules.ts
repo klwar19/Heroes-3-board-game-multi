@@ -383,6 +383,15 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     legacyDefault: false,
   },
   {
+    id: "polish-bank-auto-combat",
+    label: "Banks auto combat",
+    description:
+      "Polish house rule: after a Creature Bank reveals its Stack Tokens, offer Auto Combat when at least one deployed army unit cannot take attack damage even from the bank's strongest possible +1 Attack-die result. Choosing it wins the bank immediately; otherwise fight normally.",
+    category: "polish",
+    default: false,
+    legacyDefault: false,
+  },
+  {
     id: "polish-grail-utopia",
     label: "Grail & Dragon Utopia",
     description:

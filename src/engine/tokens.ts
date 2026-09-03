@@ -159,9 +159,14 @@ export function removeToken(
   return true;
 }
 
-/** "If the unit … takes any damage while having the Paralysis Token, remove it." */
-export function noteUnitDamagedForTokens(state: GameState, unit: CombatUnitState, damage: number): void {
-  if (damage > 0 && hasToken(unit, "paralysis")) {
+/** Paralysis clears on damage, and an attack clears it even when damage is 0. */
+export function noteUnitDamagedForTokens(
+  state: GameState,
+  unit: CombatUnitState,
+  damage: number,
+  attacked = false
+): void {
+  if ((damage > 0 || attacked) && hasToken(unit, "paralysis")) {
     removeToken(state, unit, "paralysis", "damage");
   }
 }

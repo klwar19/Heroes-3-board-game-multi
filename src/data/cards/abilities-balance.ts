@@ -53,6 +53,36 @@ function printed(cardId: string): CardDefinition {
 }
 
 export const polishBalanceAbilityCards: CardLibrary = {
+  "ability.artillery": {
+    ...printed("ability.artillery"),
+    tags: [
+      "ability",
+      "instant",
+      "war-machine",
+      "Basic: Deal 1 damage to an enemy unit with the lowest initiative OR, when using the Ballista, resolve its effect against the same target 2 times. Until the end of this combat, you choose your Ballista's targets. Expert: resolve the Ballista against the same target 3 times and keep choosing its targets.",
+      "Balance pack: the new Basic Ballista alternative is offered at the Ballista's round-start trigger, costs no crown, consumes Artillery, fires twice at one chosen enemy, and grants Ballista target choice for the rest of the combat. Expert remains the crown-costed three-shot alternative."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Deal 1 damage to the enemy unit with the lowest initiative",
+          combatOnly: true,
+          combatAnytime: true,
+          effect: { type: "DAMAGE_LOWEST_INITIATIVE_ENEMY", amount: 1 }
+        },
+        {
+          label: "When your Ballista fires: resolve it against the same target 2× (you pick the target)",
+          effect: { type: "ARTILLERY_BALLISTA_VOLLEY", shots: 2 }
+        },
+        {
+          label: "When your Ballista fires: resolve it against the same target 3× (you pick the target)",
+          expertOnly: true,
+          effect: { type: "ARTILLERY_BALLISTA_VOLLEY", shots: 3 }
+        }
+      ]
+    }
+  },
   "ability.intelligence": {
     ...printed("ability.intelligence"),
     tags: [

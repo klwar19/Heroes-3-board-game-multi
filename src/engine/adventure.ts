@@ -2591,6 +2591,24 @@ export function classifyHeroStep(
     return movement.passEncounters || passAnyField(movement) ? "encounter" : "stop";
   }
 
+  // Route-planning corridors: Sanctuary has no arrival interaction of its own,
+  // and an already-friendly Mine / Settlement / Town has nothing left for this
+  // hero to resolve. Treat those peaceful hexes exactly like Empty Fields for
+  // both the player's reachable-path BFS and the AI distance field. Enemy-held
+  // economy sites stay below and still stop for capture/garrison resolution.
+  const friendlyFlag =
+    field.flagOwnerId === playerId ||
+    Boolean(field.extraFlagOwnerIds?.includes(playerId)) ||
+    fieldFlaggedByAlly(state, playerId, field);
+  const friendlyEconomyTransit =
+    friendlyFlag &&
+    (field.location === "mine" ||
+      field.location === "settlement" ||
+      location?.category === "town");
+  if ((field.location === "sanctuary" && !isFieldGuarded(field)) || friendlyEconomyTransit) {
+    return "open";
+  }
+
   if (
     isFieldGuarded(field) &&
     field.flagOwnerId !== playerId &&

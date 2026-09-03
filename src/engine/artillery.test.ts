@@ -3,6 +3,7 @@ import { applyAction, createInitialGameState, getLegalActions } from "./index";
 import { abilityDeckBinh, abilityDeckLegacy } from "@/data/cards/abilities-extra";
 import { cardLibrary } from "@/data/cards/library";
 import { cardShotFxPlans } from "@/data/fx";
+import { polishBalanceCard } from "./polish-balance-spells";
 import type { GameAction, GameEvent, GameState, PlayerId } from "./state";
 
 function applyOk(state: GameState, action: GameAction): GameState {
@@ -212,8 +213,13 @@ describe("Artillery (basic)", () => {
 // ===========================================================================
 
 describe("Artillery (expert) — the Ballista volley", () => {
-  function volleySetup(opts: { crowns: number; artillery: boolean }): GameState {
+  function volleySetup(opts: { crowns: number; artillery: boolean; polish?: boolean }): GameState {
     const state = createInitialGameState("artillery-volley");
+    if (opts.polish) {
+      state.adventure = {
+        houseRules: { "polish-card-balance": true }
+      } as GameState["adventure"];
+    }
     state.players.p1.hand = opts.artillery ? ["ability.artillery"] : [];
     state.players.p2.hand = [];
     state.players.p1.permanents = ["war_machine.ballista"];
@@ -333,5 +339,59 @@ describe("Artillery (expert) — the Ballista volley", () => {
     expect(resolved.combat!.units.unit_p2_vampires.damage).toBe(3);
     expect(resolved.combat!.units.unit_p2_skeletons.damage).toBe(0);
     expect(resolved.pendingChoice ?? null).toBeNull();
+  });
+
+  it("Polish Basic offers a crown-free 2-shot volley and free target choice", () => {
+    const state = volleySetup({ crowns: 0, artillery: true, polish: true });
+    singleSlowest(state, "unit_p2_dread_knights");
+
+    const offered = endRound(state, "p1");
+    const basic = getLegalActions(offered, "p1").find(
+      (legal) => legal.label.includes("Artillery") && legal.label.includes("basic")
+    );
+    expect(basic).toBeTruthy();
+    expect(getLegalActions(offered, "p1").some((legal) => legal.label.includes("expert"))).toBe(false);
+
+    const aiming = applyOk(offered, basic!.action);
+    expect(aiming.pendingChoice?.type).toBe("ABILITY_TARGET_CHOICE");
+    const target = getLegalActions(aiming, "p1").find(
+      (legal) => legal.action.type === "CHOOSE_ABILITY_TARGET" && legal.label.includes("Dread Knights")
+    );
+    const fired = applyOk(aiming, target!.action);
+    expect(fired.combat!.units.unit_p2_dread_knights.damage).toBe(2);
+    expect(fired.players.p1.combatStats.expertUsesSpentThisRound).toBe(0);
+    expect(fired.players.p1.hand).not.toContain("ability.artillery");
+    expect(fired.activeEffects.some((effect) =>
+      effect.modifiers.some((modifier) => modifier.type === "BALLISTA_CHOOSE_TARGET")
+    )).toBe(true);
+  });
+
+  it("Polish Expert remains a 3-shot alternative beside Basic", () => {
+    const state = volleySetup({ crowns: 1, artillery: true, polish: true });
+    singleSlowest(state, "unit_p2_dread_knights");
+    const offered = endRound(state, "p1");
+    const actions = getLegalActions(offered, "p1");
+    expect(actions.some((legal) => legal.label.includes("basic"))).toBe(true);
+    const expert = actions.find((legal) => legal.label.includes("Artillery") && legal.label.includes("expert"));
+    expect(expert).toBeTruthy();
+    const aiming = applyOk(offered, expert!.action);
+    const target = getLegalActions(aiming, "p1").find(
+      (legal) => legal.action.type === "CHOOSE_ABILITY_TARGET" && legal.label.includes("Dread Knights")
+    );
+    const fired = applyOk(aiming, target!.action);
+    expect(fired.combat!.units.unit_p2_dread_knights.damage).toBe(3);
+    expect(fired.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+  });
+
+  it("the Polish reprint exposes Basic 2 shots and Expert 3 shots in its card definition", () => {
+    const state = volleySetup({ crowns: 1, artillery: true, polish: true });
+    const card = polishBalanceCard(state, "ability.artillery");
+    expect(card?.effect.type).toBe("CHOOSE_ONE");
+    if (card?.effect.type !== "CHOOSE_ONE") return;
+    expect(card.effect.options.filter((option) => option.effect.type === "ARTILLERY_BALLISTA_VOLLEY"))
+      .toMatchObject([
+        { effect: { shots: 2 } },
+        { expertOnly: true, effect: { shots: 3 } }
+      ]);
   });
 });

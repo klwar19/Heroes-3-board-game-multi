@@ -4744,7 +4744,9 @@ function applyAttackDamageFromCandidate(
     });
   }
 
-  noteUnitDamagedForTokens(state, defender, damage);
+  // Being attacked clears Paralysis even when Defense and the die reduce the
+  // blow to 0. Non-attack effects still need to deal real damage.
+  noteUnitDamagedForTokens(state, defender, damage, true);
   markUnitRemovedIfNeeded(state, defender);
 
   if (defenderWasAlive && !isUnitAlive(defender)) {

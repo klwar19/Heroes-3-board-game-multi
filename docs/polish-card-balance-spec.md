@@ -149,12 +149,14 @@ Per-card NEW text (verbatim from `NEW Ability`; ⏎ = printed line break removed
   card on the top or bottom of its appropriate deck." (OLD: unpurchased units
   return without a placement choice.) Expert unchanged.
 - **Artillery** — Basic: "Deal 1 DM to an enemy unit with the lowest
-  initiative. ∂: If you have a Balista card played, until the end of this
-  combat you can choose its targets." Expert: "When using the Ballista card,
+  initiative. OR When using the Ballista card, resolve its effect against the
+  same target 2 times. ∂: If you have a Balista card played, until the end of
+  this combat you can choose its targets." Expert: "When using the Ballista card,
   resolve its effect against the same target 3 times. ∂: Until the end of this
-  combat you can choose the targes of your Balista." CHANGES: both sides gain
-  an ongoing rider — while you have a Ballista in play, YOU choose the
-  Ballista's targets for the rest of the combat (reuse the Gerwulf VI /
+  combat you can choose the targes of your Balista." CHANGES: Basic gains a
+  crown-free two-shot Ballista alternative; Expert remains three shots. Both
+  Ballista sides choose one target and grant the ongoing target-choice rider
+  for the rest of the combat (reuse the Gerwulf VI /
   `BALLISTA_CHOOSE_TARGET` machinery).
 - **Ballistics** — Basic: "At the beginning of Combat, you may pay
   1 building material to choose 2 adjacent targets (any combination of units,

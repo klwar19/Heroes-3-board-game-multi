@@ -1068,6 +1068,13 @@ describe("collectMapObjectives", () => {
       side: "few",
     });
     state.adventure!.fields[MINE].difficulty = 1;
+    // Keep this assertion about XP-aware strategic scoring. Friendly towns are
+    // now valid transit corridors, so block through-routing across the town;
+    // otherwise the separate opening-route optimizer deliberately runs first.
+    const opposingHero = Object.values(state.heroes).find(
+      (candidate) => candidate.controllerId !== main.controllerId,
+    )!;
+    opposingHero.spaceId = TOWN;
     const choices = [
       { spaceId: MINE, kind: "guard" as const },
       { spaceId: RESOURCE, kind: "visitable" as const },

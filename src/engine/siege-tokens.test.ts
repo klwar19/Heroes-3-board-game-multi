@@ -146,6 +146,32 @@ describe("combat tokens", () => {
     });
     expect((afterAttack.combat?.units[victim.id].tokens ?? []).some((token) => token.kind === "paralysis")).toBe(false);
   });
+
+  it("removes Paralysis when an attack rolls -1 and deals 0 damage", () => {
+    const state = createInitialGameState("paralysis-zero-damage");
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    const attacker = state.combat!.units.unit_p1_griffins;
+    const victim = state.combat!.units.unit_p2_skeletons;
+    attacker.position = 9;
+    victim.position = 13;
+    attacker.attack = 1;
+    victim.defense = 2;
+    placeCombatToken(state, victim, "paralysis", 0, "Blind");
+    state.combat!.dice.scriptedRolls = [-1];
+
+    const after = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: attacker.id,
+      defenderId: victim.id
+    });
+    const roll = after.eventLog.find(
+      (event) => event.type === "ATTACK_ROLLED" && event.attackerId === attacker.id && !event.isRetaliation
+    );
+    expect(roll && roll.type === "ATTACK_ROLLED" ? roll.damage : null).toBe(0);
+    expect((after.combat!.units[victim.id].tokens ?? []).some((token) => token.kind === "paralysis")).toBe(false);
+  });
 });
 
 describe("siege combat", () => {

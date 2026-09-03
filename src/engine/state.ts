@@ -194,6 +194,10 @@ export type HouseRuleId =
   // fight vs Quick Combat; not covered → the fight is mandatory (the classic
   // level > difficulty auto-win no longer applies).
   | "polish-quick-combat"
+  // Polish house rule: after a Creature Bank's Stack Tokens are revealed,
+  // offer an automatic win when one deployed army unit's Defense is at least
+  // every guard's maximum Attack (including a +1 die and live flat bonuses).
+  | "polish-bank-auto-combat"
   // Polish house rule: random Grail/Utopia placement and shared objective rules.
   | "polish-grail-utopia"
   // Polish Alliance variant: allied seats pool their Victory Points at scoring
@@ -16180,6 +16184,7 @@ export type PendingChoice =
          | "mgq-gold-contract"
         | "diplomacy-skip"
         | "polish-quick-combat"
+        | "polish-bank-auto-combat"
         | "diplomacy-recruit"
         | "dimension-door-hero"
         | "dimension-door"

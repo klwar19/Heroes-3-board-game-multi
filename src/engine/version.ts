@@ -1030,7 +1030,13 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // worker can offer different targets/choices and resolve different combat or
 // map actions.
 // `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 91;
+// v92: Polish Artillery adds its serialized Basic two-shot Ballista choice,
+// Banks Auto Combat adds a serialized post-Stack-roll decision, zero-damage
+// attacks clear Paralysis, and Sanctuary/friendly economy sites are safe map
+// corridors for both human and computer routing. A v91 worker would offer and
+// resolve different combat/map actions, so PartyKit must be redeployed.
+// `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 92;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

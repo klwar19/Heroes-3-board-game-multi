@@ -2673,11 +2673,14 @@ line per sub-rule:
   `polishBookSpellRefreshBlocked`; Genie Wish runs the PRINTED dig and never refreshes a
   Book Spell), plus `polish-reduced-starting-bonus`, `polish-rule-111`,
   `polish-reduced-surrender`, `polish-random-artifacts` (needs `split-decks`),
-  `polish-pandora-search`, `polish-wait` and `polish-quick-combat`.
+  `polish-pandora-search`, `polish-wait`, `polish-quick-combat` and
+  `polish-bank-auto-combat` (after the Bank's exact Stack Tokens are revealed,
+  offer an automatic normal Bank win only when one deployed army unit's Defense
+  meets every guard's Attack + live flat bonus + the die's maximum +1).
   `polish-bank-sizes.test.ts`, `polish-unit-stacks.test.ts`,
   `polish-stack-reinforcement-price.test.ts`, `polish-stack-features.test.ts`,
   `polish-spell-book.test.ts`, `polish-house-rules-extra.test.ts`,
-  `polish-quick-combat.test.ts`.
+  `polish-quick-combat.test.ts`, `polish-bank-auto-combat.test.ts`.
 - **NO Quick Combat on Ⅵ/Ⅶ fields — EVER, either rule** (USER RULE): ONE cap
   `QUICK_COMBAT_MAX_FIELD_DIFFICULTY` = 5 / `quickCombatAllowedAtDifficulty`
   (`src/engine/polish-quick-combat.ts`) gates the classic level auto-win, the Polish

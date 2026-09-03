@@ -340,6 +340,7 @@ import {
   getCombatStartOwnDeckPickAbility,
   getCombatStartSelfMoveAbility,
   getCombatStartTeleportAbility,
+  getFlatAttackBonus,
   moraleLockedForPlayer
 } from "./unit-abilities";
 import {
@@ -9669,6 +9670,120 @@ function placeCreatureBankGuards(state: GameState, units: CombatUnitState[]): vo
  * normal guard line). Records X (the number of Stacked defenders) on the combat
  * context for the win reward.
  */
+function continueCreatureBankReveal(state: GameState): void {
+  const combat = state.combat;
+  if (!combat) return;
+  combat.setup = null;
+  if (openNeutralPlacementWindow(state)) return;
+  if (openTacticsSetupWindows(state)) return;
+  finalizeCombatStart(state);
+}
+
+/**
+ * A deployed army unit that no revealed bank guard can ever damage with an
+ * ordinary attack. The guard ceiling includes its rolled Attack Stack Token,
+ * every currently-live flat attack ability, and the die's maximum +1 face.
+ */
+export function bankAutoCombatSafeUnit(state: GameState): CombatUnitState | null {
+  const combat = state.combat;
+  if (
+    !combat ||
+    combat.context.kind !== "neutral" ||
+    !isCreatureBankId(combat.context.bankId) ||
+    !houseRuleEnabled(state, "polish-bank-auto-combat")
+  ) {
+    return null;
+  }
+  const guards = Object.values(combat.units).filter(
+    (unit) => unit.controllerId === NEUTRAL_PLAYER_ID && unit.damage < unit.maxHealth
+  );
+  if (guards.length === 0) return null;
+  const maximumGuardAttack = Math.max(
+    ...guards.map((guard) => guard.attack + getFlatAttackBonus(guard) + 1)
+  );
+  return (
+    Object.values(combat.units)
+      .filter(
+        (unit) =>
+          unit.controllerId === combat.attackerPlayerId &&
+          Boolean(unit.armyUnitId) &&
+          unit.damage < unit.maxHealth &&
+          unit.defense >= maximumGuardAttack
+      )
+      .sort((left, right) => right.defense - left.defense || left.id.localeCompare(right.id))[0] ?? null
+  );
+}
+
+function maybeOpenBankAutoCombatChoice(state: GameState): boolean {
+  const combat = state.combat;
+  const safeUnit = bankAutoCombatSafeUnit(state);
+  if (!combat || !safeUnit) return false;
+  const strongest = Math.max(
+    ...Object.values(combat.units)
+      .filter((unit) => unit.controllerId === NEUTRAL_PLAYER_ID && unit.damage < unit.maxHealth)
+      .map((unit) => unit.attack + getFlatAttackBonus(unit) + 1)
+  );
+  combat.setup = null;
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId: combat.attackerPlayerId,
+    prompt: `Bank Auto Combat: ${safeUnit.cardName} has ${safeUnit.defense} Defense; the revealed bank can reach at most ${strongest} Attack even on +1. Win automatically?`,
+    options: [{ label: "Use Auto Combat: win the bank" }, { label: "Fight the bank normally" }],
+    context: "polish-bank-auto-combat",
+    returnPhase: "combat-setup"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = combat.attackerPlayerId;
+  return true;
+}
+
+/** Resolve the post-Stack-roll Banks Auto Combat proposal. */
+export function resolveBankAutoCombatChoice(
+  state: GameState,
+  playerId: PlayerId,
+  optionIndex: number
+): void {
+  const combat = state.combat;
+  const choice = state.pendingChoice;
+  if (
+    !combat ||
+    choice?.type !== "OPTION_CHOICE" ||
+    choice.context !== "polish-bank-auto-combat" ||
+    choice.playerId !== playerId ||
+    !bankAutoCombatSafeUnit(state)
+  ) {
+    throw new Error("There is no safe Creature Bank Auto Combat to resolve.");
+  }
+  state.pendingChoice = null;
+  state.phase = "combat-setup";
+  state.priorityPlayerId = null;
+  if (optionIndex !== 0) {
+    continueCreatureBankReveal(state);
+    return;
+  }
+  for (const unit of Object.values(combat.units)) {
+    if (unit.controllerId === NEUTRAL_PLAYER_ID) unit.damage = unit.maxHealth;
+  }
+  combat.outcome = {
+    winnerPlayerId: combat.attackerPlayerId,
+    defeatedPlayerId: NEUTRAL_PLAYER_ID,
+    reason: "all-enemy-units-defeated"
+  };
+  state.phase = "combat";
+  appendEvent(state, {
+    type: "EVENT_NOTE",
+    playerId,
+    message: "Bank Auto Combat: the revealed guards cannot damage the protected army unit."
+  });
+  appendEvent(state, {
+    type: "COMBAT_ENDED",
+    winnerPlayerId: combat.attackerPlayerId,
+    defeatedPlayerId: NEUTRAL_PLAYER_ID,
+    reason: "all-enemy-units-defeated"
+  });
+}
+
 function revealCreatureBankArmy(state: GameState, bankId: CreatureBankId): void {
   const combat = state.combat;
   if (!combat || combat.context.kind !== "neutral") {
@@ -9713,16 +9828,15 @@ function revealCreatureBankArmy(state: GameState, bankId: CreatureBankId): void 
     stackedCount
   });
 
+  // The optional Polish shortcut is evaluated only now, after the exact Stack
+  // Tokens (including any +1 Attack token) are known.
+  if (maybeOpenBankAutoCombatChoice(state)) {
+    return;
+  }
+
   // Same as a normal guard reveal: under PvP Neutral Control the controller
   // may SORT the four corner guards before Tactics / round 1.
-  combat.setup = null;
-  if (openNeutralPlacementWindow(state)) {
-    return;
-  }
-  if (openTacticsSetupWindows(state)) {
-    return;
-  }
-  finalizeCombatStart(state);
+  continueCreatureBankReveal(state);
 }
 
 /**
@@ -17583,6 +17697,10 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
 
   if (choice.context === "polish-quick-combat") {
     resolvePolishQuickCombatChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+  if (choice.context === "polish-bank-auto-combat") {
+    resolveBankAutoCombatChoice(state, action.playerId, action.optionIndex);
     return;
   }
 
