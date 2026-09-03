@@ -3783,59 +3783,78 @@ describe("MapDesigner — single-player Town deployment", () => {
 });
 
 /**
- * CO-OP step 5 — the per-position "Co-op seat" row. Three buttons on ONE plan
- * field (`coopSeat`), deliberately independent of the solo `singlePlayer`
- * block above: a Town may carry both, and neither setter touches the other.
+ * The per-position "Who may start here" row. Three buttons on ONE plan field
+ * (`coopSeat`, key + literals unchanged so saved maps keep working), read in
+ * EVERY table mode since 2026-09-03. Deliberately independent of the solo
+ * `singlePlayer` block above: a Town may carry both, and neither setter
+ * touches the other. jsdom cannot compute CSS, so this pins the DOM contract
+ * (labels, aria-pressed, the stored field) only — never a pixel.
  */
-describe("MapDesigner — co-op Town roles (step 5)", () => {
+describe("MapDesigner — starting-tile seat roles", () => {
   const towns: CustomMapTilePlan[] = [
     { row: 8, col: 2, group: "starting", faceDown: false },
     { row: 10, col: 7, group: "starting", faceDown: false },
     { row: 6, col: 4, group: "starting", faceDown: false }
   ];
   const coopRow = (popover: HTMLElement) =>
-    within(popover).getByRole("group", { name: "Co-op role for this Town" });
+    within(popover).getByRole("group", { name: "Who may start on this Town" });
 
-  it("each button writes its own role, and Either CLEARS the field", () => {
+  it("offers exactly the three labels; each writes its own role and Free (random) CLEARS the field", () => {
     const fixture = renderStatefulDesigner(towns);
 
     let popover = openTilePopover(fixture.container, 1);
     expect(
-      within(coopRow(popover)).getByRole("button", { name: /^Either/ }).getAttribute("aria-pressed"),
-      "absent = either"
+      within(coopRow(popover))
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+      "exactly the three mode-agnostic labels"
+    ).toEqual([
+      "Free (random)Human or AI — the default",
+      "Only playerHumans only; in solo the AI may take a leftover one",
+      "Only AIA human never starts here"
+    ]);
+    expect(
+      within(coopRow(popover)).getByRole("button", { name: /^Free \(random\)/ }).getAttribute("aria-pressed"),
+      "absent = free"
     ).toBe("true");
 
-    fireEvent.click(within(coopRow(popover)).getByRole("button", { name: /^Human only/ }));
+    fireEvent.click(within(coopRow(popover)).getByRole("button", { name: /^Only player/ }));
     expect(fixture.get()[1].coopSeat).toEqual({ role: "human" });
     expect(fixture.get()[0].coopSeat, "only the selected Town changed").toBeUndefined();
 
+    popover = openTilePopover(fixture.container, 1);
+    expect(
+      within(coopRow(popover)).getByRole("button", { name: /^Only player/ }).getAttribute("aria-pressed"),
+      "aria-pressed reflects the STORED role"
+    ).toBe("true");
+
     popover = openTilePopover(fixture.container, 0);
-    fireEvent.click(within(coopRow(popover)).getByRole("button", { name: /^Computer only/ }));
+    fireEvent.click(within(coopRow(popover)).getByRole("button", { name: /^Only AI/ }));
     expect(fixture.get()[0].coopSeat).toEqual({ role: "computer" });
     expect(fixture.get()[1].coopSeat, "a human marker is NOT exclusive here").toEqual({
       role: "human"
     });
 
     popover = openTilePopover(fixture.container, 0);
-    fireEvent.click(within(coopRow(popover)).getByRole("button", { name: /^Either/ }));
-    expect(fixture.get()[0].coopSeat, "Either removes the field entirely").toBeUndefined();
+    fireEvent.click(within(coopRow(popover)).getByRole("button", { name: /^Free \(random\)/ }));
+    expect(fixture.get()[0].coopSeat, "Free (random) removes the field entirely").toBeUndefined();
     expect("coopSeat" in fixture.get()[0]).toBe(false);
   });
 
-  it("CONTROL — the co-op role and the SOLO role are independent on the same Town", () => {
+  it("CONTROL — the seat role and the SOLO role are independent on the same Town", () => {
     const fixture = renderStatefulDesigner(towns);
     let popover = openTilePopover(fixture.container, 0);
     fireEvent.click(within(popover).getByRole("button", { name: /^Enemy AI/ }));
     expect(fixture.get()[0].singlePlayer).toEqual({ role: "computer" });
 
     popover = openTilePopover(fixture.container, 0);
-    fireEvent.click(within(coopRow(popover)).getByRole("button", { name: /^Human only/ }));
+    fireEvent.click(within(coopRow(popover)).getByRole("button", { name: /^Only player/ }));
     expect(fixture.get()[0].coopSeat).toEqual({ role: "human" });
     expect(fixture.get()[0].singlePlayer, "the solo marker survives").toEqual({ role: "computer" });
 
-    // ...and clearing the co-op role leaves the solo marker alone.
+    // ...and clearing the seat role leaves the solo marker alone.
     popover = openTilePopover(fixture.container, 0);
-    fireEvent.click(within(coopRow(popover)).getByRole("button", { name: /^Either/ }));
+    fireEvent.click(within(coopRow(popover)).getByRole("button", { name: /^Free \(random\)/ }));
     expect(fixture.get()[0].coopSeat).toBeUndefined();
     expect(fixture.get()[0].singlePlayer).toEqual({ role: "computer" });
   });
@@ -3848,8 +3867,13 @@ describe("MapDesigner — co-op Town roles (step 5)", () => {
     ]);
     const popover = openTilePopover(container, 0);
     expect(
-      within(popover).getByText(/1 human-only, 1 computer-only, 1 either/)
+      within(popover).getByText(/1 player-only, 1 AI-only, 1 free/)
     ).toBeTruthy();
+    expect(
+      within(popover).getByText(/Read in EVERY mode/),
+      "the hint no longer claims the roles are co-op-only"
+    ).toBeTruthy();
+    expect(popover.textContent).not.toContain("Ignored completely in Clash");
   });
 
   it("alerts when the authored roles leave one side nowhere to start", () => {
@@ -3857,7 +3881,9 @@ describe("MapDesigner — co-op Town roles (step 5)", () => {
     const { container } = render(
       <MapDesigner scenarioId="skirmish" customMap={allComputer} onChange={() => {}} />
     );
-    expect(container.textContent).toContain("no starting position is open to a human");
+    expect(container.textContent).toContain(
+      "No starting position is open to a human — mark at least one Town “Only player” or “Free (random)”"
+    );
 
     cleanup();
     // CONTROL — the SAME towns with no roles at all warn nothing, even for a
@@ -3870,7 +3896,7 @@ describe("MapDesigner — co-op Town roles (step 5)", () => {
         supportedModes={{ clash: false }}
       />
     );
-    expect(plain.container.textContent).not.toContain("no starting position is open");
+    expect(plain.container.textContent).not.toContain("No starting position is open");
   });
 });
 

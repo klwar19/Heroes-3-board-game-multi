@@ -354,7 +354,7 @@ describe("co-op step 5 — coopMapDeployment", () => {
       coopSeat: { role: "computer" as const }
     }));
     expect(coopMapDesignProblems(null, humansLockedOut)[0]).toMatch(
-      /no starting position is open to a human/
+      /No starting position is open to a human — mark at least one Town “Only player” or “Free \(random\)”/
     );
 
     const computersLockedOut: CustomMapTilePlan[] = COOP_TOWNS.map((plan) => ({
@@ -362,8 +362,22 @@ describe("co-op step 5 — coopMapDeployment", () => {
       coopSeat: { role: "human" as const }
     }));
     expect(coopMapDesignProblems(null, computersLockedOut)[0]).toMatch(
-      /no starting position is open to a computer/
+      /No starting position is open to a computer — mark at least one Town “Only AI” or “Free \(random\)”/
     );
+    // The wording is mode-agnostic now: the roles seat every table mode.
+    expect(coopMapDesignProblems(null, humansLockedOut)[0]).not.toContain("Co-op:");
+    expect(coopMapDesignProblems(null, computersLockedOut)[0]).not.toContain("Co-op:");
+
+    // The roles seat EVERY mode now, so an authored map warns on a PLAIN
+    // preset too — it is not a co-op-only concern.
+    expect(
+      coopMapDesignProblems({ supportedModes: { clash: true, coop: true } }, humansLockedOut)[0],
+      "a plain (not co-op-only) preset still warns about the locked-out humans"
+    ).toMatch(/No starting position is open to a human/);
+
+    // CONTROL — a LEGACY map (no roles anywhere, plain preset) warns nothing.
+    expect(coopMapDesignProblems(null, PLAIN_TOWNS)).toEqual([]);
+    expect(coopMapDesignProblems({ supportedModes: { clash: true, coop: true } }, PLAIN_TOWNS)).toEqual([]);
 
     // CONTROL — an unauthored map warns nothing even though it is co-op-only,
     // because every position is flexible.

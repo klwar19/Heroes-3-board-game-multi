@@ -1099,8 +1099,11 @@ export function coopMapDeployment(
 }
 
 /**
- * Designer-side alert lines for a map's co-op authoring. Warnings only — the
- * hard refusal lives at the start check, where the real seat counts are known.
+ * Designer-side alert lines for a map's authored STARTING-TILE SEAT ROLES.
+ * Mode-agnostic since 2026-09-03: the roles seat every table mode, so a map with
+ * no human-open position cannot start anywhere, and one with no AI-open position
+ * cannot start a table that has computer seats. Warnings only — the hard refusal
+ * lives at the start check, where the real seat counts are known.
  */
 export function coopMapDesignProblems(
   preset: CustomMapPreset | null | undefined,
@@ -1114,12 +1117,12 @@ export function coopMapDesignProblems(
   const problems: string[] = [];
   if (capacity.human + capacity.flexible === 0) {
     problems.push(
-      "Co-op: no starting position is open to a human — mark at least one Town “Human only” or “Either”, or no co-op table can ever start here."
+      "No starting position is open to a human — mark at least one Town “Only player” or “Free (random)”, or no table can ever start here."
     );
   }
   if (capacity.computer + capacity.flexible === 0) {
     problems.push(
-      "Co-op: no starting position is open to a computer — mark at least one Town “Computer only” or “Either”, or the invaders have nowhere to spawn."
+      "No starting position is open to a computer — mark at least one Town “Only AI” or “Free (random)”, so no table with computer seats can start here."
     );
   }
   return problems;

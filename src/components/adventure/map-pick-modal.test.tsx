@@ -279,7 +279,7 @@ describe("Map window — applying a map", () => {
     expect(dialog.querySelector(".mapPickModeSupport")?.textContent).toContain("Modes: Co-op only");
   });
 
-  it("a map with authored co-op roles appends its starting-position capacity", async () => {
+  it("a map with authored seat roles appends its starting-position capacity", async () => {
     const record = designedMap({ id: "coop-roles", name: "Invasion Route", players: 4 });
     const starts = record.tiles.filter((tile) => tile.group === "starting");
     starts[0].coopSeat = { role: "human" };
@@ -290,7 +290,16 @@ describe("Map window — applying a map", () => {
     fireEvent.click(within(dialog).getByText(/Invasion Route/).closest("button") as HTMLElement);
     const badge = dialog.querySelector(".mapPickModeSupport")?.textContent ?? "";
     expect(badge).toContain("Modes: Clash + Co-op");
-    expect(badge).toContain("Co-op: 1 human / 2 computer / 3 flexible starting positions");
+    expect(badge).toContain("Starting positions: 1 player-only / 2 AI-only / 3 free");
+
+    // CONTROL — a LEGACY map with no authored role shows the modes line alone.
+    cleanup();
+    const legacy = designedMap({ id: "legacy-roles", name: "Old Frontier", players: 4 });
+    const plain = await open([legacy]);
+    fireEvent.click(within(plain.dialog).getByText(/Old Frontier/).closest("button") as HTMLElement);
+    expect(plain.dialog.querySelector(".mapPickModeSupport")?.textContent ?? "").not.toContain(
+      "Starting positions:"
+    );
   });
 
   it("a BUILT-IN scenario sheet is playable in both modes", async () => {

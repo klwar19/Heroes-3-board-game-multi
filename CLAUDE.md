@@ -3809,7 +3809,21 @@ Leading with the LIMITS / deliberate readings:
 - An unseatable table is REFUSED at `startAdventureFromLobby` and THROWS at
   `createAdventureGameState`, both through the same function so they cannot disagree;
   the reasons dropped their “co-op” wording.
-- **This is the ENGINE half only** — no designer/lobby UI copy was touched, so the
-  three options still read with their co-op-era labels in the map designer.
+- **The UI half is PRESENTATION + COPY only** (2026-09-04). The map designer's
+  per-Town section is “Who may start here” (group aria-label “Who may start on this
+  Town”) with the three cards **Free (random)** / **Only player** / **Only AI**; its
+  hint now names the live counts (player-only / AI-only / free) and says the roles are
+  read in every mode, and the solo hint notes that a COMPLETE solo layout takes
+  precedence over them. The map picker's info line reads “· Starting positions: N
+  player-only / N AI-only / N free” whenever roles are authored. `coopMapDesignProblems`
+  lost its “Co-op:” prefix and now names the new labels; the human warning fires
+  wherever roles are authored (a map nobody human can start is unplayable in every
+  mode) while the computer warning is worded as a table-with-computer-seats problem.
+  The stored field, its literals and `setCoopSeatRole` are UNCHANGED, and the
+  `coopMapDesignProblems` / `coopMapSeatCapacity` function names still say "coop".
+- **jsdom cannot compute CSS**, so `map-designer.test.tsx` (“MapDesigner — starting-tile
+  seat roles”) and `map-pick-modal.test.tsx` pin the DOM contract only — the labels,
+  `aria-pressed`, the stored/cleared field and the rendered capacity line, each with a
+  legacy-map CONTROL. Nothing here proves a pixel and there is NO e2e spec.
 - Protocol **v92 → v93**: authoritative placement changed, so
   `npm run deploy:partykit` is OWED.

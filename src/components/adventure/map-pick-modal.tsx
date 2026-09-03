@@ -423,16 +423,17 @@ export function MapPickModal({
                       );
                     })() : null}
                     {/* Which table modes the map declares, plus — when the
-                        designer authored per-position co-op roles — how many
-                        starting positions each side may take. Both derive from
-                        the SHARED engine helpers, never re-counted here. */}
+                        designer authored per-position seat roles — how many
+                        starting positions each side may take (read in EVERY
+                        mode since 2026-09-03). Both derive from the SHARED
+                        engine helpers, never re-counted here. */}
                     {(() => {
                       const capacity = coopMapSeatCapacity(selected.record.tiles);
                       return (
                         <small className="mapPickModeSupport">
                           Modes: {describeMapSupportedModes(selected.record.preset)}
                           {capacity.authored
-                            ? ` · Co-op: ${capacity.human} human / ${capacity.computer} computer / ${capacity.flexible} flexible starting positions`
+                            ? ` · Starting positions: ${capacity.human} player-only / ${capacity.computer} AI-only / ${capacity.flexible} free`
                             : ""}
                         </small>
                       );

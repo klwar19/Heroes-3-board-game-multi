@@ -5522,15 +5522,16 @@ export function MapDesigner({
                   {soloDeploymentComplete
                     ? `Ready: 1 human start and ${soloComputerStarts} AI start${soloComputerStarts === 1 ? "" : "s"}. This decides the solo enemy count.`
                     : `Mark exactly one Town as You and 1–${soloOpponentLimit} Town${soloOpponentLimit === 1 ? "" : "s"} as Enemy AI. Until complete, solo play uses the map's standard ${startingPlanIndexes.length || starts.length}-seat order.`}
-                  {" "}Ignored completely in multiplayer.
+                  {" "}Ignored completely in multiplayer. A COMPLETE solo layout also takes precedence over the
+                  starting-position roles below.
                 </small>
-                <div className="popoverSectionLabel">Co-op seat</div>
-                <div className="popoverModeRow popoverCoopSeatRow" role="group" aria-label="Co-op role for this Town">
+                <div className="popoverSectionLabel">Who may start here</div>
+                <div className="popoverModeRow popoverCoopSeatRow" role="group" aria-label="Who may start on this Town">
                   {(
                     [
-                      [undefined, "Either", "Any side may start here"],
-                      ["human", "Human only", "Reserved for a human player"],
-                      ["computer", "Computer only", "Reserved for a computer invader"]
+                      [undefined, "Free (random)", "Human or AI — the default"],
+                      ["human", "Only player", "Humans only; in solo the AI may take a leftover one"],
+                      ["computer", "Only AI", "A human never starts here"]
                     ] as const
                   ).map(([role, label, hint]) => {
                     const active = (selected.coopSeat?.role ?? undefined) === role;
@@ -5549,9 +5550,10 @@ export function MapDesigner({
                   })}
                 </div>
                 <small className="popoverHint">
-                  Read only by a CO-OP table (humans vs computers): {coopSeatCapacity.human} human-only,{" "}
-                  {coopSeatCapacity.computer} computer-only, {coopSeatCapacity.flexible} either. A co-op game whose
-                  seats these roles cannot fill refuses to start. Ignored completely in Clash and single-player.
+                  Read in EVERY mode — Clash, Co-op and single player: {coopSeatCapacity.human} player-only,{" "}
+                  {coopSeatCapacity.computer} AI-only, {coopSeatCapacity.flexible} free. Free positions are handed
+                  out in game order, so they are random. A table whose seats these roles cannot fill refuses to
+                  start.
                 </small>
                 {selected.singlePlayer?.role === "computer" ? (
                   <>
