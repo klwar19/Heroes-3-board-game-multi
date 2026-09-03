@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { createAdventureGameState } from "./index";
+import { applyAction, createAdventureGameState, getLegalActions } from "./index";
 import { drawAstrologersCard, getMainHero, getTownOfPlayer, pvpAttacksBanned } from "./adventure";
-import { openSharedDeckSearch, startPlayerCombat } from "./adventure-reducer";
+import { openSharedDeckSearch, pumpAdventureQueues, startPlayerCombat } from "./adventure-reducer";
+import { cardLibrary } from "@/data/cards/library";
+import { permanentLimitFor } from "./permanents";
 import type { GameState } from "./state";
 
 /**
@@ -60,6 +62,100 @@ describe("Astrologers — Destruction (remove a permanent for 5 gold)", () => {
     expect(state.players.p1.resources.gold).toBe(p1GoldBefore + 5);
     // p2 had no permanent in play: no removal, and NO gold ("who HAS a permanent").
     expect(state.players.p2.resources.gold).toBe(p2GoldBefore);
+  });
+
+  it("removes every defined kind of permanent, including every Pandora permanent, never discarding it", () => {
+    const permanentIds = Object.values(cardLibrary)
+      .filter((card) => Boolean(card.permanentEffect))
+      .map((card) => card.id);
+    expect(permanentIds.some((id) => id.startsWith("pandora."))).toBe(true);
+    expect(permanentIds.some((id) => !id.startsWith("pandora."))).toBe(true);
+
+    for (const cardId of permanentIds) {
+      const state = destructionGame();
+      state.players.p1.permanents = [cardId];
+      const goldBefore = state.players.p1.resources.gold;
+      drawAstrologersCard(state);
+
+      expect(state.players.p1.permanents, cardId).toEqual([]);
+      expect(state.players.p1.removed, cardId).toContain(cardId);
+      expect(state.players.p1.discard, cardId).not.toContain(cardId);
+      expect(state.players.p1.resources.gold, cardId).toBe(goldBefore + 5);
+    }
+  });
+
+  it("with Pandora's extra slots, shows every permanent and removes only the one selected", () => {
+    const state = destructionGame();
+    state.players.p1.permanents = [
+      "war_machine.first_aid_tent",
+      "pandora.permanent_slots",
+      "war_machine.ballista"
+    ];
+    const goldBefore = state.players.p1.resources.gold;
+
+    drawAstrologersCard(state);
+    pumpAdventureQueues(state);
+
+    const step = state.adventure?.pendingVisit?.steps[0];
+    expect(step?.type).toBe("CHOOSE_ONE");
+    if (step?.type !== "CHOOSE_ONE") throw new Error("Destruction choice did not open");
+    expect(step.options).toHaveLength(3);
+    expect(step.options.filter((option) => option.steps[0]?.type === "DESTRUCTION_REMOVE_PERMANENT")).toHaveLength(3);
+
+    const choice = getLegalActions(state, "p1").find(
+      (entry) => entry.action.type === "RESOLVE_VISIT_STEP" && entry.action.optionIndex === 1
+    );
+    expect(choice).toBeTruthy();
+    const result = applyAction(state, choice!.action);
+    expect(result.errors).toEqual([]);
+    const after = result.state;
+
+    // Destruction removes the selected Pandora card. Its limit-3 effect then
+    // ends, so normal slot cleanup discards exactly one oldest extra and leaves
+    // the newest permanent in the restored single slot.
+    expect(after.players.p1.permanents).toEqual(["war_machine.ballista"]);
+    expect(after.players.p1.removed.filter((id) => id === "pandora.permanent_slots")).toHaveLength(1);
+    expect(after.players.p1.removed).not.toContain("war_machine.first_aid_tent");
+    expect(after.players.p1.discard).toEqual(["war_machine.first_aid_tent"]);
+    expect(after.players.p1.resources.gold).toBe(goldBefore + 5);
+    expect(permanentLimitFor(after, "p1")).toBe(1); // the removed Pandora effect is gone
+  });
+
+  it("can remove a different permanent while keeping Pandora's three-slot effect active", () => {
+    const state = destructionGame();
+    state.players.p1.permanents = [
+      "pandora.hand_size",
+      "pandora.permanent_slots",
+      "war_machine.ballista"
+    ];
+    drawAstrologersCard(state);
+    pumpAdventureQueues(state);
+
+    // Select the ordinary permanent, leaving the Pandora limit card in play.
+    const choice = getLegalActions(state, "p1").find(
+      (entry) => entry.action.type === "RESOLVE_VISIT_STEP" && entry.action.optionIndex === 2
+    );
+    expect(choice).toBeTruthy();
+    const result = applyAction(state, choice!.action);
+    expect(result.errors).toEqual([]);
+    const after = result.state;
+
+    expect(after.players.p1.permanents).toEqual(["pandora.hand_size", "pandora.permanent_slots"]);
+    expect(after.players.p1.removed).toContain("war_machine.ballista");
+    expect(after.players.p1.discard).not.toContain("war_machine.ballista");
+    expect(permanentLimitFor(after, "p1")).toBe(3); // Pandora remains and still works
+  });
+
+  it("supports a legacy save's single permanent slot", () => {
+    const state = destructionGame();
+    state.players.p1.permanents = undefined;
+    state.players.p1.permanent = "pandora.power_or_morale";
+    drawAstrologersCard(state);
+
+    expect(state.players.p1.permanent).toBeNull();
+    expect(state.players.p1.permanents).toEqual([]);
+    expect(state.players.p1.removed).toContain("pandora.power_or_morale");
+    expect(state.players.p1.discard).not.toContain("pandora.power_or_morale");
   });
 
   it("CONTROL: does nothing while a different proclamation is face up", () => {

@@ -896,7 +896,19 @@ export function countExtraBallistas(state: GameState, playerId: PlayerId): numbe
 export function hasBallistaChooseTarget(state: GameState, playerId: PlayerId): boolean {
   const commander = state.players[playerId]?.commander;
   if (commander && !commander.dead && commander.slug === "ogre_leader") {
-    return true;
+    // A commander's specialty exists on its battlefield body, not merely on
+    // the persistent player record. Secondary-hero/garrison fights do not field
+    // that commander, and a commander defeated earlier in this combat stops
+    // aiming the Ballista immediately (before death is persisted at combat end).
+    const commanderUnit = state.combat?.units[`unit_${playerId}_commander`];
+    if (
+      !state.combat ||
+      (commanderUnit?.commanderSlug === "ogre_leader" &&
+        commanderUnit.controllerId === playerId &&
+        commanderUnit.damage < commanderUnit.maxHealth)
+    ) {
+      return true;
+    }
   }
   return state.activeEffects.some(
     (effect) =>
@@ -1196,6 +1208,29 @@ export function expireEffectsForCombatEnd(state: GameState): ActiveEffectState[]
  * covered without each of them knowing about held cards.
  */
 export function releaseEndedOngoingCards(state: GameState): void {
+  // A Polish Book turn-scoped Spell may still carry its engine effect object
+  // during the round-wrap ordering even though every seat's turn has ended.
+  // Treat that logical expiry as real before deciding whether the held card can
+  // leave the Ongoing tray, preventing a last-seat cast from lingering a round.
+  const roundWrappedTurnEffects = new Set<string>();
+  for (const player of Object.values(state.players)) {
+    for (const held of player.ongoingCards ?? []) {
+      if (held.usedAtRound === undefined || state.round <= held.usedAtRound) {
+        continue;
+      }
+      for (const effectId of held.effectIds) {
+        const effect = state.activeEffects.find((candidate) => candidate.id === effectId);
+        if (effect?.expiresAtTurnEndPlayerId) {
+          roundWrappedTurnEffects.add(effectId);
+        }
+      }
+    }
+  }
+  if (roundWrappedTurnEffects.size > 0) {
+    state.activeEffects = state.activeEffects.filter(
+      (effect) => !roundWrappedTurnEffects.has(effect.id),
+    );
+  }
   const liveEffectIds = new Set(state.activeEffects.map((effect) => effect.id));
 
   for (const player of Object.values(state.players)) {
@@ -1210,20 +1245,34 @@ export function releaseEndedOngoingCards(state: GameState): void {
         continue;
       }
 
-      if (held.returnTo === "hand" || held.returnTo === "spellBook") {
+      if (
+        held.returnTo === "hand" ||
+        held.returnTo === "spellBook" ||
+        held.returnTo === "spellBookUsed"
+      ) {
         // A Book-cast ongoing spell recalled by Knowledge/Mysticism returns to
         // the Spell Book (a private zone); a hand-cast one to the hand.
         if (held.returnTo === "spellBook") {
           player.spellBook.push(held.cardId);
+        } else if (held.returnTo === "spellBookUsed") {
+          // A round-start refresh that happened while the physical Spell was
+          // still held must not be lost merely because it was outside `used`.
+          if (held.usedAtRound !== undefined && state.round > held.usedAtRound) {
+            player.spellBook.push(held.cardId);
+          } else {
+            (player.spellBookUsed ??= []).push(held.cardId);
+          }
         } else {
           player.hand.push(held.cardId);
         }
-        appendEvent(state, {
-          type: "SPELL_RETURNED_TO_HAND",
-          playerId: player.id,
-          cardId: held.cardId,
-          reason: "recalled after the ongoing effect ended"
-        });
+        if (held.returnTo !== "spellBookUsed") {
+          appendEvent(state, {
+            type: "SPELL_RETURNED_TO_HAND",
+            playerId: player.id,
+            cardId: held.cardId,
+            reason: "recalled after the ongoing effect ended"
+          });
+        }
       } else {
         player.discard.push(held.cardId);
       }

@@ -19,6 +19,7 @@ import {
   polishBookSpellRefreshBlocked
 } from "./polish-spell-book";
 import type { CreatureBankId } from "@/data/map/creature-banks";
+import { expireEffectsForCombatEnd, releaseEndedOngoingCards } from "./active-effects";
 
 /**
  * REPORTED (2026-08-12, verbatim): "polish rule: bug: Teleport spell - after
@@ -407,7 +408,18 @@ describe("Polish Spell Book — Teleport in a Creature Bank fight (reported bug)
         continue;
       }
       expect(book, `${spellId} must leave the refreshed side`).not.toContain(spellId);
-      expect(used, `${spellId} must land on the used side`).toContain(spellId);
+      const held = resolved.players.p1.ongoingCards?.some(
+        (entry) => entry.cardId === spellId,
+      ) ?? false;
+      if (held) {
+        expect(used, `${spellId} must not become used before its effect expires`).not.toContain(spellId);
+        expireEffectsForCombatEnd(resolved);
+        releaseEndedOngoingCards(resolved);
+        expect(resolved.players.p1.ongoingCards?.some((entry) => entry.cardId === spellId) ?? false).toBe(false);
+        expect(resolved.players.p1.spellBookUsed, `${spellId} becomes used after expiry`).toContain(spellId);
+      } else {
+        expect(used, `${spellId} must land on the used side`).toContain(spellId);
+      }
     }
     expect(exercised, "the sweep must really exercise a batch of casts").toBeGreaterThan(10);
   });

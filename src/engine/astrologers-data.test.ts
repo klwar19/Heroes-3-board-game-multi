@@ -6,7 +6,7 @@ import {
   ART_PENDING_PROCLAMATIONS,
   ASTROLOGERS_EXPANSIONS,
   ASTROLOGERS_NOT_IMPLEMENTED,
-  DISABLED_ASTROLOGERS_CARDS,
+  BINH_DISABLED_ASTROLOGERS_CARDS,
   astrologersCardDefinitions,
   astrologersDeckCardIds,
   type AstrologersEffect
@@ -122,23 +122,21 @@ const WIKI_ASTROLOGERS_CARD_NAMES = [
 const ASSETS_DIR = join(process.cwd(), "public", "assets");
 
 describe("astrologers deck data integrity", () => {
-  it("deals exactly the defined cards minus the temporarily disabled ones", () => {
-    expect(new Set([...astrologersDeckCardIds, ...DISABLED_ASTROLOGERS_CARDS])).toEqual(
-      new Set(Object.keys(astrologersCardDefinitions))
-    );
+  it("exposes every implemented card for ruleset-aware deck setup", () => {
+    expect(new Set(astrologersDeckCardIds)).toEqual(new Set(Object.keys(astrologersCardDefinitions)));
   });
 
-  it("never deals a disabled proclamation, but keeps its definition for re-enabling", () => {
-    const dealt = new Set(astrologersDeckCardIds);
-    for (const id of DISABLED_ASTROLOGERS_CARDS) {
-      expect(dealt.has(id), `${id} is disabled and must NOT be in the live deck`).toBe(false);
+  it("keeps every BINH-disabled proclamation defined and available to Legacy", () => {
+    const implemented = new Set(astrologersDeckCardIds);
+    for (const id of BINH_DISABLED_ASTROLOGERS_CARDS) {
+      expect(implemented.has(id), `${id} must remain available to ruleset-aware setup`).toBe(true);
       expect(astrologersCardDefinitions[id], `${id} keeps its definition`).toBeDefined();
     }
   });
 
-  it("disables Friendly Beaver for now", () => {
-    expect(DISABLED_ASTROLOGERS_CARDS.has("astrologers.friendly_beaver")).toBe(true);
-    expect(astrologersDeckCardIds).not.toContain("astrologers.friendly_beaver");
+  it("marks Friendly Beaver as a BINH-only ban", () => {
+    expect(BINH_DISABLED_ASTROLOGERS_CARDS.has("astrologers.friendly_beaver")).toBe(true);
+    expect(astrologersDeckCardIds).toContain("astrologers.friendly_beaver");
   });
 
   it("ships a real local card scan for every proclamation (or declares it art-less / art-pending)", () => {

@@ -172,6 +172,7 @@ import {
   permanentSpellPowerBonus,
   playerCanUseFirstAidVolley,
   schoolScopedStandingPower,
+  spellCardForPowerSchool,
   warMachinesForSale,
 } from "./permanents";
 import {
@@ -447,6 +448,10 @@ export function standingSpellPower(
   if (!player || (card.kind !== "spell" && card.kind !== "hero-specialty")) {
     return 0;
   }
+  const powerCard =
+    card.kind === "spell"
+      ? spellCardForPowerSchool(state, playerId, card)
+      : card;
   let bonus = 0;
   if (
     card.kind === "spell" &&
@@ -477,7 +482,7 @@ export function standingSpellPower(
       // "during this Activation" charge is spent per activation.
       bonus += availableActivationSpellPowerBoost(
         activeUnit,
-        card.spellSchools,
+        powerCard.spellSchools,
         {
           firstSpellThisRound: !player.combatStats.anySpellCastThisRound,
         },
@@ -488,7 +493,7 @@ export function standingSpellPower(
   // school. Magic Arrow auto-picks the single strongest school (wiki: one school
   // at a time) so Water Magic does not stack with a Fire elemental tile.
   if (card.kind === "spell") {
-    bonus += schoolScopedStandingPower(state, playerId, card);
+    bonus += schoolScopedStandingPower(state, playerId, powerCard);
   }
   // Astrologers Blue Sky / Scorched Ground: "all Spells from the X Magic
   // Schools are cast at +1 Power". A matching-school spell played as an
@@ -500,7 +505,7 @@ export function standingSpellPower(
   // first-spell counters. `kind === "spell"` keeps it off Specialties, which
   // belong to no school.
   if (card.kind === "spell") {
-    bonus += astrologersSchoolPowerBonusFor(state, card);
+    bonus += astrologersSchoolPowerBonusFor(state, powerCard);
   }
   // Pandora's Bargain: Power — a flat +Power on every spell while in play.
   bonus += permanentSpellPowerBonus(state, playerId);
@@ -750,10 +755,13 @@ function canAffordCardCost(
     // The map draw-rider bank (Sorcery / Scales) counts toward a map Spell's
     // Power exactly like standing Power, so a banked +1 makes a higher tier
     // affordable with one fewer discard. Zero in combat (guarded in the helper).
+    const powerCard = card
+      ? spellCardForPowerSchool(state, playerId, card)
+      : undefined;
     const standing =
-      (card
-        ? standingSpellPower(state, playerId, card) +
-          getSchoolPowerBonus(state, playerId, card)
+      (powerCard
+        ? standingSpellPower(state, playerId, powerCard) +
+          getSchoolPowerBonus(state, playerId, powerCard)
         : 0) +
       mapSpellPowerBankAvailable(state, playerId) +
       // Window-committed School expert: only a MATCHING-school Spell may spend
@@ -11957,7 +11965,9 @@ function getSchoolFetchExpertActions(
         stackItem.action.playerId === playerId &&
         !stackItem.modifiers.scrollLocked
       ) {
-        const schools = cards[stackItem.action.cardId]?.spellSchools ?? [];
+        const schools = stackItem.modifiers.selectedSpellSchool
+          ? [stackItem.modifiers.selectedSpellSchool]
+          : (cards[stackItem.action.cardId]?.spellSchools ?? []);
         matches = schools.includes(school) || schools.includes("any");
       }
     } else if (
@@ -12263,13 +12273,21 @@ export function resolvedSpellPowerForStackItem(
     );
   }
   const playerId = stackItem.action.playerId;
+  const powerCard = card
+    ? spellCardForPowerSchool(
+        state,
+        playerId,
+        card,
+        stackItem.modifiers.selectedSpellSchool,
+      )
+    : card;
   const base =
     (card?.power ?? 0) +
     stackItem.modifiers.spellPowerBonus +
     (stackItem.modifiers.schoolPowerBonus ?? 0) +
     (stackItem.modifiers.townCubePowerBonus ?? 0) +
-    getSchoolPowerBonus(state, playerId, card) +
-    astrologersSchoolPowerBonusFor(state, card) +
+    getSchoolPowerBonus(state, playerId, powerCard) +
+    astrologersSchoolPowerBonusFor(state, powerCard) +
     permanentSpellPowerBonus(state, playerId) +
     activeSpellPowerBonus(state, playerId) +
     // Anime Cultivation Nascent Soul (realm 3, §5.6): +1 Power on every cast —
@@ -12282,7 +12300,7 @@ export function resolvedSpellPowerForStackItem(
     // Anime Equipment Cosmos Pendant (§3.13): +1 Power at the resolve chokepoint
     // too, agreeing with the standingSpellPower preview above.
     equipmentSpellPowerBonus(state, playerId);
-  const doubled = base * getSchoolPowerMultiplier(state, playerId, card);
+  const doubled = base * getSchoolPowerMultiplier(state, playerId, powerCard);
   const drained = Math.max(
     0,
     doubled - enemySpellPowerReductionFor(state, playerId),
@@ -13071,6 +13089,9 @@ function addVisitStepActions(
 
   if (step.type === "CHOOSE_ONE") {
     for (const [optionIndex, option] of step.options.entries()) {
+      if (option.disabledReason) {
+        continue;
+      }
       if (
         option.steps.some(
           (inner) =>

@@ -1364,6 +1364,31 @@ export function HexMapBoard({
     return byTile;
   }, [rawAdventure, viewerPlayerId, legalActions, readOnly]);
 
+  // Disruption uses the same map-first interaction as the Obelisk clue: the
+  // engine remains authoritative about eligible tiles, while every hex of an
+  // offered tile becomes one large, obvious click target.
+  const disruptionTileTargets = useMemo(() => {
+    const byTile = new Map<string, GameAction>();
+    const visit = rawAdventure?.pendingVisit;
+    const step = visit?.steps[0];
+    if (readOnly || !visit || visit.playerId !== viewerPlayerId || step?.type !== "CHOOSE_ONE") {
+      return byTile;
+    }
+    const actionByOption = new Map<number, GameAction>();
+    for (const legal of legalActions) {
+      if (legal.action.type === "RESOLVE_VISIT_STEP" && legal.action.optionIndex !== undefined) {
+        actionByOption.set(legal.action.optionIndex, legal.action);
+      }
+    }
+    step.options.forEach((option, optionIndex) => {
+      const inner = option.steps[0] as { type?: string; tileInstanceId?: string } | undefined;
+      if (inner?.type !== "DISRUPTION_ROTATE_TILE" || typeof inner.tileInstanceId !== "string") return;
+      const action = actionByOption.get(optionIndex);
+      if (action) byTile.set(inner.tileInstanceId, action);
+    });
+    return byTile;
+  }, [rawAdventure, viewerPlayerId, legalActions, readOnly]);
+
   const legalRotations = useMemo(() => {
     const rotations = new Set<number>();
     for (const legal of legalActions) {
@@ -2127,6 +2152,7 @@ export function HexMapBoard({
 
     // --- Revealed, materialized tiles --------------------------------------
     renderTileArt(tile, tile.rotation);
+    const disruptionPick = disruptionTileTargets.get(tile.id);
     // Always-on layer cue: a printed cavern OR a designer-flagged far/near/
     // center/sea tile reads as underground (the shared `tileLayer` predicate).
     const undergroundTile = tileLayer(tile) === "subterranean";
@@ -2294,6 +2320,7 @@ export function HexMapBoard({
             mapChoice || revisitAction || isGateSelected
               ? "mapChoiceTarget"
               : "",
+            disruptionPick ? "disruptionTileTarget" : "",
             isGateCandidate && !isGateSelected ? "gateExitCandidate" : "",
             isSelected ? "selectedTarget" : "",
             alteredGuardPreview ? "alteredGuard" : "",
@@ -2302,11 +2329,16 @@ export function HexMapBoard({
           data-space-id={spaceId}
           data-altered-guard={alteredGuardPreview ? "true" : undefined}
           data-underground={undergroundTile ? "true" : undefined}
+          data-disruption-tile={disruptionPick ? tile.id : undefined}
           fill={terrain}
           key={spaceId}
           onClick={
             readOnly
               ? undefined
+              : disruptionPick
+                ? () => {
+                    if (!suppressClickRef.current) onAction(disruptionPick);
+                  }
               : teleportTarget
                 ? () => {
                     if (!suppressClickRef.current) {
@@ -7793,6 +7825,40 @@ export function PromptTray({
     );
   }
 
+  const disruptionPicker =
+    visit &&
+    visit.playerId === viewerPlayerId &&
+    visitStep?.type === "CHOOSE_ONE" &&
+    visitStep.options.some((option) => option.steps[0]?.type === "DISRUPTION_ROTATE_TILE")
+      ? visitStep
+      : null;
+  if (disruptionPicker) {
+    const skipIndex = disruptionPicker.options.findIndex((option) => option.steps.length === 0);
+    const skip = visitActions.find(
+      (legal) =>
+        legal.action.type === "RESOLVE_VISIT_STEP" && legal.action.optionIndex === skipIndex,
+    );
+    const tileCount = disruptionPicker.options.filter(
+      (option) => option.steps[0]?.type === "DISRUPTION_ROTATE_TILE",
+    ).length;
+    return (
+      <div className="promptTray disruptionPicker" role="dialog" aria-label="Disruption tile picker">
+        <strong>Disruption — rotate one safe tile</strong>
+        <small>
+          Click one of the {tileCount} glowing tiles on the map. Tiles with Heroes are excluded;
+          unsafe orientations that cut off every entrance or break a Subterranean Gate are hidden.
+        </small>
+        {skip ? (
+          <div className="promptOptions">
+            <button className="commandButton" onClick={() => onAction(skip.action)} type="button">
+              Skip rotation
+            </button>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   // Never leave a seat with a blank table while ANOTHER seat's blocking
   // interaction is open. That covers state.pendingChoice (any kind), the
   // adventure pendingVisit — which is how round-start Event-deck / Astrologers
@@ -7872,7 +7938,11 @@ export function PromptTray({
   // (buy this Artifact / pick this Event / recruit this unit) — render those
   // as graphic tiles, not text-only buttons.
   let chooseOneOptions:
-    | { label: string; steps: { type: string; [key: string]: unknown }[] }[]
+    | {
+        label: string;
+        steps: { type: string; [key: string]: unknown }[];
+        disabledReason?: string;
+      }[]
     | null = null;
   // The Monolith/Whirlpool/Gate travel picker (`step.teleport`): the tray shows
   // each destination as a themed token card (art + label + number/pair badge)
@@ -8034,6 +8104,7 @@ export function PromptTray({
       chooseOneOptions = step.options as {
         label: string;
         steps: { type: string; [key: string]: unknown }[];
+        disabledReason?: string;
       }[];
       teleport = step.teleport ?? null;
     }
@@ -8099,6 +8170,34 @@ export function PromptTray({
     choice.context === "subterranean-tile-pick" &&
     choice.playerId === viewerPlayerId
       ? (choice.subterraneanTilePick?.candidates ?? null)
+      : null;
+  // Groovy Satyr: every guard just drawn is public to the attacker and is a
+  // distinct discard candidate. Show its real Neutral face regardless of tier.
+  const satyrDraws =
+    choice?.type === "OPTION_CHOICE" &&
+    choice.context === "satyr-swap" &&
+    choice.playerId === viewerPlayerId
+      ? (state.combat?.pendingNeutralDraws ?? [])
+      : null;
+  const satyrSwapResult =
+    choice?.type === "OPTION_CHOICE" &&
+    choice.context === "satyr-swap-result" &&
+    choice.playerId === viewerPlayerId
+      ? (choice.satyrSwapResult ?? null)
+      : null;
+  // Judge Dread is an all-or-nothing decision: show the complete army first,
+  // then (if redrawn) keep both complete old/new armies visible for review.
+  const judgeDreadDraws =
+    choice?.type === "OPTION_CHOICE" &&
+    choice.context === "judge-dread" &&
+    choice.playerId === viewerPlayerId
+      ? (state.combat?.pendingNeutralDraws ?? [])
+      : null;
+  const judgeDreadResult =
+    choice?.type === "OPTION_CHOICE" &&
+    choice.context === "judge-dread-result" &&
+    choice.playerId === viewerPlayerId
+      ? (choice.judgeDreadResult ?? null)
       : null;
   // Rule 111 (Polish house rule): options 1..N each replace a bronze guard, so
   // show that bronze unit's Neutral card face (option 0 keeps — a plain button).
@@ -8296,7 +8395,28 @@ export function PromptTray({
                   : null;
                 return { legal, art };
               })
-            : rule111Draws
+            : satyrDraws
+              ? body.map((legal) => {
+                  const optionIndex =
+                    legal.action.type === "CHOOSE_OPTION" &&
+                    legal.action.optionIndex !== undefined
+                      ? legal.action.optionIndex
+                      : undefined;
+                  // Option 0 keeps the army. Options 1..N are index-aligned
+                  // with the complete mixed-tier pending draw.
+                  const draw =
+                    optionIndex !== undefined && optionIndex > 0
+                      ? satyrDraws[optionIndex - 1]
+                      : undefined;
+                  const art: VisitRewardArt | null = draw
+                    ? {
+                        ...rewardArtForId(draw.unitDefId),
+                        caption: legal.label,
+                      }
+                    : null;
+                  return { legal, art };
+                })
+              : rule111Draws
               ? body.map((legal) => {
                   const optionIndex =
                     legal.action.type === "CHOOSE_OPTION" &&
@@ -8895,6 +9015,144 @@ export function PromptTray({
     );
   }
 
+  // After a Satyr swap, pause on the exact discarded and replacement cards so
+  // the new same-tier draw cannot disappear into the combat board unnoticed.
+  if (satyrSwapResult) {
+    const resultCards = [
+      {
+        heading: "Discarded",
+        unitDefId: satyrSwapResult.fromUnitDefId,
+      },
+      {
+        heading: `New ${titleCase(satyrSwapResult.tier)} draw`,
+        unitDefId: satyrSwapResult.toUnitDefId,
+      },
+    ];
+    const continueEntry = body[0];
+    return (
+      <div className="promptTray rule111Tray" role="dialog" aria-label={title}>
+        <strong>{title}</strong>
+        <small>
+          The replacement was drawn from the same {satyrSwapResult.tier} Neutral deck.
+        </small>
+        <div className="rule111Columns" data-testid="satyr-swap-result-cards">
+          {resultCards.map(({ heading, unitDefId }) => {
+            const art = rewardArtForId(unitDefId);
+            const artImage = rewardArtImage(balanceArt, art);
+            return (
+              <div className="rule111Accept" key={heading}>
+                <small className="rule111ColHead">{heading}</small>
+                <div className="rule111GuardArt">
+                  {artImage ? (
+                    <img
+                      alt={art.name}
+                      className="rule111GuardImage"
+                      draggable={false}
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                      src={assetUrl(artImage)}
+                    />
+                  ) : (
+                    <span className="marketCardFallback">{art.name}</span>
+                  )}
+                </div>
+                <small>{art.name}</small>
+              </div>
+            );
+          })}
+        </div>
+        {continueEntry ? (
+          <button
+            className="commandButton primary"
+            onClick={() => onAction(continueEntry.action)}
+            type="button"
+          >
+            {continueEntry.label}
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (judgeDreadDraws) {
+    return (
+      <div className="promptTray judgeDreadTray" role="dialog" aria-label={title}>
+        <strong>{title}</strong>
+        <small>These Neutral Units were drawn after you locked deployment. Choose one action for the whole army.</small>
+        <div className="judgeDreadArmy" data-testid="judge-dread-drawn-army">
+          {judgeDreadDraws.map((draw, index) => {
+            const art = rewardArtForId(draw.unitDefId);
+            const artImage = rewardArtImage(balanceArt, art);
+            return (
+              <div className="judgeDreadCard" key={`${draw.tier}:${draw.unitDefId}:${index}`}>
+                {artImage ? (
+                  <img alt={art.name} draggable={false} loading="lazy" referrerPolicy="no-referrer" src={assetUrl(artImage)} />
+                ) : (
+                  <span className="marketCardFallback">{art.name}</span>
+                )}
+                <small>{titleCase(draw.tier)} · {art.name}</small>
+              </div>
+            );
+          })}
+        </div>
+        <div className="judgeDreadActions">
+          {body.map((legal, index) => (
+            <button
+              className={`commandButton${index === 0 ? " primary" : ""}`}
+              key={actionKey(legal.action)}
+              onClick={() => onAction(legal.action)}
+              type="button"
+            >
+              {legal.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (judgeDreadResult) {
+    const armies = [
+      { heading: "Discarded army", draws: judgeDreadResult.discarded },
+      { heading: "New army · same tiers", draws: judgeDreadResult.replacements },
+    ];
+    const continueEntry = body[0];
+    return (
+      <div className="promptTray judgeDreadTray" role="dialog" aria-label={title}>
+        <strong>{title}</strong>
+        <small>Every original card was discarded. Every replacement came from its corresponding Neutral tier.</small>
+        <div className="judgeDreadComparison" data-testid="judge-dread-redraw-result">
+          {armies.map(({ heading, draws }) => (
+            <section className="judgeDreadArmyGroup" key={heading}>
+              <small className="rule111ColHead">{heading}</small>
+              <div className="judgeDreadArmy">
+                {draws.map((draw, index) => {
+                  const art = rewardArtForId(draw.unitDefId);
+                  const artImage = rewardArtImage(balanceArt, art);
+                  return (
+                    <div className="judgeDreadCard" key={`${draw.tier}:${draw.unitDefId}:${index}`}>
+                      {artImage ? (
+                        <img alt={art.name} draggable={false} loading="lazy" referrerPolicy="no-referrer" src={assetUrl(artImage)} />
+                      ) : (
+                        <span className="marketCardFallback">{art.name}</span>
+                      )}
+                      <small>{titleCase(draw.tier)} · {art.name}</small>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
+        </div>
+        {continueEntry ? (
+          <button className="commandButton primary" onClick={() => onAction(continueEntry.action)} type="button">
+            {continueEntry.label}
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+
   // Rule 111 (Polish house rule): a purpose-built two-column layout instead of
   // the flat option row — the "replace the Guard" swap sits on the LEFT, and the
   // drawn guard's card face with an "Accept the guard" button on the RIGHT, so
@@ -8973,6 +9231,56 @@ export function PromptTray({
               </button>
             ) : null}
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Some physical offers must reveal every drawn card even when the player
+  // cannot pay for it. The engine marks those choices disabled and omits their
+  // actions; render the full option list here so "cannot afford" means visible
+  // but not clickable, rather than silently removing the card from the table.
+  if (chooseOneOptions?.some((option) => option.disabledReason)) {
+    return (
+      <div className="promptTray withRewardCards" role="dialog" aria-label={title}>
+        <strong>{title}</strong>
+        <small>All drawn Neutral Unit cards are shown. A card you cannot afford stays visible but cannot be recruited.</small>
+        <div className="promptOptions rewardCards">
+          {chooseOneOptions.map((option, optionIndex) => {
+            const legal = body.find(
+              (entry) =>
+                entry.action.type === "RESOLVE_VISIT_STEP" &&
+                entry.action.optionIndex === optionIndex
+            );
+            const art = rewardArtFromVisitSteps(state, viewerPlayerId, option.steps);
+            const artImage = art ? rewardArtImage(balanceArt, art) : undefined;
+            return (
+              <button
+                aria-label={option.label}
+                className={art ? "promptRewardCard" : "commandButton"}
+                disabled={!legal}
+                key={`visit-option-${optionIndex}`}
+                onClick={() => legal && onAction(legal.action)}
+                title={option.disabledReason ?? option.label}
+                type="button"
+              >
+                {art ? (
+                  <>
+                    {artImage ? (
+                      <span className="promptRewardArtWrap">
+                        <CardSetFrame cardId={art.cardId}>
+                          <img alt="" aria-hidden="true" draggable={false} loading="lazy" referrerPolicy="no-referrer" src={assetUrl(artImage)} />
+                        </CardSetFrame>
+                      </span>
+                    ) : (
+                      <span className="marketCardFallback">{art.name}</span>
+                    )}
+                    <small>{option.label}</small>
+                  </>
+                ) : option.label}
+              </button>
+            );
+          })}
         </div>
       </div>
     );

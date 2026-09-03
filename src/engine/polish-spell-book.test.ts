@@ -30,6 +30,7 @@ import {
   polishBookSpellRefreshBlocked
 } from "./polish-spell-book";
 import { MORALE_CARD_IDS } from "@/data/cards/morale";
+import { releaseEndedOngoingCards } from "./active-effects";
 
 function ownedCount(player: ReturnType<typeof createAdventureGameState>["players"][string], cardId: string): number {
   return [...player.deck, ...player.hand, ...player.discard].filter((candidate) => candidate === cardId).length;
@@ -178,6 +179,28 @@ describe("Polish Spell Book lifecycle", () => {
     expect(resolved.players.p1.spellBook).not.toContain("spell.lightning_bolt");
     expect(resolved.players.p1.spellBookUsed).toEqual(["spell.lightning_bolt"]);
     expect(getLegalActions(resolved, "p1").some((legal) => legal.action.type === "CAST_SPELL")).toBe(false);
+  });
+
+  it("Crazy Wizard returns only the first Polish Book cast and refreshes its Book spell", () => {
+    const state = polishCombat("polish-book-crazy-wizard");
+    state.adventure!.houseRules!["polish-card-balance"] = true;
+    state.adventure!.astrologers!.activeCardId = "astrologers.crazy_wizard";
+    state.adventure!.astrologers!.crazyWizardUsedBy = [];
+    state.players.p1.hand = [CAST_A_SPELL_CARD_ID];
+    state.players.p1.spellBook = ["spell.lightning_bolt"];
+    // A previous optional refresh must not suppress Crazy Wizard's mandatory
+    // replacement destination for this first Spell.
+    state.players.p1.polishSpellsRefreshedThisRound = ["spell.lightning_bolt"];
+
+    const resolved = passAll(
+      applyOk(state, castAtSkeletons(state, "spell.lightning_bolt").action),
+    );
+
+    expect(resolved.players.p1.hand).toContain(CAST_A_SPELL_CARD_ID);
+    expect(resolved.players.p1.discard).not.toContain(CAST_A_SPELL_CARD_ID);
+    expect(resolved.players.p1.spellBook).toContain("spell.lightning_bolt");
+    expect(resolved.players.p1.spellBookUsed).not.toContain("spell.lightning_bolt");
+    expect(resolved.adventure!.astrologers!.crazyWizardUsedBy).toEqual(["p1"]);
   });
 
   it("keeps the supplied Cast-a-Spell card's printed +1 Power alternative", () => {
@@ -1601,6 +1624,28 @@ function effectLive(state: GameState, cardId: string): boolean {
 }
 
 describe("Polish Spell Book — a Spell IN EFFECT cannot be refreshed", () => {
+  it("Crazy Wizard keeps an ongoing Book Spell held until expiry, then returns it refreshed", () => {
+    let state = polishMapGame("polish-book-crazy-wizard-ongoing");
+    state.adventure!.astrologers!.activeCardId = "astrologers.crazy_wizard";
+    state.adventure!.astrologers!.crazyWizardUsedBy = [];
+    state = castOngoingBookSpell(state, "spell.water_walk");
+
+    expect(effectLive(state, "spell.water_walk")).toBe(true);
+    expect(state.players.p1.spellBook).not.toContain("spell.water_walk");
+    expect(state.players.p1.spellBookUsed).not.toContain("spell.water_walk");
+    expect(state.players.p1.ongoingCards).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ cardId: "spell.water_walk", returnTo: "spellBook" })
+      ])
+    );
+    expect(state.players.p1.hand).toContain(CAST_A_SPELL_CARD_ID);
+
+    startPlayerTurn(state, "p1");
+    expect(effectLive(state, "spell.water_walk")).toBe(false);
+    expect(state.players.p1.ongoingCards ?? []).toEqual([]);
+    expect(state.players.p1.spellBook).toContain("spell.water_walk");
+  });
+
   it("a live Water Walk is NOT refreshable while its caster's turn is still running", () => {
     // The mid-round reading (the one every refresh SOURCE consults) is strict:
     // while the "this turn" effect is up, the Spell is in effect and untouchable.
@@ -1608,7 +1653,12 @@ describe("Polish Spell Book — a Spell IN EFFECT cannot be refreshed", () => {
     let state = polishMapGame("polish-book-in-effect-mid-round");
     state = castOngoingBookSpell(state, "spell.water_walk");
 
-    expect(state.players.p1.spellBookUsed).toContain("spell.water_walk");
+    expect(state.players.p1.spellBookUsed).not.toContain("spell.water_walk");
+    expect(state.players.p1.ongoingCards).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ cardId: "spell.water_walk", returnTo: "spellBookUsed" })
+      ])
+    );
     expect(effectLive(state, "spell.water_walk")).toBe(true);
     expect(midRoundRefreshablePolishUsedSpells(state, state.players.p1)).not.toContain(
       "spell.water_walk"
@@ -1661,7 +1711,9 @@ describe("Polish Spell Book — a Spell IN EFFECT cannot be refreshed", () => {
       optionIndex: hasteIndex
     });
     expect(state.players.p1.spellBook).toContain("spell.haste");
-    expect(state.players.p1.spellBookUsed).toContain("spell.water_walk");
+    expect(state.players.p1.ongoingCards?.some((entry) => entry.cardId === "spell.water_walk")).toBe(
+      true
+    );
   });
 
   it("with ONLY an in-effect Spell used, a discard-recovery has nothing to recover", () => {
@@ -1670,14 +1722,17 @@ describe("Polish Spell Book — a Spell IN EFFECT cannot be refreshed", () => {
     let state = polishMapGame("polish-book-in-effect-recovery-empty");
     state = castOngoingBookSpell(state, "spell.water_walk");
     state.players.p1.discard = [];
-    expect(state.players.p1.spellBookUsed).toEqual(["spell.water_walk"]);
+    expect(state.players.p1.spellBookUsed).toEqual([]);
+    expect(state.players.p1.ongoingCards?.some((entry) => entry.cardId === "spell.water_walk")).toBe(
+      true
+    );
     expect(openDiscardPickChoice(state, "p1", { count: 1, filter: "spell" })).toBe(false);
-    expect(state.players.p1.spellBookUsed).toEqual(["spell.water_walk"]);
+    expect(state.players.p1.spellBookUsed).toEqual([]);
   });
 
-  it("Mysticism cannot refresh a Book Spell whose combat effect is still live", () => {
-    // Haste leaves a combat-long effect: the Mysticism recall ("refresh the cast
-    // Spell") is refused while it lasts, and the Spell stays used.
+  it("Mysticism holds a Book Spell until its combat effect ends, then refreshes it", () => {
+    // Haste leaves a combat-long effect: Mysticism changes its eventual
+    // destination but cannot make the live Spell immediately castable again.
     const state = polishCombat("polish-book-in-effect-mysticism");
     state.players.p1.hand = [CAST_A_SPELL_CARD_ID, "ability.mysticism"];
     state.players.p1.spellBook = ["spell.haste"];
@@ -1699,10 +1754,22 @@ describe("Polish Spell Book — a Spell IN EFFECT cannot be refreshed", () => {
     const resolved = passAll(applyOk(opened, myst!.action));
 
     expect(effectLive(resolved, "spell.haste")).toBe(true);
-    expect(resolved.players.p1.spellBookUsed).toContain("spell.haste");
+    expect(resolved.players.p1.spellBookUsed).not.toContain("spell.haste");
     expect(resolved.players.p1.spellBook).not.toContain("spell.haste");
+    expect(resolved.players.p1.ongoingCards).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ cardId: "spell.haste", returnTo: "spellBook" })
+      ])
+    );
     // The enabler still comes back (that half of the recall is unaffected).
     expect(resolved.players.p1.hand).toContain(CAST_A_SPELL_CARD_ID);
+
+    resolved.activeEffects = resolved.activeEffects.filter(
+      (effect) => !(effect.source.type === "card" && effect.source.cardId === "spell.haste")
+    );
+    releaseEndedOngoingCards(resolved);
+    expect(resolved.players.p1.ongoingCards ?? []).toEqual([]);
+    expect(resolved.players.p1.spellBook).toContain("spell.haste");
   });
 });
 
@@ -1723,7 +1790,7 @@ describe("Polish Spell Book — a 'this turn' Spell refreshes at the NEXT round 
     it(`${spellId} cast in round 1 is refreshed and castable again in round 2`, () => {
       let state = polishMapGame(`polish-book-this-turn-${spellId}`);
       state = castOngoingBookSpell(state, spellId);
-      expect(state.players.p1.spellBookUsed).toContain(spellId);
+      expect(state.players.p1.ongoingCards?.some((entry) => entry.cardId === spellId)).toBe(true);
       expect(effectLive(state, spellId)).toBe(true);
 
       state = playOutRound(state);
@@ -1789,7 +1856,9 @@ describe("Polish Spell Book — a 'this turn' Spell refreshes at the NEXT round 
       state = applyOk(state, { type: "REFRESH_HAND", playerId: "p2", discardCardIds: [] });
     }
     state = castOngoingBookSpell(state, "spell.water_walk", "p2");
-    expect(state.players.p2.spellBookUsed).toContain("spell.water_walk");
+    expect(state.players.p2.ongoingCards?.some((entry) => entry.cardId === "spell.water_walk")).toBe(
+      true
+    );
 
     const endP2 = getLegalActions(state, "p2").find((legal) => legal.action.type === "END_TURN");
     expect(endP2).toBeTruthy();
@@ -1824,7 +1893,7 @@ describe("Polish Spell Book — a 'this turn' Spell refreshes at the NEXT round 
     );
     expect(live, "Haste leaves a live combat effect").toBeTruthy();
     expect(live!.expiresAtTurnEndPlayerId, "…that is not turn-scoped").toBeUndefined();
-    expect(state.players.p1.spellBookUsed).toContain("spell.haste");
+    expect(state.players.p1.ongoingCards?.some((entry) => entry.cardId === "spell.haste")).toBe(true);
 
     expect(
       polishBookSpellEffectIsLive(state, "p1", "spell.haste", state.players.p1, {
@@ -1832,8 +1901,9 @@ describe("Polish Spell Book — a 'this turn' Spell refreshes at the NEXT round 
       })
     ).toBe(true);
     const partition = partitionPolishBookAtRoundStart(state, state.players.p1);
-    expect(partition.stillInEffect).toContain("spell.haste");
+    expect(partition.stillInEffect).not.toContain("spell.haste");
     expect(partition.refresh).not.toContain("spell.haste");
+    expect(state.players.p1.ongoingCards?.some((entry) => entry.cardId === "spell.haste")).toBe(true);
   });
 
   it("the round-start partition discounts ONLY the Book owner's own turn-scoped effect", () => {
@@ -1852,7 +1922,7 @@ describe("Polish Spell Book — a 'this turn' Spell refreshes at the NEXT round 
     ).toBe(false);
 
     const partition = partitionPolishBookAtRoundStart(state, state.players.p1);
-    expect(partition.refresh).toContain("spell.water_walk");
+    expect(partition.refresh).not.toContain("spell.water_walk");
     expect(partition.stillInEffect).not.toContain("spell.water_walk");
   });
 

@@ -256,6 +256,7 @@ import {
   activateBallistas,
   applyPermanentCombatEffectsForPlayer,
   applyWarMachineDamage,
+  astrologersBallistaDamage,
   buyWarMachine,
   countBallistas,
   crackPermanentForInstant,
@@ -266,6 +267,7 @@ import {
   elementalTileSpellPowerBonus,
   firstAidVolleyHeals,
   getPermanentCardIds,
+  getPermanentSchoolBonus,
   grantBalanceBallistaAim,
   isLowestInitiativeEnemy,
   openBallisticsOpeningBombard,
@@ -274,6 +276,8 @@ import {
   putPermanentIntoPlay,
   resolveWarMachineTarget,
   schoolScopedStandingPower,
+  pickSpellSchoolForPower,
+  spellCardForPowerSchool,
   spendFirstAidExpert,
   startWarMachineRound,
 } from "./permanents";
@@ -510,8 +514,11 @@ import {
 } from "./decks";
 import { applyLittleBustersCounter } from "./little-busters-counters";
 import {
-  maybeReturnFirstSpellToHand,
+  claimCrazyWizardFirstSpellReturn,
+  holdPolishBookOngoingSpell,
   noteMapSpellCast,
+  returnCrazyWizardPolishBookSpell,
+  returnCrazyWizardSpellFromDiscard,
 } from "./spell-lifecycle";
 import {
   cancelSpellAllowsSchoolAndLevel,
@@ -15970,6 +15977,16 @@ function finalizeSpellCardDestination(
   const playerId = stackItem.action.playerId;
   const cardId = stackItem.action.cardId;
   const recall = stackItem.modifiers.recallSpell;
+  const crazyWizardReturn = stackItem.modifiers.crazyWizardReturn === true;
+  const ongoingEffectIds = state.activeEffects
+    .slice(effectCountBeforeCast)
+    .filter(
+      (effect) =>
+        effect.source.type === "card" &&
+        effect.source.cardId === cardId &&
+        !effect.keepSourceInDiscard,
+    )
+    .map((effect) => effect.id);
   const allSupportCards = expertRecallSupportCardIds(
     stackItem.modifiers.playedCardIds,
     recall?.sourceCardId,
@@ -15997,9 +16014,6 @@ function finalizeSpellCardDestination(
       : [];
   const opensAlongsidePick = pickCandidates.length > 1;
   if (polishSpellBookEnabled(state) && stackItem.action.fromSpellBook) {
-    if (recall?.polishRefreshSpell) {
-      refreshPolishUsedSpell(state, playerId, cardId);
-    }
     if (recall?.polishRecallEnabler && stackItem.action.castEnablerCardId) {
       returnSpellFromDiscardToHand(
         state,
@@ -16016,6 +16030,49 @@ function finalizeSpellCardDestination(
         }
       }
     }
+    if (ongoingEffectIds.length > 0) {
+      if (crazyWizardReturn) {
+        returnCrazyWizardPolishBookSpell(
+          state,
+          playerId,
+          cardId,
+          stackItem.action.castEnablerCardId,
+          ongoingEffectIds,
+        );
+      } else if (recall?.polishRefreshSpell) {
+        if (
+          holdPolishBookOngoingSpell(
+            state,
+            playerId,
+            cardId,
+            ongoingEffectIds,
+            "spellBook",
+          )
+        ) {
+          markPolishSpellRefreshedThisRound(state.players[playerId], cardId);
+        }
+      } else {
+        holdPolishBookOngoingSpell(
+          state,
+          playerId,
+          cardId,
+          ongoingEffectIds,
+          "spellBookUsed",
+        );
+      }
+    } else {
+      if (recall?.polishRefreshSpell) {
+        refreshPolishUsedSpell(state, playerId, cardId);
+      }
+      if (crazyWizardReturn) {
+        returnCrazyWizardPolishBookSpell(
+          state,
+          playerId,
+          cardId,
+          stackItem.action.castEnablerCardId,
+        );
+      }
+    }
     return;
   }
   // A recalled Spell cast from the Spell Book returns to the Book, not the hand.
@@ -16026,14 +16083,14 @@ function finalizeSpellCardDestination(
     playerId,
     cardId,
     effectCountBeforeCast,
-    recall?.toHand ? recallZone : "discard",
+    recall?.toHand ? recallZone : crazyWizardReturn ? "hand" : "discard",
   );
 
   if (!held) {
     if (recall?.toHand) {
       returnSpellFromDiscardToHand(state, playerId, cardId, recall.toSpellBook);
-    } else {
-      maybeReturnFirstSpellToHand(state, playerId, cardId);
+    } else if (crazyWizardReturn) {
+      returnCrazyWizardSpellFromDiscard(state, playerId, cardId);
     }
   }
 
@@ -17671,7 +17728,22 @@ function processDeferredSpellRecalls(
   }
   stackItem.modifiers.deferredSpellRecalls = [];
   for (const entry of deferred) {
-    if (entry.fromPolishUsed) {
+    if (entry.reason === "Crazy Wizard") {
+      if (entry.fromPolishUsed) {
+        returnCrazyWizardPolishBookSpell(
+          state,
+          entry.playerId,
+          entry.cardId,
+          entry.castEnablerCardId,
+        );
+      } else {
+        returnCrazyWizardSpellFromDiscard(
+          state,
+          entry.playerId,
+          entry.cardId,
+        );
+      }
+    } else if (entry.fromPolishUsed) {
       refreshPolishUsedSpell(state, entry.playerId, entry.cardId);
     } else {
       returnSpellFromDiscardToHand(
@@ -18279,6 +18351,17 @@ function performSpellCast(
     }
   }
 
+  // Crazy Wizard belongs to the first OWNED Spell card this player plays, not
+  // merely the first one that happens to be sitting in discard at resolution.
+  // Scrolls, shared-discard casts/copies and Tarnum's borrowed Spell have their
+  // own explicit destinations and never become the caster's card.
+  const crazyWizardReturn =
+    !action.fromScroll &&
+    !action.fromSpellDeck &&
+    !action.tarnumReturn &&
+    !action.eagleEyeCopy &&
+    claimCrazyWizardFirstSpellReturn(state, action.playerId);
+
   const caster = state.players[action.playerId];
   const isFirstSpellThisTurn =
     (caster.combatStats.spellsCastThisTurn ?? 0) === 0;
@@ -18286,6 +18369,39 @@ function performSpellCast(
   // Tower Magi Pack Power bonus lands on whichever spell is cast first — never on
   // both a free Helm cast and a later normal cast.
   const isFirstSpellThisRound = !caster.combatStats.anySpellCastThisRound;
+  // Magic Arrow can use any ONE School of Magic, never several at once. Choose
+  // the strongest complete package before any cast bookkeeping consumes an
+  // Elemental activation charge, then freeze that choice on the stack item.
+  let selectedPowerSchool = pickSpellSchoolForPower(
+    state,
+    action.playerId,
+    card,
+  );
+  if (card.spellSchools?.includes("any") && action.useSchoolExpert) {
+    const expertSchool = getPermanentSchoolBonus(
+      state,
+      action.playerId,
+      card,
+    )?.card.permanentEffect?.schoolBonus?.school;
+    if (expertSchool && expertSchool !== "any") {
+      selectedPowerSchool = expertSchool;
+    }
+  } else if (
+    card.spellSchools?.includes("any") &&
+    action.useSchoolFetchExpert
+  ) {
+    selectedPowerSchool = matchingSchoolFetchForCast(
+      state,
+      action.playerId,
+      card.spellSchools,
+    );
+  }
+  const powerCard = spellCardForPowerSchool(
+    state,
+    action.playerId,
+    card,
+    selectedPowerSchool,
+  );
   // Neither a Helm of the Alabaster Unicorn cast, a Spell Scroll cast, nor a
   // Tarnum (Conflux) VI over-limit cast counts toward the spell limit
   // (noteSpellCast still closes the first-spell-this-round gate for them). A
@@ -18317,6 +18433,12 @@ function performSpellCast(
   );
 
   const stackItem = makeStackItem(state, action);
+  if (crazyWizardReturn) {
+    stackItem.modifiers.crazyWizardReturn = true;
+  }
+  if (card.spellSchools?.includes("any") && selectedPowerSchool) {
+    stackItem.modifiers.selectedSpellSchool = selectedPowerSchool;
+  }
 
   // Balance-Pack Eagle Eye copy: "with 0 SP". Base Power is ZERO — only Power the
   // caster ADDS into this cast window counts (read once in
@@ -18389,7 +18511,7 @@ function performSpellCast(
     const activationPower = consumeActiveUnitSpellPowerBoost(
       state,
       action.playerId,
-      card.spellSchools,
+      powerCard.spellSchools,
       isFirstSpellThisRound,
     );
     if (activationPower > 0) {
@@ -18415,7 +18537,7 @@ function performSpellCast(
       const expert = discardSchoolPermanentForExpert(
         state,
         action.playerId,
-        card,
+        powerCard,
       );
       if (!expert) {
         throw new Error(
@@ -18433,7 +18555,7 @@ function performSpellCast(
     } else {
       // Permanent basic + Elemental tile for the auto-picked school (Magic Arrow)
       // or the spell's printed school.
-      const standing = schoolScopedStandingPower(state, action.playerId, card);
+      const standing = schoolScopedStandingPower(state, action.playerId, powerCard);
       if (standing > 0) {
         stackItem.modifiers.schoolPowerBonus = standing;
       }
@@ -18454,7 +18576,7 @@ function performSpellCast(
     const school = matchingSchoolFetchForCast(
       state,
       action.playerId,
-      card.spellSchools ?? [],
+      powerCard.spellSchools ?? [],
     );
     if (!school) {
       throw new Error(
@@ -19867,6 +19989,14 @@ function applyReactionPlayCore(
     }
   }
 
+  const crazyWizardReturn =
+    card.kind === "spell" &&
+    !play.fromScroll &&
+    !play.fromSpellDeck &&
+    !play.tarnumReturn &&
+    !option?.cost?.removeSelf &&
+    claimCrazyWizardFirstSpellReturn(state, playerId);
+
   const costCardsPaid = play.fromScroll
     ? 0
     : // Power costs (Magic Mirror silver/gold, Sorrow, lethal saves, …) may draw
@@ -19995,6 +20125,7 @@ function applyReactionPlayCore(
       ...(play.castEnablerCardId
         ? { castEnablerCardId: play.castEnablerCardId }
         : {}),
+      ...(crazyWizardReturn ? { crazyWizardReturn: true } : {}),
     });
     if (play.fromSpellBook) {
       (stackItem.modifiers.bookPlayedCardIds ??= []).push(play.cardId);
@@ -20036,6 +20167,40 @@ function applyReactionPlayCore(
     optionLabel,
     ...(cardPlayTargetUnitId ? { targetUnitId: cardPlayTargetUnitId } : {}),
   });
+
+  if (crazyWizardReturn) {
+    const polishBookCast =
+      Boolean(play.fromSpellBook) && polishSpellBookEnabled(state);
+    if (
+      stackItem &&
+      isAttackStackItem(stackItem) &&
+      effect.type !== "CREATE_ACTIVE_EFFECT"
+    ) {
+      // Keep the returned copy unavailable until the pending attack is over,
+      // matching the existing Knowledge/Mysticism anti-loop timing.
+      (stackItem.modifiers.deferredSpellRecalls ??= []).push({
+        cardId: play.cardId,
+        playerId,
+        toSpellBook: false,
+        ...(polishBookCast ? { fromPolishUsed: true } : {}),
+        ...(play.castEnablerCardId
+          ? { castEnablerCardId: play.castEnablerCardId }
+          : {}),
+        reason: "Crazy Wizard",
+      });
+    } else if (effect.type !== "CREATE_ACTIVE_EFFECT") {
+      if (polishBookCast) {
+        returnCrazyWizardPolishBookSpell(
+          state,
+          playerId,
+          play.cardId,
+          play.castEnablerCardId,
+        );
+      } else {
+        returnCrazyWizardSpellFromDiscard(state, playerId, play.cardId);
+      }
+    }
+  }
 
   // Fortune's printed "before a die roll" timing resolves in the declared-
   // attack reaction window. Create the reroll before the parked attack resumes,
@@ -20206,6 +20371,14 @@ function applyReactionPlayCore(
           stackItem.action.castEnablerCardId,
         );
       }
+      if (!recall?.toHand && stackItem.modifiers.crazyWizardReturn) {
+        returnCrazyWizardPolishBookSpell(
+          state,
+          stackItem.action.playerId,
+          stackItem.action.cardId,
+          stackItem.action.castEnablerCardId,
+        );
+      }
     } else if (stackItem.modifiers.recallSpell?.toHand) {
       returnSpellFromDiscardToHand(
         state,
@@ -20213,8 +20386,8 @@ function applyReactionPlayCore(
         stackItem.action.cardId,
         stackItem.modifiers.recallSpell.toSpellBook,
       );
-    } else {
-      maybeReturnFirstSpellToHand(
+    } else if (stackItem.modifiers.crazyWizardReturn) {
+      returnCrazyWizardSpellFromDiscard(
         state,
         stackItem.action.playerId,
         stackItem.action.cardId,
@@ -21433,13 +21606,65 @@ function applyReactionPlayCore(
   if (effect.type === "CREATE_ACTIVE_EFFECT") {
     const effectCountBefore = state.activeEffects.length;
     createActiveEffectFromCard(state, card, effect, playerId, mode);
-    holdOngoingCardIfEffectCreated(
-      state,
-      playerId,
-      play.cardId,
-      effectCountBefore,
-      "discard",
-    );
+    const polishBookCast =
+      Boolean(play.fromSpellBook) && polishSpellBookEnabled(state);
+    if (crazyWizardReturn && polishBookCast) {
+      const ongoingEffectIds = state.activeEffects
+        .slice(effectCountBefore)
+        .filter(
+          (active) =>
+            active.source.type === "card" &&
+            active.source.cardId === play.cardId,
+        )
+        .map((active) => active.id);
+      returnCrazyWizardPolishBookSpell(
+        state,
+        playerId,
+        play.cardId,
+        play.castEnablerCardId,
+        ongoingEffectIds,
+      );
+      if (stackItem && isAttackStackItem(stackItem)) {
+        stackItem.modifiers.crazyWizardOngoingSpell = {
+          cardId: play.cardId,
+          playerId,
+        };
+      }
+    } else if (polishBookCast) {
+      const ongoingEffectIds = state.activeEffects
+        .slice(effectCountBefore)
+        .filter(
+          (active) =>
+            active.source.type === "card" &&
+            active.source.cardId === play.cardId,
+        )
+        .map((active) => active.id);
+      holdPolishBookOngoingSpell(
+        state,
+        playerId,
+        play.cardId,
+        ongoingEffectIds,
+        "spellBookUsed",
+      );
+    } else {
+      holdOngoingCardIfEffectCreated(
+        state,
+        playerId,
+        play.cardId,
+        effectCountBefore,
+        crazyWizardReturn ? "hand" : "discard",
+      );
+      if (
+        crazyWizardReturn &&
+        stackItem &&
+        isAttackStackItem(stackItem)
+      ) {
+        stackItem.modifiers.crazyWizardOngoingSpell = {
+          cardId: play.cardId,
+          playerId,
+        };
+      }
+    }
     stackItem?.modifiers.playedCardIds.push(play.cardId);
   }
 
@@ -21593,30 +21818,32 @@ function applyReactionPlayCore(
       !effect.expertSpellLimitBonus;
     if (polishBookInstant) {
       if (isPolishMysticism) {
-        deferred.push({
-          cardId: entry.cardId,
-          playerId,
-          toSpellBook: true,
-          fromPolishUsed: true,
-        });
+        if (!entry.crazyWizardReturn) {
+          deferred.push({
+            cardId: entry.cardId,
+            playerId,
+            toSpellBook: true,
+            fromPolishUsed: true,
+          });
+        }
         // Polish Mysticism ALSO returns the Cast a Spell enabler to hand (basic and
         // expert alike), matching the cast-window path — the reference sheet's
         // "Cast a Spell returns → Hand. Refresh casted Spell".
-        if (entry.castEnablerCardId) {
+        if (entry.castEnablerCardId && !entry.crazyWizardReturn) {
           deferred.push({
             cardId: entry.castEnablerCardId,
             playerId,
             toSpellBook: false,
           });
         }
-      } else if (entry.castEnablerCardId) {
+      } else if (entry.castEnablerCardId && !entry.crazyWizardReturn) {
         deferred.push({
           cardId: entry.castEnablerCardId,
           playerId,
           toSpellBook: false,
         });
       }
-    } else {
+    } else if (!entry.crazyWizardReturn) {
       deferred.push({
         cardId: entry.cardId,
         playerId,
@@ -22032,8 +22259,9 @@ function applySchoolFetchExpert(
   }
 
   if (stackItem.action.type === "CAST_SPELL") {
-    const castSchools =
-      cardLibrary[stackItem.action.cardId]?.spellSchools ?? [];
+    const castSchools = stackItem.modifiers.selectedSpellSchool
+      ? [stackItem.modifiers.selectedSpellSchool]
+      : (cardLibrary[stackItem.action.cardId]?.spellSchools ?? []);
     const matchesCast =
       castSchools.includes(action.school) || castSchools.includes("any");
     if (stackItem.action.playerId !== action.playerId || !matchesCast) {
@@ -24216,9 +24444,10 @@ function playCard(
     // getSchoolPowerBonus) + the map Sorcery/Scales bank. Expert School / Basic
     // Magic are offered in the boost window (like combat's cast-time options).
     const mapBank = mapSpellPowerBankAvailable(state, action.playerId);
+    const powerCard = spellCardForPowerSchool(state, action.playerId, card);
     const startingPower =
-      standingSpellPower(state, action.playerId, card) +
-      getSchoolPowerBonus(state, action.playerId, card) +
+      standingSpellPower(state, action.playerId, powerCard) +
+      getSchoolPowerBonus(state, action.playerId, powerCard) +
       mapBank;
     const inFlightCardIds =
       action.fromSpellBook && polishSpellBookEnabled(state)
@@ -25159,12 +25388,13 @@ function playCard(
       );
     }
     discardPermanentFromPlay(state, action.playerId, effect.warMachineCardId);
+    const amount = astrologersBallistaDamage(state, effect.amount);
     applyWarMachineDamage(
       state,
       action.playerId,
       unit.id,
-      effect.amount,
-      `${card.name}: the discarded Ballista hits ${unit.cardName} for ${effect.amount} damage.`,
+      amount,
+      `${card.name}: the discarded Ballista hits ${unit.cardName} for ${amount} damage.`,
       effect.warMachineCardId,
     );
   }
@@ -25735,8 +25965,16 @@ function playCard(
       state,
       action.playerId,
       effect.cardsByPower,
-      standingSpellPower(state, action.playerId, card) +
-        getSchoolPowerBonus(state, action.playerId, card) +
+      standingSpellPower(
+        state,
+        action.playerId,
+        spellCardForPowerSchool(state, action.playerId, card),
+      ) +
+        getSchoolPowerBonus(
+          state,
+          action.playerId,
+          spellCardForPowerSchool(state, action.playerId, card),
+        ) +
         visionsBank,
     );
   }

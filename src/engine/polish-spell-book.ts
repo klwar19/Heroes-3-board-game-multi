@@ -122,16 +122,15 @@ export function takeTarnumOverlimitSpellFromSharedDiscard(
  * A Book Spell whose cast left a LASTING effect on the table (Water Walk / Fly
  * "this turn", a combat-long Haste…) is neither refreshed nor used: it sits in
  * effect, exactly like a played Luck ability in the Ongoing tray, and NO refresh
- * source may return it to the refreshed side while that effect lives. When the
- * effect ends (turn end / game-round end / combat end — whatever the spell's own
- * duration is) it becomes an ordinary used Book Spell and refreshes again.
+ * source may return it to the refreshed side while that effect lives. The
+ * physical Book card is represented in `ongoingCards` until the effect ends,
+ * then moves to its recorded used/refreshed destination.
  *
  * This is the ONE read every refresh path consults: the round-start whole-side
  * refresh, `refreshPolishUsedSpell` (Mysticism / Clone return / cancel paths) and
  * the discard-recovery "Refresh a Spell in your Spell Book" pick. A Polish Book
- * cast never enters `ongoingCards` (the physical card is in `spellBookUsed`), so
- * the live-effect read is the source of truth here; the tray is checked too so
- * the same helper is correct for a classic/old-Book card.
+ * live-effect read remains the source of truth; the tray's effect ids are also
+ * checked for defensive consistency.
  */
 export function polishBookSpellEffectIsLive(
   state: Pick<GameState, "activeEffects"> & { combat?: GameState["combat"] },
@@ -170,7 +169,20 @@ export function polishBookSpellEffectIsLive(
   ) {
     return true;
   }
-  return Boolean(player?.ongoingCards?.some((entry) => entry.cardId === cardId));
+  const activeById = new Map(state.activeEffects.map((effect) => [effect.id, effect]));
+  return Boolean(
+    player?.ongoingCards?.some(
+      (entry) =>
+        entry.cardId === cardId &&
+        entry.effectIds.some((effectId) => {
+          const effect = activeById.get(effectId);
+          return Boolean(
+            effect &&
+              !(turnScopedIsOver && effect.expiresAtTurnEndPlayerId === playerId),
+          );
+        }),
+    ),
+  );
 }
 
 /**

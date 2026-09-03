@@ -673,6 +673,7 @@ export {
   TREASURE_DIE_FACES,
   adventureSeatCount,
   adventureRivalIds,
+  astrologersHeroEmpowerRemaining,
   canCrossEdge,
   canHeroReachPlacedTile,
   canHeroReachPlacementCenter,

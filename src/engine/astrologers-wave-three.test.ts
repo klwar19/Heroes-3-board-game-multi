@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { applyAction, createAdventureGameState, createInitialGameState, getLegalActions } from "./index";
+import {
+  applyAction,
+  createAdventureGameState,
+  createInitialGameState,
+  getLegalActions,
+  hexSpaceId,
+  legalGateHexPairs,
+  tileLatticeNeighbors
+} from "./index";
 import {
   disruptionEligibleTiles,
+  disruptionLegalRotations,
   drawAstrologersCard,
   eliminatePlayer,
   getMainHero,
@@ -148,18 +157,24 @@ describe("Astrologers — Crag Hack (first combat: ground units +1 Attack)", () 
     expect(otherCard.combat?.proclamationGroundAttackBonus).toBeUndefined();
   });
 
-  /** Melee damage from an Attack-3 hit (die "0") by a `unitType` attacker. */
-  function attackDamage(latched: boolean, unitType: "ground" | "flying"): number {
+  /** Damage from an Attack-3 hit (die "0") by either side's `unitType` attacker. */
+  function attackDamage(
+    latched: boolean,
+    unitType: "ground" | "ranged" | "flying",
+    attackingPlayerId: "p1" | "p2" = "p1"
+  ): number {
     const state = createInitialGameState("crag-hack-damage");
     if (latched) {
       state.combat!.proclamationGroundAttackBonus = 1;
     }
-    const attacker = state.combat!.units.unit_p1_griffins;
+    const attackerId = attackingPlayerId === "p1" ? "unit_p1_griffins" : "unit_p2_skeletons";
+    const defenderId = attackingPlayerId === "p1" ? "unit_p2_skeletons" : "unit_p1_griffins";
+    const attacker = state.combat!.units[attackerId];
     attacker.abilities = [];
     attacker.type = unitType;
     attacker.attack = 3;
     attacker.position = 1;
-    const defender = state.combat!.units.unit_p2_skeletons;
+    const defender = state.combat!.units[defenderId];
     defender.abilities = [];
     defender.defense = 0;
     defender.position = 2; // adjacent to 1
@@ -168,18 +183,20 @@ describe("Astrologers — Crag Hack (first combat: ground units +1 Attack)", () 
     defender.retaliatedThisRound = true;
     state.players.p1.hand = [];
     state.players.p2.hand = [];
-    state.activePlayerId = "p1";
-    state.combat!.activeUnitId = "unit_p1_griffins";
+    state.activePlayerId = attackingPlayerId;
+    state.combat!.activeUnitId = attackerId;
     state.combat!.dice.scriptedRolls = [0, 0, 0, 0];
     state.combat!.dice.rollCount = 0;
     const next = settle(
-      applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_griffins", defenderId: "unit_p2_skeletons" })
+      applyOk(state, { type: "ATTACK_UNIT", playerId: attackingPlayerId, attackerId, defenderId })
     );
-    return next.combat!.units.unit_p2_skeletons.damage;
+    return next.combat!.units[defenderId].damage;
   }
 
-  it("a GROUND unit in the latched combat deals exactly +1 damage; a FLYING one is untouched", () => {
+  it("buffs GROUND units on either side by exactly +1; RANGED and FLYING units are untouched", () => {
     expect(attackDamage(true, "ground") - attackDamage(false, "ground")).toBe(1);
+    expect(attackDamage(true, "ground", "p2") - attackDamage(false, "ground", "p2")).toBe(1);
+    expect(attackDamage(true, "ranged") - attackDamage(false, "ranged")).toBe(0);
     expect(attackDamage(true, "flying") - attackDamage(false, "flying")).toBe(0);
   });
 });
@@ -577,14 +594,16 @@ describe("Astrologers — Disruption (rotate one tile per player, state-preservi
     return state;
   }
 
-  it("home tiles are never eligible (hero + town), a fresh revealed tile is", () => {
+  it("a Hero excludes its tile; a Town alone does not create an unprinted exemption", () => {
     const state = twoSeatGame("disruption-eligible");
     expect(disruptionEligibleTiles(state)).toEqual([]);
     const tile = addRevealedTile(state, "tile_test", 20, 20);
     expect(disruptionEligibleTiles(state).map((candidate) => candidate.id)).toEqual([tile.id]);
     // A hero standing anywhere on it removes it again.
     getMainHero(state, "p2")!.spaceId = getTileFootprintSpaceIds(tile)[3];
-    expect(disruptionEligibleTiles(state)).toEqual([]);
+    const remaining = disruptionEligibleTiles(state);
+    expect(remaining.some((candidate) => candidate.id === tile.id)).toBe(false);
+    expect(remaining.some((candidate) => candidate.group === "starting")).toBe(true);
   });
 
   it("rotates in place: every field keeps its state and moves to its slot's new hex", () => {
@@ -615,6 +634,45 @@ describe("Astrologers — Disruption (rotate one tile per player, state-preservi
     // Nothing duplicated: exactly one Black Cube across the tile.
     const cubes = after.filter((spaceId) => adventure.fields[spaceId].blackCube);
     expect(cubes).toEqual([after[1]]);
+  });
+
+  it("allows Underground and linked Gate tiles, but hides rotations that break the entrance", () => {
+    const state = twoSeatGame("disruption-underground-gate");
+    const surfaceCenter = { row: 30, col: 30 };
+    const undergroundCenter = tileLatticeNeighbors(surfaceCenter)[0];
+    const surface = addRevealedTile(state, "tile_surface_gate", surfaceCenter.row, surfaceCenter.col);
+    const underground = addRevealedTile(
+      state,
+      "tile_underground_gate",
+      undergroundCenter.row,
+      undergroundCenter.col
+    );
+    underground.tileDefId = "U1";
+    underground.group = "subterranean";
+    materializeTileFields(state.adventure!, underground);
+
+    const pair = legalGateHexPairs(surfaceCenter, undergroundCenter)[0];
+    expect(pair).toBeTruthy();
+    const surfaceGate = state.adventure!.fields[hexSpaceId(pair.gateHex)];
+    const undergroundGate = state.adventure!.fields[hexSpaceId(pair.entranceHex)];
+    surfaceGate.location = "subterranean_gate";
+    surfaceGate.gateToTileId = underground.id;
+    surfaceGate.gateLinkSpaceId = undergroundGate.spaceId;
+    undergroundGate.location = "subterranean_gate";
+    undergroundGate.gateToTileId = surface.id;
+    undergroundGate.gateLinkSpaceId = surfaceGate.spaceId;
+
+    const eligibleIds = disruptionEligibleTiles(state).map((tile) => tile.id);
+    // This exact surface half has no alternative ring position that remains
+    // adjacent, so "if possible" excludes it instead of offering a trap.
+    expect(eligibleIds).not.toContain(surface.id);
+    expect(eligibleIds).toContain(underground.id);
+
+    expect(disruptionLegalRotations(state, surface)).toEqual([]);
+    const legal = disruptionLegalRotations(state, underground);
+    expect(legal.length).toBeGreaterThan(0);
+    expect(legal.length).toBeLessThan(5);
+    expect(legal).not.toContain(surface.rotation);
   });
 
   it("end to end: each seat rotates at most one tile, never the same one, inside the barrier", () => {

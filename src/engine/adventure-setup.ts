@@ -1,4 +1,7 @@
-import { astrologersDeckCardIds } from "@/data/cards/astrologers";
+import {
+  BINH_DISABLED_ASTROLOGERS_CARDS,
+  astrologersDeckCardIds
+} from "@/data/cards/astrologers";
 import { eventsDeckCardIds } from "@/data/cards/events";
 import { abilityDeckBinh, abilityDeckLegacy } from "@/data/cards/abilities-extra";
 import {
@@ -1113,13 +1116,20 @@ function makeSharedDecks(
   };
 }
 
-function makeAstrologersDeck(seed: string, eventsOn: boolean): DeckState {
+function makeAstrologersDeck(seed: string, eventsOn: boolean, ruleset: GameRuleset): DeckState {
+  // Friendly Beaver is a BINH-only ban. Legacy keeps the complete printed
+  // Astrologers deck; filtering here (where the ruleset is known) prevents the
+  // house rule from changing rulebook games globally.
+  const rulesetCardIds =
+    ruleset === "binh"
+      ? astrologersDeckCardIds.filter((id) => !BINH_DISABLED_ASTROLOGERS_CARDS.has(id))
+      : astrologersDeckCardIds;
   // Forty Thieves modifies the Event draw; without the (optional, multiplayer
   // only) Event deck it would be printed dead weight, so it only shuffles in
   // when the Event deck exists in this game.
   const cardIds = eventsOn
-    ? astrologersDeckCardIds
-    : astrologersDeckCardIds.filter((id) => id !== "astrologers.forty_thieves");
+    ? rulesetCardIds
+    : rulesetCardIds.filter((id) => id !== "astrologers.forty_thieves");
   return {
     id: ASTROLOGERS_DECK_ID,
     drawPile: shuffleCards(cardIds, `${seed}#astrologers`),
@@ -3545,7 +3555,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         houseRules["eversmoking-ring-of-sulfur-major"] || houseRules["community-card-balance"]
       ),
       ...makeNeutralDecks(seed, wog, anime),
-      [ASTROLOGERS_DECK_ID]: makeAstrologersDeck(seed, eventsOn),
+      [ASTROLOGERS_DECK_ID]: makeAstrologersDeck(seed, eventsOn, ruleset),
       ...(moraleCardsOn ? makeMoraleDecks(seed) : {}),
       // The Event deck exists only when the optional rule is on AND the table
       // is multiplayer — its absence is the engine's off switch.

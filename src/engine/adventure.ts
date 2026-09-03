@@ -117,7 +117,7 @@ import {
 // Re-exported so existing `./adventure` / `./index` imports keep resolving; the
 // definition lives beside the possession-VP row it must stay in lockstep with.
 export { playerPossessesGrail } from "./victory-points";
-import { playerOwnsWarMachine, removePermanentFromPlayToRemoved } from "./permanents";
+import { getPermanentCardIds, playerOwnsWarMachine, removePermanentFromPlayToRemoved } from "./permanents";
 import {
   abilityExpertIsCrownFree,
   applyUnitSideRules,
@@ -1322,7 +1322,12 @@ export function getTileFootprintSpaceIds(tile: MapTileState): MapSpaceId[] {
  * Subterranean Gate link pointers are re-keyed with their moving field so a
  * legitimate in-place rotation cannot leave a stale coordinate behind.
  */
-export function rotateTileInPlace(adventure: AdventureState, tile: MapTileState, rotation: number): boolean {
+export function rotateTileInPlace(
+  adventure: AdventureState,
+  tile: MapTileState,
+  rotation: number,
+  towns?: GameState["towns"]
+): boolean {
   const normalized = ((rotation % 6) + 6) % 6;
   if (normalized === tile.rotation) {
     return false;
@@ -1365,17 +1370,96 @@ export function rotateTileInPlace(adventure: AdventureState, tile: MapTileState,
     if (plan.gateHex) plan.gateHex = movedSpaceIds.get(plan.gateHex) ?? plan.gateHex;
     if (plan.entranceHex) plan.entranceHex = movedSpaceIds.get(plan.entranceHex) ?? plan.entranceHex;
   }
+  // A Town is another live object anchored by map-space id. Keep that pointer
+  // attached to the field that moved instead of silently leaving the Town on
+  // the old hex. (Disruption's printed rule does not exempt Town tiles.)
+  for (const town of Object.values(towns ?? {})) {
+    if (town.fieldId) {
+      town.fieldId = movedSpaceIds.get(town.fieldId) ?? town.fieldId;
+    }
+  }
   tile.rotation = normalized;
   return true;
+}
+
+function disruptionHasExternalEntrance(state: GameState, tile: MapTileState): boolean {
+  const adventure = state.adventure;
+  if (!adventure) return false;
+  const footprint = new Set(getTileFootprintSpaceIds(tile));
+  for (const insideId of footprint) {
+    for (const outsideId of getAdjacentSpaceIds(insideId)) {
+      if (footprint.has(outsideId)) continue;
+      const outside = adventure.fields[outsideId];
+      if (!outside || outside.tileInstanceId === tile.id) continue;
+      if (canCrossEdge(state, outsideId, insideId)) return true;
+    }
+  }
+  return false;
+}
+
+function disruptionGateLinksAreUsable(state: GameState, tile: MapTileState): boolean {
+  const adventure = state.adventure;
+  if (!adventure) return false;
+  for (const spaceId of getTileFootprintSpaceIds(tile)) {
+    const field = adventure.fields[spaceId];
+    if (field?.location !== "subterranean_gate" || !field.gateLinkSpaceId) continue;
+    const partner = adventure.fields[field.gateLinkSpaceId];
+    if (
+      !partner ||
+      !getAdjacentSpaceIds(field.spaceId).includes(partner.spaceId) ||
+      !gateFieldsLinked(field, partner)
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Every alternative Disruption orientation that is safe to offer. Rotation is
+ * simulated on cloned map state, including Town and Gate anchors. A tile that
+ * currently has an entrance may never be turned into an inaccessible island;
+ * a linked Subterranean Gate must remain adjacent and mutually traversable.
+ */
+export function disruptionLegalRotations(state: GameState, tile: MapTileState): number[] {
+  const adventure = state.adventure;
+  if (!adventure) return [];
+  const mustRemainAccessible = disruptionHasExternalEntrance(state, tile);
+  const legal: number[] = [];
+
+  for (let rotation = 0; rotation < 6; rotation += 1) {
+    if (rotation === tile.rotation) continue;
+    const simulatedTile = { ...tile };
+    const simulatedAdventure: AdventureState = {
+      ...adventure,
+      tiles: { ...adventure.tiles, [tile.id]: simulatedTile },
+      fields: Object.fromEntries(
+        Object.entries(adventure.fields).map(([spaceId, field]) => [spaceId, { ...field }])
+      ),
+      gatePlans: adventure.gatePlans?.map((plan) => ({ ...plan }))
+    };
+    const simulatedTowns = Object.fromEntries(
+      Object.entries(state.towns).map(([townId, town]) => [townId, { ...town }])
+    ) as GameState["towns"];
+    const simulatedState: GameState = {
+      ...state,
+      adventure: simulatedAdventure,
+      towns: simulatedTowns
+    };
+    if (!rotateTileInPlace(simulatedAdventure, simulatedTile, rotation, simulatedTowns)) continue;
+    if (!disruptionGateLinksAreUsable(simulatedState, simulatedTile)) continue;
+    if (mustRemainAccessible && !disruptionHasExternalEntrance(simulatedState, simulatedTile)) continue;
+    legal.push(rotation);
+  }
+  return legal;
 }
 
 /**
  * Disruption (Astrologers): the tiles a player may rotate right now. Eligible =
  * revealed and fully materialized, no Hero (main or secondary, any seat) on any
  * of its seven hexes, and not yet rotated during this Disruption resolution.
- * Tiles carrying a Town or a Subterranean Gate half are excluded as an engine
- * safety reading: a Town's `fieldId` and a Gate pair's `gateLinkSpaceId` anchor
- * to fixed hexes that a rotation would leave dangling.
+ * A Town or Subterranean Gate does not create an unprinted exemption. Instead,
+ * eligibility requires at least one safe alternative orientation.
  */
 export function disruptionEligibleTiles(state: GameState): MapTileState[] {
   const adventure = state.adventure;
@@ -1389,12 +1473,6 @@ export function disruptionEligibleTiles(state: GameState): MapTileState[] {
       .map((hero) => hero.spaceId)
       .filter((spaceId): spaceId is MapSpaceId => Boolean(spaceId))
   );
-  const townSpaces = new Set(
-    Object.values(state.towns)
-      .map((town) => town.fieldId)
-      .filter((fieldId): fieldId is MapSpaceId => Boolean(fieldId))
-  );
-
   return Object.values(adventure.tiles).filter((tile) => {
     if (tile.faceDown || tile.awaitingRotation || rotated.has(tile.id)) {
       return false;
@@ -1405,14 +1483,11 @@ export function disruptionEligibleTiles(state: GameState): MapTileState[] {
       if (!field || field.tileInstanceId !== tile.id) {
         return false; // not (fully) materialized — nothing real to rotate
       }
-      if (heroSpaces.has(spaceId) || townSpaces.has(spaceId)) {
-        return false;
-      }
-      if (field.gateToTileId || field.gateLinkSpaceId) {
+      if (heroSpaces.has(spaceId)) {
         return false;
       }
     }
-    return true;
+    return disruptionLegalRotations(state, tile).length > 0;
   });
 }
 
@@ -9917,35 +9992,47 @@ export function processPendingVisit(state: GameState): void {
           const isPolishMysticism =
             !effect.basicSpellLimitBonus && !effect.expertSpellLimitBonus;
           if (isPolishMysticism) {
-            const used = player.spellBookUsed ?? [];
-            const usedIndex = used.lastIndexOf(step.spellCardId);
-            if (usedIndex !== -1) {
-              const blocked = polishBookSpellRefreshBlocked(
-                state,
-                player.id,
-                step.spellCardId,
-                player
-              );
-              if (blocked) {
-                appendEvent(state, {
-                  type: "EVENT_NOTE",
-                  playerId: player.id,
-                  message:
-                    blocked === "in-effect"
-                      ? `${cardLibrary[step.spellCardId]?.name ?? step.spellCardId} is still in effect and cannot be refreshed yet.`
-                      : `${cardLibrary[step.spellCardId]?.name ?? step.spellCardId} has already been refreshed this round.`
-                });
-              } else {
-                used.splice(usedIndex, 1);
-                player.spellBookUsed = used;
-                player.spellBook.push(step.spellCardId);
-                markPolishSpellRefreshedThisRound(player, step.spellCardId);
-                appendEvent(state, {
-                  type: "SPELL_RETURNED_TO_HAND",
-                  playerId: player.id,
-                  cardId: step.spellCardId,
-                  reason: "Polish Spell Book refresh"
-                });
+            if (ongoing) {
+              // A recall changes the eventual destination; it never releases a
+              // live Spell early enough to cast a second copy of the effect.
+              ongoing.returnTo = "spellBook";
+              markPolishSpellRefreshedThisRound(player, step.spellCardId);
+              appendEvent(state, {
+                type: "EVENT_NOTE",
+                playerId: player.id,
+                message: `${cardLibrary[step.spellCardId]?.name ?? step.spellCardId} will return to the Spell Book after its ongoing effect ends.`
+              });
+            } else {
+              const used = player.spellBookUsed ?? [];
+              const usedIndex = used.lastIndexOf(step.spellCardId);
+              if (usedIndex !== -1) {
+                const blocked = polishBookSpellRefreshBlocked(
+                  state,
+                  player.id,
+                  step.spellCardId,
+                  player
+                );
+                if (blocked) {
+                  appendEvent(state, {
+                    type: "EVENT_NOTE",
+                    playerId: player.id,
+                    message:
+                      blocked === "in-effect"
+                        ? `${cardLibrary[step.spellCardId]?.name ?? step.spellCardId} is still in effect and cannot be refreshed yet.`
+                        : `${cardLibrary[step.spellCardId]?.name ?? step.spellCardId} has already been refreshed this round.`
+                  });
+                } else {
+                  used.splice(usedIndex, 1);
+                  player.spellBookUsed = used;
+                  player.spellBook.push(step.spellCardId);
+                  markPolishSpellRefreshedThisRound(player, step.spellCardId);
+                  appendEvent(state, {
+                    type: "SPELL_RETURNED_TO_HAND",
+                    playerId: player.id,
+                    cardId: step.spellCardId,
+                    reason: "Polish Spell Book refresh"
+                  });
+                }
               }
             }
           }
@@ -10242,7 +10329,14 @@ export function processPendingVisit(state: GameState): void {
         break;
       }
       case "REINFORCE_ARMY_UNIT":
-        reinforceArmyUnit(state, visit.playerId, step.armyUnitId, step.halfCost);
+        reinforceArmyUnit(
+          state,
+          visit.playerId,
+          step.armyUnitId,
+          step.halfCost,
+          false,
+          step.roundDown ?? false
+        );
         break;
       case "REINFORCE_FREE":
         reinforceArmyUnit(state, visit.playerId, step.armyUnitId, false, false, false, true);
@@ -10279,8 +10373,8 @@ export function processPendingVisit(state: GameState): void {
           break;
         }
         const options: { label: string; steps: VisitStep[] }[] = [];
-        for (let turns = 1; turns <= 5; turns += 1) {
-          const rotation = (tile.rotation + turns) % 6;
+        for (const rotation of disruptionLegalRotations(state, tile)) {
+          const turns = (rotation - tile.rotation + 6) % 6;
           options.push({
             label: `Turn ${turns * 60}° clockwise`,
             steps: [{ type: "DISRUPTION_SET_ROTATION", tileInstanceId: tile.id, rotation }]
@@ -10300,7 +10394,8 @@ export function processPendingVisit(state: GameState): void {
         // never corrupt a tile or rotate one twice.
         const tile = adventure.tiles[step.tileInstanceId];
         const stillEligible = tile && disruptionEligibleTiles(state).some((candidate) => candidate.id === tile.id);
-        if (!stillEligible || !rotateTileInPlace(adventure, tile, step.rotation)) {
+        const legalRotation = tile && disruptionLegalRotations(state, tile).includes(((step.rotation % 6) + 6) % 6);
+        if (!stillEligible || !legalRotation || !rotateTileInPlace(adventure, tile, step.rotation, state.towns)) {
           break;
         }
         const astrologers = getAstrologersState(state);
@@ -10383,7 +10478,7 @@ export function processPendingVisit(state: GameState): void {
         const tile = adventure.tiles[step.tileInstanceId];
         const stillEligible =
           tile && nearbyRerotateEligibleTiles(state, step.anchorSpaceId).some((candidate) => candidate.id === tile.id);
-        if (!stillEligible || !rotateTileInPlace(adventure, tile, step.rotation)) {
+        if (!stillEligible || !rotateTileInPlace(adventure, tile, step.rotation, state.towns)) {
           break;
         }
         appendEvent(state, {
@@ -10451,7 +10546,8 @@ export function processPendingVisit(state: GameState): void {
         // offered inline (the only reachable way to use one here — see the step
         // doc in state.ts).
         const options = neutralRecruitMenuOptions(state, visit.playerId, step);
-        if (options.length === 0 && step.skipWhenEmpty) {
+        const selectableOptions = options.filter((option) => !option.disabledReason);
+        if (selectableOptions.length === 0 && step.skipWhenEmpty) {
           // Pre-existing behaviour for the surfaces that never prompted with a
           // lone Decline: run their own bookkeeping (return the drawn cards) now.
           visit.steps.unshift(...step.decline.steps);
@@ -11978,14 +12074,40 @@ export function processPendingVisit(state: GameState): void {
           prompt: "Charlie and his Circus: recruit one drawn Neutral Unit",
           candidates: drawn.map((draw) => ({
             unitDefId: draw.unitDefId,
-            steps: [{ type: "RECRUIT_DRAWN_NEUTRAL", recruit: draw, drawn } as VisitStep]
+            steps: [{ type: "RECRUIT_DRAWN_NEUTRAL", recruit: draw, drawn, returnToDeck: true } as VisitStep]
           })),
           decline: {
             label: "Recruit none",
-            steps: [{ type: "RECRUIT_DRAWN_NEUTRAL", recruit: null, drawn } as VisitStep]
+            steps: [{ type: "RECRUIT_DRAWN_NEUTRAL", recruit: null, drawn, returnToDeck: true } as VisitStep]
           },
-          skipWhenEmpty: true
+          showUnaffordable: true
         });
+        break;
+      }
+      case "DESTRUCTION_REMOVE_PERMANENT": {
+        // Re-check the live zone at resolution time. The prompt can only select
+        // a card that is still in play; exactly that one leaves the game. If it
+        // is Pandora's three-slot permanent, its effect ends immediately and
+        // normal excess-slot cleanup restores the base one-card limit.
+        const removed = removePermanentFromPlayToRemoved(
+          state,
+          visit.playerId,
+          step.cardId
+        );
+        if (removed) {
+          appendEvent(state, {
+            type: "PERMANENT_DISCARDED",
+            playerId: visit.playerId,
+            cardId: removed,
+            reason: "destruction"
+          });
+          gainResources(
+            state,
+            visit.playerId,
+            { gold: step.gold },
+            `Destruction removed ${cardLibrary[removed]?.name ?? removed}`
+          );
+        }
         break;
       }
       case "UTOPIA_AZURE_RECRUIT_OFFER": {
@@ -12036,15 +12158,34 @@ export function processPendingVisit(state: GameState): void {
             recruitedTier = step.recruit.tier;
           }
         }
-        // Return every drawn card except the one recruited (a single copy) to its
-        // tier's discard pile, so the deck can reshuffle it later.
+        // Return every drawn card except the one recruited (a single copy).
+        // Charlie explicitly shuffles these cards back into their respective
+        // Neutral decks; older shared recruit surfaces keep their discard flow.
         let consumed = false;
+        const returningByTier: Partial<Record<"bronze" | "silver" | "gold" | "azure", string[]>> = {};
         for (const draw of step.drawn) {
           if (!consumed && draw.unitDefId === recruitedDefId && draw.tier === recruitedTier) {
             consumed = true;
             continue;
           }
-          state.decks[NEUTRAL_DECK_IDS[draw.tier]]?.discardPile.push(draw.unitDefId);
+          if (step.returnToDeck) {
+            (returningByTier[draw.tier] ??= []).push(draw.unitDefId);
+          } else {
+            state.decks[NEUTRAL_DECK_IDS[draw.tier]]?.discardPile.push(draw.unitDefId);
+          }
+        }
+        if (step.returnToDeck) {
+          for (const tier of ["bronze", "silver", "gold", "azure"] as const) {
+            const returning = returningByTier[tier];
+            const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
+            if (!returning?.length || !deck) {
+              continue;
+            }
+            deck.drawPile = shuffleCards(
+              [...deck.drawPile, ...returning],
+              `${state.seed}#charlie-return#${tier}#${eventSeedNumber(state)}`
+            );
+          }
         }
         break;
       }
@@ -20493,6 +20634,17 @@ function proclamationRequiresRedraw(state: GameState, cardId: string): boolean {
   return false;
 }
 
+function proclamationMustBeRemoved(state: GameState, cardId: string): boolean {
+  // Forty Thieves belongs to the optional Event module. Setup normally omits
+  // it when Events are off; this draw-time backstop also protects imported,
+  // legacy, and designer-authored states. Do not discard it, because that
+  // would let an Astrologers reshuffle put the unsupported card back in play.
+  return (
+    astrologersCardDefinitions[cardId]?.effect.type === "EVENT_DRAW_PICK" &&
+    (!getEventsState(state) || !state.decks[EVENTS_DECK_ID])
+  );
+}
+
 function popAstrologersCard(state: GameState): string | undefined {
   const deck = state.decks[ASTROLOGERS_DECK_ID];
   if (!deck) {
@@ -20514,6 +20666,13 @@ export function drawAstrologersCard(state: GameState): void {
   }
 
   let cardId = popAstrologersCard(state);
+
+  // Cards tied to an optional module are removed from this game, then the
+  // next Astrologers card is drawn. This can legitimately exhaust a malformed
+  // one-card deck, in which case no proclamation is shown.
+  while (cardId && proclamationMustBeRemoved(state, cardId)) {
+    cardId = popAstrologersCard(state);
+  }
 
   // Printed redraw exceptions: Friendly Beaver / Restart drawn on the first
   // Astrologers round, and any card whose board-state gate makes it
@@ -20661,7 +20820,26 @@ function resolveAstrologersCard(state: GameState, card: AstrologersCardDefinitio
       // no interaction, so it resolves cleanly at round start in ordered AND
       // parallel play (all seats handled here before anyone takes a turn). A
       // player with no permanent is untouched and gains nothing.
+      const destructionGold = card.effect.gold;
       for (const playerId of playerIds) {
+        const inPlay = getPermanentCardIds(state, playerId);
+        if (inPlay.length > 1) {
+          adventure.rewardQueue.push({
+            playerId,
+            kind: "visit-steps",
+            steps: [
+              {
+                type: "CHOOSE_ONE",
+                prompt: "Destruction: Remove exactly one permanent from play and take 5 gold",
+                options: inPlay.map((cardId) => ({
+                  label: `Remove ${cardLibrary[cardId]?.name ?? cardId} and take ${destructionGold} gold`,
+                  steps: [{ type: "DESTRUCTION_REMOVE_PERMANENT", cardId, gold: destructionGold }]
+                }))
+              }
+            ]
+          });
+          continue;
+        }
         const removed = removePermanentFromPlayToRemoved(state, playerId);
         if (!removed) {
           continue;
@@ -20918,7 +21096,13 @@ function queueHalfCostReinforce(state: GameState, playerId: PlayerId): void {
         .join(" + ") || "free";
     options.push({
       label: `Reinforce ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} (${costLabel})`,
-      steps: [{ type: "REINFORCE_ARMY_UNIT", armyUnitId: unit.id, halfCost: true }]
+      steps: [{
+        type: "REINFORCE_ARMY_UNIT",
+        armyUnitId: unit.id,
+        halfCost: true,
+        // Isra halves every printed resource and rounds each odd amount up.
+        roundDown: false
+      }]
     });
   }
 
@@ -20930,7 +21114,11 @@ function queueHalfCostReinforce(state: GameState, playerId: PlayerId): void {
   state.adventure?.rewardQueue.push({
     playerId,
     kind: "visit-steps",
-    steps: [{ type: "CHOOSE_ONE", prompt: "Isra's Friends: reinforce one Few unit at half cost", options }]
+    steps: [{
+      type: "CHOOSE_ONE",
+      prompt: "Isra's Friends: reinforce one Few unit at half cost (rounded up)",
+      options
+    }]
   });
 }
 
@@ -21513,17 +21701,18 @@ export function heldRecruitDiscountCards(
 
 /**
  * Builds the CHOOSE_ONE options for a NEUTRAL_RECRUIT_MENU: one "Recruit X"
- * entry per affordable candidate (priced through `neutralRecruitCost`, so a
+ * entry per candidate (priced through `neutralRecruitCost`, so a
  * banked Legion voucher already shows), plus one "play <Legion piece> toward X"
- * entry per held piece that would make the recruit affordable OR cheaper. Pure.
+ * entry per held piece that would make the recruit affordable OR cheaper.
+ * Charlie alone keeps unaffordable candidates visible and disabled. Pure.
  */
 function neutralRecruitMenuOptions(
   state: GameState,
   playerId: PlayerId,
   menu: Extract<VisitStep, { type: "NEUTRAL_RECRUIT_MENU" }>
-): { label: string; steps: VisitStep[] }[] {
+): { label: string; steps: VisitStep[]; disabledReason?: string }[] {
   const held = heldRecruitDiscountCards(state, playerId);
-  const options: { label: string; steps: VisitStep[] }[] = [];
+  const options: { label: string; steps: VisitStep[]; disabledReason?: string }[] = [];
   for (const candidate of menu.candidates) {
     const def = coreUnitDefinitions[candidate.unitDefId];
     if (!def?.neutral) {
@@ -21532,10 +21721,12 @@ function neutralRecruitMenuOptions(
     const name = def.name ?? candidate.unitDefId;
     const verb = menu.verb ?? "Recruit";
     const cost = neutralRecruitCost(state, playerId, candidate.unitDefId);
-    if (hasRecruitResources(state, playerId, cost)) {
+    const affordable = hasRecruitResources(state, playerId, cost);
+    if (affordable || menu.showUnaffordable) {
       options.push({
-        label: `${verb} ${name} (${costLabelOf(cost)})`,
-        steps: candidate.steps
+        label: `${verb} ${name} (${costLabelOf(cost)}${affordable ? "" : " — cannot afford"})`,
+        steps: candidate.steps,
+        ...(affordable ? {} : { disabledReason: "Cannot afford this recruitment cost" })
       });
     }
     if ((cost.gold ?? 0) <= 0) {
@@ -22616,32 +22807,40 @@ function resolveManaVortex(state: GameState, playerId: PlayerId, discardCardId: 
   state.priorityPlayerId = playerId;
 }
 
-/** Groovy Satyr: swap one drawn neutral card for a fresh one of the same tier. */
-export function swapNeutralDraw(state: GameState, playerId: PlayerId, draws: NeutralDraw[], drawIndex: number): void {
+/** Swap one drawn neutral card for a fresh one of the same tier. */
+export function swapNeutralDraw(
+  state: GameState,
+  playerId: PlayerId,
+  draws: NeutralDraw[],
+  drawIndex: number
+): NeutralDraw | undefined {
   const draw = draws[drawIndex];
   if (!draw || draw.bankGuard) {
     // Fixed bank guards (Dragon Utopia, Cyclops Stockpile) are never swapped.
-    return;
+    return undefined;
   }
 
   const deck = state.decks[NEUTRAL_DECK_IDS[draw.tier]];
   if (!deck) {
-    return;
+    return undefined;
   }
 
   deck.discardPile.push(draw.unitDefId);
   const replacement = drawFromNeutralDeck(state, draw.tier);
   if (!replacement) {
-    return;
+    return undefined;
   }
 
-  draws[drawIndex] = { unitDefId: replacement, tier: draw.tier };
+  const replacementDraw: NeutralDraw = { unitDefId: replacement, tier: draw.tier };
+  draws[drawIndex] = replacementDraw;
   appendEvent(state, {
     type: "NEUTRAL_DRAW_SWAPPED",
     playerId,
     fromUnitDefId: draw.unitDefId,
-    toUnitDefId: replacement
+    toUnitDefId: replacement,
+    tier: draw.tier
   });
+  return replacementDraw;
 }
 
 // ===========================================================================

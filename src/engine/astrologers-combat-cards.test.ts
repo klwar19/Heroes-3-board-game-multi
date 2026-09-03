@@ -212,6 +212,22 @@ describe("Astrologers — Judge Dread (redraw the whole guard army)", () => {
       .sort();
   }
 
+  it("does not draw or expose the Neutral army until attacker deployment is locked", () => {
+    const state = neutralSetup("jd-timing", "astrologers.judge_dread");
+    expect(state.combat?.pendingNeutralDraws).toBeFalsy();
+    expect(state.pendingChoice?.type === "OPTION_CHOICE" ? state.pendingChoice.context : null).not.toBe(
+      "judge-dread"
+    );
+
+    const afterPlacement = placeAndFinish(state);
+    expect(afterPlacement.combat?.pendingNeutralDraws?.length).toBeGreaterThan(0);
+    expect(
+      afterPlacement.pendingChoice?.type === "OPTION_CHOICE"
+        ? afterPlacement.pendingChoice.context
+        : null
+    ).toBe("judge-dread");
+  });
+
   it("opens a keep / redraw offer; KEEPING reveals the drawn army unchanged", () => {
     const state = placeAndFinish(neutralSetup("jd-keep", "astrologers.judge_dread"));
 
@@ -219,7 +235,7 @@ describe("Astrologers — Judge Dread (redraw the whole guard army)", () => {
     const choice = state.pendingChoice;
     expect(choice?.type === "OPTION_CHOICE" ? choice.context : null).toBe("judge-dread");
     const labels = choice?.type === "OPTION_CHOICE" ? choice.options.map((option) => option.label) : [];
-    expect(labels.some((label) => /Discard all and draw new/.test(label))).toBe(true);
+    expect(labels).toContain("Discard all and redraw the same tiers");
 
     const original = (state.combat!.pendingNeutralDraws ?? []).map((draw) => draw.unitDefId).sort();
     expect(original.length).toBeGreaterThan(0);
@@ -229,8 +245,8 @@ describe("Astrologers — Judge Dread (redraw the whole guard army)", () => {
     expect(kept.pendingChoice).toBeNull();
   });
 
-  it("REDRAW discards the drawn guards to their tier piles and reveals a fresh army", () => {
-    const state = placeAndFinish(neutralSetup("jd-redraw", "astrologers.judge_dread"));
+  it("REDRAW discards every guard, draws the exact same tier pattern, then shows the result", () => {
+    const state = placeAndFinish(neutralSetup("jd-redraw", "astrologers.judge_dread", 5));
     const originalDraws = (state.combat!.pendingNeutralDraws ?? []).filter((draw) => !draw.bankGuard);
     expect(originalDraws.length).toBeGreaterThan(0);
 
@@ -241,13 +257,37 @@ describe("Astrologers — Judge Dread (redraw the whole guard army)", () => {
       optionIndex: 1
     });
 
-    // Every discarded guard card is back in its tier's Neutral discard pile...
+    expect(redrawn.pendingChoice?.type === "OPTION_CHOICE" ? redrawn.pendingChoice.context : null).toBe(
+      "judge-dread-result"
+    );
+    const result =
+      redrawn.pendingChoice?.type === "OPTION_CHOICE"
+        ? redrawn.pendingChoice.judgeDreadResult
+        : undefined;
+    expect(result?.discarded).toEqual(
+      originalDraws.map(({ unitDefId, tier }) => ({ unitDefId, tier }))
+    );
+    expect(result?.replacements.map((draw) => draw.tier).sort()).toEqual(
+      originalDraws.map((draw) => draw.tier).sort()
+    );
+
+    // Every discarded guard card is back in its tier's Neutral discard pile.
     for (const draw of originalDraws) {
       expect(redrawn.decks[NEUTRAL_DECK_IDS[draw.tier]]!.discardPile).toContain(draw.unitDefId);
     }
-    // ...and a fresh guard army is on the board, the offer closed.
-    expect(neutralUnits(redrawn).length).toBeGreaterThan(0);
-    expect(redrawn.pendingChoice).toBeNull();
+    // The cards are reviewed before units appear on the combat board.
+    expect(neutralUnits(redrawn)).toEqual([]);
+
+    const revealed = apply(redrawn, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: redrawn.pendingChoice!.id,
+      optionIndex: 0
+    });
+    expect(neutralUnits(revealed).length).toBe(originalDraws.length);
+    expect(revealed.pendingChoice?.type === "OPTION_CHOICE" ? revealed.pendingChoice.context : null).not.toBe(
+      "judge-dread-result"
+    );
   });
 
   it("CONTROL: without Judge Dread the drawn army reveals with no offer", () => {
@@ -313,8 +353,18 @@ describe("Astrologers — Wind (continue after embarking)", () => {
 // ===========================================================================
 
 describe("Astrologers — Mages (free Spell Book, no Mage Guild)", () => {
-  function magesGame(round: number, activeCardId = "astrologers.mages"): GameState {
-    const state = createAdventureGameState({ seed: "mages", difficulty: "normal", rollFirstPlayer: false });
+  function magesGame(
+    round: number,
+    activeCardId = "astrologers.mages",
+    ruleset: "legacy" | "binh" = "binh"
+  ): GameState {
+    const state = createAdventureGameState({
+      seed: `mages-${ruleset}`,
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      ruleset,
+      ...(ruleset === "legacy" ? { spellBook: false } : {})
+    });
     state.round = round;
     state.activePlayerId = "p1";
     state.phase = "player-turn";
@@ -347,6 +397,17 @@ describe("Astrologers — Mages (free Spell Book, no Mage Guild)", () => {
     expect(offer?.label).toMatch(/^0 gold: Buy spell/);
   });
 
+  it("also works in Legacy when the optional Polish Spell Book module is off", () => {
+    const state = magesGame(2, "astrologers.mages", "legacy");
+    const offer = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "SPELL_BOOK_ACTION"
+    );
+    expect(offer?.label).toBe("0 gold: Buy spell — search (2)");
+    spellBookAction(state, { type: "SPELL_BOOK_ACTION", playerId: "p1" });
+    expect(state.players.p1.resources.gold).toBe(0);
+    expect(state.players.p1.townTokens.spellBook).toBe(false);
+  });
+
   it("CONTROL: without Mages, using the Spell Book with no Mage Guild is rejected", () => {
     const state = magesGame(2, "astrologers.dead_silence");
     expect(() => spellBookAction(state, { type: "SPELL_BOOK_ACTION", playerId: "p1" })).toThrow(/Mage Guild/);
@@ -356,6 +417,51 @@ describe("Astrologers — Mages (free Spell Book, no Mage Guild)", () => {
   it("CONTROL: 'during this round' — the waiver lifts on the following (odd) Resource round", () => {
     const state = magesGame(3); // Mages face up but the round is odd → no waiver
     expect(() => spellBookAction(state, { type: "SPELL_BOOK_ACTION", playerId: "p1" })).toThrow(/Mage Guild/);
+  });
+
+  it("still widens the free search with Wisdom while the cost remains zero", () => {
+    const state = magesGame(2);
+    state.players.p1.hand.push("ability.wisdom");
+
+    spellBookAction(state, {
+      type: "SPELL_BOOK_ACTION",
+      playerId: "p1",
+      wisdom: { cardId: "ability.wisdom", mode: "basic" }
+    });
+
+    expect(state.players.p1.resources.gold).toBe(0);
+    expect(state.players.p1.discard).toContain("ability.wisdom");
+    expect(
+      state.adventure?.rewardQueue.find((reward) => reward.kind === "shared-deck-search")
+    ).toMatchObject({ deckId: "spells", count: 3 });
+  });
+
+  it("waives the same-round restriction when a Mage Guild is already present", () => {
+    const state = magesGame(2);
+    getTownOfPlayer(state, "p1")!.buildings = ["castle.mage_guild"];
+    state.players.p1.mageGuildBuiltRound = 2;
+
+    const offer = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "SPELL_BOOK_ACTION" && !legal.action.wisdom
+    );
+    expect(offer?.label).toMatch(/^0 gold: Buy spell/);
+    spellBookAction(state, { type: "SPELL_BOOK_ACTION", playerId: "p1" });
+    expect(state.players.p1.resources.gold).toBe(0);
+  });
+
+  it("does not make Polish Roll spell free or usable without a Mage Guild", () => {
+    const state = magesGame(2);
+    (state.adventure!.houseRules ??= {})["polish-spell-book"] = true;
+    state.players.p1.spellBook = ["spell.magic_arrow"];
+
+    expect(() =>
+      spellBookAction(state, {
+        type: "SPELL_BOOK_ACTION",
+        playerId: "p1",
+        rollSpell: { cardId: "spell.magic_arrow", source: "refreshed" }
+      })
+    ).toThrow(/Mage Guild/);
+    expect(getLegalActions(state, "p1").some((legal) => /Roll spell/.test(legal.label))).toBe(false);
   });
 
   // -------------------------------------------------------------------------

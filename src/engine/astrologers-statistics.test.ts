@@ -109,6 +109,32 @@ describe("Astrologers — Dancing Imp (empower a Statistic)", () => {
     expect(next.adventure?.pendingVisit).toBeNull();
   });
 
+  it.each(["attack", "defense", "power", "knowledge"] as const)(
+    "removes a discarded %s Statistic and gains its same-type Empowered card into HAND",
+    (stat) => {
+      const state = makeGame();
+      const plainCardId = `stat.${stat}`;
+      const empoweredCardId = `stat.${stat}.empowered`;
+      state.players.p1.hand = ["spell.magic_arrow"];
+      state.players.p1.discard = [plainCardId];
+      state.players.p1.removed = [];
+      state.players.p2.hand = [];
+      state.players.p2.discard = [];
+      state.decks.astrologers.drawPile = ["astrologers.dancing_imp"];
+
+      drawAstrologersCard(state);
+      pumpAdventureQueues(state);
+      const next = chooseVisitOption(state, "p1", new RegExp(`Empower .* \\(discard\\)`));
+
+      expect(next.players.p1.discard).not.toContain(plainCardId);
+      expect(next.players.p1.removed).toContain(plainCardId);
+      expect(next.players.p1.hand).toContain(empoweredCardId);
+      expect(next.players.p1.discard).not.toContain(empoweredCardId);
+      expect(next.players.p1.hand).toContain("spell.magic_arrow");
+      expect(next.adventure?.pendingVisit).toBeNull();
+    }
+  );
+
   it("is offered to no one when nobody holds a non-Empowered Statistic", () => {
     const state = makeGame();
     state.players.p1.hand = ["spell.magic_arrow", "stat.attack.empowered"];
@@ -193,7 +219,7 @@ describe("Astrologers — Hero (pay to empower, twice per turn)", () => {
     setHeroActive(state);
     state.round = 2;
     readyMapTurn(state, "p1");
-    state.players.p1.hand = ["stat.attack", "stat.power", "stat.defense", "spell.magic_arrow"];
+    state.players.p1.hand = ["stat.attack", "stat.power", "stat.defense", "ability.estates"];
     state.players.p1.discard = [];
     state.players.p1.removed = [];
     state.players.p1.resources.gold = 20;
@@ -213,9 +239,24 @@ describe("Astrologers — Hero (pay to empower, twice per turn)", () => {
     expect(s.adventure?.astrologers?.heroEmpowerChosenRoundBy?.p1).toBe(2);
     expect(s.adventure?.astrologers?.heroEmpowerUsesBy?.p1).toBe(1);
 
+    // The two exchanges do not have to be consecutive. A normal map action may
+    // happen between them; the second Hero action remains available this turn.
+    const estates = getLegalActions(s, "p1").find(
+      (entry) => entry.action.type === "PLAY_CARD" && entry.action.cardId === "ability.estates"
+    );
+    expect(estates, "expected an unrelated map action between Hero exchanges").toBeTruthy();
+    const afterAction = applyAction(s, estates!.action);
+    expect(afterAction.errors, afterAction.errors.map((error) => error.message).join("; ")).toEqual([]);
+    s = afterAction.state;
+    expect(heroEmpowerActions(s, "p1").map((entry) => entry.action.cardId)).toEqual([
+      "stat.power",
+      "stat.defense"
+    ]);
+
+    const goldBeforeSecondExchange = s.players.p1.resources.gold;
     s = applyHeroEmpower(s, "p1", "stat.power");
     expect(s.players.p1.hand).toContain("stat.power.empowered");
-    expect(s.players.p1.resources.gold).toBe(12);
+    expect(s.players.p1.resources.gold).toBe(goldBeforeSecondExchange - 4);
     expect(s.adventure?.astrologers?.heroEmpowerUsesBy?.p1).toBe(2);
 
     // Capped at twice during the chosen turn: Defense is still in hand but no

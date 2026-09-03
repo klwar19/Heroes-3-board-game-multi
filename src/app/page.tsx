@@ -56,6 +56,7 @@ import { CardFrame, HandFan, OpponentBar, PermanentSlot, PlayerDock } from "@/co
 import { ArtifactSetIconsProvider } from "@/components/table/artifact-set-badge";
 import { PolishBalanceArtProvider } from "@/components/table/polish-balance-art";
 import { ArtifactSetPanel } from "@/components/adventure/artifact-set-panel";
+import { HeroEmpowerCue, heroEmpowerCueModel } from "@/components/adventure/hero-empower-cue";
 import { assetUrl } from "@/lib/asset-url";
 import { maybeClaimFinishedMatch } from "@/lib/match-claim-client";
 import { HeroBoard } from "@/components/hero-board";
@@ -238,7 +239,7 @@ import {
   planMoveArrivalBeats,
   planReturnMoveDelays
 } from "@/components/table/fx-sequence";
-import { buildBigCleanupHandFx } from "@/components/table/astrologers-hand-fx";
+import { buildForcedHandFx } from "@/components/table/astrologers-hand-fx";
 import {
   heroMoveSoundKey,
   locationVisitSoundCue,
@@ -1973,7 +1974,7 @@ export default function Home() {
       if (latestAstrologerDraw && !isGameStart) {
         const card = astrologersCardDefinitions[latestAstrologerDraw.cardId];
         if (card) {
-          let reshuffle: { discarded: number; drawn: number } | undefined;
+          let reshuffle: { mode: "discard-all" | "reshuffle-spells"; discarded: number; drawn: number } | undefined;
           for (let i = nextState.eventLog.length - 1; i >= 0; i -= 1) {
             const logEvent = nextState.eventLog[i];
             if (
@@ -1982,7 +1983,7 @@ export default function Home() {
               logEvent.cardId === latestAstrologerDraw.cardId &&
               logEvent.playerId === viewerRef.current
             ) {
-              reshuffle = { discarded: logEvent.discarded, drawn: logEvent.drawn };
+              reshuffle = { mode: logEvent.mode, discarded: logEvent.discarded, drawn: logEvent.drawn };
               break;
             }
           }
@@ -4059,20 +4060,20 @@ export default function Home() {
     const dismissed = astrologerCue;
     setAstrologerCue(null);
     if (
-      dismissed?.cardId !== "astrologers.big_cleanup" ||
-      !dismissed.reshuffle ||
+      !dismissed?.reshuffle ||
       viewerPlayerId === OBSERVER_SEAT
     ) {
       return;
     }
 
-    // The authoritative discard/redraw happens before this modal opens. Replay
-    // its physical order only after acknowledgement, otherwise the z=96
+    // The authoritative discard-or-reshuffle/redraw happens before this modal
+    // opens. Replay its physical order only after acknowledgement, otherwise the z=96
     // proclamation hides the table's z=89 card flights and the effect appears
     // silent even though the cards really moved between engine zones.
-    const plan = buildBigCleanupHandFx(
+    const plan = buildForcedHandFx(
       dismissed.id,
       viewerPlayerId,
+      dismissed.reshuffle.mode,
       dismissed.reshuffle.discarded,
       dismissed.reshuffle.drawn
     );
@@ -5811,6 +5812,9 @@ export default function Home() {
       state.combat?.attackerPlayerId !== viewerPlayerId &&
       state.combat?.defenderPlayerId !== viewerPlayerId;
     const mapReadOnly = combatVisible && !parallelMapBystander;
+    const heroEmpowerCue = isSeated
+      ? heroEmpowerCueModel(uiState ?? state, viewerPlayerId, legalActions)
+      : null;
 
     const confirmHandAction = () => {
       const discardCardIds = handDiscards.map((index) => handCards[index]);
@@ -6463,6 +6467,17 @@ export default function Home() {
                   Hand {handCards.length}/{handLimit}
                 </small>
               </div>
+              {heroEmpowerCue ? (
+                <HeroEmpowerCue
+                  model={heroEmpowerCue}
+                  onChoose={(cardId) => {
+                    const index = handCards.indexOf(cardId);
+                    if (index < 0) return;
+                    setArmedHandPlay(null);
+                    setOpenHandIndex(index);
+                  }}
+                />
+              ) : null}
               {/* Hand-step directives: the mandatory start-of-turn draw /
                   over-limit discard / opening Mulligan / discard pick, plus
                   optional morale plays. Lives OUTSIDE the one-line header —

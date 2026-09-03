@@ -19,6 +19,7 @@ import { houseRuleEnabled } from "./house-rules";
 import { balanceCard } from "./community-balance-cards";
 import { drawCardsForPlayer } from "./decks";
 import { appendEvent, nextEventNumber } from "./events";
+import { availableActivationSpellPowerBoost } from "./unit-abilities";
 import type {
   CardDefinition,
   CardId,
@@ -245,8 +246,10 @@ function permanentSchoolBonusForSchool(
 /**
  * Magic Arrow wiki: "can benefit from spell power bonus to any school of magic,
  * but it can only be affected by a single school of magic at a time." Pick the
- * school whose permanent + Elemental-tile + specialty (and Orb double preference)
- * package is strongest. Fixed-school spells return their printed school.
+ * school whose permanent + Elemental-tile + specialty + proclamation + active
+ * unit (and Orb double preference) package is strongest. On an otherwise exact
+ * tie, prefer a usable Basic X Magic fetch so its optional +3 remains available
+ * in the cast window. Fixed-school spells return their printed school.
  */
 export function pickSpellSchoolForPower(
   state: GameState,
@@ -264,22 +267,76 @@ export function pickSpellSchoolForPower(
   // Magic Arrow: auto-select the school with the highest Power package.
   let bestSchool: ElementalSchool | null = null;
   let bestScore = Number.NEGATIVE_INFINITY;
+  const proclamation = getActiveAstrologersCard(state);
+  const player = state.players[playerId];
+  const activeUnit = state.combat?.activeUnitId
+    ? state.combat.units[state.combat.activeUnitId]
+    : undefined;
   for (const school of ELEMENTAL_SCHOOLS) {
     const permanent = permanentSchoolBonusForSchool(state, playerId, school);
+    const astrologersBonus =
+      proclamation?.effect.type === "SCHOOL_SPELL_POWER_BONUS" &&
+      proclamation.effect.schools.includes(school)
+        ? proclamation.effect.amount
+        : 0;
+    const activationBonus =
+      activeUnit?.controllerId === playerId
+        ? availableActivationSpellPowerBoost(activeUnit, [school], {
+            firstSpellThisRound: !player?.combatStats.anySpellCastThisRound,
+          }).amount
+        : 0;
     const additive =
       (permanent?.basicPower ?? 0) +
       elementalTileSpellPowerBonus(state, school) +
-      specialtySchoolPowerBonus(state, playerId, school);
+      specialtySchoolPowerBonus(state, playerId, school) +
+      astrologersBonus +
+      activationBonus;
     // Prefer a school that also doubles (Orb) when additive totals tie — the
     // double multiplies the whole cast, so it is always the stronger package.
     const mult = schoolPowerMultiplierForSchool(state, playerId, school);
-    const score = additive * 10 + (mult > 1 ? 1 : 0);
+    const fetchCardId = `ability.basic_${school}_magic` as CardId;
+    const hasUsableFetch = Boolean(
+      player &&
+        canPlayExpertMode(player, fetchCardId) &&
+        (
+          getPermanentDefinitions(state, playerId).some(
+            (definition) =>
+              definition.permanentEffect?.schoolFetch === school,
+          ) ||
+          state.activeEffects.some(
+            (effect) =>
+              effect.controllerId === playerId &&
+              effect.modifiers.some(
+                (modifier) =>
+                  modifier.type === "SPELL_SCHOOL_FETCH" &&
+                  modifier.school === school,
+              ),
+          )
+        )
+    );
+    // Additive Power dominates, then Orb doubling, then the fetch tie-breaker.
+    const score = additive * 100 + (mult > 1 ? 10 : 0) + (hasUsableFetch ? 1 : 0);
     if (score > bestScore) {
       bestScore = score;
       bestSchool = school;
     }
   }
   return bestSchool;
+}
+
+/**
+ * Present an "any"-school Spell as the one School package selected for this
+ * Power calculation. Fixed-school Spells are returned unchanged.
+ */
+export function spellCardForPowerSchool(
+  state: GameState,
+  playerId: PlayerId,
+  spellCard: CardDefinition,
+  selectedSchool = pickSpellSchoolForPower(state, playerId, spellCard),
+): CardDefinition {
+  return spellCard.spellSchools?.includes("any") && selectedSchool
+    ? { ...spellCard, spellSchools: [selectedSchool] }
+    : spellCard;
 }
 
 /**
@@ -512,8 +569,7 @@ export function discardPermanentFromPlay(
  * removed pile, per the rulebook keyword "Remove" — NOT the discard pile) and
  * clean its combat presence up, then re-enforce the permanent limit in case the
  * removed card was itself raising it (Pandora's Box). Without an explicit id the
- * oldest permanent leaves (the card's singular "it"). Returns the removed card
- * id, or null when the player has no permanent in play.
+ * oldest permanent leaves. Returns the removed card id, or null.
  */
 export function removePermanentFromPlayToRemoved(
   state: GameState,
@@ -787,6 +843,16 @@ function ammoCartBuff(
   return effect?.type === "WAR_MACHINE_BUFF" ? effect : null;
 }
 
+/**
+ * Apply the active Astrologers Ammo Cart bonus to damage dealt by a physical
+ * Ballista. Specialty code that fires or sacrifices the machine uses this same
+ * read as its ordinary round-start trigger, so no Ballista damage path can
+ * silently miss the proclamation (or apply it twice).
+ */
+export function astrologersBallistaDamage(state: GameState, baseAmount: number): number {
+  return baseAmount + (ammoCartBuff(state)?.ballistaDamageBonus ?? 0);
+}
+
 /** The war machine entry currently at the head of the round-start queue. */
 function activeWarMachineEntry(
   state: GameState,
@@ -800,12 +866,10 @@ function activeWarMachineEntry(
   // Ammo Cart (Astrologers): every Ballista deals +ballistaDamageBonus while the
   // proclamation is face up (folded into the round-start shot's amount here, so
   // every consumer — auto-fire, tie-break and Artillery volley — sees it).
-  const ballistaBonus = ammoCartBuff(state)?.ballistaDamageBonus ?? 0;
-
   // Torosar's granted Ballistas have no permanent card: they fire a plain basic
   // shot (no expert volley) and skip the in-play check.
   if (head.granted) {
-    return { cardId: head.cardId, roundStart: { kind: "damage-lowest-initiative", amount: 1 + ballistaBonus } };
+    return { cardId: head.cardId, roundStart: { kind: "damage-lowest-initiative", amount: astrologersBallistaDamage(state, 1) } };
   }
 
   if (head.openingBallistics) {
@@ -821,8 +885,8 @@ function activeWarMachineEntry(
   if (!roundStart) {
     return null;
   }
-  if (roundStart.kind === "damage-lowest-initiative" && ballistaBonus > 0) {
-    return { cardId: head.cardId, roundStart: { ...roundStart, amount: roundStart.amount + ballistaBonus } };
+  if (roundStart.kind === "damage-lowest-initiative") {
+    return { cardId: head.cardId, roundStart: { ...roundStart, amount: astrologersBallistaDamage(state, roundStart.amount) } };
   }
   return { cardId: head.cardId, roundStart };
 }
@@ -1375,7 +1439,7 @@ export function activateBallistas(state: GameState, playerId: PlayerId, count: n
   }
   // Ammo Cart (Astrologers): each Ballista shot deals +ballistaDamageBonus, the
   // same buff the round-start shot gets, so Torosar's activated Ballistas match.
-  const amount = 1 + (ammoCartBuff(state)?.ballistaDamageBonus ?? 0);
+  const amount = astrologersBallistaDamage(state, 1);
   fireBallistaShots(state, playerId, amount, count, "war_machine.ballista");
 }
 

@@ -331,7 +331,12 @@ import {
   returnCardUnderSharedDeckDiscardTop,
   shuffleCards
 } from "./decks";
-import { maybeReturnFirstSpellToHand } from "./spell-lifecycle";
+import {
+  claimCrazyWizardFirstSpellReturn,
+  holdPolishBookOngoingSpell,
+  returnCrazyWizardPolishBookSpell,
+  returnCrazyWizardSpellFromDiscard,
+} from "./spell-lifecycle";
 import {
   getCombatStartDraws,
   getCombatStartEnemyAttackPenalty,
@@ -7923,19 +7928,58 @@ function finalizeMapSpellEffect(
     best.effect,
     bookFlags.inFlightCardIds ?? [spellCardId]
   );
+  const crazyWizardReturn = claimCrazyWizardFirstSpellReturn(
+    state,
+    playerId,
+  );
   // Lasting map effects (Fly / Water Walk): hold the physical card while the
   // effect lives — same as playCard's holdOngoingCardIfEffectCreated.
   //   - Hand / OLD Book cast: card is in discard → hold it (default returnTo
   //     discard; Knowledge may re-mark returnTo hand/spellBook).
-  //   - POLISH Book cast: card is in spellBookUsed (never discard) → do NOT
-  //     hold; it stays used until the Book refreshes. Knowledge only returns
-  //     Cast a Spell (see offerMapSpellKnowledgeRecall).
+  //   - POLISH Book cast: move the spent Book card into the same held zone and
+  //     release it to used/refreshed Book only after its effect ends.
   let held = false;
-  if (!(bookFlags.fromSpellBook && bookFlags.castEnablerCardId && polishSpellBookEnabled(state))) {
-    held = holdMapSpellOngoingIfEffectCreated(state, playerId, spellCardId, effectCountBefore, "discard");
+  const polishBookCast =
+    Boolean(bookFlags.fromSpellBook && bookFlags.castEnablerCardId) &&
+    polishSpellBookEnabled(state);
+  if (!polishBookCast) {
+    held = holdMapSpellOngoingIfEffectCreated(
+      state,
+      playerId,
+      spellCardId,
+      effectCountBefore,
+      crazyWizardReturn ? "hand" : "discard",
+    );
   }
-  if (!held) {
-    maybeReturnFirstSpellToHand(state, playerId, spellCardId);
+  if (polishBookCast) {
+    const ongoingEffectIds = state.activeEffects
+      .slice(effectCountBefore)
+      .filter(
+        (effect) =>
+          effect.source.type === "card" &&
+          effect.source.cardId === spellCardId &&
+          !effect.keepSourceInDiscard,
+      )
+      .map((effect) => effect.id);
+    if (crazyWizardReturn) {
+      returnCrazyWizardPolishBookSpell(
+        state,
+        playerId,
+        spellCardId,
+        bookFlags.castEnablerCardId,
+        ongoingEffectIds,
+      );
+    } else {
+      holdPolishBookOngoingSpell(
+        state,
+        playerId,
+        spellCardId,
+        ongoingEffectIds,
+        "spellBookUsed",
+      );
+    }
+  } else if (crazyWizardReturn && !held) {
+    returnCrazyWizardSpellFromDiscard(state, playerId, spellCardId);
   }
 }
 
@@ -9855,13 +9899,13 @@ function openSatyrSwapChoice(state: GameState, draws: NeutralDraw[]): void {
     id: choiceId,
     type: "OPTION_CHOICE",
     playerId: combat.attackerPlayerId,
-    prompt: "Groovy Satyr: swap one drawn neutral for a fresh card of the same tier?",
+    prompt: "Groovy Satyr: keep every drawn Neutral Unit, or discard one and draw a new card from the same tier",
     options: [
-      { label: "Keep the drawn army" },
+      { label: "Keep all drawn Neutral Units" },
       ...draws.map((draw) => ({
         label: draw.bankGuard
           ? `${coreUnitDefinitions[draw.unitDefId]?.name ?? draw.unitDefId} (bank guard — cannot swap)`
-          : `Swap ${coreUnitDefinitions[draw.unitDefId]?.name ?? draw.unitDefId} (${draw.tier})`
+          : `Discard ${coreUnitDefinitions[draw.unitDefId]?.name ?? draw.unitDefId} → draw 1 new ${draw.tier} Neutral`
       }))
     ],
     context: "satyr-swap",
@@ -9880,9 +9924,43 @@ export function resolveSatyrSwap(state: GameState, playerId: PlayerId, optionInd
   }
 
   if (optionIndex > 0) {
-    swapNeutralDraw(state, playerId, draws, optionIndex - 1);
+    const draw = draws[optionIndex - 1];
+    const replacement = swapNeutralDraw(state, playerId, draws, optionIndex - 1);
+    if (draw && replacement) {
+      state.pendingChoice = {
+        id: `choice_${nextEventNumber(state)}`,
+        type: "OPTION_CHOICE",
+        playerId,
+        prompt: "Groovy Satyr: your replacement Neutral Unit",
+        options: [
+          {
+            label: `Continue with ${coreUnitDefinitions[replacement.unitDefId]?.name ?? replacement.unitDefId} (${replacement.tier})`
+          }
+        ],
+        context: "satyr-swap-result",
+        satyrSwapResult: {
+          fromUnitDefId: draw.unitDefId,
+          toUnitDefId: replacement.unitDefId,
+          tier: replacement.tier
+        },
+        returnPhase: "combat-setup"
+      };
+      state.phase = "choice";
+      state.priorityPlayerId = playerId;
+      return;
+    }
   }
 
+  revealNeutralArmyAfterSwapWindows(state, draws);
+}
+
+/** Closes Groovy Satyr's public replacement reveal, then resumes combat setup. */
+function resolveSatyrSwapResult(state: GameState): void {
+  const draws = state.combat?.pendingNeutralDraws;
+  if (!draws) {
+    throw new Error("There is no Groovy Satyr replacement to reveal.");
+  }
+  state.pendingChoice = null;
   revealNeutralArmyAfterSwapWindows(state, draws);
 }
 
@@ -10014,14 +10092,16 @@ function openJudgeDreadChoice(state: GameState, draws: NeutralDraw[]): void {
   }
 
   combat.pendingNeutralDraws = draws;
-  const names = draws.map((draw) => coreUnitDefinitions[draw.unitDefId]?.name ?? draw.unitDefId).join(", ");
   const choiceId = `choice_${nextEventNumber(state)}`;
   state.pendingChoice = {
     id: choiceId,
     type: "OPTION_CHOICE",
     playerId: combat.attackerPlayerId,
-    prompt: `Judge Dread: discard the whole drawn guard army (${names}) and draw a fresh one?`,
-    options: [{ label: "Keep the drawn army" }, { label: "Discard all and draw new Neutral Units" }],
+    prompt: "Judge Dread: inspect the drawn Neutral army, then keep every card or discard every card and redraw the same tiers.",
+    options: [
+      { label: "Keep all drawn Neutral Units" },
+      { label: "Discard all and redraw the same tiers" }
+    ],
     context: "judge-dread",
     returnPhase: "combat-setup"
   };
@@ -10032,7 +10112,8 @@ function openJudgeDreadChoice(state: GameState, draws: NeutralDraw[]): void {
 /**
  * Resolves the Judge Dread offer: option 1 discards every deck-drawn guard to
  * its tier's Neutral discard pile and draws a fresh guard army (same field
- * difficulty); option 0 keeps the drawn army. Either way the final army reveals.
+ * tier pattern); option 0 keeps the drawn army. A redraw pauses on all old/new
+ * card faces before the final army reveals, so the result is never ambiguous.
  */
 export function resolveJudgeDread(state: GameState, playerId: PlayerId, optionIndex: number): void {
   const combat = state.combat;
@@ -10050,13 +10131,50 @@ export function resolveJudgeDread(state: GameState, playerId: PlayerId, optionIn
       }
       state.decks[NEUTRAL_DECK_IDS[draw.tier]]?.discardPile.push(draw.unitDefId);
     }
+    // Keep the complete visible old army for the result screen. Minted fixed
+    // guards have no physical deck discard, but they still leave this Combat
+    // army and are therefore part of what the player sees being replaced.
+    const discarded = draws.map(({ unitDefId, tier }) => ({ unitDefId, tier }));
     const field = state.adventure?.fields[combat.context.fieldId];
     const fresh = drawGuardArmy(state, field, combat.context.difficulty);
-    // The fresh army is logged by revealNeutralArmy (NEUTRAL_ARMY_REVEALED).
-    revealNeutralArmyAfterSwapWindows(state, fresh);
+
+    // Guard composition is deterministic for the field/difficulty, but assert
+    // the invariant here: Judge Dread redraws the exact tier pattern it showed.
+    const tierPattern = (army: NeutralDraw[]) =>
+      army.map((draw) => draw.tier).sort().join(",");
+    if (tierPattern(fresh) !== tierPattern(draws)) {
+      throw new Error("Judge Dread must redraw the same Neutral tiers.");
+    }
+
+    combat.pendingNeutralDraws = fresh;
+    state.pendingChoice = {
+      id: `choice_${nextEventNumber(state)}`,
+      type: "OPTION_CHOICE",
+      playerId,
+      prompt: "Judge Dread: the whole Neutral army was discarded and replaced. Review the new army before Combat.",
+      options: [{ label: "Continue with the new Neutral army" }],
+      context: "judge-dread-result",
+      judgeDreadResult: {
+        discarded,
+        replacements: fresh.map(({ unitDefId, tier }) => ({ unitDefId, tier }))
+      },
+      returnPhase: "combat-setup"
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = playerId;
     return;
   }
 
+  revealNeutralArmyAfterSwapWindows(state, draws);
+}
+
+/** Closes Judge Dread's public full-army redraw result, then resumes setup. */
+function resolveJudgeDreadResult(state: GameState): void {
+  const draws = state.combat?.pendingNeutralDraws;
+  if (!draws) {
+    throw new Error("There is no Judge Dread replacement army to reveal.");
+  }
+  state.pendingChoice = null;
   revealNeutralArmyAfterSwapWindows(state, draws);
 }
 
@@ -16953,9 +17071,19 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     return;
   }
 
+  if (choice.context === "satyr-swap-result") {
+    resolveSatyrSwapResult(state);
+    return;
+  }
+
   if (choice.context === "judge-dread") {
     state.pendingChoice = null;
     resolveJudgeDread(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "judge-dread-result") {
+    resolveJudgeDreadResult(state);
     return;
   }
 

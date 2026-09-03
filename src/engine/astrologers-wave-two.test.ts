@@ -530,4 +530,33 @@ describe("Astrologers — Forty Thieves (draw 2 Events, pick 1, other to the bot
     // The static deck list still carries it — the exclusion is per-game setup.
     expect(astrologersDeckCardIds).toContain("astrologers.forty_thieves");
   });
+
+  it("removes a legacy/imported Forty Thieves at draw time when Events are off", () => {
+    const withoutEvents = createAdventureGameState({
+      seed: "forty-imported-off",
+      difficulty: "normal",
+      rollFirstPlayer: false
+    });
+    withoutEvents.round = 4;
+    withoutEvents.decks.astrologers!.drawPile = ["astrologers.dead_silence", "astrologers.forty_thieves"];
+    withoutEvents.decks.astrologers!.discardPile = [];
+
+    drawAstrologersCard(withoutEvents);
+
+    expect(withoutEvents.adventure!.astrologers?.activeCardId).toBe("astrologers.dead_silence");
+    expect(withoutEvents.decks.astrologers!.drawPile).not.toContain("astrologers.forty_thieves");
+    expect(withoutEvents.decks.astrologers!.discardPile).not.toContain("astrologers.forty_thieves");
+    expect(
+      withoutEvents.eventLog.some(
+        (event) => event.type === "ASTROLOGERS_DRAWN" && event.cardId === "astrologers.forty_thieves"
+      )
+    ).toBe(false);
+
+    // Even a malformed one-card deck must not surface the unsupported card.
+    withoutEvents.adventure!.astrologers!.activeCardId = null;
+    withoutEvents.decks.astrologers!.drawPile = ["astrologers.forty_thieves"];
+    withoutEvents.decks.astrologers!.discardPile = [];
+    drawAstrologersCard(withoutEvents);
+    expect(withoutEvents.adventure!.astrologers?.activeCardId).toBeNull();
+  });
 });

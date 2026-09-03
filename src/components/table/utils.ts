@@ -875,7 +875,7 @@ export function formatEvent(event: GameEvent, state: GameState): string {
     case "SPELL_RETURNED_TO_HAND":
       return `${cardName(event.cardId)} returns to ${playerName(state, event.playerId)}'s hand (${event.reason}).`;
     case "NEUTRAL_DRAW_SWAPPED":
-      return `${playerName(state, event.playerId)} swaps ${event.fromUnitDefId.split(".")[1] ?? event.fromUnitDefId} for ${event.toUnitDefId.split(".")[1] ?? event.toUnitDefId}.`;
+      return `${playerName(state, event.playerId)} discards ${coreUnitDefinitions[event.fromUnitDefId]?.name ?? titleCase(event.fromUnitDefId)} and draws ${coreUnitDefinitions[event.toUnitDefId]?.name ?? titleCase(event.toUnitDefId)} from the ${titleCase(event.tier ?? coreUnitDefinitions[event.fromUnitDefId]?.tier ?? "same-tier")} Neutral deck.`;
     case "MORALE_SPENT":
       return `${playerName(state, event.playerId)} spends the morale token (${event.benefit}).`;
     case "FACTION_CHOSEN":
@@ -1000,7 +1000,11 @@ export function reconnectRoundStartCues(
     expansion: string;
     ongoing: boolean;
     round: number;
-    reshuffle?: { discarded: number; drawn: number };
+    reshuffle?: {
+      mode: "discard-all" | "reshuffle-spells";
+      discarded: number;
+      drawn: number;
+    };
   } | null;
   event: {
     id: string;
@@ -1029,7 +1033,7 @@ export function reconnectRoundStartCues(
     }
     // Forced-hand proclamations (Big Cleanup, Annoying Lizard): surface the
     // viewer's own already-applied result, exactly like the live pop.
-    let reshuffle: { discarded: number; drawn: number } | undefined;
+    let reshuffle: { mode: "discard-all" | "reshuffle-spells"; discarded: number; drawn: number } | undefined;
     for (let i = state.eventLog.length - 1; i >= 0; i -= 1) {
       const logEvent = state.eventLog[i];
       if (
@@ -1038,7 +1042,7 @@ export function reconnectRoundStartCues(
         logEvent.cardId === cardId &&
         logEvent.playerId === viewerPlayerId
       ) {
-        reshuffle = { discarded: logEvent.discarded, drawn: logEvent.drawn };
+        reshuffle = { mode: logEvent.mode, discarded: logEvent.discarded, drawn: logEvent.drawn };
         break;
       }
     }

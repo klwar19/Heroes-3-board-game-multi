@@ -6,18 +6,19 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { PromptTray } from "./screen";
+import { HexMapBoard, PromptTray } from "./screen";
 import {
   createAdventureGameState,
   getLegalActions,
+  getPlayerView,
   pumpAdventureQueues,
+  type GameAction,
   type GameState,
   type MapTileState
 } from "@/engine";
-import { materializeTileFields, startAdventureRound } from "@/engine/adventure";
+import { drawAstrologersCard, materializeTileFields, startAdventureRound } from "@/engine/adventure";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { cardLibrary } from "@/data/cards/library";
-import { allTileDefinitions } from "@/data/map/tiles";
 
 afterEach(cleanup);
 
@@ -73,6 +74,73 @@ function renderTray(state: GameState, playerId: "p1" | "p2" = "p1") {
 }
 
 describe("Astrologers choice tray — relevant option art, not the proclamation card", () => {
+  it("shows every in-play permanent when Destruction must choose one", () => {
+    const state = createAdventureGameState({ seed: "destruction-choice-art", rollFirstPlayer: false });
+    stripMulligan(state);
+    state.players.p1.permanents = [
+      "pandora.hand_size",
+      "pandora.permanent_slots",
+      "war_machine.ballista"
+    ];
+    state.players.p2.permanents = [];
+    state.decks.astrologers!.drawPile = ["astrologers.destruction"];
+    drawAstrologersCard(state);
+    pumpAdventureQueues(state);
+
+    renderTray(state);
+    const choices = screen.getAllByRole("button", { name: /Remove .* and take 5 gold/i });
+    expect(choices).toHaveLength(3);
+    expect(choices.every((choice) => Boolean(choice.querySelector("img")))).toBe(true);
+  });
+
+  it("shows Charlie's unaffordable drawn unit as a disabled card instead of hiding it", () => {
+    const state = drawProclamation("astrologers.charlie_and_his_circus", "charlie-disabled-ui");
+    state.players.p1.resources = { gold: 0, buildingMaterials: 0, valuables: 0 };
+    state.adventure!.pendingVisit = {
+      heroId: "hero_p1",
+      playerId: "p1",
+      fieldId: state.heroes.hero_p1.spaceId ?? "",
+      steps: [
+        {
+          type: "CHOOSE_ONE",
+          prompt: "Charlie and his Circus: recruit one drawn Neutral Unit",
+          options: [
+            {
+              label: "Recruit Boars (4 gold — cannot afford)",
+              disabledReason: "Cannot afford this recruitment cost",
+              steps: [
+                {
+                  type: "RECRUIT_DRAWN_NEUTRAL",
+                  recruit: { unitDefId: "neutral.boars", tier: "bronze" },
+                  drawn: [{ unitDefId: "neutral.boars", tier: "bronze" }],
+                  returnToDeck: true
+                }
+              ]
+            },
+            {
+              label: "Recruit none",
+              steps: [
+                {
+                  type: "RECRUIT_DRAWN_NEUTRAL",
+                  recruit: null,
+                  drawn: [{ unitDefId: "neutral.boars", tier: "bronze" }],
+                  returnToDeck: true
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    };
+
+    renderTray(state);
+    const boars = screen.getByRole("button", { name: /Recruit Boars .*cannot afford/i }) as HTMLButtonElement;
+    const decline = screen.getByRole("button", { name: "Recruit none" }) as HTMLButtonElement;
+    expect(boars.disabled).toBe(true);
+    expect(boars.querySelector("img")).toBeTruthy();
+    expect(decline.disabled).toBe(false);
+  });
+
   it("Dancing Imp: shows Statistic card art for each empower pick, not the Imp scan", () => {
     const state = drawProclamation("astrologers.dancing_imp");
     // Seed a hand Statistic so the offer is non-empty (draw path may already have one).
@@ -256,8 +324,8 @@ function disruptionTrayState(seed: string): { state: GameState; tile: MapTileSta
   return { state, tile };
 }
 
-describe("Disruption rotate-tile tray — tile art, not a wall of text", () => {
-  it("tile pick shows each eligible tile's scan as a thumb (not the Disruption card)", () => {
+describe("Disruption rotate-tile tray — map-first, not a wall of text", () => {
+  it("tile pick is a compact map-click hint with Skip, not a button per tile", () => {
     const { state } = disruptionTrayState("astro-disruption");
     state.adventure!.rewardQueue = [
       { playerId: "p1", kind: "visit-steps", steps: [{ type: "DISRUPTION_ROTATE_OFFER" }] }
@@ -272,27 +340,45 @@ describe("Disruption rotate-tile tray — tile art, not a wall of text", () => {
     expect(screen.queryByTestId("astrologers-choice-card")).toBeNull();
     expect(screen.getByRole("dialog", { name: /Disruption/i })).toBeTruthy();
 
-    const tileButtons = screen
-      .getAllByRole("button")
-      .filter((btn) => /Rotate tile/i.test(btn.getAttribute("aria-label") ?? ""));
-    expect(tileButtons.length).toBeGreaterThan(0);
+    expect(screen.getByText(/Click one of the .* glowing tiles on the map/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Rotate tile/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /Skip rotation/i })).toBeTruthy();
+  });
 
-    let sawTileArt = false;
-    for (const button of tileButtons) {
-      expect(button.className).toMatch(/tileThumb|promptRewardCard/);
-      const src = button.querySelector("img")?.getAttribute("src") ?? "";
-      if (src) {
-        sawTileArt = true;
-        expect(src).not.toMatch(/astrologers/i);
-        const anyTileHasArt = Object.values(allTileDefinitions).some((def) => def.assets?.tileImage);
-        if (anyTileHasArt) {
-          expect(src).toMatch(/tiles|board/i);
-        }
-      }
-    }
-    // Skip stays a plain text button.
-    expect(screen.getByRole("button", { name: /^Skip$/i })).toBeTruthy();
-    expect(sawTileArt || tileButtons.some((b) => b.querySelector(".marketCardFallback"))).toBe(true);
+  it("glows an eligible revealed tile and dispatches its engine option when clicked", () => {
+    const { state, tile } = disruptionTrayState("astro-disruption-map-click");
+    state.adventure!.rewardQueue = [
+      { playerId: "p1", kind: "visit-steps", steps: [{ type: "DISRUPTION_ROTATE_OFFER" }] }
+    ];
+    pumpAdventureQueues(state);
+    const step = state.adventure!.pendingVisit!.steps[0];
+    if (step.type !== "CHOOSE_ONE") throw new Error("expected Disruption tile picker");
+    const optionIndex = step.options.findIndex(
+      (option) => option.steps[0]?.type === "DISRUPTION_ROTATE_TILE" && option.steps[0].tileInstanceId === tile.id,
+    );
+    const legalActions = getLegalActions(state, "p1");
+    const expected = legalActions.find(
+      (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && legal.action.optionIndex === optionIndex,
+    )?.action;
+    expect(expected).toBeTruthy();
+
+    const onAction = vi.fn<(action: GameAction) => void>();
+    const { container } = render(
+      <HexMapBoard
+        legalActions={legalActions}
+        moveCue={null}
+        onAction={onAction}
+        placement={null}
+        state={state}
+        view={getPlayerView(state, "p1")}
+        viewerPlayerId="p1"
+      />
+    );
+    const targets = container.querySelectorAll(`[data-disruption-tile="${tile.id}"]`);
+    expect(targets).toHaveLength(7);
+    expect(targets[0]?.classList.contains("disruptionTileTarget")).toBe(true);
+    fireEvent.click(targets[0]!);
+    expect(onAction).toHaveBeenCalledWith(expected);
   });
 
   it("degree pick shows rotated tile thumbs labelled 60°/120°… instead of long text only", () => {

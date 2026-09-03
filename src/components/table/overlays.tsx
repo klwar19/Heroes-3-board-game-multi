@@ -976,6 +976,44 @@ export function ReactionTray({
 
   const triggerText = formatEvent(window.triggerEvent, state);
   const isPriority = window.priorityPlayerId === viewerPlayerId;
+  const topStackItem = state.stack.at(-1);
+  const crazyWizardCastEffect =
+    topStackItem?.action.type === "CAST_SPELL"
+      ? getEffectiveCardEffect(
+          cardLibrary[topStackItem.action.cardId],
+          topStackItem.action.optionIndex,
+        )
+      : null;
+  const crazyWizardCastWillBeOngoing = [
+    "CREATE_ACTIVE_EFFECT",
+    "CREATE_ATTACK_BUFF",
+    "CREATE_PRAYER_BUFF",
+    "CREATE_DEFENSE_BUFF",
+    "CREATE_ENEMY_DIE_SET",
+    "CREATE_ATTACK_DIE_REROLL",
+    "CREATE_INITIATIVE_BUFF",
+    "CREATE_SPELL_IMMUNITY",
+    "CREATE_FIRE_SHIELD",
+  ].includes(crazyWizardCastEffect?.type ?? "");
+  const crazyWizardDeferred = topStackItem?.modifiers.deferredSpellRecalls?.find(
+    (entry) => entry.reason === "Crazy Wizard",
+  );
+  const crazyWizardSpell =
+    topStackItem?.action.type === "CAST_SPELL" &&
+    topStackItem.modifiers.crazyWizardReturn
+      ? {
+          cardId: topStackItem.action.cardId,
+          playerId: topStackItem.action.playerId,
+          ongoing: crazyWizardCastWillBeOngoing,
+        }
+      : topStackItem?.modifiers.crazyWizardOngoingSpell
+        ? { ...topStackItem.modifiers.crazyWizardOngoingSpell, ongoing: true }
+      : crazyWizardDeferred
+        ? {
+            ...crazyWizardDeferred,
+            ongoing: false,
+          }
+        : null;
 
   if (!isPriority) {
     return (
@@ -1542,6 +1580,19 @@ export function ReactionTray({
           {trayMinimized ? <Maximize2 aria-hidden="true" size={15} /> : <Minus aria-hidden="true" size={15} />}
         </button>
       </header>
+      {crazyWizardSpell ? (
+        <div className="crazyWizardReminder" role="note">
+          <Sparkles aria-hidden="true" size={17} />
+          <span>
+            <strong>Crazy Wizard</strong>
+            {": "}
+            {cardName(crazyWizardSpell.cardId)} is {state.players[crazyWizardSpell.playerId]?.name ?? "this player"}&apos;s
+            first Spell and {crazyWizardSpell.ongoing
+              ? "will stay Ongoing, then return only after its effect expires."
+              : "will return after it resolves."}
+          </span>
+        </div>
+      ) : null}
       <div className="trayTiles">
         {tiles.length === 0 &&
         buildingBoosts.length === 0 &&
@@ -3648,7 +3699,11 @@ export type AstrologersProclamationCue = {
    * mandatory discard has happened (and was not the optional start-of-turn
    * draw) — i.e. that it could not be skipped.
    */
-  reshuffle?: { discarded: number; drawn: number };
+  reshuffle?: {
+    mode: "discard-all" | "reshuffle-spells";
+    discarded: number;
+    drawn: number;
+  };
 };
 
 /**
@@ -3725,8 +3780,9 @@ export function AstrologersProclamationOverlay({
           <p>{cue.text}</p>
           {cue.reshuffle ? (
             <p className="astrologersProclaimForced">
-              ✔ Forced &amp; already applied — your hand ({cue.reshuffle.discarded}) was discarded and{" "}
-              {cue.reshuffle.drawn} new card{cue.reshuffle.drawn === 1 ? "" : "s"} drawn. It could not be skipped.
+              ✔ Forced &amp; already applied — {cue.reshuffle.mode === "reshuffle-spells"
+                ? `${cue.reshuffle.discarded} Spell/Artifact card${cue.reshuffle.discarded === 1 ? " was" : "s were"} shuffled back into your deck`
+                : `your hand (${cue.reshuffle.discarded}) was discarded`} and {cue.reshuffle.drawn} new card{cue.reshuffle.drawn === 1 ? "" : "s"} drawn. It could not be skipped.
               The “draw new” below is your separate, normal start-of-turn draw.
             </p>
           ) : null}

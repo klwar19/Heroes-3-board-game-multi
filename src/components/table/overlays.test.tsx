@@ -328,6 +328,93 @@ describe("ReactionTray — Adrienne's pending damage is explicit and resolves", 
   });
 });
 
+describe("ReactionTray — Crazy Wizard reminder", () => {
+  it("marks the first Spell in the instant window with a magical reminder", () => {
+    const state = createInitialGameState("crazy-wizard-reminder");
+    const view = getPlayerView(state, "p1");
+    state.adventure = createAdventureGameState({
+      startingBuildings: [],
+      seed: "crazy-wizard-reminder-adventure",
+      ruleset: "binh",
+      rollFirstPlayer: false
+    }).adventure;
+    state.adventure!.astrologers!.activeCardId = "astrologers.crazy_wizard";
+    state.adventure!.astrologers!.crazyWizardUsedBy = [];
+    state.players.p1.hand = ["spell.magic_arrow", "stat.power"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    const target = state.combat!.units.unit_p2_skeletons;
+    target.abilities = [];
+    target.maxHealth = 40;
+
+    const cast = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.magic_arrow" &&
+        legal.action.target?.type === "unit" &&
+        legal.action.target.unitId === target.id
+    );
+    expect(cast).toBeTruthy();
+    const casted = applyAction(state, cast!.action).state;
+
+    render(
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={getLegalActions(casted, "p1")}
+          onAction={vi.fn()}
+          state={casted}
+          view={view}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+
+    expect(screen.getByRole("note").textContent).toMatch(
+      /Crazy Wizard.*Magic Arrow.*first Spell.*return after it resolves/i
+    );
+  });
+
+  it("explains that an ongoing first Spell returns only after its effect expires", () => {
+    const state = createInitialGameState("crazy-wizard-ongoing-reminder");
+    const view = getPlayerView(state, "p1");
+    state.adventure = createAdventureGameState({
+      startingBuildings: [],
+      seed: "crazy-wizard-ongoing-reminder-adventure",
+      ruleset: "binh",
+      rollFirstPlayer: false
+    }).adventure;
+    state.adventure!.astrologers!.activeCardId = "astrologers.crazy_wizard";
+    state.adventure!.astrologers!.crazyWizardUsedBy = [];
+    state.players.p1.hand = ["spell.fortune", "stat.power"];
+    state.players.p2.hand = [];
+
+    const cast = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.fortune"
+    );
+    expect(cast).toBeTruthy();
+    const casted = applyAction(state, cast!.action).state;
+
+    render(
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={getLegalActions(casted, "p1")}
+          onAction={vi.fn()}
+          state={casted}
+          view={view}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+
+    expect(screen.getByRole("note").textContent).toMatch(
+      /Crazy Wizard.*Fortune.*stay Ongoing.*only after its effect expires/i
+    );
+  });
+});
+
 describe("ReactionTray - retaliation morale draw", () => {
   it("surfaces the token draw as a clickable action before the counterattack roll", () => {
     const initial = createInitialGameState("tray-retaliation-morale");

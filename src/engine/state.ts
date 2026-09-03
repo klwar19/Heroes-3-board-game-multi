@@ -6625,6 +6625,8 @@ export type GameEvent =
       playerId: PlayerId;
       fromUnitDefId: string;
       toUnitDefId: string;
+      /** Optional for compatibility with events saved before tier was logged. */
+      tier?: "bronze" | "silver" | "gold" | "azure";
     }
   | {
       id: string;
@@ -7822,6 +7824,14 @@ export type ResolutionStackItem = {
      * Basic (+1) applies automatically; the expert discard replaces it.
      */
     schoolPowerBonus?: number;
+    /** Crazy Wizard selected this as this player's first owned Spell play. */
+    crazyWizardReturn?: boolean;
+    /**
+     * Magic Arrow may benefit from exactly one School of Magic. The strongest
+     * school package is selected when the cast starts and frozen here so later
+     * preview/resolution reads cannot mix bonuses (or Orbs) from other schools.
+     */
+    selectedSpellSchool?: Exclude<SpellSchool, "any">;
     attackBonus: number;
     /** Drone Support bonus frozen and consumed when this attack was declared. */
     droneSupportAttackBonus?: number;
@@ -8036,6 +8046,8 @@ export type ResolutionStackItem = {
       playerId: PlayerId;
       fromSpellBook?: boolean;
       castEnablerCardId?: CardId;
+      /** This exact play already has Crazy Wizard's automatic deferred return. */
+      crazyWizardReturn?: boolean;
     }[];
     /**
      * Cards played from the Spell Book into THIS stack item (a Book instant, a
@@ -8057,7 +8069,16 @@ export type ResolutionStackItem = {
       toSpellBook: boolean;
       /** Move Polish Book used -> refreshed instead of discard -> destination. */
       fromPolishUsed?: boolean;
+      /** Polish Book cast card returned alongside a Crazy Wizard refresh. */
+      castEnablerCardId?: CardId;
+      /** Distinguishes the automatic proclamation return from a played recall. */
+      reason?: "Crazy Wizard";
     }[];
+    /** Reminder data for a Crazy Wizard Spell held by a lasting reaction effect. */
+    crazyWizardOngoingSpell?: {
+      cardId: CardId;
+      playerId: PlayerId;
+    };
     /**
      * Alamar's Resurrection armed on this attack: if it would reduce the named
      * unit (of `grade` or lower) to 0 HP, the blow is cancelled.
@@ -9262,7 +9283,9 @@ export type PlayerState = {
   ongoingCards?: {
     cardId: CardId;
     effectIds: string[];
-    returnTo: "discard" | "hand" | "spellBook";
+    returnTo: "discard" | "hand" | "spellBook" | "spellBookUsed";
+    /** Round the Polish Book Spell was spent before entering the Ongoing tray. */
+    usedAtRound?: number;
   }[];
   /**
    * Necromancy timing window: set when this player wins a Combat other than
@@ -11287,7 +11310,7 @@ export type VisitStep =
   | {
       type: "CHOOSE_ONE";
       prompt: string;
-      options: { label: string; steps: VisitStep[] }[];
+      options: { label: string; steps: VisitStep[]; disabledReason?: string }[];
       /**
        * Set ONLY on the Monolith / Whirlpool / colored-Gate "choose where to
        * travel" destination picker (`resolveTokenTeleport` / `resolveGateTeleport`)
@@ -11841,6 +11864,8 @@ export type VisitStep =
       type: "REINFORCE_ARMY_UNIT";
       armyUnitId: string;
       halfCost: boolean;
+      /** Half-cost rounding is explicit for event/save compatibility. Isra rounds up. */
+      roundDown?: boolean;
     }
   | {
       /** Neutral Skeletons reward: reinforce one Few unit for free (Few→Pack). */
@@ -12002,6 +12027,16 @@ export type VisitStep =
       maxDraws: number;
     }
   | {
+      /**
+       * Astrologers (Destruction): remove exactly this one in-play permanent and
+       * award the printed gold. Used when Pandora allows a player to have a
+       * choice of several permanents; `cardId` also gives the prompt real art.
+       */
+      type: "DESTRUCTION_REMOVE_PERMANENT";
+      cardId: CardId;
+      gold: number;
+    }
+  | {
       /** Flaggable Dragon Utopia: draw two Azure cards and offer one paid recruit. */
       type: "UTOPIA_AZURE_RECRUIT_OFFER";
     }
@@ -12020,6 +12055,8 @@ export type VisitStep =
         unitDefId: string;
         tier: "bronze" | "silver" | "gold" | "azure";
       }[];
+      /** Charlie returns every unchosen card directly into (and reshuffles) its deck. */
+      returnToDeck?: boolean;
     }
   | {
       /**
@@ -12595,6 +12632,8 @@ export type VisitStep =
       verb?: string;
       candidates: { unitDefId: string; steps: VisitStep[] }[];
       decline: { label: string; steps: VisitStep[] };
+      /** Keep unaffordable candidates visible as disabled choices (Charlie). */
+      showUnaffordable?: boolean;
       /**
        * With nothing affordable (even after a held Legion piece), resolve
        * `decline.steps` straight away instead of prompting with a lone Decline.
@@ -16136,6 +16175,7 @@ export type PendingChoice =
       context:
         | "city-hall"
         | "satyr-swap"
+        | "satyr-swap-result"
         | "random-town-pack"
         | "black-tower-dragon"
         | "war-machine"
@@ -16211,6 +16251,7 @@ export type PendingChoice =
         | "subterranean-tile-pick"
         | "subterranean-gate-placement"
         | "judge-dread"
+        | "judge-dread-result"
         | "rule-111"
         | "far-tile-flip"
         | "player-resource-pick"
@@ -16225,6 +16266,23 @@ export type PendingChoice =
         cardIds: CardId[];
         cost: number;
         source: string;
+      };
+      /** Groovy Satyr: the public old/new cards shown before combat continues. */
+      satyrSwapResult?: {
+        fromUnitDefId: string;
+        toUnitDefId: string;
+        tier: "bronze" | "silver" | "gold" | "azure";
+      };
+      /** Judge Dread: every discarded guard and its exact-tier replacement. */
+      judgeDreadResult?: {
+        discarded: Array<{
+          unitDefId: string;
+          tier: "bronze" | "silver" | "gold" | "azure";
+        }>;
+        replacements: Array<{
+          unitDefId: string;
+          tier: "bronze" | "silver" | "gold" | "azure";
+        }>;
       };
       /** Black Tower: the visitor chooses one of the four printed OR rows. */
       blackTowerDragon?: { fieldId: MapSpaceId; heroId: HeroId };

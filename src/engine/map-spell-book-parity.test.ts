@@ -9,6 +9,7 @@ import {
   type GameAction,
   type GameState
 } from "./index";
+import { expireEffectsForTurnEnd, releaseEndedOngoingCards } from "./active-effects";
 
 /**
  * Map cast-then-boost × both Spell Book systems.
@@ -490,7 +491,7 @@ describe("Map cast-then-boost × POLISH Spell Book", () => {
     ).toBe(false);
   });
 
-  it("Polish Book Fly: spell stays used (no ongoing hold); Knowledge still returns Cast a Spell", () => {
+  it("Polish Book Fly stays ongoing; Knowledge returns Cast a Spell now and Fly becomes used only after expiry", () => {
     let state = polishBookGame("polish-book-fly");
     state.players.p1.hand = [CAST_A_SPELL_CARD_ID, "stat.knowledge"];
     state.players.p1.spellBook = ["spell.fly"];
@@ -515,14 +516,20 @@ describe("Map cast-then-boost × POLISH Spell Book", () => {
           effect.modifiers.some((m) => m.type === "HERO_MOVE_THROUGH")
       )
     ).toBe(true);
-    // …but the Polish card stays in used, not ongoing.
-    expect(state.players.p1.spellBookUsed).toContain("spell.fly");
-    expect(state.players.p1.ongoingCards?.some((entry) => entry.cardId === "spell.fly") ?? false).toBe(
-      false
-    );
+    // …so the physical Polish Book card stays in the ongoing tray, not used or
+    // refreshed while the movement effect can still be used.
+    expect(state.players.p1.spellBookUsed).not.toContain("spell.fly");
+    expect(state.players.p1.spellBook).not.toContain("spell.fly");
+    expect(state.players.p1.ongoingCards?.some((entry) => entry.cardId === "spell.fly")).toBe(true);
 
     state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
     expect(state.players.p1.hand).toContain(CAST_A_SPELL_CARD_ID);
+    expect(state.players.p1.spellBook).not.toContain("spell.fly");
+    expect(state.players.p1.ongoingCards?.find((entry) => entry.cardId === "spell.fly")?.returnTo).toBe("spellBookUsed");
+
+    expireEffectsForTurnEnd(state, "p1");
+    releaseEndedOngoingCards(state);
+    expect(state.players.p1.ongoingCards?.some((entry) => entry.cardId === "spell.fly") ?? false).toBe(false);
     expect(state.players.p1.spellBookUsed).toContain("spell.fly");
   });
 

@@ -314,23 +314,57 @@ describe("Astrologers — Charlie and his Circus (paid Neutral recruit)", () => 
 
   it("recruits nothing on 'Recruit none' and returns the drawn card to its deck", () => {
     const state = charlieGame();
+    setDwellingTiers(state, "p1", ["bronze", "silver", "gold"]);
+    const silver = neutralUnitIdsByTier.silver[0]!;
+    const gold = neutralUnitIdsByTier.gold[0]!;
+    state.decks["neutral-silver"]!.drawPile = [silver];
+    state.decks["neutral-gold"]!.drawPile = [gold];
     drawAstrologersCard(state);
     pumpAdventureQueues(state);
 
     const after = chooseVisitOption(state, "p1", /Recruit none/);
     expect(after.players.p1.army.some((unit) => unit.unitDefId === "neutral.boars")).toBe(false);
     expect(after.players.p1.resources.gold).toBe(50);
-    expect(after.decks["neutral-bronze"]!.discardPile).toContain("neutral.boars");
+    expect(after.decks["neutral-bronze"]!.drawPile).toContain("neutral.boars");
+    expect(after.decks["neutral-bronze"]!.discardPile).not.toContain("neutral.boars");
+    expect(after.decks["neutral-silver"]!.drawPile).toContain(silver);
+    expect(after.decks["neutral-gold"]!.drawPile).toContain(gold);
+    expect(after.decks["neutral-silver"]!.discardPile).not.toContain(silver);
+    expect(after.decks["neutral-gold"]!.discardPile).not.toContain(gold);
   });
 
-  it("offers nothing the player cannot afford (the draw returns to its deck)", () => {
+  it("shows an unaffordable draw as disabled and still allows Recruit none", () => {
     const state = charlieGame();
     state.players.p1.resources = { gold: 0, buildingMaterials: 0, valuables: 0 };
     drawAstrologersCard(state);
     pumpAdventureQueues(state);
 
-    expect(state.adventure?.pendingVisit).toBeNull();
-    expect(state.decks["neutral-bronze"]!.discardPile).toContain("neutral.boars");
+    const step = state.adventure?.pendingVisit?.steps[0];
+    expect(step?.type).toBe("CHOOSE_ONE");
+    if (step?.type !== "CHOOSE_ONE") throw new Error("Charlie choice did not open");
+    expect(step.options.some((option) => /Recruit Boars .*cannot afford/.test(option.label) && option.disabledReason)).toBe(true);
+    expect(visitOptionLabels(state, "p1")).toEqual(["Recruit none"]);
+
+    const after = chooseVisitOption(state, "p1", /Recruit none/);
+    expect(after.decks["neutral-bronze"]!.drawPile).toContain("neutral.boars");
+    expect(after.decks["neutral-bronze"]!.discardPile).not.toContain("neutral.boars");
+  });
+
+  it("shuffles every unchosen card back into its respective Neutral draw deck after buying one", () => {
+    const state = charlieGame();
+    setDwellingTiers(state, "p1", ["bronze", "silver", "gold"]);
+    const silver = neutralUnitIdsByTier.silver[0]!;
+    const gold = neutralUnitIdsByTier.gold[0]!;
+    state.decks["neutral-silver"]!.drawPile = [silver];
+    state.decks["neutral-gold"]!.drawPile = [gold];
+    drawAstrologersCard(state);
+    pumpAdventureQueues(state);
+
+    const after = chooseVisitOption(state, "p1", /Recruit Boars/);
+    expect(after.decks["neutral-silver"]!.drawPile).toContain(silver);
+    expect(after.decks["neutral-gold"]!.drawPile).toContain(gold);
+    expect(after.decks["neutral-silver"]!.discardPile).not.toContain(silver);
+    expect(after.decks["neutral-gold"]!.discardPile).not.toContain(gold);
   });
 
   it("offers nothing to a player without a Dwelling", () => {

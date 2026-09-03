@@ -832,19 +832,19 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
 };
 
 /**
- * Proclamations that are fully wired but TEMPORARILY held out of the live deck
- * by request ("disable it for now"). They keep their definition, art and engine
- * effect, so re-enabling one is just deleting it from this set — unlike
- * ASTROLOGERS_NOT_IMPLEMENTED, whose entries have no working effect at all.
- *
- * - Friendly Beaver — "remove all Black Cubes from the map" wipes every player's
- *   explored-field progress at once; pulled from the deck for now.
+ * Fully wired proclamations excluded only by the BINH house rules. Legacy uses
+ * the complete printed deck. Keeping this gate separate from the card catalogue
+ * prevents a house-rule ban from silently leaking into rulebook games.
  */
-export const DISABLED_ASTROLOGERS_CARDS = new Set<string>(["astrologers.friendly_beaver"]);
+export const BINH_DISABLED_ASTROLOGERS_CARDS = new Set<string>([
+  "astrologers.friendly_beaver"
+]);
 
-export const astrologersDeckCardIds: string[] = Object.keys(astrologersCardDefinitions).filter(
-  (id) => !DISABLED_ASTROLOGERS_CARDS.has(id)
-);
+/** @deprecated Use BINH_DISABLED_ASTROLOGERS_CARDS; the ban is not global. */
+export const DISABLED_ASTROLOGERS_CARDS = BINH_DISABLED_ASTROLOGERS_CARDS;
+
+/** Every implemented proclamation before ruleset/module setup filters. */
+export const astrologersDeckCardIds: string[] = Object.keys(astrologersCardDefinitions);
 
 /**
  * Expansion proclamations that exist on the wiki but are deliberately NOT in the

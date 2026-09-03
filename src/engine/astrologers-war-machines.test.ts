@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, createInitialGameState, getLegalActions } from "./index";
 import { startAdventureRound } from "./adventure";
 import { pumpAdventureQueues } from "./adventure-reducer";
+import { makeCommanderCombatUnit } from "./commanders";
 import type { GameAction, GameState, PlayerId } from "./state";
 
 /**
@@ -210,6 +211,181 @@ describe("Astrologers — Ammo Cart: Ballista +1 damage", () => {
     const fired = endRound(ballistaSetup("astrologers.dead_silence"), "p1");
     expect(fired.combat!.units.unit_p2_dread_knights.damage).toBe(1);
   });
+
+  it.each([
+    ["classic", {}, "expert", 1, 6],
+    ["Polish Basic", { "polish-card-balance": true }, "basic", 0, 4],
+    ["Polish Expert", { "polish-card-balance": true }, "expert", 1, 6],
+    ["Community", { "community-card-balance": true }, "expert", 1, 6],
+    [
+      "Community precedence when both packs are on",
+      { "polish-card-balance": true, "community-card-balance": true },
+      "expert",
+      1,
+      6
+    ]
+  ] as const)("stacks with %s Artillery for the correct complete volley", (_name, rules, mode, crowns, expected) => {
+    let state = ballistaSetup("astrologers.ammo_cart");
+    state.adventure!.houseRules = { ...rules };
+    state.players.p1.hand = ["ability.artillery"];
+    state.players.p1.limits.expertUses = crowns;
+
+    state = endRound(state, "p1");
+    const volley = getLegalActions(state, "p1").find(
+      (legal) => legal.label.includes("Artillery") && legal.label.includes(`(${mode})`)
+    );
+    expect(volley, `${_name} ${mode} volley should be offered`).toBeTruthy();
+    state = applyOk(state, volley!.action);
+
+    // Balance printings grant free aim, so finish their target choice. Classic
+    // has one uniquely slowest target and resolves immediately.
+    if (state.pendingChoice?.type === "ABILITY_TARGET_CHOICE") {
+      state = applyOk(state, {
+        type: "CHOOSE_ABILITY_TARGET",
+        playerId: "p1",
+        choiceId: state.pendingChoice.id,
+        targetUnitId: "unit_p2_dread_knights"
+      });
+    }
+    expect(state.combat!.units.unit_p2_dread_knights.damage).toBe(expected);
+  });
+
+  it.each([
+    "specialty.torosar.1",
+    "specialty.tarnum_castle.1",
+    "specialty.gerwulf.1"
+  ])("buffs the immediate physical Ballista fired by %s", (cardId) => {
+    const state = ballistaSetup("astrologers.ammo_cart");
+    state.players.p1.hand = [cardId];
+    const play = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === cardId && legal.action.optionIndex === 1
+    );
+    expect(play).toBeTruthy();
+    const fired = applyOk(state, play!.action);
+    expect(fired.combat!.units.unit_p2_dread_knights.damage).toBe(2);
+  });
+
+  it("buffs every Ballista in Torosar VI's activate-all volley", () => {
+    const state = ballistaSetup("astrologers.ammo_cart");
+    state.players.p1.hand = ["specialty.torosar.6"];
+    const play = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.torosar.6"
+    );
+    expect(play).toBeTruthy();
+    const fired = applyOk(state, play!.action);
+    // One physical Ballista + the specialty's additional Ballista, 2 damage each.
+    expect(fired.combat!.units.unit_p2_dread_knights.damage).toBe(4);
+  });
+
+  it("buffs Tarnum IV's additional Ballista when it fires at round start", () => {
+    let state = ballistaSetup("astrologers.ammo_cart");
+    state.players.p1.hand = ["specialty.tarnum_castle.4"];
+    const grant = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "specialty.tarnum_castle.4" &&
+        legal.action.optionIndex === 0
+    );
+    expect(grant).toBeTruthy();
+    state = applyOk(state, grant!.action);
+    state = endRound(state, "p1");
+    // The standing machine and Tarnum's additional one each fire for 2.
+    expect(state.combat!.units.unit_p2_dread_knights.damage).toBe(4);
+  });
+
+  it.each([
+    ["specialty.gerwulf.4", 1, 3],
+    ["specialty.gerwulf.6", 1, 4]
+  ] as const)("buffs the physical Ballista sacrificed by %s", (cardId, optionIndex, expected) => {
+    const state = ballistaSetup("astrologers.ammo_cart");
+    state.players.p1.hand = [cardId];
+    const play = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === cardId &&
+        legal.action.optionIndex === optionIndex &&
+        legal.action.target?.type === "unit" &&
+        legal.action.target.unitId === "unit_p2_dread_knights"
+    );
+    expect(play).toBeTruthy();
+    const fired = applyOk(state, play!.action);
+    expect(fired.combat!.units.unit_p2_dread_knights.damage).toBe(expected);
+    expect(fired.players.p1.permanents).not.toContain("war_machine.ballista");
+  });
+
+  it("does not boost Ballista-named specialty damage when no Ballista deals it", () => {
+    const state = ballistaSetup("astrologers.ammo_cart");
+    state.players.p1.hand = ["specialty.tarnum_castle.6"];
+    // Exactly two living enemies makes Tarnum VI resolve both printed hits
+    // immediately; this effect neither fires nor sacrifices a Ballista.
+    state.combat!.units.unit_p2_skeletons.damage = state.combat!.units.unit_p2_skeletons.maxHealth;
+    const play = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.tarnum_castle.6"
+    );
+    expect(play).toBeTruthy();
+    const fired = applyOk(state, play!.action);
+    expect(fired.combat!.units.unit_p2_dread_knights.damage).toBe(2);
+    expect(fired.combat!.units.unit_p2_vampires.damage).toBe(2);
+  });
+
+  it("keeps Gerwulf VI's aim freedom while applying the bonus to the aimed shot", () => {
+    let state = ballistaSetup("astrologers.ammo_cart");
+    state.players.p1.hand = ["specialty.gerwulf.6"];
+    const aim = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "specialty.gerwulf.6" &&
+        legal.action.optionIndex === 0
+    );
+    expect(aim).toBeTruthy();
+    state = applyOk(state, aim!.action);
+    state = endRound(state, "p1");
+    expect(state.pendingChoice?.type).toBe("ABILITY_TARGET_CHOICE");
+    state = applyOk(state, {
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: "p1",
+      choiceId: state.pendingChoice!.id,
+      targetUnitId: "unit_p2_vampires"
+    });
+    expect(state.combat!.units.unit_p2_vampires.damage).toBe(2);
+    expect(state.combat!.units.unit_p2_dread_knights.damage).toBe(0);
+  });
+
+  it("combines with the Ogre Leader's target choice, but stops when that commander falls", () => {
+    const setup = (commanderDamage: number) => {
+      const state = ballistaSetup("astrologers.ammo_cart");
+      state.wog = { enabled: true, commanders: true, newObjects: false, newCreatures: false, artifacts: false };
+      state.players.p1.commander = {
+        slug: "ogre_leader",
+        grades: { attack: 0, defense: 0, health: 0, damage: 0, magic: 0, speed: 0 }
+      };
+      const commander = makeCommanderCombatUnit(state.players.p1, 9)!;
+      commander.damage = commanderDamage;
+      state.combat!.units[commander.id] = commander;
+      return state;
+    };
+
+    let aimed = endRound(setup(0), "p1");
+    expect(aimed.pendingChoice?.type).toBe("ABILITY_TARGET_CHOICE");
+    expect(
+      aimed.pendingChoice?.type === "ABILITY_TARGET_CHOICE"
+        ? aimed.pendingChoice.candidateUnitIds
+        : []
+    ).toContain("unit_p2_vampires");
+    aimed = applyOk(aimed, {
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: "p1",
+      choiceId: aimed.pendingChoice!.id,
+      targetUnitId: "unit_p2_vampires"
+    });
+    expect(aimed.combat!.units.unit_p2_vampires.damage).toBe(2);
+
+    const fallenSetup = setup(999);
+    const fallen = endRound(fallenSetup, "p1");
+    expect(fallen.pendingChoice).toBeNull();
+    expect(fallen.combat!.units.unit_p2_dread_knights.damage).toBe(2);
+    expect(fallen.combat!.units.unit_p2_vampires.damage).toBe(0);
+  });
 });
 
 // ===========================================================================
@@ -255,6 +431,19 @@ describe("Astrologers — Ammo Cart: First Aid Tent +1 heal", () => {
   it("Ammo Cart makes the Tent heal 2 (5 damage -> 3)", () => {
     const healed = basicHeal(tentSetup("astrologers.ammo_cart"));
     expect(healed.combat!.units.unit_p1_crusaders.damage).toBe(3);
+  });
+
+  it("stacks in the correct order with Gem VI: double the boosted Tent effect", () => {
+    let state = tentSetup("astrologers.ammo_cart");
+    state.players.p1.hand = ["specialty.gem.6"];
+    const double = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.gem.6"
+    );
+    expect(double, "Gem VI should be playable with the Tent in play").toBeTruthy();
+    state = applyOk(state, double!.action);
+    state = basicHeal(state);
+    // (Tent 1 + proclamation 1) × Gem VI 2 = 4.
+    expect(state.combat!.units.unit_p1_crusaders.damage).toBe(1);
   });
 });
 

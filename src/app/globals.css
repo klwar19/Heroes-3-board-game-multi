@@ -3569,6 +3569,29 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
   font-size: 13px;
 }
 
+.crazyWizardReminder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgb(177 132 255 / 55%);
+  border-radius: 8px;
+  color: #eee3ff;
+  background: linear-gradient(90deg, rgb(80 42 118 / 72%), rgb(38 28 66 / 58%));
+  box-shadow: inset 0 0 18px rgb(177 132 255 / 10%);
+  font-size: 12px;
+}
+
+.crazyWizardReminder > svg {
+  flex: 0 0 auto;
+  color: #d7b8ff;
+  filter: drop-shadow(0 0 5px rgb(184 132 255 / 70%));
+}
+
+.crazyWizardReminder strong {
+  color: #e8ceff;
+}
+
 .trayTiles {
   display: flex;
   gap: 10px;
@@ -5883,6 +5906,38 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
   }
   50% {
     stroke-opacity: 1;
+  }
+}
+
+/* Disruption is selected tile-first, directly on the board. All seven hexes
+   share one amber outline/click target, including Underground and Gate tiles. */
+.hexCell.disruptionTileTarget {
+  cursor: pointer;
+  stroke: #ffd166;
+  stroke-width: 3.6;
+  fill-opacity: 0.38;
+  filter: brightness(1.32) drop-shadow(0 0 7px rgb(255 209 102 / 95%));
+  animation: disruptionTilePulse 1.25s ease-in-out infinite;
+}
+
+.hexCell.disruptionTileTarget:hover {
+  stroke: #fff4c2;
+  filter: brightness(1.65) drop-shadow(0 0 11px rgb(255 209 102 / 100%));
+}
+
+@keyframes disruptionTilePulse {
+  0%,
+  100% {
+    stroke-opacity: 0.62;
+  }
+  50% {
+    stroke-opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hexCell.disruptionTileTarget {
+    animation: none;
   }
 }
 
@@ -8265,6 +8320,67 @@ button.hbSlot:disabled {
 
 .rule111AcceptButton {
   align-self: stretch;
+}
+
+/* Judge Dread: the choice is one whole visible army, never a per-card action.
+   The redraw receipt keeps old and new groups distinct and horizontally
+   scrollable on narrow screens without hiding any tier. */
+.promptTray.judgeDreadTray {
+  max-width: min(960px, 98vw);
+}
+
+.judgeDreadArmy,
+.judgeDreadComparison,
+.judgeDreadActions,
+.judgeDreadArmyGroup {
+  display: flex;
+  gap: 10px;
+}
+
+.judgeDreadArmy {
+  overflow-x: auto;
+  padding: 4px 2px 8px;
+}
+
+.judgeDreadCard {
+  display: flex;
+  flex: 0 0 104px;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+}
+
+.judgeDreadCard img {
+  width: 96px;
+  height: auto;
+  border-radius: 7px;
+  box-shadow: 0 3px 10px rgb(0 0 0 / 50%);
+}
+
+.judgeDreadCard small {
+  font-size: 10px;
+}
+
+.judgeDreadComparison {
+  align-items: stretch;
+  overflow-x: auto;
+}
+
+.judgeDreadArmyGroup {
+  min-width: 0;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid rgba(220, 175, 95, 0.28);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.judgeDreadActions {
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 .promptOptions.rewardCards {
@@ -12456,6 +12572,88 @@ button.hbSlot:disabled {
 .handTopBar > small {
   color: #b89f78;
   font-weight: 600;
+}
+
+/* Hero Astrologers proclamation: its exchange is card-specific, so the actual
+   action stays in each Statistic card menu. This compact cue makes the rule and
+   remaining same-turn uses visible without adding a duplicate mutation path. */
+.heroEmpowerCue {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 8px 5px;
+  padding: 6px 9px;
+  border: 1px solid rgb(201 157 78 / 48%);
+  border-radius: 8px;
+  background: linear-gradient(90deg, rgb(70 45 18 / 92%), rgb(35 25 16 / 92%));
+  color: #f0d59d;
+  font-size: 11px;
+}
+
+.heroEmpowerCue > span {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.heroEmpowerIcon {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 4px rgb(242 184 55 / 38%));
+}
+
+.heroEmpowerCue strong {
+  color: #ffd778;
+}
+
+.heroEmpowerCue small {
+  color: inherit;
+  line-height: 1.35;
+}
+
+.heroEmpowerCue.available {
+  border-color: rgb(255 208 102 / 76%);
+  box-shadow: 0 0 10px rgb(255 193 75 / 18%);
+}
+
+.heroEmpowerCue.available .heroEmpowerIcon {
+  animation: heroEmpowerAvailablePulse 1.15s ease-in-out infinite;
+}
+
+@keyframes heroEmpowerAvailablePulse {
+  0%,
+  100% {
+    opacity: 0.62;
+    transform: scale(0.94);
+    filter: drop-shadow(0 0 2px rgb(242 184 55 / 28%));
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+    filter: drop-shadow(0 0 9px rgb(255 197 62 / 92%));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .heroEmpowerCue.available .heroEmpowerIcon {
+    animation: none;
+    opacity: 1;
+  }
+}
+
+.heroEmpowerCue.waiting {
+  color: #cab98f;
+}
+
+.heroEmpowerCue .commandButton {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 5px 10px;
+  font-size: 10px;
 }
 
 .handWarning {

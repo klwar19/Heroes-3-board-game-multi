@@ -414,7 +414,41 @@ describe("Map casts share the non-combat spell lifecycle", () => {
     expect(state.adventure!.astrologers!.crazyWizardUsedBy).toContain("p1");
   });
 
-  it("CONTROL: an ONGOING map Spell is held, so Crazy Wizard neither returns it nor spends its charge", () => {
+  it("Crazy Wizard returns only the first map Spell played by that player", () => {
+    let state = mapHand(["spell.view_air", "spell.view_air"]);
+    state.adventure!.astrologers = {
+      activeCardId: "astrologers.crazy_wizard",
+      nextResourceModifiers: { gold: 0, valuables: 0 },
+      crazyWizardUsedBy: [],
+      swiftWeaselUsedBy: []
+    };
+
+    for (const cardId of ["spell.view_air", "spell.view_air"]) {
+      state = applyOk(state, {
+        type: "PLAY_CARD",
+        playerId: "p1",
+        cardId,
+        mode: "basic",
+        target: { type: "none" }
+      });
+      if (state.pendingChoice?.type === "OPTION_CHOICE") {
+        state = applyOk(state, {
+          type: "CHOOSE_OPTION",
+          playerId: "p1",
+          choiceId: state.pendingChoice.id,
+          optionIndex:
+            state.pendingChoice.mapSpellBoost?.offers.length ??
+            state.pendingChoice.options.length - 1
+        });
+      }
+    }
+
+    expect(state.players.p1.hand.filter((id) => id === "spell.view_air")).toHaveLength(1);
+    expect(state.players.p1.discard.filter((id) => id === "spell.view_air")).toHaveLength(1);
+    expect(state.adventure!.astrologers!.crazyWizardUsedBy).toEqual(["p1"]);
+  });
+
+  it("an ONGOING first Spell is held for its later return and still spends Crazy Wizard", () => {
     let state = mapHand(["spell.fly"]);
     state.adventure!.astrologers = {
       activeCardId: "astrologers.crazy_wizard",
@@ -435,7 +469,10 @@ describe("Map casts share the non-combat spell lifecycle", () => {
       expect.arrayContaining([expect.objectContaining({ cardId: "spell.fly" })])
     );
     expect(state.players.p1.hand).not.toContain("spell.fly");
-    expect(state.adventure!.astrologers!.crazyWizardUsedBy).toEqual([]);
+    expect(state.players.p1.ongoingCards).toEqual(
+      expect.arrayContaining([expect.objectContaining({ cardId: "spell.fly", returnTo: "hand" })])
+    );
+    expect(state.adventure!.astrologers!.crazyWizardUsedBy).toEqual(["p1"]);
   });
 
   it("DRAW_ON_SPELL_CAST fires on the map without recycling the resolving Spell", () => {
@@ -888,6 +925,29 @@ describe("map Spell Power parity — events, specialties, Tomes, Orbs, and recal
       optionIndex
     });
   }
+
+  it.each([
+    ["spell.view_air", "map instant"],
+    ["spell.water_walk", "map ongoing"]
+  ])("Blue Sky supplies +1 starting Power to a matching %s Spell", (spellId) => {
+    let state = mapHand([spellId]);
+    state.adventure!.astrologers = {
+      activeCardId: "astrologers.blue_sky",
+      nextResourceModifiers: { gold: 0, valuables: 0 },
+      crazyWizardUsedBy: [],
+      swiftWeaselUsedBy: []
+    };
+    const play = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === spellId
+    );
+    expect(play, `${spellId} should be map-playable`).toBeTruthy();
+    state = applyOk(state, play!.action);
+    expect(
+      state.pendingChoice?.type === "OPTION_CHOICE"
+        ? state.pendingChoice.mapSpellBoost?.effectivePower
+        : undefined
+    ).toBe(1);
+  });
 
   it("stacks an Astrologers school event with a hero school specialty on the map", () => {
     let state = mapHand(["spell.view_air"]);
