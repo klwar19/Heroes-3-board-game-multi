@@ -15191,18 +15191,29 @@ export type CustomMapTilePlan = {
     armyExperience?: number;
   };
   /**
-   * CO-OP STEP 5 — optional CO-OP role for this STARTING tile: may a human sit
-   * here, or is the position reserved for a computer invader?
+   * SEAT ROLE for this STARTING tile — who may start here. Introduced as a
+   * CO-OP-only field in step 5; since 2026-09-03 it decides seating in EVERY
+   * session and table mode (Clash, Co-op, single player). The persisted key and
+   * its two literals are kept for backward compatibility of saved maps.
    *
-   * ABSENT (every legacy map) = EITHER — the position is flexible and the seat
-   * that lands on it is decided by the ordinary deployment order. Read ONLY
-   * through {@link coopMapDeployment} / {@link coopMapSeatCapacity}; a CLASH
-   * game ignores the field entirely (pinned by a CONTROL), and it is stripped
-   * on every non-`starting` group at both sanitiser seams.
+   *   - `"human"`    — the designer's "Only player": no computer seat may start
+   *     here, EXCEPT the SOLO FALLBACK — in a single-player session (one human)
+   *     any LEFTOVER player-only position is opened to the AI seats, which is
+   *     why the designer label reads "Only player (or AI in solo)".
+   *   - `"computer"` — "Only AI": a human never starts here, in any mode.
+   *   - ABSENT (every legacy map) — "Free (random)": either kind may take it,
+   *     assigned in the ordinary GAME ORDER (the seeded first-player roll or
+   *     the host's manual order), which is what makes it random.
+   *
+   * Read ONLY through {@link seatRoleMapDeployment} (or its count-shaped
+   * wrapper {@link coopMapDeployment}) / {@link coopMapSeatCapacity} — never
+   * re-count roles in a caller. Stripped on every non-`starting` group at both
+   * sanitiser seams.
    *
    * DELIBERATELY SEPARATE from {@link singlePlayer}: that block is the SOLO
    * scenario contract (one human + N enemies, plus each enemy's war chest /
-   * town type / army). A tile may carry both, and neither reads the other.
+   * town type / army) and it takes PRECEDENCE — when a complete solo
+   * deployment applies, these roles are not read at all. A tile may carry both.
    */
   coopSeat?: { role: "human" | "computer" };
   /**

@@ -3774,3 +3774,42 @@ refreshed, and cannot be cast again even if a stale snapshot already put a copy 
 refreshed side. The supplied Community Inferno reprint is now the 0/1/3 → 2/3/5-dice face
 with no flat pre-damage. Little Busters' former paid discard, half-HP, and draw-two counters
 are retired; its faction notice states only the automatic one-card enemy draw.
+
+## Starting-tile seat roles in every mode (2026-09-03) — what runs vs. limits
+
+The map designer’s per-STARTING-tile option (persisted as
+`CustomMapTilePlan.coopSeat`, key + literals unchanged so saved maps keep working)
+used to be read by a CO-OP build only. It now decides seating in EVERY session and
+table mode through ONE shared pure function `seatRoleMapDeployment`
+(`map-preset.ts`) — `coopMapDeployment` is a thin count-shaped wrapper over it, so
+there is one algorithm, not two. Roles: `"human"` = “Only player”, `"computer"` =
+“Only AI”, ABSENT = “Free (random)”. Pinned in
+`src/engine/seat-role-deployment.test.ts` (16 cases, every claim asserting the
+seat’s real hero map position with a roles-stripped / different-mode CONTROL);
+`coop-map-deployment.test.ts` keeps the co-op half.
+
+Leading with the LIMITS / deliberate readings:
+- **The SOLO FALLBACK is the one exception to “Only player”**: in a single-player
+  session (one human) a LEFTOVER player-only position is opened to the AI seats —
+  the designer label is literally “Only player (or AI in solo)”. A FREE position is
+  always preferred over a leftover player-only one, and outside single player the AI
+  never sits on one.
+- **The explicit `singlePlayer` solo block keeps PRECEDENCE.** When a complete solo
+  deployment applies, the seat roles are not read at all — at the build AND at the
+  start check (they would otherwise disagree).
+- **Deterministic GIVEN the game order, not given the seat order.** Seats are fed in
+  `startingPositionOrder` (the seeded first-player roll or the host’s manual order),
+  which is what makes a “free” position random. CONSEQUENCE for CO-OP: which of two
+  interchangeable positions a given human lands on can now differ from the pre-change
+  build (the SET each side occupies is unchanged) — two co-op expectations were
+  relaxed to set-based with the reason recorded in the test.
+- **A clash table is no longer byte-identical on a map that carries roles** — that is
+  the whole point of the change. A map with NO roles anywhere returns `null` and keeps
+  classic seat-order placement (CONTROL-pinned), so every legacy map is untouched.
+- An unseatable table is REFUSED at `startAdventureFromLobby` and THROWS at
+  `createAdventureGameState`, both through the same function so they cannot disagree;
+  the reasons dropped their “co-op” wording.
+- **This is the ENGINE half only** — no designer/lobby UI copy was touched, so the
+  three options still read with their co-op-era labels in the map designer.
+- Protocol **v92 → v93**: authoritative placement changed, so
+  `npm run deploy:partykit` is OWED.
