@@ -1442,6 +1442,38 @@ Leading with what does NOT work / the deliberate limits:
   cue is that announcement. An unmapped script id falls through to a tinted
   `generic` theme rather than crashing or vanishing.
 
+## Astrologers event batch (2026-09-03, cf62c1bd) — audit fixes
+
+Audit of the "complete astrologers event interactions" branch (Friendly Beaver as a
+BINH-only ban, Crazy Wizard first-Spell lifecycle incl. the Polish Book held zone
+`returnTo: "spellBookUsed"`, Groovy Satyr / Judge Dread result windows, Destruction's
+Pandora pick, Charlie's shuffle-back + disabled unaffordable draws, Isra's round-up,
+Magic Arrow's frozen `selectedSpellSchool`, Disruption on Town tiles). Three fixes:
+- **Disruption re-keys EVERY AdventureState hex anchor** in `rotateTileInPlace`, not
+  just Towns and linked gates: `hexEvents`, `lastVisitedField`, the Calamity Gate
+  `monsterWaves.gateFieldId`, every `raidBosses[*].fieldId`, `dungeonSite.fieldId`,
+  `grail.builtFieldId` / `obelisksVisited` and `grailTakenFieldId`. Before, a rotated
+  Far/Near tile left the Dungeon / Rift Lair / Gate pointing at whatever field rotated
+  INTO the old hex (pre-existing, made more reachable by the Town change).
+  `disruptionLegalRotations` clones those containers so its SIMULATED rotations never
+  move the live pointers (they did once the re-key existed).
+- **An UNLINKED Subterranean Gate anchor keeps touching the tile it points at**
+  (`disruptionGateLinksAreUsable`): the completing half is carved edge-adjacent to the
+  anchor hex (`chooseAdjacentGateHex`), so rotating the anchor off that edge stranded a
+  dead gate field. The old blanket gate exclusion had been dropped for linked pairs only.
+- **Judge Dread's tier-pattern invariant no longer THROWS** inside `resolveJudgeDread`
+  (a throw rejects a legally offered option after the discards); a divergence (a tier's
+  deck AND discard both dry) is an `EVENT_NOTE` and the fresh army still reveals.
+Pinned in `astrologers-wave-three.test.ts` ("an UNLINKED Subterranean Gate anchor…",
+"re-keys every map anchor…"), both failing against the pre-fix engine. LIMITS / readings
+left as shipped: Crazy Wizard on a Polish Book cast returns the Cast-a-Spell enabler AND
+refreshes the Book Spell (the Polish Mysticism reading, generous vs the printed single
+card); the claim is consumed by the FIRST owned Spell even when Knowledge recalls it or
+Resistance cancels it (the cancelled card still returns to hand); Friendly Beaver in
+Legacy re-arms EVERY cubed site incl. cleared Creature Banks and Utopias (printed);
+Destruction with Pandora's slots is a mandatory pick of ONE permanent; the Judge Dread
+dry-deck path has no test (unreachable in a normal game — the discards refill the pile).
+
 ## Event deck (Fortress expansion, OPTIONAL rule) — what runs vs. printed nuances
 
 `GameSetupOptions.events` (default OFF, multiplayer only — a solo table never gets the

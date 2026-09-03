@@ -1378,6 +1378,40 @@ export function rotateTileInPlace(
       town.fieldId = movedSpaceIds.get(town.fieldId) ?? town.fieldId;
     }
   }
+  // Every other AdventureState pointer anchored to a ring hex follows its field
+  // too — the PvE sites (Calamity Gate / Rift Lairs / the Dungeon), designer hex
+  // events, the Grail bookkeeping and each Hero's last-visited field. Without
+  // this a Disruption on the host tile left the site pointing at whatever field
+  // rotated INTO the old hex.
+  const moved = (spaceId: MapSpaceId): MapSpaceId => movedSpaceIds.get(spaceId) ?? spaceId;
+  if (adventure.hexEvents) {
+    adventure.hexEvents = Object.fromEntries(
+      Object.entries(adventure.hexEvents).map(([spaceId, event]) => [moved(spaceId as MapSpaceId), event])
+    );
+  }
+  for (const heroId of Object.keys(adventure.lastVisitedField ?? {})) {
+    adventure.lastVisitedField[heroId] = moved(adventure.lastVisitedField[heroId]);
+  }
+  if (adventure.monsterWaves?.gateFieldId) {
+    adventure.monsterWaves.gateFieldId = moved(adventure.monsterWaves.gateFieldId);
+  }
+  for (const boss of Object.values(adventure.raidBosses ?? {})) {
+    boss.fieldId = moved(boss.fieldId);
+  }
+  if (adventure.dungeonSite?.fieldId) {
+    adventure.dungeonSite.fieldId = moved(adventure.dungeonSite.fieldId);
+  }
+  if (adventure.grail?.builtFieldId) {
+    adventure.grail.builtFieldId = moved(adventure.grail.builtFieldId);
+  }
+  for (const visited of Object.values(adventure.grail?.obelisksVisited ?? {})) {
+    for (let index = 0; index < visited.length; index += 1) {
+      visited[index] = moved(visited[index]);
+    }
+  }
+  if (adventure.grailTakenFieldId) {
+    adventure.grailTakenFieldId = moved(adventure.grailTakenFieldId);
+  }
   tile.rotation = normalized;
   return true;
 }
@@ -1402,7 +1436,23 @@ function disruptionGateLinksAreUsable(state: GameState, tile: MapTileState): boo
   if (!adventure) return false;
   for (const spaceId of getTileFootprintSpaceIds(tile)) {
     const field = adventure.fields[spaceId];
-    if (field?.location !== "subterranean_gate" || !field.gateLinkSpaceId) continue;
+    if (field?.location !== "subterranean_gate") continue;
+    if (!field.gateLinkSpaceId) {
+      // An UNLINKED anchor half still owes its partner tile a completing half
+      // that must be carved edge-adjacent to THIS hex (chooseAdjacentGateHex).
+      // Rotating the anchor away from the partner's edge would strand it as a
+      // dead gate field with no crossable partner, so the anchor must keep
+      // touching the tile it points at. An anchor pointing at a tile this map
+      // no longer knows cannot be checked and is kept where it is.
+      if (!field.gateToTileId) continue;
+      const partnerTile = adventure.tiles[field.gateToTileId];
+      if (!partnerTile) return false;
+      const partnerFootprint = new Set(getTileFootprintSpaceIds(partnerTile));
+      if (!getAdjacentSpaceIds(field.spaceId).some((neighbor) => partnerFootprint.has(neighbor))) {
+        return false;
+      }
+      continue;
+    }
     const partner = adventure.fields[field.gateLinkSpaceId];
     if (
       !partner ||
@@ -1436,7 +1486,26 @@ export function disruptionLegalRotations(state: GameState, tile: MapTileState): 
       fields: Object.fromEntries(
         Object.entries(adventure.fields).map(([spaceId, field]) => [spaceId, { ...field }])
       ),
-      gatePlans: adventure.gatePlans?.map((plan) => ({ ...plan }))
+      gatePlans: adventure.gatePlans?.map((plan) => ({ ...plan })),
+      // rotateTileInPlace re-keys these anchors too; clone them so a simulated
+      // rotation can never move the LIVE Dungeon / lair / Grail / hex-event pointers.
+      hexEvents: adventure.hexEvents ? { ...adventure.hexEvents } : undefined,
+      lastVisitedField: { ...adventure.lastVisitedField },
+      monsterWaves: adventure.monsterWaves ? { ...adventure.monsterWaves } : undefined,
+      raidBosses: adventure.raidBosses
+        ? Object.fromEntries(Object.entries(adventure.raidBosses).map(([id, boss]) => [id, { ...boss }]))
+        : undefined,
+      dungeonSite: adventure.dungeonSite ? { ...adventure.dungeonSite } : undefined,
+      grail: adventure.grail
+        ? {
+            ...adventure.grail,
+            obelisksVisited: adventure.grail.obelisksVisited
+              ? Object.fromEntries(
+                  Object.entries(adventure.grail.obelisksVisited).map(([playerId, visited]) => [playerId, [...visited]])
+                )
+              : undefined
+          }
+        : undefined
     };
     const simulatedTowns = Object.fromEntries(
       Object.entries(state.towns).map(([townId, town]) => [townId, { ...town }])

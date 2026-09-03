@@ -10138,12 +10138,18 @@ export function resolveJudgeDread(state: GameState, playerId: PlayerId, optionIn
     const field = state.adventure?.fields[combat.context.fieldId];
     const fresh = drawGuardArmy(state, field, combat.context.difficulty);
 
-    // Guard composition is deterministic for the field/difficulty, but assert
-    // the invariant here: Judge Dread redraws the exact tier pattern it showed.
+    // Guard composition is deterministic for the field/difficulty, so the fresh
+    // army normally repeats the exact tier pattern it replaced. A divergence
+    // (a tier's deck AND discard both empty) is reported, never thrown: throwing
+    // here would reject a legally offered option after the discards were made.
     const tierPattern = (army: NeutralDraw[]) =>
       army.map((draw) => draw.tier).sort().join(",");
     if (tierPattern(fresh) !== tierPattern(draws)) {
-      throw new Error("Judge Dread must redraw the same Neutral tiers.");
+      appendEvent(state, {
+        type: "EVENT_NOTE",
+        playerId,
+        message: "Judge Dread: a Neutral deck ran dry, so the redrawn army could not repeat every tier."
+      });
     }
 
     combat.pendingNeutralDraws = fresh;

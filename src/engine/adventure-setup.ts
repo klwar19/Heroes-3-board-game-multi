@@ -3041,6 +3041,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         id === "azur_lane" ||
         id === "little_busters" ||
         id === "blue_archive" ||
+        // Imperium is gated on the Anime Mod alone (no town-family sub-toggle),
+        // so it must be named here or its Lion commander never spawns.
+        id === "imperium" ||
         String(id) === "mgq"
     );
   if (animeTownsOn && ruleset === "binh") {

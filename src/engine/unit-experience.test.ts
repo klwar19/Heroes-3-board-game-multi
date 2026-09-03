@@ -561,6 +561,20 @@ describe("Unit Experience — anime commanders auto-enable", () => {
     expect(state.players.p2.commander?.slug).toBe("paladin");
   });
 
+  it("an Imperium seat (Anime Mod on, no town-family toggle) forces WOG Commanders on too", () => {
+    const state = makeAdventure("cmd-imperium", {
+      ruleset: "binh",
+      anime: { enabled: true },
+      players: [
+        { id: "p1", name: "P1", factionId: "imperium", heroDefId: "rogal_dorn" },
+        { id: "p2", name: "P2", factionId: "castle" }
+      ]
+    });
+    expect(state.wog?.commanders).toBe(true);
+    expect(state.players.p1.commander?.slug).toBe("lion_el_jonson");
+    expect(state.players.p2.commander?.slug).toBe("paladin");
+  });
+
   it("CONTROL: plain table without anime towns leaves commanders off by default", () => {
     const state = makeAdventure("cmd-off", { ruleset: "binh" });
     expect(state.wog?.commanders).not.toBe(true);

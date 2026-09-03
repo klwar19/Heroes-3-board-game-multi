@@ -16,6 +16,7 @@ import {
   getMainHero,
   materializeTileFields,
   rotateTileInPlace,
+  getAdjacentSpaceIds,
   getTileFootprintSpaceIds
 } from "./adventure";
 import { pumpAdventureQueues, startNeutralEncounter } from "./adventure-reducer";
@@ -673,6 +674,92 @@ describe("Astrologers — Disruption (rotate one tile per player, state-preservi
     expect(legal.length).toBeGreaterThan(0);
     expect(legal.length).toBeLessThan(5);
     expect(legal).not.toContain(surface.rotation);
+  });
+
+  it("an UNLINKED Subterranean Gate anchor must keep touching the tile it points at", () => {
+    const state = twoSeatGame("disruption-anchor-gate");
+    const surfaceCenter = { row: 30, col: 30 };
+    const undergroundCenter = tileLatticeNeighbors(surfaceCenter)[0];
+    const surface = addRevealedTile(state, "tile_surface_anchor", surfaceCenter.row, surfaceCenter.col);
+    const underground = addRevealedTile(
+      state,
+      "tile_underground_anchor",
+      undergroundCenter.row,
+      undergroundCenter.col
+    );
+    underground.tileDefId = "U1";
+    underground.group = "subterranean";
+    materializeTileFields(state.adventure!, underground);
+
+    // The Surface half is carved but the cavern has not completed the pair yet:
+    // ensureSubterraneanGate will later carve the entrance EDGE-ADJACENT to this
+    // exact hex (chooseAdjacentGateHex), so the anchor must stay on that edge.
+    const pair = legalGateHexPairs(surfaceCenter, undergroundCenter)[0];
+    const surfaceGate = state.adventure!.fields[hexSpaceId(pair.gateHex)];
+    surfaceGate.location = "subterranean_gate";
+    surfaceGate.gateToTileId = underground.id;
+    delete surfaceGate.gateLinkSpaceId;
+
+    const undergroundFootprint = new Set(getTileFootprintSpaceIds(underground));
+    const expected: number[] = [];
+    for (let rotation = 0; rotation < 6; rotation += 1) {
+      if (rotation === surface.rotation) continue;
+      const sim = structuredClone(state);
+      const simTile = sim.adventure!.tiles[surface.id];
+      expect(rotateTileInPlace(sim.adventure!, simTile, rotation)).toBe(true);
+      const anchor = getTileFootprintSpaceIds(simTile)
+        .map((spaceId) => sim.adventure!.fields[spaceId])
+        .find((field) => field?.location === "subterranean_gate")!;
+      const stillTouching = getAdjacentSpaceIds(anchor.spaceId).some((n) => undergroundFootprint.has(n));
+      if (stillTouching) expected.push(rotation);
+    }
+    // The fixture is only meaningful if some orientation really breaks the edge.
+    expect(expected.length).toBeLessThan(5);
+    expect(disruptionLegalRotations(state, surface)).toEqual(expected);
+    expect(disruptionEligibleTiles(state).some((tile) => tile.id === surface.id)).toBe(expected.length > 0);
+
+    // An anchor toward a tile this map does not know cannot be checked: never offered.
+    surfaceGate.gateToTileId = "tile_not_on_this_map";
+    expect(disruptionLegalRotations(state, surface)).toEqual([]);
+  });
+
+  it("re-keys every map anchor on the rotated ring (PvE sites, hex events, Grail, last-visited)", () => {
+    const state = twoSeatGame("disruption-anchors");
+    const adventure = state.adventure!;
+    const tile = addRevealedTile(state, "tile_anchors", 20, 20);
+    const before = getTileFootprintSpaceIds(tile);
+    adventure.dungeonSite = { fieldId: before[1] };
+    adventure.monsterWaves = { cadence: 4, gateFieldId: before[2] };
+    adventure.raidBosses = {
+      boss: { defId: "goblin_king", fieldId: before[3], layersLeft: 2, layerBreaks: {}, spawnedRound: 5 }
+    };
+    adventure.hexEvents = { [before[4]]: { id: "hx" } } as unknown as AdventureState["hexEvents"];
+    adventure.grailTakenFieldId = before[5];
+    adventure.grail = { status: "uncollected", builtFieldId: before[6], obelisksVisited: { p1: [before[1], before[2]] } };
+    adventure.lastVisitedField["hero_x"] = before[3];
+    const snapshot = structuredClone(adventure);
+
+    // Simulating the legal orientations must never move the LIVE pointers.
+    expect(disruptionLegalRotations(state, tile).length).toBeGreaterThan(0);
+    expect(adventure.dungeonSite).toEqual(snapshot.dungeonSite);
+    expect(adventure.monsterWaves).toEqual(snapshot.monsterWaves);
+    expect(adventure.raidBosses).toEqual(snapshot.raidBosses);
+    expect(adventure.hexEvents).toEqual(snapshot.hexEvents);
+    expect(adventure.grail).toEqual(snapshot.grail);
+    expect(adventure.grailTakenFieldId).toBe(snapshot.grailTakenFieldId);
+    expect(adventure.lastVisitedField).toEqual(snapshot.lastVisitedField);
+
+    expect(rotateTileInPlace(adventure, tile, 1)).toBe(true);
+    const after = getTileFootprintSpaceIds(tile);
+    for (let slot = 1; slot < 7; slot += 1) expect(after[slot]).not.toBe(before[slot]);
+    expect(adventure.dungeonSite?.fieldId).toBe(after[1]);
+    expect(adventure.monsterWaves?.gateFieldId).toBe(after[2]);
+    expect(adventure.raidBosses!.boss.fieldId).toBe(after[3]);
+    expect(Object.keys(adventure.hexEvents!)).toEqual([after[4]]);
+    expect(adventure.grailTakenFieldId).toBe(after[5]);
+    expect(adventure.grail?.builtFieldId).toBe(after[6]);
+    expect(adventure.grail?.obelisksVisited?.p1).toEqual([after[1], after[2]]);
+    expect(adventure.lastVisitedField["hero_x"]).toBe(after[3]);
   });
 
   it("end to end: each seat rotates at most one tile, never the same one, inside the barrier", () => {
