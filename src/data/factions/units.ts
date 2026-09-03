@@ -2886,7 +2886,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "azure",
     type: "flying",
-    neutral: { attack: 7, defense: 3, health: 10, initiative: 17, cost: { gold: 38, valuables: 1 }, abilities: ["rust-dragon-acid"], abilityText: "1 [valuables] [unit_attack] On a \"-1\" result on the Attack die , decrease the target's [defense] by 2 — to a minimum of 0.", cardImage: "/assets/units-neutral-azure-rust_dragons.webp" },
+    neutral: { attack: 7, defense: 3, health: 10, initiative: 17, cost: { gold: 38, valuables: 1 }, abilities: ["rust-dragon-acid"], abilityText: "1 [valuables] [unit_attack] On a \"-1\" result on the Attack die, decrease the target's [defense] by 2 — to a minimum of 0 — for this attack only.", cardImage: "/assets/units-neutral-azure-rust_dragons.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/rust_dragons/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game",

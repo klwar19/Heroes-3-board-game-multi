@@ -5565,6 +5565,7 @@ function makeCombatShell(state: GameState, attackerPlayerId: PlayerId, defenderP
       // Polish Balance Pack — the reprinted Eagle Eye EXPERT: an unused
       // copy-the-enemy-spell offer never carries into a fresh combat.
       player.combatStats.eagleEyeCopySpellId = undefined;
+      player.combatStats.eagleEyeCopyOriginalTarget = undefined;
       // Sorcery / Scales draw-only bank ("+Power, then draw" played on your own
       // activation): same-activation intent, so it must never survive the fight
       // it was banked in. advanceCombatRound already drops it between rounds,
@@ -5675,10 +5676,13 @@ export function startNeutralEncounter(
   // Diplomacy shortcut entirely (rulebook p.66): you always fight the bank.
   const creatureBankId = fieldCreatureBankId(field);
   if (creatureBankId) {
-    if (creatureBankId === "black_tower" && houseRuleEnabled(state, "polish-creature-banks")) {
-      if (maybeOpenBlackTowerDragonChoice(state, hero, field)) {
-        return;
-      }
+    if (
+      creatureBankId === "black_tower" &&
+      houseRuleEnabled(state, "polish-creature-banks") &&
+      !houseRuleEnabled(state, "polish-bank-sizes") &&
+      maybeOpenBlackTowerDragonChoice(state, hero, field)
+    ) {
+      return;
     }
     beginNeutralCombatPlacement(state, hero, field, 0);
     return;
@@ -5780,17 +5784,23 @@ const BLACK_TOWER_DRAGON_OPTIONS = [
   "Black Dragon",
 ] as const;
 
-/** Black Tower's four guardian/reward rows are alternatives joined by OR. */
-function maybeOpenBlackTowerDragonChoice(state: GameState, hero: HeroState, field: MapFieldState): boolean {
+/** Legacy Polish-card-only fallback: choose one of Black Tower's OR rows. */
+function maybeOpenBlackTowerDragonChoice(
+  state: GameState,
+  hero: HeroState,
+  field: MapFieldState,
+): boolean {
   if (field.bankVariant) {
     return false;
   }
   const playerId = hero.controllerId;
   if (state.controllers?.[playerId]?.kind === "computer") {
     const random = createSeededRandom(
-      `${state.seed}#black-tower-dragon#${field.spaceId}#${eventSeedNumber(state)}`
+      `${state.seed}#black-tower-dragon#${field.spaceId}#${eventSeedNumber(state)}`,
     );
-    field.bankVariant = (random.nextInt(0, BLACK_TOWER_DRAGON_OPTIONS.length - 1) + 1) as BankSize;
+    field.bankVariant = (
+      random.nextInt(0, BLACK_TOWER_DRAGON_OPTIONS.length - 1) + 1
+    ) as BankSize;
     return false;
   }
   state.pendingChoice = {
@@ -5811,7 +5821,12 @@ function maybeOpenBlackTowerDragonChoice(state: GameState, hero: HeroState, fiel
 function resolveBlackTowerDragonChoice(state: GameState, optionIndex: number): void {
   const choice = state.pendingChoice;
   const data = choice?.type === "OPTION_CHOICE" ? choice.blackTowerDragon : undefined;
-  if (!choice || choice.type !== "OPTION_CHOICE" || choice.context !== "black-tower-dragon" || !data) {
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "black-tower-dragon" ||
+    !data
+  ) {
     throw new Error("There is no Black Tower Dragon choice to resolve.");
   }
   const field = state.adventure?.fields[data.fieldId];

@@ -151,6 +151,42 @@ function effectsOn(state: GameState, unitId: UnitId) {
 }
 
 // ===========================================================================
+// Inferno — revised 0/1/3 Power ladder, rolling 2/3/5 dice
+// ===========================================================================
+
+describe("Balance Pack — Inferno", () => {
+  function rolledDice(balance: boolean, power: number): number {
+    const state = combat(balance, `inferno-${power}`);
+    state.combat!.units.unit_p2_vampires.position = 3;
+    state.combat!.dice.scriptedRolls = [1, 1, 1, 1, 1, 1];
+    state.combat!.dice.rollCount = 0;
+    for (const unit of Object.values(state.combat!.units)) {
+      unit.abilities = [];
+      unit.maxHealth = 99;
+    }
+    const next = cast(state, "spell.inferno", power, {
+      type: "space",
+      position: 3,
+    });
+    const event = next.eventLog.find(
+      (candidate) => candidate.type === "SPELL_DICE_ROLLED",
+    ) as { rolls?: number[] } | undefined;
+    return event?.rolls?.length ?? 0;
+  }
+
+  it("really rolls 2/3/3/5 dice at Power 0/1/2/3", () => {
+    expect(rolledDice(true, 0)).toBe(2);
+    expect(rolledDice(true, 1)).toBe(3);
+    expect(rolledDice(true, 2)).toBe(3);
+    expect(rolledDice(true, 3)).toBe(5);
+  });
+
+  it("CONTROL: without Polish Balance, the printed Power-3 cast still rolls 4 dice", () => {
+    expect(rolledDice(false, 3)).toBe(4);
+  });
+});
+
+// ===========================================================================
 // Haste / Slow — 3 combat rounds, printed initiative AND movement
 // ===========================================================================
 

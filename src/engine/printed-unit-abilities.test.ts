@@ -70,6 +70,7 @@ function script(state: GameState, rolls: number[]): void {
  */
 function rangedDuel(options: {
   attackerAbilities?: string[];
+  attackerAttack?: number;
   defenderAbilities?: string[];
   defenderDefense?: number;
   defenderDefenseToken?: boolean;
@@ -81,7 +82,7 @@ function rangedDuel(options: {
   const state = createInitialGameState();
   const attacker = state.combat!.units.unit_p1_marksmen;
   attacker.abilities = options.attackerAbilities ?? [];
-  attacker.attack = 3;
+  attacker.attack = options.attackerAttack ?? 3;
   attacker.position = 1;
 
   const defender = state.combat!.units.unit_p2_skeletons;
@@ -451,22 +452,38 @@ describe("Behemoths crushing blow & corrosion", () => {
 });
 
 describe("Rust Dragon acid breath", () => {
-  it("places a -2 Defense token on a '-1' attack roll", () => {
-    const next = rangedDuel({ attackerAbilities: ["rust-dragon-acid"], defenderDefense: 3, rolls: [-1] });
-    expect(defenderTokens(next, "corrosion")).toEqual([2]);
-  });
-
-  it("places no token on any other roll", () => {
-    const next = rangedDuel({ attackerAbilities: ["rust-dragon-acid"], defenderDefense: 3, rolls: [0] });
+  it("reduces Defense by 2 for a '-1' attack only, without placing a token", () => {
+    const next = rangedDuel({
+      attackerAbilities: ["rust-dragon-acid"],
+      attackerAttack: 7,
+      defenderDefense: 3,
+      rolls: [-1]
+    });
+    // Rust Dragon Attack 7 + die -1 = 6; temporary Defense 3 - 2 = 1 => 5 damage.
+    expect(defenderDamage(next)).toBe(5);
+    expect(next.combat!.units.unit_p2_skeletons.defense).toBe(3);
     expect(defenderTokens(next, "corrosion")).toEqual([]);
+    expect(
+      abilityMessages(next).some(
+        (message) =>
+          message.includes("uses Acid Breath:") &&
+          message.includes("−2 Defense for this attack only"),
+      ),
+    ).toBe(true);
   });
 
-  it("the acid actually LOWERS the target's defense (corrosion reduces, never raises)", () => {
-    // Regression guard: the acid token stores a +2 amount, but corrosion must
-    // SHAVE defense (3 → 1), not add to it. tokenDefenseDelta normalizes to the
-    // magnitude; the old `total - amount` wrongly returned +2 here.
-    const next = rangedDuel({ attackerAbilities: ["rust-dragon-acid"], defenderDefense: 3, rolls: [-1] });
-    expect(tokenDefenseDelta(next.combat!.units.unit_p2_skeletons)).toBe(-2);
+  it("does not reduce Defense on any other roll", () => {
+    const next = rangedDuel({ attackerAbilities: ["rust-dragon-acid"], defenderDefense: 3, rolls: [0] });
+    expect(defenderDamage(next)).toBe(0);
+    expect(defenderTokens(next, "corrosion")).toEqual([]);
+    expect(abilityEventIds(next)).not.toContain("rust-dragon-acid");
+  });
+
+  it("floors the temporary Defense reduction at zero", () => {
+    const next = rangedDuel({ attackerAbilities: ["rust-dragon-acid"], defenderDefense: 1, rolls: [-1] });
+    // Attack 2 against Defense 0 deals 2; Acid Breath cannot push Defense below 0.
+    expect(defenderDamage(next)).toBe(2);
+    expect(defenderTokens(next, "corrosion")).toEqual([]);
   });
 });
 

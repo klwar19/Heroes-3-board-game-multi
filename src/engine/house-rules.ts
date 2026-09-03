@@ -411,9 +411,9 @@ export const HOUSE_RULES: HouseRuleDef[] = [
   },
   {
     id: "polish-bank-unit-spells",
-    label: "Control spells vs bank units",
+    label: "Polish spells vs bank units",
     description:
-      'Polish house rule: the control / enchantment spells — Anti-Magic, Blind, Frenzy, Sorrow, Disrupting Ray — MAY be cast on a tierless Creature-Bank unit (a bank GUARD such as the Nagas in a Naga Bank, AND a won "gain a unit" bank REWARD card such as Dragon Flies). The bank unit is targeted at its UNDERLYING grade (capped at gold), so Power still matters — a gold Naga needs a gold-reaching cast, a bronze Dragon Flies is reachable at 2 Power. BLIND is the exception: its top "+2 Power" rung is the one printed "ANY", so only that rung reaches a bank unit — Blind at 0 or 1 Power never paralyses one, whatever its underlying grade. Off (default): every tier-gated spell treats a bank unit as gradeless and cannot reach it. Berserk / Teleport / Clone and tier-gated damage spells stay blocked on a bank unit either way, and this never extends to commanders or heroes.',
+      'Polish house rule: Anti-Magic, Blind, Sorrow and Disrupting Ray may affect a tierless Creature-Bank guard or won bank-reward unit at its underlying grade (capped at gold). Counterstrike, Magic Mirror, Frenzy, Sacrifice, Resurrection and Clone may also affect bank units, but ONLY at each spell\'s highest Power rung. Blind likewise needs its top "+2 Power" rung. Off (default): tier-gated spells still treat bank units as gradeless and cannot reach them. This never extends the exception to commanders, heroes, Berserk, Teleport or tier-gated damage spells.',
     category: "polish",
     default: false,
     legacyDefault: false,

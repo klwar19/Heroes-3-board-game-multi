@@ -24,7 +24,7 @@ import { cardLibrary } from "@/data/cards/library";
 /**
  * Every card whose Balance-Pack reprint is WIRED (Abilities, Spells, Artifacts,
  * Specialties, plus Knowledge, its distinct Empowered library card, and the
- * user-supplied Berserk reprint — 75 ids — see
+ * user-supplied corrections — 83 ids — see
  * the `polish-card-balance` registry entry in `house-rules.ts` for the per-card
  * summary, and `polish-balance-art.test.ts` for the on-disk + wiring pins.
  */
@@ -48,6 +48,7 @@ export const POLISH_BALANCE_CARD_IDS = [
   "spell.berserk",
   "spell.bless",
   "spell.blind",
+  "spell.clone",
   "spell.counterstrike",
   "spell.dispel",
   "spell.disrupting_ray",
@@ -57,14 +58,19 @@ export const POLISH_BALANCE_CARD_IDS = [
   "spell.fortune",
   "spell.frenzy",
   "spell.haste",
+  "spell.inferno",
+  "spell.magic_mirror",
   "spell.mirth",
   "spell.misfortune",
   "spell.prayer",
   "spell.remove_obstacle",
+  "spell.resurrection",
+  "spell.sacrifice",
   "spell.shield",
   "spell.slayer",
   "spell.slow",
   "spell.sorrow",
+  "spell.teleport",
   "spell.visions",
   "artifact.ambassadors_sash",
   "artifact.blackshard_of_the_dead_knight",
@@ -87,7 +93,9 @@ export const POLISH_BALANCE_CARD_IDS = [
   "artifact.pendant_of_second_sight",
   "artifact.rib_cage",
   "artifact.ring_of_the_wayfarer",
+  "artifact.royal_armor_of_nix",
   "artifact.sandals_of_the_saint",
+  "artifact.scales_of_the_greater_basilisk",
   "artifact.shamans_puppet",
   "artifact.speculum",
   "artifact.spirit_of_oppression",
@@ -113,8 +121,8 @@ export const POLISH_BALANCE_CARD_IDS = [
  * `DISPLAY_ONLY_ABILITIES` pattern) — moving an id from here to
  * `POLISH_BALANCE_CARD_IDS` is the conscious "it is wired now" step.
  *
- * EMPTY: all 13 Abilities, Knowledge (regular + Empowered), the original 21
- * Spells plus Berserk, 27 Artifacts AND 11 Specialties are wired (75 ids).
+ * EMPTY: all 13 Abilities, Knowledge (regular + Empowered), 28 Spells,
+ * 29 Artifacts and 11 Specialties are wired (83 ids).
  * A FUTURE unwireable reprint belongs
  * here, never silently in the classic-face fallback.
  */

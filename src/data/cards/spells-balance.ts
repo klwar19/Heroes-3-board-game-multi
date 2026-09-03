@@ -4,8 +4,8 @@ import { spellCards } from "./spells";
 import { sampleCards } from "./sample";
 
 /**
- * Polish Balance Pack (`polish-card-balance`) — the original 21 reprinted
- * SPELL cards plus the user-supplied Berserk reprint.
+ * Polish Balance Pack (`polish-card-balance`) — the original reprinted SPELL
+ * cards plus the user-supplied Berserk and Inferno corrections.
  *
  * THE COMMITTED CARD FACE IS THE AUTHORITY (the pack's own graphics folder), not
  * the balance spreadsheet: every ladder below was read off
@@ -163,6 +163,40 @@ export const polishBalanceSpellCards: CardLibrary = {
     },
   }),
 
+  // These five cards keep their printed ladders; their Polish top rung changes
+  // the target class to "ANY except azure", which includes rankless Bank units
+  // but still excludes azure, Hero and Commander bodies.
+  "spell.clone": reprint("spell.clone", {
+    tags: tags(
+      "spell.clone",
+      "Activation: clone an allied unit with 1 Health: Power 1: bronze; Power 3: bronze or silver; Power 5: any except azure. — OR — Instant: +1 Power.",
+    ),
+  }),
+  "spell.magic_mirror": reprint("spell.magic_mirror", {
+    tags: tags(
+      "spell.magic_mirror",
+      "Instant: when your unit is targeted or damaged by a Spell, choose a new target: Power 0: bronze; Power 1: bronze or silver; Power 2: any except azure. — OR — Instant: +1 Power.",
+    ),
+  }),
+  "spell.resurrection": reprint("spell.resurrection", {
+    tags: tags(
+      "spell.resurrection",
+      "Instant: cancel an attack that would reduce your unit's Health to 0: Power 0: bronze; Power 2: bronze or silver; Power 4: any except azure. — OR — Instant: +1 Power.",
+    ),
+  }),
+  "spell.sacrifice": reprint("spell.sacrifice", {
+    tags: tags(
+      "spell.sacrifice",
+      "Activation: transfer damage from one allied unit to another until the other perishes: Power 0: bronze; Power 2: bronze or silver; Power 4: any except azure. — OR — Instant: +1 Power.",
+    ),
+  }),
+  "spell.teleport": reprint("spell.teleport", {
+    tags: tags(
+      "spell.teleport",
+      "Activation: move one allied unit to any empty Combat space, ignoring obstacles and effects: Power 0: bronze; Power 1: bronze or silver; Power 2: any except azure. — OR — Instant: +1 Power.",
+    ),
+  }),
+
   // Dispel — the top rung is "ANY unit or ALL effects": at Power 2 the caster
   // picks between the printed unit/space cleanse and wiping every ongoing
   // effect in the Combat.
@@ -280,6 +314,19 @@ export const polishBalanceSpellCards: CardLibrary = {
       removable: true,
       movementBonus: 1,
       movementBonusByPower: { 0: 1, 1: 2, 2: 3 },
+    },
+  }),
+
+  // Inferno — revised 0/1/3 ladder: roll 2/3/5 dice, with no flat damage.
+  "spell.inferno": reprint("spell.inferno", {
+    tags: tags(
+      "spell.inferno",
+      'Activation: select a space. Roll an Attack die Power 0: 2 times; Power 1: 3 times; Power 3: 5 times. All units on that and adjacent spaces take 1 damage for every "+1" rolled.',
+    ),
+    effect: {
+      type: "INFERNO",
+      rollsByPower: { 0: 2, 1: 3, 3: 5 },
+      offerDieReroll: true,
     },
   }),
 

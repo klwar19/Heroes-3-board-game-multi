@@ -294,11 +294,10 @@ export type HouseRuleId =
   // a choice. Data in `src/data/cards/artifact-sets.ts`, read layer in
   // `src/engine/artifact-sets.ts`.
   | "polish-set-artifacts"
-  // Polish house rule (default OFF in BOTH modes): the control / enchantment
-  // spells (Anti-Magic, Blind, Frenzy, Sorrow, Disrupting Ray) MAY be cast on a
-  // tierless Creature-Bank unit — a bank guard OR a won "gain a unit" reward card
-  // — at its UNDERLYING grade (capped at gold), so Power still gates them. Off:
-  // every tier-gated spell treats a bank unit as gradeless ∞ and cannot reach it.
+  // Polish house rule (default OFF in BOTH modes): selected control spells may
+  // affect Creature-Bank guards/reward units; Counterstrike, Magic Mirror,
+  // Frenzy, Sacrifice, Resurrection, Clone and Blind require their top SP rung.
+  // Off, every tier-gated spell treats a bank unit as gradeless ∞.
   | "polish-bank-unit-spells"
   // Polish house rule (default OFF in BOTH modes): the "Balance Pack" reprints.
   // Each covered card plays its NEW printed text and renders its balance-pack
@@ -8173,8 +8172,8 @@ export type ResolutionStackItem = {
      * ability regardless of the required roll's result". For this single attack
      * every die-GATED after-attack ability of the attacker triggers as if its
      * required face was rolled — the Basilisk/Azure Paralysis, the Gorgon Death
-     * Stare, the Wyvern/Thunderbird flat-damage sting, the Rust Dragon Acid
-     * token and the Minotaur draw. Set from ADD_COMBAT_STAT.forceAbilityRolls.
+     * Stare, the Wyvern/Thunderbird flat-damage sting, Rust Dragon Acid Breath
+     * and the Minotaur draw. Set from ADD_COMBAT_STAT.forceAbilityRolls.
      */
     forceAbilityRollsThisAttack?: boolean;
     /**
@@ -9052,6 +9051,8 @@ export type PlayerState = {
      * Cleared when used and at the start of each combat / combat round.
      */
     eagleEyeCopySpellId?: CardId;
+    /** Original enemy-spell target; Eagle Eye must choose a different one. */
+    eagleEyeCopyOriginalTarget?: TargetRef;
     /**
      * Polish Balance Pack — the reprinted Eagle Eye EXPERT, extended to
      * SPELL-CASTING UNITS (user ruling 2026-08-20 — "should also work for spell

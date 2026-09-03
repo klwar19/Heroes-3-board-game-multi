@@ -113,6 +113,9 @@ const CASTER_TARGET_BONUS = 14;
 // signal, and a larger bonus when this hit plus those allies can FINISH it now.
 const FOCUS_PRESSURE_CAP = 24;
 const FOCUS_FINISH_BONUS = 24;
+// Removing a unit before it takes this round's activation is a larger tempo
+// swing than finishing an otherwise-identical unit that already acted.
+const UNACTED_FINISH_BONUS = 6;
 // A non-lethal poke that the army cannot finish this round, thrown at a
 // safely-skippable PARALYZED enemy, would only wake it (any damage removes the
 // Paralysis token, cancelling the activation it was going to skip). Score it
@@ -362,6 +365,9 @@ function attackScore(
   if (!lethal && armyCanFinish) {
     quality += FOCUS_FINISH_BONUS;
   }
+  if (!defender.activatedThisRound && (lethal || armyCanFinish)) {
+    quality += UNACTED_FINISH_BONUS;
+  }
   const multiHeadOpportunity = surroundOpportunityBonus(
     combat,
     playerId,
@@ -459,6 +465,8 @@ export function formationFitScore(
   selfId?: string,
   /** Extra bulk for tank preference on the front. */
   bulk?: number,
+  /** Printed combat value: premium shooters deserve the safest screened cell. */
+  priority = 0,
 ): number {
   let score = 0;
   const front = isFrontlineCell(combat, playerId, position);
@@ -466,6 +474,7 @@ export function formationFitScore(
 
   if (role === "ranged") {
     score += back ? 30 : front ? -20 : -5;
+    if (back) score += Math.min(12, Math.round(priority / 4));
     // Classic protected-corner deployment: shooters claim the two back-row
     // corners first, leaving the square directly in front free for a screen.
     // This outweighs both the generic central-column reach bonus and a screen
@@ -505,7 +514,7 @@ export function formationFitScore(
         isAdjacent(unit.position, position) &&
         isFrontlineCell(combat, playerId, unit.position),
     );
-    if (screened) score += 14;
+    if (screened) score += 14 + Math.min(10, Math.round(priority / 5));
   }
 
   // Melee wants to sit in front of a friendly ranged (be the screen).
@@ -559,6 +568,9 @@ function placeScore(
       action.position,
       existing?.id,
       bulk,
+      side
+        ? side.attack * 3 + side.health * 2 + side.defense + Math.round(side.initiative / 2)
+        : 0,
     );
 
   if (armyUnit) {
@@ -606,6 +618,7 @@ function neutralPlacementScore(
           unit.position,
           unit.id,
           unit.maxHealth + unit.defense,
+          unitThreatValue(unit),
         )
       );
     }, 0);
@@ -644,11 +657,11 @@ function swapScore(
   const bulkB = b.maxHealth + b.defense;
 
   const before =
-    formationFitScore(combat, observation.playerId, roleA, a.position, a.id, bulkA) +
-    formationFitScore(combat, observation.playerId, roleB, b.position, b.id, bulkB);
+    formationFitScore(combat, observation.playerId, roleA, a.position, a.id, bulkA, unitThreatValue(a)) +
+    formationFitScore(combat, observation.playerId, roleB, b.position, b.id, bulkB, unitThreatValue(b));
   const after =
-    formationFitScore(combat, observation.playerId, roleA, b.position, a.id, bulkA) +
-    formationFitScore(combat, observation.playerId, roleB, a.position, b.id, bulkB);
+    formationFitScore(combat, observation.playerId, roleA, b.position, a.id, bulkA, unitThreatValue(a)) +
+    formationFitScore(combat, observation.playerId, roleB, a.position, b.id, bulkB, unitThreatValue(b));
   const gain = after - before;
   if (gain <= 0) {
     // No improvement — fall below FINISH_TACTICS (900) so we stop.

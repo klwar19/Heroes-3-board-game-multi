@@ -68,6 +68,18 @@ function observation(
 }
 
 describe("formationFitScore", () => {
+  it("gives a premium shooter more value from a safe screened backline", () => {
+    const screen = unit({ id: "screen", controllerId: "p2", type: "ground", position: 13 });
+    const combat = {
+      attackerPlayerId: "p2",
+      defenderPlayerId: "p1",
+      units: { screen },
+    } as unknown as CombatState;
+    const ordinary = formationFitScore(combat, "p2", "ranged", 17, "shooter", 4, 12);
+    const premium = formationFitScore(combat, "p2", "ranged", 17, "shooter", 4, 36);
+    expect(premium).toBeGreaterThan(ordinary);
+  });
+
   it("prefers backline for ranged and frontline for melee", () => {
     const combat = {
       attackerPlayerId: "p2",

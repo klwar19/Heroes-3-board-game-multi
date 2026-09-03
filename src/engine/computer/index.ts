@@ -57,12 +57,14 @@ export {
   type EconomyFocus,
 } from "./memory";
 export {
+  activeEnemySideCount,
   armyCoversPremiumEconomyGuard,
   BANK_ENGAGE_RATIO,
   bankUnitStrength,
   canBeatCreatureBank,
   creatureBankStrength,
   ENEMY_ENGAGE_RATIO,
+  enemyEngagementRatio,
   isPremiumEconomyField,
   playerArmyStrength,
   premiumEconomyEngageCap,
@@ -80,8 +82,11 @@ export {
   armyDevelopmentProfile,
   armyReadyForContestedFight,
   CORE_PACK_TARGET,
+  CORE_BODY_TARGET,
   developmentResourceTargets,
   nextDevelopmentBuildingCost,
+  openingCorePackTarget,
+  unitDevelopmentSideStrength,
   type ArmyDevelopmentPhase,
   type ArmyDevelopmentProfile,
 } from "./development";

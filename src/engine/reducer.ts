@@ -4617,7 +4617,11 @@ function applyAttackDamageFromCandidate(
     lethalCancel &&
     damage > 0 &&
     defender.damage + damage >= defender.maxHealth &&
-    gradeRankOfUnit(defender) <= gradeRank(lethalCancel.grade)
+    bankAwareTierGateRank(
+      defender,
+      "CANCEL_LETHAL_ATTACK",
+      houseRuleEnabled(state, "polish-bank-unit-spells"),
+    ) <= gradeRank(lethalCancel.grade)
   ) {
     appendEvent(state, {
       type: "ATTACK_ROLLED",
@@ -7700,19 +7704,21 @@ function finishResolvedAttack(
     resolvedCandidate = { ...resolvedCandidate, modifierNotes: rollNotes };
   }
 
-  // MGQ Hunter Job: a low own-attack die exposes a gap in the target's armor.
-  // Subtracting from the aggregate Defense bonus here makes the lethal preview
-  // and final damage calculation read the exact same one-point pierce.
-  const hunterPierce =
-    !details.isRetaliation && !details.abilityAttack
+  // Die-conditioned armor pierce (MGQ Hunter, Rust Dragon Acid Breath, etc.).
+  // This changes Defense for this attack's damage calculation only; it never
+  // mutates the target or leaves a Corrosion token behind. Subtracting from the
+  // aggregate Defense bonus keeps the lethal preview and final damage aligned.
+  const dieDefenseReduction =
+    !dieCancelled && !details.isRetaliation && !details.abilityAttack
       ? getAttackDieDefenseReductionAbility(
           details.attacker,
           resolvedCandidate.roll,
+          Boolean(stackItem.modifiers.forceAbilityRollsThisAttack),
         )
       : null;
-  if (hunterPierce) {
+  if (dieDefenseReduction) {
     details.defenseBonus -= Math.min(
-      hunterPierce.amount,
+      dieDefenseReduction.amount,
       Math.max(0, details.defender.defense + details.defenseBonus),
     );
     if (!stackItem.modifiers.mgqHunterPierceAnnounced) {
@@ -7720,9 +7726,9 @@ function finishResolvedAttack(
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: details.attacker.id,
-        abilityId: hunterPierce.abilityId,
+        abilityId: dieDefenseReduction.abilityId,
         targetUnitId: details.defender.id,
-        message: `${details.attacker.cardName} finds an opening and ignores ${hunterPierce.amount} Defense.`,
+        message: `${details.attacker.cardName} uses ${dieDefenseReduction.abilityName}: ${details.defender.cardName} has −${dieDefenseReduction.amount} Defense for this attack only.`,
       });
     }
   }
@@ -7906,7 +7912,11 @@ function finishResolvedAttack(
         preview.damage > 0 &&
         details.defender.damage + preview.damage >=
           details.defender.maxHealth &&
-        gradeRankOfUnit(details.defender) <= gradeRank(lethalCancel.grade)
+        bankAwareTierGateRank(
+          details.defender,
+          "CANCEL_LETHAL_ATTACK",
+          houseRuleEnabled(state, "polish-bank-unit-spells"),
+        ) <= gradeRank(lethalCancel.grade)
       );
     })();
   if (!willBeLethallyCancelled) {
@@ -9269,12 +9279,7 @@ function applyAttackDieDamageFollowUps(
   return finishCombatIfNeeded(state);
 }
 
-/**
- * Rust Dragons' Acid Breath: when the unit's own attack resolves on its
- * `onRoll` face, place the printed token on the still-living target (a
- * Corrosion token shaves Defense for the rest of combat). Never on a
- * retaliation or a printed follow-up attack.
- */
+/** Persistent die-conditioned tokens; never on retaliation or follow-up attacks. */
 function applyOnAttackDieTokens(
   state: GameState,
   attacker: CombatUnitState,
@@ -16159,6 +16164,7 @@ function noteEagleEyeCopyOpportunity(
       canPlayExpertMode(player, EAGLE_EYE_ABILITY_ID)
     ) {
       player.combatStats.eagleEyeCopySpellId = cast.cardId;
+      player.combatStats.eagleEyeCopyOriginalTarget = { ...cast.target };
     }
   }
 }
@@ -16917,7 +16923,11 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
       if (
         target &&
         maxGrade &&
-        gradeRankOfUnit(target) <= gradeRank(maxGrade)
+        bankAwareTierGateRank(
+          target,
+          "CLONE_UNIT",
+          houseRuleEnabled(state, "polish-bank-unit-spells"),
+        ) <= gradeRank(maxGrade)
       ) {
         createActiveEffect(
           state,
@@ -17023,7 +17033,11 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
       if (
         target &&
         maxGrade &&
-        gradeRankOfUnit(target) <= gradeRank(maxGrade) &&
+        bankAwareTierGateRank(
+          target,
+          "TELEPORT_UNIT",
+          houseRuleEnabled(state, "polish-bank-unit-spells"),
+        ) <= gradeRank(maxGrade) &&
         !arrowTowerRefusesEffect(target, card.effect)
       ) {
         openTeleportChoice(state, stackItem.action.playerId, target);
@@ -17056,7 +17070,11 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
       if (
         target &&
         maxGrade &&
-        gradeRankOfUnit(target) <= gradeRank(maxGrade)
+        bankAwareTierGateRank(
+          target,
+          "CLONE_UNIT",
+          houseRuleEnabled(state, "polish-bank-unit-spells"),
+        ) <= gradeRank(maxGrade)
       ) {
         // Grade reached: if the unit somehow has no adjacent empty space left,
         // refund too (nothing was placed) rather than swallow the cast.
@@ -17177,7 +17195,11 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
       const eligible =
         Boolean(healTarget) &&
         maxGrade !== null &&
-        gradeRankOfUnit(healTarget!) <= gradeRank(maxGrade) &&
+        bankAwareTierGateRank(
+          healTarget!,
+          "SACRIFICE_TRANSFER",
+          houseRuleEnabled(state, "polish-bank-unit-spells"),
+        ) <= gradeRank(maxGrade) &&
         healTarget!.damage > 0;
       // Capture the caster outside the closure: inside the .filter callback TS
       // widens stackItem.action back to GameAction (which now includes the
@@ -17229,7 +17251,11 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
       if (
         target &&
         maxGrade &&
-        gradeRankOfUnit(target) <= gradeRank(maxGrade) &&
+        bankAwareTierGateRank(
+          target,
+          "CLEAR_RETALIATION",
+          houseRuleEnabled(state, "polish-bank-unit-spells"),
+        ) <= gradeRank(maxGrade) &&
         target.retaliatedThisRound
       ) {
         target.retaliatedThisRound = false;
@@ -18118,6 +18144,7 @@ function performSpellCast(
       copier.discard.push(EAGLE_EYE_ABILITY_ID);
     }
     copier.combatStats.eagleEyeCopySpellId = undefined;
+    copier.combatStats.eagleEyeCopyOriginalTarget = undefined;
     appendEvent(state, {
       type: "CARD_PLAYED",
       playerId: action.playerId,
@@ -31388,6 +31415,7 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
     // effect" is a same-round reaction, so an unused copy offer expires with the
     // combat round.
     player.combatStats.eagleEyeCopySpellId = undefined;
+    player.combatStats.eagleEyeCopyOriginalTarget = undefined;
     player.combatStats.eagleEyeCopyUnitBolt = undefined;
     player.combatStats.equipmentKillDrawsThisRound = 0;
     // Expert uses (crowns) and the "+1 expert use this round" bonus (Pendant of

@@ -609,7 +609,7 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     // the Dwarves' resistance "against" depends on whether the rolled-at card
     // is friendly or hostile). Neutral guards are not "you" — only units a
     // player controls reroll. Abilities keyed off the ATTACK die itself
-    // (Minotaur draw, Rust Dragon token, own-die Paralysis, commander dice) and
+    // (Minotaur draw, Rust Dragon Acid Breath, own-die Paralysis, commander dice) and
     // Defend-die effects already ride the attack/defend reroll machinery and
     // are deliberately not double-hooked.
     ongoing: true,

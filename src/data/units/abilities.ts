@@ -944,15 +944,9 @@ export type UnitAbilityEffectDefinition =
       type: "IGNORE_TARGET_CARD_DEFENSE";
     }
   | {
-      /**
-       * Rust Dragons: "On a -1 result on the Attack die, decrease the target's
-       * Defense by N (to a minimum of 0)." After the attack, when its own
-       * resolved die equals `onRoll`, place the token on the target (a
-       * Corrosion token lasts the whole combat and is capped so Defense never
-       * drops below 0).
-      */
+      /** Place a persistent combat token when this unit's own Attack die matches. */
       type: "ON_ATTACK_DIE_TOKEN";
-      /** One exact triggering face. Legacy Rust Dragon/Halfling form. */
+      /** One exact triggering face. */
       onRoll?: number;
       /** Inclusive triggering range. Used when more than one adjacent face triggers. */
       minRoll?: number;
@@ -1847,8 +1841,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   // you resolve a +1 on the Attack Die, the attacked unit suffers -1 [defense]
   // (to a minimum of 0)." The roll-two-take-higher half is attack-roll-advantage;
   // this companion places a Corrosion token on the target when the resolved die
-  // is "+1". A Corrosion token only ever LOWERS Defense (min 0) — the same wired
-  // ON_ATTACK_DIE_TOKEN the Rust Dragons use, but on the "+1" face for -1 Defense.
+  // is "+1". A Corrosion token only ever LOWERS Defense (min 0).
   "halfling-precise-shot": {
     id: "halfling-precise-shot",
     name: "Precise Shot",
@@ -2676,8 +2669,8 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "rust-dragon-acid": {
     id: "rust-dragon-acid",
     name: "Acid Breath",
-    text: 'On a "-1" on the Attack die, place an Acid token on the target: -2 Defense (to a minimum of 0) for the rest of the combat.',
-    effect: { type: "ON_ATTACK_DIE_TOKEN", onRoll: -1, token: "corrosion", amount: 2 },
+    text: 'On a "-1" on the Attack die, decrease the target\'s Defense by 2 (to a minimum of 0) for this attack only.',
+    effect: { type: "DEFENSE_REDUCTION_ON_ATTACK_DIE", minRoll: -1, maxRoll: -1, amount: 2 },
     implementationStatus: "implemented"
   },
   "gorgon-death-stare": {

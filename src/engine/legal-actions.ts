@@ -910,8 +910,10 @@ function maxTierGateRank(effect: EffectDefinition): number {
  * so enough Power still matters against a high-tier guard (a gold Naga needs a
  * gold-reaching cast) while a low-tier reward (bronze Dragon Flies) is reachable at
  * low Power. This is the SOLE, deliberate exception to "tier-gated spells never touch
- * a bank unit"; it does NOT extend to WOG commanders / heroes, and Berserk / Teleport
- * / Clone / tier-gated damage spells stay blocked on every bank unit.
+ * a bank unit"; it does NOT extend to WOG commanders / heroes, and Berserk /
+ * tier-gated damage spells stay blocked on every bank unit. Counterstrike,
+ * Magic Mirror, Teleport, Frenzy, Sacrifice, Resurrection and Clone are a second,
+ * top-rung-only Polish exception.
  */
 export const BANK_TARGETABLE_TIER_GATED_EFFECTS: ReadonlySet<
   EffectDefinition["type"]
@@ -921,6 +923,12 @@ export const BANK_TARGETABLE_TIER_GATED_EFFECTS: ReadonlySet<
   "DISRUPTING_RAY", // Disrupting Ray
   "IGNORE_DEFENSE", // Frenzy
   "SKIP_ACTIVATION", // Sorrow
+  "CLEAR_RETALIATION", // Counterstrike
+  "REDIRECT_SPELL", // Magic Mirror
+  "CANCEL_LETHAL_ATTACK", // Resurrection
+  "SACRIFICE_TRANSFER", // Sacrifice
+  "CLONE_UNIT", // Clone
+  "TELEPORT_UNIT", // Teleport
 ]);
 
 /**
@@ -948,6 +956,13 @@ const BANK_TOP_RUNG_ONLY_TIER_GATED_EFFECTS: ReadonlySet<
   EffectDefinition["type"]
 > = new Set([
   "PLACE_PARALYSIS", // Blind — only its top "+2 SP" ("ANY") rung reaches a bank unit
+  "CLEAR_RETALIATION", // Counterstrike
+  "REDIRECT_SPELL", // Magic Mirror
+  "IGNORE_DEFENSE", // Frenzy
+  "CANCEL_LETHAL_ATTACK", // Resurrection
+  "SACRIFICE_TRANSFER", // Sacrifice
+  "CLONE_UNIT", // Clone
+  "TELEPORT_UNIT", // Teleport
 ]);
 
 /**
@@ -1144,7 +1159,11 @@ export function spellRedirectTargets(
       // there is no single "current" unit to exclude — every legal unit qualifies.
       unit.id !== currentTargetUnitId &&
       isUnitAlive(unit) &&
-      gradeRank(unit.grade) <= gradeRank(maxGrade) &&
+      bankAwareTierGateRank(
+        unit,
+        "REDIRECT_SPELL",
+        houseRuleEnabled(state, "polish-bank-unit-spells"),
+      ) <= gradeRank(maxGrade) &&
       !unitBlockedBySpellCard(state, unit, reflected),
   );
 }
@@ -2662,6 +2681,13 @@ export function balanceEagleEyeCopySpellId(
   return spellId;
 }
 
+function sameTargetRef(a: TargetRef, b: TargetRef | undefined): boolean {
+  if (!b || a.type !== b.type) return false;
+  if (a.type === "unit" && b.type === "unit") return a.unitId === b.unitId;
+  if (a.type === "space" && b.type === "space") return a.position === b.position;
+  return a.type === "none" && b.type === "none";
+}
+
 function getAttackRerollsForMode(
   card: CardDefinition,
   mode: CardPlayMode,
@@ -3461,6 +3487,7 @@ function addSpellActions(
           fromOwnDiscard,
           fromSpellBook,
           tarnumReturn,
+          eagleEyeCopy,
           castEnablerMode: discardCastMode,
         },
       );
@@ -3567,7 +3594,12 @@ function addSpellActions(
         ? fetchExpertCandidate
         : null;
 
-    for (const target of getTargetsForCard(state, playerId, cardId, cards)) {
+    const originalEagleEyeTarget = eagleEyeCopy
+      ? player.combatStats.eagleEyeCopyOriginalTarget
+      : undefined;
+    for (const target of getTargetsForCard(state, playerId, cardId, cards).filter(
+      (candidate) => !sameTargetRef(candidate, originalEagleEyeTarget),
+    )) {
       actions.push({
         label: eagleEyeCopy
           ? `Copy ${card.name} with Eagle Eye (expert; Power 0, new target)`
@@ -3683,6 +3715,7 @@ function addChooseOneSpellInstantCasts(
     fromOwnDiscard?: boolean;
     fromSpellBook?: boolean;
     tarnumReturn?: "deck-top" | "discard";
+    eagleEyeCopy?: boolean;
     /** Community Intelligence: which side of the enabler authorised this cast. */
     castEnablerMode?: "basic" | "expert";
   },
@@ -3700,16 +3733,21 @@ function addChooseOneSpellInstantCasts(
     ) {
       continue;
     }
+    const originalEagleEyeTarget = source.eagleEyeCopy
+      ? state.players[playerId]?.combatStats.eagleEyeCopyOriginalTarget
+      : undefined;
     for (const target of getTargetsForCard(
       state,
       playerId,
       cardId,
       cards,
       option.target,
-    )) {
+    ).filter((candidate) => !sameTargetRef(candidate, originalEagleEyeTarget))) {
       actions.push({
-        label: source.fromScroll
-          ? `Cast ${card.name} — ${option.label} (Scroll)`
+        label: source.eagleEyeCopy
+          ? `Copy ${card.name} — ${option.label} with Eagle Eye (expert; Power 0, new target)`
+          : source.fromScroll
+            ? `Cast ${card.name} — ${option.label} (Scroll)`
           : source.fromSpellDeck
             ? `Cast ${card.name} — ${option.label} (Helm of the Alabaster Unicorn)`
             : source.fromSpellBook
@@ -3734,6 +3772,7 @@ function addChooseOneSpellInstantCasts(
           ...(source.fromOwnDiscard ? { fromOwnDiscard: true } : {}),
           ...(source.fromSpellBook ? { fromSpellBook: true } : {}),
           ...(source.tarnumReturn ? { tarnumReturn: source.tarnumReturn } : {}),
+          ...(source.eagleEyeCopy ? { eagleEyeCopy: true } : {}),
           ...(source.castEnablerMode
             ? { castEnablerMode: source.castEnablerMode }
             : {}),
@@ -9676,8 +9715,11 @@ function getLethalSaveReactions(
       for (const [optionIndex, option] of card.effect.options.entries()) {
         if (
           option.effect.type !== "CANCEL_LETHAL_ATTACK" ||
-          defender.bankUnit ||
-          option.effect.grade !== defender.grade
+          bankAwareTierGateRank(
+            defender,
+            "CANCEL_LETHAL_ATTACK",
+            houseRuleEnabled(state, "polish-bank-unit-spells"),
+          ) !== gradeRank(option.effect.grade)
         ) {
           continue;
         }
@@ -12032,7 +12074,11 @@ export function getSchoolPermanentExpertActions(
             !variant.mapOnly &&
             variant.effect.type === "CANCEL_LETHAL_ATTACK" &&
             defender?.controllerId === playerId &&
-            variant.effect.grade === defender.grade &&
+            bankAwareTierGateRank(
+              defender,
+              "CANCEL_LETHAL_ATTACK",
+              houseRuleEnabled(state, "polish-bank-unit-spells"),
+            ) === gradeRank(variant.effect.grade) &&
             affordableAfterCommit(variant)
           );
         }

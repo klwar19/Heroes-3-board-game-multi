@@ -1,17 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createInitialGameState, getLegalActions } from "./index";
+import { spellRedirectTargets } from "./legal-actions";
 import type { GameAction, GameState, PlayerId, UnitId } from "./state";
 
 /**
- * POLISH BALANCE RULE (`polish-card-balance`): the control / enchantment spells —
- * Anti-Magic, Blind, Frenzy, Sorrow, Disrupting Ray — MAY be cast on a tierless
+ * POLISH BANK-SPELL RULE: selected control / enchantment spells MAY affect a tierless
  * Creature-Bank unit (a bank GUARD such as the Nagas in a Naga Bank, AND a won
  * "gain a unit" bank REWARD card such as Dragon Flies). By default every tier-gated
  * spell treats a `bankUnit` as gradeless ∞ and silently drops it from the target
  * list; only with the Polish Balance Pack on does `bankAwareTierGateRank` rank a
- * bank unit at its UNDERLYING grade (capped at gold) for exactly these five effects
- * — so Power still matters against a high-tier guard — while EVERY other tier-gated
- * spell (Berserk, Teleport, Clone, damage) stays blocked on a bank unit. Each
+ * bank unit. Counterstrike, Magic Mirror, Frenzy, Sacrifice, Resurrection, Clone
+ * and Blind require the spell's HIGHEST Power rung; Anti-Magic, Sorrow and
+ * Disrupting Ray keep their underlying-grade gate. Other tier-gated spells stay
+ * blocked. Each
  * "reachable" test below is paired with a rule-OFF CONTROL proving the spell is NOT
  * offered on the bank unit without the Polish rule.
  *
@@ -517,9 +518,9 @@ describe("Frenzy on a bank guard", () => {
     expect(pierceDelta("unit_p2_dread_knights", 1), "silver Power cannot pierce the gold bank guard").toBe(0);
   });
 
-  it("pierces a BRONZE bank guard at Power 0 (the low-tier reward case)", () => {
-    // skeletons = p2 bronze. Power 0 already reaches bronze.
-    expect(pierceDelta("unit_p2_skeletons", 0), "Power 0 pierces the bronze bank guard").toBeGreaterThan(0);
+  it("requires the highest Power rung even against a BRONZE bank guard", () => {
+    expect(pierceDelta("unit_p2_skeletons", 0), "Power 0 must not pierce a bank guard").toBe(0);
+    expect(pierceDelta("unit_p2_skeletons", 3), "Power 3 pierces the bank guard").toBeGreaterThan(0);
   });
 
   it("CONTROL: with the Polish rule OFF, Frenzy never pierces a bank guard, even at Power 3", () => {
@@ -529,6 +530,110 @@ describe("Frenzy on a bank guard", () => {
       pierceDelta("unit_p2_dread_knights", 3, false),
       "without polish-bank-unit-spells a bank guard's Defense is never ignored"
     ).toBe(0);
+  });
+});
+
+describe("highest-SP bank spell exceptions", () => {
+  function resolvedCast(cardId: string, targetId: UnitId, power: number, enabled = true): GameState {
+    const state = withPolishBalance(createInitialGameState(`bank-top-${cardId}-${power}`), enabled);
+    makeBankUnit(state, targetId);
+    Object.values(state.combat!.units).forEach((unit, index) => {
+      unit.position = index;
+    });
+    state.combat!.obstacles = [];
+    state.combat!.units[targetId].position = 10;
+    state.players.p1.hand = [cardId, ...Array(6).fill("stat.power")];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    const cast = findCast(state, "p1", cardId, targetId);
+    expect(cast, `${cardId} must be offered on the bank unit under the Polish rule`).toBeTruthy();
+    const declared = applyOk(state, cast!.action);
+    declared.stack[0]!.modifiers.spellPowerBonus = power;
+    return passAllReactions(declared);
+  }
+
+  it("Counterstrike clears a bank unit's retaliation only at its top rung", () => {
+    const low = createInitialGameState("bank-counter-low");
+    low.combat!.units.unit_p1_marksmen.retaliatedThisRound = true;
+    const lowResolved = (() => {
+      const state = withPolishBalance(low);
+      makeBankUnit(state, "unit_p1_marksmen");
+      state.players.p1.hand = ["spell.counterstrike", ...Array(4).fill("stat.power")];
+      state.players.p2.hand = [];
+      state.activePlayerId = "p1";
+      state.combat!.activeUnitId = "unit_p1_marksmen";
+      const cast = findCast(state, "p1", "spell.counterstrike", "unit_p1_marksmen")!;
+      const declared = applyOk(state, cast.action);
+      declared.stack[0]!.modifiers.spellPowerBonus = 3;
+      return passAllReactions(declared);
+    })();
+    expect(lowResolved.combat!.units.unit_p1_marksmen.retaliatedThisRound).toBe(true);
+
+    const high = createInitialGameState("bank-counter-high");
+    high.combat!.units.unit_p1_marksmen.retaliatedThisRound = true;
+    const state = withPolishBalance(high);
+    makeBankUnit(state, "unit_p1_marksmen");
+    state.players.p1.hand = ["spell.counterstrike", ...Array(4).fill("stat.power")];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    const cast = findCast(state, "p1", "spell.counterstrike", "unit_p1_marksmen")!;
+    const declared = applyOk(state, cast.action);
+    declared.stack[0]!.modifiers.spellPowerBonus = 4;
+    const resolved = passAllReactions(declared);
+    expect(resolved.combat!.units.unit_p1_marksmen.retaliatedThisRound).toBe(false);
+  });
+
+  it("Clone and Sacrifice open their real follow-up choices only at top SP", () => {
+    const cloneLow = resolvedCast("spell.clone", "unit_p1_griffins", 4);
+    expect(cloneLow.pendingChoice).toBeNull();
+    const cloneHigh = resolvedCast("spell.clone", "unit_p1_griffins", 5);
+    expect(cloneHigh.pendingChoice?.type).toBe("OPTION_CHOICE");
+
+    const sacrifice = (power: number) => {
+      const state = withPolishBalance(createInitialGameState(`bank-sacrifice-${power}`));
+      makeBankUnit(state, "unit_p1_marksmen");
+      state.combat!.units.unit_p1_marksmen.damage = 1;
+      state.players.p1.hand = ["spell.sacrifice", ...Array(4).fill("stat.power")];
+      state.players.p2.hand = [];
+      state.activePlayerId = "p1";
+      state.combat!.activeUnitId = "unit_p1_marksmen";
+      const cast = findCast(state, "p1", "spell.sacrifice", "unit_p1_marksmen")!;
+      const declared = applyOk(state, cast.action);
+      declared.stack[0]!.modifiers.spellPowerBonus = power;
+      return passAllReactions(declared);
+    };
+    expect(sacrifice(3).pendingChoice).toBeNull();
+    expect(sacrifice(4).pendingChoice?.type).toBe("ABILITY_TARGET_CHOICE");
+  });
+
+  it("Teleport reaches a bank unit only at its 'any except azure' top rung", () => {
+    expect(resolvedCast("spell.teleport", "unit_p1_griffins", 1).pendingChoice).toBeNull();
+    expect(resolvedCast("spell.teleport", "unit_p1_griffins", 2).pendingChoice?.type).toBe(
+      "OPTION_CHOICE",
+    );
+  });
+
+  it("Magic Mirror can redirect to a bank unit only at the gold/top option", () => {
+    const state = withPolishBalance(createInitialGameState("bank-mirror-top"));
+    makeBankUnit(state, "unit_p2_skeletons");
+    expect(spellRedirectTargets(state, "unit_p1_marksmen", "silver").map((unit) => unit.id))
+      .not.toContain("unit_p2_skeletons");
+    expect(spellRedirectTargets(state, "unit_p1_marksmen", "gold").map((unit) => unit.id))
+      .toContain("unit_p2_skeletons");
+    state.adventure!.houseRules!["polish-bank-unit-spells"] = false;
+    expect(spellRedirectTargets(state, "unit_p1_marksmen", "gold").map((unit) => unit.id))
+      .not.toContain("unit_p2_skeletons");
+  });
+
+  it("CONTROL: Clone is still not offered on a bank unit with the rule off", () => {
+    const state = withPolishBalance(createInitialGameState("bank-clone-off"), false);
+    makeBankUnit(state, "unit_p1_marksmen");
+    state.players.p1.hand = ["spell.clone", ...Array(5).fill("stat.power")];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    expect(findCast(state, "p1", "spell.clone", "unit_p1_marksmen")).toBeUndefined();
   });
 });
 

@@ -1,11 +1,95 @@
 import { coreBuildingDefinitions, coreFactionDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
-import type { TownBuildingEffect, UnitTier } from "@/data/factions/types";
+import type { TownBuildingEffect, UnitSideDefinition, UnitTier } from "@/data/factions/types";
 import { TRADE_RATES } from "@/data/map/locations";
 import type { GameState, PlayerId, ResourceCost } from "../state";
 
-/** The reliable early army the policy tries to establish before fair fights. */
+/** Maximum opening Pack target. Composition-aware openings may need only 1–2. */
 export const CORE_PACK_TARGET = 3;
+export const CORE_BODY_TARGET = 3;
+
+/** Printed combat/tempo value used for opening reinforcement order. Repeat
+ * attacks, retaliation denial and ranged reach matter here because raw stats
+ * alone badly undervalue units such as Elves. */
+export function unitDevelopmentSideStrength(
+  unitDefId: string,
+  side: "few" | "pack",
+): number {
+  const definition = coreUnitDefinitions[unitDefId];
+  const face: UnitSideDefinition | undefined = definition?.[side];
+  if (!definition || !face) return 0;
+  const type = face.type ?? definition.type;
+  let value =
+    face.attack * 3 +
+    face.health * 2 +
+    face.defense +
+    Math.round(face.initiative / 2) +
+    (type === "ranged" ? 3 : type === "flying" ? 2 : 0);
+  for (const abilityId of face.abilities ?? []) {
+    if (
+      abilityId.includes("double-attack") ||
+      abilityId.includes("strike-twice") ||
+      abilityId.includes("double-shot")
+    ) {
+      value += Math.max(6, face.attack * 2);
+    } else if (abilityId === "ignores-retaliation") {
+      value += 6;
+    } else if (
+      abilityId.includes("second-head") ||
+      abilityId.includes("splash") ||
+      abilityId.includes("death-cloud")
+    ) {
+      value += 4;
+    } else if (abilityId.includes("ignore-combat-penalties")) {
+      value += 3;
+    }
+  }
+  return value;
+}
+
+/**
+ * Minimum Packs needed before pivoting into Silver for this actual bronze
+ * roster. One exceptional tempo Pack plus two useful Few can be enough; most
+ * factions want two; weak/attrition openings retain the safe three-Pack plan.
+ */
+export function openingCorePackTarget(
+  state: GameState,
+  playerId: PlayerId,
+): 1 | 2 | 3 {
+  const player = state.players[playerId];
+  const factionBronze = (coreFactionDefinitions[player?.factionId ?? ""]?.units ?? [])
+    .filter((unitDefId) => {
+      const def = coreUnitDefinitions[unitDefId];
+      return def?.tier === "bronze" && Boolean(def.few && def.pack);
+    });
+  // Use the faction roster so casualties do not silently change the strategic
+  // target from one to three. Custom armies without a faction roster fall back
+  // to their actual public cards.
+  const unitIds = factionBronze.length >= CORE_BODY_TARGET
+    ? factionBronze
+    : (player?.army ?? [])
+        .filter((unit) => {
+          const def = coreUnitDefinitions[unit.unitDefId];
+          return unit.side !== "bank" && def?.tier === "bronze" && def.few && def.pack;
+        })
+        .map((unit) => unit.unitDefId);
+  const bronze = unitIds.map((unitDefId) => ({
+    few: unitDevelopmentSideStrength(unitDefId, "few"),
+    pack: unitDevelopmentSideStrength(unitDefId, "pack"),
+  }));
+  if (bronze.length < CORE_BODY_TARGET) return CORE_PACK_TARGET;
+  bronze.sort((left, right) => (right.pack - right.few) - (left.pack - left.few));
+  const projected = (packs: number) =>
+    bronze.reduce(
+      (sum, unit, index) => sum + (index < packs ? unit.pack : unit.few),
+      0,
+    );
+  // A one-Pack pivot requires a genuinely exceptional individual, not merely
+  // a high-stat collection of Few cards.
+  if (bronze[0].pack >= 29 && projected(1) >= 54) return 1;
+  if (projected(2) >= 52) return 2;
+  return 3;
+}
 
 export type ArmyDevelopmentPhase =
   | "establish-core"
@@ -19,6 +103,7 @@ export type ArmyDevelopmentProfile = {
   packUnits: number;
   fewUnits: number;
   bronzePacks: number;
+  corePackTarget: 1 | 2 | 3;
   silverUnits: number;
   goldUnits: number;
   bronzeUnlocked: boolean;
@@ -65,9 +150,10 @@ export function armyDevelopmentProfile(
   const reinforceUnlocked = effects.some(
     (effect) => effect.type === "UNLOCK_REINFORCE",
   );
+  const corePackTarget = openingCorePackTarget(state, playerId);
 
   let phase: ArmyDevelopmentPhase;
-  if (army.length < CORE_PACK_TARGET || packUnits < CORE_PACK_TARGET) {
+  if (army.length < CORE_BODY_TARGET || packUnits < corePackTarget) {
     phase = "establish-core";
   } else if (!silverUnlocked) {
     phase = "unlock-silver";
@@ -83,6 +169,7 @@ export function armyDevelopmentProfile(
     packUnits,
     fewUnits: army.length - packUnits,
     bronzePacks,
+    corePackTarget,
     silverUnits,
     goldUnits,
     bronzeUnlocked,
@@ -93,7 +180,7 @@ export function armyDevelopmentProfile(
 }
 
 /**
- * A fair neutral fight is acceptable once the core has three Pack stacks.
+ * A fair neutral fight is acceptable once the composition-aware core is ready.
  * Guaranteed Quick Combat wins are handled separately and never need this gate.
  */
 export function armyReadyForContestedFight(
@@ -102,8 +189,8 @@ export function armyReadyForContestedFight(
 ): boolean {
   const profile = armyDevelopmentProfile(state, playerId);
   return (
-    profile.totalUnits >= CORE_PACK_TARGET &&
-    profile.packUnits >= CORE_PACK_TARGET
+    profile.totalUnits >= CORE_BODY_TARGET &&
+    profile.packUnits >= profile.corePackTarget
   );
 }
 
@@ -137,7 +224,7 @@ export function shouldPrioritizeFirstAidTent(
   });
   const hasArmyWorthPreserving =
     hasPremiumUnit ||
-    profile.packUnits >= CORE_PACK_TARGET ||
+    profile.packUnits >= profile.corePackTarget ||
     player.heroDefId === "gem";
   const target = developmentResourceTargets(state, playerId);
   return (
@@ -197,8 +284,8 @@ export function hasOpenedFarEconomy(
 }
 
 /**
- * Opening fallback used by conquest navigation. From round 3 onward, three
- * Bronze Packs are a real rush force when the first Far tiles failed to yield
+ * Opening fallback used by conquest navigation. From round 3 onward, a ready
+ * bronze composition is a real rush force when the first Far tiles failed to yield
  * a Settlement / premium mine. The caller still checks the scenario victory
  * mode so non-conquest games continue pursuing their actual win condition.
  */
@@ -209,8 +296,8 @@ export function shouldLaunchBronzeRush(
   if ((state.round ?? 0) < 3) return false;
   const profile = armyDevelopmentProfile(state, playerId);
   return (
-    profile.totalUnits >= CORE_PACK_TARGET &&
-    profile.bronzePacks >= CORE_PACK_TARGET &&
+    profile.totalUnits >= CORE_BODY_TARGET &&
+    profile.bronzePacks >= profile.corePackTarget &&
     !hasOpenedFarEconomy(state, playerId)
   );
 }

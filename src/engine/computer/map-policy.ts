@@ -50,6 +50,7 @@ import {
   assessDwellingRush,
   developmentResourceTargets,
   hasOpenedFarEconomy,
+  unitDevelopmentSideStrength,
   shouldPrioritizeFirstAidTent,
   shouldSeekLateWarMachineShop,
   shouldLaunchBronzeRush,
@@ -61,6 +62,7 @@ import {
   freeSeizuresWithinReach,
   heroCanBeatNoGuardInBand,
   isHomeTileOpeningObjective,
+  lowerExpansionBandImmediatelyAvailable,
   homeTileInstanceId,
   objectiveDistanceField,
   premiumEconomyResourceBonus,
@@ -289,6 +291,23 @@ function buildingScore(
   const needsArmy = armySize < 4;
   // When gold is tight, deprioritise expensive soft builds so recruit can fire.
   const broke = gold < GOLD_RESERVE + 5;
+  const hand = state.players[playerId]?.hand ?? [];
+  const discard = state.players[playerId]?.discard ?? [];
+  const army = state.players[playerId]?.army ?? [];
+  const weakHand = hand.length <= 2;
+  const hasDiscardPrize = discard.some(
+    (cardId) => cardKeepValue(cardId, { state, playerId }) >= 55,
+  );
+  const hasLowArtifact = hand.some((cardId) => {
+    const card = cardLibrary[cardId];
+    return card?.kind === "artifact" && cardKeepValue(cardId, { state, playerId }) < 65;
+  });
+  const hasFewEligibleForDiscount = (tiers: readonly string[]) =>
+    army.some(
+      (unit) =>
+        unit.side === "few" &&
+        tiers.includes(coreUnitDefinitions[unit.unitDefId]?.tier ?? ""),
+    );
   let score: number;
   let focusKind:
     | "build-recruit-unlock"
@@ -307,8 +326,18 @@ function buildingScore(
       focusKind = "build-recruit-unlock";
       break;
     case "RESOURCE_ROUND_CHOICE":
-    case "RESOURCE_ROUND_SEARCH_DISCARD":
       score = 820 + (broke ? 15 : 0);
+      focusKind = "build-income";
+      break;
+    case "RESOURCE_ROUND_MORALE":
+    case "RESOURCE_ROUND_RESOURCE_DIE":
+      // Recurring early resources/morale compound across several rounds.
+      score = 825 + ((state.round ?? 0) <= 3 ? 15 : 0);
+      focusKind = "build-income";
+      break;
+    case "RESOURCE_ROUND_SEARCH_DISCARD":
+      // Fortress converts a real discard prize into reliable card economy.
+      score = 820 + (hasDiscardPrize || weakHand ? 20 : 0);
       focusKind = "build-income";
       break;
     case "MAGE_GUILD":
@@ -318,6 +347,64 @@ function buildingScore(
     case "ROUND_START_FREE_SPRITE":
       score = 805 + (needsArmy ? 10 : 0);
       focusKind = "build-recruit-unlock";
+      break;
+    case "ASTROLOGERS_HALF_GOLD_REINFORCE":
+    case "ASTROLOGERS_FLAT_GOLD_REINFORCE":
+      // Rampart/Cove should build the discount when it can immediately turn a
+      // Few into a Pack, not merely because the building happens to be legal.
+      score = hasFewEligibleForDiscount(effect.tiers) ? 850 : 785;
+      focusKind = "build-recruit-unlock";
+      break;
+    case "TURN_START_NECROMANCY": {
+      // Necropolis' defining loop is win -> Necromancy -> half-price growth.
+      // Build its search engine aggressively from genuine surplus; the shared
+      // dwelling-fund guard below still prevents an R1 Amplifier from delaying
+      // Silver/Gold. Once the card is already held, urgency falls slightly.
+      const holdsNecromancy = hand.some(
+        (cardId) => cardLibrary[cardId]?.effect.type === "NECROMANCY_REINFORCE",
+      );
+      score = holdsNecromancy ? 810 : 875;
+      focusKind = "build-recruit-unlock";
+      break;
+    }
+    case "TURN_START_PORTAL_SUMMON":
+      score = 815 + (needsArmy || development.silverUnlocked ? 25 : 0);
+      focusKind = "build-recruit-unlock";
+      break;
+    case "TURN_START_MANA_VORTEX":
+      score = 810 + (hasDiscardPrize && weakHand ? 35 : hasDiscardPrize ? 15 : 0);
+      focusKind = "build-magic";
+      break;
+    case "COVER_OF_DARKNESS":
+    case "THIEVES_GUILD":
+      score = 805 + (weakHand ? 15 : 0);
+      focusKind = "build-other";
+      break;
+    case "COMBAT_CUBES":
+    case "HALL_OF_VALHALLA":
+      score = 800 + (armyReadyForContestedFight(state, playerId) ? 25 : 0);
+      focusKind = "build-other";
+      break;
+    case "FREELANCERS_GUILD":
+      score = 825 + ((state.round ?? 0) <= 4 ? 20 : 0);
+      focusKind = "build-income";
+      break;
+    case "ARTIFACT_SMITH":
+      score = 795 + (hasLowArtifact ? 30 : 0);
+      focusKind = "build-income";
+      break;
+    case "ASTROLOGERS_TAKE_STATISTIC":
+      score = 805 +
+        (discard.some((cardId) => cardLibrary[cardId]?.kind === "statistic") ? 30 : 0);
+      focusKind = "build-magic";
+      break;
+    case "MAGIC_UNIVERSITY":
+      score = 805 + (weakHand ? 25 : 0);
+      focusKind = "build-magic";
+      break;
+    case "CASTLE_GATE":
+      score = 790 + (Object.keys(state.players).length >= 3 ? 20 : 0);
+      focusKind = "build-other";
       break;
     case "RUNE_ALTAR":
       score = 800 + effect.levelCap;
@@ -509,17 +596,13 @@ function populationScore(
     // gain, not a hash-random unit among same-tier offers. Reinforcement is
     // valued by the Pack's improvement over Few; recruitment gains the whole
     // Few body. These are public printed stats only.
-    const sideValue = gainedSide
-      ? gainedSide.attack * 3 +
-        gainedSide.health * 2 +
-        gainedSide.defense +
-        Math.round(gainedSide.initiative / 2)
-      : 0;
+    const developmentSide = purchase.kind === "reinforce" ? "pack" : "few";
+    const sideValue = unitDevelopmentSideStrength(
+      purchase.unitDefId,
+      developmentSide,
+    );
     const previousValue = previousSide
-      ? previousSide.attack * 3 +
-        previousSide.health * 2 +
-        previousSide.defense +
-        Math.round(previousSide.initiative / 2)
+      ? unitDevelopmentSideStrength(purchase.unitDefId, "few")
       : 0;
     const gain = Math.max(0, sideValue - previousValue);
     totalGain += gain;
@@ -564,6 +647,34 @@ function populationScore(
   score += Math.min(40, Math.round(totalGain * 1.5 + efficiency));
   if (gold >= GOLD_RESERVE + 10) score += 5;
   score += economyFocusBias(memory, "recruit");
+  // Necropolis tempo: when a currently beatable guard can trigger a held
+  // Necromancy card, do not spend the Population token on a nonessential
+  // full-price Pack first. Fight, resolve the discounted reinforcement, then
+  // buy normally if the window remains. Establishing the opening core is
+  // exempt because the AI may need that Pack to make the fight beatable.
+  const holdsNecromancy = player?.hand.some(
+    (cardId) => cardLibrary[cardId]?.effect.type === "NECROMANCY_REINFORCE",
+  );
+  const mainHero = Object.values(state.heroes).find(
+    (hero) => hero.controllerId === observation.playerId && hero.kind === "main",
+  );
+  const hasBeatableNecromancyFight = Boolean(
+    holdsNecromancy &&
+      mainHero &&
+      collectMapObjectives(state, mainHero).some((objective) => {
+        if (objective.kind !== "guard") return false;
+        const field = state.adventure?.fields[objective.spaceId];
+        return Boolean(field && canBeatGuardedField(state, mainHero, field));
+      }),
+  );
+  if (
+    development.phase !== "establish-core" &&
+    hasBeatableNecromancyFight &&
+    action.purchases.length > 0 &&
+    action.purchases.every((purchase) => purchase.kind === "reinforce")
+  ) {
+    return Math.min(score, 650);
+  }
   if (development.phase === "establish-core") {
     // Never postpone an adjacent scenario-winning capture just to buy a Pack,
     // while still beating ordinary fights, exploration, and END_TURN.
@@ -583,7 +694,7 @@ function populationScore(
     development.phase === "unlock-gold"
   ) {
     // The FIRST silver body is exempt from the dwelling-fund guard: it turns
-    // the three-Pack bronze core into the force that takes lv3 premium guards
+    // the ready bronze core into the force that takes lv3 premium guards
     // on Impossible and diff-3/4 side guards everywhere (armyEngagementTier's
     // soft silver unlock), and the fight loot it opens repays the dwelling fund
     // faster than hoarding would. Every LATER silver/gold body saves normally.
@@ -924,7 +1035,7 @@ function hasReachableBronzeRushTarget(
 /**
  * Far (II-III) openings get explicit tempo priority, especially until the
  * player's second opening has had its Settlement chance. Once a reachable
- * three-Pack conquest rush is live, the main hero commits instead.
+ * composition-ready conquest rush is live, the main hero commits instead.
  */
 function expansionPriorityScore(
   observation: ComputerObservation,
@@ -2115,7 +2226,7 @@ export function scoreMapAction(
     case "HIRE_SECONDARY_HERO": {
       // A second pair of boots to sweep leftover pickups and flag mines while
       // the main hero pushes on. But the hire spends the round's Population
-      // Token PLUS 10 gold: before the fighting core exists (3 Packs) or when
+      // Token PLUS 10 gold: before the composition-aware fighting core exists or when
       // it would eat the treasury cushion, holding the token for
       // recruit/reinforce is strictly better — score below END_TURN so the
       // offer waits for a developed, funded turn (the old flat 420 hired a
@@ -2190,6 +2301,26 @@ export function scoreMapAction(
       }
       const farGroup =
         tile?.group === "far";
+      // Normal expansion ladder: when two public tile backs are reachable at
+      // once, open the lower band first (II-III before IV-V, IV-V before
+      // VI-VII). This is a preference, not a hard refusal: 650 remains above
+      // END_TURN, so a blocked/unoffered lower reveal can never strand the hero.
+      if (
+        hero &&
+        tile &&
+        lowerExpansionBandImmediatelyAvailable(state, hero, tile.group)
+      ) {
+        const ordinary = expansionPriorityScore(
+          observation,
+          action.heroId,
+          830,
+          farGroup,
+        );
+        return {
+          score: Math.max(650, ordinary - 160),
+          policy: "map.discover-lower-band-first",
+        };
+      }
       // FAR-TILE HUNT: flipping a face-down Ⅱ–Ⅲ tile while the seat has no Far
       // economy is the settlement lottery the premium rush depends on — never
       // let the "collect the nearby payoff first" collapse (640/670) defer it.

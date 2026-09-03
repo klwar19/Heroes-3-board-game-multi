@@ -87,10 +87,17 @@ create table if not exists public.homm3bg_ranked_replays (
   schema_version integer not null,
   engine_signature text not null,
   action_count integer not null check (action_count >= 0 and action_count <= 2000),
-  byte_length integer not null check (byte_length >= 0 and byte_length <= 1516384),
+  byte_length integer not null check (byte_length >= 0 and byte_length <= 4000000),
   truncated boolean not null default false,
   payload jsonb not null
 );
+-- Keep existing projects aligned when replay retention is expanded. Merely
+-- re-running CREATE TABLE IF NOT EXISTS does not update an older constraint.
+alter table public.homm3bg_ranked_replays
+  drop constraint if exists homm3bg_ranked_replays_byte_length_check;
+alter table public.homm3bg_ranked_replays
+  add constraint homm3bg_ranked_replays_byte_length_check
+  check (byte_length >= 0 and byte_length <= 4000000);
 create index if not exists homm3bg_ranked_replays_recorded_idx
   on public.homm3bg_ranked_replays (recorded_at);
 

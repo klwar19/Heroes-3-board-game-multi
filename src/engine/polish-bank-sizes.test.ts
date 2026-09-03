@@ -392,7 +392,7 @@ describe("Polish bank size combat and AI", () => {
     for (const bankId of POLISH_CREATURE_BANK_IDS) {
       for (const size of [1, 2, 3, 4] as const) {
         const { units, stackedCount } = buildCreatureBankCombatUnits(state, bankId, size);
-        const expected = Math.min(size, units.length);
+        const expected = bankId === "black_tower" ? 0 : Math.min(size, units.length);
         const stacked = units.filter((unit) => Boolean(unit.stackToken));
         expect(stacked, `${bankId} size ${size}`).toHaveLength(expected);
         expect(stackedCount, `${bankId} size ${size} X`).toBe(expected);
@@ -404,6 +404,28 @@ describe("Polish bank size combat and AI", () => {
           expectStackTokenBaked(unit);
         }
       }
+    }
+  });
+
+  it("uses Black Tower size as the Dragon row and gives its single Dragon no Stack Token", () => {
+    const state = createAdventureGameState({
+      seed: "polish-black-tower-direct-size",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      houseRules: { "polish-creature-banks": true, "polish-bank-sizes": true },
+    });
+    const sides = [
+      "guardian:green-dragon",
+      "guardian:red-dragon",
+      "guardian:gold-dragon",
+      "guardian:black-dragon",
+    ];
+    for (const size of [1, 2, 3, 4] as const) {
+      const { units, stackedCount } = buildCreatureBankCombatUnits(state, "black_tower", size);
+      expect(units).toHaveLength(1);
+      expect(units[0]?.bankSideKey).toBe(sides[size - 1]);
+      expect(units[0]?.stackToken).toBeUndefined();
+      expect(stackedCount).toBe(0);
     }
   });
 
@@ -597,6 +619,23 @@ describe("Polish bank size rewards (back to the normal X-scaled reward)", () => 
     grantCreatureBankReward(state, "hero_p1", "bank-field", 3);
     expect((state.players.p1.resources.gold ?? 0) - goldBefore).toBe(8); // 2 + 2×X(3)
     expect(state.adventure!.fields["bank-field"].blackCube).toBe(true);
+  });
+
+  it("Black Tower size III pays its fixed 7 gold and opens Major Artifact Search (2)", () => {
+    const state = bankRewardState("black_tower", 3, "polish-black-tower-size-three-reward");
+    const goldBefore = state.players.p1.resources.gold ?? 0;
+    grantCreatureBankReward(state, "hero_p1", "bank-field", 0);
+    expect((state.players.p1.resources.gold ?? 0) - goldBefore).toBe(7);
+    expect(state.adventure!.rewardQueue).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          playerId: "p1",
+          kind: "shared-deck-search",
+          deckId: "artifacts-major",
+          count: 2,
+        }),
+      ]),
+    );
   });
 
   it("Ogre's Stronghold grants the exact size-matched Wyverns card", () => {

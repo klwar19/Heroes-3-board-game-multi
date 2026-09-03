@@ -1442,6 +1442,44 @@ describe("Balance Pack artifacts — Helm of the Alabaster Unicorn inscribes its
   });
 });
 
+describe("Balance Pack artifacts — Scales and Royal Armor Power swap", () => {
+  function powerPaid(cardId: CardId, balance: boolean): number {
+    const state = combat(balance, `power-${cardId}-${balance}`);
+    // Royal Armor's alternate side checks the current terrain even while its
+    // Power side is being enumerated; provide the sandbox's empty field table.
+    state.adventure!.fields = {};
+    // Keep another Power reaction in hand so the cast window remains open after
+    // the artifact is played and its contribution can be observed on the live cast.
+    state.players.p1.hand = ["spell.magic_arrow", cardId, "stat.power"] as CardId[];
+    const cast = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.magic_arrow" &&
+        legal.action.target.type === "unit" &&
+        legal.action.target.unitId === "unit_p2_skeletons"
+    );
+    expect(cast, "Magic Arrow should open a cast window").toBeTruthy();
+    const casting = applyOk(state, cast!.action);
+    const artifact = getLegalActions(casting, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === cardId &&
+        (legal.action.optionIndex ?? 0) === 0
+    );
+    expect(artifact, `${cardId} Power side should be offered`).toBeTruthy();
+    const before = casting.stack.at(-1)?.modifiers.spellPowerBonus ?? 0;
+    const paid = applyOk(casting, artifact!.action);
+    return (paid.stack.at(-1)?.modifiers.spellPowerBonus ?? 0) - before;
+  }
+
+  it("Scales pays +2 SP and Royal Armor pays +3 SP only under Polish Balance", () => {
+    expect(powerPaid("artifact.scales_of_the_greater_basilisk", true)).toBe(2);
+    expect(powerPaid("artifact.scales_of_the_greater_basilisk", false)).toBe(3);
+    expect(powerPaid("artifact.royal_armor_of_nix", true)).toBe(3);
+    expect(powerPaid("artifact.royal_armor_of_nix", false)).toBe(2);
+  });
+});
+
 describe("Balance Pack artifacts — Blackshard of the Dead Knight", () => {
   const attackDiscarding = (balance: boolean, pitched: CardId) => {
     const state = combat(balance, `blackshard-${balance}`);

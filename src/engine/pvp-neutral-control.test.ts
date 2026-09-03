@@ -875,7 +875,7 @@ describe("PvP Neutral Control — pre-battle formation sort", () => {
     );
   });
 
-  it("gives Black Tower the normal player area and lets a human choose either Dragon space", () => {
+  it("gives Black Tower the normal player area and lets the controller choose either Dragon space", () => {
     let state = makeGame("black-tower-two-space-formation", { players: 3 });
     state.activePlayerId = "p1";
     state.players.p1.hand = [];
@@ -889,14 +889,7 @@ describe("PvP Neutral Control — pre-battle formation sort", () => {
     };
     placeCreatureBank(state, "bank-field", "black_tower", 2);
     startNeutralEncounter(state, hero, state.adventure!.fields["bank-field"]);
-    expect(state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context).toBe("black-tower-dragon");
-    state = applyOk(state, {
-      type: "CHOOSE_OPTION",
-      playerId: "p1",
-      choiceId: state.pendingChoice!.id,
-      optionIndex: 2,
-    });
-    expect(state.adventure!.fields["bank-field"].bankVariant).toBe(3);
+    expect(state.pendingChoice?.type).not.toBe("OPTION_CHOICE");
     expect(placementCellsFor(state, "p1").sort((a, b) => a - b)).toEqual(
       [...ATTACKER_FRONTLINE, ...ATTACKER_BACKLINE].sort((a, b) => a - b)
     );
@@ -904,7 +897,8 @@ describe("PvP Neutral Control — pre-battle formation sort", () => {
     state = applyOk(state, place.action);
     state = applyOk(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
     const dragon = guardsOf(state)[0]!;
-    expect(dragon.bankSideKey).toBe("guardian:gold-dragon");
+    expect(dragon.bankSideKey).toBe("guardian:red-dragon");
+    expect(dragon.stackToken).toBeUndefined();
     expect(BLACK_TOWER_GUARD_CELLS).toContain(dragon.position);
     expect(sortWindowOpenFor(state, "p2")).toBe(true);
     const other = BLACK_TOWER_GUARD_CELLS.find((cell) => cell !== dragon.position)!;
@@ -912,6 +906,26 @@ describe("PvP Neutral Control — pre-battle formation sort", () => {
       type: "PLACE_NEUTRAL_GUARD", playerId: "p2", unitId: dragon.id, position: other,
     });
     expect(state.combat!.units[dragon.id].position).toBe(other);
+  });
+
+  it("CONTROL: Polish bank cards without Polish sizes retain the Black Tower OR-row choice", () => {
+    const state = makeGame("black-tower-card-only-choice", { players: 3 });
+    state.activePlayerId = "p1";
+    state.players.p1.hand = [];
+    state.adventure!.houseRules!["polish-creature-banks"] = true;
+    state.adventure!.houseRules!["polish-bank-sizes"] = false;
+    const hero = getMainHero(state, "p1")!;
+    hero.spaceId = "bank-field";
+    state.adventure!.fields["bank-field"] = {
+      spaceId: "bank-field", tileInstanceId: "t", slot: 0, location: "blocked_field",
+      blackCube: false, flagOwnerId: null, everFlagged: false, settlementResource: null,
+    };
+    placeCreatureBank(state, "bank-field", "black_tower");
+    startNeutralEncounter(state, hero, state.adventure!.fields["bank-field"]);
+    expect(state.pendingChoice).toMatchObject({
+      type: "OPTION_CHOICE",
+      context: "black-tower-dragon",
+    });
   });
 
   it("hands the sort window to the NEXT controller when the current one is eliminated", () => {

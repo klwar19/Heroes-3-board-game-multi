@@ -4937,7 +4937,7 @@ export const adventureCards: CardLibrary = {
       "Your selected unit uses its special ability regardless of the required roll's result. — OR — Your selected unit gains +2 attack.",
       // engine: option A fires every die-GATED after-attack ability regardless of
       // the roll — the Basilisk/Azure Paralysis, Gorgon Death Stare, Wyvern/
-      // Thunderbird flat-damage Sting, Rust Dragon Acid token and Minotaur draw
+      // Thunderbird flat-damage Sting, Rust Dragon Acid Breath and Minotaur draw
       // (forceAbilityRolls) — with no attack bonus. The passive attack/defense-on-
       // die riders (Dread Knight Death Blow, Zombie/Manticore Resilience) are
       // attack-maths modifiers, NOT triggered abilities, so they are not affected.

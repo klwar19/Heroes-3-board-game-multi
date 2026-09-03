@@ -8,11 +8,12 @@ import {
 } from "@/data/map/creature-banks";
 import { coreBuildingDefinitions, coreFactionDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
-import { assessDwellingRush } from "./development";
+import { assessDwellingRush, openingCorePackTarget } from "./development";
 import { playersAreAllied } from "./control";
 import type { UnitTier } from "@/data/factions/types";
 import { getUnitSide, NEUTRAL_ARMY_TABLE, neutralArmyDifficulty } from "../adventure";
 import { armyUnitRankInfo } from "../unit-experience";
+import { NEUTRAL_PLAYER_ID } from "../state";
 import type {
   ArmyUnitState,
   BankSize,
@@ -70,6 +71,47 @@ export function playerArmyStrength(
  */
 export const ENEMY_ENGAGE_RATIO = 0.85;
 
+/** Extra strength margin per additional hostile side still able to punish the
+ * winner of a PvP fight. A three-player free-for-all therefore asks for 1.05x
+ * the target's strength, while a duel keeps the intentionally aggressive 0.85
+ * threshold. Hostile allies count as one side, not several seats. */
+export const MULTIPLAYER_ENGAGE_MARGIN = 0.2;
+export const MAX_ENEMY_ENGAGE_RATIO = 1.15;
+
+/** Number of distinct, living hostile sides facing `playerId`. */
+export function activeEnemySideCount(
+  state: GameState,
+  playerId: PlayerId,
+): number {
+  const sides = new Set<string>();
+  for (const [otherId, player] of Object.entries(state.players)) {
+    if (
+      otherId === playerId ||
+      otherId === NEUTRAL_PLAYER_ID ||
+      player?.eliminated ||
+      playersAreAllied(state, playerId, otherId)
+    ) {
+      continue;
+    }
+    // Team ids collapse a coordinated alliance into one third-party threat.
+    sides.add(state.playerTeams?.[otherId] ?? `seat:${otherId}`);
+  }
+  return sides.size;
+}
+
+/** PvP risk is contextual: trade aggressively in a duel, demand a survivor's
+ * cushion when one or more third parties remain. */
+export function enemyEngagementRatio(
+  state: GameState,
+  playerId: PlayerId,
+): number {
+  const extraHostileSides = Math.max(0, activeEnemySideCount(state, playerId) - 1);
+  return Math.min(
+    MAX_ENEMY_ENGAGE_RATIO,
+    ENEMY_ENGAGE_RATIO + extraHostileSides * MULTIPLAYER_ENGAGE_MARGIN,
+  );
+}
+
 /**
  * Banks are always a full fight (no Quick Combat). Slightly pickier than hero
  * fights so the AI does not throw weak armies into stacked near-tier dragons.
@@ -91,7 +133,10 @@ export function shouldEngageEnemy(
   if (enemyStrength <= 0) {
     return true;
   }
-  return playerArmyStrength(state, playerId) >= enemyStrength * ENEMY_ENGAGE_RATIO;
+  return (
+    playerArmyStrength(state, playerId) >=
+    enemyStrength * enemyEngagementRatio(state, playerId)
+  );
 }
 
 /**
@@ -214,14 +259,13 @@ export const MAX_TOP_TIER_GUARDS = 3;
  * it is still in the deck), so a COUNT is the honest floor — one lone silver Few
  * alone never justifies a level-3 fight; two do.
  *
- * Exception (`MIN_SILVER_WITH_BRONZE_CORE` + `BRONZE_PACK_CORE_FOR_SILVER`): a
- * three-Pack bronze core PLUS even a single silver body IS enough for the silver
- * cap (difficulty 3 @ Impossible) — the opening force the AI must hit premium
- * Far economy with, not afraid of trading units.
+ * Exception: a composition-ready bronze core PLUS even a single silver body is
+ * enough for the silver cap. The target is one for exceptional tempo units such
+ * as Elves, two for ordinary strong openings, and three for weak compositions.
  */
 export const MIN_TIER_UNITS_FOR_ENGAGE = 2;
 
-/** One silver body is enough once the three-Pack bronze core is fielded. */
+/** One silver body is enough once the composition-aware bronze core is fielded. */
 export const MIN_SILVER_WITH_BRONZE_CORE = 1;
 
 /** Pack-side bronze count that unlocks the single-silver soft engagement. */
@@ -286,7 +330,7 @@ export function armyEngagementTier(
   // the bronze floor below or three Packs would always report "bronze".
   if (
     counts.silver >= MIN_SILVER_WITH_BRONZE_CORE &&
-    armyBronzePackCount(state, playerId) >= BRONZE_PACK_CORE_FOR_SILVER
+    armyBronzePackCount(state, playerId) >= openingCorePackTarget(state, playerId)
   ) {
     return "silver";
   }
@@ -428,7 +472,7 @@ export function premiumEconomyWorthStaging(
   // pull the hero off the home-tile drain and the opening development.
   const counts = armyTierCounts(state, playerId);
   if (
-    armyBronzePackCount(state, playerId) < BRONZE_PACK_CORE_FOR_SILVER ||
+    armyBronzePackCount(state, playerId) < openingCorePackTarget(state, playerId) ||
     counts.silver + counts.gold + counts.azure > 0
   ) {
     return false;

@@ -17013,8 +17013,14 @@ function buildCreatureBankDrawsForState(
   bankVariant?: BankSize
 ): NeutralDraw[] {
   const polishCards = houseRuleEnabled(state, "polish-creature-banks");
+  const polishSizes = houseRuleEnabled(state, "polish-bank-sizes");
   const bank = getCreatureBankDefinition(bankId, polishCards);
-  const unitVariant = bankId === "black_tower" ? (bankVariant ?? bankSize) : bankSize;
+  // Polish Black Tower has no second choice: the already-rolled bank size is
+  // its printed row (I Green / II Red / III Gold / IV Black). When only the
+  // independent Polish card-roster rule is enabled, preserve its older OR-row
+  // choice stored in bankVariant.
+  const unitVariant =
+    bankId === "black_tower" && !polishSizes ? (bankVariant ?? bankSize) : bankSize;
   const entries = bank.buildUnits && unitVariant ? bank.buildUnits(unitVariant) : bank.units.map((unitDefId, index) => ({
     unitDefId,
     ...(bank.unitSideKeys?.[index] ? { bankSideKey: bank.unitSideKeys[index] } : {})
@@ -17078,7 +17084,14 @@ export function buildCreatureBankCombatUnits(
   const binhPlacementChance = !polishSized && houseRuleEnabled(state, "bank-stack-chance-80");
   const difficulty = state.adventure?.difficulty ?? "normal";
   // The count caps how many DISTINCT defenders are candidates for a token.
-  const tokenRolls = Math.min(effectiveBankSize ?? STACK_TOKENS_BY_DIFFICULTY[difficulty], units.length, 4);
+  const tokenRolls =
+    polishMode && bankId === "black_tower"
+      ? 0
+      : Math.min(
+          effectiveBankSize ?? STACK_TOKENS_BY_DIFFICULTY[difficulty],
+          units.length,
+          4,
+        );
 
   const random = adventureRandom(state, `creature-bank-stack-${bankId}`);
   // Partial Fisher-Yates: pick `tokenRolls` DISTINCT candidate defenders.
@@ -17233,13 +17246,12 @@ export function grantCreatureBankReward(
   // In this mode X is the printed bank size. Black Tower deliberately has one
   // guardian, so deriving X from the number of token-bearing defenders would
   // underpay sizes II–IV.
-  // Black Tower's four printed rows are alternatives (OR), so its selected
-  // Dragon row—not its rolled Stack size—selects the matching gold/artifact
-  // payout. Other banks continue to scale with X = rolled size/Stack count.
-  const rewardX = bankId === "black_tower" && field.bankVariant
-    ? field.bankVariant
-    : polishMode && field.bankSize
-      ? field.bankSize
+  // Black Tower's rolled size selects its fixed Dragon/reward row. Other banks
+  // continue to scale with X = rolled size/Stack count.
+  const rewardX = polishMode && field.bankSize
+    ? field.bankSize
+    : bankId === "black_tower" && field.bankVariant
+      ? field.bankVariant
       : stackedCount;
   const reward = bank.buildReward(rewardX);
   const steps = interactionToSteps(reward, locationDiceBonusFor(state, playerId));

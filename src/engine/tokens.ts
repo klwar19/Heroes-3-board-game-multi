@@ -31,10 +31,10 @@ export function tokenAttackBonus(unit: CombatUnitState): number {
  *
  * A Corrosion token ALWAYS reduces defense; its magnitude is the reduction.
  * Different sources store the amount with inconsistent signs — the Behemoth's
- * Corrosion uses −1, while the Rust Dragon's Acid Breath uses +2 and the
- * Greater Gnoll's Flail +1 — so we normalize to the magnitude here. (The old
+ * Corrosion uses −1, while the Greater Gnoll's Flail uses +1 — so we normalize
+ * to the magnitude here. (The old
  * `total - token.amount` quietly ADDED defense for the positive-amount sources,
- * i.e. acid made the target tankier; no test caught it because none asserted the
+ * i.e. positive-magnitude corrosion made the target tankier; no test caught it because none asserted the
  * resulting defense, only the stored token amount.)
  */
 export function tokenDefenseDelta(unit: CombatUnitState): number {

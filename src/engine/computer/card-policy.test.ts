@@ -543,6 +543,61 @@ describe("card policy — draw-rider cycle guards", () => {
 });
 
 describe("card policy — map plays", () => {
+  function mapCardObservation(hand: string[]): ComputerObservation {
+    return {
+      playerId: "p2",
+      legalActions: [],
+      state: {
+        seed: "card-map-opportunity",
+        round: 2,
+        eventCounter: 0,
+        combat: null,
+        players: {
+          p2: {
+            id: "p2",
+            hand,
+            deck: ["stat.attack", "spell.slow", "ability.logistics"],
+            discard: [],
+            resources: { gold: 10, buildingMaterials: 2, valuables: 0 },
+            army: [],
+          },
+        },
+        heroes: {},
+        towns: {},
+      } as unknown as PlayerVisibleState,
+    };
+  }
+
+  it("draws and searches more aggressively when the hand lacks useful options", () => {
+    const draw: GameAction = {
+      type: "PLAY_CARD",
+      playerId: "p2",
+      cardId: "artifact.charm_of_mana",
+      optionIndex: 1,
+      target: { type: "none" },
+    } as GameAction;
+    const search: GameAction = {
+      type: "PLAY_CARD",
+      playerId: "p2",
+      cardId: "specialty.adrienne.4",
+      optionIndex: 0,
+      target: { type: "none" },
+    } as GameAction;
+    const thin = mapCardObservation(["artifact.charm_of_mana"]);
+    const stocked = mapCardObservation([
+      "artifact.charm_of_mana",
+      "spell.resurrection",
+      "ability.logistics",
+      "artifact.angel_wings",
+    ]);
+    expect(scoreCardAction(thin, draw)!.score).toBeGreaterThan(
+      scoreCardAction(stocked, draw)!.score,
+    );
+    expect(scoreCardAction(thin, search)!.score).toBeGreaterThan(
+      scoreCardAction(stocked, search)!.score,
+    );
+  });
+
   it("plays a resource artifact on the map instead of ending the turn", () => {
     // Income-style GAIN_RESOURCES artifact — should outrank END_TURN (300).
     const play: LegalAction = {

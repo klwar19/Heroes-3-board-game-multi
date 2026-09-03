@@ -647,7 +647,7 @@ export const CREATURE_BANKS: Record<CreatureBankId, CreatureBankDefinition> = {
   },
   sanctuary_of_zealots: {
     id: "sanctuary_of_zealots", name: "Sanctuary of Zealots", tier: "far",
-    units: Array(4).fill("neutral.cyclopes"),
+    units: Array(4).fill("neutral.evil_eyes"), unitSideKeys: Array(4).fill("guardian:evil-eyes"),
     rewardText: "5 gold. Extra: +3X gold.", rewardStatus: "implemented",
     buildReward: (x) => ({ type: "GAIN_RESOURCES", gold: 5 + 3 * x })
   },

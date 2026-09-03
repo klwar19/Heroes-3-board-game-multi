@@ -43,8 +43,13 @@ function lethalSetup(opts: {
   handLockP1?: boolean;
   p1Crowns?: number;
   defenderStacks?: number;
+  defenderBank?: boolean;
+  bankSpells?: boolean;
 }): GameState {
   const state = createInitialGameState("lethal-save-seed");
+  state.adventure = {
+    houseRules: { "polish-bank-unit-spells": opts.bankSpells ?? false },
+  } as unknown as GameState["adventure"];
   if (opts.defenderStacks !== undefined) {
     state.anime = { ...DEFAULT_ANIME_OPTIONS, enabled: true, unitStacks: true };
   }
@@ -78,6 +83,7 @@ function lethalSetup(opts: {
   defender.position = 9;
   defender.defense = 0;
   defender.damage = defender.maxHealth - 1; // one hit from death
+  defender.bankUnit = opts.defenderBank;
   if (opts.defenderStacks !== undefined) {
     defender.armyStacks = opts.defenderStacks;
   }
@@ -140,6 +146,34 @@ describe("A resurrected (cancelled) attack applies no after-attack effects", () 
 });
 
 describe("Resurrection spell", () => {
+  it("saves a bank unit only with Resurrection's highest-SP gold option", () => {
+    let state = lethalSetup({
+      defenderGrade: "bronze",
+      defenderBank: true,
+      bankSpells: true,
+      p1Hand: ["spell.resurrection", ...Array(4).fill("stat.power")],
+    });
+    const offers = p1SaveActions(state).filter(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "spell.resurrection",
+    );
+    expect(offers.map((offer) => offer.action.type === "PLAY_REACTION" ? offer.action.optionIndex : -1)).toEqual([2]);
+    state = applyOk(state, {
+      ...offers[0]!.action,
+      costCardIds: Array(4).fill("stat.power"),
+    } as GameAction);
+    expect(griffins(state).damage).toBe(griffins(state).maxHealth - 1);
+
+    const off = lethalSetup({
+      defenderGrade: "bronze",
+      defenderBank: true,
+      bankSpells: false,
+      p1Hand: ["spell.resurrection", ...Array(4).fill("stat.power")],
+    });
+    expect(p1SaveActions(off).some(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "spell.resurrection",
+    )).toBe(false);
+  });
+
   it("lets Earth Magic expert open a silver lethal-save window and pay Resurrection", () => {
     let state = lethalSetup({
       defenderGrade: "silver",

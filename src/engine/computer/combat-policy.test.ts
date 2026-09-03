@@ -106,6 +106,30 @@ describe("combat policy — neutral continue risk", () => {
 });
 
 describe("combat policy — attack target selection", () => {
+  it("removes the identical enemy that has not activated yet", () => {
+    const attacker = unit({ id: "A", controllerId: "p2", attack: 10, position: 8 });
+    const spent = unit({
+      id: "SPENT",
+      attack: 5,
+      defense: 0,
+      maxHealth: 3,
+      position: 9,
+      activatedThisRound: true,
+    });
+    const ready = unit({
+      id: "READY",
+      attack: 5,
+      defense: 0,
+      maxHealth: 3,
+      position: 7,
+      activatedThisRound: false,
+    });
+    const decision = chooseComputerAction(
+      observation([attacker, spent, ready], [attackOn("A", "SPENT"), attackOn("A", "READY")]),
+    );
+    expect((decision?.action as { defenderId: string }).defenderId).toBe("READY");
+  });
+
   it("uses physical damage on the lower-Defense target", () => {
     const attacker = unit({
       id: "A",

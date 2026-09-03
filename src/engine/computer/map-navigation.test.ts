@@ -247,6 +247,49 @@ describe("canBeatGuardedField (Quick-Combat grounded engagement)", () => {
     expect(canBeatGuardedField(state, hero, guard)).toBe(true);
   });
 
+  it("on Impossible, requires formation depth against a human with free neutral control", () => {
+    const state = createAdventureGameState({
+      startingBuildings: [],
+      seed: "human-neutral-impossible",
+      difficulty: "impossible",
+      rollFirstPlayer: false,
+      events: false,
+      pvpNeutralControl: true,
+      pvpNeutralControlMustAttack: false,
+    });
+    const hero = p2Hero(state);
+    state.controllers = {
+      ...(state.controllers ?? {}),
+      p1: { kind: "human" },
+      p2: { kind: "computer", difficulty: "standard", policyVersion: 1 },
+    };
+    hero.level = 3;
+    state.round = 1;
+    const silver = Object.values(coreUnitDefinitions).find(
+      (definition) => definition.tier === "silver",
+    )!;
+    const gold = Object.values(coreUnitDefinitions).find(
+      (definition) => definition.tier === "gold",
+    )!;
+    state.players.p2.army = [
+      { id: "silver-a", unitDefId: silver.id, side: "few" },
+      { id: "silver-b", unitDefId: silver.id, side: "few" },
+    ];
+    const guard = { ...state.adventure!.fields[MINE], tileInstanceId: "off-home", difficulty: 3 };
+
+    // Printed Impossible curve says Silver covers level 3, but two bodies are
+    // too shallow against unrestricted Wait/Defend/focus. A third body makes a
+    // screen-and-carry formation possible. Only public controller data is read.
+    expect(canBeatGuardedField(state, hero, guard)).toBe(false);
+    state.players.p2.army.push({ id: "gold-a", unitDefId: gold.id, side: "few" });
+    expect(canBeatGuardedField(state, hero, guard)).toBe(true);
+
+    // CONTROL: forced-attack human guards remain on the printed strength curve.
+    state.players.p2.army.pop();
+    state.adventure!.pvpNeutralControlMustAttack = true;
+    expect(canBeatGuardedField(state, hero, guard)).toBe(true);
+  });
+
   it("lets a secondary take free Quick Combat, but requires Silver for a real cleanup fight", () => {
     const state = game();
     const main = p2Hero(state);
@@ -4211,6 +4254,31 @@ describe("computer opening: tile Ⅰ rotation and Ⅱ–Ⅲ-first discovery", ()
     const scored = discoverScore(state, hero.id, highBand.id);
     expect(scored.policy).not.toBe("map.discover-high-band-defer");
     expect(scored.score).toBeGreaterThan(300);
+  });
+
+  it("orders simultaneous reveals II–III before IV–V and IV–V before VI–VII without hard-blocking", () => {
+    const { state, hero, highBand, farTile } = bothBandsDiscoverable(game());
+    // Re-purpose the two simultaneously reachable public backs as Near and
+    // Center. No Far supply remains, so the older Far safety rule is inactive.
+    highBand.group = "center";
+    farTile.group = "near";
+    state.adventure!.playerFarTiles = {
+      ...(state.adventure!.playerFarTiles ?? {}),
+      p2: [],
+    };
+    hero.level = 7; // readiness cannot be the reason Center loses this choice
+
+    const center = discoverScore(state, hero.id, highBand.id);
+    const near = discoverScore(state, hero.id, farTile.id);
+    expect(center.policy).toBe("map.discover-lower-band-first");
+    expect(center.score).toBeGreaterThan(300); // preference, never a stall
+    expect(near.score).toBeGreaterThan(center.score);
+
+    // If IV–V is no longer immediately available, VI–VII resumes normally.
+    delete state.adventure!.tiles[farTile.id];
+    const unblocked = discoverScore(state, hero.id, highBand.id);
+    expect(unblocked.policy).not.toBe("map.discover-lower-band-first");
+    expect(unblocked.score).toBeGreaterThan(300);
   });
 
   it("CONTROL: a Ⅱ–Ⅲ tile is NEVER deferred by the band rule", () => {

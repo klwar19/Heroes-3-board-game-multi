@@ -1021,7 +1021,16 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // serializes a second exact-HP OPTION_CHOICE; and Imperium faction selection is
 // gated by Anime Mod. A v89 worker would disagree on movement, legal choices,
 // token totals and faction setup, so PartyKit must be redeployed.
-export const ENGINE_PROTOCOL_VERSION = 90;
+// v91: Polish Balance Eagle Eye serializes its original target while copying a
+// damaging enemy Spell, Polish bank units use the top-SP gates for Clone,
+// Sacrifice, Resurrection, Counter Strike and Magic Mirror, and Polish Black
+// Tower size now deterministically selects one unstacked dragon. Rust Dragon
+// Acid Breath is attack-local, and computer policy now makes materially
+// different development, navigation, formation and targeting decisions. A v90
+// worker can offer different targets/choices and resolve different combat or
+// map actions.
+// `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 91;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

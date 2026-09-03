@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { coreBuildingDefinitions, coreFactionDefinitions } from "@/data/factions/core";
+import { coreUnitDefinitions } from "@/data/factions/units";
 import type { TownBuildingEffect } from "@/data/factions/types";
 import { createAdventureGameState } from "../adventure-setup";
 import type { GameAction, GameState, PlayerVisibleState } from "../state";
@@ -8,6 +9,7 @@ import {
   armyDevelopmentProfile,
   developmentResourceTargets,
   hasOpenedFarEconomy,
+  openingCorePackTarget,
   shouldLaunchBronzeRush,
 } from "./development";
 import { resourceDeficits, scoreMapAction } from "./map-policy";
@@ -52,6 +54,57 @@ function establishPacks(state: GameState): void {
 }
 
 describe("computer long-horizon development plan", () => {
+  it("uses one exceptional Elves Pack, otherwise two ordinary Packs, before pivoting to Silver", () => {
+    const state = game();
+    state.players.p2.factionId = "rampart";
+    state.players.p2.army = ["rampart.centaurs", "rampart.dwarves", "rampart.elves"].map(
+      (unitDefId, index) => ({ id: `rampart-${index}`, unitDefId, side: "few" as const }),
+    );
+    const town = Object.values(state.towns).find(
+      (candidate) => candidate.controllerId === "p2",
+    )!;
+    town.buildings = [
+      buildingWith(state, (effect) => effect.type === "UNLOCK_REINFORCE"),
+      buildingWith(
+        state,
+        (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "bronze",
+      ),
+    ];
+
+    expect(openingCorePackTarget(state, "p2")).toBe(1);
+    expect(armyDevelopmentProfile(state, "p2").phase).toBe("establish-core");
+    state.players.p2.army[2].side = "pack"; // double-attacking ranged Elves
+    expect(armyDevelopmentProfile(state, "p2").phase).toBe("unlock-silver");
+
+    // CONTROL: without the exceptional repeat attack, the same printed bodies
+    // use the ordinary two-Pack opening rather than receiving an ID exception.
+    const elfPack = coreUnitDefinitions["rampart.elves"].pack!;
+    const abilities = elfPack.abilities;
+    try {
+      elfPack.abilities = [];
+      expect(openingCorePackTarget(state, "p2")).toBe(2);
+    } finally {
+      elfPack.abilities = abilities;
+    }
+  });
+
+  it("reinforces the tempo Pack before cheaper low-impact upgrades", () => {
+    const state = game();
+    state.players.p2.factionId = "rampart";
+    state.players.p2.army = ["rampart.centaurs", "rampart.dwarves", "rampart.elves"].map(
+      (unitDefId, index) => ({ id: `rampart-${index}`, unitDefId, side: "few" as const }),
+    );
+    const scores = state.players.p2.army.map((unit) =>
+      scoreMapAction(observation(state), {
+        type: "POPULATION_ACTION",
+        playerId: "p2",
+        purchases: [{ kind: "reinforce", unitDefId: unit.unitDefId, armyUnitId: unit.id }],
+      })!.score,
+    );
+    expect(scores[2]).toBeGreaterThan(scores[0]);
+    expect(scores[2]).toBeGreaterThan(scores[1]);
+  });
+
   it("launches the round-3 three-Bronze-Pack fallback only without Far economy", () => {
     const state = game();
     establishPacks(state);
@@ -231,6 +284,67 @@ describe("computer long-horizon development plan", () => {
     };
     const flush = scoreMapAction(observation(state), buildSide);
     expect(flush!.score).toBeGreaterThan(700);
+  });
+
+  it("Necropolis builds its Necromancy engine from surplus, with less urgency once the card is held", () => {
+    const state = game();
+    state.players.p2.factionId = "necropolis";
+    establishPacks(state);
+    const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p2")!;
+    town.buildings = [
+      buildingWith(state, (effect) => effect.type === "UNLOCK_REINFORCE"),
+      buildingWith(state, (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "bronze"),
+      buildingWith(state, (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "silver"),
+      buildingWith(state, (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "gold"),
+    ];
+    const amplifier = buildingWith(state, (effect) => effect.type === "TURN_START_NECROMANCY");
+    const cover = buildingWith(state, (effect) => effect.type === "COVER_OF_DARKNESS");
+    state.players.p2.resources = { gold: 99, buildingMaterials: 99, valuables: 99 };
+    const build = (buildingId: string): GameAction => ({
+      type: "BUILD_STRUCTURE",
+      playerId: "p2",
+      townId: town.id,
+      buildingId,
+    }) as GameAction;
+
+    const missingEngine = scoreMapAction(observation(state), build(amplifier))!.score;
+    expect(missingEngine).toBeGreaterThan(scoreMapAction(observation(state), build(cover))!.score);
+    state.players.p2.hand = ["ability.necromancy"];
+    expect(scoreMapAction(observation(state), build(amplifier))!.score).toBeLessThan(missingEngine);
+  });
+
+  it("Necropolis fights a beatable neutral before paying full price for a Pack", () => {
+    const state = game();
+    state.players.p2.factionId = "necropolis";
+    establishPacks(state);
+    const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p2")!;
+    town.buildings = [
+      buildingWith(state, (effect) => effect.type === "UNLOCK_REINFORCE"),
+      buildingWith(state, (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "bronze"),
+      buildingWith(state, (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "silver"),
+    ];
+    const target = state.players.p2.army[0];
+    target.side = "few";
+    state.players.p2.hand = ["ability.necromancy"];
+    state.players.p2.resources = { gold: 99, buildingMaterials: 99, valuables: 99 };
+    const hero = Object.values(state.heroes).find(
+      (candidate) => candidate.controllerId === "p2" && candidate.kind === "main",
+    )!;
+    const guard = Object.values(state.adventure!.fields).find(
+      (field) => field.flagOwnerId == null && field.location !== "home_town",
+    )!;
+    guard.difficulty = 1;
+    guard.blackCube = true;
+    const reinforce: GameAction = {
+      type: "POPULATION_ACTION",
+      playerId: "p2",
+      purchases: [{ kind: "reinforce", unitDefId: target.unitDefId, armyUnitId: target.id }],
+    };
+
+    expect(scoreMapAction(observation(state), reinforce)!.score).toBeLessThanOrEqual(650);
+    state.players.p2.hand = [];
+    expect(scoreMapAction(observation(state), reinforce)!.score).toBeGreaterThan(650);
+    expect(hero, "fixture retains a main hero for the neutral objective").toBeTruthy();
   });
 
   it("buys spells only with Wisdom in hand or surplus gold (army funds first)", () => {

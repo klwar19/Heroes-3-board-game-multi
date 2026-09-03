@@ -655,7 +655,11 @@ function scoreMapEconomy(
     return base + 10;
   }
   if (effect.type === "DRAW_CARDS") {
-    return base + 15;
+    const handSize = observation.state.players[observation.playerId]?.hand.length ?? 0;
+    // Draw aggressively into a thin hand, but do not burn a useful draw effect
+    // merely to overfill an already healthy hand. Draw-rider-only combat loops
+    // are caught earlier by their dedicated low score.
+    return base + (handSize <= 2 ? 55 : handSize === 3 ? 30 : 10);
   }
   if (effect.type === "ADVANCE_EXPERIENCE") {
     return base + 25;
@@ -843,7 +847,21 @@ function scoreEffect(
   }
 
   if (MAP_SEARCH_EFFECTS.has(effect.type)) {
-    return 610 + modeBonus(mode);
+    const hand = observation.state.players[observation.playerId]?.hand ?? [];
+    const usefulHeld = hand.filter(
+      (cardId) => cardKeepValue(cardId, observation) >= 55,
+    ).length;
+    const depth =
+      "count" in effect && typeof effect.count === "number"
+        ? effect.count
+        : 1;
+    return (
+      610 +
+      modeBonus(mode) +
+      Math.min(32, depth * 8) +
+      (hand.length <= 2 ? 20 : 0) +
+      (usefulHeld === 0 ? 15 : 0)
+    );
   }
 
   if (MAP_ECONOMY_EFFECTS.has(effect.type)) {

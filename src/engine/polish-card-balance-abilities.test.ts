@@ -560,7 +560,7 @@ describe("Balance Pack — Eagle Eye", () => {
   it("EXPERT: an enemy damaging Spell may be COPIED at Power 0 at a new target, over the limit", () => {
     const state = sandbox("balance-eagle-copy", true, [], 2);
     state.players.p2.hand = ["spell.magic_arrow" as CardId];
-    state.players.p1.hand = ["ability.eagle_eye" as CardId];
+    state.players.p1.hand = ["ability.eagle_eye", "stat.power"] as CardId[];
     state.players.p2.combatStats.spellsCastThisRound = 0;
     // p2's Magic Arrow hits one of p1's units — the printed trigger.
     const combat = state.combat!;
@@ -597,9 +597,10 @@ describe("Balance Pack — Eagle Eye", () => {
 
     const copy = getLegalActions(after, "p1").find(
       (legal) => legal.action.type === "CAST_SPELL" && legal.action.eagleEyeCopy === true
+        && legal.action.target.type === "unit" && legal.action.target.unitId === p2Unit.id
     );
     expect(copy, "the copy must be offered to the damaged player").toBeTruthy();
-    const copied = applyOk(after, copy!.action);
+    let copied = applyOk(after, copy!.action);
     expect(copied.players.p1.hand, "Eagle Eye paid for the copy").not.toContain("ability.eagle_eye");
     expect(crownsSpent(copied), "the copy spends a crown").toBe(1);
     expect(copied.players.p1.combatStats.eagleEyeCopySpellId, "the latch is spent").toBeUndefined();
@@ -607,6 +608,33 @@ describe("Balance Pack — Eagle Eye", () => {
       copied.players.p1.combatStats.spellsCastThisRound,
       "the copy does not count toward the limit"
     ).toBe(0);
+    // The copied cast opens the normal Power window. Feed it +1 SP, resolve it,
+    // and prove the new enemy target takes Magic Arrow's Power-1 damage (2), not
+    // the original cast's target and not the copier's standing Power.
+    const boost = getLegalActions(copied, "p1").find(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "stat.power"
+    );
+    expect(boost, "the Eagle Eye copy accepts added SP").toBeTruthy();
+    copied = applyOk(copied, boost!.action);
+    for (let guard = 0; guard < 8 && copied.stack.length > 0; guard += 1) {
+      const pass = getLegalActions(copied, copied.priorityPlayerId ?? "p1").find(
+        (legal) => legal.action.type === "PASS_REACTION"
+      );
+      if (!pass) break;
+      copied = applyOk(copied, pass.action);
+    }
+    const copiedDamage = [...copied.eventLog].reverse().find(
+      (event) => event.type === "DAMAGE_ASSIGNED" && event.target.type === "unit"
+        && event.target.unitId === p2Unit.id && event.source.type === "card"
+        && event.source.cardId === "spell.magic_arrow"
+    );
+    expect({
+      damage: copiedDamage?.type === "DAMAGE_ASSIGNED" ? copiedDamage.amount : 0,
+      stack: copied.stack.length,
+      phase: copied.phase,
+      reaction: copied.reactionWindow?.triggerEvent.type ?? null,
+    }).toEqual({ damage: 2, stack: 0, phase: "combat", reaction: null });
+    expect(copied.players.p1.combatStats.spellsCastThisRound).toBe(0);
 
     // CONTROL: with the rule off nothing is latched and no copy is ever offered.
     const offState = sandbox("balance-eagle-copy-off", false, [], 2);

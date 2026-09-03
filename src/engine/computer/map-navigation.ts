@@ -399,7 +399,7 @@ export function canBeatGuardedField(
   hero: HeroState,
   field: MapFieldState,
 ): boolean {
-  // Once the three-Pack conquest fallback is live, the main army must convert
+  // Once the composition-aware conquest fallback is live, the main army must convert
   // that timing window into pressure on the opponent, not bleed units into a
   // side neutral on the way — EXCEPT premium Far economy (settlement / gold /
   // valuables mine). Those ARE the economy the rush is for, and with three
@@ -409,6 +409,32 @@ export function canBeatGuardedField(
   const rushProfile = armyDevelopmentProfile(state, hero.controllerId);
   const fieldDifficulty = field.difficulty ?? 0;
   const premiumEconomy = isPremiumEconomyField(field);
+  // With optional PvP Neutral Control, the next live HUMAN seat can coordinate
+  // guard focus instead of following the stock neutral script. When free guard
+  // control is enabled (must-attack OFF), require formation depth for a real
+  // battle: at least three bodies can screen a valuable shooter and survive
+  // coordinated focus. This uses only public lobby/controller data; it never
+  // peeks at the human's hand or intended move. Forced-attack control remains
+  // on the printed curve because its legal menu is deliberately constrained.
+  const turnOrder = state.turnOrder ?? [];
+  const fighterIndex = turnOrder.indexOf(hero.controllerId);
+  const nextNeutralController =
+    fighterIndex >= 0 && turnOrder.length >= 2
+      ? turnOrder[(fighterIndex + 1) % turnOrder.length]
+      : undefined;
+  const freeHumanNeutralControl = Boolean(
+    state.gameMode !== "coop" &&
+      state.adventure?.pvpNeutralControl &&
+      state.adventure.pvpNeutralControlMustAttack === false &&
+      nextNeutralController &&
+      nextNeutralController !== hero.controllerId &&
+      state.controllers?.[nextNeutralController]?.kind === "human",
+  );
+  const humanNeutralFormationReady =
+    !freeHumanNeutralControl ||
+    (state.players[hero.controllerId]?.army.filter(
+      (unit) => unit.side !== "bank",
+    ).length ?? 0) >= 3;
   // Home-tile difficulty-1/2 guards (the income mine + treasure) stay engageable
   // while the hero is still on tile Ⅰ — drain all three opening items before
   // any establish-core / bronze-rush refusal can abandon them.
@@ -438,7 +464,7 @@ export function canBeatGuardedField(
   // hero levels at 2-3 for the whole mid-game.
   if (hero.kind === "main" && guaranteedQuickWin) return true;
   // Easy neutrals the hero level already covers (difficulty ≤ 1): ALWAYS take.
-  // Older gates parked the army for several turns "waiting for 3 Packs / Far
+  // Older gates parked the army for several turns "waiting for its core / Far
   // economy" before walking into a free/equal difficulty-1 fight — that felt
   // like the AI was frozen, then suddenly moved. Harder (difficulty ≥ 2) side
   // neutrals still respect the core-build / bronze-rush refuse gates below.
@@ -467,7 +493,7 @@ export function canBeatGuardedField(
     !field.flagOwnerId &&
     fieldDifficulty >= 2 &&
     heroBattleLevel <= fieldDifficulty &&
-    rushProfile.bronzePacks >= 3 &&
+    rushProfile.bronzePacks >= rushProfile.corePackTarget &&
     rushProfile.silverUnits === 0 &&
     rushProfile.goldUnits === 0 &&
     !(
@@ -478,7 +504,7 @@ export function canBeatGuardedField(
   const preservingNextRoundRush =
     (state.round ?? 0) >= 2 &&
     rushProfile.totalUnits >= 3 &&
-    rushProfile.bronzePacks >= 3 &&
+    rushProfile.bronzePacks >= rushProfile.corePackTarget &&
     !hasOpenedFarEconomy(state, hero.controllerId);
   // Bronze-rush: refuse difficulty-2+ side neutrals that would bleed the army
   // before Far economy — never park multi-turn over a difficulty-1 the level
@@ -527,7 +553,7 @@ export function canBeatGuardedField(
     premiumEconomy &&
     armyCoversPremiumEconomyGuard(state, hero.controllerId, difficulty)
   ) {
-    return true;
+    return humanNeutralFormationReady;
   }
   // The home-tile opening sweep keeps the classic equal-level engagement: the
   // guarded treasure/mine on tile Ⅰ is a difficulty-1/2 fight the documented
@@ -541,7 +567,10 @@ export function canBeatGuardedField(
   // level earned before that army was destroyed. This includes the ordinary
   // equal-level case; strict level advantage returned above as a no-risk Quick
   // Combat win.
-  return currentArmyCoversGuardField(state, hero.controllerId, difficulty);
+  return (
+    humanNeutralFormationReady &&
+    currentArmyCoversGuardField(state, hero.controllerId, difficulty)
+  );
 }
 
 /**
@@ -707,7 +736,7 @@ function objectiveKind(
       return "guard";
     }
     // Premium STAGING (Impossible): a lv1-3 settlement / gold / valuables the
-    // three-Pack core cannot cover until its first silver body arrives is
+    // ready opening core cannot cover until its first silver body arrives is
     // still the march target — walk there and WAIT adjacent (moveScore blocks
     // the actual entry while the guard is unbeatable), so the fight fires the
     // round the silver is bought instead of after a fresh multi-round march.
@@ -1697,6 +1726,39 @@ export function farExpansionRouteRemains(
       tile.group === "far" &&
       canHeroImmediatelyAccessAdjacentTile(state, hero, tile),
   );
+}
+
+const EXPANSION_BAND_ORDER: Readonly<Record<string, number>> = {
+  starting: 0,
+  far: 1,
+  near: 2,
+  center: 3,
+};
+
+/**
+ * Whether this hero can reveal a lower map band from its CURRENT position.
+ * This is deliberately local and advisory: it orders simultaneous choices
+ * I -> II-III -> IV-V -> VI-VII, but never blocks a higher band when the lower
+ * route is sealed or somewhere else on the board. The face-down tile backs are
+ * public information, so the read is observation-safe.
+ */
+export function lowerExpansionBandImmediatelyAvailable(
+  state: GameState,
+  hero: HeroState,
+  targetGroup: string | undefined,
+): boolean {
+  const targetRank = targetGroup ? EXPANSION_BAND_ORDER[targetGroup] : undefined;
+  if (targetRank === undefined || targetRank <= 1) return false;
+  return Object.values(state.adventure?.tiles ?? {}).some((tile) => {
+    if (!tile.faceDown || tile.group === targetGroup) return false;
+    const rank = tile.group ? EXPANSION_BAND_ORDER[tile.group] : undefined;
+    return (
+      rank !== undefined &&
+      rank >= 1 &&
+      rank < targetRank &&
+      canHeroImmediatelyAccessAdjacentTile(state, hero, tile)
+    );
+  });
 }
 
 /**

@@ -3,6 +3,7 @@ import { createAdventureGameState } from "../adventure-setup";
 import type { GameState, MapFieldState } from "../state";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import {
+  activeEnemySideCount,
   armyCoversPremiumEconomyGuard,
   armyEngagementTier,
   armyTierCoversGuardField,
@@ -10,6 +11,7 @@ import {
   canBeatCreatureBank,
   creatureBankStrength,
   ENEMY_ENGAGE_RATIO,
+  enemyEngagementRatio,
   isPremiumEconomyField,
   playerArmyStrength,
   premiumEconomyEngageCap,
@@ -80,6 +82,47 @@ describe("shouldEngageEnemy", () => {
       enemyStrength * ENEMY_ENGAGE_RATIO,
     );
     expect(shouldEngageEnemy(state, "p2", "p1")).toBe(false);
+  });
+
+  it("keeps a survivor's margin while a third hostile side remains", () => {
+    const state = game();
+    state.players.p1.army = structuredClone(state.players.p2.army).map(
+      (unit, index) => ({ ...unit, id: `p1-unit-${index}` }),
+    );
+    state.players.p3 = structuredClone(state.players.p1);
+    state.players.p3.id = "p3";
+    state.players.p3.name = "Third side";
+    state.players.p3.army = state.players.p3.army.map((unit, index) => ({
+      ...unit,
+      id: `p3-unit-${index}`,
+    }));
+    state.turnOrder.push("p3");
+
+    expect(activeEnemySideCount(state, "p2")).toBe(2);
+    expect(enemyEngagementRatio(state, "p2")).toBe(1.05);
+    // Equal armies are a good duel, but an unnecessary trade in a three-way
+    // game because the untouched third side can clean up the winner.
+    expect(playerArmyStrength(state, "p2")).toBe(
+      playerArmyStrength(state, "p1"),
+    );
+    expect(shouldEngageEnemy(state, "p2", "p1")).toBe(false);
+
+    // Once that third side is gone, the exact same matchup becomes the normal
+    // aggressive duel again.
+    state.players.p3.eliminated = true;
+    expect(activeEnemySideCount(state, "p2")).toBe(1);
+    expect(enemyEngagementRatio(state, "p2")).toBe(ENEMY_ENGAGE_RATIO);
+    expect(shouldEngageEnemy(state, "p2", "p1")).toBe(true);
+  });
+
+  it("counts an allied enemy team as one hostile side", () => {
+    const state = game();
+    state.players.p3 = structuredClone(state.players.p1);
+    state.players.p3.id = "p3";
+    state.players.p3.name = "Enemy ally";
+    state.playerTeams = { p1: "enemy-team", p3: "enemy-team" };
+    expect(activeEnemySideCount(state, "p2")).toBe(1);
+    expect(enemyEngagementRatio(state, "p2")).toBe(ENEMY_ENGAGE_RATIO);
   });
 });
 

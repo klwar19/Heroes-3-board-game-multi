@@ -41,6 +41,15 @@ describe("Polish Banks printed set", () => {
     }
   });
 
+  it("uses the supplied Evil Eyes guards for Sanctuary of Zealots", () => {
+    expect(POLISH_CREATURE_BANKS.sanctuary_of_zealots.units).toEqual(
+      Array(4).fill("neutral.evil_eyes"),
+    );
+    expect(POLISH_CREATURE_BANKS.sanctuary_of_zealots.unitSideKeys).toEqual(
+      Array(4).fill("guardian:evil-eyes"),
+    );
+  });
+
   it("pins Black Tower's one guardian and fixed Artifact pile for every size", () => {
     const expected = [
       ["guardian:green-dragon", 5, "artifacts-minor", 2],

@@ -839,7 +839,7 @@ export type OnAttackDieToken = {
   count: number;
 };
 
-/** Rust Dragons: token placed on the target when the attack's own die matches. */
+/** Persistent die-conditioned tokens used by Halflings and similar abilities. */
 export function getOnAttackDieTokens(unit: CombatUnitState): OnAttackDieToken[] {
   return getAbilitiesWithEffect(unit, "ON_ATTACK_DIE_TOKEN").flatMap((ability) =>
     ability.effect?.type === "ON_ATTACK_DIE_TOKEN"
@@ -1340,16 +1340,18 @@ export function getRandomOtherEnemySecondAttackAbility(
   return null;
 }
 
-/** MGQ Hunter Job: Defense pierced only on the configured own-attack die faces. */
+/** Defense pierced only on the configured own-attack die faces. */
 export function getAttackDieDefenseReductionAbility(
   unit: CombatUnitState,
-  roll: number
+  roll: number,
+  forceMatch = false
 ): { abilityId: string; abilityName: string; amount: number } | null {
   for (const ability of getAbilitiesWithEffect(unit, "DEFENSE_REDUCTION_ON_ATTACK_DIE")) {
     if (
       ability.effect?.type === "DEFENSE_REDUCTION_ON_ATTACK_DIE" &&
-      roll >= ability.effect.minRoll &&
-      roll <= ability.effect.maxRoll
+      (forceMatch ||
+        (roll >= ability.effect.minRoll &&
+          roll <= ability.effect.maxRoll))
     ) {
       return { abilityId: ability.id, abilityName: ability.name, amount: ability.effect.amount };
     }

@@ -4,7 +4,7 @@ import { artifactCards } from "./artifacts";
 import { sampleCards } from "./sample";
 
 /**
- * Polish Balance Pack (`polish-card-balance`) — the 27 reprinted ARTIFACT cards.
+ * Polish Balance Pack (`polish-card-balance`) — the reprinted ARTIFACT cards.
  *
  * THE COMMITTED CARD FACE IS THE AUTHORITY (the pack's own graphics folder), not
  * the balance spreadsheet: every clause below was read off
@@ -941,6 +941,54 @@ export const polishBalanceArtifactCards: CardLibrary = {
       },
     },
   ),
+
+  // The Polish balance swaps these two flat spell-Power values.
+  "artifact.scales_of_the_greater_basilisk": reprint(
+    "artifact.scales_of_the_greater_basilisk",
+    {
+      tags: tags(
+        "artifact.scales_of_the_greater_basilisk",
+        "+2 Power. — OR — +1 Power, then draw a card.",
+      ),
+      effect: {
+        type: "CHOOSE_ONE",
+        options: [
+          {
+            label: "+2 Power",
+            trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+            effect: { type: "ADD_SPELL_POWER", amount: 2 },
+          },
+          {
+            label: "+1 Power, then draw a card",
+            trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+            effect: { type: "ADD_SPELL_POWER", amount: 1, drawCards: 1 },
+          },
+        ],
+      },
+    },
+  ),
+
+  "artifact.royal_armor_of_nix": reprint("artifact.royal_armor_of_nix", {
+    tags: tags(
+      "artifact.royal_armor_of_nix",
+      "+3 Power. — OR — On a Sea tile, Search (2) the Spell deck.",
+    ),
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "+3 Power",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 3 },
+        },
+        {
+          label: "On a Sea tile: Search (2) the Spell deck",
+          requiresSeaTile: true,
+          effect: { type: "CARD_DECK_SEARCH", deck: "spells", count: 2 },
+        },
+      ],
+    },
+  }),
 
   // Crown of Dragontooth — option A doubles the Polish recovery (up to 2
   // enablers returned AND up to 2 Book Spells refreshed). Option B is UNCHANGED
