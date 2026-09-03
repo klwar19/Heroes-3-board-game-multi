@@ -71,6 +71,7 @@ import type {
   FactionId,
   GameDifficulty,
   GameSetupOptions,
+  PlayerId,
   SecretTileFeature,
   TableGameMode,
   UnitLevel,
@@ -933,27 +934,51 @@ export type CoopMapDeploymentResult =
   | { ok: true; deployment: CoopMapDeployment }
   | { ok: false; reason: string };
 
+/** One seat, in GAME ORDER, as the seat-role seating reads it. */
+export type SeatRoleSeat = {
+  id: PlayerId;
+  kind: "human" | "computer";
+};
+
+/** Either a complete per-seat seating, or the constraint that made it impossible. */
+export type SeatRoleDeploymentResult =
+  | { ok: true; assignments: Map<PlayerId, CustomMapTilePlan> }
+  | { ok: false; reason: string };
+
 /**
- * Resolve a map-authored CO-OP seating for `humanCount` human and
- * `computerCount` computer seats.
+ * THE one shared seating for map-authored STARTING-TILE SEAT ROLES, in EVERY
+ * table mode (2026-09-03). A starting plan's `coopSeat.role` reads:
  *
- * Returns `null` when NO starting position carries a co-op role — the map has
+ *   - `"human"`    — "Only player": no computer seat may start here, EXCEPT
+ *     the SOLO FALLBACK below.
+ *   - `"computer"` — "Only AI": a human never starts here, in any mode.
+ *   - ABSENT        — "Free (random)": either kind, taken in GAME ORDER.
+ *
+ * SOLO FALLBACK: in a single-player session there is exactly one human, so any
+ * LEFTOVER player-only position is opened to the AI seats (the designer label
+ * is literally "Only player (or AI in solo)"). Outside single-player the AI
+ * never sits on a player-only position.
+ *
+ * `seats` MUST be passed in GAME ORDER (the seeded first-player roll or the
+ * host's manual order) — that order is what makes a "free" position random,
+ * and the assignment is otherwise fully DETERMINISTIC given it: each human
+ * takes the first unused player-only position in plan order, else the first
+ * unused free one; then each computer takes the first unused AI-only position,
+ * else the first unused free one, else (solo only) the first unused leftover
+ * player-only one. Because each kind exhausts its EXCLUSIVE positions before
+ * the shared ones, this greedy pass is feasibility-complete.
+ *
+ * Returns `null` when NO starting position carries a role — the map has
  * nothing to say and the caller keeps ordinary seat-order placement (exactly
- * what every legacy map does today).
- *
- * Otherwise the assignment is DETERMINISTIC: each side first fills its
- * role-pinned positions in plan order, then draws from the unmarked
- * ("flexible") positions in plan order — humans before computers, so the same
- * map + the same seat counts always seat identically. A table the authored
- * roles cannot seat returns `{ ok: false, reason }` naming the binding
- * constraint; the caller REFUSES the start rather than silently dropping a
- * human onto a computer-only position.
+ * what every legacy map does). A table the roles cannot seat returns
+ * `{ ok: false, reason }`; the caller REFUSES the start rather than silently
+ * dropping a human onto an AI-only position.
  */
-export function coopMapDeployment(
+export function seatRoleMapDeployment(
   plans: readonly CustomMapTilePlan[] | null | undefined,
-  humanCount: number,
-  computerCount: number
-): CoopMapDeploymentResult | null {
+  seats: readonly SeatRoleSeat[],
+  opts: { soloFallback: boolean }
+): SeatRoleDeploymentResult | null {
   const starts = (plans ?? []).filter((plan) => plan.group === "starting");
   const humanTiles = starts.filter((plan) => sanitizeCoopMapSeat(plan.coopSeat)?.role === "human");
   const computerTiles = starts.filter(
@@ -963,43 +988,114 @@ export function coopMapDeployment(
     return null;
   }
   const flexible = starts.filter((plan) => !sanitizeCoopMapSeat(plan.coopSeat));
-  const humans = Math.max(0, Math.floor(humanCount));
-  const computers = Math.max(0, Math.floor(computerCount));
+  const humanSeats = seats.filter((seat) => seat.kind !== "computer");
+  const computerSeats = seats.filter((seat) => seat.kind === "computer");
+  const humans = humanSeats.length;
+  const computers = computerSeats.length;
 
-  if (humans > humanTiles.length + flexible.length) {
-    return {
-      ok: false,
-      reason: `This co-op map has only ${humanTiles.length + flexible.length} starting position${
-        humanTiles.length + flexible.length === 1 ? "" : "s"
-      } a human may take, but the table has ${humans} human seat${humans === 1 ? "" : "s"}.`
-    };
+  // Capacity refusals first, so the message names the BINDING constraint
+  // instead of whichever seat the greedy pass happened to starve.
+  const humanCapacity = humanTiles.length + flexible.length;
+  const humanRefusal = `This map has only ${humanCapacity} starting position${
+    humanCapacity === 1 ? "" : "s"
+  } a human may take, but the table has ${humans} human seat${humans === 1 ? "" : "s"}.`;
+  if (humans > humanCapacity) {
+    return { ok: false, reason: humanRefusal };
   }
-  if (computers > computerTiles.length + flexible.length) {
-    return {
-      ok: false,
-      reason: `This co-op map has only ${computerTiles.length + flexible.length} starting position${
-        computerTiles.length + flexible.length === 1 ? "" : "s"
-      } a computer may take, but the table has ${computers} computer seat${
-        computers === 1 ? "" : "s"
-      }.`
-    };
+  // The solo fallback widens the COMPUTER capacity only — leftover player-only
+  // positions are open to the AI when the session has a single human.
+  const soloLeftoverHuman = opts.soloFallback ? Math.max(0, humanTiles.length - humans) : 0;
+  const computerCapacity = computerTiles.length + flexible.length + soloLeftoverHuman;
+  const computerRefusal = `This map has only ${computerCapacity} starting position${
+    computerCapacity === 1 ? "" : "s"
+  } a computer may take, but the table has ${computers} computer seat${
+    computers === 1 ? "" : "s"
+  }.`;
+  if (computers > computerCapacity) {
+    return { ok: false, reason: computerRefusal };
   }
   const humanFlexNeeded = Math.max(0, humans - humanTiles.length);
-  const computerFlexNeeded = Math.max(0, computers - computerTiles.length);
-  if (humanFlexNeeded + computerFlexNeeded > flexible.length) {
+  const computerBeyondOwn = Math.max(0, computers - computerTiles.length);
+  if (computerBeyondOwn > flexible.length - humanFlexNeeded + soloLeftoverHuman) {
     return {
       ok: false,
-      reason: `This co-op map cannot seat ${humans} human and ${computers} computer player${
+      reason: `This map cannot seat ${humans} human and ${computers} computer player${
         computers === 1 ? "" : "s"
       } at once — only ${flexible.length} starting position${
         flexible.length === 1 ? " is" : "s are"
       } open to either side.`
     };
   }
-  const pool = [...flexible];
-  const humanSeats = [...humanTiles.slice(0, humans), ...pool.splice(0, humanFlexNeeded)];
-  const computerSeats = [...computerTiles.slice(0, computers), ...pool.splice(0, computerFlexNeeded)];
-  return { ok: true, deployment: { humans: humanSeats, computers: computerSeats } };
+
+  const used = new Set<CustomMapTilePlan>();
+  const takeFirstUnused = (pool: readonly CustomMapTilePlan[]): CustomMapTilePlan | undefined => {
+    for (const plan of pool) {
+      if (!used.has(plan)) {
+        used.add(plan);
+        return plan;
+      }
+    }
+    return undefined;
+  };
+  const assignments = new Map<PlayerId, CustomMapTilePlan>();
+  for (const seat of humanSeats) {
+    const plan = takeFirstUnused(humanTiles) ?? takeFirstUnused(flexible);
+    if (!plan) {
+      return { ok: false, reason: humanRefusal };
+    }
+    assignments.set(seat.id, plan);
+  }
+  for (const seat of computerSeats) {
+    const plan =
+      takeFirstUnused(computerTiles) ??
+      takeFirstUnused(flexible) ??
+      (opts.soloFallback ? takeFirstUnused(humanTiles) : undefined);
+    if (!plan) {
+      return { ok: false, reason: computerRefusal };
+    }
+    assignments.set(seat.id, plan);
+  }
+  return { ok: true, assignments };
+}
+
+/**
+ * CO-OP-shaped view of {@link seatRoleMapDeployment} for the callers that only
+ * know seat COUNTS (the map picker's capacity line and the co-op step-5 tests).
+ * A thin wrapper — ONE algorithm, never a second copy — and it never takes the
+ * single-player leftover fallback.
+ */
+export function coopMapDeployment(
+  plans: readonly CustomMapTilePlan[] | null | undefined,
+  humanCount: number,
+  computerCount: number
+): CoopMapDeploymentResult | null {
+  const humans = Math.max(0, Math.floor(humanCount));
+  const computers = Math.max(0, Math.floor(computerCount));
+  const seats: SeatRoleSeat[] = [
+    ...Array.from({ length: humans }, (_, index) => ({
+      id: `coop-human-${index}` as PlayerId,
+      kind: "human" as const
+    })),
+    ...Array.from({ length: computers }, (_, index) => ({
+      id: `coop-computer-${index}` as PlayerId,
+      kind: "computer" as const
+    }))
+  ];
+  const result = seatRoleMapDeployment(plans, seats, { soloFallback: false });
+  if (!result || !result.ok) {
+    return result;
+  }
+  return {
+    ok: true,
+    deployment: {
+      humans: seats
+        .filter((seat) => seat.kind === "human")
+        .map((seat) => result.assignments.get(seat.id)!),
+      computers: seats
+        .filter((seat) => seat.kind === "computer")
+        .map((seat) => result.assignments.get(seat.id)!)
+    }
+  };
 }
 
 /**

@@ -1036,7 +1036,12 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // corridors for both human and computer routing. A v91 worker would offer and
 // resolve different combat/map actions, so PartyKit must be redeployed.
 // `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 92;
+// v93: map-authored STARTING-TILE SEAT ROLES (`CustomMapTilePlan.coopSeat`) now
+// decide seating in EVERY session/table mode, not co-op only — a v92 worker
+// would build the same designed map with different home positions (and would
+// not refuse an unseatable table), so authoritative placement diverges.
+// `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 93;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

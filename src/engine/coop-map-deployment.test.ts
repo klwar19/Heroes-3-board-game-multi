@@ -388,12 +388,17 @@ describe("co-op step 5 — the build honours the authored positions", () => {
     expect(state.heroes.hero_p3.spaceId).toBe(hexSpaceId(starts[0]));
   });
 
-  it("CONTROL — a CLASH build on the SAME map ignores the roles and keeps seat order", () => {
+  // WAS: "CONTROL — a CLASH build on the SAME map ignores the roles and keeps
+  // seat order". SUPERSEDED 2026-09-03 — the per-position roles are read in
+  // EVERY table mode now (see `seat-role-deployment.test.ts`), so a clash build
+  // on this map lands exactly where the co-op build above does. The legacy-map
+  // CONTROL (no roles anywhere ⇒ classic seat order) is the case below.
+  it("a CLASH build on the SAME map now honours the roles too", () => {
     const state = build({ coop: false, tiles: COOP_TOWNS, seed: "clash-map-build" });
     expect(state.gameMode).toBeUndefined();
-    expect(state.heroes.hero_p1.spaceId).toBe(hexSpaceId(starts[0]));
-    expect(state.heroes.hero_p2.spaceId).toBe(hexSpaceId(starts[1]));
-    expect(state.heroes.hero_p3.spaceId).toBe(hexSpaceId(starts[2]));
+    expect(state.heroes.hero_p1.spaceId).toBe(hexSpaceId(starts[1]));
+    expect(state.heroes.hero_p2.spaceId).toBe(hexSpaceId(starts[2]));
+    expect(state.heroes.hero_p3.spaceId).toBe(hexSpaceId(starts[0]));
   });
 
   it("CONTROL — a CO-OP build on a map with NO roles keeps the same seat order", () => {
@@ -413,9 +418,15 @@ describe("co-op step 5 — the build honours the authored positions", () => {
     expect(() => build({ coop: true, tiles: humansLockedOut, seed: "coop-nofit" })).toThrow(
       /only 0 starting positions a human may take/
     );
-    // CONTROL — the identical map in CLASH builds fine (roles are ignored).
+    // WAS: "the identical map in CLASH builds fine (roles are ignored)".
+    // SUPERSEDED 2026-09-03 — a clash table reads the roles too, so the same
+    // map is unseatable there as well. The surviving CONTROL is the legacy one:
+    // strip the roles and the SAME tiles build in either mode.
     expect(() =>
       build({ coop: false, tiles: humansLockedOut, seed: "clash-nofit-control" })
+    ).toThrow(/only 0 starting positions a human may take/);
+    expect(() =>
+      build({ coop: false, tiles: PLAIN_TOWNS, seed: "clash-nofit-control" })
     ).not.toThrow();
   });
 });
@@ -543,9 +554,15 @@ describe("co-op step 5 — the lobby seam", () => {
     });
     const started = apply(state, { type: "START_ADVENTURE", playerId: "p1" });
     expect(started.phase).not.toBe("setup");
-    expect(started.heroes.hero_p1.spaceId).toBe(hexSpaceId(starts[1]));
-    expect(started.heroes.hero_p2.spaceId).toBe(hexSpaceId(starts[2]));
+    // The AI seat is pinned by its role. The two HUMANS share one human-only
+    // tile (starts[1]) and one flexible tile (starts[2]), and since 2026-09-03
+    // the seats are fed in GAME ORDER — this lobby's opening roll hands the
+    // order to p2, so p2 takes the human-only tile and p1 the flexible one.
+    // What the roles guarantee is the SET, not which human gets which.
     expect(started.heroes.hero_p3.spaceId).toBe(hexSpaceId(starts[0]));
+    expect(
+      [started.heroes.hero_p1.spaceId, started.heroes.hero_p2.spaceId].slice().sort()
+    ).toEqual([hexSpaceId(starts[1]), hexSpaceId(starts[2])].slice().sort());
   });
 
   it("a co-op START whose seat counts the roles cannot seat is REFUSED with the reason", () => {
@@ -565,14 +582,23 @@ describe("co-op step 5 — the lobby seam", () => {
     );
     expect(state.phase).toBe("setup");
 
-    // CONTROL — the identical lobby in CLASH starts, because a clash table
-    // never reads the co-op roles.
-    let clash = seatedLobby("clash-nofit-control", {
+    // WAS: "the identical lobby in CLASH starts, because a clash table never
+    // reads the co-op roles". SUPERSEDED 2026-09-03 — the start check refuses
+    // in every mode now, so the clash lobby is refused with the same reason.
+    const clash = seatedLobby("clash-nofit-control", {
       customMap: oneHumanSeat,
       customMapName: "One Hero"
     });
-    clash = apply(clash, { type: "START_ADVENTURE", playerId: "p1" });
-    expect(clash.phase).not.toBe("setup");
+    expect(reject(clash, { type: "START_ADVENTURE", playerId: "p1" })).toMatch(
+      /only 1 starting position a human may take, but the table has 2 human seats/
+    );
+    // The surviving CONTROL is the legacy map: no roles ⇒ never refused.
+    let legacy = seatedLobby("clash-nofit-legacy", {
+      customMap: PLAIN_TOWNS,
+      customMapName: "Legacy"
+    });
+    legacy = apply(legacy, { type: "START_ADVENTURE", playerId: "p1" });
+    expect(legacy.phase).not.toBe("setup");
   });
 
   it("a HOSTED table is refused BEFORE the ready check opens, not after everyone confirms", () => {

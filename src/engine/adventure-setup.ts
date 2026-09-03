@@ -127,6 +127,7 @@ import {
   sanitizeSinglePlayerMapStart,
   sanitizeSettlementFieldPlan,
   sanitizeObjectGuard,
+  seatRoleMapDeployment,
   singlePlayerMapDeployment,
   type CustomMapPreset,
   type PresetForcedOptionKey
@@ -3604,36 +3605,41 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   const startCenterFor = (index: number): HexCoord =>
     designerStartCenters[index] ?? scenario.layout.starts[index];
   const authoredStartByPlayer = new Map<PlayerId, CustomMapTilePlan>();
-  // CO-OP map-authored starting positions (step 5). Only a CO-OP build reads
-  // `plan.coopSeat` — a clash table ignores the roles entirely, and a map with
-  // no roles anywhere returns null so seating is byte-identical to before.
-  // A table the authored roles cannot seat THROWS with the structured reason
-  // rather than silently dropping a human onto a computer-only position; the
-  // lobby refuses the same combination earlier, at the start check.
-  if (setupOptions.gameMode === "coop" && !authoredSoloDeployment) {
-    const coopHumanConfigs = playerConfigs.filter(
-      (config) => configuredControllers?.[config.id]?.kind !== "computer"
+  // MAP-AUTHORED STARTING-TILE SEAT ROLES (2026-09-03; was co-op-only in step
+  // 5). `plan.coopSeat` is read in EVERY session/table mode now — a pure-human
+  // clash included — through the ONE shared `seatRoleMapDeployment`, which the
+  // lobby start check calls with the same seats so check and build can never
+  // disagree. A map with no roles anywhere returns null, so seating stays
+  // byte-identical to before for every legacy map. Seats are fed in GAME ORDER
+  // (`startingPositionOrder` — the roll or the host's manual order), which is
+  // what makes an unmarked "free" position random. The SOLO FALLBACK opens a
+  // leftover player-only position to the AI in a single-player session only.
+  // The explicit `singlePlayer` solo contract keeps precedence: when it applies
+  // this block is skipped entirely. A table the roles cannot seat THROWS the
+  // structured reason rather than dropping a human onto an AI-only position.
+  if (!authoredSoloDeployment) {
+    const orderedConfigs = [...playerConfigs].sort(
+      (a, b) =>
+        (startingPositionIndex.get(a.id) ?? 0) - (startingPositionIndex.get(b.id) ?? 0)
     );
-    const coopComputerConfigs = playerConfigs.filter(
-      (config) => configuredControllers?.[config.id]?.kind === "computer"
+    const seatRoles = seatRoleMapDeployment(
+      customMap,
+      orderedConfigs.map((config) => ({
+        id: config.id,
+        kind:
+          configuredControllers?.[config.id]?.kind === "computer"
+            ? ("computer" as const)
+            : ("human" as const)
+      })),
+      { soloFallback: options.sessionMode === "single-player" }
     );
-    const coop = coopMapDeployment(customMap, coopHumanConfigs.length, coopComputerConfigs.length);
-    if (coop && !coop.ok) {
-      throw new Error(coop.reason);
+    if (seatRoles && !seatRoles.ok) {
+      throw new Error(seatRoles.reason);
     }
-    if (coop?.ok) {
-      coopHumanConfigs.forEach((config, index) => {
-        const plan = coop.deployment.humans[index];
-        if (plan) {
-          authoredStartByPlayer.set(config.id, plan);
-        }
-      });
-      coopComputerConfigs.forEach((config, index) => {
-        const plan = coop.deployment.computers[index];
-        if (plan) {
-          authoredStartByPlayer.set(config.id, plan);
-        }
-      });
+    if (seatRoles?.ok) {
+      for (const [playerId, plan] of seatRoles.assignments) {
+        authoredStartByPlayer.set(playerId, plan);
+      }
     }
   }
   if (authoredSoloDeployment) {
@@ -6830,17 +6836,29 @@ export function startAdventureFromLobby(
           : "This map is designed for Co-op only — switch the table mode to Co-op or pick another map."
       );
     }
-    if (effectiveMode === "coop") {
-      const computerSeats = lobby.seats.filter(
-        (seat) => controllerOf(state, seat.playerId).kind === "computer"
-      ).length;
-      const coop = coopMapDeployment(
+    // STARTING-TILE SEAT ROLES (2026-09-03): the per-position role refusal is
+    // no longer co-op-only — it runs in EVERY mode, including single player,
+    // through the SAME `seatRoleMapDeployment` the build calls, so the check
+    // and the build can never disagree. Seat ORDER does not change feasibility
+    // (only which free position each seat lands on), so the lobby's seat order
+    // is enough here; the build re-runs it in the resolved game order.
+    const soloDeploymentApplies =
+      state.sessionMode === "single-player" &&
+      singlePlayerMapDeployment(
         acceptedPlan,
-        lobby.seats.length - computerSeats,
-        computerSeats
+        Math.min(scenario.maxPlayers, scenario.layout.starts.length) - 1
+      ) !== null;
+    if (!soloDeploymentApplies) {
+      const seatRoles = seatRoleMapDeployment(
+        acceptedPlan,
+        lobby.seats.map((seat) => ({
+          id: seat.playerId,
+          kind: controllerOf(state, seat.playerId).kind === "computer" ? "computer" : "human"
+        })),
+        { soloFallback: state.sessionMode === "single-player" }
       );
-      if (coop && !coop.ok) {
-        throw new Error(coop.reason);
+      if (seatRoles && !seatRoles.ok) {
+        throw new Error(seatRoles.reason);
       }
     }
   }
