@@ -4084,3 +4084,12 @@ all fixed below). Every claim carries a test that fails when the logic is remove
   offer and spent the card before the play under test — the card is now held out of
   hand across the drain); the Sanctuary expectation moved to `"open"` with a GUARDED
   sanctuary `"stop"` CONTROL (`visitable-fields-cube.test.ts`).
+- **AI map card-cycle stall (found by the full suite, c7730f96)**: the Offense deck card
+  moved seed "measure-f" of `single-player-premium-rush.test.ts` onto a trajectory where
+  the AI's deck was reduced to Sorcery / Scales / Armor of Wonder — it banked map Power,
+  drew the next rider, replayed it and reshuffled its own discard for 256 actions. The
+  combat "hold-draw-rider-cycle" guard had no MAP twin: with `player.mapSpellPowerBank`
+  already > 0 a second Power draw rider is held at 180, and a map draw-only play scores
+  290 (strictly below END_TURN 300, no tie). Score layer only; `card-policy.test.ts`
+  (mutation-checked). LIMIT: a deck of pure draw riders can still cycle ONCE per turn
+  before the bank guard bites — bounded, never a stall.
