@@ -4093,3 +4093,106 @@ all fixed below). Every claim carries a test that fails when the logic is remove
   290 (strictly below END_TURN 300, no tie). Score layer only; `card-policy.test.ts`
   (mutation-checked). LIMIT: a deck of pure draw riders can still cycle ONCE per turn
   before the bank guard bites — bounded, never a stall.
+
+## Session batch 2026-09-04c (protocol v95) — Spell Book arming · Arena duels · designer seating/reveal/settlements · phone Foes panel · veterancy on every card
+
+Six items landed from three isolated worktrees (7b9088cd..5a4fc071). Every claim below has a
+test that fails when the logic is removed, each with a CONTROL. `npm run deploy:partykit` is
+OWED for the bump (new serialized fields + authoritative round-start / placement changes).
+
+- **A targeted Book Spell ARMS board targeting** (`seats.tsx`): the in-combat grimoire rendered
+  one button per concrete legal target and labelled every space cast "→ space" — Frost Ring
+  offered ~20 identical buttons with no way to tell which cell each meant (on iPad/phone the
+  fixed book also covers the board). Board-target casts are deduped by `cardSelectionKey` into
+  ONE "Cast → pick a space/unit on the board" button that arms the ordinary hand targeting (the
+  book closes, the board glows, the player taps — the hand-fan path, so the phone auto-snaps to
+  the Board tab); target-less casts still dispatch. `seats.test.tsx` ("Spell Book window").
+
+### "Arena duels" win condition (1v1 ONLY, opt-in) — what runs vs. limits
+
+`CustomWinCondition` kind `arena-duel` (parameterless; lobby MATCH row + designer editor). At
+the START of rounds 4/8/12 the two MAIN heroes fight a PvP battle WHEREVER they stand — no
+travel, no adjacency, no contested field — and the match is a best of three: 2 duel wins wins
+the game. The normal victory mode runs in parallel (conquest can end the series any time).
+Leaf `src/engine/arena-duel.ts` (schedule/tally reads), round-start hook
+`applyArenaDuelRoundStart` (adventure.ts, called from BOTH round-kind branches; announces at
+3/7/11, queues at 4/8/12 behind the round-start Event barrier like a Calamity Wave),
+`openArenaDuel` + the `startPlayerCombat` `arenaDuel` options bag + the finalize branch
+(adventure-reducer.ts). State: public `adventure.arenaDuels {wins, fought}` and
+`CombatContext.arenaDuel`; event `ARENA_DUEL_RESOLVED`. Pinned in `arena-duel.test.ts` (20
+specs, 13 recorded mutations).
+- **1v1 GATE**: a game without exactly 2 seats DROPS the condition at build with a public
+  `MAP_SECRET_FEATURE_FALLBACK` line (siblings survive); the lobby warns first. Inert at round
+  start without a live 1v1.
+- The duel is an ORDINARY PvP fight (prep shopping, deployment, tactics, retreat/surrender).
+  It skips the Sanctuary hero-attack ban and the siege / holding-defense derivation (a plain
+  arena board; `fieldId` is only the anchor). The attacker alternates per duel.
+- The finalize records the tally and KEEPS army losses, the winner's ordinary PvP experience,
+  the empty-deck restock and the Necromancy window. It SKIPS every map consequence: no hero
+  moves home (both stay put), no gold toll or designer bounty, no morale hit, no flag/Grail
+  transfer, no VP or conquest hero-defeat credit, no siege elimination, no winner's field
+  visit. It hands the table back to the round's first live seat (the wave-branch rule).
+- LIMITS: a duel pays NO VP either way and the loser gains no experience; a surrender/retreat
+  still LOSES the duel but costs nothing; no AI end-to-end test (only the prep-window decision
+  owner in `computer/window.test.ts`); untested with parallel turns; `arenaDuels.fought` is
+  written at SCHEDULE time; jsdom pins no pixel and there is no e2e spec.
+
+### Designed starting-tile seating, revealed slots & pre-assigned settlements
+
+Three optional designer/lobby features; each ABSENT ⇒ byte-identical.
+- **`CustomMapTilePlan.revealAtSetup` ("Start revealed")**: a NON-starting FACE-DOWN slot
+  keeps its whole DRAW (random pool / secret landmark / exact pin / one-of) but the drawn tile
+  is placed FACE-UP and materialized at setup. ONE seam — `instantiateTile(..., !revealNow)`
+  in adventure-setup's face-down arm; sanitised at the persistence seam (face-down
+  non-starting, literal true). Designer: a compact chip + a 👁 badge.
+  `designer-start-revealed.test.ts`, `map-designer.test.tsx`.
+- **`CustomMapSettlementFieldPlan.ownerStart`**: a 0-based STARTING-tile index (S1..Sn) —
+  "which settlement goes with which tile Ⅰ position". When the settlement's tile MATERIALIZES
+  the field is flagged to WHICHEVER seat started there (human or computer; via default order,
+  manual order, seat roles or the lobby picker below — frozen at build as
+  `AdventureState.startingTileSeats`), drawn with the owner's flag on the hex, and that seat
+  owes the ordinary `SETTLEMENT_CHOICE` founding bonus at the start of its OWN turn
+  (`queueOwedSettlementFoundings` from `queueTurnStartBuildingChoices`, so the AI/AFK driver
+  already answers it; several settlements ⇒ several choices; `MapFieldState.
+  settlementFoundingOwedBy`). An EMPTY position ⇒ unowned. LIMITS: production rises only at
+  the choice; a designer guard on it still guards (`everFlagged` stays false so the founding
+  bonus is the first-flag one). `preassigned-settlement.test.ts`,
+  `preassigned-settlement-board.test.tsx`.
+- **`GameSetupOptions.startingTileAssignments`**: a COMPLETE seat → starting-tile-index
+  record, honoured in EVERY session mode (computer seats included). Unassigned positions are
+  EMPTY — never instantiated, so a map may offer more Towns than seats. PRECEDENCE: the
+  explicit `singlePlayer` solo block > this record > `seatRoleMapDeployment`. A record
+  violating a designer role is REFUSED in `setGameOptions` (one shared `startingTileSeatRole`
+  read); a malformed record at a direct build falls back with an EVENT_NOTE. Cleared on a
+  seat-count change and on any map change. UI: the Heroes & Draft "Who starts where" matrix
+  (tap a seat chip per position, seats SWAP; forbidden chips disabled with the reason; "Empty"
+  is an indicator, not a button — a seat cannot be un-seated; a settlements-per-position badge
+  via `preassignedSettlementCountFor`). Not shown on the map-shape preview.
+  `starting-tile-assignments.test.ts`, `starting-tile-positions-ui.test.tsx`.
+- **jsdom cannot compute CSS**: every UI claim is a DOM/action pin only; there is NO e2e spec.
+
+### Phone "Foes" panel · unit veterancy on every card view — presentation only
+
+Two PURE-PRESENTATION additions over PUBLIC state (no engine rule, no serialized field).
+- **The phone Foes panel.** On a phone the tab CSS hides every desktop enemy surface unless
+  its own tab is open, so the opponent dossier was unreachable in practice.
+  `PhoneOpponentPanel` (opponent-info.tsx) is one tap card per opponent — faction dot, name,
+  hero level, army / hand COUNTS, gold, town — opening the SAME read-only `OpponentInfoModal`,
+  plus the read-only `OpponentsInPlayTray`. MAP: a new "Foes" tab between Army and Decks,
+  withheld with no opponent seat. COMBAT: no seventh tab — it rides the MENU tab. Rendered
+  ONLY in phone mode ⇒ the desktop DOM is byte-identical. The dossier sheet, the Spell Book
+  overlay and a 7+-tab crowding guard got `.phoneMode`-scoped CSS (`body:has(main.phoneMode)`
+  for the portaled dossier, the `.townWindow` precedent). `page-phone-mode.test.tsx`.
+- **Veterancy on every combat card view.** ONE shared derivation `combatUnitVeterancy` /
+  `veterancyXpLabel` (`src/components/table/unit-veterancy.ts`) adapts a `CombatUnitState`
+  onto the ENGINE's own `armyUnitRankInfo` — never a second ladder. `InspectPanel` gains a
+  `.inspectVeterancy` row (badge · rank · "6 / 9 XP" or "N XP · max"); `unitZoomContent`
+  appends the four-rung ladder. Renders for OWN, ENEMY PvP and NEUTRAL cards because
+  `unitExperience` / `unitRank` are never redacted. The opponent dossier already showed the
+  enemy's badge + XP bar and opened the XP board READ-ONLY (`ArmyPanel` with no `onAction`) —
+  now pinned, not duplicated. `board.test.tsx`, `opponent-info.test.tsx`.
+- LIMITS: **jsdom cannot compute CSS** and NO screenshot was taken (a dev server cannot run in
+  a worktree with a junctioned node_modules), so the sheet clearing the tab bar, the book's
+  cast buttons and the 8-tab map bar at 390px are REAL-BROWSER concerns with no e2e spec;
+  `combatUnitVeterancy` passes `companion: job !== undefined` as a proxy (a combat unit
+  carries no `companion` flag).

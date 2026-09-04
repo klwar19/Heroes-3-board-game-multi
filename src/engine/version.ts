@@ -1051,7 +1051,15 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // Kivotos Kyrie Eleison / Hero Mode / Outlaw Shot / Winged Pursuit resolve
 // differently. A v93 worker offers and resolves different actions.
 // `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 94;
+//
+// v95 (2026-09-04c): the "arena-duel" custom win condition (round-start 1v1 duels
+// behind the Event barrier: `AdventureState.arenaDuels`, `CombatContext.arenaDuel`,
+// the `arena-duel` reward-queue entry, `ARENA_DUEL_RESOLVED`); designer
+// `CustomMapTilePlan.revealAtSetup` + `CustomMapSettlementFieldPlan.ownerStart`
+// (`MapFieldState.settlementFoundingOwedBy`, `AdventureState.startingTileSeats`);
+// the lobby `GameSetupOptions.startingTileAssignments` seat → starting-tile record.
+// Authoritative round start and seat placement changed. `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 95;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
