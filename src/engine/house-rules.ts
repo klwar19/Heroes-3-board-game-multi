@@ -383,6 +383,15 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     legacyDefault: false,
   },
   {
+    id: "freelancers-guild-bounty",
+    label: "Freelancer's Guild: 2-gold bounty",
+    description:
+      "BINH house rule: Freelancer's Guild pays 2 gold each time you win against Neutral Units. Off: it pays the 1 gold printed on the Stronghold board.",
+    category: "combat",
+    default: true,
+    legacyDefault: false,
+  },
+  {
     id: "polish-bank-auto-combat",
     label: "Banks auto combat",
     description:

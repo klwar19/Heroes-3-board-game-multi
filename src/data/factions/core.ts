@@ -582,12 +582,11 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     id: "stronghold.freelancers_guild",
     name: "Freelancer's Guild",
     faction: "stronghold",
-    cost: { gold: 2, buildingMaterials: 2, valuables: 1 },
-    // HOUSE RULE: "Each time you win against Neutral Units, gain 2 gold (was 1).
-    // When Reinforcing or Recruiting you can pay the gold cost with building
-    // materials and valuables at market rates (1 material = 1 gold, 1 valuables
-    // = 3 gold)."
-    effect: { type: "FREELANCERS_GUILD", winGold: 2 },
+    // Printed Stronghold board: 2 gold, 2 building materials, 0 valuables.
+    cost: { gold: 2, buildingMaterials: 2 },
+    // Printed reward is 1 gold. The independent BINH
+    // `freelancers-guild-bounty` option raises the live payout to 2 gold.
+    effect: { type: "FREELANCERS_GUILD", winGold: 1 },
     implementationStatus: "implemented",
     source: townSource("stronghold")
   },

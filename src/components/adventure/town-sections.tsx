@@ -24,6 +24,7 @@ import {
   polishArmyUnitStackCap,
   polishArmyUnitStackCost,
   polishUnitStackCapLabel,
+  recruitCostWithSubstitution,
   unitSideRuleOverrides,
   type ArmyUnitState,
   type GameAction,
@@ -678,6 +679,10 @@ export function TownRecruitSection({
 }) {
   const [recruitIds, setRecruitIds] = useState<string[]>([]);
   const [reinforceIds, setReinforceIds] = useState<string[]>([]);
+  const [freelancerPrompt, setFreelancerPrompt] = useState<{
+    action: Extract<GameAction, { type: "POPULATION_ACTION" }>;
+    cost: ResourceCost;
+  } | null>(null);
   // The basket empties when the round advances or the seat changes
   // (state-adjustment-during-render pattern).
   const [basketKey, setBasketKey] = useState("");
@@ -686,6 +691,7 @@ export function TownRecruitSection({
     setBasketKey(nextBasketKey);
     setRecruitIds([]);
     setReinforceIds([]);
+    setFreelancerPrompt(null);
   }
 
   const player = state.players[viewerPlayerId];
@@ -714,6 +720,26 @@ export function TownRecruitSection({
     (buildingId) => coreBuildingDefinitions[buildingId]?.effect?.type === "UNLOCK_REINFORCE"
   );
   const polishStacksEnabled = houseRuleEnabled(state, "polish-unit-stacks");
+  const hasFreelancersGuild = town.buildings.some(
+    (buildingId) => coreBuildingDefinitions[buildingId]?.effect?.type === "FREELANCERS_GUILD"
+  );
+  const affordableRecruitCost = (cost: ResourceCost) =>
+    costAffordable(cost, player.resources) ||
+    (hasFreelancersGuild &&
+      (["materials-first", "valuables-first"] as const).some((preference) =>
+        costAffordable(recruitCostWithSubstitution(state, viewerPlayerId, cost, preference), player.resources)
+      ));
+  const requestPopulationPurchase = (
+    action: Extract<GameAction, { type: "POPULATION_ACTION" }>,
+    cost: ResourceCost
+  ) => {
+    const goldShortfall = Math.max(0, (cost.gold ?? 0) - player.resources.gold);
+    if (hasFreelancersGuild && goldShortfall > 0 && affordableRecruitCost(cost)) {
+      setFreelancerPrompt({ action, cost });
+      return;
+    }
+    onAction(action);
+  };
 
   const basketCost: Record<string, number> = {};
   const addCost = (cost: Record<string, number | undefined>) => {
@@ -748,10 +774,7 @@ export function TownRecruitSection({
       );
     }
   }
-  const basketAffordable =
-    (basketCost.gold ?? 0) <= player.resources.gold &&
-    (basketCost.buildingMaterials ?? 0) <= player.resources.buildingMaterials &&
-    (basketCost.valuables ?? 0) <= player.resources.valuables;
+  const basketAffordable = affordableRecruitCost(basketCost);
   const basketSize = recruitIds.length + reinforceIds.length;
 
   const submitBasket = () => {
@@ -765,9 +788,12 @@ export function TownRecruitSection({
         purchases.push({ kind: "reinforce", unitDefId: armyUnit.unitDefId, armyUnitId });
       }
     }
-    onAction({ type: "POPULATION_ACTION", playerId: viewerPlayerId, purchases });
-    setRecruitIds([]);
-    setReinforceIds([]);
+    const action = { type: "POPULATION_ACTION", playerId: viewerPlayerId, purchases } as const;
+    requestPopulationPurchase(action, basketCost);
+    if ((basketCost.gold ?? 0) <= player.resources.gold) {
+      setRecruitIds([]);
+      setReinforceIds([]);
+    }
   };
 
   return (
@@ -786,6 +812,51 @@ export function TownRecruitSection({
           </>
         ) : null}
       </small>
+      {freelancerPrompt ? (
+        <div className="freelancerPaymentPrompt" role="dialog" aria-label="Freelancer's Guild payment choice">
+          <strong>Freelancer&apos;s Guild — choose substitute payment</strong>
+          <small>
+            You are short {Math.max(0, (freelancerPrompt.cost.gold ?? 0) - player.resources.gold)} gold. Building
+            materials and valuables each count as exactly 1 gold.
+          </small>
+          <div className="freelancerPaymentOptions">
+            {(["materials-first", "valuables-first"] as const).map((preference) => {
+              const paid = recruitCostWithSubstitution(state, viewerPlayerId, freelancerPrompt.cost, preference);
+              const materialSubstitute = Math.max(
+                0,
+                (paid.buildingMaterials ?? 0) - (freelancerPrompt.cost.buildingMaterials ?? 0)
+              );
+              const valuableSubstitute = Math.max(
+                0,
+                (paid.valuables ?? 0) - (freelancerPrompt.cost.valuables ?? 0)
+              );
+              const label = [
+                materialSubstitute > 0 ? `${materialSubstitute} material${materialSubstitute === 1 ? "" : "s"}` : "",
+                valuableSubstitute > 0 ? `${valuableSubstitute} valuable${valuableSubstitute === 1 ? "" : "s"}` : ""
+              ].filter(Boolean).join(" + ");
+              return (
+                <button
+                  className="commandButton primary"
+                  disabled={!costAffordable(paid, player.resources)}
+                  key={preference}
+                  onClick={() => {
+                    onAction({ ...freelancerPrompt.action, freelancerPayment: preference });
+                    setFreelancerPrompt(null);
+                    setRecruitIds([]);
+                    setReinforceIds([]);
+                  }}
+                  type="button"
+                >
+                  Use {label || "gold"}
+                </button>
+              );
+            })}
+            <button className="commandButton" onClick={() => setFreelancerPrompt(null)} type="button">
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
       <MgqGoldContractPanel player={player} />
       {faction.units.map((unitDefId) => {
         const unit = coreUnitDefinitions[unitDefId];
@@ -872,7 +943,7 @@ export function TownRecruitSection({
           const reinforceRef = { kind: "reinforce" as const, unitDefId: owned.unitDefId, armyUnitId: owned.id };
           const reinforceCost = applyRecruitGoldDiscount(state, viewerPlayerId, reinforceRef, def?.pack?.cost ?? {});
           const reinforceLegion = legionVoucherDiscount(state, viewerPlayerId, reinforceRef);
-          const reinforceAffordable = costAffordable(reinforceCost, player.resources);
+          const reinforceAffordable = affordableRecruitCost(reinforceCost);
           return (
             <div
               className={`recruitRow unitRosterRow reinforce owned-few ${checked ? "checked" : ""} ${upgradable ? "" : "locked"}`}
@@ -902,11 +973,14 @@ export function TownRecruitSection({
                     onClick={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
-                      onAction({
-                        type: "POPULATION_ACTION",
-                        playerId: viewerPlayerId,
-                        purchases: [{ kind: "reinforce", unitDefId: owned.unitDefId, armyUnitId: owned.id }]
-                      });
+                      requestPopulationPurchase(
+                        {
+                          type: "POPULATION_ACTION",
+                          playerId: viewerPlayerId,
+                          purchases: [{ kind: "reinforce", unitDefId: owned.unitDefId, armyUnitId: owned.id }]
+                        },
+                        reinforceCost
+                      );
                     }}
                     title={
                       reinforceAffordable
@@ -938,7 +1012,7 @@ export function TownRecruitSection({
         const recruitRef = { kind: "recruit" as const, unitDefId };
         const recruitCost = applyRecruitGoldDiscount(state, viewerPlayerId, recruitRef, unit.few.cost);
         const recruitLegion = legionVoucherDiscount(state, viewerPlayerId, recruitRef);
-        const recruitAffordable = costAffordable(recruitCost, player.resources);
+        const recruitAffordable = affordableRecruitCost(recruitCost);
         return (
           <div className={`recruitRow unitRosterRow ${tierUnlocked ? "" : "locked"}`} key={unitDefId}>
             {unitCards}
@@ -959,11 +1033,14 @@ export function TownRecruitSection({
                   onClick={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
-                    onAction({
-                      type: "POPULATION_ACTION",
-                      playerId: viewerPlayerId,
-                      purchases: [{ kind: "recruit", unitDefId }]
-                    });
+                    requestPopulationPurchase(
+                      {
+                        type: "POPULATION_ACTION",
+                        playerId: viewerPlayerId,
+                        purchases: [{ kind: "recruit", unitDefId }]
+                      },
+                      recruitCost
+                    );
                   }}
                   title={
                     recruitAffordable ? `Recruit ${unit.name} now — ${formatCost(recruitCost)}` : "Not enough resources to recruit"

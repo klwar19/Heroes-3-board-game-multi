@@ -84,6 +84,9 @@ export type HouseRuleId =
   // BINH Mystical Garden reward: its gold choice grants 3 instead of the
   // printed 2. Off restores the official card value.
   | "mystical-garden-gold"
+  // BINH Stronghold rule: Freelancer's Guild pays 2 gold per Neutral victory
+  // instead of the 1 gold printed on the board.
+  | "freelancers-guild-bounty"
   | "griffin-buff"
   | "marksman-buff"
   // BINH house rule: the Pack side of Arch Devils deals 6 damage instead of
@@ -5083,6 +5086,13 @@ export type GameAction =
         unitDefId: string;
         armyUnitId?: string;
       }[];
+      /**
+       * When Freelancer's Guild must cover a gold shortfall, the human may
+       * choose which 1:1 substitute is spent first. Omitted actions (AI, old
+       * clients and scripted rewards) retain a deterministic materials-first
+       * fallback.
+       */
+      freelancerPayment?: "materials-first" | "valuables-first";
     }
   | {
       /**

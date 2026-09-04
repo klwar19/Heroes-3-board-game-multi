@@ -229,16 +229,28 @@ describe("Stronghold content", () => {
       type: "RESOURCE_ROUND_CHOICE",
       options: [{ drawCards: 2 }, { buildingMaterials: 2 }]
     });
-    // Wiki-verified cost: 2 gold / 2 building materials / 1 valuables.
+    expect(
+      Object.fromEntries(faction.buildings.map((buildingId) => [buildingId, coreBuildingDefinitions[buildingId].cost]))
+    ).toEqual({
+      "stronghold.city_hall": { gold: 10, buildingMaterials: 4 },
+      "stronghold.citadel": { gold: 8, buildingMaterials: 4, valuables: 1 },
+      "stronghold.mage_guild": { gold: 4, buildingMaterials: 2, valuables: 1 },
+      "stronghold.dwelling_bronze": { gold: 4, buildingMaterials: 3, valuables: 1 },
+      "stronghold.dwelling_silver": { gold: 8, buildingMaterials: 6, valuables: 3 },
+      "stronghold.dwelling_gold": { gold: 10, buildingMaterials: 8, valuables: 4 },
+      "stronghold.hall_of_valhalla": { gold: 8, buildingMaterials: 3 },
+      "stronghold.freelancers_guild": { gold: 2, buildingMaterials: 2 }
+    });
+    // Printed board cost: 2 gold / 2 building materials / 0 valuables.
     expect(coreBuildingDefinitions["stronghold.freelancers_guild"].cost).toEqual({
       gold: 2,
-      buildingMaterials: 2,
-      valuables: 1
+      buildingMaterials: 2
     });
-    // HOUSE RULE: the neutral-win bounty is buffed from 1 to 2 gold.
+    // The definition remains the printed 1 gold; BINH applies its optional
+    // 2-gold bounty at payout time.
     expect(coreBuildingDefinitions["stronghold.freelancers_guild"].effect).toMatchObject({
       type: "FREELANCERS_GUILD",
-      winGold: 2
+      winGold: 1
     });
     expect(coreBuildingDefinitions["stronghold.hall_of_valhalla"].effect).toMatchObject({
       type: "HALL_OF_VALHALLA",

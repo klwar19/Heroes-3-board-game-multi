@@ -144,6 +144,29 @@ describe("Population recruit — unit view + one-click shortcut", () => {
     });
   });
 
+  it("Freelancer's Guild asks which 1:1 substitute to spend when gold is short", () => {
+    const state = recruitReadyState();
+    state.players.p1.factionId = "stronghold";
+    state.players.p1.resources = { gold: 0, buildingMaterials: 10, valuables: 10 };
+    state.players.p1.army = [];
+    const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p1")!;
+    town.factionId = "stronghold";
+    town.buildings = ["stronghold.dwelling_bronze", "stronghold.freelancers_guild"];
+    const onAction = vi.fn();
+    renderRecruit(state, onAction);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Recruit" })[0]);
+
+    expect(onAction).not.toHaveBeenCalled();
+    const prompt = screen.getByRole("dialog", { name: /Freelancer's Guild payment choice/i });
+    expect(prompt.textContent).toMatch(/each count as exactly 1 gold/i);
+    const materialsButton = screen.getByRole("button", { name: /Use .*material/i });
+    fireEvent.click(materialsButton);
+    expect(onAction).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "POPULATION_ACTION", freelancerPayment: "materials-first" })
+    );
+  });
+
   it("shows the Polish Stack count/cost and dispatches the exact Stack purchase", () => {
     const state = recruitReadyState();
     state.adventure!.houseRules!["polish-unit-stacks"] = true;

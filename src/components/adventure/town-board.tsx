@@ -159,7 +159,7 @@ function LoadedImg({ src, className, style }: { src: string; className: string; 
  *     (two-in-one) bar blurs its slice to read as the shared tile,
  *  3. the PC-game building render shipped for the classic town panel
  *     (building.assets.image), floating over the bar — only on boards with no
- *     built-town image to reveal (stronghold),
+ *     built-town image to reveal,
  *  4. nothing — the plaque alone marks the build.
  */
 function DesignedTile({

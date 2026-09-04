@@ -21415,16 +21415,34 @@ export function applyAstrologersHeroEmpower(state: GameState, playerId: PlayerId
 }
 
 /**
- * Freelancer's Guild: "When Reinforcing or Recruiting you can pay the gold cost
- * with building materials and valuables at MARKET RATES." Returns how many spare
- * materials/valuables to spend toward a gold shortfall and the gold value those
- * cover — each material is worth `marketGoldValueOf("buildingMaterials")` gold
- * (1) and each valuables `marketGoldValueOf("valuables")` gold (3), exactly the
- * Trading Post sell rates. Materials (which divide the gold 1:1) settle the exact
- * remainder; a final valuables lot can overshoot the last 1–2 gold the way a
- * market trade buys in whole lots. Without the guild, nothing is substituted.
+ * Freelancer's Guild: "When Reinforcing or Recruiting you can use building
+ * materials and valuables like gold." Both substitute at exactly 1:1 — this is
+ * the building's own rule, not a Trading Post sale. `preference` records the
+ * human's answer to the payment prompt; old/scripted actions use the stable
+ * materials-first fallback. Printed non-gold costs are reserved before any
+ * spare resource is considered for the gold shortfall.
  */
 function freelancerGoldSubstitution(state: GameState, playerId: PlayerId, cost: ResourceCost): {
+  fromMaterials: number;
+  fromValuables: number;
+  goldCovered: number;
+};
+function freelancerGoldSubstitution(
+  state: GameState,
+  playerId: PlayerId,
+  cost: ResourceCost,
+  preference?: "materials-first" | "valuables-first"
+): {
+  fromMaterials: number;
+  fromValuables: number;
+  goldCovered: number;
+};
+function freelancerGoldSubstitution(
+  state: GameState,
+  playerId: PlayerId,
+  cost: ResourceCost,
+  preference: "materials-first" | "valuables-first" = "materials-first"
+): {
   fromMaterials: number;
   fromValuables: number;
   goldCovered: number;
@@ -21444,31 +21462,42 @@ function freelancerGoldSubstitution(state: GameState, playerId: PlayerId, cost: 
     return none;
   }
 
-  const materialValue = marketGoldValueOf("buildingMaterials");
-  const valuableValue = marketGoldValueOf("valuables");
   const spareMaterials = Math.max(0, player.resources.buildingMaterials - (cost.buildingMaterials ?? 0));
   const spareValuables = Math.max(0, player.resources.valuables - (cost.valuables ?? 0));
 
-  // Use whole valuables lots that fit without overshooting, then settle the
-  // remainder with materials. If materials run short, spend one extra valuables
-  // lot (an over-payment, as a market trade in whole lots would be).
   let remaining = shortfall;
-  let fromValuables = Math.min(spareValuables, Math.floor(remaining / valuableValue));
-  remaining -= fromValuables * valuableValue;
-  const fromMaterials = Math.min(spareMaterials, Math.ceil(remaining / materialValue));
-  remaining -= fromMaterials * materialValue;
-  if (remaining > 0 && fromValuables < spareValuables) {
-    fromValuables += 1;
-    remaining -= valuableValue;
+  let fromMaterials = 0;
+  let fromValuables = 0;
+  const spendMaterials = () => {
+    const amount = Math.min(spareMaterials, remaining);
+    fromMaterials += amount;
+    remaining -= amount;
+  };
+  const spendValuables = () => {
+    const amount = Math.min(spareValuables, remaining);
+    fromValuables += amount;
+    remaining -= amount;
+  };
+  if (preference === "valuables-first") {
+    spendValuables();
+    spendMaterials();
+  } else {
+    spendMaterials();
+    spendValuables();
   }
 
-  const goldCovered = fromMaterials * materialValue + fromValuables * valuableValue;
+  const goldCovered = fromMaterials + fromValuables;
   return { fromMaterials, fromValuables, goldCovered };
 }
 
-/** A recruit/reinforce cost with the guild's market-rate gold substitution folded in. */
-function recruitCostWithSubstitution(state: GameState, playerId: PlayerId, cost: ResourceCost): ResourceCost {
-  const substitution = freelancerGoldSubstitution(state, playerId, cost);
+/** A recruit/reinforce cost with the Guild's chosen 1:1 substitution folded in. */
+export function recruitCostWithSubstitution(
+  state: GameState,
+  playerId: PlayerId,
+  cost: ResourceCost,
+  preference: "materials-first" | "valuables-first" = "materials-first"
+): ResourceCost {
+  const substitution = freelancerGoldSubstitution(state, playerId, cost, preference);
   if (substitution.fromMaterials === 0 && substitution.fromValuables === 0) {
     return cost;
   }
@@ -21488,8 +21517,14 @@ export function hasRecruitResources(state: GameState, playerId: PlayerId, cost: 
   return hasResources(player, cost) || hasResources(player, recruitCostWithSubstitution(state, playerId, cost));
 }
 
-/** Pays a recruit/reinforce cost, letting the guild substitute gold 1:1. */
-export function spendRecruitResources(state: GameState, playerId: PlayerId, cost: ResourceCost, reason: string): void {
+/** Pays a recruit/reinforce cost, letting the Guild substitute either resource 1:1. */
+export function spendRecruitResources(
+  state: GameState,
+  playerId: PlayerId,
+  cost: ResourceCost,
+  reason: string,
+  preference: "materials-first" | "valuables-first" = "materials-first"
+): void {
   const player = state.players[playerId];
   if (!player) {
     return;
@@ -21500,12 +21535,11 @@ export function spendRecruitResources(state: GameState, playerId: PlayerId, cost
     return;
   }
 
-  spendResources(
-    state,
-    playerId,
-    recruitCostWithSubstitution(state, playerId, cost),
-    `${reason} (Freelancer's Guild pays resources as gold)`
-  );
+  const substitutedCost = recruitCostWithSubstitution(state, playerId, cost, preference);
+  if (!hasResources(player, substitutedCost)) {
+    throw new Error("The selected Freelancer's Guild payment cannot cover this purchase.");
+  }
+  spendResources(state, playerId, substitutedCost, `${reason} (Freelancer's Guild pays resources as gold)`);
 }
 
 /** Whether a hero the player controls stands on a field carrying `location`. */

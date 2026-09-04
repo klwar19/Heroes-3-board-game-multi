@@ -21941,6 +21941,32 @@ img.cardBack {
   font-weight: 700;
 }
 
+.freelancerPaymentPrompt {
+  display: grid;
+  gap: 8px;
+  margin: 6px 0 10px;
+  padding: 10px;
+  border: 1px solid rgb(214 178 94 / 55%);
+  border-radius: 8px;
+  background: rgb(44 31 18 / 92%);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 32%);
+}
+
+.freelancerPaymentPrompt > strong {
+  color: #f0d28a;
+}
+
+.freelancerPaymentPrompt > small {
+  color: #d8c6a2;
+  line-height: 1.4;
+}
+
+.freelancerPaymentOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 /* Reinforce (Few → Pack) rows: set apart from plain recruit rows. */
 .recruitRow.reinforce {
   padding-left: 6px;

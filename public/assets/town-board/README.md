@@ -6,11 +6,10 @@ board. Castle, Rampart, Inferno, Necropolis, Dungeon, Tower and Fortress use
 the real printed scans (`/public/assets/towns-<faction>-{empty,full}.webp`,
 fetched by `scripts/fetch-town-boards.py`) — nothing is needed here for them.
 
-Stronghold (fan empty board, no fully-built scan) and the four DESIGNED boards
-(Conflux, Cove, Bulwark, Factory) overlay per-building tile art from THIS
-folder on every built bar. Stronghold and Factory ship a complete set of the
-REAL printed board-game tiles (all eight Stronghold buildings — the six single
-bars plus the shared bar's two faces, below). **Cove and Conflux** now ship
+Stronghold now uses the genuine wiki empty/full scans under `/public/assets`
+and reveals the full scan in seven aligned slices like the other Archon boards.
+The remaining DESIGNED boards overlay per-building tile art from THIS folder
+on every built bar. Factory ships a complete real printed tile set. **Cove and Conflux** now ship
 printed portrait tiles here (`cove-*.webp` / `conflux-*.webp`); full empty/full
 board scans with English definitions live at
 `/assets/towns-{cove,conflux}-board-{empty,full}.webp` (pipeline under
@@ -27,12 +26,12 @@ contract, no code changes needed:
   391×819 px) showing the building over its townscape; the board
   letterboxes/covers whatever it gets (`object-fit: cover`).
 - **Shared (two-in-one) bar**: a faction may print a single DOUBLE-SIDED tile
-  for its shared bar instead of two half-slots (Stronghold does). That is wired
+  for its shared bar instead of two half-slots. That is wired
   as `combinedTile` in `src/data/towns/boards.ts` with two full-bar faces —
   `<factionId>-shared-one.webp` (exactly one of the pair built) and
   `<factionId>-shared-both.webp` (both built) — and rendered CRISP (never
   blurred) with a label naming which building is up and which is not while only
-  one is built. Stronghold's pair is Barracks Tower + Freelancer's Guild.
+  one is built. The current Stronghold scan does not use this legacy path.
 - **Generation prompt sketch** (Gemini / any image model): "Heroes of Might
   and Magic III board game town-board building tile, tall portrait crop,
   painted style matching the <faction> townscape, showing the <building>,

@@ -5852,6 +5852,11 @@ function resolveBlackTowerDragonChoice(state: GameState, optionIndex: number): v
   startNeutralEncounter(state, hero, field);
 }
 
+/** Printed Freelancer bounty, with the independent BINH option layered on. */
+function freelancersGuildBounty(state: GameState, printedGold: number): number {
+  return houseRuleEnabled(state, "freelancers-guild-bounty") ? 2 : printedGold;
+}
+
 /**
  * Shared Quick-Combat victory: the guards fall unfought — QUICK_COMBAT_WON
  * event, the Freelancer's Guild bounty (a Quick Combat is still a win against
@@ -5873,7 +5878,8 @@ function resolveQuickCombatWin(state: GameState, hero: HeroState, field: MapFiel
   const guildId = findTownBuildingWithEffect(state, playerId, "FREELANCERS_GUILD");
   const guild = guildId ? coreBuildingDefinitions[guildId] : null;
   if (guild?.effect?.type === "FREELANCERS_GUILD") {
-    gainResources(state, playerId, { gold: guild.effect.winGold }, "Freelancer's Guild bounty");
+    const bounty = freelancersGuildBounty(state, guild.effect.winGold);
+    gainResources(state, playerId, { gold: bounty }, "Freelancer's Guild bounty");
   }
 
   field.everFlagged = field.everFlagged || false;
@@ -14214,14 +14220,15 @@ export function finalizeAdventureCombat(state: GameState): void {
         const guildId = findTownBuildingWithEffect(state, playerId, "FREELANCERS_GUILD");
         const guild = guildId ? coreBuildingDefinitions[guildId] : null;
         if (guild?.effect?.type === "FREELANCERS_GUILD") {
+          const bounty = freelancersGuildBounty(state, guild.effect.winGold);
           if (playerCanPlayNecromancy(state, playerId)) {
             adventure.rewardQueue.push({
               playerId,
               kind: "visit-steps",
-              steps: [{ type: "GAIN_RESOURCES", gold: guild.effect.winGold }]
+              steps: [{ type: "GAIN_RESOURCES", gold: bounty }]
             });
           } else {
-            gainResources(state, playerId, { gold: guild.effect.winGold }, "Freelancer's Guild bounty");
+            gainResources(state, playerId, { gold: bounty }, "Freelancer's Guild bounty");
           }
         }
 
@@ -15819,7 +15826,13 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
     throw new Error(buysStacks ? "Not enough resources for those Unit Stacks." : "Not enough resources for those units.");
   }
 
-  spendRecruitResources(state, action.playerId, totalCost, buysStacks ? "Polish Unit Stacks" : "population action");
+  spendRecruitResources(
+    state,
+    action.playerId,
+    totalCost,
+    buysStacks ? "Polish Unit Stacks" : "population action",
+    action.freelancerPayment
+  );
   // The token is NOT consumed by a purchase: the player may keep recruiting and
   // reinforcing this round (BINH house rule). Marking the round "purchased" arms
   // the movement lock — the next time one of this player's heroes moves, the

@@ -66,8 +66,10 @@ describe("TownPanel — in-place special-building effect / use buttons", () => {
     render(<TownPanel legalActions={getLegalActions(state, "p1")} onAction={vi.fn()} state={state} viewerPlayerId="p1" />);
 
     const panel = openPanel("Freelancer's Guild");
-    expect(panel.textContent).toMatch(/win against Neutral Units, gain 2 gold/i);
-    expect(panel.textContent).toMatch(/market rates/i);
+    // The printed reward is 1 gold; the BINH `freelancers-guild-bounty` option
+    // (named in the text) raises the live payout to 2. Resources substitute 1:1.
+    expect(panel.textContent).toMatch(/win against Neutral Units, gain 1 gold \(2 with the BINH/i);
+    expect(panel.textContent).toMatch(/valuables as gold at 1:1/i);
     expect(panel.textContent).toMatch(/always on/i);
   });
 
