@@ -11,7 +11,9 @@ import {
   factoryGoldUnitConflict,
   isRecruitableNeutralUnit,
   isPlayableFaction,
-  neutralUnitIdsByFaction
+  neutralUnitIdsByFaction,
+  neutralUnitIdsByTier,
+  usesRandomUnexpectedReinforcements
 } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { DOOM_UNIT_IDS_BY_TIER } from "@/data/doom";
@@ -41,7 +43,7 @@ import {
   makeActiveEffect,
   releaseEndedOngoingCards
 } from "./active-effects";
-import { digFromOwnDeckTop, drawCardsForPlayer, reshuffleSharedDeckIfEmpty, shuffleCards } from "./decks";
+import { drawCardsForPlayer, reshuffleSharedDeckIfEmpty, shuffleCards } from "./decks";
 import {
   applyAnimeFactionAstrologersRoundPenalty,
   applyAnimeFactionResourceRoundPenalty
@@ -99,6 +101,7 @@ import {
 } from "./morale-cards";
 import { MORALE_CARD_IDS } from "@/data/cards/morale";
 import { parallelMapInteractionBlocker, stopParallelTurns } from "./parallel-turns";
+import { dropParallelCombatContext, hasParkedParallelInteractions } from "./parallel-combats";
 import { clearResetVote } from "./reset-vote";
 import {
   artifactCountOf,
@@ -296,7 +299,6 @@ import type {
   ReinforcementDiscountBank,
   ResourceCost,
   ResourceKind,
-  SpellSchool,
   DragonUtopiaGuards,
   StackTokenStat,
   TownState,
@@ -737,6 +739,7 @@ export function getAstrologersState(state: GameState): AstrologersState | null {
   adventure.astrologers.swiftWeaselUsedBy ??= [];
   adventure.astrologers.heroEmpowerChosenRoundBy ??= {};
   adventure.astrologers.heroEmpowerUsesBy ??= {};
+  adventure.astrologers.wanderingMerchantBoughtBy ??= [];
 
   return adventure.astrologers;
 }
@@ -1992,16 +1995,15 @@ export function seaStepHalts(
   if (fromSea === toSea) {
     return false; // within the sea or on land: never halts
   }
+  // BINH house rule: Wind waives BOTH coastline stops. Its printed land→sea
+  // exception remains unchanged in Legacy (whose sea→land step already continues).
+  if (getActiveAstrologersCard(state)?.effect.type === "SEA_CONTINUE_AFTER_EMBARK") {
+    return false;
+  }
   // Legacy now lets a hero continue after disembarking; BINH deliberately
   // preserves the previous symmetric coastline rule.
   if (fromSea && !toSea) {
     return getRuleset(state) === "binh";
-  }
-  // Wind (Astrologers): entering the sea FROM a land field (embarking) no longer
-  // halts the hero — it keeps moving. Disembarking follows the ruleset above. With
-  // no sea tiles this branch is never reached, so "ignore with no sea" holds.
-  if (!fromSea && toSea && getActiveAstrologersCard(state)?.effect.type === "SEA_CONTINUE_AFTER_EMBARK") {
-    return false;
   }
   const movingPlayerId = Object.values(state.heroes).find((hero) => hero.spaceId === from)?.controllerId;
   if (!fromSea && toSea && movingPlayerId && equipmentIgnoresEmbarkPenalty(state, movingPlayerId)) {
@@ -2659,7 +2661,8 @@ export function isFieldGuarded(field: MapFieldState): boolean {
  *    Wings over ANY field — the hero may walk THROUGH it without resolving (no
  *    Combat, no visit) or END there (it resolves normally). Like "open" for
  *    reachability, but a non-final path step passes over it instead of resolving.
- *  - "pass-only": an allied hero stands here; you may walk through but not stay.
+ *  - "pass-only": an allied or temporarily non-attackable hero stands here;
+ *    you may walk through but not stay.
  *  - "block": never enterable (blocked fields, sanctuary-protected enemies).
  */
 export type HeroStepKind = "open" | "stop" | "encounter" | "pass-only" | "block";
@@ -2745,6 +2748,15 @@ export function classifyHeroStep(
   if (occupant) {
     if (playersAreAllied(state, occupant.controllerId, playerId)) {
       return "pass-only";
+    }
+    // Astrologers Sanctuary bans Hero-vs-Hero attacks for the whole drawn
+    // round. The enemy hex is neither a landing/click target nor an ordinary
+    // corridor; Pathfinding / Angel Wings may still pass the encounter without
+    // stopping, exactly as they can pass an enemy hero outside this event.
+    // startPlayerCombat keeps its independent rejection as the authoritative
+    // backstop for teleports, imported actions and other non-walk entry paths.
+    if (pvpAttacksBanned(state)) {
+      return movement.passEncounters || passAnyField(movement) ? "pass-only" : "block";
     }
     // Heroes inside a Sanctuary cannot be attacked; the rulebook lets
     // friendly heroes move through them but never stop there.
@@ -2894,7 +2906,11 @@ export function heroMoveStartsBattle(state: GameState, heroId: HeroId, to: MapSp
   const field = adventure.fields[to];
 
   const occupant = heroAtSpace(state, to, hero.id);
-  if (occupant && !playersAreAllied(state, occupant.controllerId, hero.controllerId)) {
+  if (
+    occupant &&
+    !playersAreAllied(state, occupant.controllerId, hero.controllerId) &&
+    !pvpAttacksBanned(state)
+  ) {
     const location = field ? locationDefinitions[field.location] : undefined;
     // A hero inside a Sanctuary cannot be attacked — moving onto them is a
     // pass-only step the move offer never allows, so it is not a battle here.
@@ -4327,6 +4343,8 @@ export function flagField(state: GameState, playerId: PlayerId, field: MapFieldS
 
   field.flagOwnerId = playerId;
 
+  ensureSettlementRecruitFactions(state);
+
   // Hold-to-win settlements: a NEW owner restarts the continuous-hold counter
   // at 0; the next startAdventureRound ticks begin counting full rounds held.
   if (field.holdRoundsToWin && field.holdRoundsToWin > 0) {
@@ -5029,8 +5047,10 @@ export function checkCustomWinConditions(state: GameState): void {
   if (!adventure || adventure.winnerPlayerId) {
     return;
   }
-  // Never end the game mid-battle (a crossing resolves on the next map-side action).
-  if (state.combat) {
+  // Never end the game mid-battle (a crossing resolves on the next map-side
+  // action). In parallel turns a battle may be PARKED rather than loaded, so a
+  // third seat's map action must not end the table out from under it.
+  if (state.combat || hasParkedParallelInteractions(state)) {
     return;
   }
   // Per-settlement hold-to-win (designer tile.settlement.holdRoundsToWin): first
@@ -5385,6 +5405,14 @@ export function eliminatePlayer(
   if (!player || player.eliminated || playerId === NEUTRAL_PLAYER_ID) {
     return;
   }
+
+  // A parked parallel battle dies with its owner. Nothing else deletes one, and
+  // `parallelStateForPlayer` refuses an eliminated seat, so an orphan would keep
+  // `hasParkedParallelInteractions` true forever — pausing every turn clock and
+  // making `stopParallelTurns` throw on every later PvP crossing / flag steal.
+  // The parked fight is DROPPED, not conceded: its rewards and army losses are
+  // the eliminated seat's own, and the guard field simply stays guarded.
+  dropParallelCombatContext(state, playerId);
 
   if (gaveUp) {
     player.gaveUpAt = state.eventCounter ?? state.eventLog.length;
@@ -10889,6 +10917,7 @@ export function processPendingVisit(state: GameState): void {
         resolveTokenTeleportReveal(state, visit, step);
         break;
       case "WHIRLPOOL_PENALTY": {
+        if (getActiveAstrologersCard(state)?.effect.type === "WHIRLPOOL_FREE_CHOICE") break;
         // "After each Whirlpool travel, lose 1 unit from your unit Deck." The
         // card says WHICH unit is lost nowhere, so the traveller picks (the
         // friendlier reading, mirroring hand discards being the owner's pick).
@@ -10912,6 +10941,7 @@ export function processPendingVisit(state: GameState): void {
         break;
       }
       case "WHIRLPOOL_DISCARD_UNIT": {
+        if (getActiveAstrologersCard(state)?.effect.type === "WHIRLPOOL_FREE_CHOICE") break;
         const player = state.players[visit.playerId];
         const unit = player?.army.find((candidate) => candidate.id === step.unitId);
         if (!player || !unit) {
@@ -12121,9 +12151,6 @@ export function processPendingVisit(state: GameState): void {
             steps: [{ type: "GRANT_WAR_MACHINE", cardId, cost: discounted }]
           });
         }
-        if (options.length === 0) {
-          break;
-        }
         options.push({ label: "Skip", steps: [] });
         visit.steps.unshift({
           type: "CHOOSE_ONE",
@@ -12151,6 +12178,14 @@ export function processPendingVisit(state: GameState): void {
           spendResources(state, visit.playerId, step.cost, `bought the ${cardLibrary[step.cardId]?.name ?? step.cardId}`);
         }
         player.hand.push(step.cardId);
+        if (step.cost && getActiveAstrologersCard(state)?.effect.type === "WAR_MACHINE_DISCOUNT_OFFER") {
+          const astrologers = getAstrologersState(state);
+          if (astrologers) {
+            astrologers.wanderingMerchantBoughtBy = [
+              ...new Set([...(astrologers.wanderingMerchantBoughtBy ?? []), visit.playerId])
+            ];
+          }
+        }
         appendEvent(state, {
           type: "WAR_MACHINE_BOUGHT",
           playerId: visit.playerId,
@@ -12314,11 +12349,10 @@ export function processPendingVisit(state: GameState): void {
         break;
       }
       case "FACTION_RECRUIT_OFFER": {
-        // Unexpected Reinforcements: search the Neutral Units deck and recruit,
-        // for free, one neutral unit ASSOCIATED with the player's faction — the
-        // same-tier neutral-deck counterpart of a unit on their roster — whose
-        // Dwelling tier they have built. Recruited onto the single-sided Neutral
-        // side, so (like any neutral unit) it can never be reinforced to a Pack.
+        // Unexpected Reinforcements: established factions search for an associated
+        // neutral counterpart. Custom Anime/Wuxia/Bulwark factions instead get an
+        // optional seeded-random neutral from a built Dwelling tier. Recruited onto
+        // the single-sided Neutral side, so it can never be reinforced to a Pack.
         // Only copies still in the deck are offered. A faction's top-tier
         // signature creature (Gold Dragons, Titans, Hydras) only has an azure
         // neutral card, never a gold-tier one, so it never appears here. Azure
@@ -12331,6 +12365,15 @@ export function processPendingVisit(state: GameState): void {
         const associated = neutralUnitIdsByFaction[player.factionId] ?? [];
         const seen = new Set<string>();
         const options: { label: string; steps: VisitStep[] }[] = [];
+        if (usesRandomUnexpectedReinforcements(player.factionId)) {
+          if (randomUnexpectedReinforcementCandidates(state, visit.playerId).length === 0) {
+            break;
+          }
+          options.push({
+            label: "Recruit a random Neutral Unit (free)",
+            steps: [{ type: "RECRUIT_RANDOM_NEUTRAL" }]
+          });
+        }
         for (const unitDefId of associated) {
           const def = coreUnitDefinitions[unitDefId];
           if (!def?.neutral || !unlocked.has(def.tier) || seen.has(unitDefId)) {
@@ -12351,9 +12394,35 @@ export function processPendingVisit(state: GameState): void {
         options.push({ label: "Skip", steps: [] });
         visit.steps.unshift({
           type: "CHOOSE_ONE",
-          prompt: "Unexpected Reinforcements: search the Neutral Units deck and recruit one unit tied to your faction for free",
+          prompt: usesRandomUnexpectedReinforcements(player.factionId)
+            ? "Unexpected Reinforcements: recruit one random Neutral Unit for free"
+            : "Unexpected Reinforcements: search the Neutral Units deck and recruit one unit tied to your faction for free",
           options
         });
+        break;
+      }
+      case "RECRUIT_RANDOM_NEUTRAL": {
+        const player = state.players[visit.playerId];
+        if (!player || !usesRandomUnexpectedReinforcements(player.factionId)) {
+          break;
+        }
+        const candidates = randomUnexpectedReinforcementCandidates(state, visit.playerId);
+        if (candidates.length === 0) {
+          break;
+        }
+        const random = adventureRandom(state, `unexpected-reinforcements-${visit.playerId}`);
+        const unitDefId = candidates[random.nextInt(0, candidates.length - 1)]!;
+        const def = coreUnitDefinitions[unitDefId];
+        if (def?.neutral && removeFromNeutralDeck(state, def.tier, unitDefId)) {
+          addArmyUnit(player, unitDefId, "neutral");
+          appendEvent(state, {
+            type: "UNIT_RECRUITED",
+            playerId: visit.playerId,
+            unitDefId,
+            kind: "recruit",
+            cost: {}
+          });
+        }
         break;
       }
       case "RECRUIT_FACTION_UNIT": {
@@ -13233,6 +13302,7 @@ function resolveTokenTeleport(
     kind === "monolith" && destinations.length > 1 ? (field.onewayExitMode ?? "certain") : "certain";
   const whirlpoolDie =
     kind === "whirlpool" &&
+    getActiveAstrologersCard(state)?.effect.type !== "WHIRLPOOL_FREE_CHOICE" &&
     countMapTokens(state, "whirlpool") === 3 &&
     field.whirlpoolNumber !== undefined &&
     destinations.every((destination) => destination.number !== undefined);
@@ -16121,7 +16191,9 @@ export const DRAGON_UTOPIA_AZURE_SLOT_IDS = [
  * combat uses the row's full tier composition.
  */
 export function dragonUtopiaDifficultyGuardCount(state: GameState, difficulty: number): number {
-  const counts = NEUTRAL_ARMY_TABLE[neutralArmyDifficulty(state)][difficulty];
+  // The Utopia is a scenario / win-condition army. Astrologers "Rulebook"
+  // weakens ordinary random Neutral encounters, never this authored objective.
+  const counts = NEUTRAL_ARMY_TABLE[baseNeutralArmyDifficulty(state)][difficulty];
   const total = counts ? counts.bronze + counts.silver + counts.gold + counts.azure : 0;
   return Math.max(1, total);
 }
@@ -16175,7 +16247,7 @@ export function dragonUtopiaGuardIds(state: GameState, difficulty: number): stri
  */
 function drawDragonUtopiaArmy(state: GameState, difficulty: number): NeutralDraw[] {
   if (adventureDragonUtopiaGuards(state) === "by-difficulty") {
-    return drawNeutralArmy(state, difficulty);
+    return drawNeutralArmyAtDifficulty(state, difficulty, baseNeutralArmyDifficulty(state));
   }
   return dragonUtopiaGuardIds(state, difficulty).map((unitDefId) => ({
     unitDefId,
@@ -16865,17 +16937,49 @@ function prependVisitFollowUpRewards(adventure: AdventureState, rewards: Adventu
 /**
  * Rulebook (Astrologers): the GAME difficulty a neutral guard army is drawn at.
  * Normally the table's own difficulty; while Rulebook is face up, `levels`
- * lower (clamped to Easy) — a weaker guard. "Ignore on Easy" holds by
- * construction: Easy is already the floor, so it cannot drop further.
+ * lower (clamped to Easy) — a weaker guard. A normal draw on Easy discards the
+ * proclamation and draws another card; the clamp remains a defensive fallback
+ * for imported or hand-edited states that already have it active.
  */
 export function neutralArmyDifficulty(state: GameState): GameDifficulty {
-  const base = state.adventure?.difficulty ?? "normal";
+  const base = baseNeutralArmyDifficulty(state);
   const effect = getActiveAstrologersCard(state)?.effect;
   if (effect?.type !== "NEUTRAL_DIFFICULTY_LOWER") {
     return base;
   }
   const index = GAME_DIFFICULTY_ORDER.indexOf(base);
   return GAME_DIFFICULTY_ORDER[Math.max(0, index - effect.levels)];
+}
+
+/** Effective size of a Spell-deck Search while the Spells proclamation is face up. */
+export function astrologersSpellSearchCount(state: GameState, baseCount: number): number {
+  const effect = getActiveAstrologersCard(state)?.effect;
+  return effect?.type === "SPELL_SEARCH_WIDEN" ? Math.max(baseCount, effect.count) : baseCount;
+}
+
+/** The actual scenario setting, without temporary Astrologers modifiers. */
+export function baseNeutralArmyDifficulty(state: GameState): GameDifficulty {
+  return state.adventure?.difficulty ?? "normal";
+}
+
+/**
+ * Effective difficulty for one field guard. Map-authored guards and the Grail /
+ * Dragon Utopia objectives keep the strength chosen by the designer or scenario;
+ * Rulebook only eases ordinary random Neutral encounters.
+ */
+export function neutralArmyDifficultyForField(
+  state: GameState,
+  field: MapFieldState | undefined
+): GameDifficulty {
+  const authoredGuard = Boolean(
+    field?.designedGuard ||
+      field?.customGuardLevel ||
+      (field?.customGuardUnits && field.customGuardUnits.length > 0)
+  );
+  const scenarioObjective = field?.location === "grail" || field?.location === "dragon_utopia";
+  return authoredGuard || scenarioObjective
+    ? baseNeutralArmyDifficulty(state)
+    : neutralArmyDifficulty(state);
 }
 
 /** Signature golden guards used by the optional Field-Difficulty V rule. */
@@ -16914,12 +17018,20 @@ function drawLevelVSignatureNeutral(state: GameState): NeutralDraw {
 
 /** Draws the neutral army for a guarded field from the four tier decks. */
 export function drawNeutralArmy(state: GameState, difficulty: number): NeutralDraw[] {
+  return drawNeutralArmyAtDifficulty(state, difficulty, neutralArmyDifficulty(state));
+}
+
+function drawNeutralArmyAtDifficulty(
+  state: GameState,
+  difficulty: number,
+  scenarioDifficulty: GameDifficulty
+): NeutralDraw[] {
   const adventure = state.adventure;
   if (!adventure) {
     return [];
   }
 
-  const counts = NEUTRAL_ARMY_TABLE[neutralArmyDifficulty(state)][difficulty];
+  const counts = NEUTRAL_ARMY_TABLE[scenarioDifficulty][difficulty];
   if (!counts) {
     return [];
   }
@@ -16956,12 +17068,13 @@ export function drawNeutralArmy(state: GameState, difficulty: number): NeutralDr
 export function drawPveThemedArmy(
   state: GameState,
   difficulty: number,
-  seedScope: string
+  seedScope: string,
+  scenarioDifficulty = neutralArmyDifficulty(state)
 ): NeutralDraw[] {
   if (state.adventure?.pveTheme !== "doom") {
-    return drawNeutralArmy(state, difficulty);
+    return drawNeutralArmyAtDifficulty(state, difficulty, scenarioDifficulty);
   }
-  const counts = NEUTRAL_ARMY_TABLE[neutralArmyDifficulty(state)][difficulty];
+  const counts = NEUTRAL_ARMY_TABLE[scenarioDifficulty][difficulty];
   if (!counts) {
     return [];
   }
@@ -17007,7 +17120,8 @@ export function drawWaveArmy(state: GameState, wave: number): NeutralDraw[] {
   }
   if (spec?.level) {
     if (spec.levelArmy === "packs") {
-      const scenarioDifficulty = neutralArmyDifficulty(state);
+      // An explicit wave override is map-authored and therefore fixed.
+      const scenarioDifficulty = baseNeutralArmyDifficulty(state);
       const composition =
         NEUTRAL_ARMY_TABLE[scenarioDifficulty]?.[spec.level] ??
         NEUTRAL_ARMY_TABLE.normal[spec.level] ??
@@ -17019,7 +17133,12 @@ export function drawWaveArmy(state: GameState, wave: number): NeutralDraw[] {
         playableFactions: playable
       }) as NeutralDraw[];
     }
-    return drawPveThemedArmy(state, spec.level, `wave-${wave}-designed-level`);
+    return drawPveThemedArmy(
+      state,
+      spec.level,
+      `wave-${wave}-designed-level`,
+      baseNeutralArmyDifficulty(state)
+    );
   }
   const level = waveArmyLevel(wave);
   // Variety (USER RULE 2026-08-19 — "monster not just neutral, can have few or
@@ -17109,10 +17228,9 @@ function drawGuardArmyBase(state: GameState, field: MapFieldState | undefined, d
   const levelForDraw = field?.customGuardLevel;
   if (levelForDraw) {
     if (field?.customGuardLevelArmy === "packs") {
-      // Same table row drawNeutralArmy would use — including the Astrologers
-      // "Rulebook" difficulty easing, so a "packs" level guard is never harder
-      // than its Neutral twin while the proclamation is face up.
-      const scenarioDifficulty = neutralArmyDifficulty(state);
+      // This level was stamped by the map/scenario, so its composition stays at
+      // the authored game difficulty during an Astrologers "Rulebook" round.
+      const scenarioDifficulty = baseNeutralArmyDifficulty(state);
       const composition =
         NEUTRAL_ARMY_TABLE[scenarioDifficulty]?.[levelForDraw] ??
         NEUTRAL_ARMY_TABLE.normal[levelForDraw] ??
@@ -17124,16 +17242,16 @@ function drawGuardArmyBase(state: GameState, field: MapFieldState | undefined, d
         playableFactions: playable
       }) as NeutralDraw[];
     }
-    return drawNeutralArmy(state, levelForDraw);
+    return drawNeutralArmyAtDifficulty(state, levelForDraw, baseNeutralArmyDifficulty(state));
   }
 
   if (grailUtopiaFieldRulesEnabled(state) && field?.location === "grail") {
-    return drawNeutralArmy(state, difficulty);
+    return drawNeutralArmyAtDifficulty(state, difficulty, baseNeutralArmyDifficulty(state));
   }
 
   if (grailUtopiaFieldRulesEnabled(state) && field?.location === "dragon_utopia") {
     return [
-      ...drawNeutralArmy(state, difficulty),
+      ...drawNeutralArmyAtDifficulty(state, difficulty, baseNeutralArmyDifficulty(state)),
       { unitDefId: "neutral.black_dragons", tier: "gold" as const, bankGuard: true }
     ];
   }
@@ -17153,7 +17271,11 @@ function drawGuardArmyBase(state: GameState, field: MapFieldState | undefined, d
     return randomTownGuardDraws(state, field);
   }
 
-  const draws = drawNeutralArmy(state, difficulty);
+  const draws = drawNeutralArmyAtDifficulty(
+    state,
+    difficulty,
+    neutralArmyDifficultyForField(state, field)
+  );
 
   if (field?.location === "cyclops_stockpile") {
     // "Find 2 golden Cyclopes and add them to the Neutral Army." The single
@@ -17611,6 +17733,43 @@ export const PLAYABLE_FACTIONS: string[] = Object.values(coreFactionDefinitions)
   )
   .map((faction) => faction.id);
 
+/** Stamp once, including designer-preassigned settlements. Never roll in a read/UI path. */
+export function ensureSettlementRecruitFactions(state: GameState): void {
+  if (!houseRuleEnabled(state, "settlement-foreign-recruitment")) return;
+  for (const field of Object.values(state.adventure?.fields ?? {})) {
+    if (field.location !== "settlement" || !field.flagOwnerId || field.settlementRecruitFactionId) continue;
+    const player = state.players[field.flagOwnerId];
+    if (!player) continue;
+    const pool = PLAYABLE_FACTIONS.filter((id) => id !== player.factionId && isPlayableFaction(id, state.anime));
+    if (pool.length === 0) continue;
+    const random = adventureRandom(state, `settlement-recruit-${field.spaceId}`);
+    field.settlementRecruitFactionId = pool[random.nextInt(0, pool.length - 1)];
+    appendEvent(state, {
+      type: "EVENT_NOTE", playerId: player.id,
+      message: `Settlement recruits unlocked: ${coreFactionDefinitions[field.settlementRecruitFactionId].name}. All unit tiers are available at normal cost while you control this settlement.`,
+    });
+  }
+}
+
+export function settlementRecruitFactions(state: GameState, playerId: PlayerId): string[] {
+  if (!houseRuleEnabled(state, "settlement-foreign-recruitment")) return [];
+  return [...new Set(Object.values(state.adventure?.fields ?? {}).flatMap((field) =>
+    field.location === "settlement" && field.flagOwnerId === playerId && field.settlementRecruitFactionId &&
+    isPlayableFaction(field.settlementRecruitFactionId, state.anime) ? [field.settlementRecruitFactionId] : []
+  ))];
+}
+
+export function playerRecruitUnitIds(state: GameState, playerId: PlayerId): string[] {
+  const own = state.players[playerId]?.factionId;
+  return [...new Set([...(own ? [own] : []), ...settlementRecruitFactions(state, playerId)]
+    .flatMap((id) => coreFactionDefinitions[id]?.units ?? []))];
+}
+
+export function playerRecruitTierUnlocked(state: GameState, playerId: PlayerId, unitDefId: string): boolean {
+  return settlementRecruitFactions(state, playerId).some((id) => coreFactionDefinitions[id]?.units.includes(unitDefId)) ||
+    unlockedRecruitTiers(state, playerId).has(coreUnitDefinitions[unitDefId]?.tier);
+}
+
 /**
  * Assigns (once) the unused faction defending a Random Town. The rulebook has
  * the highest Resource-dice roller choose; here an unused faction is picked
@@ -18053,9 +18212,9 @@ export function unlockedRecruitTiers(state: GameState, playerId: PlayerId): Set<
 
 /**
  * Whether `playerId` could legally recruit a NEW Few of `unitDefId` right now,
- * by the ordinary town-recruit rules — own faction roster, the unit's tier
- * unlocked by a built Dwelling in any of their towns, the "each unit card exists
- * once" rule, the Factory Couatls/Juggernauts exclusivity and the MGQ Gold
+ * by town-recruit rules — own or settlement-granted roster, the unit's tier
+ * unlocked by a Dwelling or settlement, the optional duplicate-card rule,
+ * the Factory Couatls/Juggernauts exclusivity and the MGQ Gold
  * Contract. Resources are NOT checked (the caller prices its own offer).
  *
  * Mirrors `populationAction`'s recruit gate (adventure-reducer.ts), which throws
@@ -18068,18 +18227,17 @@ export function playerCanRecruitFewNow(state: GameState, playerId: PlayerId, uni
   if (!player) {
     return false;
   }
-  const faction = player.factionId ? coreFactionDefinitions[player.factionId] : undefined;
-  if (!faction?.units.includes(unitDefId)) {
+  if (!playerRecruitUnitIds(state, playerId).includes(unitDefId)) {
     return false;
   }
   const def = coreUnitDefinitions[unitDefId];
   if (!def || !getUnitSide(unitDefId, "few")) {
     return false;
   }
-  if (!unlockedRecruitTiers(state, playerId).has(def.tier)) {
+  if (!playerRecruitTierUnlocked(state, playerId, unitDefId)) {
     return false;
   }
-  if (player.army.some((unit) => unit.side !== "bank" && unit.unitDefId === unitDefId)) {
+  if (!houseRuleEnabled(state, "duplicate-unit-recruitment") && player.army.some((unit) => unit.side !== "bank" && unit.unitDefId === unitDefId)) {
     return false;
   }
   if (factoryGoldUnitConflict(player.army, unitDefId)) {
@@ -18131,17 +18289,18 @@ export function playerDwellingTiers(
  * process recycles (serverless cold start / idle reclaim of a multiplayer
  * room). After a recycle a freshly recruited unit could be minted with an id a
  * surviving unit already held. We derive the id purely from the current army
- * instead, scanning for a free ordinal, so it is collision-free regardless of
- * the process's lifetime.
+ * instead, scanning for a free ordinal and persisting the next ordinal. The
+ * cursor also prevents reuse after casualties, including after a host restart.
  */
 function nextArmyUnitId(player: PlayerState): string {
   const used = new Set(player.army.map((unit) => unit.id));
-  let ordinal = player.army.length + 1;
+  let ordinal = Math.max(player.nextArmyUnitOrdinal ?? 1, player.army.length + 1);
   let id = `army_${player.id}_${ordinal}`;
   while (used.has(id)) {
     ordinal += 1;
     id = `army_${player.id}_${ordinal}`;
   }
+  player.nextArmyUnitOrdinal = ordinal + 1;
   return id;
 }
 
@@ -20860,6 +21019,25 @@ function expireActiveAstrologersCard(state: GameState): void {
   astrologers.heroEmpowerUsesBy = {};
   astrologers.firstCombatGroundAttackUsed = false;
   astrologers.disruptionRotatedTileIds = [];
+  astrologers.wanderingMerchantBoughtBy = [];
+}
+
+/**
+ * ONE shared read of "this map has open water at all" — printed sea tiles carry
+ * `group: "sea"`, and the water-field fallback also covers custom/designer maps
+ * that paint open water without using a printed sea-group tile. Both water-gated
+ * proclamations (Whirlpool's free choice and the BINH Wind sea rule) MUST agree,
+ * so neither may re-derive it.
+ */
+function mapHasSeaWater(state: GameState): boolean {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return false;
+  }
+  return (
+    Object.values(adventure.tiles).some((tile) => tile.group === "sea") ||
+    Object.values(adventure.fields).some((field) => field.terrain === "water")
+  );
 }
 
 /**
@@ -20869,21 +21047,18 @@ function expireActiveAstrologersCard(state: GameState): void {
  * A card not listed here is always applicable.
  */
 function proclamationRequiresRedraw(state: GameState, cardId: string): boolean {
+  if (astrologersCardDefinitions[cardId]?.effect.type === "WHIRLPOOL_FREE_CHOICE") {
+    // The printed gate is Sea WATER, not the presence/count of Whirlpool tokens.
+    return !mapHasSeaWater(state);
+  }
+  if (astrologersCardDefinitions[cardId]?.effect.type === "NEUTRAL_DIFFICULTY_LOWER") {
+    return baseNeutralArmyDifficulty(state) === "easy";
+  }
   if (astrologersCardDefinitions[cardId]?.effect.type === "ROTATE_TILE_EACH") {
     return disruptionEligibleTiles(state).length === 0;
   }
   if (astrologersCardDefinitions[cardId]?.effect.type === "SEA_CONTINUE_AFTER_EMBARK") {
-    const adventure = state.adventure;
-    if (!adventure) {
-      return true;
-    }
-    // Printed sea tiles carry `group: "sea"`. The water-field fallback also
-    // covers custom/designer maps that paint open water without using a printed
-    // sea-group tile.
-    const hasSeaTile =
-      Object.values(adventure.tiles).some((tile) => tile.group === "sea") ||
-      Object.values(adventure.fields).some((field) => field.terrain === "water");
-    return !hasSeaTile;
+    return !mapHasSeaWater(state);
   }
   return false;
 }
@@ -20956,6 +21131,7 @@ export function drawAstrologersCard(state: GameState): void {
   astrologers.activeCardId = cardId;
   astrologers.heroEmpowerChosenRoundBy = {};
   astrologers.heroEmpowerUsesBy = {};
+  astrologers.wanderingMerchantBoughtBy = [];
   appendEvent(state, {
     type: "ASTROLOGERS_DRAWN",
     cardId,
@@ -20997,6 +21173,7 @@ function resolveAstrologersCard(state: GameState, card: AstrologersCardDefinitio
     case "NEUTRAL_DIFFICULTY_LOWER":
     case "NEUTRAL_REDRAW_ALL":
     case "SEA_CONTINUE_AFTER_EMBARK":
+    case "WHIRLPOOL_FREE_CHOICE":
     case "FREE_SPELL_BOOK":
     case "DEFEND_FLAT_BONUS":
     case "EVENT_DRAW_PICK":
@@ -21164,28 +21341,39 @@ function resolveAstrologersCard(state: GameState, card: AstrologersCardDefinitio
       break;
     case "WAR_MACHINE_DISCOUNT_OFFER": {
       // Wandering Merchant: "once during this round, each player can buy a War
-      // Machine as if at a Trading Post" — a single discounted buy offer queued
-      // per player now (the round it is drawn); not re-offered next round.
-      const discountGold = card.effect.discountGold;
-      for (const playerId of playerIds) {
-        queueWarMachineDiscountOffer(state, playerId, discountGold);
-      }
+      // Machine as if at a Trading Post". This is deliberately NOT a round-start
+      // reward: each player gets a persistent map action throughout their turn,
+      // implemented by OPEN_WANDERING_MERCHANT. That keeps the optional purchase
+      // from freezing the table before anybody can actually take a turn.
       break;
     }
   }
 }
 
-/** Wandering Merchant: queue one discounted war-machine buy offer for a player. */
-function queueWarMachineDiscountOffer(state: GameState, playerId: PlayerId, discountGold: number): void {
+/** Whether this player can still make the Wandering Merchant's round purchase. */
+export function wanderingMerchantAvailable(state: GameState, playerId: PlayerId, affordableOnly = false): boolean {
   const adventure = state.adventure;
-  // Nothing to buy from: skip queuing entirely (the offer self-guards too).
-  if (!adventure || (adventure.warMachineSupply?.length ?? 0) === 0) {
-    return;
+  const astrologers = getAstrologersState(state);
+  const effect = getActiveAstrologersCard(state)?.effect;
+  const player = state.players[playerId];
+  if (
+    !adventure ||
+    !astrologers ||
+    !player ||
+    state.round % 2 !== 0 ||
+    effect?.type !== "WAR_MACHINE_DISCOUNT_OFFER" ||
+    (astrologers.wanderingMerchantBoughtBy ?? []).includes(playerId)
+  ) {
+    return false;
   }
-  adventure.rewardQueue.push({
-    playerId,
-    kind: "visit-steps",
-    steps: [{ type: "WAR_MACHINE_DISCOUNT_OFFER", discountGold }]
+  return (adventure.warMachineSupply ?? []).some((cardId) => {
+    if (playerOwnsWarMachine(state, playerId, cardId)) return false;
+    const base = balanceCard(state, cardId)?.warMachineCosts?.tradingPost;
+    if (!base) return false;
+    return !affordableOnly || hasResources(player, {
+      ...base,
+      gold: Math.max(0, (base.gold ?? 0) - effect.discountGold)
+    });
   });
 }
 
@@ -21444,22 +21632,32 @@ export function queueNeutralRecruitOffer(state: GameState, playerId: PlayerId, o
   });
 }
 
+/** Eligible random fallback pool for custom Anime/Wuxia/Bulwark factions. */
+function randomUnexpectedReinforcementCandidates(state: GameState, playerId: PlayerId): string[] {
+  const unlocked = unlockedRecruitTiers(state, playerId);
+  return (["bronze", "silver", "gold"] as const).flatMap((tier) =>
+    unlocked.has(tier)
+      ? neutralUnitIdsByTier[tier].filter((unitDefId) => neutralDeckHas(state, tier, unitDefId))
+      : []
+  );
+}
+
 /**
  * Unexpected Reinforcements (Astrologers): queue a free recruit offer over the
- * Neutral Units deck cards associated with the player's faction (the neutral
- * counterpart of a roster unit) whose Dwelling tier they have built and whose
- * card is still in the deck. Only queued when at least one such unit exists, so
- * it never opens an empty prompt. Reads the live faction roster, so any faction
- * works (Conflux/Cove once defined).
+ * Neutral Units deck cards associated with the player's faction. Custom
+ * Anime/Wuxia/Bulwark factions instead receive an optional random recruit from
+ * the Dwelling tiers they have built. Only queued when an eligible card remains.
  */
 export function queueFactionRecruitOffer(state: GameState, playerId: PlayerId): void {
   const player = state.players[playerId];
   const associated = (player?.factionId ? neutralUnitIdsByFaction[player.factionId] : undefined) ?? [];
   const unlocked = unlockedRecruitTiers(state, playerId);
-  const canRecruit = associated.some((unitDefId) => {
-    const def = coreUnitDefinitions[unitDefId];
-    return Boolean(def?.neutral) && unlocked.has(def!.tier) && neutralDeckHas(state, def!.tier, unitDefId);
-  });
+  const canRecruit = usesRandomUnexpectedReinforcements(player?.factionId)
+    ? randomUnexpectedReinforcementCandidates(state, playerId).length > 0
+    : associated.some((unitDefId) => {
+        const def = coreUnitDefinitions[unitDefId];
+        return Boolean(def?.neutral) && unlocked.has(def!.tier) && neutralDeckHas(state, def!.tier, unitDefId);
+      });
   if (!canRecruit) {
     return;
   }
@@ -22072,20 +22270,23 @@ export function legionDiscountTargets(state: GameState, playerId: PlayerId): Leg
   if (!player) {
     return [];
   }
-  const faction = player.factionId ? coreFactionDefinitions[player.factionId] : undefined;
-  const tiers = unlockedRecruitTiers(state, playerId);
   const targets: LegionDiscountTarget[] = [];
 
-  // Recruit: the unit's Dwelling tier is built, it is not already owned (each
-  // unit card exists once), and there is gold to reduce. Recruiting genuinely
-  // needs the Dwelling, so that gate stays.
-  for (const unitDefId of faction?.units ?? []) {
+  // Recruit: whatever the player may ACTUALLY recruit a Few of right now, with
+  // gold to reduce. This must go through the SAME shared reads the recruit
+  // surfaces use — `playerRecruitUnitIds` (own roster PLUS any settlement-granted
+  // foreign roster) and `playerCanRecruitFewNow` (tier/dwelling, the
+  // duplicate-copy house rule, the Factory/MGQ gold gates) — or a voucher can
+  // never target a foreign unit or an extra copy, and (because legal-actions
+  // withholds the GAIN_RECRUIT_DISCOUNT side when this list is empty) a full
+  // own-faction army loses the discount side altogether.
+  for (const unitDefId of playerRecruitUnitIds(state, playerId)) {
     const unit = coreUnitDefinitions[unitDefId];
-    const fewSide = unit?.few;
-    if (!unit || !fewSide || !tiers.has(unit.tier)) {
+    const fewSide = getUnitSide(unitDefId, "few");
+    if (!unit || !fewSide) {
       continue;
     }
-    if (player.army.some((armyUnit) => armyUnit.side !== "bank" && armyUnit.unitDefId === unitDefId)) {
+    if (!playerCanRecruitFewNow(state, playerId, unitDefId)) {
       continue;
     }
     if ((fewSide.cost.gold ?? 0) <= 0) {
@@ -22803,8 +23004,9 @@ export function queueNecromancyReinforce(
   // unchanged), then every standing recruit discount. `playerCanRecruitFewNow`
   // is the same gate the handler re-asks at resolve time.
   if (communityDwellingGate) {
-    const faction = player.factionId ? coreFactionDefinitions[player.factionId] : undefined;
-    for (const unitDefId of faction?.units ?? []) {
+    // Same shared read as every other recruit surface, so a settlement-granted
+    // foreign roster / an extra copy is reachable here too.
+    for (const unitDefId of playerRecruitUnitIds(state, playerId)) {
       const def = coreUnitDefinitions[unitDefId];
       const fewSide = getUnitSide(unitDefId, "few");
       if (!def || !fewSide || !tierAllowed(def.tier)) {
@@ -22986,62 +23188,6 @@ function resolveNecromancyFetch(state: GameState, playerId: PlayerId): void {
  * Mana Vortex: discard the chosen card, shuffle the discard pile back into
  * the deck, then Search (3) from the own deck (pick 1, discard the rest).
  */
-/**
- * Magic University (Conflux): discard cards from the top of the player's deck
- * one at a time until a Spell of the chosen school is revealed; that Spell goes
- * to hand and the rejects stay in the discard pile. Magic Arrow (school "any")
- * counts as every school, matching the School-of-Magic convention. A deck that
- * runs out — at the start OR mid-dig — shuffles the discard pile back in so the
- * dig keeps going (mirrors how drawing reshuffles an empty deck); the cards this
- * dig has already rejected are held aside until it ends, so they are never
- * shuffled back and re-read, and the scan always terminates.
- */
-export function resolveMagicUniversityDig(state: GameState, playerId: PlayerId, school: SpellSchool): void {
-  const player = state.players[playerId];
-  if (!player) {
-    return;
-  }
-
-  const matches = (cardId: string): boolean => {
-    const card = cardLibrary[cardId];
-    if (!card || card.kind !== "spell") {
-      return false;
-    }
-    const schools = card.spellSchools ?? [];
-    return schools.includes(school) || schools.includes("any");
-  };
-
-  let found: string | null = null;
-  const discarded: string[] = [];
-  for (;;) {
-    const cardId = digFromOwnDeckTop(state, playerId, 1, "magic-university").cardIds[0];
-    if (cardId === undefined) {
-      break; // both piles are genuinely empty
-    }
-    if (matches(cardId)) {
-      found = cardId;
-      break;
-    }
-    discarded.push(cardId);
-  }
-  // The rejects land in the discard pile only now the dig is over (see the
-  // digFromOwnDeckTop caller contract).
-  player.discard.push(...discarded);
-
-  appendEvent(state, {
-    type: "TOWN_BUILDING_USED",
-    playerId,
-    buildingId: "conflux.magic_university",
-    message: found
-      ? `Magic University discards ${discarded.length} card(s) and finds ${cardLibrary[found]?.name ?? found}.`
-      : `Magic University finds no ${school} spell (discarded ${discarded.length} card(s)).`
-  });
-
-  if (found) {
-    player.hand.push(found);
-  }
-}
-
 function resolveManaVortex(state: GameState, playerId: PlayerId, discardCardId: string): void {
   const player = state.players[playerId];
   if (!player) {

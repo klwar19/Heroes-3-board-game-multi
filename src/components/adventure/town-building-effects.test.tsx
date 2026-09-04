@@ -233,28 +233,15 @@ describe("TownPanel — in-place special-building effect / use buttons", () => {
     });
   });
 
-  it("lets a Conflux player run the Magic University in place and dispatches the per-school dig", () => {
+  it("explains that Magic University replaces a Spell Search instead of offering a free-standing dig", () => {
     const { state } = townWith("conflux", ["conflux.magic_university"]);
     const onAction = vi.fn();
     render(<TownPanel legalActions={getLegalActions(state, "p1")} onAction={onAction} state={state} viewerPlayerId="p1" />);
 
-    // With the once-per-round dig unused, the building reads as actionable ("Use"),
-    // not just a passive "Effect" — the engine offers one action per school.
-    fireEvent.click(within(tileFor("Magic University")).getByRole("button", { name: /Use/ }));
-    const panel = screen.getByLabelText("Magic University effect");
-
-    // All four schools are offered as clickable buttons.
-    for (const school of ["Air", "Earth", "Fire", "Water"]) {
-      expect(within(panel).getByRole("button", { name: new RegExp(`${school} Magic spell`, "i") })).toBeTruthy();
-    }
-
-    fireEvent.click(within(panel).getByRole("button", { name: /Fire Magic spell/i }));
-    expect(onAction).toHaveBeenCalledTimes(1);
-    expect(onAction.mock.calls[0][0]).toMatchObject({
-      type: "MAGIC_UNIVERSITY_ACTION",
-      playerId: "p1",
-      school: "fire"
-    });
+    const panel = openPanel("Magic University");
+    expect(panel.textContent).toMatch(/when you next Search the shared Spell deck/i);
+    expect(within(panel).queryByRole("button", { name: /Magic spell/i })).toBeNull();
+    expect(onAction).not.toHaveBeenCalled();
   });
 
   it("shows the Magic University as spent once used this round (no dig buttons)", () => {

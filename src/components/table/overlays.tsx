@@ -62,6 +62,8 @@ import { CardBack, CardFrame } from "./seats";
 import { AnkhIcon, CrossedShovelsIcon, StarBannerIcon } from "./dice-icons";
 import { useCardZoom, ZoomButton } from "./zoom";
 import { balanceCardForDisplay } from "@/engine/community-balance-cards";
+import { getEffectiveCardEffectForState } from "@/engine/effects";
+import { AstrologersCombatNotice } from "./astrologers-combat-notice";
 
 type ReactionLegal = Extract<GameAction, { type: "PLAY_REACTION" }>;
 
@@ -122,7 +124,8 @@ type TraySelection = {
 function selectionPreview(
   selections: TraySelection[],
   balanceEnabled: boolean,
-  communityEnabled: boolean
+  communityEnabled: boolean,
+  state: GameState
 ): string[] {
   const totals = new Map<string, number>();
 
@@ -139,7 +142,7 @@ function selectionPreview(
       totals.set("Power", (totals.get("Power") ?? 0) + 1);
       continue;
     }
-    const effect = getEffectiveCardEffect(card, selection.optionIndex);
+    const effect = getEffectiveCardEffectForState(state, card, selection.optionIndex);
     if (!effect) {
       continue;
     }
@@ -179,7 +182,16 @@ function PendingPowerReadout({ state }: { state: GameState }) {
     return null;
   }
 
-  const spell = power.spellCardId ? cardLibrary[power.spellCardId] : undefined;
+  // The live engine resolves the active Balance-Pack definition. Reading the
+  // printed library here made Polish Bless claim its classic Power-2 ceiling
+  // even though the reprint's army-wide top rung correctly unlocks at Power 3.
+  const spell = power.spellCardId
+    ? balanceCardForDisplay(
+        houseRuleEnabled(state, "polish-card-balance"),
+        houseRuleEnabled(state, "community-card-balance"),
+        power.spellCardId
+      )
+    : undefined;
   const subject = power.kind === "spell" ? cardName(power.spellCardId ?? "") : "This attack";
   const bounds = power.kind === "spell" ? spellCastPowerBounds(spell) : { minUseful: 0, maxUseful: null };
   // Damage spells (Magic Arrow, Lightning Bolt, …) read more clearly with the
@@ -1060,6 +1072,14 @@ export function ReactionTray({
     // "Discard X cards: +X attack".
     const card = balanceCardForDisplay(balanceEnabled, communityEnabled, action.cardId);
     const effect = card && !action.asPowerBoost ? getEffectiveCardEffect(card, action.optionIndex) : null;
+    const adjustedEffect = card && !action.asPowerBoost
+      ? getEffectiveCardEffectForState(state, card, action.optionIndex) : null;
+    const defenseConverted = Boolean(
+      effect && adjustedEffect &&
+      ((effect.type === "ADD_COMBAT_STAT" && effect.stat === "defense" &&
+        adjustedEffect.type === "ADD_COMBAT_STAT" && adjustedEffect.stat === "attack") ||
+        (effect.type === "CREATE_DEFENSE_BUFF" && adjustedEffect.type === "CREATE_ATTACK_BUFF"))
+    );
     const batchable = action.asPowerBoost
       ? true
       : Boolean(
@@ -1121,7 +1141,9 @@ export function ReactionTray({
                       ? formatDieFace(window.triggerEvent.rolls?.[action.dieIndex] ?? 0)
                       : "?"
                   })`
-              : option?.label,
+              : defenseConverted
+                ? `${option?.label?.replace(/\bdefense\b/gi, "Attack") ?? "Add Attack"} (Offense)`
+                : option?.label,
         drawOnly: action.drawOnly,
         utilityOnly: action.utilityOnly,
         modes: [action.mode ?? "basic"],
@@ -1470,7 +1492,7 @@ export function ReactionTray({
     onAction({ type: "PLAY_REACTIONS", playerId: viewerPlayerId, plays: selections.map(toPlay) });
   };
 
-  const preview = selectionPreview(selections, balanceEnabled, communityEnabled);
+  const preview = selectionPreview(selections, balanceEnabled, communityEnabled, state);
   const crownsOver = crownsSelected > crownsAvailable;
 
   // Pending CAST_SPELL Power bounds for the viewing caster (Pass gating).
@@ -1482,7 +1504,11 @@ export function ReactionTray({
     pendingCast?.action.type === "CAST_SPELL" ? pendingCast.action : null;
   const isSpellCaster =
     Boolean(pendingCastAction) && pendingCastAction!.playerId === viewerPlayerId;
-  const pendingSpellCard = pendingCastAction ? cardLibrary[pendingCastAction.cardId] : undefined;
+  // Keep the warning/confirmation ceiling on the same active card definition
+  // as the engine and the meter above (community wins over Polish, then base).
+  const pendingSpellCard = pendingCastAction
+    ? balanceCardForDisplay(balanceEnabled, communityEnabled, pendingCastAction.cardId)
+    : undefined;
   const castPowerBounds = spellCastPowerBounds(pendingSpellCard);
   const livePower = getPendingReactionPower(state);
   const castTotalPower = livePower?.kind === "spell" ? livePower.totalPower : 0;
@@ -1597,6 +1623,7 @@ export function ReactionTray({
           {trayMinimized ? <Maximize2 aria-hidden="true" size={15} /> : <Minus aria-hidden="true" size={15} />}
         </button>
       </header>
+      <AstrologersCombatNotice state={state} />
       {crazyWizardSpell ? (
         <div className="crazyWizardReminder" role="note">
           <Sparkles aria-hidden="true" size={17} />

@@ -8,8 +8,10 @@ import { assetUrl } from "@/lib/asset-url";
 export type MusicScene = "menu" | "map" | "combat";
 export type MapMusicEnvironment = "surface" | "water" | "underground";
 export type MapMusicContext = {
-  /** Drives a fresh general-map pick when the active turn changes. */
+  /** Drives a fresh faction opener when the relevant map turn changes. */
   turnKey: string;
+  /** Keeps one shuffled terrain order for this game. */
+  gameKey?: string;
   factionId?: string;
   environment: MapMusicEnvironment;
 };
@@ -23,7 +25,7 @@ type MusicProfile =
 export const MUSIC_TRACKS: Record<MusicProfile, readonly string[]> = {
   menu: ["music/main-menu"],
   combat: ["music/combat-02", "music/combat-03", "music/combat-04"],
-  "map-general": ["music/rough", "music/sand", "music/snow"],
+  "map-general": ["music/rough", "music/sand", "music/snow", "music/grass"],
   "map-water": ["music/water"],
   "map-underground": ["music/dirt"],
   "town-necropolis": ["music/necro-town"],
@@ -54,9 +56,12 @@ if (typeof window !== "undefined") {
 let audio: HTMLAudioElement | null = null;
 let currentScene: MusicScene | null = null;
 let currentProfile: MusicProfile | null = null;
+let currentContinuationProfile: MusicProfile | null = null;
 let currentRequestKey: string | null = null;
 let currentTrack: string | null = null;
 let unlockHooked = false;
+let playlistGameKey: string | null = null;
+const playlistQueues = new Map<MusicProfile, string[]>();
 const listeners = new Set<() => void>();
 
 function notify(): void {
@@ -87,17 +92,49 @@ function hookUnlock(): void {
   window.addEventListener("pointerdown", unlock);
 }
 
+function shuffledTracks(profile: MusicProfile, avoid: string | null): string[] {
+  const tracks = [...MUSIC_TRACKS[profile]];
+  for (let index = tracks.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [tracks[index], tracks[swapIndex]] = [tracks[swapIndex]!, tracks[index]!];
+  }
+  // Crossing from the end of one shuffled cycle into the next must not replay
+  // the same song immediately. Keep the shuffle, only exchange its first two.
+  if (tracks.length > 1 && tracks[0] === avoid) {
+    [tracks[0], tracks[1]] = [tracks[1]!, tracks[0]!];
+  }
+  return tracks;
+}
+
 function pickTrack(profile: MusicProfile, avoid: string | null): string {
-  const tracks = MUSIC_TRACKS[profile];
-  const choices = tracks.length > 1 && avoid ? tracks.filter((track) => track !== avoid) : tracks;
-  return choices[Math.floor(Math.random() * choices.length)] ?? tracks[0]!;
+  // Only adventure-map terrain music uses the per-game shuffled order. Combat
+  // and every non-map scene retain their established random/loop behaviour.
+  if (profile !== "map-general") {
+    const tracks = MUSIC_TRACKS[profile];
+    const choices = tracks.length > 1 && avoid
+      ? tracks.filter((track) => track !== avoid)
+      : tracks;
+    return choices[Math.floor(Math.random() * choices.length)] ?? tracks[0]!;
+  }
+  let queue = playlistQueues.get(profile);
+  if (!queue?.length) {
+    queue = shuffledTracks(profile, avoid);
+  }
+  const next = queue.shift() ?? MUSIC_TRACKS[profile][0]!;
+  playlistQueues.set(profile, queue);
+  return next;
 }
 
 function playProfile(profile: MusicProfile, chooseAnother: boolean): void {
   if (!audio) {
     audio = new Audio();
     audio.addEventListener("ended", () => {
-      if (currentProfile && currentScene && !muted) playProfile(currentProfile, true);
+      if (!currentProfile || !currentScene || muted) return;
+      // A surface faction theme is an opener, not a forever-loop: after it
+      // finishes, fall through to the varied terrain playlist. Other profiles
+      // (combat, water, underground, menu) continue within their own pool.
+      currentProfile = currentContinuationProfile ?? currentProfile;
+      playProfile(currentProfile, true);
     });
   }
   const tracks = MUSIC_TRACKS[profile];
@@ -108,7 +145,7 @@ function playProfile(profile: MusicProfile, chooseAnother: boolean): void {
   const src = trackSrc(nextTrack);
   if (!audio.src.endsWith(src)) audio.src = src;
   currentTrack = nextTrack;
-  audio.loop = tracks.length === 1;
+  audio.loop = tracks.length === 1 && currentContinuationProfile === null;
   audio.volume = MUSIC_VOLUME;
   hookUnlock();
   audio.play().catch(() => undefined);
@@ -137,14 +174,28 @@ function profileForMap(context?: MapMusicContext): MusicProfile {
 function requestFor(scene: MusicScene, context?: MapMusicContext): { profile: MusicProfile; key: string } {
   if (scene !== "map") return { profile: scene, key: scene };
   const profile = profileForMap(context);
-  return { profile, key: `${profile}:${context?.turnKey ?? "legacy"}` };
+  return {
+    profile,
+    key: `${context?.gameKey ?? "legacy"}:${profile}:${context?.turnKey ?? "legacy"}`,
+  };
+}
+
+function continuationProfileFor(scene: MusicScene, profile: MusicProfile): MusicProfile | null {
+  if (scene !== "map" || !profile.startsWith("town-")) return null;
+  return "map-general";
 }
 
 /** Resolve faction and terrain from the authoritative active-turn state. */
-export function mapMusicContext(state: GameState): MapMusicContext {
-  const activePlayer = state.players[state.activePlayerId];
+export function mapMusicContext(state: GameState, viewerPlayerId?: string): MapMusicContext {
+  // Parallel turns have no single meaningful active seat. Each seated client
+  // hears their own faction opener and follows their own hero's environment.
+  // Ordered games and observers continue to use the authoritative active seat.
+  const musicPlayerId = state.turn?.mode === "parallel" && viewerPlayerId && state.players[viewerPlayerId]
+    ? viewerPlayerId
+    : state.activePlayerId;
+  const activePlayer = state.players[musicPlayerId];
   const ownedHeroes = Object.values(state.heroes).filter(
-    (hero): hero is HeroState => hero.controllerId === state.activePlayerId && hero.spaceId !== null,
+    (hero): hero is HeroState => hero.controllerId === musicPlayerId && hero.spaceId !== null,
   );
   const hero = ownedHeroes.find((candidate) => candidate.kind === "main") ?? ownedHeroes[0];
   const field = hero?.spaceId ? state.adventure?.fields[hero.spaceId] : undefined;
@@ -155,7 +206,8 @@ export function mapMusicContext(state: GameState): MapMusicContext {
       ? "underground"
       : "surface";
   return {
-    turnKey: `${state.round}:${state.activePlayerId}`,
+    turnKey: `${state.round}:${musicPlayerId}`,
+    gameKey: `${state.id}:${state.seed}`,
     factionId: activePlayer?.factionId,
     environment,
   };
@@ -168,15 +220,24 @@ export function setMusicScene(scene: MusicScene | null, mapContext?: MapMusicCon
     if (currentScene === null) return;
     currentScene = null;
     currentProfile = null;
+    currentContinuationProfile = null;
     currentRequestKey = null;
     stopAudio();
     return;
   }
   const request = requestFor(scene, mapContext);
   if (currentScene === scene && currentRequestKey === request.key) return;
+  if (scene === "map") {
+    const nextGameKey = mapContext?.gameKey ?? "legacy";
+    if (playlistGameKey !== nextGameKey) {
+      playlistGameKey = nextGameKey;
+      playlistQueues.clear();
+    }
+  }
   const requestChanged = currentRequestKey !== request.key;
   currentScene = scene;
   currentProfile = request.profile;
+  currentContinuationProfile = continuationProfileFor(scene, request.profile);
   currentRequestKey = request.key;
   if (muted) {
     stopAudio();
@@ -202,12 +263,13 @@ export function useBackgroundMusic(scene: MusicScene | null, context?: MapMusicC
   const turnKey = context?.turnKey;
   const factionId = context?.factionId;
   const environment = context?.environment;
+  const gameKey = context?.gameKey;
   useEffect(() => {
     setMusicScene(
       scene,
-      turnKey && environment ? { turnKey, factionId, environment } : undefined,
+      turnKey && environment ? { turnKey, gameKey, factionId, environment } : undefined,
     );
-  }, [scene, turnKey, factionId, environment]);
+  }, [scene, turnKey, gameKey, factionId, environment]);
   useEffect(() => () => setMusicScene(null), []);
 }
 
@@ -215,9 +277,12 @@ export function __resetMusicForTests(): void {
   audio = null;
   currentScene = null;
   currentProfile = null;
+  currentContinuationProfile = null;
   currentRequestKey = null;
   currentTrack = null;
   unlockHooked = false;
+  playlistGameKey = null;
+  playlistQueues.clear();
   muted = false;
   listeners.clear();
 }

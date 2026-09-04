@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, getLegalActions } from "./index";
-import { drawAstrologersCard, getMainHero, getTownOfPlayer, pvpAttacksBanned } from "./adventure";
-import { openSharedDeckSearch, pumpAdventureQueues, startPlayerCombat } from "./adventure-reducer";
+import {
+  classifyHeroStep,
+  drawAstrologersCard,
+  getMainHero,
+  getTownOfPlayer,
+  pvpAttacksBanned
+} from "./adventure";
+import { openSharedDeckSearch, pumpAdventureQueues, spellBookAction, startPlayerCombat } from "./adventure-reducer";
 import { cardLibrary } from "@/data/cards/library";
 import { permanentLimitFor } from "./permanents";
 import type { GameState } from "./state";
@@ -192,6 +198,48 @@ describe("Astrologers — Sanctuary (PvP-attack ban)", () => {
     expect(state.combat).toBeNull();
   });
 
+  it("does not offer an enemy Hero's hex as a movement destination", () => {
+    const state = sanctuaryGame(2);
+    const attacker = getMainHero(state, "p1")!;
+    const defender = getMainHero(state, "p2")!;
+    state.players.p1.canMulligan = false;
+    state.players.p1.needsHandRefresh = false;
+
+    const openMove = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "MOVE_HERO"
+    );
+    expect(openMove).toBeTruthy();
+    if (!openMove || openMove.action.type !== "MOVE_HERO") {
+      throw new Error("Expected an open movement destination");
+    }
+    const occupiedHex = openMove.action.to;
+    defender.spaceId = occupiedHex;
+
+    expect(classifyHeroStep(state, attacker, occupiedHex)).toBe("block");
+    expect(
+      classifyHeroStep(state, attacker, occupiedHex, {
+        passEncounters: true,
+        moveThrough: false,
+        waterWalk: false
+      })
+    ).toBe("pass-only");
+    expect(
+      getLegalActions(state, "p1").some(
+        (legal) => legal.action.type === "MOVE_HERO" && legal.action.to === occupiedHex
+      )
+    ).toBe(false);
+
+    // CONTROL: with Sanctuary inactive, the identical occupied hex is offered
+    // as a PvP attack destination again.
+    setActiveProclamation(state, "astrologers.dead_silence");
+    expect(classifyHeroStep(state, attacker, occupiedHex)).toBe("stop");
+    expect(
+      getLegalActions(state, "p1").some(
+        (legal) => legal.action.type === "MOVE_HERO" && legal.action.to === occupiedHex
+      )
+    ).toBe(true);
+  });
+
   it("CONTROL: the same attack proceeds while a different proclamation is up", () => {
     const state = sanctuaryGame(2, "astrologers.dead_silence");
     const attacker = getMainHero(state, "p1")!;
@@ -279,5 +327,160 @@ describe("Astrologers — Spells (widen a Spell-deck Search to 4)", () => {
     const state = spellsGame();
     openSharedDeckSearch(state, "p1", "abilities", 1);
     expect(revealedCount(state)).toBe(1);
+  });
+
+  it("Mage Guild purchase and Wisdom discount keep their costs but advertise and reveal Search(4)", () => {
+    const state = spellsGame();
+    const town = getTownOfPlayer(state, "p1")!;
+    if (!town.buildings.some((id) => id.endsWith(".mage_guild"))) {
+      town.buildings.push("castle.mage_guild");
+    }
+    state.players.p1.townTokens.spellBook = true;
+    state.players.p1.mageGuildBuiltRound = undefined;
+    state.players.p1.resources.gold = 20;
+    state.players.p1.hand = ["ability.wisdom"];
+
+    const offers = getLegalActions(state, "p1");
+    const normal = offers.find(
+      (legal) => legal.action.type === "SPELL_BOOK_ACTION" && !legal.action.wisdom && !legal.action.takeCastCard,
+    );
+    const wisdom = offers.find(
+      (legal) => legal.action.type === "SPELL_BOOK_ACTION" && legal.action.wisdom?.mode === "basic",
+    );
+    expect(normal?.label).toMatch(/search \(4\)$/i);
+    expect(wisdom?.label).toMatch(/search \(4\)$/i);
+
+    const goldBefore = state.players.p1.resources.gold;
+    spellBookAction(state, {
+      type: "SPELL_BOOK_ACTION",
+      playerId: "p1",
+      wisdom: { cardId: "ability.wisdom", mode: "basic" },
+    });
+    const normalPrice = Number(normal!.label.split(" ")[0]);
+    const discountedPrice = Number(wisdom!.label.split(" ")[0]);
+    expect(discountedPrice).toBe(normalPrice - 2);
+    expect(state.players.p1.resources.gold).toBe(goldBefore - discountedPrice);
+    expect(state.players.p1.discard).toContain("ability.wisdom");
+    // Wisdom's printed Search(3) remains the queued base; Spells widens the
+    // actual Search at the shared search seam and does not alter the discount.
+    expect(state.adventure!.rewardQueue[0]).toMatchObject({ kind: "shared-deck-search", count: 3 });
+    pumpAdventureQueues(state);
+    expect(revealedCount(state)).toBe(4);
+  });
+
+  it("with Basic School Magic, the player chooses Search(4) OR the school draw up front", () => {
+    const state = spellsGame();
+    state.players.p1.permanents = ["ability.basic_fire_magic"];
+    openSharedDeckSearch(state, "p1", "spells", 2);
+
+    const choice = state.pendingChoice;
+    expect(choice?.type === "OPTION_CHOICE" && choice.context).toBe("deck-search-mode");
+    const labels = choice?.type === "OPTION_CHOICE" ? choice.options.map((option) => option.label) : [];
+    expect(labels[0]).toContain("Search (4)");
+    expect(labels.some((label) => /Basic Fire Magic: Draw the first Fire Magic spell/.test(label))).toBe(true);
+
+    const searched = applyAction(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice!.id,
+      optionIndex: 0,
+    });
+    expect(searched.errors).toEqual([]);
+    expect(revealedCount(searched.state)).toBe(4);
+    expect(searched.state.pendingChoice?.type).toBe("DECK_SEARCH");
+  });
+
+  it("with Magic University, Search(4) and all four school replacements are one up-front choice", () => {
+    const state = spellsGame();
+    const town = getTownOfPlayer(state, "p1")!;
+    town.buildings.push("conflux.magic_university");
+    openSharedDeckSearch(state, "p1", "spells", 2);
+
+    const choice = state.pendingChoice;
+    expect(choice?.type === "OPTION_CHOICE" && choice.context).toBe("deck-search-mode");
+    const labels = choice?.type === "OPTION_CHOICE" ? choice.options.map((option) => option.label) : [];
+    expect(labels[0]).toContain("Search (4)");
+    expect(labels.filter((label) => label.startsWith("Magic University:"))).toHaveLength(4);
+
+    const searched = applyAction(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice!.id,
+      optionIndex: 0,
+    });
+    expect(searched.errors).toEqual([]);
+    expect(revealedCount(searched.state)).toBe(4);
+    // Choosing the ordinary Search does not spend the alternative building.
+    expect(searched.state.players.p1.magicUniversityUsedRound).not.toBe(searched.state.round);
+  });
+
+  it.each([false, true])("University and Basic Magic are independent alternatives (split decks: %s)", (split) => {
+    const state = spellsGame();
+    (state.adventure!.houseRules ??= {})["split-decks"] = split;
+    state.adventure!.houseRules!["polish-spell-book"] = false;
+    state.players.p1.permanents = ["ability.basic_fire_magic"];
+    getTownOfPlayer(state, "p1")!.buildings.push("conflux.magic_university");
+    const field = state.adventure!.fields[getMainHero(state, "p1")!.spaceId!]!;
+    state.adventure!.tiles[field.tileInstanceId]!.backLabel = "Ⅳ–Ⅴ";
+    state.decks.spells!.drawPile = ["spell.curse", "spell.haste"];
+    state.decks.spells!.discardPile = ["spell.bless"];
+    if (split) {
+      state.decks["spells-expert"] = {
+        ...state.decks.spells!,
+        id: "spells-expert",
+        drawPile: ["spell.implosion"],
+        discardPile: [],
+      };
+    }
+    state.adventure!.rewardQueue.push({ playerId: "p1", kind: "shared-deck-search", deckId: "spells", count: 2 });
+    pumpAdventureQueues(state);
+    const options = getLegalActions(state, "p1");
+    const basic = options.find((legal) => /Basic Fire Magic:/.test(legal.label))!;
+    const university = options.find((legal) => /Magic University:.*Fire Magic spell/.test(legal.label))!;
+    expect(basic).toBeTruthy();
+    expect(university).toBeTruthy();
+    expect(options.some((legal) => /Search \(4\)/.test(legal.label))).toBe(true);
+
+    const fetched = applyAction(state, basic.action);
+    expect(fetched.errors).toEqual([]);
+    expect(fetched.state.players.p1.hand).toEqual(["spell.curse"]);
+    expect(fetched.state.players.p1.magicUniversityUsedRound).not.toBe(state.round);
+    expect(fetched.state.decks.spells!.discardPile).toEqual(["spell.bless"]);
+
+    const dug = applyAction(state, university.action);
+    expect(dug.errors).toEqual([]);
+    expect(dug.state.players.p1.hand).toEqual(["spell.curse"]);
+    expect(dug.state.players.p1.magicUniversityUsedRound).toBe(state.round);
+    expect(dug.state.decks.spells!.discardPile).toEqual(["spell.bless", "spell.haste"]);
+    expect(dug.state.pendingChoice?.type).not.toBe("DECK_SEARCH");
+  });
+
+  it.each([false, true])("University replaces a paid purchase without bypassing its cost (Wisdom: %s)", (wisdom) => {
+    const state = spellsGame();
+    getTownOfPlayer(state, "p1")!.buildings = ["conflux.mage_guild", "conflux.magic_university"];
+    state.players.p1.resources.gold = 20;
+    state.players.p1.townTokens.spellBook = true;
+    state.players.p1.mageGuildBuiltRound = undefined;
+    state.players.p1.hand = wisdom ? ["ability.wisdom"] : [];
+    state.decks.spells!.drawPile = ["spell.curse", "spell.haste"];
+    state.decks.spells!.discardPile = ["spell.bless"];
+
+    spellBookAction(state, {
+      type: "SPELL_BOOK_ACTION",
+      playerId: "p1",
+      ...(wisdom ? { wisdom: { cardId: "ability.wisdom", mode: "basic" as const } } : {}),
+    });
+    pumpAdventureQueues(state);
+    const choice = getLegalActions(state, "p1").find(
+      (legal) => /Magic University:.*Fire Magic spell/.test(legal.label),
+    );
+    expect(choice).toBeTruthy();
+    const result = applyAction(state, choice!.action);
+    expect(result.errors).toEqual([]);
+    expect(result.state.players.p1.resources.gold).toBe(wisdom ? 17 : 15);
+    expect(result.state.players.p1.townTokens.spellBook).toBe(false);
+    expect(result.state.players.p1.hand).toEqual(["spell.curse"]);
+    expect(result.state.players.p1.magicUniversityUsedRound).toBe(state.round);
+    expect(result.state.decks.spells!.discardPile).toEqual(["spell.bless", "spell.haste"]);
   });
 });

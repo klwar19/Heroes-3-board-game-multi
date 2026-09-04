@@ -821,25 +821,11 @@ export function activeSchoolFetches(state: GameState, playerId: PlayerId): ("air
   return [...schools];
 }
 
-/**
- * The Basic X Magic (fetch permanent) school whose +3 expert can empower a cast
- * of `spellSchools` for `playerId`: the first in-play fetch school the spell
- * matches (a fixed-school match, or ANY fetch for a school-"any" spell like Magic
- * Arrow), else null. Shared by the up-front CAST_SPELL variant (legal-actions)
- * and its cast-time application (reducer) so both read one rule.
- */
-export function matchingSchoolFetchForCast(
-  state: GameState,
-  playerId: PlayerId,
-  spellSchools: readonly SpellSchool[]
-): "air" | "earth" | "fire" | "water" | null {
-  for (const school of activeSchoolFetches(state, playerId)) {
-    if (spellSchools.includes(school) || spellSchools.includes("any")) {
-      return school;
-    }
-  }
-  return null;
-}
+// `matchingSchoolFetchForCast` used to live here: it picked the Basic X Magic
+// school for the UP-FRONT `useSchoolFetchExpert` CAST_SPELL variant. That
+// variant is gone (castSpell rejects it; the +3 is committed in the cast's own
+// instant Power window via USE_SCHOOL_FETCH_EXPERT, which reads the stack
+// item's own school), so the helper had no consumers left.
 
 // ---------------------------------------------------------------------------
 // Ruleset-dependent card notes for the UI
@@ -967,7 +953,7 @@ export function spellCanEnterSpellBook(cardId: CardId): boolean {
 
 /**
  * Whether this player may still spend a Spell Book Spell as a +1 Power source
- * this turn. The Book is capped at ONE Power discard per turn (crown-style); the
+ * for the current cast. The Book is capped at ONE Power discard per cast; the
  * hand and every other Power source are unaffected.
  */
 export function spellBookPowerAvailable(player: PlayerState): boolean {

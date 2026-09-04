@@ -17,7 +17,8 @@ import type { GameAction, GameState, LegalAction, PlayerId } from "./state";
  * resulting state, so deleting any piece of the wiring makes a test fail:
  *   - stash a hand Spell into the Book (free a slot, no draw),
  *   - cast a Book Spell in combat (respects the one-Spell-per-round limit),
- *   - boost a cast with a Book Spell, capped at ONE per turn (crown-style lock),
+ *   - boost a cast with a Book Spell, capped at ONE PER CAST (the budget is
+ *     reset at the start of every cast, so Knowledge's recast gets a fresh one),
  *   - re-route a picked-up discard Spell back into the Book,
  *   - and the rule's off-switch + the Book's privacy.
  */
@@ -151,7 +152,7 @@ describe("Spell Book — casting in combat", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Boosting Power with a Book Spell — capped at one per turn
+// Boosting Power with a Book Spell — capped at ONE PER CAST
 // ---------------------------------------------------------------------------
 
 /** Cast Implosion (0 dmg at power 0) and return the open reaction window state. */
@@ -168,7 +169,34 @@ function castImplosion(state: GameState): GameState {
   return applyOk(state, cast!.action);
 }
 
-describe("Spell Book — Power boost (one per turn)", () => {
+describe("Spell Book — Power boost (one per cast)", () => {
+  it("Knowledge grants a recast with a fresh one-Book-Power allowance", () => {
+    const state = combat("book-power-knowledge-recast");
+    state.players.p1.hand = ["spell.implosion", "stat.knowledge"];
+    state.players.p1.spellBook = ["spell.haste", "spell.curse"];
+
+    let current = castImplosion(state);
+    const firstBoost = legal(current, "p1").find(
+      (l) => l.action.type === "PLAY_REACTION" && l.action.fromSpellBook && l.action.cardId === "spell.haste"
+    );
+    current = applyOk(current, firstBoost!.action);
+    const knowledge = legal(current, "p1").find(
+      (l) => l.action.type === "PLAY_REACTION" && l.action.cardId === "stat.knowledge" && l.action.mode === "expert"
+    );
+    expect(knowledge, "expert Knowledge should allow another cast").toBeTruthy();
+    current = passAll(applyOk(current, knowledge!.action));
+
+    const recast = legal(current, "p1").find(
+      (l) => l.action.type === "CAST_SPELL" && l.action.cardId === "spell.implosion"
+    );
+    expect(recast, "Knowledge should return Implosion and make it castable again").toBeTruthy();
+    current = applyOk(current, recast!.action);
+    const secondBoost = legal(current, "p1").find(
+      (l) => l.action.type === "PLAY_REACTION" && l.action.fromSpellBook && l.action.cardId === "spell.curse"
+    );
+    expect(secondBoost, "the recast should receive a fresh +1 Spell Book Power allowance").toBeTruthy();
+  });
+
   it("a Book Spell discarded for +1 Power lifts the cast and cycles Book → discard", () => {
     const state = combat("book-boost");
     state.players.p1.hand = ["spell.implosion"];
@@ -187,7 +215,7 @@ describe("Spell Book — Power boost (one per turn)", () => {
     const resolved = passAll(applyOk(opened, boost!.action));
     // Implosion at power 1 deals 2 damage (0 -> 2): the boost actually applied.
     expect(resolved.combat!.units[SKELETONS].damage).toBe(2);
-    // The Book Spell paid for it and the per-turn lock is now set.
+    // The Book Spell paid for it and the per-CAST lock is now set.
     expect(resolved.players.p1.spellBook).not.toContain("spell.haste");
     expect(resolved.players.p1.discard).toContain("spell.haste");
     expect(resolved.players.p1.combatStats.spellBookPowerUsedThisTurn).toBe(true);
@@ -200,7 +228,7 @@ describe("Spell Book — Power boost (one per turn)", () => {
     expect(resolved.combat!.units[SKELETONS].damage).toBe(0);
   });
 
-  it("only ONE Book Power boost per turn; a hand boost is still allowed; a 2nd Book boost is rejected", () => {
+  it("only ONE Book Power boost per cast; a hand boost is still allowed; a 2nd Book boost is rejected", () => {
     const state = combat("book-boost-lock");
     state.players.p1.hand = ["spell.implosion", "spell.bless"]; // bless = a hand Power source
     state.players.p1.spellBook = ["spell.haste", "spell.curse"]; // two Book Power sources
@@ -218,7 +246,7 @@ describe("Spell Book — Power boost (one per turn)", () => {
     const secondBookOffered = legal(afterBook, "p1").some(
       (l) => l.action.type === "PLAY_REACTION" && l.action.asPowerBoost === true && l.action.fromSpellBook === true
     );
-    expect(secondBookOffered, "the Book Power budget is spent for the turn").toBe(false);
+    expect(secondBookOffered, "the Book Power budget is spent for this cast").toBe(false);
 
     // …but a HAND Power boost is unaffected.
     const handBoostOffered = legal(afterBook, "p1").some(
@@ -243,14 +271,14 @@ describe("Spell Book — Power boost (one per turn)", () => {
     expect(forced.state.players.p1.spellBook).toContain("spell.curse");
   });
 
-  it("the per-turn Book Power lock refreshes at the start of the player's turn", () => {
+  it("BACKSTOP: the map-turn refresh in refreshRoundTokens also clears the Book Power lock", () => {
     const state = combat("book-boost-reset");
     state.players.p1.combatStats.spellBookPowerUsedThisTurn = true;
     refreshRoundTokens(state);
     expect(state.players.p1.combatStats.spellBookPowerUsedThisTurn).toBe(false);
   });
 
-  it("the Book Power budget refreshes EACH combat round — usable again in round 2, still one per round", () => {
+  it("BACKSTOP: the combat-round refresh also clears the lock — usable again in round 2", () => {
     const state = combat("book-boost-per-round");
     state.players.p1.hand = ["spell.implosion"];
     state.players.p1.spellBook = ["spell.haste", "spell.curse"]; // two Book Power sources
@@ -270,8 +298,10 @@ describe("Spell Book — Power boost (one per turn)", () => {
     afterRound1.activePlayerId = "p1";
     const round2 = applyOk(afterRound1, { type: "END_COMBAT_ROUND", playerId: "p1" });
     expect(round2.combat!.round).toBe(2);
-    // The Book Power budget refreshed for the new combat round (the fix): the
-    // player is NOT stuck on round 1.
+    // The lock is cleared by the combat-round backstop too, so a player who
+    // spent it in round 1 is NOT stuck. The real rule is the per-CAST reset in
+    // performSpellCast; this clear and the map-turn clear in refreshRoundTokens
+    // are kept as harmless backstops.
     expect(round2.players.p1.combatStats.spellBookPowerUsedThisTurn).toBe(false);
 
     // Round 2: cast Implosion again and boost again with the second Book Spell.

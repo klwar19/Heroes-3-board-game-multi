@@ -11,7 +11,8 @@
  */
 import { describe, expect, it } from "vitest";
 import GameRoomServer, { type RoomSnapshot } from "../../party/index";
-import { createInitialGameState } from "@/engine";
+import { createInitialGameState, createAdventureGameState, hexNeighbors, hexSpaceId, parseHexSpaceId } from "@/engine";
+import { parallelStateForPlayer } from "@/engine/parallel-combats";
 import type { GameState } from "@/engine";
 
 type EdgeRoom = ConstructorParameters<typeof GameRoomServer>[0];
@@ -88,6 +89,37 @@ async function settle(): Promise<void> {
 }
 
 describe("PartyKit edge server — concurrent action serialization (P0)", () => {
+  it("retains both battles when two clients attack neutral guards concurrently", async () => {
+    const state = createAdventureGameState({ seed: "edge-parallel-battles", parallelTurns: 4, rollFirstPlayer: false, events: false });
+    const destinations = ["p1", "p2"].map(playerId => {
+      state.players[playerId].canMulligan = false;
+      state.players[playerId].needsHandRefresh = false;
+      const hero = state.heroes[`hero_${playerId}`];
+      const field = hexNeighbors(parseHexSpaceId(hero.spaceId!)!)
+        .map(coord => state.adventure!.fields[hexSpaceId(coord)])
+        .find(field => field && field.location !== "town")!;
+      Object.assign(field, { location: "empty_field", difficulty: 1, flagOwnerId: null, blackCube: false, everFlagged: false });
+      return field.spaceId;
+    });
+    const { room, connections } = makeEdgeRoom("edge-parallel-battles", state);
+    const server = new GameRoomServer(room);
+    await server.onStart();
+    const clients = [makeConnection("parallel-a", "client-a"), makeConnection("parallel-b", "client-b")];
+    clients.forEach(client => connections.add(client));
+    await Promise.all(clients.map((client, index) => server.onMessage(JSON.stringify({
+      type: "action", requestId: `parallel-${index}`, actorClientId: `client-${index === 0 ? "a" : "b"}`,
+      action: { type: "MOVE_HERO", playerId: `p${index + 1}`, heroId: `hero_p${index + 1}`, to: destinations[index] },
+    }), client as unknown as EdgeConnection)));
+    const after = latestSnapshot(clients[0]).state;
+    for (const playerId of ["p1", "p2"]) {
+      expect(parallelStateForPlayer(after, playerId).combat?.attackerPlayerId).toBe(playerId);
+    }
+    expect(latestSnapshot(clients[0]).version).toBe(9);
+    for (const client of clients) {
+      expect(frames(client).flatMap(frame => frame.errors ?? [])).toEqual([]);
+    }
+  });
+
   it("two overlapping actions BOTH land — neither write clobbers the other", async () => {
     const { server, connections } = await bootOpenRoom("edge-concurrent");
     const alice = makeConnection("conn-a", "client-a");

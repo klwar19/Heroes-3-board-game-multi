@@ -243,13 +243,17 @@ describe("Astrologers × parallel — Sanctuary bans PvP and so keeps parallel m
     return { state, enemyField };
   }
 
-  it("under Sanctuary, moving onto an enemy Hero is rejected and the round stays parallel", () => {
+  it("under Sanctuary, an enemy Hero's hex is not offered and a forged move leaves parallel play intact", () => {
     const { state, enemyField } = readyToAttack("par-astro-sanctuary", "astrologers.sanctuary");
     expect(state.adventure?.astrologers?.activeCardId).toBe("astrologers.sanctuary");
 
+    expect(
+      getLegalActions(state, "p1").some(
+        (legal) => legal.action.type === "MOVE_HERO" && legal.action.to === enemyField
+      )
+    ).toBe(false);
     const message = expectRejected(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: enemyField });
-    // Rejected by Sanctuary itself — NOT by the draw gate or a "wait until".
-    expect(message).toContain("Sanctuary");
+    expect(message).toContain("passable fields");
     // No battle, no collapse — parallel play continues for the whole table.
     expect(state.combat).toBeNull();
     expect(state.turn.mode).toBe("parallel");

@@ -19,6 +19,7 @@ import {
   isOuterEdgeSealed,
   neutralBattleLevel,
   playerHasPlaceableFarTile,
+  wanderingMerchantAvailable,
 } from "../adventure";
 import {
   canHeroDiscoverAdjacentTile,
@@ -2463,6 +2464,16 @@ export function scoreMapAction(
         policy: "map.open-market",
       };
     }
+    case "OPEN_WANDERING_MERCHANT":
+      // Keep the reminder visible to humans even before they can afford a buy.
+      // The computer waits for funds instead of repeatedly opening an empty shop.
+      // Open it before ending the turn; the choice policy selects
+      // the actual machine (and the purchase then removes this action).
+      return {
+        score: wanderingMerchantAvailable(state, observation.playerId, true)
+          ? 710 + economyFocusBias(memory, "market") : 0,
+        policy: "map.open-wandering-merchant",
+      };
     case "TRADE_RESOURCES":
       return {
         score: tradeResourceScore(observation, action),

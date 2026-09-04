@@ -11,6 +11,7 @@ import {
   spendResources
 } from "./adventure";
 import { isAdjacent } from "./battlefield";
+import { combatStartWindowOpen } from "./combat-timing";
 import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { defenderOnFortification, destroyFortification, fortificationTargets, parseFortificationTargetId } from "./siege";
 import { noteUnitDamagedForTokens } from "./tokens";
@@ -552,6 +553,14 @@ export function discardPermanentFromPlay(
     playerId,
     inPlay.filter((_candidate, index) => index !== inPlay.indexOf(discardId))
   );
+  // If discarded before firing, this physical machine loses its queued shot.
+  // Other copies and specialty-triggered activations retain their entries.
+  const pendingShots = state.combat?.warMachineRound?.pending;
+  if (polishBallistaTiming(state) && discardId === BALLISTA_CARD_ID && pendingShots) {
+    const pendingIndex = pendingShots.findIndex((shot) =>
+      shot.playerId === playerId && shot.cardId === discardId && !shot.granted);
+    if (pendingIndex !== -1) pendingShots.splice(pendingIndex, 1);
+  }
   // Pandora's Box permanents are one-time use — like the Pandora one-shots, they
   // come from the Pandora deck, so when they leave play (replaced over the limit,
   // discarded voluntarily, or squeezed out by a shrinking limit) they leave the
@@ -1254,35 +1263,21 @@ function spendBallisticsExpert(state: GameState, playerId: PlayerId): void {
 }
 
 /**
- * Polish Balance Pack (`polish-card-balance`) — Artillery's ongoing rider, on
- * BOTH printed sides: "If you have a Balista card played, until the end of this
- * combat you can choose its targets."
- *
- * REUSE, not a new arm: it pushes the very same `BALLISTA_CHOOSE_TARGET` effect
- * Gerwulf's Ballista VI grants, so every downstream read (the round-start target
- * offer via `hasBallistaChooseTarget`) picks it up unchanged. Conditions, all
- * from the printed line: the rule is on, a combat is open, the player really has
- * a Ballista in play, and they are not already aiming it (a second copy of the
- * effect would be noise). Returns whether the freedom was granted.
- *
- * Note the printed timing consequence: a Ballista fires at ROUND START, so the
- * aim this grants first bites on the NEXT combat round — exactly what "until the
- * end of this combat" buys.
+ * Artillery played in a firing window grants target choice immediately, for
+ * this volley and all later Ballista activations in the combat. The Polish
+ * printing grants it for either volley; Community grants it for Expert only.
+ * The late one-damage fallback never calls this function.
  */
 export function grantBalanceBallistaAim(state: GameState, playerId: PlayerId): boolean {
-  // The Community Balance Change prints the aim on its EXPERT side only ("…
-  // resolve its effect against the same target 3 times. You may select the
-  // target."), which is exactly the call from `spendArtillery`. Its BASIC
-  // side is a plain DEAL_DAMAGE and never reaches the other call site (the
-  // printed `DAMAGE_LOWEST_INITIATIVE_ENEMY` branch, which only the classic /
-  // Polish Artillery resolves).
   if (
     (!houseRuleEnabled(state, "polish-card-balance") && !houseRuleEnabled(state, "community-card-balance")) ||
     !state.combat
   ) {
     return false;
   }
-  if (!getPermanentCardIds(state, playerId).includes(BALLISTA_CARD_ID)) {
+  if (polishBallistaTiming(state)
+    ? countBallistas(state, playerId) === 0
+    : !getPermanentCardIds(state, playerId).includes(BALLISTA_CARD_ID)) {
     return false;
   }
   if (hasBallistaChooseTarget(state, playerId)) {
@@ -1430,17 +1425,40 @@ export function spendFirstAidExpert(state: GameState, playerId: PlayerId): void 
 
 /**
  * Torosar's "Activate your Ballista(s)": fire `count` extra Ballista shots
- * immediately (each = 1 damage to the lowest-initiative enemy). Ties resolve
- * deterministically; each shot re-picks, as separate Ballistas would.
+ * immediately. Polish activations use the same firing offers and target choices
+ * as round-start shots. Other printings keep their existing automatic shots.
  */
 export function activateBallistas(state: GameState, playerId: PlayerId, count: number): void {
   if (count <= 0) {
+    return;
+  }
+  if (polishBallistaTiming(state) && state.combat) {
+    const queue = state.combat.warMachineRound ??= { pending: [], firstTargetUnitId: null };
+    queue.pending.push(...Array.from({ length: count }, () => ({
+      playerId, cardId: BALLISTA_CARD_ID, granted: true
+    })));
+    processWarMachineRound(state);
     return;
   }
   // Ammo Cart (Astrologers): each Ballista shot deals +ballistaDamageBonus, the
   // same buff the round-start shot gets, so Torosar's activated Ballistas match.
   const amount = astrologersBallistaDamage(state, 1);
   fireBallistaShots(state, playerId, amount, count, "war_machine.ballista");
+}
+
+/** Community's printing takes precedence when both balance packs are enabled. */
+export function polishBallistaTiming(state: GameState): boolean {
+  return houseRuleEnabled(state, "polish-card-balance") &&
+    !houseRuleEnabled(state, "community-card-balance");
+}
+
+/** An unresolved firing offer is also a window for ordering Ballista specialties. */
+export function polishBallistaOfferOpen(state: GameState, playerId: PlayerId): boolean {
+  return polishBallistaTiming(state) &&
+    state.pendingChoice?.type === "OPTION_CHOICE" &&
+    state.pendingChoice.context === "war-machine" &&
+    state.pendingChoice.playerId === playerId &&
+    activeWarMachineEntry(state, playerId)?.roundStart.kind === "damage-lowest-initiative";
 }
 
 function openWarMachineTargetChoice(
@@ -1482,7 +1500,7 @@ function openWarMachineOffer(
   playerId: PlayerId,
   prompt: string,
   fireLabel: string,
-  skipLabel = "Skip",
+  skipLabel: string | null = "Skip",
   // Extra options APPENDED after fire/skip, so every pre-existing index keeps its
   // meaning (index 0 fires, 1 skips) — the Balance Pack's Ballistics double is
   // index 2. Same convention the Diplomacy Legion offers use.
@@ -1494,7 +1512,7 @@ function openWarMachineOffer(
     type: "OPTION_CHOICE",
     playerId,
     prompt,
-    options: [{ label: fireLabel }, { label: skipLabel }, ...extraLabels.map((label) => ({ label }))],
+    options: [{ label: fireLabel }, ...(skipLabel === null ? [] : [{ label: skipLabel }]), ...extraLabels.map((label) => ({ label }))],
     context: "war-machine",
     returnPhase: "combat"
   };
@@ -1552,8 +1570,8 @@ export function processWarMachineRound(state: GameState): void {
   }
 
   while (!state.pendingChoice && !combat.outcome && state.combat === combat) {
-    const queue = combat.warMachineRound;
-    const head = queue?.pending[0];
+    const queue: NonNullable<GameState["combat"]>["warMachineRound"] = combat.warMachineRound;
+    const head: NonNullable<typeof queue>["pending"][number] | undefined = queue?.pending[0];
     if (!queue || !head) {
       combat.warMachineRound = null;
       return;
@@ -1605,6 +1623,29 @@ export function processWarMachineRound(state: GameState): void {
           "Fire once",
           labels
         );
+        return;
+      }
+
+      // Leave time to order specialty cards before committing this shot — but
+      // ONLY when the hand really holds a Ballista specialty this window can
+      // PLAY. The offer list (legal-actions' addOptionPlays call for the open
+      // OPTION_CHOICE) lists a CHOOSE_ONE card with a `combatAnytime` option —
+      // or any option at all while the combat-start window is open. A bare
+      // BALLISTA_SPECIALTY map card such as Torosar IV matched the old tag-only
+      // test and produced a single-option, no-Skip DEAD CLICK every round, so
+      // this mirrors that filter exactly, off the same balanced definition.
+      if (polishBallistaTiming(state) && (state.players[playerId]?.hand ?? []).some((id) => {
+        const specialty = balanceCard(state, id);
+        if (specialty?.kind !== "hero-specialty" || !specialty.tags.includes("ballista")) {
+          return false;
+        }
+        return specialty.effect.type === "CHOOSE_ONE" &&
+          specialty.effect.options.some(
+            (option) => Boolean(option.combatAnytime) || combatStartWindowOpen(combat),
+          );
+      })) {
+        openWarMachineOffer(state, playerId,
+          `${name}: play a Ballista specialty first, or fire now.`, "Fire once", null);
         return;
       }
 
@@ -1712,7 +1753,7 @@ export function resolveWarMachineOption(state: GameState, playerId: PlayerId, op
         openWarMachineTargetChoice(
           state,
           playerId,
-          `${name} (Artillery): hit the same target ${shots}× — break the tie.`,
+          `${name} (Artillery): choose the target to hit ${shots}×.`,
           candidates.map((unit) => unit.id),
           roundStart.amount
         );
@@ -1722,13 +1763,16 @@ export function resolveWarMachineOption(state: GameState, playerId: PlayerId, op
         fireShotsAtUnit(state, playerId, candidates[0].id, roundStart.amount, shots);
       }
     } else {
-      // Fire once at the slowest enemy; a tie asks the owner to break it.
-      const candidates = lowestInitiativeEnemies(state, playerId);
+      // Keeping Artillery does not cancel an already-active targeting effect.
+      const candidates = hasBallistaChooseTarget(state, playerId)
+        ? enemiesOf(state, playerId) : lowestInitiativeEnemies(state, playerId);
       if (candidates.length > 1) {
         openWarMachineTargetChoice(
           state,
           playerId,
-          `${name}: ${roundStart.amount} damage to the enemy unit with the lowest initiative — break the tie.`,
+          hasBallistaChooseTarget(state, playerId)
+            ? `${name}: choose which enemy unit takes ${roundStart.amount} damage.`
+            : `${name}: ${roundStart.amount} damage to the enemy unit with the lowest initiative — break the tie.`,
           candidates.map((unit) => unit.id),
           roundStart.amount
         );
@@ -2001,12 +2045,8 @@ export function buyWarMachine(state: GameState, action: Extract<GameAction, { ty
 }
 
 /**
- * Schools of Magic, cast-time expert: when the caster chose (as part of the
- * cast) to discard the matching in-play permanent for its expert power bonus,
- * this spends one expert use, removes the permanent and logs the play. Returns
- * the discarded School card and its expert power so the caster's spell can take
- * +3 instead of the standing +1 — or null when there is no matching permanent
- * in play or no expert use is left, so the cast just keeps its basic bonus.
+ * Map Spell boost choice: discard a matching School permanent and return its
+ * expert value. Combat uses USE_SCHOOL_PERMANENT_EXPERT in the instant window.
  */
 export function discardSchoolPermanentForExpert(
   state: GameState,
@@ -2015,8 +2055,6 @@ export function discardSchoolPermanentForExpert(
 ): { cardId: CardId; expertPower: number } | null {
   const player = state.players[playerId];
   const match = player ? getPermanentSchoolBonus(state, playerId, spellCard) : null;
-  // An EMPOWERED School of Magic ability discards for its expert bonus without a
-  // crown — the same waiver every other Expert side of an ability gets.
   if (!player || !match || !canPlayExpertMode(player, match.card.id)) {
     return null;
   }
@@ -2026,7 +2064,6 @@ export function discardSchoolPermanentForExpert(
   }
   discardPermanentFromPlay(state, playerId, match.card.id);
   enforcePermanentLimit(state, playerId);
-
   appendEvent(state, {
     type: "CARD_PLAYED",
     playerId,
@@ -2035,6 +2072,5 @@ export function discardSchoolPermanentForExpert(
     mode: "expert",
     effectAmount: match.expertPower
   });
-
   return { cardId: match.card.id, expertPower: match.expertPower };
 }

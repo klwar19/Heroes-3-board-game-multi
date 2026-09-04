@@ -486,6 +486,28 @@ describe("View Earth reach scales with the Power paid", () => {
     expect(state.adventure!.fields[farMine].flagOwnerId).toBe("p1");
   });
 
+  it("Scorched Ground gives the same +1 to the Earth map spell View Earth", () => {
+    let state = withHand(makeGame(), ["spell.view_earth"]);
+    const hero = heroP1(state);
+    const farMine = spaceAtDistance(hero.spaceId!, 2);
+    placeMine(state, farMine, "p2", "gold", 1);
+
+    // Power 0 reaches only one field, so this cast exists only because the
+    // face-up Earth/Fire proclamation supplies View Earth's starting Power 1.
+    expect(viewEarthCasts(state)).toBe(0);
+    state.adventure!.astrologers!.activeCardId = "astrologers.scorched_ground";
+    expect(viewEarthCasts(state)).toBe(1);
+
+    state = boost(cast(state, "spell.view_earth"), null);
+    const choice = state.pendingChoice;
+    if (choice?.type !== "OPTION_CHOICE" || choice.context !== "view-earth") {
+      throw new Error("expected the Scorched Ground View Earth pick at Power 1");
+    }
+    expect(choice.viewEarth?.mineSpaceIds).toEqual([farMine]);
+    state = choose(state, 0);
+    expect(state.adventure!.fields[farMine].flagOwnerId).toBe("p1");
+  });
+
   it("a School of Magic permanent's crown-gated expert half keeps the distance-3 Mine castable", () => {
     const state = withHand(makeGame(), ["spell.view_earth"]);
     const hero = heroP1(state);

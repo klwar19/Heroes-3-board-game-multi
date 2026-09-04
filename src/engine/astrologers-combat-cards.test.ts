@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, getLegalActions, type GameAction, type GameState } from "./index";
 import {
   drawAstrologersCard,
+  drawGuardArmy,
   drawNeutralArmy,
+  applyCustomGuardToField,
   getMainHero,
   getTownOfPlayer,
   isSeaField,
@@ -18,6 +20,7 @@ import {
   startPlayerCombat
 } from "./adventure-reducer";
 import { NEUTRAL_PLAYER_ID } from "./state";
+import type { MapFieldState } from "./state";
 import { cardLibrary } from "@/data/cards/library";
 
 /**
@@ -122,6 +125,40 @@ describe("Astrologers — Rulebook (neutral guards one difficulty lower)", () =>
     const ruled = createAdventureGameState({ seed: "rb-draw", difficulty: "hard", rollFirstPlayer: false });
     setActive(ruled, "astrologers.rulebook");
     expect(drawNeutralArmy(ruled, 2)).toHaveLength(2); // normal[2] = 2 bronze
+  });
+
+  it("redraws Rulebook on Easy, as the printed exception requires", () => {
+    const state = createAdventureGameState({ seed: "rb-easy-redraw", difficulty: "easy", rollFirstPlayer: false });
+    const deck = state.decks.astrologers!;
+    deck.drawPile = ["astrologers.dead_silence", "astrologers.rulebook"];
+    deck.discardPile = [];
+
+    drawAstrologersCard(state);
+
+    expect(state.adventure!.astrologers?.activeCardId).toBe("astrologers.dead_silence");
+    expect(deck.discardPile).toContain("astrologers.rulebook");
+  });
+
+  it("does not weaken map-designed level guards or the Dragon Utopia objective", () => {
+    const state = createAdventureGameState({ seed: "rb-authored", difficulty: "hard", rollFirstPlayer: false });
+    setActive(state, "astrologers.rulebook");
+    const field = (location: MapFieldState["location"], spaceId: string): MapFieldState => ({
+      spaceId,
+      tileInstanceId: "authored",
+      slot: 0,
+      location,
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null
+    });
+
+    const designed = field("empty_field", "90,90");
+    applyCustomGuardToField(designed, { level: 2 });
+    expect(drawGuardArmy(state, designed, 2)).toHaveLength(3); // authored Hard row, not Normal's 2
+
+    const utopia = field("dragon_utopia", "91,91");
+    expect(drawGuardArmy(state, utopia, 7)).toHaveLength(3); // Hard VII, not Normal's 2
   });
 });
 
@@ -337,10 +374,10 @@ describe("Astrologers — Wind (continue after embarking)", () => {
     expect(seaStepHalts(state, sea, land)).toBe(false);
   });
 
-  it("BINH keeps the old disembark halt, with or without Wind", () => {
+  it("BINH Wind waives both coastline halts; without Wind both still halt", () => {
     const withWind = seaFixture("wind-binh-on", "astrologers.wind", "binh");
     expect(seaStepHalts(withWind.state, withWind.land, withWind.sea)).toBe(false);
-    expect(seaStepHalts(withWind.state, withWind.sea, withWind.land)).toBe(true);
+    expect(seaStepHalts(withWind.state, withWind.sea, withWind.land)).toBe(false);
 
     const withoutWind = seaFixture("wind-binh-off", "astrologers.dead_silence", "binh");
     expect(seaStepHalts(withoutWind.state, withoutWind.land, withoutWind.sea)).toBe(true);

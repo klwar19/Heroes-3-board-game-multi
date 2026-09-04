@@ -16,7 +16,7 @@ function applyOk(state: GameState, action: GameAction): GameState {
   return result.state;
 }
 
-function startImpCache(seed: string, enabled = true): GameState {
+function startImpCache(seed: string, enabled = true, army?: GameState["players"][string]["army"]): GameState {
   let state = createAdventureGameState({
     seed,
     difficulty: "easy",
@@ -26,7 +26,7 @@ function startImpCache(seed: string, enabled = true): GameState {
   if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
     state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
   }
-  state.players.p1.army = [
+  state.players.p1.army = army ?? [
     { id: "gorgons", unitDefId: "fortress.gorgons", side: "few" }
   ];
   const hero = getMainHero(state, "p1")!;
@@ -43,10 +43,12 @@ function startImpCache(seed: string, enabled = true): GameState {
   };
   placeCreatureBank(state, "bank-field", "imp_cache");
   startNeutralEncounter(state, hero, state.adventure!.fields["bank-field"]);
-  const placement = getLegalActions(state, "p1").find(
-    (legal) => legal.action.type === "PLACE_COMBAT_UNIT"
-  );
-  state = applyOk(state, placement!.action);
+  for (let count = 0; count < state.players.p1.army.length; count += 1) {
+    const placement = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLACE_COMBAT_UNIT"
+    );
+    state = applyOk(state, placement!.action);
+  }
   return applyOk(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
 }
 
@@ -59,6 +61,25 @@ function findOpening(predicate: (state: GameState) => boolean, enabled = true): 
 }
 
 describe("Polish Banks auto combat", () => {
+  it("offers for an Angel alone, but not an Angel deployed alongside a vulnerable Griffin", () => {
+    const angel = { id: "angel", unitDefId: "castle.archangels", side: "few" as const };
+    const solo = startImpCache("bank-angel-griffin", true, [angel]);
+    expect(solo.pendingChoice).toMatchObject({ type: "OPTION_CHOICE", context: "polish-bank-auto-combat" });
+    const mixed = startImpCache("bank-angel-griffin", true, [
+      angel, { id: "griffin", unitDefId: "castle.griffins", side: "few" }
+    ]);
+    expect(bankAutoCombatSafeUnit(mixed)).toBeNull();
+    expect(mixed.combat?.bankAutoCombatAsked).not.toBe(true);
+    expect(mixed.pendingChoice?.type === "OPTION_CHOICE" && mixed.pendingChoice.context === "polish-bank-auto-combat").toBe(false);
+    // The same safety check must hold after setup, including summoned allies.
+    mixed.pendingChoice = null;
+    mixed.phase = "combat";
+    mixed.combat!.setup = null;
+    mixed.combat!.units.unit_p1_griffin.armyUnitId = undefined;
+    maybeOpenMidFightBankAutoCombatChoice(mixed);
+    expect(mixed.pendingChoice).toBeNull();
+  });
+
   it("offers only after Stack rolls when a deployed unit is mathematically immune", () => {
     const state = findOpening(
       (candidate) =>

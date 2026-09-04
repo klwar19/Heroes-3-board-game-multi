@@ -1,4 +1,5 @@
 import { cardLibrary } from "@/data/cards/library";
+import { parallelStateForPlayer, settleParallelCombatContext } from "./parallel-combats";
 import { REROLL_REACTION_ARTIFACT_IDS } from "@/data/cards/artifacts";
 import { LUCKY_E_SPECIALTY_SOURCES } from "@/data/cards/adventure";
 import { sampleBuildings } from "@/data/towns/buildings";
@@ -17,6 +18,7 @@ import {
   getSecondaryHero,
   getUnitSide,
   ensureRevealedRandomTownFactions,
+  ensureSettlementRecruitFactions,
   hasDuplicateArmyUnitIds,
   healLegacyPlayerFields,
   isSeaField,
@@ -84,6 +86,7 @@ import {
   openDimensionDoorChoice,
   openViewEarthChoice,
   openMarket,
+  openWanderingMerchant,
   openSharedDeckSearch,
   maybeOpenPostSearchOffers,
   openDiscardTopPick,
@@ -264,12 +267,12 @@ import {
   committedSchoolExpertPower,
   discardPermanentFromPlay,
   discardPermanentVoluntarily,
-  discardSchoolPermanentForExpert,
-  elementalTileSpellPowerBonus,
   firstAidVolleyHeals,
   getPermanentCardIds,
   getPermanentSchoolBonus,
-  grantBalanceBallistaAim,
+  polishBallistaOfferOpen,
+  polishBallistaTiming,
+  processWarMachineRound,
   isLowestInitiativeEnemy,
   openBallisticsOpeningBombard,
   playerCanUseFirstAidVolley,
@@ -356,7 +359,6 @@ import {
   canPlayExpertMode,
   discardPickAllowedInCombat,
   estatesGold,
-  matchingSchoolFetchForCast,
   getRuleset,
   spellBookPowerAvailable,
   spellBookRuleEnabled,
@@ -575,6 +577,7 @@ import {
   effectScalesWithAttackPool,
   playConsumesWindowPower,
   getCardPlayVariants,
+  getPendingStackItem,
   getSchoolPermanentExpertActions,
   resolvedSpellPowerForStackItem,
   rerollSourceAvailableFor,
@@ -17880,6 +17883,11 @@ function castSpell(
   if (!card || card.kind !== "spell") {
     throw new Error(`Card ${action.cardId} is not a spell.`);
   }
+  // School basic Power is automatic. Expert School Power is chosen only after
+  // the Spell opens its instant window via USE_SCHOOL_*_EXPERT.
+  if (action.useSchoolExpert || action.useSchoolFetchExpert) {
+    throw new Error("School expert must be played in the Spell's instant Power window.");
+  }
   if (action.fromSpellBook && polishSpellBookEnabled(state)) {
     assertPolishBookCastEnabled(state, action);
   }
@@ -18094,8 +18102,6 @@ function openPegasiTollChoice(
         ? { castEnablerCardId: action.castEnablerCardId }
         : {}),
       ...(action.tarnumReturn ? { tarnumReturn: action.tarnumReturn } : {}),
-      ...(action.useSchoolExpert ? { useSchoolExpert: true } : {}),
-      ...(action.useSchoolFetchExpert ? { useSchoolFetchExpert: true } : {}),
     },
   };
   state.phase = "choice";
@@ -18135,8 +18141,6 @@ function spellActionFromDeferred(
       ? { castEnablerCardId: deferred.castEnablerCardId }
       : {}),
     ...(deferred.tarnumReturn ? { tarnumReturn: deferred.tarnumReturn } : {}),
-    ...(deferred.useSchoolExpert ? { useSchoolExpert: true } : {}),
-    ...(deferred.useSchoolFetchExpert ? { useSchoolFetchExpert: true } : {}),
   };
 }
 
@@ -18195,8 +18199,6 @@ function continueSpellCastAfterPowerTax(
       ...(action.optionIndex !== undefined
         ? { optionIndex: action.optionIndex }
         : {}),
-      ...(action.useSchoolExpert ? { useSchoolExpert: true } : {}),
-      ...(action.useSchoolFetchExpert ? { useSchoolFetchExpert: true } : {}),
     },
   };
   state.phase = "choice";
@@ -18243,6 +18245,28 @@ function performSpellCast(
     throw new Error(
       "Cast a Spell enables a refreshed Spell Book card; it is not itself cast as a Spell.",
     );
+  }
+
+  // Each new cast gets one independent Spell Book +1 Power allowance. This is
+  // intentionally reset when the cast starts (before its reaction window), so
+  // Knowledge and every other legitimate extra-cast source work identically.
+  //
+  // EXCEPTION — an OPEN attack window: Power poured into a declared attack is
+  // pooled on that ONE parked blow, so a `combatAnytime` instant Spell CAST
+  // into a window the player already fuelled from the Book is not a fresh
+  // budget — a reset there would re-arm a SECOND Book spend against the same
+  // attack. DEFENSIVE today: no shipped Spell face carries `combatAnytime`, and
+  // no CAST_SPELL is offered while a reaction window is open (that branch of
+  // getLegalActions serves only legalReactions, and a reaction Spell resolves
+  // through applyReactionPlayCore, which never reaches this reset) — so nothing
+  // reachable takes this branch. It exists so the first Spell that DOES gain a
+  // combatAnytime face cannot double-spend the Book. Every other cast (own turn,
+  // a cast window, an activation window) still gets its own allowance.
+  if (
+    !state.reactionWindow ||
+    state.reactionWindow.triggerEvent.type !== "UNIT_ATTACK_DECLARED"
+  ) {
+    state.players[action.playerId].combatStats.spellBookPowerUsedThisTurn = false;
   }
 
   // Polish Balance Pack — the reprinted EAGLE EYE EXPERT copy: the Spell is the
@@ -18417,30 +18441,11 @@ function performSpellCast(
   // Magic Arrow can use any ONE School of Magic, never several at once. Choose
   // the strongest complete package before any cast bookkeeping consumes an
   // Elemental activation charge, then freeze that choice on the stack item.
-  let selectedPowerSchool = pickSpellSchoolForPower(
+  const selectedPowerSchool = pickSpellSchoolForPower(
     state,
     action.playerId,
     card,
   );
-  if (card.spellSchools?.includes("any") && action.useSchoolExpert) {
-    const expertSchool = getPermanentSchoolBonus(
-      state,
-      action.playerId,
-      card,
-    )?.card.permanentEffect?.schoolBonus?.school;
-    if (expertSchool && expertSchool !== "any") {
-      selectedPowerSchool = expertSchool;
-    }
-  } else if (
-    card.spellSchools?.includes("any") &&
-    action.useSchoolFetchExpert
-  ) {
-    selectedPowerSchool = matchingSchoolFetchForCast(
-      state,
-      action.playerId,
-      card.spellSchools,
-    );
-  }
   const powerCard = spellCardForPowerSchool(
     state,
     action.playerId,
@@ -18571,69 +18576,15 @@ function performSpellCast(
       caster.combatStats.pendingDrawRiderSpellPower = 0;
     }
 
-    // School of Magic permanent in play: a matching spell takes its standing
-    // basic bonus (+1) for free. If the caster chose, as part of this cast, to
-    // discard the permanent for its expert bonus, take +3 instead — decided here
-    // up front, so a plain cast just applies the +1 and resolves without popping
-    // a separate expert prompt. Conflux Elemental terrain (N14–N21) also adds +1
-    // for the SAME school only — baked into schoolPowerBonus so Magic Arrow
-    // (wiki: one school at a time) never stacks Water Magic with a Fire tile.
-    if (action.useSchoolExpert) {
-      const expert = discardSchoolPermanentForExpert(
-        state,
-        action.playerId,
-        powerCard,
-      );
-      if (!expert) {
-        throw new Error(
-          "That spell cannot discard a School of Magic for its expert bonus right now.",
-        );
-      }
-      const expertSchool =
-        cardLibrary[expert.cardId]?.permanentEffect?.schoolBonus?.school;
-      const tileBonus =
-        expertSchool && expertSchool !== "any"
-          ? elementalTileSpellPowerBonus(state, expertSchool)
-          : 0;
-      stackItem.modifiers.schoolPowerBonus = expert.expertPower + tileBonus;
-      stackItem.modifiers.playedCardIds.push(expert.cardId);
-    } else {
-      // Permanent basic + Elemental tile for the auto-picked school (Magic Arrow)
-      // or the spell's printed school.
-      const standing = schoolScopedStandingPower(state, action.playerId, powerCard);
-      if (standing > 0) {
-        stackItem.modifiers.schoolPowerBonus = standing;
-      }
+    // Matching School basic Power and the Elemental tile bonus apply
+    // automatically. Magic Arrow selects one school and never stacks schools.
+    const standing = schoolScopedStandingPower(state, action.playerId, powerCard);
+    if (standing > 0) {
+      stackItem.modifiers.schoolPowerBonus = standing;
     }
   }
 
   state.stack.push(stackItem);
-
-  // Basic X Magic (Conflux fetch permanent) +3 Power, folded up front as part of
-  // the cast (the caster picked the `useSchoolFetchExpert` cast variant) instead
-  // of playing the standalone USE_SCHOOL_FETCH_EXPERT reaction after the cast. The
-  // permanent is DISCARDED (consumed); one crown is spent. applySchoolFetchExpert re-derives
-  // and validates everything (fetch present, school match, not a scroll, a crown
-  // left, once per stack), so a forged flag can only fail cleanly — never boost
-  // for free. Folded before SPELL_CAST_STARTED so reactions (Resistance) see the
-  // final Power, and marking `schoolFetchExpertUsedBy` blocks a second dip.
-  if (action.useSchoolFetchExpert) {
-    const school = matchingSchoolFetchForCast(
-      state,
-      action.playerId,
-      powerCard.spellSchools ?? [],
-    );
-    if (!school) {
-      throw new Error(
-        "No Basic Magic of a matching school is in play for this cast.",
-      );
-    }
-    applySchoolFetchExpert(state, {
-      type: "USE_SCHOOL_FETCH_EXPERT",
-      playerId: action.playerId,
-      school,
-    });
-  }
 
   const spellStarted = appendEvent(state, {
     type: "SPELL_CAST_STARTED",
@@ -19138,8 +19089,8 @@ function payOptionCardCost(
       player.discard.push(cardId);
     }
   });
-  // Spending a Book Spell for Power consumes the once-per-turn Book Power budget
-  // (shared with the "+1 Power" discard, so it can't be doubled up in a turn).
+  // Spending a Book Spell for Power consumes the once-per-CAST Book Power
+  // budget (shared with the "+1 Power" discard, so one cast can never take two).
   if (bookPaid > 0) {
     player.combatStats.spellBookPowerUsedThisTurn = true;
   }
@@ -19677,13 +19628,13 @@ function applyReactionPlayCore(
         );
       }
       // Spell Book (house rule): only ONE Book Spell may be spent for Power per
-      // turn (a crown-style budget). Backstop the per-turn lock here so a forced
+      // cast. Backstop the per-cast lock here so a forced
       // play the legal-action filter never offered still fails, then mark it spent
       // and cycle the Spell Book → discard pile (a non-hand zone, like a Scroll).
       const player = state.players[playerId];
       if (!player || !spellBookPowerAvailable(player)) {
         throw new Error(
-          "You have already spent a Spell Book Spell for Power this turn.",
+          "You have already spent a Spell Book Spell for Power on this cast.",
         );
       }
       const moveError = moveSpellFromSpellBookToDiscard(
@@ -21867,7 +21818,6 @@ function applyReactionPlayCore(
       caster.combatStats.spellLimitBonusThisRound +=
         effect.expertSpellLimitBonus ?? 0;
     }
-
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
 
@@ -22174,8 +22124,7 @@ function applyReactionPlayCore(
       damageKind: "effect",
     });
     markUnitRemovedIfNeeded(state, unit);
-    // Balance Pack: the reprinted BASIC side also carries the aim rider.
-    grantBalanceBallistaAim(state, playerId);
+    // The out-of-window shot never grants ongoing Ballista targeting.
     finishCombatIfNeeded(state);
   }
 
@@ -22484,14 +22433,49 @@ function applySchoolPermanentExpert(
   if (!discardPermanentFromPlay(state, action.playerId, action.cardId)) {
     throw new Error("That School of Magic permanent could not be discarded.");
   }
-  // Bank only — no attack-pool credit yet. The pool is school-generic, so an
-  // up-front credit let a Fire commit scale an Earth Weakness already on the
-  // attack. The +3 enters the pool (or pays a powerCost) when the first
-  // MATCHING-school Spell is actually played, and is consumed then.
-  (window.schoolExpertPowerByPlayer ??= {})[action.playerId] = {
-    school: school.school,
-    power: school.expertPower,
-  };
+  // Locate the parked cast through the SAME helper the offer uses, so the
+  // handler can never read a different stack item than the one the offer was
+  // derived from (the applySchoolFetchExpert precedent).
+  const currentCast =
+    trigger.type === "SPELL_CAST_STARTED"
+      ? getPendingStackItem(state, trigger)
+      : undefined;
+  if (
+    currentCast?.action.type === "CAST_SPELL" &&
+    currentCast.action.playerId === action.playerId
+  ) {
+    // A Spell Scroll cast is locked to Power 0 — the fetch twin refuses one,
+    // and so must this (a forged frame can then only fail cleanly).
+    if (currentCast.modifiers.scrollLocked) {
+      throw new Error("A Spell Scroll cast is locked to Power 0.");
+    }
+    // The cast already received the automatic basic School bonus. Expert is a
+    // choice in this instant window and REPLACES this permanent's own basic
+    // contribution — so ADD the delta (expert − basic), never assign: another
+    // source may already have added Power to the same cast (a Basic X Magic +3
+    // committed first in this very window), and the assignment CLOBBERED it —
+    // fetch-then-permanent burned two crowns and two permanents for LESS
+    // damage than the fetch alone. The standing base set at cast time already
+    // includes the elemental tile bonus, so it is not re-added here: +3 School
+    // with a +1 tile stays 4, never 5.
+    currentCast.modifiers.schoolPowerBonus =
+      (currentCast.modifiers.schoolPowerBonus ?? 0) +
+      (school.expertPower - school.basicPower);
+    (currentCast.modifiers.schoolPermanentExpertUsedBy ??= []).push(
+      action.playerId,
+    );
+    if (currentCast.action.cardId === "spell.magic_arrow" && school.school !== "any") {
+      currentCast.modifiers.selectedSpellSchool = school.school;
+    }
+    currentCast.modifiers.playedCardIds.push(action.cardId);
+  } else {
+    // For an attack/activation/lethal window, bank the expert until the player
+    // plays a matching reaction Spell into that window.
+    (window.schoolExpertPowerByPlayer ??= {})[action.playerId] = {
+      school: school.school,
+      power: school.expertPower,
+    };
+  }
   if (!abilityExpertIsCrownFree(player, action.cardId)) {
     player.combatStats.expertUsesSpentThisRound += 1;
   }
@@ -24572,6 +24556,9 @@ function playCard(
     // close first-spell-this-turn gates, consume equipment, and fire cast draws.
     noteMapSpellCast(state, action.playerId, inFlightCardIds);
     const player = state.players[action.playerId];
+    if (player) {
+      player.combatStats.spellBookPowerUsedThisTurn = false;
+    }
     if (player && mapBank > 0) {
       player.mapSpellPowerBank = 0;
     }
@@ -25341,10 +25328,7 @@ function playCard(
       damageKind: "effect",
     });
     markUnitRemovedIfNeeded(state, unit);
-    // Balance Pack: the reprinted BASIC side also carries the aim rider — the
-    // SAME grant the in-window reaction play makes, so the card cannot behave
-    // differently depending on which moment it was played.
-    grantBalanceBallistaAim(state, action.playerId);
+    // The out-of-window shot never grants ongoing Ballista targeting.
     finishCombatIfNeeded(state);
   }
 
@@ -26591,6 +26575,9 @@ function playCard(
       );
     }
     // Immediate activation counts the just-granted one too.
+    if (state.combat?.warMachineRound && polishBallistaTiming(state) && effect.grant && !effect.activate) {
+      activateBallistas(state, action.playerId, 1);
+    }
     if (state.combat && effect.activate === "all") {
       activateBallistas(
         state,
@@ -31755,14 +31742,15 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
   expireTokensAtRoundEnd(state, state.combat, finishedRound);
   expireBattlefieldTokensAtRoundEnd(state, finishedRound);
   for (const player of Object.values(state.players)) {
+    if (state.turn.mode === "parallel" && player.id !== state.combat.attackerPlayerId && player.id !== state.combat.defenderPlayerId) continue;
     player.combatStats.spellsCastThisRound = 0;
     player.combatStats.spellLimitBonusThisRound = 0;
     player.combatStats.anySpellCastThisRound = false;
-    // Spell Book (house rule): the +1-Power Book discard is capped at ONE per
-    // COMBAT round (not one per whole battle). Refresh it here so a player who
-    // spent it in round 1 may use it again in round 2, 3, … — while a second use
-    // inside the SAME round stays blocked (the boolean is re-set on use). It is
-    // also reset per map turn in refreshRoundTokens for the map→combat boundary.
+    // Spell Book (house rule): the +1-Power Book discard is ONE PER CAST — the
+    // budget is reset at the start of every cast (performSpellCast), except
+    // while an attack window is open. This round-start clear and the map-turn
+    // clear in refreshRoundTokens (adventure.ts) are harmless BACKSTOPS kept
+    // for legacy snapshots and the map→combat boundary; neither is the rule.
     player.combatStats.spellBookPowerUsedThisTurn = false;
     // Sorcery draw-only bank is same-activation intent; a new combat round
     // drops any unused Power so it cannot leak across rounds.
@@ -33135,6 +33123,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "OFFER_ALLY_TRANSFER",
   "BUILD_GRAIL",
   "OPEN_MARKET",
+  "OPEN_WANDERING_MERCHANT",
   "DISCOVER_TILE",
   "PLACE_TILE",
   "PLACE_OBSERVATORY_TILE",
@@ -33341,6 +33330,22 @@ export function applyAction(
   action: GameAction,
   options: ReducerOptions = {},
 ): EngineResult {
+  const selected = "playerId" in action && typeof action.playerId === "string"
+    ? parallelStateForPlayer(state, action.playerId) : state;
+  const result = applyActionInContext(selected, action, options);
+  const pendingOwner = result.state.pendingChoice?.playerId ?? result.state.reactionWindow?.priorityPlayerId;
+  if (!result.errors.length && pendingOwner && result.state.parallelCombats?.[pendingOwner]) {
+    return fail(state, { code: "ACTION_NOT_LEGAL", message: "Wait for that player's parallel battle to finish before opening a choice for them." });
+  }
+  if (!result.errors.length) settleParallelCombatContext(result.state);
+  return result.errors.length && selected !== state ? { ...result, state } : result;
+}
+
+function applyActionInContext(
+  state: GameState,
+  action: GameAction,
+  options: ReducerOptions = {},
+): EngineResult {
   // Balance packs: ONE seam. Every card read below (and in every helper this
   // action reaches) goes through `cards`, so swapping the reprinted definitions
   // in here is what makes the rules real for the whole resolution path.
@@ -33514,7 +33519,15 @@ export function applyAction(
         case "PLAY_CARD":
           // Likewise for any other card played on the quiet map turn.
           assertStartOfTurnDrawTaken(nextState, action.playerId);
+          if (polishBallistaOfferOpen(nextState, action.playerId)) {
+            nextState.pendingChoice = null;
+            nextState.phase = "combat";
+            nextState.priorityPlayerId = null;
+          }
           playCard(nextState, action, cards);
+          if (polishBallistaTiming(nextState) && !nextState.pendingChoice) {
+            processWarMachineRound(nextState);
+          }
           // An "Instant (any time during Combat)" card played INSIDE a reaction
           // window (Gerwulf's Ballista discard, Deemer's Meteor Shower — see
           // combatAnytimeInstantWindowJoins) keeps that window open, exactly like
@@ -33534,7 +33547,15 @@ export function applyAction(
             nextState.reactionWindow &&
             nextState.reactionWindow.priorityPlayerId === action.playerId
           ) {
-            nextState.phase = "reaction";
+            // The pendingChoice TYPE check belongs to
+            // advanceReactionWindowAfterPlay alone: it pauses the window for the
+            // three shapes that HAVE a resume tail and keeps the documented
+            // close-and-resolve fallback for every other shape. Duplicating the
+            // check here silently DISABLED that fallback — a play that opened any
+            // other choice type left stale passes and never resumed. Only the
+            // PHASE flip stays conditional: a play that parked a choice must keep
+            // the choice's own phase.
+            if (!nextState.pendingChoice) nextState.phase = "reaction";
             advanceReactionWindowAfterPlay(nextState, action.playerId, cards);
           }
           break;
@@ -33697,6 +33718,9 @@ export function applyAction(
           break;
         case "OPEN_MARKET":
           openMarket(nextState, action);
+          break;
+        case "OPEN_WANDERING_MERCHANT":
+          openWanderingMerchant(nextState, action);
           break;
         case "DISCOVER_TILE":
           discoverTile(nextState, action);
@@ -33996,7 +34020,7 @@ export function applyAction(
           blacksmithAction(nextState, action);
           break;
         case "MAGIC_UNIVERSITY_ACTION":
-          magicUniversityAction(nextState, action);
+          magicUniversityAction();
           break;
         case "USE_TOWN_BUILDING":
           activateTownBuilding(nextState, action);
@@ -34142,6 +34166,13 @@ export function applyAction(
           break;
         case "CHOOSE_ABILITY_TARGET":
           chooseAbilityTarget(nextState, action, cards);
+          if (polishBallistaTiming(nextState) && !nextState.pendingChoice) {
+            processWarMachineRound(nextState);
+            if (nextState.reactionWindow && !nextState.pendingChoice) {
+              nextState.phase = "reaction";
+              advanceReactionWindowAfterPlay(nextState, action.playerId, cards);
+            }
+          }
           break;
         case "SET_GAME_OPTIONS":
           setGameOptions(nextState, action);
@@ -34233,6 +34264,7 @@ export function applyAction(
     // the fight later reads the same persisted `field.faction`. The gate position
     // and the defender layout are still decided only at combat setup.
     ensureRevealedRandomTownFactions(nextState);
+    ensureSettlementRecruitFactions(nextState);
 
     // Polish Set Artifacts: re-derive every player's active-tier count and announce
     // the ones that MOVED — a set's tiers change whenever a member card enters or

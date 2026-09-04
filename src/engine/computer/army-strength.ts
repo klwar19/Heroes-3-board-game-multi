@@ -11,7 +11,12 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import { assessDwellingRush, openingCorePackTarget } from "./development";
 import { playersAreAllied } from "./control";
 import type { UnitTier } from "@/data/factions/types";
-import { getUnitSide, NEUTRAL_ARMY_TABLE, neutralArmyDifficulty } from "../adventure";
+import {
+  getUnitSide,
+  NEUTRAL_ARMY_TABLE,
+  neutralArmyDifficulty,
+  neutralArmyDifficultyForField,
+} from "../adventure";
 import { armyUnitRankInfo } from "../unit-experience";
 import { NEUTRAL_PLAYER_ID } from "../state";
 import type {
@@ -475,8 +480,11 @@ export function armyTierGuardCap(
 export function premiumEconomyEngageCap(
   state: GameState,
   playerId: PlayerId,
+  field?: MapFieldState,
 ): number {
-  const scenario = neutralArmyDifficulty(state);
+  const scenario = field
+    ? neutralArmyDifficultyForField(state, field)
+    : neutralArmyDifficulty(state);
   const bronzePacks = armyBronzePackCount(state, playerId);
   const counts = armyTierCounts(state, playerId);
   let cap = 0;
@@ -511,9 +519,10 @@ export function armyCoversPremiumEconomyGuard(
   state: GameState,
   playerId: PlayerId,
   fieldDifficulty: number,
+  field?: MapFieldState,
 ): boolean {
   if (fieldDifficulty <= 0) return false;
-  return fieldDifficulty <= premiumEconomyEngageCap(state, playerId);
+  return fieldDifficulty <= premiumEconomyEngageCap(state, playerId, field);
 }
 
 /**
@@ -535,7 +544,7 @@ export function premiumEconomyWorthStaging(
   const difficulty = field.difficulty ?? 0;
   if (difficulty <= 0 || difficulty > 3) return false;
   if (field.flagOwnerId) return false;
-  if (armyCoversPremiumEconomyGuard(state, playerId, difficulty)) return false;
+  if (armyCoversPremiumEconomyGuard(state, playerId, difficulty, field)) return false;
   // The Pack core must already stand — staging with a half-built army would
   // pull the hero off the home-tile drain and the opening development.
   const counts = armyTierCounts(state, playerId);
@@ -587,6 +596,7 @@ export function armyTierCoversGuardField(
   state: GameState,
   playerId: PlayerId,
   fieldDifficulty: number,
+  field?: MapFieldState,
 ): boolean {
   if (fieldDifficulty <= 0) {
     return false;
@@ -598,7 +608,10 @@ export function armyTierCoversGuardField(
   // The engine's own effective-difficulty read: folds in an active Astrologers
   // "Rulebook" proclamation (guards drawn one level easier), so the AI seizes
   // that window exactly like the guard draw itself does.
-  return fieldDifficulty <= armyTierGuardCap(neutralArmyDifficulty(state), tier);
+  const scenario = field
+    ? neutralArmyDifficultyForField(state, field)
+    : neutralArmyDifficulty(state);
+  return fieldDifficulty <= armyTierGuardCap(scenario, tier);
 }
 
 /**
@@ -612,11 +625,15 @@ export function currentArmyCoversGuardField(
   state: GameState,
   playerId: PlayerId,
   fieldDifficulty: number,
+  field?: MapFieldState,
 ): boolean {
   if (fieldDifficulty <= 0) return false;
   const tier = armyEngagementTier(state, playerId);
   if (!tier) return false;
-  return fieldDifficulty <= armyTierGuardCap(neutralArmyDifficulty(state), tier);
+  const scenario = field
+    ? neutralArmyDifficultyForField(state, field)
+    : neutralArmyDifficulty(state);
+  return fieldDifficulty <= armyTierGuardCap(scenario, tier);
 }
 
 /**

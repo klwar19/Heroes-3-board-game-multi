@@ -14,6 +14,7 @@ import {
 import { ALL_TILE_CONTENT, allTileDefinitions } from "@/data/map/tiles";
 import {
   carveMapTokenField,
+  drawAstrologersCard,
   createSecondaryHero,
   instantiateTile,
   isFieldGuarded,
@@ -340,6 +341,72 @@ describe("Monolith travel", () => {
 // --- Whirlpool travel and its unit toll --------------------------------------
 
 describe("Whirlpool travel", () => {
+  it("redraws Whirlpool without Sea tiles", () => {
+    const state = makeGame("whirlpool-redraw");
+    state.decks.astrologers!.drawPile = ["astrologers.magic_tortoise", "astrologers.whirlpool"];
+    drawAstrologersCard(state);
+    expect(adv(state).astrologers?.activeCardId).toBe("astrologers.magic_tortoise");
+    expect(state.decks.astrologers!.discardPile).toContain("astrologers.whirlpool");
+  });
+
+  // The Whirlpool gate and the Wind gate ask the SAME printed question ("is there
+  // any sea on this map?"), so they share ONE read (`mapHasSeaWater`). Wind always
+  // accepted a designer-painted water field on a non-sea tile; Whirlpool used to
+  // look at `tile.group === "sea"` alone and redrew itself on such a map.
+  it("keeps Whirlpool when a DESIGNER water field exists on a non-sea tile", () => {
+    const state = makeGame("whirlpool-designer-water");
+    expect(
+      Object.values(adv(state).tiles).some((tile) => tile.group === "sea"),
+      "the fixture must have no printed sea tile, or the gate is not under test",
+    ).toBe(false);
+    const landField = Object.values(adv(state).fields)[0]!;
+    landField.terrain = "water";
+    state.decks.astrologers!.drawPile = ["astrologers.magic_tortoise", "astrologers.whirlpool"];
+    drawAstrologersCard(state);
+    expect(adv(state).astrologers?.activeCardId).toBe("astrologers.whirlpool");
+  });
+
+  it("keeps Whirlpool when a Sea tile exists without any Whirlpool tokens", () => {
+    const [state] = placeEmptyTile(makeGame("whirlpool-sea"), "W2", { row: 24, col: 12 });
+    state.decks.astrologers!.drawPile = ["astrologers.magic_tortoise", "astrologers.whirlpool"];
+    drawAstrologersCard(state);
+    expect(adv(state).astrologers?.activeCardId).toBe("astrologers.whirlpool");
+  });
+
+  it.each([2, 3])("round %s: chooses among three exits without a roll or unit loss", (round) => {
+    const { state: initial, entry } = whirlpoolPair("whirlpool-free");
+    const [start, tile] = placeEmptyTile(initial, "W5", { row: 36, col: 24 });
+    const exit = carveToken(start, tile, 3, "whirlpool", -1);
+    start.round = round;
+    start.decks.astrologers!.drawPile = ["astrologers.whirlpool"];
+    drawAstrologersCard(start);
+    const armyBefore = structuredClone(start.players.p1.army);
+    let state = moveHero(start, entry);
+    const choice = adv(state).pendingVisit?.steps[0];
+    expect(choice?.type).toBe("CHOOSE_ONE");
+    if (choice?.type !== "CHOOSE_ONE") throw new Error("missing exit choice");
+    expect(choice.options).toHaveLength(3); // two exits plus stay
+    const index = choice.options.findIndex((option) => option.label.includes("Whirlpool -1"));
+    expect(index).toBeGreaterThanOrEqual(0);
+    state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: index });
+    expect(state.heroes.hero_p1.spaceId).toBe(exit);
+    expect(state.players.p1.army).toEqual(armyBefore);
+    expect(state.eventLog.some((event) => event.type === "ADVENTURE_DICE_ROLLED" && event.dice === "attack")).toBe(false);
+    expect(adv(state).pendingVisit).toBeNull();
+  });
+
+  it("restores the penalty when the next proclamation replaces Whirlpool", () => {
+    const { state: start, entry } = whirlpoolPair("whirlpool-expiry");
+    start.decks.astrologers!.drawPile = ["astrologers.magic_tortoise", "astrologers.whirlpool"];
+    drawAstrologersCard(start);
+    start.round = 4;
+    drawAstrologersCard(start);
+    const before = start.players.p1.army.length;
+    let state = commitTravel(moveHero(start, entry));
+    state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+    expect(state.players.p1.army).toHaveLength(before - 1);
+  });
+
   function whirlpoolPair(seed: string): { state: GameState; entry: MapSpaceId; exit: MapSpaceId } {
     let state = makeGame(seed);
     // W2's centre and most ring hexes are open sea (terrain water).

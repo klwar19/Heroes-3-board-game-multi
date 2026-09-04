@@ -166,19 +166,19 @@ describe("Map cast-then-boost × OLD Spell Book", () => {
     expect(state.players.p1.combatStats.spellBookPowerUsedThisTurn).toBe(true);
   });
 
-  it("CONTROL: a second Book Power burn is not offered the same turn", () => {
+  it("a new map cast gets a fresh Book Power allowance in the same turn", () => {
     let state = oldBookGame("old-book-fuel-once");
     state.players.p1.hand = ["spell.view_air"];
     state.players.p1.spellBook = ["spell.fly", "spell.haste"];
     state.players.p1.combatStats.spellBookPowerUsedThisTurn = true;
 
     state = castViewAirFrom(state, false);
-    // Budget already spent → no Book offer; only resolve-now (or other hand sources).
+    // A stale lock from the prior cast is cleared when this new cast starts.
     const choice = state.pendingChoice;
     if (choice?.type === "OPTION_CHOICE" && choice.mapSpellBoost) {
       expect(
         choice.mapSpellBoost.offers.some((offer) => offer.kind === "card" && offer.fromBook)
-      ).toBe(false);
+      ).toBe(true);
     }
   });
 

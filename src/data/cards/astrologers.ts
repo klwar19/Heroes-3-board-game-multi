@@ -17,17 +17,13 @@
  * the round-start event barrier; it only joins the deck when the optional Event
  * deck is in play), plus the third wave Crag Hack (Stronghold is playable now),
  * Multilingual Bron (ability-roll reroll) and Disruption (state-preserving
- * rotate-in-place). Only the two cards that
- * would each need a whole new subsystem remain out — see
- * ASTROLOGERS_NOT_IMPLEMENTED, whose entries each name the missing subsystem.
+ * rotate-in-place), plus Whirlpool's toll-free travel and chosen exit.
  * The `effect` field is the single source of truth for what the engine runs;
  * `text` is the printed card wording. Most cards carry a real card scan in
  * `image`; a few render through the app's text card-face while their scan is
  * unavailable upstream (ART_LESS_PROCLAMATIONS) or not yet fetched
- * (ART_PENDING_PROCLAMATIONS). Expansion proclamations that would still need a
- * new subsystem (defense->attack conversion, in-place tile rotation, ...) remain
- * intentionally NOT included rather than shipped as inert text — see
- * ASTROLOGERS_NOT_IMPLEMENTED below for the honest list.
+ * (ART_PENDING_PROCLAMATIONS). ASTROLOGERS_NOT_IMPLEMENTED records any future
+ * omissions instead of adding inert effects to the deck.
  */
 
 import type { SpellSchool } from "@/engine/state";
@@ -90,8 +86,9 @@ export type AstrologersEffect =
   // the army's single-sided NEUTRAL side — so, like any neutral unit, it can
   // never be reinforced to a Pack (this is the whole point: it is a neutral
   // unit, not the upgradeable faction one). Reads the player's faction roster +
-  // Dwelling tiers, so it works for any faction (incl. Conflux/Cove once
-  // defined). A faction's signature top-tier creature (Gold Dragons, Titans,
+  // Dwelling tiers. Anime/Wuxia/Bulwark rosters have no printed neutral
+  // counterparts, so they receive one random eligible Neutral Unit instead.
+  // A faction's signature top-tier creature (Gold Dragons, Titans,
   // Hydras) is never offered: its only neutral card is the azure-tier version,
   // not a gold-tier counterpart, and no Dwelling unlocks azure. engine: "Azure
   // units cannot be recruited" holds by construction — no Dwelling unlocks the
@@ -124,9 +121,10 @@ export type AstrologersEffect =
   // one Resource die roll. Read at combat finalization (finalizeAdventureCombat)
   // — Quick Combat never reaches finalize, so it is excluded by construction.
   | { type: "COMBAT_WIN_RESOURCE_DIE" }
-  // Rulebook: neutral-unit encounters draw their guard army as if the GAME
-  // difficulty were `levels` lower (min Easy) — a weaker guard. Read in
-  // drawNeutralArmy. "Ignore if Easy" holds by construction (Easy cannot drop).
+  // Rulebook: ordinary neutral-unit encounters draw their guard army as if the
+  // GAME difficulty were `levels` lower (min Easy) — a weaker guard. Scenario /
+  // map-authored armies are fixed and do not change. Easy redraws this card at
+  // draw time, as its printed exception requires.
   | { type: "NEUTRAL_DIFFICULTY_LOWER"; levels: number }
   // Judge Dread: at the start of Combat with Neutral Units the attacker may
   // discard the whole drawn guard army and draw a fresh one. An offer opened at
@@ -136,6 +134,7 @@ export type AstrologersEffect =
   // field (embarking) — it keeps moving. Disembarking (sea→land) still halts.
   // Read in seaStepHalts; "ignore with no sea tiles" holds (no sea → never fires).
   | { type: "SEA_CONTINUE_AFTER_EMBARK" }
+  | { type: "WHIRLPOOL_FREE_CHOICE" }
   // Mages: using the Spell Book token is FREE this round and allowed even without
   // a Mage Guild built. Read at the Spell Book gate (legal-actions + spellBookAction).
   | { type: "FREE_SPELL_BOOK" }
@@ -226,6 +225,7 @@ export const ART_LESS_PROCLAMATIONS: ReadonlySet<string> = new Set<string>(["ast
  * has downloaded its scan and `image(slug)` points at a real file.
  */
 export const ART_PENDING_PROCLAMATIONS: ReadonlySet<string> = new Set<string>([
+  "astrologers.whirlpool",
   "astrologers.destruction",
   "astrologers.sanctuary",
   "astrologers.spells",
@@ -707,10 +707,14 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
   "astrologers.rulebook": {
     id: "astrologers.rulebook",
     name: "Rulebook",
+    // PRINTED text — the card carries a real scan, so this string must match it
+    // verbatim (the engine's behaviour is declared in `effect` below, never here).
     text: "When you trigger Combat with Neutral Units, the enemy's strength corresponds to the game difficulty setting one level lower. (Ignore this card if the difficulty is Easy.)",
-    // Passive while face up (read when drawing a neutral guard army): the army is
-    // drawn as if the GAME difficulty were one level lower. Easy cannot drop, so
-    // "ignore on Easy" holds by construction.
+    // Passive while face up (read when drawing an ordinary neutral guard army):
+    // the army is drawn as if the GAME difficulty were one level lower. A map-
+    // designed guard or scenario objective keeps its authored strength. The
+    // printed "ignore on Easy" is enforced as a DRAW-TIME redraw
+    // (proclamationRequiresRedraw), so an Easy table never leaves it face up.
     ongoing: true,
     effect: { type: "NEUTRAL_DIFFICULTY_LOWER", levels: 1 },
     expansion: "Stretch Goals",
@@ -814,13 +818,23 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     name: "Wind",
     text: "Until the next Astrologers' round: all Heroes can continue their movement after entering a sea field from a land field. (Ignore this card if there are no sea tiles.)",
     // Passive while face up (read in seaStepHalts): the embark step (land→sea)
-    // no longer halts the hero. Disembarking (sea→land) still halts. With no sea
-    // tiles the step never occurs, so "ignore" holds by construction.
+    // no longer halts the hero. BINH house rule also waives sea→land halts.
+    // With no sea tile, the draw-time eligibility gate redraws this card.
     ongoing: true,
     effect: { type: "SEA_CONTINUE_AFTER_EMBARK" },
     expansion: "Cove Expansion",
     image: "",
     source: source("wind", "Cove Expansion")
+  },
+  "astrologers.whirlpool": {
+    id: "astrologers.whirlpool",
+    name: "Whirlpool",
+    text: "Until the next Astrologers' round, Whirlpools can be used without cost. Additionally, all Heroes can choose their Whirlpool exit tile instead of making a roll. If there is no Sea tile on the map, ignore this card and draw another one.",
+    ongoing: true,
+    effect: { type: "WHIRLPOOL_FREE_CHOICE" },
+    expansion: "Cove Expansion",
+    image: "",
+    source: source("whirlpool", "Cove Expansion")
   },
   "astrologers.white_raven": {
     id: "astrologers.white_raven",
@@ -865,10 +879,4 @@ export const astrologersDeckCardIds: string[] = Object.keys(astrologersCardDefin
  * shipping them would mean inert text (forbidden by CLAUDE.md). Tracked here so
  * the omission is a conscious, reviewable decision rather than a silent gap.
  */
-export const ASTROLOGERS_NOT_IMPLEMENTED: { name: string; expansion: string; needs: string }[] = [
-  // Whirlpool buffs a map feature this build does not have: no sea tile (W1-W7)
-  // carries a whirlpool field in the transcribed board data, and no whirlpool
-  // location/travel interaction exists. Implementing the card would mean
-  // inventing board content, not just wiring an effect.
-  { name: "Whirlpool", expansion: "Cove", needs: "whirlpool fields on the sea tiles (none exist in the transcribed W1-W7 data) + the enter/exit travel subsystem" }
-];
+export const ASTROLOGERS_NOT_IMPLEMENTED: { name: string; expansion: string; needs: string }[] = [];

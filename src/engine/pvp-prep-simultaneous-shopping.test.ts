@@ -28,12 +28,8 @@
  * move the combat machinery itself). All of those return the moment the open
  * interaction resolves.
  *
- * Also fixed here, the DEAD-OFFER twin of the same complaint: addTownActions
- * offered the Blacksmith and the Magic University during prep, but BOTH
- * handlers refuse ANY open combat ("Town actions cannot interrupt a combat."
- * — no prep exemption), so a Conflux player's "buy spells" button (the
- * University dig) was offered and then always rejected. The offers are now
- * gated on `!state.combat`, matching their handlers verbatim.
+ * Magic University is not in this town-action family: it appears only inside
+ * a real Spell Search as an "instead" choice, never as a free-standing button.
  */
 import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, getLegalActions, getMainHero } from "./index";
@@ -287,7 +283,7 @@ describe("PvP prep — dead offers the handlers always rejected are withheld", (
     expect(getLegalActions(prep, "p1").some((legal) => legal.action.type === "BLACKSMITH_ACTION")).toBe(false);
   });
 
-  it("Magic University: offered on a normal turn, WITHHELD in prep (same dead-offer class)", () => {
+  it("Magic University is never a free-standing town action (normal turn or prep)", () => {
     const state = createAdventureGameState({
       startingBuildings: [],
       seed: "prep-dead-university",
@@ -314,14 +310,14 @@ describe("PvP prep — dead offers the handlers always rejected are withheld", (
       hero.movementHaltedThisTurn = false;
     }
 
-    // CONTROL: on the conflux player's own turn the dig is offered.
+    // Its printed timing is inside a Spell Search, so no independent action.
     state.activePlayerId = "p1";
     expect(
       getLegalActions(state, "p1").some((legal) => legal.action.type === "MAGIC_UNIVERSITY_ACTION"),
-      "normal-turn University offer exists"
-    ).toBe(true);
+      "no normal-turn standalone University offer"
+    ).toBe(false);
 
-    // In prep it is withheld (the handler throws on ANY combat).
+    // PvP prep likewise cannot manufacture a standalone University use.
     state.activePlayerId = "p2";
     const prep = apply(state, { type: "MOVE_HERO", playerId: "p2", heroId: "hero_p2", to: p1Field });
     expect(prep.combat?.prep).toBeTruthy();

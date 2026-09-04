@@ -4307,3 +4307,122 @@ Two PURE-PRESENTATION additions over PUBLIC state (no engine rule, no serialized
   cast buttons and the 8-tab map bar at 390px are REAL-BROWSER concerns with no e2e spec;
   `combatUnitVeterancy` passes `companion: job !== undefined` as a proxy (a combat unit
   carries no `companion` flag).
+
+## Codex batch 2026-09-05, audited (protocol v96 → v101) — what runs vs. limits
+
+Seven Opus audit agents swept the uncommitted codex batch (events, Magic University,
+Spell Book Power, Magic Arrow arming, Bless meter, Polish bank + Ballista, BINH
+recruitment rules, parallel battles, map floats / music / AI) and two fix agents applied
+the confirmed defects, each pinned by a test that failed against the pre-fix code (all
+mutation-checked). `npm run deploy:partykit` is OWED (v101). Machine truth is the named
+tests; re-verify prose against them.
+
+Leading with what does NOT work / open rulings / deliberate limits:
+- **OPEN RULING — BINH Wind sea→land** (`seaStepHalts`, adventure.ts): while the Wind
+  proclamation is face up a BINH table now waives the sea→land halt TOO. The printed
+  card names only "after entering a sea field from a land field", the older CLAUDE.md
+  line says "BINH keeps both coastline halts", and it is NOT behind a house rule.
+  Left as codex shipped it pending the user's answer; revert = restore the
+  `!fromSea && toSea` guard and the flipped `astrologers-combat-cards.test.ts` CONTROL.
+- **The School-expert redesign REVERSES the recorded "user demand surface #4"** (the +3
+  "must be offered AS PART OF the cast, never as a prompt after"). It is now a prompt IN
+  the cast's own window — deliberately, because two board selections per hand card
+  broke Magic Arrow's one-target arming. CONSEQUENCE: a cast with a matching School
+  permanent + a crown ALWAYS opens a reaction window (the AI passes it, 990 < 1050).
+  The **cancel path** (re-click the armed hand card, or the `.targetBanner` Cancel in
+  page.tsx) dispatches and spends nothing — pinned for the hand re-click in
+  `magic-arrow-cast-flow.test.tsx`; the page-level Cancel button is NOT pinned. Escape
+  does not cancel a card arm (only the Ballista aim).
+- **Spell Book Power = ONE PER CAST** (field still named `spellBookPowerUsedThisTurn`;
+  reset at cast start, skipped while a `UNIT_ATTACK_DECLARED` window is open — a
+  defensive scope, unreachable with shipped content since no Spell face is
+  `combatAnytime`). The `refreshRoundTokens` / `advanceCombatRound` clears remain as
+  harmless BACKSTOPS. The MAP per-cast cap's throw is untested (offer loop breaks first).
+- **Magic University** is a Spell-Search REPLACEMENT only (`MAGIC_UNIVERSITY_ACTION` is
+  never offered and is not handler-validated ⇒ a stale client sees the generic banner;
+  the AI's `town.use-magic-university-after-core` score is dead code). Choosing it
+  spends the Search AND the once-per-round use even when it finds nothing; the take goes
+  to the Spell Book under `polish-spell-book`; it is offered inside a COMBAT Spell Search
+  too (untested widening); the pending-cast School expert has no "only when it enables
+  something" gate.
+- **Polish bank auto-win predicate is now "EVERY living own unit safe"**
+  (`bankAutoCombatSafeUnit`; supersedes the "one deployed unit" reading in the two
+  older sections above). Faithful to the 2026-09-03 user rule ("no possible damage by
+  one side") and strictly SAFER (fewer offers); the post-Stack-roll offer is therefore
+  rare in practice and the feature is effectively the mid-fight case. No Polish sheet
+  prose exists in the repo — `house-rules.ts` + `polish-bank-auto-combat.test.ts` are
+  the authority.
+- **Polish Artillery's 1-damage half grants NO ongoing aim** (the ↺ line on the scan
+  sits under the volley branch) — deliberately breaks the old "same grant whichever
+  moment" parity comment; `polish-card-balance.test.ts` flipped accordingly. Two
+  power widenings: an ACTIVATED Ballista (Torosar/Tarnum/Gerwulf I) is an ordinary
+  queued shot Artillery may multiply, and a grant-only Ballista played while a
+  war-machine queue is open fires that round AND at later round starts. Declining the
+  classic crown volley now aims the shot when Gerwulf VI / Ogre Leader is aiming
+  (pack-OFF not byte-identical, no CONTROL). Only two resume seams (`PLAY_CARD`,
+  `CHOOSE_ABILITY_TARGET`) re-enter `processWarMachineRound` — a future ballista
+  specialty opening another choice type loses its shot (not a freeze).
+- **Independent parallel neutral battles supersede the documented "one battle at a time"
+  limit of parallel turns.** While ANY other battle is unresolved nobody may start a PvP
+  battle or steal a live player's flag (filtered from `getHeroMoveDestinations`,
+  `stopParallelTurns` throws as backstop). An eliminated owner's parked battle is now
+  DROPPED (plain drop, not force-resolved: the guard field stays guarded), a custom win
+  never fires while a battle is parked, and a PvP-Neutral-Control controller reaches its
+  OWN battle before the one it controls. `activeEffects` are partitioned by DURATION,
+  not scope, and neutral guard unit ids are NOT unique across concurrent fights — no
+  shipped card leaks, nothing guards it. Computer seats cannot reach this code (lobby
+  refuses parallel + AI), so the AI routing is untested scaffolding. An open (non-hosted)
+  room broadcasts `parallelCombats` raw (like every private zone there). Presentation
+  events tagged with a battle the same action CLOSED are filtered out. Parked battles'
+  tail seams (paralysis-on-open-activation, suppression sync, bank auto-win offer) are
+  deferred until the owner acts. `parallel-audit-cards` "no offered MOVE_HERO is ever
+  refused" now guards far less than its name says (bystanders no longer exist).
+- **BINH recruitment rules** (`settlement-foreign-recruitment`,
+  `duplicate-unit-recruitment`, category units, OFF in BOTH modes; their `description`
+  strings are the only spec): the ARMY-UNIT ID CURSOR (`nextArmyUnitOrdinal`) is NOT
+  gated — a default table never reuses a dead ordinal either (deliberate: a reused id
+  made `army.find` hit the wrong card), so ids are not byte-identical. A batch may hold
+  ONE recruit per unit type (voucher safety, absent from the rule text). Losing the
+  settlement strands a foreign Few (reinforce is roster-gated). The AI plans neither
+  foreign recruits nor copies (score layer only, no stall). The reinforce label shows
+  "· Copy N" for duplicates. `tests/e2e/binh-recruitment-layout.spec.ts` shells out to
+  vitest from `beforeAll` (fragile, not run here).
+- **Wandering Merchant** (during-turn shop, even Astrologers round only, latch
+  `wanderingMerchantBoughtBy`): the button is offered even when nothing is affordable
+  (opens Skip-only, on purpose); the UI routes the visit by the prompt string
+  `"Wandering Merchant:"`; the AI's 710 score has no test (it completes the buy because
+  a paid grant ≥1_108 outscores decline 1_050). **Whirlpool** is real (toll + die
+  skipped, traveller picks; `ASTROLOGERS_NOT_IMPLEMENTED` is EMPTY and stays a
+  conscious-gap registry). **Rulebook** redraws on Easy and no longer eases authored /
+  Ⅶ-objective guards — a standard Calamity-Wave warband and `drawPveThemedArmy`'s
+  default still take the eased row. **Sanctuary** blocks the enemy-hero hex in
+  `classifyHeroStep` (the walk message is now the generic "passable fields").
+- **Map floats / music / AI**: `MovableMapFloat` state is per-MOUNT (nothing persisted,
+  nothing in GameState); the desktop-HUD fixed `.farTileTray` dock is GONE (the tray
+  scrolls with the map again, collapsible instead); music order is `Math.random` per
+  browser, `gameKey` only invalidates the queue; `pvpAttacksBanned` in `objectiveKind`
+  and the merchant score are untested. `single-player-opening.test.ts` was RE-ANCHORED
+  (a Redwood Observatory FREE reveal is outside the band rule) — not a policy change.
+- **jsdom cannot compute CSS** anywhere above; no e2e spec for any of it.
+
+Fixes landed in the audit (test that pins each): School permanent expert ADDS its delta
+instead of clobbering a Basic X Magic +3 (`permanents.test.ts` Implosion 6 either order);
+once-per-cast latch `schoolPermanentExpertUsedBy` + shared `getPendingStackItem` read
+(`permanents.test.ts`); nine tests ported to the window flow (`basic-magic-expert`,
+`empowered-expert-crown-free`, `conflux-tarnum-specialty` — the Empowered waiver holds);
+PLAY_CARD tail no longer duplicates `advanceReactionWindowAfterPlay`'s choice-type check
+(its documented close-and-resolve fallback is live again); the Polish "specialty first"
+Ballista prompt is gated on PLAYABILITY, not hand contents (`polish-ballista-timing`
+Torosar IV vs Gerwulf VI); Bless meter pack-OFF CONTROL (`overlays.test.tsx`); Magic Arrow
+arm/disarm dispatches nothing (`magic-arrow-cast-flow.test.tsx`); `events.ts` reads
+`state.turn?.mode` (`necromancy.test.ts`); the University dig honours
+`reshuffleSharedDeckIfEmpty` (`deck-reshuffle-on-empty.test.ts`);
+`usesRandomUnexpectedReinforcements` is the invariant "no Neutral counterparts" — Imperium
+was silently skipped (`astrologers-recruit-explorers` sweep); one `mapHasSeaWater` read for
+Whirlpool AND Wind (`map-tokens.test.ts`); Rulebook's printed `text` restored;
+`dropParallelCombatContext` in `eliminatePlayer` + eliminated owners ignored by
+`hasParkedParallelInteractions`, the custom-win gate, controller routing, an ordered-mode
+CONTROL (`parallel-combats.test.ts`); `legionDiscountTargets` and the Community Necromancy
+recruit arm iterate `playerRecruitUnitIds` (`binh-recruitment-options.test.ts`); the float
+emits no zero `transform` (phone `.rotateFloat` nudges survive); the Merchant panel reads
+`discountGold` live (`market-tab.test.tsx`); the music per-game reset is pinned.

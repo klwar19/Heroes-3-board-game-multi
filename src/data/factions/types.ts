@@ -272,9 +272,9 @@ export type TownBuildingEffect =
     }
   | {
       /**
-       * Magic University (Conflux): once per turn, choose a School of Magic and
-       * discard cards from the top of your deck until you find a Spell of that
-       * school, then take it to hand (the discarded cards stay discarded).
+       * Magic University (Conflux): once per round, instead of Searching the
+       * shared Spell deck, choose a School of Magic and discard from its top
+       * until finding a matching Spell, then take it to hand.
        */
       type: "MAGIC_UNIVERSITY";
     }

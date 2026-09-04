@@ -380,9 +380,10 @@ describe("parallel turns — combat path regressions (already correct)", () => {
     expect(offers).toContain("DEFEND_UNIT");
     expect(offers).toContain("CAST_SPELL");
     expect(offers).toContain("PLAY_CARD");
-    // And the fight really is p2's: the nominal seat gets only quiet moves.
-    expect(
-      new Set(getLegalActions(state, "p1").map((l) => l.action.type))
-    ).toEqual(new Set(["MOVE_HERO"]));
+    // The other seat keeps its own map turn without receiving p2's commands.
+    const mapOffers = getLegalActions(state, "p1").map(l => l.action.type);
+    expect(mapOffers).toContain("MOVE_HERO");
+    expect(mapOffers).toContain("END_TURN");
+    expect(mapOffers).not.toContain("ATTACK_UNIT");
   });
 });

@@ -77,6 +77,8 @@ export type ArtifactDeckAccess = {
  * union). Defined here so the pure-type state module needs no data-layer import.
  */
 export type HouseRuleId =
+  | "settlement-foreign-recruitment"
+  | "duplicate-unit-recruitment"
   | "split-decks"
   // Optional BINH town-economy rule: side buildings cost only their printed
   // building materials plus one additional material per printed valuable.
@@ -198,7 +200,7 @@ export type HouseRuleId =
   // level > difficulty auto-win no longer applies).
   | "polish-quick-combat"
   // Polish house rule: after a Creature Bank's Stack Tokens are revealed,
-  // offer an automatic win when one deployed army unit's Defense is at least
+  // offer an automatic win only when every deployed unit's Defense is at least
   // every guard's maximum Attack (including a +1 die and live flat bonuses).
   | "polish-bank-auto-combat"
   // Polish house rule: random Grail/Utopia placement and shared objective rules.
@@ -4055,23 +4057,9 @@ export type GameAction =
        * discard pile ("discard"), the caster's choice.
        */
       tarnumReturn?: "deck-top" | "discard";
-      /**
-       * Schools of Magic (Air/Earth/Fire/Water Magic) in play: the caster may
-       * decide AS PART OF the cast to discard the matching permanent for its
-       * expert power bonus (+3 instead of the standing +1; costs one expert use).
-       * Decided up front so a normal cast just applies the +1 and resolves —
-       * never popping an extra expert prompt.
-       */
+      /** @deprecated Rejected by the reducer; expert is chosen in the instant window. */
       useSchoolExpert?: boolean;
-      /**
-       * Basic X Magic (Conflux fetch permanent) in play: the caster may decide AS
-       * PART OF the cast to spend one expert use for its +3 Power on a matching-
-       * school spell. Unlike `useSchoolExpert` the permanent is NOT discarded — it
-       * stays in play. Decided up front so the +3 is folded before the cast
-       * resolves, mirroring the standalone USE_SCHOOL_FETCH_EXPERT reaction. The
-       * reducer re-validates (permanent present, school match, crown) — never
-       * trusts the flag.
-       */
+      /** @deprecated Rejected by the reducer; expert is chosen in the instant window. */
       useSchoolFetchExpert?: boolean;
       /**
        * Polish Balance Pack — the reprinted EXPERT Eagle Eye: this is the COPY of
@@ -4529,7 +4517,8 @@ export type GameAction =
        * instant effect or discarded `asPowerBoost` for +1 Power — comes from the
        * player's Spell Book (PlayerState.spellBook), not the hand, and moves Book →
        * discard pile. An `asPowerBoost` play from the Book is capped at ONE per
-       * turn (combatStats.spellBookPowerUsedThisTurn). Book plays are single-card
+       * cast (combatStats.spellBookPowerUsedThisTurn — reset at each cast start,
+       * except while an attack window is open). Book plays are single-card
        * only: the batch path (PLAY_REACTIONS) never carries them.
        */
       fromSpellBook?: boolean;
@@ -4774,6 +4763,15 @@ export type GameAction =
       type: "ASTROLOGERS_HERO_EMPOWER";
       playerId: PlayerId;
       cardId: CardId;
+    }
+  | {
+      /**
+       * Wandering Merchant: open the optional discounted War Machine shop while
+       * the proclamation is face up. Closing it without buying keeps this action
+       * available; buying one machine consumes it for this player.
+       */
+      type: "OPEN_WANDERING_MERCHANT";
+      playerId: PlayerId;
     }
   | { type: "REVISIT_FIELD"; playerId: PlayerId; heroId: HeroId }
   | {
@@ -5783,7 +5781,10 @@ export type RulesError = {
   path?: string;
 };
 
-export type GameEvent =
+/** Battle provenance keeps simultaneous fights' presentation cues separate. */
+export type GameEvent = GameEventPayload & { combatContextId?: string };
+
+type GameEventPayload =
   | {
       id: string;
       type: "GAME_CREATED";
@@ -8214,6 +8215,15 @@ export type ResolutionStackItem = {
     /** Adrienne's Fire Magic: extra Power her School-of-Fire bonus adds to a
      * fire Frenzy's pierced-grade lookup (constant offset, folded into Power). */
     ignoreDefenseSchoolPowerBonus?: number;
+    /**
+     * Once-per-cast latch for the in-play School of Magic permanent's expert
+     * commit (USE_SCHOOL_PERMANENT_EXPERT). Without it a player holding TWO
+     * matching School permanents was re-offered the commit for the second
+     * one after the first landed, burning a permanent plus a crown for zero
+     * gain (expert REPLACES that permanent's basic contribution — the two
+     * do not stack).
+     */
+    schoolPermanentExpertUsedBy?: PlayerId[];
     /** Players who already spent their Basic X Magic +3 expert on this stack. */
     schoolFetchExpertUsedBy?: PlayerId[];
     /**
@@ -8373,10 +8383,9 @@ export type TurnState = {
    *  - "simultaneous": the combat-sandbox pre-battle town phase (legacy test mode).
    *  - "parallel": the OPTIONAL adventure parallel-turn mode — every live player's
    *    turn is open at once for the first `simultaneousRoundLimit` rounds. The
-   *    round wraps when everyone has ended (`completedPlayerIds`). Exclusive
-   *    interactions (a combat, a choice, a visit, a tile rotation…) still resolve
-   *    one at a time; while one is open other players may only take actions that
-   *    cannot touch it (quiet movement, ending nothing). The mode collapses to
+   *    round wraps when everyone has ended (`completedPlayerIds`). Independent
+   *    neutral battles and their follow-up choices can run concurrently.
+   *    Shared resources resolve in action-arrival order. The mode collapses to
    *    "ordered" — with a table-wide warning — when a PvP battle starts, when a
    *    serious PvP interaction resolves (stealing a flagged mine/settlement, e.g.
    *    the View Earth capture), or when the chosen period runs out.
@@ -8818,7 +8827,7 @@ export type PlayerState = {
    * drawing a replacement. A Spell in the Book may be cast or played exactly like
    * a hand Spell — it obeys the same one-Spell-per-combat-round limit — and, like
    * a hand Spell, it may be discarded for +1 Power; but only ONE Book Spell may be
-   * spent for Power per turn (see combatStats.spellBookPowerUsedThisTurn). A used
+   * spent for Power ONCE PER CAST (see combatStats.spellBookPowerUsedThisTurn). A used
    * Book Spell goes to the discard pile, and when it is later picked up from the
    * discard pile the owner may route it straight back into the Book. Held privately
    * (player-view hides the contents from opponents, exposing only spellBookCount).
@@ -8882,6 +8891,8 @@ export type PlayerState = {
   permanents?: CardId[];
   /** Unit deck: the army that fights the player's combats. */
   army: ArmyUnitState[];
+  /** Persisted allocation cursor: a replacement must not inherit a dead card's ID. */
+  nextArmyUnitOrdinal?: number;
   /** WOG Santa Gremlin: Resource dice owed before the next conquered field visit. */
   pendingWogResourceDice?: number;
   /**
@@ -9089,15 +9100,10 @@ export type PlayerState = {
      */
     anySpellCastThisRound?: boolean;
     /**
-     * Spell Book (house rule): true once this player has spent ONE Book Spell as
-     * a +1 Power source in the CURRENT combat round. The Book Power discard is
-     * capped at one per COMBAT round (NOT one per whole battle): advanceCombatRound
-     * clears it each combat round, so a player who used it in round 1 may use it
-     * again in round 2, 3, …; a second use inside the same round is rejected.
-     * refreshRoundTokens also clears it at the start of the player's map turn for
-     * the map→combat boundary. Power boosts from the HAND (and every other source)
-     * are unaffected; only the Book is capped. Absent = none spent this round.
-     * (Field name kept for back-compat; the budget is per-combat-round, not per-turn.)
+     * Spell Book (house rule): true once this player has spent the Book's ONE
+     * +1 Power allowance for the current cast. Starting another cast clears it,
+     * including a cast granted by Knowledge in the same turn.
+     * (Field name kept for save compatibility.)
      */
     spellBookPowerUsedThisTurn?: boolean;
     /**
@@ -10195,7 +10201,7 @@ export type CombatState = {
    * Polish "Banks auto combat" (house rule `polish-bank-auto-combat`): this
    * combat has already put the automatic-Bank-win proposal to the attacker
    * once — at the post-Stack-roll reveal, or mid-fight once the last guard that
-   * could damage the protected unit died. A latch, so declining is respected
+   * could damage any deployed unit died. A latch, so declining is respected
    * and the proposal can never re-open on every later board change.
    */
   bankAutoCombatAsked?: boolean;
@@ -10798,6 +10804,8 @@ export type MapFieldState = {
   everFlagged: boolean;
   /** Resource chosen for a flagged settlement. */
   settlementResource: ResourceKind | null;
+  /** Fixed recruitment faction rolled on first capture by the optional BINH rule. */
+  settlementRecruitFactionId?: string;
   /**
    * Designer PRE-ASSIGNED settlement ({@link CustomMapSettlementFieldPlan.ownerStart}):
    * this settlement was flagged to a seat the moment its tile materialized, and
@@ -12142,7 +12150,8 @@ export type VisitStep =
        * Astrologers (Unexpected Reinforcements): open a free recruit menu over the
        * Neutral Units deck cards associated with the player's faction (the neutral
        * counterpart of a roster unit) whose Dwelling tier they have built and whose
-       * card is still in the deck. Azure never qualifies — no Dwelling unlocks it.
+       * card is still in the deck. Anime/Wuxia/Bulwark instead get a random eligible
+       * Neutral Unit. Azure never qualifies — no Dwelling unlocks it.
        */
       type: "FACTION_RECRUIT_OFFER";
     }
@@ -12154,6 +12163,14 @@ export type VisitStep =
        */
       type: "RECRUIT_FACTION_UNIT";
       unitDefId: CardId;
+    }
+  | {
+      /**
+       * Custom Anime/Wuxia/Bulwark fallback for Unexpected Reinforcements:
+       * recruit one seeded-random Neutral Unit from the player's unlocked
+       * Dwelling tiers. Azure units never qualify.
+       */
+      type: "RECRUIT_RANDOM_NEUTRAL";
     }
   | {
       type: "DISCOVER_ADJACENT_TILE";
@@ -13150,6 +13167,8 @@ export type AstrologersState = {
   firstCombatGroundAttackUsed?: boolean;
   /** Disruption proclamation: tiles already rotated ("no tile more than once"). */
   disruptionRotatedTileIds?: string[];
+  /** Wandering Merchant: players who completed their once-this-round purchase. */
+  wanderingMerchantBoughtBy?: PlayerId[];
 };
 
 /** A shared-deck card (or Neutral unit card) sitting in the open Event pool. */
@@ -16643,7 +16662,8 @@ export type PendingChoice =
        * discard, search or school of magic" BEFORE anything is revealed): the
        * options run [search deck 0..n] then [take a discard top per entry of
        * `discardTops`] then [one Basic X Magic school draw per entry of
-       * `fetchSchools`]. Picking a Search then reveals DIRECTLY — the old
+       * `fetchSchools`] then [one Magic University school per entry of
+       * `magicUniversitySchools`]. Picking a Search then reveals DIRECTLY — the old
        * second "Search or draw from a School?" step never re-opens. A legacy
        * in-flight pick (no `upFront`) resolves the old two-step way.
        */
@@ -16657,6 +16677,8 @@ export type PendingChoice =
         discardTops?: { deckId: DeckId; cardId: CardId }[];
         /** Basic X Magic fetch schools offered up front, in option order. */
         fetchSchools?: ("air" | "earth" | "fire" | "water")[];
+        /** Magic University schools offered up front; choosing one spends its once-per-round use. */
+        magicUniversitySchools?: SpellSchool[];
       };
       /**
        * combat-remove-then-search: Spellbinder's Hat (option A) played
@@ -16684,6 +16706,8 @@ export type PendingChoice =
         count: number;
         /** Basic X Magic schools offered as "draw instead of Searching" options. */
         schoolFetch?: SpellSchool[];
+        /** Magic University schools offered as "discard until found" alternatives. */
+        magicUniversitySchools?: SpellSchool[];
         /** Whether a "take the top discard" option is offered (index 1). */
         hasDiscardTop?: boolean;
         /** Tarnum (Conflux) I: carry the "Remove instead of keep" privilege into the reveal. */
@@ -17566,6 +17590,9 @@ export type GameState = {
   towns: Record<TownId, TownState>;
   heroes: Record<HeroId, HeroState>;
   combat: CombatState | null;
+  /** Independent parallel-turn battles; the selected context occupies the normal slots. */
+  parallelCombats?: Record<PlayerId, import("./parallel-combats").ParallelCombatContext>;
+  parallelCombatOwnerId?: PlayerId;
   decks: Record<DeckId, DeckState>;
   stack: ResolutionStackItem[];
   reactionWindow: ReactionWindow | null;

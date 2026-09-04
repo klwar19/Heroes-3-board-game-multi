@@ -1,4 +1,5 @@
 import { cardLibrary } from "@/data/cards/library";
+import { parallelStateForPlayer } from "./parallel-combats";
 import { POLISH_BALANCE_PRINTED_MOVEMENT_IDS } from "./polish-balance-spells";
 import { COMMUNITY_BALANCE_PRINTED_MOVEMENT_IDS } from "@/data/cards/community-spells-balance";
 import {
@@ -12,7 +13,6 @@ import {
   coreBuildingDefinitions,
   coreFactionDefinitions,
   coreHeroDefinitions,
-  factoryGoldUnitConflict,
   isPlayableFaction,
 } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
@@ -24,8 +24,12 @@ import {
 import { sampleBuildings } from "@/data/towns/buildings";
 import {
   adventurePvpTroopLoss,
+  playerRecruitUnitIds,
+  playerRecruitTierUnlocked,
+  playerCanRecruitFewNow,
   allyTransferError,
   applyRecruitGoldDiscount,
+  astrologersSpellSearchCount,
   armyHasMapEffect,
   canDigGrail,
   canUseAstrologersHeroEmpower,
@@ -66,6 +70,7 @@ import {
   unitDrillMovementCost,
   unitDrillAvailable,
   heroHasFreeGateStep,
+  wanderingMerchantAvailable,
 } from "./adventure";
 import {
   MGQ_JOB_LABELS,
@@ -75,7 +80,6 @@ import {
   mgqJobsForUnit,
 } from "./mgq-jobs";
 import { MGQ_SPIRIT_LABELS, mgqContractedSpirits } from "./mgq-spirits";
-import { mgqGoldContractAllows } from "./mgq-contracts";
 import { mgqGranberiaFirstAttackAvailable } from "./mgq-hero-specialties";
 import { firstPlayerCeremonyPending } from "./first-player";
 import { grailBuildAt, grailDigMovementCost } from "./map-design-features";
@@ -165,6 +169,7 @@ import {
 } from "./battlefield";
 import {
   ballisticsOpeningBombardAvailable,
+  polishBallistaOfferOpen,
   countBallistas,
   firstAidVolleyHeals,
   getPermanentCardIds,
@@ -277,7 +282,6 @@ import {
   discardPickAllowedInCombat,
   empoweredExpertSupersedesBasic,
   instantSideAllowedInCombat,
-  matchingSchoolFetchForCast,
   expertUsesAvailable,
   getRuleset,
   spellBookPowerAvailable,
@@ -311,6 +315,7 @@ import {
   polishUnitStackCap,
 } from "./polish-unit-stacks";
 import type {
+  ArmyUnitState,
   AttackRerollSource,
   AttackRollMode,
   ActiveEffectState,
@@ -3289,7 +3294,8 @@ function addSpellActions(
           // Spell Book (house rule): a Book Spell casts like a hand Spell and SHARES
           // the same one-Spell-per-round cast limit — full Power, same timing/
           // targeting gates. (The Book's separate once-per-round budget is only its
-          // +1-Power discard, spellBookPowerUsedThisTurn — see the reaction path.)
+          // +1-Power discard, the once-per-CAST spellBookPowerUsedThisTurn latch —
+          // see the reaction path.)
           ...(bookCastSourcesEnabled(state)
             ? [...new Set(player.spellBook ?? [])].map((cardId) => ({
                 cardId,
@@ -3585,46 +3591,6 @@ function addSpellActions(
       }
     }
 
-    // School of Magic (Air/Earth/Fire/Water Magic) in play matching this spell,
-    // with an expert use to spend: a normal hand cast may instead discard the
-    // permanent for its expert power bonus. Offered as a separate cast option so
-    // the choice is made up front — never as a prompt after the cast.
-    // A Scroll/Spell-deck cast can't pair a School of Magic permanent; a Book
-    // cast can (it casts like a hand cast), so it is offered the expert variant.
-    // An EMPOWERED School of Magic ability pays no crown, so the variant is
-    // offered at 0 crowns too — the permanent-school read comes first so the
-    // waiver can be keyed off the actual School card being discarded.
-    const schoolExpertCandidate =
-      !fromScroll && !fromSpellDeck
-        ? getPermanentSchoolBonus(state, playerId, card)
-        : null;
-    const schoolExpert =
-      schoolExpertCandidate &&
-      canPlayExpertMode(player, schoolExpertCandidate.card.id)
-        ? schoolExpertCandidate
-        : null;
-
-    // Basic X Magic (Conflux fetch permanent) in play matching this spell, with an
-    // expert use to spend: the caster may fold its +3 Power AS PART OF the cast
-    // (up front, like the Tower schoolExpert above) instead of playing the
-    // standalone USE_SCHOOL_FETCH_EXPERT reaction after the cast. Like the Tower
-    // expert it CONSUMES its source — the permanent is discarded (user ruling)
-    // — and a crown is spent; the label says so. Same scroll/Spell-deck/Tarnum
-    // exclusions; a Book cast keeps its flag.
-    // An EMPOWERED Basic X Magic likewise folds its +3 with no crown.
-    const fetchExpertCandidate =
-      !fromScroll && !fromSpellDeck
-        ? matchingSchoolFetchForCast(state, playerId, card.spellSchools ?? [])
-        : null;
-    const fetchExpertSchool =
-      fetchExpertCandidate &&
-      canPlayExpertMode(
-        player,
-        `ability.basic_${fetchExpertCandidate}_magic` as CardId,
-      )
-        ? fetchExpertCandidate
-        : null;
-
     const originalEagleEyeTarget = eagleEyeCopy
       ? player.combatStats.eagleEyeCopyOriginalTarget
       : undefined;
@@ -3668,41 +3634,6 @@ function addSpellActions(
         },
       });
 
-      if (schoolExpert) {
-        actions.push({
-          label: `Cast ${card.name} + ${schoolExpert.card.name} (+${schoolExpert.expertPower} expert)${
-            fromSpellBook ? " (Spell Book)" : ""
-          }`,
-          action: {
-            type: "CAST_SPELL",
-            playerId,
-            cardId,
-            target,
-            useSchoolExpert: true,
-            ...(fromSpellBook ? { fromSpellBook: true } : {}),
-            ...(tarnumReturn ? { tarnumReturn } : {}),
-          },
-        });
-      }
-
-      if (fetchExpertSchool) {
-        const schoolName = `${fetchExpertSchool.charAt(0).toUpperCase()}${fetchExpertSchool.slice(1)}`;
-        actions.push({
-          label: `Cast ${card.name} with +3 Power — Basic ${schoolName} Magic expert (crown; discards the permanent)${
-            fromSpellBook ? " (Spell Book)" : ""
-          }`,
-          action: {
-            type: "CAST_SPELL",
-            playerId,
-            cardId,
-            target,
-            useSchoolFetchExpert: true,
-            ...(fromOwnDiscard ? { fromOwnDiscard: true } : {}),
-            ...(fromSpellBook ? { fromSpellBook: true } : {}),
-            ...(tarnumReturn ? { tarnumReturn } : {}),
-          },
-        });
-      }
     }
   }
 }
@@ -8489,6 +8420,7 @@ export function getLegalActions(
   cards: CardLibrary = cardLibrary,
   buildings: BuildingLibrary = sampleBuildings,
 ): LegalAction[] {
+  state = parallelStateForPlayer(state, playerId);
   const coreActions = getLegalActionsCore(state, playerId, cards, buildings);
   return withComputerAdvanceOffer(
     state,
@@ -8732,7 +8664,7 @@ function getLegalActionsCore(
 
     if (state.pendingChoice.type === "OPTION_CHOICE") {
       const choice = state.pendingChoice;
-      return choice.options.map((option, optionIndex) => ({
+      const actions: LegalAction[] = choice.options.map((option, optionIndex) => ({
         label: option.label,
         action: {
           type: "CHOOSE_OPTION",
@@ -8741,6 +8673,16 @@ function getLegalActionsCore(
           optionIndex,
         },
       }));
+      if (polishBallistaOfferOpen(state, playerId) && !isHandLockedInCombat(state, playerId)) {
+        for (const cardId of new Set(state.players[playerId].hand)) {
+          const card = cards[cardId];
+          if (card?.kind === "hero-specialty" && card.tags.includes("ballista")) {
+            addOptionPlays(actions, state, playerId, card, cardId, "combat", cards,
+              (option) => Boolean(option.combatAnytime) || combatStartWindowOpen(state.combat!));
+          }
+        }
+      }
+      return actions;
     }
 
     if (state.pendingChoice.type === "COMBAT_HAND_DISCARD") {
@@ -10888,9 +10830,10 @@ export function getLegalReactionsForTrigger(
       }
     }
 
-    // School of Magic in play: normal CAST_SPELL actions keep their up-front
-    // expert variant; reaction Spells instead commit the permanent here before
-    // the Spell, which also makes the +3 available to stack-less Sorrow costs.
+    // School of Magic in play: there is NO up-front CAST_SPELL expert variant
+    // any more (castSpell rejects one) — EVERY Spell, a normal cast included,
+    // commits the permanent HERE, in the cast's own instant Power window, which
+    // also makes the +3 available to stack-less Sorrow costs.
     for (const offer of getSchoolPermanentExpertActions(
       state,
       player.id,
@@ -11284,7 +11227,8 @@ export function getLegalReactionsForTrigger(
 
       // Spell Book (house rule): a Book Spell may also be discarded for +1 Power,
       // but only ONE Book Spell per turn (crown-style). Once the per-turn budget is
-      // spent (spellBookPowerUsedThisTurn) no Book Power boost is offered; hand
+      // spent for THIS cast (spellBookPowerUsedThisTurn) no Book Power boost is
+      // offered; hand
       // boosts above are unaffected.
       if (spellBookRuleEnabled(state) && spellBookPowerAvailable(player)) {
         for (const cardId of new Set(player.spellBook ?? [])) {
@@ -12097,17 +12041,47 @@ export function getSchoolPermanentExpertActions(
   ) {
     return [];
   }
+  const offers = new Map<CardId, LegalAction>();
+
+  // A School permanent can upgrade the Spell that just opened this Power
+  // window. The normal +1 was already applied automatically when the cast was
+  // put on the stack; choosing this offer replaces it with the expert value.
+  if (triggerEvent.type === "SPELL_CAST_STARTED") {
+    const stackItem = getPendingStackItem(state, triggerEvent);
+    if (
+      stackItem?.action.type === "CAST_SPELL" &&
+      stackItem.action.playerId === playerId &&
+      !stackItem.modifiers.scrollLocked &&
+      // Once per cast: expert REPLACES this permanent's own basic
+      // contribution, so a SECOND matching permanent adds nothing while
+      // burning a card and a crown.
+      !(stackItem.modifiers.schoolPermanentExpertUsedBy ?? []).includes(playerId)
+    ) {
+      const spell = cards[stackItem.action.cardId];
+      const school = spell ? getPermanentSchoolBonus(state, playerId, spell) : null;
+      if (school && canPlayExpertMode(player, school.card.id)) {
+        offers.set(school.card.id, {
+          label: `${school.card.name}: +${school.expertPower} Power (expert — discards the permanent)`,
+          action: {
+            type: "USE_SCHOOL_PERMANENT_EXPERT",
+            playerId,
+            cardId: school.card.id,
+          },
+        });
+      }
+    }
+  }
+
   const spellLimitLeft =
     spellLimitFor(state, player) - player.combatStats.spellsCastThisRound;
   if (spellLimitLeft <= 0) {
-    return [];
+    return [...offers.values()];
   }
 
   const sources: CardId[] = [
     ...player.hand,
     ...(bookCastSourcesEnabled(state) ? (player.spellBook ?? []) : []),
   ];
-  const offers = new Map<CardId, LegalAction>();
   for (const spellId of new Set(sources)) {
     const spell = cards[spellId];
     if (
@@ -12295,7 +12269,7 @@ function variantMatchesTrigger(
   return true;
 }
 
-function getPendingStackItem(state: GameState, triggerEvent: GameEvent) {
+export function getPendingStackItem(state: GameState, triggerEvent: GameEvent) {
   return state.stack.find((item) =>
     item.triggerEventIds.includes(triggerEvent.id),
   );
@@ -14021,6 +13995,30 @@ function addTacticsCombatActions(
   addTacticsMoveActions(actions, state, playerId, units, sideLabel);
 }
 
+/**
+ * Duplicate-copy suffix for a Reinforce offer. With the BINH house rule
+ * `duplicate-unit-recruitment` on, a player may own SEVERAL Few cards of the
+ * same unit, and each one is priced (and voucher-reserved) independently — so
+ * the offers must be distinguishable. This used to append the raw internal army
+ * id (`(army_7)`), which is machine noise on a button; it now reads
+ * "· Copy 2" — the 1-based position of this card among the player's non-bank
+ * copies of that unit, in army order. A LONE copy gets no suffix at all.
+ */
+function reinforceCopyLabel(
+  player: PlayerState,
+  target: ArmyUnitState,
+): string {
+  const copies = player.army.filter(
+    (armyUnit) =>
+      armyUnit.side !== "bank" && armyUnit.unitDefId === target.unitDefId,
+  );
+  if (copies.length < 2) {
+    return "";
+  }
+  const index = copies.findIndex((armyUnit) => armyUnit.id === target.id);
+  return index === -1 ? "" : ` · Copy ${index + 1}`;
+}
+
 function addTownActions(
   actions: LegalAction[],
   state: GameState,
@@ -14065,32 +14063,18 @@ function addTownActions(
   }
 
   if (player.townTokens.population) {
-    const tiers = unlockedRecruitTiers(state, playerId);
     const canReinforce = townHasBuildingEffect(
       state,
       playerId,
       "UNLOCK_REINFORCE",
     );
-    const faction = player.factionId
-      ? coreFactionDefinitions[player.factionId]
-      : undefined;
-
-    for (const unitDefId of faction?.units ?? []) {
+    for (const unitDefId of playerRecruitUnitIds(state, playerId)) {
       const unit = coreUnitDefinitions[unitDefId];
       const fewSide = unit?.few;
-      if (!unit || !fewSide || !tiers.has(unit.tier)) {
+      if (!unit || !fewSide || !playerRecruitTierUnlocked(state, playerId, unitDefId)) {
         continue;
       }
 
-      // Each unit card exists once: a type already in the army cannot be
-      // recruited again — only its Few card may be reinforced to the Pack.
-      const owned = player.army.some(
-        (armyUnit) =>
-          armyUnit.side !== "bank" && armyUnit.unitDefId === unitDefId,
-      );
-      // Factory: Couatls and Juggernauts are mutually exclusive — owning one
-      // hides the other from the recruit offer.
-      const goldChoiceBlocked = factoryGoldUnitConflict(player.army, unitDefId);
       // A Legion voucher reserved for this unit may make it affordable — fold in
       // the total gold discount when offering the action.
       const recruitCost = applyRecruitGoldDiscount(
@@ -14099,11 +14083,8 @@ function addTownActions(
         { kind: "recruit", unitDefId },
         fewSide.cost,
       );
-      const mgqContractBlocked = !mgqGoldContractAllows(player, unitDefId);
       if (
-        !owned &&
-        !goldChoiceBlocked &&
-        !mgqContractBlocked &&
+        playerCanRecruitFewNow(state, playerId, unitDefId) &&
         hasRecruitResources(state, playerId, recruitCost)
       ) {
         actions.push({
@@ -14117,39 +14098,25 @@ function addTownActions(
       }
 
       if (canReinforce) {
-        const target = player.army.find(
+        for (const target of player.army.filter(
           (armyUnit) =>
             armyUnit.unitDefId === unitDefId && armyUnit.side === "few",
-        );
-        const packSide = unit.pack;
-        // The gold paid drops by the TOTAL discount: a Legion voucher reserved for
-        // this unit STACKS with the Champions' Stables discount
-        // (applyRecruitGoldDiscount). Every distinct Legion piece is included.
-        const reinforceCost =
-          packSide && target
-            ? applyRecruitGoldDiscount(
-                state,
-                playerId,
-                { kind: "reinforce", unitDefId, armyUnitId: target.id },
-                packSide.cost,
-              )
+        )) {
+          const packSide = unit.pack;
+          // Price each copy independently: vouchers are reserved by army ID.
+          const reinforceCost = packSide
+            ? applyRecruitGoldDiscount(state, playerId,
+                { kind: "reinforce", unitDefId, armyUnitId: target.id }, packSide.cost)
             : undefined;
-        if (
-          target &&
-          packSide &&
-          reinforceCost &&
-          hasRecruitResources(state, playerId, reinforceCost)
-        ) {
-          actions.push({
-            label: `Reinforce ${unit.name} to a pack`,
-            action: {
-              type: "POPULATION_ACTION",
-              playerId,
-              purchases: [
-                { kind: "reinforce", unitDefId, armyUnitId: target.id },
-              ],
-            },
-          });
+          if (reinforceCost && hasRecruitResources(state, playerId, reinforceCost)) {
+            actions.push({
+              label: `Reinforce ${unit.name} to a pack${reinforceCopyLabel(player, target)}`,
+              action: {
+                type: "POPULATION_ACTION", playerId,
+                purchases: [{ kind: "reinforce", unitDefId, armyUnitId: target.id }],
+              },
+            });
+          }
         }
       }
     }
@@ -14216,7 +14183,7 @@ function addTownActions(
     if (magesFree || player.mageGuildBuiltRound !== state.round) {
       if (player.resources.gold >= cost) {
         actions.push({
-          label: `${cost} gold: Buy spell — search (${baseSearchCount})`,
+          label: `${cost} gold: Buy spell — search (${astrologersSpellSearchCount(state, baseSearchCount)})`,
           action: { type: "SPELL_BOOK_ACTION", playerId },
         });
         if (polishSpellBookEnabled(state)) {
@@ -14243,11 +14210,12 @@ function addTownActions(
         );
         if (player.resources.gold >= basicCost) {
           actions.push({
-            label: `${basicCost} gold: Buy spell with Wisdom — search (${
+            label: `${basicCost} gold: Buy spell with Wisdom — search (${astrologersSpellSearchCount(
+              state,
               balance
                 ? baseSearchCount + WISDOM_BALANCE_SEARCH_DELTA
-                : wisdomSearchCount("basic")
-            })`,
+                : wisdomSearchCount("basic"),
+            )})`,
             action: {
               type: "SPELL_BOOK_ACTION",
               playerId,
@@ -14272,7 +14240,10 @@ function addTownActions(
           player.resources.gold >= expertCost
         ) {
           actions.push({
-            label: `${expertCost} gold: Buy spell with Wisdom expert — search (${wisdomSearchCount("expert")})`,
+            label: `${expertCost} gold: Buy spell with Wisdom expert — search (${astrologersSpellSearchCount(
+              state,
+              wisdomSearchCount("expert"),
+            )})`,
             action: {
               type: "SPELL_BOOK_ACTION",
               playerId,
@@ -14343,26 +14314,10 @@ function addTownActions(
     }
   }
 
-  // Magic University (Conflux): once per round, instead of buying spells at the
-  // Mage Guild, choose a School of Magic and dig your deck for that school's
-  // Spell. Offered as one action per school during your turn.
-  // `magicUniversityAction` refuses ANY open combat (no prep exemption), so the
-  // offer is withheld during the PvP prep window too — the same dead-offer
-  // class as the Blacksmith above (a Conflux player read those rejected
-  // buttons as "I can't buy spells when attacked").
-  if (
-    !state.combat &&
-    townHasBuildingEffect(state, playerId, "MAGIC_UNIVERSITY") &&
-    player.magicUniversityUsedRound !== state.round
-  ) {
-    const schools: SpellSchool[] = ["air", "earth", "fire", "water"];
-    for (const school of schools) {
-      actions.push({
-        label: `Magic University: search your deck for a ${school[0].toUpperCase()}${school.slice(1)} Magic spell`,
-        action: { type: "MAGIC_UNIVERSITY_ACTION", playerId, school },
-      });
-    }
-  }
+  // Magic University is not a free-standing town action. Its printed timing is
+  // "instead of Searching the Spell deck", so its four school choices are
+  // offered by the shared Spell-search prompt at the moment a real Search is
+  // about to happen (map reward, Mage Guild purchase, Wisdom purchase, etc.).
 
   // "During your turn" buildings, each once per round. Their uses open choices
   // of their own, so parallel turns take them one at a time. `activateTownBuilding`
@@ -15943,6 +15898,15 @@ function getAdventureLegalActions(
       label:
         "Opening Mulligan — discard 0 or more cards to your deck and draw that many (or keep your hand)",
       action: { type: "OPENING_HAND_MULLIGAN", playerId, discardCardIds: [] },
+    });
+  }
+
+  // Wandering Merchant is a once-during-the-round opportunity, not a
+  // round-start decision. Keep it alongside normal map play until bought.
+  if (wanderingMerchantAvailable(state, playerId)) {
+    actions.push({
+      label: "Open Wandering Merchant — buy a discounted War Machine",
+      action: { type: "OPEN_WANDERING_MERCHANT", playerId },
     });
   }
 

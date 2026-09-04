@@ -319,7 +319,10 @@ describe("Tarnum VI — Search twice, cast over the per-round limit", () => {
     expect(after.players.p1.hand).toContain("spell.bless");
   });
 
-  it("offers School of Magic expert on a Tarnum over-limit cast and preserves its return destination", () => {
+  it("offers School of Magic expert in a Tarnum over-limit cast's window and preserves its return destination", () => {
+    // The expert is no longer an up-front CAST_SPELL variant (castSpell rejects
+    // one) — it is committed inside the cast's own instant Power window. The
+    // Tarnum return destination must survive that extra step.
     const state = tarnumCombat("tarnum-vi-school-expert", ["spell.bless", "spell.lightning_bolt"]);
     state.players.p1.combatStats.spellsCastThisRound = 1;
     state.players.p1.permanents = ["ability.air_magic"];
@@ -329,13 +332,19 @@ describe("Tarnum VI — Search twice, cast over the per-round limit", () => {
         legal.action.type === "CAST_SPELL" &&
         legal.action.cardId === "spell.lightning_bolt" &&
         legal.action.tarnumReturn === "deck-top" &&
-        legal.action.useSchoolExpert === true &&
         legal.action.target.type === "unit" &&
         legal.action.target.unitId === "unit_p2_skeletons"
     );
-    expect(cast, "Tarnum's bonus cast keeps the matching School expert variant").toBeTruthy();
+    expect(cast, "the over-limit cast is offered").toBeTruthy();
+    const opened = applyOk(searched, cast!.action);
+    const expert = getLegalActions(opened, "p1").find(
+      (legal) =>
+        legal.action.type === "USE_SCHOOL_PERMANENT_EXPERT" &&
+        legal.action.cardId === "ability.air_magic"
+    );
+    expect(expert, "Tarnum's bonus cast still gets the matching School expert commit").toBeTruthy();
 
-    const after = passAllReactions(applyOk(searched, cast!.action));
+    const after = passAllReactions(applyOk(opened, expert!.action));
     expect(after.players.p1.permanents).not.toContain("ability.air_magic");
     expect(after.players.p1.discard).toContain("ability.air_magic");
     expect(after.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);

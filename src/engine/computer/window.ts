@@ -1,4 +1,5 @@
 import { getDraftPhase } from "../adventure-setup";
+import { parallelStateForPlayer } from "../parallel-combats";
 import { firstPlayerCeremonyPending } from "../first-player";
 import { combatUnitDecisionOwnerId } from "../neutral-control";
 import {
@@ -52,6 +53,17 @@ function liveSeat(state: GameState, playerId: PlayerId | null | undefined): Play
  * forever. When editing getLegalActions' window order, keep this in lockstep.
  */
 export function computerDecisionOwner(state: GameState): PlayerId | null {
+  if (state.turn.mode === "parallel") {
+    for (const playerId of state.turnOrder) {
+      if (!computer(state, playerId)) continue;
+      const selected = parallelStateForPlayer(state, playerId);
+      if (selected !== state && computerDecisionOwnerInContext(selected) === playerId) return playerId;
+    }
+  }
+  return computerDecisionOwnerInContext(state);
+}
+
+function computerDecisionOwnerInContext(state: GameState): PlayerId | null {
   // A combat that just ended ALSO parks the game in the "game-over" phase until
   // a participant acknowledges the end-of-combat notice — only then does the
   // engine finalize XP / unit flips / the field visit and return to the map. A

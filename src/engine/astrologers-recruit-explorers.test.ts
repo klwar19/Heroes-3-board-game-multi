@@ -3,7 +3,12 @@ import { applyAction, createAdventureGameState, getLegalActions } from "./index"
 import { drawAstrologersCard, eliminatePlayer, getTownOfPlayer, NEUTRAL_DECK_IDS, startAdventureRound } from "./adventure";
 import { pumpAdventureQueues } from "./adventure-reducer";
 import { coreUnitDefinitions } from "@/data/factions/units";
-import { neutralUnitIdsByFaction, neutralUnitIdsByTier } from "@/data/factions/core";
+import {
+  coreFactionDefinitions,
+  neutralUnitIdsByFaction,
+  neutralUnitIdsByTier,
+  usesRandomUnexpectedReinforcements
+} from "@/data/factions/core";
 import type { GameAction, GameState, PlayerId } from "./state";
 
 /**
@@ -598,5 +603,74 @@ describe("Astrologers — Unexpected Reinforcements (free associated-neutral rec
     expect(labels.some((label) => /Oceanids|Seamen|Sea Dogs/.test(label))).toBe(true);
     // No other faction's units leak in.
     expect(labels.some((label) => /Halberdiers|Archangels|Skeletons/.test(label))).toBe(false);
+  });
+
+  // INVARIANT sweep: a faction with no associated Neutral cards MUST take the
+  // random-neutral fallback, or Unexpected Reinforcements is a silent no-op for
+  // that seat. The old hand-maintained faction list missed `imperium`
+  // (Warhammer), whose roster likewise has zero neutral counterparts — this
+  // sweep covers every future counterpart-less faction automatically.
+  it("every faction either has associated Neutral cards or takes the random fallback", () => {
+    const uncovered = Object.keys(coreFactionDefinitions).filter(
+      (factionId) =>
+        (neutralUnitIdsByFaction[factionId]?.length ?? 0) === 0 &&
+        !usesRandomUnexpectedReinforcements(factionId)
+    );
+    expect(uncovered, "these factions would get NO card effect at all").toEqual([]);
+    // The read is meaningful in both directions: a faction WITH counterparts
+    // must never be sent down the random fallback.
+    for (const factionId of Object.keys(coreFactionDefinitions)) {
+      if ((neutralUnitIdsByFaction[factionId]?.length ?? 0) > 0) {
+        expect(usesRandomUnexpectedReinforcements(factionId), factionId).toBe(false);
+      }
+    }
+  });
+
+  it.each([
+    "bulwark",
+    "imperium",
+    "blue_archive",
+    "fuyuki",
+    "hidden_leaf",
+    "azur_lane",
+    "little_busters",
+    "mgq",
+    "azure_breeze",
+    "heavenly_demon"
+  ])(
+    "offers %s a random Dwelling-eligible Neutral Unit instead of no effect",
+    (factionId) => {
+      const state = unexpectedGame([]);
+      state.players.p1.factionId = factionId as typeof state.players.p1.factionId;
+      setDwellingTiers(state, "p1", ["bronze"]);
+      drawAstrologersCard(state);
+      pumpAdventureQueues(state);
+
+      expect(visitOptionLabels(state, "p1")).toEqual([
+        "Recruit a random Neutral Unit (free)",
+        "Skip"
+      ]);
+
+      const before = state.players.p1.army.length;
+      const after = chooseVisitOption(state, "p1", /random Neutral Unit/);
+      const recruited = after.players.p1.army.at(-1);
+      expect(after.players.p1.army).toHaveLength(before + 1);
+      expect(recruited?.side).toBe("neutral");
+      expect(coreUnitDefinitions[recruited!.unitDefId]?.tier).toBe("bronze");
+    }
+  );
+
+  it("custom-faction random reinforcement uses only built tiers and never Azure", () => {
+    const state = unexpectedGame([]);
+    state.players.p1.factionId = "heavenly_demon";
+    setDwellingTiers(state, "p1", ["gold"]);
+    drawAstrologersCard(state);
+    pumpAdventureQueues(state);
+
+    const after = chooseVisitOption(state, "p1", /random Neutral Unit/);
+    const recruited = after.players.p1.army.at(-1);
+    expect(recruited?.side).toBe("neutral");
+    expect(coreUnitDefinitions[recruited!.unitDefId]?.tier).toBe("gold");
+    expect(coreUnitDefinitions[recruited!.unitDefId]?.tier).not.toBe("azure");
   });
 });

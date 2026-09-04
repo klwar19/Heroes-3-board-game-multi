@@ -1,3 +1,4 @@
+import { makeNeutralSeatPlayer } from "./neutral-player";
 import {
   BINH_DISABLED_ASTROLOGERS_CARDS,
   astrologersDeckCardIds
@@ -75,6 +76,7 @@ import {
   gatePairColor,
   getTileFootprintSpaceIds,
   ensureRevealedRandomTownFactions,
+  ensureSettlementRecruitFactions,
   DESIGNER_BORDER_SEALING_ENABLED,
   getUnitSide,
   instantiateTile,
@@ -1389,32 +1391,6 @@ function makePlayer(
   }
 
   return player;
-}
-
-function makeNeutralSeatPlayer(): PlayerState {
-  return {
-    id: NEUTRAL_PLAYER_ID,
-    name: "Neutral armies",
-    deck: [],
-    hand: [],
-    discard: [],
-    spellBook: [],
-    spellBookUsed: [],
-    removed: [],
-    army: [],
-    startingArmy: [],
-    resources: { gold: 0, buildingMaterials: 0, valuables: 0 },
-    production: { gold: 0, buildingMaterials: 0, valuables: 0 },
-    townTokens: { build: false, population: false, spellBook: false },
-    morale: 0,
-    moraleCards: { positive: [], negative: [] },
-    limits: { hand: 0, expertUses: 0 },
-    combatStats: {
-      spellsCastThisRound: 0,
-      spellLimitBonusThisRound: 0,
-      expertUsesSpentThisRound: 0
-    }
-  };
 }
 
 // The old setup-time `draftFarTiles` (which pre-decided each player's supply and
@@ -3520,7 +3496,8 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       crazyWizardUsedBy: [],
       swiftWeaselUsedBy: [],
       heroEmpowerChosenRoundBy: {},
-      heroEmpowerUsesBy: {}
+      heroEmpowerUsesBy: {},
+      wanderingMerchantBoughtBy: []
     },
     // Event deck state (only meaningful while the "events" deck exists).
     ...(eventsOn
@@ -4686,6 +4663,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // faction before the state is handed back (every later reveal is covered by
   // the reducer tail).
   ensureRevealedRandomTownFactions(state);
+  ensureSettlementRecruitFactions(state);
 
   return state;
 }

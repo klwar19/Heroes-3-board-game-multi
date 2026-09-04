@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, createInitialGameState, getLegalActions } from "./index";
-import { processPendingVisit, resolveMagicUniversityDig } from "./adventure";
+import { processPendingVisit } from "./adventure";
+import { openSharedDeckSearch } from "./adventure-reducer";
 import { digFromOwnDeckTop } from "./decks";
 import type { FactionId } from "@/data/factions/types";
 import type { GameAction, GameState } from "./state";
@@ -267,38 +268,69 @@ describe("Adrienne's Fire Magic IV (Search 3 your own deck, then reshuffle)", ()
   });
 });
 
+// ===========================================================================
+// Conflux Magic University — a SHARED Spell-deck dig offered as a replacement
+// for a real Spell Search. It discards from the shared Spell deck until it
+// finds the chosen school's first takeable Spell, and it takes the same
+// one-seam contract as every other dig (`reshuffleSharedDeckIfEmpty`): the
+// draw pile running out never ends the dig, and this dig's own rejects are held
+// ASIDE so a reshuffle can never deal them back.
+// ===========================================================================
+
 describe("Conflux Magic University dig", () => {
-  function confluxGame(seed: string): GameState {
+  function confluxUniversityGame(seed: string): GameState {
     const state = adventureState(seed, "monere", "conflux");
+    const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p1");
+    if (!town) {
+      throw new Error("no Conflux town");
+    }
+    if (!town.buildings.includes("conflux.magic_university")) {
+      town.buildings.push("conflux.magic_university");
+    }
     state.players.p1.hand = [];
     return state;
   }
 
+  function universityAirOffer(state: GameState) {
+    return getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CHOOSE_OPTION" && /Magic University:.*Air Magic spell/.test(legal.label)
+    );
+  }
+
   it("keeps digging through a reshuffled discard pile to find the school's Spell", () => {
-    const state = confluxGame("university-reshuffle");
-    state.players.p1.deck = ["stat.attack"];
-    // The Air spell is buried in the discard pile — only reachable by reshuffling.
-    state.players.p1.discard = ["spell.lightning_bolt"];
+    const state = confluxUniversityGame("university-reshuffle");
+    state.decks.spells!.drawPile = ["stat.attack"];
+    // The only Air spell is buried in the DISCARD pile — reachable only by
+    // reshuffling once the one-card draw pile runs out.
+    state.decks.spells!.discardPile = ["spell.lightning_bolt"];
+    openSharedDeckSearch(state, "p1", "spells", 2);
+    const offer = universityAirOffer(state);
+    expect(offer, "the Air-school University replacement should be offered").toBeTruthy();
 
-    resolveMagicUniversityDig(state, "p1", "air");
+    const next = applyOk(state, offer!.action);
 
-    expect(state.players.p1.hand).toContain("spell.lightning_bolt");
-    // The rejected Statistic ended in the discard exactly once (its rejects are
-    // held aside during the dig, so they can never be reshuffled and re-read).
-    expect(state.players.p1.discard).toEqual(["stat.attack"]);
-    expect(state.players.p1.deck).toEqual([]);
+    expect(next.players.p1.hand).toContain("spell.lightning_bolt");
+    // The rejected Statistic ended in the discard exactly ONCE (rejects are held
+    // aside during the dig, so they can never be reshuffled and re-read).
+    expect(next.decks.spells!.discardPile).toEqual(["stat.attack"]);
+    expect(next.decks.spells!.drawPile).toEqual([]);
+    expect(next.players.p1.magicUniversityUsedRound).toBe(next.round);
   });
 
   it("CONTROL: no matching Spell anywhere — the dig ends, every card lands in the discard", () => {
-    const state = confluxGame("university-miss");
-    state.players.p1.deck = ["stat.attack"];
-    state.players.p1.discard = ["stat.defense"];
+    const state = confluxUniversityGame("university-miss");
+    state.decks.spells!.drawPile = ["stat.attack"];
+    state.decks.spells!.discardPile = ["stat.defense"];
+    openSharedDeckSearch(state, "p1", "spells", 2);
+    const offer = universityAirOffer(state);
+    expect(offer).toBeTruthy();
 
-    resolveMagicUniversityDig(state, "p1", "air");
+    const next = applyOk(state, offer!.action);
 
-    expect(state.players.p1.hand).toEqual([]);
-    expect([...state.players.p1.discard].sort()).toEqual(["stat.attack", "stat.defense"]);
-    expect(state.players.p1.deck).toEqual([]);
+    expect(next.players.p1.hand).toEqual([]);
+    expect([...next.decks.spells!.discardPile].sort()).toEqual(["stat.attack", "stat.defense"]);
+    expect(next.decks.spells!.drawPile).toEqual([]);
   });
 });
 

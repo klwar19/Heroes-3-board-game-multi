@@ -3590,6 +3590,17 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
   font-size: 13px;
 }
 
+.combatRuleReminder {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border: 1px solid #b88a46;
+  border-radius: 8px;
+  color: #f5e1b8;
+  background: #302414;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .crazyWizardReminder {
   display: flex;
   align-items: center;
@@ -6552,19 +6563,19 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
   fill: rgba(255, 215, 106, 0.35);
 }
 
-/* The Ⅱ–Ⅲ Far-tile supply sits as a compact pile in the map's TOP-LEFT corner
+/* The Ⅱ–Ⅲ Far-tile supply sits as a collapsible pile at the map's right edge
    (it used to be a strip below the map). It glows when at least one tile can be
    opened this turn so the player notices the option without a pop-up notice. */
 .farTileTray {
   position: absolute;
   top: 10px;
-  left: 10px;
+  right: 10px;
   z-index: 6;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  max-width: 232px;
+  max-width: min(232px, calc(100% - 20px));
   padding: 6px 10px;
   background: rgba(33, 25, 15, 0.92);
   border: 1px solid rgba(170, 130, 70, 0.3);
@@ -12389,6 +12400,129 @@ button.hbSlot:disabled {
      on-screen clamp lands it under the tray corner — but below the left rail's
      fly-out boards (.leftRailDock, z-index 20). */
   z-index: 8;
+}
+
+.farTileTrayHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  color: #e8c96a;
+  font-size: 12px;
+}
+
+.farTileTrayToggle {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgba(170, 130, 70, 0.6);
+  border-radius: 4px;
+  background: #332819;
+  color: #ffe9bd;
+  cursor: pointer;
+  font-size: 18px;
+}
+
+/* Every transient map notice behaves like a small desktop window: its initial
+   placement still points at the relevant field, then the player can move,
+   minimize, or resize it to uncover the board. */
+.movableMapFloat {
+  min-width: 0;
+  min-height: 0;
+  transition: width 120ms ease, height 120ms ease;
+}
+
+.movableMapFloat.dragging,
+.movableMapFloat.resizing {
+  transition: none;
+}
+
+.movableMapFloatBody {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.movableMapFloatBody[hidden] {
+  display: none;
+}
+
+.movableMapFloat.resized .movableMapFloatBody {
+  height: 100%;
+}
+
+.movableMapFloatBody > .mapFloatCard {
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.movableMapFloat.resized .movableMapFloatBody > .mapFloatCard {
+  height: 100%;
+  overflow: auto;
+}
+
+.movableMapFloatControls {
+  position: absolute;
+  z-index: 2;
+  top: -13px;
+  right: 6px;
+  display: flex;
+  gap: 3px;
+  pointer-events: auto;
+}
+
+.movableMapFloatControls button,
+.movableMapFloatResize {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid rgba(255, 215, 106, 0.72);
+  border-radius: 7px;
+  background: rgb(20 18 18 / 96%);
+  color: #ffe29a;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 55%);
+  font: 800 15px/1 system-ui, sans-serif;
+  touch-action: none;
+}
+
+.movableMapFloatMove {
+  cursor: grab;
+}
+
+.movableMapFloat.dragging .movableMapFloatMove {
+  cursor: grabbing;
+}
+
+.movableMapFloatResize {
+  position: absolute;
+  z-index: 2;
+  right: -5px;
+  bottom: -5px;
+  width: 20px;
+  height: 20px;
+  pointer-events: auto;
+  cursor: nwse-resize;
+  font-size: 11px;
+}
+
+.movableMapFloat.minimized {
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+
+.movableMapFloat.minimized .movableMapFloatControls {
+  position: static;
+}
+
+.movableMapFloat.minimized .movableMapFloatMove,
+.movableMapFloat.minimized .movableMapFloatMinimize {
+  width: 28px;
+  height: 26px;
 }
 
 .mapFloatCard {
@@ -19468,6 +19602,26 @@ button.setupHubNavItem:hover {
   line-height: 1;
 }
 
+.wanderingMerchantTab {
+  border-color: rgba(244, 183, 72, 0.95);
+  background: linear-gradient(180deg, rgba(83, 48, 18, 0.99), rgba(39, 22, 10, 0.99));
+}
+
+.wanderingMerchantIcon {
+  width: 42px;
+  height: 30px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.85));
+}
+
+.wanderingMerchantHeaderIcon {
+  width: 38px;
+  height: 27px;
+  margin-right: 6px;
+  object-fit: contain;
+  vertical-align: middle;
+}
+
 @keyframes marketTabBlink {
   0%,
   100% {
@@ -21921,6 +22075,21 @@ img.cardBack {
 
 .recruitRow.unitRosterRow > .recruitName {
   min-width: 70px;
+  overflow-wrap: anywhere;
+}
+
+.settlementRecruitSources {
+  margin: 8px 0;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+@media (pointer: coarse), (max-width: 600px) {
+  .townRecruits .recruitQuick {
+    min-height: 44px;
+    white-space: normal;
+  }
 }
 
 .recruitRow .recruitState {
@@ -38421,18 +38590,8 @@ details.mapPresetGroup > summary::-webkit-details-marker {
     padding-bottom: calc(var(--desktop-hand-height) + 18px);
   }
 
-  /* Frequent map actions stay attached below the fixed command HUD. They used
-     to be absolute children of the map canvas and disappeared when the player
-     scrolled down to inspect lower tiles. Keep the tile supply and Morale
-     actions together as a small top-left action dock. */
-  .adventureRoot:not(.phoneMode) .farTileTray {
-    position: fixed;
-    top: calc(var(--desktop-hud-height) + 14px);
-    left: var(--desktop-edge);
-    z-index: 58;
-    max-width: 232px;
-  }
-
+  /* Morale actions stay below the fixed HUD; the tile supply stays at the
+     map's right edge and can be collapsed while choosing a field. */
   .adventureRoot:not(.phoneMode) .mapMoraleSpend.handDirectives {
     position: fixed;
     top: calc(var(--desktop-hud-height) + 14px);

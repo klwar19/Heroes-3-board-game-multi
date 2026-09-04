@@ -59,6 +59,22 @@ export type HouseRuleDef = {
 
 export const HOUSE_RULES: HouseRuleDef[] = [
   {
+    id: "settlement-foreign-recruitment",
+    label: "Settlements: recruit from another town",
+    description: "Each captured Settlement rolls a fixed random town other than its first owner's faction. While you control it, recruit every unit tier from that town at normal cost, without extra dwellings. Reinforcing still needs a Citadel. Disabled Anime/Wuxia towns are excluded.",
+    category: "units",
+    default: false,
+    legacyDefault: false,
+  },
+  {
+    id: "duplicate-unit-recruitment",
+    label: "Allow buying the same unit",
+    description: "Buy additional Few copies of a unit you already own. Each copy has its own army slot, upgrades, experience and battle casualties, at normal costs. The recruit button remains available after a copy dies. Normal battle capacity and faction restrictions still apply.",
+    category: "units",
+    default: false,
+    legacyDefault: false,
+  },
+  {
     id: "side-buildings-materials-only",
     label: "Side buildings: materials only",
     description:
@@ -395,7 +411,7 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     id: "polish-bank-auto-combat",
     label: "Banks auto combat",
     description:
-      "Polish house rule: after a Creature Bank reveals its Stack Tokens, offer Auto Combat when at least one deployed army unit cannot take attack damage even from the bank's strongest possible +1 Attack-die result. Choosing it wins the bank immediately; otherwise fight normally.",
+      "Polish house rule: after deployment and during a Creature Bank fight, offer Auto Combat only when no remaining guard can damage any of your deployed units, and your army can damage the guards. Choosing it wins the bank immediately; declining lets you continue normally.",
     category: "polish",
     default: false,
     legacyDefault: false,

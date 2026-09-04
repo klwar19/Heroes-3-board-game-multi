@@ -980,6 +980,16 @@ describe("army-tier guard engagement reference (Step 5)", () => {
     expect(
       canBeatGuardedField(state, hero, state.adventure!.fields[MINE]),
     ).toBe(true);
+
+    // A designer-authored guard keeps the real Impossible row, so the AI must
+    // not plan against the easier Astrologers row.
+    state.adventure!.fields[MINE].designedGuard = true;
+    expect(
+      armyTierCoversGuardField(state, "p2", 4, state.adventure!.fields[MINE]),
+    ).toBe(false);
+    expect(
+      canBeatGuardedField(state, hero, state.adventure!.fields[MINE]),
+    ).toBe(false);
   });
 
   it("REGRESSION: a fight the hero level already covers still engages with no qualifying army", () => {

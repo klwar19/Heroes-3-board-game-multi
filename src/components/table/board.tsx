@@ -4,6 +4,7 @@
 
 import { ChevronDown, ChevronUp, Hourglass, Mountain, Plus, ScrollText, Shield, Swords } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
+import { AstrologersCombatNotice } from "./astrologers-combat-notice";
 import { COMBAT_TOKEN_IMAGES } from "@/data/assets/homm-assets";
 import { UNIT_RANK_NAMES, unitRankBadgeImage } from "@/data/units/experience";
 import { combatUnitVeterancy, veterancyXpLabel } from "./unit-veterancy";
@@ -1265,6 +1266,7 @@ export function BattlefieldBoard({
 
   return (
     <div className={`boardFelt ${flipped ? "flipped" : ""}`} aria-label="Combat board">
+      <AstrologersCombatNotice state={state} />
       {stopPlacingTokensAction ? (
         <div className="placeTokensBanner" role="status">
           <span>{placeTokensPrompt ?? "Place a token on an empty space, or stop."}</span>

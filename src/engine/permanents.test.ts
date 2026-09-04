@@ -171,36 +171,65 @@ describe("permanent cards", () => {
     expect(resolved.players.p1.permanents).toEqual(["ability.fire_magic"]);
   });
 
-  it("discards the school permanent for +3 power as a cast-time expert option", () => {
+  it("offers School expert in the Spell Power window and replaces automatic +1 with +3", () => {
     const state = createInitialGameState();
     state.players.p1.hand = ["spell.magic_arrow"];
     state.players.p1.permanents = ["ability.earth_magic"];
     state.players.p2.hand = ["stat.defense"];
 
-    // The expert is offered as a SECOND cast option, decided up front — not as a
-    // prompt that pops after the spell is cast.
-    const expertCast = getLegalActions(state, "p1").find(
+    const castAction = getLegalActions(state, "p1").find(
       (legal) =>
         legal.action.type === "CAST_SPELL" &&
         legal.action.cardId === "spell.magic_arrow" &&
-        legal.action.useSchoolExpert === true &&
         legal.action.target?.type === "unit" &&
         legal.action.target.unitId === "unit_p2_vampires"
     );
-    expect(expertCast, "the 'cast + School of Magic (+3)' option should be offered").toBeDefined();
+    expect(castAction).toBeDefined();
+    let cast = applyOk(state, castAction!.action);
+    const expert = getLegalActions(cast, "p1").find(
+      (legal) =>
+        legal.action.type === "USE_SCHOOL_PERMANENT_EXPERT" &&
+        legal.action.cardId === "ability.earth_magic"
+    );
+    expect(expert, "School expert should be offered in the open Spell Power window").toBeDefined();
 
-    // Choosing it discards the permanent and spends a crown the moment of the cast.
-    const cast = applyOk(state, expertCast!.action);
+    cast = applyOk(cast, expert!.action);
     expect(cast.players.p1.permanents).toEqual([]);
     expect(cast.players.p1.discard).toContain("ability.earth_magic");
     expect(cast.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
 
     const resolved = passAllReactions(cast);
-    // Power 1 + 3 = 4 -> Magic Arrow deals its top bracket of 3.
+    // Expert replaces the School's +1 with +3; it is not +1 +3.
     expect(resolved.combat?.units.unit_p2_vampires.damage).toBe(3);
   });
 
-  it("does not pop an expert prompt on a plain cast — it resolves at the standing +1", () => {
+  it("never exposes or accepts School expert as a separate CAST_SPELL mode", () => {
+    const state = createInitialGameState();
+    state.players.p1.hand = ["spell.magic_arrow"];
+    state.players.p1.permanents = ["ability.earth_magic"];
+    state.players.p1.limits.expertUses = 1;
+    const casts = getLegalActions(state, "p1").filter(
+      (legal) => legal.action.type === "CAST_SPELL" && legal.action.cardId === "spell.magic_arrow"
+    );
+    expect(casts.length).toBeGreaterThan(0);
+    expect(casts.every((legal) =>
+      legal.action.type === "CAST_SPELL" &&
+      !legal.action.useSchoolExpert &&
+      !legal.action.useSchoolFetchExpert
+    )).toBe(true);
+
+    const forged = applyAction(state, {
+      type: "CAST_SPELL",
+      playerId: "p1",
+      cardId: "spell.magic_arrow",
+      target: { type: "unit", unitId: "unit_p2_vampires" },
+      useSchoolExpert: true
+    });
+    expect(forged.errors[0]?.message).toMatch(/not legal|instant Power window/i);
+    expect(forged.state.players.p1.hand).toContain("spell.magic_arrow");
+  });
+
+  it("offers expert after casting, while passing keeps the automatic +1", () => {
     const state = createInitialGameState();
     state.players.p1.hand = ["spell.magic_arrow"];
     state.players.p1.permanents = ["ability.earth_magic"];
@@ -213,13 +242,130 @@ describe("permanent cards", () => {
       target: { type: "unit", unitId: "unit_p2_vampires" }
     });
 
-    // The School-of-Magic expert no longer forces a reaction window: with nothing
-    // else to react with, the spell resolves straight away at the standing +1 and
-    // the permanent stays in play (no crown spent).
-    expect(cast.reactionWindow).toBeFalsy();
-    expect(cast.players.p1.permanents).toEqual(["ability.earth_magic"]);
-    expect(cast.players.p1.combatStats.expertUsesSpentThisRound).toBe(0);
-    expect(cast.combat?.units.unit_p2_vampires.damage).toBe(2);
+    expect(cast.reactionWindow).toBeTruthy();
+    expect(getLegalActions(cast, "p1").some(
+      (legal) => legal.action.type === "USE_SCHOOL_PERMANENT_EXPERT"
+    )).toBe(true);
+    const resolved = passAllReactions(cast);
+    expect(resolved.players.p1.permanents).toEqual(["ability.earth_magic"]);
+    expect(resolved.players.p1.combatStats.expertUsesSpentThisRound).toBe(0);
+    expect(resolved.combat?.units.unit_p2_vampires.damage).toBe(2);
+  });
+
+  /**
+   * The School of Magic permanent's expert REPLACES that permanent's own basic
+   * contribution (+1 → +3), so it must ADD the delta to whatever Power the cast
+   * already holds — never ASSIGN. It used to assign, which CLOBBERED a Basic X
+   * Magic +3 committed first in the very same window: two crowns and two cards
+   * spent for LESS damage than the fetch alone (Implosion 4 instead of 6).
+   */
+  function twoSourceImplosionCast(seed: string): GameState {
+    const state = createInitialGameState(seed);
+    state.players.p1.hand = ["spell.implosion"];
+    state.players.p2.hand = [];
+    // A real School-of-Magic permanent (+1 standing, +3 expert) AND the Basic
+    // Earth Magic fetch permanent (no standing Power, a +3 expert of its own).
+    state.players.p1.permanents = ["ability.earth_magic", "ability.basic_earth_magic"];
+    state.players.p1.limits.expertUses = 2;
+    state.players.p1.combatStats.expertUsesSpentThisRound = 0;
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    const target = state.combat!.units.unit_p2_skeletons;
+    target.abilities = [];
+    target.maxHealth = 30;
+    target.damage = 0;
+    const cast = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.implosion" &&
+        legal.action.target?.type === "unit" &&
+        legal.action.target.unitId === "unit_p2_skeletons"
+    );
+    expect(cast, "the Implosion cast should be legal").toBeTruthy();
+    return applyOk(state, cast!.action);
+  }
+
+  function findAction(state: GameState, type: GameAction["type"]) {
+    return getLegalActions(state, "p1").find((legal) => legal.action.type === type);
+  }
+
+  it("stacks the Basic X Magic +3 with the School permanent's expert (Implosion 6, either order)", () => {
+    // Fetch FIRST — the order the old assignment broke.
+    let s = twoSourceImplosionCast("school-expert-after-fetch");
+    s = applyOk(s, findAction(s, "USE_SCHOOL_FETCH_EXPERT")!.action);
+    const permanentExpert = findAction(s, "USE_SCHOOL_PERMANENT_EXPERT");
+    expect(permanentExpert, "the School permanent's expert is still offered").toBeTruthy();
+    s = passAllReactions(applyOk(s, permanentExpert!.action));
+    // Power = 1 standing + 3 (fetch) + 2 (expert 3 − basic 1) = 6.
+    // Implosion {0:0, 1:2, 3:4, 5:6}: 6 damage. Pre-fix it was 4 — LESS than the
+    // fetch alone would have dealt, for a second crown and a second card.
+    expect(s.combat!.units.unit_p2_skeletons.damage).toBe(6);
+    expect(s.players.p1.combatStats.expertUsesSpentThisRound).toBe(2);
+    expect(s.players.p1.permanents).toEqual([]);
+
+    // Permanent FIRST — the same total, so the two orders cannot disagree.
+    let r = twoSourceImplosionCast("fetch-after-school-expert");
+    r = applyOk(r, findAction(r, "USE_SCHOOL_PERMANENT_EXPERT")!.action);
+    r = passAllReactions(applyOk(r, findAction(r, "USE_SCHOOL_FETCH_EXPERT")!.action));
+    expect(r.combat!.units.unit_p2_skeletons.damage).toBe(6);
+  });
+
+  it("commits at most ONE School permanent per cast (a second copy is never re-offered)", () => {
+    // Magic Arrow is "any"-school, so BOTH School permanents match it. Expert
+    // replaces one permanent's basic +1; a second commit adds nothing the
+    // printed ladder can use, so offering it only burned a card and a crown.
+    const state = createInitialGameState("school-expert-two-permanents");
+    state.players.p1.hand = ["spell.magic_arrow"];
+    state.players.p2.hand = [];
+    state.players.p1.permanents = ["ability.earth_magic", "ability.fire_magic"];
+    state.players.p1.limits.expertUses = 2;
+    state.players.p1.combatStats.expertUsesSpentThisRound = 0;
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    state.combat!.units.unit_p2_skeletons.abilities = [];
+    state.combat!.units.unit_p2_skeletons.maxHealth = 30;
+    const cast = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.magic_arrow" &&
+        legal.action.target?.type === "unit" &&
+        legal.action.target.unitId === "unit_p2_skeletons"
+    );
+    const opened = applyOk(state, cast!.action);
+    const first = getLegalActions(opened, "p1").find(
+      (legal) => legal.action.type === "USE_SCHOOL_PERMANENT_EXPERT"
+    );
+    expect(first, "the first School permanent's expert is offered").toBeTruthy();
+    const committedCardId =
+      first!.action.type === "USE_SCHOOL_PERMANENT_EXPERT" ? first!.action.cardId : "";
+    const committed = applyOk(opened, first!.action);
+
+    // No second offer, and the other permanent is untouched — the whole point.
+    expect(
+      getLegalActions(committed, "p1").filter(
+        (legal) => legal.action.type === "USE_SCHOOL_PERMANENT_EXPERT"
+      ),
+      "a second School permanent must not be offered on the same cast"
+    ).toHaveLength(0);
+    const survivor = ["ability.earth_magic", "ability.fire_magic"].find(
+      (cardId) => cardId !== committedCardId
+    )!;
+    expect(committed.players.p1.permanents).toEqual([survivor]);
+    expect(committed.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+
+    // A forged second commit fails cleanly, spending nothing.
+    const forged = applyAction(committed, {
+      type: "USE_SCHOOL_PERMANENT_EXPERT",
+      playerId: "p1",
+      cardId: survivor
+    });
+    expect(forged.errors.length).toBeGreaterThan(0);
+    expect(forged.state.players.p1.permanents).toEqual([survivor]);
+    expect(forged.state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+
+    const resolved = passAllReactions(committed);
+    // Power = 1 standing + 2 (expert − basic) = 3 → Magic Arrow's top rung (2) = 3.
+    expect(resolved.combat!.units.unit_p2_skeletons.damage).toBe(3);
   });
 
   it("fires the Ballista at the slowest enemy at the start of each combat round", () => {

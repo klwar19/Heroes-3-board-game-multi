@@ -18,7 +18,7 @@ import {
   unitMatchesSpecialtyName
 } from "./index";
 import { PLAYABLE_FACTIONS, startAdventureRound, startPlayerTurn } from "./adventure";
-import { pumpAdventureQueues } from "./adventure-reducer";
+import { openSharedDeckSearch, pumpAdventureQueues } from "./adventure-reducer";
 import type { CombatUnitState, GameAction, GameEvent, GameState } from "./state";
 
 function applyOk(state: GameState, action: GameAction): GameState {
@@ -824,9 +824,9 @@ describe("Conflux elemental school spell-power boost", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Magic University (Conflux): a turn action you choose INSTEAD of buying spells
-// normally — once per round, pick a School of Magic and discard from the top of
-// your deck until a Spell of that school is revealed, then take it to hand.
+// Magic University (Conflux): once per round, when an actual Spell-deck Search
+// is about to happen, choose Search OR replace it with a school dig through the
+// shared Spell deck. It is not a free-standing dig through the player's deck.
 // ---------------------------------------------------------------------------
 
 describe("Conflux Magic University deck dig", () => {
@@ -856,54 +856,65 @@ describe("Conflux Magic University deck dig", () => {
     return state;
   }
 
-  it("is offered as a per-school turn action (a choice besides buying spells), once per round", () => {
+  function openSpellSearch(state: GameState): void {
+    state.players.p1.hand = [];
+    state.decks.spells!.discardPile = ["spell.slow"];
+    openSharedDeckSearch(state, "p1", "spells", 2);
+  }
+
+  it("is offered only as a replacement for a real Spell Search, once per round", () => {
     const state = confluxGame("conflux-university-offer");
+    expect(
+      getLegalActions(state, "p1").some((legal) => legal.action.type === "MAGIC_UNIVERSITY_ACTION"),
+    ).toBe(false);
+
+    openSpellSearch(state);
     const labels = getLegalActions(state, "p1").map((legal) => legal.label);
     expect(labels.some((label) => label.includes("Magic University") && label.includes("Air Magic spell"))).toBe(true);
     expect(labels.some((label) => label.includes("Magic University") && label.includes("Fire Magic spell"))).toBe(true);
 
-    // After using it this round, it is no longer offered.
+    // After its once-per-round use is spent, a later Search has no University arm.
+    state.pendingChoice = null;
     state.players.p1.magicUniversityUsedRound = state.round;
+    openSpellSearch(state);
     const after = getLegalActions(state, "p1").map((legal) => legal.label);
     expect(after.some((label) => label.includes("Magic University"))).toBe(false);
   });
 
-  it("discards down to — and takes — the first Spell of the chosen school, skipping a wrong-school spell", () => {
+  it("discards from the SHARED Spell deck to the first chosen-school Spell; the player's deck is untouched", () => {
     const state = confluxGame("conflux-university-hit");
     state.players.p1.hand = [];
-    state.players.p1.discard = [];
-    // Top of deck (popped first) → bottom: a Statistic, then a Fire spell
-    // (wrong school, must be skipped), then the Air spell we want.
-    state.players.p1.deck = ["spell.lightning_bolt", "spell.curse", "stat.attack"];
+    state.players.p1.deck = ["stat.attack", "stat.defense"];
+    const ownDeckBefore = [...state.players.p1.deck];
+    state.decks.spells!.drawPile = ["spell.lightning_bolt", "spell.curse"];
+    state.decks.spells!.discardPile = ["spell.slow"];
+    openSharedDeckSearch(state, "p1", "spells", 2);
     const action = getLegalActions(state, "p1").find(
-      (legal) => legal.action.type === "MAGIC_UNIVERSITY_ACTION" && legal.action.school === "air"
+      (legal) => legal.action.type === "CHOOSE_OPTION" && /Magic University.*Air Magic spell/.test(legal.label),
     );
-    expect(action, "the Air-school Magic University action should be offered").toBeTruthy();
+    expect(action, "the Air-school University replacement should be offered").toBeTruthy();
     const next = applyOk(state, action!.action);
 
     expect(next.players.p1.hand).toContain("spell.lightning_bolt");
-    // The skipped Fire spell and the Statistic were discarded, not taken.
-    expect(next.players.p1.discard).toContain("spell.curse");
-    expect(next.players.p1.discard).toContain("stat.attack");
-    expect(next.players.p1.deck).not.toContain("spell.lightning_bolt");
-    // It is spent for the round.
+    expect(next.decks.spells!.discardPile).toContain("spell.curse");
+    expect(next.players.p1.deck).toEqual(ownDeckBefore);
     expect(next.players.p1.magicUniversityUsedRound).toBe(next.round);
   });
 
-  it("takes nothing (but still discards) when the deck holds no Spell of that school", () => {
+  it("takes nothing when there is no match and leaves all rejected shared Spells discarded", () => {
     const state = confluxGame("conflux-university-miss");
     state.players.p1.hand = [];
-    state.players.p1.discard = [];
-    // Only a Fire spell + a Statistic; searching for Air finds nothing.
-    state.players.p1.deck = ["spell.curse", "stat.defense"];
+    state.decks.spells!.drawPile = ["spell.curse"];
+    state.decks.spells!.discardPile = ["spell.slow"];
+    openSharedDeckSearch(state, "p1", "spells", 2);
     const action = getLegalActions(state, "p1").find(
-      (legal) => legal.action.type === "MAGIC_UNIVERSITY_ACTION" && legal.action.school === "air"
+      (legal) => legal.action.type === "CHOOSE_OPTION" && /Magic University.*Air Magic spell/.test(legal.label),
     );
     const next = applyOk(state, action!.action);
 
     expect(next.players.p1.hand).toEqual([]);
-    expect(next.players.p1.discard).toContain("spell.curse");
-    expect(next.players.p1.discard).toContain("stat.defense");
+    expect(next.decks.spells!.drawPile).toEqual([]);
+    expect(next.decks.spells!.discardPile).toContain("spell.curse");
   });
 });
 

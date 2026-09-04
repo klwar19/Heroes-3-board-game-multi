@@ -117,12 +117,18 @@ describe("AUDIT School of Magic permanent (+1 standing / +3 expert)", () => {
         (l) =>
           l.action.type === "CAST_SPELL" &&
           l.action.cardId === "spell.magic_arrow" &&
-          l.action.useSchoolExpert === true &&
           l.action.target?.type === "unit" &&
           l.action.target.unitId === "unit_p2_skeletons"
       );
       expect(cast).toBeTruthy();
-      const s = passAll(applyOk(state, cast!.action));
+      let s = applyOk(state, cast!.action);
+      const expert = getLegalActions(s, "p1").find(
+        (l) =>
+          l.action.type === "USE_SCHOOL_PERMANENT_EXPERT" &&
+          l.action.cardId === perm
+      );
+      expect(expert, "School expert should be offered in Magic Arrow's Power window").toBeTruthy();
+      s = passAll(applyOk(s, expert!.action));
       expect(s.combat!.units.unit_p2_skeletons.damage).toBe(3);
       expect(s.players.p1.permanents).toEqual([]);
       expect(s.players.p1.discard).toContain(perm);

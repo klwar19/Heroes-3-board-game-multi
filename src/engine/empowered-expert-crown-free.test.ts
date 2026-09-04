@@ -455,7 +455,8 @@ describe("Empowered First Aid — the Tent heal volley", () => {
 
 // ===========================================================================
 // 5. Basic X Magic +3 (USE_SCHOOL_FETCH_EXPERT) and the School of Magic
-//    permanent's cast-time expert — both are ABILITY cards paying a crown.
+//    permanent's expert commit (USE_SCHOOL_PERMANENT_EXPERT) — both are ABILITY
+//    cards paying a crown, both committed in the cast's own Power window.
 // ===========================================================================
 
 describe("Empowered Basic X Magic — the +3 Power expert", () => {
@@ -474,32 +475,47 @@ describe("Empowered Basic X Magic — the +3 Power expert", () => {
     return state;
   }
 
-  function fetchCasts(state: GameState) {
+  /**
+   * The +3 is no longer an up-front CAST_SPELL variant (castSpell rejects one) —
+   * it is committed inside the cast's own instant Power window. The Empowered
+   * waiver has to hold on THAT path, which is what this pins.
+   */
+  function openCast(state: GameState): GameState {
+    const cast = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "CAST_SPELL" && legal.action.cardId === "spell.magic_arrow"
+    );
+    expect(cast, "the Magic Arrow cast should be legal").toBeTruthy();
+    return applyOk(state, cast!.action);
+  }
+
+  function fetchCommits(state: GameState) {
     return getLegalActions(state, "p1").filter(
-      (legal) => legal.action.type === "CAST_SPELL" && legal.action.useSchoolFetchExpert === true
+      (legal) => legal.action.type === "USE_SCHOOL_FETCH_EXPERT"
     );
   }
 
-  it("the up-front +3 cast variant is offered at ZERO crowns and spends none", () => {
-    const state = castSetup("empowered-basic-magic", { empowered: true, crowns: 0 });
-    const casts = fetchCasts(state);
-    expect(casts.length, "an Empowered Basic Fire Magic folds +3 with no crown").toBeGreaterThan(0);
+  it("the +3 commit is offered at ZERO crowns inside the cast window and spends none", () => {
+    const opened = openCast(castSetup("empowered-basic-magic", { empowered: true, crowns: 0 }));
+    const commits = fetchCommits(opened);
+    expect(commits.length, "an Empowered Basic Fire Magic folds +3 with no crown").toBeGreaterThan(0);
 
-    const cast = applyOk(state, casts[0].action);
+    const cast = applyOk(opened, commits[0].action);
     expect(crownsSpent(cast), "an Empowered Basic X Magic +3 costs no crown").toBe(0);
   });
 
   it("CONTROL: a plain Basic X Magic needs a crown for the +3, and spends it", () => {
-    expect(fetchCasts(castSetup("plain-basic-magic-broke", { empowered: false, crowns: 0 }))).toHaveLength(0);
+    expect(
+      fetchCommits(openCast(castSetup("plain-basic-magic-broke", { empowered: false, crowns: 0 })))
+    ).toHaveLength(0);
 
-    const paid = castSetup("plain-basic-magic", { empowered: false, crowns: 2 });
-    const casts = fetchCasts(paid);
-    expect(casts.length).toBeGreaterThan(0);
-    expect(crownsSpent(applyOk(paid, casts[0].action))).toBe(1);
+    const paid = openCast(castSetup("plain-basic-magic", { empowered: false, crowns: 2 }));
+    const commits = fetchCommits(paid);
+    expect(commits.length).toBeGreaterThan(0);
+    expect(crownsSpent(applyOk(paid, commits[0].action))).toBe(1);
   });
 });
 
-describe("Empowered School of Magic — the cast-time expert discard", () => {
+describe("Empowered School of Magic — the in-window expert discard", () => {
   function castSetup(seed: string, opts: { empowered: boolean; crowns: number }): GameState {
     const state = createInitialGameState(seed);
     state.players.p1.hand = ["spell.magic_arrow"];
@@ -515,29 +531,40 @@ describe("Empowered School of Magic — the cast-time expert discard", () => {
     return state;
   }
 
-  function schoolCasts(state: GameState) {
+  /** Same two-step flow: begin the cast, then commit the permanent in its window. */
+  function openCast(state: GameState): GameState {
+    const cast = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "CAST_SPELL" && legal.action.cardId === "spell.magic_arrow"
+    );
+    expect(cast, "the Magic Arrow cast should be legal").toBeTruthy();
+    return applyOk(state, cast!.action);
+  }
+
+  function schoolCommits(state: GameState) {
     return getLegalActions(state, "p1").filter(
-      (legal) => legal.action.type === "CAST_SPELL" && legal.action.useSchoolExpert === true
+      (legal) => legal.action.type === "USE_SCHOOL_PERMANENT_EXPERT"
     );
   }
 
   it("is offered at ZERO crowns and discards the permanent for free", () => {
-    const state = castSetup("empowered-school", { empowered: true, crowns: 0 });
-    const casts = schoolCasts(state);
-    expect(casts.length, "an Empowered School of Magic expert cast is offered at 0 crowns").toBeGreaterThan(0);
+    const opened = openCast(castSetup("empowered-school", { empowered: true, crowns: 0 }));
+    const commits = schoolCommits(opened);
+    expect(commits.length, "an Empowered School of Magic expert is offered at 0 crowns").toBeGreaterThan(0);
 
-    const cast = applyOk(state, casts[0].action);
+    const cast = applyOk(opened, commits[0].action);
     expect(crownsSpent(cast), "an Empowered School of Magic expert costs no crown").toBe(0);
     expect(cast.players.p1.permanents ?? []).not.toContain("ability.fire_magic");
   });
 
   it("CONTROL: a plain School of Magic needs a crown, and spends it", () => {
-    expect(schoolCasts(castSetup("plain-school-broke", { empowered: false, crowns: 0 }))).toHaveLength(0);
+    expect(
+      schoolCommits(openCast(castSetup("plain-school-broke", { empowered: false, crowns: 0 })))
+    ).toHaveLength(0);
 
-    const paid = castSetup("plain-school", { empowered: false, crowns: 2 });
-    const casts = schoolCasts(paid);
-    expect(casts.length).toBeGreaterThan(0);
-    expect(crownsSpent(applyOk(paid, casts[0].action))).toBe(1);
+    const paid = openCast(castSetup("plain-school", { empowered: false, crowns: 2 }));
+    const commits = schoolCommits(paid);
+    expect(commits.length).toBeGreaterThan(0);
+    expect(crownsSpent(applyOk(paid, commits[0].action))).toBe(1);
   });
 });
 

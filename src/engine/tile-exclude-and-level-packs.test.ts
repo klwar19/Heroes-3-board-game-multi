@@ -277,9 +277,7 @@ describe("level packs + random-pack + packFaction", () => {
     }
   });
 
-  it("a packs level guard honours the Astrologers Rulebook difficulty easing like its Neutral twin", () => {
-    // Hard[3] = {bronze:2, silver:1} eased to Normal... hard[3] vs normal[3]
-    // differ in body count, so the eased row is observable in the army size.
+  it("a map-designed packs level guard ignores Astrologers Rulebook easing", () => {
     const makeField = (spaceId: string): MapFieldState => ({
       spaceId,
       tileInstanceId: "t",
@@ -295,24 +293,24 @@ describe("level packs + random-pack + packFaction", () => {
     expect(NEUTRAL_ARMY_TABLE.hard[2]).toEqual({ bronze: 3, silver: 0, gold: 0, azure: 0 });
     expect(NEUTRAL_ARMY_TABLE.normal[2]).toEqual({ bronze: 2, silver: 0, gold: 0, azure: 0 });
 
-    const eased = createAdventureGameState({
+    const ruled = createAdventureGameState({
       seed: "packs-eased",
       difficulty: "hard",
       rollFirstPlayer: false,
       victoryMode: "conquest"
     });
-    eased.adventure!.astrologers = {
+    ruled.adventure!.astrologers = {
       activeCardId: "astrologers.rulebook",
       nextResourceModifiers: { gold: 0, valuables: 0 },
       crazyWizardUsedBy: [],
       swiftWeaselUsedBy: []
     };
     const field = makeField("97,97");
-    eased.adventure!.fields[field.spaceId] = field;
+    ruled.adventure!.fields[field.spaceId] = field;
     applyCustomGuardToField(field, { level: 2, levelArmy: "packs" });
-    expect(drawGuardArmy(eased, field, 2)).toHaveLength(2);
+    expect(drawGuardArmy(ruled, field, 2)).toHaveLength(3);
 
-    // CONTROL: another face-up card leaves the hard row in force.
+    // CONTROL: another face-up card also leaves the authored hard row in force.
     const plain = createAdventureGameState({
       seed: "packs-eased",
       difficulty: "hard",

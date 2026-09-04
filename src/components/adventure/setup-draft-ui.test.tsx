@@ -198,15 +198,24 @@ describe("SetupLobbyScreen — TYPE 1 draft", () => {
     openHeroes();
 
     expect(candidates).toHaveLength(3);
+    // The "Who starts where" matrix (2026-09-04) also renders a seat chip named
+    // "<Hero> of <Town>" once a hero is picked, so scope every hero query to the
+    // draft pick grid's own `.lobbyHero` cards.
+    const draftHeroButton = (heroName: string): HTMLButtonElement => {
+      const matches = screen
+        .getAllByRole("button", { name: new RegExp(`^${heroName}`) })
+        .filter((button) => button.classList.contains("lobbyHero"));
+      expect(matches, `exactly one draft card for ${heroName}`).toHaveLength(1);
+      return matches[0] as HTMLButtonElement;
+    };
     // Catherine + Rion were banned by p2 → disabled in p1's castle pick grid.
-    expect((screen.getByRole("button", { name: /Catherine/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(draftHeroButton("Catherine").disabled).toBe(true);
     for (const heroDefId of candidates) {
-      const heroName = coreHeroDefinitions[heroDefId]!.name;
-      expect((screen.getByRole("button", { name: new RegExp(`^${heroName}`) }) as HTMLButtonElement).disabled).toBe(false);
+      expect(draftHeroButton(coreHeroDefinitions[heroDefId]!.name).disabled).toBe(false);
     }
 
     const replacement = candidates[1]!;
-    fireEvent.click(screen.getByRole("button", { name: new RegExp(`^${coreHeroDefinitions[replacement]!.name}`) }));
+    fireEvent.click(draftHeroButton(coreHeroDefinitions[replacement]!.name));
     expect(onAction).toHaveBeenCalledWith({
       type: "CHOOSE_FACTION",
       playerId: "p1",

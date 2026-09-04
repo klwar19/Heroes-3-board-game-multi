@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GameState, MapFieldState, VisitStep } from "./state";
 import { beginFieldVisit, getMainHero } from "./adventure";
-import { resolveVisitStep } from "./adventure-reducer";
+import { pumpAdventureQueues, resolveVisitStep } from "./adventure-reducer";
 import { createAdventureGameState } from "./index";
 
 // The two Shrines of Magic look almost identical but differ on price:
@@ -39,6 +39,36 @@ function spellSearchQueued(state: GameState): boolean {
 }
 
 describe("Shrine of Magic costs", () => {
+  it("Astrologers Spells widens a map-object Spell Search to Search(4)", () => {
+    const state = makeGame();
+    state.adventure!.astrologers = {
+      activeCardId: "astrologers.spells",
+      nextResourceModifiers: { gold: 0, valuables: 0 },
+      crazyWizardUsedBy: [],
+      swiftWeaselUsedBy: [],
+    };
+    state.players.p1.hand = [];
+    state.players.p1.deck = [];
+    state.players.p1.discard = [];
+    state.decks.spells!.drawPile = [
+      "spell.bless",
+      "spell.haste",
+      "spell.curse",
+      "spell.slow",
+      "spell.bloodlust",
+    ];
+    state.decks.spells!.discardPile = [];
+    injectShrine(state, "shrine_of_magic_gesture");
+
+    beginFieldVisit(state, getMainHero(state, "p1")!.id, "50,50", false);
+    pumpAdventureQueues(state);
+
+    expect(state.pendingChoice?.type).toBe("DECK_SEARCH");
+    expect(
+      state.pendingChoice?.type === "DECK_SEARCH" ? state.pendingChoice.revealedCardIds : [],
+    ).toHaveLength(4);
+  });
+
   it("Gesture is FREE — no payment gate, the Spell search starts immediately", () => {
     const state = makeGame();
     const goldBefore = state.players.p1.resources.gold;

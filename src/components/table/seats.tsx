@@ -589,7 +589,6 @@ function SpellShelfPopover({
                       : action.target?.type === "space"
                         ? " → space"
                         : "";
-                  const expert = action.type === "CAST_SPELL" && action.useSchoolExpert ? " + School of Magic" : "";
                   return (
                     <button
                       className="commandButton"
@@ -600,7 +599,7 @@ function SpellShelfPopover({
                       }}
                       type="button"
                     >
-                      {`Cast${expert}${targetLabel}`}
+                      {`Cast${targetLabel}`}
                     </button>
                   );
                 })}
@@ -870,21 +869,9 @@ export function HandFan({
                           : targetTypes.has("space")
                             ? "a space"
                             : "a unit";
-                      const expertArm =
-                        action.type === "CAST_SPELL" && action.useSchoolExpert
-                          ? " + School of Magic"
-                          : action.type === "CAST_SPELL" && action.useSchoolFetchExpert
-                            ? " + Basic Magic (+3)"
-                            : "";
-                      return `Cast${expertArm} → pick ${what} on the board`;
+                      return `Cast → pick ${what} on the board`;
                     }
-                    const expert =
-                      action.type === "CAST_SPELL" && action.useSchoolExpert
-                        ? " + School of Magic"
-                        : action.type === "CAST_SPELL" && action.useSchoolFetchExpert
-                          ? " + Basic Magic (+3)"
-                          : "";
-                    return `Cast${expert}`;
+                    return "Cast";
                   }}
                   emptyHint={(spellId) => timingHint(spellId)}
                   restrictionNotices={spellCastRestrictionNotices(state, viewerPlayerId).map((notice) => notice.text)}
@@ -1119,11 +1106,7 @@ export function HandFan({
                           ? `Cast ${cardName(action.cardId)}${
                               action.castEnablerMode === "expert" ? " (expert — ignores the Spell limit)" : ""
                             }`
-                          : `Pick target${"mode" in action && action.mode === "expert" ? " (expert)" : ""}${
-                              action.type === "CAST_SPELL" && action.useSchoolExpert ? " + School of Magic (+3)" : ""
-                            }${
-                              action.type === "CAST_SPELL" && action.useSchoolFetchExpert ? " + Basic Magic (+3)" : ""
-                            }`}
+                          : `Pick target${"mode" in action && action.mode === "expert" ? " (expert)" : ""}`}
                       </button>
                     ))}
                     {entry.immediateActions.map((legal) => {
@@ -1147,11 +1130,7 @@ export function HandFan({
                           ? `Cast ${cardName(action.cardId)}${
                               action.castEnablerMode === "expert" ? " (expert — ignores the Spell limit)" : ""
                             }`
-                        : action.type === "CAST_SPELL" && action.useSchoolExpert
-                          ? "Cast + School of Magic (+3)"
-                          : action.type === "CAST_SPELL" && action.useSchoolFetchExpert
-                          ? "Cast + Basic Magic (+3)"
-                          : action.type === "PLAY_CARD" && action.optionIndex !== undefined && card?.effect.type === "CHOOSE_ONE"
+                        : action.type === "PLAY_CARD" && action.optionIndex !== undefined && card?.effect.type === "CHOOSE_ONE"
                             ? card.effect.options[action.optionIndex]?.label
                             : action.type === "PLAY_CARD" && action.mode === "expert"
                               ? "Use expert"
@@ -1222,7 +1201,7 @@ export function HandFan({
                 // enemy on the board — instead of opening a text popover. Cards
                 // with a choice (basic/expert mode, two CHOOSE_ONE options, an
                 // immediate "Use") still open the popover so the player can pick.
-                if (playable && entry.boardSelections.length === 1 && entry.immediateActions.length === 0) {
+                if (playable && entry.immediateActions.length === 0 && entry.boardSelections.length === 1) {
                   const action = entry.boardSelections[0];
                   onSelectCardAction(sameCardSelection(selectedCardAction, action) ? null : action);
                   setOpenIndex(null);

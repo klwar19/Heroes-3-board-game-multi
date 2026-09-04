@@ -21,6 +21,7 @@ import {
   neutralBattleLevel,
   playerHasPlaceableFarTile,
   playerHoldsTentFlag,
+  pvpAttacksBanned,
 } from "../adventure";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { hexDistance, hexSpaceId, parseHexSpaceId, tileFootprint } from "../hex";
@@ -499,7 +500,7 @@ export function canBeatGuardedField(
     rushProfile.goldUnits === 0 &&
     !(
       premiumEconomy &&
-      armyCoversPremiumEconomyGuard(state, hero.controllerId, fieldDifficulty)
+      armyCoversPremiumEconomyGuard(state, hero.controllerId, fieldDifficulty, field)
     );
   if (bronzeCoreCannotMatchGuard) return false;
   const preservingNextRoundRush =
@@ -552,7 +553,7 @@ export function canBeatGuardedField(
   // (hard: 3 bronze Packs alone; impossible: Packs + 1 silver). Losses OK.
   if (
     premiumEconomy &&
-    armyCoversPremiumEconomyGuard(state, hero.controllerId, difficulty)
+    armyCoversPremiumEconomyGuard(state, hero.controllerId, difficulty, field)
   ) {
     return humanNeutralFormationReady;
   }
@@ -570,7 +571,7 @@ export function canBeatGuardedField(
   // Combat win.
   return (
     humanNeutralFormationReady &&
-    currentArmyCoversGuardField(state, hero.controllerId, difficulty)
+    currentArmyCoversGuardField(state, hero.controllerId, difficulty, field)
   );
 }
 
@@ -669,9 +670,12 @@ function objectiveKind(
 
   const occupant = heroAtSpace(state, field.spaceId, hero.id);
   if (occupant && !playersAreAllied(state, occupant.controllerId, playerId)) {
-    // Sanctuary-protected heroes can never be attacked; an outmatched fight is
-    // declined. Either way the enemy-occupied field is not an objective.
-    if (locationDefinitions[field.location]?.passive?.protectsFromAttack) {
+    // A hero protected by either Sanctuary rule can never be attacked; an
+    // outmatched fight is declined. Either way the field is not an objective.
+    if (
+      pvpAttacksBanned(state) ||
+      locationDefinitions[field.location]?.passive?.protectsFromAttack
+    ) {
       return null;
     }
     return shouldEngageEnemy(state, playerId, occupant.controllerId)
@@ -1402,8 +1406,8 @@ export function objectiveStrategicValue(
         const canCover =
           guaranteedQuickWin ||
           neutralBattleLevel(state, hero) >= difficulty ||
-          armyCoversPremiumEconomyGuard(state, hero.controllerId, difficulty) ||
-          armyTierCoversGuardField(state, hero.controllerId, difficulty);
+          armyCoversPremiumEconomyGuard(state, hero.controllerId, difficulty, field) ||
+          armyTierCoversGuardField(state, hero.controllerId, difficulty, field);
         if (canCover) {
           value = Math.max(value, ready ? 920 : 860);
           if ((state.round ?? 0) < 6) value += 90;

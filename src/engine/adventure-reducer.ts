@@ -1,6 +1,7 @@
 import { cardLibrary } from "@/data/cards/library";
 import { balanceCard } from "./community-balance-cards";
 import { DRILL_UNIT_XP, MAX_UNIT_RANK } from "@/data/units/experience";
+import { hasParkedParallelInteractions } from "./parallel-combats";
 import {
   applyNeutralRoundsRank,
   awardUnitExperienceAfterCombat,
@@ -62,6 +63,8 @@ import {
 } from "./far-tile-types";
 import {
   addArmyUnit,
+  playerRecruitUnitIds,
+  playerRecruitTierUnlocked,
   applyAstrologersHeroEmpower,
   adventurePvpTroopLoss,
   adventureVictoryMode,
@@ -82,6 +85,7 @@ import {
   creatureBankHostLocationForTile,
   creatureBankTierForTile,
   applyRecruitGoldDiscount,
+  astrologersSpellSearchCount,
   changeMorale,
   markAbilityEmpowered,
   classifyHeroStep,
@@ -167,6 +171,7 @@ import {
   unitDrillMovementCost,
   unitDrillsUsedThisRound,
   unitDrillAvailable,
+  wanderingMerchantAvailable,
   neutralBattleLevel,
   getTileFootprintSpaceIds,
   getTownOfPlayer,
@@ -210,7 +215,6 @@ import {
   reinforceArmyUnit,
   reinforceCostFor,
   redeemReinforcementDiscount,
-  resolveMagicUniversityDig,
   restoreStartingArmyIfEmpty,
   SCHOLAR_STAT_CARDS,
   setHexEventEncounterHook,
@@ -224,7 +228,6 @@ import {
   swapNeutralDraw,
   tokenPlacementCandidates,
   townHasBuildingEffect,
-  unlockedRecruitTiers,
   victoryModeCountsHeroDefeats,
   fieldHasArmedHexEvent,
   type NeutralDraw,
@@ -1409,6 +1412,13 @@ export function getHeroMoveDestinations(state: GameState, hero: HeroState): MapS
 
   const movement = getHeroMovementCapabilities(state, hero);
   return getAdjacentSpaceIds(hero.spaceId).filter((spaceId) => {
+    if (hasParkedParallelInteractions(state)) {
+      const enemy = heroAtSpace(state, spaceId, hero.id);
+      const flagOwner = adventure.fields[spaceId]?.flagOwnerId;
+      if ((enemy && !playersAreAllied(state, enemy.controllerId, hero.controllerId)) ||
+        (flagOwner && flagOwner !== hero.controllerId && flagOwner !== NEUTRAL_PLAYER_ID &&
+          state.players[flagOwner] && !state.players[flagOwner].eliminated && !playersAreAllied(state, flagOwner, hero.controllerId))) return false;
+    }
     if (
       freeGateOnly &&
       !gateFieldsLinked(adventure.fields[hero.spaceId as MapSpaceId], adventure.fields[spaceId])
@@ -2710,6 +2720,32 @@ export function openMarket(state: GameState, action: Extract<GameAction, { type:
   }
 
   beginFieldVisit(state, hero.id, hero.spaceId, true);
+}
+
+/** Open Wandering Merchant without consuming it; only a completed buy does. */
+export function openWanderingMerchant(
+  state: GameState,
+  action: Extract<GameAction, { type: "OPEN_WANDERING_MERCHANT" }>
+): void {
+  const adventure = requireAdventure(state);
+  assertActiveTurn(state, action.playerId);
+  assertHandRefreshed(state, action.playerId);
+  assertParallelInteractionFree(state, action.playerId);
+  assertNoPendingInput(state);
+
+  const effect = getActiveAstrologersCard(state)?.effect;
+  if (effect?.type !== "WAR_MACHINE_DISCOUNT_OFFER" || !wanderingMerchantAvailable(state, action.playerId)) {
+    throw new Error("The Wandering Merchant is no longer available for you this round.");
+  }
+
+  const hero = getMainHero(state, action.playerId);
+  adventure.pendingVisit = {
+    heroId: hero?.id ?? "",
+    playerId: action.playerId,
+    fieldId: hero?.spaceId ?? "",
+    steps: [{ type: "WAR_MACHINE_DISCOUNT_OFFER", discountGold: effect.discountGold }]
+  };
+  processPendingVisit(state);
 }
 
 export function discoverTile(state: GameState, action: Extract<GameAction, { type: "DISCOVER_TILE" }>): void {
@@ -7326,7 +7362,7 @@ function listMapSpellBoostOffers(
 
   // School of Magic permanent expert: discard for +expert (basic already in
   // starting Power via standingSpellPower — only the extra is offered here).
-  // Combat: useSchoolExpert on CAST_SPELL. Once per cast; needs a crown.
+  // Combat offers School expert inside the Spell's instant Power window.
   // An EMPOWERED School of Magic ability pays no crown, so it is offered at 0
   // crowns (canPlayExpertMode is the shared read, keyed off the School card).
   if (!flags.schoolPermanentExpertUsed) {
@@ -7760,9 +7796,9 @@ export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId,
     if (offer.fromBook && polishSpellBookEnabled(state)) {
       throw new Error("Polish Spell Book Spells cannot be burned for Power.");
     }
-    // Old Book: one Book Power burn per turn.
+    // Old Book: one Book Power burn per cast.
     if (offer.fromBook && !spellBookPowerAvailable(player)) {
-      throw new Error("Only one Spell Book Power discard is allowed per turn.");
+      throw new Error("Only one Spell Book Power discard is allowed per cast.");
     }
 
     // Expert side: costs a crown unless Empowered (crown-free, combat parity).
@@ -9872,8 +9908,8 @@ function bankAutoCombatDefenseFloor(state: GameState, unit: CombatUnitState): nu
 }
 
 /**
- * A deployed army unit that no LIVING bank guard can ever damage with an
- * ordinary attack — evaluated against the live board, so it is equally the
+ * A representative safe unit, but only when EVERY living allied unit is safe
+ * from the bank guards — evaluated against the live board, so it is equally the
  * post-Stack-roll read and the mid-fight one (USER RULE 2026-09-03: "end the
  * combat where there is no possible damage done by one side — so not only at
  * the beginning of the fight"; the reported case is a zombie bank of which only
@@ -9907,14 +9943,15 @@ export function bankAutoCombatSafeUnit(state: GameState): CombatUnitState | null
   const ownUnits = Object.values(combat.units).filter(
     (unit) =>
       unit.controllerId === combat.attackerPlayerId &&
-      Boolean(unit.armyUnitId) &&
       unit.damage < unit.maxHealth
   );
   const attackerCanDamageAGuard = ownUnits.some((own) => {
     const ceiling = bankAutoCombatAttackCeiling(state, own);
     return guards.some((guard) => ceiling > bankAutoCombatDefenseFloor(state, guard));
   });
-  if (!attackerCanDamageAGuard) return null;
+  if (!attackerCanDamageAGuard || ownUnits.some(
+    (unit) => bankAutoCombatDefenseFloor(state, unit) < maximumGuardAttack
+  )) return null;
   return (
     ownUnits
       .filter((unit) => bankAutoCombatDefenseFloor(state, unit) >= maximumGuardAttack)
@@ -9954,7 +9991,7 @@ function openBankAutoCombatChoice(
     type: "OPTION_CHOICE",
     playerId: combat.attackerPlayerId,
     prompt:
-      "Bank Auto Combat: " +
+      "Bank Auto Combat: no remaining bank guard can damage any of your deployed units. " +
       safeUnit.cardName +
       " has " +
       defense +
@@ -15877,9 +15914,8 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
     throw new Error("Buy Unit Stacks separately from recruits and reinforcements.");
   }
 
-  const tiers = unlockedRecruitTiers(state, action.playerId);
   const canReinforce = townHasBuildingEffect(state, action.playerId, "UNLOCK_REINFORCE");
-  const faction = player.factionId ? coreFactionDefinitions[player.factionId] : undefined;
+  const recruitRoster = playerRecruitUnitIds(state, action.playerId);
 
   const totalCost: ResourceCost = {};
   const addCost = (cost: ResourceCost) => {
@@ -15895,25 +15931,34 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
   // Validate before mutating: simulate against a copy of the army.
   const armyCopy = player.army.map((unit) => ({ ...unit }));
   const mgqContractsCopy = player.mgqGoldContracts === undefined ? [] : [...player.mgqGoldContracts];
+  const recruitedTypes = new Set<string>();
   for (const purchase of action.purchases) {
     // Stacks may target recruited Neutrals (not on the faction roster).
-    // Recruits/reinforces stay faction-only.
-    if (purchase.kind !== "stack" && !faction?.units.includes(purchase.unitDefId)) {
-      throw new Error("Players may only recruit their own faction's units.");
+    // Recruits/reinforces use the town plus any settlement-granted rosters.
+    if (purchase.kind !== "stack" && !recruitRoster.includes(purchase.unitDefId)) {
+      throw new Error(houseRuleEnabled(state, "settlement-foreign-recruitment")
+        ? "That unit is not available from your town or controlled settlements."
+        : "Players may only recruit their own faction's units.");
     }
 
     if (purchase.kind === "recruit") {
+      // Vouchers are reserved per type, so copies use separate purchases. This
+      // also keeps a forged batch from spending one single-use voucher twice.
+      if (recruitedTypes.has(purchase.unitDefId)) {
+        throw new Error("Buy additional copies of the same unit in separate purchases.");
+      }
+      recruitedTypes.add(purchase.unitDefId);
       const side = getUnitSide(purchase.unitDefId, "few");
       const def = side ? coreUnitTier(purchase.unitDefId) : null;
       if (!side || !def) {
         throw new Error("That unit cannot be recruited.");
       }
-      if (!tiers.has(def)) {
+      if (!playerRecruitTierUnlocked(state, action.playerId, purchase.unitDefId)) {
         throw new Error("Build the dwelling of that unit's level first.");
       }
-      // Each unit card exists once: a type already in the army (Few or Pack)
-      // cannot be recruited again — reinforce the Few card instead.
-      if (armyCopy.some((unit) => unit.side !== "bank" && unit.unitDefId === purchase.unitDefId)) {
+      // Without the optional copy rule, a type already in the army (Few or
+      // Pack) must be reinforced rather than recruited again.
+      if (!houseRuleEnabled(state, "duplicate-unit-recruitment") && armyCopy.some((unit) => unit.side !== "bank" && unit.unitDefId === purchase.unitDefId)) {
         throw new Error(
           `${coreUnitDefinitions[purchase.unitDefId]?.name ?? "That unit"} is already in your army — each unit card exists once. Reinforce it to a pack instead.`
         );
@@ -15953,7 +15998,7 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
         throw new Error("Reinforce an existing few unit of that type.");
       }
       const def = coreUnitTier(purchase.unitDefId);
-      if (!def || !tiers.has(def)) {
+      if (!def || !playerRecruitTierUnlocked(state, action.playerId, purchase.unitDefId)) {
         throw new Error("Build the dwelling of that unit's level first.");
       }
       const packSide = getUnitSide(purchase.unitDefId, "pack");
@@ -16219,7 +16264,7 @@ export function spellBookAction(state: GameState, action: Extract<GameAction, { 
       cardId: wisdom.cardId,
       timing: "town",
       mode: wisdom.mode,
-      optionLabel: `Wisdom: −${wisdomGoldDiscount(getRuleset(state), wisdom.mode, houseRuleEnabled(state, "wisdom-expert-discount"))} gold, Search (${searchCount})`
+      optionLabel: `Wisdom: −${wisdomGoldDiscount(getRuleset(state), wisdom.mode, houseRuleEnabled(state, "wisdom-expert-discount"))} gold, Search (${astrologersSpellSearchCount(state, searchCount)})`
     });
   }
 
@@ -16305,34 +16350,28 @@ export function blacksmithAction(state: GameState, action: Extract<GameAction, {
   gainResources(state, action.playerId, { gold: smith.effect.sellGold }, `sold ${cardLibrary[cardId]?.name ?? cardId} at the Blacksmith`);
 }
 
-/**
- * Magic University (Conflux): once per round, instead of buying spells normally,
- * choose a School of Magic and dig the top of your deck for a Spell of that
- * school, taking it to hand (the rejects stay discarded).
- */
-export function magicUniversityAction(
-  state: GameState,
-  action: Extract<GameAction, { type: "MAGIC_UNIVERSITY_ACTION" }>
-): void {
-  const player = state.players[action.playerId];
-  if (!player) {
-    throw new Error("Unknown player.");
-  }
+/** Reject stale clients that still expose the old free-standing University action. */
+export function magicUniversityAction(): never {
+  throw new Error(
+    "Magic University can only be chosen when you are about to Search the Spell deck.",
+  );
+}
 
-  if (state.combat) {
-    throw new Error("Town actions cannot interrupt a combat.");
-  }
+const MAGIC_SCHOOLS: SpellSchool[] = ["air", "earth", "fire", "water"];
 
-  if (!townHasBuildingEffect(state, action.playerId, "MAGIC_UNIVERSITY")) {
-    throw new Error("This action needs a Magic University.");
-  }
+/** The University is a once-per-round replacement for an actual Spell Search. */
+/** "an Air / an Earth" but "a Fire" — one shared read so both Magic University labels agree. */
+function schoolArticle(schoolName: string): string {
+  return /^[AEIOU]/i.test(schoolName) ? "an" : "a";
+}
 
-  if (player.magicUniversityUsedRound === state.round) {
-    throw new Error("The Magic University was already used this round.");
-  }
-
-  player.magicUniversityUsedRound = state.round;
-  resolveMagicUniversityDig(state, action.playerId, action.school);
+function availableMagicUniversitySchools(state: GameState, playerId: PlayerId): SpellSchool[] {
+  const player = state.players[playerId];
+  return player &&
+    townHasBuildingEffect(state, playerId, "MAGIC_UNIVERSITY") &&
+    player.magicUniversityUsedRound !== state.round
+    ? MAGIC_SCHOOLS
+    : [];
 }
 
 /**
@@ -17570,16 +17609,23 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
       return;
     }
 
-    // Basic X Magic: draw the first spell of the chosen School — scanning the
-    // family's decks in order (basic first, then expert), no reveal.
-    const school = (pick.fetchSchools ?? [])[discardIndex - discardTops.length];
-    if (!school) {
+    const fetchSchools = pick.fetchSchools ?? [];
+    const replacementIndex = discardIndex - discardTops.length;
+    const school = fetchSchools[replacementIndex];
+    const universitySchool = (pick.magicUniversitySchools ?? [])[replacementIndex - fetchSchools.length];
+    if (!school && !universitySchool) {
       throw new Error("Pick one of the offered decks.");
     }
     state.pendingChoice = null;
     state.phase = choice.returnPhase;
     state.priorityPlayerId = null;
-    performSchoolFetchFromDecks(state, action.playerId, pick.deckIds, school);
+    if (school) {
+      // Basic X Magic: find the first matching Spell, take it, then reshuffle.
+      performSchoolFetchFromDecks(state, action.playerId, pick.deckIds, school);
+    } else {
+      spendMagicUniversityUse(state, action.playerId);
+      performMagicUniversityFetchFromDecks(state, action.playerId, pick.deckIds, universitySchool!);
+    }
     appendEvent(state, {
       type: "DECK_SEARCH_RESOLVED",
       playerId: action.playerId,
@@ -17786,6 +17832,7 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     const hasDiscardTop = mode.hasDiscardTop ?? false;
     const discardOptionCount = hasDiscardTop ? 1 : 0;
     const fetchSchools = mode.schoolFetch ?? [];
+    const magicUniversitySchools = mode.magicUniversitySchools ?? [];
 
     // The remaining options take a card with no reveal: the top discard (index
     // 1), then one "draw from a School of Magic" per school.
@@ -17815,13 +17862,26 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
         discardedCardIds: []
       });
     } else {
-      // Basic X Magic: draw the first spell of the chosen School straight into
-      // hand — you keep whatever you get (the deck reshuffles in performSchoolFetch).
-      const school = fetchSchools[action.optionIndex - (1 + discardOptionCount)];
-      if (!school) {
+      const replacementIndex = action.optionIndex - (1 + discardOptionCount);
+      const school = fetchSchools[replacementIndex];
+      const universitySchool = magicUniversitySchools[replacementIndex - fetchSchools.length];
+      if (!school && !universitySchool) {
         throw new Error("That search option is not available.");
       }
-      performSchoolFetch(state, action.playerId, mode.deckId, school);
+      if (school) {
+        // Basic X Magic finds the first matching Spell and then reshuffles.
+        performSchoolFetch(state, action.playerId, mode.deckId, school);
+      } else {
+        // Magic University discards from the shared Spell deck until the first
+        // matching Spell, takes that Spell, and spends its once-per-round use.
+        spendMagicUniversityUse(state, action.playerId);
+        performMagicUniversityFetchFromDecks(
+          state,
+          action.playerId,
+          [mode.deckId],
+          universitySchool!,
+        );
+      }
       appendEvent(state, {
         type: "DECK_SEARCH_RESOLVED",
         playerId: action.playerId,
@@ -19304,13 +19364,13 @@ export function beginSharedDeckSearchNow(
         })
       : [];
     const fetchSchools = spellsFamily ? activeSchoolFetches(state, playerId) : [];
-    const upFront = discardTops.length > 0 || fetchSchools.length > 0;
+    const magicUniversitySchools = spellsFamily ? availableMagicUniversitySchools(state, playerId) : [];
+    const upFront =
+      discardTops.length > 0 || fetchSchools.length > 0 || magicUniversitySchools.length > 0;
 
     // Label the Search count HONESTLY (Astrologers widen + a standing Scouting
     // override), mirroring the openSharedDeckSearch mode labels.
-    const spellWiden = getActiveAstrologersCard(state)?.effect;
-    const widenedCount =
-      spellsFamily && spellWiden?.type === "SPELL_SEARCH_WIDEN" ? Math.max(count, spellWiden.count) : count;
+    const widenedCount = spellsFamily ? astrologersSpellSearchCount(state, count) : count;
     const widen = searchCountOverrideLabel(state, playerId, widenedCount);
     const effectiveCount = widen ? widen.count : widenedCount;
 
@@ -19324,8 +19384,12 @@ export function beginSharedDeckSearchNow(
       ...fetchSchools.map((school) => {
         const schoolName = `${school.charAt(0).toUpperCase()}${school.slice(1)}`;
         const dest = polishSpellBookEnabled(state) ? "Spell Book" : "hand";
-        return { label: `Draw the first ${schoolName} Magic spell — take it into ${dest}` };
-      })
+        return { label: `Basic ${schoolName} Magic: Draw the first ${schoolName} Magic spell — take it into ${dest}` };
+      }),
+      ...magicUniversitySchools.map((school) => {
+        const schoolName = `${school.charAt(0).toUpperCase()}${school.slice(1)}`;
+        return { label: `Magic University: discard from the Spell deck until finding ${schoolArticle(schoolName)} ${schoolName} Magic spell` };
+      }),
     ];
 
     state.pendingChoice = {
@@ -19333,8 +19397,8 @@ export function beginSharedDeckSearchNow(
       type: "OPTION_CHOICE",
       playerId,
       prompt: upFront
-        ? fetchSchools.length > 0
-          ? `Search (${effectiveCount}) the Spell deck, take a top discard, or draw from your School of Magic?`
+        ? fetchSchools.length > 0 || magicUniversitySchools.length > 0
+          ? `Search (${effectiveCount}) the Spell deck, take a top discard, or use a school replacement?`
           : `Search (${effectiveCount}) the Spell deck, or take a top discard?`
         : `Search which deck? (Search ${count})`,
       options,
@@ -19345,7 +19409,8 @@ export function beginSharedDeckSearchNow(
         ...(allowRemove ? { allowRemove: true } : {}),
         ...(upFront ? { upFront: true } : {}),
         ...(discardTops.length > 0 ? { discardTops } : {}),
-        ...(fetchSchools.length > 0 ? { fetchSchools } : {})
+        ...(fetchSchools.length > 0 ? { fetchSchools } : {}),
+        ...(magicUniversitySchools.length > 0 ? { magicUniversitySchools } : {})
       },
       returnPhase: state.combat ? "combat" : "player-turn"
     };
@@ -19496,9 +19561,8 @@ export function openSharedDeckSearch(
   // downstream path: the Scouting re-entry (idempotent max), the up-front
   // discard/fetch option menu, and the reveal itself. Gated on the searched deck
   // being a Spell deck (either BINH split deck).
-  const spellWiden = getActiveAstrologersCard(state)?.effect;
-  if (spellWiden?.type === "SPELL_SEARCH_WIDEN" && isSpellDeck(deckId)) {
-    baseCount = Math.max(baseCount, spellWiden.count);
+  if (isSpellDeck(deckId)) {
+    baseCount = astrologersSpellSearchCount(state, baseCount);
   }
   if (isSpellDeck(deckId) && heroHasGradeNode(state, playerId, HERO_GRADE_NODE_IDS.spellSavant)) {
     baseCount += 1;
@@ -19536,6 +19600,9 @@ export function openSharedDeckSearch(
   // Magic spell…". The draw is an alternative TO searching, decided up front —
   // before any card is revealed — never alongside the revealed cards.
   const schoolFetch = isSpellDeck(deckId) ? activeSchoolFetches(state, playerId) : [];
+  const magicUniversitySchools = isSpellDeck(deckId)
+    ? availableMagicUniversitySchools(state, playerId)
+    : [];
   // The "take from discard" branch is only offered for cards the hero may
   // actually take — taking skips no redraw, so a duplicate / Necromancy /
   // starting-only card would dodge the acquisition rules. When nothing is
@@ -19550,7 +19617,7 @@ export function openSharedDeckSearch(
     discardTop && canAcquireSharedDeckCard(state, playerId, deckId, discardTop) ? discardTop : null;
   const hasDiscardTake = Boolean(discardTopId);
 
-  if (hasDiscardTake || schoolFetch.length > 0) {
+  if (hasDiscardTake || schoolFetch.length > 0 || magicUniversitySchools.length > 0) {
     // Label the Search HONESTLY. A standing SEARCH_COUNT_OVERRIDE (a pre-played
     // Scouting) is consumed only when the player actually reveals, not here — so
     // an up-front discard/fetch still leaves it intact for a later search — but
@@ -19567,7 +19634,13 @@ export function openSharedDeckSearch(
     for (const school of schoolFetch) {
       const schoolName = `${school.charAt(0).toUpperCase()}${school.slice(1)}`;
       const dest = polishSpellBookEnabled(state) ? "Spell Book" : "hand";
-      options.push({ label: `Draw the first ${schoolName} Magic spell — take it into ${dest}` });
+      options.push({ label: `Basic ${schoolName} Magic: Draw the first ${schoolName} Magic spell — take it into ${dest}` });
+    }
+    for (const school of magicUniversitySchools) {
+      const schoolName = `${school.charAt(0).toUpperCase()}${school.slice(1)}`;
+      options.push({
+        label: `Magic University: discard from the Spell deck until finding ${schoolArticle(schoolName)} ${schoolName} Magic spell`,
+      });
     }
 
     state.pendingChoice = {
@@ -19575,8 +19648,8 @@ export function openSharedDeckSearch(
       type: "OPTION_CHOICE",
       playerId,
       prompt:
-        schoolFetch.length > 0
-          ? `Search the ${deckId} deck, or draw from a School of Magic instead?`
+        schoolFetch.length > 0 || magicUniversitySchools.length > 0
+          ? `Search the ${deckId} deck, or use a school replacement instead?`
           : `Search the ${deckId} deck, or take its top discard?`,
       options,
       context: "deck-search-mode",
@@ -19584,6 +19657,7 @@ export function openSharedDeckSearch(
         deckId,
         count: baseCount,
         ...(schoolFetch.length > 0 ? { schoolFetch } : {}),
+        ...(magicUniversitySchools.length > 0 ? { magicUniversitySchools } : {}),
         hasDiscardTop: hasDiscardTake,
         ...(allowRemove ? { allowRemove: true } : {})
       },
@@ -19662,6 +19736,88 @@ function performSchoolFetchFromDecks(
     });
   }
   return fetchedCardId;
+}
+
+function spendMagicUniversityUse(state: GameState, playerId: PlayerId): void {
+  const player = state.players[playerId];
+  if (
+    !player ||
+    !townHasBuildingEffect(state, playerId, "MAGIC_UNIVERSITY") ||
+    player.magicUniversityUsedRound === state.round
+  ) {
+    throw new Error("The Magic University is not available for this Spell Search.");
+  }
+  player.magicUniversityUsedRound = state.round;
+}
+
+/**
+ * Magic University is a replacement for a pending shared Spell-deck Search.
+ * Unlike Basic X Magic it does not reshuffle: rejected cards are discarded in
+ * order until the first takeable matching Spell is found, and that Spell is
+ * taken into the normal Spell destination.
+ */
+function performMagicUniversityFetchFromDecks(
+  state: GameState,
+  playerId: PlayerId,
+  deckIds: string[],
+  school: SpellSchool,
+): CardId | null {
+  let found: CardId | null = null;
+  let discarded = 0;
+
+  for (const deckId of deckIds) {
+    const deck = state.decks[deckId];
+    if (!deck) {
+      continue;
+    }
+    // ONE-SEAM CONTRACT (decks.ts `reshuffleSharedDeckIfEmpty`): "the deck ran out"
+    // never ends a dig. The cards this dig has already rejected are held ASIDE in a
+    // local array so a reshuffle can never deal them again, and they are pushed onto
+    // the discard pile only once the dig ends (on BOTH exits). At most ONE reshuffle
+    // happens per deck, so the scan always terminates.
+    const rejected: CardId[] = [];
+    let reshuffled = false;
+    for (;;) {
+      if (deck.drawPile.length === 0) {
+        if (reshuffled || !reshuffleSharedDeckIfEmpty(state, deckId, "magic-university")) {
+          break;
+        }
+        reshuffled = true;
+        if (deck.drawPile.length === 0) {
+          break;
+        }
+      }
+      const cardId = deck.drawPile.pop()!;
+      const schools = cardLibrary[cardId]?.spellSchools ?? [];
+      if (
+        canAcquireSharedDeckCard(state, playerId, deckId, cardId) &&
+        (schools.includes(school) || schools.includes("any"))
+      ) {
+        found = cardId;
+        break;
+      }
+      rejected.push(cardId);
+    }
+    deck.discardPile.push(...rejected);
+    discarded += rejected.length;
+    if (found) {
+      break;
+    }
+  }
+
+  if (found) {
+    gainOwnedCard(state, playerId, found);
+  }
+  const schoolName = `${school.charAt(0).toUpperCase()}${school.slice(1)}`;
+  appendEvent(state, {
+    type: "TOWN_BUILDING_USED",
+    playerId,
+    buildingId: "conflux.magic_university",
+    message: found
+      ? `Magic University discards ${discarded} card(s) and finds ${cardLibrary[found]?.name ?? found}.`
+      : `Magic University finds no takeable ${schoolName} Magic spell (discarded ${discarded} card(s)).`,
+  });
+  return found;
 }
 
 /**

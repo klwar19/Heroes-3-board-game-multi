@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { parallelStateForPlayer } from "./parallel-combats";
 import {
   applyAction,
   createAdventureGameState,
@@ -279,17 +280,15 @@ describe("parallel turns — one interaction at a time (quiet moves while busy)"
     // Quiet move during the battle: allowed, battle untouched.
     const quiet = emptyFieldNextTo(state, "hero_p2");
     const moved = moveHero(state, "p2", quiet);
-    expect(moved.combat?.id).toBe(state.combat?.id);
+    expect(parallelStateForPlayer(moved, "p1").combat).toEqual(state.combat);
     expect(moved.heroes.hero_p2.spaceId).toBe(quiet);
 
-    // A second battle cannot open while one is running.
+    // A second independent battle can open while the first is running.
     const guarded2 = emptyFieldNextTo(state, "hero_p2");
     paintField(state, guarded2, "empty_field", { difficulty: 1 });
-    expect(
-      expectRejected(state, { type: "MOVE_HERO", playerId: "p2", heroId: "hero_p2", to: guarded2 })
-    ).toContain("wait until");
-    // Town actions are blocked during combats (as in ordered play).
-    expect(getLegalActions(state, "p2").some((legal) => legal.action.type === "BUILD_STRUCTURE")).toBe(false);
+    const secondBattle = moveHero(state, "p2", guarded2);
+    expect(secondBattle.combat?.attackerPlayerId).toBe("p2");
+    expect(parallelStateForPlayer(secondBattle, "p1").combat).toEqual(state.combat);
 
     // The mandatory start-of-turn draw can be taken while the battle runs.
     state.players.p2.canMulligan = true;

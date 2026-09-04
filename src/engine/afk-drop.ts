@@ -1,4 +1,5 @@
 import { explorersHandStepActive } from "./adventure";
+import { parallelStateForPlayer } from "./parallel-combats";
 import { getLegalActions } from "./legal-actions";
 import { neutralCombatControllerId } from "./neutral-control";
 import { applyAction } from "./reducer";
@@ -115,6 +116,7 @@ function ownsPendingInput(state: GameState, playerId: PlayerId): boolean {
  * wait (another player's interaction is open) or the drop is done.
  */
 export function nextAfkDropAction(state: GameState, playerId: PlayerId): GameAction | null {
+  state = parallelStateForPlayer(state, playerId);
   // A reaction window where the kicked seat holds priority: pass. (Passing is
   // always legal for the priority holder — EXCEPT while a pendingChoice is
   // open, which is exclusive in getLegalActions: a reaction play that opened a
@@ -197,6 +199,7 @@ export function nextAfkDropAction(state: GameState, playerId: PlayerId): GameAct
  * eliminating the seat (see resolveTurnTimeout in adventure-reducer.ts).
  */
 export function nextTurnTimeoutAction(state: GameState, playerId: PlayerId): GameAction | null {
+  state = parallelStateForPlayer(state, playerId);
   // Same pendingChoice guard as nextAfkDropAction: a reaction play that opened
   // a nested pick pauses the window, and PASS_REACTION is illegal until the
   // pick is answered. Keep the two drivers in lockstep.

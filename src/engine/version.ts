@@ -1067,7 +1067,30 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // Forge and the PvP-Neutral-Control controller read the open PARALLEL turn, a
 // bystander fight keeps the nominal activePlayerId. A v94 worker offers and
 // resolves different actions. `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 96;
+// v97: Wandering Merchant is a persistent during-turn action and records
+// completed purchases per player instead of queuing a blocking round-start visit
+// (new AstrologersState.wanderingMerchantBoughtBy). Same batch: the Whirlpool
+// proclamation joins the deck (the toll + die are skipped, the traveller picks),
+// Rulebook redraws on Easy and no longer eases authored / VII-objective guards,
+// Sanctuary blocks the enemy-hero hex in classifyHeroStep.
+// v98: BINH Wind now waives the sea->land halt as well as land->sea.
+// v99: optional settlement recruitment factions and independently purchasable
+// copies change authoritative recruitment rules and legal upgrade targets
+// (MapFieldState.settlementRecruitFactionId, PlayerState.nextArmyUnitOrdinal;
+// the army-unit id cursor never reuses a dead ordinal on ANY table).
+// v100: independent parallel neutral combat contexts and per-seat battle routing
+// (state.parallelCombats / parallelCombatOwnerId, GameEvent.combatContextId).
+// v101 (2026-09-05 audit of that batch): the School-of-Magic / Basic X Magic
+// expert (+3) is committed INSIDE the cast's own reaction window
+// (USE_SCHOOL_PERMANENT_EXPERT / USE_SCHOOL_FETCH_EXPERT) - the up-front
+// CAST_SPELL.useSchoolExpert / useSchoolFetchExpert variants are gone and
+// REJECTED; new stack-item modifier schoolPermanentExpertUsedBy (once per cast);
+// Spell Book Power discard is ONE PER CAST; Magic University is a Spell-Search
+// replacement (PendingChoice.magicUniversitySchools, MAGIC_UNIVERSITY_ACTION is
+// never offered); Polish Ballista firing windows (combat.warMachineRound
+// re-entry) and the Polish bank auto-win "EVERY unit safe" predicate. A v96 edge
+// offers and resolves different actions. `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 101;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

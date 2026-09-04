@@ -848,10 +848,9 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     name: "Magic University",
     faction: "conflux",
     cost: { gold: 6, buildingMaterials: 3 },
-    // "Once per round (at the start of your turn), choose a School of Magic and
-    // discard cards from the top of your deck until you reveal a Spell of that
-    // school, then take it to hand." (Magic Arrow, school 'any', matches every
-    // school — the engine's standing convention.)
+    // "Once per round, instead of Searching the Spell deck, choose a School of
+    // Magic and discard cards from the top of the Spell deck until you reveal a
+    // Spell of that school, then take it to hand." Magic Arrow ('any') matches.
     effect: { type: "MAGIC_UNIVERSITY" },
     implementationStatus: "implemented",
     source: townSource("conflux")
@@ -2931,6 +2930,29 @@ export const neutralUnitIdsByFaction: Record<string, string[]> = Object.fromEntr
       .filter((id): id is string => Boolean(id))
   ])
 );
+
+/**
+ * Factions whose rosters do not have printed Neutral Unit counterparts.
+ * Unexpected Reinforcements falls back to one random, Dwelling-eligible Neutral
+ * Unit for these factions instead of leaving them with no card effect.
+ *
+ * Derived from the INVARIANT — "this faction has no associated neutral cards at
+ * all" — rather than a hand-maintained faction list. The old list (bulwark +
+ * every anime + MGQ town) silently missed `imperium`, whose roster likewise has
+ * zero neutral counterparts, so the proclamation was a no-op for that seat.
+ * A library-wide sweep in `astrologers-recruit-explorers.test.ts` keeps every
+ * future counterpart-less faction covered automatically.
+ */
+export function usesRandomUnexpectedReinforcements(factionId: string | null | undefined): boolean {
+  return Boolean(
+    factionId &&
+      // A faction the build does not define at all (no roster to read) keeps the
+      // old "no offer" behaviour — the fallback is for a DEFINED roster whose
+      // units simply have no neutral counterparts.
+      Object.hasOwn(neutralUnitIdsByFaction, factionId) &&
+      neutralUnitIdsByFaction[factionId]!.length === 0
+  );
+}
 
 /**
  * Which starting tile faces which faction, derived from the faction

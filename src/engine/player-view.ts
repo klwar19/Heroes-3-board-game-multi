@@ -1,3 +1,4 @@
+import { parallelStateForPlayer } from "./parallel-combats";
 import type {
   CardId,
   DeckId,
@@ -378,7 +379,11 @@ function getVisiblePendingVisit(visit: PendingVisit | null, viewerPlayerId: Play
 }
 
 export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): PlayerVisibleState {
+  state = parallelStateForPlayer(state, viewerPlayerId);
   const base = cloneSerializable(state);
+  // Other contexts contain private choices and must never cross the wire.
+  delete base.parallelCombats;
+  delete base.parallelCombatOwnerId;
   // A restored/legacy snapshot may predate the standing face-up-discard
   // invariant. Repair the detached view immediately so the table never renders
   // a shared Spell / Ability / Artifact discard as empty; the reducer performs

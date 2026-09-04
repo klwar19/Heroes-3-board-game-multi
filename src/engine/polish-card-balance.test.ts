@@ -358,15 +358,14 @@ function artilleryShotDamage(state: GameState): { after: GameState; dealt: numbe
 }
 
 describe("Balance Pack — Artillery also aims your Ballista", () => {
-  it("playing the basic shot grants the aim freedom; the classic card grants NONE (CONTROL)", () => {
+  it("playing the late basic shot deals one damage without granting ongoing aim", () => {
     const on = artilleryCombat("balance-artillery-on", true, { ballista: true });
     expect(hasBallistaChooseTarget(on, "p1"), "no aim before the card is played").toBe(false);
     const { after: onAfter, dealt: onDealt } = artilleryShotDamage(on);
-    // The printed shot still lands — the rider is ON TOP of it, not instead.
+    // Outside the firing window this is only the one-damage fallback.
     expect(onDealt).toBe(1);
-    // The observable outcome: the Ballista's round-start shot may now pick its
-    // target, exactly as Gerwulf's Ballista VI grants (the SAME reader).
-    expect(hasBallistaChooseTarget(onAfter, "p1")).toBe(true);
+    expect(hasBallistaChooseTarget(onAfter, "p1")).toBe(false);
+    expect(onAfter.players.p1.discard).toContain("ability.artillery");
 
     const off = artilleryCombat("balance-artillery-off", false, { ballista: true });
     const { after: offAfter, dealt: offDealt } = artilleryShotDamage(off);
@@ -429,8 +428,13 @@ describe("Balance Pack — Artillery also aims your Ballista", () => {
   });
 
   it("the aim is granted ONCE — a second Artillery does not stack a duplicate effect", () => {
-    const state = artilleryCombat("balance-artillery-once", true, { ballista: true });
-    const after = playBasicArtillery(state);
+    const state = artilleryCombat("balance-artillery-once", true, { ballista: true, drainChoices: false });
+    const volley = getLegalActions(state, "p1").find((legal) => legal.label.includes("Artillery"));
+    expect(volley).toBeTruthy();
+    let after = applyOk(state, volley!.action);
+    for (let step = 0; after.pendingChoice && step < 20; step += 1) {
+      after = applyOk(after, getLegalActions(after, "p1")[0].action);
+    }
     const aimEffects = (target: GameState) =>
       target.activeEffects.filter((effect) =>
         effect.modifiers.some((modifier) => modifier.type === "BALLISTA_CHOOSE_TARGET")

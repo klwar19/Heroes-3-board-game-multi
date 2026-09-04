@@ -2977,6 +2977,93 @@ describe("ReactionTray — spell cast Power floor / ceiling", () => {
     return next.state;
   }
 
+  function castPolishBlessOpen(power: number, polish = true): GameState {
+    const state = createInitialGameState(
+      polish ? "tray-polish-bless-ceiling" : "tray-classic-bless-ceiling"
+    );
+    state.adventure = {
+      houseRules: { "polish-card-balance": polish },
+      tiles: {},
+      playerFarTiles: {}
+    } as unknown as GameState["adventure"];
+    state.players.p1.hand = ["spell.bless", "stat.power"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    const cast = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.bless" &&
+        legal.action.target?.type === "unit" &&
+        legal.action.target.unitId === "unit_p1_griffins"
+    );
+    expect(cast).toBeTruthy();
+    const next = applyAction(state, cast!.action);
+    expect(next.errors).toEqual([]);
+    const stack = next.state.stack.at(-1);
+    expect(stack?.action.type).toBe("CAST_SPELL");
+    if (stack) {
+      stack.modifiers.spellPowerBonus = power;
+    }
+    return next.state;
+  }
+
+  it("uses Polish Bless's Power-3 top tier in the live meter and resolve warning", () => {
+    const onAction = vi.fn();
+    const state = castPolishBlessOpen(3);
+    render(
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={getLegalActions(state, "p1")}
+          onAction={onAction}
+          state={state}
+          view={getPlayerView(state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+
+    expect(screen.getByText(/Bless.*top tier 3/i)).toBeTruthy();
+    expect(screen.queryByText(/past the top tier/i)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /resolve bless/i }));
+    expect(screen.queryByRole("dialog", { name: /spell power check/i })).toBeNull();
+    expect(onAction).toHaveBeenCalledWith({ type: "PASS_REACTION", playerId: "p1" });
+  });
+
+  it("CONTROL: with the Balance Pack OFF the meter reads classic Bless's Power-2 top tier", () => {
+    // The classic printed Bless ladder is {0, 1, 2} (ignore the die, then +1 /
+    // +2 attack); the Polish reprint's is {0, 1, 3}. The meter must read the
+    // BALANCED definition, so the SAME Power 3 that sits ON the reprint's top
+    // tier is PAST the classic card's.
+    //
+    // The window is opened with the pack ON and the rule then flipped OFF,
+    // because the classic Bless is a printed REACTION (trigger
+    // UNIT_ATTACK_DECLARED) and is not castable on the caster's own turn at all
+    // — only the reprint is a `combat` cast. The flip is exactly the variable
+    // under test here: which card definition the meter reads.
+    const state = castPolishBlessOpen(3);
+    (state.adventure as unknown as { houseRules: Record<string, boolean> }).houseRules[
+      "polish-card-balance"
+    ] = false;
+    render(
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={getLegalActions(state, "p1")}
+          onAction={vi.fn()}
+          state={state}
+          view={getPlayerView(state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+
+    expect(screen.getByText(/Bless.*top tier 2/i)).toBeTruthy();
+    expect(screen.queryByText(/top tier 3/i)).toBeNull();
+    // …and Power 3 is now flagged as over the ceiling (the reprint case is not).
+    expect(screen.getByText(/past top tier/i)).toBeTruthy();
+  });
+
   it("shows under-min warning and a Go-back dialog when Pass is clicked at Power 0 with fuel left", () => {
     const onAction = vi.fn();
     const state = castImplosionOpen("tray-impl-under", ["spell.implosion", "stat.power"]);

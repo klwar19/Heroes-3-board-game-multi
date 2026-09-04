@@ -494,6 +494,7 @@ export function turnClockRunningSeats(state: GameState): PlayerId[] {
  *    budget covers everything they themselves are deciding.
  */
 export function turnClockPausedFor(state: GameState, playerId: PlayerId): boolean {
+  if (Object.values(state.parallelCombats ?? {}).some(context => context.combat && !context.combat.outcome)) return true;
   const combat = state.combat;
   // Any live battle pauses (and thereby resets) the turn clock for everyone: the
   // two fighters are IN it, and a bystander cannot act until it ends. This

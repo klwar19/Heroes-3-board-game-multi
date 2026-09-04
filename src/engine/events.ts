@@ -94,6 +94,7 @@ export function appendEvent<T extends EventDraft>(
   }
   const nextEvent = {
     id: `evt_${nextEventNumber(state)}`,
+    ...(state.turn?.mode === "parallel" && state.combat ? { combatContextId: state.combat.id } : {}),
     ...eventDraft
   } as unknown as Extract<GameEvent, { type: T["type"] }>;
 

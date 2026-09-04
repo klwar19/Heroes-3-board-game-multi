@@ -182,6 +182,31 @@ describe("Astrologers — Blue Sky / Scorched Ground school power", () => {
     expect(castDamage("scorch-arrow-damage", "spell.magic_arrow", "astrologers.scorched_ground")).toBe(2);
   });
 
+  it("stacks with matching Fire Magic and an Energy Elemental inside one Fire package", () => {
+    expect(
+      castPower("scorch-fire-package", "spell.magic_arrow", "astrologers.scorched_ground", (state) => {
+        state.players.p1.permanents = ["ability.fire_magic"];
+        state.combat!.units.unit_p1_marksmen.abilities = ["energy-elemental-fire-power"];
+      }),
+    ).toBe(3); // Scorched +1, Fire Magic +1, Energy Elemental +1.
+  });
+
+  it("stacks with the Magi's school-neutral first-Spell +1", () => {
+    expect(
+      castPower("scorch-magi-stack", "spell.magic_arrow", "astrologers.scorched_ground", (state) => {
+        state.combat!.units.unit_p1_marksmen.abilities = ["magi-power-boost"];
+      }),
+    ).toBe(2); // Scorched +1 plus Magi +1.
+  });
+
+  it("does not mix a mismatched Storm Elemental package into Scorched Ground", () => {
+    expect(
+      castPower("scorch-no-cross-school", "spell.magic_arrow", "astrologers.scorched_ground", (state) => {
+        state.combat!.units.unit_p1_marksmen.abilities = ["storm-elemental-air-power"];
+      }),
+    ).toBe(1); // Fire/Earth: Scorched +1; Air: Storm +1. Pick one, never 2.
+  });
+
   it("a non-school proclamation never changes spell Power", () => {
     expect(castDamage("none-arrow", "spell.magic_arrow", "astrologers.dead_silence")).toBe(1);
     expect(castDamage("none-impl", "spell.implosion", "astrologers.dead_silence")).toBe(0);
@@ -348,6 +373,34 @@ describe("Astrologers — Blue Sky / Scorched Ground school power", () => {
     expect(hasteInitiativeBonus("blue-ongoing-base", null)).toBe(1);
     expect(hasteInitiativeBonus("blue-ongoing-on", "astrologers.blue_sky")).toBe(2);
     expect(hasteInitiativeBonus("blue-ongoing-wrong", "astrologers.scorched_ground")).toBe(1);
+  });
+
+  function slowInitiativePenalty(seed: string, proclamation: string | null): number | undefined {
+    const state = createInitialGameState(seed);
+    state.players.p1.hand = ["spell.slow"];
+    state.players.p2.hand = [];
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    setProclamation(state, proclamation);
+    const cast = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.slow" &&
+        legal.action.target.type === "unit" &&
+        legal.action.target.unitId === "unit_p2_skeletons"
+    );
+    expect(cast).toBeTruthy();
+    const resolved = passAll(applyOk(state, cast!.action));
+    const slow = resolved.activeEffects.find(
+      (effect) => effect.source.type === "card" && effect.source.cardId === "spell.slow"
+    );
+    const initiative = slow?.modifiers.find((modifier) => modifier.type === "INITIATIVE_BONUS");
+    return initiative?.type === "INITIATIVE_BONUS" ? initiative.amount : undefined;
+  }
+
+  it("Scorched Ground buffs a matching Earth ongoing Spell for its complete lifetime", () => {
+    expect(slowInitiativePenalty("scorch-ongoing-base", null)).toBe(-1);
+    expect(slowInitiativePenalty("scorch-ongoing-on", "astrologers.scorched_ground")).toBe(-2);
+    expect(slowInitiativePenalty("scorch-ongoing-wrong", "astrologers.blue_sky")).toBe(-1);
   });
 });
 

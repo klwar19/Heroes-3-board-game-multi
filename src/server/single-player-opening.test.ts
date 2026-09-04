@@ -51,15 +51,38 @@ function homePayoffs(state: GameState, playerId: string): Payoff[] {
 }
 
 /**
- * The bands of the tiles `playerId` opened, in order ("far" = Ⅱ–Ⅲ, "near" =
- * Ⅳ–Ⅴ, "center" = Ⅵ–Ⅶ), covering BOTH ways a seat opens land: dropping a Ⅱ–Ⅲ
- * supply tile (TILE_PLACED) and flipping a face-down one (TILE_REVEALED).
+ * Locations whose VISIT hands out a free adjacent tile reveal — the Redwood
+ * Observatory (and the Speculum artifact's identical step). That reveal is not
+ * a DISCOVER_TILE: the seat did not choose a band, it simply collected a hex's
+ * printed payoff, so the band-first discovery PREFERENCE (which only scores
+ * DISCOVER_TILE offers) never sees it. Counting it as an "opening" made the
+ * seeded floor below read a Ⅳ+ band that no policy decision produced.
+ */
+const FREE_REVEAL_VISIT_LOCATIONS = new Set(["redwood_observatory"]);
+
+/**
+ * The bands of the tiles `playerId` opened BY CHOICE, in order ("far" = Ⅱ–Ⅲ,
+ * "near" = Ⅳ–Ⅴ, "center" = Ⅵ–Ⅶ), covering BOTH ways a seat opens land:
+ * dropping a Ⅱ–Ⅲ supply tile (TILE_PLACED) and flipping a face-down one
+ * (TILE_REVEALED). A TILE_REVEALED that a free Observatory/Speculum visit
+ * handed over is EXCLUDED — see FREE_REVEAL_VISIT_LOCATIONS.
  */
 function openedTileBands(state: GameState, playerId: string): string[] {
   const bands: string[] = [];
+  let freeRevealOwed = false;
   for (const event of state.eventLog) {
+    if (event.type === "FIELD_VISITED") {
+      freeRevealOwed =
+        event.playerId === playerId && FREE_REVEAL_VISIT_LOCATIONS.has(event.location);
+      continue;
+    }
     if (event.type !== "TILE_REVEALED" && event.type !== "TILE_PLACED") continue;
     if ((event as { playerId?: string }).playerId !== playerId) continue;
+    if (event.type === "TILE_REVEALED" && freeRevealOwed) {
+      // The Observatory's own free reveal — consumed, not a band choice.
+      freeRevealOwed = false;
+      continue;
+    }
     const id = (event as { tileInstanceId?: string }).tileInstanceId;
     const tile = id ? state.adventure!.tiles[id] : undefined;
     bands.push(String(tile?.group ?? "?"));

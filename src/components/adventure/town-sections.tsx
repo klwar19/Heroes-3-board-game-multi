@@ -37,6 +37,7 @@ import {
   type TownState
 } from "@/engine";
 import { assetUrl } from "@/lib/asset-url";
+import { playerRecruitUnitIds, playerRecruitTierUnlocked, settlementRecruitFactions } from "@/engine/adventure";
 import { actionKey, formatCost } from "@/components/table/utils";
 import { useOptionalCardZoom } from "@/components/table/zoom";
 import { useUnitFaceImage } from "@/components/table/polish-balance-art";
@@ -104,9 +105,6 @@ export function activeBuildingActions(
     }
     if (action.type === "BLACKSMITH_ACTION") {
       return building.effect?.type === "ARTIFACT_SMITH";
-    }
-    if (action.type === "MAGIC_UNIVERSITY_ACTION") {
-      return building.effect?.type === "MAGIC_UNIVERSITY";
     }
     return false;
   });
@@ -207,7 +205,7 @@ export function buildingPanelNote(
       }
       return player.magicUniversityUsedRound === state.round
         ? "Already used this round — available again next round."
-        : "Pick a School of Magic to dig your deck for that spell.";
+        : "Ready — choose a School of Magic instead when you next Search the shared Spell deck.";
     case "MAGE_GUILD":
     case "ARTIFACT_SMITH":
     case "COVER_OF_DARKNESS":
@@ -711,14 +709,32 @@ export function TownRecruitSection({
   }
   const canPopulate = legalActions.some((legal) => legal.action.type === "POPULATION_ACTION");
 
-  const unlockedTiers = new Set(
-    town.buildings
-      .map((buildingId) => coreBuildingDefinitions[buildingId]?.effect)
-      .flatMap((effect) => (effect?.type === "UNLOCK_RECRUIT_TIER" ? [effect.tier] : []))
-  );
   const canReinforce = town.buildings.some(
     (buildingId) => coreBuildingDefinitions[buildingId]?.effect?.type === "UNLOCK_REINFORCE"
   );
+  const allowCopies = houseRuleEnabled(state, "duplicate-unit-recruitment");
+  const foreignFactions = settlementRecruitFactions(state, viewerPlayerId);
+  const recruitRoster = playerRecruitUnitIds(state, viewerPlayerId);
+  // Live snapshots may remove a selected casualty, upgrade it, or transfer a
+  // settlement. Discard stale selections instead of submitting phantom slots.
+  const validReinforceIds = reinforceIds.filter((id) => player.army.some((unit) =>
+    unit.id === id && unit.side === "few" && recruitRoster.includes(unit.unitDefId)
+  ));
+  const validRecruitIds = recruitIds.filter((id) => recruitRoster.includes(id) &&
+    (allowCopies || !player.army.some((unit) => unit.unitDefId === id && unit.side !== "bank"))
+  );
+  if (validReinforceIds.length !== reinforceIds.length) setReinforceIds(validReinforceIds);
+  if (validRecruitIds.length !== recruitIds.length) setRecruitIds(validRecruitIds);
+  const rosterRows = recruitRoster.flatMap((unitDefId) => {
+    const copies = player.army.filter((candidate) => candidate.unitDefId === unitDefId && candidate.side !== "bank");
+    return allowCopies
+      ? [{ unitDefId, owned: undefined }, ...copies.map((owned) => ({ unitDefId, owned }))]
+      : [{ unitDefId, owned: copies[0] }];
+  });
+  const purchaseIsLegal = (kind: "recruit" | "reinforce", unitDefId: string, armyUnitId?: string) =>
+    legalActions.some(({ action }) => action.type === "POPULATION_ACTION" && action.purchases.some((purchase) =>
+      purchase.kind === kind && purchase.unitDefId === unitDefId && (kind === "recruit" || purchase.armyUnitId === armyUnitId)
+    ));
   const polishStacksEnabled = houseRuleEnabled(state, "polish-unit-stacks");
   const hasFreelancersGuild = town.buildings.some(
     (buildingId) => coreBuildingDefinitions[buildingId]?.effect?.type === "FREELANCERS_GUILD"
@@ -798,7 +814,7 @@ export function TownRecruitSection({
 
   return (
     <div className="townRecruits" aria-label="Population token basket">
-      <h4 title="Each unit card exists once: recruit the Few side, later reinforce it to the Pack side — then it is complete.">
+      <h4 title={allowCopies ? "Each copy has its own slot, experience and upgrades." : "Each unit card exists once: recruit the Few side, later reinforce it to the Pack side — then it is complete."}>
         Population token — recruit &amp; reinforce
       </h4>
       <small className="recruitLegend">
@@ -812,6 +828,10 @@ export function TownRecruitSection({
           </>
         ) : null}
       </small>
+      {allowCopies ? <small className="recruitLegend">Buy same unit adds a new Few slot. Reinforce each copy separately; experience and casualties belong to that copy.</small> : null}
+      {foreignFactions.length > 0 ? (
+        <p className="settlementRecruitSources">Settlement recruits: <b>{foreignFactions.map((id) => coreFactionDefinitions[id]?.name ?? id).join(", ")}</b>. All tiers available at normal cost while you control the settlement.</p>
+      ) : null}
       {freelancerPrompt ? (
         <div className="freelancerPaymentPrompt" role="dialog" aria-label="Freelancer's Guild payment choice">
           <strong>Freelancer&apos;s Guild — choose substitute payment</strong>
@@ -858,13 +878,16 @@ export function TownRecruitSection({
         </div>
       ) : null}
       <MgqGoldContractPanel player={player} />
-      {faction.units.map((unitDefId) => {
+      {rosterRows.map(({ unitDefId, owned }) => {
         const unit = coreUnitDefinitions[unitDefId];
-        const owned = player.army.find((candidate) => candidate.unitDefId === unitDefId);
+        const rowKey = owned?.id ?? `recruit-${unitDefId}`;
+        const copyIndex = owned ? player.army.filter((candidate) => candidate.unitDefId === unitDefId && candidate.side !== "bank").findIndex((candidate) => candidate.id === owned.id) + 1 : 0;
+        const copyLabel = allowCopies && owned ? ` · Copy ${copyIndex}` : "";
+        const hasCopies = player.army.some((candidate) => candidate.unitDefId === unitDefId && candidate.side !== "bank");
         if (!owned && mgqGoldUnavailable(player, unitDefId)) {
           return null;
         }
-        const tierUnlocked = Boolean(unit && unlockedTiers.has(unit.tier));
+        const tierUnlocked = Boolean(unit && playerRecruitTierUnlocked(state, viewerPlayerId, unitDefId));
         const rosterOwnedSide =
           owned?.side === "few" || owned?.side === "pack" || owned?.side === "neutral" ? owned.side : null;
         const rosterRecruitRef = { kind: "recruit" as const, unitDefId };
@@ -899,7 +922,7 @@ export function TownRecruitSection({
         // units even not available"): show its faces + name as display-only.
         if (!unit.few) {
           return (
-            <div className="recruitRow unitRosterRow locked" key={unitDefId}>
+            <div className="recruitRow unitRosterRow locked" key={rowKey}>
               {unitCards}
               <Star aria-hidden="true" className={`tierStar ${unit.tier}`} size={12} />
               <span className="recruitName">{unit.name}</span>
@@ -912,11 +935,11 @@ export function TownRecruitSection({
           const canStack =
             polishStacksEnabled && (owned.side === "pack" || owned.side === "neutral") && polishArmyUnitStackCap(owned) > 0;
           return (
-            <div className={`recruitRow unitRosterRow done owned-${owned.side} ${canStack ? "unitStackRow" : ""}`} key={unitDefId}>
+            <div className={`recruitRow unitRosterRow done owned-${owned.side} ${canStack ? "unitStackRow" : ""}`} key={rowKey} data-army-unit-id={owned.id}>
               {unitCards}
               <Star aria-hidden="true" className={`tierStar ${unit.tier}`} size={12} />
               <span className="recruitName">
-                {unit.name}
+                {unit.name}{copyLabel}
                 {owned.side === "neutral" ? <span className="neutralBadge">Neutral</span> : null}
               </span>
               {canStack ? (
@@ -939,7 +962,7 @@ export function TownRecruitSection({
         if (owned) {
           const def = coreUnitDefinitions[owned.unitDefId];
           const checked = reinforceIds.includes(owned.id);
-          const upgradable = canReinforce && Boolean(def?.pack);
+          const upgradable = canReinforce && tierUnlocked && Boolean(def?.pack);
           const reinforceRef = { kind: "reinforce" as const, unitDefId: owned.unitDefId, armyUnitId: owned.id };
           const reinforceCost = applyRecruitGoldDiscount(state, viewerPlayerId, reinforceRef, def?.pack?.cost ?? {});
           const reinforceLegion = legionVoucherDiscount(state, viewerPlayerId, reinforceRef);
@@ -947,13 +970,14 @@ export function TownRecruitSection({
           return (
             <div
               className={`recruitRow unitRosterRow reinforce owned-few ${checked ? "checked" : ""} ${upgradable ? "" : "locked"}`}
-              key={unitDefId}
+              key={rowKey}
+              data-army-unit-id={owned.id}
               title={upgradable ? `Reinforce ${unit.name}: Few → Pack` : undefined}
             >
               {unitCards}
               <Star aria-hidden="true" className={`tierStar ${unit.tier}`} size={12} />
               <span className="recruitName">
-                {unit.name} <span className="fewBadge">Few</span>
+                {unit.name}{copyLabel} <span className="fewBadge">Few</span>
               </span>
               {upgradable ? (
                 <>
@@ -969,7 +993,8 @@ export function TownRecruitSection({
                       stays visible either way. */}
                   <button
                     className="recruitQuick"
-                    disabled={!canPopulate || !reinforceAffordable}
+                    disabled={!purchaseIsLegal("reinforce", unitDefId, owned.id) || !reinforceAffordable}
+                    aria-label={allowCopies ? `Reinforce ${unit.name}${copyLabel}` : undefined}
                     onClick={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
@@ -992,7 +1017,7 @@ export function TownRecruitSection({
                     Reinforce
                   </button>
                   <input
-                    aria-label={`Reinforce ${unit.name} to a pack`}
+                    aria-label={`Reinforce ${unit.name}${copyLabel} to a pack`}
                     checked={checked}
                     onChange={() =>
                       setReinforceIds((current) =>
@@ -1014,7 +1039,7 @@ export function TownRecruitSection({
         const recruitLegion = legionVoucherDiscount(state, viewerPlayerId, recruitRef);
         const recruitAffordable = affordableRecruitCost(recruitCost);
         return (
-          <div className={`recruitRow unitRosterRow ${tierUnlocked ? "" : "locked"}`} key={unitDefId}>
+          <div className={`recruitRow unitRosterRow ${tierUnlocked ? "" : "locked"}`} key={rowKey}>
             {unitCards}
             <Star aria-hidden="true" className={`tierStar ${unit.tier}`} size={12} />
             <span className="recruitName">{unit.name}</span>
@@ -1029,7 +1054,8 @@ export function TownRecruitSection({
                     affordability — the "limit/info" stays visible. */}
                 <button
                   className="recruitQuick"
-                  disabled={!canPopulate || !recruitAffordable}
+                  disabled={!purchaseIsLegal("recruit", unitDefId) || !recruitAffordable}
+                  aria-label={allowCopies ? `${hasCopies ? "Buy same unit" : "Recruit"}: ${unit.name}` : undefined}
                   onClick={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
@@ -1047,7 +1073,7 @@ export function TownRecruitSection({
                   }
                   type="button"
                 >
-                  Recruit
+                  {allowCopies && hasCopies ? "Buy same unit" : "Recruit"}
                 </button>
                 <input
                   aria-label={`Add ${unit.name} to the recruit basket`}

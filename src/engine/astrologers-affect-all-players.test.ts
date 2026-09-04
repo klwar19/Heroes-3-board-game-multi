@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyAction, createAdventureGameState, getLegalActions } from "./index";
+import { applyAction, changeMorale, createAdventureGameState, getLegalActions } from "./index";
 import { ASTROLOGERS_DECK_ID, TREASURE_DIE_FACES } from "./adventure";
 import type { GameAction, GameEvent, GameState, PlayerId } from "./state";
 
@@ -15,11 +15,12 @@ import type { GameAction, GameEvent, GameState, PlayerId } from "./state";
 
 const SEATS: PlayerId[] = ["p1", "p2"];
 
-function game(): GameState {
+function game(moraleCards = false): GameState {
   return createAdventureGameState({
     seed: "astro-all",
     difficulty: "normal",
     rollFirstPlayer: false,
+    moraleCards,
     // Two morale-USING factions on purpose: Necropolis ignores morale by faction
     // rule (Undead), which would make the morale assertion below a false failure.
     players: [
@@ -62,8 +63,12 @@ function driveForced(state: GameState): GameState {
 }
 
 /** Play to the round-2 Astrologers wrap with `cardId` on top of the deck. */
-function wrapToAstrologers(cardId: string): GameState {
-  let state = game();
+function wrapToAstrologers(
+  cardId: string,
+  options: { moraleCards?: boolean; setup?: (state: GameState) => void } = {}
+): GameState {
+  let state = game(options.moraleCards);
+  options.setup?.(state);
   const deck = state.decks[ASTROLOGERS_DECK_ID]!;
   deck.drawPile = [cardId];
   deck.discardPile = [];
@@ -132,6 +137,48 @@ describe("Astrologers proclamations affect EVERY player (real round wrap)", () =
     const state = wrapToAstrologers("astrologers.fancy_pixie");
     for (const pid of SEATS) {
       expect(state.players[pid].morale, `${pid} morale should rise`).toBe(beforeMorale[pid] + 1);
+    }
+  });
+
+  it("Fancy Pixie draws Positive Morale cards for BOTH players in Morale Cards mode", () => {
+    const state = wrapToAstrologers("astrologers.fancy_pixie", { moraleCards: true });
+    for (const pid of SEATS) {
+      expect(state.players[pid].morale, `${pid} should not receive a numeric token`).toBe(0);
+      expect(state.players[pid].moraleCards?.positive, `${pid} should draw one Positive card`).toHaveLength(1);
+      expect(state.players[pid].moraleCards?.negative).toHaveLength(0);
+    }
+  });
+
+  it("Society draws Negative Morale cards for BOTH players in Morale Cards mode", () => {
+    const state = wrapToAstrologers("astrologers.society", { moraleCards: true });
+    for (const pid of SEATS) {
+      expect(state.players[pid].morale, `${pid} should not receive a numeric token`).toBe(0);
+      expect(state.players[pid].moraleCards?.negative, `${pid} should draw one Negative card`).toHaveLength(1);
+      expect(state.players[pid].moraleCards?.positive).toHaveLength(0);
+    }
+  });
+
+  it("both proclamations cancel an opposite Morale card before drawing in Morale Cards mode", () => {
+    const society = wrapToAstrologers("astrologers.society", {
+      moraleCards: true,
+      setup: (state) => {
+        for (const pid of SEATS) changeMorale(state, pid, 1);
+      }
+    });
+    for (const pid of SEATS) {
+      expect(society.players[pid].moraleCards?.positive).toHaveLength(0);
+      expect(society.players[pid].moraleCards?.negative).toHaveLength(0);
+    }
+
+    const pixie = wrapToAstrologers("astrologers.fancy_pixie", {
+      moraleCards: true,
+      setup: (state) => {
+        for (const pid of SEATS) changeMorale(state, pid, -1);
+      }
+    });
+    for (const pid of SEATS) {
+      expect(pixie.players[pid].moraleCards?.negative).toHaveLength(0);
+      expect(pixie.players[pid].moraleCards?.positive).toHaveLength(0);
     }
   });
 

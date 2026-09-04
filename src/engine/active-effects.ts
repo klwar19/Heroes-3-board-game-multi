@@ -1241,6 +1241,9 @@ export function releaseEndedOngoingCards(state: GameState): void {
     );
   }
   const liveEffectIds = new Set(state.activeEffects.map((effect) => effect.id));
+  for (const context of Object.values(state.parallelCombats ?? {})) {
+    for (const effect of context.effects) liveEffectIds.add(effect.id);
+  }
 
   for (const player of Object.values(state.players)) {
     if (!player.ongoingCards?.length) {

@@ -1,4 +1,5 @@
 "use client";
+import { parallelPresentationEvents, parallelStateForPlayer } from "@/engine/parallel-combats";
 
 import { Castle, CheckCircle2, Crosshair, Crown, Eye, Hand as HandIcon, Layers, Lock, Map as MapIcon, Maximize2, Menu as MenuIcon, Minimize2, Sparkles, StepForward, Swords, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -712,10 +713,14 @@ function makeSpellDiceCue(
 type HandMode = null | "mulligan" | "opening-mulligan" | "morale-redraw" | "cover-of-darkness";
 
 export default function Home() {
-  const [state, setState] = useState<GameState | null>(null);
+  const [rawState, setState] = useState<GameState | null>(null);
   /** Latest ingested state — used as `prev` for ladder dual-claim detection. */
   const stateRef = useRef<GameState | null>(null);
   const [viewerPlayerId, setViewerPlayerId] = useState<PlayerId>("p1");
+  const state = useMemo(
+    () => rawState ? parallelStateForPlayer(rawState, viewerPlayerId) : null,
+    [rawState, viewerPlayerId],
+  );
   /** Stable per-browser identity for room membership (host/seat enforcement). */
   const clientId = useMemo(() => getClientId(), []);
   /**
@@ -1437,8 +1442,11 @@ export default function Home() {
     maybeClaimFinishedMatch(stateRef.current ?? undefined, nextState);
     stateRef.current = nextState;
 
+    const incomingState = nextState;
+    nextState = parallelStateForPlayer(nextState, viewerRef.current);
+
     const eventWindow = presentationEventWindow(presentationEventCursorRef.current, nextState.eventLog);
-    const presentationEvents = eventWindow.events;
+    const presentationEvents = parallelPresentationEvents(nextState, eventWindow.events);
     if (eventWindow.prime) {
       // Initial join, room reset, or a log-rotation gap: seed every seen-set
       // from current history and reconstruct only overlays that remain active
@@ -3767,7 +3775,7 @@ export default function Home() {
         gap: eventWindow.gap
       }
     });
-    setState(nextState);
+    setState(incomingState);
   }, [showFeedItems]);
 
   /**
@@ -5241,7 +5249,9 @@ export default function Home() {
             (state.sessionMode === "single-player" && !combatHasHumanParticipant(state)))
           ? "map"
           : "combat";
-  const currentMapMusic = state && musicScene === "map" ? mapMusicContext(state) : undefined;
+  const currentMapMusic = state && musicScene === "map"
+    ? mapMusicContext(state, isSeated ? viewerPlayerId : undefined)
+    : undefined;
   useBackgroundMusic(musicScene, currentMapMusic);
 
   // No room selected → this page has nothing to show anymore: the effect

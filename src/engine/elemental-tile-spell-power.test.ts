@@ -197,6 +197,28 @@ describe("Magic Arrow: one school at a time (no cross-school stacking)", () => {
     expect(schoolScopedStandingPower(state, "p1", cardLibrary["spell.magic_arrow"]!)).toBe(2);
   });
 
+  it("School expert replaces its automatic +1 with +3 while the matching tile still stacks", () => {
+    const state = combatReady("ma-expert-water-stack", ["spell.magic_arrow", "stat.power"], "ability.water_magic");
+    state.players.p1.limits.expertUses = 1;
+    putCombatOnTile(state, "N16");
+    const cast = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.magic_arrow" &&
+        legal.action.target?.type === "unit" &&
+        legal.action.target.unitId === "unit_p2_skeletons"
+    );
+    let next = applyOk(state, cast!.action);
+    expect(next.stack.at(-1)?.modifiers.schoolPowerBonus).toBe(2); // +1 School +1 tile
+    const expert = getLegalActions(next, "p1").find(
+      (legal) => legal.action.type === "USE_SCHOOL_PERMANENT_EXPERT"
+    );
+    expect(expert).toBeTruthy();
+    next = applyOk(next, expert!.action);
+    expect(next.stack.at(-1)?.modifiers.schoolPowerBonus).toBe(4); // +3 School +1 tile, never +5
+    expect(passAll(next).combat!.units.unit_p2_skeletons.damage).toBe(3);
+  });
+
   it("Water Magic does not boost an Air spell even on a Water tile (school gate CONTROL)", () => {
     const state = combatReady("water-no-air", ["spell.lightning_bolt"], "ability.water_magic");
     putCombatOnTile(state, "N16");

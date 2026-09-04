@@ -1,4 +1,5 @@
 import { appendEvent } from "./events";
+import { hasParkedParallelInteractions } from "./parallel-combats";
 import { neutralCombatControllerId } from "./neutral-control";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import type { GameState, PlayerId } from "./state";
@@ -9,11 +10,10 @@ import type { GameState, PlayerId } from "./state";
  * While `state.turn.mode === "parallel"`, every live player's turn is open at
  * once: each may move, act and end their own turn independently, and the round
  * wraps once everyone has ended (`turn.completedPlayerIds`). The engine's
- * exclusive interaction machinery stays a strict singleton — one combat, one
- * pending choice, one visit, one tile rotation at a time — so while one is open
- * for player A, every other player is limited to actions that provably cannot
- * touch it (quiet hero movement over trigger-free fields; everything else says
- * "wait"). Shared-deck draws therefore resolve strictly in action-arrival
+ * neutral battles run in independent contexts (see parallel-combats.ts), with
+ * their own choices, reactions, effects and post-battle rewards. Unrelated map
+ * interactions remain serialized when no parallel battle context is running.
+ * Shared-deck draws always resolve strictly in action-arrival
  * order: whoever acts first draws first, and no card can be handed out twice.
  *
  * The mode stops — with a `PARALLEL_TURNS_STOPPED` warning to the whole table —
@@ -309,6 +309,9 @@ export function stopParallelTurns(
   }
 
   if (reason !== "period-ended" && byPlayerId) {
+    if (hasParkedParallelInteractions(state)) {
+      throw new Error("Finish the other parallel battles before starting a player-vs-player interaction.");
+    }
     assertParallelInteractionFree(state, byPlayerId);
   }
 

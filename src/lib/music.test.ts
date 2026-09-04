@@ -99,6 +99,8 @@ describe("scene → track mapping", () => {
 describe("authoritative map context", () => {
   it("reads the active faction and the main hero's field/tile layer", () => {
     const state = {
+      id: "game-912",
+      seed: 912,
       round: 4,
       activePlayerId: "p1",
       players: { p1: { factionId: "tower" } },
@@ -111,6 +113,7 @@ describe("authoritative map context", () => {
 
     expect(mapMusicContext(state)).toEqual({
       turnKey: "4:p1",
+      gameKey: "game-912:912",
       factionId: "tower",
       environment: "water",
     });
@@ -118,6 +121,41 @@ describe("authoritative map context", () => {
     delete state.adventure!.fields["sea-1"]!.terrain;
     state.adventure!.tiles["tile-1"]!.underground = true;
     expect(mapMusicContext(state).environment).toBe("underground");
+  });
+
+  it("uses the seated viewer's faction and hero terrain during parallel turns", () => {
+    const state = {
+      id: "parallel-44",
+      seed: 44,
+      round: 2,
+      activePlayerId: "p1",
+      players: {
+        p1: { factionId: "necropolis" },
+        p2: { factionId: "castle" },
+      },
+      heroes: {
+        h1: { controllerId: "p1", kind: "main", spaceId: "surface-1" },
+        h2: { controllerId: "p2", kind: "main", spaceId: "under-1" },
+      },
+      adventure: {
+        fields: {
+          "surface-1": { tileInstanceId: "tile-1", terrain: "grass" },
+          "under-1": { tileInstanceId: "tile-2", terrain: "dirt" },
+        },
+        tiles: {
+          "tile-1": { group: "starting" },
+          "tile-2": { group: "subterranean" },
+        },
+      },
+      turn: { mode: "parallel", completedPlayerIds: [], simultaneousRoundLimit: 4 },
+    } as unknown as GameState;
+
+    expect(mapMusicContext(state, "p2")).toEqual({
+      turnKey: "2:p2",
+      gameKey: "parallel-44:44",
+      factionId: "castle",
+      environment: "underground",
+    });
   });
 });
 
@@ -134,6 +172,14 @@ describe("playback", () => {
     expect(MUSIC_VOLUME).toBeLessThan(0.45);
   });
 
+  it("keeps setup/menu music on its original single looping theme", () => {
+    setMusicScene("menu");
+    const a = only();
+    expect(a.src).toContain("main-menu.mp3");
+    expect(a.loop).toBe(true);
+    expect(a.playCount).toBe(1);
+  });
+
   it("does not restart when the same scene is requested again", () => {
     setMusicScene("map");
     const a = only();
@@ -145,7 +191,7 @@ describe("playback", () => {
   it("swaps the source when the scene changes", () => {
     setMusicScene("map");
     const a = only();
-    expect(a.src).toContain("rough.mp3");
+    expect(a.src).toContain("sand.mp3");
     setMusicScene("combat");
     expect(a.src).toContain("combat-02.mp3");
     expect(a.playCount).toBe(2);
@@ -161,6 +207,65 @@ describe("playback", () => {
     expect(a.playCount).toBe(2);
   });
 
+  it("plays a surface faction theme once, then joins the varied terrain playlist", () => {
+    setMusicScene("map", { turnKey: "1:p1", factionId: "necropolis", environment: "surface" });
+    const a = only();
+    expect(a.src).toContain("necro-town.mp3");
+    expect(a.loop).toBe(false);
+
+    a.fireEnded();
+    expect(a.src).toContain("sand.mp3");
+    expect(a.playCount).toBe(2);
+
+    a.fireEnded();
+    expect(a.src).toContain("snow.mp3");
+    expect(a.playCount).toBe(3);
+  });
+
+  it("includes grass in the random surface terrain playlist", () => {
+    expect(MUSIC_TRACKS["map-general"]).toContain("music/grass");
+  });
+
+  it("shuffles a fresh terrain order for each game instead of using a fixed first track", () => {
+    setMusicScene("map", { turnKey: "1:p1", gameKey: "game-a", environment: "surface" });
+    const firstGame = only();
+    const order = [firstGame.src];
+    for (let index = 1; index < MUSIC_TRACKS["map-general"].length; index += 1) {
+      firstGame.fireEnded();
+      order.push(firstGame.src);
+    }
+    expect(order[0]).toContain("sand.mp3");
+    expect(new Set(order).size).toBe(MUSIC_TRACKS["map-general"].length);
+
+    __resetMusicForTests();
+    FakeAudio.instances = [];
+    vi.mocked(Math.random).mockReturnValue(0.999);
+    setMusicScene("map", { turnKey: "1:p1", gameKey: "game-b", environment: "surface" });
+    expect(only().src).toContain("rough.mp3");
+  });
+
+  // The per-game playlist reset lives INSIDE setMusicScene (a new gameKey
+  // clears the queues), so it can only be pinned by switching gameKey with no
+  // __resetMusicForTests in between — a test that resets by hand passes even
+  // when the production reset is deleted.
+  it("reshuffles on a new gameKey and keeps its order across turns of one game", () => {
+    setMusicScene("map", { turnKey: "1:p1", gameKey: "game-a", environment: "surface" });
+    const a = only();
+    const order = [a.src];
+    a.fireEnded();
+    order.push(a.src);
+    expect(new Set(order).size).toBe(2);
+
+    // SAME game, a new turn: the shuffled order simply continues.
+    setMusicScene("map", { turnKey: "2:p1", gameKey: "game-a", environment: "surface" });
+    const continued = a.src;
+    expect(order).not.toContain(continued);
+
+    // A NEW GAME starts a fresh cycle — a track this game already played is
+    // back at the front instead of the leftover tail of the old queue.
+    setMusicScene("map", { turnKey: "1:p1", gameKey: "game-b", environment: "surface" });
+    expect(a.src).toBe(order[0]);
+  });
   it("uses water and underground movement themes ahead of faction themes", () => {
     setMusicScene("map", { turnKey: "1:p1", factionId: "castle", environment: "water" });
     const a = only();

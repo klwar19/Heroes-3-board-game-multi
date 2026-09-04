@@ -263,6 +263,7 @@ import {
   type PinchStart,
 } from "@/components/adventure/map-pinch";
 import { computeMapFloatPosition } from "@/components/adventure/map-float-position";
+import { MovableMapFloat } from "@/components/adventure/movable-map-float";
 import { HeroBoard } from "@/components/hero-board";
 import {
   UnitExperienceWindow,
@@ -4088,7 +4089,9 @@ export function HexMapBoard({
         // without clipping (mapFloatLabel is nowrap by default elsewhere).
         cardWidth: 300,
         cardHeight: 148,
-        gap: HEX_SIZE * 0.72,
+        // Keep the chooser clear of the whole flower-shaped tile. The shared
+        // window chrome below still lets the player move/minimize it further.
+        gap: HEX_SIZE * 2.15,
         render: () => (
           <div
             aria-label="Place the Subterranean Gate exit"
@@ -4529,13 +4532,18 @@ export function HexMapBoard({
           gap: float.gap,
         });
         return (
-          <div
+          <MovableMapFloat
+            above={above}
+            boundsHeight={svgSize.height}
+            boundsWidth={svgSize.width}
+            initialHeight={float.cardHeight}
+            initialWidth={float.cardWidth}
             key={float.key}
-            className={`mapFloatOuter ${above ? "above" : "below"}`}
-            style={{ left, top, width: float.cardWidth }}
+            left={left}
+            top={top}
           >
             {float.render()}
-          </div>
+          </MovableMapFloat>
         );
       })}
     </div>
@@ -4612,7 +4620,7 @@ export function AdventureHud({
       {parallelTurnsActive(state) ? (
         <div
           className="advHudCell"
-          title="Parallel turns: everyone plays at once. Battles and choices still resolve one at a time; a PvP clash or the period's end returns play to normal turns."
+          title="Parallel turns: everyone plays at once, including independent neutral battles. A PvP clash or the period's end returns play to normal turns."
         >
           <strong>
             {isParallelActor(state, viewerPlayerId)
@@ -4647,7 +4655,9 @@ export function AdventureHud({
             zoomContent({
               title: `Astrologers proclaim: ${astrologersCard.name}`,
               image: astrologersCard.image,
-              lines: [astrologersCard.text],
+              lines: [astrologersCard.text,
+                ...(astrologersCard.id === "astrologers.wind" && getRuleset(state) === "binh"
+                  ? ["BINH house rule: Wind also allows continued movement from sea to land."] : [])],
               subtitle: astrologersCard.ongoing
                 ? "Active until the next Astrologers round"
                 : "Resolved this round",
@@ -4657,7 +4667,8 @@ export function AdventureHud({
           type="button"
         >
           <strong>🔭 {astrologersCard.name}</strong>
-          <small>astrologers proclaim</small>
+          <small>{astrologersCard.id === "astrologers.wind" && getRuleset(state) === "binh"
+            ? "BINH: land ↔ sea without stopping" : "astrologers proclaim"}</small>
         </button>
       ) : null}
       {eventCard ? (
@@ -8060,7 +8071,8 @@ export function PromptTray({
   ) {
     const step = visit.steps[0];
     // The market panel owns the Trading Post / War Machine Factory visits.
-    if (step?.type === "TRADING_POST" || step?.type === "WAR_MACHINE_SHOP") {
+    if (step?.type === "TRADING_POST" || step?.type === "WAR_MACHINE_SHOP" ||
+      (step?.type === "CHOOSE_ONE" && step.prompt.startsWith("Wandering Merchant:"))) {
       return null;
     }
     const field = state.adventure?.fields[visit.fieldId];
@@ -9597,9 +9609,15 @@ export function MarketPanel({
   const balanceArt = useBalanceArtFlags();
   const visit = state.adventure?.pendingVisit;
   const step = visit?.steps[0];
+  const isWanderingMerchant =
+    Boolean(visit && step && visit.playerId === viewerPlayerId) &&
+    step?.type === "CHOOSE_ONE" &&
+    step.prompt.startsWith("Wandering Merchant:");
   const isMarket =
     Boolean(visit && step && visit.playerId === viewerPlayerId) &&
-    (step?.type === "TRADING_POST" || step?.type === "WAR_MACHINE_SHOP");
+    (step?.type === "TRADING_POST" ||
+      step?.type === "WAR_MACHINE_SHOP" ||
+      isWanderingMerchant);
 
   // Pops open in the player's face on every new market visit; the user may
   // minimize it to a corner chip while they look at the map.
@@ -9615,6 +9633,32 @@ export function MarketPanel({
     // Secondary) is parked on a Market field, OPEN_MARKET is legal and free —
     // surface it as a persistent, blinking tab so the market is reachable any
     // time without re-walking onto the tile.
+    const merchantAction = legalActions.find(
+      (
+        legal,
+      ): legal is LegalAction & {
+        action: Extract<GameAction, { type: "OPEN_WANDERING_MERCHANT" }>;
+      } => legal.action.type === "OPEN_WANDERING_MERCHANT",
+    );
+    if (merchantAction) {
+      return (
+        <button
+          className="marketTab wanderingMerchantTab"
+          onClick={() => onAction(merchantAction.action)}
+          title="Wandering Merchant — buy one discounted War Machine any time during your turn"
+          type="button"
+        >
+          <img
+            alt=""
+            aria-hidden="true"
+            className="wanderingMerchantIcon"
+            src={assetUrl("/assets/ui/wandering-merchant-ballista.webp")}
+          />
+          Wandering Merchant
+        </button>
+      );
+    }
+
     const openAction = legalActions.find(
       (
         legal,
@@ -9648,7 +9692,11 @@ export function MarketPanel({
 
   const isTradingPost = step.type === "TRADING_POST";
   const traded = isTradingPost && Boolean(step.traded);
-  const title = isTradingPost ? "Trading Post" : "War Machine Factory";
+  const title = isWanderingMerchant
+    ? "Wandering Merchant"
+    : isTradingPost
+      ? "Trading Post"
+      : "War Machine Factory";
 
   const tradeActions = legalActions.filter(
     (legal) => legal.action.type === "TRADE_RESOURCES",
@@ -9668,10 +9716,18 @@ export function MarketPanel({
       action: Extract<GameAction, { type: "BUY_WAR_MACHINE" }>;
     } => legal.action.type === "BUY_WAR_MACHINE",
   );
+  const merchantBuyActions = isWanderingMerchant
+    ? legalActions.filter(
+        (legal) =>
+          legal.action.type === "RESOLVE_VISIT_STEP" &&
+          legal.label.startsWith("Buy "),
+      )
+    : [];
   const done = legalActions.find(
     (legal) =>
       legal.action.type === "RESOLVE_VISIT_STEP" &&
-      legal.action.decline === true,
+      (legal.action.decline === true ||
+        (isWanderingMerchant && legal.label === "Skip")),
   );
 
   if (openState.minimized) {
@@ -9689,12 +9745,31 @@ export function MarketPanel({
 
   const player = state.players[viewerPlayerId];
   const supply = state.adventure?.warMachineSupply ?? [];
-  const pricing = isTradingPost ? "tradingPost" : "factory";
+  const pricing = isTradingPost || isWanderingMerchant ? "tradingPost" : "factory";
+  // Read the LIVE proclamation effect rather than hard-coding 3 against the
+  // card id, so the shop label can never disagree with the engine's discount.
+  const merchantProclamation = getActiveAstrologersCard(state)?.effect;
+  const merchantDiscount =
+    isWanderingMerchant && merchantProclamation?.type === "WAR_MACHINE_DISCOUNT_OFFER"
+      ? merchantProclamation.discountGold
+      : 0;
 
   return (
     <div className="marketPanel" role="dialog" aria-label={title}>
       <header>
-        <strong>⚖ {title}</strong>
+        <strong>
+          {isWanderingMerchant ? (
+            <img
+              alt=""
+              aria-hidden="true"
+              className="wanderingMerchantHeaderIcon"
+              src={assetUrl("/assets/ui/wandering-merchant-ballista.webp")}
+            />
+          ) : (
+            "⚖ "
+          )}
+          {title}
+        </strong>
         <small>
           🪙 {player?.resources.gold ?? 0} · ⚒{" "}
           {player?.resources.buildingMaterials ?? 0} · ♦{" "}
@@ -9711,7 +9786,7 @@ export function MarketPanel({
           {done ? (
             <button
               onClick={() => onAction(done.action)}
-              title="End the visit"
+              title={isWanderingMerchant ? "Close — you can buy later this turn" : "End the visit"}
               type="button"
             >
               <X size={13} />
@@ -9860,7 +9935,11 @@ export function MarketPanel({
       <section className="marketMachines" aria-label="War machines">
         <h4>
           War machines{" "}
-          {isTradingPost ? "(Trading Post price)" : "(factory price)"}
+          {isWanderingMerchant
+            ? `(Trading Post price − ${merchantDiscount} gold)`
+            : isTradingPost
+              ? "(Trading Post price)"
+              : "(factory price)"}
         </h4>
         {supply.length === 0 ? (
           <small>The war machine supply is empty.</small>
@@ -9884,10 +9963,14 @@ export function MarketPanel({
             const buy = buyActions.find(
               (legal) => legal.action.cardId === cardId,
             );
+            const merchantBuy = merchantBuyActions.find((legal) =>
+              legal.label.startsWith(`Buy ${card?.name ?? cardId} (`),
+            );
+            const offeredBuy = buy ?? merchantBuy;
             const blocked = traded;
             return (
               <div
-                className={`marketMachine ${buy && !blocked ? "" : "unavailable"}`}
+                className={`marketMachine ${offeredBuy && !blocked ? "" : "unavailable"}`}
                 key={cardId}
               >
                 {machineFace ? (
@@ -9910,11 +9993,11 @@ export function MarketPanel({
                 </small>
                 <button
                   className="commandButton"
-                  disabled={!buy || blocked}
-                  onClick={() => buy && onAction(buy.action)}
+                  disabled={!offeredBuy || blocked}
+                  onClick={() => offeredBuy && onAction(offeredBuy.action)}
                   type="button"
                 >
-                  Buy for {cost?.gold ?? 0} 🪙
+                  Buy for {Math.max(0, (cost?.gold ?? 0) - merchantDiscount)} 🪙
                 </button>
               </div>
             );
@@ -9947,6 +10030,7 @@ export function FarTileTray({
   placement: TilePlacementSelection;
   onTogglePlacement: (placement: TilePlacementSelection) => void;
 }) {
+  const [minimized, setMinimized] = useState(false);
   const tiles = view.adventure?.playerFarTiles[viewerPlayerId] ?? [];
   // Parallel turns: every open parallel turn may place a held tile
   // (placeTile gates on the parallel-aware assertActiveTurn).
@@ -9977,6 +10061,20 @@ export function FarTileTray({
       className={`farTileTray ${anyUsable ? "usable" : ""}`}
       aria-label="Your far tiles"
     >
+      <div className="farTileTrayHeader">
+        <strong>Far tiles ({tiles.length})</strong>
+        <button
+          aria-label={minimized ? "Restore far tiles" : "Minimize far tiles"}
+          aria-expanded={!minimized}
+          className="farTileTrayToggle"
+          onClick={() => setMinimized((value) => !value)}
+          title={minimized ? "Restore far tiles" : "Minimize far tiles"}
+          type="button"
+        >
+          {minimized ? "□" : "−"}
+        </button>
+      </div>
+      {!minimized ? <>
       <small>
         Far (Ⅱ–Ⅲ) tiles — 1 movement point 🐎 to place at the border, touching
         two tiles:
@@ -10011,6 +10109,7 @@ export function FarTileTray({
           Click a glowing spot on the map border.
         </small>
       ) : null}
+      </> : null}
     </div>
   );
 }
@@ -15095,7 +15194,7 @@ function GameOptionsPanel({
                 </div>
                 <small className="optionHint">
                   {parallelRounds > 0
-                    ? `Everyone plays at the same time for the first ${parallelRounds} round${parallelRounds === 1 ? "" : "s"} — move, build and end your turn independently; battles and choices still resolve one at a time (quiet moves stay open meanwhile), and shared-deck draws go to whoever acts first. The mode STOPS with a warning — and play turns classic — the moment a PvP battle starts or someone steals another player's mine/settlement (e.g. a View Earth capture; hand discards don't count), or when the period ends. Multiplayer only.`
+                    ? `Everyone plays at the same time for the first ${parallelRounds} round${parallelRounds === 1 ? "" : "s"} — move, build and end your turn independently; independent neutral battles run at the same time, each with its own choices and rewards, and shared-deck draws go to whoever acts first. The mode STOPS with a warning — and play turns classic — the moment a PvP battle starts or someone steals another player's mine/settlement (e.g. a View Earth capture; hand discards don't count), or when the period ends. Multiplayer only.`
                     : "Classic turns: one player at a time, in seat order."}
                 </small>
               </div>

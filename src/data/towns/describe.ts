@@ -64,7 +64,7 @@ export function describeBuildingEffect(building: TownBuildingDefinition): string
     case "ROUND_START_FREE_SPRITE":
       return "At the beginning of each round, you may recruit a Few of Sprites for free, or reinforce a Few of your Sprites to a Pack for free.";
     case "MAGIC_UNIVERSITY":
-      return "Once per round during your turn (instead of buying spells normally), choose a School of Magic, then discard cards from the top of your deck until you reveal a Spell of that school and take it to your hand.";
+      return "Once per round, when you are about to Search the Spell deck, you may instead choose a School of Magic, discard cards from the top of the Spell deck until finding a Spell of that school, and take it (into your Spell Book with the Polish Spell Book rule on, otherwise into your hand).";
     case "THIEVES_GUILD":
       return "Once during your turn, choose any one deck in the game (a shared deck, or any player's Might & Magic deck — your own or an opponent's), look at its top 2 cards, then put one of them on that deck's discard pile and the other back on top.";
     case "RUNE_ALTAR":
@@ -111,7 +111,7 @@ export function buildingTimingLabel(building: TownBuildingDefinition): string | 
     case "TURN_START_MANA_VORTEX":
       return "start of your turn";
     case "MAGIC_UNIVERSITY":
-      return "during your turn";
+      return "when Searching the Spell deck";
     case "ROUND_START_FREE_SPRITE":
       return "start of each round";
     case "COVER_OF_DARKNESS":

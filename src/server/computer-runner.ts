@@ -1,3 +1,4 @@
+import { parallelStateForPlayer } from "@/engine/parallel-combats";
 import {
   applyAction,
   chooseComputerAction,
@@ -207,6 +208,7 @@ export function driveComputerPlayers(
     if (!playerId) {
       return { state, decisions, stalled: false };
     }
+    state = parallelStateForPlayer(state, playerId);
 
     // Refresh multi-round economy / sticky memory before the decision so the
     // policy sees up-to-date focus and visit thrash guards (persists on state).
