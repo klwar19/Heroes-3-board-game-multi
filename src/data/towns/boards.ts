@@ -7,17 +7,16 @@ import { MGQ_TOWN_BOARD_BARS } from "@/data/anime/mgq";
  * Two kinds of board ship today:
  *
  *  - SCAN boards (castle, rampart, inferno, necropolis, dungeon, tower,
- *    fortress, cove, conflux): the real printed board photographed on
+ *    fortress, stronghold, cove, conflux): the real printed board photographed on
  *    en.homm3bg.wiki (or, for cove/conflux, the physical Polish board assembled
  *    with English definitions by the assets-to-translate pipeline), as an
  *    `emptyImage` (name plates + costs in the seven bars) and a `fullImage`
  *    (all eight building tiles slotted in). The view overlays per-bar crops of
  *    the full scan onto the empty scan as buildings go up — the crop geometry
  *    lives in `geometry` as fractions of the scan size, measured once from the
- *    shared Archon die-cut. Stronghold has a fan-made empty board scan but no
- *    fully-built scan, so its built bars use the designed tile fill instead.
+ *    shared Archon die-cut.
  *
- *  - DESIGNED boards (stronghold's fills, bulwark, factory): no
+ *  - DESIGNED boards (bulwark, factory): no
  *    printed board is published, so the view draws the same die-cut layout in
  *    CSS: bars over the empty PC townscape (built bars reveal the fully-built
  *    slice and overlay per-building tile art where a file exists — see
@@ -150,7 +149,7 @@ const WIKI_GEOMETRY: TownBoardGeometry = {
   }
 };
 
-/** The fan-made Stronghold empty board (1800x1319) uses its own layout. */
+/** Legacy designed-board geometry retained for fan-made boards and panels. */
 const STRONGHOLD_GEOMETRY: TownBoardGeometry = {
   aspect: [1800, 1319],
   window: { left: 0.039, top: 0.036, bottom: 0.4701, barPitch: 0.1325 },
@@ -370,18 +369,11 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
   },
   stronghold: {
     factionId: "stronghold",
-    // Fan-made empty board in the official layout; no fully-built scan
-    // exists, so built bars overlay the real printed board-game tile art
-    // (public/assets/town-board/stronghold-*.webp) on the empty scan.
-    emptyImage: "/assets/towns-stronghold-board.webp",
-    // The Barracks Tower + Freelancer's Guild bar is a single printed
-    // double-sided tile: `-shared-one` (Barracks Tower up, Freelancer's Guild
-    // still a name/cost plate) while only one is built, `-shared-both` once the
-    // pair is complete. Shown whole and crisp (no blur), unlike a split bar.
-    combinedTile: {
-      oneBuiltImage: "/assets/town-board/stronghold-shared-one.webp",
-      bothBuiltImage: "/assets/town-board/stronghold-shared-both.webp"
-    },
+    // Genuine 2265x1651 empty/full board scans from the Stronghold wiki page.
+    // FullScanCrop divides the built townscape into the same seven physical
+    // slices used by the other Archon scan boards.
+    emptyImage: "/assets/towns-stronghold-empty.webp",
+    fullImage: "/assets/towns-stronghold-full.webp",
     bars: [
       ["stronghold.city_hall"],
       ["stronghold.dwelling_silver"],
@@ -391,7 +383,7 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
       ["stronghold.mage_guild"],
       ["stronghold.dwelling_gold"]
     ],
-    geometry: STRONGHOLD_GEOMETRY
+    geometry: WIKI_GEOMETRY
   },
   conflux: {
     factionId: "conflux",
@@ -634,8 +626,7 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
 };
 
 /**
- * Conventional per-building tile art slot for designed boards (and the
- * stronghold scan, which has no fully-built photo): drop a
+ * Conventional per-building tile art slot for designed boards: drop a
  * `public/assets/town-board/<faction>-<building>.webp` in and the board picks
  * it up (the view falls back to the panorama slice / a styled plaque while
  * the file is missing).

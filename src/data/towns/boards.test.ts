@@ -178,46 +178,28 @@ describe("town board manifest", () => {
     expect(townBoardTileArt("conflux.city_hall")).toBe("/assets/town-board/conflux-city_hall.webp");
   });
 
-  describe("stronghold — real printed board-game tiles (no placeholders)", () => {
+  describe("stronghold — genuine empty/full scan sliced into seven bars", () => {
     const spec = townBoardSpecs.stronghold;
 
-    it("ships a real printed built-art tile on disk for every single-building bar", () => {
-      // The six one-building bars (City Hall, Fort under the Nest, Hall of
-      // Valhalla, Citadel, Mage Guild, Mountain Caves) each overlay their own
-      // printed tile — Citadel & Mage Guild were the last placeholders and are
-      // now the real board scans too.
-      const singles = spec.bars.filter((bar) => bar.length === 1).flat();
-      expect(singles).toHaveLength(6);
-      for (const buildingId of singles) {
-        assertRealArt(townBoardTileArt(buildingId));
-      }
+    it("uses the wiki's matching 2265x1651 scans and standard Archon geometry", () => {
+      expect(spec.emptyImage).toBe("/assets/towns-stronghold-empty.webp");
+      expect(spec.fullImage).toBe("/assets/towns-stronghold-full.webp");
+      assertRealArt(spec.emptyImage!);
+      assertRealArt(spec.fullImage!);
+      expect(spec.geometry.aspect).toEqual([2265, 1651]);
+      expect(spec.combinedTile).toBeUndefined();
     });
 
-    it("draws the shared bar as a printed double-sided tile (one-built / both-built), both faces on disk", () => {
-      // Exactly one two-building bar, and it is the Barracks Tower + Freelancer's
-      // Guild pair the combined tile is authored for.
-      const shared = spec.bars.filter((bar) => bar.length === 2);
-      expect(shared).toHaveLength(1);
-      expect([...shared[0]].sort()).toEqual(
-        ["stronghold.dwelling_bronze", "stronghold.freelancers_guild"].sort()
-      );
-      // The combined-tile faces are wired and present as real art.
-      expect(spec.combinedTile).toBeTruthy();
-      expect(spec.combinedTile!.oneBuiltImage).toBe("/assets/town-board/stronghold-shared-one.webp");
-      expect(spec.combinedTile!.bothBuiltImage).toBe("/assets/town-board/stronghold-shared-both.webp");
-      assertRealArt(spec.combinedTile!.oneBuiltImage);
-      assertRealArt(spec.combinedTile!.bothBuiltImage);
-      // The two faces are genuinely different art (one shows a name/cost plate).
-      expect(spec.combinedTile!.oneBuiltImage).not.toBe(spec.combinedTile!.bothBuiltImage);
-    });
-
-    it("is the only board that uses a combined shared tile (others still split)", () => {
-      for (const [factionId, other] of Object.entries(townBoardSpecs)) {
-        if (factionId === "stronghold") {
-          continue;
-        }
-        expect(other.combinedTile, `${factionId} should not carry a combinedTile`).toBeUndefined();
-      }
+    it("keeps the printed left-to-right order, including the shared Barracks/Freelancer slice", () => {
+      expect(spec.bars).toEqual([
+        ["stronghold.city_hall"],
+        ["stronghold.dwelling_silver"],
+        ["stronghold.hall_of_valhalla"],
+        ["stronghold.dwelling_bronze", "stronghold.freelancers_guild"],
+        ["stronghold.citadel"],
+        ["stronghold.mage_guild"],
+        ["stronghold.dwelling_gold"]
+      ]);
     });
   });
 
