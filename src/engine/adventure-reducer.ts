@@ -226,6 +226,7 @@ import {
   townHasBuildingEffect,
   unlockedRecruitTiers,
   victoryModeCountsHeroDefeats,
+  fieldHasArmedHexEvent,
   type NeutralDraw,
   type OnMapTileRevealSource
 } from "./adventure";
@@ -436,6 +437,7 @@ import {
   hasOpenAdventureTurn,
   isParallelActor,
   parallelInteractionBlocker,
+  parallelMapInteractionBlocker,
   parallelSlotSignature,
   parallelTurnsActive,
   parallelTurnStartAlreadyRan,
@@ -1403,7 +1405,7 @@ export function getHeroMoveDestinations(state: GameState, hero: HeroState): MapS
   // used-up, own-flagged). "stop"/"encounter" fields (guards, enemy heroes,
   // unvisited locations, flags to steal) would open an interaction of their
   // own, so they wait until the table's current one resolves.
-  const parallelBlocker = parallelInteractionBlocker(state, hero.controllerId);
+  const parallelBlocker = parallelMapInteractionBlocker(state, hero.controllerId);
 
   const movement = getHeroMovementCapabilities(state, hero);
   return getAdjacentSpaceIds(hero.spaceId).filter((spaceId) => {
@@ -1425,7 +1427,9 @@ export function getHeroMoveDestinations(state: GameState, hero: HeroState): MapS
     // are valid stops.
     const kind = classifyHeroStep(state, hero, spaceId, movement);
     if (parallelBlocker) {
-      return kind === "open";
+      // An invisible designer hex event classifies "open" but pays a reward /
+      // springs an ambush on arrival — never a quiet step.
+      return kind === "open" && !fieldHasArmedHexEvent(state, hero.controllerId, spaceId);
     }
     return kind === "open" || kind === "stop" || kind === "encounter";
   });
@@ -2134,7 +2138,7 @@ function heroStepNeedsInput(state: GameState): boolean {
  * a foreign interaction is also open (never expected — defensive).
  */
 function parallelQuietMoveBlocker(state: GameState, playerId: PlayerId): PlayerId | "table" | null {
-  const blocker = parallelInteractionBlocker(state, playerId);
+  const blocker = parallelMapInteractionBlocker(state, playerId);
   if (!blocker) {
     return null;
   }
@@ -2263,7 +2267,12 @@ export function moveHeroPathAdventure(state: GameState, action: Extract<GameActi
     // Parallel turns, foreign interaction open: the walk may only END on a
     // quiet "open" field (a "stop"/"encounter" arrival would start a visit or
     // a battle of its own — one interaction at a time).
-    if (parallelBlocker && isLast && kind !== "open") {
+    // An armed hex event is resolved by EVERY crossing, so it is never quiet,
+    // last step or not.
+    if (
+      parallelBlocker &&
+      ((isLast && kind !== "open") || fieldHasArmedHexEvent(state, hero.controllerId, step))
+    ) {
       throw new Error(parallelWaitMessage(state, parallelBlocker));
     }
     // A sea-touching step (without Water Walk) halts the hero, so it can only be
@@ -2279,6 +2288,7 @@ export function moveHeroPathAdventure(state: GameState, action: Extract<GameActi
 
 
   const slotBefore = parallelBlocker ? parallelSlotSignature(state) : null;
+  const rewardQueueBefore = adventure.rewardQueue.length;
   for (const [index, step] of action.path.entries()) {
     // Out of points: the walk ends — unless the NEXT step is the free
     // Subterranean-Gate crossing ("one Field", 0 MP), which still executes.
@@ -2308,7 +2318,14 @@ export function moveHeroPathAdventure(state: GameState, action: Extract<GameActi
     // Wading into/out of the sea ends the walk even if points remain. (While a
     // foreign interaction is open, heroStepNeedsInput is true throughout — the
     // signature check above already guarantees this walk did not cause it.)
-    if (hero.movementHaltedThisTurn || (slotBefore === null && heroStepNeedsInput(state))) {
+    // A quiet walk also stops where an ordered walk stops: on a step that
+    // queued a reward of its own (the busy player's queue may already be
+    // non-empty, so compare against the walk's starting length).
+    if (
+      hero.movementHaltedThisTurn ||
+      (slotBefore === null && heroStepNeedsInput(state)) ||
+      (slotBefore !== null && adventure.rewardQueue.length > rewardQueueBefore)
+    ) {
       break;
     }
   }
@@ -14414,6 +14431,19 @@ export function finalizeAdventureCombat(state: GameState): void {
         state.activePlayerId = firstLive;
         state.turn.observingPlayerId = firstLive;
       }
+    } else if (parallelTurnsActive(state)) {
+      // Parallel turns: `activePlayerId` is a NOMINAL pointer shared by the
+      // whole table (`turn.observingPlayerId` tracks it), and combat activations
+      // overwrite it with the acting side. A bystander's finished fight must
+      // hand it back to the seat that held it, not to the fighter.
+      const observed = state.turn.observingPlayerId;
+      state.activePlayerId =
+        observed &&
+        observed !== NEUTRAL_PLAYER_ID &&
+        state.turnOrder.includes(observed) &&
+        !state.players[observed]?.eliminated
+          ? observed
+          : (playerId ?? state.activePlayerId);
     } else {
       state.activePlayerId = playerId ?? state.activePlayerId;
     }
@@ -18564,7 +18594,7 @@ export function forgeCommanderArtifact(
     throw new Error("That commander Forge offer is not available.");
   }
 
-  if (state.combat || state.phase !== "player-turn" || state.activePlayerId !== action.playerId) {
+  if (state.combat || state.phase !== "player-turn" || !hasOpenAdventureTurn(state, action.playerId)) {
     throw new Error("The Commander Forge is used during your own map turn.");
   }
   const unlockRound = action.tier === "minor" ? 2 : action.tier === "major" ? 7 : 9;

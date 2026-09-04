@@ -98,7 +98,7 @@ import {
   playerHoldsMoraleCard
 } from "./morale-cards";
 import { MORALE_CARD_IDS } from "@/data/cards/morale";
-import { parallelInteractionBlocker, stopParallelTurns } from "./parallel-turns";
+import { parallelMapInteractionBlocker, stopParallelTurns } from "./parallel-turns";
 import { clearResetVote } from "./reset-vote";
 import {
   artifactCountOf,
@@ -2964,7 +2964,12 @@ export function getReachableHeroPaths(state: GameState, hero: HeroState): Map<Ma
   // "stop"/"encounter" fields (guards, enemy heroes, unvisited locations, flags
   // to steal) stay crossable per their kind but are not valid stops until the
   // table's current interaction resolves. Mirrors getHeroMoveDestinations.
-  const parallelQuietOnly = Boolean(parallelInteractionBlocker(state, hero.controllerId));
+  const parallelQuietOnly = Boolean(parallelMapInteractionBlocker(state, hero.controllerId));
+  // An invisible designer hex event is never quiet (its arrival pays a reward
+  // or springs an ambush), so a quiet-only search treats such a hex as a stop
+  // it may not take.
+  const quietStop = (spaceId: MapSpaceId) =>
+    !parallelQuietOnly || !fieldHasArmedHexEvent(state, hero.controllerId, spaceId);
 
   const movement = getHeroMovementCapabilities(state, hero);
   const visited = new Set<MapSpaceId>([hero.spaceId]);
@@ -3004,7 +3009,7 @@ export function getReachableHeroPaths(state: GameState, hero: HeroState): Map<Ma
         }
         continue;
       }
-      if (kind !== "pass-only" && (!parallelQuietOnly || kind === "open")) {
+      if (kind !== "pass-only" && (!parallelQuietOnly || kind === "open") && quietStop(neighbor)) {
         results.set(neighbor, { spaceId: neighbor, path, cost });
       }
       tier.push({ spaceId: neighbor, path, freeHops });
@@ -3058,7 +3063,7 @@ export function getReachableHeroPaths(state: GameState, hero: HeroState): Map<Ma
         // resolving Combat only when it is the final step — see moveHeroPath).
         // Quiet-only mode: ending on an "encounter" would start that Combat, so
         // it stays crossable but is not offered as a stop.
-        if (!parallelQuietOnly || kind === "open") {
+        if ((!parallelQuietOnly || kind === "open") && quietStop(neighbor)) {
           results.set(neighbor, { spaceId: neighbor, path, cost });
         }
         if (!halts) {
@@ -6006,6 +6011,24 @@ function resolveTeleportArrival(
  *                this visit (the field behaves normally on later entries).
  *  - null      — nothing armed (or already fired for this player): continue.
  */
+/**
+ * Whether `spaceId` still hosts an invisible designer hex event that would
+ * spring for `playerId` (mirrors processHexEventOnVisit's fired-mode rule).
+ * Parallel turns read it to keep such a hex OFF the quiet-move set: the field
+ * classifies "open" (it looks empty) but its arrival pays rewards or opens an
+ * ambush fight — never quiet while another player's interaction is open.
+ */
+export function fieldHasArmedHexEvent(state: GameState, playerId: PlayerId, spaceId: MapSpaceId): boolean {
+  const entry = state.adventure?.hexEvents?.[spaceId];
+  if (!entry) {
+    return false;
+  }
+  if ((entry.event.mode ?? "first") === "first" && entry.firedPlayerIds.length > 0) {
+    return false;
+  }
+  return !entry.firedPlayerIds.includes(playerId);
+}
+
 function processHexEventOnVisit(
   state: GameState,
   hero: HeroState,

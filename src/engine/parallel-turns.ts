@@ -52,7 +52,23 @@ export function roundStartEventResolver(state: GameState): PlayerId | null {
   if (!isRoundStartEventBarrierActive(state)) {
     return null;
   }
-  return state.pendingChoice?.playerId ?? state.adventure?.pendingVisit?.playerId ?? null;
+  // The barrier's current work is not always a choice/visit: a Calamity-Wave
+  // assault behind it is a COMBAT, and a round-start reward may park a tile
+  // rotation or a Necromancy window. Those owners must still be THE single
+  // permitted actor, or the whole-table freeze silently degrades to the
+  // ordinary parallel bystander rule (quiet moves under the barrier).
+  const combat = state.combat;
+  return (
+    state.pendingChoice?.playerId ??
+    state.adventure?.pendingVisit?.playerId ??
+    state.adventure?.pendingTileChoice?.playerId ??
+    state.adventure?.pendingNecromancy?.playerId ??
+    (combat
+      ? combat.attackerPlayerId !== NEUTRAL_PLAYER_ID
+        ? combat.attackerPlayerId
+        : combat.defenderPlayerId
+      : null)
+  );
 }
 
 /** Normalizes a lobby `parallelTurns` value to an integer 0..MAX (0 = off). */
@@ -169,6 +185,14 @@ export function parallelInteractionBlocker(state: GameState, playerId: PlayerId)
     return companion.playerId;
   }
 
+  // The WOG Hierophant's after-combat First Aid window is the Necromancy
+  // transaction's twin (its own legal-actions branch returns ONLY its options
+  // for everyone), so it blocks bystanders the same way.
+  const firstAid = adventure?.pendingCommanderFirstAid;
+  if (firstAid && firstAid.playerId !== playerId) {
+    return firstAid.playerId;
+  }
+
   const farFlip = adventure?.pendingFarTileFlip;
   if (farFlip && farFlip.playerId !== playerId) {
     return farFlip.playerId;
@@ -180,6 +204,24 @@ export function parallelInteractionBlocker(state: GameState, playerId: PlayerId)
   }
 
   return null;
+}
+
+/**
+ * MAP-side blocker: like `parallelInteractionBlocker`, except that a
+ * PvP-Neutral-Control CONTROLLER is not exempt. The controller owns the
+ * battle's Neutral side, not the map — their own open parallel turn keeps the
+ * quiet set (quiet moves, start-of-turn hand steps) like any other bystander's,
+ * and their combat commands still flow through the combat branches.
+ */
+export function parallelMapInteractionBlocker(state: GameState, playerId: PlayerId): PlayerId | "table" | null {
+  const combat = state.combat;
+  if (!parallelTurnsActive(state) || !combat) {
+    return parallelInteractionBlocker(state, playerId);
+  }
+  if (combat.attackerPlayerId === playerId || combat.defenderPlayerId === playerId) {
+    return null;
+  }
+  return combat.attackerPlayerId !== NEUTRAL_PLAYER_ID ? combat.attackerPlayerId : combat.defenderPlayerId;
 }
 
 /** Human-readable "wait for …" explanation for a blocked parallel action. */
@@ -234,6 +276,9 @@ export function parallelSlotSignature(state: GameState): string {
       : null,
     adventure?.pendingCompanionRecruitment
       ? [adventure.pendingCompanionRecruitment.playerId, adventure.pendingCompanionRecruitment.options.length]
+      : null,
+    adventure?.pendingCommanderFirstAid
+      ? [adventure.pendingCommanderFirstAid.playerId, adventure.pendingCommanderFirstAid.options.length]
       : null,
     adventure?.pendingFarTileFlip ? adventure.pendingFarTileFlip.playerId : null,
     adventure?.pendingGarrison ? adventure.pendingGarrison.defenderPlayerId : null

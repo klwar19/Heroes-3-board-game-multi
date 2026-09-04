@@ -18,6 +18,7 @@ import {
   cultivationRealmLabel,
   heroGradeLabel,
   getBattlefieldLabel,
+  hasOpenAdventureTurn,
   heroMoveStartsBattle,
   isRoundStartEventBarrierActive,
   type BuildingEffectDefinition,
@@ -95,7 +96,7 @@ export function moveIntoBattleWithTroopsToBuy(
   if (!("playerId" in action)) {
     return false;
   }
-  if (action.playerId !== viewerPlayerId || state.activePlayerId !== viewerPlayerId) {
+  if (action.playerId !== viewerPlayerId || !hasOpenAdventureTurn(state, viewerPlayerId)) {
     return false;
   }
 

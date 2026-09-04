@@ -128,7 +128,11 @@ function isAfkMetaAction(action: GameAction): boolean {
  */
 export function seatIsAwaitedInOrderedPlay(state: GameState, playerId: PlayerId): boolean {
   if (state.turn?.mode === "parallel") {
-    return true;
+    // ...except a seat that already ENDED its parallel turn: it cannot act at
+    // all until the round wraps, so it is idle BY DESIGN like a seat waiting
+    // for its ordered turn. (The 30-minute FORCE_AFK_KICK ignores this gate,
+    // so a truly gone seat is still removable.)
+    return !state.turn.completedPlayerIds.includes(playerId);
   }
   if (state.activePlayerId === playerId) {
     return true;
@@ -516,6 +520,17 @@ export function turnClockPausedFor(state: GameState, playerId: PlayerId): boolea
       return true;
     }
     if (adventure.pendingNecromancy && adventure.pendingNecromancy.playerId !== playerId) {
+      return true;
+    }
+    // The two after-combat twins of the Necromancy window block bystanders
+    // identically (parallelInteractionBlocker), so they pause the clock too.
+    if (
+      adventure.pendingCompanionRecruitment &&
+      adventure.pendingCompanionRecruitment.playerId !== playerId
+    ) {
+      return true;
+    }
+    if (adventure.pendingCommanderFirstAid && adventure.pendingCommanderFirstAid.playerId !== playerId) {
       return true;
     }
     if (adventure.pendingFarTileFlip && adventure.pendingFarTileFlip.playerId !== playerId) {

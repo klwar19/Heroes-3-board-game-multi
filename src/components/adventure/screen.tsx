@@ -9948,7 +9948,9 @@ export function FarTileTray({
   onTogglePlacement: (placement: TilePlacementSelection) => void;
 }) {
   const tiles = view.adventure?.playerFarTiles[viewerPlayerId] ?? [];
-  if (tiles.length === 0 || state.activePlayerId !== viewerPlayerId) {
+  // Parallel turns: every open parallel turn may place a held tile
+  // (placeTile gates on the parallel-aware assertActiveTurn).
+  if (tiles.length === 0 || !hasOpenAdventureTurn(state, viewerPlayerId)) {
     return null;
   }
 

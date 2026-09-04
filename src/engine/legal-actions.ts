@@ -237,6 +237,7 @@ import {
   isParallelActor,
   isRoundStartEventBarrierActive,
   parallelInteractionBlocker,
+  parallelMapInteractionBlocker,
   roundStartEventResolver,
 } from "./parallel-turns";
 import { pvpEscapeWindowOpen } from "./combat-units";
@@ -15168,6 +15169,16 @@ function getParallelBystanderActions(
     return actions;
   }
 
+  // A PARTICIPANT of the open combat is not a bystander: their actions come
+  // from the combat dispatcher and `parallelInteractionBlocker` gives them a
+  // null blocker, so every quiet step this set would offer is refused by
+  // `moveHeroAdventure` ("Finish the current combat first"). Reached via the
+  // reactionWindow / pendingChoice branches of getLegalActions, which route
+  // EVERY non-priority / non-owner player here.
+  if (state.combat && isCombatParticipant(state, playerId)) {
+    return actions;
+  }
+
   // Round-start Event / Astrologers barrier: a frozen bystander has NO quiet
   // actions — not even a hand refresh, a town action or a move — until the
   // player whose event choice is open (and the rest of the table) has resolved
@@ -15666,7 +15677,13 @@ function getAdventureLegalActions(
   // interaction, so play falls through to the map handling below.
   const combatActions = getCombatInteractionActions(state, playerId, cards);
   if (combatActions) {
-    return combatActions;
+    // Parallel turns: a seat that merely CONTROLS the Neutral side of this
+    // fight (PvP Neutral Control) still owns its own open map turn — it keeps
+    // the quiet set beside its guard commands (a fighter reaches here with a
+    // null map blocker and gets the combat actions alone).
+    return parallelMapInteractionBlocker(state, playerId)
+      ? [...combatActions, ...getParallelBystanderActions(state, playerId)]
+      : combatActions;
   }
 
   // A freshly revealed or placed tile waits for its rotation choice.

@@ -1059,7 +1059,15 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // (`MapFieldState.settlementFoundingOwedBy`, `AdventureState.startingTileSeats`);
 // the lobby `GameSetupOptions.startingTileAssignments` seat → starting-tile record.
 // Authoritative round start and seat placement changed. `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 95;
+//
+// v95 (2026-09-04, parallel-turns audit): a bystander quiet move never lands on
+// an armed designer hex event, a quiet walk stops on a reward-queuing step, the
+// round-start barrier names the wave fighter / tile / Necromancy owner as its
+// resolver, the Hierophant First Aid window blocks bystanders, the Commander
+// Forge and the PvP-Neutral-Control controller read the open PARALLEL turn, a
+// bystander fight keeps the nominal activePlayerId. A v94 worker offers and
+// resolves different actions. `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 96;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

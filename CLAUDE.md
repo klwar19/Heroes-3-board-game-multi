@@ -3933,6 +3933,29 @@ Neutral-owned copies of Arius Ambush / Survey Route / Mode Change / Explosive Pr
 Cartographer's Plan are INERT (the combat-start queue and activation choices skip the
 neutral seat) — no stall, no effect.
 
+## Ibuki holds, never Defends, after a command (2026-09-04) + Blue Archive / Imperium art
+
+- **The ranged "post-shot step" STAYS.** The playtest report "Shiroko can still move
+  after attack" was withdrawn by the user once Shiroko was confirmed RANGED — a shooter
+  that fired without moving may still take its 1-space step (`concludeAttackerActivation`,
+  pinned by `reducer.test.ts` "lets a ranged unit reposition after shooting"). Do not
+  re-open this.
+- **Ibuki after a command may only hold position** (USER RULE). `ibukiCommandUsedThisActivation`
+  (commanders.ts) = Ibuki + `movementLockedThisActivation` (set by every AP command and
+  by Executive Order, reset at activation start) is read by the Defend OFFER
+  (legal-actions) and the `defendUnit` handler; `END_ACTIVATION` stays offered.
+  `ibuki-hold-not-defend.test.ts`. LIMIT: other commanders' cast-then-Defend is
+  unchanged (the ruling named Ibuki).
+Same batch, presentation only: the four Imperium hero portraits are square busts
+(`public/assets/warhammer/heroes/*.webp`, the `HeroPortrait` circle crops `cover` from
+the centre — the old 640×896 paintings showed chest armour); BA-S1 is a geometry-free
+Kivotos painting cut to the canonical pointy-top flower alpha (the a-s1 mask, the
+LB-S1 recipe) with `attachFieldSymbols: true` like IM-S1 / MGQ-S1 (the previous art
+drew its own flat-top flower and never matched the board grid); Ibuki's Sniper Shot
+flies its own tracer + spark impact (`sniper-shot-projectile` / `sniper-shot-hit`,
+`scripts/build-sniper-shot-fx.mjs` from uncommitted codex masters) instead of the
+borrowed Magic Arrow.
+
 ## Playtest batch 2026-09-04 (nine fixes, audited) — what runs vs. limits
 
 All items below are pinned by tests that fail when the logic is removed (each with a
@@ -4095,6 +4118,92 @@ all fixed below). Every claim carries a test that fails when the logic is remove
   290 (strictly below END_TURN 300, no tie). Score layer only; `card-policy.test.ts`
   (mutation-checked). LIMIT: a deck of pure draw riders can still cycle ONCE per turn
   before the bank guard bites — bounded, never a stall.
+
+## Parallel-turns audit (2026-09-04, protocol v95) — seven fixes, readings left as shipped
+
+Seven Opus audit agents (cards/effects, events & Astrologers, end turn / round wrap,
+combat, economy & decks, access/UI, map movement) swept the OPTIONAL parallel-turns mode.
+Machine truth: `src/engine/parallel-audit-{cards,events,turns,combat,economy,access,map}.test.ts`
+(~80 specs, every claim with an ordered-mode / owner CONTROL) plus
+`src/components/adventure/far-tile-tray-parallel.test.tsx`. `npm run deploy:partykit` OWED.
+
+Fixes (each pinned by a spec that failed against the pre-fix code):
+- **The round-start barrier had no resolver while its work was a COMBAT** (a Calamity
+  Wave assault) or a parked tile rotation / Necromancy window: `roundStartEventResolver`
+  returned null, both barrier gates were skipped, and bystanders quiet-moved under a
+  barrier documented as "even the quiet set is off". It now names the human fighter /
+  tile / Necromancy owner (`parallel-turns.ts`).
+- **A bystander's "quiet" move landed on an INVISIBLE designer hex event** (the field
+  classifies "open") and paid its reward / was rejected whole on an ambush with a wait
+  message the player could not explain. ONE read `fieldHasArmedHexEvent` (adventure.ts,
+  mirrors `processHexEventOnVisit`'s fired-mode rule) is folded into
+  `getHeroMoveDestinations`, `getReachableHeroPaths` and the `MOVE_HERO_PATH`
+  pre-validation for EVERY step; a bystander walk also breaks on a step that grew the
+  reward queue (compared against the walk's own starting length — the busy player's
+  queue may already be non-empty, which is why `heroStepNeedsInput` was skipped there).
+  Reachable only on maps carrying `hexEvents`.
+- **The Commander Forge was offered to every open parallel turn and refused by its handler**
+  (`forgeCommanderArtifact` read the raw `activePlayerId` — the LAST strict gate on the
+  map; every sibling already used `hasOpenAdventureTurn`).
+- **A bystander's finished neutral fight moved the nominal `activePlayerId` onto the
+  fighter** (combat activations overwrite it, finalize restored it to the fighter).
+  In parallel mode `finalizeAdventureCombat` now hands it back to the seat
+  `turn.observingPlayerId` tracks (falling back to the fighter), so the pointer and the
+  observer never diverge. Nothing gated on `hasOpenAdventureTurn` ever noticed; strict
+  reads (the Forge) did.
+- **The PvP-Neutral-Control CONTROLLER lost its own quiet map turn** during the fight it
+  drives (its blocker is null so it never reached the bystander set, and `MOVE_HERO`
+  fell through to "Finish the current combat first"). New `parallelMapInteractionBlocker`
+  (participants exempt, the controller NOT) backs `parallelQuietMoveBlocker`,
+  `getHeroMoveDestinations`, `getReachableHeroPaths` and the combat-dispatcher tail in
+  `getAdventureLegalActions`, which appends the quiet set beside the guard commands.
+  The reducer's transactional fingerprint stays on the combat-inclusive read (the
+  controller's guard commands legitimately move the combat); the quiet moves carry their
+  own in-handler fingerprint check.
+- **A combat PARTICIPANT was handed the bystander quiet set** through the
+  reactionWindow / pendingChoice branches whenever the NEUTRAL side held priority
+  (map-move buttons that always failed). `getParallelBystanderActions` returns [] for
+  `isCombatParticipant` — the ordered-mode result.
+- **`pendingCommanderFirstAid` (WOG Hierophant) was not a parallel blocker**: its
+  legal-actions branch returned ONLY its options for everyone, so every other seat had
+  ZERO actions (no draw, no quiet move) and no fingerprint protection. Added to
+  `parallelInteractionBlocker` + `parallelSlotSignature`.
+- **Time controls** (`afk.ts`): a seat that already ENDED its parallel turn was still a
+  legal AFK-vote target (`seatIsAwaitedInOrderedPlay` returned true for every seat in
+  parallel mode; `turnClockRunningSeats` already excluded it), and a bystander blocked by
+  another seat's Companion-Recruitment / First-Aid window kept burning its 10-minute
+  budget (`turnClockPausedFor` did not list those slots).
+- **Client**: the Ⅱ–Ⅲ supply tray (`FarTileTray`, the ONLY way to arm `PLACE_TILE`) and the
+  "you can still buy troops" pre-battle warning (`moveIntoBattleWithTroopsToBuy`) were
+  gated on `state.activePlayerId`; both read `hasOpenAdventureTurn`.
+
+Verified FINE (pinned, read the audit files before re-auditing): card-play offer parity
+and attribution for a non-active parallel actor; per-player `current-turn` expiry and
+turn-end income ongoings (one player's END_TURN never touches another's); round wrap
+income-before-Event, one Event/Astrologers draw, drawer rotation, N start-turn-hand
+dividers, Explorers per seat, elimination mid-barrier, designer `choice` timed events,
+the wave-finalize `activePlayerId` restore; end-of-turn prompts (Pandora upkeep) owned
+by the ending seat with completion recorded only after they resolve; N turn-start
+building prompts pumped one at a time; round-1 home-tile rotation chain in seat order;
+period-ended wrap = exactly one ordered start-of-turn; GIVE_UP by an open / an ended
+seat; `FORCE_TURN_TIMEOUT` refused against an ended seat; shared-deck Searches FIFO
+with a full card census; per-player once-per-round latches; owner-only bank expiry on a
+hero step; two-seat view masking; the fingerprint backstop never falsely rejects a quiet
+move at any step of a fight, a visit or a tile chain (`pumpAdventureQueues` is gated on
+`!combat` / `pendingChoice`); enemy-hero collisions open PvP + stop the mode; every loud
+map action (discover, revisit, market, every map Spell) is refused for a bystander with
+the wait message.
+
+LIMITS / readings left as shipped: `eliminatePlayer` does not clear `pendingTileChoice`
+(unreachable — every removal path asserts no pending input first); `afk.turnTimeoutPlayerId`
+is a singleton over N running clocks (no reachable deadlock found); a bystander town
+action whose own queued Search opens in the same tick the blocker's visit drains would be
+rejected whole (not reproduced with shipped content); `setTileRotation`'s bank→gate
+continuation gates on `!state.pendingChoice` rather than its own return value (latent);
+Crag Hack's first-combat buff is table-wide (printed reading). Out of scope but noted:
+the PvP-prep window offers hand plays to a hand-LOCKED Secondary-Hero fighter that
+`playCard` refuses, and `seats.test.tsx` has two pre-existing type errors
+(`fromSpellBook` / `target` on `GameAction`) from another session's batch.
 
 ## Session batch 2026-09-04c (protocol v95) — Spell Book arming · Arena duels · designer seating/reveal/settlements · phone Foes panel · veterancy on every card
 
