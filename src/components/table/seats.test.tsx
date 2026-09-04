@@ -679,7 +679,10 @@ describe("HandFan — Spell Book window (house rule)", () => {
     const onSelectCardAction = vi.fn();
     const legalActions = getLegalActions(state, "p1");
     const spaceCasts = legalActions.filter(
-      (legal) => legal.action.fromSpellBook && legal.action.target?.type === "space"
+      (legal) =>
+        (legal.action.type === "CAST_SPELL" || legal.action.type === "PLAY_CARD") &&
+        legal.action.fromSpellBook &&
+        legal.action.target?.type === "space"
     );
     // CONTROL on the fixture: the engine offers many concrete space casts.
     expect(spaceCasts.length).toBeGreaterThan(5);
@@ -717,7 +720,10 @@ describe("HandFan — Spell Book window (house rule)", () => {
     state.activePlayerId = "p1";
     state.combat!.activeUnitId = "unit_p1_marksmen";
     const legalActions = getLegalActions(state, "p1");
-    const armed = legalActions.find((legal) => legal.action.fromSpellBook && legal.action.target?.type === "space")!
+    const armed = legalActions.find((legal) =>
+        (legal.action.type === "CAST_SPELL" || legal.action.type === "PLAY_CARD") &&
+        legal.action.fromSpellBook &&
+        legal.action.target?.type === "space")!
       .action as Extract<LegalAction["action"], { type: "CAST_SPELL" | "PLAY_CARD" }>;
     const onSelectCardAction = vi.fn();
     render(
