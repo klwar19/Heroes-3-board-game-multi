@@ -20,7 +20,7 @@ import {
   type CombatUnitState,
   type GameRuleset
 } from "@/engine";
-import { UNIT_RANK_NAMES } from "@/data/units/experience";
+import { combatUnitVeterancy, veterancyXpLabel } from "./unit-veterancy";
 import { getCardMetaLabels, isEmpoweredStatisticCard, titleCase } from "./utils";
 import { SpecialtyCard } from "@/components/specialty-card";
 import { canRenderSpecialtyCard, specialtyEffectText, specialtyIconSrc } from "@/components/specialty-card-data";
@@ -191,6 +191,7 @@ export function unitZoomContent(
   // Attack tokens are still NOT folded here — the board card and the inspector
   // are the live-total surfaces for those.
   const innateAttackBonus = getInnateFlatAttackBonus(unit, false);
+  const veterancy = combatUnitVeterancy(unit);
   const liveAttack = liveStats?.attack ?? unit.attack + innateAttackBonus;
   const liveDefense = liveStats?.defense ?? unit.defense;
   const liveHealth = liveStats?.health ?? unit.maxHealth;
@@ -233,11 +234,24 @@ export function unitZoomContent(
             flip.type !== unit.type ? ` (fights as a ${flip.type} unit)` : ""
           }.`
         : "",
-      (unit.unitRank ?? 0) > 0
-        ? `Veteran rank ${unit.unitRank} (${UNIT_RANK_NAMES[unit.unitRank ?? 0] ?? ""}) — ${
-            unit.unitExperience ?? 0
-          } XP; rank bonuses are folded into the stats above.`
+      // Unit Experience / Neutral Rank-Up: the headline line, then the whole
+      // four-rung ladder. Emitted for ANY card the reader can open — own,
+      // enemy PvP or a neutral guard — because `unitRank` / `unitExperience`
+      // are public engine fields (player-view never masks them). Nothing is
+      // emitted when neither rule folded a rank (`combatUnitVeterancy` → null).
+      veterancy
+        ? `Veteran rank ${veterancy.rank} (${veterancy.rankName}) — ${veterancyXpLabel(
+            veterancy
+          )} on the ${veterancy.trackLabel} path; rank bonuses are folded into the stats above.`
         : "",
+      ...(veterancy
+        ? veterancy.ladder.map(
+            (rung) =>
+              `${rung.reached ? "✔" : "·"} ${rung.rankName}${
+                rung.threshold !== null ? ` (${rung.threshold} XP)` : ""
+              }: ${rung.text}`
+          )
+        : []),
       ...abilities.map(
         (ability) =>
           `${ability.name}: ${ability.text}${ability.implementationStatus === "implemented" ? "" : " (manual rule)"}`

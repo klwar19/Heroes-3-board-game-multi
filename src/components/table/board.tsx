@@ -6,6 +6,7 @@ import { ChevronDown, ChevronUp, Hourglass, Mountain, Plus, ScrollText, Shield, 
 import { assetUrl } from "@/lib/asset-url";
 import { COMBAT_TOKEN_IMAGES } from "@/data/assets/homm-assets";
 import { UNIT_RANK_NAMES, unitRankBadgeImage } from "@/data/units/experience";
+import { combatUnitVeterancy, veterancyXpLabel } from "./unit-veterancy";
 import { cardLibrary } from "@/data/cards/library";
 import { coreHeroDefinitions } from "@/data/factions/core";
 import { factionGradeRegister, HERO_GRADE_REGISTERS } from "@/data/anime/hero-grades";
@@ -2390,6 +2391,8 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
   // Whether this unit will counter-attack a melee blow right now (the same
   // reading the engine's shouldRetaliate uses), surfaced as a plain status line.
   const retaliation = retaliationStatus(state, unit);
+  // Veterancy for the compact rank row below (null unless a rank was folded).
+  const veterancy = combatUnitVeterancy(unit);
   const retaliationText: Record<RetaliationStatus, string> = {
     unlimited: "unlimited — counters every melee hit this round",
     used: "spent — already retaliated, won't counter again this round",
@@ -2469,6 +2472,38 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
         <div className={`inspectRetaliation ${retaliation}`} title={`Retaliation ${retaliationText[retaliation]}`}>
           <Swords aria-hidden="true" size={12} /> Retaliation: <b>{retaliation === "used" ? "spent" : retaliation}</b>
         </div>
+        {/* Unit Experience / Neutral Rank-Up (optional rules): one compact
+            veterancy row for ANY inspected card — own, enemy PvP or a neutral
+            guard. `unitExperience` / `unitRank` are PUBLIC (player-view never
+            masks them), so no seat learns anything it could not read off the
+            table. Renders nothing when neither rule folded a rank. */}
+        {veterancy ? (
+          <div
+            className="inspectVeterancy"
+            title={`${veterancy.rankName} (rank ${veterancy.rank}) — ${veterancyXpLabel(veterancy)}. ${
+              veterancy.trackLabel
+            } path. Rank stat and ability bonuses are already folded into the live totals above.`}
+          >
+            <span className={`unitRankBadge rank-${veterancy.rank}`}>
+              {unitRankBadgeImage(veterancy.rank) ? (
+                <img
+                  alt=""
+                  aria-hidden="true"
+                  className="unitRankBadgeArt"
+                  src={assetUrl(unitRankBadgeImage(veterancy.rank)!)}
+                />
+              ) : veterancy.rank >= 4 ? (
+                "★"
+              ) : veterancy.rank >= 3 ? (
+                "⚔"
+              ) : (
+                "^".repeat(Math.max(1, veterancy.rank))
+              )}
+            </span>
+            <b>{veterancy.rankName}</b>
+            <span className="inspectVeterancyXp">{veterancyXpLabel(veterancy)}</span>
+          </div>
+        ) : null}
         <UnitFlipSideNote state={state} unit={unit} />
         {unit.commanderSlug && unit.commanderGrades ? (
           // Commander-only extras: the Might dice (Damage grade) and the Magic

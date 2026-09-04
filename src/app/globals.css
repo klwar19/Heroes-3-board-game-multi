@@ -2440,6 +2440,27 @@ button.battleCell {
   border-color: rgb(210 170 80 / 60%);
 }
 
+/* Unit Experience: the inspector's compact veterancy row. Same quiet chip shape
+   as the retaliation row above; the badge art is the shared `.unitRankBadge`. */
+.inspectVeterancy {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: start;
+  padding: 3px 8px;
+  border: 1px solid rgb(210 170 80 / 45%);
+  border-radius: 5px;
+  background: rgb(13 15 16 / 36%);
+  color: #e6cf9a;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.inspectVeterancyXp {
+  color: #bda67a;
+  font-weight: 600;
+}
+
 /* A Pack card's other side (what lethal damage flips it to). Deliberately quiet
    — a dashed, muted strip that reads as reference, not as a live stat. */
 .inspectFlipSide {

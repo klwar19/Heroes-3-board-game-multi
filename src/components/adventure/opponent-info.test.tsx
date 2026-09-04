@@ -321,3 +321,74 @@ describe("OpponentInfoDock — the opponent's cards in play", () => {
     expect(section.textContent).toMatch(/No permanent, ongoing, or Spell Scroll cards in play/i);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Unit Experience — the dossier's army list already carries the ENEMY's rank
+// badge + XP bar, and the XP board it opens is READ-ONLY for an opponent (the
+// window's action row is gated on an `onAction` the dossier never passes).
+// Pure presentation over public fields; pinned here so a later refactor of
+// ArmyPanel cannot silently take the enemy's veterancy away.
+// ---------------------------------------------------------------------------
+describe("OpponentInfoDock — the opponent's unit veterancy", () => {
+  /** twoPlayerGame with Unit Experience on and p2's one card part-trained. */
+  function trainedGame(): GameState {
+    const state = twoPlayerGame();
+    state.adventure!.unitExperience = true;
+    // necropolis.skeletons is bronze → 5/9/13/17; 6 XP is Seasoned (rank 1).
+    state.players.p2.army = [
+      { id: "u1", unitDefId: "necropolis.skeletons", side: "few", experience: 6 }
+    ];
+    return state;
+  }
+
+  function openBob(state: GameState) {
+    renderMapDock(state);
+    fireEvent.click(screen.getByRole("button", { name: /Bob/ }));
+    return within(screen.getByRole("dialog"));
+  }
+
+  it("shows the enemy card's rank badge and its XP bar in the units section", () => {
+    const panel = openBob(redactStateForSeat(trainedGame(), "p1"));
+    const units = panel.getByLabelText("Current units");
+    expect(units.querySelector(".unitRankBadge.rank-1"), "the enemy's rank badge").toBeTruthy();
+    expect(units.querySelector(".armyXpPanel")?.textContent).toMatch(/6\s*\/\s*17 XP/);
+  });
+
+  it("the enemy XP board opens READ-ONLY — no Drill / Reinforce / Stack controls", () => {
+    const panel = openBob(redactStateForSeat(trainedGame(), "p1"));
+    fireEvent.click(within(panel.getByLabelText("Current units")).getByRole("button", {
+      name: /Unit Experience Board/i
+    }));
+    const board = screen.getByLabelText("Unit Experience Board");
+    // The per-unit detail is reachable…
+    fireEvent.click(
+      within(board).getByRole("button", { name: /Open Few Skeletons experience board/i })
+    );
+    // …and it carries the rank ladder, but not one owner action.
+    expect(board.querySelector(".armyUnitActions")).toBeNull();
+    expect(within(board).queryByRole("button", { name: /drill/i })).toBeNull();
+    expect(within(board).queryByRole("button", { name: /reinforce/i })).toBeNull();
+  });
+
+  it("CONTROL: with the rule OFF there is no badge, no XP bar and no board button", () => {
+    const state = twoPlayerGame();
+    state.players.p2.army = [
+      { id: "u1", unitDefId: "necropolis.skeletons", side: "few", experience: 6 }
+    ];
+    const panel = openBob(redactStateForSeat(state, "p1"));
+    const units = panel.getByLabelText("Current units");
+    expect(units.querySelector(".unitRankBadge")).toBeNull();
+    expect(units.querySelector(".armyXpPanel")).toBeNull();
+    expect(within(units).queryByRole("button", { name: /Unit Experience Board/i })).toBeNull();
+  });
+
+  it("CONTROL: the enemy's HAND and DECK identities are still absent from the dossier", () => {
+    const state = trainedGame();
+    state.players.p2.hand = ["spell.fortune"];
+    state.players.p2.deck = ["spell.shield"];
+    const panel = openBob(redactStateForSeat(state, "p1"));
+    // Counts are public; the cards themselves are not.
+    expect(panel.queryByText(/Fortune/i)).toBeNull();
+    expect(panel.queryByText(/^Shield$/i)).toBeNull();
+  });
+});

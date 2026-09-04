@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BattlefieldBoard, COMBAT_BOARD_ART_VARIANTS, CommandDock, InspectPanel, LogDrawer, battlefieldCellPlacement, displayedCombatAttack, pickCombatBoardArt } from "./board";
-import { CardZoomProvider, HeroBattlefieldCard } from "./zoom";
+import { CardZoomProvider, HeroBattlefieldCard, unitZoomContent } from "./zoom";
 import {
   applyCombatBoardArtObstacles,
   assignCombatBoardArt,
@@ -2277,5 +2277,90 @@ describe("BattlefieldBoard — the Tactics control names the SIDE that is actual
     const printedBanner = printed.querySelector('[aria-label="Tactics (expert)"]');
     expect(printedBanner, "the printed card only has the expert mid-combat side").toBeTruthy();
     expect(printedBanner!.textContent).toMatch(/expert/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Unit Experience — the veterancy row is on EVERY inspected card, own or enemy.
+// `unitExperience` / `unitRank` are public engine fields (player-view never
+// masks them), so an enemy PvP card and a neutral guard read like an own card.
+// ---------------------------------------------------------------------------
+describe("InspectPanel / zoom — veterancy for own, ENEMY and neutral cards", () => {
+  function renderInspect(state: GameState, unitId: string) {
+    return render(
+      <CardZoomProvider>
+        <InspectPanel state={state} unitId={unitId} />
+      </CardZoomProvider>
+    );
+  }
+
+  it("an ENEMY unit's inspect row shows the badge, rank name and the XP / next-threshold", () => {
+    const state = createInitialGameState("inspect-veterancy-enemy");
+    // necropolis.skeletons is bronze → thresholds 5/9/13/17. 6 XP = Seasoned,
+    // with Veteran at 9.
+    const enemy = state.combat!.units.unit_p2_skeletons;
+    enemy.unitRank = 1;
+    enemy.unitExperience = 6;
+
+    const { container } = renderInspect(state, "unit_p2_skeletons");
+    const row = container.querySelector(".inspectVeterancy");
+    expect(row, "the veterancy row on an ENEMY card").toBeTruthy();
+    expect(row!.textContent).toContain("Seasoned");
+    expect(row!.textContent).toContain("6 / 9 XP");
+    expect(row!.querySelector(".unitRankBadge.rank-1")).toBeTruthy();
+  });
+
+  it("a maxed track reads '· max' instead of a next threshold", () => {
+    const state = createInitialGameState("inspect-veterancy-max");
+    const unit = state.combat!.units.unit_p1_griffins;
+    unit.unitRank = 4;
+    unit.unitExperience = 22;
+
+    const { container } = renderInspect(state, "unit_p1_griffins");
+    const row = container.querySelector(".inspectVeterancy");
+    expect(row!.textContent).toContain("22 XP · max");
+    expect(row!.textContent).not.toContain("/ ");
+  });
+
+  it("a ranked NEUTRAL guard gets the same row (Neutral Rank-Up)", () => {
+    const state = createInitialGameState("inspect-veterancy-neutral");
+    const guard = state.combat!.units.unit_p2_skeletons;
+    guard.controllerId = NEUTRAL_PLAYER_ID;
+    guard.unitRank = 3;
+    guard.unitExperience = 13;
+
+    const { container } = renderInspect(state, "unit_p2_skeletons");
+    expect(container.querySelector(".inspectVeterancy")!.textContent).toContain("Elite");
+  });
+
+  it("CONTROL — with neither rule folded a rank there is NO veterancy row at all", () => {
+    const state = createInitialGameState("inspect-veterancy-off");
+    // Untouched units: the engine only writes unitExperience / unitRank when a
+    // rule folded a rank, so a rule-OFF table looks exactly like this.
+    const { container } = renderInspect(state, "unit_p2_skeletons");
+    expect(container.querySelector(".inspectVeterancy")).toBeNull();
+  });
+
+  it("the card ZOOM adds the four-rung ladder for an ENEMY card, and none with the rule off", () => {
+    const state = createInitialGameState("zoom-veterancy");
+    const enemy = state.combat!.units.unit_p2_skeletons;
+    enemy.unitRank = 1;
+    enemy.unitExperience = 6;
+
+    const ranked = unitZoomContent(enemy, state.ruleset);
+    // The headline line still names the rank + XP, now with the ability track.
+    expect(ranked.lines!.some((line) => /Veteran rank 1 \(Seasoned\)/.test(line))).toBe(true);
+    // One rung per rank, the reached ones ticked and the rest pending, each with
+    // its own XP bar off the shipped bronze ladder 5/9/13/17.
+    const rungs = ranked.lines!.filter((line) => /^[✔·] /.test(line));
+    expect(rungs).toHaveLength(4);
+    expect(rungs[0]).toMatch(/^✔ Seasoned \(5 XP\): /);
+    expect(rungs[1]).toMatch(/^· Veteran \(9 XP\): /);
+    expect(rungs[3]).toMatch(/^· Legend \(17 XP\): /);
+
+    // CONTROL: an untrained card emits neither the headline nor any rung.
+    const bare = unitZoomContent(state.combat!.units.unit_p1_griffins, state.ruleset);
+    expect(bare.lines!.some((line) => /Veteran rank/.test(line))).toBe(false);
+    expect(bare.lines!.filter((line) => /^[✔·] /.test(line))).toHaveLength(0);
   });
 });
