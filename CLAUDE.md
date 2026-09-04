@@ -3827,3 +3827,151 @@ Leading with the LIMITS / deliberate readings:
   legacy-map CONTROL. Nothing here proves a pixel and there is NO e2e spec.
 - Protocol **v92 → v93**: authoritative placement changed, so
   `npm run deploy:partykit` is OWED.
+
+## Blue Archive (Kivotos Academy Domain) audit (2026-09-04) — five fixes, readings left as shipped
+
+Effect-level audit of the `blue_archive` town (19 units / 38 abilities, 5 heroes ×
+3 specialties, the Ibuki commander, 8 buildings, tile BA-S1, veterancy, voices). The
+AUTHORED truth is each side's `abilityText` in `src/data/anime/blue-archive-content.ts`
+(the Pack face runs its own ability AND the Few ability, by design). Machine truth
+is `src/engine/blue-archive-audit-{units-a,units-b,specialties,town,neutral}.test.ts`
+(~80 outcome specs, each with a CONTROL) plus the pre-existing
+`blue-archive-unit-abilities.test.ts` / `blue-archive-hero-specialties.test.ts` /
+`wog-commander-casts.test.ts` ("Ibuki"). Every claim below was mutation-checked in an
+isolated worktree (70 one-line engine mutations, each killed by a named test).
+
+Fixes (authored text ≠ engine), each pinned by a test that fails against the old code:
+- **Kyrie Eleison (Mika Pack) splashed an ALLY.** "deal 1 damage to a second ENEMY
+  adjacent to the target" reused the Magog arm, whose printed "unit" has no side
+  filter — a lone own unit beside the target was a MANDATORY pick (and the AI hit it).
+  `FLAT_DAMAGE_ADJACENT_TO_TARGET.enemiesOnly` (Magogs unchanged).
+- **Hero Mode (Aris Pack) is `[unit_passive]`** but ran through the Magi/Sharpshooter
+  own-attack-only gate, so Aris' RETALIATION still rolled the ranged penalty.
+  `IGNORE_RANGED_PENALTIES.includesRetaliation` read in
+  `ignoresAllRangedCombatPenalties`; Magi/Sharpshooters/Halflings unchanged.
+- **Outlaw Shot (Aru Few) / Winged Pursuit (Hasumi Pack) threw a SEPARATE die.** Both
+  print "On a +1 / 0 or +1 **Attack-die result**" but reused the Thunderbird/Wyvern
+  extra-die arm, so a "+1" attack could add nothing while a "−1" attack could; the
+  sibling Hina End of Vacation always read the real die. `ATTACK_DIE_FLAT_DAMAGE_TO_TARGET.readsAttackRoll`
+  judges `ctx.attackRoll` (no extra die, no reroll window; a cancelled die reads 0 like
+  every other die-triggered arm). Thunderbirds/Wyverns unchanged.
+- **Ibuki lost every AP command after MOVING.** `addUnitAbilityActions` dropped all
+  `USE_UNIT_ABILITY` offers once the active unit had moved, while `mayBeUsedAfterMoving`
+  and `commanders.ts` already exempted her (her text: "Ends Ibuki's further movement
+  this activation" presumes a cast after a move). One `commanderSlug !== "ibuki"` clause
+  on the offer gate.
+- **A NEUTRAL-owned Yuuka froze the table.** A classic Calamity-Wave WARBAND draws real
+  town units from every playable faction, Blue Archive included; her Calculated Cover
+  then opened a `combat-step` OPTION_CHOICE owned by the NEUTRAL seat with no resolver
+  (reproduced: `PENDING_CHOICE_CREATED playerId: "neutrals"` after the guard's blow).
+  The optional reposition is now declined for a neutral attacker
+  (`blue-archive-audit-neutral.test.ts`, with a player-owned CONTROL that still gets it).
+  LIMIT: under PvP Neutral Control the human driving a neutral Yuuka also loses that
+  optional step.
+
+Readings deliberately LEFT AS SHIPPED (report, do not "fix" without a ruling): CQC
+Overdrive's second attack is FORCED (authored "may"); Cartographer's Plan is optional
+("Don't teleport"); Foxfire's +1 and Trick Mine's 1 damage also fire on a Retaliation;
+Toki's stance persists past a SKIPPED next activation; Sagitta Mortis is spent only when
+the reduction lands; Perfect Balance is offered on a "+1" face only (ignoring 0/−1 never
+helps) and logs `halberdier-die-ignore`; Abyssal Shield's round charge is spent even when
+a real Defense token already covered the blow; Calculated Cover's `spaces` field is not
+read (1 is hard-wired, correct today). Ibuki: no authored AP-gain rule — the engine pays
++1 for moving / attacking / Defending / being attacked (a melee exchange = +2), a dead
+Ibuki earns nothing, Executive Order has NO once-per-round budget (AP is the only
+limiter; its 3-AP cost is enforced by the offer gate, the reducer backstop being
+unreachable behind `assertLegal`). Specialties: Yuuka VI / Chise VI are legitimately
+offered on the enemy's RETALIATION window; Kei I's disadvantage is idempotent with other
+forced disadvantages. Town: the Training Ground pays via `town.controllerId`, so a
+CAPTURED Kivotos town pays its ORIGINAL owner (repo-wide building convention); its gold
+arm compares `trainingWinGoldWhenXpOff === 2` literally; the `HALL_OF_VALHALLA_BOOST`
+handler is not fail-closed (a forged boost on the amount-0 building gives +0 and marks it
+used); no Blue Archive faction PENALTY exists (every other anime town has one — a design
+gap, not invented); `blueArchiveTown` in blue-archive-content.ts has NO consumer and its
+building strings diverge from the engine (Workshop is an Artifact smith, not "repair a
+unit"); `docs/unit-experience-balance-sheet.md` has 0 Blue Archive rows (the generator
+resolves all 19 without a crash — regenerate when the sheet is next reviewed).
+Neutral-owned copies of Arius Ambush / Survey Route / Mode Change / Explosive Prank /
+Cartographer's Plan are INERT (the combat-start queue and activation choices skip the
+neutral seat) — no stall, no effect.
+
+## Playtest batch 2026-09-04 (nine fixes, audited) — what runs vs. limits
+
+All items below are pinned by tests that fail when the logic is removed (each with a
+CONTROL) and were committed hunk-scoped on `codex/astrologers-event-fixes`. Protocol
+bump + `npm run deploy:partykit` OWED for the batch (new serialized field
+`combat.bankAutoCombatAsked`; authoritative token placement, neutral-controller
+derivation and controlled-guard offer set all changed).
+
+- **Polish bank auto-win is re-evaluated MID-FIGHT** (USER RULE "end the combat where
+  there is no possible damage done by one side"): ONE live-board predicate
+  `bankAutoCombatSafeUnit` (living guards only; guard ceiling = current Attack incl.
+  Stack Token + flat bonuses + best die face; own Defense = printed + active bonus) is
+  re-asked from ONE seam, `maybeOpenMidFightBankAutoCombatChoice` at the shared
+  `applyAction` tail — so "5 Zombies, only the +1 Attack one can hurt me" ends when
+  that guard dies. LIMITS: an OFFER, asked at most ONCE per combat (`bankAutoCombatAsked`
+  latch — a decline is final); WITHHELD while a living guard carries a Defense-bypassing
+  arm (`BANK_AUTO_COMBAT_GUARD_HAZARD_EFFECTS` deny-list — a new damage arm not listed
+  is not covered) and when the attacker ALSO cannot damage any guard (a stalemate is not
+  a win); spells/abilities ignored on both sides; may share a neutral pause / the
+  continue-or-retreat prompt; the AI takes it (`choice.polish-bank-auto-combat`).
+  `polish-bank-auto-combat.test.ts` "mid-fight (USER RULE 2026-09-03)".
+- **Subterranean Gates wear an always-visible pairing badge** (presentation only): pure
+  leaf `src/engine/subterranean-gate-visibility.ts` pairs every KNOWN half (carved gate
+  fields + pinned plan hexes on a materialized tile) under one letter with a direction
+  (↧A surface / ↥A cavern) and a tooltip; `screen.tsx` renders `.hexGateLink`. LIMITS:
+  a link whose tile is still face down shows nothing (position undecided — no leak);
+  letters renumber as links become known; jsdom pins the DOM only, no e2e.
+  `subterranean-gate-visibility.test.ts`, `gate-visibility-board.test.tsx`.
+- **Teleport tokens go on ANY field** (USER RULE; exceptions: Ⅶ and blocked): ONE shared
+  predicate `tokenMayCoverLocation` (`TOKEN_MAX_FIELD_DIFFICULTY` 6) backs the designer
+  check AND the runtime `tokenPlacementCandidates`. A Ⅰ–Ⅵ guard field is legal — the
+  carves call `clearCustomGuard` first, so the guard dies with the sacrificed field.
+  KEPT exclusions: Ⅶ objectives, blocked fields + every blocked-field carve (bank, PvE
+  gates, Rift Lair), another teleporter (one-way halves ADDED to
+  `TOKEN_FORBIDDEN_LOCATIONS`), Field Override hexes, a TOWN (replacing it orphans its
+  TownState / a start position — the one exclusion beyond the user's list), and at
+  runtime a hex a hero stands on. `map-tokens.test.ts`, `map-objects.test.ts`,
+  `map-designer.test.tsx`.
+- **Medusa's Lair pays its Stacked bonus ONE PICK AT A TIME**: the Polish bank entry
+  (988648ce) had collapsed the official per-Stacked-unit CHOOSE_ONE into one lumped
+  "+3X gold OR +X valuables"; it now inherits the official builder (data only, totals
+  unchanged, gold and valuables may be MIXED). `polish-bank-sizes.test.ts`.
+- **A Waited unit re-activates with NORMAL movement**: reproduced only on the
+  MANUAL-NEUTRAL side — `addControlledNeutralUnitActions` folded the Wait obligation into
+  the must-attack menu, which offered ZERO moves. `waitOnlyObligation` (legal-actions.ts)
+  now pushes every legal destination and strike. LIMITS: the `pvpNeutralControlMustAttack`
+  sub-toggle and the Astrologers frenzy keep their own discipline; a player's own Waited
+  unit already moved normally (now regression-pinned). `polish-wait-movement.test.ts`,
+  `manual-guard-control.test.ts`.
+- **AI Wait / own walls** (score layer only, `computer/combat-policy.ts`): Wait scored
+  560+initiative — above the attack floor and every closing march — so the AI waited with
+  almost every unit; now 430, with the one real upside (an unactivated enemy at distance
+  ≤2) at 555. `ATTACK_FORTIFICATION` was flat 640 and side-blind: −1000 for its OWN
+  fortifications in every mode, 540 while a live enemy body is in reach. LIMITS: the
+  printed rule still lets a HUMAN defender demolish their own Wall/Gate (legal-actions
+  unchanged); "attacker cannot hit Random Town walls under neutral control" did NOT
+  reproduce — pinned as regression tests (manual guard control ON/OFF, hosted frame).
+  `combat-policy.test.ts`, `random-town-defenders.test.ts`.
+- **AI seats never play the Neutral guards** (multiplayer with computer seats): PvP Neutral
+  Control walks clockwise to the next HUMAN (`nextHumanSeatClockwise` / `seatIsComputer`,
+  neutral-control.ts) and returns NULL for a COMPUTER fighter, so an AI seat's neutral
+  fight is Neutral-AI-only and bulk-resolves off-screen like single player. The blocking
+  opponent-turn recap is SINGLE-PLAYER only (`computerRecapIsBlocking`); multiplayer gets
+  a non-covering `ComputerBattleChip` pill. LIMITS: a multiplayer AI seat is STILL never
+  boosted (user rule kept); DOM-pinned only. `pvp-neutral-control.test.ts`,
+  `computer-runner.test.ts`, `computer/window.test.ts`, `opponent-turn-overlay.test.tsx`.
+- **An opponent's IN-PLAY cards and Spell Book AMOUNTS are visible to every seat**: the
+  engine never masked `ongoingCards` (now pinned in `ongoing-cards-public-view.test.ts`);
+  the tray rendered the viewer's own seat only. Read-only `OpponentsInPlayTray` (seats.tsx,
+  both trays) + an "In play" section and a Book metric in the opponent window (Polish Book
+  used/total; classic Book = stored count, it has no used side). Identities of hand / deck
+  / Book stay masked. `opponent-in-play-tray.test.tsx`, `opponent-info.test.tsx`.
+- **"No XP at 5 vs 5" — NOT reproduced**: a level-5 hero beating a level-5 hero pays 1 step
+  (xp 8→9, the half box; the printed level number does not move) through the real
+  `ACKNOWLEDGE_COMBAT_END` path, and so does an equal-difficulty guard win. The ladder is
+  now pinned in `pvp-hero-experience.test.ts` (12 cases). Reachable ZERO paths a player can
+  mistake for the bug, each pinned: a heroless garrison defense, a beaten SECONDARY hero,
+  a paid Surrender, a Creature Bank, a lower-level opponent (Quick Combat), a level-Ⅶ
+  winner (track full — whose `EXPERIENCE_GAINED` line still prints amount 1, a pinned
+  cosmetic limit).
