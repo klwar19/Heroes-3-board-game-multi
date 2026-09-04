@@ -46,6 +46,7 @@ import {
   premiumEconomyWorthStaging,
   shouldAssaultEnemyHolding,
   shouldEngageEnemy,
+  enemyMainHeroLevelDeficit,
 } from "./army-strength";
 import {
   armyDevelopmentProfile,
@@ -1317,7 +1318,19 @@ export function coopHumanHuntBonus(state: GameState, playerId: PlayerId): number
   return 80;
 }
 
-function objectiveStrategicValue(
+/**
+ * Guard-objective demotion for a Creature Bank while an enemy main hero
+ * out-levels ours. Ranked-replay lesson (2026-09-02/03): the losers of all
+ * three full-length games spent rounds 6–10 on banks and Quick-Combat cleanups
+ * — gold, but NO hero experience (banks pay none by rule) — and were still
+ * level 4 when the winners, who kept taking difficulty-4/5 guard fields,
+ * reached level 6–7 and won the PvP. Sized so a ready bank (710) drops below a
+ * ready experience-paying guard field but stays above a bare flaggable (658).
+ */
+export const BANK_LEVEL_DEFICIT_PENALTY = 40;
+
+/** Exported for tests only — the ranking seam behind primaryMapObjective. */
+export function objectiveStrategicValue(
   state: GameState,
   hero: HeroState,
   objective: MapObjective,
@@ -1402,6 +1415,16 @@ function objectiveStrategicValue(
       // Secondary heroes receive no combat Experience. Keep a useful premium-
       // army cleanup possible, but rank that real fight below a free pickup.
       if (hero.kind === "secondary" && !guaranteedQuickWin) value -= 140;
+      // Experience discipline: while a hostile main hero out-levels ours, a
+      // bank (no experience) ranks below an experience-paying guard field of
+      // the same readiness. No level deficit ⇒ unchanged (see the constant).
+      if (
+        hero.kind === "main" &&
+        field?.location === "creature_bank" &&
+        enemyMainHeroLevelDeficit(state, hero.controllerId) > 0
+      ) {
+        value -= BANK_LEVEL_DEFICIT_PENALTY;
+      }
       break;
     }
     case "town":

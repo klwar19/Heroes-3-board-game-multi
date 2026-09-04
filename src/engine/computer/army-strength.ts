@@ -78,6 +78,68 @@ export const ENEMY_ENGAGE_RATIO = 0.85;
 export const MULTIPLAYER_ENGAGE_MARGIN = 0.2;
 export const MAX_ENEMY_ENGAGE_RATIO = 1.15;
 
+/**
+ * Extra strength margin per LEVEL the enemy MAIN hero holds over ours before a
+ * PvP battle is opened. Ranked-replay lesson (2026-09-02/03, rooms 06j7su,
+ * bi3xov, qzb56c): every PvP battle in the three full-length games was opened
+ * by the seat whose main hero was two levels BEHIND (L4 vs L6, L4 vs L6,
+ * L5 vs L7) with an army the unit-stat read called comparable — and every
+ * attacker lost (damage 39–62, 38–62, 20–25), then gave up. A higher-level hero
+ * brings more specialty / expert cards, more crowns and a bigger hand into the
+ * fight, none of which the unit stats can see. One level of deficit still
+ * allows the even trade (0.85 + 0.12 < 1); two demand a clearly superior army.
+ */
+export const HERO_LEVEL_ENGAGE_MARGIN = 0.12;
+/** Ceiling after the level margin — deliberately above MAX_ENEMY_ENGAGE_RATIO. */
+export const MAX_HERO_LEVEL_ENGAGE_RATIO = 1.45;
+
+/** Level of `playerId`'s MAIN hero (public information); 0 when it has none. */
+export function mainHeroLevel(state: GameState, playerId: PlayerId): number {
+  let level = 0;
+  for (const hero of Object.values(state.heroes ?? {})) {
+    if (hero.controllerId === playerId && hero.kind === "main") {
+      level = Math.max(level, hero.level);
+    }
+  }
+  return level;
+}
+
+/** Levels the enemy main hero holds over ours; 0 when equal, ahead or heroless. */
+export function enemyMainHeroLevelLead(
+  state: GameState,
+  playerId: PlayerId,
+  enemyPlayerId: PlayerId,
+): number {
+  const own = mainHeroLevel(state, playerId);
+  const enemy = mainHeroLevel(state, enemyPlayerId);
+  if (own <= 0 || enemy <= 0) return 0;
+  return Math.max(0, enemy - own);
+}
+
+/**
+ * Largest level lead any LIVE hostile main hero holds over ours. The read the
+ * map policy uses to prefer experience-paying guard fields over Creature Banks
+ * (which pay no experience) while the seat is being out-levelled.
+ */
+export function enemyMainHeroLevelDeficit(
+  state: GameState,
+  playerId: PlayerId,
+): number {
+  let deficit = 0;
+  for (const [otherId, player] of Object.entries(state.players)) {
+    if (
+      otherId === playerId ||
+      otherId === NEUTRAL_PLAYER_ID ||
+      player?.eliminated ||
+      playersAreAllied(state, playerId, otherId)
+    ) {
+      continue;
+    }
+    deficit = Math.max(deficit, enemyMainHeroLevelLead(state, playerId, otherId));
+  }
+  return deficit;
+}
+
 /** Number of distinct, living hostile sides facing `playerId`. */
 export function activeEnemySideCount(
   state: GameState,
@@ -128,15 +190,21 @@ export function shouldEngageEnemy(
   state: GameState,
   playerId: PlayerId,
   enemyPlayerId: PlayerId,
+  /** `ignoreHeroLevel`: the fight has no enemy hero in it (heroless garrison). */
+  options: { ignoreHeroLevel?: boolean } = {},
 ): boolean {
   const enemyStrength = playerArmyStrength(state, enemyPlayerId);
   if (enemyStrength <= 0) {
     return true;
   }
-  return (
-    playerArmyStrength(state, playerId) >=
-    enemyStrength * enemyEngagementRatio(state, playerId)
+  const levelMargin = options.ignoreHeroLevel
+    ? 0
+    : enemyMainHeroLevelLead(state, playerId, enemyPlayerId) * HERO_LEVEL_ENGAGE_MARGIN;
+  const ratio = Math.min(
+    MAX_HERO_LEVEL_ENGAGE_RATIO,
+    enemyEngagementRatio(state, playerId) + levelMargin,
   );
+  return playerArmyStrength(state, playerId) >= enemyStrength * ratio;
 }
 
 /**
@@ -566,5 +634,7 @@ export function shouldAssaultEnemyHolding(
   // An ALLY's holding is never assaulted (defense in depth — callers filter
   // allies too, but this read must be safe to reuse on its own).
   if (playersAreAllied(state, ownerId, playerId)) return false;
-  return shouldEngageEnemy(state, playerId, ownerId);
+  // A garrison is defended by the owner's unit deck alone — no hero, so the
+  // owner's hero level (cards, crowns) never enters this fight.
+  return shouldEngageEnemy(state, playerId, ownerId, { ignoreHeroLevel: true });
 }

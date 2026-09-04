@@ -44,6 +44,7 @@ import type {
 } from "../state";
 import { UNOPENED_FAR_TILE } from "../state";
 import {
+  BANK_LEVEL_DEFICIT_PENALTY,
   canBeatGuardedField,
   collectMapObjectives,
   distanceFromHeroTo,
@@ -51,6 +52,7 @@ import {
   freeSeizuresWithinReach,
   minPrintedGuardDifficultyForBand,
   objectiveDistanceField,
+  objectiveStrategicValue,
   primaryMapObjective,
   seatHoldsFarSupplyTile,
   startTileRotationOpensFarExpansion,
@@ -107,6 +109,46 @@ function establishP2PackCore(state: GameState): void {
     unit.side = "pack";
   }
 }
+
+describe("experience discipline: Creature Banks while out-levelled", () => {
+  it("demotes a bank below an XP-paying guard only while an enemy main hero out-levels ours (CONTROL: equal levels unchanged)", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    establishP2PackCore(state);
+    const enemy = Object.values(state.heroes).find(
+      (candidate) => candidate.controllerId === "p1" && candidate.kind === "main",
+    );
+    if (!enemy) throw new Error("expected a p1 main hero");
+    // Turn the unguarded home resource symbol into a Creature Bank objective
+    // (difficulty 0 — a bank never Quick-Combats and pays no experience).
+    const bankField = state.adventure!.fields[RESOURCE];
+    bankField.location = "creature_bank";
+    bankField.bankId = "imp_cache";
+    bankField.difficulty = 0;
+    const bank = { spaceId: RESOURCE, kind: "guard" } as const;
+    const guard = { spaceId: MINE, kind: "guard" } as const;
+
+    hero.level = 4;
+    enemy.level = 4;
+    const bankEven = objectiveStrategicValue(state, hero, bank, 1);
+    const guardEven = objectiveStrategicValue(state, hero, guard, 1);
+
+    enemy.level = 6;
+    const bankBehind = objectiveStrategicValue(state, hero, bank, 1);
+    const guardBehind = objectiveStrategicValue(state, hero, guard, 1);
+    // CONTROL: the experience-paying guard field is untouched by the deficit.
+    expect(guardBehind).toBe(guardEven);
+    // The bank drops by exactly the penalty and ranks below the guard field.
+    expect(bankBehind).toBe(bankEven - BANK_LEVEL_DEFICIT_PENALTY);
+    expect(bankBehind).toBeLessThan(guardBehind);
+
+    // CONTROL: a SECONDARY hero (no experience either way) is not demoted.
+    hero.kind = "secondary";
+    const secondaryBehind = objectiveStrategicValue(state, hero, bank, 1);
+    enemy.level = 4;
+    expect(objectiveStrategicValue(state, hero, bank, 1)).toBe(secondaryBehind);
+  });
+});
 
 /** scoreMapAction only reads observation.state + observation.playerId. */
 function observe(state: GameState): ComputerObservation {

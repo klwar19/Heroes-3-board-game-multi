@@ -12,6 +12,8 @@ import {
   creatureBankStrength,
   ENEMY_ENGAGE_RATIO,
   enemyEngagementRatio,
+  enemyMainHeroLevelDeficit,
+  enemyMainHeroLevelLead,
   isPremiumEconomyField,
   playerArmyStrength,
   premiumEconomyEngageCap,
@@ -113,6 +115,70 @@ describe("shouldEngageEnemy", () => {
     expect(activeEnemySideCount(state, "p2")).toBe(1);
     expect(enemyEngagementRatio(state, "p2")).toBe(ENEMY_ENGAGE_RATIO);
     expect(shouldEngageEnemy(state, "p2", "p1")).toBe(true);
+  });
+
+  it("demands a clearly superior army against a main hero two levels ahead (ranked-replay lesson)", () => {
+    const state = game();
+    const mainHero = (playerId: string) => {
+      const hero = Object.values(state.heroes).find(
+        (candidate) => candidate.controllerId === playerId && candidate.kind === "main",
+      );
+      if (!hero) throw new Error(`expected a ${playerId} main hero`);
+      return hero;
+    };
+    const own = mainHero("p2");
+    const enemy = mainHero("p1");
+    // Equal armies, so the unit-stat read alone always engages (mirrors the
+    // third-side fixture: factions start with different rosters).
+    state.players.p2.army = structuredClone(state.players.p1.army).map(
+      (unit, index) => ({ ...unit, id: `p2-unit-${index}` }),
+    );
+    expect(playerArmyStrength(state, "p2")).toBe(playerArmyStrength(state, "p1"));
+    // CONTROL: equal levels keep the aggressive even trade.
+    own.level = 4;
+    enemy.level = 4;
+    expect(enemyMainHeroLevelLead(state, "p2", "p1")).toBe(0);
+    expect(shouldEngageEnemy(state, "p2", "p1")).toBe(true);
+    // One level behind still allows the even trade (0.85 + 0.12 < 1).
+    enemy.level = 5;
+    expect(shouldEngageEnemy(state, "p2", "p1")).toBe(true);
+    // Two levels behind — the L4-vs-L6 replays — an equal army no longer attacks…
+    enemy.level = 6;
+    expect(enemyMainHeroLevelLead(state, "p2", "p1")).toBe(2);
+    expect(enemyMainHeroLevelDeficit(state, "p2")).toBe(2);
+    expect(shouldEngageEnemy(state, "p2", "p1")).toBe(false);
+    // …while a genuinely superior army (doubled) still does.
+    state.players.p2.army = [
+      ...state.players.p2.army,
+      ...structuredClone(state.players.p2.army).map((unit, index) => ({
+        ...unit,
+        id: `p2-extra-${index}`,
+      })),
+    ];
+    expect(shouldEngageEnemy(state, "p2", "p1")).toBe(true);
+    // Being AHEAD in level never loosens the ratio: an outmatched army holds off.
+    own.level = 7;
+    enemy.level = 1;
+    state.players.p2.army = state.players.p2.army.slice(0, 1);
+    expect(enemyMainHeroLevelLead(state, "p2", "p1")).toBe(0);
+    expect(shouldEngageEnemy(state, "p2", "p1")).toBe(false);
+  });
+
+  it("a heroless garrison assault ignores the owner's hero level (no hero fights there)", () => {
+    const state = game();
+    const enemy = Object.values(state.heroes).find(
+      (candidate) => candidate.controllerId === "p1" && candidate.kind === "main",
+    );
+    if (!enemy) throw new Error("expected a p1 main hero");
+    enemy.level = 7;
+    const field = {
+      spaceId: "t:1",
+      location: "castle_town",
+      flagOwnerId: "p1",
+    } as MapFieldState;
+    // The hero fight is refused by the level lead, the garrison assault is not.
+    expect(shouldEngageEnemy(state, "p2", "p1")).toBe(false);
+    expect(shouldAssaultEnemyHolding(state, "p2", field)).toBe(true);
   });
 
   it("counts an allied enemy team as one hostile side", () => {
