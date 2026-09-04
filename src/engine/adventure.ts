@@ -2744,8 +2744,13 @@ export function classifyHeroStep(
     field.flagOwnerId === playerId ||
     Boolean(field.extraFlagOwnerIds?.includes(playerId)) ||
     fieldFlaggedByAlly(state, playerId, field);
+  // A Break field whose only flag belongs to an ALLY is NOT a corridor in the
+  // default "individual" team scope: every ally must still place their own
+  // Break flag, so this hero has to stop and resolve it (breakNeedsIndividualFlag
+  // below is the rule; without this guard the corridor shortcut skipped it).
   const friendlyEconomyTransit =
     friendlyFlag &&
+    !breakNeedsIndividualFlag(state, playerId, field) &&
     (field.location === "mine" ||
       field.location === "settlement" ||
       location?.category === "town");

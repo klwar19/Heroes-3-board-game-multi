@@ -289,6 +289,20 @@ function artilleryCombat(
   // the fight puts up so the on-turn card pass is reachable on every seed. The
   // volley test opts OUT of this: the Ballista's own round-start offer IS the
   // pending choice it needs to answer.
+  // Protocol v92 (80015e27): with the Balance Pack on, a Ballista owner HOLDING
+  // Artillery is also offered the crown-free Basic two-shot at the Ballista's own
+  // round start — which the blind drain below would take, consuming the card and
+  // granting the aim before the test ever plays it. Hold the card out of hand
+  // while the seed's opening choices are drained, then hand it straight back, so
+  // the aim can only come from the hand play under test.
+  const heldArtillery = opts.drainChoices !== false
+    ? next.players.p1.hand.filter((cardId) => cardId === ("ability.artillery" as CardId))
+    : [];
+  if (heldArtillery.length > 0) {
+    next.players.p1.hand = next.players.p1.hand.filter(
+      (cardId) => cardId !== ("ability.artillery" as CardId)
+    );
+  }
   for (let guard = 0; guard < 8 && opts.drainChoices !== false && next.pendingChoice?.type === "OPTION_CHOICE"; guard += 1) {
     const answer = getLegalActions(next, next.pendingChoice.playerId).find(
       (entry) => entry.action.type === "CHOOSE_OPTION"
@@ -298,6 +312,7 @@ function artilleryCombat(
     }
     next = applyOk(next, answer.action);
   }
+  next.players.p1.hand.push(...heldArtillery);
   const own = Object.values(next.combat!.units).find((unit) => unit.controllerId === "p1");
   expect(own, "p1 must have a unit in the fight").toBeTruthy();
   // The test deliberately takes over at p1's own activation. Discard any

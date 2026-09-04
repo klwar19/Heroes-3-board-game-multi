@@ -122,6 +122,17 @@ describe("Revisitable fields never take a black cube", () => {
       const hero = getMainHero(state, "p1")!;
       beginFieldVisit(state, hero.id, field.spaceId, false);
       expect(field.blackCube).toBe(false);
+      if (loc.id === "sanctuary") {
+        // Protocol v92 (80015e27): an UNGUARDED Sanctuary has no arrival
+        // interaction of its own, so it is a route-planning CORRIDOR walked
+        // through like an Empty Field. Still discriminating: a GUARDED one
+        // keeps stopping the hero (the `!isFieldGuarded` half of that rule).
+        expect(classifyHeroStep(state, hero, field.spaceId)).toBe("open");
+        const guarded = injectField(state, loc.id, { difficulty: 3 });
+        expect(isFieldGuarded(guarded)).toBe(true);
+        expect(classifyHeroStep(state, hero, guarded.spaceId)).toBe("stop");
+        return;
+      }
       // A revisitable field always re-stops a hero (it can be used again).
       expect(classifyHeroStep(state, hero, field.spaceId)).toBe("stop");
     });
