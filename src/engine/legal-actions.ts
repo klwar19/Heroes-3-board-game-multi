@@ -120,8 +120,10 @@ import {
 import {
   cancelSpellAllowsSchoolAndLevel,
   cardCanBoostPower,
+  astrologersAdjustedCardEffect,
   getEffectAmount,
   getEffectiveCardEffect,
+  getEffectiveCardEffectForState,
   heroMovementGrantOption,
   heroMovementTopUpHeroId,
   spellMinUsefulPower,
@@ -391,26 +393,45 @@ type CardPlayVariant = {
   expertOnly?: boolean;
 };
 
-export function getCardPlayVariants(card: CardDefinition): CardPlayVariant[] {
+export function getCardPlayVariants(card: CardDefinition, state?: GameState): CardPlayVariant[] {
+  const adjusted = (effect: ConcreteEffect): ConcreteEffect =>
+    state ? astrologersAdjustedCardEffect(state, effect) : effect;
+  const adjustedTrigger = (
+    trigger: TriggerDefinition | undefined,
+    original: ConcreteEffect,
+    resolved: ConcreteEffect,
+  ): TriggerDefinition | undefined =>
+    trigger?.event === "UNIT_ATTACK_DECLARED" &&
+    original.type === "ADD_COMBAT_STAT" &&
+    original.stat === "defense" &&
+    resolved.type === "ADD_COMBAT_STAT" &&
+    resolved.stat === "attack" &&
+    trigger.controller === "opponent"
+      ? { ...trigger, controller: "self" }
+      : trigger;
   if (card.effect.type === "CHOOSE_ONE") {
-    return card.effect.options.map((option, optionIndex) => ({
-      trigger: option.trigger,
-      effect: option.effect,
-      optionIndex,
-      optionLabel: option.label,
-      cost: option.cost,
-      mapOnly: option.mapOnly,
-      combatOnly: option.combatOnly,
-      combatStartOnly: option.combatStartOnly,
-      afterAttackRoll: option.afterAttackRoll,
-      expertOnly: option.expertOnly,
-    }));
+    return card.effect.options.map((option, optionIndex) => {
+      const resolved = adjusted(option.effect);
+      return {
+        trigger: adjustedTrigger(option.trigger, option.effect, resolved),
+        effect: resolved,
+        optionIndex,
+        optionLabel: option.label,
+        cost: option.cost,
+        mapOnly: option.mapOnly,
+        combatOnly: option.combatOnly,
+        combatStartOnly: option.combatStartOnly,
+        afterAttackRoll: option.afterAttackRoll,
+        expertOnly: option.expertOnly,
+      };
+    });
   }
 
+  const resolved = adjusted(card.effect);
   return [
     {
-      trigger: card.trigger,
-      effect: card.effect,
+      trigger: adjustedTrigger(card.trigger, card.effect, resolved),
+      effect: resolved,
     },
   ];
 }
@@ -6669,7 +6690,7 @@ export function instantHealSpellReactions(
       continue;
     }
 
-    for (const variant of getCardPlayVariants(card)) {
+    for (const variant of getCardPlayVariants(card, state)) {
       if (
         variant.mapOnly ||
         variant.expertOnly ||
@@ -6766,7 +6787,7 @@ export function playerThreatenedByPendingDamage(
       return false;
     }
     const effect =
-      getEffectiveCardEffect(card, stackItem.action.optionIndex) ??
+      getEffectiveCardEffectForState(state, card, stackItem.action.optionIndex) ??
       (card.effect.type !== "CHOOSE_ONE" ? card.effect : null);
     // Area / multi-target: any of our units in the predicted blast.
     if (
@@ -6809,7 +6830,7 @@ export function playerThreatenedByPendingDamage(
     if (!card) {
       return false;
     }
-    const effect = getEffectiveCardEffect(card, stackItem.action.optionIndex);
+    const effect = getEffectiveCardEffectForState(state, card, stackItem.action.optionIndex);
     if (!effectDealsCombatDamage(effect)) {
       return false;
     }
@@ -9945,7 +9966,7 @@ function getMagicMirrorReactions(
     if (card.timing !== "reaction" && card.timing !== "instant") {
       continue;
     }
-    for (const variant of getCardPlayVariants(card)) {
+    for (const variant of getCardPlayVariants(card, state)) {
       if (variant.effect.type !== "REDIRECT_SPELL") {
         continue;
       }
@@ -10338,13 +10359,13 @@ export function getLegalReactionsForTrigger(
         isAttackWindow &&
         sibling.effect.type === "ADD_SPELL_POWER" &&
         sibling.trigger?.event === "SPELL_CAST_STARTED";
-      const cardHasPrintedTriggerMatch = getCardPlayVariants(card).some(
+      const cardHasPrintedTriggerMatch = getCardPlayVariants(card, state).some(
         (sibling) =>
-          variantMatchesTrigger(sibling, triggerEvent, player.id, false) &&
+          variantMatchesTrigger(sibling, triggerEvent, player.id, state, false) &&
           !powerCrossOverOnly(sibling),
       );
 
-      for (const variant of getCardPlayVariants(card)) {
+      for (const variant of getCardPlayVariants(card, state)) {
         if (
           cardId === "ability.wisdom" &&
           houseRuleEnabled(state, "polish-card-balance") &&
@@ -10357,6 +10378,7 @@ export function getLegalReactionsForTrigger(
           variant,
           triggerEvent,
           player.id,
+          state,
           false,
         );
         const allowUtilityJoin =
@@ -10403,6 +10425,7 @@ export function getLegalReactionsForTrigger(
             variant,
             triggerEvent,
             player.id,
+            state,
             allowUtilityJoin,
           )
         ) {
@@ -10690,13 +10713,13 @@ export function getLegalReactionsForTrigger(
             continue;
           }
 
-          for (const variant of getCardPlayVariants(card)) {
+          for (const variant of getCardPlayVariants(card, state)) {
             if (
               variant.mapOnly ||
               variant.expertOnly ||
               variant.cost ||
               variant.effect.type === "ADD_SPELL_POWER" ||
-              !variantMatchesTrigger(variant, triggerEvent, player.id) ||
+              !variantMatchesTrigger(variant, triggerEvent, player.id, state) ||
               !isEffectLegalForTrigger(
                 state,
                 player.id,
@@ -10787,7 +10810,7 @@ export function getLegalReactionsForTrigger(
           if (spellEffectIsAlreadyOngoing(state, player.id, spellId)) {
             continue;
           }
-          for (const variant of getCardPlayVariants(card)) {
+          for (const variant of getCardPlayVariants(card, state)) {
             if (
               variant.mapOnly ||
               variant.expertOnly ||
@@ -10799,7 +10822,7 @@ export function getLegalReactionsForTrigger(
               variant.cost ||
               variant.effect.type === "ADD_SPELL_POWER" ||
               variant.effect.type === "REDIRECT_SPELL" ||
-              !variantMatchesTrigger(variant, triggerEvent, player.id) ||
+              !variantMatchesTrigger(variant, triggerEvent, player.id, state) ||
               !isEffectLegalForTrigger(
                 state,
                 player.id,
@@ -11284,7 +11307,7 @@ export function getLegalReactionsForTrigger(
       if (offered?.kind === "spell") {
         return true;
       }
-      const variants = offered ? getCardPlayVariants(offered) : [];
+      const variants = offered ? getCardPlayVariants(offered, state) : [];
       const variant =
         legal.action.optionIndex !== undefined
           ? variants[legal.action.optionIndex]
@@ -11365,14 +11388,14 @@ export function getLegalReactionsForTrigger(
         ) {
           continue;
         }
-        for (const variant of getCardPlayVariants(card)) {
+        for (const variant of getCardPlayVariants(card, state)) {
           if (
             variant.mapOnly ||
             variant.expertOnly ||
             Boolean(card.permanent) ||
             variant.effect.type === "ADD_SPELL_POWER" ||
             variant.effect.type === "REDIRECT_SPELL" ||
-            !variantMatchesTrigger(variant, triggerEvent, player.id) ||
+            !variantMatchesTrigger(variant, triggerEvent, player.id, state) ||
             !isEffectLegalForTrigger(
               state,
               player.id,
@@ -12107,7 +12130,7 @@ export function getSchoolPermanentExpertActions(
       );
     const matchesWindow =
       mirrorMatches ||
-      getCardPlayVariants(spell).some((variant) => {
+      getCardPlayVariants(spell, state).some((variant) => {
         if (triggerEvent.type === "UNIT_LETHAL_HIT") {
           const defender = state.combat?.units[triggerEvent.defenderId];
           return (
@@ -12141,6 +12164,7 @@ export function getSchoolPermanentExpertActions(
                 variant,
                 triggerEvent,
                 playerId,
+                state,
                 spell.timing === "instant",
               ) &&
               isEffectLegalForTrigger(
@@ -12187,6 +12211,7 @@ function variantMatchesTrigger(
     }
   >,
   playerId: PlayerId,
+  state: GameState,
   allowTriggerlessUtility = false,
 ): boolean {
   // Community Balance Change Centaur's Axe: an "after the Attack die roll"
@@ -12226,7 +12251,9 @@ function variantMatchesTrigger(
       variant.trigger.event === "SPELL_CAST_STARTED" &&
       variant.effect.type === "INTERFERE_SPELL"
     ) {
-      return triggerEvent.playerId !== playerId;
+      return getActiveAstrologersCard(state)?.effect.type === "DEFENSE_TO_ATTACK"
+        ? triggerEvent.playerId === playerId
+        : triggerEvent.playerId !== playerId;
     }
     return utilityFallback;
   }
@@ -13015,7 +13042,9 @@ export function isEffectLegalForTrigger(
     // controller of the unit being attacked. The spell-damage half is inert on a
     // physical hit. (basic +X / expert +X.)
     if (effect.type === "INTERFERE_SPELL") {
-      return defender.controllerId === playerId;
+      return getActiveAstrologersCard(state)?.effect.type === "DEFENSE_TO_ATTACK"
+        ? attacker.controllerId === playerId && !attackBuffsNegated
+        : defender.controllerId === playerId;
     }
 
     if (effect.type !== "ADD_COMBAT_STAT") {

@@ -3,6 +3,7 @@ import type { CombatState, GameAction, GameState, MapFieldState } from "./state"
 import {
   beginFieldVisit,
   createSecondaryHero,
+  drawAstrologersCard,
   gainExperience,
   getAstrologersState,
   getMainHero,
@@ -415,6 +416,23 @@ describe("Secondary Hero movement", () => {
     secondary.movementPoints = 0;
     refreshRoundTokens(state);
     expect(secondary.movementPoints).toBe(3);
+  });
+
+  it.each([
+    ["Battalion's Stallion", "astrologers.battalions_stallion", 1],
+    ["Magic Tortoise", "astrologers.magic_tortoise", -1]
+  ] as const)("%s immediately changes both Main and Secondary Hero movement", (_name, cardId, delta) => {
+    const state = makeGame();
+    const main = getMainHero(state, "p1")!;
+    const secondary = createSecondaryHero(state, "p1", "70,70");
+    state.decks.astrologers!.drawPile = [cardId];
+
+    drawAstrologersCard(state);
+
+    expect(main.movementPoints).toBe(main.movementPointsMax + delta);
+    expect(secondary.movementPoints).toBe(SECONDARY_HERO_MOVEMENT + delta);
+    expect(heroMovementMax(state, main)).toBe(main.movementPointsMax + delta);
+    expect(heroMovementMax(state, secondary)).toBe(SECONDARY_HERO_MOVEMENT + delta);
   });
 });
 

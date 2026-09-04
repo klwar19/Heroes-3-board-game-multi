@@ -39,6 +39,9 @@ export type AstrologersEffect =
   | { type: "REMOVE_BLACK_CUBES" }
   | { type: "NEXT_RESOURCE_ROUND"; gold?: number; valuables?: number }
   | { type: "MOVEMENT_MODIFIER"; amount: number }
+  // Offense: every positive Defense value printed by a card is interpreted as
+  // the same Attack value while this proclamation remains face up.
+  | { type: "DEFENSE_TO_ATTACK" }
   // `minimum` (Restart): "reduced by 2, to a minimum of 4" — the floor caps the
   // reduction but never RAISES a limit already at or below it (effectiveHandLimit).
   | { type: "HAND_LIMIT_MODIFIER"; amount: number; minimum?: number }
@@ -223,6 +226,7 @@ export const ART_LESS_PROCLAMATIONS: ReadonlySet<string> = new Set<string>(["ast
  * has downloaded its scan and `image(slug)` points at a real file.
  */
 export const ART_PENDING_PROCLAMATIONS: ReadonlySet<string> = new Set<string>([
+  "astrologers.offense",
   "astrologers.destruction",
   "astrologers.sanctuary",
   "astrologers.spells",
@@ -574,6 +578,16 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     image: image("magic_tortoise"),
     source: source("magic_tortoise", "Core Game")
   },
+  "astrologers.offense": {
+    id: "astrologers.offense",
+    name: "Offense",
+    text: "Until the next Astrologers' round, every card that provides X Defense provides X Attack instead.",
+    ongoing: true,
+    effect: { type: "DEFENSE_TO_ATTACK" },
+    expansion: "Stronghold Expansion",
+    image: "",
+    source: source("offense", "Stronghold Expansion")
+  },
   "astrologers.mcgiver": {
     id: "astrologers.mcgiver",
     name: "McGiver",
@@ -853,14 +867,6 @@ export const astrologersDeckCardIds: string[] = Object.keys(astrologersCardDefin
  * the omission is a conscious, reviewable decision rather than a silent gap.
  */
 export const ASTROLOGERS_NOT_IMPLEMENTED: { name: string; expansion: string; needs: string }[] = [
-  // Offense swaps Defense→Attack on every card that grants Defense. That is not
-  // one chokepoint: the instant ADD_COMBAT_STAT defense route, the ongoing
-  // CREATE_DEFENSE_BUFF route (Stone Skin / Air Shield) and the reaction-offer
-  // flow (a Defense card is the DEFENDER's reaction on UNIT_ATTACK_DECLARED —
-  // "provides attack instead" changes who benefits and in which window). Too
-  // invasive to wire correctly without a value-source rework; deferred rather
-  // than shipped half-right.
-  { name: "Offense", expansion: "Stronghold", needs: "a global Defense→Attack reinterpretation of every value source (instant stats, ongoing buffs, AND the defender-reaction play window)" },
   // Whirlpool buffs a map feature this build does not have: no sea tile (W1-W7)
   // carries a whirlpool field in the transcribed board data, and no whirlpool
   // location/travel interaction exists. Implementing the card would mean

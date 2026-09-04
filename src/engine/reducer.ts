@@ -529,6 +529,7 @@ import {
   getEffectAmount,
   getEffectDamageAmount,
   getEffectiveCardEffect,
+  getEffectiveCardEffectForState,
   getSpellDamageAmount,
   heroMovementGrantOption,
   heroMovementTopUpHeroId,
@@ -973,7 +974,7 @@ function assertLegal(
   if (action.type === "CAST_SPELL" || action.type === "PLAY_CARD") {
     const card = cards[action.cardId];
     const effect = card
-      ? getEffectiveCardEffect(card, action.optionIndex)
+      ? getEffectiveCardEffectForState(state, card, action.optionIndex)
       : null;
     if (
       effect?.type === "CHAIN_LIGHTNING" &&
@@ -1116,7 +1117,7 @@ function assertBatchReactionLegal(
       continue;
     }
 
-    const effect = card ? getEffectiveCardEffect(card, play.optionIndex) : null;
+    const effect = card ? getEffectiveCardEffectForState(state, card, play.optionIndex) : null;
     if (
       !effect ||
       effect.type === "CANCEL_SPELL" ||
@@ -16281,7 +16282,7 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
     const action = stackItem.action;
     const card = cards[action.cardId];
     const effect = card
-      ? getEffectiveCardEffect(card, action.optionIndex)
+      ? getEffectiveCardEffectForState(state, card, action.optionIndex)
       : null;
     if (card && effect) {
       if (effect.type === "AREA_DAMAGE_PICK_ADJACENT") {
@@ -16393,6 +16394,14 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
       state.priorityPlayerId = null;
       return;
     }
+
+    // Global card reinterpretations (currently Astrologers Offense) apply to
+    // cast effects too. Most spell branches below still read the raw card
+    // because their effect kind cannot change; Attack/Defense buffs use this
+    // adjusted face so an ongoing Defense spell creates Attack, not Defense.
+    const castEffect = card
+      ? getEffectiveCardEffectForState(state, card, stackItem.action.optionIndex)
+      : null;
 
     if (card?.effect.type === "EARTHQUAKE" && state.combat?.siege) {
       resolveEarthquakeSpell(
@@ -16515,13 +16524,14 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
     }
 
     if (
-      card?.effect.type === "CREATE_ATTACK_BUFF" &&
+      card?.effect.type !== "CHOOSE_ONE" &&
+      castEffect?.type === "CREATE_ATTACK_BUFF" &&
       stackItem.action.target.type === "unit"
     ) {
       createAttackBuffFromCard(
         state,
-        card,
-        card.effect,
+        card!,
+        castEffect,
         stackItem.action.playerId,
         getCurrentSpellPower(state, stackItem, cards),
         stackItem.action.target,
@@ -16537,6 +16547,8 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
         0,
         getCurrentSpellPower(state, stackItem, cards),
       );
+      const offenseActive =
+        getActiveAstrologersCard(state)?.effect.type === "DEFENSE_TO_ATTACK";
       createActiveEffect(
         state,
         {
@@ -16547,7 +16559,9 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
           removable: card.effect.removable ?? true,
           modifiers: [
             { type: "ATTACK_BONUS", amount },
-            { type: "DEFENSE_BONUS", amount },
+            offenseActive
+              ? { type: "ATTACK_BONUS", amount }
+              : { type: "DEFENSE_BONUS", amount },
             { type: "INITIATIVE_BONUS", amount },
           ],
         },
@@ -16563,15 +16577,17 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
     }
 
     if (
-      card?.effect.type === "CREATE_DEFENSE_BUFF" &&
+      card?.effect.type !== "CHOOSE_ONE" &&
+      castEffect?.type === "CREATE_DEFENSE_BUFF" &&
       stackItem.action.target.type === "unit"
     ) {
       createDefenseBuffFromCard(
         state,
-        card,
+        card!,
         stackItem.action.playerId,
         getCurrentSpellPower(state, stackItem, cards),
         stackItem.action.target,
+        castEffect,
       );
     }
 
@@ -16710,7 +16726,7 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
       state.combat &&
       stackItem.action.target.type === "unit"
     ) {
-      const chosen = getEffectiveCardEffect(card, stackItem.action.optionIndex);
+      const chosen = getEffectiveCardEffectForState(state, card, stackItem.action.optionIndex);
       if (chosen?.type === "CREATE_INITIATIVE_BUFF") {
         const power = getCurrentSpellPower(state, stackItem, cards);
         const targetUnit = state.combat.units[stackItem.action.target.unitId];
@@ -19704,7 +19720,7 @@ function applyReactionPlayCore(
     return { windowEnded: false };
   }
 
-  const effect = getEffectiveCardEffect(card, play.optionIndex);
+  const effect = getEffectiveCardEffectForState(state, card, play.optionIndex);
   if (!effect) {
     throw new Error(`${card.name} needs a chosen option.`);
   }
@@ -21969,8 +21985,19 @@ function applyReactionPlayCore(
     (stackItem?.action.type === "ATTACK_UNIT" ||
       stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
   ) {
+    const offenseActive =
+      getActiveAstrologersCard(state)?.effect.type === "DEFENSE_TO_ATTACK";
+    const attackingUnit = state.combat?.units[stackItem.action.attackerId];
     const defendingUnit = state.combat?.units[stackItem.action.defenderId];
     if (
+      offenseActive &&
+      attackingUnit &&
+      attackingUnit.controllerId === playerId &&
+      isUnitAlive(attackingUnit)
+    ) {
+      stackItem.modifiers.attackBonus += effectAmount;
+    } else if (
+      !offenseActive &&
       defendingUnit &&
       defendingUnit.controllerId === playerId &&
       isUnitAlive(defendingUnit)
@@ -22487,7 +22514,7 @@ function playReaction(
     const card = cards[action.cardId];
     const effect =
       card && !action.asPowerBoost
-        ? getEffectiveCardEffect(card, action.optionIndex)
+        ? getEffectiveCardEffectForState(state, card, action.optionIndex)
         : null;
     if (
       !action.drawOnly &&
@@ -24319,7 +24346,7 @@ function playCard(
   // Necromancy and compatible cost/funding bonuses may be played. The combat
   // and field rewards remain withheld until the explicit Resolve.
   const pendingNecro = state.adventure?.pendingNecromancy;
-  const pendingNecroEffect = getEffectiveCardEffect(card, action.optionIndex);
+  const pendingNecroEffect = getEffectiveCardEffectForState(state, card, action.optionIndex);
   const pendingNecroGain =
     pendingNecroEffect?.type === "GAIN_RESOURCES"
       ? action.mode === "expert" && pendingNecroEffect.expertGain
@@ -24345,7 +24372,7 @@ function playCard(
   // read): playable only during the continue-or-retreat decision against neutral
   // units — the combat extends one round for free.
   if (
-    getEffectiveCardEffect(card, action.optionIndex)?.type ===
+    getEffectiveCardEffectForState(state, card, action.optionIndex)?.type ===
     "CONTINUE_NEUTRAL_FREE"
   ) {
     const combat = state.combat;
@@ -24497,7 +24524,7 @@ function playCard(
     return;
   }
 
-  const effect = getEffectiveCardEffect(card, action.optionIndex);
+  const effect = getEffectiveCardEffectForState(state, card, action.optionIndex);
   if (!effect) {
     throw new Error(`${card.name} needs a chosen option.`);
   }

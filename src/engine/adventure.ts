@@ -20826,6 +20826,7 @@ function resolveAstrologersCard(state: GameState, card: AstrologersCardDefinitio
   switch (card.effect.type) {
     case "NONE":
     case "HAND_LIMIT_MODIFIER":
+    case "DEFENSE_TO_ATTACK":
     case "DIE_REROLL_PER_TURN":
     case "FIRST_SPELL_POWER_BONUS":
     case "SCHOOL_SPELL_POWER_BONUS":

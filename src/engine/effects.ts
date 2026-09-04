@@ -619,6 +619,54 @@ export function getEffectiveCardEffect(
   return card.effect.options[optionIndex]?.effect ?? null;
 }
 
+type ConcreteCardEffect = Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>;
+
+/**
+ * Astrologers Offense replaces a card's positive Defense value with Attack.
+ * Keeping this as an effect reinterpretation (instead of a card-id list) makes
+ * Statistics, Abilities, Artifacts, Spells, specialties, and future cards all
+ * follow the proclamation automatically. Defense penalties are not "provided"
+ * Defense and therefore remain Defense penalties.
+ */
+export function astrologersAdjustedCardEffect(
+  state: GameState,
+  effect: ConcreteCardEffect
+): ConcreteCardEffect {
+  if (state.adventure?.astrologers?.activeCardId !== "astrologers.offense") {
+    return effect;
+  }
+
+  if (effect.type === "ADD_COMBAT_STAT" && effect.stat === "defense") {
+    const providesDefense =
+      effect.amount > 0 || Object.values(effect.amountByPower ?? {}).some((amount) => amount > 0);
+    return providesDefense ? { ...effect, stat: "attack" } : effect;
+  }
+
+  if (effect.type === "CREATE_DEFENSE_BUFF") {
+    return {
+      type: "CREATE_ATTACK_BUFF",
+      name: effect.name,
+      ...(effect.amount !== undefined ? { amount: effect.amount } : {}),
+      ...(effect.amountByPower ? { amountByPower: effect.amountByPower } : {}),
+      duration: effect.duration,
+      ...(effect.polarity ? { polarity: effect.polarity } : {}),
+      ...(effect.removable !== undefined ? { removable: effect.removable } : {})
+    };
+  }
+
+  return effect;
+}
+
+/** The selected card face after applying live global card reinterpretations. */
+export function getEffectiveCardEffectForState(
+  state: GameState,
+  card: CardDefinition,
+  optionIndex?: number
+): ConcreteCardEffect | null {
+  const effect = getEffectiveCardEffect(card, optionIndex);
+  return effect ? astrologersAdjustedCardEffect(state, effect) : null;
+}
+
 /**
  * Damage/heal amount of a concrete effect at the given power. Works on the
  * resolved effect (e.g. one option of an "OR" card) rather than the card's
