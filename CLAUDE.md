@@ -4032,8 +4032,10 @@ all fixed below). Every claim carries a test that fails when the logic is remove
   window (`INTERFERE_SPELL` follows), Defense PENALTIES stay penalties, and everything
   reverts the moment the proclamation expires. `astrologers-offense.test.ts` (a library
   sweep of every positive Defense face, ongoing buff, Spell, Prayer, batched reaction,
-  expiry, penalty CONTROL). LIMITS: art is pending (`ART_PENDING_PROCLAMATIONS`,
-  `image: ""`); the AI prices the flipped plays with its ordinary stat-card policy.
+  expiry, penalty CONTROL). Its card face is the real wiki scan since 2026-09-04
+  (`astrologers_proclaim-offense.webp`, fetched like every other proclamation; it left
+  `ART_PENDING_PROCLAMATIONS`). LIMIT: the AI prices the flipped plays with its
+  ordinary stat-card policy.
   Same batch: Battalion's Stallion / Magic Tortoise are pinned to move BOTH heroes
   immediately (`secondary-heroes.test.ts`).
 - **Bowstring of the Unicorn's Mane option B = the RANGED UNIT'S CONTROLLER ignores ONE

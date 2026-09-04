@@ -141,6 +141,7 @@ import {
   commanderGradeUpChoices,
   commanderIntegratedDeploymentSortAvailable,
   ibukiActionPoints,
+  ibukiCommandUsedThisActivation,
   commanderStandsInCurrentCombat,
   commanderUnitId,
 } from "./commanders";
@@ -8156,7 +8157,11 @@ function addUnitActions(
   if (
     !alreadyAttacked &&
     !isArrowTowerUnit(activeUnit) &&
-    !activeUnit.defendedLastActivation
+    !activeUnit.defendedLastActivation &&
+    // Blue Archive Ibuki (USER RULE 2026-09-04): once she has spent AP on a
+    // command / Executive Order this activation she may only hold position,
+    // never Defend (the reducer's defendUnit refuses the same frame).
+    !ibukiCommandUsedThisActivation(activeUnit)
   ) {
     // Defend replaces the attack, so a unit that already moved may still
     // defend. The Arrow Tower never defends — it only shoots or holds.

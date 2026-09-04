@@ -226,7 +226,6 @@ export const ART_LESS_PROCLAMATIONS: ReadonlySet<string> = new Set<string>(["ast
  * has downloaded its scan and `image(slug)` points at a real file.
  */
 export const ART_PENDING_PROCLAMATIONS: ReadonlySet<string> = new Set<string>([
-  "astrologers.offense",
   "astrologers.destruction",
   "astrologers.sanctuary",
   "astrologers.spells",
@@ -585,7 +584,7 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     ongoing: true,
     effect: { type: "DEFENSE_TO_ATTACK" },
     expansion: "Stronghold Expansion",
-    image: "",
+    image: image("offense"),
     source: source("offense", "Stronghold Expansion")
   },
   "astrologers.mcgiver": {

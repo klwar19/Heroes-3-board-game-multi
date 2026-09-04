@@ -2296,5 +2296,33 @@
       "canvasWidth": 97,
       "canvasHeight": 114
     }
+  },
+  "sniper-shot-projectile": {
+    "src": "/assets/fx/sniper-shot-projectile.webp",
+    "label": "Sniper Shot tracer (Ibuki)",
+    "group": "commander",
+    "role": "projectile",
+    "frames": 8,
+    "cols": 8,
+    "rows": 1,
+    "frameWidth": 160,
+    "frameHeight": 40,
+    "fps": 24,
+    "anchor": "center",
+    "sourceDef": "generated: codex image_gen master + scripts/build-sniper-shot-fx.mjs (2026-09-04)"
+  },
+  "sniper-shot-hit": {
+    "src": "/assets/fx/sniper-shot-hit.webp",
+    "label": "Sniper Shot impact (Ibuki)",
+    "group": "commander",
+    "role": "hit",
+    "frames": 10,
+    "cols": 10,
+    "rows": 1,
+    "frameWidth": 128,
+    "frameHeight": 128,
+    "fps": 24,
+    "anchor": "center",
+    "sourceDef": "generated: codex image_gen master + scripts/build-sniper-shot-fx.mjs (2026-09-04)"
   }
 }

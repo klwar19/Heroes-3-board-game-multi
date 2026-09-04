@@ -196,10 +196,12 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     source: {
       product: "Anime Realms module",
       credit:
-        "Kivotos Academy Domain starting tile. Hex roles, printed symbols and outer borders copy Rampart S4; Kivotos academy-city art is formatted as a complete seven-hex board tile."
+        "Kivotos Academy Domain starting tile. Hex roles and outer borders copy Rampart S4; the art is a geometry-free Kivotos academy-city painting cut to the canonical pointy-top flower silhouette (the a-s1 alpha, 2026-09-04 redraw), with the field symbols attached at runtime like IM-S1 / MGQ-S1."
     },
     assets: {
-      tileImage: "/assets/anime/tiles/ba-s1-v2.webp"
+      tileImage: "/assets/anime/tiles/ba-s1-v2.webp",
+      attachFieldSymbols: true,
+      fieldSymbolScale: 0.62
     }
   },
   "IM-S1": {

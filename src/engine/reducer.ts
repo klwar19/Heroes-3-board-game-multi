@@ -501,6 +501,7 @@ import {
   commanderLiveDefenseBonus,
   gainIbukiActionPoint,
   ibukiActionPoints,
+  ibukiCommandUsedThisActivation,
   latchCommanderFrontLineAttack,
   sonyaBondDefenseBonus,
   commanderRunePool,
@@ -31671,6 +31672,13 @@ function defendUnit(
   if (unit.defendedLastActivation) {
     throw new Error(
       "That unit cannot Defend again until it takes another action first.",
+    );
+  }
+  // Blue Archive Ibuki: a command / Executive Order this activation leaves only
+  // "hold position" (USER RULE 2026-09-04) — backstop for the withheld offer.
+  if (ibukiCommandUsedThisActivation(unit)) {
+    throw new Error(
+      "Ibuki used a command this activation — she can only hold position.",
     );
   }
 

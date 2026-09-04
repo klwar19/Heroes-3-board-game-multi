@@ -76,7 +76,9 @@ describe("Blue Archive live faction integration", () => {
     expect(allTileDefinitions["BA-S1"]?.assets).toMatchObject({
       tileImage: "/assets/anime/tiles/ba-s1-v2.webp"
     });
-    expect(allTileDefinitions["BA-S1"]?.assets?.attachFieldSymbols).not.toBe(true);
+    // 2026-09-04 redraw: the tile is a geometry-free painting on the canonical
+    // flower alpha, so the field symbols are attached at runtime (IM-S1 / MGQ-S1).
+    expect(allTileDefinitions["BA-S1"]?.assets?.attachFieldSymbols).toBe(true);
     expect(fs.existsSync(path.join(process.cwd(), "public", "assets/anime/tiles/ba-s1-v2.webp"))).toBe(true);
     expect(fs.existsSync(path.join(process.cwd(), "public", townIconUrl("blue_archive").slice(1)))).toBe(true);
     const council = coreBuildingDefinitions["blue_archive.city_hall"];

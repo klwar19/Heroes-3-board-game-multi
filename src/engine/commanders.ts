@@ -420,6 +420,18 @@ export function ibukiActionPoints(unit: CombatUnitState): number {
   return unit.commanderSlug === "ibuki" ? Math.max(0, unit.ibukiActionPoints ?? 1) : 0;
 }
 
+/**
+ * Ibuki spent AP on a command (Sniper Shot / Up to Mischief / Gadabout) or on
+ * Executive Order during THIS activation. Every one of those sets
+ * `movementLockedThisActivation` on her (the cast ends her movement), and it is
+ * reset at activation start, so the flag doubles as the "used a skill" receipt.
+ * USER RULE 2026-09-04: after using a skill she may only hold position — she
+ * can no longer Defend (read by the Defend offer AND the defendUnit handler).
+ */
+export function ibukiCommandUsedThisActivation(unit: CombatUnitState): boolean {
+  return unit.commanderSlug === "ibuki" && Boolean(unit.movementLockedThisActivation);
+}
+
 export function gainIbukiActionPoint(state: GameState, unit: CombatUnitState, reason: string): void {
   if (unit.commanderSlug !== "ibuki" || unit.damage >= unit.maxHealth) return;
   unit.ibukiActionPoints = ibukiActionPoints(unit) + 1;

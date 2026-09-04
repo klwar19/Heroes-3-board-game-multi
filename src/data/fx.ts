@@ -295,7 +295,10 @@ const blueArchiveAbilityVoicePlans: Record<string, SpellFxPlan> = Object.fromEnt
 
 export const abilityFxPlans: Record<string, SpellFxPlan> = {
   ...blueArchiveAbilityVoicePlans,
-  "commander-ibuki-sniper-shot": { projectile: "magic-arrow-projectile-0", hit: "magic-arrow-hit", sound: "blue-archive/voices/ibuki/sniper-shot" },
+  // Ibuki's Sniper Shot flies its own bullet tracer and spark-burst impact
+  // (sniper-shot-* sheets, built by scripts/build-sniper-shot-fx.mjs) — it used
+  // to borrow the Magic Arrow flight/hit (USER REQUEST 2026-09-04).
+  "commander-ibuki-sniper-shot": { projectile: "sniper-shot-projectile", hit: "sniper-shot-hit", sound: "blue-archive/voices/ibuki/sniper-shot" },
   "commander-ibuki-up-to-mischief": { affect: [{ key: "misfortune" }], sound: "blue-archive/voices/ibuki/up-to-mischief" },
   "commander-ibuki-gadabout": { affect: [{ key: "haste" }], sound: "blue-archive/voices/ibuki/gadabout" },
   "commander-ibuki-gadabout-landing-damage": { hit: "frost-ring", hitSound: "spells/frost-ring" },

@@ -114,15 +114,16 @@ describe("anime starting tiles — hex + border assignment", () => {
     assertRealArt(p.assets!.tileImage!);
     assertRealArt(d.assets!.tileImage!);
     assertRealArt(ba.assets!.tileImage!);
-    // These five bake their symbols into the WebP.
+    // These four bake their symbols into the WebP.
     expect(a.assets?.attachFieldSymbols).toBeFalsy();
     expect(w.assets?.attachFieldSymbols).toBeFalsy();
     expect(l.assets?.attachFieldSymbols).toBeFalsy();
     expect(p.assets?.attachFieldSymbols).toBeFalsy();
-    expect(ba.assets?.attachFieldSymbols).toBeFalsy();
-    // D-S1 is atmosphere-only, so its standard starting bonuses attach at
+    // D-S1 and BA-S1 (2026-09-04 redraw) are atmosphere-only paintings on the
+    // canonical flower alpha, so their standard starting bonuses attach at
     // runtime instead of being baked into generated art.
     expect(d.assets?.attachFieldSymbols).toBe(true);
+    expect(ba.assets?.attachFieldSymbols).toBe(true);
   });
 
   it("a Field Override removes the PRINTED edges touching its hex — but never a designer border", () => {

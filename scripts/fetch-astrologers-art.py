@@ -59,6 +59,7 @@ SLUGS = [
     "plane_between_planes",   # Fortress
     "ammo_cart",              # Rampart
     "mcgiver",                # Rampart
+    "offense",                # Stronghold
     "explorers",              # Inferno
     "charlie_and_his_circus", # Rampart
     "unexpected_reinforcements",  # Tower
