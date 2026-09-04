@@ -7297,6 +7297,19 @@ export type GameEvent =
       message: string;
     }
   | {
+      /**
+       * Arena duels (1v1): one scheduled duel resolved. `wins` is the whole
+       * best-of-three tally AFTER this duel, so the feed line is the scoreboard.
+       */
+      id: string;
+      type: "ARENA_DUEL_RESOLVED";
+      duel: number;
+      winnerPlayerId: PlayerId;
+      loserPlayerId: PlayerId;
+      wins: Record<PlayerId, number>;
+      message: string;
+    }
+  | {
       /** Calamity Waves: next round brings a wave — position your armies. */
       id: string;
       type: "MONSTER_WAVE_ANNOUNCED";
@@ -9953,6 +9966,17 @@ export type CombatContext =
        * Retreat/Surrender) still need a hero in the fight and stay off.
        */
       garrisonCardsAllowed?: boolean;
+      /**
+       * Arena duel (the `arena-duel` custom win condition, 1v1 only): this PvP
+       * fight was opened by the ROUND-START schedule (rounds 4/8/12), not by a
+       * hero stepping onto the other. `duel` is 1-3. It changes what the fight
+       * COSTS, not how it is fought: the finalize records the best-of-three
+       * tally and skips every map consequence — no hero moves home, no gold
+       * toll, no morale hit, no flag transfer, no conquest hero-defeat credit,
+       * no siege elimination and no winner's field visit. `fieldId` is only the
+       * label/board anchor (the attacker's own hex), never a contested field.
+       */
+      arenaDuel?: { duel: number };
     };
 
 export type CombatBoardArtId =
@@ -11300,6 +11324,19 @@ export type AdventureReward =
       playerId: PlayerId;
       kind: "wave-assault";
       wave: number;
+    }
+  | {
+      /**
+       * Arena duels (1v1 only): the scheduled round-start duel. ONE entry per
+       * duel round (never per seat — the two heroes fight each OTHER), queued
+       * behind the round-start barrier. `playerId` is the ATTACKING seat (it
+       * alternates: duel 1 and 3 = the first seat in turn order, duel 2 = the
+       * second), which is also what keeps the queue's eliminated-owner drop
+       * meaningful.
+       */
+      playerId: PlayerId;
+      kind: "arena-duel";
+      duel: number;
     }
   | {
       /**
@@ -13828,6 +13865,15 @@ export type AdventureState = {
     string,
     { playerId: PlayerId; rounds: number }
   >;
+  /**
+   * "Arena duels" ({@link CustomWinCondition} `arena-duel`, 1v1 only): the
+   * best-of-three tally. `wins` is duel wins per seat (2 wins the game),
+   * `fought` the rounds whose duel has already been SCHEDULED (the idempotence
+   * guard — a round can never queue its duel twice). PUBLIC: both seats see
+   * the score, so it is deliberately NOT redacted. Absent unless the condition
+   * survived the 1v1 build gate.
+   */
+  arenaDuels?: { wins: Record<PlayerId, number>; fought: number[] };
   /** Tile awaiting its rotation choice after a reveal or placement. */
   pendingTileChoice?: PendingTileChoice | null;
   /** Astrologers Proclaim deck state (even rounds). */
@@ -14746,6 +14792,18 @@ export type CustomWinCondition =
    * `wog.raidBosses` nor `anime.raidBosses` is on — it could never fire.
    */
   | { kind: "slay-raid-boss"; count: number }
+  /**
+   * "Arena duels" (1v1 ONLY): at the start of rounds 4, 8 and 12 the two main
+   * heroes are pulled into a PvP battle wherever they stand on the map, and the
+   * match is a best of three — 2 duel wins wins the game. Parameterless: the
+   * schedule and the best-of-three are fixed. DROPPED at build with a public
+   * `MAP_SECRET_FEATURE_FALLBACK` feed line when the game does not have exactly
+   * 2 seats (with 3+ players there is no "the two heroes"), and defensively
+   * inert at round start unless exactly 2 live players remain. Runs ALONGSIDE
+   * the normal victory mode — conquest still ends the game at any time.
+   * Progress is `adventure.arenaDuels.wins[playerId]` out of 2.
+   */
+  | { kind: "arena-duel" }
   | {
       kind: "hold-with-grail";
       /** Consecutive full rounds of continuous control + Grail possession (1–10). */

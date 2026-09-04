@@ -579,6 +579,9 @@ const CUSTOM_WIN_CONDITION_KINDS = new Set<CustomWinCondition["kind"]>([
   // ordinary conditions the lobby/designer may author.
   "defeat-computers",
   "slay-raid-boss",
+  // "Arena duels" (1v1 only): the fixed rounds-4/8/12 best-of-three PvP series.
+  // Parameterless; DROPPED at build unless the game has exactly 2 seats.
+  "arena-duel",
   "hold-with-grail"
 ]);
 
@@ -1732,6 +1735,11 @@ function sanitizeCustomWinCondition(input: unknown): CustomWinCondition | null {
       // 1-3: the scheduled spawn places ONE boss and a designer pool caps at 6,
       // so 3 is already an ambitious multi-lair hunt.
       return { kind: "slay-raid-boss", count: clampInt(raw.count, 1, 3, 1) };
+    case "arena-duel":
+      // Parameterless: the schedule (rounds 4/8/12) and the best-of-three are
+      // fixed, so any stray numeric field is DROPPED and two authored copies
+      // dedupe (the `defeat-computers` precedent).
+      return { kind: "arena-duel" };
     case "hold-with-grail": {
       const target = sanitizeHoldWithGrailTarget(raw.target);
       if (!target) {
@@ -4128,6 +4136,10 @@ export const CUSTOM_WIN_CONDITION_OPTIONS: {
   // line, and the lobby row warns about that before the start (see
   // `raidBossModuleEnabled` in setup-hub-summary.ts).
   { id: "defeat-computers", label: "Defeat all computer enemies", param: null },
+  // "Arena duels" is parameterless and 1v1-ONLY: with 3+ seats the engine DROPS
+  // it at build with a public feed line (see `droppedArenaDuelWinCondition`), and
+  // the lobby row warns about that before the start.
+  { id: "arena-duel", label: "Arena duels (1v1): best of 3 at rounds 4/8/12", param: null },
   {
     id: "slay-raid-boss",
     label: "Slay the raid boss(es)",
@@ -4165,6 +4177,8 @@ export function defaultCustomWinCondition(kind: CustomWinCondition["kind"]): Cus
       return { kind: "defeat-computers" };
     case "slay-raid-boss":
       return { kind: "slay-raid-boss", count: 1 };
+    case "arena-duel":
+      return { kind: "arena-duel" };
     case "hold-with-grail":
       return { kind: "hold-with-grail", rounds: 3, target: "starting-town" };
   }

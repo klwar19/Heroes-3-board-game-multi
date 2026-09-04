@@ -388,6 +388,8 @@ export function describeCustomWinCondition(condition: CustomWinCondition): strin
       return "defeat every computer opponent";
     case "slay-raid-boss":
       return `slay ${condition.count} Raid Boss${condition.count === 1 ? "" : "es"}`;
+    case "arena-duel":
+      return "win the arena best of three (duels at rounds 4, 8 and 12)";
     case "hold-with-grail": {
       const target =
         condition.target === "starting-town"
