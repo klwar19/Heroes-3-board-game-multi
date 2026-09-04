@@ -5062,3 +5062,56 @@ describe("MapDesigner — 'Start revealed' on a face-down supply slot", () => {
     expect(within(faceUp).queryByTestId("reveal-at-setup")).toBeNull();
   });
 });
+
+describe("MapDesigner — pre-assigned settlement owner", () => {
+  const plans: CustomMapTilePlan[] = [
+    { row: 8, col: 2, group: "starting", faceDown: false },
+    { row: 10, col: 7, group: "starting", faceDown: false },
+    { row: 6, col: 4, group: "starting", faceDown: false },
+    { row: 5, col: 1, group: "far", faceDown: true }
+  ];
+  const ownerRow = (popover: HTMLElement) =>
+    within(popover).getByRole("group", { name: "Settlement starting owner" });
+
+  it("offers None + one chip per starting Town and stores the 0-based index", () => {
+    const fixture = renderStatefulDesigner(plans);
+    let popover = openTilePopover(fixture.container, 3);
+    expect(
+      within(ownerRow(popover))
+        .getAllByRole("button")
+        .map((button) => button.textContent)
+    ).toEqual(["None", "S1", "S2", "S3"]);
+    expect(
+      within(ownerRow(popover)).getByRole("button", { name: "None" }).getAttribute("aria-pressed"),
+      "absent = unowned"
+    ).toBe("true");
+
+    // S1 is index 0 — the falsy index a truthiness bug would drop.
+    fireEvent.click(within(ownerRow(popover)).getByRole("button", { name: "S1" }));
+    expect(fixture.get()[3].settlement).toEqual({ ownerStart: 0 });
+
+    popover = openTilePopover(fixture.container, 3);
+    expect(
+      within(ownerRow(popover)).getByRole("button", { name: "S1" }).getAttribute("aria-pressed"),
+      "aria-pressed reflects the STORED index"
+    ).toBe("true");
+    fireEvent.click(within(ownerRow(popover)).getByRole("button", { name: "S3" }));
+    expect(fixture.get()[3].settlement).toEqual({ ownerStart: 2 });
+
+    popover = openTilePopover(fixture.container, 3);
+    fireEvent.click(within(ownerRow(popover)).getByRole("button", { name: "None" }));
+    expect(fixture.get()[3].settlement, "None clears the whole (now empty) plan").toBeUndefined();
+  });
+
+  it("keeps the other settlement arms and paints the specific badge", () => {
+    const fixture = renderStatefulDesigner([
+      ...plans.slice(0, 3),
+      { row: 5, col: 1, group: "far", faceDown: true, settlement: { vp: 3 } }
+    ]);
+    const popover = openTilePopover(fixture.container, 3);
+    fireEvent.click(within(ownerRow(popover)).getByRole("button", { name: "S2" }));
+    expect(fixture.get()[3].settlement).toEqual({ vp: 3, ownerStart: 1 });
+    const badge = fixture.container.querySelector("[data-specific-badge]");
+    expect(badge?.querySelector("title")?.textContent).toContain("owned by S2");
+  });
+});

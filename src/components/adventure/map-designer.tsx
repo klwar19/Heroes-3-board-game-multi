@@ -410,6 +410,11 @@ function nextSettlementPlan(
   if (!next.winCondition) {
     delete next.winCondition;
   }
+  // Pre-assigned owner: index 0 is a REAL seat (S1), so only an explicit
+  // undefined ("None") clears it — never a truthiness check.
+  if (next.ownerStart === undefined) {
+    delete next.ownerStart;
+  }
   return Object.keys(next).length > 0 ? next : undefined;
 }
 
@@ -3947,6 +3952,9 @@ export function MapDesigner({
         if (plan.settlement.vp) bits.push(`+${plan.settlement.vp} VP`);
         if (plan.settlement.holdRoundsToWin) bits.push(`hold ${plan.settlement.holdRoundsToWin}r to win`);
         if (plan.settlement.winCondition) bits.push("WIN on flag");
+        if (plan.settlement.ownerStart !== undefined) {
+          bits.push(`owned by S${plan.settlement.ownerStart + 1}`);
+        }
         specificBits.push(`settlement: ${bits.join(", ") || "custom"}`);
       }
       if (plan.centerHex?.winCondition) {
@@ -6396,6 +6404,41 @@ export function MapDesigner({
                       Make THIS tile&apos;s settlement matter: a stronger first-flag guard, extra Victory Points,
                       and/or win by holding it for N consecutive rounds. Overrides the map-wide settlement guard for
                       this tile only. Leave blank if the tile has no settlement (the plan stays inert).
+                    </small>
+                    {/* PRE-ASSIGNED OWNER: the seat that started on Sn owns this
+                        settlement from the moment the tile is revealed, and picks
+                        its production bonus on their own first turn. */}
+                    <div className="popoverSubLabel">Owned from the start by</div>
+                    <div
+                      className="popoverModeRow popoverSettlementOwnerRow"
+                      role="group"
+                      aria-label="Settlement starting owner"
+                    >
+                      {[undefined, ...startingPlanIndexes.map((_, seat) => seat)].map((seat) => {
+                        const active = (selected.settlement?.ownerStart ?? undefined) === seat;
+                        return (
+                          <button
+                            aria-pressed={active}
+                            className={`popoverFilterChip${active ? " active" : ""}`}
+                            key={seat === undefined ? "none" : `S${seat + 1}`}
+                            onClick={() =>
+                              updateTile(selectedIndex as number, {
+                                settlement: nextSettlementPlan(selected.settlement, {
+                                  ownerStart: seat
+                                })
+                              })
+                            }
+                            type="button"
+                          >
+                            {seat === undefined ? "None" : `S${seat + 1}`}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <small className="popoverHint">
+                      Pair this with &ldquo;Start revealed&rdquo; (or a face-up slot) so the settlement is on
+                      the board from turn 1. Its owner picks the production bonus on their own first turn. If
+                      no seat starts at that Town, the settlement stays unowned.
                     </small>
                     <div className="popoverSubLabel">Guard (first flag)</div>
                     <GuardSpecEditor

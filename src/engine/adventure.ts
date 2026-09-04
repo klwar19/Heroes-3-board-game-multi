@@ -1257,6 +1257,19 @@ export function materializeTileFields(
       if (perTile?.winCondition || centerHex?.winCondition) {
         field.designerWinCondition = true;
       }
+      // PRE-ASSIGNED OWNER (designer `settlement.ownerStart`): flag this
+      // settlement to whichever seat started on that starting tile and record
+      // that they still owe the ordinary founding CHOICE — queued at the start
+      // of their OWN turn (see queueOwedSettlementFoundings), never as a
+      // cross-turn prompt. Skipped once the settlement has ever been flagged
+      // (founded, or captured since), so a re-materialize never re-assigns it.
+      if (perTile?.ownerStart !== undefined && !field.everFlagged) {
+        const owner = adventure.startingTileSeats?.[perTile.ownerStart] ?? null;
+        if (owner) {
+          field.flagOwnerId = owner;
+          field.settlementFoundingOwedBy = owner;
+        }
+      }
     } else if (field.location === "random_town") {
       const rtGuard = adventure.mapPreset?.randomTowns?.guard;
       const centerHex = tile.centerHex;
@@ -20569,6 +20582,35 @@ export function finalizeStartOfTurnHand(state: GameState, playerId: PlayerId): v
 }
 
 /**
+ * Designer PRE-ASSIGNED settlements ({@link CustomMapSettlementFieldPlan.ownerStart}):
+ * every settlement flagged to this player at materialize time that still owes
+ * its founding CHOICE gets the ordinary `SETTLEMENT_CHOICE` visit step queued —
+ * on this player's OWN turn, so it is never a cross-turn prompt, and through
+ * the same reward queue every other turn-start prompt uses (so the AI and the
+ * AFK driver already answer it). The owed marker is cleared as it is queued, so
+ * a settlement is asked about exactly once. Several pre-assigned settlements
+ * queue several choices, resolved one at a time in map order.
+ */
+export function queueOwedSettlementFoundings(state: GameState, playerId: PlayerId): void {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return;
+  }
+  for (const field of Object.values(adventure.fields)) {
+    if (field.settlementFoundingOwedBy !== playerId) {
+      continue;
+    }
+    delete field.settlementFoundingOwedBy;
+    adventure.rewardQueue.push({
+      playerId,
+      kind: "visit-steps",
+      fieldId: field.spaceId,
+      steps: [{ type: "SETTLEMENT_CHOICE" }]
+    });
+  }
+}
+
+/**
  * Queues the optional "at the beginning of your turn" town-building choices
  * for the player whose turn just started. Each opens as a prompt with a Skip
  * option once the queue pumps.
@@ -20576,8 +20618,15 @@ export function finalizeStartOfTurnHand(state: GameState, playerId: PlayerId): v
 export function queueTurnStartBuildingChoices(state: GameState, playerId: PlayerId): void {
   const adventure = state.adventure;
   const player = state.players[playerId];
+  if (!adventure || !player) {
+    return;
+  }
+  // A designer PRE-ASSIGNED settlement owes its founding choice at the start of
+  // its owner's own turn — independent of any Town, so it is queued before the
+  // no-town early-out below.
+  queueOwedSettlementFoundings(state, playerId);
   const town = getTownOfPlayer(state, playerId);
-  if (!adventure || !player || !town) {
+  if (!town) {
     return;
   }
 

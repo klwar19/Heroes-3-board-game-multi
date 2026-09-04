@@ -3703,6 +3703,14 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // Starting tiles: position from the seat (designer or scenario), tile fixed
   // by the chosen faction — no rotation choice. Towns and main heroes go on
   // the tile's center field.
+  // WHICH SEAT SITS AT WHICH STARTING TILE, index-aligned with the designer's
+  // starting plans (else the scenario sheet's seats). Frozen onto the built
+  // adventure so a feature materializing LATER in play (the designer
+  // pre-assigned settlement) can still resolve "the player of S3". A position
+  // nobody took stays null.
+  const startCount =
+    designerStartPlans.length > 0 ? designerStartPlans.length : scenario.layout.starts.length;
+  const startingTileSeats: (PlayerId | null)[] = Array.from({ length: startCount }, () => null);
   playerConfigs.forEach((config, seatIndex) => {
     const index = startingPositionIndex.get(config.id) ?? seatIndex;
     const startTileId = startingTileByFaction[config.factionId] ?? "S1";
@@ -3711,6 +3719,13 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       ? { row: authoredStart.row, col: authoredStart.col }
       : startCenterFor(index);
     const startPlan = authoredStart ?? designerStartPlans[index];
+    // The starting-tile INDEX this seat really took: the authored plan's own
+    // position when the seat roles (or an explicit lobby assignment) moved it,
+    // otherwise its game-order position.
+    const startTileIndex = authoredStart ? designerStartPlans.indexOf(authoredStart) : index;
+    if (startTileIndex >= 0 && startTileIndex < startingTileSeats.length) {
+      startingTileSeats[startTileIndex] = config.id;
+    }
     // A designer may FIX this seat's home-tile orientation. Honour plan.rotation
     // ONLY when it is locked — an unlocked starting plan (or a legacy map that
     // happened to store a rotation) keeps the classic rotation-0 + opening-ceremony
@@ -3780,6 +3795,10 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       }
     }
   });
+
+  // Frozen BEFORE the supply tiles are drawn, so a face-up (or "Start
+  // revealed") slot's pre-assigned settlement can already resolve its owner.
+  adventure.startingTileSeats = startingTileSeats;
 
   // Authored campaign pressure: some scenarios openly grant computer opponents
   // a small war chest. It is map-local and visible in the briefing/condition

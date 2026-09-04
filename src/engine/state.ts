@@ -10799,6 +10799,14 @@ export type MapFieldState = {
   /** Resource chosen for a flagged settlement. */
   settlementResource: ResourceKind | null;
   /**
+   * Designer PRE-ASSIGNED settlement ({@link CustomMapSettlementFieldPlan.ownerStart}):
+   * this settlement was flagged to a seat the moment its tile materialized, and
+   * that seat still owes the ordinary founding CHOICE (production track /
+   * reinforce). Cleared when the choice is queued at the start of the owner's
+   * own turn, so a pre-assigned settlement is never a cross-turn prompt.
+   */
+  settlementFoundingOwedBy?: PlayerId;
+  /**
    * Obelisk house rule: the Attack-die face (-1, 0, or +1) rolled the first
    * time any Hero visits this Obelisk. It is locked in for the rest of the
    * game — every later visitor (any player) receives the same reward category
@@ -13606,6 +13614,16 @@ export type AdventureState = {
       neutralTier?: string;
     }[];
   } | null;
+  /**
+   * Which seat started on which STARTING TILE, index-aligned with the designer's
+   * starting plans (else the scenario sheet's `layout.starts`). Frozen at build
+   * and never mutated, so a feature that materializes LATER in play — the
+   * designer pre-assigned settlement ({@link CustomMapSettlementFieldPlan.ownerStart})
+   * — can still resolve "the player of starting tile S3". A position no seat
+   * took (an empty start) holds `null`. Absent on a legacy snapshot, in which
+   * case nothing reads a starting-tile index.
+   */
+  startingTileSeats?: (PlayerId | null)[];
   /** Rewards waiting to resolve one at a time (level-up searches, City Halls). */
   rewardQueue: AdventureReward[];
   /** Last field each hero visited, where a retreating hero returns. */
@@ -15535,6 +15553,19 @@ export type CustomMapSettlementFieldPlan = {
    */
   holdRequiresGrail?: boolean;
   winCondition?: boolean;
+  /**
+   * PRE-ASSIGNED OWNER (map designer): the 0-based index of a designer STARTING
+   * tile (shown as S1..Sn in the editor). The moment this tile is MATERIALIZED
+   * — face-up at setup, typically with {@link CustomMapTilePlan.revealAtSetup},
+   * or when it is revealed later in play — the settlement field(s) on it are
+   * flagged to whichever seat started on that starting tile, and that player
+   * owes the ordinary settlement FOUNDING CHOICE (pick the production track, or
+   * reinforce) at the start of their own next turn. If NO seat sits at that
+   * starting position (an empty start — see
+   * {@link GameSetupOptions.startingTileAssignments}) the settlement simply
+   * stays unowned. Absent = an ordinary unowned settlement.
+   */
+  ownerStart?: number;
 };
 
 /**

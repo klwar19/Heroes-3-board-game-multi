@@ -1245,6 +1245,13 @@ export const MAX_SETTLEMENT_VP = 10;
 export const MAX_SETTLEMENT_HOLD_ROUNDS = 10;
 
 /**
+ * Ceiling on a STARTING-tile index anywhere a designer names one (the map
+ * designer pre-assigned settlement owner). Six seats is the engine-wide seat
+ * ceiling, so indices run 0..5.
+ */
+export const MAX_STARTING_TILES = 6;
+
+/**
  * Sanitize a per-tile settlement customization ({@link CustomMapTilePlan.settlement}).
  * Returns undefined when every arm is empty so nothing is serialized.
  */
@@ -1259,6 +1266,7 @@ export function sanitizeSettlementFieldPlan(input: unknown): CustomMapSettlement
     vp?: unknown;
     holdRoundsToWin?: unknown;
     holdRequiresGrail?: unknown;
+    ownerStart?: unknown;
   };
   const plan: CustomMapSettlementFieldPlan = {};
   const guard = sanitizeCustomGuardSpec(raw.guard);
@@ -1288,6 +1296,17 @@ export function sanitizeSettlementFieldPlan(input: unknown): CustomMapSettlement
   }
   if (raw.winCondition === true) {
     plan.winCondition = true;
+  }
+  // PRE-ASSIGNED OWNER: a 0-based STARTING-tile index (S1..Sn in the editor).
+  // Index 0 is legal, so this cannot be a truthiness check; anything that is not
+  // a whole number inside the seat range is dropped rather than coerced.
+  if (
+    typeof raw.ownerStart === "number" &&
+    Number.isInteger(raw.ownerStart) &&
+    raw.ownerStart >= 0 &&
+    raw.ownerStart < MAX_STARTING_TILES
+  ) {
+    plan.ownerStart = raw.ownerStart;
   }
   return Object.keys(plan).length > 0 ? plan : undefined;
 }
