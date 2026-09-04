@@ -7695,12 +7695,20 @@ function addControlledNeutralUnitActions(
   // Polish Wait re-activation: a Neutral that Waited MUST attack a player unit
   // when it can (sheet: "Neutral units now has to attack players units").
   const waitMustAttack = Boolean(combat.waitPhase && activeUnit.waitPending);
-  const mustAttack =
-    waitMustAttack ||
+  // The OTHER must-attack sources keep their own movement discipline (the
+  // neutral-control sub-toggle's strictly-closing steps, the frenzy).
+  const otherMustAttack =
     neutralControlMustAttack(state, combat) ||
     (state.round % 2 === 0 &&
       getAstrologersRoundFrenzy(activeUnit) > 0 &&
       !alreadyAttacked);
+  const mustAttack = waitMustAttack || otherMustAttack;
+  // USER RULING 2026-09-04 ("after waiting a unit can attack only targets next
+  // to it — it's BUGGY, actually should be normally allowed to move"): the Wait
+  // obligation alone must NOT strip movement. A Waited unit re-activates with
+  // its FULL normal reach and may move and then strike; the sheet's "Neutrals
+  // that Waited must attack" survives as the withheld Defend / free hold.
+  const waitOnlyObligation = waitMustAttack && !otherMustAttack;
 
   // Attacks the guard can make from where it stands (any enemy, engine-legal).
   const attacks: LegalAction[] = [];
@@ -7774,8 +7782,26 @@ function addControlledNeutralUnitActions(
   // polish-wait house rule the guard may WAIT instead (all units can Wait) —
   // but its Waited re-activation must attack (maybeAddControlledNeutralWait
   // self-guards on the wait phase, so a Waited guard is never offered Wait
-  // again and `waitMustAttack` above forces the strike).
+  // again and `waitMustAttack` above forces the strike — over its FULL normal
+  // reach, see the ruling on `waitOnlyObligation`).
   maybeAddControlledNeutralWait(actions, state, playerId, activeUnit);
+
+  // A Waited guard whose ONLY obligation is the Wait moves normally: every legal
+  // destination plus every strike it can make from here. Once it has moved,
+  // `moveDestinations` is empty and the strikes are recomputed from the new
+  // cell, so it still has to attack when it can; with neither left it may hold
+  // (no stall).
+  if (waitOnlyObligation) {
+    for (const destination of moveDestinations) {
+      pushMove(destination);
+    }
+    actions.push(...attacks);
+    if (attacks.length === 0 && moveDestinations.length === 0) {
+      actions.push(hold);
+    }
+    return;
+  }
+
   if (attacks.length > 0) {
     actions.push(...attacks);
     return;

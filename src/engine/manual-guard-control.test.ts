@@ -7,7 +7,8 @@ import {
   NEUTRAL_PLAYER_ID,
   redactStateForSeat
 } from "./index";
-import { getLegalActions } from "./legal-actions";
+import { getLegalActions, getLegalMoveDestinations } from "./legal-actions";
+import { isAdjacent } from "./battlefield";
 import { manualGuardControllerId, neutralCombatControllerId, pvpNeutralControllerId } from "./neutral-control";
 import type { CombatUnitState, GameAction, GameState, PlayerId, UnitGrade, UnitType } from "./state";
 
@@ -371,6 +372,86 @@ describe("Manual guard control — polish-wait interplay", () => {
     expect(
       getLegalActions(noWait, "p1").some((legal) => legal.action.type === "WAIT_UNIT")
     ).toBe(false);
+  });
+
+  /**
+   * USER RULING 2026-09-04: "after waiting a unit can attack only targets next
+   * to it — it's BUGGY, actually should be normally allowed to move." The Wait
+   * obligation keeps the sheet's "Neutrals that Waited must attack" (no Defend,
+   * no free hold while it can still act) but must NOT strip movement.
+   */
+  it("a Waited guard re-activates with its FULL normal reach and may move THEN strike (CONTROL: the same reach on its first activation)", () => {
+    const state = sceneGuardAdjacent("mgc-wait-move", {
+      manualGuardControl: true,
+      houseRules: { "polish-wait": true }
+    });
+    const [guard] = guardsOf(state);
+    // One prey stays adjacent (so the must-attack obligation really fires) and
+    // one is parked two steps away — only reachable by MOVING first.
+    const prey = playerUnitsOf(state, "p1");
+    expect(prey.length, "the scene needs two player units").toBeGreaterThan(1);
+    prey[1]!.position = 13;
+    // CONTROL: the reach the guard is offered on its ordinary (free-play) activation.
+    const freeReach = getLegalMoveDestinations(state.combat!, state.combat!.units[guard.id]!, state)
+      .slice()
+      .sort((left, right) => left - right);
+    expect(freeReach.length, "the guard must have somewhere to walk").toBeGreaterThan(0);
+
+    const wait = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "WAIT_UNIT" && legal.action.unitId === guard.id
+    );
+    const waited = driveTo(applyOk(state, wait!.action), (s) => {
+      const active = s.combat?.activeUnitId ? s.combat.units[s.combat.activeUnitId] : null;
+      return Boolean(
+        s.combat?.waitPhase &&
+          active?.id === guard.id &&
+          !s.combat.pendingNeutralStep &&
+          !s.reactionWindow &&
+          !s.pendingChoice
+      );
+    });
+    expect(waited.combat!.waitPhase).toBe(true);
+    expect(waited.combat!.activeUnitId).toBe(guard.id);
+
+    const reOffers = getLegalActions(waited, "p1").map((legal) => legal.action);
+    // Still bound to attack: strikes offered, no Defend, no free hold.
+    expect(reOffers.some((action) => action.type === "ATTACK_UNIT")).toBe(true);
+    expect(reOffers.some((action) => action.type === "DEFEND_UNIT")).toBe(false);
+    expect(reOffers.some((action) => action.type === "END_ACTIVATION")).toBe(false);
+    // …but movement is the ordinary full reach (pre-fix: NO move was offered).
+    const waitReach = reOffers
+      .filter((action) => action.type === "MOVE_UNIT" && action.unitId === guard.id)
+      .map((action) => (action.type === "MOVE_UNIT" ? action.destination : -1))
+      .sort((left, right) => left - right);
+    expect(waitReach, "the Waited re-activation offers the guard's normal reach").toEqual(freeReach);
+
+    // Observable outcome: walk to a cell it could not strike from and hit a unit
+    // that was NOT adjacent when the re-activation opened.
+    const far = playerUnitsOf(waited, "p1").find(
+      (prey) => !isAdjacent(prey.position, guard.position)
+    );
+    expect(far, "the scene needs a non-adjacent prey").toBeTruthy();
+    const step = waitReach.find((destination) => isAdjacent(destination, far!.position));
+    expect(step, "a cell adjacent to the far prey must be reachable").toBeDefined();
+    let moved = applyOk(waited, {
+      type: "MOVE_UNIT",
+      playerId: "p1",
+      unitId: guard.id,
+      destination: step!
+    });
+    const before = moved.combat!.units[far!.id]!.damage;
+    const strike = getLegalActions(moved, "p1").find(
+      (legal) =>
+        legal.action.type === "ATTACK_UNIT" &&
+        legal.action.attackerId === guard.id &&
+        legal.action.defenderId === far!.id
+    );
+    expect(strike, "after moving, the far prey is attackable").toBeTruthy();
+    moved = applyOk(moved, strike!.action);
+    expect(
+      moved.combat!.units[far!.id]!.damage,
+      "the Waited guard walked into contact and the blow landed"
+    ).toBeGreaterThan(before);
   });
 });
 
