@@ -451,6 +451,55 @@ export function PermanentSlot({
   );
 }
 
+/** Does this seat hold anything in the (public, face-up) in-play tray? */
+function seatHasCardsInPlay(state: GameState, playerId: PlayerId): boolean {
+  return (
+    getPermanentCardIds(state, playerId).length > 0 ||
+    (state.players[playerId]?.ongoingCards?.length ?? 0) > 0 ||
+    (state.players[playerId]?.scrolls?.length ?? 0) > 0
+  );
+}
+
+/**
+ * Every OPPONENT's Permanent / Ongoing / Spell-Scroll cards in play, read-only.
+ *
+ * A card held in play is FACE UP on the table, so it is public knowledge — and
+ * the engine already treats it that way (`getPlayerView` / `redactStateForSeat`
+ * never mask `player.ongoingCards`). The GAP was purely in the UI: the tray was
+ * rendered for the VIEWER'S OWN seat only, so an opponent's Mirth / Shackles of
+ * War / Fortune was invisible to everyone but its owner, in a PvP fight and on
+ * the map alike.
+ *
+ * Reuses `PermanentSlot` with NO `legalActions` / `onAction`, so a non-owner
+ * gets the card reader ("View card") and never an owner control.
+ */
+export function OpponentsInPlayTray({
+  state,
+  viewerPlayerId,
+  seatIds,
+  compact = false
+}: {
+  state: GameState;
+  viewerPlayerId: PlayerId;
+  seatIds: PlayerId[];
+  compact?: boolean;
+}) {
+  const opponents = seatIds.filter((id) => id !== viewerPlayerId && seatHasCardsInPlay(state, id));
+  if (opponents.length === 0) {
+    return null;
+  }
+  return (
+    <div className={`opponentInPlayTray${compact ? " compact" : ""}`} aria-label="Opponents' cards in play">
+      {opponents.map((id) => (
+        <div className="opponentInPlaySeat" key={id}>
+          <small className="permanentBadge">{state.players[id]?.name ?? id} — in play</small>
+          <PermanentSlot compact={compact} playerId={id} state={state} viewerPlayerId={viewerPlayerId} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function CardBack({ className, deckId }: { className?: string; deckId?: string }) {
   const back = getDeckBack(deckId);
   if (back.image) {

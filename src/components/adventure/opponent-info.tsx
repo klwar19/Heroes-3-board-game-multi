@@ -3,14 +3,21 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { Layers, Trash2, Users, X } from "lucide-react";
-import { playerSpellCastsIgnoreLimit, type GameState, type PlayerId } from "@/engine";
+import {
+  getPermanentCardIds,
+  playerSpellCastsIgnoreLimit,
+  polishSpellBookEnabled,
+  spellBookRuleEnabled,
+  type GameState,
+  type PlayerId
+} from "@/engine";
 import { getSeatIdentity } from "@/engine/player-identity";
 import { RESOURCE_ICONS } from "@/data/assets/homm-assets";
 import { assetUrl } from "@/lib/asset-url";
 import { cardLibrary } from "@/data/cards/library";
 import { coreBuildingDefinitions } from "@/data/factions/core";
 import { buildingTimingLabel, describeBuildingEffect } from "@/data/towns/describe";
-import { CardFrame, SeatNameplate } from "@/components/table/seats";
+import { CardFrame, PermanentSlot, SeatNameplate } from "@/components/table/seats";
 import { HeroBoard } from "@/components/hero-board";
 import { ArmyPanel } from "@/components/adventure/screen";
 import { BattleMetric, signedMorale } from "@/components/table/battle-metrics";
@@ -78,6 +85,18 @@ function OpponentInfoModal({
   const ignoreSpellLimit = Boolean(player) && playerSpellCastsIgnoreLimit(state, playerId);
   const spellLimit = 1 + (player?.combatStats.spellLimitBonusThisRound ?? 0);
   const spellLimitLabel = ignoreSpellLimit ? "∞" : String(spellLimit);
+  // Spell Book (house rule) — AMOUNTS ONLY. Which Spells the Book holds stays
+  // face down (player-view empties an opponent's `spellBook`; a redacted frame
+  // keeps same-length placeholders, so the LENGTH is the honest count), exactly
+  // like the hand count above.
+  //   · Polish Book: refreshed and USED sit side by side → "used / total".
+  //   · Classic Book: a cast Spell leaves the Book for the discard pile, so
+  //     there is no "used" side — only the number of stored Spells exists.
+  const polishBook = polishSpellBookEnabled(state);
+  const spellBookUsedCount = (player?.spellBookUsed ?? []).length;
+  const spellBookHeldCount = (player?.spellBook ?? []).length;
+  const spellBookTotal = spellBookHeldCount + spellBookUsedCount;
+  const showSpellBook = Boolean(player) && (spellBookRuleEnabled(state) || spellBookTotal > 0);
 
   // PORTAL to <body>: the dock lives inside the fixed, scrollable left rail
   // (z-index 36). Rendered inline, this fixed backdrop is trapped in that
@@ -145,6 +164,19 @@ function OpponentInfoModal({
                 title="Cards in their hand (card identities remain hidden)"
                 value={handCount}
               />
+              {showSpellBook ? (
+                <BattleMetric
+                  className="opponentSpellBookMetric"
+                  kind="spell"
+                  label="Book"
+                  title={
+                    polishBook
+                      ? `Spell Book: ${spellBookUsedCount} of ${spellBookTotal} Spells used (which Spells they are stays hidden)`
+                      : `Spell Book: ${spellBookHeldCount} Spell${spellBookHeldCount === 1 ? "" : "s"} stored (which Spells they are stays hidden)`
+                  }
+                  value={polishBook ? `${spellBookUsedCount}/${spellBookTotal}` : spellBookHeldCount}
+                />
+              ) : null}
               <BattleMetric
                 kind="morale"
                 label="Morale"
@@ -191,6 +223,20 @@ function OpponentInfoModal({
         <section className="opponentInfoSection" aria-label="Current units">
           <h4>Current units</h4>
           <ArmyPanel playerId={playerId} state={state} />
+        </section>
+
+        {/* In play: Permanent / Ongoing / Spell-Scroll cards are FACE UP on the
+            table, so they are public. Read-only here (no owner controls). */}
+        <section className="opponentInfoSection" aria-label="Cards in play">
+          <h4>In play</h4>
+          {/* No `onAction` / `viewerPlayerId` → PermanentSlot's `ownView` is
+              false, so only the card reader renders, never an owner control. */}
+          <PermanentSlot playerId={playerId} state={state} />
+          {getPermanentCardIds(state, playerId).length === 0 &&
+          (player?.ongoingCards?.length ?? 0) === 0 &&
+          (player?.scrolls?.length ?? 0) === 0 ? (
+            <p className="opponentInfoEmpty">No permanent, ongoing, or Spell Scroll cards in play.</p>
+          ) : null}
         </section>
 
         <section className="opponentInfoSection" aria-label="Buildings">

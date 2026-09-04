@@ -52,7 +52,14 @@ import {
   InspectPanel,
   LogDrawer
 } from "@/components/table/board";
-import { CardFrame, HandFan, OpponentBar, PermanentSlot, PlayerDock } from "@/components/table/seats";
+import {
+  CardFrame,
+  HandFan,
+  OpponentBar,
+  OpponentsInPlayTray,
+  PermanentSlot,
+  PlayerDock
+} from "@/components/table/seats";
 import { ArtifactSetIconsProvider } from "@/components/table/artifact-set-badge";
 import { PolishBalanceArtProvider } from "@/components/table/polish-balance-art";
 import { ArtifactSetPanel } from "@/components/adventure/artifact-set-panel";
@@ -6499,6 +6506,13 @@ export default function Home() {
                 ((uiState ?? state).players[viewerPlayerId]?.scrolls?.length ?? 0) === 0 ? (
                   <small className="trayBoxEmpty">No permanent, ongoing, or Spell Scroll effects in play.</small>
                 ) : null}
+                {/* An OPPONENT's in-play cards are face up on the table, so the
+                    same tray shows them read-only (no owner controls). */}
+                <OpponentsInPlayTray
+                  seatIds={seatIds}
+                  state={uiState ?? state}
+                  viewerPlayerId={viewerPlayerId}
+                />
                 {/* Polish Set Artifacts: EVERY seat's active sets ride the same
                     always-visible Ongoing tray (the piece count is public). */}
                 <ArtifactSetPanel state={uiState ?? state} viewerPlayerId={viewerPlayerId} />
@@ -7465,6 +7479,14 @@ export default function Home() {
                 onAction={submitAction}
                 playerId={viewerPlayerId}
                 showEmpty
+                state={state}
+                viewerPlayerId={viewerPlayerId}
+              />
+              {/* PvP: the opponent's Ongoing / Permanent cards are face up on
+                  the table, so every seat sees them (read-only) during a fight. */}
+              <OpponentsInPlayTray
+                compact
+                seatIds={seatIds}
                 state={state}
                 viewerPlayerId={viewerPlayerId}
               />

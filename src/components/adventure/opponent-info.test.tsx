@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { OpponentInfoDock } from "./opponent-info";
 import { CardZoomProvider } from "../table/zoom";
-import { createAdventureGameState, type GameState } from "@/engine";
+import { createAdventureGameState, redactStateForSeat, type GameState } from "@/engine";
 import { coreBuildingDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 
@@ -225,5 +225,99 @@ describe("OpponentInfoDock — the opponent's Secondary Hero movement", () => {
     const status = panel.getByLabelText("Battle status");
     expect(status.textContent).not.toMatch(/2nd move/);
     expect(status.textContent).not.toMatch(/7/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The opponent's SPELL BOOK — AMOUNTS ONLY ("how many spells is used/total").
+// Which Spells the Book holds stays face down: `redactStateForSeat` replaces an
+// opponent's refreshed Book with same-length placeholders (pinned in
+// src/engine/ongoing-cards-public-view.test.ts), so only the LENGTH reaches
+// this panel. Polish Book: used / total. Classic Book: a cast Spell leaves the
+// Book for the discard, so only the stored count exists.
+// ---------------------------------------------------------------------------
+describe("OpponentInfoDock — the opponent's Spell Book amounts", () => {
+  function openBob(state: GameState) {
+    renderMapDock(state);
+    fireEvent.click(screen.getByRole("button", { name: /Bob/ }));
+    return within(screen.getByRole("dialog"));
+  }
+
+  function polishBookGame(): GameState {
+    const state = twoPlayerGame();
+    state.adventure!.houseRules = { ...(state.adventure!.houseRules ?? {}), "polish-spell-book": true };
+    return state;
+  }
+
+  it("Polish Book: shows USED / TOTAL, never the Spell identities", () => {
+    const state = polishBookGame();
+    // One refreshed Spell left, two already used → 2 of 3 used.
+    state.players.p2.spellBook = ["spell.fortune"];
+    state.players.p2.spellBookUsed = ["spell.shield", "spell.weakness"];
+
+    const status = openBob(state).getByLabelText("Battle status");
+    expect(status.textContent).toMatch(/Book\s*2\/3/);
+  });
+
+  it("moves with the Book: spending another refreshed Spell reads 3/3", () => {
+    const state = polishBookGame();
+    state.players.p2.spellBook = [];
+    state.players.p2.spellBookUsed = ["spell.shield", "spell.weakness", "spell.fortune"];
+
+    const status = openBob(state).getByLabelText("Battle status");
+    expect(status.textContent).toMatch(/Book\s*3\/3/);
+  });
+
+  it("CONTROL: the classic Book has no USED side — only the stored count shows", () => {
+    const state = twoPlayerGame();
+    state.players.p2.spellBook = ["spell.fortune", "spell.shield"];
+    state.players.p2.spellBookUsed = [];
+
+    const status = openBob(state).getByLabelText("Battle status");
+    expect(status.textContent).toMatch(/Book\s*2/);
+    expect(status.textContent).not.toMatch(/Book\s*\d+\//);
+  });
+
+  it("CONTROL: the refreshed Spells' NAMES never appear in the panel", () => {
+    const state = polishBookGame();
+    // The frame a hosted client renders: the refreshed side is placeholders.
+    state.players.p2.spellBook = ["spell.fortune"];
+    state.players.p2.spellBookUsed = [];
+    const frame = redactStateForSeat(state, "p1");
+
+    const panel = openBob(frame);
+    expect(panel.getByLabelText("Battle status").textContent).toMatch(/Book\s*0\/1/);
+    expect(panel.queryByText(/Fortune/i)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The opponent's IN-PLAY cards (Permanent / Ongoing / Spell Scroll) are face up
+// on the table, so the panel lists them read-only.
+// ---------------------------------------------------------------------------
+describe("OpponentInfoDock — the opponent's cards in play", () => {
+  function openBob(state: GameState) {
+    renderMapDock(state);
+    fireEvent.click(screen.getByRole("button", { name: /Bob/ }));
+    return within(screen.getByRole("dialog"));
+  }
+
+  it("shows an opponent's ONGOING card face, with no owner control", () => {
+    const state = twoPlayerGame();
+    state.players.p2.ongoingCards = [{ cardId: "spell.mirth", effectIds: ["fx-1"], returnTo: "discard" }];
+
+    const panel = openBob(redactStateForSeat(state, "p1"));
+    const section = panel.getByLabelText("Cards in play");
+    expect(section.querySelector(".permanentSlot.ongoing img.permanentCardImage")).toBeTruthy();
+    expect(within(section).getByRole("button", { name: /Mirth actions/i })).toBeTruthy();
+    fireEvent.click(within(section).getByRole("button", { name: /Mirth actions/i }));
+    expect(screen.queryByRole("menuitem", { name: /Discard from play/i })).toBeNull();
+  });
+
+  it("CONTROL: a seat with nothing in play says so", () => {
+    const panel = openBob(twoPlayerGame());
+    const section = panel.getByLabelText("Cards in play");
+    expect(section.querySelector(".permanentSlot")).toBeNull();
+    expect(section.textContent).toMatch(/No permanent, ongoing, or Spell Scroll cards in play/i);
   });
 });
