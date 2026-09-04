@@ -6,7 +6,7 @@ import type { CombatState, CombatUnitState, GameState, PendingChoice, PlayerId }
  * PvP Neutral Control (OPTIONAL mode for any game with at least two seats,
  * including one human plus computer opponents,
  * `GameSetupOptions.pvpNeutralControl`): in every Neutral combat the NEXT live
- * player clockwise from the fighter becomes the NEUTRAL CONTROLLER — a human
+ * HUMAN player clockwise from the fighter becomes the NEUTRAL CONTROLLER — a human
  * plays the guards like a PvP side. The engine stops on each guard's
  * activation and the controller drives it with the normal combat actions
  * (move, attack, defend, hold), answers the guards' ability follow-ups
@@ -49,11 +49,57 @@ export function coopDisablesManualNeutralControl(state: GameState): boolean {
 }
 
 /**
+ * Is this seat driven by the computer? Read inline (not through
+ * `computer/control.ts`'s `isComputerPlayer`) because that module imports THIS
+ * one — importing it back would close a cycle. Same shape as the legacy read
+ * `manualGuardControllerId` has always used for the fighter.
+ */
+function seatIsComputer(state: GameState, playerId: PlayerId | null | undefined): boolean {
+  return Boolean(playerId) && state.controllers?.[playerId as PlayerId]?.kind === "computer";
+}
+
+/**
+ * USER RULE 2026-09-04 (a 1v1 + 2 AI Clash table): "when playing with AI and
+ * players ONLY PLAYERS should control neutral units (now it's mixed, depending
+ * on where the seats are — just skip AI in this)" and "do not fight neutrals vs
+ * AI — just make it auto like in single [player]".
+ *
+ * So a COMPUTER seat is never a manual neutral controller in either direction:
+ *  - it is SKIPPED when walking clockwise for the guards' controller, and
+ *  - a computer FIGHTER's neutral fight has NO controller at all, so the normal
+ *    Neutral AI plays the guards and the whole fight bulk-resolves off-screen
+ *    (`combatHasHumanParticipant` reads the derived controller, so the null is
+ *    what makes the live pump treat it as an AI-only fight — exactly the single-
+ *    player behaviour the user asked for).
+ *
+ * An ALL-HUMAN table is byte-identical: no seat is ever skipped there.
+ */
+function nextHumanSeatClockwise(state: GameState, fighter: PlayerId): PlayerId | null {
+  const order = state.turnOrder;
+  const index = order.indexOf(fighter);
+  if (index === -1 || order.length < 2) {
+    return null;
+  }
+  for (let step = 1; step < order.length; step += 1) {
+    const candidate = order[(index + step) % order.length];
+    if (!candidate || candidate === fighter || candidate === NEUTRAL_PLAYER_ID) {
+      continue;
+    }
+    if (seatIsComputer(state, candidate)) {
+      continue;
+    }
+    return candidate;
+  }
+  return null;
+}
+
+/**
  * The seat controlling the Neutral side of `combat`, or null when the normal
  * Neutral AI plays it: the mode is off (or the snapshot predates it), the
- * combat is not a Neutral fight, or no OTHER live seat exists (solo table, or
- * everyone else eliminated — `turnOrder` holds live seats only, so the next
- * entry clockwise from the fighter is always a live controller). Derived fresh
+ * combat is not a Neutral fight, the fighter is a COMPUTER seat, or no OTHER
+ * live HUMAN seat exists (solo table, everyone else eliminated, or every other
+ * seat is an AI — `turnOrder` holds live seats only, so the next human entry
+ * clockwise from the fighter is always a live controller). Derived fresh
  * on every read so a controller eliminated mid-fight hands the guards to the
  * next live seat (or back to the AI) automatically.
  */
@@ -102,13 +148,13 @@ export function pvpNeutralControllerId(state: GameState, combat: CombatState): P
   if (isPveEncounterCombat(combat)) {
     return null;
   }
-  const order = state.turnOrder;
-  const index = order.indexOf(combat.attackerPlayerId);
-  if (index === -1 || order.length < 2) {
+  // A COMPUTER seat's own neutral fight is never handed to a human: it stays an
+  // AI-only fight that bulk-resolves off-screen (USER RULE, see
+  // nextHumanSeatClockwise).
+  if (seatIsComputer(state, combat.attackerPlayerId)) {
     return null;
   }
-  const next = order[(index + 1) % order.length];
-  return next && next !== combat.attackerPlayerId && next !== NEUTRAL_PLAYER_ID ? next : null;
+  return nextHumanSeatClockwise(state, combat.attackerPlayerId);
 }
 
 /**
@@ -139,7 +185,7 @@ export function manualGuardControllerId(state: GameState, combat: CombatState): 
     return null;
   }
   const fighter = combat.attackerPlayerId;
-  if (!fighter || fighter === NEUTRAL_PLAYER_ID || state.controllers?.[fighter]?.kind === "computer") {
+  if (!fighter || fighter === NEUTRAL_PLAYER_ID || seatIsComputer(state, fighter)) {
     return null;
   }
   return fighter;

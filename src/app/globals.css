@@ -5673,6 +5673,36 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
   }
 }
 
+/* Multiplayer AI battle recap: a small pill under the "… is moving" banner.
+   Deliberately NOT a backdrop — the blocking .opponentTurnBackdrop below is
+   single-player only (it gates the movement replay), because on a multiplayer
+   table it covered the map after every AI battle. */
+.computerBattleChip {
+  position: absolute;
+  top: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: min(420px, 88%);
+  padding: 6px 14px;
+  border-radius: 12px;
+  background: rgba(20, 26, 38, 0.86);
+  border: 1px solid rgba(159, 224, 138, 0.35);
+  color: #e8f2df;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-align: center;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+
+.computerBattleChipLine {
+  white-space: normal;
+}
+
 .opponentTurnBackdrop {
   position: absolute;
   inset: 0;

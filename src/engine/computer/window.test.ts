@@ -76,9 +76,23 @@ describe("computer decision ownership", () => {
     expect(computerDecisionOwner(state)).toBe("p2");
   });
 
-  it("routes a neutral guard activation to the assigned computer seat", () => {
+  /**
+   * USER RULE 2026-09-04 (a 1 v 1 + 2 AI Clash): "only players should control
+   * neutral units (now it's mixed, depending on where the seats are — just skip
+   * AI in this)". PvP Neutral Control now SKIPS every computer seat when walking
+   * clockwise, so a table whose only other seat is an AI derives NO controller:
+   * `combatUnitDecisionOwnerId` falls back to the Neutral sentinel and the plain
+   * Neutral AI plays the guard. This case used to expect "p2" (the AI seat
+   * driving the guards through the human-facing menu). The human-controller
+   * routing is pinned in src/engine/pvp-neutral-control.test.ts.
+   */
+  it("never routes a neutral guard activation to a computer seat", () => {
     const state = neutralControlCombat(null, "neutral_guard");
-    expect(computerDecisionOwner(state)).toBe("p2");
+    expect(computerDecisionOwner(state)).toBeNull();
+    // CONTROL: the branch itself is alive — a STAMPED placement window owner is
+    // still driven (see the placement case above), so this null is the
+    // controller derivation, not a dead code path.
+    expect(computerDecisionOwner(neutralControlCombat("p2"))).toBe("p2");
   });
 
   it("does not invent an acknowledgment owner after a sandbox combat ends", () => {

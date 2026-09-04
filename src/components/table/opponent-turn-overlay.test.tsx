@@ -2,7 +2,11 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ComputerBattleCue } from "./computer-battle-report";
-import { OpponentTurnOverlay } from "./opponent-turn-overlay";
+import {
+  ComputerBattleChip,
+  computerRecapIsBlocking,
+  OpponentTurnOverlay,
+} from "./opponent-turn-overlay";
 
 function cue(overrides: Partial<ComputerBattleCue>): ComputerBattleCue {
   return {
@@ -110,5 +114,59 @@ describe("OpponentTurnOverlay", () => {
     fireEvent.click(screen.getByText("Skip confirmations"));
     expect(onSkipConfirmations).toHaveBeenCalledTimes(1);
     expect(onDismiss).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * USER RULE 2026-09-04 (a 1 v 1 + 2 AI multiplayer Clash): "note about AI — not
+ * needed, and hides important areas". The blocking modal above is the
+ * SINGLE-PLAYER affordance (it gates the movement replay); multiplayer gets a
+ * non-covering pill. jsdom cannot compute CSS, so only the DOM contract and the
+ * gate are pinned here — the pixel is a real-browser concern.
+ */
+describe("computer-turn recap — blocking only in single player", () => {
+  it("computerRecapIsBlocking: single-player only (multiplayer / legacy CONTROL: false)", () => {
+    expect(computerRecapIsBlocking("single-player")).toBe(true);
+    expect(computerRecapIsBlocking("multiplayer")).toBe(false);
+    expect(computerRecapIsBlocking(undefined)).toBe(false);
+  });
+
+  it("the multiplayer chip reports the same battle lines with NO backdrop and no buttons", () => {
+    const { container } = render(
+      <ComputerBattleChip
+        cues={[
+          cue({ won: true }),
+          cue({ id: "c2", won: false, playerName: "P3" }),
+        ]}
+      />,
+    );
+    // The covering layer is gone…
+    expect(container.querySelector(".opponentTurnBackdrop")).toBeNull();
+    expect(container.querySelectorAll("button")).toHaveLength(0);
+    // …and the information survives on a small status pill.
+    const chip = container.querySelector(".computerBattleChip");
+    expect(chip).toBeTruthy();
+    expect(chip?.getAttribute("role")).toBe("status");
+    expect(screen.getByText(/P2 defeated the neutral guards/)).toBeTruthy();
+    expect(screen.getByText(/P3 was defeated by the neutral guards/)).toBeTruthy();
+  });
+
+  it("CONTROL: the single-player overlay still renders its covering backdrop and gate button", () => {
+    const { container } = render(
+      <OpponentTurnOverlay
+        cues={[cue({ won: true })]}
+        hasReplay
+        replayPhase="idle"
+        onWatch={() => {}}
+        onDismiss={() => {}}
+      />,
+    );
+    expect(container.querySelector(".opponentTurnBackdrop")).toBeTruthy();
+    expect(screen.getByText("Watch moves (step by step) →")).toBeTruthy();
+  });
+
+  it("renders nothing at all when no AI battle happened", () => {
+    const { container } = render(<ComputerBattleChip cues={[]} />);
+    expect(container.firstChild).toBeNull();
   });
 });

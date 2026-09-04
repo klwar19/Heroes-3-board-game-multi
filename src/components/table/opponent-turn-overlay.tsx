@@ -32,6 +32,42 @@ export type OpponentTurnOverlayProps = {
   onSkipConfirmations?: () => void;
 };
 
+/**
+ * Is the computer-turn recap allowed to be the BLOCKING modal below?
+ *
+ * USER RULE 2026-09-04, reported from a 1 v 1 + 2 AI multiplayer Clash: "note
+ * about AI — not needed, and hides important areas". `.opponentTurnBackdrop`
+ * is `position: absolute; inset: 0` over the map stage; it exists to gate the
+ * single-player movement REPLAY behind Next / Confirm. On a multiplayer table
+ * it had no replay to gate, never auto-dismissed (the auto-recap timer is
+ * single-player-only) and its "Skip confirmations" button was a no-op — so it
+ * covered the map after every AI battle while the other human was still
+ * playing. Multiplayer gets {@link ComputerBattleChip} instead.
+ */
+export function computerRecapIsBlocking(sessionMode: string | undefined): boolean {
+  return sessionMode === "single-player";
+}
+
+/**
+ * The multiplayer AI battle recap: a small non-covering status pill (no
+ * backdrop, no buttons, `pointer-events: none` in CSS), auto-dismissed by the
+ * page. It reports the same battle lines the modal did.
+ */
+export function ComputerBattleChip({ cues }: { cues: ComputerBattleCue[] }) {
+  if (cues.length === 0) {
+    return null;
+  }
+  return (
+    <div className="computerBattleChip" role="status">
+      {cues.map((cue) => (
+        <span className="computerBattleChipLine" key={cue.id}>
+          <span aria-hidden="true">{cue.won ? "⚔️" : "☠️"}</span> {battleLine(cue)}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function battleLine(cue: ComputerBattleCue): string {
   if (cue.won) {
     const verb = cue.quick ? "swept aside" : "defeated";

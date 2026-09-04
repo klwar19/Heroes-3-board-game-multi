@@ -13,7 +13,8 @@ import { nextAfkDropAction } from "./afk-drop";
 import { seatIsAwaitedInOrderedPlay, turnClockPausedFor } from "./afk";
 import { applyAction, createAdventureGameState, NEUTRAL_PLAYER_ID, redactStateForSeat } from "./index";
 import { getLegalActions } from "./legal-actions";
-import { neutralCombatControllerId } from "./neutral-control";
+import { combatHasHumanParticipant } from "./computer/control";
+import { combatUnitDecisionOwnerId, neutralCombatControllerId } from "./neutral-control";
 import { parallelInteractionBlocker } from "./parallel-turns";
 import type { CombatState, CombatUnitState, GameAction, GameState, LegalAction, PlayerId, UnitGrade, UnitType } from "./state";
 
@@ -50,9 +51,17 @@ const THREE_PLAYERS = [
   { id: "p3", name: "Alamar", factionId: "dungeon" as const, heroDefId: "alamar" }
 ];
 
+const COMPUTER_SEAT = { kind: "computer", difficulty: "standard", policyVersion: 1 } as const;
+
 function makeGame(
   seed: string,
-  options: { pvpNeutralControl?: boolean; mustAttack?: boolean; players?: 2 | 3 } = {}
+  options: {
+    pvpNeutralControl?: boolean;
+    mustAttack?: boolean;
+    players?: 2 | 3;
+    /** Seats driven by the AI (2026-09-04 rule: they never play the guards). */
+    controllers?: GameState["controllers"];
+  } = {}
 ): GameState {
   const state = createAdventureGameState({
     seed,
@@ -60,6 +69,7 @@ function makeGame(
     rollFirstPlayer: false,
     pvpNeutralControl: options.pvpNeutralControl ?? true,
     ...(options.mustAttack !== undefined ? { pvpNeutralControlMustAttack: options.mustAttack } : {}),
+    ...(options.controllers ? { controllers: options.controllers } : {}),
     ...(options.players === 3 ? { players: THREE_PLAYERS } : {})
   });
   for (const player of Object.values(state.players)) {
@@ -79,7 +89,14 @@ function makeGame(
  */
 function fightWithGuards(
   seed: string,
-  options: { players?: 2 | 3; pvpNeutralControl?: boolean; mustAttack?: boolean; fighter?: PlayerId; difficulty?: number } = {}
+  options: {
+    players?: 2 | 3;
+    pvpNeutralControl?: boolean;
+    mustAttack?: boolean;
+    fighter?: PlayerId;
+    difficulty?: number;
+    controllers?: GameState["controllers"];
+  } = {}
 ): GameState {
   let state = makeGame(seed, options);
   const fighter = options.fighter ?? "p1";
@@ -270,6 +287,84 @@ describe("PvP Neutral Control — controller derivation and notice", () => {
       context: { kind: "player" }
     } as unknown as CombatState;
     expect(neutralCombatControllerId(state, pvpShaped)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 2026-09-04 USER RULE (reported from a 1 v 1 + 2 AI multiplayer Clash):
+// "only players should control neutral units (now it's mixed, depending on
+// where the seats are — just skip AI in this)" and "not fight neutrals vs AI —
+// just make it auto like in single". A COMPUTER seat is therefore never a
+// manual neutral controller in EITHER direction.
+// ---------------------------------------------------------------------------
+
+describe("PvP Neutral Control — computer seats never play (or hand out) the guards", () => {
+  it("skips an AI seat clockwise: with p2 a computer, p1's guards go to p3 (all-human CONTROL: p2)", () => {
+    const withAi = fightWithGuards("pnc-skip-ai", {
+      players: 3,
+      controllers: { p2: COMPUTER_SEAT }
+    });
+    expect(neutralCombatControllerId(withAi, withAi.combat!)).toBe("p3");
+    // The observable follow-through: every guard's INPUT belongs to p3, and the
+    // assignment notice names p3 — not the AI seat that merely sits next.
+    const aiGuards = guardsOf(withAi);
+    expect(aiGuards.length).toBeGreaterThan(0);
+    for (const guard of aiGuards) {
+      expect(combatUnitDecisionOwnerId(withAi, withAi.combat!, guard)).toBe("p3");
+    }
+    expect(
+      withAi.eventLog.find((event) => event.type === "NEUTRAL_CONTROL_ASSIGNED")?.playerId
+    ).toBe("p3");
+    // …and p3, not p2, is offered the guard's pre-battle formation window.
+    expect(withAi.combat!.pendingNeutralPlacement ?? "p3").toBe("p3");
+
+    // CONTROL: the same table with every seat human is byte-identical to before
+    // — the next seat clockwise (p2) still plays the guards.
+    const allHuman = fightWithGuards("pnc-skip-ai-control", { players: 3 });
+    expect(neutralCombatControllerId(allHuman, allHuman.combat!)).toBe("p2");
+    for (const guard of guardsOf(allHuman)) {
+      expect(combatUnitDecisionOwnerId(allHuman, allHuman.combat!, guard)).toBe("p2");
+    }
+  });
+
+  it("every other seat an AI ⇒ nobody controls the guards (the Neutral AI plays them)", () => {
+    const state = fightWithGuards("pnc-only-ai-left", {
+      players: 3,
+      controllers: { p2: COMPUTER_SEAT, p3: COMPUTER_SEAT }
+    });
+    expect(neutralCombatControllerId(state, state.combat!)).toBeNull();
+    for (const guard of guardsOf(state)) {
+      expect(combatUnitDecisionOwnerId(state, state.combat!, guard)).toBe(NEUTRAL_PLAYER_ID);
+    }
+    expect(state.eventLog.some((event) => event.type === "NEUTRAL_CONTROL_ASSIGNED")).toBe(false);
+    expect(state.combat!.pendingNeutralPlacement ?? null).toBeNull();
+  });
+
+  it("a COMPUTER fighter's neutral fight has NO controller and is classified AI-only", () => {
+    // The fight is set up while p1 is still human (the fixture drives p1's own
+    // placement actions); stamping the controller afterwards is enough because
+    // every controller read is derived fresh from `state.controllers`.
+    const state = fightWithGuards("pnc-ai-fighter", { players: 3 });
+    expect(neutralCombatControllerId(state, state.combat!), "CONTROL: a human fighter keeps p2").toBe("p2");
+    expect(combatHasHumanParticipant(state)).toBe(true);
+
+    state.controllers = { p1: COMPUTER_SEAT };
+    expect(neutralCombatControllerId(state, state.combat!)).toBeNull();
+    for (const guard of guardsOf(state)) {
+      expect(combatUnitDecisionOwnerId(state, state.combat!, guard)).toBe(NEUTRAL_PLAYER_ID);
+    }
+    // No human seat is in the fight any more, so the live pump bulk-resolves it
+    // off-screen exactly like a single-player AI fight.
+    expect(combatHasHumanParticipant(state)).toBe(false);
+    // …and the human seats are offered nothing inside it.
+    for (const seat of ["p2", "p3"] as const) {
+      const offers = getLegalActions(state, seat).filter((legal) =>
+        ["ATTACK_UNIT", "MOVE_UNIT", "DEFEND_UNIT", "END_ACTIVATION", "FINISH_NEUTRAL_PLACEMENT"].includes(
+          legal.action.type
+        )
+      );
+      expect(offers.map((legal) => legal.action.type), `${seat} must own no guard action`).toEqual([]);
+    }
   });
 });
 

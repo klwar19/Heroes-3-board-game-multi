@@ -8,6 +8,7 @@ import {
   createInitialGameState,
   getLegalActions,
   getMainHero,
+  neutralCombatControllerId,
   NEUTRAL_PLAYER_ID,
   standardComputerController,
   type ComputerDecision,
@@ -1253,10 +1254,23 @@ describe("paced computer visible steps (live single-player)", () => {
     ).toBe(true);
   });
 
-  it("keeps a computer-vs-neutral fight visible when the human controls the guards", () => {
-    const state = createInitialGameState("visible-human-controlled-neutrals");
+  /**
+   * USER RULE 2026-09-04 (reported from a 1 v 1 + 2 AI multiplayer Clash):
+   * "not fight neutrals vs AI (because they are not good and cannot beat even a
+   * III field) — just make it auto like in single". A COMPUTER seat's own
+   * neutral fight is therefore never handed to a human by PvP Neutral Control
+   * (`pvpNeutralControllerId` nulls for a computer fighter), which makes
+   * `combatHasHumanParticipant` false and the live pump bulk-resolve the whole
+   * fight off-screen in the tick that opened it — exactly the single-player
+   * behaviour. THIS TEST REPLACES the old "keeps a computer-vs-neutral fight
+   * visible when the human controls the guards" case, whose scenario the rule
+   * deliberately removes; the human-controlled-guards classification is still
+   * pinned for a HUMAN fighter in pvp-neutral-control.test.ts.
+   */
+  it("bulk-resolves a COMPUTER seat's neutral fight — the human never plays the guards", () => {
+    const state = createInitialGameState("ai-neutral-fight-auto-resolves");
     state.controllers = { p2: standardComputerController() };
-    state.sessionMode = "single-player";
+    state.sessionMode = "multiplayer";
     // The computer observation path projects the full AdventureState, so attach
     // a real one rather than a hand-shaped flag-only stub.
     state.adventure = createAdventureGameState({
@@ -1315,69 +1329,50 @@ describe("paced computer visible steps (live single-player)", () => {
     state.activePlayerId = "p2";
     combat.activeUnitId = attacker.id;
 
-    expect(combatHasHumanParticipant(state)).toBe(true);
+    // CONTROL: make p2 a HUMAN seat and the very same fight is human-involved
+    // again — PvP Neutral Control hands the guards to p1 (the pre-rule read).
+    const humanFighter: GameState = { ...state, controllers: {} };
+    expect(neutralCombatControllerId(humanFighter, humanFighter.combat!)).toBe("p1");
+    expect(combatHasHumanParticipant(humanFighter)).toBe(true);
+
+    // The rule: a computer fighter's guards stay with the Neutral AI.
+    expect(neutralCombatControllerId(state, state.combat!)).toBeNull();
+    expect(combatHasHumanParticipant(state)).toBe(false);
+
     const step = settleComputerVisibleStep(state);
+    const settled = step.state;
 
-    expect(step.stalled, step.reason).toBe(false);
-    expect(step.decisions).toHaveLength(1);
-    expect(step.state.combat).not.toBeNull();
-    expect(step.state.combat?.outcome).toBeNull();
-    // The computer's first visible beat has happened, but the human-controlled
-    // neutral side was never driven by the bulk AI loop.
-    expect(step.state.eventLog.some((event) => event.type === "COMBAT_ENDED")).toBe(false);
-
-    // Continue exactly as the live room does: server-pump every computer-owned
-    // window, but stop and use p1's real legal actions whenever the derived
-    // Neutral controller owns the current window. This is the reported freeze
-    // path end-to-end, not merely a participant-classification assertion.
-    let current = step.state;
-    let humanGuardActed = false;
-    let safety = 100;
-    while (current.combat && !current.combat.outcome && safety-- > 0) {
-      const humanActions = getLegalActions(current, "p1");
-      const guardAction = humanActions.find((legal) => {
-        const action = legal.action;
-        return (
-          (action.type === "ATTACK_UNIT" && action.attackerId === guard.id) ||
-          (action.type === "MOVE_AND_ATTACK_UNIT" && action.attackerId === guard.id) ||
-          (action.type === "MOVE_UNIT" && action.unitId === guard.id) ||
-          (action.type === "DEFEND_UNIT" && action.unitId === guard.id) ||
-          (action.type === "END_ACTIVATION" && action.unitId === guard.id)
-        );
-      });
-      if (guardAction) {
-        humanGuardActed = true;
-        current = humanAct(current, guardAction.action);
-        continue;
-      }
-
-      const humanWindow = humanActions.find(
-        (legal) =>
-          legal.action.type !== "GIVE_UP" &&
-          legal.action.type !== "RETREAT_FROM_COMBAT" &&
-          legal.action.type !== "SURRENDER_COMBAT" &&
-          legal.action.type !== "ADVANCE_COMPUTER",
-      );
-      if (humanWindow) {
-        current = humanAct(current, humanWindow.action);
-        continue;
-      }
-
-      if (computerPumpOwed(current)) {
-        const pumped = settleComputerVisibleStep(current);
-        expect(pumped.stalled, pumped.reason).toBe(false);
-        expect(pumped.decisions.length).toBeGreaterThan(0);
-        current = pumped.state;
-        continue;
-      }
-
-      throw new Error("AI-vs-human-controlled-neutrals reached a window with no owner or legal action");
-    }
-
-    expect(safety).toBeGreaterThan(0);
-    expect(humanGuardActed, "the battle must reach an actionable p1-controlled guard turn").toBe(true);
-    expect(current.combat?.outcome, "the guard action and reaction passes must resolve the battle").toBeTruthy();
-    expect(current.combat?.units[attacker.id].damage).toBeGreaterThanOrEqual(attacker.maxHealth);
+    // Observable: the whole fight is over inside this ONE pump tick, the human
+    // was never asked anything, and the attacker really died to the guard.
+    expect(
+      settled.combat?.outcome?.winnerPlayerId ?? null,
+      "the AI-only neutral fight must resolve in the tick that opened it",
+    ).toBe(NEUTRAL_PLAYER_ID);
+    expect(settled.combat?.outcome?.defeatedPlayerId).toBe("p2");
+    expect(settled.eventLog.some((event) => event.type === "COMBAT_ENDED")).toBe(true);
+    expect(settled.pendingChoice?.playerId ?? null).not.toBe("p1");
+    // KNOWN FIXTURE LIMIT: the tick reports `stalled` AFTER the fight is over —
+    // this synthetic sandbox combat points at a hero/field the attached
+    // adventure does not hold, so the post-combat acknowledgement offers the
+    // computer nothing. What is pinned here is the FIGHT: it ran to its outcome
+    // inside one pump call with zero human input.
+    expect(settled.combat?.endAcknowledged ?? null).toBeFalsy();
+    const humanCombatOffers = getLegalActions(settled, "p1").filter((legal) =>
+      [
+        "ATTACK_UNIT",
+        "MOVE_AND_ATTACK_UNIT",
+        "MOVE_UNIT",
+        "DEFEND_UNIT",
+        "END_ACTIVATION",
+        "FINISH_NEUTRAL_PLACEMENT",
+      ].includes(legal.action.type),
+    );
+    expect(
+      humanCombatOffers.map((legal) => legal.action.type),
+      "the human is never offered a guard action in an AI-only fight",
+    ).toEqual([]);
+    expect(settled.combat?.units[attacker.id].damage).toBeGreaterThanOrEqual(attacker.maxHealth);
+    expect(guard.id).toBeTruthy();
   });
 });
 

@@ -152,7 +152,11 @@ import {
   buildComputerBattleReport,
   type ComputerBattleCue,
 } from "@/components/table/computer-battle-report";
-import { OpponentTurnOverlay } from "@/components/table/opponent-turn-overlay";
+import {
+  ComputerBattleChip,
+  computerRecapIsBlocking,
+  OpponentTurnOverlay,
+} from "@/components/table/opponent-turn-overlay";
 import { computerAutoAdvanceEnabled, usePacedComputerAdvance } from "@/components/table/computer-auto-advance";
 import { TableErrorBoundary } from "@/components/error-boundary";
 import {
@@ -662,6 +666,8 @@ const ABILITY_DICE_AFTER_STRIKE_MS = ATTACK_IMPACT_MS + 450;
 
 /** Deliberate single-player auto pace: visible, but without a click per AI beat. */
 const COMPUTER_AUTO_RECAP_MS = 700;
+/** How long the multiplayer (non-blocking) AI battle recap pill stays up. */
+const COMPUTER_RECAP_CHIP_MS = 6_000;
 
 /**
  * The dice a Spell rolls to size its own effect (Inferno): shown in the same
@@ -2395,8 +2401,13 @@ export default function Home() {
         // and gate multi-hop catch-up walks behind Next / Confirm.
         // NEVER open a combat board for AI-only fights (server bulk-resolves
         // them; if a mid-fight frame ever leaked, combat is absent here).
+        // The stepped catch-up replay is gated behind the blocking overlay, so
+        // it is single-player only (see the overlay's render comment). In
+        // multiplayer the AI heroes simply stand where the snapshot puts them.
         const batchedComputerMoves =
-          freshComputerMoves.length > 1 ? freshComputerMoves : [];
+          computerRecapIsBlocking(nextState.sessionMode) && freshComputerMoves.length > 1
+            ? freshComputerMoves
+            : [];
         const replay =
           batchedComputerMoves.length > 0
             ? buildComputerMoveReplay(nextState, batchedComputerMoves)
@@ -5159,6 +5170,17 @@ export default function Home() {
     return () => window.clearTimeout(timer);
   }, [autoAdvanceEnabled, opponentTurnSummary, computerReplay.active]);
 
+  // Multiplayer AI recap chip: nobody clicks it away, so it fades on its own.
+  useEffect(() => {
+    if (autoAdvanceEnabled || !opponentTurnSummary) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setOpponentTurnSummary(null);
+    }, COMPUTER_RECAP_CHIP_MS);
+    return () => window.clearTimeout(timer);
+  }, [autoAdvanceEnabled, opponentTurnSummary]);
+
   // Auto-replayed catch-up walks still reveal one cell at a readable cadence.
   useEffect(() => {
     if (!autoAdvanceEnabled || !computerReplay.active) {
@@ -6258,7 +6280,20 @@ export default function Home() {
                     </div>
                   );
                 })()}
-                {!autoAdvanceEnabled && (opponentTurnSummary || computerReplay.active) ? (
+                {/*
+                  USER RULE 2026-09-04 (reported from a 1v1 + 2 AI Clash table):
+                  "note about AI — not needed, and hides important areas". The
+                  blocking recap modal (`.opponentTurnBackdrop`, inset 0 over the
+                  map stage) is a SINGLE-PLAYER affordance: it gates the stepped
+                  movement replay. In multiplayer `autoAdvanceEnabled` is false,
+                  so it rendered after EVERY AI battle, never auto-dismissed, and
+                  its "Skip confirmations" button was a no-op — covering the map
+                  while the other human was still playing. Multiplayer now gets
+                  the non-covering `.computerBattleChip` below instead.
+                */}
+                {computerRecapIsBlocking(state.sessionMode) &&
+                !autoAdvanceEnabled &&
+                (opponentTurnSummary || computerReplay.active) ? (
                   <OpponentTurnOverlay
                     cues={opponentTurnSummary?.cues ?? []}
                     hasReplay={Boolean(
@@ -6294,6 +6329,13 @@ export default function Home() {
                     }}
                     onSkipConfirmations={enableComputerAutoAdvance}
                   />
+                ) : null}
+                {/* Multiplayer AI recap: a small status pill beside the map's
+                    top edge (pointer-events: none), auto-dismissed. It reports
+                    the same battle lines the modal did without covering the
+                    board or demanding a click. */}
+                {!computerRecapIsBlocking(state.sessionMode) && opponentTurnSummary ? (
+                  <ComputerBattleChip cues={opponentTurnSummary.cues} />
                 ) : null}
                 {isSeated && !mapReadOnly ? (
                   <FarTileTray
