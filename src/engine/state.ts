@@ -15185,6 +15185,18 @@ export type CustomMapTilePlan = {
   underground?: boolean;
   faceDown: boolean;
   /**
+   * "Start revealed" (map designer): a NON-starting FACE-DOWN slot still DRAWS
+   * exactly as its mode says (random pool draw, secret landmark filter, exact
+   * secret pin, or "one of" list) but the drawn tile is placed FACE-UP and
+   * materialized at setup, so every player sees it from turn 1. It is the only
+   * way to combine "the engine picks the tile" with "everybody can see it".
+   * Kept as literal `true`, and only on a face-down non-starting plan (stripped
+   * on `starting` plans and on face-up plans, where it is meaningless) at the
+   * persistence sanitiser. Absent (every legacy map) = the classic face-down
+   * behaviour, byte-for-byte as before.
+   */
+  revealAtSetup?: boolean;
+  /**
    * Exact tile to place. Required while face-up (non-starting) unless
    * {@link oneOfTileDefIds} supplies a random-from-list choice instead. Optional
    * while face-down: when set, the tile is predetermined but stays face-down until

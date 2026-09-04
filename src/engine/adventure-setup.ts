@@ -4115,10 +4115,16 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         if (tileDefId) {
           // Orientation rides along for both secret pins and random draws —
           // the tile is revealed at the slot's rotation.
-          const tile = instantiateTile(adventure, tileDefId, center, plan.rotation ?? 0, true);
+          // "START REVEALED" (`plan.revealAtSetup`): the DRAW above is untouched
+          // (random pool / secret landmark / exact pin / one-of), only the
+          // placement flips face-UP so the tile is materialized and visible from
+          // turn 1. Absent ⇒ the classic face-down placement.
+          const revealNow = plan.revealAtSetup === true;
+          const tile = instantiateTile(adventure, tileDefId, center, plan.rotation ?? 0, !revealNow);
           if (pinnedId) {
             tile.tileIdentityLocked = true;
           } else if (
+            !revealNow &&
             plan.group === "subterranean" &&
             allowedFeatures.length === 0 &&
             excludedFeatures.length === 0

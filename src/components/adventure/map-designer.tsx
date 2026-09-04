@@ -1648,6 +1648,9 @@ export function MapDesigner({
           if (changes.underground === undefined && "underground" in changes) {
             delete next.underground;
           }
+          if (changes.revealAtSetup === undefined && "revealAtSetup" in changes) {
+            delete next.revealAtSetup;
+          }
           if (changes.viiField === undefined && "viiField" in changes) {
             delete next.viiField;
           }
@@ -3823,7 +3826,7 @@ export function MapDesigner({
 
     renderFlowerCells(
       center,
-      `designerHexPlan ${isStart ? "starting" : plan.faceDown ? "down" : "up"} ${secretPin ? "secret" : ""} ${featureSecret ? "featureSecret" : ""} ${isSelected ? "selected" : ""} ${isDragging ? "dragging" : ""}`,
+      `designerHexPlan ${isStart ? "starting" : plan.faceDown ? "down" : "up"} ${plan.revealAtSetup ? "revealAtSetup" : ""} ${secretPin ? "secret" : ""} ${featureSecret ? "featureSecret" : ""} ${isSelected ? "selected" : ""} ${isDragging ? "dragging" : ""}`,
       `plan-${index}`,
       { onPointerDown },
       isStart
@@ -3987,6 +3990,24 @@ export function MapDesigner({
               : `Random at game start: one of ${oneOfCount} tiles`}
           </title>
           {`${plan.faceDown ? "🔒" : "🎲"} 1 of ${oneOfCount}`}
+        </text>
+      );
+    }
+
+    // "Start revealed": the slot is drawn like a face-down slot but placed
+    // face-UP at setup, so the board must not read as a secret.
+    if (plan.revealAtSetup) {
+      labelLayer.push(
+        <text
+          className="designerViiBadge"
+          data-reveal-badge="true"
+          key={`plan-reveal-${index}`}
+          textAnchor="middle"
+          x={centerPixel.x}
+          y={centerPixel.y - size * 0.85}
+        >
+          <title>Start revealed — drawn at game start, then placed face-up for everyone.</title>
+          👁 revealed
         </text>
       );
     }
@@ -5803,6 +5824,29 @@ export function MapDesigner({
                     type="button"
                   >
                     {selected.faceDown ? "Always visible: OFF (hidden until discovered)" : "Always visible: ON (face-up from start)"}
+                  </button>
+                ) : null}
+
+                {/* "Start revealed": keep the ENGINE's draw (random pool / secret
+                    landmark / exact pin / one-of) but place the drawn tile FACE-UP
+                    at setup, so the map is open from turn 1. Face-down slots only —
+                    a face-up slot is already revealed. */}
+                {selected.faceDown ? (
+                  <button
+                    aria-pressed={Boolean(selected.revealAtSetup)}
+                    className={`popoverFilterChip${selected.revealAtSetup ? " active" : ""}`}
+                    data-testid="reveal-at-setup"
+                    onClick={() =>
+                      updateTile(selectedIndex as number, {
+                        revealAtSetup: selected.revealAtSetup ? undefined : true
+                      })
+                    }
+                    title="The game still DRAWS this slot the way you set it above, but places the drawn tile face-up and revealed at game start."
+                    type="button"
+                  >
+                    {selected.revealAtSetup
+                      ? "Start revealed: ON (drawn, then shown)"
+                      : "Start revealed: OFF (hidden until discovered)"}
                   </button>
                 ) : null}
 

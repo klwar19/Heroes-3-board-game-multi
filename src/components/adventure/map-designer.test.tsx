@@ -5013,3 +5013,52 @@ describe("MapDesigner — specific object plans & hex events", () => {
     }
   });
 });
+
+describe("MapDesigner — 'Start revealed' on a face-down supply slot", () => {
+  const plans: CustomMapTilePlan[] = [
+    { row: 8, col: 2, group: "starting", faceDown: false },
+    { row: 10, col: 7, group: "starting", faceDown: false },
+    { row: 9, col: 4, group: "near", faceDown: true }
+  ];
+
+  it("toggles revealAtSetup on the face-down slot and paints the revealed badge", () => {
+    const fixture = renderStatefulDesigner(plans);
+    let popover = openTilePopover(fixture.container, 2);
+    const chip = () =>
+      within(fixture.container.querySelector(".designerPopover") as HTMLElement).getByTestId(
+        "reveal-at-setup"
+      );
+    expect(chip().getAttribute("aria-pressed"), "absent = hidden until discovered").toBe("false");
+    expect(
+      fixture.container.querySelector("[data-reveal-badge]"),
+      "no badge while the slot is a secret"
+    ).toBeNull();
+
+    fireEvent.click(chip());
+    expect(fixture.get()[2].revealAtSetup).toBe(true);
+    expect(
+      fixture.container.querySelector("[data-reveal-badge]"),
+      "the board now shows the slot as revealed"
+    ).toBeTruthy();
+    expect(
+      fixture.container.querySelector(".designerHexPlan.revealAtSetup"),
+      "and carries the class"
+    ).toBeTruthy();
+
+    popover = openTilePopover(fixture.container, 2);
+    expect(within(popover).getByTestId("reveal-at-setup").getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(chip());
+    expect("revealAtSetup" in fixture.get()[2], "off removes the field entirely").toBe(false);
+  });
+
+  it("CONTROL — a STARTING Town and a FACE-UP slot are never offered the toggle", () => {
+    const fixture = renderStatefulDesigner([
+      ...plans.slice(0, 2),
+      { row: 9, col: 4, group: "near", faceDown: false, tileDefId: "N1" }
+    ]);
+    const town = openTilePopover(fixture.container, 0);
+    expect(within(town).queryByTestId("reveal-at-setup")).toBeNull();
+    const faceUp = openTilePopover(fixture.container, 2);
+    expect(within(faceUp).queryByTestId("reveal-at-setup")).toBeNull();
+  });
+});

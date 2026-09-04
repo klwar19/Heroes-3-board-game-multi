@@ -299,6 +299,16 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
     // rotation). Meaningful only on a starting plan — kept there, dropped on any
     // other group; only a literal `true` survives so garbage can't set it.
     ...(candidate.group === "starting" && candidate.lockRotation === true ? { lockRotation: true } : {}),
+    // "Start revealed": the slot still DRAWS face-down-style (random / secret /
+    // one-of) but is placed face-UP at setup. Meaningful only on a FACE-DOWN,
+    // NON-starting plan — stripped on a starting plan (seat tiles are always
+    // revealed) and on a face-up plan (already visible); only a literal `true`
+    // survives so garbage cannot set it.
+    ...(candidate.group !== "starting" &&
+    Boolean(candidate.faceDown) &&
+    candidate.revealAtSetup === true
+      ? { revealAtSetup: true as const }
+      : {}),
     // Solo roles/bonuses are start-tile-only and are ignored by multiplayer.
     ...(singlePlayer ? { singlePlayer } : {}),
     // Co-op per-position role — start-tile-only, ignored by a clash table.
