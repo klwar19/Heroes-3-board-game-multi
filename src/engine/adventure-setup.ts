@@ -128,6 +128,7 @@ import {
   sanitizeSettlementFieldPlan,
   sanitizeObjectGuard,
   seatRoleMapDeployment,
+  startingTileSeatRole,
   singlePlayerMapDeployment,
   type CustomMapPreset,
   type PresetForcedOptionKey
@@ -548,6 +549,8 @@ export type AdventureSetupOptions = {
   gameMode?: TableGameMode;
   /** Explicit Team 1..N assignment by starting seat; absent keeps mode defaults. */
   teamAssignments?: Record<PlayerId, number>;
+  /** Explicit seat → starting-tile index; absent keeps the map's own seating. */
+  startingTileAssignments?: Record<PlayerId, number>;
   ruleset?: GameRuleset;
   /** Wake of Gods modules; honored only when the BINH ruleset is active. */
   wog?: Partial<WogModOptions>;
@@ -733,6 +736,79 @@ export function sanitizeTeamAssignments(
     result[playerId] = team;
   }
   return result;
+}
+
+/** One lobby seat as the explicit starting-tile seating reads it. */
+export type StartingTileSeat = { playerId: PlayerId; kind: "human" | "computer" };
+
+/** Either a complete seat → starting-tile-index record, or why it was refused. */
+export type StartingTileAssignmentResult =
+  | { ok: true; value: Record<PlayerId, number> }
+  | { ok: false; reason: string };
+
+/**
+ * How many STARTING POSITIONS a table has to hand out: the designed map's own
+ * Ⅰ tiles when it drew any, otherwise the scenario sheet's seats — exactly the
+ * fallback `startCenterFor` uses at build, so the lobby's S-labels and the
+ * built map can never disagree.
+ */
+export function startingTileCount(
+  plans: readonly CustomMapTilePlan[] | null | undefined,
+  scenario: ScenarioDefinition
+): number {
+  const designed = (plans ?? []).filter((plan) => plan.group === "starting").length;
+  return designed > 0 ? designed : scenario.layout.starts.length;
+}
+
+/**
+ * Sanitize {@link GameSetupOptions.startingTileAssignments}: a COMPLETE record
+ * over the live seats, every index a whole number inside the starting-position
+ * range and every index DISTINCT, and every assignment respecting the map's own
+ * starting-tile seat role ("Only player" / "Only AI"). Returns `null` for an
+ * absent or empty record ("Default"), so a lobby that never picks is unchanged;
+ * a malformed / partial / conflicting record comes back `{ ok: false, reason }`
+ * so the lobby can REFUSE it with that message instead of silently seating
+ * something else.
+ */
+export function sanitizeStartingTileAssignments(
+  raw: Record<PlayerId, number> | undefined,
+  seats: readonly StartingTileSeat[],
+  plans: readonly CustomMapTilePlan[] | null | undefined,
+  startCount: number
+): StartingTileAssignmentResult | null {
+  if (!raw || Object.keys(raw).length === 0) {
+    return null;
+  }
+  if (seats.length === 0 || Object.keys(raw).length !== seats.length) {
+    return { ok: false, reason: "Every seat needs a starting position." };
+  }
+  const value: Record<PlayerId, number> = {};
+  const used = new Set<number>();
+  for (const seat of seats) {
+    const index = raw[seat.playerId];
+    if (!Number.isInteger(index) || index < 0 || index >= startCount) {
+      return { ok: false, reason: "Every seat needs a starting position." };
+    }
+    if (used.has(index)) {
+      return { ok: false, reason: `Two seats cannot share starting position S${index + 1}.` };
+    }
+    const role = startingTileSeatRole(plans, index);
+    if (role === "human" && seat.kind === "computer") {
+      return {
+        ok: false,
+        reason: `Starting position S${index + 1} is reserved for a player, not the computer.`
+      };
+    }
+    if (role === "computer" && seat.kind === "human") {
+      return {
+        ok: false,
+        reason: `Starting position S${index + 1} is reserved for the computer, not a player.`
+      };
+    }
+    used.add(index);
+    value[seat.playerId] = index;
+  }
+  return { ok: true, value };
 }
 
 /** Team numbers shown in setup. Explicit picks win; otherwise show the mode's real defaults. */
@@ -2851,6 +2927,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...defaultGameSetupOptions(scenario),
     ...(options.gameMode !== undefined ? { gameMode: options.gameMode } : {}),
     ...(options.teamAssignments !== undefined ? { teamAssignments: options.teamAssignments } : {}),
+    ...(options.startingTileAssignments !== undefined
+      ? { startingTileAssignments: options.startingTileAssignments }
+      : {}),
     ...(options.ruleset ? { ruleset: options.ruleset } : {}),
     ...(options.wog ? { wog: { ...DEFAULT_WOG_OPTIONS, ...options.wog } } : {}),
     ...(options.anime ? { anime: resolveAnimeOptions(options.anime) } : {}),
@@ -3618,6 +3697,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   const designerStartCenters = designerStartPlans.map((plan) => ({ row: plan.row, col: plan.col }));
   const startCenterFor = (index: number): HexCoord =>
     designerStartCenters[index] ?? scenario.layout.starts[index];
+  const startCount = startingTileCount(customMap, scenario);
   const authoredStartByPlayer = new Map<PlayerId, CustomMapTilePlan>();
   // MAP-AUTHORED STARTING-TILE SEAT ROLES (2026-09-03; was co-op-only in step
   // 5). `plan.coopSeat` is read in EVERY session/table mode now — a pure-human
@@ -3654,6 +3734,39 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       for (const [playerId, plan] of seatRoles.assignments) {
         authoredStartByPlayer.set(playerId, plan);
       }
+    }
+  }
+  // EXPLICIT LOBBY SEATING (`startingTileAssignments`): the host said which seat
+  // sits at which starting tile. PRECEDENCE — the explicit `singlePlayer` solo
+  // contract wins (this block is skipped entirely then), otherwise the record
+  // OVERRIDES the map's own seat roles below. Starting tiles no seat is assigned
+  // to are simply never instantiated, so a map may offer more positions than the
+  // table seats. A record the lobby would have refused (partial / duplicate /
+  // role-violating) falls back to the map's own seating with a public note —
+  // never a partial seating (the manual-player-order precedent).
+  const explicitStartIndex = new Map<PlayerId, number>();
+  if (!authoredSoloDeployment) {
+    const picked = sanitizeStartingTileAssignments(
+      setupOptions.startingTileAssignments,
+      playerConfigs.map((config) => ({
+        playerId: config.id,
+        kind:
+          configuredControllers?.[config.id]?.kind === "computer"
+            ? ("computer" as const)
+            : ("human" as const)
+      })),
+      customMap,
+      startCount
+    );
+    if (picked?.ok) {
+      for (const [playerId, index] of Object.entries(picked.value)) {
+        explicitStartIndex.set(playerId, index);
+      }
+    } else if (picked) {
+      appendEvent(state, {
+        type: "EVENT_NOTE",
+        message: `Starting positions: ${picked.reason} The map's own seating was used instead.`
+      });
     }
   }
   if (authoredSoloDeployment) {
@@ -3708,13 +3821,18 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // adventure so a feature materializing LATER in play (the designer
   // pre-assigned settlement) can still resolve "the player of S3". A position
   // nobody took stays null.
-  const startCount =
-    designerStartPlans.length > 0 ? designerStartPlans.length : scenario.layout.starts.length;
   const startingTileSeats: (PlayerId | null)[] = Array.from({ length: startCount }, () => null);
   playerConfigs.forEach((config, seatIndex) => {
-    const index = startingPositionIndex.get(config.id) ?? seatIndex;
+    const explicitIndex = explicitStartIndex.get(config.id);
+    const index = explicitIndex ?? startingPositionIndex.get(config.id) ?? seatIndex;
     const startTileId = startingTileByFaction[config.factionId] ?? "S1";
-    const authoredStart = authoredStartByPlayer.get(config.id);
+    // An explicit lobby assignment names the POSITION; on a designed map that
+    // position's own plan carries its borders / locked rotation, and on a
+    // scenario map `startCenterFor(index)` resolves the sheet's seat.
+    const authoredStart =
+      explicitIndex === undefined
+        ? authoredStartByPlayer.get(config.id)
+        : designerStartPlans[explicitIndex];
     const center = authoredStart
       ? { row: authoredStart.row, col: authoredStart.col }
       : startCenterFor(index);
@@ -4655,6 +4773,9 @@ function resizeLobbySeats(state: GameState, scenario: ScenarioDefinition, target
   // Team picks name starting positions. A resize changes that set, so clear the
   // complete record and show the mode's safe defaults until players pick again.
   delete lobby.options.teamAssignments;
+  // Starting-position picks name seats too, so a resize invalidates the whole
+  // record — back to the map's own seating until players pick again.
+  delete lobby.options.startingTileAssignments;
   // A manual player order must never go stale: every seat-count change routes
   // through here, so re-coerce the stored order to the new seat set (closed
   // seats drop out, newly opened ones join at the end).
@@ -5090,6 +5211,33 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
       }
       lobby.options.teamAssignments = sanitized;
       changes.push("custom starting-position teams");
+    }
+  }
+
+  // WHICH SEAT SITS AT WHICH STARTING TILE (or none — an unassigned starting
+  // tile is simply not placed). An empty record means "Default": the map's own
+  // seating. A partial / duplicate / role-violating record is REFUSED with the
+  // shared reason, so the lobby can never offer a seating the build would then
+  // silently change.
+  if (next.startingTileAssignments !== undefined) {
+    if (Object.keys(next.startingTileAssignments).length === 0) {
+      delete lobby.options.startingTileAssignments;
+      changes.push("default starting positions");
+    } else {
+      const picked = sanitizeStartingTileAssignments(
+        next.startingTileAssignments,
+        lobby.seats.map((seat) => ({
+          playerId: seat.playerId,
+          kind: isComputerPlayer(state, seat.playerId) ? ("computer" as const) : ("human" as const)
+        })),
+        lobby.options.customMap,
+        startingTileCount(lobby.options.customMap, getScenario(lobby.options.scenarioId))
+      );
+      if (!picked?.ok) {
+        throw new Error(picked?.reason ?? "Every seat needs a starting position.");
+      }
+      lobby.options.startingTileAssignments = picked.value;
+      changes.push("custom starting positions");
     }
   }
 
@@ -5724,6 +5872,9 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
   }
 
   if (next.customMap !== undefined) {
+    // A different map may have a different NUMBER of starting positions, so a
+    // stored seat → position record is stale the moment the map changes.
+    delete lobby.options.startingTileAssignments;
     const mapName =
       typeof next.customMapName === "string" ? next.customMapName.trim().slice(0, 48) : null;
     // Conditions the OUTGOING map forced are restored to scenario defaults
@@ -7032,6 +7183,8 @@ function buildAdventureFromLobby(state: GameState): void {
     // built game has no alliance. Absent (a plain lobby) ⇒ byte-identical.
     gameMode: lobby.options.gameMode,
     teamAssignments: lobby.options.teamAssignments,
+    // WHICH SEAT SITS AT WHICH STARTING TILE (absent ⇒ the map's own seating).
+    startingTileAssignments: lobby.options.startingTileAssignments,
     ruleset: lobby.options.ruleset,
     wog: lobby.options.wog,
     // Anime mod + the GLOBAL Field Override system are set on the lobby (the

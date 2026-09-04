@@ -977,6 +977,23 @@ export type SeatRoleDeploymentResult =
  * `{ ok: false, reason }`; the caller REFUSES the start rather than silently
  * dropping a human onto an AI-only position.
  */
+/**
+ * The map-authored role of ONE starting position, by 0-based index into the
+ * designer's starting plans (S1..Sn in the editor / lobby): `"human"` = Only
+ * player, `"computer"` = Only AI, `undefined` = Free (random), which is also
+ * what an out-of-range index or a scenario map with no plans reads as. THE
+ * shared read behind the explicit lobby seating
+ * ({@link GameSetupOptions.startingTileAssignments}) — it must agree with
+ * {@link seatRoleMapDeployment}, so both go through `sanitizeCoopMapSeat`.
+ */
+export function startingTileSeatRole(
+  plans: readonly CustomMapTilePlan[] | null | undefined,
+  index: number
+): "human" | "computer" | undefined {
+  const starts = (plans ?? []).filter((plan) => plan.group === "starting");
+  return sanitizeCoopMapSeat(starts[index]?.coopSeat)?.role;
+}
+
 export function seatRoleMapDeployment(
   plans: readonly CustomMapTilePlan[] | null | undefined,
   seats: readonly SeatRoleSeat[],

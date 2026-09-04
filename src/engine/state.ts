@@ -13938,6 +13938,19 @@ export type GameSetupOptions = {
    * Absent preserves the legacy co-op and single-player alliance defaults.
    */
   teamAssignments?: SetupTeamAssignments;
+  /**
+   * WHICH SEAT SITS AT WHICH STARTING TILE. A COMPLETE record over the live
+   * lobby seats mapping each seat to a 0-based starting-tile index (into the
+   * designed map's starting plans, else the scenario sheet's `layout.starts`),
+   * every index distinct. Starting tiles nobody is assigned to are EMPTY: they
+   * are not instantiated at all, which is how a map may offer more starting
+   * positions than the table has seats. Honoured in EVERY session mode
+   * (computer seats included); precedence is the explicit `singlePlayer` solo
+   * block > this record > the map's own starting-tile seat roles. A record that
+   * violates a designer role ("Only player" / "Only AI") is REFUSED in the
+   * lobby. Absent (every legacy lobby) ⇒ today's seating, byte-identical.
+   */
+  startingTileAssignments?: Record<PlayerId, number>;
   /** Rules variant: "legacy" (rulebook) or "binh" (house rules). */
   ruleset: GameRuleset;
   /** Wake of Gods modules. Enabled only in BINH mode; absent means fully off. */

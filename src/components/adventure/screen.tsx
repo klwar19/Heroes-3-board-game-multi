@@ -114,7 +114,10 @@ import {
   designedGuardPreview,
   isBlockedFieldCarve,
   isComputerPlayer,
+  getScenario,
   lobbyTeamAssignments,
+  startingTileCount,
+  startingTileSeatRole,
   printedBordersSurviveCarve,
   isFieldGuarded,
   hasOpenAdventureTurn,
@@ -16934,6 +16937,156 @@ function ComputerOpponentPickers({
 }
 
 /**
+ * WHICH SEAT SITS AT WHICH STARTING TILE. One compact row per starting position
+ * S1..Sn with a chip per seat plus "Empty" — a position no seat takes is not
+ * placed at all, which is how a map may offer more positions than the table
+ * seats. A chip the map's own role forbids ("Only player" / "Only AI") renders
+ * DISABLED with that reason, read through the ENGINE's own
+ * {@link startingTileSeatRole} so a chip can never offer a seating
+ * `SET_GAME_OPTIONS` would then refuse. Works in multiplayer AND single player.
+ */
+function StartingTilePositions({
+  state,
+  viewerPlayerId,
+  onAction,
+}: {
+  state: GameState;
+  viewerPlayerId: PlayerId;
+  onAction: (action: GameAction) => void;
+}) {
+  const lobby = state.setupLobby;
+  if (!lobby) {
+    return null;
+  }
+  const plans = lobby.options.customMap;
+  const startCount = startingTileCount(plans, getScenario(lobby.options.scenarioId));
+  const picked = lobby.options.startingTileAssignments;
+  const seatAt = (position: number) =>
+    lobby.seats.find((seat) => picked?.[seat.playerId] === position)?.playerId ?? null;
+  const seatLabel = (playerId: PlayerId) =>
+    `${state.players[playerId]?.name ?? playerId}${
+      isComputerPlayer(state, playerId) ? " (Computer)" : ""
+    }`;
+  return (
+    <section
+      className="computerSeatPickers teamSetupPicker"
+      aria-label="Starting positions"
+    >
+      <div className="draftPhaseHead">
+        <strong>Who starts where</strong>
+        <small>
+          Tap a seat to put it on that starting Town. A position left Empty is
+          removed from the map — so a map may offer more Towns than seats.
+        </small>
+        <button
+          aria-pressed={!picked}
+          className="draftResetBtn"
+          onClick={() =>
+            onAction({
+              type: "SET_GAME_OPTIONS",
+              playerId: viewerPlayerId,
+              options: { startingTileAssignments: {} },
+            })
+          }
+          type="button"
+        >
+          Default
+        </button>
+      </div>
+      {Array.from({ length: startCount }, (_, position) => {
+        const role = startingTileSeatRole(plans, position);
+        const here = seatAt(position);
+        return (
+          <div
+            className="optionRow teamSetupRow"
+            data-starting-tile={`S${position + 1}`}
+            key={position}
+          >
+            <small>
+              <strong>S{position + 1}</strong>
+              {role === "human"
+                ? " · Only player"
+                : role === "computer"
+                  ? " · Only AI"
+                  : " · Free"}
+            </small>
+            <div
+              className="optionButtons"
+              role="group"
+              aria-label={`Seat at starting position S${position + 1}`}
+            >
+              {lobby.seats.map((seat) => {
+                const isComputer = isComputerPlayer(state, seat.playerId);
+                const forbidden =
+                  (role === "human" && isComputer) ||
+                  (role === "computer" && !isComputer);
+                return (
+                  <button
+                    aria-pressed={here === seat.playerId}
+                    className={here === seat.playerId ? "selected" : ""}
+                    disabled={forbidden}
+                    key={seat.playerId}
+                    onClick={() => {
+                      // One complete record: this seat moves here and whoever
+                      // stood here takes this seat's old position (a swap), so
+                      // the record never goes partial or double-books.
+                      const base: Record<PlayerId, number> = {};
+                      lobby.seats.forEach((other, index) => {
+                        base[other.playerId] = picked?.[other.playerId] ?? index;
+                      });
+                      const from = base[seat.playerId];
+                      const displaced = lobby.seats.find(
+                        (other) =>
+                          other.playerId !== seat.playerId &&
+                          base[other.playerId] === position,
+                      );
+                      base[seat.playerId] = position;
+                      if (displaced) {
+                        base[displaced.playerId] = from;
+                      }
+                      onAction({
+                        type: "SET_GAME_OPTIONS",
+                        playerId: viewerPlayerId,
+                        options: { startingTileAssignments: base },
+                      });
+                    }}
+                    title={
+                      forbidden
+                        ? role === "human"
+                          ? "This map reserves this starting Town for a player."
+                          : "This map reserves this starting Town for the computer."
+                        : undefined
+                    }
+                    type="button"
+                  >
+                    {seatLabel(seat.playerId)}
+                  </button>
+                );
+              })}
+              <button
+                aria-pressed={here === null}
+                className={here === null ? "selected" : ""}
+                disabled
+                type="button"
+              >
+                Empty
+              </button>
+            </div>
+          </div>
+        );
+      })}
+      <small className="optionHint">
+        {picked
+          ? "Custom starting positions selected."
+          : `Default: the map's own seating decides (${startCount} position${
+              startCount === 1 ? "" : "s"
+            }, ${lobby.seats.length} seat${lobby.seats.length === 1 ? "" : "s"}).`}
+      </small>
+    </section>
+  );
+}
+
+/**
  * Player-picked alliances keyed to the visible S1..SN starting seats. Co-op
  * and single-player both expose the same compact matrix, including AI seats;
  * leaving it on Default preserves the established mode/map grouping.
@@ -17301,6 +17454,11 @@ function HeroesDraftModal({
       <ComputerOpponentPickers
         onAction={onAction}
         onInspect={onInspect}
+        state={state}
+        viewerPlayerId={viewerPlayerId}
+      />
+      <StartingTilePositions
+        onAction={onAction}
         state={state}
         viewerPlayerId={viewerPlayerId}
       />
