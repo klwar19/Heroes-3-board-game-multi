@@ -2119,6 +2119,53 @@ describe("ReactionTray — Bowstring carries its chosen ranged unit through the 
     expect(applied.errors).toEqual([]);
     expect(applied.state.combat!.activeUnitId).toBe("unit_p1_marksmen");
   });
+
+  it("renders one post-roll button per die and dispatches the die the player picks", () => {
+    const initial = createInitialGameState("bowstring-tray-die-pick");
+    initial.players.p1.hand = ["artifact.bowstring_of_the_unicorns_mane"];
+    initial.players.p2.hand = [];
+    const attacker = initial.combat!.units.unit_p1_griffins;
+    const defender = initial.combat!.units.unit_p2_skeletons;
+    attacker.type = "ranged";
+    attacker.position = 9;
+    attacker.abilities = [];
+    defender.position = 13; // adjacent ranged attack: two dice, resolve lower
+    defender.maxHealth = 40;
+    initial.combat!.dice.scriptedRolls = [1, -1];
+    initial.combat!.dice.rollCount = 0;
+    initial.activePlayerId = "p1";
+    initial.combat!.activeUnitId = attacker.id;
+
+    let state = applyAction(initial, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: attacker.id,
+      defenderId: defender.id
+    }).state;
+    while (state.reactionWindow?.triggerEvent.type === "UNIT_ATTACK_DECLARED") {
+      state = applyAction(state, {
+        type: "PASS_REACTION",
+        playerId: state.reactionWindow.priorityPlayerId
+      }).state;
+    }
+    expect(state.reactionWindow?.triggerEvent.type).toBe("ATTACK_DIE_SETTLED");
+
+    const onAction = vi.fn();
+    render(trayFor(state, onAction));
+    expect(screen.getByRole("button", { name: /ignore die 1 \(\+1\)/i })).toBeTruthy();
+    const ignoreMinus = screen.getByRole("button", { name: /ignore die 2 \(-1\)/i });
+    expect(ignoreMinus).toBeTruthy();
+    act(() => fireEvent.click(ignoreMinus));
+
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(onAction.mock.calls[0][0]).toMatchObject({
+      type: "PLAY_REACTION",
+      playerId: "p1",
+      cardId: "artifact.bowstring_of_the_unicorns_mane",
+      optionIndex: 1,
+      dieIndex: 1
+    });
+  });
 });
 
 describe("ReactionTray — Archangels' free lethal save is reachable in the UI", () => {

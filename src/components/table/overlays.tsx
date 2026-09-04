@@ -68,6 +68,8 @@ type ReactionLegal = Extract<GameAction, { type: "PLAY_REACTION" }>;
 type TrayGroup = {
   cardId: string;
   optionIndex?: number;
+  /** Bowstring post-roll option: exact die represented by this button. */
+  dieIndex?: number;
   optionLabel?: string;
   modes: CardPlayMode[];
   batchable: boolean;
@@ -91,6 +93,8 @@ type TraySelection = {
   handIndex: number;
   cardId: string;
   optionIndex?: number;
+  /** Bowstring post-roll option: exact die selected by the player. */
+  dieIndex?: number;
   mode: CardPlayMode;
   asPowerBoost?: boolean;
   /** See TrayGroup.drawOnly — must ride the dispatched PLAY_REACTION(S). */
@@ -1049,7 +1053,8 @@ export function ReactionTray({
     // of the same option — collapsing them into one tile would silently
     // dispatch the wrong one.
     const drawOnlyKey = action.drawOnly ? "#drawOnly" : "";
-    const key = `${action.cardId}#${action.optionIndex ?? -1}#${action.asPowerBoost ? "boost" : "play"}${targetKey}${drawOnlyKey}`;
+    const dieKey = action.dieIndex !== undefined ? `#die${action.dieIndex}` : "";
+    const key = `${action.cardId}#${action.optionIndex ?? -1}#${action.asPowerBoost ? "boost" : "play"}${targetKey}${drawOnlyKey}${dieKey}`;
     // Resolve the Balance-Pack reprint so the option LABEL ("+1 attack, discard
     // X cards: +X more attack") matches what the engine runs, not the classic
     // "Discard X cards: +X attack".
@@ -1062,6 +1067,7 @@ export function ReactionTray({
             // A target rides only the single PLAY_REACTION, never the batch
             // (PLAY_REACTIONS carries no target), so it must resolve on its own.
             !action.target &&
+            action.dieIndex === undefined &&
             effect.type !== "CANCEL_SPELL" &&
             effect.type !== "RECALL_SPELL" &&
             effect.type !== "REDIRECT_SPELL"
@@ -1087,8 +1093,9 @@ export function ReactionTray({
     const existing = cardGroups.find((group) => {
       const groupTargetKey = group.target?.type === "unit" ? `#${group.target.unitId}` : "";
       const groupDrawOnlyKey = group.drawOnly ? "#drawOnly" : "";
+      const groupDieKey = group.dieIndex !== undefined ? `#die${group.dieIndex}` : "";
       return (
-        `${group.cardId}#${group.optionIndex ?? -1}#${group.asPowerBoost ? "boost" : "play"}${groupTargetKey}${groupDrawOnlyKey}` ===
+        `${group.cardId}#${group.optionIndex ?? -1}#${group.asPowerBoost ? "boost" : "play"}${groupTargetKey}${groupDrawOnlyKey}${groupDieKey}` ===
         key
       );
     });
@@ -1101,12 +1108,19 @@ export function ReactionTray({
       cardGroups.push({
         cardId: action.cardId,
         optionIndex: action.optionIndex,
+        dieIndex: action.dieIndex,
         optionLabel: action.asPowerBoost
           ? "Discard for +1 Power"
           : action.target?.type === "unit"
             ? `Activate ${unitName(state, action.target.unitId)}`
             : action.drawOnly
               ? `${option?.label ?? card?.name ?? action.cardId} (draw only)`
+              : action.dieIndex !== undefined
+                ? `Ignore die ${action.dieIndex + 1} (${
+                    window.triggerEvent.type === "ATTACK_DIE_SETTLED"
+                      ? formatDieFace(window.triggerEvent.rolls?.[action.dieIndex] ?? 0)
+                      : "?"
+                  })`
               : option?.label,
         drawOnly: action.drawOnly,
         utilityOnly: action.utilityOnly,
@@ -1171,6 +1185,7 @@ export function ReactionTray({
       if (
         existing &&
         existing.optionIndex === group.optionIndex &&
+        existing.dieIndex === group.dieIndex &&
         Boolean(existing.asPowerBoost) === Boolean(group.asPowerBoost) &&
         Boolean(existing.drawOnly) === Boolean(group.drawOnly)
       ) {
@@ -1181,6 +1196,7 @@ export function ReactionTray({
         handIndex,
         cardId,
         optionIndex: group.optionIndex,
+        dieIndex: group.dieIndex,
         mode: "basic",
         asPowerBoost: group.asPowerBoost,
         drawOnly: group.drawOnly,
@@ -1420,6 +1436,7 @@ export function ReactionTray({
         cardId: selection.cardId,
         mode: selection.mode,
         ...(selection.optionIndex !== undefined ? { optionIndex: selection.optionIndex } : {}),
+        ...(selection.dieIndex !== undefined ? { dieIndex: selection.dieIndex } : {}),
         ...(selection.asPowerBoost ? { asPowerBoost: true } : {}),
         // `drawOnly` MUST ride the play: dropping it resolves the FULL primary
         // effect instead of the draw rider the button promised (Runes granted
@@ -1920,6 +1937,7 @@ export function ReactionTray({
                   const groupSelected = Boolean(
                     selection &&
                       selection.optionIndex === group.optionIndex &&
+                      selection.dieIndex === group.dieIndex &&
                       Boolean(selection.asPowerBoost) === Boolean(group.asPowerBoost)
                   );
                   if (!group.batchable && !group.costCards) {
@@ -1931,7 +1949,7 @@ export function ReactionTray({
                     return group.modes.map((mode) => (
                       <button
                         className="trayInstant"
-                        key={`${group.cardId}-${group.optionIndex ?? "x"}-${mode}`}
+                        key={`${group.cardId}-${group.optionIndex ?? "x"}-${group.dieIndex ?? "die-x"}-${mode}`}
                         onClick={() =>
                           onAction({
                             type: "PLAY_REACTION",
@@ -1939,6 +1957,7 @@ export function ReactionTray({
                             cardId: group.cardId,
                             mode,
                             ...(group.optionIndex !== undefined ? { optionIndex: group.optionIndex } : {}),
+                            ...(group.dieIndex !== undefined ? { dieIndex: group.dieIndex } : {}),
                             ...(group.target ? { target: group.target } : {})
                           })
                         }
@@ -1968,7 +1987,7 @@ export function ReactionTray({
                   const powerPaid = isPowerCost && selection ? powerPaidBy(selection) : null;
 
                   return (
-                    <div className="trayGroup" key={`${group.cardId}-${group.optionIndex ?? "x"}-${group.asPowerBoost ? "boost" : "play"}`}>
+                    <div className="trayGroup" key={`${group.cardId}-${group.optionIndex ?? "x"}-${group.dieIndex ?? "die-x"}-${group.asPowerBoost ? "boost" : "play"}`}>
                       <button
                         aria-pressed={groupSelected}
                         className={`trayPick ${groupSelected ? "picked" : ""}`}

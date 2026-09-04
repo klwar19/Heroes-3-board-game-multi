@@ -60,6 +60,7 @@ export const implementedCardEffectTypes = [
   "CLEAR_RETALIATION",
   "IGNORE_ATTACK_DIE",
   "IGNORE_ATTACK_DIE_RESULT",
+  "IGNORE_ONE_ATTACK_DIE_RESULT",
   "ACTIVATE_RANGED_UNIT",
   "CAST_FROM_SPELL_DISCARD",
   "CAST_FROM_SPELL_BOOK",
@@ -1421,6 +1422,10 @@ export function describeCardEffect(card: CardDefinition): string {
 
   if (card.effect.type === "IGNORE_ATTACK_DIE_RESULT") {
     return "after the Attack die roll: ignore the die and any effects it triggered";
+  }
+
+  if (card.effect.type === "IGNORE_ONE_ATTACK_DIE_RESULT") {
+    return "after a ranged unit's Attack roll: ignore one rolled Attack die";
   }
 
   if (card.effect.type === "ACTIVATE_RANGED_UNIT") {

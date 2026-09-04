@@ -879,6 +879,7 @@ function normalizeActionForMatch(action: GameAction): GameAction {
       ...(action.optionIndex !== undefined
         ? { optionIndex: action.optionIndex }
         : {}),
+      ...(action.dieIndex !== undefined ? { dieIndex: action.dieIndex } : {}),
       ...(action.target ? { target: action.target } : {}),
       ...(action.drawOnly ? { drawOnly: true as const } : {}),
       ...(action.asPowerBoost ? { asPowerBoost: true } : {}),
@@ -15406,6 +15407,7 @@ function resolveAttackOrOfferDieCancel(
       type: "ATTACK_DIE_SETTLED",
       attackerId: details.attacker.id,
       defenderId: details.defender.id,
+      rolls: [...candidate.rolls],
       roll: candidate.roll,
     };
     const reactions = getLegalReactionsForTrigger(state, probe, cards);
@@ -15416,6 +15418,7 @@ function resolveAttackOrOfferDieCancel(
         type: "ATTACK_DIE_SETTLED",
         attackerId: details.attacker.id,
         defenderId: details.defender.id,
+        rolls: [...candidate.rolls],
         roll: candidate.roll,
       });
       if (openReactionWindowForTrigger(state, stackItem, settled, cards)) {
@@ -19608,6 +19611,8 @@ function applyReactionPlayCore(
     cardId: string;
     mode?: "basic" | "expert";
     optionIndex?: number;
+    /** Bowstring post-roll option: the exact rolled die selected by the player. */
+    dieIndex?: number;
     drawOnly?: true;
     costCardIds?: CardId[];
     /** Index-aligned with costCardIds: "expert" values a Power source at expertAmount and spends a crown. */
@@ -21429,6 +21434,61 @@ function applyReactionPlayCore(
       stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
   ) {
     stackItem.modifiers.attackDieCancelled = true;
+    stackItem.modifiers.playedCardIds.push(play.cardId);
+  }
+
+  // Bowstring of the Unicorn's Mane: the ranged attacker chooses ONE exact die
+  // to ignore after seeing the roll. For an advantage/disadvantage roll the
+  // remaining faces are folded normally; apply-both dice are summed; Slayer
+  // counts the remaining +1s. A single ignored die is retained as a visible 0,
+  // matching the printed rule.
+  if (
+    effect.type === "IGNORE_ONE_ATTACK_DIE_RESULT" &&
+    (stackItem?.action.type === "ATTACK_UNIT" ||
+      stackItem?.action.type === "MOVE_AND_ATTACK_UNIT") &&
+    stackItem.modifiers.rolledCandidate
+  ) {
+    const candidate = stackItem.modifiers.rolledCandidate;
+    const ignoredIndex = play.dieIndex;
+    if (
+      ignoredIndex === undefined ||
+      !Number.isInteger(ignoredIndex) ||
+      ignoredIndex < 0 ||
+      ignoredIndex >= candidate.rolls.length
+    ) {
+      throw new Error("Choose a valid Attack die for Bowstring to ignore.");
+    }
+    const ignoredFace = candidate.rolls[ignoredIndex] ?? 0;
+    const remainingRolls = candidate.rolls.filter(
+      (_, index) => index !== ignoredIndex,
+    );
+    const displayedRolls = remainingRolls.length > 0 ? remainingRolls : [0];
+    const aggregation: MoraleDiceAggregation = stackItem.modifiers.slayerRolls
+      ? "count-plus"
+      : candidate.sumAllDice
+        ? "sum"
+        : getAttackStackDetails(state, stackItem)?.rollMode ?? "normal";
+    stackItem.modifiers.rolledCandidate = {
+      ...candidate,
+      rolls: displayedRolls,
+      roll:
+        remainingRolls.length > 0
+          ? aggregateCandidateRoll(remainingRolls, aggregation)
+          : 0,
+      modifierNotes: [
+        ...(candidate.modifierNotes ?? []),
+        {
+          source: card.name,
+          text: `ignores one ${ignoredFace > 0 ? `+${ignoredFace}` : ignoredFace} Attack die`,
+        },
+      ],
+      rerollBeats: candidate.rerollBeats
+        ?.filter((beat) => beat.index !== ignoredIndex)
+        .map((beat) => ({
+          ...beat,
+          index: beat.index > ignoredIndex ? beat.index - 1 : beat.index,
+        })),
+    };
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
 

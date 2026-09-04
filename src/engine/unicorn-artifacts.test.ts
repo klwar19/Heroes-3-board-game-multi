@@ -115,7 +115,10 @@ describe("Unicorn artifacts — definitions", () => {
     ]);
     expect(bowstring.effect.options.map((option) => option.effect.type)).toEqual([
       "ACTIVATE_RANGED_UNIT",
-      "IGNORE_ATTACK_DIE_RESULT"
+      // 2026-09-04: option B is the RANGED UNIT'S CONTROLLER ignoring ONE
+      // chosen die (bowstring-post-roll.test.ts), not the defender's whole-roll
+      // cancel Shield of the Dwarven Lords keeps.
+      "IGNORE_ONE_ATTACK_DIE_RESULT"
     ]);
     // Option B of the Bowstring is gated to a ranged attacker.
     expect(bowstring.effect.options[1]?.requiresRangedAttacker).toBe(true);
@@ -521,11 +524,13 @@ describe("Bowstring of the Unicorn's Mane — activate a ranged unit (option A)"
 });
 
 // ---------------------------------------------------------------------------
-// Bowstring of the Unicorn's Mane — option B (ignore a ranged attacker's die)
+// Bowstring of the Unicorn's Mane — option B (the RANGED UNIT'S controller
+// ignores ONE chosen Attack die after the roll — 2026-09-04 reading; the per-die
+// pick and multi-die cases live in bowstring-post-roll.test.ts)
 // ---------------------------------------------------------------------------
 
 describe("Bowstring of the Unicorn's Mane — ignore a ranged unit's Attack die (option B)", () => {
-  function rangedAttack(seed: string, rolls: number[], attackerType: UnitType, p2Hand: string[]): GameState {
+  function rangedAttack(seed: string, rolls: number[], attackerType: UnitType, p1Hand: string[]): GameState {
     const state = createInitialGameState(seed);
     const attacker = state.combat!.units.unit_p1_marksmen;
     attacker.type = attackerType;
@@ -533,13 +538,16 @@ describe("Bowstring of the Unicorn's Mane — ignore a ranged unit's Attack die 
     attacker.attack = 5;
     attacker.abilities = [];
     const defender = state.combat!.units.unit_p2_skeletons;
-    defender.position = 13; // adjacent to 9
+    // Ranged: two rows away from 9, a shot with NO adjacency disadvantage, so
+    // exactly ONE Attack die is rolled and the die-ignore is unambiguous.
+    // Ground (the gating CONTROL): adjacent, or the attack itself is illegal.
+    defender.position = attackerType === "ranged" ? 1 : 13;
     defender.defense = 1;
     defender.maxHealth = 40;
     defender.damage = 0;
     defender.abilities = [];
-    state.players.p1.hand = [];
-    state.players.p2.hand = p2Hand;
+    state.players.p1.hand = p1Hand;
+    state.players.p2.hand = [];
     state.combat!.dice.scriptedRolls = rolls;
     state.combat!.dice.rollCount = 0;
     state.activePlayerId = "p1";
@@ -566,7 +574,8 @@ describe("Bowstring of the Unicorn's Mane — ignore a ranged unit's Attack die 
   }
 
   function bowstringDieIgnore(state: GameState) {
-    return (state.reactionWindow?.legalReactions.p2 ?? []).find(
+    // The ATTACKER'S controller (p1) holds the offer, never the defender.
+    return (state.reactionWindow?.legalReactions.p1 ?? []).find(
       (legal) =>
         legal.action.type === "PLAY_REACTION" && legal.action.cardId === BOWSTRING && legal.action.optionIndex === 1
     );
@@ -576,12 +585,18 @@ describe("Bowstring of the Unicorn's Mane — ignore a ranged unit's Attack die 
     return state.combat!.units.unit_p2_skeletons.damage;
   }
 
-  it("offers the post-roll die-ignore when the attacker is a ranged unit", () => {
-    // A ranged attack rolls the Attack die with disadvantage (two dice, take the
-    // lower), so both scripted dice are +1 to leave a +1 on the table.
-    const atDie = passToDieSettledWindow(rangedAttack("bow-ranged", [1, 1, 0], "ranged", [BOWSTRING]));
+  it("offers the post-roll die-ignore to the RANGED attacker's controller", () => {
+    const atDie = passToDieSettledWindow(rangedAttack("bow-ranged", [1, 0], "ranged", [BOWSTRING]));
     expect(atDie.reactionWindow?.triggerEvent.type).toBe("ATTACK_DIE_SETTLED");
-    expect(bowstringDieIgnore(atDie), "the die-ignore should be offered vs a ranged attacker").toBeTruthy();
+    const offer = bowstringDieIgnore(atDie);
+    expect(offer, "the die-ignore should be offered for a ranged attacker").toBeTruthy();
+    expect(offer!.action).toMatchObject({ playerId: "p1", dieIndex: 0 });
+    // CONTROL: the DEFENDER is never offered it (the old defender-side reading).
+    expect(
+      (atDie.reactionWindow?.legalReactions.p2 ?? []).some(
+        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === BOWSTRING
+      )
+    ).toBe(false);
   });
 
   it("does NOT offer the die-ignore when the attacker is not a ranged unit", () => {
@@ -590,30 +605,28 @@ describe("Bowstring of the Unicorn's Mane — ignore a ranged unit's Attack die 
     const atDie = passToDieSettledWindow(rangedAttack("bow-melee", [1, 0, 0], "ground", [BOWSTRING]));
     expect(atDie.reactionWindow?.triggerEvent.type ?? null).not.toBe("ATTACK_DIE_SETTLED");
     expect(
-      (atDie.reactionWindow?.legalReactions.p2 ?? []).some(
+      (atDie.reactionWindow?.legalReactions.p1 ?? []).some(
         (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === BOWSTRING
       ),
       "a non-ranged attacker must not unlock the die-ignore"
     ).toBe(false);
   });
 
-  it("ignoring the die drops the die's contribution from the resolved hit", () => {
-    // A ranged attack rolls the Attack die with disadvantage (two dice, take the
-    // lower), so both scripted dice are +1 → a +1 lands. Control: nobody cancels,
-    // the +1 die lands → 5 attack + 1 − 1 defense = 5.
-    const control = settle(passToDieSettledWindow(rangedAttack("bow-control", [1, 1, 0], "ranged", [])));
+  it("ignoring the lone die drops its contribution from the resolved hit", () => {
+    // Control: nobody ignores anything, the +1 die lands → 5 attack + 1 − 1 defense = 5.
+    const control = settle(passToDieSettledWindow(rangedAttack("bow-control", [1, 0], "ranged", [])));
     const controlDamage = skeletonDamage(control);
     expect(controlDamage).toBe(5);
 
-    // Ignore the die → the +1 the die contributed is dropped (5 + 0 − 1 = 4), and
-    // the card is spent.
-    const atDie = passToDieSettledWindow(rangedAttack("bow-ignore", [1, 1, 0], "ranged", [BOWSTRING]));
+    // Ignore the only die → it counts as 0 (5 + 0 − 1 = 4), and the card is spent
+    // from the ATTACKER'S hand.
+    const atDie = passToDieSettledWindow(rangedAttack("bow-ignore", [1, 0], "ranged", [BOWSTRING]));
     const ignore = bowstringDieIgnore(atDie);
     expect(ignore, "the die-ignore option should be offered").toBeTruthy();
     const after = settle(applyOk(atDie, ignore!.action));
 
     expect(skeletonDamage(after)).toBe(controlDamage - 1);
-    expect(after.players.p2.hand).not.toContain(BOWSTRING);
+    expect(after.players.p1.hand).not.toContain(BOWSTRING);
     expect(after.reactionWindow).toBeNull();
   });
 });

@@ -1076,9 +1076,10 @@ export const artifactCards: CardLibrary = {
   // and no unit acts twice. Using it does not re-prompt on the chosen unit
   // immediately — remaining interrupts surface at the next activation frame.
   // Option B ("Use this after a ranged unit's Attack die roll. Ignore 1 Attack
-  // die") is the Shield-of-the-Dwarven-Lords post-roll defender reaction
-  // (IGNORE_ATTACK_DIE_RESULT) gated to a ranged attacker (requiresRangedAttacker):
-  // offered in the ATTACK_DIE_SETTLED window only when the attacker is ranged.
+  // die") belongs to the ranged unit's controller in the ATTACK_DIE_SETTLED
+  // window. Its player chooses exactly one rolled die to remove, rather than
+  // Shield of the Dwarven Lords' defender-side cancellation of the entire roll
+  // and its triggered effects.
   "artifact.bowstring_of_the_unicorns_mane": {
     id: "artifact.bowstring_of_the_unicorns_mane",
     name: "Bowstring of the Unicorn's Mane",
@@ -1107,8 +1108,9 @@ export const artifactCards: CardLibrary = {
         },
         {
           label: "After a ranged unit's Attack die roll: ignore the Attack die",
+          afterAttackRoll: true,
           requiresRangedAttacker: true,
-          effect: { type: "IGNORE_ATTACK_DIE_RESULT" },
+          effect: { type: "IGNORE_ONE_ATTACK_DIE_RESULT" },
         },
       ],
     },

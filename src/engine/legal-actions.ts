@@ -9295,6 +9295,7 @@ function getDieCancelReactions(
   attackerId: UnitId,
   cards: CardLibrary,
   roll: number,
+  rolls: readonly number[] = [],
 ): Record<PlayerId, LegalAction[]> {
   const combat = state.combat;
   const defender = combat?.units[defenderId];
@@ -9327,6 +9328,7 @@ function getDieCancelReactions(
     state,
     attackerId,
     cards,
+    rolls,
   );
 
   const reactions: LegalAction[] = [];
@@ -9432,6 +9434,7 @@ function getAfterRollAttackerReactions(
   state: GameState,
   attackerId: UnitId,
   cards: CardLibrary,
+  rolls: readonly number[] = [],
 ): Record<PlayerId, LegalAction[]> {
   const attacker = state.combat?.units[attackerId];
   const playerId = attacker?.controllerId;
@@ -9458,19 +9461,34 @@ function getAfterRollAttackerReactions(
     for (const [optionIndex, option] of card.effect.options.entries()) {
       if (
         !option.afterAttackRoll ||
+        (option.requiresRangedAttacker && attacker.type !== "ranged") ||
         !canAffordCardCost(state, playerId, cardId, option.cost)
       ) {
         continue;
       }
-      reactions.push(
-        makeReactionAction(`${card.name}: ${option.label}`, {
-          type: "PLAY_REACTION",
-          playerId,
-          cardId,
-          mode: "basic",
-          optionIndex,
-        }),
-      );
+      const dieIndexes =
+        option.effect.type === "IGNORE_ONE_ATTACK_DIE_RESULT"
+          ? Array.from({ length: Math.max(1, rolls.length) }, (_, index) => index)
+          : [undefined];
+      for (const dieIndex of dieIndexes) {
+        const face = dieIndex !== undefined ? rolls[dieIndex] : undefined;
+        const dieLabel =
+          dieIndex !== undefined
+            ? ` — ignore die ${dieIndex + 1}${
+                face !== undefined ? ` (${face > 0 ? `+${face}` : face})` : ""
+              }`
+            : "";
+        reactions.push(
+          makeReactionAction(`${card.name}: ${option.label}${dieLabel}`, {
+            type: "PLAY_REACTION",
+            playerId,
+            cardId,
+            mode: "basic",
+            optionIndex,
+            ...(dieIndex !== undefined ? { dieIndex } : {}),
+          }),
+        );
+      }
     }
   }
   return reactions.length > 0 ? { [playerId]: reactions } : {};
@@ -10182,6 +10200,7 @@ export function getLegalReactionsForTrigger(
       triggerEvent.attackerId,
       cards,
       triggerEvent.roll,
+      triggerEvent.rolls,
     );
   }
 

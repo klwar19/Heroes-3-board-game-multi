@@ -2223,6 +2223,16 @@ export type EffectDefinition =
     }
   | {
       /**
+       * Bowstring of the Unicorn's Mane (option B): after a ranged unit's roll,
+       * its controller chooses one rolled Attack die to ignore. A lone ignored
+       * die resolves as 0. Unlike
+       * Shield of the Dwarven Lords, this does not cancel the whole roll or all
+       * effects triggered by the remaining result.
+       */
+      type: "IGNORE_ONE_ATTACK_DIE_RESULT";
+    }
+  | {
+      /**
        * Bowstring of the Unicorn's Mane (option A): "Play this card before a unit
        * activates. Activate one of your ranged units that has not been activated
        * this round." The chosen friendly ranged unit (target) is made the active
@@ -3943,6 +3953,8 @@ export type ReactionPlay = {
   cardId: CardId;
   mode?: CardPlayMode;
   optionIndex?: number;
+  /** Bowstring post-roll option: zero-based index of the Attack die to ignore. */
+  dieIndex?: number;
   /** Cards from hand paying the option's printed discard/remove cost. */
   costCardIds?: CardId[];
   /**
@@ -4483,6 +4495,8 @@ export type GameAction =
       cardId: CardId;
       mode?: CardPlayMode;
       optionIndex?: number;
+      /** Bowstring post-roll option: zero-based index of the Attack die to ignore. */
+      dieIndex?: number;
       /**
        * An Instant with a printed draw rider used outside the primary effect's
        * trigger (for example Offense during a spell window). Only the card-draw
@@ -5811,6 +5825,8 @@ export type GameEvent =
       type: "ATTACK_DIE_SETTLED";
       attackerId: UnitId;
       defenderId: UnitId;
+      /** Every settled face, so post-roll instant windows can show multi-die rolls. */
+      rolls?: number[];
       roll: number;
     }
   | {
@@ -8088,7 +8104,7 @@ export type ResolutionStackItem = {
      * The attack die outcome rolled before pausing for the lethal-save window,
      * reused when the attack resumes so the die is not rerolled.
      */
-    rolledCandidate?: { rolls: number[]; roll: number };
+    rolledCandidate?: AttackRollCandidate;
     /** Set once the lethal-save window has been offered for this attack. */
     lethalSaveOffered?: boolean;
     /** MGQ Hunter: prevents duplicate low-roll pierce announcements on lethal-save resume. */
