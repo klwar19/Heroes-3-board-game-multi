@@ -15,6 +15,7 @@ import {
   getLegalActions
 } from "./index";
 import { getLegalMoveDestinations } from "./legal-actions";
+import { isAdjacent } from "./battlefield";
 import type { CombatUnitState, GameAction, GameState } from "./state";
 
 function applyOk(state: GameState, action: GameAction): GameState {
@@ -142,10 +143,11 @@ describe("polish-wait — the Waited re-activation moves normally", () => {
     )!;
     // Park the waiter two steps away from the target so the strike is only
     // reachable by MOVING first.
+    // "ground" is what gives the engine's move range 3 (a "ranged" unit gets 1
+    // and would give up its attack by moving — getUnitMoveRange/canUnitAttack).
     waiter.position = 0;
+    waiter.type = "ground";
     target.position = 2;
-    waiter.moveRange = 3;
-    waiter.type = "melee";
     const targetId = target.id;
 
     state = applyOk(state, {
@@ -173,7 +175,7 @@ describe("polish-wait — the Waited re-activation moves normally", () => {
     ).toBe(false);
 
     const step = moveOffers(state, board.waiterId).find((destination) =>
-      [1, 2].includes(Math.abs(destination - 2))
+      isAdjacent(destination, unitOf(state, targetId).position)
     );
     expect(step, "a cell adjacent to the target must be offered").toBeDefined();
 
