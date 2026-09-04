@@ -514,6 +514,15 @@ function scorePositionOption(
     return optionIndex === 0 ? CHOICE_BASE + 40 : CHOICE_BASE + 10;
   }
 
+  if (context === "polish-bank-auto-combat") {
+    // Polish Banks Auto Combat: option 0 is the certain unfought Bank win with
+    // the normal reward, option 1 the already-decided fight it replaces. Take
+    // the certain win — it is strictly the same outcome without the dice, and
+    // scoring it explicitly here keeps an AI seat from ever sitting on the
+    // proposal (the mid-fight seam can raise it on the AI's own turn).
+    return optionIndex === 0 ? CHOICE_BASE + 40 : CHOICE_BASE + 10;
+  }
+
   if (context === "deck-search-mode" && choice.deckSearchMode) {
     // Prefer searching the deck (more options) over a single discard-top when
     // count > 1; otherwise take discard-top as a free known card.

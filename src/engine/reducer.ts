@@ -153,6 +153,7 @@ import {
   queueTownPortalChoice,
   unplaceCombatUnit,
   endTurnAdventure,
+  maybeOpenMidFightBankAutoCombatChoice,
 } from "./adventure-reducer";
 import {
   banHero,
@@ -34176,6 +34177,15 @@ export function applyAction(
     // "[activation]" choice (Enchanters' heal-or-buff, Faerie Dragons' Ice Bolt)
     // before it acts. Runs after the neutral pump and war-machine round-starts.
     maybeOpenPlayerActivationChoice(nextState);
+
+
+    // Polish Banks Auto Combat (house rule, USER RULE 2026-09-03): the same
+    // automatic-Bank-win proposal is re-evaluated on the LIVE board once
+    // everything else has settled, so a bank fight that became a formality
+    // mid-fight (the last guard that could damage the protected unit died)
+    // can be ended instead of clicked out. No-op with the rule off, outside a
+    // Creature Bank, or once this combat has already put the question.
+    maybeOpenMidFightBankAutoCombatChoice(nextState);
 
     // Ongoing cards, both directions, at one shared tail:
     //   - a card whose lasting effect only came into being LATER than its own play

@@ -10142,6 +10142,14 @@ export type CombatState = {
    */
   awaitingContinue: boolean;
   /**
+   * Polish "Banks auto combat" (house rule `polish-bank-auto-combat`): this
+   * combat has already put the automatic-Bank-win proposal to the attacker
+   * once — at the post-Stack-roll reveal, or mid-fight once the last guard that
+   * could damage the protected unit died. A latch, so declining is respected
+   * and the proposal can never re-open on every later board change.
+   */
+  bankAutoCombatAsked?: boolean;
+  /**
    * Combat pacing / reaction pause. The engine stops here and waits for one
    * player to resume with CONTINUE_NEUTRAL_STEP. Two kinds:
    *

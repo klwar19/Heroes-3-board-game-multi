@@ -297,8 +297,12 @@ import {
 import {
   expireCommunityLuckAtTurnEnd,
   expireEffectsForCombatEnd,
+  getActiveDefenseBonus,
+  getDisplayAttackBonus,
+  hasActiveIgnoresDefense,
   makeActiveEffect,
-  playerCannotSurrenderCombat
+  playerCannotSurrenderCombat,
+  unitDealsElementalDamage
 } from "./active-effects";
 import { assignCombatBoardArt } from "./combat-board-art";
 import { applyCombatScriptCombatStart } from "./combat-scripts";
@@ -345,7 +349,8 @@ import {
   getCombatStartOwnDeckPickAbility,
   getCombatStartSelfMoveAbility,
   getCombatStartTeleportAbility,
-  getFlatAttackBonus,
+  getAttackBonusOnAttackDie,
+  getUnitAbilityDefinitions,
   moraleLockedForPlayer
 } from "./unit-abilities";
 import {
@@ -9724,9 +9729,93 @@ function continueCreatureBankReveal(state: GameState): void {
 }
 
 /**
- * A deployed army unit that no revealed bank guard can ever damage with an
- * ordinary attack. The guard ceiling includes its rolled Attack Stack Token,
- * every currently-live flat attack ability, and the die's maximum +1 face.
+ * Every printed ability effect on a GUARD that can cost the attacker Health (or
+ * a whole unit) WITHOUT going through the ordinary Attack-vs-Defense
+ * subtraction. While a living guard carries one, "no damage is possible" is
+ * false however high the protected unit's Defense is, so the automatic Bank win
+ * is withheld. Deliberately a deny-list of effect TYPES: a new damage arm that
+ * is not listed here is simply not covered (documented limit).
+ */
+const BANK_AUTO_COMBAT_GUARD_HAZARD_EFFECTS = new Set<string>([
+  "AFTER_ATTACK_SPLASH",
+  "ATTACK_DIE_FLAT_DAMAGE_TO_TARGET",
+  "DAMAGE_FIRST_MELEE_ATTACKER_ON_DECLARE",
+  "DEALS_ELEMENTAL_DAMAGE",
+  "DEATH_STARE_ON_DICE",
+  "DEFENSE_REDUCTION_AFTER_MOVE",
+  "DEFENSE_REDUCTION_NONADJ_ONCE_PER_ROUND",
+  "DEFENSE_REDUCTION_ON_ATTACK",
+  "DEFENSE_REDUCTION_ON_ATTACK_DIE",
+  "EXTRA_RANGED_DAMAGE_ON_LOW_ROLL",
+  "FIRE_SHIELD_DAMAGE",
+  "FLAT_DAMAGE_ADJACENT_TO_MARKED_TARGET",
+  "FLAT_DAMAGE_ADJACENT_TO_SELF",
+  "FLAT_DAMAGE_ADJACENT_TO_TARGET",
+  "IGNORE_TARGET_CARD_DEFENSE",
+  "ON_ACTIVATION_DAMAGE_SPELL",
+  "ON_ATTACK_PLACE_FIRE_WALL",
+  "ON_ATTACK_PRE_DAMAGE",
+  "ON_REMOVAL_DAMAGE_ADJACENT",
+  "PLACE_SPLASH_MINE_AT_ACTIVATION",
+  "SPLASH_ALLOCATION_ATTACK"
+]);
+
+/** A living guard whose damage does not have to beat the target's Defense. */
+function bankAutoCombatGuardBypassesDefense(
+  state: GameState,
+  guard: CombatUnitState
+): boolean {
+  if (unitDealsElementalDamage(state, guard) || hasActiveIgnoresDefense(state, guard)) {
+    return true;
+  }
+  return getUnitAbilityDefinitions(guard).some(
+    (ability) =>
+      ability.implementationStatus === "implemented" &&
+      ability.effect !== undefined &&
+      BANK_AUTO_COMBAT_GUARD_HAZARD_EFFECTS.has(ability.effect.type)
+  );
+}
+
+/**
+ * The highest Attack value a unit can present on a single blow RIGHT NOW: its
+ * current printed Attack (the Stack Token stat and any Veteran rank are already
+ * baked into unit.attack by applyUnitCurrentSide), plus every lasting flat
+ * Attack buff — innate abilities AND live ATTACK_BONUS active effects
+ * (getDisplayAttackBonus) — plus the best of the three die faces including that
+ * face's own conditional bonus (Dread Knights' Death Blow).
+ */
+function bankAutoCombatAttackCeiling(state: GameState, unit: CombatUnitState): number {
+  const base = unit.attack + getDisplayAttackBonus(state, unit);
+  let best = base - 1;
+  for (const roll of [-1, 0, 1]) {
+    best = Math.max(best, base + roll + getAttackBonusOnAttackDie(unit, roll));
+  }
+  return best;
+}
+
+/**
+ * The Defense a unit brings to an incoming blow right now: printed Defense plus
+ * every lasting DEFENSE_BONUS effect (a Curse/Weakness debuff can be negative),
+ * floored at 0 exactly like the attack resolver's own clamp. Deliberately
+ * EXCLUDES the Defend-die roll and die-face Defense bonuses — those are extra
+ * shields on top, so ignoring them keeps the read conservative.
+ */
+function bankAutoCombatDefenseFloor(state: GameState, unit: CombatUnitState): number {
+  return Math.max(0, unit.defense + getActiveDefenseBonus(state, unit));
+}
+
+/**
+ * A deployed army unit that no LIVING bank guard can ever damage with an
+ * ordinary attack — evaluated against the live board, so it is equally the
+ * post-Stack-roll read and the mid-fight one (USER RULE 2026-09-03: "end the
+ * combat where there is no possible damage done by one side — so not only at
+ * the beginning of the fight"; the reported case is a zombie bank of which only
+ * the one carrying a +1 Attack Stack Token could hurt the hero's unit, after
+ * whose death the rest is just clicking).
+ *
+ * Returns null — no offer — when the attacker ALSO cannot damage any living
+ * guard with an ordinary attack. That board is a stalemate, not a win, and the
+ * rule may only hand out a win the player would certainly have got anyway.
  */
 export function bankAutoCombatSafeUnit(state: GameState): CombatUnitState | null {
   const combat = state.combat;
@@ -9742,47 +9831,132 @@ export function bankAutoCombatSafeUnit(state: GameState): CombatUnitState | null
     (unit) => unit.controllerId === NEUTRAL_PLAYER_ID && unit.damage < unit.maxHealth
   );
   if (guards.length === 0) return null;
+  if (guards.some((guard) => bankAutoCombatGuardBypassesDefense(state, guard))) {
+    return null;
+  }
   const maximumGuardAttack = Math.max(
-    ...guards.map((guard) => guard.attack + getFlatAttackBonus(guard) + 1)
+    ...guards.map((guard) => bankAutoCombatAttackCeiling(state, guard))
   );
+  const ownUnits = Object.values(combat.units).filter(
+    (unit) =>
+      unit.controllerId === combat.attackerPlayerId &&
+      Boolean(unit.armyUnitId) &&
+      unit.damage < unit.maxHealth
+  );
+  const attackerCanDamageAGuard = ownUnits.some((own) => {
+    const ceiling = bankAutoCombatAttackCeiling(state, own);
+    return guards.some((guard) => ceiling > bankAutoCombatDefenseFloor(state, guard));
+  });
+  if (!attackerCanDamageAGuard) return null;
   return (
-    Object.values(combat.units)
-      .filter(
-        (unit) =>
-          unit.controllerId === combat.attackerPlayerId &&
-          Boolean(unit.armyUnitId) &&
-          unit.damage < unit.maxHealth &&
-          unit.defense >= maximumGuardAttack
-      )
-      .sort((left, right) => right.defense - left.defense || left.id.localeCompare(right.id))[0] ?? null
+    ownUnits
+      .filter((unit) => bankAutoCombatDefenseFloor(state, unit) >= maximumGuardAttack)
+      .sort(
+        (left, right) =>
+          bankAutoCombatDefenseFloor(state, right) - bankAutoCombatDefenseFloor(state, left) ||
+          left.id.localeCompare(right.id)
+      )[0] ?? null
   );
 }
 
-function maybeOpenBankAutoCombatChoice(state: GameState): boolean {
+/**
+ * Open the automatic-Bank-win proposal. returnPhase is what a decline restores:
+ * "combat-setup" at the post-Stack-roll reveal (the decline then continues the
+ * reveal chain into Tactics / round 1), "combat" mid-fight (the decline just
+ * hands the open fight back untouched). Sets the once-per-combat latch either
+ * way, so a declined proposal never re-opens.
+ */
+function openBankAutoCombatChoice(
+  state: GameState,
+  safeUnit: CombatUnitState,
+  returnPhase: "combat-setup" | "combat"
+): boolean {
   const combat = state.combat;
-  const safeUnit = bankAutoCombatSafeUnit(state);
-  if (!combat || !safeUnit) return false;
+  if (!combat) return false;
   const strongest = Math.max(
     ...Object.values(combat.units)
       .filter((unit) => unit.controllerId === NEUTRAL_PLAYER_ID && unit.damage < unit.maxHealth)
-      .map((unit) => unit.attack + getFlatAttackBonus(unit) + 1)
+      .map((unit) => bankAutoCombatAttackCeiling(state, unit))
   );
-  combat.setup = null;
+  combat.bankAutoCombatAsked = true;
+  if (returnPhase === "combat-setup") combat.setup = null;
+  const survivors = returnPhase === "combat" ? "surviving" : "revealed";
+  const defense = bankAutoCombatDefenseFloor(state, safeUnit);
   state.pendingChoice = {
-    id: `choice_${nextEventNumber(state)}`,
+    id: "choice_" + nextEventNumber(state),
     type: "OPTION_CHOICE",
     playerId: combat.attackerPlayerId,
-    prompt: `Bank Auto Combat: ${safeUnit.cardName} has ${safeUnit.defense} Defense; the revealed bank can reach at most ${strongest} Attack even on +1. Win automatically?`,
+    prompt:
+      "Bank Auto Combat: " +
+      safeUnit.cardName +
+      " has " +
+      defense +
+      " Defense; the " +
+      survivors +
+      " bank guards can reach at most " +
+      strongest +
+      " Attack even on +1. Win automatically?",
     options: [{ label: "Use Auto Combat: win the bank" }, { label: "Fight the bank normally" }],
     context: "polish-bank-auto-combat",
-    returnPhase: "combat-setup"
+    returnPhase
   };
   state.phase = "choice";
   state.priorityPlayerId = combat.attackerPlayerId;
   return true;
 }
 
-/** Resolve the post-Stack-roll Banks Auto Combat proposal. */
+function maybeOpenBankAutoCombatChoice(state: GameState): boolean {
+  const combat = state.combat;
+  const safeUnit = bankAutoCombatSafeUnit(state);
+  if (!combat || !safeUnit || combat.bankAutoCombatAsked) return false;
+  return openBankAutoCombatChoice(state, safeUnit, "combat-setup");
+}
+
+/**
+ * Mid-fight re-evaluation of the SAME proposal, called from the shared
+ * post-action tail in applyAction: whenever the board has settled (nothing else
+ * owes a decision) and the last guard that could still hurt the protected unit
+ * has died, offer the automatic win instead of making the player click out a
+ * decided fight. It opens at most ONCE per combat (bankAutoCombatAsked) and
+ * never forces anything — declining resumes the open fight where it stood.
+ */
+export function maybeOpenMidFightBankAutoCombatChoice(state: GameState): void {
+  const combat = state.combat;
+  if (
+    !combat ||
+    combat.bankAutoCombatAsked ||
+    combat.outcome ||
+    combat.setup ||
+    combat.pendingNeutralPlacement ||
+    state.pendingChoice ||
+    state.reactionWindow ||
+    state.stack.length > 0 ||
+    state.phase !== "combat"
+  ) {
+    return;
+  }
+  // A NEUTRAL-side pause is the one open "window" the proposal may share. The
+  // pre-activation pause and the between-rounds continue-or-retreat prompt are
+  // both plain flags (no priority juggling, nothing parked on the stack) that
+  // the attacker resumes with its own action, so a decline simply hands them
+  // back untouched — and in a real Bank fight they are where the board actually
+  // settles, so refusing them would make the mid-fight proposal unreachable. A
+  // "guard-walk" pause is mid-movement and is left alone.
+  if (combat.pendingNeutralStep && combat.pendingNeutralStep.kind !== "pre-activation") {
+    return;
+  }
+  const safeUnit = bankAutoCombatSafeUnit(state);
+  if (!safeUnit) return;
+  openBankAutoCombatChoice(state, safeUnit, "combat");
+}
+
+/**
+ * Resolve the Banks Auto Combat proposal — the post-Stack-roll one and the
+ * mid-fight one alike. A decline returns to whatever phase the proposal was
+ * raised from: the reveal chain continues into Tactics / round 1 at setup,
+ * while a mid-fight decline hands the OPEN fight straight back (continuing
+ * the reveal there would re-run combat start on a fight already in progress).
+ */
 export function resolveBankAutoCombatChoice(
   state: GameState,
   playerId: PlayerId,
@@ -9799,11 +9973,12 @@ export function resolveBankAutoCombatChoice(
   ) {
     throw new Error("There is no safe Creature Bank Auto Combat to resolve.");
   }
+  const midFight = choice.returnPhase === "combat";
   state.pendingChoice = null;
-  state.phase = "combat-setup";
+  state.phase = midFight ? "combat" : "combat-setup";
   state.priorityPlayerId = null;
   if (optionIndex !== 0) {
-    continueCreatureBankReveal(state);
+    if (!midFight) continueCreatureBankReveal(state);
     return;
   }
   for (const unit of Object.values(combat.units)) {
@@ -9818,7 +9993,7 @@ export function resolveBankAutoCombatChoice(
   appendEvent(state, {
     type: "EVENT_NOTE",
     playerId,
-    message: "Bank Auto Combat: the revealed guards cannot damage the protected army unit."
+    message: `Bank Auto Combat: the ${midFight ? "surviving" : "revealed"} guards cannot damage the protected army unit.`
   });
   appendEvent(state, {
     type: "COMBAT_ENDED",
