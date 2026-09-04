@@ -167,7 +167,9 @@ describe("phone UI mode — adventure map surface", () => {
     // Battle tab). "End turn" appears because END_TURN is legal for the viewer
     // on their open turn.
     const tabLabels = Array.from(tablist.querySelectorAll(".phoneTabLabel")).map((el) => el.textContent);
-    expect(tabLabels).toEqual(["Map", "Hand", "Army", "Decks", "End turn", "Menu"]);
+    // "Foes" rides between Army and Decks whenever the table holds another
+    // seat — on a phone it is the ONLY reachable enemy surface.
+    expect(tabLabels).toEqual(["Map", "Hand", "Army", "Foes", "Decks", "End turn", "Menu"]);
 
     fireEvent.click(screen.getByRole("tab", { name: /hand/i }));
     expect(main.getAttribute("data-phone-tab")).toBe("hand");
@@ -187,6 +189,63 @@ describe("phone UI mode — adventure map surface", () => {
     expect(
       submitAction.mock.calls.some((call) => (call[0] as GameAction | undefined)?.type === "END_TURN")
     ).toBe(true);
+  });
+
+  it("the Foes tab shows one tappable card per opponent and opens the read-only dossier", async () => {
+    window.localStorage.setItem(UI_MODE_STORAGE_KEY, "phone");
+    const state = createAdventureGameState({ seed: "phone-foes", rollFirstPlayer: false });
+    const opponentName = state.players.p2!.name;
+    serveRoom(state);
+    render(<Home />);
+    await settle();
+
+    const main = mainEl();
+    // The panel exists in the DOM from the start (the tab CSS reveals it), and
+    // it is NOT reachable without the new tab on a phone: the desktop dock
+    // lives inside `.leftRail`, which the tab CSS hides off the Army tab.
+    fireEvent.click(screen.getByRole("tab", { name: /foes/i }));
+    expect(main.getAttribute("data-phone-tab")).toBe("foes");
+
+    const panel = main.querySelector(".phoneFoesPanel.map");
+    expect(panel, "the phone Foes panel").toBeTruthy();
+    // One compact card per opponent, naming that seat.
+    const card = panel!.querySelector<HTMLButtonElement>(".phoneFoeCard");
+    expect(card, "one opponent card").toBeTruthy();
+    expect(card!.textContent).toContain(opponentName);
+    // Public counts only — the army size, the hand SIZE (never identities).
+    expect(card!.textContent).toContain("units");
+    expect(card!.textContent).toContain("hand");
+
+    // Tapping the card opens the same portaled read-only dossier the desktop
+    // dock opens (a dialog, with that opponent's hero level section).
+    fireEvent.click(card!);
+    const dialog = document.querySelector(".opponentInfoModal");
+    expect(dialog, "the opponent dossier").toBeTruthy();
+    expect(dialog!.textContent).toContain("Buildings");
+  });
+
+  it("CONTROL — no Foes tab with no opponent seat, and none at all in computer mode", async () => {
+    // (a) A one-seat table: the tab would open an empty panel, so it is withheld.
+    window.localStorage.setItem(UI_MODE_STORAGE_KEY, "phone");
+    const solo = createAdventureGameState({ seed: "phone-foes-solo", rollFirstPlayer: false });
+    solo.turnOrder = solo.turnOrder.filter((id) => id === "p1");
+    serveRoom(solo);
+    render(<Home />);
+    await settle();
+    expect(screen.queryByRole("tab", { name: /foes/i })).toBeNull();
+    expect(document.querySelector(".phoneFoesPanel")).toBeNull();
+    cleanup();
+
+    // (b) CONTROL: computer mode renders neither the tab bar nor the panel —
+    // the desktop DOM is untouched by this feature.
+    window.localStorage.setItem(UI_MODE_STORAGE_KEY, "computer");
+    serveRoom(createAdventureGameState({ seed: "phone-foes-desktop", rollFirstPlayer: false }));
+    render(<Home />);
+    await settle();
+    expect(screen.queryByRole("tablist", { name: /screen panels/i })).toBeNull();
+    expect(document.querySelector(".phoneFoesPanel")).toBeNull();
+    // The desktop's own opponent dock is still there, in the left rail.
+    expect(document.querySelector(".leftRailDock .opponentInfoDock")).toBeTruthy();
   });
 
   it("auto-switches to the Map tab when the viewer owes a tile rotation (and not for another seat)", async () => {
@@ -354,6 +413,28 @@ describe("phone UI mode — combat surface", () => {
     expect(main.getAttribute("data-phone-tab")).toBe("hand");
     fireEvent.click(screen.getByRole("tab", { name: /board/i }));
     expect(main.getAttribute("data-phone-tab")).toBe("board");
+  });
+
+  it("combat: the enemy dossier rides the Menu tab (no seventh combat tab)", async () => {
+    window.localStorage.setItem(UI_MODE_STORAGE_KEY, "phone");
+    const state = createInitialGameState("phone-combat-foes");
+    const opponentName = state.players.p2!.name;
+    serveRoom(state);
+    render(<Home />);
+    await settle();
+
+    // Deliberately NO extra combat tab — Board and Hand are live play surfaces.
+    expect(screen.queryByRole("tab", { name: /foes/i })).toBeNull();
+
+    const panel = mainEl().querySelector(".phoneFoesPanel.combat");
+    expect(panel, "the combat Foes panel (revealed by the Menu tab)").toBeTruthy();
+    const card = panel!.querySelector<HTMLButtonElement>(".phoneFoeCard");
+    expect(card!.textContent).toContain(opponentName);
+
+    fireEvent.click(screen.getByRole("tab", { name: /menu/i }));
+    expect(mainEl().getAttribute("data-phone-tab")).toBe("menu");
+    fireEvent.click(card!);
+    expect(document.querySelector(".opponentInfoModal")).toBeTruthy();
   });
 
   it("a fresh combat id snaps the surface back to the Board tab (not another fight's leftover tab)", async () => {

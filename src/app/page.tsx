@@ -1,6 +1,6 @@
 "use client";
 
-import { Castle, CheckCircle2, Crosshair, Crown, Eye, Hand as HandIcon, Layers, Lock, Map as MapIcon, Maximize2, Menu as MenuIcon, Minimize2, Sparkles, StepForward, Swords } from "lucide-react";
+import { Castle, CheckCircle2, Crosshair, Crown, Eye, Hand as HandIcon, Layers, Lock, Map as MapIcon, Maximize2, Menu as MenuIcon, Minimize2, Sparkles, StepForward, Swords, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   astrologersCardDefinitions,
@@ -193,7 +193,7 @@ import {
 import { SetupAmbientFx } from "@/components/adventure/setup-ambient";
 import { HeroActionsDock } from "@/components/adventure/hero-actions-dock";
 import { AzureClawChill } from "@/components/adventure/azure-claw-chill";
-import { OpponentInfoDock } from "@/components/adventure/opponent-info";
+import { OpponentInfoDock, PhoneOpponentPanel } from "@/components/adventure/opponent-info";
 import { ScenarioObjectivesDock, VictoryPointsDock, VictoryPointsScoringOverlay } from "@/components/adventure/victory-points-panel";
 import { TownWindow } from "@/components/adventure/town-board";
 import { isDemoTrayEnabled, seedDemoTrayCards } from "@/lib/demo-tray-seed";
@@ -409,7 +409,7 @@ function feedSoundCueKey(cue: FeedSoundCue): string {
   return typeof cue === "string" ? cue : `${cue.sfx}>${cue.ambient}`;
 }
 
-type PhoneMapTab = "map" | "hand" | "army" | "decks" | "menu";
+type PhoneMapTab = "map" | "hand" | "army" | "foes" | "decks" | "menu";
 type PhoneCombatTab = "board" | "hand" | "menu";
 
 /** Meteor Shower / Rocket Launcher scale as school-less effects, not Spells. */
@@ -6064,6 +6064,13 @@ export default function Home() {
           ]
         : []),
       { id: "army", label: "Army", icon: <Castle size={17} /> },
+      // "Foes" is the phone's ONLY reachable enemy surface: the desktop's
+      // opponent dock lives in the `.leftRail`, which the tab CSS hides unless
+      // the Army tab is open. Withheld with no opponent seat (a solo table),
+      // so the tab can never open an empty panel.
+      ...(isSeated && seatIds.some((id) => id !== viewerPlayerId)
+        ? [{ id: "foes", label: "Foes", icon: <Users size={17} /> }]
+        : []),
       { id: "decks", label: "Decks", icon: <Layers size={17} /> },
       ...(legalActions.some((legal) => legal.action.type === "END_TURN")
         ? [{ id: "end-turn", label: "End turn", icon: <CheckCircle2 size={19} />, action: true }]
@@ -6376,6 +6383,13 @@ export default function Home() {
               </div>
             </div>
           </div>
+
+          {/* PHONE ONLY — the "Foes" tab's panel. A direct child of the flex
+              column so the tab CSS can show/hide and order it; never rendered
+              in computer mode, so the desktop DOM is byte-identical. */}
+          {phoneUi && isSeated ? (
+            <PhoneOpponentPanel seatIds={seatIds} state={state} variant="map" viewerPlayerId={viewerPlayerId} />
+          ) : null}
 
           {/* BOTTOM deck rail: the shared Spell / Neutral / Artifact / Event
               decks and their discard piles, laid out as a horizontal bar
@@ -7527,6 +7541,14 @@ export default function Home() {
             <div className="observerNote">Observer mode: hands stay hidden, the fight is live.</div>
           )}
         </div>
+        {/* PHONE ONLY — the combat surface has no room for its own tab, so the
+            enemy dossier rides the MENU tab (the least intrusive of the three:
+            Board and Hand are both live play surfaces). The Hand tab keeps the
+            desktop `OpponentInfoDock` inside `.combatCardStrip`, so a fight has
+            two one-tap roads to the same read-only modal. */}
+        {phoneUi && isSeated ? (
+          <PhoneOpponentPanel seatIds={seatIds} state={state} variant="combat" viewerPlayerId={viewerPlayerId} />
+        ) : null}
         {tableMenu}
       </div>
 

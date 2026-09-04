@@ -17,7 +17,7 @@ import { assetUrl } from "@/lib/asset-url";
 import { cardLibrary } from "@/data/cards/library";
 import { coreBuildingDefinitions } from "@/data/factions/core";
 import { buildingTimingLabel, describeBuildingEffect } from "@/data/towns/describe";
-import { CardFrame, PermanentSlot, SeatNameplate } from "@/components/table/seats";
+import { CardFrame, OpponentsInPlayTray, PermanentSlot, SeatNameplate } from "@/components/table/seats";
 import { HeroBoard } from "@/components/hero-board";
 import { ArmyPanel } from "@/components/adventure/screen";
 import { BattleMetric, signedMorale } from "@/components/table/battle-metrics";
@@ -346,5 +346,106 @@ export function OpponentInfoDock({
       <div className="opponentInfoBtnRow">{buttons}</div>
       {modal}
     </div>
+  );
+}
+
+/**
+ * PHONE MODE ONLY — the "Foes" panel.
+ *
+ * On a phone every desktop surface that carries enemy information (the map's
+ * `.leftRail` dock, the combat card strip) is hidden by the tab CSS unless its
+ * own tab is open, so the enemy dossier used to be reachable only by digging
+ * through the Army / Hand tab. This is a dedicated full-screen panel: one
+ * tappable compact card per opponent (faction dot + name, hero level, army /
+ * hand counts, gold, town) opening the SAME read-only `OpponentInfoModal` the
+ * desktop dock opens, plus the existing read-only `OpponentsInPlayTray`.
+ *
+ * Pure presentation over PUBLIC fields — nothing here reads a masked zone's
+ * identities (only zone LENGTHS, exactly like the dossier itself), and it
+ * dispatches no action.
+ */
+export function PhoneOpponentPanel({
+  state,
+  viewerPlayerId,
+  seatIds,
+  variant = "map"
+}: {
+  state: GameState;
+  viewerPlayerId: PlayerId;
+  seatIds: PlayerId[];
+  variant?: "map" | "combat";
+}) {
+  const [openSeat, setOpenSeat] = useState<PlayerId | null>(null);
+  const opponents = seatIds.filter((id) => id !== viewerPlayerId);
+
+  // No opponents → no panel at all (the tab that reveals it is withheld too).
+  if (opponents.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className={`phoneFoesPanel ${variant}`} aria-label="Opponents">
+      <h3 className="phoneFoesTitle">
+        <Users aria-hidden="true" size={14} /> Opponents ({opponents.length})
+      </h3>
+      <ul className="phoneFoesList">
+        {opponents.map((id) => {
+          const identity = getSeatIdentity(state, id);
+          const name = identity.personName ?? identity.seatName;
+          const player = state.players[id];
+          const hero = Object.values(state.heroes).find(
+            (candidate) => candidate.controllerId === id && candidate.kind === "main"
+          );
+          return (
+            <li key={id}>
+              <button
+                aria-haspopup="dialog"
+                aria-label={`Open ${name}'s dossier`}
+                className="phoneFoeCard"
+                onClick={() => setOpenSeat(id)}
+                type="button"
+              >
+                <span className="phoneFoeName">
+                  <span
+                    aria-hidden="true"
+                    className="seatFactionDot"
+                    style={{ background: identity.factionColor ?? "#b08d2f" }}
+                  />
+                  {name}
+                </span>
+                <span className="phoneFoeStats">
+                  <span title="Their main hero's level">
+                    <b>L{hero?.level ?? "–"}</b> hero
+                  </span>
+                  <span title="Unit cards in their deck">
+                    <b>{player?.army.length ?? 0}</b> units
+                  </span>
+                  <span title="Cards in their hand (identities stay hidden)">
+                    <b>{player?.hand.length ?? 0}</b> hand
+                  </span>
+                  <span title="Gold">
+                    <img
+                      alt=""
+                      aria-hidden="true"
+                      className="resourceIcon"
+                      src={assetUrl(RESOURCE_ICONS.gold)}
+                    />
+                    <b>{player?.resources.gold ?? 0}</b>
+                  </span>
+                </span>
+                <small className="phoneFoeTown">
+                  {identity.townName ?? "faction not chosen"} · tap for full dossier
+                </small>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {/* Their face-up Permanent / Ongoing / Spell-Scroll cards, read-only. */}
+      <OpponentsInPlayTray compact seatIds={seatIds} state={state} viewerPlayerId={viewerPlayerId} />
+      {openSeat ? (
+        <OpponentInfoModal onClose={() => setOpenSeat(null)} playerId={openSeat} state={state} />
+      ) : null}
+    </section>
   );
 }

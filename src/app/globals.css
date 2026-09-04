@@ -40413,6 +40413,182 @@ body:has(main.phoneMode) .difficultyChessBtn {
   height: 109px;
 }
 
+/* ---------- "Foes" panel (phone-only opponent surface) -------------------- */
+
+/* Every desktop enemy surface (the map's `.leftRail` opponent dock, the combat
+   `.combatCardStrip`) is hidden by the region rule above unless its own tab is
+   open, so on a phone the enemy dossier used to be buried in the Army / Hand
+   tab. `PhoneOpponentPanel` is its own full-width panel; it is rendered ONLY in
+   phone mode, and hidden here until its tab reveals it. */
+.phoneMode .phoneFoesPanel {
+  display: none;
+}
+
+.phoneMode.adventureRoot[data-phone-tab="foes"] .phoneFoesPanel.map {
+  /* Between the map row (which the rule below hides on this tab) and the log
+     drawer at order 6, so the panel owns the whole middle of the screen. */
+  order: 3;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* The Foes tab replaces the map row, exactly like the hand / decks / menu tabs. */
+.phoneMode.adventureRoot[data-phone-tab="foes"] .adventureMidRow {
+  display: none;
+}
+
+/* Combat has no room for a seventh tab, so the dossier rides the MENU tab. */
+.phoneMode:not(.adventureRoot)[data-phone-tab="menu"] .phoneFoesPanel.combat {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.phoneFoesTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--gold);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.phoneFoesList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* One tap target per opponent — a comfortable card, never a text link. */
+.phoneFoeCard {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  min-height: 62px;
+  padding: 9px 11px;
+  border: 1px solid rgb(214 178 94 / 55%);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #241a10, #16100a);
+  color: #efe0bd;
+  cursor: pointer;
+  text-align: left;
+  touch-action: manipulation;
+}
+
+.phoneFoeCard:active {
+  filter: brightness(1.15);
+}
+
+.phoneFoeName {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.phoneFoeStats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  color: #cdb686;
+  font-size: 12px;
+}
+
+.phoneFoeStats > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.phoneFoeStats b {
+  color: #ffd76a;
+}
+
+.phoneFoeTown {
+  color: #9c8760;
+  font-size: 11px;
+}
+
+/* The dossier itself PORTALS to <body> (outside <main>), so it takes the
+   body:has(main.phoneMode) form — the .townWindow / Setup-Hub precedent
+   (a graceful no-op on browsers without :has). Bottom-anchored full-width
+   sheet that clears the fixed tab bar and the safe area, scrolling inside. */
+body:has(main.phoneMode) .opponentInfoBackdrop {
+  align-items: end;
+  padding: 8px 8px calc(72px + env(safe-area-inset-bottom, 0px));
+}
+
+body:has(main.phoneMode) .opponentInfoModal {
+  width: 100%;
+  max-width: none;
+  max-height: calc(100dvh - 92px - env(safe-area-inset-bottom, 0px));
+  border-radius: 14px 14px 8px 8px;
+}
+
+/* The close chip is the sheet's only dismiss control once the backdrop is
+   mostly covered — give it a real 40px thumb target. */
+body:has(main.phoneMode) .opponentInfoModal .heroInfoClose {
+  width: 40px;
+  height: 40px;
+}
+
+/* ---------- mobile polish: the Spell Book overlay ------------------------- */
+
+/* The two-page book is a `position: fixed` overlay at z-index 90 rendered
+   BEFORE the phone tab bar (also 90), so the bar paints over its bottom edge —
+   on a 390x844 phone that swallowed the cast buttons on the right page. Anchor
+   the book above the bar, cap its height in dvh (vh is wrong with a dynamic
+   URL bar) and pull the close chip INSIDE the frame, where the old -14px
+   offset would be clipped by the viewport at full width. */
+.phoneMode .spellBookBackdrop {
+  place-items: end center;
+  padding: 8px 8px calc(72px + env(safe-area-inset-bottom, 0px));
+}
+
+.phoneMode .spellBookBook {
+  width: 100%;
+  max-height: calc(100dvh - 96px - env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 10px;
+}
+
+.phoneMode .spellBookBookClose {
+  top: 6px;
+  right: 6px;
+  width: 40px;
+  height: 40px;
+}
+
+.phoneMode .spellBookPage {
+  padding: 14px 14px 18px;
+}
+
+/* A crowded bar (Map · Battle · Hand · Army · Foes · Decks · End turn · Menu)
+   still has to keep every label legible and every tap target ≥ 40px wide. */
+.phoneTabBar:has(.phoneTab:nth-child(7)) .phoneTab {
+  padding-inline: 1px;
+  font-size: 10px;
+}
+
+.phoneTabBar:has(.phoneTab:nth-child(7)) .phoneTabIcon svg {
+  width: 15px;
+  height: 15px;
+}
+
 /* Anime/Wuxia boards use seven real slices from ONE fully-built panorama. The
    slice lives on the whole bar; transparent per-building hit regions preserve
    the two-building shared-slot rules without breaking the continuous artwork. */
