@@ -144,6 +144,7 @@ import {
   singlePlayerMapDeployment,
   startingBonusDescription,
   tileFootprint,
+  subterraneanGateMarkersBySpace,
   tileLayer,
   tierOfLevel,
   UNIT_LEVELS,
@@ -1492,6 +1493,12 @@ export function HexMapBoard({
     return null;
   }
 
+  // Subterranean Gates are the only Surface↔Underground crossing, so — like the
+  // coloured Teleport-Gate networks — every KNOWN half wears an always-visible
+  // pairing badge (the same letter on both halves) plus a direction tooltip,
+  // instead of only cueing while a hero happens to stand within reach.
+  const gateMarkers = subterraneanGateMarkersBySpace(adventure);
+
   const artLayer: ReactNode[] = [];
   const cells: ReactNode[] = [];
   const overlays: ReactNode[] = [];
@@ -2440,9 +2447,11 @@ export function HexMapBoard({
                 : ""
             }${
               field.location === "subterranean_gate"
-                ? undergroundTile
-                  ? " — step on to ascend to the Surface (the only crossing; reveals the Surface tile beyond for free)"
-                  : " — step on to descend into the Underground (the only crossing; reveals the cavern beyond for free)"
+                ? `${gateMarkers.get(spaceId) ? ` — ${gateMarkers.get(spaceId)!.tooltip}` : ""}${
+                    undergroundTile
+                      ? " — step on to ascend to the Surface (the only crossing; reveals the Surface tile beyond for free)"
+                      : " — step on to descend into the Underground (the only crossing; reveals the cavern beyond for free)"
+                  }`
                 : ""
             }${
               field.location === "monolith"
@@ -2498,6 +2507,29 @@ export function HexMapBoard({
             y={y + HEX_SIZE * 0.92}
           >
             {undergroundTile ? "↥ ascend" : "↧ descend"}
+          </text>,
+        );
+      }
+
+      // The PAIRING badge: always on, whether or not a hero can reach the hex.
+      // Both halves of one link carry the same letter, so a player reads which
+      // cave-mouth comes out where without walking there (the derivation only
+      // ever names halves on revealed tiles — see subterraneanGateMarkers).
+      const gateMarker =
+        field.location === "subterranean_gate"
+          ? gateMarkers.get(spaceId)
+          : undefined;
+      if (gateMarker) {
+        overlays.push(
+          <text
+            className="hexGateLink"
+            key={`${spaceId}-gate-link`}
+            textAnchor="middle"
+            x={x + HEX_WIDTH * 0.26}
+            y={y - HEX_SIZE * 0.5}
+          >
+            <title>{gateMarker.tooltip}</title>
+            {`${gateMarker.direction === "down" ? "↧" : "↥"}${gateMarker.label}`}
           </text>,
         );
       }
@@ -4215,8 +4247,8 @@ export function HexMapBoard({
           style={{ pointerEvents: "none" }}
         >
           <title>
-            A Subterranean Gate opens here — descend/ascend once this tile is
-            revealed.
+            {gateMarkers.get(hex)?.tooltip ??
+              "A Subterranean Gate opens here — descend/ascend once this tile is revealed."}
           </title>
           <circle
             cx={x}
@@ -4244,6 +4276,16 @@ export function HexMapBoard({
             x={x - markWidth / 2}
             y={y - markHeight / 2}
           />
+          {gateMarkers.get(hex) ? (
+            <text
+              className="hexGateLink"
+              textAnchor="middle"
+              x={x + HEX_WIDTH * 0.26}
+              y={y - HEX_SIZE * 0.5}
+            >
+              {`${gateMarkers.get(hex)!.direction === "down" ? "↧" : "↥"}${gateMarkers.get(hex)!.label}`}
+            </text>
+          ) : null}
         </g>,
       );
     }

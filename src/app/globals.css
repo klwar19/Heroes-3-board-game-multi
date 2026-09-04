@@ -6187,6 +6187,20 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
   pointer-events: none;
 }
 
+/* Always-visible Subterranean Gate PAIRING badge: the same letter on both halves
+   of one link (↧A on the Surface half, ↥A on the cavern half) so the crossings
+   read at a glance the way the coloured Teleport-Gate networks do — no hero has
+   to be within reach for it to show. */
+.hexGateLink {
+  fill: #9be7ff;
+  font-size: 9px;
+  font-weight: 800;
+  paint-order: stroke;
+  stroke: rgba(10, 24, 40, 0.95);
+  stroke-width: 2.8px;
+  pointer-events: none;
+}
+
 /* "gate here / path up here" label on each candidate hex while the pick-on-reveal
    Subterranean Gate placement choice is open. Short words + thick halo so the
    cue stays legible over busy tile art without covering the cave-mouth graphic. */

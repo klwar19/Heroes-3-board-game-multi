@@ -309,6 +309,12 @@ export {
   polishArtifactTierAllowed
 } from "./polish-random-artifacts";
 export {
+  subterraneanGateMarkers,
+  subterraneanGateMarkersBySpace,
+  type SubterraneanGateMarker,
+  type SubterraneanGateMarkerRole
+} from "./subterranean-gate-visibility";
+export {
   currentSurrenderGoldCost,
   customWinConditionProgress,
   flagField,
