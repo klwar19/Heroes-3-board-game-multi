@@ -131,6 +131,28 @@ const PVP_OVEREXTENSION_ATTACK_SCORE = 495;
 // preferred (and the mild penalty for stepping away from it).
 const FOCUS_MARCH_BONUS = 14;
 const FOCUS_MARCH_AWAY_PENALTY = 6;
+// Polish Wait. The old scoring gave a healthy unit 560..580 — ABOVE the attack
+// FLOOR (560) and above every closing march (≤ ~554) — so the computer waited
+// with almost every unit almost every round instead of striking or advancing.
+// Wait is a tempo tool, not a default:
+//  - WAIT_IDLE keeps it above END_ACTIVATION (400) only, so a strike, a Defend
+//    (500+) and any closing march (520+) all beat it;
+//  - WAIT_BAIT is the ONE real upside — the unit cannot strike from where it
+//    stands, but an enemy that has not yet acted this round stands one step
+//    away, so acting last lets it come to us instead of us walking into it.
+//    Still under the attack floor, so a reachable move-and-attack wins.
+const WAIT_IDLE_SCORE = 430;
+const WAIT_BAIT_SCORE = 555;
+// Board distance at which an enemy that has not yet activated is expected to
+// close onto us on its own activation (1 = already adjacent).
+const WAIT_BAIT_MAX_DISTANCE = 2;
+// A besieger with a living enemy BODY in reach should hit the body, not the
+// masonry (a Wall/Gate deals no damage and takes no activation from the enemy).
+// Below the attack floor (560) and the two "bad attack" scores (545/548), above
+// Defend's base (500) so a wall still beats turtling.
+const FORTIFICATION_WITH_TARGET_SCORE = 540;
+// Nothing to hit — breaking in IS the play (unchanged from the old flat score).
+const FORTIFICATION_BREACH_SCORE = 640;
 
 /**
  * Hydra/Cerberi-style value from having at least one OTHER adjacent enemy when
@@ -1004,17 +1026,44 @@ export function scoreCombatAction(
       return { score, policy: `combat.little-busters-counter-${action.counter}` };
     }
     case "WAIT_UNIT": {
-      // Polish Wait: re-queue the unit at the end of the round. Prefer Wait
-      // over Defend when the unit has no strike this moment and is healthy —
-      // acting last often lands a better attack after enemies close. Below
-      // real attacks (560+) and above END_ACTIVATION (400).
+      // Polish Wait: re-queue the unit at the end of the round. Wait is only
+      // worth an activation when it BUYS something — see WAIT_IDLE_SCORE /
+      // WAIT_BAIT_SCORE. Score the unit's ACTUAL side (a controlled Neutral's
+      // enemies are the fighter's army, not the controller's).
       const waiter = combat.units[action.unitId];
-      if (!waiter) return { score: 520, policy: "combat.wait" };
-      const missing = waiter.maxHealth - unitRemainingHealth(waiter);
-      // Wounded bodies Defend instead (save now); healthy Wait for a better
-      // activation later.
-      const score = missing >= 2 ? 480 : 560 + Math.min(20, waiter.initiative ?? 0);
-      return { score, policy: "combat.wait" };
+      if (!waiter) return { score: WAIT_IDLE_SCORE, policy: "combat.wait-idle" };
+      const side = waiter.controllerId;
+      const enemies = livingEnemyUnits(combat, side);
+      // A unit that can strike RIGHT NOW must strike: a ranged unit always has
+      // a shot, a melee/flying one whenever an enemy is adjacent.
+      const canStrikeNow =
+        !waiter.attackedThisActivation &&
+        enemies.some(
+          (enemy) =>
+            waiter.type === "ranged" ||
+            isAdjacent(waiter.position, enemy.position),
+        );
+      if (canStrikeNow) {
+        return { score: WAIT_IDLE_SCORE, policy: "combat.wait-idle" };
+      }
+      // A wounded body saves itself with Defend (500+) rather than acting last.
+      if (waiter.maxHealth - unitRemainingHealth(waiter) >= 2) {
+        return { score: WAIT_IDLE_SCORE, policy: "combat.wait-idle" };
+      }
+      // The real upside: an enemy that has NOT acted this round is one step
+      // away, so waiting makes IT close the gap and we strike after it moves,
+      // instead of marching into its charge. A distant enemy is chased, not
+      // waited for — that is what made the AI wait every round.
+      const baited = enemies.some(
+        (enemy) =>
+          !enemy.activatedThisRound &&
+          enemy.position >= 0 &&
+          getBattlefieldDistance(waiter.position, enemy.position) <=
+            WAIT_BAIT_MAX_DISTANCE,
+      );
+      return baited
+        ? { score: WAIT_BAIT_SCORE, policy: "combat.wait-bait" }
+        : { score: WAIT_IDLE_SCORE, policy: "combat.wait-idle" };
     }
     case "DEFEND_UNIT": {
       // Prefer defending a wounded unit over a healthy one (still below any
@@ -1067,9 +1116,37 @@ export function scoreCombatAction(
             : "combat.defend-wounded",
       };
     }
-    case "ATTACK_FORTIFICATION":
-      // Siege the wall when no better unit target is offered (legal set only).
-      return { score: 640, policy: "combat.attack-fortification" };
+    case "ATTACK_FORTIFICATION": {
+      const breacher = combat.units[action.attackerId];
+      const siege = combat.siege;
+      // NEVER tear down our OWN Walls/Gate. The printed rule allows it ("even
+      // by your own defending units", see `attackFortification`) and the offer
+      // is deliberately left legal for a human, but a computer defending its
+      // town — or a computer-driven Random Town guard — demolishing the very
+      // fortification it hides behind is always a blunder. Refuse below every
+      // exit so it can never be picked.
+      if (breacher && siege && breacher.controllerId === siege.townPlayerId) {
+        return {
+          score: -1_000,
+          policy: "combat.attack-own-fortification-refuse",
+        };
+      }
+      // A besieger with a living enemy body already in reach hits the body:
+      // masonry never activates, never retaliates and never dies to focus fire.
+      const reachableEnemy =
+        breacher &&
+        livingEnemyUnits(combat, breacher.controllerId).some(
+          (enemy) =>
+            breacher.type === "ranged" ||
+            isAdjacent(breacher.position, enemy.position),
+        );
+      return {
+        score: reachableEnemy
+          ? FORTIFICATION_WITH_TARGET_SCORE
+          : FORTIFICATION_BREACH_SCORE,
+        policy: "combat.attack-fortification",
+      };
+    }
     case "CONTINUE_NEUTRAL_COMBAT": {
       // Keep fighting when the battle is still winnable; when hopeless, fall
       // below RETREAT so the AI spends the continue only when it matters.

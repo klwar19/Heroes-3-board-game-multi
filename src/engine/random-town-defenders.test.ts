@@ -11,7 +11,7 @@ import {
   randomTownBronzePackCandidates,
   eliminatePlayer
 } from "./adventure";
-import { applyAction, createAdventureGameState, NEUTRAL_PLAYER_ID } from "./index";
+import { applyAction, createAdventureGameState, getLegalActions, NEUTRAL_PLAYER_ID } from "./index";
 import { redactStateForSeat } from "./player-view";
 import { coreFactionDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
@@ -415,5 +415,139 @@ describe("Random Town — the defending faction is public at tile reveal", () =>
     const draws = drawGuardArmy(state, field, 7);
     expect(field.faction).toBeTruthy();
     expect(draws.every((draw) => coreUnitDefinitions[draw.unitDefId]?.faction === field.faction)).toBe(true);
+  });
+});
+
+/**
+ * Reported (2026-09-04): "when you attack random town and control guards —
+ * still cannot attack walls". A Random Town fight IS a siege
+ * (`combat.siege.townPlayerId = NEUTRAL_PLAYER_ID`), so the BESIEGER's adjacent
+ * ground/flying units must be able to bring a Wall/Gate down exactly as in a
+ * normal town siege, whether or not a neutral-control mode is on — while the
+ * player DRIVING the guards (the town side) is never offered the town's own
+ * fortifications. Each case asserts the observable outcome: the offer, and the
+ * fortification really leaving `siege`.
+ */
+
+/** Drive the fight to the attacker's first activation (guards slowed to last). */
+function driveToAttackerActivation(start: GameState): GameState {
+  let state = start;
+  for (const unit of Object.values(state.combat!.units)) {
+    unit.initiative = unit.controllerId === "p1" ? 30 : 1;
+  }
+  state.combat!.activeUnitId = null;
+  for (let step = 0; step < 40; step += 1) {
+    const combat = state.combat;
+    if (!combat) break;
+    const active = combat.activeUnitId ? combat.units[combat.activeUnitId] : null;
+    if (
+      state.phase === "combat" &&
+      active &&
+      active.controllerId === "p1" &&
+      !state.pendingChoice
+    ) {
+      break;
+    }
+    const legal = getLegalActions(state, "p1");
+    const pick =
+      legal.find((entry) => entry.action.type === "CONTINUE_NEUTRAL_STEP") ??
+      legal.find((entry) => entry.action.type === "FINISH_NEUTRAL_PLACEMENT") ??
+      legal.find((entry) => entry.action.type === "CHOOSE_OPTION") ??
+      legal[0];
+    if (!pick) break;
+    state = applyOk(state, pick.action);
+  }
+  return state;
+}
+
+/** The Random Town fight with p1's single unit parked beside the Gate at 13. */
+function siegeAtTheGate(seed: string, manualGuardControl: boolean): GameState {
+  const base = makeGame(seed);
+  if (manualGuardControl) {
+    base.adventure!.manualGuardControl = true;
+  }
+  const hero = getMainHero(base, "p1")!;
+  const field = randomTownField();
+  base.adventure!.fields[field.spaceId] = field;
+  hero.spaceId = field.spaceId;
+  base.players.p1.hand = [];
+  startNeutralEncounter(base, hero, field);
+  // Park the unit directly below whichever middle-row space carries the Gate.
+  const gate = base.combat!.siege!.gatePosition!;
+  let placed = applyOk(base, {
+    type: "PLACE_COMBAT_UNIT",
+    playerId: "p1",
+    armyUnitId: base.players.p1.army[0].id,
+    position: gate + 4
+  });
+  placed = applyOk(placed, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+  return driveToAttackerActivation(placed);
+}
+
+describe("Random Town siege — the attacker batters the fortifications", () => {
+  for (const manual of [false, true]) {
+    it(`the besieger fells the Gate with manual guard control ${manual ? "ON" : "OFF (CONTROL)"}`, () => {
+      const state = siegeAtTheGate("rt-siege-gate", manual);
+      expect(state.phase).toBe("combat");
+      const gate = state.combat!.siege!.gatePosition;
+      expect(gate).not.toBeNull();
+
+      const offer = getLegalActions(state, "p1").find(
+        (entry) =>
+          entry.action.type === "ATTACK_FORTIFICATION" &&
+          entry.action.target.kind === "gate"
+      );
+      expect(offer, "the besieger must be offered the Gate").toBeTruthy();
+
+      // The offer must survive the HOSTED client's frame too — a client that
+      // cannot see `combat.siege` renders no clickable Wall/Gate at all.
+      const seatFrame = redactStateForSeat(state, "p1") as unknown as GameState;
+      expect(seatFrame.combat?.siege?.gatePosition).toBe(gate);
+      expect(
+        getLegalActions(seatFrame, "p1").some(
+          (entry) =>
+            entry.action.type === "ATTACK_FORTIFICATION" &&
+            entry.action.target.kind === "gate"
+        )
+      ).toBe(true);
+
+      // Observable outcome: the Gate really leaves the siege state.
+      const after = applyOk(state, offer!.action);
+      expect(after.combat!.siege!.gatePosition).toBeNull();
+    });
+  }
+
+  it("the player DRIVING the guards is never offered the town's own fortifications", () => {
+    let state = siegeAtTheGate("rt-siege-guardside", true);
+    // Hand the activation on until a NEUTRAL guard (driven by p1 under manual
+    // guard control) is the active unit.
+    for (let step = 0; step < 40; step += 1) {
+      const combat = state.combat;
+      if (!combat) break;
+      const active = combat.activeUnitId ? combat.units[combat.activeUnitId] : null;
+      if (
+        state.phase === "combat" &&
+        active &&
+        active.controllerId === NEUTRAL_PLAYER_ID &&
+        !state.pendingChoice
+      ) {
+        const legal = getLegalActions(state, "p1");
+        // The guard IS being driven by p1 here (manual guard control) …
+        expect(legal.length).toBeGreaterThan(0);
+        // … and none of its options touches the fortifications it defends.
+        expect(legal.some((entry) => entry.action.type === "ATTACK_FORTIFICATION")).toBe(false);
+        expect(state.combat!.siege!.walls.length).toBeGreaterThan(0);
+        return;
+      }
+      const legal = getLegalActions(state, "p1");
+      const pick =
+        legal.find((entry) => entry.action.type === "CONTINUE_NEUTRAL_STEP") ??
+        legal.find((entry) => entry.action.type === "END_ACTIVATION") ??
+        legal.find((entry) => entry.action.type === "CHOOSE_OPTION") ??
+        legal[0];
+      if (!pick) break;
+      state = applyOk(state, pick.action);
+    }
+    throw new Error("no neutral guard activation was reached");
   });
 });

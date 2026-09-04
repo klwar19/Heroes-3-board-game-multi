@@ -894,3 +894,198 @@ describe("combat policy — WOG commander activation cast (gap 4)", () => {
     expect(strandedBuff!.score).toBeLessThan(buffThenStrike!.score - 100);
   });
 });
+
+/**
+ * AI combat tactics: Polish WAIT and siege fortifications.
+ *
+ * Reported (2026-09-04): "AI almost always waits" and "AI attacks its walls".
+ * Both were pure SCORE bugs: Wait scored 560..580 — above the attack FLOOR
+ * (560) and above every closing march (≤ ~554) — and ATTACK_FORTIFICATION was a
+ * flat 640, above almost every real attack and side-blind. Every case below
+ * asserts the CHOSEN action through `chooseComputerAction`, each with a
+ * CONTROL that still takes the opposite branch.
+ */
+const waitOn = (unitId: string): LegalAction => ({
+  action: { type: "WAIT_UNIT", playerId: "p2", unitId } as GameAction,
+  label: "wait",
+});
+
+const endActivation: LegalAction = {
+  action: { type: "END_ACTIVATION", playerId: "p2" } as GameAction,
+  label: "end activation",
+};
+
+const demolish = (attackerId: string, position: number): LegalAction => ({
+  action: {
+    type: "ATTACK_FORTIFICATION",
+    playerId: "p2",
+    attackerId,
+    target: { kind: "wall", position },
+  } as GameAction,
+  label: `destroy the Wall at ${position}`,
+});
+
+/** `observation` plus a SiegeState on the combat (the fixture omits it). */
+function siegeObservation(
+  units: CombatUnitState[],
+  legalActions: LegalAction[],
+  townPlayerId: string,
+): ComputerObservation {
+  const obs = observation(units, legalActions);
+  (obs.state.combat as unknown as CombatState).siege = {
+    townPlayerId,
+    walls: [8, 10, 11],
+    gatePosition: 9,
+    arrowTowerUnitId: null,
+  } as CombatState["siege"];
+  return obs;
+}
+
+describe("combat policy — Wait is a tempo tool, not a default", () => {
+  it("attacks an adjacent enemy instead of Waiting", () => {
+    // Heavily armoured target: the strike sits at the ATTACK_FLOOR (560), which
+    // the OLD Wait score (560 + initiative) beat outright.
+    const attacker = unit({
+      id: "A",
+      controllerId: "p2",
+      attack: 2,
+      position: 4,
+      initiative: 9,
+    });
+    const enemy = unit({ id: "E", defense: 9, maxHealth: 9, position: 5 });
+
+    const obs = observation(
+      [attacker, enemy],
+      [attackOn("A", "E"), waitOn("A"), defend("A"), endActivation],
+    );
+    expect(chooseComputerAction(obs)?.action.type).toBe("ATTACK_UNIT");
+    // Discriminating: the OLD score was 560 + initiative, i.e. at or ABOVE the
+    // attack FLOOR, so the weakest legal strike lost to Wait.
+    const wait = scoreCombatAction(obs, waitOn("A").action)!;
+    expect(wait.policy).toBe("combat.wait-idle");
+    expect(wait.score).toBeLessThan(560);
+  });
+
+  it("a ranged unit shoots instead of Waiting even with nobody adjacent", () => {
+    const shooter = unit({
+      id: "S",
+      controllerId: "p2",
+      type: "ranged",
+      attack: 2,
+      position: 0,
+      initiative: 9,
+    });
+    const enemy = unit({ id: "E", defense: 9, maxHealth: 9, position: 19 });
+
+    const decision = chooseComputerAction(
+      observation([shooter, enemy], [attackOn("S", "E"), waitOn("S"), endActivation]),
+    );
+    expect(decision?.action.type).toBe("ATTACK_UNIT");
+    const wait = scoreCombatAction(observation([shooter, enemy], []), waitOn("S").action)!;
+    expect(wait.policy).toBe("combat.wait-idle");
+    expect(wait.score).toBeLessThan(560);
+  });
+
+  it("marches on a distant enemy instead of Waiting for it", () => {
+    const walker = unit({ id: "A", controllerId: "p2", position: 0, initiative: 9 });
+    const enemy = unit({ id: "E", position: 19 });
+
+    const decision = chooseComputerAction(
+      observation([walker, enemy], [moveTo("A", 4), waitOn("A"), defend("A"), endActivation]),
+    );
+    expect(decision?.action.type).toBe("MOVE_UNIT");
+    expect(decision?.policy).toBe("combat.close-distance");
+  });
+
+  it("CONTROL — Waits when an enemy that has not acted stands one step away", () => {
+    // Distance 2 and unactivated: it will close on its own activation, so acting
+    // last strikes it instead of walking into its charge. The SAME closing move
+    // is on offer as in the march case above — only the distance differs.
+    const walker = unit({ id: "A", controllerId: "p2", position: 0, initiative: 9 });
+    const enemy = unit({ id: "E", position: 8, activatedThisRound: false });
+
+    const decision = chooseComputerAction(
+      observation([walker, enemy], [moveTo("A", 4), waitOn("A"), defend("A"), endActivation]),
+    );
+    expect(decision?.action.type).toBe("WAIT_UNIT");
+    expect(decision?.policy).toBe("combat.wait-bait");
+  });
+
+  it("CONTROL — the same enemy, already activated, is marched on instead", () => {
+    const walker = unit({ id: "A", controllerId: "p2", position: 0, initiative: 9 });
+    const enemy = unit({ id: "E", position: 8, activatedThisRound: true });
+
+    const decision = chooseComputerAction(
+      observation([walker, enemy], [moveTo("A", 4), waitOn("A"), defend("A"), endActivation]),
+    );
+    expect(decision?.action.type).toBe("MOVE_UNIT");
+  });
+
+  it("a wounded unit Defends rather than acting last", () => {
+    const hurt = unit({
+      id: "A",
+      controllerId: "p2",
+      position: 0,
+      damage: 3,
+      maxHealth: 5,
+      initiative: 9,
+    });
+    const enemy = unit({ id: "E", position: 8, activatedThisRound: false });
+
+    const decision = chooseComputerAction(
+      observation([hurt, enemy], [waitOn("A"), defend("A"), endActivation]),
+    );
+    expect(decision?.action.type).toBe("DEFEND_UNIT");
+  });
+});
+
+describe("combat policy — siege fortifications", () => {
+  it("never demolishes its OWN Wall when defending its town", () => {
+    // p2 (the computer) is the town side: the printed rule still OFFERS the
+    // demolition ("even by your own defending units"), but the AI must refuse.
+    const ownUnit = unit({ id: "D", controllerId: "p2", position: 5 });
+    const besieger = unit({ id: "E", position: 13 });
+
+    const obs = siegeObservation(
+      [ownUnit, besieger],
+      [demolish("D", 9), defend("D"), endActivation],
+      "p2",
+    );
+    const decision = chooseComputerAction(obs);
+    expect(decision?.action.type).not.toBe("ATTACK_FORTIFICATION");
+    expect(scoreCombatAction(obs, demolish("D", 9).action)!.policy).toBe(
+      "combat.attack-own-fortification-refuse",
+    );
+  });
+
+  it("CONTROL — as the BESIEGER with nothing in reach it breaks the Wall down", () => {
+    const besieger = unit({ id: "B", controllerId: "p2", position: 13 });
+    const defenderUnit = unit({ id: "E", position: 0 });
+
+    const decision = chooseComputerAction(
+      siegeObservation(
+        [besieger, defenderUnit],
+        [demolish("B", 9), moveTo("B", 12), defend("B"), endActivation],
+        "p1",
+      ),
+    );
+    expect(decision?.action.type).toBe("ATTACK_FORTIFICATION");
+    expect(decision?.policy).toBe("combat.attack-fortification");
+  });
+
+  it("hits the enemy BODY in reach rather than the masonry", () => {
+    // The old flat 640 beat every ordinary strike, so a besieger standing next
+    // to a live defender still battered the Wall.
+    const besieger = unit({ id: "B", controllerId: "p2", attack: 2, position: 13 });
+    const defenderUnit = unit({ id: "E", defense: 9, maxHealth: 9, position: 12 });
+
+    const decision = chooseComputerAction(
+      siegeObservation(
+        [besieger, defenderUnit],
+        [demolish("B", 9), attackOn("B", "E"), defend("B"), endActivation],
+        "p1",
+      ),
+    );
+    expect(decision?.action.type).toBe("ATTACK_UNIT");
+  });
+});
