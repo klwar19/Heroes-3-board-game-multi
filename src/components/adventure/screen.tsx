@@ -10619,6 +10619,11 @@ export function PreBattlePanel({
         ? " (town defense)"
         : "";
   const hasAccepted = (id: PlayerId) => prep.accepted.includes(id);
+  // Arena duel (1v1 win condition): this fight was opened by the round-start
+  // schedule, so say WHICH duel it is and where the best-of-three stands —
+  // otherwise the players only see "X attacks Y" with no idea why.
+  const arenaDuel = combat.context.arenaDuel;
+  const arenaWins = state.adventure?.arenaDuels?.wins ?? {};
 
   const viewerIsParticipant =
     viewerPlayerId === attackerId || viewerPlayerId === defenderId;
@@ -10699,6 +10704,12 @@ export function PreBattlePanel({
         </small>
       ) : (
         <>
+          {arenaDuel ? (
+            <strong className="prepCardReminder">
+              Arena duel {arenaDuel.duel} of 3 · wins {arenaWins[attackerId] ?? 0}–
+              {arenaWins[defenderId] ?? 0} — two duel wins wins the game.
+            </strong>
+          ) : null}
           <div className="prepReadyRow">
             {readyChip(attackerId, attackerName, "attacker")}
             {readyChip(defenderId, defenderName, "defender")}
@@ -14815,6 +14826,18 @@ function GameOptionsPanel({
                     “Slay the raid boss(es)” needs Raid Bosses — enable the
                     module under Mod (WOG or Anime) or this condition will be
                     dropped at start.
+                  </small>
+                ) : null}
+                {/* Arena duels are a strict 1v1 rule: with 3+ seats there is no
+                "the two heroes", so the engine DROPS the condition at build with
+                a public feed line. Warn before the start, like the raid-boss row. */}
+                {effective.some(
+                  (condition) => condition.kind === "arena-duel",
+                ) && lobby.seats.length !== 2 ? (
+                  <small className="optionHint">
+                    “Arena duels” only works in a 1v1 — with{" "}
+                    {lobby.seats.length} seats this condition will be dropped at
+                    start.
                   </small>
                 ) : null}
               </div>

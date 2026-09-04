@@ -3959,6 +3959,7 @@ function winConditionGlyph(kind: CustomWinCondition["kind"]): string {
     // Co-op objectives (step 3), offered in both dropdowns since step 6.
     case "defeat-computers":
     case "slay-raid-boss":
+    case "arena-duel":
       return REWARD_GLYPH_ICONS.attack;
     case "hold-with-grail":
       return REWARD_GLYPH_ICONS.experience;

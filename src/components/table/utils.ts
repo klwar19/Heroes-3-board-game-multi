@@ -737,6 +737,8 @@ export function formatEvent(event: GameEvent, state: GameState): string {
     // its full feed line (module texts stay single-sourced at the wiring).
     // The PvE enemy force's card play: the engine's own message already names
     // the card and the numbers.
+    // Arena duels (1v1): the engine's line already IS the scoreboard.
+    case "ARENA_DUEL_RESOLVED":
     case "ENEMY_FORCE_CARD_PLAYED":
     case "MONSTER_WAVE_ANNOUNCED":
     case "MONSTER_WAVE_STARTED":
