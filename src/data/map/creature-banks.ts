@@ -699,23 +699,14 @@ export const POLISH_CREATURE_BANKS: Record<CreatureBankId, CreatureBankDefinitio
     unitSideKeys: [undefined, undefined, undefined, "guardian:liches"]
   },
   dwarven_treasury: { ...CREATURE_BANKS.dwarven_treasury, name: "Rampart of the Dwarves" },
+  // USER RULING 2026-09-04 ("after beating medusa store I cannot choose a reward
+  // one by one"): the Polish card prints the SAME per-Stacked-unit either/or as
+  // the official card, so it deliberately inherits the official builder — X
+  // separate CHOOSE_ONE picks, which lets the winner MIX gold and valuables.
+  // Do NOT re-collapse this into one lumped "+3X gold or +X valuables" choice.
   medusa_stores: {
     ...CREATURE_BANKS.medusa_stores,
-    name: "Medusa's Lair",
-    rewardText: "6 gold, 1 valuables. Extra: choose +3X gold or +X valuables.",
-    buildReward: (x) => ({
-      type: "SEQUENCE",
-      interactions: [
-        { type: "GAIN_RESOURCES", gold: 6, valuables: 1 },
-        ...(x > 0 ? [{
-          type: "CHOOSE_ONE" as const,
-          options: [
-            { label: `Gain ${3 * x} gold`, interaction: { type: "GAIN_RESOURCES" as const, gold: 3 * x } },
-            { label: `Gain ${x} valuables`, interaction: { type: "GAIN_RESOURCES" as const, valuables: x } }
-          ]
-        }] : [])
-      ]
-    })
+    name: "Medusa's Lair"
   },
   dragon_fly_hive: {
     ...CREATURE_BANKS.dragon_fly_hive,

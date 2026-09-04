@@ -142,19 +142,25 @@ describe("Polish Banks printed set", () => {
     expect(POLISH_CREATURE_BANKS.training_grounds.name).toBe("Experimental Shop");
   });
 
-  it("treats Medusa's printed 3X-gold OR X-valuables as one whole reward choice", () => {
+  // USER RULING 2026-09-04: the Medusa bonus is picked ONE STACKED UNIT AT A
+  // TIME (so gold and valuables may be mixed), exactly like the official card —
+  // the old lumped "+3X gold OR +X valuables" single choice was the reported bug.
+  it("keeps Medusa's per-Stacked-unit either/or — one CHOOSE_ONE per X", () => {
     expect(POLISH_CREATURE_BANKS.medusa_stores.buildReward(3)).toEqual({
       type: "SEQUENCE",
       interactions: [
         { type: "GAIN_RESOURCES", gold: 6, valuables: 1 },
-        {
+        ...Array.from({ length: 3 }, () => ({
           type: "CHOOSE_ONE",
           options: [
-            { label: "Gain 9 gold", interaction: { type: "GAIN_RESOURCES", gold: 9 } },
-            { label: "Gain 3 valuables", interaction: { type: "GAIN_RESOURCES", valuables: 3 } }
+            { label: "Gain 3 gold", interaction: { type: "GAIN_RESOURCES", gold: 3 } },
+            { label: "Gain 1 valuables", interaction: { type: "GAIN_RESOURCES", valuables: 1 } }
           ]
-        }
+        }))
       ]
     });
+    expect(POLISH_CREATURE_BANKS.medusa_stores.buildReward(3)).toEqual(
+      CREATURE_BANKS.medusa_stores.buildReward(3)
+    );
   });
 });

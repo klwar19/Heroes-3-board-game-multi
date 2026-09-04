@@ -709,6 +709,82 @@ describe("Polish bank size rewards (back to the normal X-scaled reward)", () => 
     expect(gained[0].stacks, "NO Polish layer, even with polish-unit-stacks on").toBeUndefined();
   });
 
+  // ---------------------------------------------------------------------
+  // USER BUG 2026-09-04: "after beating medusa store I cannot choose a reward
+  // one by one (previously in normal game, can)". The Polish card override had
+  // collapsed the printed per-Stacked-unit either/or into ONE lumped
+  // "+3X gold or +X valuables" choice, so the winner could no longer MIX.
+  // ---------------------------------------------------------------------
+
+  /** Drains every offered visit-step prompt, answering with `pick` when present. */
+  function drainVisitSteps(start: GameState, pick: RegExp): { prompts: string[][]; state: GameState } {
+    const prompts: string[][] = [];
+    let state = start;
+    for (let guard = 0; guard < 16; guard += 1) {
+      const offers = getLegalActions(state, "p1").filter(
+        (entry) => entry.action.type === "RESOLVE_VISIT_STEP",
+      );
+      if (offers.length === 0) break;
+      prompts.push(offers.map((offer) => offer.label));
+      const chosen = offers.find((offer) => pick.test(offer.label)) ?? offers[0]!;
+      state = apply(state, chosen.action);
+    }
+    return { prompts, state };
+  }
+
+  const MEDUSA_PICK = ["Gain 3 gold", "Gain 1 valuables"];
+
+  it("Medusa's Lair pays its Stacked bonus ONE PICK AT A TIME, exactly like the official card", () => {
+    for (const [label, size] of [["polish", 3], ["classic", undefined]] as const) {
+      const state = bankRewardState("medusa_stores", size, `medusa-one-by-one-${label}`);
+      const goldBefore = state.players.p1.resources.gold ?? 0;
+      const valuablesBefore = state.players.p1.resources.valuables ?? 0;
+      grantCreatureBankReward(state, "hero_p1", "bank-field", 3);
+
+      // Three separate either/or prompts — never one lumped "+9 gold or +3 valuables".
+      const all = drainVisitSteps(state, /never-matches/);
+      expect(all.prompts, label).toEqual([MEDUSA_PICK, MEDUSA_PICK, MEDUSA_PICK]);
+      expect(all.prompts.flat().some((prompt) => /Gain 9 gold|Gain 3 valuables/.test(prompt)), label).toBe(false);
+      // Taking gold on all three: 6 + 3×3 gold, and only the printed 1 valuables.
+      expect((all.state.players.p1.resources.gold ?? 0) - goldBefore, label).toBe(15);
+      expect((all.state.players.p1.resources.valuables ?? 0) - valuablesBefore, label).toBe(1);
+    }
+  });
+
+  it("the winner may MIX the picks — 2 gold + 1 valuables, which one lumped choice cannot pay", () => {
+    for (const [label, size] of [["polish", 3], ["classic", undefined]] as const) {
+      const state = bankRewardState("medusa_stores", size, `medusa-mixed-${label}`);
+      const goldBefore = state.players.p1.resources.gold ?? 0;
+      const valuablesBefore = state.players.p1.resources.valuables ?? 0;
+      grantCreatureBankReward(state, "hero_p1", "bank-field", 3);
+
+      // Answer the FIRST prompt with valuables, the remaining two with gold.
+      let live = state;
+      const first = getLegalActions(live, "p1").find(
+        (entry) => entry.action.type === "RESOLVE_VISIT_STEP" && entry.label === "Gain 1 valuables",
+      );
+      expect(first, `${label}: a per-defender valuables pick is offered`).toBeTruthy();
+      live = apply(live, first!.action);
+      const rest = drainVisitSteps(live, /^Gain 3 gold$/);
+      expect(rest.prompts, label).toEqual([MEDUSA_PICK, MEDUSA_PICK]);
+      expect((rest.state.players.p1.resources.gold ?? 0) - goldBefore, label).toBe(12); // 6 + 3 + 3
+      expect((rest.state.players.p1.resources.valuables ?? 0) - valuablesBefore, label).toBe(2); // 1 + 1
+    }
+  });
+
+  it("CONTROL: the Polish Medusa card is the official builder, size Ⅰ pays exactly one pick", () => {
+    expect(POLISH_CREATURE_BANKS.medusa_stores.buildReward(3)).toEqual(
+      CREATURE_BANKS.medusa_stores.buildReward(3),
+    );
+    expect(POLISH_CREATURE_BANKS.medusa_stores.name, "only the Polish NAME differs").toBe("Medusa's Lair");
+    const state = bankRewardState("medusa_stores", 1, "medusa-size-one");
+    const goldBefore = state.players.p1.resources.gold ?? 0;
+    grantCreatureBankReward(state, "hero_p1", "bank-field", 1);
+    const drained = drainVisitSteps(state, /^Gain 3 gold$/);
+    expect(drained.prompts).toEqual([MEDUSA_PICK]);
+    expect((drained.state.players.p1.resources.gold ?? 0) - goldBefore).toBe(9);
+  });
+
   it("CONTROL: the SAME builder runs with the rule off — rewards are rule-independent now", () => {
     // The reward is the normal per-bank builder regardless of the Polish rule; a
     // rule-off win with X = 3 pays the identical +6 gold. Under Polish the ONLY
