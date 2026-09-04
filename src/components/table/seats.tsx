@@ -748,6 +748,29 @@ export function HandFan({
       bookCastsByCard.set(legal.action.cardId, list);
     }
   }
+  // The grimoire modal lists ONE button per cast SELECTION, not one per
+  // concrete target: a space-target Spell (Frost Ring, Fire Wall…) used to
+  // render twenty identical "Cast → space" buttons with no way to tell which
+  // battlefield cell each one meant (an iPad/phone player cannot see the board
+  // behind the fixed book either). Board-target casts are deduped by
+  // `cardSelectionKey` and ARM the ordinary hand targeting instead (the same
+  // path as the hand fan and the Polish "List the spells" shortcuts): the book
+  // closes, the board glows, the player taps the cell/unit. Target-less casts
+  // still dispatch straight away.
+  const bookCastsForModal = new Map<string, LegalAction[]>();
+  for (const [spellId, actions] of bookCastsByCard) {
+    const seenSelections = new Set<string>();
+    const list: LegalAction[] = [];
+    for (const legal of actions) {
+      if (isBoardTargetCardAction(legal.action)) {
+        const key = cardSelectionKey(legal.action);
+        if (seenSelections.has(key)) continue;
+        seenSelections.add(key);
+      }
+      list.push(legal);
+    }
+    bookCastsForModal.set(spellId, list);
+  }
   // The Book icon is shown from the start whenever the house rule is on (even
   // empty), so the player can always open it to see what it holds.
   const polishBook = polishSpellBookEnabled(state);
@@ -812,9 +835,9 @@ export function HandFan({
                 <span className="shelfCount">{spellBook.length}/{spellBook.length + spellBookUsed.length}</span>
               </button>
               {shelfOpen === "book" ? (
-                // The same full two-page grimoire the map opens — combat casts
-                // are already concrete (pre-targeted, fromSpellBook), so each
-                // book button dispatches directly; the label appends the target.
+                // The same full two-page grimoire the map opens. A target-less
+                // cast dispatches directly; a unit/space-target cast ARMS board
+                // targeting (one button per selection) — see bookCastsForModal.
                 <SpellBookModal
                   cardIds={[...new Set(spellBook)]}
                   usedCardIds={polishBook ? spellBookUsed : []}
@@ -826,34 +849,56 @@ export function HandFan({
                       : []
                   }
                   polishMode={polishBook}
-                  castsByCard={bookCastsByCard}
+                  castsByCard={bookCastsForModal}
                   castLabel={(legal) => {
                     const action = legal.action;
                     if (action.type !== "CAST_SPELL" && action.type !== "PLAY_CARD") {
                       return legal.label;
                     }
-                    const targetLabel =
-                      action.target?.type === "unit"
-                        ? ` → ${targetName(state, action.target)}`
-                        : action.target?.type === "space"
-                          ? " → space"
-                          : "";
+                    if (isBoardTargetCardAction(action)) {
+                      if (sameCardSelection(selectedCardAction, action)) return "Cancel targeting";
+                      const targetTypes = new Set(
+                        (bookCastsByCard.get(action.cardId) ?? [])
+                          .map((other) => other.action)
+                          .filter(isBoardTargetCardAction)
+                          .filter((other) => cardSelectionKey(other) === cardSelectionKey(action))
+                          .map((other) => other.target.type)
+                      );
+                      const what =
+                        targetTypes.has("space") && targetTypes.has("unit")
+                          ? "a unit or space"
+                          : targetTypes.has("space")
+                            ? "a space"
+                            : "a unit";
+                      const expertArm =
+                        action.type === "CAST_SPELL" && action.useSchoolExpert
+                          ? " + School of Magic"
+                          : action.type === "CAST_SPELL" && action.useSchoolFetchExpert
+                            ? " + Basic Magic (+3)"
+                            : "";
+                      return `Cast${expertArm} → pick ${what} on the board`;
+                    }
                     const expert =
                       action.type === "CAST_SPELL" && action.useSchoolExpert
                         ? " + School of Magic"
                         : action.type === "CAST_SPELL" && action.useSchoolFetchExpert
                           ? " + Basic Magic (+3)"
                           : "";
-                    return `Cast${expert}${targetLabel}`;
+                    return `Cast${expert}`;
                   }}
                   emptyHint={(spellId) => timingHint(spellId)}
                   restrictionNotices={spellCastRestrictionNotices(state, viewerPlayerId).map((notice) => notice.text)}
                   onCast={(legal) => {
-                    onAction(legal.action);
+                    if (isBoardTargetCardAction(legal.action)) {
+                      // Arm normal board targeting (toggle off if already armed).
+                      onSelectCardAction(sameCardSelection(selectedCardAction, legal.action) ? null : legal.action);
+                    } else {
+                      onAction(legal.action);
+                    }
                     setShelfOpen(null);
                   }}
                   onClose={() => setShelfOpen(null)}
-                  subtitle="Cast a stored Spell — the normal Spell limit applies. Power boosts are played in the instant window."
+                  subtitle="Cast a stored Spell — the normal Spell limit applies. A targeted Spell closes the book and lights up its legal targets on the board. Power boosts are played in the instant window."
                 />
               ) : null}
             </div>

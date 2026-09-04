@@ -606,7 +606,7 @@ describe("PermanentSlot — compact card-only tray", () => {
 });
 
 describe("HandFan — Spell Book window (house rule)", () => {
-  it("the Spell Book icon opens the full grimoire and casting a stored Spell dispatches it", () => {
+  it("the Spell Book icon opens the full grimoire and a targeted stored Spell ARMS board targeting (one button, not one per target)", () => {
     const state = createInitialGameState("book-window-ui");
     state.players.p1.hand = [];
     // Lightning Bolt (not the starting-only Magic Arrow) is a Spell that can
@@ -617,16 +617,25 @@ describe("HandFan — Spell Book window (house rule)", () => {
     state.combat!.activeUnitId = "unit_p1_marksmen";
 
     const onAction = vi.fn();
+    const onSelectCardAction = vi.fn();
+    const legalActions = getLegalActions(state, "p1");
+    // CONTROL on the fixture: the engine really offers SEVERAL concrete
+    // unit-target casts from the Book (one per enemy unit) — the old grimoire
+    // rendered one button per target.
+    const bookCasts = legalActions.filter(
+      (legal) => legal.action.type === "CAST_SPELL" && legal.action.fromSpellBook && legal.action.target?.type === "unit"
+    );
+    expect(bookCasts.length).toBeGreaterThan(1);
     render(
       <CardZoomProvider>
         <HandFan
           view={getPlayerView(state, "p1")}
           state={state}
           viewerPlayerId="p1"
-          legalActions={getLegalActions(state, "p1")}
+          legalActions={legalActions}
           selectedCardAction={null}
           trayActive={false}
-          onSelectCardAction={() => {}}
+          onSelectCardAction={onSelectCardAction}
           onAction={onAction}
         />
       </CardZoomProvider>
@@ -638,18 +647,98 @@ describe("HandFan — Spell Book window (house rule)", () => {
     expect(screen.queryByRole("dialog", { name: /Spell Book/i })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Spell Book/i }));
 
-    // The stored Spell is on the index page, with a concrete (pre-targeted)
-    // cast button on the plate.
+    // The stored Spell is on the index page with ONE cast button that arms the
+    // board (the player then taps the glowing unit), never a wall of
+    // per-target buttons.
     const book = screen.getByRole("dialog", { name: /Spell Book/i });
     expect(book.textContent).toContain("Lightning Bolt");
-    const castButtons = screen.getAllByRole("button", { name: /^Cast →/i });
-    expect(castButtons.length).toBeGreaterThanOrEqual(1);
+    const castButtons = within(book).getAllByRole("button", { name: /^Cast/i });
+    expect(castButtons).toHaveLength(1);
+    expect(castButtons[0]!.textContent).toBe("Cast → pick a unit on the board");
     fireEvent.click(castButtons[0]!);
 
-    expect(onAction).toHaveBeenCalledTimes(1);
-    expect(onAction).toHaveBeenCalledWith(
+    expect(onAction).not.toHaveBeenCalled();
+    expect(onSelectCardAction).toHaveBeenCalledTimes(1);
+    expect(onSelectCardAction).toHaveBeenCalledWith(
       expect.objectContaining({ type: "CAST_SPELL", cardId: "spell.lightning_bolt", fromSpellBook: true })
     );
+    // Arming closes the book so the battlefield is visible (phone/iPad: the
+    // fixed book covered the board).
+    expect(screen.queryByRole("dialog", { name: /Spell Book/i })).toBeNull();
+  });
+
+  it("a SPACE-target stored Spell (Frost Ring) offers ONE 'pick a space' button, never twenty identical 'Cast → space' ones", () => {
+    const state = createInitialGameState("book-window-space");
+    state.players.p1.hand = [];
+    state.players.p1.spellBook = ["spell.frost_ring"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+
+    const onAction = vi.fn();
+    const onSelectCardAction = vi.fn();
+    const legalActions = getLegalActions(state, "p1");
+    const spaceCasts = legalActions.filter(
+      (legal) => legal.action.fromSpellBook && legal.action.target?.type === "space"
+    );
+    // CONTROL on the fixture: the engine offers many concrete space casts.
+    expect(spaceCasts.length).toBeGreaterThan(5);
+    render(
+      <CardZoomProvider>
+        <HandFan
+          view={getPlayerView(state, "p1")}
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={legalActions}
+          selectedCardAction={null}
+          trayActive={false}
+          onSelectCardAction={onSelectCardAction}
+          onAction={onAction}
+        />
+      </CardZoomProvider>
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Spell Book/i }));
+    const book = screen.getByRole("dialog", { name: /Spell Book/i });
+    const castButtons = within(book).getAllByRole("button", { name: /^Cast/i });
+    expect(castButtons).toHaveLength(1);
+    expect(castButtons[0]!.textContent).toBe("Cast → pick a space on the board");
+    fireEvent.click(castButtons[0]!);
+    expect(onAction).not.toHaveBeenCalled();
+    expect(onSelectCardAction).toHaveBeenCalledWith(
+      expect.objectContaining({ cardId: "spell.frost_ring", fromSpellBook: true, target: expect.objectContaining({ type: "space" }) })
+    );
+  });
+
+  it("an already-armed Book Spell shows 'Cancel targeting' and disarms on click", () => {
+    const state = createInitialGameState("book-window-cancel");
+    state.players.p1.hand = [];
+    state.players.p1.spellBook = ["spell.frost_ring"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    const legalActions = getLegalActions(state, "p1");
+    const armed = legalActions.find((legal) => legal.action.fromSpellBook && legal.action.target?.type === "space")!
+      .action as Extract<LegalAction["action"], { type: "CAST_SPELL" | "PLAY_CARD" }>;
+    const onSelectCardAction = vi.fn();
+    render(
+      <CardZoomProvider>
+        <HandFan
+          view={getPlayerView(state, "p1")}
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={legalActions}
+          selectedCardAction={armed}
+          trayActive={false}
+          onSelectCardAction={onSelectCardAction}
+          onAction={() => {}}
+        />
+      </CardZoomProvider>
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Spell Book/i }));
+    const book = screen.getByRole("dialog", { name: /Spell Book/i });
+    const cancel = within(book).getByRole("button", { name: "Cancel targeting" });
+    fireEvent.click(cancel);
+    expect(onSelectCardAction).toHaveBeenCalledWith(null);
   });
 
   it("shows the selected Spell's card art on the grimoire plate (art, not just the name)", () => {
