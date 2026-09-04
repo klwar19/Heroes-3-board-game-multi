@@ -1152,6 +1152,42 @@ describe("tile-slot gate placement", () => {
     expect(onBlocked.accepted).toHaveLength(0);
     expect(onBlocked.problems.join(" ")).toMatch(/cannot host/i);
   });
+
+  // 2026-09-04 USER RULE: a teleporter goes on ANY field except a Ⅶ objective, a
+  // blocked field and another teleporter. The designer's drop check and the setup
+  // carve share tokenMayCoverFieldDef, so this pins both at once.
+  it("a GUARDED tile slot is accepted and really carved; a Ⅶ objective slot still is not", () => {
+    const faceUpPlan: CustomMapTilePlan[] = [
+      { row: CLUSTER.row, col: CLUSTER.col, group: "far", faceDown: false, tileDefId: "F1" }
+    ];
+    // F1 slot 2 is a difficulty-2 Artifact symbol, slot 6 a difficulty-3 Settlement.
+    const onGuarded = validateCustomMapObjects(faceUpPlan, [
+      { kind: "monolith", placement: { type: "tile-slot", row: CLUSTER.row, col: CLUSTER.col, slot: 2 } },
+      { kind: "gate", pair: 1, placement: { type: "tile-slot", row: CLUSTER.row, col: CLUSTER.col, slot: 6 } }
+    ]);
+    expect(onGuarded.problems, onGuarded.problems.join("; ")).toHaveLength(0);
+    expect(onGuarded.accepted).toHaveLength(2);
+
+    // …and setup really carves it, guard and all gone.
+    const state = objectsGame(faceUpPlan, [
+      { kind: "monolith", placement: { type: "tile-slot", row: CLUSTER.row, col: CLUSTER.col, slot: 2 } }
+    ]);
+    const hex = hexSpaceId(tileFootprint(CLUSTER, 0)[2]);
+    const field = adv(state).fields[hex]!;
+    expect(field.location).toBe("monolith");
+    expect(field.difficulty).toBeUndefined();
+    expect(isFieldGuarded(field)).toBe(false);
+
+    // CONTROL: C1 slot 0 is the Ⅶ Dragon Utopia — still refused.
+    const centerPlan: CustomMapTilePlan[] = [
+      { row: CLUSTER.row, col: CLUSTER.col, group: "center", faceDown: false, tileDefId: "C1" }
+    ];
+    const onVii = validateCustomMapObjects(centerPlan, [
+      { kind: "monolith", placement: { type: "tile-slot", row: CLUSTER.row, col: CLUSTER.col, slot: 0 } }
+    ]);
+    expect(onVii.accepted).toHaveLength(0);
+    expect(onVii.problems.join(" ")).toMatch(/cannot host/i);
+  });
 });
 
 // ---- 6. A guarded standalone monolith joins the monolith network -------------

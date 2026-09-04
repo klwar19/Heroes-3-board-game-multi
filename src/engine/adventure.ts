@@ -12814,11 +12814,18 @@ function fieldIsTokenNetworkMember(state: GameState, field: MapFieldState, kind:
  *   the `raidBosses[id].fieldId` lair record) — overwriting the hex would leave
  *   that latch pointing at a Monolith and silently kill the module for the rest
  *   of the game.
- * Guarded fields (a live guard / printed `difficulty`) stay excluded in the two
- * legality helpers below too — overwriting one would erase a live guard for free
- * (an engine safety reading; kept out of this set so it applies uniformly at
- * design AND runtime). Towns keep the `category === "town"` guard: replacing a
- * Town field would orphan its TownState.
+ * Towns keep the `category === "town"` guard: replacing a Town field would
+ * orphan its TownState (and a home Town field is a starting position).
+ *
+ * WIDENED 2026-09-04 (USER RULE "make it able to put them on 'any field' on a
+ * tile (like underground gates). The only exception I would make for VII fields
+ * (utopia, random town etc) and blocked fields."): an ORDINARY GUARDED field
+ * (Field Difficulty 1-6 — a witch hut, a guarded mine, a Pandora's Box) is now
+ * a legal token hex at design AND runtime. The carve clears the guard with the
+ * rest of the sacrificed field's trappings ({@link carveMapTokenField} +
+ * {@link clearCustomGuard}), so nothing is stranded: the hex simply becomes a
+ * clean teleporter. Only the Ⅶ objective ring stays fenced off — see
+ * {@link TOKEN_MAX_FIELD_DIFFICULTY}.
  */
 const TOKEN_FORBIDDEN_LOCATIONS = new Set([
   "subterranean_gate",
@@ -12828,31 +12835,58 @@ const TOKEN_FORBIDDEN_LOCATIONS = new Set([
   "rift_lair",
   "monolith",
   "whirlpool",
-  "gate"
+  "gate",
+  // A one-way monolith half is a teleporter too: a second token may never stack
+  // on it (the carve sites already refused this; the legality now says so).
+  "oneway_entrance",
+  "oneway_exit"
 ]);
+
+/**
+ * The highest Field Difficulty a Monolith / Whirlpool / Gate token may cover.
+ * Ⅶ is the objective ring — the Dragon Utopia, the Grail, a Random Town /
+ * Random Settlement Ⅶ and every designer-DESIGNATED Ⅶ field — and the user rule
+ * (2026-09-04) fences exactly that off: a token there would delete the map's
+ * victory objective. Ⅰ–Ⅵ guards are fair game (the token replaces them).
+ */
+const TOKEN_MAX_FIELD_DIFFICULTY = 6;
+
+/**
+ * The ONE shared location-level token legality both seams read — the designer /
+ * setup definition check ({@link tokenMayCoverFieldDef}) and the runtime carve
+ * check ({@link tokenMayCoverField}) — so a slot the designer offers can never
+ * be one the engine then refuses. Terrain and live-map state (a hero standing
+ * on the hex) are the callers' own extra tests.
+ */
+function tokenMayCoverLocation(locationId: string, difficulty: number | undefined): boolean {
+  const location = locationDefinitions[locationId];
+  if (!location || location.category === "blocked" || location.category === "town") {
+    return false;
+  }
+  // Carved Field Override hexes are Location-Token-like: never overwritten —
+  // the override places FIRST in the reveal chain precisely so tokens pick a
+  // different hex (docs/field-override-redesign-plan.md).
+  if (TOKEN_FORBIDDEN_LOCATIONS.has(locationId) || isFieldOverrideLocation(locationId)) {
+    return false;
+  }
+  return !(typeof difficulty === "number" && difficulty > TOKEN_MAX_FIELD_DIFFICULTY);
+}
 
 /**
  * Whether a tile-DEFINITION field may host a `kind` token: legal location and
  * matching printed terrain (Monoliths/Gates on land, Whirlpools on sea). Pure —
  * used by the map designer to filter slot pickers and by setup to validate a
- * designed face-up placement. Guards (printed difficulty) refuse the token. A
- * Gate is land, so `(kind === "whirlpool")` is false for it and the check
- * demands a non-water hex — the Monolith legality, shared verbatim.
+ * designed face-up placement. A printed Ⅰ–Ⅵ guard is fine (the token replaces
+ * it); a Ⅶ objective is not ({@link tokenMayCoverLocation}). A Gate is land, so
+ * `(kind === "whirlpool")` is false for it and the check demands a non-water
+ * hex — the Monolith legality, shared verbatim.
  */
 export function tokenMayCoverFieldDef(def: TileDefinition, slot: number, kind: TokenPlacementKind): boolean {
   const fieldDef = def.fields[slot];
   if (!fieldDef) {
     return false;
   }
-  const location = locationDefinitions[fieldDef.location];
-  if (!location || location.category === "blocked" || location.category === "town") {
-    return false;
-  }
-  if (
-    TOKEN_FORBIDDEN_LOCATIONS.has(fieldDef.location) ||
-    isFieldOverrideLocation(fieldDef.location) ||
-    fieldDef.difficulty
-  ) {
+  if (!tokenMayCoverLocation(fieldDef.location, fieldDef.difficulty)) {
     return false;
   }
   const isWater = fieldDef.terrain ? fieldDef.terrain === "water" : def.terrain === "water";
@@ -12866,28 +12900,18 @@ export function legalTokenSlotsForTileDef(def: TileDefinition, kind: TokenPlacem
 
 /**
  * Whether a MATERIALIZED field may host a `kind` token right now: the same
- * location/terrain rules as {@link tokenMayCoverFieldDef} plus the live map
- * state — no still-guarded field, and no field a hero is standing on (the
- * token overwrites the hex; it cannot be pulled out from under a hero). A Gate
- * reuses the Monolith land legality (see {@link tokenMayCoverFieldDef}).
+ * location/terrain rules as {@link tokenMayCoverFieldDef} (ONE shared
+ * {@link tokenMayCoverLocation}, so the designer and the engine can never
+ * disagree) plus the live map state — no field a hero is standing on (the token
+ * overwrites the hex; it cannot be pulled out from under a hero). A LIVE Ⅰ–Ⅵ
+ * guard is legal since 2026-09-04: the carve erases it with the rest of the
+ * sacrificed field. A Gate reuses the Monolith land legality.
  */
 function tokenMayCoverField(state: GameState, field: MapFieldState | undefined, kind: TokenPlacementKind): boolean {
   if (!field) {
     return false;
   }
-  const location = locationDefinitions[field.location];
-  if (!location || location.category === "blocked" || location.category === "town") {
-    return false;
-  }
-  // Carved Field Override hexes are Location-Token-like: never overwritten —
-  // the override placed FIRST in the reveal chain precisely so tokens pick a
-  // different hex.
-  if (
-    TOKEN_FORBIDDEN_LOCATIONS.has(field.location) ||
-    isFieldOverrideLocation(field.location) ||
-    isFieldGuarded(field) ||
-    field.difficulty
-  ) {
+  if (!tokenMayCoverLocation(field.location, field.difficulty)) {
     return false;
   }
   if (heroAtSpace(state, field.spaceId)) {
@@ -13561,6 +13585,8 @@ export function carveColoredGateField(
   if (extras?.alwaysPickable) {
     field.onewayAlwaysPickable = true;
   }
+  // A sacrificed Ⅰ–Ⅵ guard (printed or designer) dies with the field it replaces.
+  clearCustomGuard(field);
   delete field.difficulty;
   delete field.resource;
   delete field.amount;
@@ -13842,6 +13868,8 @@ export function carveOnewayField(
   if (kind === "oneway_exit" && extras?.alwaysPickable) {
     field.onewayAlwaysPickable = true;
   }
+  // A sacrificed Ⅰ–Ⅵ guard (printed or designer) dies with the field it replaces.
+  clearCustomGuard(field);
   delete field.difficulty;
   delete field.resource;
   delete field.amount;
@@ -13950,6 +13978,8 @@ export function carveMapTokenField(
   // sea (`terrain: "water"` — coastline halts and the naval board still apply);
   // a Monolith is a land structure, and its candidates are land hexes already.
   field.location = kind;
+  // A sacrificed Ⅰ–Ⅵ guard (printed or designer) dies with the field it replaces.
+  clearCustomGuard(field);
   delete field.difficulty;
   delete field.resource;
   delete field.amount;

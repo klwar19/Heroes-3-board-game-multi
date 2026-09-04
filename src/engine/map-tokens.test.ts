@@ -16,6 +16,7 @@ import {
   carveMapTokenField,
   createSecondaryHero,
   instantiateTile,
+  isFieldGuarded,
   placeMapToken,
   tokenPlacementCandidates
 } from "./adventure";
@@ -484,7 +485,7 @@ describe("token placement on discovery", () => {
     expect(choice.prompt).toMatch(/reserved hex cannot host/i);
   });
 
-  it("discovering a tile that carries a token lets the discoverer choose its field (terrain/blocked/guard/town excluded)", () => {
+  it("discovering a tile that carries a token lets the discoverer choose its field (terrain/blocked/town excluded)", () => {
     let state = makeGame("token-place-walk");
     // N1: witch hut (guarded), windmill, sanctuary, mine (guarded), trading
     // post, tree of knowledge, blocked field.
@@ -499,13 +500,14 @@ describe("token placement on discovery", () => {
       throw new Error("no token placement choice");
     }
     expect(choice.playerId).toBe("p1");
-    // Exactly the 4 legal fields: windmill, sanctuary, trading post, tree of
-    // knowledge — never the guarded witch hut/mine or the blocked field.
-    expect(choice.mapToken.candidates).toHaveLength(4);
+    // Since the 2026-09-04 widening: EVERY field of the tile except the blocked
+    // one — the Ⅳ witch hut and the Ⅴ mine are ordinary guards, so they are legal
+    // token hexes now (the carve erases the guard).
+    expect(choice.mapToken.candidates).toHaveLength(6);
     const candidateLocations = choice.mapToken.candidates.map((spaceId) => adv(state).fields[spaceId]?.location);
     expect(candidateLocations).not.toContain("blocked_field");
-    expect(candidateLocations).not.toContain("mine");
-    expect(candidateLocations).not.toContain("witch_hut");
+    expect(candidateLocations).toContain("mine");
+    expect(candidateLocations).toContain("witch_hut");
 
     const pickedHex = choice.mapToken.candidates[2];
     const sacrificed = adv(state).fields[pickedHex]?.location;
@@ -534,9 +536,12 @@ describe("token placement on discovery", () => {
     for (const spaceId of choice.mapToken.candidates) {
       expect(adv(state).fields[spaceId]?.terrain).toBe("water");
     }
-    // The guarded sea chest is excluded even though it is water.
+    // Terrain is the only sea filter: the LAND mystical garden / mine islands are
+    // out, while the guarded (Ⅳ) sea chest is a legal water hex since the
+    // 2026-09-04 widening.
     const locations = choice.mapToken.candidates.map((spaceId) => adv(state).fields[spaceId]?.location);
-    expect(locations).not.toContain("sea_chest");
+    expect(locations).not.toContain("mystical_garden");
+    expect(locations).toContain("sea_chest");
 
     state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice.id, optionIndex: 0 });
     const placed = Object.values(adv(state).fields).find((field) => field.location === "whirlpool");
@@ -957,14 +962,17 @@ describe("multi-token tiles (pendingTokens queue)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Teleport tokens place ANYWHERE except a Creature Bank / blocked hex / another
-// teleporter / a PvE-module gate / a live guard (user rule 2026-08-02). The old
-// "victory/economy anchor" fence — Settlement / Mine / Obelisk / Grail / Dragon
-// Utopia — is gone. Drives the runtime candidate helper (tokenPlacementCandidates
-// → tokenMayCoverField) that decides the glowing legal hexes.
+// Teleport tokens place on ANY field (user rule 2026-09-04, widening the
+// 2026-08-02 one) except: a Ⅶ objective field (Dragon Utopia / Grail / Random
+// Town), a blocked field and its carves (Creature Bank, Calamity / Dungeon Gate,
+// Rift Lair), another teleporter, a Field Override hex and a Town. An ORDINARY
+// Ⅰ–Ⅵ GUARD is fine — the carve erases it. Drives BOTH seams: the definition
+// helper (legalTokenSlotsForTileDef → tokenMayCoverFieldDef, read by the map
+// designer + setup) and the runtime one (tokenPlacementCandidates →
+// tokenMayCoverField), which share tokenMayCoverLocation.
 // ---------------------------------------------------------------------------
 
-describe("teleport-token placement is unrestricted except Bank / blocked / teleporter / guard", () => {
+describe("teleport-token placement is any field except Ⅶ / blocked / teleporter / Town", () => {
   /** Instantiate a face-up N1 (land Near tile) and overwrite each flower hex's
    * location, forcing an unguarded LAND reading unless the caller says otherwise. */
   function tileWithLocations(
@@ -1006,26 +1014,102 @@ describe("teleport-token placement is unrestricted except Bank / blocked / telep
     expect(gateCandidates.has(spaces[0]), "mine is a legal Gate hex").toBe(true);
   });
 
-  it("CONTROL: a Creature Bank, a blocked field, a still-guarded field and a PvE gate stay forbidden", () => {
+  it("CONTROL: a Creature Bank, a blocked field, a PvE gate and another teleporter stay forbidden", () => {
     const { state, tile, spaces } = tileWithLocations("token-anywhere-control", [
       "creature_bank",
       "blocked_field",
-      "mine",
+      "oneway_entrance",
       "calamity_gate",
       "empty_field",
       "empty_field",
       "empty_field"
     ]);
-    // Re-guard the mine on the third hex: overwriting a LIVE guard for free stays
-    // barred at design AND runtime.
-    adv(state).fields[spaces[2]]!.difficulty = 2;
     const candidates = new Set(tokenPlacementCandidates(state, tile, "monolith"));
     expect(candidates.has(spaces[0]), "creature_bank stays forbidden").toBe(false);
     expect(candidates.has(spaces[1]), "blocked_field stays forbidden").toBe(false);
-    expect(candidates.has(spaces[2]), "a guarded mine stays forbidden").toBe(false);
+    expect(candidates.has(spaces[2]), "a one-way monolith half stays forbidden").toBe(false);
     expect(candidates.has(spaces[3]), "calamity_gate stays forbidden").toBe(false);
     // Sanity: a plain unguarded land hex on the same tile IS legal, so the four
     // exclusions above are real rather than the whole tile being unusable.
     expect(candidates.has(spaces[4]), "a plain empty land hex is legal").toBe(true);
+  });
+
+  // --- 2026-09-04 USER RULE: "any field" except Ⅶ fields and blocked fields ---
+
+  it("a GUARDED Ⅰ–Ⅵ field hosts a token: the carve erases the guard and the hero really teleports through it", () => {
+    let state = makeGame("token-over-guard");
+    // The far exit Monolith, so the freshly placed one really leads somewhere.
+    const [afterB, tileB] = placeEmptyTile(state, "F3", { row: 30, col: 18 });
+    state = afterB;
+    const exit = carveToken(state, tileB, 4, "monolith");
+
+    // N1 prints a difficulty-5 guarded MINE; the discovered token lands on it.
+    const tile = instantiateTile(adv(state), "N1", { row: 24, col: 12 }, 0, true);
+    adv(state).tiles[tile.id].pendingToken = { kind: "monolith" };
+    state = revealTile(state, tile.id);
+    const choice = state.pendingChoice;
+    if (choice?.type !== "OPTION_CHOICE" || choice.context !== "place-map-token" || !choice.mapToken) {
+      throw new Error("no token placement choice");
+    }
+    const mineIndex = choice.mapToken.candidates.findIndex(
+      (spaceId) => adv(state).fields[spaceId]?.location === "mine"
+    );
+    expect(mineIndex, "a guarded mine is now an offered token hex").toBeGreaterThanOrEqual(0);
+    const mineHex = choice.mapToken.candidates[mineIndex];
+    expect(isFieldGuarded(adv(state).fields[mineHex]!), "the mine really is guarded before the carve").toBe(true);
+
+    state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice.id, optionIndex: mineIndex });
+
+    const carved = adv(state).fields[mineHex]!;
+    expect(carved.location).toBe("monolith");
+    expect(carved.difficulty).toBeUndefined();
+    expect(isFieldGuarded(carved), "the sacrificed guard is gone with the field").toBe(false);
+
+    // Observable outcome: a hero walks onto the fresh Monolith and travels — no
+    // guard fight opens on the way in, and the hop lands on the other token.
+    const centre = getTileFootprintSpaceIds(adv(state).tiles[tile.id])[0];
+    const centreField = adv(state).fields[centre]!;
+    centreField.location = "empty_field";
+    delete centreField.difficulty;
+    putHero(state, centre);
+    state = moveHero(state, mineHex);
+    expect(state.combat, "walking onto the carved token opens no guard fight").toBeFalsy();
+    expect(state.heroes.hero_p1.spaceId).toBe(mineHex);
+    state = commitTravel(state);
+    expect(state.heroes.hero_p1.spaceId).toBe(exit);
+  });
+
+  it("CONTROL: a Ⅶ objective field refuses the token at BOTH seams", () => {
+    // Designer / setup seam (tile definitions): the Ⅶ objective and the blocked
+    // hex are never offered, while the tile's Ⅵ guards now are.
+    const utopiaSlots = legalTokenSlotsForTileDef(allTileDefinitions.C1, "monolith");
+    expect(utopiaSlots, "C1 slot 0 is the Ⅶ Dragon Utopia").not.toContain(0);
+    expect(utopiaSlots, "C1 slot 2 is a blocked field").not.toContain(2);
+    expect(utopiaSlots, "C1 slot 3 is a Ⅵ shrine — legal since the widening").toContain(3);
+    expect(utopiaSlots, "C1 slot 6 is a Ⅵ Pandora's Box — legal since the widening").toContain(6);
+    expect(legalTokenSlotsForTileDef(allTileDefinitions.C2, "monolith"), "C2 slot 0 is the Ⅶ Grail").not.toContain(0);
+    expect(
+      legalTokenSlotsForTileDef(allTileDefinitions.C5, "monolith"),
+      "C5 slot 0 is the Ⅶ Random Town"
+    ).not.toContain(0);
+
+    // Runtime seam: a materialized Ⅶ field (a designated one included) is out,
+    // while the same field one difficulty lower is a legal hex.
+    const { state, tile, spaces } = tileWithLocations("token-vii-control", [
+      "dragon_utopia",
+      "grail",
+      "mine",
+      "empty_field",
+      "empty_field",
+      "empty_field",
+      "empty_field"
+    ]);
+    adv(state).fields[spaces[0]]!.difficulty = 7;
+    adv(state).fields[spaces[1]]!.difficulty = 7;
+    adv(state).fields[spaces[2]]!.difficulty = 6;
+    const candidates = new Set(tokenPlacementCandidates(state, tile, "monolith"));
+    expect(candidates.has(spaces[0]), "a Ⅶ Dragon Utopia stays forbidden").toBe(false);
+    expect(candidates.has(spaces[1]), "a Ⅶ Grail stays forbidden").toBe(false);
+    expect(candidates.has(spaces[2]), "a Ⅵ guarded mine is legal").toBe(true);
   });
 });

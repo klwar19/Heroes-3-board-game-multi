@@ -3168,6 +3168,50 @@ describe("MapDesigner — tile-carried token direct manipulation (click + drag)"
     expect(container.querySelector(".designerTokenPopover"), "panel closed after remove").toBeNull();
   });
 
+  // 2026-09-04 USER RULE: a teleport token drops on ANY field except a Ⅶ
+  // objective, a blocked field and another teleporter. The designer's field
+  // picker reads the SAME legality as the engine (legalTokenSlotsForTileDef →
+  // tokenMayCoverFieldDef), so it must now offer the guarded slots.
+  it("the token panel offers GUARDED fields and still withholds the blocked / Ⅶ ones", () => {
+    const { container } = render(
+      <MapDesigner scenarioId="skirmish" customMap={faceUpTokenMap()} onChange={() => {}} hexSize={HEX} />
+    );
+    fireEvent.click(container.querySelector(".designerMapToken.draggable")!);
+    const panel = container.querySelector(".designerTokenPopover") as HTMLElement;
+    const select = within(panel).getByLabelText("Token field") as HTMLSelectElement;
+    const offered = [...select.options].map((option) => Number(option.value));
+    // F1: slot 2 is a difficulty-2 Artifact symbol, slot 6 a difficulty-3
+    // Settlement — both offered now; slot 5 is the Blocked Field, never offered.
+    expect(offered, "a Ⅱ guarded field is an offered token hex").toContain(2);
+    expect(offered, "a Ⅲ guarded Settlement is an offered token hex").toContain(6);
+    expect(offered, "the blocked field stays out").not.toContain(5);
+
+    // CONTROL: C1's slot 0 is the Ⅶ Dragon Utopia — never offered, while the
+    // same tile's Ⅵ guards are.
+    cleanup();
+    const centerMap: CustomMapTilePlan[] = [
+      { row: town.row, col: town.col, group: "starting", faceDown: false },
+      {
+        row: spots[0].row,
+        col: spots[0].col,
+        group: "center",
+        faceDown: false,
+        tileDefId: "C1",
+        token: { kind: "monolith", slot: 1 }
+      }
+    ];
+    const center = render(
+      <MapDesigner scenarioId="skirmish" customMap={centerMap} onChange={() => {}} hexSize={HEX} />
+    );
+    fireEvent.click(center.container.querySelector(".designerMapToken.draggable")!);
+    const centerPanel = center.container.querySelector(".designerTokenPopover") as HTMLElement;
+    const centerOffered = [...(within(centerPanel).getByLabelText("Token field") as HTMLSelectElement).options].map(
+      (option) => Number(option.value)
+    );
+    expect(centerOffered, "the Ⅶ Dragon Utopia is never a token hex").not.toContain(0);
+    expect(centerOffered, "the tile's Ⅵ shrine is").toContain(3);
+  });
+
   it("the ✕ button closes the token panel", () => {
     const { container } = render(
       <MapDesigner scenarioId="skirmish" customMap={faceUpTokenMap()} onChange={() => {}} hexSize={HEX} />
