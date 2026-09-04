@@ -566,7 +566,7 @@ describe("Unit Experience — anime commanders auto-enable", () => {
       ruleset: "binh",
       anime: { enabled: true },
       players: [
-        { id: "p1", name: "P1", factionId: "imperium", heroDefId: "rogal_dorn" },
+        { id: "p1", name: "P1", factionId: "imperium", heroId: "rogal_dorn" },
         { id: "p2", name: "P2", factionId: "castle" }
       ]
     });
