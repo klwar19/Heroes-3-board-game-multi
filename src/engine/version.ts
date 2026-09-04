@@ -1041,7 +1041,17 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // would build the same designed map with different home positions (and would
 // not refuse an unseatable table), so authoritative placement diverges.
 // `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 93;
+// v94: the 2026-09-04 playtest batch (serialized `combat.bankAutoCombatAsked`,
+// teleport tokens on any Ⅰ–Ⅵ field, computer seats never neutral controllers,
+// controlled-guard Wait offers) plus the same-day session batch: the Astrologers
+// OFFENSE proclamation joins the deck and re-reads every Defense face as Attack;
+// Bowstring option B is a per-die `PLAY_REACTION.dieIndex` with
+// `ATTACK_DIE_SETTLED.rolls`; `POPULATION_ACTION.freelancerPayment` + the
+// `freelancers-guild-bounty` house rule and the printed 1:1 substitution;
+// Kivotos Kyrie Eleison / Hero Mode / Outlaw Shot / Winged Pursuit resolve
+// differently. A v93 worker offers and resolves different actions.
+// `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 94;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

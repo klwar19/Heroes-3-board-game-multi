@@ -4013,3 +4013,74 @@ derivation and controlled-guard offer set all changed).
   a paid Surrender, a Creature Bank, a lower-level opponent (Quick Combat), a level-Ⅶ
   winner (track full — whose `EXPERIENCE_GAINED` line still prints amount 1, a pinned
   cosmetic limit).
+
+## Session batch 2026-09-04b (protocol v94) — Offense · Bowstring · Stronghold board & Freelancer's Guild · AI level discipline · CI reds
+
+Landed from the shared working tree of several sessions (the ranked-replay audit and
+the Blue Archive audit have their own sections above). Protocol v93 → v94 and the
+edge redeployed manually (the CI "Deploy PartyKit" gate had been red on four tests,
+all fixed below). Every claim carries a test that fails when the logic is removed.
+
+- **Astrologers OFFENSE (Stronghold expansion) is IMPLEMENTED** (`astrologers.offense`,
+  effect `DEFENSE_TO_ATTACK`, removed from `ASTROLOGERS_NOT_IMPLEMENTED`). ONE
+  reinterpretation seam `astrologersAdjustedCardEffect` / `getEffectiveCardEffectForState`
+  (effects.ts) read by the legality variants (`getCardPlayVariants(card, state)`),
+  `assertLegal`, the reaction pipeline and `resolveTopStackCore`: while the proclamation is
+  face up every card face that PROVIDES positive Defense (`ADD_COMBAT_STAT defense`,
+  `CREATE_DEFENSE_BUFF` → an Attack buff, the Polish Prayer's Defense half) provides the
+  same Attack instead, its defender-side reaction trigger flips to the ATTACKER's own
+  window (`INTERFERE_SPELL` follows), Defense PENALTIES stay penalties, and everything
+  reverts the moment the proclamation expires. `astrologers-offense.test.ts` (a library
+  sweep of every positive Defense face, ongoing buff, Spell, Prayer, batched reaction,
+  expiry, penalty CONTROL). LIMITS: art is pending (`ART_PENDING_PROCLAMATIONS`,
+  `image: ""`); the AI prices the flipped plays with its ordinary stat-card policy.
+  Same batch: Battalion's Stallion / Magic Tortoise are pinned to move BOTH heroes
+  immediately (`secondary-heroes.test.ts`).
+- **Bowstring of the Unicorn's Mane option B = the RANGED UNIT'S CONTROLLER ignores ONE
+  chosen die** (`IGNORE_ONE_ATTACK_DIE_RESULT`, `afterAttackRoll`), superseding the
+  defender-side whole-roll cancel it had borrowed from Shield of the Dwarven Lords.
+  `getAfterRollAttackerReactions` emits one `PLAY_REACTION` per rolled die
+  (`dieIndex`, gated `requiresRangedAttacker`), `ATTACK_DIE_SETTLED` carries `rolls`, the
+  reducer drops that die and re-aggregates the rest (advantage/disadvantage fold,
+  apply-both sum, Slayer +1 count; a lone ignored die reads 0 and stays visible),
+  `rolledCandidate` is a full `AttackRollCandidate`, and the ReactionTray renders
+  "Ignore die N (face)" per die. `bowstring-post-roll.test.ts`, `unicorn-artifacts.test.ts`
+  (rewritten to this reading with a defender CONTROL), `overlays.test.tsx`. LIMITS: the
+  remaining dice's die-TRIGGERED effects still fire (only the Dwarven Lords' cancel
+  silences them); the AI passes.
+- **Stronghold town board = the genuine wiki empty/full scans**
+  (`towns-stronghold-{empty,full}.webp`, 2265×1651, `WIKI_GEOMETRY`, seven aligned
+  slices) replacing the fan board + per-building tile overlays; `combinedTile` is gone
+  from the spec (the shared Barracks/Freelancer slice uses the ordinary partial-bar
+  note). The old `town-board/stronghold-*.webp` tiles stay on disk, unused.
+  `boards.test.ts`, `town-board.test.tsx`.
+- **Freelancer's Guild is the PRINTED card again**: cost 2 gold + 2 materials (no
+  valuables); bounty 1 gold, with the NEW BINH house rule `freelancers-guild-bounty`
+  (category combat, default ON in BINH / OFF in Legacy) paying 2 at BOTH payout seams
+  (`freelancersGuildBounty`, adventure-reducer.ts — Quick Combat and the fought win);
+  resource substitution is the printed **1:1** for materials AND valuables (was the
+  market 1:1 / 1:3), and a human short of gold picks WHICH to spend first in the town
+  recruit section's `freelancerPaymentPrompt` dialog →
+  `POPULATION_ACTION.freelancerPayment` ("materials-first" | "valuables-first"; absent =
+  materials-first for the AI and old clients). `spendRecruitResources` refuses a
+  preference that cannot cover the cost. `freelancers-guild.test.ts`,
+  `expansion-content.test.ts`, `town-recruit-shortcut.test.tsx`,
+  `town-building-effects.test.tsx`. LIMITS: the basket submit and the one-click
+  Recruit/Reinforce buttons all route through the prompt; jsdom pins the DOM only.
+- **AI PvP engagement respects the enemy MAIN hero's LEVEL** (ranked-replay lesson,
+  rooms 06j7su / bi3xov / qzb56c: every PvP fight was opened by the seat two levels
+  BEHIND, and every attacker lost): `shouldEngageEnemy` adds `HERO_LEVEL_ENGAGE_MARGIN`
+  0.12 per level of deficit (cap `MAX_HERO_LEVEL_ENGAGE_RATIO` 1.45; one level behind
+  still trades even), a heroless garrison assault ignores it (`ignoreHeroLevel`), and
+  `objectiveStrategicValue` demotes a Creature Bank by `BANK_LEVEL_DEFICIT_PENALTY` 40
+  for a MAIN hero while any live enemy main hero out-levels it (banks pay no XP).
+  `army-strength.test.ts`, `map-navigation.test.ts` (equal-level CONTROLs). Score layer
+  only — no engine rule moved.
+- **The four CI reds (all from 80015e27, v92)**: ONE real regression — the
+  friendly-economy route CORRIDOR in `classifyHeroStep` sat above
+  `breakNeedsIndividualFlag`, so an ally-flagged Break mine was walked through in the
+  default `individual` team scope (one guard clause; `map-design-features.test.ts`); the
+  Artillery pair was a stale test HELPER (its drain loop took the v92 Polish two-shot
+  offer and spent the card before the play under test — the card is now held out of
+  hand across the drain); the Sanctuary expectation moved to `"open"` with a GUARDED
+  sanctuary `"stop"` CONTROL (`visitable-fields-cube.test.ts`).
