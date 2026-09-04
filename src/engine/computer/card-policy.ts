@@ -1136,16 +1136,30 @@ export function scoreCardAction(
       // deliberately-low band as the medic map draw-only play (~300), so a real
       // in-combat use always outranks it.
       if ((action.type === "PLAY_CARD" || action.type === "PLAY_REACTION") && action.drawOnly) {
-        return { score: 300, policy: "card.draw-rider-only" };
+        // On the MAP a pure cycle must sit strictly BELOW END_TURN (300): tied
+        // at 300 it could win the tie-break and, with a deck of nothing but
+        // draw riders, replay itself through the reshuffled discard forever
+        // (the seed "measure-f" 256-action stall, 2026-09-04).
+        return observation.state.combat
+          ? { score: 300, policy: "card.draw-rider-only" }
+          : { score: 290, policy: "card.draw-rider-only" };
       }
 
       // Sorcery-style activation play banks Power for the next Spell and draws
       // a card. Once Power is already banked, replaying another copy is mostly
       // a cycle and can alternate forever with another draw-rider card. Hold it
       // below END_ACTIVATION; the bank clears after the intended Spell or when
-      // this activation ends.
+      // this activation ends. The MAP twin is `player.mapSpellPowerBank` (the
+      // whole bank feeds the next map Power-tier cast and a hero MOVE clears
+      // it): with Power already banked, Sorcery / Scales / Armor of Wonder
+      // cycled each other through a three-card deck for 256 actions (seed
+      // "measure-f", 2026-09-04) — hold the replay below END_TURN (300) too.
       const optionIndex = "optionIndex" in action ? action.optionIndex : undefined;
       const actionEffect = primaryEffect(card, optionIndex);
+      const actor = observation.state.players[observation.playerId];
+      const powerAlreadyBanked = observation.state.combat
+        ? (actor?.combatStats?.pendingDrawRiderSpellPower ?? 0) > 0
+        : (actor?.mapSpellPowerBank ?? 0) > 0;
       if (action.type === "PLAY_REACTION") {
         const pending = pendingAttackValues(observation);
         if (
@@ -1161,7 +1175,7 @@ export function scoreCardAction(
         action.type === "PLAY_CARD" &&
         actionEffect?.type === "ADD_SPELL_POWER" &&
         actionEffect.drawCards &&
-        (observation.state.players[observation.playerId]?.combatStats?.pendingDrawRiderSpellPower ?? 0) > 0
+        powerAlreadyBanked
       ) {
         return { score: 180, policy: "card.hold-draw-rider-cycle" };
       }

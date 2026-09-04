@@ -568,6 +568,41 @@ describe("card policy — map plays", () => {
     };
   }
 
+  it("holds a map Sorcery-style Power draw rider below END_TURN once map Power is already banked (measure-f stall)", () => {
+    // Seed "measure-f" (single-player-premium-rush): with a deck of nothing but
+    // Sorcery / Scales / Armor of Wonder the AI banked +Power, drew the next
+    // rider, replayed it, reshuffled the discard and never ended its turn
+    // (256-action safety limit). The bank is player.mapSpellPowerBank on the map.
+    const sorcery: GameAction = {
+      type: "PLAY_CARD",
+      playerId: "p2",
+      cardId: "ability.sorcery",
+      mode: "basic",
+      target: { type: "none" },
+    } as GameAction;
+    const fresh = mapCardObservation(["ability.sorcery"]);
+    // CONTROL: nothing banked yet — the first play is a real Power bank, above END_TURN.
+    expect(scoreCardAction(fresh, sorcery)!.score).toBeGreaterThan(300);
+    const banked = mapCardObservation(["ability.sorcery"]);
+    (banked.state.players.p2 as { mapSpellPowerBank?: number }).mapSpellPowerBank = 1;
+    const held = scoreCardAction(banked, sorcery)!;
+    expect(held.policy).toBe("card.hold-draw-rider-cycle");
+    expect(held.score).toBeLessThan(300);
+    // A pure draw-only play on the map is likewise strictly below END_TURN (300),
+    // while its in-combat twin keeps the 300 band (below END_ACTIVATION 400).
+    const drawOnly: GameAction = {
+      type: "PLAY_CARD",
+      playerId: "p2",
+      cardId: "artifact.armor_of_wonder",
+      mode: "basic",
+      optionIndex: 0,
+      drawOnly: true,
+      target: { type: "none" },
+    } as GameAction;
+    expect(scoreCardAction(fresh, drawOnly)!.score).toBeLessThan(300);
+    expect(scoreCardAction(observation([], [], "p2", ["artifact.armor_of_wonder"]), drawOnly)!.score).toBe(300);
+  });
+
   it("draws and searches more aggressively when the hand lacks useful options", () => {
     const draw: GameAction = {
       type: "PLAY_CARD",
