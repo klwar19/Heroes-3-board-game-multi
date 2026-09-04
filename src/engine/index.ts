@@ -523,6 +523,7 @@ export {
   sanitizeObjectGuard,
   sanitizeCoopMapSeat,
   sanitizeSinglePlayerMapStart,
+  preassignedSettlementCountFor,
   seatRoleMapDeployment,
   startingTileSeatRole,
   secretFeatureDemandWarnings,

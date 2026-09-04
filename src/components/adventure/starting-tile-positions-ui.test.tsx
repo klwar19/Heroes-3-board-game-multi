@@ -114,6 +114,38 @@ describe("starting-position seating picker", () => {
     expect((s2.getByRole("button", { name: /^Player 1/ }) as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it("badges how many designer settlements each starting position brings", () => {
+    let state = createAdventureLobbyState({ seed: "seating-ui-badge", scenarioId: "skirmish" });
+    const plans: CustomMapTilePlan[] = [
+      ...towns([undefined, undefined]),
+      // Two Ⅱ–Ⅲ settlements pre-assigned to S1, one to S2.
+      { row: 5, col: 1, group: "far", faceDown: true, settlement: { ownerStart: 0 } },
+      { row: 10, col: 0, group: "far", faceDown: true, settlement: { ownerStart: 0 } },
+      { row: 13, col: 7, group: "far", faceDown: true, settlement: { ownerStart: 1 } }
+    ];
+    state = apply(state, {
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { customMap: plans }
+    });
+    show(state);
+    const rowFor = (position: number) =>
+      screen
+        .getByRole("region", { name: "Starting positions" })
+        .querySelector(`[data-starting-tile="S${position}"]`) as HTMLElement;
+    expect(
+      rowFor(1).querySelector("[data-preassigned-settlements]")?.getAttribute(
+        "data-preassigned-settlements"
+      )
+    ).toBe("2");
+    expect(rowFor(1).textContent).toContain("· 2 settlements");
+    expect(rowFor(2).textContent, "singular reads naturally").toContain("· 1 settlement");
+    expect(
+      rowFor(1).textContent!.includes("· 1 settlement "),
+      "S1 is not mislabelled singular"
+    ).toBe(false);
+  });
+
   it("resets to Default, and works in a SINGLE-PLAYER lobby with a computer seat", () => {
     const solo = createAdventureLobbyState({
       seed: "seating-ui-solo",

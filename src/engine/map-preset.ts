@@ -986,6 +986,21 @@ export type SeatRoleDeploymentResult =
  * ({@link GameSetupOptions.startingTileAssignments}) — it must agree with
  * {@link seatRoleMapDeployment}, so both go through `sanitizeCoopMapSeat`.
  */
+/**
+ * How many designer PRE-ASSIGNED settlements ({@link CustomMapSettlementFieldPlan.ownerStart})
+ * are attached to ONE starting position (0-based, S1..Sn). A tile plan may host
+ * several settlement FIELDS but carries one settlement plan, so this counts
+ * PLANS — what the lobby's per-position badge advertises. THE one shared read
+ * behind that badge, so the lobby can never advertise a count the build does
+ * not hand out.
+ */
+export function preassignedSettlementCountFor(
+  plans: readonly CustomMapTilePlan[] | null | undefined,
+  position: number
+): number {
+  return (plans ?? []).filter((plan) => plan.settlement?.ownerStart === position).length;
+}
+
 export function startingTileSeatRole(
   plans: readonly CustomMapTilePlan[] | null | undefined,
   index: number

@@ -78,6 +78,7 @@ function build(opts: {
   manualOrder?: PlayerId[];
   sessionMode?: "multiplayer" | "single-player";
   computers?: number;
+  assignments?: Record<PlayerId, number>;
 }): GameState {
   const computers = opts.computers ?? 0;
   const controllers = Object.fromEntries(
@@ -90,6 +91,7 @@ function build(opts: {
     startingBonus: false,
     victoryMode: "conquest",
     customMap: opts.tiles,
+    ...(opts.assignments ? { startingTileAssignments: opts.assignments } : {}),
     sessionMode: opts.sessionMode ?? "multiplayer",
     controllers,
     ...(opts.manualOrder
@@ -139,6 +141,30 @@ describe("pre-assigned settlement — the flag at materialize", () => {
     });
     expect(state.adventure!.startingTileSeats).toEqual(["p2", "p1"]);
     expect(settlements(state)[0].flagOwnerId, "p1 now sits on S2").toBe("p1");
+  });
+
+  it("the LOBBY seat → starting-tile record moves the owner with the seat", () => {
+    // Three designer Towns, two seats. The settlement is attached to S3, and
+    // the lobby record decides WHO sits there — so the same map hands the same
+    // settlement to a different player.
+    const tiles: CustomMapTilePlan[] = [
+      ...towns(),
+      { row: 6, col: 4, group: "starting", faceDown: false },
+      settlementSlot({ row: 5, col: 1 }, 2)
+    ];
+    const toP1 = build({ tiles, seed: "preassigned-lobby", assignments: { p1: 2, p2: 0 } });
+    expect(toP1.adventure!.startingTileSeats).toEqual(["p2", null, "p1"]);
+    expect(settlements(toP1)[0].flagOwnerId, "p1 sits on S3 and owns it").toBe("p1");
+    expect(settlements(toP1)[0].settlementFoundingOwedBy).toBe("p1");
+
+    // The SAME map with the seats swapped hands it to p2 instead.
+    const toP2 = build({ tiles, seed: "preassigned-lobby", assignments: { p1: 0, p2: 2 } });
+    expect(settlements(toP2)[0].flagOwnerId, "the owner follows the SEAT").toBe("p2");
+
+    // CONTROL — with no record the default order seats p1/p2 on S1/S2, so
+    // nobody sits on S3 and the settlement stays unowned.
+    const control = build({ tiles, seed: "preassigned-lobby" });
+    expect(settlements(control)[0].flagOwnerId, "CONTROL: unowned").toBeNull();
   });
 
   it("an EMPTY starting position leaves the settlement unowned", () => {

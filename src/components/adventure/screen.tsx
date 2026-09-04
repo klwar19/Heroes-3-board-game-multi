@@ -116,6 +116,7 @@ import {
   isComputerPlayer,
   getScenario,
   lobbyTeamAssignments,
+  preassignedSettlementCountFor,
   startingTileCount,
   startingTileSeatRole,
   printedBordersSurviveCarve,
@@ -2946,6 +2947,8 @@ export function HexMapBoard({
       if (field.flagOwnerId) {
         overlays.push(
           <g
+            data-field-flag={field.flagOwnerId}
+            data-field-flag-space={spaceId}
             key={`${spaceId}-flag`}
             transform={`translate(${x - HEX_SIZE * 0.62}, ${y - HEX_SIZE * 0.72})`}
           >
@@ -16996,6 +16999,7 @@ function StartingTilePositions({
       {Array.from({ length: startCount }, (_, position) => {
         const role = startingTileSeatRole(plans, position);
         const here = seatAt(position);
+        const settlementsHere = preassignedSettlementCountFor(plans, position);
         return (
           <div
             className="optionRow teamSetupRow"
@@ -17009,6 +17013,13 @@ function StartingTilePositions({
                 : role === "computer"
                   ? " · Only AI"
                   : " · Free"}
+              {settlementsHere > 0 ? (
+                <span data-preassigned-settlements={settlementsHere}>
+                  {" · " +
+                    settlementsHere +
+                    (settlementsHere === 1 ? " settlement" : " settlements")}
+                </span>
+              ) : null}
             </small>
             <div
               className="optionButtons"
