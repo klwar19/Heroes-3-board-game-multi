@@ -236,6 +236,9 @@ describe("Blue Archive authored unit mechanics", () => {
     state.combat!.activeUnitId = currentAttacker.id;
     state = settle(applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: attacker.id, defenderId: target.id }));
     expect(state.combat!.units[secondary.id].damage).toBe(afterFirst);
+    // Audit 2026-09-03: a spent Kyrie must not even OPEN the splash pick — without
+    // this line a disabled once-per-combat gate parked a choice and still passed.
+    expect(state.pendingChoice).toBeNull();
   });
 
   it("Abi-Eshuh grants +1 Defense against only Toki's first incoming attack", () => {
@@ -834,7 +837,9 @@ describe("Blue Archive authored unit mechanics", () => {
     toki.abilities = ["kivotos-mode-change"];
     kei.abilities = ["kivotos-key-authority"];
     state.players.p2.hand = [];
-    state.players.p2.deck = ["spell.magic-arrow.basic"];
+    // Audit 2026-09-03: two cards in the deck so the draw COUNT is really pinned
+    // (with one card, "draw 1" and "draw 2" both left one card in hand).
+    state.players.p2.deck = ["spell.magic-arrow.basic", "spell.magic-arrow.basic"];
     state.combat!.activeUnitId = toki.id;
     state.activePlayerId = "p1";
 
@@ -857,6 +862,7 @@ describe("Blue Archive authored unit mechanics", () => {
     });
     expect(state.combat!.units[kei.id].keyAuthorityUsedThisCombat).toBe(true);
     expect(state.players.p2.hand).toEqual(["spell.magic-arrow.basic"]);
+    expect(state.players.p2.deck, "exactly ONE card was drawn").toHaveLength(1);
     expect(state.combat!.units[toki.id].tokiMode).toBeUndefined();
     expect(state.pendingChoice).toBeNull();
   });

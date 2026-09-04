@@ -8584,7 +8584,10 @@ function runPostAttackFollowUps(
     // before the parked retaliation resumes.
     () => {
       const ability = getPostAttackMoveAbility(attacker);
-      return ability
+      // A Neutral-owned Yuuka (a Calamity-Wave warband) has no seat to answer a
+      // "combat-step" OPTION_CHOICE and no neutral auto-resolver exists for it,
+      // so the optional reposition is declined — never a stranded window.
+      return ability && attacker.controllerId !== NEUTRAL_PLAYER_ID
         ? openUnitStepChoice(state, attacker.controllerId, attacker, {
             optional: true,
             abilityId: ability.abilityId,
@@ -9119,11 +9122,15 @@ function resolveAttackDieDamageOutcome(
   followUp: AttackDieDamageFollowUp,
   candidate: AttackRollCandidate | null,
   forceRoll: boolean,
+  /** Kivotos readsAttackRoll: the attack's own resolved die replaces a throw. */
+  attackRoll?: number,
 ): void {
+  const window = attackDieDamageWindow(followUp);
   const lands =
     forceRoll ||
-    (candidate !== null &&
-      abilityRollSucceeds(candidate.rolls, attackDieDamageWindow(followUp)));
+    (attackRoll !== undefined
+      ? abilityRollSucceeds([attackRoll], window)
+      : candidate !== null && abilityRollSucceeds(candidate.rolls, window));
   // Death-Stare style: bare ability id only on a landed hit (abilityFxPlans keys
   // thunderbirds-lightning / wyvern-sting), miss announces under `${id}-roll`.
   appendEvent(state, {
@@ -9133,7 +9140,9 @@ function resolveAttackDieDamageOutcome(
     targetUnitId: defender.id,
     message: forceRoll
       ? `${attacker.name} uses ${followUp.abilityName} regardless of the roll (Basilisks VI).`
-      : `${attacker.name} rolls ${candidate?.rolls.join(", ")} for ${followUp.abilityName}.`,
+      : attackRoll !== undefined
+        ? `${attacker.name}'s Attack die shows ${attackRoll} — ${followUp.abilityName} ${lands ? "triggers" : "does not trigger"}.`
+        : `${attacker.name} rolls ${candidate?.rolls.join(", ")} for ${followUp.abilityName}.`,
     // A forced (no-roll) proc throws no dice, so it gets no dice read-out.
     ...(forceRoll || !candidate
       ? {}
@@ -9219,6 +9228,21 @@ function applyAttackDieDamageFollowUps(
         followUp,
         null,
         true,
+      );
+      continue;
+    }
+
+    // Kivotos Outlaw Shot / Winged Pursuit judge the ATTACK's own resolved die
+    // ("On a +1 Attack-die result"): no extra die, no reroll window.
+    if (followUp.readsAttackRoll) {
+      resolveAttackDieDamageOutcome(
+        state,
+        attacker,
+        defender,
+        followUp,
+        null,
+        false,
+        ctx.attackRoll,
       );
       continue;
     }

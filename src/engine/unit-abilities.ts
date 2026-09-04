@@ -292,6 +292,8 @@ export type AttackDieDamageFollowUp = {
   /** When set, the face must also be ≤ maxRoll (Wyverns: exactly "0"). */
   maxRoll?: number;
   amount: number;
+  /** Kivotos: judge the ATTACK's own die instead of throwing an extra one. */
+  readsAttackRoll?: boolean;
 };
 
 /**
@@ -308,6 +310,7 @@ export function getAttackDieDamageFollowUps(unit: CombatUnitState): AttackDieDam
             abilityName: ability.name,
             minRoll: ability.effect.minRoll,
             ...(ability.effect.maxRoll !== undefined ? { maxRoll: ability.effect.maxRoll } : {}),
+            ...(ability.effect.readsAttackRoll ? { readsAttackRoll: true } : {}),
             amount: ability.effect.amount
           }
         ]
@@ -986,10 +989,14 @@ export function getFlatDamageFollowUps(
       continue;
     }
 
+    // Kivotos Kyrie Eleison: "a second ENEMY adjacent to the target" — an ally
+    // beside the target is never a candidate (Magogs keep their printed "unit").
+    const enemiesOnly = Boolean(ability.effect.enemiesOnly);
     const candidates = units.filter(
       (unit) =>
         unit.id !== defender.id &&
         unit.id !== attacker.id &&
+        (!enemiesOnly || unit.controllerId !== attacker.controllerId) &&
         isAlive(unit) &&
         isAdjacent(unit.position, defender.position)
     );

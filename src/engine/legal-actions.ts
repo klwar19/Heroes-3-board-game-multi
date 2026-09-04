@@ -6956,8 +6956,12 @@ function addUnitAbilityActions(
     // Pochi's Dig replaces the attack, not the move, so it remains available
     // after an optional move. Other pre-move activation abilities retain their
     // existing gate.
+    // Ibuki's AP commands are usable after a move (the cast then ENDS her
+    // movement — commanders.ts / mayBeUsedAfterMoving already exempt her; this
+    // offer gate used to drop every command once she had moved).
     if (
       activeUnit.movedThisActivation &&
+      activeUnit.commanderSlug !== "ibuki" &&
       ability.effect?.type !== "PLACE_ADJACENT_OBSTACLE_ACTION" &&
       ability.effect?.type !== "MARK_ENEMY_FOR_NEXT_FRIENDLY_ATTACK"
     ) {

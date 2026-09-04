@@ -12,8 +12,7 @@ import {
   hasIgnoreOngoingEffects,
   hasIgnoreOngoingSpellEffects,
   hasIgnoreSpellAndSpecialtyNonDamage,
-  hasIgnoreParalysis,
-  hasUnitAbilityEffect
+  hasIgnoreParalysis
 } from "./unit-abilities";
 import type {
   ActiveEffectDefinition,
@@ -412,7 +411,17 @@ export function ignoresAllRangedCombatPenalties(
   state?: GameState,
   isRetaliation = false
 ): boolean {
-  if (!isRetaliation && hasUnitAbilityEffect(unit, "IGNORE_RANGED_PENALTIES")) {
+  // Kivotos Hero Mode is printed [unit_passive], so its waiver also covers a
+  // Retaliation Attack (includesRetaliation); the Magi/Sharpshooter reading stays
+  // own-attack only.
+  if (
+    getUnitAbilityDefinitions(unit).some(
+      (ability) =>
+        ability.implementationStatus === "implemented" &&
+        ability.effect?.type === "IGNORE_RANGED_PENALTIES" &&
+        (!isRetaliation || Boolean(ability.effect.includesRetaliation))
+    )
+  ) {
     return true;
   }
   return Boolean(

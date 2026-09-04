@@ -38,7 +38,11 @@ export type UnitAbilityEffectDefinition =
   // while a unit whose card reads "ignore the combat penalties" (Magi,
   // Sharpshooters, Halflings) waives BOTH.
   | { type: "IGNORE_RANGED_MELEE_PENALTY" }
-  | { type: "IGNORE_RANGED_PENALTIES" }
+  | {
+      type: "IGNORE_RANGED_PENALTIES";
+      /** Kivotos Hero Mode ([unit_passive]): the waiver also covers a Retaliation Attack. */
+      includesRetaliation?: boolean;
+    }
   | { type: "MOVE_ANYWHERE" }
   | { type: "UNIT_MOVE_RANGE_BONUS"; amount: number }
   | {
@@ -352,6 +356,8 @@ export type UnitAbilityEffectDefinition =
       requiresNonAdjacentTarget: boolean;
       /** Kivotos Kyrie Eleison: this splash can trigger only once per combat. */
       oncePerCombat?: boolean;
+      /** Kivotos Kyrie Eleison: only an ENEMY of the attacker may be splashed. */
+      enemiesOnly?: boolean;
     }
   | {
       /**
@@ -538,6 +544,12 @@ export type UnitAbilityEffectDefinition =
       minRoll: number;
       maxRoll?: number;
       amount: number;
+      /**
+       * Kivotos Outlaw Shot / Winged Pursuit: the window is checked against the
+       * ATTACK's own resolved die ("On a +1 Attack-die result"), so no separate
+       * ability die is thrown and no reroll window opens.
+       */
+      readsAttackRoll?: boolean;
     }
   | {
       /**
@@ -4056,13 +4068,13 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "imperium-god-engine-sweep-few": { id: "imperium-god-engine-sweep-few", name: "God-Engine Sweep", text: "After attacking, attack every adjacent enemy with 3 Attack.", effect: { type: "SECOND_ATTACK_ALL_ADJACENT_TO_SELF", baseAttack: 3 }, implementationStatus: "implemented" },
   "imperium-god-engine-sweep-pack": { id: "imperium-god-engine-sweep-pack", name: "Exalted God-Engine", text: "After attacking, attack every adjacent enemy with 4 Attack.", effect: { type: "SECOND_ATTACK_ALL_ADJACENT_TO_SELF", baseAttack: 4 }, implementationStatus: "implemented" },
   "kivotos-piercing-judgment": { id: "kivotos-piercing-judgment", name: "Piercing Judgment", text: "After moving, reroll one -1 Attack die.", effect: { type: "ATTACK_DIE_REROLL", rerollsPerAttack: 1, onlyOnRoll: -1, requiresMoved: true }, implementationStatus: "implemented" },
-  "kivotos-kyrie-eleison": { id: "kivotos-kyrie-eleison", name: "Kyrie Eleison", text: "Once per Combat after attacking, deal 1 damage to a second enemy adjacent to the target.", effect: { type: "FLAT_DAMAGE_ADJACENT_TO_TARGET", amount: 1, requiresNonAdjacentTarget: false, oncePerCombat: true }, implementationStatus: "implemented" },
+  "kivotos-kyrie-eleison": { id: "kivotos-kyrie-eleison", name: "Kyrie Eleison", text: "Once per Combat after attacking, deal 1 damage to a second enemy adjacent to the target.", effect: { type: "FLAT_DAMAGE_ADJACENT_TO_TARGET", amount: 1, requiresNonAdjacentTarget: false, oncePerCombat: true, enemiesOnly: true }, implementationStatus: "implemented" },
   "kivotos-prophetic-dream": { id: "kivotos-prophetic-dream", name: "Prophetic Dream", text: "At Combat start, examine the top 3 cards of your deck, take 1 into your hand, then return the rest to the deck.", effect: { type: "PICK_ONE_FROM_OWN_DECK_AT_COMBAT_START", count: 3 }, implementationStatus: "implemented" },
   "kivotos-future-sight": { id: "kivotos-future-sight", name: "Future Sight", text: "Once per Combat after any Attack die is rolled, you may force that die to be rerolled, whether an ally or enemy rolled it.", effect: { type: "FORCE_ANY_ATTACK_DIE_REROLL_ONCE_PER_COMBAT" }, implementationStatus: "implemented" },
   "kivotos-tea-party-order": { id: "kivotos-tea-party-order", name: "Tea Party Order", text: "The first time each Combat an adjacent ally is attacked, it gains +1 Defense for that attack.", effect: { type: "FIRST_ADJACENT_ALLY_ATTACK_DEFENSE_AURA", amount: 1 }, implementationStatus: "implemented" },
   "kivotos-royal-artillery": { id: "kivotos-royal-artillery", name: "Royal Artillery", text: "After attacking a non-adjacent target, attack one unit adjacent to it with 3 Attack.", effect: { type: "SECOND_ATTACK_ADJACENT_TO_TARGET", baseAttack: 3, requiresNonAdjacentTarget: true }, implementationStatus: "implemented" },
   "kivotos-railgun-charge": { id: "kivotos-railgun-charge", name: "Railgun Charge", text: "Gain +1 Attack when attacking an enemy that has already retaliated this round.", effect: { type: "ATTACK_BONUS_VS_RETALIATED_TARGET", amount: 1 }, implementationStatus: "implemented" },
-  "kivotos-hero-mode": { id: "kivotos-hero-mode", name: "Hero Mode", text: "Ignore all ranged Combat penalties.", effect: { type: "IGNORE_RANGED_PENALTIES" }, implementationStatus: "implemented" },
+  "kivotos-hero-mode": { id: "kivotos-hero-mode", name: "Hero Mode", text: "Ignore all ranged Combat penalties.", effect: { type: "IGNORE_RANGED_PENALTIES", includesRetaliation: true }, implementationStatus: "implemented" },
   "kivotos-system-intrusion": { id: "kivotos-system-intrusion", name: "System Intrusion", text: "On +1, ignore a Spell or Specialty targeting Kei.", effect: { type: "NEGATE_CARD_ON_DIE", onRoll: 1 }, implementationStatus: "implemented" },
   "kivotos-key-authority": { id: "kivotos-key-authority", name: "Key Authority", text: "Once per Combat, cancel an enemy activation ability as it triggers, then draw 1 card.", effect: { type: "CANCEL_ENEMY_ACTIVATION_ABILITY_ONCE_PER_COMBAT", draw: 1 }, implementationStatus: "implemented" },
   "kivotos-iron-horus": { id: "kivotos-iron-horus", name: "Iron Horus", text: "The first time each round Hoshino takes damage, reduce that damage by 1.", effect: { type: "REDUCE_FIRST_DAMAGE_EACH_ROUND", amount: 1 }, implementationStatus: "implemented" },
@@ -4073,7 +4085,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "kivotos-end-of-vacation": { id: "kivotos-end-of-vacation", name: "End of Vacation", text: "On a 0 or +1 Attack-die result, ignore 1 Defense of the target.", effect: { type: "DEFENSE_REDUCTION_ON_ATTACK_DIE", minRoll: 0, maxRoll: 1, amount: 1 }, implementationStatus: "implemented" },
   "kivotos-calculated-cover": { id: "kivotos-calculated-cover", name: "Calculated Cover", text: "After Yuuka attacks, she may move 1 space.", effect: { type: "POST_ATTACK_OPTIONAL_MOVE", spaces: 1 }, implementationStatus: "implemented" },
   "kivotos-perfect-balance": { id: "kivotos-perfect-balance", name: "Perfect Balance", text: "Discard a card to ignore the attacker's Attack-die result.", effect: { type: "DISCARD_TO_IGNORE_ATTACK_DIE" }, implementationStatus: "implemented" },
-  "kivotos-outlaw-shot": { id: "kivotos-outlaw-shot", name: "Outlaw Shot", text: "On +1, deal 1 additional damage.", effect: { type: "ATTACK_DIE_FLAT_DAMAGE_TO_TARGET", minRoll: 1, maxRoll: 1, amount: 1 }, implementationStatus: "implemented" },
+  "kivotos-outlaw-shot": { id: "kivotos-outlaw-shot", name: "Outlaw Shot", text: "On +1, deal 1 additional damage.", effect: { type: "ATTACK_DIE_FLAT_DAMAGE_TO_TARGET", minRoll: 1, maxRoll: 1, amount: 1, readsAttackRoll: true }, implementationStatus: "implemented" },
   "kivotos-hardboiled-boss": { id: "kivotos-hardboiled-boss", name: "Hardboiled Boss", text: "Reroll a -1 result; if the reroll is also -1, draw 1 card.", effect: { type: "ATTACK_DIE_REROLL", rerollsPerAttack: 1, onlyOnRoll: -1, drawIfRerollResult: -1, drawCount: 1 }, implementationStatus: "implemented" },
   "kivotos-cleaner-rush": { id: "kivotos-cleaner-rush", name: "Cleaner Rush", text: "If Neru moved and then attacks, ignore Retaliation.", effect: { type: "IGNORE_RETALIATION_AFTER_MOVE" }, implementationStatus: "implemented" },
   "kivotos-cqc-overdrive": { id: "kivotos-cqc-overdrive", name: "CQC Overdrive", text: "On a 0 or -1, attack the same target a second time.", effect: { type: "DOUBLE_ATTACK", maxRoll: 0, anyRange: true }, implementationStatus: "implemented" },
@@ -4092,7 +4104,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "kivotos-survey-route": { id: "kivotos-survey-route", name: "Survey Route", text: "At Combat start, teleport 1 allied unit to an empty space.", effect: { type: "TELEPORT_ALLY_AT_COMBAT_START" }, implementationStatus: "implemented" },
   "kivotos-cartographers-plan": { id: "kivotos-cartographers-plan", name: "Cartographer's Plan", text: "At activation, teleport another allied unit.", effect: { type: "TELEPORT_ANY_AT_ACTIVATION" }, implementationStatus: "implemented" },
   "kivotos-eagle-eye": { id: "kivotos-eagle-eye", name: "Eagle Eye", text: "After moving, gain +1 Attack.", effect: { type: "ATTACK_BONUS_AFTER_MOVE", amount: 1 }, implementationStatus: "implemented" },
-  "kivotos-winged-pursuit": { id: "kivotos-winged-pursuit", name: "Winged Pursuit", text: "On 0 or +1, deal 1 additional damage.", effect: { type: "ATTACK_DIE_FLAT_DAMAGE_TO_TARGET", minRoll: 0, amount: 1 }, implementationStatus: "implemented" }
+  "kivotos-winged-pursuit": { id: "kivotos-winged-pursuit", name: "Winged Pursuit", text: "On 0 or +1, deal 1 additional damage.", effect: { type: "ATTACK_DIE_FLAT_DAMAGE_TO_TARGET", minRoll: 0, amount: 1, readsAttackRoll: true }, implementationStatus: "implemented" }
 };
 
 /**
