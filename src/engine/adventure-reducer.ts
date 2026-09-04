@@ -420,6 +420,11 @@ import {
 } from "./morale-cards";
 import { MORALE_CARD_IDS } from "@/data/cards/morale";
 import { placeCombatToken, removeToken } from "./tokens";
+import {
+  ARENA_DUEL_WINS_TO_WIN,
+  arenaDuelAttackerIndex,
+  arenaDuelSeats
+} from "./arena-duel";
 import { applyComputerGuaranteedWin } from "./computer/guaranteed-wins";
 import {
   applyComputerCombatBoost,
@@ -9204,6 +9209,45 @@ function dungeonClaimsTile(state: GameState, tile: MapTileState): boolean {
  * finalize). A seat with no main hero on the map (defensive corner) is
  * pillaged directly — the wave found no defender.
  */
+/**
+ * Arena duels (1v1 `arena-duel` win condition): open duel `duel` between the
+ * two seats' MAIN heroes, WHEREVER they stand on the map — no travel, no
+ * adjacency, no contested field. The attacker alternates (duels 1 and 3 belong
+ * to the first live seat in turn order, duel 2 to the second) so the initiative
+ * is shared. Reuses `startPlayerCombat` through its `arenaDuel` options bag, so
+ * the fight (prep window, deployment, tactics, retreat/surrender) is an ORDINARY
+ * PvP battle — only the round-start opening and the finalize differ.
+ *
+ * Returns false (queue drops the entry, nothing happens) when the table is no
+ * longer a live 1v1 or a main hero is missing. `fieldId` is only the event/board
+ * anchor: the attacker's own hex, falling back to their home Town's field.
+ */
+function openArenaDuel(state: GameState, duel: number): boolean {
+  const seats = arenaDuelSeats(state);
+  if (!seats) {
+    return false;
+  }
+  const attackerIndex = arenaDuelAttackerIndex(duel);
+  const attackerId = seats[attackerIndex];
+  const defenderId = seats[attackerIndex === 0 ? 1 : 0];
+  const attackerHero = getMainHero(state, attackerId);
+  const defenderHero = getMainHero(state, defenderId);
+  if (!attackerHero || !defenderHero) {
+    return false;
+  }
+  // A hero with no map position (spaceId null) still duels — the arena is not a
+  // place on the board.
+  const fieldId =
+    attackerHero.spaceId ?? getTownOfPlayer(state, attackerId)?.fieldId ?? defenderHero.spaceId;
+  if (!fieldId) {
+    return false;
+  }
+  startPlayerCombat(state, attackerHero, defenderHero, fieldId, undefined, {
+    arenaDuel: { duel }
+  });
+  return true;
+}
+
 function openMonsterWaveAssault(state: GameState, playerId: PlayerId, wave: number): void {
   const adventure = state.adventure;
   const hero = Object.values(state.heroes).find(
@@ -10634,7 +10678,16 @@ export function startPlayerCombat(
   attacker: HeroState,
   defender: HeroState | null,
   fieldId: MapSpaceId,
-  garrisonDefenderId?: PlayerId
+  garrisonDefenderId?: PlayerId,
+  /**
+   * Arena duels (1v1 `arena-duel` win condition): this fight was opened by the
+   * round-start SCHEDULE, not by a hero step, so no field is contested. It
+   * skips the Sanctuary hero-attack ban (the duel is not one hero attacking
+   * another across the map) and the siege / holding-defense derivation (a plain
+   * field board even when the attacker happens to stand on their own Town), and
+   * stamps `context.arenaDuel` for the finalize.
+   */
+  options?: { arenaDuel?: { duel: number } }
 ): void {
   const defenderPlayerId = defender?.controllerId ?? garrisonDefenderId;
   if (!defenderPlayerId) {
@@ -10651,7 +10704,10 @@ export function startPlayerCombat(
   // Scoped to `defender` being a real enemy Hero: capturing an undefended enemy
   // Town/garrison (defender null, garrisonDefenderId set) is not "heroes
   // attacking one another" and stays legal, matching the printed wording.
-  if (defender && pvpAttacksBanned(state)) {
+  // An ARENA DUEL is a scheduled round-start event, not a hero choosing to
+  // attack — Sanctuary does not gate it (there is nothing to reject, and no
+  // legal action a player could take differently).
+  if (defender && !options?.arenaDuel && pvpAttacksBanned(state)) {
     throw new Error("Sanctuary: Heroes cannot attack one another this round.");
   }
 
@@ -10687,8 +10743,13 @@ export function startPlayerCombat(
   // holding, not fighting an ordinary open-field battle. Keep this independent
   // from `siege`: only a qualifying Town supplies fortifications; a Settlement
   // never does.
-  const holdingDefense =
-    field?.flagOwnerId === defenderPlayerId && field.location === "settlement"
+  // A DUEL is fought on a neutral arena board: the `fieldId` is only the
+  // attacker's own hex (the label/board anchor), never a holding the defender is
+  // defending, so no holding defense and no walls/gate/tower.
+  const arenaDuel = options?.arenaDuel;
+  const holdingDefense = arenaDuel
+    ? undefined
+    : field?.flagOwnerId === defenderPlayerId && field.location === "settlement"
       ? "settlement"
       : town &&
           (field?.flagOwnerId == null || field.flagOwnerId === defenderPlayerId)
@@ -10704,13 +10765,14 @@ export function startPlayerCombat(
   const grailSiege =
     isBuiltGrailField(state, field) && field?.flagOwnerId === defenderPlayerId;
   const siege =
-    utopiaSiege ||
+    !arenaDuel &&
+    (utopiaSiege ||
     grailSiege ||
     Boolean(
       town &&
         town.factionId &&
         town.buildings.some((buildingId) => coreBuildingDefinitions[buildingId]?.effect?.type === "UNLOCK_REINFORCE")
-    );
+    ));
 
   // House rule `mine-army-defense`: a Mine's owner defends with their army AND
   // their cards. DERIVED here (never passed in by a caller) so the flag can only
@@ -10726,7 +10788,8 @@ export function startPlayerCombat(
     fieldId,
     ...(holdingDefense ? { holdingDefense } : {}),
     ...(siege ? { siege: true } : {}),
-    ...(mineCardDefense ? { garrisonCardsAllowed: true } : {})
+    ...(mineCardDefense ? { garrisonCardsAllowed: true } : {}),
+    ...(arenaDuel ? { arenaDuel } : {})
   };
   assignCombatBoardArt(state, combat);
   combat.setup = {
@@ -14487,6 +14550,97 @@ export function finalizeAdventureCombat(state: GameState): void {
   const loserId = outcome.defeatedPlayerId;
   const loserHero = attackerHero?.controllerId === loserId ? attackerHero : defenderHero;
   const winnerHero = attackerHero?.controllerId === winnerId ? attackerHero : defenderHero;
+
+  // ARENA DUEL (1v1 `arena-duel` win condition): a scheduled round-start duel
+  // costs the loser NOTHING on the map — only a point in the best-of-three. It
+  // takes a dedicated path rather than a dozen guards through the ordinary PvP
+  // consequences below, so the skip list is readable in ONE place: no hero moves
+  // home (both stay exactly where they stood), no gold toll and no designer
+  // hero-defeat bounty, no morale hit, no flag / Grail-token transfer, no VP
+  // hero-defeat or surrender credit, no conquest `heroDefeats` credit, no siege
+  // elimination and no winner's field visit. KEPT: the army losses the fight
+  // really caused, the winner's experience by the ordinary PvP rule, the empty-
+  // deck restock and the after-combat Necromancy window.
+  if (context.arenaDuel) {
+    const duel = context.arenaDuel.duel;
+    const adventureState = adventure;
+    const tally = (adventureState.arenaDuels ??= { wins: {}, fought: [] });
+    if (!tally.fought.includes(state.round)) {
+      tally.fought.push(state.round);
+    }
+    if (winnerId !== NEUTRAL_PLAYER_ID && state.players[winnerId]) {
+      tally.wins[winnerId] = (tally.wins[winnerId] ?? 0) + 1;
+      // Experience by the ordinary PvP rule (both duellists are Main Heroes):
+      // +2 for beating a higher-level hero, +1 for an equal one, nothing for a
+      // weaker one. A surrendered/retreated duel is still a duel LOST, so it
+      // scores — but it pays no experience, exactly like a paid escape does
+      // outside the arena.
+      const escaped = outcome.reason === "surrender" || outcome.reason === "surrender-secondary";
+      if (
+        !escaped &&
+        winnerHero?.kind === "main" &&
+        loserHero?.kind === "main" &&
+        loserHero.level >= winnerHero.level
+      ) {
+        gainExperience(state, winnerId, loserHero.level > winnerHero.level ? 2 : 1);
+      }
+      appendEvent(state, {
+        type: "ARENA_DUEL_RESOLVED",
+        duel,
+        winnerPlayerId: winnerId,
+        loserPlayerId: loserId,
+        wins: { ...tally.wins },
+        message: `Arena duel ${duel} of 3 goes to ${
+          state.players[winnerId]?.name ?? winnerId
+        } — the series stands ${tally.wins[combat.attackerPlayerId] ?? 0}–${
+          tally.wins[combat.defenderPlayerId] ?? 0
+        } (first to ${ARENA_DUEL_WINS_TO_WIN} wins the game).`
+      });
+    }
+
+    for (const playerId of [winnerId, loserId]) {
+      if (playerId !== NEUTRAL_PLAYER_ID) {
+        restoreStartingArmyIfEmpty(state, playerId, {
+          commanderStandsIn: commanderSurvivors.has(playerId)
+        });
+      }
+    }
+
+    state.combat = null;
+    state.priorityPlayerId = null;
+    // A duel interrupts ROUND START, exactly like a wave assault: every combat
+    // activation publishes the acting side as activePlayerId, so hand the table
+    // back to the round's first live seat or the first player loses their turn
+    // (and with it the mandatory start-of-turn draw).
+    const firstLive = state.turnOrder.find(
+      (id) => id !== NEUTRAL_PLAYER_ID && !state.players[id]?.eliminated
+    );
+    if (firstLive) {
+      state.activePlayerId = firstLive;
+      state.turn.observingPlayerId = firstLive;
+    }
+    state.phase = "player-turn";
+
+    // Best of three: 2 wins ends the game right here (the generic
+    // `checkCustomWinConditions` tail would reach the same verdict through the
+    // shared progress metric — this just names the reason properly and stops the
+    // rest of the round-start queue from opening anything else).
+    if (
+      winnerId !== NEUTRAL_PLAYER_ID &&
+      (tally.wins[winnerId] ?? 0) >= ARENA_DUEL_WINS_TO_WIN &&
+      !state.adventure?.winnerPlayerId
+    ) {
+      declareAdventureWinner(state, winnerId, "won the arena best of three", {
+        viaVictoryCondition: true
+      });
+      return;
+    }
+
+    if (winnerId !== NEUTRAL_PLAYER_ID && state.players[winnerId]) {
+      openNecromancyWindow(state, winnerId, winnerHero?.id ?? getMainHero(state, winnerId)?.id);
+    }
+    return;
+  }
 
   // Polish Grail token: every PvP loss transfers the carried token to the
   // winner, including surrender/retreat. A built Grail stays in its field and
@@ -20586,6 +20740,22 @@ export function pumpAdventureQueues(state: GameState): void {
         continue;
       }
       adventure.rewardQueue.shift();
+      continue;
+    }
+
+    // Arena duel (1v1): open the scheduled duel. The barrier sentinel behind it
+    // lifts the whole-table freeze once the duel has resolved. A game already
+    // won (conquest can end the series mid-round) drops the duel — the
+    // wave-assault precedent: never drag a winner into a pointless fight.
+    if (reward.kind === "arena-duel") {
+      adventure.rewardQueue.shift();
+      if (adventure.winnerPlayerId) {
+        continue;
+      }
+      openArenaDuel(state, reward.duel);
+      if (state.combat) {
+        return;
+      }
       continue;
     }
 

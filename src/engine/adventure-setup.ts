@@ -3249,10 +3249,24 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     (mergedWinConditionPreset?.customWinConditions ?? []).some(
       (condition) => condition.kind === "slay-raid-boss"
     );
-  const resolvedMapPreset = droppedRaidBossWinCondition
+  // 1v1 GATE (arena duels): the scheduled rounds-4/8/12 series pulls "the two
+  // main heroes" into a duel — with 3+ seats there is no such pair, so the
+  // condition is DROPPED here with the same public feed line the raid-boss drop
+  // uses (never a silent no-op objective on the banner, never a blocked start).
+  // Sibling conditions on the same list survive.
+  const droppedArenaDuelWinCondition =
+    playerConfigs.length !== 2 &&
+    (mergedWinConditionPreset?.customWinConditions ?? []).some(
+      (condition) => condition.kind === "arena-duel"
+    );
+  const droppedWinConditionKinds = new Set<CustomWinCondition["kind"]>([
+    ...(droppedRaidBossWinCondition ? (["slay-raid-boss"] as const) : []),
+    ...(droppedArenaDuelWinCondition ? (["arena-duel"] as const) : [])
+  ]);
+  const resolvedMapPreset = droppedWinConditionKinds.size > 0
     ? (() => {
         const kept = (mergedWinConditionPreset?.customWinConditions ?? []).filter(
-          (condition) => condition.kind !== "slay-raid-boss"
+          (condition) => !droppedWinConditionKinds.has(condition.kind)
         );
         const next: CustomMapPreset = { ...(mergedWinConditionPreset ?? {}) };
         if (kept.length > 0) {
@@ -4451,6 +4465,18 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       group: "custom-win-condition",
       message:
         "The “slay Raid Bosses” win condition was dropped: no Raid Bosses module is enabled in this game."
+    });
+  }
+
+  if (droppedArenaDuelWinCondition) {
+    // The authored "Arena duels" objective was dropped: the series is a strict
+    // 1v1 rule and this game does not have exactly 2 seats.
+    appendEvent(state, {
+      type: "MAP_SECRET_FEATURE_FALLBACK",
+      feature: "arena-duel",
+      group: "custom-win-condition",
+      message:
+        "The “Arena duels” win condition was dropped: the rounds-4/8/12 best-of-three series needs exactly 2 players."
     });
   }
 

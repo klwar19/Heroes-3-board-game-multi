@@ -195,6 +195,14 @@ import {
   type HexCoord
 } from "./hex";
 import { isMgqGoldUnit, mgqGoldContractAllows } from "./mgq-contracts";
+import {
+  ARENA_DUEL_WINS_TO_WIN,
+  arenaDuelAttackerIndex,
+  arenaDuelConditionActive,
+  arenaDuelNumberForRound,
+  arenaDuelSeats,
+  arenaDuelWins
+} from "./arena-duel";
 import { createSeededRandom } from "./random";
 import {
   designedWaveSpec,
@@ -4844,6 +4852,12 @@ export function customWinConditionProgress(
       // THE shared boss-kill metric (raid-bosses.ts) — team-wide in co-op.
       current = raidBossKillCount(state, playerId);
       target = condition.count;
+      break;
+    case "arena-duel":
+      // Best of three: the tally the duel finalize writes. Strictly per-seat
+      // (a 1v1 has no allies), and 0 before the first duel resolves.
+      current = arenaDuelWins(state, playerId);
+      target = ARENA_DUEL_WINS_TO_WIN;
       break;
     case "hold-with-grail": {
       // Progress is ticked at round start; meeting = continuous hold already reached N.
@@ -18340,6 +18354,64 @@ function beginRoundStartEventBarrier(state: GameState): void {
 }
 
 /**
+ * Arena duels (the `arena-duel` custom win condition, 1v1 ONLY) — the
+ * round-start hook, called from BOTH round-kind branches of
+ * startAdventureRound right beside the Calamity-Wave hook:
+ *  - the round BEFORE a duel round, announce it so both seats can shop/position;
+ *  - on a duel round (4 / 8 / 12), queue ONE `arena-duel` reward (the two heroes
+ *    fight each OTHER, so there is never one per seat) and raise the round-start
+ *    barrier over it, sharing the Event/Astrologers sentinel exactly like a wave.
+ * Defensively INERT unless the condition is authored, the game is still a live
+ * 1v1, no winner is set and this round's duel has not already been fought
+ * (`arenaDuels.fought`, so a re-entered round start can never double-queue).
+ * The announcement round (3 / 7 / 11) is a Resource round and the duel round is
+ * an Astrologers round, so BOTH branches really do work here.
+ */
+function applyArenaDuelRoundStart(state: GameState): void {
+  const adventure = state.adventure;
+  if (!adventure || adventure.winnerPlayerId || !arenaDuelConditionActive(state)) {
+    return;
+  }
+  const seats = arenaDuelSeats(state);
+  if (!seats) {
+    return;
+  }
+  const nextDuel = arenaDuelNumberForRound(state.round + 1);
+  if (nextDuel) {
+    appendEvent(state, {
+      type: "EVENT_NOTE",
+      message: `The arena opens next round — duel ${nextDuel} of 3. Both Heroes will fight wherever they stand.`
+    });
+  }
+  const duel = arenaDuelNumberForRound(state.round);
+  if (!duel) {
+    return;
+  }
+  const tally = (adventure.arenaDuels ??= { wins: {}, fought: [] });
+  if (tally.fought.includes(state.round)) {
+    return;
+  }
+  const attackerId = seats[arenaDuelAttackerIndex(duel)];
+  const defenderId = seats[arenaDuelAttackerIndex(duel) === 0 ? 1 : 0];
+  const last = adventure.rewardQueue[adventure.rewardQueue.length - 1];
+  if (last?.kind === "round-start-events-resolved") {
+    adventure.rewardQueue.pop();
+  }
+  // Mark the round SCHEDULED before queueing: a re-entered round start (a
+  // restored snapshot, a direct `startAdventureRound` call) must never queue the
+  // same duel twice.
+  tally.fought.push(state.round);
+  adventure.rewardQueue.push({ playerId: attackerId, kind: "arena-duel", duel });
+  appendEvent(state, {
+    type: "EVENT_NOTE",
+    message: `Arena duel ${duel} of 3: ${state.players[attackerId]?.name ?? attackerId} vs ${
+      state.players[defenderId]?.name ?? defenderId
+    } — best of three wins the game (wins ${arenaDuelWins(state, seats[0])}–${arenaDuelWins(state, seats[1])}).`
+  });
+  beginRoundStartEventBarrier(state);
+}
+
+/**
  * Calamity Waves (§6.6) — the round-start hook, called from BOTH round-kind
  * branches of startAdventureRound right after the Event/Astrologers block:
  *  - the round BEFORE a wave, announce it ("the Gate groans") so players can
@@ -19158,6 +19230,9 @@ export function startAdventureRound(state: GameState): void {
     // building trigger or turn). Raid Bosses ride the same round-start hook.
     applyCalamityWaveRoundStart(state);
     applyRaidBossRoundStart(state);
+    // Arena duels (1v1): rounds 4/8/12 are Astrologers rounds, so THIS branch
+    // is the one that queues the duel; the resource branch announces it.
+    applyArenaDuelRoundStart(state);
     // Map timed events queue behind the proclamation (and its barrier
     // sentinel), so the table finishes the Astrologers card first.
     applyCustomMapTimedEvents(state);
@@ -19456,6 +19531,9 @@ export function startAdventureRound(state: GameState): void {
   // the Event and the waves).
   applyCalamityWaveRoundStart(state);
   applyRaidBossRoundStart(state);
+  // Arena duels (1v1): on a Resource round this only ANNOUNCES the duel one
+  // round ahead (3/7/11) — the duel rounds themselves are Astrologers rounds.
+  applyArenaDuelRoundStart(state);
 
   for (const playerId of state.turnOrder) {
     const player = state.players[playerId];
