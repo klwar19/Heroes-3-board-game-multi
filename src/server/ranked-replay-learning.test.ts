@@ -79,6 +79,57 @@ describe("ranked replay strategic learning extraction", () => {
     expect(sample.outcomeBasis).toBe("battle");
   });
 
+  it("does not let an actor-less system step split a battle's outcome attribution", () => {
+    // Legacy captures recorded NO combat context for a system (actor-less)
+    // entry taken mid-fight. Treating it as "not in combat" reset the segment,
+    // so every decision BEFORE it was credited to the match result instead of
+    // the battle it belonged to.
+    const lostBattleWonMatch = replay("system-mid-fight", "p1", "mid-match-recovery");
+    const fight = (sequence: number, overrides: Partial<RankedReplayEntry>): RankedReplayEntry => ({
+      ...lostBattleWonMatch.entries[0]!,
+      sequence,
+      round: 9,
+      phase: "combat",
+      learningContext: {
+        stage: "late-game",
+        domains: ["pvp-combat"],
+        legalAlternativeCount: 2,
+        underPressure: false,
+        pressureSignals: [],
+      },
+      ...overrides,
+    });
+    lostBattleWonMatch.entries = [
+      fight(1, {}),
+      fight(2, {
+        actorPlayerId: null,
+        source: "system",
+        action: { type: "ADVANCE_COMPUTER" } as GameAction,
+        legalActions: [],
+        learningContext: {
+          stage: "late-game",
+          domains: ["map-movement"],
+          legalAlternativeCount: 0,
+          underPressure: false,
+          pressureSignals: [],
+        },
+      }),
+      fight(3, {
+        events: [{
+          id: "battle-ended",
+          type: "COMBAT_ENDED",
+          winnerPlayerId: "p2",
+          defeatedPlayerId: "p1",
+          reason: "all-enemy-units-defeated",
+        }],
+      }),
+    ];
+    const samples = extractStrategicDecisionSamples(lostBattleWonMatch);
+    expect(samples.map((sample) => sample.sequence)).toEqual([1, 3]);
+    expect(samples.map((sample) => sample.decisionOutcome)).toEqual(["loss", "loss"]);
+    expect(samples.map((sample) => sample.outcomeBasis)).toEqual(["battle", "battle"]);
+  });
+
   it("does not invent opening evidence from a mid-match recovery capture", () => {
     expect(extractStrategicDecisionSamples(replay("partial", "p1", "mid-match-recovery"))).toEqual([]);
   });

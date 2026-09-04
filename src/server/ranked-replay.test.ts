@@ -10,9 +10,12 @@ import {
   type RoomMembershipState,
 } from "@/engine";
 import {
+  RANKED_REPLAY_FINISH_HEADROOM_BYTES,
   RANKED_REPLAY_MAX_BYTES,
   appendRankedReplayEntry,
+  appendRankedReplayEntryFromCursor,
   createRankedReplay,
+  finishRankedReplay,
   rankedClashReplayEligible,
   rankedReplayEnabled,
   sanitizeReplayState,
@@ -188,6 +191,104 @@ describe("Ranked Clash replay capture", () => {
     const result = applyAction(adventure, action, { now: 78 });
     captureRankedReplayAction(roomId, adventure, action, result, { now: 78 }, true);
     expect(peekRankedReplay(roomId)?.entries).toHaveLength(1);
+  });
+
+  it("scrubs identities without rewriting gameplay tokens that share a member's name", () => {
+    // A member may call themselves after ANY game token. Before the fix the
+    // scrubber replaced that text as a substring of EVERY string, so a player
+    // named "castle" rewrote card ids and one named after an action type
+    // rewrote the action itself — the replay stopped describing the game.
+    const control = rankedGame("ranked-name-collision");
+    const before = structuredClone(control);
+    before.room!.members[0]!.name = before.seed;
+    before.room!.members[1]!.name = "MOVE";
+    before.room!.matchSeats!.p1!.name = before.seed;
+    before.room!.matchSeats!.p2!.name = "MOVE";
+    (before.eventLog as unknown as Array<Record<string, unknown>>).push({
+      id: "note-1",
+      type: "EVENT_NOTE",
+      message: `${before.seed} sees MOVE flag a mine`,
+    });
+    (control.eventLog as unknown as Array<Record<string, unknown>>).push({
+      id: "note-1",
+      type: "EVENT_NOTE",
+      message: "Alice sees Bob flag a mine",
+    });
+
+    const legal = getLegalActions(before, before.activePlayerId);
+    const action = legal[0]!.action;
+    const result = applyAction(before, action, { now: 5 });
+    expect(result.errors).toEqual([]);
+    const replay = appendRankedReplayEntry(createRankedReplay(before, 5), before, action, result, { now: 5 });
+    const entry = replay.entries[0]!;
+
+    // Gameplay data is untouched: the seed (= matchId) and every action type.
+    expect(replay.matchId).toBe(before.seed);
+    expect(replay.initialState.seed).toBe(before.seed);
+    expect(entry.action.type).toBe(action.type);
+    expect(entry.legalActions.map((candidate) => candidate.type)).toEqual(legal.map((candidate) => candidate.action.type));
+    // Identity is still gone from the identity fields AND from free text.
+    expect(replay.initialState.room?.members.map((member) => member.name)).toEqual(["p1", "p2"]);
+    expect(replay.initialState.room?.matchSeats).toEqual({ p1: { name: "p1", userId: "replay-user-p1" }, p2: { name: "p2", userId: "replay-user-p2" } });
+    const note = (replay.initialState.eventLog as unknown as Array<Record<string, unknown>>).find((event) => event.id === "note-1");
+    expect(note?.message).toBe("p1 sees p2 flag a mine");
+    // The sanitized state — and therefore the integrity hash — does not depend
+    // on what the players called themselves.
+    expect(JSON.stringify(sanitizeReplayState(before))).toBe(JSON.stringify(sanitizeReplayState(control)));
+    const controlAction = getLegalActions(control, control.activePlayerId)[0]!.action;
+    const controlEntry = appendRankedReplayEntry(
+      createRankedReplay(control, 5), control, controlAction, applyAction(control, controlAction, { now: 5 }), { now: 5 },
+    ).entries[0]!;
+    expect(entry.beforeStateHash).toBe(controlEntry.beforeStateHash);
+  });
+
+  it("keeps finish headroom so a replay filled to its append budget still fits the stored byte cap", () => {
+    // finishRankedReplay adds finishedAt / winnerPlayerId AFTER the append
+    // budget is spent. Without headroom a replay that filled the budget to the
+    // byte violated the database's byte_length cap and its upload failed forever.
+    const before = rankedGame("ranked-headroom");
+    const action = getLegalActions(before, before.activePlayerId)[0]!.action;
+    const result = applyAction(before, action);
+    const fresh = createRankedReplay(before);
+    const one = appendRankedReplayEntry(fresh, before, action, result);
+    const entryBytes = one.byteLength - fresh.byteLength;
+    expect(entryBytes).toBeGreaterThan(0);
+    const finishBytes = finishRankedReplay(one, 1_700_000_000_000, "p1").byteLength - one.byteLength;
+    expect(finishBytes).toBeGreaterThan(0);
+    expect(finishBytes).toBeLessThan(RANKED_REPLAY_FINISH_HEADROOM_BYTES);
+
+    const budget = RANKED_REPLAY_MAX_BYTES - RANKED_REPLAY_FINISH_HEADROOM_BYTES;
+    const fits = appendRankedReplayEntryFromCursor(
+      { entryCount: 1, byteLength: budget - entryBytes, truncated: false }, before, action, result,
+    );
+    expect(fits.entry).toBeDefined();
+    expect(fits.cursor.byteLength).toBe(budget);
+    const overflows = appendRankedReplayEntryFromCursor(
+      { entryCount: 1, byteLength: budget - entryBytes + 1, truncated: false }, before, action, result,
+    );
+    expect(overflows.entry).toBeUndefined();
+    expect(overflows.cursor).toMatchObject({ truncated: true, truncationReason: "byte-limit" });
+    // The invariant the database relies on: every accepted cursor leaves room
+    // for the terminal fields.
+    expect(fits.cursor.byteLength + finishBytes).toBeLessThanOrEqual(RANKED_REPLAY_MAX_BYTES);
+  });
+
+  it("stops appending once the adventure has a winner", () => {
+    const roomId = "ranked-finished-room";
+    discardRankedReplay(roomId);
+    const before = rankedGame("ranked-finished-seed");
+    const action = getLegalActions(before, before.activePlayerId)[0]!.action;
+    const result = applyAction(before, action, { now: 1 });
+    captureRankedReplayAction(roomId, before, action, result, { now: 1 }, true);
+    expect(peekRankedReplay(roomId)?.entries).toHaveLength(1);
+
+    const won = structuredClone(result.state);
+    won.adventure!.winnerPlayerId = "p1";
+    const afterWin = { type: "ACKNOWLEDGE_COMBAT_END", playerId: "p1" } as Parameters<typeof applyAction>[1];
+    captureRankedReplayAction(roomId, won, afterWin, { state: won, events: [], errors: [] }, { now: 2 }, true);
+    // Result-screen clicks after the win are not strategy samples.
+    expect(peekRankedReplay(roomId)?.entries).toHaveLength(1);
+    expect(takeFinishedRankedReplay(roomId, before.seed, 3, "p1")?.entries).toHaveLength(1);
   });
 
   it("stores one bounded final file on the built-in backend and deduplicates by match id", async () => {

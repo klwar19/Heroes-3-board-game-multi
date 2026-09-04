@@ -47,6 +47,18 @@ function battleOutcomes(replay: RankedReplay): Map<number, PlayerId> {
         (domain) => domain === "pvp-combat" || domain === "neutral-combat",
       ),
     );
+    // Captures made before the combat context covered actor-less steps carry
+    // no combat domain on a system entry taken mid-fight. Such an entry is
+    // neither a decision nor proof the fight ended, so it must not split the
+    // segment — a split credited only the tail of the battle to its winner.
+    if (!inCombat && entry.source === "system" && combatSequences.length > 0) {
+      const endedBySystem = entry.events.find((event) => event.type === "COMBAT_ENDED");
+      if (endedBySystem?.type === "COMBAT_ENDED" && endedBySystem.winnerPlayerId) {
+        for (const sequence of combatSequences) outcomes.set(sequence, endedBySystem.winnerPlayerId);
+        combatSequences = [];
+      }
+      continue;
+    }
     if (!inCombat) {
       combatSequences = [];
       continue;

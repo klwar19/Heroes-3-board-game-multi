@@ -135,6 +135,26 @@ describe("PartyKit Ranked Clash replay persistence", () => {
     // of how many historical replay entries already exist.
     expect(storageGets).toBeLessThanOrEqual(2);
 
+    // Once the adventure has a winner, result-screen actions are no longer
+    // appended to the finished replay (the same match id, so nothing is cleared).
+    const finished = structuredClone(thirdResult.state);
+    finished.adventure!.winnerPlayerId = "p1";
+    await (requestHandler as unknown as {
+      captureRankedReplay: (
+        before: RoomSnapshot["state"],
+        action: GameAction,
+        result: { state: RoomSnapshot["state"]; events: []; errors: []; notices: [] },
+        options: { actorClientId: string; entropy: string; now: number },
+      ) => Promise<void>;
+    }).captureRankedReplay(
+      finished,
+      { type: "ACKNOWLEDGE_COMBAT_END", playerId: "p1" } as GameAction,
+      { state: finished, events: [], errors: [], notices: [] },
+      { actorClientId: "c1", entropy: "after-win", now: 60 },
+    );
+    expect(storage.get("ranked-replay-meta")).toMatchObject({ entryCount: 3, matchId: "edge-ranked-replay" });
+    expect(storage.has("ranked-replay-entry-3")).toBe(false);
+
     // The production edge must initialize at the setup -> adventure boundary,
     // before any opening/economy/combat action occurs.
     const roundOne = createAdventureGameState({

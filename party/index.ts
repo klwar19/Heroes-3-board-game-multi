@@ -833,6 +833,10 @@ export default class GameRoomServer implements Party.Server {
       }
     }
     if (stored.truncated) return;
+    // Only a LIVE adventure transition is a strategy sample. Once the adventure
+    // has a winner — or the room fell back to its lobby after a failed start
+    // commit — later actions must not be appended to the finished replay.
+    if (!rankedClashReplayEligible(before)) return;
     const previousEntry = stored.entryCount > 0
       ? await this.room.storage.get<RankedReplay["entries"][number]>(
           `${RANKED_REPLAY_ENTRY_PREFIX}${stored.entryCount - 1}`,
@@ -2008,12 +2012,14 @@ export default class GameRoomServer implements Party.Server {
             : settleComputerForLiveAction(afkSettled);
         const startsRankedAdventure =
           !rankedClashReplayEligible(current.state) && rankedClashReplayEligible(result.state);
+        // Every capture below hashes the SETTLED state (what the snapshot
+        // commits), never the bare reducer result — see game-room-store.ts.
         if (startsRankedAdventure && this.rankedReplayCaptureEnabled()) {
           try {
             // Establish the complete Round-1 replay before START_ADVENTURE can
             // become the durable room state. Failure leaves players in setup;
             // it never rolls back or damages an already-running match.
-            await this.captureRankedReplay(current.state, message.action, result, {
+            await this.captureRankedReplay(current.state, message.action, { ...result, state: settled }, {
               ...(message.actorClientId ? { actorClientId: message.actorClientId } : {}),
               entropy: replayEntropy,
               now: replayNow,
@@ -2057,7 +2063,7 @@ export default class GameRoomServer implements Party.Server {
         }
         this.metric("room.storage.persist", persistStartedAt, { version: this.snapshot.version });
         try {
-          await this.captureRankedReplay(current.state, message.action, result, {
+          await this.captureRankedReplay(current.state, message.action, { ...result, state: settled }, {
             ...(message.actorClientId ? { actorClientId: message.actorClientId } : {}),
             entropy: replayEntropy,
             now: replayNow,
@@ -2603,7 +2609,7 @@ export default class GameRoomServer implements Party.Server {
                 // (recovery clients and operational E2E checks use it). Start
                 // the replay before the Round-1 snapshot becomes durable, just
                 // like the WebSocket action pipeline above.
-                await this.captureRankedReplay(current.state, action, result, {
+                await this.captureRankedReplay(current.state, action, { ...result, state: settled }, {
                   ...(actorClientId ? { actorClientId } : {}),
                   entropy: replayEntropy,
                   now: replayNow,
@@ -2637,7 +2643,7 @@ export default class GameRoomServer implements Party.Server {
             };
             await this.persist();
             try {
-              await this.captureRankedReplay(current.state, action, result, {
+              await this.captureRankedReplay(current.state, action, { ...result, state: settled }, {
                 ...(actorClientId ? { actorClientId } : {}),
                 entropy: replayEntropy,
                 now: replayNow,

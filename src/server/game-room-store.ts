@@ -631,12 +631,6 @@ export function submitRoomAction(
     };
   }
 
-  captureRankedReplayAction(roomId, current.state, action, result, {
-    ...(actorClientId ? { actorClientId } : {}),
-    entropy: replayEntropy,
-    now: replayNow,
-  });
-
   // A passed AFK kick vote or an expired 10-minute turn: drive the forced
   // resolution through the normal action pipeline until the seat is removed /
   // its turn ends (or the table must wait for an open interaction).
@@ -660,6 +654,16 @@ export function submitRoomAction(
   } else {
     settledState = settleComputerForLiveAction(afkSettledState);
   }
+
+  // The replay's after-state is the state the room COMMITS (post AFK-drive /
+  // computer settle), never the bare reducer result: the next entry hashes the
+  // committed state as its before-state, so hashing anything else opened a
+  // false chain break on every settle. Events stay the action's own.
+  captureRankedReplayAction(roomId, current.state, action, { ...result, state: settledState }, {
+    ...(actorClientId ? { actorClientId } : {}),
+    entropy: replayEntropy,
+    now: replayNow,
+  });
 
   const next: GameRoomRecord = {
     roomId,

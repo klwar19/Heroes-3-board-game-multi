@@ -42,6 +42,9 @@ export function captureRankedReplayAction(
       return;
     }
   }
+  // Only a LIVE adventure transition is a strategy sample. After the winner is
+  // declared the finished buffer must not grow with result-screen clicks.
+  if (!rankedClashReplayEligible(before)) return;
   buffers.set(roomId, appendRankedReplayEntry(replay, before, action, result, options));
 }
 

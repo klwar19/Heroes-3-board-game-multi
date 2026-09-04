@@ -863,6 +863,44 @@ RLS-locked `homm3bg_ranked_replays` table. Pinned by `ranked-replay.test.ts`, th
 hibernation/128-KiB integration in `ranked-replay-edge.test.ts`, the AI-learning
 row case in `game-options-tabs.test.tsx`, and report-route tests.
 
+### Ranked replay audit (2026-09-03) — four fixes, two documented limits
+
+Leading with what still does NOT hold: (1) in a ranked CLASH with computer seats
+the AI's alarm-pump turns are NOT captured (only human/HTTP/WS actions are), so
+the before/after hash chain breaks across every AI turn — the extractor never
+reads hashes, so learning is unaffected, but hash-based verification of such a
+replay is not possible; (2) a terminal report whose replay insert fails
+PERMANENTLY (e.g. the match row was never written) retries every 15 minutes
+forever — there is no attempt cap by design. Fixes, each pinned by a test that
+fails against the pre-fix code:
+- **Identity scrubbing rewrote gameplay tokens.** A member's display NAME was
+  replaced as a substring of EVERY string, so "castle" rewrote `castle.*` card
+  ids and "MOVE" rewrote `MOVE_HERO`. Now clientId/userId (opaque) are still
+  replaced anywhere, but names only whole-value under identity keys
+  (`NAME_VALUE_KEYS`) and as substrings inside `FREE_TEXT_KEYS` (message/text/
+  label/reason/…). Invariant test: the sanitized state and hash are independent
+  of what the players called themselves (`ranked-replay.test.ts`).
+- **Finish headroom.** `finishRankedReplay` adds bytes AFTER the append budget
+  was spent; a replay filled to the byte violated the DB `byte_length <= 4 MB`
+  check and its upload retried forever. Appends stop at
+  `MAX − RANKED_REPLAY_FINISH_HEADROOM_BYTES` (4 KiB).
+- **No appends after the winner.** Both backends stop appending once
+  `rankedClashReplayEligible(before)` is false (result-screen clicks, or a
+  lobby fallback after a failed START commit). The finished replay no longer
+  grows past the game.
+- **Battle attribution ignored actor-less steps.** `learningContextFor` now
+  records the combat context for a system entry taken mid-fight (own units 0,
+  no pressure), and `battleOutcomes` tolerates LEGACY entries without it — a
+  system step no longer splits a battle segment, which credited the decisions
+  before it to the MATCH result instead of the battle (`ranked-replay-learning.test.ts`).
+- **Hash chain across settle.** Both transports now hash the SETTLED state the
+  room commits (post AFK-drive / computer settle), not the bare reducer result;
+  the built-in store captures AFTER settle. Events stay the action's own.
+- **Perf**: sanitization runs inside the JSON replacer (no deep clone of the
+  whole state twice per action) and the replacement table is built once per
+  entry instead of once per legal alternative (~8.5 → ~6 ms per action on a
+  30 KB round-1 state; hashing dominated, `getLegalActions` was ~1.5 ms).
+
 Every finished win/loss funnels through `declareAdventureWinner` and is REPORTED
 (`detectFinishedMatch`, `src/server/match-report.ts`) on a hosted table with ≥2
 verified accounts, casual games included; only a `ranked` match recomputes Elo

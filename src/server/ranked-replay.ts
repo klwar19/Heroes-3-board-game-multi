@@ -26,6 +26,14 @@ export const RANKED_REPLAY_MAX_ACTIONS = 2_000;
 export const RANKED_REPLAY_MAX_BYTES = 4_000_000;
 export const RANKED_REPLAY_MAX_LEGAL_ACTIONS = 512;
 export const RANKED_REPLAY_MAX_ENTRY_BYTES = 96 * 1024;
+/**
+ * `finishRankedReplay` adds `finishedAt` / `winnerPlayerId` AFTER the append
+ * budget is spent. Reserve room for them so a replay that fills the budget to
+ * the byte can still satisfy the database's `byte_length <= MAX` constraint;
+ * without it the terminal upload fails forever on exactly the longest games.
+ */
+export const RANKED_REPLAY_FINISH_HEADROOM_BYTES = 4 * 1024;
+const RANKED_REPLAY_APPEND_BUDGET_BYTES = RANKED_REPLAY_MAX_BYTES - RANKED_REPLAY_FINISH_HEADROOM_BYTES;
 
 export type RankedReplaySource = "human" | "computer" | "neutral" | "system";
 
@@ -141,34 +149,61 @@ function sourceFor(state: GameState, actorPlayerId: PlayerId | null): RankedRepl
   return isComputerPlayer(state, actorPlayerId) ? "computer" : "human";
 }
 
-function identityReplacements(state: GameState): Array<[string, string]> {
-  const replacements: Array<[string, string]> = [];
+/**
+ * Two classes of private value, with DIFFERENT replacement scopes:
+ * - opaque identifiers (clientId / userId) are random tokens that can only ever
+ *   appear where an identity was written, so they are replaced wherever they
+ *   occur inside any string;
+ * - display NAMES are free text a player typed. They are replaced as a whole
+ *   value under identity-carrying keys and as a substring ONLY inside free-text
+ *   fields. A blanket substring replacement corrupted gameplay data whenever a
+ *   member called themselves after a game token: "castle" rewrote every
+ *   `castle.*` card id, "MOVE" rewrote the `MOVE_HERO` action type, and the
+ *   replay's legal-action lists / hashes stopped describing the real game.
+ */
+type IdentityReplacements = {
+  opaque: Array<[string, string]>;
+  names: Array<[string, string]>;
+};
+
+const REDACTED_KEYS = new Set(["password", "passwordHash", "chat", "email", "sessionToken", "socketToken", "authToken"]);
+const NAME_VALUE_KEYS = new Set(["name", "nickname", "playerName", "displayName"]);
+const FREE_TEXT_KEYS = new Set(["message", "text", "label", "reason", "note", "description", "title", "summary"]);
+
+function identityReplacements(state: GameState): IdentityReplacements {
+  const opaque: Array<[string, string]> = [];
+  const names: Array<[string, string]> = [];
   for (const [index, member] of (state.room?.members ?? []).entries()) {
     const seat = member.seat === "observer" ? `observer-${index + 1}` : String(member.seat);
-    replacements.push([member.clientId, `replay-client-${index + 1}`], [member.name, seat]);
-    if (member.userId) replacements.push([member.userId, `replay-user-${index + 1}`]);
+    if (member.clientId) opaque.push([member.clientId, `replay-client-${index + 1}`]);
+    if (member.userId) opaque.push([member.userId, `replay-user-${index + 1}`]);
+    if (member.name) names.push([member.name, seat]);
   }
-  return replacements.sort((a, b) => b[0].length - a[0].length);
+  const longestFirst = (a: [string, string], b: [string, string]) => b[0].length - a[0].length;
+  return { opaque: opaque.sort(longestFirst), names: names.sort(longestFirst) };
 }
 
-function sanitizeReplayValue<T>(value: T, state: GameState): T {
-  const replacements = identityReplacements(state);
+function sanitizeString(current: string, key: string | undefined, replacements: IdentityReplacements): string {
+  let clean = current;
+  for (const [privateValue, replacement] of replacements.opaque) {
+    if (clean === privateValue) clean = replacement;
+    else if (privateValue.length >= 3 && clean.includes(privateValue)) clean = clean.split(privateValue).join(replacement);
+  }
+  const nameKey = key !== undefined && NAME_VALUE_KEYS.has(key);
+  const freeText = key !== undefined && FREE_TEXT_KEYS.has(key);
+  for (const [privateValue, replacement] of replacements.names) {
+    if (clean === privateValue && (nameKey || freeText)) clean = replacement;
+    else if (freeText && privateValue.length >= 3 && clean.includes(privateValue)) {
+      clean = clean.split(privateValue).join(replacement);
+    }
+  }
+  return clean;
+}
+
+function sanitizeReplayValue<T>(value: T, state: GameState, replacements = identityReplacements(state)): T {
   const visit = (current: unknown, key?: string): unknown => {
-    if (["password", "passwordHash", "chat", "email", "sessionToken", "socketToken", "authToken"].includes(key ?? "")) {
-      return undefined;
-    }
-    if (typeof current === "string") {
-      let clean = current;
-      for (const [privateValue, replacement] of replacements) {
-        if (!privateValue) continue;
-        clean = clean === privateValue
-          ? replacement
-          : privateValue.length >= 3
-            ? clean.split(privateValue).join(replacement)
-            : clean;
-      }
-      return clean;
-    }
+    if (key !== undefined && REDACTED_KEYS.has(key)) return undefined;
+    if (typeof current === "string") return sanitizeString(current, key, replacements);
     if (Array.isArray(current)) return current.map((entry) => visit(entry));
     if (current && typeof current === "object") {
       return Object.fromEntries(
@@ -211,8 +246,8 @@ export function sanitizeReplayState(state: GameState): GameState {
   return copy;
 }
 
-function sanitizeAction(action: GameAction, state: GameState): GameAction {
-  const copy = sanitizeReplayValue(action, state) as Record<string, unknown>;
+function sanitizeAction(action: GameAction, state: GameState, replacements?: IdentityReplacements): GameAction {
+  const copy = sanitizeReplayValue(action, state, replacements) as Record<string, unknown>;
   // Room administration and chat are retained as sequence markers without
   // collecting player-provided text or credentials.
   for (const key of ["password", "passwordHash", "message", "name", "clientId"] as const) {
@@ -225,8 +260,17 @@ function encodedBytes(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value)).byteLength;
 }
 
-function stateHash(state: GameState): string {
-  const text = JSON.stringify(sanitizeReplayState(state));
+/**
+ * Integrity checkpoint over the sanitized state. Sanitization runs INSIDE the
+ * JSON replacer, so hashing walks the state once and allocates no intermediate
+ * deep copy (the old path deep-cloned the whole state and then stringified the
+ * clone — twice per action, once for each side of the transition).
+ */
+function stateHash(state: GameState, replacements = identityReplacements(state)): string {
+  const text = JSON.stringify(state, (key, value: unknown) => {
+    if (key !== "" && REDACTED_KEYS.has(key)) return undefined;
+    return typeof value === "string" ? sanitizeString(value, key === "" ? undefined : key, replacements) : value;
+  });
   let hash = 0x811c9dc5;
   for (let index = 0; index < text.length; index += 1) {
     hash ^= text.charCodeAt(index);
@@ -262,14 +306,18 @@ function learningContextFor(
   if (actorEconomy && actorEconomy.gold <= 2) pressureSignals.push("low-gold");
 
   let combat: RankedReplayLearningContext["combat"];
-  if (state.combat && actorPlayerId) {
+  // The combat context is recorded for EVERY entry taken inside a fight — a
+  // system/actor-less step too — so an extractor can segment a battle by the
+  // context alone. Own/enemy splits are from the actor's point of view; with no
+  // actor every living unit is "enemy" and the pressure signals stay silent.
+  if (state.combat) {
     const fight = state.combat;
     const neutral = fight.attackerPlayerId === NEUTRAL_PLAYER_ID || fight.defenderPlayerId === NEUTRAL_PLAYER_ID;
     const pvp = !neutral && fight.context.kind !== "sandbox";
-    domains.add(neutral ? "neutral-combat" : pvp ? "pvp-combat" : "pvp-combat");
+    domains.add(neutral ? "neutral-combat" : "pvp-combat");
     const units = Object.values(fight.units).filter((unit) => unit.position >= 0 && unit.damage < unit.maxHealth);
-    const own = units.filter((unit) => unit.controllerId === actorPlayerId);
-    const enemy = units.filter((unit) => unit.controllerId !== actorPlayerId);
+    const own = actorPlayerId ? units.filter((unit) => unit.controllerId === actorPlayerId) : [];
+    const enemy = actorPlayerId ? units.filter((unit) => unit.controllerId !== actorPlayerId) : units;
     const health = (group: typeof units) => group.reduce((sum, unit) => sum + Math.max(0, unit.maxHealth - unit.damage), 0);
     combat = {
       kind: neutral ? "neutral" : pvp ? "pvp" : "other",
@@ -278,9 +326,11 @@ function learningContextFor(
       ownRemainingHealth: health(own),
       enemyRemainingHealth: health(enemy),
     };
-    if (combat.ownLivingUnits < combat.enemyLivingUnits) pressureSignals.push("outnumbered");
-    if (combat.ownRemainingHealth < combat.enemyRemainingHealth) pressureSignals.push("health-disadvantage");
-    if (fight.defenderPlayerId === actorPlayerId && pvp) pressureSignals.push("defending-pvp");
+    if (actorPlayerId) {
+      if (combat.ownLivingUnits < combat.enemyLivingUnits) pressureSignals.push("outnumbered");
+      if (combat.ownRemainingHealth < combat.enemyRemainingHealth) pressureSignals.push("health-disadvantage");
+      if (fight.defenderPlayerId === actorPlayerId && pvp) pressureSignals.push("defending-pvp");
+    }
   }
   const recentEvents = state.eventLog.slice(-12).map((event) => event.type).join(" ");
   if (/DEFEAT|LOSS|DESTROYED|ELIMINATED|RETREAT/.test(recentEvents)) pressureSignals.push("recent-setback");
@@ -316,7 +366,7 @@ export function createRankedReplay(
     truncated: false,
   };
   replay.byteLength = encodedBytes(replay);
-  if (replay.byteLength > RANKED_REPLAY_MAX_BYTES) {
+  if (replay.byteLength > RANKED_REPLAY_APPEND_BUDGET_BYTES) {
     // A pathological custom map may already exceed the complete replay budget.
     // Keep a valid, explicitly truncated header instead of risking server/KV
     // failure or silently accepting an unbounded payload.
@@ -337,7 +387,12 @@ function buildRankedReplayEntry(
   options: { actorClientId?: string; entropy?: string; now?: number } = {},
 ): { entry?: RankedReplayEntry; byteLength: number } {
   const actorPlayerId = actorForAction(before, action, options.actorClientId);
-  const legal = actorPlayerId ? getLegalActions(before, actorPlayerId).map((entry) => sanitizeAction(entry.action, before)) : [];
+  // One replacement table per entry: it used to be rebuilt (and re-sorted) for
+  // every one of up to 512 legal alternatives plus both state hashes.
+  const replacements = identityReplacements(before);
+  const legal = actorPlayerId
+    ? getLegalActions(before, actorPlayerId).map((entry) => sanitizeAction(entry.action, before, replacements))
+    : [];
   const legalActions = legal.slice(0, RANKED_REPLAY_MAX_LEGAL_ACTIONS);
   const entry: RankedReplayEntry = {
     sequence,
@@ -345,14 +400,14 @@ function buildRankedReplayEntry(
     phase: before.phase,
     actorPlayerId,
     source: sourceFor(before, actorPlayerId),
-    action: sanitizeAction(action, before),
+    action: sanitizeAction(action, before, replacements),
     legalActions,
     ...(legal.length > legalActions.length ? { legalActionsTruncated: true } : {}),
-    beforeStateHash: stateHash(before),
-    afterStateHash: stateHash(result.state),
+    beforeStateHash: stateHash(before, replacements),
+    afterStateHash: stateHash(result.state, replacements),
     ...(options.entropy ? { entropy: options.entropy } : {}),
     ...(options.now != null ? { now: options.now } : {}),
-    events: sanitizeReplayValue(result.events, before) as GameEvent[],
+    events: sanitizeReplayValue(result.events, before, replacements) as GameEvent[],
     learningContext: learningContextFor(before, actorPlayerId, action, legal.length),
   };
   const entryBytes = encodedBytes(entry);
@@ -391,7 +446,7 @@ export function appendRankedReplayEntryFromCursor(
     return { cursor: { ...cursor, truncated: true, truncationReason: "entry-too-large" } };
   }
   const nextBytes = cursor.byteLength + built.byteLength;
-  if (nextBytes > RANKED_REPLAY_MAX_BYTES) {
+  if (nextBytes > RANKED_REPLAY_APPEND_BUDGET_BYTES) {
     return { cursor: { ...cursor, truncated: true, truncationReason: "byte-limit" } };
   }
   return {
