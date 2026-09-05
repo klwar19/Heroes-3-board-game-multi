@@ -66,6 +66,8 @@ import type { GameAction, GameState } from "./state";
  * 11. Gutsy Play's `defense: -1` → `0` → all three Gutsy Play specs.
  * 12. the rally's `attackByPower` / `defenseByPower` flattened to [1,1,1] /
  *     [0,0,0] → "Power 1 adds +1 Defense and Power 2 raises the Attack to +2".
+ * 13. `score: strands ? 420 : 552` → `552` in computer/combat-policy.ts
+ *     → "does not buy a card instead of walking into the fight".
  *
  * (The UI half — the generic AP panel really rendering for Kyousuke — is pinned
  * in src/components/commander-card.test.tsx, with its own recorded mutation.)
@@ -745,6 +747,53 @@ describe("Kyousuke — a computer seat plays him without stalling", () => {
       (legal) => legal.action.type === "USE_UNIT_ABILITY" && legal.action.abilityId.startsWith("commander-kyousuke-")
     )).toBe(true);
     expect(usedAnApSkill, "the AI spends AP on a command").toBe(true);
+  });
+
+  it("does not buy a card instead of walking into the fight (the target-less AP utility score)", () => {
+    // A command ENDS the activation's movement, so Strategy Meeting taken by a
+    // melee commander that still has to WALK to an enemy throws the activation
+    // away. Scored below the closing march there, above the exits once engaged.
+    // KNOWN LIMIT, deliberately not fixed here: only the TARGET-LESS skill is
+    // strand-aware. The targeted commands keep the generic enemy/ally scores
+    // (560+ / 580) so Ibuki's numbers do not move, which means a targeted
+    // command can still be spent instead of closing — hence the isolation to
+    // MOVE_UNIT vs Strategy Meeting below.
+    const stranded = kyousukeState({}, 5);
+    for (const id of [SKELETONS, VAMPIRES, DREAD_KNIGHTS]) {
+      stranded.combat!.units[id].position = 19; // one body, far away
+    }
+    stranded.combat!.units[VAMPIRES].damage = stranded.combat!.units[VAMPIRES].maxHealth;
+    stranded.combat!.units[DREAD_KNIGHTS].damage = stranded.combat!.units[DREAD_KNIGHTS].maxHealth;
+    const strandedOffers = getLegalActions(stranded, "p1").filter(
+      (legal) =>
+        (legal.action.type === "MOVE_UNIT" ||
+          (legal.action.type === "USE_UNIT_ABILITY" &&
+            legal.action.abilityId === "commander-kyousuke-strategy-meeting")) &&
+        (legal.action as { unitId?: string }).unitId === KYOUSUKE
+    );
+    expect(strandedOffers.some((legal) => legal.action.type === "USE_UNIT_ABILITY")).toBe(true);
+    const chosen = chooseComputerAction({
+      playerId: "p1",
+      state: stranded as unknown as Parameters<typeof chooseComputerAction>[0]["state"],
+      legalActions: strandedOffers
+    })!;
+    expect(chosen.action.type).toBe("MOVE_UNIT");
+
+    // CONTROL: already toe-to-toe with the Vampires, the draw beats holding.
+    const engaged = kyousukeState({}, 5);
+    const meeting = getLegalActions(engaged, "p1").find(
+      (legal) =>
+        legal.action.type === "USE_UNIT_ABILITY" &&
+        legal.action.abilityId === "commander-kyousuke-strategy-meeting"
+    );
+    const end = getLegalActions(engaged, "p1").find((legal) => legal.action.type === "END_ACTIVATION");
+    expect(meeting && end).toBeTruthy();
+    const ranked = chooseComputerAction({
+      playerId: "p1",
+      state: engaged as unknown as Parameters<typeof chooseComputerAction>[0]["state"],
+      legalActions: [meeting!, end!]
+    });
+    expect(ranked!.action).toEqual(meeting!.action);
   });
 
   it("never rallies an EMPTY huddle (the -1000 score) but scores every other AP command", () => {
