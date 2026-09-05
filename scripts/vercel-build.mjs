@@ -55,6 +55,10 @@ function cdnBaseUrl() {
 }
 
 function runNext(extraEnv = {}) {
+  const training = spawnSync(process.execPath, [join(ROOT, "scripts", "train-ranked-policy.mjs"), "--if-configured"], {
+    cwd: ROOT, env: process.env, stdio: "inherit",
+  });
+  if (training.status !== 0) return training.status ?? 1;
   const nextCli = require.resolve("next/dist/bin/next");
   const result = spawnSync(process.execPath, [nextCli, "build"], {
     cwd: ROOT,

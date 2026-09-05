@@ -6,7 +6,7 @@ import type {
   LegalAction,
   PlayerVisibleState,
 } from "../state";
-import { formationFitScore } from "./combat-policy";
+import { formationFitScore, scoreCombatAction } from "./combat-policy";
 import { chooseComputerAction } from "./policy";
 import type { ComputerObservation } from "./types";
 
@@ -290,6 +290,23 @@ describe("tactics swaps", () => {
 });
 
 describe("focus fire", () => {
+  it("does not offer a valuable unit to neutral focus fire for a small chip", () => {
+    const attacker = unit({ id: "A", controllerId: "p2", position: 5, attack: 4, defense: 0, maxHealth: 8, type: "ranged" });
+    const target = unit({ id: "T", controllerId: "neutrals", position: 6, attack: 2, defense: 3, maxHealth: 12 });
+    const shooter = unit({ id: "S", controllerId: "neutrals", position: 15, type: "ranged", attack: 8 });
+    const attack: GameAction = { type: "ATTACK_UNIT", playerId: "p2", attackerId: "A", defenderId: "T" };
+    const defend: GameAction = { type: "DEFEND_UNIT", playerId: "p2", unitId: "A" };
+    const obs = observation([attacker, target, shooter], [{ label: "attack", action: attack }, { label: "defend", action: defend }], { defenderPlayerId: "neutrals" });
+    expect(scoreCombatAction(obs, attack)!.score).toBeLessThan(500);
+    expect(chooseComputerAction(obs)?.action).toEqual(defend);
+    // Once the supporting shooter has acted, the same target is safe to chip.
+    obs.state.combat!.units.S.activatedThisRound = true;
+    expect(chooseComputerAction(obs)?.action).toEqual(attack);
+    // A kill remains aggressive even with that shooter ready.
+    obs.state.combat!.units.S.activatedThisRound = false;
+    obs.state.combat!.units.T.damage = 11;
+    expect(chooseComputerAction(obs)?.action).toEqual(attack);
+  });
   it("prefers finishing a wounded enemy an ally already threatens", () => {
     const attacker = unit({
       id: "A",

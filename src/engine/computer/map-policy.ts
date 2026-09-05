@@ -1,5 +1,6 @@
 import { coreBuildingDefinitions, coreFactionDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
+import { secondaryHeroOpportunity } from "./secondary-plan";
 import { HERO_GRADE_NODES } from "@/data/anime/hero-grades";
 import { getEquipmentDefinition } from "@/data/anime/equipment";
 import { heroEquipmentSlot } from "../anime-equipment";
@@ -2242,7 +2243,8 @@ export function scoreMapAction(
       const gold = playerGold(state, observation.playerId);
       if (
         !armyReadyForContestedFight(state, observation.playerId) ||
-        gold < 10 + GOLD_RESERVE
+        gold < 10 + GOLD_RESERVE ||
+        !secondaryHeroOpportunity(state, observation.playerId, action.fieldId).worthwhile
       ) {
         return { score: 150, policy: "map.hire-secondary-hold" };
       }

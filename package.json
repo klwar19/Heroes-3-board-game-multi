@@ -21,7 +21,10 @@
     "media:status": "node scripts/media.mjs status",
     "media:publish": "node scripts/media.mjs publish",
     "media:pull": "node scripts/media.mjs pull",
-    "media:verify": "node scripts/media.mjs verify"
+    "media:verify": "node scripts/media.mjs verify",
+    "train:ranked": "node scripts/train-ranked-policy.mjs",
+    "prebuild": "node scripts/train-ranked-policy.mjs --if-configured",
+    "predeploy:partykit": "node scripts/train-ranked-policy.mjs --if-configured"
   },
   "dependencies": {
     "lucide-react": "1.17.0",

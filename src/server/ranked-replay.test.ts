@@ -57,6 +57,18 @@ function rankedGame(seed = "ranked-replay-test"): GameState {
 }
 
 describe("Ranked Clash replay capture", () => {
+  it("captures actor-owned search options and development before resolving the choice", () => {
+    const before = rankedGame("search-evidence");
+    before.pendingChoice = { id: "search", type: "DECK_SEARCH", playerId: "p1", deckId: "abilities", revealedCardIds: ["ability.offense", "ability.estates"], returnPhase: "map" };
+    const action = { type: "RESOLVE_DECK_SEARCH", playerId: "p1", choiceId: "search", pick: { kind: "revealed", index: 1 } } as const;
+    const result = applyAction(before, action);
+    expect(result.errors).toEqual([]);
+    const replay = appendRankedReplayEntry(createRankedReplay(before), before, action, result);
+    const context = replay.entries[0].learningContext!;
+    expect(context.search?.revealedCardIds[action.pick.index]).toBe("ability.estates");
+    expect(context.development?.army).toEqual(before.players.p1.army.map(({ unitDefId, side }) => ({ unitDefId, side })));
+    expect(context.development?.production).toEqual(before.players.p1.production);
+  });
   it("collects Ranked Clash only and has an operator kill switch", () => {
     const ranked = rankedGame();
     expect(rankedClashReplayEligible(ranked)).toBe(true);

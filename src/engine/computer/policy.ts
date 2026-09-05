@@ -7,6 +7,9 @@ import { scoreChoiceAction } from "./choice-policy";
 import { scoreCombatAction } from "./combat-policy";
 import { scoreMapAction } from "./map-policy";
 import type { ComputerDecision, ComputerObservation } from "./types";
+import { learnedActionBias } from "./learned-policy";
+import { developmentPlanBias } from "./development-plan";
+import { repeatsUnproductiveRoute } from "./memory";
 
 /** Stable serialization independent of object property insertion order. */
 export function canonicalActionKey(value: unknown): string {
@@ -265,7 +268,14 @@ export function chooseComputerAction(
         scoreCardAction(observation, legal.action) ??
         scoreCombatAction(observation, legal.action) ??
         scoreMapAction(observation, legal.action);
-      const scored = strategic ?? foundationScore(legal.action);
+      const base = strategic ?? foundationScore(legal.action);
+      const planBias = base.score > 300 && base.score < 900
+        ? developmentPlanBias(observation.state as unknown as GameState, observation.playerId, legal.action, observation.memory?.developmentPlan) : 0;
+      const scored = { ...base, score: base.score + planBias };
+      if (repeatsUnproductiveRoute(observation.state as unknown as GameState, observation.playerId, legal.action, observation.memory)) {
+        scored.score = 100;
+        scored.policy = "map.replan-repeated-route";
+      }
       // A computer under human attack must exhaust every useful, finite
       // pre-battle preparation it can legally make before readying up. The prep
       // action set contains town purchases and map-card plays only; destructive
@@ -302,15 +312,21 @@ export function chooseComputerAction(
         ),
     );
   const selected = ranked[0];
+  // Learned correlations only decide close choices of the SAME action type.
+  // Never override a mandatory exit, lethal-save band, or safety rejection.
+  const close = ranked.filter(candidate => candidate.legal.action.type === selected.legal.action.type && selected.score - candidate.score <= 12 && candidate.score > 300);
+  for (const candidate of close) candidate.score += learnedActionBias(observation, candidate.legal.action);
+  close.sort((a, b) => b.score - a.score || b.tie - a.tie);
+  const learnedSelected = close[0] ?? selected;
   const action =
-    selected.legal.action.type === "REFRESH_HAND"
-      ? withRefreshDiscards(observation, selected.legal.action)
-      : selected.legal.action;
+    learnedSelected.legal.action.type === "REFRESH_HAND"
+      ? withRefreshDiscards(observation, learnedSelected.legal.action)
+      : learnedSelected.legal.action;
   return {
     playerId: observation.playerId,
     action,
     policy:
-      candidates.length === 1 ? "forced.only-legal-action" : selected.policy,
-    score: selected.score,
+      candidates.length === 1 ? "forced.only-legal-action" : learnedSelected.policy,
+    score: learnedSelected.score,
   };
 }

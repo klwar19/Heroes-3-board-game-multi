@@ -2627,7 +2627,7 @@ describe("hiring a second hero waits for a developed, funded army", () => {
     action: { type: "END_TURN", playerId: "p2" } as GameAction,
   });
 
-  it("hires once the Pack core stands and gold keeps its cushion", () => {
+  it("keeps a 20-gold treasury for development instead of mindlessly hiring", () => {
     const state = game();
     establishP2PackCore(state);
     state.players.p2.resources = { gold: 20, buildingMaterials: 0, valuables: 0 };
@@ -2635,8 +2635,9 @@ describe("hiring a second hero waits for a developed, funded army", () => {
       ...observe(state),
       legalActions: [hireAction(), endTurn()],
     });
-    expect(decision?.action.type).toBe("HIRE_SECONDARY_HERO");
-    expect(decision?.policy).toBe("map.hire-secondary-hero");
+    // The old five-gold cushion ignored the next dwelling reserve. Paying ten
+    // here would consume that reserve even with a completed bronze core.
+    expect(decision?.action.type).toBe("END_TURN");
   });
 
   it("CONTROL: a thin (pre-core) army keeps the Population Token instead", () => {

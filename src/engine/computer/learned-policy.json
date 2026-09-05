@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "matches": 10,
+  "samples": 3114,
+  "weights": {
+    "midgame|fortress|map|stable|BUILD_STRUCTURE|fortress.city_hall||": {
+      "wins": 2,
+      "losses": 1,
+      "matches": 3,
+      "bias": 1.7142857142857135
+    }
+  }
+}

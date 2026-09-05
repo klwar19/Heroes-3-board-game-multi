@@ -70,6 +70,29 @@ function observation(
 }
 
 describe("choice policy — deck search keep", () => {
+  it("distinguishes premium cards above the old clipping ceiling", () => {
+    const choice: PendingChoice = { id: "premium", type: "DECK_SEARCH", playerId: "p2", deckId: "artifacts-minor", revealedCardIds: ["artifact.torso_of_legion", "artifact.mystic_orb_of_mana"], returnPhase: "map" };
+    const offers: LegalAction[] = [0, 1].map((index) => ({ label: "keep", action: { type: "RESOLVE_DECK_SEARCH", playerId: "p2", choiceId: choice.id, pick: { kind: "revealed", index } } }));
+    const obs = observation(choice, offers);
+    obs.state.players.p2.resources = { gold: 100, buildingMaterials: 100, valuables: 100 };
+    const values = choice.revealedCardIds.map((id) => cardKeepValue(id, obs));
+    expect(values[0]).toBeGreaterThan(80);
+    expect(values[1]).toBeGreaterThan(values[0]);
+    expect(scoreChoiceAction(obs, offers[1].action)!.score).toBeGreaterThan(scoreChoiceAction(obs, offers[0].action)!.score);
+    expect(chooseComputerAction(obs)?.action).toEqual(offers[1].action);
+  });
+
+  it("raises a resource search candidate only while it fills a development shortage", () => {
+    const choice: PendingChoice = { id: "resource", type: "DECK_SEARCH", playerId: "p2", deckId: "artifacts-minor", revealedCardIds: ["artifact.torso_of_legion", "artifact.mystic_orb_of_mana"], returnPhase: "map" };
+    const offer: LegalAction = { label: "keep", action: { type: "RESOLVE_DECK_SEARCH", playerId: "p2", choiceId: choice.id, pick: { kind: "revealed", index: 0 } } };
+    const alternative: LegalAction = { label: "orb", action: { type: "RESOLVE_DECK_SEARCH", playerId: "p2", choiceId: choice.id, pick: { kind: "revealed", index: 1 } } };
+    const obs = observation(choice, [offer, alternative]);
+    const shortage = scoreChoiceAction(obs, offer.action)!.score;
+    expect(chooseComputerAction(obs)?.action).toEqual(offer.action);
+    obs.state.players.p2.resources = { gold: 100, buildingMaterials: 100, valuables: 100 };
+    expect(shortage).toBeGreaterThan(scoreChoiceAction(obs, offer.action)!.score);
+    expect(chooseComputerAction(obs)?.action).toEqual(alternative.action);
+  });
   it("keeps the highest-value revealed card", () => {
     const choice: PendingChoice = {
       id: "ds1",
@@ -314,6 +337,15 @@ describe("choice policy — ability target", () => {
 });
 
 describe("choice policy — city hall income", () => {
+  it("takes the scarce building input instead of accumulating surplus valuables", () => {
+    const choice = { id: "income", type: "OPTION_CHOICE", playerId: "p2", prompt: "income", context: "city-hall", options: [{ label: "materials" }, { label: "valuables" }], cityHall: { options: [{ buildingMaterials: 2 }, { valuables: 2 }] } } as PendingChoice;
+    const offers: LegalAction[] = [0, 1].map((optionIndex) => ({ label: "income", action: { type: "CHOOSE_OPTION", playerId: "p2", choiceId: "income", optionIndex } }));
+    const obs = observation(choice, offers);
+    obs.state.players.p2.resources = { gold: 100, buildingMaterials: 0, valuables: 100 };
+    expect(chooseComputerAction(obs)?.action).toEqual(offers[0].action);
+    obs.state.players.p2.resources = { gold: 100, buildingMaterials: 100, valuables: 0 };
+    expect(chooseComputerAction(obs)?.action).toEqual(offers[1].action);
+  });
   it("prefers free reinforce when the army is thin", () => {
     const choice = {
       id: "ch1",

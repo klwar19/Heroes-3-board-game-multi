@@ -28,7 +28,27 @@ export type StrategicPreference = {
 };
 
 function actionEquals(a: GameAction, b: GameAction): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
+  const canonical = (value: unknown): string => {
+    if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+    if (value && typeof value === "object") {
+      const entries = Object.entries(value).sort(([a], [b]) => a.localeCompare(b));
+      return "{" + entries.map(([key, child]) => `${JSON.stringify(key)}:${canonical(child)}`).join(",") + "}";
+    }
+    return JSON.stringify(value);
+  };
+  return canonical(a) === canonical(b);
+}
+
+function hasOverlappingLegacyBattles(replay: RankedReplay): boolean {
+  const open = new Set<string>();
+  for (const entry of replay.entries) for (const event of entry.events) {
+    const id = "combatContextId" in event ? event.combatContextId : undefined;
+    if (!id) continue;
+    if (event.type.endsWith("COMBAT_STARTED")) open.add(id);
+    if (open.size > 1) return true;
+    if (event.type === "COMBAT_ENDED") open.delete(id);
+  }
+  return false;
 }
 
 /**
@@ -40,8 +60,23 @@ function actionEquals(a: GameAction, b: GameAction): boolean {
  */
 function battleOutcomes(replay: RankedReplay): Map<number, PlayerId> {
   const outcomes = new Map<number, PlayerId>();
+  const identified = new Map<string, PlayerId>();
+  for (const entry of replay.entries) {
+    for (const event of entry.events) {
+      if (event.type !== "COMBAT_ENDED" || !event.winnerPlayerId) continue;
+      const id = event.combatContextId ?? entry.learningContext?.combat?.id;
+      if (id) identified.set(id, event.winnerPlayerId);
+    }
+  }
   let combatSequences: number[] = [];
   for (const entry of replay.entries) {
+    const id = entry.learningContext?.combat?.id;
+    if (id) {
+      combatSequences = [];
+      const winner = identified.get(id);
+      if (winner) outcomes.set(entry.sequence, winner);
+      continue;
+    }
     const inCombat = Boolean(
       entry.learningContext?.domains.some(
         (domain) => domain === "pvp-combat" || domain === "neutral-combat",
@@ -81,8 +116,10 @@ function battleOutcomes(replay: RankedReplay): Map<number, PlayerId> {
  */
 export function extractStrategicDecisionSamples(replay: RankedReplay): StrategicDecisionSample[] {
   if (!replay.winnerPlayerId) return [];
-  const completeTrajectory = replay.captureStart === "adventure-start" && !replay.truncated;
+  const continuous = replay.entries.every((entry, index) => index === 0 || replay.entries[index - 1].afterStateHash === entry.beforeStateHash);
+  const completeTrajectory = replay.captureStart === "adventure-start" && !replay.truncated && continuous;
   const localBattleWinners = battleOutcomes(replay);
+  const ambiguousLegacyCombat = hasOverlappingLegacyBattles(replay);
   return replay.entries.flatMap((entry) => {
     if (
       entry.source !== "human" ||
@@ -95,6 +132,9 @@ export function extractStrategicDecisionSamples(replay: RankedReplay): Strategic
     // but must never masquerade as evidence about the opening it did not see.
     if (!completeTrajectory && entry.learningContext.domains.includes("opening")) return [];
     const battleWinner = localBattleWinners.get(entry.sequence);
+    const combatDecision = entry.learningContext.domains.some((domain) => domain === "pvp-combat" || domain === "neutral-combat");
+    // Unknown local battle results must not turn into fabricated match labels.
+    if (combatDecision && (!battleWinner || (ambiguousLegacyCombat && !entry.learningContext.combat?.id))) return [];
     const terminalOutcome = entry.actorPlayerId === replay.winnerPlayerId ? "win" : "loss";
     return [{
       matchId: replay.matchId,
@@ -129,23 +169,23 @@ export function aggregateStrategicPreferences(
   replays: RankedReplay[],
   minimumDistinctMatches = 5,
 ): StrategicPreference[] {
-  const perPattern = new Map<string, Map<string, "win" | "loss">>();
+  const perPattern = new Map<string, Map<string, "win" | "loss" | "mixed">>();
   const actionTypes = new Map<string, GameAction["type"]>();
   for (const replay of replays) {
     for (const sample of extractStrategicDecisionSamples(replay)) {
       const pattern = samplePattern(sample);
       actionTypes.set(pattern, sample.chosenAction.type);
-      const matches = perPattern.get(pattern) ?? new Map<string, "win" | "loss">();
+      const matches = perPattern.get(pattern) ?? new Map<string, "win" | "loss" | "mixed">();
       // One match is one vote. If both seats produce this pattern, a winner's
       // evidence wins neither extra weight nor a fabricated counterfactual.
       if (!matches.has(sample.matchId)) matches.set(sample.matchId, sample.decisionOutcome);
-      else if (matches.get(sample.matchId) !== sample.decisionOutcome) matches.delete(sample.matchId);
+      else if (matches.get(sample.matchId) !== sample.decisionOutcome) matches.set(sample.matchId, "mixed");
       perPattern.set(pattern, matches);
     }
   }
   return [...perPattern.entries()].flatMap(([pattern, matches]) => {
-    if (matches.size < minimumDistinctMatches) return [];
-    const outcomes = [...matches.values()];
+    const outcomes = [...matches.values()].filter((outcome) => outcome !== "mixed");
+    if (outcomes.length < minimumDistinctMatches) return [];
     const wins = outcomes.filter((outcome) => outcome === "win").length;
     const losses = outcomes.length - wins;
     const winRate = wins / outcomes.length;

@@ -13,7 +13,7 @@ import {
   getOrthogonalNeighbors,
   isAdjacent,
 } from "../battlefield";
-import type { CombatState, CombatUnitState, GameAction } from "../state";
+import type { CombatState, CombatUnitState, GameAction, GameState } from "../state";
 import type { ComputerActionScore } from "./map-policy";
 import {
   attackIsLethal,
@@ -28,6 +28,7 @@ import {
   unitThreatValue,
 } from "./score";
 import type { ComputerObservation } from "./types";
+import { coordinatedReplyDamage } from "./opponent-reply";
 
 /**
  * True when our side is clearly losing a neutral fight: no living unit can
@@ -186,16 +187,12 @@ function surroundOpportunityBonus(
 
 function pendingIncomingDamageAtPosition(
   combat: CombatState,
-  playerId: string,
   unit: CombatUnitState,
   position: number,
   removedEnemyId?: string,
+  state?: GameState,
 ): number {
-  return livingEnemyUnits(combat, playerId).reduce((total, enemy) => {
-    if (enemy.id === removedEnemyId || enemy.activatedThisRound) return total;
-    const reaches = enemy.type === "ranged" || isAdjacent(position, enemy.position);
-    return reaches ? total + expectedAttackDamage(enemy, unit) : total;
-  }, 0);
+  return coordinatedReplyDamage(combat, unit, position, removedEnemyId, state);
 }
 
 /**
@@ -274,6 +271,7 @@ function attackScore(
   attacker: CombatUnitState,
   defender: CombatUnitState,
   attackFromPosition: number,
+  state: GameState,
 ): number {
   const remaining = unitRemainingHealth(defender);
   const threat = unitThreatValue(defender);
@@ -412,22 +410,26 @@ function attackScore(
     lethal ? defender.id : undefined,
   );
 
-  // PvP opponents coordinate their remaining activations. Occasionally hold
+  // Both PvP opponents and human-driven neutrals can focus remaining attacks.
+  // Do not assume neutral stacks will distribute damage harmlessly. Occasionally hold
   // or reposition instead of taking a small chip when retaliation plus the
   // enemies that can still act are projected to remove this valuable unit.
   // Lethals, same-round focus finishes and multi-head attacks stay aggressive.
   const followUpIncoming = pendingIncomingDamageAtPosition(
     combat,
-    playerId,
     attacker,
     attackFromPosition,
     lethal ? defender.id : undefined,
+    state,
   );
   if (
-    combat.context?.kind === "player" &&
     !lethal &&
     !armyCanFinish &&
     multiHeadOpportunity === 0 &&
+    (combat.context?.kind === "player" ||
+      livingEnemyUnits(combat, playerId).some((enemy) =>
+        enemy.id !== defender.id && enemy.controllerId === "neutrals" && !enemy.activatedThisRound,
+      )) &&
     retaliationDamage + followUpIncoming >= ownRemaining &&
     damageFraction < 0.5 &&
     unitThreatValue(attacker) >= threat * 0.8
@@ -954,6 +956,7 @@ export function scoreCombatAction(
           attacker,
           defender,
           attackFrom,
+          observation.state as unknown as GameState,
         ),
         policy: "combat.attack-target",
       };

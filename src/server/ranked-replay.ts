@@ -53,7 +53,17 @@ export type RankedReplayLearningContext = {
   underPressure: boolean;
   pressureSignals: string[];
   actorEconomy?: { gold: number; buildingMaterials: number; valuables: number };
+  /** Actor-owned facts at decision time, for economy/army and search lessons. */
+  development?: {
+    factionId?: string;
+    heroLevel?: number;
+    production: { gold: number; buildingMaterials: number; valuables: number };
+    army: Array<{ unitDefId: string; side: string }>;
+    buildings: string[];
+  };
+  search?: { deckId: string; revealedCardIds: string[] };
   combat?: {
+    id?: string;
     kind: "neutral" | "pvp" | "other";
     ownLivingUnits: number;
     enemyLivingUnits: number;
@@ -320,6 +330,7 @@ function learningContextFor(
     const enemy = actorPlayerId ? units.filter((unit) => unit.controllerId !== actorPlayerId) : units;
     const health = (group: typeof units) => group.reduce((sum, unit) => sum + Math.max(0, unit.maxHealth - unit.damage), 0);
     combat = {
+      id: fight.id,
       kind: neutral ? "neutral" : pvp ? "pvp" : "other",
       ownLivingUnits: own.length,
       enemyLivingUnits: enemy.length,
@@ -344,6 +355,22 @@ function learningContextFor(
     underPressure: pressureSignals.length > 0,
     pressureSignals,
     ...(actorEconomy ? { actorEconomy } : {}),
+    ...(player && actorPlayerId ? {
+      development: {
+        factionId: player.factionId,
+        heroLevel: Object.values(state.heroes ?? {}).find((hero) => hero.controllerId === actorPlayerId && hero.kind === "main")?.level,
+        production: {
+          gold: player.production?.gold ?? 0,
+          buildingMaterials: player.production?.buildingMaterials ?? 0,
+          valuables: player.production?.valuables ?? 0,
+        },
+        army: player.army.slice(0, 32).map((unit) => ({ unitDefId: unit.unitDefId, side: unit.side })),
+        buildings: Object.values(state.towns ?? {}).filter((town) => town.controllerId === actorPlayerId).flatMap((town) => town.buildings).slice(0, 64),
+      },
+    } : {}),
+    ...(state.pendingChoice?.type === "DECK_SEARCH" && state.pendingChoice.playerId === actorPlayerId ? {
+      search: { deckId: state.pendingChoice.deckId, revealedCardIds: state.pendingChoice.revealedCardIds.slice(0, 64) },
+    } : {}),
     ...(combat ? { combat } : {}),
   };
 }

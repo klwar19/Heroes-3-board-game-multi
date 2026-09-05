@@ -502,6 +502,11 @@ function scoreStatReaction(
           if (Number.isFinite(cap) && currentDamage >= cap) {
             return 1_020;
           }
+          // Do not spend another Attack card when even the low (-1) printed
+          // die already removes the target. Keep it for a subsequent attack.
+          if (Math.min(cap, Math.max(0, currentDamage - 1)) >= unitRemainingHealth(defender)) {
+            return 1_020;
+          }
         }
       }
     }

@@ -2,6 +2,7 @@ import { cardLibrary } from "@/data/cards/library";
 import type { GameAction, GameState, PendingChoice } from "../state";
 import { isAdjacent } from "../battlefield";
 import { cardKeepValue, crownsAvailable } from "./card-policy";
+import { developmentResourceTargets } from "./development";
 import {
   BANK_ENGAGE_RATIO,
   creatureBankStrength,
@@ -41,6 +42,43 @@ import type { ComputerObservation } from "./types";
 
 const CHOICE_BASE = 1_100;
 const CHOICE_BAND = 80; // options live in [CHOICE_BASE, CHOICE_BASE + CHOICE_BAND]
+
+/** Bounded value of filling the actual next army/build reserve. Surplus is not
+ * a bottleneck. Used for income and known-card acquisition, never hidden decks. */
+function developmentGainValue(
+  observation: ComputerObservation,
+  gain: { gold?: number; buildingMaterials?: number; valuables?: number },
+): number {
+  const state = observation.state as unknown as GameState;
+  const resources = state.players[observation.playerId]?.resources;
+  const target = developmentResourceTargets(state, observation.playerId);
+  let value = 0;
+  for (const [resource, weight] of [["gold", 2], ["buildingMaterials", 7], ["valuables", 11]] as const) {
+    value += Math.min(gain[resource] ?? 0, Math.max(0, target[resource] - (resources?.[resource] ?? 0))) * weight;
+  }
+  return Math.min(30, value);
+}
+
+/** Acquire for the current plan as well as printed quality. Combat searches
+ * retain tactical card valuation; economy bonuses apply only on the map. */
+function acquisitionValue(cardId: string, observation: ComputerObservation): number {
+  const base = cardKeepValue(cardId, observation);
+  const card = cardLibrary[cardId];
+  if (!card || observation.state.combat || card.implementationStatus !== "implemented") return base;
+  const effects = card.effect.type === "CHOOSE_ONE"
+    ? card.effect.options.map((option) => option.effect)
+    : [card.effect];
+  const bonus = Math.max(0, ...effects.map((effect) =>
+    effect.type === "GAIN_RESOURCES" && !("goldCost" in effect && effect.goldCost)
+      ? developmentGainValue(observation, effect.gain ?? {}) : 0,
+  ));
+  return base + bonus;
+}
+
+// Strictly increasing: clipping at 80 made distinct premium cards exact ties.
+function acquisitionScore(value: number): number {
+  return CHOICE_BASE + CHOICE_BAND * Math.max(0, value) / (80 + Math.max(0, value));
+}
 
 /**
  * True when PLAYING this card would (re)open a "take a card from your discard
@@ -121,6 +159,7 @@ function scoreCityHallOption(
   }
   if (option.buildingMaterials) score += option.buildingMaterials * 3;
   if (option.valuables) score += option.valuables * 6;
+  score += developmentGainValue(observation, option);
   if (option.drawCards) score += option.drawCards * 8;
   if (option.movement) score += option.movement * 5;
   if (option.experience) score += 20;
@@ -147,12 +186,12 @@ function scoreDeckSearchKeep(
   if (action.pick?.kind === "revealed") {
     const cardId = choice.revealedCardIds[action.pick.index];
     if (!cardId) return CHOICE_BASE;
-    const value = cardKeepValue(cardId, observation);
+    const value = acquisitionValue(cardId, observation);
     if (action.pick.remove) {
       // Removing is rarely better than taking — only for trash.
       return CHOICE_BASE + Math.max(0, 15 - value);
     }
-    return CHOICE_BASE + Math.min(CHOICE_BAND, value);
+    return acquisitionScore(value);
   }
   return CHOICE_BASE;
 }
@@ -553,7 +592,7 @@ function scorePositionOption(
     // very pick, an infinite loop. Score it strictly below the Done/skip exit
     // (and below any real card) so anything else, or declining, always wins.
     if (reopensDiscardPick(cardId)) return CHOICE_BASE - 50;
-    return CHOICE_BASE + Math.min(CHOICE_BAND, cardKeepValue(cardId, observation));
+    return acquisitionScore(acquisitionValue(cardId, observation));
   }
 
   if (context === "hand-discard" && choice.handDiscard) {
@@ -569,7 +608,7 @@ function scorePositionOption(
   if (context === "own-deck-pick" && choice.ownDeckPick) {
     const cardId = choice.ownDeckPick.cardIds[optionIndex];
     if (!cardId) return CHOICE_BASE;
-    return CHOICE_BASE + Math.min(CHOICE_BAND, cardKeepValue(cardId, observation));
+    return acquisitionScore(acquisitionValue(cardId, observation));
   }
 
   if (context === "spell-deck-pick" && choice.spellDeckPick) {

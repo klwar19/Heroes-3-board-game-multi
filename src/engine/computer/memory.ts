@@ -1,4 +1,5 @@
 import type { GameAction, GameState, MapSpaceId, PlayerId } from "../state";
+import { updateDevelopmentPlan, type DevelopmentPlan } from "./development-plan";
 
 /**
  * Bounded multi-round policy memory for a computer seat. Persisted on
@@ -21,6 +22,8 @@ export type ResourceTrailEntry = {
 };
 
 export type ComputerPolicyMemory = {
+  developmentPlan?: DevelopmentPlan;
+  routeHistory?: Array<{ heroId: string; to: string; progress: string }>;
   /** `${round}|${activePlayerId}|${completedTurns signature}` — clears visit list. */
   lastTurnKey: string;
   resourceTrail: ResourceTrailEntry[];
@@ -77,6 +80,7 @@ export function getComputerMemory(
     resourceTrail: [...(raw.resourceTrail ?? [])],
     visitedThisTurn: [...(raw.visitedThisTurn ?? [])],
     recentStateHashes: [...(raw.recentStateHashes ?? [])],
+    routeHistory: [...(raw.routeHistory ?? [])],
   };
 }
 
@@ -186,6 +190,7 @@ export function refreshComputerMemory(
   }
 
   mem.focus = inferEconomyFocus(mem.resourceTrail, snap.army);
+  mem.developmentPlan = updateDevelopmentPlan(state, playerId, mem.developmentPlan);
 
   // Drop sticky objective if it has aged out (re-pick next decision).
   if (
@@ -227,6 +232,7 @@ export function noteComputerAction(
   switch (action.type) {
     case "MOVE_HERO": {
       const to = action.to;
+      mem.routeHistory = [...(mem.routeHistory ?? []), { heroId: action.heroId, to, progress: routeProgressKey(state, playerId) }].slice(-12);
       if (to && !mem.visitedThisTurn.includes(to)) {
         mem = {
           ...mem,
@@ -280,6 +286,27 @@ export function noteComputerAction(
   }
 
   return writeComputerMemory(state, playerId, mem);
+}
+
+/** Excludes clock, event counters and movement so an empty walk is not progress. */
+export function routeProgressKey(state: GameState, playerId: PlayerId): string {
+  const player = state.players[playerId];
+  const text = JSON.stringify([
+    player?.resources, player?.army,
+    Object.values(state.towns ?? {}).filter(t => t.controllerId === playerId).map(t => t.buildings),
+    Object.values(state.heroes ?? {}).filter(h => h.controllerId === playerId).map(h => [h.id, h.level]),
+    Object.values(state.adventure?.fields ?? {}).map(f => [f.spaceId, f.flagOwnerId, f.blackCube]),
+    Object.values(state.adventure?.tiles ?? {}).map(t => [t.id, t.faceDown]),
+  ]);
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619);
+  return (hash >>> 0).toString(16);
+}
+
+export function repeatsUnproductiveRoute(state: GameState, playerId: PlayerId, action: GameAction, memory?: ComputerPolicyMemory): boolean {
+  if (action.type !== "MOVE_HERO" || !memory?.routeHistory) return false;
+  const progress = routeProgressKey(state, playerId);
+  return memory.routeHistory.filter(step => step.heroId === action.heroId && step.to === action.to && step.progress === progress).length >= 2;
 }
 
 /** Commit a sticky map objective for cross-turn march continuity. */
