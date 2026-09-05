@@ -2037,18 +2037,6 @@ export function canCrossEdge(
     return false;
   }
 
-  // BINH Creature-Bank entrance rule: the carved bank hex belongs to its host
-  // tile. Its inward seams are open, but its outer seam is never a shortcut in
-  // or out. Check both directions explicitly so path previews, movement offers,
-  // and authoritative resolution cannot disagree.
-  if (
-    fromField.tileInstanceId !== toField.tileInstanceId &&
-    houseRuleEnabled(state, "bank-interior-entry-only") &&
-    (fromField.location === "creature_bank" || toField.location === "creature_bank")
-  ) {
-    return false;
-  }
-
   // The two halves of a Subterranean Gate Token are "one Field": the step
   // between them is always allowed in either direction, regardless of layer or
   // any printed border — it is the tunnel the Gate carves between the tiles.
@@ -2128,10 +2116,11 @@ export function canCrossEdge(
     return true;
   }
 
-  // A map object CARVED OVER a Blocked Field draws no borders (same open-edge
-  // reading as discovery): a hero may walk ONTO it from an adjacent Tile and walk
-  // OFF it afterward. A guarded one still forces a stop via classifyHeroStep, so
-  // it is never a free pass-through bridge across a Tile edge mid-path.
+  // A map object CARVED OVER a Blocked Field keeps its slot's PRINTED OUTER ARC
+  // (USER RULE 2026-09-05) and loses only the ring's inside half, so a hero walks
+  // in from the host tile's own fields; where the tile prints no arc the carve is
+  // open in every direction. A guarded one still forces a stop via
+  // classifyHeroStep, so it is never a free pass-through bridge mid-path.
   const fromSealed = outerEdgeSealsCrossing(adventure, fromField, movement);
   const toSealed = outerEdgeSealsCrossing(adventure, toField, movement);
   return !fromSealed && !toSealed;
@@ -2140,14 +2129,19 @@ export function canCrossEdge(
 /**
  * Whether a field's OUTER ARC seals a crossing over its own tile edge.
  *
- * Two exemptions, both saying the same thing: an arc that is only the printed
- * rendering of impassable TERRAIN is not an independent yellow border, so
- * whatever rule lets a hero stand on / fly over that hex also lets it leave.
- *  - a Blocked-Field CARVE (Creature Bank / Calamity Gate / Dungeon Gate) wears
- *    none of the host tile's PRINTED lines ({@link fieldNeverWearsBorders}) — the
- *    long-standing rule. A DESIGNER arc on that slot, and a STARTING tile's
- *    printed lines ({@link printedBordersSurviveCarve}), still seal it: a fixed
- *    yellow border is never removed, not even by a bank (USER RULE 2026-08-22);
+ * USER RULE 2026-09-05 ("Bank: should respect the border. Only remove the INSIDE
+ * border to get in. If there is no border outside, don't add a border"): a
+ * Blocked-Field CARVE (Creature Bank / Calamity Gate / Dungeon Gate) and a Field
+ * Override are NOT exempt here any more — the slot's printed outer arc still
+ * seals, and the board still paints it ({@link getTileBorderSegments}). Only the
+ * ring's INSIDE half is opened, which is what lets a hero enter from the host
+ * tile's own fields; a carve on a slot with no printed arc seals nothing.
+ * Superseded: the 2026-08-09 (protocol v24) blanket "a carve wears no border at
+ * all" reading and its 2026-08-22 starting-tile exception.
+ *
+ * ONE exemption remains: an arc that is only the printed rendering of impassable
+ * TERRAIN is not an independent yellow border, so whatever rule lets a hero
+ * stand on / fly over that hex also lets it leave.
  *  - a printed BLOCKED FIELD itself. Every one of the 100 blocked ring slots in
  *    the shipped tile catalog also carries its slot's `outerImpassable` arc (and
  *    on most Far tiles it is the tile's ONLY sealed arc) — the yellow line IS the
@@ -2169,37 +2163,10 @@ function outerEdgeSealsCrossing(
   movement: HeroMovementCapabilities
 ): boolean {
   const carveTile = adventure.tiles[field.tileInstanceId];
-  if (isBlockedFieldCarve(field) && !printedBordersSurviveCarve(carveTile)) {
-    // The Ⅱ–Ⅴ tile's printed ring is gone, but a DESIGNER-drawn whole arc on the
-    // same slot is a deliberate wall and still seals (USER RULE 2026-08-22).
-    return carveTile ? isTileSlotDesignedSealed(carveTile, field.slot) : false;
-  }
   if (movement.moveThrough && locationDefinitions[field.location]?.category === "blocked") {
     return carveTile ? isTileSlotDesignedSealed(carveTile, field.slot) : false;
   }
   return isOuterEdgeSealed(adventure, field);
-}
-
-/**
- * Whether a tile's PRINTED yellow borders survive a Blocked-Field carve sitting
- * on it. USER RULE 2026-08-22: "a fixed yellow border in the map (either on Tile
- * Ⅰ or drawn from map design) … should be respected and not removed (even by the
- * bank)". A Ⅱ–Ⅲ / Ⅳ–Ⅴ tile's printed ring around the Blocked Field the bank
- * replaced is NOT such a fixed border — the bank stays passable from every
- * direction. The STARTING tile's printed lines are.
- *
- * REACHABILITY (stated, not assumed): none of the shipped PLACEMENT flows put a
- * carve on a starting tile — Creature Banks come from a Far/Near tile reveal or
- * from a designer object that is STANDALONE-only (validated in
- * `adventure-setup.ts`, so it has no backing tile at all), the Calamity / Dungeon
- * Gates take the first Far / Near Blocked Field, and no Field Override kind may
- * claim `starting` tiles. The ENGINE PRIMITIVE {@link placeCreatureBank} does
- * accept any field, so the rule is reachable and is pinned end-to-end there
- * (`adventure.test.ts` > "a Creature Bank does NOT open TILE Ⅰ's printed yellow
- * border"). The everyday half of the user rule is the designer-border half.
- */
-export function printedBordersSurviveCarve(tile: MapTileState | undefined): boolean {
-  return tile?.group === "starting";
 }
 
 /**
@@ -2451,16 +2418,19 @@ export function isBlockedFieldCarve(field: Pick<MapFieldState, "location">): boo
 }
 
 /**
- * Whether a placed field NEVER wears the HOST TILE'S PRINTED yellow borders at
+ * Whether a placed field wears NONE of the host tile's printed INSIDE ring at
  * runtime: a Blocked-Field carve (Creature Bank / Calamity Gate / Dungeon Gate)
  * or a carved Field Override hex. The board suppresses every PRINTED line
- * touching such a hex (`getTileBorderSegments`' suppressed set) and movement
- * agrees, so the carve stays passable from all directions.
+ * touching such a hex EXCEPT the slot's own outer arc
+ * (`getTileBorderSegments`' suppressed set), and movement agrees — so the carve
+ * is enterable from the host tile's own fields.
  *
- * It does NOT cover a FIXED yellow border (USER RULE 2026-08-22): a designer
- * `extraBorders` arc / `borderEdges` line still renders and still seals here,
- * and so would a starting tile's printed line
- * ({@link printedBordersSurviveCarve}).
+ * It does NOT cover the slot's PRINTED OUTER ARC (USER RULE 2026-09-05: "only
+ * remove the INSIDE border to get in") nor a FIXED yellow border (USER RULE
+ * 2026-08-22: a designer `extraBorders` arc / `borderEdges` line still renders
+ * and still seals here). Its one live consumer is
+ * {@link isDesignedEdgeSealedBetween}, where a FIELD-level `borderEdges` list on
+ * such a hex is stale/legacy data the designer can never legitimately stamp.
  */
 export function fieldNeverWearsBorders(field: Pick<MapFieldState, "location">): boolean {
   return isBlockedFieldCarve(field) || isFieldOverrideLocation(field.location);
@@ -2470,23 +2440,16 @@ export function fieldNeverWearsBorders(field: Pick<MapFieldState, "location">): 
  * Whether a hero STANDING on `field` is walled off by a printed yellow border
  * from ordinarily DISCOVERING a Tile across its outer edge.
  *
- * This is {@link isOuterEdgeSealed} with one exception: a field carved over a
- * Blocked Field draws NO border (it "reads as fully open" — see
- * `getTileBorderSegments`), so a hero standing on a Creature Bank / Calamity Gate
- * / Dungeon Gate faces OPEN outer edges and may flip an adjacent face-down Tile —
- * even though the Blocked Field it replaced kept its slot's sealed arc in the tile
- * definition. Discovery only reveals the Tile; moving OUT across a Tile edge is a
- * separate question governed by the same exception in {@link canCrossEdge}.
- * Keeping `isOuterEdgeSealed` untouched preserves its slot-primitive invariant;
- * only the hero-vantage reads take the exception.
+ * This is now exactly {@link isOuterEdgeSealed}. USER RULE 2026-09-05: a carve
+ * keeps the slot's PRINTED outer arc (it is drawn — see
+ * `getTileBorderSegments`), so a hero standing on a Creature Bank / Calamity
+ * Gate / Dungeon Gate looks out across the same wall the Blocked Field it
+ * replaced did, and may only flip an adjacent face-down Tile where the tile
+ * prints no arc. The carve opens the ring's INSIDE half only. Superseded: the
+ * "a carve reads as fully open" exception (2026-08-09) and its starting-tile
+ * counter-exception (2026-08-22).
  */
 export function heroFieldSealedForDiscovery(adventure: AdventureState, field: MapFieldState): boolean {
-  const tile = adventure.tiles[field.tileInstanceId];
-  if (isBlockedFieldCarve(field) && !printedBordersSurviveCarve(tile)) {
-    // Only the printed ring is gone; a DESIGNER arc on the slot still walls the
-    // vantage (USER RULE 2026-08-22).
-    return tile ? isTileSlotDesignedSealed(tile, field.slot) : false;
-  }
   return isOuterEdgeSealed(adventure, field);
 }
 

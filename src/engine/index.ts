@@ -282,6 +282,7 @@ export {
 export {
   HOUSE_RULES,
   HOUSE_RULE_BY_ID,
+  RETIRED_HOUSE_RULE_IDS,
   armyUnitStacksActive,
   effectiveTownBuildingCost,
   houseRuleDefaultFor,
@@ -739,7 +740,6 @@ export {
   isDesignedEdgeSealedBetween,
   BLOCKED_FIELD_CARVE_LOCATIONS,
   isBlockedFieldCarve,
-  printedBordersSurviveCarve,
   fieldNeverWearsBorders,
   isOuterEdgeSealed,
   isTileSlotDesignedSealed,

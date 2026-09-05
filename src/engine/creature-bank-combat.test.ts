@@ -362,12 +362,15 @@ describe("Creature Bank — reserved (known) before the tile is rotated", () => 
 // ===========================================================================
 
 describe("Creature Bank movement", () => {
-  function twoTileState(inwardOnly = true): GameState {
+  function twoTileState(bankSlot = 6): GameState {
     const state = createAdventureGameState({ seed: "bank-move", difficulty: "normal", rollFirstPlayer: false });
     const template = Object.values(state.adventure!.tiles)[0];
-    // Two surface tiles with unknown defs (no internal borders, no sealed edges).
-    state.adventure!.tiles["T1"] = { ...template, id: "T1", tileDefId: "fake-T1", group: "near" };
-    state.adventure!.tiles["T2"] = { ...template, id: "T2", tileDefId: "fake-T2", group: "near" };
+    // Two REAL S1 tiles: the fixture must carry printed geometry, because since
+    // USER RULE 2026-09-05 the tile's printed outer arc is exactly what decides
+    // whether the bank's tile edge is a wall. S1 prints the arc on slot 6 (its
+    // Blocked Field, where a bank really lands) and not on slot 1.
+    state.adventure!.tiles["T1"] = { ...template, id: "T1", tileDefId: "S1", group: "near" };
+    state.adventure!.tiles["T2"] = { ...template, id: "T2", tileDefId: "S1", group: "near" };
     const field = (spaceId: string, tileInstanceId: string, location: string, slot: number, bankId?: string) => ({
       spaceId,
       tileInstanceId,
@@ -379,15 +382,20 @@ describe("Creature Bank movement", () => {
       everFlagged: false,
       settlementResource: null
     });
-    state.adventure!.fields["A"] = field("A", "T1", "empty_field", 1);
-    state.adventure!.fields["B"] = field("B", "T1", "creature_bank", 2, "crypt");
-    state.adventure!.fields["C"] = field("C", "T2", "empty_field", 1);
-    state.adventure!.houseRules!["bank-interior-entry-only"] = inwardOnly;
+    // A and C sit on slot 5, which S1 prints NO outer arc for, so the two
+    // ordinary fields never seal anything themselves.
+    state.adventure!.fields["A"] = field("A", "T1", "empty_field", 5);
+    state.adventure!.fields["B"] = field("B", "T1", "creature_bank", bankSlot, "crypt");
+    state.adventure!.fields["C"] = field("C", "T2", "empty_field", 5);
     return state;
   }
 
-  it("BINH: enters and exits on the host tile, never across the bank's outer tile edge", () => {
-    const state = twoTileState();
+  it("enters and exits on the host tile, never across the bank's PRINTED outer arc", () => {
+    // S1 slot 6 is its Blocked Field AND carries the printed outer arc — the
+    // shape every real bank has (all 102 blocked RING slots in the catalog print
+    // their arc), so this is the everyday reading of USER RULE 2026-09-05.
+    expect(coreTileDefinitions.S1.outerImpassable[5]).toBe(true);
+    const state = twoTileState(6);
     // Control: two ordinary fields on different tiles ARE crossable.
     expect(canCrossEdge(state, "C", "A")).toBe(true);
 
@@ -399,10 +407,16 @@ describe("Creature Bank movement", () => {
     expect(canCrossEdge(state, "B", "C")).toBe(false);
   });
 
-  it("CONTROL: with the BINH entrance rule off, the old cross-tile bank edge stays open", () => {
-    const state = twoTileState(false);
+  // FLIPPED 2026-09-05: this used to turn the BINH house rule
+  // `bank-interior-entry-only` OFF (retired since) to reopen the cross-tile edge.
+  // The printed arc decides now, so the CONTROL is the SAME bank on a slot the
+  // tile prints no arc for: "if there is no border outside, don't add a border".
+  it("CONTROL: a bank on a slot with NO printed arc keeps its cross-tile edge open", () => {
+    expect(coreTileDefinitions.S1.outerImpassable[0]).toBe(false);
+    const state = twoTileState(1);
     expect(canCrossEdge(state, "C", "B")).toBe(true);
     expect(canCrossEdge(state, "B", "C")).toBe(true);
+    expect(canCrossEdge(state, "A", "B")).toBe(true);
   });
 
   it("offers a bank carved from a real tile's Blocked Field as a move destination", () => {

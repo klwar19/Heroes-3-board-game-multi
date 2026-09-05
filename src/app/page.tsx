@@ -1,5 +1,5 @@
 "use client";
-import { parallelPresentationEvents, parallelStateForPlayer } from "@/engine/parallel-combats";
+import { isParallelWatchOnly, parallelPresentationEvents, parallelStateForPlayer } from "@/engine/parallel-combats";
 import { ParallelBattleSwitcher } from "@/components/table/parallel-battle-switcher";
 
 import { Castle, CheckCircle2, Crosshair, Crown, Eye, Hand as HandIcon, Layers, Lock, Map as MapIcon, Maximize2, Menu as MenuIcon, Minimize2, Sparkles, StepForward, Swords, Users } from "lucide-react";
@@ -103,7 +103,11 @@ import {
   type MapEventCue
 } from "@/components/table/overlays";
 import { MapSpellBoostModal } from "@/components/table/map-spell-boost-modal";
-import { attackDeclarationForRoll, makeCombatDiceCue } from "@/components/table/combat-dice-cue";
+import {
+  attackDeclarationForRoll,
+  makeCombatDiceCue,
+  mergeDiceCuesInEventOrder
+} from "@/components/table/combat-dice-cue";
 import { MoraleOverflowPrompt } from "@/components/table/morale-overflow-prompt";
 import { StoryOverlay, type StoryCue } from "@/components/table/story-overlay";
 import { CommanderIntroOverlay } from "@/components/table/commander-intro-overlay";
@@ -1371,10 +1375,17 @@ export default function Home() {
   // anyone may still flip back to the map mid-fight.
   const lastCombatIdRef = useRef<string | null>(null);
   const lastResultCombatIdRef = useRef<string | null>(null);
+  // Parallel turns: a viewer who merely WATCHES a battle (a spectator, an
+  // eliminated seat, a bystander who picked a "Watch" window) has no stake in
+  // it, so a snapshot must never drag them off the map and onto that
+  // battlefield — the reported "keep being forced to a battle when I view the
+  // map". Their explicit Map choice sticks; the hand-off below stays for a
+  // battle that concerns them (their own fight, or the guards they command).
+  const combatIsWatchOnly = Boolean(state && isParallelWatchOnly(state, viewerPlayerId));
   useEffect(() => {
     const combatId = state?.combat?.id ?? null;
     if (combatId && combatId !== lastCombatIdRef.current) {
-      setCombatTab("battle");
+      if (!combatIsWatchOnly) setCombatTab("battle");
       // A fresh battle starts with a clean presentation slate, so a die,
       // freeze or pause left mid-flight by the previous combat can't bleed
       // into (and mis-sequence) this battle's first attack.
@@ -1393,11 +1404,15 @@ export default function Home() {
     lastCombatIdRef.current = combatId;
 
     const resultId = state?.combat?.outcome ? combatId : null;
+    // NOTE: no watch-only guard here on purpose. The engine never projects a
+    // DECIDED foreign battle onto a watcher (`watchTargetFor` and the seated
+    // `targetPreference` both skip a combat with an `outcome`), so a viewer
+    // holding a result is always a participant in it.
     if (resultId && resultId !== lastResultCombatIdRef.current) {
       setCombatTab("battle");
     }
     lastResultCombatIdRef.current = resultId;
-  }, [state?.combat?.id, state?.combat?.outcome]);
+  }, [state?.combat?.id, state?.combat?.outcome, combatIsWatchOnly]);
 
   // Drops a batch of feed toasts on screen with their staggered audio cues and
   // an 8s auto-expiry. Pulled out so a visit's toasts can either show at once or
@@ -2267,6 +2282,31 @@ export default function Home() {
       // `preDelay` is carried into its overlay cue, so the cube and its strike
       // always share a clock — the lead below shifts BOTH together.
       const pendingPreDelay = new Set(movePreDelayByAttacker.keys());
+      // USER RULE (2026-09-05) — "Death Stare must happen BEFORE the
+      // retaliation". An ability roll that the engine resolved BETWEEN two of
+      // this snapshot's attack dice (a Gorgon's stare fires after its blow and
+      // before the parked Retaliation) must READ before the later die. Its cue
+      // is spliced into the overlay queue in event order below; the clock here
+      // reserves its real duration so the later die's strike and damage
+      // floater stay pinned behind it instead of firing while it is on screen.
+      // Only such "sandwiched" rolls are reserved — an ability roll with no
+      // attack die after it keeps the old append-and-run-the-timeline path.
+      const presentationOrder = new Map(presentationEvents.map((event, index) => [event.id, index]));
+      const rollOrderOf = (eventId: string) => presentationOrder.get(eventId) ?? -1;
+      const lastFreshRollOrder = fresh.length > 0 ? rollOrderOf(fresh[fresh.length - 1].id) : -1;
+      const sandwichedAbilityDice = freshAbilityEvents.filter(
+        (event) => event.dice && rollOrderOf(event.id) < lastFreshRollOrder
+      );
+      const ABILITY_DICE_BEAT_MS = ABILITY_DICE_AFTER_STRIKE_MS + DICE_ROLL_MS + ABILITY_DICE_READ_MS;
+      const sandwichedAbilityDiceIds = new Set(sandwichedAbilityDice.map((event) => event.id));
+      // cue id -> its source event's place in the log, for the ordered splice.
+      const diceCueOrder = new Map<string, number>();
+      for (const event of fresh) {
+        diceCueOrder.set(event.id, rollOrderOf(event.id));
+      }
+      for (const event of sandwichedAbilityDice) {
+        diceCueOrder.set(`${event.id}-dice`, rollOrderOf(event.id));
+      }
       const diceDismissAt: number[] = [];
       let diceClock = 0;
       const freshDiceCues = fresh.map((event, index) => {
@@ -2281,11 +2321,20 @@ export default function Home() {
           pendingPreDelay.delete(event.attackerId);
           preDelay += movePause;
         }
+        // Ability rolls the engine resolved between the previous die and this
+        // one now occupy the queue ahead of it; each waits out the strike itself
+        // (ABILITY_DICE_AFTER_STRIKE_MS), so this die adds no second strike hold.
+        const previousRollOrder = index > 0 ? rollOrderOf(fresh[index - 1].id) : -1;
+        const thisRollOrder = rollOrderOf(event.id);
+        const abilityDiceAhead = sandwichedAbilityDice.filter((ability) => {
+          const order = rollOrderOf(ability.id);
+          return order > previousRollOrder && order < thisRollOrder;
+        }).length;
         // Every later die holds for the previous attack's strike animation.
-        if (index > 0) {
+        if (index > 0 && abilityDiceAhead === 0) {
           preDelay += ATTACK_ANIM_MS;
         }
-        diceClock += preDelay + DICE_PRESENT_MS;
+        diceClock += abilityDiceAhead * ABILITY_DICE_BEAT_MS + preDelay + DICE_PRESENT_MS;
         diceDismissAt.push(diceClock);
         return makeCombatDiceCue(nextState, event, preDelay);
       });
@@ -3451,7 +3500,12 @@ export default function Home() {
                 const afterStrike = fresh.length > 0;
                 const startAt = afterStrike ? ABILITY_DICE_AFTER_STRIKE_MS : timeline;
                 spellDiceCues.push(makeAbilityDiceCue(nextState, event, event.dice, startAt));
-                timeline += (afterStrike ? ABILITY_DICE_AFTER_STRIKE_MS : 0) + DICE_ROLL_MS + ABILITY_DICE_READ_MS;
+                // A roll sandwiched before a later attack die already had its
+                // beat reserved in diceClock (which seeded this timeline), so
+                // adding it again would push every later FX a full roll late.
+                if (!sandwichedAbilityDiceIds.has(event.id)) {
+                  timeline += (afterStrike ? ABILITY_DICE_AFTER_STRIKE_MS : 0) + DICE_ROLL_MS + ABILITY_DICE_READ_MS;
+                }
                 if (inCombat) {
                   combatFxActive = true;
                   combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 1200);
@@ -3681,7 +3735,7 @@ export default function Home() {
         // card's flight) before its cube tumbles.
         if (spellDiceCues.length > 0 && combatBoardLive) {
           setDice((current) => {
-            const queue = [...current.queue, ...spellDiceCues];
+            const queue = mergeDiceCuesInEventOrder(current.queue, spellDiceCues, diceCueOrder);
             if (!current.current && queue.length > 0) {
               return { current: queue[0], queue: queue.slice(1) };
             }
@@ -5862,8 +5916,17 @@ export default function Home() {
     // map interactive while someone else's battle runs — they may flip to the
     // map tab and keep taking their quiet moves. Everyone else gets the classic
     // read-only map while a combat is open.
+    // A seat that CHOSE to watch another player's battle holds no legal action
+    // at all while that window is selected (getLegalActions offers only the
+    // switch back), so its map must be the classic read-only one — an
+    // interactive map there would be nothing but failing clicks.
+    // NOT PINNED: reaching this needs a SEATED bystander that has dispatched
+    // SELECT_PARALLEL_CONTEXT, and the read-only flag is presentation only (the
+    // legal-action set already withholds every map action — pinned in
+    // parallel-watch-battles.test.ts). Declared here rather than dressed up.
     const parallelMapBystander =
       combatVisible &&
+      !combatIsWatchOnly &&
       isParallelActor(state, viewerPlayerId) &&
       state.combat?.attackerPlayerId !== viewerPlayerId &&
       state.combat?.defenderPlayerId !== viewerPlayerId;

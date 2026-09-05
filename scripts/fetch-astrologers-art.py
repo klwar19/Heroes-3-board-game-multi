@@ -63,6 +63,25 @@ SLUGS = [
     "explorers",              # Inferno
     "charlie_and_his_circus", # Rampart
     "unexpected_reinforcements",  # Tower
+    # Batch 2026-09-05: every remaining proclamation the wiki scans (the former
+    # ART_PENDING_PROCLAMATIONS set + Wandering Merchant, which gained a front scan).
+    "whirlpool",
+    "destruction",
+    "sanctuary",
+    "spells",
+    "pirates",
+    "rulebook",
+    "judge_dread",
+    "wind",
+    "mages",
+    "elementals",
+    "forty_thieves",
+    "plastic_tray",
+    "restart",
+    "crag_hack",
+    "multilingual_bron",
+    "disruption",
+    "wandering_merchant",
 ]
 
 # The wiki publishes every proclamation at this landscape card size.
@@ -108,11 +127,19 @@ def save_card(data: bytes, url: str, out_name: str) -> None:
 
 
 def main() -> None:
+    # Default: fetch only the scans not on disk (a re-encode of an already
+    # published, compressed scan would only churn the media manifest).
+    # Pass --refresh to re-download every slug.
+    refresh = "--refresh" in sys.argv[1:]
     OUT.mkdir(parents=True, exist_ok=True)
     print(f"Astrologers Proclaim cards ({len(SLUGS)}):")
     for slug in SLUGS:
+        out_name = f"astrologers_proclaim-{slug}.webp"
+        if not refresh and (OUT / out_name).exists():
+            print(f"  keep  {out_name} (already on disk; --refresh re-downloads)")
+            continue
         src = f"{WIKI}/astrologers_proclaim-{slug}.webp"
-        save_card(fetch(src), src, f"astrologers_proclaim-{slug}.webp")
+        save_card(fetch(src), src, out_name)
     print("Done.")
 
 

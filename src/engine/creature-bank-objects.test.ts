@@ -277,11 +277,13 @@ describe("applyCustomMapObjects — creature_bank carve", () => {
 
   it("stale bank borderEdges never seal movement or tile discovery", () => {
     const state = bankGame([bankObject({ bankId: "crypt" })], "bank-open");
-    // Isolate stale edge handling from the separate BINH rule that intentionally
-    // contains cross-tile bank entry/exit.
+    // A designer STANDALONE bank has NO backing tile, so there is no printed
+    // outer arc to retain (USER RULE 2026-09-05: "if there is no border outside,
+    // don't add a border") — this is the everyday reachable shape of the
+    // arc-less half. The retired `bank-interior-entry-only` line that used to
+    // isolate this case is gone with the rule.
     state.adventure!.houseRules = {
       ...(state.adventure!.houseRules ?? {}),
-      "bank-interior-entry-only": false,
       "discovery-border-gate": true,
     } as never;
     const field = adv(state).fields[BANK_ID]!;

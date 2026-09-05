@@ -485,38 +485,62 @@ describe("printed tile borders", () => {
     expect(segments).toHaveLength(15);
   });
 
-  it("draws NO borders on a Creature Bank field by default", () => {
-    // S1's Blocked Field is slot 6 (NW). Carved into a Creature Bank, by default
-    // the field is border-free: none of its six edges are drawn, so it reads as
-    // fully open. A plain (non-bank) blocked field keeps all its borders.
+  // FLIPPED 2026-09-05 (USER RULE "Bank: should respect the border. Only remove
+  // the INSIDE border to get in. If there is no border outside, don't add a
+  // border"). These three cases used to assert the 2026-08-09 blanket reading
+  // "a carved bank draws NOTHING at all" and the house-rule-gated
+  // `preserveBankOuterArcs` opt-in. The retained outer arc is now the
+  // UNCONDITIONAL default, so the old assertions are the mutation of the rule.
+  it("a carved Creature Bank keeps the slot's PRINTED outer arc and loses only the inside ring", () => {
+    // S1's Blocked Field is slot 6 (NW = direction 5), and S1 prints that slot's
+    // outer arc (`outerImpassable[5]`). Carved into a Creature Bank the three
+    // OUTWARD edges (4, 5, 0) stay drawn — a hero may not leave across them —
+    // while the three INWARD edges (1, 2, 3) open so the host tile can walk in.
     const plainKeys = new Set(getTileBorderSegments(coreTileDefinitions.S1).map((s) => `${s.slot}:${s.edge}`));
     const bankKeys = new Set(
       getTileBorderSegments(coreTileDefinitions.S1, new Set([6])).map((s) => `${s.slot}:${s.edge}`)
     );
     for (const edge of ["6:0", "6:1", "6:2", "6:3", "6:4", "6:5"]) {
-      // Every edge is present for a plain blocked field, gone for a bank.
-      expect(plainKeys.has(edge)).toBe(true);
-      expect(bankKeys.has(edge), `bank slot edge ${edge} should be hidden by default`).toBe(false);
+      expect(plainKeys.has(edge), `plain blocked field draws ${edge}`).toBe(true);
     }
-  });
-
-  it("a placed Creature Bank stays border-free with no outline-restoring mode", () => {
-    const bankKeys = new Set(
-      getTileBorderSegments(coreTileDefinitions.S1, new Set([6])).map((s) => `${s.slot}:${s.edge}`)
-    );
-    for (const edge of ["6:0", "6:1", "6:2", "6:3", "6:4", "6:5"]) {
-      expect(bankKeys.has(edge), `bank edge ${edge} is absent`).toBe(false);
+    for (const edge of ["6:4", "6:5", "6:0"]) {
+      expect(bankKeys.has(edge), `bank keeps its printed OUTER edge ${edge}`).toBe(true);
     }
-  });
-
-  it("BINH bank rendering restores only the three outward edges, not the inward ring", () => {
-    const edges = getTileBorderSegments(coreTileDefinitions.S1, new Set([6]), {
-      preserveBankOuterArcs: true,
-    })
+    for (const edge of ["6:1", "6:2", "6:3"]) {
+      expect(bankKeys.has(edge), `bank opens its INSIDE edge ${edge}`).toBe(false);
+    }
+    const bankSlotEdges = getTileBorderSegments(coreTileDefinitions.S1, new Set([6]))
       .filter((segment) => segment.slot === 6)
       .map((segment) => segment.edge)
       .sort();
-    expect(edges).toEqual([0, 4, 5]);
+    expect(bankSlotEdges).toEqual([0, 4, 5]);
+  });
+
+  it("CONTROL: a carve on a slot the tile prints NO arc for draws nothing at all", () => {
+    // "If there is no border outside, don't add a border." S1 slot 1 (NE) is a
+    // plain `empty_field` with `outerImpassable[0] === false`; a Field Override
+    // carved there (`borderlessSlots`) invents no wall. The neighbouring printed
+    // lines that touched the hex still vanish, which is the whole suppression.
+    expect(coreTileDefinitions.S1.outerImpassable[0]).toBe(false);
+    const carvedKeys = getTileBorderSegments(coreTileDefinitions.S1, new Set(), {
+      borderlessSlots: new Set([1]),
+    }).map((s) => `${s.slot}:${s.edge}`);
+    expect(carvedKeys.filter((key) => key.startsWith("1:"))).toEqual([]);
+  });
+
+  it("CONTROL: a DESIGNER arc on the carved slot survives even where the tile prints none", () => {
+    // USER RULE 2026-08-22 is untouched: a fixed yellow border is never removed,
+    // not even by a bank — and it is the only thing that can appear on a slot the
+    // tile prints no arc for. S1 slot 1 faces absolute direction 0 at rotation 0.
+    const edges = getTileBorderSegments(coreTileDefinitions.S1, new Set(), {
+      borderlessSlots: new Set([1]),
+      extraBorders: [0],
+      rotation: 0,
+    })
+      .filter((segment) => segment.slot === 1)
+      .map((segment) => segment.edge)
+      .sort();
+    expect(edges).toEqual([0, 1, 5]);
   });
 
   it("computes the shared hex edge of two slots", () => {

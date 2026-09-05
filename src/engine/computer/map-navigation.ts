@@ -885,8 +885,11 @@ function collectExploreObjectives(
     let useful = false;
     let opensFarTile = false;
     for (const tile of faceDown) {
-      // AI gate: geometric adjacency plus an open doorway now. A Creature Bank
-      // is border-free on the hero side; an ordinary yellow arc is refused.
+      // AI gate: geometric adjacency plus an open doorway now. Every yellow arc
+      // is refused, a carved Creature Bank / Gate hex included — USER RULE
+      // 2026-09-05 keeps the slot's PRINTED outer arc through a carve, so the
+      // hero's vantage is whatever `isOuterEdgeSealed` says. Never re-derive it
+      // here: this probe asks the live gate.
       if (canHeroImmediatelyAccessAdjacentTile(state, probe, tile)) {
         useful = true;
         if (tile.group === "far") {
