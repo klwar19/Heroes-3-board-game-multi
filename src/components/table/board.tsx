@@ -39,6 +39,7 @@ import {
   pickCombatBoardArtId,
   placementCellsFor,
   neutralFormationCellsFor,
+  commanderActionPoints,
   commanderDeploymentCellsFor,
   commanderIntegratedDeploymentSortAvailable,
   commanderUnitId,
@@ -63,7 +64,7 @@ import {
 } from "@/engine";
 import { beginUnitPointerDrag } from "@/components/table/pointer-drag";
 import { CommanderCardFace } from "@/components/commander-card";
-import { COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION, commanderStatValue } from "@/data/commanders";
+import { COMMANDER_MAGIC_SPELL_DAMAGE_REDUCTION, commanderStatValue, commanderUsesActionPoints } from "@/data/commanders";
 import type { CommanderGrade, CommanderSlug } from "@/data/commanders";
 import {
   actionKey,
@@ -2546,6 +2547,17 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
                 <span title={magicTitle}>
                   ✦ Power <b style={{ color: power > 0 ? "#f4d774" : undefined }}>{power}</b>
                 </span>
+                {/* ACTION-POINT commanders (Ibuki, Kyousuke) spend AP on their
+                    commands, so the banked total is the one number a player has
+                    to keep in their head. Reuses the row's own span — no new CSS. */}
+                {commanderUsesActionPoints(unit.commanderSlug) ? (
+                  <span
+                    className="inspectCommanderAp"
+                    title="Action Points: start each combat at 1, gain +1 after moving, attacking, Defending or being attacked. Commands are paid for with AP; a command ends further movement this activation."
+                  >
+                    ⚡ <b style={{ color: "#8ee8ff" }}>{commanderActionPoints(unit)}</b> AP
+                  </span>
+                ) : null}
               </div>
             );
           })()

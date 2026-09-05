@@ -162,6 +162,8 @@ export {
   commanderIntegratedDeploymentSortAvailable,
   commanderPowerOf,
   commanderPreCombatSortAvailable,
+  commanderActionPoints,
+  commanderAdjacentAllies,
   commanderRunePool,
   commandersModuleEnabled,
   commanderSlugForFaction,

@@ -2383,6 +2383,40 @@ describe("InspectPanel / zoom — veterancy for own, ENEMY and neutral cards", (
     expect(container.querySelector(".inspectVeterancy")).toBeNull();
   });
 
+  // An ACTION-POINT commander's banked AP is the one number its player has to
+  // track between commands, so the inspect panel shows it. jsdom cannot compute
+  // CSS: this is the DOM contract only, and there is no e2e spec.
+  // Applied and reverted: dropping the `commanderUsesActionPoints(...)` chip
+  // from board.tsx kills both AP cases below and leaves the CONTROL green.
+  it("an ACTION-POINT commander's inspect panel shows its banked AP; a plain commander shows none", () => {
+    function commanderState(slug: "kyousuke_natsume" | "ibuki" | "paladin", ap: number): GameState {
+      const state = createInitialGameState(`inspect-ap-${slug}`);
+      state.wog = { enabled: true, commanders: true, newObjects: false, newCreatures: false, artifacts: false };
+      state.players.p1.commander = {
+        slug,
+        grades: { attack: 0, defense: 0, health: 0, damage: 0, magic: 0, speed: 0 }
+      };
+      const unit = makeCommanderCombatUnit(state.players.p1, 9)!;
+      unit.commanderActionPoints = ap;
+      state.combat!.units[unit.id] = unit;
+      return state;
+    }
+
+    const kyousuke = renderInspect(commanderState("kyousuke_natsume", 4), commanderUnitId("p1"));
+    expect(kyousuke.container.querySelector(".inspectCommanderAp")!.textContent).toContain("4");
+    expect(kyousuke.container.querySelector(".inspectCommanderAp")!.textContent).toContain("AP");
+    cleanup();
+
+    // Ibuki reads the SAME chip off the same generalised accessor.
+    const ibuki = renderInspect(commanderState("ibuki", 2), commanderUnitId("p1"));
+    expect(ibuki.container.querySelector(".inspectCommanderAp")!.textContent).toContain("2");
+    cleanup();
+
+    // CONTROL: a commander that is not on the AP track gets no chip.
+    const paladin = renderInspect(commanderState("paladin", 4), commanderUnitId("p1"));
+    expect(paladin.container.querySelector(".inspectCommanderAp")).toBeNull();
+  });
+
   it("the card zoom keeps Unit Experience compact, then opens its visual panel on click", () => {
     const state = createInitialGameState("zoom-veterancy");
     const enemy = state.combat!.units.unit_p2_skeletons;
