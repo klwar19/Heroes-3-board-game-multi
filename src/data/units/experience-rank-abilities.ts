@@ -598,7 +598,10 @@ export const AZUR_LANE_RANK_ABILITY_ICON_BY_CHOICE: Record<string, string> = {
   "azur_lane.ayanami:veteran-defense-pierce": "/assets/anime/icons/azur-lane/rank-ability-ayanami-blade.webp",
   "azur_lane.ayanami:veteran-rebirth": "/assets/anime/icons/azur-lane/rank-ability-ayanami.webp",
   "azur_lane.ayanami:unlimited-retaliation": "/assets/anime/icons/azur-lane/rank-ability-ayanami-blade.webp",
-  "azur_lane.ayanami:commander-max-damage": "/assets/anime/icons/azur-lane/rank-ability-ayanami-blade.webp",
+  // The roster-wide convention (see I-19): `commander-max-damage` always shows
+  // the plain SHIP emblem, so the "every unit's XP board icon" sweep in
+  // azur-lane-content.test.ts holds for the new ships too.
+  "azur_lane.ayanami:commander-max-damage": "/assets/anime/icons/azur-lane/rank-ability-ayanami.webp",
 
   "azur_lane.akagi:ranged-extra-shot-on-low-roll": "/assets/anime/icons/azur-lane/rank-ability-akagi-fire.webp",
   "azur_lane.akagi:veteran-steady-aim": "/assets/anime/icons/azur-lane/rank-ability-akagi.webp",

@@ -861,7 +861,7 @@ describe("sweep: EVERY implemented heal card is offered in an open attack window
   });
 
   it("Rion VI and its clones carry the post-draw discard rider, not a cost", () => {
-    for (const cardId of ["specialty.rion.6", "specialty.aoko.6", "specialty.sirius.6", "specialty.molian.6"]) {
+    for (const cardId of ["specialty.rion.6", "specialty.aoko.6", "specialty.shiyan.6", "specialty.molian.6"]) {
       const effect = cardLibrary[cardId as CardId].effect;
       expect(effect.type, `${cardId} is a CHOOSE_ONE`).toBe("CHOOSE_ONE");
       const options = effect.type === "CHOOSE_ONE" ? effect.options : [];
@@ -914,30 +914,27 @@ describe("healDrawOnlyRider — the map draw-only gate", () => {
       // Shiyan (Heavenly Demon) is a Rion retheme too — same map draw-only gate.
       "specialty.shiyan.1",
       "specialty.shiyan.4",
-      "specialty.shiyan.6",
-      "specialty.sirius.1",
-      "specialty.sirius.4",
-      "specialty.sirius.6"
+      "specialty.shiyan.6"
     ]);
   });
 
-  it("a rethemed CLONE (Sirius, Azur Lane) inherits BOTH fixes", () => {
+  it("a rethemed CLONE (Shiyan, Heavenly Demon) inherits BOTH fixes", () => {
     // Map draw-only.
-    let state = mapHand(["specialty.sirius.1"]);
+    let state = mapHand(["specialty.shiyan.1"]);
     state.players.p1.deck = ["spell.haste" as CardId];
-    const plays = mapPlays(state, "specialty.sirius.1");
+    const plays = mapPlays(state, "specialty.shiyan.1");
     expect(plays.length, "the clone is map-playable for its draw").toBe(1);
     state = applyOk(state, plays[0]);
     expect(state.players.p1.hand).toEqual(["spell.haste"]);
 
     // Reaction window before the counter-attack.
-    const declared = applyOk(lethalRetaliationState(["specialty.sirius.1"]), {
+    const declared = applyOk(lethalRetaliationState(["specialty.shiyan.1"]), {
       type: "ATTACK_UNIT",
       playerId: "p1",
       attackerId: "unit_p1_crusaders",
       defenderId: "unit_p2_skeletons"
     });
-    const offer = healOffer(declared, "p1", "specialty.sirius.1");
+    const offer = healOffer(declared, "p1", "specialty.shiyan.1");
     expect(offer, "the clone is offered in the retaliation window").toBeTruthy();
     const healed = applyOk(declared, offer!.action);
     expect(packIntact(healed, "unit_p1_crusaders" as UnitId), "and it saves the Pack").toBe(true);

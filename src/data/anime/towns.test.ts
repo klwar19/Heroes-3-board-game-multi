@@ -154,15 +154,15 @@ describe("playable Anime Realms towns", () => {
   it("might specialists double on a unit of their OWN faction (mutation control: the borrowed sets never could)", () => {
     // Enterprise left this list in the 2026-07 upgrade (bespoke "Lucky E").
     // The 2026-08-25 specialty redesign removed the other Fuyuki / Hidden Leaf /
-    // Azure Breeze / Heavenly Demon might heroes from it too: only Illyasviel
+    // Azure Breeze / Heavenly Demon might heroes from it too, and the 2026-09-05
+    // Azur Lane redesign removed Bismarck / Nagato (Concentrated Fire / Big
+    // Seven Bombardment, pinned in azur-lane-content.test.ts): only Illyasviel
     // (Heracles IS her Servant) and Naruto (the Nine-Tails bond) keep the
-    // unit-specialist trio, plus Azur Lane's Bismarck / Nagato. The redesigned
-    // sets are pinned in anime-specialty-redesign.test.ts.
+    // unit-specialist trio. The redesigned sets are pinned in
+    // anime-specialty-redesign.test.ts.
     for (const [heroId, factionId] of [
       ["illyasviel", "fuyuki"],
-      ["naruto", "hidden_leaf"],
-      ["bismarck", "azur_lane"],
-      ["nagato", "azur_lane"]
+      ["naruto", "hidden_leaf"]
     ] as const) {
       const card = cardLibrary[`specialty.${heroId}.1`];
       const effect = card?.effect;
