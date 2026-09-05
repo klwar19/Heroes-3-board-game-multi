@@ -103,7 +103,11 @@ import {
   type MapEventCue
 } from "@/components/table/overlays";
 import { MapSpellBoostModal } from "@/components/table/map-spell-boost-modal";
-import { attackDeclarationForRoll, makeCombatDiceCue } from "@/components/table/combat-dice-cue";
+import {
+  attackDeclarationForRoll,
+  makeCombatDiceCue,
+  mergeDiceCuesInEventOrder
+} from "@/components/table/combat-dice-cue";
 import { MoraleOverflowPrompt } from "@/components/table/morale-overflow-prompt";
 import { StoryOverlay, type StoryCue } from "@/components/table/story-overlay";
 import { CommanderIntroOverlay } from "@/components/table/commander-intro-overlay";
@@ -2267,6 +2271,31 @@ export default function Home() {
       // `preDelay` is carried into its overlay cue, so the cube and its strike
       // always share a clock — the lead below shifts BOTH together.
       const pendingPreDelay = new Set(movePreDelayByAttacker.keys());
+      // USER RULE (2026-09-05) — "Death Stare must happen BEFORE the
+      // retaliation". An ability roll that the engine resolved BETWEEN two of
+      // this snapshot's attack dice (a Gorgon's stare fires after its blow and
+      // before the parked Retaliation) must READ before the later die. Its cue
+      // is spliced into the overlay queue in event order below; the clock here
+      // reserves its real duration so the later die's strike and damage
+      // floater stay pinned behind it instead of firing while it is on screen.
+      // Only such "sandwiched" rolls are reserved — an ability roll with no
+      // attack die after it keeps the old append-and-run-the-timeline path.
+      const presentationOrder = new Map(presentationEvents.map((event, index) => [event.id, index]));
+      const rollOrderOf = (eventId: string) => presentationOrder.get(eventId) ?? -1;
+      const lastFreshRollOrder = fresh.length > 0 ? rollOrderOf(fresh[fresh.length - 1].id) : -1;
+      const sandwichedAbilityDice = freshAbilityEvents.filter(
+        (event) => event.dice && rollOrderOf(event.id) < lastFreshRollOrder
+      );
+      const ABILITY_DICE_BEAT_MS = ABILITY_DICE_AFTER_STRIKE_MS + DICE_ROLL_MS + ABILITY_DICE_READ_MS;
+      const sandwichedAbilityDiceIds = new Set(sandwichedAbilityDice.map((event) => event.id));
+      // cue id -> its source event's place in the log, for the ordered splice.
+      const diceCueOrder = new Map<string, number>();
+      for (const event of fresh) {
+        diceCueOrder.set(event.id, rollOrderOf(event.id));
+      }
+      for (const event of sandwichedAbilityDice) {
+        diceCueOrder.set(`${event.id}-dice`, rollOrderOf(event.id));
+      }
       const diceDismissAt: number[] = [];
       let diceClock = 0;
       const freshDiceCues = fresh.map((event, index) => {
@@ -2281,11 +2310,20 @@ export default function Home() {
           pendingPreDelay.delete(event.attackerId);
           preDelay += movePause;
         }
+        // Ability rolls the engine resolved between the previous die and this
+        // one now occupy the queue ahead of it; each waits out the strike itself
+        // (ABILITY_DICE_AFTER_STRIKE_MS), so this die adds no second strike hold.
+        const previousRollOrder = index > 0 ? rollOrderOf(fresh[index - 1].id) : -1;
+        const thisRollOrder = rollOrderOf(event.id);
+        const abilityDiceAhead = sandwichedAbilityDice.filter((ability) => {
+          const order = rollOrderOf(ability.id);
+          return order > previousRollOrder && order < thisRollOrder;
+        }).length;
         // Every later die holds for the previous attack's strike animation.
-        if (index > 0) {
+        if (index > 0 && abilityDiceAhead === 0) {
           preDelay += ATTACK_ANIM_MS;
         }
-        diceClock += preDelay + DICE_PRESENT_MS;
+        diceClock += abilityDiceAhead * ABILITY_DICE_BEAT_MS + preDelay + DICE_PRESENT_MS;
         diceDismissAt.push(diceClock);
         return makeCombatDiceCue(nextState, event, preDelay);
       });
@@ -3451,7 +3489,12 @@ export default function Home() {
                 const afterStrike = fresh.length > 0;
                 const startAt = afterStrike ? ABILITY_DICE_AFTER_STRIKE_MS : timeline;
                 spellDiceCues.push(makeAbilityDiceCue(nextState, event, event.dice, startAt));
-                timeline += (afterStrike ? ABILITY_DICE_AFTER_STRIKE_MS : 0) + DICE_ROLL_MS + ABILITY_DICE_READ_MS;
+                // A roll sandwiched before a later attack die already had its
+                // beat reserved in diceClock (which seeded this timeline), so
+                // adding it again would push every later FX a full roll late.
+                if (!sandwichedAbilityDiceIds.has(event.id)) {
+                  timeline += (afterStrike ? ABILITY_DICE_AFTER_STRIKE_MS : 0) + DICE_ROLL_MS + ABILITY_DICE_READ_MS;
+                }
                 if (inCombat) {
                   combatFxActive = true;
                   combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 1200);
@@ -3681,7 +3724,7 @@ export default function Home() {
         // card's flight) before its cube tumbles.
         if (spellDiceCues.length > 0 && combatBoardLive) {
           setDice((current) => {
-            const queue = [...current.queue, ...spellDiceCues];
+            const queue = mergeDiceCuesInEventOrder(current.queue, spellDiceCues, diceCueOrder);
             if (!current.current && queue.length > 0) {
               return { current: queue[0], queue: queue.slice(1) };
             }
