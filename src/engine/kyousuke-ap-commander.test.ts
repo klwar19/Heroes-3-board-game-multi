@@ -62,7 +62,13 @@ import type { GameAction, GameState } from "./state";
  *  9. `unit.commanderActionPoints ?? unit.ibukiActionPoints ?? 1` → drop the
  *     legacy read → "a pre-Kyousuke snapshot keeps its banked AP".
  * 10. `spendCommanderActionPoints(unit, apSkill.ap)` → `(unit, 0)`
- *     → "each command really spends its printed AP".
+ *     → "each command really spends its printed AP" (and two Ibuki specs).
+ * 11. Gutsy Play's `defense: -1` → `0` → all three Gutsy Play specs.
+ * 12. the rally's `attackByPower` / `defenseByPower` flattened to [1,1,1] /
+ *     [0,0,0] → "Power 1 adds +1 Defense and Power 2 raises the Attack to +2".
+ *
+ * (The UI half — the generic AP panel really rendering for Kyousuke — is pinned
+ * in src/components/commander-card.test.tsx, with its own recorded mutation.)
  */
 
 const KYOUSUKE = commanderUnitId("p1");

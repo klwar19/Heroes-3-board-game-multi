@@ -163,6 +163,46 @@ describe("CommanderCardFace — themed commander layouts", () => {
     expect(panel.getByText(/at Power 1\+, it also has −1 Defense/i)).toBeTruthy();
     expect(panel.getByText(/Schale Mission Briefing/i)).toBeTruthy();
   });
+
+  // Kyousuke is the SECOND action-point commander: the same panel, built from
+  // COMMANDER_AP_SKILLS instead of a `slug === "ibuki"` branch. jsdom cannot
+  // compute CSS, so this pins the DOM contract only — nothing here proves a
+  // pixel and there is no e2e spec.
+  // Applied and reverted: `commanderUsesActionPoints(slug) ? <ApCommandTable …`
+  // → `slug === "ibuki" ? …` in commander-card.tsx kills exactly this spec and
+  // leaves the Ibuki one above green.
+  it("renders Kyousuke on the SAME generic AP panel, with his own four commands", () => {
+    const face = render(<CommanderCardFace slug="kyousuke_natsume" grades={{}} />);
+    expect(face.getByText("AP CONTROL")).toBeTruthy();
+    expect(
+      face.getByText(/Start with 1 AP; gain \+1 after moving, attacking, Defending, or being attacked/i)
+    ).toBeTruthy();
+    // The AP header wears his own command icon, not the cast's.
+    expect(
+      face.container.querySelector('img[src*="little-busters/kyousuke-command.webp"]')
+    ).toBeTruthy();
+    cleanup();
+
+    const panel = render(<CommanderStatsPanel slug="kyousuke_natsume" grades={{}} />);
+    expect(panel.getByText(/AP CONTROL · starts combat at 1 AP/i)).toBeTruthy();
+    for (const skill of ["Mission Start!", "Gutsy Play", "Strategy Meeting"]) {
+      expect(panel.getByText(skill)).toBeTruthy();
+    }
+    // The 3-AP cast is the panel's last row, exactly like Executive Order.
+    expect(panel.getAllByText("Little Busters, Assemble!")).toHaveLength(1);
+    expect(panel.getByText(/every allied unit adjacent to Kyousuke gains \+1 Attack/i)).toBeTruthy();
+    // …and, like Ibuki, he shows no duplicate generic Power ladder underneath.
+    expect(panel.queryByText(/^Pow 0$/i)).toBeNull();
+    // The old Hierophant-Shield reuse is gone from every surface.
+    expect(panel.queryByText(/Mission Start$/)).toBeNull();
+    expect(panel.container.textContent).not.toMatch(/Instant reaction: when a teammate is attacked/i);
+    cleanup();
+
+    // CONTROL: a commander that is NOT on the AP track keeps the classic ladder.
+    const paladin = render(<CommanderStatsPanel slug="paladin" grades={{}} />);
+    expect(paladin.queryByText(/AP CONTROL/i)).toBeNull();
+    expect(paladin.queryByText(/^Pow 0$/i)).toBeTruthy();
+  });
 });
 
 // The clearer level-up picker: one separated, highlighted option per stat.
