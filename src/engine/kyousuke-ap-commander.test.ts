@@ -49,8 +49,14 @@ import type { GameAction, GameState } from "./state";
  *     → "the rally reaches the ADJACENT allies only".
  *  6. the `adjacent-allies-buff` guard in `commanderCastAvailable` deleted
  *     → "a rally with nobody adjacent is never OFFERED".
- *  7. `commanderActionPoints(unit) < apSkill.ap` → `< 0` in the reducer
- *     → "a command the AP cannot pay for is refused".
+ *  7. `commanderActionPoints(activeUnit) >= apSkill.ap` → `>= 0` in the OFFER
+ *     gate (legal-actions.ts) → "a command the AP cannot pay for is refused"
+ *     + "carries its AP skills … starts combat at 1 AP", and it takes an Ibuki
+ *     spec with it. NOTE: the reducer's own `< apSkill.ap` throw is an
+ *     UNREACHABLE backstop — `assertLegal` refuses a frame the offer gate never
+ *     built, so mutating it alone kills nothing. Same for the reducer's
+ *     wrong-side target throws: the refusals below are asserted as refusals,
+ *     never by message.
  *  8. `commanderCommandUsedThisActivation` → `() => false`
  *     → "after a command Kyousuke may only hold position".
  *  9. `unit.commanderActionPoints ?? unit.ibukiActionPoints ?? 1` → drop the
