@@ -26,7 +26,7 @@ function openHeroes() {
 }
 
 describe("SetupLobbyScreen — hero info popup", () => {
-  it("opens a closeable popup with stats, ability and all three specialties; inspecting does not choose", () => {
+  it("opens a closeable popup with stats + ability, and a card reader with all three specialties; inspecting does not choose", () => {
     const state = createAdventureLobbyState({ seed: "ui-popup" });
     const onAction = vi.fn();
     render(<SetupLobbyScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
@@ -52,9 +52,22 @@ describe("SetupLobbyScreen — hero info popup", () => {
       expect(within(detail).getByRole("group", { name: `${label} ${value}` })).toBeTruthy();
     }
     expect(within(detail).getByText(cardLibrary[hero.startingAbilityCardId].name)).toBeTruthy();
-    for (const level of [1, 4, 6] as const) {
-      expect(within(detail).getByText(cardLibrary[hero.specialtyCardIds![level]].name), `specialty ${level}`).toBeTruthy();
+    // The SUMMARY is deliberately short now: only the specialty's tier-I name
+    // (without its printed " I" tail). Levels IV / VI are symbols with a title
+    // tooltip here — their names live on the card faces, reachable through the
+    // "Read the cards" reader below.
+    const tierOne = cardLibrary[hero.specialtyCardIds![1]].name.replace(/\s+I$/, "");
+    expect(within(detail).getByText(tierOne)).toBeTruthy();
+    fireEvent.click(within(detail).getByRole("button", { name: "Read the cards" }));
+    const reader = screen.getByRole("dialog", { name: "Hero cards" });
+    for (const [level, label] of [[1, "I"], [4, "IV"], [6, "VI"]] as const) {
+      fireEvent.click(within(reader).getByRole("tab", { name: label }));
+      expect(
+        within(reader).getByText(cardLibrary[hero.specialtyCardIds![level]].name),
+        `specialty ${level}`,
+      ).toBeTruthy();
     }
+    fireEvent.click(within(reader).getByRole("button", { name: "Close" }));
 
     // Closing the popup hides it again.
     fireEvent.click(screen.getByRole("button", { name: "Close hero details" }));

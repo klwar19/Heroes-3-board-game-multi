@@ -17141,6 +17141,101 @@ button.setupHubNavItem:hover {
   color: #ffe9bd;
 }
 
+/* "You have not read this hero yet" — a subtle gold pulse on the info button.
+   The class is removed (React state) the moment that hero's popup is opened, so
+   the animation is an attention cue, never a permanent flicker. */
+@keyframes lobbyHeroInfoBlink {
+  0%,
+  100% {
+    border-color: rgba(170, 130, 70, 0.3);
+    box-shadow: none;
+  }
+  50% {
+    border-color: rgba(255, 215, 106, 0.9);
+    box-shadow: 0 0 6px rgba(255, 215, 106, 0.55);
+  }
+}
+
+.lobbyHeroInfo.blink {
+  animation: lobbyHeroInfoBlink 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lobbyHeroInfo.blink {
+    animation: none;
+  }
+}
+
+/* Hero info popup: the short summary's balance ribbon + the card reader. */
+.heroBalanceRibbon {
+  align-self: flex-start;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 215, 106, 0.6);
+  background: rgba(82, 61, 29, 0.6);
+  color: #ffd76a;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.heroDetailSpecLevels {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+  padding-left: 2px;
+}
+
+.heroDetailZoomButton {
+  margin-top: 10px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(214, 178, 94, 0.6);
+  background: rgba(48, 36, 20, 0.75);
+  color: #ffe9bd;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.heroDetailZoomButton:hover {
+  border-color: #ffd76a;
+  color: #ffd76a;
+}
+
+.heroCardZoomStage {
+  flex-wrap: wrap;
+}
+
+.heroCardZoomStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.heroCardZoomTab {
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(170, 130, 70, 0.45);
+  background: rgba(33, 25, 15, 0.6);
+  color: #d8c39a;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.heroCardZoomTab.active {
+  border-color: #ffd76a;
+  background: rgba(82, 61, 29, 0.7);
+  color: #ffd76a;
+}
+
+.heroCardZoomNav {
+  display: flex;
+  gap: 6px;
+}
+
 .lobbyHeroInfo.active {
   border-color: #ffd76a;
   color: #ffd76a;

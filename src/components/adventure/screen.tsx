@@ -6,7 +6,9 @@ import Link from "next/link";
 import { assetUrl } from "@/lib/asset-url";
 import { playLibrarySound } from "@/lib/sound";
 import {
+  createContext,
   useCallback,
+  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -211,6 +213,9 @@ import {
 import "@/data/anime/field-overrides";
 import "@/data/wog/field-overrides";
 import { specialtyIconSrc } from "@/components/specialty-card-data";
+import { CardFrame } from "@/components/table/seats";
+import { isPolishBalanceCard } from "@/data/cards/polish-balance-art";
+import { isCommunityBalanceCard } from "@/data/cards/community-balance-art";
 import {
   CommanderCard,
   CommanderLevelUpOverlay,
@@ -249,6 +254,7 @@ import {
 } from "@/components/table/artifact-set-badge";
 import { cardFaceImage } from "@/data/cards/empowered-card-art";
 import {
+  PolishBalanceArtProvider,
   resolveCardFaceImage,
   resolveUnitFaceImage,
   useBalanceArtFlags,
@@ -15777,23 +15783,100 @@ function GameOptionsPanel({
   );
 }
 
-/** Best human rules text for a card id: its printed prose tag, else the auto effect. */
-function cardRulesText(cardId: string | undefined): string {
-  if (!cardId) {
-    return "";
-  }
-  const card = cardLibrary[cardId];
-  if (!card) {
-    return "";
-  }
-  // Several abilities/specialties carry their printed wording as a multi-word tag
-  // (Wisdom, the unit-specialist helpers); prefer it, exactly like the native
-  // specialty card does, and otherwise fall back to the generated effect text.
-  const prose = (card.tags ?? [])
-    .filter((tag) => /\s/.test(tag))
-    .sort((a, b) => b.length - a.length)[0];
-  return prose ?? describeCardEffect(card);
+/**
+ * Which balance packs this LOBBY has switched on. The setup screen renders
+ * OUTSIDE the table's PolishBalanceArtProvider, so the flags are read once from
+ * the lobby's own house rules and threaded down — that way a hero card's TEXT
+ * and its FACE always come from the same card definition.
+ */
+type HeroCardBalanceFlags = { polish: boolean; community: boolean };
+
+const BALANCE_TAG_PREFIXES = ["Balance pack:", "Community balance:"];
+
+/** The first sentence, capped — the hero board is a reminder, not the card. */
+function briefSentence(text: string): string {
+  const trimmed = text.trim();
+  const stop = trimmed.search(/[.!?](\s|$)/);
+  const first = stop >= 0 ? trimmed.slice(0, stop + 1) : trimmed;
+  return first.length > 150 ? `${first.slice(0, 149).trimEnd()}…` : first;
 }
+
+/**
+ * Name + ONE printed line + balance ribbon for one hero card, read off the card
+ * the ENGINE would actually run: the Community reprint when that pack is on
+ * (community WINS over polish, exactly like `balanceCardLibrary`), else the
+ * Polish reprint, else the printed card.
+ *
+ * Deliberately NOT "the longest multi-word tag" (what the old `cardRulesText`
+ * did): the printed definitions carry the reprints' own "Balance pack: …" /
+ * "Community balance: …" documentation tags, so that rule printed a paragraph
+ * about a house rule that is OFF by default on every hero holding Wisdom /
+ * Tactics / Scouting / Artillery.
+ */
+function heroCardBrief(
+  cardId: string | undefined,
+  flags: HeroCardBalanceFlags,
+): { name: string; line: string; ribbon: string | null } | null {
+  if (!cardId || !cardLibrary[cardId]) {
+    return null;
+  }
+  const community = flags.community && isCommunityBalanceCard(cardId);
+  const polish = !community && flags.polish && isPolishBalanceCard(cardId);
+  const card =
+    balanceCardForDisplay(flags.polish, flags.community, cardId) ??
+    cardLibrary[cardId];
+  const prefix = community
+    ? "Community balance:"
+    : polish
+      ? "Balance pack:"
+      : null;
+  const reprintLine = prefix
+    ? card.tags
+        .find((tag) => tag.startsWith(prefix))
+        ?.slice(prefix.length)
+        .trim()
+    : undefined;
+  const printedProse = (card.tags ?? [])
+    .filter(
+      (tag) =>
+        /\s/.test(tag) &&
+        !BALANCE_TAG_PREFIXES.some((known) => tag.startsWith(known)),
+    )
+    .sort((a, b) => b.length - a.length)[0];
+  return {
+    name: card.name,
+    line: briefSentence(reprintLine ?? printedProse ?? describeCardEffect(card)),
+    ribbon: community
+      ? "Community Balance"
+      : polish
+        ? "Polish Balance"
+        : null,
+  };
+}
+
+/** The specialty's own name, without the printed "I" / "IV" / "VI" level tail. */
+function specialtyDisplayName(name: string): string {
+  return name.replace(/\s+(?:I|IV|VI)$/, "");
+}
+
+/** Which balance packs this lobby's house rules have switched on. */
+function lobbyBalanceFlags(
+  options: Parameters<typeof resolveHouseRules>[0],
+): HeroCardBalanceFlags {
+  const rules = resolveHouseRules(options);
+  return {
+    polish: Boolean(rules["polish-card-balance"]),
+    community: Boolean(rules["community-card-balance"]),
+  };
+}
+
+/**
+ * Which hero info buttons the player has already opened THIS session — the
+ * blink is an attention cue for an unread hero, never a permanent animation. A
+ * context (rather than eight levels of prop threading) because every hero list
+ * — free pick, draft pick, the ban row — renders the same button.
+ */
+const LobbyHeroSeenContext = createContext<ReadonlySet<string>>(new Set());
 
 const SPECIALTY_LEVEL_NUMERAL: Record<1 | 4 | 6, string> = {
   1: "I",
@@ -15860,13 +15943,197 @@ function SpecialtySymbol({ cardId }: { cardId: string | undefined }) {
   );
 }
 
-function HeroSetupDetail({ heroDefId }: { heroDefId: string }) {
+/**
+ * The hero's own card faces, in reading order: specialty I / IV / VI, the
+ * starting ability, then the portrait. Each entry's face and its line come from
+ * the SAME (possibly reprinted) card, so they can never disagree.
+ */
+type HeroZoomFace = {
+  key: string;
+  label: string;
+  title: string;
+  cardId?: string;
+  portrait?: string;
+  line?: string;
+  ribbon: string | null;
+};
+
+function heroZoomFaces(
+  heroDefId: string,
+  flags: HeroCardBalanceFlags,
+): HeroZoomFace[] {
+  const hero = coreHeroDefinitions[heroDefId];
+  if (!hero) {
+    return [];
+  }
+  const faces: HeroZoomFace[] = [];
+  for (const level of [1, 4, 6] as const) {
+    const cardId = hero.specialtyCardIds?.[level];
+    const brief = heroCardBrief(cardId, flags);
+    if (!cardId || !brief) {
+      continue;
+    }
+    faces.push({
+      key: `specialty-${level}`,
+      label: SPECIALTY_LEVEL_NUMERAL[level],
+      title: brief.name,
+      cardId,
+      line: brief.line,
+      ribbon: brief.ribbon,
+    });
+  }
+  const abilityBrief = heroCardBrief(hero.startingAbilityCardId, flags);
+  if (abilityBrief) {
+    faces.push({
+      key: "ability",
+      label: "Ability",
+      title: abilityBrief.name,
+      cardId: hero.startingAbilityCardId,
+      line: abilityBrief.line,
+      ribbon: abilityBrief.ribbon,
+    });
+  }
+  if (hero.portrait) {
+    faces.push({
+      key: "portrait",
+      label: "Hero",
+      title: hero.name,
+      portrait: hero.portrait,
+      ribbon: null,
+    });
+  }
+  return faces;
+}
+
+/**
+ * The hero's real card faces blown up to reading size — the same `.zoomBackdrop`
+ * / `.zoomCardStage` reader chrome (and the same z 300 band) the table's card
+ * magnifier uses, plus a thumbnail strip and prev/next so the specialty ladder,
+ * the starting ability and the portrait are all reachable without closing it.
+ *
+ * It renders its own overlay rather than calling `useCardZoom` because the
+ * shared reader shows exactly ONE card and has no navigation; the faces
+ * themselves still come from `CardFrame`, so a Polish / Community reprint swaps
+ * through the identical `resolveCardFaceImage` precedence.
+ */
+function HeroCardZoom({
+  faces,
+  index,
+  onIndex,
+  onClose,
+}: {
+  faces: HeroZoomFace[];
+  index: number;
+  onIndex: (next: number) => void;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const active = faces[Math.min(Math.max(index, 0), faces.length - 1)];
+  if (!active) {
+    return null;
+  }
+
+  const overlay = (
+    <div
+      aria-label="Hero cards"
+      aria-modal="true"
+      className="zoomBackdrop heroCardZoomBackdrop"
+      onClick={onClose}
+      role="dialog"
+    >
+      <div
+        className="zoomCardStage heroCardZoomStage"
+        onClick={(event) => event.stopPropagation()}
+      >
+        {active.cardId ? (
+          <CardFrame cardId={active.cardId} className="zoomCardImage" />
+        ) : (
+          <img
+            alt={active.title}
+            className="zoomCardImage"
+            src={assetUrl(active.portrait ?? "")}
+          />
+        )}
+        <div className="zoomCardBody">
+          <strong>{active.title}</strong>
+          {active.ribbon ? (
+            <span className="heroBalanceRibbon">{active.ribbon}</span>
+          ) : null}
+          {active.line ? <p>{active.line}</p> : null}
+          <div
+            aria-label="Hero cards"
+            className="heroCardZoomStrip"
+            role="tablist"
+          >
+            {faces.map((face, position) => (
+              <button
+                aria-selected={face.key === active.key}
+                className={`heroCardZoomTab${face.key === active.key ? " active" : ""}`}
+                key={face.key}
+                onClick={() => onIndex(position)}
+                role="tab"
+                title={face.title}
+                type="button"
+              >
+                {face.label}
+              </button>
+            ))}
+          </div>
+          <div className="heroCardZoomNav">
+            <button
+              disabled={index <= 0}
+              onClick={() => onIndex(index - 1)}
+              type="button"
+            >
+              Previous card
+            </button>
+            <button
+              disabled={index >= faces.length - 1}
+              onClick={() => onIndex(index + 1)}
+              type="button"
+            >
+              Next card
+            </button>
+          </div>
+          <button onClick={onClose} type="button">
+            <X aria-hidden="true" size={14} />
+            <span>Close</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+  return typeof document === "undefined"
+    ? overlay
+    : createPortal(overlay, document.body);
+}
+
+function HeroSetupDetail({
+  heroDefId,
+  flags,
+  onZoom,
+}: {
+  heroDefId: string;
+  flags: HeroCardBalanceFlags;
+  onZoom: (faceIndex: number) => void;
+}) {
   const hero = coreHeroDefinitions[heroDefId];
   if (!hero) {
     return null;
   }
   const faction = coreFactionDefinitions[hero.faction];
   const ability = cardLibrary[hero.startingAbilityCardId];
+  const specialtyBrief = heroCardBrief(hero.specialtyCardIds?.[1], flags);
+  const abilityBrief = heroCardBrief(hero.startingAbilityCardId, flags);
   const stats: { key: keyof typeof HERO_INFO_STAT_ICONS; label: string }[] = [
     { key: "attack", label: "Attack" },
     { key: "defense", label: "Defense" },
@@ -15907,13 +16174,59 @@ function HeroSetupDetail({ heroDefId }: { heroDefId: string }) {
       </div>
 
       <div className="heroDetailSection">
+        <h4>Specialty</h4>
+        {specialtyBrief ? (
+          <div className="heroDetailEntry heroDetailEntrySymbol">
+            <span className="heroSpecArtWrap">
+              <SpecialtySymbol cardId={hero.specialtyCardIds?.[1]} />
+              <span className="heroSpecLevel">
+                {SPECIALTY_LEVEL_NUMERAL[1]}
+              </span>
+            </span>
+            <div className="heroDetailEntryText">
+              <strong>{specialtyDisplayName(specialtyBrief.name)}</strong>
+              {specialtyBrief.ribbon ? (
+                <span className="heroBalanceRibbon">
+                  {specialtyBrief.ribbon}
+                </span>
+              ) : null}
+              <span>{specialtyBrief.line}</span>
+            </div>
+          </div>
+        ) : (
+          <span className="heroDetailEmpty">—</span>
+        )}
+        {/* Levels IV / VI are symbols only — their rules live on the cards. */}
+        <div className="heroDetailSpecLevels" aria-label="Specialty levels">
+          {([4, 6] as const).map((level) => {
+            const cardId = hero.specialtyCardIds?.[level];
+            const card = cardId ? cardLibrary[cardId] : undefined;
+            return (
+              <span
+                className="heroSpecArtWrap"
+                key={level}
+                title={card?.name ?? cardId ?? SPECIALTY_LEVEL_NUMERAL[level]}
+              >
+                <SpecialtySymbol cardId={cardId} />
+                <span className="heroSpecLevel">
+                  {SPECIALTY_LEVEL_NUMERAL[level]}
+                </span>
+              </span>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="heroDetailSection">
         <h4>Starting ability</h4>
         {ability ? (
           <div className="heroDetailEntry heroDetailEntrySymbol">
             <AbilitySymbol cardId={hero.startingAbilityCardId} />
             <div className="heroDetailEntryText">
-              <strong>{ability.name}</strong>
-              <span>{cardRulesText(hero.startingAbilityCardId)}</span>
+              <strong>{abilityBrief?.name ?? ability.name}</strong>
+              {abilityBrief?.ribbon ? (
+                <span className="heroBalanceRibbon">{abilityBrief.ribbon}</span>
+              ) : null}
             </div>
           </div>
         ) : (
@@ -15921,44 +16234,43 @@ function HeroSetupDetail({ heroDefId }: { heroDefId: string }) {
         )}
       </div>
 
-      <div className="heroDetailSection">
-        <h4>Specialties</h4>
-        {([1, 4, 6] as const).map((level) => {
-          const cardId = hero.specialtyCardIds?.[level];
-          const card = cardId ? cardLibrary[cardId] : undefined;
-          return (
-            <div className="heroDetailEntry heroDetailEntrySymbol" key={level}>
-              <span className="heroSpecArtWrap">
-                <SpecialtySymbol cardId={cardId} />
-                <span className="heroSpecLevel">
-                  {SPECIALTY_LEVEL_NUMERAL[level]}
-                </span>
-              </span>
-              <div className="heroDetailEntryText">
-                <strong>{card?.name ?? cardId ?? "—"}</strong>
-                <span>{cardRulesText(cardId)}</span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      <button
+        className="heroDetailZoomButton"
+        onClick={() => onZoom(0)}
+        type="button"
+      >
+        Read the cards
+      </button>
     </div>
   );
 }
 
 /**
- * Modal popup with one hero's full card — stats, starting ability and all three
- * specialty levels. Opened from any hero's info button in the setup lobby and
+ * Modal popup with one hero's SHORT summary — identity, starting stats, the
+ * specialty's tier-I one-liner and the starting ability's name — plus the "Read
+ * the cards" button that opens the real card faces at reading size.
+ * Opened from any hero's info button in the setup lobby and
  * dismissed with the ✕, a backdrop click or Escape. This replaces the old inline
  * detail panel so the hero list is never pushed down by a giant card.
  */
 function HeroInfoModal({
   heroDefId,
+  flags,
   onClose,
 }: {
   heroDefId: string;
+  flags: HeroCardBalanceFlags;
   onClose: () => void;
 }) {
+  // null = the short summary; a number = the card reader open at that face.
+  const [zoomIndex, setZoomIndex] = useState<number | null>(null);
+  const faces = useMemo(
+    () => heroZoomFaces(heroDefId, flags),
+    // The flags object is rebuilt each lobby render; its two booleans are the
+    // real identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [heroDefId, flags.polish, flags.community],
+  );
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -15989,16 +16301,38 @@ function HeroInfoModal({
         >
           <X aria-hidden="true" size={16} />
         </button>
-        <HeroSetupDetail heroDefId={heroDefId} />
+        <HeroSetupDetail
+          flags={flags}
+          heroDefId={heroDefId}
+          onZoom={setZoomIndex}
+        />
       </div>
     </div>
   );
   // Portal to <body>: the hero grid now lives inside the Setup Hub's own
   // (body-level) window, so an inline modal would be trapped in the lobby's
   // stacking context and render UNDER it however high its z-index.
-  return typeof document === "undefined"
-    ? modal
-    : createPortal(modal, document.body);
+  // The whole popup is wrapped in the lobby's own balance-art provider: the
+  // setup screen sits OUTSIDE the table's, so without it every `CardFrame`
+  // below would draw the PRINTED face while the summary read the reprint.
+  return (
+    <PolishBalanceArtProvider
+      communityEnabled={flags.community}
+      enabled={flags.polish}
+    >
+      {typeof document === "undefined"
+        ? modal
+        : createPortal(modal, document.body)}
+      {zoomIndex === null ? null : (
+        <HeroCardZoom
+          faces={faces}
+          index={zoomIndex}
+          onClose={() => setZoomIndex(null)}
+          onIndex={setZoomIndex}
+        />
+      )}
+    </PolishBalanceArtProvider>
+  );
 }
 
 /** One hero in a faction's hero list: a pick button + an info button (popup). */
@@ -16020,6 +16354,7 @@ function LobbyHeroEntry({
   onInspect: () => void;
 }) {
   const hero = coreHeroDefinitions[heroDefId];
+  const seen = useContext(LobbyHeroSeenContext);
   return (
     <div className="lobbyHeroRow">
       <button
@@ -16045,9 +16380,12 @@ function LobbyHeroEntry({
       </button>
       <button
         aria-label="Show hero details"
-        className="lobbyHeroInfo"
+        // The blink is the "you have not read this hero yet" cue; it stops for
+        // good the moment this hero's popup is opened (and CSS stops it under
+        // prefers-reduced-motion).
+        className={`lobbyHeroInfo${seen.has(heroDefId) ? "" : " blink"}`}
         onClick={onInspect}
-        title={`${hero?.name ?? heroDefId}: specialty, ability & stats`}
+        title={`${hero?.name ?? heroDefId}: specialty, ability & cards`}
         type="button"
       >
         <Info aria-hidden="true" size={14} />
@@ -17949,6 +18287,18 @@ export function SetupLobbyScreen({
   const [openBox, setOpenBox] = useState<SetupHubBoxId | null>(null);
   // The hero info popup (replaces the old inline detail panel). Null = closed.
   const [infoHeroId, setInfoHeroId] = useState<string | null>(null);
+  // Heroes whose info popup this player has already opened this session — the
+  // info button blinks until then. Session-only state on purpose (nothing is
+  // persisted and nothing reaches GameState).
+  const [seenHeroIds, setSeenHeroIds] = useState<ReadonlySet<string>>(
+    () => new Set<string>(),
+  );
+  const inspectHero = useCallback((heroDefId: string) => {
+    setInfoHeroId(heroDefId);
+    setSeenHeroIds((seen) =>
+      seen.has(heroDefId) ? seen : new Set([...seen, heroDefId]),
+    );
+  }, []);
   // Re-open the helper-tips prompt after the player already chose (optional).
   const [forceHelperPrompt, setForceHelperPrompt] = useState(false);
   const helperCoach = useHelperCoachPreference();
@@ -17973,6 +18323,7 @@ export function SetupLobbyScreen({
   ).length;
 
   return (
+    <LobbyHeroSeenContext.Provider value={seenHeroIds}>
     <section
       className={`setupLobby${allChosen ? " setupLobby--ready" : ""}${cooperative ? " setupLobby--coop" : ""}`}
       aria-label={cooperative ? "Co-op map setup" : "Map setup"}
@@ -18107,7 +18458,7 @@ export function SetupLobbyScreen({
             <HeroesDraftModal
               onAction={onAction}
               onClose={() => setOpenBox(null)}
-              onInspect={setInfoHeroId}
+              onInspect={inspectHero}
               state={state}
               viewerPlayerId={viewerPlayerId}
             />
@@ -18200,11 +18551,13 @@ export function SetupLobbyScreen({
 
       {infoHeroId ? (
         <HeroInfoModal
+          flags={lobbyBalanceFlags(lobby.options)}
           heroDefId={infoHeroId}
           onClose={() => setInfoHeroId(null)}
         />
       ) : null}
     </section>
+    </LobbyHeroSeenContext.Provider>
   );
 }
 
