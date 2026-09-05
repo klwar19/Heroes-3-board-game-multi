@@ -49,3 +49,35 @@ scripts/anime-art/raw/heavenly-demon/_staged/
 .claude/scheduled_tasks.lock
 .env.local
 .env.*.local
+
+# Binary game media lives on the Cloudflare R2 CDN, not in git (docs/media-manifest.md):
+# media-manifest.json is the source of truth for which files exist, `npm run media:publish`
+# uploads new/changed files, `npm run media:pull` restores them locally. Ignored PER
+# EXTENSION so the tracked code/doc files inside these trees (public/sounds/manifest.json,
+# durations.json, READMEs) stay in git. Keep in lockstep with MEDIA_EXTENSIONS in
+# scripts/lib/media-manifest.mjs.
+public/assets/**/*.webp
+public/assets/**/*.png
+public/assets/**/*.jpg
+public/assets/**/*.jpeg
+public/assets/**/*.gif
+public/assets/**/*.svg
+public/assets/**/*.avif
+public/assets/**/*.mp4
+public/assets/**/*.webm
+public/assets/**/*.mp3
+public/assets/**/*.ogg
+public/assets/**/*.wav
+public/sounds/**/*.webp
+public/sounds/**/*.png
+public/sounds/**/*.jpg
+public/sounds/**/*.jpeg
+public/sounds/**/*.gif
+public/sounds/**/*.svg
+public/sounds/**/*.avif
+public/sounds/**/*.mp4
+public/sounds/**/*.webm
+public/sounds/**/*.mp3
+public/sounds/**/*.ogg
+public/sounds/**/*.wav
+public/**/*.part
