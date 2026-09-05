@@ -36,7 +36,7 @@ import { useEffect, useSyncExternalStore } from "react";
 
 import type { GameState, PlayerId } from "@/engine";
 import { assetUrl } from "@/lib/asset-url";
-import { DEFEAT_STING_TRACK, VICTORY_FANFARE_TRACK, playCombatSting } from "@/lib/music";
+import { DEFEAT_STING_TRACK, VICTORY_FANFARE_TRACK, playCombatSting, type CombatStingTrack } from "@/lib/music";
 
 export type CombatOutcomeCinematicKind = "victory" | "defeat";
 
@@ -48,7 +48,7 @@ export const COMBAT_OUTCOME_VIDEOS: Record<CombatOutcomeCinematicKind, string> =
 /** Kept for callers/tests that name the win clip directly. */
 export const VICTORY_CINEMATIC_VIDEO = COMBAT_OUTCOME_VIDEOS.victory;
 
-export const COMBAT_OUTCOME_STINGS: Record<CombatOutcomeCinematicKind, string> = {
+export const COMBAT_OUTCOME_STINGS: Record<CombatOutcomeCinematicKind, CombatStingTrack> = {
   victory: VICTORY_FANFARE_TRACK,
   defeat: DEFEAT_STING_TRACK
 };
