@@ -4,10 +4,18 @@ import { cardLibrary } from "@/data/cards/library";
 import { coreFactionDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitSoundKey } from "@/data/unit-sounds";
-import { applyAction, createInitialGameState, getActivationOrder, getLegalActions } from "./index";
+import {
+  applyAction,
+  createAdventureGameState,
+  createInitialGameState,
+  getActivationOrder,
+  getLegalActions,
+  DEFAULT_ANIME_OPTIONS,
+  NEUTRAL_PLAYER_ID
+} from "./index";
 import { finalizeAdventureCombat } from "./adventure-reducer";
 import { NEUTRAL_DECK_IDS } from "./adventure";
-import type { CombatUnitState, GameAction, GameState, UnitId } from "./state";
+import type { CombatState, CombatUnitState, GameAction, GameState, UnitId } from "./state";
 
 /**
  * The five ORIGINAL Little Busters hero specialty sets (2026-09-05).
@@ -16,44 +24,104 @@ import type { CombatUnitState, GameAction, GameState, UnitId } from "./state";
  * damage DELTA, a unit that exists or does not) through the real
  * applyAction/reducer pipeline, each with a CONTROL on the same setup.
  *
- * MUTATIONS APPLIED-AND-REVERTED while writing this file (each killed the named
- * cases; the engine line is quoted so the check is reproducible):
- *  1. reducer.ts `applyLittleBustersHomeRun`: drop the
- *     `attackRoll < homeRun.minRoll` guard → "Home Run I fires only on a +1"
- *     CONTROL fails (the push happens on a "0").
- *  2. reducer.ts `applyLittleBustersHomeRun`: replace the `outcome.kind ===
- *     "push"` branch with an unconditional `applyFlatAbilityDamage` → "shoves a
- *     surviving adjacent target" fails (position never moves).
- *  3. little-busters-specialties.ts `homeRunOutcome`: return `{kind:"damage"}`
- *     instead of `{kind:"none"}` for a dead target → "a destroyed target is
- *     neither shoved nor hurt" fails.
- *  4. reducer.ts Cat Corps branch: drop `cat.temporary = true` → "the summoned
- *     cats never reach the army" fails (the cat id lands in a Neutral discard).
- *  5. reducer.ts Cat Corps branch: drop `delete cat.armyUnitId` → the same case
- *     fails (the army grows by one card).
- *  6. little-busters-specialties.ts `fallenArmyUnitCount`: drop the
- *     `!unit.summoned` clause → "a fallen SUMMON and the commander are not
- *     counted" fails.
- *  7. reducer.ts Bond branch: use `fallen` instead of `Math.min(fallen,
- *     effect.maxAttack)` → "caps the bonus at the level's ceiling" fails.
- *  8. reducer.ts `applyAfterAttackSplash`: drop the `unit.id !== defender.id`
- *     clause from the Blade Dance filter → "the struck target is not splashed"
- *     fails.
- *  9. little-busters-specialties.ts `bladeDanceSplashFor`: drop the
- *     `roll >= modifier.minRoll` gate → "Blade Dance I needs a 0 or +1" fails.
- * 10. events.ts `consumeStarCandyShield`: stop filtering the effect out of
- *     `state.activeEffects` → "the shield is spent by the first hit" fails.
- * 11. reducer.ts attack path: delete the `consumeStarCandyShield` call → "an
- *     attack is softened" fails (the event seam alone reduces AFTER the lethal
- *     preview, so the delta is right but the shield is double-read; the case
- *     asserting damage 0 on a 1-damage hit against a 2-shield still fails).
- * 12. events.ts `appendEvent`: delete the Star Candy block → "a SPELL is
- *     softened" fails.
- * 13. reducer.ts Star Candy branch: ignore `effect.alsoMostWounded` → "VI
- *     shields a second unit" fails.
- * 14. legal-actions.ts `isEffectLegalForTrigger`: drop the
- *     `!triggerEvent.isRetaliation` clause → "Home Run is never offered on a
- *     Retaliation Attack" fails.
+ * MUTATION LEDGER — every entry below was APPLIED, RUN and REVERTED against
+ * this file (2026-09-06 adversarial re-verification). The engine line is quoted
+ * so each check is reproducible; the named case is the one that failed.
+ *
+ * Sasami — Home Run
+ *  1. reducer.ts `applyLittleBustersHomeRun`: drop `attackRoll <
+ *     homeRun.minRoll` → "Home Run I fires only on a '+1'…" (a "0" shoves).
+ *  2. reducer.ts same: neuter the `outcome.kind === "push"` branch → "shoves a
+ *     surviving adjacent target…" (the target never moves).
+ *  3. little-busters-specialties.ts `knockbackCellBehind`: drop the board-bounds
+ *     guard → "a shove that would leave the board…" — the index arithmetic
+ *     silently WRAPS onto cell 7, one row up, so this guard is load-bearing.
+ *  4. same file `homeRunOutcome`: drop the `unitRefusesRelocation` clause → "a
+ *     target the Teleport spell refuses to relocate…" (the Arrow Tower moves).
+ *  5. same file `homeRunOutcome`: drop the `!alive(defender)` early return → "a
+ *     destroyed target is neither shoved nor hurt again" (the corpse is shoved).
+ *  6. legal-actions.ts `isEffectLegalForTrigger`: drop `!triggerEvent
+ *     .isRetaliation` → "is never offered on a Retaliation Attack".
+ *
+ * Rin — Cat Corps
+ *  7. reducer.ts Cat Corps branch: mint the cat from `addArmyUnit(...)` (the
+ *     Summon Elemental recipe) instead of the synthetic army entry → "summons
+ *     one Stray Cat…" (the player's army grows by a card).
+ *  8. adventure-reducer.ts finalize: drop `coreUnitDefinitions[unit.unitDefId]
+ *     ?.faction === "neutral"` → "the summoned cats vanish with the combat…"
+ *     (the cat's id is injected into the shared bronze Neutral discard pile).
+ *  9. legal-actions.ts empty-space enumeration: drop the `anchoredOnly` filter →
+ *     "only lands beside one of your own units…" (cell 2 becomes offerable).
+ * 10. little-busters-specialties.ts `campusCatPositions`: drop the
+ *     `catLandingIsAnchored` clause → "VI's second cat also lands beside your
+ *     line…" (the second cat teleports to cell 0 behind the enemy).
+ * 11. reducer.ts Cat Corps branch: drop ALL THREE isolation flags (`summoned`,
+ *     `temporary`, `delete cat.armyUnitId`) → "a fallen summoned CAT is not a
+ *     fallen friend…". They are individually REDUNDANT — see the NOT
+ *     REPRODUCIBLE note below.
+ *
+ * Riki — Little Busters' Bond
+ * 12. reducer.ts Bond branch: `fallen` instead of `Math.min(fallen,
+ *     effect.maxAttack)` → "pays +1 Attack per fallen friend and caps…". (An
+ *     earlier pass claimed this mutation was not caught; it is — level I with 2
+ *     casualties deals 2 more damage instead of 1.)
+ * 13. little-busters-specialties.ts `fallenArmyUnitCount`: drop `!unit.summoned`
+ *     → "a fallen SUMMON is not counted…". The fixture mints the shape
+ *     `placeSummonedUnit` really produces (a REAL army card flagged `summoned`);
+ *     a fixture that also deletes the army linkage discriminates nothing.
+ * 14. same read: drop BOTH `Boolean(unit.armyUnitId)` and `!unit.commanderSlug`
+ *     → "a fallen COMMANDER is not counted" (the two clauses cover each other).
+ * 15. legal-actions.ts: drop the `fallenArmyUnitCount(state, playerId) < 1` gate
+ *     → "is not offered while none of your own units has fallen".
+ *
+ * Yuiko — Blade Dance
+ * 16. reducer.ts `applyAfterAttackSplash`: drop `unit.id !== defender.id` from
+ *     the Blade Dance filter → "does not splash the struck target…".
+ * 17. same filter: drop `isAdjacent(unit.position, attacker.position)` →
+ *     "splashes every OTHER enemy beside the attacker…".
+ * 18. same filter: drop `unit.controllerId !== attacker.controllerId` → "…never
+ *     touches an ally".
+ * 19. little-busters-specialties.ts `bladeDanceSplashFor`: drop `roll >=
+ *     modifier.minRoll` → "I needs a '0' or '+1'; VI deals 2".
+ * 20. reducer.ts Blade Dance branch: `duration: {type:"combat"}` instead of
+ *     `"current-activation"` → "the buff dies with the activation…".
+ * 21. legal-actions.ts: drop the `activeUnit?.type !== "ground"` gate → "is not
+ *     offered while a RANGED unit holds the activation". (The printed "before it
+ *     attacks" half needs NO clause of its own: adding one was reverted after a
+ *     mutation showed the shared combat-play gate already covers it.)
+ * 22. reducer.ts Cat Corps branch: `cat.activatedThisRound = true` → "a summoned
+ *     cat joins the activation order this round".
+ *
+ * Komari — Star Candy
+ * 23. events.ts `consumeStarCandyShield`: stop filtering the effect out of
+ *     `state.activeEffects` → "the shield is spent by the first hit…".
+ * 24. reducer.ts attack path: drop the `consumeStarCandyShield` call → "a LETHAL
+ *     blow the shield absorbs…". What it discriminates is the number the ATTACK
+ *     PATH itself uses (the ATTACK_ROLLED event, and with it the lethal-save
+ *     preview and the defeated-side read) — the DAMAGE_ASSIGNED seam alone
+ *     leaves the unit's final damage right, so a damage-delta assertion CANNOT
+ *     see this and an earlier pass wrongly claimed one did.
+ * 25. events.ts `appendEvent`: delete the Star Candy block → "also soaks SPELL
+ *     damage" (the event seam is the only cover for non-attack damage).
+ * 26. reducer.ts Star Candy branch: ignore `effect.alsoMostWounded` → "VI
+ *     shields a second unit…".
+ *
+ * NOT REPRODUCIBLE — recorded rather than dressed up:
+ *  - The cats' three isolation flags (`summoned` / `temporary` / no army card)
+ *    each cover the others at every reader, so no ONE-line mutation is caught;
+ *    #11 drops all three. Keep all three anyway: each reader picks a different
+ *    one (fallenArmyUnitCount reads `summoned`, the finalize recycle reads
+ *    `temporary`, the army write-back reads `armyUnitId`).
+ *  - `!unit.temporary` and `!unit.commanderSlug` in `fallenArmyUnitCount` are
+ *    likewise individually redundant (every temporary body deletes its army
+ *    card, and a commander never has one) — see #14.
+ *  - `homeRunOutcome`'s "damage" arm can never be OBSERVED on a dead target:
+ *    the shipped `applyFlatAbilityDamage` refuses a target that is already down.
+ *    #5 pins the branch from the other side (the corpse must not be shoved).
+ *  - "Home Run / Blade Dance never fire on a Retaliation Attack" is STRUCTURAL:
+ *    both sit past the `isRetaliation` / `abilityAttack` early returns of
+ *    finishResolvedAttack (the seam they share with Jinchuriki Chakra Burst), so
+ *    no single-line mutation isolates them. The Home Run OFFER half is #6.
  */
 
 function apply(state: GameState, action: GameAction): GameState {
@@ -117,6 +185,13 @@ type HomeRunOptions = {
   blockBehind?: boolean;
   /** Make the target die to the attack. */
   lethal?: boolean;
+  /**
+   * Shove toward the board edge: the attacker stands on 9 and the target on 8
+   * (row 2, column 0), so the cell continuing the line is column -1.
+   */
+  edge?: boolean;
+  /** Give the target the Arrow Tower's ability — the one body Teleport refuses. */
+  towerTarget?: boolean;
 };
 
 const ATTACKER: UnitId = "unit_p1_griffins";
@@ -131,13 +206,16 @@ function homeRunFight(seed: string, options: HomeRunOptions): GameState {
   const attacker = unit(state, ATTACKER);
   const target = unit(state, TARGET);
   // 8 → 9 → 10 is a straight orthogonal line across row 2 of the 4-wide board.
-  attacker.position = options.ranged ? 1 : 8;
+  attacker.position = options.ranged ? 1 : options.edge ? 9 : 8;
   attacker.type = options.ranged ? "ranged" : "ground";
   attacker.attack = 4;
   attacker.activatedThisRound = false;
   attacker.attackedThisActivation = false;
-  target.position = 9;
+  target.position = options.edge ? 8 : 9;
   target.maxHealth = options.lethal ? 1 : 40;
+  if (options.towerTarget) {
+    target.abilities = ["siege-arrow-tower"];
+  }
   unit(state, BLOCKER).position = options.blockBehind ? 10 : 19;
 
   state.combat!.activeUnitId = ATTACKER;
@@ -214,6 +292,36 @@ describe("Sasami — Home Run", () => {
     expect(shot.damage - base).toBe(1);
   });
 
+  it("a shove that would leave the board deals the damage instead", () => {
+    // Attacker on 9, target on 8 (row 2, column 0): the cell continuing the line
+    // is column -1. Without the bounds check that index arithmetic wraps onto
+    // cell 7 — the row above — so this pins the guard, not just the branch.
+    const base = unit(
+      homeRunFight("lb-hr-edge-control", { level: 6, roll: 1, play: false, edge: true }),
+      TARGET
+    ).damage;
+    const shoved = homeRunFight("lb-hr-edge", { level: 6, roll: 1, play: true, edge: true });
+    expect(unit(shoved, TARGET).position, "there is no space past column 0").toBe(8);
+    expect(unit(shoved, TARGET).damage - base, "VI pays 2 instead").toBe(2);
+  });
+
+  it("a target the Teleport spell refuses to relocate takes the damage instead", () => {
+    // The Arrow Tower is the whole of that list today, read through the SAME
+    // arrowTowerRefusesEffect gate Teleport and the Necklace of Swiftness take.
+    // The cell behind is free here, so only the refusal keeps the target still.
+    const base = unit(
+      homeRunFight("lb-hr-tower-control", { level: 1, roll: 1, play: false, towerTarget: true }),
+      TARGET
+    ).damage;
+    const struck = homeRunFight("lb-hr-tower", { level: 1, roll: 1, play: true, towerTarget: true });
+    expect(struck.combat!.units[TARGET].position, "the Tower is never relocated").toBe(9);
+    expect(struck.combat!.units[TARGET].damage - base, "it takes the blocked damage").toBe(1);
+
+    // CONTROL: the same fight with an ordinary target IS shoved.
+    const ordinary = homeRunFight("lb-hr-tower-ordinary", { level: 1, roll: 1, play: true });
+    expect(unit(ordinary, TARGET).position).toBe(10);
+  });
+
   it("a destroyed target is neither shoved nor hurt again", () => {
     const dead = homeRunFight("lb-hr-lethal", { level: 6, roll: 1, play: true, lethal: true });
     expect(unit(dead, TARGET).position, "a corpse never moves").toBe(9);
@@ -279,7 +387,8 @@ describe("Sasami — Home Run", () => {
 function catCorpsState(seed: string, level: 1 | 4 | 6): GameState {
   const state = quietCombat(seed);
   state.players.p1.hand = [`specialty.rin_natsume.${level}`];
-  unit(state, ATTACKER).position = 0;
+  // The summoner stands on 4 so cell 5 (its neighbour) is a legal landing.
+  unit(state, ATTACKER).position = 4;
   unit(state, ATTACKER).activatedThisRound = false;
   unit(state, ATTACKER).attackedThisActivation = false;
   state.combat!.activeUnitId = ATTACKER;
@@ -333,6 +442,48 @@ describe("Rin — Cat Corps", () => {
     expect(six.map((cat) => cat.position)).toContain(5);
   });
 
+  it("only lands beside one of your own units — never behind the enemy line", () => {
+    // p1's only body stands on 4, so 5 is legal and cell 2 (three rows of
+    // nobody away) is not, in the OFFER and in the resolution alike.
+    const state = catCorpsState("lb-cats-anchor", 1);
+    for (const other of ["unit_p1_crusaders", "unit_p1_marksmen"] as UnitId[]) {
+      unit(state, other).damage = unit(state, other).maxHealth;
+    }
+    const offeredSpaces = getLegalActions(state, "p1")
+      .filter(
+        (legal) =>
+          legal.action.type === "PLAY_CARD" &&
+          legal.action.cardId === "specialty.rin_natsume.1" &&
+          legal.action.target?.type === "space"
+      )
+      .map((legal) =>
+        legal.action.type === "PLAY_CARD" && legal.action.target?.type === "space"
+          ? legal.action.target.position
+          : -1
+      );
+    expect(offeredSpaces, "the summoner's own neighbours are offered").toContain(5);
+    expect(offeredSpaces, "a space with no friendly unit beside it is not").not.toContain(2);
+    expect(
+      offeredSpaces.every((position) => [0, 5, 8].includes(position)),
+      "exactly the four neighbours of cell 4, minus the occupied ones"
+    ).toBe(true);
+  });
+
+  it("VI's second cat also lands beside your line, not on the first free cell", () => {
+    // p1's only body stands on 18 and the pick is 17, so the lowest free cell on
+    // the board (0) is nowhere near the player's line: the auto-placed second cat
+    // must take a neighbour of 18/17 (13) instead.
+    const state = catCorpsState("lb-cats-anchor-second", 6);
+    unit(state, ATTACKER).position = 18;
+    for (const other of ["unit_p1_crusaders", "unit_p1_marksmen"] as UnitId[]) {
+      unit(state, other).damage = unit(state, other).maxHealth;
+    }
+    const cats = summonedCats(playCatCorps(state, 6, 17));
+    expect(cats).toHaveLength(2);
+    const positions = cats.map((cat) => cat.position).sort((left, right) => left - right);
+    expect(positions, "17 is the pick; 13 is the lowest cell still beside the line").toEqual([13, 17]);
+  });
+
   it("a summoned cat joins the activation order this round", () => {
     const after = playCatCorps(catCorpsState("lb-cats-order", 1), 1, 5);
     const cat = summonedCats(after)[0];
@@ -342,28 +493,58 @@ describe("Rin — Cat Corps", () => {
     ).toContain(cat.id);
   });
 
-  it("the summoned cats never reach the army, the neutral decks or the XP award", () => {
-    // A real adventure finalize: the cat must simply be gone afterwards.
-    const state = playCatCorps(catCorpsState("lb-cats-finalize", 6), 6, 5);
-    const cat = summonedCats(state)[0];
+  it("the summoned cats vanish with the combat — no army card, nothing in the Neutral decks", () => {
+    // The cats are minted by the REAL card play, then dropped into a REAL
+    // adventure combat and finalized. This must not run on the quiet fixture:
+    // createInitialGameState carries `adventure: null` and
+    // finalizeAdventureCombat returns on the first line without one, so the
+    // whole assertion block would be vacuous (it was — see the header ledger).
+    const played = playCatCorps(catCorpsState("lb-cats-finalize", 6), 6, 5);
+    const cats = summonedCats(played);
+    expect(cats).toHaveLength(2);
+
+    const state = createAdventureGameState({
+      seed: "lb-cats-finalize-adventure",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      events: false,
+      ruleset: "binh",
+      anime: { ...DEFAULT_ANIME_OPTIONS, enabled: true, isekaiTowns: true }
+    });
+    const hero = state.heroes.hero_p1;
     const armyBefore = state.players.p1.army.length;
-    state.combat!.outcome = {
-      winnerPlayerId: "p1",
-      defeatedPlayerId: "p2",
-      reason: "all-enemy-units-defeated"
-    };
+    state.phase = "combat";
+    state.combat = {
+      attackerPlayerId: "p1",
+      defenderPlayerId: NEUTRAL_PLAYER_ID,
+      units: Object.fromEntries(cats.map((cat) => [cat.id, cat])),
+      setup: null,
+      awaitingContinue: false,
+      context: {
+        kind: "neutral",
+        heroId: hero.id,
+        fieldId: hero.spaceId!,
+        difficulty: 1,
+        hasAzure: false
+      },
+      outcome: {
+        winnerPlayerId: "p1",
+        defeatedPlayerId: NEUTRAL_PLAYER_ID,
+        reason: "all-enemy-units-defeated"
+      }
+    } as unknown as CombatState;
     finalizeAdventureCombat(state);
 
-    expect(state.players.p1.army).toHaveLength(armyBefore);
+    expect(state.players.p1.army, "the winner's army did not grow").toHaveLength(armyBefore);
     expect(
-      state.players.p1.army.some((entry) => entry.unitDefId === cat.unitDefId),
+      state.players.p1.army.some((entry) => entry.unitDefId === cats[0].unitDefId),
       "no cat card was created"
     ).toBe(false);
     for (const deckId of Object.values(NEUTRAL_DECK_IDS)) {
       expect(
         state.decks[deckId]?.discardPile ?? [],
         `${deckId} must never receive a faction summon`
-      ).not.toContain(cat.unitDefId);
+      ).not.toContain(cats[0].unitDefId);
     }
   });
 
@@ -393,7 +574,7 @@ function bondDamage(
   seed: string,
   level: 1 | 4 | 6,
   fallen: number,
-  options: { play?: boolean; fallenAreSummons?: boolean } = {}
+  options: { play?: boolean; fallenAreSummons?: boolean; fallenAreCommanders?: boolean } = {}
 ): number {
   const play = options.play ?? true;
   let state = quietCombat(seed);
@@ -418,8 +599,16 @@ function bondDamage(
     }
     casualty.damage = casualty.maxHealth;
     if (options.fallenAreSummons) {
+      // The shape placeSummonedUnit really mints (Summon Elemental, the Pit
+      // Lords' Demons): a REAL army card flagged `summoned`. Deleting the army
+      // linkage instead would let `Boolean(unit.armyUnitId)` answer the case and
+      // stop it discriminating the `!unit.summoned` clause at all.
       casualty.summoned = true;
-      casualty.temporary = true;
+    }
+    if (options.fallenAreCommanders) {
+      // The shape makeCommanderCombatUnit mints: a commanderSlug and NO army
+      // card. Both clauses exclude it, so only dropping BOTH breaks this.
+      casualty.commanderSlug = "kyousuke";
       delete casualty.armyUnitId;
     }
   }
@@ -465,10 +654,50 @@ describe("Riki — Little Busters' Bond", () => {
     expect(bondDamage("lb-bond-6x3", 6, 3) - base, "VI with 3 fallen").toBe(3);
   });
 
-  it("a fallen SUMMON is not counted", () => {
+  it("a fallen SUMMON is not counted — even one holding a real army card", () => {
     expect(Number.isNaN(bondDamage("lb-bond-summons", 6, 2, { fallenAreSummons: true })), "no offer at all").toBe(
       true
     );
+    // CONTROL: the same two bodies without the summoned flag DO buy the play.
+    expect(Number.isNaN(bondDamage("lb-bond-summons-control", 6, 2)), "ordinary casualties count").toBe(false);
+  });
+
+  it("a fallen COMMANDER is not counted", () => {
+    expect(
+      Number.isNaN(bondDamage("lb-bond-commander", 6, 2, { fallenAreCommanders: true })),
+      "no offer at all"
+    ).toBe(true);
+    expect(Number.isNaN(bondDamage("lb-bond-commander-control", 6, 2)), "ordinary casualties count").toBe(false);
+  });
+
+  it("a fallen summoned CAT is not a fallen friend (the Rin × Riki cross-check)", () => {
+    // The sibling check §1a asks for: Rin's own summons must not feed Riki's
+    // count. Real cats, minted by the real card play, then killed.
+    let state = playCatCorps(catCorpsState("lb-bond-cats", 6), 6, 5);
+    state.players.p1.hand = ["specialty.riki_naoe.6"];
+    for (const cat of summonedCats(state)) {
+      cat.damage = cat.maxHealth;
+    }
+    const holder = unit(state, BOND_HOLDER);
+    holder.position = 8;
+    holder.type = "ground";
+    holder.activatedThisRound = false;
+    holder.attackedThisActivation = false;
+    state.combat!.activeUnitId = BOND_HOLDER;
+    expect(
+      getLegalActions(state, "p1").some(
+        (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.riki_naoe.6"
+      ),
+      "two dead cats buy nothing"
+    ).toBe(false);
+
+    // CONTROL: kill one real army unit on the same board and the play appears.
+    unit(state, ATTACKER).damage = unit(state, ATTACKER).maxHealth;
+    expect(
+      getLegalActions(state, "p1").some(
+        (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.riki_naoe.6"
+      )
+    ).toBe(true);
   });
 
   it("VI also hands out +1 Defense once at least 2 friends have fallen", () => {
@@ -633,6 +862,30 @@ describe("Yuiko — Blade Dance", () => {
     ).toBe(false);
   });
 
+  it("is not offered once the active unit has already swung", () => {
+    // The splash rides the unit's OWN declared attack, so a play made after it
+    // has attacked could never resolve. The printed card says "before it
+    // attacks"; the SHARED combat-play gate already enforces it (no Blade Dance
+    // clause of its own — adding one changes nothing, verified by mutation), so
+    // this case exists to keep that inherited guarantee honest.
+    const state = quietCombat("lb-blade-after-attack");
+    state.players.p1.hand = ["specialty.yuiko_kurugaya.4"];
+    const swinger = unit(state, ATTACKER);
+    swinger.type = "ground";
+    swinger.position = 9;
+    swinger.activatedThisRound = false;
+    swinger.attackedThisActivation = true;
+    state.combat!.activeUnitId = ATTACKER;
+    const offered = (): boolean =>
+      getLegalActions(state, "p1").some(
+        (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.yuiko_kurugaya.4"
+      );
+    expect(offered(), "a spent swing buys nothing").toBe(false);
+    // CONTROL: the same unit before its attack IS offered the card.
+    swinger.attackedThisActivation = false;
+    expect(offered()).toBe(true);
+  });
+
   it("is not offered while a RANGED unit holds the activation", () => {
     const state = quietCombat("lb-blade-ranged");
     state.players.p1.hand = ["specialty.yuiko_kurugaya.4"];
@@ -741,6 +994,48 @@ describe("Komari — Star Candy", () => {
       ),
       "spent whole even though only 1 was needed"
     ).toBe(false);
+  });
+
+  it("a LETHAL blow the shield absorbs leaves the unit standing", () => {
+    // This is what the attack-path consume buys over the event seam alone: the
+    // shield has to be spent BEFORE the lethal preview, or the unit is recorded
+    // as destroyed and only then healed back by the DAMAGE_ASSIGNED seam.
+    function fight(seed: string, play: boolean): GameState {
+      const state = shieldState(seed, 4, play);
+      const shielded = unit(state, SHIELDED);
+      shielded.maxHealth = 2;
+      shielded.damage = 0;
+      unit(state, TARGET).attack = 2;
+      return enemyAttack(state, SHIELDED);
+    }
+    /** Removed outright, or (a Pack card) flipped to its Few side. */
+    function wentDown(state: GameState): boolean {
+      return state.eventLog.some(
+        (event) =>
+          (event.type === "UNIT_REMOVED" || event.type === "UNIT_FLIPPED") && event.unitId === SHIELDED
+      );
+    }
+    /** What the blow itself reported — the number the whole attack path used. */
+    function reportedDamage(state: GameState): number {
+      const rolled = [...state.eventLog]
+        .reverse()
+        .find((event) => event.type === "ATTACK_ROLLED" && event.defenderId === SHIELDED);
+      expect(rolled, "the blow must be in the log").toBeTruthy();
+      return (rolled as { damage: number }).damage;
+    }
+
+    const shieldedFight = fight("lb-candy-lethal", true);
+    expect(shieldedFight.combat!.units[SHIELDED]?.damage, "the 2-point shield eats the whole blow").toBe(0);
+    expect(wentDown(shieldedFight), "it is never recorded as destroyed").toBe(false);
+    // The attack path itself must see the softened number — not a full-strength
+    // blow that the DAMAGE_ASSIGNED seam heals back afterwards. Everything
+    // downstream of it (the lethal-save preview, the defeated-side read, the
+    // feed) reads this value.
+    expect(reportedDamage(shieldedFight), "the blow is reported as fully absorbed").toBe(0);
+    expect(reportedDamage(fight("lb-candy-lethal-report-control", false)), "unshielded, it lands").toBe(2);
+
+    // CONTROL: the same blow without the shield does take it down.
+    expect(wentDown(fight("lb-candy-lethal-control", false))).toBe(true);
   });
 
   it("also soaks SPELL damage", () => {
