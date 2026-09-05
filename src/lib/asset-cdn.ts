@@ -58,10 +58,23 @@ export function cdnPathPrefixes(includeFonts: boolean = CDN_SERVES_FONTS): strin
   return includeFonts ? ["assets", "sounds", "fonts"] : ["assets", "sounds"];
 }
 
+export interface ResolveAssetBaseUrlOptions {
+  /**
+   * Whether the media tree is present on this checkout (see
+   * hasLocalMediaTree in src/lib/media-manifest.ts). Since the binaries left
+   * git (docs/media-manifest.md) a fresh clone / CI / a `next build` without
+   * `npm run media:pull` has NO files to serve same-origin, so with the env
+   * var unset it defaults to the canonical CDN instead of 404-ing every image.
+   * Omit (undefined) to keep the classic env-only decision.
+   */
+  localMediaPresent?: boolean;
+}
+
 export function resolveAssetBaseUrl(
   // Reads NEXT_PUBLIC_ASSET_BASE_URL and VERCEL_ENV; typed as a plain env
   // record so process.env (index-signature-only ProcessEnv) is assignable.
-  env: Record<string, string | undefined> = process.env
+  env: Record<string, string | undefined> = process.env,
+  options: ResolveAssetBaseUrlOptions = {}
 ): string {
   const explicit = env.NEXT_PUBLIC_ASSET_BASE_URL?.trim();
   if (explicit) {
@@ -70,7 +83,37 @@ export function resolveAssetBaseUrl(
   if (env.VERCEL_ENV === "preview") {
     return PRODUCTION_CDN_URL;
   }
+  if (options.localMediaPresent === false) {
+    return PRODUCTION_CDN_URL;
+  }
   return "";
+}
+
+/**
+ * One EXACT redirect per stylesheet url() reference to its content-addressed
+ * CDN object ("/assets/ui/x.webp" → "<cdn>/assets/ui/x.<md5[0:8]>.webp"). The
+ * globals.css url() refs cannot call assetUrl(), and the wildcard redirect
+ * below can only forward a logical path; these exact entries are listed FIRST
+ * so Next matches them before the wildcard. A ref the resolver cannot map
+ * (unpublished) is skipped and falls through to the wildcard's legacy layout.
+ * Empty when assets are same-origin.
+ */
+export function cssAssetRedirects(
+  baseUrl: string,
+  refs: readonly string[],
+  objectPathFor: (path: string) => string | undefined
+): AssetRedirect[] {
+  if (!baseUrl) {
+    return [];
+  }
+  const base = baseUrl.replace(/\/+$/, "");
+  const redirects: AssetRedirect[] = [];
+  for (const ref of refs) {
+    const objectPath = objectPathFor(ref);
+    if (!objectPath) continue;
+    redirects.push({ source: ref, destination: `${base}${objectPath}`, permanent: false });
+  }
+  return redirects;
 }
 
 export interface AssetRedirect {

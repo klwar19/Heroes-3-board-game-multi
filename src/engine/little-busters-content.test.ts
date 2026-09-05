@@ -1,6 +1,6 @@
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+
+import { hasMediaFile } from "@/lib/media-manifest";
 
 import { ANIME_EQUIPMENT_DEFINITIONS, EQUIPMENT_IDS, equipmentImage, equipmentPackagesForFaction } from "@/data/anime/equipment";
 import { coreFactionDefinitions, coreHeroDefinitions, coreBuildingDefinitions } from "@/data/factions/core";
@@ -27,7 +27,6 @@ import { startAdventureRound } from "./adventure";
 import { deathStareFollowUpAppliesTo, type DeathStareFollowUp } from "./unit-abilities";
 import { NEUTRAL_PLAYER_ID, type GameAction, type GameState, type HeroState } from "./state";
 
-const ROOT = process.cwd();
 const FACTION = "little_busters";
 
 function heroState(heroDefId: string, level = 1, grade = 0): HeroState {
@@ -143,7 +142,7 @@ describe("Little Busters complete playable content", () => {
       }
       for (const side of [unit.few, unit.pack]) {
         expect(side).toBeDefined();
-        expect(existsSync(join(ROOT, "public", side!.cardImage!.replace(/^\//, "")))).toBe(true);
+        expect(hasMediaFile(side!.cardImage!), `${id} card face is not published (npm run media:publish)`).toBe(true);
         for (const ability of side!.abilities) expect(unitAbilities[ability]?.implementationStatus, ability).toBe("implemented");
       }
     }
@@ -212,7 +211,7 @@ describe("Little Busters complete playable content", () => {
     expect(new Set(ids.map((id) => ANIME_EQUIPMENT_DEFINITIONS[id].grade))).toEqual(new Set(["I", "II", "III"]));
     for (const id of ids) {
       expect(ANIME_EQUIPMENT_DEFINITIONS[id].package).toBe("seishun");
-      expect(existsSync(join(ROOT, "public", equipmentImage(id)!.replace(/^\//, ""))), id).toBe(true);
+      expect(hasMediaFile(equipmentImage(id)!), `${id} equipment icon is not published (npm run media:publish)`).toBe(true);
     }
   });
 

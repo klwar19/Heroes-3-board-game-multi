@@ -1,6 +1,6 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { hasMediaFile, localMediaPath, mediaFileInfo } from "@/lib/media-manifest";
 import { DOOM_UNIT_IDS, DOOM_UNIT_IDS_BY_TIER, doomUnitDefinitions } from "@/data/doom";
 import { WOG_UNIT_IDS } from "@/data/wog";
 import { coreUnitDefinitions } from "@/data/factions/units";
@@ -9,7 +9,6 @@ import { createAdventureGameState } from "./adventure-setup";
 import { NEUTRAL_DECK_IDS } from "./adventure";
 import { DEFAULT_WOG_OPTIONS } from "./state";
 
-const publicFile = (assetPath: string) => fileURLToPath(new URL(`../../public${assetPath}`, import.meta.url));
 
 describe("Doom neutral monster slice", () => {
   it("assigns the complete classic monster roster to exact board-game tiers", () => {
@@ -34,13 +33,15 @@ describe("Doom neutral monster slice", () => {
       const image = def.neutral?.cardImage;
       expect(def.faction, id).toBe("neutral");
       expect(image, id).toMatch(/^\/assets\/doom\/units\/[a-z-]+\.webp$/);
-      const file = publicFile(image!);
-      expect(existsSync(file), id).toBe(true);
+      expect(hasMediaFile(image!), `${id}: ${image} is not published (npm run media:publish)`).toBe(true);
+      const info = mediaFileInfo(image!)!;
+      expect(info.bytes, id).toBeGreaterThan(40_000);
+      expect(info.bytes, id).toBeLessThan(220_000);
+      const file = localMediaPath(image!);
+      if (!file) continue; // media not pulled on this checkout — the RIFF/WEBP header needs the bytes
       const header = readFileSync(file).subarray(0, 12);
       expect(header.subarray(0, 4).toString("ascii"), id).toBe("RIFF");
       expect(header.subarray(8, 12).toString("ascii"), id).toBe("WEBP");
-      expect(statSync(file).size, id).toBeGreaterThan(40_000);
-      expect(statSync(file).size, id).toBeLessThan(220_000);
     }
   });
 

@@ -1,5 +1,12 @@
 # Cloudflare + own domain: begin-to-end CDN plan (`cdn.<your-domain>`)
 
+> **Status 2026-09-05:** superseded in part by [media-manifest.md](./media-manifest.md).
+> Media is no longer tracked in git or synced by a GitHub workflow; `npm run media:publish`
+> uploads content-addressed, immutable objects and `media-manifest.json` is the source of
+> truth. The domain / bucket / CORS setup below still applies; the `?v=` global version now
+> only cache-busts the legacy fallback for unmapped paths.
+
+
 Goal: move the game's static weight — currently about 408 MiB across 5,433
 files under `public/assets|sounds|fonts` — off the Vercel app origin onto Cloudflare
 R2 behind **your own domain**, so that

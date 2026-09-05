@@ -1,11 +1,8 @@
-import { existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { hasMediaFile } from "@/lib/media-manifest";
 import { artifactCards, SCANLESS_ARTIFACTS } from "./artifacts";
 
 const DECK_BACK = "/assets/player-deck-back.webp";
-const assetPath = (src: string) =>
-  fileURLToPath(new URL(`../../../public${src}`, import.meta.url));
 const slugOf = (id: string) => id.replace(/^artifact\./, "");
 const ORIGINAL_REPLACEMENT_SLUGS = [
   "bowstring_of_the_unicorns_mane",
@@ -59,8 +56,8 @@ describe("artifact card art is committed", () => {
         /^\/assets\/artifacts_(minor|major|relic)-[a-z0-9_]+\.webp$/,
       );
       expect(
-        existsSync(assetPath(image!)),
-        `${id} card face missing on disk at ${image}`,
+        hasMediaFile(image!),
+        `${id} card face unpublished at ${image} (run \`npm run media:publish\`)`,
       ).toBe(true);
       expect(
         SCANLESS_ARTIFACTS.has(slugOf(id)),

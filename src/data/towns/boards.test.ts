@@ -1,16 +1,14 @@
-import { existsSync, statSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { hasMediaFile, mediaFileInfo } from "@/lib/media-manifest";
 
 import { coreBuildingDefinitions, coreFactionDefinitions } from "@/data/factions/core";
 import { TOWN_TRACK_VALUES, townBoardBarIndex, townBoardSpecs, townBoardTileArt } from "./boards";
 
-/** Resolve an /assets path to its file on disk and assert it carries real art. */
+/** Resolve an /assets path through the media manifest and assert it carries real art. */
 function assertRealArt(assetPath: string, minBytes = 3000) {
   expect(assetPath.startsWith("/assets/"), `${assetPath} must be a local /assets path`).toBe(true);
-  const file = fileURLToPath(new URL(`../../../public${assetPath}`, import.meta.url));
-  expect(existsSync(file), `${assetPath} must exist on disk`).toBe(true);
-  expect(statSync(file).size, `${assetPath} must contain real art`).toBeGreaterThan(minBytes);
+  expect(hasMediaFile(assetPath), `${assetPath} must be published (run: npm run media:publish)`).toBe(true);
+  expect(mediaFileInfo(assetPath)!.bytes, `${assetPath} must contain real art`).toBeGreaterThan(minBytes);
 }
 
 describe("town board manifest", () => {

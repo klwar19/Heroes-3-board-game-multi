@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { hasMediaFile } from "@/lib/media-manifest";
 import { applyAction, createInitialGameState } from "./index";
 import { createAdventureGameState } from "./adventure-setup";
 import { startAdventureRound } from "./adventure";
@@ -14,7 +13,6 @@ import { cardLibrary } from "@/data/cards/library";
 import { getRoomSnapshot, submitRoomAction } from "@/server/game-room-store";
 import type { GameAction, GameState } from "./state";
 
-const assetPath = (src: string) => fileURLToPath(new URL(`../../public${src}`, import.meta.url));
 
 function applyOk(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
@@ -117,12 +115,12 @@ describe("Fortress card art", () => {
     for (const def of fortressUnits) {
       for (const side of [def.few, def.pack]) {
         const src = side?.cardImage;
-        if (!src || !existsSync(assetPath(src))) {
+        if (!src || !hasMediaFile(src)) {
           broken.push(`${def.id} ${src ?? "(no image)"}`);
         }
       }
     }
-    expect(broken).toEqual([]);
+    expect(broken, "unpublished media — run npm run media:publish").toEqual([]);
   });
 
   it("wires hero portraits, board scans and specialty cards that exist on disk", () => {
@@ -133,17 +131,17 @@ describe("Fortress card art", () => {
       // scan plus the three printed specialty card faces; placeholder-art
       // (PC-portrait) heroes like Merist ship neither (their specialty cards are
       // face-less, via withoutArt) — exactly the batch-3/Tower convention.
-      if (!hero.portrait || !existsSync(assetPath(hero.portrait))) {
+      if (!hero.portrait || !hasMediaFile(hero.portrait)) {
         broken.push(`${heroId} portrait ${hero.portrait ?? "(none)"}`);
       }
       const isBoardArtHero = Boolean(hero.boardScan);
-      if (isBoardArtHero && !existsSync(assetPath(hero.boardScan!))) {
+      if (isBoardArtHero && !hasMediaFile(hero.boardScan!)) {
         broken.push(`${heroId} board scan ${hero.boardScan}`);
       }
       for (const level of [1, 4, 6] as const) {
         const src = adventureCards[hero.specialtyCardIds![level]].assets?.cardImage;
         if (isBoardArtHero) {
-          if (!src || !existsSync(assetPath(src))) {
+          if (!src || !hasMediaFile(src)) {
             broken.push(`${heroId} specialty ${level} ${src ?? "(none)"}`);
           }
         } else if (src) {
@@ -153,7 +151,7 @@ describe("Fortress card art", () => {
         }
       }
     }
-    expect(broken).toEqual([]);
+    expect(broken, "unpublished media — run npm run media:publish").toEqual([]);
   });
 });
 

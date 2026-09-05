@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
+import { hasMediaFile, localMediaPath, mediaExtensionOf, mediaFileInfo } from "@/lib/media-manifest";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { coreUnitDefinitions } from "@/data/factions/units";
@@ -67,16 +68,22 @@ const NEW_NEUTRAL_RULES = {
   }
 };
 
-function onDisk(assetPath: string): string {
-  return fileURLToPath(new URL(`../../../public${assetPath}`, import.meta.url));
-}
-
 function repoFile(relPath: string): string {
   return fileURLToPath(new URL(`../../../${relPath}`, import.meta.url));
 }
 
+/**
+ * Manifest-level "this is a real raster webp": the extension plus the decoded
+ * dimensions `npm run media:publish` records for every image it could read.
+ * A stray/empty file never carries width/height.
+ */
+function looksLikeRealWebp(assetPath: string): boolean {
+  const info = mediaFileInfo(assetPath);
+  return mediaExtensionOf(assetPath) === "webp" && (info?.width ?? 0) > 0 && (info?.height ?? 0) > 0;
+}
+
+/** RIFF container, bytes 8..12 spell "WEBP" — needs the real bytes. */
 function isWebp(file: string): boolean {
-  // RIFF container, bytes 8..12 spell "WEBP".
   const head = readFileSync(file).subarray(0, 12);
   return head.subarray(0, 4).toString("ascii") === "RIFF" && head.subarray(8, 12).toString("ascii") === "WEBP";
 }
@@ -114,10 +121,14 @@ describe("blank-wiki neutral card faces", () => {
 
   it("ships every generated card as a real, compressed WebP", () => {
     for (const [id, assetPath] of Object.entries(EXPECTED)) {
-      const file = onDisk(assetPath);
-      expect(existsSync(file), `${id} -> ${assetPath}`).toBe(true);
-      expect(isWebp(file), `${id} must be a valid WebP`).toBe(true);
-      const size = statSync(file).size;
+      expect(hasMediaFile(assetPath), `${id} -> ${assetPath} — run npm run media:publish`).toBe(true);
+      expect(looksLikeRealWebp(assetPath), `${id} must be a valid WebP`).toBe(true);
+      // The RIFF magic itself needs the real bytes (npm run media:pull).
+      const file = localMediaPath(assetPath);
+      if (file) {
+        expect(isWebp(file), `${id} must be a valid WebP`).toBe(true);
+      }
+      const size = mediaFileInfo(assetPath)!.bytes;
       // Lower bound proves a rendered card (not a stray/empty file); upper bound
       // proves the compression pass actually ran — a LOSSLESS re-encode of these
       // frames lands at 600 KB-1.1 MB, so the ceiling is what catches that
@@ -136,10 +147,14 @@ describe("blank-wiki neutral card faces", () => {
     const expectedPath = "/assets/units-neutral-bronze-evil_eyes.webp";
     const side = coreUnitDefinitions["neutral.evil_eyes"]?.neutral;
     expect(side?.cardImage).toBe(expectedPath);
-    const file = onDisk(expectedPath);
-    expect(existsSync(file), expectedPath).toBe(true);
-    expect(isWebp(file), "must be a valid WebP").toBe(true);
-    expect(statSync(file).size, "must contain a rendered card").toBeGreaterThan(40_000);
+    expect(hasMediaFile(expectedPath), `${expectedPath} — run npm run media:publish`).toBe(true);
+    expect(looksLikeRealWebp(expectedPath), "must be a valid WebP").toBe(true);
+    expect(mediaFileInfo(expectedPath)!.bytes, "must contain a rendered card").toBeGreaterThan(40_000);
+    // The RIFF magic itself needs the real bytes (npm run media:pull).
+    const file = localMediaPath(expectedPath);
+    if (file) {
+      expect(isWebp(file), "must be a valid WebP").toBe(true);
+    }
   });
 
   it("keeps the shared-art compositor and every legend glyph source reproducible", () => {

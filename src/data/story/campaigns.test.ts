@@ -1,6 +1,5 @@
-import { existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { hasMediaFile } from "@/lib/media-manifest";
 import { DEFAULT_WOG_OPTIONS } from "@/engine/state";
 import {
   CAMPAIGNS,
@@ -222,11 +221,13 @@ describe("chapterRoomOptions", () => {
 });
 
 describe("campaign covers", () => {
-  it("every campaign's cover art is on disk (the /story hub draws it)", () => {
+  it("every campaign's cover art is published (the /story hub draws it)", () => {
     for (const campaign of CAMPAIGNS) {
       expect(campaign.cover, `${campaign.id} cover path`).toMatch(/^\/assets\/story\/covers\/.+\.webp$/);
-      const abs = fileURLToPath(new URL(`../../../public${campaign.cover}`, import.meta.url));
-      expect(existsSync(abs), `${campaign.id} cover missing on disk at ${campaign.cover}`).toBe(true);
+      expect(
+        hasMediaFile(campaign.cover),
+        `${campaign.id} cover unpublished at ${campaign.cover} (run: npm run media:publish)`
+      ).toBe(true);
     }
   });
 });

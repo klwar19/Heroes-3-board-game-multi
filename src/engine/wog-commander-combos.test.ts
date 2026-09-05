@@ -1,6 +1,6 @@
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+
+import { hasMediaFile } from "@/lib/media-manifest";
 import {
   COMMANDER_COMBOS,
   COMMANDER_SLUGS,
@@ -153,14 +153,14 @@ describe("WOG commander combination skills — data", () => {
   it("every combo icon and every commander cast icon exists on disk", () => {
     const missing: string[] = [];
     for (const combo of COMMANDER_COMBOS) {
-      if (!existsSync(join(process.cwd(), "public", combo.icon))) {
-        missing.push(`${combo.id} -> ${combo.icon}`);
+      if (!hasMediaFile(combo.icon)) {
+        missing.push(`${combo.id} -> ${combo.icon} (npm run media:publish)`);
       }
     }
     for (const slug of COMMANDER_SLUGS) {
       const icon = commanderDefinitions[slug].cast.icon;
-      if (!existsSync(join(process.cwd(), "public", icon))) {
-        missing.push(`${slug} cast -> ${icon}`);
+      if (!hasMediaFile(icon)) {
+        missing.push(`${slug} cast -> ${icon} (npm run media:publish)`);
       }
     }
     expect(missing).toEqual([]);
@@ -170,14 +170,14 @@ describe("WOG commander combination skills — data", () => {
     const missing: string[] = [];
     for (const key of COMMANDER_STAT_KEYS) {
       const icon = COMMANDER_STAT_ICON[key];
-      if (!existsSync(join(process.cwd(), "public", icon))) {
-        missing.push(`stat ${key} -> ${icon}`);
+      if (!hasMediaFile(icon)) {
+        missing.push(`stat ${key} -> ${icon} (npm run media:publish)`);
       }
     }
     for (const combo of COMMANDER_COMBOS) {
       const icon = commanderComboSiteIcon(combo.tag);
-      if (!existsSync(join(process.cwd(), "public", icon))) {
-        missing.push(`combo [${combo.tag}] ${combo.id} -> ${icon}`);
+      if (!hasMediaFile(icon)) {
+        missing.push(`combo [${combo.tag}] ${combo.id} -> ${icon} (npm run media:publish)`);
       }
     }
     expect(missing).toEqual([]);

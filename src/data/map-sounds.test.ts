@@ -1,6 +1,5 @@
-import { existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { hasMediaFile } from "@/lib/media-manifest";
 import soundManifest from "../../public/sounds/manifest.json";
 import { ADVENTURE_FEED_CUES } from "../components/adventure/screen";
 import {
@@ -19,8 +18,7 @@ const library = soundManifest as Record<string, { src?: string; random?: string[
 function assertClipOnDisk(key: string): void {
   const src = library[key]?.src;
   expect(src, `${key} should be in the manifest`).toBeTruthy();
-  const file = fileURLToPath(new URL(`../../public${src}`, import.meta.url));
-  expect(existsSync(file), `${src} should exist on disk`).toBe(true);
+  expect(hasMediaFile(src!), `${src} should be a published clip (run: npm run media:publish)`).toBe(true);
 }
 
 function visitSfx(location: string): string {
@@ -145,8 +143,7 @@ describe("battle-begin cue", () => {
     for (const member of members) {
       const src = library[member]?.src;
       expect(src, `${member} should have a src`).toBeTruthy();
-      const file = fileURLToPath(new URL(`../../public${src}`, import.meta.url));
-      expect(existsSync(file), `${src} should exist on disk`).toBe(true);
+      expect(hasMediaFile(src!), `${src} should be a published clip (run: npm run media:publish)`).toBe(true);
     }
   });
 

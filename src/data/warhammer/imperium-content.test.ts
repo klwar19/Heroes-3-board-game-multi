@@ -1,7 +1,7 @@
-import { existsSync } from "node:fs";
-import path from "node:path";
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
+
+import { hasMediaFile, localMediaPath, mediaFileInfo } from "@/lib/media-manifest";
 
 import { commanderDefinitions } from "@/data/commanders";
 import { unitAbilities } from "@/data/units/abilities";
@@ -9,8 +9,10 @@ import { inferFlavour, rankScheduleFor } from "@/data/units/experience-rank-abil
 import { imperiumBuildingDefinitions, imperiumFactionDefinition, imperiumHeroDefinitions, imperiumUnitDefinitions } from "./imperium";
 import { imperiumSpecialtyCards } from "./imperium-specialties";
 
-const root = process.cwd();
-const publicAsset = (url: string) => path.join(root, "public", url.replace(/^\//, ""));
+const publishedInfo = (url: string) => {
+  expect(hasMediaFile(url), `${url} is unpublished (run \`npm run media:publish\`)`).toBe(true);
+  return mediaFileInfo(url)!;
+};
 
 describe("Imperium component set", () => {
   it("has exactly 4 Heroes and the requested 3/2/2 seven-unit progression", () => {
@@ -92,14 +94,12 @@ describe("Imperium component set", () => {
     expect(imperiumBuildingDefinitions["imperium.dwelling_gold"].prerequisites).toEqual(["imperium.dwelling_silver"]);
   });
 
-  it("ships both physical faces for every unit at exactly 743x1040", async () => {
+  it("ships both physical faces for every unit at exactly 743x1040", () => {
     for (const unit of Object.values(imperiumUnitDefinitions)) {
       for (const side of [unit.few, unit.pack]) {
         expect(side?.cardImage).toBeTruthy();
-        const file = publicAsset(side!.cardImage!);
-        expect(existsSync(file), side!.cardImage).toBe(true);
-        const metadata = await sharp(file).metadata();
-        expect([metadata.width, metadata.height], side!.cardImage).toEqual([743, 1040]);
+        const info = publishedInfo(side!.cardImage!);
+        expect([info.width, info.height], side!.cardImage).toEqual([743, 1040]);
       }
     }
   });
@@ -115,8 +115,8 @@ describe("Imperium component set", () => {
       targeting: { maxTierByPower: ["bronze", "silver", "gold"] }
     });
     expect(lion.specialty).toMatchObject({ id: "lion-round-barrage" });
-    expect(existsSync(publicAsset(lion.cardImage))).toBe(true);
-    expect(existsSync(publicAsset(lion.cast.icon))).toBe(true);
+    expect(hasMediaFile(lion.cardImage), lion.cardImage).toBe(true);
+    expect(hasMediaFile(lion.cast.icon), lion.cast.icon).toBe(true);
   });
 
   it("uses twelve original, mechanically distinct Imperium specialty cards", () => {
@@ -151,15 +151,19 @@ describe("Imperium component set", () => {
   });
 
   it("ships Castle-format tile geometry plus 7 empty and 7 built town strips", async () => {
-    const tile = publicAsset("/assets/warhammer/tiles/imperium-s1.webp");
-    const tileMetadata = await sharp(tile).metadata();
-    expect([tileMetadata.width, tileMetadata.height, tileMetadata.hasAlpha]).toEqual([1024, 985, true]);
+    const tileUrl = "/assets/warhammer/tiles/imperium-s1.webp";
+    const tileInfo = publishedInfo(tileUrl);
+    expect([tileInfo.width, tileInfo.height]).toEqual([1024, 985]);
+    // The alpha flag is not in the manifest, so it needs the BYTES: asserted
+    // only where the media tree was pulled onto this disk.
+    const tileFile = localMediaPath(tileUrl);
+    if (tileFile) {
+      expect((await sharp(tileFile).metadata()).hasAlpha, tileUrl).toBe(true);
+    }
     for (const state of ["empty", "built"] as const) {
       for (let bar = 1; bar <= 7; bar += 1) {
-        const file = publicAsset(`/assets/warhammer/town-bars/imperium-${state}-bar-${bar}.webp`);
-        expect(existsSync(file), `${state} bar ${bar}`).toBe(true);
-        const metadata = await sharp(file).metadata();
-        expect(metadata.height, `${state} bar ${bar}`).toBe(941);
+        const info = publishedInfo(`/assets/warhammer/town-bars/imperium-${state}-bar-${bar}.webp`);
+        expect(info.height, `${state} bar ${bar}`).toBe(941);
       }
     }
   });

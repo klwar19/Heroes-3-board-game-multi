@@ -1,6 +1,5 @@
-import { existsSync, statSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { hasMediaFile, mediaFileInfo } from "@/lib/media-manifest";
 
 import { getTileBorderSegments } from "@/data/map/borders";
 import { allTileDefinitions } from "@/data/map/tiles";
@@ -29,9 +28,8 @@ const S4_OUTER = [false, true, false, true, true, true] as const;
 // (= blocked + the three sealed passable arcs on a starting seat)
 
 function assertRealArt(assetPath: string, minBytes = 50_000) {
-  const file = fileURLToPath(new URL(`../../../public${assetPath}`, import.meta.url));
-  expect(existsSync(file), assetPath).toBe(true);
-  expect(statSync(file).size).toBeGreaterThan(minBytes);
+  expect(hasMediaFile(assetPath), `${assetPath} unpublished (run: npm run media:publish)`).toBe(true);
+  expect(mediaFileInfo(assetPath)!.bytes, assetPath).toBeGreaterThan(minBytes);
 }
 
 describe("anime starting tiles — hex + border assignment", () => {

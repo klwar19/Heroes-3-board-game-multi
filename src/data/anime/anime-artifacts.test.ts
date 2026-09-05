@@ -1,6 +1,5 @@
-import { existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { hasMediaFile } from "@/lib/media-manifest";
 import {
   ANIME_ARTIFACT_ART_PLACEHOLDERS,
   animeArtifactArtPath,
@@ -13,7 +12,6 @@ import {
 import { cardLibrary } from "@/data/cards/library";
 
 const DECK_BACK = "/assets/player-deck-back.webp";
-const assetPath = (src: string) => fileURLToPath(new URL(`../../../public${src}`, import.meta.url));
 const slugOf = (id: string) => id.replace(/^anime\.artifact\./, "");
 
 describe("Pháp Bảo artifact definitions", () => {
@@ -64,20 +62,23 @@ describe("Pháp Bảo art placeholder contract (drop-art-later)", () => {
         expect(image, `${id} is a placeholder ⇒ deck back`).toBe(DECK_BACK);
       } else {
         expect(image, `${id} names its own art path`).toBe(animeArtifactArtPath(slug));
-        expect(existsSync(assetPath(image!)), `${id} art missing on disk at ${image}`).toBe(true);
+        expect(
+          hasMediaFile(image!),
+          `${id} art is not published at ${image} — run npm run media:publish`
+        ).toBe(true);
       }
     }
   });
 
-  it("registry hygiene: every placeholder is a real anime slug with NO art on disk yet", () => {
+  it("registry hygiene: every placeholder is a real anime slug with NO published art yet", () => {
     const validSlugs = new Set(Object.keys(animeArtifactCards).map(slugOf));
     for (const slug of ANIME_ARTIFACT_ART_PLACEHOLDERS) {
       // No placeholder for a nonexistent card.
       expect(validSlugs.has(slug), `placeholder ${slug} must name a real anime artifact`).toBe(true);
       // A placeholder must NOT already have committed art (else it should be promoted).
       expect(
-        existsSync(assetPath(animeArtifactArtPath(slug))),
-        `placeholder ${slug} already has art on disk — remove it from ANIME_ARTIFACT_ART_PLACEHOLDERS`
+        hasMediaFile(animeArtifactArtPath(slug)),
+        `placeholder ${slug} already has published art — remove it from ANIME_ARTIFACT_ART_PLACEHOLDERS`
       ).toBe(false);
     }
   });

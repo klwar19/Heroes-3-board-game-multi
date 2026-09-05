@@ -1,7 +1,6 @@
-import { existsSync, statSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { hasMediaFile, mediaFileInfo } from "@/lib/media-manifest";
 import { LUCKY_E_SPECIALTY_SOURCES } from "@/data/cards/adventure";
 import { cardLibrary } from "@/data/cards/library";
 import { factionUiLexicon, factionVisualRegister } from "@/data/faction-theme";
@@ -76,9 +75,10 @@ const ENVELOPES: Record<
   gold: { attack: [5, 7], defense: [2, 3], health: [5, 8], initiative: [4, 7], gold: [14, 23], valuables: [1, 2] }
 };
 
+/** Published (media-manifest.json) AND heavier than a stub — run npm run media:publish. */
 function fileExists(assetPath: string, minBytes = 1000): boolean {
-  const file = join(process.cwd(), "public", assetPath.replace(/^\//, ""));
-  return existsSync(file) && statSync(file).size > minBytes;
+  const info = mediaFileInfo(assetPath);
+  return info !== undefined && info.bytes > minBytes;
 }
 
 describe("Azur Lane Naval Base — registration & roster shape", () => {
@@ -612,7 +612,7 @@ describe("Azur Lane Naval Base — Fleet veterancy: resolved rank schedules", ()
     }
   });
 
-  it("ART: every choice id has an EXPLICIT icon entry resolving to a file on disk", () => {
+  it("ART: every choice id has an EXPLICIT icon entry resolving to a published file", () => {
     for (const choiceId of allExpectedChoiceIds()) {
       // Prefer an explicit mapping for all (the fallback exists too, but an
       // explicit entry is the pinned contract).
@@ -620,8 +620,8 @@ describe("Azur Lane Naval Base — Fleet veterancy: resolved rank schedules", ()
       const icon = unitRankAbilityIcon(choiceId);
       expect(icon.startsWith("/assets/"), choiceId).toBe(true);
       expect(
-        existsSync(join(process.cwd(), "public", icon.replace(/^\//, ""))),
-        `${choiceId} → ${icon} missing on disk`
+        hasMediaFile(icon),
+        `${choiceId} → ${icon} is not published — run npm run media:publish`
       ).toBe(true);
     }
   });
@@ -632,8 +632,8 @@ describe("Azur Lane Naval Base — Fleet veterancy: resolved rank schedules", ()
       expect(icon, `${unitId} needs a ship-specific XP icon`).toBeTruthy();
       expect(unitRankAbilityIcon("commander-max-damage", unitId)).toBe(icon);
       expect(
-        existsSync(join(process.cwd(), "public", icon.replace(/^\//, ""))),
-        `${unitId} XP icon ${icon} missing on disk`
+        hasMediaFile(icon),
+        `${unitId} XP icon ${icon} is not published — run npm run media:publish`
       ).toBe(true);
     }
     // The optional unit id keeps the generic renderer unchanged for non-Azur
@@ -641,7 +641,7 @@ describe("Azur Lane Naval Base — Fleet veterancy: resolved rank schedules", ()
     expect(unitRankAbilityIcon("commander-max-damage")).toBe(UNIT_RANK_ABILITY_ICONS["commander-max-damage"]);
   });
 
-  it("ART: every Azur Lane XP choice resolves to a ship emblem on disk", () => {
+  it("ART: every Azur Lane XP choice resolves to a published ship emblem", () => {
     // The by-choice map is the fine-grained override; anything it does not name
     // still falls back to the SHIP's own emblem, never to the generic card art.
     for (const [unitId, expected] of Object.entries(EXPECTED_SCHEDULES)) {
@@ -653,8 +653,8 @@ describe("Azur Lane Naval Base — Fleet veterancy: resolved rank schedules", ()
           const icon = AZUR_LANE_RANK_ABILITY_ICON_BY_CHOICE[key] ?? shipIcon;
           expect(unitRankAbilityIcon(choiceId, unitId), key).toBe(icon);
           expect(
-            existsSync(join(process.cwd(), "public", icon.replace(/^\//, ""))),
-            `${key} → ${icon} missing on disk`
+            hasMediaFile(icon),
+            `${key} → ${icon} is not published — run npm run media:publish`
           ).toBe(true);
         }
       }

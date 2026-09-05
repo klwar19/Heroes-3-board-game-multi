@@ -1,6 +1,5 @@
-import fs from "node:fs";
-import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { hasMediaFile } from "@/lib/media-manifest";
 import { adventureCards } from "@/data/cards/adventure";
 import { commanderDefinitions, COMMANDER_SLUG_BY_FACTION } from "@/data/commanders";
 import { coreBuildingDefinitions } from "@/data/factions/core";
@@ -79,8 +78,8 @@ describe("Blue Archive live faction integration", () => {
     // 2026-09-04 redraw: the tile is a geometry-free painting on the canonical
     // flower alpha, so the field symbols are attached at runtime (IM-S1 / MGQ-S1).
     expect(allTileDefinitions["BA-S1"]?.assets?.attachFieldSymbols).toBe(true);
-    expect(fs.existsSync(path.join(process.cwd(), "public", "assets/anime/tiles/ba-s1-v2.webp"))).toBe(true);
-    expect(fs.existsSync(path.join(process.cwd(), "public", townIconUrl("blue_archive").slice(1)))).toBe(true);
+    expect(hasMediaFile("assets/anime/tiles/ba-s1-v2.webp"), "run npm run media:publish").toBe(true);
+    expect(hasMediaFile(townIconUrl("blue_archive")), "run npm run media:publish").toBe(true);
     const council = coreBuildingDefinitions["blue_archive.city_hall"];
     expect(council.effect?.type).toBe("RESOURCE_ROUND_CHOICE");
     if (council.effect?.type === "RESOURCE_ROUND_CHOICE") {
@@ -137,7 +136,7 @@ describe("Blue Archive live faction integration", () => {
     ]) {
       const hero = animeTownHeroDefinitions[heroId]!;
       expect(hero.portrait).toBeTruthy();
-      expect(fs.existsSync(path.join(process.cwd(), "public", hero.portrait!))).toBe(true);
+      expect(hasMediaFile(hero.portrait!), `${hero.portrait} — run npm run media:publish`).toBe(true);
       for (const level of [1, 4, 6] as const) {
         const cardId = hero.specialtyCardIds?.[level];
         expect(cardId).toBe(`specialty.${heroId}.${level}`);
@@ -149,7 +148,7 @@ describe("Blue Archive live faction integration", () => {
   it("uses the generated veterancy emblem and complete local voice sets", () => {
     const icon = unitRankAbilityIcon("veteran-attack-1", "blue_archive.mika");
     expect(icon).toBe("/assets/anime/icons/blue-archive/rank-shared.webp");
-    expect(fs.existsSync(path.join(process.cwd(), "public", icon))).toBe(true);
+    expect(hasMediaFile(icon), `${icon} — run npm run media:publish`).toBe(true);
     for (const unit of blueArchiveCharacters) {
       for (const action of ["attack", "shoot", "defend", "hurt", "death", "move"] as const) {
         const key = unitSoundKey(unit.id, action);

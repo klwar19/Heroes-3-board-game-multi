@@ -1,6 +1,5 @@
-import { existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { hasMediaFile } from "@/lib/media-manifest";
 import soundManifest from "../../../public/sounds/manifest.json";
 import type { GameEvent, GameState } from "@/engine";
 import {
@@ -167,12 +166,11 @@ describe("morale card overlay cues", () => {
     }
   });
 
-  it("both morale stings resolve to real clips on disk", () => {
+  it("both morale stings resolve to real published clips", () => {
     for (const key of [MORALE_CUE_SOUNDS.good, MORALE_CUE_SOUNDS.bad]) {
       const src = library[key]?.src;
       expect(src, `${key} should have a src`).toBeTruthy();
-      const file = fileURLToPath(new URL(`../../../public${src}`, import.meta.url));
-      expect(existsSync(file), `${src} should exist on disk`).toBe(true);
+      expect(hasMediaFile(src!), `${src} should be a published media file — run npm run media:publish`).toBe(true);
     }
   });
 });

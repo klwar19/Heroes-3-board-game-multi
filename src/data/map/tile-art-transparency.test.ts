@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { hasLocalMediaTree, hasMediaFile, localMediaPath } from "@/lib/media-manifest";
 import { allTileDefinitions } from "@/data/map/tiles";
 
 /**
@@ -18,10 +18,10 @@ import { allTileDefinitions } from "@/data/map/tiles";
  *
  * We read the container header directly rather than decode pixels: no image
  * library is available in the test runtime, and the alpha flag lives in the
- * RIFF/WebP header.
+ * RIFF/WebP header. That flag is NOT recorded in media-manifest.json, so the
+ * alpha scan needs the real bytes and runs only on a checkout that pulled the
+ * media tree; the publication check below always runs.
  */
-
-const assetPath = (src: string) => fileURLToPath(new URL(`../../../public${src}`, import.meta.url));
 
 /** Decode whether a WebP file declares an alpha channel from its RIFF header. */
 function webpHasAlpha(buffer: Buffer): { hasAlpha: boolean; format: string } {
@@ -52,7 +52,7 @@ function webpHasAlpha(buffer: Buffer): { hasAlpha: boolean; format: string } {
 }
 
 describe("tile art carries a transparent (flower-shaped) background", () => {
-  it("every tile with committed art declares an alpha channel", () => {
+  it("every tile with committed art names a published webp", () => {
     const checked: string[] = [];
     for (const def of Object.values(allTileDefinitions)) {
       const image = def.assets?.tileImage;
@@ -60,7 +60,32 @@ describe("tile art carries a transparent (flower-shaped) background", () => {
         continue;
       }
       expect(image, `${def.id} tileImage path`).toMatch(/^\/assets\/[a-z0-9/_-]+\.webp$/);
-      const { hasAlpha, format } = webpHasAlpha(readFileSync(assetPath(image)));
+      expect(
+        hasMediaFile(image),
+        `${def.id} art ${image} is unpublished (run \`npm run media:publish\`)`
+      ).toBe(true);
+      checked.push(def.id);
+    }
+    // Guard the guard: the Bulwark starting tile (the one this regression
+    // targets) is actually among the tiles exercised.
+    expect(checked).toContain("S10");
+    expect(checked.length).toBeGreaterThan(10);
+  });
+
+  // The alpha flag lives in the file's RIFF header, not in the manifest, so this
+  // half needs the BYTES: it runs only where the media tree was pulled.
+  it.skipIf(!hasLocalMediaTree())("every tile with committed art declares an alpha channel", () => {
+    const checked: string[] = [];
+    for (const def of Object.values(allTileDefinitions)) {
+      const image = def.assets?.tileImage;
+      if (!image) {
+        continue;
+      }
+      const file = localMediaPath(image);
+      if (!file) {
+        continue;
+      }
+      const { hasAlpha, format } = webpHasAlpha(readFileSync(file));
       expect(
         hasAlpha,
         `${def.id} art ${image} has no alpha channel (WebP ${format}); its corners ` +

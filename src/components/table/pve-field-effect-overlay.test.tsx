@@ -13,9 +13,8 @@
  * invisible and no visual may be an orphan), the flare on a FRESH
  * `COMBAT_SCRIPT_TRIGGERED`, and the cue's show-once-per-combat-id rule.
  */
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { hasMediaFile } from "@/lib/media-manifest";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import type { GameState } from "@/engine";
 import { pveEncounterScriptsFor, PVE_COMBAT_SCRIPT_DEFINITIONS } from "@/data/anime/pve-combat-scripts";
@@ -87,14 +86,14 @@ describe("PvE field-effect visuals registry", () => {
     expect(pveFieldEffectVisual("campaign_script_that_does_not_exist").theme).toBe("generic");
   });
 
-  it("SWEEP: every declared video/sprite points at a COMMITTED media file (no 404 can ship)", () => {
-    const publicDir = join(__dirname, "..", "..", "..", "public");
+  it("SWEEP: every declared video/sprite points at a PUBLISHED media file (no 404 can ship)", () => {
     for (const [id, visual] of Object.entries(PVE_FIELD_EFFECT_VISUALS)) {
       for (const media of [visual.video, visual.sprite]) {
         if (!media) continue;
-        expect(existsSync(join(publicDir, media)), `${id} → ${media} is missing from public/`).toBe(
-          true
-        );
+        expect(
+          hasMediaFile(media),
+          `${id} → ${media} is not a published media file — run npm run media:publish`
+        ).toBe(true);
       }
     }
     // The media half is real, not vestigial: at least one video and one sprite ship.

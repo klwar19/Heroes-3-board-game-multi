@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { hasMediaFile } from "@/lib/media-manifest";
 import { pandoraCards, pandoraDeckCardIds } from "./pandora";
 
 /**
@@ -12,15 +11,16 @@ import { pandoraCards, pandoraDeckCardIds } from "./pandora";
  * scripts/build-pandora-power-card.mjs, so NO artless card remains.
  */
 
-const assetPath = (src: string) => fileURLToPath(new URL(`../../../public${src}`, import.meta.url));
-
 describe("Pandora's Box card art is committed", () => {
   it("every Pandora card names real art on disk (no artless card remains)", () => {
     for (const [id, card] of Object.entries(pandoraCards)) {
       const image = card.assets?.cardImage;
       expect(image, `${id} must name a cardImage`).toBeTruthy();
       expect(image, `${id} cardImage path`).toMatch(/^\/assets\/pandora\/[a-z0-9_]+\.webp$/);
-      expect(existsSync(assetPath(image!)), `${id} art missing on disk at ${image}`).toBe(true);
+      expect(
+        hasMediaFile(image!),
+        `${id} art unpublished at ${image} (run \`npm run media:publish\`)`
+      ).toBe(true);
     }
   });
 

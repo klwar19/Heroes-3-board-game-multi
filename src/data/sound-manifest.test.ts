@@ -1,8 +1,9 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import soundManifest from "../../public/sounds/manifest.json";
+import { hasMediaFile } from "@/lib/media-manifest";
 
 /**
  * Whole-manifest hygiene. The Doom slice added ~110 .wav lumps and ~90 manifest
@@ -17,21 +18,16 @@ type Entry = { src?: string; sequence?: string[]; random?: string[]; then?: stri
 const library = soundManifest as Record<string, Entry>;
 const publicDir = fileURLToPath(new URL("../../public", import.meta.url));
 
-// Case-sensitive existence: membership in the directory's real listing, so a
-// manifest `src` whose casing differs from the file is a failure even though
-// existsSync() would pass on Windows/macOS.
-const dirCache = new Map<string, Set<string>>();
+// Case-sensitive existence: the media manifest is keyed by the exact published
+// path, so a `src` whose casing differs from the published file is a failure even
+// though existsSync() would pass on Windows/macOS. It is also the CDN's truth: a
+// clip that was never published 404s off R2 (`npm run media:publish` is the fix).
 function fileExistsCaseSensitive(src: string): boolean {
-  const full = path.join(publicDir, src);
-  const dir = path.dirname(full);
-  if (!dirCache.has(dir)) {
-    dirCache.set(dir, new Set(existsSync(dir) ? readdirSync(dir) : []));
-  }
-  return dirCache.get(dir)!.has(path.basename(full));
+  return hasMediaFile(src);
 }
 
 describe("sound manifest hygiene", () => {
-  it("every entry with a src resolves to a real file on disk (case-sensitive)", () => {
+  it("every entry with a src resolves to a published clip (case-sensitive)", () => {
     const missing: string[] = [];
     for (const [key, entry] of Object.entries(library)) {
       if (entry?.src && !fileExistsCaseSensitive(entry.src)) {

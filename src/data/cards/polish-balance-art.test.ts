@@ -9,10 +9,8 @@
  * and declared unimplemented, and no unimplemented entry secretly ships a face
  * (which would let a face advertise a rule the engine does not run).
  */
-import { existsSync, readdirSync, statSync } from "node:fs";
-import path from "node:path";
 import { describe, expect, it } from "vitest";
-import sharp from "sharp";
+import { hasMediaFile, listMediaDir, mediaExtensionOf, mediaFileInfo } from "@/lib/media-manifest";
 import { cardLibrary } from "@/data/cards/library";
 import { polishBalanceSpellCards } from "./spells-balance";
 import { polishBalanceArtifactCards } from "./artifacts-balance";
@@ -28,13 +26,10 @@ import {
   polishBalanceFaceImage,
 } from "./polish-balance-art";
 
-const REPO_ROOT = path.resolve(__dirname, "../../..");
-const FACE_DIR = path.join(REPO_ROOT, "public", "assets", "polish-balance");
-const toFile = (url: string) =>
-  path.join(REPO_ROOT, "public", url.replace(/^\//, ""));
+const FACE_DIR = "/assets/polish-balance";
 
 describe("Polish Balance Pack art", () => {
-  it("ships a real 743×1040 card face for every WIRED card, at the id-derived path", async () => {
+  it("ships a real 743×1040 card face for every WIRED card, at the id-derived path", () => {
     expect(POLISH_BALANCE_CARD_IDS.length).toBeGreaterThan(0);
     for (const cardId of POLISH_BALANCE_CARD_IDS) {
       const url = polishBalanceCardImage(cardId);
@@ -44,13 +39,12 @@ describe("Polish Balance Pack art", () => {
       expect(url).toBe(
         `/assets/polish-balance/${cardId.replaceAll(".", "-")}.webp`,
       );
-      const file = toFile(url!);
       expect(
-        existsSync(file),
-        `missing balance face for ${cardId}: ${file}`,
+        hasMediaFile(url!),
+        `missing balance face for ${cardId}: ${url} (run \`npm run media:publish\`)`,
       ).toBe(true);
-      const meta = await sharp(file).metadata();
-      expect([cardId, meta.format, meta.width, meta.height]).toEqual([
+      const info = mediaFileInfo(url!)!;
+      expect([cardId, mediaExtensionOf(url!), info.width, info.height]).toEqual([
         cardId,
         "webp",
         743,
@@ -58,7 +52,7 @@ describe("Polish Balance Pack art", () => {
       ]);
       // A real card scan, never a placeholder stub.
       expect(
-        statSync(file).size,
+        info.bytes,
         `${cardId} balance face looks like a stub`,
       ).toBeGreaterThan(40 * 1024);
     }
@@ -68,7 +62,7 @@ describe("Polish Balance Pack art", () => {
     // This is the honesty gate. A committed face for an unimplemented reprint is
     // one provider flag away from showing a player rules the engine never runs.
     const shipped = new Set(
-      readdirSync(FACE_DIR)
+      listMediaDir(FACE_DIR)
         .filter((name) => name.endsWith(".webp"))
         .map((name) => name.replace(/\.webp$/, "")),
     );
@@ -82,7 +76,7 @@ describe("Polish Balance Pack art", () => {
     expect([...shipped].sort()).toEqual([...wired].sort());
   });
 
-  it("ships a real 743×1040 EMPOWERED balance face for every empowered ability id", async () => {
+  it("ships a real 743×1040 EMPOWERED balance face for every empowered ability id", () => {
     expect(POLISH_BALANCE_EMPOWERED_ABILITY_IDS.length).toBe(12);
     for (const cardId of POLISH_BALANCE_EMPOWERED_ABILITY_IDS) {
       // Every empowered id must also have a wired plain reprint (the empowered
@@ -95,20 +89,19 @@ describe("Polish Balance Pack art", () => {
       expect(url).toBe(
         `/assets/polish-balance/${cardId.replaceAll(".", "-")}-empowered.webp`,
       );
-      const file = toFile(url!);
       expect(
-        existsSync(file),
-        `missing empowered balance face for ${cardId}: ${file}`,
+        hasMediaFile(url!),
+        `missing empowered balance face for ${cardId}: ${url} (run \`npm run media:publish\`)`,
       ).toBe(true);
-      const meta = await sharp(file).metadata();
-      expect([cardId, meta.format, meta.width, meta.height]).toEqual([
+      const info = mediaFileInfo(url!)!;
+      expect([cardId, mediaExtensionOf(url!), info.width, info.height]).toEqual([
         cardId,
         "webp",
         743,
         1040,
       ]);
       expect(
-        statSync(file).size,
+        info.bytes,
         `${cardId} empowered balance face looks like a stub`,
       ).toBeGreaterThan(40 * 1024);
     }

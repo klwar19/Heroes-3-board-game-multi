@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { hasMediaFile } from "@/lib/media-manifest";
 import { applyAction, createAdventureGameState, createInitialGameState, getLegalActions } from "./index";
 import { getSchoolPowerBonus } from "./active-effects";
 import { coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
@@ -23,7 +22,6 @@ import type { ActiveEffectModifier, GameAction, GameEvent, GameState, TargetRef,
 //                          Search(3) + reshuffle the discard (IV)
 // ---------------------------------------------------------------------------
 
-const assetPath = (src: string) => fileURLToPath(new URL(`../../public${src}`, import.meta.url));
 
 function applyOk(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
@@ -114,8 +112,8 @@ describe("batch-2 heroes are registered in their factions with art and implement
       expect(hero.portrait, `${heroId} portrait`).toContain(`/assets/hero_boardart-${heroId}.webp`);
       expect(hero.boardScan, `${heroId} board scan`).toContain(`/assets/heroes-${factionId}-`);
       // The portrait + board scan webp files are actually on disk.
-      expect(existsSync(assetPath(hero.portrait!)), `${heroId} portrait file`).toBe(true);
-      expect(existsSync(assetPath(hero.boardScan!)), `${heroId} board scan file`).toBe(true);
+      expect(hasMediaFile(hero.portrait!), `${heroId} portrait file is not published (npm run media:publish)`).toBe(true);
+      expect(hasMediaFile(hero.boardScan!), `${heroId} board scan file is not published (npm run media:publish)`).toBe(true);
       for (const level of [1, 4, 6] as const) {
         const cardId = hero.specialtyCardIds![level];
         const card = adventureCards[cardId];
@@ -123,7 +121,7 @@ describe("batch-2 heroes are registered in their factions with art and implement
         expect(card.implementationStatus, `${cardId} implemented`).toBe("implemented");
         expect(card.tags, `${cardId} not flagged needs-implementation`).not.toContain("needs-implementation");
         expect(card.assets?.cardImage, `${cardId} art`).toContain(`/assets/hero_specialties-${heroId}-${level}.webp`);
-        expect(existsSync(assetPath(card.assets!.cardImage!)), `${cardId} art file`).toBe(true);
+        expect(hasMediaFile(card.assets!.cardImage!), `${cardId} art file is not published (npm run media:publish)`).toBe(true);
       }
     }
   });

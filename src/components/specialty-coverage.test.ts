@@ -1,7 +1,6 @@
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { hasMediaFile } from "@/lib/media-manifest";
 import { cardLibrary } from "@/data/cards/library";
 import { coreHeroDefinitions } from "@/data/factions/core";
 import {
@@ -11,9 +10,6 @@ import {
   specialtyEffectText,
   specialtyIconSrc
 } from "./specialty-card-data";
-
-const PUBLIC = join(process.cwd(), "public");
-const assetPath = (url: string) => join(PUBLIC, url.replace(/^\//u, ""));
 
 /** Every `specialty.<slug>.<level>` card id in the library. */
 function specialtyCardIds(): string[] {
@@ -49,12 +45,15 @@ describe("hero specialty card coverage", () => {
       const icon = SPECIALTY_ICON_BY_HERO[slug];
       if (!icon) {
         missingIcon.push(slug);
-      } else if (!existsSync(assetPath(icon))) {
+      } else if (!hasMediaFile(icon)) {
         missingFile.push(`${slug} -> ${icon}`);
       }
     }
     expect(missingIcon, `art-less heroes with no specialty symbol: ${missingIcon.join(", ")}`).toEqual([]);
-    expect(missingFile, `specialty symbols whose file is missing: ${missingFile.join(", ")}`).toEqual([]);
+    expect(
+      missingFile,
+      `specialty symbols not published (npm run media:publish): ${missingFile.join(", ")}`
+    ).toEqual([]);
   });
 
   it("every natively-rendered specialty has non-empty effect text (no blank card body)", () => {
@@ -81,17 +80,20 @@ describe("hero specialty card coverage", () => {
     const missing: string[] = [];
     for (const id of specialtyCardIds()) {
       const cardImage = (cardLibrary[id] as { assets?: { cardImage?: string } }).assets?.cardImage;
-      if (cardImage && !existsSync(assetPath(cardImage))) {
+      if (cardImage && !hasMediaFile(cardImage)) {
         missing.push(`${id} -> ${cardImage}`);
       }
     }
-    expect(missing, `specialty scans whose file is missing: ${missing.join(", ")}`).toEqual([]);
+    expect(missing, `specialty scans not published (npm run media:publish): ${missing.join(", ")}`).toEqual([]);
   });
 
   it("every mapped specialty symbol points at a real, known hero and an existing file", () => {
     for (const [slug, icon] of Object.entries(SPECIALTY_ICON_BY_HERO)) {
       expect(coreHeroDefinitions[slug], `unknown hero slug in icon map: ${slug}`).toBeTruthy();
-      expect(existsSync(assetPath(icon)), `missing file for ${slug}: ${icon}`).toBe(true);
+      expect(
+        hasMediaFile(icon),
+        `missing published file for ${slug}: ${icon} — run npm run media:publish`
+      ).toBe(true);
     }
   });
 
@@ -105,7 +107,7 @@ describe("hero specialty card coverage", () => {
         expect(canRenderSpecialtyCard(cardId), `${cardId} must render natively`).toBe(true);
         const icon = specialtyIconSrc(cardId);
         expect(icon, `${cardId} needs a specialty icon`).toBe(SPECIALTY_ICON_BY_HERO[slug]);
-        expect(existsSync(assetPath(icon!)), `${cardId} icon missing on disk`).toBe(true);
+        expect(hasMediaFile(icon!), `${cardId} icon is not published — run npm run media:publish`).toBe(true);
       }
     }
   });

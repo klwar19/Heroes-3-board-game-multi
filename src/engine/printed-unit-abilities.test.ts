@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { hasMediaFile } from "@/lib/media-manifest";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { applyAction, createInitialGameState, tokenDefenseDelta } from "./index";
 import type { GameAction, GameEvent, GameState, PlayerId } from "./state";
@@ -170,7 +169,6 @@ describe("Neutral Halfling — twin Attack dice", () => {
 
 describe("Neutral roster card art", () => {
   const neutralUnits = Object.values(coreUnitDefinitions).filter((def) => def.neutral);
-  const assetPath = (src: string) => fileURLToPath(new URL(`../../public${src}`, import.meta.url));
 
   it("wires a card image for every neutral unit", () => {
     const missing = neutralUnits.filter((def) => !def.neutral?.cardImage).map((def) => def.id);
@@ -180,8 +178,8 @@ describe("Neutral roster card art", () => {
   it("every referenced neutral card image exists on disk", () => {
     const broken = neutralUnits
       .map((def) => def.neutral!.cardImage as string)
-      .filter((src) => !existsSync(assetPath(src)));
-    expect(broken).toEqual([]);
+      .filter((src) => !hasMediaFile(src));
+    expect(broken, "unpublished media — run npm run media:publish").toEqual([]);
   });
 });
 

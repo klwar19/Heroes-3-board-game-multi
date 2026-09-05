@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { hasMediaFile } from "@/lib/media-manifest";
 import { cardLibrary } from "@/data/cards/library";
 import { moraleCardPolarity } from "@/data/cards/morale";
 
@@ -12,8 +13,6 @@ import { moraleCardPolarity } from "@/data/cards/morale";
  * a broken image with nothing failing in CI. This is the abilities/war-machines
  * counterpart of the existing astrologers / Cove / hero-specialty art checks.
  */
-
-const assetPath = (src: string) => fileURLToPath(new URL(`../../public${src}`, import.meta.url));
 
 describe("ability & war-machine card art is committed", () => {
   it("every ability/war-machine cardImage points at a file that exists", () => {
@@ -36,7 +35,7 @@ describe("ability & war-machine card art is committed", () => {
         continue;
       }
       expect(image, `${card.id} cardImage path`).toMatch(/^\/assets\/[a-z0-9_/-]+\.webp$/);
-      expect(existsSync(assetPath(image)), `${card.id} art file missing at ${image}`).toBe(true);
+      expect(hasMediaFile(image), `${card.id} art unpublished at ${image} (run: npm run media:publish)`).toBe(true);
       checked.push(card.id);
     }
     // Guard the guard: the Diplomacy fix (and the rest) is actually exercised.
@@ -65,7 +64,7 @@ describe("ability & war-machine card art is committed", () => {
     const image = cardLibrary["ability.interference"]?.assets?.cardImage;
     expect(image).toBe("/assets/abilities-interference.webp");
     expect(image).not.toContain("player-deck-back");
-    expect(existsSync(assetPath(image!))).toBe(true);
+    expect(hasMediaFile(image!), `${image} (run: npm run media:publish)`).toBe(true);
   });
 
   it("gives every Basic school-magic ability its own composed face", () => {
@@ -76,9 +75,9 @@ describe("ability & war-machine card art is committed", () => {
       const image = card?.assets?.cardImage;
       expect(image).toBe(`/assets/abilities-basic_${school}_magic.webp`);
       expect(image).not.toContain("player-deck-back");
-      expect(existsSync(assetPath(image!)), `${school} face`).toBe(true);
+      expect(hasMediaFile(image!), `${school} face (run: npm run media:publish)`).toBe(true);
       expect(
-        existsSync(assetPath(`/assets/abilities-basic_${school}_magic-art.webp`)),
+        hasMediaFile(`/assets/abilities-basic_${school}_magic-art.webp`),
         `${school} generated art source`
       ).toBe(true);
       const schoolName = school.charAt(0).toUpperCase() + school.slice(1);

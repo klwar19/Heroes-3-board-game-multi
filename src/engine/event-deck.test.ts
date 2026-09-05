@@ -3,8 +3,7 @@ import { applyAction, createAdventureGameState, getLegalActions, getPlayerView }
 import { eventCardDefinitions, eventsDeckCardIds, EVENTS_NOT_IMPLEMENTED } from "@/data/cards/events";
 import { drawEventCard, eliminatePlayer, EVENTS_DECK_ID, getEventsState, startAdventureRound } from "./adventure";
 import { pumpAdventureQueues } from "./adventure-reducer";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { hasMediaFile } from "@/lib/media-manifest";
 import type { GameAction, GameState, PlayerId } from "./state";
 
 /**
@@ -79,7 +78,7 @@ describe("Event card data", () => {
       expect(card.expansion).toBe("Fortress Expansion");
       expect(card.effect.type, cardId).toBeTruthy();
       expect(card.image, cardId).toMatch(/^\/assets\/events-.+\.webp$/);
-      expect(existsSync(join(process.cwd(), "public", card.image)), `${cardId} scan missing on disk`).toBe(true);
+      expect(hasMediaFile(card.image), `${cardId} scan is not published (npm run media:publish)`).toBe(true);
     }
     // No display-only Events exist; the registry stays the (empty) declared home.
     expect(EVENTS_NOT_IMPLEMENTED).toEqual([]);

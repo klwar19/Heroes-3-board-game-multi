@@ -1,7 +1,6 @@
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { hasMediaFile } from "@/lib/media-manifest";
 import {
   ABILITY_SYMBOL_ICONS,
   HERO_INFO_STAT_ICONS,
@@ -10,30 +9,28 @@ import {
 } from "./homm-assets";
 import { coreHeroDefinitions } from "@/data/factions/core";
 
-const PUBLIC = join(process.cwd(), "public");
-const asFile = (assetPath: string) => join(PUBLIC, assetPath);
-
 /**
- * These upgraded graphics are only "done" if the images actually exist on disk —
+ * These upgraded graphics are only "done" if the images are actually PUBLISHED
+ * (media-manifest.json; npm run media:publish) —
  * a symbol wired to a missing file is a broken <img>, the decorative-feature
  * trap this repo forbids. Each test fails if a referenced asset is absent.
  */
 describe("Hero-info & map-tile graphics — every referenced asset exists", () => {
   it("ships all six map-tile back covers", () => {
     for (const [group, path] of Object.entries(TILE_BACK_IMAGES)) {
-      expect(existsSync(asFile(path)), `${group}: ${path}`).toBe(true);
+      expect(hasMediaFile(path), `${group}: ${path} — run npm run media:publish`).toBe(true);
     }
   });
 
   it("ships the four hero-statistic symbols", () => {
     for (const [stat, path] of Object.entries(HERO_INFO_STAT_ICONS)) {
-      expect(existsSync(asFile(path)), `${stat}: ${path}`).toBe(true);
+      expect(hasMediaFile(path), `${stat}: ${path} — run npm run media:publish`).toBe(true);
     }
   });
 
   it("ships every registered ability symbol", () => {
     for (const [skill, path] of Object.entries(ABILITY_SYMBOL_ICONS)) {
-      expect(existsSync(asFile(path)), `${skill}: ${path}`).toBe(true);
+      expect(hasMediaFile(path), `${skill}: ${path} — run npm run media:publish`).toBe(true);
     }
   });
 
@@ -41,7 +38,7 @@ describe("Hero-info & map-tile graphics — every referenced asset exists", () =
     const missing: string[] = [];
     for (const hero of Object.values(coreHeroDefinitions)) {
       const src = abilitySymbolIcon(hero.startingAbilityCardId);
-      if (!src || !existsSync(asFile(src))) {
+      if (!src || !hasMediaFile(src)) {
         missing.push(`${hero.id} (${hero.startingAbilityCardId}) -> ${src ?? "unmapped"}`);
       }
     }

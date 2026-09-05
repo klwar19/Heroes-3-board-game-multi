@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { hasMediaFile } from "@/lib/media-manifest";
 
 import { cardLibrary } from "@/data/cards/library";
 import { coreHeroDefinitions } from "@/data/factions/core";
@@ -60,7 +59,7 @@ describe("Miku hero registration", () => {
       6: "specialty.miku.6"
     });
     expect(hero.portrait).toBe("/assets/anime/heroes/miku.webp");
-    expect(existsSync(join(process.cwd(), "public", "assets", "anime", "heroes", "miku.webp"))).toBe(
+    expect(hasMediaFile("/assets/anime/heroes/miku.webp"), "miku portrait is not published (npm run media:publish)").toBe(
       true
     );
     for (const level of [1, 4, 6] as const) {

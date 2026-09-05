@@ -1,6 +1,6 @@
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+
+import { hasMediaFile } from "@/lib/media-manifest";
 
 import { TOWN_BUILDING_IMAGES } from "@/data/assets/homm-assets";
 import {
@@ -34,8 +34,8 @@ import type { GameAction, GameState } from "./state";
  * abilities.test.ts); this file covers the art + the faction/tile wiring.
  */
 
-const PUBLIC = join(process.cwd(), "public");
-const assetExists = (url: string) => existsSync(join(PUBLIC, url.replace(/^\//u, "")));
+/** Published in media-manifest.json (the CDN truth) — `npm run media:publish` after adding art. */
+const assetExists = (url: string) => hasMediaFile(url);
 
 const FACTORY_UNITS = [
   "factory.halflings",
@@ -82,7 +82,7 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
   it("ships the town backdrop image on disk", () => {
     const townImage = coreFactionDefinitions.factory.townImage;
     expect(townImage, "factory town image path").toBeTruthy();
-    expect(assetExists(townImage!), `town image missing: ${townImage}`).toBe(true);
+    expect(assetExists(townImage!), `town image not published (npm run media:publish): ${townImage}`).toBe(true);
   });
 
   it("ships a Few AND Pack card image for every unit, all present on disk", () => {
@@ -92,7 +92,7 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
       for (const side of ["few", "pack"] as const) {
         const img = unit[side]?.cardImage;
         expect(img, `${id} ${side} card image`).toBeTruthy();
-        expect(assetExists(img!), `${id} ${side} image missing: ${img}`).toBe(true);
+        expect(assetExists(img!), `${id} ${side} image not published (npm run media:publish): ${img}`).toBe(true);
       }
     }
   });
@@ -102,7 +102,7 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
       const hero = coreHeroDefinitions[id];
       expect(hero?.faction, id).toBe("factory");
       expect(hero.portrait, `${id} portrait path`).toBeTruthy();
-      expect(assetExists(hero.portrait!), `${id} portrait missing: ${hero.portrait}`).toBe(true);
+      expect(assetExists(hero.portrait!), `${id} portrait not published (npm run media:publish): ${hero.portrait}`).toBe(true);
     }
   });
 
@@ -115,7 +115,7 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
       expect(icon, `${id} specialty icon`).toBeTruthy();
       expect(icon!, `${id} uses a -portrait crop`).toMatch(/units-factory-[a-z_]+-portrait\.webp$/u);
       expect(icon!, `${id} does not borrow the full unit card`).not.toMatch(/-(few|pack|neutral)\.webp$/u);
-      expect(assetExists(icon!), `${id} specialty portrait missing on disk: ${icon}`).toBe(true);
+      expect(assetExists(icon!), `${id} specialty portrait not published (npm run media:publish): ${icon}`).toBe(true);
     }
   });
 
@@ -124,7 +124,7 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
     expect(images, "factory building images").toBeTruthy();
     expect(Object.keys(images).length).toBeGreaterThan(0);
     for (const [building, url] of Object.entries(images)) {
-      expect(assetExists(url), `${building} building image missing: ${url}`).toBe(true);
+      expect(assetExists(url), `${building} building image not published (npm run media:publish): ${url}`).toBe(true);
     }
   });
 
@@ -137,8 +137,8 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
     // built art carries NO cost banner, the "-unbuilt" plaque carries the cost.
     for (const building of ["city_hall", "citadel", "mage_guild", "bank", "dwelling_bronze", "dwelling_silver", "dwelling_gold"]) {
       const id = `factory.${building}`;
-      expect(assetExists(townBoardTileArt(id)), `${id} built tile on disk`).toBe(true);
-      expect(assetExists(townBoardUnbuiltTileArt(id)), `${id} unbuilt plaque on disk`).toBe(true);
+      expect(assetExists(townBoardTileArt(id)), `${id} built tile not published (npm run media:publish)`).toBe(true);
+      expect(assetExists(townBoardUnbuiltTileArt(id)), `${id} unbuilt plaque not published (npm run media:publish)`).toBe(true);
     }
   });
 

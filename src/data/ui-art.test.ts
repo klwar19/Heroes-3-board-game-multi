@@ -1,6 +1,5 @@
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { hasMediaFile } from "@/lib/media-manifest";
 import { UI_ART_SLOTS, uiArtSlot } from "./ui-art";
 import { GAME_SERVERS } from "./servers";
 
@@ -11,11 +10,13 @@ import { GAME_SERVERS } from "./servers";
  * to the real /public tree.
  */
 describe("UI art slots", () => {
-  it("every slot's src points at a shipped file under /public", () => {
+  it("every slot's src points at a published media file", () => {
     for (const [id, slot] of Object.entries(UI_ART_SLOTS)) {
       expect(slot.src.startsWith("/"), `${id} src must be root-relative`).toBe(true);
-      const filePath = join(process.cwd(), "public", slot.src);
-      expect(existsSync(filePath), `${id} → ${slot.src} is missing from /public`).toBe(true);
+      expect(
+        hasMediaFile(slot.src),
+        `${id} → ${slot.src} is unpublished (run: npm run media:publish)`
+      ).toBe(true);
       expect(slot.alt.trim().length, `${id} needs alt text`).toBeGreaterThan(0);
       expect(slot.size.trim().length, `${id} needs a target-size note for replacement art`).toBeGreaterThan(0);
     }

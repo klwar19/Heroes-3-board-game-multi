@@ -1,65 +1,36 @@
 /**
  * Production Vercel build wrapper.
  *
- * Game media is served from Cloudflare R2, but Next/Vercel would otherwise
- * package the same hundreds of MB from public/ into every deployment. On a
- * real Vercel build only, this script:
+ * Game media is served from Cloudflare R2 through content-addressed URLs
+ * (docs/media-manifest.md); the binaries are NOT tracked in git, so a Vercel
+ * checkout normally has no media to package at all. This wrapper remains the
+ * safety net for a real Vercel build:
  *   1. verifies that the build resolves media to the CDN;
- *   2. computes the existing global cache-busting version while all media is
- *      still present;
- *   3. stages CDN-only binaries under .vercel/.media-staging (which Vercel never
- *      deploys), retaining the JSON sound manifests imported by application
+ *   2. derives the global media version from media-manifest.json;
+ *   3. if a media tree IS present (a checkout that pulled it), stages the
+ *      binaries under .vercel/.media-staging (which Vercel never deploys),
+ *      retaining the tracked JSON sound manifests imported by application
  *      code; and
  *   4. runs Next with the precomputed version.
  *
- * The repository, Git history, GitHub R2 sync, PartyKit deployment, and normal
- * local `npm run build` are untouched. A failed Next build restores everything
- * before exiting. Successful Vercel builds intentionally leave the files in
+ * The repository, Git history, PartyKit deployment and normal local
+ * `npm run build` are untouched. A failed Next build restores everything
+ * before exiting. Successful Vercel builds intentionally leave staged files in
  * the ignored staging area because the build workspace is ephemeral.
  */
 
-import { createHash } from "node:crypto";
-import {
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  renameSync,
-  rmSync,
-  statSync
-} from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { copyFileSync, existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
+
+import { MEDIA_ROOTS, manifestVersion, readManifest, walkMediaTree } from "./lib/media-manifest.mjs";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const PUBLIC = join(ROOT, "public");
 const STAGING = join(ROOT, ".vercel", ".media-staging");
-const MEDIA_DIRS = [join(PUBLIC, "assets"), join(PUBLIC, "sounds")];
 const SOUND_METADATA = ["manifest.json", "durations.json"];
 const require = createRequire(import.meta.url);
-
-function walk(dir, lines) {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const absolute = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      walk(absolute, lines);
-    } else if (entry.isFile()) {
-      const path = relative(ROOT, absolute).replaceAll("\\", "/");
-      lines.push(`${path}:${statSync(absolute).size}`);
-    }
-  }
-}
-
-function computeMediaVersion() {
-  const lines = [];
-  for (const dir of [join(PUBLIC, "assets"), join(PUBLIC, "sounds"), join(PUBLIC, "fonts")]) {
-    if (existsSync(dir)) walk(dir, lines);
-  }
-  if (lines.length === 0) return "";
-  lines.sort();
-  return createHash("sha1").update(lines.join("\n")).digest("hex").slice(0, 10);
-}
 
 function isRealVercelBuild() {
   // `vercel build` can expose Vercel system variables on a developer machine.
@@ -94,38 +65,45 @@ function runNext(extraEnv = {}) {
   return result.status ?? 1;
 }
 
-function stageMedia() {
+/** Media roots that actually hold binaries on this checkout (a pulled tree). */
+function rootsWithMedia() {
+  return MEDIA_ROOTS.filter((root) => walkMediaTree(PUBLIC, root).media.length > 0);
+}
+
+function stageMedia(roots) {
   if (existsSync(STAGING)) {
     throw new Error(`Refusing to overwrite an existing media staging directory: ${STAGING}`);
   }
   mkdirSync(STAGING, { recursive: true });
-  for (const source of MEDIA_DIRS) {
-    if (!existsSync(source)) throw new Error(`Required media directory is missing: ${source}`);
-    renameSync(source, join(STAGING, source.endsWith("assets") ? "assets" : "sounds"));
+  for (const root of roots) {
+    renameSync(join(PUBLIC, root), join(STAGING, root));
   }
-
   // These small files are compile-time imports, not CDN payload. Keep them at
   // their original paths while Next builds the application bundles.
-  mkdirSync(join(PUBLIC, "sounds"), { recursive: true });
-  for (const name of SOUND_METADATA) {
-    const source = join(STAGING, "sounds", name);
-    if (!existsSync(source)) throw new Error(`Required sound metadata is missing: ${source}`);
-    copyFileSync(source, join(PUBLIC, "sounds", name));
+  if (roots.includes("sounds")) {
+    mkdirSync(join(PUBLIC, "sounds"), { recursive: true });
+    for (const name of SOUND_METADATA) {
+      const source = join(STAGING, "sounds", name);
+      if (!existsSync(source)) throw new Error(`Required sound metadata is missing: ${source}`);
+      copyFileSync(source, join(PUBLIC, "sounds", name));
+    }
   }
 }
 
 function restoreMedia() {
-  const stagedAssets = join(STAGING, "assets");
-  const stagedSounds = join(STAGING, "sounds");
-  if (existsSync(stagedAssets)) {
-    if (existsSync(join(PUBLIC, "assets"))) rmSync(join(PUBLIC, "assets"), { recursive: true });
-    renameSync(stagedAssets, join(PUBLIC, "assets"));
-  }
-  if (existsSync(stagedSounds)) {
-    if (existsSync(join(PUBLIC, "sounds"))) rmSync(join(PUBLIC, "sounds"), { recursive: true });
-    renameSync(stagedSounds, join(PUBLIC, "sounds"));
+  for (const root of MEDIA_ROOTS) {
+    const staged = join(STAGING, root);
+    if (!existsSync(staged)) continue;
+    if (existsSync(join(PUBLIC, root))) rmSync(join(PUBLIC, root), { recursive: true });
+    renameSync(staged, join(PUBLIC, root));
   }
   if (existsSync(STAGING)) rmSync(STAGING, { recursive: true });
+}
+
+for (const name of SOUND_METADATA) {
+  if (!existsSync(join(PUBLIC, "sounds", name))) {
+    throw new Error(`Required tracked sound metadata is missing: public/sounds/${name}`);
+  }
 }
 
 if (!isRealVercelBuild()) {
@@ -140,22 +118,24 @@ if (!baseUrl) {
   );
 }
 
-const version = computeMediaVersion();
-if (!version) throw new Error("Refusing to build without a non-empty media version.");
+const manifest = readManifest(ROOT);
+if (!manifest) throw new Error("media-manifest.json is missing — the build cannot resolve media URLs.");
+const version = manifestVersion(manifest);
+if (!version) throw new Error("Refusing to build without a non-empty media version (empty media-manifest.json).");
+const roots = rootsWithMedia();
 
 if (process.argv.includes("--check")) {
-  const files = MEDIA_DIRS.reduce((total, dir) => {
-    const lines = [];
-    walk(dir, lines);
-    return total + lines.length;
-  }, 0);
-  console.log(`Vercel media check passed: ${files} CDN files; version=${version}; CDN=${baseUrl}`);
+  console.log(
+    `Vercel media check passed: ${Object.keys(manifest.files).length} manifest files; version=${version}; CDN=${baseUrl}; local media trees to stage: ${roots.length === 0 ? "none" : roots.join(", ")}`
+  );
   process.exit(0);
 }
 
-console.log(`Vercel CDN build: staging ${MEDIA_DIRS.length} media trees; version=${version}; CDN=${baseUrl}`);
+console.log(
+  `Vercel CDN build: version=${version}; CDN=${baseUrl}; ${roots.length === 0 ? "no local media to stage (expected — media lives on the CDN)" : `staging ${roots.join(", ")}`}`
+);
 try {
-  stageMedia();
+  if (roots.length > 0) stageMedia(roots);
 } catch (error) {
   restoreMedia();
   throw error;
@@ -174,4 +154,4 @@ if (status !== 0) {
   process.exit(status);
 }
 
-console.log("Vercel CDN build complete; media remains in the ignored ephemeral staging directory.");
+console.log("Vercel CDN build complete.");

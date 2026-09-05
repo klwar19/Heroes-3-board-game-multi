@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { hasMediaFile } from "@/lib/media-manifest";
 
 import {
   MAX_UNIT_RANK,
@@ -522,12 +521,12 @@ describe("Unit Experience — rank math & either/or rewards", () => {
   it("every shared ability and stat reward resolves to dedicated veterancy art on disk", () => {
     for (const [id, icon] of Object.entries(UNIT_RANK_ABILITY_ICONS)) {
       expect(icon, id).toContain("/assets/ui/rank-ability/");
-      expect(existsSync(join(process.cwd(), "public", icon.replace(/^\//, ""))), id).toBe(true);
+      expect(hasMediaFile(icon), `${id} rank icon is not published (npm run media:publish)`).toBe(true);
       expect(unitRankAbilityIcon(id), id).toBe(icon);
     }
     for (const [stat, icon] of Object.entries(UNIT_RANK_STAT_ICONS)) {
       expect(icon, stat).toContain("/assets/ui/rank-stat/");
-      expect(existsSync(join(process.cwd(), "public", icon.replace(/^\//, ""))), stat).toBe(true);
+      expect(hasMediaFile(icon), `${stat} rank icon is not published (npm run media:publish)`).toBe(true);
     }
   });
 

@@ -1,7 +1,6 @@
-import { existsSync, statSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { hasMediaFile, mediaFileInfo } from "@/lib/media-manifest";
 import { SPECIALTY_ICON_BY_HERO, specialtyEffectText } from "@/components/specialty-card-data";
 import { cardLibrary } from "@/data/cards/library";
 import { coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
@@ -12,8 +11,6 @@ const NEW_HEROES = {
   luohun: "heavenly_demon",
   shiyan: "heavenly_demon"
 } as const;
-
-const publicFile = (url: string) => join(process.cwd(), "public", url.replace(/^\//u, ""));
 
 describe("cultivation hero expansion", () => {
   it("registers four balanced starting heroes in the correct towns", () => {
@@ -40,8 +37,8 @@ describe("cultivation hero expansion", () => {
       const portrait = coreHeroDefinitions[heroId].portrait!;
       const icon = SPECIALTY_ICON_BY_HERO[heroId];
       for (const asset of [portrait, icon]) {
-        expect(existsSync(publicFile(asset)), `${heroId}: ${asset}`).toBe(true);
-        expect(statSync(publicFile(asset)).size, `${heroId}: ${asset}`).toBeGreaterThan(10_000);
+        expect(hasMediaFile(asset), `${heroId}: ${asset} — run npm run media:publish`).toBe(true);
+        expect(mediaFileInfo(asset)!.bytes, `${heroId}: ${asset}`).toBeGreaterThan(10_000);
       }
     }
   });

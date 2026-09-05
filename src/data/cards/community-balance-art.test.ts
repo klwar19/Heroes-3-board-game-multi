@@ -15,10 +15,8 @@
  * is empty. The directory-listing check is the sharp one: a committed face
  * without a wired id fails, and so does a wired id with no face.
  */
-import { existsSync, readdirSync, statSync } from "node:fs";
-import path from "node:path";
 import { describe, expect, it } from "vitest";
-import sharp from "sharp";
+import { hasMediaFile, listMediaDir, mediaExtensionOf, mediaFileInfo } from "@/lib/media-manifest";
 import { cardLibrary } from "@/data/cards/library";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import {
@@ -35,25 +33,25 @@ import {
   communityBalanceFaceImage
 } from "./community-balance-art";
 
-const REPO_ROOT = path.resolve(__dirname, "../../..");
-const FACE_DIR = path.join(REPO_ROOT, "public", "assets", "community-balance");
-const toFile = (url: string) => path.join(REPO_ROOT, "public", url.replace(/^\//, ""));
+const FACE_DIR = "/assets/community-balance";
 
 describe("Community Balance Change art", () => {
-  it("ships a real 743×1040 card face for every WIRED card, at the id-derived path", async () => {
+  it("ships a real 743×1040 card face for every WIRED card, at the id-derived path", () => {
     for (const cardId of COMMUNITY_BALANCE_CARD_IDS) {
       const url = communityBalanceCardImage(cardId);
       expect(url, `no community face resolved for ${cardId}`).toBeTruthy();
       // The path is DERIVED from the id (dots → dashes) — assert that literally,
       // so a hand-written path can never drift from the card it belongs to.
       expect(url).toBe(`/assets/community-balance/${cardId.replaceAll(".", "-")}.webp`);
-      const file = toFile(url!);
-      expect(existsSync(file), `missing community face for ${cardId}: ${file}`).toBe(true);
-      const meta = await sharp(file).metadata();
-      expect([cardId, meta.format, meta.width, meta.height]).toEqual([cardId, "webp", 743, 1040]);
+      expect(
+        hasMediaFile(url!),
+        `missing community face for ${cardId}: ${url} (run \`npm run media:publish\`)`
+      ).toBe(true);
+      const info = mediaFileInfo(url!)!;
+      expect([cardId, mediaExtensionOf(url!), info.width, info.height]).toEqual([cardId, "webp", 743, 1040]);
       // A real card face, never a placeholder stub. Compact flat spell faces can
       // legitimately land below 40KB at the pack's text-safe WebP setting.
-      expect(statSync(file).size, `${cardId} community face looks like a stub`).toBeGreaterThan(20 * 1024);
+      expect(info.bytes, `${cardId} community face looks like a stub`).toBeGreaterThan(20 * 1024);
     }
   });
 
@@ -61,13 +59,11 @@ describe("Community Balance Change art", () => {
     // This is the honesty gate. A committed face for an unimplemented reprint is
     // one provider flag away from showing a player rules the engine never runs.
     // (With the pack empty, the directory must be absent or empty.)
-    const shipped = existsSync(FACE_DIR)
-      ? new Set(
-          readdirSync(FACE_DIR)
-            .filter((name) => name.endsWith(".webp"))
-            .map((name) => name.replace(/\.webp$/, ""))
-        )
-      : new Set<string>();
+    const shipped = new Set(
+      listMediaDir(FACE_DIR)
+        .filter((name) => name.endsWith(".webp"))
+        .map((name) => name.replace(/\.webp$/, ""))
+    );
     const wired = new Set([
       ...COMMUNITY_BALANCE_CARD_IDS.map((id) => id.replaceAll(".", "-")),
       ...COMMUNITY_BALANCE_EMPOWERED_FACE_NAMES,
@@ -79,7 +75,7 @@ describe("Community Balance Change art", () => {
     expect([...shipped].sort()).toEqual([...wired].sort());
   });
 
-  it("ships a real 743×1040 face for every reprinted UNIT SIDE, at the derived path", async () => {
+  it("ships a real 743×1040 face for every reprinted UNIT SIDE, at the derived path", () => {
     // The Units tab is exactly these four sides; a face for any OTHER side would
     // be a printed-rules lie (that side is unchanged).
     expect(COMMUNITY_BALANCE_UNIT_FACES.map((entry) => `${entry.unitDefId}#${entry.side}`)).toEqual([
@@ -95,11 +91,19 @@ describe("Community Balance Change art", () => {
       expect(def?.[side], `${unitDefId} has no ${side} side`).toBeTruthy();
       const url = communityBalanceUnitFaceImage(unitDefId, side);
       expect(url).toBe(`/assets/community-balance/unit-${unitDefId.replaceAll(".", "-")}-${side}.webp`);
-      const file = toFile(url!);
-      expect(existsSync(file), `missing community unit face for ${unitDefId} ${side}: ${file}`).toBe(true);
-      const meta = await sharp(file).metadata();
-      expect([unitDefId, side, meta.format, meta.width, meta.height]).toEqual([unitDefId, side, "webp", 743, 1040]);
-      expect(statSync(file).size, `${unitDefId} ${side} face looks like a stub`).toBeGreaterThan(20 * 1024);
+      expect(
+        hasMediaFile(url!),
+        `missing community unit face for ${unitDefId} ${side}: ${url} (run \`npm run media:publish\`)`
+      ).toBe(true);
+      const info = mediaFileInfo(url!)!;
+      expect([unitDefId, side, mediaExtensionOf(url!), info.width, info.height]).toEqual([
+        unitDefId,
+        side,
+        "webp",
+        743,
+        1040
+      ]);
+      expect(info.bytes, `${unitDefId} ${side} face looks like a stub`).toBeGreaterThan(20 * 1024);
     }
     // CONTROL: an UNCHANGED side of a covered unit, and an uncovered unit, resolve nothing.
     expect(communityBalanceUnitFaceImage("castle.halberdiers", "few")).toBeUndefined();
@@ -123,18 +127,20 @@ describe("Community Balance Change art", () => {
     ).toEqual([...sheetMachines].sort());
   });
 
-  it("ships a real 743×1040 EMPOWERED face for every empowered ability id", async () => {
+  it("ships a real 743×1040 EMPOWERED face for every empowered ability id", () => {
     for (const cardId of COMMUNITY_BALANCE_EMPOWERED_ABILITY_IDS) {
       // Every empowered id must also have a wired plain reprint (the empowered
       // face is the same card's empowered display state).
       expect(isCommunityBalanceCard(cardId), `${cardId} empowered face without a wired reprint`).toBe(true);
       const url = communityBalanceEmpoweredCardImage(cardId);
       expect(url).toBe(`/assets/community-balance/${cardId.replaceAll(".", "-")}-empowered.webp`);
-      const file = toFile(url!);
-      expect(existsSync(file), `missing empowered community face for ${cardId}: ${file}`).toBe(true);
-      const meta = await sharp(file).metadata();
-      expect([cardId, meta.format, meta.width, meta.height]).toEqual([cardId, "webp", 743, 1040]);
-      expect(statSync(file).size, `${cardId} empowered community face looks like a stub`).toBeGreaterThan(20 * 1024);
+      expect(
+        hasMediaFile(url!),
+        `missing empowered community face for ${cardId}: ${url} (run \`npm run media:publish\`)`
+      ).toBe(true);
+      const info = mediaFileInfo(url!)!;
+      expect([cardId, mediaExtensionOf(url!), info.width, info.height]).toEqual([cardId, "webp", 743, 1040]);
+      expect(info.bytes, `${cardId} empowered community face looks like a stub`).toBeGreaterThan(20 * 1024);
     }
     // A card outside the empowered list resolves nothing.
     expect(communityBalanceEmpoweredCardImage("ability.logistics")).toBeUndefined();

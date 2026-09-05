@@ -1,7 +1,6 @@
-import { existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import soundManifest from "../../public/sounds/manifest.json";
+import { hasMediaFile } from "@/lib/media-manifest";
 import { coreUnitDefinitions } from "./factions/units";
 import { DOOM_UNIT_IDS } from "./doom";
 import { COMMANDER_SLUGS } from "./commanders";
@@ -85,8 +84,7 @@ describe("unit combat voices", () => {
       for (const action of [...coreActions, "shoot"] as UnitSoundAction[]) {
         const key = unitSoundKey(unit.id, action);
         for (const src of clipSrcs(key)) {
-          const file = fileURLToPath(new URL(`../../public${src}`, import.meta.url));
-          if (!existsSync(file)) {
+          if (!hasMediaFile(src)) {
             lost.add(src);
           }
         }
@@ -150,8 +148,7 @@ describe("unit combat voices", () => {
         const srcs = clipSrcs(key);
         expect(srcs, `${unitId}: ${action} -> ${key} should resolve to real clips`).not.toEqual([]);
         for (const src of srcs) {
-          const file = fileURLToPath(new URL(`../../public${src}`, import.meta.url));
-          expect(existsSync(file), `${unitId}: ${action} -> ${src} on disk`).toBe(true);
+          expect(hasMediaFile(src), `${unitId}: ${action} -> ${src} on disk`).toBe(true);
         }
       }
     }
@@ -245,8 +242,7 @@ describe("unit combat voices", () => {
       "/sounds/units/arch-devil-special-2.mp3"
     ]);
     for (const src of clipSrcs(key)) {
-      const file = fileURLToPath(new URL(`../../public${src}`, import.meta.url));
-      expect(existsSync(file), `${src} should exist on disk`).toBe(true);
+      expect(hasMediaFile(src), `${src} should exist on disk`).toBe(true);
     }
   });
 
@@ -268,8 +264,7 @@ describe("unit combat voices", () => {
           continue;
         }
         for (const src of srcs) {
-          const file = fileURLToPath(new URL(`../../public${src}`, import.meta.url));
-          if (!existsSync(file)) {
+          if (!hasMediaFile(src)) {
             missing.push(`${slug}: ${action} -> ${src} (no file)`);
           }
         }
@@ -339,8 +334,7 @@ describe("unit combat voices", () => {
         expect(srcs[1], `${key} must put its effect after its voice`).toMatch(/^\/sounds\/mgq\/effects\//);
       }
       for (const src of srcs) {
-        const file = fileURLToPath(new URL(`../../public${src}`, import.meta.url));
-        expect(existsSync(file), `${src} file on disk`).toBe(true);
+        expect(hasMediaFile(src), `${src} file on disk`).toBe(true);
       }
     };
 
@@ -411,8 +405,7 @@ describe("unit combat voices", () => {
             expect(entry?.src, `${variant} is a voice response`).toContain("/sounds/little-busters/source/");
           }
           for (const src of clipSrcs(variant)) {
-            const file = fileURLToPath(new URL(`../../public${src}`, import.meta.url));
-            expect(existsSync(file), `${src} file on disk`).toBe(true);
+            expect(hasMediaFile(src), `${src} file on disk`).toBe(true);
           }
         }
       }
@@ -449,8 +442,7 @@ describe("unit combat voices", () => {
     const expectResolvesToOgg = (key: string | undefined) => {
       const srcs = clipSrcs(key);
       expect(srcs, `${key} should resolve to one clip`).toEqual([`/sounds/${key}.ogg`]);
-      const file = fileURLToPath(new URL(`../../public/sounds/${key}.ogg`, import.meta.url));
-      expect(existsSync(file), `${key} file on disk`).toBe(true);
+      expect(hasMediaFile(`/sounds/${key}.ogg`), `${key} file on disk`).toBe(true);
     };
 
     for (const slug of [...meleeSlugs, ...rangedSlugs]) {
@@ -568,8 +560,7 @@ describe("unit combat voices", () => {
           continue;
         }
         for (const src of srcs) {
-          const file = fileURLToPath(new URL(`../../public${src}`, import.meta.url));
-          if (!existsSync(file)) {
+          if (!hasMediaFile(src)) {
             missing.push(`${id}: ${action} -> ${src} (no file)`);
           }
         }

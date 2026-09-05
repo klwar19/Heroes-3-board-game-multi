@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { existsSync, statSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { hasMediaFile, mediaFileInfo } from "@/lib/media-manifest";
 import {
   CREATURE_BANK_FIELD_IMAGE,
   CREATURE_BANK_FIELD_IMAGES,
@@ -13,12 +12,9 @@ import { CREATURE_BANK_IDS, POLISH_CREATURE_BANK_IDS } from "@/data/map/creature
  * reused ONE generic montage, so a Crypt, a Pyramid and a Dragon Utopia looked
  * identical. These tests fail if anyone collapses the twelve banks back onto a
  * single shared image, points a bank at the wrong slug, or ships an entry whose
- * art file is missing from public/assets.
+ * art file is not published (media-manifest.json).
  */
-function publicAsset(path: string): string {
-  // src/data/assets/ -> repo root is three levels up; assets live under /public.
-  return fileURLToPath(new URL(`../../../public${path}`, import.meta.url));
-}
+const assetBytes = (path: string): number => mediaFileInfo(path)!.bytes;
 
 describe("Creature Bank field-tile art", () => {
   it("maps every one of the twelve banks to its own image", () => {
@@ -40,9 +36,10 @@ describe("Creature Bank field-tile art", () => {
     expect(new Set(paths).size).toBe(8);
     for (const path of paths) {
       expect(path).toContain("/assets/polish-banks/location-");
-      expect(statSync(publicAsset(path)).size).toBeLessThan(5_000);
+      expect(hasMediaFile(path), `${path} — run npm run media:publish`).toBe(true);
+      expect(assetBytes(path)).toBeLessThan(5_000);
     }
-    expect(paths.reduce((sum, path) => sum + statSync(publicAsset(path)).size, 0)).toBeLessThan(25_000);
+    expect(paths.reduce((sum, path) => sum + assetBytes(path), 0)).toBeLessThan(25_000);
   });
 
   it("gives each bank a DISTINCT image — none silently shares another's art or the generic token", () => {
@@ -69,10 +66,9 @@ describe("Creature Bank field-tile art", () => {
   it("ships a real, non-trivial art file for every bank (and the fallback)", () => {
     const files = [...Object.values(CREATURE_BANK_FIELD_IMAGES), CREATURE_BANK_FIELD_IMAGE];
     for (const path of files) {
-      const file = publicAsset(path);
-      expect(existsSync(file), `${path} must exist in public/assets`).toBe(true);
+      expect(hasMediaFile(path), `${path} must be published — run npm run media:publish`).toBe(true);
       // A truncated/placeholder download would be a few bytes; real scans are KBs.
-      expect(statSync(file).size, `${path} must be a real image`).toBeGreaterThan(2000);
+      expect(assetBytes(path), `${path} must be a real image`).toBeGreaterThan(2000);
     }
   });
 });

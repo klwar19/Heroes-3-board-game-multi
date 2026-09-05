@@ -1,6 +1,5 @@
-import { existsSync, statSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { hasMediaFile, mediaFileInfo } from "@/lib/media-manifest";
 
 import { allTileDefinitions } from "@/data/map/tiles";
 import {
@@ -12,9 +11,8 @@ import {
 
 function assertRealArt(assetPath: string, minBytes = 2_000) {
   expect(assetPath.startsWith("/assets/")).toBe(true);
-  const file = fileURLToPath(new URL(`../../../public${assetPath}`, import.meta.url));
-  expect(existsSync(file), `${assetPath} missing`).toBe(true);
-  expect(statSync(file).size, `${assetPath} empty`).toBeGreaterThan(minBytes);
+  expect(hasMediaFile(assetPath), `${assetPath} unpublished (run: npm run media:publish)`).toBe(true);
+  expect(mediaFileInfo(assetPath)!.bytes, `${assetPath} empty`).toBeGreaterThan(minBytes);
 }
 
 describe("field symbol modules (attach, not whole-tile bake)", () => {

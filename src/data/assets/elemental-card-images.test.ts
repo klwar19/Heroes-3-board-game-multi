@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { hasMediaFile, mediaFileInfo } from "@/lib/media-manifest";
 import { coreUnitDefinitions } from "@/data/factions/units";
 
 const EXPECTED = {
@@ -42,9 +43,6 @@ function stats(side: { attack: number; defense: number; health: number; initiati
   return [side.attack, side.defense, side.health, side.initiative];
 }
 
-function onDisk(assetPath: string): string {
-  return fileURLToPath(new URL(`../../../public${assetPath}`, import.meta.url));
-}
 
 // 2026-08 wiki refresh: all twelve faces below (4 summon Few + 4 summon Pack +
 // 4 Neutral guards) are now the REAL printed scans, pulled by
@@ -101,15 +99,15 @@ describe("summoned Elemental card faces", () => {
         ...faces,
         `/assets/units-elemental-art-${slug}.webp`
       ]) {
-        const file = onDisk(asset!);
-        expect(existsSync(file), `${asset} must exist`).toBe(true);
-        expect(statSync(file).size, `${asset} must contain real art`).toBeGreaterThan(100_000);
+        expect(hasMediaFile(asset!), `${asset} must be published — run npm run media:publish`).toBe(true);
+        expect(mediaFileInfo(asset!)!.bytes, `${asset} must contain real art`).toBeGreaterThan(100_000);
       }
 
-      // The three faces must be three DIFFERENT files on disk, not one scan
-      // copied under three names (the cheapest form of the summon/neutral mix-up).
-      const bytes = faces.map((asset) => readFileSync(onDisk(asset!)).toString("base64"));
-      expect(new Set(bytes).size, `${slug} faces must be distinct images`).toBe(3);
+      // The three faces must be three DIFFERENT files, not one scan copied under
+      // three names (the cheapest form of the summon/neutral mix-up). The
+      // manifest's md5 IS the byte identity, so this needs no local media.
+      const digests = faces.map((asset) => mediaFileInfo(asset!)!.md5);
+      expect(new Set(digests).size, `${slug} faces must be distinct images`).toBe(3);
     }
   });
 

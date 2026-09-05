@@ -1,6 +1,6 @@
-import { existsSync, statSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+
+import { hasMediaFile, mediaFileInfo } from "@/lib/media-manifest";
 
 import { EQUIPMENT_IDS } from "@/data/anime/equipment";
 import { HERO_GRADE_ICONS } from "@/data/anime/hero-grades";
@@ -252,9 +252,8 @@ describe("cultivation art contract", () => {
       "/assets/units-commander-demon_ancestor.webp"
     ];
     for (const asset of assets) {
-      const file = join(process.cwd(), "public", asset.replace(/^\//, ""));
-      expect(existsSync(file), asset).toBe(true);
-      expect(statSync(file).size, asset).toBeGreaterThan(10_000);
+      expect(hasMediaFile(asset), `${asset} is not published (npm run media:publish)`).toBe(true);
+      expect(mediaFileInfo(asset)!.bytes, asset).toBeGreaterThan(10_000);
     }
   });
 });

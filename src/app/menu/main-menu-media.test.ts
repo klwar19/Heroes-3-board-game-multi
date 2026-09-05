@@ -1,7 +1,7 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
-import path from "node:path";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import sharp from "sharp";
+import { hasMediaFile, localMediaPath, mediaExtensionOf, mediaFileInfo } from "@/lib/media-manifest";
 import { MENU_ART } from "./page";
 
 /**
@@ -30,9 +30,6 @@ import { MENU_ART } from "./page";
  * a dropped or duplicated frame breaks the authored seamless loop.
  */
 
-const REPO_ROOT = path.resolve(__dirname, "../../..");
-const toFile = (url: string) => path.join(REPO_ROOT, "public", url.replace(/^\//, ""));
-
 /** Widest the art is ever painted (see the CSS quoted above), doubled for DPR. */
 const MAX_BUTTON_WIDTH = 768;
 /** Per-button ceiling: the pre-compression masters were 114-311KB. */
@@ -59,25 +56,35 @@ describe("main-menu button art", () => {
     expect(entries.length).toBeGreaterThanOrEqual(13);
 
     for (const [key, url] of entries) {
-      const file = toFile(url);
-      expect(existsSync(file), `missing main-menu button art for ${key}: ${file}`).toBe(true);
-      const meta = await sharp(file).metadata();
-      expect([key, meta.format]).toEqual([key, "webp"]);
-      // Transparent plaques: the art is composited straight onto the video.
-      expect(Boolean(meta.hasAlpha), `${key} lost its alpha channel`).toBe(true);
-      expect(meta.width ?? 0, `${key} is wider than the menu ever paints it`).toBeLessThanOrEqual(
+      expect(
+        hasMediaFile(url),
+        `missing main-menu button art for ${key}: ${url} — publish it with npm run media:publish`
+      ).toBe(true);
+      const info = mediaFileInfo(url)!;
+      expect([key, mediaExtensionOf(url)]).toEqual([key, "webp"]);
+      expect(info.width ?? 0, `${key} is wider than the menu ever paints it`).toBeLessThanOrEqual(
         MAX_BUTTON_WIDTH
       );
       // Still big enough to be the real plate, never a 1KB stub.
-      expect(meta.width ?? 0, `${key} looks downscaled past the display size`).toBeGreaterThanOrEqual(512);
-      expect(statSync(file).size, `${key} looks like a stub`).toBeGreaterThan(8 * 1024);
+      expect(info.width ?? 0, `${key} looks downscaled past the display size`).toBeGreaterThanOrEqual(512);
+      expect(info.bytes, `${key} looks like a stub`).toBeGreaterThan(8 * 1024);
+
+      // Transparent plaques: the art is composited straight onto the video.
+      // Alpha is a BYTE-level property the manifest does not carry, so this half
+      // runs only on a checkout that pulled the media (npm run media:pull).
+      const file = localMediaPath(url);
+      if (!file) continue;
+      const meta = await sharp(file).metadata();
+      expect(Boolean(meta.hasAlpha), `${key} lost its alpha channel`).toBe(true);
     }
   });
 
   it("keeps every button — and the whole preloaded set — light", () => {
     let total = 0;
     for (const [key, url] of Object.entries(MENU_ART)) {
-      const bytes = statSync(toFile(url)).size;
+      const info = mediaFileInfo(url);
+      expect(info, `missing main-menu button art for ${key}: ${url} — run npm run media:publish`).toBeDefined();
+      const bytes = info!.bytes;
       total += bytes;
       expect(bytes, `${key} is too heavy for a menu button (${Math.round(bytes / 1024)}KB)`).toBeLessThanOrEqual(
         MAX_BUTTON_BYTES
@@ -91,12 +98,19 @@ describe("main-menu button art", () => {
 
 describe("main-menu backdrop loop", () => {
   it("ships a compressed, SILENT, fast-starting mp4", () => {
-    const file = toFile(VIDEO_URL);
-    expect(existsSync(file), `missing main-menu backdrop loop: ${file}`).toBe(true);
+    expect(
+      hasMediaFile(VIDEO_URL),
+      `missing main-menu backdrop loop: ${VIDEO_URL} — publish it with npm run media:publish`
+    ).toBe(true);
 
-    const bytes = statSync(file).size;
+    const bytes = mediaFileInfo(VIDEO_URL)!.bytes;
     expect(bytes, `backdrop loop is ${Math.round(bytes / 1024 / 1024)}MB`).toBeLessThanOrEqual(MAX_VIDEO_BYTES);
     expect(bytes, "backdrop loop looks like a stub").toBeGreaterThan(256 * 1024);
+
+    // The container scan below needs the actual BYTES, so it runs only on a
+    // checkout that pulled the media (npm run media:pull).
+    const file = localMediaPath(VIDEO_URL);
+    if (!file) return;
 
     // Container inspection, no ffmpeg needed. `moov` before `mdat` is faststart
     // (the browser can begin playback without the whole file); an audio track
@@ -115,19 +129,21 @@ describe("main-menu backdrop loop", () => {
     expect(header.includes("vide"), "backdrop loop has no video track?").toBe(true);
   });
 
-  it("ships a light, full-bleed still as the poster / no-video backdrop", async () => {
-    const file = toFile(FALLBACK_URL);
-    expect(existsSync(file), `missing main-menu fallback still: ${file}`).toBe(true);
+  it("ships a light, full-bleed still as the poster / no-video backdrop", () => {
+    expect(
+      hasMediaFile(FALLBACK_URL),
+      `missing main-menu fallback still: ${FALLBACK_URL} — publish it with npm run media:publish`
+    ).toBe(true);
 
-    const meta = await sharp(file).metadata();
-    expect(meta.format).toBe("webp");
+    const info = mediaFileInfo(FALLBACK_URL)!;
+    expect(mediaExtensionOf(FALLBACK_URL)).toBe("webp");
     // Full-bleed with a 1.07 ken-burns zoom, so it must stay a real backdrop
     // plate — never downscaled to a thumbnail — while never exceeding 1080p-ish
     // width, which is already beyond the 1280x720 loop it stands in for.
-    expect(meta.width ?? 0).toBeGreaterThanOrEqual(1280);
-    expect(meta.width ?? 0).toBeLessThanOrEqual(1920);
+    expect(info.width ?? 0).toBeGreaterThanOrEqual(1280);
+    expect(info.width ?? 0).toBeLessThanOrEqual(1920);
 
-    const bytes = statSync(file).size;
+    const bytes = info.bytes;
     expect(bytes, `fallback still is ${Math.round(bytes / 1024)}KB`).toBeLessThanOrEqual(MAX_FALLBACK_BYTES);
     expect(bytes, "fallback still looks like a stub").toBeGreaterThan(32 * 1024);
   });

@@ -26,12 +26,12 @@ describe("assetUrl", () => {
     expect(assetBaseUrl()).toBe("");
   });
 
-  it("prefixes root-relative asset and sound paths with the configured origin", async () => {
+  it("prefixes root-relative asset and sound paths with the configured origin (unpublished paths keep their logical key)", async () => {
     const { assetUrl, assetBaseUrl } = await loadAssetUrl("https://cdn.example.com");
-    expect(assetUrl("/assets/ui/map-backdrop.jpg")).toBe(
-      "https://cdn.example.com/assets/ui/map-backdrop.jpg"
+    expect(assetUrl("/assets/ui/not-a-published-file.jpg")).toBe(
+      "https://cdn.example.com/assets/ui/not-a-published-file.jpg"
     );
-    expect(assetUrl("/sounds/click.mp3")).toBe("https://cdn.example.com/sounds/click.mp3");
+    expect(assetUrl("/sounds/not-a-published-click.mp3")).toBe("https://cdn.example.com/sounds/not-a-published-click.mp3");
     expect(assetBaseUrl()).toBe("https://cdn.example.com");
   });
 
@@ -65,7 +65,13 @@ describe("assetUrl", () => {
   });
 });
 
-describe("assetUrl media version (?v= cache-busting)", () => {
+describe("assetUrl content-addressed objects (docs/media-manifest.md)", () => {
+  // A real published file (media-manifest.json: "assets/abilities-air_magic.webp",
+  // md5 7f73e9cf…) — the runtime map turns it into its immutable object key.
+  const PUBLISHED = "/assets/abilities-air_magic.webp";
+  const PUBLISHED_OBJECT = "/assets/abilities-air_magic.7f73e9cf.webp";
+  const UNPUBLISHED = "/assets/not-a-published-file.webp";
+
   async function loadVersioned(base: string | undefined, version: string) {
     vi.resetModules();
     if (base === undefined) {
@@ -82,39 +88,47 @@ describe("assetUrl media version (?v= cache-busting)", () => {
     vi.unstubAllEnvs();
   });
 
-  it("appends ?v=<version> to CDN-served media so replaced art busts the edge cache", async () => {
-    const { assetUrl } = await loadVersioned("https://cdn.example.com", "abc123def0");
-    expect(assetUrl("/assets/spells-quicksand.webp")).toBe(
-      "https://cdn.example.com/assets/spells-quicksand.webp?v=abc123def0"
-    );
-    expect(assetUrl("/sounds/click.mp3")).toBe(
-      "https://cdn.example.com/sounds/click.mp3?v=abc123def0"
+  it("serves a published file from its content-addressed object with NO version query (immutable URL)", async () => {
+    const { assetUrl, contentAddressedPath } = await loadVersioned("https://cdn.example.com", "abc123def0");
+    expect(contentAddressedPath(PUBLISHED)).toBe(PUBLISHED_OBJECT);
+    expect(assetUrl(PUBLISHED)).toBe(`https://cdn.example.com${PUBLISHED_OBJECT}`);
+    // The map covers sounds too: derive the expectation from the map itself.
+    const map = (await import("./media-keys.generated.json")).default;
+    const dirs = map.dirs as Record<string, Record<string, string>>;
+    const soundDir = Object.keys(dirs).find((dir) => dir.startsWith("sounds/"))!;
+    const [soundFile, soundHash] = Object.entries(dirs[soundDir])[0];
+    const dot = soundFile.lastIndexOf(".");
+    expect(assetUrl(`/${soundDir}/${soundFile}`)).toBe(
+      `https://cdn.example.com/${soundDir}/${soundFile.slice(0, dot)}.${soundHash}${soundFile.slice(dot)}`
     );
   });
 
-  it("CONTROL: no version configured keeps the classic unversioned URL", async () => {
+  it("keeps a caller's query/fragment on the object path", async () => {
+    const { assetUrl } = await loadVersioned("https://cdn.example.com", "abc123def0");
+    expect(assetUrl(`${PUBLISHED}?frame=2#t=1`)).toBe(`https://cdn.example.com${PUBLISHED_OBJECT}?frame=2#t=1`);
+  });
+
+  it("falls back to the legacy logical key + ?v=<version> for a path the map does not know", async () => {
+    const { assetUrl, contentAddressedPath } = await loadVersioned("https://cdn.example.com", "abc123def0");
+    expect(contentAddressedPath(UNPUBLISHED)).toBeUndefined();
+    expect(assetUrl(UNPUBLISHED)).toBe(`https://cdn.example.com${UNPUBLISHED}?v=abc123def0`);
+    expect(assetUrl("/assets/x.webp?frame=2")).toBe("https://cdn.example.com/assets/x.webp?frame=2&v=abc123def0");
+  });
+
+  it("CONTROL: no version configured keeps the legacy fallback unversioned", async () => {
     const { assetUrl } = await loadVersioned("https://cdn.example.com", "");
-    expect(assetUrl("/assets/spells-quicksand.webp")).toBe(
-      "https://cdn.example.com/assets/spells-quicksand.webp"
-    );
+    expect(assetUrl(UNPUBLISHED)).toBe(`https://cdn.example.com${UNPUBLISHED}`);
   });
 
-  it("CONTROL: same-origin serving ignores the version (dev/CI unchanged)", async () => {
+  it("CONTROL: same-origin serving returns the logical path untouched — mapped or not (local dev with the media pulled)", async () => {
     const { assetUrl } = await loadVersioned(undefined, "abc123def0");
-    expect(assetUrl("/assets/spells-quicksand.webp")).toBe("/assets/spells-quicksand.webp");
-  });
-
-  it("keeps an existing query intact (appends with & instead of a second ?)", async () => {
-    const { assetUrl } = await loadVersioned("https://cdn.example.com", "abc123def0");
-    expect(assetUrl("/assets/x.webp?frame=2")).toBe(
-      "https://cdn.example.com/assets/x.webp?frame=2&v=abc123def0"
-    );
+    expect(assetUrl(PUBLISHED)).toBe(PUBLISHED);
+    expect(assetUrl(UNPUBLISHED)).toBe(UNPUBLISHED);
   });
 
   it("wrapping twice stays a no-op (already-absolute values pass through untouched)", async () => {
     const { assetUrl } = await loadVersioned("https://cdn.example.com", "abc123def0");
-    expect(assetUrl(assetUrl("/assets/x.webp"))).toBe(
-      "https://cdn.example.com/assets/x.webp?v=abc123def0"
-    );
+    expect(assetUrl(assetUrl(PUBLISHED))).toBe(`https://cdn.example.com${PUBLISHED_OBJECT}`);
+    expect(assetUrl(assetUrl(UNPUBLISHED))).toBe(`https://cdn.example.com${UNPUBLISHED}?v=abc123def0`);
   });
 });

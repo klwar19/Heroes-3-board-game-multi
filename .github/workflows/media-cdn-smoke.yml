@@ -1,0 +1,48 @@
+# Scheduled smoke test of the media CDN (docs/media-manifest.md).
+#
+# Binary game media is not in git: media-manifest.json lists every published
+# file (md5 + size) and the Cloudflare R2 bucket behind https://cdn.hamthefirt.xyz
+# holds the bytes under content-addressed keys. This workflow HEADs a daily
+# rotating sample of those objects (always including the screen-critical ones)
+# and fails when a key is missing or its size/ETag disagrees with the manifest —
+# the only way a published file can stop serving without a code change.
+#
+# No secrets and no npm install: scripts/media.mjs verify is plain node fetch.
+# Manual run: Actions → "Media CDN smoke test" → Run workflow (tick "full" to
+# verify every object — ~5.5k HEAD requests, a few minutes).
+
+name: Media CDN smoke test
+
+on:
+  schedule:
+    - cron: "17 6 * * 1" # Mondays 06:17 UTC
+  push:
+    branches: [main]
+    paths:
+      - "media-manifest.json"
+      - "scripts/media.mjs"
+      - "scripts/lib/media-manifest.mjs"
+      - ".github/workflows/media-cdn-smoke.yml"
+  workflow_dispatch:
+    inputs:
+      full:
+        description: "Verify EVERY manifest object instead of a sample"
+        type: boolean
+        default: false
+
+jobs:
+  verify:
+    if: github.repository_owner == 'klwar19'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Verify CDN objects against media-manifest.json
+        run: |
+          if [ "${{ inputs.full }}" = "true" ]; then
+            node scripts/media.mjs verify
+          else
+            node scripts/media.mjs verify --sample 120
+          fi

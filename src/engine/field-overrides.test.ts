@@ -39,8 +39,7 @@ import {
   instantiateTile,
   tokenPlacementCandidates
 } from "./adventure";
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { hasMediaFile } from "@/lib/media-manifest";
 
 function animeOn() {
   return {
@@ -166,9 +165,8 @@ describe("Anime content package registration", () => {
     for (const def of allFieldOverrideDefinitions()) {
       const isPlaceholder = FIELD_OVERRIDE_ART_PLACEHOLDERS.has(def.id);
       if (def.image) {
-        // Art claimed → the file must exist AND the kind must NOT be a placeholder.
-        const abs = resolve(process.cwd(), `public${def.image}`);
-        expect(existsSync(abs), `missing art file ${def.image} for ${def.id}`).toBe(true);
+        // Art claimed → the file must be PUBLISHED AND the kind must NOT be a placeholder.
+        expect(hasMediaFile(def.image), `unpublished art file ${def.image} for ${def.id} (npm run media:publish)`).toBe(true);
         expect(isPlaceholder, `${def.id} has art but is also an art placeholder`).toBe(false);
       } else {
         // No art → it MUST be a declared placeholder (never a silent invisible hex).
@@ -181,7 +179,7 @@ describe("Anime content package registration", () => {
     for (const id of WAVE1_ART_KINDS) {
       const def = getFieldOverrideDefinition(id)!;
       expect(def.image, id).toBeTruthy();
-      expect(existsSync(resolve(process.cwd(), `public${def.image}`)), `missing ${def.image}`).toBe(true);
+      expect(hasMediaFile(def.image!), `unpublished ${def.image} (npm run media:publish)`).toBe(true);
       expect(FIELD_OVERRIDE_ART_PLACEHOLDERS.has(id), id).toBe(false);
     }
   });
@@ -197,10 +195,9 @@ describe("Anime content package registration", () => {
       // Promote-flow direction (a): dropping the .webp is HALF the promote — the
       // registry entry must go too. A placeholder that already has a file on disk
       // (even before its `image` is wired) is a stale registry, so it must fail.
-      const artOnDisk = resolve(process.cwd(), `public/assets/anime/field-overrides/${id}.webp`);
       expect(
-        existsSync(artOnDisk),
-        `placeholder "${id}" already has a hex-art file on disk — set image: art("${id}") and remove it from FIELD_OVERRIDE_ART_PLACEHOLDERS`
+        hasMediaFile(`/assets/anime/field-overrides/${id}.webp`),
+        `placeholder "${id}" already has a published hex-art file — set image: art("${id}") and remove it from FIELD_OVERRIDE_ART_PLACEHOLDERS`
       ).toBe(false);
     }
   });

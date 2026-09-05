@@ -1,7 +1,6 @@
-import { existsSync, statSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
+import { hasMediaFile, localMediaPath, mediaFileInfo } from "@/lib/media-manifest";
 import { CREATURE_BANK_UNIT_SIDES } from "@/data/map/creature-banks";
 
 const EXPECTED = {
@@ -25,9 +24,7 @@ const EXPECTED = {
   "neutral.crystal_dragons": ["units-neutral-azure-crystal_dragons.webp", "units-creature-bank-crystal_dragons.webp"]
 } as const;
 
-function asset(name: string): string {
-  return fileURLToPath(new URL(`../../../public/assets/${name}`, import.meta.url));
-}
+const assetUrlOf = (name: string) => `/assets/${name}`;
 
 describe("Creature Bank unit card faces", () => {
   it("gives all 18 unique bank units a dedicated no-cost face", () => {
@@ -36,8 +33,8 @@ describe("Creature Bank unit card faces", () => {
       const side = CREATURE_BANK_UNIT_SIDES[unitDefId];
       expect(side.cost, unitDefId).toEqual({});
       expect(side.cardImage, unitDefId).toBe(`/assets/${output}`);
-      expect(existsSync(asset(output)), output).toBe(true);
-      const size = statSync(asset(output)).size;
+      expect(hasMediaFile(assetUrlOf(output)), `${output} — run npm run media:publish`).toBe(true);
+      const size = mediaFileInfo(assetUrlOf(output))!.bytes;
       // Real card art (not a tiny placeholder), but compressed: lossy WebP keeps
       // every bank face in the same size band as the rest of /public/assets.
       // As of 2026-08-04 these are the GENUINE printed NAVAL BATTLES scans
@@ -83,11 +80,29 @@ describe("Creature Bank unit card faces", () => {
     });
 
     const entries = Object.entries(EXPECTED);
+    // Both halves of every pair must be PUBLISHED (media-manifest.json) — this
+    // half holds on a checkout with no media at all.
+    for (const [unitDefId, [source, output]] of entries) {
+      expect(hasMediaFile(assetUrlOf(source)), `${unitDefId} source ${source} — run npm run media:publish`).toBe(true);
+      expect(hasMediaFile(assetUrlOf(output)), `${unitDefId} face ${output} — run npm run media:publish`).toBe(true);
+    }
+
+    // The pixel comparison below needs the real BYTES, so it runs only on a
+    // checkout that pulled the media (npm run media:pull).
+    const localFiles = new Map<string, string>();
+    for (const [, [source, output]] of entries) {
+      for (const name of [source, output]) {
+        const file = localMediaPath(assetUrlOf(name));
+        if (!file) return;
+        localFiles.set(name, file);
+      }
+    }
+
     // Every image is normalised to the printed card size AND to 3 channels
     // (several faction faces carry an alpha channel, the imported scans do not)
     // so all 18 windows are directly comparable pixel-for-pixel.
     const illustrationOf = (name: string) =>
-      sharp(asset(name)).resize(743, 1040).removeAlpha().extract(region(743, 1040)).raw().toBuffer();
+      sharp(localFiles.get(name)!).resize(743, 1040).removeAlpha().extract(region(743, 1040)).raw().toBuffer();
     const sources = await Promise.all(
       entries.map(async ([unitDefId, [source]]) => ({ unitDefId, pixels: await illustrationOf(source) }))
     );

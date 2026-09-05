@@ -105,45 +105,62 @@ default branch (`main`) takes effect there.** Keep this file committed on `main`
 Nested `CLAUDE.md` files in subdirectories are also loaded when working in those
 folders; per-user `~/.claude/CLAUDE.md` does **not** persist on the web.
 
-## Static media & CDN (how art/sound/font files ship)
+## Static media & CDN (how art/sound/video files ship) — content-addressed since 2026-09-05
 
-`public/` in git is the source of truth; production serves media from the
-Cloudflare R2 CDN at `https://cdn.hamthefirt.xyz` (runbook + live status:
-`docs/cloudflare-custom-domain-cdn-plan.md`). What an AI contributor must know:
+Binary game media (`public/assets/**`, `public/sounds/**`: webp/png/jpg/gif/svg/
+mp4/mp3/ogg/wav) is **NOT tracked in git**. The Cloudflare R2 bucket behind
+`https://cdn.hamthefirt.xyz` holds the bytes under immutable content-addressed
+keys `<dir>/<name>.<md5[0:8]>.<ext>`; the tracked truth is `media-manifest.json`
+(repo root — every file's md5 / bytes / width / height) plus the generated client
+map `src/lib/media-keys.generated.json`. Contract + runbook (incl. the one-time
+history rewrite): `docs/media-manifest.md`. What an AI contributor must know:
 
-- **Adding/replacing a file under `public/assets|sounds|fonts` is enough** —
-  `.github/workflows/sync-media-r2.yml` auto-uploads on every push (branches:
-  new keys only, so previews work; `main`: full sync + cache purge). Never
-  hand-edit the bucket; manual fallback is `npm run sync:assets`.
-- **Replaced media busts the CDN edge cache AUTOMATICALLY via `?v=` versioning**
-  (2026-08-04): every CDN asset URL carries `?v=<media version>` — a build-time
-  hash of every media file's path+size (`src/lib/asset-media-version.ts`, set as
-  `NEXT_PUBLIC_ASSET_VERSION` in next.config.ts, appended by `assetUrl()` AND
-  the globals.css redirect destinations). Any art change → new URLs on the next
-  Vercel deploy → fresh bytes everywhere, with NO Cloudflare purge token.
-  Background: replaced files keep their URL, and without the (never-configured)
-  `CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ZONE_ID` purge secrets the edge served
-  OLD bytes for up to 7 days — whichever URLs happened to be edge-cached at
-  upload time stayed stale while the rest looked fine (the 2026-08-04 "spell
-  scans still old but other art works" report). LIMITS: a same-size byte-level
-  replacement does not move the version (nil in practice for webp/mp3), and a
-  media change invalidates EVERY media URL at once (one-time cold edge per art
-  deploy — deliberate). The rclone `NotImplemented` ERROR lines in the sync
-  logs are retry noise, not upload failures.
-- Code referencing media MUST go through `assetUrl()` (`src/lib/asset-url.ts`)
-  — a raw `/assets/…` literal in a consumption position fails
-  `src/lib/asset-url-coverage.test.ts`. `globals.css` url() refs are covered
-  by the `next.config.ts` CDN redirects instead (`src/lib/asset-cdn.ts`).
-- **Vercel does not package the CDN binary tree** (2026-09-02): `vercel.json`
-  runs `scripts/vercel-build.mjs`, which verifies the CDN setting, computes the
-  media version, then stages `public/assets` and binary sounds out of the
-  ephemeral build before Next packages static files. It retains the two sound
-  JSON imports and restores all media if the build fails. Normal local builds,
-  Git, the R2 sync workflow, and PartyKit are unchanged. Do not replace this
-  with `.vercelignore`: the version must be computed before media is staged.
-- `partykit.json`'s `HOMM3BG_APP_URL` (canonical: `https://hamthefirt.xyz`)
-  must stay in lockstep with the `HOMM3BG_APP_URL` GitHub Actions secret —
-  the secret OVERRIDES the json at deploy time.
+- **Adding or replacing a file under `public/assets|sounds` is NOT enough any
+  more.** Run `npm run media:publish` (reads the R2 credentials from
+  `.env.local`, uploads every new/changed file to a NEW key, HEAD-verifies each
+  object, then rewrites BOTH tracked files) and commit `media-manifest.json` +
+  `src/lib/media-keys.generated.json` with your change. Until then the file
+  exists only on your disk: `src/lib/media-manifest.test.ts` ("matches the local
+  media tree") names it, and every art-existence test reads the manifest — an
+  unpublished file is a RED test, never a silent 404 in production. The former
+  GitHub sync workflow and `scripts/sync-assets-to-r2.sh` are gone.
+- **A fresh clone has no media.** `npm run media:pull` downloads the manifest's
+  files from the CDN (no credentials). Without it, `next dev` / `next build`
+  default `NEXT_PUBLIC_ASSET_BASE_URL` to the CDN (`hasLocalMediaTree` in
+  next.config.ts), so the app renders anyway; tests that inspect BYTES (sharp
+  pixel/alpha scans) skip via `localMediaPath`, while the manifest-level gates
+  (existence, dimensions, size floors, directory listings) always run.
+- Code referencing media MUST go through `assetUrl()` (`src/lib/asset-url.ts`):
+  it maps the logical path to the hashed object via the runtime map; an
+  unmapped path falls back to the logical key + `?v=<manifest version>` (the
+  pre-2026-09-05 layout, still in the bucket for files published before then).
+  A raw `/assets/…` literal in a consumption position fails
+  `src/lib/asset-url-coverage.test.ts`. `globals.css` url() refs get one EXACT
+  redirect each (`cssAssetRedirects`, next.config.ts) ahead of the wildcard
+  `/assets/:path*` redirect; a ref not in the manifest fails
+  `media-manifest.test.ts`.
+- **Objects are never overwritten or deleted**; rollback = revert the manifest
+  commit. `Cache-Control: public, max-age=31536000, immutable` — no purge token
+  is needed and none is configured. Verified 2026-09-05: all 5,492 objects
+  HEAD-checked on the CDN (size + ETag = md5), edge caching MISS→HIT.
+- **Tests**: use `src/lib/media-manifest.ts` (`hasMediaFile`, `mediaFileInfo`,
+  `listMediaDir`, `listMediaFiles`, `localMediaPath`). Never
+  `existsSync(join("public", url))` for media in a test again. The tracked
+  code/doc files inside the media trees (`public/sounds/manifest.json`,
+  `durations.json`, READMEs) and `public/fonts/**` (same-origin,
+  `CDN_SERVES_FONTS = false`) are unchanged and may still be read from disk.
+- **Vercel**: `vercel.json` still runs `scripts/vercel-build.mjs` (version from
+  the manifest; stages a pulled tree out of `public/` if one happens to exist,
+  so media is never packaged). PartyKit is unaffected. The scheduled
+  `.github/workflows/media-cdn-smoke.yml` HEADs a rotating sample weekly and on
+  every manifest change (GitHub Actions must be enabled/billed to run).
+- LIMITS: the runtime map adds ≈200 KB raw / ≈50 KB brotli to the client bundle;
+  `.gitignore` ignores media PER EXTENSION, so a new media kind must be added to
+  `MEDIA_EXTENSIONS` (`scripts/lib/media-manifest.mjs` + the TS twin) AND
+  `.gitignore`, otherwise `media:publish` refuses it; `hasLocalMediaTree`
+  samples five entries (a partially pulled tree counts as present and the
+  invariant test lists what is missing); the 8-hex md5 prefix only has to be
+  unique per PATH, and publish refuses an existing object with a different md5.
 
 ## Desktop command HUD (in-game layout, ≥1101px) — what runs vs. limits
 

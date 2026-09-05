@@ -1,7 +1,6 @@
-import { existsSync, statSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { hasMediaFile, mediaFileInfo } from "@/lib/media-manifest";
 import { cardLibrary } from "@/data/cards/library";
 import { coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
@@ -171,20 +170,19 @@ describe("anime specialty redesign — clone ↔ source mechanical identity", ()
     }
   });
 
-  it("every redesigned hero renders natively with an on-disk specialty icon", () => {
+  it("every redesigned hero renders natively with a published specialty icon", () => {
     for (const heroSlug of Object.keys(REDESIGNS)) {
       expect(coreHeroDefinitions[heroSlug], heroSlug).toBeDefined();
       const icon = SPECIALTY_ICON_BY_HERO[heroSlug];
       expect(icon, `${heroSlug} needs a specialty icon`).toBeTruthy();
-      const file = join(process.cwd(), "public", icon!.replace(/^\//, ""));
-      expect(existsSync(file), icon).toBe(true);
-      expect(statSync(file).size, icon).toBeGreaterThan(10_000);
+      expect(hasMediaFile(icon!), `${icon} — run npm run media:publish`).toBe(true);
+      expect(mediaFileInfo(icon!)!.bytes, icon).toBeGreaterThan(10_000);
     }
   });
 });
 
 describe("Fuyuki / Hidden Leaf unit-XP rank emblems", () => {
-  it("one bespoke on-disk emblem per unit line, resolved by unitRankAbilityIcon", () => {
+  it("one bespoke published emblem per unit line, resolved by unitRankAbilityIcon", () => {
     const rosters: Array<[Record<string, string>, string]> = [
       [FUYUKI_RANK_ABILITY_ICONS, "fuyuki"],
       [HIDDEN_LEAF_RANK_ABILITY_ICONS, "hidden_leaf"]
@@ -200,9 +198,8 @@ describe("Fuyuki / Hidden Leaf unit-XP rank emblems", () => {
         expect(resolved).toBe(icons[unitId]);
         expect(seen.has(resolved), `${unitId} emblem must be distinct`).toBe(false);
         seen.add(resolved);
-        const file = join(process.cwd(), "public", resolved.replace(/^\//, ""));
-        expect(existsSync(file), resolved).toBe(true);
-        expect(statSync(file).size, resolved).toBeGreaterThan(10_000);
+        expect(hasMediaFile(resolved), `${resolved} — run npm run media:publish`).toBe(true);
+        expect(mediaFileInfo(resolved)!.bytes, resolved).toBeGreaterThan(10_000);
       }
     }
     expect(seen.size).toBe(15);

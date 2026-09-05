@@ -1,7 +1,6 @@
-import { existsSync, statSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { hasMediaFile, mediaFileInfo } from "@/lib/media-manifest";
 import { cardLibrary } from "@/data/cards/library";
 import { commanderDefinitions, COMMANDER_SLUG_BY_FACTION } from "@/data/commanders";
 import { factionUiLexicon, factionVisualRegister } from "@/data/faction-theme";
@@ -81,9 +80,10 @@ const ENVELOPES: Record<
   gold: { attack: [4, 7], defense: [2, 3], health: [7, 8], initiative: [5, 7], gold: [14, 24], valuables: [1, 2] }
 };
 
+/** Published (media-manifest.json) AND heavier than a stub — run npm run media:publish. */
 function fileExists(assetPath: string, minBytes = 1000): boolean {
-  const file = join(process.cwd(), "public", assetPath.replace(/^\//, ""));
-  return existsSync(file) && statSync(file).size > minBytes;
+  const info = mediaFileInfo(assetPath);
+  return info !== undefined && info.bytes > minBytes;
 }
 
 describe("Heavenly Demon Palace — registration & roster shape", () => {
@@ -580,8 +580,8 @@ describe("Heavenly Demon Palace — Demon-path veterancy: resolved rank schedule
       const icon = unitRankAbilityIcon(choiceId);
       expect(icon.startsWith("/assets/"), choiceId).toBe(true);
       expect(
-        existsSync(join(process.cwd(), "public", icon.replace(/^\//, ""))),
-        `${choiceId} → ${icon} missing on disk`
+        hasMediaFile(icon),
+        `${choiceId} → ${icon} is not published — run npm run media:publish`
       ).toBe(true);
     }
   });

@@ -1,7 +1,6 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { hasMediaFile, mediaFileInfo } from "@/lib/media-manifest";
 import { canRenderSpecialtyCard, specialtyIconSrc } from "@/components/specialty-card-data";
 import { AZURE_BREEZE_UNIT_ORDER } from "@/data/anime/towns";
 import { cardLibrary } from "@/data/cards/library";
@@ -66,16 +65,16 @@ describe("playable Anime Realms towns", () => {
     });
     expect(townBoardSpecs[factionId]?.bars).toHaveLength(7);
     expect(townBoardSpecs[factionId]?.panoramaImage).toBe(faction.townImage);
-    expect(existsSync(join(process.cwd(), "public", faction.townImage!.replace(/^\//, "")))).toBe(true);
+    expect(hasMediaFile(faction.townImage!), "run npm run media:publish").toBe(true);
 
     // The dock/window town icon follows the same convention as every classic
     // faction (a real square-ish capitol crop, scripts/build-anime-town-icons.mjs).
-    expect(existsSync(join(process.cwd(), "public", townIconUrl(factionId).replace(/^\//, "")))).toBe(true);
+    expect(hasMediaFile(townIconUrl(factionId)), "run npm run media:publish").toBe(true);
 
     for (const heroId of faction.heroes) {
       const hero = coreHeroDefinitions[heroId];
       expect(hero?.faction).toBe(factionId);
-      expect(hero?.portrait && existsSync(join(process.cwd(), "public", hero.portrait.replace(/^\//, "")))).toBe(true);
+      expect(hero?.portrait && hasMediaFile(hero.portrait), "run npm run media:publish").toBe(true);
       // Each hero owns its OWN specialty set (no borrowed Castle/Rampart ids —
       // a borrowed unit-specialist set carried clauses that could never fire,
       // e.g. Gelu IV's "discard a Pack of Elves").
@@ -90,7 +89,7 @@ describe("playable Anime Realms towns", () => {
       const unit = coreUnitDefinitions[unitId];
       expect(unit?.faction).toBe(factionId);
       for (const side of [unit.few, unit.pack]) {
-        expect(side?.cardImage && existsSync(join(process.cwd(), "public", side.cardImage.replace(/^\//, "")))).toBe(true);
+        expect(side?.cardImage && hasMediaFile(side.cardImage), "run npm run media:publish").toBe(true);
         for (const abilityId of side?.abilities ?? []) {
           expect(unitAbilities[abilityId]?.implementationStatus, `${unitId}/${abilityId}`).toBe("implemented");
         }
@@ -114,8 +113,8 @@ describe("playable Anime Realms towns", () => {
         new RegExp(`/assets/town-board/${stripPrefix}-bar-[1-7]\\.webp$`)
       );
       expect(
-        existsSync(join(process.cwd(), "public", building.assets!.image!.replace(/^\//, ""))),
-        `${buildingId} art must exist`
+        hasMediaFile(building.assets!.image!),
+        `${buildingId} art must be published — run npm run media:publish`
       ).toBe(true);
     }
   });
@@ -180,7 +179,7 @@ describe("playable Anime Realms towns", () => {
     const slug = COMMANDER_SLUG_BY_FACTION[factionId];
     const commander = commanderDefinitions[slug];
     expect(commander).toBeDefined();
-    expect(existsSync(join(process.cwd(), "public", commander.cardImage.replace(/^\//, "")))).toBe(true);
+    expect(hasMediaFile(commander.cardImage), "run npm run media:publish").toBe(true);
     expect(unitAbilities[commander.cast.abilityId]?.implementationStatus).toBe("implemented");
   });
 
@@ -214,12 +213,8 @@ describe("playable Anime Realms towns", () => {
       expect(unit.tier, id).toBe(expected[i].tier);
       expect(unit.few!.cardImage, id).toContain(expected[i].art);
       expect(unit.pack!.cardImage, id).toContain(expected[i].art);
-      expect(existsSync(join(process.cwd(), "public", unit.few!.cardImage!.replace(/^\//, ""))), unit.few!.cardImage).toBe(
-        true
-      );
-      expect(existsSync(join(process.cwd(), "public", unit.pack!.cardImage!.replace(/^\//, ""))), unit.pack!.cardImage).toBe(
-        true
-      );
+      expect(hasMediaFile(unit.few!.cardImage!), unit.few!.cardImage).toBe(true);
+      expect(hasMediaFile(unit.pack!.cardImage!), unit.pack!.cardImage).toBe(true);
     }
 
     const byTier = { bronze: 0, silver: 0, gold: 0, azure: 0 };
@@ -246,24 +241,26 @@ describe("playable Anime Realms towns", () => {
     // LV3 bronze crane · LV5 silver True Inheritors · LV6 gold Golden Core Elders.
     // A bad copy once put swordsmen into bronze Spirit Crane — real crane art
     // must stay on the bronze path the engine uses.
-    const publicRoot = join(process.cwd(), "public");
-    const azure = join(publicRoot, "assets/anime/units/azure-breeze");
+    const azure = "/assets/anime/units/azure-breeze";
     for (const side of ["few", "pack"] as const) {
-      const bronze = readFileSync(join(azure, `units-azure-breeze-bronze-spirit-crane-${side}.webp`));
-      expect(bronze.byteLength).toBeLessThan(250_000);
-      expect(bronze.byteLength).toBeGreaterThan(50_000);
-      expect(existsSync(join(azure, `units-azure-breeze-silver-true-inheritors-${side}.webp`))).toBe(true);
-      expect(existsSync(join(azure, `units-azure-breeze-golden-core-formation-master-${side}.webp`))).toBe(true);
+      const bronze = mediaFileInfo(`${azure}/units-azure-breeze-bronze-spirit-crane-${side}.webp`);
+      expect(bronze, `bronze spirit crane ${side} — run npm run media:publish`).toBeDefined();
+      expect(bronze!.bytes).toBeLessThan(250_000);
+      expect(bronze!.bytes).toBeGreaterThan(50_000);
+      expect(hasMediaFile(`${azure}/units-azure-breeze-silver-true-inheritors-${side}.webp`)).toBe(true);
+      expect(hasMediaFile(`${azure}/units-azure-breeze-golden-core-formation-master-${side}.webp`)).toBe(true);
     }
 
     // Qingyun must not be a byte-copy of Core Formation Master OR True Inheritors.
-    const qingyun = readFileSync(join(publicRoot, "assets/anime/heroes/qingyun.webp"));
-    const formationMaster = readFileSync(join(azure, "units-azure-breeze-golden-core-formation-master-few.webp"));
-    const trueInheritors = readFileSync(join(azure, "units-azure-breeze-silver-true-inheritors-few.webp"));
-    expect(qingyun.equals(formationMaster)).toBe(false);
-    expect(qingyun.equals(trueInheritors)).toBe(false);
+    // The manifest's md5 IS the byte identity, so this holds with no media on disk.
+    const qingyun = mediaFileInfo("/assets/anime/heroes/qingyun.webp");
+    expect(qingyun, "qingyun portrait — run npm run media:publish").toBeDefined();
+    const formationMaster = mediaFileInfo(`${azure}/units-azure-breeze-golden-core-formation-master-few.webp`)!;
+    const trueInheritors = mediaFileInfo(`${azure}/units-azure-breeze-silver-true-inheritors-few.webp`)!;
+    expect(qingyun!.md5 === formationMaster.md5).toBe(false);
+    expect(qingyun!.md5 === trueInheritors.md5).toBe(false);
     expect(coreHeroDefinitions.qingyun?.portrait).toBe("/assets/anime/heroes/qingyun.webp");
-    expect(qingyun.byteLength).toBeGreaterThan(100_000);
+    expect(qingyun!.bytes).toBeGreaterThan(100_000);
   });
 
   it("Lingxi specialties are art-less native cards with the dedicated First-Aid medallion (not Gem's scan)", () => {
@@ -275,11 +272,11 @@ describe("playable Anime Realms towns", () => {
       expect(canRenderSpecialtyCard(id), id).toBe(true);
       const icon = specialtyIconSrc(id);
       expect(icon).toBe("/assets/anime/icons/cultivation/specialty-lingxi-healing-arts.webp");
-      expect(existsSync(join(process.cwd(), "public", icon!.replace(/^\//, "")))).toBe(true);
+      expect(hasMediaFile(icon!), "run npm run media:publish").toBe(true);
     }
     // Portrait used by the native specialty frame is the hero's own art.
     const portrait = coreHeroDefinitions.lingxi?.portrait;
     expect(portrait).toBe("/assets/anime/heroes/lingxi.webp");
-    expect(existsSync(join(process.cwd(), "public", portrait!.replace(/^\//, "")))).toBe(true);
+    expect(hasMediaFile(portrait!), "run npm run media:publish").toBe(true);
   });
 });

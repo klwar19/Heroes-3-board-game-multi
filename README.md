@@ -59,6 +59,7 @@ Leaving a player-vs-player fight has two house-rule exits, both **start-of-comba
 - [Rules understanding](./docs/rules-understanding.md): sourced notes from the official rulebook, fan wiki/database, and playthrough transcript for future development.
 - [Game flow and map plan](./docs/game-flow-and-map-plan.md): the full round/turn/combat timing script and the adventure-map movement design.
 - [Multiplayer platform plan](./docs/multiplayer-platform-plan.md): the boardgame.io migration path (sockets, lobby, persistence, spectators).
+- [Media manifest](./docs/media-manifest.md): binary media lives on the R2 CDN under content-addressed keys, not in git — `npm run media:publish` after adding art, `npm run media:pull` on a fresh clone.
 - [Cloudflare R2 setup](./docs/cloudflare-r2-setup.md): safe asset-CDN rollout for the `heroes3` bucket; R2/PartyKit responsibility split.
 
 ## How the table works

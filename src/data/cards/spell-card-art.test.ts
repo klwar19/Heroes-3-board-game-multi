@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { hasMediaFile } from "@/lib/media-manifest";
 import { cardLibrary } from "./library";
 import { SCANLESS_SPELLS } from "./spells";
 
@@ -18,7 +17,6 @@ import { SCANLESS_SPELLS } from "./spells";
  */
 
 const DECK_BACK = "/assets/player-deck-back.webp";
-const assetPath = (src: string) => fileURLToPath(new URL(`../../../public${src}`, import.meta.url));
 const slugOf = (id: string) => id.replace(/^spell\./, "");
 
 describe("spell card art is committed", () => {
@@ -40,7 +38,10 @@ describe("spell card art is committed", () => {
       }
 
       expect(image, `${id} cardImage path`).toMatch(/^\/assets\/spells-[a-z0-9_]+\.(webp|svg)$/);
-      expect(existsSync(assetPath(image!)), `${id} scan missing on disk at ${image}`).toBe(true);
+      expect(
+        hasMediaFile(image!),
+        `${id} scan unpublished at ${image} (run \`npm run media:publish\`)`
+      ).toBe(true);
       // A scanless spell must NOT also name a real per-slug file.
       expect(SCANLESS_SPELLS.has(slugOf(id)), `${id} is scanless yet names a real scan ${image}`).toBe(false);
       realScans.push(id);

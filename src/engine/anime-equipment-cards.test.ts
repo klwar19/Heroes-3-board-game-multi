@@ -1,6 +1,5 @@
-import { existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { hasMediaFile } from "@/lib/media-manifest";
 import { cardLibrary } from "@/data/cards/library";
 import {
   animeEquipmentCardIds,
@@ -66,11 +65,10 @@ describe("anime equipment CARDS — deck join + play", () => {
     expect(animeEquipmentRelicIds.every((id) => getEquipmentDefinition(id)?.grade === "III")).toBe(true);
   });
 
-  it("every equipment card face exists on disk under public/assets/anime/equipment/cards/", () => {
+  it("every equipment card face is published under /assets/anime/equipment/cards/", () => {
     for (const id of animeEquipmentCardIds) {
       const rel = equipmentCardArtPath(id);
-      const onDisk = existsSync(fileURLToPath(new URL(`../../public${rel}`, import.meta.url)));
-      expect(onDisk, `${id} missing face at ${rel}`).toBe(true);
+      expect(hasMediaFile(rel), `${id} missing face at ${rel} (run: npm run media:publish)`).toBe(true);
     }
   });
 

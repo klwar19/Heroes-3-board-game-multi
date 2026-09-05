@@ -1,6 +1,6 @@
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+
+import { hasMediaFile } from "@/lib/media-manifest";
 
 import {
   DUNGEON_FLOOR_BOSSES,
@@ -142,7 +142,7 @@ describe("Boss data — ability hygiene", () => {
 
   it("every boss card face + every themed module map object ships on disk", () => {
     for (const def of listAllBossDefinitions()) {
-      expect(existsSync(join(process.cwd(), "public", def.cardImage)), def.cardImage).toBe(true);
+      expect(hasMediaFile(def.cardImage), `${def.cardImage} is not published (npm run media:publish)`).toBe(true);
     }
     for (const asset of [
       "/assets/bosses/custom_boss.webp",
@@ -155,7 +155,7 @@ describe("Boss data — ability hygiene", () => {
       "/assets/bosses/dungeon_gate_classic.webp",
       "/assets/bosses/dungeon_gate_doom.webp"
     ]) {
-      expect(existsSync(join(process.cwd(), "public", asset)), asset).toBe(true);
+      expect(hasMediaFile(asset), `${asset} is not published (npm run media:publish)`).toBe(true);
     }
   });
 

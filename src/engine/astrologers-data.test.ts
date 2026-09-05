@@ -1,6 +1,5 @@
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { hasMediaFile } from "@/lib/media-manifest";
 import {
   ART_LESS_PROCLAMATIONS,
   ART_PENDING_PROCLAMATIONS,
@@ -121,8 +120,6 @@ const WIKI_ASTROLOGERS_CARD_NAMES = [
   "Wind"
 ] as const;
 
-const ASSETS_DIR = join(process.cwd(), "public", "assets");
-
 describe("astrologers deck data integrity", () => {
   it("exposes every implemented card for ruleset-aware deck setup", () => {
     expect(new Set(astrologersDeckCardIds)).toEqual(new Set(Object.keys(astrologersCardDefinitions)));
@@ -152,8 +149,10 @@ describe("astrologers deck data integrity", () => {
         continue;
       }
       expect(card.image, `${id} image path`).toMatch(/^\/assets\/astrologers_proclaim-[a-z0-9_]+\.webp$/);
-      const onDisk = join(ASSETS_DIR, card.image.replace("/assets/", ""));
-      expect(existsSync(onDisk), `${id} scan missing at ${card.image}`).toBe(true);
+      expect(
+        hasMediaFile(card.image),
+        `${id} scan unpublished at ${card.image} (run: npm run media:publish)`
+      ).toBe(true);
     }
   });
 

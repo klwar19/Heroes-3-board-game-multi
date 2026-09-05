@@ -11,18 +11,12 @@
  * here. Regenerate via scripts/codex-gen-art.ps1 (prompts in the CLAUDE.md
  * Setup Hub section), then normalize to 1024-wide q82 webp.
  */
-import { existsSync, statSync } from "node:fs";
-import path from "node:path";
 import { describe, expect, it } from "vitest";
 import sharp from "sharp";
+import { hasLocalMediaTree, hasMediaFile, localMediaPath, mediaExtensionOf, mediaFileInfo } from "@/lib/media-manifest";
 import { SETUP_HUB_ART } from "./homm-assets";
 
-const REPO_ROOT = path.resolve(__dirname, "../../..");
 const BOXES = ["mode", "heroes", "map", "advanced"] as const;
-
-function panelFile(box: (typeof BOXES)[number]): string {
-  return path.join(REPO_ROOT, "public", SETUP_HUB_ART[box].replace(/^\//, ""));
-}
 
 /** Mean greyscale luma of a horizontal band (fractions of the height). */
 async function bandLuma(file: string, from: number, to: number): Promise<number> {
@@ -39,28 +33,29 @@ async function bandLuma(file: string, from: number, to: number): Promise<number>
 }
 
 describe("Setup Hub panel art (SETUP_HUB_ART)", () => {
-  it("every box resolves to a real landscape webp on disk at a useful size", async () => {
+  it("every box resolves to a real landscape webp on disk at a useful size", () => {
     for (const box of BOXES) {
-      const file = panelFile(box);
-      expect(existsSync(file), `${box}: ${SETUP_HUB_ART[box]} missing on disk`).toBe(true);
+      const url = SETUP_HUB_ART[box];
+      expect(hasMediaFile(url), `${box}: ${url} unpublished (run \`npm run media:publish\`)`).toBe(true);
+      const info = mediaFileInfo(url)!;
       // Not a stub/truncated file, not an uncompressed monster.
-      const bytes = statSync(file).size;
-      expect(bytes, `${box}: suspiciously small`).toBeGreaterThan(20_000);
-      expect(bytes, `${box}: recompress before committing`).toBeLessThan(400_000);
-      const meta = await sharp(file).metadata();
-      expect(meta.format, box).toBe("webp");
-      expect(meta.width ?? 0, `${box}: too small to render crisply`).toBeGreaterThanOrEqual(900);
+      expect(info.bytes, `${box}: suspiciously small`).toBeGreaterThan(20_000);
+      expect(info.bytes, `${box}: recompress before committing`).toBeLessThan(400_000);
+      expect(mediaExtensionOf(url), box).toBe("webp");
+      expect(info.width ?? 0, `${box}: too small to render crisply`).toBeGreaterThanOrEqual(900);
       // 3:2 landscape — the CSS box uses aspect-ratio: 3/2 so the baked-in
       // frame is never cropped; a portrait or square regen would be.
-      const ratio = (meta.width ?? 0) / (meta.height ?? 1);
+      const ratio = (info.width ?? 0) / (info.height ?? 1);
       expect(ratio, `${box}: not ~3:2 landscape`).toBeGreaterThan(1.4);
       expect(ratio, `${box}: not ~3:2 landscape`).toBeLessThan(1.6);
     }
   });
 
-  it("keeps the lower band dark — the text plate's readability contract", async () => {
+  // Pixel analysis needs the BYTES: runs only on a checkout that pulled the media tree.
+  it.skipIf(!hasLocalMediaTree())("keeps the lower band dark — the text plate's readability contract", async () => {
     for (const box of BOXES) {
-      const file = panelFile(box);
+      const file = localMediaPath(SETUP_HUB_ART[box]);
+      if (!file) continue;
       const bottom = await bandLuma(file, 0.78, 0.97);
       const middle = await bandLuma(file, 0.33, 0.66);
       // Shipped panels measure 11–15; anything under 40 still reads fine

@@ -17,8 +17,11 @@
     "build:little-busters-audio": "node scripts/build-little-busters-audio.mjs",
     "build:doom-cards": "node scripts/build-doom-unit-cards.mjs",
     "deploy:partykit": "partykit deploy",
-    "sync:assets": "scripts/sync-assets-to-r2.sh",
-    "setup:r2-cors": "node scripts/setup-r2-cors.mjs"
+    "setup:r2-cors": "node scripts/setup-r2-cors.mjs",
+    "media:status": "node scripts/media.mjs status",
+    "media:publish": "node scripts/media.mjs publish",
+    "media:pull": "node scripts/media.mjs pull",
+    "media:verify": "node scripts/media.mjs verify"
   },
   "dependencies": {
     "lucide-react": "1.17.0",

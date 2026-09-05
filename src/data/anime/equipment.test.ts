@@ -1,6 +1,5 @@
-import { existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { hasMediaFile } from "@/lib/media-manifest";
 import {
   ANIME_EQUIPMENT_ART_PLACEHOLDERS,
   ANIME_EQUIPMENT_DEFINITIONS,
@@ -46,9 +45,8 @@ const SHARED_BOTH = [
   EQUIPMENT_IDS.chronicleSpurs
 ];
 
-/** True when an item's art file exists under public/ (the promote target). */
-const equipmentArtOnDisk = (id: string) =>
-  existsSync(fileURLToPath(new URL(`../../../public${equipmentArtPath(id)}`, import.meta.url)));
+/** True when an item's art is PUBLISHED (media-manifest.json — the promote target). */
+const equipmentArtOnDisk = (id: string) => hasMediaFile(equipmentArtPath(id));
 
 describe("anime equipment catalog integrity", () => {
   it("ships every item with a grade I/II/III, cost locked to grade, and package", () => {
@@ -151,7 +149,7 @@ describe("anime equipment catalog integrity", () => {
     // Real naval icons ship on disk (never a glyph placeholder).
     for (const def of kansen) {
       expect(ANIME_EQUIPMENT_ART_PLACEHOLDERS.has(def.id), `${def.id} must not be an art placeholder`).toBe(false);
-      expect(equipmentArtOnDisk(def.id), `${def.id} icon missing at ${equipmentArtPath(def.id)}`).toBe(true);
+      expect(equipmentArtOnDisk(def.id), `${def.id} icon not published at ${equipmentArtPath(def.id)} — run npm run media:publish`).toBe(true);
     }
 
     // Heavenly Demon Palace bespoke "modao" line (§3.13): one per grade, spread
@@ -174,7 +172,7 @@ describe("anime equipment catalog integrity", () => {
     // Icons ship on disk (never a glyph placeholder).
     for (const def of modao) {
       expect(ANIME_EQUIPMENT_ART_PLACEHOLDERS.has(def.id), `${def.id} must not be an art placeholder`).toBe(false);
-      expect(equipmentArtOnDisk(def.id), `${def.id} icon missing at ${equipmentArtPath(def.id)}`).toBe(true);
+      expect(equipmentArtOnDisk(def.id), `${def.id} icon not published at ${equipmentArtPath(def.id)} — run npm run media:publish`).toBe(true);
     }
   });
 
@@ -213,18 +211,18 @@ describe("anime equipment catalog integrity", () => {
         expect(equipmentImage(def.id), `${def.id} placeholder ⇒ no image`).toBeUndefined();
         expect(
           equipmentArtOnDisk(def.id),
-          `${def.id} is a placeholder but art exists on disk — remove it from ANIME_EQUIPMENT_ART_PLACEHOLDERS`
+          `${def.id} is a placeholder but art is published — remove it from ANIME_EQUIPMENT_ART_PLACEHOLDERS`
         ).toBe(false);
       } else {
         expect(equipmentImage(def.id), `${def.id} names its art path`).toBe(equipmentArtPath(def.id));
-        expect(equipmentArtOnDisk(def.id), `${def.id} art missing on disk at ${equipmentArtPath(def.id)}`).toBe(true);
+        expect(equipmentArtOnDisk(def.id), `${def.id} art not published at ${equipmentArtPath(def.id)} — run npm run media:publish`).toBe(true);
       }
     }
     for (const id of ANIME_EQUIPMENT_ART_PLACEHOLDERS) {
       expect(getEquipmentDefinition(id), `placeholder ${id} must name a real item`).toBeTruthy();
       expect(
         equipmentArtOnDisk(id),
-        `placeholder ${id} already has art on disk — remove it from ANIME_EQUIPMENT_ART_PLACEHOLDERS`
+        `placeholder ${id} already has published art — remove it from ANIME_EQUIPMENT_ART_PLACEHOLDERS`
       ).toBe(false);
     }
   });

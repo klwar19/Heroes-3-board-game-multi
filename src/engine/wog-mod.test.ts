@@ -1,7 +1,8 @@
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { hasMediaFile, localMediaPath, mediaFileInfo } from "@/lib/media-manifest";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitAbilities } from "@/data/units/abilities";
 import { WOG_UNIT_IDS, WOG_UNIT_IDS_BY_TIER } from "@/data/wog";
@@ -80,7 +81,6 @@ describe("WOG neutral roster data", () => {
   });
 
   it("ships every WOG card face as a real, compressed WebP on disk (frame matches tier)", () => {
-    const publicDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "public");
     const frameOf: Record<string, string> = { bronze: "bronze", silver: "silver", gold: "golden", azure: "azure" };
     for (const unitId of WOG_UNIT_IDS) {
       const def = coreUnitDefinitions[unitId];
@@ -89,16 +89,18 @@ describe("WOG neutral roster data", () => {
       // The file the card points at must actually exist (a wrong tier/path — e.g.
       // Ghost left pointing at its old silver frame — fails here, not silently).
       expect(cardImage, `${unitId} frame must match tier ${def.tier}`).toContain(`units-neutral-${frameOf[def.tier]}-`);
-      const file = join(publicDir, cardImage!);
-      expect(existsSync(file), `${unitId} -> ${cardImage} must exist`).toBe(true);
+      expect(hasMediaFile(cardImage!), `${unitId} -> ${cardImage} must be published (npm run media:publish)`).toBe(true);
+      const size = mediaFileInfo(cardImage!)!.bytes;
+      expect(size, `${unitId} must contain a rendered card`).toBeGreaterThan(40_000);
+      expect(size, `${unitId} must stay compressed`).toBeLessThan(220_000);
+      // The RIFF/WEBP magic needs the bytes: only checked where the media tree is pulled.
+      const file = localMediaPath(cardImage!);
+      if (!file) continue;
       const head = readFileSync(file).subarray(0, 12);
       expect(
         head.subarray(0, 4).toString("ascii") === "RIFF" && head.subarray(8, 12).toString("ascii") === "WEBP",
         `${unitId} must be a valid WebP`
       ).toBe(true);
-      const size = statSync(file).size;
-      expect(size, `${unitId} must contain a rendered card`).toBeGreaterThan(40_000);
-      expect(size, `${unitId} must stay compressed`).toBeLessThan(220_000);
     }
   });
 

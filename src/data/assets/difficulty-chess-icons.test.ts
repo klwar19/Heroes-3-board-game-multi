@@ -8,19 +8,28 @@
  * one baseline, and they are scaled together so the set keeps its true chess
  * proportions. Rebuild with `node scripts/build-difficulty-chess-icons.mjs`.
  */
-import { existsSync, statSync } from "node:fs";
-import path from "node:path";
 import { describe, expect, it } from "vitest";
 import sharp from "sharp";
+import { hasMediaFile, localMediaPath, mediaFileInfo } from "@/lib/media-manifest";
 import { DIFFICULTY_CHESS_ICONS } from "./homm-assets";
 
-const REPO_ROOT = path.resolve(__dirname, "../../..");
 /** Ascending difficulty — the order the bar renders. */
 const LADDER = ["easy", "normal", "hard", "impossible"] as const;
 type Difficulty = (typeof LADDER)[number];
 
-function iconFile(difficulty: Difficulty): string {
-  return path.join(REPO_ROOT, "public", DIFFICULTY_CHESS_ICONS[difficulty].replace(/^\//, ""));
+/**
+ * Absolute paths for all four icons, or null when this checkout has no media
+ * pulled (npm run media:pull) — the ALPHA analysis below needs the real bytes,
+ * which the manifest does not carry.
+ */
+function localIconFiles(): Record<Difficulty, string> | null {
+  const files = {} as Record<Difficulty, string>;
+  for (const difficulty of LADDER) {
+    const file = localMediaPath(DIFFICULTY_CHESS_ICONS[difficulty]);
+    if (!file) return null;
+    files[difficulty] = file;
+  }
+  return files;
 }
 
 /**
@@ -80,10 +89,10 @@ async function measurePiece(file: string) {
   return { width, height, top, bottom, left, right, pieceHeight: bottom - top + 1, fill: solid / span };
 }
 
-async function measureAll() {
+async function measureAll(files: Record<Difficulty, string>) {
   const measured: Record<Difficulty, Awaited<ReturnType<typeof measurePiece>>> = {} as never;
   for (const difficulty of LADDER) {
-    measured[difficulty] = await measurePiece(iconFile(difficulty));
+    measured[difficulty] = await measurePiece(files[difficulty]);
   }
   return measured;
 }
@@ -92,15 +101,20 @@ describe("difficulty chess-piece icons", () => {
   it("registers one real webp per difficulty", () => {
     expect(Object.keys(DIFFICULTY_CHESS_ICONS).sort()).toEqual([...LADDER].sort());
     for (const difficulty of LADDER) {
-      const file = iconFile(difficulty);
-      expect(existsSync(file), `${DIFFICULTY_CHESS_ICONS[difficulty]} must exist on disk`).toBe(true);
+      const icon = DIFFICULTY_CHESS_ICONS[difficulty];
+      expect(hasMediaFile(icon), `${icon} must be published — run npm run media:publish`).toBe(true);
+      const info = mediaFileInfo(icon)!;
       // A painted cut is kilobytes; a flat placeholder silhouette is not.
-      expect(statSync(file).size, `${DIFFICULTY_CHESS_ICONS[difficulty]} must contain real art`).toBeGreaterThan(4000);
+      expect(info.bytes, `${icon} must contain real art`).toBeGreaterThan(4000);
+      // The 256×256 canvas is manifest-level, so it holds with no media pulled.
+      expect([info.width, info.height], `${icon} canvas`).toEqual([256, 256]);
     }
   });
 
   it("cuts each piece SOLID on a transparent 256×256 canvas", async () => {
-    const measured = await measureAll();
+    const files = localIconFiles();
+    if (!files) return;
+    const measured = await measureAll(files);
     for (const difficulty of LADDER) {
       const piece = measured[difficulty];
       expect(piece.width, `${difficulty} canvas width`).toBe(256);
@@ -116,7 +130,9 @@ describe("difficulty chess-piece icons", () => {
   });
 
   it("stands the four on ONE baseline, scaled together", async () => {
-    const measured = await measureAll();
+    const files = localIconFiles();
+    if (!files) return;
+    const measured = await measureAll(files);
     // Same baseline (±1px of rounding): the four read as one set in the bar.
     const baselines = LADDER.map((difficulty) => measured[difficulty].bottom);
     expect(Math.max(...baselines) - Math.min(...baselines)).toBeLessThanOrEqual(1);

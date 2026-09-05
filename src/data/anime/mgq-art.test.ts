@@ -1,9 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
-import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 
+import { hasMediaFile, mediaFileInfo } from "@/lib/media-manifest";
 import { commanderDefinitions } from "@/data/commanders";
 import { equipmentCardArtPath } from "@/data/anime/equipment-cards";
 import { equipmentArtPath } from "@/data/anime/equipment";
@@ -214,18 +214,20 @@ describe("MGQ deterministic art production contracts", () => {
     }
   });
 
-  it("keeps the runtime pack complete-or-absent until approved masters are supplied", async () => {
+  it("keeps the runtime pack complete-or-absent until approved masters are supplied", () => {
     const expected = expectedRuntimeAssets();
     expect(expected).toHaveLength(102);
-    const present = expected.filter((item) => existsSync(path.join(ROOT, "public/assets", item.relative)));
-    expect([0, expected.length], `partial MGQ art pack:\n${present.map((item) => item.relative).join("\n")}`).toContain(present.length);
+    const present = expected.filter((item) => hasMediaFile(`/assets/${item.relative}`));
+    expect(
+      [0, expected.length],
+      `partial MGQ art pack (run npm run media:publish):\n${present.map((item) => item.relative).join("\n")}`
+    ).toContain(present.length);
     if (!present.length) return;
 
     for (const item of expected) {
-      const file = path.join(ROOT, "public/assets", item.relative);
-      expect(statSync(file).size, `${item.relative} should be a real export`).toBeGreaterThan(3_000);
-      const meta = await sharp(file).metadata();
-      expect([meta.width, meta.height], item.relative).toEqual([item.width, item.height]);
+      const info = mediaFileInfo(`/assets/${item.relative}`)!;
+      expect(info.bytes, `${item.relative} should be a real export`).toBeGreaterThan(3_000);
+      expect([info.width, info.height], item.relative).toEqual([item.width, item.height]);
     }
   });
 

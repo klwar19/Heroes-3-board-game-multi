@@ -1,6 +1,5 @@
-import { existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { hasMediaFile } from "@/lib/media-manifest";
 import {
   wogArtifactArtPath,
   wogArtifactCards,
@@ -11,7 +10,6 @@ import {
 } from "./artifacts";
 import { cardLibrary } from "@/data/cards/library";
 
-const assetPath = (src: string) => fileURLToPath(new URL(`../../../public${src}`, import.meta.url));
 const slugOf = (id: string) => id.replace(/^wog\.artifact\./, "");
 
 describe("Wake of Gods artifact definitions", () => {
@@ -58,7 +56,10 @@ describe("Wake of Gods artifact definitions", () => {
       // No placeholder registry for WOG — every card ships with real art, so the
       // path must be its own slug face AND that file must exist on disk.
       expect(image, `${id} names its own art path`).toBe(wogArtifactArtPath(slug));
-      expect(existsSync(assetPath(image!)), `${id} art missing on disk at ${image}`).toBe(true);
+      expect(
+        hasMediaFile(image!),
+        `${id} art unpublished at ${image} (run \`npm run media:publish\`)`
+      ).toBe(true);
     }
   });
 });

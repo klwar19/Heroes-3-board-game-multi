@@ -1,6 +1,5 @@
-import fs from "node:fs";
-import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { hasMediaFile } from "@/lib/media-manifest";
 import { blueArchiveCharacters } from "./blue-archive-content";
 
 describe("Blue Archive playable roster", () => {
@@ -28,12 +27,12 @@ describe("Blue Archive playable roster", () => {
     }
   });
 
-  it("has card-ready mechanics and local art for both sides", () => {
+  it("has card-ready mechanics and published art for both sides", () => {
     for (const unit of blueArchiveCharacters) {
       for (const face of [unit.few, unit.pack]) {
         expect(face.abilityName.length).toBeGreaterThan(2);
         expect(face.abilityText.length).toBeGreaterThan(20);
-        expect(fs.existsSync(path.join(process.cwd(), "public", face.art))).toBe(true);
+        expect(hasMediaFile(face.art), `${face.art} — run npm run media:publish`).toBe(true);
       }
     }
   });

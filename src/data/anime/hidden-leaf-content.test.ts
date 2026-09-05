@@ -1,7 +1,6 @@
-import { existsSync, statSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { mediaFileInfo } from "@/lib/media-manifest";
 import { cardLibrary } from "@/data/cards/library";
 import { commanderDefinitions, COMMANDER_SLUG_BY_FACTION } from "@/data/commanders";
 import { coreFactionDefinitions, coreHeroDefinitions, isPlayableFaction } from "@/data/factions/core";
@@ -52,9 +51,10 @@ const ENVELOPES: Record<
   gold: { attack: [5, 6], defense: [2, 4], health: [6, 8], initiative: [4, 8], gold: [13, 25], valuables: [1, 3] }
 };
 
+/** Published (media-manifest.json) AND heavier than a stub — run npm run media:publish. */
 function fileExists(assetPath: string, minBytes = 1000): boolean {
-  const file = join(process.cwd(), "public", assetPath.replace(/^\//, ""));
-  return existsSync(file) && statSync(file).size > minBytes;
+  const info = mediaFileInfo(assetPath);
+  return info !== undefined && info.bytes > minBytes;
 }
 
 describe("Hidden Leaf Village — registration & roster shape", () => {

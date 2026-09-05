@@ -1,6 +1,5 @@
-import { existsSync, statSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { mediaFileInfo } from "@/lib/media-manifest";
 import {
   RESOURCE_ICONS,
   COMBAT_TOKEN_IMAGES,
@@ -16,14 +15,11 @@ import { TOWN_TOKEN_ICONS } from "@/data/towns/boards";
 // Every asset below is downloaded LOCALLY and referenced only by its /assets
 // path — this test fails if a wiring is reverted to a placeholder or a file is
 // missing, and it pins the real board-game art from github.com/Heegu-sama/Homm3BG.
-function onDisk(assetPath: string): string {
-  return fileURLToPath(new URL(`../../../public${assetPath}`, import.meta.url));
-}
 function assertRealArt(assetPath: string, minBytes = 1500) {
   expect(assetPath.startsWith("/assets/"), `${assetPath} must be a local /assets path`).toBe(true);
-  const file = onDisk(assetPath);
-  expect(existsSync(file), `${assetPath} must exist on disk`).toBe(true);
-  expect(statSync(file).size, `${assetPath} must contain real art`).toBeGreaterThan(minBytes);
+  const info = mediaFileInfo(assetPath);
+  expect(info, `${assetPath} must be published — run npm run media:publish`).toBeDefined();
+  expect(info!.bytes, `${assetPath} must contain real art`).toBeGreaterThan(minBytes);
 }
 
 describe("board-game resource icons", () => {

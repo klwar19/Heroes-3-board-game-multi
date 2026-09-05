@@ -1,7 +1,8 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import sharp from "sharp";
+import { hasLocalMediaTree, hasMediaFile, localMediaPath, mediaFileInfo } from "@/lib/media-manifest";
 
 // The two war machines whose fan-wiki entry is a deck-back/placeholder, so we
 // build an original face from a generated illustration + the First Aid Tent
@@ -11,8 +12,14 @@ const GENERATED = {
   catapult: ["war_machines-catapult-art.webp", "war_machines-catapult.webp"],
 } as const;
 
-function onDisk(assetName: string): string {
-  return fileURLToPath(new URL(`../../../public/assets/${assetName}`, import.meta.url));
+/** The published URL of an asset in this family ("war_machines-cannon.webp" → "/assets/…"). */
+function assetUrl(assetName: string): string {
+  return `/assets/${assetName}`;
+}
+
+/** Absolute path of the asset when this checkout pulled the media tree, else null. */
+function onDisk(assetName: string): string | null {
+  return localMediaPath(assetUrl(assetName));
 }
 
 function repoFile(relative: string): string {
@@ -24,7 +31,7 @@ function repoFile(relative: string): string {
 // swapped, or garbled window). Must mirror preparedArt() in
 // scripts/build-war-machine-cards.mjs.
 async function preparedArt(sourceName: string): Promise<Buffer> {
-  return sharp(onDisk(sourceName))
+  return sharp(onDisk(sourceName)!)
     .resize(611, 569, { fit: "cover", position: "centre" })
     .modulate({ saturation: 0.94, brightness: 0.96 })
     .sharpen({ sigma: 0.45 })
@@ -33,11 +40,12 @@ async function preparedArt(sourceName: string): Promise<Buffer> {
 }
 
 describe("generated Cannon and Catapult card faces", () => {
-  it("ships full-size portrait cards, compressed to the repo's q94 band", async () => {
+  it("ships full-size portrait cards, compressed to the repo's q94 band", () => {
     for (const [, [, output]] of Object.entries(GENERATED)) {
-      const file = onDisk(output);
-      expect(existsSync(file), output).toBe(true);
-      const size = statSync(file).size;
+      const url = assetUrl(output);
+      expect(hasMediaFile(url), `${output} unpublished (run \`npm run media:publish\`)`).toBe(true);
+      const info = mediaFileInfo(url)!;
+      const size = info.bytes;
       // Real, full-bleed art (a tiny placeholder icon would be far smaller), but
       // lossy WebP at quality 94 — the repo standard for every committed card
       // face. The upper bound is what enforces the compression: the earlier q96
@@ -45,13 +53,14 @@ describe("generated Cannon and Catapult card faces", () => {
       // so a regression away from q94 fails here.
       expect(size, output).toBeGreaterThan(150_000);
       expect(size, output).toBeLessThan(260_000);
-      const metadata = await sharp(file).metadata();
-      expect(metadata.width, output).toBe(743);
-      expect(metadata.height, output).toBe(1040);
+      expect(info.width, output).toBe(743);
+      expect(info.height, output).toBe(1040);
     }
   });
 
-  it("composites the real source illustration into each face (lossy re-encode stays within a tiny delta)", async () => {
+  // Pixel comparison needs the BYTES of both the source art and the face:
+  // runs only on a checkout that pulled the media tree.
+  it.skipIf(!hasLocalMediaTree())("composites the real source illustration into each face (lossy re-encode stays within a tiny delta)", async () => {
     // The illustration window is placed at (66, 161) sized 611x569 by the build
     // script. Comparing it to a fresh preparedArt() render of the source proves
     // the committed face IS that illustration, only recompressed. Observed mean
@@ -59,10 +68,12 @@ describe("generated Cannon and Catapult card faces", () => {
     // would diverge by tens to hundreds, so this permits the compression yet
     // still fails if the art is swapped or lost.
     for (const [, [source, output]] of Object.entries(GENERATED)) {
+      const face = onDisk(output);
+      if (!face || !onDisk(source)) continue;
       const reference = await sharp(await preparedArt(source)).raw().toBuffer();
       const refMeta = await sharp(await preparedArt(source)).metadata();
-      const faceMeta = await sharp(onDisk(output)).metadata();
-      const window = await sharp(onDisk(output))
+      const faceMeta = await sharp(face).metadata();
+      const window = await sharp(face)
         .extract({ left: 66, top: 161, width: 611, height: 569 })
         .raw()
         .toBuffer();
@@ -82,7 +93,7 @@ describe("generated Cannon and Catapult card faces", () => {
 
   it("keeps the source illustrations, compositor, and wiki glyphs reproducible", () => {
     for (const [, [source]] of Object.entries(GENERATED)) {
-      expect(existsSync(onDisk(source)), source).toBe(true);
+      expect(hasMediaFile(assetUrl(source)), `${source} unpublished (run \`npm run media:publish\`)`).toBe(true);
     }
 
     const builder = readFileSync(

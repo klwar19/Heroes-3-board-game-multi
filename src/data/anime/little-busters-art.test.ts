@@ -1,21 +1,25 @@
-import { existsSync, statSync } from "node:fs";
-import path from "node:path";
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 
+import { hasMediaFile, localMediaPath, mediaFileInfo } from "@/lib/media-manifest";
 import { factionGradeRegister, HERO_GRADE_REGISTERS, heroGradeIconForFaction } from "./hero-grades";
 import { unitRankAbilityIcon } from "../units/experience-rank-abilities";
 
-const ROOT = process.cwd();
-const asset = (rel: string) => path.join(ROOT, "public/assets", rel);
+const assetUrlOf = (rel: string) => `/assets/${rel}`;
 
 async function expectImage(rel: string, width: number, height: number, alpha?: boolean, minBytes = 10_000) {
-  const file = asset(rel);
-  expect(existsSync(file), rel).toBe(true);
-  expect(statSync(file).size, `${rel} should be real art`).toBeGreaterThan(minBytes);
+  const url = assetUrlOf(rel);
+  expect(hasMediaFile(url), `${rel} — run npm run media:publish`).toBe(true);
+  const info = mediaFileInfo(url)!;
+  expect(info.bytes, `${rel} should be real art`).toBeGreaterThan(minBytes);
+  expect([info.width, info.height], rel).toEqual([width, height]);
+  // Alpha is a BYTE-level property the manifest does not carry, so this half
+  // runs only on a checkout that pulled the media (npm run media:pull).
+  if (alpha === undefined) return;
+  const file = localMediaPath(url);
+  if (!file) return;
   const meta = await sharp(file).metadata();
-  expect([meta.width, meta.height], rel).toEqual([width, height]);
-  if (alpha !== undefined) expect(meta.hasAlpha, `${rel} alpha`).toBe(alpha);
+  expect(meta.hasAlpha, `${rel} alpha`).toBe(alpha);
 }
 
 describe("Little Busters production art pack", () => {

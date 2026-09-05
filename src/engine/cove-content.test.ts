@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { hasMediaFile } from "@/lib/media-manifest";
 import { cardLibrary } from "@/data/cards/library";
 import {
   coreBuildingDefinitions,
@@ -130,8 +129,7 @@ describe("Cove units", () => {
         const image = def[side]?.cardImage;
         expect(image, `${unitId}.${side} cardImage`).toMatch(/^\/assets\/units-cove-(bronze|silver|golden)-[a-z_]+-(few|pack)\.webp$/);
         expect(image, `${unitId}.${side} not blank`).not.toContain("units-blank");
-        const file = fileURLToPath(new URL(`../../public${image}`, import.meta.url));
-        expect(existsSync(file), `${unitId}.${side} art file ${image}`).toBe(true);
+        expect(hasMediaFile(image!), `${unitId}.${side} art file ${image} is not published (npm run media:publish)`).toBe(true);
       }
     }
   });
@@ -234,8 +232,8 @@ describe("Cove heroes", () => {
       // PC portrait until the wiki published the Cove hero boards.
       expect(hero.portrait).toBe(`/assets/hero_boardart-${heroId}.webp`);
       expect(hero.boardScan).toBe(`/assets/heroes-cove-${type}-${heroId}.webp`);
-      expect(existsSync(fileURLToPath(new URL(`../../public${hero.portrait}`, import.meta.url))), `${heroId} portrait file`).toBe(true);
-      expect(existsSync(fileURLToPath(new URL(`../../public${hero.boardScan}`, import.meta.url))), `${heroId} board file`).toBe(true);
+      expect(hasMediaFile(hero.portrait!), `${heroId} portrait file is not published (npm run media:publish)`).toBe(true);
+      expect(hasMediaFile(hero.boardScan!), `${heroId} board file is not published (npm run media:publish)`).toBe(true);
       for (const specialtyId of Object.values(hero.specialtyCardIds!)) {
         const card = cardLibrary[specialtyId];
         expect(card, specialtyId).toBeDefined();
@@ -301,8 +299,7 @@ describe("Cove buildings", () => {
       expect(image, `${buildingId} image mapping`).toBeTruthy();
       // The faction loader copies the mapping onto building.assets.image.
       expect(coreBuildingDefinitions[buildingId].assets?.image, `${buildingId} assets.image`).toBe(image);
-      const file = fileURLToPath(new URL(`../../public${image}`, import.meta.url));
-      expect(existsSync(file), `${buildingId} image file ${image}`).toBe(true);
+      expect(hasMediaFile(image!), `${buildingId} image file ${image} is not published (npm run media:publish)`).toBe(true);
     }
   });
 });

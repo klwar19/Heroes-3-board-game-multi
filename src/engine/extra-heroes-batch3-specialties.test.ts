@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { hasMediaFile } from "@/lib/media-manifest";
 import {
   applyAction,
   createAdventureGameState,
@@ -41,7 +40,6 @@ import type { GameAction, GameEvent, GameState, UnitId } from "./state";
 //                                 disadvantage). Real wiki art.
 // ---------------------------------------------------------------------------
 
-const assetPath = (src: string) => fileURLToPath(new URL(`../../public${src}`, import.meta.url));
 
 function applyOk(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
@@ -146,8 +144,8 @@ describe("batch-3 heroes are registered with art and implemented specialties", (
       expect(coreFactionDefinitions[factionId].heroes, `${factionId} roster`).toContain(heroId);
       expect(hero.portrait, `${heroId} portrait`).toBe(`/assets/hero_boardart-${heroId}.webp`);
       expect(hero.boardScan, `${heroId} board scan`).toBe(`/assets/heroes-${factionId}-${kind}-${heroId}.webp`);
-      expect(existsSync(assetPath(hero.portrait!)), `${heroId} portrait file on disk`).toBe(true);
-      expect(existsSync(assetPath(hero.boardScan!)), `${heroId} board file on disk`).toBe(true);
+      expect(hasMediaFile(hero.portrait!), `${heroId} portrait file is not published (npm run media:publish)`).toBe(true);
+      expect(hasMediaFile(hero.boardScan!), `${heroId} board file is not published (npm run media:publish)`).toBe(true);
       for (const level of [1, 4, 6] as const) {
         const card = adventureCards[hero.specialtyCardIds![level]];
         expect(card, `${hero.specialtyCardIds![level]} should exist`).toBeTruthy();
@@ -156,7 +154,7 @@ describe("batch-3 heroes are registered with art and implemented specialties", (
         // The printed face now ships, so the card must reference it AND the file
         // must exist (never a broken <img>).
         expect(card.assets?.cardImage, `${card.id} art`).toBe(`/assets/hero_specialties-${heroId}-${level}.webp`);
-        expect(existsSync(assetPath(card.assets!.cardImage!)), `${card.id} face on disk`).toBe(true);
+        expect(hasMediaFile(card.assets!.cardImage!), `${card.id} face is not published (npm run media:publish)`).toBe(true);
       }
     }
   });
@@ -167,13 +165,13 @@ describe("batch-3 heroes are registered with art and implemented specialties", (
     expect(coreFactionDefinitions.necropolis.heroes).toContain("lord_haart_necropolis");
     expect(hero.boardScan).toBe("/assets/heroes-necropolis-might-lord_haart_necropolis.webp");
     expect(hero.portrait).toBe("/assets/hero_boardart-lord_haart_necropolis.webp");
-    expect(existsSync(assetPath(hero.boardScan!)), "board scan file").toBe(true);
-    expect(existsSync(assetPath(hero.portrait!)), "portrait file").toBe(true);
+    expect(hasMediaFile(hero.boardScan!), "board scan file is not published (npm run media:publish)").toBe(true);
+    expect(hasMediaFile(hero.portrait!), "portrait file is not published (npm run media:publish)").toBe(true);
     for (const level of [1, 4, 6] as const) {
       const card = adventureCards[hero.specialtyCardIds![level]];
       expect(card.implementationStatus).toBe("implemented");
       expect(card.assets?.cardImage).toBe(`/assets/hero_specialties-lord_haart_necropolis-${level}.webp`);
-      expect(existsSync(assetPath(card.assets!.cardImage!)), `${card.id} face on disk`).toBe(true);
+      expect(hasMediaFile(card.assets!.cardImage!), `${card.id} face is not published (npm run media:publish)`).toBe(true);
     }
   });
 

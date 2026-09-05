@@ -1,12 +1,10 @@
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { hasMediaFile } from "@/lib/media-manifest";
 import { ANIME_FACTION_PENALTIES, animeFactionPenalty, animeFactionPenaltyTitle } from "./faction-penalties";
 import { coreFactionDefinitions } from "@/data/factions/core";
 import { factionVisualRegister } from "@/data/faction-theme";
 
-const ROOT = process.cwd();
 
 describe("anime/xianxia faction briefings", () => {
   it("covers exactly the seven custom towns, each a real faction", () => {
@@ -43,11 +41,13 @@ describe("anime/xianxia faction briefings", () => {
     }
   });
 
-  it("ships a themed art file under public/ for every town's briefing/notice", () => {
+  it("ships a themed, PUBLISHED art file for every town's briefing/notice", () => {
     for (const entry of ANIME_FACTION_PENALTIES) {
       expect(entry.artImage.startsWith("/assets/anime/notices/")).toBe(true);
-      const path = join(ROOT, "public", entry.artImage.replace(/^\//, ""));
-      expect(existsSync(path), `missing art: ${entry.artImage}`).toBe(true);
+      expect(
+        hasMediaFile(entry.artImage),
+        `missing art: ${entry.artImage} — run npm run media:publish`
+      ).toBe(true);
     }
   });
 

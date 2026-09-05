@@ -1,6 +1,5 @@
-import { existsSync, statSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { hasMediaFile, mediaFileInfo } from "@/lib/media-manifest";
 import {
   EMPOWERED_ABILITY_ART_SLUGS,
   EMPOWERED_STATISTIC_ART_SLUGS,
@@ -8,10 +7,6 @@ import {
   empoweredCardImage
 } from "./empowered-card-art";
 import { cardLibrary } from "@/data/cards/library";
-
-function onDisk(assetPath: string): string {
-  return fileURLToPath(new URL(`../../../public${assetPath}`, import.meta.url));
-}
 
 describe("empowered card art registry", () => {
   it("every registered empowered face is real art on disk", () => {
@@ -21,24 +16,26 @@ describe("empowered card art registry", () => {
     ];
     expect(paths.length).toBe(36);
     for (const path of paths) {
-      const file = onDisk(path);
-      expect(existsSync(file), `${path} must exist`).toBe(true);
-      expect(statSync(file).size, `${path} must be real art`).toBeGreaterThan(10_000);
+      expect(hasMediaFile(path), `${path} must be published (run \`npm run media:publish\`)`).toBe(true);
+      const bytes = mediaFileInfo(path)!.bytes;
+      expect(bytes, `${path} must be real art`).toBeGreaterThan(10_000);
       // Budget from the task brief: keep every scan comfortably shippable.
-      expect(statSync(file).size, `${path} must stay under 250KB`).toBeLessThan(250 * 1024);
+      expect(bytes, `${path} must stay under 250KB`).toBeLessThan(250 * 1024);
     }
   });
 
   it("every registered slug has its BASE face too (the pair a swap needs)", () => {
     for (const slug of EMPOWERED_ABILITY_ART_SLUGS) {
-      expect(existsSync(onDisk(`/assets/abilities-${slug}.webp`)), `abilities-${slug}.webp`).toBe(
-        true
-      );
+      expect(
+        hasMediaFile(`/assets/abilities-${slug}.webp`),
+        `abilities-${slug}.webp (run \`npm run media:publish\`)`
+      ).toBe(true);
     }
     for (const stat of EMPOWERED_STATISTIC_ART_SLUGS) {
-      expect(existsSync(onDisk(`/assets/statistics-${stat}.webp`)), `statistics-${stat}.webp`).toBe(
-        true
-      );
+      expect(
+        hasMediaFile(`/assets/statistics-${stat}.webp`),
+        `statistics-${stat}.webp (run \`npm run media:publish\`)`
+      ).toBe(true);
     }
   });
 
