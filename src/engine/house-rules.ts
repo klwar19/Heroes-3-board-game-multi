@@ -284,6 +284,15 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     legacyDefault: false,
   },
   {
+    id: "dwarven-treasury-reward-nerf",
+    label: "Dwarven Treasury: +2 gold per Stack",
+    description:
+      "On (BINH balance rule): Dwarven Treasury / Rampart of the Dwarves pays 7 gold plus 2 gold per Stacked defender. Off (official): it pays 7 gold plus 3 gold per Stacked defender.",
+    category: "combat",
+    default: true,
+    legacyDefault: false,
+  },
+  {
     id: "defeat-gold-debt",
     label: "Defeat can push gold into debt",
     description:

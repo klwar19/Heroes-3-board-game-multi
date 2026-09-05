@@ -17674,7 +17674,12 @@ export function grantCreatureBankReward(
     : bankId === "black_tower" && field.bankVariant
       ? field.bankVariant
       : stackedCount;
-  const reward = bank.buildReward(rewardX);
+  // The printed Dwarven Treasury / Polish Rampart of the Dwarves reward is
+  // 7 + 3X gold. BINH may independently tone that down to 7 + 2X; neither the
+  // Polish bank-card toggle nor the I-IV size procedure changes the formula.
+  const reward = bankId === "dwarven_treasury" && houseRuleEnabled(state, "dwarven-treasury-reward-nerf")
+    ? { type: "GAIN_RESOURCES" as const, gold: 7 + 2 * rewardX }
+    : bank.buildReward(rewardX);
   const steps = interactionToSteps(reward, locationDiceBonusFor(state, playerId));
   // This is a victory reward, never a shop. Far grants Grade I. Near rolls
   // Grade II versus III at equal probability, then grants that grade for free.

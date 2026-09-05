@@ -244,6 +244,23 @@ describe("Game options — tabbed layout", () => {
     });
   });
 
+  it("exposes the BINH Dwarven Treasury +2-per-Stack option, default ON", () => {
+    const onAction = openOptions();
+    expandBinhHouseRules();
+    const toggle = screen.getByRole("button", {
+      name: /Dwarven Treasury: \+2 gold per Stack/i,
+    });
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(toggle);
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: {
+        houseRules: expect.objectContaining({ "dwarven-treasury-reward-nerf": false }),
+      },
+    });
+  });
+
   it("the WOG mod window lists an Artifacts module row and toggling it dispatches wog.artifacts", () => {
     const onAction = openOptionsWith((state) => {
       // WOG must be ON for the mod-options window (and its module rows) to render.

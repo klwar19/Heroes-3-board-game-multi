@@ -15,6 +15,12 @@ describe("Polish Banks printed set", () => {
     expect(POLISH_CREATURE_BANK_IDS.filter((id) => POLISH_CREATURE_BANKS[id].tier === "far")).toHaveLength(10);
     expect(POLISH_CREATURE_BANK_IDS.filter((id) => POLISH_CREATURE_BANKS[id].tier === "near")).toHaveLength(10);
     expect(POLISH_CREATURE_BANKS.imp_cache.buildReward(3)).toEqual({ type: "GAIN_RESOURCES", gold: 8 });
+    // Polish card art/size rules do not alter this printed formula. The optional
+    // BINH 7 + 2X balance payout is applied by the state-aware reward resolver.
+    expect(POLISH_CREATURE_BANKS.dwarven_treasury.buildReward(3)).toEqual({
+      type: "GAIN_RESOURCES",
+      gold: 16,
+    });
   });
 
   it("uses the new Zombies only in Graveyard", () => {

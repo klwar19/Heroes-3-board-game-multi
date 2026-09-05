@@ -621,6 +621,20 @@ describe("Polish bank size rewards (back to the normal X-scaled reward)", () => 
     expect(state.adventure!.fields["bank-field"].blackCube).toBe(true);
   });
 
+  it("keeps the printed Dwarves +3X reward unless the BINH +2X option is enabled", () => {
+    const normal = bankRewardState("dwarven_treasury", 3, "polish-dwarven-size-three-normal");
+    normal.adventure!.houseRules!["dwarven-treasury-reward-nerf"] = false;
+    const normalGoldBefore = normal.players.p1.resources.gold ?? 0;
+    grantCreatureBankReward(normal, "hero_p1", "bank-field", 3);
+    expect((normal.players.p1.resources.gold ?? 0) - normalGoldBefore).toBe(16); // printed 7 + 3×X(3)
+
+    const binh = bankRewardState("dwarven_treasury", 3, "polish-dwarven-size-three-binh");
+    binh.adventure!.houseRules!["dwarven-treasury-reward-nerf"] = true;
+    const binhGoldBefore = binh.players.p1.resources.gold ?? 0;
+    grantCreatureBankReward(binh, "hero_p1", "bank-field", 3);
+    expect((binh.players.p1.resources.gold ?? 0) - binhGoldBefore).toBe(13); // BINH 7 + 2×X(3)
+  });
+
   it("Black Tower size III pays its fixed 7 gold and opens Major Artifact Search (2)", () => {
     const state = bankRewardState("black_tower", 3, "polish-black-tower-size-three-reward");
     const goldBefore = state.players.p1.resources.gold ?? 0;

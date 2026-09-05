@@ -4073,6 +4073,13 @@ derivation and controlled-guard offer set all changed).
   (988648ce) had collapsed the official per-Stacked-unit CHOOSE_ONE into one lumped
   "+3X gold OR +X valuables"; it now inherits the official builder (data only, totals
   unchanged, gold and valuables may be MIXED). `polish-bank-sizes.test.ts`.
+- **Dwarven Treasury keeps its PRINTED 7 + 3X gold reward by default** (USER RULE
+  2026-09-05): the reduced 7 + 2X payout is an independent BINH balance option,
+  `dwarven-treasury-reward-nerf` (BINH default ON, Legacy default OFF). It applies
+  equally to the official Dwarven Treasury and the Polish-named Rampart of the Dwarves;
+  neither `polish-creature-banks` nor `polish-bank-sizes` silently changes the formula.
+  The full resource-bank formula audit found no other multiplier mismatch.
+  `polish-bank-sizes.test.ts`, `polish-creature-banks.test.ts`.
 - **A Waited unit re-activates with NORMAL movement**: reproduced only on the
   MANUAL-NEUTRAL side — `addControlledNeutralUnitActions` folded the Wait obligation into
   the must-attack menu, which offered ZERO moves. `waitOnlyObligation` (legal-actions.ts)

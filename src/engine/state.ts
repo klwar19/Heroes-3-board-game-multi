@@ -127,6 +127,9 @@ export type HouseRuleId =
   // only 80% of the time. Off (official): every token is placed, so the fixed
   // count is Easy 1 / Normal 2 / Hard 3 / Impossible 4.
   | "bank-stack-chance-80"
+  // BINH balance rule: Dwarven Treasury pays +2 gold per Stacked defender
+  // instead of the printed +3. Off preserves the official reward formula.
+  | "dwarven-treasury-reward-nerf"
   // The 5-gold penalty for losing a hero combat is paid in full even into debt
   // (gold may go below zero). Off: the loss is capped so gold never goes negative
   // (the normal rule).
@@ -17516,6 +17519,15 @@ export type PendingChoice =
  * derived priorities. Redacted from other seats' player views.
  */
 export type ComputerPolicyMemoryState = {
+  developmentPlan?: {
+    goal: "rebuild" | "silver" | "gold" | "gold-recruit" | "pressure";
+    sinceRound: number;
+    buildingId?: string;
+    reserve: Required<ResourceCost>;
+    armyValue: number;
+    rebuilding: boolean;
+  };
+  routeHistory?: Array<{ heroId: string; to: string; progress: string }>;
   lastTurnKey: string;
   resourceTrail: Array<{
     round: number;
