@@ -473,6 +473,26 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
     few: { attack: 5, defense: 2, health: 6, initiative: 4, cost: { gold: 19 }, abilities: ["gargoyle-spell-ward", "ignore-all-combat-penalties"], abilityText: "White Parasol - takes 1 less Spell damage and ignores all ranged penalties.", cardImage: littleBustersCard("golden", "mio-nishizono", "few") },
     pack: { attack: 6, defense: 2, health: 8, initiative: 5, cost: { gold: 28, valuables: 2 }, abilities: ["gargoyle-spell-ward", "ignore-all-combat-penalties", "archangel-lethal-save"], abilityText: "Midori's Shadow - +1 Defense against the first attack each Combat round; spell ward and no ranged penalties; once per Combat, cancel lethal damage to another friendly unit.", cardImage: littleBustersCard("golden", "mio-nishizono", "pack") },
     source
+  },
+  // Rin Natsume's "Cat Corps" specialty (specialty.rin_natsume.*) summons these
+  // two strays. They are SUMMON-ONLY, exactly like the Conflux Elementals and
+  // the MGQ spirits: never recruitable, never in coreFactionDefinitions
+  // .little_busters.units (that filter drops summonOnly), never in a deck. Each
+  // has ONE side ("few") so it can never flip, no cost, and reuses the existing
+  // Rin's Cats card face. The engine mints them with summoned+temporary set and
+  // no armyUnitId (summonCampusCats in reducer.ts), so they vanish at combat end
+  // and never reach the army, XP, rewards or the deployment limit.
+  "little_busters.stray_cat": {
+    id: "little_busters.stray_cat", name: "Stray Cat", faction: "little_busters", tier: "bronze", type: "ground",
+    summonOnly: true,
+    few: { attack: 1, defense: 0, health: 1, initiative: 10, cost: {}, abilities: ["teleport-move"], abilityText: "Cat Step - as a move, place this unit on any empty Combat space.", cardImage: littleBustersCard("bronze", "rins-cats", "few") },
+    source
+  },
+  "little_busters.alley_cat": {
+    id: "little_busters.alley_cat", name: "Alley Cat", faction: "little_busters", tier: "bronze", type: "ground",
+    summonOnly: true,
+    few: { attack: 1, defense: 0, health: 2, initiative: 10, cost: {}, abilities: ["teleport-move", "ignores-retaliation"], abilityText: "Cat Step - move to any empty space; Pounce - attacks do not provoke Retaliation.", cardImage: littleBustersCard("bronze", "rins-cats", "few") },
+    source
   }
 };
 
@@ -1028,7 +1048,9 @@ export const animeTownFactionDefinitions: Record<string, FactionDefinition> = {
     id: "little_busters", name: "Little Busters Campus", color: "#c34f79", startingTileId: "LB-S1",
     heroes: ["sasami_sasasegawa", "riki_naoe", "rin_natsume", "yuiko_kurugaya", "kudryavka_noumi", "komari_kamikita"],
     buildings: Object.values(animeTownBuildingDefinitions).filter((item) => item.faction === "little_busters").map((item) => item.id),
-    units: Object.values(animeTownUnitDefinitions).filter((item) => item.faction === "little_busters").map((item) => item.id),
+    units: Object.values(animeTownUnitDefinitions)
+      .filter((item) => item.faction === "little_busters" && !item.summonOnly)
+      .map((item) => item.id),
     townImage: "/assets/anime/towns/little-busters-campus-empty.webp", source
   }
 };

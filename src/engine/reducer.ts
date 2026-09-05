@@ -476,8 +476,20 @@ import {
   appendEvent,
   eventSeedNumber,
   nextEventNumber,
+  consumeStarCandyShield,
   reduceFirstDamageByAbility,
 } from "./events";
+import {
+  LITTLE_BUSTERS_BLADE_DANCE_ID,
+  LITTLE_BUSTERS_BOND_ID,
+  LITTLE_BUSTERS_CAT_CORPS_ID,
+  LITTLE_BUSTERS_HOME_RUN_ID,
+  bladeDanceSplashFor,
+  campusCatPositions,
+  fallenArmyUnitCount,
+  homeRunOutcome,
+  starCandySecondTarget,
+} from "./little-busters-specialties";
 import { commanderArtifactBonusesForUnit } from "./commander-artifacts";
 import {
   gainRunes,
@@ -4638,6 +4650,23 @@ function applyAttackDamageFromCandidate(
     });
   }
 
+  // Komari "Star Candy": the shield eats what the printed reduction and the
+  // printed cap left, and is spent whole. Placed HERE, beside Iron Horus and
+  // before the lethal-save preview, so a shielded blow correctly reads as
+  // non-lethal; the shield is gone by the time this attack's DAMAGE_ASSIGNED
+  // reaches the events.ts seam, so it can never be spent twice on one hit.
+  const starCandy = consumeStarCandyShield(state, defender.id, damage);
+  if (starCandy.reduced > 0) {
+    damage = starCandy.amount;
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: defender.id,
+      abilityId: "little-busters-star-candy",
+      targetUnitId: defender.id,
+      message: `${defender.cardName}'s Star Candy absorbs ${starCandy.reduced} damage.`,
+    });
+  }
+
   // Alamar's Resurrection: if this blow would reduce the defender to 0 HP and
   // its grade is within reach, the whole attack is cancelled — no damage, and
   // (handled by the caller) no Retaliation Attack either.
@@ -8474,7 +8503,21 @@ function finishResolvedAttack(
   // effect damage to every adjacent unit now — friend AND foe — before the
   // follow-up table and the parked Retaliation resolve, exactly like the other
   // post-attack follow-ups. A lethal splash may end the combat.
-  applyAfterAttackSplash(state, details.attacker, details.defender);
+  applyAfterAttackSplash(
+    state,
+    details.attacker,
+    details.defender,
+    attackResult.roll,
+  );
+  if (finishCombatIfNeeded(state)) {
+    return;
+  }
+
+  // Sasami "Home Run": the instant the attacker's controller played into THIS
+  // attack's window. Same position as the splash above — the isRetaliation and
+  // abilityAttack branches already returned, so it can only fire on the primary
+  // declared attack.
+  applyLittleBustersHomeRun(state, stackItem, details, attackResult.roll);
   if (finishCombatIfNeeded(state)) {
     return;
   }
@@ -10262,10 +10305,40 @@ function applyAfterAttackSplash(
   state: GameState,
   attacker: CombatUnitState,
   defender: CombatUnitState,
+  attackRoll = 1,
 ): void {
   const combat = state.combat;
   if (!combat || !isUnitAlive(attacker)) {
     return;
+  }
+
+  // Yuiko "Blade Dance" (specialty.yuiko_kurugaya.*) is a MODIFIER SOURCE on the
+  // same seam rather than a second splash implementation: an activation-scoped
+  // BLADE_DANCE_SPLASH effect on the attacker splashes every OTHER ENEMY beside
+  // the ATTACKER (the struck target is excluded — it already took the attack),
+  // gated on the resolved Attack die.
+  const bladeDance = bladeDanceSplashFor(state, attacker, attackRoll);
+  if (bladeDance > 0) {
+    const bladeTargetIds = Object.values(combat.units)
+      .filter(
+        (unit) =>
+          unit.id !== attacker.id &&
+          unit.id !== defender.id &&
+          isUnitAlive(unit) &&
+          unit.controllerId !== attacker.controllerId &&
+          isAdjacent(unit.position, attacker.position),
+      )
+      .map((unit) => unit.id);
+    for (const targetId of bladeTargetIds) {
+      applyFlatAbilityDamage(
+        state,
+        attacker,
+        targetId,
+        LITTLE_BUSTERS_BLADE_DANCE_ID,
+        "Blade Dance",
+        bladeDance,
+      );
+    }
   }
 
   // Every implemented splash arm fires (Chakra Burst around self; the Azur Lane
@@ -11338,6 +11411,55 @@ function applyKnockback(
     from,
     to: destination,
   });
+}
+
+/**
+ * Sasami "Home Run" (specialty.sasami_sasasegawa.*) — resolved once, at the tail
+ * of the PRIMARY declared attack this instant was played into.
+ *
+ * A SURVIVING target adjacent to the attacker is shoved one space directly away
+ * (the cell continuing the attacker→target line). When it cannot be shoved — the
+ * cell is off the board, occupied, an obstacle, a Wall/Gate, a spell token, the
+ * attacker was not adjacent (a ranged shot), or the unit is one the Teleport
+ * spell refuses to relocate — it takes the level's blocked damage instead. A
+ * target the attack destroyed gets nothing at all.
+ */
+function applyLittleBustersHomeRun(
+  state: GameState,
+  stackItem: ResolutionStackItem,
+  details: NonNullable<ReturnType<typeof getAttackStackDetails>>,
+  attackRoll: number,
+): void {
+  const homeRun = stackItem.modifiers.littleBustersHomeRun;
+  const combat = state.combat;
+  if (!homeRun || !combat || attackRoll < homeRun.minRoll) {
+    return;
+  }
+  // Read once: the instant is spent with the attack it was played into.
+  delete stackItem.modifiers.littleBustersHomeRun;
+  const attacker = details.attacker;
+  const defender = details.defender;
+  const outcome = homeRunOutcome(combat, attacker, defender, (position) =>
+    isSpaceBlockedForSummon(combat, position),
+  );
+  if (outcome.kind === "none") {
+    return;
+  }
+  if (outcome.kind === "push") {
+    applyKnockback(state, attacker, defender, outcome.destination, {
+      abilityId: LITTLE_BUSTERS_HOME_RUN_ID,
+      abilityName: homeRun.name,
+    });
+    return;
+  }
+  applyFlatAbilityDamage(
+    state,
+    attacker,
+    defender.id,
+    LITTLE_BUSTERS_HOME_RUN_ID,
+    homeRun.name,
+    homeRun.blockedDamage,
+  );
 }
 
 /** Opens the defender's "choose where you're knocked back" space picker. */
@@ -21591,6 +21713,23 @@ function applyReactionPlayCore(
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
 
+  // Sasami "Home Run": park the shove on the attack this instant joined. The
+  // legal-action layer already restricted the offer to the ATTACKING player on a
+  // non-retaliation attack, so this only records the level's numbers.
+  if (
+    effect.type === "KNOCKBACK_ON_ATTACK" &&
+    (stackItem?.action.type === "ATTACK_UNIT" ||
+      stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
+  ) {
+    stackItem.modifiers.littleBustersHomeRun = {
+      cardId: play.cardId,
+      name: effect.name,
+      minRoll: effect.minRoll,
+      blockedDamage: effect.blockedDamage,
+    };
+    stackItem.modifiers.playedCardIds.push(play.cardId);
+  }
+
   // Lord Haart (Necropolis) Dread Knights I/VI: played as an instant when an
   // enemy declares a Retaliation Attack against one of your units. Knock the
   // reduction off THIS retaliation's strike, doubled when the unit being
@@ -25671,6 +25810,167 @@ function playCard(
         abilityId: card.id,
         message: `${state.players[action.playerId]?.name ?? "A hero"} plays ${card.name}: ${borrowed.cardName} joins the Combat at ${getBattlefieldLabel(borrowed.position)}.`,
       });
+    }
+  }
+
+  // Rin "Cat Corps": mint the temporary strays. Borrowed-unit pattern (the
+  // Tarnum Sharpshooters / MGQ spirit shape): summoned + temporary + NO army
+  // card, so they never reach the army, the XP award, the reward accounting or
+  // the deployment limit, and they vanish when the combat ends.
+  if (
+    effect.type === "SUMMON_CAMPUS_CATS" &&
+    state.combat &&
+    action.target?.type === "space"
+  ) {
+    const combat = state.combat;
+    const positions = campusCatPositions(
+      combat,
+      action.playerId,
+      action.target.position,
+      effect.count,
+      (position) => isSpaceBlockedForSummon(combat, position),
+    );
+    for (const position of positions) {
+      const serial = nextEventNumber(state);
+      const cat = makeCombatUnitFromArmy(
+        {
+          id: `lb_cat_${serial}`,
+          unitDefId: effect.unitDefId,
+          side: "few",
+        },
+        action.playerId,
+        `unit_${action.playerId}_lb_cat_${serial}`,
+        position,
+        getRuleset(state),
+        unitSideRuleOverrides(state),
+      );
+      if (!cat) {
+        continue;
+      }
+      cat.summoned = true;
+      cat.temporary = true;
+      cat.activatedThisRound = false;
+      delete cat.armyUnitId;
+      combat.units[cat.id] = cat;
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: cat.id,
+        abilityId: LITTLE_BUSTERS_CAT_CORPS_ID,
+        message: `${state.players[action.playerId]?.name ?? "A hero"} plays ${card.name}: ${cat.cardName} slips onto ${getBattlefieldLabel(position)}.`,
+      });
+    }
+  }
+
+  // Riki "Little Busters' Bond": +1 Attack per OWN army unit already removed
+  // from this combat, capped by the level, frozen at play time into one
+  // combat-long effect on the chosen friendly unit.
+  if (
+    effect.type === "FALLEN_ALLY_RESOLVE" &&
+    state.combat &&
+    nonDamageTarget?.type === "unit"
+  ) {
+    const fallen = fallenArmyUnitCount(state, action.playerId);
+    const attackBonus = Math.min(fallen, effect.maxAttack);
+    if (attackBonus > 0) {
+      const bondModifiers: ActiveEffectModifier[] = [
+        { type: "ATTACK_BONUS", amount: attackBonus },
+      ];
+      if (
+        effect.defenseAtFallen !== undefined &&
+        fallen >= effect.defenseAtFallen
+      ) {
+        bondModifiers.push({ type: "DEFENSE_BONUS", amount: 1 });
+      }
+      createActiveEffect(
+        state,
+        {
+          name: effect.name,
+          scope: "unit",
+          duration: { type: "combat" },
+          polarity: "positive",
+          removable: true,
+          modifiers: bondModifiers,
+        },
+        { type: "card", cardId: card.id, controllerId: action.playerId },
+        action.playerId,
+        nonDamageTarget,
+      );
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: nonDamageTarget.unitId,
+        abilityId: LITTLE_BUSTERS_BOND_ID,
+        targetUnitId: nonDamageTarget.unitId,
+        message: `${card.name}: +${attackBonus} Attack for ${fallen} fallen friend${fallen === 1 ? "" : "s"}${bondModifiers.length > 1 ? " and +1 Defense" : ""}.`,
+      });
+    }
+  }
+
+  // Yuiko "Blade Dance": an activation-scoped effect on the unit that is active
+  // right now (makeActiveEffect binds "current-activation" to combat.activeUnitId
+  // at creation), so it dies with the activation through the ordinary
+  // expireEffectsForActivationEnd seam — no bespoke cleanup.
+  if (
+    effect.type === "CREATE_BLADE_DANCE" &&
+    state.combat?.activeUnitId &&
+    // Backstop for the offer gate: ground units only.
+    state.combat.units[state.combat.activeUnitId]?.type === "ground"
+  ) {
+    createActiveEffect(
+      state,
+      {
+        name: effect.name,
+        scope: "unit",
+        duration: { type: "current-activation" },
+        polarity: "positive",
+        removable: true,
+        modifiers: [
+          {
+            type: "BLADE_DANCE_SPLASH",
+            amount: effect.amount,
+            minRoll: effect.minRoll,
+          },
+        ],
+      },
+      { type: "card", cardId: card.id, controllerId: action.playerId },
+      action.playerId,
+      { type: "unit", unitId: state.combat.activeUnitId },
+    );
+  }
+
+  // Komari "Star Candy": a one-shot damage shield. VI also shields the owner's
+  // most wounded OTHER living unit — deterministic, so one play covers two units
+  // without opening a second pick window.
+  if (
+    effect.type === "CREATE_DAMAGE_SHIELD" &&
+    state.combat &&
+    nonDamageTarget?.type === "unit"
+  ) {
+    const shielded: UnitId[] = [nonDamageTarget.unitId];
+    if (effect.alsoMostWounded) {
+      const second = starCandySecondTarget(
+        state,
+        action.playerId,
+        nonDamageTarget.unitId,
+      );
+      if (second) {
+        shielded.push(second.id);
+      }
+    }
+    for (const unitId of shielded) {
+      createActiveEffect(
+        state,
+        {
+          name: effect.name,
+          scope: "unit",
+          duration: { type: "combat" },
+          polarity: "positive",
+          removable: true,
+          modifiers: [{ type: "DAMAGE_SHIELD", amount: effect.amount }],
+        },
+        { type: "card", cardId: card.id, controllerId: action.playerId },
+        action.playerId,
+        { type: "unit", unitId },
+      );
     }
   }
 

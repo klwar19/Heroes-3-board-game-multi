@@ -419,7 +419,10 @@ const littleBustersUnitVoices: Record<string, string> = {
   masato: "masato",
   softball_club: "sasami_goons",
   saya: "saya",
-  mio: "mio"
+  mio: "mio",
+  // Rin's Cat Corps summons (summon-only bodies) share the Rin's Cats voice.
+  stray_cat: "rins_cats",
+  alley_cat: "rins_cats"
 };
 
 /** The six Little Busters heroes also enter combat as real battlefield units. */

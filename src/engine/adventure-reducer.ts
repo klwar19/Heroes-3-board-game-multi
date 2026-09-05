@@ -14067,7 +14067,17 @@ export function finalizeAdventureCombat(state: GameState): void {
     // Tarnum (Rampart) Sharpshooters VI: a borrowed Neutral unit is "discarded
     // afterwards" — return its card to its tier's Neutral discard pile (whether it
     // lived or died) and never write it back to the army (it carries no army card).
-    if (unit.temporary && unit.unitDefId) {
+    //
+    // Only a genuine NEUTRAL-faction card goes home to a Neutral deck. A temporary
+    // body minted from a FACTION definition (Rin's summoned cats, the MGQ spirits)
+    // has no card in any deck, and pushing its id into the bronze Neutral discard
+    // pile would inject a faction unit into the shared Neutral decks — it simply
+    // vanishes with the combat instead.
+    if (
+      unit.temporary &&
+      unit.unitDefId &&
+      coreUnitDefinitions[unit.unitDefId]?.faction === "neutral"
+    ) {
       const def = unit.grade === "gold" ? "gold" : unit.grade;
       const deck = state.decks[NEUTRAL_DECK_IDS[def as "bronze" | "silver" | "gold" | "azure"]];
       deck?.discardPile.push(unit.unitDefId);

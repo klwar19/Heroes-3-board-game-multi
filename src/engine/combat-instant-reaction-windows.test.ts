@@ -615,8 +615,9 @@ const COMBAT_ANYTIME_FACES: { cardId: CardId; optionIndex: number }[] = [
   { cardId: "specialty.tarnum_castle.6", optionIndex: 0 },
   { cardId: "specialty.tarnum_rampart.6", optionIndex: 1 },
   { cardId: "specialty.torosar.1", optionIndex: 1 },
-  { cardId: "specialty.torosar.6", optionIndex: 0 },
-  { cardId: "specialty.yuiko_kurugaya.1", optionIndex: 1 }
+  { cardId: "specialty.torosar.6", optionIndex: 0 }
+  // Yuiko Kurugaya's Melodia (Fortune) clone left the library in the 2026-09-05
+  // Little Busters redesign; her Blade Dance set is a turn play, not an instant.
 ];
 
 /**

@@ -245,6 +245,7 @@ import {
   parseFortificationTargetId,
   siegeBlockedPositions,
 } from "./siege";
+import { catLandingIsAnchored, fallenArmyUnitCount } from "./little-busters-specialties";
 import {
   manualGuardControllerId,
   neutralCombatControllerId,
@@ -1131,6 +1132,9 @@ export function spellReactionAffectedUnitId(
     case "FORCE_ATTACK_ROLL":
     case "TRIPLE_ATTACK_DIE":
       return attackerId;
+    // Sasami "Home Run" lands on the unit being shoved.
+    case "KNOCKBACK_ON_ATTACK":
+      return defenderId;
     case "REDUCE_RETALIATION_DAMAGE":
       return defenderId;
     default:
@@ -2427,11 +2431,19 @@ function getTargetsForCard(
       blocked.add(combat.siege.gatePosition);
     }
 
+    // Rin "Cat Corps" is the one empty-space play whose printed card adds "next
+    // to one of your units". Read through the SAME catLandingIsAnchored the
+    // resolution takes, so an offered space is always one the reducer will use.
+    const anchoredOnly = card?.effect.type === "SUMMON_CAMPUS_CATS";
     const spaces: TargetRef[] = [];
     for (let position = 0; position < BATTLEFIELD_CELL_COUNT; position += 1) {
-      if (!blocked.has(position)) {
-        spaces.push({ type: "space", position });
+      if (blocked.has(position)) {
+        continue;
       }
+      if (anchoredOnly && !catLandingIsAnchored(combat, playerId, position)) {
+        continue;
+      }
+      spaces.push({ type: "space", position });
     }
     return spaces;
   }
@@ -3953,6 +3965,27 @@ function addPlayableCardActions(
 
     const needsOwnActivation = card.timing !== "instant";
     if (needsOwnActivation && !ownActivationOpen) {
+      continue;
+    }
+
+    // Yuiko "Blade Dance": printed for your own GROUND unit's activation. The
+    // "before it attacks" half of the printed text needs no clause here — the
+    // shared combat-play gate above already withholds every turn play once the
+    // active unit has swung (pinned by "is not offered once the active unit has
+    // already swung" in little-busters-specialties.test.ts).
+    if (
+      card.effect.type === "CREATE_BLADE_DANCE" &&
+      activeUnit?.type !== "ground"
+    ) {
+      continue;
+    }
+
+    // Riki "Little Busters' Bond" pays +1 Attack per FALLEN friend, so with
+    // nobody lost yet it would hand out +0. Withheld until it does something.
+    if (
+      card.effect.type === "FALLEN_ALLY_RESOLVE" &&
+      fallenArmyUnitCount(state, playerId) < 1
+    ) {
       continue;
     }
 
@@ -13098,6 +13131,25 @@ export function isEffectLegalForTrigger(
     // enemy's roll (e.g. fishing for a tripled -1 against the attacker).
     if (effect.type === "TRIPLE_ATTACK_DIE") {
       return attacker.controllerId === playerId;
+    }
+
+    // Sasami "Home Run": the ATTACKING player's instant, on their own declared
+    // attack only. A Retaliation Attack is excluded here as well as structurally
+    // (the resolver sits past the isRetaliation branch), so the offer never
+    // appears on a counter-attack the player cannot follow up.
+    if (effect.type === "KNOCKBACK_ON_ATTACK") {
+      return (
+        attacker.controllerId === playerId &&
+        !triggerEvent.isRetaliation &&
+        !triggerEvent.abilityAttack
+      );
+    }
+
+    // Komari "Star Candy": a shield handed to one of your own units while an
+    // attack is on the table — the printed "instant, any time" reading. Its own
+    // friendly-unit target filter decides which unit; either side may play it.
+    if (effect.type === "CREATE_DAMAGE_SHIELD") {
+      return true;
     }
 
     if (effect.type === "CREATE_ACTIVE_EFFECT") {
