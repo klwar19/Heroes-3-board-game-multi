@@ -20,7 +20,7 @@ import {
   unitRankAbilityIcon
 } from "@/data/units/experience";
 import type { RankSchedule } from "@/data/units/experience";
-import { applyAction, createInitialGameState, makeCombatUnitFromArmy } from "@/engine";
+import { applyAction, createInitialGameState, getLegalActions, makeCombatUnitFromArmy } from "@/engine";
 import { unitRankAbilityIds } from "@/engine/unit-experience";
 import type { CombatUnitState, GameAction, GameState, PlayerId } from "@/engine/state";
 
@@ -481,6 +481,154 @@ describe("Azur Lane Naval Base — behavioural: Prinz Eugen's real abilities cap
     const fewAbilities = coreUnitDefinitions["azur_lane.i19"].few!.abilities;
     expect(fewAbilities).toContain("teleport-move");
     expect(unitAbilities["teleport-move"]?.implementationStatus).toBe("implemented");
+  });
+});
+
+/**
+ * MUTATION CHECKS for the block below (each applied to src/data/anime/towns.ts,
+ * run, reverted — every one killed 4 cases in this file):
+ *  - drop `commander-charge` from Ayanami's FEW abilities;
+ *  - drop `ignores-retaliation` from Ayanami's PACK abilities;
+ *  - drop `kansen-full-barrage` from Akagi's FEW abilities;
+ *  - drop `wog-fire-shield-1` from Akagi's PACK abilities.
+ */
+describe("Azur Lane Naval Base — behavioural: the 2026-09-05 ships run their REAL printed arms", () => {
+  /**
+   * Every ability array below is read straight out of the faction data, so
+   * deleting an id from Ayanami's / Akagi's printed side changes the array and
+   * the damage assertion fails: the reuse is proven to EXECUTE, not declared.
+   *
+   * Board: 4 columns × 5 rows. Attacker @9, target @10, target's other
+   * neighbours @6 / @14; @19 is the far corner.
+   */
+  function board(state: GameState): void {
+    for (const [id, position] of [
+      ["unit_p1_marksmen", 9],
+      ["unit_p2_skeletons", 10],
+      ["unit_p2_vampires", 6],
+      ["unit_p1_griffins", 14],
+      ["unit_p1_crusaders", 0],
+      ["unit_p2_dread_knights", 19]
+    ] as const) {
+      place(state, id, {
+        position,
+        abilities: [],
+        attack: 0,
+        defense: 0,
+        maxHealth: 60,
+        damage: 0,
+        type: "ground"
+      });
+    }
+  }
+
+  it("Ayanami's Demon's Blade pays +1 only when she attacks AFTER MOVING", () => {
+    const fewAbilities = coreUnitDefinitions["azur_lane.ayanami"].few!.abilities;
+    expect(fewAbilities).toContain("commander-charge");
+
+    function blow(seed: string, abilities: string[], move: boolean): number {
+      const state = freshCombat(seed);
+      board(state);
+      // Ayanami starts one space further out (@13) when she is to charge in.
+      place(state, "unit_p1_marksmen", {
+        position: move ? 13 : 9,
+        controllerId: "p1",
+        abilities,
+        attack: 3
+      });
+      place(state, "unit_p2_skeletons", { controllerId: "p2", maxHealth: 60 });
+      state.activePlayerId = "p1";
+      state.combat!.activeUnitId = "unit_p1_marksmen";
+      let current: GameState = state;
+      if (move) {
+        // A REAL step from @13 to @9 (the space beside the target), taken off
+        // the engine's own offer list — that is what arms the Charge rider.
+        const step = getLegalActions(state, "p1").find(
+          (legal) =>
+            legal.action.type === "MOVE_UNIT" &&
+            legal.action.unitId === "unit_p1_marksmen" &&
+            legal.action.destination === 9
+        );
+        expect(step, "a step from @13 to @9 must be offered").toBeTruthy();
+        current = applyOk(state, step!.action);
+        expect(current.combat!.units.unit_p1_marksmen.position, "she really moved").toBe(9);
+      }
+      const after = meleeAttack(current, "unit_p1_marksmen", "unit_p2_skeletons");
+      return after.combat!.units.unit_p2_skeletons.damage;
+    }
+
+    expect(blow("ayanami-charge", fewAbilities, true), "attack 3 + the Charge rider").toBe(4);
+    expect(blow("ayanami-standing", fewAbilities, false), "CONTROL: standing still pays nothing").toBe(3);
+    expect(blow("ayanami-no-arm", [], true), "CONTROL: without the printed arm the charge pays nothing").toBe(3);
+  });
+
+  it("Ayanami's Pack Kamikaze Torpedoes really silence the Retaliation Attack", () => {
+    const packAbilities = coreUnitDefinitions["azur_lane.ayanami"].pack!.abilities;
+    expect(packAbilities).toContain("ignores-retaliation");
+
+    function retaliationTaken(seed: string, abilities: string[]): number {
+      const state = freshCombat(seed);
+      board(state);
+      place(state, "unit_p1_marksmen", { controllerId: "p1", abilities, attack: 2, defense: 0 });
+      place(state, "unit_p2_skeletons", { controllerId: "p2", attack: 4, maxHealth: 60 });
+      const after = meleeAttack(state, "unit_p1_marksmen", "unit_p2_skeletons");
+      return after.combat!.units.unit_p1_marksmen.damage;
+    }
+    expect(retaliationTaken("ayanami-pack-noretal", packAbilities)).toBe(0);
+    expect(
+      retaliationTaken("ayanami-few-retal", coreUnitDefinitions["azur_lane.ayanami"].few!.abilities),
+      "CONTROL: the Few side has no such arm and eats the counter-blow"
+    ).toBe(4);
+  });
+
+  it("Akagi's Air Strike splashes 1 onto the enemies flanking her target, never her own ally", () => {
+    const fewAbilities = coreUnitDefinitions["azur_lane.akagi"].few!.abilities;
+    expect(fewAbilities).toContain("kansen-full-barrage");
+
+    function splash(seed: string, abilities: string[]) {
+      const state = freshCombat(seed);
+      board(state);
+      place(state, "unit_p1_marksmen", { controllerId: "p1", abilities, attack: 2, type: "ranged" });
+      // Defense 50 soaks the attack itself, so every later read is pure splash.
+      place(state, "unit_p2_skeletons", { controllerId: "p2", defense: 50, maxHealth: 60 });
+      place(state, "unit_p2_vampires", { controllerId: "p2", maxHealth: 60 });
+      place(state, "unit_p1_griffins", { controllerId: "p1", maxHealth: 60 });
+      const after = meleeAttack(state, "unit_p1_marksmen", "unit_p2_skeletons");
+      return {
+        flankingEnemy: after.combat!.units.unit_p2_vampires.damage,
+        flankingAlly: after.combat!.units.unit_p1_griffins.damage
+      };
+    }
+    expect(splash("akagi-barrage", fewAbilities)).toEqual({ flankingEnemy: 1, flankingAlly: 0 });
+    expect(splash("akagi-barrage-control", []), "CONTROL: no arm, no splash").toEqual({
+      flankingEnemy: 0,
+      flankingAlly: 0
+    });
+  });
+
+  it("Akagi's Pack Foxfire burns an adjacent attacker for 1", () => {
+    const packAbilities = coreUnitDefinitions["azur_lane.akagi"].pack!.abilities;
+    expect(packAbilities).toContain("wog-fire-shield-1");
+
+    function attackerDamage(seed: string, defenderAbilities: string[]): number {
+      const state = freshCombat(seed);
+      board(state);
+      place(state, "unit_p2_skeletons", { controllerId: "p2", abilities: [], attack: 2, maxHealth: 60 });
+      place(state, "unit_p1_marksmen", {
+        controllerId: "p1",
+        abilities: defenderAbilities,
+        attack: 0,
+        defense: 0,
+        maxHealth: 60
+      });
+      const after = meleeAttack(state, "unit_p2_skeletons", "unit_p1_marksmen");
+      return after.combat!.units.unit_p2_skeletons.damage;
+    }
+    expect(attackerDamage("akagi-foxfire", packAbilities)).toBe(1);
+    expect(
+      attackerDamage("akagi-foxfire-control", coreUnitDefinitions["azur_lane.akagi"].few!.abilities),
+      "CONTROL: the Few side has no shield"
+    ).toBe(0);
   });
 });
 
