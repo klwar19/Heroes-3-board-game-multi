@@ -93,18 +93,23 @@ export function bombardmentReaches(
 
 /**
  * Sirius "Royal Maid's Cover": the friendly units that may step in front of the
- * declared attack — a living ally of the ORIGINAL target, adjacent to it, never
- * the target itself and never the attacker's side. The redirected attack must
- * also stay legal for the attacker, which the caller supplies through
- * `attackStaysLegal` (canUnitAttack against the interceptor) so the pure read
- * here stays free of the legal-actions dependency.
+ * declared attack — a living ally of the ORIGINAL target, adjacent to IT, never
+ * the target itself and never the attacker's side.
+ *
+ * This is EXACTLY Masato's `adjacentBodyguardFor` rule (adjacency to the
+ * DEFENDER, nothing else). It is deliberately NOT filtered by
+ * `canUnitAttack(attacker, interceptor)`: on an orthogonal board no space is
+ * adjacent to both an attacker and the adjacent unit it is striking, so such a
+ * filter would make the card literally unplayable against a melee attacker.
+ * Like Masato's, the redirected blow therefore reaches a maid the attacker was
+ * not adjacent to — and, being a non-adjacent melee attack, provokes no
+ * Retaliation Attack from her.
  */
 export function interceptCandidates(
   combat: CombatState | null | undefined,
   attacker: CombatUnitState | undefined,
   defender: CombatUnitState | undefined,
   playerId: PlayerId,
-  attackStaysLegal: (candidate: CombatUnitState) => boolean,
 ): CombatUnitState[] {
   if (!combat || !attacker || !defender) {
     return [];
@@ -119,8 +124,7 @@ export function interceptCandidates(
         unit.id !== attacker.id &&
         unit.controllerId === defender.controllerId &&
         alive(unit) &&
-        isAdjacent(unit.position, defender.position) &&
-        attackStaysLegal(unit),
+        isAdjacent(unit.position, defender.position),
     )
     .sort((left, right) => left.id.localeCompare(right.id));
 }

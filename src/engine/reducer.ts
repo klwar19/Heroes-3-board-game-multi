@@ -21115,13 +21115,19 @@ function applyReactionPlayCore(
         ? state.combat?.units[play.target.unitId]
         : undefined;
     // The handler RE-DERIVES the offer (the applySchoolFetchExpert precedent):
-    // a forged frame naming a unit that is not a legal interceptor fails
-    // cleanly instead of redirecting an attack the attacker could not make.
+    // a forged frame naming a unit the tray never offered fails cleanly. The
+    // declaration flags come from the parked attack's own UNIT_ATTACK_DECLARED
+    // event, so a Retaliation Attack / printed follow-up is refused here too.
+    const declaration = declaredAttackEventFor(state, stackItem);
     const legal = getInterceptTargets(
       state,
       playerId,
       attacker,
       originalDefender,
+      {
+        isRetaliation: declaration?.isRetaliation,
+        abilityAttack: Boolean(declaration?.abilityAttack),
+      },
     );
     if (!requested || !legal.some((unit) => unit.id === requested.id)) {
       throw new Error(
@@ -30803,6 +30809,24 @@ function adjacentBodyguardFor(
  * ORIGINAL target (Drone Support marks, a pre-attack ability bite) deliberately
  * stay spent — the maid steps in after the guns were laid.
  */
+/**
+ * The `UNIT_ATTACK_DECLARED` event a parked attack stack item was declared by —
+ * the ONE place both the Sirius redirect and its legality re-derivation read the
+ * declaration flags (`isRetaliation` / `abilityAttack`) from.
+ */
+function declaredAttackEventFor(
+  state: GameState,
+  stackItem: ResolutionStackItem,
+): Extract<GameEvent, { type: "UNIT_ATTACK_DECLARED" }> | undefined {
+  for (const eventId of stackItem.triggerEventIds) {
+    const event = state.eventLog.find((candidate) => candidate.id === eventId);
+    if (event?.type === "UNIT_ATTACK_DECLARED") {
+      return event;
+    }
+  }
+  return undefined;
+}
+
 function redirectDeclaredAttack(
   state: GameState,
   stackItem: ResolutionStackItem,

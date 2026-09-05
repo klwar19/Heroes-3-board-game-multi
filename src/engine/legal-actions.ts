@@ -9307,22 +9307,25 @@ function addArtifactSetActions(
  * Sirius (Azur Lane) "Royal Maid's Cover": the friendly units that may take the
  * declared attack in the original target's place. ONE read behind the offer
  * gate (isEffectLegalForTrigger), the per-candidate reaction offers and the
- * reducer's redirect validation, so a forged frame can never redirect an attack
- * the attacker could not legally make against the interceptor.
+ * reducer's redirect validation, so a forged frame can never name a unit the
+ * tray never offered.
+ *
+ * `declaration` carries the SAME two exclusions Masato's declaration-time
+ * bodyguard swap applies: a Retaliation Attack and a printed follow-up
+ * (`abilityAttack`) are never redirected — only a normal declared attack is.
  */
 export function getInterceptTargets(
   state: GameState,
   playerId: PlayerId,
   attacker: CombatUnitState | undefined,
   defender: CombatUnitState | undefined,
+  declaration?: { isRetaliation?: boolean; abilityAttack?: boolean },
 ): CombatUnitState[] {
   const combat = state.combat;
-  if (!combat) {
+  if (!combat || declaration?.isRetaliation || declaration?.abilityAttack) {
     return [];
   }
-  return interceptCandidates(combat, attacker, defender, playerId, (candidate) =>
-    canUnitAttack(combat, attacker!, candidate, state.activeEffects),
-  );
+  return interceptCandidates(combat, attacker, defender, playerId);
 }
 
 function getActivateRangedUnitTargets(
@@ -10580,6 +10583,10 @@ export function getLegalReactionsForTrigger(
               player.id,
               state.combat?.units[triggerEvent.attackerId],
               state.combat?.units[triggerEvent.defenderId],
+              {
+                isRetaliation: triggerEvent.isRetaliation,
+                abilityAttack: Boolean(triggerEvent.abilityAttack),
+              },
             )) {
               push(
                 makeReactionAction(
@@ -13191,11 +13198,14 @@ export function isEffectLegalForTrigger(
 
     // Sirius (Azur Lane) "Royal Maid's Cover": offered to the ATTACKED unit's
     // controller while at least one living ally stands adjacent to the target
-    // AND the attacker could legally strike that ally instead (a redirect that
-    // would be an illegal attack is never offered — the Masato constraint).
+    // — the Masato bodyguard rule, minus the Retaliation / printed-follow-up
+    // attacks Masato's own swap also refuses.
     if (effect.type === "INTERCEPT_DECLARED_ATTACK") {
       return (
-        getInterceptTargets(state, playerId, attacker, defender).length > 0
+        getInterceptTargets(state, playerId, attacker, defender, {
+          isRetaliation: triggerEvent.isRetaliation,
+          abilityAttack: Boolean(triggerEvent.abilityAttack),
+        }).length > 0
       );
     }
 

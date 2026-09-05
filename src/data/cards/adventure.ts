@@ -280,10 +280,12 @@ function repairDockSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
  * Sirius "Royal Maid's Cover" — the maid steps in front of her mistress. An
  * INSTANT reaction inside an ENEMY attack declared on one of your units: a
  * chosen living friendly unit ADJACENT to the target becomes the defender of
- * that attack (only a unit the attacker could legally strike instead is
- * offered). The interceptor gains +1 (I) / +2 (IV, VI) Defense against that
- * blow, and at VI the attacker takes 1 damage once the attack resolves — effect
- * damage, so it is not an attack, provokes no Retaliation and ignores Defense.
+ * that attack. The candidate rule is Masato's Bodyguard verbatim (adjacency to
+ * the ATTACKED unit, nothing else), minus the two attacks Masato's own swap
+ * also refuses — a Retaliation Attack and a printed follow-up. The interceptor
+ * gains +1 (I) / +2 (IV, VI) Defense against that blow, and at VI the attacker
+ * takes 1 damage once the attack resolves — effect damage, so it is not an
+ * attack, provokes no Retaliation and ignores Defense.
  */
 function royalMaidsCoverSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
   const numeral = level === 1 ? "I" : level === 4 ? "IV" : "VI";
@@ -299,7 +301,7 @@ function royalMaidsCoverSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
       "instant",
       "sirius",
       "royal-maids-cover",
-      `Instant, when an enemy declares an attack on one of your units: a chosen living friendly unit adjacent to the attacked unit takes the attack instead, with +${defenseBonus} Defense against it. Only an interceptor the attacker could legally attack is offered.${
+      `Instant, when an enemy declares a normal attack on one of your units: a chosen living friendly unit adjacent to the attacked unit takes the attack instead, with +${defenseBonus} Defense against it. Not offered against a Retaliation Attack or a printed follow-up attack.${
         level === 6
           ? " After that attack resolves, the attacker takes 1 damage (not an attack: no Retaliation, ignores Defense)."
           : ""
