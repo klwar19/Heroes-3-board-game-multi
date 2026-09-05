@@ -39,6 +39,7 @@ import { noteUnitDamagedForTokens, placeCombatToken } from "./tokens";
 import { isMechanicalUnit } from "./unit-abilities";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import type {
+  CombatState,
   CombatUnitState,
   CommanderPlayerState,
   CommanderStatKey,
@@ -998,7 +999,32 @@ export function commanderCastAvailable(state: GameState, unit: CombatUnitState, 
   if (runeCost > 0 && commanderRunePool(state, unit.controllerId) < runeCost) {
     return false;
   }
+  // A rally that lands on the ADJACENT allies is a dead cast with nobody
+  // adjacent — the picker's anchor (the commander itself) would still be a legal
+  // candidate, so without this guard 3 AP could be spent on nothing.
+  if (cast.effect.kind === "adjacent-allies-buff" && commanderAdjacentAllies(combat, unit).length === 0) {
+    return false;
+  }
   return commanderCastCandidates(state, unit, abilityId).length > 0;
+}
+
+/**
+ * Living allied units (never the commander itself) orthogonally adjacent to it —
+ * the ONE read behind Kyousuke's "Little Busters, Assemble!" offer gate, its
+ * resolution and the AI's score, so the three can never disagree.
+ */
+export function commanderAdjacentAllies(
+  combat: Pick<CombatState, "units">,
+  unit: CombatUnitState
+): CombatUnitState[] {
+  return Object.values(combat.units).filter(
+    (other) =>
+      other.id !== unit.id &&
+      other.controllerId === unit.controllerId &&
+      other.damage < other.maxHealth &&
+      other.position >= 0 &&
+      isAdjacent(unit.position, other.position)
+  );
 }
 
 /**

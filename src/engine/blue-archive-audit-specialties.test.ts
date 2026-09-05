@@ -770,7 +770,7 @@ describe("WOG commander — Ibuki", () => {
     // the Skeletons retaliate — "attacking" +1, then "being attacked" +1.
     const exchange = castState();
     const after = passAll(applyOk(exchange, { type: "ATTACK_UNIT", playerId: "p1", attackerId: IBUKI, defenderId: SKELETONS }));
-    expect(after.combat!.units[IBUKI].ibukiActionPoints).toBe(3);
+    expect(after.combat!.units[IBUKI].commanderActionPoints).toBe(3);
 
     const doomed = castState();
     const ibuki = doomed.combat!.units[IBUKI];
@@ -781,7 +781,7 @@ describe("WOG commander — Ibuki", () => {
     doomed.combat!.activeUnitId = SKELETONS;
     const killed = passAll(applyOk(doomed, { type: "ATTACK_UNIT", playerId: "p2", attackerId: SKELETONS, defenderId: IBUKI }));
     expect(killed.combat!.units[IBUKI].damage).toBeGreaterThanOrEqual(killed.combat!.units[IBUKI].maxHealth);
-    expect(killed.combat!.units[IBUKI].ibukiActionPoints, "no AP for a lethal hit").toBe(1);
+    expect(killed.combat!.units[IBUKI].commanderActionPoints, "no AP for a lethal hit").toBe(1);
   });
 
   it("Sniper Shot: 1 damage at Power 0 AND Power 1 (2 only at Power 2); refuses an own unit; a 1-HP target is removed", () => {
@@ -808,7 +808,7 @@ describe("WOG commander — Ibuki", () => {
     const controlHit = passAll(applyOk(control, { type: "ATTACK_UNIT", playerId: "p1", attackerId: IBUKI, defenderId: SKELETONS }));
 
     const mischief = castState();
-    mischief.combat!.units[IBUKI].ibukiActionPoints = 2;
+    mischief.combat!.units[IBUKI].commanderActionPoints = 2;
     mischief.combat!.units[IBUKI].abilities.push("ignores-retaliation");
     mischief.combat!.units[SKELETONS].defense = 1;
     const debuffed = useAbility(mischief, "commander-ibuki-up-to-mischief", { type: "unit", unitId: SKELETONS });
@@ -821,20 +821,20 @@ describe("WOG commander — Ibuki", () => {
 
   it("Gadabout: a NON-adjacent landing hurts nobody; an occupied cell is refused; adjacent allies are never hit", () => {
     const far = castState();
-    far.combat!.units[IBUKI].ibukiActionPoints = 2;
+    far.combat!.units[IBUKI].commanderActionPoints = 2;
     const landed = useAbility(far, "commander-ibuki-gadabout", { type: "space", position: 0 });
     expect(landed.combat!.units[IBUKI].position).toBe(0);
     expect(landed.combat!.units[SKELETONS].damage).toBe(0);
-    expect(landed.combat!.units[IBUKI].ibukiActionPoints).toBe(0);
+    expect(landed.combat!.units[IBUKI].commanderActionPoints).toBe(0);
 
     const occupied = castState();
-    occupied.combat!.units[IBUKI].ibukiActionPoints = 2;
+    occupied.combat!.units[IBUKI].commanderActionPoints = 2;
     const refused = applyAction(occupied, { type: "USE_UNIT_ABILITY", playerId: "p1", unitId: IBUKI, abilityId: "commander-ibuki-gadabout", target: { type: "space", position: 10 } });
     expect(refused.errors.length).toBeGreaterThan(0);
     expect(refused.state.combat!.units[IBUKI].position).toBe(9);
 
     const ally = castState();
-    ally.combat!.units[IBUKI].ibukiActionPoints = 2;
+    ally.combat!.units[IBUKI].commanderActionPoints = 2;
     ally.combat!.units[GRIFFINS].position = 15; // adjacent to 11, as are the Skeletons at 10
     const next = useAbility(ally, "commander-ibuki-gadabout", { type: "space", position: 11 });
     expect(next.combat!.units[SKELETONS].damage).toBe(1);
@@ -843,7 +843,7 @@ describe("WOG commander — Ibuki", () => {
 
   it("Executive Order: a refreshed SILVER ally really attacks at −2 for that activation only; a fresh ally is not a candidate", () => {
     const base = castState({ magic: 2 });
-    base.combat!.units[IBUKI].ibukiActionPoints = 3;
+    base.combat!.units[IBUKI].commanderActionPoints = 3;
     base.combat!.units[GRIFFINS].grade = "silver";
     base.combat!.units[GRIFFINS].abilities = ["ignores-retaliation"];
     base.combat!.units[GRIFFINS].activatedThisRound = true;
@@ -875,7 +875,7 @@ describe("WOG commander — Ibuki", () => {
 
   it("Executive Order costs exactly 3 AP: at 2 AP it is neither offered nor accepted, and the AP stay put", () => {
     const base = castState({ magic: 2 });
-    base.combat!.units[IBUKI].ibukiActionPoints = 2;
+    base.combat!.units[IBUKI].commanderActionPoints = 2;
     base.combat!.units[GRIFFINS].grade = "silver";
     base.combat!.units[GRIFFINS].activatedThisRound = true;
     base.combat!.units[GRIFFINS].position = 14;
@@ -883,10 +883,10 @@ describe("WOG commander — Ibuki", () => {
     expect(offer, "2 AP cannot pay a 3-AP command").toBeUndefined();
     const forged = applyAction(base, { type: "USE_UNIT_ABILITY", playerId: "p1", unitId: IBUKI, abilityId: "commander-cast-executive-order" } as GameAction);
     expect(forged.errors.length).toBeGreaterThan(0);
-    expect(forged.state.combat!.units[IBUKI].ibukiActionPoints).toBe(2);
+    expect(forged.state.combat!.units[IBUKI].commanderActionPoints).toBe(2);
     // CONTROL: the same board with 3 AP offers it.
     const funded = castState({ magic: 2 });
-    funded.combat!.units[IBUKI].ibukiActionPoints = 3;
+    funded.combat!.units[IBUKI].commanderActionPoints = 3;
     funded.combat!.units[GRIFFINS].grade = "silver";
     funded.combat!.units[GRIFFINS].activatedThisRound = true;
     funded.combat!.units[GRIFFINS].position = 14;
@@ -895,27 +895,27 @@ describe("WOG commander — Ibuki", () => {
 
   it("(READING) a SECOND Executive Order the same round is offered while 3 AP remain — no once-per-round cast budget for Ibuki", () => {
     const state = castState();
-    state.combat!.units[IBUKI].ibukiActionPoints = 6;
+    state.combat!.units[IBUKI].commanderActionPoints = 6;
     state.combat!.units[MARKSMEN].activatedThisRound = true;
     state.combat!.units[GRIFFINS].activatedThisRound = true;
     const once = executiveOrderOn(state, MARKSMEN);
     expect(once.combat!.units[MARKSMEN].activatedThisRound).toBe(false);
-    expect(once.combat!.units[IBUKI].ibukiActionPoints).toBe(3);
+    expect(once.combat!.units[IBUKI].commanderActionPoints).toBe(3);
     expect(getLegalActions(once, "p1").some((legal) => legal.action.type === "MOVE_UNIT"), "movement is locked").toBe(false);
     const twice = executiveOrderOn(once, GRIFFINS);
     expect(twice.combat!.units[GRIFFINS].activatedThisRound).toBe(false);
-    expect(twice.combat!.units[IBUKI].ibukiActionPoints).toBe(0);
+    expect(twice.combat!.units[IBUKI].commanderActionPoints).toBe(0);
   });
 
   function movedIbuki(): GameState {
     const state = castState();
-    state.combat!.units[IBUKI].ibukiActionPoints = 5; // move → 6
+    state.combat!.units[IBUKI].commanderActionPoints = 5; // move → 6
     state.combat!.units[MARKSMEN].activatedThisRound = true;
     const move = getLegalActions(state, "p1").find((legal) => legal.action.type === "MOVE_UNIT");
     expect(move).toBeTruthy();
     const moved = applyOk(state, move!.action);
     expect(moved.combat!.units[IBUKI].movedThisActivation).toBe(true);
-    expect(moved.combat!.units[IBUKI].ibukiActionPoints).toBe(6);
+    expect(moved.combat!.units[IBUKI].commanderActionPoints).toBe(6);
     return moved;
   }
 

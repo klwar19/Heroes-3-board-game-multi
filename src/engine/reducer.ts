@@ -495,6 +495,7 @@ import {
 } from "@/data/commanders";
 import {
   applyLionRoundStartBarrage,
+  commanderAdjacentAllies,
   applyCommanderRuneOnMove,
   applyCommanderRuneRitual,
   commandersModuleEnabled,
@@ -29825,14 +29826,7 @@ function resolveCommanderCast(
     case "adjacent-allies-buff": {
       const attack = effect.attackByPower[tier];
       const defense = effect.defenseByPower[tier];
-      const rallied = Object.values(combat.units).filter(
-        (other) =>
-          other.id !== caster.id &&
-          other.controllerId === caster.controllerId &&
-          isUnitAlive(other) &&
-          other.position >= 0 &&
-          isAdjacent(caster.position, other.position),
-      );
+      const rallied = commanderAdjacentAllies(combat, caster);
       for (const ally of rallied) {
         createActiveEffect(
           state,

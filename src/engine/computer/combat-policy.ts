@@ -1,7 +1,7 @@
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitAbilities } from "@/data/units/abilities";
 import { getUnitSide } from "../adventure";
-import { commanderCastOf } from "../commanders";
+import { commanderAdjacentAllies, commanderCastOf } from "../commanders";
 import { commanderApSkillOf } from "@/data/commanders";
 import {
   ATTACKER_BACKLINE,
@@ -892,15 +892,10 @@ function commanderCastScore(
       break;
     case "adjacent-allies-buff": {
       // Kyousuke's rally buffs every ADJACENT ally, so its value is the size of
-      // the huddle: alone it does nothing at all and must never be cast.
-      const rallied = Object.values(combat.units).filter(
-        (other) =>
-          other.id !== unit.id &&
-          other.controllerId === playerId &&
-          unitRemainingHealth(other) > 0 &&
-          other.position >= 0 &&
-          isAdjacent(unit.position, other.position),
-      ).length;
+      // the huddle: alone it does nothing at all and must never be cast. Reads
+      // the ENGINE's own commanderAdjacentAllies, so the score, the offer gate
+      // and the resolution can never disagree about who is rallied.
+      const rallied = commanderAdjacentAllies(combat, unit).length;
       if (rallied === 0) {
         return -1_000;
       }
