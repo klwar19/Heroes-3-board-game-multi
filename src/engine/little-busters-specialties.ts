@@ -2,7 +2,8 @@ import {
   BATTLEFIELD_CELL_COUNT,
   BATTLEFIELD_COLUMNS,
   BATTLEFIELD_ROWS,
-  getBattlefieldCoordinates
+  getBattlefieldCoordinates,
+  isAdjacent
 } from "./battlefield";
 import { arrowTowerRefusesEffect } from "./siege";
 import type { CombatState, CombatUnitState, GameState, PlayerId } from "./state";
@@ -111,32 +112,59 @@ export function homeRunOutcome(
 // ---------------------------------------------------------------------------
 
 /**
+ * "…on an empty space NEXT TO one of your units" (the printed card): a cat may
+ * only slip in beside a living body its owner controls, so the summons cannot be
+ * dropped behind the enemy line. THE one read behind both surfaces — the offered
+ * empty spaces (legal-actions.ts) and the auto-placed second cat below — so the
+ * offer and the resolution can never disagree. A cat already placed by this play
+ * counts, exactly like any other friendly unit.
+ */
+export function catLandingIsAnchored(
+  combat: CombatState,
+  playerId: PlayerId,
+  position: number,
+  extraFriendlyPositions: readonly number[] = []
+): boolean {
+  if (extraFriendlyPositions.some((friendly) => isAdjacent(friendly, position))) {
+    return true;
+  }
+  return Object.values(combat.units).some(
+    (unit) => unit.controllerId === playerId && alive(unit) && isAdjacent(unit.position, position)
+  );
+}
+
+/**
  * Where `count` summoned cats land: the player's chosen empty space first, then
- * the lowest-numbered remaining legal cells. Deterministic on purpose — a second
- * placement window would be one more thing a computer or AFK seat could stall on
- * (see the computer/window.ts lockstep rule), and the shipped Summon Elemental
- * offers no pick beyond its own card target either.
+ * the lowest-numbered remaining legal cell STILL beside one of the player's own
+ * units. Deterministic on purpose — a second placement window would be one more
+ * thing a computer or AFK seat could stall on (see the computer/window.ts
+ * lockstep rule), and the shipped Summon Elemental offers no pick beyond its own
+ * card target either.
  */
 export function campusCatPositions(
   combat: CombatState,
+  playerId: PlayerId,
   firstPosition: number,
   count: number,
   spaceIsBlocked: (position: number) => boolean
 ): number[] {
   const taken = new Set<number>();
   const positions: number[] = [];
-  if (!spaceIsBlocked(firstPosition)) {
+  if (!spaceIsBlocked(firstPosition) && catLandingIsAnchored(combat, playerId, firstPosition)) {
     positions.push(firstPosition);
     taken.add(firstPosition);
   }
   for (let position = 0; position < BATTLEFIELD_CELL_COUNT && positions.length < count; position += 1) {
-    if (taken.has(position) || spaceIsBlocked(position)) {
+    if (
+      taken.has(position) ||
+      spaceIsBlocked(position) ||
+      !catLandingIsAnchored(combat, playerId, position, positions)
+    ) {
       continue;
     }
     positions.push(position);
     taken.add(position);
   }
-  void combat;
   return positions.slice(0, count);
 }
 

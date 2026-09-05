@@ -232,7 +232,7 @@ import {
   parseFortificationTargetId,
   siegeBlockedPositions,
 } from "./siege";
-import { fallenArmyUnitCount } from "./little-busters-specialties";
+import { catLandingIsAnchored, fallenArmyUnitCount } from "./little-busters-specialties";
 import {
   manualGuardControllerId,
   neutralCombatControllerId,
@@ -2398,11 +2398,19 @@ function getTargetsForCard(
       blocked.add(combat.siege.gatePosition);
     }
 
+    // Rin "Cat Corps" is the one empty-space play whose printed card adds "next
+    // to one of your units". Read through the SAME catLandingIsAnchored the
+    // resolution takes, so an offered space is always one the reducer will use.
+    const anchoredOnly = card?.effect.type === "SUMMON_CAMPUS_CATS";
     const spaces: TargetRef[] = [];
     for (let position = 0; position < BATTLEFIELD_CELL_COUNT; position += 1) {
-      if (!blocked.has(position)) {
-        spaces.push({ type: "space", position });
+      if (blocked.has(position)) {
+        continue;
       }
+      if (anchoredOnly && !catLandingIsAnchored(combat, playerId, position)) {
+        continue;
+      }
+      spaces.push({ type: "space", position });
     }
     return spaces;
   }
@@ -3927,7 +3935,11 @@ function addPlayableCardActions(
       continue;
     }
 
-    // Yuiko "Blade Dance": printed for your own GROUND unit's activation.
+    // Yuiko "Blade Dance": printed for your own GROUND unit's activation. The
+    // "before it attacks" half of the printed text needs no clause here — the
+    // shared combat-play gate above already withholds every turn play once the
+    // active unit has swung (pinned by "is not offered once the active unit has
+    // already swung" in little-busters-specialties.test.ts).
     if (
       card.effect.type === "CREATE_BLADE_DANCE" &&
       activeUnit?.type !== "ground"

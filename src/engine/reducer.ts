@@ -25713,6 +25713,7 @@ function playCard(
     const combat = state.combat;
     const positions = campusCatPositions(
       combat,
+      action.playerId,
       action.target.position,
       effect.count,
       (position) => isSpaceBlockedForSummon(combat, position),

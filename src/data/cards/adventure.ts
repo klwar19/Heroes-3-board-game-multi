@@ -5894,7 +5894,7 @@ function catCorpsSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
       "combat",
       "rin_natsume",
       "cat-corps",
-      `Combat: choose an empty Combat space and summon ${count === 1 ? `one ${catName}` : `two ${catName}s`} there (a second cat takes the next free space). They fight for you until the Combat ends and then vanish — they never join your army, earn experience or count against your deployment limit.`
+      `Combat: choose an empty Combat space next to one of your units and summon ${count === 1 ? `one ${catName}` : `two ${catName}s`} there (a second cat takes the next free space beside your units). They fight for you until the Combat ends and then vanish — they never join your army, earn experience or count against your deployment limit.`
     ],
     target: { type: "empty-space" },
     effect: {
