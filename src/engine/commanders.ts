@@ -5,6 +5,8 @@ import {
   COMMANDER_STANCE_MAX_ROUND,
   COMMANDER_STAT_KEYS,
   commanderCanRaiseGrade,
+  COMMANDER_AP_CAST_COST,
+  commanderApSkills,
   commanderCastIsInstantReaction,
   commanderCastTierIndex,
   commanderDefinitions,
@@ -12,6 +14,7 @@ import {
   commanderMagicImmuneToOngoing,
   commanderStatValue,
   commanderUnlockedCombos,
+  commanderUsesActionPoints,
   type CommanderCastDefinition,
   type CommanderDefinition,
   type CommanderGrade,
@@ -298,8 +301,11 @@ export function commanderAbilityIds(commander: CommanderPlayerState): string[] {
   // The command ability itself (offered as a USE_UNIT_ABILITY during its
   // activation; see legal-actions/reducer).
   if (definition) {
-    if (commander.slug === "ibuki") {
-      ids.push("commander-ibuki-sniper-shot", "commander-ibuki-up-to-mischief", "commander-ibuki-gadabout");
+    // ACTION-POINT commanders carry their AP skills as ordinary unit abilities
+    // (the cast below is the priciest one). Data-driven: adding a slug to
+    // COMMANDER_AP_SKILLS is all a new AP commander needs here.
+    for (const skill of commanderApSkills(commander.slug)) {
+      ids.push(skill.id);
     }
     ids.push(definition.cast.abilityId, ...(definition.additionalCasts?.map((cast) => cast.abilityId) ?? []));
   }
@@ -358,7 +364,7 @@ export function makeCommanderCombatUnit(
     defenseToken: false,
     abilities: [...commanderAbilityIds(commander), ...artifacts.abilityIds],
     commanderSlug: commander.slug,
-    ...(commander.slug === "ibuki" ? { ibukiActionPoints: 1 } : {}),
+    ...(commanderUsesActionPoints(commander.slug) ? { commanderActionPoints: 1 } : {}),
     // Grade snapshot for the UI (inspect/zoom render the dynamic card face
     // from it). Grades cannot change mid-combat, so the copy stays true.
     commanderGrades: { ...grades },
@@ -416,32 +422,54 @@ export function applyLionRoundStartBarrage(state: GameState): void {
   }
 }
 
-export function ibukiActionPoints(unit: CombatUnitState): number {
-  return unit.commanderSlug === "ibuki" ? Math.max(0, unit.ibukiActionPoints ?? 1) : 0;
+/**
+ * An ACTION-POINT commander's banked AP (0 for every other unit). Reads the
+ * modern field first and falls back to the LEGACY `ibukiActionPoints` written by
+ * a pre-Kyousuke edge, so a combat in flight across the deploy keeps its AP.
+ */
+export function commanderActionPoints(unit: CombatUnitState): number {
+  if (!commanderUsesActionPoints(unit.commanderSlug)) {
+    return 0;
+  }
+  return Math.max(0, unit.commanderActionPoints ?? unit.ibukiActionPoints ?? 1);
 }
 
 /**
- * Ibuki spent AP on a command (Sniper Shot / Up to Mischief / Gadabout) or on
- * Executive Order during THIS activation. Every one of those sets
- * `movementLockedThisActivation` on her (the cast ends her movement), and it is
- * reset at activation start, so the flag doubles as the "used a skill" receipt.
- * USER RULE 2026-09-04: after using a skill she may only hold position — she
- * can no longer Defend (read by the Defend offer AND the defendUnit handler).
+ * An ACTION-POINT commander spent AP on a skill or on its cast during THIS
+ * activation. Every one of those sets `movementLockedThisActivation` (a command
+ * ends further movement), and that flag is reset at activation start, so it
+ * doubles as the "used a skill" receipt.
+ * USER RULE 2026-09-04: after using a skill the commander may only hold
+ * position — it can no longer Defend (read by the Defend offer AND the
+ * defendUnit handler).
  */
-export function ibukiCommandUsedThisActivation(unit: CombatUnitState): boolean {
-  return unit.commanderSlug === "ibuki" && Boolean(unit.movementLockedThisActivation);
+export function commanderCommandUsedThisActivation(unit: CombatUnitState): boolean {
+  return commanderUsesActionPoints(unit.commanderSlug) && Boolean(unit.movementLockedThisActivation);
 }
 
-export function gainIbukiActionPoint(state: GameState, unit: CombatUnitState, reason: string): void {
-  if (unit.commanderSlug !== "ibuki" || unit.damage >= unit.maxHealth) return;
-  unit.ibukiActionPoints = ibukiActionPoints(unit) + 1;
+/** Bank 1 AP on a living AP commander for moving / attacking / Defending / being attacked. */
+export function gainCommanderActionPoint(state: GameState, unit: CombatUnitState, reason: string): void {
+  if (!commanderUsesActionPoints(unit.commanderSlug) || unit.damage >= unit.maxHealth) return;
+  unit.commanderActionPoints = commanderActionPoints(unit) + 1;
+  delete unit.ibukiActionPoints;
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: unit.id,
-    abilityId: "ibuki-action-point",
+    abilityId: "commander-action-point",
     targetUnitId: unit.id,
-    message: `Ibuki gains 1 AP for ${reason} (${unit.ibukiActionPoints} AP).`
+    message: `${unit.cardName} gains 1 AP for ${reason} (${unit.commanderActionPoints} AP).`
   });
+}
+
+/** Spend `cost` AP (a skill's price, or COMMANDER_AP_CAST_COST for the cast). */
+export function spendCommanderActionPoints(unit: CombatUnitState, cost: number): void {
+  unit.commanderActionPoints = commanderActionPoints(unit) - cost;
+  delete unit.ibukiActionPoints;
+}
+
+/** An AP commander's cast is its priciest skill: it needs COMMANDER_AP_CAST_COST AP. */
+export function commanderCastActionPointsPayable(unit: CombatUnitState): boolean {
+  return !commanderUsesActionPoints(unit.commanderSlug) || commanderActionPoints(unit) >= COMMANDER_AP_CAST_COST;
 }
 
 /**
@@ -956,10 +984,14 @@ export function commanderCastAvailable(state: GameState, unit: CombatUnitState, 
   if (commanderCastIsInstantReaction(cast)) {
     return false;
   }
-  if (unit.activatedThisRound || (unit.movedThisActivation && unit.commanderSlug !== "ibuki") || unit.attackedThisActivation) {
+  // An AP commander's cast is one of its commands, so — unlike every other
+  // commander — it stays available after a move and is bounded by AP, not by a
+  // once-per-round budget.
+  const apCommander = commanderUsesActionPoints(unit.commanderSlug);
+  if (unit.activatedThisRound || (unit.movedThisActivation && !apCommander) || unit.attackedThisActivation) {
     return false;
   }
-  if (unit.commanderSlug !== "ibuki" && commanderCastUsedThisRound(state, unit)) {
+  if (!apCommander && commanderCastUsedThisRound(state, unit)) {
     return false;
   }
   const runeCost = commanderCastRuneCost(state, unit, abilityId);

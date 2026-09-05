@@ -487,8 +487,11 @@ import {
   spendRunes,
 } from "./runes";
 import {
+  COMMANDER_AP_CAST_COST,
+  commanderApSkillOf,
   commanderCastIsInstantReaction,
   commanderCastTierIndex,
+  commanderUsesActionPoints,
 } from "@/data/commanders";
 import {
   applyLionRoundStartBarrage,
@@ -503,9 +506,10 @@ import {
   commanderDefenseReactionUnit,
   commanderLiveAttackBonus,
   commanderLiveDefenseBonus,
-  gainIbukiActionPoint,
-  ibukiActionPoints,
-  ibukiCommandUsedThisActivation,
+  commanderActionPoints,
+  commanderCommandUsedThisActivation,
+  gainCommanderActionPoint,
+  spendCommanderActionPoints,
   latchCommanderFrontLineAttack,
   sonyaBondDefenseBonus,
   commanderRunePool,
@@ -8278,8 +8282,8 @@ function finishResolvedAttack(
   );
   // Rune Keeper commander: +1 Rune the first time it is attacked this combat.
   applyCommanderRuneRitual(state, details.defender, details.isRetaliation);
-  gainIbukiActionPoint(state, details.attacker, "attacking");
-  gainIbukiActionPoint(state, details.defender, "being attacked");
+  gainCommanderActionPoint(state, details.attacker, "attacking");
+  gainCommanderActionPoint(state, details.defender, "being attacked");
 
   // Anime Equipment (§3.13): the attack LANDED (past the lethal-save gate) — mark
   // the Iron-Blood Sword / Black Tortoise Mail per-combat charges spent so only
@@ -27561,7 +27565,9 @@ function applyUnitAbilityAction(
     ability?.effect?.type === "SPLASH_ALLOCATION_ATTACK" ||
     ability?.effect?.type === "PLACE_ADJACENT_OBSTACLE_ACTION" ||
     ability?.effect?.type === "MARK_ENEMY_FOR_NEXT_FRIENDLY_ATTACK" ||
-    unit?.commanderSlug === "ibuki";
+    // An ACTION-POINT commander's commands are usable after a move (the command
+    // then ends its movement itself).
+    commanderUsesActionPoints(unit?.commanderSlug);
 
   if (
     !combat ||
@@ -27588,116 +27594,208 @@ function applyUnitAbilityAction(
     return;
   }
 
-  if (
-    unit.commanderSlug === "ibuki" &&
-    action.abilityId.startsWith("commander-ibuki-")
-  ) {
-    const cost = action.abilityId === "commander-ibuki-sniper-shot" ? 1 : 2;
+  // ------------------------------------------------------------------
+  // ACTION-POINT commander skills (Blue Archive Ibuki, Little Busters
+  // Kyousuke). ONE dispatcher over the skill's effect KIND — every per-slug
+  // branch lives in COMMANDER_AP_SKILLS (src/data/commanders.ts) instead.
+  // ------------------------------------------------------------------
+  const apSkill = commanderApSkillOf(unit.commanderSlug, action.abilityId);
+  if (apSkill) {
     const power = commanderCastPower(state, unit);
-    if (ibukiActionPoints(unit) < cost || unit.attackedThisActivation)
-      throw new Error("Ibuki does not have enough AP for that command.");
-    if (
-      action.abilityId === "commander-ibuki-sniper-shot" &&
-      action.target.type === "unit"
-    ) {
-      const target = combat.units[action.target.unitId];
+    const tier = commanderCastTierIndex(power);
+    if (commanderActionPoints(unit) < apSkill.ap || unit.attackedThisActivation)
+      throw new Error(`${unit.cardName} does not have enough AP for that command.`);
+    const source = {
+      type: "unit" as const,
+      unitId: unit.id,
+      controllerId: unit.controllerId,
+    };
+    // Printed cards use the typographic MINUS SIGN (U+2212) for penalties.
+    const signed = (amount: number) => (amount < 0 ? `−${-amount}` : `+${amount}`);
+    const pickedUnit =
+      action.target.type === "unit" ? combat.units[action.target.unitId] : undefined;
+    const wantAlly = apSkill.target === "ally-unit";
+    if (apSkill.target === "enemy-unit" || apSkill.target === "ally-unit") {
       if (
-        !target ||
-        target.controllerId === unit.controllerId ||
-        !isUnitAlive(target)
-      )
-        throw new Error("Choose a living enemy unit.");
-      applyFlatAbilityDamage(
-        state,
-        unit,
-        target.id,
-        action.abilityId,
-        ability.name,
-        power >= 2 ? 2 : 1,
-      );
-    } else if (
-      action.abilityId === "commander-ibuki-up-to-mischief" &&
-      action.target.type === "unit"
-    ) {
-      const target = combat.units[action.target.unitId];
-      if (
-        !target ||
-        target.controllerId === unit.controllerId ||
-        !isUnitAlive(target)
-      )
-        throw new Error("Choose a living enemy unit.");
-      createActiveEffect(
-        state,
-        {
-          name: `${ability.name} (Ibuki)`,
-          scope: "unit",
-          duration: { type: "current-combat-round" },
-          polarity: "negative",
-          removable: true,
-          modifiers: [
-            { type: "ATTACK_BONUS", amount: -1 },
-            ...(power >= 1
-              ? [{ type: "DEFENSE_BONUS" as const, amount: -1 }]
-              : []),
-          ],
-        },
-        { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
-        unit.controllerId,
-        { type: "unit", unitId: target.id },
-      );
-      appendEvent(state, {
-        type: "UNIT_ABILITY_TRIGGERED",
-        unitId: unit.id,
-        abilityId: action.abilityId,
-        targetUnitId: target.id,
-        message: `Ibuki's ${ability.name} gives ${target.cardName} −1 Attack${power >= 1 ? " and −1 Defense" : ""} this round.`,
-      });
-    } else if (
-      action.abilityId === "commander-ibuki-gadabout" &&
-      action.target.type === "space"
-    ) {
-      const destination = action.target.position;
-      const occupied = Object.values(combat.units).some(
-        (other) => isUnitAlive(other) && other.position === destination,
-      );
-      if (!isBattlefieldPosition(destination) || occupied)
-        throw new Error("Choose an empty battlefield space.");
-      const from = unit.position;
-      unit.position = destination;
-      unit.movedThisActivation = true;
-      appendEvent(state, {
-        type: "UNIT_MOVED",
-        playerId: unit.controllerId,
-        unitId: unit.id,
-        from,
-        to: unit.position,
-      });
-      appendEvent(state, {
-        type: "UNIT_ABILITY_TRIGGERED",
-        unitId: unit.id,
-        abilityId: action.abilityId,
-        targetUnitId: unit.id,
-        message: `Ibuki uses ${ability.name} and teleports across the battlefield.`,
-      });
-      for (const target of Object.values(combat.units).filter(
-        (other) =>
-          other.controllerId !== unit.controllerId &&
-          isUnitAlive(other) &&
-          isAdjacent(unit.position, other.position),
-      )) {
+        !pickedUnit ||
+        !isUnitAlive(pickedUnit) ||
+        pickedUnit.id === unit.id ||
+        (pickedUnit.controllerId === unit.controllerId) !== wantAlly
+      ) {
+        throw new Error(
+          wantAlly ? "Choose another living allied unit." : "Choose a living enemy unit.",
+        );
+      }
+    }
+    const effect = apSkill.effect;
+    switch (effect.kind) {
+      case "flat-damage":
         applyFlatAbilityDamage(
           state,
           unit,
-          target.id,
-          "commander-ibuki-gadabout-landing-damage",
+          pickedUnit!.id,
+          action.abilityId,
           ability.name,
-          1,
+          effect.damageByPower[tier],
         );
+        break;
+      case "enemy-debuff": {
+        const withDefense = power >= effect.defenseFromPower;
+        createActiveEffect(
+          state,
+          {
+            name: `${ability.name} (${unit.cardName})`,
+            scope: "unit",
+            duration: { type: "current-combat-round" },
+            polarity: "negative",
+            removable: true,
+            modifiers: [
+              { type: "ATTACK_BONUS", amount: effect.attack },
+              ...(withDefense
+                ? [{ type: "DEFENSE_BONUS" as const, amount: -1 }]
+                : []),
+            ],
+          },
+          source,
+          unit.controllerId,
+          { type: "unit", unitId: pickedUnit!.id },
+        );
+        appendEvent(state, {
+          type: "UNIT_ABILITY_TRIGGERED",
+          unitId: unit.id,
+          abilityId: action.abilityId,
+          targetUnitId: pickedUnit!.id,
+          message: `${unit.cardName}'s ${ability.name} gives ${pickedUnit!.cardName} ${signed(effect.attack)} Attack${withDefense ? " and −1 Defense" : ""} this round.`,
+        });
+        break;
       }
-    } else {
-      throw new Error("That Ibuki command target is invalid.");
+      case "enemy-defense-debuff": {
+        createActiveEffect(
+          state,
+          {
+            name: `${ability.name} (${unit.cardName})`,
+            scope: "unit",
+            duration: { type: "current-combat-round" },
+            polarity: "negative",
+            removable: true,
+            modifiers: [{ type: "DEFENSE_BONUS", amount: effect.defense }],
+          },
+          source,
+          unit.controllerId,
+          { type: "unit", unitId: pickedUnit!.id },
+        );
+        // The Initiative half lasts the WHOLE combat, so it is a second effect
+        // with its own duration — one effect cannot carry two.
+        const slowed = power >= effect.initiativeFromPower;
+        if (slowed) {
+          createActiveEffect(
+            state,
+            {
+              name: `${ability.name} slowdown (${unit.cardName})`,
+              scope: "unit",
+              duration: { type: "combat" },
+              polarity: "negative",
+              removable: true,
+              modifiers: [{ type: "INITIATIVE_BONUS", amount: effect.initiative }],
+            },
+            source,
+            unit.controllerId,
+            { type: "unit", unitId: pickedUnit!.id },
+          );
+        }
+        appendEvent(state, {
+          type: "UNIT_ABILITY_TRIGGERED",
+          unitId: unit.id,
+          abilityId: action.abilityId,
+          targetUnitId: pickedUnit!.id,
+          message: `${unit.cardName}'s ${ability.name} gives ${pickedUnit!.cardName} ${signed(effect.defense)} Defense this round${slowed ? ` and ${signed(effect.initiative)} Initiative for the rest of the combat` : ""}.`,
+        });
+        break;
+      }
+      case "ally-attack-buff": {
+        const amount = effect.amountByPower[tier];
+        createActiveEffect(
+          state,
+          {
+            name: `${ability.name} (${unit.cardName})`,
+            scope: "unit",
+            duration: { type: "current-combat-round" },
+            polarity: "positive",
+            removable: true,
+            modifiers: [{ type: "ATTACK_BONUS", amount }],
+          },
+          source,
+          unit.controllerId,
+          { type: "unit", unitId: pickedUnit!.id },
+        );
+        appendEvent(state, {
+          type: "UNIT_ABILITY_TRIGGERED",
+          unitId: unit.id,
+          abilityId: action.abilityId,
+          targetUnitId: pickedUnit!.id,
+          message: `${unit.cardName}'s ${ability.name} gives ${pickedUnit!.cardName} +${amount} Attack this round.`,
+        });
+        break;
+      }
+      case "teleport-splash": {
+        if (action.target.type !== "space")
+          throw new Error("Choose an empty battlefield space.");
+        const destination = action.target.position;
+        const occupied = Object.values(combat.units).some(
+          (other) => isUnitAlive(other) && other.position === destination,
+        );
+        if (!isBattlefieldPosition(destination) || occupied)
+          throw new Error("Choose an empty battlefield space.");
+        const from = unit.position;
+        unit.position = destination;
+        unit.movedThisActivation = true;
+        appendEvent(state, {
+          type: "UNIT_MOVED",
+          playerId: unit.controllerId,
+          unitId: unit.id,
+          from,
+          to: unit.position,
+        });
+        appendEvent(state, {
+          type: "UNIT_ABILITY_TRIGGERED",
+          unitId: unit.id,
+          abilityId: action.abilityId,
+          targetUnitId: unit.id,
+          message: `${unit.cardName} uses ${ability.name} and teleports across the battlefield.`,
+        });
+        for (const target of Object.values(combat.units).filter(
+          (other) =>
+            other.controllerId !== unit.controllerId &&
+            isUnitAlive(other) &&
+            isAdjacent(unit.position, other.position),
+        )) {
+          applyFlatAbilityDamage(
+            state,
+            unit,
+            target.id,
+            `${action.abilityId}-landing-damage`,
+            ability.name,
+            effect.landingDamage,
+          );
+        }
+        break;
+      }
+      case "draw-cards": {
+        const requested = effect.countByPower[tier];
+        // The shared own-deck draw: it reshuffles the discard back in when the
+        // deck runs dry (digFromOwnDeckTop), so a command is never wasted.
+        const drawn = drawCardsForPlayer(state, unit.controllerId, requested);
+        appendEvent(state, {
+          type: "UNIT_ABILITY_TRIGGERED",
+          unitId: unit.id,
+          abilityId: action.abilityId,
+          targetUnitId: unit.id,
+          message: `${unit.cardName} calls a ${ability.name} and draws ${drawn} card${drawn === 1 ? "" : "s"}.`,
+        });
+        break;
+      }
     }
-    unit.ibukiActionPoints = ibukiActionPoints(unit) - cost;
+    spendCommanderActionPoints(unit, apSkill.ap);
     unit.movementLockedThisActivation = true;
     finishCombatIfNeeded(state);
     return;
@@ -27954,7 +28052,7 @@ function applyUnitAbilityAction(
       !cast ||
       commanderCastIsInstantReaction(cast) ||
       unit.attackedThisActivation ||
-      (unit.commanderSlug !== "ibuki" &&
+      (!commanderUsesActionPoints(unit.commanderSlug) &&
         commanderCastUsedThisRound(state, unit))
     ) {
       throw new Error("That unit ability cannot be used now.");
@@ -29721,6 +29819,50 @@ function resolveCommanderCast(
         targetRef,
       );
       break;
+    // Kyousuke "Little Busters, Assemble!": the clicked target is only the
+    // picker's anchor — the rally lands on EVERY living ally adjacent to the
+    // commander (the commander itself is never buffed).
+    case "adjacent-allies-buff": {
+      const attack = effect.attackByPower[tier];
+      const defense = effect.defenseByPower[tier];
+      const rallied = Object.values(combat.units).filter(
+        (other) =>
+          other.id !== caster.id &&
+          other.controllerId === caster.controllerId &&
+          isUnitAlive(other) &&
+          other.position >= 0 &&
+          isAdjacent(caster.position, other.position),
+      );
+      for (const ally of rallied) {
+        createActiveEffect(
+          state,
+          {
+            name: `${cast.name} (${caster.cardName})`,
+            scope: "unit",
+            duration: { type: "current-combat-round" },
+            polarity: "positive",
+            removable: true,
+            modifiers: [
+              { type: "ATTACK_BONUS", amount: attack },
+              ...(defense > 0
+                ? [{ type: "DEFENSE_BONUS" as const, amount: defense }]
+                : []),
+            ],
+          },
+          source,
+          caster.controllerId,
+          { type: "unit", unitId: ally.id },
+        );
+      }
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: caster.id,
+        abilityId: cast.abilityId,
+        targetUnitId: caster.id,
+        message: `${caster.cardName} rallies ${rallied.length} adjacent all${rallied.length === 1 ? "y" : "ies"}: +${attack} Attack${defense > 0 ? ` and +${defense} Defense` : ""} this round.`,
+      });
+      break;
+    }
     case "reactivate":
       target.activatedThisRound = false;
       target.movedThisActivation = false;
@@ -29745,10 +29887,10 @@ function resolveCommanderCast(
   }
 
   caster.commanderCastRound = combat.round;
-  if (caster.commanderSlug === "ibuki") {
-    if (ibukiActionPoints(caster) < 3)
-      throw new Error("Executive Order needs 3 AP.");
-    caster.ibukiActionPoints = ibukiActionPoints(caster) - 3;
+  if (commanderUsesActionPoints(caster.commanderSlug)) {
+    if (commanderActionPoints(caster) < COMMANDER_AP_CAST_COST)
+      throw new Error(`${cast.name} needs ${COMMANDER_AP_CAST_COST} AP.`);
+    spendCommanderActionPoints(caster, COMMANDER_AP_CAST_COST);
     caster.movementLockedThisActivation = true;
   }
   appendEvent(state, {
@@ -31617,7 +31759,7 @@ function moveUnit(
 
   // Rune Keeper commander (Rune Ritual, move half): +1 Rune whenever it moves.
   applyCommanderRuneOnMove(state, unit);
-  gainIbukiActionPoint(state, unit, "moving");
+  gainCommanderActionPoint(state, unit, "moving");
 
   if (
     openMoveTransportChoice(
@@ -31680,11 +31822,11 @@ function defendUnit(
       "That unit cannot Defend again until it takes another action first.",
     );
   }
-  // Blue Archive Ibuki: a command / Executive Order this activation leaves only
+  // An ACTION-POINT commander: a command / its cast this activation leaves only
   // "hold position" (USER RULE 2026-09-04) — backstop for the withheld offer.
-  if (ibukiCommandUsedThisActivation(unit)) {
+  if (commanderCommandUsedThisActivation(unit)) {
     throw new Error(
-      "Ibuki used a command this activation — she can only hold position.",
+      `${unit.cardName} used a command this activation — it can only hold position.`,
     );
   }
 
@@ -31694,7 +31836,7 @@ function defendUnit(
   // Bulwark unit's controller +2 Runes (RUNE_GAIN_DEFEND) — the richest Rune
   // source.
   gainRunesForDefend(state, unit);
-  gainIbukiActionPoint(state, unit, "defending");
+  gainCommanderActionPoint(state, unit, "defending");
   healCommanderFromArtifactAction(state, unit, "defend");
   appendExpiredEffectEvents(
     state,

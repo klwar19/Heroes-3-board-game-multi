@@ -2,6 +2,7 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitAbilities } from "@/data/units/abilities";
 import { getUnitSide } from "../adventure";
 import { commanderCastOf } from "../commanders";
+import { commanderApSkillOf } from "@/data/commanders";
 import {
   ATTACKER_BACKLINE,
   ATTACKER_FRONTLINE,
@@ -889,6 +890,24 @@ function commanderCastScore(
       // Haste an ally / slow an enemy — a solid tempo buff.
       base = 575;
       break;
+    case "adjacent-allies-buff": {
+      // Kyousuke's rally buffs every ADJACENT ally, so its value is the size of
+      // the huddle: alone it does nothing at all and must never be cast.
+      const rallied = Object.values(combat.units).filter(
+        (other) =>
+          other.id !== unit.id &&
+          other.controllerId === playerId &&
+          unitRemainingHealth(other) > 0 &&
+          other.position >= 0 &&
+          isAdjacent(unit.position, other.position),
+      ).length;
+      if (rallied === 0) {
+        return -1_000;
+      }
+      base = 570 + Math.min(60, rallied * 20);
+      swing = rallied >= 2;
+      break;
+    }
     case "fire-shield":
     case "unlimited-retaliation":
       // Defensive buffs — worth casting while the fight continues.
@@ -967,6 +986,30 @@ export function scoreCombatAction(
       // WOG commander activation cast (target picked after, no board target yet):
       // score by whether the cast swings the fight, factoring the movement lock.
       const actor = combat.units[action.unitId];
+      // ACTION-POINT commanders (Ibuki, Kyousuke): a TARGET-LESS utility skill
+      // (Kyousuke's Strategy Meeting card draw) is priced on its own, because
+      // the generic 550 fallthrough below would buy a card ahead of a Defend
+      // that saves the body — and, worse, ahead of the walk into the fight (a
+      // command ends the activation's movement). The TARGETED AP skills keep the
+      // generic enemy/ally scoring, so Ibuki's numbers are unchanged.
+      const apSkill = actor
+        ? commanderApSkillOf(actor.commanderSlug, action.abilityId)
+        : null;
+      if (actor && apSkill && apSkill.target === "none") {
+        const enemies = livingEnemyUnits(combat, actor.controllerId);
+        const engaged = enemies.some((enemy) =>
+          isAdjacent(actor.position, enemy.position),
+        );
+        const strands =
+          enemies.length > 0 &&
+          !engaged &&
+          actor.type !== "ranged" &&
+          !actor.movedThisActivation;
+        return {
+          score: strands ? 420 : 552,
+          policy: "combat.commander-ap-utility",
+        };
+      }
       const cast = actor ? commanderCastOf(actor, action.abilityId) : null;
       if (
         actor &&

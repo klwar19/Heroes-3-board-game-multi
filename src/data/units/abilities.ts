@@ -4052,6 +4052,18 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "commander-ibuki-sniper-shot": { id: "commander-ibuki-sniper-shot", name: "Sniper Shot", text: "[activation] Spend 1 AP: deal 1 flat damage to an enemy unit, or 2 flat damage at Power 2.", implementationStatus: "implemented" },
   "commander-ibuki-up-to-mischief": { id: "commander-ibuki-up-to-mischief", name: "Up to Mischief", text: "[activation] Spend 2 AP: an enemy unit has −1 Attack this combat round; at Power 1 or higher, it also has −1 Defense.", implementationStatus: "implemented" },
   "commander-ibuki-gadabout": { id: "commander-ibuki-gadabout", name: "Gadabout", text: "[activation] Spend 2 AP: teleport anywhere and deal 1 damage to every adjacent enemy.", implementationStatus: "implemented" },
+  // Little Busters Kyousuke — the SECOND action-point commander (same machinery
+  // as Ibuki, see COMMANDER_AP_SKILLS in src/data/commanders.ts).
+  "commander-cast-kyousuke-assemble": {
+    id: "commander-cast-kyousuke-assemble",
+    name: "Little Busters, Assemble!",
+    text: "[activation] Spend 3 AP: every allied unit adjacent to Kyousuke gains +1 Attack this combat round (Power 1: +1 Attack and +1 Defense; Power 2: +2 Attack and +1 Defense). Ends Kyousuke's further movement this activation.",
+    effect: { type: "COMMANDER_CAST" },
+    implementationStatus: "implemented"
+  },
+  "commander-kyousuke-mission-start": { id: "commander-kyousuke-mission-start", name: "Mission Start!", text: "[activation] Spend 1 AP: an allied unit gains +1 Attack this combat round, or +2 at Power 2.", implementationStatus: "implemented" },
+  "commander-kyousuke-gutsy-play": { id: "commander-kyousuke-gutsy-play", name: "Gutsy Play", text: "[activation] Spend 2 AP: an enemy unit has −1 Defense this combat round; at Power 1 or higher, it also has −1 Initiative for the rest of the combat.", implementationStatus: "implemented" },
+  "commander-kyousuke-strategy-meeting": { id: "commander-kyousuke-strategy-meeting", name: "Strategy Meeting", text: "[activation] Spend 2 AP: draw 1 card from your own deck, or 2 cards at Power 2.", implementationStatus: "implemented" },
   "imperium-vox-fire-mission-few": { id: "imperium-vox-fire-mission-few", name: "Vox Fire Mission", text: "Once per round, mark an enemy within 2 spaces; the next friendly attack against it gains +1 Attack.", effect: { type: "MARK_ENEMY_FOR_NEXT_FRIENDLY_ATTACK", range: 2, attackBonus: 1 }, implementationStatus: "implemented" },
   "imperium-vox-fire-mission-pack": { id: "imperium-vox-fire-mission-pack", name: "Veteran Vox Net", text: "Once per round, mark an enemy within 3 spaces; the next friendly attack against it gains +1 Attack.", effect: { type: "MARK_ENEMY_FOR_NEXT_FRIENDLY_ATTACK", range: 3, attackBonus: 1 }, implementationStatus: "implemented" },
   "imperium-narthecium-few": { id: "imperium-narthecium-few", name: "Narthecium Protocol", text: "At activation, heal another ally 1 damage or gain +1 Attack this round.", effect: { type: "ON_ACTIVATION_HEAL_FRIENDLY_OR_BUFF_SELF", healAmount: 1, attackBonus: 1 }, implementationStatus: "implemented" },

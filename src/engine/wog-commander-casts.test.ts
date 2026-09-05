@@ -928,7 +928,7 @@ describe("commander casts — Ibuki's Executive Order", () => {
   it("starts at 1 AP and exposes only affordable commands", () => {
     const state = castState("ibuki");
     const ibuki = state.combat!.units[commanderUnitId("p1")];
-    expect(ibuki.ibukiActionPoints).toBe(1);
+    expect(ibuki.commanderActionPoints).toBe(1);
     const ids = getLegalActions(state, "p1").filter((entry) => entry.action.type === "USE_UNIT_ABILITY").map((entry) => entry.action.type === "USE_UNIT_ABILITY" ? entry.action.abilityId : "");
     expect(ids).toContain("commander-ibuki-sniper-shot");
     expect(ids).not.toContain("commander-ibuki-up-to-mischief");
@@ -941,7 +941,7 @@ describe("commander casts — Ibuki's Executive Order", () => {
     const move = getLegalActions(movedState, "p1").find((entry) => entry.action.type === "MOVE_UNIT");
     expect(move).toBeTruthy();
     const moved = apply(movedState, move!.action);
-    expect(moved.combat!.units[ibukiId].ibukiActionPoints).toBe(2);
+    expect(moved.combat!.units[ibukiId].commanderActionPoints).toBe(2);
 
     const attackingState = castState("ibuki");
     // Isolate the attack trigger from the separate "being attacked" trigger
@@ -953,17 +953,17 @@ describe("commander casts — Ibuki's Executive Order", () => {
       attackerId: ibukiId,
       defenderId: "unit_p2_skeletons"
     }));
-    expect(attacked.combat!.units[ibukiId].ibukiActionPoints).toBe(2);
+    expect(attacked.combat!.units[ibukiId].commanderActionPoints).toBe(2);
 
     const defendingState = castState("ibuki");
     const defended = apply(defendingState, { type: "DEFEND_UNIT", playerId: "p1", unitId: ibukiId });
-    expect(defended.combat!.units[ibukiId].ibukiActionPoints).toBe(2);
+    expect(defended.combat!.units[ibukiId].commanderActionPoints).toBe(2);
 
     const targetedState = castState("ibuki");
     // Prevent a retaliation from adding a second, unrelated "attacking" AP.
     targetedState.combat!.units[ibukiId].retaliatedThisRound = true;
     const targeted = enemyAttack(targetedState, "unit_p2_skeletons", 10, ibukiId);
-    expect(targeted.combat!.units[ibukiId].ibukiActionPoints).toBe(2);
+    expect(targeted.combat!.units[ibukiId].commanderActionPoints).toBe(2);
   });
 
   it("spends AP on Sniper Shot, Up to Mischief, and Gadabout", () => {
@@ -973,7 +973,7 @@ describe("commander casts — Ibuki's Executive Order", () => {
     sniper.combat!.units.unit_p2_skeletons.defense = 99;
     const shot = apply(sniper, { type: "USE_UNIT_ABILITY", playerId: "p1", unitId: ibukiId, abilityId: "commander-ibuki-sniper-shot", target: { type: "unit", unitId: "unit_p2_skeletons" } });
     expect(shot.combat!.units.unit_p2_skeletons.damage).toBe(1);
-    expect(shot.combat!.units[ibukiId].ibukiActionPoints).toBe(0);
+    expect(shot.combat!.units[ibukiId].commanderActionPoints).toBe(0);
 
     const powerTwoShot = castState("ibuki", { magic: 3 });
     powerTwoShot.combat!.units.unit_p2_skeletons.defense = 99;
@@ -982,10 +982,10 @@ describe("commander casts — Ibuki's Executive Order", () => {
     expect(strongerShot.combat!.units.unit_p2_skeletons.damage).toBe(2);
 
     const mischief = castState("ibuki");
-    mischief.combat!.units[ibukiId].ibukiActionPoints = 2;
+    mischief.combat!.units[ibukiId].commanderActionPoints = 2;
     const debuffed = apply(mischief, { type: "USE_UNIT_ABILITY", playerId: "p1", unitId: ibukiId, abilityId: "commander-ibuki-up-to-mischief", target: { type: "unit", unitId: "unit_p2_skeletons" } });
     expect(getDisplayAttackBonus(debuffed, debuffed.combat!.units.unit_p2_skeletons)).toBe(-1);
-    expect(debuffed.combat!.units[ibukiId].ibukiActionPoints).toBe(0);
+    expect(debuffed.combat!.units[ibukiId].commanderActionPoints).toBe(0);
 
     const control = castState("ibuki");
     control.combat!.units.unit_p2_skeletons.attack = 3;
@@ -997,7 +997,7 @@ describe("commander casts — Ibuki's Executive Order", () => {
     expect(mischiefHit.combat!.units[ibukiId].damage).toBe(controlHit.combat!.units[ibukiId].damage - 1);
 
     const powerOneMischief = castState("ibuki", { magic: 2 });
-    powerOneMischief.combat!.units[ibukiId].ibukiActionPoints = 2;
+    powerOneMischief.combat!.units[ibukiId].commanderActionPoints = 2;
     powerOneMischief.combat!.units.unit_p2_skeletons.defense = 2;
     expect(getLegalActions(powerOneMischief, "p1").some((entry) => entry.label.includes("−1 Attack and Defense"))).toBe(true);
     const fullyDebuffed = apply(powerOneMischief, { type: "USE_UNIT_ABILITY", playerId: "p1", unitId: ibukiId, abilityId: "commander-ibuki-up-to-mischief", target: { type: "unit", unitId: "unit_p2_skeletons" } });
@@ -1008,18 +1008,18 @@ describe("commander casts — Ibuki's Executive Order", () => {
     expect(defenseReducedHit.combat!.units.unit_p2_skeletons.damage).toBe(1);
 
     const gadabout = castState("ibuki");
-    gadabout.combat!.units[ibukiId].ibukiActionPoints = 2;
+    gadabout.combat!.units[ibukiId].commanderActionPoints = 2;
     const landed = apply(gadabout, { type: "USE_UNIT_ABILITY", playerId: "p1", unitId: ibukiId, abilityId: "commander-ibuki-gadabout", target: { type: "space", position: 11 } });
     expect(landed.combat!.units[ibukiId].position).toBe(11);
     expect(landed.combat!.units.unit_p2_skeletons.damage).toBe(1);
-    expect(landed.combat!.units[ibukiId].ibukiActionPoints).toBe(0);
+    expect(landed.combat!.units[ibukiId].commanderActionPoints).toBe(0);
     expect(getLegalActions(landed, "p1").some((entry) => entry.action.type === "MOVE_UNIT")).toBe(false);
   });
 
   it("offers Executive Order only for already-activated allies within its Power tier and spends 3 AP", () => {
     const bronze = castState("ibuki");
     const ibukiId = commanderUnitId("p1");
-    bronze.combat!.units[ibukiId].ibukiActionPoints = 3;
+    bronze.combat!.units[ibukiId].commanderActionPoints = 3;
     bronze.combat!.units.unit_p1_marksmen.activatedThisRound = true;
     bronze.combat!.units.unit_p1_griffins.grade = "silver";
     bronze.combat!.units.unit_p1_griffins.activatedThisRound = true;
@@ -1027,34 +1027,34 @@ describe("commander casts — Ibuki's Executive Order", () => {
     expect(castCandidateIds(bronze, "ibuki")).not.toContain("unit_p1_griffins");
 
     const silver = castState("ibuki", { magic: 2 });
-    silver.combat!.units[ibukiId].ibukiActionPoints = 3;
+    silver.combat!.units[ibukiId].commanderActionPoints = 3;
     silver.combat!.units.unit_p1_griffins.grade = "silver";
     silver.combat!.units.unit_p1_griffins.activatedThisRound = true;
     expect(castCandidateIds(silver, "ibuki")).toContain("unit_p1_griffins");
 
     const gold = castState("ibuki", { magic: 3 });
-    gold.combat!.units[ibukiId].ibukiActionPoints = 3;
+    gold.combat!.units[ibukiId].commanderActionPoints = 3;
     gold.combat!.units.unit_p1_crusaders.grade = "gold";
     gold.combat!.units.unit_p1_crusaders.activatedThisRound = true;
     expect(castCandidateIds(gold, "ibuki")).toContain("unit_p1_crusaders");
     expect(castCandidateIds(gold, "ibuki")).not.toContain(ibukiId);
 
     const ordered = castOn(gold, "ibuki", "unit_p1_crusaders");
-    expect(ordered.combat!.units[ibukiId].ibukiActionPoints).toBe(0);
+    expect(ordered.combat!.units[ibukiId].commanderActionPoints).toBe(0);
     expect(ordered.combat!.units.unit_p1_crusaders.activatedThisRound).toBe(false);
     expect(getLegalActions(ordered, "p1").some((entry) => entry.action.type === "MOVE_UNIT")).toBe(false);
   });
 
   it("refreshes an activated ally and gives Silver/Gold −2 Attack only for the extra activation", () => {
     const bronze = castState("ibuki");
-    bronze.combat!.units[commanderUnitId("p1")].ibukiActionPoints = 3;
+    bronze.combat!.units[commanderUnitId("p1")].commanderActionPoints = 3;
     bronze.combat!.units.unit_p1_marksmen.activatedThisRound = true;
     const bronzeRefreshed = castOn(bronze, "ibuki", "unit_p1_marksmen");
     expect(bronzeRefreshed.combat!.units.unit_p1_marksmen.activatedThisRound).toBe(false);
     expect(getDisplayAttackBonus(bronzeRefreshed, bronzeRefreshed.combat!.units.unit_p1_marksmen)).toBe(0);
 
     const silver = castState("ibuki", { magic: 2 });
-    silver.combat!.units[commanderUnitId("p1")].ibukiActionPoints = 3;
+    silver.combat!.units[commanderUnitId("p1")].commanderActionPoints = 3;
     silver.combat!.units.unit_p1_griffins.grade = "silver";
     silver.combat!.units.unit_p1_griffins.activatedThisRound = true;
     const refreshed = castOn(silver, "ibuki", "unit_p1_griffins");

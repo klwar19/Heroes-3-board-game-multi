@@ -464,6 +464,16 @@ export type CommanderCastEffect =
        */
       kind: "enemy-damage";
       damageByPower: readonly [number, number, number];
+    }
+  | {
+      /**
+       * Kyousuke "Little Busters, Assemble!": buffs EVERY allied unit adjacent
+       * to the commander (the clicked target is only the picker's anchor — the
+       * effect ignores it). Round-scoped, so it never lingers past the rally.
+       */
+      kind: "adjacent-allies-buff";
+      attackByPower: readonly [number, number, number];
+      defenseByPower: readonly [number, number, number];
     };
 
 export interface CommanderCastDefinition {
@@ -476,6 +486,11 @@ export interface CommanderCastDefinition {
   effect: CommanderCastEffect;
   /** Printed rules text per Power 0/1/2 (shown on the card, current tier highlighted). */
   tierText: readonly [string, string, string];
+  /**
+   * One-line summary for an ACTION-POINT commander's AP table row (the cast is
+   * that commander's priciest skill). Unused by every other commander.
+   */
+  apSummary?: string;
 }
 
 export interface CommanderSpecialtyDefinition {
@@ -522,12 +537,139 @@ export interface CommanderDefinition {
   cardImage: string;
 }
 
-export const IBUKI_COMMAND_SKILLS = [
-  { id: "commander-ibuki-sniper-shot", name: "Sniper Shot", ap: 1, icon: "/assets/anime/icons/blue-archive/ibuki-sniper-shot.webp", text: "Deal 1 flat damage to an enemy unit; at Power 2, deal 2 instead." },
-  { id: "commander-ibuki-up-to-mischief", name: "Up to Mischief", ap: 2, icon: "/assets/anime/icons/blue-archive/ibuki-up-to-mischief.webp", text: "An enemy has −1 Attack this combat round; at Power 1+, it also has −1 Defense." },
-  { id: "commander-ibuki-gadabout", name: "Gadabout", ap: 2, icon: "/assets/anime/icons/blue-archive/ibuki-gadabout.webp", text: "Teleport anywhere; enemies adjacent to the landing space take 1 damage." },
-  { id: "commander-cast-executive-order", name: "Executive Order", ap: 3, icon: "/assets/anime/icons/blue-archive/ibuki-executive-order.webp", text: "Reactivate an ally that already activated: Bronze at Power 0, up to Silver at Power 1, or any tier at Power 2. Silver and Gold have −2 Attack for that extra activation." }
-] as const;
+// ---------------------------------------------------------------------------
+// ACTION-POINT commanders (Blue Archive Ibuki, Little Busters Kyousuke).
+//
+// An AP commander starts every combat with 1 Action Point, banks +1 for moving,
+// attacking, Defending or being attacked while alive, and spends AP on the
+// skills below during its own activation. Its once-per-round CAST is simply the
+// most expensive skill (COMMANDER_AP_CAST_COST AP) and is described by the
+// definition's own `cast`, so an AP commander never gets a second cast budget.
+//
+// EVERY per-slug branch in the engine and the UI reads this table through
+// `commanderUsesActionPoints` / `commanderApSkillOf` — do NOT reintroduce a
+// `slug === "ibuki"` check.
+// ---------------------------------------------------------------------------
+
+/** What an AP skill needs the player to click before it can resolve. */
+export type CommanderApSkillTarget = "enemy-unit" | "ally-unit" | "empty-space" | "none";
+
+export type CommanderApSkillEffect =
+  /** Ibuki "Sniper Shot": flat EFFECT damage to the chosen enemy. */
+  | { kind: "flat-damage"; damageByPower: readonly [number, number, number] }
+  /** Ibuki "Up to Mischief": a round-scoped Attack (and, from a Power rung, Defense) penalty. */
+  | { kind: "enemy-debuff"; attack: number; defenseFromPower: number }
+  /** Ibuki "Gadabout": teleport to an empty space, splashing every adjacent enemy. */
+  | { kind: "teleport-splash"; landingDamage: number }
+  /** Kyousuke "Mission Start!": a round-scoped Attack buff on ONE ally. */
+  | { kind: "ally-attack-buff"; amountByPower: readonly [number, number, number] }
+  /**
+   * Kyousuke "Gutsy Play": a round-scoped Defense penalty on one enemy plus,
+   * from `initiativeFromPower`, a COMBAT-scoped Initiative penalty (two
+   * durations, so it resolves as two separate ongoing effects).
+   */
+  | { kind: "enemy-defense-debuff"; defense: number; initiative: number; initiativeFromPower: number }
+  /** Kyousuke "Strategy Meeting": draw from your OWN deck (reshuffles when empty). */
+  | { kind: "draw-cards"; countByPower: readonly [number, number, number] };
+
+export interface CommanderApSkill {
+  /** Unit-ability id carried by the commander's combat unit. */
+  id: string;
+  name: string;
+  /** Action Points spent when the skill resolves. */
+  ap: number;
+  /** Icon shown in the card's AP table and in the offer. */
+  icon: string;
+  /** Printed rules text (the AP table row). */
+  text: string;
+  target: CommanderApSkillTarget;
+  effect: CommanderApSkillEffect;
+}
+
+/** AP spent by an AP commander's once-per-round cast (its priciest skill). */
+export const COMMANDER_AP_CAST_COST = 3;
+
+export const COMMANDER_AP_SKILLS: Partial<Record<CommanderSlug, readonly CommanderApSkill[]>> = {
+  ibuki: [
+    {
+      id: "commander-ibuki-sniper-shot",
+      name: "Sniper Shot",
+      ap: 1,
+      icon: "/assets/anime/icons/blue-archive/ibuki-sniper-shot.webp",
+      text: "Deal 1 flat damage to an enemy unit; at Power 2, deal 2 instead.",
+      target: "enemy-unit",
+      effect: { kind: "flat-damage", damageByPower: [1, 1, 2] }
+    },
+    {
+      id: "commander-ibuki-up-to-mischief",
+      name: "Up to Mischief",
+      ap: 2,
+      icon: "/assets/anime/icons/blue-archive/ibuki-up-to-mischief.webp",
+      text: "An enemy has −1 Attack this combat round; at Power 1+, it also has −1 Defense.",
+      target: "enemy-unit",
+      effect: { kind: "enemy-debuff", attack: -1, defenseFromPower: 1 }
+    },
+    {
+      id: "commander-ibuki-gadabout",
+      name: "Gadabout",
+      ap: 2,
+      icon: "/assets/anime/icons/blue-archive/ibuki-gadabout.webp",
+      text: "Teleport anywhere; enemies adjacent to the landing space take 1 damage.",
+      target: "empty-space",
+      effect: { kind: "teleport-splash", landingDamage: 1 }
+    }
+  ],
+  kyousuke_natsume: [
+    {
+      id: "commander-kyousuke-mission-start",
+      name: "Mission Start!",
+      ap: 1,
+      icon: "/assets/anime/icons/little-busters/kyousuke-mission-start.webp",
+      text: "An ally gains +1 Attack this combat round; at Power 2, +2.",
+      target: "ally-unit",
+      effect: { kind: "ally-attack-buff", amountByPower: [1, 1, 2] }
+    },
+    {
+      id: "commander-kyousuke-gutsy-play",
+      name: "Gutsy Play",
+      ap: 2,
+      icon: "/assets/anime/icons/little-busters/kyousuke-gutsy-play.webp",
+      text: "An enemy has −1 Defense this combat round; at Power 1+, it also has −1 Initiative for the rest of the combat.",
+      target: "enemy-unit",
+      effect: { kind: "enemy-defense-debuff", defense: -1, initiative: -1, initiativeFromPower: 1 }
+    },
+    {
+      id: "commander-kyousuke-strategy-meeting",
+      name: "Strategy Meeting",
+      ap: 2,
+      icon: "/assets/anime/icons/little-busters/kyousuke-strategy-meeting.webp",
+      text: "Draw 1 card from your own deck; at Power 2, draw 2.",
+      target: "none",
+      effect: { kind: "draw-cards", countByPower: [1, 1, 2] }
+    }
+  ]
+};
+
+/** Header art for the card's AP panel (the cast icon is used for its own row). */
+export const COMMANDER_AP_HEADER_ICON: Partial<Record<CommanderSlug, string>> = {
+  ibuki: "/assets/anime/icons/blue-archive/ibuki-command.webp",
+  kyousuke_natsume: "/assets/anime/icons/little-busters/kyousuke-command.webp"
+};
+
+/** True for a commander whose commands are paid for with Action Points. */
+export function commanderUsesActionPoints(slug: string | undefined | null): boolean {
+  return Boolean(slug && COMMANDER_AP_SKILLS[slug as CommanderSlug]);
+}
+
+/** The AP skills of `slug` (never the 3-AP cast), or an empty list. */
+export function commanderApSkills(slug: string | undefined | null): readonly CommanderApSkill[] {
+  return (slug && COMMANDER_AP_SKILLS[slug as CommanderSlug]) || [];
+}
+
+/** The AP skill `abilityId` names for `slug`, or null (the cast is NOT one). */
+export function commanderApSkillOf(slug: string | undefined | null, abilityId: string): CommanderApSkill | null {
+  return commanderApSkills(slug).find((skill) => skill.id === abilityId) ?? null;
+}
 
 export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = {
   paladin: {
@@ -954,17 +1096,25 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
   },
   kyousuke_natsume: {
     slug: "kyousuke_natsume", name: "Kyousuke Natsume", faction: "Little Busters Campus", original: true,
+    // ACTION-POINT commander (the Ibuki machinery, generalised): three cheap
+    // skills in COMMANDER_AP_SKILLS plus this 3-AP rally. It is an ACTIVATION
+    // cast, NOT an instant reaction — the old Hierophant-Shield reuse is gone.
     cast: {
-      abilityId: "commander-cast-hierophant",
-      name: "Mission Start",
-      icon: "/assets/anime/icons/little-busters/rank-shared.webp",
-      targeting: { side: "friendly", canTargetSelf: false },
-      effect: { kind: "defense-buff", amountByPower: [1, 2, 3], vs: "melee" },
+      abilityId: "commander-cast-kyousuke-assemble",
+      name: "Little Busters, Assemble!",
+      icon: "/assets/anime/icons/little-busters/kyousuke-assemble.webp",
+      // The click is only the picker's anchor (Kyousuke himself is always
+      // legal, so the cast can never be starved of a target); the effect buffs
+      // every ALLY adjacent to him and ignores what was clicked.
+      targeting: { side: "friendly", canTargetSelf: true },
+      effect: { kind: "adjacent-allies-buff", attackByPower: [1, 1, 2], defenseByPower: [0, 1, 1] },
       tierText: [
-        "Instant reaction: when a teammate is attacked in melee, it gains +1 Defense this round.",
-        "Instant reaction: when a teammate is attacked in melee, it gains +2 Defense this round.",
-        "Instant reaction: when a teammate is attacked in melee, it gains +3 Defense this round."
-      ]
+        "Spend 3 AP: every allied unit adjacent to Kyousuke gains +1 Attack this combat round.",
+        "Spend 3 AP: every allied unit adjacent to Kyousuke gains +1 Attack and +1 Defense this combat round.",
+        "Spend 3 AP: every allied unit adjacent to Kyousuke gains +2 Attack and +1 Defense this combat round."
+      ],
+      apSummary:
+        "Every allied unit adjacent to Kyousuke gains +1 Attack this combat round; at Power 1 also +1 Defense, at Power 2 +2 Attack and +1 Defense."
     },
     specialty: {
       id: "vanguard-marshal",
@@ -990,7 +1140,9 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
         "Choose a Bronze ally that already activated this round. It may activate again.",
         "Choose a Bronze or Silver ally that already activated this round. It may activate again; a Silver unit has −2 Attack during that activation.",
         "Choose any non-commander ally that already activated this round. It may activate again; a Silver or Gold unit has −2 Attack during that activation."
-      ]
+      ],
+      apSummary:
+        "Reactivate an ally that already activated: Bronze at Power 0, up to Silver at Power 1, or any tier at Power 2. Silver and Gold have −2 Attack for that extra activation."
     },
     specialty: {
       id: "mission-briefing",
@@ -1109,6 +1261,40 @@ export function commanderCastTierIndex(power: number): 0 | 1 | 2 {
  * source of truth is the cast definition. (See src/engine/commanders.ts for the
  * offer/resolution wiring and wog-commander-casts.test.ts for the behaviour.)
  */
+/**
+ * The rows of an AP commander's command table: its AP skills, then its
+ * once-per-round cast at COMMANDER_AP_CAST_COST. ONE derivation shared by the
+ * card face and the stats panel, so a new AP commander needs no UI edit.
+ */
+export function commanderApCommandTableRows(
+  slug: CommanderSlug
+): readonly { id: string; name: string; ap: number; icon: string; text: string }[] {
+  const definition = commanderDefinitions[slug];
+  const rows = commanderApSkills(slug).map((skill) => ({
+    id: skill.id,
+    name: skill.name,
+    ap: skill.ap,
+    icon: skill.icon,
+    text: skill.text
+  }));
+  if (!definition) {
+    return rows;
+  }
+  return [
+    ...rows,
+    {
+      id: definition.cast.abilityId,
+      name: definition.cast.name,
+      ap: COMMANDER_AP_CAST_COST,
+      icon: definition.cast.icon,
+      text: definition.cast.apSummary ?? definition.cast.tierText[0]
+    }
+  ];
+}
+
+/** @deprecated Kept for external callers — use commanderApCommandTableRows("ibuki"). */
+export const IBUKI_COMMAND_SKILLS = commanderApCommandTableRows("ibuki");
+
 export function commanderCastIsInstantReaction(cast: CommanderCastDefinition): boolean {
   return cast.effect.kind === "defense-buff";
 }

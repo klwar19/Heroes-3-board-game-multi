@@ -135,7 +135,12 @@ import {
   spellMaxUsefulPower,
   spellPowerValueOfCard,
 } from "./effects";
-import { commanderReviveCost } from "@/data/commanders";
+import {
+  commanderApSkillOf,
+  commanderCastTierIndex,
+  commanderReviveCost,
+  commanderUsesActionPoints,
+} from "@/data/commanders";
 import {
   commandersModuleEnabled,
   commanderCastAvailable,
@@ -145,8 +150,9 @@ import {
   commanderDefenseReactionUnit,
   commanderGradeUpChoices,
   commanderIntegratedDeploymentSortAvailable,
-  ibukiActionPoints,
-  ibukiCommandUsedThisActivation,
+  commanderActionPoints,
+  commanderCastActionPointsPayable,
+  commanderCommandUsedThisActivation,
   commanderStandsInCurrentCombat,
   commanderUnitId,
 } from "./commanders";
@@ -6911,12 +6917,12 @@ function addUnitAbilityActions(
     // Pochi's Dig replaces the attack, not the move, so it remains available
     // after an optional move. Other pre-move activation abilities retain their
     // existing gate.
-    // Ibuki's AP commands are usable after a move (the cast then ENDS her
-    // movement — commanders.ts / mayBeUsedAfterMoving already exempt her; this
-    // offer gate used to drop every command once she had moved).
+    // An ACTION-POINT commander's commands are usable after a move (a command
+    // then ENDS its movement — commanders.ts / mayBeUsedAfterMoving already
+    // exempt it; this offer gate used to drop every command once it had moved).
     if (
       activeUnit.movedThisActivation &&
-      activeUnit.commanderSlug !== "ibuki" &&
+      !commanderUsesActionPoints(activeUnit.commanderSlug) &&
       ability.effect?.type !== "PLACE_ADJACENT_OBSTACLE_ACTION" &&
       ability.effect?.type !== "MARK_ENEMY_FOR_NEXT_FRIENDLY_ATTACK"
     ) {
@@ -7228,42 +7234,68 @@ function addUnitAbilityActions(
       }
     }
 
+    // ACTION-POINT commander skills (Blue Archive Ibuki, Little Busters
+    // Kyousuke). ONE data-driven loop over COMMANDER_AP_SKILLS: the skill's
+    // `target` says what has to be clicked and its effect kind builds the label,
+    // so a new AP commander needs no edit here.
+    const apSkill = commanderApSkillOf(activeUnit.commanderSlug, ability.id);
     if (
-      activeUnit.commanderSlug === "ibuki" &&
-      !activeUnit.attackedThisActivation
+      apSkill &&
+      !activeUnit.attackedThisActivation &&
+      commanderActionPoints(activeUnit) >= apSkill.ap
     ) {
-      const ap = ibukiActionPoints(activeUnit);
       const power = commanderCastPower(state, activeUnit);
-      const enemies = Object.values(combat.units).filter(
-        (unit) => unit.controllerId !== playerId && isUnitAlive(unit),
-      );
-      if (ability.id === "commander-ibuki-sniper-shot" && ap >= 1) {
-        for (const target of enemies)
-          actions.push({
-            label: `Sniper Shot · 1 AP · ${power >= 2 ? 2 : 1} damage to ${target.cardName}`,
-            action: {
-              type: "USE_UNIT_ABILITY",
-              playerId,
-              unitId: activeUnit.id,
-              abilityId: ability.id,
-              target: { type: "unit", unitId: target.id },
-            },
-          });
-      }
-      if (ability.id === "commander-ibuki-up-to-mischief" && ap >= 2) {
-        for (const target of enemies)
-          actions.push({
-            label: `Up to Mischief · 2 AP · −1 Attack${power >= 1 ? " and Defense" : ""} to ${target.cardName}`,
-            action: {
-              type: "USE_UNIT_ABILITY",
-              playerId,
-              unitId: activeUnit.id,
-              abilityId: ability.id,
-              target: { type: "unit", unitId: target.id },
-            },
-          });
-      }
-      if (ability.id === "commander-ibuki-gadabout" && ap >= 2) {
+      const tier = commanderCastTierIndex(power);
+      const prefix = `${apSkill.name} · ${apSkill.ap} AP · `;
+      // Printed cards use the typographic MINUS SIGN (U+2212) for penalties;
+      // an ASCII "-" here would silently change every offer label.
+      const signed = (amount: number) => (amount < 0 ? `−${-amount}` : `+${amount}`);
+      const push = (
+        label: string,
+        target: Extract<GameAction, { type: "USE_UNIT_ABILITY" }>["target"],
+      ) =>
+        actions.push({
+          label,
+          action: {
+            type: "USE_UNIT_ABILITY",
+            playerId,
+            unitId: activeUnit.id,
+            abilityId: ability.id,
+            target,
+          },
+        });
+      if (apSkill.target === "enemy-unit" || apSkill.target === "ally-unit") {
+        const wantAlly = apSkill.target === "ally-unit";
+        for (const target of Object.values(combat.units)) {
+          if (
+            !isUnitAlive(target) ||
+            target.id === activeUnit.id ||
+            (target.controllerId === playerId) !== wantAlly
+          ) {
+            continue;
+          }
+          const effect = apSkill.effect;
+          let detail: string;
+          switch (effect.kind) {
+            case "flat-damage":
+              detail = `${effect.damageByPower[tier]} damage to ${target.cardName}`;
+              break;
+            case "enemy-debuff":
+              detail = `${signed(effect.attack)} Attack${power >= effect.defenseFromPower ? " and Defense" : ""} to ${target.cardName}`;
+              break;
+            case "ally-attack-buff":
+              detail = `+${effect.amountByPower[tier]} Attack to ${target.cardName}`;
+              break;
+            case "enemy-defense-debuff":
+              detail = `${signed(effect.defense)} Defense${power >= effect.initiativeFromPower ? ` and ${signed(effect.initiative)} Initiative` : ""} to ${target.cardName}`;
+              break;
+            default:
+              detail = target.cardName;
+              break;
+          }
+          push(`${prefix}${detail}`, { type: "unit", unitId: target.id });
+        }
+      } else if (apSkill.target === "empty-space") {
         const occupied = new Set(
           Object.values(combat.units)
             .filter(isUnitAlive)
@@ -7275,17 +7307,16 @@ function addUnitAbilityActions(
           position += 1
         ) {
           if (!occupied.has(position))
-            actions.push({
-              label: `Gadabout · 2 AP · teleport to ${getBattlefieldLabel(position)}`,
-              action: {
-                type: "USE_UNIT_ABILITY",
-                playerId,
-                unitId: activeUnit.id,
-                abilityId: ability.id,
-                target: { type: "space", position },
-              },
+            push(`${prefix}teleport to ${getBattlefieldLabel(position)}`, {
+              type: "space",
+              position,
             });
         }
+      } else if (apSkill.effect.kind === "draw-cards") {
+        const count = apSkill.effect.countByPower[tier];
+        push(`${prefix}draw ${count} card${count === 1 ? "" : "s"}`, {
+          type: "none",
+        });
       }
     }
 
@@ -7296,8 +7327,7 @@ function addUnitAbilityActions(
     if (
       ability.effect?.type === "COMMANDER_CAST" &&
       commanderCastAvailable(state, activeUnit, ability.id) &&
-      (activeUnit.commanderSlug !== "ibuki" ||
-        ibukiActionPoints(activeUnit) >= 3)
+      commanderCastActionPointsPayable(activeUnit)
     ) {
       const power = commanderCastPower(state, activeUnit);
       const runeCost = commanderCastRuneCost(state, activeUnit, ability.id);
@@ -8091,10 +8121,11 @@ function addUnitActions(
     !alreadyAttacked &&
     !isArrowTowerUnit(activeUnit) &&
     !activeUnit.defendedLastActivation &&
-    // Blue Archive Ibuki (USER RULE 2026-09-04): once she has spent AP on a
-    // command / Executive Order this activation she may only hold position,
-    // never Defend (the reducer's defendUnit refuses the same frame).
-    !ibukiCommandUsedThisActivation(activeUnit)
+    // ACTION-POINT commanders (USER RULE 2026-09-04, Ibuki; extended to every
+    // AP commander): once it has spent AP on a command / its cast this
+    // activation it may only hold position, never Defend (the reducer's
+    // defendUnit refuses the same frame).
+    !commanderCommandUsedThisActivation(activeUnit)
   ) {
     // Defend replaces the attack, so a unit that already moved may still
     // defend. The Arrow Tower never defends — it only shoots or holds.

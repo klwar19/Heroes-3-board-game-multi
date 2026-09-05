@@ -9861,7 +9861,17 @@ export type CombatUnitState = {
    * cast is once per combat round ("may cast"), free during its own activation.
    */
   commanderCastRound?: number;
-  /** Ibuki's persistent per-combat command resource. Starts at 1. */
+  /**
+   * An ACTION-POINT commander's persistent per-combat command resource (Blue
+   * Archive Ibuki, Little Busters Kyousuke). Starts at 1; read through
+   * commanderActionPoints() in engine/commanders.ts, never bare.
+   */
+  commanderActionPoints?: number;
+  /**
+   * LEGACY (pre-Kyousuke) name of the field above. Never written any more; it
+   * is still READ as a fallback so a combat snapshot committed by an older edge
+   * keeps its banked AP across the deploy.
+   */
   ibukiActionPoints?: number;
   /** A real hero body on the battlefield. Tierless and rebuilt at full Health each combat. */
   heroUnit?: boolean;

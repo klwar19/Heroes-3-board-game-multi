@@ -312,6 +312,12 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   "commander-ibuki-up-to-mischief": { affect: [{ key: "misfortune" }], sound: "blue-archive/voices/ibuki/up-to-mischief" },
   "commander-ibuki-gadabout": { affect: [{ key: "haste" }], sound: "blue-archive/voices/ibuki/gadabout" },
   "commander-ibuki-gadabout-landing-damage": { hit: "frost-ring", hitSound: "spells/frost-ring" },
+  // Little Busters Kyousuke's AP skills reuse shipped spell sheets: the rally
+  // is Bloodlust's battle-rage tint, the Defense/Initiative break is the
+  // Disrupting Ray, and the huddle is the Visions cue (sound only).
+  "commander-kyousuke-mission-start": { tint: "bloodlust", sound: "spells/bloodlust" },
+  "commander-kyousuke-gutsy-play": { projectile: "disrupting-ray-projectile", affect: [{ key: "disrupting-ray" }], sound: "spells/disrupting-ray" },
+  "commander-kyousuke-strategy-meeting": { sound: "spells/visions" },
   // MGQ Mage Job uses the original Magic Arrow flight, impact and sound.
   "mgq-mage-magic-arrow": {
     projectile: "magic-arrow-projectile-0",

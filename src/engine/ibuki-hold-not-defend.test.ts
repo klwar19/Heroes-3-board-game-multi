@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, commanderUnitId, createInitialGameState, getLegalActions, makeCommanderCombatUnit } from "./index";
-import { ibukiCommandUsedThisActivation } from "./commanders";
+import { commanderCommandUsedThisActivation } from "./commanders";
 import type { GameAction, GameState } from "./state";
 
 /**
@@ -19,7 +19,7 @@ function ibukiState(actionPoints = 3): GameState {
   };
   const unit = makeCommanderCombatUnit(state.players.p1, 9);
   if (!unit) throw new Error("expected a commander combat unit");
-  unit.ibukiActionPoints = actionPoints;
+  unit.commanderActionPoints = actionPoints;
   state.combat!.units[unit.id] = unit;
   state.players.p1.hand = [];
   state.players.p2.hand = [];
@@ -52,7 +52,7 @@ describe("Ibuki: after a command she may only hold position, never Defend", () =
   it("CONTROL: a fresh Ibuki is offered Defend and it applies", () => {
     const state = ibukiState();
     const ibuki = commanderUnitId("p1");
-    expect(ibukiCommandUsedThisActivation(state.combat!.units[ibuki])).toBe(false);
+    expect(commanderCommandUsedThisActivation(state.combat!.units[ibuki])).toBe(false);
     const offers = offersFor(state, ibuki);
     expect(offers).toContain("DEFEND_UNIT");
     expect(offers).toContain("END_ACTIVATION");
@@ -72,7 +72,7 @@ describe("Ibuki: after a command she may only hold position, never Defend", () =
     });
     expect(shot.combat!.units.unit_p2_skeletons.damage).toBe(1); // the command really fired
     expect(shot.combat!.activeUnitId).toBe(ibuki); // her activation is still open
-    expect(ibukiCommandUsedThisActivation(shot.combat!.units[ibuki])).toBe(true);
+    expect(commanderCommandUsedThisActivation(shot.combat!.units[ibuki])).toBe(true);
     const offers = offersFor(shot, ibuki);
     expect(offers).toContain("END_ACTIVATION");
     expect(offers).not.toContain("DEFEND_UNIT");
@@ -95,7 +95,7 @@ describe("Ibuki: after a command she may only hold position, never Defend", () =
       abilityId: "commander-ibuki-up-to-mischief",
       target: { type: "unit", unitId: "unit_p2_skeletons" },
     });
-    expect(used.combat!.units[ibuki].ibukiActionPoints).toBe(1);
+    expect(used.combat!.units[ibuki].commanderActionPoints).toBe(1);
     const offers = offersFor(used, ibuki);
     expect(offers).toContain("END_ACTIVATION");
     expect(offers).not.toContain("DEFEND_UNIT");
@@ -116,6 +116,6 @@ describe("Ibuki: after a command she may only hold position, never Defend", () =
     // clears movementLockedThisActivation) — the predicate must read false again.
     const next = structuredClone(shot);
     next.combat!.units[ibuki].movementLockedThisActivation = false;
-    expect(ibukiCommandUsedThisActivation(next.combat!.units[ibuki])).toBe(false);
+    expect(commanderCommandUsedThisActivation(next.combat!.units[ibuki])).toBe(false);
   });
 });

@@ -16,7 +16,8 @@ import {
   COMMANDER_STAT_ICON,
   COMMANDER_STAT_KEYS,
   COMMANDER_STAT_LABELS,
-  IBUKI_COMMAND_SKILLS,
+  COMMANDER_AP_HEADER_ICON,
+  commanderApCommandTableRows,
   commanderCastTierIndex,
   commanderComboSiteIcon,
   commanderComboUnlocked,
@@ -26,6 +27,7 @@ import {
   commanderReviveCost,
   commanderStatValue,
   commanderUnlockedCombos,
+  commanderUsesActionPoints,
   type CommanderGrade,
   type CommanderGrades,
   type CommanderSlug,
@@ -90,13 +92,18 @@ const DIM = "#b9a988";
 const OUTLINE =
   "0 0 2px #140c07, 0 0 2px #140c07, 1px 1px 0 #140c07, -1px 1px 0 #140c07, 1px -1px 0 #140c07, -1px -1px 0 #140c07";
 
-function IbukiCommandTable() {
+/**
+ * The command table of an ACTION-POINT commander (Blue Archive Ibuki, Little
+ * Busters Kyousuke). Data-driven off COMMANDER_AP_SKILLS + the definition's own
+ * cast, so a new AP commander needs no edit here.
+ */
+function ApCommandTable({ slug }: { slug: CommanderSlug }) {
   return (
     <div style={{ background: "#092a43", border: "1px solid #55c9f3", borderRadius: 7, padding: 8, marginBottom: 7 }}>
       <div style={{ color: "#8ee8ff", fontWeight: 800, fontSize: 12, marginBottom: 5 }}>AP CONTROL · starts combat at 1 AP</div>
       <div style={{ color: "#d8f6ff", fontSize: 10.5, marginBottom: 6 }}>Start each combat with 1 AP. Gain +1 AP after moving, attacking, Defending, or being attacked. Spend AP on one command; a command ends further movement this activation.</div>
       <div style={{ display: "grid", gap: 4 }}>
-        {IBUKI_COMMAND_SKILLS.map((skill) => (
+        {commanderApCommandTableRows(slug).map((skill) => (
           <div key={skill.id} style={{ display: "grid", gridTemplateColumns: "26px 98px 34px 1fr", gap: 5, alignItems: "center", fontSize: 10.5 }}>
             <img alt="" src={assetUrl(skill.icon)} style={{ width: 24, height: 24, objectFit: "contain" }} />
             <b style={{ color: "#ffe58b" }}>{skill.name}</b>
@@ -326,7 +333,7 @@ function ThemedCommanderCardOverlays({
       >
         <img
           alt=""
-          src={assetUrl(slug === "ibuki" ? "/assets/anime/icons/blue-archive/ibuki-command.webp" : def.cast.icon)}
+          src={assetUrl(COMMANDER_AP_HEADER_ICON[slug] ?? def.cast.icon)}
           style={{
             width: "8cqw",
             height: "8cqw",
@@ -339,7 +346,7 @@ function ThemedCommanderCardOverlays({
         />
         <span style={{ minWidth: 0, color: theme.text, textAlign: "left", lineHeight: 1.18 }}>
           <b style={{ display: "block", color: theme.accent, fontSize: "2.8cqw", letterSpacing: "0.12cqw" }}>
-              {slug === "ibuki" ? "AP CONTROL" : `${def.cast.name} · once per combat round`}
+              {commanderUsesActionPoints(slug) ? "AP CONTROL" : `${def.cast.name} · once per combat round`}
           </b>
           <span style={{ display: "block", marginTop: "0.6cqw", fontSize: "2.15cqw" }}>{def.cast.tierText[tierIndex]}</span>
         </span>
@@ -577,7 +584,7 @@ export function CommanderCardFace({
       >
         <img
           alt=""
-          src={assetUrl(slug === "ibuki" ? "/assets/anime/icons/blue-archive/ibuki-command.webp" : def.cast.icon)}
+          src={assetUrl(COMMANDER_AP_HEADER_ICON[slug] ?? def.cast.icon)}
           style={{
             width: "10cqw",
             height: "10cqw",
@@ -591,11 +598,11 @@ export function CommanderCardFace({
         />
         <span style={{ textAlign: "left", lineHeight: 1.25 }}>
           <b style={{ color: "#e6c56a", fontSize: "2.8cqw", letterSpacing: "0.2cqw" }}>
-              {slug === "ibuki" ? "AP CONTROL" : slug === "lion_el_jonson" ? "LION COMMAND TABLE" : `${def.cast.name} · once per combat round`}
+              {commanderUsesActionPoints(slug) ? "AP CONTROL" : slug === "lion_el_jonson" ? "LION COMMAND TABLE" : `${def.cast.name} · once per combat round`}
           </b>
           <br />
           <span style={{ fontSize: "2.45cqw", textShadow: "1px 1px 0 #160e08" }}>
-            {slug === "ibuki"
+            {commanderUsesActionPoints(slug)
               ? "Start with 1 AP; gain +1 after moving, attacking, Defending, or being attacked. Spend AP on commands."
               : slug === "lion_el_jonson"
                 ? `1 Slash: adjacent enemy takes ${tierIndex + 1} flat damage. · 2 Counterstroke: ${["Bronze", "Bronze/Silver", "Bronze/Silver/Gold"][tierIndex]} ally gains unlimited Retaliation for this Combat. · Passive Rounds 1–3: random living enemy takes 1 flat damage.`
@@ -835,10 +842,10 @@ export function CommanderStatsPanel({
         })}
       </div>
 
-      {slug === "ibuki" ? <IbukiCommandTable /> : slug === "lion_el_jonson" ? <LionCommandTable tierIndex={tierIndex} /> : null}
-      {/* Other commanders show their Power ladder here. Ibuki's four AP
-          commands—including Executive Order—live in the single AP panel above. */}
-      {slug !== "ibuki" && slug !== "lion_el_jonson" ? <div style={{ background: ROW_BG, borderRadius: 6, padding: "7px 9px" }}>
+      {commanderUsesActionPoints(slug) ? <ApCommandTable slug={slug} /> : slug === "lion_el_jonson" ? <LionCommandTable tierIndex={tierIndex} /> : null}
+      {/* Other commanders show their Power ladder here. An AP commander's four
+          commands—its cast included—live in the single AP panel above. */}
+      {!commanderUsesActionPoints(slug) && slug !== "lion_el_jonson" ? <div style={{ background: ROW_BG, borderRadius: 6, padding: "7px 9px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
           <img
             alt=""
