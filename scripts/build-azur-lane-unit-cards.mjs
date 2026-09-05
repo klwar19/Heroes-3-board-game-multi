@@ -132,6 +132,18 @@ const CARDS = [
     pack: "The Great Yukikaze — Defend die when attacked; Torpedo Run — can reroll any \"-1\" on this unit's Attack die."
   },
   {
+    slug: "ayanami",
+    name: "Ayanami",
+    tier: "silver",
+    kind: "GROUND",
+    stats: { attack: 3, defense: 1, health: 3, initiative: 10 },
+    packStats: { attack: 4, defense: 1, health: 4, initiative: 11 },
+    cost: { gold: 7 },
+    packCost: { gold: 10 },
+    few: "Demon's Blade — +1 Attack when she attacks after moving this activation.",
+    pack: "Demon's Blade — +1 Attack when she attacks after moving; Kamikaze Torpedoes — her attacks do not provoke a Retaliation Attack."
+  },
+  {
     slug: "prinz-eugen",
     name: "Prinz Eugen",
     tier: "golden",
@@ -156,6 +168,18 @@ const CARDS = [
     packCost: { gold: 21, valuables: 2 },
     few: "Silent Hunter — no Retaliation; as a move, may surface on any empty space.",
     pack: "Silent Hunter — no Retaliation, surface anywhere; Oxygen Torpedo Spread — then strike the same target again with Attack 4."
+  },
+  {
+    slug: "akagi",
+    name: "Akagi",
+    tier: "golden",
+    kind: "RANGED",
+    stats: { attack: 5, defense: 2, health: 5, initiative: 6 },
+    packStats: { attack: 6, defense: 2, health: 6, initiative: 7 },
+    cost: { gold: 15, valuables: 1 },
+    packCost: { gold: 22, valuables: 2 },
+    few: "Air Strike — after an attack made by this unit resolves, deal 1 damage to every other ENEMY unit adjacent to the attacked unit (not an attack: no Retaliation, not reduced by Defense).",
+    pack: "Air Strike (as Few); Foxfire — an enemy that attacks Akagi in melee takes 1 damage after its attack."
   }
 ];
 

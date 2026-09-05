@@ -1,0 +1,2138 @@
+{
+  "aris": {
+    "prefix": "Arisu_(Maid)",
+    "source": "https://bluearchive.wiki/wiki/Arisu_(Maid)/audio",
+    "actions": {
+      "attack": [
+        {
+          "variant": 1,
+          "wiki": "Arisu_(Maid)_Battle_Shout_1.ogg",
+          "bytes": 8056,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Arisu_(Maid)_Battle_Shout_2.ogg",
+          "bytes": 15297,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Arisu_(Maid)_Battle_Shout_3.ogg",
+          "bytes": 8094,
+          "state": "kept"
+        }
+      ],
+      "hurt": [
+        {
+          "variant": 1,
+          "wiki": "Arisu_(Maid)_Battle_Damage_1.ogg",
+          "bytes": 8543,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Arisu_(Maid)_Battle_Damage_2.ogg",
+          "bytes": 8904,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Arisu_(Maid)_Battle_Damage_3.ogg",
+          "bytes": 11802,
+          "state": "kept"
+        }
+      ],
+      "defend": [
+        {
+          "variant": 1,
+          "wiki": "Arisu_(Maid)_Battle_Defense_1.ogg",
+          "bytes": 10188,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Arisu_(Maid)_Battle_Covered_1.ogg",
+          "bytes": 14136,
+          "state": "kept"
+        }
+      ],
+      "move": [
+        {
+          "variant": 1,
+          "wiki": "Arisu_(Maid)_Battle_Move_1.ogg",
+          "bytes": 19733,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Arisu_(Maid)_Battle_Move_2.ogg",
+          "bytes": 10749,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Arisu_(Maid)_Battle_TacticalAction_1.ogg",
+          "bytes": 13877,
+          "state": "kept"
+        }
+      ],
+      "death": [
+        {
+          "variant": 1,
+          "wiki": "Arisu_(Maid)_Battle_Retire.ogg",
+          "bytes": 17571,
+          "state": "kept"
+        }
+      ],
+      "ability": [
+        {
+          "variant": 1,
+          "wiki": "Arisu_(Maid)_ExSkill_1.ogg",
+          "bytes": 29067,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Arisu_(Maid)_ExSkill_2.ogg",
+          "bytes": 24805,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Arisu_(Maid)_ExSkill_3.ogg",
+          "bytes": 24918,
+          "state": "kept"
+        }
+      ]
+    }
+  },
+  "aru": {
+    "prefix": "Aru_(New_Year)",
+    "source": "https://bluearchive.wiki/wiki/Aru_(New_Year)/audio",
+    "actions": {
+      "attack": [
+        {
+          "variant": 1,
+          "wiki": "Aru_(New_Year)_Battle_Shout_1.ogg",
+          "bytes": 8617,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Aru_(New_Year)_Battle_Shout_2.ogg",
+          "bytes": 8349,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Aru_(New_Year)_Battle_Shout_3.ogg",
+          "bytes": 7941,
+          "state": "kept"
+        }
+      ],
+      "hurt": [
+        {
+          "variant": 1,
+          "wiki": "Aru_(New_Year)_Battle_Damage_1.ogg",
+          "bytes": 9812,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Aru_(New_Year)_Battle_Damage_2.ogg",
+          "bytes": 17714,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Aru_(New_Year)_Battle_Damage_3.ogg",
+          "bytes": 25537,
+          "state": "kept"
+        }
+      ],
+      "defend": [
+        {
+          "variant": 1,
+          "wiki": "Aru_(New_Year)_Battle_Defense_1.ogg",
+          "bytes": 15511,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Aru_(New_Year)_Battle_Covered_1.ogg",
+          "bytes": 16132,
+          "state": "kept"
+        }
+      ],
+      "move": [
+        {
+          "variant": 1,
+          "wiki": "Aru_(New_Year)_Battle_Move_1.ogg",
+          "bytes": 23249,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Aru_(New_Year)_Battle_Move_2.ogg",
+          "bytes": 14140,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Aru_(New_Year)_Battle_TacticalAction_1.ogg",
+          "bytes": 11065,
+          "state": "kept"
+        }
+      ],
+      "death": [
+        {
+          "variant": 1,
+          "wiki": "Aru_(New_Year)_Battle_Retire.ogg",
+          "bytes": 33938,
+          "state": "kept"
+        }
+      ],
+      "ability": [
+        {
+          "variant": 1,
+          "wiki": "Aru_(New_Year)_ExSkill_1.ogg",
+          "bytes": 28443,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Aru_(New_Year)_ExSkill_2.ogg",
+          "bytes": 26683,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Aru_(New_Year)_ExSkill_3.ogg",
+          "bytes": 27172,
+          "state": "kept"
+        }
+      ]
+    }
+  },
+  "azusa": {
+    "prefix": "Azusa_(Swimsuit)",
+    "source": "https://bluearchive.wiki/wiki/Azusa_(Swimsuit)/audio",
+    "actions": {
+      "attack": [
+        {
+          "variant": 1,
+          "wiki": "Azusa_(Swimsuit)_Battle_Shout_1.ogg",
+          "bytes": 5905,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Azusa_(Swimsuit)_Battle_Shout_2.ogg",
+          "bytes": 5831,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Azusa_(Swimsuit)_Battle_Shout_3.ogg",
+          "bytes": 10849,
+          "state": "kept"
+        }
+      ],
+      "hurt": [
+        {
+          "variant": 1,
+          "wiki": "Azusa_(Swimsuit)_Battle_Damage_1.ogg",
+          "bytes": 7989,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Azusa_(Swimsuit)_Battle_Damage_2.ogg",
+          "bytes": 8159,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Azusa_(Swimsuit)_Battle_Damage_3.ogg",
+          "bytes": 11828,
+          "state": "kept"
+        }
+      ],
+      "defend": [
+        {
+          "variant": 1,
+          "wiki": "Azusa_(Swimsuit)_Battle_Defense_1.ogg",
+          "bytes": 8682,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Azusa_(Swimsuit)_Battle_Covered_1.ogg",
+          "bytes": 11215,
+          "state": "kept"
+        }
+      ],
+      "move": [
+        {
+          "variant": 1,
+          "wiki": "Azusa_(Swimsuit)_Battle_Move_1.ogg",
+          "bytes": 14273,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Azusa_(Swimsuit)_Battle_Move_2.ogg",
+          "bytes": 11453,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Azusa_(Swimsuit)_Battle_TacticalAction_1.ogg",
+          "bytes": 6320,
+          "state": "kept"
+        }
+      ],
+      "death": [
+        {
+          "variant": 1,
+          "wiki": "Azusa_(Swimsuit)_Battle_Retire.ogg",
+          "bytes": 19220,
+          "state": "kept"
+        }
+      ],
+      "ability": [
+        {
+          "variant": 1,
+          "wiki": "Azusa_(Swimsuit)_ExSkill_1.ogg",
+          "bytes": 31178,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Azusa_(Swimsuit)_ExSkill_2.ogg",
+          "bytes": 29885,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Azusa_(Swimsuit)_ExSkill_3.ogg",
+          "bytes": 27810,
+          "state": "kept"
+        }
+      ]
+    }
+  },
+  "hasumi": {
+    "prefix": "Hasumi_(Swimsuit)",
+    "source": "https://bluearchive.wiki/wiki/Hasumi_(Swimsuit)/audio",
+    "actions": {
+      "attack": [
+        {
+          "variant": 1,
+          "wiki": "Hasumi_(Swimsuit)_Battle_Shout_1.ogg",
+          "bytes": 6094,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Hasumi_(Swimsuit)_Battle_Shout_2.ogg",
+          "bytes": 7494,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Hasumi_(Swimsuit)_Battle_Shout_3.ogg",
+          "bytes": 8451,
+          "state": "kept"
+        }
+      ],
+      "hurt": [
+        {
+          "variant": 1,
+          "wiki": "Hasumi_(Swimsuit)_Battle_Damage_1.ogg",
+          "bytes": 8420,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Hasumi_(Swimsuit)_Battle_Damage_2.ogg",
+          "bytes": 9819,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Hasumi_(Swimsuit)_Battle_Damage_3.ogg",
+          "bytes": 10026,
+          "state": "kept"
+        }
+      ],
+      "defend": [
+        {
+          "variant": 1,
+          "wiki": "Hasumi_(Swimsuit)_Battle_Defense_1.ogg",
+          "bytes": 14837,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Hasumi_(Swimsuit)_Battle_Covered_1.ogg",
+          "bytes": 13348,
+          "state": "kept"
+        }
+      ],
+      "move": [
+        {
+          "variant": 1,
+          "wiki": "Hasumi_(Swimsuit)_Battle_Move_1.ogg",
+          "bytes": 26974,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Hasumi_(Swimsuit)_Battle_Move_2.ogg",
+          "bytes": 20378,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Hasumi_(Swimsuit)_Battle_TacticalAction_1.ogg",
+          "bytes": 17530,
+          "state": "kept"
+        }
+      ],
+      "death": [
+        {
+          "variant": 1,
+          "wiki": "Hasumi_(Swimsuit)_Battle_Retire.ogg",
+          "bytes": 19666,
+          "state": "kept"
+        }
+      ],
+      "ability": [
+        {
+          "variant": 1,
+          "wiki": "Hasumi_(Swimsuit)_ExSkill_1.ogg",
+          "bytes": 26298,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Hasumi_(Swimsuit)_ExSkill_2.ogg",
+          "bytes": 27849,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Hasumi_(Swimsuit)_ExSkill_3.ogg",
+          "bytes": 26901,
+          "state": "kept"
+        }
+      ]
+    }
+  },
+  "hina": {
+    "prefix": "Hina_(Dress)",
+    "source": "https://bluearchive.wiki/wiki/Hina_(Dress)/audio",
+    "actions": {
+      "attack": [
+        {
+          "variant": 1,
+          "wiki": "Hina_(Dress)_Battle_Shout_1.ogg",
+          "bytes": 6047,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Hina_(Dress)_Battle_Shout_2.ogg",
+          "bytes": 6787,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Hina_(Dress)_Battle_Shout_3.ogg",
+          "bytes": 5818,
+          "state": "kept"
+        }
+      ],
+      "hurt": [
+        {
+          "variant": 1,
+          "wiki": "Hina_(Dress)_Battle_Damage_1.ogg",
+          "bytes": 5749,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Hina_(Dress)_Battle_Damage_2.ogg",
+          "bytes": 8134,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Hina_(Dress)_Battle_Damage_3.ogg",
+          "bytes": 10477,
+          "state": "kept"
+        }
+      ],
+      "defend": [
+        {
+          "variant": 1,
+          "wiki": "Hina_(Dress)_Battle_Defense_1.ogg",
+          "bytes": 7542,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Hina_(Dress)_Battle_Covered_1.ogg",
+          "bytes": 9338,
+          "state": "kept"
+        }
+      ],
+      "move": [
+        {
+          "variant": 1,
+          "wiki": "Hina_(Dress)_Battle_Move_1.ogg",
+          "bytes": 16961,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Hina_(Dress)_Battle_Move_2.ogg",
+          "bytes": 20325,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Hina_(Dress)_Battle_TacticalAction_1.ogg",
+          "bytes": 10038,
+          "state": "kept"
+        }
+      ],
+      "death": [
+        {
+          "variant": 1,
+          "wiki": "Hina_(Dress)_Battle_Retire.ogg",
+          "bytes": 42023,
+          "state": "kept"
+        }
+      ],
+      "ability": [
+        {
+          "variant": 1,
+          "wiki": "Hina_(Dress)_ExSkill_1.ogg",
+          "bytes": 21603,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Hina_(Dress)_ExSkill_2.ogg",
+          "bytes": 25019,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Hina_(Dress)_ExSkill_3.ogg",
+          "bytes": 27475,
+          "state": "kept"
+        }
+      ]
+    }
+  },
+  "hoshino": {
+    "prefix": "Hoshino_(Swimsuit)",
+    "source": "https://bluearchive.wiki/wiki/Hoshino_(Swimsuit)/audio",
+    "actions": {
+      "attack": [
+        {
+          "variant": 1,
+          "wiki": "Hoshino_(Swimsuit)_Battle_Shout_1.ogg",
+          "bytes": 6816,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Hoshino_(Swimsuit)_Battle_Shout_2.ogg",
+          "bytes": 7162,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Hoshino_(Swimsuit)_Battle_Shout_3.ogg",
+          "bytes": 7628,
+          "state": "kept"
+        }
+      ],
+      "hurt": [
+        {
+          "variant": 1,
+          "wiki": "Hoshino_(Swimsuit)_Battle_Damage_1.ogg",
+          "bytes": 7197,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Hoshino_(Swimsuit)_Battle_Damage_2.ogg",
+          "bytes": 8332,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Hoshino_(Swimsuit)_Battle_Damage_3.ogg",
+          "bytes": 15636,
+          "state": "kept"
+        }
+      ],
+      "defend": [
+        {
+          "variant": 1,
+          "wiki": "Hoshino_(Swimsuit)_Battle_Defense_1.ogg",
+          "bytes": 15211,
+          "state": "kept"
+        }
+      ],
+      "move": [
+        {
+          "variant": 1,
+          "wiki": "Hoshino_(Swimsuit)_Battle_Move_1.ogg",
+          "bytes": 20214,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Hoshino_(Swimsuit)_Battle_Move_2.ogg",
+          "bytes": 18243,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Hoshino_(Swimsuit)_Battle_TacticalAction_1.ogg",
+          "bytes": 13619,
+          "state": "kept"
+        }
+      ],
+      "death": [
+        {
+          "variant": 1,
+          "wiki": "Hoshino_(Swimsuit)_Battle_Retire.ogg",
+          "bytes": 29744,
+          "state": "kept"
+        }
+      ],
+      "ability": [
+        {
+          "variant": 1,
+          "wiki": "Hoshino_(Swimsuit)_ExSkill_1.ogg",
+          "bytes": 18510,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Hoshino_(Swimsuit)_ExSkill_2.ogg",
+          "bytes": 24728,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Hoshino_(Swimsuit)_ExSkill_3.ogg",
+          "bytes": 12921,
+          "state": "kept"
+        }
+      ]
+    }
+  },
+  "ibuki": {
+    "prefix": "Ibuki",
+    "source": "https://bluearchive.wiki/wiki/Ibuki/audio",
+    "actions": {
+      "attack": [
+        {
+          "variant": 1,
+          "wiki": "Ibuki_Battle_Shout_1.ogg",
+          "bytes": 6410,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Ibuki_Battle_Shout_2.ogg",
+          "bytes": 8442,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Ibuki_Battle_Shout_3.ogg",
+          "bytes": 8518,
+          "state": "kept"
+        }
+      ],
+      "hurt": [
+        {
+          "variant": 1,
+          "wiki": "Ibuki_Battle_Damage_1.ogg",
+          "bytes": 19748,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Ibuki_Battle_Damage_2.ogg",
+          "bytes": 11936,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Ibuki_Battle_Damage_3.ogg",
+          "bytes": 9406,
+          "state": "kept"
+        }
+      ],
+      "defend": [
+        {
+          "variant": 1,
+          "wiki": "Ibuki_Battle_Defense_1.ogg",
+          "bytes": 24831,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Ibuki_Battle_Covered_1.ogg",
+          "bytes": 18986,
+          "state": "kept"
+        }
+      ],
+      "move": [
+        {
+          "variant": 1,
+          "wiki": "Ibuki_Battle_Move_1.ogg",
+          "bytes": 14013,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Ibuki_Battle_Move_2.ogg",
+          "bytes": 21497,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Ibuki_Battle_TacticalAction_1.ogg",
+          "bytes": 12856,
+          "state": "kept"
+        }
+      ],
+      "death": [
+        {
+          "variant": 1,
+          "wiki": "Ibuki_Battle_Retire.ogg",
+          "bytes": 23242,
+          "state": "kept"
+        }
+      ],
+      "ability": [
+        {
+          "variant": 1,
+          "wiki": "Ibuki_ExSkill_1.ogg",
+          "bytes": 17516,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Ibuki_ExSkill_2.ogg",
+          "bytes": 23035,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Ibuki_ExSkill_3.ogg",
+          "bytes": 12502,
+          "state": "kept"
+        }
+      ]
+    }
+  },
+  "iori": {
+    "prefix": "Iori",
+    "source": "https://bluearchive.wiki/wiki/Iori/audio",
+    "actions": {
+      "attack": [
+        {
+          "variant": 1,
+          "wiki": "Iori_Battle_Shout_1.ogg",
+          "bytes": 6783,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Iori_Battle_Shout_2.ogg",
+          "bytes": 8157,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Iori_Battle_Shout_3.ogg",
+          "bytes": 8535,
+          "state": "kept"
+        }
+      ],
+      "hurt": [
+        {
+          "variant": 1,
+          "wiki": "Iori_Battle_Damage_1.ogg",
+          "bytes": 10042,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Iori_Battle_Damage_2.ogg",
+          "bytes": 12676,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Iori_Battle_Damage_3.ogg",
+          "bytes": 10354,
+          "state": "kept"
+        }
+      ],
+      "defend": [
+        {
+          "variant": 1,
+          "wiki": "Iori_Battle_Defense_1.ogg",
+          "bytes": 7622,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Iori_Battle_Covered_1.ogg",
+          "bytes": 11128,
+          "state": "kept"
+        }
+      ],
+      "move": [
+        {
+          "variant": 1,
+          "wiki": "Iori_Battle_Move_1.ogg",
+          "bytes": 17769,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Iori_Battle_Move_2.ogg",
+          "bytes": 8762,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Iori_Battle_TacticalAction_1.ogg",
+          "bytes": 9511,
+          "state": "kept"
+        }
+      ],
+      "death": [
+        {
+          "variant": 1,
+          "wiki": "Iori_Battle_Retire.ogg",
+          "bytes": 17211,
+          "state": "kept"
+        }
+      ],
+      "ability": [
+        {
+          "variant": 1,
+          "wiki": "Iori_ExSkill_1.ogg",
+          "bytes": 20019,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Iori_ExSkill_2.ogg",
+          "bytes": 21252,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Iori_ExSkill_3.ogg",
+          "bytes": 27347,
+          "state": "kept"
+        }
+      ]
+    }
+  },
+  "kei": {
+    "prefix": "Kei",
+    "source": "https://bluearchive.wiki/wiki/Kei/audio",
+    "actions": {
+      "attack": [
+        {
+          "variant": 1,
+          "wiki": "Kei_Battle_Shout_1.ogg",
+          "bytes": 6389,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Kei_Battle_Shout_2.ogg",
+          "bytes": 6508,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Kei_Battle_Shout_3.ogg",
+          "bytes": 7023,
+          "state": "kept"
+        }
+      ],
+      "hurt": [
+        {
+          "variant": 1,
+          "wiki": "Kei_Battle_Damage_1.ogg",
+          "bytes": 6407,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Kei_Battle_Damage_2.ogg",
+          "bytes": 11812,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Kei_Battle_Damage_3.ogg",
+          "bytes": 10051,
+          "state": "kept"
+        }
+      ],
+      "defend": [
+        {
+          "variant": 1,
+          "wiki": "Kei_Battle_Defense_1.ogg",
+          "bytes": 13268,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Kei_Battle_Covered_1.ogg",
+          "bytes": 8733,
+          "state": "kept"
+        }
+      ],
+      "move": [
+        {
+          "variant": 1,
+          "wiki": "Kei_Battle_Move_1.ogg",
+          "bytes": 17718,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Kei_Battle_Move_2.ogg",
+          "bytes": 19691,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Kei_Battle_TacticalAction_1.ogg",
+          "bytes": 13777,
+          "state": "kept"
+        }
+      ],
+      "death": [
+        {
+          "variant": 1,
+          "wiki": "Kei_Battle_Retire.ogg",
+          "bytes": 10444,
+          "state": "kept"
+        }
+      ],
+      "ability": [
+        {
+          "variant": 1,
+          "wiki": "Kei_ExSkill_1.ogg",
+          "bytes": 15110,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Kei_ExSkill_2.ogg",
+          "bytes": 13999,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Kei_ExSkill_3.ogg",
+          "bytes": 16436,
+          "state": "kept"
+        }
+      ]
+    }
+  },
+  "mika": {
+    "prefix": "Mika_(Swimsuit)",
+    "source": "https://bluearchive.wiki/wiki/Mika_(Swimsuit)/audio",
+    "actions": {
+      "attack": [
+        {
+          "variant": 1,
+          "wiki": "Mika_(Swimsuit)_Battle_Shout_1.ogg",
+          "bytes": 9511,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Mika_(Swimsuit)_Battle_Shout_2.ogg",
+          "bytes": 7081,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Mika_(Swimsuit)_Battle_Shout_3.ogg",
+          "bytes": 9038,
+          "state": "kept"
+        }
+      ],
+      "hurt": [
+        {
+          "variant": 1,
+          "wiki": "Mika_(Swimsuit)_Battle_Damage_1.ogg",
+          "bytes": 12202,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Mika_(Swimsuit)_Battle_Damage_2.ogg",
+          "bytes": 12931,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Mika_(Swimsuit)_Battle_Damage_3.ogg",
+          "bytes": 10243,
+          "state": "kept"
+        }
+      ],
+      "defend": [
+        {
+          "variant": 1,
+          "wiki": "Mika_(Swimsuit)_Battle_Defense_1.ogg",
+          "bytes": 15146,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Mika_(Swimsuit)_Battle_Covered_1.ogg",
+          "bytes": 10775,
+          "state": "kept"
+        }
+      ],
+      "move": [
+        {
+          "variant": 1,
+          "wiki": "Mika_(Swimsuit)_Battle_Move_1.ogg",
+          "bytes": 12559,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Mika_(Swimsuit)_Battle_Move_2.ogg",
+          "bytes": 14319,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Mika_(Swimsuit)_Battle_TacticalAction_1.ogg",
+          "bytes": 19528,
+          "state": "kept"
+        }
+      ],
+      "death": [
+        {
+          "variant": 1,
+          "wiki": "Mika_(Swimsuit)_Battle_Retire.ogg",
+          "bytes": 13403,
+          "state": "kept"
+        }
+      ],
+      "ability": [
+        {
+          "variant": 1,
+          "wiki": "Mika_(Swimsuit)_ExSkill_1_1.ogg",
+          "bytes": 33540,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Mika_(Swimsuit)_ExSkill_1_2.ogg",
+          "bytes": 30230,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Mika_(Swimsuit)_ExSkill_1_3.ogg",
+          "bytes": 28895,
+          "state": "kept"
+        },
+        {
+          "variant": 4,
+          "wiki": "Mika_(Swimsuit)_ExSkill_2_1.ogg",
+          "bytes": 16932,
+          "state": "kept"
+        },
+        {
+          "variant": 5,
+          "wiki": "Mika_(Swimsuit)_ExSkill_2_2.ogg",
+          "bytes": 19793,
+          "state": "kept"
+        },
+        {
+          "variant": 6,
+          "wiki": "Mika_(Swimsuit)_ExSkill_2_3.ogg",
+          "bytes": 23175,
+          "state": "kept"
+        }
+      ]
+    }
+  },
+  "miyo": {
+    "prefix": "Miyo",
+    "source": "https://bluearchive.wiki/wiki/Miyo/audio",
+    "actions": {
+      "attack": [
+        {
+          "variant": 1,
+          "wiki": "Miyo_Battle_Shout_1.ogg",
+          "bytes": 17070,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Miyo_Battle_Shout_2.ogg",
+          "bytes": 10687,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Miyo_Battle_Shout_3.ogg",
+          "bytes": 6810,
+          "state": "kept"
+        }
+      ],
+      "hurt": [
+        {
+          "variant": 1,
+          "wiki": "Miyo_Battle_Damage_1.ogg",
+          "bytes": 15933,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Miyo_Battle_Damage_2.ogg",
+          "bytes": 16753,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Miyo_Battle_Damage_3.ogg",
+          "bytes": 9116,
+          "state": "kept"
+        }
+      ],
+      "defend": [
+        {
+          "variant": 1,
+          "wiki": "Miyo_Battle_Defense_1.ogg",
+          "bytes": 16610,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Miyo_Battle_Covered_1.ogg",
+          "bytes": 23789,
+          "state": "kept"
+        }
+      ],
+      "move": [
+        {
+          "variant": 1,
+          "wiki": "Miyo_Battle_Move_1.ogg",
+          "bytes": 18319,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Miyo_Battle_Move_2.ogg",
+          "bytes": 17806,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Miyo_Battle_TacticalAction_1.ogg",
+          "bytes": 14226,
+          "state": "kept"
+        }
+      ],
+      "death": [
+        {
+          "variant": 1,
+          "wiki": "Miyo_Battle_Retire.ogg",
+          "bytes": 29040,
+          "state": "kept"
+        }
+      ],
+      "ability": [
+        {
+          "variant": 1,
+          "wiki": "Miyo_ExSkill_1.ogg",
+          "bytes": 36618,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Miyo_ExSkill_2.ogg",
+          "bytes": 17876,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Miyo_ExSkill_3.ogg",
+          "bytes": 17425,
+          "state": "kept"
+        }
+      ]
+    }
+  },
+  "mutsuki": {
+    "prefix": "Mutsuki",
+    "source": "https://bluearchive.wiki/wiki/Mutsuki/audio",
+    "actions": {
+      "attack": [
+        {
+          "variant": 1,
+          "wiki": "Mutsuki_Battle_Shout_1.ogg",
+          "bytes": 6943,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Mutsuki_Battle_Shout_2.ogg",
+          "bytes": 8934,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Mutsuki_Battle_Shout_3.ogg",
+          "bytes": 9135,
+          "state": "kept"
+        }
+      ],
+      "hurt": [
+        {
+          "variant": 1,
+          "wiki": "Mutsuki_Battle_Damage_1.ogg",
+          "bytes": 7736,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Mutsuki_Battle_Damage_2.ogg",
+          "bytes": 6690,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Mutsuki_Battle_Damage_3.ogg",
+          "bytes": 13892,
+          "state": "kept"
+        }
+      ],
+      "defend": [
+        {
+          "variant": 1,
+          "wiki": "Mutsuki_Battle_Defense_1.ogg",
+          "bytes": 14096,
+          "state": "kept"
+        }
+      ],
+      "move": [
+        {
+          "variant": 1,
+          "wiki": "Mutsuki_Battle_Move_1.ogg",
+          "bytes": 20670,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Mutsuki_Battle_Move_2.ogg",
+          "bytes": 17153,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Mutsuki_Battle_TacticalAction_1.ogg",
+          "bytes": 12136,
+          "state": "kept"
+        }
+      ],
+      "death": [
+        {
+          "variant": 1,
+          "wiki": "Mutsuki_Battle_Retire.ogg",
+          "bytes": 14772,
+          "state": "kept"
+        }
+      ],
+      "ability": [
+        {
+          "variant": 1,
+          "wiki": "Mutsuki_ExSkill_1.ogg",
+          "bytes": 19369,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Mutsuki_ExSkill_2.ogg",
+          "bytes": 22855,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Mutsuki_ExSkill_3.ogg",
+          "bytes": 18233,
+          "state": "kept"
+        }
+      ]
+    }
+  },
+  "nagisa": {
+    "prefix": "Nagisa",
+    "source": "https://bluearchive.wiki/wiki/Nagisa/audio",
+    "actions": {
+      "attack": [
+        {
+          "variant": 1,
+          "wiki": "(first-pass download; the wiki no longer lists this clip)",
+          "bytes": 28603,
+          "state": "renamed-legacy"
+        }
+      ],
+      "hurt": [
+        {
+          "variant": 1,
+          "wiki": "(first-pass download; the wiki no longer lists this clip)",
+          "bytes": 25836,
+          "state": "renamed-legacy"
+        }
+      ],
+      "defend": [
+        {
+          "variant": 1,
+          "wiki": "(first-pass download; the wiki no longer lists this clip)",
+          "bytes": 35912,
+          "state": "renamed-legacy"
+        }
+      ],
+      "move": [
+        {
+          "variant": 1,
+          "wiki": "(first-pass download; the wiki no longer lists this clip)",
+          "bytes": 18357,
+          "state": "renamed-legacy"
+        }
+      ],
+      "death": [
+        {
+          "variant": 1,
+          "wiki": "(first-pass download; the wiki no longer lists this clip)",
+          "bytes": 23387,
+          "state": "renamed-legacy"
+        }
+      ],
+      "ability": [
+        {
+          "variant": 1,
+          "wiki": "Nagisa_ExSkill_1.ogg",
+          "bytes": 28603,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Nagisa_ExSkill_2.ogg",
+          "bytes": 26315,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Nagisa_ExSkill_3.ogg",
+          "bytes": 25836,
+          "state": "kept"
+        }
+      ]
+    }
+  },
+  "neru": {
+    "prefix": "Neru_(School_Uniform)",
+    "source": "https://bluearchive.wiki/wiki/Neru_(School_Uniform)/audio",
+    "actions": {
+      "attack": [
+        {
+          "variant": 1,
+          "wiki": "Neru_(School_Uniform)_Battle_Shout_1.ogg",
+          "bytes": 7141,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Neru_(School_Uniform)_Battle_Shout_2.ogg",
+          "bytes": 9549,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Neru_(School_Uniform)_Battle_Shout_3.ogg",
+          "bytes": 8998,
+          "state": "kept"
+        }
+      ],
+      "hurt": [
+        {
+          "variant": 1,
+          "wiki": "Neru_(School_Uniform)_Battle_Damage_1.ogg",
+          "bytes": 15185,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Neru_(School_Uniform)_Battle_Damage_2.ogg",
+          "bytes": 9218,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Neru_(School_Uniform)_Battle_Damage_3.ogg",
+          "bytes": 9362,
+          "state": "kept"
+        }
+      ],
+      "defend": [
+        {
+          "variant": 1,
+          "wiki": "Neru_(School_Uniform)_Battle_Defense_1.ogg",
+          "bytes": 15416,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Neru_(School_Uniform)_Battle_Covered_1.ogg",
+          "bytes": 12905,
+          "state": "kept"
+        }
+      ],
+      "move": [
+        {
+          "variant": 1,
+          "wiki": "Neru_(School_Uniform)_Battle_Move_1.ogg",
+          "bytes": 10546,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Neru_(School_Uniform)_Battle_Move_2.ogg",
+          "bytes": 15455,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Neru_(School_Uniform)_Battle_TacticalAction_1.ogg",
+          "bytes": 7142,
+          "state": "kept"
+        }
+      ],
+      "death": [
+        {
+          "variant": 1,
+          "wiki": "Neru_(School_Uniform)_Battle_Retire.ogg",
+          "bytes": 11567,
+          "state": "kept"
+        }
+      ],
+      "ability": [
+        {
+          "variant": 1,
+          "wiki": "Neru_(School_Uniform)_ExSkill_1_1.ogg",
+          "bytes": 27506,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Neru_(School_Uniform)_ExSkill_1_2.ogg",
+          "bytes": 20976,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Neru_(School_Uniform)_ExSkill_1_3.ogg",
+          "bytes": 19736,
+          "state": "kept"
+        },
+        {
+          "variant": 4,
+          "wiki": "Neru_(School_Uniform)_ExSkill_2_1.ogg",
+          "bytes": 17759,
+          "state": "kept"
+        },
+        {
+          "variant": 5,
+          "wiki": "Neru_(School_Uniform)_ExSkill_2_2.ogg",
+          "bytes": 23431,
+          "state": "kept"
+        },
+        {
+          "variant": 6,
+          "wiki": "Neru_(School_Uniform)_ExSkill_2_3.ogg",
+          "bytes": 12739,
+          "state": "kept"
+        }
+      ]
+    }
+  },
+  "saori": {
+    "prefix": "Saori_(Dress)",
+    "source": "https://bluearchive.wiki/wiki/Saori_(Dress)/audio",
+    "actions": {
+      "attack": [
+        {
+          "variant": 1,
+          "wiki": "Saori_(Dress)_Battle_Shout_1.ogg",
+          "bytes": 7953,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Saori_(Dress)_Battle_Shout_2.ogg",
+          "bytes": 7337,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Saori_(Dress)_Battle_Shout_3.ogg",
+          "bytes": 8176,
+          "state": "kept"
+        }
+      ],
+      "hurt": [
+        {
+          "variant": 1,
+          "wiki": "Saori_(Dress)_Battle_Damage_1.ogg",
+          "bytes": 11454,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Saori_(Dress)_Battle_Damage_2.ogg",
+          "bytes": 15017,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Saori_(Dress)_Battle_Damage_3.ogg",
+          "bytes": 10441,
+          "state": "kept"
+        }
+      ],
+      "defend": [
+        {
+          "variant": 1,
+          "wiki": "Saori_(Dress)_Battle_Defense_1.ogg",
+          "bytes": 13765,
+          "state": "kept"
+        }
+      ],
+      "move": [
+        {
+          "variant": 1,
+          "wiki": "Saori_(Dress)_Battle_Move_1.ogg",
+          "bytes": 16666,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Saori_(Dress)_Battle_Move_2.ogg",
+          "bytes": 10999,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Saori_(Dress)_Battle_TacticalAction_1.ogg",
+          "bytes": 9153,
+          "state": "kept"
+        }
+      ],
+      "death": [
+        {
+          "variant": 1,
+          "wiki": "Saori_(Dress)_Battle_Retire.ogg",
+          "bytes": 22553,
+          "state": "kept"
+        }
+      ],
+      "ability": [
+        {
+          "variant": 1,
+          "wiki": "Saori_(Dress)_ExSkill_1.ogg",
+          "bytes": 14063,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Saori_(Dress)_ExSkill_2.ogg",
+          "bytes": 22312,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Saori_(Dress)_ExSkill_3.ogg",
+          "bytes": 9903,
+          "state": "kept"
+        }
+      ]
+    }
+  },
+  "seia": {
+    "prefix": "Seia",
+    "source": "https://bluearchive.wiki/wiki/Seia/audio",
+    "actions": {
+      "attack": [
+        {
+          "variant": 1,
+          "wiki": "Seia_Battle_Shout_1.ogg",
+          "bytes": 7644,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Seia_Battle_Shout_2.ogg",
+          "bytes": 7455,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Seia_Battle_Shout_3.ogg",
+          "bytes": 7219,
+          "state": "kept"
+        }
+      ],
+      "hurt": [
+        {
+          "variant": 1,
+          "wiki": "Seia_Battle_Damage_1.ogg",
+          "bytes": 8665,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Seia_Battle_Damage_2.ogg",
+          "bytes": 8303,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Seia_Battle_Damage_3.ogg",
+          "bytes": 8793,
+          "state": "kept"
+        }
+      ],
+      "defend": [
+        {
+          "variant": 1,
+          "wiki": "Seia_Battle_Defense_1.ogg",
+          "bytes": 11242,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Seia_Battle_Covered_1.ogg",
+          "bytes": 18577,
+          "state": "kept"
+        }
+      ],
+      "move": [
+        {
+          "variant": 1,
+          "wiki": "Seia_Battle_Move_1.ogg",
+          "bytes": 18242,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Seia_Battle_Move_2.ogg",
+          "bytes": 20112,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Seia_Battle_TacticalAction_1.ogg",
+          "bytes": 11326,
+          "state": "kept"
+        }
+      ],
+      "death": [
+        {
+          "variant": 1,
+          "wiki": "Seia_Battle_Retire.ogg",
+          "bytes": 25987,
+          "state": "kept"
+        }
+      ],
+      "ability": [
+        {
+          "variant": 1,
+          "wiki": "Seia_ExSkill_1.ogg",
+          "bytes": 17930,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Seia_ExSkill_2.ogg",
+          "bytes": 22637,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Seia_ExSkill_3.ogg",
+          "bytes": 23952,
+          "state": "kept"
+        }
+      ]
+    }
+  },
+  "shiroko": {
+    "prefix": "Shiroko",
+    "source": "https://bluearchive.wiki/wiki/Shiroko/audio",
+    "actions": {
+      "attack": [
+        {
+          "variant": 1,
+          "wiki": "Shiroko_Battle_Shout_1.ogg",
+          "bytes": 6558,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Shiroko_Battle_Shout_2.ogg",
+          "bytes": 6534,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Shiroko_Battle_Shout_3.ogg",
+          "bytes": 8492,
+          "state": "kept"
+        }
+      ],
+      "hurt": [
+        {
+          "variant": 1,
+          "wiki": "Shiroko_Battle_Damage_1.ogg",
+          "bytes": 8467,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Shiroko_Battle_Damage_2.ogg",
+          "bytes": 11497,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Shiroko_Battle_Damage_3.ogg",
+          "bytes": 8354,
+          "state": "kept"
+        }
+      ],
+      "defend": [
+        {
+          "variant": 1,
+          "wiki": "Shiroko_Battle_Defense_1.ogg",
+          "bytes": 7260,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Shiroko_Battle_Covered_1.ogg",
+          "bytes": 13812,
+          "state": "kept"
+        }
+      ],
+      "move": [
+        {
+          "variant": 1,
+          "wiki": "Shiroko_Battle_Move_1.ogg",
+          "bytes": 21474,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Shiroko_Battle_Move_2.ogg",
+          "bytes": 19036,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Shiroko_Battle_TacticalAction_1.ogg",
+          "bytes": 9174,
+          "state": "kept"
+        }
+      ],
+      "death": [
+        {
+          "variant": 1,
+          "wiki": "Shiroko_Battle_Retire.ogg",
+          "bytes": 29111,
+          "state": "kept"
+        }
+      ],
+      "ability": [
+        {
+          "variant": 1,
+          "wiki": "Shiroko_ExSkill_1.ogg",
+          "bytes": 21407,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Shiroko_ExSkill_2.ogg",
+          "bytes": 11859,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Shiroko_ExSkill_3.ogg",
+          "bytes": 17469,
+          "state": "kept"
+        }
+      ]
+    }
+  },
+  "toki": {
+    "prefix": "Toki_(Bunny_Girl)",
+    "source": "https://bluearchive.wiki/wiki/Toki_(Bunny_Girl)/audio",
+    "actions": {
+      "attack": [
+        {
+          "variant": 1,
+          "wiki": "Toki_(Bunny_Girl)_Battle_Shout_1.ogg",
+          "bytes": 6177,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Toki_(Bunny_Girl)_Battle_Shout_2.ogg",
+          "bytes": 5822,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Toki_(Bunny_Girl)_Battle_Shout_3.ogg",
+          "bytes": 5785,
+          "state": "kept"
+        }
+      ],
+      "hurt": [
+        {
+          "variant": 1,
+          "wiki": "Toki_(Bunny_Girl)_Battle_Damage_1.ogg",
+          "bytes": 8057,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Toki_(Bunny_Girl)_Battle_Damage_2.ogg",
+          "bytes": 8206,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Toki_(Bunny_Girl)_Battle_Damage_3.ogg",
+          "bytes": 17551,
+          "state": "kept"
+        }
+      ],
+      "defend": [
+        {
+          "variant": 1,
+          "wiki": "Toki_(Bunny_Girl)_Battle_Defense_1.ogg",
+          "bytes": 10947,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Toki_(Bunny_Girl)_Battle_Covered_1.ogg",
+          "bytes": 15220,
+          "state": "kept"
+        }
+      ],
+      "move": [
+        {
+          "variant": 1,
+          "wiki": "Toki_(Bunny_Girl)_Battle_Move_1.ogg",
+          "bytes": 17984,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Toki_(Bunny_Girl)_Battle_Move_2.ogg",
+          "bytes": 16735,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Toki_(Bunny_Girl)_Battle_TacticalAction_1.ogg",
+          "bytes": 16701,
+          "state": "kept"
+        }
+      ],
+      "death": [
+        {
+          "variant": 1,
+          "wiki": "Toki_(Bunny_Girl)_Battle_Retire.ogg",
+          "bytes": 16953,
+          "state": "kept"
+        }
+      ],
+      "ability": [
+        {
+          "variant": 1,
+          "wiki": "Toki_(Bunny_Girl)_ExSkill_1.ogg",
+          "bytes": 14523,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Toki_(Bunny_Girl)_ExSkill_2.ogg",
+          "bytes": 10033,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Toki_(Bunny_Girl)_ExSkill_3.ogg",
+          "bytes": 11969,
+          "state": "kept"
+        }
+      ]
+    }
+  },
+  "wakamo": {
+    "prefix": "Wakamo_(Swimsuit)",
+    "source": "https://bluearchive.wiki/wiki/Wakamo_(Swimsuit)/audio",
+    "actions": {
+      "attack": [
+        {
+          "variant": 1,
+          "wiki": "Wakamo_(Swimsuit)_Battle_Shout_1.ogg",
+          "bytes": 7025,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Wakamo_(Swimsuit)_Battle_Shout_2.ogg",
+          "bytes": 8422,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Wakamo_(Swimsuit)_Battle_Shout_3.ogg",
+          "bytes": 10270,
+          "state": "kept"
+        }
+      ],
+      "hurt": [
+        {
+          "variant": 1,
+          "wiki": "Wakamo_(Swimsuit)_Battle_Damage_1.ogg",
+          "bytes": 8186,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Wakamo_(Swimsuit)_Battle_Damage_2.ogg",
+          "bytes": 8251,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Wakamo_(Swimsuit)_Battle_Damage_3.ogg",
+          "bytes": 9433,
+          "state": "kept"
+        }
+      ],
+      "defend": [
+        {
+          "variant": 1,
+          "wiki": "Wakamo_(Swimsuit)_Battle_Defense_1.ogg",
+          "bytes": 14672,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Wakamo_(Swimsuit)_Battle_Covered_1.ogg",
+          "bytes": 21332,
+          "state": "kept"
+        }
+      ],
+      "move": [
+        {
+          "variant": 1,
+          "wiki": "Wakamo_(Swimsuit)_Battle_Move_1.ogg",
+          "bytes": 29354,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Wakamo_(Swimsuit)_Battle_Move_2.ogg",
+          "bytes": 19619,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Wakamo_(Swimsuit)_Battle_TacticalAction_1.ogg",
+          "bytes": 17168,
+          "state": "kept"
+        }
+      ],
+      "death": [
+        {
+          "variant": 1,
+          "wiki": "Wakamo_(Swimsuit)_Battle_Retire.ogg",
+          "bytes": 37717,
+          "state": "kept"
+        }
+      ],
+      "ability": [
+        {
+          "variant": 1,
+          "wiki": "Wakamo_(Swimsuit)_ExSkill_1.ogg",
+          "bytes": 37151,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Wakamo_(Swimsuit)_ExSkill_2.ogg",
+          "bytes": 23809,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Wakamo_(Swimsuit)_ExSkill_3.ogg",
+          "bytes": 23389,
+          "state": "kept"
+        }
+      ]
+    }
+  },
+  "yuuka": {
+    "prefix": "Yuuka_(Pajama)",
+    "source": "https://bluearchive.wiki/wiki/Yuuka_(Pajama)/audio",
+    "actions": {
+      "attack": [
+        {
+          "variant": 1,
+          "wiki": "Yuuka_(Pajama)_Battle_Shout_1.ogg",
+          "bytes": 8928,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Yuuka_(Pajama)_Battle_Shout_2.ogg",
+          "bytes": 8296,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Yuuka_(Pajama)_Battle_Shout_3.ogg",
+          "bytes": 7198,
+          "state": "kept"
+        }
+      ],
+      "hurt": [
+        {
+          "variant": 1,
+          "wiki": "Yuuka_(Pajama)_Battle_Damage_1.ogg",
+          "bytes": 6194,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Yuuka_(Pajama)_Battle_Damage_2.ogg",
+          "bytes": 9511,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Yuuka_(Pajama)_Battle_Damage_3.ogg",
+          "bytes": 19643,
+          "state": "kept"
+        }
+      ],
+      "defend": [
+        {
+          "variant": 1,
+          "wiki": "Yuuka_(Pajama)_Battle_Defense_1.ogg",
+          "bytes": 17503,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Yuuka_(Pajama)_Battle_Covered_1.ogg",
+          "bytes": 12365,
+          "state": "kept"
+        }
+      ],
+      "move": [
+        {
+          "variant": 1,
+          "wiki": "Yuuka_(Pajama)_Battle_Move_1.ogg",
+          "bytes": 13969,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Yuuka_(Pajama)_Battle_Move_2.ogg",
+          "bytes": 15782,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Yuuka_(Pajama)_Battle_TacticalAction_1.ogg",
+          "bytes": 16005,
+          "state": "kept"
+        }
+      ],
+      "death": [
+        {
+          "variant": 1,
+          "wiki": "Yuuka_(Pajama)_Battle_Retire.ogg",
+          "bytes": 30822,
+          "state": "kept"
+        }
+      ],
+      "ability": [
+        {
+          "variant": 1,
+          "wiki": "Yuuka_(Pajama)_ExSkill_1.ogg",
+          "bytes": 26937,
+          "state": "kept"
+        },
+        {
+          "variant": 2,
+          "wiki": "Yuuka_(Pajama)_ExSkill_2.ogg",
+          "bytes": 27236,
+          "state": "kept"
+        },
+        {
+          "variant": 3,
+          "wiki": "Yuuka_(Pajama)_ExSkill_3.ogg",
+          "bytes": 27416,
+          "state": "kept"
+        }
+      ]
+    }
+  }
+}
