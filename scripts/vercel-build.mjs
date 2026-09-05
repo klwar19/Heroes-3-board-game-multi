@@ -55,10 +55,12 @@ function cdnBaseUrl() {
 }
 
 function runNext(extraEnv = {}) {
-  const training = spawnSync(process.execPath, [join(ROOT, "scripts", "train-ranked-policy.mjs"), "--if-configured"], {
-    cwd: ROOT, env: process.env, stdio: "inherit",
-  });
-  if (training.status !== 0) return training.status ?? 1;
+  // NOTE: the ranked-replay policy is NEVER trained here. A deploy must not
+  // depend on Supabase credentials, on the network, or on a step that can
+  // rewrite a tracked source file mid-build:
+  // `src/engine/computer/learned-policy.json` is a COMMITTED artifact the
+  // runtime imports, regenerated deliberately by `npm run train:ranked` and
+  // reviewed in its own commit. See docs/computer-learning-runtime-2026-09-05.md.
   const nextCli = require.resolve("next/dist/bin/next");
   const result = spawnSync(process.execPath, [nextCli, "build"], {
     cwd: ROOT,
