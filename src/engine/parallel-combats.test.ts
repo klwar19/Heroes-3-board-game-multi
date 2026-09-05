@@ -12,6 +12,7 @@ import {
 import { describe, expect, it } from "vitest";
 import {
   hasParkedParallelInteractions,
+  isParallelWatchOnly,
   parallelPresentationEvents,
   parallelContextOptions,
   parallelStateForPlayer,
@@ -110,7 +111,13 @@ describe("independent parallel battles", () => {
     const reassigned = parallelStateForPlayer(state, "p3", "p3");
     expect(neutralCombatControllerId(reassigned, reassigned.combat!)).toBe("p2");
     expect(reassigned.combat?.pendingNeutralPlacement).toBe("p2");
-    expect(state.parallelContextSelections?.p1).toBeUndefined();
+    // p1's selection SURVIVES the reassignment — since the 2026-09-05 watch fix
+    // losing the command of a battle demotes the viewer to a read-only WATCHER
+    // of it rather than yanking them away; it is dropped when that battle ENDS.
+    // What must not survive is any DECISION there: p1 (eliminated, no longer the
+    // controller) is offered nothing but the switch.
+    expect(state.parallelContextSelections?.p1).toBe("p3");
+    expect(isParallelWatchOnly(parallelStateForPlayer(state, "p1"), "p1")).toBe(true);
     state = apply(state, { type: "SELECT_PARALLEL_CONTEXT", playerId: "p2", ownerPlayerId: "p3" });
     expect(getLegalActions(state, "p2").some(l => l.action.type === "FINISH_NEUTRAL_PLACEMENT")).toBe(true);
   });
@@ -154,16 +161,23 @@ describe("independent parallel battles", () => {
     expect(state.turn.mode).toBe("parallel");
   });
 
-  it("rejects another seat's battle and delayed commands, and sends only the selected private view", () => {
+  it("rejects an unknown context and delayed commands, and sends only the selected private view", () => {
     let state = makeGame("parallel-switch-security", { parallelTurns: 4, players: 3, pvpNeutralControl: true });
     for (const id of ["p1", "p2", "p3"]) {
       const field = emptyFieldNextTo(state, `hero_${id}`);
       paintField(state, field, "empty_field", { difficulty: 1 });
       state = moveHero(state, id, field);
     }
-    const invalid = applyAction(state, { type: "SELECT_PARALLEL_CONTEXT", playerId: "p1", ownerPlayerId: "p2" });
+    // A context that exists at all is selectable — since the 2026-09-05 watch
+    // fix p2's battle is offered to p1 READ-ONLY (pinned in
+    // parallel-watch-battles.test.ts). A context that does NOT exist is still
+    // refused, so the offer list remains the gate.
+    const invalid = applyAction(state, { type: "SELECT_PARALLEL_CONTEXT", playerId: "p1", ownerPlayerId: "p9" });
     expect(invalid.errors.length).toBeGreaterThan(0);
     expect(invalid.state).toBe(state);
+    const watch = applyAction(state, { type: "SELECT_PARALLEL_CONTEXT", playerId: "p1", ownerPlayerId: "p2" });
+    expect(watch.errors).toEqual([]);
+    expect(getLegalActions(watch.state, "p1").every(l => l.action.type === "SELECT_PARALLEL_CONTEXT")).toBe(true);
     const own = parallelStateForPlayer(state, "p1");
     const oldAction = getLegalActions(state, "p1").find(l => l.action.type !== "SELECT_PARALLEL_CONTEXT")!.action;
     state = apply(state, { type: "SELECT_PARALLEL_CONTEXT", playerId: "p1", ownerPlayerId: "p3" });
@@ -175,7 +189,10 @@ describe("independent parallel battles", () => {
     expect(view.parallelCombats).toBeUndefined();
     expect(view.players.p3.hand.every(card => card === "hidden")).toBe(true);
     expect(view.parallelContextSelections).toEqual({ p1: "p3" });
-    expect(view.parallelContextOptions?.map(o => o.ownerPlayerId).sort()).toEqual(["p1", "p3"]);
+    expect(view.parallelContextOptions?.map(o => o.ownerPlayerId).sort()).toEqual(["p1", "p2", "p3"]);
+    // p3's battle is the one p1 COMMANDS; p2's is offered read-only.
+    expect(view.parallelContextOptions?.find(o => o.ownerPlayerId === "p3")?.role).toBe("neutrals");
+    expect(view.parallelContextOptions?.find(o => o.ownerPlayerId === "p2")?.role).toBe("watch");
     expect(parallelStateForPlayer(view, "p1").combat?.id).toBe(view.combat?.id);
     expect(parallelStateForPlayer(state, "p2").combat?.attackerPlayerId).toBe("p2");
   });
@@ -212,9 +229,20 @@ describe("independent parallel battles", () => {
     if (mixed) {
       expect(parallelContextOptions(state, "p1").map(option => option.ownerPlayerId)).toEqual(expect.arrayContaining(["p1", "p2", "p3", "p4", "p5"]));
       expect(parallelContextOptions(state, "p2").map(option => option.ownerPlayerId)).toEqual(expect.arrayContaining(["p2", "p1"]));
+      // A COMPUTER seat is never offered a read-only WATCH window (the offer
+      // carries no AI score), so it keeps its lone own-window entry.
       for (const id of seats.slice(2)) expect(parallelContextOptions(state, id)).toHaveLength(1);
     } else {
-      for (const id of seats) expect(parallelContextOptions(state, id)).toHaveLength(2);
+      // Since the 2026-09-05 watch fix every seat can follow EVERY running
+      // battle: its own window, the one battle whose guards it commands, and
+      // each remaining battle read-only.
+      for (const id of seats) {
+        const options = parallelContextOptions(state, id);
+        expect(options).toHaveLength(count);
+        expect(options.filter(option => option.role === "hero")).toHaveLength(1);
+        expect(options.filter(option => option.role === "neutrals")).toHaveLength(1);
+        expect(options.filter(option => option.role === "watch")).toHaveLength(count - 2);
+      }
     }
     let steps = 0;
     for (; steps < 800; steps++) {

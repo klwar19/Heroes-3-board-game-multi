@@ -4578,3 +4578,63 @@ Leading with the limits / readings:
   ≈q80–85 at 256² / 480×720; `DRY_RUN=1 node scripts/compress-media.mjs` rewrites
   none of them (its ≤85% rule), re-encoding gains 5–17% with generation loss. It
   would touch 7 balance-pack faces outside this batch — left alone.
+
+## Parallel turns — WATCHING a battle (2026-09-05, protocol v104)
+
+USER REPORT: "parallel mode work or not? observer can't see both battles? keep
+being forced to a battle when view map". BOTH halves were ONE root cause: a
+viewer with no seat of their own (the page's Observer seat, an eliminated
+player) fell through `parallelStateForPlayer` and rendered the RAW snapshot,
+i.e. whichever battle the single global `parallelCombatOwnerId` happened to
+point at. That pointer moves every time ANY seat acts, so the observer's screen
+was dragged from battle to battle — and each move changed `state.combat.id`,
+which the page's "a new battle appeared" hand-off answers by forcing
+`combatTab` back to "battle". Machine truth:
+`src/engine/parallel-watch-battles.test.ts` (9 specs) plus
+`src/app/page-parallel-watch.test.tsx`, `parallel-combats.test.ts` and
+`parallel-battle-switcher.test.tsx`. Every claim carries a CONTROL and was
+mutation-checked (8 one-line reverts, each killed by a named spec).
+
+Leading with what does NOT work / the deliberate limits:
+- **A WATCHING seat has NO legal action at all** except the switch back
+  (`getLegalActions` returns only `SELECT_PARALLEL_CONTEXT` — that offer set,
+  not a refusal, IS the read-only guarantee). Its 10-minute turn clock keeps
+  RUNNING and it still owes its END_TURN, so a player who wanders off inside a
+  watch window can be AFK-kicked. The AFK / turn-timeout driver is safe: both
+  force the seat's OWN context (`forcedOwnTurn`), so it is never watch-only.
+- **`parallelMapBystander` also drops to the read-only map for a watcher — that
+  one line is PRESENTATION ONLY and is NOT PINNED**: reaching it needs a seated
+  bystander that has already dispatched the switch, and the legal-action set
+  already withholds every map action. Declared in place, not dressed up.
+- **A COMPUTER seat is never offered a watch window** (`SELECT_PARALLEL_CONTEXT`
+  carries no AI score, so it would be an unranked no-op candidate the runner
+  could take into a context with no work). Defensive — the lobby refuses
+  parallel turns beside computer seats — but the `parallel-combats.test.ts`
+  fixtures do build such a table, and the exclusion is CONTROL-pinned there.
+- **A watcher never sees a DECIDED foreign battle**: both `watchTargetFor` and
+  the seated `targetPreference` skip a combat carrying an `outcome`, so the
+  watcher is moved on the moment "their" battle ends (the selection is then also
+  dropped by `settleParallelCombatContext`). That is why the RESULT hand-off in
+  page.tsx deliberately carries NO watch guard — a viewer holding a result is
+  always a participant in it.
+- **A viewer with no explicit choice gets the FIRST live battle in seat order**,
+  not the newest and not the pointer's. Deterministic so the screen holds still;
+  it does mean two observers see the same battle by default.
+- **jsdom cannot compute CSS** and there is still NO e2e spec for parallel
+  turns; the page test pins which SURFACE renders (`adventureRoot` vs
+  `tableRoot`), never a pixel.
+
+What runs: `ParallelContextOption.role` gains `"watch"`, and
+`parallelContextOptions` lists EVERY other live battle read-only for a bystander
+seat, an eliminated seat and an unseated spectator (it no longer requires PvP
+Neutral Control — that option still decides which battle you COMMAND).
+`SELECT_PARALLEL_CONTEXT` therefore accepts any live battle; selecting your OWN
+window CLEARS `parallelContextSelections[you]` instead of pinning it (a pinned
+self-selection disabled the controller / parked-battle fallbacks that route an
+owed decision to you). `parallelStateForPlayer` gives a seatless viewer the same
+one-battle projection a seat gets, and `applyAction` only feeds a projection to a
+real SEAT — otherwise a spectator's switch would COMMIT its projection and drag
+the authoritative pointer for everyone (pinned). Private zones are untouched: the
+watcher's frame is the ordinary `getPlayerView` / `redactStateForSeat` output, so
+another player's hand, deck and an open Search's revealed cards stay masked.
+`npm run deploy:partykit` is OWED (a v103 edge rejects the watch selection).

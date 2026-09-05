@@ -1114,7 +1114,17 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // changed at every carved hex, and the BINH house rule `bank-interior-entry-only`
 // is RETIRED (see RETIRED_HOUSE_RULE_IDS). A v103 edge lets a hero cross a carve's
 // sealed tile edge. `npm run deploy:partykit` owed with this bump.
-export const ENGINE_PROTOCOL_VERSION = 104;
+// v105 (2026-09-05, parallel-turns WATCH fix): every viewer may follow every
+// running parallel battle read-only. `ParallelContextOption.role` gains
+// "watch"; `SELECT_PARALLEL_CONTEXT` now accepts ANY live battle (a watcher's
+// `getLegalActions` returns nothing but the switch back, so the read-only
+// guarantee is the offer set, not the refusal); selecting your OWN window
+// CLEARS `parallelContextSelections[you]` instead of pinning it; and a viewer
+// with no seat (unseated spectator / eliminated) gets a stable one-battle
+// projection from `parallelStateForPlayer` instead of the raw global pointer.
+// A v103 edge REJECTS the watch selection and keeps dragging a spectator from
+// battle to battle. `npm run deploy:partykit` owed with this bump.
+export const ENGINE_PROTOCOL_VERSION = 105;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

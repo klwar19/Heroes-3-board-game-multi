@@ -1,5 +1,5 @@
 import { cardLibrary } from "@/data/cards/library";
-import { parallelContextOptions, parallelStateForPlayer } from "./parallel-combats";
+import { isParallelWatchOnly, parallelContextOptions, parallelStateForPlayer } from "./parallel-combats";
 import { POLISH_BALANCE_PRINTED_MOVEMENT_IDS } from "./polish-balance-spells";
 import { COMMUNITY_BALANCE_PRINTED_MOVEMENT_IDS } from "@/data/cards/community-spells-balance";
 import {
@@ -8422,12 +8422,23 @@ export function getLegalActions(
   buildings: BuildingLibrary = sampleBuildings,
 ): LegalAction[] {
   state = parallelStateForPlayer(state, playerId);
-  const coreActions = getLegalActionsCore(state, playerId, cards, buildings);
+  // WATCHING another player's battle is read-only: the only thing offered is
+  // the switch back (or to another battle), so a watcher can neither act inside
+  // a fight that is not theirs nor ever be wedged there.
+  // Scoped to a live SEAT: a spectator / eliminated viewer already had no
+  // meaningful offers here and keeps whatever the core produced.
+  const watching = isParallelWatchOnly(state, playerId) && state.turnOrder.includes(playerId);
+  const coreActions = watching ? [] : getLegalActionsCore(state, playerId, cards, buildings);
   for (const context of parallelContextOptions(state, playerId)) {
     if (context.ownerPlayerId === (state.parallelCombatOwnerId ?? playerId)) continue;
     coreActions.push({ action: { type: "SELECT_PARALLEL_CONTEXT", playerId, ownerPlayerId: context.ownerPlayerId },
-      label: context.role === "hero" ? "My battle / adventure" : `Control neutrals for ${context.fighterName}` });
+      label: context.role === "hero"
+        ? "My battle / adventure"
+        : context.role === "watch"
+          ? `Watch ${context.fighterName}'s battle`
+          : `Control neutrals for ${context.fighterName}` });
   }
+  if (watching) return coreActions;
   return withComputerAdvanceOffer(
     state,
     playerId,

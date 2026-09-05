@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowLeftRight, Shield, Swords } from "lucide-react";
+import { ArrowLeftRight, Eye, Shield, Swords } from "lucide-react";
 import { parallelContextOptions } from "@/engine/parallel-combats";
 import type { GameAction, GameState, PlayerId } from "@/engine/state";
 import styles from "./parallel-battle-switcher.module.css";
@@ -34,10 +34,14 @@ export function ParallelBattleSwitcher({ state, playerId, onAction }: {
               try { await onAction({ type: "SELECT_PARALLEL_CONTEXT", playerId, ownerPlayerId: option.ownerPlayerId }); }
               finally { setSwitching(false); }
             }}>
-            {option.role === "hero" ? <Swords size={22} /> : <Shield size={22} />}
+            {option.role === "hero" ? <Swords size={22} /> : option.role === "watch" ? <Eye size={22} /> : <Shield size={22} />}
             <span className={styles.text}>
-              <strong>{option.role === "hero" ? option.hasCombat ? "My battle" : "My adventure" : `Neutrals vs ${option.fighterName}`}</strong>
-              <small>{option.role === "hero" ? option.controllerName ? `${option.controllerName} controls your opponents` : "Your hero, cards and rewards" : "You command the neutral army"}</small>
+              <strong>{option.role === "hero"
+                ? option.hasCombat ? "My battle" : "My adventure"
+                : option.role === "watch" ? `Watch ${option.fighterName}` : `Neutrals vs ${option.fighterName}`}</strong>
+              <small>{option.role === "hero"
+                ? option.controllerName ? `${option.controllerName} controls your opponents` : "Your hero, cards and rewards"
+                : option.role === "watch" ? "Read-only — you have no decision here" : "You command the neutral army"}</small>
               <span className={option.needsInput ? styles.ready : styles.waiting}>{option.needsInput ? "● " : "◷ "}{option.waitingFor}</span>
             </span>
           </button>
@@ -46,7 +50,9 @@ export function ParallelBattleSwitcher({ state, playerId, onAction }: {
       <p className={styles.role} role="status">
         {switching ? "Opening battle…" : current?.role === "neutrals"
           ? `You are commanding neutrals against ${current.fighterName}. Return to ${options[0].hasCombat ? "My battle" : "My adventure"} for your own hero.`
-          : "You are playing your own hero. Check the neutral window when it needs your action."}
+          : current?.role === "watch"
+            ? `You are watching ${current.fighterName}'s battle — read-only. Return to ${options[0].hasCombat ? "My battle" : "My adventure"} to play your own turn.`
+            : "You are playing your own hero. Check the neutral window when it needs your action."}
       </p>
     </section>
   );
