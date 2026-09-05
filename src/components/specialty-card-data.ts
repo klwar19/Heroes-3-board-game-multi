@@ -107,12 +107,13 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   // Azur Lane hero specialties use the heroes' actual in-game skill emblems,
   // redrawn to HD for the native specialty-card icon and hero-board slot.
   enterprise: "/assets/anime/icons/azur-lane/specialty-enterprise.webp",
-  // Bismarck and Nagato retain their unit-specialist mechanics; only their
-  // specialty symbol changes to the matching ship skill art.
+  // All four wear their own ship skill emblem. Since the 2026-09-05 redesign
+  // each also owns a BESPOKE wired set — Bismarck's Concentrated Fire, Nagato's
+  // Big Seven Bombardment, Akashi's Repair Dock, Sirius' Royal Maid's Cover
+  // (the generic unit-specialist trio and the Gem / Rion medic clones are gone).
+  // The file paths are unchanged, so no art moved.
   bismarck: "/assets/anime/icons/azur-lane/specialty-bismarck.webp",
   nagato: "/assets/anime/icons/azur-lane/specialty-nagato.webp",
-  // Akashi's Emergency Repairs and Sirius's Flawless Service retain their
-  // medic effects while showing their own ship skill emblems.
   akashi: "/assets/anime/icons/azur-lane/specialty-akashi.webp",
   sirius: "/assets/anime/icons/azur-lane/specialty-sirius.webp",
   // Heavenly Demon Palace might specialists — bespoke Codex-imagegen medallions

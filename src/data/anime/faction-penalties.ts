@@ -113,7 +113,7 @@ export const ANIME_FACTION_PENALTIES: readonly AnimeFactionPenaltyDefinition[] =
     timing: "combat-start",
     mechanicTitle: "Fleet Tactics",
     mechanicDetail:
-      "Your Kansen fight as a fleet — Fleet Formation gives adjacent allies +1 Attack, Full Barrage splashes enemies around your target, and Enterprise's Lucky E rerolls her dice.",
+      "Your Kansen fight as a fleet — Fleet Formation gives adjacent allies +1 Attack, Full Barrage splashes enemies around your target, and Enterprise's Lucky E rerolls her dice. Every commander carries her own doctrine: Concentrated Fire, Big Seven Bombardment, Repair Dock and Royal Maid's Cover.",
     artImage: "/assets/anime/notices/azur-lane-maintenance.webp"
   }
 ] as const;

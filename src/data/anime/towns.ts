@@ -268,7 +268,8 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
     source
   },
 
-  // Azur Lane Naval Base printed levels (3 bronze / 2 silver / 2 gold) — one
+  // Azur Lane Naval Base printed levels (3 bronze / 3 silver / 3 gold, the
+  // 2026-09-05 roster expansion added Ayanami and Akagi) — one
   // NAMED shipgirl per unit. CANONICAL recruit order = object key order (the
   // faction derives `units` from this order via a filter, exactly like Fuyuki /
   // Hidden Leaf). Fleet identity: fast destroyer openers + a ranged light
@@ -302,7 +303,7 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
     pack: { attack: 3, defense: 1, health: 3, initiative: 7, cost: { gold: 6 }, abilities: ["ignore-combat-penalties", "kansen-full-barrage"], abilityText: "Rapid Fire — ignores the adjacent-unit Combat penalty. Full Barrage — after an attack made by this unit resolves, deal 1 damage to every other ENEMY unit adjacent to the attacked unit (not an attack: no Retaliation, not reduced by Defense, no damage caps; never on a Retaliation Attack).", cardImage: azurCard("bronze", "honolulu", "pack") },
     source
   },
-  // --- SILVER (2) ----------------------------------------------------------
+  // --- SILVER (3) ----------------------------------------------------------
   // LV4 silver ground carrier MEDIC.
   "azur_lane.unicorn": {
     id: "azur_lane.unicorn", name: "Unicorn", faction: "azur_lane", tier: "silver", type: "ground",
@@ -320,7 +321,17 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
     pack: { attack: 4, defense: 2, health: 4, initiative: 8, cost: { gold: 11 }, abilities: ["commander-defense-token", "yukikaze-torpedo-run"], abilityText: "The Great Yukikaze — always rolls the Defend die when attacked; Torpedo Run — can reroll a \"-1\" on this unit's Attack die, once per attack.", cardImage: azurCard("silver", "yukikaze", "pack") },
     source
   },
-  // --- GOLD (2) ------------------------------------------------------------
+  // LV6 silver ground special-type destroyer — the fleet's charge finisher.
+  // Both sides are pure REUSES: commander-charge = +1 Attack when she attacks
+  // after moving this activation; ignores-retaliation = her attacks never
+  // provoke a Retaliation Attack.
+  "azur_lane.ayanami": {
+    id: "azur_lane.ayanami", name: "Ayanami", faction: "azur_lane", tier: "silver", type: "ground",
+    few: { attack: 3, defense: 1, health: 3, initiative: 10, cost: { gold: 7 }, abilities: ["commander-charge"], abilityText: "Demon's Blade — +1 Attack when she attacks after moving this activation.", cardImage: azurCard("silver", "ayanami", "few") },
+    pack: { attack: 4, defense: 1, health: 4, initiative: 11, cost: { gold: 10 }, abilities: ["commander-charge", "ignores-retaliation"], abilityText: "Demon's Blade — +1 Attack when she attacks after moving; Kamikaze Torpedoes — her attacks do not provoke a Retaliation Attack.", cardImage: azurCard("silver", "ayanami", "pack") },
+    source
+  },
+  // --- GOLD (3) ------------------------------------------------------------
   // LV6 gold ground unsinkable heavy cruiser.
   "azur_lane.prinz_eugen": {
     id: "azur_lane.prinz_eugen", name: "Prinz Eugen", faction: "azur_lane", tier: "gold", type: "ground",
@@ -338,6 +349,16 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
     // printed fixed Attack 4. The follow-up uses the existing same-target
     // after-retaliation sequence and does not provoke another retaliation.
     pack: { attack: 7, defense: 2, health: 6, initiative: 7, cost: { gold: 21, valuables: 2 }, abilities: ["ignores-retaliation", "teleport-move", "i19-oxygen-torpedo-spread"], abilityText: "Silent Hunter — attacks do not provoke Retaliation; as a regular move, may surface on any empty space. Oxygen Torpedo Spread — after its attack resolves, it can attack the same target again with Attack 4.", cardImage: azurCard("golden", "i-19", "pack") },
+    source
+  },
+  // LV7 gold RANGED fleet carrier — the second Azur Lane shooter. Both sides are
+  // REUSES: kansen-full-barrage = the town's around-TARGET salvo splash;
+  // wog-fire-shield-1 = FIRE_SHIELD_DAMAGE, "an adjacent attacker takes 1 damage
+  // after attacking this unit" (the Pack's Foxfire escort screen).
+  "azur_lane.akagi": {
+    id: "azur_lane.akagi", name: "Akagi", faction: "azur_lane", tier: "gold", type: "ranged",
+    few: { attack: 5, defense: 2, health: 5, initiative: 6, cost: { gold: 15, valuables: 1 }, abilities: ["kansen-full-barrage"], abilityText: "Air Strike — after an attack made by this unit resolves, deal 1 damage to every other ENEMY unit adjacent to the attacked unit (not an attack: no Retaliation, not reduced by Defense, no damage caps; never on a Retaliation Attack).", cardImage: azurCard("golden", "akagi", "few") },
+    pack: { attack: 6, defense: 2, health: 6, initiative: 7, cost: { gold: 22, valuables: 2 }, abilities: ["kansen-full-barrage", "wog-fire-shield-1"], abilityText: "Air Strike — after an attack made by this unit resolves, deal 1 damage to every other ENEMY unit adjacent to the attacked unit (not an attack: no Retaliation, not reduced by Defense, no damage caps; never on a Retaliation Attack). Foxfire — an adjacent attacker takes 1 damage after attacking Akagi.", cardImage: azurCard("golden", "akagi", "pack") },
     source
   },
 

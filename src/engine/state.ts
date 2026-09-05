@@ -1778,6 +1778,58 @@ export type EffectDefinition =
        * attacker that is itself gradeless can never satisfy it.
        */
       requiresDefenderHigherTier?: boolean;
+      /**
+       * Bismarck (Azur Lane) "Concentrated Fire": the ATTACK bonus is this much
+       * per OTHER living friendly unit standing orthogonally adjacent to the
+       * ATTACKED unit (the attacker itself never counts). Capped by `maxAmount`.
+       * The card prints `amount: 0`, so the whole bonus is this term — a play
+       * with no qualifying ally would be a +0 trap and is therefore never
+       * offered (legal-actions' `concentratedFireBonus` gate).
+       */
+      perAllyAdjacentToTarget?: number;
+      /** Ceiling for `perAllyAdjacentToTarget` (Bismarck I +1 / IV +2 / VI +3). */
+      maxAmount?: number;
+    }
+  | {
+      /**
+       * Nagato (Azur Lane) "Big Seven Bombardment": arm the player's own ACTIVE,
+       * non-ranged unit so its attack this activation resolves as a RANGED
+       * attack. `range` = the maximum orthogonal board distance it may declare
+       * at (absent = anywhere on the board); `attackBonus` is level VI's rider.
+       * Played on the owner's own activation before the unit attacks; the arm
+       * dies with the activation.
+       */
+      type: "BOMBARDMENT_ATTACK";
+      range?: number;
+      attackBonus?: number;
+    }
+  | {
+      /**
+       * Sirius (Azur Lane) "Royal Maid's Cover": an INSTANT reaction inside the
+       * `UNIT_ATTACK_DECLARED` window of an enemy attack on one of your units —
+       * a chosen living ally ADJACENT to the target steps in and becomes the
+       * defender of the parked attack. The interceptor gains `defenseBonus`
+       * against that blow, and at level VI `counterDamage` effect damage is dealt
+       * to the attacker once the attack resolves (not an attack: no Retaliation,
+       * no Defense, no damage caps).
+       */
+      type: "INTERCEPT_DECLARED_ATTACK";
+      defenseBonus: number;
+      counterDamage?: number;
+    }
+  | {
+      /**
+       * Akashi (Azur Lane) "Repair Dock": a map play that BANKS a flat gold
+       * reinforcement discount through the shared Hill-Fort / Legion machinery
+       * (`bankReinforcementDiscount`), so the standard expiry rules apply — any
+       * hero step wipes an unredeemed bank.
+       */
+      type: "BANK_REINFORCEMENT_DISCOUNT";
+      sourceName: string;
+      flatGoldDiscount: number;
+      allowedTiers: ("bronze" | "silver" | "gold" | "azure")[];
+      /** Akashi VI also draws this many cards when the dock is opened. */
+      drawCards?: number;
     }
   | {
       /** Centaur's Axe: the attack die's outcome counts three times. */
@@ -8028,6 +8080,18 @@ export type ResolutionStackItem = {
      */
     artifactSetAttackAdvantage?: boolean;
     /**
+     * Sirius (Azur Lane) VI "Royal Maid's Cover": counter-fire owed to the
+     * ATTACKER once this intercepted attack has resolved. Effect damage, not an
+     * attack — no Retaliation, no Defense, no damage cap. It rides the stack
+     * item so it vanishes with it (a cancelled attack pays nothing).
+     */
+    interceptCounterDamage?: {
+      unitId: UnitId;
+      amount: number;
+      cardId: CardId;
+      playerId: PlayerId;
+    };
+    /**
      * Polish Balance Pack Cards of Prophecy, option B ("When you are about to
      * roll any die, roll it 3 times and resolve 1 chosen result"). USER RULING
      * 2026-08-22: the card is played BEFORE the roll — the holder declares it in
@@ -8729,7 +8793,8 @@ export type RecruitDiscountVoucher = {
  */
 export type ReinforcementDiscountBank = {
   id: string;
-  source: "necromancy" | "hill-fort" | "pub";
+  /** "repair-dock" = Akashi's (Azur Lane) Repair Dock hero specialty. */
+  source: "necromancy" | "hill-fort" | "pub" | "repair-dock";
   /** Human-readable source card/object name used in action labels and logs. */
   sourceName: string;
   /** Unit tiers this source may reinforce. */
@@ -9585,6 +9650,17 @@ export type CombatUnitState = {
    * is gated by combatStats.anySpellCastThisRound instead.
    */
   activationSpellPowerUsed?: boolean;
+  /**
+   * Nagato (Azur Lane) "Big Seven Bombardment": this ACTIVATION the unit's
+   * attack resolves as a RANGED attack — it may declare against a distant enemy
+   * (`range` = the maximum orthogonal board distance; absent = anywhere), it
+   * provokes no Retaliation Attack at range, and it takes the ordinary ranged
+   * combat penalties exactly like a printed shooter. `attackBonus` is the level
+   * VI rider. Armed by the specialty card during the unit's own activation and
+   * cleared both when the activation opens and when it concludes, so it can
+   * never bleed into a Retaliation Attack or the unit's next turn.
+   */
+  bombardment?: { range?: number; attackBonus?: number };
   /** Pit Lords: set once this unit has summoned/reinforced Demons this combat. */
   summonedThisCombat?: boolean;
   /** Archangels: set once this unit has spent its once-per-combat lethal save. */

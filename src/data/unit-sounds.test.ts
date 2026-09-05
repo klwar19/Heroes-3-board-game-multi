@@ -299,7 +299,18 @@ describe("unit combat voices", () => {
   });
 
   it("uses the bespoke Japanese voices for every Azur Lane shipgirl and Belfast", () => {
-    for (const slug of ["laffey", "javelin", "honolulu", "unicorn", "yukikaze", "prinz_eugen", "i19"]) {
+    // Nine shipgirls since the 2026-09-05 roster expansion (Ayanami + Akagi).
+    for (const slug of [
+      "laffey",
+      "javelin",
+      "honolulu",
+      "unicorn",
+      "yukikaze",
+      "ayanami",
+      "prinz_eugen",
+      "i19",
+      "akagi"
+    ]) {
       expect(unitSoundKey(`azur_lane.${slug}`, "attack")).toBe(`azur-lane/voices/${slug}/attack`);
       expect(unitSoundKey(`azur_lane.${slug}`, "shoot")).toBe(`azur-lane/voices/${slug}/attack`);
       expect(unitSoundKey(`azur_lane.${slug}`, "defend")).toBe(`azur-lane/voices/${slug}/hurt`);
@@ -466,11 +477,13 @@ describe("unit combat voices", () => {
   });
 
   it("layers naval combat SFX under Azur Lane attacks", () => {
-    for (const slug of ["laffey", "javelin", "honolulu", "yukikaze", "prinz_eugen"]) {
+    for (const slug of ["laffey", "javelin", "honolulu", "yukikaze", "ayanami", "prinz_eugen"]) {
       expect(unitAttackFlourish(`azur_lane.${slug}`)).toBe("units/cannon-shoot");
     }
     expect(unitAttackFlourish("azur_lane.i19")).toBe("spells/scuttle-boat");
+    // The two CARRIERS launch aircraft rather than firing a main battery.
     expect(unitAttackFlourish("azur_lane.unicorn")).toBe("units/ballista-shoot");
+    expect(unitAttackFlourish("azur_lane.akagi")).toBe("units/ballista-shoot");
     expect(unitAttackFlourish(commanderVoiceId("belfast"))).toBe("units/cannon-shoot");
   });
 

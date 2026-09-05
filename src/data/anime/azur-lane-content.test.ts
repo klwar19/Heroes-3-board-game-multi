@@ -20,15 +20,16 @@ import {
   unitRankAbilityIcon
 } from "@/data/units/experience";
 import type { RankSchedule } from "@/data/units/experience";
-import { applyAction, createInitialGameState, makeCombatUnitFromArmy } from "@/engine";
+import { applyAction, createInitialGameState, getLegalActions, makeCombatUnitFromArmy } from "@/engine";
 import { unitRankAbilityIds } from "@/engine/unit-experience";
 import type { CombatUnitState, GameAction, GameState, PlayerId } from "@/engine/state";
 
 /**
  * Azur Lane Naval Base (`azur_lane`) — the FOURTH playable Anime Realms town,
  * gated on the SAME `anime.enabled && anime.isekaiTowns` flag as Fuyuki /
- * Hidden Leaf. Its seven units are NAMED shipgirls (Laffey, Javelin, Honolulu,
- * Unicorn, Yukikaze, Prinz Eugen, I-19).
+ * Hidden Leaf. Its NINE units are NAMED shipgirls (Laffey, Javelin, Honolulu,
+ * Unicorn, Yukikaze, Ayanami, Prinz Eugen, I-19, Akagi — the last two of those
+ * added by the 2026-09-05 roster expansion).
  *
  * This file pins the town like hidden-leaf-content / conflux-content: the EXACT
  * per-side ability ids of all seven units (the Few/Pack divergence is the
@@ -58,10 +59,22 @@ const EXPECTED_ABILITIES: Record<string, { few: string[]; pack: string[] }> = {
     few: ["commander-defense-token"],
     pack: ["commander-defense-token", "yukikaze-torpedo-run"]
   },
+  // 2026-09-05 expansion: the charge destroyer. Few→Pack ADDS the
+  // no-retaliation arm on top of Charge (the divergence control).
+  "azur_lane.ayanami": {
+    few: ["commander-charge"],
+    pack: ["commander-charge", "ignores-retaliation"]
+  },
   "azur_lane.prinz_eugen": { few: ["nix-damage-cap"], pack: ["nix-damage-cap", "unlimited-retaliation"] },
   "azur_lane.i19": {
     few: ["ignores-retaliation", "teleport-move"],
     pack: ["ignores-retaliation", "teleport-move", "i19-oxygen-torpedo-spread"]
+  },
+  // 2026-09-05 expansion: the second RANGED shipgirl. Few→Pack ADDS the Foxfire
+  // fire shield on top of the around-target salvo (the divergence control).
+  "azur_lane.akagi": {
+    few: ["kansen-full-barrage"],
+    pack: ["kansen-full-barrage", "wog-fire-shield-1"]
   }
 };
 
@@ -71,7 +84,9 @@ const ENVELOPES: Record<
   { attack: [number, number]; defense: [number, number]; health: [number, number]; initiative: [number, number]; gold: [number, number]; valuables: [number, number] }
 > = {
   bronze: { attack: [1, 3], defense: [0, 2], health: [2, 4], initiative: [6, 12], gold: [2, 6], valuables: [0, 0] },
-  silver: { attack: [3, 4], defense: [2, 3], health: [3, 5], initiative: [5, 8], gold: [7, 13], valuables: [0, 0] },
+  // Ayanami (2026-09-05) widened the silver band: she is the glass-cannon
+  // charge destroyer — 1 Defense and the roster's highest Initiative.
+  silver: { attack: [3, 4], defense: [1, 3], health: [3, 5], initiative: [5, 11], gold: [7, 13], valuables: [0, 0] },
   gold: { attack: [5, 7], defense: [2, 3], health: [5, 8], initiative: [4, 7], gold: [14, 23], valuables: [1, 2] }
 };
 
@@ -82,18 +97,18 @@ function fileExists(assetPath: string, minBytes = 1000): boolean {
 }
 
 describe("Azur Lane Naval Base — registration & roster shape", () => {
-  it("registers a complete faction: 7 named shipgirls (3/2/2), 8 buildings, 5 heroes, P-S1 tile + commander", () => {
+  it("registers a complete faction: 9 named shipgirls (3/3/3), 8 buildings, 5 heroes, P-S1 tile + commander", () => {
     const faction = coreFactionDefinitions[FACTION];
     expect(faction).toBeDefined();
     expect(faction.name).toBe("Azur Lane Naval Base");
     expect(faction.startingTileId).toBe("P-S1");
-    expect(faction.units).toHaveLength(7);
+    expect(faction.units).toHaveLength(9);
     expect(faction.buildings).toHaveLength(8);
     expect(faction.heroes).toEqual(["enterprise", "bismarck", "nagato", "akashi", "sirius"]);
 
     const byTier = { bronze: 0, silver: 0, gold: 0, azure: 0 };
     for (const id of faction.units) byTier[coreUnitDefinitions[id].tier] += 1;
-    expect(byTier).toEqual({ bronze: 3, silver: 2, gold: 2, azure: 0 });
+    expect(byTier).toEqual({ bronze: 3, silver: 3, gold: 3, azure: 0 });
 
     // Every rostered unit is pinned in EXPECTED_ABILITIES (no unit escapes the pin).
     expect([...faction.units].sort()).toEqual(Object.keys(EXPECTED_ABILITIES).sort());
@@ -265,35 +280,72 @@ describe("Azur Lane Naval Base — heroes & specialties", () => {
     ]);
   });
 
-  it("might specialists (Bismarck/Nagato) double on shipgirls the faction actually FIELDS", () => {
-    const factionUnitNames = coreFactionDefinitions[FACTION].units.map((id) => coreUnitDefinitions[id]?.name);
-    for (const [heroId, unitName] of [
-      ["bismarck", "Prinz Eugen"],
-      ["nagato", "Yukikaze"]
-    ] as const) {
-      const effect = cardLibrary[`specialty.${heroId}.1`]?.effect;
-      expect(effect?.type).toBe("CHOOSE_ONE");
-      const doubled =
-        effect?.type === "CHOOSE_ONE" &&
-        effect.options[0]?.effect?.type === "ADD_COMBAT_STAT" &&
-        effect.options[0].effect.doubleForUnitName;
-      expect(doubled, heroId).toBe(unitName);
-      // Mutation control: the doubled shipgirl is one the faction can recruit.
-      expect(factionUnitNames, `${heroId} doubles a fielded unit`).toContain(doubled);
+  it("Bismarck / Nagato / Akashi / Sirius each own a BESPOKE wired set — no generic clone survives", () => {
+    // 2026-09-05 redesign. Each level carries the exact effect the engine runs;
+    // the CONTROL is that NONE of them is the old generic shape any more (no
+    // doubleForUnitName unit-specialist arm, no Gem/Rion medic HEAL_DAMAGE face).
+    const expected: Record<string, { name: string; effects: readonly string[] }> = {
+      bismarck: { name: "Concentrated Fire", effects: ["ADD_COMBAT_STAT", "ADD_COMBAT_STAT", "ADD_COMBAT_STAT"] },
+      nagato: { name: "Big Seven Bombardment", effects: ["BOMBARDMENT_ATTACK", "BOMBARDMENT_ATTACK", "BOMBARDMENT_ATTACK"] },
+      akashi: { name: "Repair Dock", effects: ["BANK_REINFORCEMENT_DISCOUNT", "BANK_REINFORCEMENT_DISCOUNT", "BANK_REINFORCEMENT_DISCOUNT"] },
+      sirius: {
+        name: "Royal Maid's Cover",
+        effects: ["INTERCEPT_DECLARED_ATTACK", "INTERCEPT_DECLARED_ATTACK", "INTERCEPT_DECLARED_ATTACK"]
+      }
+    };
+    for (const [heroId, spec] of Object.entries(expected)) {
+      for (const [index, level] of ([1, 4, 6] as const).entries()) {
+        const label = `specialty.${heroId}.${level}`;
+        const card = cardLibrary[label];
+        expect(card?.name?.startsWith(`${spec.name} `), label).toBe(true);
+        expect(card?.implementationStatus, label).toBe("implemented");
+        expect(card?.effect?.type, label).toBe(spec.effects[index]);
+        // No leftover clone shapes.
+        expect(JSON.stringify(card?.effect)).not.toContain("doubleForUnitName");
+        expect(JSON.stringify(card?.effect)).not.toContain("HEAL_DAMAGE");
+        // Every card carries a prose tag stating what runs (CLAUDE.md §2).
+        expect(
+          card?.tags?.some((tag) => /\s/u.test(tag) && tag.length > 40),
+          `${label} tag`
+        ).toBe(true);
+      }
     }
   });
 
-  it("Akashi (Emergency Repairs) & Sirius (Flawless Service) are faction-agnostic medic clones, no unit doubling", () => {
-    for (const [heroId, name] of [
-      ["akashi", "Emergency Repairs"],
-      ["sirius", "Flawless Service"]
-    ] as const) {
-      for (const level of [1, 4, 6] as const) {
-        const card = cardLibrary[`specialty.${heroId}.${level}`];
-        expect(card?.name).toMatch(new RegExp(`^${name} `));
-        expect(card?.implementationStatus).toBe("implemented");
-      }
-    }
+  it("the ladders escalate exactly as printed (I < IV < VI)", () => {
+    const bismarckCaps = [1, 4, 6].map((level) => {
+      const effect = cardLibrary[`specialty.bismarck.${level}`]?.effect;
+      return effect?.type === "ADD_COMBAT_STAT" ? effect.maxAmount : undefined;
+    });
+    expect(bismarckCaps).toEqual([1, 2, 3]);
+    const bismarckVi = cardLibrary["specialty.bismarck.6"]?.effect;
+    expect(bismarckVi?.type === "ADD_COMBAT_STAT" && bismarckVi.ignoresRetaliation).toBe(true);
+    const bismarckIv = cardLibrary["specialty.bismarck.4"]?.effect;
+    expect(bismarckIv?.type === "ADD_COMBAT_STAT" && bismarckIv.ignoresRetaliation).toBeUndefined();
+
+    const nagatoRanges = [1, 4, 6].map((level) => {
+      const effect = cardLibrary[`specialty.nagato.${level}`]?.effect;
+      return effect?.type === "BOMBARDMENT_ATTACK" ? effect.range : undefined;
+    });
+    expect(nagatoRanges).toEqual([2, undefined, undefined]);
+    const nagatoVi = cardLibrary["specialty.nagato.6"]?.effect;
+    expect(nagatoVi?.type === "BOMBARDMENT_ATTACK" && nagatoVi.attackBonus).toBe(1);
+
+    const akashiDiscounts = [1, 4, 6].map((level) => {
+      const effect = cardLibrary[`specialty.akashi.${level}`]?.effect;
+      return effect?.type === "BANK_REINFORCEMENT_DISCOUNT" ? effect.flatGoldDiscount : undefined;
+    });
+    expect(akashiDiscounts).toEqual([2, 3, 4]);
+
+    const siriusDefense = [1, 4, 6].map((level) => {
+      const effect = cardLibrary[`specialty.sirius.${level}`]?.effect;
+      return effect?.type === "INTERCEPT_DECLARED_ATTACK" ? effect.defenseBonus : undefined;
+    });
+    expect(siriusDefense).toEqual([1, 2, 2]);
+    const siriusVi = cardLibrary["specialty.sirius.6"]?.effect;
+    expect(siriusVi?.type === "INTERCEPT_DECLARED_ATTACK" && siriusVi.counterDamage).toBe(1);
+    const siriusIv = cardLibrary["specialty.sirius.4"]?.effect;
+    expect(siriusIv?.type === "INTERCEPT_DECLARED_ATTACK" && siriusIv.counterDamage).toBeUndefined();
   });
 });
 
@@ -432,6 +484,154 @@ describe("Azur Lane Naval Base — behavioural: Prinz Eugen's real abilities cap
   });
 });
 
+/**
+ * MUTATION CHECKS for the block below (each applied to src/data/anime/towns.ts,
+ * run, reverted — every one killed 4 cases in this file):
+ *  - drop `commander-charge` from Ayanami's FEW abilities;
+ *  - drop `ignores-retaliation` from Ayanami's PACK abilities;
+ *  - drop `kansen-full-barrage` from Akagi's FEW abilities;
+ *  - drop `wog-fire-shield-1` from Akagi's PACK abilities.
+ */
+describe("Azur Lane Naval Base — behavioural: the 2026-09-05 ships run their REAL printed arms", () => {
+  /**
+   * Every ability array below is read straight out of the faction data, so
+   * deleting an id from Ayanami's / Akagi's printed side changes the array and
+   * the damage assertion fails: the reuse is proven to EXECUTE, not declared.
+   *
+   * Board: 4 columns × 5 rows. Attacker @9, target @10, target's other
+   * neighbours @6 / @14; @19 is the far corner.
+   */
+  function board(state: GameState): void {
+    for (const [id, position] of [
+      ["unit_p1_marksmen", 9],
+      ["unit_p2_skeletons", 10],
+      ["unit_p2_vampires", 6],
+      ["unit_p1_griffins", 14],
+      ["unit_p1_crusaders", 0],
+      ["unit_p2_dread_knights", 19]
+    ] as const) {
+      place(state, id, {
+        position,
+        abilities: [],
+        attack: 0,
+        defense: 0,
+        maxHealth: 60,
+        damage: 0,
+        type: "ground"
+      });
+    }
+  }
+
+  it("Ayanami's Demon's Blade pays +1 only when she attacks AFTER MOVING", () => {
+    const fewAbilities = coreUnitDefinitions["azur_lane.ayanami"].few!.abilities;
+    expect(fewAbilities).toContain("commander-charge");
+
+    function blow(seed: string, abilities: string[], move: boolean): number {
+      const state = freshCombat(seed);
+      board(state);
+      // Ayanami starts one space further out (@13) when she is to charge in.
+      place(state, "unit_p1_marksmen", {
+        position: move ? 13 : 9,
+        controllerId: "p1",
+        abilities,
+        attack: 3
+      });
+      place(state, "unit_p2_skeletons", { controllerId: "p2", maxHealth: 60 });
+      state.activePlayerId = "p1";
+      state.combat!.activeUnitId = "unit_p1_marksmen";
+      let current: GameState = state;
+      if (move) {
+        // A REAL step from @13 to @9 (the space beside the target), taken off
+        // the engine's own offer list — that is what arms the Charge rider.
+        const step = getLegalActions(state, "p1").find(
+          (legal) =>
+            legal.action.type === "MOVE_UNIT" &&
+            legal.action.unitId === "unit_p1_marksmen" &&
+            legal.action.destination === 9
+        );
+        expect(step, "a step from @13 to @9 must be offered").toBeTruthy();
+        current = applyOk(state, step!.action);
+        expect(current.combat!.units.unit_p1_marksmen.position, "she really moved").toBe(9);
+      }
+      const after = meleeAttack(current, "unit_p1_marksmen", "unit_p2_skeletons");
+      return after.combat!.units.unit_p2_skeletons.damage;
+    }
+
+    expect(blow("ayanami-charge", fewAbilities, true), "attack 3 + the Charge rider").toBe(4);
+    expect(blow("ayanami-standing", fewAbilities, false), "CONTROL: standing still pays nothing").toBe(3);
+    expect(blow("ayanami-no-arm", [], true), "CONTROL: without the printed arm the charge pays nothing").toBe(3);
+  });
+
+  it("Ayanami's Pack Kamikaze Torpedoes really silence the Retaliation Attack", () => {
+    const packAbilities = coreUnitDefinitions["azur_lane.ayanami"].pack!.abilities;
+    expect(packAbilities).toContain("ignores-retaliation");
+
+    function retaliationTaken(seed: string, abilities: string[]): number {
+      const state = freshCombat(seed);
+      board(state);
+      place(state, "unit_p1_marksmen", { controllerId: "p1", abilities, attack: 2, defense: 0 });
+      place(state, "unit_p2_skeletons", { controllerId: "p2", attack: 4, maxHealth: 60 });
+      const after = meleeAttack(state, "unit_p1_marksmen", "unit_p2_skeletons");
+      return after.combat!.units.unit_p1_marksmen.damage;
+    }
+    expect(retaliationTaken("ayanami-pack-noretal", packAbilities)).toBe(0);
+    expect(
+      retaliationTaken("ayanami-few-retal", coreUnitDefinitions["azur_lane.ayanami"].few!.abilities),
+      "CONTROL: the Few side has no such arm and eats the counter-blow"
+    ).toBe(4);
+  });
+
+  it("Akagi's Air Strike splashes 1 onto the enemies flanking her target, never her own ally", () => {
+    const fewAbilities = coreUnitDefinitions["azur_lane.akagi"].few!.abilities;
+    expect(fewAbilities).toContain("kansen-full-barrage");
+
+    function splash(seed: string, abilities: string[]) {
+      const state = freshCombat(seed);
+      board(state);
+      place(state, "unit_p1_marksmen", { controllerId: "p1", abilities, attack: 2, type: "ranged" });
+      // Defense 50 soaks the attack itself, so every later read is pure splash.
+      place(state, "unit_p2_skeletons", { controllerId: "p2", defense: 50, maxHealth: 60 });
+      place(state, "unit_p2_vampires", { controllerId: "p2", maxHealth: 60 });
+      place(state, "unit_p1_griffins", { controllerId: "p1", maxHealth: 60 });
+      const after = meleeAttack(state, "unit_p1_marksmen", "unit_p2_skeletons");
+      return {
+        flankingEnemy: after.combat!.units.unit_p2_vampires.damage,
+        flankingAlly: after.combat!.units.unit_p1_griffins.damage
+      };
+    }
+    expect(splash("akagi-barrage", fewAbilities)).toEqual({ flankingEnemy: 1, flankingAlly: 0 });
+    expect(splash("akagi-barrage-control", []), "CONTROL: no arm, no splash").toEqual({
+      flankingEnemy: 0,
+      flankingAlly: 0
+    });
+  });
+
+  it("Akagi's Pack Foxfire burns an adjacent attacker for 1", () => {
+    const packAbilities = coreUnitDefinitions["azur_lane.akagi"].pack!.abilities;
+    expect(packAbilities).toContain("wog-fire-shield-1");
+
+    function attackerDamage(seed: string, defenderAbilities: string[]): number {
+      const state = freshCombat(seed);
+      board(state);
+      place(state, "unit_p2_skeletons", { controllerId: "p2", abilities: [], attack: 2, maxHealth: 60 });
+      place(state, "unit_p1_marksmen", {
+        controllerId: "p1",
+        abilities: defenderAbilities,
+        attack: 0,
+        defense: 0,
+        maxHealth: 60
+      });
+      const after = meleeAttack(state, "unit_p2_skeletons", "unit_p1_marksmen");
+      return after.combat!.units.unit_p2_skeletons.damage;
+    }
+    expect(attackerDamage("akagi-foxfire", packAbilities)).toBe(1);
+    expect(
+      attackerDamage("akagi-foxfire-control", coreUnitDefinitions["azur_lane.akagi"].few!.abilities),
+      "CONTROL: the Few side has no shield"
+    ).toBe(0);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Themed UI lexicon: Azur Lane wears bespoke NAVAL words over the shared "anime"
 // VISUAL register (so its CSS theme class stays theme-anime). Names only — this
@@ -525,6 +725,18 @@ const EXPECTED_SCHEDULES: Record<string, readonly [RankPin, RankPin, RankPin, Ra
     ["veteran-guarded-stance", "commander-charge", "wog-no-negative-attack-roll", "veteran-attack-when-attacking"],
     "stats",
     ["commander-max-damage", "veteran-defense-pierce", "veteran-rebirth", "unlimited-retaliation"]
+  ],
+  "azur_lane.ayanami": [
+    ["veteran-guarded-stance"],
+    ["commander-charge", "wog-no-negative-attack-roll", "veteran-attack-when-attacking", "veteran-guarded-stance"],
+    "stats",
+    ["veteran-defense-pierce", "veteran-rebirth", "unlimited-retaliation", "commander-max-damage"]
+  ],
+  "azur_lane.akagi": [
+    "stats",
+    ["ranged-extra-shot-on-low-roll", "veteran-steady-aim", "bulwark-air-shield", "attack-roll-advantage-passive"],
+    "stats",
+    ["veteran-spell-sunder", "ignore-all-combat-penalties", "ranged-extra-shot-on-low-roll", "veteran-low-roll-insight"]
   ]
 };
 
@@ -541,10 +753,14 @@ const EXPECTED_GRANTS: Record<string, readonly string[]> = {
   "azur_lane.unicorn": ["veteran-attack-when-attacking", "commander-charge", "commander-max-damage"],
   "azur_lane.yukikaze": ["wog-no-negative-attack-roll", "veteran-rebirth"],
   "azur_lane.prinz_eugen": ["veteran-guarded-stance", "commander-charge", "veteran-defense-pierce"],
-  "azur_lane.i19": ["veteran-guarded-stance", "commander-max-damage"]
+  "azur_lane.i19": ["veteran-guarded-stance", "commander-max-damage"],
+  // Ayanami PRINTS commander-charge, so the R2 rung skips its first choice and
+  // pays Sure Shot instead — the no-wasted-rank invariant in action.
+  "azur_lane.ayanami": ["veteran-guarded-stance", "wog-no-negative-attack-roll", "veteran-defense-pierce"],
+  "azur_lane.akagi": ["ranged-extra-shot-on-low-roll", "veteran-spell-sunder"]
 };
 
-/** Every distinct ability id the seven schedules can offer. */
+/** Every distinct ability id the nine schedules can offer. */
 function allExpectedChoiceIds(): string[] {
   const ids = new Set<string>();
   for (const ranks of Object.values(EXPECTED_SCHEDULES)) {
@@ -562,7 +778,7 @@ function rankPinsOf(schedule: RankSchedule): RankPin[] {
 }
 
 describe("Azur Lane Naval Base — Fleet veterancy: resolved rank schedules", () => {
-  it("all seven are GENERATOR-served: no explicit override, and every rank pays something", () => {
+  it("all nine are GENERATOR-served: no explicit override, and every rank pays something", () => {
     for (const unitId of coreFactionDefinitions[FACTION].units) {
       // The redesign gives an override only to the handful of signature units;
       // an Azur Lane one would have to be added deliberately.
