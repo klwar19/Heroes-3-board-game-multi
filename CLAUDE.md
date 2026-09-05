@@ -4645,3 +4645,93 @@ the authoritative pointer for everyone (pinned). Private zones are untouched: th
 watcher's frame is the ordinary `getPlayerView` / `redactStateForSeat` output, so
 another player's hand, deck and an open Search's revealed cards stay masked.
 `npm run deploy:partykit` is OWED (a v103 edge rejects the watch selection).
+
+## Azur Lane / Little Busters hero redesign · Kyousuke AP commander · Blue Archive voice pools (2026-09-06, protocol v107)
+
+Four parallel lanes (three C: worktrees + a media lane), each claim pinned by a real-path
+OUTCOME test with a CONTROL and an applied-and-reverted mutation recorded in the test
+header. Machine truth: `src/engine/azur-lane-hero-specialties.test.ts` (21 specs),
+`src/engine/little-busters-specialties.test.ts` (34 specs, 26-entry mutation ledger + an
+explicit NOT-REPRODUCIBLE section), `src/engine/kyousuke-ap-commander.test.ts` (26 specs),
+`src/data/anime/azur-lane-content.test.ts`, `src/data/unit-sounds.test.ts`,
+`src/data/sound-manifest.test.ts`. `npm run deploy:partykit` is OWED (v107).
+
+Leading with the limits / readings:
+- **jsdom cannot compute CSS**: the AP panel, the inspect-panel AP chip and every icon are
+  DOM/manifest pins only; there is NO e2e spec for any of it.
+- **AI**: a computer seat completes a combat with Kyousuke without stalling and spends AP,
+  but only the target-less Strategy Meeting is strand-aware; the targeted commands keep the
+  generic 560+/580 scores (so Ibuki's numbers did not move) — the AI can still buy a command
+  instead of walking into the fight. The AI never plans around any of the nine new hero sets
+  (it prices them with its ordinary stat/heal policies) and never plans Cat Corps placement.
+- **Riki's Bond is a STATE-gated play** — withheld until one of the owner's ARMY units has
+  fallen (a +0 play is a trap); the generic own-activation sweep in
+  `ash-bloodlust-specialty.test.ts` therefore excludes `FALLEN_ALLY_RESOLVE` by effect type.
+- **Nagato's Big Seven flip** makes a melee unit's attack RANGED for the activation: it takes
+  the printed ranged penalties (adjacent target / behind a wall) unless the unit has an arm
+  ignoring them, and it is never offered to a ranged unit or after the unit attacked.
+- **Sirius' interceptor** must be a living friendly unit adjacent to the ORIGINAL target and
+  the redirected attack must stay legal (the Masato-intercept constraints); the choice is
+  made at play time (no new pendingChoice — nothing new for `computerDecisionOwner`).
+- **Akashi's Repair Dock bank** follows the Hill-Fort/Legion bank rules exactly: a hero step
+  wipes an unredeemed bank; under `immediate-reinforcement-prompts` it behaves as those do.
+- **Sasami's Home Run** pushes only an ORTHOGONALLY adjacent survivor along the attacker→
+  target line; a blocked/off-board/unrelocatable (Arrow Tower, fortification, anything
+  Teleport refuses) target takes the damage instead; never on a Retaliation Attack.
+- **Yuiko's Blade Dance** rides the shared `AFTER_ATTACK_SPLASH` seam (Chakra Burst): its
+  retaliation exclusion is structural, not a single-line gate.
+- **Komari's Star Candy** is consumed by the FIRST hit even if only partly used; the
+  attack-path consume is asserted on the number `ATTACK_ROLLED` reports (a damage delta
+  cannot see it because the event seam heals the difference back).
+- **Cat Corps summons** land only on an empty space adjacent to one of your units (one
+  shared read `catLandingIsAnchored` backs the offer AND VI's second placement); the two
+  `summonOnly` defs are outside the recruitable roster (`towns.test.ts` still pins 7 LB
+  units), vanish at combat end, never join the army, pay no XP/reward.
+- **Nagisa keeps ONE voice variant per action**: bluearchive.wiki no longer hosts her
+  `Nagisa_Battle_*` clips (first-pass files kept, note says so). The Azur Lane wiki
+  (azurlane.koumakan.jp) bot-traps every automated fetch; the two new shipgirls' JP clips
+  came from blhx.fandom.com instead.
+- The three legacy `specialty-{riki-forgetfulness,yuiko-fortune,komari-smiles}.webp` files
+  stay on disk unused (the pointers moved to the new icons).
+
+What runs:
+- **Azur Lane heroes** (Enterprise's Lucky E unchanged): Bismarck **Concentrated Fire** —
+  instant in your unit's attack window, +1 Attack per OTHER living friendly unit adjacent to
+  the TARGET, cap +1/+2/+3, VI also suppresses that target's Retaliation; Nagato **Big Seven
+  Bombardment** — combat play on your ground unit's activation: its attack is RANGED up to 2
+  spaces (I) / anywhere (IV, VI), VI +1 Attack; Akashi **Repair Dock** — map play banking a
+  −2/−3/−4 gold reinforcement discount through the shared bank machinery, VI draws 1;
+  Sirius **Royal Maid's Cover** — instant on an enemy attack: a chosen adjacent ally takes
+  the blow with +1/+2/+2 Defense, VI answers with 1 effect damage to the attacker. Engine
+  in `src/engine/azur-lane-specialties.ts` + the folds in reducer/legal-actions.
+- **Two new shipgirls** (roster 7 → 9 = 3/3/3, key order = recruit order):
+  `azur_lane.ayanami` (silver ground, Few 3/1/3/10 for 7 gold `commander-charge`; Pack
+  4/1/4/11 for 10 gold + `ignores-retaliation`) and `azur_lane.akagi` (gold ranged, Few
+  5/2/5/6 for 15+1 `kansen-full-barrage`; Pack 6/2/6/7 for 22+2 + `wog-fire-shield-1`).
+  Codex-painted masters → `build-azur-lane-unit-cards.mjs` cards, generator-served rank
+  ladders with explicit emblem entries, JP voices, cannon/ballista attack flourishes.
+- **Little Busters heroes** (Kud unchanged): Sasami **Home Run** (knockback after your
+  unit's attack; die gate +1 / 0-or-+1 / any; blocked = 1/1/2 damage), Rin **Cat Corps**
+  (summon 1 Stray Cat 1/0/1 / 1 Alley Cat 1/0/2 + ignores-retaliation / 2 Alley Cats), Riki
+  **Little Busters' Bond** (+1 Attack per fallen own army unit, cap 1/2/3, VI +1 Defense at
+  ≥2, frozen at play), Yuiko **Blade Dance** (1/1/2 effect damage to every OTHER enemy
+  adjacent to the attacker after its attack; I needs a 0/+1), Komari **Star Candy** (one-shot
+  `DAMAGE_SHIELD` 1/2, VI two units). Engine in `src/engine/little-busters-specialties.ts`.
+- **AP commanders generalised** (`COMMANDER_AP_SKILLS`, `commanderUsesActionPoints`,
+  `commanderActionPoints` reading legacy `ibukiActionPoints`, `gainCommanderActionPoint`,
+  `commanderCommandUsedThisActivation`; Ibuki byte-identical). **Kyousuke** starts every
+  combat at 1 AP, +1 per move/attack/Defend/being attacked, a command ends movement and
+  forbids Defend (hold only): **Mission Start!** 1 AP ally +1 Attack (Power 2: +2) this round;
+  **Gutsy Play** 2 AP enemy −1 Defense this round, Power 1+: −1 Initiative for the combat;
+  **Strategy Meeting** 2 AP draw 1 (Power 2: 2) via the reshuffling own-deck draw; cast
+  **Little Busters, Assemble!** 3 AP: every ally adjacent to Kyousuke +1 Attack / +1 Attack
+  +1 Defense / +2 Attack +1 Defense this round (`adjacent-allies-buff`, one shared
+  `commanderAdjacentAllies` read behind offer, resolution and AI score). Specialty stays
+  Team Captain (`vanguard-marshal`). Generic `ApCommandTable` on the commander card.
+- **Blue Archive voices**: every student + Ibuki now has RANDOM per-action pools — the
+  manifest base key `blue-archive/voices/<slug>/<action>` is a `random` list over
+  `<action>-1..N` (typically 3 attack / 3 hurt / 2 defend / 3 move / 1 death / 3 ability;
+  296 clips, `scripts/fetch-blue-archive-voice-variants.mjs` + `register-…`). The resolver
+  in `unit-sounds.ts` is unchanged (it returns the base key; `playLibrarySound` picks).
+- Media: 326 objects published (manifest version c0078d04a7); the 18 new icons re-encoded
+  at q82 (the whole-tree compressor would otherwise only touch protected balance faces).

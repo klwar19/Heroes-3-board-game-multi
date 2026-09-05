@@ -582,7 +582,13 @@ describe("every own-activation hero specialty with a friendly-unit target is rea
       // body, an un-activated body) — they have their own hero tests.
       !("unitName" in target && target.unitName) &&
       !("damagedOnly" in target && target.damagedOnly) &&
-      !("notActivatedThisRound" in target && target.notActivatedThisRound)
+      !("notActivatedThisRound" in target && target.notActivatedThisRound) &&
+      // Riki's "Little Busters' Bond" is a STATE-gated play: the offer needs at
+      // least one of the owner's army units already removed from the combat
+      // (fallenArmyUnitCount in legal-actions), which this generic fixture never
+      // stages. Its offer/withhold pair is pinned in
+      // little-busters-specialties.test.ts ("is not offered while none…has fallen").
+      card.effect.type !== "FALLEN_ALLY_RESOLVE"
     );
   });
 

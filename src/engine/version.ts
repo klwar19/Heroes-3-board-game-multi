@@ -1128,7 +1128,16 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // Dwarven Treasury reward an independent serialized option. Off/Legacy keeps
 // the printed 7 + 3X reward. A v103 worker can award a different gold total.
 // `npm run deploy:partykit` owed with this bump.
-export const ENGINE_PROTOCOL_VERSION = 106;
+// v107 (2026-09-06): Azur Lane / Little Busters hero redesign + Kyousuke AP commander.
+// New serialized fields: `CombatUnitState.commanderActionPoints` (the Ibuki AP
+// counter generalised to every AP commander; legacy `ibukiActionPoints` is read as
+// a fallback), the Little Busters DAMAGE_SHIELD / Bond / Blade Dance / Home Run and
+// the Azur Lane Concentrated Fire / Big Seven / Royal Maid stack + unit flags, two
+// summon-only cat units, two new Azur Lane shipgirls (9-unit roster), new unit
+// ability ids and the Kyousuke cast `commander-cast-kyousuke-assemble`. A v106
+// edge rejects every new offer and resolves the redesigned specialties as the old
+// cards. `npm run deploy:partykit` owed with this bump.
+export const ENGINE_PROTOCOL_VERSION = 107;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
