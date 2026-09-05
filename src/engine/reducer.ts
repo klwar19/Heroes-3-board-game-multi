@@ -590,7 +590,11 @@ import {
   standingSpellPower,
   unitBlockedBySpellCard,
   unitIdsThreatenedByDamageEffect,
+  getInterceptTargets,
+  bombardmentArmable,
 } from "./legal-actions";
+// Azur Lane Naval Base hero specialties — shared pure reads (leaf module).
+import { concentratedFireBonus } from "./azur-lane-specialties";
 import {
   getActivationAbilities,
   getActivationDamageSpellAbility,
@@ -6497,6 +6501,12 @@ function concludeAttackerActivation(
 ): void {
   const combat = state.combat;
 
+  // Nagato (Azur Lane) "Big Seven Bombardment": the ranged flip lasts EXACTLY
+  // this activation. Dropping it here (as well as at the next setActiveUnit)
+  // keeps it out of the unit's own Retaliation Attacks, which would otherwise
+  // pick up the adjacent-shooter combat penalty.
+  delete attacker.bombardment;
+
   // Harpies' "Strike and Return": once the attack (and the enemy's Retaliation
   // Attack, if any) has resolved, the harpy may fly back to the space it moved
   // from. A player always chooses (return or stay). A neutral normally auto-
@@ -8110,6 +8120,31 @@ function finishResolvedAttack(
       { type: "unit", unitId: details.attacker.id },
       Math.ceil(attackResult.damage / 2),
     );
+  }
+
+  // Sirius (Azur Lane) VI "Royal Maid's Cover": the maid answers with
+  // counter-fire once the intercepted attack has resolved. EFFECT damage — not
+  // an attack, so it provokes no Retaliation, ignores Defense and no damage cap
+  // applies (an invulnerable attacker still shrugs it off).
+  const counter = stackItem.modifiers.interceptCounterDamage;
+  if (counter) {
+    const target = state.combat?.units[counter.unitId];
+    if (target && isUnitAlive(target) && !isUnitDamageImmune(target)) {
+      target.damage += counter.amount;
+      noteUnitDamagedForTokens(state, target, counter.amount);
+      appendEvent(state, {
+        type: "DAMAGE_ASSIGNED",
+        source: {
+          type: "card",
+          cardId: counter.cardId,
+          controllerId: counter.playerId,
+        },
+        target: { type: "unit", unitId: target.id },
+        amount: counter.amount,
+        damageKind: "effect",
+      });
+      markUnitRemovedIfNeeded(state, target);
+    }
   }
 
   applyOnAttackTokens(
@@ -12797,6 +12832,10 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   activeUnit.movementLockedThisActivation = false;
   activeUnit.attackedThisActivation = false;
   activeUnit.attacksThisActivation = 0;
+  // Nagato's Big Seven Bombardment is armed for ONE activation; a fresh
+  // activation always starts unarmed (a Polish-Wait re-activation included —
+  // the card was spent on the activation it was played in).
+  delete activeUnit.bombardment;
   // A fresh activation may open one pre-activation reaction pause for the
   // opposing side (resolved once, then this guards against re-opening it after
   // the reacting player casts/plays during the pause).
@@ -21061,6 +21100,54 @@ function applyReactionPlayCore(
     }
   }
 
+  // ---------------------------------------------------------------------
+  // Sirius (Azur Lane) "Royal Maid's Cover" — redirect the PARKED attack.
+  // ---------------------------------------------------------------------
+  if (
+    effect.type === "INTERCEPT_DECLARED_ATTACK" &&
+    (stackItem?.action.type === "ATTACK_UNIT" ||
+      stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
+  ) {
+    const attacker = state.combat?.units[stackItem.action.attackerId];
+    const originalDefender = state.combat?.units[stackItem.action.defenderId];
+    const requested =
+      play.target?.type === "unit"
+        ? state.combat?.units[play.target.unitId]
+        : undefined;
+    // The handler RE-DERIVES the offer (the applySchoolFetchExpert precedent):
+    // a forged frame naming a unit that is not a legal interceptor fails
+    // cleanly instead of redirecting an attack the attacker could not make.
+    const legal = getInterceptTargets(
+      state,
+      playerId,
+      attacker,
+      originalDefender,
+    );
+    if (!requested || !legal.some((unit) => unit.id === requested.id)) {
+      throw new Error(
+        `${card.name} needs a living friendly unit adjacent to the attacked unit that the attacker can legally strike instead.`,
+      );
+    }
+    redirectDeclaredAttack(state, stackItem, requested);
+    stackItem.modifiers.defenseBonus += effect.defenseBonus;
+    if (effect.counterDamage && attacker) {
+      stackItem.modifiers.interceptCounterDamage = {
+        unitId: attacker.id,
+        amount: effect.counterDamage,
+        cardId: card.id,
+        playerId,
+      };
+    }
+    stackItem.modifiers.playedCardIds.push(play.cardId);
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: requested.id,
+      abilityId: card.id,
+      targetUnitId: originalDefender?.id,
+      message: `${requested.cardName} steps in front of the attack aimed at ${originalDefender?.cardName ?? "the target"} (${card.name}).`,
+    });
+  }
+
   if (
     effect.type === "ADD_COMBAT_STAT" &&
     (stackItem?.action.type === "ATTACK_UNIT" ||
@@ -21216,7 +21303,21 @@ function applyReactionPlayCore(
       )
         ? effect.extraIfAdjacentFriendly
         : 0;
-    const appliedAmount = effectAmount * doubleFactor + adjacencyDefenseBonus + adjacentFriendlyDefenseBonus;
+    // Bismarck (Azur Lane) "Concentrated Fire": +N Attack per OTHER living
+    // friendly unit adjacent to the ATTACKED unit, capped by the card's printed
+    // ceiling. ONE shared read with the offer gate (concentratedFireBonus), so
+    // the number the tray promised is the number the blow pays. The card prints
+    // amount 0, so this term IS the bonus; the doubling machinery above never
+    // touches it.
+    const concentratedFire =
+      effect.stat === "attack"
+        ? concentratedFireBonus(effect, state.combat, attacker, defender)
+        : 0;
+    const appliedAmount =
+      effectAmount * doubleFactor +
+      adjacencyDefenseBonus +
+      adjacentFriendlyDefenseBonus +
+      concentratedFire;
 
     // Polish Balance Pack Shield (Power 2): "takes up to 3 damage" replaces the
     // Defense bonus for this one blow — a per-attack damage cap, the tightest
@@ -25874,6 +25975,53 @@ function playCard(
       effect.goldDiscount,
       effect.valuablesDiscount ?? 0,
     );
+  }
+
+  // -----------------------------------------------------------------------
+  // Azur Lane Naval Base hero specialties (Nagato / Akashi) — card plays.
+  // -----------------------------------------------------------------------
+  if (effect.type === "BOMBARDMENT_ATTACK") {
+    // Nagato "Big Seven Bombardment": arm the player's own ACTIVE non-ranged
+    // unit for this activation. Offer-validated; this re-derives the same gate
+    // so a forged frame fails cleanly instead of arming a shooter or a unit
+    // that already fired.
+    if (!bombardmentArmable(state, action.playerId)) {
+      throw new Error(
+        `${card.name} needs one of your own non-ranged units to be activating, before it attacks.`,
+      );
+    }
+    const activeUnit = state.combat!.units[state.combat!.activeUnitId!]!;
+    activeUnit.bombardment = {
+      ...(effect.range !== undefined ? { range: effect.range } : {}),
+      ...(effect.attackBonus !== undefined
+        ? { attackBonus: effect.attackBonus }
+        : {}),
+    };
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: activeUnit.id,
+      abilityId: card.id,
+      message:
+        effect.range === undefined
+          ? `${activeUnit.cardName} lays its main battery on any target on the field (${card.name}).`
+          : `${activeUnit.cardName} lays its main battery on a target up to ${effect.range} spaces away (${card.name}).`,
+    });
+  }
+
+  if (effect.type === "BANK_REINFORCEMENT_DISCOUNT") {
+    // Akashi "Repair Dock": the SAME non-blocking bank the Hill Fort and the
+    // Cove Pub use, so every existing rule applies unchanged — it stacks with
+    // Legion vouchers, is redeemed by REDEEM_REINFORCEMENT_DISCOUNT at any
+    // point of the owner's own turn, and an unredeemed bank dies on the next
+    // hero step.
+    bankReinforcementDiscount(state, action.playerId, "repair-dock", {
+      sourceName: effect.sourceName,
+      allowedTiers: effect.allowedTiers,
+      flatGoldDiscount: effect.flatGoldDiscount,
+    });
+    if (effect.drawCards) {
+      drawCardsForPlayer(state, action.playerId, effect.drawCards);
+    }
   }
 
   if (effect.type === "GAIN_GRADE_PROGRESS") {
@@ -30638,6 +30786,55 @@ function adjacentBodyguardFor(
   );
 }
 
+/**
+ * Sirius (Azur Lane) "Royal Maid's Cover": move an ALREADY DECLARED attack onto
+ * a new defender from inside its own reaction window. Masato's Bodyguard does
+ * the same swap at DECLARATION time (before the stack item exists); this is the
+ * in-window twin, so it must also repair what declaration would have written:
+ *  - `stackItem.action.defenderId` — the single truth every downstream read uses
+ *    (getAttackStackDetails, finishResolvedAttack, the retaliation);
+ *  - the `UNIT_ATTACK_DECLARED` event, whose `attackKind` / `rollMode`
+ *    getAttackStackDetails PREFERS over a fresh derivation. Recomputed for the
+ *    new pairing exactly as declareAttack would have emitted them, so a
+ *    redirect onto an adjacent maid really is a melee blow (and retaliates).
+ * The reaction window holds the SAME event object, so both move together.
+ *
+ * Declaration-time, defender-specific side effects that already fired on the
+ * ORIGINAL target (Drone Support marks, a pre-attack ability bite) deliberately
+ * stay spent — the maid steps in after the guns were laid.
+ */
+function redirectDeclaredAttack(
+  state: GameState,
+  stackItem: ResolutionStackItem,
+  interceptor: CombatUnitState,
+): void {
+  if (
+    stackItem.action.type !== "ATTACK_UNIT" &&
+    stackItem.action.type !== "MOVE_AND_ATTACK_UNIT"
+  ) {
+    return;
+  }
+  const attacker = state.combat?.units[stackItem.action.attackerId];
+  if (!attacker) {
+    return;
+  }
+  stackItem.action = { ...stackItem.action, defenderId: interceptor.id };
+  for (const eventId of stackItem.triggerEventIds) {
+    const event = state.eventLog.find((candidate) => candidate.id === eventId);
+    if (event?.type !== "UNIT_ATTACK_DECLARED") {
+      continue;
+    }
+    event.defenderId = interceptor.id;
+    event.attackKind = getAttackKind(attacker, interceptor);
+    event.rollMode = getAttackRollMode(
+      attacker,
+      interceptor,
+      state,
+      event.isRetaliation,
+    );
+  }
+}
+
 function declareAttack(
   state: GameState,
   action: Extract<GameAction, { type: "ATTACK_UNIT" | "MOVE_AND_ATTACK_UNIT" }>,
@@ -30745,6 +30942,12 @@ function declareAttack(
   }
 
   const stackItem = makeStackItem(state, resolvedAction);
+  // Nagato (Azur Lane) VI: the armed bombardment adds its printed +1 Attack to
+  // the shot it enabled. Only the unit's OWN declared attack — a Retaliation
+  // Attack is never a bombardment (the arm is dropped when the activation ends).
+  if (!isRetaliation && attacker.bombardment?.attackBonus) {
+    stackItem.modifiers.attackBonus += attacker.bombardment.attackBonus;
+  }
   // Consume Drone Support only when a normal friendly attack has the marked
   // unit as its final defender. The frozen stack modifier survives reactions
   // without allowing the mark to benefit a second attack.

@@ -142,6 +142,180 @@ export const LUCKY_E_SPECIALTY_SOURCES: readonly {
   { cardId: "specialty.enterprise.6", name: "Lucky E VI", reroll: true, setDie: true }
 ];
 
+// ---------------------------------------------------------------------------
+// Azur Lane Naval Base — the four BESPOKE hero specialty sets (2026-09-05).
+// Bismarck / Nagato dropped the generic might unit-specialist trio and Akashi /
+// Sirius dropped their Gem / Rion medic CLONES; each hero now owns an original
+// engine-wired set. Every tag line below states EXACTLY what the engine runs
+// (CLAUDE.md §2) — the shared reads live in src/engine/azur-lane-specialties.ts.
+// Face-less like every other Azur Lane specialty (the native renderer draws the
+// hero's portrait + the ship emblem in specialty-card-data.ts).
+// ---------------------------------------------------------------------------
+
+const azurLaneSpecialtySource = {
+  product: "Anime Mod — Otherworld Gate (Azur Lane Naval Base)",
+  credit: "Original Azur Lane hero specialty for this digital module."
+};
+
+/**
+ * Bismarck "Concentrated Fire" — Iron Blood focus-fire doctrine. An INSTANT in
+ * your own unit's attack window: +1 Attack for each OTHER living friendly unit
+ * orthogonally adjacent to the ATTACKED unit (the attacker never counts itself),
+ * capped at +1 / +2 / +3. Level VI additionally suppresses the target's
+ * Retaliation Attack (the shipped `ignoresRetaliation` arm Ash's Bloodlust VI
+ * uses). Never offered with nobody flanking the target — a +0 play is a trap.
+ */
+function concentratedFireSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
+  const numeral = level === 1 ? "I" : level === 4 ? "IV" : "VI";
+  const cap = level === 1 ? 1 : level === 4 ? 2 : 3;
+  return {
+    id: `specialty.bismarck.${level}`,
+    name: `Concentrated Fire ${numeral}`,
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "bismarck",
+      "concentrated-fire",
+      `Instant, in your own unit's attack window: that attack gains +1 Attack for each OTHER living friendly unit adjacent to the attacked unit (the attacker itself never counts), to a maximum of +${cap}.${
+        level === 6
+          ? " This attack also provokes no Retaliation Attack."
+          : ""
+      } Offered only while at least one such ally stands adjacent.`
+    ],
+    trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+    effect: {
+      type: "ADD_COMBAT_STAT",
+      stat: "attack",
+      // The printed bonus IS the per-ally term; `amount` is the flat base.
+      amount: 0,
+      perAllyAdjacentToTarget: 1,
+      maxAmount: cap,
+      ...(level === 6 ? { ignoresRetaliation: true } : {})
+    },
+    implementationStatus: "implemented",
+    source: azurLaneSpecialtySource
+  };
+}
+
+/**
+ * Nagato "Big Seven Bombardment" — the battleship lays her main battery. Played
+ * during one of YOUR OWN non-ranged units' activations, before it attacks: this
+ * activation that unit's attack resolves as a RANGED attack — it may be declared
+ * against an enemy up to 2 spaces away (I) or anywhere on the board (IV / VI),
+ * provokes no Retaliation Attack at range and takes the ordinary ranged combat
+ * penalties (adjacent target / back-row-to-back-row) exactly like a printed
+ * shooter. VI adds +1 Attack to that shot. The arm dies with the activation.
+ */
+function bigSevenBombardmentSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
+  const numeral = level === 1 ? "I" : level === 4 ? "IV" : "VI";
+  const reach = level === 1 ? "up to 2 spaces away" : "anywhere on the board";
+  return {
+    id: `specialty.nagato.${level}`,
+    name: `Big Seven Bombardment ${numeral}`,
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "nagato",
+      "big-seven",
+      `Combat, during one of your own NON-ranged units' activations before it attacks: this activation that unit's attack is a RANGED attack against an enemy ${reach} — it provokes no Retaliation Attack at range and takes the ordinary ranged Combat penalties (adjacent target, back row to back row).${
+        level === 6 ? " That attack also gains +1 Attack." : ""
+      } The bombardment ends with the activation.`
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "BOMBARDMENT_ATTACK",
+      ...(level === 1 ? { range: 2 } : {}),
+      ...(level === 6 ? { attackBonus: 1 } : {})
+    },
+    implementationStatus: "implemented",
+    source: azurLaneSpecialtySource
+  };
+}
+
+/**
+ * Akashi "Repair Dock" (nya~) — the fleet's repair ship banks a discount toward
+ * bringing a light hull back up to strength. A MAP play that banks a flat gold
+ * reinforcement discount through the shared Hill-Fort / Legion machinery, so
+ * every one of that system's rules applies unchanged (it stacks with Legion
+ * vouchers, is redeemed at any point of your own turn, and an unredeemed bank
+ * dies the moment any of your heroes takes a step). VI also draws 1 card.
+ */
+function repairDockSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
+  const numeral = level === 1 ? "I" : level === 4 ? "IV" : "VI";
+  const discount = level === 1 ? 2 : level === 4 ? 3 : 4;
+  return {
+    id: `specialty.akashi.${level}`,
+    name: `Repair Dock ${numeral}`,
+    kind: "hero-specialty",
+    timing: "map",
+    tags: [
+      "hero-specialty",
+      "map",
+      "akashi",
+      "repair-dock",
+      `Map: bank a ${discount} gold discount on ONE Reinforcement of a bronze or silver Few into its Pack.${
+        level === 6 ? " Then draw 1 card." : ""
+      } Redeem it at any point of your own turn; it stacks with Legion pieces, and an unredeemed bank is lost as soon as one of your Heroes moves a step.`
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "BANK_REINFORCEMENT_DISCOUNT",
+      sourceName: `Repair Dock ${numeral}`,
+      flatGoldDiscount: discount,
+      allowedTiers: ["bronze", "silver"],
+      ...(level === 6 ? { drawCards: 1 } : {})
+    },
+    implementationStatus: "implemented",
+    source: azurLaneSpecialtySource
+  };
+}
+
+/**
+ * Sirius "Royal Maid's Cover" — the maid steps in front of her mistress. An
+ * INSTANT reaction inside an ENEMY attack declared on one of your units: a
+ * chosen living friendly unit ADJACENT to the target becomes the defender of
+ * that attack (only a unit the attacker could legally strike instead is
+ * offered). The interceptor gains +1 (I) / +2 (IV, VI) Defense against that
+ * blow, and at VI the attacker takes 1 damage once the attack resolves — effect
+ * damage, so it is not an attack, provokes no Retaliation and ignores Defense.
+ */
+function royalMaidsCoverSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
+  const numeral = level === 1 ? "I" : level === 4 ? "IV" : "VI";
+  const defenseBonus = level === 1 ? 1 : 2;
+  return {
+    id: `specialty.sirius.${level}`,
+    name: `Royal Maid's Cover ${numeral}`,
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "sirius",
+      "royal-maids-cover",
+      `Instant, when an enemy declares an attack on one of your units: a chosen living friendly unit adjacent to the attacked unit takes the attack instead, with +${defenseBonus} Defense against it. Only an interceptor the attacker could legally attack is offered.${
+        level === 6
+          ? " After that attack resolves, the attacker takes 1 damage (not an attack: no Retaliation, ignores Defense)."
+          : ""
+      }`
+    ],
+    trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
+    effect: {
+      type: "INTERCEPT_DECLARED_ATTACK",
+      defenseBonus,
+      ...(level === 6 ? { counterDamage: 1 } : {})
+    },
+    implementationStatus: "implemented",
+    source: azurLaneSpecialtySource
+  };
+}
+
 function offenseSpecialtyOne(heroSlug: string): CardLibrary[string] {
   return {
     id: `specialty.${heroSlug}.1`,
@@ -1599,20 +1773,27 @@ export const adventureCards: CardLibrary = {
   "specialty.naruto.1": withoutArt(mightSpecialtyOne("naruto", "Nine-Tails Chakra", "Nine-Tails Chakra Avatar")),
   "specialty.naruto.4": withoutArt(unitHealthSpecialty("naruto", "Nine-Tails Chakra", 4, 1, "Nine-Tails Chakra Avatar")),
   "specialty.naruto.6": withoutArt(unitInitiativeSpecialty("naruto", "Nine-Tails Chakra", 6, 1, "Nine-Tails Chakra Avatar")),
-  // Azur Lane might heroes (src/data/anime/towns.ts). Enterprise carries the
-  // BESPOKE "Lucky E" dice specialty (2026-07 upgrade — proactive stat half +
-  // a held-card die half in the reroll window, see luckyESpecialty); Bismarck /
-  // Nagato stay unit specialists doubling on their OWN faction's shipgirls
-  // (Bismarck → Prinz Eugen, Nagato → Yukikaze). Face-less (native renderer).
+  // Azur Lane hero sets are ALL BESPOKE since 2026-09-05: Enterprise's "Lucky E"
+  // dice specialty (2026-07 — proactive stat half + a held-card die half in the
+  // reroll window, see luckyESpecialty), Bismarck's Concentrated Fire, Nagato's
+  // Big Seven Bombardment, Akashi's Repair Dock and Sirius' Royal Maid's Cover.
+  // The generic might unit-specialist trio (Bismarck / Nagato) and the Gem /
+  // Rion medic CLONES (Akashi / Sirius) are GONE. Face-less (native renderer).
   "specialty.enterprise.1": withoutArt(luckyESpecialty(1)),
   "specialty.enterprise.4": withoutArt(luckyESpecialty(4)),
   "specialty.enterprise.6": withoutArt(luckyESpecialty(6)),
-  "specialty.bismarck.1": withoutArt(mightSpecialtyOne("bismarck", "Iron Blood Oath", "Prinz Eugen")),
-  "specialty.bismarck.4": withoutArt(unitHealthSpecialty("bismarck", "Iron Blood Oath", 4, 1, "Prinz Eugen")),
-  "specialty.bismarck.6": withoutArt(unitInitiativeSpecialty("bismarck", "Iron Blood Oath", 6, 1, "Prinz Eugen")),
-  "specialty.nagato.1": withoutArt(mightSpecialtyOne("nagato", "Big Seven Resolve", "Yukikaze")),
-  "specialty.nagato.4": withoutArt(unitHealthSpecialty("nagato", "Big Seven Resolve", 4, 1, "Yukikaze")),
-  "specialty.nagato.6": withoutArt(unitInitiativeSpecialty("nagato", "Big Seven Resolve", 6, 1, "Yukikaze")),
+  "specialty.bismarck.1": withoutArt(concentratedFireSpecialty(1)),
+  "specialty.bismarck.4": withoutArt(concentratedFireSpecialty(4)),
+  "specialty.bismarck.6": withoutArt(concentratedFireSpecialty(6)),
+  "specialty.nagato.1": withoutArt(bigSevenBombardmentSpecialty(1)),
+  "specialty.nagato.4": withoutArt(bigSevenBombardmentSpecialty(4)),
+  "specialty.nagato.6": withoutArt(bigSevenBombardmentSpecialty(6)),
+  "specialty.akashi.1": withoutArt(repairDockSpecialty(1)),
+  "specialty.akashi.4": withoutArt(repairDockSpecialty(4)),
+  "specialty.akashi.6": withoutArt(repairDockSpecialty(6)),
+  "specialty.sirius.1": withoutArt(royalMaidsCoverSpecialty(1)),
+  "specialty.sirius.4": withoutArt(royalMaidsCoverSpecialty(4)),
+  "specialty.sirius.6": withoutArt(royalMaidsCoverSpecialty(6)),
   // Heavenly Demon Palace MIGHT-hero sets were REDESIGNED 2026-08-25: Xuedao /
   // Guiyan / Xuanming are distinct rethemedSpecialty clones assigned in the
   // "ANIME SPECIALTY REDESIGN" block below. Their two MAGIC medic siblings
@@ -5661,21 +5842,9 @@ adventureCards["specialty.lingxi.6"] = rethemedSpecialty(adventureCards["special
 adventureCards["specialty.tsunade.1"] = rethemedSpecialty(adventureCards["specialty.gem.1"], "gem", "tsunade", 1, "Hundred Healings");
 adventureCards["specialty.tsunade.4"] = rethemedSpecialty(adventureCards["specialty.gem.4"], "gem", "tsunade", 4, "Hundred Healings");
 adventureCards["specialty.tsunade.6"] = rethemedSpecialty(adventureCards["specialty.gem.6"], "gem", "tsunade", 6, "Hundred Healings");
-// Akashi (Azur Lane, magic): Gem's generic First Aid set (Tent + heals), the
-// faction-agnostic medic — no unit doubling that could go dead. Distinct id +
-// name ("Emergency Repairs") from Lingxi's / Tsunade's gem clones, so no
-// collision. Art-less: the native SpecialtyCard draws her portrait + the
-// First-Aid medallion.
-adventureCards["specialty.akashi.1"] = rethemedSpecialty(adventureCards["specialty.gem.1"], "gem", "akashi", 1, "Emergency Repairs");
-adventureCards["specialty.akashi.4"] = rethemedSpecialty(adventureCards["specialty.gem.4"], "gem", "akashi", 4, "Emergency Repairs");
-adventureCards["specialty.akashi.6"] = rethemedSpecialty(adventureCards["specialty.gem.6"], "gem", "akashi", 6, "Emergency Repairs");
-// Sirius (Azur Lane, magic): Rion's generic heal/cleanse-draw set (the aoko
-// precedent — a faction-agnostic medic with no unit doubling that could go
-// dead). Distinct id + name ("Flawless Service") from Aoko's rion clone, so no
-// collision. Art-less: the native SpecialtyCard draws her portrait + medallion.
-adventureCards["specialty.sirius.1"] = rethemedSpecialty(adventureCards["specialty.rion.1"], "rion", "sirius", 1, "Flawless Service");
-adventureCards["specialty.sirius.4"] = rethemedSpecialty(adventureCards["specialty.rion.4"], "rion", "sirius", 4, "Flawless Service");
-adventureCards["specialty.sirius.6"] = rethemedSpecialty(adventureCards["specialty.rion.6"], "rion", "sirius", 6, "Flawless Service");
+// (Akashi and Sirius were Gem / Rion medic CLONES until 2026-09-05. They now own
+// the BESPOKE "Repair Dock" and "Royal Maid's Cover" sets defined with the other
+// Azur Lane specialties above, so nothing is assigned for them here.)
 // Yaoji (Heavenly Demon, magic): Gem's generic First Aid set (Tent + heals), the
 // faction-agnostic medic — no unit doubling that could go dead. Distinct id +
 // name ("Blood Renewal") from every other gem clone, so no collision. Art-less:

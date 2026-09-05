@@ -544,7 +544,9 @@ export const AZUR_LANE_RANK_ABILITY_ICONS: Record<string, string> = {
   "azur_lane.unicorn": "/assets/anime/icons/azur-lane/rank-ability-unicorn.webp",
   "azur_lane.yukikaze": "/assets/anime/icons/azur-lane/rank-ability-yukikaze.webp",
   "azur_lane.prinz_eugen": "/assets/anime/icons/azur-lane/rank-ability-prinz-eugen.webp",
-  "azur_lane.i19": "/assets/anime/icons/azur-lane/rank-ability-i19.webp"
+  "azur_lane.i19": "/assets/anime/icons/azur-lane/rank-ability-i19.webp",
+  "azur_lane.ayanami": "/assets/anime/icons/azur-lane/rank-ability-ayanami.webp",
+  "azur_lane.akagi": "/assets/anime/icons/azur-lane/rank-ability-akagi.webp"
 };
 
 /**
@@ -583,7 +585,28 @@ export const AZUR_LANE_RANK_ABILITY_ICON_BY_CHOICE: Record<string, string> = {
   "azur_lane.i19:commander-max-damage": "/assets/anime/icons/azur-lane/rank-ability-i19.webp",
   "azur_lane.i19:commander-charge": "/assets/anime/icons/azur-lane/rank-ability-i19-torpedoes.webp",
   "azur_lane.i19:wog-nightmare-fear": "/assets/anime/icons/azur-lane/rank-ability-i19.webp",
-  "azur_lane.i19:wog-no-negative-attack-roll": "/assets/anime/icons/azur-lane/rank-ability-i19-torpedoes.webp"
+  "azur_lane.i19:wog-no-negative-attack-roll": "/assets/anime/icons/azur-lane/rank-ability-i19-torpedoes.webp",
+
+  // 2026-09-05 roster expansion. Every choice the resolver offers these two is
+  // named explicitly (the ship emblem for the defensive/utility rungs, the
+  // signature-skill emblem for the aggressive ones), so nothing falls through
+  // to the generic HoMM3 card art on the XP board.
+  "azur_lane.ayanami:veteran-guarded-stance": "/assets/anime/icons/azur-lane/rank-ability-ayanami.webp",
+  "azur_lane.ayanami:commander-charge": "/assets/anime/icons/azur-lane/rank-ability-ayanami-blade.webp",
+  "azur_lane.ayanami:wog-no-negative-attack-roll": "/assets/anime/icons/azur-lane/rank-ability-ayanami.webp",
+  "azur_lane.ayanami:veteran-attack-when-attacking": "/assets/anime/icons/azur-lane/rank-ability-ayanami-blade.webp",
+  "azur_lane.ayanami:veteran-defense-pierce": "/assets/anime/icons/azur-lane/rank-ability-ayanami-blade.webp",
+  "azur_lane.ayanami:veteran-rebirth": "/assets/anime/icons/azur-lane/rank-ability-ayanami.webp",
+  "azur_lane.ayanami:unlimited-retaliation": "/assets/anime/icons/azur-lane/rank-ability-ayanami-blade.webp",
+  "azur_lane.ayanami:commander-max-damage": "/assets/anime/icons/azur-lane/rank-ability-ayanami-blade.webp",
+
+  "azur_lane.akagi:ranged-extra-shot-on-low-roll": "/assets/anime/icons/azur-lane/rank-ability-akagi-fire.webp",
+  "azur_lane.akagi:veteran-steady-aim": "/assets/anime/icons/azur-lane/rank-ability-akagi.webp",
+  "azur_lane.akagi:bulwark-air-shield": "/assets/anime/icons/azur-lane/rank-ability-akagi.webp",
+  "azur_lane.akagi:attack-roll-advantage-passive": "/assets/anime/icons/azur-lane/rank-ability-akagi.webp",
+  "azur_lane.akagi:veteran-spell-sunder": "/assets/anime/icons/azur-lane/rank-ability-akagi-fire.webp",
+  "azur_lane.akagi:ignore-all-combat-penalties": "/assets/anime/icons/azur-lane/rank-ability-akagi.webp",
+  "azur_lane.akagi:veteran-low-roll-insight": "/assets/anime/icons/azur-lane/rank-ability-akagi-fire.webp"
 };
 
 /** Little Busters bespoke veterancy emblems (one researched emblem per line). */

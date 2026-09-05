@@ -24,7 +24,11 @@ describe("playable Anime Realms towns", () => {
   it.each(MOD_FACTIONS)("registers a complete playable %s faction", (factionId) => {
     const faction = coreFactionDefinitions[factionId];
     expect(faction).toBeDefined();
-    expect(faction.units).toHaveLength(factionId === "hidden_leaf" ? 8 : 7);
+    // Hidden Leaf ships 8; Azur Lane grew to 9 (3/3/3) with the 2026-09-05
+    // Ayanami + Akagi expansion. Everyone else keeps the printed 7.
+    expect(faction.units).toHaveLength(
+      factionId === "hidden_leaf" ? 8 : factionId === "azur_lane" ? 9 : 7
+    );
     expect(faction.buildings).toHaveLength(8);
     // Fuyuki and Hidden Leaf each ship a six-hero canonical roster.
     expect(faction.heroes.length).toBeGreaterThanOrEqual(2);

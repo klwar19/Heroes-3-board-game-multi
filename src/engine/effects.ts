@@ -144,7 +144,11 @@ export const implementedCardEffectTypes = [
   "TARNUM_OVERLIMIT_SEARCH",
   "PANDORA_VISIT",
   "PANDORA_SCRY",
-  "PANDORA_SILVER_REFRESH"
+  "PANDORA_SILVER_REFRESH",
+  // Azur Lane Naval Base hero specialties (Nagato / Sirius / Akashi).
+  "BOMBARDMENT_ATTACK",
+  "INTERCEPT_DECLARED_ATTACK",
+  "BANK_REINFORCEMENT_DISCOUNT"
 ] satisfies EffectDefinition["type"][];
 
 export function isImplementedCardEffect(effect: EffectDefinition): boolean {

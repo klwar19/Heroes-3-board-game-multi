@@ -235,6 +235,8 @@ const creatureVoices: Record<string, string> = {
   yukikaze: "crew-mate", // the lucky destroyer → the Cove Seamen set
   prinz_eugen: "titan", // the unsinkable armored heavy cruiser → the Titan set
   i19: "behemoth", // the lurking "Silent Hunter" submarine → the Behemoth's roar
+  ayanami: "rogue", // the special-type charge destroyer → the nimble Rogue set
+  akagi: "sea-witch", // the ranged fleet carrier → the Sea Witch set (has shoot)
   // Heavenly Demon Palace: dedicated curated combat mixes (docs/anime-town-audio.md),
   // one clip per unit and action; rendered assets retain fitting H3 demonic/undead
   // voices as baked-in layers. Pinned by exact-key tests in unit-sounds.test.ts.
@@ -347,7 +349,9 @@ const azurLaneUnitVoices: Record<string, string> = {
   unicorn: "unicorn",
   yukikaze: "yukikaze",
   prinz_eugen: "prinz_eugen",
-  i19: "i19"
+  i19: "i19",
+  ayanami: "ayanami",
+  akagi: "akagi"
 };
 
 function azurLaneVoiceKey(slug: string, action: UnitSoundAction): string | undefined {
@@ -790,6 +794,10 @@ const attackFlourishes: Record<string, string> = {
   yukikaze: "units/cannon-shoot",
   prinz_eugen: "units/cannon-shoot",
   i19: "spells/scuttle-boat",
+  // Ayanami is a destroyer (guns); Akagi is a CARRIER, so she launches like
+  // Unicorn rather than firing a main battery.
+  ayanami: "units/cannon-shoot",
+  akagi: "units/ballista-shoot",
   // The Hell Steed is a NORMAL melee attacker (no Magic Arrow), so its blow no
   // longer layers a magic-arrow zap — it just plays its war-unicorn strike voice.
   santa_gremlin: "spells/ice-bolt"

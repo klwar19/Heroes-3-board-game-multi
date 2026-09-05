@@ -82,6 +82,13 @@ import {
 } from "./mgq-jobs";
 import { MGQ_SPIRIT_LABELS, mgqContractedSpirits } from "./mgq-spirits";
 import { mgqGranberiaFirstAttackAvailable } from "./mgq-hero-specialties";
+// Azur Lane Naval Base hero specialties — the shared pure reads (leaf module).
+import {
+  bombardmentReaches,
+  concentratedFireBonus,
+  interceptCandidates,
+  unitAttacksAsRanged,
+} from "./azur-lane-specialties";
 import { firstPlayerCeremonyPending } from "./first-player";
 import { grailBuildAt, grailDigMovementCost } from "./map-design-features";
 import {
@@ -1859,7 +1866,12 @@ export function getAttackKind(
   attacker: CombatUnitState,
   defender: CombatUnitState,
 ): "melee" | "ranged" {
-  return attacker.type === "ranged" &&
+  // `unitAttacksAsRanged` is the ONE read: a printed ranged unit, OR a unit
+  // Nagato's Big Seven Bombardment armed for this activation. Everything that
+  // follows from "this is a ranged attack" — no Retaliation Attack
+  // (shouldRetaliate), the ranged combat penalties, the behind-Wall damage
+  // reduction — therefore covers the bombardment automatically.
+  return unitAttacksAsRanged(attacker) &&
     !isAdjacent(attacker.position, defender.position)
     ? "ranged"
     : "melee";
@@ -1927,7 +1939,9 @@ export function getAttackRollMode(
   // it (see the ATTACK_ROLL_ADVANTAGE block).
   const attackKind = getAttackKind(attacker, defender);
   const hasMeleePenalty =
-    attacker.type === "ranged" &&
+    // A bombarding battleship (Nagato's specialty) takes the adjacent-target
+    // penalty exactly like a printed shooter — same shared read as getAttackKind.
+    unitAttacksAsRanged(attacker) &&
     attackKind === "melee" &&
     !ignoresMeleePenalty;
   const hasLongRangePenalty =
@@ -2102,6 +2116,19 @@ export function canUnitAttack(
     )
   ) {
     return false;
+  }
+
+  // Nagato's Big Seven Bombardment: a NON-ranged unit that armed the specialty
+  // this activation may declare against an enemy inside the armed range (level I
+  // = 2 spaces; IV/VI = anywhere), on top of its ordinary adjacent melee target.
+  // Deliberately NOT subject to the printed-shooter rules above it: a ground
+  // unit that already moved keeps its attack, and an adjacent enemy does not
+  // lock the target (a battleship's guns do not jam).
+  if (attacker.type !== "ranged" && attacker.bombardment) {
+    return (
+      isAdjacent(attacker.position, defender.position) ||
+      bombardmentReaches(attacker, defender)
+    );
   }
 
   if (attacker.type === "ranged") {
@@ -3999,6 +4026,16 @@ function addPlayableCardActions(
       continue;
     }
 
+    // Nagato (Azur Lane): the bombardment arm has no target of its own — it
+    // lands on the active unit — so the generic modes × targets loop below would
+    // offer it on every activation. Gate it on the shared armable read.
+    if (
+      card.effect.type === "BOMBARDMENT_ATTACK" &&
+      !bombardmentArmable(state, playerId)
+    ) {
+      continue;
+    }
+
     const offersBeforeTargets = actions.length;
     for (const mode of getPlayableModesForCard(state, playerId, card)) {
       for (const target of getTargetsForCard(state, playerId, cardId, cards)) {
@@ -4262,6 +4299,33 @@ function recoveryInFlightCardIds(
 // shared `discardRecoveryHasWork` read that also needs it (see the import above).
 
 /** Effects an "OR" option may resolve directly in the given context. */
+/**
+ * Nagato (Azur Lane) "Big Seven Bombardment": whether the player's own ACTIVE
+ * unit may be armed right now — it must be theirs, non-ranged (a printed
+ * shooter already attacks at range: arming would be a pure trap), not have
+ * attacked yet this activation, and not already carry an arm. ONE read shared
+ * by the offer gate and the reducer's backstop.
+ */
+export function bombardmentArmable(
+  state: GameState,
+  playerId: PlayerId,
+): boolean {
+  const combat = state.combat;
+  const activeUnit = combat?.activeUnitId
+    ? combat.units[combat.activeUnitId]
+    : undefined;
+  return Boolean(
+    combat &&
+      !combat.outcome &&
+      activeUnit &&
+      activeUnit.controllerId === playerId &&
+      activeUnit.type !== "ranged" &&
+      !activeUnit.attackedThisActivation &&
+      !activeUnit.bombardment &&
+      isUnitAlive(activeUnit),
+  );
+}
+
 function isOptionEffectPlayable(
   state: GameState,
   playerId: PlayerId,
@@ -4295,6 +4359,15 @@ function isOptionEffectPlayable(
     // valid map play (a no-op when the module is off).
     case "GAIN_GRADE_PROGRESS":
       return true;
+    // Akashi (Azur Lane) "Repair Dock": a map-only bank of a flat gold
+    // reinforcement discount — always a valid map play (it is redeemed later,
+    // and an unredeemed bank dies on the next hero step like every other one).
+    case "BANK_REINFORCEMENT_DISCOUNT":
+      return context === "map" && Boolean(state.adventure);
+    // Nagato (Azur Lane) "Big Seven Bombardment": armable only during your own
+    // NON-ranged active unit's activation, before it attacks, and only once.
+    case "BOMBARDMENT_ATTACK":
+      return context === "combat" && bombardmentArmable(state, playerId);
     case "BIND_COMMANDER_ARTIFACT": {
       // WOG Commander Artifact bind (Task 2): a map-only play, offered only when
       // the Commanders module is on, the player has a commander (a DEAD one is
@@ -9230,6 +9303,28 @@ function addArtifactSetActions(
  * out of order in the pre-activation window — alive, ranged, not yet activated
  * this round, and not the unit currently about to activate.
  */
+/**
+ * Sirius (Azur Lane) "Royal Maid's Cover": the friendly units that may take the
+ * declared attack in the original target's place. ONE read behind the offer
+ * gate (isEffectLegalForTrigger), the per-candidate reaction offers and the
+ * reducer's redirect validation, so a forged frame can never redirect an attack
+ * the attacker could not legally make against the interceptor.
+ */
+export function getInterceptTargets(
+  state: GameState,
+  playerId: PlayerId,
+  attacker: CombatUnitState | undefined,
+  defender: CombatUnitState | undefined,
+): CombatUnitState[] {
+  const combat = state.combat;
+  if (!combat) {
+    return [];
+  }
+  return interceptCandidates(combat, attacker, defender, playerId, (candidate) =>
+    canUnitAttack(combat, attacker!, candidate, state.activeEffects),
+  );
+}
+
 function getActivateRangedUnitTargets(
   state: GameState,
   playerId: PlayerId,
@@ -10473,6 +10568,37 @@ export function getLegalReactionsForTrigger(
             ))
         ) {
           if (
+            variant.effect.type === "INTERCEPT_DECLARED_ATTACK" &&
+            triggerEvent.type === "UNIT_ATTACK_DECLARED"
+          ) {
+            // Sirius' Royal Maid's Cover: ONE play per eligible interceptor, the
+            // chosen maid riding the reaction's `target` — the Bowstring
+            // precedent, so no OPTION_CHOICE window is opened and no AI/AFK seat
+            // can stall on the pick.
+            for (const candidate of getInterceptTargets(
+              state,
+              player.id,
+              state.combat?.units[triggerEvent.attackerId],
+              state.combat?.units[triggerEvent.defenderId],
+            )) {
+              push(
+                makeReactionAction(
+                  `${variantName} (${candidate.cardName} steps in)${fromSpellBook ? " (Spell Book)" : ""}`,
+                  {
+                    type: "PLAY_REACTION",
+                    playerId: player.id,
+                    cardId,
+                    mode: "basic",
+                    ...(variant.optionIndex !== undefined
+                      ? { optionIndex: variant.optionIndex }
+                      : {}),
+                    ...(fromSpellBook ? { fromSpellBook: true } : {}),
+                    target: { type: "unit", unitId: candidate.id },
+                  },
+                ),
+              );
+            }
+          } else if (
             variant.effect.type === "ACTIVATE_RANGED_UNIT" &&
             triggerEvent.type === "UNIT_ACTIVATION_STARTED"
           ) {
@@ -13063,7 +13189,27 @@ export function isEffectLegalForTrigger(
         : defender.controllerId === playerId;
     }
 
+    // Sirius (Azur Lane) "Royal Maid's Cover": offered to the ATTACKED unit's
+    // controller while at least one living ally stands adjacent to the target
+    // AND the attacker could legally strike that ally instead (a redirect that
+    // would be an illegal attack is never offered — the Masato constraint).
+    if (effect.type === "INTERCEPT_DECLARED_ATTACK") {
+      return (
+        getInterceptTargets(state, playerId, attacker, defender).length > 0
+      );
+    }
+
     if (effect.type !== "ADD_COMBAT_STAT") {
+      return false;
+    }
+
+    // Bismarck (Azur Lane) "Concentrated Fire": the whole bonus is the
+    // per-adjacent-ally term, so with nobody flanking the target the play would
+    // be a +0 trap. ONE shared read with the fold in reducer.ts.
+    if (
+      effect.perAllyAdjacentToTarget !== undefined &&
+      concentratedFireBonus(effect, state.combat, attacker, defender) <= 0
+    ) {
       return false;
     }
 
