@@ -251,6 +251,16 @@ describe("Game options — tabbed layout", () => {
       name: /Dwarven Treasury: \+2 gold per Stack/i,
     });
     expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    // Like every other BINH row it shows the COMPACT summary and carries the
+    // ⓘ button that opens the full rule text (the summary registry is what
+    // gates that button — a rule with no summary silently loses it).
+    expect(toggle.textContent).toContain(
+      "Dwarven Treasury pays 7 gold plus 2 per Stacked defender, not 3.",
+    );
+    expect(
+      toggle.parentElement?.querySelector(".houseRuleInfoButton"),
+      "the BINH row must offer the rule-information button",
+    ).toBeTruthy();
     fireEvent.click(toggle);
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",

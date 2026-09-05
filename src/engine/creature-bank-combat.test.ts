@@ -24,6 +24,7 @@ import {
   getAdjacentSpaceIds,
   getMainHero,
   getTileFootprintSpaceIds,
+  grantCreatureBankReward,
   instantiateTile,
   isFieldGuarded,
   makeCombatUnitFromArmy,
@@ -44,7 +45,14 @@ import {
   type CreatureBankId
 } from "@/data/map/creature-banks";
 import { NEUTRAL_PLAYER_ID } from "./state";
-import type { CombatUnitState, GameDifficulty, UnitGrade, UnitType } from "./state";
+import type {
+  CombatUnitState,
+  GameDifficulty,
+  GameRuleset,
+  HouseRuleId,
+  UnitGrade,
+  UnitType
+} from "./state";
 
 function apply(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
@@ -1064,6 +1072,96 @@ describe("Creature Bank combat lifecycle", () => {
     expect(heroAfter.level).toBe(levelBefore);
     expect(state.combat).toBeNull();
     expect(state.phase).toBe("player-turn");
+  });
+
+  // ------------------------------------------------------------------
+  // house rule `dwarven-treasury-reward-nerf` (BINH default ON)
+  // The EFFECT that matters is the gold a real fought win actually PAYS,
+  // through startNeutralEncounter → finalizeAdventureCombat → the deferred
+  // creature-bank reward — not the definition's printed builder.
+  // ------------------------------------------------------------------
+  function fightBankToWin(
+    bankId: CreatureBankId,
+    seed: string,
+    setup: {
+      ruleset?: GameRuleset;
+      houseRules?: Partial<Record<HouseRuleId, boolean>>;
+    } = {}
+  ): { goldDelta: number; stacked: number; state: GameState } {
+    let state = createAdventureGameState({
+      seed,
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      ...(setup.ruleset ? { ruleset: setup.ruleset } : {}),
+      ...(setup.houseRules ? { houseRules: setup.houseRules } : {})
+    });
+    state = (state.players.p1.needsHandRefresh || state.players.p1.canMulligan)
+      ? apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
+      : state;
+    placeBankUnderHero(state, bankId, 7);
+    const hero = getMainHero(state, "p1")!;
+    startNeutralEncounter(state, hero, state.adventure!.fields["bank-field"]);
+    const place = getLegalActions(state, "p1").find((entry) => entry.action.type === "PLACE_COMBAT_UNIT");
+    expect(place, "a unit must be placeable").toBeTruthy();
+    state = apply(state, place!.action);
+    state = apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+    const stacked = state.combat?.context.kind === "neutral" ? (state.combat.context.bankStackCount ?? 0) : 0;
+    const goldBefore = state.players.p1.resources.gold;
+    for (const unit of Object.values(state.combat!.units)) {
+      if (unit.controllerId === "neutrals") unit.damage = unit.maxHealth;
+    }
+    finishCombatIfNeeded(state);
+    finalizeAdventureCombat(state);
+    return { goldDelta: state.players.p1.resources.gold - goldBefore, stacked, state };
+  }
+
+  it("BINH default: a fought Dwarven Treasury win PAYS 7 + 2X gold", () => {
+    const { goldDelta, stacked, state } = fightBankToWin("dwarven_treasury", "dwarven-binh-default");
+    expect(stacked).toBe(STACK_TOKENS_BY_DIFFICULTY.normal);
+    // The rule is frozen ON by the BINH default with no explicit flag.
+    expect(state.adventure!.houseRules?.["dwarven-treasury-reward-nerf"]).toBe(true);
+    expect(goldDelta).toBe(7 + 2 * stacked);
+    expect(goldDelta).not.toBe(7 + 3 * stacked);
+    expect(state.adventure!.fields["bank-field"].blackCube).toBe(true);
+  });
+
+  it("CONTROL (rule OFF): the same fought win PAYS the printed 7 + 3X gold", () => {
+    const { goldDelta, stacked } = fightBankToWin("dwarven_treasury", "dwarven-rule-off", {
+      houseRules: { "dwarven-treasury-reward-nerf": false }
+    });
+    expect(goldDelta).toBe(7 + 3 * stacked);
+  });
+
+  it("CONTROL (Legacy, flag absent): the printed 7 + 3X gold is paid", () => {
+    const { goldDelta, stacked, state } = fightBankToWin("dwarven_treasury", "dwarven-legacy", {
+      ruleset: "legacy"
+    });
+    expect(state.adventure!.houseRules?.["dwarven-treasury-reward-nerf"]).toBe(false);
+    expect(goldDelta).toBe(7 + 3 * stacked);
+  });
+
+  it("CONTROL (legacy snapshot with NO frozen flag): the mode default decides the payout", () => {
+    // A pre-v106 snapshot carries no `dwarven-treasury-reward-nerf` entry;
+    // `houseRuleEnabled` must fall back to the ruleset default (BINH ⇒ ON).
+    const binh = fightBankToWin("dwarven_treasury", "dwarven-snapshot-binh");
+    delete binh.state.adventure!.houseRules!["dwarven-treasury-reward-nerf"];
+    binh.state.adventure!.fields["bank-field"].blackCube = false;
+    const goldBefore = binh.state.players.p1.resources.gold;
+    grantCreatureBankReward(binh.state, "hero_p1", "bank-field", 3);
+    expect(binh.state.players.p1.resources.gold - goldBefore).toBe(7 + 2 * 3);
+
+    const legacy = fightBankToWin("dwarven_treasury", "dwarven-snapshot-legacy", { ruleset: "legacy" });
+    delete legacy.state.adventure!.houseRules!["dwarven-treasury-reward-nerf"];
+    legacy.state.adventure!.fields["bank-field"].blackCube = false;
+    const legacyGoldBefore = legacy.state.players.p1.resources.gold;
+    grantCreatureBankReward(legacy.state, "hero_p1", "bank-field", 3);
+    expect(legacy.state.players.p1.resources.gold - legacyGoldBefore).toBe(7 + 3 * 3);
+  });
+
+  it("CONTROL (sibling bank): the Crypt's 6 + 2X reward is untouched with the rule ON", () => {
+    const { goldDelta, stacked, state } = fightBankToWin("crypt", "dwarven-sibling-crypt");
+    expect(state.adventure!.houseRules?.["dwarven-treasury-reward-nerf"]).toBe(true);
+    expect(goldDelta).toBe(6 + 2 * stacked);
   });
 
   it("obeys the Round limit (house rule): a drawn-out bank combat pauses, and 1 MP extends it", () => {

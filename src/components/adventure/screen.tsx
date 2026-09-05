@@ -11875,6 +11875,8 @@ const BINH_RULE_SUMMARIES: Partial<Record<HouseRuleId, string>> = {
   "bank-empower-ability": "Selected Creature Banks award Ability Empower tokens.",
   "bank-move-points": "Creature Bank fights use round limits and move extensions.",
   "bank-stack-chance-80": "Each eligible Bank Stack Token has an 80% placement chance.",
+  "dwarven-treasury-reward-nerf":
+    "Dwarven Treasury pays 7 gold plus 2 per Stacked defender, not 3.",
   "defeat-gold-debt": "A hero-combat defeat can reduce gold below zero.",
   "obelisk-rewards": "The first Obelisk visit rolls and locks a shared reward.",
   "freelancers-guild-bounty": "Freelancer's Guild pays 2 gold per Neutral victory.",
