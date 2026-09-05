@@ -135,8 +135,8 @@ are the bulk). Dropping them requires rewriting history:
    ```bash
    git clone --mirror https://github.com/klwar19/Heroes-3-board-game-multi.git repo-rewrite.git
    cd repo-rewrite.git
-   git filter-repo --invert-paths \
-     --path-regex '^public/(assets|sounds)/.*\.(webp|png|jpe?g|gif|svg|avif|mp4|webm|mp3|ogg|wav)$'
+   git filter-repo --invert-paths --path-regex \
+     '^(public/(assets|sounds)/.*\.(webp|png|jpe?g|gif|svg|avif|mp4|webm|mp3|ogg|wav)|(scripts/(anime-art|commander-art|neutral-unit-art|doom-art)|generated-session-art|assets-to-translate)/.*\.(png|jpe?g|webp|gif|psd|tiff?|bmp|avif|mp3|wav|ogg|mp4|mov|bik))$'
    git push --force --all && git push --force --tags
    ```
    (`git-filter-repo` is a Python script: `py -m pip install git-filter-repo`,
