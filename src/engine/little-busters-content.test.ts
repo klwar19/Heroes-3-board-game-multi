@@ -267,10 +267,19 @@ describe("Little Busters complete playable content", () => {
     expect(makeHeroCombatUnit(heroState("kudryavka_noumi"), 16)?.abilities).toEqual(["little-busters-kud-random-follow-up"]);
     expect(makeHeroCombatUnit(heroState("komari_kamikita"), 16)?.abilities).toEqual(["little-busters-komari-smile-ward"]);
     expect([1, 4, 6].map((level) => cardLibrary[`specialty.riki_naoe.${level}`]?.name)).toEqual([
-      "Forgetfulness I", "Forgetfulness IV", "Forgetfulness VI"
+      "Little Busters' Bond I", "Little Busters' Bond IV", "Little Busters' Bond VI"
     ]);
     expect([1, 4, 6].map((level) => cardLibrary[`specialty.yuiko_kurugaya.${level}`]?.name)).toEqual([
-      "Fortune I", "Fortune IV", "Fortune VI"
+      "Blade Dance I", "Blade Dance IV", "Blade Dance VI"
+    ]);
+    expect([1, 4, 6].map((level) => cardLibrary[`specialty.sasami_sasasegawa.${level}`]?.name)).toEqual([
+      "Home Run I", "Home Run IV", "Home Run VI"
+    ]);
+    expect([1, 4, 6].map((level) => cardLibrary[`specialty.rin_natsume.${level}`]?.name)).toEqual([
+      "Cat Corps I", "Cat Corps IV", "Cat Corps VI"
+    ]);
+    expect([1, 4, 6].map((level) => cardLibrary[`specialty.komari_kamikita.${level}`]?.name)).toEqual([
+      "Star Candy I", "Star Candy IV", "Star Candy VI"
     ]);
     expect([1, 4, 6].map((level) => cardLibrary[`specialty.kudryavka_noumi.${level}`]?.name)).toEqual([
       "Rocket Launcher I", "Rocket Launcher IV", "Rocket Launcher VI"

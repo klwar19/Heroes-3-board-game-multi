@@ -121,6 +121,11 @@ export const implementedCardEffectTypes = [
   "BALLISTICS_BOMBARD",
   "BALLISTICS_OPENING_BOMBARD",
   "SUMMON_ELEMENTAL",
+  "KNOCKBACK_ON_ATTACK",
+  "SUMMON_CAMPUS_CATS",
+  "FALLEN_ALLY_RESOLVE",
+  "CREATE_BLADE_DANCE",
+  "CREATE_DAMAGE_SHIELD",
   "GRANT_ELEMENTAL_DAMAGE",
   "DOUBLE_FIRST_AID_TENT",
   "CONVERT_ARMY_UNIT",
@@ -1648,6 +1653,21 @@ export function describeCardEffect(card: CardDefinition): string {
 
   if (card.effect.type === "SUMMON_ELEMENTAL") {
     return "on a chosen empty space: Power 2 summons a Few, Power 4 a Pack";
+  }
+  if (card.effect.type === "KNOCKBACK_ON_ATTACK") {
+    return "after this attack: shove a surviving adjacent target one space away, or deal damage when it cannot be moved";
+  }
+  if (card.effect.type === "SUMMON_CAMPUS_CATS") {
+    return "summon temporary cats onto empty combat spaces for this combat";
+  }
+  if (card.effect.type === "FALLEN_ALLY_RESOLVE") {
+    return "a friendly unit gains +1 attack per fallen army unit, capped by this level";
+  }
+  if (card.effect.type === "CREATE_BLADE_DANCE") {
+    return "this activation: the active unit's attack also splashes every other adjacent enemy";
+  }
+  if (card.effect.type === "CREATE_DAMAGE_SHIELD") {
+    return "a friendly unit's next damage is reduced, then the shield is spent";
   }
 
   if (card.effect.type === "GRANT_ELEMENTAL_DAMAGE") {

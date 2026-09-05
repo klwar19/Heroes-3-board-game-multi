@@ -186,8 +186,7 @@ describe("Deemer's Meteor Shower — playable during the enemy's turn", () => {
     "specialty.tarnum_dungeon.6",
     "specialty.tarnum_rampart.6",
     "specialty.torosar.1",
-    "specialty.torosar.6",
-    "specialty.yuiko_kurugaya.1"
+    "specialty.torosar.6"
   ])("offers %s both before and after the enemy moves", (cardId) => {
     const state = p2TurnState([cardId, "stat.attack", "stat.defense", "stat.power"]);
     state.players.p1.permanents = ["war_machine.ballista", "war_machine.cannon"];

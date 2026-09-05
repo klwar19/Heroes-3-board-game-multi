@@ -232,6 +232,7 @@ import {
   parseFortificationTargetId,
   siegeBlockedPositions,
 } from "./siege";
+import { fallenArmyUnitCount } from "./little-busters-specialties";
 import {
   manualGuardControllerId,
   neutralCombatControllerId,
@@ -1118,6 +1119,9 @@ export function spellReactionAffectedUnitId(
     case "FORCE_ATTACK_ROLL":
     case "TRIPLE_ATTACK_DIE":
       return attackerId;
+    // Sasami "Home Run" lands on the unit being shoved.
+    case "KNOCKBACK_ON_ATTACK":
+      return defenderId;
     case "REDUCE_RETALIATION_DAMAGE":
       return defenderId;
     default:
@@ -3920,6 +3924,23 @@ function addPlayableCardActions(
 
     const needsOwnActivation = card.timing !== "instant";
     if (needsOwnActivation && !ownActivationOpen) {
+      continue;
+    }
+
+    // Yuiko "Blade Dance": printed for your own GROUND unit's activation.
+    if (
+      card.effect.type === "CREATE_BLADE_DANCE" &&
+      activeUnit?.type !== "ground"
+    ) {
+      continue;
+    }
+
+    // Riki "Little Busters' Bond" pays +1 Attack per FALLEN friend, so with
+    // nobody lost yet it would hand out +0. Withheld until it does something.
+    if (
+      card.effect.type === "FALLEN_ALLY_RESOLVE" &&
+      fallenArmyUnitCount(state, playerId) < 1
+    ) {
       continue;
     }
 
@@ -12934,6 +12955,25 @@ export function isEffectLegalForTrigger(
     // enemy's roll (e.g. fishing for a tripled -1 against the attacker).
     if (effect.type === "TRIPLE_ATTACK_DIE") {
       return attacker.controllerId === playerId;
+    }
+
+    // Sasami "Home Run": the ATTACKING player's instant, on their own declared
+    // attack only. A Retaliation Attack is excluded here as well as structurally
+    // (the resolver sits past the isRetaliation branch), so the offer never
+    // appears on a counter-attack the player cannot follow up.
+    if (effect.type === "KNOCKBACK_ON_ATTACK") {
+      return (
+        attacker.controllerId === playerId &&
+        !triggerEvent.isRetaliation &&
+        !triggerEvent.abilityAttack
+      );
+    }
+
+    // Komari "Star Candy": a shield handed to one of your own units while an
+    // attack is on the table — the printed "instant, any time" reading. Its own
+    // friendly-unit target filter decides which unit; either side may play it.
+    if (effect.type === "CREATE_DAMAGE_SHIELD") {
+      return true;
     }
 
     if (effect.type === "CREATE_ACTIVE_EFFECT") {

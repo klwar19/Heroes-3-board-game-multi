@@ -1502,6 +1502,30 @@ export type ActiveEffectModifier =
        * two Attack dice and resolves the lower — the active-effect twin of the
        * Dread Knights unit's printed RETALIATION_AGAINST_DISADVANTAGE ability.
        */
+      /**
+       * Komari "Star Candy": the next damage this unit takes is reduced by
+       * `amount`, then the whole effect is consumed (even when only part of the
+       * shield was needed). Read/spent by consumeStarCandyShield (events.ts),
+       * hooked at the same two seams Iron Horus uses — the attack path (so the
+       * lethal-save preview agrees) and the DAMAGE_ASSIGNED event seam (which
+       * covers Spell, effect and battlefield-token damage).
+       */
+      type: "DAMAGE_SHIELD";
+      amount: number;
+    }
+  | {
+      /**
+       * Yuiko "Blade Dance": while this activation-scoped effect sits on the
+       * active unit, its own declared attack splashes `amount` effect damage to
+       * every OTHER enemy adjacent to it, provided the resolved Attack die is at
+       * least `minRoll`. Read in applyAfterAttackSplash beside the printed
+       * AFTER_ATTACK_SPLASH abilities.
+       */
+      type: "BLADE_DANCE_SPLASH";
+      amount: number;
+      minRoll: number;
+    }
+  | {
       type: "RETALIATION_AGAINST_DISADVANTAGE";
     };
 
@@ -3294,6 +3318,82 @@ export type EffectDefinition =
        */
       type: "SUMMON_ELEMENTAL";
       unitDefId: string;
+    }
+  | {
+      /**
+       * Sasami "Home Run" (specialty.sasami_sasasegawa.*): an INSTANT played in
+       * your own unit's attack window. After that attack resolves, if the target
+       * SURVIVED and the attacker is orthogonally adjacent to it, the target is
+       * shoved one space directly away from the attacker (cellBehindTarget). If
+       * that cell is off the board / blocked / the target may not be relocated
+       * (the Arrow Tower), it takes `blockedDamage` effect damage instead. A
+       * dead target gets nothing. Never fires on a Retaliation Attack.
+       * `minRoll` gates it on the resolved Attack die (I: +1 only; IV: 0 or +1;
+       * VI: any face).
+       */
+      type: "KNOCKBACK_ON_ATTACK";
+      name: string;
+      minRoll: number;
+      blockedDamage: number;
+    }
+  | {
+      /**
+       * Rin "Cat Corps" (specialty.rin_natsume.*): summon `count` temporary cats
+       * onto empty combat spaces. The card's own `empty-space` target picks the
+       * first cell; any further cats take the lowest-numbered remaining legal
+       * cell, so no second window ever opens (AI-safe). The bodies are minted
+       * summoned+temporary with NO army card, so they vanish at combat end and
+       * never touch XP, rewards or the deployment limit.
+       */
+      type: "SUMMON_CAMPUS_CATS";
+      name: string;
+      unitDefId: string;
+      count: number;
+    }
+  | {
+      /**
+       * Riki "Little Busters' Bond" (specialty.riki_naoe.*): a chosen friendly
+       * unit gains +1 Attack for EACH of the player's own army units already
+       * removed from this combat (summons, temporary bodies and the commander
+       * are not counted), capped at `maxAttack`, for the rest of the combat.
+       * With `defenseAtFallen` set (level VI) it also gains +1 Defense once that
+       * many have fallen. The count is measured ONCE, at play time, and frozen
+       * into the active effect.
+       */
+      type: "FALLEN_ALLY_RESOLVE";
+      name: string;
+      maxAttack: number;
+      defenseAtFallen?: number;
+    }
+  | {
+      /**
+       * Yuiko "Blade Dance" (specialty.yuiko_kurugaya.*): played during your own
+       * GROUND unit's activation before it attacks. For THIS activation only,
+       * after that unit's own declared attack resolves every OTHER enemy adjacent
+       * to the ATTACKER takes `amount` effect damage (the struck target is
+       * excluded — it already took the attack). `minRoll` gates it on the
+       * resolved Attack die. Rides the AFTER_ATTACK_SPLASH resolution seam as a
+       * modifier source; the effect is activation-scoped so it dies with the
+       * activation.
+       */
+      type: "CREATE_BLADE_DANCE";
+      name: string;
+      amount: number;
+      minRoll: number;
+    }
+  | {
+      /**
+       * Komari "Star Candy" (specialty.komari_kamikita.*): give a friendly unit a
+       * Candy shield — the next damage it takes (attack, Spell or effect) is
+       * reduced by `amount`, then the shield is spent even if only part of it was
+       * used. An unspent shield lasts the whole combat. `alsoMostWounded` (level
+       * VI) hands a second shield to the owner's most wounded OTHER living unit,
+       * deterministically, so one play covers two units with no extra window.
+       */
+      type: "CREATE_DAMAGE_SHIELD";
+      name: string;
+      amount: number;
+      alsoMostWounded?: boolean;
     }
   | {
       /**
@@ -7993,6 +8093,19 @@ export type ResolutionStackItem = {
      * resolution, then discarded with the stack item.
      */
     retaliationDamageReductionInstant?: number;
+    /**
+     * Sasami "Home Run": an instant played into THIS attack's window. Once the
+     * attack resolves, a surviving adjacent target is shoved one space away
+     * (or takes `blockedDamage` when it cannot be moved). `minRoll` gates it on
+     * the resolved die. Set by the reaction play, read once at the tail of
+     * finishResolvedAttack, then discarded with the stack item.
+     */
+    littleBustersHomeRun?: {
+      cardId: CardId;
+      name: string;
+      minRoll: number;
+      blockedDamage: number;
+    };
     /** Frenzy: this attack ignores the defender's Defense (counts as 0). */
     ignoreDefense?: boolean;
     /**

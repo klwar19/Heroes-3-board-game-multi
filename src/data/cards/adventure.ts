@@ -1618,20 +1618,9 @@ export const adventureCards: CardLibrary = {
   // "ANIME SPECIALTY REDESIGN" block below. Their two MAGIC medic siblings
   // (Yaoji / Molian) stay the rethemedSpecialty medic clones defined beside the
   // other anime medic clones.
-  // Little Busters might heroes — each set strengthens a unit the campus can
-  // actually recruit. These use the fully wired unit-specialist I/IV/VI arms.
-  "specialty.sasami_sasasegawa.1": withoutArt(mightSpecialtyOne("sasami_sasasegawa", "Perfect Captain", "Softball Club")),
-  "specialty.sasami_sasasegawa.4": withoutArt(unitHealthSpecialty("sasami_sasasegawa", "Perfect Captain", 4, 1, "Softball Club")),
-  "specialty.sasami_sasasegawa.6": withoutArt(unitInitiativeSpecialty("sasami_sasasegawa", "Perfect Captain", 6, 1, "Softball Club")),
-  "specialty.riki_naoe.1": withoutArt(mightSpecialtyOne("riki_naoe", "Team Heart", "Masato the Wall")),
-  "specialty.riki_naoe.4": withoutArt(unitHealthSpecialty("riki_naoe", "Team Heart", 4, 1, "Masato the Wall")),
-  "specialty.riki_naoe.6": withoutArt(unitInitiativeSpecialty("riki_naoe", "Team Heart", 6, 1, "Masato the Wall")),
-  "specialty.rin_natsume.1": withoutArt(mightSpecialtyOne("rin_natsume", "Cat Commander", "Rin's Cats")),
-  "specialty.rin_natsume.4": withoutArt(unitHealthSpecialty("rin_natsume", "Cat Commander", 4, 1, "Rin's Cats")),
-  "specialty.rin_natsume.6": withoutArt(unitInitiativeSpecialty("rin_natsume", "Cat Commander", 6, 1, "Rin's Cats")),
-  "specialty.yuiko_kurugaya.1": withoutArt(mightSpecialtyOne("yuiko_kurugaya", "Perfect Score", "Saya Tokido")),
-  "specialty.yuiko_kurugaya.4": withoutArt(unitHealthSpecialty("yuiko_kurugaya", "Perfect Score", 4, 1, "Saya Tokido")),
-  "specialty.yuiko_kurugaya.6": withoutArt(unitInitiativeSpecialty("yuiko_kurugaya", "Perfect Score", 6, 1, "Saya Tokido")),
+  // Little Busters might heroes carry ORIGINAL sets, built in the
+  // "LITTLE BUSTERS SPECIALTY SETS" block below (they need the helpers declared
+  // after this literal). Their entries are assigned there, not here.
   // Miku (Fuyuki Virtual Diva) — Voice of Angel. NEW engine arms:
   // I SLOW_ALL_ENEMIES, IV CREATE_HEAL_ON_ATTACKED (friendly), VI DAMAGE_ALL_ENEMY_UNITS.
   "specialty.miku.1": withoutArt({
@@ -5823,12 +5812,209 @@ Object.assign(adventureCards, imperiumSpecialtyCards);
 // implemented mechanics: Riki uses Forgetfulness, Yuiko Fortune, and Kud's
 // Rocket Launcher uses Meteor Shower's engine effect. Levels 1/4/6 only unlock the corresponding card; they do not
 // add hidden battlefield stats. Komari retains her First-Aid card line.
-adventureCards["specialty.riki_naoe.1"] = rethemedSpecialty(adventureCards["specialty.zilare.1"], "zilare", "riki_naoe", 1, "Forgetfulness");
-adventureCards["specialty.riki_naoe.4"] = rethemedSpecialty(adventureCards["specialty.zilare.4"], "zilare", "riki_naoe", 4, "Forgetfulness");
-adventureCards["specialty.riki_naoe.6"] = rethemedSpecialty(adventureCards["specialty.zilare.6"], "zilare", "riki_naoe", 6, "Forgetfulness");
-adventureCards["specialty.yuiko_kurugaya.1"] = rethemedSpecialty(adventureCards["specialty.melodia.1"], "melodia", "yuiko_kurugaya", 1, "Fortune");
-adventureCards["specialty.yuiko_kurugaya.4"] = rethemedSpecialty(adventureCards["specialty.melodia.4"], "melodia", "yuiko_kurugaya", 4, "Fortune");
-adventureCards["specialty.yuiko_kurugaya.6"] = rethemedSpecialty(adventureCards["specialty.melodia.6"], "melodia", "yuiko_kurugaya", 6, "Fortune");
+// ===========================================================================
+// LITTLE BUSTERS SPECIALTY SETS (2026-09-05) — five ORIGINAL engine-wired sets
+//
+// These replaced the generic unit-buff trio (Sasami / Rin), Riki's Zilare
+// Forgetfulness clone, Yuiko's Melodia Fortune clone and Komari's Gem First-Aid
+// clone. Each card's prose tag below states EXACTLY what the engine runs; the
+// engine halves live in src/engine/little-busters-specialties.ts (the pure
+// reads) plus the named seams in reducer.ts, and are pinned in
+// src/engine/little-busters-specialties.test.ts.
+//
+// Kudryavka's bespoke Rocket Launcher set is deliberately UNCHANGED.
+// ===========================================================================
+
+const littleBustersSpecialtySource = {
+  product: "Anime Mod — Ninefold Realms × Otherworld Gate",
+  credit: "Original hero specialty for this digital module; every clause above is engine-enforced."
+} as const;
+
+/**
+ * Sasami "Home Run" — an INSTANT played into your own unit's declared-attack
+ * window. After that attack resolves: a SURVIVING target the attacker stands
+ * orthogonally beside is shoved one space directly away; when it cannot be
+ * shoved (off the board, occupied, an obstacle/Wall/token, a ranged shot from
+ * range, or a unit the Teleport spell refuses to relocate) it takes the level's
+ * damage instead. A destroyed target gets nothing, and it never fires on a
+ * Retaliation Attack.
+ */
+function homeRunSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
+  const minRoll = level === 1 ? 1 : level === 4 ? 0 : -1;
+  const blockedDamage = level === 6 ? 2 : 1;
+  const dieText =
+    level === 1
+      ? 'only when your Attack die shows "+1"'
+      : level === 4
+        ? 'only when your Attack die shows "0" or "+1"'
+        : "whatever your Attack die shows";
+  return {
+    id: `specialty.sasami_sasasegawa.${level}`,
+    name: `Home Run ${towerRoman(level)}`,
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "sasami_sasasegawa",
+      "home-run",
+      `Instant, played when one of your units declares an attack (never a Retaliation Attack), ${dieText}: after that attack resolves, if the target survived and your unit stands next to it, knock the target back 1 space directly away. If it cannot be moved there, deal ${blockedDamage} damage to it instead.`
+    ],
+    trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+    target: { type: "none" },
+    effect: {
+      type: "KNOCKBACK_ON_ATTACK",
+      name: `Home Run ${towerRoman(level)}`,
+      minRoll,
+      blockedDamage
+    },
+    implementationStatus: "implemented",
+    source: littleBustersSpecialtySource
+  };
+}
+
+/**
+ * Rin "Cat Corps" — a combat play on your own unit's activation that summons
+ * temporary cats. The cats are battlefield-only bodies: no army card, no XP, no
+ * reward, no deployment slot, and they vanish when the combat ends.
+ */
+function catCorpsSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
+  const unitDefId = level === 1 ? "little_busters.stray_cat" : "little_busters.alley_cat";
+  const count = level === 6 ? 2 : 1;
+  const catName = level === 1 ? "Stray Cat" : "Alley Cat";
+  return {
+    id: `specialty.rin_natsume.${level}`,
+    name: `Cat Corps ${towerRoman(level)}`,
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "rin_natsume",
+      "cat-corps",
+      `Combat: choose an empty Combat space and summon ${count === 1 ? `one ${catName}` : `two ${catName}s`} there (a second cat takes the next free space). They fight for you until the Combat ends and then vanish — they never join your army, earn experience or count against your deployment limit.`
+    ],
+    target: { type: "empty-space" },
+    effect: {
+      type: "SUMMON_CAMPUS_CATS",
+      name: `Cat Corps ${towerRoman(level)}`,
+      unitDefId,
+      count
+    },
+    implementationStatus: "implemented",
+    source: littleBustersSpecialtySource
+  };
+}
+
+/**
+ * Riki "Little Busters' Bond" — the fallen friends push the survivors on. The
+ * count is measured ONCE, at play time, and frozen into the effect.
+ */
+function littleBustersBondSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
+  const maxAttack = level === 1 ? 1 : level === 4 ? 2 : 3;
+  const defenseAtFallen = level === 6 ? 2 : undefined;
+  return {
+    id: `specialty.riki_naoe.${level}`,
+    name: `Little Busters' Bond ${towerRoman(level)}`,
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "riki_naoe",
+      "little-busters-bond",
+      `Combat: choose a friendly unit. For the rest of this Combat it gains +1 Attack for EACH of your own army units already removed from this Combat, up to +${maxAttack}${defenseAtFallen ? "; once at least 2 have fallen it also gains +1 Defense" : ""}. Summoned units and your Commander are not counted, and the bonus is fixed when you play this card.`
+    ],
+    target: { type: "friendly-unit" },
+    effect: {
+      type: "FALLEN_ALLY_RESOLVE",
+      name: `Little Busters' Bond ${towerRoman(level)}`,
+      maxAttack,
+      ...(defenseAtFallen === undefined ? {} : { defenseAtFallen })
+    },
+    implementationStatus: "implemented",
+    source: littleBustersSpecialtySource
+  };
+}
+
+/**
+ * Yuiko "Blade Dance" — played during your own GROUND unit's activation before
+ * it attacks; the effect is activation-scoped, so it expires with that
+ * activation whether or not the unit ever swings.
+ */
+function bladeDanceSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
+  const amount = level === 6 ? 2 : 1;
+  const minRoll = level === 1 ? 0 : -1;
+  const dieText =
+    level === 1 ? ' — only when its Attack die shows "0" or "+1"' : "";
+  return {
+    id: `specialty.yuiko_kurugaya.${level}`,
+    name: `Blade Dance ${towerRoman(level)}`,
+    kind: "hero-specialty",
+    timing: "combat",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "yuiko_kurugaya",
+      "blade-dance",
+      `Combat, during your own ground unit's activation before it attacks: this activation, after that unit's own attack resolves, every OTHER enemy unit standing next to it takes ${amount} damage${dieText}. The unit it attacked is not hit again, and this never fires on a Retaliation Attack.`
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CREATE_BLADE_DANCE",
+      name: `Blade Dance ${towerRoman(level)}`,
+      amount,
+      minRoll
+    },
+    implementationStatus: "implemented",
+    source: littleBustersSpecialtySource
+  };
+}
+
+/**
+ * Komari "Star Candy" — a one-shot damage shield. It is spent the first time the
+ * unit takes damage of ANY kind, even when only part of it was needed; unspent,
+ * it lasts the whole Combat.
+ */
+function starCandySpecialty(level: 1 | 4 | 6): CardLibrary[string] {
+  const amount = level === 1 ? 1 : 2;
+  const alsoMostWounded = level === 6;
+  return {
+    id: `specialty.komari_kamikita.${level}`,
+    name: `Star Candy ${towerRoman(level)}`,
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["combat", "reaction"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "komari_kamikita",
+      "star-candy",
+      `Instant: give a friendly unit a Candy shield${alsoMostWounded ? ", and give a second one to your most wounded other unit" : ""}. The next damage that unit takes — from an attack, a Spell or an effect — is reduced by ${amount}, then the shield is used up even if only part of it was needed. An unused shield lasts the rest of the Combat.`
+    ],
+    target: { type: "friendly-unit" },
+    effect: {
+      type: "CREATE_DAMAGE_SHIELD",
+      name: `Star Candy ${towerRoman(level)}`,
+      amount,
+      ...(alsoMostWounded ? { alsoMostWounded: true } : {})
+    },
+    implementationStatus: "implemented",
+    source: littleBustersSpecialtySource
+  };
+}
+
+for (const level of [1, 4, 6] as const) {
+  adventureCards[`specialty.sasami_sasasegawa.${level}`] = homeRunSpecialty(level);
+  adventureCards[`specialty.rin_natsume.${level}`] = catCorpsSpecialty(level);
+  adventureCards[`specialty.riki_naoe.${level}`] = littleBustersBondSpecialty(level);
+  adventureCards[`specialty.yuiko_kurugaya.${level}`] = bladeDanceSpecialty(level);
+  adventureCards[`specialty.komari_kamikita.${level}`] = starCandySpecialty(level);
+}
 function kudRocketLauncherSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
   const next = rethemedSpecialty(
     adventureCards[`specialty.deemer.${level}`],
@@ -5851,9 +6037,8 @@ function kudRocketLauncherSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
 adventureCards["specialty.kudryavka_noumi.1"] = kudRocketLauncherSpecialty(1);
 adventureCards["specialty.kudryavka_noumi.4"] = kudRocketLauncherSpecialty(4);
 adventureCards["specialty.kudryavka_noumi.6"] = kudRocketLauncherSpecialty(6);
-adventureCards["specialty.komari_kamikita.1"] = rethemedSpecialty(adventureCards["specialty.gem.1"], "gem", "komari_kamikita", 1, "Everyone Smiles");
-adventureCards["specialty.komari_kamikita.4"] = rethemedSpecialty(adventureCards["specialty.gem.4"], "gem", "komari_kamikita", 4, "Everyone Smiles");
-adventureCards["specialty.komari_kamikita.6"] = rethemedSpecialty(adventureCards["specialty.gem.6"], "gem", "komari_kamikita", 6, "Everyone Smiles");
+// Komari's Star Candy set is assigned in the LITTLE BUSTERS SPECIALTY SETS
+// block above; she is no longer a Gem First-Aid clone.
 
 // ---------------------------------------------------------------------------
 // Monster Girl Quest: Paradox heroes

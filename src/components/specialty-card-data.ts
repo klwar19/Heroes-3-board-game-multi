@@ -132,11 +132,11 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   // distinct files from the unit-rank emblems (rank-softball-club / rank-rins-cats
   // still back the veterancy display).
   sasami_sasasegawa: "/assets/anime/icons/little-busters/specialty-sasami-softball.webp", // Perfect Captain (softball)
-  riki_naoe: "/assets/anime/icons/little-busters/specialty-riki-forgetfulness.webp", // Forgetfulness
+  riki_naoe: "/assets/anime/icons/little-busters/specialty-riki-bond.webp", // Little Busters' Bond
   rin_natsume: "/assets/anime/icons/little-busters/specialty-rin-natsume-cats.webp", // Cat Commander
-  yuiko_kurugaya: "/assets/anime/icons/little-busters/specialty-yuiko-fortune.webp", // Fortune
+  yuiko_kurugaya: "/assets/anime/icons/little-busters/specialty-yuiko-blade-dance.webp", // Blade Dance
   kudryavka_noumi: "/assets/anime/icons/little-busters/specialty-kud-rocket-launcher.webp", // Rocket Launcher
-  komari_kamikita: "/assets/anime/icons/little-busters/specialty-komari-smiles.webp", // Everyone Smiles (heal)
+  komari_kamikita: "/assets/anime/icons/little-busters/specialty-komari-star-candy.webp", // Star Candy
   // Monster Girl Quest: dedicated identity-preserving specialty medallions.
   luka: "/assets/specialty-card/icon-mgq-luka.webp",
   alice: "/assets/specialty-card/icon-mgq-alice.webp",
