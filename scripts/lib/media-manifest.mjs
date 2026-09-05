@@ -3,30 +3,31 @@
  * Vercel build wrapper (scripts/vercel-build.mjs) and — through the TS twin
  * src/lib/media-manifest.ts — next.config.ts and the test suite.
  *
- * THE CONTRACT (docs/media-manifest.md):
- *   - Binary game media (public/assets/**, public/sounds/**) is NOT tracked in
- *     git. The Cloudflare R2 bucket behind https://cdn.hamthefirt.xyz is the
- *     source of truth for bytes; `media-manifest.json` (repo root, tracked) is
- *     the source of truth for WHICH files exist, keyed by their public URL
- *     path without the leading slash ("assets/ui/x.webp").
- *   - Every entry records the object's md5 (== the R2 ETag of a single-part
- *     upload, so the bucket can be verified with HEAD requests), its byte size
- *     and, for raster images, width/height — so the art-gate tests (dimensions,
- *     stub-size floors, directory listings) run WITHOUT the bytes on disk.
- *   - Objects are CONTENT-ADDRESSED and IMMUTABLE: the bucket key is
- *     "<dir>/<name>.<md5[0:8]>.<ext>" (contentAddressedKey), uploaded with a
- *     one-year immutable Cache-Control and NEVER overwritten or deleted, so a
- *     replaced file is a NEW object (old ones stay for rollback = revert the
- *     manifest commit) and no cache ever goes stale. The browser maps a logical
- *     path to its object through the small generated runtime map
- *     src/lib/media-keys.generated.json (runtimeMediaMap — grouped by
- *     directory, ~50 KB brotli), read by assetUrl(). A path missing from the
- *     map falls back to the logical key + ?v=<mediaVersion> (the pre-2026-09
- *     layout, which the bucket still holds for everything published before).
- *   - JSON / Markdown / text files inside those trees (sound manifest,
- *     durations, READMEs) are CODE: they stay tracked in git and are never
- *     manifest entries. Any OTHER extension is refused so a new media kind is a
- *     conscious addition to MEDIA_EXTENSIONS (and to .gitignore).
+ * THE CONTRACT (docs/media-manifest.md) — TWO FAMILIES, one mechanism:
+ *   - MEDIA: binary game media (public/assets/**, public/sounds/**) served to
+ *     players. NOT tracked in git. `media-manifest.json` (repo root) is the
+ *     source of truth for WHICH files exist, keyed by the public URL path
+ *     without the leading slash ("assets/ui/x.webp"); the browser maps a
+ *     logical path to its object through the generated runtime map
+ *     src/lib/media-keys.generated.json (runtimeMediaMap, ~50 KB brotli).
+ *   - SOURCES: the art-pipeline MASTERS (scripts/anime-art, scripts/*-art,
+ *     generated-session-art, assets-to-translate — raw renders, PSD-grade PNGs,
+ *     review sheets). Build inputs, never served. NOT tracked in git either;
+ *     `sources-manifest.json` lists them keyed by repo-relative path, objects
+ *     live under the `sources/` prefix, and there is NO runtime map. Only the
+ *     raster/audio/video kinds move; the SVG/JSON/MD/MJS beside them stay code.
+ *   - Every entry records md5 (== the R2 ETag of a single-part upload), byte
+ *     size and, for raster images, width/height — so existence / dimension /
+ *     size / listing tests run WITHOUT the bytes on disk.
+ *   - Objects are CONTENT-ADDRESSED and IMMUTABLE: "<prefix><dir>/<name>.<md5[0:8]>.<ext>"
+ *     (contentAddressedKey), one-year immutable Cache-Control, NEVER overwritten
+ *     or deleted — a replaced file is a NEW object, rollback = revert the
+ *     manifest commit. A media path missing from the runtime map falls back to
+ *     the logical key + ?v=<mediaVersion> (the pre-2026-09 layout).
+ *   - Inside the MEDIA trees any extension that is neither media nor code
+ *     (json/md/txt) is refused, so a new kind is a conscious addition to
+ *     MEDIA_EXTENSIONS (and .gitignore). The SOURCE trees are looser: anything
+ *     not in SOURCE_EXTENSIONS simply stays tracked.
  */
 
 import { createHash } from "node:crypto";
@@ -36,26 +37,97 @@ import { fileURLToPath } from "node:url";
 
 export const REPO_ROOT = resolve(fileURLToPath(import.meta.url), "..", "..", "..");
 export const MANIFEST_FILE = "media-manifest.json";
+export const SOURCES_MANIFEST_FILE = "sources-manifest.json";
 export const MANIFEST_FORMAT_VERSION = 1;
 export const PRODUCTION_CDN_URL = "https://cdn.hamthefirt.xyz";
 /** Trees under public/ whose binaries live on the CDN, not in git. */
 export const MEDIA_ROOTS = ["assets", "sounds"];
-/** Generated runtime map (tracked, derived from the manifest — keep in lockstep via `media manifest`). */
+/** Repo-relative art-master trees whose binaries live in the bucket under sources/, not in git. */
+export const SOURCE_ROOTS = [
+  "scripts/anime-art",
+  "scripts/commander-art",
+  "scripts/neutral-unit-art",
+  "scripts/doom-art",
+  "generated-session-art",
+  "assets-to-translate"
+];
+/** Generated runtime map (tracked, derived from the media manifest — keep in lockstep via `media manifest`). */
 export const RUNTIME_MAP_FILE = "src/lib/media-keys.generated.json";
 /** Hex chars of the md5 embedded in a content-addressed object key. */
 export const MEDIA_KEY_HASH_LENGTH = 8;
 /** Cache-Control for content-addressed objects: the key changes whenever the bytes do. */
 export const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
+/** Binary media kinds (keep .gitignore's per-extension list in lockstep). */
+export const MEDIA_EXTENSIONS = ["webp", "png", "jpg", "jpeg", "gif", "svg", "avif", "mp4", "webm", "mp3", "ogg", "wav"];
+/** Binary master kinds under the SOURCE_ROOTS (svg stays tracked there: editable vectors are code). */
+export const SOURCE_EXTENSIONS = ["png", "jpg", "jpeg", "webp", "gif", "psd", "tif", "tiff", "bmp", "avif", "mp3", "wav", "ogg", "mp4", "mov", "bik"];
+/** Raster kinds whose width/height the manifest records (sharp metadata). */
+export const RASTER_EXTENSIONS = ["webp", "png", "jpg", "jpeg", "gif", "avif", "tif", "tiff", "bmp"];
+/** Non-media files allowed inside the MEDIA trees (tracked in git, never uploaded). */
+export const CODE_EXTENSIONS = ["json", "md", "txt"];
+
 const CONTENT_TYPES = {
   webp: "image/webp", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
-  svg: "image/svg+xml", avif: "image/avif", mp4: "video/mp4", webm: "video/webm",
-  mp3: "audio/mpeg", ogg: "audio/ogg", wav: "audio/wav"
+  svg: "image/svg+xml", avif: "image/avif", tif: "image/tiff", tiff: "image/tiff", bmp: "image/bmp",
+  psd: "image/vnd.adobe.photoshop", mp4: "video/mp4", webm: "video/webm", mov: "video/quicktime",
+  bik: "application/octet-stream", mp3: "audio/mpeg", ogg: "audio/ogg", wav: "audio/wav"
 };
+
+/**
+ * The two families. `baseDir` is where the roots live relative to the repo
+ * root ("" = the repo root itself); manifest keys are paths relative to it.
+ */
+export const FAMILIES = {
+  media: {
+    name: "media",
+    manifestFile: MANIFEST_FILE,
+    baseDir: "public",
+    roots: MEDIA_ROOTS,
+    extensions: MEDIA_EXTENSIONS,
+    /** null = any other extension is simply code and stays tracked */
+    codeExtensions: CODE_EXTENSIONS,
+    objectPrefix: "",
+    runtimeMap: true
+  },
+  sources: {
+    name: "sources",
+    manifestFile: SOURCES_MANIFEST_FILE,
+    baseDir: "",
+    roots: SOURCE_ROOTS,
+    extensions: SOURCE_EXTENSIONS,
+    codeExtensions: null,
+    objectPrefix: "sources/",
+    runtimeMap: false
+  }
+};
+
+export function extensionOf(path) {
+  const dot = path.lastIndexOf(".");
+  return dot === -1 ? "" : path.slice(dot + 1).toLowerCase();
+}
+
+export function isMediaPath(path, extensions = MEDIA_EXTENSIONS) {
+  return extensions.includes(extensionOf(path));
+}
+
 export function contentTypeFor(key) {
   return CONTENT_TYPES[extensionOf(key)] ?? "application/octet-stream";
 }
 
-/** "assets/ui/x.webp" + md5 -> "assets/ui/x.<md5[0:8]>.webp" (the immutable bucket key). */
+export function manifestPath(root = REPO_ROOT, family = FAMILIES.media) {
+  return join(root, family.manifestFile);
+}
+
+export function familyBaseDir(root = REPO_ROOT, family = FAMILIES.media) {
+  return family.baseDir ? join(root, family.baseDir) : root;
+}
+
+/** "/assets/x.webp?v=1" | "assets/x.webp" -> "assets/x.webp" */
+export function keyFromUrl(url) {
+  return url.split(/[?#]/u)[0].replace(/^\/+/u, "").replaceAll("\\", "/");
+}
+
+/** "assets/ui/x.webp" + md5 -> "assets/ui/x.<md5[0:8]>.webp" (the immutable bucket key, before any family prefix). */
 export function contentAddressedKey(key, md5) {
   const dot = key.lastIndexOf(".");
   const slash = key.lastIndexOf("/");
@@ -63,66 +135,14 @@ export function contentAddressedKey(key, md5) {
   return dot > slash ? `${key.slice(0, dot)}.${hash}${key.slice(dot)}` : `${key}.${hash}`;
 }
 
-/**
- * The client-side map assetUrl() reads: { version, hashLength, dirs: { "<dir>": { "<file>": "<md5[0:8]>" } } }.
- * Grouped by directory because the 5.5k keys share long prefixes (200 KB raw
- * instead of 290 KB flat; ~50 KB brotli on the wire).
- */
-export function runtimeMediaMap(manifest) {
-  const dirs = {};
-  for (const key of Object.keys(manifest.files).sort()) {
-    const slash = key.lastIndexOf("/");
-    const dir = key.slice(0, slash);
-    (dirs[dir] ??= {})[key.slice(slash + 1)] = manifest.files[key].md5.slice(0, MEDIA_KEY_HASH_LENGTH);
-  }
-  return { version: manifestVersion(manifest), hashLength: MEDIA_KEY_HASH_LENGTH, dirs };
+/** The bucket key of a manifest entry, family prefix included ("sources/scripts/anime-art/x.<hash>.png"). */
+export function objectKeyFor(family, key, md5) {
+  return `${family.objectPrefix}${contentAddressedKey(key, md5)}`;
 }
 
-export function serializeRuntimeMap(map) {
-  const lines = Object.keys(map.dirs).map((dir) => `    ${JSON.stringify(dir)}: ${JSON.stringify(map.dirs[dir])}`);
-  return [
-    "{",
-    `  "version": ${JSON.stringify(map.version)},`,
-    `  "hashLength": ${map.hashLength},`,
-    `  "dirs": {`,
-    lines.join(",\n"),
-    "  }",
-    "}",
-    ""
-  ].join("\n");
-}
-
-export function writeRuntimeMap(manifest, root = REPO_ROOT) {
-  writeFileSync(join(root, RUNTIME_MAP_FILE), serializeRuntimeMap(runtimeMediaMap(manifest)));
-}
-/** Binary media kinds (keep .gitignore's per-extension list in lockstep). */
-export const MEDIA_EXTENSIONS = ["webp", "png", "jpg", "jpeg", "gif", "svg", "avif", "mp4", "webm", "mp3", "ogg", "wav"];
-/** Raster kinds whose width/height the manifest records (sharp metadata). */
-export const RASTER_EXTENSIONS = ["webp", "png", "jpg", "jpeg", "gif", "avif"];
-/** Non-media files allowed inside the media trees (tracked in git, never uploaded). */
-export const CODE_EXTENSIONS = ["json", "md", "txt"];
-
-export function extensionOf(path) {
-  const dot = path.lastIndexOf(".");
-  return dot === -1 ? "" : path.slice(dot + 1).toLowerCase();
-}
-
-export function isMediaPath(path) {
-  return MEDIA_EXTENSIONS.includes(extensionOf(path));
-}
-
-export function manifestPath(root = REPO_ROOT) {
-  return join(root, MANIFEST_FILE);
-}
-
-/** "/assets/x.webp?v=1" | "assets/x.webp" -> "assets/x.webp" */
-export function keyFromUrl(url) {
-  return url.split(/[?#]/u)[0].replace(/^\/+/u, "");
-}
-
-/** Walk one media tree; returns repo-relative posix keys ("assets/..."). */
-export function walkMediaTree(publicDir, root) {
-  const dir = join(publicDir, root);
+/** Walk one tree; returns base-relative posix keys split into media vs. other files. */
+export function walkMediaTree(baseDir, root, extensions = MEDIA_EXTENSIONS) {
+  const dir = join(baseDir, root);
   const media = [];
   const other = [];
   if (!existsSync(dir)) return { media, other };
@@ -132,8 +152,8 @@ export function walkMediaTree(publicDir, root) {
       if (entry.isDirectory()) {
         walk(abs);
       } else if (entry.isFile()) {
-        const key = relative(publicDir, abs).replaceAll("\\", "/");
-        if (isMediaPath(key)) media.push(key);
+        const key = relative(baseDir, abs).replaceAll("\\", "/");
+        if (isMediaPath(key, extensions)) media.push(key);
         else other.push(key);
       }
     }
@@ -169,32 +189,35 @@ async function imageDimensions(absPath) {
 }
 
 /**
- * Build a manifest from the local public/ tree. Reuses entries from `previous`
- * whose size is unchanged AND whose mtime is not newer than the previous
- * manifest file, so a rebuild over 5k files costs stats, not 640 MB of
- * hashing. Pass { rehash: true } to force full hashing.
+ * Build a manifest from the local tree of one family. Reuses entries from
+ * `previous` whose size is unchanged AND whose mtime is not newer than the
+ * previous manifest file, so a rebuild over 5k files costs stats, not hashing.
+ * Pass { rehash: true } to force full hashing.
  */
 export async function buildManifestFromTree({
   root = REPO_ROOT,
+  family = FAMILIES.media,
   previous = null,
   rehash = false,
   onProgress = null,
   concurrency = 8
 } = {}) {
-  const publicDir = join(root, "public");
+  const baseDir = familyBaseDir(root, family);
   const files = {};
   const unknown = [];
   const keys = [];
-  for (const mediaRoot of MEDIA_ROOTS) {
-    const { media, other } = walkMediaTree(publicDir, mediaRoot);
+  for (const treeRoot of family.roots) {
+    const { media, other } = walkMediaTree(baseDir, treeRoot, family.extensions);
     keys.push(...media);
-    for (const key of other) {
-      if (!CODE_EXTENSIONS.includes(extensionOf(key))) unknown.push(key);
+    if (family.codeExtensions) {
+      for (const key of other) {
+        if (!family.codeExtensions.includes(extensionOf(key))) unknown.push(key);
+      }
     }
   }
   if (unknown.length > 0) {
     throw new Error(
-      `Unrecognised file kind(s) under public/${MEDIA_ROOTS.join("|")} - add the extension to MEDIA_EXTENSIONS (media) or CODE_EXTENSIONS (tracked code) in scripts/lib/media-manifest.mjs, and to .gitignore for media:\n  ${unknown.join("\n  ")}`
+      `Unrecognised file kind(s) under ${family.baseDir}/${family.roots.join("|")} - add the extension to MEDIA_EXTENSIONS (media) or CODE_EXTENSIONS (tracked code) in scripts/lib/media-manifest.mjs, and to .gitignore for media:\n  ${unknown.join("\n  ")}`
     );
   }
   const previousMtime = previous?.__mtimeMs ?? 0;
@@ -203,7 +226,7 @@ export async function buildManifestFromTree({
   const worker = async () => {
     while (queue.length > 0) {
       const key = queue.shift();
-      const abs = join(publicDir, key);
+      const abs = join(baseDir, key);
       const stat = statSync(abs);
       const prev = previous?.files?.[key];
       let entry;
@@ -221,8 +244,9 @@ export async function buildManifestFromTree({
   await Promise.all(Array.from({ length: concurrency }, worker));
   return {
     version: MANIFEST_FORMAT_VERSION,
+    family: family.name,
     cdn: previous?.cdn ?? PRODUCTION_CDN_URL,
-    roots: [...MEDIA_ROOTS],
+    roots: [...family.roots],
     files: Object.fromEntries(keys.map((key) => [key, files[key]]))
   };
 }
@@ -238,6 +262,7 @@ export function serializeManifest(manifest) {
   return [
     "{",
     `  "version": ${manifest.version},`,
+    ...(manifest.family && manifest.family !== "media" ? [`  "family": ${JSON.stringify(manifest.family)},`] : []),
     `  "cdn": ${JSON.stringify(manifest.cdn)},`,
     `  "roots": ${JSON.stringify(manifest.roots)},`,
     `  "count": ${keys.length},`,
@@ -249,8 +274,8 @@ export function serializeManifest(manifest) {
   ].join("\n");
 }
 
-export function readManifest(root = REPO_ROOT) {
-  const file = manifestPath(root);
+export function readManifest(root = REPO_ROOT, family = FAMILIES.media) {
+  const file = manifestPath(root, family);
   if (!existsSync(file)) return null;
   const manifest = JSON.parse(readFileSync(file, "utf8"));
   if (manifest.version !== MANIFEST_FORMAT_VERSION || typeof manifest.files !== "object") {
@@ -260,14 +285,14 @@ export function readManifest(root = REPO_ROOT) {
   return manifest;
 }
 
-export function writeManifest(manifest, root = REPO_ROOT) {
-  writeFileSync(manifestPath(root), serializeManifest(manifest));
+export function writeManifest(manifest, root = REPO_ROOT, family = FAMILIES.media) {
+  writeFileSync(manifestPath(root, family), serializeManifest(manifest));
 }
 
 /**
- * The global media version every CDN URL carries as ?v=. A hash of every
- * key+md5, so ANY media change moves it (and a code-only change never does).
- * "" for an empty/missing manifest = unversioned URLs.
+ * The global media version every legacy CDN URL carries as ?v=. A hash of
+ * every key+md5, so ANY media change moves it (and a code-only change never
+ * does). "" for an empty/missing manifest = unversioned URLs.
  */
 export function manifestVersion(manifest) {
   if (!manifest) return "";
@@ -275,6 +300,39 @@ export function manifestVersion(manifest) {
   if (keys.length === 0) return "";
   const lines = keys.map((key) => `${key}:${manifest.files[key].md5}`);
   return createHash("sha1").update(lines.join("\n")).digest("hex").slice(0, 10);
+}
+
+/**
+ * The client-side map assetUrl() reads: { version, hashLength, dirs: { "<dir>": { "<file>": "<md5[0:8]>" } } }.
+ * Grouped by directory because the 5.5k keys share long prefixes (200 KB raw
+ * instead of 290 KB flat; ~50 KB brotli on the wire). MEDIA family only.
+ */
+export function runtimeMediaMap(manifest) {
+  const dirs = {};
+  for (const key of Object.keys(manifest.files).sort()) {
+    const slash = key.lastIndexOf("/");
+    const dir = key.slice(0, slash);
+    (dirs[dir] ??= {})[key.slice(slash + 1)] = manifest.files[key].md5.slice(0, MEDIA_KEY_HASH_LENGTH);
+  }
+  return { version: manifestVersion(manifest), hashLength: MEDIA_KEY_HASH_LENGTH, dirs };
+}
+
+export function serializeRuntimeMap(map) {
+  const lines = Object.keys(map.dirs).map((dir) => `    ${JSON.stringify(dir)}: ${JSON.stringify(map.dirs[dir])}`);
+  return [
+    "{",
+    `  "version": ${JSON.stringify(map.version)},`,
+    `  "hashLength": ${map.hashLength},`,
+    `  "dirs": {`,
+    lines.join(",\n"),
+    "  }",
+    "}",
+    ""
+  ].join("\n");
+}
+
+export function writeRuntimeMap(manifest, root = REPO_ROOT) {
+  writeFileSync(join(root, RUNTIME_MAP_FILE), serializeRuntimeMap(runtimeMediaMap(manifest)));
 }
 
 /** Entries present in `next` but absent or changed in `previous`, and the reverse. */
@@ -295,12 +353,12 @@ export function diffManifests(previous, next) {
 }
 
 /** Cheap "is the local tree what the manifest says" read (stat only, no hashing). */
-export function compareTreeToManifest(manifest, root = REPO_ROOT) {
-  const publicDir = join(root, "public");
+export function compareTreeToManifest(manifest, root = REPO_ROOT, family = FAMILIES.media) {
+  const baseDir = familyBaseDir(root, family);
   const local = new Map();
-  for (const mediaRoot of MEDIA_ROOTS) {
-    for (const key of walkMediaTree(publicDir, mediaRoot).media) {
-      local.set(key, statSync(join(publicDir, key)).size);
+  for (const treeRoot of family.roots) {
+    for (const key of walkMediaTree(baseDir, treeRoot, family.extensions).media) {
+      local.set(key, statSync(join(baseDir, key)).size);
     }
   }
   const unpublished = [];

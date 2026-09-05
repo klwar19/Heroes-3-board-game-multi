@@ -154,6 +154,14 @@ history rewrite): `docs/media-manifest.md`. What an AI contributor must know:
   so media is never packaged). PartyKit is unaffected. The scheduled
   `.github/workflows/media-cdn-smoke.yml` HEADs a rotating sample weekly and on
   every manifest change (GitHub Actions must be enabled/billed to run).
+- **The art MASTERS left git too (the SOURCES family, same day)**: `scripts/anime-art`,
+  `scripts/commander-art`, `scripts/neutral-unit-art`, `scripts/doom-art`,
+  `generated-session-art`, `assets-to-translate` binaries (~1.1 GB) live in the bucket
+  under `sources/`, listed by `sources-manifest.json` (repo-relative keys, no runtime
+  map); the SVG/JSON/MD/MJS beside them stay tracked. `npm run media:pull -- --sources`
+  before running an art build script; `npm run media:publish -- --sources` + commit
+  the manifest after producing a new master. Tests use `hasSourceFile` /
+  `sourceFileInfo` / `localSourcePath` (`src/lib/media-manifest.ts`).
 - LIMITS: the runtime map adds ≈200 KB raw / ≈50 KB brotli to the client bundle;
   `.gitignore` ignores media PER EXTENSION, so a new media kind must be added to
   `MEDIA_EXTENSIONS` (`scripts/lib/media-manifest.mjs` + the TS twin) AND
@@ -4443,3 +4451,31 @@ CONTROL (`parallel-combats.test.ts`); `legionDiscountTargets` and the Community 
 recruit arm iterate `playerRecruitUnitIds` (`binh-recruitment-options.test.ts`); the float
 emits no zero `transform` (phone `.rotateFloat` nudges survive); the Merchant panel reads
 `discountGold` live (`market-tab.test.tsx`); the music per-game reset is pinned.
+
+## Combat-outcome cinematics (2026-09-05) — presentation only, what runs vs. limits
+
+The HoMM3 battle-result clips with their stings play inside the combat-result
+popup (`CombatResultModal` → `<VictoryCinematic>`, `src/components/table/
+victory-cinematic.tsx`) for THE VIEWER's decided, fought-out fight — neutral
+guard / Creature Bank / PvE and PvP alike: VICTORY = WIN3.BIK (72 KB mp4) + the
+"Win Battle" fanfare; DEFEAT = LBSTART.BIK (47 KB mp4) + the "LoseCombat" sting
+(`public/assets/fx/combat-outcome/*.mp4`, sound keys `music/win-battle` /
+`music/lose-combat`, both PUBLISHED through the media manifest — the first real
+use of `npm run media:publish`). ONE pure read `combatOutcomeCinematic` mirrors
+the popup's own titles: the viewer is `outcome.winnerPlayerId` → victory,
+`outcome.defeatedPlayerId` → defeat; NOTHING for an escape (surrender /
+secondary-hero surrender / retreat), a bystander, an undecided fight or the
+Battle Test sandbox. The sting goes through the music controller
+(`playCombatSting`, music.ts): background pauses, sting plays at 0.36, the scene's
+track resumes on `ended`; honours the music mute; ONE reusable element so
+listeners never stack. Once per combat id per client (module seen-set — a
+re-render, "Keep looking" or a reconnect never replays it). Pinned in
+`victory-cinematic.test.tsx` (DOM + music contract, CONTROLs for loser /
+bystander / escape / sandbox, reduced-motion, and the publish gate) and
+`music.test.ts` ("combat-outcome stings").
+LIMITS: dispatches nothing, opens no window (no AI/AFK surface); Quick Combat
+has no popup and therefore no cinematic (deliberate); the video is muted and
+NOT mounted under `prefers-reduced-motion` (the sting still plays); jsdom cannot
+compute CSS, so the look (`.victoryCinematic` block at the end of globals.css)
+is a real-browser concern with no e2e spec; the sting resumes whatever scene is
+current when it ends — a scene change mid-sting simply takes over.

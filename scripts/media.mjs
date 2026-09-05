@@ -1,22 +1,28 @@
 #!/usr/bin/env node
 /**
- * Media CLI — the ONE way binary game media moves between a developer machine,
- * the Cloudflare R2 bucket and the two tracked files that describe it
- * (`media-manifest.json`, `src/lib/media-keys.generated.json`). Contract:
- * docs/media-manifest.md; shared library: scripts/lib/media-manifest.mjs.
+ * Media CLI — the ONE way binary files move between a developer machine, the
+ * Cloudflare R2 bucket and the tracked manifests (docs/media-manifest.md;
+ * shared library: scripts/lib/media-manifest.mjs). Two FAMILIES share every
+ * command; `--sources` selects the art-master family instead of game media:
  *
- *   node scripts/media.mjs status                 local tree vs manifest (unpublished / stale / missing)
- *   node scripts/media.mjs manifest [--rehash]    rebuild the manifest + runtime map from public/ (NO upload;
- *                                                  use it only to inspect — publish is what ships files)
- *   node scripts/media.mjs publish [--dry-run] [--all] [--rehash]
- *                                                  hash public/, upload every new/changed file to its
+ *   MEDIA   (default)  public/assets|sounds  → media-manifest.json + src/lib/media-keys.generated.json
+ *   SOURCES (--sources) scripts/anime-art, scripts/*-art, generated-session-art,
+ *                       assets-to-translate → sources-manifest.json (objects under sources/)
+ *
+ *   node scripts/media.mjs status [--sources]      local tree vs manifest (unpublished / stale / missing)
+ *   node scripts/media.mjs manifest [--sources] [--rehash]
+ *                                                  rebuild the manifest (+ runtime map) from disk — NO upload;
+ *                                                  inspect only, publish is what ships files
+ *   node scripts/media.mjs publish [--sources] [--dry-run] [--all] [--rehash] [--concurrency N]
+ *                                                  hash the tree, upload every new/changed file to its
  *                                                  content-addressed key, verify each object in the bucket,
- *                                                  then write manifest + runtime map (needs .env.local R2_*).
+ *                                                  then write the manifest(s) (needs .env.local R2_*).
  *                                                  --all also (re)uploads any manifest object the bucket lacks.
- *   node scripts/media.mjs pull [--prune] [--concurrency N]
+ *   node scripts/media.mjs pull [--sources] [--prune] [--concurrency N]
  *                                                  download every manifest entry missing/mismatched locally
  *                                                  from the CDN (no credentials; fresh clones, CI)
- *   node scripts/media.mjs verify [--sample N]     HEAD every (or N sampled + critical) object on the CDN
+ *   node scripts/media.mjs verify [--sources] [--sample N]
+ *                                                  HEAD every (or N sampled + critical) object on the CDN
  *                                                  and compare size + ETag(md5) — the scheduled smoke test
  *
  * Credentials come from .env.local (loaded here — npm never loads it):
@@ -26,8 +32,8 @@
  *   the object's ETag IS the md5 the manifest records.
  *
  * Safety: publish never deletes or overwrites a bucket object (a changed file
- * is a NEW key), never writes the manifest unless every uploaded object
- * verified in the bucket, and refuses an unknown file kind.
+ * is a NEW key), never writes a manifest unless every uploaded object verified
+ * in the bucket, and (media family) refuses an unknown file kind.
  */
 
 import { createHash, createHmac } from "node:crypto";
@@ -35,18 +41,18 @@ import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileS
 import { dirname, join } from "node:path";
 
 import {
+  FAMILIES,
   IMMUTABLE_CACHE_CONTROL,
-  MANIFEST_FILE,
-  MEDIA_ROOTS,
   REPO_ROOT,
   RUNTIME_MAP_FILE,
   buildManifestFromTree,
   compareTreeToManifest,
-  contentAddressedKey,
   contentTypeFor,
   diffManifests,
+  familyBaseDir,
   loadEnvLocal,
   manifestVersion,
+  objectKeyFor,
   readManifest,
   walkMediaTree,
   writeManifest,
@@ -60,8 +66,11 @@ const option = (name, fallback) => {
   const index = args.indexOf(`--${name}`);
   return index === -1 || index + 1 >= args.length ? fallback : args[index + 1];
 };
+const family = flag("sources") ? FAMILIES.sources : FAMILIES.media;
+const BASE_DIR = familyBaseDir(REPO_ROOT, family);
+const MANIFEST_LABEL = family.manifestFile + (family.runtimeMap ? ` + ${RUNTIME_MAP_FILE}` : "");
 
-/** Keys whose absence would blank a whole screen; always part of a sampled verify. */
+/** Media keys whose absence would blank a whole screen; always part of a sampled verify. */
 const CRITICAL_KEYS = [
   "assets/ui/menu/main-menu-loop.mp4",
   "assets/ui/ornate/banner-command.webp",
@@ -79,7 +88,7 @@ function fail(message) {
 }
 
 function objectKeyOf(manifest, key) {
-  return contentAddressedKey(key, manifest.files[key].md5);
+  return objectKeyFor(family, key, manifest.files[key].md5);
 }
 
 function cdnObjectUrl(manifest, key, query = "") {
@@ -198,7 +207,7 @@ function r2Client() {
 
   return {
     bucket,
-    /** null when absent; { etag, bytes } when present. */
+    /** null when absent; { etag, mismatch(entry) } when present. */
     async head(objectKey) {
       const { url, headers } = signed("HEAD", objectKey, "");
       const response = await fetchWithRetry(url, { method: "HEAD", headers: { ...headers, "accept-encoding": "identity" } });
@@ -227,8 +236,9 @@ function r2Client() {
 // ---------------------------------------------------------------------------
 
 async function buildNext(previous) {
-  log("Hashing the local media tree…");
+  log(`Hashing the local ${family.name} tree…`);
   return buildManifestFromTree({
+    family,
     previous,
     rehash: flag("rehash"),
     onProgress: (done, total) => log(`  hashed ${done}/${total}…`)
@@ -236,40 +246,41 @@ async function buildNext(previous) {
 }
 
 function writeOutputs(next) {
-  writeManifest(next);
-  writeRuntimeMap(next);
+  writeManifest(next, REPO_ROOT, family);
+  if (family.runtimeMap) writeRuntimeMap(next);
 }
 
 async function commandManifest() {
-  const previous = readManifest();
+  const previous = readManifest(REPO_ROOT, family);
   const next = await buildNext(previous);
   const { added, changed, removed } = diffManifests(previous, next);
   writeOutputs(next);
   log(
-    `Wrote ${MANIFEST_FILE} + ${RUNTIME_MAP_FILE}: ${Object.keys(next.files).length} files, version ${manifestVersion(next)} (+${added.length} added, ~${changed.length} changed, -${removed.length} removed vs the previous manifest).`
+    `Wrote ${MANIFEST_LABEL}: ${Object.keys(next.files).length} files, version ${manifestVersion(next)} (+${added.length} added, ~${changed.length} changed, -${removed.length} removed vs the previous manifest).`
   );
   if (added.length + changed.length > 0) {
-    log("WARNING: `manifest` records the local tree WITHOUT uploading. The CDN does not serve these files until `npm run media:publish` runs — do not commit a manifest produced this way.");
+    log(`WARNING: \`manifest\` records the local tree WITHOUT uploading. The CDN does not serve these files until \`npm run media:publish${family.runtimeMap ? "" : " -- --sources"}\` runs — do not commit a manifest produced this way.`);
   }
 }
 
 function commandStatus() {
-  const manifest = readManifest();
-  if (!manifest) fail(`${MANIFEST_FILE} is missing.`);
-  const report = compareTreeToManifest(manifest);
+  const manifest = readManifest(REPO_ROOT, family);
+  if (!manifest) fail(`${family.manifestFile} is missing.`);
+  const report = compareTreeToManifest(manifest, REPO_ROOT, family);
   log(`Manifest: ${Object.keys(manifest.files).length} files, version ${manifestVersion(manifest)}, CDN ${manifest.cdn}`);
-  log(`Local:    ${report.localCount} media file(s) under public/${MEDIA_ROOTS.join("|")}`);
+  log(`Local:    ${report.localCount} ${family.name} file(s) under ${family.roots.join(" | ")}`);
   const show = (label, list) => {
     if (list.length === 0) return;
     log(`${label} (${list.length}):`);
     for (const key of list.slice(0, 40)) log(`  ${key}`);
     if (list.length > 40) log(`  … and ${list.length - 40} more`);
   };
-  show("UNPUBLISHED — present locally, not in the manifest (run `npm run media:publish`)", report.unpublished);
-  show("SIZE MISMATCH — local bytes differ from the manifest (media:publish to ship them, media:pull to restore)", report.sizeMismatch);
-  show("MISSING LOCALLY — in the manifest, not on this disk (run `npm run media:pull`)", report.missingLocally);
+  const suffix = family.runtimeMap ? "" : " -- --sources";
+  show(`UNPUBLISHED — present locally, not in the manifest (run \`npm run media:publish${suffix}\`)`, report.unpublished);
+  show(`SIZE MISMATCH — local bytes differ from the manifest (media:publish${suffix} to ship them, media:pull${suffix} to restore)`, report.sizeMismatch);
+  show(`MISSING LOCALLY — in the manifest, not on this disk (run \`npm run media:pull${suffix}\`)`, report.missingLocally);
   if (report.unpublished.length + report.sizeMismatch.length + report.missingLocally.length === 0) {
-    log("Local media tree matches the manifest.");
+    log(`Local ${family.name} tree matches the manifest.`);
   } else {
     process.exitCode = 1;
   }
@@ -279,12 +290,12 @@ async function commandPublish() {
   const dryRun = flag("dry-run");
   const all = flag("all");
   const r2 = r2Client();
-  const previous = readManifest();
+  const previous = readManifest(REPO_ROOT, family);
   const next = await buildNext(previous);
   const { added, changed, removed } = diffManifests(previous, next);
   log(`Local tree: ${Object.keys(next.files).length} files; +${added.length} new, ~${changed.length} changed, -${removed.length} gone since the manifest.`);
   if (removed.length > 0) {
-    log(`NOTE: ${removed.length} manifest entr${removed.length === 1 ? "y is" : "ies are"} not on this disk and LEAVE the manifest (objects stay in the bucket). A stale local tree? Ctrl-C and run \`npm run media:pull\` first.`);
+    log(`NOTE: ${removed.length} manifest entr${removed.length === 1 ? "y is" : "ies are"} not on this disk and LEAVE the manifest (objects stay in the bucket). A stale local tree? Ctrl-C and run \`npm run media:pull${family.runtimeMap ? "" : " -- --sources"}\` first.`);
     for (const key of removed.slice(0, 20)) log(`  - ${key}`);
   }
   const candidates = all ? Object.keys(next.files) : [...added, ...changed];
@@ -307,9 +318,9 @@ async function commandPublish() {
   }
   log(`${toUpload.length} object(s) to upload (${candidates.length - toUpload.length} already in the bucket).`);
   if (toUpload.length === 0) {
-    if (!dryRun && (previous === null || diffManifests(previous, next).removed.length > 0 || added.length + changed.length > 0)) {
+    if (!dryRun && (previous === null || removed.length > 0 || added.length + changed.length > 0)) {
       writeOutputs(next);
-      log(`Wrote ${MANIFEST_FILE} + ${RUNTIME_MAP_FILE} (version ${manifestVersion(next)}).`);
+      log(`Wrote ${MANIFEST_LABEL} (version ${manifestVersion(next)}).`);
     } else {
       log("Nothing to do.");
     }
@@ -322,7 +333,6 @@ async function commandPublish() {
     return;
   }
 
-  const publicDir = join(REPO_ROOT, "public");
   const totalBytes = toUpload.reduce((sum, key) => sum + next.files[key].bytes, 0);
   log(`Uploading ${toUpload.length} object(s), ${(totalBytes / 1e6).toFixed(1)} MB, to r2:${r2.bucket}…`);
   const failures = [];
@@ -331,7 +341,7 @@ async function commandPublish() {
   await mapConcurrent(toUpload, Number(option("concurrency", "12")), async (key) => {
     const objectKey = objectKeyOf(next, key);
     try {
-      const body = readFileSync(join(publicDir, key));
+      const body = readFileSync(join(BASE_DIR, key));
       const md5 = createHash("md5").update(body).digest("hex");
       if (md5 !== next.files[key].md5) throw new Error("file changed while publishing");
       const etag = await r2.put(objectKey, body, contentTypeFor(key));
@@ -366,23 +376,22 @@ async function commandPublish() {
   }
   writeOutputs(next);
   log(
-    `Published ${toUpload.length} object(s); wrote ${MANIFEST_FILE} + ${RUNTIME_MAP_FILE} (version ${manifestVersion(next)}). Commit both files — the next deploy serves the new art.`
+    `Published ${toUpload.length} object(s); wrote ${MANIFEST_LABEL} (version ${manifestVersion(next)}). Commit the manifest${family.runtimeMap ? " and the runtime map" : ""} — the next deploy serves the new files.`
   );
 }
 
 async function commandPull() {
-  const manifest = readManifest();
-  if (!manifest) fail(`${MANIFEST_FILE} is missing.`);
+  const manifest = readManifest(REPO_ROOT, family);
+  if (!manifest) fail(`${family.manifestFile} is missing.`);
   const concurrency = Number(option("concurrency", "12"));
-  const publicDir = join(REPO_ROOT, "public");
-  const report = compareTreeToManifest(manifest);
+  const report = compareTreeToManifest(manifest, REPO_ROOT, family);
   const wanted = [...report.missingLocally, ...report.sizeMismatch];
   log(`Manifest ${Object.keys(manifest.files).length} files; ${wanted.length} to download (${report.missingLocally.length} missing, ${report.sizeMismatch.length} size-mismatched).`);
   const failures = [];
   let done = 0;
   await mapConcurrent(wanted, concurrency, async (key) => {
     const entry = manifest.files[key];
-    const target = join(publicDir, key);
+    const target = join(BASE_DIR, key);
     const tmp = `${target}.part`;
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       try {
@@ -408,7 +417,7 @@ async function commandPull() {
   });
   if (flag("prune")) {
     for (const key of report.unpublished) {
-      unlinkSync(join(publicDir, key));
+      unlinkSync(join(BASE_DIR, key));
       log(`  pruned unpublished local file ${key}`);
     }
   } else if (report.unpublished.length > 0) {
@@ -418,12 +427,12 @@ async function commandPull() {
     for (const failure of failures) log(`  ✗ ${failure}`);
     fail(`${failures.length} file(s) failed to download.`);
   }
-  log(`Pulled ${wanted.length} file(s); local tree matches ${MANIFEST_FILE}.`);
+  log(`Pulled ${wanted.length} file(s); local ${family.name} tree matches ${family.manifestFile}.`);
 }
 
 async function commandVerify() {
-  const manifest = readManifest();
-  if (!manifest) fail(`${MANIFEST_FILE} is missing.`);
+  const manifest = readManifest(REPO_ROOT, family);
+  if (!manifest) fail(`${family.manifestFile} is missing.`);
   const allKeys = Object.keys(manifest.files);
   let keys = allKeys;
   const sample = Number(option("sample", "0"));
@@ -433,9 +442,10 @@ async function commandVerify() {
     const seed = createHash("sha1").update(new Date().toISOString().slice(0, 10)).digest();
     const scored = allKeys.map((key) => [createHash("sha1").update(seed).update(key).digest().readUInt32BE(0), key]);
     scored.sort((a, b) => a[0] - b[0]);
-    keys = [...new Set([...CRITICAL_KEYS.filter((key) => manifest.files[key]), ...scored.slice(0, sample).map((s) => s[1])])];
+    const critical = family.runtimeMap ? CRITICAL_KEYS.filter((key) => manifest.files[key]) : [];
+    keys = [...new Set([...critical, ...scored.slice(0, sample).map((s) => s[1])])];
   }
-  log(`Verifying ${keys.length} of ${allKeys.length} object(s) on ${manifest.cdn}…`);
+  log(`Verifying ${keys.length} of ${allKeys.length} ${family.name} object(s) on ${manifest.cdn}…`);
   const problems = [];
   let checked = 0;
   await mapConcurrent(keys, 16, async (key) => {
@@ -458,10 +468,9 @@ async function commandVerify() {
 }
 
 function commandTree() {
-  const publicDir = join(REPO_ROOT, "public");
-  for (const root of MEDIA_ROOTS) {
-    const { media, other } = walkMediaTree(publicDir, root);
-    log(`public/${root}: ${media.length} media file(s), ${other.length} tracked code/doc file(s)`);
+  for (const root of family.roots) {
+    const { media, other } = walkMediaTree(BASE_DIR, root, family.extensions);
+    log(`${family.baseDir ? `${family.baseDir}/` : ""}${root}: ${media.length} ${family.name} file(s), ${other.length} tracked code/doc file(s)`);
   }
 }
 

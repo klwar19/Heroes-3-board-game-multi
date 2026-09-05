@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
-import { hasMediaFile, localMediaPath, mediaExtensionOf, mediaFileInfo } from "@/lib/media-manifest";
+import { existsSync, readFileSync } from "node:fs";
+import { hasMediaFile, localMediaPath, mediaExtensionOf, mediaFileInfo, sourceFileInfo } from "@/lib/media-manifest";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { coreUnitDefinitions } from "@/data/factions/units";
@@ -180,9 +180,10 @@ describe("blank-wiki neutral card faces", () => {
       expect(existsSync(repoFile(`scripts/card-glyphs/${glyph}.svg`)), glyph).toBe(true);
     }
     for (const source of ["leprechaun.png", "satyrs.png", "steel_golems.png", "fangarm.png"]) {
-      const file = repoFile(`scripts/neutral-unit-art/${source}`);
-      expect(existsSync(file), source).toBe(true);
-      expect(statSync(file).size, source).toBeGreaterThan(1_000_000);
+      // Art masters are SOURCES (sources-manifest.json), not tracked files.
+      const info = sourceFileInfo(`scripts/neutral-unit-art/${source}`);
+      expect(info, `${source} - run npm run media:publish -- --sources`).toBeDefined();
+      expect(info!.bytes, source).toBeGreaterThan(1_000_000);
     }
     expect(builder).toContain("unitTypeMark(card)");
     expect(builder).toContain("const cleanFrame = await cleanNeutralFrame(card.tier)");

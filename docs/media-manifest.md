@@ -54,7 +54,7 @@ shows art without pulling anything.
 | `npm run media:publish` | **yes** | Hash `public/assets|sounds`, upload every new or changed file to its content-addressed key (SigV4 `PutObject`, single-part with `Content-MD5`, skipping objects the bucket already has), HEAD-verify each object, then write **both** tracked files. `--dry-run` lists what would upload; `--all` also re-checks every manifest object and uploads any the bucket lacks; `--rehash` ignores the mtime shortcut. The manifest is **never** written unless every object verified. |
 | `npm run media:pull` | no | Download every manifest entry missing or size-mismatched on this disk from the CDN, md5-checked, atomic writes. `--prune` deletes local media files not in the manifest. |
 | `npm run media:verify` | no | HEAD every object on the CDN and compare `Content-Length`/`ETag` with the manifest (`--sample N` for the rotating daily sample + the screen-critical keys). |
-| `node scripts/media.mjs manifest` | no | Rebuild the manifest + map from the local tree **without uploading** — for inspection only; never commit its output. |
+| `node scripts/media.mjs manifest` | no | Rebuild the manifest + map from the local tree **without uploading** — for inspection only; never commit its output. TRAP: a later plain `publish` diffs against THAT manifest and sees nothing new — run `publish --all` afterwards (it probes the bucket). |
 
 `.env.local` (gitignored) needs `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`,
 `R2_SECRET_ACCESS_KEY`; optional `R2_BUCKET` (default `heroes3`), `R2_ENDPOINT`.
@@ -171,3 +171,29 @@ Every commit keeps its code, message and author; only the media blobs disappear
 - `media:pull` only downloads content-addressed objects, so a manifest produced
   before 2026-09-05 cannot be pulled (none was ever committed).
 - Fonts stay tracked and same-origin (`CDN_SERVES_FONTS = false`).
+
+## The SOURCES family — art masters (2026-09-05, same day)
+
+The art pipeline's inputs — `scripts/anime-art`, `scripts/commander-art`,
+`scripts/neutral-unit-art`, `scripts/doom-art`, `generated-session-art`,
+`assets-to-translate` (raw renders, PSD-grade PNGs, review sheets, translation
+scans; ~1.1 GB, never served to players) — left git the same way. Differences from
+the media family, all driven by `FAMILIES.sources` in `scripts/lib/media-manifest.mjs`:
+
+| | media | sources |
+| --- | --- | --- |
+| manifest | `media-manifest.json` | `sources-manifest.json` |
+| key | public URL path (`assets/ui/x.webp`) | repo-relative path (`scripts/anime-art/raw/x.png`) |
+| object | `<key>.<md5:8>.<ext>` | `sources/<key>.<md5:8>.<ext>` |
+| kinds | webp png jpg gif svg avif mp4 webm mp3 ogg wav | png jpg webp gif psd tif bmp avif mp3 wav ogg mp4 mov bik (**svg / json / md / mjs stay tracked** — editable vectors and contracts are code) |
+| runtime map | yes (`assetUrl`) | none (nothing is served) |
+| unknown extension | refused | simply stays tracked |
+| commands | `npm run media:<cmd>` | `npm run media:<cmd> -- --sources` |
+| tests | `hasMediaFile` / `mediaFileInfo` / … | `hasSourceFile` / `sourceFileInfo` / `localSourcePath` |
+
+A build script that needs its masters runs `npm run media:pull -- --sources` first
+(one-time ~1.1 GB); publishing a new master is `npm run media:publish -- --sources`
+and committing `sources-manifest.json`. Tests touching masters
+(`art-foundation.test.ts`, `placeholder-neutral-card-images.test.ts`) assert
+existence / dimensions / size from the sources manifest and inspect bytes only
+when the file was pulled.

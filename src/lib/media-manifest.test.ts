@@ -13,6 +13,14 @@ import {
   cdnObjectPath,
   compareLocalTreeToManifest,
   contentAddressedKey,
+  SOURCE_EXTENSIONS,
+  SOURCE_ROOTS,
+  SOURCES_MANIFEST_FILE,
+  hasSourceFile,
+  isSourcePath,
+  localSourcePath,
+  readSourcesManifest,
+  sourceFileInfo,
   cssMediaRefs,
   hasLocalMediaTree,
   hasMediaFile,
@@ -218,5 +226,64 @@ describe("the committed media manifest", () => {
     expect(report.unpublished, "local media files missing from media-manifest.json — run `npm run media:publish`").toEqual([]);
     expect(report.sizeMismatch, "local media files differ from media-manifest.json — run `npm run media:publish` (to ship them) or `npm run media:pull` (to restore)").toEqual([]);
     expect(report.missingLocally, "manifest files missing on this disk — run `npm run media:pull`").toEqual([]);
+  });
+});
+
+describe("the committed SOURCES manifest (art masters — docs/media-manifest.md)", () => {
+  const sources = readSourcesManifest(REPO_ROOT);
+
+  it("exists, is well-formed and every key is a binary master under a SOURCE root", () => {
+    expect(sources, `${SOURCES_MANIFEST_FILE} is missing`).toBeTruthy();
+    const keys = Object.keys(sources!.files);
+    expect(keys.length).toBeGreaterThan(500);
+    expect(sources!.count).toBe(keys.length);
+    expect(sources!.roots).toEqual([...SOURCE_ROOTS]);
+    expect(keys).toEqual([...keys].sort());
+    expect(keys.filter((key) => !isSourcePath(key))).toEqual([]);
+    const badEntries = keys.filter((key) => {
+      const entry = sources!.files[key];
+      return !/^[0-9a-f]{32}$/u.test(entry.md5) || !(Number.isInteger(entry.bytes) && entry.bytes > 0);
+    });
+    expect(badEntries).toEqual([]);
+    // Every raster master carries dimensions (the art-gate tests read them).
+    const rasterWithoutDims = keys.filter(
+      (key) =>
+        ["png", "jpg", "jpeg", "webp", "gif"].includes(mediaExtensionOf(key)) &&
+        !(sources!.files[key].width! > 0 && sources!.files[key].height! > 0)
+    );
+    expect(rasterWithoutDims).toEqual([]);
+  });
+
+  it("answers existence / info / local presence; SVG and JSON beside the masters are NOT sources (they stay tracked)", () => {
+    const [first] = Object.keys(sources!.files);
+    expect(hasSourceFile(first, REPO_ROOT)).toBe(true);
+    expect(hasSourceFile(`/${first}`, REPO_ROOT)).toBe(true);
+    expect(sourceFileInfo(first, REPO_ROOT)).toEqual(sources!.files[first]);
+    expect(hasSourceFile("scripts/anime-art/not-a-published-master.png", REPO_ROOT)).toBe(false);
+    expect(isSourcePath("scripts/anime-art/editable/x.svg")).toBe(false);
+    expect(isSourcePath("scripts/anime-art/contract.json")).toBe(false);
+    expect(isSourcePath("public/assets/x.png")).toBe(false);
+    expect(isSourcePath("generated-session-art/x.png")).toBe(true);
+    expect((SOURCE_EXTENSIONS as readonly string[]).includes("svg")).toBe(false);
+    // Bytes are optional: null on a checkout that never pulled the masters.
+    const local = localSourcePath(first, REPO_ROOT);
+    expect(local === null || local.endsWith(first.split("/").at(-1)!)).toBe(true);
+  });
+
+  it("agrees with the scripts/lib twin (roots, extensions, object prefix)", async () => {
+    const twinPath = join(REPO_ROOT, "scripts/lib/media-manifest.mjs");
+    const twin = (await import(/* @vite-ignore */ `file:///${twinPath.replaceAll("\\", "/")}`)) as {
+      SOURCE_ROOTS: string[];
+      SOURCE_EXTENSIONS: string[];
+      FAMILIES: { sources: { objectPrefix: string; manifestFile: string; roots: string[] } };
+      objectKeyFor: (family: unknown, key: string, md5: string) => string;
+    };
+    expect(twin.SOURCE_ROOTS).toEqual([...SOURCE_ROOTS]);
+    expect(twin.SOURCE_EXTENSIONS).toEqual([...SOURCE_EXTENSIONS]);
+    expect(twin.FAMILIES.sources.manifestFile).toBe(SOURCES_MANIFEST_FILE);
+    const [first] = Object.keys(sources!.files);
+    expect(twin.objectKeyFor(twin.FAMILIES.sources, first, sources!.files[first].md5)).toBe(
+      `sources/${contentAddressedKey(first, sources!.files[first].md5)}`
+    );
   });
 });

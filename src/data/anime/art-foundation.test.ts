@@ -1,11 +1,23 @@
-import { readFile, readdir, stat } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
+import { sourceFileInfo } from "@/lib/media-manifest";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const ART_ROOT = resolve(ROOT, "scripts/anime-art");
+
+/**
+ * The raw masters and rendered proofs are art-pipeline SOURCES: not in git, listed
+ * by sources-manifest.json with md5 / bytes / width / height (docs/media-manifest.md).
+ * A master that exists only on this disk is NOT published and fails here.
+ */
+function publishedSource(relativeToArtRoot: string) {
+  const info = sourceFileInfo(`scripts/anime-art/${relativeToArtRoot}`);
+  expect(info, `${relativeToArtRoot} is not in sources-manifest.json (run npm run media:publish -- --sources)`).toBeDefined();
+  return info!;
+}
 
 type Manifest = {
   status: string;
@@ -53,9 +65,8 @@ async function expectApprovedMasters(
   expect(data.masters.map(({ slug, tier }) => [slug, tier])).toEqual(expected);
   for (const master of data.masters) {
     expect(master.review).toBe("approved");
-    const file = resolve(ART_ROOT, master.file);
-    expect((await stat(file)).size).toBeGreaterThan(1_000_000);
-    const metadata = await sharp(file).metadata();
+    const metadata = publishedSource(master.file);
+    expect(metadata.bytes).toBeGreaterThan(1_000_000);
     // Current masters vary between 946–1062px wide and 1481–1662px tall;
     // every one exceeds the 743×1040 card export.
     expect(metadata.width).toBeGreaterThanOrEqual(900);
@@ -84,16 +95,8 @@ async function expectEditableSuite(
       expect(svg).toContain(master.file.split("/").at(-1));
       expect(svg).not.toContain("data:image/png;base64");
 
-      const proof = resolve(
-        ART_ROOT,
-        `previews/${directory}/units`,
-        `${stem}.webp`,
-      );
-      expect(await sharp(proof).metadata()).toMatchObject({
-        width: 743,
-        height: 1040,
-        format: "webp",
-      });
+      const proof = publishedSource(`previews/${directory}/units/${stem}.webp`);
+      expect(proof).toMatchObject({ width: 743, height: 1040 });
     }
   }
 }
@@ -114,16 +117,10 @@ describe("anime art foundation", () => {
   it("keeps the approved image-generated Azure frame as a linked editable source", async () => {
     const azureManifest = await manifest("azure-breeze");
     expect(azureManifest.frameMaster?.review).toBe("approved");
-    const framePath = resolve(
-      ART_ROOT,
-      azureManifest.frameMaster?.file ?? "missing",
-    );
-    expect((await stat(framePath)).size).toBeGreaterThan(1_000_000);
-    expect(await sharp(framePath).metadata()).toMatchObject({
-      width: 1060,
-      height: 1484,
-      format: "png",
-    });
+    const frame = publishedSource(azureManifest.frameMaster?.file ?? "missing");
+    expect(azureManifest.frameMaster?.file.endsWith(".png")).toBe(true);
+    expect(frame.bytes).toBeGreaterThan(1_000_000);
+    expect(frame).toMatchObject({ width: 1060, height: 1484 });
 
     const azureCard = await readFile(
       resolve(

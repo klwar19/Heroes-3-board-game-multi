@@ -46,3 +46,10 @@ jobs:
           else
             node scripts/media.mjs verify --sample 120
           fi
+      - name: Verify art-master objects against sources-manifest.json
+        run: |
+          if [ "${{ inputs.full }}" = "true" ]; then
+            node scripts/media.mjs verify --sources
+          else
+            node scripts/media.mjs verify --sources --sample 40
+          fi

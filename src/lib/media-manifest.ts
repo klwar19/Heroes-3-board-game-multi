@@ -217,6 +217,71 @@ export function compareLocalTreeToManifest(rootDir: string = process.cwd()): Loc
   return report;
 }
 
+// ---------------------------------------------------------------------------
+// SOURCES family — the art-pipeline masters (docs/media-manifest.md). Same
+// mechanism, separate manifest, no runtime map: `sources-manifest.json` keyed by
+// repo-relative path ("scripts/anime-art/raw/x.png"), objects under sources/.
+// Tests that read a master's bytes (sharp metadata on a raw render) assert
+// existence/dimensions from this manifest and inspect bytes only when the file
+// was pulled (`localSourcePath`).
+// ---------------------------------------------------------------------------
+
+export const SOURCES_MANIFEST_FILE = "sources-manifest.json";
+export const SOURCE_ROOTS = [
+  "scripts/anime-art",
+  "scripts/commander-art",
+  "scripts/neutral-unit-art",
+  "scripts/doom-art",
+  "generated-session-art",
+  "assets-to-translate"
+] as const;
+export const SOURCE_EXTENSIONS = ["png", "jpg", "jpeg", "webp", "gif", "psd", "tif", "tiff", "bmp", "avif", "mp3", "wav", "ogg", "mp4", "mov", "bik"] as const;
+
+const sourcesCache = new Map<string, MediaManifest | null>();
+
+export function readSourcesManifest(rootDir: string = process.cwd()): MediaManifest | null {
+  if (sourcesCache.has(rootDir)) return sourcesCache.get(rootDir)!;
+  const file = join(rootDir, SOURCES_MANIFEST_FILE);
+  let manifest: MediaManifest | null = null;
+  if (existsSync(file)) {
+    const parsed = JSON.parse(readFileSync(file, "utf8")) as MediaManifest;
+    if (parsed.version !== MEDIA_MANIFEST_FORMAT_VERSION || typeof parsed.files !== "object") {
+      throw new Error(`${file}: unsupported sources manifest format`);
+    }
+    manifest = parsed;
+  }
+  sourcesCache.set(rootDir, manifest);
+  return manifest;
+}
+
+/** Test hook: forget cached sources manifests. */
+export function resetSourcesManifestCache(): void {
+  sourcesCache.clear();
+}
+
+export function isSourcePath(path: string): boolean {
+  const key = mediaKeyFromUrl(path);
+  return (
+    SOURCE_ROOTS.some((root) => key.startsWith(`${root}/`)) &&
+    (SOURCE_EXTENSIONS as readonly string[]).includes(mediaExtensionOf(key))
+  );
+}
+
+/** Manifest entry of a published art master ("scripts/anime-art/…png"), or undefined. */
+export function sourceFileInfo(path: string, rootDir?: string): MediaManifestEntry | undefined {
+  return readSourcesManifest(rootDir)?.files[mediaKeyFromUrl(path)];
+}
+
+export function hasSourceFile(path: string, rootDir?: string): boolean {
+  return sourceFileInfo(path, rootDir) !== undefined;
+}
+
+/** Absolute path of a master when it is present on THIS disk, else null. */
+export function localSourcePath(path: string, rootDir: string = process.cwd()): string | null {
+  const abs = join(rootDir, mediaKeyFromUrl(path));
+  return existsSync(abs) ? abs : null;
+}
+
 /** Root-relative /assets|/sounds paths referenced by url() in a stylesheet (fonts excluded), unique + sorted. */
 export function cssMediaRefs(cssText: string): string[] {
   const refs = new Set<string>();
