@@ -1124,11 +1124,11 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // projection from `parallelStateForPlayer` instead of the raw global pointer.
 // A v103 edge REJECTS the watch selection and keeps dragging a spectator from
 // battle to battle. `npm run deploy:partykit` owed with this bump.
-export const ENGINE_PROTOCOL_VERSION = 106;
 // v106 (2026-09-05): `dwarven-treasury-reward-nerf` makes the BINH 7 + 2X
 // Dwarven Treasury reward an independent serialized option. Off/Legacy keeps
 // the printed 7 + 3X reward. A v103 worker can award a different gold total.
 // `npm run deploy:partykit` owed with this bump.
+export const ENGINE_PROTOCOL_VERSION = 106;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
