@@ -7148,28 +7148,38 @@ export function blackMarketOffers(state: GameState): { cardId: CardId; deckId: s
 }
 
 /**
- * Elemental Conflux: for every Dwelling (unlocked recruit tier) the player has,
- * the first Elementals card found in that tier's Neutral deck (draw pile top
- * first, then discard). One candidate per qualifying tier.
+ * Elemental Conflux: for every Dwelling the player has, reveal the next
+ * Elementals card in that tier's Neutral deck (draw pile top first, then
+ * discard). Dwelling multiplicity matters: two Bronze Dwellings reveal two
+ * Bronze candidates. Only the single-sided Neutral cards qualify — never the
+ * similarly named Conflux summon-only Few/Pack definitions.
  */
 export function elementalConfluxCandidates(
   state: GameState,
   playerId: PlayerId
 ): { unitDefId: string; tier: "bronze" | "silver" | "gold" }[] {
-  const tiers = unlockedRecruitTiers(state, playerId);
   const candidates: { unitDefId: string; tier: "bronze" | "silver" | "gold" }[] = [];
-  for (const tier of ["bronze", "silver", "gold"] as const) {
-    if (!tiers.has(tier)) {
-      continue;
-    }
+  const nextElementalByTier = new Map<string, number>();
+  for (const tier of playerDwellingTiers(state, playerId)) {
+    if (tier === "azure") continue;
     const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
     if (!deck) {
       continue;
     }
     const search = [...deck.drawPile].reverse().concat([...deck.discardPile].reverse());
-    const found = search.find((unitDefId) => coreUnitDefinitions[unitDefId]?.name.includes("Elemental"));
+    const elementals = search.filter((unitDefId) => {
+      const def = coreUnitDefinitions[unitDefId];
+      return Boolean(
+        def?.neutral &&
+        def.name.includes("Elementals") &&
+        def.neutral.abilities.includes("elemental-damage")
+      );
+    });
+    const elementalIndex = nextElementalByTier.get(tier) ?? 0;
+    const found = elementals[elementalIndex];
     if (found) {
       candidates.push({ unitDefId: found, tier });
+      nextElementalByTier.set(tier, elementalIndex + 1);
     }
   }
   return candidates;
@@ -12523,7 +12533,11 @@ export function processPendingVisit(state: GameState): void {
             steps: [{ type: "ELEMENTAL_RECRUIT_ONE", unitDefId, tier } as VisitStep]
           })),
           decline: { label: "Decline", steps: [] },
-          skipWhenEmpty: true
+          // The printed location reveals one Elementals card for every Dwelling
+          // even when none can currently be paid for. Keep those cards visible
+          // (disabled) so entering the field never looks like a no-op and the
+          // player can explicitly decline.
+          showUnaffordable: true
         });
         break;
       }
@@ -17744,39 +17758,101 @@ export const PLAYABLE_FACTIONS: string[] = Object.values(coreFactionDefinitions)
 
 /** Stamp once, including designer-preassigned settlements. Never roll in a read/UI path. */
 export function ensureSettlementRecruitFactions(state: GameState): void {
-  if (!houseRuleEnabled(state, "settlement-foreign-recruitment")) return;
+  const foreignRosterRule = houseRuleEnabled(state, "settlement-foreign-recruitment");
+  const neutralUnitsRule = houseRuleEnabled(state, "settlement-neutral-recruitment");
+  if (!foreignRosterRule && !neutralUnitsRule) return;
   for (const field of Object.values(state.adventure?.fields ?? {})) {
     if (field.location !== "settlement" || !field.flagOwnerId || field.settlementRecruitFactionId) continue;
     const player = state.players[field.flagOwnerId];
     if (!player) continue;
-    const pool = PLAYABLE_FACTIONS.filter((id) => id !== player.factionId && isPlayableFaction(id, state.anime));
+    // The neutral-recruitment rule reads the Settlement's printed faction. A
+    // custom/legacy Settlement without one receives a stable identity based on
+    // the field itself (never on its current owner), so changing hands cannot
+    // change which Neutral cards it sells.
+    const printedFaction = field.faction && isPlayableFaction(field.faction, state.anime)
+      ? field.faction
+      : undefined;
+    const pool = PLAYABLE_FACTIONS.filter((id) =>
+      isPlayableFaction(id, state.anime) &&
+      (neutralUnitsRule || id !== player.factionId)
+    );
     if (pool.length === 0) continue;
-    const random = adventureRandom(state, `settlement-recruit-${field.spaceId}`);
-    field.settlementRecruitFactionId = pool[random.nextInt(0, pool.length - 1)];
+    const random = adventureRandom(state, `settlement-faction-${field.spaceId}`);
+    field.settlementRecruitFactionId = neutralUnitsRule && printedFaction
+      ? printedFaction
+      : pool[random.nextInt(0, pool.length - 1)];
+    const factionName = coreFactionDefinitions[field.settlementRecruitFactionId]?.name ?? field.settlementRecruitFactionId;
     appendEvent(state, {
       type: "EVENT_NOTE", playerId: player.id,
-      message: `Settlement recruits unlocked: ${coreFactionDefinitions[field.settlementRecruitFactionId].name}. All unit tiers are available at normal cost while you control this settlement.`,
+      message: neutralUnitsRule
+        ? `Settlement identified: ${factionName}. Its corresponding Neutral Units are available at printed Neutral cost while you control it.`
+        : `Settlement recruits unlocked: ${factionName}. All unit tiers are available at normal cost while you control this settlement.`,
     });
   }
 }
 
 export function settlementRecruitFactions(state: GameState, playerId: PlayerId): string[] {
-  if (!houseRuleEnabled(state, "settlement-foreign-recruitment")) return [];
+  if (
+    !houseRuleEnabled(state, "settlement-foreign-recruitment") &&
+    !houseRuleEnabled(state, "settlement-neutral-recruitment")
+  ) return [];
   return [...new Set(Object.values(state.adventure?.fields ?? {}).flatMap((field) =>
     field.location === "settlement" && field.flagOwnerId === playerId && field.settlementRecruitFactionId &&
     isPlayableFaction(field.settlementRecruitFactionId, state.anime) ? [field.settlementRecruitFactionId] : []
   ))];
 }
 
+/** Neutral-deck cards sold by the factions of this player's Settlements. */
+export function settlementNeutralRecruitUnitIds(state: GameState, playerId: PlayerId): string[] {
+  if (!houseRuleEnabled(state, "settlement-neutral-recruitment")) return [];
+  return [...new Set(settlementRecruitFactions(state, playerId)
+    .flatMap((factionId) => neutralUnitIdsByFaction[factionId] ?? []))];
+}
+
+/**
+ * The foreign-roster Settlement rule only applies while the Neutral-Units rule is
+ * OFF: with both on, a Settlement is stamped with its PRINTED faction (which may
+ * even be the owner's own) and its text promises "no access to the faction's
+ * normal Few/Pack roster" — so the Neutral rule takes precedence and the roster
+ * grant is withheld. ONE read shared by the id list and the tier gate.
+ */
+function settlementForeignRosterActive(state: GameState): boolean {
+  return (
+    houseRuleEnabled(state, "settlement-foreign-recruitment") &&
+    !houseRuleEnabled(state, "settlement-neutral-recruitment")
+  );
+}
+
 export function playerRecruitUnitIds(state: GameState, playerId: PlayerId): string[] {
   const own = state.players[playerId]?.factionId;
-  return [...new Set([...(own ? [own] : []), ...settlementRecruitFactions(state, playerId)]
-    .flatMap((id) => coreFactionDefinitions[id]?.units ?? []))];
+  const settlementFactions = settlementRecruitFactions(state, playerId);
+  const foreignRosterIds = settlementForeignRosterActive(state)
+    ? settlementFactions.flatMap((id) => coreFactionDefinitions[id]?.units ?? [])
+    : [];
+  return [...new Set([
+    ...(own ? coreFactionDefinitions[own]?.units ?? [] : []),
+    ...foreignRosterIds,
+    ...settlementNeutralRecruitUnitIds(state, playerId),
+  ])];
 }
 
 export function playerRecruitTierUnlocked(state: GameState, playerId: PlayerId, unitDefId: string): boolean {
-  return settlementRecruitFactions(state, playerId).some((id) => coreFactionDefinitions[id]?.units.includes(unitDefId)) ||
+  return settlementNeutralRecruitUnitIds(state, playerId).includes(unitDefId) ||
+    (settlementForeignRosterActive(state) &&
+      settlementRecruitFactions(state, playerId).some((id) => coreFactionDefinitions[id]?.units.includes(unitDefId))) ||
     unlockedRecruitTiers(state, playerId).has(coreUnitDefinitions[unitDefId]?.tier);
+}
+
+/** The physical side bought for a normal Population recruit action. */
+export function playerRecruitUnitSide(
+  state: GameState,
+  playerId: PlayerId,
+  unitDefId: string
+): "few" | "neutral" | null {
+  if (settlementNeutralRecruitUnitIds(state, playerId).includes(unitDefId)) {
+    return "neutral";
+  }
+  return getUnitSide(unitDefId, "few") ? "few" : null;
 }
 
 /**
@@ -18240,19 +18316,23 @@ export function playerCanRecruitFewNow(state: GameState, playerId: PlayerId, uni
     return false;
   }
   const def = coreUnitDefinitions[unitDefId];
-  if (!def || !getUnitSide(unitDefId, "few")) {
+  const recruitSide = playerRecruitUnitSide(state, playerId, unitDefId);
+  if (!def || !recruitSide) {
+    return false;
+  }
+  if (recruitSide === "neutral" && !neutralDeckHas(state, def.tier, unitDefId)) {
     return false;
   }
   if (!playerRecruitTierUnlocked(state, playerId, unitDefId)) {
     return false;
   }
-  if (!houseRuleEnabled(state, "duplicate-unit-recruitment") && player.army.some((unit) => unit.side !== "bank" && unit.unitDefId === unitDefId)) {
+  if ((recruitSide === "neutral" || !houseRuleEnabled(state, "duplicate-unit-recruitment")) && player.army.some((unit) => unit.side !== "bank" && unit.unitDefId === unitDefId)) {
     return false;
   }
-  if (factoryGoldUnitConflict(player.army, unitDefId)) {
+  if (recruitSide === "few" && factoryGoldUnitConflict(player.army, unitDefId)) {
     return false;
   }
-  if (isMgqGoldUnit(unitDefId) && !mgqGoldContractAllows(player, unitDefId)) {
+  if (recruitSide === "few" && isMgqGoldUnit(unitDefId) && !mgqGoldContractAllows(player, unitDefId)) {
     return false;
   }
   return true;

@@ -295,6 +295,16 @@ const blueArchiveAbilityVoicePlans: Record<string, SpellFxPlan> = Object.fromEnt
 
 export const abilityFxPlans: Record<string, SpellFxPlan> = {
   ...blueArchiveAbilityVoicePlans,
+  // Mutsuki's mines use her own playful bomb silhouette before the damage
+  // number lands. These override the voice-only defaults above.
+  "kivotos-trick-mine": {
+    affect: [{ key: "mutsuki-prank-bomb" }],
+    sound: "blue-archive/voices/mutsuki/ability"
+  },
+  "kivotos-explosive-prank": {
+    affect: [{ key: "mutsuki-prank-bomb" }],
+    sound: "blue-archive/voices/mutsuki/ability"
+  },
   // Ibuki's Sniper Shot flies its own bullet tracer and spark-burst impact
   // (sniper-shot-* sheets, built by scripts/build-sniper-shot-fx.mjs) — it used
   // to borrow the Magic Arrow flight/hit (USER REQUEST 2026-09-04).

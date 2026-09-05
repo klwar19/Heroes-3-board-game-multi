@@ -67,6 +67,15 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     legacyDefault: false,
   },
   {
+    id: "settlement-neutral-recruitment",
+    label: "Settlements: faction Neutral Units",
+    description:
+      "Each Settlement belongs to the faction printed on its map field. While you control it, you may buy only that faction's corresponding single-sided Neutral Unit cards at their printed Neutral cost; you do not gain access to the faction's normal Few/Pack roster. These recruits cannot be reinforced. Takes precedence over \"Settlements: recruit from another town\" when both are on.",
+    category: "units",
+    default: false,
+    legacyDefault: false,
+  },
+  {
     id: "duplicate-unit-recruitment",
     label: "Allow buying the same unit",
     description: "Buy additional Few copies of a unit you already own. Each copy has its own army slot, upgrades, experience and battle casualties, at normal costs. The recruit button remains available after a copy dies. Normal battle capacity and faction restrictions still apply.",

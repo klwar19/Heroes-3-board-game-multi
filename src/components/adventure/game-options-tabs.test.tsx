@@ -385,7 +385,7 @@ describe("Game options — tabbed layout", () => {
     });
   });
 
-  it("the Anime mod window 'Enable all' turns on every module AND the commander system in one dispatch", () => {
+  it("the Anime mod window 'Pick all' turns on every module AND the commander system in one dispatch", () => {
     const onAction = openOptionsWith((state) => {
       state.setupLobby!.options.anime = {
         ...state.setupLobby!.options.anime!,
@@ -412,6 +412,39 @@ describe("Game options — tabbed layout", () => {
           dungeon: true,
         }),
         wog: expect.objectContaining({ enabled: true, commanders: true }),
+      },
+    });
+  });
+
+  it("the WOG mod window 'Pick all' turns on every WOG module in one dispatch", () => {
+    const onAction = openOptionsWith((state) => {
+      state.setupLobby!.options.wog = {
+        ...state.setupLobby!.options.wog!,
+        enabled: true,
+      };
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Mod options/i }));
+    const dialog = screen.getByRole("dialog", {
+      name: /Wake of Gods mod options/i,
+    });
+    onAction.mockClear();
+    fireEvent.click(within(dialog).getByTestId("wog-modules-pick-all"));
+    expect(onAction.mock.calls.at(-1)?.[0]).toMatchObject({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: {
+        wog: {
+          enabled: true,
+          newCreatures: true,
+          commanders: true,
+          artifacts: true,
+          newObjects: true,
+          unitExperience: true,
+          neutralRankUp: true,
+          monsterWaves: true,
+          raidBosses: true,
+          dungeon: true,
+        },
       },
     });
   });
@@ -1211,6 +1244,28 @@ describe("Game options — tabbed layout", () => {
         name: /full card-by-card list/i,
       }),
     ).toBeTruthy();
+  });
+
+  it("keeps BINH rows concise and opens their full explanation from the info button", () => {
+    openOptions();
+    expandBinhHouseRules();
+    const toggle = screen.getByRole("button", {
+      name: /Old Legion \/ reinforcement behavior/i,
+    });
+    expect(toggle.textContent).toContain(
+      "Use the older Legion, reinforcement and Necromancy behavior.",
+    );
+    expect(toggle.textContent).not.toContain("LARGEST Legion piece");
+
+    const row = toggle.closest<HTMLElement>(".houseRuleToggleWrap")!;
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Open rule information" }),
+    );
+    const dialog = screen.getByRole("dialog", {
+      name: /Old Legion \/ reinforcement behavior rules/i,
+    });
+    expect(dialog.textContent).toContain("only the LARGEST Legion piece counts");
+    expect(dialog.textContent).toContain("BINH house rule");
   });
 
   /**

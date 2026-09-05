@@ -64,6 +64,7 @@ import {
 import {
   addArmyUnit,
   playerRecruitUnitIds,
+  playerRecruitUnitSide,
   playerRecruitTierUnlocked,
   applyAstrologersHeroEmpower,
   adventurePvpTroopLoss,
@@ -197,6 +198,7 @@ import {
   MAX_EXPERIENCE,
   ASTROLOGERS_DECK_ID,
   NEUTRAL_DECK_IDS,
+  neutralDeckHas,
   dropPendingMapToken,
   placementTokenLabel,
   placeMapToken,
@@ -204,6 +206,7 @@ import {
   playerDwellingTiers,
   playerHoldsTentFlag,
   processPendingVisit,
+  removeFromNeutralDeck,
   removeSettlementProduction,
   pvpAttacksBanned,
   queueExplorersEmpower,
@@ -15954,17 +15957,21 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
         throw new Error("Buy additional copies of the same unit in separate purchases.");
       }
       recruitedTypes.add(purchase.unitDefId);
-      const side = getUnitSide(purchase.unitDefId, "few");
+      const recruitSide = playerRecruitUnitSide(state, action.playerId, purchase.unitDefId);
+      const side = recruitSide ? getUnitSide(purchase.unitDefId, recruitSide) : undefined;
       const def = side ? coreUnitTier(purchase.unitDefId) : null;
-      if (!side || !def) {
+      if (!recruitSide || !side || !def) {
         throw new Error("That unit cannot be recruited.");
+      }
+      if (recruitSide === "neutral" && !neutralDeckHas(state, coreUnitDefinitions[purchase.unitDefId]!.tier, purchase.unitDefId)) {
+        throw new Error("That Neutral Unit card is no longer in its deck.");
       }
       if (!playerRecruitTierUnlocked(state, action.playerId, purchase.unitDefId)) {
         throw new Error("Build the dwelling of that unit's level first.");
       }
       // Without the optional copy rule, a type already in the army (Few or
       // Pack) must be reinforced rather than recruited again.
-      if (!houseRuleEnabled(state, "duplicate-unit-recruitment") && armyCopy.some((unit) => unit.side !== "bank" && unit.unitDefId === purchase.unitDefId)) {
+      if ((recruitSide === "neutral" || !houseRuleEnabled(state, "duplicate-unit-recruitment")) && armyCopy.some((unit) => unit.side !== "bank" && unit.unitDefId === purchase.unitDefId)) {
         throw new Error(
           `${coreUnitDefinitions[purchase.unitDefId]?.name ?? "That unit"} is already in your army — each unit card exists once. Reinforce it to a pack instead.`
         );
@@ -15972,17 +15979,17 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
       // Factory: Couatls and Juggernauts are mutually exclusive — you cannot have
       // both in your army (the choice between the two Gold units). armyCopy folds
       // in earlier purchases in this same action, so you cannot buy both at once.
-      if (factoryGoldUnitConflict(armyCopy, purchase.unitDefId)) {
+      if (recruitSide === "few" && factoryGoldUnitConflict(armyCopy, purchase.unitDefId)) {
         throw new Error(
           "Factory: choose Couatls or Juggernauts — you cannot have both in your army."
         );
       }
-      if (isMgqGoldUnit(purchase.unitDefId) && !mgqGoldContractAllows(player, purchase.unitDefId)) {
+      if (recruitSide === "few" && isMgqGoldUnit(purchase.unitDefId) && !mgqGoldContractAllows(player, purchase.unitDefId)) {
         throw new Error("Gold Contract: only the three Gold identities chosen during setup may be recruited.");
       }
       // Legacy snapshots had no setup marker and filled their three slots on the
       // first successful recruits. Preserve batch atomicity for those saves only.
-      if (isMgqGoldUnit(purchase.unitDefId) && player.mgqGoldContractSetupRequired === undefined && !mgqContractsCopy.includes(purchase.unitDefId)) {
+      if (recruitSide === "few" && isMgqGoldUnit(purchase.unitDefId) && player.mgqGoldContractSetupRequired === undefined && !mgqContractsCopy.includes(purchase.unitDefId)) {
         if (mgqContractsCopy.length >= MGQ_GOLD_CONTRACT_LIMIT) {
           throw new Error("Gold Contract: this legacy game already has three chosen Gold Companions.");
         }
@@ -15994,7 +16001,7 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
       const finalCost = applyRecruitGoldDiscount(state, action.playerId, ref, side.cost);
       addCost(finalCost);
       priced.push({ ref, finalCost });
-      armyCopy.push({ id: `pending_${armyCopy.length}`, unitDefId: purchase.unitDefId, side: "few" });
+      armyCopy.push({ id: `pending_${armyCopy.length}`, unitDefId: purchase.unitDefId, side: recruitSide });
     } else if (purchase.kind === "reinforce") {
       if (!canReinforce) {
         throw new Error("Reinforcing needs a Citadel.");
@@ -16089,8 +16096,18 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
     const purchase = action.purchases[index];
     const finalCost = priced[index]?.finalCost ?? {};
     if (purchase.kind === "recruit") {
-      addArmyUnit(player, purchase.unitDefId, "few");
-      recordMgqGoldContract(player, purchase.unitDefId);
+      const recruitSide = playerRecruitUnitSide(state, action.playerId, purchase.unitDefId);
+      if (!recruitSide) {
+        throw new Error("That unit is no longer available to recruit.");
+      }
+      if (recruitSide === "neutral") {
+        const tier = coreUnitDefinitions[purchase.unitDefId]?.tier;
+        if (!tier || !removeFromNeutralDeck(state, tier, purchase.unitDefId)) {
+          throw new Error("That Neutral Unit card is no longer in its deck.");
+        }
+      }
+      addArmyUnit(player, purchase.unitDefId, recruitSide);
+      if (recruitSide === "few") recordMgqGoldContract(player, purchase.unitDefId);
       appendEvent(state, {
         type: "UNIT_RECRUITED",
         playerId: action.playerId,

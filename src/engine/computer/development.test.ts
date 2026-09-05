@@ -588,3 +588,43 @@ describe("computer long-horizon development plan", () => {
     expect(scored?.policy).toBe("card.play-artifact");
   });
 });
+
+describe("computer Population scoring — Settlement Neutral-Units recruits (BINH house rule)", () => {
+  it("prices and values the single-sided NEUTRAL card the offer really adds", async () => {
+    // Audit 2026-09-05: a Settlement Neutral-Units recruit has no Few side, so
+    // the scorer read a zero-cost / zero-gain phantom — every such offer scored
+    // identically whatever the card. Two bronze Neutrals of different strength
+    // must now score differently (the gain term reads the neutral face).
+    const { neutralUnitIdsByFaction } = await import("@/data/factions/core");
+    const { ensureSettlementRecruitFactions } = await import("../adventure");
+    const { unitDevelopmentSideStrength } = await import("./development");
+    const state = game();
+    establishPacks(state);
+    state.players.p2.factionId = "castle";
+    state.adventure!.houseRules = { ...(state.adventure!.houseRules ?? {}), "settlement-neutral-recruitment": true };
+    state.adventure!.fields["ai-neutral-shop"] = {
+      spaceId: "ai-neutral-shop", tileInstanceId: "test", slot: 0, location: "settlement", faction: "dungeon",
+      blackCube: false, flagOwnerId: "p2", everFlagged: true, settlementResource: "gold",
+    };
+    ensureSettlementRecruitFactions(state);
+    state.players.p2.resources = { gold: 200, buildingMaterials: 20, valuables: 20 };
+
+    const bronze = neutralUnitIdsByFaction.dungeon
+      .filter((id) => coreUnitDefinitions[id]?.tier === "bronze")
+      .map((id) => ({ id, strength: unitDevelopmentSideStrength(id, "neutral") }))
+      .sort((left, right) => left.strength - right.strength);
+    expect(bronze.length).toBeGreaterThanOrEqual(2);
+    const weakest = bronze[0]!;
+    const strongest = bronze.at(-1)!;
+    expect(weakest.strength).toBeGreaterThan(0);
+    expect(strongest.strength).toBeGreaterThan(weakest.strength);
+
+    const scoreOf = (unitDefId: string) =>
+      scoreMapAction(observation(state), {
+        type: "POPULATION_ACTION",
+        playerId: "p2",
+        purchases: [{ kind: "recruit", unitDefId }],
+      })!.score;
+    expect(scoreOf(strongest.id)).not.toBe(scoreOf(weakest.id));
+  });
+});

@@ -303,6 +303,14 @@ describe("Blue Archive authored unit mechanics", () => {
     state = settle(applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: attacker.id, defenderId: mutsuki.id }));
     expect(state.combat!.units[attacker.id].damage).toBe(1);
     expect(state.combat!.units[mutsuki.id].mutsukiTrickMineUsedThisCombat).toBe(true);
+    expect(state.eventLog).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "DAMAGE_ASSIGNED",
+        amount: 1,
+        source: expect.objectContaining({ cardId: "kivotos-trick-mine" }),
+        target: { type: "unit", unitId: attacker.id }
+      })
+    ]));
 
     const currentAttacker = state.combat!.units[attacker.id];
     currentAttacker.activatedThisRound = false;
@@ -671,6 +679,12 @@ describe("Blue Archive authored unit mechanics", () => {
     expect(state.combat!.units[mover.id].damage).toBe(2);
     expect(state.combat!.units[splash.id].damage).toBe(1);
     expect(state.combat!.battlefieldTokens).toHaveLength(0);
+    expect(state.eventLog).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "BATTLEFIELD_TOKEN_TRIGGERED",
+        sourceAbilityId: "kivotos-explosive-prank"
+      })
+    ]));
   });
 
   it("Drone Support marks within 3 after moving, then the next friendly attack gets exactly +1", () => {

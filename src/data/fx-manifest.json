@@ -1464,6 +1464,21 @@
       "canvasHeight": 52
     }
   },
+  "mutsuki-prank-bomb": {
+    "src": "/assets/fx/combat/mutsuki-prank-bomb.webp",
+    "label": "Mutsuki prank bomb",
+    "group": "blue-archive",
+    "role": "hit",
+    "frames": 1,
+    "cols": 1,
+    "rows": 1,
+    "frameWidth": 320,
+    "frameHeight": 320,
+    "fps": 15,
+    "anchor": "center",
+    "coverage": 1.35,
+    "sourceDef": "imagegen"
+  },
   "land-mine-hit": {
     "src": "/assets/fx/land-mine-hit.webp",
     "label": "Land Mine trigger",

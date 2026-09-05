@@ -25,6 +25,7 @@ import { sampleBuildings } from "@/data/towns/buildings";
 import {
   adventurePvpTroopLoss,
   playerRecruitUnitIds,
+  playerRecruitUnitSide,
   playerRecruitTierUnlocked,
   playerCanRecruitFewNow,
   allyTransferError,
@@ -14075,8 +14076,9 @@ function addTownActions(
     );
     for (const unitDefId of playerRecruitUnitIds(state, playerId)) {
       const unit = coreUnitDefinitions[unitDefId];
-      const fewSide = unit?.few;
-      if (!unit || !fewSide || !playerRecruitTierUnlocked(state, playerId, unitDefId)) {
+      const recruitSideName = playerRecruitUnitSide(state, playerId, unitDefId);
+      const recruitSide = recruitSideName ? getUnitSide(unitDefId, recruitSideName) : undefined;
+      if (!unit || !recruitSide || !playerRecruitTierUnlocked(state, playerId, unitDefId)) {
         continue;
       }
 
@@ -14086,7 +14088,7 @@ function addTownActions(
         state,
         playerId,
         { kind: "recruit", unitDefId },
-        fewSide.cost,
+        recruitSide.cost,
       );
       if (
         playerCanRecruitFewNow(state, playerId, unitDefId) &&

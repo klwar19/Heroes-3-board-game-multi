@@ -215,6 +215,21 @@ describe("Setup Hub — Heroes & Draft window", () => {
       factionId: "castle",
       heroDefId: "catherine"
     });
+
+    const castle = within(dialog).getByText("Castle").closest(".factionCard") as HTMLElement;
+    const header = castle.querySelector(".factionCardHeader") as HTMLElement;
+    expect(Array.from(header.children).map((child) => child.className)).toEqual([
+      "factionEmblem",
+      "factionCardName",
+      "factionTownSymbol"
+    ]);
+    expect((header.querySelector(".factionEmblem img") as HTMLImageElement).src).toMatch(
+      /faction-picker\/emblems\/castle\.webp/
+    );
+    expect((header.querySelector(".factionTownSymbol img") as HTMLImageElement).src).toMatch(
+      /faction-picker\/town-symbols\/castle\.webp/
+    );
+    expect(castle.querySelector(".factionScene .factionHeroes .lobbyHeroRow")).toBeTruthy();
   });
 
   it("the hero-info popup opens from inside the window and both stay mounted", () => {

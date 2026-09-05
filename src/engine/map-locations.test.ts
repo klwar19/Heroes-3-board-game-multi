@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { GameState, MapFieldState, PlayerId, VisitStep } from "./state";
-import { beginFieldVisit, blackMarketOffers, getMainHero, getTownOfPlayer, NEUTRAL_DECK_IDS } from "./adventure";
+import {
+  beginFieldVisit,
+  blackMarketOffers,
+  elementalConfluxCandidates,
+  getMainHero,
+  getTownOfPlayer,
+  NEUTRAL_DECK_IDS
+} from "./adventure";
 import { resolveVisitStep } from "./adventure-reducer";
 import { createAdventureGameState } from "./index";
 
@@ -117,6 +124,39 @@ describe("Black Market", () => {
 });
 
 describe("Elemental Conflux", () => {
+  it("reveals one neutral elemental-damage card for each Dwelling, including duplicate tiers", () => {
+    const state = makeGame();
+    const towns = Object.values(state.towns);
+    const firstTown = getTownOfPlayer(state, "p1")!;
+    const secondTown = towns.find((town) => town.controllerId !== "p1")!;
+    firstTown.buildings = ["castle.dwelling_bronze"];
+    secondTown.controllerId = "p1";
+    secondTown.buildings = ["necropolis.dwelling_bronze"];
+
+    const candidates = elementalConfluxCandidates(state, "p1");
+
+    expect(candidates).toHaveLength(2);
+    expect(candidates.every(({ tier, unitDefId }) => tier === "bronze" && unitDefId.startsWith("neutral."))).toBe(true);
+    expect(new Set(candidates.map(({ unitDefId }) => unitDefId)).size).toBe(2);
+  });
+
+  it("shows unaffordable Elementals as disabled choices instead of silently closing", () => {
+    const state = makeGame();
+    const player = state.players.p1;
+    player.resources = { gold: 0, buildingMaterials: 0, valuables: 0 };
+    const town = getTownOfPlayer(state, "p1")!;
+    town.buildings.push("castle.dwelling_bronze");
+
+    injectField(state, "elemental_conflux");
+    beginFieldVisit(state, getMainHero(state, "p1")!.id, "50,50", false);
+
+    const step = state.adventure!.pendingVisit?.steps[0] as Extract<VisitStep, { type: "CHOOSE_ONE" }> | undefined;
+    expect(step?.type).toBe("CHOOSE_ONE");
+    expect(step?.prompt).toBe("Elemental Conflux: recruit an Elemental");
+    expect(step?.options.some((option) => option.label.includes("cannot afford") && Boolean(option.disabledReason))).toBe(true);
+    expect(step?.options.some((option) => option.label === "Decline" && !option.disabledReason)).toBe(true);
+  });
+
   it("recruits one Elemental per Dwelling tier the player controls", () => {
     const state = makeGame();
     const player = state.players.p1;

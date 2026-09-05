@@ -13,7 +13,7 @@ export const CORE_BODY_TARGET = 3;
  * alone badly undervalue units such as Elves. */
 export function unitDevelopmentSideStrength(
   unitDefId: string,
-  side: "few" | "pack",
+  side: "few" | "pack" | "neutral",
 ): number {
   const definition = coreUnitDefinitions[unitDefId];
   const face: UnitSideDefinition | undefined = definition?.[side];

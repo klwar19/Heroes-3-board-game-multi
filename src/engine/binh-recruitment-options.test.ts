@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { coreFactionDefinitions, isPlayableFaction } from "@/data/factions/core";
+import { coreFactionDefinitions, isPlayableFaction, neutralUnitIdsByFaction } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { applyAction, createAdventureGameState, DEFAULT_ANIME_OPTIONS, getLegalActions, getMainHero } from "./index";
 import { ensureSettlementRecruitFactions, flagField, legionDiscountTargets, playerCanRecruitFewNow, playerRecruitUnitIds } from "./adventure";
@@ -41,6 +41,68 @@ function recruit(state: GameState, unitDefId: string): GameState {
 }
 
 describe("BINH settlement and duplicate recruitment options", () => {
+  it("uses the Settlement's printed faction and sells only its corresponding Neutral cards", () => {
+    let state = ready(false, false);
+    state.adventure!.houseRules!["settlement-neutral-recruitment"] = true;
+    const field = settlement(state);
+    field.faction = "dungeon";
+    flagField(state, "p1", field);
+
+    expect(field.settlementRecruitFactionId).toBe("dungeon");
+    const dungeonNeutrals = neutralUnitIdsByFaction.dungeon;
+    expect(dungeonNeutrals.length).toBeGreaterThan(0);
+    expect(playerRecruitUnitIds(state, "p1")).toEqual(expect.arrayContaining(dungeonNeutrals));
+    expect(playerRecruitUnitIds(state, "p1")).not.toContain(coreFactionDefinitions.dungeon.units[0]);
+
+    const neutralId = dungeonNeutrals[0]!;
+    const neutralDef = coreUnitDefinitions[neutralId];
+    const beforeGold = state.players.p1.resources.gold;
+    state = recruit(state, neutralId);
+    expect(state.players.p1.army.at(-1)).toMatchObject({ unitDefId: neutralId, side: "neutral" });
+    expect(state.players.p1.resources.gold).toBe(beforeGold - (neutralDef.neutral!.cost.gold ?? 0));
+    expect(playerCanRecruitFewNow(state, "p1", neutralId)).toBe(false);
+
+    // Capturing the same physical Settlement transfers its fixed faction shop;
+    // it is never rerolled from the new owner's faction.
+    state.adventure!.fields[field.spaceId].flagOwnerId = "p2";
+    ensureSettlementRecruitFactions(state);
+    expect(state.adventure!.fields[field.spaceId].settlementRecruitFactionId).toBe("dungeon");
+    expect(playerRecruitUnitIds(state, "p1")).not.toContain(neutralId);
+    expect(playerRecruitUnitIds(state, "p2")).toContain(neutralId);
+  });
+
+  it("with BOTH Settlement rules on, the Neutral-Units rule wins: no foreign Few/Pack roster is granted", () => {
+    // Audit 2026-09-05: with both rules on the Settlement is stamped with its
+    // PRINTED faction, so the foreign-roster rule would have handed out that
+    // faction's whole Few/Pack roster — contradicting the Neutral rule's own
+    // text ("you do not gain access to the faction's normal Few/Pack roster").
+    const state = ready(false, true);
+    state.adventure!.houseRules!["settlement-neutral-recruitment"] = true;
+    const field = settlement(state);
+    field.faction = "dungeon";
+    flagField(state, "p1", field);
+    expect(field.settlementRecruitFactionId).toBe("dungeon");
+
+    const dungeonRoster = coreFactionDefinitions.dungeon.units;
+    const ids = playerRecruitUnitIds(state, "p1");
+    expect(ids).toEqual(expect.arrayContaining(neutralUnitIdsByFaction.dungeon));
+    for (const rosterId of dungeonRoster) {
+      expect(ids).not.toContain(rosterId);
+      expect(playerCanRecruitFewNow(state, "p1", rosterId)).toBe(false);
+    }
+    expect(getLegalActions(state, "p1").some((offer) =>
+      offer.action.type === "POPULATION_ACTION" &&
+      offer.action.purchases.some((purchase) => purchase.kind === "recruit" && dungeonRoster.includes(purchase.unitDefId))
+    )).toBe(false);
+
+    // CONTROL: the foreign-roster rule ALONE still grants the whole roster.
+    const control = ready(false, true);
+    const controlField = settlement(control);
+    flagField(control, "p1", controlField);
+    const rolled = controlField.settlementRecruitFactionId!;
+    expect(playerRecruitUnitIds(control, "p1")).toEqual(expect.arrayContaining(coreFactionDefinitions[rolled].units));
+  });
+
   it("capture rolls a stable other-town roster, and all its tiers recruit at printed cost without dwellings", () => {
     let state = ready();
     const field = settlement(state);

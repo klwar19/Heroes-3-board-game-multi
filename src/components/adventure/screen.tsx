@@ -11846,6 +11846,59 @@ const HOUSE_RULE_ICONS: Partial<
 };
 
 /** Compact lobby copy; the full engine description stays behind the info button. */
+const BINH_RULE_SUMMARIES: Partial<Record<HouseRuleId, string>> = {
+  "settlement-foreign-recruitment":
+    "Captured Settlements recruit units from one other random town.",
+  "settlement-neutral-recruitment":
+    "Settlements sell their faction's matching Neutral Unit cards.",
+  "duplicate-unit-recruitment":
+    "Buy extra Few copies of units already in your army.",
+  "side-buildings-materials-only":
+    "Town side buildings cost only building materials.",
+  "split-decks": "Split Spells and Artifacts into tier-based decks.",
+  "mystical-garden-gold": "Mystical Garden's gold reward is 3 instead of 2.",
+  "torso-of-legion-major": "Treat Torso of Legion as a Major Artifact.",
+  "eversmoking-ring-of-sulfur-major":
+    "Treat Eversmoking Ring of Sulfur as a Major Artifact.",
+  "griffin-buff": "Few Griffins gain Attack; Pack Griffins gain Defense.",
+  "marksman-buff": "Pack Marksmen have 3 Health instead of 2.",
+  "arch-devil-pack-damage-6": "Pack Arch Devils have 6 Attack instead of 7.",
+  "sandro-skeleton-hp": "Sandro's Horde and Legion Skeletons have 3 Health.",
+  "wisdom-expert-discount": "Expert Wisdom discounts a spell by 3 gold.",
+  "estates-nerf": "Estates produces 2 / 4 gold instead of 3 / 6.",
+  "immediate-reinforcement-prompts":
+    "Use the older Legion, reinforcement and Necromancy behavior.",
+  "gelu-sharpshooter-buff": "Gelu's level-IV Sharpshooters gain +1 Attack.",
+  "initiative-specialty-draw":
+    "Discard an Initiative specialty to draw a card instead.",
+  "dracon-few-magi-trade": "Dracon may trade Few Magi plus 6 gold.",
+  "combat-move-initiative":
+    "Initiative modifiers also change Combat movement by 1.",
+  "far-tile-rerolls": "Reroll certain Ore or Settlement results on II–III tiles.",
+  "ballistics-buff": "Ballistics gains earlier tower damage and an Expert bombard.",
+  "pathfinding-expert": "Pathfinding gains stronger border and terrain crossing.",
+  "vision-battle-swap": "Cast Visions before battle to replace Neutral guards.",
+  "bank-empower-ability": "Selected Creature Banks award Ability Empower tokens.",
+  "bank-move-points": "Creature Bank fights use round limits and move extensions.",
+  "bank-interior-entry-only": "Enter Creature Banks only from within their host tile.",
+  "bank-stack-chance-80": "Each eligible Bank Stack Token has an 80% placement chance.",
+  "defeat-gold-debt": "A hero-combat defeat can reduce gold below zero.",
+  "obelisk-rewards": "The first Obelisk visit rolls and locks a shared reward.",
+  "freelancers-guild-bounty": "Freelancer's Guild pays 2 gold per Neutral victory.",
+  "multi-demon-summon": "Pit Lords may summon more than one Demon unit.",
+  "phoenix-pack-rebirth": "Pack Phoenixes may Rebirth after being defeated.",
+  "resource-die-single-valuables": "Resource-die valuables are capped at 1.",
+  "elemental-damage-no-die": "Positive Attack buffs cannot raise elemental damage.",
+  "discovery-border-gate": "Yellow borders block discovery from across the border.",
+  "deck-access-hero-level": "Hero level controls accessible Spell and Artifact tiers.",
+  // Global map rules share the same compact-row + info-button treatment.
+  "mine-guard-reinforcement": "Fought Mine guards field one extra random bronze Neutral.",
+  "mine-army-defense": "Defend your flagged Mines with your units and cards for 3 gold.",
+  "no-secondary-heroes": "Secondary Heroes cannot be hired or gained.",
+  "free-neutral-combat-extend": "Extending a Neutral combat costs no movement point.",
+  "level-v-signature-neutral": "Every level-V Neutral army includes a signature dragon or angel.",
+};
+
 const POLISH_RULE_SUMMARIES: Partial<Record<HouseRuleId, string>> = {
   "polish-spell-book":
     "Spells live in a used/refreshed Book and are cast with Cast-a-Spell cards.",
@@ -11914,7 +11967,10 @@ function HouseRuleToggleButton({
   onInfo?: () => void;
 }) {
   const iconSrc = HOUSE_RULE_ICONS[rule.id];
-  const visibleDescription = POLISH_RULE_SUMMARIES[rule.id] ?? rule.description;
+  const visibleDescription =
+    BINH_RULE_SUMMARIES[rule.id] ??
+    POLISH_RULE_SUMMARIES[rule.id] ??
+    rule.description;
   return (
     <div className={`houseRuleToggleWrap ${onInfo ? "hasInfo" : ""}`}>
       <button
@@ -11991,7 +12047,13 @@ function HouseRuleInfoModal({
       >
         <header>
           <div>
-            <small>Polish house rule</small>
+            <small>
+              {rule.category === "polish"
+                ? "Polish house rule"
+                : rule.category === "community"
+                  ? "Community house rule"
+                  : "BINH house rule"}
+            </small>
             <strong>{rule.label}</strong>
           </div>
           <button
@@ -12301,7 +12363,9 @@ function HouseRuleCategoryGroup({
             lockedOn={false}
             on={houseRules[rule.id]}
             onInfo={
-              category === "polish" ? () => setInfoRuleId(rule.id) : undefined
+              BINH_RULE_SUMMARIES[rule.id] || category === "polish"
+                ? () => setInfoRuleId(rule.id)
+                : undefined
             }
             onToggle={() => setHouseRule(rule.id, !houseRules[rule.id])}
             rule={rule}
@@ -12729,7 +12793,29 @@ function GameModeSection({
       options: next,
     });
 
-  // Anime mod-window "Enable all / Disable all": the boolean module flags the
+  const wogEnableAllKeys = [
+    "newCreatures",
+    "commanders",
+    "artifacts",
+    "newObjects",
+    "unitExperience",
+    "neutralRankUp",
+    "monsterWaves",
+    "raidBosses",
+    "dungeon",
+  ] as const;
+  const wogAllModulesOn = wogEnableAllKeys.every((key) => Boolean(wog[key]));
+  const setAllWogModules = (on: boolean) => {
+    const updates: Partial<
+      Record<(typeof wogEnableAllKeys)[number], boolean>
+    > = {};
+    for (const key of wogEnableAllKeys) {
+      updates[key] = on;
+    }
+    send({ wog: { ...wog, ...updates } });
+  };
+
+  // Anime mod-window "Pick all / Clear all": the boolean module flags the
   // window renders as ticks, PLUS the commander system (which is the shared WOG
   // Commanders module — every anime town ships a commander that only appears
   // when it is on). Toggling in one dispatch keeps anime.* and wog.commanders in
@@ -13060,6 +13146,15 @@ function GameModeSection({
                     <X size={16} />
                   </button>
                 </header>
+                <button
+                  aria-label={`${wogAllModulesOn ? "Clear" : "Pick"} all WOG modules`}
+                  className={`houseRuleGroupToggleAll ${wogAllModulesOn ? "on" : "off"}`}
+                  data-testid="wog-modules-pick-all"
+                  onClick={() => setAllWogModules(!wogAllModulesOn)}
+                  type="button"
+                >
+                  {wogAllModulesOn ? "Clear all" : "Pick all"}
+                </button>
                 <div className="wogModuleList">
                   {(
                     [
@@ -13349,13 +13444,13 @@ function GameModeSection({
                   available as its own explicit neutral-monster checkbox below.
                 </small>
                 <button
-                  aria-label={`${animeAllModulesOn ? "Disable" : "Enable"} all anime modules`}
+                  aria-label={`${animeAllModulesOn ? "Clear" : "Pick"} all Anime modules`}
                   className={`houseRuleGroupToggleAll ${animeAllModulesOn ? "on" : "off"}`}
                   data-testid="anime-modules-enable-all"
                   onClick={() => setAllAnimeModules(!animeAllModulesOn)}
                   type="button"
                 >
-                  {animeAllModulesOn ? "Disable all" : "Enable all"}
+                  {animeAllModulesOn ? "Clear all" : "Pick all"}
                 </button>
                 <div className="wogModuleList">
                   {(
@@ -15937,7 +16032,7 @@ function LobbyHeroEntry({
         <HeroPortrait
           name={hero?.name ?? heroDefId}
           portrait={hero?.portrait}
-          size={34}
+          size={26}
           style={{ gridRow: "span 2" }}
         />
         <span>
@@ -15960,6 +16055,15 @@ function LobbyHeroEntry({
     </div>
   );
 }
+
+const factionPickerEmblem = (factionId: FactionId) =>
+  `/assets/ui/faction-picker/emblems/${factionId}.webp`;
+
+const factionPickerScene = (factionId: FactionId) =>
+  `/assets/ui/faction-picker/scenes/${factionId}.webp`;
+
+const factionPickerTownSymbol = (factionId: FactionId) =>
+  `/assets/ui/faction-picker/town-symbols/${factionId}.webp`;
 
 /**
  * Faction + hero grid, shared by free pick (every untaken town) and the draft
@@ -15995,30 +16099,63 @@ function FactionPickGrid({
           return null;
         }
         const taken = takenByOthers.has(factionId);
+        const scene = factionPickerScene(factionId);
         return (
           <div
             className={`factionCard ${taken ? "taken" : ""}`}
             key={factionId}
-            style={{ borderColor: faction.color }}
+            style={
+              {
+                borderColor: faction.color,
+                "--faction-accent": faction.color,
+                "--faction-scene": `url("${assetUrl(scene)}")`,
+              } as CSSProperties
+            }
           >
-            <strong style={{ color: faction.color }}>{faction.name}</strong>
-            {faction.ignoresMorale ? <small>ignores morale</small> : null}
-            <div className="factionHeroes">
-              {faction.heroes.map((heroDefId) => {
-                const heroState = heroStateFor(factionId, heroDefId);
-                return (
-                  <LobbyHeroEntry
-                    banned={heroState.banned}
-                    disabled={heroState.disabled || taken}
-                    heroDefId={heroDefId}
-                    key={heroDefId}
-                    onInspect={() => onInspect(heroDefId)}
-                    onPick={() => onPick(factionId, heroDefId)}
-                    pickTitle={heroState.title}
-                    selected={heroState.selected}
-                  />
-                );
-              })}
+            <header className="factionCardHeader">
+              <span className="factionEmblem" aria-hidden="true">
+                <img alt="" src={assetUrl(factionPickerEmblem(factionId))} />
+              </span>
+              <span className="factionCardName">
+                <strong>{faction.name}</strong>
+                <small>
+                  {/* Kept short: the name column is ~106px wide on a 240px card
+                      and "Undead · ignores morale" clipped to an ellipsis
+                      (measured in a real browser 2026-09-05). */}
+                  {faction.ignoresMorale
+                    ? "Ignores morale"
+                    : `${faction.heroes.length} heroes`}
+                </small>
+              </span>
+              <span className="factionTownSymbol" aria-hidden="true">
+                <img alt="" src={assetUrl(factionPickerTownSymbol(factionId))} />
+              </span>
+            </header>
+            <div className="factionScene">
+              <img
+                alt=""
+                aria-hidden="true"
+                className="factionSceneArt"
+                src={assetUrl(scene)}
+              />
+              <span className="factionSceneShade" aria-hidden="true" />
+              <div className="factionHeroes">
+                {faction.heroes.map((heroDefId) => {
+                  const heroState = heroStateFor(factionId, heroDefId);
+                  return (
+                    <LobbyHeroEntry
+                      banned={heroState.banned}
+                      disabled={heroState.disabled || taken}
+                      heroDefId={heroDefId}
+                      key={heroDefId}
+                      onInspect={() => onInspect(heroDefId)}
+                      onPick={() => onPick(factionId, heroDefId)}
+                      pickTitle={heroState.title}
+                      selected={heroState.selected}
+                    />
+                  );
+                })}
+              </div>
             </div>
           </div>
         );

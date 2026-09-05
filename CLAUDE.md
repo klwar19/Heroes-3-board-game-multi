@@ -4479,3 +4479,52 @@ NOT mounted under `prefers-reduced-motion` (the sting still plays); jsdom cannot
 compute CSS, so the look (`.victoryCinematic` block at the end of globals.css)
 is a real-browser concern with no e2e spec; the sting resumes whatever scene is
 current when it ends — a scene change mid-sting simply takes over.
+
+## Codex batch 2026-09-05b, audited (protocol v103) — Settlement Neutral Units · Elemental Conflux · Mutsuki FX · faction picker · BINH rule summaries
+
+Uncommitted codex work audited in place (every engine claim typechecked and pinned;
+each audit fix has a test that failed against the pre-fix code, mutation-checked).
+`npm run deploy:partykit` is OWED for v103 (recruit offer set + Conflux resolution).
+
+Leading with the limits / readings:
+- **New BINH house rule `settlement-neutral-recruitment`** (units, OFF in both modes):
+  a controlled Settlement sells the single-sided Neutral cards of its PRINTED
+  `field.faction` at printed Neutral cost through the ordinary `POPULATION_ACTION`
+  recruit (side `neutral`, the copy pulled out of the Neutral deck via
+  `removeFromNeutralDeck`; `neutralDeckHas` gates the offer so a hosted client's
+  masked pile never hides it). No dwelling is needed, it can never be reinforced or
+  duplicated, and the Factory / MGQ gold gates are Few-only. A Settlement without a
+  printed faction is stamped a stable seeded one (salt `settlement-faction-<space>`,
+  which also re-salted the OLD foreign-roster roll — a fresh capture may roll a
+  different town than before; stamped fields are untouched). **AUDIT FIX: with BOTH
+  Settlement rules on, the Neutral rule wins** — `settlementForeignRosterActive`
+  withholds the foreign Few/Pack roster (the stamped faction is the printed one, which
+  may be the owner's own, so the foreign rule's "another town" promise could not hold);
+  stated in the rule text, `binh-recruitment-options.test.ts`. **AUDIT FIX (score
+  layer)**: `populationScore` priced a Neutral recruit as a zero-cost/zero-gain
+  phantom (no Few side); it now reads the neutral face (`computer/development.test.ts`).
+- **Elemental Conflux** reveals one Elementals card PER DWELLING (`playerDwellingTiers`
+  multiplicity — two bronze Dwellings = two bronze picks), only real
+  `neutral.*` `elemental-damage` cards, and keeps unaffordable picks visible/disabled
+  (`showUnaffordable`) — a player with NO dwelling now gets a lone Decline prompt
+  instead of a silent no-op (`map-locations.test.ts`).
+- **Mutsuki**: the Trick Mine emits a real `DAMAGE_ASSIGNED` (source `card` =
+  the ABILITY id, the `choice.abilityId` precedent — NOT the Fire Shield `unit`
+  source) so the number floats; Explosive Prank tokens/triggers carry
+  `sourceAbilityId` for the dedicated bomb art + FX (`blue-archive-unit-abilities`,
+  `board.test.tsx`). Ship-battle obstacles paint rigging art (`seaObstacle`).
+- **Faction picker** (Heroes & Draft + draft panel): emblem / name / town symbol
+  header over a scene, art for all 21 factions in the manifest (published). Verified
+  in a real browser at 1440×900: 12/12 cards load all three images. **AUDIT FIX**: the
+  Necropolis subtitle "Undead · ignores morale" clipped to an ellipsis at the card's
+  106px name column → "Ignores morale". jsdom pins the DOM only; no e2e spec.
+- **BINH rule rows show a one-line summary** (`BINH_RULE_SUMMARIES`) with the full
+  text behind the ⓘ modal ("BINH house rule" header). **AUDIT FIX**:
+  `elemental-damage-no-die` said "ignores Attack-die bonuses" (the rule keeps the die
+  and only blocks positive Attack buffs); the five Global map rules had no summary and
+  therefore no ⓘ — added. Unit-Experience zoom ladder moved behind an "Open Unit
+  Experience panel" button. WOG mod window gained "Pick all / Clear all".
+- **Images were NOT recompressed** (user asked): the new set is already lossy webp
+  ≈q80–85 at 256² / 480×720; `DRY_RUN=1 node scripts/compress-media.mjs` rewrites
+  none of them (its ≤85% rule), re-encoding gains 5–17% with generation loss. It
+  would touch 7 balance-pack faces outside this batch — left alone.

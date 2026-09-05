@@ -78,6 +78,9 @@ export type ArtifactDeckAccess = {
  */
 export type HouseRuleId =
   | "settlement-foreign-recruitment"
+  // A controlled Settlement recruits the single-sided Neutral Unit cards that
+  // correspond to the faction printed on that Settlement's map field.
+  | "settlement-neutral-recruitment"
   | "duplicate-unit-recruitment"
   | "split-decks"
   // Optional BINH town-economy rule: side buildings cost only their printed
@@ -5968,6 +5971,8 @@ type GameEventPayload =
       tokenId: string;
       kind: BattlefieldTokenKind;
       position: number;
+      /** Unit ability that created the token, when it needs distinct art/FX. */
+      sourceAbilityId?: string;
     }
   | {
       /**
@@ -5986,6 +5991,8 @@ type GameEventPayload =
       unitId: UnitId;
       outcome: "damage" | "stop" | "decoy" | "immune";
       amount?: number;
+      /** Preserved after the sprung token leaves the board for exact presentation. */
+      sourceAbilityId?: string;
     }
   | {
       /** A timed Force Field reached the end of its duration and was removed. */
@@ -10809,7 +10816,7 @@ export type MapFieldState = {
   everFlagged: boolean;
   /** Resource chosen for a flagged settlement. */
   settlementResource: ResourceKind | null;
-  /** Fixed recruitment faction rolled on first capture by the optional BINH rule. */
+  /** Fixed recruitment faction assigned to this Settlement by a BINH recruitment rule. */
   settlementRecruitFactionId?: string;
   /**
    * Designer PRE-ASSIGNED settlement ({@link CustomMapSettlementFieldPlan.ownerStart}):

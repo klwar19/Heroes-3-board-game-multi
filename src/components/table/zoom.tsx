@@ -20,7 +20,11 @@ import {
   type CombatUnitState,
   type GameRuleset
 } from "@/engine";
-import { combatUnitVeterancy, veterancyXpLabel } from "./unit-veterancy";
+import {
+  combatUnitVeterancy,
+  veterancyXpLabel,
+  type UnitVeterancyView
+} from "./unit-veterancy";
 import { getCardMetaLabels, isEmpoweredStatisticCard, titleCase } from "./utils";
 import { SpecialtyCard } from "@/components/specialty-card";
 import { canRenderSpecialtyCard, specialtyEffectText, specialtyIconSrc } from "@/components/specialty-card-data";
@@ -30,6 +34,7 @@ import type { CommanderSlug, CommanderStatKey } from "@/data/commanders";
 import { coreHeroDefinitions } from "@/data/factions/core";
 import { factionGradeRegister, HERO_GRADE_REGISTERS, heroGradeIconForFaction } from "@/data/anime/hero-grades";
 import { unitAbilities } from "@/data/units/abilities";
+import { unitRankBadgeImage } from "@/data/units/experience";
 
 /** Anything the table can blow up to readable size: a card id or a unit card. */
 export type ZoomContent = {
@@ -66,6 +71,8 @@ export type ZoomContent = {
   heroInfo?: NonNullable<ZoomContent["heroFace"]>;
   subtitle?: string;
   lines: string[];
+  /** Structured Unit Experience data, opened as a visual panel instead of prose. */
+  veterancy?: UnitVeterancyView;
   /** Empowered card (Empowered Statistic / an Empowered ability) — show the cue. */
   empowered?: boolean;
 };
@@ -244,20 +251,53 @@ export function unitZoomContent(
             veterancy
           )} on the ${veterancy.trackLabel} path; rank bonuses are folded into the stats above.`
         : "",
-      ...(veterancy
-        ? veterancy.ladder.map(
-            (rung) =>
-              `${rung.reached ? "✔" : "·"} ${rung.rankName}${
-                rung.threshold !== null ? ` (${rung.threshold} XP)` : ""
-              }: ${rung.text}`
-          )
-        : []),
       ...abilities.map(
         (ability) =>
           `${ability.name}: ${ability.text}${ability.implementationStatus === "implemented" ? "" : " (manual rule)"}`
       )
-    ].filter(Boolean)
+    ].filter(Boolean),
+    veterancy: veterancy ?? undefined
   };
+}
+
+function UnitExperienceZoomPanel({ veterancy }: { veterancy: UnitVeterancyView }) {
+  return (
+    <section aria-label="Unit Experience panel" className="zoomUnitXpPanel">
+      <header>
+        <span>
+          <small>Unit Experience</small>
+          <strong>{veterancy.rankName}</strong>
+        </span>
+        <b>{veterancyXpLabel(veterancy)}</b>
+      </header>
+      <span className="unitXpTrackTag">{veterancy.trackLabel} path</span>
+      <div className="unitXpRanks zoomUnitXpRanks">
+        {veterancy.ladder.map((rung) => {
+          const badge = unitRankBadgeImage(rung.rank);
+          return (
+            <article
+              className={`unitXpRank ${rung.reached ? "reached" : "locked"}`}
+              key={rung.rank}
+            >
+              <span aria-hidden="true" className="unitXpRankIcon">
+                {badge ? (
+                  <img alt="" className="unitRankBadgeArt" src={assetUrl(badge)} />
+                ) : (
+                  rung.rank >= 4 ? "★" : rung.rank >= 3 ? "⚔" : "^".repeat(rung.rank)
+                )}
+              </span>
+              <b>{rung.rank} · {rung.rankName}</b>
+              <small>
+                {rung.threshold === null ? "Maximum rank" : `at ${rung.threshold} XP`}
+                {rung.reached ? " · reached" : ""}
+              </small>
+              <span className="unitXpRankGains">{rung.text}</span>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
 }
 
 /**
@@ -488,6 +528,7 @@ function ZoomCardVisual({
  */
 export function CardZoomProvider({ children }: { children: ReactNode }) {
   const [content, setContent] = useState<ZoomContent | null>(null);
+  const [unitExperienceOpen, setUnitExperienceOpen] = useState(false);
   const balanceFlags = useBalanceArtFlags();
   // Fall back to the text frame if a card's scan is missing (e.g. Moandor's
   // specialties); keyed by src so each newly zoomed card tries its own art.
@@ -495,10 +536,18 @@ export function CardZoomProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<CardZoomContextValue>(
     () => ({
-      zoomCard: (cardId, empowered) =>
-        setContent(cardZoomContent(cardId, empowered, balanceFlags.polish, balanceFlags.community)),
-      zoomUnit: (unit, ruleset, liveStats) => setContent(unitZoomContent(unit, ruleset, liveStats)),
-      zoomContent: (next) => setContent(next)
+      zoomCard: (cardId, empowered) => {
+        setUnitExperienceOpen(false);
+        setContent(cardZoomContent(cardId, empowered, balanceFlags.polish, balanceFlags.community));
+      },
+      zoomUnit: (unit, ruleset, liveStats) => {
+        setUnitExperienceOpen(false);
+        setContent(unitZoomContent(unit, ruleset, liveStats));
+      },
+      zoomContent: (next) => {
+        setUnitExperienceOpen(false);
+        setContent(next);
+      }
     }),
     [balanceFlags.polish, balanceFlags.community]
   );
@@ -551,6 +600,24 @@ export function CardZoomProvider({ children }: { children: ReactNode }) {
               ) : (
                 content.lines.map((line) => <p key={line}>{line}</p>)
               )}
+              {content.veterancy ? (
+                <>
+                  <button
+                    aria-expanded={unitExperienceOpen}
+                    className="zoomUnitXpButton"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setUnitExperienceOpen((open) => !open);
+                    }}
+                    type="button"
+                  >
+                    {unitExperienceOpen ? "Hide" : "Open"} Unit Experience panel
+                  </button>
+                  {unitExperienceOpen ? (
+                    <UnitExperienceZoomPanel veterancy={content.veterancy} />
+                  ) : null}
+                </>
+              ) : null}
               <button onClick={close} type="button">
                 <X aria-hidden="true" size={14} />
                 <span>Close</span>

@@ -1098,7 +1098,17 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // parallelContextOptions, PvP-Neutral-Control assignment walks to the next HUMAN
 // clockwise. A v101 edge neither offers nor accepts the selection action.
 // `npm run deploy:partykit` owed with this bump.
-export const ENGINE_PROTOCOL_VERSION = 102;
+// v103 (2026-09-05, audited codex batch): new BINH house rule
+// `settlement-neutral-recruitment` (a controlled Settlement sells its PRINTED
+// faction's single-sided Neutral cards through POPULATION_ACTION recruits, which
+// now add a `neutral`-side army card and pull the copy out of the Neutral deck;
+// it takes precedence over `settlement-foreign-recruitment`), Elemental Conflux
+// reveals one card PER DWELLING (multiplicity) and keeps unaffordable picks
+// visible, Mutsuki's Trick Mine emits a real DAMAGE_ASSIGNED, and the
+// BATTLEFIELD_TOKEN_PLACED / _TRIGGERED events carry `sourceAbilityId`. A v102
+// edge offers a different recruit set and resolves the Conflux differently.
+// `npm run deploy:partykit` owed with this bump.
+export const ENGINE_PROTOCOL_VERSION = 103;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

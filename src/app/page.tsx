@@ -3607,7 +3607,12 @@ export default function Home() {
               } else if (event.kind === "fire_wall") {
                 cues.push({ kind: "sprite", id: `${event.id}-burn`, fxKey: "fire-wall-e", at: `cell:${event.position}`, sound: "spells/fire-wall", delayMs: at });
               } else if (event.kind === "land_mine") {
-                cues.push({ kind: "sprite", id: `${event.id}-boom`, fxKey: "land-mine-hit", at: `cell:${event.position}`, sound: "spells/land-mine-trigger", delayMs: at });
+                if (event.sourceAbilityId === "kivotos-explosive-prank") {
+                  cues.push({ kind: "sprite", id: `${event.id}-bomb`, fxKey: "mutsuki-prank-bomb", at: `cell:${event.position}`, delayMs: at });
+                  cues.push({ kind: "sprite", id: `${event.id}-boom`, fxKey: "land-mine-hit", at: `cell:${event.position}`, sound: "spells/land-mine-trigger", delayMs: at + 360 });
+                } else {
+                  cues.push({ kind: "sprite", id: `${event.id}-boom`, fxKey: "land-mine-hit", at: `cell:${event.position}`, sound: "spells/land-mine-trigger", delayMs: at });
+                }
               } else {
                 // Armed Quicksand: the sandy pit bubbles up as the unit is mired.
                 cues.push({ kind: "sprite", id: `${event.id}-sink`, fxKey: "quicksand", at: `cell:${event.position}`, sound: "spells/quicksand", delayMs: at });

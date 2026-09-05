@@ -4,6 +4,8 @@ import { writeFile } from "node:fs/promises";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { TownRecruitSection } from "./town-sections";
+import { coreUnitDefinitions } from "@/data/factions/units";
+import { neutralUnitIdsByFaction } from "@/data/factions/core";
 import { applyAction, createAdventureGameState, getLegalActions } from "@/engine";
 import type { GameAction, GameState } from "@/engine/state";
 
@@ -42,6 +44,32 @@ afterAll(async () => {
 });
 
 describe("BINH recruitment controls", () => {
+  it("shows and buys the Settlement faction's Neutral card instead of its faction roster", () => {
+    let state = ready();
+    state.adventure!.houseRules!["settlement-foreign-recruitment"] = false;
+    state.adventure!.houseRules!["settlement-neutral-recruitment"] = true;
+    const settlementFaction = state.players.p1.factionId === "dungeon" ? "castle" : "dungeon";
+    state.adventure!.fields.neutralShop = {
+      spaceId: "neutralShop", tileInstanceId: "test", slot: 0, location: "settlement", faction: settlementFaction,
+      blackCube: false, flagOwnerId: "p1", everFlagged: true, settlementResource: "gold", settlementRecruitFactionId: settlementFaction,
+    };
+    const neutralId = neutralUnitIdsByFaction[settlementFaction][0]!;
+    const neutralName = coreUnitDefinitions[neutralId].name;
+    const onAction = vi.fn((action: GameAction) => {
+      const result = applyAction(state, action);
+      expect(result.errors).toEqual([]);
+      state = result.state;
+    });
+
+    render(section(state, onAction));
+    expect(document.querySelector(".settlementRecruitSources")?.textContent).toContain(settlementFaction === "dungeon" ? "Dungeon" : "Castle");
+    expect(screen.getByRole("button", { name: `Recruit: ${neutralName}` })).not.toBeDisabled();
+    expect(screen.getByLabelText(`${neutralName} Neutral card`)).toBeTruthy();
+    expect(screen.queryByLabelText(`${neutralName} Few and Pack cards`)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: `Recruit: ${neutralName}` }));
+    expect(state.players.p1.army.at(-1)).toMatchObject({ unitDefId: neutralId, side: "neutral" });
+  });
+
   it("buys copies through the reducer, targets each upgrade by slot, and preserves the recruit row after deaths", () => {
     let state = ready();
     const onAction = vi.fn((action: GameAction) => {

@@ -512,6 +512,7 @@ function BattlefieldTokenMark({
   const hideArmedState = isTrap && token.controllerId !== viewerPlayerId;
   const owner = state.players[token.controllerId]?.name ?? token.controllerId;
   const spriteSheet = getFxSheet(view.sprite);
+  const isMutsukiBomb = token.sourceAbilityId === "kivotos-explosive-prank";
 
   let detail: React.ReactNode = null;
   if (token.kind === "fire_wall") {
@@ -549,7 +550,17 @@ function BattlefieldTokenMark({
           : `${view.label} (${owner}) — your token: ${token.armed ? "armed" : "empty decoy"}`;
 
   let art: React.ReactNode;
-  if (spriteSheet) {
+  if (isMutsukiBomb) {
+    art = (
+      <img
+        alt=""
+        aria-hidden="true"
+        className="mutsukiBombTokenArt"
+        draggable={false}
+        src={assetUrl("/assets/fx/combat/mutsuki-prank-bomb.webp")}
+      />
+    );
+  } else if (spriteSheet) {
     if (token.kind === "force_field") {
       // The barrier shimmers, but its sprite fades to nothing at both ends of
       // the sheet (frames 0–2 fade in, 12–14 fade out) — that fade reads as the
@@ -1505,8 +1516,9 @@ export function BattlefieldBoard({
           // swap-partner cells), used to drive the ghost+arrow hover.
           const isRepositionCandidate = repositionKind !== null && repositionCandidates.includes(index);
           const isFlashing = flashCells.includes(index);
+          const isShipObstacle = isObstacle && boardArt.id === "ship-battle";
           const className = `battleCell ${terrain} ${unit?.controllerId ?? ""} ${isActive ? "active" : ""} ${
-            isObstacle ? "obstacle" : ""
+            isObstacle ? `obstacle${isShipObstacle ? " seaObstacle" : ""}` : ""
           } ${(moveAction || tacticsMoveAction) && !selectedCardAction && !planning ? "moveTarget" : ""} ${
             attackAction && !selectedCardAction ? "attackTarget" : ""
           } ${cardAction || spaceCardAction || teleportAction || placeTokenAction ? "cardTarget" : ""} ${abilityAction ? "abilityTarget" : ""} ${activationOrderAction ? "activationOrderTarget" : ""} ${healAction ? "healTarget" : ""} ${setPowerAction ? "artifactSetTarget" : ""} ${dropTarget ? "dropTarget" : ""} ${
@@ -1624,7 +1636,11 @@ export function BattlefieldBoard({
                     alt=""
                     aria-hidden="true"
                     className="obstacleArt"
-                    src={assetUrl("/assets/fx/combat/dug-obstacle.webp")}
+                    src={assetUrl(
+                      isShipObstacle
+                        ? "/assets/fx/combat/ship-obstacle-rigging.webp"
+                        : "/assets/fx/combat/dug-obstacle.webp"
+                    )}
                     onError={(event) => {
                       // Reveal the plain relief glyph beneath if the art is missing.
                       event.currentTarget.style.display = "none";

@@ -37,7 +37,7 @@ import {
   type TownState
 } from "@/engine";
 import { assetUrl } from "@/lib/asset-url";
-import { playerRecruitUnitIds, playerRecruitTierUnlocked, settlementRecruitFactions } from "@/engine/adventure";
+import { playerRecruitUnitIds, playerRecruitUnitSide, playerRecruitTierUnlocked, settlementRecruitFactions } from "@/engine/adventure";
 import { actionKey, formatCost } from "@/components/table/utils";
 import { useOptionalCardZoom } from "@/components/table/zoom";
 import { useUnitFaceImage } from "@/components/table/polish-balance-art";
@@ -727,6 +727,9 @@ export function TownRecruitSection({
   if (validRecruitIds.length !== recruitIds.length) setRecruitIds(validRecruitIds);
   const rosterRows = recruitRoster.flatMap((unitDefId) => {
     const copies = player.army.filter((candidate) => candidate.unitDefId === unitDefId && candidate.side !== "bank");
+    if (coreUnitDefinitions[unitDefId]?.faction === "neutral" && copies.length > 0) {
+      return copies.map((owned) => ({ unitDefId, owned }));
+    }
     return allowCopies
       ? [{ unitDefId, owned: undefined }, ...copies.map((owned) => ({ unitDefId, owned }))]
       : [{ unitDefId, owned: copies[0] }];
@@ -771,9 +774,10 @@ export function TownRecruitSection({
   // unit add together. The shown total and the affordability gate use this
   // same applyRecruitGoldDiscount, so they match the engine exactly.
   for (const unitDefId of recruitIds) {
-    const few = coreUnitDefinitions[unitDefId]?.few;
-    if (few) {
-      addCost(applyRecruitGoldDiscount(state, viewerPlayerId, { kind: "recruit", unitDefId }, few.cost));
+    const recruitSideName = playerRecruitUnitSide(state, viewerPlayerId, unitDefId);
+    const recruitSide = recruitSideName ? coreUnitDefinitions[unitDefId]?.[recruitSideName] : undefined;
+    if (recruitSide) {
+      addCost(applyRecruitGoldDiscount(state, viewerPlayerId, { kind: "recruit", unitDefId }, recruitSide.cost));
     }
   }
   for (const armyUnitId of reinforceIds) {
@@ -830,7 +834,12 @@ export function TownRecruitSection({
       </small>
       {allowCopies ? <small className="recruitLegend">Buy same unit adds a new Few slot. Reinforce each copy separately; experience and casualties belong to that copy.</small> : null}
       {foreignFactions.length > 0 ? (
-        <p className="settlementRecruitSources">Settlement recruits: <b>{foreignFactions.map((id) => coreFactionDefinitions[id]?.name ?? id).join(", ")}</b>. All tiers available at normal cost while you control the settlement.</p>
+        <p className="settlementRecruitSources">
+          Settlement factions: <b>{foreignFactions.map((id) => coreFactionDefinitions[id]?.name ?? id).join(", ")}</b>.{" "}
+          {houseRuleEnabled(state, "settlement-neutral-recruitment")
+            ? "Their corresponding Neutral Unit cards are available at printed Neutral cost while you control the settlement."
+            : "All faction unit tiers are available at normal cost while you control the settlement."}
+        </p>
       ) : null}
       {freelancerPrompt ? (
         <div className="freelancerPaymentPrompt" role="dialog" aria-label="Freelancer's Guild payment choice">
@@ -880,6 +889,7 @@ export function TownRecruitSection({
       <MgqGoldContractPanel player={player} />
       {rosterRows.map(({ unitDefId, owned }) => {
         const unit = coreUnitDefinitions[unitDefId];
+        const recruitSideName = playerRecruitUnitSide(state, viewerPlayerId, unitDefId);
         const rowKey = owned?.id ?? `recruit-${unitDefId}`;
         const copyIndex = owned ? player.army.filter((candidate) => candidate.unitDefId === unitDefId && candidate.side !== "bank").findIndex((candidate) => candidate.id === owned.id) + 1 : 0;
         const copyLabel = allowCopies && owned ? ` · Copy ${copyIndex}` : "";
@@ -891,8 +901,9 @@ export function TownRecruitSection({
         const rosterOwnedSide =
           owned?.side === "few" || owned?.side === "pack" || owned?.side === "neutral" ? owned.side : null;
         const rosterRecruitRef = { kind: "recruit" as const, unitDefId };
-        const rosterRecruitCost = unit?.few
-          ? applyRecruitGoldDiscount(state, viewerPlayerId, rosterRecruitRef, unit.few.cost)
+        const rosterRecruitSide = recruitSideName ? unit?.[recruitSideName] : undefined;
+        const rosterRecruitCost = rosterRecruitSide
+          ? applyRecruitGoldDiscount(state, viewerPlayerId, rosterRecruitRef, rosterRecruitSide.cost)
           : {};
         const rosterPackCost =
           owned?.side === "few" && unit?.pack
@@ -903,7 +914,11 @@ export function TownRecruitSection({
                 unit.pack.cost
               )
             : unit?.pack?.cost ?? {};
-        const unitCards = unit ? (
+        const unitCards = unit && recruitSideName === "neutral" ? (
+          <div aria-label={`${unit.name} Neutral card`} className="unitSideCards">
+            <RecruitUnitView side="neutral" sideRules={sideRules} unitDefId={unitDefId} />
+          </div>
+        ) : unit ? (
           <UnitSideCards
             fewCost={rosterRecruitCost}
             ownedSide={rosterOwnedSide}
@@ -920,7 +935,7 @@ export function TownRecruitSection({
         // A faction unit with no recruitable Few side should not happen for a
         // real roster, but never let a unit vanish (user request: "show all
         // units even not available"): show its faces + name as display-only.
-        if (!unit.few) {
+        if (!unit.few && recruitSideName !== "neutral") {
           return (
             <div className="recruitRow unitRosterRow locked" key={rowKey}>
               {unitCards}
@@ -953,7 +968,7 @@ export function TownRecruitSection({
                   unitName={unit.name}
                 />
               ) : (
-                <small className="recruitState">pack — fully mustered</small>
+                <small className="recruitState">{owned.side === "neutral" ? "neutral unit — cannot reinforce" : "pack — fully mustered"}</small>
               )}
             </div>
           );
@@ -1035,14 +1050,16 @@ export function TownRecruitSection({
         }
         const checked = recruitIds.includes(unitDefId);
         const recruitRef = { kind: "recruit" as const, unitDefId };
-        const recruitCost = applyRecruitGoldDiscount(state, viewerPlayerId, recruitRef, unit.few.cost);
+        const recruitCost = applyRecruitGoldDiscount(state, viewerPlayerId, recruitRef, rosterRecruitSide!.cost);
         const recruitLegion = legionVoucherDiscount(state, viewerPlayerId, recruitRef);
         const recruitAffordable = affordableRecruitCost(recruitCost);
         return (
           <div className={`recruitRow unitRosterRow ${tierUnlocked ? "" : "locked"}`} key={rowKey}>
             {unitCards}
             <Star aria-hidden="true" className={`tierStar ${unit.tier}`} size={12} />
-            <span className="recruitName">{unit.name}</span>
+            <span className="recruitName">
+              {unit.name}{recruitSideName === "neutral" ? <span className="neutralBadge">Neutral</span> : null}
+            </span>
             <small title={recruitLegion > 0 ? `Legion voucher reserved: −${recruitLegion} gold` : undefined}>
               <UnitCost cost={recruitCost} label={`Recruit cost for ${unit.name}`} />
               {recruitLegion > 0 ? ` · Legion −${recruitLegion}` : ""}

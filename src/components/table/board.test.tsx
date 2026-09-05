@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BattlefieldBoard, COMBAT_BOARD_ART_VARIANTS, CommandDock, InspectPanel, LogDrawer, battlefieldCellPlacement, displayedCombatAttack, pickCombatBoardArt } from "./board";
-import { CardZoomProvider, HeroBattlefieldCard, unitZoomContent } from "./zoom";
+import { CardZoomProvider, HeroBattlefieldCard, unitZoomContent, useCardZoom } from "./zoom";
 import {
   applyCombatBoardArtObstacles,
   assignCombatBoardArt,
@@ -350,6 +350,29 @@ describe("combat board art variants", () => {
     applyCombatBoardArtObstacles(state.combat!);
 
     expect(state.combat!.obstacles).toEqual([...SHIP_BATTLE_OBSTACLES]);
+  });
+
+  it("renders ship obstacles as translucent rigging instead of a dirt mound", () => {
+    const state = waterCombatState("board-art-ship-obstacle-visual");
+    state.combat!.boardArtId = "ship-battle";
+    state.combat!.obstacles = [9];
+
+    render(
+      <CardZoomProvider>
+        <BattlefieldBoard
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={[]}
+          selectedCardAction={null}
+          onAction={vi.fn()}
+          onInspect={() => {}}
+        />
+      </CardZoomProvider>
+    );
+
+    const cell = document.querySelector('[data-fx-cell="9"]');
+    expect(cell?.className).toContain("seaObstacle");
+    expect(cell?.querySelector<HTMLImageElement>(".obstacleArt")?.src).toContain("ship-obstacle-rigging.webp");
   });
 
   it("adds ship obstacles through the normal seeded board-art assignment path", () => {
@@ -1187,6 +1210,25 @@ describe("BattlefieldBoard — battlefield-obstacle spell tokens", () => {
     expect(bg).toContain("quicksand");
     expect(bg).not.toContain("force-field");
     expect(mark!.textContent ?? "").not.toContain("🌀");
+  });
+
+  it("renders Mutsuki's Explosive Prank token with her dedicated bomb art", () => {
+    const state = createInitialGameState("board-mutsuki-prank-bomb");
+    state.combat!.battlefieldTokens = [{
+      id: "mutsuki-bomb",
+      kind: "land_mine",
+      position: 10,
+      controllerId: "p1",
+      armed: true,
+      damage: 2,
+      sourceAbilityId: "kivotos-explosive-prank"
+    }];
+
+    renderBoard(state);
+
+    const art = document.querySelector<HTMLImageElement>('[data-fx-cell="10"] .mutsukiBombTokenArt');
+    expect(art?.src).toContain("mutsuki-prank-bomb.webp");
+    expect(document.querySelector('[data-fx-cell="10"] .battlefieldTokenSprite')).toBeNull();
   });
 
   it("shows the opponent the trap's icon but not its armed/decoy state; the caster sees both", () => {
@@ -2341,26 +2383,44 @@ describe("InspectPanel / zoom — veterancy for own, ENEMY and neutral cards", (
     expect(container.querySelector(".inspectVeterancy")).toBeNull();
   });
 
-  it("the card ZOOM adds the four-rung ladder for an ENEMY card, and none with the rule off", () => {
+  it("the card zoom keeps Unit Experience compact, then opens its visual panel on click", () => {
     const state = createInitialGameState("zoom-veterancy");
     const enemy = state.combat!.units.unit_p2_skeletons;
     enemy.unitRank = 1;
     enemy.unitExperience = 6;
 
     const ranked = unitZoomContent(enemy, state.ruleset);
-    // The headline line still names the rank + XP, now with the ability track.
+    // The concise headline remains, but the four ranks are structured data and
+    // no longer appear as a wall of paragraph text in the right-hand reader.
     expect(ranked.lines!.some((line) => /Veteran rank 1 \(Seasoned\)/.test(line))).toBe(true);
-    // One rung per rank, the reached ones ticked and the rest pending, each with
-    // its own XP bar off the shipped bronze ladder 5/9/13/17.
-    const rungs = ranked.lines!.filter((line) => /^[✔·] /.test(line));
-    expect(rungs).toHaveLength(4);
-    expect(rungs[0]).toMatch(/^✔ Seasoned \(5 XP\): /);
-    expect(rungs[1]).toMatch(/^· Veteran \(9 XP\): /);
-    expect(rungs[3]).toMatch(/^· Legend \(17 XP\): /);
+    expect(ranked.lines!.filter((line) => /^[✔·] /.test(line))).toHaveLength(0);
+    expect(ranked.veterancy?.ladder).toHaveLength(4);
+    expect(ranked.veterancy?.ladder[0]).toMatchObject({ rankName: "Seasoned", threshold: 5, reached: true });
+    expect(ranked.veterancy?.ladder[3]).toMatchObject({ rankName: "Legend", threshold: 17, reached: false });
+
+    function OpenEnemyZoom() {
+      const { zoomUnit } = useCardZoom();
+      return <button onClick={() => zoomUnit(enemy, state.ruleset)}>Open enemy</button>;
+    }
+    render(
+      <CardZoomProvider>
+        <OpenEnemyZoom />
+      </CardZoomProvider>,
+    );
+    fireEvent.click(document.querySelector<HTMLButtonElement>("button")!);
+    const panelButton = document.querySelector<HTMLButtonElement>(".zoomUnitXpButton")!;
+    expect(panelButton.textContent).toContain("Open Unit Experience panel");
+    expect(document.querySelector(".zoomUnitXpPanel")).toBeNull();
+    fireEvent.click(panelButton);
+    const panel = document.querySelector(".zoomUnitXpPanel");
+    expect(panel).toBeTruthy();
+    expect(panel!.textContent).toContain("Seasoned");
+    expect(panel!.querySelectorAll(".unitXpRank")).toHaveLength(4);
 
     // CONTROL: an untrained card emits neither the headline nor any rung.
     const bare = unitZoomContent(state.combat!.units.unit_p1_griffins, state.ruleset);
     expect(bare.lines!.some((line) => /Veteran rank/.test(line))).toBe(false);
     expect(bare.lines!.filter((line) => /^[✔·] /.test(line))).toHaveLength(0);
+    expect(bare.veterancy).toBeUndefined();
   });
 });

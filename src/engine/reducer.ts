@@ -11725,6 +11725,7 @@ function addBattlefieldToken(
     tokenId: placed.id,
     kind: placed.kind,
     position: placed.position,
+    sourceAbilityId: placed.sourceAbilityId,
   });
   return placed;
 }
@@ -15462,13 +15463,25 @@ function resolveAttackStackItem(
     const mine = getFirstMeleeAttackerDamage(details.defender);
     if (mine) {
       details.defender.mutsukiTrickMineUsedThisCombat = true;
-      details.attacker.damage += mine.amount;
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: details.defender.id,
         abilityId: mine.abilityId,
         targetUnitId: details.attacker.id,
         message: `${details.defender.cardName}'s ${mine.abilityName} deals ${mine.amount} damage to ${details.attacker.cardName} before its melee attack.`,
+      });
+      details.attacker.damage += mine.amount;
+      noteUnitDamagedForTokens(state, details.attacker, mine.amount);
+      appendEvent(state, {
+        type: "DAMAGE_ASSIGNED",
+        source: {
+          type: "card",
+          cardId: mine.abilityId,
+          controllerId: details.defender.controllerId,
+        },
+        target: { type: "unit", unitId: details.attacker.id },
+        amount: mine.amount,
+        damageKind: "effect",
       });
       markUnitRemovedIfNeeded(state, details.attacker);
     }
@@ -31080,6 +31093,7 @@ function dealBattlefieldTokenDamage(
     unitId: unit.id,
     outcome: "damage",
     amount: appliedAmount,
+    sourceAbilityId: token.sourceAbilityId,
   });
   unit.damage += appliedAmount;
   noteUnitDamagedForTokens(state, unit, appliedAmount);

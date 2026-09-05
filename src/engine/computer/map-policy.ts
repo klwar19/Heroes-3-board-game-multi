@@ -585,9 +585,16 @@ function populationScore(
   let spentValuables = 0;
   for (const purchase of action.purchases) {
     const definition = coreUnitDefinitions[purchase.unitDefId];
+    // A Settlement Neutral-Units recruit (BINH house rule) buys the single-sided
+    // NEUTRAL card — such a definition has no Few side, so price and value the
+    // side the offer actually adds instead of a zero-cost, zero-gain phantom.
+    const recruitSide: "few" | "neutral" =
+      purchase.kind !== "reinforce" && !definition?.few && definition?.neutral
+        ? "neutral"
+        : "few";
     const gainedSide = getUnitSide(
       purchase.unitDefId,
-      purchase.kind === "reinforce" ? "pack" : "few",
+      purchase.kind === "reinforce" ? "pack" : recruitSide,
     );
     const previousSide =
       purchase.kind === "reinforce"
@@ -597,7 +604,7 @@ function populationScore(
     // gain, not a hash-random unit among same-tier offers. Reinforcement is
     // valued by the Pack's improvement over Few; recruitment gains the whole
     // Few body. These are public printed stats only.
-    const developmentSide = purchase.kind === "reinforce" ? "pack" : "few";
+    const developmentSide = purchase.kind === "reinforce" ? "pack" : recruitSide;
     const sideValue = unitDevelopmentSideStrength(
       purchase.unitDefId,
       developmentSide,
