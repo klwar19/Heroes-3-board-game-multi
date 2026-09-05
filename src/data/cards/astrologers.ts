@@ -212,7 +212,11 @@ export type AstrologersCardDefinition = {
  * fails `astrologers-data.test.ts`. The effect is still fully engine-wired + tested;
  * only the artwork is unavailable upstream.
  */
-export const ART_LESS_PROCLAMATIONS: ReadonlySet<string> = new Set<string>(["astrologers.wandering_merchant"]);
+export const ART_LESS_PROCLAMATIONS: ReadonlySet<string> = new Set<string>([
+  // EMPTY since 2026-09-05: the wiki now publishes a front scan for every dealt
+  // proclamation (Wandering Merchant included). Kept so a future scan-less card
+  // is a conscious entry.
+]);
 
 /**
  * Proclamations whose card art EXISTS upstream but has not been fetched into
@@ -225,22 +229,9 @@ export const ART_LESS_PROCLAMATIONS: ReadonlySet<string> = new Set<string>(["ast
  * has downloaded its scan and `image(slug)` points at a real file.
  */
 export const ART_PENDING_PROCLAMATIONS: ReadonlySet<string> = new Set<string>([
-  "astrologers.whirlpool",
-  "astrologers.destruction",
-  "astrologers.sanctuary",
-  "astrologers.spells",
-  "astrologers.pirates",
-  "astrologers.rulebook",
-  "astrologers.judge_dread",
-  "astrologers.wind",
-  "astrologers.mages",
-  "astrologers.elementals",
-  "astrologers.forty_thieves",
-  "astrologers.plastic_tray",
-  "astrologers.restart",
-  "astrologers.crag_hack",
-  "astrologers.multilingual_bron",
-  "astrologers.disruption"
+  // EMPTY since 2026-09-05: all 49 proclamations ship their wiki scan (see
+  // scripts/fetch-astrologers-art.py SLUGS). Add a slug here only while a NEW
+  // card is wired ahead of its art.
 ]);
 
 function source(slug: string, expansion: AstrologersExpansion) {
@@ -337,8 +328,7 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     ongoing: true,
     effect: { type: "FIRST_COMBAT_GROUND_ATTACK", amount: 1 },
     expansion: "Stronghold Expansion",
-    // Art pending (see ART_PENDING_PROCLAMATIONS) — renders via the text face.
-    image: "",
+    image: image("crag_hack"),
     source: source("crag_hack", "Stronghold Expansion")
   },
   "astrologers.crazy_wizard": {
@@ -382,8 +372,7 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     ongoing: false,
     effect: { type: "REMOVE_PERMANENT_FOR_GOLD", gold: 5 },
     expansion: "Stretch Goals",
-    // Art pending (see ART_PENDING_PROCLAMATIONS) — renders via the text face.
-    image: "",
+    image: image("destruction"),
     source: source("destruction", "Stretch Goals")
   },
   "astrologers.disruption": {
@@ -402,8 +391,7 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     ongoing: false,
     effect: { type: "ROTATE_TILE_EACH" },
     expansion: "Stretch Goals",
-    // Art pending (see ART_PENDING_PROCLAMATIONS) — renders via the text face.
-    image: "",
+    image: image("disruption"),
     source: source("disruption", "Stretch Goals")
   },
   "astrologers.elementals": {
@@ -417,8 +405,7 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     ongoing: true,
     effect: { type: "SEED_NEUTRAL_ELEMENTALS" },
     expansion: "Conflux Expansion",
-    // Art pending (see ART_PENDING_PROCLAMATIONS) — renders via the text face.
-    image: "",
+    image: image("elementals"),
     source: source("elementals", "Conflux Expansion")
   },
   "astrologers.explorers": {
@@ -469,8 +456,7 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     ongoing: true,
     effect: { type: "EVENT_DRAW_PICK", count: 2 },
     expansion: "Fortress Expansion",
-    // Art pending (see ART_PENDING_PROCLAMATIONS) — renders via the text face.
-    image: "",
+    image: image("forty_thieves"),
     source: source("forty_thieves", "Fortress Expansion")
   },
   "astrologers.friendly_beaver": {
@@ -552,7 +538,7 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     ongoing: true,
     effect: { type: "NEUTRAL_REDRAW_ALL" },
     expansion: "Stronghold Expansion",
-    image: "",
+    image: image("judge_dread"),
     source: source("judge_dread", "Stronghold Expansion")
   },
   "astrologers.mages": {
@@ -564,7 +550,7 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     ongoing: true,
     effect: { type: "FREE_SPELL_BOOK" },
     expansion: "Conflux Expansion",
-    image: "",
+    image: image("mages"),
     source: source("mages", "Conflux Expansion")
   },
   "astrologers.magic_tortoise": {
@@ -628,8 +614,7 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     ongoing: true,
     effect: { type: "ABILITY_ROLL_REROLL" },
     expansion: "Stretch Goals",
-    // Art pending (see ART_PENDING_PROCLAMATIONS) — renders via the text face.
-    image: "",
+    image: image("multilingual_bron"),
     source: source("multilingual_bron", "Stretch Goals")
   },
   "astrologers.pirates": {
@@ -642,7 +627,7 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     ongoing: true,
     effect: { type: "COMBAT_WIN_RESOURCE_DIE" },
     expansion: "Cove Expansion",
-    image: "",
+    image: image("pirates"),
     source: source("pirates", "Cove Expansion")
   },
   "astrologers.plane_between_planes": {
@@ -672,8 +657,7 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     ongoing: true,
     effect: { type: "DEFEND_FLAT_BONUS", amount: 1 },
     expansion: "Stretch Goals",
-    // Art pending (see ART_PENDING_PROCLAMATIONS) — renders via the text face.
-    image: "",
+    image: image("plastic_tray"),
     source: source("plastic_tray", "Stretch Goals")
   },
   "astrologers.profuse_growth": {
@@ -700,8 +684,7 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     ongoing: true,
     effect: { type: "HAND_LIMIT_MODIFIER", amount: -2, minimum: 4 },
     expansion: "Stretch Goals",
-    // Art pending (see ART_PENDING_PROCLAMATIONS) — renders via the text face.
-    image: "",
+    image: image("restart"),
     source: source("restart", "Stretch Goals")
   },
   "astrologers.rulebook": {
@@ -718,7 +701,7 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     ongoing: true,
     effect: { type: "NEUTRAL_DIFFICULTY_LOWER", levels: 1 },
     expansion: "Stretch Goals",
-    image: "",
+    image: image("rulebook"),
     source: source("rulebook", "Stretch Goals")
   },
   "astrologers.sanctuary": {
@@ -732,8 +715,7 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     ongoing: true,
     effect: { type: "PVP_ATTACK_BAN" },
     expansion: "Stretch Goals",
-    // Art pending (see ART_PENDING_PROCLAMATIONS) — renders via the text face.
-    image: "",
+    image: image("sanctuary"),
     source: source("sanctuary", "Stretch Goals")
   },
   "astrologers.scorched_ground": {
@@ -765,8 +747,7 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     ongoing: true,
     effect: { type: "SPELL_SEARCH_WIDEN", count: 4 },
     expansion: "Conflux Expansion",
-    // Art pending (see ART_PENDING_PROCLAMATIONS) — renders via the text face.
-    image: "",
+    image: image("spells"),
     source: source("spells", "Conflux Expansion")
   },
   "astrologers.swift_weasel": {
@@ -808,9 +789,7 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     ongoing: false,
     effect: { type: "WAR_MACHINE_DISCOUNT_OFFER", discountGold: 3 },
     expansion: "Stretch Goals",
-    // The fan wiki has no front scan for this Stretch-Goals card — see
-    // ART_LESS_PROCLAMATIONS; it renders through the styled text card-face.
-    image: "",
+    image: image("wandering_merchant"),
     source: source("wandering_merchant", "Stretch Goals")
   },
   "astrologers.wind": {
@@ -823,7 +802,7 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     ongoing: true,
     effect: { type: "SEA_CONTINUE_AFTER_EMBARK" },
     expansion: "Cove Expansion",
-    image: "",
+    image: image("wind"),
     source: source("wind", "Cove Expansion")
   },
   "astrologers.whirlpool": {
@@ -833,7 +812,7 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
     ongoing: true,
     effect: { type: "WHIRLPOOL_FREE_CHOICE" },
     expansion: "Cove Expansion",
-    image: "",
+    image: image("whirlpool"),
     source: source("whirlpool", "Cove Expansion")
   },
   "astrologers.white_raven": {
