@@ -8,6 +8,8 @@ import { NECROMANCY_ABILITY_ID } from "@/engine/ruleset";
 import { NEUTRAL_PLAYER_ID } from "@/engine/state";
 import type { CombatState, MapFieldState } from "@/engine/state";
 import type { GameAction, GameState } from "@/engine";
+import { parallelStateForPlayer } from "@/engine/parallel-combats";
+import { redactStateForSeat } from "@/engine/player-view";
 
 afterEach(cleanup);
 
@@ -25,9 +27,10 @@ function apply(state: GameState, action: GameAction): GameState {
  * leaving the Necromancy window as the ONLY thing pending — exactly the state
  * where the map offered no Skip button.
  */
-function necromancyWindowState(seed: string): GameState {
+function necromancyWindowState(seed: string, parallelTurns = 0): GameState {
   const state = createAdventureGameState({
     seed,
+    parallelTurns,
     ruleset: "binh",
     difficulty: "easy",
     rollFirstPlayer: false,
@@ -89,6 +92,21 @@ function necromancyWindowState(seed: string): GameState {
 }
 
 describe("Necropolis — post-combat Necromancy window renders on the map", () => {
+  it("shows the parked winner's Necromancy controls while another player resolves a map spell", () => {
+    let state = necromancyWindowState("necro-parallel-render", 4);
+    state.players.p2.hand = ["spell.view_air", "ability.sorcery"];
+    state = apply(state, { type: "PLAY_CARD", playerId: "p2", cardId: "spell.view_air", mode: "basic", target: { type: "none" } });
+    const otherChoice = structuredClone(state.pendingChoice);
+    expect(otherChoice?.playerId).toBe("p2");
+    const onAction = vi.fn();
+    render(<PromptTray legalActions={getLegalActions(state, "p1")} onAction={onAction} state={redactStateForSeat(state, "p1")} viewerPlayerId="p1" />);
+    expect(screen.getByRole("button", { name: /play necromancy/i })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /resolve bonuses and continue/i }));
+    expect(onAction).toHaveBeenCalledTimes(1);
+    state = apply(state, onAction.mock.calls[0][0]);
+    expect(parallelStateForPlayer(state, "p2").pendingChoice).toEqual(otherChoice);
+    expect(parallelStateForPlayer(state, "p1").adventure?.pendingNecromancy).toBeNull();
+  });
   it("opens a real Necromancy window that offers BOTH a play and a Skip", () => {
     const state = necromancyWindowState("necro-open");
     // The engine really opened the window and gated the turn behind it.

@@ -1,6 +1,6 @@
 import { appendEvent } from "./events";
 import { hasParkedParallelInteractions } from "./parallel-combats";
-import { neutralCombatControllerId } from "./neutral-control";
+import { combatUnitDecisionOwnerId, neutralCombatControllerId } from "./neutral-control";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import type { GameState, PlayerId } from "./state";
 
@@ -11,15 +11,16 @@ import type { GameState, PlayerId } from "./state";
  * once: each may move, act and end their own turn independently, and the round
  * wraps once everyone has ended (`turn.completedPlayerIds`). The engine's
  * neutral battles run in independent contexts (see parallel-combats.ts), with
- * their own choices, reactions, effects and post-battle rewards. Unrelated map
- * interactions remain serialized when no parallel battle context is running.
+ * their own choices, reactions, effects and post-battle rewards. Map visits,
+ * searches and spell choices use those same independent player contexts.
  * Shared-deck draws always resolve strictly in action-arrival
  * order: whoever acts first draws first, and no card can be handed out twice.
  *
  * The mode stops — with a `PARALLEL_TURNS_STOPPED` warning to the whole table —
- * the moment a PvP battle starts, a serious PvP interaction resolves (taking a
- * mine/settlement/town flag from a live player, e.g. the View Earth capture;
- * hand discards are deliberately NOT serious), or the chosen period ends. Play
+ * the moment a PvP battle starts, a player
+ * interaction resolves (taking a
+ * mine/settlement/town flag or changing another player's cards or resources),
+ * or the chosen period ends. Play
  * then continues in the normal one-at-a-time rotation, starting with the player
  * whose action stopped the mode.
  */
@@ -58,16 +59,28 @@ export function roundStartEventResolver(state: GameState): PlayerId | null {
   // permitted actor, or the whole-table freeze silently degrades to the
   // ordinary parallel bystander rule (quiet moves under the barrier).
   const combat = state.combat;
+  const fighter = combat
+    ? combat.attackerPlayerId !== NEUTRAL_PLAYER_ID ? combat.attackerPlayerId : combat.defenderPlayerId
+    : null;
+  const activeUnit = combat?.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
+  const combatResolver = combat ? combat.outcome ? fighter :
+    combat.pendingNeutralPlacement ?? combat.pendingTacticsSwaps?.[0] ?? combat.pendingCommanderPlacement?.[0] ??
+    combat.setup?.pendingPlayerIds[0] ??
+    (combat.pendingNeutralStep ? combat.pendingNeutralStep.reactingPlayerId ?? fighter : undefined) ??
+    combat.pendingActivationSkipRecall?.playerId ??
+    (activeUnit ? combatUnitDecisionOwnerId(state, combat, activeUnit) : fighter) : null;
   return (
     state.pendingChoice?.playerId ??
+    state.reactionWindow?.priorityPlayerId ??
+    (combatResolver === NEUTRAL_PLAYER_ID ? fighter : combatResolver) ??
     state.adventure?.pendingVisit?.playerId ??
     state.adventure?.pendingTileChoice?.playerId ??
     state.adventure?.pendingNecromancy?.playerId ??
-    (combat
-      ? combat.attackerPlayerId !== NEUTRAL_PLAYER_ID
-        ? combat.attackerPlayerId
-        : combat.defenderPlayerId
-      : null)
+    state.adventure?.pendingCompanionRecruitment?.playerId ??
+    state.adventure?.pendingCommanderFirstAid?.playerId ??
+    state.adventure?.pendingFarTileFlip?.playerId ??
+    state.adventure?.pendingTokenTeleport?.playerId ??
+    null
   );
 }
 
@@ -106,7 +119,9 @@ export function isParallelActor(state: GameState, playerId: PlayerId): boolean {
  * `state.activePlayerId === playerId` on the adventure map.
  */
 export function hasOpenAdventureTurn(state: GameState, playerId: PlayerId): boolean {
-  return state.activePlayerId === playerId || isParallelActor(state, playerId);
+  return parallelTurnsActive(state)
+    ? isParallelActor(state, playerId)
+    : state.activePlayerId === playerId;
 }
 
 /** Live players whose parallel turn is still open this round. */
@@ -281,6 +296,9 @@ export function parallelSlotSignature(state: GameState): string {
       ? [adventure.pendingCommanderFirstAid.playerId, adventure.pendingCommanderFirstAid.options.length]
       : null,
     adventure?.pendingFarTileFlip ? adventure.pendingFarTileFlip.playerId : null,
+    adventure?.pendingTokenTeleport ?? null,
+    adventure?.polishArtifactAccess ?? null,
+    adventure?.polishRandomArtifactDie ?? null,
     adventure?.pendingGarrison ? adventure.pendingGarrison.defenderPlayerId : null
   ]);
 }
@@ -302,17 +320,18 @@ export function stopParallelTurns(
   state: GameState,
   reason: "pvp-battle" | "pvp-interaction" | "period-ended",
   byPlayerId?: PlayerId,
-  detail?: string
+  detail?: string,
+  interactionState: GameState = state
 ): void {
   if (!parallelTurnsActive(state)) {
     return;
   }
 
   if (reason !== "period-ended" && byPlayerId) {
-    if (hasParkedParallelInteractions(state)) {
-      throw new Error("Finish the other parallel battles before starting a player-vs-player interaction.");
+    if (hasParkedParallelInteractions(interactionState)) {
+      throw new Error("Parallel turns: wait until the other players' battles and choices finish before affecting another player.");
     }
-    assertParallelInteractionFree(state, byPlayerId);
+    assertParallelInteractionFree(interactionState, byPlayerId);
   }
 
   const byName = byPlayerId ? (state.players[byPlayerId]?.name ?? byPlayerId) : undefined;
@@ -324,6 +343,7 @@ export function stopParallelTurns(
         : `⏳ Parallel turns have ENDED: the agreed period (${state.turn.simultaneousRoundLimit} round${state.turn.simultaneousRoundLimit === 1 ? "" : "s"}) is over. Play continues in normal turn order.`;
 
   state.turn.mode = "ordered";
+  delete state.parallelContextSelections;
   state.turn.parallelStopped = { reason, round: state.round };
 
   if (byPlayerId && reason !== "period-ended") {
@@ -338,6 +358,42 @@ export function stopParallelTurns(
     ...(byPlayerId ? { byPlayerId } : {}),
     message
   });
+}
+
+/** Transactional safety net for player-affecting cards, buildings and scripts.
+ * Shared supplies remain shared; changes to another seat's personal game state
+ * require ordered play. Round-start events deliberately resolve for the table.
+ */
+export function parallelPlayerImpact(before: GameState, after: GameState, actor: PlayerId): PlayerId | null {
+  if (!parallelTurnsActive(before) || !parallelTurnsActive(after) ||
+    (!before.parallelCombatOwnerId && !before.combat) ||
+    before.phase === "setup" || before.round !== after.round ||
+    isRoundStartEventBarrierActive(before) || isRoundStartEventBarrierActive(after)) return null;
+  const participants = new Set([
+    actor,
+    before.parallelCombatOwnerId,
+    before.combat?.attackerPlayerId,
+    before.combat?.defenderPlayerId,
+    NEUTRAL_PLAYER_ID,
+  ]);
+  for (const id of before.turnOrder) {
+    if (participants.has(id) || before.players[id]?.eliminated) continue;
+    const owned = (state: GameState) => [
+      state.players[id],
+      Object.values(state.heroes).filter(hero => hero.controllerId === id),
+      Object.values(state.towns).filter(town => town.controllerId === id),
+      state.activeEffects.filter(effect => effect.controllerId === id),
+    ];
+    if (JSON.stringify(owned(before)) !== JSON.stringify(owned(after))) return id;
+    const controller = after.combat ? neutralCombatControllerId(after, after.combat) : null;
+    if (id !== controller && (after.pendingChoice?.playerId === id || after.reactionWindow?.priorityPlayerId === id ||
+      after.adventure?.pendingVisit?.playerId === id)) return id;
+    const sharedEffects = (state: GameState) => state.activeEffects.filter(effect =>
+      effect.scope === "global" && (effect.duration.type === "current-turn" ||
+        effect.duration.type === "current-game-round" || effect.duration.type === "permanent"));
+    if (JSON.stringify(sharedEffects(before)) !== JSON.stringify(sharedEffects(after))) return id;
+  }
+  return null;
 }
 
 /**

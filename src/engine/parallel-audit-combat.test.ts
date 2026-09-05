@@ -195,7 +195,7 @@ function openNeutralFightForP2(
 // machinery.
 // ---------------------------------------------------------------------------
 describe("AUDIT: PvP Neutral Control controller under parallel turns", () => {
-  it("keeps its own quiet moves while another seat's neutral fight is open (a plain bystander does)", () => {
+  it("keeps the controller's own map turn independent from the neutral battle", () => {
     const state = openNeutralFightForP2("audit-pnc-quiet", {
       players: 3,
       pvpNeutralControl: true,
@@ -206,10 +206,9 @@ describe("AUDIT: PvP Neutral Control controller under parallel turns", () => {
     const quietForP3 = emptyFieldNextTo(state, "hero_p3");
     const quietForP1 = emptyFieldNextTo(state, "hero_p1");
 
-    // CONTROL: the uninvolved bystander p1 keeps the quiet-move set.
+    expect(state.turn.mode).toBe("parallel");
     expect(getLegalActions(state, "p1").some((l) => l.action.type === "MOVE_HERO")).toBe(true);
-    const p1Moved = apply(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: quietForP1 });
-    expect(p1Moved.heroes.hero_p1.spaceId).toBe(quietForP1);
+    expect(applyAction(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: quietForP1 }).errors).toEqual([]);
 
     // The controller p3 — whose parallel turn is equally open — gets nothing.
     expect(getLegalActions(state, "p3").some((l) => l.action.type === "MOVE_HERO")).toBe(true);
@@ -219,7 +218,7 @@ describe("AUDIT: PvP Neutral Control controller under parallel turns", () => {
       heroId: "hero_p3",
       to: quietForP3
     });
-    expect(p3Moved.errors.map((e) => e.message)).toEqual([]);
+    expect(p3Moved.errors).toEqual([]);
     expect(p3Moved.state.heroes.hero_p3.spaceId).toBe(quietForP3);
   });
 

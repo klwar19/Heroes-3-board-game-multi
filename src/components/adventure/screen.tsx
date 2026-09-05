@@ -13946,9 +13946,8 @@ function multiplayerComputerEnemiesChoices(
  * Two mirrors of engine rules, both derived from the SAME options object the
  * handler reads rather than re-implemented: the offered counts stop at the
  * scenario's seat capacity (`setMultiplayerComputerOpponents` clamps there
- * anyway, so an impossible value is never offered), and the whole row is
- * DISABLED while parallel turns are on — that combination is refused in both
- * directions at the lobby.
+ * anyway, so an impossible value is never offered). Computer seats can also
+ * take parallel turns and fight human-controlled neutrals when enabled.
  */
 function MultiplayerComputerEnemiesRow({
   state,
@@ -13964,11 +13963,6 @@ function MultiplayerComputerEnemiesRow({
     return null;
   }
   const { choices, current: computerSeats } = offer;
-  const parallelRounds = state.setupLobby?.options.parallelTurns ?? 0;
-  const blockedReason =
-    parallelRounds > 0
-      ? "Parallel turns are on — computer enemies cannot be used with them. Turn parallel turns off in Advanced settings first."
-      : null;
   return (
     <div className="optionRow">
       <small title="Add computer-controlled enemy seats to this multiplayer table. In Co-op every human is allied against them.">
@@ -13983,7 +13977,6 @@ function MultiplayerComputerEnemiesRow({
           <button
             aria-pressed={computerSeats === count}
             className={computerSeats === count ? "selected" : ""}
-            disabled={Boolean(blockedReason) && count > 0}
             key={count}
             onClick={() =>
               onAction({
@@ -13993,9 +13986,7 @@ function MultiplayerComputerEnemiesRow({
               })
             }
             title={
-              blockedReason && count > 0
-                ? blockedReason
-                : count === 0
+              count === 0
                   ? "Humans only — no computer seats"
                   : `Add ${count} computer ${count === 1 ? "enemy" : "enemies"}`
             }
@@ -14008,12 +13999,11 @@ function MultiplayerComputerEnemiesRow({
         ))}
       </div>
       <small className="optionHint">
-        {blockedReason ??
-          (computerSeats === 0
+        {computerSeats === 0
             ? "None — every seat is human. Computer enemies take the trailing seats and nobody can sit in them."
             : `${computerSeats} computer ${computerSeats === 1 ? "enemy takes" : "enemies take"} the trailing seat${
                 computerSeats === 1 ? "" : "s"
-              }. Pick each one’s town & hero below, or leave it random.`)}
+              }. Pick each one’s town & hero below, or leave it random.`}
       </small>
     </div>
   );
@@ -15085,8 +15075,8 @@ function GameOptionsPanel({
           {(() => {
             const neutralControlOn = options.pvpNeutralControl ?? false;
             const mustAttackOn = options.pvpNeutralControlMustAttack ?? true;
-            // Same co-op engine rule as Manual guard control above.
-            const coopTable = tableGameMode(options) === "coop";
+            const parallelHumanControl = state.sessionMode !== "single-player" && (options.parallelTurns ?? 0) > 0;
+            const coopTable = tableGameMode(options) === "coop" && !parallelHumanControl;
             return (
               <>
                 <div className="optionRow">
@@ -15118,7 +15108,9 @@ function GameOptionsPanel({
                     {coopTable
                       ? COOP_NEUTRAL_CONTROL_DISABLED_REASON
                       : neutralControlOn
-                        ? "Every Neutral combat becomes PvP-like: the NEXT seat clockwise plays the guards — moving and attacking each one, breaking activation ties, and answering ability targets and dice rerolls. In single-player, you control guards in computer heroes' fights; computer seats control them in yours. A one-seat game keeps the Neutral AI."
+                        ? parallelHumanControl
+                          ? "Each battle assigns its guards to the next human clockwise, including battles fought by computer heroes and allied heroes. Use Your battle windows to switch between your hero and each neutral army you control. Every battle keeps its own progress."
+                          : "The next human clockwise controls the guards, including placement, attacks, ability choices and rerolls. Existing single-player neutral-control rules are unchanged."
                         : "Off by default. The Neutral AI plays the guards by the rulebook (same-tier priority, nearest target); the fighting player only breaks its ties."}
                   </small>
                 </div>
@@ -15164,7 +15156,8 @@ function GameOptionsPanel({
           })()}
 
           {(() => {
-            const parallelRounds = Math.max(
+            const singlePlayerParallelDisabled = state.sessionMode === "single-player";
+            const parallelRounds = singlePlayerParallelDisabled ? 0 : Math.max(
               0,
               Math.min(MAX_PARALLEL_TURN_ROUNDS, options.parallelTurns ?? 0),
             );
@@ -15178,11 +15171,14 @@ function GameOptionsPanel({
                   {presets.map((rounds) => (
                     <button
                       aria-pressed={parallelRounds === rounds}
+                      disabled={singlePlayerParallelDisabled && rounds > 0}
                       className={parallelRounds === rounds ? "selected" : ""}
                       key={rounds}
                       onClick={() => send({ parallelTurns: rounds })}
                       title={
-                        rounds === 0
+                        singlePlayerParallelDisabled && rounds > 0
+                          ? "Parallel turns are unavailable in single-player games"
+                          : rounds === 0
                           ? "Classic one-at-a-time turns"
                           : `Everyone plays at once for the first ${rounds} round${rounds === 1 ? "" : "s"}`
                       }
@@ -15193,8 +15189,8 @@ function GameOptionsPanel({
                   ))}
                 </div>
                 <small className="optionHint">
-                  {parallelRounds > 0
-                    ? `Everyone plays at the same time for the first ${parallelRounds} round${parallelRounds === 1 ? "" : "s"} — move, build and end your turn independently; independent neutral battles run at the same time, each with its own choices and rewards, and shared-deck draws go to whoever acts first. The mode STOPS with a warning — and play turns classic — the moment a PvP battle starts or someone steals another player's mine/settlement (e.g. a View Earth capture; hand discards don't count), or when the period ends. Multiplayer only.`
+                  {singlePlayerParallelDisabled ? "Parallel turns are disabled in single-player games." : parallelRounds > 0
+                    ? `Everyone plays at the same time for the first ${parallelRounds} round${parallelRounds === 1 ? "" : "s"} — move, build, fight neutral battles and resolve your own visits, cards and rewards independently. Shared-deck draws go to whoever acts first. The next round starts after everyone finishes; round-start events resolve for every player before play resumes. Actions affecting another player wait for open battles and choices to finish, then STOP parallel turns with a warning and continue in normal turn order. The mode also ends when the chosen period is over. Multiplayer only.`
                     : "Classic turns: one player at a time, in seat order."}
                 </small>
               </div>

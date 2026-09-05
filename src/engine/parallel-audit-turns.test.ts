@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { parallelStateForPlayer } from "./parallel-combats";
 import {
   AFK_IDLE_MS,
   applyAction,
@@ -185,7 +186,7 @@ describe("parallel audit — opening home-tile rotation chain", () => {
 // ---------------------------------------------------------------------------
 
 describe("parallel audit — end-of-turn prompt during another player's open turn", () => {
-  it("Pandora upkeep opened by A's END_TURN belongs to A, blocks B loudly, and A's completion is recorded once answered", () => {
+  it("Pandora upkeep belongs to A while B can finish independently; A finishes after answering", () => {
     let state = makeGame("audit-pandora", { parallelTurns: 3, players: 3 });
     // Give p1 the Pandora Power permanent so END_TURN owes its upkeep.
     const player = state.players.p1;
@@ -198,8 +199,9 @@ describe("parallel audit — end-of-turn prompt during another player's open tur
     expect(choice?.playerId).toBe("p1");
     // p1's turn has NOT ended yet.
     expect(state.turn.completedPlayerIds.length).toBe(before);
-    // p2 is blocked from loud actions by p1's own open prompt.
-    expect(expectRejected(state, { type: "END_TURN", playerId: "p2" })).toContain("wait until");
+    state = apply(state, { type: "END_TURN", playerId: "p2" });
+    expect(state.round).toBe(1);
+    expect(parallelStateForPlayer(state, "p1").pendingChoice).toEqual(choice);
 
     state = apply(state, {
       type: "CHOOSE_OPTION",
@@ -353,7 +355,7 @@ describe("parallel audit — period-ended wrap", () => {
 // ---------------------------------------------------------------------------
 
 describe("parallel audit — beginning-of-your-turn building prompts for N seats", () => {
-  it("every seat's Portal of Summoning prompt is queued, opened one at a time and answered only by its owner", () => {
+  it("every seat can resolve its own Portal of Summoning while the other prompts remain open", () => {
     let state = makeGame("audit-turnstart-buildings", { parallelTurns: 3, players: 3 });
     for (const playerId of ["p1", "p2", "p3"] as PlayerId[]) {
       const town = Object.values(state.towns).find((candidate) => candidate.controllerId === playerId);
@@ -370,26 +372,22 @@ describe("parallel audit — beginning-of-your-turn building prompts for N seats
     // Drain: each open prompt is answerable ONLY by its owner, and every seat
     // must get its own prompt — nothing may be stranded in the reward queue.
     const owners = new Set<PlayerId>();
-    for (let guard = 0; guard < 40; guard += 1) {
-      const owner = state.adventure?.pendingVisit?.playerId ?? state.pendingChoice?.playerId ?? null;
-      if (!owner) {
-        break;
+    for (const seat of ["p3", "p1", "p2"]) {
+      for (let guard = 0; guard < 40; guard += 1) {
+        const selected = parallelStateForPlayer(state, seat);
+        const owner = selected.adventure?.pendingVisit?.playerId ?? selected.pendingChoice?.playerId ?? null;
+        if (!owner) break;
+        owners.add(owner);
+        for (const other of ["p1", "p2", "p3"] as PlayerId[]) {
+          if (other === owner) continue;
+          expect(parallelStateForPlayer(state, other).adventure?.pendingVisit?.playerId).not.toBe(owner);
+        }
+        const offer = getLegalActions(state, owner).find(
+          (legal) => legal.action.type === "RESOLVE_VISIT_STEP" || legal.action.type === "CHOOSE_OPTION"
+        );
+        expect(offer).toBeDefined();
+        state = apply(state, offer!.action);
       }
-      owners.add(owner);
-      for (const other of ["p1", "p2", "p3"] as PlayerId[]) {
-        if (other === owner) continue;
-        expect(
-          getLegalActions(state, other).some(
-            (legal) => legal.action.type === "RESOLVE_VISIT_STEP" || legal.action.type === "CHOOSE_OPTION"
-          ),
-          other + " must not be able to answer " + owner + "'s prompt"
-        ).toBe(false);
-      }
-      const offer = getLegalActions(state, owner).find(
-        (legal) => legal.action.type === "RESOLVE_VISIT_STEP" || legal.action.type === "CHOOSE_OPTION"
-      );
-      expect(offer).toBeDefined();
-      state = apply(state, offer!.action);
     }
     expect([...owners].sort()).toEqual(["p1", "p2", "p3"]);
     expect(state.adventure?.rewardQueue.filter((reward) => reward.kind === "visit-steps")).toEqual([]);

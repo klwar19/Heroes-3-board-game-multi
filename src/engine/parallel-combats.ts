@@ -1,6 +1,6 @@
 import type { AdventureState, GameEvent, GameState, PlayerId } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
-import { neutralCombatControllerId } from "./neutral-control";
+import { combatUnitDecisionOwnerId, isNeutralSideCombatChoice, neutralCombatControllerId, pvpNeutralControllerId } from "./neutral-control";
 import { makeNeutralSeatPlayer } from "./neutral-player";
 
 const adventureSlots = [
@@ -13,6 +13,8 @@ const adventureSlots = [
   "pendingGarrison",
   "pendingTokenTeleport",
   "rewardQueue",
+  "polishArtifactAccess",
+  "polishRandomArtifactDie",
 ] as const satisfies readonly (keyof AdventureState)[];
 
 export type ParallelCombatContext = Pick<
@@ -81,18 +83,67 @@ function busy(context: ParallelCombatContext): boolean {
     adventureSlots.some((key) =>
       key === "rewardQueue"
         ? context.adventure.rewardQueue.length
-        : context.adventure[key],
+        : key !== "polishArtifactAccess" && key !== "polishRandomArtifactDie" && context.adventure[key],
     )
   );
 }
 
-/** Select an independent neutral battle without copying shared decks, armies, or map state.
+export type ParallelContextOption = {
+  ownerPlayerId: PlayerId;
+  contextId: string;
+  role: "hero" | "neutrals";
+  fighterName: string;
+  controllerName?: string;
+  waitingFor: string;
+  needsInput: boolean;
+  hasCombat: boolean;
+};
+
+export function parallelContextOptions(state: GameState, playerId: PlayerId): ParallelContextOption[] {
+  if (state.turn.mode !== "parallel" || !state.adventure?.pvpNeutralControl ||
+    state.adventure.eventResolution?.round === state.round || !state.turnOrder.includes(playerId)) return [];
+  // Hosted snapshots carry only the summaries and the selected redacted frame.
+  if (state.parallelContextOptions) return state.parallelContextOptions;
+  const contexts = { ...state.parallelCombats };
+  const currentOwner = owner(state);
+  if (currentOwner) contexts[currentOwner] = capture(state);
+  const owners = [playerId, ...Object.keys(contexts).filter(id => id !== playerId &&
+    contexts[id].combat && neutralCombatControllerId(state, contexts[id].combat!) === playerId &&
+    !contexts[id].combat!.outcome)];
+  return owners.map(id => {
+    const context = contexts[id];
+    const combat = context?.combat;
+    const controller = combat ? neutralCombatControllerId(state, combat) : null;
+    const unit = combat?.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
+    const deciding = context?.pendingChoice?.playerId ?? context?.reactionWindow?.priorityPlayerId ??
+      combat?.pendingNeutralPlacement ?? combat?.pendingTacticsSwaps?.[0] ?? combat?.pendingCommanderPlacement?.[0] ??
+      combat?.setup?.pendingPlayerIds[0] ??
+      (combat?.pendingNeutralStep ? combat.pendingNeutralStep.reactingPlayerId ?? combat.attackerPlayerId : undefined) ??
+      combat?.pendingActivationSkipRecall?.playerId ?? context?.adventure.pendingVisit?.playerId ??
+      context?.adventure.pendingNecromancy?.playerId ??
+      (combat?.outcome ? id : unit ? combatUnitDecisionOwnerId(state, combat!, unit) : combat ? id : playerId);
+    const done = id === playerId && !combat && state.turn.completedPlayerIds.includes(playerId);
+    return {
+      ownerPlayerId: id,
+      contextId: combat?.id ?? `map:${id}`,
+      role: id === playerId ? "hero" : "neutrals",
+      fighterName: state.players[id]?.name ?? id,
+      controllerName: controller ? state.players[controller]?.name ?? controller : undefined,
+      waitingFor: done ? "Turn finished" : deciding === playerId ? "Your action" : `Waiting for ${state.players[deciding]?.name ?? deciding}`,
+      needsInput: !done && deciding === playerId,
+      hasCombat: !!combat,
+    };
+  });
+}
+
+/** Select an independent player interaction without copying shared decks, armies, or map state.
  * The reducer clones this projection before mutation, so failed actions remain atomic.
- * Manual neutral controllers keep their existing battle until that responsibility ends.
+ * Human neutral controllers may select their own work or any assigned battle.
  */
 export function parallelStateForPlayer(
   state: GameState,
   playerId: PlayerId,
+  requestedOwner?: PlayerId,
 ): GameState {
   if (
     state.mode !== "adventure" ||
@@ -105,13 +156,25 @@ export function parallelStateForPlayer(
   )
     return state;
   const currentOwner = owner(state);
-  if (currentOwner === playerId) return state;
-  if (
+  const parked = state.parallelCombats ?? {};
+  const forcedOwnTurn = state.afk?.droppingPlayerId === playerId || state.afk?.turnTimeoutPlayerId === playerId;
+  const preferred = requestedOwner ?? (forcedOwnTurn ? playerId : state.parallelContextSelections?.[playerId]) ??
+    (state.adventure.pvpNeutralControl ? playerId : undefined);
+  const preferredCombat = preferred === currentOwner ? state.combat : preferred ? parked[preferred]?.combat : null;
+  const targetPreference = preferred && (preferred === playerId ||
+    (preferredCombat && !preferredCombat.outcome && neutralCombatControllerId(state, preferredCombat) === playerId))
+    ? preferred : preferred ? playerId : undefined;
+  if (currentOwner === (targetPreference ?? playerId)) {
+    // Restored battles may predate the explicit owner marker. Persist the
+    // inferred owner before an acknowledgement clears combat, or Necromancy
+    // and the bank/field reward lose the identity needed to park them.
+    return state.parallelCombatOwnerId ? state : { ...state, parallelCombatOwnerId: currentOwner };
+  }
+  if (!targetPreference && (
     state.pendingChoice?.playerId === playerId ||
     state.reactionWindow?.priorityPlayerId === playerId
-  )
+  ))
     return state;
-  const parked = state.parallelCombats ?? {};
   // A battle the actor FIGHTS (its own owner key) OUTRANKS one it merely
   // controls — otherwise a PvP-Neutral-Control controller is pinned to the
   // guards it drives and can never reach its own parked fight. The
@@ -119,12 +182,12 @@ export function parallelStateForPlayer(
   // FALLBACK for a controller with no battle of its own.
   const ownsParkedBattle = Boolean(parked[playerId]);
   if (
-    !ownsParkedBattle &&
+    !targetPreference && !ownsParkedBattle &&
     state.combat &&
     neutralCombatControllerId(state, state.combat) === playerId
   )
     return state;
-  const controlled = ownsParkedBattle
+  const controlled = targetPreference || ownsParkedBattle
     ? undefined
     : Object.entries(parked).find(
         ([, context]) =>
@@ -133,9 +196,10 @@ export function parallelStateForPlayer(
           (context.combat &&
             neutralCombatControllerId(state, context.combat) === playerId),
       );
-  const targetOwner = controlled?.[0] ?? playerId;
-  if (!currentOwner && !parked[targetOwner]) return state;
-  // An unrelated map choice remains a table interaction until resolved.
+  const targetOwner = targetPreference ?? controlled?.[0] ?? playerId;
+  // Unowned work (setup, round-start queues and legacy table choices) stays
+  // serialized. An idle table must still acquire an owner: otherwise the first
+  // map visit or spell choice is never parked and blocks every other player.
   if (!currentOwner && busy(capture(state))) return state;
   const contexts = { ...parked };
   if (currentOwner) {
@@ -211,20 +275,49 @@ export function dropParallelCombatContext(
   }
 }
 
+/** Elimination must hand back neutral decisions in parked battles as well. */
+export function reassignParkedNeutralController(state: GameState, departedPlayerId: PlayerId): void {
+  for (const context of Object.values(state.parallelCombats ?? {})) {
+    const combat = context.combat;
+    if (!combat || combat.outcome) continue;
+    const nextController = neutralCombatControllerId(state, combat);
+    if (context.pendingChoice?.playerId === departedPlayerId && isNeutralSideCombatChoice(combat, context.pendingChoice)) {
+      context.pendingChoice.playerId = nextController ?? NEUTRAL_PLAYER_ID;
+      if (context.priorityPlayerId === departedPlayerId) context.priorityPlayerId = nextController;
+    }
+    if (combat.pendingNeutralPlacement === departedPlayerId) {
+      combat.pendingNeutralPlacement = pvpNeutralControllerId(state, combat);
+      if (context.phase === "combat-setup") context.priorityPlayerId = combat.pendingNeutralPlacement ?? combat.attackerPlayerId;
+    }
+  }
+}
+
 /** Keep the shared event cursor intact while animating only the selected battle. */
 export function parallelPresentationEvents(
   state: GameState,
   events: readonly GameEvent[],
+  viewerPlayerId: PlayerId | undefined = state.parallelCombatOwnerId,
 ): GameEvent[] {
   return events.filter(
     (event) =>
-      !event.combatContextId || event.combatContextId === state.combat?.id,
+      !event.combatContextId || event.combatContextId === state.combat?.id ||
+      // Rewards and personal draws may arrive in the same snapshot that clears
+      // combat. They still belong to this viewer after the battlefield closes.
+      (viewerPlayerId !== undefined && "playerId" in event && event.playerId === viewerPlayerId),
   );
 }
 
 /** Drop context bookkeeping once the last battle and its rewards have settled. */
 export function settleParallelCombatContext(state: GameState): void {
   if (!state.adventure || state.turn?.mode !== "parallel") return;
+  // A finished/reassigned window must not silently reopen on a later battle
+  // fought by the same hero. Return that viewer to their own adventure.
+  for (const [viewer, selected] of Object.entries(state.parallelContextSelections ?? {})) {
+    const combat = selected === owner(state) ? state.combat : state.parallelCombats?.[selected]?.combat;
+    if (selected !== viewer && (!combat || combat.outcome || neutralCombatControllerId(state, combat) !== viewer)) {
+      delete state.parallelContextSelections![viewer];
+    }
+  }
   if (!busy(capture(state)) && !hasParkedParallelInteractions(state)) {
     delete state.parallelCombatOwnerId;
     delete state.parallelCombats;

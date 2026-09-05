@@ -234,7 +234,7 @@ describe("parallel turns — one interaction at a time (quiet moves while busy)"
     return { state, settlement };
   }
 
-  it("lets a bystander take quiet moves while another player's visit choice is open — but not visits, searches, card plays or END_TURN", () => {
+  it("lets another player move, visit and end their turn without consuming an open visit", () => {
     const { state } = withOpenVisit("par-busy-visit");
 
     // Quiet move: allowed.
@@ -242,21 +242,21 @@ describe("parallel turns — one interaction at a time (quiet moves while busy)"
     const moved = moveHero(state, "p2", quiet);
     expect(moved.heroes.hero_p2.spaceId).toBe(quiet);
     // The open visit was untouched.
-    expect(moved.adventure?.pendingVisit?.playerId).toBe("p1");
+    expect(parallelStateForPlayer(moved, "p1").adventure?.pendingVisit).toEqual(state.adventure?.pendingVisit);
 
-    // A location arrival would open a second visit: rejected with the wait message.
+    // A second location opens independently.
     const loud = emptyFieldNextTo(state, "hero_p2");
     paintField(state, loud, "settlement");
-    expect(
-      expectRejected(state, { type: "MOVE_HERO", playerId: "p2", heroId: "hero_p2", to: loud })
-    ).toContain("wait until");
+    const visited = moveHero(state, "p2", loud);
+    expect(visited.adventure?.pendingVisit?.playerId).toBe("p2");
+    expect(parallelStateForPlayer(visited, "p1").adventure?.pendingVisit).toEqual(state.adventure?.pendingVisit);
 
-    // Ending the turn, deck searches and card plays wait too.
-    expect(expectRejected(state, { type: "END_TURN", playerId: "p2" })).toContain("wait until");
+    const ended = apply(state, { type: "END_TURN", playerId: "p2" });
+    expect(ended.round).toBe(1);
+    expect(ended.turn.completedPlayerIds).toContain("p2");
     const p2Offers = getLegalActions(state, "p2");
     expect(p2Offers.some((legal) => legal.action.type === "SEARCH_DECK")).toBe(false);
-    expect(p2Offers.some((legal) => legal.action.type === "PLAY_CARD")).toBe(false);
-    expect(p2Offers.some((legal) => legal.action.type === "END_TURN")).toBe(false);
+    expect(p2Offers.some((legal) => legal.action.type === "END_TURN")).toBe(true);
     // Quiet moves ARE offered.
     expect(p2Offers.some((legal) => legal.action.type === "MOVE_HERO")).toBe(true);
 

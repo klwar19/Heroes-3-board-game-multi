@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { parallelStateForPlayer } from "./parallel-combats";
 import {
   applyAction,
   createAdventureGameState,
@@ -179,7 +180,7 @@ function spellCardCensus(state: GameState): number {
 // 1. BUG — the Commander Forge still reads state.activePlayerId
 // =========================================================================
 
-describe("parallel audit — the Commander Forge is offered to a parallel actor and then refused", () => {
+describe("parallel audit — the Commander Forge accepts an open parallel actor", () => {
   function forgeReady(seed: string, parallelTurns: number): GameState {
     let state = makeGame(seed, { parallelTurns, wog: true });
     state = wrapRound(state); // -> round 2, where Grade I forging unlocks
@@ -188,7 +189,7 @@ describe("parallel audit — the Commander Forge is offered to a parallel actor 
     return state;
   }
 
-  it("offers FORGE_COMMANDER_ARTIFACT to the non-active seat, then rejects it (parallel)", () => {
+  it("offers and completes FORGE_COMMANDER_ARTIFACT for the non-active seat", () => {
     const state = forgeReady("audit-forge-parallel", 6);
     expect(state.turn.mode).toBe("parallel");
     // p2 has a fully open parallel turn, but is not the nominal activePlayerId.
@@ -201,8 +202,7 @@ describe("parallel audit — the Commander Forge is offered to a parallel actor 
     );
     expect(offers.length).toBeGreaterThan(0);
 
-    // BUG: forgeCommanderArtifact gates on `state.activePlayerId !== action.playerId`
-    // instead of hasOpenAdventureTurn, so the offer the engine just made is refused.
+    // The purchase belongs to the actor even when another seat is nominally active.
     const forgedCardId = (offers[0].action as { cardId: string }).cardId;
     const forged = apply(state, offers[0].action);
     expect(forged.players.p2.hand).toContain(forgedCardId);
@@ -302,7 +302,7 @@ describe("parallel audit — offer/reducer agreement for a non-active parallel a
 // =========================================================================
 
 describe("parallel audit — two seats buying spells at once", () => {
-  it("queues both Mage Guild searches FIFO, attributes each to its own buyer and conserves every Spell card", () => {
+  it("opens both Mage Guild searches independently, attributes each to its buyer and conserves every Spell card", () => {
     let state = makeGame("audit-fifo", { parallelTurns: 6 });
     state = wrapRound(state);
     rich(state);
@@ -314,21 +314,21 @@ describe("parallel audit — two seats buying spells at once", () => {
     state = apply(state, { type: "SPELL_BOOK_ACTION", playerId: "p2" });
     expect(state.pendingChoice?.playerId).toBe("p2");
 
-    // p1 is now a bystander; buying spells is a quiet town action that only
-    // QUEUES — p2 keeps the table's one open search.
+    const p2Choice = structuredClone(state.pendingChoice);
     state = apply(state, { type: "SPELL_BOOK_ACTION", playerId: "p1" });
-    expect(state.pendingChoice?.playerId).toBe("p2");
-    expect(state.adventure?.rewardQueue.some((reward) => reward.playerId === "p1")).toBe(true);
+    expect(state.pendingChoice?.playerId).toBe("p1");
+    expect(parallelStateForPlayer(state, "p2").pendingChoice).toEqual(p2Choice);
+    const p1Choice = structuredClone(state.pendingChoice);
 
     // p2 resolves; p1's queued search is next in line (FIFO), owned by p1.
     let guard = 0;
-    while (state.pendingChoice?.playerId === "p2" && guard < 20) {
+    while (parallelStateForPlayer(state, "p2").pendingChoice?.playerId === "p2" && guard < 20) {
       state = apply(state, getLegalActions(state, "p2")[0].action);
       guard += 1;
     }
-    expect(state.pendingChoice?.playerId).toBe("p1");
+    expect(parallelStateForPlayer(state, "p1").pendingChoice).toEqual(p1Choice);
     guard = 0;
-    while (state.pendingChoice?.playerId === "p1" && guard < 20) {
+    while (parallelStateForPlayer(state, "p1").pendingChoice?.playerId === "p1" && guard < 20) {
       state = apply(state, getLegalActions(state, "p1")[0].action);
       guard += 1;
     }
@@ -396,7 +396,7 @@ describe("parallel audit — round-start economy", () => {
 // =========================================================================
 
 describe("parallel audit — the market panel under parallel turns", () => {
-  it("refuses a bystander's OPEN_MARKET with the parallel wait message, never a silent no-op", () => {
+  it("opens the actor's market without dismissing another player's visit", () => {
     let state = makeGame("audit-market", { parallelTurns: 6 });
     state = wrapRound(state);
     const market = emptyFieldNextTo(state, "hero_p2");
@@ -405,13 +405,10 @@ describe("parallel audit — the market panel under parallel turns", () => {
 
     // p2 stands ON the market (placed, not walked, so no visit of its own opened).
     state.heroes.hero_p2.spaceId = market;
-    const message = expectRejected(state, { type: "OPEN_MARKET", playerId: "p2", heroId: "hero_p2" });
-    expect(message).toContain("Parallel turns");
-    expect(message).toContain("wait until");
-    // The market did not open for p2 — p1 still owns the interaction.
-    expect(state.adventure?.pendingVisit?.playerId).toBe("p1");
-    // And it is not offered while blocked either.
-    expect(getLegalActions(state, "p2").some((legal) => legal.action.type === "OPEN_MARKET")).toBe(false);
+    expect(getLegalActions(state, "p2").some((legal) => legal.action.type === "OPEN_MARKET")).toBe(true);
+    const opened = apply(state, { type: "OPEN_MARKET", playerId: "p2", heroId: "hero_p2" });
+    expect(opened.adventure?.pendingVisit?.playerId).toBe("p2");
+    expect(parallelStateForPlayer(opened, "p1").adventure?.pendingVisit).toEqual(state.adventure?.pendingVisit);
   });
 });
 

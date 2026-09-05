@@ -3995,7 +3995,10 @@ export type ThievesGuildTarget =
   | { kind: "shared"; deckId: DeckId }
   | { kind: "player"; ownerId: PlayerId };
 
-export type GameAction =
+export type GameAction = GameActionPayload & { parallelContextId?: string };
+
+type GameActionPayload =
+  | { type: "SELECT_PARALLEL_CONTEXT"; playerId: PlayerId; ownerPlayerId: PlayerId }
   | {
       type: "CAST_SPELL";
       playerId: PlayerId;
@@ -10419,6 +10422,8 @@ export type CombatState = {
    * round 1). Absent when no controller exists or for a bank.
    */
   pendingNeutralPlacement?: PlayerId | null;
+  /** Keep a parallel game's human neutral assignment through an ordered-play transition. */
+  parallelHumanNeutralControl?: boolean;
   /**
    * WOG Commanders — pre-combat SORT window. Owners (attacker/defender/sandbox
    * both) whose commander joins this combat AND holds the sort capability
@@ -17590,9 +17595,13 @@ export type GameState = {
   towns: Record<TownId, TownState>;
   heroes: Record<HeroId, HeroState>;
   combat: CombatState | null;
-  /** Independent parallel-turn battles; the selected context occupies the normal slots. */
+  /** Independent parallel-turn battles and map choices; the selected context occupies the normal slots. */
   parallelCombats?: Record<PlayerId, import("./parallel-combats").ParallelCombatContext>;
   parallelCombatOwnerId?: PlayerId;
+  /** Per-seat view preference; changing one never switches another seat. */
+  parallelContextSelections?: Record<PlayerId, PlayerId>;
+  /** Public context summaries for the viewing seat; never contains private cards. */
+  parallelContextOptions?: import("./parallel-combats").ParallelContextOption[];
   decks: Record<DeckId, DeckState>;
   stack: ResolutionStackItem[];
   reactionWindow: ReactionWindow | null;

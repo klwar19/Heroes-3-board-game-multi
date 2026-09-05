@@ -16,6 +16,7 @@ import { getLegalActions } from "./legal-actions";
 import { combatHasHumanParticipant } from "./computer/control";
 import { combatUnitDecisionOwnerId, neutralCombatControllerId } from "./neutral-control";
 import { parallelInteractionBlocker } from "./parallel-turns";
+import { parallelStateForPlayer } from "./parallel-combats";
 import type { CombatState, CombatUnitState, GameAction, GameState, LegalAction, PlayerId, UnitGrade, UnitType } from "./state";
 
 /**
@@ -1039,8 +1040,20 @@ describe("PvP Neutral Control — pre-battle formation sort", () => {
 // ---------------------------------------------------------------------------
 
 describe("PvP Neutral Control — parallel turns, clock and forced resolution", () => {
-  it("treats the controller as the fight's participant in PARALLEL mode (bystander CONTROL still blocked)", () => {
-    const state = sceneTwoPreys("pnc-parallel", { players: 3 });
+  it("allows the human neutral decision during a shared-event battle while other adventure turns remain blocked", () => {
+    const state = sceneTwoPreys("pnc-event-battle", { players: 3 });
+    state.turn.mode = "parallel";
+    state.adventure!.eventResolution = { round: state.round };
+    expect(getLegalActions(state, "p3")).toEqual([]);
+    const attack = getLegalActions(state, "p2").find(l => l.action.type === "ATTACK_UNIT");
+    expect(attack).toBeDefined();
+    const next = applyOk(state, attack!.action);
+    expect(next.eventLog.some(event => event.type === "UNIT_ATTACK_DECLARED")).toBe(true);
+    expect(next.round).toBe(state.round);
+  });
+
+  it("lets the controller select and command a neutral battle in PARALLEL mode", () => {
+    let state = sceneTwoPreys("pnc-parallel", { players: 3 });
     state.turn.mode = "parallel";
     state.turn.completedPlayerIds = [];
 
@@ -1051,6 +1064,7 @@ describe("PvP Neutral Control — parallel turns, clock and forced resolution", 
     // controller's unit command mid-fight.
     const guard = guardsOf(state)[0];
     const silverPrey = playerUnitsOf(state, "p1").find((unit) => unit.grade === "silver")!;
+    state = applyOk(state, { type: "SELECT_PARALLEL_CONTEXT", playerId: "p2", ownerPlayerId: "p1" });
     const after = applyOk(state, {
       type: "ATTACK_UNIT",
       playerId: "p2",
@@ -1108,7 +1122,7 @@ describe("PvP Neutral Control — parallel turns, clock and forced resolution", 
     expect(action?.type).toBe("CHOOSE_PENDING_ROLL");
   });
 
-  it("hands an eliminated controller's open neutral-side choice to the NEXT live seat", () => {
+  it.each([false, true])("hands an eliminated controller's open neutral-side choice to the NEXT live seat (parked: %s)", (parked) => {
     let state = sceneTwoPreys("pnc-eliminate-choice", { players: 3 });
     const guard = guardsOf(state)[0];
     guard.abilities = ["minotaur-reroll"];
@@ -1117,6 +1131,20 @@ describe("PvP Neutral Control — parallel turns, clock and forced resolution", 
     const bronzePrey = playerUnitsOf(state, "p1").find((unit) => unit.grade === "bronze")!;
     state = applyOk(state, { type: "ATTACK_UNIT", playerId: "p2", attackerId: guard.id, defenderId: bronzePrey.id });
     expect(state.pendingChoice?.playerId).toBe("p2");
+
+    if (parked) {
+      state.turn.mode = "parallel";
+      state = parallelStateForPlayer(state, "p2");
+      expect(state.parallelCombats?.p1.pendingChoice?.playerId).toBe("p2");
+      eliminatePlayer(state, "p2", "kicked mid-decision", false);
+      expect(state.parallelCombats?.p1.pendingChoice?.playerId).toBe("p3");
+      state = applyOk(state, { type: "SELECT_PARALLEL_CONTEXT", playerId: "p3", ownerPlayerId: "p1" });
+      const keepRoll = getLegalActions(state, "p3").find(l => l.action.type === "CHOOSE_PENDING_ROLL");
+      expect(keepRoll).toBeDefined();
+      state = applyOk(state, keepRoll!.action);
+      expect(parallelStateForPlayer(state, "p3").pendingChoice?.type).not.toBe("ATTACK_DIE_REROLL");
+      return;
+    }
 
     // p2 dies mid-decision: the choice goes back to the neutral seat, and the
     // very next action's pump re-stamps it to p3 — the new next-clockwise seat.

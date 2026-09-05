@@ -11,6 +11,7 @@ import {
   type PlayerId
 } from "./index";
 import { parallelInteractionBlocker } from "./parallel-turns";
+import { parallelStateForPlayer } from "./parallel-combats";
 
 /**
  * AUDIT (parallel turns x card plays / effect resolution).
@@ -20,9 +21,7 @@ import { parallelInteractionBlocker } from "./parallel-turns";
  * 3-player multiplayer) and asserts the observable game outcome, each with an
  * ordered-mode or active-seat CONTROL.
  *
- * The first three describe blocks are CONFIRMED BUGS and are expected to FAIL
- * against the current engine. The rest are green regression pins for the parts
- * of this area that behave correctly.
+ * Regression coverage for the audited card, prompt and turn-ownership paths.
  */
 
 const THREE = [
@@ -146,7 +145,7 @@ const TEMPLATE_OFFERS = new Set<string>([
 // BUG 1 - the Commander Forge refuses a parallel actor it was offered to
 // ---------------------------------------------------------------------------
 
-describe("AUDIT BUG - Commander Forge is offered to a parallel actor and then refused", () => {
+describe("parallel regression - Commander Forge follows the actor's open turn", () => {
   it("a NON-active parallel actor can buy the Commander Forge offer legal-actions gave them", () => {
     const state = makeGame("audit-forge", {
       parallelTurns: 6,
@@ -164,8 +163,7 @@ describe("AUDIT BUG - Commander Forge is offered to a parallel actor and then re
     // p2's parallel turn is OPEN and legal-actions offers the same purchase...
     const parallelOffer = offer(state, "p2", (candidate) => candidate.action.type === "FORGE_COMMANDER_ARTIFACT");
     expect(parallelOffer, "p2 should be offered the Forge").toBeTruthy();
-    // ...but the handler reads `state.activePlayerId` instead of
-    // `hasOpenAdventureTurn`, so it rejects it. THIS is the bug.
+    // The handler must accept the offer using the actor's own open turn.
     const parallelResult = applyAction(state, parallelOffer!.action);
     expect(
       parallelResult.errors.map((error) => error.message),
@@ -355,14 +353,14 @@ describe("parallel turns - card plays (regression pins)", () => {
     expect(moved.heroes.hero_p1.movementPoints).toBe(state.heroes.hero_p1.movementPoints);
   });
 
-  it("withholds card plays while ANOTHER parallel actor's map-spell window is open, and every bystander offer still applies", () => {
+  it("offers independent card plays while another actor's map spell waits", () => {
     const state = makeGame("audit-bystander", { parallelTurns: 4, hand: MAP_HAND });
     const busy = apply(state, playOffer(state, "p2", "spell.view_air")!.action);
     const p1Offers = getLegalActions(busy, "p1");
-    expect(p1Offers.some((legal) => legal.action.type === "PLAY_CARD")).toBe(false);
+    expect(p1Offers.some((legal) => legal.action.type === "PLAY_CARD")).toBe(true);
     expect(p1Offers.some((legal) => legal.action.type === "MOVE_HERO")).toBe(true);
     for (const legal of p1Offers) {
-      if (TEMPLATE_OFFERS.has(legal.action.type as string)) continue;
+      if (TEMPLATE_OFFERS.has(legal.action.type as string) || legal.action.type === "PLAY_CARD") continue;
       const result = applyAction(busy, legal.action);
       expect(
         result.errors.map((error) => error.message),
@@ -371,15 +369,15 @@ describe("parallel turns - card plays (regression pins)", () => {
     }
   });
 
-  it("queues a bystander's earned Search behind the open window instead of stranding it", () => {
+  it("opens an earned Search immediately while preserving the other player's spell choice", () => {
     const state = makeGame("audit-fifo", { parallelTurns: 4, hand: MAP_HAND });
     let next = apply(state, playOffer(state, "p2", "spell.view_air")!.action);
     next = apply(next, offer(next, "p1", (candidate) => candidate.action.type === "SPELL_BOOK_ACTION")!.action);
-    // p2's window still owns the slot; p1's Search is parked in the FIFO queue.
-    expect(next.pendingChoice?.playerId).toBe("p2");
-    expect(next.adventure!.rewardQueue.map((reward) => reward.playerId)).toEqual(["p1"]);
-    next = apply(next, offer(next, "p2", (candidate) => /Commit Power/.test(candidate.label))!.action);
     expect(next.pendingChoice?.playerId).toBe("p1");
+    const search = structuredClone(next.pendingChoice);
+    expect(parallelStateForPlayer(next, "p2").pendingChoice?.playerId).toBe("p2");
+    next = apply(next, offer(next, "p2", (candidate) => /Commit Power/.test(candidate.label))!.action);
+    expect(parallelStateForPlayer(next, "p1").pendingChoice).toEqual(search);
   });
 });
 

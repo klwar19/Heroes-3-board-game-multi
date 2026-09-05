@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { parallelStateForPlayer } from "./parallel-combats";
 import {
   applyAction,
   createAdventureGameState,
@@ -141,7 +142,7 @@ function withOpenVisit(state: GameState): GameState {
 // ---------------------------------------------------------------------------
 
 describe("parallel audit — invisible hex events vs. quiet bystander moves", () => {
-  it("a bystander's quiet step does NOT spring an invisible hex event while another player's interaction is open", () => {
+  it("resolves an actor's invisible hex event without consuming another player's visit", () => {
     let state = makeGame("audit-hexevent", { parallelTurns: 3 });
     const target = emptyFieldNextTo(state, "hero_p2");
     armHexEvent(state, target, { gold: 7 });
@@ -155,13 +156,9 @@ describe("parallel audit — invisible hex events vs. quiet bystander moves", ()
       to: target
     });
 
-    // Either the move is refused as non-quiet, or it happens without firing
-    // the designer trigger. Firing it while the table's single interaction slot
-    // belongs to p1 is the bug.
-    if (!error) {
-      expect(after.players.p2.resources.gold).toBe(goldBefore);
-      expect(after.adventure?.hexEvents?.[target]).toBeDefined();
-    }
+    expect(error).toBeNull();
+    expect(after.players.p2.resources.gold).toBe(goldBefore + 7);
+    expect(parallelStateForPlayer(after, "p1").adventure?.pendingVisit).toEqual(state.adventure?.pendingVisit);
   });
 
   it("CONTROL (ordered): the same step springs the hex event normally", () => {
@@ -377,12 +374,12 @@ describe("parallel audit — no false rejection of a genuinely quiet move", () =
     const after = apply(state, { type: "MOVE_HERO", playerId: "p2", heroId: "hero_p2", to: quiet });
     // Stable — which is what lets the reward queue join the bystander
     // fingerprint without falsely rejecting genuinely quiet moves.
-    expect(after.adventure?.rewardQueue.length).toBe(queueBefore);
+    expect(parallelStateForPlayer(after, "p1").adventure?.rewardQueue.length).toBe(queueBefore);
   });
 });
 
 describe("parallel audit — an ambush hex event under a quiet step", () => {
-  it("rejects the whole step atomically: no guard stamped, no hero move, mode still parallel", () => {
+  it("opens an ambush battle independently while retaining the other player's visit", () => {
     let state = makeGame("audit-ambush", { parallelTurns: 3 });
     const target = emptyFieldNextTo(state, "hero_p2");
     const adventure = state.adventure!;
@@ -399,7 +396,6 @@ describe("parallel audit — an ambush hex event under a quiet step", () => {
       firedPlayerIds: []
     };
     state = withOpenVisit(state);
-    const from = state.heroes.hero_p2.spaceId;
 
     const { state: after, error } = tryApply(state, {
       type: "MOVE_HERO",
@@ -407,12 +403,12 @@ describe("parallel audit — an ambush hex event under a quiet step", () => {
       heroId: "hero_p2",
       to: target
     });
-    expect(error).toBeTruthy();
-    expect(after.heroes.hero_p2.spaceId).toBe(from);
-    expect(after.adventure?.fields[target].difficulty ?? null).toBeNull();
-    expect(after.adventure?.hexEvents?.[target]?.guardStamped ?? false).toBe(false);
+    expect(error).toBeNull();
+    expect(after.heroes.hero_p2.spaceId).toBe(target);
+    expect(after.adventure?.hexEvents?.[target]?.guardStamped).toBe(true);
     expect(after.turn.mode).toBe("parallel");
-    expect(after.combat ?? null).toBeNull();
+    expect(after.combat?.attackerPlayerId).toBe("p2");
+    expect(parallelStateForPlayer(after, "p1").adventure?.pendingVisit).toEqual(state.adventure?.pendingVisit);
   });
 });
 
@@ -431,31 +427,25 @@ describe("parallel audit — one player's step never touches another's map banks
   });
 });
 
-describe("parallel audit — loud map actions stay blocked for a bystander", () => {
-  it("DISCOVER_TILE, REVISIT_FIELD, OPEN_MARKET and card plays all wait for the slot", () => {
+describe("parallel audit — map cards during another player's visit", () => {
+  it("offers and opens a personal spell choice while preserving the visit", () => {
     let state = makeGame("audit-loud-blocked", { parallelTurns: 3 });
-    state.players.p2.hand.push("spell.view_earth");
+    state.players.p2.hand = ["spell.view_air", "ability.sorcery"];
     state = withOpenVisit(state);
 
     const offers = getLegalActions(state, "p2").map((legal) => legal.action.type);
-    expect(offers).not.toContain("DISCOVER_TILE");
-    expect(offers).not.toContain("REVISIT_FIELD");
-    expect(offers).not.toContain("OPEN_MARKET");
-    expect(offers).not.toContain("PLAY_CARD");
-    expect(offers).not.toContain("CAST_SPELL");
+    expect(offers).toContain("PLAY_CARD");
 
     const cast = tryApply(state, {
       type: "PLAY_CARD",
       playerId: "p2",
-      cardId: "spell.view_earth",
+      cardId: "spell.view_air",
       target: { type: "none" },
       mode: "basic"
     });
-    expect(cast.error).toBeTruthy();
-    // p1's interaction survived the refused cast, and p2 still holds the card.
-    expect(
-      cast.state.pendingChoice?.playerId ?? cast.state.adventure?.pendingVisit?.playerId
-    ).toBe("p1");
-    expect(cast.state.players.p2.hand).toContain("spell.view_earth");
+    expect(cast.error).toBeNull();
+    expect(cast.state.pendingChoice?.playerId).toBe("p2");
+    expect(parallelStateForPlayer(cast.state, "p1").adventure?.pendingVisit).toEqual(state.adventure?.pendingVisit);
+    expect(cast.state.players.p2.hand).not.toContain("spell.view_air");
   });
 });

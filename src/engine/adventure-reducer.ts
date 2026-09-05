@@ -438,8 +438,6 @@ import { neutralCombatControllerId, pvpNeutralControllerId } from "./neutral-con
 import {
   assertParallelInteractionFree,
   hasOpenAdventureTurn,
-  isParallelActor,
-  parallelInteractionBlocker,
   parallelMapInteractionBlocker,
   parallelSlotSignature,
   parallelTurnsActive,
@@ -1037,12 +1035,17 @@ function assertNoPendingInput(state: GameState): void {
   if (state.adventure?.pendingTileChoice) {
     throw new Error("Confirm the rotation of the new tile first.");
   }
+  if (state.stack.length || state.adventure?.pendingCommanderFirstAid ||
+    state.adventure?.pendingFarTileFlip || state.adventure?.pendingGarrison ||
+    state.adventure?.pendingTokenTeleport) {
+    throw new Error("Resolve your pending interaction first.");
+  }
 }
 
 function assertActiveTurn(state: GameState, playerId: PlayerId): void {
   // Parallel turns: every live player whose parallel turn is still open counts
   // as having "their turn" (they act at the same time as everyone else).
-  if (state.activePlayerId !== playerId && !isParallelActor(state, playerId)) {
+  if (!hasOpenAdventureTurn(state, playerId)) {
     throw new Error(
       parallelTurnsActive(state) && state.turn.completedPlayerIds.includes(playerId)
         ? "You already ended your parallel turn — wait for the other players to finish theirs."
@@ -2200,6 +2203,8 @@ export function moveHeroAdventure(state: GameState, action: Extract<GameAction, 
     throw new Error(
       parallelBlocker
         ? parallelWaitMessage(state, parallelBlocker)
+        : hasParkedParallelInteractions(state)
+          ? "Parallel turns: wait until the other players' battles and choices finish before entering an occupied or enemy-controlled field."
         : "Heroes can only move to adjacent, passable fields."
     );
   }
@@ -6159,6 +6164,7 @@ function beginNeutralCombatPlacement(
   // needs no announcement (pvpNeutralControllerId, not the combined read).
   const neutralController = pvpNeutralControllerId(state, combat);
   if (neutralController) {
+    if (state.turn.mode === "parallel") combat.parallelHumanNeutralControl = true;
     const controllerName = state.players[neutralController]?.name ?? neutralController;
     const fighterName = state.players[playerId]?.name ?? playerId;
     appendEvent(state, {
@@ -19070,6 +19076,12 @@ function endParallelTurn(
   // Everyone ended — wrap the round. The period check runs BEFORE the counter
   // moves so `parallelStopped.round` records the finished round (the mid-round
   // "start-of-turn already ran" guard must never match a fresh round).
+  if (hasParkedParallelInteractions(state)) {
+    throw new Error("Resolve every player's pending battle and choices before advancing the round.");
+  }
+  delete state.parallelCombatOwnerId;
+  delete state.parallelCombats;
+  delete state.parallelContextSelections;
   turn.completedPlayerIds = [];
   if (state.round + 1 > turn.simultaneousRoundLimit) {
     stopParallelTurns(state, "period-ended");

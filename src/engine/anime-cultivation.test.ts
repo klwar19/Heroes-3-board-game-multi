@@ -544,7 +544,7 @@ describe("anime.cultivation — Tribulation interaction seams", () => {
     expect(state.adventure?.pendingVisit ?? null).toBeNull();
   });
 
-  it("parallel turns: a bystander cannot act while the Tribulation window is open (CONTROL: they can once it clears)", () => {
+  it("parallel turns: a bystander can finish their turn while another player's Tribulation stays open", () => {
     // Two players, parallel mode; p1 opens a Tribulation, p2 is a bystander.
     let state = createAdventureGameState({
       seed: "trib-parallel",
@@ -573,9 +573,12 @@ describe("anime.cultivation — Tribulation interaction seams", () => {
       opened = applyOk(state, { type: "HEAVEN_TRIBULATION", playerId: "p1" });
     }
     if (opened.adventure?.pendingVisit?.playerId === "p1") {
-      // A bystander END_TURN is refused while p1's exclusive interaction is open.
+      // The private interaction stays with its owner and prevents the round wrapping.
       const bystander = applyAction(opened, { type: "END_TURN", playerId: "p2" });
-      expect(bystander.errors.length).toBeGreaterThan(0);
+      expect(bystander.errors).toEqual([]);
+      expect(bystander.state.round).toBe(opened.round);
+      expect(bystander.state.turn.completedPlayerIds).toContain("p2");
+      expect(bystander.state.parallelCombats?.p1.adventure.pendingVisit).toEqual(opened.adventure.pendingVisit);
     }
   });
 });

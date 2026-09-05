@@ -38,6 +38,26 @@ vi.mock("@/lib/shared-maps", () => ({ fetchSharedMaps: vi.fn(async () => []) }))
 
 afterEach(cleanup);
 
+it("disables only parallel turns in single-player advanced settings", () => {
+  renderSoloLobby();
+  openAdvanced();
+  matchTab();
+  const label = screen.getByText("Parallel turns", { selector: "small" });
+  const row = label.closest(".optionRow") as HTMLElement;
+  expect((within(row).getByRole("button", { name: "Off" }) as HTMLButtonElement).disabled).toBe(false);
+  for (const button of within(row).getAllByRole("button").filter(b => b.textContent !== "Off"))
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+  expect(row.textContent).toContain("disabled in single-player");
+});
+
+it("enables human neutral control for parallel co-op tables", () => {
+  renderLobby(state => { state.setupLobby!.options.gameMode = "coop"; state.setupLobby!.options.parallelTurns = 4; });
+  openAdvanced();
+  matchTab();
+  const row = screen.getByText("PvP Neutral Control", { selector: "small" }).closest(".optionRow") as HTMLElement;
+  expect((within(row).getByRole("button", { name: "On" }) as HTMLButtonElement).disabled).toBe(false);
+});
+
 function apply(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
   expect(result.errors, result.errors.map((error) => error.message).join("; ")).toEqual([]);
@@ -215,19 +235,17 @@ describe("co-op step 6 — Computer enemies in a multiplayer lobby", () => {
     expect(beyond.setupLobby!.seats, "a 5th computer is clamped away — never offer it").toHaveLength(6);
   });
 
-  it("is DISABLED with the reason while parallel turns are on (the engine refuses the combination)", () => {
+  it("allows computer enemies alongside parallel turns in multiplayer", () => {
     renderLobby((state) => {
       state.setupLobby!.options.parallelTurns = 2;
     });
     openHeroes();
     const row = screen.getByRole("group", { name: "Number of computer enemies" });
     const one = within(row).getByRole("button", { name: /1 enemy/ }) as HTMLButtonElement;
-    expect(one.disabled).toBe(true);
-    expect(one.title).toContain("Parallel turns are on");
+    expect(one.disabled).toBe(false);
     // "None" stays live — removing computers is always legal, so the lobby can
     // never wedge (the engine's own escape hatch).
     expect((within(row).getByRole("button", { name: "None" }) as HTMLButtonElement).disabled).toBe(false);
-    expect((row.closest(".optionRow") as HTMLElement).textContent).toContain("Parallel turns are on");
   });
 
   it("CONTROL: the SINGLE-PLAYER rendering is untouched — its own enemy stepper, no MP row", () => {

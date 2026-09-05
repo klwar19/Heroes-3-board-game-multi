@@ -1,5 +1,5 @@
 import { cardLibrary } from "@/data/cards/library";
-import { parallelStateForPlayer } from "./parallel-combats";
+import { parallelContextOptions, parallelStateForPlayer } from "./parallel-combats";
 import { POLISH_BALANCE_PRINTED_MOVEMENT_IDS } from "./polish-balance-spells";
 import { COMMUNITY_BALANCE_PRINTED_MOVEMENT_IDS } from "@/data/cards/community-spells-balance";
 import {
@@ -8422,6 +8422,11 @@ export function getLegalActions(
 ): LegalAction[] {
   state = parallelStateForPlayer(state, playerId);
   const coreActions = getLegalActionsCore(state, playerId, cards, buildings);
+  for (const context of parallelContextOptions(state, playerId)) {
+    if (context.ownerPlayerId === (state.parallelCombatOwnerId ?? playerId)) continue;
+    coreActions.push({ action: { type: "SELECT_PARALLEL_CONTEXT", playerId, ownerPlayerId: context.ownerPlayerId },
+      label: context.role === "hero" ? "My battle / adventure" : `Control neutrals for ${context.fighterName}` });
+  }
   return withComputerAdvanceOffer(
     state,
     playerId,

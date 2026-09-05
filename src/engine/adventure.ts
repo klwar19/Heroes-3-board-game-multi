@@ -101,7 +101,7 @@ import {
 } from "./morale-cards";
 import { MORALE_CARD_IDS } from "@/data/cards/morale";
 import { parallelMapInteractionBlocker, stopParallelTurns } from "./parallel-turns";
-import { dropParallelCombatContext, hasParkedParallelInteractions } from "./parallel-combats";
+import { dropParallelCombatContext, hasParkedParallelInteractions, reassignParkedNeutralController } from "./parallel-combats";
 import { clearResetVote } from "./reset-vote";
 import {
   artifactCountOf,
@@ -5412,6 +5412,10 @@ export function eliminatePlayer(
   // making `stopParallelTurns` throw on every later PvP crossing / flag steal.
   // The parked fight is DROPPED, not conceded: its rewards and army losses are
   // the eliminated seat's own, and the guard field simply stays guarded.
+  const parkedInteraction = state.parallelCombats?.[playerId];
+  if (parkedInteraction?.adventure.pendingVisit) {
+    returnCardsLiftedIntoVisitSteps(state, parkedInteraction.adventure.pendingVisit.steps);
+  }
   dropParallelCombatContext(state, playerId);
 
   if (gaveUp) {
@@ -5439,6 +5443,7 @@ export function eliminatePlayer(
   }
 
   state.turnOrder = state.turnOrder.filter((id) => id !== playerId);
+  reassignParkedNeutralController(state, playerId);
 
   // Stale per-player interactions must not outlive the seat: a queued reward
   // (or an open visit) for the eliminated player would open a choice nobody
@@ -5607,133 +5612,137 @@ export function eliminatePlayer(
   // round-start Event/Astrologers barrier every other seat is frozen behind
   // it). Drop it — returning any cards the choice lifted OUT of a shared zone
   // first, so eliminating the owner never destroys shared-deck cards.
-  const choice = state.pendingChoice;
-  if (choice && choice.playerId === playerId) {
-    if (choice.type === "DECK_SEARCH") {
-      state.decks[choice.deckId]?.discardPile.push(...choice.revealedCardIds);
-      // Polish Random Artifacts: the dropped Search owned any live access
-      // latch (interactions are a singleton); resolveDeckSearch would have
-      // cleared it, so the drop must too.
-      clearPolishArtifactAccess(state);
-    }
-    if (choice.type === "OPTION_CHOICE" && choice.context === "spell-discard-top" && choice.spellDiscardTopPick) {
-      // LEGACY in-flight only (this choice is no longer opened — see state.ts):
-      // the Spell face-up pick had lifted the unkept Search cards OUT of the
-      // shared deck (they sit only on the choice while it is open) — return
-      // them to the discard pile so eliminating a picker mid-legacy-choice
-      // destroys nothing.
-      state.decks[choice.spellDiscardTopPick.deckId]?.discardPile.push(...choice.spellDiscardTopPick.cardIds);
-    }
-    if (choice.type === "OPTION_CHOICE" && choice.visionsScry) {
-      // One Visions cast may have lifted cards off SEVERAL Neutral decks, so
-      // each returns to ITS OWN discard pile (a pre-v73 frame carries one
-      // `tier` for the whole scry).
-      const scry = choice.visionsScry;
-      const fallback = scry.tier ?? "bronze";
-      scry.remaining.forEach((cardId, index) => {
-        state.decks[NEUTRAL_DECK_IDS[scry.remainingTiers?.[index] ?? fallback]]?.discardPile.push(cardId);
-      });
-      scry.toReturn.forEach((cardId, index) => {
-        state.decks[NEUTRAL_DECK_IDS[scry.toReturnTiers?.[index] ?? fallback]]?.discardPile.push(cardId);
-      });
-    }
-    if (choice.type === "OPTION_CHOICE" && choice.visionsDeck?.drawn) {
-      // The Visions deck pick holds the cards already lifted this cast (they are
-      // out of every pile while it is open) — return them so eliminating the
-      // caster mid-draw destroys no Neutral card.
-      const pick = choice.visionsDeck;
-      pick.drawn?.forEach((cardId, index) => {
-        state.decks[NEUTRAL_DECK_IDS[pick.drawnTiers?.[index] ?? "bronze"]]?.discardPile.push(cardId);
-      });
-    }
-    if (choice.type === "OPTION_CHOICE" && choice.deckCardPlacement) {
-      // The Balance Pack's "top or bottom?" window holds cards that are already
-      // OUT of their deck (Diplomacy drew them). Return every still-unplaced one
-      // to its discard pile — the classic destination — so eliminating the owner
-      // mid-placement never destroys a Neutral card.
-      for (const placement of choice.deckCardPlacement.pending) {
-        state.decks[placement.deckId]?.discardPile.push(placement.cardId);
+  for (const choice of [state.pendingChoice, parkedInteraction?.pendingChoice]) {
+    if (choice && choice.playerId === playerId) {
+      if (choice.type === "DECK_SEARCH") {
+        state.decks[choice.deckId]?.discardPile.push(...choice.revealedCardIds);
+        // Polish Random Artifacts: the dropped Search owned any live access
+        // latch (interactions are a singleton); resolveDeckSearch would have
+        // cleared it, so the drop must too.
+        if (choice === state.pendingChoice) clearPolishArtifactAccess(state);
       }
-    }
-    if (choice.type === "OPTION_CHOICE" && choice.pandoraScry) {
-      // A Pandora scry lifted these cards OFF the top of a shared draw pile
-      // (finishPandoraScry puts the kept ones back there); return every
-      // undecided AND already-kept card to the top so eliminating the scrying
-      // seat never shrinks the deck. Cards it already discarded sit in the
-      // discard pile and stay there.
-      const deck = state.decks[choice.pandoraScry.deckId];
-      if (deck) {
-        const returning = [...choice.pandoraScry.remaining, ...choice.pandoraScry.toReturn];
-        for (let index = returning.length - 1; index >= 0; index -= 1) {
-          deck.drawPile.push(returning[index]);
+      if (choice.type === "OPTION_CHOICE" && choice.context === "spell-discard-top" && choice.spellDiscardTopPick) {
+        // LEGACY in-flight only (this choice is no longer opened — see state.ts):
+        // the Spell face-up pick had lifted the unkept Search cards OUT of the
+        // shared deck (they sit only on the choice while it is open) — return
+        // them to the discard pile so eliminating a picker mid-legacy-choice
+        // destroys nothing.
+        state.decks[choice.spellDiscardTopPick.deckId]?.discardPile.push(...choice.spellDiscardTopPick.cardIds);
+      }
+      if (choice.type === "OPTION_CHOICE" && choice.visionsScry) {
+        // One Visions cast may have lifted cards off SEVERAL Neutral decks, so
+        // each returns to ITS OWN discard pile (a pre-v73 frame carries one
+        // `tier` for the whole scry).
+        const scry = choice.visionsScry;
+        const fallback = scry.tier ?? "bronze";
+        scry.remaining.forEach((cardId, index) => {
+          state.decks[NEUTRAL_DECK_IDS[scry.remainingTiers?.[index] ?? fallback]]?.discardPile.push(cardId);
+        });
+        scry.toReturn.forEach((cardId, index) => {
+          state.decks[NEUTRAL_DECK_IDS[scry.toReturnTiers?.[index] ?? fallback]]?.discardPile.push(cardId);
+        });
+      }
+      if (choice.type === "OPTION_CHOICE" && choice.visionsDeck?.drawn) {
+        // The Visions deck pick holds the cards already lifted this cast (they are
+        // out of every pile while it is open) — return them so eliminating the
+        // caster mid-draw destroys no Neutral card.
+        const pick = choice.visionsDeck;
+        pick.drawn?.forEach((cardId, index) => {
+          state.decks[NEUTRAL_DECK_IDS[pick.drawnTiers?.[index] ?? "bronze"]]?.discardPile.push(cardId);
+        });
+      }
+      if (choice.type === "OPTION_CHOICE" && choice.deckCardPlacement) {
+        // The Balance Pack's "top or bottom?" window holds cards that are already
+        // OUT of their deck (Diplomacy drew them). Return every still-unplaced one
+        // to its discard pile — the classic destination — so eliminating the owner
+        // mid-placement never destroys a Neutral card.
+        for (const placement of choice.deckCardPlacement.pending) {
+          state.decks[placement.deckId]?.discardPile.push(placement.cardId);
+        }
+      }
+      if (choice.type === "OPTION_CHOICE" && choice.pandoraScry) {
+        // A Pandora scry lifted these cards OFF the top of a shared draw pile
+        // (finishPandoraScry puts the kept ones back there); return every
+        // undecided AND already-kept card to the top so eliminating the scrying
+        // seat never shrinks the deck. Cards it already discarded sit in the
+        // discard pile and stay there.
+        const deck = state.decks[choice.pandoraScry.deckId];
+        if (deck) {
+          const returning = [...choice.pandoraScry.remaining, ...choice.pandoraScry.toReturn];
+          for (let index = returning.length - 1; index >= 0; index -= 1) {
+            deck.drawPile.push(returning[index]);
+          }
+        }
+      }
+      if (choice.type === "OPTION_CHOICE" && choice.subterraneanTilePick) {
+        // The gate-entry tile pick spliced the held-out alternate (candidate[1])
+        // OUT of the pool while the choice was open; its resolution returns the
+        // unchosen tile to the pool. Eliminating the owner mid-pick must do the
+        // same or the tile is orphaned (underground supply silently shrinks by 1).
+        // The tile keeps its current def (candidate[0]), so only the alternate
+        // returns — matching the resolution's `!pool.includes` guard.
+        const heldOut = choice.subterraneanTilePick.candidates[1];
+        if (heldOut) {
+          const pool = state.adventure?.subterraneanTilePool;
+          if (pool && !pool.includes(heldOut)) pool.push(heldOut);
+        }
+      }
+      if (choice === state.pendingChoice) {
+        state.pendingChoice = null;
+        if (state.phase === "choice") {
+          const returnPhase = "returnPhase" in choice ? choice.returnPhase : undefined;
+          state.phase =
+            returnPhase && !(returnPhase === "combat" && !state.combat)
+              ? returnPhase
+              : state.combat
+                ? "combat"
+                : "player-turn";
+        }
+        if (state.priorityPlayerId === playerId) {
+          state.priorityPlayerId = null;
+        }
+      }
+      // A dropped Monolith/Whirlpool placement must not strand the token on an
+      // already-revealed tile (nobody would ever be offered it again): auto-place
+      // it at the first legal candidate. The eliminated seat's own in-flight
+      // travel was already cleared above, so this never teleports a dead hero.
+      if (choice.type === "OPTION_CHOICE" && choice.context === "place-map-token" && choice.mapToken && state.adventure) {
+        const tokenTile = state.adventure.tiles[choice.mapToken.tileInstanceId];
+        const autoSpaceId = choice.mapToken.candidates[0];
+        if (tokenTile && autoSpaceId) {
+          placeMapToken(state, tokenTile, autoSpaceId, playerId);
+          // Multi-token tiles: drain the rest of the queue the same way (no new
+          // prompt can be offered to a dead seat).
+          autoResolvePendingMapTokens(state, tokenTile, playerId);
+        }
+      }
+      // A dropped Field Override placement is the same trap PLUS it was holding
+      // the whole reveal chain (gate → bank → token) shut. Drop the tile's
+      // override queue (pool draws refuse; nobody is left to pick a hex), then
+      // resume the chain non-interactively: gates carve at their default hex and
+      // a designed token auto-places — the bank offer is simply skipped (the
+      // Blocked Field stays blocked and the bank token pile is untouched).
+      if (
+        choice.type === "OPTION_CHOICE" &&
+        choice.context === "place-field-override" &&
+        choice.fieldOverride &&
+        state.adventure
+      ) {
+        const overrideTile = state.adventure.tiles[choice.fieldOverride.tileInstanceId];
+        if (overrideTile) {
+          delete overrideTile.pendingFieldOverrides;
+          delete overrideTile.pendingFieldOverride;
+          eventNote(
+            state,
+            `The Field Override on the revealed tile was dropped — the placing seat was eliminated.`,
+            playerId
+          );
+          recomputeSubterraneanGates(state.adventure);
+          autoResolvePendingMapTokens(state, overrideTile, playerId);
         }
       }
     }
-    if (choice.type === "OPTION_CHOICE" && choice.subterraneanTilePick) {
-      // The gate-entry tile pick spliced the held-out alternate (candidate[1])
-      // OUT of the pool while the choice was open; its resolution returns the
-      // unchosen tile to the pool. Eliminating the owner mid-pick must do the
-      // same or the tile is orphaned (underground supply silently shrinks by 1).
-      // The tile keeps its current def (candidate[0]), so only the alternate
-      // returns — matching the resolution's `!pool.includes` guard.
-      const heldOut = choice.subterraneanTilePick.candidates[1];
-      if (heldOut) {
-        const pool = state.adventure?.subterraneanTilePool;
-        if (pool && !pool.includes(heldOut)) pool.push(heldOut);
-      }
-    }
-    state.pendingChoice = null;
-    if (state.phase === "choice") {
-      const returnPhase = "returnPhase" in choice ? choice.returnPhase : undefined;
-      state.phase =
-        returnPhase && !(returnPhase === "combat" && !state.combat)
-          ? returnPhase
-          : state.combat
-            ? "combat"
-            : "player-turn";
-    }
-    if (state.priorityPlayerId === playerId) {
-      state.priorityPlayerId = null;
-    }
-    // A dropped Monolith/Whirlpool placement must not strand the token on an
-    // already-revealed tile (nobody would ever be offered it again): auto-place
-    // it at the first legal candidate. The eliminated seat's own in-flight
-    // travel was already cleared above, so this never teleports a dead hero.
-    if (choice.type === "OPTION_CHOICE" && choice.context === "place-map-token" && choice.mapToken && state.adventure) {
-      const tokenTile = state.adventure.tiles[choice.mapToken.tileInstanceId];
-      const autoSpaceId = choice.mapToken.candidates[0];
-      if (tokenTile && autoSpaceId) {
-        placeMapToken(state, tokenTile, autoSpaceId, playerId);
-        // Multi-token tiles: drain the rest of the queue the same way (no new
-        // prompt can be offered to a dead seat).
-        autoResolvePendingMapTokens(state, tokenTile, playerId);
-      }
-    }
-    // A dropped Field Override placement is the same trap PLUS it was holding
-    // the whole reveal chain (gate → bank → token) shut. Drop the tile's
-    // override queue (pool draws refuse; nobody is left to pick a hex), then
-    // resume the chain non-interactively: gates carve at their default hex and
-    // a designed token auto-places — the bank offer is simply skipped (the
-    // Blocked Field stays blocked and the bank token pile is untouched).
-    if (
-      choice.type === "OPTION_CHOICE" &&
-      choice.context === "place-field-override" &&
-      choice.fieldOverride &&
-      state.adventure
-    ) {
-      const overrideTile = state.adventure.tiles[choice.fieldOverride.tileInstanceId];
-      if (overrideTile) {
-        delete overrideTile.pendingFieldOverrides;
-        delete overrideTile.pendingFieldOverride;
-        eventNote(
-          state,
-          `The Field Override on the revealed tile was dropped — the placing seat was eliminated.`,
-          playerId
-        );
-        recomputeSubterraneanGates(state.adventure);
-        autoResolvePendingMapTokens(state, overrideTile, playerId);
-      }
-    }
+
   }
 
   // An open "new adventure" confirmation vote is void once the live-seat set

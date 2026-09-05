@@ -196,9 +196,11 @@ import {
   hasOpenAdventureTurn,
   isRoundStartEventBarrierActive,
   parallelInteractionBlocker,
+  parallelPlayerImpact,
   parallelSlotSignature,
   parallelWaitMessage,
   roundStartEventResolver,
+  stopParallelTurns,
 } from "./parallel-turns";
 import {
   artifactSetDefinition,
@@ -928,9 +930,12 @@ function normalizeActionForMatch(action: GameAction): GameAction {
 }
 
 function actionsMatch(left: GameAction, right: GameAction): boolean {
+  const { parallelContextId: _left, ...leftAction } = left;
+  const { parallelContextId: _right, ...rightAction } = right;
+  void _left; void _right;
   return (
-    JSON.stringify(normalizeActionForMatch(left)) ===
-    JSON.stringify(normalizeActionForMatch(right))
+    JSON.stringify(normalizeActionForMatch(leftAction)) ===
+    JSON.stringify(normalizeActionForMatch(rightAction))
   );
 }
 
@@ -33332,9 +33337,14 @@ export function applyAction(
 ): EngineResult {
   const selected = "playerId" in action && typeof action.playerId === "string"
     ? parallelStateForPlayer(state, action.playerId) : state;
+  if (action.parallelContextId && action.type !== "SELECT_PARALLEL_CONTEXT" &&
+    action.parallelContextId !== (selected.combat?.id ?? `map:${selected.parallelCombatOwnerId ?? ("playerId" in action ? action.playerId : "")}`)) {
+    return fail(state, { code: "ACTION_NOT_LEGAL", message: "That battle changed. Switch to the current battle and try again." });
+  }
   const result = applyActionInContext(selected, action, options);
   const pendingOwner = result.state.pendingChoice?.playerId ?? result.state.reactionWindow?.priorityPlayerId;
-  if (!result.errors.length && pendingOwner && result.state.parallelCombats?.[pendingOwner]) {
+  if (!result.errors.length && pendingOwner && result.state.parallelCombats?.[pendingOwner] &&
+    (!result.state.combat || neutralCombatControllerId(result.state, result.state.combat) !== pendingOwner)) {
     return fail(state, { code: "ACTION_NOT_LEGAL", message: "Wait for that player's parallel battle to finish before opening a choice for them." });
   }
   if (!result.errors.length) settleParallelCombatContext(result.state);
@@ -33404,6 +33414,10 @@ function applyActionInContext(
   }
 
   const nextState = cloneState(base);
+  if (action.type === "SELECT_PARALLEL_CONTEXT") {
+    nextState.parallelContextSelections = { ...nextState.parallelContextSelections, [action.playerId]: action.ownerPlayerId };
+    return ok(nextState, eventSeedNumber(nextState));
+  }
 
   // Heal a member that joined as a guest but is really a verified account: the
   // first action that carries the server-verified userId stamps it onto the
@@ -34356,6 +34370,18 @@ function applyActionInContext(
     // reshuffled there (Tarnum VI's return-to-top, an Eagle Eye / Tome reshuffle),
     // so that card is drawn next rather than flipped face-up into the discard.
     refillSharedDeckDiscards(nextState, base);
+
+    if (actorPlayerId && !isTableMetaAction) {
+      const affected = parallelPlayerImpact(base, nextState, actorPlayerId);
+      if (affected) {
+        try {
+          stopParallelTurns(nextState, "pvp-interaction", actorPlayerId,
+            `affected ${nextState.players[affected]?.name ?? affected}`, base);
+        } catch (error) {
+          return fail(base, { code: "ACTION_NOT_LEGAL", message: (error as Error).message });
+        }
+      }
+    }
 
     // Parallel turns: reject a bystander action that touched the exclusive
     // interaction machinery (see the fingerprint capture above).

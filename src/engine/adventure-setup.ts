@@ -3270,7 +3270,8 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   const eventsOn = (setupOptions.events ?? false) && playerConfigs.length >= 2;
   // Parallel turns (optional, multiplayer only): the number of opening rounds
   // everyone plays simultaneously. A solo table always plays ordered.
-  const parallelRounds = playerConfigs.length >= 2 ? normalizeParallelTurnRounds(setupOptions.parallelTurns) : 0;
+  const parallelRounds = playerConfigs.length >= 2 && options.sessionMode !== "single-player"
+    ? normalizeParallelTurnRounds(setupOptions.parallelTurns) : 0;
   // PvP Neutral Control (optional, any table with at least two seats): the next
   // live seat clockwise plays the Neutral units in every combat. This includes
   // one-human-plus-computer tables; a true one-seat table keeps the Neutral AI.
@@ -4897,14 +4898,6 @@ function setMultiplayerComputerOpponents(
 
   const scenario = getScenario(lobby.options.scenarioId);
   const requested = Math.max(0, Math.floor(action.count));
-  // CO-OP step 2 — the mirror of the parallelTurns refusal in setGameOptions.
-  // Removing every computer seat (count 0) is always allowed, so a lobby can
-  // never be wedged: turn the computers off, then turn parallel turns on.
-  if (requested > 0 && (lobby.options.parallelTurns ?? 0) > 0) {
-    throw new Error(
-      "Computer opponents cannot be added while parallel turns are on — turn parallel turns off first."
-    );
-  }
   const humanSeatCount = Math.max(1, lobby.seats.length - computerLobbySeatIds(state).length);
   const total = clampSeatCount(scenario, humanSeatCount + requested);
   const computerCount = Math.max(0, total - humanSeatCount);
@@ -5651,19 +5644,7 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
   }
 
   if (next.parallelTurns !== undefined) {
-    const rounds = normalizeParallelTurnRounds(next.parallelTurns);
-    // CO-OP step 2 — the combination is REFUSED, both directions. A computer
-    // seat inside parallel turns is an untested stall surface: the pump owns
-    // exactly one open decision at a time while parallel mode opens every live
-    // seat's turn at once, and the quiet-action / exclusive-interaction guards
-    // were designed and pinned for human bystanders only. Blocked at the lobby
-    // seam rather than half-supported (see setMultiplayerComputerOpponents for
-    // the mirror check).
-    if (rounds > 0 && computerLobbySeatIds(state).length > 0) {
-      throw new Error(
-        "Parallel turns cannot be used with computer opponents — remove the computer seats first."
-      );
-    }
+    const rounds = state.sessionMode === "single-player" ? 0 : normalizeParallelTurnRounds(next.parallelTurns);
     lobby.options.parallelTurns = rounds;
     changes.push(
       rounds > 0

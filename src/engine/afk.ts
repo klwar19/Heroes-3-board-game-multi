@@ -1,4 +1,5 @@
 import { isComputerPlayer } from "./computer/control";
+import { parallelStateForPlayer } from "./parallel-combats";
 import { appendEvent } from "./events";
 import { combatUnitDecisionOwnerId } from "./neutral-control";
 import {
@@ -484,8 +485,8 @@ export function turnClockRunningSeats(state: GameState): PlayerId[] {
  *    neutral combat, a PvP battle (both sides), or a PvP-Neutral-Control guard
  *    slot they are waiting on another human to play. A battle can run long and is
  *    its own timed context; the player-facing rule is "the 10-minute limit resets
- *    when in battle", so combat time never eats the map-turn budget. A bystander
- *    to a battle they are not in is paused too (they cannot act until it ends);
+ *    when in battle", so combat time never eats the map-turn budget. In ordered
+ *    play bystanders also wait; independent parallel actors keep their clocks;
  *  - the round-start Event/Astrologers barrier freezes the table for everyone
  *    but the current resolver;
  *  - the table's exclusive interaction (choice, reaction priority, visit, tile
@@ -494,12 +495,12 @@ export function turnClockRunningSeats(state: GameState): PlayerId[] {
  *    budget covers everything they themselves are deciding.
  */
 export function turnClockPausedFor(state: GameState, playerId: PlayerId): boolean {
-  if (Object.values(state.parallelCombats ?? {}).some(context => context.combat && !context.combat.outcome)) return true;
+  // Independent work by another player does not pause or reset this turn's
+  // clock. Shared round-start work remains visible through the projection.
+  state = parallelStateForPlayer(state, playerId, playerId);
   const combat = state.combat;
-  // Any live battle pauses (and thereby resets) the turn clock for everyone: the
-  // two fighters are IN it, and a bystander cannot act until it ends. This
-  // includes the fighter's OWN neutral combat, which previously kept the clock
-  // running — per the user rule "the 10-minute limit resets when in battle".
+  // A battle in this player's view pauses the map clock. In parallel mode
+  // unrelated battles have already been projected out above.
   if (combat && !combat.outcome && combat.context.kind !== "sandbox") {
     return true;
   }

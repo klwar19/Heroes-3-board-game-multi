@@ -1,5 +1,6 @@
 "use client";
 import { parallelPresentationEvents, parallelStateForPlayer } from "@/engine/parallel-combats";
+import { ParallelBattleSwitcher } from "@/components/table/parallel-battle-switcher";
 
 import { Castle, CheckCircle2, Crosshair, Crown, Eye, Hand as HandIcon, Layers, Lock, Map as MapIcon, Maximize2, Menu as MenuIcon, Minimize2, Sparkles, StepForward, Swords, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -1446,7 +1447,7 @@ export default function Home() {
     nextState = parallelStateForPlayer(nextState, viewerRef.current);
 
     const eventWindow = presentationEventWindow(presentationEventCursorRef.current, nextState.eventLog);
-    const presentationEvents = parallelPresentationEvents(nextState, eventWindow.events);
+    const presentationEvents = parallelPresentationEvents(nextState, eventWindow.events, viewerRef.current);
     if (eventWindow.prime) {
       // Initial join, room reset, or a log-rotation gap: seed every seen-set
       // from current history and reconstruct only overlays that remain active
@@ -4359,6 +4360,17 @@ export default function Home() {
       return false;
     }
 
+    if (state?.turn.mode === "parallel" && state.adventure?.pvpNeutralControl && action.type !== "SELECT_PARALLEL_CONTEXT") {
+      outgoing = { ...outgoing, parallelContextId: state.combat?.id ?? `map:${state.parallelCombatOwnerId ?? viewerPlayerId}` };
+    }
+    if (action.type === "SELECT_PARALLEL_CONTEXT") {
+      setSelectedCardAction(null);
+      setArmedCardPayment(null);
+      setPendingCostPlay(null);
+      setCombatTab("battle");
+      setDice({ current: null, queue: [] });
+    }
+
     // Pending-action echo (plan N2): register the submit. A duplicate of the
     // SAME action while its first copy is still unacknowledged is refused
     // client-side (the double-click latch); the entry also drives the hand
@@ -6098,6 +6110,7 @@ export default function Home() {
           onClick={playTableUiClickSound}
         >
           {presentationSkipControl}
+          <ParallelBattleSwitcher state={state} playerId={viewerPlayerId} onAction={submitAction} />
           <div className="tableTopRow">
             <AdventureHud
               eventLogControl={
@@ -7432,6 +7445,7 @@ export default function Home() {
       onClick={playTableUiClickSound}
     >
       {presentationSkipControl}
+      <ParallelBattleSwitcher state={state} playerId={viewerPlayerId} onAction={submitAction} />
       {/* All card logistics live up here: every opponent's hand/deck/discard and
           the viewer's own dock + permanents + playable hand. Card-flight
           animations land in this strip. Heroes stay on the right rail. */}

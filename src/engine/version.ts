@@ -1090,7 +1090,15 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // never offered); Polish Ballista firing windows (combat.warMachineRound
 // re-entry) and the Polish bank auto-win "EVERY unit safe" predicate. A v96 edge
 // offers and resolves different actions. `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 101;
+// v102 (2026-09-05, parallel mode + human-controlled neutrals): a human on a
+// parallel table can switch between their own battle and the neutral armies
+// assigned to them — new action SELECT_PARALLEL_CONTEXT, GameAction.parallelContextId
+// (commands tagged for a finished battle are REJECTED), new serialized
+// GameSetupOptions.parallelHumanNeutralControl and GameState.parallelContextSelections /
+// parallelContextOptions, PvP-Neutral-Control assignment walks to the next HUMAN
+// clockwise. A v101 edge neither offers nor accepts the selection action.
+// `npm run deploy:partykit` owed with this bump.
+export const ENGINE_PROTOCOL_VERSION = 102;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

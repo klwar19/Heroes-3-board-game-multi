@@ -357,8 +357,8 @@ function lobby(seed: string): GameState {
   return createAdventureLobbyState({ seed, scenarioId: "skirmish" });
 }
 
-describe("co-op step 2 — parallel turns and computer seats cannot coexist", () => {
-  it("adding computer seats is refused while parallel turns are on (count 0 stays legal)", () => {
+describe("parallel turns with multiplayer computer seats", () => {
+  it("adds computer seats while parallel turns are on", () => {
     let state = applyOk(lobby("coop2-par-a"), {
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
@@ -366,10 +366,8 @@ describe("co-op step 2 — parallel turns and computer seats cannot coexist", ()
     });
     expect(state.setupLobby?.options.parallelTurns).toBe(3);
 
-    expect(reject(state, { type: "SET_COMPUTER_OPPONENTS", playerId: "p1", count: 1 })).toMatch(
-      /parallel turns off first/
-    );
-    expect(state.controllers, "the refused action changed nothing").toBeUndefined();
+    state = applyOk(state, { type: "SET_COMPUTER_OPPONENTS", playerId: "p1", count: 1 });
+    expect(Object.keys(state.controllers ?? {})).toEqual(["p3"]);
 
     // Removing computers is never blocked, so a lobby can never wedge.
     state = applyOk(state, { type: "SET_COMPUTER_OPPONENTS", playerId: "p1", count: 0 });
@@ -385,7 +383,7 @@ describe("co-op step 2 — parallel turns and computer seats cannot coexist", ()
     expect(Object.keys(control.controllers ?? {})).toEqual(["p3"]);
   });
 
-  it("turning parallel turns ON is refused while computer seats exist (off stays legal)", () => {
+  it("enables parallel turns while multiplayer computer seats exist", () => {
     let state = applyOk(lobby("coop2-par-b"), {
       type: "SET_COMPUTER_OPPONENTS",
       playerId: "p1",
@@ -393,10 +391,8 @@ describe("co-op step 2 — parallel turns and computer seats cannot coexist", ()
     });
     expect(Object.keys(state.controllers ?? {})).toEqual(["p3"]);
 
-    expect(
-      reject(state, { type: "SET_GAME_OPTIONS", playerId: "p1", options: { parallelTurns: 4 } })
-    ).toMatch(/remove the computer seats first/);
-    expect(state.setupLobby?.options.parallelTurns ?? 0).toBe(0);
+    state = applyOk(state, { type: "SET_GAME_OPTIONS", playerId: "p1", options: { parallelTurns: 4 } });
+    expect(state.setupLobby?.options.parallelTurns).toBe(4);
 
     // Turning it OFF is always legal (0 rounds is never the blocked value).
     state = applyOk(state, { type: "SET_GAME_OPTIONS", playerId: "p1", options: { parallelTurns: 0 } });

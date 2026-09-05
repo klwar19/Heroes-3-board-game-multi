@@ -29,20 +29,10 @@ import type { CombatState, CombatUnitState, GameState, PendingChoice, PlayerId }
  */
 
 /**
- * CO-OP step 2 (USER RULE "nobody controls the computer enemy"): in a co-op
- * game (`GameState.gameMode === "coop"`) NEITHER manual-neutral-control mode
- * exists — the normal Neutral AI plays every guard. Both modes are clash-only
- * ideas: they hand the guards to "the next player clockwise" / "the fighter",
- * and in co-op that seat is either an ALLY (so the humans would be playing the
- * monsters attacking their own alliance) or a COMPUTER seat that has no
- * human-facing menu to drive.
- *
- * Shaped exactly like the `isPveEncounterCombat` exemption: ONE shared read,
- * an early `null` in BOTH controller derivations, and every downstream consumer
- * (`neutralCombatControllerId`, `combatUnitDecisionOwnerId`,
- * `neutralControlMustAttack`, `openNeutralPlacementWindow`,
- * `computerDecisionOwner`) simply falls back on that null. A CLASH table with
- * computer seats is UNCHANGED.
+ * Ordinary co-op games use automatic neutrals. Selecting Parallel together
+ * with PvP Neutral Control explicitly enables human controllers for those
+ * fights, including allied and computer fighters. Manual guard control keeps
+ * its existing co-op rule.
  */
 export function coopDisablesManualNeutralControl(state: GameState): boolean {
   return state.gameMode === "coop";
@@ -59,20 +49,8 @@ function seatIsComputer(state: GameState, playerId: PlayerId | null | undefined)
 }
 
 /**
- * USER RULE 2026-09-04 (a 1v1 + 2 AI Clash table): "when playing with AI and
- * players ONLY PLAYERS should control neutral units (now it's mixed, depending
- * on where the seats are — just skip AI in this)" and "do not fight neutrals vs
- * AI — just make it auto like in single [player]".
- *
- * So a COMPUTER seat is never a manual neutral controller in either direction:
- *  - it is SKIPPED when walking clockwise for the guards' controller, and
- *  - a computer FIGHTER's neutral fight has NO controller at all, so the normal
- *    Neutral AI plays the guards and the whole fight bulk-resolves off-screen
- *    (`combatHasHumanParticipant` reads the derived controller, so the null is
- *    what makes the live pump treat it as an AI-only fight — exactly the single-
- *    player behaviour the user asked for).
- *
- * An ALL-HUMAN table is byte-identical: no seat is ever skipped there.
+ * Walk the live seat order, skipping computer controllers and the fighter.
+ * Team membership does not change who receives a human-controlled battle.
  */
 function nextHumanSeatClockwise(state: GameState, fighter: PlayerId): PlayerId | null {
   const order = state.turnOrder;
@@ -85,7 +63,7 @@ function nextHumanSeatClockwise(state: GameState, fighter: PlayerId): PlayerId |
     if (!candidate || candidate === fighter || candidate === NEUTRAL_PLAYER_ID) {
       continue;
     }
-    if (seatIsComputer(state, candidate)) {
+    if (seatIsComputer(state, candidate) || state.players[candidate]?.eliminated) {
       continue;
     }
     return candidate;
@@ -96,7 +74,8 @@ function nextHumanSeatClockwise(state: GameState, fighter: PlayerId): PlayerId |
 /**
  * The seat controlling the Neutral side of `combat`, or null when the normal
  * Neutral AI plays it: the mode is off (or the snapshot predates it), the
- * combat is not a Neutral fight, the fighter is a COMPUTER seat, or no OTHER
+ * combat is not a Neutral fight, an ordinary ordered game's fighter is a
+ * COMPUTER seat, or no OTHER
  * live HUMAN seat exists (solo table, everyone else eliminated, or every other
  * seat is an AI — `turnOrder` holds live seats only, so the next human entry
  * clockwise from the fighter is always a live controller). Derived fresh
@@ -138,8 +117,10 @@ export function pvpNeutralControllerId(state: GameState, combat: CombatState): P
   if (combat.context.kind !== "neutral" || !state.adventure?.pvpNeutralControl) {
     return null;
   }
-  // CO-OP: nobody controls the computer enemy — the Neutral AI plays every guard.
-  if (coopDisablesManualNeutralControl(state)) {
+  // Explicit Parallel + Human Neutral Control applies to every ordinary
+  // neutral battle, including computer fighters and co-op tables.
+  const parallelHumanControl = state.turn.mode === "parallel" || combat.parallelHumanNeutralControl === true;
+  if (coopDisablesManualNeutralControl(state) && !parallelHumanControl) {
     return null;
   }
   // USER RULE: the optional PvE director's own fights — a Calamity Wave
@@ -148,10 +129,9 @@ export function pvpNeutralControllerId(state: GameState, combat: CombatState): P
   if (isPveEncounterCombat(combat)) {
     return null;
   }
-  // A COMPUTER seat's own neutral fight is never handed to a human: it stays an
-  // AI-only fight that bulk-resolves off-screen (USER RULE, see
-  // nextHumanSeatClockwise).
-  if (seatIsComputer(state, combat.attackerPlayerId)) {
+  // Preserve ordinary ordered/single-player computer combat. The explicit
+  // parallel combination also gives computer fighters human neutral opponents.
+  if (seatIsComputer(state, combat.attackerPlayerId) && !parallelHumanControl) {
     return null;
   }
   return nextHumanSeatClockwise(state, combat.attackerPlayerId);

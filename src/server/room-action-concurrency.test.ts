@@ -89,8 +89,8 @@ async function settle(): Promise<void> {
 }
 
 describe("PartyKit edge server — concurrent action serialization (P0)", () => {
-  it("retains both battles when two clients attack neutral guards concurrently", async () => {
-    const state = createAdventureGameState({ seed: "edge-parallel-battles", parallelTurns: 4, rollFirstPlayer: false, events: false });
+  it.each([false, true])("retains simultaneous battles and independent window selections (human neutrals: %s)", async (pvpNeutralControl) => {
+    const state = createAdventureGameState({ seed: "edge-parallel-battles", parallelTurns: 4, pvpNeutralControl, rollFirstPlayer: false, events: false });
     const destinations = ["p1", "p2"].map(playerId => {
       state.players[playerId].canMulligan = false;
       state.players[playerId].needsHandRefresh = false;
@@ -115,6 +115,18 @@ describe("PartyKit edge server — concurrent action serialization (P0)", () => 
       expect(parallelStateForPlayer(after, playerId).combat?.attackerPlayerId).toBe(playerId);
     }
     expect(latestSnapshot(clients[0]).version).toBe(9);
+    if (pvpNeutralControl) {
+      const before = ["p1", "p2"].map(id => structuredClone(parallelStateForPlayer(after, id, id).combat));
+      await Promise.all(clients.map((client, index) => server.onMessage(JSON.stringify({
+        type: "action", requestId: `switch-${index}`, actorClientId: `client-${index === 0 ? "a" : "b"}`,
+        action: { type: "SELECT_PARALLEL_CONTEXT", playerId: `p${index + 1}`, ownerPlayerId: `p${2 - index}` },
+      }), client as unknown as EdgeConnection)));
+      const switched = latestSnapshot(clients[0]);
+      expect(switched.version).toBe(11);
+      expect(switched.state.parallelContextSelections).toEqual({ p1: "p2", p2: "p1" });
+      expect(parallelStateForPlayer(switched.state, "p1").combat).toEqual(before[1]);
+      expect(parallelStateForPlayer(switched.state, "p2").combat).toEqual(before[0]);
+    }
     for (const client of clients) {
       expect(frames(client).flatMap(frame => frame.errors ?? [])).toEqual([]);
     }

@@ -14,6 +14,8 @@ import { MapSpellBoostModal } from "./map-spell-boost-modal";
 import { CardZoomProvider } from "./zoom";
 import { PromptTray } from "@/components/adventure/screen";
 import { cardLibrary } from "@/data/cards/library";
+import { parallelStateForPlayer } from "@/engine/parallel-combats";
+import { redactStateForSeat } from "@/engine/player-view";
 import {
   applyAction,
   createAdventureGameState,
@@ -36,8 +38,8 @@ function applyOk(state: GameState, action: GameAction): GameState {
 }
 
 /** Cast View Air with the given hand so the real map-spell-boost choice opens. */
-function openBoost(cards: string[], permanents: string[] = []): GameState {
-  let state = createAdventureGameState({ seed: "map-boost-modal-ui", difficulty: "normal", rollFirstPlayer: false });
+function openBoost(cards: string[], permanents: string[] = [], parallelTurns = 0): GameState {
+  let state = createAdventureGameState({ seed: "map-boost-modal-ui", difficulty: "normal", rollFirstPlayer: false, parallelTurns });
   if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
     state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
   }
@@ -57,6 +59,26 @@ function openBoost(cards: string[], permanents: string[] = []): GameState {
 }
 
 describe("MapSpellBoostModal — battle-style Power tray", () => {
+  it("renders and submits each player's own parallel spell choice from their hosted view", () => {
+    let state = openBoost(["spell.view_air", "ability.sorcery"], [], 4);
+    state = applyOk(state, { type: "REFRESH_HAND", playerId: "p2", discardCardIds: [] });
+    state.players.p2.hand = ["spell.view_air", "ability.sorcery"];
+    state = applyOk(state, { type: "PLAY_CARD", playerId: "p2", cardId: "spell.view_air", mode: "basic", target: { type: "none" } });
+    for (const playerId of ["p1", "p2"]) {
+      const view = redactStateForSeat(state, playerId);
+      const onAction = vi.fn();
+      const mounted = wrap(<MapSpellBoostModal legalActions={getLegalActions(state, playerId)} onAction={onAction} state={view} viewerPlayerId={playerId} />);
+      expect(screen.getByRole("dialog", { name: /View Air/i })).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: /Commit Power/i }));
+      expect(onAction).toHaveBeenCalledTimes(1);
+      expect(onAction.mock.calls[0][0].playerId).toBe(playerId);
+      const other = playerId === "p1" ? "p2" : "p1";
+      const choice = structuredClone(parallelStateForPlayer(state, other).pendingChoice);
+      state = applyOk(state, onAction.mock.calls[0][0]);
+      expect(parallelStateForPlayer(state, other).pendingChoice).toEqual(choice);
+      mounted.unmount();
+    }
+  });
   it("uses the combat reaction tray, shows BOTH Tunic sides, and dispatches the exact engine option", () => {
     const state = openBoost(["spell.view_air", "artifact.tunic_of_the_cyclops_king"]);
     const legalActions = getLegalActions(state, "p1");
