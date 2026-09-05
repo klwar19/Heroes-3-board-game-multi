@@ -73,3 +73,45 @@ export function makeCombatDiceCue(
     ...(preDelayMs > 0 ? { preDelayMs } : {})
   };
 }
+
+/**
+ * USER RULE (2026-09-05) — "Death Stare must happen BEFORE the retaliation."
+ *
+ * An ability that throws its own dice AFTER a blow (a Gorgon's Death Stare,
+ * the Thunderbird extra die) resolves in the engine before the parked
+ * Retaliation Attack, but the client built its overlay queue in TWO passes:
+ * every ATTACK_ROLLED cue of the snapshot first, then the ability/spell dice
+ * appended behind them. In a batch carrying the whole exchange (primary die →
+ * stare dice → retaliation die) the table therefore SHOWED the retaliation
+ * roll before the stare that could have cancelled it.
+ *
+ * This splices freshly built cues into the pending queue at the position their
+ * SOURCE EVENT holds, using `order` (cue id → index in the event log). A cue
+ * with no entry in `order` is appended, so every cue class the page still
+ * queues blind (spell rolls, leftovers from an earlier snapshot) keeps its
+ * previous placement.
+ */
+export function mergeDiceCuesInEventOrder(
+  queue: readonly DiceCue[],
+  incoming: readonly DiceCue[],
+  order: ReadonlyMap<string, number>
+): DiceCue[] {
+  const merged = [...queue];
+  for (const cue of incoming) {
+    const position = order.get(cue.id);
+    if (position === undefined) {
+      merged.push(cue);
+      continue;
+    }
+    const index = merged.findIndex((queued) => {
+      const queuedPosition = order.get(queued.id);
+      return queuedPosition !== undefined && queuedPosition > position;
+    });
+    if (index < 0) {
+      merged.push(cue);
+    } else {
+      merged.splice(index, 0, cue);
+    }
+  }
+  return merged;
+}

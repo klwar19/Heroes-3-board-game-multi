@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { appendEvent, createInitialGameState } from "@/engine";
-import { makeCombatDiceCue } from "./combat-dice-cue";
+import { makeCombatDiceCue, mergeDiceCuesInEventOrder } from "./combat-dice-cue";
+import type { DiceCue } from "./overlays";
 
 describe("combat dice cues for printed follow-up attacks", () => {
   it("keeps the Gold Dragon declaration attached to the second roll", () => {
@@ -116,5 +117,91 @@ describe("combat dice cues for printed follow-up attacks", () => {
     // A roll with no forced reroll leaves the field off the cue entirely.
     const plain = { ...rolled, rerollBeats: undefined };
     expect(makeCombatDiceCue(state, plain).rerollBeats).toBeUndefined();
+  });
+});
+
+/**
+ * USER RULE (2026-09-05) — "Death Stare must happen BEFORE the retaliation."
+ * The visible half of that rule: the overlay queue is built in two passes
+ * (attack dice, then ability/spell dice), so a stare fired between a blow and
+ * its parked Retaliation used to be SHOWN after the counter-blow's die.
+ * The whole-flow pin is `src/app/page-death-stare-dice-order.test.tsx`; these
+ * pin the splice itself, including the fallback that keeps every unordered cue
+ * exactly where it used to land.
+ */
+describe("mergeDiceCuesInEventOrder", () => {
+  const cue = (id: string): DiceCue =>
+    ({
+      id,
+      rolls: [0],
+      roll: 0,
+      dieMultiplier: 1,
+      rollMode: "normal",
+      attackerName: "",
+      defenderName: "",
+      attackValue: 0,
+      defenseValue: 0,
+      attackBonus: 0,
+      defenseBonus: 0,
+      damage: 0,
+      isRetaliation: false
+    }) satisfies DiceCue;
+
+  it("splices an ability roll in front of the later attack die it preceded", () => {
+    const order = new Map([
+      ["evt_blow", 1],
+      ["evt_stare-dice", 2],
+      ["evt_retaliation", 3]
+    ]);
+    const merged = mergeDiceCuesInEventOrder(
+      [cue("evt_blow"), cue("evt_retaliation")],
+      [cue("evt_stare-dice")],
+      order
+    );
+    expect(merged.map((entry) => entry.id)).toEqual(["evt_blow", "evt_stare-dice", "evt_retaliation"]);
+  });
+
+  it("CONTROL: a cue with no recorded place, and a leftover queue, keep the old append", () => {
+    // No order entry (a spell roll the page still queues blind) -> appended.
+    expect(
+      mergeDiceCuesInEventOrder(
+        [cue("evt_blow"), cue("evt_retaliation")],
+        [cue("evt_inferno")],
+        new Map([
+          ["evt_blow", 1],
+          ["evt_retaliation", 3]
+        ])
+      ).map((entry) => entry.id)
+    ).toEqual(["evt_blow", "evt_retaliation", "evt_inferno"]);
+
+    // A cue left over from an EARLIER snapshot has no place in this batch's
+    // order either, so it is never jumped over.
+    expect(
+      mergeDiceCuesInEventOrder(
+        [cue("evt_old"), cue("evt_blow"), cue("evt_retaliation")],
+        [cue("evt_stare-dice")],
+        new Map([
+          ["evt_blow", 1],
+          ["evt_stare-dice", 2],
+          ["evt_retaliation", 3]
+        ])
+      ).map((entry) => entry.id)
+    ).toEqual(["evt_old", "evt_blow", "evt_stare-dice", "evt_retaliation"]);
+  });
+
+  it("keeps two ability rolls of one exchange in their own event order", () => {
+    const order = new Map([
+      ["evt_blow", 1],
+      ["evt_a-dice", 2],
+      ["evt_b-dice", 3],
+      ["evt_retaliation", 4]
+    ]);
+    expect(
+      mergeDiceCuesInEventOrder(
+        [cue("evt_blow"), cue("evt_retaliation")],
+        [cue("evt_a-dice"), cue("evt_b-dice")],
+        order
+      ).map((entry) => entry.id)
+    ).toEqual(["evt_blow", "evt_a-dice", "evt_b-dice", "evt_retaliation"]);
   });
 });
