@@ -74,7 +74,9 @@ describe("HeroBoard — Little Busters in-battle hero button", () => {
     expect(card.textContent).toContain("HEALTH6");
     expect(card.textContent).toContain("INIT8");
     expect(card.textContent).toContain("Prepared Position");
-    expect(card.textContent).toContain("Forgetfulness IV");
+    // Riki's Zilare "Forgetfulness" clone became the ORIGINAL Little Busters'
+    // Bond set in the 2026-09-05 Little Busters specialty redesign.
+    expect(card.textContent).toContain("Little Busters' Bond IV");
     const progress = screen.getByLabelText("Battlefield hero level and grade gains");
     expect(progress.textContent).toContain("Gained since Level I");
     expect(progress.textContent).toContain("Current grade bonus");
