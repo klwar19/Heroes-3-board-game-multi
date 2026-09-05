@@ -1,5 +1,4 @@
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { hasMediaFile } from "@/lib/media-manifest";
 import { describe, expect, it } from "vitest";
 import {
   getStoryScene,
@@ -14,7 +13,8 @@ import {
   type StoryScene
 } from "./scenes";
 
-const onDisk = (assetPath: string) => existsSync(resolve(process.cwd(), `public${assetPath}`));
+// Published in media-manifest.json (binary media is not on disk in git — docs/media-manifest.md).
+const onDisk = (assetPath: string) => hasMediaFile(assetPath);
 
 function nonEmpty(value: unknown): boolean {
   return typeof value === "string" && value.trim().length > 0;
@@ -89,7 +89,7 @@ describe("story scene registry", () => {
         expect(declared, `${asset} is on disk but still declared a placeholder`).toBe(false);
       } else {
         // No file yet → it MUST be declared (so the overlay uses a fallback).
-        expect(declared, `${asset} has no file and is not a declared placeholder`).toBe(true);
+        expect(declared, `${asset} is not published (npm run media:publish) and is not a declared placeholder`).toBe(true);
       }
       // The runtime helper and the disk truth must agree.
       expect(storyAssetIsPlaceholder(asset)).toBe(!onDisk(asset) || declared);
