@@ -124,24 +124,42 @@ describe("anime starting tiles — hex + border assignment", () => {
     expect(ba.assets?.attachFieldSymbols).toBe(true);
   });
 
-  it("a Field Override removes the PRINTED edges touching its hex — but never a designer border", () => {
+  // FLIPPED 2026-09-05 (USER RULE "Bank: should respect the border. Only remove
+  // the INSIDE border to get in. If there is no border outside, don't add a
+  // border"): a carve used to draw NOTHING on its slot. It now keeps the slot's
+  // printed OUTER arc. Field Override hexes take the SAME reading as the three
+  // Blocked-Field carves — and since an override lands on an arbitrary passable
+  // hex, this also aligns RENDER with movement, which never exempted an override
+  // from `isOuterEdgeSealed` in the first place.
+  it("a Field Override removes only the INSIDE printed edges — keeping the outer arc and any designer border", () => {
+    // S4's slot 2 (E) is its Blocked Field and prints the outer arc; slot 2 faces
+    // local direction 1, so its OUTWARD edges are 0, 1, 2.
+    expect(s4.outerImpassable[1]).toBe(true);
     const hidden = getTileBorderSegments(s4, new Set([2]), {
       borderlessSlots: new Set([2])
     });
-    expect(hidden.filter((segment) => segment.slot === 2)).toEqual([]);
+    expect(
+      hidden
+        .filter((segment) => segment.slot === 2)
+        .map((segment) => segment.edge)
+        .sort()
+    ).toEqual([0, 1, 2]);
 
     // USER RULE 2026-08-22: a FIXED yellow border the designer drew survives the
-    // carve and is still painted (movement seals it too).
+    // carve and is still painted (movement seals it too). Here it names the same
+    // three edges as the printed arc, so the slot still draws exactly three.
     const designed = getTileBorderSegments(s4, new Set(), {
       borderlessSlots: new Set([2]),
       extraBorders: [1]
     });
     expect(designed.filter((segment) => segment.slot === 2)).toHaveLength(3);
 
-    // CONTROL: no designer arc → the carved slot draws nothing at all.
+    // CONTROL: on a slot the tile prints NO arc for (slot 1, NE), a carve draws
+    // nothing at all — no border is invented.
+    expect(s4.outerImpassable[0]).toBe(false);
     const printedOnly = getTileBorderSegments(s4, new Set(), {
-      borderlessSlots: new Set([2])
+      borderlessSlots: new Set([1])
     });
-    expect(printedOnly.filter((segment) => segment.slot === 2)).toHaveLength(0);
+    expect(printedOnly.filter((segment) => segment.slot === 1)).toHaveLength(0);
   });
 });

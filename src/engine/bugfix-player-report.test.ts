@@ -4,6 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { cardLibrary } from "@/data/cards/library";
+import { coreTileDefinitions } from "@/data/map/tile-defs";
 import {
   applyAction,
   createAdventureGameState,
@@ -492,7 +493,10 @@ describe("Creature Bank — enter from its host Tile", () => {
       settlementResource: null,
       ...(bankId ? { bankId } : {})
     });
-    state.adventure!.fields["A"] = field("A", "T1", "empty_field", 1);
+    // S1 slot 2 (E) carries the tile's PRINTED outer arc; slot 1 (NE) does not.
+    expect(coreTileDefinitions.S1.outerImpassable[1]).toBe(true);
+    expect(coreTileDefinitions.S1.outerImpassable[0]).toBe(false);
+    state.adventure!.fields["A"] = field("A", "T1", "empty_field", 3);
     state.adventure!.fields["B"] = field("B", "T1", "creature_bank", 2, "crypt");
     state.adventure!.fields["C"] = field("C", "T2", "empty_field", 1);
 
@@ -500,10 +504,12 @@ describe("Creature Bank — enter from its host Tile", () => {
     expect(canCrossEdge(state, "C", "B")).toBe(false);
     expect(canCrossEdge(state, "B", "C")).toBe(false);
 
-    state.adventure!.houseRules = {
-      ...(state.adventure!.houseRules ?? {}),
-      "bank-interior-entry-only": false,
-    } as never;
+    // 2026-09-05: the retired BINH rule `bank-interior-entry-only` used to be
+    // what closed those two edges, and turning it off opened them. The printed
+    // outer arc closes them now, unconditionally — so the CONTROL is the SAME
+    // bank moved onto a slot the tile prints NO arc for ("if there is no border
+    // outside, don't add a border"), which is open in both directions.
+    state.adventure!.fields["B"] = field("B", "T1", "creature_bank", 1, "crypt");
     expect(canCrossEdge(state, "C", "B")).toBe(true);
     expect(canCrossEdge(state, "B", "C")).toBe(true);
   });

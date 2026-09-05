@@ -339,7 +339,12 @@ export function secretFeatureFullLabel(feature: SecretTileFeature | undefined): 
 export function isSecretTileFeature(value: unknown): value is SecretTileFeature {
   return typeof value === "string" && SECRET_TILE_FEATURE_SET.has(value);
 }
-import { HOUSE_RULES, HOUSE_RULE_BY_ID, resolveHouseRules } from "./house-rules";
+import {
+  HOUSE_RULES,
+  HOUSE_RULE_BY_ID,
+  RETIRED_HOUSE_RULE_IDS,
+  resolveHouseRules,
+} from "./house-rules";
 
 /**
  * Applies the map designer's Monolith/Whirlpool/colored-Gate tile tokens to the
@@ -5544,7 +5549,7 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
 
   if (next.houseRules !== undefined) {
     for (const id of Object.keys(next.houseRules)) {
-      if (!HOUSE_RULE_BY_ID[id as HouseRuleId]) {
+      if (!HOUSE_RULE_BY_ID[id as HouseRuleId] && !RETIRED_HOUSE_RULE_IDS.has(id)) {
         throw new Error(`Unknown house rule "${id}".`);
       }
     }
@@ -5557,6 +5562,12 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     let houseRuleChanges = 0;
     for (const [id, value] of Object.entries(next.houseRules)) {
       const def = HOUSE_RULE_BY_ID[id as HouseRuleId];
+      // A RETIRED id (an out-of-date client / a stored lobby) is dropped, not
+      // merged: nothing reads it and it must not reach the feed as a nameless
+      // rule. The guard above already let it through instead of throwing.
+      if (!def) {
+        continue;
+      }
       if (merged[id as HouseRuleId] !== Boolean(value)) {
         houseRuleChanges += 1;
       }

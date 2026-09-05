@@ -119,13 +119,11 @@ import {
   preassignedSettlementCountFor,
   startingTileCount,
   startingTileSeatRole,
-  printedBordersSurviveCarve,
   isFieldGuarded,
   hasOpenAdventureTurn,
   hexDistance,
   hexSpaceId,
   hexToPixel,
-  houseRuleEnabled,
   inCombatPrep,
   isMapObjectLocation,
   isParallelActor,
@@ -327,7 +325,6 @@ import {
 } from "@/data/assets/homm-assets";
 
 /** No slot suppressed: a tile whose PRINTED borders are fixed keeps every line. */
-const EMPTY_SLOT_SET: ReadonlySet<number> = new Set<number>();
 
 const HEX_SIZE = 34;
 const HEX_WIDTH = Math.sqrt(3) * HEX_SIZE;
@@ -1953,7 +1950,6 @@ export function HexMapBoard({
             extraBorders: tile.extraBorders,
             borderEdges: tile.borderEdges,
             rotation,
-            preserveBankOuterArcs: houseRuleEnabled(state, "bank-interior-entry-only"),
           })
         : [];
       const footprint = tileFootprint(center, rotation);
@@ -2179,13 +2175,13 @@ export function HexMapBoard({
     if (undergroundTile) {
       pushUndergroundTileOutline(overlays, tile.id, footprint, tile.rotation);
     }
-    // A placed Creature Bank is border-free: suppress the PRINTED lines touching
-    // the carved hex (the tile's own ring / outer arc). A FIXED yellow border —
-    // a designer `extraBorders` arc or `borderEdges` line, or the STARTING tile's
-    // printed lines — survives and is still painted (USER RULE 2026-08-22);
-    // `getTileBorderSegments` keeps designer segments unfiltered and the
-    // starting-tile exemption below empties the suppression sets, matching
-    // `printedBordersSurviveCarve` in the movement engine.
+    // A placed Creature Bank opens the INSIDE half of its printed ring only:
+    // suppress the PRINTED lines touching the carved hex, while
+    // `getTileBorderSegments` re-emits the slot's own printed OUTER ARC when the
+    // tile prints one (USER RULE 2026-09-05) — matching `isOuterEdgeSealed` in
+    // the movement engine, so a drawn line is always a real wall. A FIXED yellow
+    // border (a designer `extraBorders` arc / `borderEdges` line) survives too
+    // (USER RULE 2026-08-22): designer segments are kept unfiltered.
     const bankSlots = new Set<number>();
     const borderlessOverrideSlots = new Set<number>();
     footprint.forEach((coord, slot) => {
@@ -2210,21 +2206,13 @@ export function HexMapBoard({
         borderlessOverrideSlots.add(slot);
       }
     });
-    const printedBordersFixed = printedBordersSurviveCarve(tile);
     const borderSegments = tileDef
-      ? getTileBorderSegments(
-          tileDef,
-          printedBordersFixed ? EMPTY_SLOT_SET : bankSlots,
-          {
-            extraBorders: tile.extraBorders,
-            borderEdges: tile.borderEdges,
-            rotation: tile.rotation,
-            preserveBankOuterArcs: houseRuleEnabled(state, "bank-interior-entry-only"),
-            borderlessSlots: printedBordersFixed
-              ? EMPTY_SLOT_SET
-              : borderlessOverrideSlots,
-          },
-        )
+      ? getTileBorderSegments(tileDef, bankSlots, {
+          extraBorders: tile.extraBorders,
+          borderEdges: tile.borderEdges,
+          rotation: tile.rotation,
+          borderlessSlots: borderlessOverrideSlots,
+        })
       : [];
     for (const [slot, coord] of footprint.entries()) {
       const spaceId = `h:${coord.row}:${coord.col}`;
@@ -11880,7 +11868,6 @@ const BINH_RULE_SUMMARIES: Partial<Record<HouseRuleId, string>> = {
   "vision-battle-swap": "Cast Visions before battle to replace Neutral guards.",
   "bank-empower-ability": "Selected Creature Banks award Ability Empower tokens.",
   "bank-move-points": "Creature Bank fights use round limits and move extensions.",
-  "bank-interior-entry-only": "Enter Creature Banks only from within their host tile.",
   "bank-stack-chance-80": "Each eligible Bank Stack Token has an 80% placement chance.",
   "defeat-gold-debt": "A hero-combat defeat can reduce gold below zero.",
   "obelisk-rewards": "The first Obelisk visit rolls and locks a shared reward.",

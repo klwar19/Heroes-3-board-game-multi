@@ -24,7 +24,7 @@ import {
   type MapTileState,
   type HeroMovementCapabilities
 } from "./index";
-import { instantiateTile, materializeTileFields } from "./adventure";
+import { getAdjacentSpaceIds, instantiateTile, materializeTileFields } from "./adventure";
 import {
   canonicalTileEdgeCode,
   hexDirectionBetween,
@@ -737,14 +737,20 @@ sealingDescribe("a FIXED yellow border is respected at a runtime border-free hex
     });
   }
 
-  // The other half of the user rule: the tile's OWN PRINTED border around the
-  // Blocked Field a bank replaced is NOT fixed — the bank stays passable from
-  // every direction. Same hex, same tile, printed vs designer: only the designer
-  // line seals.
+  // The other half of the user rule: which line seals a CARVED hex. USER RULE
+  // 2026-09-05 — "Bank: should respect the border. Only remove the INSIDE border
+  // to get in. If there is no border outside, don't add a border." So the tile's
+  // PRINTED outer arc survives the carve (slot 3 below), while a slot the tile
+  // prints no arc for is open and only a DESIGNER line can seal it (slot 5).
   const PRINTED_BLOCKED_TILE = "F3"; // Ⅱ–Ⅲ tile: blocked field on slot 3 with a sealed printed arc
   const PRINTED_BLOCKED_SLOT = 3;
+  /** The same tile's ring slot with NO printed outer arc. */
+  const PRINTED_OPEN_SLOT = 5;
 
-  function bankOnPrintedBlockedSlot(seed: string): {
+  function bankOnPrintedBlockedSlot(
+    seed: string,
+    slot: number = PRINTED_BLOCKED_SLOT
+  ): {
     state: GameState;
     tile: MapTileState;
     bank: MapFieldState;
@@ -755,13 +761,14 @@ sealingDescribe("a FIXED yellow border is respected at a runtime border-free hex
     const O: HexCoord = { row: 40, col: 30 };
     const tile = instantiateTile(adv(state), PRINTED_BLOCKED_TILE, O, 0, false);
     const bank = Object.values(adv(state).fields).find(
-      (field) => field.tileInstanceId === tile.id && field.slot === PRINTED_BLOCKED_SLOT
+      (field) => field.tileInstanceId === tile.id && field.slot === slot
     )!;
-    // Sanity: the fixture's slot really is a printed, sealed Blocked Field.
+    // Sanity: the two fixture slots really differ in their printed arc.
     expect(allTileDefinitions[PRINTED_BLOCKED_TILE].fields[PRINTED_BLOCKED_SLOT].location).toBe(
       "blocked_field"
     );
     expect(isTileSlotOuterSealed(PRINTED_BLOCKED_TILE, PRINTED_BLOCKED_SLOT)).toBe(true);
+    expect(isTileSlotOuterSealed(PRINTED_BLOCKED_TILE, PRINTED_OPEN_SLOT)).toBe(false);
     bank.location = "creature_bank" as MapFieldState["location"];
 
     const bankCoord = parseHexSpaceId(bank.spaceId)!;
@@ -791,15 +798,16 @@ sealingDescribe("a FIXED yellow border is respected at a runtime border-free hex
     return { state, tile, bank, outside, dir };
   }
 
-  it("CONTROL: the Ⅱ–Ⅲ tile's PRINTED border around the carved bank still does not block — the DESIGNER arc / edge on the same hex does", () => {
-    const { state, tile, bank, outside, dir } = bankOnPrintedBlockedSlot("db-bank-printed-vs-designed");
-    // This test isolates printed-vs-designer border semantics. Disable the
-    // separate BINH bank containment rule, whose cross-tile movement block is
-    // covered by creature-bank-combat/bugfix-player-report tests.
-    adv(state).houseRules = {
-      ...(adv(state).houseRules ?? {}),
-      "bank-interior-entry-only": false,
-    } as never;
+  // FLIPPED 2026-09-05: this used to run on the PRINTED-ARC slot and assert that
+  // the printed line "still does not block" a carve. USER RULE 2026-09-05 keeps
+  // the printed outer arc, so printed-vs-designer is now isolated on the slot
+  // the tile prints NO arc for — which is exactly where "if there is no border
+  // outside, don't add a border" means the designer line is the only wall.
+  it("CONTROL: at an ARC-LESS carved slot the printed art does not block — the DESIGNER arc / edge on the same hex does", () => {
+    const { state, tile, bank, outside, dir } = bankOnPrintedBlockedSlot(
+      "db-bank-printed-vs-designed",
+      PRINTED_OPEN_SLOT
+    );
 
     // CONTROL: printed-only — the bank is enterable/leavable across the Tile edge
     // and the hero standing on it may still flip an adjacent face-down Tile.
@@ -829,29 +837,46 @@ sealingDescribe("a FIXED yellow border is respected at a runtime border-free hex
     expect(heroFieldSealedForDiscovery(adv(state), bank)).toBe(false);
   });
 
-  // DEFENSIVE READ (see `printedBordersSurviveCarve`): no shipped carve source
-  // can land on a starting tile — banks come from a Far/Near reveal or a
-  // STANDALONE-only designer object, the Calamity/Dungeon Gates take a Far/Near
-  // Blocked Field, and no Field Override kind may claim `starting`. The fixture
-  // therefore relabels the host tile by hand; the rule ("Tile Ⅰ's printed border
-  // is fixed too") is pinned so a future carve source cannot silently erase it.
-  it("a carve on a STARTING tile keeps the tile's PRINTED border (CONTROL: the same carve on a far tile does not)", () => {
-    const { state, tile, bank, outside } = bankOnPrintedBlockedSlot("db-bank-starting-tile");
-    adv(state).houseRules = {
-      ...(adv(state).houseRules ?? {}),
-      "bank-interior-entry-only": false,
-    } as never;
+  // REPLACES "a carve on a STARTING tile keeps the tile's PRINTED border
+  // (CONTROL: the same carve on a far tile does not)" and its
+  // `printedBordersSurviveCarve` band exception, DELETED 2026-09-05: the printed
+  // arc now survives a carve on EVERY tile, so a Ⅰ / Ⅱ–Ⅲ / Ⅳ–Ⅴ split no longer
+  // exists. The band is now the CONTROL — it must make no difference at all.
+  it("the carved bank's PRINTED outer arc seals it whatever the host tile's band", () => {
+    const { state, tile, bank, outside } = bankOnPrintedBlockedSlot("db-bank-printed-arc-band");
+    // The same-tile route in is what the carve opens — measured against the
+    // sealed tile edge below, so this is not a vacuously true pair.
+    const inside = Object.values(adv(state).fields).find(
+      (field) =>
+        field.tileInstanceId === tile.id &&
+        field.spaceId !== bank.spaceId &&
+        getAdjacentSpaceIds(bank.spaceId).includes(field.spaceId) &&
+        field.location !== "blocked_field"
+    )!;
+    expect(inside).toBeTruthy();
 
-    // CONTROL: as a far tile the printed arc is suppressed by the carve.
-    tile.group = "far";
-    expect(canCrossEdge(state, outside.spaceId, bank.spaceId, NONE)).toBe(true);
-    expect(heroFieldSealedForDiscovery(adv(state), bank)).toBe(false);
+    for (const group of ["far", "near", "starting", "center"] as const) {
+      tile.group = group as MapTileState["group"];
+      expect(canCrossEdge(state, inside.spaceId, bank.spaceId, NONE), `${group}: walk in`).toBe(
+        true
+      );
+      expect(
+        canCrossEdge(state, outside.spaceId, bank.spaceId, NONE),
+        `${group}: enter across the sealed tile edge`
+      ).toBe(false);
+      expect(
+        canCrossEdge(state, bank.spaceId, outside.spaceId, NONE),
+        `${group}: leave across the sealed tile edge`
+      ).toBe(false);
+      expect(heroFieldSealedForDiscovery(adv(state), bank), `${group}: discovery`).toBe(true);
+    }
 
-    // Tile Ⅰ: the printed line is a FIXED border and still seals.
-    tile.group = "starting";
-    expect(canCrossEdge(state, outside.spaceId, bank.spaceId, NONE)).toBe(false);
-    expect(canCrossEdge(state, bank.spaceId, outside.spaceId, NONE)).toBe(false);
-    expect(heroFieldSealedForDiscovery(adv(state), bank)).toBe(true);
+    // MUTATION CONTROL: the SAME carve one slot over, where the tile prints no
+    // arc, is open in every direction — so the seal above is really the printed
+    // line and not "a carve is always sealed".
+    const open = bankOnPrintedBlockedSlot("db-bank-printed-arc-band-open", PRINTED_OPEN_SLOT);
+    expect(canCrossEdge(open.state, open.outside.spaceId, open.bank.spaceId, NONE)).toBe(true);
+    expect(heroFieldSealedForDiscovery(adv(open.state), open.bank)).toBe(false);
   });
 
   it("RENDER agrees: the printed ring is suppressed at the bank hex while the designer line is still painted", () => {
@@ -863,34 +888,56 @@ sealingDescribe("a FIXED yellow border is respected at a runtime border-free hex
     const mirrorEdge = canonicalTileEdgeCode(PRINTED_BLOCKED_SLOT, 0);
     const carved = { borderlessSlots: new Set([PRINTED_BLOCKED_SLOT]) };
 
-    // Printed-only at a carved slot: nothing drawn there (the long-standing rule).
+    // Printed at a carved slot (FLIPPED 2026-09-05, was "nothing drawn there"):
+    // the OUTWARD three edges of the printed arc stay, the INWARD three open.
+    // Slot 3 faces local direction 2, so its outward edges are 1, 2, 3.
     expect(
-      getTileBorderSegments(def, new Set(), carved).filter(
-        (segment) => segment.slot === PRINTED_BLOCKED_SLOT
-      )
-    ).toEqual([]);
+      getTileBorderSegments(def, new Set(), carved)
+        .filter((segment) => segment.slot === PRINTED_BLOCKED_SLOT)
+        .map((segment) => segment.edge)
+        .sort()
+    ).toEqual([1, 2, 3]);
 
-    // The SAME carved slot with a designer per-edge line: the line is painted.
+    // The SAME carved slot with a designer per-edge line on an INWARD edge: the
+    // line is painted, on top of the retained printed arc.
     const withDesigned = getTileBorderSegments(def, new Set(), {
       ...carved,
       borderEdges: [designedEdge],
       rotation: 0
     }).map((segment) => `${segment.slot}:${segment.edge}`);
     expect(withDesigned).toContain(`${PRINTED_BLOCKED_SLOT}:0`);
-    // ...and only that one line, not the printed ring's six.
-    expect(withDesigned.filter((key) => key.startsWith(`${PRINTED_BLOCKED_SLOT}:`))).toEqual([
-      `${PRINTED_BLOCKED_SLOT}:0`
+    // ...and nothing else beyond the retained arc: not the printed ring's six.
+    expect(
+      withDesigned.filter((key) => key.startsWith(`${PRINTED_BLOCKED_SLOT}:`)).sort()
+    ).toEqual([
+      `${PRINTED_BLOCKED_SLOT}:0`,
+      `${PRINTED_BLOCKED_SLOT}:1`,
+      `${PRINTED_BLOCKED_SLOT}:2`,
+      `${PRINTED_BLOCKED_SLOT}:3`
     ]);
 
     // The mirror encoding of the same physical edge survives too (the old
     // adjacency filter dropped every line TOUCHING the carve, whichever hex
-    // owned it).
+    // owned it). Measured on the ARC-LESS slot so the retained arc cannot mask
+    // a regression here.
+    const openCarved = { borderlessSlots: new Set([PRINTED_OPEN_SLOT]) };
+    expect(getTileBorderSegments(def, new Set(), openCarved).length).toBe(
+      getTileBorderSegments(def, new Set(), {
+        ...openCarved,
+        borderEdges: [canonicalTileEdgeCode(PRINTED_OPEN_SLOT, 0)],
+        rotation: 0
+      }).length - 1
+    );
     const mirrored = getTileBorderSegments(def, new Set(), {
       ...carved,
       borderEdges: [mirrorEdge],
       rotation: 0
-    }).map((segment) => `${segment.slot}:${segment.edge}`);
-    expect(mirrored.length).toBe(1);
+    });
+    // The retained arc (3, on the carved slot) plus the designer mirror line
+    // (1, canonicalized into the NEIGHBOUR slot's frame) — F3 prints no other
+    // border, so the whole tile is exactly these four.
+    expect(mirrored.length).toBe(4);
+    expect(mirrored.some((segment) => segment.slot !== PRINTED_BLOCKED_SLOT)).toBe(true);
 
     // A designer WHOLE ARC on the carved slot is painted too (all three edges).
     const withArc = getTileBorderSegments(def, new Set([PRINTED_BLOCKED_SLOT]), {

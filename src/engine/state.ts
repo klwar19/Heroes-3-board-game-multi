@@ -120,10 +120,9 @@ export type HouseRuleId =
   // point-to-extend rule, like an ordinary neutral fight. Off: a bank has no
   // Round limit (rulebook) and rolls straight into the next round.
   | "bank-move-points"
-  // BINH house rule: a Creature Bank carved into a tile may only be entered
-  // from another field of that host tile. Its outer tile edge is never an
-  // entrance or exit.
-  | "bank-interior-entry-only"
+  // RETIRED 2026-09-05: "bank-interior-entry-only" (see RETIRED_HOUSE_RULE_IDS
+  // in house-rules.ts). It sealed EVERY outer edge of a carved bank; the printed
+  // outer arc now decides, unconditionally, at `isOuterEdgeSealed`.
   // BINH house rule: each of the difficulty's Creature-Bank Stack Tokens lands
   // only 80% of the time. Off (official): every token is placed, so the fixed
   // count is Easy 1 / Normal 2 / Hard 3 / Impossible 4.

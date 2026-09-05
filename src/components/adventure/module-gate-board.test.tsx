@@ -61,7 +61,7 @@ function boardWithLocationOnBlockedSlot(
   return container;
 }
 
-describe("a Gate carved over a Blocked Field draws no printed border on the board", () => {
+describe("a Gate carved over a Blocked Field draws only the printed OUTER arc on the board", () => {
   it("the fixture tile really prints a sealed blocked slot", () => {
     const def = allTileDefinitions[TILE];
     expect(def.fields[SLOT].location).toBe("blocked_field");
@@ -69,22 +69,23 @@ describe("a Gate carved over a Blocked Field draws no printed border on the boar
   });
 
   for (const location of ["creature_bank", "dungeon_gate", "calamity_gate"] as const) {
-    it(`${location}: the hex is border-free while a plain Blocked Field is ringed`, () => {
+    // FLIPPED 2026-09-05 (USER RULE "Only remove the INSIDE border to get in"):
+    // the two PvE Gates used to lose all six of the slot's lines. All three
+    // carves now behave alike — the three INSIDE edges open, the printed OUTER
+    // arc stays drawn — which is also what movement enforces.
+    it(`${location}: the hex opens its INSIDE ring and keeps the printed outer arc`, () => {
       const carved = boardWithLocationOnBlockedSlot(location, `gate-board-${location}`);
       const printed = boardWithLocationOnBlockedSlot("blocked_field", `gate-board-control-${location}`);
 
-      // The whole tile loses exactly this slot's lines: compare totals, since the
-      // rendered lines carry no per-slot attribute.
+      // The whole tile loses exactly this slot's inside lines: compare totals,
+      // since the rendered lines carry no per-slot attribute.
       const carvedLines = carved.querySelectorAll("line.tileBorderLine").length;
       const printedLines = printed.querySelectorAll("line.tileBorderLine").length;
       expect(printedLines, "a plain Blocked Field is ringed").toBeGreaterThan(carvedLines);
-      const removedLines = location === "creature_bank" ? 3 : 6;
       expect(
         carvedLines,
-        location === "creature_bank"
-          ? "the bank keeps only its outward containment arc"
-          : "the Gate's ring and arc are gone",
-      ).toBe(printedLines - removedLines);
+        "the carve keeps only its outward containment arc",
+      ).toBe(printedLines - 3);
     });
 
     // USER RULE 2026-08-22 (supersedes the v24 "designer edges are inert at a

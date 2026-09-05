@@ -942,16 +942,15 @@ describe("tile discovery and placement", () => {
     expect(result.state.adventure!.tiles[tile!.id].faceDown).toBe(true);
   });
 
-  it("HOUSE RULE ON: a Creature Bank does NOT open TILE Ⅰ's printed yellow border (USER RULE 2026-08-22)", () => {
-    // Same vantage as the sealed-border test: h:8:3 is S3 slot 2 — a STARTING
-    // tile — whose outer arc toward the face-down hub at (9,4) is a printed
-    // yellow line. Carving a Creature Bank into it used to open that edge (the
-    // old blanket "a carve wears no border at all"). USER RULE 2026-08-22: "a
-    // fixed yellow border in the map (either on Tile Ⅰ or drawn from map design)
-    // … should be respected and not removed (even by the bank)", so Tile Ⅰ's
-    // printed line survives the carve. The far/near tile's printed ring around a
-    // bank still vanishes — pinned in module-gate-reachability.test.ts and
-    // designed-borders.test.ts (the CONTROL for this one).
+  it("a Creature Bank does NOT open the host tile's printed yellow border (USER RULE 2026-09-05)", () => {
+    // Same vantage as the sealed-border test: h:8:3 is S3 slot 2 whose outer arc
+    // toward the face-down hub at (9,4) is a printed yellow line. Carving a
+    // Creature Bank into it used to open that edge (the 2026-08-09 blanket "a
+    // carve wears no border at all"), then only on a non-starting tile
+    // (2026-08-22). USER RULE 2026-09-05 — "Only remove the INSIDE border to get
+    // in" — makes the printed arc survive on EVERY tile, so the band no longer
+    // matters here; the arc-less CONTROL lives in designed-borders.test.ts and
+    // module-gate-reachability.test.ts.
     const state = refreshP1(makeBorderGateGame());
     state.heroes.hero_p1.spaceId = "h:8:3";
     state.heroes.hero_p1.movementPoints = 3;
@@ -993,9 +992,23 @@ describe("tile discovery and placement", () => {
     expect(refused.state.adventure!.tiles[tile.id].faceDown).toBe(true);
     expect(refused.state.heroes.hero_p1.movementPoints).toBe(3);
 
-    // MUTATION CONTROL: relabel the SAME tile as a far tile and the very same
-    // bank hex opens the edge again — it is the Tile Ⅰ rule doing the sealing.
+    // MUTATION CONTROL (rewritten 2026-09-05): relabelling the tile's BAND no
+    // longer opens anything — the printed arc seals on every tile. What does
+    // open it is moving the same bank hex onto a slot the tile prints NO arc
+    // for ("if there is no border outside, don't add a border"), so the seal
+    // above is really the printed line.
     heroTile.group = "far";
+    expect(
+      getLegalActions(state, "p1").some(
+        (legal) => legal.action.type === "DISCOVER_TILE" && legal.action.tileInstanceId === tile.id
+      ),
+      "the band makes no difference",
+    ).toBe(false);
+    const openSlot = allTileDefinitions[heroTile.tileDefId].outerImpassable.findIndex(
+      (sealed) => !sealed
+    ) + 1;
+    expect(openSlot).toBeGreaterThan(0);
+    state.adventure!.fields["h:8:3"].slot = openSlot;
     expect(
       getLegalActions(state, "p1").some(
         (legal) => legal.action.type === "DISCOVER_TILE" && legal.action.tileInstanceId === tile.id

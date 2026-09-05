@@ -275,15 +275,6 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     default: true,
   },
   {
-    id: "bank-interior-entry-only",
-    label: "Creature-bank entrance faces inward",
-    description:
-      "BINH house rule: enter a Creature Bank only from another field on its host tile. A hero cannot enter from an adjacent tile or leave the bank across its outer tile edge.",
-    category: "combat",
-    default: true,
-    legacyDefault: false,
-  },
-  {
     id: "bank-stack-chance-80",
     label: "Creature-bank Stack chance: 80%",
     description:
@@ -605,6 +596,22 @@ export const HOUSE_RULE_BY_ID: Record<HouseRuleId, HouseRuleDef> =
   );
 
 export type HouseRuleFlags = Partial<Record<HouseRuleId, boolean>>;
+
+/**
+ * House-rule ids that once shipped and have been RETIRED. A stored lobby, a
+ * frozen `adventure.houseRules` map or an out-of-date client may still carry
+ * one; it is INERT (nothing reads it) but must never be an error, so
+ * `setGameOptions`' unknown-id guard skips these instead of throwing.
+ *
+ * - `bank-interior-entry-only` (retired 2026-09-05): the BINH "enter a Creature
+ *   Bank only from its host tile" rule sealed EVERY outer edge of a carved bank
+ *   whether or not the tile printed one. USER RULE 2026-09-05 — "if there is no
+ *   border outside, don't add a border" — replaced it with the printed-outer-arc
+ *   reading now enforced unconditionally at {@link isOuterEdgeSealed}.
+ */
+export const RETIRED_HOUSE_RULE_IDS: ReadonlySet<string> = new Set([
+  "bank-interior-entry-only",
+]);
 
 /** The default value of `id` for a bare mode with no explicit flag set. */
 export function houseRuleDefaultFor(

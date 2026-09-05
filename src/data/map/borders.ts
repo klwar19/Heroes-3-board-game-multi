@@ -23,11 +23,21 @@ export type TileBorderSegment = {
  *   (none exist in the core box; expansion tiles may declare them).
  *
  * A Blocked Field carved into a Creature Bank (its slot listed in `bankSlots`)
- * is one exception. A placed bank is always border-free. Field Overrides passed
- * as `borderlessSlots` (including the Dungeon Gate) follow the same rule.
+ * is one exception, and a runtime object carved over a field (`borderlessSlots`
+ * — the Calamity / Dungeon Gates and every Field Override) follows the same
+ * rule.
  *
- * USER RULE 2026-08-22 — the suppression covers the PRINTED art only (outer
- * arcs, the blocked-field ring, `internalBorders`). A FIXED yellow border the
+ * USER RULE 2026-09-05 — "Bank: should respect the border. Only remove the
+ * INSIDE border to get in. If there is no border outside, don't add a border."
+ * So a carve drops ONLY the inside half of the printed ring (the three edges it
+ * shares with the host tile's own fields, plus every printed line a neighbouring
+ * slot drew toward it), and KEEPS the slot's printed OUTER ARC whenever the tile
+ * really prints one (`outerImpassable[slot - 1]`) — drawn here and sealing
+ * movement / discovery at `isOuterEdgeSealed`. A slot with no printed arc gets
+ * none invented: its three outward edges vanish with the ring.
+ *
+ * USER RULE 2026-08-22 — the suppression covers the PRINTED art only (the
+ * blocked-field ring's inner half, `internalBorders`). A FIXED yellow border the
  * map DESIGNER drew (`extraBorders` whole arcs, `borderEdges` per-edge lines)
  * survives a carve and is still painted: the bank removes the tile's own printed
  * ring, never a deliberate wall. Movement agrees at the same seams
@@ -43,8 +53,6 @@ export function getTileBorderSegments(
     extraBorders?: readonly number[];
     borderEdges?: readonly number[];
     rotation?: number;
-    /** BINH: keep only a carved bank slot's outward three-edge arc. */
-    preserveBankOuterArcs?: boolean;
     /**
      * Runtime objects that replace a printed field hide every PRINTED border
      * touching that field. Designer-added arcs / per-edge lines survive (USER
@@ -53,9 +61,9 @@ export function getTileBorderSegments(
     borderlessSlots?: ReadonlySet<number>;
   } = {}
 ): TileBorderSegment[] {
-  // Printed art (suppressible by a carve) and DESIGNER-drawn fixed lines (never
-  // suppressed) are collected separately so the carve can drop one without the
-  // other.
+  // Printed art (suppressible by a carve) and FIXED lines that survive a carve
+  // — DESIGNER-drawn arcs / edges, plus a carved slot's own printed OUTER ARC —
+  // are collected separately so the carve can drop one without the other.
   const segments = new Map<string, TileBorderSegment>();
   const designed = new Map<string, TileBorderSegment>();
   const borderlessSlots = options.borderlessSlots ?? NO_BORDER_SLOTS;
@@ -75,14 +83,16 @@ export function getTileBorderSegments(
       return;
     }
     const slot = direction + 1;
-    // A border-free bank field draws none of its edges — including the tile's
-    // own outer arc, which would otherwise still seal it visually.
-    if (suppressedSlots.has(slot)) {
-      return;
-    }
-    add(slot, direction - 1);
-    add(slot, direction);
-    add(slot, direction + 1);
+    // USER RULE 2026-09-05: a carve keeps the tile's PRINTED outer arc — only
+    // the ring's inside half is opened, so a hero enters from the host tile and
+    // the map's outer wall stays a wall. Emitted through `addDesigned` so the
+    // adjacency suppression pass below (which drops every printed line touching
+    // the carved hex) cannot erase it again.
+    const retained = suppressedSlots.has(slot);
+    const emit = retained ? addDesigned : add;
+    emit(slot, direction - 1);
+    emit(slot, direction);
+    emit(slot, direction + 1);
   });
 
   // Blocked fields are ringed completely — except a placed bank / carved object.
@@ -158,26 +168,13 @@ export function getTileBorderSegments(
     addDesigned(slot, edge);
   }
 
-  // BINH bank entrances face the host tile: the inner half of the old blocked
-  // ring stays carved open, while the outward tile arc remains visible and
-  // impassable. Treat this retained arc like a fixed line so the suppression
-  // pass below does not erase it with the rest of the carved ring.
-  if (options.preserveBankOuterArcs) {
-    for (const slot of bankSlots) {
-      if (slot < 1 || slot > 6) continue;
-      const direction = slot - 1;
-      if (!def.outerImpassable[direction]) continue;
-      addDesigned(slot, direction - 1);
-      addDesigned(slot, direction);
-      addDesigned(slot, direction + 1);
-    }
-  }
-
   // The PRINTED art around a carved hex is filtered by physical adjacency, not
   // only by the segment's owning slot, so a bank / Dungeon Gate truly loses the
-  // whole printed ring on all six surrounding lines. DESIGNER lines are appended
-  // unfiltered (USER RULE 2026-08-22: a fixed yellow border is never removed,
-  // not even by a bank), deduped against a printed twin by the shared key.
+  // whole INSIDE half of the printed ring on all the surrounding lines. DESIGNER
+  // lines — and the carve's RETAINED printed outer arc (USER RULE 2026-09-05) —
+  // are appended unfiltered (USER RULE 2026-08-22: a fixed yellow border is
+  // never removed, not even by a bank), deduped against a printed twin by the
+  // shared key.
   const kept = new Map<string, TileBorderSegment>();
   for (const [key, segment] of segments) {
     if (!segmentTouchesSuppressedSlot(segment, suppressedSlots)) {

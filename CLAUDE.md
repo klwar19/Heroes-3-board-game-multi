@@ -1990,9 +1990,11 @@ The `fix-ai-map-combat-rules` batch + audit (`npm run deploy:partykit` owed): Ch
 Lightning needs 3 living PLACED units (its last two differing bolts open a
 `chain-lightning` ABILITY_TARGET_CHOICE), Deemer's Meteor Shower is an EXACT
 multi-target effect, the Catapult needs an adjacent PAIR, banks / PvE Gates / Field
-Override hexes are border-free in render AND movement
+Override hexes were made border-free in render AND movement
 (`fieldNeverWearsBorders` — the invisible-wall fix; the `showBankBorders` toggle is
-REMOVED; **NARROWED 2026-08-22, see below**), the AI banks two home payoffs on turn 1 and enters an opened Ⅱ–Ⅲ tile by
+REMOVED; **NARROWED 2026-08-22 and then SUPERSEDED 2026-09-05 — read the two
+subsections below, not this line: a carve now opens only the ring's INSIDE half and
+keeps the slot's printed outer arc**), the AI banks two home payoffs on turn 1 and enters an opened Ⅱ–Ⅲ tile by
 turn 3 (`bestHomeOpeningObjective`), and a hero on a STANDALONE Monolith is
 selectable again. `frost-ring-meteor-shower.test.ts`, `catapult-siege.test.ts`,
 `map-navigation.test.ts`, `single-player-opening.test.ts`.
@@ -2001,32 +2003,80 @@ selectable again. `frost-ring-meteor-shower.test.ts`, `catapult-siege.test.ts`,
 
 "When you have a fixed yellow border in the map (either on Tile Ⅰ or drawn from map
 design) it should be respected and not removed (even by the bank)." The v24 blanket
-"a border-free hex wears no border at all" was too broad. NEW reading, one rule at
-every seam: a Creature Bank / Calamity Gate / Dungeon Gate carve or a Field Override
-hex sheds the **host tile's PRINTED art only** (the Ⅱ–Ⅲ / Ⅳ–Ⅴ tile's ring + outer
-arc around the Blocked Field it replaced) — that half is UNCHANGED, so a bank stays
-passable and discoverable from all directions. A **fixed** border still seals AND is
-still painted: a designer `borderEdges` per-edge line or `extraBorders` whole arc
+"a border-free hex wears no border at all" was too broad. The DESIGNER half of that
+reading is UNCHANGED and still live: a designer `borderEdges` per-edge line or
+`extraBorders` whole arc still seals AND is still painted at a carved hex
 (`isDesignedEdgeSealedBetween` lost its `fieldNeverWearsBorders` early-out;
-`outerEdgeSealsCrossing` / `heroFieldSealedForDiscovery` keep the designer arc at a
-carve), and the STARTING tile's printed lines (`printedBordersSurviveCarve`). Render
-moves with it: `getTileBorderSegments` suppresses PRINTED segments only and appends
-designer segments unfiltered, and `screen.tsx` empties the suppression sets on a
-starting tile. Pinned in `designed-borders.test.ts` ("a FIXED yellow border is
-respected at a runtime border-free hex"), `adventure.test.ts` ("a Creature Bank does
-NOT open TILE Ⅰ's printed yellow border" — a real DISCOVER_TILE refusal with a
-relabel-to-far CONTROL), `module-gate-board.test.tsx` (the designer line is really
-DRAWN on the board) and `anime-starting-tiles.test.ts`.
-LIMITS: the **Tile Ⅰ printed half is not reachable through the shipped PLACEMENT
-flows** (banks come from a Far/Near reveal or a STANDALONE-only designer object with no
-backing tile, the two PvE Gates take a Far/Near Blocked Field, and no Field Override kind
-may claim `starting`) — only the `placeCreatureBank` primitive can carve there, which is
-what the `adventure.test.ts` spec drives; a FIELD-level `borderEdges` list on a
-border-free hex is still ignored
-(sanitize strips it from a bank object, so it can only be stale/legacy data); the
-render half is pinned at the pure `getTileBorderSegments` level only (jsdom cannot
-compute CSS, no e2e); movement legality changed ⇒ a protocol bump + `npm run
-deploy:partykit` are owed.
+`getTileBorderSegments` appends designer segments unfiltered). Pinned in
+`designed-borders.test.ts` ("a FIXED yellow border is respected at a runtime
+border-free hex") and `module-gate-board.test.tsx` (the designer line is really DRAWN
+on the board).
+SUPERSEDED 2026-09-05 (see the next subsection): the PRINTED half. This section's
+"a bank stays passable and discoverable from all directions" and its STARTING-tile
+carve-out (`printedBordersSurviveCarve`, now DELETED, along with `screen.tsx`
+emptying the suppression sets on a starting tile) are gone — the printed outer arc
+survives a carve on EVERY tile.
+
+### A carve opens only the INSIDE ring; the printed outer arc stays (2026-09-05, USER RULE, protocol v104)
+
+"Bank: should respect the border. Only remove the INSIDE border to get in. If there
+is no border outside, don't add a border." ONE reading at every seam, for all three
+Blocked-Field carves (`BLOCKED_FIELD_CARVE_LOCATIONS`: Creature Bank / Calamity Gate
+/ Dungeon Gate) **and for Field Override hexes** (stated: they take the SAME rule —
+which also ALIGNS render with movement, since movement never exempted an override
+from `isOuterEdgeSealed` in the first place; only the board drew it open):
+- the ring's **INSIDE half opens** — the three edges the slot shares with the host
+  tile's own fields, plus every printed line a neighbouring slot drew toward it — so
+  a hero walks in from the tile. That is the whole 2026-08-09 fix ("the Dungeon one
+  has borders all around it, can't access") and it is unchanged;
+- the slot's **PRINTED OUTER ARC is KEPT** whenever the tile prints one
+  (`outerImpassable[slot - 1]`): drawn by `getTileBorderSegments` (emitted through
+  the fixed-line channel so the adjacency suppression pass cannot erase it) AND
+  sealing movement AND sealing discovery, because `outerEdgeSealsCrossing` and
+  `heroFieldSealedForDiscovery` lost their carve exemptions and are now exactly
+  `isOuterEdgeSealed`. A drawn line is always a real wall;
+- where the tile prints **no** arc, nothing is drawn and nothing seals — no border is
+  invented.
+The BINH house rule **`bank-interior-entry-only` is RETIRED** (it sealed EVERY outer
+edge of a bank whether or not the tile printed one — literally "adding a border", the
+thing the user rule forbids). Its id is listed in `RETIRED_HOUSE_RULE_IDS`
+(`house-rules.ts`) so a stored lobby / frozen `adventure.houseRules` / out-of-date
+client carrying it is INERT rather than an error: `setGameOptions`' unknown-id guard
+skips a retired id instead of throwing, and drops it from the merge.
+Pinned in `module-gate-reachability.test.ts` (all three carves × printed-arc and
+arc-less, movement both directions + discovery + a plain-Blocked-Field CONTROL + the
+render agreement), `designed-borders.test.ts` (printed-vs-designer isolated on the
+ARC-LESS slot; the arc seals whatever the host tile's BAND, with an arc-less mutation
+CONTROL), `creature-bank-combat.test.ts`, `bugfix-player-report.test.ts`,
+`adventure.test.ts` (a real DISCOVER_TILE refusal from a carved hex), plus the render
+pins in `multi-target.test.ts`, `anime-starting-tiles.test.ts` and
+`module-gate-board.test.tsx`. Five one-line engine/render mutations were applied and
+reverted (restore the movement exemption / the discovery exemption / drop the retained
+arc / invent an arc on every carve / keep the whole ring), each killing 6–14 specs
+across 4–6 files.
+LIMITS, leading with what this does NOT do:
+- **The everyday effect is that a bank is entered from its host tile only.** All 102
+  blocked RING slots in the shipped tile catalog print their slot's arc, so a bank /
+  Gate carved from a real reveal ALWAYS keeps it — this reproduces the retired house
+  rule's ON behaviour for every reachable placement. The "no printed arc" half is
+  reachable through a designer STANDALONE bank (no backing tile at all), through a
+  Field Override (which lands on an arbitrary passable hex, not a blocked one), and
+  through the 10 blocked CENTRE slots (slot 0 has no outer edge, so it is vacuous).
+- A **Legacy** table changes too: `bank-interior-entry-only` had
+  `legacyDefault: false`, so a Legacy bank used to be enterable across its tile edge
+  and now is not. This is NOT byte-identical in either mode; it is the point.
+- A FIELD-level `borderEdges` list on a carved hex is still ignored
+  (`fieldNeverWearsBorders`' one live consumer, `isDesignedEdgeSealedBetween`) —
+  sanitize strips it from a bank object, so it can only be stale/legacy data.
+- The AI is untouched: `computer/map-navigation.ts` calls `canCrossEdge` and probes
+  the live discovery / placement gates, and never re-derives border logic (two stale
+  comments there were corrected). Do not add a border read to it.
+- **jsdom cannot compute CSS**, so the render half is pinned at the pure
+  `getTileBorderSegments` level plus the board's rendered `line.tileBorderLine` COUNT;
+  nothing proves a pixel and there is no e2e spec.
+- Movement + discovery legality changed ⇒ protocol **v103 → v104** and
+  `npm run deploy:partykit` is OWED (a v103 edge lets a hero cross a carve's sealed
+  tile edge).
 
 ## Meteor Shower / Rocket Launcher are FUEL-only Power effects with a dedicated window (2026-08-17, protocol v37)
 
