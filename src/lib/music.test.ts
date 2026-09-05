@@ -7,6 +7,10 @@ import {
   MUSIC_TRACKS,
   SCENE_TRACK,
   __resetMusicForTests,
+  DEFEAT_STING_TRACK,
+  VICTORY_FANFARE_TRACK,
+  VICTORY_FANFARE_VOLUME,
+  playCombatSting,
   isMusicMuted,
   mapMusicContext,
   setMusicMuted,
@@ -334,5 +338,67 @@ describe("mute", () => {
     expect(window.localStorage.getItem("h3-music-muted")).toBe("0");
     expect(listener).toHaveBeenCalledTimes(2);
     unsubscribe();
+  });
+});
+
+describe("combat-outcome stings (playCombatSting)", () => {
+  it("pauses the background track, plays the win-battle sting on its own element, and resumes the scene when it ends", () => {
+    setMusicScene("menu");
+    const background = only();
+    expect(background.paused).toBe(false);
+
+    playCombatSting(VICTORY_FANFARE_TRACK);
+    expect(FakeAudio.instances).toHaveLength(2);
+    const sting = FakeAudio.instances[1];
+    expect(background.paused).toBe(true);
+    expect(sting.src).toBe(library[VICTORY_FANFARE_TRACK].src);
+    expect(sting.loop).toBe(false);
+    expect(sting.volume).toBe(VICTORY_FANFARE_VOLUME);
+    expect(sting.paused).toBe(false);
+
+    const playsBefore = background.playCount;
+    sting.fireEnded();
+    expect(background.paused).toBe(false);
+    expect(background.playCount).toBe(playsBefore + 1);
+    // The scene's own track came back, not something else.
+    expect(background.src).toBe(library[SCENE_TRACK.menu].src);
+  });
+
+  it("the defeat sting loads the LoseCombat track on the SAME reusable element, and ended-listeners never stack", () => {
+    setMusicScene("combat");
+    playCombatSting(VICTORY_FANFARE_TRACK);
+    playCombatSting(DEFEAT_STING_TRACK);
+    expect(FakeAudio.instances).toHaveLength(2);
+    const background = FakeAudio.instances[0];
+    const sting = FakeAudio.instances[1];
+    expect(sting.src).toBe(library[DEFEAT_STING_TRACK].src);
+    const playsBefore = background.playCount;
+    sting.fireEnded();
+    expect(background.playCount).toBe(playsBefore + 1);
+  });
+
+  it("CONTROL: honours the music mute — nothing plays and the (already silent) background is left alone", () => {
+    setMusicScene("menu");
+    setMusicMuted(true);
+    const background = only();
+    const pausesBefore = background.pauseCount;
+    playCombatSting(VICTORY_FANFARE_TRACK);
+    playCombatSting(DEFEAT_STING_TRACK);
+    expect(FakeAudio.instances).toHaveLength(1);
+    expect(background.pauseCount).toBe(pausesBefore);
+  });
+
+  it("with no scene playing the sting still plays and nothing resumes afterwards", () => {
+    playCombatSting(DEFEAT_STING_TRACK);
+    expect(FakeAudio.instances).toHaveLength(1);
+    const sting = FakeAudio.instances[0];
+    expect(sting.src).toBe(library[DEFEAT_STING_TRACK].src);
+    sting.fireEnded();
+    expect(FakeAudio.instances).toHaveLength(1);
+  });
+
+  it("both sting tracks are real sound-manifest entries", () => {
+    expect(library[VICTORY_FANFARE_TRACK]?.src).toBe("/sounds/music/win-battle.mp3");
+    expect(library[DEFEAT_STING_TRACK]?.src).toBe("/sounds/music/lose-combat.mp3");
   });
 });

@@ -153,6 +153,50 @@ function playProfile(profile: MusicProfile, chooseAnother: boolean): void {
 
 function stopAudio(): void {
   audio?.pause();
+  fanfare?.pause();
+}
+
+/** The HoMM3 "Win Battle" fanfare (public/sounds/manifest.json key). */
+export const VICTORY_FANFARE_TRACK = "music/win-battle";
+/** The HoMM3 "LoseCombat" sting (public/sounds/manifest.json key). */
+export const DEFEAT_STING_TRACK = "music/lose-combat";
+export type CombatStingTrack = typeof VICTORY_FANFARE_TRACK | typeof DEFEAT_STING_TRACK;
+/** Louder than the background bed so the sting reads as an event, still well under full scale. */
+export const VICTORY_FANFARE_VOLUME = 0.36;
+
+let fanfare: HTMLAudioElement | null = null;
+let fanfareEnded: (() => void) | null = null;
+
+/**
+ * Play a combat-outcome sting once over the current scene: the background
+ * track pauses, the sting plays at its own volume, and when it ends the
+ * background resumes wherever the scene stands by then (a scene change
+ * mid-sting simply takes over). Honours the music mute (nothing plays, nothing
+ * pauses). One reusable element, one "ended" listener — repeated fights never
+ * stack listeners.
+ */
+export function playCombatSting(track: CombatStingTrack): void {
+  if (typeof window === "undefined" || muted) return;
+  audio?.pause();
+  if (!fanfare) {
+    fanfare = new Audio();
+    fanfare.addEventListener("ended", () => fanfareEnded?.());
+  }
+  fanfareEnded = () => {
+    if (!muted && currentProfile && currentScene) playProfile(currentProfile, false);
+  };
+  fanfare.src = trackSrc(track);
+  fanfare.loop = false;
+  fanfare.volume = VICTORY_FANFARE_VOLUME;
+  hookUnlock();
+  // jsdom's play() returns undefined (not a Promise) — guard so a test render never throws.
+  const playing = fanfare.play() as Promise<void> | undefined;
+  playing?.catch?.(() => undefined);
+}
+
+/** The victory fanfare — `playCombatSting(VICTORY_FANFARE_TRACK)`. */
+export function playVictoryFanfare(): void {
+  playCombatSting(VICTORY_FANFARE_TRACK);
 }
 
 function profileForMap(context?: MapMusicContext): MusicProfile {
@@ -275,6 +319,8 @@ export function useBackgroundMusic(scene: MusicScene | null, context?: MapMusicC
 
 export function __resetMusicForTests(): void {
   audio = null;
+  fanfare = null;
+  fanfareEnded = null;
   currentScene = null;
   currentProfile = null;
   currentContinuationProfile = null;

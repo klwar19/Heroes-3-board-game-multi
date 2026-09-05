@@ -58,6 +58,7 @@ import {
   type NoticeReward
 } from "./utils";
 import { MORALE_CUE_SOUNDS, type MoraleCardCue } from "./morale-card-cue";
+import { VictoryCinematic } from "./victory-cinematic";
 import { CardBack, CardFrame } from "./seats";
 import { AnkhIcon, CrossedShovelsIcon, StarBannerIcon } from "./dice-icons";
 import { useCardZoom, ZoomButton } from "./zoom";
@@ -4184,6 +4185,7 @@ export function CombatResultModal({
   return (
     <div className="combatResultBackdrop" role="dialog" aria-label="Combat result">
       <div className={`combatResultModal ${viewerWon ? "won" : viewerLost ? "lost" : ""}`}>
+        <VictoryCinematic state={state} viewerPlayerId={viewerPlayerId} />
         <header>
           <Swords aria-hidden="true" size={18} />
           <strong>{title}</strong>

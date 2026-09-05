@@ -1145,6 +1145,14 @@
     "src": "/sounds/effects/terror-7.mp3",
     "note": "TERROR7 — unidentified; uncertain"
   },
+  "music/win-battle": {
+    "src": "/sounds/music/win-battle.mp3",
+    "note": "HoMM3 Complete 'Win Battle' fanfare (Mp3/Win Battle.mp3, re-encoded 96 kbps); plays once over the WIN3.BIK cinematic when the viewer WINS a fought-out neutral or PvP combat (victory-cinematic.tsx)"
+  },
+  "music/lose-combat": {
+    "src": "/sounds/music/lose-combat.mp3",
+    "note": "HoMM3 Complete 'LoseCombat' sting (Mp3/LoseCombat.mp3, re-encoded 96 kbps); plays once over the LBSTART.BIK cinematic when the viewer LOSES a fought-out neutral or PvP combat (victory-cinematic.tsx)"
+  },
   "music/battle-00": {
     "src": "/sounds/music/battle-00.mp3",
     "loop": true,

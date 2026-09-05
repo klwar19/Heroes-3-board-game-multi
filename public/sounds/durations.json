@@ -1227,6 +1227,8 @@
   "mgq/voices/tama/hurt": 995,
   "mgq/voices/tama/move": 859,
   "mgq/voices/tama/shoot": 922,
+  "music/win-battle": 5512,
+  "music/lose-combat": 7105,
   "music/battle-00": 7210,
   "music/battle-01": 5904,
   "music/battle-02": 5146,
