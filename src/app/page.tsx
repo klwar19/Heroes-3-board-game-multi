@@ -1,5 +1,5 @@
 "use client";
-import { parallelPresentationEvents, parallelStateForPlayer } from "@/engine/parallel-combats";
+import { isParallelWatchOnly, parallelPresentationEvents, parallelStateForPlayer } from "@/engine/parallel-combats";
 import { ParallelBattleSwitcher } from "@/components/table/parallel-battle-switcher";
 
 import { Castle, CheckCircle2, Crosshair, Crown, Eye, Hand as HandIcon, Layers, Lock, Map as MapIcon, Maximize2, Menu as MenuIcon, Minimize2, Sparkles, StepForward, Swords, Users } from "lucide-react";
@@ -1371,10 +1371,17 @@ export default function Home() {
   // anyone may still flip back to the map mid-fight.
   const lastCombatIdRef = useRef<string | null>(null);
   const lastResultCombatIdRef = useRef<string | null>(null);
+  // Parallel turns: a viewer who merely WATCHES a battle (a spectator, an
+  // eliminated seat, a bystander who picked a "Watch" window) has no stake in
+  // it, so a snapshot must never drag them off the map and onto that
+  // battlefield — the reported "keep being forced to a battle when I view the
+  // map". Their explicit Map choice sticks; the hand-off below stays for a
+  // battle that concerns them (their own fight, or the guards they command).
+  const combatIsWatchOnly = Boolean(state && isParallelWatchOnly(state, viewerPlayerId));
   useEffect(() => {
     const combatId = state?.combat?.id ?? null;
     if (combatId && combatId !== lastCombatIdRef.current) {
-      setCombatTab("battle");
+      if (!combatIsWatchOnly) setCombatTab("battle");
       // A fresh battle starts with a clean presentation slate, so a die,
       // freeze or pause left mid-flight by the previous combat can't bleed
       // into (and mis-sequence) this battle's first attack.
@@ -1393,11 +1400,15 @@ export default function Home() {
     lastCombatIdRef.current = combatId;
 
     const resultId = state?.combat?.outcome ? combatId : null;
+    // NOTE: no watch-only guard here on purpose. The engine never projects a
+    // DECIDED foreign battle onto a watcher (`watchTargetFor` and the seated
+    // `targetPreference` both skip a combat with an `outcome`), so a viewer
+    // holding a result is always a participant in it.
     if (resultId && resultId !== lastResultCombatIdRef.current) {
       setCombatTab("battle");
     }
     lastResultCombatIdRef.current = resultId;
-  }, [state?.combat?.id, state?.combat?.outcome]);
+  }, [state?.combat?.id, state?.combat?.outcome, combatIsWatchOnly]);
 
   // Drops a batch of feed toasts on screen with their staggered audio cues and
   // an 8s auto-expiry. Pulled out so a visit's toasts can either show at once or
@@ -5862,8 +5873,17 @@ export default function Home() {
     // map interactive while someone else's battle runs — they may flip to the
     // map tab and keep taking their quiet moves. Everyone else gets the classic
     // read-only map while a combat is open.
+    // A seat that CHOSE to watch another player's battle holds no legal action
+    // at all while that window is selected (getLegalActions offers only the
+    // switch back), so its map must be the classic read-only one — an
+    // interactive map there would be nothing but failing clicks.
+    // NOT PINNED: reaching this needs a SEATED bystander that has dispatched
+    // SELECT_PARALLEL_CONTEXT, and the read-only flag is presentation only (the
+    // legal-action set already withholds every map action — pinned in
+    // parallel-watch-battles.test.ts). Declared here rather than dressed up.
     const parallelMapBystander =
       combatVisible &&
+      !combatIsWatchOnly &&
       isParallelActor(state, viewerPlayerId) &&
       state.combat?.attackerPlayerId !== viewerPlayerId &&
       state.combat?.defenderPlayerId !== viewerPlayerId;

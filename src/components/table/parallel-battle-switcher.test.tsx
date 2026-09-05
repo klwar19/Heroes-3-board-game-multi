@@ -35,6 +35,29 @@ describe("parallel battle windows", () => {
     await waitFor(() => expect(onAction).toHaveBeenLastCalledWith({ type: "SELECT_PARALLEL_CONTEXT", playerId: "p1", ownerPlayerId: "p1" }));
   });
 
+  // 2026-09-05: "observer can't see both battles". A viewer with no decision in
+  // a battle gets a read-only WATCH window — it must be labelled as such, so a
+  // player never mistakes it for a window that owes them an action.
+  it("labels a read-only WATCH window and switches to it", async () => {
+    const state = fixture();
+    state.parallelContextOptions = [
+      state.parallelContextOptions![0],
+      { ownerPlayerId: "p2", contextId: "battle2", role: "watch", fighterName: "Sandro", waitingFor: "Watching", needsInput: false, hasCombat: true },
+    ];
+    const onAction = vi.fn(async () => true);
+    const { rerender } = render(<ParallelBattleSwitcher state={state} playerId="p1" onAction={onAction} />);
+    const watch = screen.getByRole("button", { name: /Watch Sandro/ });
+    expect(within(watch).getByText(/Read-only/)).toBeTruthy();
+    // CONTROL: a window that DOES owe this viewer an action is never labelled
+    // read-only (the "neutrals" role of the other fixture).
+    expect(screen.queryByRole("button", { name: /Neutrals vs/ })).toBeNull();
+    fireEvent.click(watch);
+    expect(onAction).toHaveBeenCalledExactlyOnceWith({ type: "SELECT_PARALLEL_CONTEXT", playerId: "p1", ownerPlayerId: "p2" });
+    await waitFor(() => expect((watch as HTMLButtonElement).disabled).toBe(false));
+    rerender(<ParallelBattleSwitcher state={{ ...state, parallelCombatOwnerId: "p2" }} playerId="p1" onAction={onAction} />);
+    expect(screen.getByRole("status").textContent).toContain("watching Sandro's battle");
+  });
+
   it("does not add windows to ordinary multiplayer or single-player", () => {
     const state = fixture();
     state.turn.mode = "ordered";

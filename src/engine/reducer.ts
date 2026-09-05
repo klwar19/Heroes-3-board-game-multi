@@ -33349,7 +33349,13 @@ export function applyAction(
   action: GameAction,
   options: ReducerOptions = {},
 ): EngineResult {
-  const selected = "playerId" in action && typeof action.playerId === "string"
+  // Only a SEAT's action may swap which parallel context is live. A viewer with
+  // no seat (spectator / eliminated) now gets a read-only WATCH projection from
+  // `parallelStateForPlayer`, and that projection must never be committed by a
+  // membership or lobby action they happen to send — exactly as before, they
+  // act against the raw state.
+  const selected = "playerId" in action && typeof action.playerId === "string" &&
+    state.turnOrder?.includes(action.playerId)
     ? parallelStateForPlayer(state, action.playerId) : state;
   if (action.parallelContextId && action.type !== "SELECT_PARALLEL_CONTEXT" &&
     action.parallelContextId !== (selected.combat?.id ?? `map:${selected.parallelCombatOwnerId ?? ("playerId" in action ? action.playerId : "")}`)) {
@@ -33429,7 +33435,14 @@ function applyActionInContext(
 
   const nextState = cloneState(base);
   if (action.type === "SELECT_PARALLEL_CONTEXT") {
-    nextState.parallelContextSelections = { ...nextState.parallelContextSelections, [action.playerId]: action.ownerPlayerId };
+    const selections = { ...nextState.parallelContextSelections };
+    // Choosing your OWN window CLEARS the record rather than pinning it: with
+    // PvP Neutral Control on the default already is your own seat, and with it
+    // off a pinned self-selection would disable the controller/parked-battle
+    // fallbacks that route an owed decision to you.
+    if (action.ownerPlayerId === action.playerId) delete selections[action.playerId];
+    else selections[action.playerId] = action.ownerPlayerId;
+    nextState.parallelContextSelections = selections;
     return ok(nextState, eventSeedNumber(nextState));
   }
 
