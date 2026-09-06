@@ -17798,6 +17798,8 @@ export type ComputerPolicyMemoryState = {
 export type GameState = {
   /** Server-only, bounded to one activation; stripped from every player view. */
   combatRetakeCheckpoint?: { key: string; snapshot: GameState };
+  /** Seat-view availability; never exposes the private rewind snapshot. */
+  combatRetakeAvailable?: boolean;
   combatRetakeVote?: { requestedBy: PlayerId; opponentId: PlayerId; combatId: string };
   id: string;
   seed: string;

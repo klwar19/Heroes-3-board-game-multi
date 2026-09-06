@@ -1,4 +1,5 @@
 import { parallelContextOptions, parallelStateForPlayer } from "./parallel-combats";
+import { combatRetakeAvailable } from "./combat-retake";
 import type {
   CardId,
   DeckId,
@@ -382,6 +383,7 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
   const contextOptions = parallelContextOptions(state, viewerPlayerId);
   state = parallelStateForPlayer(state, viewerPlayerId);
   const base = cloneSerializable(state);
+  base.combatRetakeAvailable = combatRetakeAvailable(state);
   delete base.combatRetakeCheckpoint;
   // Other contexts contain private choices and must never cross the wire.
   delete base.parallelCombats;

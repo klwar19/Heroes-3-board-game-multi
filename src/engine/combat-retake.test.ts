@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, createInitialGameState, getPlayerView } from "./index";
 import { redactStateForSeat } from "./player-view";
-import { combatRetakeParticipants } from "./combat-retake";
+import { combatRetakeParticipants, trackCombatRetake } from "./combat-retake";
 import type { GameAction, GameState } from "./state";
 
 function ready(enabled = true): GameState {
@@ -39,6 +39,15 @@ function attack(state: GameState): GameState {
 }
 
 describe("PvP activation retake by mutual consent", () => {
+  it("saves the first activation when deployment ends", () => {
+    const after = ready();
+    const before = structuredClone(after);
+    before.combat!.setup = { pendingPlayerIds: ["p1"], placedUnitIds: {}, unitLimit: 5 };
+    trackCombatRetake(before, after, { type: "CONTINUE_COMBAT", playerId: "p1" });
+    expect(after.combatRetakeCheckpoint?.snapshot.combat).toEqual(after.combat);
+    expect(getPlayerView(after, "p1").combatRetakeAvailable).toBe(true);
+    expect(getPlayerView(ready(), "p1").combatRetakeAvailable).toBe(false);
+  });
   it("restores damage, dice, cards and activation only after the other player agrees", () => {
     const start = ready();
     const hit = attack(start);

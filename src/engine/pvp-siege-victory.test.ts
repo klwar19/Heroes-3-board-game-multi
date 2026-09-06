@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createAdventureGameState, getMainHero } from "./index";
-import { finalizeAdventureCombat, startPlayerCombat } from "./adventure-reducer";
+import { finalizeAdventureCombat, resolveSiegeGateChoice, startPlayerCombat } from "./adventure-reducer";
 import type { AdventurePlayerConfig } from "./adventure-setup";
 import { ATTACK_DIE_FACES } from "./battlefield";
 import type {
@@ -84,9 +84,11 @@ function injectSettlement(state: GameState, spaceId: string, ownerId: PlayerId):
 }
 
 describe("PvP on a controlled Settlement", () => {
-  it("records the owner as defending the Settlement without granting siege fortifications", () => {
+  it.each(["settlement", "random_town"])("defends a controlled %s with Citadel walls, gate and tower", (location) => {
     const state = makeGame();
     const settlement = injectSettlement(state, "20,20", "p2");
+    settlement.location = location;
+    state.towns.town_p2.buildings.push("dungeon.citadel");
     const attacker = getMainHero(state, "p1")!;
     const defender = getMainHero(state, "p2")!;
     attacker.spaceId = settlement.spaceId;
@@ -99,10 +101,20 @@ describe("PvP on a controlled Settlement", () => {
       kind: "player",
       defenderHeroId: defender.id,
       fieldId: settlement.spaceId,
-      holdingDefense: "settlement"
     });
+    expect(state.combat?.context.kind === "player" && state.combat.context.siege).toBe(true);
+    resolveSiegeGateChoice(state, "p2", 0);
+    expect(state.combat!.siege!.walls).toHaveLength(3);
+    expect(state.combat!.siege!.gatePosition).toBeDefined();
+    expect(state.combat!.units[state.combat!.siege!.arrowTowerUnitId].controllerId).toBe("p2");
+  });
+  it.each(["settlement", "random_town"])("does not grant %s fortifications without a Citadel", (location) => {
+    const state = makeGame();
+    state.towns.town_p2.buildings = [];
+    const field = injectSettlement(state, "20,20", "p2");
+    field.location = location;
+    startPlayerCombat(state, getMainHero(state, "p1")!, getMainHero(state, "p2")!, field.spaceId);
     expect(state.combat?.context.kind === "player" && state.combat.context.siege).toBeFalsy();
-    expect(state.combat?.siege ?? null).toBeNull();
   });
 });
 

@@ -1,5 +1,5 @@
 import type { GameAction, GameState, PlayerId } from "@/engine";
-import { combatRetakeParticipants } from "@/engine/combat-retake";
+import { combatRetakeAvailable, combatRetakeParticipants } from "@/engine/combat-retake";
 
 export function CombatRetakeControls({ state, viewerPlayerId, onAction }: {
   state: GameState;
@@ -17,6 +17,8 @@ export function CombatRetakeControls({ state, viewerPlayerId, onAction }: {
       </> : <button type="button" onClick={() => onAction({ type: "ANSWER_COMBAT_RETAKE", playerId: viewerPlayerId, agree: false })}>Cancel request</button>}
     </div>
   );
-  return <button type="button" className="commandButton" title="Restart this unit's activation only if the other combat participant agrees."
+  const available = state.combatRetakeAvailable ?? combatRetakeAvailable(state);
+  return <button type="button" className="commandButton" disabled={!available}
+    title={available ? "Restart this unit's activation only if the other combat participant agrees." : "A retake becomes available after the first combat action is saved."}
     onClick={() => onAction({ type: "REQUEST_COMBAT_RETAKE", playerId: viewerPlayerId })}>Request turn retake</button>;
 }

@@ -6,7 +6,7 @@ import { appendEvent } from "./events";
 /** One exclusive PvP activation only; never rewind another player's map work. */
 export function combatRetakeParticipants(state: GameState): string[] {
   const combat = state.combat;
-  if (!houseRuleEnabled(state, "combat-retake") || !combat || combat.context?.kind !== "player" || combat.setup ||
+  if (!houseRuleEnabled(state, "combat-retake") || !combat || combat.context?.kind !== "player" || combat.setup || combat.prep ||
       combat.outcome || Object.keys(state.parallelCombats ?? {}).length > 0) return [];
   const ids = [combat.attackerPlayerId, combat.defenderPlayerId];
   if (ids.some(id => !id || id === NEUTRAL_PLAYER_ID || !state.players[id] ||
@@ -20,7 +20,8 @@ function activationKey(state: GameState): string | null {
 }
 
 function snapshot(state: GameState): GameState {
-  const { combatRetakeCheckpoint: _checkpoint, combatRetakeVote: _vote, ...rest } = state;
+  const { combatRetakeCheckpoint: _checkpoint, combatRetakeVote: _vote,
+    combatRetakeAvailable: _available, ...rest } = state;
   return JSON.parse(JSON.stringify(rest)) as GameState;
 }
 
@@ -39,9 +40,15 @@ export function trackCombatRetake(before: GameState, after: GameState, action: G
   // completed activation available until that next unit actually takes an action.
   if (beforeKey && beforeKey !== before.combatRetakeCheckpoint?.key && combatRetakeParticipants(before).length) {
     after.combatRetakeCheckpoint = { key: beforeKey, snapshot: snapshot(before) };
-  } else if (!before.combat && afterKey) {
+  } else if (!combatRetakeParticipants(before).length && afterKey) {
     after.combatRetakeCheckpoint = { key: afterKey, snapshot: snapshot(after) };
   }
+}
+
+/** Public availability only; the checkpoint contains both players' private cards. */
+export function combatRetakeAvailable(state: GameState): boolean {
+  return combatRetakeParticipants(state).length > 0 &&
+    state.combatRetakeCheckpoint?.snapshot.combat?.id === state.combat?.id;
 }
 
 /** Seat ownership is checked by the reducer before this handler is reached. */

@@ -11,6 +11,7 @@ function ready() {
   state.combat!.setup = null;
   state.combat!.prep = null;
   state.combat!.context = { kind: "player", attackerHeroId: "hero_p1", defenderHeroId: "hero_p2", fieldId: "0,0" };
+  state.combatRetakeAvailable = true;
   return state;
 }
 
@@ -29,6 +30,17 @@ it("both PvP players can request through the real battle dock; only the opponent
   expect(onAction).toHaveBeenCalledWith({ type: "ANSWER_COMBAT_RETAKE", playerId: "p1", agree: true });
   fireEvent.click(screen.getByRole("button", { name: "Decline" }));
   expect(onAction).toHaveBeenCalledWith({ type: "ANSWER_COMBAT_RETAKE", playerId: "p1", agree: false });
+});
+
+it("disables the request when the server has no saved activation", () => {
+  const state = ready();
+  state.combatRetakeAvailable = false;
+  const onAction = vi.fn();
+  render(<CommandDock state={state} viewerPlayerId="p1" legalActions={[]} onAction={onAction} />);
+  const button = screen.getByRole("button", { name: "Request turn retake" }) as HTMLButtonElement;
+  expect(button.disabled).toBe(true);
+  fireEvent.click(button);
+  expect(onAction).not.toHaveBeenCalled();
 });
 
 it("never shows retake for neutral combat, spectators, disabled rules or map play", () => {

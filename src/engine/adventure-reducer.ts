@@ -10861,8 +10861,7 @@ export function startPlayerCombat(
   const field = state.adventure?.fields[fieldId];
   // A hero standing on a Town/Settlement they control is defending that
   // holding, not fighting an ordinary open-field battle. Keep this independent
-  // from `siege`: only a qualifying Town supplies fortifications; a Settlement
-  // never does.
+  // from town ownership: controlled Settlements/Random Towns use the defender's Citadel.
   // A DUEL is fought on a neutral arena board: the `fieldId` is only the
   // attacker's own hex (the label/board anchor), never a holding the defender is
   // defending, so no holding defense and no walls/gate/tower.
@@ -10884,10 +10883,19 @@ export function startPlayerCombat(
   // capture) — Walls / Gate / Arrow Tower when the defender holds the site.
   const grailSiege =
     isBuiltGrailField(state, field) && field?.flagOwnerId === defenderPlayerId;
+  const holdingCitadelSiege =
+    field?.flagOwnerId === defenderPlayerId &&
+    (field.location === "settlement" || field.location === "random_town") &&
+    Object.values(state.towns).some(candidate =>
+      candidate.controllerId === defenderPlayerId && candidate.buildings.some(
+        id => coreBuildingDefinitions[id]?.effect?.type === "UNLOCK_REINFORCE",
+      ),
+    );
   const siege =
     !arenaDuel &&
     (utopiaSiege ||
     grailSiege ||
+    holdingCitadelSiege ||
     Boolean(
       town &&
         town.factionId &&
@@ -21358,4 +21366,3 @@ export function pumpAdventureQueues(state: GameState): void {
     }
   }
 }
-
