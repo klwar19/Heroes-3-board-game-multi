@@ -6020,7 +6020,7 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
  * format. The per-format gate enforces the flow:
  *  - "open" (TYPE 4): any untaken town + any of its heroes.
  *  - "draft" (TYPE 1): only in the pick phase, only the seat's own locked town,
- *    and only one of the three candidates rolled after the final ban.
+ *    and any hero that survived the bans.
  *  - "random-choice" (TYPE 3): only the seat's locked town and only a hero from
  *    its two rolled options.
  *  - "random" (TYPE 2): manual picks are refused — roll the dice instead.
@@ -6074,13 +6074,6 @@ export function chooseFaction(state: GameState, action: Extract<GameAction, { ty
     if (draft.bannedHeroDefIds.includes(action.heroDefId)) {
       throw new Error("That hero is banned out of this draft.");
     }
-    const options = draft.seatRolls?.[action.playerId]?.heroOptions ?? [];
-    if (options.length === 0) {
-      throw new Error("The draft hero candidates have not been rolled yet.");
-    }
-    if (!options.includes(action.heroDefId)) {
-      throw new Error("Choose one of your three draft hero candidates.");
-    }
   } else if (draft.format === "random-choice") {
     if (seat.factionId !== action.factionId) {
       throw new Error("Pick a hero from your own locked town.");
@@ -6096,12 +6089,7 @@ export function chooseFaction(state: GameState, action: Extract<GameAction, { ty
 
   seat.factionId = action.factionId;
   seat.heroDefId = action.heroDefId;
-  // Keep the shared candidate deal in Draft mode. Clearing it after the first
-  // click makes the next render disable the other two candidates and prevents
-  // a player from changing their pick before the game starts.
-  if (draft.format !== "draft") {
-    clearSeatRolls(draft, action.playerId);
-  }
+  clearSeatRolls(draft, action.playerId);
   const hero = coreHeroDefinitions[action.heroDefId];
   const player = state.players[action.playerId];
   if (player && hero) {
@@ -6517,29 +6505,12 @@ export function banHero(state: GameState, action: Extract<GameAction, { type: "B
     message: `${seatedPlayerName(state, action.playerId)} bans ${hero.name}.`
   });
 
-  // The final ban deterministically deals each seat three choices from its own
-  // remaining heroes. Storing the deal in shared setup state makes reconnects,
-  // observers, computers, and every client see the exact same candidates.
+  // After the final ban every seat may freely choose any surviving hero from
+  // its locked town. Clear stale candidate rolls from older snapshots so the
+  // UI cannot accidentally keep enforcing the retired three-hero deal.
   if (draft.banPicksMade >= phase.totalBans) {
-    const banned = new Set(draft.bannedHeroDefIds);
     for (const candidateSeat of lobby.seats) {
-      if (!candidateSeat.factionId) continue;
-      const pool = (coreFactionDefinitions[candidateSeat.factionId]?.heroes ?? []).filter(
-        (heroDefId) => !banned.has(heroDefId),
-      );
-      const random = createSeededRandom(
-        `${state.seed}#draft-hero-options#${candidateSeat.playerId}#${eventSeedNumber(state)}`,
-      );
-      const options = pickDistinct(random, pool, 3);
-      draft.seatRolls[candidateSeat.playerId] = {
-        ...draft.seatRolls[candidateSeat.playerId],
-        heroOptions: options,
-      };
-      appendEvent(state, {
-        type: "GAME_OPTIONS_CHANGED",
-        playerId: candidateSeat.playerId,
-        message: `${seatedPlayerName(state, candidateSeat.playerId)} receives three draft choices: ${options.map(heroName).join(", ")}.`,
-      });
+      clearSeatRolls(draft, candidateSeat.playerId);
     }
   }
 }

@@ -1,0 +1,44 @@
+{
+  "date": "2026-09-06",
+  "generator": "built-in image_gen",
+  "assets": [
+    {
+      "unit": "akagi",
+      "side": "few",
+      "skin": "Ruby-Laced Beauty",
+      "reference": "https://azurlane.netojuu.com/images/5/53/AkagiParty.png",
+      "master": "raw/azur-lane/units/units-azur-lane-golden-akagi-few-master.webp",
+      "prompt": "Create polished anime trading-card illustration of adult Akagi from Azur Lane, using this original Ruby-Laced Beauty art as character and outfit reference. Preserve recognizable dark brown long hair, fox ears, red eyes, luxurious many brown fox tails, red evening dress and white fur stole. Compose waist-up to knees with face prominent in upper center, elegant lounge interior and night harbor lights filling entire portrait background. Faithful character design, clean detailed anime painting, warm gold light against deep blue night, graceful confident smile. Portrait 3:4 full bleed. No card border, letters, logo, watermark or UI. This is the Few unit art; single character."
+    },
+    {
+      "unit": "akagi",
+      "side": "pack",
+      "skin": "Precipice of Sweetness",
+      "reference": "https://azurlane.netojuu.com/images/5/5b/AkagiNew_Year2.png",
+      "master": "raw/azur-lane/units/units-azur-lane-golden-akagi-pack-master.webp",
+      "prompt": "Paint an anime trading card illustration of adult Akagi from Azur Lane using the attached original Precipice of Sweetness skin reference. Preserve character appearance: long dark brown hair, tall fox ears, red eyes, multiple fluffy brown fox tails; white pink and deep purple floral kimono with dark obi, black gloves and hair ornaments. Seated gracefully holding a dango skewer, calm confident smile. Recompose into portrait 3:4 with character face prominent upper center, thighs to head visible, beautiful complete Japanese tea garden background, red parasol, warm shoji light, delicate blossoms. Detailed polished anime illustration faithful to original outfit, full bleed, no transparent void, no text, logo, watermark, border or card UI. This is Pack side art."
+    },
+    {
+      "unit": "ayanami",
+      "side": "few",
+      "skin": "Lunar Demon",
+      "reference": "https://azurlane.netojuu.com/images/c/c8/AyanamiSpring.png",
+      "master": "raw/azur-lane/units/units-azur-lane-silver-ayanami-few-master.webp",
+      "prompt": "Create a polished anime fantasy unit-card portrait of Ayanami from Azur Lane based on this Lunar Demon reference. Preserve pale silver ponytail, amber eyes, red-and-white angular head ornaments, white black red and gold festive clothing, long flowing sleeves, red cords and large futuristic blade. Modest nonsexual heroic composition, upper body and sword prominent, calm focused expression. Add a complete detailed moonlit East Asian festival harbor background with lanterns and distant water reflections. Recompose portrait 3:4 full bleed, character face near upper center, sharp clean anime rendering and atmospheric depth. No text, watermark, logo, card frame or UI, no transparent background."
+    },
+    {
+      "unit": "ayanami",
+      "side": "pack",
+      "skin": "Dynasty Shipgirl",
+      "reference": "https://azurlane.netojuu.com/images/1/19/AyanamiSpring2.png",
+      "master": "raw/azur-lane/units/units-azur-lane-silver-ayanami-pack-master.webp",
+      "prompt": "Create polished anime unit-card artwork of Ayanami from Azur Lane faithful to attached Dynasty Shipgirl reference. Preserve silver ponytail, amber eyes, angular head ornaments, black flowing martial cloak over white-and-black combat outfit and sword. Nonsexual heroic martial action portrait, upper body focus, alert calm face, sweeping cloak and clear readable blade. Complete background inspired by original: misty blue mountain temple, waterfalls and flowing water, ink-brush accents with atmospheric depth. Single character, 3:4 portrait full bleed, face prominent upper center, detailed clean anime illustration. No text, logo, watermark, frame or UI, no transparent background.",
+      "revisionPrompt": "Edit first image Ayanami Pack card illustration. Second image is original Dynasty Shipgirl reference. User correction: she should hold a BIGGER SWORD like original art. Replace the thin short-looking foreground blade with a large impressive two-handed long sword/odachi, substantial long blade and long wrapped hilt, roughly character-height overall, visually dominant across the composition. Match the original reference weapon's scale and martial feel. Keep Ayanami's identity, silver hair, amber eyes, black cloak, white outfit, nonsexual heroic pose, temple waterfalls background, portrait aspect and polished anime style. Adjust both hands to convincingly grip the enlarged hilt. Blade must remain clearly visible and must not cover her eyes or face. No text, border, watermark or UI. Preserve remaining scene."
+    },
+    {
+      "effect": "akagi-full-barrage",
+      "asset": "../../public/assets/fx/akagi-full-barrage.webp",
+      "prompt": "Create a game VFX sprite sheet for a naval foxfire barrage impact, transparent background with real alpha. Square 1024x1024 sheet, exact 4 columns by 4 rows, 16 equally spaced 256x256 cells, chronological row-major animation. Each cell contains one centered isolated explosion at the same center, fully contained with generous transparent margins. Progression frames1-4 small blue-white impact flare with crimson foxfire sparks;5-8 expanding crimson orange flame and white water spray;9-12 widening translucent blue shockwave and falling embers;13-16 fading delicate wisps and droplets. Polished hand-painted anime game effects, no characters, no landscape, no text, no labels, no gridlines, no solid background. Designed for Akagi Full Barrage splash hitting a battle unit."
+    }
+  ]
+}

@@ -12,6 +12,7 @@ import {
   eliminatePlayer
 } from "./adventure";
 import { applyAction, createAdventureGameState, getLegalActions, NEUTRAL_PLAYER_ID } from "./index";
+import { planNeutralActivation } from "./neutral-ai";
 import { redactStateForSeat } from "./player-view";
 import { coreFactionDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
@@ -36,11 +37,19 @@ function applyOk(state: GameState, action: GameAction): GameState {
 }
 
 function makeGame(seed: string, options: Record<string, unknown> = {}): GameState {
+  const explicitHouseRules = (options.houseRules ?? {}) as Record<string, boolean>;
   const state = createAdventureGameState({
     seed,
     difficulty: "normal",
     rollFirstPlayer: false,
-    ...options
+    ...options,
+    // Most tests below pin the original printed five-card composition. The
+    // BINH veteran variant has its own regression block further down.
+    houseRules: {
+      "random-town-veteran-defense": false,
+      "level-seven-one-level": false,
+      ...explicitHouseRules
+    }
   } as Parameters<typeof createAdventureGameState>[0]);
   for (const player of Object.values(state.players)) {
     player.canMulligan = false;
@@ -209,7 +218,7 @@ describe("Random Town faction pick", () => {
     expect(new Set(factions).size).toBeGreaterThan(1);
   });
 
-  it("is the field's VII fight with Walls and the Gate but NO Arrow Tower", () => {
+  it("is the field's VII fight with Walls, the Gate, and the enemy Arrow Tower", () => {
     const state = fightRandomTown(makeGame("rt-siege"));
     expect(state.combat?.context.kind).toBe("neutral");
     if (state.combat?.context.kind !== "neutral") return;
@@ -217,11 +226,113 @@ describe("Random Town faction pick", () => {
     expect(state.combat.siege?.walls).toHaveLength(3);
     expect(state.combat.siege?.gatePosition).not.toBeNull();
     expect(state.combat.siege?.gatePosition).toBeGreaterThanOrEqual(0);
-    // CONTROL: a real town siege DOES field an Arrow Tower; this one must not.
-    expect(state.combat.siege?.arrowTowerUnitId).toBeNull();
-    expect(
-      Object.values(state.combat.units).some((unit) => unit.position === -1)
-    ).toBe(false);
+    const towerId = state.combat.siege?.arrowTowerUnitId;
+    expect(towerId).toBeTruthy();
+    expect(state.combat.units[towerId!]).toMatchObject({
+      controllerId: NEUTRAL_PLAYER_ID,
+      name: "Arrow Tower",
+      position: -1
+    });
+  });
+});
+
+describe("Random Town — BINH veteran AI defense", () => {
+  it("keeps five guards and upgrades exactly one existing gold Few to Pack", () => {
+    const state = fightRandomTown(makeGame("rt-veteran-pack", {
+      houseRules: { "random-town-veteran-defense": true }
+    }));
+    const guards = neutralUnits(state);
+    expect(guards).toHaveLength(5);
+    expect(guards.filter((unit) => unit.grade === "gold" && unit.variant === "pack")).toHaveLength(1);
+    expect(guards.filter((unit) => unit.grade === "gold" && unit.variant === "few")).toHaveLength(1);
+    expect(guards.filter((unit) => unit.grade === "silver" && unit.variant === "pack")).toHaveLength(2);
+    expect(guards.filter((unit) => unit.grade === "bronze" && unit.variant === "pack")).toHaveLength(1);
+  });
+
+  it("starts every guard at rank 1 with Unit Experience and takes the higher progression rank", () => {
+    const early = fightRandomTown(makeGame("rt-veteran-rank-one", {
+      unitExperience: true,
+      houseRules: { "random-town-veteran-defense": true }
+    }));
+    expect(neutralUnits(early).every((unit) => unit.unitRank === 1)).toBe(true);
+
+    const progressedGame = makeGame("rt-veteran-progressed", {
+      unitExperience: true,
+      wog: { enabled: true, neutralRankUp: true },
+      houseRules: { "random-town-veteran-defense": true }
+    });
+    progressedGame.round = 10;
+    const progressed = fightRandomTown(progressedGame);
+    for (const guard of neutralUnits(progressed)) {
+      // At round 10: bronze/silver/gold progression is 3/2/2, all above the
+      // veteran rule's rank-1 floor.
+      expect(guard.unitRank).toBe(guard.grade === "bronze" ? 3 : 2);
+    }
+  });
+
+  it("keeps formation and combat on the coordinated AI path despite manual control toggles", () => {
+    const state = fightRandomTown(makeGame("rt-veteran-ai", {
+      manualGuardControl: true,
+      pvpNeutralControl: true,
+      houseRules: { "random-town-veteran-defense": true }
+    }));
+    expect(state.combat?.pendingNeutralPlacement).toBeFalsy();
+    expect(optionChoiceContext(state)).not.toBe("random-town-pack");
+    expect(state.eventLog.some((event) => event.type === "NEUTRAL_CONTROL_ASSIGNED")).toBe(false);
+    // The formation's protected anchor is deliberately central-back.
+    expect(neutralUnits(state).some((unit) => unit.position === 1 && unit.grade === "gold")).toBe(true);
+  });
+
+  it("coordinates focus on the dangerous target instead of the ordinary tier-first target", () => {
+    const state = fightRandomTown(makeGame("rt-veteran-focus", {
+      houseRules: { "random-town-veteran-defense": true }
+    }));
+    const combat = state.combat!;
+    const tower = combat.siege?.arrowTowerUnitId ? combat.units[combat.siege.arrowTowerUnitId] : undefined;
+    expect(tower).toBeTruthy();
+    const template = Object.values(combat.units).find((unit) => unit.controllerId === "p1")!;
+    const low = {
+      ...template,
+      id: "low_bronze_target",
+      grade: "bronze" as const,
+      type: "ranged" as const,
+      attack: 1,
+      defense: 0,
+      maxHealth: 8,
+      damage: 0,
+      initiative: 1,
+      position: 12,
+      abilities: []
+    };
+    const dangerous = {
+      ...template,
+      id: "dangerous_gold_target",
+      grade: "gold" as const,
+      type: "ranged" as const,
+      attack: 9,
+      defense: 2,
+      maxHealth: 5,
+      damage: 3,
+      initiative: 10,
+      position: 15,
+      abilities: ["dangerous-activation"]
+    };
+    combat.units = {
+      ...Object.fromEntries(Object.values(combat.units).filter((unit) => unit.controllerId === NEUTRAL_PLAYER_ID).map((unit) => [unit.id, unit])),
+      [low.id]: low,
+      [dangerous.id]: dangerous
+    };
+
+    expect(planNeutralActivation(state, combat, tower!)).toEqual({
+      kind: "attack",
+      defenderId: dangerous.id
+    });
+
+    state.adventure!.houseRules!["random-town-veteran-defense"] = false;
+    expect(planNeutralActivation(state, combat, tower!)).toEqual({
+      kind: "attack",
+      defenderId: low.id
+    });
   });
 });
 

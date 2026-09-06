@@ -1,6 +1,13 @@
-.root { margin: 8px 0 14px; padding: 12px; border: 1px solid #766244; border-radius: 12px; background: #171d25; color: #f7edda; }
+.root { position: relative; z-index: 70; margin: 8px 0 14px; padding: 12px; border: 1px solid #766244; border-radius: 12px; background: #171d25; color: #f7edda; box-shadow: 0 8px 22px rgb(0 0 0 / 35%); }
+.dragging { cursor: grabbing; user-select: none; }
 .heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 9px; }
 .heading > span { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+.headingActions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
+.moveHandle, .resetPosition { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 28px; padding: 4px 8px; border: 1px solid #766244; border-radius: 6px; color: #f7edda; background: #29241c; font: inherit; font-size: 11px; cursor: pointer; }
+.moveHandle { cursor: grab; touch-action: none; }
+.moveHandle:active { cursor: grabbing; }
+.moveHandle:focus-visible, .resetPosition:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.resetPosition:disabled { opacity: .38; cursor: default; }
 .heading small, .text small { color: #c6cbd2; font-size: 12px; }
 .windows { display: flex; gap: 9px; overflow-x: auto; padding: 2px; }
 .window { display: flex; align-items: center; text-align: left; gap: 12px; flex: 1 0 230px; padding: 12px 15px; color: inherit; border: 1px solid #57606d; border-radius: 9px; background: #222c38; cursor: pointer; }
@@ -13,4 +20,5 @@
 .ready { color: #b5edaa; font-size: 12px; font-weight: 700; }
 .waiting { color: #c8cbd1; font-size: 12px; }
 .role { margin: 10px 0 0; font-size: 12px; line-height: 1.5; color: #d6dce5; }
-@media (max-width: 600px) { .heading { align-items: flex-start; flex-direction: column; gap: 4px; } .window { flex-basis: 210px; padding: 10px; } }
+@media (min-width: 1101px) { .root { position: sticky; top: 6px; } }
+@media (max-width: 760px) { .heading { align-items: flex-start; flex-direction: column; gap: 6px; } .headingActions { width: 100%; justify-content: flex-start; flex-wrap: wrap; } .headingActions > small { flex-basis: 100%; } .window { flex-basis: 210px; padding: 10px; } }

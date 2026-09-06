@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { applyAction, createInitialGameState, effectiveInitiative, getLegalActions } from "./index";
+import { applyAction, createAdventureGameState, createInitialGameState, effectiveInitiative, getLegalActions } from "./index";
 import { activeSchoolFetches } from "./ruleset";
-import { countBallistas } from "./permanents";
+import { countBallistas, warMachinesForSale } from "./permanents";
 import type { GameAction, GameState, PlayerId } from "./state";
 
 function applyOk(state: GameState, action: GameAction): GameState {
@@ -390,6 +390,53 @@ describe("permanent cards", () => {
     const next = endRound(state, "p1");
     expect(next.combat?.units[slowest[0].id].damage).toBe(1);
     expect(next.pendingChoice).toBeNull();
+  });
+
+  it("lets the owner choose among every enemy tied for lowest initiative", () => {
+    const state = createInitialGameState();
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    state.players.p1.permanents = ["war_machine.ballista"];
+    state.players.p1.limits.expertUses = 0;
+    const enemies = Object.values(state.combat!.units).filter((unit) => unit.controllerId === "p2");
+    for (const enemy of enemies) enemy.initiative = 4;
+
+    const aiming = endRound(state, "p1");
+    expect(aiming.pendingChoice).toMatchObject({
+      type: "ABILITY_TARGET_CHOICE",
+      kind: "war-machine",
+      candidateUnitIds: expect.arrayContaining(enemies.map((unit) => unit.id))
+    });
+    const clickableTargets = getLegalActions(aiming, "p1")
+      .map((legal) => legal.action)
+      .filter((action): action is Extract<GameAction, { type: "CHOOSE_ABILITY_TARGET" }> =>
+        action.type === "CHOOSE_ABILITY_TARGET"
+      )
+      .map((action) => action.targetUnitId);
+    expect(clickableTargets.sort()).toEqual(enemies.map((unit) => unit.id).sort());
+    const target = enemies[1]!;
+    const shot = applyOk(aiming, {
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: "p1",
+      choiceId: aiming.pendingChoice!.id,
+      targetUnitId: target.id
+    });
+    expect(shot.combat!.units[target.id].damage).toBe(1);
+    expect(shot.pendingChoice).toBeNull();
+  });
+
+  it("uses the BINH Ballista house-rule price of 3 / 6 gold", () => {
+    const state = createAdventureGameState({ seed: "binh-ballista-price", rollFirstPlayer: false });
+    state.adventure!.warMachineSupply = ["war_machine.ballista"];
+    state.ruleset = "binh";
+    const houseRules = (state.adventure!.houseRules ??= {} as NonNullable<typeof state.adventure>["houseRules"]);
+    houseRules!["binh-ballista-cost-3-6"] = true;
+    expect(warMachinesForSale(state, "factory", "p1")[0]?.cost).toEqual({ gold: 3 });
+    expect(warMachinesForSale(state, "trading-post", "p1")[0]?.cost).toEqual({ gold: 6 });
+
+    houseRules!["binh-ballista-cost-3-6"] = false;
+    expect(warMachinesForSale(state, "factory", "p1")[0]?.cost).toEqual({ gold: 7 });
+    expect(warMachinesForSale(state, "trading-post", "p1")[0]?.cost).toEqual({ gold: 10 });
   });
 
   it("offers the Cannon shot for an expert use and applies 2 damage to the chosen enemy", () => {

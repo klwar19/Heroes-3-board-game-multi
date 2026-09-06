@@ -8,6 +8,7 @@ export type UnitAbilityEffectDefinition =
   | { type: "ALLOW_UNLIMITED_RETALIATION" }
   | { type: "RETALIATION_ATTACK_BONUS"; amount: number }
   | { type: "IGNORE_RETALIATION" }
+  | { type: "REDUCE_INCOMING_RETALIATION_DAMAGE"; amount: number }
   | { type: "IGNORE_RETALIATION_AFTER_MOVE" }
   | {
       /** Saori Vanitas: both clauses share the same not-yet-activated target gate. */
@@ -1746,6 +1747,12 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Double Attack (−1/0)",
     text: "If the target is a non-adjacent unit and the die shows −1 or 0, attack this target again (stops after the second attack).",
     effect: { type: "DOUBLE_ATTACK", maxRoll: 0 },
+    implementationStatus: "implemented"
+  },
+  "ayanami-retaliation-guard": {
+    id: "ayanami-retaliation-guard", name: "Kamikaze Torpedoes",
+    text: "Enemy Retaliation Attacks against this unit deal 2 less damage (minimum 0).",
+    effect: { type: "REDUCE_INCOMING_RETALIATION_DAMAGE", amount: 2 },
     implementationStatus: "implemented"
   },
   "ignores-retaliation": {

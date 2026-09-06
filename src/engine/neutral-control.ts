@@ -1,4 +1,5 @@
 import { isPveEncounterCombat } from "./pve-encounter";
+import { houseRuleEnabled } from "./house-rules";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import type { CombatState, CombatUnitState, GameState, PendingChoice, PlayerId } from "./state";
 
@@ -48,6 +49,14 @@ function seatIsComputer(state: GameState, playerId: PlayerId | null | undefined)
   return Boolean(playerId) && state.controllers?.[playerId as PlayerId]?.kind === "computer";
 }
 
+function randomTownUsesCoordinatedAi(state: GameState, combat: CombatState): boolean {
+  return (
+    combat.context.kind === "neutral" &&
+    state.adventure?.fields?.[combat.context.fieldId]?.location === "random_town" &&
+    houseRuleEnabled(state, "random-town-veteran-defense")
+  );
+}
+
 /**
  * Walk the live seat order, skipping computer controllers and the fighter.
  * Team membership does not change who receives a human-controlled battle.
@@ -83,6 +92,13 @@ function nextHumanSeatClockwise(state: GameState, fighter: PlayerId): PlayerId |
  * next live seat (or back to the AI) automatically.
  */
 export function neutralCombatControllerId(state: GameState, combat: CombatState): PlayerId | null {
+  // The BINH Random Town garrison is deliberately a coordinated AI opponent:
+  // neither Manual Guard Control nor PvP Neutral Control may split its plan
+  // across human decisions. The faction-Pack pick, formation and activations
+  // consequently all remain on the deterministic Neutral AI path.
+  if (randomTownUsesCoordinatedAi(state, combat)) {
+    return null;
+  }
   return pvpNeutralControllerId(state, combat) ?? manualGuardControllerId(state, combat);
 }
 
@@ -114,7 +130,11 @@ export function combatUnitDecisionOwnerId(
  * — which must NOT light up when the FIGHTER merely commands their own guards.
  */
 export function pvpNeutralControllerId(state: GameState, combat: CombatState): PlayerId | null {
-  if (combat.context.kind !== "neutral" || !state.adventure?.pvpNeutralControl) {
+  if (
+    combat.context.kind !== "neutral" ||
+    !state.adventure?.pvpNeutralControl ||
+    randomTownUsesCoordinatedAi(state, combat)
+  ) {
     return null;
   }
   // Explicit Parallel + Human Neutral Control applies to every ordinary
@@ -151,7 +171,11 @@ export function pvpNeutralControllerId(state: GameState, combat: CombatState): P
  * stall).
  */
 export function manualGuardControllerId(state: GameState, combat: CombatState): PlayerId | null {
-  if (combat.context.kind !== "neutral" || !state.adventure?.manualGuardControl) {
+  if (
+    combat.context.kind !== "neutral" ||
+    !state.adventure?.manualGuardControl ||
+    randomTownUsesCoordinatedAi(state, combat)
+  ) {
     return null;
   }
   // CO-OP: same rule as pvpNeutralControllerId — the Neutral AI plays every guard.

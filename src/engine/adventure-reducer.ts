@@ -3,7 +3,6 @@ import { balanceCard } from "./community-balance-cards";
 import { DRILL_UNIT_XP, MAX_UNIT_RANK } from "@/data/units/experience";
 import { hasParkedParallelInteractions } from "./parallel-combats";
 import {
-  applyNeutralRoundsRank,
   awardUnitExperienceAfterCombat,
   diluteUnitExperienceForUpgrade,
   grantArmyUnitExperience,
@@ -3473,7 +3472,13 @@ function offerCreatureBankPlacement(state: GameState, tile: MapTileState, player
     return;
   }
   const pile = tier === "far" ? adventure.creatureBankTokensFar : adventure.creatureBankTokensNear;
-  if (!pile || pile.length === 0) {
+  // Parallel players may legitimately hold the same bank reservation. Keep an
+  // already-shown choice resolvable after another player consumes the matching
+  // pile token; abandoning the second window here strands its rotation forever.
+  const hasReservedBank = Boolean(
+    tile.reservedBankId || tile.reservedBankOptions?.some((candidate) => isCreatureBankId(candidate.bankId))
+  );
+  if (!pile || (pile.length === 0 && !hasReservedBank)) {
     return;
   }
   const hostLocation = creatureBankHostLocationForTile(state, tile);
@@ -3499,10 +3504,12 @@ function offerCreatureBankPlacement(state: GameState, tile: MapTileState, player
   if (houseRuleEnabled(state, "polish-bank-sizes") && tile.reservedBankOptions?.length === 1) {
     const selected = tile.reservedBankOptions[0];
     const tokenIndex = pile.lastIndexOf(selected.bankId);
-    if (tokenIndex < 0 || !isCreatureBankId(selected.bankId)) {
+    if (!isCreatureBankId(selected.bankId)) {
       throw new Error("The selected Creature Bank is no longer available.");
     }
-    pile.splice(tokenIndex, 1);
+    // The choice was minted by the engine before the competing confirm, so
+    // honour it even when another player already consumed the shared pile entry.
+    if (tokenIndex >= 0) pile.splice(tokenIndex, 1);
     placeCreatureBank(state, bankSpaceId, selected.bankId, selected.size);
     tile.reservedBankId = undefined;
     tile.reservedBankOptions = undefined;
@@ -6127,17 +6134,22 @@ function beginNeutralCombatPlacement(
   };
   if (field.location === "random_town") {
     // Random Town fights use the siege battlefield and its four middle-row
-    // fortifications, but the neutral town has no Arrow Tower. The deterministic
-    // gate keeps every client/replay on the same board without consuming a
-    // gameplay random stream.
+    // fortifications, including the defending enemy's Arrow Tower. The
+    // deterministic gate keeps every client/replay on the same board without
+    // consuming a gameplay random stream.
     const gatePosition = createSeededRandom(
       `${state.seed}#random-town-gate#${field.spaceId}`
     ).pick([...SIEGE_ROW_POSITIONS]);
+    const towerUnit = makeArrowTowerUnit(
+      `random_town_tower_${nextEventNumber(state)}`,
+      NEUTRAL_PLAYER_ID
+    );
+    combat.units[towerUnit.id] = towerUnit;
     combat.siege = {
       townPlayerId: NEUTRAL_PLAYER_ID,
       walls: SIEGE_ROW_POSITIONS.filter((position) => position !== gatePosition),
       gatePosition,
-      arrowTowerUnitId: null
+      arrowTowerUnitId: towerUnit.id
     };
   }
   assignCombatBoardArt(state, combat);
@@ -9136,9 +9148,25 @@ export function revealNeutralArmy(
   // augment (early waves, tokenCount 0, rank 0) is a clean no-op either way.
   if (combat.context.waveAssault) {
     applyWaveUnitAugments(state, neutralUnits, combat.context.waveAssault.wave);
-  } else if (neutralRankUpActive(state)) {
-    for (const unit of neutralUnits) {
-      applyNeutralRoundsRank(unit, state.round);
+  } else {
+    const veteranRandomTown =
+      state.adventure?.fields[combat.context.fieldId]?.location === "random_town" &&
+      houseRuleEnabled(state, "random-town-veteran-defense") &&
+      unitExperienceActive(state);
+    if (neutralRankUpActive(state) || veteranRandomTown) {
+      const ruleset = getRuleset(state);
+      const overrides = unitSideRuleOverrides(state);
+      for (const unit of neutralUnits) {
+        const def = unit.unitDefId ? coreUnitDefinitions[unit.unitDefId] : undefined;
+        if (!def || unit.bankUnit) continue;
+        const rank = Math.max(
+          veteranRandomTown ? 1 : 0,
+          neutralRankUpActive(state) ? neutralRoundsRank(def.tier, state.round) : 0
+        );
+        if (rank <= 0) continue;
+        unit.unitExperience = rankMirrorXp(def.tier, rank);
+        applyUnitCurrentSide(unit, ruleset, overrides);
+      }
     }
   }
   augmentDrawnUnits?.(neutralUnits);
@@ -9158,6 +9186,11 @@ export function revealNeutralArmy(
 
   if (usesBankFormation(combat)) {
     placeCreatureBankGuards(state, neutralUnits);
+  } else if (
+    state.adventure?.fields[combat.context.fieldId]?.location === "random_town" &&
+    houseRuleEnabled(state, "random-town-veteran-defense")
+  ) {
+    placeCoordinatedRandomTownGuards(neutralUnits);
   } else {
     placeNeutralUnits(neutralUnits, DEFENDER_BACKLINE, DEFENDER_FRONTLINE);
   }
@@ -9232,6 +9265,30 @@ export function revealNeutralArmy(
     return;
   }
   finalizeCombatStart(state);
+}
+
+/**
+ * Coordinated Random Town setup: the most valuable guard anchors a central
+ * back-row cell, ranged support fills the remaining back row, and the toughest
+ * melee bodies take the central front cells first as a screen. This remains a
+ * pure deterministic sort so reconnects/replays produce the identical board.
+ */
+function placeCoordinatedRandomTownGuards(units: CombatUnitState[]): void {
+  const value = (unit: CombatUnitState): number =>
+    unit.attack * 3 + unit.maxHealth * 2 + unit.defense + unit.initiative +
+    ({ bronze: 0, silver: 12, gold: 24, azure: 36 }[unit.grade] ?? 0) +
+    (unit.type === "ranged" ? 8 : 0);
+  const ordered = [...units].sort((left, right) => value(right) - value(left) || left.id.localeCompare(right.id));
+  const protectedUnit = ordered.shift();
+  const back = [DEFENDER_BACKLINE[1], DEFENDER_BACKLINE[2], DEFENDER_BACKLINE[0], DEFENDER_BACKLINE[3]];
+  const front = [DEFENDER_FRONTLINE[1], DEFENDER_FRONTLINE[2], DEFENDER_FRONTLINE[0], DEFENDER_FRONTLINE[3]];
+  if (protectedUnit) protectedUnit.position = back.shift()!;
+  for (const unit of ordered.filter((candidate) => candidate.type === "ranged")) {
+    unit.position = (back.shift() ?? front.shift())!;
+  }
+  for (const unit of ordered.filter((candidate) => candidate.type !== "ranged")) {
+    unit.position = (front.shift() ?? back.shift())!;
+  }
 }
 
 /**
@@ -14316,13 +14373,17 @@ export function finalizeAdventureCombat(state: GameState): void {
         // player-level and still apply.
         if (hero.kind === "main" && !context.bankId) {
           const level = hero.level;
-          // Field Difficulty Ⅶ (and any azure guard fight): winning jumps the
-          // Main Hero straight to level 7 (fills remaining experience). Diff 7
-          // always fields azure guards in the army table, but key off difficulty
-          // too so a stripped/empty azure draw cannot deny the level-up.
+          // Field Difficulty Ⅶ follows its independent BINH reward toggle:
+          // exactly one level while ON, or the original fill-to-7 while OFF.
+          // A lower-difficulty azure guard retains the original fill-to-7 rule.
           // The won-combat Learning pop-up needs no flag here: gainExperience
           // offers Learning on EVERY gain from every source (2026-08-22 rule).
-          if (context.hasAzure || context.difficulty >= 7) {
+          if (
+            context.difficulty >= 7 &&
+            houseRuleEnabled(state, "level-seven-one-level")
+          ) {
+            gainExperience(state, playerId, EXPERIENCE_GAIN_TO_NEXT_LEVEL(hero));
+          } else if (context.hasAzure || context.difficulty >= 7) {
             gainExperience(state, playerId, MAX_EXPERIENCE_GAIN_TO_SEVEN(hero));
           } else if (context.difficulty > level) {
             gainExperience(state, playerId, 2);
@@ -14966,6 +15027,12 @@ export function finalizeAdventureCombat(state: GameState): void {
 
 function MAX_EXPERIENCE_GAIN_TO_SEVEN(hero: HeroState): number {
   return Math.max(0, 12 - hero.experience);
+}
+
+/** Exact XP required to cross only the Hero's next two-point level threshold. */
+function EXPERIENCE_GAIN_TO_NEXT_LEVEL(hero: HeroState): number {
+  if (hero.level >= 7) return 0;
+  return Math.max(0, Math.min(MAX_EXPERIENCE, hero.level * 2) - hero.experience);
 }
 
 /**
@@ -17312,10 +17379,12 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
       if (!bankTile) {
         throw new Error("That Creature Bank tile is no longer available.");
       }
-      const pile = data.tier === "far" ? adventure?.creatureBankTokensFar : adventure?.creatureBankTokensNear;
       const selected = sizedCandidates[action.optionIndex];
       if (selected) {
-        if (!pile?.includes(selected.bankId) || !isCreatureBankId(selected.bankId)) {
+        // The candidate itself is the reservation. Different parallel players
+        // may hold the same bank, so it can legitimately outlive the matching
+        // pile token after another player confirms first.
+        if (!isCreatureBankId(selected.bankId)) {
           throw new Error("Choose one of the rolled Creature Banks or leave the field blocked.");
         }
         // Keep only the chosen bank on the rotating tile. Consumption waits for
@@ -17357,8 +17426,13 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     } else if (data && adventure && action.optionIndex === 0) {
       // Rule-off control: preserve the original single top-token flow exactly.
       const pile = data.tier === "far" ? adventure.creatureBankTokensFar : adventure.creatureBankTokensNear;
-      const bankId = pile?.pop();
+      // Consume the bank this tile actually previewed, not whatever token is now
+      // on top after another parallel reveal. Missing is accepted only because
+      // `data.bankId` was minted from this tile's engine-owned reservation.
+      const bankId = data.bankId && isCreatureBankId(data.bankId) ? data.bankId : pile?.at(-1);
       if (bankId && isCreatureBankId(bankId)) {
+        const tokenIndex = pile?.lastIndexOf(bankId) ?? -1;
+        if (tokenIndex >= 0) pile!.splice(tokenIndex, 1);
         if (!data.fieldId) {
           throw new Error("That Creature Bank has no final Blocked Field.");
         }

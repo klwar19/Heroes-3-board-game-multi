@@ -163,12 +163,12 @@ describe("polish-quick-combat — field strength (2×difficulty + X, +1 with Sta
 });
 
 describe("polish-quick-combat — the no-Experience read (mandatory vs optional)", () => {
-  it("mirrors the finalize XP award: main hero only, difficulty ≥ own level, Ⅶ fills to 7", () => {
+  it("mirrors the finalize XP award: main hero only, difficulty ≥ own level, Ⅶ can advance below 7", () => {
     const main = (level: number) => ({ kind: "main", level }) as HeroState;
     expect(polishQuickCombatXpPossible(main(2), 1), "level above the field → no XP").toBe(false);
     expect(polishQuickCombatXpPossible(main(2), 2), "equal level → +1 XP possible").toBe(true);
     expect(polishQuickCombatXpPossible(main(2), 3), "field above the level → +2 XP possible").toBe(true);
-    expect(polishQuickCombatXpPossible(main(6), 7), "Ⅶ fills to level 7").toBe(true);
+    expect(polishQuickCombatXpPossible(main(6), 7), "Ⅶ can advance a level-6 hero").toBe(true);
     expect(polishQuickCombatXpPossible(main(7), 7), "a level-7 hero has nothing left to gain").toBe(false);
     expect(polishQuickCombatXpPossible({ kind: "secondary", level: 1 } as HeroState, 5), "a Secondary Hero never gains XP").toBe(
       false

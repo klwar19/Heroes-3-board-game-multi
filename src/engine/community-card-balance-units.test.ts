@@ -410,7 +410,10 @@ function shopState(seed: string, community: boolean): GameState {
   }
   state.adventure!.houseRules = {
     ...(state.adventure!.houseRules ?? {}),
-    "community-card-balance": community
+    "community-card-balance": community,
+    // This suite isolates the Community Balance price swap. The independent
+    // BINH 3/6 Ballista override has its own dedicated default/on/off coverage.
+    "binh-ballista-cost-3-6": false
   };
   state.activePlayerId = "p1";
   state.players.p1.resources = { gold: 40, buildingMaterials: 0, valuables: 0 };

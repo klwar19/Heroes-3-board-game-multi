@@ -122,7 +122,8 @@ export function polishQuickCombatFieldStrength(state: GameState, fieldDifficulty
  * Whether winning the fought battle COULD grant the hero Experience — the
  * sheet's mandatory/optional split ("must resolve quick combat if he would gain
  * NO EXPERIENCE"). Mirrors the finalize award exactly: a Secondary Hero never
- * gains Experience; difficulty Ⅶ fills to level 7 (nothing left at level 7);
+ * gains Experience; difficulty Ⅶ advances or fills according to its BINH rule
+ * (either way, there is nothing left at level 7);
  * otherwise a win pays only when the field difficulty is at least the hero's
  * own level (+2 above, +1 equal). Azure guards appear only at difficulty 7 in
  * every NEUTRAL_ARMY_TABLE row, so the printed difficulty is a complete

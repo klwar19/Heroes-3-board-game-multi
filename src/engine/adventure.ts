@@ -409,8 +409,8 @@ export const NEUTRAL_DECK_IDS = {
  * experience reward exactly like a printed level. Derived from the army's
  * tiers, calibrated against the NORMAL {@link NEUTRAL_ARMY_TABLE} rows (bronze
  * 1 / silver 2 / gold 3 points): any azure body makes it a Ⅶ fight (azure IS
- * the level-7 tier — winning jumps the hero to level 7, like every azure
- * guard); otherwise the point total maps onto the closest table row, capped at
+ * the level-7 tier; its fought-win reward follows the selected level-VII house
+ * rule); otherwise the point total maps onto the closest table row, capped at
  * Ⅵ. Unknown ids count 0 (the sanitiser drops them before play). Understands
  * `random:<tier>` and `pack:<unitDefId>` certain-army slots.
  */
@@ -17941,7 +17941,9 @@ export function randomTownDefaultBronzePackId(faction: string): string | undefin
  * slot "chosen by the player who controls the defense during this Combat",
  * flagged `randomTownChoice` so the reveal chain can offer that pick; the
  * default is the faction's most expensive bronze Pack), TWO Packs of silver-tier
- * units and TWO Fews of gold-tier units, all from the faction not in play.
+ * units and TWO Fews of gold-tier units, all from the faction not in play. The
+ * BINH veteran-defense rule upgrades the first gold slot from Few to Pack while
+ * retaining the same five bodies.
  *
  * A faction short of a printed body for a slot falls back to a same-tier
  * NEUTRAL draw (the `packDrawWithNeutralFallback` / `fewDrawWithNeutralFallback`
@@ -17983,17 +17985,31 @@ function randomTownGuardDraws(state: GameState, field: MapFieldState): NeutralDr
     if (fallback) draws.push(fallback as NeutralDraw);
   }
 
-  // 3) two gold Fews.
+  // 3) two gold bodies. Under the BINH veteran-defense rule, the first of the
+  // existing Fews is upgraded to its Pack side (five defenders still total).
   const goldFews = unitIds.filter(
     (id) => coreUnitDefinitions[id]?.tier === "gold" && coreUnitDefinitions[id]?.few
   );
+  const upgradedGoldIndex = goldFews.findIndex((id) => Boolean(coreUnitDefinitions[id]?.pack));
   for (let slot = 0; slot < 2; slot += 1) {
     const id = goldFews[slot];
     if (id) {
-      draws.push({ unitDefId: id, tier: "gold", factionFew: true, bankGuard: true });
+      const upgradedPack =
+        slot === upgradedGoldIndex &&
+        houseRuleEnabled(state, "random-town-veteran-defense") &&
+        Boolean(coreUnitDefinitions[id]?.pack);
+      draws.push({
+        unitDefId: id,
+        tier: "gold",
+        ...(upgradedPack ? { factionPack: true } : { factionFew: true }),
+        bankGuard: true
+      });
       continue;
     }
-    const fallback = fewDrawWithNeutralFallback("gold", faction, random);
+    const fallback =
+      slot === 0 && houseRuleEnabled(state, "random-town-veteran-defense")
+        ? packDrawWithNeutralFallback("gold", faction, random)
+        : fewDrawWithNeutralFallback("gold", faction, random);
     if (fallback) draws.push(fallback as NeutralDraw);
   }
 
@@ -22103,6 +22119,7 @@ export function totalRecruitGoldDiscount(state: GameState, playerId: PlayerId, p
   return (
     legionVoucherDiscount(state, playerId, purchase) +
     externalRecruitGoldDiscount(state, playerId, purchase) +
+    activePubGoldDiscount(state, playerId, purchase) +
     // Polish Set Artifacts — Statue of Legion: ONE once-per-GAME-ROUND flat
     // discount of (active tiers) gold on ANY recruit/reinforce, added at this
     // shared seam so the affordability check, the offer label and the real spend
@@ -22113,6 +22130,39 @@ export function totalRecruitGoldDiscount(state: GameState, playerId: PlayerId, p
     artifactSetRecruitGoldDiscount(state, playerId)
     + equipmentRecruitGoldDiscount(state, playerId)
   );
+}
+
+/**
+ * The Cove Pub is banked at the start of an Astrologers' round, but it must
+ * also participate in the ordinary population-action price seam. Previously
+ * only the separate "Use Pub" action saw the bank, so clicking Reinforce in
+ * the normal town basket still displayed and charged the full price.
+ */
+function activePubGoldDiscount(
+  state: GameState,
+  playerId: PlayerId,
+  purchase: RecruitPurchaseRef
+): number {
+  if (purchase.kind !== "reinforce" && purchase.kind !== "stack") return 0;
+  const player = state.players[playerId];
+  const tier = coreUnitDefinitions[purchase.unitDefId]?.tier;
+  if (!player || !tier) return 0;
+  const bank = (player.reinforcementDiscounts ?? []).find(
+    (candidate) =>
+      candidate.source === "pub" &&
+      candidate.expiresAfterRound === state.round &&
+      candidate.allowedTiers.includes(tier)
+  );
+  if (!bank) return 0;
+  if (
+    purchase.kind === "reinforce" &&
+    bank.requiresReinforceUnlock &&
+    !townHasBuildingEffect(state, playerId, "UNLOCK_REINFORCE")
+  ) {
+    return 0;
+  }
+  if (purchase.kind === "stack" && !bank.allowStack) return 0;
+  return bank.flatGoldDiscount ?? 0;
 }
 
 /**
@@ -22158,6 +22208,12 @@ export function consumeRecruitVoucherFor(state: GameState, playerId: PlayerId, p
   // No-op when the rule is off or the discount is already spent this round.
   consumeArtifactSetRecruitDiscount(state, playerId);
   const player = state.players[playerId];
+  if (player && activePubGoldDiscount(state, playerId, purchase) > 0) {
+    const pubIndex = (player.reinforcementDiscounts ?? []).findIndex(
+      (candidate) => candidate.source === "pub" && candidate.expiresAfterRound === state.round
+    );
+    if (pubIndex >= 0) player.reinforcementDiscounts!.splice(pubIndex, 1);
+  }
   if (!player?.recruitDiscounts?.length) {
     return;
   }
@@ -22749,7 +22805,9 @@ export function reinforcementDiscountCostFor(
   if (bank.halfGoldOnly) {
     sourceAdjusted.gold = bank.roundDown ? Math.floor(printedGold / 2) : Math.ceil(printedGold / 2);
   }
-  if (bank.flatGoldDiscount) {
+  // Pub is already folded into applyRecruitGoldDiscount's ordinary price seam;
+  // do not subtract it twice when the dedicated Pub button is used.
+  if (bank.flatGoldDiscount && bank.source !== "pub") {
     sourceAdjusted.gold = Math.max(0, (sourceAdjusted.gold ?? 0) - bank.flatGoldDiscount);
   }
   return applyRecruitGoldDiscount(state, playerId, purchase, sourceAdjusted);
@@ -22803,7 +22861,8 @@ export function redeemReinforcementDiscount(
     });
   }
   consumeRecruitVoucherFor(state, playerId, purchase);
-  player.reinforcementDiscounts!.splice(bankIndex, 1);
+  const remainingBankIndex = player.reinforcementDiscounts!.findIndex((candidate) => candidate.id === bank.id);
+  if (remainingBankIndex >= 0) player.reinforcementDiscounts!.splice(remainingBankIndex, 1);
 }
 
 /**

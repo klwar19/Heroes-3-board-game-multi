@@ -249,13 +249,16 @@ describe("Bismarck — Concentrated Fire (+1 Attack per ally adjacent to the TAR
       offered: Boolean(offer),
       damage: unitAt(settled, "unit_p2_skeletons").damage,
       attackerDamage: unitAt(settled, "unit_p1_marksmen").damage,
-      state: settled
+      state: settled,
     };
   }
 
   it("pays +1 Attack for each of 0/1/2/3 adjacent allies (VI, cap 3)", () => {
     // Base attack 5, defense 0 → the damage IS the folded attack.
-    expect(attackWithCard("cf-vi-0", 6, 0).damage, "no ally flanking → nothing to pay").toBe(5);
+    expect(
+      attackWithCard("cf-vi-0", 6, 0).damage,
+      "no ally flanking → nothing to pay",
+    ).toBe(5);
     expect(attackWithCard("cf-vi-1", 6, 1).damage).toBe(6);
     expect(attackWithCard("cf-vi-2", 6, 2).damage).toBe(7);
     expect(attackWithCard("cf-vi-3", 6, 3).damage).toBe(8);
@@ -265,7 +268,9 @@ describe("Bismarck — Concentrated Fire (+1 Attack per ally adjacent to the TAR
     // The attacker at @9 IS adjacent to the target at @10. If it counted, the
     // bonus would be +1 and the card would be offered.
     const none = attackWithCard("cf-self-control", 6, 0);
-    expect(none.offered, "a +0 play is a trap and is never offered").toBe(false);
+    expect(none.offered, "a +0 play is a trap and is never offered").toBe(
+      false,
+    );
     expect(none.damage, "and the blow is the plain printed attack").toBe(5);
   });
 
@@ -285,13 +290,23 @@ describe("Bismarck — Concentrated Fire (+1 Attack per ally adjacent to the TAR
       place(state, "unit_p1_marksmen", { defense: 0 });
       state.players.p1.hand = [`specialty.bismarck.${level}` as CardId];
       const declared = declare(state, "unit_p1_marksmen", "unit_p2_skeletons");
-      const offer = reactionOffer(declared, "p1", `specialty.bismarck.${level}`);
+      const offer = reactionOffer(
+        declared,
+        "p1",
+        `specialty.bismarck.${level}`,
+      );
       expect(offer, `level ${level} must be offered here`).toBeTruthy();
       const settled = settle(applyOk(declared, offer!.action));
       return unitAt(settled, "unit_p1_marksmen").damage;
     }
-    expect(retaliationDamage("cf-retal-iv", 4), "IV: the skeletons hit back").toBe(3);
-    expect(retaliationDamage("cf-retal-vi", 6), "VI: no Retaliation Attack").toBe(0);
+    expect(
+      retaliationDamage("cf-retal-iv", 4),
+      "IV: the skeletons hit back",
+    ).toBe(3);
+    expect(
+      retaliationDamage("cf-retal-vi", 6),
+      "VI: no Retaliation Attack",
+    ).toBe(0);
   });
 });
 
@@ -313,7 +328,7 @@ describe("Nagato — Big Seven Bombardment (a ground unit's attack becomes RANGE
       defense: 0,
       maxHealth: 99,
       damage: 0,
-      type: "ground"
+      type: "ground",
     });
     place(state, "unit_p2_skeletons", {
       position: 12,
@@ -323,7 +338,7 @@ describe("Nagato — Big Seven Bombardment (a ground unit's attack becomes RANGE
       defense: 0,
       maxHealth: 99,
       damage: 0,
-      type: "ground"
+      type: "ground",
     });
     place(state, "unit_p2_vampires", {
       position: 16,
@@ -333,12 +348,20 @@ describe("Nagato — Big Seven Bombardment (a ground unit's attack becomes RANGE
       defense: 0,
       maxHealth: 99,
       damage: 0,
-      type: "ground"
+      type: "ground",
     });
     for (const id of ["unit_p1_marksmen", "unit_p1_griffins"]) {
-      place(state, id, { position: id === "unit_p1_marksmen" ? 0 : 3, controllerId: "p1", abilities: [] });
+      place(state, id, {
+        position: id === "unit_p1_marksmen" ? 0 : 3,
+        controllerId: "p1",
+        abilities: [],
+      });
     }
-    place(state, "unit_p2_dread_knights", { position: 19, controllerId: "p2", abilities: [] });
+    place(state, "unit_p2_dread_knights", {
+      position: 19,
+      controllerId: "p2",
+      abilities: [],
+    });
   }
 
   function armed(seed: string, level: 1 | 4 | 6): GameState {
@@ -348,9 +371,14 @@ describe("Nagato — Big Seven Bombardment (a ground unit's attack becomes RANGE
     state.combat!.activeUnitId = "unit_p1_crusaders";
     state.players.p1.hand = [`specialty.nagato.${level}` as CardId];
     const play = getLegalActions(state, "p1").find(
-      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === `specialty.nagato.${level}`
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === `specialty.nagato.${level}`,
     );
-    expect(play, `Big Seven Bombardment ${level} must be playable on this activation`).toBeTruthy();
+    expect(
+      play,
+      `Big Seven Bombardment ${level} must be playable on this activation`,
+    ).toBeTruthy();
     return settle(applyOk(state, play!.action));
   }
 
@@ -359,7 +387,7 @@ describe("Nagato — Big Seven Bombardment (a ground unit's attack becomes RANGE
       (legal) =>
         legal.action.type === "ATTACK_UNIT" &&
         legal.action.attackerId === "unit_p1_crusaders" &&
-        legal.action.defenderId === defenderId
+        legal.action.defenderId === defenderId,
     );
   }
 
@@ -368,37 +396,54 @@ describe("Nagato — Big Seven Bombardment (a ground unit's attack becomes RANGE
     layout(state);
     state.activePlayerId = "p1";
     state.combat!.activeUnitId = "unit_p1_crusaders";
-    expect(canAttack(state, "unit_p2_skeletons"), "no offer at distance 2").toBe(false);
+    expect(
+      canAttack(state, "unit_p2_skeletons"),
+      "no offer at distance 2",
+    ).toBe(false);
     const forged = applyAction(state, {
       type: "ATTACK_UNIT",
       playerId: "p1",
       attackerId: "unit_p1_crusaders",
-      defenderId: "unit_p2_skeletons"
+      defenderId: "unit_p2_skeletons",
     });
-    expect(forged.errors.length, "and the handler refuses it").toBeGreaterThan(0);
+    expect(forged.errors.length, "and the handler refuses it").toBeGreaterThan(
+      0,
+    );
   });
 
   it("a melee unit shoots two spaces, and the blow provokes no Retaliation Attack at range", () => {
     const state = armed("bomb-i-hit", 1);
-    expect(canAttack(state, "unit_p2_skeletons"), "distance 2 is now a legal declaration").toBe(true);
+    expect(
+      canAttack(state, "unit_p2_skeletons"),
+      "distance 2 is now a legal declaration",
+    ).toBe(true);
     const settled = settle(
       applyOk(state, {
         type: "ATTACK_UNIT",
         playerId: "p1",
         attackerId: "unit_p1_crusaders",
-        defenderId: "unit_p2_skeletons"
-      })
+        defenderId: "unit_p2_skeletons",
+      }),
     );
-    expect(unitAt(settled, "unit_p2_skeletons").damage, "attack 6 − defense 0").toBe(6);
+    expect(
+      unitAt(settled, "unit_p2_skeletons").damage,
+      "attack 6 − defense 0",
+    ).toBe(6);
     expect(
       unitAt(settled, "unit_p1_crusaders").damage,
-      "a blow struck at distance provokes no Retaliation Attack (the target cannot reach back)"
+      "a blow struck at distance provokes no Retaliation Attack (the target cannot reach back)",
     ).toBe(0);
   });
 
   it("I stops at 2 spaces; IV reaches anywhere on the board", () => {
-    expect(canAttack(armed("bomb-i-far", 1), "unit_p2_vampires"), "I refuses distance 3").toBe(false);
-    expect(canAttack(armed("bomb-iv-far", 4), "unit_p2_vampires"), "IV reaches it").toBe(true);
+    expect(
+      canAttack(armed("bomb-i-far", 1), "unit_p2_vampires"),
+      "I refuses distance 3",
+    ).toBe(false);
+    expect(
+      canAttack(armed("bomb-iv-far", 4), "unit_p2_vampires"),
+      "IV reaches it",
+    ).toBe(true);
   });
 
   it("VI adds +1 Attack to the bombardment (IV is the control on the same board)", () => {
@@ -409,8 +454,8 @@ describe("Nagato — Big Seven Bombardment (a ground unit's attack becomes RANGE
           type: "ATTACK_UNIT",
           playerId: "p1",
           attackerId: "unit_p1_crusaders",
-          defenderId: "unit_p2_skeletons"
-        })
+          defenderId: "unit_p2_skeletons",
+        }),
       );
       return unitAt(settled, "unit_p2_skeletons").damage;
     }
@@ -420,18 +465,21 @@ describe("Nagato — Big Seven Bombardment (a ground unit's attack becomes RANGE
 
   it("the flip dies with the activation — a fresh activation is never armed", () => {
     const state = armed("bomb-expire", 4);
-    expect(unitAt(state, "unit_p1_crusaders").bombardment, "armed while the activation runs").toBeTruthy();
+    expect(
+      unitAt(state, "unit_p1_crusaders").bombardment,
+      "armed while the activation runs",
+    ).toBeTruthy();
     const settled = settle(
       applyOk(state, {
         type: "ATTACK_UNIT",
         playerId: "p1",
         attackerId: "unit_p1_crusaders",
-        defenderId: "unit_p2_skeletons"
-      })
+        defenderId: "unit_p2_skeletons",
+      }),
     );
     expect(
       unitAt(settled, "unit_p1_crusaders").bombardment,
-      "the arm is dropped when the attacker's activation concludes"
+      "the arm is dropped when the attacker's activation concludes",
     ).toBeUndefined();
     // …and the observable consequence: the distant target is out of reach again.
     expect(
@@ -439,8 +487,8 @@ describe("Nagato — Big Seven Bombardment (a ground unit's attack becomes RANGE
         (legal) =>
           legal.action.type === "ATTACK_UNIT" &&
           legal.action.attackerId === "unit_p1_crusaders" &&
-          legal.action.defenderId === "unit_p2_vampires"
-      )
+          legal.action.defenderId === "unit_p2_vampires",
+      ),
     ).toBe(false);
   });
 
@@ -453,8 +501,9 @@ describe("Nagato — Big Seven Bombardment (a ground unit's attack becomes RANGE
     function adjacentBlow(seed: string, arm: boolean): number {
       const state = freshCombat(seed);
       layout(state);
-      state.combat!.dice.scriptedRolls = Array.from({ length: 60 }, (_, index) =>
-        index % 2 === 0 ? 1 : -1
+      state.combat!.dice.scriptedRolls = Array.from(
+        { length: 60 },
+        (_, index) => (index % 2 === 0 ? 1 : -1),
       );
       state.combat!.dice.rollCount = 0;
       // Move the near target next to the attacker (@4 → @5 is adjacent).
@@ -465,7 +514,9 @@ describe("Nagato — Big Seven Bombardment (a ground unit's attack becomes RANGE
       if (arm) {
         state.players.p1.hand = ["specialty.nagato.4" as CardId];
         const play = getLegalActions(state, "p1").find(
-          (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.nagato.4"
+          (legal) =>
+            legal.action.type === "PLAY_CARD" &&
+            legal.action.cardId === "specialty.nagato.4",
         );
         expect(play, "armable on this activation").toBeTruthy();
         current = settle(applyOk(state, play!.action));
@@ -475,27 +526,40 @@ describe("Nagato — Big Seven Bombardment (a ground unit's attack becomes RANGE
           type: "ATTACK_UNIT",
           playerId: "p1",
           attackerId: "unit_p1_crusaders",
-          defenderId: "unit_p2_skeletons"
-        })
+          defenderId: "unit_p2_skeletons",
+        }),
       );
       return unitAt(settled, "unit_p2_skeletons").damage;
     }
-    expect(adjacentBlow("bomb-melee-control", false), "CONTROL: a plain melee blow rolls one die").toBe(7);
-    expect(adjacentBlow("bomb-melee-penalty", true), "bombarding into an adjacent enemy rolls the penalty").toBe(5);
+    expect(
+      adjacentBlow("bomb-melee-control", false),
+      "CONTROL: a plain melee blow rolls one die",
+    ).toBe(7);
+    expect(
+      adjacentBlow("bomb-melee-penalty", true),
+      "bombarding into an adjacent enemy rolls the penalty",
+    ).toBe(5);
   });
 
   it("CONTROL: a printed RANGED unit is never offered the bombardment (it would be a pure trap)", () => {
     const state = freshCombat("bomb-ranged-control");
     layout(state);
-    place(state, "unit_p1_marksmen", { position: 4, controllerId: "p1", type: "ranged", abilities: [] });
+    place(state, "unit_p1_marksmen", {
+      position: 4,
+      controllerId: "p1",
+      type: "ranged",
+      abilities: [],
+    });
     place(state, "unit_p1_crusaders", { position: 0 });
     state.activePlayerId = "p1";
     state.combat!.activeUnitId = "unit_p1_marksmen";
     state.players.p1.hand = ["specialty.nagato.4" as CardId];
     expect(
       getLegalActions(state, "p1").some(
-        (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.nagato.4"
-      )
+        (legal) =>
+          legal.action.type === "PLAY_CARD" &&
+          legal.action.cardId === "specialty.nagato.4",
+      ),
     ).toBe(false);
   });
 });
@@ -507,34 +571,61 @@ describe("Nagato — Big Seven Bombardment (a ground unit's attack becomes RANGE
 describe("Akashi — Repair Dock (a banked reinforcement discount)", () => {
   /** A fresh adventure with p1's hand replaced and a bronze Few to upgrade. */
   function mapWithDock(seed: string, cards: string[], gold = 30): GameState {
-    let state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
+    let state = createAdventureGameState({
+      seed,
+      difficulty: "normal",
+      rollFirstPlayer: false,
+    });
     if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
-      state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+      state = applyOk(state, {
+        type: "REFRESH_HAND",
+        playerId: "p1",
+        discardCardIds: [],
+      });
     }
     state.players.p1.hand = [...cards] as CardId[];
-    state.players.p1.army = [{ id: "army_gryph", unitDefId: "castle.griffins", side: "few" }];
+    state.players.p1.army = [
+      { id: "army_gryph", unitDefId: "castle.griffins", side: "few" },
+    ];
     state.players.p1.resources.gold = gold;
     return state;
   }
 
   function dockBank(state: GameState) {
-    return (state.players.p1.reinforcementDiscounts ?? []).find((bank) => bank.source === "repair-dock");
+    return (state.players.p1.recruitDiscounts ?? []).find((bank) =>
+      bank.cardId.startsWith("specialty.akashi."),
+    );
   }
 
   function playDock(state: GameState, level: 1 | 4 | 6): GameState {
     const play = getLegalActions(state, "p1").find(
-      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === `specialty.akashi.${level}`
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === `specialty.akashi.${level}`,
     );
     expect(play, `Repair Dock ${level} must be a legal map play`).toBeTruthy();
-    return applyOk(state, play!.action);
+    let after = applyOk(state, play!.action);
+    if (level !== 6) {
+      const pick = getLegalActions(after, "p1").find(
+        (legal) =>
+          legal.action.type === "RESOLVE_VISIT_STEP" &&
+          /reinforce.*Griffins/i.test(legal.label),
+      );
+      expect(pick, "choose the Griffins reinforcement discount").toBeTruthy();
+      after = applyOk(after, pick!.action);
+    }
+    return after;
   }
 
   function redeem(state: GameState) {
     return getLegalActions(state, "p1").find(
       (legal) =>
-        legal.action.type === "REDEEM_REINFORCEMENT_DISCOUNT" &&
-        legal.action.kind === "reinforce" &&
-        legal.label.includes("Repair Dock")
+        legal.action.type === "POPULATION_ACTION" &&
+        legal.action.purchases.some(
+          (purchase) =>
+            purchase.kind === "reinforce" &&
+            purchase.armyUnitId === "army_gryph",
+        ),
     );
   }
 
@@ -545,58 +636,161 @@ describe("Akashi — Repair Dock (a banked reinforcement discount)", () => {
       (legal) =>
         legal.action.type === "POPULATION_ACTION" &&
         legal.action.purchases.some(
-          (purchase) => purchase.kind === "reinforce" && purchase.armyUnitId === "army_gryph"
-        )
+          (purchase) =>
+            purchase.kind === "reinforce" &&
+            purchase.armyUnitId === "army_gryph",
+        ),
     );
-    expect(action, "the plain reinforce must exist as the price control").toBeTruthy();
+    expect(
+      action,
+      "the plain reinforce must exist as the price control",
+    ).toBeTruthy();
     return before - applyOk(state, action!.action).players.p1.resources.gold;
   }
 
-  it("banks a 2 / 3 / 4 gold discount and the redeem really charges that much less", () => {
+  it.each([1, 4])(
+    "Akashi %s can draw instead of banking a discount",
+    (level) => {
+      const state = mapWithDock(`dock-or-draw-${level}`, [
+        `specialty.akashi.${level}`,
+      ]);
+      state.players.p1.deck = ["spell.haste"];
+      const offer = getLegalActions(state, "p1").find(
+        (x) =>
+          x.action.type === "PLAY_CARD" &&
+          x.action.cardId === `specialty.akashi.${level}` &&
+          x.action.optionIndex === 1,
+      );
+      expect(offer).toBeTruthy();
+      const after = applyOk(state, offer!.action);
+      expect(after.players.p1.hand).toEqual(["spell.haste"]);
+      expect(dockBank(after)).toBeUndefined();
+    },
+  );
+
+  it.each([
+    [1, 3],
+    [4, 4],
+  ])(
+    "Akashi %s reduces an actual recruit purchase by %s gold",
+    (level, discount) => {
+      let state = mapWithDock(`dock-recruit-${level}`, [
+        `specialty.akashi.${level}`,
+      ]);
+      const control = structuredClone(state);
+      const card = getLegalActions(state, "p1").find(
+        (x) =>
+          x.action.type === "PLAY_CARD" &&
+          x.action.cardId === `specialty.akashi.${level}` &&
+          x.action.optionIndex === 0,
+      );
+      expect(card).toBeTruthy();
+      state = applyOk(state, card!.action);
+      const pick = getLegalActions(state, "p1").find(
+        (x) =>
+          x.action.type === "RESOLVE_VISIT_STEP" && /^Recruit /i.test(x.label),
+      );
+      expect(pick).toBeTruthy();
+      state = applyOk(state, pick!.action);
+      const bank = dockBank(state);
+      expect(bank?.target.kind).toBe("recruit");
+      if (bank?.target.kind !== "recruit")
+        throw new Error("missing recruit voucher");
+      const unitDefId = bank.target.unitDefId;
+      const purchase = (s: GameState) =>
+        getLegalActions(s, "p1").find(
+          (x) =>
+            x.action.type === "POPULATION_ACTION" &&
+            x.action.purchases.length === 1 &&
+            x.action.purchases.some(
+              (p) => p.kind === "recruit" && p.unitDefId === unitDefId,
+            ),
+        );
+      const plain = purchase(control),
+        reduced = purchase(state);
+      expect(plain).toBeTruthy();
+      expect(reduced).toBeTruthy();
+      const fullCost =
+        control.players.p1.resources.gold -
+        applyOk(control, plain!.action).players.p1.resources.gold;
+      const after = applyOk(state, reduced!.action);
+      expect(
+        state.players.p1.resources.gold - after.players.p1.resources.gold,
+      ).toBe(Math.max(0, fullCost - discount));
+      expect(dockBank(after)).toBeUndefined();
+    },
+  );
+
+  it("banks a 3 / 4 gold discount and the redeem really charges that much less", () => {
     const control = mapWithDock("dock-price-control", []);
     const fullPrice = plainReinforceCost(control);
-    expect(fullPrice, "the silver Pack costs more than the biggest discount").toBeGreaterThan(4);
+    expect(
+      fullPrice,
+      "the silver Pack costs more than the biggest discount",
+    ).toBeGreaterThan(4);
 
     for (const [level, discount] of [
-      [1, 2],
-      [4, 3],
-      [6, 4]
+      [1, 3],
+      [4, 4],
     ] as const) {
-      const state = playDock(mapWithDock(`dock-price-${level}`, [`specialty.akashi.${level}`]), level);
+      const state = playDock(
+        mapWithDock(`dock-price-${level}`, [`specialty.akashi.${level}`]),
+        level,
+      );
       const bank = dockBank(state);
       expect(bank, `Repair Dock ${level} banks a discount`).toBeTruthy();
       const offer = redeem(state);
       expect(offer, `Repair Dock ${level} is redeemable`).toBeTruthy();
       const before = state.players.p1.resources.gold;
       const after = applyOk(state, offer!.action);
-      expect(before - after.players.p1.resources.gold, `Repair Dock ${level} paid`).toBe(
-        fullPrice - discount
-      );
-      expect(after.players.p1.army.find((unit) => unit.id === "army_gryph")?.side).toBe("pack");
-      expect(dockBank(after), "the entitlement is spent by the redeem").toBeUndefined();
+      expect(
+        before - after.players.p1.resources.gold,
+        `Repair Dock ${level} paid`,
+      ).toBe(fullPrice - discount);
+      expect(
+        after.players.p1.army.find((unit) => unit.id === "army_gryph")?.side,
+      ).toBe("pack");
+      expect(
+        dockBank(after),
+        "the entitlement is spent by the redeem",
+      ).toBeUndefined();
     }
   });
 
   it("VI also draws a card (I is the control on the same deck)", () => {
     for (const [level, expected] of [
       [1, 0],
-      [6, 1]
+      [6, 1],
     ] as const) {
-      const state = mapWithDock(`dock-draw-${level}`, [`specialty.akashi.${level}`]);
-      state.players.p1.deck = ["spell.haste" as CardId, "spell.bless" as CardId];
+      const state = mapWithDock(`dock-draw-${level}`, [
+        `specialty.akashi.${level}`,
+      ]);
+      state.players.p1.deck = [
+        "spell.haste" as CardId,
+        "spell.bless" as CardId,
+      ];
       const after = playDock(state, level);
-      expect(after.players.p1.hand.length, `Repair Dock ${level} hand`).toBe(expected);
+      expect(after.players.p1.hand.length, `Repair Dock ${level} hand`).toBe(
+        expected,
+      );
     }
   });
 
   it("an unredeemed dock dies on the next hero step (the standard bank expiry)", () => {
-    const state = playDock(mapWithDock("dock-expiry", ["specialty.akashi.4"]), 4);
+    const state = playDock(
+      mapWithDock("dock-expiry", ["specialty.akashi.4"]),
+      4,
+    );
     expect(dockBank(state), "banked").toBeTruthy();
-    const move = getLegalActions(state, "p1").find((legal) => legal.action.type === "MOVE_HERO");
+    const move = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "MOVE_HERO",
+    );
     expect(move, "the hero has a legal step").toBeTruthy();
     const afterMove = applyOk(state, move!.action);
-    expect(dockBank(afterMove), "any hero step wipes it — as the card says").toBeUndefined();
-    expect(redeem(afterMove), "and the offer is gone with it").toBeUndefined();
+    expect(
+      dockBank(afterMove),
+      "any hero step wipes it — as the card says",
+    ).toBeUndefined();
   });
 });
 
@@ -619,7 +813,7 @@ describe("Sirius — Royal Maid's Cover (a chosen ally takes the declared attack
       defense: 0,
       maxHealth: 99,
       damage: 0,
-      type: "ground"
+      type: "ground",
     });
     place(state, "unit_p1_marksmen", {
       position: 10,
@@ -629,7 +823,7 @@ describe("Sirius — Royal Maid's Cover (a chosen ally takes the declared attack
       defense: 0,
       maxHealth: 99,
       damage: 0,
-      type: "ground"
+      type: "ground",
     });
     place(state, "unit_p1_griffins", {
       position: 14,
@@ -639,7 +833,7 @@ describe("Sirius — Royal Maid's Cover (a chosen ally takes the declared attack
       defense: 0,
       maxHealth: 99,
       damage: 0,
-      type: "ground"
+      type: "ground",
     });
     place(state, "unit_p1_crusaders", {
       position: 6,
@@ -649,21 +843,21 @@ describe("Sirius — Royal Maid's Cover (a chosen ally takes the declared attack
       defense: 0,
       maxHealth: 99,
       damage: 0,
-      type: "ground"
+      type: "ground",
     });
     place(state, "unit_p2_vampires", {
       position: 19,
       controllerId: "p2",
       abilities: [],
       maxHealth: 99,
-      damage: 0
+      damage: 0,
     });
     place(state, "unit_p2_dread_knights", {
       position: 3,
       controllerId: "p2",
       abilities: [],
       maxHealth: 99,
-      damage: 0
+      damage: 0,
     });
   }
 
@@ -672,7 +866,12 @@ describe("Sirius — Royal Maid's Cover (a chosen ally takes the declared attack
     layout(state);
     state.players.p1.hand = [`specialty.sirius.${level}` as CardId];
     const declared = declare(state, "unit_p2_skeletons", "unit_p1_marksmen");
-    const offer = reactionOffer(declared, "p1", `specialty.sirius.${level}`, maidId);
+    const offer = reactionOffer(
+      declared,
+      "p1",
+      `specialty.sirius.${level}`,
+      maidId,
+    );
     return { declared, offer };
   }
 
@@ -680,14 +879,22 @@ describe("Sirius — Royal Maid's Cover (a chosen ally takes the declared attack
     const { declared, offer } = cover("maid-i", 1);
     expect(offer, "the adjacent maid is offered").toBeTruthy();
     const settled = settle(applyOk(declared, offer!.action));
-    expect(unitAt(settled, "unit_p1_marksmen").damage, "the original target is untouched").toBe(0);
-    expect(unitAt(settled, "unit_p1_griffins").damage, "attack 6 − (defense 0 + 1)").toBe(5);
+    expect(
+      unitAt(settled, "unit_p1_marksmen").damage,
+      "the original target is untouched",
+    ).toBe(0);
+    expect(
+      unitAt(settled, "unit_p1_griffins").damage,
+      "attack 6 − (defense 0 + 1)",
+    ).toBe(5);
   });
 
   it("CONTROL: with no cover played the mistress takes the full blow", () => {
     const state = freshCombat("maid-control");
     layout(state);
-    const settled = settle(declare(state, "unit_p2_skeletons", "unit_p1_marksmen"));
+    const settled = settle(
+      declare(state, "unit_p2_skeletons", "unit_p1_marksmen"),
+    );
     expect(unitAt(settled, "unit_p1_marksmen").damage).toBe(6);
     expect(unitAt(settled, "unit_p1_griffins").damage).toBe(0);
   });
@@ -695,33 +902,50 @@ describe("Sirius — Royal Maid's Cover (a chosen ally takes the declared attack
   it("IV shields 2 (I is the control) and VI answers with 1 damage to the attacker", () => {
     const four = cover("maid-iv", 4);
     const settledFour = settle(applyOk(four.declared, four.offer!.action));
-    expect(unitAt(settledFour, "unit_p1_griffins").damage, "attack 6 − (0 + 2)").toBe(4);
-    expect(unitAt(settledFour, "unit_p2_skeletons").damage, "IV never counter-fires").toBe(0);
+    expect(
+      unitAt(settledFour, "unit_p1_griffins").damage,
+      "attack 6 − (0 + 2)",
+    ).toBe(4);
+    expect(
+      unitAt(settledFour, "unit_p2_skeletons").damage,
+      "IV counters for 1",
+    ).toBe(1);
 
     const six = cover("maid-vi", 6);
     const settledSix = settle(applyOk(six.declared, six.offer!.action));
-    expect(unitAt(settledSix, "unit_p1_griffins").damage, "VI shields 2 as well").toBe(4);
-    expect(unitAt(settledSix, "unit_p2_skeletons").damage, "…and burns the attacker for 1").toBe(1);
+    expect(
+      unitAt(settledSix, "unit_p1_griffins").damage,
+      "VI grants 3 Defense",
+    ).toBe(3);
+    expect(
+      unitAt(settledSix, "unit_p2_skeletons").damage,
+      "…and burns the attacker for 1",
+    ).toBe(1);
     expect(
       damageEventsFrom(settledSix, "specialty.sirius.6").length,
-      "the counter-fire is a real card-sourced damage event"
+      "the counter-fire is a real card-sourced damage event",
     ).toBe(1);
   });
 
   it("the player CHOOSES which ally covers — both adjacent maids are offered, and only they", () => {
     const { declared } = cover("maid-choice", 4);
     const offers = getLegalActions(declared, "p1").filter(
-      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "specialty.sirius.4"
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === "specialty.sirius.4",
     );
     const offered = offers
-      .map((legal) => (legal.action.type === "PLAY_REACTION" && legal.action.target?.type === "unit"
-        ? legal.action.target.unitId
-        : undefined))
+      .map((legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.target?.type === "unit"
+          ? legal.action.target.unitId
+          : undefined,
+      )
       .filter(Boolean)
       .sort();
     expect(offered, "exactly the two allies adjacent to the target").toEqual([
       "unit_p1_crusaders",
-      "unit_p1_griffins"
+      "unit_p1_griffins",
     ]);
 
     // Taking the OTHER one really moves the blow there.
@@ -743,11 +967,14 @@ describe("Sirius — Royal Maid's Cover (a chosen ally takes the declared attack
       playerId: "p1",
       cardId: "specialty.sirius.4" as CardId,
       mode: "basic",
-      target: { type: "unit", unitId: "unit_p1_crusaders" as UnitId }
+      target: { type: "unit", unitId: "unit_p1_crusaders" as UnitId },
     });
     expect(forged.errors.length, "the handler refuses it").toBeGreaterThan(0);
     const settled = settle(declared);
-    expect(unitAt(settled, "unit_p1_marksmen").damage, "the mistress still takes the blow").toBe(6);
+    expect(
+      unitAt(settled, "unit_p1_marksmen").damage,
+      "the mistress still takes the blow",
+    ).toBe(6);
     expect(unitAt(settled, "unit_p1_crusaders").damage).toBe(0);
   });
 
@@ -761,7 +988,10 @@ describe("Sirius — Royal Maid's Cover (a chosen ally takes the declared attack
     const state = freshCombat("maid-retaliation");
     layout(state);
     place(state, "unit_p1_marksmen", { attack: 2 });
-    state.players.p1.hand = ["specialty.sirius.4" as CardId, "ability.armorer" as CardId];
+    state.players.p1.hand = [
+      "specialty.sirius.4" as CardId,
+      "ability.armorer" as CardId,
+    ];
     let current = declare(state, "unit_p1_marksmen", "unit_p2_skeletons");
     let safety = 40;
     let sawRetaliationWindow = false;
@@ -772,22 +1002,31 @@ describe("Sirius — Royal Maid's Cover (a chosen ally takes the declared attack
         sawRetaliationWindow = true;
         expect(
           reactionOffer(current, "p1", "ability.armorer"),
-          "the retaliation window is really open for p1"
+          "the retaliation window is really open for p1",
         ).toBeTruthy();
         expect(
           reactionOffer(current, "p1", "specialty.sirius.4"),
-          "…and the cover is NOT among its offers"
+          "…and the cover is NOT among its offers",
         ).toBeUndefined();
       }
       current = applyOk(current, {
         type: "PASS_REACTION",
-        playerId: current.reactionWindow.priorityPlayerId
+        playerId: current.reactionWindow.priorityPlayerId,
       });
     }
-    expect(sawRetaliationWindow, "the retaliation opened a reaction window").toBe(true);
+    expect(
+      sawRetaliationWindow,
+      "the retaliation opened a reaction window",
+    ).toBe(true);
     const settled = settle(current);
-    expect(unitAt(settled, "unit_p1_marksmen").damage, "the retaliation lands on the attacker").toBe(6);
-    expect(unitAt(settled, "unit_p1_griffins").damage, "and never on the maid").toBe(0);
+    expect(
+      unitAt(settled, "unit_p1_marksmen").damage,
+      "the retaliation lands on the attacker",
+    ).toBe(6);
+    expect(
+      unitAt(settled, "unit_p1_griffins").damage,
+      "and never on the maid",
+    ).toBe(0);
   });
 });
 
@@ -801,14 +1040,24 @@ describe("Azur Lane hero specialties — registration", () => {
       bismarck: "ADD_COMBAT_STAT",
       nagato: "BOMBARDMENT_ATTACK",
       akashi: "BANK_REINFORCEMENT_DISCOUNT",
-      sirius: "INTERCEPT_DECLARED_ATTACK"
+      sirius: "INTERCEPT_DECLARED_ATTACK",
     };
     for (const [hero, kind] of Object.entries(kinds)) {
       for (const level of [1, 4, 6]) {
         const card = cardLibrary[`specialty.${hero}.${level}` as CardId];
         expect(card, `${hero} ${level}`).toBeTruthy();
-        expect(card.implementationStatus, `${hero} ${level}`).toBe("implemented");
-        expect(card.effect.type, `${hero} ${level}`).toBe(kind);
+        expect(card.implementationStatus, `${hero} ${level}`).toBe(
+          "implemented",
+        );
+        expect(card.effect.type, `${hero} ${level}`).toBe(
+          hero === "bismarck" && level === 1
+            ? "CHOOSE_ONE"
+            : hero === "akashi"
+              ? level === 6
+                ? "HEAL_DAMAGE"
+                : "CHOOSE_ONE"
+              : kind,
+        );
       }
     }
   });

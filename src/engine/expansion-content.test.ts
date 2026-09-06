@@ -1011,6 +1011,10 @@ describe("rulebook conformance fixes", () => {
   it("sells war machines cheaper at the War Machine Factory", () => {
     const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal", rotateStartTiles: false });
   for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
+    state.adventure!.houseRules = {
+      ...(state.adventure!.houseRules ?? {}),
+      "binh-ballista-cost-3-6": false
+    };
     const adventure = state.adventure;
     const player = state.players.p1;
     const hero = Object.values(state.heroes).find((candidate) => candidate.controllerId === "p1");

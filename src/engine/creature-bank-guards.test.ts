@@ -148,6 +148,10 @@ describe("Random Town", () => {
   it("is defended by the printed card: 1 bronze Pack + 2 silver Packs + 2 gold Fews", () => {
     // Default players are Castle and Necropolis, so the town faction differs.
     const state = createAdventureGameState({ seed: "town", difficulty: "normal", rollFirstPlayer: false });
+    state.adventure!.houseRules = {
+      ...(state.adventure!.houseRules ?? {}),
+      "random-town-veteran-defense": false
+    };
     const field = fieldWith("random_town");
 
     const draws = drawGuardArmy(state, field, 7);

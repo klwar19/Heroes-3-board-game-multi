@@ -327,7 +327,18 @@ export type HouseRuleId =
   // The covered ids are the single registry `COMMUNITY_BALANCE_CARD_IDS`
   // (`src/data/cards/community-balance-art.ts`). With BOTH balance rules on the
   // COMMUNITY reprint/face WINS for a card both packs cover.
-  | "community-card-balance";
+  | "community-card-balance"
+  // BINH Random Town defense: keep the five-card printed army, but upgrade one
+  // of its two gold Fews to a Pack. When Unit Experience is active every guard
+  // starts at rank 1 (or the higher Neutral Rank-Up round rank), and the whole
+  // defense is formed and driven by the coordinated Neutral AI.
+  | "random-town-veteran-defense"
+  // BINH level-VII reward: a fought level-VII win advances the main Hero by
+  // exactly one level instead of filling the experience track to level 7.
+  | "level-seven-one-level"
+  // BINH shop-price rule: Ballista costs 3 gold at a War Machine Factory and
+  // 6 gold at a Trading Post. Kept separate from either card-balance pack.
+  | "binh-ballista-cost-3-6";
 
 /** Shared presentation/army theme for the optional wave, boss and dungeon modules. */
 export type PveEncounterTheme = "classic" | "doom" | "random";
@@ -792,6 +803,8 @@ export type EffectDurationDefinition =
   | { type: "permanent" };
 
 export type ActiveEffectModifier =
+  | {
+      type: "DAMAGE_PER_ADJACENT_ENEMY"; amount: number }
   | {
       type: "ATTACK_BONUS";
       amount: number;
@@ -1512,6 +1525,7 @@ export type ActiveEffectModifier =
        */
       type: "DAMAGE_SHIELD";
       amount: number;
+      healAtActivation?: number;
     }
   | {
       /**
@@ -1584,6 +1598,8 @@ export type ActiveEffectDefinition = {
 };
 
 export type EffectDefinition =
+  | { type: "REDIRECT_PENDING_DAMAGE" }
+  | { type: "GAIN_MORALE_AND_GOLD"; morale: number; gold: number }
   | {
       type: "DEAL_DAMAGE";
       amount?: number;
@@ -3384,6 +3400,7 @@ export type EffectDefinition =
        * VI: any face).
        */
       type: "KNOCKBACK_ON_ATTACK";
+      attackBonus?: number;
       name: string;
       minRoll: number;
       blockedDamage: number;
@@ -3398,6 +3415,8 @@ export type EffectDefinition =
        * never touch XP, rewards or the deployment limit.
        */
       type: "SUMMON_CAMPUS_CATS";
+      drawCards?: number;
+      thenDiscard?: number;
       name: string;
       unitDefId: string;
       count: number;
@@ -3405,21 +3424,21 @@ export type EffectDefinition =
   | {
       /**
        * Riki "Little Busters' Bond" (specialty.riki_naoe.*): a chosen friendly
-       * unit gains +1 Attack for EACH of the player's own army units already
-       * removed from this combat (summons, temporary bodies and the commander
-       * are not counted), capped at `maxAttack`, for the rest of the combat.
-       * With `defenseAtFallen` set (level VI) it also gains +1 Defense once that
-       * many have fallen. The count is measured ONCE, at play time, and frozen
-       * into the active effect.
+       * unit gains base Attack plus a capped bonus for fallen army units, or
+       * the team gains base Initiative plus the fallen count. Summons, temporary
+       * bodies and commanders do not count. Each new army loss updates the
+       * bonus and refreshes its expiry through the following combat round.
        */
       type: "FALLEN_ALLY_RESOLVE";
+      baseAttack?: number;
+      teamInitiative?: number;
       name: string;
       maxAttack: number;
       defenseAtFallen?: number;
     }
   | {
       /**
-       * Yuiko "Blade Dance" (specialty.yuiko_kurugaya.*): played during your own
+       * Legacy pre-rebalance Yuiko "Blade Dance": played during your own
        * GROUND unit's activation before it attacks. For THIS activation only,
        * after that unit's own declared attack resolves every OTHER enemy adjacent
        * to the ATTACKER takes `amount` effect damage (the struck target is
@@ -3438,11 +3457,13 @@ export type EffectDefinition =
        * Komari "Star Candy" (specialty.komari_kamikita.*): give a friendly unit a
        * Candy shield — the next damage it takes (attack, Spell or effect) is
        * reduced by `amount`, then the shield is spent even if only part of it was
-       * used. An unspent shield lasts the whole combat. `alsoMostWounded` (level
-       * VI) hands a second shield to the owner's most wounded OTHER living unit,
-       * deterministically, so one play covers two units with no extra window.
+       * used. An unspent shield lasts the whole combat and can heal at activation
+       * start. VI gives a second shield to one random other living ally.
+       * `alsoMostWounded` remains available for older saved card definitions.
        */
       type: "CREATE_DAMAGE_SHIELD";
+      alsoRandomAlly?: boolean;
+      healAtActivation?: number;
       name: string;
       amount: number;
       alsoMostWounded?: boolean;
@@ -4642,6 +4663,7 @@ type GameActionPayload =
     }
   | {
       type: "PLAY_REACTION";
+      protectedUnitId?: UnitId;
       playerId: PlayerId;
       cardId: CardId;
       mode?: CardPlayMode;
@@ -8320,6 +8342,11 @@ export type ResolutionStackItem = {
     rolledCandidate?: AttackRollCandidate;
     /** Set once the lethal-save window has been offered for this attack. */
     lethalSaveOffered?: boolean;
+    damageTransfers?: Record<
+      UnitId,
+      { targetUnitId: UnitId; cardId: CardId; playerId: PlayerId }
+    >;
+
     /** MGQ Hunter: prevents duplicate low-roll pierce announcements on lethal-save resume. */
     mgqHunterPierceAnnounced?: boolean;
     /**
@@ -8522,6 +8549,13 @@ export type ActiveEffectState = ActiveEffectDefinition & {
   target?: TargetRef;
   startedRound: number;
   startedCombatRound?: number;
+  /** Riki I/IV: refresh the entire bonus through the following round on an army loss. */
+  fallenBond?: {
+    base: number;
+    cap?: number;
+    stat: "attack" | "initiative";
+    fallen: number;
+  };
   expiresAtCombatRoundEnd?: number;
   expiresAtTurnEndPlayerId?: PlayerId;
   /** Game round at whose end the effect expires ("current-game-round"). */
@@ -10304,6 +10338,12 @@ export type CombatScriptStatModifier = {
 };
 
 export type CombatState = {
+  redirectedDamageRemovals?: UnitId[];
+  pendingCardDamageTransfers?: {
+    cardId: CardId;
+    transfers: NonNullable<ResolutionStackItem["modifiers"]["damageTransfers"]>;
+  };
+
   id: string;
   round: number;
   attackerPlayerId: PlayerId;

@@ -1572,15 +1572,19 @@ by 3 gold (to a minimum of 0)." The engine instead queued a round-start `CHOOSE_
 ("reinforce X / Skip") that had to be answered before anything else and was gone once
 skipped. FIX: `bankFlatGoldReinforce` (adventure.ts, replacing `queueFlatGoldReinforce`)
 BANKS a `ReinforcementDiscountBank` — the same non-blocking Necromancy / Hill-Fort
-machinery — so the discount is an ordinary optional `REDEEM_REINFORCEMENT_DISCOUNT`
-offered at ANY point of the owner's own turn that round, opening no window and raising no
-barrier. Two new bank fields (`requiresReinforceUnlock`, `expiresAfterRound`) carry the
+machinery — so the discount is available at ANY point of the owner's own turn that round,
+opening no window and raising no barrier. Both the dedicated
+`REDEEM_REINFORCEMENT_DISCOUNT` action and the ordinary `POPULATION_ACTION` Reinforce
+price seam consume the same bank; this prevents a normal town Reinforce click from showing
+and charging the undiscounted price. Two bank fields (`requiresReinforceUnlock`,
+`expiresAfterRound`) carry the
 rest: the reinforce arm is refused in `reinforcementDiscountCostFor` without a Citadel
 (`UNLOCK_REINFORCE`, read LIVE so a Citadel built mid-round switches it on), and the bank
 is ROUND-scoped — it is EXEMPT from the two expiry seams every other bank takes (the hero
 step in `adventure-reducer.ts` and the `immediate-reinforcement-prompts` turn-start wipe),
 swept instead at the next `startAdventureRound`. Pinned in `cove-content.test.ts`
-("Cove Pub — Astrologers'-round reinforce discount", 9 cases, each with a CONTROL: the
+("Cove Pub — Astrologers'-round reinforce discount", including the normal population
+Reinforce path and controls where the
 Hill-Fort bank still dies on the SAME hero step, no Citadel ⇒ no offer + a forged redeem
 refused, no Pub / Resource round ⇒ no bank, expiry at the next round start).
 LIMITS: the discount lands on whichever eligible unit you redeem it on FIRST (one per
@@ -1594,6 +1598,16 @@ Rampart **Saplings** half-gold reinforce is UNCHANGED (still a round-start promp
 ruling named the Pub only; its printed wording was not re-checked). New serialized fields on
 `ReinforcementDiscountBank`, so a stale edge computes a Pub bank differently (it would
 wipe it on the first hero step and offer it without a Citadel) — protocol bump owed.
+
+## BINH Ballista shop price (2026-09-06)
+
+House rule `binh-ballista-cost-3-6` (Combat, default ON in BINH and OFF in Legacy)
+prices the Ballista at 3 gold in a War Machine Factory / Blacksmith and 6 gold at a
+Trading Post. `warMachinesForSale` applies the override after selecting the active card
+definition, so its displayed and charged price agree; switching the rule off restores the
+active printed or balance-pack price. Ballista round-start targeting also has a regression
+case proving every enemy tied for lowest effective Initiative is offered as a clickable
+target and the owner's selection resolves the shot.
 
 ## Mine-guard reinforcement (OPTIONAL "Global" house rule, default OFF) — what runs vs. limits
 
@@ -2187,13 +2201,23 @@ two "expansion push" pins were NARROWED (Ⅱ–Ⅲ route spent) with the reason 
 
 ## Random Town defenders match the printed card (2026-08-04)
 
-The Ⅶ Random Town's default defense is the printed card: ONE BRONZE Pack (a player
+The Ⅶ Random Town's rule-off defense is the printed card: ONE BRONZE Pack (a player
 CHOICE) + TWO silver Packs + TWO gold FEWS from a faction not in play
-(`randomTownGuardDraws`, seeded); difficulty Ⅶ whatever a designer stamps, with Walls
-+ a Gate and NO Arrow Tower (`random-town-defenders.test.ts`).
+(`randomTownGuardDraws`, seeded); difficulty Ⅶ whatever a designer stamps, with Walls,
+a Gate, and the enemy defender's Arrow Tower (`random-town-defenders.test.ts`).
 LIMIT: the bronze pick opens a window only for a HUMAN defense controller — the AI and
 every single-player table take `randomTownDefaultBronzePackId` (highest printed Pack
 cost); the printed multiplayer faction-PICK roll is NOT modeled.
+
+Two BINH-default / Legacy-off rules were added on 2026-09-06. The
+`random-town-veteran-defense` rule keeps FIVE bodies but upgrades ONE of the existing
+gold Fews to Pack (1 bronze Pack + 2 silver Packs + 1 gold Pack + 1 gold Few). With Unit
+Experience active, every guard starts at rank 1; Neutral Rank-Up takes the max of that
+floor and its current round rank. It also forces the whole Random Town defense onto the
+coordinated AI path (no manual/PvP controller, no player target/destination decisions):
+highest-value guard protected in central back, front screen, threat/wound focus fire.
+`level-seven-one-level` changes a fought difficulty-Ⅶ win from filling the Hero to level
+7 into exactly ONE level (the next two-XP threshold); rule OFF preserves the old fill.
 
 ### The defending faction is PUBLIC at tile reveal (2026-08-22, protocol-relevant)
 
@@ -2213,7 +2237,7 @@ seeded + not-in-play + fixed + surviving `redactStateForSeat`, a face-down CONTR
 draw following a re-stamped field, and the legacy fallback) and
 `src/components/adventure/random-town-faction-board.test.tsx` (DOM contract + a
 no-faction CONTROL).
-LIMITS: the GATE position and the defender layout are UNCHANGED — the siege board is
+LIMITS: the GATE position is unchanged — the siege board is
 still minted when the fight starts (`startNeutralEncounter`), i.e. it is visible while
 you deploy, never from the map; a LEGACY snapshot's unstamped Random Town is simply
 stamped on the next action (and a fight before any sweep falls back to the old
@@ -4646,77 +4670,36 @@ watcher's frame is the ordinary `getPlayerView` / `redactStateForSeat` output, s
 another player's hand, deck and an open Search's revealed cards stay masked.
 `npm run deploy:partykit` is OWED (a v103 edge rejects the watch selection).
 
-## Azur Lane / Little Busters hero redesign · Kyousuke AP commander · Blue Archive voice pools (2026-09-06, protocol v107)
+## Azur Lane / Little Busters rebalance (2026-09-06, protocol v108)
 
-Four parallel lanes (three C: worktrees + a media lane), each claim pinned by a real-path
-OUTCOME test with a CONTROL and an applied-and-reverted mutation recorded in the test
-header. Machine truth: `src/engine/azur-lane-hero-specialties.test.ts` (21 specs),
-`src/engine/little-busters-specialties.test.ts` (34 specs, 26-entry mutation ledger + an
-explicit NOT-REPRODUCIBLE section), `src/engine/kyousuke-ap-commander.test.ts` (26 specs),
-`src/data/anime/azur-lane-content.test.ts`, `src/data/unit-sounds.test.ts`,
-`src/data/sound-manifest.test.ts`. `npm run deploy:partykit` is OWED (v107).
+Current rules are in `src/data/cards/adventure.ts`; outcome tests are in
+`src/engine/anime-rebalance.test.ts`, `little-busters-specialties.test.ts`, and
+`azur-lane-hero-specialties.test.ts`. The earlier v107 mutation ledger described
+superseded rules and is no longer evidence for these changes.
 
-Leading with the limits / readings:
-- **jsdom cannot compute CSS**: the AP panel, the inspect-panel AP chip and every icon are
-  DOM/manifest pins only; there is NO e2e spec for any of it.
-- **AI**: a computer seat completes a combat with Kyousuke without stalling and spends AP,
-  but only the target-less Strategy Meeting is strand-aware; the targeted commands keep the
-  generic 560+/580 scores (so Ibuki's numbers did not move) — the AI can still buy a command
-  instead of walking into the fight. The AI never plans around any of the nine new hero sets
-  (it prices them with its ordinary stat/heal policies) and never plans Cat Corps placement.
-- **Riki's Bond is a STATE-gated play** — withheld until one of the owner's ARMY units has
-  fallen (a +0 play is a trap); the generic own-activation sweep in
-  `ash-bloodlust-specialty.test.ts` therefore excludes `FALLEN_ALLY_RESOLVE` by effect type.
-- **Nagato's Big Seven flip** makes a melee unit's attack RANGED for the activation: it takes
-  the printed ranged penalties (adjacent target / behind a wall) unless the unit has an arm
-  ignoring them, and it is never offered to a ranged unit or after the unit attacked.
-- **Sirius' interceptor** must be a living friendly unit adjacent to the ORIGINAL target and
-  the redirected attack must stay legal (the Masato-intercept constraints); the choice is
-  made at play time (no new pendingChoice — nothing new for `computerDecisionOwner`).
-- **Akashi's Repair Dock bank** follows the Hill-Fort/Legion bank rules exactly: a hero step
-  wipes an unredeemed bank; under `immediate-reinforcement-prompts` it behaves as those do.
-- **Sasami's Home Run** pushes only an ORTHOGONALLY adjacent survivor along the attacker→
-  target line; a blocked/off-board/unrelocatable (Arrow Tower, fortification, anything
-  Teleport refuses) target takes the damage instead; never on a Retaliation Attack.
-- **Yuiko's Blade Dance** rides the shared `AFTER_ATTACK_SPLASH` seam (Chakra Burst): its
-  retaliation exclusion is structural, not a single-line gate.
-- **Komari's Star Candy** is consumed by the FIRST hit even if only partly used; the
-  attack-path consume is asserted on the number `ATTACK_ROLLED` reports (a damage delta
-  cannot see it because the event seam heals the difference back).
-- **Cat Corps summons** land only on an empty space adjacent to one of your units (one
-  shared read `catLandingIsAnchored` backs the offer AND VI's second placement); the two
-  `summonOnly` defs are outside the recruitable roster (`towns.test.ts` still pins 7 LB
-  units), vanish at combat end, never join the army, pay no XP/reward.
-- **Nagisa keeps ONE voice variant per action**: bluearchive.wiki no longer hosts her
-  `Nagisa_Battle_*` clips (first-pass files kept, note says so). The Azur Lane wiki
-  (azurlane.koumakan.jp) bot-traps every automated fetch; the two new shipgirls' JP clips
-  came from blhx.fandom.com instead.
-- The three legacy `specialty-{riki-forgetfulness,yuiko-fortune,komari-smiles}.webp` files
-  stay on disk unused (the pointers moved to the new icons).
+- Sasami I/VI: instant +1/+2 Attack, push on +1/any die, blocked push +1 damage;
+  successful push prevents retaliation. IV: combat +1 maximum HP, doubled for Softball Club.
+- Rin I/IV: one Stray/Alley Cat plus draw 1/draw 2 discard 1; instant draw-only mode.
+  VI: instant 3 damage. Summons remain combat-only, unrecruitable and reward-free.
+- Riki I: +1 Attack plus up to one fallen army unit. IV: team +3 Initiative plus
+  every fallen army unit. Both update on new army losses and expire at the end of
+  the following combat round; a new loss refreshes the entire bonus's expiry.
+  VI prevents a pending attack/spell hit before lethal removal and redirects half,
+  rounded up, to another chosen living friend or foe. Tray actions preserve both targets.
+- Yuiko I: instant 1 damage; IV: instant map/combat +1 Morale and 2 gold;
+  VI: combat ground-unit damage bonus, +1 per enemy adjacent to the attacker.
+- Komari: 1/2/2-point next-hit shield, healing 1 at activation start while present;
+  unused shields end with combat. VI shields one random other friendly unit too.
+- Bismarck I: instant +1 Attack or Defense, doubled for Prinz Eugen. IV/VI and
+  Nagato unchanged. Akashi I/IV: one recruit/reinforce discount of 3/4 gold OR draw 1;
+  VI instant heal 2 and draw 1 (draw-only allowed). Sirius Defense 1/2/3, counterdamage 1.
+- Ayanami Pack takes 2 less retaliation damage. Akagi Few/Pack HP 7/9, Defense 1,
+  Pack cost 22 gold +3 valuables. Full Barrage uses a generated 16-frame splash sheet.
+- The four skin-reference illustrations and their prompts are documented in
+  `scripts/anime-art/azur-lane-rebalance-art.json`. Ayanami Pack's revised master uses
+  the user-requested larger sword. Build with `scripts/build-azur-lane-unit-cards.mjs`.
 
-What runs:
-- **Azur Lane heroes** (Enterprise's Lucky E unchanged): Bismarck **Concentrated Fire** —
-  instant in your unit's attack window, +1 Attack per OTHER living friendly unit adjacent to
-  the TARGET, cap +1/+2/+3, VI also suppresses that target's Retaliation; Nagato **Big Seven
-  Bombardment** — combat play on your ground unit's activation: its attack is RANGED up to 2
-  spaces (I) / anywhere (IV, VI), VI +1 Attack; Akashi **Repair Dock** — map play banking a
-  −2/−3/−4 gold reinforcement discount through the shared bank machinery, VI draws 1;
-  Sirius **Royal Maid's Cover** — instant on an enemy attack: a chosen adjacent ally takes
-  the blow with +1/+2/+2 Defense, VI answers with 1 effect damage to the attacker. Engine
-  in `src/engine/azur-lane-specialties.ts` + the folds in reducer/legal-actions.
-- **Two new shipgirls** (roster 7 → 9 = 3/3/3, key order = recruit order):
-  `azur_lane.ayanami` (silver ground, Few 3/1/3/10 for 7 gold `commander-charge`; Pack
-  4/1/4/11 for 10 gold + `ignores-retaliation`) and `azur_lane.akagi` (gold ranged, Few
-  5/2/5/6 for 15+1 `kansen-full-barrage`; Pack 6/2/6/7 for 22+2 + `wog-fire-shield-1`).
-  Codex-painted masters → `build-azur-lane-unit-cards.mjs` cards, generator-served rank
-  ladders with explicit emblem entries, JP voices, cannon/ballista attack flourishes.
-- **Little Busters heroes** (Kud unchanged): Sasami **Home Run** (knockback after your
-  unit's attack; die gate +1 / 0-or-+1 / any; blocked = 1/1/2 damage), Rin **Cat Corps**
-  (summon 1 Stray Cat 1/0/1 / 1 Alley Cat 1/0/2 + ignores-retaliation / 2 Alley Cats), Riki
-  **Little Busters' Bond** (+1 Attack per fallen own army unit, cap 1/2/3, VI +1 Defense at
-  ≥2, frozen at play), Yuiko **Blade Dance** (1/1/2 effect damage to every OTHER enemy
-  adjacent to the attacker after its attack; I needs a 0/+1), Komari **Star Candy** (one-shot
-  `DAMAGE_SHIELD` 1/2, VI two units). Engine in `src/engine/little-busters-specialties.ts`.
+Unchanged commander and voice content from v107:
 - **AP commanders generalised** (`COMMANDER_AP_SKILLS`, `commanderUsesActionPoints`,
   `commanderActionPoints` reading legacy `ibukiActionPoints`, `gainCommanderActionPoint`,
   `commanderCommandUsedThisActivation`; Ibuki byte-identical). **Kyousuke** starts every

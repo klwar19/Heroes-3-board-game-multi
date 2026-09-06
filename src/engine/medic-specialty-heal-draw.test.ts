@@ -891,6 +891,7 @@ describe("healDrawOnlyRider — the map draw-only gate", () => {
       }
     }
     expect(qualifying.sort()).toEqual([
+      "specialty.akashi.6",
       "specialty.aoko.1",
       "specialty.aoko.4",
       "specialty.aoko.6",
@@ -905,6 +906,8 @@ describe("healDrawOnlyRider — the map draw-only gate", () => {
       "specialty.molian.1",
       "specialty.molian.4",
       "specialty.molian.6",
+      "specialty.rin_natsume.1",
+      "specialty.rin_natsume.4",
       "specialty.rion.1",
       "specialty.rion.4",
       "specialty.rion.6",

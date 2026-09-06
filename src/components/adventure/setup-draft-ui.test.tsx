@@ -189,7 +189,7 @@ describe("SetupLobbyScreen — TYPE 1 draft", () => {
     expect(screen.queryByRole("button", { name: /^Catherine$/ })).toBeNull();
   });
 
-  it("keeps all three dealt candidates enabled after selecting one so the pick can change", () => {
+  it("keeps every surviving hero enabled after selecting one so the pick can change", () => {
     let state = build("ui-draft-pick", [
       { type: "SET_DRAFT_FORMAT", playerId: "p1", format: "draft" },
       { type: "CHOOSE_TOWN", playerId: "p1", factionId: "castle" },
@@ -199,7 +199,9 @@ describe("SetupLobbyScreen — TYPE 1 draft", () => {
       { type: "BAN_HERO", playerId: "p1", heroDefId: "tamika" },
       { type: "BAN_HERO", playerId: "p2", heroDefId: "rion" }
     ]);
-    const candidates = state.setupLobby!.draft!.seatRolls!.p1!.heroOptions!;
+    const candidates = coreFactionDefinitions.castle.heroes.filter(
+      (heroDefId) => !state.setupLobby!.draft!.bannedHeroDefIds.includes(heroDefId)
+    );
     state = applyAction(state, {
       type: "CHOOSE_FACTION",
       playerId: "p1",
@@ -210,7 +212,7 @@ describe("SetupLobbyScreen — TYPE 1 draft", () => {
     render(<SetupLobbyScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
     openHeroes();
 
-    expect(candidates).toHaveLength(3);
+    expect(candidates.length).toBeGreaterThan(1);
     // The "Who starts where" matrix (2026-09-04) also renders a seat chip named
     // "<Hero> of <Town>" once a hero is picked, so scope every hero query to the
     // draft pick grid's own `.lobbyHero` cards.

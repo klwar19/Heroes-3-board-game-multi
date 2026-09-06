@@ -12,6 +12,8 @@ import type {
 import { CAST_A_SPELL_CARD_ID } from "./polish-spell-book";
 
 export const implementedCardEffectTypes = [
+  "REDIRECT_PENDING_DAMAGE",
+  "GAIN_MORALE_AND_GOLD",
   "DEAL_DAMAGE",
   "HEAL_DAMAGE",
   "HEAL_DAMAGE_AND_REMOVE_EFFECTS",
@@ -179,7 +181,8 @@ export function getCardOptions(card: CardDefinition): CardOptionDefinition[] {
  */
 export function cancelSpellAllowsSchoolAndLevel(
   effect: Extract<EffectDefinition, { type: "CANCEL_SPELL" }>,
-  spell: { schools: readonly SpellSchool[]; level: "basic" | "expert" | undefined },
+  spell: { schools: readonly SpellSchool[]; level: "basic" | "expert" | undefined;
+  },
   mode: CardPlayMode
 ): boolean {
   // School gate: the cancelled spell must belong to one of the named Schools. A
@@ -200,7 +203,8 @@ export function cancelSpellAllowsSchoolAndLevel(
     return true;
   }
   if (effect.maxSpellLevel) {
-    const rank = (level: "basic" | "expert" | undefined) => (level === "expert" ? 1 : 0);
+    const rank = (level: "basic" | "expert" | undefined) =>
+      level === "expert" ? 1 : 0;
     if (rank(spell.level) > rank(effect.maxSpellLevel)) {
       return false;
     }
@@ -321,8 +325,8 @@ export function cardCanFuelSchoollessPower(card: CardDefinition | undefined): bo
  * Used to let these otherwise map-only cards be spent inside a neutral combat's
  * continue-or-retreat window to buy another combat round.
  */
-export function heroMovementGrantOption(card: CardDefinition | undefined):
-  | { optionIndex?: number; mode: CardPlayMode; option?: CardOptionDefinition }
+export function heroMovementGrantOption(card: CardDefinition | undefined): { optionIndex?: number; mode: CardPlayMode; option?: CardOptionDefinition;
+}
   | null {
   if (!card) {
     return null;
@@ -857,7 +861,8 @@ function ladderFromTable<T>(
     .map((entry) => ({ power: entry.power, text: format(entry.value, entry.power) }));
 }
 
-const signed = (value: number): string => (value >= 0 ? `+${value}` : `${value}`);
+const signed = (value: number): string =>
+  value >= 0 ? `+${value}` : `${value}`;
 
 /** Plain-words duration for a power-scaled duration rung (Mirth, Force Field). */
 function durationLadderText(duration: EffectDurationDefinition): string {
@@ -895,18 +900,35 @@ function durationLadderText(duration: EffectDurationDefinition): string {
  * or an effect kind that carries no power ladder — so a caller never invents
  * rows for a flat spell.
  */
-function effectLadderRows(effect: Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>): SpellLadderRow[] {
+function effectLadderRows(
+  effect: Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>,
+): SpellLadderRow[] {
   switch (effect.type) {
     case "DEAL_DAMAGE":
-      return ladderFromTable(effect.amountByPower, (amount) => `${amount} ${effect.damageKind} damage`);
+      return ladderFromTable(
+        effect.amountByPower,
+        (amount) => `${amount} ${effect.damageKind} damage`,
+      );
     case "HEAL_DAMAGE":
-      return ladderFromTable(effect.amountByPower, (amount) => `heal ${amount}`);
+      return ladderFromTable(
+        effect.amountByPower,
+        (amount) => `heal ${amount}`,
+      );
     case "HEAL_DAMAGE_AND_REMOVE_EFFECTS":
-      return ladderFromTable(effect.amountByPower, (amount) => `heal ${amount} + remove effects`);
+      return ladderFromTable(
+        effect.amountByPower,
+        (amount) => `heal ${amount} + remove effects`,
+      );
     case "ADD_COMBAT_STAT":
-      return ladderFromTable(effect.amountByPower, (amount) => `${signed(amount)} ${effect.stat}`);
+      return ladderFromTable(
+        effect.amountByPower,
+        (amount) => `${signed(amount)} ${effect.stat}`,
+      );
     case "CREATE_INITIATIVE_BUFF":
-      return ladderFromTable(effect.amountByPower, (amount) => `${signed(amount)} initiative`);
+      return ladderFromTable(
+        effect.amountByPower,
+        (amount) => `${signed(amount)} initiative`,
+      );
     case "CREATE_ATTACK_BUFF":
       return ladderFromTable(effect.amountByPower, (amount, power) => {
         // Balance-Pack Bless: each rung also skips the Attack die roll, and at
@@ -917,9 +939,15 @@ function effectLadderRows(effect: Exclude<EffectDefinition, { type: "CHOOSE_ONE"
         if (effect.ignoreAttackDie) {
           parts.push("ignore the Attack die");
         }
-        const armyWide = effect.allGroundFlyingAtPower !== undefined && power >= effect.allGroundFlyingAtPower;
+        const armyWide =
+          effect.allGroundFlyingAtPower !== undefined &&
+          power >= effect.allGroundFlyingAtPower;
         if (amount > 0) {
-          parts.push(armyWide ? `${signed(amount)} attack to all your ground/flying units` : `${signed(amount)} attack`);
+          parts.push(
+            armyWide
+              ? `${signed(amount)} attack to all your ground/flying units`
+              : `${signed(amount)} attack`,
+          );
         } else if (parts.length === 0) {
           parts.push(`${signed(amount)} attack`);
         }
@@ -932,27 +960,53 @@ function effectLadderRows(effect: Exclude<EffectDefinition, { type: "CHOOSE_ONE"
           : effect.vsAttackerType === "ground-or-flying"
             ? " vs melee"
             : "";
-      return ladderFromTable(effect.amountByPower, (amount) => `${signed(amount)} defense${vs}`);
+      return ladderFromTable(
+        effect.amountByPower,
+        (amount) => `${signed(amount)} defense${vs}`,
+      );
     }
     case "CREATE_FIRE_SHIELD":
-      return ladderFromTable(effect.amountByPower, (amount) => `${amount} damage to a melee attacker`);
+      return ladderFromTable(
+        effect.amountByPower,
+        (amount) => `${amount} damage to a melee attacker`,
+      );
     case "IGNORE_ATTACK_DIE":
       return ladderFromTable(effect.attackBonusByPower, (bonus) =>
-        bonus > 0 ? `ignore the Attack die, +${bonus} attack` : "ignore the Attack die"
+        bonus > 0
+          ? `ignore the Attack die, +${bonus} attack`
+          : "ignore the Attack die",
       );
     case "AREA_DAMAGE_ADJACENT":
-      return ladderFromTable(effect.amountByPower, (amount) => `${amount} spell damage (target + 1 adjacent)`);
+      return ladderFromTable(
+        effect.amountByPower,
+        (amount) => `${amount} spell damage (target + 1 adjacent)`,
+      );
     case "AREA_DAMAGE_PICK_ADJACENT":
-      return ladderFromTable(effect.amountByPower, (amount) => `${amount} spell damage`);
+      return ladderFromTable(
+        effect.amountByPower,
+        (amount) => `${amount} spell damage`,
+      );
     case "CHAIN_LIGHTNING":
-      return ladderFromTable(effect.damagesByPower, (damages) => `${damages.join("/")} damage`);
+      return ladderFromTable(
+        effect.damagesByPower,
+        (damages) => `${damages.join("/")} damage`,
+      );
     case "INFERNO":
     case "SLAYER_ATTACK":
-      return ladderFromTable(effect.rollsByPower, (rolls) => `roll ${rolls} Attack ${rolls === 1 ? "die" : "dice"}`);
+      return ladderFromTable(
+        effect.rollsByPower,
+        (rolls) => `roll ${rolls} Attack ${rolls === 1 ? "die" : "dice"}`,
+      );
     case "CREATE_SPELL_IMMUNITY":
-      return ladderFromTable(effect.gradeByPower, (grade) => `immune up to ${grade}`);
+      return ladderFromTable(
+        effect.gradeByPower,
+        (grade) => `immune up to ${grade}`,
+      );
     case "IGNORE_DEFENSE":
-      return ladderFromTable(effect.gradeByPower, (grade) => `pierce up to ${grade}`);
+      return ladderFromTable(
+        effect.gradeByPower,
+        (grade) => `pierce up to ${grade}`,
+      );
     case "FORGETFULNESS":
       // A reprint whose ladder is about ACTIVATIONS (Community: 0/2/4 → its next
       // 1/2/3 activations) shows THAT ladder — its `gradeByPower` is a single
@@ -961,7 +1015,8 @@ function effectLadderRows(effect: Exclude<EffectDefinition, { type: "CHOOSE_ONE"
       return effect.activationsByPower
         ? ladderFromTable(
             effect.activationsByPower,
-            (activations) => `its next ${activations} activation${activations === 1 ? "" : "s"}`
+            (activations) =>
+              `its next ${activations} activation${activations === 1 ? "" : "s"}`,
           )
         : ladderFromTable(effect.gradeByPower, (grade) => `up to ${grade}`);
     case "CLEAR_RETALIATION":
@@ -975,22 +1030,40 @@ function effectLadderRows(effect: Exclude<EffectDefinition, { type: "CHOOSE_ONE"
       return ladderFromTable(effect.gradeByPower, (grade) => `up to ${grade}`);
     case "CREATE_ATTACK_DIE_REROLL":
       return effect.durationByPower
-        ? ladderFromTable(effect.durationByPower, (duration) => `reroll — ${durationLadderText(duration)}`)
-        : ladderFromTable(effect.rerollsByPower, (rerolls) => `${rerolls} reroll${rerolls === 1 ? "" : "s"}`);
+        ? ladderFromTable(
+            effect.durationByPower,
+            (duration) => `reroll — ${durationLadderText(duration)}`,
+          )
+        : ladderFromTable(
+            effect.rerollsByPower,
+            (rerolls) => `${rerolls} reroll${rerolls === 1 ? "" : "s"}`,
+          );
     case "PLACE_FORCE_FIELD":
-      return ladderFromTable(effect.durationByPower, (duration) => durationLadderText(duration));
+      return ladderFromTable(effect.durationByPower, (duration) =>
+        durationLadderText(duration),
+      );
     case "PLACE_FIRE_WALL":
-      return ladderFromTable(effect.damageByPower, (amount) => `${amount} damage`);
+      return ladderFromTable(
+        effect.damageByPower,
+        (amount) => `${amount} damage`,
+      );
     case "REMOVE_OBSTACLE":
-      return ladderFromTable(effect.countByPower, (count) => `remove ${count} obstacle${count === 1 ? "" : "s"}`);
+      return ladderFromTable(
+        effect.countByPower,
+        (count) => `remove ${count} obstacle${count === 1 ? "" : "s"}`,
+      );
     case "PLACE_HIDDEN_TOKENS":
       return ladderFromTable(effect.countByPower, (count) => `${count} tokens`);
     case "VISIONS_SCRY":
-      return ladderFromTable(effect.cardsByPower, (count) => `scry ${count} card${count === 1 ? "" : "s"}`);
+      return ladderFromTable(
+        effect.cardsByPower,
+        (count) => `scry ${count} card${count === 1 ? "" : "s"}`,
+      );
     case "CREATE_ENEMY_DIE_SET":
       return ladderFromTable(
         effect.rollsByPower,
-        (rolls) => `choose the die result on ${rolls} enemy attack roll${rolls === 1 ? "" : "s"}`
+        (rolls) =>
+          `choose the die result on ${rolls} enemy attack roll${rolls === 1 ? "" : "s"}`,
       );
     default:
       return [];
@@ -1007,7 +1080,9 @@ function effectLadderRows(effect: Exclude<EffectDefinition, { type: "CHOOSE_ONE"
  * tier (Prayer → "+1 attack / +1 defense / +1 initiative"). A flat spell (no
  * `*ByPower` anywhere) returns [] — the caller renders no ladder section.
  */
-export function spellPowerLadder(card: CardDefinition | undefined): SpellLadderRow[] {
+export function spellPowerLadder(
+  card: CardDefinition | undefined,
+): SpellLadderRow[] {
   if (!card) {
     return [];
   }
@@ -1024,7 +1099,10 @@ export function spellPowerLadder(card: CardDefinition | undefined): SpellLadderR
     }
     return [...textsByPower.keys()]
       .sort((left, right) => left - right)
-      .map((power) => ({ power, text: (textsByPower.get(power) ?? []).join(" / ") }));
+      .map((power) => ({
+        power,
+        text: (textsByPower.get(power) ?? []).join(" / "),
+      }));
   }
   return effectLadderRows(card.effect);
 }
@@ -1038,33 +1116,40 @@ export function spellPowerLadder(card: CardDefinition | undefined): SpellLadderR
  */
 export type SpellTimingKind = "instant" | "ongoing" | "combat" | "map";
 
-const LASTING_DURATION_TYPES: ReadonlySet<EffectDurationDefinition["type"]> = new Set([
-  "current-combat-round",
-  "next-combat-round",
-  "combat-rounds",
-  "current-turn",
-  "current-game-round",
-  "current-activation",
-  "next-activation",
-  "next-round-activation",
-  "combat",
-  "permanent"
-]);
+const LASTING_DURATION_TYPES: ReadonlySet<EffectDurationDefinition["type"]> =
+  new Set([
+    "current-combat-round",
+    "next-combat-round",
+    "combat-rounds",
+    "current-turn",
+    "current-game-round",
+    "current-activation",
+    "next-activation",
+    "next-round-activation",
+    "combat",
+    "permanent",
+  ]);
 
-function durationIsLasting(duration: EffectDurationDefinition | undefined): boolean {
+function durationIsLasting(
+  duration: EffectDurationDefinition | undefined,
+): boolean {
   return Boolean(duration && LASTING_DURATION_TYPES.has(duration.type));
 }
 
 function effectCreatesLastingEffect(effect: EffectDefinition): boolean {
   if (effect.type === "CHOOSE_ONE") {
     return effect.options.some(
-      (option) => "duration" in option.effect && durationIsLasting(option.effect.duration)
+      (option) =>
+        "duration" in option.effect &&
+        durationIsLasting(option.effect.duration),
     );
   }
   return "duration" in effect && durationIsLasting(effect.duration);
 }
 
-export function spellTimingKind(card: CardDefinition | undefined): SpellTimingKind {
+export function spellTimingKind(
+  card: CardDefinition | undefined,
+): SpellTimingKind {
   if (!card) {
     return "combat";
   }
@@ -1086,7 +1171,10 @@ export function spellTimingKind(card: CardDefinition | undefined): SpellTimingKi
  * "N dice" the same way damage spells show "N damage") and the resolve path.
  * Returns null when the card does not roll dice by Power.
  */
-export function getSpellDiceRollCount(card: CardDefinition, power: number): number | null {
+export function getSpellDiceRollCount(
+  card: CardDefinition,
+  power: number,
+): number | null {
   const effect = card.effect;
   if (effect.type !== "INFERNO" && effect.type !== "SLAYER_ATTACK") {
     return null;
@@ -1096,20 +1184,27 @@ export function getSpellDiceRollCount(card: CardDefinition, power: number): numb
     .map(Number)
     .filter((value) => Number.isFinite(value))
     .sort((left, right) => left - right);
-  const matchingPower = powerBreakpoints.filter((value) => value <= power).at(-1) ?? powerBreakpoints[0];
+  const matchingPower =
+    powerBreakpoints.filter((value) => value <= power).at(-1) ??
+    powerBreakpoints[0];
   if (matchingPower === undefined) {
     return null;
   }
   return byPower[matchingPower] ?? null;
 }
 
-export function getEffectAmount(effect: EffectDefinition, mode: CardPlayMode): number {
+export function getEffectAmount(
+  effect: EffectDefinition,
+  mode: CardPlayMode,
+): number {
   // Interference carries an explicit expert amount (the Defense / spell-damage
   // reduction it grants), so it reads it the same way the stat cards do. An
   // artifact without an expert side (Plate of the Dying Light) falls back to the
   // basic amount — its expert play is never offered, so this is only defensive.
   if (effect.type === "INTERFERE_SPELL") {
-    return mode === "expert" ? (effect.expertAmount ?? effect.amount) : effect.amount;
+    return mode === "expert"
+      ? (effect.expertAmount ?? effect.amount)
+      : effect.amount;
   }
 
   if (
@@ -1127,7 +1222,11 @@ export function getEffectAmount(effect: EffectDefinition, mode: CardPlayMode): n
   return effect.amount;
 }
 
-export function getCardEffectAmount(card: CardDefinition, mode: CardPlayMode, optionIndex?: number): number {
+export function getCardEffectAmount(
+  card: CardDefinition,
+  mode: CardPlayMode,
+  optionIndex?: number,
+): number {
   const effect = getEffectiveCardEffect(card, optionIndex);
   return effect ? getEffectAmount(effect, mode) : 0;
 }
@@ -1142,14 +1241,16 @@ export function describePermanentEffect(card: CardDefinition): string {
   const parts: string[] = [];
   if (permanent.schoolBonus) {
     parts.push(
-      `+${permanent.schoolBonus.basicPower} power for ${permanent.schoolBonus.school} spells; expert: discard for +${permanent.schoolBonus.expertPower} power on one cast`
+      `+${permanent.schoolBonus.basicPower} power for ${permanent.schoolBonus.school} spells; expert: discard for +${permanent.schoolBonus.expertPower} power on one cast`,
     );
   }
   if (permanent.combatEffect) {
     for (const modifier of permanent.combatEffect.modifiers) {
       if (modifier.type === "HEAL_ONCE_PER_COMBAT_ROUND") {
         // The expert "heal 3×" lives on the First Aid ability card, not here.
-        parts.push(`heal ${modifier.amount} from one of your units once per combat round`);
+        parts.push(
+          `heal ${modifier.amount} from one of your units once per combat round`,
+        );
       }
       if (modifier.type === "RANGED_IGNORE_ALL_PENALTIES") {
         parts.push("your ranged units ignore the ranged-attack penalties");
@@ -1157,31 +1258,39 @@ export function describePermanentEffect(card: CardDefinition): string {
     }
   }
   if (permanent.rangedInitiativeBonus) {
-    parts.push(`your ranged units get +${permanent.rangedInitiativeBonus} initiative`);
+    parts.push(
+      `your ranged units get +${permanent.rangedInitiativeBonus} initiative`,
+    );
   }
   if (permanent.roundStart?.kind === "damage-lowest-initiative") {
-    parts.push(`each combat round: ${permanent.roundStart.amount} damage to the slowest enemy unit`);
+    parts.push(
+      `each combat round: ${permanent.roundStart.amount} damage to the slowest enemy unit`,
+    );
   }
   if (permanent.roundStart?.kind === "pay-to-splash") {
     parts.push(
-      `each combat round: may pay 1 building material to hit 2 adjacent targets for ${permanent.roundStart.amount} each`
+      `each combat round: may pay 1 building material to hit 2 adjacent targets for ${permanent.roundStart.amount} each`,
     );
   }
   if (permanent.roundStart?.kind === "expert-shot") {
-    parts.push(`each combat round: may spend 1 expert use for ${permanent.roundStart.amount} damage to an enemy unit`);
+    parts.push(
+      `each combat round: may spend 1 expert use for ${permanent.roundStart.amount} damage to an enemy unit`,
+    );
   }
   if (permanent.resourceRoundGain) {
     parts.push(
-      `gain ${permanent.resourceRoundGain.amount} ${permanent.resourceRoundGain.resource} at the start of each Resources round`
+      `gain ${permanent.resourceRoundGain.amount} ${permanent.resourceRoundGain.resource} at the start of each Resources round`,
     );
   }
   if (permanent.incomeTierDieOnEnter) {
     parts.push(
-      "entering play rolls 1 Resource die; while in play, gain that resource's full income tier (+5 gold / +2 materials / +1 valuables) each Resources round"
+      "entering play rolls 1 Resource die; while in play, gain that resource's full income tier (+5 gold / +2 materials / +1 valuables) each Resources round",
     );
   }
   if (permanent.permanentLimitOverride) {
-    parts.push(`you may keep up to ${permanent.permanentLimitOverride} permanent cards in play, including this one`);
+    parts.push(
+      `you may keep up to ${permanent.permanentLimitOverride} permanent cards in play, including this one`,
+    );
   }
   if (permanent.handLimitBonus) {
     parts.push(`your hand limit is increased by ${permanent.handLimitBonus}`);
@@ -1203,7 +1312,9 @@ export function describeCardEffect(card: CardDefinition): string {
   }
 
   if (card.effect.type === "DRAW_CARDS") {
-    const expert = card.effect.expertAmount ? `, expert draw ${card.effect.expertAmount}` : "";
+    const expert = card.effect.expertAmount
+      ? `, expert draw ${card.effect.expertAmount}`
+      : "";
     const thenDiscard = card.effect.thenDiscard
       ? `, then discard ${card.effect.thenDiscard}${card.effect.thenDiscardDrawnOnly ? " of them" : ""}`
       : "";
@@ -1222,7 +1333,9 @@ export function describeCardEffect(card: CardDefinition): string {
   }
 
   if (card.effect.type === "HEAL_DAMAGE") {
-    const draw = card.effect.drawCards ? `, then draw ${card.effect.drawCards}` : "";
+    const draw = card.effect.drawCards
+      ? `, then draw ${card.effect.drawCards}`
+      : "";
     if (card.effect.amountByPower) {
       const breakpoints = Object.entries(card.effect.amountByPower)
         .map(([power, amount]) => `${power}:${amount}`)
@@ -1245,17 +1358,25 @@ export function describeCardEffect(card: CardDefinition): string {
   }
 
   if (card.effect.type === "CANCEL_SPELL") {
-    const expert = card.effect.expertIgnoresMaxPower ? ", expert ends any spell" : "";
+    const expert = card.effect.expertIgnoresMaxPower
+      ? ", expert ends any spell"
+      : "";
     return `End spell up to ${card.effect.maxPower ?? "any"} power${expert}`;
   }
 
   if (card.effect.type === "ADD_COMBAT_STAT") {
-    const doubled = card.effect.doubleForUnitName ? ` (x2 for ${card.effect.doubleForUnitName})` : "";
-    const draw = card.effect.drawCards ? `, then draw ${card.effect.drawCards}` : "";
+    const doubled = card.effect.doubleForUnitName
+      ? ` (x2 for ${card.effect.doubleForUnitName})`
+      : "";
+    const draw = card.effect.drawCards
+      ? `, then draw ${card.effect.drawCards}`
+      : "";
     const penalty = card.effect.selfStatPenalty
       ? `, then -${card.effect.selfStatPenalty.amount} ${card.effect.selfStatPenalty.stat} until the end of the Combat`
       : "";
-    const expert = card.effect.expertAmount ? `, expert +${card.effect.expertAmount}` : "";
+    const expert = card.effect.expertAmount
+      ? `, expert +${card.effect.expertAmount}`
+      : "";
     return `+${card.effect.amount} ${card.effect.stat}${expert}${doubled}${draw}${penalty}`;
   }
 
@@ -1272,24 +1393,33 @@ export function describeCardEffect(card: CardDefinition): string {
   }
 
   if (card.effect.type === "ADD_SPELL_POWER") {
-    const draw = card.effect.drawCards ? `, then draw ${card.effect.drawCards}` : "";
+    const draw = card.effect.drawCards
+      ? `, then draw ${card.effect.drawCards}`
+      : "";
     return `+${card.effect.amount} power, expert +${card.effect.expertAmount ?? card.effect.amount}${draw}`;
   }
 
   if (card.effect.type === "CREATE_ACTIVE_EFFECT") {
-    const expertName = card.effect.expertEffect ? `, expert ${card.effect.expertEffect.name}` : "";
+    const expertName = card.effect.expertEffect
+      ? `, expert ${card.effect.expertEffect.name}`
+      : "";
     return `${card.effect.effect.name}${expertName}`;
   }
 
   if (card.effect.type === "CREATE_ATTACK_BUFF") {
     // Balance-Pack Bless prefixes the Attack-die skip and marks the army-wide
     // top rung so the description conveys what each SP tier actually unlocks.
-    const dieSkip = card.effect.ignoreAttackDie ? "ignore the Attack die; " : "";
+    const dieSkip = card.effect.ignoreAttackDie
+      ? "ignore the Attack die; "
+      : "";
     if (card.effect.amountByPower) {
       const army = card.effect.allGroundFlyingAtPower;
       const breakpoints = Object.entries(card.effect.amountByPower)
         .map(([power, amount]) => {
-          const armyTag = army !== undefined && Number(power) >= army ? " (all ground/flying)" : "";
+          const armyTag =
+            army !== undefined && Number(power) >= army
+              ? " (all ground/flying)"
+              : "";
           return `${power}:+${amount}${armyTag}`;
         })
         .join(", ");
@@ -1325,7 +1455,8 @@ export function describeCardEffect(card: CardDefinition): string {
   }
 
   if (card.effect.type === "CREATE_ATTACK_DIE_REROLL") {
-    const expert = card.effect.expertRerolls ? `, expert ${card.effect.expertRerolls} attack reroll` : "";
+    const expert = card.effect.expertRerolls ? `, expert ${card.effect.expertRerolls} attack reroll`
+      : "";
     if (card.effect.rerollsByPower) {
       const breakpoints = Object.entries(card.effect.rerollsByPower)
         .map(([power, amount]) => `${power}:${amount}`)
@@ -1344,7 +1475,9 @@ export function describeCardEffect(card: CardDefinition): string {
   }
 
   if (card.effect.type === "GAIN_MORALE") {
-    const expert = card.effect.expertDrawCards ? `, expert also draws ${card.effect.expertDrawCards}` : "";
+    const expert = card.effect.expertDrawCards
+      ? `, expert also draws ${card.effect.expertDrawCards}`
+      : "";
     return `gain ${card.effect.amount} morale${expert}`;
   }
 
@@ -1354,12 +1487,16 @@ export function describeCardEffect(card: CardDefinition): string {
         .filter(([, amount]) => amount)
         .map(([resource, amount]) => `${amount} ${resource}`)
         .join(" + ");
-    const expert = card.effect.expertGain ? `, expert ${list(card.effect.expertGain)}` : "";
+    const expert = card.effect.expertGain
+      ? `, expert ${list(card.effect.expertGain)}`
+      : "";
     return `gain ${list(card.effect.gain)}${expert}`;
   }
 
   if (card.effect.type === "GAIN_HERO_MOVEMENT") {
-    const through = card.effect.moveThroughThisTurn ? " and walk through fields this turn" : "";
+    const through = card.effect.moveThroughThisTurn
+      ? " and walk through fields this turn"
+      : "";
     return `hero +${card.effect.amount} movement${through}`;
   }
 
@@ -1464,7 +1601,9 @@ export function describeCardEffect(card: CardDefinition): string {
 
   if (card.effect.type === "CREATE_FIRE_SHIELD") {
     if (card.effect.amount !== undefined) {
-      const doubled = card.effect.doubleForUnitName ? ` (x2 for ${card.effect.doubleForUnitName})` : "";
+      const doubled = card.effect.doubleForUnitName
+        ? ` (x2 for ${card.effect.doubleForUnitName})`
+        : "";
       return `a melee attacker takes ${card.effect.amount} damage after attacking the selected unit${doubled}`;
     }
     return "adjacent attackers take damage this combat round (scales with power)";
@@ -1473,7 +1612,10 @@ export function describeCardEffect(card: CardDefinition): string {
   if (card.effect.type === "CREATE_INITIATIVE_BUFF") {
     if (card.effect.amountByPower) {
       const breakpoints = Object.entries(card.effect.amountByPower)
-        .map(([power, amount]) => `${power}:${Number(amount) >= 0 ? "+" : ""}${amount}`)
+        .map(
+          ([power, amount]) =>
+            `${power}:${Number(amount) >= 0 ? "+" : ""}${amount}`,
+        )
         .join(", ");
       return `${card.effect.name} initiative by power (${breakpoints})`;
     }
@@ -1521,7 +1663,9 @@ export function describeCardEffect(card: CardDefinition): string {
   }
 
   if (card.effect.type === "GAIN_RUNES") {
-    const draw = card.effect.drawCards ? ` and draw ${card.effect.drawCards} card(s)` : "";
+    const draw = card.effect.drawCards
+      ? ` and draw ${card.effect.drawCards} card(s)`
+      : "";
     return `gain ${card.effect.amount} Rune(s)${draw}`;
   }
 
@@ -1534,8 +1678,12 @@ export function describeCardEffect(card: CardDefinition): string {
       .split(".")
       .pop()
       ?.replace(/_/g, " ");
-    const price = card.effect.goldCost ? `for ${card.effect.goldCost} gold` : "for free";
-    const fallback = card.effect.fallbackDrawCards ? ` (or draw ${card.effect.fallbackDrawCards} if none left)` : "";
+    const price = card.effect.goldCost
+      ? `for ${card.effect.goldCost} gold`
+      : "for free";
+    const fallback = card.effect.fallbackDrawCards
+      ? ` (or draw ${card.effect.fallbackDrawCards} if none left)`
+      : "";
     return `take the ${machine} from the supply ${price}${fallback}`;
   }
 
@@ -1659,23 +1807,34 @@ export function describeCardEffect(card: CardDefinition): string {
     return "on a chosen empty space: Power 2 summons a Few, Power 4 a Pack";
   }
   if (card.effect.type === "KNOCKBACK_ON_ATTACK") {
-    return "after this attack: shove a surviving adjacent target one space away, or deal damage when it cannot be moved";
+    return `instant: +${card.effect.attackBonus ?? 0} Attack; ${card.effect.minRoll === 1 ? "on +1" : "on any die"}, push the survivor or deal ${card.effect.blockedDamage} damage if blocked; a pushed unit cannot retaliate`;
   }
   if (card.effect.type === "SUMMON_CAMPUS_CATS") {
-    return "summon temporary cats onto empty combat spaces for this combat";
+    return `summon ${card.effect.count} temporary cat; draw ${card.effect.drawCards ?? 0}${card.effect.thenDiscard ? `, then discard ${card.effect.thenDiscard}` : ""}; the draw rider can be played alone as an instant`;
   }
   if (card.effect.type === "FALLEN_ALLY_RESOLVE") {
-    return "a friendly unit gains +1 attack per fallen army unit, capped by this level";
+    return (
+      (card.effect.teamInitiative !== undefined
+        ? `team +${card.effect.teamInitiative} Initiative plus 1 per fallen army unit`
+        : `+${card.effect.baseAttack ?? 0} Attack plus 1 per fallen army unit, counting at most ${card.effect.maxAttack}`) +
+      "; updates on army losses; expires at the end of the following combat round, refreshed by each new army loss"
+    );
   }
   if (card.effect.type === "CREATE_BLADE_DANCE") {
     return "this activation: the active unit's attack also splashes every other adjacent enemy";
   }
   if (card.effect.type === "CREATE_DAMAGE_SHIELD") {
-    return "a friendly unit's next damage is reduced, then the shield is spent";
+    return `ongoing this combat: block ${card.effect.amount} from the next damage hit, then expire; heal ${card.effect.healAtActivation ?? 0} at activation start while shielded${card.effect.alsoRandomAlly ? "; also shield one random other ally" : ""}`;
   }
+  if (card.effect.type === "REDIRECT_PENDING_DAMAGE")
+    return "instant before damage: prevent the whole hit to an ally and redirect half, rounded up, to another chosen living unit";
+  if (card.effect.type === "GAIN_MORALE_AND_GOLD")
+    return `instant on map or in combat: gain ${card.effect.morale} Morale and ${card.effect.gold} gold`;
 
   if (card.effect.type === "GRANT_ELEMENTAL_DAMAGE") {
-    const named = card.effect.targetUnitName ? `your ${card.effect.targetUnitName}` : "the unit";
+    const named = card.effect.targetUnitName
+      ? `your ${card.effect.targetUnitName}`
+      : "the unit";
     return `${named} deals elemental damage this Combat`;
   }
 
@@ -1712,7 +1871,10 @@ export function describeCardEffect(card: CardDefinition): string {
   }
 
   if (card.effect.type === "PANDORA_SCRY") {
-    const bonus = card.effect.then && card.effect.then.length > 0 ? ", then resolve a bonus" : "";
+    const bonus =
+      card.effect.then && card.effect.then.length > 0
+        ? ", then resolve a bonus"
+        : "";
     return `peek the top ${card.effect.count} cards of the ${card.effect.deck} deck, discard up to ${card.effect.maxDiscard}, reorder the rest on top${bonus}`;
   }
 

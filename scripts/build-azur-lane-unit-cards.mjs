@@ -141,7 +141,7 @@ const CARDS = [
     cost: { gold: 7 },
     packCost: { gold: 10 },
     few: "Demon's Blade — +1 Attack when she attacks after moving this activation.",
-    pack: "Demon's Blade — +1 Attack when she attacks after moving; Kamikaze Torpedoes — her attacks do not provoke a Retaliation Attack."
+    pack: "Demon's Blade — +1 Attack when she attacks after moving; Kamikaze Torpedoes — enemy Retaliation Attacks deal 2 less damage to her (minimum 0)."
   },
   {
     slug: "prinz-eugen",
@@ -174,10 +174,10 @@ const CARDS = [
     name: "Akagi",
     tier: "golden",
     kind: "RANGED",
-    stats: { attack: 5, defense: 2, health: 5, initiative: 6 },
-    packStats: { attack: 6, defense: 2, health: 6, initiative: 7 },
+    stats: { attack: 5, defense: 1, health: 7, initiative: 6 },
+    packStats: { attack: 6, defense: 1, health: 9, initiative: 7 },
     cost: { gold: 15, valuables: 1 },
-    packCost: { gold: 22, valuables: 2 },
+    packCost: { gold: 22, valuables: 3 },
     few: "Air Strike — after an attack made by this unit resolves, deal 1 damage to every other ENEMY unit adjacent to the attacked unit (not an attack: no Retaliation, not reduced by Defense).",
     pack: "Air Strike (as Few); Foxfire — an enemy that attacks Akagi in melee takes 1 damage after its attack."
   }

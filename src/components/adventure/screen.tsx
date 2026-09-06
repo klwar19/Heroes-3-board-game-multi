@@ -16967,13 +16967,12 @@ function DraftPickPhase({
   }
   const factionId = seat.factionId;
   const banned = new Set(lobby.draft?.bannedHeroDefIds ?? []);
-  const candidates = new Set(lobby.draft?.seatRolls?.[viewerPlayerId]?.heroOptions ?? []);
   return (
     <div className="draftFlow" aria-label="Pick your hero">
       <div className="draftPhaseHead">
         <strong>Step 3 — pick your hero</strong>
         <small>
-          {coreFactionDefinitions[factionId]?.name} · choose 1 of your 3 random remaining heroes
+          {coreFactionDefinitions[factionId]?.name} · choose any hero that survived the bans
         </small>
       </div>
       <FactionPickGrid
@@ -16981,12 +16980,10 @@ function DraftPickPhase({
         heroStateFor={(_factionId, heroDefId) => ({
           selected: seat.heroDefId === heroDefId,
           banned: banned.has(heroDefId),
-          disabled: banned.has(heroDefId) || !candidates.has(heroDefId),
+          disabled: banned.has(heroDefId),
           title: banned.has(heroDefId)
             ? "Banned out of this draft"
-            : candidates.has(heroDefId)
-              ? "One of your three draft candidates"
-              : "Not included in your three random candidates",
+            : "Available after the ban phase",
         })}
         onInspect={onInspect}
         onPick={(pickFactionId, heroDefId) =>

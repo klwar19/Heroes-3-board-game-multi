@@ -107,5 +107,5 @@
 
   <!-- Rules -->
   <rect x="48" y="846" width="647" height="160" rx="8" fill="url(#panel)" stroke="url(#metal)" stroke-width="3"/>
-  <text x="384" y="914" class="rule">Demon's Blade — +1 Attack when she attacks after</text><text x="384" y="937" class="rule">moving; Kamikaze Torpedoes — her attacks do not</text><text x="384" y="960" class="rule">provoke a Retaliation Attack.</text>
+  <text x="384" y="914" class="rule">Demon's Blade — +1 Attack when she attacks after</text><text x="384" y="937" class="rule">moving; Kamikaze Torpedoes — enemy Retaliation</text><text x="384" y="960" class="rule">Attacks deal 2 less damage to her (minimum 0).</text>
 </svg>

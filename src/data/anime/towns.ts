@@ -328,7 +328,7 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
   "azur_lane.ayanami": {
     id: "azur_lane.ayanami", name: "Ayanami", faction: "azur_lane", tier: "silver", type: "ground",
     few: { attack: 3, defense: 1, health: 3, initiative: 10, cost: { gold: 7 }, abilities: ["commander-charge"], abilityText: "Demon's Blade — +1 Attack when she attacks after moving this activation.", cardImage: azurCard("silver", "ayanami", "few") },
-    pack: { attack: 4, defense: 1, health: 4, initiative: 11, cost: { gold: 10 }, abilities: ["commander-charge", "ignores-retaliation"], abilityText: "Demon's Blade — +1 Attack when she attacks after moving; Kamikaze Torpedoes — her attacks do not provoke a Retaliation Attack.", cardImage: azurCard("silver", "ayanami", "pack") },
+    pack: { attack: 4, defense: 1, health: 4, initiative: 11, cost: { gold: 10 }, abilities: ["commander-charge", "ayanami-retaliation-guard"], abilityText: "Demon's Blade — +1 Attack when she attacks after moving; Kamikaze Torpedoes — enemy Retaliation Attacks against her deal 2 less damage (minimum 0).", cardImage: azurCard("silver", "ayanami", "pack") },
     source
   },
   // --- GOLD (3) ------------------------------------------------------------
@@ -357,8 +357,8 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
   // after attacking this unit" (the Pack's Foxfire escort screen).
   "azur_lane.akagi": {
     id: "azur_lane.akagi", name: "Akagi", faction: "azur_lane", tier: "gold", type: "ranged",
-    few: { attack: 5, defense: 2, health: 5, initiative: 6, cost: { gold: 15, valuables: 1 }, abilities: ["kansen-full-barrage"], abilityText: "Air Strike — after an attack made by this unit resolves, deal 1 damage to every other ENEMY unit adjacent to the attacked unit (not an attack: no Retaliation, not reduced by Defense, no damage caps; never on a Retaliation Attack).", cardImage: azurCard("golden", "akagi", "few") },
-    pack: { attack: 6, defense: 2, health: 6, initiative: 7, cost: { gold: 22, valuables: 2 }, abilities: ["kansen-full-barrage", "wog-fire-shield-1"], abilityText: "Air Strike — after an attack made by this unit resolves, deal 1 damage to every other ENEMY unit adjacent to the attacked unit (not an attack: no Retaliation, not reduced by Defense, no damage caps; never on a Retaliation Attack). Foxfire — an adjacent attacker takes 1 damage after attacking Akagi.", cardImage: azurCard("golden", "akagi", "pack") },
+    few: { attack: 5, defense: 1, health: 7, initiative: 6, cost: { gold: 15, valuables: 1 }, abilities: ["kansen-full-barrage"], abilityText: "Air Strike — after an attack made by this unit resolves, deal 1 damage to every other ENEMY unit adjacent to the attacked unit (not an attack: no Retaliation, not reduced by Defense, no damage caps; never on a Retaliation Attack).", cardImage: azurCard("golden", "akagi", "few") },
+    pack: { attack: 6, defense: 1, health: 9, initiative: 7, cost: { gold: 22, valuables: 3 }, abilities: ["kansen-full-barrage", "wog-fire-shield-1"], abilityText: "Air Strike — after an attack made by this unit resolves, deal 1 damage to every other ENEMY unit adjacent to the attacked unit (not an attack: no Retaliation, not reduced by Defense, no damage caps; never on a Retaliation Attack). Foxfire — an adjacent attacker takes 1 damage after attacking Akagi.", cardImage: azurCard("golden", "akagi", "pack") },
     source
   },
 

@@ -4,7 +4,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAdventureGameState } from "@/engine";
 import { ParallelBattleSwitcher } from "./parallel-battle-switcher";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  sessionStorage.clear();
+});
 
 function fixture() {
   const state = createAdventureGameState({ seed: "battle-switcher-ui", parallelTurns: 4, pvpNeutralControl: true, rollFirstPlayer: false });
@@ -63,5 +66,65 @@ describe("parallel battle windows", () => {
     state.turn.mode = "ordered";
     const { container } = render(<ParallelBattleSwitcher state={state} playerId="p1" onAction={vi.fn()} />);
     expect(container.textContent).toBe("");
+  });
+
+  it("can be moved without losing its reserved layout slot, then reset", () => {
+    const { container } = render(
+      <ParallelBattleSwitcher state={fixture()} playerId="p1" onAction={vi.fn()} />,
+    );
+    const panel = container.querySelector(".parallelBattleSwitcher") as HTMLElement;
+    const move = screen.getByRole("button", { name: "Move battle windows" });
+
+    fireEvent.pointerDown(move, { button: 0, clientX: 100, clientY: 40, pointerId: 9 });
+    fireEvent.pointerMove(move, { clientX: 160, clientY: 75, pointerId: 9 });
+    fireEvent.pointerUp(move, { clientX: 160, clientY: 75, pointerId: 9 });
+
+    expect(panel.style.transform).toBe("translate(60px, 35px)");
+    const reset = screen.getByRole("button", { name: "Reset battle-window position" });
+    expect((reset as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(reset);
+    expect(panel.style.transform).toBe("");
+    expect((reset as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("publishes its measured grid footprint for fixed desktop chrome", () => {
+    const offsetTop = vi
+      .spyOn(HTMLElement.prototype, "offsetTop", "get")
+      .mockImplementation(function (this: HTMLElement) {
+        if (this.classList.contains("parallelBattleSwitcher")) return 12;
+        if (this.classList.contains("tableTopRow")) return 156;
+        return 0;
+      });
+    const { container } = render(
+      <main className="tableRoot">
+        <ParallelBattleSwitcher state={fixture()} playerId="p1" onAction={vi.fn()} />
+        <div className="tableTopRow" />
+      </main>,
+    );
+
+    expect((container.firstElementChild as HTMLElement).style.getPropertyValue("--parallel-battle-offset")).toBe("144px");
+    offsetTop.mockRestore();
+  });
+
+  it("restores a moved position after a battle-context remount", async () => {
+    const first = render(
+      <ParallelBattleSwitcher state={fixture()} playerId="p1" onAction={vi.fn()} />,
+    );
+    const move = screen.getByRole("button", { name: "Move battle windows" });
+    fireEvent.pointerDown(move, { button: 0, clientX: 100, clientY: 40, pointerId: 11 });
+    fireEvent.pointerMove(move, { clientX: 145, clientY: 65, pointerId: 11 });
+    fireEvent.pointerUp(move, { clientX: 145, clientY: 65, pointerId: 11 });
+    await waitFor(() =>
+      expect(sessionStorage.getItem("heroes3.parallelBattleSwitcher.position")).toBe('{"x":45,"y":25}'),
+    );
+    first.unmount();
+
+    const second = render(
+      <ParallelBattleSwitcher state={fixture()} playerId="p1" onAction={vi.fn()} />,
+    );
+    await waitFor(() =>
+      expect((second.container.querySelector(".parallelBattleSwitcher") as HTMLElement).style.transform)
+        .toBe("translate(45px, 25px)"),
+    );
   });
 });

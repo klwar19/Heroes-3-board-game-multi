@@ -1137,7 +1137,12 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // ability ids and the Kyousuke cast `commander-cast-kyousuke-assemble`. A v106
 // edge rejects every new offer and resolves the redesigned specialties as the old
 // cards. `npm run deploy:partykit` owed with this bump.
-export const ENGINE_PROTOCOL_VERSION = 107;
+// v109 (2026-09-06): Random Towns now mint a defending Neutral Arrow Tower, and
+// two serialized BINH house rules add the five-body veteran/coordinated-AI
+// garrison and replace the level-VII fill-to-seven reward with one exact level.
+// A v108 worker would build a different siege, controller and XP result.
+// `npm run deploy:partykit` owed with this bump.
+export const ENGINE_PROTOCOL_VERSION = 109;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

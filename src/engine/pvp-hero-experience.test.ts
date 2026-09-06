@@ -169,8 +169,16 @@ function resolveNeutral(options: {
   difficulty: number;
   /** Fight a Creature Bank instead of a plain guard field (no experience). */
   bank?: boolean;
+  /** Preserve the printed fill-to-VII behavior for its explicit control. */
+  levelSevenRule?: boolean;
 }): NeutralResult {
   const state = makeGame();
+  if (options.levelSevenRule !== undefined) {
+    state.adventure!.houseRules = {
+      ...(state.adventure!.houseRules ?? {}),
+      "level-seven-one-level": options.levelSevenRule
+    };
+  }
   const hero = getMainHero(state, "p1")!;
   hero.level = options.heroLevel;
   hero.experience = experienceOfLevel(options.heroLevel);
@@ -306,9 +314,9 @@ describe("Neutral guards: the Field Difficulty ladder pays the same steps", () =
     }
   });
 
-  it("a field ABOVE the hero's level pays a full level; Ⅶ fills the track to level Ⅶ", () => {
+  it("CONTROL: with the BINH level-VII rule off, Ⅶ fills the track to level Ⅶ", () => {
     expect(resolveNeutral({ heroLevel: 5, difficulty: 6 }).gain).toBe(2);
-    const seven = resolveNeutral({ heroLevel: 5, difficulty: 7 });
+    const seven = resolveNeutral({ heroLevel: 5, difficulty: 7, levelSevenRule: false });
     expect(seven.level).toBe(7);
     expect(seven.gain).toBe(4);
   });

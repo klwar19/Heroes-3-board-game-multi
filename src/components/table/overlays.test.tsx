@@ -723,10 +723,10 @@ describe("MapNoticeOverlay location art", () => {
           title: location,
           subtitle: "p1 visits",
           lines: [],
-          location
+          location,
         }}
         onDone={vi.fn()}
-      />
+      />,
     );
   }
 
@@ -734,7 +734,7 @@ describe("MapNoticeOverlay location art", () => {
     const expected: Record<string, string> = {
       creature_bank: "/assets/ui/notice-creature-bank.webp",
       resource_symbol: "/assets/ui/notice-resource.webp",
-      treasure_symbol: "/assets/ui/notice-treasure-chest.webp"
+      treasure_symbol: "/assets/ui/notice-treasure-chest.webp",
     };
 
     for (const [location, src] of Object.entries(expected)) {
@@ -779,22 +779,34 @@ describe("MapNoticeOverlay location art", () => {
           location: "mine",
           iconImage: "/assets/icons/resource-gold.webp",
           rewards: [
-            { icon: "/assets/icons/resource-gold.webp", label: "+1/turn", title: "+1 gold production", tone: "gain" }
-          ]
+            {
+              icon: "/assets/icons/resource-gold.webp",
+              label: "+1/turn",
+              title: "+1 gold production",
+              tone: "gain",
+            },
+          ],
         }}
         onDone={vi.fn()}
-      />
+      />,
     );
 
     // Chips replace the "mass of text" bullet list.
     const chips = container.querySelectorAll(".mapNoticeReward");
     expect(chips).toHaveLength(1);
-    expect(chips[0].querySelector("img")?.getAttribute("src")).toContain("resource-gold");
+    expect(chips[0].querySelector("img")?.getAttribute("src")).toContain(
+      "resource-gold",
+    );
     expect(chips[0].textContent).toContain("+1/turn");
-    expect(container.querySelector(".mapNotice ul"), "no text list when chips are present").toBeNull();
+    expect(
+      container.querySelector(".mapNotice ul"),
+      "no text list when chips are present",
+    ).toBeNull();
 
     // The mine wears its resource token instead of the pickaxe emoji.
-    expect(container.querySelector(".mapNoticeResourceArt")?.getAttribute("src")).toContain("resource-gold");
+    expect(
+      container.querySelector(".mapNoticeResourceArt")?.getAttribute("src"),
+    ).toContain("resource-gold");
     expect(container.textContent).not.toContain("⛏");
   });
 });
@@ -811,36 +823,53 @@ function pauseState(intentTargetName?: string): GameState {
         unitId: "guard1",
         name: "Marksmen",
         reactingPlayerId: "p1",
-        intent: { kind: "attack", targetName: intentTargetName }
-      }
-    }
+        intent: { kind: "attack", targetName: intentTargetName },
+      },
+    },
   } as unknown as GameState;
 }
 
 const resume: LegalAction = {
   label: "Let the unit act",
-  action: { type: "CONTINUE_NEUTRAL_STEP", playerId: "p1" }
+  action: { type: "CONTINUE_NEUTRAL_STEP", playerId: "p1" },
 };
 const castArrow: LegalAction = {
   label: "Cast Magic Arrow",
-  action: { type: "CAST_SPELL", playerId: "p1", cardId: "spell.magic_arrow", target: { type: "none" } }
+  action: {
+    type: "CAST_SPELL",
+    playerId: "p1",
+    cardId: "spell.magic_arrow",
+    target: { type: "none" },
+  },
 };
 
 describe("NeutralStepOverlay — guard-step pacing", () => {
   it("auto-resumes after 2s when the player has nothing to react with", () => {
     vi.useFakeTimers();
     const onAction = vi.fn();
-    render(<NeutralStepOverlay legalActions={[resume]} onAction={onAction} state={pauseState("Griffins")} viewerPlayerId="p1" />);
+    render(
+      <NeutralStepOverlay
+        legalActions={[resume]}
+        onAction={onAction}
+        state={pauseState("Griffins")}
+        viewerPlayerId="p1"
+      />,
+    );
 
     // The pop-up shows the guard's planned attack and the auto-continue note.
-    expect(screen.getByText(/Marksmen is about to attack your Griffins/)).toBeTruthy();
+    expect(
+      screen.getByText(/Marksmen is about to attack your Griffins/),
+    ).toBeTruthy();
     expect(screen.getByText(/continuing automatically/i)).toBeTruthy();
 
     // Nothing fires before the beat is up; it resumes itself at 2s.
     act(() => vi.advanceTimersByTime(1900));
     expect(onAction).not.toHaveBeenCalled();
     act(() => vi.advanceTimersByTime(200));
-    expect(onAction).toHaveBeenCalledWith({ type: "CONTINUE_NEUTRAL_STEP", playerId: "p1" });
+    expect(onAction).toHaveBeenCalledWith({
+      type: "CONTINUE_NEUTRAL_STEP",
+      playerId: "p1",
+    });
     expect(onAction).toHaveBeenCalledTimes(1);
   });
 
@@ -848,7 +877,12 @@ describe("NeutralStepOverlay — guard-step pacing", () => {
     vi.useFakeTimers();
     const onAction = vi.fn();
     render(
-      <NeutralStepOverlay legalActions={[castArrow, resume]} onAction={onAction} state={pauseState()} viewerPlayerId="p1" />
+      <NeutralStepOverlay
+        legalActions={[castArrow, resume]}
+        onAction={onAction}
+        state={pauseState()}
+        viewerPlayerId="p1"
+      />,
     );
 
     // A real reaction is on offer, so the pause prompts the player and holds.
@@ -862,7 +896,14 @@ describe("NeutralStepOverlay — guard-step pacing", () => {
     const onAction = vi.fn();
     // No CONTINUE action in this viewer's legal actions: they are a spectator
     // to the pause and must never auto-dispatch a resume.
-    render(<NeutralStepOverlay legalActions={[]} onAction={onAction} state={pauseState()} viewerPlayerId="p2" />);
+    render(
+      <NeutralStepOverlay
+        legalActions={[]}
+        onAction={onAction}
+        state={pauseState()}
+        viewerPlayerId="p2"
+      />,
+    );
 
     expect(screen.getByText(/Waiting for/i)).toBeTruthy();
     act(() => vi.advanceTimersByTime(10000));
@@ -873,7 +914,12 @@ describe("NeutralStepOverlay — guard-step pacing", () => {
     const onAction = vi.fn();
     // The reacting side (p1) is invited to react.
     const { unmount } = render(
-      <NeutralStepOverlay legalActions={[castArrow, resume]} onAction={onAction} state={pauseState()} viewerPlayerId="p1" />
+      <NeutralStepOverlay
+        legalActions={[castArrow, resume]}
+        onAction={onAction}
+        state={pauseState()}
+        viewerPlayerId="p1"
+      />,
     );
     expect(screen.getByText("Enemy turn — react?")).toBeTruthy();
     expect(screen.queryByText("Reaction window")).toBeNull();
@@ -881,7 +927,14 @@ describe("NeutralStepOverlay — guard-step pacing", () => {
 
     // The side whose own unit is about to act (p2) gets a neutral, waiting header
     // — never "Enemy turn — react?" over its own unit.
-    render(<NeutralStepOverlay legalActions={[]} onAction={onAction} state={pauseState()} viewerPlayerId="p2" />);
+    render(
+      <NeutralStepOverlay
+        legalActions={[]}
+        onAction={onAction}
+        state={pauseState()}
+        viewerPlayerId="p2"
+      />,
+    );
     expect(screen.getByText("Reaction window")).toBeTruthy();
     expect(screen.queryByText("Enemy turn — react?")).toBeNull();
   });
@@ -899,7 +952,7 @@ describe("ReactionTray — in-progress selection survives only until the hand ch
       type: "ATTACK_UNIT",
       playerId: "p1",
       attackerId: "unit_p1_griffins",
-      defenderId: "unit_p2_skeletons"
+      defenderId: "unit_p2_skeletons",
     });
     expect(result.errors).toEqual([]);
     return result.state;
@@ -936,14 +989,18 @@ describe("ReactionTray — in-progress selection survives only until the hand ch
     act(() => {
       fireEvent.click(picks[0]);
     });
-    expect(screen.getAllByRole("button").some((button) => button.getAttribute("aria-pressed") === "true")).toBe(true);
+    expect(
+      screen
+        .getAllByRole("button")
+        .some((button) => button.getAttribute("aria-pressed") === "true"),
+    ).toBe(true);
 
     // One Attack statistic is played; p1 still has priority and one card left.
     const afterPlay = applyAction(state, {
       type: "PLAY_REACTION",
       playerId: "p1",
       cardId: "stat.attack",
-      mode: "basic"
+      mode: "basic",
     });
     expect(afterPlay.errors).toEqual([]);
     expect(afterPlay.state.reactionWindow?.priorityPlayerId).toBe("p1");
@@ -951,8 +1008,14 @@ describe("ReactionTray — in-progress selection survives only until the hand ch
     rerender(tray(afterPlay.state));
 
     // The leftover Attack statistic is offered, and nothing is stuck "picked".
-    expect(screen.getAllByRole("button", { name: /add to play/i })).toHaveLength(1);
-    expect(screen.getAllByRole("button").some((button) => button.getAttribute("aria-pressed") === "true")).toBe(false);
+    expect(
+      screen.getAllByRole("button", { name: /add to play/i }),
+    ).toHaveLength(1);
+    expect(
+      screen
+        .getAllByRole("button")
+        .some((button) => button.getAttribute("aria-pressed") === "true"),
+    ).toBe(false);
   });
 
   it("minimizes and restores without passing, playing, or closing the reaction", () => {
@@ -968,16 +1031,22 @@ describe("ReactionTray — in-progress selection survives only until the hand ch
           view={getPlayerView(state, "p1")}
           viewerPlayerId="p1"
         />
-      </CardZoomProvider>
+      </CardZoomProvider>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Minimize the instant window" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Minimize the instant window" }),
+    );
     expect(screen.getByText(/waiting for your reaction/i)).toBeTruthy();
-    expect(screen.getByRole("dialog", { name: "Instant window" }).className).toContain("minimized");
+    expect(
+      screen.getByRole("dialog", { name: "Instant window" }).className,
+    ).toContain("minimized");
     expect(onAction).not.toHaveBeenCalled();
     expect(state.reactionWindow?.id).toBe(windowId);
 
-    fireEvent.click(screen.getByRole("button", { name: "Restore the instant window" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Restore the instant window" }),
+    );
     expect(screen.getByRole("button", { name: /add to play/i })).toBeTruthy();
     expect(onAction).not.toHaveBeenCalled();
     expect(state.reactionWindow?.id).toBe(windowId);
@@ -996,9 +1065,12 @@ describe("ReactionTray — Balance-Pack Celestial Necklace shows its +1 base", (
     state.adventure = {
       houseRules: { "polish-card-balance": balance },
       tiles: {},
-      playerFarTiles: {}
+      playerFarTiles: {},
     } as unknown as GameState["adventure"];
-    state.players.p1.hand = ["artifact.celestial_necklace_of_bliss", "spell.haste"];
+    state.players.p1.hand = [
+      "artifact.celestial_necklace_of_bliss",
+      "spell.haste",
+    ];
     state.players.p2.hand = [];
     state.combat!.units.unit_p1_griffins.position = 13;
     state.combat!.units.unit_p2_skeletons.position = 14;
@@ -1006,7 +1078,7 @@ describe("ReactionTray — Balance-Pack Celestial Necklace shows its +1 base", (
       type: "ATTACK_UNIT",
       playerId: "p1",
       attackerId: "unit_p1_griffins",
-      defenderId: "unit_p2_skeletons"
+      defenderId: "unit_p2_skeletons",
     });
     expect(result.errors).toEqual([]);
     return result.state;
@@ -1046,8 +1118,12 @@ describe("ReactionTray — Balance-Pack Celestial Necklace shows its +1 base", (
     render(tray(state));
 
     // The classic printed option has no +1 base — its label is "Discard X …".
-    expect(screen.queryByRole("button", { name: /\+1 attack.*discard/i })).toBeNull();
-    const pick = screen.getByRole("button", { name: /discard x cards: \+x attack/i });
+    expect(
+      screen.queryByRole("button", { name: /\+1 attack.*discard/i }),
+    ).toBeNull();
+    const pick = screen.getByRole("button", {
+      name: /discard x cards: \+x attack/i,
+    });
     act(() => {
       fireEvent.click(pick);
     });
@@ -1079,7 +1155,7 @@ describe("ReactionTray — Basic X Magic in-play +3 expert has a button", () => 
         legal.action.type === "CAST_SPELL" &&
         legal.action.cardId === "spell.magic_arrow" &&
         legal.action.target?.type === "unit" &&
-        legal.action.target.unitId === "unit_p2_skeletons"
+        legal.action.target.unitId === "unit_p2_skeletons",
     );
     const result = applyAction(state, cast!.action);
     expect(result.errors).toEqual([]);
@@ -1106,11 +1182,17 @@ describe("ReactionTray — Basic X Magic in-play +3 expert has a button", () => 
     const onAction = vi.fn();
     render(tray(state, onAction));
 
-    const button = screen.getByRole("button", { name: /Basic Fire Magic.*\+3 Power/i });
+    const button = screen.getByRole("button", {
+      name: /Basic Fire Magic.*\+3 Power/i,
+    });
     act(() => {
       fireEvent.click(button);
     });
-    expect(onAction).toHaveBeenCalledWith({ type: "USE_SCHOOL_FETCH_EXPERT", playerId: "p1", school: "fire" });
+    expect(onAction).toHaveBeenCalledWith({
+      type: "USE_SCHOOL_FETCH_EXPERT",
+      playerId: "p1",
+      school: "fire",
+    });
   });
 
   it("CONTROL: with no crown the tray is open (Power discard) but shows no +3 button", () => {
@@ -1120,7 +1202,9 @@ describe("ReactionTray — Basic X Magic in-play +3 expert has a button", () => 
     // The window is genuinely open (the spare Spell's +1 Power tile renders)...
     expect(screen.queryByText(/No playable instants/i)).toBeNull();
     // ...but the crown-gated +3 expert has no button.
-    expect(screen.queryByRole("button", { name: /Basic Fire Magic.*\+3 Power/i })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /Basic Fire Magic.*\+3 Power/i }),
+    ).toBeNull();
   });
 });
 
@@ -1137,7 +1221,7 @@ describe("ReactionTray — School of Magic expert is usable before an instant Sp
       type: "ATTACK_UNIT",
       playerId: "p1",
       attackerId: "unit_p1_griffins",
-      defenderId: "unit_p2_skeletons"
+      defenderId: "unit_p2_skeletons",
     });
     expect(declared.errors).toEqual([]);
     expect(declared.state.reactionWindow?.priorityPlayerId).toBe("p1");
@@ -1152,17 +1236,19 @@ describe("ReactionTray — School of Magic expert is usable before an instant Sp
           view={getPlayerView(declared.state, "p1")}
           viewerPlayerId="p1"
         />
-      </CardZoomProvider>
+      </CardZoomProvider>,
     );
 
-    const button = screen.getByRole("button", { name: /Air Magic.*\+3 Power/i });
+    const button = screen.getByRole("button", {
+      name: /Air Magic.*\+3 Power/i,
+    });
     act(() => {
       fireEvent.click(button);
     });
     expect(onAction).toHaveBeenCalledWith({
       type: "USE_SCHOOL_PERMANENT_EXPERT",
       playerId: "p1",
-      cardId: "ability.air_magic"
+      cardId: "ability.air_magic",
     });
   });
 });
@@ -1211,13 +1297,21 @@ describe("ReactionTray — Power can still be added after Slayer arms the attack
       type: "ATTACK_UNIT",
       playerId: "p1",
       attackerId: "unit_p1_griffins",
-      defenderId: "unit_p2_skeletons"
+      defenderId: "unit_p2_skeletons",
     });
     expect(declared.errors).toEqual([]);
     // p1 casts Curse; p1 has no more cards, so priority moves to p2.
-    let next = applyAction(declared.state, { type: "PLAY_REACTION", playerId: "p1", cardId: "spell.curse", mode: "basic" });
+    let next = applyAction(declared.state, {
+      type: "PLAY_REACTION",
+      playerId: "p1",
+      cardId: "spell.curse",
+      mode: "basic",
+    });
     expect(next.errors).toEqual([]);
-    while (next.state.reactionWindow && next.state.reactionWindow.priorityPlayerId === "p1") {
+    while (
+      next.state.reactionWindow &&
+      next.state.reactionWindow.priorityPlayerId === "p1"
+    ) {
       next = applyAction(next.state, { type: "PASS_REACTION", playerId: "p1" });
     }
     expect(next.state.reactionWindow?.priorityPlayerId).toBe("p2");
@@ -1244,7 +1338,7 @@ describe("ReactionTray — Power can still be added after Slayer arms the attack
       type: "ATTACK_UNIT",
       playerId: "p1",
       attackerId: "unit_p1_griffins",
-      defenderId: "unit_p2_dread_knights"
+      defenderId: "unit_p2_dread_knights",
     });
     expect(declared.errors).toEqual([]);
 
@@ -1254,7 +1348,7 @@ describe("ReactionTray — Power can still be added after Slayer arms the attack
       type: "PLAY_REACTION",
       playerId: "p1",
       cardId: "spell.slayer",
-      mode: "basic"
+      mode: "basic",
     });
     expect(played.errors).toEqual([]);
     expect(played.state.reactionWindow?.priorityPlayerId).toBe("p1");
@@ -1268,9 +1362,13 @@ describe("ReactionTray — Power can still be added after Slayer arms the attack
     // The confirm button is enabled and the "Power needs a Spell" warning is gone:
     // before the fix the tray rejected a lone Power boost even though Slayer had
     // already armed the attack.
-    const confirm = screen.getByRole("button", { name: /play card/i }) as HTMLButtonElement;
+    const confirm = screen.getByRole("button", {
+      name: /play card/i,
+    }) as HTMLButtonElement;
     expect(confirm.disabled).toBe(false);
-    expect(screen.queryByText(/power needs something in this attack to feed/i)).toBeNull();
+    expect(
+      screen.queryByText(/power needs something in this attack to feed/i),
+    ).toBeNull();
   });
 
   it("still WARNS (with the honest wording) when a lone Power boost has nothing to feed", () => {
@@ -1298,18 +1396,28 @@ describe("ReactionTray — Power can still be added after Slayer arms the attack
       type: "ATTACK_UNIT",
       playerId: "p1",
       attackerId: "unit_p1_griffins",
-      defenderId: "unit_p2_dread_knights"
+      defenderId: "unit_p2_dread_knights",
     });
     expect(declared.errors).toEqual([]);
     expect(declared.state.reactionWindow?.priorityPlayerId).toBe("p1");
 
     render(tray(declared.state));
     // Both hand Spells offer a "+1 Power" discard; take the first and nothing else.
-    act(() => fireEvent.click(screen.getAllByRole("button", { name: /discard for \+1 power/i })[0]));
+    act(() =>
+      fireEvent.click(
+        screen.getAllByRole("button", { name: /discard for \+1 power/i })[0],
+      ),
+    );
 
-    expect(screen.getByText(/power needs something in this attack to feed/i)).toBeTruthy();
-    const confirm = screen.getByRole("button", { name: /play card/i }) as HTMLButtonElement;
-    expect(confirm.disabled, "a lone Power boost can never be confirmed").toBe(true);
+    expect(
+      screen.getByText(/power needs something in this attack to feed/i),
+    ).toBeTruthy();
+    const confirm = screen.getByRole("button", {
+      name: /play card/i,
+    }) as HTMLButtonElement;
+    expect(confirm.disabled, "a lone Power boost can never be confirmed").toBe(
+      true,
+    );
   });
 
   it("lets the DEFENDER fuel a Spell Book Weakness with a lone +1 Power (hand Magic Arrow)", () => {
@@ -1334,7 +1442,7 @@ describe("ReactionTray — Power can still be added after Slayer arms the attack
       type: "ATTACK_UNIT",
       playerId: "p1",
       attackerId: "unit_p1_griffins",
-      defenderId: "unit_p2_skeletons"
+      defenderId: "unit_p2_skeletons",
     });
     expect(declared.errors).toEqual([]);
 
@@ -1342,7 +1450,10 @@ describe("ReactionTray — Power can still be added after Slayer arms the attack
     let handed = declared.state;
     let guard = 10;
     while (handed.reactionWindow?.priorityPlayerId === "p1" && guard-- > 0) {
-      handed = applyAction(handed, { type: "PASS_REACTION", playerId: "p1" }).state;
+      handed = applyAction(handed, {
+        type: "PASS_REACTION",
+        playerId: "p1",
+      }).state;
     }
     expect(handed.reactionWindow?.priorityPlayerId).toBe("p2");
 
@@ -1352,9 +1463,12 @@ describe("ReactionTray — Power can still be added after Slayer arms the attack
       (legal) =>
         legal.action.type === "PLAY_REACTION" &&
         legal.action.cardId === "spell.weakness" &&
-        legal.action.fromSpellBook === true
+        legal.action.fromSpellBook === true,
     );
-    expect(bookWeakness, "a Book Weakness should be offered to the attacked player").toBeTruthy();
+    expect(
+      bookWeakness,
+      "a Book Weakness should be offered to the attacked player",
+    ).toBeTruthy();
     const played = applyAction(handed, bookWeakness!.action);
     expect(played.errors).toEqual([]);
     expect(played.state.reactionWindow?.priorityPlayerId).toBe("p2");
@@ -1367,9 +1481,70 @@ describe("ReactionTray — Power can still be added after Slayer arms the attack
 
     // Confirm is enabled — the defender's Weakness IS empowerable, so its owner
     // may fuel it with a lone Power. Before the fix this stayed disabled.
-    const confirm = screen.getByRole("button", { name: /play card/i }) as HTMLButtonElement;
-    expect(confirm.disabled, "the defender should be able to fuel their own Weakness with Magic Arrow").toBe(false);
-    expect(screen.queryByText(/power needs something in this attack to feed/i)).toBeNull();
+    const confirm = screen.getByRole("button", {
+      name: /play card/i,
+    }) as HTMLButtonElement;
+    expect(
+      confirm.disabled,
+      "the defender should be able to fuel their own Weakness with Magic Arrow",
+    ).toBe(false);
+    expect(
+      screen.queryByText(/power needs something in this attack to feed/i),
+    ).toBeNull();
+  });
+
+  it("Riki's tray preserves both protected unit and recipient and actually prevents the hit", () => {
+    let state = createInitialGameState("tray-riki");
+    state.players.p1.hand = [];
+    state.players.p2.hand = ["specialty.riki_naoe.6"];
+    const attacker = state.combat!.units.unit_p1_griffins,
+      defender = state.combat!.units.unit_p2_skeletons;
+    attacker.position = 8;
+    attacker.abilities = [];
+    attacker.attack = 5;
+    defender.position = 9;
+    defender.abilities = [];
+    defender.defense = 0;
+    defender.maxHealth = 1;
+    state.combat!.activeUnitId = attacker.id;
+    state.combat!.dice.scriptedRolls = [0];
+    const declared = applyAction(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: attacker.id,
+      defenderId: defender.id,
+    });
+    expect(declared.errors).toEqual([]);
+    state = declared.state;
+    const dispatched: GameAction[] = [];
+    render(
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={getLegalActions(state, "p2")}
+          onAction={(a) => dispatched.push(a)}
+          state={state}
+          view={getPlayerView(state, "p2")}
+          viewerPlayerId="p2"
+        />
+      </CardZoomProvider>,
+    );
+    const buttons = screen.getAllByRole("button", {
+      name: /Protect.*half to/i,
+    });
+    act(() => fireEvent.click(buttons[0]));
+    expect(dispatched[0]).toMatchObject({
+      type: "PLAY_REACTION",
+      protectedUnitId: defender.id,
+    });
+    const played = applyAction(state, dispatched[0]);
+    expect(played.errors).toEqual([]);
+    state = played.state;
+    for (let i = 0; i < 20 && state.reactionWindow; i++)
+      state = applyAction(state, {
+        type: "PASS_REACTION",
+        playerId: state.reactionWindow.priorityPlayerId,
+      }).state;
+    expect(state.combat!.units[defender.id].damage).toBe(0);
   });
 
   it("offers Frenzy (a target-less instant buff) to the attacker as a clickable tile that dispatches PLAY_REACTION", () => {
@@ -1389,16 +1564,18 @@ describe("ReactionTray — Power can still be added after Slayer arms the attack
       type: "ATTACK_UNIT",
       playerId: "p1",
       attackerId: "unit_p1_griffins",
-      defenderId: "unit_p2_skeletons"
+      defenderId: "unit_p2_skeletons",
     });
     expect(declared.errors).toEqual([]);
     // The attacker holds priority in the just-opened attack window and Frenzy is offered.
     expect(declared.state.reactionWindow?.priorityPlayerId).toBe("p1");
     expect(
       getLegalActions(declared.state, "p1").some(
-        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "spell.frenzy"
+        (legal) =>
+          legal.action.type === "PLAY_REACTION" &&
+          legal.action.cardId === "spell.frenzy",
       ),
-      "Frenzy must be offered to the attacker"
+      "Frenzy must be offered to the attacker",
     ).toBe(true);
 
     const dispatched: GameAction[] = [];
@@ -1411,20 +1588,27 @@ describe("ReactionTray — Power can still be added after Slayer arms the attack
           view={getPlayerView(declared.state, "p1")}
           viewerPlayerId="p1"
         />
-      </CardZoomProvider>
+      </CardZoomProvider>,
     );
 
     // Frenzy is not a CHOOSE_ONE, so its group renders the generic "Add to play".
     const add = screen.getByRole("button", { name: /add to play/i });
     act(() => fireEvent.click(add));
-    const confirm = screen.getByRole("button", { name: /play card/i }) as HTMLButtonElement;
-    expect(confirm.disabled, "confirming a lone target-less Frenzy is legal").toBe(false);
+    const confirm = screen.getByRole("button", {
+      name: /play card/i,
+    }) as HTMLButtonElement;
+    expect(
+      confirm.disabled,
+      "confirming a lone target-less Frenzy is legal",
+    ).toBe(false);
     act(() => fireEvent.click(confirm));
     expect(
       dispatched.some(
-        (action) => action.type === "PLAY_REACTION" && (action as { cardId?: string }).cardId === "spell.frenzy"
+        (action) =>
+          action.type === "PLAY_REACTION" &&
+          (action as { cardId?: string }).cardId === "spell.frenzy",
       ),
-      "clicking play must dispatch PLAY_REACTION for Frenzy"
+      "clicking play must dispatch PLAY_REACTION for Frenzy",
     ).toBe(true);
   });
 
@@ -1450,25 +1634,39 @@ describe("ReactionTray — Power can still be added after Slayer arms the attack
       type: "ATTACK_UNIT",
       playerId: "p1",
       attackerId: "unit_p1_griffins",
-      defenderId: "unit_p2_skeletons"
+      defenderId: "unit_p2_skeletons",
     });
     expect(declared.errors).toEqual([]);
     // The engine offers the Expert reaction crown-free.
     const expertOffered = getLegalActions(declared.state, "p1").some(
       (legal) =>
-        legal.action.type === "PLAY_REACTION" && legal.action.cardId === "ability.offense" && legal.action.mode === "expert"
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === "ability.offense" &&
+        legal.action.mode === "expert",
     );
-    expect(expertOffered, "engine offers the empowered Offense expert at 0 crowns").toBe(true);
+    expect(
+      expertOffered,
+      "engine offers the empowered Offense expert at 0 crowns",
+    ).toBe(true);
 
     render(tray(declared.state));
 
     // Pick Offense, then toggle its Expert side.
-    act(() => fireEvent.click(screen.getByRole("button", { name: /add to play/i })));
-    act(() => fireEvent.click(screen.getByRole("button", { name: /^Expert$/i })));
+    act(() =>
+      fireEvent.click(screen.getByRole("button", { name: /add to play/i })),
+    );
+    act(() =>
+      fireEvent.click(screen.getByRole("button", { name: /^Expert$/i })),
+    );
 
     // Confirm is enabled and NO "no crowns" warning — the empowered Expert is free.
-    const confirm = screen.getByRole("button", { name: /play card/i }) as HTMLButtonElement;
-    expect(confirm.disabled, "an empowered Expert reaction is playable with 0 crowns").toBe(false);
+    const confirm = screen.getByRole("button", {
+      name: /play card/i,
+    }) as HTMLButtonElement;
+    expect(
+      confirm.disabled,
+      "an empowered Expert reaction is playable with 0 crowns",
+    ).toBe(false);
     expect(screen.queryByText(/no crowns left/i)).toBeNull();
   });
 });
@@ -1499,7 +1697,7 @@ describe("ReactionTray — live Power readout", () => {
       type: "CAST_SPELL",
       playerId: "p1",
       cardId: "spell.magic_arrow",
-      target: { type: "unit", unitId: "unit_p2_skeletons" }
+      target: { type: "unit", unitId: "unit_p2_skeletons" },
     });
     expect(cast.errors).toEqual([]);
     return cast.state;
@@ -1517,7 +1715,7 @@ describe("ReactionTray — live Power readout", () => {
       type: "PLAY_REACTION",
       playerId: "p1",
       cardId: "stat.power",
-      mode: "basic"
+      mode: "basic",
     });
     expect(empowered.errors).toEqual([]);
     render(trayFor(empowered.state, "p1"));
@@ -1560,16 +1758,22 @@ describe("ReactionTray — Sorrow pays its skip with a Power-value cost picker",
     state.activePlayerId = "p1";
     state.combat!.activeUnitId = "unit_p1_griffins";
     for (const unit of Object.values(state.combat!.units)) {
-      unit.activatedThisRound = unit.id !== "unit_p1_griffins" && unit.id !== "unit_p2_vampires";
+      unit.activatedThisRound =
+        unit.id !== "unit_p1_griffins" && unit.id !== "unit_p2_vampires";
     }
-    const result = applyAction(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
+    const result = applyAction(state, {
+      type: "DEFEND_UNIT",
+      playerId: "p1",
+      unitId: "unit_p1_griffins",
+    });
     expect(result.errors).toEqual([]);
     expect(result.state.reactionWindow?.priorityPlayerId).toBe("p1");
     expect(result.state.combat!.activeUnitId).toBe("unit_p2_vampires");
     return result.state;
   }
 
-  const confirmButton = () => screen.getByRole("button", { name: /play card/i }) as HTMLButtonElement;
+  const confirmButton = () =>
+    screen.getByRole("button", { name: /play card/i }) as HTMLButtonElement;
 
   it("gates the silver skip until two +1 Power cards are clicked, then plays them as the cost", () => {
     // Before this fix the silver/gold skip (a `powerCost`, not a `discardCards`,
@@ -1582,53 +1786,88 @@ describe("ReactionTray — Sorrow pays its skip with a Power-value cost picker",
 
     const pick = screen.getByRole("button", { name: /skip a silver unit/i });
     act(() => fireEvent.click(pick));
-    expect(confirmButton().disabled, "2 Power is owed but none paid yet").toBe(true);
+    expect(confirmButton().disabled, "2 Power is owed but none paid yet").toBe(
+      true,
+    );
 
     // Two Power chips, each worth +1, appear in the picker.
-    const chips = () => screen.getAllByRole("button", { name: /^Power \(\+1\)$/ });
+    const chips = () =>
+      screen.getAllByRole("button", { name: /^Power \(\+1\)$/ });
     expect(chips()).toHaveLength(2);
 
     act(() => fireEvent.click(chips()[0]));
     expect(confirmButton().disabled, "1 of 2 Power is not enough").toBe(true);
 
     act(() => fireEvent.click(chips()[1]));
-    expect(confirmButton().disabled, "2 Power reaches the silver skip").toBe(false);
+    expect(confirmButton().disabled, "2 Power reaches the silver skip").toBe(
+      false,
+    );
 
     act(() => fireEvent.click(confirmButton()));
     expect(onAction).toHaveBeenCalledTimes(1);
-    const played = onAction.mock.calls[0][0] as Extract<GameAction, { type: "PLAY_REACTION" }>;
-    expect(played).toMatchObject({ type: "PLAY_REACTION", playerId: "p1", cardId: "spell.sorrow", optionIndex: 1 });
+    const played = onAction.mock.calls[0][0] as Extract<
+      GameAction,
+      { type: "PLAY_REACTION" }
+    >;
+    expect(played).toMatchObject({
+      type: "PLAY_REACTION",
+      playerId: "p1",
+      cardId: "spell.sorrow",
+      optionIndex: 1,
+    });
     expect(played.costCardIds).toEqual(["stat.power", "stat.power"]);
 
     // The engine accepts exactly that action: the silver vampires are skipped.
     const applied = applyAction(state, played);
     expect(applied.errors).toEqual([]);
-    expect(applied.state.combat!.units.unit_p2_vampires.activatedThisRound).toBe(true);
+    expect(
+      applied.state.combat!.units.unit_p2_vampires.activatedThisRound,
+    ).toBe(true);
   });
 
   it("reaches the silver skip with one +2 Power card (value, not card count) and blocks over-paying", () => {
     // The cost is a Power VALUE: a single +2 source pays the 2-Power skip on its
     // own, where the old "discard 2 cards" rule demanded two. A spare +1 Power
     // card is then disabled, so the engine's no-over-pay rule is never tripped.
-    const state = silverSkipWindow(["artifact.necklace_of_dragonteeth", "stat.power"]);
+    const state = silverSkipWindow([
+      "artifact.necklace_of_dragonteeth",
+      "stat.power",
+    ]);
 
     const onAction = vi.fn();
     render(trayFor(state, onAction));
 
-    act(() => fireEvent.click(screen.getByRole("button", { name: /skip a silver unit/i })));
-    const necklace = screen.getByRole("button", { name: /necklace of dragonteeth \(\+2\)/i });
+    act(() =>
+      fireEvent.click(
+        screen.getByRole("button", { name: /skip a silver unit/i }),
+      ),
+    );
+    const necklace = screen.getByRole("button", {
+      name: /necklace of dragonteeth \(\+2\)/i,
+    });
     act(() => fireEvent.click(necklace));
 
     // The +2 alone satisfies the skip, so the spare +1 Power chip is disabled.
     expect(confirmButton().disabled).toBe(false);
-    expect((screen.getByRole("button", { name: /^Power \(\+1\)$/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      (
+        screen.getByRole("button", {
+          name: /^Power \(\+1\)$/,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
 
     act(() => fireEvent.click(confirmButton()));
-    const played = onAction.mock.calls[0][0] as Extract<GameAction, { type: "PLAY_REACTION" }>;
+    const played = onAction.mock.calls[0][0] as Extract<
+      GameAction,
+      { type: "PLAY_REACTION" }
+    >;
     expect(played.costCardIds).toEqual(["artifact.necklace_of_dragonteeth"]);
     const applied = applyAction(state, played);
     expect(applied.errors).toEqual([]);
-    expect(applied.state.combat!.units.unit_p2_vampires.activatedThisRound).toBe(true);
+    expect(
+      applied.state.combat!.units.unit_p2_vampires.activatedThisRound,
+    ).toBe(true);
   });
 
   it("reaches the silver skip with ONE +1 Power card upgraded to expert with a crown", () => {
@@ -1637,31 +1876,52 @@ describe("ReactionTray — Sorrow pays its skip with a Power-value cost picker",
     // crown), which pays the skip on its own. The emitted action must carry
     // costCardModes so the engine spends the crown and takes the expert value.
     const state = silverSkipWindow(["stat.power"]);
-    expect(state.players.p1.limits.expertUses, "sandbox seat has crowns").toBeGreaterThan(0);
+    expect(
+      state.players.p1.limits.expertUses,
+      "sandbox seat has crowns",
+    ).toBeGreaterThan(0);
 
     const onAction = vi.fn();
     render(trayFor(state, onAction));
 
-    act(() => fireEvent.click(screen.getByRole("button", { name: /skip a silver unit/i })));
+    act(() =>
+      fireEvent.click(
+        screen.getByRole("button", { name: /skip a silver unit/i }),
+      ),
+    );
     // Pick the lone Power card (basic +1) — still 1 short of the 2-Power skip.
-    act(() => fireEvent.click(screen.getByRole("button", { name: /^Power \(\+1\)$/ })));
-    expect(confirmButton().disabled, "basic +1 is one short of the 2-Power skip").toBe(true);
+    act(() =>
+      fireEvent.click(screen.getByRole("button", { name: /^Power \(\+1\)$/ })),
+    );
+    expect(
+      confirmButton().disabled,
+      "basic +1 is one short of the 2-Power skip",
+    ).toBe(true);
 
     // The Crown toggle appears for the picked Power source; clicking it upgrades
     // the value to +2 and satisfies the cost.
     act(() => fireEvent.click(screen.getByRole("button", { name: /Crown/i })));
-    expect(confirmButton().disabled, "expert +2 reaches the silver skip").toBe(false);
+    expect(confirmButton().disabled, "expert +2 reaches the silver skip").toBe(
+      false,
+    );
 
     act(() => fireEvent.click(confirmButton()));
-    const played = onAction.mock.calls[0][0] as Extract<GameAction, { type: "PLAY_REACTION" }>;
+    const played = onAction.mock.calls[0][0] as Extract<
+      GameAction,
+      { type: "PLAY_REACTION" }
+    >;
     expect(played.costCardIds).toEqual(["stat.power"]);
     expect(played.costCardModes).toEqual(["expert"]);
 
     // The engine accepts it: the silver vampires are skipped and the crown spent.
     const applied = applyAction(state, played);
     expect(applied.errors).toEqual([]);
-    expect(applied.state.combat!.units.unit_p2_vampires.activatedThisRound).toBe(true);
-    expect(applied.state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+    expect(
+      applied.state.combat!.units.unit_p2_vampires.activatedThisRound,
+    ).toBe(true);
+    expect(applied.state.players.p1.combatStats.expertUsesSpentThisRound).toBe(
+      1,
+    );
   });
 
   /**
@@ -1684,12 +1944,18 @@ describe("ReactionTray — Sorrow pays its skip with a Power-value cost picker",
     state.activePlayerId = "p1";
     state.combat!.activeUnitId = "unit_p1_griffins";
     if (crownsLeft !== undefined) {
-      state.players.p1.combatStats.expertUsesSpentThisRound = state.players.p1.limits.expertUses - crownsLeft;
+      state.players.p1.combatStats.expertUsesSpentThisRound =
+        state.players.p1.limits.expertUses - crownsLeft;
     }
     for (const unit of Object.values(state.combat!.units)) {
-      unit.activatedThisRound = unit.id !== "unit_p1_griffins" && unit.id !== "unit_p2_vampires";
+      unit.activatedThisRound =
+        unit.id !== "unit_p1_griffins" && unit.id !== "unit_p2_vampires";
     }
-    const result = applyAction(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
+    const result = applyAction(state, {
+      type: "DEFEND_UNIT",
+      playerId: "p1",
+      unitId: "unit_p1_griffins",
+    });
     expect(result.errors).toEqual([]);
     return result.state;
   }
@@ -1699,23 +1965,40 @@ describe("ReactionTray — Sorrow pays its skip with a Power-value cost picker",
     // The ENGINE really offers it — the bug was the payment surface, not the gate.
     expect(
       getLegalActions(state, "p1").some(
-        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "spell.sorrow"
+        (legal) =>
+          legal.action.type === "PLAY_REACTION" &&
+          legal.action.cardId === "spell.sorrow",
       ),
-      "the engine offers the silver skip off Earth Magic's expert Power"
+      "the engine offers the silver skip off Earth Magic's expert Power",
     ).toBe(true);
 
     const onAction = vi.fn();
     render(trayFor(state, onAction));
-    act(() => fireEvent.click(screen.getByRole("button", { name: /skip a silver unit/i })));
-    expect(confirmButton().disabled, "2 Power is owed and nothing is paid yet").toBe(true);
+    act(() =>
+      fireEvent.click(
+        screen.getByRole("button", { name: /skip a silver unit/i }),
+      ),
+    );
+    expect(
+      confirmButton().disabled,
+      "2 Power is owed and nothing is paid yet",
+    ).toBe(true);
 
     // The chip is shown at the value that can actually pay: its expert +3.
-    const chip = screen.getByRole("button", { name: /^Earth Magic \(\+3\)$/ }) as HTMLButtonElement;
+    const chip = screen.getByRole("button", {
+      name: /^Earth Magic \(\+3\)$/,
+    }) as HTMLButtonElement;
     act(() => fireEvent.click(chip));
-    expect(confirmButton().disabled, "Earth Magic's expert +3 covers the 2-Power skip").toBe(false);
+    expect(
+      confirmButton().disabled,
+      "Earth Magic's expert +3 covers the 2-Power skip",
+    ).toBe(false);
 
     act(() => fireEvent.click(confirmButton()));
-    const played = onAction.mock.calls[0][0] as Extract<GameAction, { type: "PLAY_REACTION" }>;
+    const played = onAction.mock.calls[0][0] as Extract<
+      GameAction,
+      { type: "PLAY_REACTION" }
+    >;
     expect(played.costCardIds).toEqual(["ability.earth_magic"]);
     // Picked at "basic" the source brings 0 Power and the engine rejects it, so
     // the chip must arm itself at expert.
@@ -1723,19 +2006,28 @@ describe("ReactionTray — Sorrow pays its skip with a Power-value cost picker",
 
     const applied = applyAction(state, played);
     expect(applied.errors.map((error) => error.message)).toEqual([]);
-    expect(applied.state.combat!.units.unit_p2_vampires.activatedThisRound).toBe(true);
-    expect(applied.state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+    expect(
+      applied.state.combat!.units.unit_p2_vampires.activatedThisRound,
+    ).toBe(true);
+    expect(applied.state.players.p1.combatStats.expertUsesSpentThisRound).toBe(
+      1,
+    );
   });
 
   it("CONTROL: with no crowns left Earth Magic pays nothing — no window, no chip", () => {
     // The expert +3 is unreachable without a crown, so the engine opens no window
     // at all. The fix must not invent an offer the engine would refuse.
     const state = silverSkipAttempt(["ability.earth_magic"], 0);
-    expect(state.reactionWindow, "nothing is payable, so no skip window opens").toBeNull();
+    expect(
+      state.reactionWindow,
+      "nothing is payable, so no skip window opens",
+    ).toBeNull();
     expect(
       getLegalActions(state, "p1").some(
-        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "spell.sorrow"
-      )
+        (legal) =>
+          legal.action.type === "PLAY_REACTION" &&
+          legal.action.cardId === "spell.sorrow",
+      ),
     ).toBe(false);
     render(trayFor(state, vi.fn()));
     expect(screen.queryByRole("button", { name: /^Earth Magic/ })).toBeNull();
@@ -1748,8 +2040,14 @@ describe("ReactionTray — Sorrow pays its skip with a Power-value cost picker",
     // spellPowerValueOfCard is 0 for Fire Magic on an Earth spell at BOTH modes.
     const state = silverSkipWindow(["stat.power", "ability.fire_magic"]);
     render(trayFor(state, vi.fn()));
-    act(() => fireEvent.click(screen.getByRole("button", { name: /skip a silver unit/i })));
-    expect(screen.getByRole("button", { name: /^Power \(\+1\)$/ })).toBeTruthy();
+    act(() =>
+      fireEvent.click(
+        screen.getByRole("button", { name: /skip a silver unit/i }),
+      ),
+    );
+    expect(
+      screen.getByRole("button", { name: /^Power \(\+1\)$/ }),
+    ).toBeTruthy();
     expect(screen.queryByRole("button", { name: /^Fire Magic/ })).toBeNull();
   });
 
@@ -1766,23 +2064,28 @@ describe("ReactionTray — Sorrow pays its skip with a Power-value cost picker",
         cardId: "specialty.deemer.1",
         mode: "basic" as const,
         optionIndex: 0,
-        target: { type: "unit" as const, unitId }
-      }
+        target: { type: "unit" as const, unitId },
+      },
     });
     render(
       <CardZoomProvider>
         <ReactionTray
-          legalActions={[meteor("unit_p2_skeletons"), meteor("unit_p2_vampires")]}
+          legalActions={[
+            meteor("unit_p2_skeletons"),
+            meteor("unit_p2_vampires"),
+          ]}
           onAction={onAction}
           onSelectCardAction={onSelectCardAction}
           state={state}
           view={getPlayerView(state, "p1")}
           viewerPlayerId="p1"
         />
-      </CardZoomProvider>
+      </CardZoomProvider>,
     );
 
-    const aim = screen.getAllByRole("button", { name: "Choose Power & target" });
+    const aim = screen.getAllByRole("button", {
+      name: "Choose Power & target",
+    });
     expect(aim).toHaveLength(1);
     expect(screen.queryByText(/Meteor Shower at/i)).toBeNull();
     act(() => fireEvent.click(aim[0]));
@@ -1801,20 +2104,30 @@ describe("ReactionTray — Sorrow pays its skip with a Power-value cost picker",
           view={getPlayerView(state, "p1")}
           viewerPlayerId="p1"
         />
-      </CardZoomProvider>
+      </CardZoomProvider>,
     );
-    expect(screen.getByRole("dialog", { name: /Meteor Shower I Power/i })).toBeTruthy();
+    expect(
+      screen.getByRole("dialog", { name: /Meteor Shower I Power/i }),
+    ).toBeTruthy();
     expect(screen.queryByText("Basic Water Magic")).toBeNull();
     expect(screen.queryByText(/Meteor Shower at/i)).toBeNull();
-    act(() => fireEvent.click(screen.getByRole("button", { name: /^\+1 Power$/ })));
-    act(() => fireEvent.click(screen.getByRole("button", { name: /Use crown/i })));
-    act(() => fireEvent.click(screen.getByRole("button", { name: /Use Power & choose target/i })));
+    act(() =>
+      fireEvent.click(screen.getByRole("button", { name: /^\+1 Power$/ })),
+    );
+    act(() =>
+      fireEvent.click(screen.getByRole("button", { name: /Use crown/i })),
+    );
+    act(() =>
+      fireEvent.click(
+        screen.getByRole("button", { name: /Use Power & choose target/i }),
+      ),
+    );
     expect(onAction).not.toHaveBeenCalled();
     expect(onAim).toHaveBeenCalledTimes(1);
     expect(onAim.mock.calls[0][0].cardId).toBe("specialty.deemer.1");
     expect(onAim.mock.calls[0][1]).toEqual({
       costCardIds: ["stat.power"],
-      costCardModes: ["expert"]
+      costCardModes: ["expert"],
     });
   });
 
@@ -1830,8 +2143,8 @@ describe("ReactionTray — Sorrow pays its skip with a Power-value cost picker",
         cardId: "specialty.glacius.1",
         mode: "basic" as const,
         optionIndex: 0,
-        target: { type: "space" as const, position }
-      }
+        target: { type: "space" as const, position },
+      },
     });
     render(
       <CardZoomProvider>
@@ -1843,7 +2156,7 @@ describe("ReactionTray — Sorrow pays its skip with a Power-value cost picker",
           view={getPlayerView(state, "p1")}
           viewerPlayerId="p1"
         />
-      </CardZoomProvider>
+      </CardZoomProvider>,
     );
 
     const aim = screen.getAllByRole("button", { name: "Pay & choose space" });
@@ -1853,7 +2166,7 @@ describe("ReactionTray — Sorrow pays its skip with a Power-value cost picker",
     expect(onSelectCardAction).toHaveBeenCalledTimes(1);
     expect(onSelectCardAction.mock.calls[0][0]).toMatchObject({
       cardId: "specialty.glacius.1",
-      target: { type: "space" }
+      target: { type: "space" },
     });
   });
 
@@ -1864,11 +2177,20 @@ describe("ReactionTray — Sorrow pays its skip with a Power-value cost picker",
     const onAction = vi.fn();
     render(trayFor(state, onAction));
 
-    act(() => fireEvent.click(screen.getByRole("button", { name: /skip a silver unit/i })));
-    act(() => fireEvent.click(screen.getByRole("button", { name: /^Power \(\+1\)$/ })));
+    act(() =>
+      fireEvent.click(
+        screen.getByRole("button", { name: /skip a silver unit/i }),
+      ),
+    );
+    act(() =>
+      fireEvent.click(screen.getByRole("button", { name: /^Power \(\+1\)$/ })),
+    );
     // No crown → no expert toggle, and basic +1 never reaches the 2-Power skip.
     expect(screen.queryByRole("button", { name: /Crown/i })).toBeNull();
-    expect(confirmButton().disabled, "basic +1 with no crown cannot pay the skip").toBe(true);
+    expect(
+      confirmButton().disabled,
+      "basic +1 with no crown cannot pay the skip",
+    ).toBe(true);
   });
 
   /** A gold unit is about to activate; p1 holds Sorrow + two basic Power cards. */
@@ -1881,9 +2203,14 @@ describe("ReactionTray — Sorrow pays its skip with a Power-value cost picker",
     state.combat!.activeUnitId = "unit_p1_griffins";
     state.combat!.units.unit_p2_vampires.grade = "gold";
     for (const unit of Object.values(state.combat!.units)) {
-      unit.activatedThisRound = unit.id !== "unit_p1_griffins" && unit.id !== "unit_p2_vampires";
+      unit.activatedThisRound =
+        unit.id !== "unit_p1_griffins" && unit.id !== "unit_p2_vampires";
     }
-    const result = applyAction(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
+    const result = applyAction(state, {
+      type: "DEFEND_UNIT",
+      playerId: "p1",
+      unitId: "unit_p1_griffins",
+    });
     expect(result.errors).toEqual([]);
     expect(result.state.combat!.activeUnitId).toBe("unit_p2_vampires");
     return result.state;
@@ -1895,32 +2222,52 @@ describe("ReactionTray — Sorrow pays its skip with a Power-value cost picker",
     const onAction = vi.fn();
     render(trayFor(state, onAction));
 
-    act(() => fireEvent.click(screen.getByRole("button", { name: /skip a gold unit/i })));
+    act(() =>
+      fireEvent.click(
+        screen.getByRole("button", { name: /skip a gold unit/i }),
+      ),
+    );
     // Pick both basic Power cards — 1 + 1 = 2, still short of the 4-Power skip.
-    const powerChips = () => screen.getAllByRole("button", { name: /^Power \(\+1\)$/ });
+    const powerChips = () =>
+      screen.getAllByRole("button", { name: /^Power \(\+1\)$/ });
     expect(powerChips()).toHaveLength(2);
     act(() => fireEvent.click(powerChips()[0]));
     act(() => fireEvent.click(powerChips()[1]));
-    expect(confirmButton().disabled, "two basic Power (2) < the 4-Power gold skip").toBe(true);
+    expect(
+      confirmButton().disabled,
+      "two basic Power (2) < the 4-Power gold skip",
+    ).toBe(true);
 
     // Each picked source gets its own Crown toggle; upgrading BOTH reaches +2+2=4.
-    const crownToggles = () => screen.getAllByRole("button", { name: /Crown/i });
+    const crownToggles = () =>
+      screen.getAllByRole("button", { name: /Crown/i });
     expect(crownToggles()).toHaveLength(2);
     act(() => fireEvent.click(crownToggles()[0]));
-    expect(confirmButton().disabled, "one crown (3) is still short of 4").toBe(true);
+    expect(confirmButton().disabled, "one crown (3) is still short of 4").toBe(
+      true,
+    );
     act(() => fireEvent.click(crownToggles()[0])); // the second remaining toggle
-    expect(confirmButton().disabled, "two crowns (4) reach the gold skip").toBe(false);
+    expect(confirmButton().disabled, "two crowns (4) reach the gold skip").toBe(
+      false,
+    );
 
     act(() => fireEvent.click(confirmButton()));
-    const played = onAction.mock.calls[0][0] as Extract<GameAction, { type: "PLAY_REACTION" }>;
+    const played = onAction.mock.calls[0][0] as Extract<
+      GameAction,
+      { type: "PLAY_REACTION" }
+    >;
     expect(played.costCardIds).toEqual(["stat.power", "stat.power"]);
     expect(played.costCardModes).toEqual(["expert", "expert"]);
 
     // The engine accepts it: the gold unit is skipped and both crowns are spent.
     const applied = applyAction(state, played);
     expect(applied.errors).toEqual([]);
-    expect(applied.state.combat!.units.unit_p2_vampires.activatedThisRound).toBe(true);
-    expect(applied.state.players.p1.combatStats.expertUsesSpentThisRound).toBe(2);
+    expect(
+      applied.state.combat!.units.unit_p2_vampires.activatedThisRound,
+    ).toBe(true);
+    expect(applied.state.players.p1.combatStats.expertUsesSpentThisRound).toBe(
+      2,
+    );
   });
 });
 
@@ -1951,7 +2298,7 @@ describe("ReactionTray — Magic Mirror's paid redirect can pay its cost in the 
       type: "CAST_SPELL",
       playerId: "p2",
       cardId: "spell.magic_arrow",
-      target: { type: "unit", unitId: "unit_p1_griffins" }
+      target: { type: "unit", unitId: "unit_p1_griffins" },
     });
     expect(cast.errors).toEqual([]);
     expect(cast.state.reactionWindow?.priorityPlayerId).toBe("p1");
@@ -1968,20 +2315,40 @@ describe("ReactionTray — Magic Mirror's paid redirect can pay its cost in the 
     render(trayFor(state, onAction));
 
     // Free bronze redirect stays a one-click button…
-    expect(screen.getByRole("button", { name: /redirect the spell to a bronze unit/i })).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: /redirect the spell to a bronze unit/i,
+      }),
+    ).toBeTruthy();
     // …the paid silver redirect now gets a pick + payment picker.
-    act(() => fireEvent.click(screen.getByRole("button", { name: /bronze or silver unit \(pay 1 power\)/i })));
+    act(() =>
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: /bronze or silver unit \(pay 1 power\)/i,
+        }),
+      ),
+    );
 
-    const confirm = () => screen.getByRole("button", { name: /play card/i }) as HTMLButtonElement;
+    const confirm = () =>
+      screen.getByRole("button", { name: /play card/i }) as HTMLButtonElement;
     expect(confirm().disabled, "1 Power is owed but unpaid").toBe(true);
 
-    act(() => fireEvent.click(screen.getByRole("button", { name: /^Power \(\+1\)$/ })));
+    act(() =>
+      fireEvent.click(screen.getByRole("button", { name: /^Power \(\+1\)$/ })),
+    );
     expect(confirm().disabled, "the 1-Power cost is now covered").toBe(false);
 
     act(() => fireEvent.click(confirm()));
     expect(onAction).toHaveBeenCalledTimes(1);
-    const played = onAction.mock.calls[0][0] as Extract<GameAction, { type: "PLAY_REACTION" }>;
-    expect(played).toMatchObject({ type: "PLAY_REACTION", cardId: "spell.magic_mirror", optionIndex: 1 });
+    const played = onAction.mock.calls[0][0] as Extract<
+      GameAction,
+      { type: "PLAY_REACTION" }
+    >;
+    expect(played).toMatchObject({
+      type: "PLAY_REACTION",
+      cardId: "spell.magic_mirror",
+      optionIndex: 1,
+    });
     expect(played.costCardIds).toEqual(["stat.power"]);
 
     // The engine accepts it: the redirect's new-target choice opens, no errors.
@@ -2020,7 +2387,7 @@ describe("ReactionTray — Magic Mirror from the Spell Book is clickable", () =>
       type: "CAST_SPELL",
       playerId: "p2",
       cardId: "spell.magic_arrow",
-      target: { type: "unit", unitId: "unit_p1_griffins" }
+      target: { type: "unit", unitId: "unit_p1_griffins" },
     });
     expect(cast.errors).toEqual([]);
     expect(cast.state.reactionWindow?.priorityPlayerId).toBe("p1");
@@ -2030,7 +2397,7 @@ describe("ReactionTray — Magic Mirror from the Spell Book is clickable", () =>
       (legal) =>
         legal.action.type === "PLAY_REACTION" &&
         legal.action.cardId === "spell.magic_mirror" &&
-        legal.action.fromSpellBook === true
+        legal.action.fromSpellBook === true,
     );
     expect(offered, "engine must offer Book Magic Mirror").toBe(true);
 
@@ -2038,24 +2405,34 @@ describe("ReactionTray — Magic Mirror from the Spell Book is clickable", () =>
     render(trayFor(cast.state, onAction));
 
     // Spell Book tile: "Play from Spell Book" for the free bronze grade.
-    const playBook = screen.getByRole("button", { name: /play from spell book/i });
+    const playBook = screen.getByRole("button", {
+      name: /play from spell book/i,
+    });
     expect(playBook).toBeTruthy();
     act(() => fireEvent.click(playBook));
 
     expect(onAction).toHaveBeenCalledTimes(1);
-    const played = onAction.mock.calls[0][0] as Extract<GameAction, { type: "PLAY_REACTION" }>;
+    const played = onAction.mock.calls[0][0] as Extract<
+      GameAction,
+      { type: "PLAY_REACTION" }
+    >;
     expect(played).toMatchObject({
       type: "PLAY_REACTION",
       cardId: "spell.magic_mirror",
       fromSpellBook: true,
-      optionIndex: 0
+      optionIndex: 0,
     });
 
     // Engine accepts the Book play and opens the redirect target choice.
     const applied = applyAction(cast.state, played);
-    expect(applied.errors, applied.errors.map((e) => e.message).join("; ")).toEqual([]);
+    expect(
+      applied.errors,
+      applied.errors.map((e) => e.message).join("; "),
+    ).toEqual([]);
     expect(applied.state.pendingChoice?.type).toBe("ABILITY_TARGET_CHOICE");
-    expect(applied.state.players.p1.spellBook).not.toContain("spell.magic_mirror");
+    expect(applied.state.players.p1.spellBook).not.toContain(
+      "spell.magic_mirror",
+    );
     expect(applied.state.players.p1.discard).toContain("spell.magic_mirror");
   });
 });
@@ -2087,9 +2464,17 @@ describe("ReactionTray — Bowstring carries its chosen ranged unit through the 
     marksmen.initiative = 1;
     state.combat!.units.unit_p2_skeletons.initiative = 99;
     for (const unit of Object.values(state.combat!.units)) {
-      unit.activatedThisRound = !["unit_p1_griffins", "unit_p2_skeletons", "unit_p1_marksmen"].includes(unit.id);
+      unit.activatedThisRound = ![
+        "unit_p1_griffins",
+        "unit_p2_skeletons",
+        "unit_p1_marksmen",
+      ].includes(unit.id);
     }
-    const result = applyAction(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
+    const result = applyAction(state, {
+      type: "DEFEND_UNIT",
+      playerId: "p1",
+      unitId: "unit_p1_griffins",
+    });
     expect(result.errors).toEqual([]);
     expect(result.state.reactionWindow?.priorityPlayerId).toBe("p1");
     expect(result.state.combat!.activeUnitId).toBe("unit_p2_skeletons");
@@ -2105,14 +2490,19 @@ describe("ReactionTray — Bowstring carries its chosen ranged unit through the 
     const onAction = vi.fn();
     render(trayFor(state, onAction));
 
-    act(() => fireEvent.click(screen.getByRole("button", { name: /activate/i })));
+    act(() =>
+      fireEvent.click(screen.getByRole("button", { name: /activate/i })),
+    );
     expect(onAction).toHaveBeenCalledTimes(1);
-    const played = onAction.mock.calls[0][0] as Extract<GameAction, { type: "PLAY_REACTION" }>;
+    const played = onAction.mock.calls[0][0] as Extract<
+      GameAction,
+      { type: "PLAY_REACTION" }
+    >;
     expect(played).toMatchObject({
       type: "PLAY_REACTION",
       cardId: "artifact.bowstring_of_the_unicorns_mane",
       optionIndex: 0,
-      target: { type: "unit", unitId: "unit_p1_marksmen" }
+      target: { type: "unit", unitId: "unit_p1_marksmen" },
     });
 
     const applied = applyAction(state, played);
@@ -2140,20 +2530,24 @@ describe("ReactionTray — Bowstring carries its chosen ranged unit through the 
       type: "ATTACK_UNIT",
       playerId: "p1",
       attackerId: attacker.id,
-      defenderId: defender.id
+      defenderId: defender.id,
     }).state;
     while (state.reactionWindow?.triggerEvent.type === "UNIT_ATTACK_DECLARED") {
       state = applyAction(state, {
         type: "PASS_REACTION",
-        playerId: state.reactionWindow.priorityPlayerId
+        playerId: state.reactionWindow.priorityPlayerId,
       }).state;
     }
     expect(state.reactionWindow?.triggerEvent.type).toBe("ATTACK_DIE_SETTLED");
 
     const onAction = vi.fn();
     render(trayFor(state, onAction));
-    expect(screen.getByRole("button", { name: /ignore die 1 \(\+1\)/i })).toBeTruthy();
-    const ignoreMinus = screen.getByRole("button", { name: /ignore die 2 \(-1\)/i });
+    expect(
+      screen.getByRole("button", { name: /ignore die 1 \(\+1\)/i }),
+    ).toBeTruthy();
+    const ignoreMinus = screen.getByRole("button", {
+      name: /ignore die 2 \(-1\)/i,
+    });
     expect(ignoreMinus).toBeTruthy();
     act(() => fireEvent.click(ignoreMinus));
 
@@ -2163,7 +2557,7 @@ describe("ReactionTray — Bowstring carries its chosen ranged unit through the 
       playerId: "p1",
       cardId: "artifact.bowstring_of_the_unicorns_mane",
       optionIndex: 1,
-      dieIndex: 1
+      dieIndex: 1,
     });
   });
 });
@@ -2199,7 +2593,7 @@ describe("ReactionTray — Archangels' free lethal save is reachable in the UI",
       type: "ATTACK_UNIT",
       playerId: "p2",
       attackerId: "unit_p2_skeletons",
-      defenderId: "unit_p1_griffins"
+      defenderId: "unit_p1_griffins",
     });
     expect(result.errors).toEqual([]);
     return result.state;
@@ -2211,7 +2605,9 @@ describe("ReactionTray — Archangels' free lethal save is reachable in the UI",
     expect(state.reactionWindow?.triggerEvent.type).toBe("UNIT_LETHAL_HIT");
     expect(state.reactionWindow?.priorityPlayerId).toBe("p1");
     expect(
-      getLegalActions(state, "p1").some((legal) => legal.action.type === "USE_UNIT_RESURRECTION")
+      getLegalActions(state, "p1").some(
+        (legal) => legal.action.type === "USE_UNIT_RESURRECTION",
+      ),
     ).toBe(true);
 
     const onAction = vi.fn();
@@ -2224,22 +2620,26 @@ describe("ReactionTray — Archangels' free lethal save is reachable in the UI",
           view={getPlayerView(state, "p1")}
           viewerPlayerId="p1"
         />
-      </CardZoomProvider>
+      </CardZoomProvider>,
     );
 
-    const saveButton = screen.getByRole("button", { name: /cancel the killing blow/i });
+    const saveButton = screen.getByRole("button", {
+      name: /cancel the killing blow/i,
+    });
     act(() => fireEvent.click(saveButton));
     expect(onAction).toHaveBeenCalledTimes(1);
     expect(onAction.mock.calls[0][0]).toMatchObject({
       type: "USE_UNIT_RESURRECTION",
       playerId: "p1",
-      savingUnitId: "unit_p1_crusaders"
+      savingUnitId: "unit_p1_crusaders",
     });
 
     // The fired action resolves cleanly in the engine (end-to-end sanity).
     const applied = applyAction(state, onAction.mock.calls[0][0] as GameAction);
     expect(applied.errors).toEqual([]);
-    expect(applied.state.combat!.units.unit_p1_crusaders.usedLethalSaveThisCombat).toBe(true);
+    expect(
+      applied.state.combat!.units.unit_p1_crusaders.usedLethalSaveThisCombat,
+    ).toBe(true);
   });
 
   /**
@@ -2269,7 +2669,7 @@ describe("ReactionTray — Archangels' free lethal save is reachable in the UI",
       type: "ATTACK_UNIT",
       playerId: "p1",
       attackerId: "unit_p1_griffins",
-      defenderId: "unit_p2_skeletons"
+      defenderId: "unit_p2_skeletons",
     });
     expect(result.errors).toEqual([]);
     let safety = 12;
@@ -2280,7 +2680,7 @@ describe("ReactionTray — Archangels' free lethal save is reachable in the UI",
     ) {
       result = applyAction(result.state, {
         type: "PASS_REACTION",
-        playerId: result.state.reactionWindow.priorityPlayerId
+        playerId: result.state.reactionWindow.priorityPlayerId,
       });
       expect(result.errors).toEqual([]);
     }
@@ -2291,7 +2691,9 @@ describe("ReactionTray — Archangels' free lethal save is reachable in the UI",
     const state = parryWindow();
     expect(state.reactionWindow?.triggerEvent.type).toBe("ATTACK_DIE_SETTLED");
     expect(
-      getLegalActions(state, "p2").some((legal) => legal.action.type === "USE_UNIT_DIE_IGNORE")
+      getLegalActions(state, "p2").some(
+        (legal) => legal.action.type === "USE_UNIT_DIE_IGNORE",
+      ),
     ).toBe(true);
 
     const onAction = vi.fn();
@@ -2304,17 +2706,19 @@ describe("ReactionTray — Archangels' free lethal save is reachable in the UI",
           view={getPlayerView(state, "p2")}
           viewerPlayerId="p2"
         />
-      </CardZoomProvider>
+      </CardZoomProvider>,
     );
 
-    const parryButton = screen.getByRole("button", { name: /ignore the attack die/i });
+    const parryButton = screen.getByRole("button", {
+      name: /ignore the attack die/i,
+    });
     act(() => fireEvent.click(parryButton));
     expect(onAction).toHaveBeenCalledTimes(1);
     expect(onAction.mock.calls[0][0]).toMatchObject({
       type: "USE_UNIT_DIE_IGNORE",
       playerId: "p2",
       defenderUnitId: "unit_p2_skeletons",
-      discardCardId: "stat.attack"
+      discardCardId: "stat.attack",
     });
 
     // The fired action resolves cleanly in the engine (end-to-end sanity).
@@ -2357,11 +2761,13 @@ describe("ReactionTray — Archangels' free lethal save is reachable in the UI",
       type: "ATTACK_UNIT",
       playerId: "p1",
       attackerId: "unit_p1_marksmen",
-      defenderId: "unit_p2_skeletons"
+      defenderId: "unit_p2_skeletons",
     });
     expect(declared.errors).toEqual([]);
     // The incoming Retaliation Attack's window — p1 is the side about to be hit.
-    expect(declared.state.reactionWindow?.triggerEvent.type).toBe("UNIT_ATTACK_DECLARED");
+    expect(declared.state.reactionWindow?.triggerEvent.type).toBe(
+      "UNIT_ATTACK_DECLARED",
+    );
 
     const onAction = vi.fn();
     render(
@@ -2373,11 +2779,13 @@ describe("ReactionTray — Archangels' free lethal save is reachable in the UI",
           view={getPlayerView(declared.state, "p1")}
           viewerPlayerId="p1"
         />
-      </CardZoomProvider>
+      </CardZoomProvider>,
     );
 
     // One tile per enemy target, each naming the unit it would hit.
-    const shot = screen.getByRole("button", { name: /Discard your Ballista.*→.*Skeletons/i });
+    const shot = screen.getByRole("button", {
+      name: /Discard your Ballista.*→.*Skeletons/i,
+    });
     act(() => fireEvent.click(shot));
     expect(onAction).toHaveBeenCalledTimes(1);
     expect(onAction.mock.calls[0][0]).toMatchObject({
@@ -2385,11 +2793,14 @@ describe("ReactionTray — Archangels' free lethal save is reachable in the UI",
       playerId: "p1",
       cardId: "specialty.gerwulf.6",
       optionIndex: 1,
-      target: { type: "unit", unitId: "unit_p2_skeletons" }
+      target: { type: "unit", unitId: "unit_p2_skeletons" },
     });
 
     // The fired action resolves cleanly in the engine (end-to-end sanity).
-    const applied = applyAction(declared.state, onAction.mock.calls[0][0] as GameAction);
+    const applied = applyAction(
+      declared.state,
+      onAction.mock.calls[0][0] as GameAction,
+    );
     expect(applied.errors).toEqual([]);
     expect(applied.state.combat!.units.unit_p2_skeletons.damage).toBe(4);
   });
@@ -2425,7 +2836,7 @@ describe("ReactionTray — First Aid Tent heal is reachable as an instant reacti
       type: "ATTACK_UNIT",
       playerId: "p2",
       attackerId: "unit_p2_skeletons",
-      defenderId: "unit_p1_crusaders"
+      defenderId: "unit_p1_crusaders",
     });
     expect(result.errors).toEqual([]);
     return result.state;
@@ -2434,10 +2845,14 @@ describe("ReactionTray — First Aid Tent heal is reachable as an instant reacti
   it("renders a tile that fires the Tent heal (USE_ACTIVE_EFFECT) in the attack window", () => {
     const state = tentAttackWindow();
     // Sanity: the attack paused with p1 on priority and the heal on offer.
-    expect(state.reactionWindow?.triggerEvent.type).toBe("UNIT_ATTACK_DECLARED");
+    expect(state.reactionWindow?.triggerEvent.type).toBe(
+      "UNIT_ATTACK_DECLARED",
+    );
     expect(state.reactionWindow?.priorityPlayerId).toBe("p1");
     expect(
-      getLegalActions(state, "p1").some((legal) => legal.action.type === "USE_ACTIVE_EFFECT")
+      getLegalActions(state, "p1").some(
+        (legal) => legal.action.type === "USE_ACTIVE_EFFECT",
+      ),
     ).toBe(true);
 
     const onAction = vi.fn();
@@ -2450,16 +2865,18 @@ describe("ReactionTray — First Aid Tent heal is reachable as an instant reacti
           view={getPlayerView(state, "p1")}
           viewerPlayerId="p1"
         />
-      </CardZoomProvider>
+      </CardZoomProvider>,
     );
 
-    const healButton = screen.getByRole("button", { name: /First Aid Tent heal/i });
+    const healButton = screen.getByRole("button", {
+      name: /First Aid Tent heal/i,
+    });
     act(() => fireEvent.click(healButton));
     expect(onAction).toHaveBeenCalledTimes(1);
     expect(onAction.mock.calls[0][0]).toMatchObject({
       type: "USE_ACTIVE_EFFECT",
       playerId: "p1",
-      target: { type: "unit", unitId: "unit_p1_crusaders" }
+      target: { type: "unit", unitId: "unit_p1_crusaders" },
     });
 
     // The fired heal resolves cleanly: a DAMAGE_HEALED on the Crusaders is logged
@@ -2470,9 +2887,11 @@ describe("ReactionTray — First Aid Tent heal is reachable as an instant reacti
       (event) =>
         event.type === "DAMAGE_HEALED" &&
         event.target.type === "unit" &&
-        event.target.unitId === "unit_p1_crusaders"
+        event.target.unitId === "unit_p1_crusaders",
     );
-    expect(healed, "the Tent heal mended the Crusaders before the hit").toBe(true);
+    expect(healed, "the Tent heal mended the Crusaders before the hit").toBe(
+      true,
+    );
   });
 });
 
@@ -2484,7 +2903,11 @@ describe("ReactionTray — Crag Hack Offense VI convert is reachable", () => {
    */
   it("renders one-click tiles that fire CONVERT_CARD_TO_ATTACK for each held card", () => {
     const state = createInitialGameState("tray-offense-vi");
-    state.players.p1.hand = ["specialty.crag_hack.6", "stat.attack", "stat.defense"];
+    state.players.p1.hand = [
+      "specialty.crag_hack.6",
+      "stat.attack",
+      "stat.defense",
+    ];
     state.players.p2.hand = [];
     state.activePlayerId = "p1";
     state.combat!.activeUnitId = "unit_p1_griffins";
@@ -2498,7 +2921,9 @@ describe("ReactionTray — Crag Hack Offense VI convert is reachable", () => {
 
     // Play the ongoing VI aura first (via legal-actions, not a forged PLAY_CARD).
     const playVi = getLegalActions(state, "p1").find(
-      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.crag_hack.6"
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "specialty.crag_hack.6",
     );
     expect(playVi, "Offense VI is a combat play").toBeTruthy();
     const played = applyAction(state, playVi!.action);
@@ -2507,11 +2932,13 @@ describe("ReactionTray — Crag Hack Offense VI convert is reachable", () => {
       type: "ATTACK_UNIT",
       playerId: "p1",
       attackerId: "unit_p1_griffins",
-      defenderId: "unit_p2_skeletons"
+      defenderId: "unit_p2_skeletons",
     });
     expect(declared.errors).toEqual([]);
     expect(
-      getLegalActions(declared.state, "p1").some((legal) => legal.action.type === "CONVERT_CARD_TO_ATTACK")
+      getLegalActions(declared.state, "p1").some(
+        (legal) => legal.action.type === "CONVERT_CARD_TO_ATTACK",
+      ),
     ).toBe(true);
 
     const onAction = vi.fn();
@@ -2524,16 +2951,18 @@ describe("ReactionTray — Crag Hack Offense VI convert is reachable", () => {
           view={getPlayerView(declared.state, "p1")}
           viewerPlayerId="p1"
         />
-      </CardZoomProvider>
+      </CardZoomProvider>,
     );
 
     // At least one Offense VI convert button is visible and fires the action.
-    const convert = screen.getAllByRole("button", { name: /offense vi: discard/i })[0];
+    const convert = screen.getAllByRole("button", {
+      name: /offense vi: discard/i,
+    })[0];
     act(() => fireEvent.click(convert));
     expect(onAction).toHaveBeenCalledTimes(1);
     expect(onAction.mock.calls[0][0]).toMatchObject({
       type: "CONVERT_CARD_TO_ATTACK",
-      playerId: "p1"
+      playerId: "p1",
     });
   });
 });
@@ -2558,26 +2987,43 @@ describe("RerollModal — the die rolls before the keep/reroll choice", () => {
         candidates: [{ rolls: [1], roll: 1 }],
         remainingRerolls: 1,
         rerollSources: [],
-        sourceEffectIds: []
+        sourceEffectIds: [],
       },
-      combat: { units: { att1: { id: "att1", name: "Crusaders" }, def1: { id: "def1", name: "Skeletons" } } }
+      combat: {
+        units: {
+          att1: { id: "att1", name: "Crusaders" },
+          def1: { id: "def1", name: "Skeletons" },
+        },
+      },
     } as unknown as GameState;
   }
 
   const keep: LegalAction = {
     label: "Keep +1",
-    action: { type: "CHOOSE_PENDING_ROLL", playerId: "p1", candidateIndex: 0 } as unknown as GameAction
+    action: {
+      type: "CHOOSE_PENDING_ROLL",
+      playerId: "p1",
+      candidateIndex: 0,
+    } as unknown as GameAction,
   };
   const reroll: LegalAction = {
     label: "Reroll attack die (1 left)",
-    action: { type: "REROLL_PENDING_CHOICE", playerId: "p1" } as unknown as GameAction
+    action: {
+      type: "REROLL_PENDING_CHOICE",
+      playerId: "p1",
+    } as unknown as GameAction,
   };
 
   it("tumbles the die first, hiding keep/reroll until it settles", () => {
     vi.useFakeTimers();
     const onAction = vi.fn();
     const { container } = render(
-      <RerollModal legalActions={[keep, reroll]} onAction={onAction} state={rerollState()} viewerPlayerId="p1" />
+      <RerollModal
+        legalActions={[keep, reroll]}
+        onAction={onAction}
+        state={rerollState()}
+        viewerPlayerId="p1"
+      />,
     );
 
     // While the cube is mid-throw the choice is withheld and the die tumbles.
@@ -2601,7 +3047,12 @@ describe("RerollModal — the die rolls before the keep/reroll choice", () => {
     const onAction = vi.fn();
     const state = rerollState();
     const { container, rerender } = render(
-      <RerollModal legalActions={[keep, reroll]} onAction={onAction} state={state} viewerPlayerId="p1" />
+      <RerollModal
+        legalActions={[keep, reroll]}
+        onAction={onAction}
+        state={state}
+        viewerPlayerId="p1"
+      />,
     );
     act(() => vi.advanceTimersByTime(DICE_ROLL_MS + 10));
     expect(screen.getByRole("button", { name: /^Keep/ })).toBeTruthy();
@@ -2609,16 +3060,31 @@ describe("RerollModal — the die rolls before the keep/reroll choice", () => {
     // A reroll lands a second candidate: the modal must tumble again, not flash
     // the new face straight into a keep button.
     const rerolled = rerollState();
-    (rerolled.pendingChoice as { candidates: { rolls: number[]; roll: number }[] }).candidates = [
+    (
+      rerolled.pendingChoice as {
+        candidates: { rolls: number[]; roll: number }[];
+      }
+    ).candidates = [
       { rolls: [1], roll: 1 },
-      { rolls: [-1], roll: -1 }
+      { rolls: [-1], roll: -1 },
     ];
     // The engine offers the keep against the NEW latest candidate (index 1).
     const keepLatest: LegalAction = {
       label: "Keep -1",
-      action: { type: "CHOOSE_PENDING_ROLL", playerId: "p1", candidateIndex: 1 } as unknown as GameAction
+      action: {
+        type: "CHOOSE_PENDING_ROLL",
+        playerId: "p1",
+        candidateIndex: 1,
+      } as unknown as GameAction,
     };
-    rerender(<RerollModal legalActions={[keepLatest, reroll]} onAction={onAction} state={rerolled} viewerPlayerId="p1" />);
+    rerender(
+      <RerollModal
+        legalActions={[keepLatest, reroll]}
+        onAction={onAction}
+        state={rerolled}
+        viewerPlayerId="p1"
+      />,
+    );
     expect(container.querySelector(".dieCube.tumbling")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /^Keep/ })).toBeNull();
 
@@ -2629,7 +3095,12 @@ describe("RerollModal — the die rolls before the keep/reroll choice", () => {
   it("shows the waiting strip (no tumble, no buttons) to the non-choosing side", () => {
     const onAction = vi.fn();
     const { container } = render(
-      <RerollModal legalActions={[]} onAction={onAction} state={rerollState("p2")} viewerPlayerId="p1" />
+      <RerollModal
+        legalActions={[]}
+        onAction={onAction}
+        state={rerollState("p2")}
+        viewerPlayerId="p1"
+      />,
     );
     expect(screen.getByText(/may reroll the attack die/i)).toBeTruthy();
     expect(container.querySelector(".dieCube.tumbling")).toBeNull();
@@ -2659,7 +3130,7 @@ describe("RerollModal — the die rolls before the keep/reroll choice", () => {
     choice.candidates = [
       { rolls: [-1], roll: -1 },
       { rolls: [0], roll: 0 },
-      { rolls: [1], roll: 1 }
+      { rolls: [1], roll: 1 },
     ];
     choice.freeCandidateChoice = true;
     choice.remainingRerolls = 0;

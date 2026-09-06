@@ -70,6 +70,7 @@ type ReactionLegal = Extract<GameAction, { type: "PLAY_REACTION" }>;
 
 type TrayGroup = {
   cardId: string;
+  protectedUnitId?: string;
   optionIndex?: number;
   /** Bowstring post-roll option: exact die represented by this button. */
   dieIndex?: number;
@@ -1061,7 +1062,8 @@ export function ReactionTray({
   for (const action of reactionActions) {
     // A per-unit target (Bowstring) makes otherwise-identical plays distinct, so
     // it joins the group key — each ranged unit gets its own tile button.
-    const targetKey = action.target?.type === "unit" ? `#${action.target.unitId}` : "";
+    const targetKey = (action.target?.type === "unit" ? `#${action.target.unitId}` : "") +
+      (action.protectedUnitId ? `#protect:${action.protectedUnitId}` : "");
     // A draw-rider-only offer is a DIFFERENT play than the real triggered face
     // of the same option — collapsing them into one tile would silently
     // dispatch the wrong one.
@@ -1112,7 +1114,8 @@ export function ReactionTray({
         : undefined;
     const cardGroups = groupsByCard.get(action.cardId) ?? [];
     const existing = cardGroups.find((group) => {
-      const groupTargetKey = group.target?.type === "unit" ? `#${group.target.unitId}` : "";
+      const groupTargetKey = (group.target?.type === "unit" ? `#${group.target.unitId}` : "") +
+        (group.protectedUnitId ? `#protect:${group.protectedUnitId}` : "");
       const groupDrawOnlyKey = group.drawOnly ? "#drawOnly" : "";
       const groupDieKey = group.dieIndex !== undefined ? `#die${group.dieIndex}` : "";
       return (
@@ -1128,12 +1131,15 @@ export function ReactionTray({
     } else {
       cardGroups.push({
         cardId: action.cardId,
+        protectedUnitId: action.protectedUnitId,
         optionIndex: action.optionIndex,
         dieIndex: action.dieIndex,
         optionLabel: action.asPowerBoost
           ? "Discard for +1 Power"
-          : action.target?.type === "unit"
-            ? `Activate ${unitName(state, action.target.unitId)}`
+          : action.protectedUnitId && action.target?.type === "unit"
+            ? `Protect ${unitName(state, action.protectedUnitId)} → half to ${unitName(state, action.target.unitId)}`
+            : action.target?.type === "unit"
+            ? `${effect?.type === "ACTIVATE_RANGED_UNIT" ? "Activate" : "Target"} ${unitName(state, action.target.unitId)}`
             : action.drawOnly
               ? `${option?.label ?? card?.name ?? action.cardId} (draw only)`
               : action.dieIndex !== undefined
@@ -1977,7 +1983,7 @@ export function ReactionTray({
                     return group.modes.map((mode) => (
                       <button
                         className="trayInstant"
-                        key={`${group.cardId}-${group.optionIndex ?? "x"}-${group.dieIndex ?? "die-x"}-${mode}`}
+                        key={`${group.cardId}-${group.optionIndex ?? "x"}-${group.dieIndex ?? "die-x"}-${group.protectedUnitId ?? ""}-${group.target?.type === "unit" ? group.target.unitId : ""}-${Boolean(group.drawOnly)}-${mode}`}
                         onClick={() =>
                           onAction({
                             type: "PLAY_REACTION",
@@ -1986,7 +1992,10 @@ export function ReactionTray({
                             mode,
                             ...(group.optionIndex !== undefined ? { optionIndex: group.optionIndex } : {}),
                             ...(group.dieIndex !== undefined ? { dieIndex: group.dieIndex } : {}),
-                            ...(group.target ? { target: group.target } : {})
+                            ...(group.target ? { target: group.target } : {}),
+                            ...(group.protectedUnitId ? { protectedUnitId: group.protectedUnitId } : {}),
+                            ...(group.drawOnly ? { drawOnly: true as const } : {}),
+                            ...(group.utilityOnly ? { utilityOnly: true as const } : {})
                           })
                         }
                         type="button"

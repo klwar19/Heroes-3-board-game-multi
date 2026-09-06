@@ -2766,7 +2766,8 @@ export function balanceEagleEyeCopySpellId(
 function sameTargetRef(a: TargetRef, b: TargetRef | undefined): boolean {
   if (!b || a.type !== b.type) return false;
   if (a.type === "unit" && b.type === "unit") return a.unitId === b.unitId;
-  if (a.type === "space" && b.type === "space") return a.position === b.position;
+  if (a.type === "space" && b.type === "space")
+    return a.position === b.position;
   return a.type === "none" && b.type === "none";
 }
 
@@ -3640,7 +3641,12 @@ function addSpellActions(
     const originalEagleEyeTarget = eagleEyeCopy
       ? player.combatStats.eagleEyeCopyOriginalTarget
       : undefined;
-    for (const target of getTargetsForCard(state, playerId, cardId, cards).filter(
+    for (const target of getTargetsForCard(
+      state,
+      playerId,
+      cardId,
+      cards,
+    ).filter(
       (candidate) => !sameTargetRef(candidate, originalEagleEyeTarget),
     )) {
       actions.push({
@@ -3679,7 +3685,6 @@ function addSpellActions(
           ...(discardCastMode ? { castEnablerMode: discardCastMode } : {}),
         },
       });
-
     }
   }
 }
@@ -3750,23 +3755,25 @@ function addChooseOneSpellInstantCasts(
       cardId,
       cards,
       option.target,
-    ).filter((candidate) => !sameTargetRef(candidate, originalEagleEyeTarget))) {
+    ).filter(
+      (candidate) => !sameTargetRef(candidate, originalEagleEyeTarget),
+    )) {
       actions.push({
         label: source.eagleEyeCopy
           ? `Copy ${card.name} — ${option.label} with Eagle Eye (expert; Power 0, new target)`
           : source.fromScroll
             ? `Cast ${card.name} — ${option.label} (Scroll)`
-          : source.fromSpellDeck
-            ? `Cast ${card.name} — ${option.label} (Helm of the Alabaster Unicorn)`
-            : source.fromSpellBook
-              ? `Cast ${card.name} — ${option.label} (Spell Book)`
-              : source.tarnumReturn
-                ? `Cast ${card.name} — ${option.label} (free; ${
+            : source.fromSpellDeck
+              ? `Cast ${card.name} — ${option.label} (Helm of the Alabaster Unicorn)`
+              : source.fromSpellBook
+                ? `Cast ${card.name} — ${option.label} (Spell Book)`
+                : source.tarnumReturn
+                  ? `Cast ${card.name} — ${option.label} (free; ${
                     source.tarnumReturn === "deck-top"
                       ? "to Spell deck top"
                       : "to Spell discard"
                   })`
-                : `Cast ${card.name} — ${option.label}`,
+                  : `Cast ${card.name} — ${option.label}`,
         action: {
           type: "CAST_SPELL",
           playerId,
@@ -3942,7 +3949,11 @@ function addPlayableCardActions(
       continue;
     }
 
-    if (card.trigger || !isPhaseAllowedForCard(state, card)) {
+    if (
+      card.effect.type === "REDIRECT_PENDING_DAMAGE" ||
+      card.trigger ||
+      !isPhaseAllowedForCard(state, card)
+    ) {
       continue;
     }
 
@@ -3984,6 +3995,8 @@ function addPlayableCardActions(
     // nobody lost yet it would hand out +0. Withheld until it does something.
     if (
       card.effect.type === "FALLEN_ALLY_RESOLVE" &&
+      !card.effect.baseAttack &&
+      card.effect.teamInitiative === undefined &&
       fallenArmyUnitCount(state, playerId) < 1
     ) {
       continue;
@@ -4102,7 +4115,8 @@ function addPlayableCardActions(
     // draw-only PLAY_CARD twin" scope note.
     if (
       ownActivationOpen &&
-      actions.length === offersBeforeTargets &&
+      (actions.length === offersBeforeTargets ||
+        card.effect.type === "SUMMON_CAMPUS_CATS") &&
       healDrawOnlyRider(card.effect) > 0
     ) {
       actions.push({
@@ -4355,13 +4369,13 @@ export function bombardmentArmable(
     : undefined;
   return Boolean(
     combat &&
-      !combat.outcome &&
-      activeUnit &&
-      activeUnit.controllerId === playerId &&
-      activeUnit.type !== "ranged" &&
-      !activeUnit.attackedThisActivation &&
-      !activeUnit.bombardment &&
-      isUnitAlive(activeUnit),
+    !combat.outcome &&
+    activeUnit &&
+    activeUnit.controllerId === playerId &&
+    activeUnit.type !== "ranged" &&
+    !activeUnit.attackedThisActivation &&
+    !activeUnit.bombardment &&
+    isUnitAlive(activeUnit),
   );
 }
 
@@ -5411,7 +5425,8 @@ function effectSupportsExpertOption(effect: ConcreteEffect): boolean {
 export function healDrawOnlyRider(effect: EffectDefinition): number {
   if (
     effect.type === "HEAL_DAMAGE" ||
-    effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS"
+    effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS" ||
+    effect.type === "SUMMON_CAMPUS_CATS"
   ) {
     return effect.drawCards ?? 0;
   }
@@ -5439,7 +5454,8 @@ export function drawRiderThenDiscard(effect: EffectDefinition): number {
     effect.type === "ADD_COMBAT_STAT" ||
     // Polish Balance Pack Dragon Wing Tabard / Spirit of Oppression: "+1 SP,
     // draw 1 card then discard 1 card" — the same draw-then-discard order.
-    effect.type === "ADD_SPELL_POWER"
+    effect.type === "ADD_SPELL_POWER" ||
+    effect.type === "SUMMON_CAMPUS_CATS"
   ) {
     return effect.thenDiscard ?? 0;
   }
@@ -5458,6 +5474,7 @@ export function instantDrawOnlyRider(
     case "ADD_SPELL_POWER":
     case "HEAL_DAMAGE":
     case "HEAL_DAMAGE_AND_REMOVE_EFFECTS":
+    case "SUMMON_CAMPUS_CATS":
     case "GAIN_RUNES":
     case "GAIN_HERO_MOVEMENT":
       return effect.drawCards ?? 0;
@@ -5505,7 +5522,8 @@ function isInstantReactionUtility(effect: ConcreteEffect): boolean {
     instantDrawOnlyRider(effect, "expert") > 0 ||
     effect.type === "TAKE_FROM_DISCARD" ||
     effect.type === "RESHUFFLE_DISCARD_THEN_DRAW" ||
-    isDeckGainReactionUtility(effect)
+    isDeckGainReactionUtility(effect) ||
+    effect.type === "GAIN_MORALE_AND_GOLD"
   );
 }
 
@@ -5516,6 +5534,7 @@ function isMapPlayableEffect(
   card: CardDefinition,
   effect: ConcreteEffect,
 ): boolean {
+  if (effect.type === "GAIN_MORALE_AND_GOLD") return true;
   if (effect.type === "MGQ_MAD_SCIENCE") {
     const army = state.players[playerId]?.army ?? [];
     const hasBronzeFew = army.some(
@@ -5735,7 +5754,10 @@ function addTurnCardActions(
       (card.effect.type === "ADD_COMBAT_STAT" ||
         card.effect.type === "ADD_SPELL_POWER") &&
       Boolean(card.effect.drawCards);
-    if (card.trigger && !drawOnly) {
+    if (
+      card.effect.type === "REDIRECT_PENDING_DAMAGE" ||
+      (card.trigger && !drawOnly)
+    ) {
       continue;
     }
 
@@ -6833,8 +6855,11 @@ export function playerThreatenedByPendingDamage(
       return false;
     }
     const effect =
-      getEffectiveCardEffectForState(state, card, stackItem.action.optionIndex) ??
-      (card.effect.type !== "CHOOSE_ONE" ? card.effect : null);
+      getEffectiveCardEffectForState(
+        state,
+        card,
+        stackItem.action.optionIndex,
+      ) ?? (card.effect.type !== "CHOOSE_ONE" ? card.effect : null);
     // Area / multi-target: any of our units in the predicted blast.
     if (
       spellPotentialBlastUnitIds(state, stackItem, cards).some(
@@ -6876,7 +6901,11 @@ export function playerThreatenedByPendingDamage(
     if (!card) {
       return false;
     }
-    const effect = getEffectiveCardEffectForState(state, card, stackItem.action.optionIndex);
+    const effect = getEffectiveCardEffectForState(
+      state,
+      card,
+      stackItem.action.optionIndex,
+    );
     if (!effectDealsCombatDamage(effect)) {
       return false;
     }
@@ -6902,6 +6931,28 @@ export function unitIdsThreatenedByDamageEffect(
   const combat = state.combat;
   if (!combat || !target) {
     return [];
+  }
+
+  if (effect.type === "CHAIN_LIGHTNING" && target.type === "unit") {
+    const primary = combat.units[target.unitId];
+    if (!primary || !isUnitAlive(primary)) return [];
+    const others = Object.values(combat.units)
+      .filter(
+        (unit) =>
+          unit.id !== primary.id && isUnitAlive(unit) && unit.position >= 0,
+      )
+      .map((unit) => ({
+        id: unit.id,
+        distance: getBattlefieldDistance(primary.position, unit.position),
+      }))
+      .sort((a, b) => a.distance - b.distance);
+    const boundary = others[1]?.distance ?? Infinity;
+    return [
+      primary.id,
+      ...others
+        .filter((unit) => unit.distance <= boundary)
+        .map((unit) => unit.id),
+    ];
   }
 
   if (
@@ -7355,7 +7406,8 @@ function addUnitAbilityActions(
       const prefix = `${apSkill.name} · ${apSkill.ap} AP · `;
       // Printed cards use the typographic MINUS SIGN (U+2212) for penalties;
       // an ASCII "-" here would silently change every offer label.
-      const signed = (amount: number) => (amount < 0 ? `−${-amount}` : `+${amount}`);
+      const signed = (amount: number) =>
+        amount < 0 ? `−${-amount}` : `+${amount}`;
       const push = (
         label: string,
         target: Extract<GameAction, { type: "USE_UNIT_ABILITY" }>["target"],
@@ -8506,7 +8558,9 @@ export function canPlayerBuildStructure(
     return false;
   }
 
-  if (!hasResources(player.resources, effectiveTownBuildingCost(state, building))) {
+  if (
+    !hasResources(player.resources, effectiveTownBuildingCost(state, building))
+  ) {
     return false;
   }
 
@@ -8564,16 +8618,27 @@ export function getLegalActions(
   // a fight that is not theirs nor ever be wedged there.
   // Scoped to a live SEAT: a spectator / eliminated viewer already had no
   // meaningful offers here and keeps whatever the core produced.
-  const watching = isParallelWatchOnly(state, playerId) && state.turnOrder.includes(playerId);
-  const coreActions = watching ? [] : getLegalActionsCore(state, playerId, cards, buildings);
+  const watching =
+    isParallelWatchOnly(state, playerId) && state.turnOrder.includes(playerId);
+  const coreActions = watching
+    ? []
+    : getLegalActionsCore(state, playerId, cards, buildings);
   for (const context of parallelContextOptions(state, playerId)) {
-    if (context.ownerPlayerId === (state.parallelCombatOwnerId ?? playerId)) continue;
-    coreActions.push({ action: { type: "SELECT_PARALLEL_CONTEXT", playerId, ownerPlayerId: context.ownerPlayerId },
-      label: context.role === "hero"
-        ? "My battle / adventure"
-        : context.role === "watch"
-          ? `Watch ${context.fighterName}'s battle`
-          : `Control neutrals for ${context.fighterName}` });
+    if (context.ownerPlayerId === (state.parallelCombatOwnerId ?? playerId))
+      continue;
+    coreActions.push({
+      action: {
+        type: "SELECT_PARALLEL_CONTEXT",
+        playerId,
+        ownerPlayerId: context.ownerPlayerId,
+      },
+      label:
+        context.role === "hero"
+          ? "My battle / adventure"
+          : context.role === "watch"
+            ? `Watch ${context.fighterName}'s battle`
+          : `Control neutrals for ${context.fighterName}`,
+    });
   }
   if (watching) return coreActions;
   return withComputerAdvanceOffer(
@@ -8818,21 +8883,39 @@ function getLegalActionsCore(
 
     if (state.pendingChoice.type === "OPTION_CHOICE") {
       const choice = state.pendingChoice;
-      const actions: LegalAction[] = choice.options.map((option, optionIndex) => ({
-        label: option.label,
-        action: {
-          type: "CHOOSE_OPTION",
-          playerId,
-          choiceId: choice.id,
-          optionIndex,
-        },
-      }));
-      if (polishBallistaOfferOpen(state, playerId) && !isHandLockedInCombat(state, playerId)) {
+      const actions: LegalAction[] = choice.options.map(
+        (option, optionIndex) => ({
+          label: option.label,
+          action: {
+            type: "CHOOSE_OPTION",
+            playerId,
+            choiceId: choice.id,
+            optionIndex,
+          },
+        }),
+      );
+      if (
+        polishBallistaOfferOpen(state, playerId) &&
+        !isHandLockedInCombat(state, playerId)
+      ) {
         for (const cardId of new Set(state.players[playerId].hand)) {
           const card = cards[cardId];
-          if (card?.kind === "hero-specialty" && card.tags.includes("ballista")) {
-            addOptionPlays(actions, state, playerId, card, cardId, "combat", cards,
-              (option) => Boolean(option.combatAnytime) || combatStartWindowOpen(state.combat!));
+          if (
+            card?.kind === "hero-specialty" &&
+            card.tags.includes("ballista")
+          ) {
+            addOptionPlays(
+              actions,
+              state,
+              playerId,
+              card,
+              cardId,
+              "combat",
+              cards,
+              (option) =>
+                Boolean(option.combatAnytime) ||
+                combatStartWindowOpen(state.combat!),
+            );
           }
         }
       }
@@ -9595,7 +9678,10 @@ function getAfterRollAttackerReactions(
       }
       const dieIndexes =
         option.effect.type === "IGNORE_ONE_ATTACK_DIE_RESULT"
-          ? Array.from({ length: Math.max(1, rolls.length) }, (_, index) => index)
+          ? Array.from(
+              { length: Math.max(1, rolls.length) },
+              (_, index) => index,
+            )
           : [undefined];
       for (const dieIndex of dieIndexes) {
         const face = dieIndex !== undefined ? rolls[dieIndex] : undefined;
@@ -10306,6 +10392,69 @@ function followUpAttackInstantOpener(
   return state.combat?.units[triggerEvent.attackerId]?.controllerId;
 }
 
+/** Riki VI is available while the hit is still parked, including lethal hits.
+ * Both the protected unit and the recipient are explicit in the offered action. */
+export function damageTransferReactions(
+  state: GameState,
+  event: GameEvent,
+  cards: CardLibrary,
+): Record<PlayerId, LegalAction[]> {
+  const combat = state.combat;
+  if (!combat) return {};
+  const affected =
+    event.type === "ATTACK_DIE_SETTLED"
+      ? [event.defenderId]
+      : event.type === "SPELL_CAST_STARTED"
+        ? (() => {
+            const card = cards[event.spellCardId];
+            const pending = getPendingStackItem(state, event);
+            const optionIndex =
+              pending && "optionIndex" in pending.action
+                ? pending.action.optionIndex
+                : undefined;
+            const effect =
+              card &&
+              getEffectiveCardEffectForState(
+                state,
+                card,
+                optionIndex ?? undefined,
+              );
+            return effect && event.target
+              ? unitIdsThreatenedByDamageEffect(state, effect, event.target)
+              : [];
+          })()
+        : [];
+  const result: Record<PlayerId, LegalAction[]> = {};
+  for (const unitId of affected) {
+    const unit = combat.units[unitId];
+    const owner = unit && state.players[unit.controllerId];
+    if (
+      !unit ||
+      !isUnitAlive(unit) ||
+      !owner ||
+      isHandLockedInCombat(state, owner.id)
+    )
+      continue;
+    for (const cardId of new Set(owner.hand)) {
+      if (cards[cardId]?.effect.type !== "REDIRECT_PENDING_DAMAGE") continue;
+      for (const other of Object.values(combat.units)) {
+        if (other.id === unit.id || !isUnitAlive(other)) continue;
+        (result[owner.id] ??= []).push({
+          label: `${cards[cardId].name}: protect ${unit.cardName}, redirect half to ${other.cardName}`,
+          action: {
+            type: "PLAY_REACTION",
+            playerId: owner.id,
+            cardId,
+            protectedUnitId: unit.id,
+            target: { type: "unit", unitId: other.id },
+          },
+        });
+      }
+    }
+  }
+  return result;
+}
+
 export function getLegalReactionsForTrigger(
   state: GameState,
   triggerEvent: GameEvent,
@@ -10321,7 +10470,7 @@ export function getLegalReactionsForTrigger(
   // Shield of the Dwarven Lords: the defender's post-roll window to ignore the
   // Attack die and the effects it triggered.
   if (triggerEvent.type === "ATTACK_DIE_SETTLED") {
-    return getDieCancelReactions(
+    const result = getDieCancelReactions(
       state,
       triggerEvent.defenderId,
       triggerEvent.attackerId,
@@ -10329,6 +10478,11 @@ export function getLegalReactionsForTrigger(
       triggerEvent.roll,
       triggerEvent.rolls,
     );
+    for (const [id, offers] of Object.entries(
+      damageTransferReactions(state, triggerEvent, cards),
+    ))
+      result[id] = [...(result[id] ?? []), ...offers];
+    return result;
   }
 
   if (
@@ -10507,8 +10661,13 @@ export function getLegalReactionsForTrigger(
         sibling.trigger?.event === "SPELL_CAST_STARTED";
       const cardHasPrintedTriggerMatch = getCardPlayVariants(card, state).some(
         (sibling) =>
-          variantMatchesTrigger(sibling, triggerEvent, player.id, state, false) &&
-          !powerCrossOverOnly(sibling),
+          variantMatchesTrigger(
+            sibling,
+            triggerEvent,
+            player.id,
+            state,
+            false,
+          ) && !powerCrossOverOnly(sibling),
       );
 
       for (const variant of getCardPlayVariants(card, state)) {
@@ -11632,6 +11791,11 @@ export function getLegalReactionsForTrigger(
     }
   }
 
+  for (const [id, offers] of Object.entries(
+    damageTransferReactions(state, triggerEvent, cards),
+  ))
+    result[id] = [...(result[id] ?? []), ...offers];
+
   // Pre-hit heals (First Aid Tent, First Aid ability, Cure and kin): mend an
   // existing wound BEFORE the incoming damage is calculated — usable as an
   // instant against BOTH a declared unit attack AND a pending damaging Spell /
@@ -12269,10 +12433,14 @@ export function getSchoolPermanentExpertActions(
       // Once per cast: expert REPLACES this permanent's own basic
       // contribution, so a SECOND matching permanent adds nothing while
       // burning a card and a crown.
-      !(stackItem.modifiers.schoolPermanentExpertUsedBy ?? []).includes(playerId)
+      !(stackItem.modifiers.schoolPermanentExpertUsedBy ?? []).includes(
+        playerId,
+      )
     ) {
       const spell = cards[stackItem.action.cardId];
-      const school = spell ? getPermanentSchoolBonus(state, playerId, spell) : null;
+      const school = spell
+        ? getPermanentSchoolBonus(state, playerId, spell)
+        : null;
       if (school && canPlayExpertMode(player, school.card.id)) {
         offers.set(school.card.id, {
           label: `${school.card.name}: +${school.expertPower} Power (expert — discards the permanent)`,
@@ -12464,7 +12632,8 @@ function variantMatchesTrigger(
       variant.trigger.event === "SPELL_CAST_STARTED" &&
       variant.effect.type === "INTERFERE_SPELL"
     ) {
-      return getActiveAstrologersCard(state)?.effect.type === "DEFENSE_TO_ATTACK"
+      return getActiveAstrologersCard(state)?.effect.type ===
+        "DEFENSE_TO_ATTACK"
         ? triggerEvent.playerId === playerId
         : triggerEvent.playerId !== playerId;
     }
@@ -13274,7 +13443,8 @@ export function isEffectLegalForTrigger(
     // controller of the unit being attacked. The spell-damage half is inert on a
     // physical hit. (basic +X / expert +X.)
     if (effect.type === "INTERFERE_SPELL") {
-      return getActiveAstrologersCard(state)?.effect.type === "DEFENSE_TO_ATTACK"
+      return getActiveAstrologersCard(state)?.effect.type ===
+        "DEFENSE_TO_ATTACK"
         ? attacker.controllerId === playerId && !attackBuffsNegated
         : defender.controllerId === playerId;
     }
@@ -14327,8 +14497,14 @@ function addTownActions(
     for (const unitDefId of playerRecruitUnitIds(state, playerId)) {
       const unit = coreUnitDefinitions[unitDefId];
       const recruitSideName = playerRecruitUnitSide(state, playerId, unitDefId);
-      const recruitSide = recruitSideName ? getUnitSide(unitDefId, recruitSideName) : undefined;
-      if (!unit || !recruitSide || !playerRecruitTierUnlocked(state, playerId, unitDefId)) {
+      const recruitSide = recruitSideName
+        ? getUnitSide(unitDefId, recruitSideName)
+        : undefined;
+      if (
+        !unit ||
+        !recruitSide ||
+        !playerRecruitTierUnlocked(state, playerId, unitDefId)
+      ) {
         continue;
       }
 
@@ -14362,15 +14538,25 @@ function addTownActions(
           const packSide = unit.pack;
           // Price each copy independently: vouchers are reserved by army ID.
           const reinforceCost = packSide
-            ? applyRecruitGoldDiscount(state, playerId,
-                { kind: "reinforce", unitDefId, armyUnitId: target.id }, packSide.cost)
+            ? applyRecruitGoldDiscount(
+                state,
+                playerId,
+                { kind: "reinforce", unitDefId, armyUnitId: target.id },
+                packSide.cost,
+              )
             : undefined;
-          if (reinforceCost && hasRecruitResources(state, playerId, reinforceCost)) {
+          if (
+            reinforceCost &&
+            hasRecruitResources(state, playerId, reinforceCost)
+          ) {
             actions.push({
               label: `Reinforce ${unit.name} to a pack${reinforceCopyLabel(player, target)}`,
               action: {
-                type: "POPULATION_ACTION", playerId,
-                purchases: [{ kind: "reinforce", unitDefId, armyUnitId: target.id }],
+                type: "POPULATION_ACTION",
+                playerId,
+                purchases: [
+                  { kind: "reinforce", unitDefId, armyUnitId: target.id },
+                ],
               },
             });
           }
@@ -15279,7 +15465,7 @@ function getSetupLobbyLegalActions(
       }
     } else if (phase.pickPhaseOpen) {
       const faction = coreFactionDefinitions[seat.factionId];
-      for (const heroDefId of draft.seatRolls?.[playerId]?.heroOptions ?? []) {
+      for (const heroDefId of faction.heroes) {
         if (banned.has(heroDefId) || seat.heroDefId === heroDefId) {
           continue;
         }

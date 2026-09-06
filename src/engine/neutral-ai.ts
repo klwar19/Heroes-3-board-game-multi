@@ -1,5 +1,6 @@
 import { unitIsBerserk } from "./active-effects";
 import { getBattlefieldDistance } from "./battlefield";
+import { houseRuleEnabled } from "./house-rules";
 import {
   canUnitAttack,
   canUnitMoveAndAttack,
@@ -211,6 +212,43 @@ function rankedTargetPool(combat: CombatState, attacker: CombatUnitState): Comba
   return sortNeutralTargetCandidates(combat, attacker, pool);
 }
 
+/** Whether this fight uses BINH's fully AI-driven, coordinated Random Town defense. */
+function coordinatedRandomTownDefense(state: GameState, combat: CombatState): boolean {
+  return (
+    combat.context.kind === "neutral" &&
+    state.adventure?.fields[combat.context.fieldId]?.location === "random_town" &&
+    houseRuleEnabled(state, "random-town-veteran-defense")
+  );
+}
+
+/**
+ * Tactical focus value for the Random Town garrison. Threat is primary, a
+ * nearly defeated target receives a finish premium, and ranged/caster-like
+ * units are worth coordinating on before harmless bodies of the same tier.
+ */
+function coordinatedTargetValue(unit: CombatUnitState): number {
+  const remaining = Math.max(0, unit.maxHealth - unit.damage);
+  const tier = { bronze: 0, silver: 10, gold: 20, azure: 30 }[unit.grade] ?? 0;
+  const abilityThreat = unit.abilities.length > 0 ? 6 : 0;
+  const rangedThreat = unit.type === "ranged" ? 8 : 0;
+  const finish = Math.max(0, 7 - remaining) * 4;
+  return unit.attack * 4 + unit.initiative + remaining + tier + abilityThreat + rangedThreat + finish;
+}
+
+function coordinatedTargets(
+  combat: CombatState,
+  attacker: CombatUnitState,
+  candidates: CombatUnitState[]
+): CombatUnitState[] {
+  return [...candidates].sort(
+    (left, right) =>
+      coordinatedTargetValue(right) - coordinatedTargetValue(left) ||
+      neutralMoveDistanceToTarget(combat, attacker, left) -
+        neutralMoveDistanceToTarget(combat, attacker, right) ||
+      left.position - right.position
+  );
+}
+
 export function pickNeutralTarget(combat: CombatState, attacker: CombatUnitState): CombatUnitState | null {
   return rankedTargetPool(combat, attacker)[0] ?? null;
 }
@@ -277,7 +315,7 @@ function attackableTargetPool(
   const ranked = rankedTargetPool(combat, attacker);
   // Compute reachable spaces once; ranged units don't use them (no move-shoot).
   const reachSpaces = attacker.type === "ranged" ? [] : getLegalMoveDestinations(combat, attacker, state);
-  return ranked.filter((target) => {
+  const attackable = ranked.filter((target) => {
     if (canUnitAttack(combat, attacker, target, state.activeEffects)) {
       return true;
     }
@@ -288,6 +326,9 @@ function attackableTargetPool(
       (space) => isAdjacent(space, target.position) && canUnitMoveAndAttack(combat, attacker, space, target, state)
     );
   });
+  return coordinatedRandomTownDefense(state, combat)
+    ? coordinatedTargets(combat, attacker, attackable)
+    : attackable;
 }
 
 export function sortNeutralTargetCandidates(
@@ -368,6 +409,7 @@ export function planNeutralActivation(
   forcedTargetId?: UnitId,
   forcedDestination?: number
 ): NeutralIntent {
+  const coordinated = coordinatedRandomTownDefense(state, combat);
   // A neutral that already fired never repositions: its activation is over.
   if (unit.attackedThisActivation) {
     return { kind: "pass" };
@@ -387,7 +429,8 @@ export function planNeutralActivation(
     const forced = combat.units[forcedTargetId] ?? null;
     if (forced && isUnitAlive(forced)) {
       return (
-        attackOrReach(state, combat, unit, forced, forcedDestination) ?? approachTarget(state, combat, unit, forced)
+        attackOrReach(state, combat, unit, forced, forcedDestination, coordinated) ??
+        approachTarget(state, combat, unit, forced)
       );
     }
     // The chosen target is gone — fall through and re-plan from scratch.
@@ -398,21 +441,24 @@ export function planNeutralActivation(
   // wandering toward an out-of-reach favourite while an attackable enemy waits.
   const attackable = attackableTargetPool(state, combat, unit);
   if (attackable.length > 0) {
-    const ties = leadingTieGroup(combat, unit, attackable);
-    if (!forcedTargetId && ties.length > 1) {
+    const ties = coordinated ? [attackable[0]] : leadingTieGroup(combat, unit, attackable);
+    if (!coordinated && !forcedTargetId && ties.length > 1) {
       return { kind: "choose-target", candidateIds: ties.map((candidate) => candidate.id) };
     }
     const target = ties[0];
     // attackable membership guarantees a hit is reachable, but keep the
     // approach fallback so a stale plan never returns a non-attacking nothing.
     return (
-      attackOrReach(state, combat, unit, target, forcedDestination) ?? approachTarget(state, combat, unit, target)
+      attackOrReach(state, combat, unit, target, forcedDestination, coordinated) ??
+      approachTarget(state, combat, unit, target)
     );
   }
 
   // It can reach no one this activation: advance on the top-priority target to
   // set up a strike next round (or pass if it cannot close the gap).
-  const target = pickNeutralTarget(combat, unit);
+  const target = coordinated
+    ? coordinatedTargets(combat, unit, rankedTargetPool(combat, unit))[0] ?? null
+    : pickNeutralTarget(combat, unit);
   if (!target) {
     return { kind: "pass" };
   }
@@ -480,7 +526,8 @@ function attackOrReach(
   combat: CombatState,
   unit: CombatUnitState,
   target: CombatUnitState,
-  forcedDestination?: number
+  forcedDestination?: number,
+  coordinated = false
 ): NeutralIntent | null {
   if (canUnitAttack(combat, unit, target, state.activeEffects)) {
     return { kind: "attack", defenderId: target.id };
@@ -505,12 +552,35 @@ function attackOrReach(
 
   // Several legal cells reach the target — the attacking player chooses which.
   // A single cell needs no prompt.
-  if (attackSpots.length > 1) {
+  if (attackSpots.length > 1 && !coordinated) {
     return {
       kind: "choose-destination",
       defenderId: target.id,
       destinations: [...attackSpots].sort((left, right) => left - right)
     };
+  }
+
+  if (coordinated) {
+    // Pick a deterministic protected approach: stay close to the garrison's
+    // most valuable ally while closing on the focus target. This keeps its
+    // screen coherent instead of asking the attacking player where to move it.
+    const importantAlly = Object.values(combat.units)
+      .filter(
+        (candidate) =>
+          candidate.id !== unit.id &&
+          candidate.controllerId === unit.controllerId &&
+          candidate.position >= 0 &&
+          isUnitAlive(candidate)
+      )
+      .sort((left, right) => coordinatedTargetValue(right) - coordinatedTargetValue(left))[0];
+    const destination = [...attackSpots].sort(
+      (left, right) =>
+        (importantAlly
+          ? getBattlefieldDistance(left, importantAlly.position) -
+            getBattlefieldDistance(right, importantAlly.position)
+          : 0) || left - right
+    )[0];
+    return { kind: "move-and-attack", destination, defenderId: target.id };
   }
 
   return { kind: "move-and-attack", destination: attackSpots[0], defenderId: target.id };

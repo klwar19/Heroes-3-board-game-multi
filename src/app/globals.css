@@ -19364,7 +19364,7 @@ button.setupHubNavItem:hover {
 /* Adventure event feed: what just happened, spelled out. */
 .adventureFeed {
   position: fixed;
-  top: 64px;
+  top: calc(var(--parallel-battle-offset, 0px) + 64px);
   right: 14px;
   z-index: 60;
   display: flex;
@@ -38934,7 +38934,7 @@ details.mapPresetGroup > summary::-webkit-details-marker {
      map's right edge and can be collapsed while choosing a field. */
   .adventureRoot:not(.phoneMode) .mapMoraleSpend.handDirectives {
     position: fixed;
-    top: calc(var(--desktop-hud-height) + 14px);
+    top: calc(var(--parallel-battle-offset, 0px) + var(--desktop-hud-height) + 14px);
     left: calc(var(--desktop-edge) + 242px);
     z-index: 59;
   }
@@ -38945,7 +38945,7 @@ details.mapPresetGroup > summary::-webkit-details-marker {
      unusually dense rulesets. */
   .adventureRoot:not(.phoneMode) > .tableTopRow {
     position: sticky;
-    top: 6px;
+    top: calc(var(--parallel-battle-offset, 0px) + 6px);
     z-index: 55;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 6px;
@@ -39016,14 +39016,14 @@ details.mapPresetGroup > summary::-webkit-details-marker {
      can never run under the fixed hand tray. */
   .adventureRoot:not(.phoneMode) .advHudButtons > .logDrawer .logPopover {
     position: fixed;
-    top: calc(6px + var(--desktop-hud-height) + 6px);
+    top: calc(var(--parallel-battle-offset, 0px) + 6px + var(--desktop-hud-height) + 6px);
     /* Right edge lands just LEFT of the fixed shared-deck rail, so the open
        chronicle never paints over the library's deck labels. */
     right: calc(var(--desktop-edge) + var(--desktop-library-width) + 14px);
     z-index: 92;
     width: min(560px, calc(100vw - var(--desktop-library-width) - 260px));
     max-height: calc(
-      100vh - var(--desktop-hud-height) - var(--desktop-hand-height) - 40px
+      100vh - var(--parallel-battle-offset, 0px) - var(--desktop-hud-height) - var(--desktop-hand-height) - 40px
     );
     overflow: hidden;
     border: 1px solid var(--cmp-gold-deep);
@@ -39038,7 +39038,7 @@ details.mapPresetGroup > summary::-webkit-details-marker {
 
   .adventureRoot:not(.phoneMode) .advHudButtons > .logDrawer .logPopover ol {
     max-height: calc(
-      100vh - var(--desktop-hud-height) - var(--desktop-hand-height) - 96px
+      100vh - var(--parallel-battle-offset, 0px) - var(--desktop-hud-height) - var(--desktop-hand-height) - 96px
     );
   }
 
@@ -39172,7 +39172,7 @@ details.mapPresetGroup > summary::-webkit-details-marker {
     z-index: 88;
     display: grid;
     width: min(390px, calc(100vw - 28px));
-    max-height: calc(100vh - var(--desktop-hud-height) - 28px);
+    max-height: calc(100vh - var(--parallel-battle-offset, 0px) - var(--desktop-hud-height) - 28px);
     gap: 6px;
     padding: 8px;
     overflow-y: auto;
@@ -39340,13 +39340,13 @@ details.mapPresetGroup > summary::-webkit-details-marker {
      before the fight can start — and stays under the chat dock (200). */
   .adventureRoot:not(.phoneMode) > .preBattlePanel {
     position: fixed;
-    top: calc(6px + var(--desktop-hud-height) + 14px);
+    top: calc(var(--parallel-battle-offset, 0px) + 6px + var(--desktop-hud-height) + 14px);
     left: 50%;
     z-index: 94;
     box-sizing: border-box;
     width: min(560px, calc(100vw - 32px));
     max-height: calc(
-      100vh - var(--desktop-hud-height) - var(--desktop-hand-height) - 60px
+      100vh - var(--parallel-battle-offset, 0px) - var(--desktop-hud-height) - var(--desktop-hand-height) - 60px
     );
     overflow: auto;
     transform: translateX(-50%);
@@ -39374,7 +39374,7 @@ details.mapPresetGroup > summary::-webkit-details-marker {
      same scrollable rail rather than lengthening the entire page. */
   .adventureRoot:not(.phoneMode) .leftRail {
     position: fixed;
-    top: calc(var(--desktop-hud-height) + 14px);
+    top: calc(var(--parallel-battle-offset, 0px) + var(--desktop-hud-height) + 14px);
     bottom: calc(var(--desktop-hand-height) + 14px);
     left: var(--desktop-edge);
     z-index: 36;
@@ -39442,9 +39442,9 @@ details.mapPresetGroup > summary::-webkit-details-marker {
   .adventureRoot:not(.phoneMode) .leftRailDock .heroDrop {
     position: fixed;
     left: calc(var(--desktop-edge) + 218px + 14px);
-    top: calc(var(--desktop-hud-height) + 18px);
+    top: calc(var(--parallel-battle-offset, 0px) + var(--desktop-hud-height) + 18px);
     max-height: calc(
-      100vh - var(--desktop-hud-height) - var(--desktop-hand-height) - 36px
+      100vh - var(--parallel-battle-offset, 0px) - var(--desktop-hud-height) - var(--desktop-hand-height) - 36px
     );
   }
 
@@ -39453,7 +39453,7 @@ details.mapPresetGroup > summary::-webkit-details-marker {
      this rail without scrolling away from the current map position. */
   .adventureRoot:not(.phoneMode) > .advDecksBottom {
     position: fixed;
-    top: calc(var(--desktop-hud-height) + 22px);
+    top: calc(var(--parallel-battle-offset, 0px) + var(--desktop-hud-height) + 22px);
     right: var(--desktop-edge);
     bottom: calc(var(--desktop-hand-height) + 14px);
     z-index: 42;
@@ -39678,7 +39678,7 @@ details.mapPresetGroup > summary::-webkit-details-marker {
   .adventureRoot:not(.phoneMode) .playerCardBar .handDirectives {
     position: fixed;
     left: 234px;
-    top: calc(var(--desktop-hud-height) + 122px);
+    top: calc(var(--parallel-battle-offset, 0px) + var(--desktop-hud-height) + 122px);
     bottom: auto;
     transform: none;
     z-index: 60; /* prompt-tray band: above rails/hand, under chat 200+ */
@@ -39759,7 +39759,7 @@ details.mapPresetGroup > summary::-webkit-details-marker {
      readable; engine legal-action gating still makes mandatory choices safe. */
   .adventureRoot:not(.phoneMode) .moraleOverflowBackdrop {
     inset: auto;
-    top: calc(var(--desktop-hud-height) + 122px);
+    top: calc(var(--parallel-battle-offset, 0px) + var(--desktop-hud-height) + 122px);
     left: 234px;
     width: min(320px, calc(100vw - 360px));
     background: transparent;
@@ -45942,7 +45942,7 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
 --------------------------------------------------------------------------- */
 .enemyForceCueStack {
   position: fixed;
-  top: 84px;
+  top: calc(var(--parallel-battle-offset, 0px) + 84px);
   left: 50%;
   transform: translateX(-50%);
   z-index: 93;
@@ -46711,7 +46711,7 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
    its authored summary once, then removes itself. */
 .pveFieldEffectCue {
   position: fixed;
-  top: 84px;
+  top: calc(var(--parallel-battle-offset, 0px) + 84px);
   left: 50%;
   transform: translateX(-50%);
   z-index: 93;

@@ -395,7 +395,7 @@ describe("Field Difficulty 7", () => {
     // awaitingContinue once the round ends — covered in dragon-utopia-round-limit.
   });
 
-  it("winning a difficulty-7 fight fills experience to level 7", () => {
+  it("BINH rule: winning a difficulty-7 fight advances exactly one level", () => {
     const state = createAdventureGameState({
       seed: "diff7-xp",
       difficulty: "normal",
@@ -443,8 +443,36 @@ describe("Field Difficulty 7", () => {
     finalizeAdventureCombat(state);
 
     const after = getMainHero(state, "p1")!;
-    expect(after.experience).toBe(MAX_EXPERIENCE);
-    expect(after.level).toBe(7);
+    expect(after.experience).toBe(6);
+    expect(after.level).toBe(4);
+  });
+
+  it("rule OFF control: winning a difficulty-7 fight still fills experience to level 7", () => {
+    const state = createAdventureGameState({
+      seed: "diff7-xp-off",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      houseRules: { "level-seven-one-level": false }
+    });
+    const hero = getMainHero(state, "p1")!;
+    hero.experience = 4;
+    hero.level = 3;
+    state.combat = {
+      id: "c7-off",
+      round: 1,
+      attackerPlayerId: "p1",
+      defenderPlayerId: "neutral",
+      activeUnitId: null,
+      context: { kind: "neutral", heroId: hero.id, fieldId: "f7-off", difficulty: 7, hasAzure: false },
+      setup: null,
+      awaitingContinue: false,
+      outcome: { winnerPlayerId: "p1", defeatedPlayerId: "neutral", reason: "all-enemy-units-defeated" },
+      dice: { faces: [...ATTACK_DIE_FACES], seed: "s", rollCount: 0 },
+      units: {}
+    } as CombatState;
+    finalizeAdventureCombat(state);
+    expect(hero.experience).toBe(MAX_EXPERIENCE);
+    expect(hero.level).toBe(7);
   });
 });
 

@@ -486,6 +486,15 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     legacyDefault: false,
   },
   {
+    id: "binh-ballista-cost-3-6",
+    label: "Ballista costs 3 / 6 gold",
+    description:
+      "BINH house rule: a Ballista costs 3 gold at a War Machine Factory / Blacksmith and 6 gold at a Trading Post. Off: use the active printed or balance-pack price.",
+    category: "combat",
+    default: true,
+    legacyDefault: false,
+  },
+  {
     id: "multi-demon-summon",
     label: "Pit Lords: multiple Demons",
     description:
@@ -591,6 +600,24 @@ export const HOUSE_RULES: HouseRuleDef[] = [
       "Global map rule: every ordinary Field-Difficulty V Neutral army contains at least one Archangels, Ghost Dragons, or Black Dragons card. It replaces one existing golden draw, so army size, difficulty, rewards, and XP stay unchanged. If all three cards are already outside their deck, a temporary guard copy is used for that fight.",
     category: "global",
     default: false,
+    legacyDefault: false,
+  },
+  {
+    id: "random-town-veteran-defense",
+    label: "Random Town: veteran AI defense",
+    description:
+      "BINH house rule: the Random Town keeps five defenders, but one of its two gold Fews fights as a Pack (1 bronze Pack, 2 silver Packs, 1 gold Pack, 1 gold Few). With Unit Experience on, every defender is at least rank 1; Neutral Rank-Up may raise them further for the current round. The Neutral AI controls formation and combat, protects its most valuable guard, and coordinates focus fire even when manual/PvP Neutral Control is enabled.",
+    category: "combat",
+    default: true,
+    legacyDefault: false,
+  },
+  {
+    id: "level-seven-one-level",
+    label: "Level VII victory: gain only 1 level",
+    description:
+      "BINH house rule: winning a fought Field-Difficulty VII combat advances the main Hero to the next level only (to that level's exact experience threshold), rather than filling the Hero straight to level 7. A Hero already at level 7 gains no experience.",
+    category: "combat",
+    default: true,
     legacyDefault: false,
   },
 ];

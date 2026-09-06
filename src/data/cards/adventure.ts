@@ -8,7 +8,7 @@ function abilitySource(slug: string) {
   return {
     product: "Heroes of Might and Magic III: The Board Game",
     credit: wikiCredit,
-    url: `https://en.homm3bg.wiki/abilities/${slug}/`
+    url: `https://en.homm3bg.wiki/abilities/${slug}/`,
   };
 }
 
@@ -16,7 +16,7 @@ function heroSource(slug: string) {
   return {
     product: "Heroes of Might and Magic III: The Board Game",
     credit: wikiCredit,
-    url: `https://en.homm3bg.wiki/heroes/${slug}/`
+    url: `https://en.homm3bg.wiki/heroes/${slug}/`,
   };
 }
 
@@ -36,7 +36,7 @@ function mightSpecialtyOne(heroSlug: string, heroName: string, doubledUnit: stri
       "hero-specialty",
       "instant",
       heroSlug,
-      `Instant: +1 Attack when this unit attacks, or +1 Defense when it is attacked — doubled (+2) for ${doubledUnit}.`
+      `Instant: +1 Attack when this unit attacks, or +1 Defense when it is attacked — doubled (+2) for ${doubledUnit}.`,
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -44,21 +44,31 @@ function mightSpecialtyOne(heroSlug: string, heroName: string, doubledUnit: stri
         {
           label: `+1 attack (x2 for ${doubledUnit})`,
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1, doubleForUnitName: doubledUnit }
+          effect: {
+            type: "ADD_COMBAT_STAT",
+            stat: "attack",
+            amount: 1,
+            doubleForUnitName: doubledUnit,
+          },
         },
         {
           label: `+1 defense (x2 for ${doubledUnit})`,
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 1, doubleForUnitName: doubledUnit }
-        }
-      ]
+          effect: {
+            type: "ADD_COMBAT_STAT",
+            stat: "defense",
+            amount: 1,
+            doubleForUnitName: doubledUnit,
+          },
+        },
+      ],
     },
     assets: {
       cardImage: `/assets/hero_specialties-${heroSlug}-1.webp`,
-      imageAlt: `${heroName} level I specialty card`
+      imageAlt: `${heroName} level I specialty card`,
     },
     implementationStatus: "implemented",
-    source: heroSource(heroSlug)
+    source: heroSource(heroSlug),
   };
 }
 
@@ -86,17 +96,17 @@ function luckyESpecialty(level: 1 | 4 | 6): CardLibrary[string] {
     level === 1
       ? "While in hand: reroll one of your Attack/ability dice (offered in the die window; playing it discards this card)."
       : level === 4
-        ? "While in hand: set one of your Attack/ability dice to the \"+1\" side (offered in the die window; playing it discards this card)."
-        : "While in hand: reroll one of your Attack/ability dice OR set one to the \"+1\" side (offered in the die window; either play discards this card).";
+        ? 'While in hand: set one of your Attack/ability dice to the "+1" side (offered in the die window; playing it discards this card).'
+        : 'While in hand: reroll one of your Attack/ability dice OR set one to the "+1" side (offered in the die window; either play discards this card).';
   const attackOption = {
     label: `+${amount} attack`,
     trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-    effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount }
+    effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount },
   } as const;
   const defenseOption = {
     label: `+${amount} defense`,
     trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-    effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount }
+    effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount },
   } as const;
   return {
     id: `specialty.enterprise.${level}`,
@@ -110,18 +120,18 @@ function luckyESpecialty(level: 1 | 4 | 6): CardLibrary[string] {
       "enterprise",
       // engine: the die half is a HELD-card offer in the Attack-die reroll
       // window (LUCKY_E_SPECIALTY_SOURCES), not a CHOOSE_ONE option here.
-      `${dieHalf}`
+      `${dieHalf}`,
     ],
     effect: {
       type: "CHOOSE_ONE",
-      options: level === 1 ? [defenseOption] : [attackOption, defenseOption]
+      options: level === 1 ? [defenseOption] : [attackOption, defenseOption],
     },
     assets: {
       cardImage: specialtyCardImage("enterprise", level),
-      imageAlt: `Lucky E level ${numeral} specialty card`
+      imageAlt: `Lucky E level ${numeral} specialty card`,
     },
     implementationStatus: "implemented",
-    source: heroSource("enterprise")
+    source: heroSource("enterprise"),
   };
 }
 
@@ -137,9 +147,24 @@ export const LUCKY_E_SPECIALTY_SOURCES: readonly {
   reroll: boolean;
   setDie: boolean;
 }[] = [
-  { cardId: "specialty.enterprise.1", name: "Lucky E I", reroll: true, setDie: false },
-  { cardId: "specialty.enterprise.4", name: "Lucky E IV", reroll: false, setDie: true },
-  { cardId: "specialty.enterprise.6", name: "Lucky E VI", reroll: true, setDie: true }
+  {
+    cardId: "specialty.enterprise.1",
+    name: "Lucky E I",
+    reroll: true,
+    setDie: false,
+  },
+  {
+    cardId: "specialty.enterprise.4",
+    name: "Lucky E IV",
+    reroll: false,
+    setDie: true,
+  },
+  {
+    cardId: "specialty.enterprise.6",
+    name: "Lucky E VI",
+    reroll: true,
+    setDie: true,
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -154,20 +179,62 @@ export const LUCKY_E_SPECIALTY_SOURCES: readonly {
 
 const azurLaneSpecialtySource = {
   product: "Anime Mod — Otherworld Gate (Azur Lane Naval Base)",
-  credit: "Original Azur Lane hero specialty for this digital module."
+  credit: "Original Azur Lane hero specialty for this digital module.",
 };
 
 /**
  * Bismarck "Concentrated Fire" — Iron Blood focus-fire doctrine. An INSTANT in
+ * I grants +1 Attack or Defense (+2 for Prinz Eugen) for one attack. IV/VI, in
  * your own unit's attack window: +1 Attack for each OTHER living friendly unit
  * orthogonally adjacent to the ATTACKED unit (the attacker never counts itself),
- * capped at +1 / +2 / +3. Level VI additionally suppresses the target's
+ * capped at +2 / +3. Level VI additionally suppresses the target's
  * Retaliation Attack (the shipped `ignoresRetaliation` arm Ash's Bloodlust VI
  * uses). Never offered with nobody flanking the target — a +0 play is a trap.
  */
 function concentratedFireSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
-  const numeral = level === 1 ? "I" : level === 4 ? "IV" : "VI";
-  const cap = level === 1 ? 1 : level === 4 ? 2 : 3;
+  if (level === 1)
+    return {
+      id: "specialty.bismarck.1",
+      name: "Concentrated Fire I",
+      kind: "hero-specialty",
+      timing: "instant",
+      phaseLimit: ["combat", "reaction"],
+      tags: [
+        "hero-specialty",
+        "bismarck",
+        "Instant: +1 Attack to your attacking unit OR +1 Defense to your attacked unit, doubled for Prinz Eugen. This attack only.",
+      ],
+      effect: {
+        type: "CHOOSE_ONE",
+        options: [
+          {
+            label: "+1 Attack (+2 for Prinz Eugen)",
+            trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+            effect: {
+              type: "ADD_COMBAT_STAT",
+              stat: "attack",
+              amount: 1,
+              doubleForUnitName: "Prinz Eugen",
+            },
+          },
+          {
+            label: "+1 Defense (+2 for Prinz Eugen)",
+            trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
+            effect: {
+              type: "ADD_COMBAT_STAT",
+              stat: "defense",
+              amount: 1,
+              doubleForUnitName: "Prinz Eugen",
+            },
+          },
+        ],
+      },
+      implementationStatus: "implemented",
+      source: azurLaneSpecialtySource,
+    };
+
+  const numeral = level === 4 ? "IV" : "VI";
+  const cap = level === 4 ? 2 : 3;
   return {
     id: `specialty.bismarck.${level}`,
     name: `Concentrated Fire ${numeral}`,
@@ -183,7 +250,7 @@ function concentratedFireSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
         level === 6
           ? " This attack also provokes no Retaliation Attack."
           : ""
-      } Offered only while at least one such ally stands adjacent.`
+      } Offered only while at least one such ally stands adjacent.`,
     ],
     trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
     effect: {
@@ -193,10 +260,10 @@ function concentratedFireSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
       amount: 0,
       perAllyAdjacentToTarget: 1,
       maxAmount: cap,
-      ...(level === 6 ? { ignoresRetaliation: true } : {})
+      ...(level === 6 ? { ignoresRetaliation: true } : {}),
     },
     implementationStatus: "implemented",
-    source: azurLaneSpecialtySource
+    source: azurLaneSpecialtySource,
   };
 }
 
@@ -225,54 +292,66 @@ function bigSevenBombardmentSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
       "big-seven",
       `Combat, during one of your own NON-ranged units' activations before it attacks: this activation that unit's attack is a RANGED attack against an enemy ${reach} — it provokes no Retaliation Attack at range and takes the ordinary ranged Combat penalties (adjacent target, back row to back row).${
         level === 6 ? " That attack also gains +1 Attack." : ""
-      } The bombardment ends with the activation.`
+      } The bombardment ends with the activation.`,
     ],
     target: { type: "none" },
     effect: {
       type: "BOMBARDMENT_ATTACK",
       ...(level === 1 ? { range: 2 } : {}),
-      ...(level === 6 ? { attackBonus: 1 } : {})
+      ...(level === 6 ? { attackBonus: 1 } : {}),
     },
     implementationStatus: "implemented",
-    source: azurLaneSpecialtySource
+    source: azurLaneSpecialtySource,
   };
 }
 
 /**
  * Akashi "Repair Dock" (nya~) — the fleet's repair ship banks a discount toward
- * bringing a light hull back up to strength. A MAP play that banks a flat gold
- * reinforcement discount through the shared Hill-Fort / Legion machinery, so
- * every one of that system's rules applies unchanged (it stacks with Legion
- * vouchers, is redeemed at any point of your own turn, and an unredeemed bank
- * dies the moment any of your heroes takes a step). VI also draws 1 card.
+ * one recruitment or reinforcement: I/IV save 3/4 gold until a hero moves, or
+ * draw one card instead. VI heals two and draws one, with a draw-only option.
  */
 function repairDockSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
   const numeral = level === 1 ? "I" : level === 4 ? "IV" : "VI";
-  const discount = level === 1 ? 2 : level === 4 ? 3 : 4;
+  if (level === 6)
+    return {
+      id: "specialty.akashi.6",
+      name: "Repair Dock VI",
+      kind: "hero-specialty",
+      timing: "instant",
+      tags: [
+        "hero-specialty",
+        "akashi",
+        "Instant: heal a friendly unit 2 damage, then draw 1 card. May instead be played only to draw 1 card.",
+      ],
+      target: { type: "friendly-unit" },
+      effect: { type: "HEAL_DAMAGE", amount: 2, drawCards: 1 },
+      implementationStatus: "implemented",
+      source: azurLaneSpecialtySource,
+    };
+  const discount = level === 1 ? 3 : 4;
   return {
     id: `specialty.akashi.${level}`,
     name: `Repair Dock ${numeral}`,
     kind: "hero-specialty",
-    timing: "map",
+    timing: "instant",
     tags: [
       "hero-specialty",
-      "map",
       "akashi",
-      "repair-dock",
-      `Map: bank a ${discount} gold discount on ONE Reinforcement of a bronze or silver Few into its Pack.${
-        level === 6 ? " Then draw 1 card." : ""
-      } Redeem it at any point of your own turn; it stacks with Legion pieces, and an unredeemed bank is lost as soon as one of your Heroes moves a step.`
+      `Map: bank a ${discount} gold discount on one chosen recruitment or reinforcement, lost when a hero moves. OR Instant: draw 1 card.`,
     ],
-    target: { type: "none" },
     effect: {
-      type: "BANK_REINFORCEMENT_DISCOUNT",
-      sourceName: `Repair Dock ${numeral}`,
-      flatGoldDiscount: discount,
-      allowedTiers: ["bronze", "silver"],
-      ...(level === 6 ? { drawCards: 1 } : {})
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: `Recruit or reinforce: −${discount} gold`,
+          mapOnly: true,
+          effect: { type: "GAIN_RECRUIT_DISCOUNT", amount: discount },
+        },
+        { label: "Draw 1 card", effect: { type: "DRAW_CARDS", amount: 1 } },
+      ],
     },
     implementationStatus: "implemented",
-    source: azurLaneSpecialtySource
+    source: azurLaneSpecialtySource,
   };
 }
 
@@ -283,13 +362,13 @@ function repairDockSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
  * that attack. The candidate rule is Masato's Bodyguard verbatim (adjacency to
  * the ATTACKED unit, nothing else), minus the two attacks Masato's own swap
  * also refuses — a Retaliation Attack and a printed follow-up. The interceptor
- * gains +1 (I) / +2 (IV, VI) Defense against that blow, and at VI the attacker
+ * gains +1 / +2 / +3 Defense against that blow, and at every level the attacker
  * takes 1 damage once the attack resolves — effect damage, so it is not an
  * attack, provokes no Retaliation and ignores Defense.
  */
 function royalMaidsCoverSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
   const numeral = level === 1 ? "I" : level === 4 ? "IV" : "VI";
-  const defenseBonus = level === 1 ? 1 : 2;
+  const defenseBonus = level === 1 ? 1 : level === 4 ? 2 : 3;
   return {
     id: `specialty.sirius.${level}`,
     name: `Royal Maid's Cover ${numeral}`,
@@ -301,20 +380,16 @@ function royalMaidsCoverSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
       "instant",
       "sirius",
       "royal-maids-cover",
-      `Instant, when an enemy declares a normal attack on one of your units: a chosen living friendly unit adjacent to the attacked unit takes the attack instead, with +${defenseBonus} Defense against it. Not offered against a Retaliation Attack or a printed follow-up attack.${
-        level === 6
-          ? " After that attack resolves, the attacker takes 1 damage (not an attack: no Retaliation, ignores Defense)."
-          : ""
-      }`
+      `Instant, when an enemy declares a normal attack on one of your units: a chosen living friendly unit adjacent to the attacked unit takes the attack instead, with +${defenseBonus} Defense against it. Not offered against a Retaliation Attack or a printed follow-up attack. After that attack resolves, the attacker takes 1 damage (not an attack: no Retaliation, ignores Defense).`,
     ],
     trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
     effect: {
       type: "INTERCEPT_DECLARED_ATTACK",
       defenseBonus,
-      ...(level === 6 ? { counterDamage: 1 } : {})
+      counterDamage: 1,
     },
     implementationStatus: "implemented",
-    source: azurLaneSpecialtySource
+    source: azurLaneSpecialtySource,
   };
 }
 
@@ -332,20 +407,20 @@ function offenseSpecialtyOne(heroSlug: string): CardLibrary[string] {
         {
           label: "+1 attack",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1 }
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1 },
         },
         {
           label: "Draw 1 card",
-          effect: { type: "DRAW_CARDS", amount: 1 }
-        }
-      ]
+          effect: { type: "DRAW_CARDS", amount: 1 },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage(heroSlug, 1),
-      imageAlt: "Offense level I specialty card"
+      imageAlt: "Offense level I specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource(heroSlug)
+    source: heroSource(heroSlug),
   };
 }
 
@@ -364,14 +439,14 @@ function offenseSpecialtyFour(heroSlug: string): CardLibrary[string] {
       amount: 1,
       duration: { type: "combat" },
       polarity: "positive",
-      removable: false
+      removable: false,
     },
     assets: {
       cardImage: specialtyCardImage(heroSlug, 4),
-      imageAlt: "Offense level IV specialty card"
+      imageAlt: "Offense level IV specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource(heroSlug)
+    source: heroSource(heroSlug),
   };
 }
 
@@ -387,10 +462,10 @@ function offenseSpecialtySix(heroSlug: string): CardLibrary[string] {
     effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 3 },
     assets: {
       cardImage: specialtyCardImage(heroSlug, 6),
-      imageAlt: "Offense level VI specialty card"
+      imageAlt: "Offense level VI specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource(heroSlug)
+    source: heroSource(heroSlug),
   };
 }
 
@@ -398,7 +473,7 @@ function slowSpecialty(
   heroSlug: string,
   level: 1 | 4 | 6,
   amount: number,
-  movementBonus?: number
+  movementBonus?: number,
 ): CardLibrary[string] {
   return {
     id: `specialty.${heroSlug}.${level}`,
@@ -415,14 +490,14 @@ function slowSpecialty(
       duration: { type: "combat" },
       polarity: "negative",
       removable: true,
-      ...(movementBonus !== undefined ? { movementBonus } : {})
+      ...(movementBonus !== undefined ? { movementBonus } : {}),
     },
     assets: {
       cardImage: specialtyCardImage(heroSlug, level),
-      imageAlt: `Slow level ${level} specialty card`
+      imageAlt: `Slow level ${level} specialty card`,
     },
     implementationStatus: "implemented",
-    source: heroSource(heroSlug)
+    source: heroSource(heroSlug),
   };
 }
 
@@ -431,7 +506,7 @@ function unitHealthSpecialty(
   specialtyName: string,
   level: 4 | 6,
   amount: number,
-  doubledUnit: string
+  doubledUnit: string,
 ): CardLibrary[string] {
   return {
     id: `specialty.${heroSlug}.${level}`,
@@ -444,20 +519,20 @@ function unitHealthSpecialty(
       "combat",
       heroSlug,
       "health",
-      `Combat: give a friendly unit +${amount} maximum Health this combat — doubled (+${amount * 2}) for ${doubledUnit}.`
+      `Combat: give a friendly unit +${amount} maximum Health this combat — doubled (+${amount * 2}) for ${doubledUnit}.`,
     ],
     target: { type: "friendly-unit" },
     effect: {
       type: "ADD_UNIT_MAX_HEALTH",
       amount,
-      doubleForUnitName: doubledUnit
+      doubleForUnitName: doubledUnit,
     },
     assets: {
       cardImage: specialtyCardImage(heroSlug, level),
-      imageAlt: `${specialtyName} level ${level} specialty card`
+      imageAlt: `${specialtyName} level ${level} specialty card`,
     },
     implementationStatus: "implemented",
-    source: heroSource(heroSlug)
+    source: heroSource(heroSlug),
   };
 }
 
@@ -466,7 +541,7 @@ function unitInitiativeSpecialty(
   specialtyName: string,
   level: 1 | 4 | 6,
   amount: number,
-  doubledUnit: string
+  doubledUnit: string,
 ): CardLibrary[string] {
   return {
     id: `specialty.${heroSlug}.${level}`,
@@ -485,7 +560,7 @@ function unitInitiativeSpecialty(
       // Wiki / basic battlefield: Initiative only (doubled on the signature unit).
       // House rule ("combat-move-initiative"): ALSO +1 Combat movement (flat, never
       // doubled). House rule alternative: draw 1 card instead of the buff (map or combat).
-      `Combat: give a friendly unit +${amount} Initiative this combat — doubled (+${amount * 2}) for ${doubledUnit}. (House rule: also +1 Combat movement.) — OR — House rule: draw 1 card instead (map or combat).`
+      `Combat: give a friendly unit +${amount} Initiative this combat — doubled (+${amount * 2}) for ${doubledUnit}. (House rule: also +1 Combat movement.) — OR — House rule: draw 1 card instead (map or combat).`,
     ],
     // Option A targets a friendly unit (it inherits this card-level target);
     // option B (draw a card) needs no target.
@@ -507,22 +582,22 @@ function unitInitiativeSpecialty(
             doubleForUnitName: doubledUnit,
             // House rule (BINH): the buff also raises Combat movement by 1.
             // Gated at read time in getUnitMoveRange — inert when the rule is off.
-            movementBonus: 1
-          }
+            movementBonus: 1,
+          },
         },
         {
           label: "Draw 1 card",
           requiresHouseRule: "initiative-specialty-draw",
-          effect: { type: "DRAW_CARDS", amount: 1 }
-        }
-      ]
+          effect: { type: "DRAW_CARDS", amount: 1 },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage(heroSlug, level),
-      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`
+      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`,
     },
     implementationStatus: "implemented",
-    source: heroSource(heroSlug)
+    source: heroSource(heroSlug),
   };
 }
 
@@ -539,7 +614,7 @@ function dessaSpecialtyFour(): CardLibrary[string] {
         {
           label: "+1 movement",
           mapOnly: true,
-          effect: { type: "GAIN_HERO_MOVEMENT", amount: 1 }
+          effect: { type: "GAIN_HERO_MOVEMENT", amount: 1 },
         },
         {
           label: "+1 initiative to all your units this combat",
@@ -552,18 +627,18 @@ function dessaSpecialtyFour(): CardLibrary[string] {
               duration: { type: "combat" },
               polarity: "positive",
               removable: false,
-              modifiers: [{ type: "INITIATIVE_BONUS", amount: 1 }]
-            }
-          }
-        }
-      ]
+              modifiers: [{ type: "INITIATIVE_BONUS", amount: 1 }],
+            },
+          },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("dessa", 4),
-      imageAlt: "Logistics level IV specialty card"
+      imageAlt: "Logistics level IV specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("dessa")
+    source: heroSource("dessa"),
   };
 }
 
@@ -580,20 +655,24 @@ function dessaSpecialtySix(): CardLibrary[string] {
         {
           label: "+1 movement and move through blocked fields this turn",
           mapOnly: true,
-          effect: { type: "GAIN_HERO_MOVEMENT", amount: 1, moveThroughThisTurn: true }
+          effect: {
+            type: "GAIN_HERO_MOVEMENT",
+            amount: 1,
+            moveThroughThisTurn: true,
+          },
         },
         {
           label: "Draw 2 cards",
-          effect: { type: "DRAW_CARDS", amount: 2 }
-        }
-      ]
+          effect: { type: "DRAW_CARDS", amount: 2 },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("dessa", 6),
-      imageAlt: "Logistics level VI specialty card"
+      imageAlt: "Logistics level VI specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("dessa")
+    source: heroSource("dessa"),
   };
 }
 
@@ -611,7 +690,7 @@ function lethalSaveSpecialty(
   heroSlug: string,
   specialtyName: string,
   level: 1 | 4 | 6,
-  costs: { bronze: number; silver: number; gold: number }
+  costs: { bronze: number; silver: number; gold: number },
 ): CardLibrary[string] {
   const grades = ["bronze", "silver", "gold"] as const;
   const tagGroup = specialtyName.toLowerCase().replace(/\s+/g, "-");
@@ -626,7 +705,7 @@ function lethalSaveSpecialty(
       "reaction",
       heroSlug,
       tagGroup,
-      `Cancel an enemy attack that would reduce one of your units to 0 HP (attacks only, not spells or specialties). Pay spell Power (your standing Power, a Power statistic, or a Spell): ${costs.bronze} for a bronze unit, ${costs.silver} for silver, ${costs.gold} for gold.`
+      `Cancel an enemy attack that would reduce one of your units to 0 HP (attacks only, not spells or specialties). Pay spell Power (your standing Power, a Power statistic, or a Spell): ${costs.bronze} for a bronze unit, ${costs.silver} for silver, ${costs.gold} for gold.`,
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -639,17 +718,22 @@ function lethalSaveSpecialty(
             ? `Save a ${grade} unit (pay ${costs[grade]} Power)`
             : `Save a ${grade} unit`,
         ...(costs[grade] > 0
-          ? { cost: { powerCost: costs[grade], costCardFilter: "power-source" as const } }
+          ? {
+              cost: {
+                powerCost: costs[grade],
+                costCardFilter: "power-source" as const,
+              },
+            }
           : {}),
-        effect: { type: "CANCEL_LETHAL_ATTACK" as const, grade }
-      }))
+        effect: { type: "CANCEL_LETHAL_ATTACK" as const, grade },
+      })),
     },
     assets: {
       cardImage: specialtyCardImage(heroSlug, level),
-      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`
+      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`,
     },
     implementationStatus: "implemented",
-    source: heroSource(heroSlug)
+    source: heroSource(heroSlug),
   };
 }
 
@@ -668,8 +752,14 @@ function lethalSaveSpecialty(
  * values. The engine hits the centre unit and that many adjacent units, letting
  * the caster pick which when more are adjacent (AREA_DAMAGE_PICK_ADJACENT).
  */
-function meteorShowerSpecialty(level: 1 | 6, adjacentPicks: number): CardLibrary[string] {
-  const adjacentText = adjacentPicks === 1 ? "1 unit adjacent to it" : `${adjacentPicks} units adjacent to it`;
+function meteorShowerSpecialty(
+  level: 1 | 6,
+  adjacentPicks: number,
+): CardLibrary[string] {
+  const adjacentText =
+    adjacentPicks === 1
+      ? "1 unit adjacent to it"
+      : `${adjacentPicks} units adjacent to it`;
   return {
     id: `specialty.deemer.${level}`,
     name: `Meteor Shower ${level === 1 ? "I" : "VI"}`,
@@ -681,7 +771,7 @@ function meteorShowerSpecialty(level: 1 | 6, adjacentPicks: number): CardLibrary
       "combat",
       "deemer",
       "meteor-shower",
-      `Instant (any time, incl. an enemy unit's turn start or end of its move): Select a unit and ${adjacentText}. Deal to all selected units (friend or foe), scaling with the spell Power you bring: Power 0-1: 1 damage; Power 2-3: 2 damage; Power 4+: 3 damage.`
+      `Instant (any time, incl. an enemy unit's turn start or end of its move): Select a unit and ${adjacentText}. Deal to all selected units (friend or foe), scaling with the spell Power you bring: Power 0-1: 1 damage; Power 2-3: 2 damage; Power 4+: 3 damage.`,
     ],
     target: { type: "any-unit" },
     // ONE power-scaled activation, not a tier menu. The optional power-source
@@ -707,10 +797,10 @@ function meteorShowerSpecialty(level: 1 | 6, adjacentPicks: number): CardLibrary
     },
     assets: {
       cardImage: specialtyCardImage("deemer", level),
-      imageAlt: `Meteor Shower level ${level === 1 ? "I" : "VI"} specialty card`
+      imageAlt: `Meteor Shower level ${level === 1 ? "I" : "VI"} specialty card`,
     },
     implementationStatus: "implemented",
-    source: heroSource("deemer")
+    source: heroSource("deemer"),
   };
 }
 
@@ -724,7 +814,7 @@ function towerHealthSpecialty(
   specialtyName: string,
   level: 1 | 4 | 6,
   amount: number,
-  doubledUnit: string
+  doubledUnit: string,
 ): CardLibrary[string] {
   return {
     id: `specialty.${heroSlug}.${level}`,
@@ -739,16 +829,20 @@ function towerHealthSpecialty(
       "combat",
       heroSlug,
       "health",
-      `Ongoing (this Combat): give a friendly unit +${amount} maximum Health — doubled (+${amount * 2}) for ${doubledUnit}.`
+      `Ongoing (this Combat): give a friendly unit +${amount} maximum Health — doubled (+${amount * 2}) for ${doubledUnit}.`,
     ],
     target: { type: "friendly-unit" },
-    effect: { type: "ADD_UNIT_MAX_HEALTH", amount, doubleForUnitName: doubledUnit },
+    effect: {
+      type: "ADD_UNIT_MAX_HEALTH",
+      amount,
+      doubleForUnitName: doubledUnit,
+    },
     assets: {
       cardImage: specialtyCardImage(heroSlug, level),
-      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`
+      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`,
     },
     implementationStatus: "implemented",
-    source: heroSource(heroSlug)
+    source: heroSource(heroSlug),
   };
 }
 
@@ -757,7 +851,7 @@ function towerAttackOrDefenseSpecialty(
   heroSlug: string,
   specialtyName: string,
   level: 1 | 4 | 6,
-  doubledUnit: string
+  doubledUnit: string,
 ): CardLibrary[string] {
   return {
     id: `specialty.${heroSlug}.${level}`,
@@ -772,21 +866,31 @@ function towerAttackOrDefenseSpecialty(
         {
           label: `+1 attack (x2 for ${doubledUnit})`,
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1, doubleForUnitName: doubledUnit }
+          effect: {
+            type: "ADD_COMBAT_STAT",
+            stat: "attack",
+            amount: 1,
+            doubleForUnitName: doubledUnit,
+          },
         },
         {
           label: `+1 defense (x2 for ${doubledUnit})`,
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 1, doubleForUnitName: doubledUnit }
-        }
-      ]
+          effect: {
+            type: "ADD_COMBAT_STAT",
+            stat: "defense",
+            amount: 1,
+            doubleForUnitName: doubledUnit,
+          },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage(heroSlug, level),
-      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`
+      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`,
     },
     implementationStatus: "implemented",
-    source: heroSource(heroSlug)
+    source: heroSource(heroSlug),
   };
 }
 
@@ -797,7 +901,7 @@ function towerStatBoostSpecialty(
   level: 1 | 4 | 6,
   stat: "attack" | "defense",
   amount: number,
-  doubledUnit: string
+  doubledUnit: string,
 ): CardLibrary[string] {
   return {
     id: `specialty.${heroSlug}.${level}`,
@@ -812,16 +916,24 @@ function towerStatBoostSpecialty(
       heroSlug,
       `Instant: +${amount} ${stat === "attack" ? "attack" : "defence"} on a single ${
         stat === "attack" ? "attack" : "defence"
-      } — doubled (+${amount * 2}) for ${doubledUnit}.`
+      } — doubled (+${amount * 2}) for ${doubledUnit}.`,
     ],
-    trigger: { event: "UNIT_ATTACK_DECLARED", controller: stat === "attack" ? "self" : "opponent" },
-    effect: { type: "ADD_COMBAT_STAT", stat, amount, doubleForUnitName: doubledUnit },
+    trigger: {
+      event: "UNIT_ATTACK_DECLARED",
+      controller: stat === "attack" ? "self" : "opponent",
+    },
+    effect: {
+      type: "ADD_COMBAT_STAT",
+      stat,
+      amount,
+      doubleForUnitName: doubledUnit,
+    },
     assets: {
       cardImage: specialtyCardImage(heroSlug, level),
-      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`
+      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`,
     },
     implementationStatus: "implemented",
-    source: heroSource(heroSlug)
+    source: heroSource(heroSlug),
   };
 }
 
@@ -835,7 +947,7 @@ function armorerSpecialty(
   heroSlug: string,
   level: 1 | 4 | 6,
   amount: number,
-  specialtyName = "Armorer"
+  specialtyName = "Armorer",
 ): CardLibrary[string] {
   const tagGroup = specialtyName.toLowerCase().replace(/\s+/g, "-");
   return {
@@ -849,16 +961,16 @@ function armorerSpecialty(
       "instant",
       heroSlug,
       tagGroup,
-      `Your selected unit gains +${amount} defense.`
+      `Your selected unit gains +${amount} defense.`,
     ],
     trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
     effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount },
     assets: {
       cardImage: specialtyCardImage(heroSlug, level),
-      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`
+      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`,
     },
     implementationStatus: "implemented",
-    source: heroSource(heroSlug)
+    source: heroSource(heroSlug),
   };
 }
 
@@ -867,24 +979,39 @@ function armorerSpecialty(
  * gold (I/IV/VI = 2/3/5). Modelled as a single mapOnly option so it is only ever
  * playable on the adventure map, never in combat.
  */
-function estatesGoldSpecialty(level: 1 | 4 | 6, gold: number): CardLibrary[string] {
+function estatesGoldSpecialty(
+  level: 1 | 4 | 6,
+  gold: number,
+): CardLibrary[string] {
   return {
     id: `specialty.lord_haart.${level}`,
     name: `Estates ${towerRoman(level)}`,
     kind: "hero-specialty",
     timing: "instant",
-    tags: ["hero-specialty", "instant", "lord_haart", "estates", `Gain ${gold} gold.`],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "lord_haart",
+      "estates",
+      `Gain ${gold} gold.`,
+    ],
     target: { type: "none" },
     effect: {
       type: "CHOOSE_ONE",
-      options: [{ label: `Gain ${gold} gold`, mapOnly: true, effect: { type: "GAIN_RESOURCES", gain: { gold } } }]
+      options: [
+        {
+          label: `Gain ${gold} gold`,
+          mapOnly: true,
+          effect: { type: "GAIN_RESOURCES", gain: { gold } },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("lord_haart", level),
-      imageAlt: `Estates level ${towerRoman(level)} specialty card`
+      imageAlt: `Estates level ${towerRoman(level)} specialty card`,
     },
     implementationStatus: "implemented",
-    source: heroSource("lord_haart")
+    source: heroSource("lord_haart"),
   };
 }
 
@@ -904,7 +1031,7 @@ function warlockDigSpecialty(level: 1 | 6, count: number): CardLibrary[string] {
       "instant",
       "jeddite",
       "mysterious-warlock",
-      `Draw up to ${count} cards from your deck, take any Spell and Specialty cards to your hand, and discard the rest.`
+      `Draw up to ${count} cards from your deck, take any Spell and Specialty cards to your hand, and discard the rest.`,
     ],
     target: { type: "none" },
     effect: {
@@ -914,16 +1041,20 @@ function warlockDigSpecialty(level: 1 | 6, count: number): CardLibrary[string] {
           // Printed Instant card-manipulation → playable on the map AND
           // mid-Combat (see instantSideAllowedInCombat); no `mapOnly`.
           label: `Dig ${count} cards; keep Spells and Specialties`,
-          effect: { type: "DECK_DIG_KEEP_MATCHING", count, filter: "spell-or-specialty" }
-        }
-      ]
+          effect: {
+            type: "DECK_DIG_KEEP_MATCHING",
+            count,
+            filter: "spell-or-specialty",
+          },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("jeddite", level),
-      imageAlt: `Mysterious Warlock level ${towerRoman(level)} specialty card`
+      imageAlt: `Mysterious Warlock level ${towerRoman(level)} specialty card`,
     },
     implementationStatus: "implemented",
-    source: heroSource("jeddite")
+    source: heroSource("jeddite"),
   };
 }
 
@@ -949,7 +1080,7 @@ function fireMagicSpecialty(level: 1 | 6, amount: number): CardLibrary[string] {
       "combat",
       "adrienne",
       "fire-magic",
-      `During this Combat, every Spell you cast from the School of Fire is cast with +${amount} Power.`
+      `During this Combat, every Spell you cast from the School of Fire is cast with +${amount} Power.`,
     ],
     target: { type: "none" },
     effect: {
@@ -960,15 +1091,17 @@ function fireMagicSpecialty(level: 1 | 6, amount: number): CardLibrary[string] {
         duration: { type: "combat" },
         polarity: "positive",
         removable: false,
-        modifiers: [{ type: "SPELL_SCHOOL_POWER_BONUS", school: "fire", amount }]
-      }
+        modifiers: [
+          { type: "SPELL_SCHOOL_POWER_BONUS", school: "fire", amount },
+        ],
+      },
     },
     assets: {
       cardImage: specialtyCardImage("adrienne", level),
-      imageAlt: `Fire Magic level ${towerRoman(level)} specialty card`
+      imageAlt: `Fire Magic level ${towerRoman(level)} specialty card`,
     },
     implementationStatus: "implemented",
-    source: heroSource("adrienne")
+    source: heroSource("adrienne"),
   };
 }
 
@@ -987,11 +1120,18 @@ function withoutArt(card: CardLibrary[string]): CardLibrary[string] {
 }
 
 /** Add an engine-backed innate hero rule to an otherwise normal playable card. */
-function withInnateHeroRule(card: CardLibrary[string], innate: string): CardLibrary[string] {
+function withInnateHeroRule(
+  card: CardLibrary[string],
+  innate: string,
+): CardLibrary[string] {
   const next = structuredClone(card) as CardLibrary[string];
-  const prose = (next.tags ?? []).filter((tag) => /\s/u.test(tag)).sort((a, b) => b.length - a.length)[0];
+  const prose = (next.tags ?? [])
+    .filter((tag) => /\s/u.test(tag))
+    .sort((a, b) => b.length - a.length)[0];
   next.tags = (next.tags ?? []).filter((tag) => tag !== prose);
-  next.tags.push(`${innate} Card: ${prose ?? "Resolve this specialty's implemented effect."}`);
+  next.tags.push(
+    `${innate} Card: ${prose ?? "Resolve this specialty's implemented effect."}`,
+  );
   return next;
 }
 
@@ -1006,14 +1146,16 @@ function withInnateHeroRule(card: CardLibrary[string], innate: string): CardLibr
 function withSpecialtyArt(card: CardLibrary[string]): CardLibrary[string] {
   const parsed = /^specialty\.(.+)\.(1|4|6)$/u.exec(card.id);
   if (!parsed) {
-    throw new Error(`withSpecialtyArt: not a hero-specialty card id: ${card.id}`);
+    throw new Error(
+      `withSpecialtyArt: not a hero-specialty card id: ${card.id}`,
+    );
   }
   return {
     ...card,
     assets: {
       cardImage: specialtyCardImage(parsed[1], Number(parsed[2]) as 1 | 4 | 6),
-      imageAlt: `${card.name} specialty card`
-    }
+      imageAlt: `${card.name} specialty card`,
+    },
   };
 }
 
@@ -1036,15 +1178,21 @@ function cureSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
     source: heroSource("astra"),
     assets: {
       cardImage: specialtyCardImage("astra", level),
-      imageAlt: `Cure ${ROMAN[level]} specialty card`
-    }
+      imageAlt: `Cure ${ROMAN[level]} specialty card`,
+    },
   };
   if (level === 6) {
     return {
       ...base,
-      tags: ["hero-specialty", "instant", "astra", "heal", "Remove up to 3 damage from your selected unit."],
+      tags: [
+        "hero-specialty",
+        "instant",
+        "astra",
+        "heal",
+        "Remove up to 3 damage from your selected unit.",
+      ],
       target: { type: "friendly-unit", damagedOnly: true },
-      effect: { type: "HEAL_DAMAGE", amount: 3 }
+      effect: { type: "HEAL_DAMAGE", amount: 3 },
     };
   }
   return {
@@ -1056,7 +1204,7 @@ function cureSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
       "heal",
       level === 1
         ? "Remove any effect or paralysis from your selected unit, then draw 1 card."
-        : "Remove any effect or paralysis as well as up to 2 damage from your selected unit."
+        : "Remove any effect or paralysis as well as up to 2 damage from your selected unit.",
     ],
     target: { type: "friendly-unit" },
     effect: {
@@ -1064,8 +1212,8 @@ function cureSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
       amount: level === 1 ? 0 : 2,
       removePolarity: "any-removable",
       removeParalysis: true,
-      ...(level === 1 ? { drawCards: 1 } : {})
-    }
+      ...(level === 1 ? { drawCards: 1 } : {}),
+    },
   };
 }
 
@@ -1077,8 +1225,15 @@ function cureSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
  * Scholar). Level I narrows the removable card to an Ability (always digging the
  * Ability deck); IV/VI allow any Ability/Artifact/Spell and dig that card's deck.
  */
-function scoutingSpecialty(level: 1 | 4 | 6, filter: "ability" | "removable", count: number): CardLibrary[string] {
-  const what = filter === "ability" ? "an Ability card" : "an Ability, Artifact, or Spell card";
+function scoutingSpecialty(
+  level: 1 | 4 | 6,
+  filter: "ability" | "removable",
+  count: number,
+): CardLibrary[string] {
+  const what =
+    filter === "ability"
+      ? "an Ability card"
+      : "an Ability, Artifact, or Spell card";
   const deck = filter === "ability" ? "the Ability deck" : "its deck";
   return {
     id: `specialty.miriam.${level}`,
@@ -1090,7 +1245,7 @@ function scoutingSpecialty(level: 1 | 4 | 6, filter: "ability" | "removable", co
       "instant",
       "miriam",
       "scouting",
-      `Remove ${what} from your hand to Search (${count}) ${deck}. Then, you may Remove this Specialty card.`
+      `Remove ${what} from your hand to Search (${count}) ${deck}. Then, you may Remove this Specialty card.`,
     ],
     target: { type: "none" },
     effect: {
@@ -1101,24 +1256,33 @@ function scoutingSpecialty(level: 1 | 4 | 6, filter: "ability" | "removable", co
           // mid-Combat (see instantSideAllowedInCombat); no `mapOnly`. The reducer
           // opens the remove-then-Search choice inline during a live combat.
           label: `Remove ${what} to Search (${count}) ${deck}`,
-          effect: { type: "REMOVE_HAND_CARD_THEN_SEARCH", count, filter, tieredReach: filter === "removable" }
+          effect: {
+            type: "REMOVE_HAND_CARD_THEN_SEARCH",
+            count,
+            filter,
+            tieredReach: filter === "removable",
+          },
         },
         {
           label: `Remove ${what} to Search (${count}) ${deck}; then Remove this Specialty card`,
           cost: { removeSelf: true },
-          effect: { type: "REMOVE_HAND_CARD_THEN_SEARCH", count, filter, tieredReach: filter === "removable" }
-        }
-      ]
+          effect: {
+            type: "REMOVE_HAND_CARD_THEN_SEARCH",
+            count,
+            filter,
+            tieredReach: filter === "removable",
+          },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("miriam", level),
-      imageAlt: `Scouting ${towerRoman(level)} specialty card`
+      imageAlt: `Scouting ${towerRoman(level)} specialty card`,
     },
     implementationStatus: "implemented",
-    source: heroSource("miriam")
+    source: heroSource("miriam"),
   };
 }
-
 
 /** "+N attack" instant on your own attack, doubled for the signature unit (Lorelei VI). */
 function attackInstantSpecialty(
@@ -1126,7 +1290,7 @@ function attackInstantSpecialty(
   specialtyName: string,
   level: 1 | 4 | 6,
   amount: number,
-  doubledUnit: string
+  doubledUnit: string,
 ): CardLibrary[string] {
   return {
     id: `specialty.${heroSlug}.${level}`,
@@ -1139,16 +1303,16 @@ function attackInstantSpecialty(
       "hero-specialty",
       "instant",
       heroSlug,
-      `Instant: +${amount} attack on your unit's next attack — doubled (+${amount * 2}) for ${doubledUnit}.`
+      `Instant: +${amount} attack on your unit's next attack — doubled (+${amount * 2}) for ${doubledUnit}.`,
     ],
     trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
     effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount, doubleForUnitName: doubledUnit },
     assets: {
       cardImage: specialtyCardImage(heroSlug, level),
-      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`
+      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`,
     },
     implementationStatus: "implemented",
-    source: heroSource(heroSlug)
+    source: heroSource(heroSlug),
   };
 }
 
@@ -1161,7 +1325,7 @@ function activateRangedOrDrawSpecialty(
   heroSlug: string,
   specialtyName: string,
   level: 1 | 4 | 6,
-  draw: number
+  draw: number,
 ): CardLibrary[string] {
   return {
     id: `specialty.${heroSlug}.${level}`,
@@ -1173,7 +1337,7 @@ function activateRangedOrDrawSpecialty(
       "hero-specialty",
       "instant",
       heroSlug,
-      `Activate one of your ranged units, even if it has already been activated. — OR — Draw ${draw} cards.`
+      `Activate one of your ranged units, even if it has already been activated. — OR — Draw ${draw} cards.`,
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -1182,20 +1346,20 @@ function activateRangedOrDrawSpecialty(
           label: "Activate a ranged unit (even if already activated)",
           trigger: { event: "UNIT_ACTIVATION_STARTED", controller: "any" },
           target: { type: "friendly-unit", unitTypes: ["ranged"] },
-          effect: { type: "ACTIVATE_RANGED_UNIT", allowAlreadyActivated: true }
+          effect: { type: "ACTIVATE_RANGED_UNIT", allowAlreadyActivated: true },
         },
         {
           label: `Draw ${draw} cards`,
-          effect: { type: "DRAW_CARDS", amount: draw }
-        }
-      ]
+          effect: { type: "DRAW_CARDS", amount: draw },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage(heroSlug, level),
-      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`
+      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`,
     },
     implementationStatus: "implemented",
-    source: heroSource(heroSlug)
+    source: heroSource(heroSlug),
   };
 }
 
@@ -1207,7 +1371,7 @@ function ignoreDefenseOrDrawSpecialty(
   heroSlug: string,
   specialtyName: string,
   level: 1 | 4 | 6,
-  draw: number
+  draw: number,
 ): CardLibrary[string] {
   return {
     id: `specialty.${heroSlug}.${level}`,
@@ -1225,7 +1389,7 @@ function ignoreDefenseOrDrawSpecialty(
       "hero-specialty",
       "instant",
       heroSlug,
-      `For this Combat, your ${specialtyName} unit ignores its targets' Defense. — OR — Draw ${draw} card${draw === 1 ? "" : "s"}.`
+      `For this Combat, your ${specialtyName} unit ignores its targets' Defense. — OR — Draw ${draw} card${draw === 1 ? "" : "s"}.`,
     ],
     // The card-level target falls back to the signature unit; the ignore-Defense
     // option below pins it explicitly so the draw option can still target none.
@@ -1246,23 +1410,23 @@ function ignoreDefenseOrDrawSpecialty(
               duration: { type: "combat" },
               polarity: "positive",
               removable: false,
-              modifiers: [{ type: "IGNORES_DEFENSE" }]
-            }
-          }
+              modifiers: [{ type: "IGNORES_DEFENSE" }],
+            },
+          },
         },
         {
           label: `Draw ${draw} card${draw === 1 ? "" : "s"}`,
           target: { type: "none" },
-          effect: { type: "DRAW_CARDS", amount: draw }
-        }
-      ]
+          effect: { type: "DRAW_CARDS", amount: draw },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage(heroSlug, level),
-      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`
+      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`,
     },
     implementationStatus: "implemented",
-    source: heroSource(heroSlug)
+    source: heroSource(heroSlug),
   };
 }
 
@@ -1275,7 +1439,7 @@ function deathRippleSpecialty(
   level: 1 | 4 | 6,
   grades: ("bronze" | "silver" | "gold" | "azure")[],
   damage: number,
-  power: number
+  power: number,
 ): CardLibrary[string] {
   const gradeWords = grades
     .map((grade) => (grade === "gold" ? "golden" : grade))
@@ -1291,7 +1455,7 @@ function deathRippleSpecialty(
       "instant",
       "septienna",
       "death-ripple",
-      `Activation: every enemy ${gradeWords} unit suffers ${damage} damage. — OR — +${power} Power on a Spell you are casting.`
+      `Activation: every enemy ${gradeWords} unit suffers ${damage} damage. — OR — +${power} Power on a Spell you are casting.`,
     ],
     target: { type: "none" },
     effect: {
@@ -1300,21 +1464,25 @@ function deathRippleSpecialty(
         {
           label: `Every enemy ${gradeWords} unit suffers ${damage} damage`,
           combatOnly: true,
-          effect: { type: "DAMAGE_ENEMY_UNITS_BY_GRADE", grades, amount: damage }
+          effect: {
+            type: "DAMAGE_ENEMY_UNITS_BY_GRADE",
+            grades,
+            amount: damage,
+          },
         },
         {
           label: `+${power} Power`,
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: power }
-        }
-      ]
+          effect: { type: "ADD_SPELL_POWER", amount: power },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("septienna", level),
-      imageAlt: `Death Ripple level ${towerRoman(level)} specialty card`
+      imageAlt: `Death Ripple level ${towerRoman(level)} specialty card`,
     },
     implementationStatus: "implemented",
-    source: heroSource("septienna")
+    source: heroSource("septienna"),
   };
 }
 
@@ -1332,7 +1500,7 @@ function retaliationReductionSpecialty(
   specialtyName: string,
   level: 1 | 4 | 6,
   amount: number,
-  doubledUnit: string
+  doubledUnit: string,
 ): CardLibrary[string] {
   return {
     id: `specialty.${heroSlug}.${level}`,
@@ -1344,7 +1512,7 @@ function retaliationReductionSpecialty(
       "hero-specialty",
       "instant",
       heroSlug,
-      `When an enemy performs a Retaliation Attack against one of your units, reduce that retaliation's damage by ${amount}. The effect doubles for the ${doubledUnit} unit.`
+      `When an enemy performs a Retaliation Attack against one of your units, reduce that retaliation's damage by ${amount}. The effect doubles for the ${doubledUnit} unit.`,
     ],
     trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
     effect: {
@@ -1354,10 +1522,10 @@ function retaliationReductionSpecialty(
     },
     assets: {
       cardImage: specialtyCardImage(heroSlug, level),
-      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`
+      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`,
     },
     implementationStatus: "implemented",
-    source: heroSource(heroSlug)
+    source: heroSource(heroSlug),
   };
 }
 
@@ -1373,7 +1541,7 @@ function forceAttackRollSpecialty(
   level: 1 | 4 | 6,
   value: number,
   controller: "self" | "any",
-  description: string
+  description: string,
 ): CardLibrary[string] {
   return {
     id: `specialty.${heroSlug}.${level}`,
@@ -1386,10 +1554,10 @@ function forceAttackRollSpecialty(
     effect: { type: "FORCE_ATTACK_ROLL", value },
     assets: {
       cardImage: specialtyCardImage(heroSlug, level),
-      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`
+      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`,
     },
     implementationStatus: "implemented",
-    source: heroSource(heroSlug)
+    source: heroSource(heroSlug),
   };
 }
 
@@ -1403,7 +1571,7 @@ function attackOrDefenseByTypeSpecialty(
   specialtyName: string,
   level: 1 | 4 | 6,
   unitType: UnitType,
-  typeLabel: string
+  typeLabel: string,
 ): CardLibrary[string] {
   return {
     id: `specialty.${heroSlug}.${level}`,
@@ -1418,21 +1586,31 @@ function attackOrDefenseByTypeSpecialty(
         {
           label: `+1 attack (x2 for ${typeLabel})`,
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1, doubleForUnitType: unitType }
+          effect: {
+            type: "ADD_COMBAT_STAT",
+            stat: "attack",
+            amount: 1,
+            doubleForUnitType: unitType,
+          },
         },
         {
           label: `+1 defense (x2 for ${typeLabel})`,
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 1, doubleForUnitType: unitType }
-        }
-      ]
+          effect: {
+            type: "ADD_COMBAT_STAT",
+            stat: "defense",
+            amount: 1,
+            doubleForUnitType: unitType,
+          },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage(heroSlug, level),
-      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`
+      imageAlt: `${specialtyName} level ${towerRoman(level)} specialty card`,
     },
     implementationStatus: "implemented",
-    source: heroSource(heroSlug)
+    source: heroSource(heroSlug),
   };
 }
 
@@ -1447,14 +1625,14 @@ export const adventureCards: CardLibrary = {
     effect: {
       type: "GAIN_MORALE",
       amount: 1,
-      expertDrawCards: 2
+      expertDrawCards: 2,
     },
     assets: {
       cardImage: "/assets/abilities-leadership.webp",
-      imageAlt: "Leadership ability card"
+      imageAlt: "Leadership ability card",
     },
     implementationStatus: "implemented",
-    source: abilitySource("leadership")
+    source: abilitySource("leadership"),
   },
   "ability.sorcery": {
     id: "ability.sorcery",
@@ -1474,20 +1652,20 @@ export const adventureCards: CardLibrary = {
     // combatDrawOnly + playCard bank pendingDrawRiderSpellPower.
     trigger: {
       event: "SPELL_CAST_STARTED",
-      controller: "self"
+      controller: "self",
     },
     effect: {
       type: "ADD_SPELL_POWER",
       amount: 1,
       expertAmount: 2,
-      drawCards: 1
+      drawCards: 1,
     },
     assets: {
       cardImage: "/assets/abilities-sorcery.webp",
-      imageAlt: "Sorcery ability card"
+      imageAlt: "Sorcery ability card",
     },
     implementationStatus: "implemented",
-    source: abilitySource("sorcery")
+    source: abilitySource("sorcery"),
   },
   "ability.wisdom": {
     id: "ability.wisdom",
@@ -1502,7 +1680,7 @@ export const adventureCards: CardLibrary = {
       "ability",
       "town",
       "Basic: The cost of buying spells in this Town is reduced by 2 gold; Search (3) instead of Search (2). Expert: Search (4) instead. (BINH expert: −3 gold.)",
-      "Balance pack: the basic side keeps −2 gold but its widen becomes RELATIVE — Search (X+2) instead of Search (X), once — and it applies both when buying Spells from your Mage Guild AND on a Spell-deck Search in the round you BUILT the Mage Guild. Its town EXPERT side is gone: after casting your first Spell this round, play Wisdom for +1 Power on that Spell and +1 to this round's spell limit, then discard Wisdom."
+      "Balance pack: the basic side keeps −2 gold but its widen becomes RELATIVE — Search (X+2) instead of Search (X), once — and it applies both when buying Spells from your Mage Guild AND on a Spell-deck Search in the round you BUILT the Mage Guild. Its town EXPERT side is gone: after casting your first Spell this round, play Wisdom for +1 Power on that Spell and +1 to this round's spell limit, then discard Wisdom.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -1513,31 +1691,33 @@ export const adventureCards: CardLibrary = {
           // (SPELL_BOOK_ACTION's `wisdom` payload). `mapOnly` keeps it out of the
           // combat offer the Balance expert side opens below; the card's "town"
           // timing keeps it out of the map offer in both readings.
-          label: "Town (with the Spell Book token): −2 gold and a wider Search when buying a Spell",
+          label:
+            "Town (with the Spell Book token): −2 gold and a wider Search when buying a Spell",
           mapOnly: true,
-          effect: { type: "DRAW_CARDS", amount: 0 }
+          effect: { type: "DRAW_CARDS", amount: 0 },
         },
         {
           // Balance Pack expert: a real combat play. ONE effect carries both
           // printed halves for the combat round.
-          label: "Balance (spend a crown): +1 spell Power and +1 to your spell limit this combat round",
+          label:
+            "Balance (spend a crown): +1 spell Power and +1 to your spell limit this combat round",
           requiresHouseRule: "polish-card-balance",
           expertOnly: true,
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
           effect: {
             type: "ADD_SPELL_POWER",
             amount: 1,
-            spellLimitBonus: 1
-          }
-        }
-      ]
+            spellLimitBonus: 1,
+          },
+        },
+      ],
     },
     assets: {
       cardImage: "/assets/abilities-wisdom.webp",
-      imageAlt: "Wisdom ability card"
+      imageAlt: "Wisdom ability card",
     },
     implementationStatus: "implemented",
-    source: abilitySource("wisdom")
+    source: abilitySource("wisdom"),
   },
   // engine: First Aid is a CHOOSE_ONE mirroring Artillery. The basic side removes
   // 1 damage from one of your units (HEAL_DAMAGE, played from hand in combat). The
@@ -1561,7 +1741,7 @@ export const adventureCards: CardLibrary = {
       "heal",
       "wiki-reference",
       "Basic: Remove 1 damage from one of your units. Expert: when using the First Aid Tent, resolve its effect against the same target 3 times.",
-      "Balance pack: Basic: remove 1 damage from one of your units, OR First Aid ability: use First Aid Tent on the selected unit 3 times (no crown). Expert: with a First Aid Tent in play, the selected unit gains +2 Health for its current Stack/Pack/Few life only."
+      "Balance pack: Basic: remove 1 damage from one of your units, OR First Aid ability: use First Aid Tent on the selected unit 3 times (no crown). Expert: with a First Aid Tent in play, the selected unit gains +2 Health for its current Stack/Pack/Few life only.",
     ],
     target: { type: "friendly-unit", damagedOnly: true },
     effect: {
@@ -1570,16 +1750,17 @@ export const adventureCards: CardLibrary = {
         {
           label: "Remove 1 damage from one of your units",
           combatOnly: true,
-          effect: { type: "HEAL_DAMAGE", amount: 1 }
+          effect: { type: "HEAL_DAMAGE", amount: 1 },
         },
         {
           // Never played from hand. Offered when this player's First Aid Tent
           // heals — discards the card — resolving the Tent heal against the SAME
           // target 3× (see permanents.ts). Balance Pack: a BASIC side (no crown);
           // with the rule off it stays the printed Expert side.
-          label: "When using your First Aid Tent: resolve its heal against the same target 3×",
+          label:
+            "When using your First Aid Tent: resolve its heal against the same target 3×",
           expertUnlessHouseRule: "polish-card-balance",
-          effect: { type: "FIRST_AID_TENT_VOLLEY", heals: 3 }
+          effect: { type: "FIRST_AID_TENT_VOLLEY", heals: 3 },
         },
         {
           // Balance Pack expert: gated on a First Aid Tent actually in play (the
@@ -1593,23 +1774,28 @@ export const adventureCards: CardLibrary = {
           // house rule + Tent + a payable crown in addOptionPlays, so rule-off and
           // Tent-less games are byte-identical; the unit about to be hit opens the
           // window with it (combatAnytimeInstantWindowJoins / reactionOfferOpensWindow).
-          label: "Balance expert (spend a crown; First Aid Tent in play): one unit gains +2 Health for its current life",
+          label:
+            "Balance expert (spend a crown; First Aid Tent in play): one unit gains +2 Health for its current life",
           requiresHouseRule: "polish-card-balance",
           requiresWarMachine: "war_machine.first_aid_tent",
           combatOnly: true,
           combatAnytime: true,
           expertOnly: true,
           target: { type: "friendly-unit" },
-          effect: { type: "ADD_UNIT_MAX_HEALTH", amount: 2, currentUnitLifeOnly: true }
-        }
-      ]
+          effect: {
+            type: "ADD_UNIT_MAX_HEALTH",
+            amount: 2,
+            currentUnitLifeOnly: true,
+          },
+        },
+      ],
     },
     assets: {
       cardImage: "/assets/abilities-first_aid.webp",
-      imageAlt: "First Aid ability card"
+      imageAlt: "First Aid ability card",
     },
     implementationStatus: "implemented",
-    source: abilitySource("first_aid")
+    source: abilitySource("first_aid"),
   },
   // engine: Scholar is a CHOOSE_ONE. Basic: take 1 card from your discard pile
   // into hand (TAKE_FROM_DISCARD). HOUSE RULE — the basic side is usable during
@@ -1632,7 +1818,7 @@ export const adventureCards: CardLibrary = {
     tags: [
       "ability",
       "map",
-      "Basic: Choose 1 card from your discard pile and add it to your hand. Expert: Remove up to 2 Statistic cards from your hand or discard pile; take up to 2 different Empowered Statistic cards on top of your discard pile; Remove this card."
+      "Basic: Choose 1 card from your discard pile and add it to your hand. Expert: Remove up to 2 Statistic cards from your hand or discard pile; take up to 2 different Empowered Statistic cards on top of your discard pile; Remove this card.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -1641,7 +1827,7 @@ export const adventureCards: CardLibrary = {
           // House rule: usable on the map AND during Combat (allowInCombat) —
           // recover a card from your discard pile into hand mid-fight.
           label: "Choose 1 card from your discard pile and add it to your hand",
-          effect: { type: "TAKE_FROM_DISCARD", count: 1, allowInCombat: true }
+          effect: { type: "TAKE_FROM_DISCARD", count: 1, allowInCombat: true },
         },
         {
           label:
@@ -1649,16 +1835,16 @@ export const adventureCards: CardLibrary = {
           mapOnly: true,
           expertOnly: true,
           cost: { removeSelf: true },
-          effect: { type: "SCHOLAR_EMPOWER_SWAP", count: 2 }
-        }
-      ]
+          effect: { type: "SCHOLAR_EMPOWER_SWAP", count: 2 },
+        },
+      ],
     },
     assets: {
       cardImage: "/assets/abilities-scholar.webp",
-      imageAlt: "Scholar ability card"
+      imageAlt: "Scholar ability card",
     },
     implementationStatus: "implemented",
-    source: abilitySource("scholar")
+    source: abilitySource("scholar"),
   },
   // engine: Tactics is NOT played through PLAY_CARD. Holding this card, the
   // engine opens a start-of-combat swap window (regular side) once all units are
@@ -1678,103 +1864,227 @@ export const adventureCards: CardLibrary = {
       "ability",
       "combat",
       "Regular: at the start of Combat, switch the position of any 2 of your units. Expert: switch any 2 of your units during Combat, on your turn before your active unit moves.",
-      "Balance pack: Regular: at the start of Combat, switch any 2 of your units OR move one of your units 1 space. Expert: on your turn before the active unit moves, switch any 2 of your units OR move one of your units 1 space (spend a crown)."
+      "Balance pack: Regular: at the start of Combat, switch any 2 of your units OR move one of your units 1 space. Expert: on your turn before the active unit moves, switch any 2 of your units OR move one of your units 1 space (spend a crown).",
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Regular: at the start of Combat, switch the position of any 2 of your units",
+          label:
+            "Regular: at the start of Combat, switch the position of any 2 of your units",
           combatOnly: true,
-          effect: { type: "TACTICS_SWAP" }
+          effect: { type: "TACTICS_SWAP" },
         },
         {
-          label: "Expert: during Combat (before your active unit moves), switch the position of any 2 of your units",
+          label:
+            "Expert: during Combat (before your active unit moves), switch the position of any 2 of your units",
           combatOnly: true,
           expertOnly: true,
-          effect: { type: "TACTICS_SWAP" }
-        }
-      ]
+          effect: { type: "TACTICS_SWAP" },
+        },
+      ],
     },
     assets: {
       cardImage: "/assets/abilities-tactics.webp",
-      imageAlt: "Tactics ability card"
+      imageAlt: "Tactics ability card",
     },
     implementationStatus: "implemented",
-    source: abilitySource("tactics")
+    source: abilitySource("tactics"),
   },
 
   // ---- Hero specialties --------------------------------------------------
   // Catherine (Knight): the Crusaders specialist. I = +1 attack/defence; IV =
   // +1 HP for the combat; VI = +1 initiative for the combat — all doubled when
   // the bonus lands on a Crusaders unit.
-  "specialty.catherine.1": mightSpecialtyOne("catherine", "Crusaders", "Crusaders"),
-  "specialty.catherine.4": unitHealthSpecialty("catherine", "Crusaders", 4, 1, "Crusaders"),
-  "specialty.catherine.6": unitInitiativeSpecialty("catherine", "Crusaders", 6, 1, "Crusaders"),
+  "specialty.catherine.1": mightSpecialtyOne(
+    "catherine",
+    "Crusaders",
+    "Crusaders",
+  ),
+  "specialty.catherine.4": unitHealthSpecialty(
+    "catherine",
+    "Crusaders",
+    4,
+    1,
+    "Crusaders",
+  ),
+  "specialty.catherine.6": unitInitiativeSpecialty(
+    "catherine",
+    "Crusaders",
+    6,
+    1,
+    "Crusaders",
+  ),
   // Tamika (Death Knight): the Dread Knights specialist (same I/IV/VI shape).
-  "specialty.tamika.1": mightSpecialtyOne("tamika", "Dread Knights", "Dread Knights"),
-  "specialty.tamika.4": unitHealthSpecialty("tamika", "Dread Knights", 4, 1, "Dread Knights"),
-  "specialty.tamika.6": unitInitiativeSpecialty("tamika", "Dread Knights", 6, 1, "Dread Knights"),
+  "specialty.tamika.1": mightSpecialtyOne(
+    "tamika",
+    "Dread Knights",
+    "Dread Knights",
+  ),
+  "specialty.tamika.4": unitHealthSpecialty(
+    "tamika",
+    "Dread Knights",
+    4,
+    1,
+    "Dread Knights",
+  ),
+  "specialty.tamika.6": unitInitiativeSpecialty(
+    "tamika",
+    "Dread Knights",
+    6,
+    1,
+    "Dread Knights",
+  ),
   // Mutare (Overlord): the Dragons specialist — the bonus doubles for every
   // unit in the Dragons family (Black/Gold/Ghost/…), never Dragon Flies.
-  "specialty.mutare.1": mightSpecialtyOne("mutare", "Dragons", "a Dragons unit"),
-  "specialty.mutare.4": unitHealthSpecialty("mutare", "Dragons", 4, 1, "a Dragons unit"),
-  "specialty.mutare.6": unitInitiativeSpecialty("mutare", "Dragons", 6, 1, "a Dragons unit"),
+  "specialty.mutare.1": mightSpecialtyOne(
+    "mutare",
+    "Dragons",
+    "a Dragons unit",
+  ),
+  "specialty.mutare.4": unitHealthSpecialty(
+    "mutare",
+    "Dragons",
+    4,
+    1,
+    "a Dragons unit",
+  ),
+  "specialty.mutare.6": unitInitiativeSpecialty(
+    "mutare",
+    "Dragons",
+    6,
+    1,
+    "a Dragons unit",
+  ),
   // Factory heroes (Gamefound "Faction Focus: Factory"). Face-less (no printed
   // board-game specialty art yet) — withoutArt renders them natively.
   // Henrietta (Mercenary): the Halflings specialist — "building your own armies
   // of Halflings and Grenadiers, and buffing them all". I = +1 attack/defence;
   // IV = +1 HP; VI = +1 initiative — doubled when the bonus lands on a Halflings.
-  "specialty.henrietta.1": withoutArt(mightSpecialtyOne("henrietta", "Halflings", "Halflings")),
-  "specialty.henrietta.4": withoutArt(unitHealthSpecialty("henrietta", "Halflings", 4, 1, "Halflings")),
-  "specialty.henrietta.6": withoutArt(unitInitiativeSpecialty("henrietta", "Halflings", 6, 1, "Halflings")),
+  "specialty.henrietta.1": withoutArt(
+    mightSpecialtyOne("henrietta", "Halflings", "Halflings"),
+  ),
+  "specialty.henrietta.4": withoutArt(
+    unitHealthSpecialty("henrietta", "Halflings", 4, 1, "Halflings"),
+  ),
+  "specialty.henrietta.6": withoutArt(
+    unitInitiativeSpecialty("henrietta", "Halflings", 6, 1, "Halflings"),
+  ),
   // Frederick (Artificer): the Automatons specialist. His INHERENT trait also
   // enhances every Automaton's Detonate by +1 (seedFactoryHeroEffects →
   // PlayerState.automatonDetonationBonus); these three cards buff Automatons the
   // way any unit-specialist does. (His "near-free Automaton re-recruit" is not
   // yet wired — noted, not claimed.)
-  "specialty.frederick.1": withoutArt(mightSpecialtyOne("frederick", "Automatons", "Automatons")),
-  "specialty.frederick.4": withoutArt(unitHealthSpecialty("frederick", "Automatons", 4, 1, "Automatons")),
-  "specialty.frederick.6": withoutArt(unitInitiativeSpecialty("frederick", "Automatons", 6, 1, "Automatons")),
+  "specialty.frederick.1": withoutArt(
+    mightSpecialtyOne("frederick", "Automatons", "Automatons"),
+  ),
+  "specialty.frederick.4": withoutArt(
+    unitHealthSpecialty("frederick", "Automatons", 4, 1, "Automatons"),
+  ),
+  "specialty.frederick.6": withoutArt(
+    unitInitiativeSpecialty("frederick", "Automatons", 6, 1, "Automatons"),
+  ),
   // The four other kept Factory heroes are unit specialists too (same wired
   // pattern: I = +1 attack/defence, IV = +1 HP, VI = +1 initiative, doubled on
   // the specialty unit). Sam -> Mechanics, Tancred -> Bounty Hunters,
   // Celestine -> Armadillos, Agar -> Sandworms.
-  "specialty.sam.1": withoutArt(mightSpecialtyOne("sam", "Mechanics", "Mechanics")),
-  "specialty.sam.4": withoutArt(unitHealthSpecialty("sam", "Mechanics", 4, 1, "Mechanics")),
-  "specialty.sam.6": withoutArt(unitInitiativeSpecialty("sam", "Mechanics", 6, 1, "Mechanics")),
-  "specialty.tancred.1": withoutArt(mightSpecialtyOne("tancred", "Bounty Hunters", "Bounty Hunters")),
-  "specialty.tancred.4": withoutArt(unitHealthSpecialty("tancred", "Bounty Hunters", 4, 1, "Bounty Hunters")),
-  "specialty.tancred.6": withoutArt(unitInitiativeSpecialty("tancred", "Bounty Hunters", 6, 1, "Bounty Hunters")),
-  "specialty.celestine.1": withoutArt(mightSpecialtyOne("celestine", "Armadillos", "Armadillos")),
-  "specialty.celestine.4": withoutArt(unitHealthSpecialty("celestine", "Armadillos", 4, 1, "Armadillos")),
-  "specialty.celestine.6": withoutArt(unitInitiativeSpecialty("celestine", "Armadillos", 6, 1, "Armadillos")),
-  "specialty.agar.1": withoutArt(mightSpecialtyOne("agar", "Sandworms", "Sandworms")),
-  "specialty.agar.4": withoutArt(unitHealthSpecialty("agar", "Sandworms", 4, 1, "Sandworms")),
-  "specialty.agar.6": withoutArt(unitInitiativeSpecialty("agar", "Sandworms", 6, 1, "Sandworms")),
+  "specialty.sam.1": withoutArt(
+    mightSpecialtyOne("sam", "Mechanics", "Mechanics"),
+  ),
+  "specialty.sam.4": withoutArt(
+    unitHealthSpecialty("sam", "Mechanics", 4, 1, "Mechanics"),
+  ),
+  "specialty.sam.6": withoutArt(
+    unitInitiativeSpecialty("sam", "Mechanics", 6, 1, "Mechanics"),
+  ),
+  "specialty.tancred.1": withoutArt(
+    mightSpecialtyOne("tancred", "Bounty Hunters", "Bounty Hunters"),
+  ),
+  "specialty.tancred.4": withoutArt(
+    unitHealthSpecialty("tancred", "Bounty Hunters", 4, 1, "Bounty Hunters"),
+  ),
+  "specialty.tancred.6": withoutArt(
+    unitInitiativeSpecialty(
+      "tancred",
+      "Bounty Hunters",
+      6,
+      1,
+      "Bounty Hunters",
+    ),
+  ),
+  "specialty.celestine.1": withoutArt(
+    mightSpecialtyOne("celestine", "Armadillos", "Armadillos"),
+  ),
+  "specialty.celestine.4": withoutArt(
+    unitHealthSpecialty("celestine", "Armadillos", 4, 1, "Armadillos"),
+  ),
+  "specialty.celestine.6": withoutArt(
+    unitInitiativeSpecialty("celestine", "Armadillos", 6, 1, "Armadillos"),
+  ),
+  "specialty.agar.1": withoutArt(
+    mightSpecialtyOne("agar", "Sandworms", "Sandworms"),
+  ),
+  "specialty.agar.4": withoutArt(
+    unitHealthSpecialty("agar", "Sandworms", 4, 1, "Sandworms"),
+  ),
+  "specialty.agar.6": withoutArt(
+    unitInitiativeSpecialty("agar", "Sandworms", 6, 1, "Sandworms"),
+  ),
   // Anime Realms unit specialists use the proven generic I/IV/VI curve: global
   // +1 at I/IV/VI, doubled only on the named line. Face-less cards render with
   // the current hero portrait. Bin remains for legacy story scenarios; Fuyuki's
   // selectable roster below is the canonical Fifth Holy Grail War cast.
   "specialty.bin.1": withoutArt(mightSpecialtyOne("bin", "Sabers", "Sabers")),
-  "specialty.bin.4": withoutArt(unitHealthSpecialty("bin", "Sabers", 4, 1, "Sabers")),
-  "specialty.bin.6": withoutArt(unitInitiativeSpecialty("bin", "Sabers", 6, 1, "Sabers")),
+  "specialty.bin.4": withoutArt(
+    unitHealthSpecialty("bin", "Sabers", 4, 1, "Sabers"),
+  ),
+  "specialty.bin.6": withoutArt(
+    unitInitiativeSpecialty("bin", "Sabers", 6, 1, "Sabers"),
+  ),
   // Fuyuki / Azure Breeze MIGHT-hero sets were REDESIGNED 2026-08-25 (USER
   // REQUEST: drop the generic unit-buff trio). Shirou / Rin / Kiritsugu / Kirei
   // and Qingyun / Jianxu / Yulian are now distinct rethemedSpecialty clones,
   // assigned in the "ANIME SPECIALTY REDESIGN" block below (search that
   // string). Illyasviel is the ONE kept Fuyuki unit specialist — her Servant
   // IS Berserker (Heracles), the bond the doubling models.
-  "specialty.illyasviel.1": withoutArt(mightSpecialtyOne("illyasviel", "Einzbern Bond", "Heracles")),
-  "specialty.illyasviel.4": withoutArt(unitHealthSpecialty("illyasviel", "Einzbern Bond", 4, 1, "Heracles")),
-  "specialty.illyasviel.6": withoutArt(unitInitiativeSpecialty("illyasviel", "Einzbern Bond", 6, 1, "Heracles")),
+  "specialty.illyasviel.1": withoutArt(
+    mightSpecialtyOne("illyasviel", "Einzbern Bond", "Heracles"),
+  ),
+  "specialty.illyasviel.4": withoutArt(
+    unitHealthSpecialty("illyasviel", "Einzbern Bond", 4, 1, "Heracles"),
+  ),
+  "specialty.illyasviel.6": withoutArt(
+    unitInitiativeSpecialty("illyasviel", "Einzbern Bond", 6, 1, "Heracles"),
+  ),
   // Hidden Leaf hero sets were REDESIGNED 2026-08-25: Sasuke / Kakashi /
   // Shikamaru / Jiraiya are distinct rethemedSpecialty clones assigned in the
   // "ANIME SPECIALTY REDESIGN" block below. Naruto is the ONE kept Hidden Leaf
   // unit specialist — the Nine-Tails bond IS his identity.
-  "specialty.naruto.1": withoutArt(mightSpecialtyOne("naruto", "Nine-Tails Chakra", "Nine-Tails Chakra Avatar")),
-  "specialty.naruto.4": withoutArt(unitHealthSpecialty("naruto", "Nine-Tails Chakra", 4, 1, "Nine-Tails Chakra Avatar")),
-  "specialty.naruto.6": withoutArt(unitInitiativeSpecialty("naruto", "Nine-Tails Chakra", 6, 1, "Nine-Tails Chakra Avatar")),
+  "specialty.naruto.1": withoutArt(
+    mightSpecialtyOne(
+      "naruto",
+      "Nine-Tails Chakra",
+      "Nine-Tails Chakra Avatar",
+    ),
+  ),
+  "specialty.naruto.4": withoutArt(
+    unitHealthSpecialty(
+      "naruto",
+      "Nine-Tails Chakra",
+      4,
+      1,
+      "Nine-Tails Chakra Avatar",
+    ),
+  ),
+  "specialty.naruto.6": withoutArt(
+    unitInitiativeSpecialty(
+      "naruto",
+      "Nine-Tails Chakra",
+      6,
+      1,
+      "Nine-Tails Chakra Avatar",
+    ),
+  ),
   // Azur Lane hero sets are ALL BESPOKE since 2026-09-05: Enterprise's "Lucky E"
   // dice specialty (2026-07 — proactive stat half + a held-card die half in the
   // reroll window, see luckyESpecialty), Bismarck's Concentrated Fire, Nagato's
@@ -1817,17 +2127,17 @@ export const adventureCards: CardLibrary = {
       "combat",
       "miku",
       "voice-of-angel",
-      "Ongoing (combat): every enemy unit gets −1 Initiative and −1 Combat movement for this Combat."
+      "Ongoing (combat): every enemy unit gets −1 Initiative and −1 Combat movement for this Combat.",
     ],
     target: { type: "none" },
     effect: {
       type: "SLOW_ALL_ENEMIES",
       name: "Voice of Angel",
       initiative: -1,
-      movementBonus: -1
+      movementBonus: -1,
     },
     implementationStatus: "implemented",
-    source: heroSource("miku")
+    source: heroSource("miku"),
   }),
   "specialty.miku.4": withoutArt({
     id: "specialty.miku.4",
@@ -1840,16 +2150,16 @@ export const adventureCards: CardLibrary = {
       "combat",
       "miku",
       "voice-of-angel",
-      "Ongoing (combat): after any of YOUR units is attacked (including Retaliation), heal 1 damage on that attacked unit if it still lives."
+      "Ongoing (combat): after any of YOUR units is attacked (including Retaliation), heal 1 damage on that attacked unit if it still lives.",
     ],
     target: { type: "none" },
     effect: {
       type: "CREATE_HEAL_ON_ATTACKED",
       name: "Voice of Angel",
-      amount: 1
+      amount: 1,
     },
     implementationStatus: "implemented",
-    source: heroSource("miku")
+    source: heroSource("miku"),
   }),
   "specialty.miku.6": withoutArt({
     id: "specialty.miku.6",
@@ -1862,12 +2172,12 @@ export const adventureCards: CardLibrary = {
       "instant",
       "miku",
       "voice-of-angel",
-      "Instant: every enemy unit suffers 1 damage."
+      "Instant: every enemy unit suffers 1 damage.",
     ],
     target: { type: "none" },
     effect: { type: "DAMAGE_ALL_ENEMY_UNITS", amount: 1 },
     implementationStatus: "implemented",
-    source: heroSource("miku")
+    source: heroSource("miku"),
   }),
   "specialty.rion.1": {
     id: "specialty.rion.1",
@@ -1875,19 +2185,25 @@ export const adventureCards: CardLibrary = {
     kind: "hero-specialty",
     timing: "instant",
     phaseLimit: ["combat"],
-    tags: ["hero-specialty", "instant", "rion", "heal", "Remove 1 damage from one of your units, then draw 1 card."],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "rion",
+      "heal",
+      "Remove 1 damage from one of your units, then draw 1 card.",
+    ],
     target: { type: "friendly-unit", damagedOnly: true },
     effect: {
       type: "HEAL_DAMAGE",
       amount: 1,
-      drawCards: 1
+      drawCards: 1,
     },
     assets: {
       cardImage: "/assets/hero_specialties-rion-1.webp",
-      imageAlt: "Battlefield Medic level I specialty card"
+      imageAlt: "Battlefield Medic level I specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("rion")
+    source: heroSource("rion"),
   },
   // Rion's Battlefield Medic IV: the level-I heal, now able to clear a
   // Paralysis token instead of damage. Choose-one so the player picks which
@@ -1903,7 +2219,7 @@ export const adventureCards: CardLibrary = {
       "instant",
       "rion",
       "heal",
-      "Remove 1 damage or paralysis from one of your units, then draw 1 card."
+      "Remove 1 damage or paralysis from one of your units, then draw 1 card.",
     ],
     target: { type: "friendly-unit" },
     effect: {
@@ -1911,20 +2227,25 @@ export const adventureCards: CardLibrary = {
       options: [
         {
           label: "Remove 1 damage, then draw 1",
-          effect: { type: "HEAL_DAMAGE", amount: 1, drawCards: 1 }
+          effect: { type: "HEAL_DAMAGE", amount: 1, drawCards: 1 },
         },
         {
           label: "Remove paralysis, then draw 1",
-          effect: { type: "HEAL_DAMAGE", amount: 0, removeParalysis: true, drawCards: 1 }
-        }
-      ]
+          effect: {
+            type: "HEAL_DAMAGE",
+            amount: 0,
+            removeParalysis: true,
+            drawCards: 1,
+          },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("rion", 4),
-      imageAlt: "Battlefield Medic level IV specialty card"
+      imageAlt: "Battlefield Medic level IV specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("rion")
+    source: heroSource("rion"),
   },
   // Rion's Battlefield Medic VI: removes up to 2 damage (or paralysis), then
   // draws 2 and discards 1. The printed order is DRAW THEN DISCARD, so the
@@ -1943,7 +2264,7 @@ export const adventureCards: CardLibrary = {
       "instant",
       "rion",
       "heal",
-      "Remove up to 2 damage or paralysis from one of your units, then draw 2 cards and discard 1 card from your hand."
+      "Remove up to 2 damage or paralysis from one of your units, then draw 2 cards and discard 1 card from your hand.",
     ],
     target: { type: "friendly-unit" },
     effect: {
@@ -1951,20 +2272,31 @@ export const adventureCards: CardLibrary = {
       options: [
         {
           label: "Remove up to 2 damage, then draw 2 and discard 1",
-          effect: { type: "HEAL_DAMAGE", amount: 2, drawCards: 2, thenDiscard: 1 }
+          effect: {
+            type: "HEAL_DAMAGE",
+            amount: 2,
+            drawCards: 2,
+            thenDiscard: 1,
+          },
         },
         {
           label: "Remove paralysis, then draw 2 and discard 1",
-          effect: { type: "HEAL_DAMAGE", amount: 0, removeParalysis: true, drawCards: 2, thenDiscard: 1 }
-        }
-      ]
+          effect: {
+            type: "HEAL_DAMAGE",
+            amount: 0,
+            removeParalysis: true,
+            drawCards: 2,
+            thenDiscard: 1,
+          },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("rion", 6),
-      imageAlt: "Battlefield Medic level VI specialty card"
+      imageAlt: "Battlefield Medic level VI specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("rion")
+    source: heroSource("rion"),
   },
   "specialty.sandro.1": {
     id: "specialty.sandro.1",
@@ -1975,7 +2307,7 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "sandro",
       "transform",
-      "Put this card on the Pack of Skeletons Unit card; it replaces the card's statistics until defeated. (BINH: 3 HP.)"
+      "Put this card on the Pack of Skeletons Unit card; it replaces the card's statistics until defeated. (BINH: 3 HP.)",
     ],
     // Printed card: place onto a Pack of Skeletons, replacing its statistics
     // with the Horde of Skeletons (A3 D1 HP2 I6; BINH house rule HP3). The
@@ -1990,14 +2322,14 @@ export const adventureCards: CardLibrary = {
       defense: 1,
       health: 2,
       initiative: 6,
-      cardImage: "/assets/hero_specialties-sandro-1.webp"
+      cardImage: "/assets/hero_specialties-sandro-1.webp",
     },
     assets: {
       cardImage: "/assets/hero_specialties-sandro-1.webp",
-      imageAlt: "Cloak of the Undead King level I specialty card"
+      imageAlt: "Cloak of the Undead King level I specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("sandro")
+    source: heroSource("sandro"),
   },
   "specialty.sandro.4": {
     id: "specialty.sandro.4",
@@ -2008,7 +2340,7 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "sandro",
       "transform",
-      "Put this card on the Pack of Zombies Unit card; it replaces the card's statistics until defeated. The Pack's printed abilities are inactive while covered."
+      "Put this card on the Pack of Zombies Unit card; it replaces the card's statistics until defeated. The Pack's printed abilities are inactive while covered.",
     ],
     // Pack of Zombies only -> Horde of Zombies (A4 D1 HP3 I5). The Pack's
     // printed abilities are inactive while the Horde is on top (wiki FAQ).
@@ -2021,14 +2353,14 @@ export const adventureCards: CardLibrary = {
       defense: 1,
       health: 3,
       initiative: 5,
-      cardImage: "/assets/hero_specialties-sandro-4.webp"
+      cardImage: "/assets/hero_specialties-sandro-4.webp",
     },
     assets: {
       cardImage: "/assets/hero_specialties-sandro-4.webp",
-      imageAlt: "Cloak of the Undead King level IV specialty card"
+      imageAlt: "Cloak of the Undead King level IV specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("sandro")
+    source: heroSource("sandro"),
   },
   "specialty.sandro.6": {
     id: "specialty.sandro.6",
@@ -2039,7 +2371,7 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "sandro",
       "transform",
-      "Put this card on the Skeletons Unit card (Few, Pack or even a Horde); it becomes a Legion of Skeletons. The Legion stays on top — the Skeletons under it may still be reinforced or upgraded — and its statistics apply until defeated. (BINH: 3 HP.)"
+      "Put this card on the Skeletons Unit card (Few, Pack or even a Horde); it becomes a Legion of Skeletons. The Legion stays on top — the Skeletons under it may still be reinforced or upgraded — and its statistics apply until defeated. (BINH: 3 HP.)",
     ],
     // Legion of Skeletons (A4 D1 HP2 I6; BINH house rule HP3). Placeable on
     // Few, Pack or even a Horde of Skeletons; always stays on top while the
@@ -2055,14 +2387,14 @@ export const adventureCards: CardLibrary = {
       health: 2,
       initiative: 6,
       cardImage: "/assets/hero_specialties-sandro-6.webp",
-      alwaysOnTop: true
+      alwaysOnTop: true,
     },
     assets: {
       cardImage: "/assets/hero_specialties-sandro-6.webp",
-      imageAlt: "Cloak of the Undead King level VI specialty card"
+      imageAlt: "Cloak of the Undead King level VI specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("sandro")
+    source: heroSource("sandro"),
   },
   // Moandor (Necropolis Death Knight): the Liches specialist. I/IV are the
   // shared might/health specialties doubled for Liches; VI is his signature —
@@ -2070,8 +2402,12 @@ export const adventureCards: CardLibrary = {
   // The moandor specialty scans (hero_specialties-moandor-*.webp) ship since the
   // 2026-08 wiki art refresh (scripts/fetch-hero-art-refresh.py), so these draw the
   // printed face; SPECIALTY_ICON_BY_HERO.moandor is only the load-failure fallback.
-  "specialty.moandor.1": withSpecialtyArt(mightSpecialtyOne("moandor", "Liches", "Liches")),
-  "specialty.moandor.4": withSpecialtyArt(unitHealthSpecialty("moandor", "Liches", 4, 1, "Liches")),
+  "specialty.moandor.1": withSpecialtyArt(
+    mightSpecialtyOne("moandor", "Liches", "Liches"),
+  ),
+  "specialty.moandor.4": withSpecialtyArt(
+    unitHealthSpecialty("moandor", "Liches", 4, 1, "Liches"),
+  ),
   // Moandor VI is a CHOICE (— OR —), re-confirmed against the owner's physical
   // card 2026-06: the fan wiki renders the two clauses with no "OR" (looking like
   // a combined AND), but the printed card is choose-one. Do not "fix" it to AND.
@@ -2086,7 +2422,7 @@ export const adventureCards: CardLibrary = {
       "combat",
       "moandor",
       "liches",
-      "For this Combat, choose one: your Liches unit deals elemental damage. — OR — your selected unit gains +2 attack."
+      "For this Combat, choose one: your Liches unit deals elemental damage. — OR — your selected unit gains +2 attack.",
     ],
     target: { type: "friendly-unit" },
     effect: {
@@ -2098,8 +2434,8 @@ export const adventureCards: CardLibrary = {
           effect: {
             type: "GRANT_ELEMENTAL_DAMAGE",
             targetUnitName: "Liches",
-            duration: { type: "combat" }
-          }
+            duration: { type: "combat" },
+          },
         },
         {
           label: "+2 attack (this Combat)",
@@ -2110,17 +2446,21 @@ export const adventureCards: CardLibrary = {
             amount: 2,
             duration: { type: "combat" },
             polarity: "positive",
-            removable: false
-          }
-        }
-      ]
+            removable: false,
+          },
+        },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("moandor")
+    source: heroSource("moandor"),
   }),
   // Gelu (Ranger): the Sharpshooters specialist. His +1 attack/defence (I) and
   // +2 initiative (VI) double for BOTH the Elves and Sharpshooters units (wiki).
-  "specialty.gelu.1": mightSpecialtyOne("gelu", "Sharpshooters", "Elves and Sharpshooters"),
+  "specialty.gelu.1": mightSpecialtyOne(
+    "gelu",
+    "Sharpshooters",
+    "Elves and Sharpshooters",
+  ),
   // Gelu IV: trade a Pack of Elves for the unique Sharpshooters Neutral card,
   // or just draw a card. The Sharpshooters card leaves the silver Neutral deck
   // and joins your unit deck; only one Sharpshooters may be controlled at once.
@@ -2138,14 +2478,15 @@ export const adventureCards: CardLibrary = {
       "sharpshooters",
       // House rule (BINH): the recruited Sharpshooters is BUFFED with a permanent
       // +1 Attack in all combats — stated up front so the player knows it is a buff.
-      "If you have a Pack of Elves Unit card, discard it, then search the Neutral Unit silver deck for the Sharpshooters card and add it to your Unit deck (only 1 Sharpshooters at a time). BUFF: that Sharpshooters permanently gains +1 Attack in every combat, from beginning to end. — OR — Draw a card."
+      "If you have a Pack of Elves Unit card, discard it, then search the Neutral Unit silver deck for the Sharpshooters card and add it to your Unit deck (only 1 Sharpshooters at a time). BUFF: that Sharpshooters permanently gains +1 Attack in every combat, from beginning to end. — OR — Draw a card.",
     ],
     target: { type: "none" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Discard a Pack of Elves → take the BUFFED Sharpshooters (+1 Attack, always)",
+          label:
+            "Discard a Pack of Elves → take the BUFFED Sharpshooters (+1 Attack, always)",
           mapOnly: true,
           effect: {
             type: "CONVERT_ARMY_UNIT",
@@ -2155,23 +2496,29 @@ export const adventureCards: CardLibrary = {
             toTier: "silver",
             unique: true,
             // House rule (BINH): the recruited Sharpshooters always fights at +1 Attack.
-            grantAttackBonus: 1
-          }
+            grantAttackBonus: 1,
+          },
         },
         {
           label: "Draw a card",
-          effect: { type: "DRAW_CARDS", amount: 1 }
-        }
-      ]
+          effect: { type: "DRAW_CARDS", amount: 1 },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("gelu", 4),
-      imageAlt: "Sharpshooters level IV specialty card"
+      imageAlt: "Sharpshooters level IV specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("gelu")
+    source: heroSource("gelu"),
   },
-  "specialty.gelu.6": unitInitiativeSpecialty("gelu", "Sharpshooters", 6, 2, "Elves and Sharpshooters"),
+  "specialty.gelu.6": unitInitiativeSpecialty(
+    "gelu",
+    "Sharpshooters",
+    6,
+    2,
+    "Elves and Sharpshooters",
+  ),
   "specialty.gem.1": {
     id: "specialty.gem.1",
     name: "First Aid I",
@@ -2182,7 +2529,7 @@ export const adventureCards: CardLibrary = {
       "instant",
       "gem",
       "first-aid",
-      "Take a First Aid Tent from the War Machine supply for free, or draw 1 card if you already have one."
+      "Take a First Aid Tent from the War Machine supply for free, or draw 1 card if you already have one.",
     ],
     target: { type: "none" },
     // One supply copy of the Tent: take it when it is still there, otherwise it
@@ -2190,14 +2537,14 @@ export const adventureCards: CardLibrary = {
     effect: {
       type: "GAIN_WAR_MACHINE",
       warMachineCardId: "war_machine.first_aid_tent",
-      fallbackDrawCards: 1
+      fallbackDrawCards: 1,
     },
     assets: {
       cardImage: "/assets/hero_specialties-gem-1.webp",
-      imageAlt: "First Aid level I specialty card"
+      imageAlt: "First Aid level I specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("gem")
+    source: heroSource("gem"),
   },
   // Gem's First Aid IV: a straight "remove 2 damage from one of your units".
   "specialty.gem.4": {
@@ -2206,15 +2553,21 @@ export const adventureCards: CardLibrary = {
     kind: "hero-specialty",
     timing: "instant",
     phaseLimit: ["combat"],
-    tags: ["hero-specialty", "instant", "gem", "heal", "Remove 2 damage from one of your units."],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "gem",
+      "heal",
+      "Remove 2 damage from one of your units.",
+    ],
     target: { type: "friendly-unit", damagedOnly: true },
     effect: { type: "HEAL_DAMAGE", amount: 2 },
     assets: {
       cardImage: specialtyCardImage("gem", 4),
-      imageAlt: "First Aid level IV specialty card"
+      imageAlt: "First Aid level IV specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("gem")
+    source: heroSource("gem"),
   },
   // Gem's First Aid VI: "For this Combat, double your First Aid Tent's effect."
   // Only offered with a Tent in play; doubles its per-round heal for the combat.
@@ -2224,7 +2577,13 @@ export const adventureCards: CardLibrary = {
     kind: "hero-specialty",
     timing: "combat",
     phaseLimit: ["combat"],
-    tags: ["hero-specialty", "combat", "gem", "first-aid", "For this Combat, double your First Aid Tent's effect."],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "gem",
+      "first-aid",
+      "For this Combat, double your First Aid Tent's effect.",
+    ],
     target: { type: "none" },
     effect: {
       type: "CHOOSE_ONE",
@@ -2232,16 +2591,16 @@ export const adventureCards: CardLibrary = {
         {
           label: "Double your First Aid Tent's heal this Combat",
           combatOnly: true,
-          effect: { type: "DOUBLE_FIRST_AID_TENT" }
-        }
-      ]
+          effect: { type: "DOUBLE_FIRST_AID_TENT" },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("gem", 6),
-      imageAlt: "First Aid level VI specialty card"
+      imageAlt: "First Aid level VI specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("gem")
+    source: heroSource("gem"),
   },
   "specialty.xyron.1": {
     id: "specialty.xyron.1",
@@ -2254,7 +2613,7 @@ export const adventureCards: CardLibrary = {
       "combat",
       "xyron",
       "inferno",
-      "Discard 2 cards, then select a space: every unit on that space and the spaces adjacent to it (friend or foe) takes 1 damage."
+      "Discard 2 cards, then select a space: every unit on that space and the spaces adjacent to it (friend or foe) takes 1 damage.",
     ],
     // "Select a space" — occupied or empty — so the blast can be centred on a
     // stack of units or on an empty cell to catch a ring of them.
@@ -2267,16 +2626,16 @@ export const adventureCards: CardLibrary = {
         {
           label: "Discard 2 cards: 1 damage to a space and its neighbours",
           cost: { discardCards: 2 },
-          effect: { type: "AREA_DAMAGE_ALL_ADJACENT", amount: 1 }
-        }
-      ]
+          effect: { type: "AREA_DAMAGE_ALL_ADJACENT", amount: 1 },
+        },
+      ],
     },
     assets: {
       cardImage: "/assets/hero_specialties-xyron-1.webp",
-      imageAlt: "Inferno level I specialty card"
+      imageAlt: "Inferno level I specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("xyron")
+    source: heroSource("xyron"),
   },
   // Xyron's Inferno IV: the level-I blast for a single discard instead of two.
   "specialty.xyron.4": {
@@ -2290,7 +2649,7 @@ export const adventureCards: CardLibrary = {
       "combat",
       "xyron",
       "inferno",
-      "Discard 1 card, then select a space: every unit on that space and the spaces adjacent to it (friend or foe) takes 1 damage."
+      "Discard 1 card, then select a space: every unit on that space and the spaces adjacent to it (friend or foe) takes 1 damage.",
     ],
     target: { type: "any-space" },
     effect: {
@@ -2299,16 +2658,16 @@ export const adventureCards: CardLibrary = {
         {
           label: "Discard 1 card: 1 damage to a space and its neighbours",
           cost: { discardCards: 1 },
-          effect: { type: "AREA_DAMAGE_ALL_ADJACENT", amount: 1 }
-        }
-      ]
+          effect: { type: "AREA_DAMAGE_ALL_ADJACENT", amount: 1 },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("xyron", 4),
-      imageAlt: "Inferno level IV specialty card"
+      imageAlt: "Inferno level IV specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("xyron")
+    source: heroSource("xyron"),
   },
   // Xyron's Inferno VI: the same blast at no cost.
   "specialty.xyron.6": {
@@ -2322,7 +2681,7 @@ export const adventureCards: CardLibrary = {
       "combat",
       "xyron",
       "inferno",
-      "Select a space: every unit on that space and the spaces adjacent to it (friend or foe) takes 1 damage."
+      "Select a space: every unit on that space and the spaces adjacent to it (friend or foe) takes 1 damage.",
     ],
     target: { type: "any-space" },
     effect: {
@@ -2330,16 +2689,16 @@ export const adventureCards: CardLibrary = {
       options: [
         {
           label: "1 damage to a space and its neighbours",
-          effect: { type: "AREA_DAMAGE_ALL_ADJACENT", amount: 1 }
-        }
-      ]
+          effect: { type: "AREA_DAMAGE_ALL_ADJACENT", amount: 1 },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("xyron", 6),
-      imageAlt: "Inferno level VI specialty card"
+      imageAlt: "Inferno level VI specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("xyron")
+    source: heroSource("xyron"),
   },
   // Rashka (Demoniac): the Efreet specialist. I = +1 attack/defence (doubled
   // for Efreet); IV/VI grant a Fire Shield — a melee (ground/flying) attacker
@@ -2357,21 +2716,21 @@ export const adventureCards: CardLibrary = {
       "combat",
       "rashka",
       "fire-shield",
-      "Until the end of Combat, when your selected unit is attacked by a ground or flying unit, the attacker takes 1 damage."
+      "Until the end of Combat, when your selected unit is attacked by a ground or flying unit, the attacker takes 1 damage.",
     ],
     target: { type: "friendly-unit" },
     effect: {
       type: "CREATE_FIRE_SHIELD",
       amount: 1,
       duration: { type: "combat" },
-      removable: false
+      removable: false,
     },
     assets: {
       cardImage: specialtyCardImage("rashka", 4),
-      imageAlt: "Efreet level IV specialty card"
+      imageAlt: "Efreet level IV specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("rashka")
+    source: heroSource("rashka"),
   },
   "specialty.rashka.6": {
     id: "specialty.rashka.6",
@@ -2384,7 +2743,7 @@ export const adventureCards: CardLibrary = {
       "combat",
       "rashka",
       "fire-shield",
-      "Until the end of Combat, when your selected unit is attacked by a ground or flying unit, the attacker takes 1 damage. This effect doubles for the Efreet unit."
+      "Until the end of Combat, when your selected unit is attacked by a ground or flying unit, the attacker takes 1 damage. This effect doubles for the Efreet unit.",
     ],
     target: { type: "friendly-unit" },
     effect: {
@@ -2392,14 +2751,14 @@ export const adventureCards: CardLibrary = {
       amount: 1,
       duration: { type: "combat" },
       doubleForUnitName: "Efreet",
-      removable: false
+      removable: false,
     },
     assets: {
       cardImage: specialtyCardImage("rashka", 6),
-      imageAlt: "Efreet level VI specialty card"
+      imageAlt: "Efreet level VI specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("rashka")
+    source: heroSource("rashka"),
   },
   // Zydar (Inferno Heretic): spell-economy specialties. Level I implemented as
   // a self-spell-cast reaction (draw a card or +1 Power); IV/VI data-only like
@@ -2414,7 +2773,7 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "instant",
       "zydar",
-      "After casting a Spell: draw 1 card, or instead gain +1 Power on that Spell."
+      "After casting a Spell: draw 1 card, or instead gain +1 Power on that Spell.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -2422,21 +2781,21 @@ export const adventureCards: CardLibrary = {
         {
           label: "After casting a spell, draw 1 card",
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "DRAW_CARDS", amount: 1 }
+          effect: { type: "DRAW_CARDS", amount: 1 },
         },
         {
           label: "+1 Power",
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 1 }
-        }
-      ]
+          effect: { type: "ADD_SPELL_POWER", amount: 1 },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("zydar", 1),
-      imageAlt: "Zydar level I specialty card"
+      imageAlt: "Zydar level I specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("zydar")
+    source: heroSource("zydar"),
   },
   // Zydar's Sorcery IV: either the next Spell this round does not count
   // toward the one-per-round limit (modeled as +1 to the limit for the round),
@@ -2451,7 +2810,7 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "instant",
       "zydar",
-      "The next Spell you cast does not count toward the limit. — OR — +2 Power."
+      "The next Spell you cast does not count toward the limit. — OR — +2 Power.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -2467,23 +2826,23 @@ export const adventureCards: CardLibrary = {
               duration: { type: "current-combat-round" },
               polarity: "positive",
               removable: false,
-              modifiers: [{ type: "SPELL_LIMIT_BONUS", amount: 1 }]
-            }
-          }
+              modifiers: [{ type: "SPELL_LIMIT_BONUS", amount: 1 }],
+            },
+          },
         },
         {
           label: "+2 Power",
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 2 }
-        }
-      ]
+          effect: { type: "ADD_SPELL_POWER", amount: 2 },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("zydar", 4),
-      imageAlt: "Zydar level IV specialty card"
+      imageAlt: "Zydar level IV specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("zydar")
+    source: heroSource("zydar"),
   },
   // Zydar's Sorcery VI: an ongoing "draw 1 after each Spell you cast"
   // (until the end of the Combat round), or +2 Power on a Spell you are casting.
@@ -2497,7 +2856,7 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "instant",
       "zydar",
-      "Until the end of the Combat round, after casting a Spell, draw 1 card. — OR — +2 Power."
+      "Until the end of the Combat round, after casting a Spell, draw 1 card. — OR — +2 Power.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -2513,23 +2872,23 @@ export const adventureCards: CardLibrary = {
               duration: { type: "current-combat-round" },
               polarity: "positive",
               removable: false,
-              modifiers: [{ type: "DRAW_ON_SPELL_CAST", amount: 1 }]
-            }
-          }
+              modifiers: [{ type: "DRAW_ON_SPELL_CAST", amount: 1 }],
+            },
+          },
         },
         {
           label: "+2 Power",
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 2 }
-        }
-      ]
+          effect: { type: "ADD_SPELL_POWER", amount: 2 },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("zydar", 6),
-      imageAlt: "Zydar level VI specialty card"
+      imageAlt: "Zydar level VI specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("zydar")
+    source: heroSource("zydar"),
   },
   // Crag Hack (Barbarian), specialty "Offense". The wiki cards differ from the
   // generic Offense helper (which fits Tarnum Stronghold, not Crag Hack):
@@ -2544,7 +2903,13 @@ export const adventureCards: CardLibrary = {
     kind: "hero-specialty",
     timing: "combat",
     phaseLimit: ["combat"],
-    tags: ["hero-specialty", "combat", "crag_hack", "offense", "For this Combat, your selected unit gains +1 attack."],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "crag_hack",
+      "offense",
+      "For this Combat, your selected unit gains +1 attack.",
+    ],
     target: { type: "friendly-unit" },
     effect: {
       type: "CREATE_ATTACK_BUFF",
@@ -2552,14 +2917,14 @@ export const adventureCards: CardLibrary = {
       amount: 1,
       duration: { type: "combat" },
       polarity: "positive",
-      removable: false
+      removable: false,
     },
     assets: {
       cardImage: specialtyCardImage("crag_hack", 1),
-      imageAlt: "Offense level I specialty card"
+      imageAlt: "Offense level I specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("crag_hack")
+    source: heroSource("crag_hack"),
   },
   "specialty.crag_hack.4": {
     id: "specialty.crag_hack.4",
@@ -2572,7 +2937,7 @@ export const adventureCards: CardLibrary = {
       "instant",
       "crag_hack",
       "offense",
-      "Your selected unit gains +1 attack. You may discard a card to gain another +1 attack."
+      "Your selected unit gains +1 attack. You may discard a card to gain another +1 attack.",
     ],
     // Instant (one-shot, on a single attack): +1, or discard a card for +2.
     effect: {
@@ -2581,22 +2946,22 @@ export const adventureCards: CardLibrary = {
         {
           label: "+1 attack",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1 }
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1 },
         },
         {
           label: "Discard a card: +2 attack",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
           cost: { discardCards: 1 },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 }
-        }
-      ]
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("crag_hack", 4),
-      imageAlt: "Offense level IV specialty card"
+      imageAlt: "Offense level IV specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("crag_hack")
+    source: heroSource("crag_hack"),
   },
   "specialty.crag_hack.6": {
     id: "specialty.crag_hack.6",
@@ -2623,15 +2988,15 @@ export const adventureCards: CardLibrary = {
         duration: { type: "combat" },
         polarity: "positive",
         removable: false,
-        modifiers: [{ type: "CARDS_AS_ATTACK_BONUS", amount: 1 }]
-      }
+        modifiers: [{ type: "CARDS_AS_ATTACK_BONUS", amount: 1 }],
+      },
     },
     assets: {
       cardImage: specialtyCardImage("crag_hack", 6),
-      imageAlt: "Offense level VI specialty card"
+      imageAlt: "Offense level VI specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("crag_hack")
+    source: heroSource("crag_hack"),
   },
   "specialty.dessa.1": {
     id: "specialty.dessa.1",
@@ -2644,10 +3009,10 @@ export const adventureCards: CardLibrary = {
     effect: { type: "CONTINUE_NEUTRAL_FREE" },
     assets: {
       cardImage: specialtyCardImage("dessa", 1),
-      imageAlt: "Logistics level I specialty card"
+      imageAlt: "Logistics level I specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("dessa")
+    source: heroSource("dessa"),
   },
   "specialty.dessa.4": dessaSpecialtyFour(),
   "specialty.dessa.6": dessaSpecialtySix(),
@@ -2668,30 +3033,69 @@ export const adventureCards: CardLibrary = {
       "instant",
       "gundula",
       "slow",
-      "Your selected unit gains +1 attack. The effect doubles if its initiative is higher than the attacked unit's."
+      "Your selected unit gains +1 attack. The effect doubles if its initiative is higher than the attacked unit's.",
     ],
     trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-    effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1, doubleIfAttackerInitiativeHigher: true },
+    effect: {
+      type: "ADD_COMBAT_STAT",
+      stat: "attack",
+      amount: 1,
+      doubleIfAttackerInitiativeHigher: true,
+    },
     assets: {
       cardImage: specialtyCardImage("gundula", 4),
-      imageAlt: "Slow level IV specialty card"
+      imageAlt: "Slow level IV specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("gundula")
+    source: heroSource("gundula"),
   },
   "specialty.gundula.6": slowSpecialty("gundula", 6, 4, -1),
-  "specialty.shiva.1": mightSpecialtyOne("shiva", "Thunderbirds", "Thunderbirds"),
-  "specialty.shiva.4": unitHealthSpecialty("shiva", "Thunderbirds", 4, 1, "Thunderbirds"),
-  "specialty.shiva.6": unitInitiativeSpecialty("shiva", "Thunderbirds", 6, 2, "Thunderbirds"),
+  "specialty.shiva.1": mightSpecialtyOne(
+    "shiva",
+    "Thunderbirds",
+    "Thunderbirds",
+  ),
+  "specialty.shiva.4": unitHealthSpecialty(
+    "shiva",
+    "Thunderbirds",
+    4,
+    1,
+    "Thunderbirds",
+  ),
+  "specialty.shiva.6": unitInitiativeSpecialty(
+    "shiva",
+    "Thunderbirds",
+    6,
+    2,
+    "Thunderbirds",
+  ),
   "specialty.tarnum_stronghold.1": offenseSpecialtyOne("tarnum_stronghold"),
   "specialty.tarnum_stronghold.4": offenseSpecialtyFour("tarnum_stronghold"),
   "specialty.tarnum_stronghold.6": offenseSpecialtySix("tarnum_stronghold"),
   "specialty.yog.1": mightSpecialtyOne("yog", "Cyclopes", "Cyclopes"),
-  "specialty.yog.4": unitInitiativeSpecialty("yog", "Cyclopes", 4, 1, "Cyclopes"),
+  "specialty.yog.4": unitInitiativeSpecialty(
+    "yog",
+    "Cyclopes",
+    4,
+    1,
+    "Cyclopes",
+  ),
   "specialty.yog.6": unitHealthSpecialty("yog", "Cyclopes", 6, 1, "Cyclopes"),
-  "specialty.alamar.1": lethalSaveSpecialty("alamar", "Resurrection", 1, { bronze: 1, silver: 2, gold: 4 }),
-  "specialty.alamar.4": lethalSaveSpecialty("alamar", "Resurrection", 4, { bronze: 0, silver: 1, gold: 3 }),
-  "specialty.alamar.6": lethalSaveSpecialty("alamar", "Resurrection", 6, { bronze: 0, silver: 0, gold: 2 }),
+  "specialty.alamar.1": lethalSaveSpecialty("alamar", "Resurrection", 1, {
+    bronze: 1,
+    silver: 2,
+    gold: 4,
+  }),
+  "specialty.alamar.4": lethalSaveSpecialty("alamar", "Resurrection", 4, {
+    bronze: 0,
+    silver: 1,
+    gold: 3,
+  }),
+  "specialty.alamar.6": lethalSaveSpecialty("alamar", "Resurrection", 6, {
+    bronze: 0,
+    silver: 0,
+    gold: 2,
+  }),
   // Deemer (Dungeon Warlock): the Meteor Shower specialist. I hits a unit and 1
   // neighbour; VI a unit and 2 neighbours (the caster picks which when more are
   // adjacent); IV cycles the deck or feeds +1 Power to a spell.
@@ -2708,56 +3112,114 @@ export const adventureCards: CardLibrary = {
       "instant",
       "deemer",
       "meteor-shower",
-      "Instant: Shuffle your discard pile back into your deck, then draw 1 card. — OR — Instant: +1 Power."
+      "Instant: Shuffle your discard pile back into your deck, then draw 1 card. — OR — Instant: +1 Power.",
     ],
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
           label: "Shuffle your discard pile into your deck, then draw 1 card",
-          effect: { type: "RESHUFFLE_DISCARD_THEN_DRAW", drawCards: 1 }
+          effect: { type: "RESHUFFLE_DISCARD_THEN_DRAW", drawCards: 1 },
         },
         {
           label: "+1 Power",
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 1 }
-        }
-      ]
+          effect: { type: "ADD_SPELL_POWER", amount: 1 },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("deemer", 4),
-      imageAlt: "Meteor Shower level IV specialty card"
+      imageAlt: "Meteor Shower level IV specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("deemer")
+    source: heroSource("deemer"),
   },
   "specialty.deemer.6": meteorShowerSpecialty(6, 2),
   // Fortress (Beastmasters): unit specialists, like Catherine/Shiva. Bron =
   // Basilisks; Wystan = Lizardmen. I = +1 attack/defence; IV = +1 HP for the
   // combat; VI = +2 initiative for the combat — all doubled on the signature unit.
   "specialty.bron.1": mightSpecialtyOne("bron", "Basilisks", "Basilisks"),
-  "specialty.bron.4": unitHealthSpecialty("bron", "Basilisks", 4, 1, "Basilisks"),
-  "specialty.bron.6": unitInitiativeSpecialty("bron", "Basilisks", 6, 2, "Basilisks"),
+  "specialty.bron.4": unitHealthSpecialty(
+    "bron",
+    "Basilisks",
+    4,
+    1,
+    "Basilisks",
+  ),
+  "specialty.bron.6": unitInitiativeSpecialty(
+    "bron",
+    "Basilisks",
+    6,
+    2,
+    "Basilisks",
+  ),
   "specialty.wystan.1": mightSpecialtyOne("wystan", "Lizardmen", "Lizardmen"),
-  "specialty.wystan.4": unitHealthSpecialty("wystan", "Lizardmen", 4, 1, "Lizardmen"),
-  "specialty.wystan.6": unitInitiativeSpecialty("wystan", "Lizardmen", 6, 2, "Lizardmen"),
+  "specialty.wystan.4": unitHealthSpecialty(
+    "wystan",
+    "Lizardmen",
+    4,
+    1,
+    "Lizardmen",
+  ),
+  "specialty.wystan.6": unitInitiativeSpecialty(
+    "wystan",
+    "Lizardmen",
+    6,
+    2,
+    "Lizardmen",
+  ),
 
   // ---- Tower heroes ------------------------------------------------------
   // Iona (Alchemist): the Genies specialist. I = +1 HP for the combat; IV =
   // +1 attack/defence; VI = +2 defence — all doubled for a Genies unit.
   "specialty.iona.1": towerHealthSpecialty("iona", "Genies", 1, 1, "Genies"),
-  "specialty.iona.4": towerAttackOrDefenseSpecialty("iona", "Genies", 4, "Genies"),
-  "specialty.iona.6": towerStatBoostSpecialty("iona", "Genies", 6, "defense", 2, "Genies"),
+  "specialty.iona.4": towerAttackOrDefenseSpecialty(
+    "iona",
+    "Genies",
+    4,
+    "Genies",
+  ),
+  "specialty.iona.6": towerStatBoostSpecialty(
+    "iona",
+    "Genies",
+    6,
+    "defense",
+    2,
+    "Genies",
+  ),
   // Josephine (Alchemist): the Golems specialist. I = +1 HP; IV = +1 A/D;
   // VI = +2 attack — all doubled for any Golems unit (Iron/Diamond/Gold).
-  "specialty.josephine.1": towerHealthSpecialty("josephine", "Golems", 1, 1, "a Golems unit"),
-  "specialty.josephine.4": towerAttackOrDefenseSpecialty("josephine", "Golems", 4, "a Golems unit"),
-  "specialty.josephine.6": towerStatBoostSpecialty("josephine", "Golems", 6, "attack", 2, "a Golems unit"),
+  "specialty.josephine.1": towerHealthSpecialty(
+    "josephine",
+    "Golems",
+    1,
+    1,
+    "a Golems unit",
+  ),
+  "specialty.josephine.4": towerAttackOrDefenseSpecialty(
+    "josephine",
+    "Golems",
+    4,
+    "a Golems unit",
+  ),
+  "specialty.josephine.6": towerStatBoostSpecialty(
+    "josephine",
+    "Golems",
+    6,
+    "attack",
+    2,
+    "a Golems unit",
+  ),
   // Dracon (Wizard): the Enchanters specialist. I = +1 A/D doubled for Magi
   // and Enchanters; IV = trade a Pack of Magi for the unique Enchanters card,
   // OR draw, OR (house rule) trade a Few of Magi + 6 gold for it; VI = +2
   // initiative for the combat, doubled for Magi/Enchanters.
-  "specialty.dracon.1": mightSpecialtyOne("dracon", "Enchanters", "Magi and Enchanters"),
+  "specialty.dracon.1": mightSpecialtyOne(
+    "dracon",
+    "Enchanters",
+    "Magi and Enchanters",
+  ),
   "specialty.dracon.4": {
     id: "specialty.dracon.4",
     name: "Enchanters IV",
@@ -2770,7 +3232,7 @@ export const adventureCards: CardLibrary = {
       "enchanters",
       // House rule (BINH): besides trading a Pack of Magi, Dracon may also upgrade
       // the cheaper Few of Magi into the Enchanters by paying 6 extra gold.
-      "If you have a Pack of Magi Unit card, discard it, then search the Neutral Unit golden deck for the Enchanters card and add it to your Unit deck (only 1 Enchanters at a time). — OR — Draw a card. — OR — Discard a Few of Magi AND pay 6 gold to take the Enchanters the same way."
+      "If you have a Pack of Magi Unit card, discard it, then search the Neutral Unit golden deck for the Enchanters card and add it to your Unit deck (only 1 Enchanters at a time). — OR — Draw a card. — OR — Discard a Few of Magi AND pay 6 gold to take the Enchanters the same way.",
     ],
     target: { type: "none" },
     effect: {
@@ -2785,12 +3247,12 @@ export const adventureCards: CardLibrary = {
             fromSide: "pack",
             toUnitDefId: "neutral.enchanters",
             toTier: "gold",
-            unique: true
-          }
+            unique: true,
+          },
         },
         {
           label: "Draw a card",
-          effect: { type: "DRAW_CARDS", amount: 1 }
+          effect: { type: "DRAW_CARDS", amount: 1 },
         },
         {
           // House rule (BINH): recruit the Enchanters from the cheaper Few of Magi
@@ -2809,19 +3271,25 @@ export const adventureCards: CardLibrary = {
             toUnitDefId: "neutral.enchanters",
             toTier: "gold",
             unique: true,
-            goldCost: 6
-          }
-        }
-      ]
+            goldCost: 6,
+          },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("dracon", 4),
-      imageAlt: "Enchanters level IV specialty card"
+      imageAlt: "Enchanters level IV specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("dracon")
+    source: heroSource("dracon"),
   },
-  "specialty.dracon.6": unitInitiativeSpecialty("dracon", "Enchanters", 6, 2, "Magi and Enchanters"),
+  "specialty.dracon.6": unitInitiativeSpecialty(
+    "dracon",
+    "Enchanters",
+    6,
+    2,
+    "Magi and Enchanters",
+  ),
   // Cyra (Wizard): the Haste specialist. Wiki I = +3 initiative for the combat
   // only (basic/small battlefield does NOT raise Combat movement). IV/VI add
   // the initiative-comparison conditionals. House rule ("combat-move-initiative"):
@@ -2841,7 +3309,7 @@ export const adventureCards: CardLibrary = {
       "haste",
       // Wiki / basic: Initiative only. House rule adds +1 Combat movement (gated
       // in getUnitMoveRange) and the draw alternative (map or combat).
-      "For this Combat, your selected unit's Initiative is increased by 3. (House rule: also +1 Combat movement.) — OR — House rule: draw 1 card instead (map or combat)."
+      "For this Combat, your selected unit's Initiative is increased by 3. (House rule: also +1 Combat movement.) — OR — House rule: draw 1 card instead (map or combat).",
     ],
     // Option A targets the friendly unit (inherited); option B (draw) needs none.
     target: { type: "friendly-unit" },
@@ -2858,18 +3326,18 @@ export const adventureCards: CardLibrary = {
             polarity: "positive",
             removable: false,
             // House rule: also +1 Combat movement when "combat-move-initiative" is ON.
-            movementBonus: 1
-          }
+            movementBonus: 1,
+          },
         },
         {
           label: "Draw 1 card",
           requiresHouseRule: "initiative-specialty-draw",
-          effect: { type: "DRAW_CARDS", amount: 1 }
-        }
-      ]
+          effect: { type: "DRAW_CARDS", amount: 1 },
+        },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("cyra")
+    source: heroSource("cyra"),
   }),
   // IV: +1 attack on your unit's attack, doubled when the attacked unit is
   // faster (a strictly higher Initiative) — played as an attack reaction.
@@ -2884,12 +3352,17 @@ export const adventureCards: CardLibrary = {
       "instant",
       "cyra",
       "haste",
-      "Your selected unit gains +1 attack. The effect doubles if the attacked unit has higher initiative."
+      "Your selected unit gains +1 attack. The effect doubles if the attacked unit has higher initiative.",
     ],
     trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-    effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1, doubleIfDefenderInitiativeHigher: true },
+    effect: {
+      type: "ADD_COMBAT_STAT",
+      stat: "attack",
+      amount: 1,
+      doubleIfDefenderInitiativeHigher: true,
+    },
     implementationStatus: "implemented",
-    source: heroSource("cyra")
+    source: heroSource("cyra"),
   }),
   // VI: wiki = +3 initiative this combat plus +1 defense against slower attackers.
   // House rule: also +1 Combat movement (gated in getUnitMoveRange).
@@ -2904,7 +3377,7 @@ export const adventureCards: CardLibrary = {
       "combat",
       "cyra",
       "haste",
-      "For this Combat, your selected unit's initiative is increased by 3. This unit gains +1 defense against attacks made by units with lower initiative. (House rule: also +1 Combat movement.)"
+      "For this Combat, your selected unit's initiative is increased by 3. This unit gains +1 defense against attacks made by units with lower initiative. (House rule: also +1 Combat movement.)",
     ],
     target: { type: "friendly-unit" },
     effect: {
@@ -2919,12 +3392,12 @@ export const adventureCards: CardLibrary = {
           { type: "INITIATIVE_BONUS", amount: 3 },
           { type: "DEFENSE_VS_LOWER_INITIATIVE", amount: 1 },
           // House rule: +1 Combat movement when "combat-move-initiative" is ON.
-          { type: "MOVEMENT_BONUS", amount: 1 }
-        ]
-      }
+          { type: "MOVEMENT_BONUS", amount: 1 },
+        ],
+      },
     },
     implementationStatus: "implemented",
-    source: heroSource("cyra")
+    source: heroSource("cyra"),
   }),
   // Solmyr (Wizard): the Chain Lightning specialist. I/VI fork lightning into
   // the units closest to the selected one; IV digs his own deck for a card.
@@ -2938,16 +3411,16 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "combat",
       "solmyr",
-      "Select a unit and the 2 units closest to it. Allocate 1/1/0 damage, starting with the first selected unit."
+      "Select a unit and the 2 units closest to it. Allocate 1/1/0 damage, starting with the first selected unit.",
     ],
     target: { type: "any-unit" },
     effect: { type: "CHAIN_LIGHTNING", damages: [1, 1, 0] },
     assets: {
       cardImage: specialtyCardImage("solmyr", 1),
-      imageAlt: "Chain Lightning level I specialty card"
+      imageAlt: "Chain Lightning level I specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("solmyr")
+    source: heroSource("solmyr"),
   },
   // Chain Lightning IV is the odd level out: unlike I/VI it deals no damage and
   // names no combat at all — its printed text is PURE card manipulation, the
@@ -2967,16 +3440,16 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "instant",
       "solmyr",
-      "Discard up to 3 cards from your Might and Magic deck and return 1 of them to your hand."
+      "Discard up to 3 cards from your Might and Magic deck and return 1 of them to your hand.",
     ],
     target: { type: "none" },
     effect: { type: "DECK_DIG_KEEP_ONE", count: 3 },
     assets: {
       cardImage: specialtyCardImage("solmyr", 4),
-      imageAlt: "Chain Lightning level IV specialty card"
+      imageAlt: "Chain Lightning level IV specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("solmyr")
+    source: heroSource("solmyr"),
   },
   "specialty.solmyr.6": {
     id: "specialty.solmyr.6",
@@ -2988,16 +3461,16 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "combat",
       "solmyr",
-      "Select a unit and the 2 units closest to it. Allocate 2/1/1 damage, starting with the first selected unit."
+      "Select a unit and the 2 units closest to it. Allocate 2/1/1 damage, starting with the first selected unit.",
     ],
     target: { type: "any-unit" },
     effect: { type: "CHAIN_LIGHTNING", damages: [2, 1, 1] },
     assets: {
       cardImage: specialtyCardImage("solmyr", 6),
-      imageAlt: "Chain Lightning level VI specialty card"
+      imageAlt: "Chain Lightning level VI specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("solmyr")
+    source: heroSource("solmyr"),
   },
   // Torosar (Tower, Alchemist): a Ballista specialist. Every clause below is
   // transcribed from the committed board-game scans
@@ -3026,7 +3499,7 @@ export const adventureCards: CardLibrary = {
       "instant",
       "torosar",
       "ballista",
-      "Pay 5 gold to gain a Ballista. — OR — Activate your Ballista (if you have one)."
+      "Pay 5 gold to gain a Ballista. — OR — Activate your Ballista (if you have one).",
     ],
     target: { type: "none" },
     effect: {
@@ -3035,18 +3508,22 @@ export const adventureCards: CardLibrary = {
         {
           label: "Pay 5 gold to gain a Ballista",
           mapOnly: true,
-          effect: { type: "GAIN_WAR_MACHINE", warMachineCardId: "war_machine.ballista", goldCost: 5 }
+          effect: {
+            type: "GAIN_WAR_MACHINE",
+            warMachineCardId: "war_machine.ballista",
+            goldCost: 5,
+          },
         },
         {
           label: "Activate your Ballista",
           combatOnly: true,
           combatAnytime: true,
-          effect: { type: "BALLISTA_SPECIALTY", activate: "one" }
-        }
-      ]
+          effect: { type: "BALLISTA_SPECIALTY", activate: "one" },
+        },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("torosar")
+    source: heroSource("torosar"),
   }),
   // IV: printed with the MAP icon, so `timing: "map"` — it is committed on the
   // adventure map BEFORE a fight and is never offered mid-combat (where its
@@ -3062,12 +3539,12 @@ export const adventureCards: CardLibrary = {
       "map",
       "torosar",
       "ballista",
-      "Until the end of the round, gain an additional Ballista during Combat. When played, this card counts as a Ballista."
+      "Until the end of the round, gain an additional Ballista during Combat. When played, this card counts as a Ballista.",
     ],
     target: { type: "none" },
     effect: { type: "BALLISTA_SPECIALTY", grant: "game-round" },
     implementationStatus: "implemented",
-    source: heroSource("torosar")
+    source: heroSource("torosar"),
   }),
   // VI: printed with the INSTANT icon and scoped to the fight — the grant is
   // combat-duration (gone when the battle ends), and "you can activate all your
@@ -3084,7 +3561,7 @@ export const adventureCards: CardLibrary = {
       "instant",
       "torosar",
       "ballista",
-      "For this Combat, gain an additional Ballista. You can activate all your Ballistas now. When played, this card counts as a Ballista."
+      "For this Combat, gain an additional Ballista. You can activate all your Ballistas now. When played, this card counts as a Ballista.",
     ],
     target: { type: "none" },
     effect: {
@@ -3093,12 +3570,16 @@ export const adventureCards: CardLibrary = {
         {
           label: "Gain an additional Ballista and activate all Ballistas now",
           combatAnytime: true,
-          effect: { type: "BALLISTA_SPECIALTY", grant: "combat", activate: "all" }
-        }
-      ]
+          effect: {
+            type: "BALLISTA_SPECIALTY",
+            grant: "combat",
+            activate: "all",
+          },
+        },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("torosar")
+    source: heroSource("torosar"),
   }),
 
   // ---- Conflux heroes (unit-specialist Planeswalkers) --------------------
@@ -3107,8 +3588,19 @@ export const adventureCards: CardLibrary = {
   // for Magma Elementals); IV = +1 initiative for the combat (doubled for Magma
   // Elementals); VI = instant +2 attack OR ongoing +3 initiative (no doubling).
   // Conflux specialty card scans assigned under /assets/hero_specialties-*.
-  "specialty.erdamon.1": towerAttackOrDefenseSpecialty("erdamon", "Magma Elementals", 1, "Magma Elementals"),
-  "specialty.erdamon.4": unitInitiativeSpecialty("erdamon", "Magma Elementals", 4, 1, "Magma Elementals"),
+  "specialty.erdamon.1": towerAttackOrDefenseSpecialty(
+    "erdamon",
+    "Magma Elementals",
+    1,
+    "Magma Elementals",
+  ),
+  "specialty.erdamon.4": unitInitiativeSpecialty(
+    "erdamon",
+    "Magma Elementals",
+    4,
+    1,
+    "Magma Elementals",
+  ),
   "specialty.erdamon.6": {
     id: "specialty.erdamon.6",
     name: "Magma Elementals VI",
@@ -3119,7 +3611,7 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "instant",
       "erdamon",
-      "Your selected unit gains +2 attack. — OR — For this Combat, your selected unit's initiative is increased by 3."
+      "Your selected unit gains +2 attack. — OR — For this Combat, your selected unit's initiative is increased by 3.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -3129,7 +3621,7 @@ export const adventureCards: CardLibrary = {
           // an attack reaction, like the other might-hero VI specialties).
           label: "+2 attack",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 }
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 },
         },
         {
           // Ongoing: +3 initiative on a chosen friendly unit for the combat.
@@ -3142,23 +3634,34 @@ export const adventureCards: CardLibrary = {
             amount: 3,
             duration: { type: "combat" },
             polarity: "positive",
-            removable: false
-          }
-        }
-      ]
+            removable: false,
+          },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("erdamon", 6),
-      imageAlt: "Magma Elementals level VI specialty card"
+      imageAlt: "Magma Elementals level VI specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("erdamon")
+    source: heroSource("erdamon"),
   },
   // Monere (Magic Elementals): I = +1 attack/defence; IV = +1 initiative for
   // the combat — both doubled for the Magic Elementals unit; VI = +2 attack OR
   // +2 power (both one-shot instants, no doubling).
-  "specialty.monere.1": towerAttackOrDefenseSpecialty("monere", "Magic Elementals", 1, "Magic Elementals"),
-  "specialty.monere.4": unitInitiativeSpecialty("monere", "Magic Elementals", 4, 1, "Magic Elementals"),
+  "specialty.monere.1": towerAttackOrDefenseSpecialty(
+    "monere",
+    "Magic Elementals",
+    1,
+    "Magic Elementals",
+  ),
+  "specialty.monere.4": unitInitiativeSpecialty(
+    "monere",
+    "Magic Elementals",
+    4,
+    1,
+    "Magic Elementals",
+  ),
   "specialty.monere.6": {
     id: "specialty.monere.6",
     name: "Magic Elementals VI",
@@ -3169,7 +3672,7 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "instant",
       "monere",
-      "Your selected unit gains +2 attack. — OR — +2 power."
+      "Your selected unit gains +2 attack. — OR — +2 power.",
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -3177,28 +3680,45 @@ export const adventureCards: CardLibrary = {
         {
           label: "+2 attack",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 }
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 },
         },
         {
           label: "+2 power",
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 2 }
-        }
-      ]
+          effect: { type: "ADD_SPELL_POWER", amount: 2 },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("monere", 6),
-      imageAlt: "Magic Elementals level VI specialty card"
+      imageAlt: "Magic Elementals level VI specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("monere")
+    source: heroSource("monere"),
   },
   // Pasis (Elementals generalist): every bonus doubles for any "… Elementals"
   // unit (the "an Elementals unit" family descriptor). I = +1 initiative for
   // the combat; IV = +1 attack/defence; VI = +1 HP for the combat.
-  "specialty.pasis.1": unitInitiativeSpecialty("pasis", "Elementals", 1, 1, "an Elementals unit"),
-  "specialty.pasis.4": towerAttackOrDefenseSpecialty("pasis", "Elementals", 4, "an Elementals unit"),
-  "specialty.pasis.6": towerHealthSpecialty("pasis", "Elementals", 6, 1, "an Elementals unit"),
+  "specialty.pasis.1": unitInitiativeSpecialty(
+    "pasis",
+    "Elementals",
+    1,
+    1,
+    "an Elementals unit",
+  ),
+  "specialty.pasis.4": towerAttackOrDefenseSpecialty(
+    "pasis",
+    "Elementals",
+    4,
+    "an Elementals unit",
+  ),
+  "specialty.pasis.6": towerHealthSpecialty(
+    "pasis",
+    "Elementals",
+    6,
+    1,
+    "an Elementals unit",
+  ),
 
   // ---- Conflux Elementalist (Luna — the Fire Wall specialist) -------------
   // I/VI place a Fire Wall token (this card or a token) on an empty space for
@@ -3221,16 +3741,16 @@ export const adventureCards: CardLibrary = {
       "combat",
       "luna",
       "fire-wall",
-      "For this Combat, place this card or a Fire Wall token on an empty space. Deal 1 damage to any unit starting its turn here or stopping here, and to any ground or ranged unit passing through."
+      "For this Combat, place this card or a Fire Wall token on an empty space. Deal 1 damage to any unit starting its turn here or stopping here, and to any ground or ranged unit passing through.",
     ],
     target: { type: "empty-space" },
     effect: { type: "PLACE_FIRE_WALL_FIXED", damage: 1 },
     assets: {
       cardImage: specialtyCardImage("luna", 1),
-      imageAlt: "Fire Wall level I specialty card"
+      imageAlt: "Fire Wall level I specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("luna")
+    source: heroSource("luna"),
   },
   "specialty.luna.4": {
     id: "specialty.luna.4",
@@ -3242,7 +3762,7 @@ export const adventureCards: CardLibrary = {
       "instant",
       "luna",
       "fire-wall",
-      "Instant (map or Combat): Take one card from your discard pile into your hand. — OR — Instant: +2 Power."
+      "Instant (map or Combat): Take one card from your discard pile into your hand. — OR — Instant: +2 Power.",
     ],
     target: { type: "none" },
     effect: {
@@ -3250,21 +3770,21 @@ export const adventureCards: CardLibrary = {
       options: [
         {
           label: "Take a card from your discard pile",
-          effect: { type: "TAKE_FROM_DISCARD", count: 1, allowInCombat: true }
+          effect: { type: "TAKE_FROM_DISCARD", count: 1, allowInCombat: true },
         },
         {
           label: "+2 Power",
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 2 }
-        }
-      ]
+          effect: { type: "ADD_SPELL_POWER", amount: 2 },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("luna", 4),
-      imageAlt: "Fire Wall level IV specialty card"
+      imageAlt: "Fire Wall level IV specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("luna")
+    source: heroSource("luna"),
   },
   "specialty.luna.6": {
     id: "specialty.luna.6",
@@ -3277,16 +3797,16 @@ export const adventureCards: CardLibrary = {
       "combat",
       "luna",
       "fire-wall",
-      "For this Combat, place this card or a Fire Wall token on an empty space. Deal 3 damage to any unit starting its turn here or stopping here, and to any ground or ranged unit passing through."
+      "For this Combat, place this card or a Fire Wall token on an empty space. Deal 3 damage to any unit starting its turn here or stopping here, and to any ground or ranged unit passing through.",
     ],
     target: { type: "empty-space" },
     effect: { type: "PLACE_FIRE_WALL_FIXED", damage: 3 },
     assets: {
       cardImage: specialtyCardImage("luna", 6),
-      imageAlt: "Fire Wall level VI specialty card"
+      imageAlt: "Fire Wall level VI specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("luna")
+    source: heroSource("luna"),
   },
 
   // ---- Conflux Elementalist (Ciele — the Magic Arrow specialist) ---------
@@ -3313,7 +3833,7 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "instant",
       "ciele",
-      "Instant: Take a Magic Arrow spell from your discard pile and put it into your hand. — OR — Instant: +1 Power."
+      "Instant: Take a Magic Arrow spell from your discard pile and put it into your hand. — OR — Instant: +1 Power.",
     ],
     target: { type: "none" },
     effect: {
@@ -3325,21 +3845,26 @@ export const adventureCards: CardLibrary = {
           // discard pick immediately in a live fight instead of parking it on the
           // map reward queue). It always reads the player's OWN discard pile.
           label: "Take a Magic Arrow from your discard pile",
-          effect: { type: "TAKE_FROM_DISCARD", count: 1, filter: "magic-arrow", allowInCombat: true }
+          effect: {
+            type: "TAKE_FROM_DISCARD",
+            count: 1,
+            filter: "magic-arrow",
+            allowInCombat: true,
+          },
         },
         {
           label: "+1 Power",
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 1 }
-        }
-      ]
+          effect: { type: "ADD_SPELL_POWER", amount: 1 },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("ciele", 1),
-      imageAlt: "Magic Arrow level I specialty card"
+      imageAlt: "Magic Arrow level I specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("ciele")
+    source: heroSource("ciele"),
   },
   "specialty.ciele.4": {
     id: "specialty.ciele.4",
@@ -3350,7 +3875,7 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "instant",
       "ciele",
-      "Instant: Take a Magic Arrow spell from your discard pile and cast it. This spell does not count toward your Spell limit per Combat round. — OR — Instant: +1 Power."
+      "Instant: Take a Magic Arrow spell from your discard pile and cast it. This spell does not count toward your Spell limit per Combat round. — OR — Instant: +1 Power.",
     ],
     target: { type: "none" },
     effect: {
@@ -3364,21 +3889,25 @@ export const adventureCards: CardLibrary = {
           // instead of the shared Spell-deck discard (the Helm's source).
           label: "Cast a Magic Arrow from your discard pile (free)",
           combatOnly: true,
-          effect: { type: "CAST_FROM_SPELL_DISCARD", spellId: "spell.magic_arrow", ownDiscard: true }
+          effect: {
+            type: "CAST_FROM_SPELL_DISCARD",
+            spellId: "spell.magic_arrow",
+            ownDiscard: true,
+          },
         },
         {
           label: "+1 Power",
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 1 }
-        }
-      ]
+          effect: { type: "ADD_SPELL_POWER", amount: 1 },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("ciele", 4),
-      imageAlt: "Magic Arrow level IV specialty card"
+      imageAlt: "Magic Arrow level IV specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("ciele")
+    source: heroSource("ciele"),
   },
   "specialty.ciele.6": {
     id: "specialty.ciele.6",
@@ -3390,7 +3919,7 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "instant",
       "ciele",
-      "Instant: The selected unit suffers 2 damage. — OR — Instant: +2 Power."
+      "Instant: The selected unit suffers 2 damage. — OR — Instant: +2 Power.",
     ],
     target: { type: "none" },
     effect: {
@@ -3399,21 +3928,21 @@ export const adventureCards: CardLibrary = {
         {
           label: "An enemy unit suffers 2 damage",
           combatOnly: true,
-          effect: { type: "DAMAGE_CHOSEN_ENEMIES", count: 1, amount: 2 }
+          effect: { type: "DAMAGE_CHOSEN_ENEMIES", count: 1, amount: 2 },
         },
         {
           label: "+2 Power",
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 2 }
-        }
-      ]
+          effect: { type: "ADD_SPELL_POWER", amount: 2 },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("ciele", 6),
-      imageAlt: "Magic Arrow level VI specialty card"
+      imageAlt: "Magic Arrow level VI specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("ciele")
+    source: heroSource("ciele"),
   },
 
   // ---- Conflux Elementalist (Tarnum — the Enchanters specialist) ---------
@@ -3438,16 +3967,21 @@ export const adventureCards: CardLibrary = {
       "map",
       "tarnum_conflux",
       "enchanters",
-      "Search(1) Spell. You can Remove this card instead of taking it into your hand."
+      "Search(1) Spell. You can Remove this card instead of taking it into your hand.",
     ],
     target: { type: "none" },
-    effect: { type: "CARD_DECK_SEARCH", deck: "spells", count: 1, allowRemove: true },
+    effect: {
+      type: "CARD_DECK_SEARCH",
+      deck: "spells",
+      count: 1,
+      allowRemove: true,
+    },
     assets: {
       cardImage: specialtyCardImage("tarnum_conflux", 1),
-      imageAlt: "Enchanters level I specialty card"
+      imageAlt: "Enchanters level I specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("tarnum_conflux")
+    source: heroSource("tarnum_conflux"),
   },
   "specialty.tarnum_conflux.4": {
     id: "specialty.tarnum_conflux.4",
@@ -3459,7 +3993,7 @@ export const adventureCards: CardLibrary = {
       "map",
       "tarnum_conflux",
       "enchanters",
-      "Pay 10 gold, then find the Enchanters card in the Neutral Unit deck and add it to your Unit deck. You can control only 1 Enchanters unit at a time. — OR — Draw a card."
+      "Pay 10 gold, then find the Enchanters card in the Neutral Unit deck and add it to your Unit deck. You can control only 1 Enchanters unit at a time. — OR — Draw a card.",
     ],
     target: { type: "none" },
     effect: {
@@ -3473,21 +4007,21 @@ export const adventureCards: CardLibrary = {
             toUnitDefId: "neutral.enchanters",
             toTier: "gold",
             unique: true,
-            goldCost: 10
-          }
+            goldCost: 10,
+          },
         },
         {
           label: "Draw a card",
-          effect: { type: "DRAW_CARDS", amount: 1 }
-        }
-      ]
+          effect: { type: "DRAW_CARDS", amount: 1 },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("tarnum_conflux", 4),
-      imageAlt: "Enchanters level IV specialty card"
+      imageAlt: "Enchanters level IV specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("tarnum_conflux")
+    source: heroSource("tarnum_conflux"),
   },
   // VI is an Instant: it may be played on your own turn, off-turn in an instant
   // window, OR as a reaction inside an open attack window (search-and-cast in the
@@ -3521,16 +4055,16 @@ export const adventureCards: CardLibrary = {
       "instant",
       "tarnum_conflux",
       "enchanters",
-      "Search(1) Spell twice. If their type allows it, and you have enough power available, you can immediately cast one or both of these spells, even if you already cast a spell this round. Place each spell you use this way on the top of the Spell deck or on its discard pile in any order."
+      "Search(1) Spell twice. If their type allows it, and you have enough power available, you can immediately cast one or both of these spells, even if you already cast a spell this round. Place each spell you use this way on the top of the Spell deck or on its discard pile in any order.",
     ],
     target: { type: "none" },
     effect: { type: "TARNUM_OVERLIMIT_SEARCH", count: 2 },
     assets: {
       cardImage: specialtyCardImage("tarnum_conflux", 6),
-      imageAlt: "Enchanters level VI specialty card"
+      imageAlt: "Enchanters level VI specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("tarnum_conflux")
+    source: heroSource("tarnum_conflux"),
   },
 
   // ---- Additional heroes (fan-wiki "Regular Stretch Goals 2024") ---------
@@ -3539,7 +4073,14 @@ export const adventureCards: CardLibrary = {
   // IV = +1 HP for the combat; VI = +2 attack on a single attack.
   "specialty.fiona.1": mightSpecialtyOne("fiona", "Cerberi", "Cerberi"),
   "specialty.fiona.4": unitHealthSpecialty("fiona", "Cerberi", 4, 1, "Cerberi"),
-  "specialty.fiona.6": towerStatBoostSpecialty("fiona", "Cerberi", 6, "attack", 2, "Cerberi"),
+  "specialty.fiona.6": towerStatBoostSpecialty(
+    "fiona",
+    "Cerberi",
+    6,
+    "attack",
+    2,
+    "Cerberi",
+  ),
   // Lorelei is the Dungeon Harpies analogue of Fiona — not shipped yet (no wiki
   // board art); see the deferred list in docs/content-tracker.md.
 
@@ -3553,7 +4094,13 @@ export const adventureCards: CardLibrary = {
   // initiative for the combat; VI = a Spell Ward (reduce the damage the chosen
   // unit takes from Spells by 1, min 0) — each effect doubled on a Unicorns unit.
   "specialty.clancy.1": mightSpecialtyOne("clancy", "Unicorns", "Unicorns"),
-  "specialty.clancy.4": unitInitiativeSpecialty("clancy", "Unicorns", 4, 1, "Unicorns"),
+  "specialty.clancy.4": unitInitiativeSpecialty(
+    "clancy",
+    "Unicorns",
+    4,
+    1,
+    "Unicorns",
+  ),
   "specialty.clancy.6": {
     id: "specialty.clancy.6",
     name: "Unicorns VI",
@@ -3565,7 +4112,7 @@ export const adventureCards: CardLibrary = {
       "combat",
       "clancy",
       "unicorns",
-      "For this Combat, your selected unit reduces any damage it takes from Spells by 1 (to a minimum of 0). This effect doubles for the Unicorns unit."
+      "For this Combat, your selected unit reduces any damage it takes from Spells by 1 (to a minimum of 0). This effect doubles for the Unicorns unit.",
     ],
     target: { type: "friendly-unit" },
     effect: {
@@ -3573,14 +4120,14 @@ export const adventureCards: CardLibrary = {
       amount: 1,
       duration: { type: "combat" },
       doubleForUnitName: "Unicorns",
-      removable: false
+      removable: false,
     },
     assets: {
       cardImage: specialtyCardImage("clancy", 6),
-      imageAlt: "Unicorns level VI specialty card"
+      imageAlt: "Unicorns level VI specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("clancy")
+    source: heroSource("clancy"),
   },
 
   // Adelaide (Castle, Cleric): the Frost Ring specialist. I/VI: discard 1/2
@@ -3601,31 +4148,32 @@ export const adventureCards: CardLibrary = {
       "combat",
       "adelaide",
       "frost-ring",
-      "Instant (any time, incl. an enemy unit's turn start or end of its move): discard 1 card, then target a space on the Combat board and choose up to 2 units adjacent to it (not the space itself, friend or foe) to take 1 damage."
+      "Instant (any time, incl. an enemy unit's turn start or end of its move): discard 1 card, then target a space on the Combat board and choose up to 2 units adjacent to it (not the space itself, friend or foe) to take 1 damage.",
     ],
     target: { type: "any-space" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Discard 1 card: 1 damage to up to 2 units adjacent to a space",
+          label:
+            "Discard 1 card: 1 damage to up to 2 units adjacent to a space",
           combatAnytime: true,
           cost: { discardCards: 1 },
           effect: {
             type: "AREA_DAMAGE_PICK_ADJACENT",
             amount: 1,
             includeCenter: false,
-            adjacentPicks: 2
-          }
-        }
-      ]
+            adjacentPicks: 2,
+          },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("adelaide", 1),
-      imageAlt: "Frost Ring level I specialty card"
+      imageAlt: "Frost Ring level I specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("adelaide")
+    source: heroSource("adelaide"),
   },
   "specialty.adelaide.4": {
     id: "specialty.adelaide.4",
@@ -3636,7 +4184,7 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "adelaide",
       "frost-ring",
-      "Instant (map or Combat): select 1 Spell or Specialty card from your discard pile and put it back in your hand."
+      "Instant (map or Combat): select 1 Spell or Specialty card from your discard pile and put it back in your hand.",
     ],
     target: { type: "none" },
     effect: {
@@ -3645,16 +4193,21 @@ export const adventureCards: CardLibrary = {
         {
           label: "Take a Spell or Specialty card from your discard pile",
           combatAnytime: true,
-          effect: { type: "TAKE_FROM_DISCARD", count: 1, filter: "spell-or-specialty", allowInCombat: true }
-        }
-      ]
+          effect: {
+            type: "TAKE_FROM_DISCARD",
+            count: 1,
+            filter: "spell-or-specialty",
+            allowInCombat: true,
+          },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("adelaide", 4),
-      imageAlt: "Frost Ring level IV specialty card"
+      imageAlt: "Frost Ring level IV specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("adelaide")
+    source: heroSource("adelaide"),
   },
   "specialty.adelaide.6": {
     id: "specialty.adelaide.6",
@@ -3667,42 +4220,55 @@ export const adventureCards: CardLibrary = {
       "combat",
       "adelaide",
       "frost-ring",
-      "Instant (any time, incl. an enemy unit's turn start or end of its move): discard 2 cards, then target a space on the Combat board and choose up to 2 units adjacent to it (not the space itself, friend or foe) to take 2 damage."
+      "Instant (any time, incl. an enemy unit's turn start or end of its move): discard 2 cards, then target a space on the Combat board and choose up to 2 units adjacent to it (not the space itself, friend or foe) to take 2 damage.",
     ],
     target: { type: "any-space" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Discard 2 cards: 2 damage to up to 2 units adjacent to a space",
+          label:
+            "Discard 2 cards: 2 damage to up to 2 units adjacent to a space",
           combatAnytime: true,
           cost: { discardCards: 2 },
           effect: {
             type: "AREA_DAMAGE_PICK_ADJACENT",
             amount: 2,
             includeCenter: false,
-            adjacentPicks: 2
-          }
-        }
-      ]
+            adjacentPicks: 2,
+          },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("adelaide", 6),
-      imageAlt: "Frost Ring level VI specialty card"
+      imageAlt: "Frost Ring level VI specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("adelaide")
+    source: heroSource("adelaide"),
   },
 
   // ---- Bulwark heroes (expansion; fan faction, placeholder art) ----------
   // Dhuin (Chieftain): Snow Elves specialist — the standard might unit-buff trio
   // (Catherine pattern). Creyle (Chieftain): the same for Mammoths.
-  "specialty.dhuin.1": withoutArt(mightSpecialtyOne("dhuin", "Snow Elves", "Snow Elves")),
-  "specialty.dhuin.4": withoutArt(unitHealthSpecialty("dhuin", "Snow Elves", 4, 1, "Snow Elves")),
-  "specialty.dhuin.6": withoutArt(unitInitiativeSpecialty("dhuin", "Snow Elves", 6, 1, "Snow Elves")),
-  "specialty.creyle.1": withoutArt(mightSpecialtyOne("creyle", "Mammoths", "Mammoths")),
-  "specialty.creyle.4": withoutArt(unitHealthSpecialty("creyle", "Mammoths", 4, 1, "Mammoths")),
-  "specialty.creyle.6": withoutArt(unitInitiativeSpecialty("creyle", "Mammoths", 6, 1, "Mammoths")),
+  "specialty.dhuin.1": withoutArt(
+    mightSpecialtyOne("dhuin", "Snow Elves", "Snow Elves"),
+  ),
+  "specialty.dhuin.4": withoutArt(
+    unitHealthSpecialty("dhuin", "Snow Elves", 4, 1, "Snow Elves"),
+  ),
+  "specialty.dhuin.6": withoutArt(
+    unitInitiativeSpecialty("dhuin", "Snow Elves", 6, 1, "Snow Elves"),
+  ),
+  "specialty.creyle.1": withoutArt(
+    mightSpecialtyOne("creyle", "Mammoths", "Mammoths"),
+  ),
+  "specialty.creyle.4": withoutArt(
+    unitHealthSpecialty("creyle", "Mammoths", 4, 1, "Mammoths"),
+  ),
+  "specialty.creyle.6": withoutArt(
+    unitInitiativeSpecialty("creyle", "Mammoths", 6, 1, "Mammoths"),
+  ),
 
   // Glacius (Elder): the Frost Ring Elementalist — Adelaide's Frost-Ring
   // machinery (AREA_DAMAGE_PICK_ADJACENT, includeCenter:false). Like the Frost
@@ -3721,22 +4287,28 @@ export const adventureCards: CardLibrary = {
       "combat",
       "glacius",
       "frost-ring",
-      "Instant (any time, incl. an enemy unit's turn start or end of its move): discard 1 card, then target a space and choose up to 2 units adjacent to it (not the space itself, friend or foe) to take 1 damage."
+      "Instant (any time, incl. an enemy unit's turn start or end of its move): discard 1 card, then target a space and choose up to 2 units adjacent to it (not the space itself, friend or foe) to take 1 damage.",
     ],
     target: { type: "any-space" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Discard 1 card: 1 damage to up to 2 units adjacent to a space",
+          label:
+            "Discard 1 card: 1 damage to up to 2 units adjacent to a space",
           combatAnytime: true,
           cost: { discardCards: 1 },
-          effect: { type: "AREA_DAMAGE_PICK_ADJACENT", amount: 1, includeCenter: false, adjacentPicks: 2 }
-        }
-      ]
+          effect: {
+            type: "AREA_DAMAGE_PICK_ADJACENT",
+            amount: 1,
+            includeCenter: false,
+            adjacentPicks: 2,
+          },
+        },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("glacius")
+    source: heroSource("glacius"),
   },
   "specialty.glacius.4": {
     id: "specialty.glacius.4",
@@ -3747,7 +4319,7 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "glacius",
       "frost-ring",
-      "Instant (map or Combat): take a Spell or Specialty card from your discard pile. — OR — Instant: +2 Power on your next spell this Combat."
+      "Instant (map or Combat): take a Spell or Specialty card from your discard pile. — OR — Instant: +2 Power on your next spell this Combat.",
     ],
     target: { type: "none" },
     effect: {
@@ -3756,17 +4328,22 @@ export const adventureCards: CardLibrary = {
         {
           label: "Take a Spell or Specialty card from your discard pile",
           combatAnytime: true,
-          effect: { type: "TAKE_FROM_DISCARD", count: 1, filter: "spell-or-specialty", allowInCombat: true }
+          effect: {
+            type: "TAKE_FROM_DISCARD",
+            count: 1,
+            filter: "spell-or-specialty",
+            allowInCombat: true,
+          },
         },
         {
           label: "+2 Power",
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 2 }
-        }
-      ]
+          effect: { type: "ADD_SPELL_POWER", amount: 2 },
+        },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("glacius")
+    source: heroSource("glacius"),
   },
   "specialty.glacius.6": {
     id: "specialty.glacius.6",
@@ -3779,22 +4356,28 @@ export const adventureCards: CardLibrary = {
       "combat",
       "glacius",
       "frost-ring",
-      "Instant (any time, incl. an enemy unit's turn start or end of its move): discard 1 card, then target a space and choose up to 2 units adjacent to it (not the space itself, friend or foe) to take 2 damage."
+      "Instant (any time, incl. an enemy unit's turn start or end of its move): discard 1 card, then target a space and choose up to 2 units adjacent to it (not the space itself, friend or foe) to take 2 damage.",
     ],
     target: { type: "any-space" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Discard 1 card: 2 damage to up to 2 units adjacent to a space",
+          label:
+            "Discard 1 card: 2 damage to up to 2 units adjacent to a space",
           combatAnytime: true,
           cost: { discardCards: 1 },
-          effect: { type: "AREA_DAMAGE_PICK_ADJACENT", amount: 2, includeCenter: false, adjacentPicks: 2 }
-        }
-      ]
+          effect: {
+            type: "AREA_DAMAGE_PICK_ADJACENT",
+            amount: 2,
+            includeCenter: false,
+            adjacentPicks: 2,
+          },
+        },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("glacius")
+    source: heroSource("glacius"),
   },
 
   // Kriv (Elder): the Rune-synergy hero — each level banks Runes (a nerfed 1/2/3)
@@ -3820,22 +4403,26 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "kriv",
       "runes",
-      "Instant (Combat): gain 1 Rune AND draw 1 card — playable on your turn OR in reaction to an enemy attack."
+      "Instant (Combat): gain 1 Rune AND draw 1 card — playable on your turn OR in reaction to an enemy attack.",
     ],
     target: { type: "none" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
-        { label: "Gain 1 Rune and draw 1 card", combatOnly: true, effect: { type: "GAIN_RUNES", amount: 1, drawCards: 1 } },
+        {
+          label: "Gain 1 Rune and draw 1 card",
+          combatOnly: true,
+          effect: { type: "GAIN_RUNES", amount: 1, drawCards: 1 },
+        },
         {
           label: "React to an enemy attack: gain 1 Rune and draw 1 card",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "GAIN_RUNES", amount: 1, drawCards: 1 }
-        }
-      ]
+          effect: { type: "GAIN_RUNES", amount: 1, drawCards: 1 },
+        },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("kriv")
+    source: heroSource("kriv"),
   },
   "specialty.kriv.4": {
     id: "specialty.kriv.4",
@@ -3846,27 +4433,32 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "kriv",
       "runes",
-      "Instant (Combat): gain 2 Runes AND draw 1 card — on your turn OR in reaction to an enemy attack. — OR — (Map) become Rune-Empowered: +1 starting Rune each combat until your next Resource round."
+      "Instant (Combat): gain 2 Runes AND draw 1 card — on your turn OR in reaction to an enemy attack. — OR — (Map) become Rune-Empowered: +1 starting Rune each combat until your next Resource round.",
     ],
     target: { type: "none" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
-        { label: "Gain 2 Runes and draw 1 card", combatOnly: true, effect: { type: "GAIN_RUNES", amount: 2, drawCards: 1 } },
+        {
+          label: "Gain 2 Runes and draw 1 card",
+          combatOnly: true,
+          effect: { type: "GAIN_RUNES", amount: 2, drawCards: 1 },
+        },
         {
           label: "React to an enemy attack: gain 2 Runes and draw 1 card",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "GAIN_RUNES", amount: 2, drawCards: 1 }
+          effect: { type: "GAIN_RUNES", amount: 2, drawCards: 1 },
         },
         {
-          label: "Rune-Empowered: +1 starting Rune each combat (until next Resource round)",
+          label:
+            "Rune-Empowered: +1 starting Rune each combat (until next Resource round)",
           mapOnly: true,
-          effect: { type: "GAIN_STARTING_RUNES", amount: 1 }
-        }
-      ]
+          effect: { type: "GAIN_STARTING_RUNES", amount: 1 },
+        },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("kriv")
+    source: heroSource("kriv"),
   },
   "specialty.kriv.6": {
     id: "specialty.kriv.6",
@@ -3878,23 +4470,27 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "kriv",
       "runes",
-      "Instant (Combat): gain 3 Runes — on your turn OR in reaction to an enemy attack. — OR — draw 2 cards."
+      "Instant (Combat): gain 3 Runes — on your turn OR in reaction to an enemy attack. — OR — draw 2 cards.",
     ],
     target: { type: "none" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
-        { label: "Gain 3 Runes", combatOnly: true, effect: { type: "GAIN_RUNES", amount: 3 } },
+        {
+          label: "Gain 3 Runes",
+          combatOnly: true,
+          effect: { type: "GAIN_RUNES", amount: 3 },
+        },
         {
           label: "React to an enemy attack: gain 3 Runes",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "GAIN_RUNES", amount: 3 }
+          effect: { type: "GAIN_RUNES", amount: 3 },
         },
-        { label: "Draw 2 cards", effect: { type: "DRAW_CARDS", amount: 2 } }
-      ]
+        { label: "Draw 2 cards", effect: { type: "DRAW_CARDS", amount: 2 } },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("kriv")
+    source: heroSource("kriv"),
   },
 
   // Eikthurn (Chieftain): Mountain Rams specialist (the bronze level-2 unit) — the
@@ -3904,8 +4500,12 @@ export const adventureCards: CardLibrary = {
   // buff OR draw a card" it is "initiative buff (Initiative ×2 for Mountain Rams,
   // +1 movement) OR a flat, one-shot +2 Attack on your unit's next attack" — the
   // same instant +2-attack reaction Casmetra VI uses (never doubled).
-  "specialty.eikthurn.1": withoutArt(mightSpecialtyOne("eikthurn", "Mountain Rams", "Mountain Rams")),
-  "specialty.eikthurn.4": withoutArt(unitHealthSpecialty("eikthurn", "Mountain Rams", 4, 1, "Mountain Rams")),
+  "specialty.eikthurn.1": withoutArt(
+    mightSpecialtyOne("eikthurn", "Mountain Rams", "Mountain Rams"),
+  ),
+  "specialty.eikthurn.4": withoutArt(
+    unitHealthSpecialty("eikthurn", "Mountain Rams", 4, 1, "Mountain Rams"),
+  ),
   "specialty.eikthurn.6": withoutArt({
     id: "specialty.eikthurn.6",
     name: "Mountain Rams VI",
@@ -3919,14 +4519,15 @@ export const adventureCards: CardLibrary = {
       // Option A is the house-rule initiative buff (doubled for Mountain Rams, +1
       // Combat movement); option B is a flat, one-shot +2 Attack on the caster's
       // next attack (an attack reaction, never doubled).
-      "Combat: give a friendly unit +1 Initiative AND +1 Combat movement range this combat — Initiative doubled (+2) for Mountain Rams. — OR — Instant: your selected unit gains +2 Attack on its next attack."
+      "Combat: give a friendly unit +1 Initiative AND +1 Combat movement range this combat — Initiative doubled (+2) for Mountain Rams. — OR — Instant: your selected unit gains +2 Attack on its next attack.",
     ],
     target: { type: "none" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "+1 Initiative & +1 movement (Initiative x2 for Mountain Rams)",
+          label:
+            "+1 Initiative & +1 movement (Initiative x2 for Mountain Rams)",
           combatOnly: true,
           target: { type: "friendly-unit" },
           effect: {
@@ -3938,20 +4539,20 @@ export const adventureCards: CardLibrary = {
             removable: false,
             doubleForUnitName: "Mountain Rams",
             // House rule (BINH): the buff also raises Combat movement by 1.
-            movementBonus: 1
-          }
+            movementBonus: 1,
+          },
         },
         {
           // Instant, one-shot +2 Attack on the caster's next attack (an attack
           // reaction, like Casmetra VI). Flat — no Mountain Rams doubling.
           label: "+2 attack",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 }
-        }
-      ]
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 },
+        },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("eikthurn")
+    source: heroSource("eikthurn"),
   }),
 
   // Oidana (Elder): the diplomat. Her starting ability is Diplomacy; each specialty
@@ -3969,41 +4570,69 @@ export const adventureCards: CardLibrary = {
     name: "Diplomacy I",
     kind: "hero-specialty",
     timing: "instant",
-    tags: ["hero-specialty", "instant", "oidana", "diplomacy", "Instant: draw 1 card. — OR — Map: for every Dwelling, draw its corresponding Neutral Unit card (Gold also reveals Azure), then recruit one (pay its cost)."],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "oidana",
+      "diplomacy",
+      "Instant: draw 1 card. — OR — Map: for every Dwelling, draw its corresponding Neutral Unit card (Gold also reveals Azure), then recruit one (pay its cost).",
+    ],
     target: { type: "none" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
         { label: "Draw 1 card", effect: { type: "DRAW_CARDS", amount: 1 } },
-        { label: "Diplomacy: reveal every Dwelling's Neutral choices, then recruit one (pay its cost)", mapOnly: true, effect: { type: "DIPLOMACY_RECRUIT" } }
-      ]
+        {
+          label:
+            "Diplomacy: reveal every Dwelling's Neutral choices, then recruit one (pay its cost)",
+          mapOnly: true,
+          effect: { type: "DIPLOMACY_RECRUIT" },
+        },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("oidana")
+    source: heroSource("oidana"),
   },
   "specialty.oidana.4": {
     id: "specialty.oidana.4",
     name: "Diplomacy IV",
     kind: "hero-specialty",
     timing: "instant",
-    tags: ["hero-specialty", "instant", "oidana", "diplomacy", "Instant: draw 2 cards. — OR — Map: for every Dwelling, draw its corresponding Neutral Unit card (Gold also reveals Azure), then recruit one (pay its cost, −4 gold)."],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "oidana",
+      "diplomacy",
+      "Instant: draw 2 cards. — OR — Map: for every Dwelling, draw its corresponding Neutral Unit card (Gold also reveals Azure), then recruit one (pay its cost, −4 gold).",
+    ],
     target: { type: "none" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
         { label: "Draw 2 cards", effect: { type: "DRAW_CARDS", amount: 2 } },
-        { label: "Diplomacy: reveal every Dwelling's Neutral choices, then recruit one (4 gold off)", mapOnly: true, effect: { type: "DIPLOMACY_RECRUIT", goldReduction: 4 } }
-      ]
+        {
+          label:
+            "Diplomacy: reveal every Dwelling's Neutral choices, then recruit one (4 gold off)",
+          mapOnly: true,
+          effect: { type: "DIPLOMACY_RECRUIT", goldReduction: 4 },
+        },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("oidana")
+    source: heroSource("oidana"),
   },
   "specialty.oidana.6": {
     id: "specialty.oidana.6",
     name: "Diplomacy VI",
     kind: "hero-specialty",
     timing: "instant",
-    tags: ["hero-specialty", "instant", "oidana", "diplomacy", "Instant: draw 2 cards. — OR — Combat (ongoing): +1 Attack to every neutral unit you control, all rounds."],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "oidana",
+      "diplomacy",
+      "Instant: draw 2 cards. — OR — Combat (ongoing): +1 Attack to every neutral unit you control, all rounds.",
+    ],
     target: { type: "none" },
     effect: {
       type: "CHOOSE_ONE",
@@ -4012,12 +4641,17 @@ export const adventureCards: CardLibrary = {
         {
           label: "Ongoing: +1 Attack to all your neutral units (whole battle)",
           combatOnly: true,
-          effect: { type: "CREATE_VARIANT_ATTACK_BUFF", name: "Diplomatic Rally", amount: 1, variant: "neutral" }
-        }
-      ]
+          effect: {
+            type: "CREATE_VARIANT_ATTACK_BUFF",
+            name: "Diplomatic Rally",
+            amount: 1,
+            variant: "neutral",
+          },
+        },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("oidana")
+    source: heroSource("oidana"),
   },
 
   // ---- Additional heroes, batch 2 (fan-wiki, real board art) -------------
@@ -4032,11 +4666,16 @@ export const adventureCards: CardLibrary = {
   // IV is a lethal-save (CANCEL_LETHAL_ATTACK) costing Power 0/1/2 for a
   // bronze/silver/gold unit, reusing the shared lethal-save window.
   "specialty.jeddite.1": warlockDigSpecialty(1, 3),
-  "specialty.jeddite.4": lethalSaveSpecialty("jeddite", "Mysterious Warlock", 4, {
-    bronze: 0,
-    silver: 1,
-    gold: 2
-  }),
+  "specialty.jeddite.4": lethalSaveSpecialty(
+    "jeddite",
+    "Mysterious Warlock",
+    4,
+    {
+      bronze: 0,
+      silver: 1,
+      gold: 2,
+    },
+  ),
   "specialty.jeddite.6": warlockDigSpecialty(6, 4),
 
   // Tazar (Fortress, Beastmaster): the War Hero. I = +2 defense reaction (no
@@ -4055,7 +4694,7 @@ export const adventureCards: CardLibrary = {
       "combat",
       "tazar",
       "war-hero",
-      "For this Combat, your selected unit gains +1 defense."
+      "For this Combat, your selected unit gains +1 defense.",
     ],
     target: { type: "friendly-unit" },
     effect: {
@@ -4064,14 +4703,14 @@ export const adventureCards: CardLibrary = {
       amount: 1,
       duration: { type: "combat" },
       polarity: "positive",
-      removable: false
+      removable: false,
     },
     assets: {
       cardImage: specialtyCardImage("tazar", 4),
-      imageAlt: "War Hero level IV specialty card"
+      imageAlt: "War Hero level IV specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("tazar")
+    source: heroSource("tazar"),
   },
   "specialty.tazar.6": {
     id: "specialty.tazar.6",
@@ -4083,7 +4722,7 @@ export const adventureCards: CardLibrary = {
       "instant",
       "tazar",
       "war-hero",
-      "From your hand, remove 1 card OR discard 3 cards to draw the top card of the Artifact deck."
+      "From your hand, remove 1 card OR discard 3 cards to draw the top card of the Artifact deck.",
     ],
     target: { type: "none" },
     effect: {
@@ -4094,21 +4733,21 @@ export const adventureCards: CardLibrary = {
           // mid-Combat (see instantSideAllowedInCombat); no `mapOnly`.
           label: "Remove 1 card: draw the top Artifact card",
           cost: { discardCards: 1, removeCostCards: true },
-          effect: { type: "DRAW_TOP_ARTIFACT" }
+          effect: { type: "DRAW_TOP_ARTIFACT" },
         },
         {
           label: "Discard 3 cards: draw the top Artifact card",
           cost: { discardCards: 3 },
-          effect: { type: "DRAW_TOP_ARTIFACT" }
-        }
-      ]
+          effect: { type: "DRAW_TOP_ARTIFACT" },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("tazar", 6),
-      imageAlt: "War Hero level VI specialty card"
+      imageAlt: "War Hero level VI specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("tazar")
+    source: heroSource("tazar"),
   },
 
   // Adrienne (Fortress, Witch): the Fire Magic specialist. I/VI add +1/+2 Power
@@ -4127,7 +4766,7 @@ export const adventureCards: CardLibrary = {
       "instant",
       "adrienne",
       "fire-magic",
-      "Search (3) your deck (keep 1 card), then shuffle your discard pile into your deck."
+      "Search (3) your deck (keep 1 card), then shuffle your discard pile into your deck.",
     ],
     target: { type: "none" },
     effect: {
@@ -4137,17 +4776,18 @@ export const adventureCards: CardLibrary = {
           // Printed Instant card-manipulation → playable on the map AND
           // mid-Combat (see instantSideAllowedInCombat); no `mapOnly`. The reducer
           // opens the own-deck pick with a combat returnPhase during a live fight.
-          label: "Search (3) your deck, then shuffle the discard into your deck",
-          effect: { type: "SEARCH_DECK_THEN_RESHUFFLE", count: 3 }
-        }
-      ]
+          label:
+            "Search (3) your deck, then shuffle the discard into your deck",
+          effect: { type: "SEARCH_DECK_THEN_RESHUFFLE", count: 3 },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("adrienne", 4),
-      imageAlt: "Fire Magic level IV specialty card"
+      imageAlt: "Fire Magic level IV specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("adrienne")
+    source: heroSource("adrienne"),
   },
   "specialty.adrienne.6": fireMagicSpecialty(6, 2),
 
@@ -4166,16 +4806,16 @@ export const adventureCards: CardLibrary = {
       "instant",
       "vidomina",
       "necromancy",
-      "Play after winning a Combat other than a Quick Combat: reinforce a bronze or silver unit of your choice for half the gold cost (rounded down)."
+      "Play after winning a Combat other than a Quick Combat: reinforce a bronze or silver unit of your choice for half the gold cost (rounded down).",
     ],
     target: { type: "none" },
     effect: { type: "NECROMANCY_REINFORCE", forceMode: "basic" },
     assets: {
       cardImage: specialtyCardImage("vidomina", 1),
-      imageAlt: "Necromancy level I specialty card"
+      imageAlt: "Necromancy level I specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("vidomina")
+    source: heroSource("vidomina"),
   },
   "specialty.vidomina.4": {
     id: "specialty.vidomina.4",
@@ -4186,7 +4826,7 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "vidomina",
       "transform",
-      "Put this card on the Pack of Skeletons Unit card; it replaces the card's statistics (Horde of Skeletons) until defeated, then is discarded."
+      "Put this card on the Pack of Skeletons Unit card; it replaces the card's statistics (Horde of Skeletons) until defeated, then is discarded.",
     ],
     // Identical transformation to Sandro's Cloak I (Horde of Skeletons, A3 D1
     // HP2 I6). Vidomina's keeps the printed 2 HP in both modes (the BINH +1 HP
@@ -4200,14 +4840,14 @@ export const adventureCards: CardLibrary = {
       defense: 1,
       health: 2,
       initiative: 6,
-      cardImage: "/assets/hero_specialties-vidomina-4.webp"
+      cardImage: "/assets/hero_specialties-vidomina-4.webp",
     },
     assets: {
       cardImage: specialtyCardImage("vidomina", 4),
-      imageAlt: "Necromancy level IV specialty card"
+      imageAlt: "Necromancy level IV specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("vidomina")
+    source: heroSource("vidomina"),
   },
   "specialty.vidomina.6": {
     id: "specialty.vidomina.6",
@@ -4219,41 +4859,65 @@ export const adventureCards: CardLibrary = {
       "instant",
       "vidomina",
       "necromancy",
-      "Play after winning a Combat other than a Quick Combat: reinforce any unit of your choice for half the gold cost (rounded down)."
+      "Play after winning a Combat other than a Quick Combat: reinforce any unit of your choice for half the gold cost (rounded down).",
     ],
     target: { type: "none" },
     effect: { type: "NECROMANCY_REINFORCE", forceMode: "expert" },
     assets: {
       cardImage: specialtyCardImage("vidomina", 6),
-      imageAlt: "Necromancy level VI specialty card"
+      imageAlt: "Necromancy level VI specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("vidomina")
+    source: heroSource("vidomina"),
   },
 
   // ---- Additional heroes, batch 3 ----------------------------------------
   // Valeska (Castle): the Marksmen specialist. I = +1 HP; IV = +1 A/D (both
   // doubled for a Marksmen unit); VI = re-fire a ranged unit (even if already
   // activated) or draw 2.
-  "specialty.valeska.1": withSpecialtyArt(towerHealthSpecialty("valeska", "Marksmen", 1, 1, "Marksmen")),
-  "specialty.valeska.4": withSpecialtyArt(towerAttackOrDefenseSpecialty("valeska", "Marksmen", 4, "Marksmen")),
-  "specialty.valeska.6": withSpecialtyArt(activateRangedOrDrawSpecialty("valeska", "Marksmen", 6, 2)),
+  "specialty.valeska.1": withSpecialtyArt(
+    towerHealthSpecialty("valeska", "Marksmen", 1, 1, "Marksmen"),
+  ),
+  "specialty.valeska.4": withSpecialtyArt(
+    towerAttackOrDefenseSpecialty("valeska", "Marksmen", 4, "Marksmen"),
+  ),
+  "specialty.valeska.6": withSpecialtyArt(
+    activateRangedOrDrawSpecialty("valeska", "Marksmen", 6, 2),
+  ),
   // Ingham (Castle): the Zealots specialist. I = +1 A/D; IV = +1 HP (both
   // doubled for a Zealots unit); VI = your selected unit ignores Defense, or draw 1.
-  "specialty.ingham.1": withSpecialtyArt(towerAttackOrDefenseSpecialty("ingham", "Zealots", 1, "Zealots")),
-  "specialty.ingham.4": withSpecialtyArt(towerHealthSpecialty("ingham", "Zealots", 4, 1, "Zealots")),
-  "specialty.ingham.6": withSpecialtyArt(ignoreDefenseOrDrawSpecialty("ingham", "Zealots", 6, 1)),
+  "specialty.ingham.1": withSpecialtyArt(
+    towerAttackOrDefenseSpecialty("ingham", "Zealots", 1, "Zealots"),
+  ),
+  "specialty.ingham.4": withSpecialtyArt(
+    towerHealthSpecialty("ingham", "Zealots", 4, 1, "Zealots"),
+  ),
+  "specialty.ingham.6": withSpecialtyArt(
+    ignoreDefenseOrDrawSpecialty("ingham", "Zealots", 6, 1),
+  ),
   // Lorelei (Dungeon): the Harpies specialist. I = +1 A/D; IV = +1 HP; VI = +2
   // attack on your attack — all doubled for a Harpies unit.
-  "specialty.lorelei.1": withSpecialtyArt(towerAttackOrDefenseSpecialty("lorelei", "Harpies", 1, "Harpies")),
-  "specialty.lorelei.4": withSpecialtyArt(towerHealthSpecialty("lorelei", "Harpies", 4, 1, "Harpies")),
-  "specialty.lorelei.6": withSpecialtyArt(attackInstantSpecialty("lorelei", "Harpies", 6, 2, "Harpies")),
+  "specialty.lorelei.1": withSpecialtyArt(
+    towerAttackOrDefenseSpecialty("lorelei", "Harpies", 1, "Harpies"),
+  ),
+  "specialty.lorelei.4": withSpecialtyArt(
+    towerHealthSpecialty("lorelei", "Harpies", 4, 1, "Harpies"),
+  ),
+  "specialty.lorelei.6": withSpecialtyArt(
+    attackInstantSpecialty("lorelei", "Harpies", 6, 2, "Harpies"),
+  ),
   // Septienna (Necropolis): the Death Ripple specialist. Each grade tier of
   // enemy units takes damage (I bronze, IV silver, VI golden+azure), or +Power
   // on a Spell you are casting.
-  "specialty.septienna.1": withSpecialtyArt(deathRippleSpecialty(1, ["bronze"], 1, 1)),
-  "specialty.septienna.4": withSpecialtyArt(deathRippleSpecialty(4, ["silver"], 1, 1)),
-  "specialty.septienna.6": withSpecialtyArt(deathRippleSpecialty(6, ["gold", "azure"], 2, 2)),
+  "specialty.septienna.1": withSpecialtyArt(
+    deathRippleSpecialty(1, ["bronze"], 1, 1),
+  ),
+  "specialty.septienna.4": withSpecialtyArt(
+    deathRippleSpecialty(4, ["silver"], 1, 1),
+  ),
+  "specialty.septienna.6": withSpecialtyArt(
+    deathRippleSpecialty(6, ["gold", "azure"], 2, 2),
+  ),
   // Lord Haart (Necropolis): the Dread Knights specialist. I/VI reduce enemy
   // retaliation damage by 1/2 (doubled for Dread Knights); IV makes enemy
   // Retaliation Attacks against the chosen unit roll at disadvantage.
@@ -4262,7 +4926,7 @@ export const adventureCards: CardLibrary = {
     "Dread Knights",
     1,
     1,
-    "Dread Knights"
+    "Dread Knights",
   ),
   "specialty.lord_haart_necropolis.4": {
     id: "specialty.lord_haart_necropolis.4",
@@ -4274,7 +4938,7 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "combat",
       "lord_haart_necropolis",
-      "For this Combat, when an enemy performs a Retaliation Attack against your selected unit, that attack rolls 2 Attack dice and resolves the lower outcome."
+      "For this Combat, when an enemy performs a Retaliation Attack against your selected unit, that attack rolls 2 Attack dice and resolves the lower outcome.",
     ],
     target: { type: "friendly-unit" },
     effect: {
@@ -4285,22 +4949,22 @@ export const adventureCards: CardLibrary = {
         duration: { type: "combat" },
         polarity: "positive",
         removable: false,
-        modifiers: [{ type: "RETALIATION_AGAINST_DISADVANTAGE" }]
-      }
+        modifiers: [{ type: "RETALIATION_AGAINST_DISADVANTAGE" }],
+      },
     },
     assets: {
       cardImage: specialtyCardImage("lord_haart_necropolis", 4),
-      imageAlt: "Dread Knights level IV specialty card"
+      imageAlt: "Dread Knights level IV specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("lord_haart_necropolis")
+    source: heroSource("lord_haart_necropolis"),
   },
   "specialty.lord_haart_necropolis.6": retaliationReductionSpecialty(
     "lord_haart_necropolis",
     "Dread Knights",
     6,
     2,
-    "Dread Knights"
+    "Dread Knights",
   ),
 
   // ---- Additional heroes, batch 4 ----------------------------------------
@@ -4318,10 +4982,25 @@ export const adventureCards: CardLibrary = {
   // Ivor (Rampart, Ranger): the Elves specialist who bends the dice.
   // I: set all dice of the next attack roll (either side's) to "0".
   "specialty.ivor.1": withSpecialtyArt(
-    forceAttackRollSpecialty("ivor", "Elves", 1, 0, "any", "Set all dice of the next attack roll to \"0\".")
+    forceAttackRollSpecialty(
+      "ivor",
+      "Elves",
+      1,
+      0,
+      "any",
+      'Set all dice of the next attack roll to "0".',
+    ),
   ),
   // IV: +1 attack OR +1 defense, doubled for a ranged unit (NEW doubleForUnitType).
-  "specialty.ivor.4": withSpecialtyArt(attackOrDefenseByTypeSpecialty("ivor", "Elves", 4, "ranged", "a ranged unit")),
+  "specialty.ivor.4": withSpecialtyArt(
+    attackOrDefenseByTypeSpecialty(
+      "ivor",
+      "Elves",
+      4,
+      "ranged",
+      "a ranged unit",
+    ),
+  ),
   // VI: +2 HP for the Combat (selected unit) — OR — set all dice of your own
   // attack roll to "+1" (the only value that maximises an attack, so the engine
   // realises "the values of your choice").
@@ -4335,7 +5014,7 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "instant",
       "ivor",
-      "For this Combat, your selected unit's Health is increased by 2. — OR — Instead of rolling, set all dice of your attack roll to \"+1\"."
+      'For this Combat, your selected unit\'s Health is increased by 2. — OR — Instead of rolling, set all dice of your attack roll to "+1".',
     ],
     target: { type: "friendly-unit" },
     effect: {
@@ -4345,17 +5024,17 @@ export const adventureCards: CardLibrary = {
           label: "+2 Health for this Combat",
           combatOnly: true,
           target: { type: "friendly-unit" },
-          effect: { type: "ADD_UNIT_MAX_HEALTH", amount: 2 }
+          effect: { type: "ADD_UNIT_MAX_HEALTH", amount: 2 },
         },
         {
-          label: "Set all dice of your attack roll to \"+1\"",
+          label: 'Set all dice of your attack roll to "+1"',
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "FORCE_ATTACK_ROLL", value: 1 }
-        }
-      ]
+          effect: { type: "FORCE_ATTACK_ROLL", value: 1 },
+        },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("ivor")
+    source: heroSource("ivor"),
   }),
 
   // Tarnum (Castle, Knight): the Ballista specialist (one of six Tarnum variants).
@@ -4370,7 +5049,7 @@ export const adventureCards: CardLibrary = {
       "instant",
       "tarnum_castle",
       "ballista",
-      "Pay 5 gold to gain a Ballista. — OR — Activate your Ballista (if you have one)."
+      "Pay 5 gold to gain a Ballista. — OR — Activate your Ballista (if you have one).",
     ],
     target: { type: "none" },
     effect: {
@@ -4379,18 +5058,22 @@ export const adventureCards: CardLibrary = {
         {
           label: "Pay 5 gold to gain a Ballista",
           mapOnly: true,
-          effect: { type: "GAIN_WAR_MACHINE", warMachineCardId: "war_machine.ballista", goldCost: 5 }
+          effect: {
+            type: "GAIN_WAR_MACHINE",
+            warMachineCardId: "war_machine.ballista",
+            goldCost: 5,
+          },
         },
         {
           label: "Activate your Ballista",
           combatOnly: true,
           combatAnytime: true,
-          effect: { type: "BALLISTA_SPECIALTY", activate: "one" }
-        }
-      ]
+          effect: { type: "BALLISTA_SPECIALTY", activate: "one" },
+        },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("tarnum_castle")
+    source: heroSource("tarnum_castle"),
   }),
   // IV: gain an extra Ballista for this Combat (discarded afterwards) — OR — draw 1.
   "specialty.tarnum_castle.4": withSpecialtyArt({
@@ -4403,7 +5086,7 @@ export const adventureCards: CardLibrary = {
       "instant",
       "tarnum_castle",
       "ballista",
-      "For this Combat, gain an additional Ballista, even if you already have one. — OR — Draw 1 card."
+      "For this Combat, gain an additional Ballista, even if you already have one. — OR — Draw 1 card.",
     ],
     target: { type: "none" },
     effect: {
@@ -4413,17 +5096,17 @@ export const adventureCards: CardLibrary = {
           label: "Gain an additional Ballista this Combat",
           combatOnly: true,
           combatAnytime: true,
-          effect: { type: "BALLISTA_SPECIALTY", grant: "combat" }
+          effect: { type: "BALLISTA_SPECIALTY", grant: "combat" },
         },
         {
           label: "Draw 1 card",
           combatAnytime: true,
-          effect: { type: "DRAW_CARDS", amount: 1 }
-        }
-      ]
+          effect: { type: "DRAW_CARDS", amount: 1 },
+        },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("tarnum_castle")
+    source: heroSource("tarnum_castle"),
   }),
   // VI: choose 2 enemy units; each suffers 2 damage (NEW DAMAGE_CHOSEN_ENEMIES).
   "specialty.tarnum_castle.6": withSpecialtyArt({
@@ -4437,7 +5120,7 @@ export const adventureCards: CardLibrary = {
       "instant",
       "tarnum_castle",
       "ballista",
-      "Choose 2 enemy units. Each of these units suffers 2 damage."
+      "Choose 2 enemy units. Each of these units suffers 2 damage.",
     ],
     target: { type: "none" },
     effect: {
@@ -4446,12 +5129,12 @@ export const adventureCards: CardLibrary = {
         {
           label: "Choose 2 enemy units: 2 damage to each",
           combatAnytime: true,
-          effect: { type: "DAMAGE_CHOSEN_ENEMIES", count: 2, amount: 2 }
-        }
-      ]
+          effect: { type: "DAMAGE_CHOSEN_ENEMIES", count: 2, amount: 2 },
+        },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("tarnum_castle")
+    source: heroSource("tarnum_castle"),
   }),
 
   // Merist (Fortress, Witch): the Stone Skin specialist — a defensive magic hero.
@@ -4468,12 +5151,17 @@ export const adventureCards: CardLibrary = {
       "instant",
       "merist",
       "stone-skin",
-      "Your selected unit gains +1 defense, and an additional +1 defense if it is adjacent to the attacker."
+      "Your selected unit gains +1 defense, and an additional +1 defense if it is adjacent to the attacker.",
     ],
     trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-    effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 1, extraIfAdjacentToAttacker: 1 },
+    effect: {
+      type: "ADD_COMBAT_STAT",
+      stat: "defense",
+      amount: 1,
+      extraIfAdjacentToAttacker: 1,
+    },
     implementationStatus: "implemented",
-    source: heroSource("merist")
+    source: heroSource("merist"),
   }),
   // IV: all your units gain a Defense token (NEW GRANT_DEFENSE_TOKENS).
   "specialty.merist.4": withSpecialtyArt({
@@ -4482,11 +5170,17 @@ export const adventureCards: CardLibrary = {
     kind: "hero-specialty",
     timing: "combat",
     phaseLimit: ["combat"],
-    tags: ["hero-specialty", "combat", "merist", "stone-skin", "All your units gain a Defense token."],
+    tags: [
+      "hero-specialty",
+      "combat",
+      "merist",
+      "stone-skin",
+      "All your units gain a Defense token.",
+    ],
     target: { type: "none" },
     effect: { type: "GRANT_DEFENSE_TOKENS" },
     implementationStatus: "implemented",
-    source: heroSource("merist")
+    source: heroSource("merist"),
   }),
   // VI: place a Defense token on all your units and, for this Combat, your
   // Defense tokens pay out on a "0" as well as a "+1" roll (NEW STONE_SKIN_AURA).
@@ -4501,12 +5195,12 @@ export const adventureCards: CardLibrary = {
       "combat",
       "merist",
       "stone-skin",
-      "For this Combat, your Defense tokens provide the extra defense on a \"0\" or a \"+1\" roll. When played, place a Defense token on all your units."
+      'For this Combat, your Defense tokens provide the extra defense on a "0" or a "+1" roll. When played, place a Defense token on all your units.',
     ],
     target: { type: "none" },
     effect: { type: "STONE_SKIN_AURA" },
     implementationStatus: "implemented",
-    source: heroSource("merist")
+    source: heroSource("merist"),
   }),
 
   // ---- Additional heroes, batch 5 ---------------------------------------
@@ -4535,7 +5229,7 @@ export const adventureCards: CardLibrary = {
       "instant",
       "ash",
       "bloodlust",
-      "Instant: Your selected ground or flying unit gains +2 attack. Place a Black cube on that unit."
+      "Instant: Your selected ground or flying unit gains +2 attack. Place a Black cube on that unit.",
     ],
     trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
     effect: {
@@ -4543,10 +5237,10 @@ export const adventureCards: CardLibrary = {
       stat: "attack",
       amount: 2,
       unitTypes: ["ground", "flying"],
-      placeBlackCube: true
+      placeBlackCube: true,
     },
     implementationStatus: "implemented",
-    source: heroSource("ash")
+    source: heroSource("ash"),
   }),
   "specialty.ash.4": withSpecialtyArt({
     id: "specialty.ash.4",
@@ -4559,7 +5253,7 @@ export const adventureCards: CardLibrary = {
       "combat",
       "ash",
       "bloodlust",
-      "Ongoing: For this Combat, your selected ground or flying unit's attack is increased by 2 and its initiative is increased by 1. Place a Black cube on that unit."
+      "Ongoing: For this Combat, your selected ground or flying unit's attack is increased by 2 and its initiative is increased by 1. Place a Black cube on that unit.",
     ],
     target: { type: "friendly-unit", unitTypes: ["ground", "flying"] },
     effect: {
@@ -4576,13 +5270,13 @@ export const adventureCards: CardLibrary = {
           // The printed "Place a Black cube" rides the ONGOING card, so the
           // unit cannot perform a Retaliation Attack for the whole Combat —
           // round-start cube resets never lift it while the effect lives.
-          { type: "CANNOT_RETALIATE" }
-        ]
+          { type: "CANNOT_RETALIATE" },
+        ],
       },
-      placeBlackCube: true
+      placeBlackCube: true,
     },
     implementationStatus: "implemented",
-    source: heroSource("ash")
+    source: heroSource("ash"),
   }),
   "specialty.ash.6": withSpecialtyArt({
     id: "specialty.ash.6",
@@ -4595,7 +5289,7 @@ export const adventureCards: CardLibrary = {
       "instant",
       "ash",
       "bloodlust",
-      "Instant: Your selected ground or flying unit gains +3 attack and ignores Retaliation Attacks. Place a Black cube on that unit."
+      "Instant: Your selected ground or flying unit gains +3 attack and ignores Retaliation Attacks. Place a Black cube on that unit.",
     ],
     trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
     effect: {
@@ -4604,10 +5298,10 @@ export const adventureCards: CardLibrary = {
       amount: 3,
       unitTypes: ["ground", "flying"],
       placeBlackCube: true,
-      ignoresRetaliation: true
+      ignoresRetaliation: true,
     },
     implementationStatus: "implemented",
-    source: heroSource("ash")
+    source: heroSource("ash"),
   }),
 
   // Gerwulf (Fortress, Beastmaster): a Ballista specialist. I matches the other
@@ -4628,7 +5322,7 @@ export const adventureCards: CardLibrary = {
       "instant",
       "gerwulf",
       "ballista",
-      "Pay 5 gold to gain a Ballista. — OR — Activate your Ballista (if you have one)."
+      "Pay 5 gold to gain a Ballista. — OR — Activate your Ballista (if you have one).",
     ],
     target: { type: "none" },
     effect: {
@@ -4637,18 +5331,22 @@ export const adventureCards: CardLibrary = {
         {
           label: "Pay 5 gold to gain a Ballista",
           mapOnly: true,
-          effect: { type: "GAIN_WAR_MACHINE", warMachineCardId: "war_machine.ballista", goldCost: 5 }
+          effect: {
+            type: "GAIN_WAR_MACHINE",
+            warMachineCardId: "war_machine.ballista",
+            goldCost: 5,
+          },
         },
         {
           label: "Activate your Ballista",
           combatOnly: true,
           combatAnytime: true,
-          effect: { type: "BALLISTA_SPECIALTY", activate: "one" }
-        }
-      ]
+          effect: { type: "BALLISTA_SPECIALTY", activate: "one" },
+        },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("gerwulf")
+    source: heroSource("gerwulf"),
   }),
   "specialty.gerwulf.4": withSpecialtyArt({
     id: "specialty.gerwulf.4",
@@ -4661,7 +5359,7 @@ export const adventureCards: CardLibrary = {
       "combat",
       "gerwulf",
       "ballista",
-      "On your turn: the selected unit suffers 1 damage. — OR — Instant (any time, incl. an enemy unit's turn start or end of its move): discard your Ballista to inflict 2 damage on the selected enemy unit."
+      "On your turn: the selected unit suffers 1 damage. — OR — Instant (any time, incl. an enemy unit's turn start or end of its move): discard your Ballista to inflict 2 damage on the selected enemy unit.",
     ],
     target: { type: "none" },
     effect: {
@@ -4670,19 +5368,23 @@ export const adventureCards: CardLibrary = {
         {
           label: "An enemy unit suffers 1 damage",
           combatOnly: true,
-          effect: { type: "DAMAGE_CHOSEN_ENEMIES", count: 1, amount: 1 }
+          effect: { type: "DAMAGE_CHOSEN_ENEMIES", count: 1, amount: 1 },
         },
         {
           label: "Discard your Ballista: 2 damage to an enemy unit",
           combatOnly: true,
           combatAnytime: true,
           target: { type: "enemy-unit" },
-          effect: { type: "DISCARD_WAR_MACHINE_DAMAGE", warMachineCardId: "war_machine.ballista", amount: 2 }
-        }
-      ]
+          effect: {
+            type: "DISCARD_WAR_MACHINE_DAMAGE",
+            warMachineCardId: "war_machine.ballista",
+            amount: 2,
+          },
+        },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("gerwulf")
+    source: heroSource("gerwulf"),
   }),
   "specialty.gerwulf.6": withSpecialtyArt({
     id: "specialty.gerwulf.6",
@@ -4695,7 +5397,7 @@ export const adventureCards: CardLibrary = {
       "combat",
       "gerwulf",
       "ballista",
-      "Ongoing (your turn): For this Combat, you can choose targets for your Ballista (if you have one). — OR — Instant (any time, incl. an enemy unit's turn start or end of its move): discard your Ballista to inflict 3 damage on the selected enemy unit."
+      "Ongoing (your turn): For this Combat, you can choose targets for your Ballista (if you have one). — OR — Instant (any time, incl. an enemy unit's turn start or end of its move): discard your Ballista to inflict 3 damage on the selected enemy unit.",
     ],
     target: { type: "none" },
     effect: {
@@ -4712,28 +5414,34 @@ export const adventureCards: CardLibrary = {
               duration: { type: "combat" },
               polarity: "positive",
               removable: false,
-              modifiers: [{ type: "BALLISTA_CHOOSE_TARGET" }]
-            }
-          }
+              modifiers: [{ type: "BALLISTA_CHOOSE_TARGET" }],
+            },
+          },
         },
         {
           label: "Discard your Ballista: 3 damage to an enemy unit",
           combatOnly: true,
           combatAnytime: true,
           target: { type: "enemy-unit" },
-          effect: { type: "DISCARD_WAR_MACHINE_DAMAGE", warMachineCardId: "war_machine.ballista", amount: 3 }
-        }
-      ]
+          effect: {
+            type: "DISCARD_WAR_MACHINE_DAMAGE",
+            warMachineCardId: "war_machine.ballista",
+            amount: 3,
+          },
+        },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("gerwulf")
+    source: heroSource("gerwulf"),
   }),
 
   // Tarnum (Dungeon, Overlord): the Dragons specialist. I is the shared might
   // specialty (doubles for Dragons, like Mutare). IV damages a whole vertical
   // line of 5 spaces (NEW DAMAGE_BATTLEFIELD_LINE). VI toggles a Dragons unit's
   // Black cube (NEW TOGGLE_RETALIATION_MARKER) or grants +2 attack on an attack.
-  "specialty.tarnum_dungeon.1": withSpecialtyArt(mightSpecialtyOne("tarnum_dungeon", "Dragons", "a Dragons unit")),
+  "specialty.tarnum_dungeon.1": withSpecialtyArt(
+    mightSpecialtyOne("tarnum_dungeon", "Dragons", "a Dragons unit"),
+  ),
   "specialty.tarnum_dungeon.4": withSpecialtyArt({
     id: "specialty.tarnum_dungeon.4",
     name: "Dragons IV",
@@ -4745,7 +5453,7 @@ export const adventureCards: CardLibrary = {
       "combat",
       "tarnum_dungeon",
       "dragons",
-      "Choose a row (straight line of 5 consecutive spaces). Every unit in that row suffers 2 damage."
+      "Choose a row (straight line of 5 consecutive spaces). Every unit in that row suffers 2 damage.",
     ],
     target: { type: "none" },
     effect: {
@@ -4755,12 +5463,12 @@ export const adventureCards: CardLibrary = {
           label: "Choose a row: every unit in it suffers 2 damage",
           combatAnytime: true,
           target: { type: "any-space" },
-          effect: { type: "DAMAGE_BATTLEFIELD_LINE", amount: 2 }
-        }
-      ]
+          effect: { type: "DAMAGE_BATTLEFIELD_LINE", amount: 2 },
+        },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("tarnum_dungeon")
+    source: heroSource("tarnum_dungeon"),
   }),
   "specialty.tarnum_dungeon.6": withSpecialtyArt({
     id: "specialty.tarnum_dungeon.6",
@@ -4773,7 +5481,7 @@ export const adventureCards: CardLibrary = {
       "instant",
       "tarnum_dungeon",
       "dragons",
-      "Remove a Black cube from or place it on a Dragons unit. — OR — Your selected unit gains +2 attack."
+      "Remove a Black cube from or place it on a Dragons unit. — OR — Your selected unit gains +2 attack.",
     ],
     target: { type: "none" },
     effect: {
@@ -4784,17 +5492,17 @@ export const adventureCards: CardLibrary = {
           combatOnly: true,
           combatAnytime: true,
           target: { type: "any-unit", unitName: "a Dragons unit" },
-          effect: { type: "TOGGLE_RETALIATION_MARKER" }
+          effect: { type: "TOGGLE_RETALIATION_MARKER" },
         },
         {
           label: "+2 attack",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 }
-        }
-      ]
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 },
+        },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("tarnum_dungeon")
+    source: heroSource("tarnum_dungeon"),
   }),
 
   // Sephinroth (Dungeon, Warlock): the Valuables specialist — a map economy hero.
@@ -4812,7 +5520,7 @@ export const adventureCards: CardLibrary = {
       "instant",
       "sephinroth",
       "valuables",
-      "Pay 1 gold to gain 1 valuables. — OR — Draw 1 card."
+      "Pay 1 gold to gain 1 valuables. — OR — Draw 1 card.",
     ],
     target: { type: "none" },
     effect: {
@@ -4821,16 +5529,20 @@ export const adventureCards: CardLibrary = {
         {
           label: "Pay 1 gold to gain 1 valuables",
           mapOnly: true,
-          effect: { type: "GAIN_RESOURCES", gain: { valuables: 1 }, goldCost: 1 }
+          effect: {
+            type: "GAIN_RESOURCES",
+            gain: { valuables: 1 },
+            goldCost: 1,
+          },
         },
         {
           label: "Draw 1 card",
-          effect: { type: "DRAW_CARDS", amount: 1 }
-        }
-      ]
+          effect: { type: "DRAW_CARDS", amount: 1 },
+        },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("sephinroth")
+    source: heroSource("sephinroth"),
   }),
   "specialty.sephinroth.4": withSpecialtyArt({
     id: "specialty.sephinroth.4",
@@ -4842,7 +5554,7 @@ export const adventureCards: CardLibrary = {
       "instant",
       "sephinroth",
       "valuables",
-      "Gain 1 valuables. — OR — +2 Power."
+      "Gain 1 valuables. — OR — +2 Power.",
     ],
     target: { type: "none" },
     effect: {
@@ -4851,17 +5563,17 @@ export const adventureCards: CardLibrary = {
         {
           label: "Gain 1 valuables",
           mapOnly: true,
-          effect: { type: "GAIN_RESOURCES", gain: { valuables: 1 } }
+          effect: { type: "GAIN_RESOURCES", gain: { valuables: 1 } },
         },
         {
           label: "+2 Power",
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 2 }
-        }
-      ]
+          effect: { type: "ADD_SPELL_POWER", amount: 2 },
+        },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("sephinroth")
+    source: heroSource("sephinroth"),
   }),
   "specialty.sephinroth.6": withSpecialtyArt({
     id: "specialty.sephinroth.6",
@@ -4873,7 +5585,7 @@ export const adventureCards: CardLibrary = {
       "instant",
       "sephinroth",
       "valuables",
-      "Gain 2 valuables. — OR — Draw 2 cards."
+      "Gain 2 valuables. — OR — Draw 2 cards.",
     ],
     target: { type: "none" },
     effect: {
@@ -4882,16 +5594,16 @@ export const adventureCards: CardLibrary = {
         {
           label: "Gain 2 valuables",
           mapOnly: true,
-          effect: { type: "GAIN_RESOURCES", gain: { valuables: 2 } }
+          effect: { type: "GAIN_RESOURCES", gain: { valuables: 2 } },
         },
         {
           label: "Draw 2 cards",
-          effect: { type: "DRAW_CARDS", amount: 2 }
-        }
-      ]
+          effect: { type: "DRAW_CARDS", amount: 2 },
+        },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("sephinroth")
+    source: heroSource("sephinroth"),
   }),
 
   // ---- Additional heroes, batch 6 ---------------------------------------
@@ -4928,10 +5640,12 @@ export const adventureCards: CardLibrary = {
     target: { type: "none" },
     effect: {
       type: "CHOOSE_ONE",
-      options: [{ label: "Draw 1 card", effect: { type: "DRAW_CARDS", amount: 1 } }]
+      options: [
+        { label: "Draw 1 card", effect: { type: "DRAW_CARDS", amount: 1 } },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("octavia")
+    source: heroSource("octavia"),
   }),
   "specialty.octavia.4": withSpecialtyArt({
     id: "specialty.octavia.4",
@@ -4943,7 +5657,7 @@ export const adventureCards: CardLibrary = {
       "instant",
       "octavia",
       "gold",
-      "Roll and resolve 1 Resource die. — OR — Your selected unit gains +1 attack."
+      "Roll and resolve 1 Resource die. — OR — Your selected unit gains +1 attack.",
     ],
     target: { type: "none" },
     effect: {
@@ -4952,17 +5666,17 @@ export const adventureCards: CardLibrary = {
         {
           label: "Roll and resolve 1 Resource die",
           mapOnly: true,
-          effect: { type: "RESOURCE_FORTUNE_PLAY", rollResourceDice: 1 }
+          effect: { type: "RESOURCE_FORTUNE_PLAY", rollResourceDice: 1 },
         },
         {
           label: "+1 attack",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1 }
-        }
-      ]
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1 },
+        },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("octavia")
+    source: heroSource("octavia"),
   }),
   "specialty.octavia.6": withSpecialtyArt({
     id: "specialty.octavia.6",
@@ -4974,7 +5688,7 @@ export const adventureCards: CardLibrary = {
       "instant",
       "octavia",
       "gold",
-      "Roll 2 Resource dice and resolve one of them. — OR — Draw 2 cards."
+      "Roll 2 Resource dice and resolve one of them. — OR — Draw 2 cards.",
     ],
     target: { type: "none" },
     effect: {
@@ -4983,16 +5697,16 @@ export const adventureCards: CardLibrary = {
         {
           label: "Roll 2 Resource dice and resolve one",
           mapOnly: true,
-          effect: { type: "RESOURCE_FORTUNE_PLAY", rollResourceDice: 2 }
+          effect: { type: "RESOURCE_FORTUNE_PLAY", rollResourceDice: 2 },
         },
         {
           label: "Draw 2 cards",
-          effect: { type: "DRAW_CARDS", amount: 2 }
-        }
-      ]
+          effect: { type: "DRAW_CARDS", amount: 2 },
+        },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("octavia")
+    source: heroSource("octavia"),
   }),
 
   // Melodia (Rampart, Druid, A0 D2 P1 K2, Luck): the "Fortune" specialist —
@@ -5010,7 +5724,7 @@ export const adventureCards: CardLibrary = {
       "instant",
       "melodia",
       "fortune",
-      "Gain a positive morale token and 1 gold. — OR — During Combat, draw 1 card as an Instant."
+      "Gain a positive morale token and 1 gold. — OR — During Combat, draw 1 card as an Instant.",
     ],
     target: { type: "none" },
     effect: {
@@ -5019,18 +5733,18 @@ export const adventureCards: CardLibrary = {
         {
           label: "Gain a positive morale token and 1 gold",
           mapOnly: true,
-          effect: { type: "RESOURCE_FORTUNE_PLAY", morale: 1, gold: 1 }
+          effect: { type: "RESOURCE_FORTUNE_PLAY", morale: 1, gold: 1 },
         },
         {
           label: "Draw 1 card",
           combatOnly: true,
           combatAnytime: true,
-          effect: { type: "DRAW_CARDS", amount: 1 }
-        }
-      ]
+          effect: { type: "DRAW_CARDS", amount: 1 },
+        },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("melodia")
+    source: heroSource("melodia"),
   }),
   "specialty.melodia.4": withSpecialtyArt({
     id: "specialty.melodia.4",
@@ -5042,7 +5756,7 @@ export const adventureCards: CardLibrary = {
       "instant",
       "melodia",
       "fortune",
-      "Roll 2 Resource dice and resolve one of them. Gain 1 gold."
+      "Roll 2 Resource dice and resolve one of them. Gain 1 gold.",
     ],
     target: { type: "none" },
     effect: {
@@ -5051,12 +5765,16 @@ export const adventureCards: CardLibrary = {
         {
           label: "Roll 2 Resource dice (resolve one) and gain 1 gold",
           mapOnly: true,
-          effect: { type: "RESOURCE_FORTUNE_PLAY", rollResourceDice: 2, gold: 1 }
-        }
-      ]
+          effect: {
+            type: "RESOURCE_FORTUNE_PLAY",
+            rollResourceDice: 2,
+            gold: 1,
+          },
+        },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("melodia")
+    source: heroSource("melodia"),
   }),
   "specialty.melodia.6": withSpecialtyArt({
     id: "specialty.melodia.6",
@@ -5068,7 +5786,7 @@ export const adventureCards: CardLibrary = {
       "instant",
       "melodia",
       "fortune",
-      "During this turn, +1 die rolled and resolved at locations. Gain 1 gold."
+      "During this turn, +1 die rolled and resolved at locations. Gain 1 gold.",
     ],
     target: { type: "none" },
     effect: {
@@ -5077,12 +5795,16 @@ export const adventureCards: CardLibrary = {
         {
           label: "This turn, +1 die at locations; gain 1 gold",
           mapOnly: true,
-          effect: { type: "RESOURCE_FORTUNE_PLAY", locationDiceBonusTurn: true, gold: 1 }
-        }
-      ]
+          effect: {
+            type: "RESOURCE_FORTUNE_PLAY",
+            locationDiceBonusTurn: true,
+            gold: 1,
+          },
+        },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("melodia")
+    source: heroSource("melodia"),
   }),
 
   // Tarnum (Fortress, Beastmaster, A0 D4 P1 K1, Armorer): the Basilisks specialist
@@ -5093,8 +5815,12 @@ export const adventureCards: CardLibrary = {
   //       regardless of the roll (forceAbilityRolls → forceAbilityRollsThisAttack),
   //       with NO attack bonus (amount 0).
   //   B — the buffed attack gains +2 attack (and does NOT force any ability roll).
-  "specialty.tarnum_fortress.1": withSpecialtyArt(mightSpecialtyOne("tarnum_fortress", "Basilisks", "Basilisks")),
-  "specialty.tarnum_fortress.4": withSpecialtyArt(unitHealthSpecialty("tarnum_fortress", "Basilisks", 4, 1, "Basilisks")),
+  "specialty.tarnum_fortress.1": withSpecialtyArt(
+    mightSpecialtyOne("tarnum_fortress", "Basilisks", "Basilisks"),
+  ),
+  "specialty.tarnum_fortress.4": withSpecialtyArt(
+    unitHealthSpecialty("tarnum_fortress", "Basilisks", 4, 1, "Basilisks"),
+  ),
   "specialty.tarnum_fortress.6": withSpecialtyArt({
     id: "specialty.tarnum_fortress.6",
     name: "Basilisks VI",
@@ -5122,17 +5848,22 @@ export const adventureCards: CardLibrary = {
         {
           label: "Use special ability regardless of the roll",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 0, forceAbilityRolls: true }
+          effect: {
+            type: "ADD_COMBAT_STAT",
+            stat: "attack",
+            amount: 0,
+            forceAbilityRolls: true,
+          },
         },
         {
           label: "+2 attack",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 }
-        }
-      ]
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 },
+        },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("tarnum_fortress")
+    source: heroSource("tarnum_fortress"),
   }),
 
   // Tarnum (Rampart, Ranger, A1 D3 P1 K1, Leadership): the Sharpshooters specialist.
@@ -5141,10 +5872,20 @@ export const adventureCards: CardLibrary = {
   // a CHOOSE_ONE: borrow a Sharpshooters from the silver Neutral deck for this
   // Combat (BORROW_NEUTRAL_UNIT, gated to combat round 1) — OR — draw a card.
   "specialty.tarnum_rampart.1": withSpecialtyArt(
-    mightSpecialtyOne("tarnum_rampart", "Sharpshooters", "Elves or Sharpshooters")
+    mightSpecialtyOne(
+      "tarnum_rampart",
+      "Sharpshooters",
+      "Elves or Sharpshooters",
+    ),
   ),
   "specialty.tarnum_rampart.4": withSpecialtyArt(
-    unitInitiativeSpecialty("tarnum_rampart", "Sharpshooters", 4, 1, "Elves or Sharpshooters")
+    unitInitiativeSpecialty(
+      "tarnum_rampart",
+      "Sharpshooters",
+      4,
+      1,
+      "Elves or Sharpshooters",
+    ),
   ),
   "specialty.tarnum_rampart.6": withSpecialtyArt({
     id: "specialty.tarnum_rampart.6",
@@ -5156,7 +5897,7 @@ export const adventureCards: CardLibrary = {
       "instant",
       "tarnum_rampart",
       "sharpshooters",
-      "Play at the start of Combat. Borrow a Sharpshooters from the silver Neutral deck for this Combat (discard it afterwards). — OR — Draw a card."
+      "Play at the start of Combat. Borrow a Sharpshooters from the silver Neutral deck for this Combat (discard it afterwards). — OR — Draw a card.",
     ],
     target: { type: "none" },
     effect: {
@@ -5165,17 +5906,21 @@ export const adventureCards: CardLibrary = {
         {
           label: "Borrow a Sharpshooters for this Combat",
           combatOnly: true,
-          effect: { type: "BORROW_NEUTRAL_UNIT", unitDefId: "neutral.sharpshooters", tier: "silver" }
+          effect: {
+            type: "BORROW_NEUTRAL_UNIT",
+            unitDefId: "neutral.sharpshooters",
+            tier: "silver",
+          },
         },
         {
           label: "Draw a card",
           combatAnytime: true,
-          effect: { type: "DRAW_CARDS", amount: 1 }
-        }
-      ]
+          effect: { type: "DRAW_CARDS", amount: 1 },
+        },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("tarnum_rampart")
+    source: heroSource("tarnum_rampart"),
   }),
 
   // ---- Cove (expansion) specialties --------------------------------------
@@ -5184,9 +5929,27 @@ export const adventureCards: CardLibrary = {
   // reusing HEAL_DAMAGE_AND_REMOVE_EFFECTS). The other four Cove heroes are
   // deferred (not registered) until their signature mechanic is built — see the
   // deferral note in coreHeroDefinitions and cove-content.test.ts.
-  "specialty.cassiopeia.1": towerAttackOrDefenseSpecialty("cassiopeia", "Oceanids", 1, "Oceanids"),
-  "specialty.cassiopeia.4": unitInitiativeSpecialty("cassiopeia", "Oceanids", 4, 1, "Oceanids"),
-  "specialty.cassiopeia.6": towerStatBoostSpecialty("cassiopeia", "Oceanids", 6, "attack", 2, "Oceanids"),
+  "specialty.cassiopeia.1": towerAttackOrDefenseSpecialty(
+    "cassiopeia",
+    "Oceanids",
+    1,
+    "Oceanids",
+  ),
+  "specialty.cassiopeia.4": unitInitiativeSpecialty(
+    "cassiopeia",
+    "Oceanids",
+    4,
+    1,
+    "Oceanids",
+  ),
+  "specialty.cassiopeia.6": towerStatBoostSpecialty(
+    "cassiopeia",
+    "Oceanids",
+    6,
+    "attack",
+    2,
+    "Oceanids",
+  ),
   "specialty.astra.1": cureSpecialty(1),
   "specialty.astra.4": cureSpecialty(4),
   "specialty.astra.6": cureSpecialty(6),
@@ -5210,7 +5973,7 @@ export const adventureCards: CardLibrary = {
       "instant",
       "jeremy",
       "cannon",
-      "Pay 7 gold to gain a Cannon. — OR — Deal 1 damage to an enemy unit."
+      "Pay 7 gold to gain a Cannon. — OR — Deal 1 damage to an enemy unit.",
     ],
     target: { type: "none" },
     effect: {
@@ -5219,18 +5982,22 @@ export const adventureCards: CardLibrary = {
         {
           label: "Pay 7 gold to gain a Cannon",
           mapOnly: true,
-          effect: { type: "GAIN_WAR_MACHINE", warMachineCardId: "war_machine.cannon", goldCost: 7 }
+          effect: {
+            type: "GAIN_WAR_MACHINE",
+            warMachineCardId: "war_machine.cannon",
+            goldCost: 7,
+          },
         },
         {
           label: "Deal 1 damage to an enemy unit",
           combatOnly: true,
           combatAnytime: true,
-          effect: { type: "DAMAGE_CHOSEN_ENEMIES", count: 1, amount: 1 }
-        }
-      ]
+          effect: { type: "DAMAGE_CHOSEN_ENEMIES", count: 1, amount: 1 },
+        },
+      ],
     },
     implementationStatus: "implemented",
-    source: heroSource("jeremy")
+    source: heroSource("jeremy"),
   }),
   // Wiki: both sides are `<instant>` (not activation-only). Timed "instant" so
   // the free Cannon shot and the draw are playable anytime in combat (including
@@ -5245,7 +6012,7 @@ export const adventureCards: CardLibrary = {
       "instant",
       "jeremy",
       "cannon",
-      "Instant: Use the Cannon once (2 damage to a chosen enemy) without spending the expert; it does not count against the Cannon's round limit. — OR — Instant: Draw 1 card."
+      "Instant: Use the Cannon once (2 damage to a chosen enemy) without spending the expert; it does not count against the Cannon's round limit. — OR — Instant: Draw 1 card.",
     ],
     target: { type: "none" },
     effect: {
@@ -5256,21 +6023,21 @@ export const adventureCards: CardLibrary = {
           combatOnly: true,
           combatAnytime: true,
           requiresWarMachine: "war_machine.cannon",
-          effect: { type: "DAMAGE_CHOSEN_ENEMIES", count: 1, amount: 2 }
+          effect: { type: "DAMAGE_CHOSEN_ENEMIES", count: 1, amount: 2 },
         },
         {
           label: "Draw 1 card",
           combatAnytime: true,
-          effect: { type: "DRAW_CARDS", amount: 1 }
-        }
-      ]
+          effect: { type: "DRAW_CARDS", amount: 1 },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("jeremy", 4),
-      imageAlt: "Cannon level IV specialty card"
+      imageAlt: "Cannon level IV specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("jeremy")
+    source: heroSource("jeremy"),
   },
   // Wiki: both sides are `<instant>` (same as IV).
   "specialty.jeremy.6": {
@@ -5283,7 +6050,7 @@ export const adventureCards: CardLibrary = {
       "instant",
       "jeremy",
       "cannon",
-      "Instant: Use the Cannon once (2 damage to a chosen enemy) without spending the expert; it does not count against the Cannon's round limit. — OR — Instant: Draw 2 cards."
+      "Instant: Use the Cannon once (2 damage to a chosen enemy) without spending the expert; it does not count against the Cannon's round limit. — OR — Instant: Draw 2 cards.",
     ],
     target: { type: "none" },
     effect: {
@@ -5294,21 +6061,21 @@ export const adventureCards: CardLibrary = {
           combatOnly: true,
           combatAnytime: true,
           requiresWarMachine: "war_machine.cannon",
-          effect: { type: "DAMAGE_CHOSEN_ENEMIES", count: 1, amount: 2 }
+          effect: { type: "DAMAGE_CHOSEN_ENEMIES", count: 1, amount: 2 },
         },
         {
           label: "Draw 2 cards",
           combatAnytime: true,
-          effect: { type: "DRAW_CARDS", amount: 2 }
-        }
-      ]
+          effect: { type: "DRAW_CARDS", amount: 2 },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("jeremy", 6),
-      imageAlt: "Cannon level VI specialty card"
+      imageAlt: "Cannon level VI specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("jeremy")
+    source: heroSource("jeremy"),
   },
 
   // Zilare (Navigator, magic, A2 D0 P1 K2, Interference): the Forgetfulness
@@ -5329,30 +6096,31 @@ export const adventureCards: CardLibrary = {
       "instant",
       "zilare",
       "forgetfulness",
-      "During its next activation, a ranged unit of bronze or silver tier cannot attack. — OR — Draw 1 card."
+      "During its next activation, a ranged unit of bronze or silver tier cannot attack. — OR — Draw 1 card.",
     ],
     target: { type: "none" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "A bronze/silver ranged enemy cannot attack on its next activation",
+          label:
+            "A bronze/silver ranged enemy cannot attack on its next activation",
           combatOnly: true,
           target: { type: "enemy-unit", unitTypes: ["ranged"] },
-          effect: { type: "FORGETFULNESS", gradeByPower: { 0: "silver" } }
+          effect: { type: "FORGETFULNESS", gradeByPower: { 0: "silver" } },
         },
         {
           label: "Draw 1 card",
-          effect: { type: "DRAW_CARDS", amount: 1 }
-        }
-      ]
+          effect: { type: "DRAW_CARDS", amount: 1 },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("zilare", 1),
-      imageAlt: "Forgetfulness level I specialty card"
+      imageAlt: "Forgetfulness level I specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("zilare")
+    source: heroSource("zilare"),
   },
   "specialty.zilare.4": {
     id: "specialty.zilare.4",
@@ -5365,31 +6133,32 @@ export const adventureCards: CardLibrary = {
       "instant",
       "zilare",
       "forgetfulness",
-      "During its next activation, a ranged unit of bronze, silver, or golden tier cannot attack. — OR — +2 Power on a Spell you are casting."
+      "During its next activation, a ranged unit of bronze, silver, or golden tier cannot attack. — OR — +2 Power on a Spell you are casting.",
     ],
     target: { type: "none" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "A bronze/silver/golden ranged enemy cannot attack on its next activation",
+          label:
+            "A bronze/silver/golden ranged enemy cannot attack on its next activation",
           combatOnly: true,
           target: { type: "enemy-unit", unitTypes: ["ranged"] },
-          effect: { type: "FORGETFULNESS", gradeByPower: { 0: "gold" } }
+          effect: { type: "FORGETFULNESS", gradeByPower: { 0: "gold" } },
         },
         {
           label: "+2 Power",
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 2 }
-        }
-      ]
+          effect: { type: "ADD_SPELL_POWER", amount: 2 },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("zilare", 4),
-      imageAlt: "Forgetfulness level IV specialty card"
+      imageAlt: "Forgetfulness level IV specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("zilare")
+    source: heroSource("zilare"),
   },
   "specialty.zilare.6": {
     id: "specialty.zilare.6",
@@ -5402,31 +6171,32 @@ export const adventureCards: CardLibrary = {
       "instant",
       "zilare",
       "forgetfulness",
-      "During its next activation, a bronze, silver, or golden unit cannot attack. — OR — +2 Power on a Spell you are casting."
+      "During its next activation, a bronze, silver, or golden unit cannot attack. — OR — +2 Power on a Spell you are casting.",
     ],
     target: { type: "none" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Any bronze/silver/golden enemy cannot attack on its next activation",
+          label:
+            "Any bronze/silver/golden enemy cannot attack on its next activation",
           combatOnly: true,
           target: { type: "enemy-unit" },
-          effect: { type: "FORGETFULNESS", gradeByPower: { 0: "gold" } }
+          effect: { type: "FORGETFULNESS", gradeByPower: { 0: "gold" } },
         },
         {
           label: "+2 Power",
           trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
-          effect: { type: "ADD_SPELL_POWER", amount: 2 }
-        }
-      ]
+          effect: { type: "ADD_SPELL_POWER", amount: 2 },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("zilare", 6),
-      imageAlt: "Forgetfulness level VI specialty card"
+      imageAlt: "Forgetfulness level VI specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("zilare")
+    source: heroSource("zilare"),
   },
 
   // Miriam (Captain, might, A3 D0 P2 K1, Logistics): the Scouting specialist —
@@ -5444,8 +6214,19 @@ export const adventureCards: CardLibrary = {
   // CHOICE: place the Cove Sorceresses' −2 Weakness token on any unit for 2 rounds
   // (new PLACE_WEAKNESS_TOKEN effect), OR an instant +2 attack on your unit's next
   // attack — the +2 is FLAT (it does NOT double for Sorceresses).
-  "specialty.casmetra.1": towerAttackOrDefenseSpecialty("casmetra", "Sorceresses", 1, "Sorceresses"),
-  "specialty.casmetra.4": unitInitiativeSpecialty("casmetra", "Sorceresses", 4, 1, "Sorceresses"),
+  "specialty.casmetra.1": towerAttackOrDefenseSpecialty(
+    "casmetra",
+    "Sorceresses",
+    1,
+    "Sorceresses",
+  ),
+  "specialty.casmetra.4": unitInitiativeSpecialty(
+    "casmetra",
+    "Sorceresses",
+    4,
+    1,
+    "Sorceresses",
+  ),
   // Casmetra VI is a CHOICE (— OR —), re-confirmed against the owner's physical
   // card 2026-06 (like Moandor VI): the fan wiki renders the two clauses with no
   // "OR" (looking like a combined AND), but the printed card is choose-one.
@@ -5460,7 +6241,7 @@ export const adventureCards: CardLibrary = {
       "instant",
       "casmetra",
       "sorceresses",
-      "Place a −2 Weakness token on any unit for 2 Combat rounds. — OR — Your selected unit gains +2 attack."
+      "Place a −2 Weakness token on any unit for 2 Combat rounds. — OR — Your selected unit gains +2 attack.",
     ],
     target: { type: "none" },
     effect: {
@@ -5470,24 +6251,24 @@ export const adventureCards: CardLibrary = {
           label: "Place a −2 Weakness token on any unit (2 rounds)",
           combatOnly: true,
           target: { type: "any-unit" },
-          effect: { type: "PLACE_WEAKNESS_TOKEN", amount: -2, rounds: 2 }
+          effect: { type: "PLACE_WEAKNESS_TOKEN", amount: -2, rounds: 2 },
         },
         {
           // Instant, one-shot +2 attack on your unit's next attack (an attack
           // reaction, like Erdamon VI). Flat — no Sorceresses doubling.
           label: "+2 attack",
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 }
-        }
-      ]
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 },
+        },
+      ],
     },
     assets: {
       cardImage: specialtyCardImage("casmetra", 6),
-      imageAlt: "Sorceresses level VI specialty card"
+      imageAlt: "Sorceresses level VI specialty card",
     },
     implementationStatus: "implemented",
-    source: heroSource("casmetra")
-  }
+    source: heroSource("casmetra"),
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -5506,7 +6287,7 @@ function rethemedSpecialty(
   fromSlug: string,
   heroSlug: string,
   level: 1 | 4 | 6,
-  name: string
+  name: string,
 ): CardLibrary[string] {
   const next = structuredClone(from) as CardLibrary[string];
   next.id = `specialty.${heroSlug}.${level}`;
@@ -5515,14 +6296,14 @@ function rethemedSpecialty(
   delete next.assets;
   next.source = {
     product: "Anime Mod — Ninefold Realms × Otherworld Gate",
-    credit: `Original hero specialty for this digital module; identical wiring to ${from.name}.`
+    credit: `Original hero specialty for this digital module; identical wiring to ${from.name}.`,
   };
   return next;
 }
 
 const blueArchiveSpecialtySource = {
   product: "Anime Mod — Kivotos Academy Domain",
-  credit: "Original Blue Archive hero specialty for this digital module."
+  credit: "Original Blue Archive hero specialty for this digital module.",
 };
 
 adventureCards["specialty.mika_blue_archive.1"] = {
@@ -5531,11 +6312,22 @@ adventureCards["specialty.mika_blue_archive.1"] = {
   kind: "hero-specialty",
   timing: "instant",
   phaseLimit: ["reaction", "combat"],
-  tags: ["hero-specialty", "instant", "mika_blue_archive", "kyrie-eleison", "Instant: Your selected ground or flying unit gains +2 Attack for this attack."],
+  tags: [
+    "hero-specialty",
+    "instant",
+    "mika_blue_archive",
+    "kyrie-eleison",
+    "Instant: Your selected ground or flying unit gains +2 Attack for this attack.",
+  ],
   trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-  effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2, unitTypes: ["ground", "flying"] },
+  effect: {
+    type: "ADD_COMBAT_STAT",
+    stat: "attack",
+    amount: 2,
+    unitTypes: ["ground", "flying"],
+  },
   implementationStatus: "implemented",
-  source: blueArchiveSpecialtySource
+  source: blueArchiveSpecialtySource,
 };
 
 adventureCards["specialty.mika_blue_archive.4"] = {
@@ -5544,7 +6336,14 @@ adventureCards["specialty.mika_blue_archive.4"] = {
   kind: "hero-specialty",
   timing: "combat",
   phaseLimit: ["combat"],
-  tags: ["hero-specialty", "combat", "ongoing", "mika_blue_archive", "kyrie-eleison", "Ongoing: Select a unit. For this Combat, every unit that attacks it suffers 1 damage after the attack."],
+  tags: [
+    "hero-specialty",
+    "combat",
+    "ongoing",
+    "mika_blue_archive",
+    "kyrie-eleison",
+    "Ongoing: Select a unit. For this Combat, every unit that attacks it suffers 1 damage after the attack.",
+  ],
   target: { type: "any-unit" },
   effect: {
     type: "CREATE_ACTIVE_EFFECT",
@@ -5554,11 +6353,11 @@ adventureCards["specialty.mika_blue_archive.4"] = {
       duration: { type: "combat" },
       polarity: "positive",
       removable: true,
-      modifiers: [{ type: "DAMAGE_ATTACKER_AFTER_ATTACKED", amount: 1 }]
-    }
+      modifiers: [{ type: "DAMAGE_ATTACKER_AFTER_ATTACKED", amount: 1 }],
+    },
   },
   implementationStatus: "implemented",
-  source: blueArchiveSpecialtySource
+  source: blueArchiveSpecialtySource,
 };
 
 adventureCards["specialty.mika_blue_archive.6"] = {
@@ -5567,17 +6366,34 @@ adventureCards["specialty.mika_blue_archive.6"] = {
   kind: "hero-specialty",
   timing: "instant",
   phaseLimit: ["reaction", "combat"],
-  tags: ["hero-specialty", "instant", "mika_blue_archive", "kyrie-eleison", "Instant: Your selected ground or flying unit gains +2 Attack, then heals half the damage it deals (rounded up)."],
+  tags: [
+    "hero-specialty",
+    "instant",
+    "mika_blue_archive",
+    "kyrie-eleison",
+    "Instant: Your selected ground or flying unit gains +2 Attack, then heals half the damage it deals (rounded up).",
+  ],
   trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-  effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2, unitTypes: ["ground", "flying"], healHalfDamageDealt: true },
+  effect: {
+    type: "ADD_COMBAT_STAT",
+    stat: "attack",
+    amount: 2,
+    unitTypes: ["ground", "flying"],
+    healHalfDamageDealt: true,
+  },
   implementationStatus: "implemented",
-  source: blueArchiveSpecialtySource
+  source: blueArchiveSpecialtySource,
 };
 
 adventureCards["specialty.yuuka_blue_archive.1"] = withoutArt(
-  lethalSaveSpecialty("yuuka_blue_archive", "Perfect Calculation", 1, { bronze: 1, silver: 2, gold: 4 })
+  lethalSaveSpecialty("yuuka_blue_archive", "Perfect Calculation", 1, {
+    bronze: 1,
+    silver: 2,
+    gold: 4,
+  }),
 );
-adventureCards["specialty.yuuka_blue_archive.1"].source = blueArchiveSpecialtySource;
+adventureCards["specialty.yuuka_blue_archive.1"].source =
+  blueArchiveSpecialtySource;
 
 adventureCards["specialty.yuuka_blue_archive.4"] = {
   id: "specialty.yuuka_blue_archive.4",
@@ -5585,7 +6401,14 @@ adventureCards["specialty.yuuka_blue_archive.4"] = {
   kind: "hero-specialty",
   timing: "combat",
   phaseLimit: ["combat"],
-  tags: ["hero-specialty", "combat", "ongoing", "yuuka_blue_archive", "perfect-calculation", "Ongoing: Select a unit. It has -1 Defense for this Combat."],
+  tags: [
+    "hero-specialty",
+    "combat",
+    "ongoing",
+    "yuuka_blue_archive",
+    "perfect-calculation",
+    "Ongoing: Select a unit. It has -1 Defense for this Combat.",
+  ],
   target: { type: "any-unit" },
   effect: {
     type: "CREATE_ACTIVE_EFFECT",
@@ -5595,11 +6418,11 @@ adventureCards["specialty.yuuka_blue_archive.4"] = {
       duration: { type: "combat" },
       polarity: "negative",
       removable: true,
-      modifiers: [{ type: "DEFENSE_BONUS", amount: -1 }]
-    }
+      modifiers: [{ type: "DEFENSE_BONUS", amount: -1 }],
+    },
   },
   implementationStatus: "implemented",
-  source: blueArchiveSpecialtySource
+  source: blueArchiveSpecialtySource,
 };
 
 adventureCards["specialty.yuuka_blue_archive.6"] = {
@@ -5608,11 +6431,22 @@ adventureCards["specialty.yuuka_blue_archive.6"] = {
   kind: "hero-specialty",
   timing: "instant",
   phaseLimit: ["reaction", "combat"],
-  tags: ["hero-specialty", "instant", "yuuka_blue_archive", "perfect-calculation", "Instant: Your selected unit gains +2 Defense for this attack, then the enemy discards 1 random card."],
+  tags: [
+    "hero-specialty",
+    "instant",
+    "yuuka_blue_archive",
+    "perfect-calculation",
+    "Instant: Your selected unit gains +2 Defense for this attack, then the enemy discards 1 random card.",
+  ],
   trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-  effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 2, randomEnemyDiscard: 1 },
+  effect: {
+    type: "ADD_COMBAT_STAT",
+    stat: "defense",
+    amount: 2,
+    randomEnemyDiscard: 1,
+  },
   implementationStatus: "implemented",
-  source: blueArchiveSpecialtySource
+  source: blueArchiveSpecialtySource,
 };
 
 adventureCards["specialty.seia_blue_archive.1"] = {
@@ -5621,16 +6455,31 @@ adventureCards["specialty.seia_blue_archive.1"] = {
   kind: "hero-specialty",
   timing: "instant",
   phaseLimit: ["reaction", "combat"],
-  tags: ["hero-specialty", "instant", "seia_blue_archive", "prophetic-counsel", "Instant: Add +1 Power to your Spell — OR — discard 1 card to add +2 Power."],
+  tags: [
+    "hero-specialty",
+    "instant",
+    "seia_blue_archive",
+    "prophetic-counsel",
+    "Instant: Add +1 Power to your Spell — OR — discard 1 card to add +2 Power.",
+  ],
   effect: {
     type: "CHOOSE_ONE",
     options: [
-      { label: "+1 Power", trigger: { event: "SPELL_CAST_STARTED", controller: "self" }, effect: { type: "ADD_SPELL_POWER", amount: 1 } },
-      { label: "Discard 1 card for +2 Power", trigger: { event: "SPELL_CAST_STARTED", controller: "self" }, cost: { discardCards: 1 }, effect: { type: "ADD_SPELL_POWER", amount: 2 } }
-    ]
+      {
+        label: "+1 Power",
+        trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+        effect: { type: "ADD_SPELL_POWER", amount: 1 },
+      },
+      {
+        label: "Discard 1 card for +2 Power",
+        trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+        cost: { discardCards: 1 },
+        effect: { type: "ADD_SPELL_POWER", amount: 2 },
+      },
+    ],
   },
   implementationStatus: "implemented",
-  source: blueArchiveSpecialtySource
+  source: blueArchiveSpecialtySource,
 };
 
 adventureCards["specialty.seia_blue_archive.4"] = {
@@ -5643,25 +6492,34 @@ adventureCards["specialty.seia_blue_archive.4"] = {
     "instant",
     "seia_blue_archive",
     "prophetic-counsel",
-    "Remove an Ability, Artifact, or Spell card from your hand to Search (3) its corresponding deck. Artifact and Spell deck access depends on your hero's location. You may also Remove this Specialty card."
+    "Remove an Ability, Artifact, or Spell card from your hand to Search (3) its corresponding deck. Artifact and Spell deck access depends on your hero's location. You may also Remove this Specialty card.",
   ],
   target: { type: "none" },
   effect: {
     type: "CHOOSE_ONE",
     options: [
       {
-        label: "Remove an Ability, Artifact, or Spell card to Search (3) its corresponding deck",
-        effect: { type: "REMOVE_HAND_CARD_THEN_SEARCH", count: 3, filter: "removable" }
+        label:
+          "Remove an Ability, Artifact, or Spell card to Search (3) its corresponding deck",
+        effect: {
+          type: "REMOVE_HAND_CARD_THEN_SEARCH",
+          count: 3,
+          filter: "removable",
+        },
       },
       {
         label: "Remove a card to Search (3), then Remove this Specialty card",
         cost: { removeSelf: true },
-        effect: { type: "REMOVE_HAND_CARD_THEN_SEARCH", count: 3, filter: "removable" }
-      }
-    ]
+        effect: {
+          type: "REMOVE_HAND_CARD_THEN_SEARCH",
+          count: 3,
+          filter: "removable",
+        },
+      },
+    ],
   },
   implementationStatus: "implemented",
-  source: blueArchiveSpecialtySource
+  source: blueArchiveSpecialtySource,
 };
 
 adventureCards["specialty.seia_blue_archive.6"] = {
@@ -5670,7 +6528,14 @@ adventureCards["specialty.seia_blue_archive.6"] = {
   kind: "hero-specialty",
   timing: "combat",
   phaseLimit: ["combat"],
-  tags: ["hero-specialty", "combat", "ongoing", "seia_blue_archive", "prophetic-counsel", "Ongoing: Select a unit. Its Attack die result is always -1 for this Combat."],
+  tags: [
+    "hero-specialty",
+    "combat",
+    "ongoing",
+    "seia_blue_archive",
+    "prophetic-counsel",
+    "Ongoing: Select a unit. Its Attack die result is always -1 for this Combat.",
+  ],
   target: { type: "any-unit" },
   effect: {
     type: "CREATE_ACTIVE_EFFECT",
@@ -5680,11 +6545,11 @@ adventureCards["specialty.seia_blue_archive.6"] = {
       duration: { type: "combat" },
       polarity: "negative",
       removable: true,
-      modifiers: [{ type: "ATTACK_ROLL_FIXED_MINUS_ONE" }]
-    }
+      modifiers: [{ type: "ATTACK_ROLL_FIXED_MINUS_ONE" }],
+    },
   },
   implementationStatus: "implemented",
-  source: blueArchiveSpecialtySource
+  source: blueArchiveSpecialtySource,
 };
 
 adventureCards["specialty.chise_blue_archive.1"] = {
@@ -5693,19 +6558,32 @@ adventureCards["specialty.chise_blue_archive.1"] = {
   kind: "hero-specialty",
   timing: "instant",
   phaseLimit: ["reaction", "combat"],
-  tags: ["hero-specialty", "instant", "chise_blue_archive", "mystic-chill", "At the beginning of Combat, as an Instant reaction: all enemy units get -1 Initiative for this Combat, then draw 1 card."],
+  tags: [
+    "hero-specialty",
+    "instant",
+    "chise_blue_archive",
+    "mystic-chill",
+    "At the beginning of Combat, as an Instant reaction: all enemy units get -1 Initiative for this Combat, then draw 1 card.",
+  ],
   effect: {
     type: "CHOOSE_ONE",
-    options: [{
-      label: "Beginning-of-Combat Instant reaction",
-      combatOnly: true,
-      combatStartOnly: true,
-      combatAnytime: true,
-      effect: { type: "SLOW_ALL_ENEMIES", name: "Mystic Chill I", initiative: -1, drawCards: 1 }
-    }]
+    options: [
+      {
+        label: "Beginning-of-Combat Instant reaction",
+        combatOnly: true,
+        combatStartOnly: true,
+        combatAnytime: true,
+        effect: {
+          type: "SLOW_ALL_ENEMIES",
+          name: "Mystic Chill I",
+          initiative: -1,
+          drawCards: 1,
+        },
+      },
+    ],
   },
   implementationStatus: "implemented",
-  source: blueArchiveSpecialtySource
+  source: blueArchiveSpecialtySource,
 };
 
 adventureCards["specialty.chise_blue_archive.4"] = {
@@ -5714,19 +6592,32 @@ adventureCards["specialty.chise_blue_archive.4"] = {
   kind: "hero-specialty",
   timing: "instant",
   phaseLimit: ["reaction", "combat"],
-  tags: ["hero-specialty", "instant", "chise_blue_archive", "mystic-chill", "At the beginning of Combat, as an Instant reaction: deal 1 damage to every enemy unit and give each -1 Initiative for this Combat."],
+  tags: [
+    "hero-specialty",
+    "instant",
+    "chise_blue_archive",
+    "mystic-chill",
+    "At the beginning of Combat, as an Instant reaction: deal 1 damage to every enemy unit and give each -1 Initiative for this Combat.",
+  ],
   effect: {
     type: "CHOOSE_ONE",
-    options: [{
-      label: "Beginning-of-Combat Instant reaction",
-      combatOnly: true,
-      combatStartOnly: true,
-      combatAnytime: true,
-      effect: { type: "SLOW_ALL_ENEMIES", name: "Mystic Chill IV", initiative: -1, damage: 1 }
-    }]
+    options: [
+      {
+        label: "Beginning-of-Combat Instant reaction",
+        combatOnly: true,
+        combatStartOnly: true,
+        combatAnytime: true,
+        effect: {
+          type: "SLOW_ALL_ENEMIES",
+          name: "Mystic Chill IV",
+          initiative: -1,
+          damage: 1,
+        },
+      },
+    ],
   },
   implementationStatus: "implemented",
-  source: blueArchiveSpecialtySource
+  source: blueArchiveSpecialtySource,
 };
 
 adventureCards["specialty.chise_blue_archive.6"] = {
@@ -5735,11 +6626,17 @@ adventureCards["specialty.chise_blue_archive.6"] = {
   kind: "hero-specialty",
   timing: "instant",
   phaseLimit: ["reaction", "combat"],
-  tags: ["hero-specialty", "instant", "chise_blue_archive", "mystic-chill", "Instant: Your selected unit gains +2 Defense for this attack, then draw 1 card."],
+  tags: [
+    "hero-specialty",
+    "instant",
+    "chise_blue_archive",
+    "mystic-chill",
+    "Instant: Your selected unit gains +2 Defense for this attack, then draw 1 card.",
+  ],
   trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
   effect: { type: "ADD_COMBAT_STAT", stat: "defense", amount: 2, drawCards: 1 },
   implementationStatus: "implemented",
-  source: blueArchiveSpecialtySource
+  source: blueArchiveSpecialtySource,
 };
 
 adventureCards["specialty.kei_blue_archive.1"] = {
@@ -5748,7 +6645,14 @@ adventureCards["specialty.kei_blue_archive.1"] = {
   kind: "hero-specialty",
   timing: "combat",
   phaseLimit: ["combat"],
-  tags: ["hero-specialty", "combat", "ongoing", "kei_blue_archive", "hacking", "Ongoing: Select an enemy unit. It rolls its Attack die at disadvantage for this Combat."],
+  tags: [
+    "hero-specialty",
+    "combat",
+    "ongoing",
+    "kei_blue_archive",
+    "hacking",
+    "Ongoing: Select an enemy unit. It rolls its Attack die at disadvantage for this Combat.",
+  ],
   target: { type: "enemy-unit" },
   effect: {
     type: "CREATE_ACTIVE_EFFECT",
@@ -5758,11 +6662,11 @@ adventureCards["specialty.kei_blue_archive.1"] = {
       duration: { type: "combat" },
       polarity: "negative",
       removable: true,
-      modifiers: [{ type: "ATTACK_ROLL_DISADVANTAGE" }]
-    }
+      modifiers: [{ type: "ATTACK_ROLL_DISADVANTAGE" }],
+    },
   },
   implementationStatus: "implemented",
-  source: blueArchiveSpecialtySource
+  source: blueArchiveSpecialtySource,
 };
 
 adventureCards["specialty.kei_blue_archive.4"] = {
@@ -5771,11 +6675,23 @@ adventureCards["specialty.kei_blue_archive.4"] = {
   kind: "hero-specialty",
   timing: "instant",
   phaseLimit: ["reaction", "combat"],
-  tags: ["hero-specialty", "instant", "kei_blue_archive", "hacking", "Instant: Your selected unit gains +2 Attack for this attack, then draw 2 cards and discard 1. It may also be played only for the draw on the map or in battle."],
+  tags: [
+    "hero-specialty",
+    "instant",
+    "kei_blue_archive",
+    "hacking",
+    "Instant: Your selected unit gains +2 Attack for this attack, then draw 2 cards and discard 1. It may also be played only for the draw on the map or in battle.",
+  ],
   trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-  effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2, drawCards: 2, thenDiscard: 1 },
+  effect: {
+    type: "ADD_COMBAT_STAT",
+    stat: "attack",
+    amount: 2,
+    drawCards: 2,
+    thenDiscard: 1,
+  },
   implementationStatus: "implemented",
-  source: blueArchiveSpecialtySource
+  source: blueArchiveSpecialtySource,
 };
 
 adventureCards["specialty.kei_blue_archive.6"] = {
@@ -5784,11 +6700,17 @@ adventureCards["specialty.kei_blue_archive.6"] = {
   kind: "hero-specialty",
   timing: "instant",
   phaseLimit: ["reaction", "combat"],
-  tags: ["hero-specialty", "instant", "kei_blue_archive", "hacking", "Instant: When an enemy unit is about to activate, it skips that activation."],
+  tags: [
+    "hero-specialty",
+    "instant",
+    "kei_blue_archive",
+    "hacking",
+    "Instant: When an enemy unit is about to activate, it skips that activation.",
+  ],
   trigger: { event: "UNIT_ACTIVATION_STARTED", controller: "opponent" },
   effect: { type: "SKIP_ACTIVATION", anyGrade: true },
   implementationStatus: "implemented",
-  source: blueArchiveSpecialtySource
+  source: blueArchiveSpecialtySource,
 };
 
 // Blue Archive specialty scans — all five heroes use the approved, generated
@@ -5798,41 +6720,117 @@ for (const heroSlug of [
   "yuuka_blue_archive",
   "seia_blue_archive",
   "chise_blue_archive",
-  "kei_blue_archive"
+  "kei_blue_archive",
 ] as const) {
   const fileHero = heroSlug.replace("_blue_archive", "");
-  for (const [level, fileLevel] of [[1, "i"], [4, "iv"], [6, "vi"]] as const) {
+  for (const [level, fileLevel] of [
+    [1, "i"],
+    [4, "iv"],
+    [6, "vi"],
+  ] as const) {
     const card = adventureCards[`specialty.${heroSlug}.${level}`];
     card.assets = {
       cardImage: `/assets/anime/cards/blue-archive/approved-style/${fileHero}-${fileLevel}.webp`,
-      imageAlt: `${card.name} specialty card`
+      imageAlt: `${card.name} specialty card`,
     };
   }
 }
 
 // Aoko (Fuyuki, magic): Rion's generic medic set — heal/cleanse + card draw.
-adventureCards["specialty.aoko.1"] = rethemedSpecialty(adventureCards["specialty.rion.1"], "rion", "aoko", 1, "Leyline Mending");
-adventureCards["specialty.aoko.4"] = rethemedSpecialty(adventureCards["specialty.rion.4"], "rion", "aoko", 4, "Leyline Mending");
-adventureCards["specialty.aoko.6"] = rethemedSpecialty(adventureCards["specialty.rion.6"], "rion", "aoko", 6, "Leyline Mending");
+adventureCards["specialty.aoko.1"] = rethemedSpecialty(
+  adventureCards["specialty.rion.1"],
+  "rion",
+  "aoko",
+  1,
+  "Leyline Mending",
+);
+adventureCards["specialty.aoko.4"] = rethemedSpecialty(
+  adventureCards["specialty.rion.4"],
+  "rion",
+  "aoko",
+  4,
+  "Leyline Mending",
+);
+adventureCards["specialty.aoko.6"] = rethemedSpecialty(
+  adventureCards["specialty.rion.6"],
+  "rion",
+  "aoko",
+  6,
+  "Leyline Mending",
+);
 // Sakura Matou (Fuyuki, magic): a fully wired heal/cleanse-and-draw specialty.
-adventureCards["specialty.sakura_matou.1"] = rethemedSpecialty(adventureCards["specialty.rion.1"], "rion", "sakura_matou", 1, "Gentle Resolve");
-adventureCards["specialty.sakura_matou.4"] = rethemedSpecialty(adventureCards["specialty.rion.4"], "rion", "sakura_matou", 4, "Gentle Resolve");
-adventureCards["specialty.sakura_matou.6"] = rethemedSpecialty(adventureCards["specialty.rion.6"], "rion", "sakura_matou", 6, "Gentle Resolve");
+adventureCards["specialty.sakura_matou.1"] = rethemedSpecialty(
+  adventureCards["specialty.rion.1"],
+  "rion",
+  "sakura_matou",
+  1,
+  "Gentle Resolve",
+);
+adventureCards["specialty.sakura_matou.4"] = rethemedSpecialty(
+  adventureCards["specialty.rion.4"],
+  "rion",
+  "sakura_matou",
+  4,
+  "Gentle Resolve",
+);
+adventureCards["specialty.sakura_matou.6"] = rethemedSpecialty(
+  adventureCards["specialty.rion.6"],
+  "rion",
+  "sakura_matou",
+  6,
+  "Gentle Resolve",
+);
 // Lingxi (Azure Breeze, magic): Gem's generic First Aid set (Tent + heals).
 // Art-less on purpose — the native SpecialtyCard draws her portrait + the
 // dedicated specialty-card medallion (`icon-first_aid.webp`), not Gem's baked
 // First Aid scan. Engine wiring is identical to Gem (tests on gem cover the
 // effect; lingxi is pinned for art/identity in specialty-card.test.tsx).
-adventureCards["specialty.lingxi.1"] = rethemedSpecialty(adventureCards["specialty.gem.1"], "gem", "lingxi", 1, "Healing Arts");
-adventureCards["specialty.lingxi.4"] = rethemedSpecialty(adventureCards["specialty.gem.4"], "gem", "lingxi", 4, "Healing Arts");
-adventureCards["specialty.lingxi.6"] = rethemedSpecialty(adventureCards["specialty.gem.6"], "gem", "lingxi", 6, "Healing Arts");
+adventureCards["specialty.lingxi.1"] = rethemedSpecialty(
+  adventureCards["specialty.gem.1"],
+  "gem",
+  "lingxi",
+  1,
+  "Healing Arts",
+);
+adventureCards["specialty.lingxi.4"] = rethemedSpecialty(
+  adventureCards["specialty.gem.4"],
+  "gem",
+  "lingxi",
+  4,
+  "Healing Arts",
+);
+adventureCards["specialty.lingxi.6"] = rethemedSpecialty(
+  adventureCards["specialty.gem.6"],
+  "gem",
+  "lingxi",
+  6,
+  "Healing Arts",
+);
 // Tsunade (Hidden Leaf, magic): Gem's generic First Aid set (Tent + heals), the
 // faction-agnostic medic — no unit doubling that could go dead. Distinct id +
 // name ("Hundred Healings") from Lingxi's gem clone, so no collision. Art-less:
 // the native SpecialtyCard draws her portrait + the First-Aid medallion.
-adventureCards["specialty.tsunade.1"] = rethemedSpecialty(adventureCards["specialty.gem.1"], "gem", "tsunade", 1, "Hundred Healings");
-adventureCards["specialty.tsunade.4"] = rethemedSpecialty(adventureCards["specialty.gem.4"], "gem", "tsunade", 4, "Hundred Healings");
-adventureCards["specialty.tsunade.6"] = rethemedSpecialty(adventureCards["specialty.gem.6"], "gem", "tsunade", 6, "Hundred Healings");
+adventureCards["specialty.tsunade.1"] = rethemedSpecialty(
+  adventureCards["specialty.gem.1"],
+  "gem",
+  "tsunade",
+  1,
+  "Hundred Healings",
+);
+adventureCards["specialty.tsunade.4"] = rethemedSpecialty(
+  adventureCards["specialty.gem.4"],
+  "gem",
+  "tsunade",
+  4,
+  "Hundred Healings",
+);
+adventureCards["specialty.tsunade.6"] = rethemedSpecialty(
+  adventureCards["specialty.gem.6"],
+  "gem",
+  "tsunade",
+  6,
+  "Hundred Healings",
+);
 // (Akashi and Sirius were Gem / Rion medic CLONES until 2026-09-05. They now own
 // the BESPOKE "Repair Dock" and "Royal Maid's Cover" sets defined with the other
 // Azur Lane specialties above, so nothing is assigned for them here.)
@@ -5840,24 +6838,72 @@ adventureCards["specialty.tsunade.6"] = rethemedSpecialty(adventureCards["specia
 // faction-agnostic medic — no unit doubling that could go dead. Distinct id +
 // name ("Blood Renewal") from every other gem clone, so no collision. Art-less:
 // the native SpecialtyCard draws her portrait + the First-Aid medallion.
-adventureCards["specialty.yaoji.1"] = rethemedSpecialty(adventureCards["specialty.gem.1"], "gem", "yaoji", 1, "Blood Renewal");
-adventureCards["specialty.yaoji.4"] = rethemedSpecialty(adventureCards["specialty.gem.4"], "gem", "yaoji", 4, "Blood Renewal");
-adventureCards["specialty.yaoji.6"] = rethemedSpecialty(adventureCards["specialty.gem.6"], "gem", "yaoji", 6, "Blood Renewal");
+adventureCards["specialty.yaoji.1"] = rethemedSpecialty(
+  adventureCards["specialty.gem.1"],
+  "gem",
+  "yaoji",
+  1,
+  "Blood Renewal",
+);
+adventureCards["specialty.yaoji.4"] = rethemedSpecialty(
+  adventureCards["specialty.gem.4"],
+  "gem",
+  "yaoji",
+  4,
+  "Blood Renewal",
+);
+adventureCards["specialty.yaoji.6"] = rethemedSpecialty(
+  adventureCards["specialty.gem.6"],
+  "gem",
+  "yaoji",
+  6,
+  "Blood Renewal",
+);
 // Molian (Heavenly Demon, magic): Rion's generic heal/cleanse-draw set (the aoko /
 // sirius precedent — a faction-agnostic medic with no unit doubling that could go
 // dead). Distinct id + name ("Corpse Suture") from every other rion clone, so no
 // collision. Art-less: the native SpecialtyCard draws her portrait + medallion.
-adventureCards["specialty.molian.1"] = rethemedSpecialty(adventureCards["specialty.rion.1"], "rion", "molian", 1, "Corpse Suture");
-adventureCards["specialty.molian.4"] = rethemedSpecialty(adventureCards["specialty.rion.4"], "rion", "molian", 4, "Corpse Suture");
-adventureCards["specialty.molian.6"] = rethemedSpecialty(adventureCards["specialty.rion.6"], "rion", "molian", 6, "Corpse Suture");
+adventureCards["specialty.molian.1"] = rethemedSpecialty(
+  adventureCards["specialty.rion.1"],
+  "rion",
+  "molian",
+  1,
+  "Corpse Suture",
+);
+adventureCards["specialty.molian.4"] = rethemedSpecialty(
+  adventureCards["specialty.rion.4"],
+  "rion",
+  "molian",
+  4,
+  "Corpse Suture",
+);
+adventureCards["specialty.molian.6"] = rethemedSpecialty(
+  adventureCards["specialty.rion.6"],
+  "rion",
+  "molian",
+  6,
+  "Corpse Suture",
+);
 for (const level of [1, 4, 6] as const) {
   adventureCards[`specialty.luohun.${level}`] = withInnateHeroRule(
-    rethemedSpecialty(adventureCards[`specialty.gem.${level}`], "gem", "luohun", level, "Soul Shepherd"),
-    "Innate — the Ten Thousand Souls Banner's Bound Soul has 1 Defense, 3 Health, and remains through combat round 2."
+    rethemedSpecialty(
+      adventureCards[`specialty.gem.${level}`],
+      "gem",
+      "luohun",
+      level,
+      "Soul Shepherd",
+    ),
+    "Innate — the Ten Thousand Souls Banner's Bound Soul has 1 Defense, 3 Health, and remains through combat round 2.",
   );
   adventureCards[`specialty.shiyan.${level}`] = withInnateHeroRule(
-    rethemedSpecialty(adventureCards[`specialty.rion.${level}`], "rion", "shiyan", level, "Corpse-Furnace Sutra"),
-    "Innate — the first real Heavenly Demon casualty each combat round yields exactly 1 Blood Essence; Shiyan cannot increase that yield."
+    rethemedSpecialty(
+      adventureCards[`specialty.rion.${level}`],
+      "rion",
+      "shiyan",
+      level,
+      "Corpse-Furnace Sutra",
+    ),
+    "Innate — the first real Heavenly Demon casualty each combat round yields exactly 1 Blood Essence; Shiyan cannot increase that yield.",
   );
 }
 
@@ -5877,90 +6923,150 @@ for (const level of [1, 4, 6] as const) {
   // Shirou (Fuyuki, might) — Projection Magecraft: sacrifice a card to trace a
   // copy from its deck (Miriam's Scouting search set).
   adventureCards[`specialty.shirou_emiya.${level}`] = rethemedSpecialty(
-    adventureCards[`specialty.miriam.${level}`], "miriam", "shirou_emiya", level, "Projection Magecraft"
+    adventureCards[`specialty.miriam.${level}`],
+    "miriam",
+    "shirou_emiya",
+    level,
+    "Projection Magecraft",
   );
   // Rin (Fuyuki, magic-leaning might roster slot) — Gandr Shot: her jewel-stored
   // curses ARE magic arrows (Ciele's set; the recovered card really is the
   // Magic Arrow spell, so the labels keep its printed name).
   adventureCards[`specialty.rin_tohsaka.${level}`] = rethemedSpecialty(
-    adventureCards[`specialty.ciele.${level}`], "ciele", "rin_tohsaka", level, "Gandr Shot"
+    adventureCards[`specialty.ciele.${level}`],
+    "ciele",
+    "rin_tohsaka",
+    level,
+    "Gandr Shot",
   );
   // Kiritsugu (Fuyuki, might) — Time Alter: Innate Time Control accelerates his
   // side (Cyra's Haste set).
   adventureCards[`specialty.kiritsugu_emiya.${level}`] = rethemedSpecialty(
-    adventureCards[`specialty.cyra.${level}`], "cyra", "kiritsugu_emiya", level, "Time Alter"
+    adventureCards[`specialty.cyra.${level}`],
+    "cyra",
+    "kiritsugu_emiya",
+    level,
+    "Time Alter",
   );
   // Kirei (Fuyuki, might) — Black Keys: the Executor's killing arts (Ash's
   // Bloodlust set; VI's un-retaliated +3 strike is the assassination blow).
   adventureCards[`specialty.kirei_kotomine.${level}`] = rethemedSpecialty(
-    adventureCards[`specialty.ash.${level}`], "ash", "kirei_kotomine", level, "Black Keys"
+    adventureCards[`specialty.ash.${level}`],
+    "ash",
+    "kirei_kotomine",
+    level,
+    "Black Keys",
   );
   // Sasuke (Hidden Leaf, might) — Chidori Stream: lightning arcs to the nearest
   // bodies (Solmyr's Chain Lightning set).
   adventureCards[`specialty.sasuke.${level}`] = rethemedSpecialty(
-    adventureCards[`specialty.solmyr.${level}`], "solmyr", "sasuke", level, "Chidori Stream"
+    adventureCards[`specialty.solmyr.${level}`],
+    "solmyr",
+    "sasuke",
+    level,
+    "Chidori Stream",
   );
   // Kakashi (Hidden Leaf, might) — Raikiri · Sharingan: the lightning-blade
   // burst plus "copy a Spell or Specialty back from the discard" (Adelaide's
   // set; its three combatAnytime faces join COMBAT_ANYTIME_FACES).
   adventureCards[`specialty.kakashi_hatake.${level}`] = rethemedSpecialty(
-    adventureCards[`specialty.adelaide.${level}`], "adelaide", "kakashi_hatake", level, "Raikiri · Sharingan"
+    adventureCards[`specialty.adelaide.${level}`],
+    "adelaide",
+    "kakashi_hatake",
+    level,
+    "Raikiri · Sharingan",
   );
   // Shikamaru (Hidden Leaf, magic) — Shadow Possession: the bound unit cannot
   // attack on its next activation (Zilare's Forgetfulness set).
   adventureCards[`specialty.shikamaru_nara.${level}`] = rethemedSpecialty(
-    adventureCards[`specialty.zilare.${level}`], "zilare", "shikamaru_nara", level, "Shadow Possession"
+    adventureCards[`specialty.zilare.${level}`],
+    "zilare",
+    "shikamaru_nara",
+    level,
+    "Shadow Possession",
   );
   // Jiraiya (Hidden Leaf, magic) — Toad Oil Flame Bomb: burning oil pooled on
   // the battlefield (Luna's set; the card places real Fire Wall tokens, so the
   // rules text keeps that token's printed name).
   adventureCards[`specialty.jiraiya.${level}`] = rethemedSpecialty(
-    adventureCards[`specialty.luna.${level}`], "luna", "jiraiya", level, "Toad Oil Flame Bomb"
+    adventureCards[`specialty.luna.${level}`],
+    "luna",
+    "jiraiya",
+    level,
+    "Toad Oil Flame Bomb",
   );
   // Qingyun (Azure Breeze, might) — Sword Qi Tempest: discard-fueled sword-wave
   // bursts (Xyron's Inferno set) beside his innate Sword Intent meter.
   adventureCards[`specialty.qingyun.${level}`] = rethemedSpecialty(
-    adventureCards[`specialty.xyron.${level}`], "xyron", "qingyun", level, "Sword Qi Tempest"
+    adventureCards[`specialty.xyron.${level}`],
+    "xyron",
+    "qingyun",
+    level,
+    "Sword Qi Tempest",
   );
   // Jianxu (Azure Breeze, might) — Seven-Star Trap Array: an enemy-wide snare
   // aura, a warding heal, an array eruption (Miku's Voice-of-Angel wiring),
   // plus his kept Innate array rule.
   const jianxuCard = rethemedSpecialty(
-    adventureCards[`specialty.miku.${level}`], "miku", "jianxu", level, "Seven-Star Trap Array"
+    adventureCards[`specialty.miku.${level}`],
+    "miku",
+    "jianxu",
+    level,
+    "Seven-Star Trap Array",
   );
-  jianxuCard.tags = jianxuCard.tags?.map((tag) => (tag === "voice-of-angel" ? "seven-star-trap-array" : tag));
+  jianxuCard.tags = jianxuCard.tags?.map((tag) =>
+    tag === "voice-of-angel" ? "seven-star-trap-array" : tag,
+  );
   const jianxuEffect = jianxuCard.effect as { name?: string } | undefined;
   if (jianxuEffect && typeof jianxuEffect.name === "string") {
     jianxuEffect.name = "Seven-Star Trap Array";
   }
   adventureCards[`specialty.jianxu.${level}`] = withInnateHeroRule(
     jianxuCard,
-    "Innate — Seven-Star Array spends 1 Sect Qi for +1 Attack only; it never stacks with Sword Array or another Qi bonus."
+    "Innate — Seven-Star Array spends 1 Sect Qi for +1 Attack only; it never stacks with Sword Array or another Qi bonus.",
   );
   // Yulian (Azure Breeze, might) — Jade Body Arts: tempered-jade defense tokens
   // for the whole line (Merist's Stone Skin set), plus his kept Innate Shared
   // Ward rule.
   adventureCards[`specialty.yulian.${level}`] = withInnateHeroRule(
-    rethemedSpecialty(adventureCards[`specialty.merist.${level}`], "merist", "yulian", level, "Jade Body Arts"),
-    "Innate — once each combat round, when Shared Ward spends Sect Qi on a damaged defender, that unit also recovers 1 damage."
+    rethemedSpecialty(
+      adventureCards[`specialty.merist.${level}`],
+      "merist",
+      "yulian",
+      level,
+      "Jade Body Arts",
+    ),
+    "Innate — once each combat round, when Shared Ward spends Sect Qi on a damaged defender, that unit also recovers 1 damage.",
   );
   // Xuedao (Heavenly Demon, might) — Blood Ripple: tier-sweeping life-drain
   // waves (Septienna's Death Ripple set).
   adventureCards[`specialty.xuedao.${level}`] = rethemedSpecialty(
-    adventureCards[`specialty.septienna.${level}`], "septienna", "xuedao", level, "Blood Ripple"
+    adventureCards[`specialty.septienna.${level}`],
+    "septienna",
+    "xuedao",
+    level,
+    "Blood Ripple",
   );
   // Guiyan (Heavenly Demon, might) — Ghostfire Coil: soulfire bursting around a
   // chosen space (Glacius's Frost Ring set; its three combatAnytime faces join
   // COMBAT_ANYTIME_FACES).
   adventureCards[`specialty.guiyan.${level}`] = rethemedSpecialty(
-    adventureCards[`specialty.glacius.${level}`], "glacius", "guiyan", level, "Ghostfire Coil"
+    adventureCards[`specialty.glacius.${level}`],
+    "glacius",
+    "guiyan",
+    level,
+    "Ghostfire Coil",
   );
   // Xuanming (Heavenly Demon, might) — Legion of Bones: conscript the fallen
   // into service (Oidana's Diplomacy set). Only the display labels and the VI
   // buff's display name are re-flavoured — the mechanics text after each colon
   // and every effect stay byte-identical to Diplomacy's.
   const xuanmingCard = rethemedSpecialty(
-    adventureCards[`specialty.oidana.${level}`], "oidana", "xuanming", level, "Legion of Bones"
+    adventureCards[`specialty.oidana.${level}`],
+    "oidana",
+    "xuanming",
+    level,
+    "Legion of Bones",
   );
   const xuanmingEffect = xuanmingCard.effect as
     | { options?: Array<{ label?: string; effect?: { name?: string } }> }
@@ -5979,12 +7085,8 @@ for (const level of [1, 4, 6] as const) {
 // Twelve original, engine-backed Imperium specialties (three per Hero).
 Object.assign(adventureCards, imperiumSpecialtyCards);
 
-// Little Busters specialty identities. These are native-card rethemes of fully
-// implemented mechanics: Riki uses Forgetfulness, Yuiko Fortune, and Kud's
-// Rocket Launcher uses Meteor Shower's engine effect. Levels 1/4/6 only unlock the corresponding card; they do not
-// add hidden battlefield stats. Komari retains her First-Aid card line.
 // ===========================================================================
-// LITTLE BUSTERS SPECIALTY SETS (2026-09-05) — five ORIGINAL engine-wired sets
+// LITTLE BUSTERS SPECIALTY SETS (2026-09-06 rebalance)
 //
 // These replaced the generic unit-buff trio (Sasami / Rin), Riki's Zilare
 // Forgetfulness clone, Yuiko's Melodia Fortune clone and Komari's Gem First-Aid
@@ -5998,193 +7100,220 @@ Object.assign(adventureCards, imperiumSpecialtyCards);
 
 const littleBustersSpecialtySource = {
   product: "Anime Mod — Ninefold Realms × Otherworld Gate",
-  credit: "Original hero specialty for this digital module; every clause above is engine-enforced."
+  credit:
+    "Original hero specialty for this digital module; every clause above is engine-enforced.",
 } as const;
 
-/**
- * Sasami "Home Run" — an INSTANT played into your own unit's declared-attack
- * window. After that attack resolves: a SURVIVING target the attacker stands
- * orthogonally beside is shoved one space directly away; when it cannot be
- * shoved (off the board, occupied, an obstacle/Wall/token, a ranged shot from
- * range, or a unit the Teleport spell refuses to relocate) it takes the level's
- * damage instead. A destroyed target gets nothing, and it never fires on a
- * Retaliation Attack.
- */
-function homeRunSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
-  const minRoll = level === 1 ? 1 : level === 4 ? 0 : -1;
-  const blockedDamage = level === 6 ? 2 : 1;
-  const dieText =
-    level === 1
-      ? 'only when your Attack die shows "+1"'
-      : level === 4
-        ? 'only when your Attack die shows "0" or "+1"'
-        : "whatever your Attack die shows";
+// Little Busters card builders; timing and duration are stated on each face.
+function lbCard(
+  hero: string,
+  name: string,
+  level: 1 | 4 | 6,
+  text: string,
+  effect: CardLibrary[string]["effect"],
+  timing: CardLibrary[string]["timing"] = "combat",
+  target: CardLibrary[string]["target"] = { type: "none" },
+): CardLibrary[string] {
   return {
-    id: `specialty.sasami_sasasegawa.${level}`,
-    name: `Home Run ${towerRoman(level)}`,
+    id: `specialty.${hero}.${level}`,
+    name: `${name} ${towerRoman(level)}`,
     kind: "hero-specialty",
-    timing: "instant",
-    phaseLimit: ["reaction", "combat"],
-    tags: [
-      "hero-specialty",
-      "instant",
-      "sasami_sasasegawa",
-      "home-run",
-      `Instant, played when one of your units declares an attack (never a Retaliation Attack), ${dieText}: after that attack resolves, if the target survived and your unit stands next to it, knock the target back 1 space directly away. If it cannot be moved there, deal ${blockedDamage} damage to it instead.`
-    ],
-    trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-    target: { type: "none" },
-    effect: {
-      type: "KNOCKBACK_ON_ATTACK",
-      name: `Home Run ${towerRoman(level)}`,
-      minRoll,
-      blockedDamage
-    },
+    timing,
+    tags: ["hero-specialty", hero, text],
+    target,
+    effect,
     implementationStatus: "implemented",
-    source: littleBustersSpecialtySource
+    source: littleBustersSpecialtySource,
   };
 }
 
-/**
- * Rin "Cat Corps" — a combat play on your own unit's activation that summons
- * temporary cats. The cats are battlefield-only bodies: no army card, no XP, no
- * reward, no deployment slot, and they vanish when the combat ends.
- */
-function catCorpsSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
-  const unitDefId = level === 1 ? "little_busters.stray_cat" : "little_busters.alley_cat";
-  const count = level === 6 ? 2 : 1;
-  const catName = level === 1 ? "Stray Cat" : "Alley Cat";
-  return {
-    id: `specialty.rin_natsume.${level}`,
-    name: `Cat Corps ${towerRoman(level)}`,
-    kind: "hero-specialty",
-    timing: "combat",
-    phaseLimit: ["combat"],
-    tags: [
-      "hero-specialty",
+function homeRunSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
+  if (level === 4)
+    return lbCard(
+      "sasami_sasasegawa",
+      "Home Run",
+      level,
+      "Ongoing, Combat: a friendly unit gains +1 maximum Health for this Combat, or +2 if it is Softball Club.",
+      {
+        type: "ADD_UNIT_MAX_HEALTH",
+        amount: 1,
+        doubleForUnitName: "Softball Club",
+      },
       "combat",
-      "rin_natsume",
-      "cat-corps",
-      `Combat: choose an empty Combat space next to one of your units and summon ${count === 1 ? `one ${catName}` : `two ${catName}s`} there (a second cat takes the next free space beside your units). They fight for you until the Combat ends and then vanish — they never join your army, earn experience or count against your deployment limit.`
-    ],
-    target: { type: "empty-space" },
-    effect: {
+      { type: "friendly-unit" },
+    );
+  const attack = level === 1 ? 1 : 2;
+  return {
+    ...lbCard(
+      "sasami_sasasegawa",
+      "Home Run",
+      level,
+      `Instant, your normal attack: +${attack} Attack. ${level === 1 ? "On a +1 die" : "On any die"}, push the surviving target 1 space directly away; if it cannot move, deal 1 damage instead. A pushed target cannot Retaliate.`,
+      {
+        type: "KNOCKBACK_ON_ATTACK",
+        name: `Home Run ${towerRoman(level)}`,
+        minRoll: level === 1 ? 1 : -1,
+        blockedDamage: 1,
+        attackBonus: attack,
+      },
+      "instant",
+    ),
+    trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+    phaseLimit: ["reaction", "combat"],
+  };
+}
+
+function anytimeDamageCard(
+  hero: string,
+  name: string,
+  level: 1 | 4 | 6,
+  amount: number,
+): CardLibrary[string] {
+  return lbCard(
+    hero,
+    name,
+    level,
+    `Instant during Combat: deal ${amount} damage to a chosen unit. May be played in reaction windows, before an enemy activates, after movement, or before Retaliation.`,
+    {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: `Deal ${amount} damage`,
+          combatAnytime: true,
+          effect: { type: "DEAL_DAMAGE", amount, damageKind: "effect" },
+        },
+      ],
+    },
+    "instant",
+    { type: "any-unit" },
+  );
+}
+
+function catCorpsSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
+  if (level === 6)
+    return anytimeDamageCard("rin_natsume", "Cat Corps", level, 3);
+  const drawCards = level === 1 ? 1 : 2;
+  return lbCard(
+    "rin_natsume",
+    "Cat Corps",
+    level,
+    `Combat: summon one ${level === 1 ? "Stray Cat" : "Alley Cat"} on an empty space beside an ally, then draw ${drawCards}${level === 4 ? " and discard 1 card" : " card"}. Alternatively, play as an Instant for only the draw${level === 4 ? " and discard" : ""} effect. The cat lasts this Combat.`,
+    {
       type: "SUMMON_CAMPUS_CATS",
       name: `Cat Corps ${towerRoman(level)}`,
-      unitDefId,
-      count
+      unitDefId:
+        level === 1 ? "little_busters.stray_cat" : "little_busters.alley_cat",
+      count: 1,
+      drawCards,
+      thenDiscard: level === 4 ? 1 : 0,
     },
-    implementationStatus: "implemented",
-    source: littleBustersSpecialtySource
-  };
+    "instant",
+    { type: "empty-space" },
+  );
 }
 
-/**
- * Riki "Little Busters' Bond" — the fallen friends push the survivors on. The
- * count is measured ONCE, at play time, and frozen into the effect.
- */
 function littleBustersBondSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
-  const maxAttack = level === 1 ? 1 : level === 4 ? 2 : 3;
-  const defenseAtFallen = level === 6 ? 2 : undefined;
-  return {
-    id: `specialty.riki_naoe.${level}`,
-    name: `Little Busters' Bond ${towerRoman(level)}`,
-    kind: "hero-specialty",
-    timing: "combat",
-    phaseLimit: ["combat"],
-    tags: [
-      "hero-specialty",
-      "combat",
+  if (level === 6)
+    return lbCard(
       "riki_naoe",
-      "little-busters-bond",
-      `Combat: choose a friendly unit. For the rest of this Combat it gains +1 Attack for EACH of your own army units already removed from this Combat, up to +${maxAttack}${defenseAtFallen ? "; once at least 2 have fallen it also gains +1 Defense" : ""}. Summoned units and your Commander are not counted, and the bonus is fixed when you play this card.`
-    ],
-    target: { type: "friendly-unit" },
-    effect: {
-      type: "FALLEN_ALLY_RESOLVE",
-      name: `Little Busters' Bond ${towerRoman(level)}`,
-      maxAttack,
-      ...(defenseAtFallen === undefined ? {} : { defenseAtFallen })
-    },
-    implementationStatus: "implemented",
-    source: littleBustersSpecialtySource
-  };
-}
-
-/**
- * Yuiko "Blade Dance" — played during your own GROUND unit's activation before
- * it attacks; the effect is activation-scoped, so it expires with that
- * activation whether or not the unit ever swings.
- */
-function bladeDanceSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
-  const amount = level === 6 ? 2 : 1;
-  const minRoll = level === 1 ? 0 : -1;
-  const dieText =
-    level === 1 ? ' — only when its Attack die shows "0" or "+1"' : "";
-  return {
-    id: `specialty.yuiko_kurugaya.${level}`,
-    name: `Blade Dance ${towerRoman(level)}`,
-    kind: "hero-specialty",
-    timing: "combat",
-    phaseLimit: ["combat"],
-    tags: [
-      "hero-specialty",
-      "combat",
-      "yuiko_kurugaya",
-      "blade-dance",
-      `Combat, during your own ground unit's activation before it attacks: this activation, after that unit's own attack resolves, every OTHER enemy unit standing next to it takes ${amount} damage${dieText}. The unit it attacked is not hit again, and this never fires on a Retaliation Attack.`
-    ],
-    target: { type: "none" },
-    effect: {
-      type: "CREATE_BLADE_DANCE",
-      name: `Blade Dance ${towerRoman(level)}`,
-      amount,
-      minRoll
-    },
-    implementationStatus: "implemented",
-    source: littleBustersSpecialtySource
-  };
-}
-
-/**
- * Komari "Star Candy" — a one-shot damage shield. It is spent the first time the
- * unit takes damage of ANY kind, even when only part of it was needed; unspent,
- * it lasts the whole Combat.
- */
-function starCandySpecialty(level: 1 | 4 | 6): CardLibrary[string] {
-  const amount = level === 1 ? 1 : 2;
-  const alsoMostWounded = level === 6;
-  return {
-    id: `specialty.komari_kamikita.${level}`,
-    name: `Star Candy ${towerRoman(level)}`,
-    kind: "hero-specialty",
-    timing: "instant",
-    phaseLimit: ["combat", "reaction"],
-    tags: [
-      "hero-specialty",
+      "Little Busters' Bond",
+      level,
+      "Instant, before attack or Spell damage is applied: prevent the entire hit to one friendly unit, then deal half the prevented damage (rounded up) to another chosen living unit, friend or foe.",
+      { type: "REDIRECT_PENDING_DAMAGE" },
       "instant",
-      "komari_kamikita",
-      "star-candy",
-      `Instant: give a friendly unit a Candy shield${alsoMostWounded ? ", and give a second one to your most wounded other unit" : ""}. The next damage that unit takes — from an attack, a Spell or an effect — is reduced by ${amount}, then the shield is used up even if only part of it was needed. An unused shield lasts the rest of the Combat.`
-    ],
-    target: { type: "friendly-unit" },
-    effect: {
+      { type: "any-unit" },
+    );
+  if (level === 4)
+    return lbCard(
+      "riki_naoe",
+      "Little Busters' Bond",
+      level,
+      "Ongoing: your whole team gains +3 Initiative, plus +1 per fallen own army unit. Updates on each new army loss. The entire bonus expires at the end of the following Combat round; each new loss refreshes that expiry. Summons, temporary units and commanders do not count.",
+      {
+        type: "FALLEN_ALLY_RESOLVE",
+        name: "Little Busters' Bond IV",
+        baseAttack: 0,
+        maxAttack: 0,
+        teamInitiative: 3,
+      },
+    );
+  return lbCard(
+    "riki_naoe",
+    "Little Busters' Bond",
+    level,
+    "Ongoing: a friendly unit gains +1 Attack, plus +1 if an own army unit has fallen (maximum 1 counted). Updates on army losses. The entire bonus expires at the end of the following Combat round; each new army loss refreshes that expiry. Summons, temporary units and commanders do not count.",
+    {
+      type: "FALLEN_ALLY_RESOLVE",
+      name: "Little Busters' Bond I",
+      baseAttack: 1,
+      maxAttack: 1,
+    },
+    "combat",
+    { type: "friendly-unit" },
+  );
+}
+
+function bladeDanceSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
+  if (level === 1)
+    return anytimeDamageCard("yuiko_kurugaya", "Blade Dance", level, 1);
+  if (level === 4)
+    return lbCard(
+      "yuiko_kurugaya",
+      "Blade Dance",
+      level,
+      "Instant, map or Combat: gain +1 Morale and 2 gold.",
+      { type: "GAIN_MORALE_AND_GOLD", morale: 1, gold: 2 },
+      "instant",
+    );
+  return lbCard(
+    "yuiko_kurugaya",
+    "Blade Dance",
+    level,
+    "Ongoing, Combat: a friendly ground unit deals +1 attack damage per enemy adjacent to it. Recount for each attack; lasts this Combat.",
+    {
+      type: "CREATE_ACTIVE_EFFECT",
+      effect: {
+        name: "Blade Dance VI",
+        scope: "unit",
+        duration: { type: "combat" },
+        polarity: "positive",
+        removable: true,
+        modifiers: [{ type: "DAMAGE_PER_ADJACENT_ENEMY", amount: 1 }],
+      },
+    },
+    "combat",
+    { type: "friendly-unit", unitTypes: ["ground"] },
+  );
+}
+
+function starCandySpecialty(level: 1 | 4 | 6): CardLibrary[string] {
+  return lbCard(
+    "komari_kamikita",
+    "Star Candy",
+    level,
+    `Ongoing, Combat: shield a friendly unit${level === 6 ? " and one random other friendly unit" : ""}. Its next damage (attack, Spell or effect) is reduced by ${level === 1 ? 1 : 2}, then its whole shield expires. While shielded, heal 1 at the start of that unit's activation. Unused shields last this Combat.`,
+    {
       type: "CREATE_DAMAGE_SHIELD",
       name: `Star Candy ${towerRoman(level)}`,
-      amount,
-      ...(alsoMostWounded ? { alsoMostWounded: true } : {})
+      amount: level === 1 ? 1 : 2,
+      healAtActivation: 1,
+      ...(level === 6 ? { alsoRandomAlly: true } : {}),
     },
-    implementationStatus: "implemented",
-    source: littleBustersSpecialtySource
-  };
+    "combat",
+    { type: "friendly-unit" },
+  );
 }
 
 for (const level of [1, 4, 6] as const) {
-  adventureCards[`specialty.sasami_sasasegawa.${level}`] = homeRunSpecialty(level);
+  adventureCards[`specialty.sasami_sasasegawa.${level}`] =
+    homeRunSpecialty(level);
   adventureCards[`specialty.rin_natsume.${level}`] = catCorpsSpecialty(level);
-  adventureCards[`specialty.riki_naoe.${level}`] = littleBustersBondSpecialty(level);
-  adventureCards[`specialty.yuiko_kurugaya.${level}`] = bladeDanceSpecialty(level);
-  adventureCards[`specialty.komari_kamikita.${level}`] = starCandySpecialty(level);
+  adventureCards[`specialty.riki_naoe.${level}`] =
+    littleBustersBondSpecialty(level);
+  adventureCards[`specialty.yuiko_kurugaya.${level}`] =
+    bladeDanceSpecialty(level);
+  adventureCards[`specialty.komari_kamikita.${level}`] =
+    starCandySpecialty(level);
 }
 function kudRocketLauncherSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
   const next = rethemedSpecialty(
@@ -6192,14 +7321,14 @@ function kudRocketLauncherSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
     "deemer",
     "kudryavka_noumi",
     level,
-    "Rocket Launcher"
+    "Rocket Launcher",
   );
   if (level !== 4) {
     const neighbours = level === 1 ? "1 adjacent unit" : "2 adjacent units";
     next.tags = next.tags?.map((tag) =>
       tag.startsWith("Instant (any time")
         ? `Instant: Select a unit and ${neighbours}. Deal damage to each (friend or foe): 1 at Power 0–1, 2 at Power 2–3, or 3 at Power 4+.`
-        : tag
+        : tag,
     );
   }
   return next;
@@ -6217,7 +7346,7 @@ adventureCards["specialty.kudryavka_noumi.6"] = kudRocketLauncherSpecialty(6);
 
 const mgqSpecialtySource = {
   product: "Monster Girl Quest: Paradox — Heroes III board-game adaptation",
-  credit: "Original specialty implementation for the MGQ town module."
+  credit: "Original specialty implementation for the MGQ town module.",
 };
 
 function mgqSpecialty(card: CardLibrary[string]): CardLibrary[string] {
@@ -6236,12 +7365,12 @@ function mgqMadScienceSpecialty(): CardLibrary[string] {
       "hero-specialty",
       "map",
       "promestein",
-      "Remove one bronze Few army card, then give one silver army card +1 permanent Attack."
+      "Remove one bronze Few army card, then give one silver army card +1 permanent Attack.",
     ],
     target: { type: "none" },
     effect: { type: "MGQ_MAD_SCIENCE", attackBonus: 1 },
     implementationStatus: "implemented",
-    source: mgqSpecialtySource
+    source: mgqSpecialtySource,
   };
 }
 
@@ -6255,12 +7384,17 @@ adventureCards["specialty.luka.1"] = mgqSpecialty({
     "hero-specialty",
     "instant",
     "luka",
-    "Reaction: one of your unit's attacks ignores Retaliation Attacks for this strike."
+    "Reaction: one of your unit's attacks ignores Retaliation Attacks for this strike.",
   ],
   trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-  effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 0, ignoresRetaliation: true },
+  effect: {
+    type: "ADD_COMBAT_STAT",
+    stat: "attack",
+    amount: 0,
+    ignoresRetaliation: true,
+  },
   implementationStatus: "implemented",
-  source: mgqSpecialtySource
+  source: mgqSpecialtySource,
 });
 adventureCards["specialty.luka.4"] = mgqSpecialty({
   id: "specialty.luka.4",
@@ -6272,7 +7406,7 @@ adventureCards["specialty.luka.4"] = mgqSpecialty({
     "hero-specialty",
     "instant",
     "luka",
-    "+1 Attack or Defense; doubled for Lucifina-chan, Hild, Sylph, Gnome, Undine, or Salamander."
+    "+1 Attack or Defense; doubled for Lucifina-chan, Hild, Sylph, Gnome, Undine, or Salamander.",
   ],
   effect: {
     type: "CHOOSE_ONE",
@@ -6284,8 +7418,9 @@ adventureCards["specialty.luka.4"] = mgqSpecialty({
           type: "ADD_COMBAT_STAT",
           stat: "attack",
           amount: 1,
-          doubleForUnitName: "Lucifina-chan or Hild or Sylph or Gnome or Undine or Salamander"
-        }
+          doubleForUnitName:
+            "Lucifina-chan or Hild or Sylph or Gnome or Undine or Salamander",
+        },
       },
       {
         label: "+1 defense (x2 for Lucifina-chan, Hild, or a Spirit)",
@@ -6294,13 +7429,14 @@ adventureCards["specialty.luka.4"] = mgqSpecialty({
           type: "ADD_COMBAT_STAT",
           stat: "defense",
           amount: 1,
-          doubleForUnitName: "Lucifina-chan or Hild or Sylph or Gnome or Undine or Salamander"
-        }
-      }
-    ]
+          doubleForUnitName:
+            "Lucifina-chan or Hild or Sylph or Gnome or Undine or Salamander",
+        },
+      },
+    ],
   },
   implementationStatus: "implemented",
-  source: mgqSpecialtySource
+  source: mgqSpecialtySource,
 });
 adventureCards["specialty.luka.6"] = mgqSpecialty(
   rethemedSpecialty(
@@ -6308,8 +7444,8 @@ adventureCards["specialty.luka.6"] = mgqSpecialty(
     "tarnum_dungeon",
     "luka",
     6,
-    "Quad Slash / Serene Mind"
-  )
+    "Quad Slash / Serene Mind",
+  ),
 );
 
 adventureCards["specialty.alice.1"] = mgqSpecialty({
@@ -6321,7 +7457,7 @@ adventureCards["specialty.alice.1"] = mgqSpecialty({
     "hero-specialty",
     "instant",
     "alice",
-    "Instant: deal 1 damage to a unit."
+    "Instant: deal 1 damage to a unit.",
   ],
   target: { type: "any-unit" },
   effect: {
@@ -6330,30 +7466,48 @@ adventureCards["specialty.alice.1"] = mgqSpecialty({
       {
         label: "Deal 1 damage to a unit",
         combatAnytime: true,
-        effect: { type: "DEAL_DAMAGE", amount: 1, damageKind: "effect" }
-      }
-    ]
+        effect: { type: "DEAL_DAMAGE", amount: 1, damageKind: "effect" },
+      },
+    ],
   },
   implementationStatus: "implemented",
-  source: mgqSpecialtySource
+  source: mgqSpecialtySource,
 });
 adventureCards["specialty.alice.4"] = mgqSpecialty({
   id: "specialty.alice.4",
   name: "Omniscience IV",
   kind: "hero-specialty",
   timing: "instant",
-  tags: ["hero-specialty", "instant", "map", "alice", "Instant or Map: choose any shared card deck and Search (1) it."],
+  tags: [
+    "hero-specialty",
+    "instant",
+    "map",
+    "alice",
+    "Instant or Map: choose any shared card deck and Search (1) it.",
+  ],
   target: { type: "none" },
   effect: {
     type: "CHOOSE_ONE",
     options: [
-      { label: "Search (1) the Ability deck", combatAnytime: true, effect: { type: "CARD_DECK_SEARCH", deck: "abilities", count: 1 } },
-      { label: "Search (1) the Artifact deck", combatAnytime: true, effect: { type: "CARD_DECK_SEARCH", deck: "artifacts", count: 1 } },
-      { label: "Search (1) the Spell deck", combatAnytime: true, effect: { type: "CARD_DECK_SEARCH", deck: "spells", count: 1 } }
-    ]
+      {
+        label: "Search (1) the Ability deck",
+        combatAnytime: true,
+        effect: { type: "CARD_DECK_SEARCH", deck: "abilities", count: 1 },
+      },
+      {
+        label: "Search (1) the Artifact deck",
+        combatAnytime: true,
+        effect: { type: "CARD_DECK_SEARCH", deck: "artifacts", count: 1 },
+      },
+      {
+        label: "Search (1) the Spell deck",
+        combatAnytime: true,
+        effect: { type: "CARD_DECK_SEARCH", deck: "spells", count: 1 },
+      },
+    ],
   },
   implementationStatus: "implemented",
-  source: mgqSpecialtySource
+  source: mgqSpecialtySource,
 });
 adventureCards["specialty.alice.6"] = mgqSpecialty({
   id: "specialty.alice.6",
@@ -6361,7 +7515,12 @@ adventureCards["specialty.alice.6"] = mgqSpecialty({
   kind: "hero-specialty",
   timing: "combat",
   phaseLimit: ["combat"],
-  tags: ["hero-specialty", "combat", "alice", "One enemy unit suffers -2 Attack for the whole Combat."],
+  tags: [
+    "hero-specialty",
+    "combat",
+    "alice",
+    "One enemy unit suffers -2 Attack for the whole Combat.",
+  ],
   target: { type: "enemy-unit" },
   effect: {
     type: "CREATE_ACTIVE_EFFECT",
@@ -6371,22 +7530,34 @@ adventureCards["specialty.alice.6"] = mgqSpecialty({
       duration: { type: "combat" },
       polarity: "negative",
       removable: false,
-      modifiers: [{ type: "ATTACK_BONUS", amount: -2 }]
-    }
+      modifiers: [{ type: "ATTACK_BONUS", amount: -2 }],
+    },
   },
   implementationStatus: "implemented",
-  source: mgqSpecialtySource
+  source: mgqSpecialtySource,
 });
 
 adventureCards["specialty.ilias.1"] = mgqSpecialty(
-  rethemedSpecialty(adventureCards["specialty.rion.1"], "rion", "ilias", 1, "Divine Wrath / Cure")
+  rethemedSpecialty(
+    adventureCards["specialty.rion.1"],
+    "rion",
+    "ilias",
+    1,
+    "Divine Wrath / Cure",
+  ),
 );
 adventureCards["specialty.ilias.4"] = mgqSpecialty({
   id: "specialty.ilias.4",
   name: "Divine Wrath / Cure IV",
   kind: "hero-specialty",
   timing: "instant",
-  tags: ["hero-specialty", "instant", "map", "ilias", "Draw 1 card, then make a friendly unit immune to all Hero Specialties for this Combat."],
+  tags: [
+    "hero-specialty",
+    "instant",
+    "map",
+    "ilias",
+    "Draw 1 card, then make a friendly unit immune to all Hero Specialties for this Combat.",
+  ],
   target: { type: "friendly-unit" },
   effect: {
     type: "CHOOSE_ONE",
@@ -6394,21 +7565,27 @@ adventureCards["specialty.ilias.4"] = mgqSpecialty({
       {
         label: "Draw 1; this unit is immune to all Specialties this Combat",
         combatAnytime: true,
-        effect: { type: "MGQ_DRAW_AND_SPECIALTY_IMMUNITY", drawCards: 1 }
+        effect: { type: "MGQ_DRAW_AND_SPECIALTY_IMMUNITY", drawCards: 1 },
       },
       {
         label: "Map: draw 1 card",
         mapOnly: true,
         target: { type: "none" },
-        effect: { type: "DRAW_CARDS", amount: 1 }
-      }
-    ]
+        effect: { type: "DRAW_CARDS", amount: 1 },
+      },
+    ],
   },
   implementationStatus: "implemented",
-  source: mgqSpecialtySource
+  source: mgqSpecialtySource,
 });
 adventureCards["specialty.ilias.6"] = mgqSpecialty(
-  rethemedSpecialty(adventureCards["specialty.rion.6"], "rion", "ilias", 6, "Divine Wrath / Cure")
+  rethemedSpecialty(
+    adventureCards["specialty.rion.6"],
+    "rion",
+    "ilias",
+    6,
+    "Divine Wrath / Cure",
+  ),
 );
 
 adventureCards["specialty.granberia.1"] = mgqSpecialty({
@@ -6416,7 +7593,13 @@ adventureCards["specialty.granberia.1"] = mgqSpecialty({
   name: "Dragon Girl I",
   kind: "hero-specialty",
   timing: "instant",
-  tags: ["hero-specialty", "instant", "map", "granberia", "Reaction: +1 Attack, then draw 1 card. On the Map, draw 1 card."],
+  tags: [
+    "hero-specialty",
+    "instant",
+    "map",
+    "granberia",
+    "Reaction: +1 Attack, then draw 1 card. On the Map, draw 1 card.",
+  ],
   target: { type: "none" },
   effect: {
     type: "CHOOSE_ONE",
@@ -6424,20 +7607,34 @@ adventureCards["specialty.granberia.1"] = mgqSpecialty({
       {
         label: "+1 Attack, then draw 1 card",
         trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-        effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1, drawCards: 1 }
+        effect: {
+          type: "ADD_COMBAT_STAT",
+          stat: "attack",
+          amount: 1,
+          drawCards: 1,
+        },
       },
-      { label: "Map: draw 1 card", mapOnly: true, effect: { type: "DRAW_CARDS", amount: 1 } }
-    ]
+      {
+        label: "Map: draw 1 card",
+        mapOnly: true,
+        effect: { type: "DRAW_CARDS", amount: 1 },
+      },
+    ],
   },
   implementationStatus: "implemented",
-  source: mgqSpecialtySource
+  source: mgqSpecialtySource,
 });
 adventureCards["specialty.granberia.4"] = mgqSpecialty({
   id: "specialty.granberia.4",
   name: "Dragon Girl IV",
   kind: "hero-specialty",
   timing: "instant",
-  tags: ["hero-specialty", "instant", "granberia", "Discard 1 card, then deal 2 damage to a unit."],
+  tags: [
+    "hero-specialty",
+    "instant",
+    "granberia",
+    "Discard 1 card, then deal 2 damage to a unit.",
+  ],
   target: { type: "any-unit" },
   effect: {
     type: "CHOOSE_ONE",
@@ -6446,12 +7643,12 @@ adventureCards["specialty.granberia.4"] = mgqSpecialty({
         label: "Discard 1 card; deal 2 damage to a unit",
         combatAnytime: true,
         cost: { discardCards: 1 },
-        effect: { type: "DEAL_DAMAGE", amount: 2, damageKind: "effect" }
-      }
-    ]
+        effect: { type: "DEAL_DAMAGE", amount: 2, damageKind: "effect" },
+      },
+    ],
   },
   implementationStatus: "implemented",
-  source: mgqSpecialtySource
+  source: mgqSpecialtySource,
 });
 adventureCards["specialty.granberia.6"] = mgqSpecialty({
   id: "specialty.granberia.6",
@@ -6463,7 +7660,7 @@ adventureCards["specialty.granberia.6"] = mgqSpecialty({
     "hero-specialty",
     "combat",
     "granberia",
-    "+1 Attack to one friendly unit for the whole Combat."
+    "+1 Attack to one friendly unit for the whole Combat.",
   ],
   target: { type: "friendly-unit" },
   effect: {
@@ -6474,18 +7671,24 @@ adventureCards["specialty.granberia.6"] = mgqSpecialty({
       duration: { type: "combat" },
       polarity: "positive",
       removable: false,
-      modifiers: [{ type: "ATTACK_BONUS", amount: 1 }]
-    }
+      modifiers: [{ type: "ATTACK_BONUS", amount: 1 }],
+    },
   },
   implementationStatus: "implemented",
-  source: mgqSpecialtySource
+  source: mgqSpecialtySource,
 });
 
 // Only level IV has a bespoke behavior in the supplied MGQ design. Levels I
 // and VI stay in Promestein's already-declared Sorcery vocabulary by retheming
 // the proven Zydar spell-economy cards instead of inventing two extra effects.
 adventureCards["specialty.promestein.1"] = mgqSpecialty(
-  rethemedSpecialty(adventureCards["specialty.zydar.1"], "zydar", "promestein", 1, "Mad Science")
+  rethemedSpecialty(
+    adventureCards["specialty.zydar.1"],
+    "zydar",
+    "promestein",
+    1,
+    "Mad Science",
+  ),
 );
 adventureCards["specialty.promestein.4"] = mgqMadScienceSpecialty();
 adventureCards["specialty.promestein.6"] = mgqSpecialty({
@@ -6498,7 +7701,7 @@ adventureCards["specialty.promestein.6"] = mgqSpecialty({
     "instant",
     "map",
     "promestein",
-    "Destroy 1 enemy unit; all your Spells gain +1 Power this Combat. OR Draw 2 cards."
+    "Destroy 1 enemy unit; all your Spells gain +1 Power this Combat. OR Draw 2 cards.",
   ],
   target: { type: "enemy-unit" },
   effect: {
@@ -6507,15 +7710,15 @@ adventureCards["specialty.promestein.6"] = mgqSpecialty({
       {
         label: "Destroy 1 enemy; your Spells gain +1 Power this Combat",
         combatAnytime: true,
-        effect: { type: "MGQ_DESTROY_UNIT_AND_EMPOWER_SPELLS", powerBonus: 1 }
+        effect: { type: "MGQ_DESTROY_UNIT_AND_EMPOWER_SPELLS", powerBonus: 1 },
       },
       {
         label: "Draw 2 cards",
         target: { type: "none" },
-        effect: { type: "DRAW_CARDS", amount: 2 }
-      }
-    ]
+        effect: { type: "DRAW_CARDS", amount: 2 },
+      },
+    ],
   },
   implementationStatus: "implemented",
-  source: mgqSpecialtySource
+  source: mgqSpecialtySource,
 });

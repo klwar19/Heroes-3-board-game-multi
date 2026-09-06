@@ -345,6 +345,7 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   // per-unit voice, which a fixed library `sound` here could not express).
   "wog-dracolich-armor": { affect: [{ key: "anti-magic" }] },
   "magog-fireball-splash": { hit: "fireball", hitSound: "spells/fireball-hit" },
+  "kansen-full-barrage": { hit: "akagi-full-barrage", hitSound: "spells/fireball-hit" },
   "lich-death-cloud": { hit: "death-cloud", hitSound: "spells/death-cloud" },
   // WOG Dracolich's spread attack (Necrotic Death Cloud) is the Lich's Death
   // Cloud by another name — a full second attack on a unit adjacent to the

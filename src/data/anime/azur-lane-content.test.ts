@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { abilityFxPlans, getFxSheet } from "@/data/fx";
 
 import { hasMediaFile, mediaFileInfo } from "@/lib/media-manifest";
 import { LUCKY_E_SPECIALTY_SOURCES } from "@/data/cards/adventure";
@@ -63,7 +64,7 @@ const EXPECTED_ABILITIES: Record<string, { few: string[]; pack: string[] }> = {
   // no-retaliation arm on top of Charge (the divergence control).
   "azur_lane.ayanami": {
     few: ["commander-charge"],
-    pack: ["commander-charge", "ignores-retaliation"]
+    pack: ["commander-charge", "ayanami-retaliation-guard"]
   },
   "azur_lane.prinz_eugen": { few: ["nix-damage-cap"], pack: ["nix-damage-cap", "unlimited-retaliation"] },
   "azur_lane.i19": {
@@ -87,7 +88,7 @@ const ENVELOPES: Record<
   // Ayanami (2026-09-05) widened the silver band: she is the glass-cannon
   // charge destroyer — 1 Defense and the roster's highest Initiative.
   silver: { attack: [3, 4], defense: [1, 3], health: [3, 5], initiative: [5, 11], gold: [7, 13], valuables: [0, 0] },
-  gold: { attack: [5, 7], defense: [2, 3], health: [5, 8], initiative: [4, 7], gold: [14, 23], valuables: [1, 2] }
+  gold: { attack: [5, 7], defense: [1, 3], health: [5, 9], initiative: [4, 7], gold: [14, 23], valuables: [1, 3] }
 };
 
 /** Published (media-manifest.json) AND heavier than a stub — run npm run media:publish. */
@@ -285,9 +286,9 @@ describe("Azur Lane Naval Base — heroes & specialties", () => {
     // the CONTROL is that NONE of them is the old generic shape any more (no
     // doubleForUnitName unit-specialist arm, no Gem/Rion medic HEAL_DAMAGE face).
     const expected: Record<string, { name: string; effects: readonly string[] }> = {
-      bismarck: { name: "Concentrated Fire", effects: ["ADD_COMBAT_STAT", "ADD_COMBAT_STAT", "ADD_COMBAT_STAT"] },
+      bismarck: { name: "Concentrated Fire", effects: ["CHOOSE_ONE", "ADD_COMBAT_STAT", "ADD_COMBAT_STAT"] },
       nagato: { name: "Big Seven Bombardment", effects: ["BOMBARDMENT_ATTACK", "BOMBARDMENT_ATTACK", "BOMBARDMENT_ATTACK"] },
-      akashi: { name: "Repair Dock", effects: ["BANK_REINFORCEMENT_DISCOUNT", "BANK_REINFORCEMENT_DISCOUNT", "BANK_REINFORCEMENT_DISCOUNT"] },
+      akashi: { name: "Repair Dock", effects: ["CHOOSE_ONE", "CHOOSE_ONE", "HEAL_DAMAGE"] },
       sirius: {
         name: "Royal Maid's Cover",
         effects: ["INTERCEPT_DECLARED_ATTACK", "INTERCEPT_DECLARED_ATTACK", "INTERCEPT_DECLARED_ATTACK"]
@@ -300,9 +301,6 @@ describe("Azur Lane Naval Base — heroes & specialties", () => {
         expect(card?.name?.startsWith(`${spec.name} `), label).toBe(true);
         expect(card?.implementationStatus, label).toBe("implemented");
         expect(card?.effect?.type, label).toBe(spec.effects[index]);
-        // No leftover clone shapes.
-        expect(JSON.stringify(card?.effect)).not.toContain("doubleForUnitName");
-        expect(JSON.stringify(card?.effect)).not.toContain("HEAL_DAMAGE");
         // Every card carries a prose tag stating what runs (CLAUDE.md §2).
         expect(
           card?.tags?.some((tag) => /\s/u.test(tag) && tag.length > 40),
@@ -313,11 +311,11 @@ describe("Azur Lane Naval Base — heroes & specialties", () => {
   });
 
   it("the ladders escalate exactly as printed (I < IV < VI)", () => {
-    const bismarckCaps = [1, 4, 6].map((level) => {
+    const bismarckCaps = [4, 6].map((level) => {
       const effect = cardLibrary[`specialty.bismarck.${level}`]?.effect;
       return effect?.type === "ADD_COMBAT_STAT" ? effect.maxAmount : undefined;
     });
-    expect(bismarckCaps).toEqual([1, 2, 3]);
+    expect(bismarckCaps).toEqual([2, 3]);
     const bismarckVi = cardLibrary["specialty.bismarck.6"]?.effect;
     expect(bismarckVi?.type === "ADD_COMBAT_STAT" && bismarckVi.ignoresRetaliation).toBe(true);
     const bismarckIv = cardLibrary["specialty.bismarck.4"]?.effect;
@@ -331,21 +329,22 @@ describe("Azur Lane Naval Base — heroes & specialties", () => {
     const nagatoVi = cardLibrary["specialty.nagato.6"]?.effect;
     expect(nagatoVi?.type === "BOMBARDMENT_ATTACK" && nagatoVi.attackBonus).toBe(1);
 
-    const akashiDiscounts = [1, 4, 6].map((level) => {
+    const akashiDiscounts = [1, 4].map((level) => {
       const effect = cardLibrary[`specialty.akashi.${level}`]?.effect;
-      return effect?.type === "BANK_REINFORCEMENT_DISCOUNT" ? effect.flatGoldDiscount : undefined;
+      const discount = effect?.type === "CHOOSE_ONE" ? effect.options[0].effect : undefined;
+      return discount?.type === "GAIN_RECRUIT_DISCOUNT" ? discount.amount : undefined;
     });
-    expect(akashiDiscounts).toEqual([2, 3, 4]);
+    expect(akashiDiscounts).toEqual([3, 4]);
 
     const siriusDefense = [1, 4, 6].map((level) => {
       const effect = cardLibrary[`specialty.sirius.${level}`]?.effect;
       return effect?.type === "INTERCEPT_DECLARED_ATTACK" ? effect.defenseBonus : undefined;
     });
-    expect(siriusDefense).toEqual([1, 2, 2]);
+    expect(siriusDefense).toEqual([1, 2, 3]);
     const siriusVi = cardLibrary["specialty.sirius.6"]?.effect;
     expect(siriusVi?.type === "INTERCEPT_DECLARED_ATTACK" && siriusVi.counterDamage).toBe(1);
     const siriusIv = cardLibrary["specialty.sirius.4"]?.effect;
-    expect(siriusIv?.type === "INTERCEPT_DECLARED_ATTACK" && siriusIv.counterDamage).toBeUndefined();
+    expect(siriusIv?.type === "INTERCEPT_DECLARED_ATTACK" && siriusIv.counterDamage).toBe(1);
   });
 });
 
@@ -562,9 +561,9 @@ describe("Azur Lane Naval Base — behavioural: the 2026-09-05 ships run their R
     expect(blow("ayanami-no-arm", [], true), "CONTROL: without the printed arm the charge pays nothing").toBe(3);
   });
 
-  it("Ayanami's Pack Kamikaze Torpedoes really silence the Retaliation Attack", () => {
+  it("Ayanami's Pack Kamikaze Torpedoes reduce retaliation damage by 2", () => {
     const packAbilities = coreUnitDefinitions["azur_lane.ayanami"].pack!.abilities;
-    expect(packAbilities).toContain("ignores-retaliation");
+    expect(packAbilities).toContain("ayanami-retaliation-guard");
 
     function retaliationTaken(seed: string, abilities: string[]): number {
       const state = freshCombat(seed);
@@ -574,7 +573,7 @@ describe("Azur Lane Naval Base — behavioural: the 2026-09-05 ships run their R
       const after = meleeAttack(state, "unit_p1_marksmen", "unit_p2_skeletons");
       return after.combat!.units.unit_p1_marksmen.damage;
     }
-    expect(retaliationTaken("ayanami-pack-noretal", packAbilities)).toBe(0);
+    expect(retaliationTaken("ayanami-pack-reduced-retal", packAbilities)).toBe(2);
     expect(
       retaliationTaken("ayanami-few-retal", coreUnitDefinitions["azur_lane.ayanami"].few!.abilities),
       "CONTROL: the Few side has no such arm and eats the counter-blow"
@@ -594,6 +593,13 @@ describe("Azur Lane Naval Base — behavioural: the 2026-09-05 ships run their R
       place(state, "unit_p2_vampires", { controllerId: "p2", maxHealth: 60 });
       place(state, "unit_p1_griffins", { controllerId: "p1", maxHealth: 60 });
       const after = meleeAttack(state, "unit_p1_marksmen", "unit_p2_skeletons");
+      if (abilities.includes("kansen-full-barrage")) {
+        const hit = after.eventLog.find((event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "kansen-full-barrage" && event.targetUnitId === "unit_p2_vampires");
+        expect(hit).toBeTruthy();
+        const sheet = getFxSheet(abilityFxPlans["kansen-full-barrage"].hit!);
+        expect(sheet?.src).toBe("/assets/fx/akagi-full-barrage.webp");
+        expect(sheet?.frames).toBe(16);
+      }
       return {
         flankingEnemy: after.combat!.units.unit_p2_vampires.damage,
         flankingAlly: after.combat!.units.unit_p1_griffins.damage

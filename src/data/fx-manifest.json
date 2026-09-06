@@ -2339,5 +2339,20 @@
     "fps": 24,
     "anchor": "center",
     "sourceDef": "generated: codex image_gen master + scripts/build-sniper-shot-fx.mjs (2026-09-04)"
+  },
+  "akagi-full-barrage": {
+    "src": "/assets/fx/akagi-full-barrage.webp",
+    "label": "Akagi Full Barrage",
+    "group": "ability",
+    "role": "hit",
+    "frames": 16,
+    "cols": 4,
+    "rows": 4,
+    "frameWidth": 256,
+    "frameHeight": 256,
+    "fps": 20,
+    "anchor": "center",
+    "coverage": 1.3,
+    "sourceDef": "Codex imagegen — naval foxfire barrage"
   }
 }

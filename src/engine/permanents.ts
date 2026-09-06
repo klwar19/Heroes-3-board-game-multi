@@ -1980,7 +1980,12 @@ export function warMachinesForSale(
     if (playerId && !isBallistaCard(cardId) && playerOwnsWarMachine(state, playerId, cardId)) {
       return [];
     }
-    const printed = pricing === "factory" ? costs.factory : costs.tradingPost;
+    const printed =
+      cardId === BALLISTA_CARD_ID && houseRuleEnabled(state, "binh-ballista-cost-3-6")
+        ? { gold: pricing === "factory" ? 3 : 6 }
+        : pricing === "factory"
+          ? costs.factory
+          : costs.tradingPost;
     const cost = goldDiscount
       ? { ...printed, gold: Math.max(0, (printed.gold ?? 0) - goldDiscount) }
       : printed;

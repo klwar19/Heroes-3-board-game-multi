@@ -8,7 +8,6 @@ import {
   getMainHero,
   grailObelisksRequired,
   materializeTileFields,
-  MAX_EXPERIENCE,
   VII_FIELD_LOCATION
 } from "./adventure";
 import {
@@ -170,7 +169,7 @@ describe("Ⅶ designation — face-up center tile", () => {
 });
 
 describe("Random Town is always a VII siege", () => {
-  it("keeps VII reward/round rules with custom guards and places walls without an Arrow Tower", () => {
+  it("keeps VII reward/round rules with custom guards and places all fortifications", () => {
     const state = createAdventureGameState({
       seed: "random-town-vii-siege",
       difficulty: "normal",
@@ -195,7 +194,7 @@ describe("Random Town is always a VII siege", () => {
     expect(state.combat.context.difficulty).toBe(7);
     expect(state.combat.siege?.walls).toHaveLength(3);
     expect(state.combat.siege?.gatePosition).not.toBeNull();
-    expect(state.combat.siege?.arrowTowerUnitId).toBeNull();
+    expect(state.combat.siege?.arrowTowerUnitId).toBeTruthy();
     expect(state.combat.boardArtId).toBe("castle-siege");
 
     hero.level = 3;
@@ -209,8 +208,8 @@ describe("Random Town is always a VII siege", () => {
       reason: "all-enemy-units-defeated"
     };
     finalizeAdventureCombat(state);
-    expect(hero.experience).toBe(MAX_EXPERIENCE);
-    expect(hero.level).toBe(7);
+    expect(hero.experience).toBe(6);
+    expect(hero.level).toBe(4);
   });
 });
 
@@ -894,7 +893,7 @@ describe("start block — conflicting designs are refused", () => {
     expect(result.state.phase).toBe("player-turn");
   });
 
-  it("an authored Hidden Grail/Utopia map cannot also select a Grail or Dragon preset", () => {
+  it("an authored Hidden Grail/Utopia map allows choosing a matching win condition", () => {
     let state = createAdventureLobbyState({ seed: "vii-owned-objective", scenarioId: "skirmish" });
     const picked = applyAction(state, {
       type: "SET_GAME_OPTIONS",

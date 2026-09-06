@@ -413,6 +413,24 @@ describe("Cove Pub — Astrologers'-round reinforce discount", () => {
     expect(pubBank(after), "one unit only: the entitlement is spent").toBeUndefined();
   });
 
+  it("automatically discounts the normal Reinforce purchase during the Astrologers' round", () => {
+    const state = takeHandStep(pubRound(
+      "pub-normal-reinforce",
+      [{ id: "army_sd", unitDefId: "cove.sea_dogs", side: "few" }],
+      10
+    ));
+    const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p1");
+    town!.buildings.push("cove.dwelling_bronze");
+    const after = applyOk(state, {
+      type: "POPULATION_ACTION",
+      playerId: "p1",
+      purchases: [{ kind: "reinforce", unitDefId: "cove.sea_dogs", armyUnitId: "army_sd" }]
+    });
+    expect(after.players.p1.army.find((unit) => unit.id === "army_sd")?.side).toBe("pack");
+    expect(after.players.p1.resources.gold).toBe(7); // 10 - (6 printed - 3 Pub)
+    expect(pubBank(after)).toBeUndefined();
+  });
+
   it("CONTROL: an ordinary (Hill Fort) bank still dies on the same hero step", () => {
     // Proves the movement exemption is scoped to the round-scoped Pub bank and
     // did not quietly make every banked discount immortal.

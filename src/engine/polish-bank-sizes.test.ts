@@ -29,6 +29,7 @@ import {
   instantiateTile,
   placeCreatureBank,
 } from "./adventure";
+import { parallelStateForPlayer } from "./parallel-combats";
 import { markUnitRemovedIfNeeded } from "./combat-units";
 import { chooseComputerAction } from "./computer/policy";
 import { getUnitAbilityDefinitions } from "./unit-abilities";
@@ -292,6 +293,99 @@ describe("Polish Creature Bank offer", () => {
     expect(state.adventure!.creatureBankTokensFar).toHaveLength(pileBefore.length - 1);
     expect(state.adventure!.creatureBankTokensFar).not.toContain(selected.bankId);
     expect(state.adventure!.creatureBankTokensFar).toContain(unchosen.bankId);
+  });
+
+  it("keeps an already-shown parallel Imp Cache choice selectable after its twin confirms first", () => {
+    let state = placeFarTileAwaitingRotation({ pile: ["crypt", "imp_cache"] });
+    const choice = bankChoice(state);
+    const impIndex = choice.creatureBank!.candidates!.findIndex((candidate) => candidate.bankId === "imp_cache");
+    expect(impIndex).toBeGreaterThanOrEqual(0);
+
+    // Exact legacy race: another player's independently parked tile had peeked
+    // the same top token and consumed it first. The choice on this screen was
+    // already minted and must still resolve instead of trapping Confirm forever.
+    state.adventure!.creatureBankTokensFar = state.adventure!.creatureBankTokensFar!.filter(
+      (bankId) => bankId !== "imp_cache",
+    );
+    state = choosePolishBank(state, impIndex);
+    const tile = state.adventure!.tiles[state.adventure!.pendingTileChoice!.tileInstanceId];
+    state = finishRotation(state);
+
+    expect(
+      Object.values(state.adventure!.fields).find(
+        (field) => field.tileInstanceId === tile.id && field.location === "creature_bank",
+      )?.bankId,
+    ).toBe("imp_cache");
+    expect(state.adventure!.pendingTileChoice).toBeNull();
+  });
+
+  it("lets different players confirm the same parallel bank while each A/B offer stays distinct", () => {
+    let state = createAdventureGameState({
+      seed: "parallel-bank-reservations",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      creatureBanks: true,
+      parallelTurns: 4,
+      houseRules: { "polish-creature-banks": true, "polish-bank-sizes": true },
+    });
+    for (const player of Object.values(state.players)) {
+      player.canMulligan = false;
+      player.needsHandRefresh = false;
+    }
+    state.adventure!.creatureBankTokensFar = [
+      "dwarven_treasury",
+      "medusa_stores",
+      "crypt",
+      "imp_cache",
+    ];
+    state.adventure!.farTileScriptedDraws = ["F1", "F2"];
+    state.heroes.hero_p1.spaceId = "h:7:2";
+    state.heroes.hero_p1.movementPoints = 3;
+    state.heroes.hero_p2.spaceId = "h:7:2";
+    state.heroes.hero_p2.movementPoints = 3;
+
+    state = apply(state, {
+      type: "PLACE_TILE",
+      playerId: "p1",
+      heroId: "hero_p1",
+      supplyIndex: 0,
+      centerRow: 6,
+      centerCol: 4,
+    });
+    const p1 = parallelStateForPlayer(state, "p1");
+    const p1Banks = p1.pendingChoice?.type === "OPTION_CHOICE"
+      ? p1.pendingChoice.creatureBank?.candidates?.map((candidate) => candidate.bankId) ?? []
+      : [];
+    expect(p1Banks).toEqual(["imp_cache", "crypt"]);
+
+    const p2Place = getLegalActions(state, "p2").find((legal) => legal.action.type === "PLACE_TILE");
+    expect(p2Place).toBeDefined();
+    state = apply(state, p2Place!.action);
+    const p2 = parallelStateForPlayer(state, "p2");
+    const p2Banks = p2.pendingChoice?.type === "OPTION_CHOICE"
+      ? p2.pendingChoice.creatureBank?.candidates?.map((candidate) => candidate.bankId) ?? []
+      : [];
+    expect(p2Banks).toEqual(["imp_cache", "crypt"]);
+    expect(new Set(p1Banks).size).toBe(p1Banks.length);
+    expect(new Set(p2Banks).size).toBe(p2Banks.length);
+
+    const p1Choice = p1.pendingChoice;
+    const p2Choice = p2.pendingChoice;
+    if (p1Choice?.type !== "OPTION_CHOICE" || p2Choice?.type !== "OPTION_CHOICE") {
+      throw new Error("expected both parallel bank choices");
+    }
+    state = apply(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: p1Choice.id, optionIndex: 0 });
+    const p1Rotation = getLegalActions(state, "p1").find((legal) => legal.action.type === "SET_TILE_ROTATION");
+    expect(p1Rotation).toBeDefined();
+    state = apply(state, p1Rotation!.action);
+
+    // p1 consumed the shared Imp Cache token. p2's independently issued Imp
+    // Cache choice is still valid and confirms its own tile normally.
+    state = apply(state, { type: "CHOOSE_OPTION", playerId: "p2", choiceId: p2Choice.id, optionIndex: 0 });
+    const p2Rotation = getLegalActions(state, "p2").find((legal) => legal.action.type === "SET_TILE_ROTATION");
+    expect(p2Rotation).toBeDefined();
+    state = apply(state, p2Rotation!.action);
+    expect(Object.values(state.adventure!.fields).filter((field) => field.bankId === "imp_cache")).toHaveLength(2);
   });
 
   it("offers Leave it blocked before rotation; declining leaves the field blocked and the pile intact", () => {

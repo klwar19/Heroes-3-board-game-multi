@@ -99,6 +99,15 @@ function payRaidBossLayerBreak(
  * ability damage and war machine shots.
  */
 export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState): void {
+  const redirected = state.combat?.redirectedDamageRemovals;
+  if (redirected?.length) {
+    delete state.combat?.redirectedDamageRemovals;
+    for (const id of new Set(redirected)) {
+      const target = state.combat?.units[id];
+      if (target && target.id !== unit.id) markUnitRemovedIfNeeded(state, target);
+    }
+  }
+
   // Clone Spell: a Clone Token is a 1-Health copy. It never flips (Pack→Few),
   // never Rebirths, and leaves no army bookkeeping behind (it is not a recruited
   // unit) — any lethal damage simply removes it, and removing it also clears any
@@ -611,6 +620,8 @@ export function finishCombatIfNeeded(state: GameState): boolean {
     defeatedPlayerId,
     reason
   };
+  delete combat.pendingCardDamageTransfers;
+  delete combat.redirectedDamageRemovals;
   appendExpiredEffectEvents(state, expireEffectsForCombatEnd(state), "combat-ended");
   combat.activeUnitId = null;
   state.phase = "game-over";
