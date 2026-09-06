@@ -1144,7 +1144,8 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // `npm run deploy:partykit` owed with this bump.
 // PvP mutual-consent activation retakes, dragon objective/guard precedence,
 // larger-table Conquest thresholds and veteran ability corrections.
-export const ENGINE_PROTOCOL_VERSION = 110;
+// Elimination/forfeit removes rivals from Conquest instead of awarding PvP credit.
+export const ENGINE_PROTOCOL_VERSION = 111;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

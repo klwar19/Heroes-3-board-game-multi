@@ -5181,10 +5181,8 @@ export function humanPlayerIds(state: GameState): PlayerId[] {
 }
 
 /**
- * Seats that started the scenario, INCLUDING eliminated observers. Used for
- * the "defeat N enemy heroes" threshold so eliminating a rival does not lower
- * the requirement mid-game (a 3-player table still needs 2 hero defeats even
- * after one seat is removed from turn order).
+ * Seats that started the scenario, INCLUDING eliminated observers.
+ * Conquest requirements use surviving rivals instead of this historical count.
  */
 export function adventureSeatCount(state: GameState): number {
   return Object.keys(state.players).filter((id) => id !== NEUTRAL_PLAYER_ID).length;
@@ -5201,16 +5199,16 @@ export function adventureRivalIds(state: GameState, playerId: PlayerId): PlayerI
   );
 }
 
-/** Half the starting opposing table, rounded up; allies are excluded. */
+/** Recalculate the PvP requirement from the surviving opposing table. */
 export function requiredRivalHeroDefeats(state: GameState, playerId: PlayerId): number {
-  const rivals = adventureRivalIds(state, playerId).length;
+  const rivals = adventureRivalIds(state, playerId).filter(id => !state.players[id]?.eliminated).length;
   return rivals === 0 ? 0 : requiredHeroDefeats(rivals + 1);
 }
 
-/** Each rival counts once, whether beaten in PvP or eliminated. */
+/** Count distinct surviving rivals actually beaten in PvP; departures give no credit. */
 export function conquestProgress(state: GameState, playerId: PlayerId): number {
   const beaten = new Set(state.adventure?.heroDefeats?.[playerId] ?? []);
-  return adventureRivalIds(state, playerId).filter(id => beaten.has(id) || state.players[id]?.eliminated).length;
+  return adventureRivalIds(state, playerId).filter(id => beaten.has(id) && !state.players[id]?.eliminated).length;
 }
 
 export function checkConquestVictory(state: GameState, playerId: PlayerId): void {
@@ -5759,10 +5757,8 @@ export function eliminatePlayer(
 
 /**
  * Distinct rivals required for military victory: 2/3/4/5/6 seats need
- * 1/2/2/3/3 wins. Eliminated rivals also count, without double counting.
- * `playerCount` is the scenario seat count at setup
- * (use `adventureSeatCount`, not the live turn order — eliminations must not
- * lower the threshold).
+ * 1/2/2/3/3 wins. Use the surviving opposing table size: eliminated or
+ * forfeited seats leave the requirement and never supply PvP credit.
  */
 export function requiredHeroDefeats(playerCount: number): number {
   return Math.max(1, Math.ceil(playerCount / 2));
