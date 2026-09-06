@@ -5199,9 +5199,12 @@ export function adventureRivalIds(state: GameState, playerId: PlayerId): PlayerI
   );
 }
 
-/** Recalculate the PvP requirement from the surviving opposing table. */
+/**
+ * PvP cube target is locked to the starting table. Departures remove rivals
+ * but never lower the number of cubes still required.
+ */
 export function requiredRivalHeroDefeats(state: GameState, playerId: PlayerId): number {
-  const rivals = adventureRivalIds(state, playerId).filter(id => !state.players[id]?.eliminated).length;
+  const rivals = adventureRivalIds(state, playerId).length;
   return rivals === 0 ? 0 : requiredHeroDefeats(rivals + 1);
 }
 
@@ -5757,8 +5760,9 @@ export function eliminatePlayer(
 
 /**
  * Distinct rivals required for military victory: 2/3/4/5/6 seats need
- * 1/2/2/3/3 wins. Use the surviving opposing table size: eliminated or
- * forfeited seats leave the requirement and never supply PvP credit.
+ * 1/2/2/3/3 wins. This target is based on the starting opposing table and
+ * does not shrink when a rival is eliminated or forfeits; those departures
+ * award no cube. If every rival leaves, last faction standing still wins.
  */
 export function requiredHeroDefeats(playerCount: number): number {
   return Math.max(1, Math.ceil(playerCount / 2));

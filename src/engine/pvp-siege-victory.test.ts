@@ -193,7 +193,7 @@ describe("siege defeat — main Hero loses their last Town", () => {
     expect(state.eventLog.some((event) => event.type === "GAME_WON")).toBe(true);
   });
 
-  it("3 players: the siege cube persists after elimination and wins at the reduced threshold", () => {
+  it("3 players: the siege cube persists, but the remaining rival is still required", () => {
     const state = makeGame("conquest", players3());
     stageSiege(state);
 
@@ -203,14 +203,15 @@ describe("siege defeat — main Hero loses their last Town", () => {
     expect(state.turnOrder).not.toContain("p2");
     expect(state.turnOrder).toContain("p1");
     expect(state.turnOrder).toContain("p3");
-    // Two factions remain and the earned cube meets the one-cube requirement.
-    expect(state.adventure?.winnerPlayerId).toBe("p1");
-    expect(state.phase).toBe("game-over");
+    // The starting three-player target remains two cubes; p3 must still be beaten.
+    expect(state.adventure?.winnerPlayerId ?? null).toBeNull();
+    expect(state.phase).not.toBe("game-over");
     expect(state.adventure?.heroDefeats?.p1).toContain("p2");
   });
 
   it("credits the winner 1 win (the faction cube) toward the defeat-every-hero path", () => {
-    // Grail shares Conquest: the earned cube survives the loser's elimination.
+    // Grail shares Conquest: the earned cube survives the loser's elimination,
+    // while the starting three-player target remains two cubes.
     const state = makeGame("grail", players3());
     stageSiege(state);
 
@@ -218,7 +219,7 @@ describe("siege defeat — main Hero loses their last Town", () => {
 
     expect(state.adventure?.heroDefeats?.p1 ?? []).toContain("p2");
     expect(state.players.p2.eliminated).toBe(true);
-    expect(state.adventure?.winnerPlayerId).toBe("p1");
+    expect(state.adventure?.winnerPlayerId ?? null).toBeNull();
   });
 
   it("CONTROL: a Settlement survivor is NOT eliminated — the beaten Hero retreats there", () => {

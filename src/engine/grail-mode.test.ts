@@ -478,7 +478,7 @@ describe("Defeat every enemy hero", () => {
         expect(conquestProgress(state, "p1")).toBe(0);
         expect(state.adventure!.winnerPlayerId).toBeNull();
         eliminatePlayer(state, "p3", "left the match", gaveUp);
-        expect(requiredRivalHeroDefeats(state, "p1")).toBe(1);
+        expect(requiredRivalHeroDefeats(state, "p1")).toBe(2);
         expect(conquestProgress(state, "p1")).toBe(0);
         expect(state.adventure!.winnerPlayerId).toBeNull();
         const lastDeparture = structuredClone(state);
@@ -486,6 +486,9 @@ describe("Defeat every enemy hero", () => {
         expect(lastDeparture.adventure!.winnerPlayerId).toBe("p1");
         stagePvpWin(state, "p1", "p2");
         finalizeAdventureCombat(state);
+        expect(conquestProgress(state, "p1")).toBe(1);
+        expect(state.adventure!.winnerPlayerId).toBeNull();
+        eliminatePlayer(state, "p2", "left the match", gaveUp);
         expect(state.adventure!.winnerPlayerId).toBe("p1");
       });
     }
@@ -515,11 +518,20 @@ describe("Defeat every enemy hero", () => {
             expect(conquestProgress(anotherWin, "p1")).toBe(2);
             expect(anotherWin.adventure!.winnerPlayerId).toBe("p1");
             eliminatePlayer(state, "p4", "left the match", gaveUp);
+            expect(requiredRivalHeroDefeats(state, "p1")).toBe(2);
+            expect(state.adventure!.winnerPlayerId).toBeNull();
+            stagePvpWin(state, "p1", "p3");
+            finalizeAdventureCombat(state);
+            expect(conquestProgress(state, "p1")).toBe(2);
+            expect(state.adventure!.winnerPlayerId).toBe("p1");
+          } else {
+            expect(requiredRivalHeroDefeats(state, "p1")).toBe(2);
+            expect(state.adventure!.winnerPlayerId).toBeNull();
+            stagePvpWin(state, "p1", "p3");
+            finalizeAdventureCombat(state);
+            expect(conquestProgress(state, "p1")).toBe(2);
+            expect(state.adventure!.winnerPlayerId).toBe("p1");
           }
-          expect(requiredRivalHeroDefeats(state, "p1")).toBe(1);
-          expect(conquestProgress(state, "p1")).toBe(1);
-          expect(state.adventure!.winnerPlayerId).toBe("p1");
-          expect(state.phase).toBe("game-over");
         });
       }
     }
@@ -578,23 +590,21 @@ describe("Defeat every enemy hero", () => {
       expect(state.adventure!.heroDefeats?.p1).not.toContain("p4");
     });
 
-    it(`needs one PvP win after a 3-player table loses one rival (${mode})`, () => {
+    it(`does not lower the cube target after a 3-player table loses one rival (${mode})`, () => {
       const state = makeGameWithPlayers(mode, [
         { id: "p1", name: "A", factionId: "castle", heroDefId: "catherine" },
         { id: "p2", name: "B", factionId: "dungeon", heroDefId: "alamar" },
         { id: "p3", name: "C", factionId: "necropolis", heroDefId: "sandro" }
       ]);
-      // The original seat count remains available, but Conquest uses survivors.
-      state.players.p3.eliminated = true;
-      state.turnOrder = state.turnOrder.filter((id) => id !== "p3");
+      eliminatePlayer(state, "p3", "left the match", true);
       expect(adventureSeatCount(state)).toBe(3);
       expect(requiredHeroDefeats(adventureSeatCount(state))).toBe(2);
 
       stagePvpWin(state, "p1", "p2");
       finalizeAdventureCombat(state);
-      // Two players remain, so one actual PvP win completes Conquest.
+      // Two players remain, but the starting three-player target is still two.
       expect(state.adventure!.heroDefeats?.p1).toEqual(["p2"]);
-      expect(state.adventure!.winnerPlayerId).toBe("p1");
+      expect(state.adventure!.winnerPlayerId).toBeNull();
     });
   }
 
