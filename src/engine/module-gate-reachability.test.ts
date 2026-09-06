@@ -91,7 +91,7 @@ describe("a Blocked-Field carve opens the INSIDE ring and keeps the printed oute
   });
 
   for (const location of CARVE_LOCATIONS) {
-    it(`a ${location} on a slot with a PRINTED arc: enter from the host Tile, never across the sealed edge`, () => {
+    it(`a ${location} opens the inside ring; only banks also open the far outside arc`, () => {
       const state = twoTileState(`gate-cross-${location}`);
       carveOnSlot(state, location);
 
@@ -101,15 +101,15 @@ describe("a Blocked-Field carve opens the INSIDE ring and keeps the printed oute
       // The printed outer arc still walls the tile edge in BOTH directions: a
       // neighbouring tile's hero cannot enter, and a hero on the carve cannot
       // leave that way.
-      expect(canCrossEdge(state, "NEIGHBOUR", "GATE"), "walk IN across the Tile edge").toBe(false);
-      expect(canCrossEdge(state, "GATE", "NEIGHBOUR"), "walk OUT across the Tile edge").toBe(false);
+      expect(canCrossEdge(state, "NEIGHBOUR", "GATE"), "walk IN across the Tile edge").toBe(location === "creature_bank");
+      expect(canCrossEdge(state, "GATE", "NEIGHBOUR"), "walk OUT across the Tile edge").toBe(location === "creature_bank");
       // A hero STANDING on it looks out across the same wall, so it may not flip
       // the face-down Tile beyond it either.
       expect(heroFieldSealedForDiscovery(state.adventure!, state.adventure!.fields["GATE"])).toBe(
-        true
+        location !== "creature_bank"
       );
       // The slot primitive is (still) the single source of truth both reads use.
-      expect(isOuterEdgeSealed(state.adventure!, state.adventure!.fields["GATE"])).toBe(true);
+      expect(isOuterEdgeSealed(state.adventure!, state.adventure!.fields["GATE"])).toBe(location !== "creature_bank");
     });
 
     it(`CONTROL: a ${location} on a slot with NO printed arc invents no wall`, () => {

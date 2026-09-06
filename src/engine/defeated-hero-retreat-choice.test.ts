@@ -31,7 +31,9 @@ function makeGame(): GameState {
     pvpTroopLoss: "normal",
     players: [
       { id: "p1", name: "Catherine", factionId: "castle", heroDefId: "catherine" },
-      { id: "p2", name: "Alamar", factionId: "dungeon", heroDefId: "alamar" }
+      { id: "p2", name: "Alamar", factionId: "dungeon", heroDefId: "alamar" },
+      // Retreat choices require a continuing match, not a completed PvP victory.
+      { id: "p3", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" }
     ]
   });
 }
