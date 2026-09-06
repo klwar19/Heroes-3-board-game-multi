@@ -814,7 +814,7 @@ describe("Necromancy prompt coverage across combat kinds", () => {
           factionId: "necropolis",
           heroDefId: "sandro"
         },
-        ...(withThirdPlayer ? [{ id: "p3", name: "Alamar", factionId: "dungeon", heroDefId: "alamar" }] : []),
+        ...(withThirdPlayer ? [{ id: "p3", name: "Alamar", factionId: "dungeon" as const, heroDefId: "alamar" }] : []),
       ],
       rollFirstPlayer: false
     });

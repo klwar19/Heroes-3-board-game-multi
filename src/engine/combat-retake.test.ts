@@ -43,7 +43,7 @@ describe("PvP activation retake by mutual consent", () => {
     const after = ready();
     const before = structuredClone(after);
     before.combat!.setup = { pendingPlayerIds: ["p1"], placedUnitIds: {}, unitLimit: 5 };
-    trackCombatRetake(before, after, { type: "CONTINUE_COMBAT", playerId: "p1" });
+    trackCombatRetake(before, after, { type: "END_TURN", playerId: "p1" });
     expect(after.combatRetakeCheckpoint?.snapshot.combat).toEqual(after.combat);
     expect(getPlayerView(after, "p1").combatRetakeAvailable).toBe(true);
     expect(getPlayerView(ready(), "p1").combatRetakeAvailable).toBe(false);

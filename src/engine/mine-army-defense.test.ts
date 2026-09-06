@@ -75,7 +75,7 @@ function game(houseRules: Partial<Record<HouseRuleId, boolean>>, seed = "mine-de
     players: [
       { id: "p1", name: "A", factionId: "castle", heroDefId: "catherine" },
       { id: "p2", name: "B", factionId: "rampart", heroDefId: "gelu" },
-      ...(withThirdPlayer ? [{ id: "p3", name: "C", factionId: "dungeon", heroDefId: "alamar" }] : []),
+      ...(withThirdPlayer ? [{ id: "p3", name: "C", factionId: "dungeon" as const, heroDefId: "alamar" }] : []),
     ]
   });
   for (const player of Object.values(state.players)) {

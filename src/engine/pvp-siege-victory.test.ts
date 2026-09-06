@@ -106,7 +106,7 @@ describe("PvP on a controlled Settlement", () => {
     resolveSiegeGateChoice(state, "p2", 0);
     expect(state.combat!.siege!.walls).toHaveLength(3);
     expect(state.combat!.siege!.gatePosition).toBeDefined();
-    expect(state.combat!.units[state.combat!.siege!.arrowTowerUnitId].controllerId).toBe("p2");
+    expect(state.combat!.units[state.combat!.siege!.arrowTowerUnitId!].controllerId).toBe("p2");
   });
   it.each(["settlement", "random_town"])("does not grant %s fortifications without a Citadel", (location) => {
     const state = makeGame();
