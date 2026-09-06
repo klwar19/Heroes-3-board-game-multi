@@ -25584,9 +25584,9 @@ function playCard(
   // the Forgetfulness Spell. The Spell shares the FORGETFULNESS effect but
   // resolves via the spell stack, so this branch only fires for directly-played
   // cards (the specialty).
-  if (effect.type === "FORGETFULNESS" && state.combat && target) {
+  if (effect.type === "FORGETFULNESS" && state.combat && nonDamageTarget) {
     const maxGrade = gradeAtPower(effect.gradeByPower, card.power ?? 0);
-    const unit = state.combat.units[target.unitId];
+    const unit = state.combat.units[nonDamageTarget.unitId];
     if (unit && maxGrade && gradeRankOfUnit(unit) <= gradeRank(maxGrade)) {
       createActiveEffect(
         state,
@@ -25596,11 +25596,15 @@ function playCard(
           duration: { type: "next-activation" },
           polarity: "negative",
           removable: true,
+          // Zilare says NEXT activation. Played during the target's current
+          // attack, it must survive that activation ending before taking effect
+          // on the next one; spell/specialty damage immunity is irrelevant.
+          activationsRemaining: state.combat.activeUnitId === unit.id ? 2 : 1,
           modifiers: [{ type: "UNIT_CANNOT_ATTACK" }],
         },
         { type: "card", cardId: card.id, controllerId: action.playerId },
         action.playerId,
-        target,
+        nonDamageTarget,
       );
     }
   }

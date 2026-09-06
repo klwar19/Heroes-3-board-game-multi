@@ -1146,7 +1146,8 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // larger-table Conquest thresholds and veteran ability corrections.
 // Elimination/forfeit removes rivals from Conquest instead of awarding PvP credit.
 // Earned faction cubes persist when the defeated rival leaves the match.
-export const ENGINE_PROTOCOL_VERSION = 112;
+// Next-activation specialties, open far/near bank arcs, surviving-rival conquest.
+export const ENGINE_PROTOCOL_VERSION = 113;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

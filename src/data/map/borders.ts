@@ -27,7 +27,11 @@ export type TileBorderSegment = {
  * — the Calamity / Dungeon Gates and every Field Override) follows the same
  * rule.
  *
- * USER RULE 2026-09-05 — "Bank: should respect the border. Only remove the
+ * CURRENT BANK RULE 2026-09-06: banks on far (II–III) and near (IV–V)
+ * tiles remove their printed outside arcs too. Starting-tile arcs and all
+ * designer borders survive. Other carved objects retain the rule below.
+ *
+ * Previous general carve rule 2026-09-05 — "Bank: should respect the border. Only remove the
  * INSIDE border to get in. If there is no border outside, don't add a border."
  * So a carve drops ONLY the inside half of the printed ring (the three edges it
  * shares with the host tile's own fields, plus every printed line a neighbouring
@@ -83,11 +87,13 @@ export function getTileBorderSegments(
       return;
     }
     const slot = direction + 1;
-    // USER RULE 2026-09-05: a carve keeps the tile's PRINTED outer arc — only
+    // Except for far/near banks, a carve keeps the tile's PRINTED outer arc — only
     // the ring's inside half is opened, so a hero enters from the host tile and
     // the map's outer wall stays a wall. Emitted through `addDesigned` so the
     // adjacency suppression pass below (which drops every printed line touching
     // the carved hex) cannot erase it again.
+    const bankOpensPrintedArc = bankSlots.has(slot) && (def.group === "far" || def.group === "near");
+    if (bankOpensPrintedArc) return;
     const retained = suppressedSlots.has(slot);
     const emit = retained ? addDesigned : add;
     emit(slot, direction - 1);

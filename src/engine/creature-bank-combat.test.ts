@@ -398,7 +398,7 @@ describe("Creature Bank movement", () => {
     return state;
   }
 
-  it("enters and exits on the host tile, never across the bank's PRINTED outer arc", () => {
+  it("enters and exits across a far bank printed outer arc", () => {
     // S1 slot 6 is its Blocked Field AND carries the printed outer arc — the
     // shape every real bank has (all 102 blocked RING slots in the catalog print
     // their arc), so this is the everyday reading of USER RULE 2026-09-05.
@@ -411,8 +411,8 @@ describe("Creature Bank movement", () => {
     expect(canCrossEdge(state, "A", "B")).toBe(true);
     expect(canCrossEdge(state, "B", "A")).toBe(true);
 
-    expect(canCrossEdge(state, "C", "B")).toBe(false);
-    expect(canCrossEdge(state, "B", "C")).toBe(false);
+    expect(canCrossEdge(state, "C", "B")).toBe(true);
+    expect(canCrossEdge(state, "B", "C")).toBe(true);
   });
 
   // FLIPPED 2026-09-05: this used to turn the BINH house rule

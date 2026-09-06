@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { applyAction, createInitialGameState, createAdventureGameState, getLegalActions } from "./index";
 import { coreHeroDefinitions } from "@/data/factions/core";
 import { adventureCards } from "@/data/cards/adventure";
+import { expireEffectsForActivationEnd } from "./active-effects";
 import type { GameAction, GameState, UnitId } from "./state";
 
 /**
@@ -230,6 +231,27 @@ function zilareCombat(seed: string, cardId: string, enemy: { type?: "ranged" | "
 }
 
 describe("Zilare's Forgetfulness specialty", () => {
+  it.each([false, true])("VI prevents Black Dragons Pack's next attack (already active: %s)", (active) => {
+    const state = zilareCombat("zilare-black-dragons", "specialty.zilare.6", { type: "flying", grade: "gold" });
+    const unit = state.combat!.units.unit_p2_skeletons;
+    unit.unitDefId = "dungeon.black_dragons";
+    unit.variant = "pack";
+    unit.position = 9; // Adjacent to p1's Griffins: a real melee attack is available.
+    unit.abilities = ["immune-all-spells", "immune-specialty-damage"];
+    if (active) state.combat!.activeUnitId = unit.id;
+    const play = findPlay(state, "specialty.zilare.6", 0, unit.id);
+    expect(play).toBeTruthy();
+    const after = passAllReactions(applyOk(state, play!.action));
+    if (active) expireEffectsForActivationEnd(after, unit.id);
+    expect(unitCannotAttackEffectExists(after, unit.id)).toBe(true);
+    after.activePlayerId = "p2";
+    after.combat!.activeUnitId = unit.id;
+    after.combat!.units[unit.id].activatedThisRound = false;
+    expect(p2CanAttackWith(after, unit.id)).toBe(false);
+    expireEffectsForActivationEnd(after, unit.id);
+    expect(unitCannotAttackEffectExists(after, unit.id)).toBe(false);
+    expect(p2CanAttackWith(after, unit.id)).toBe(true);
+  });
   it("I forbids a bronze/silver ranged enemy from attacking next activation (a normal one attacks)", () => {
     // Control: the same ranged skeletons unit can shoot when active.
     const control = createInitialGameState("zilare-i-control");

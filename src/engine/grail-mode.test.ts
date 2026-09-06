@@ -465,6 +465,27 @@ describe("Defeat every enemy hero", () => {
   });
 
   for (const mode of ["conquest", "grail", "dragon-hunt", "dragon-conqueror"] as const) {
+    for (const seats of [3, 4]) for (const gaveUp of [false, true]) {
+      it(`wins when the last unbeaten rival departs (${mode}, ${seats}, quit=${gaveUp})`, () => {
+        const players: AdventurePlayerConfig[] = [
+          { id: "p1", name: "A", factionId: "castle", heroDefId: "catherine" },
+          { id: "p2", name: "B", factionId: "dungeon", heroDefId: "alamar" },
+          { id: "p3", name: "C", factionId: "necropolis", heroDefId: "sandro" },
+          { id: "p4", name: "D", factionId: "tower", heroDefId: "solmyr" },
+        ];
+        const state = makeGameWithPlayers(mode, players.slice(0, seats));
+        stagePvpWin(state, "p1", "p2");
+        finalizeAdventureCombat(state);
+        expect(state.adventure!.winnerPlayerId).toBeNull();
+        if (seats === 4) {
+          eliminatePlayer(state, "p4", "left", gaveUp);
+          expect(state.adventure!.winnerPlayerId).toBeNull();
+        }
+        eliminatePlayer(state, "p3", "left", gaveUp);
+        expect(state.adventure!.winnerPlayerId).toBe("p1");
+        expect(conquestProgress(state, "p1")).toBe(1);
+      });
+    }
     for (const gaveUp of [false, true]) {
       it(`removes departing rivals without PvP credit in ${mode} (forfeit=${gaveUp})`, () => {
         const state = makeGameWithPlayers(mode, [
@@ -487,7 +508,7 @@ describe("Defeat every enemy hero", () => {
         stagePvpWin(state, "p1", "p2");
         finalizeAdventureCombat(state);
         expect(conquestProgress(state, "p1")).toBe(1);
-        expect(state.adventure!.winnerPlayerId).toBeNull();
+        expect(state.adventure!.winnerPlayerId).toBe("p1");
         eliminatePlayer(state, "p2", "left the match", gaveUp);
         expect(state.adventure!.winnerPlayerId).toBe("p1");
       });
@@ -590,7 +611,7 @@ describe("Defeat every enemy hero", () => {
       expect(state.adventure!.heroDefeats?.p1).not.toContain("p4");
     });
 
-    it(`does not lower the cube target after a 3-player table loses one rival (${mode})`, () => {
+    it(`wins by beating the remaining rival after a 3-player departure (${mode})`, () => {
       const state = makeGameWithPlayers(mode, [
         { id: "p1", name: "A", factionId: "castle", heroDefId: "catherine" },
         { id: "p2", name: "B", factionId: "dungeon", heroDefId: "alamar" },
@@ -602,9 +623,9 @@ describe("Defeat every enemy hero", () => {
 
       stagePvpWin(state, "p1", "p2");
       finalizeAdventureCombat(state);
-      // Two players remain, but the starting three-player target is still two.
+      // Every surviving rival is beaten despite the fixed two-cube target.
       expect(state.adventure!.heroDefeats?.p1).toEqual(["p2"]);
-      expect(state.adventure!.winnerPlayerId).toBeNull();
+      expect(state.adventure!.winnerPlayerId).toBe("p1");
     });
   }
 

@@ -2110,7 +2110,8 @@ export function canCrossEdge(
     // two fields (none on core tiles; expansion tiles may declare them).
     const tile = adventure.tiles[fromField.tileInstanceId];
     const def = tile ? allTileDefinitions[tile.tileDefId] : undefined;
-    if (def && hasInternalBorder(def, fromField.slot, toField.slot)) {
+    if (def && hasInternalBorder(def, fromField.slot, toField.slot) &&
+        !fieldNeverWearsBorders(fromField) && !fieldNeverWearsBorders(toField)) {
       return false;
     }
     return true;
@@ -2389,7 +2390,12 @@ export function isOuterEdgeSealed(adventure: AdventureState, field: MapFieldStat
   // tile-frame) OR by a DESIGNER-placed yellow border (`extraBorders`, absolute
   // frame). Both feed the single source of truth so every crossing / discovery /
   // placement read treats a deliberate designed line exactly like a printed one.
-  return isTileSlotOuterSealed(tile.tileDefId, field.slot) || isTileSlotDesignedSealed(tile, field.slot);
+  // II–III / IV–V banks erase their printed arc. The opposite tile is
+  // checked independently, preserving any touching starting-tile border.
+  const bankOpensPrintedArc = field.location === "creature_bank" &&
+    (tile.group === "far" || tile.group === "near");
+  return (!bankOpensPrintedArc && isTileSlotOuterSealed(tile.tileDefId, field.slot)) ||
+    isTileSlotDesignedSealed(tile, field.slot);
 }
 
 /**
@@ -5182,7 +5188,7 @@ export function humanPlayerIds(state: GameState): PlayerId[] {
 
 /**
  * Seats that started the scenario, INCLUDING eliminated observers.
- * Conquest requirements use surviving rivals instead of this historical count.
+ * Conquest keeps the starting cube target and also accepts beating all survivors.
  */
 export function adventureSeatCount(state: GameState): number {
   return Object.keys(state.players).filter((id) => id !== NEUTRAL_PLAYER_ID).length;
@@ -5218,7 +5224,12 @@ export function checkConquestVictory(state: GameState, playerId: PlayerId): void
   if (!state.adventure || state.adventure.winnerPlayerId || state.players[playerId]?.eliminated ||
       !state.players[playerId] || !victoryModeCountsHeroDefeats(adventureVictoryMode(state))) return;
   const required = requiredRivalHeroDefeats(state, playerId);
-  if (required > 0 && conquestProgress(state, playerId) >= required) {
+  const beaten = new Set(state.adventure.heroDefeats?.[playerId] ?? []);
+  const rivals = adventureRivalIds(state, playerId);
+  const allRemainingBeaten = rivals.length > 0 && rivals.every(
+    id => state.players[id]?.eliminated || beaten.has(id),
+  );
+  if (required > 0 && (conquestProgress(state, playerId) >= required || allRemainingBeaten)) {
     declareAdventureWinner(state, playerId, "defeated the required enemy heroes", { viaVictoryCondition: true });
   }
 }
@@ -5762,7 +5773,8 @@ export function eliminatePlayer(
  * Distinct rivals required for military victory: 2/3/4/5/6 seats need
  * 1/2/2/3/3 wins. This target is based on the starting opposing table and
  * does not shrink when a rival is eliminated or forfeits; those departures
- * award no cube. If every rival leaves, last faction standing still wins.
+ * award no cube. Beating every surviving rival also wins, and if every rival
+ * leaves, last faction standing still wins.
  */
 export function requiredHeroDefeats(playerCount: number): number {
   return Math.max(1, Math.ceil(playerCount / 2));

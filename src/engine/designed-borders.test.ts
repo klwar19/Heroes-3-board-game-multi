@@ -837,12 +837,7 @@ sealingDescribe("a FIXED yellow border is respected at a runtime border-free hex
     expect(heroFieldSealedForDiscovery(adv(state), bank)).toBe(false);
   });
 
-  // REPLACES "a carve on a STARTING tile keeps the tile's PRINTED border
-  // (CONTROL: the same carve on a far tile does not)" and its
-  // `printedBordersSurviveCarve` band exception, DELETED 2026-09-05: the printed
-  // arc now survives a carve on EVERY tile, so a Ⅰ / Ⅱ–Ⅲ / Ⅳ–Ⅴ split no longer
-  // exists. The band is now the CONTROL — it must make no difference at all.
-  it("the carved bank's PRINTED outer arc seals it whatever the host tile's band", () => {
+  it("banks open printed far/near arcs and preserve starting/center arcs", () => {
     const { state, tile, bank, outside } = bankOnPrintedBlockedSlot("db-bank-printed-arc-band");
     // The same-tile route in is what the carve opens — measured against the
     // sealed tile edge below, so this is not a vacuously true pair.
@@ -857,18 +852,23 @@ sealingDescribe("a FIXED yellow border is respected at a runtime border-free hex
 
     for (const group of ["far", "near", "starting", "center"] as const) {
       tile.group = group as MapTileState["group"];
+      const def = { ...allTileDefinitions[tile.tileDefId], group };
+      const rendered = getTileBorderSegments(def, new Set([bank.slot]));
+      expect(rendered.filter(segment => segment.slot === bank.slot)).toHaveLength(
+        group === "far" || group === "near" ? 0 : 3,
+      );
       expect(canCrossEdge(state, inside.spaceId, bank.spaceId, NONE), `${group}: walk in`).toBe(
         true
       );
       expect(
         canCrossEdge(state, outside.spaceId, bank.spaceId, NONE),
         `${group}: enter across the sealed tile edge`
-      ).toBe(false);
+      ).toBe(group === "far" || group === "near");
       expect(
         canCrossEdge(state, bank.spaceId, outside.spaceId, NONE),
         `${group}: leave across the sealed tile edge`
-      ).toBe(false);
-      expect(heroFieldSealedForDiscovery(adv(state), bank), `${group}: discovery`).toBe(true);
+      ).toBe(group === "far" || group === "near");
+      expect(heroFieldSealedForDiscovery(adv(state), bank), `${group}: discovery`).toBe(group !== "far" && group !== "near");
     }
 
     // MUTATION CONTROL: the SAME carve one slot over, where the tile prints no
