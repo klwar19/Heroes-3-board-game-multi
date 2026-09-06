@@ -796,7 +796,7 @@ describe("Necromancy ability — now-or-never timing (BINH house rule)", () => {
 // Quick Combat remains the one combat-win path that never opens Necromancy.
 // ---------------------------------------------------------------------------
 describe("Necromancy prompt coverage across combat kinds", () => {
-  function coverageGame(seed: string): GameState {
+  function coverageGame(seed: string, withThirdPlayer = false): GameState {
     const state = createAdventureGameState({
       seed,
       ruleset: "binh",
@@ -813,7 +813,8 @@ describe("Necromancy prompt coverage across combat kinds", () => {
           name: "Sandro",
           factionId: "necropolis",
           heroDefId: "sandro"
-        }
+        },
+        ...(withThirdPlayer ? [{ id: "p3", name: "Alamar", factionId: "dungeon", heroDefId: "alamar" }] : []),
       ],
       rollFirstPlayer: false
     });
@@ -868,7 +869,8 @@ describe("Necromancy prompt coverage across combat kinds", () => {
   }
 
   it("opens for an off-turn PvP defender and allows hand bonuses there", () => {
-    const state = coverageGame("necro-pvp-defender");
+    // Keep an unbeaten rival alive so this battle does not finish Conquest.
+    const state = coverageGame("necro-pvp-defender", true);
     const attacker = getMainHero(state, "p1")!;
     const defender = getMainHero(state, "p2")!;
     const fieldId = "pvp-necro-field";

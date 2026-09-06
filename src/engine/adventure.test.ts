@@ -942,7 +942,7 @@ describe("tile discovery and placement", () => {
     expect(result.state.adventure!.tiles[tile!.id].faceDown).toBe(true);
   });
 
-  it("a Creature Bank does NOT open the host tile's printed yellow border (USER RULE 2026-09-05)", () => {
+  it("a bank preserves starting borders but opens far-tile discovery", () => {
     // Same vantage as the sealed-border test: h:8:3 is S3 slot 2 whose outer arc
     // toward the face-down hub at (9,4) is a printed yellow line. Carving a
     // Creature Bank into it used to open that edge (the 2026-08-09 blanket "a
@@ -992,23 +992,8 @@ describe("tile discovery and placement", () => {
     expect(refused.state.adventure!.tiles[tile.id].faceDown).toBe(true);
     expect(refused.state.heroes.hero_p1.movementPoints).toBe(3);
 
-    // MUTATION CONTROL (rewritten 2026-09-05): relabelling the tile's BAND no
-    // longer opens anything — the printed arc seals on every tile. What does
-    // open it is moving the same bank hex onto a slot the tile prints NO arc
-    // for ("if there is no border outside, don't add a border"), so the seal
-    // above is really the printed line.
+    // Far banks open the printed outside arc, including tile discovery.
     heroTile.group = "far";
-    expect(
-      getLegalActions(state, "p1").some(
-        (legal) => legal.action.type === "DISCOVER_TILE" && legal.action.tileInstanceId === tile.id
-      ),
-      "the band makes no difference",
-    ).toBe(false);
-    const openSlot = allTileDefinitions[heroTile.tileDefId].outerImpassable.findIndex(
-      (sealed) => !sealed
-    ) + 1;
-    expect(openSlot).toBeGreaterThan(0);
-    state.adventure!.fields["h:8:3"].slot = openSlot;
     expect(
       getLegalActions(state, "p1").some(
         (legal) => legal.action.type === "DISCOVER_TILE" && legal.action.tileInstanceId === tile.id

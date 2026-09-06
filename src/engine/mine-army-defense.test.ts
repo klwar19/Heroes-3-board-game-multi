@@ -64,7 +64,7 @@ function apply(state: GameState, action: GameAction): GameState {
 }
 
 /** A BINH adventure with the given house-rule overrides frozen in, p1's turn ready. */
-function game(houseRules: Partial<Record<HouseRuleId, boolean>>, seed = "mine-defense"): GameState {
+function game(houseRules: Partial<Record<HouseRuleId, boolean>>, seed = "mine-defense", withThirdPlayer = false): GameState {
   const state = createAdventureGameState({
     seed,
     ruleset: "binh",
@@ -74,7 +74,8 @@ function game(houseRules: Partial<Record<HouseRuleId, boolean>>, seed = "mine-de
     houseRules,
     players: [
       { id: "p1", name: "A", factionId: "castle", heroDefId: "catherine" },
-      { id: "p2", name: "B", factionId: "rampart", heroDefId: "gelu" }
+      { id: "p2", name: "B", factionId: "rampart", heroDefId: "gelu" },
+      ...(withThirdPlayer ? [{ id: "p3", name: "C", factionId: "dungeon", heroDefId: "alamar" }] : []),
     ]
   });
   for (const player of Object.values(state.players)) {
@@ -373,7 +374,8 @@ function unit(over: Partial<CombatUnitState> & { id: string; controllerId: Playe
  * real `finalizeAdventureCombat` so the flag OUTCOME rides the production seam.
  */
 function stageMineDefense(attackerWins: boolean, seed: string): [GameState, string] {
-  const state = game({ "mine-army-defense": true }, seed);
+  // Exercise the post-battle field visit without ending Conquest on this win.
+  const state = game({ "mine-army-defense": true }, seed, true);
   const attacker = getMainHero(state, "p1")!;
   const mineId = "40,40";
   const mine: MapFieldState = {
