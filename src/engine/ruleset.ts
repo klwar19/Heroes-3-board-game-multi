@@ -56,20 +56,20 @@ export const VICTORY_MODE_LABELS: Record<VictoryMode, string> = {
 
 export const VICTORY_MODE_DESCRIPTIONS: Record<VictoryMode, string> = {
   conquest:
-    "Win PvP battles against distinct rivals: 2 players need 1, 3 need 2, 4 need 2, 5 need 3. Elimination or match forfeit removes that rival without awarding a PvP win. Recalculate the requirement from remaining players; only wins against remaining rivals count. Flagging an enemy Town earns you a resource-gain " +
+    "Win PvP battles against distinct rivals: 2 players need 1, 3 need 2, 4 need 2, 5 need 3. Elimination or match forfeit removes that rival without awarding a PvP win. Recalculate the requirement from remaining players; earned faction cubes remain even if that opponent leaves. Flagging an enemy Town earns you a resource-gain " +
     "level (+5 gold, +2 materials, or +1 valuables) and starts their clock — a player with no Town and no " +
     "Settlement lasts 2 more turns before being removed. A held Settlement keeps them fighting. Last faction standing wins.",
   grail:
     "Win either way: capture the Holy Grail (defeat its Lvl-VII guard, visit 2 distinct Obelisks, dig for 1 " +
-    "movement point, then carry it home to your town), or meet the Conquest requirement through PvP wins against remaining rivals " +
+    "movement point, then carry it home to your town), or meet the Conquest requirement through permanent faction cubes earned by distinct PvP wins " +
     "(3/4 players need 2 distinct rivals; 5/6 need 3). The map seeds at least 2 Obelisks (designer presets count) and " +
     "up to 2 Grail dig sites when layout space allows. The Dragon Utopia is just a creature bank here.",
   "dragon-hunt":
-    "Win either way: defeat the Dragon Utopia (no need to hold it afterwards), or meet the Conquest requirement through PvP wins against remaining rivals " +
+    "Win either way: defeat the Dragon Utopia (no need to hold it afterwards), or meet the Conquest requirement through permanent faction cubes earned by distinct PvP wins " +
     "(3/4 players need 2 distinct rivals; 5/6 need 3). A Dragon Utopia is guaranteed on a VI–VII Center tile.",
   "dragon-conqueror":
     "Defeat the Dragon Utopia to capture it, then hold it. The holder garrisons the Utopia and rivals must " +
-    "besiege it (Walls, Gate, Arrow Tower) to take it. Control the Utopia at the start of your turn to win, or meet the Conquest requirement through PvP wins against remaining rivals."
+    "besiege it (Walls, Gate, Arrow Tower) to take it. Control the Utopia at the start of your turn to win, or meet the Conquest requirement through permanent faction cubes earned by distinct PvP wins."
 };
 
 export const PVP_TROOP_LOSS_LABELS: Record<"normal" | "none", string> = {

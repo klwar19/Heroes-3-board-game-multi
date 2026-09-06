@@ -193,7 +193,7 @@ describe("siege defeat — main Hero loses their last Town", () => {
     expect(state.eventLog.some((event) => event.type === "GAME_WON")).toBe(true);
   });
 
-  it("3 players: it is only the defender's loss — they are eliminated but the game continues", () => {
+  it("3 players: the siege cube persists after elimination and wins at the reduced threshold", () => {
     const state = makeGame("conquest", players3());
     stageSiege(state);
 
@@ -203,16 +203,14 @@ describe("siege defeat — main Hero loses their last Town", () => {
     expect(state.turnOrder).not.toContain("p2");
     expect(state.turnOrder).toContain("p1");
     expect(state.turnOrder).toContain("p3");
-    // Two factions remain: no winner yet, and the attacker takes the Town.
-    expect(state.adventure?.winnerPlayerId ?? null).toBeNull();
-    expect(state.phase).not.toBe("game-over");
-    expect(state.adventure?.fields[state.towns.town_p2.fieldId!].flagOwnerId).toBe("p1");
+    // Two factions remain and the earned cube meets the one-cube requirement.
+    expect(state.adventure?.winnerPlayerId).toBe("p1");
+    expect(state.phase).toBe("game-over");
+    expect(state.adventure?.heroDefeats?.p1).toContain("p2");
   });
 
   it("credits the winner 1 win (the faction cube) toward the defeat-every-hero path", () => {
-    // Grail mode counts hero defeats. Three players so the single win does not
-    // itself end the game (requiredHeroDefeats(3) === 2), letting us observe the
-    // credit standing alongside the loser's elimination.
+    // Grail shares Conquest: the earned cube survives the loser's elimination.
     const state = makeGame("grail", players3());
     stageSiege(state);
 
@@ -220,7 +218,7 @@ describe("siege defeat — main Hero loses their last Town", () => {
 
     expect(state.adventure?.heroDefeats?.p1 ?? []).toContain("p2");
     expect(state.players.p2.eliminated).toBe(true);
-    expect(state.adventure?.winnerPlayerId ?? null).toBeNull();
+    expect(state.adventure?.winnerPlayerId).toBe("p1");
   });
 
   it("CONTROL: a Settlement survivor is NOT eliminated — the beaten Hero retreats there", () => {

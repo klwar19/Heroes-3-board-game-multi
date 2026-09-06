@@ -1145,7 +1145,8 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // PvP mutual-consent activation retakes, dragon objective/guard precedence,
 // larger-table Conquest thresholds and veteran ability corrections.
 // Elimination/forfeit removes rivals from Conquest instead of awarding PvP credit.
-export const ENGINE_PROTOCOL_VERSION = 111;
+// Earned faction cubes persist when the defeated rival leaves the match.
+export const ENGINE_PROTOCOL_VERSION = 112;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

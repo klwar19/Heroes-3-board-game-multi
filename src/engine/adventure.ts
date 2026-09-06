@@ -5205,10 +5205,10 @@ export function requiredRivalHeroDefeats(state: GameState, playerId: PlayerId): 
   return rivals === 0 ? 0 : requiredHeroDefeats(rivals + 1);
 }
 
-/** Count distinct surviving rivals actually beaten in PvP; departures give no credit. */
+/** Earned faction cubes are permanent; departures never award or remove one. */
 export function conquestProgress(state: GameState, playerId: PlayerId): number {
   const beaten = new Set(state.adventure?.heroDefeats?.[playerId] ?? []);
-  return adventureRivalIds(state, playerId).filter(id => beaten.has(id) && !state.players[id]?.eliminated).length;
+  return adventureRivalIds(state, playerId).filter(id => beaten.has(id)).length;
 }
 
 export function checkConquestVictory(state: GameState, playerId: PlayerId): void {
