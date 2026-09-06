@@ -2871,15 +2871,32 @@ function attackRollLabel(roll: number): string {
   return roll > 0 ? `+${roll}` : String(roll);
 }
 
-/**
- * Peeks the top Creature Bank token of the tile's tier pile and stashes it on
- * the tile (`reservedBankId`) the moment the tile is revealed — before rotation —
- * so the player knows the bank up front. Only PEEKED (never popped): the token
- * is consumed from the pile only when the placement is accepted, so a declined
- * placement or a host field lost to a later override leaves the pile intact.
- * Polish sizing may use an Empty Field on a no-block II–V tile and may draw a
- * Near bank for a sea IV–V tile; the classic path is unchanged when it is off.
- */
+/** Each player discovers from an independent copy of the seeded bank supply. */
+export function creatureBankPileForPlayer(state: GameState, playerId: PlayerId, tier: "far" | "near"): string[] | undefined {
+  const adventure = state.adventure;
+  if (!adventure) return undefined;
+  const source = tier === "far" ? adventure.creatureBankTokensFar : adventure.creatureBankTokensNear;
+  if (!source) return undefined;
+  if (!adventure.creatureBankTokensByPlayer) {
+    // Older saves consumed one shared supply. Restore bank types already on
+    // the map before seeding independent supplies for the remaining play.
+    const polish = houseRuleEnabled(state, "polish-creature-banks");
+    for (const field of Object.values(adventure.fields)) {
+      if (!isCreatureBankId(field.bankId)) continue;
+      const bankTier = getCreatureBankDefinition(field.bankId, polish).tier;
+      const base = bankTier === "far" ? adventure.creatureBankTokensFar : adventure.creatureBankTokensNear;
+      if (base && !base.includes(field.bankId)) base.unshift(field.bankId);
+    }
+    adventure.creatureBankTokensByPlayer = {};
+  }
+  adventure.creatureBankTokensByPlayer[playerId] ??= {
+    far: [...(adventure.creatureBankTokensFar ?? [])],
+    near: [...(adventure.creatureBankTokensNear ?? [])]
+  };
+  return adventure.creatureBankTokensByPlayer[playerId][tier];
+}
+
+/** Preview the player's bank candidates before rotation; consume only on placement. */
 function reserveCreatureBankForTile(state: GameState, tile: MapTileState, playerId: PlayerId): void {
   const adventure = state.adventure;
   if (!adventure) {
@@ -2897,7 +2914,7 @@ function reserveCreatureBankForTile(state: GameState, tile: MapTileState, player
   if (!creatureBankHostLocationForTile(state, tile)) {
     return;
   }
-  const pile = tier === "far" ? adventure.creatureBankTokensFar : adventure.creatureBankTokensNear;
+  const pile = creatureBankPileForPlayer(state, playerId, tier);
   if (!pile || pile.length === 0) {
     return;
   }
@@ -3471,7 +3488,7 @@ function offerCreatureBankPlacement(state: GameState, tile: MapTileState, player
   if (!tier) {
     return;
   }
-  const pile = tier === "far" ? adventure.creatureBankTokensFar : adventure.creatureBankTokensNear;
+  const pile = creatureBankPileForPlayer(state, playerId, tier);
   // Parallel players may legitimately hold the same bank reservation. Keep an
   // already-shown choice resolvable after another player consumes the matching
   // pile token; abandoning the second window here strands its rotation forever.
@@ -3534,7 +3551,7 @@ function offerCreatureBankPlacement(state: GameState, tile: MapTileState, player
   const tierLabel =
     tile.group === "subterranean" ? "cavern" : tile.group === "sea" ? "Sea IV–V tile" : tier === "far" ? "Far tile" : "Near tile";
   const sizedCandidates = houseRuleEnabled(state, "polish-bank-sizes")
-    ? (tile.reservedBankOptions ?? []).filter((candidate) => pile.includes(candidate.bankId))
+    ? (tile.reservedBankOptions ?? []).filter((candidate) => isCreatureBankId(candidate.bankId))
     : [];
   const options =
     sizedCandidates.length > 0
@@ -9153,14 +9170,18 @@ export function revealNeutralArmy(
       state.adventure?.fields[combat.context.fieldId]?.location === "random_town" &&
       houseRuleEnabled(state, "random-town-veteran-defense") &&
       unitExperienceActive(state);
-    if (neutralRankUpActive(state) || veteranRandomTown) {
+    const objectiveField = state.adventure?.fields[combat.context.fieldId];
+    const veteranDragonHunt = unitExperienceActive(state) &&
+      adventureVictoryMode(state) === "dragon-hunt" &&
+      objectiveField?.location === "dragon_utopia" && !objectiveField.grailConverted;
+    if (neutralRankUpActive(state) || veteranRandomTown || veteranDragonHunt) {
       const ruleset = getRuleset(state);
       const overrides = unitSideRuleOverrides(state);
       for (const unit of neutralUnits) {
         const def = unit.unitDefId ? coreUnitDefinitions[unit.unitDefId] : undefined;
         if (!def || unit.bankUnit) continue;
         const rank = Math.max(
-          veteranRandomTown ? 1 : 0,
+          veteranRandomTown || veteranDragonHunt ? 1 : 0,
           neutralRankUpActive(state) ? neutralRoundsRank(def.tier, state.round) : 0
         );
         if (rank <= 0) continue;
@@ -17395,14 +17416,14 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
       return;
     }
     if (data && adventure && sizedCandidates.length > 0) {
-      const pile = data.tier === "far" ? adventure.creatureBankTokensFar : adventure.creatureBankTokensNear;
+      const pile = creatureBankPileForPlayer(state, action.playerId, data.tier);
       const selected = sizedCandidates[action.optionIndex];
       if (selected) {
         const tokenIndex = pile?.lastIndexOf(selected.bankId) ?? -1;
-        if (!pile || tokenIndex < 0 || !isCreatureBankId(selected.bankId)) {
+        if (!isCreatureBankId(selected.bankId)) {
           throw new Error("That rolled Creature Bank is no longer available.");
         }
-        pile.splice(tokenIndex, 1);
+        if (pile && tokenIndex >= 0) pile.splice(tokenIndex, 1);
         if (!data.fieldId) {
           throw new Error("That Creature Bank has no final Blocked Field.");
         }
@@ -17412,7 +17433,7 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
       }
     } else if (data && adventure && action.optionIndex === 0) {
       // Rule-off control: preserve the original single top-token flow exactly.
-      const pile = data.tier === "far" ? adventure.creatureBankTokensFar : adventure.creatureBankTokensNear;
+      const pile = creatureBankPileForPlayer(state, action.playerId, data.tier);
       // Consume the bank this tile actually previewed, not whatever token is now
       // on top after another parallel reveal. Missing is accepted only because
       // `data.bankId` was minted from this tile's engine-owned reservation.

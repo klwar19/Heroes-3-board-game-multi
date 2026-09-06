@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { applyAction, createAdventureLobbyState, createAdventureGameState } from "./index";
 import { beginFieldVisit, checkDragonConquerorHold, drawGuardArmy, getMainHero, materializeTileFields } from "./adventure";
-import { finalizeAdventureCombat } from "./adventure-reducer";
+import { finalizeAdventureCombat, startNeutralEncounter, pumpAdventureQueues } from "./adventure-reducer";
 import { ATTACK_DIE_FACES } from "./battlefield";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import type { CombatState, CustomMapTilePlan, DragonUtopiaGuards, GameAction, GameState } from "./state";
@@ -42,6 +42,38 @@ function start(mode: "dragon-hunt" | "dragon-conqueror", center: CustomMapTilePl
 }
 
 describe("Dragon victories on designed VI–VII maps", () => {
+  it("only Hunt objective guards have a rank-one floor with Unit Experience, preserving higher ranks", () => {
+    for (const mode of ["dragon-hunt", "dragon-conqueror"] as const) {
+      for (const enabled of [false, true]) {
+        for (const round of [1, 14]) {
+          for (const guards of ["four", "two-azure-two-gold", "by-difficulty"] as const) {
+            let state = start(mode, centers[1], guards);
+            state.adventure!.unitExperience = enabled;
+            state.adventure!.neutralRankUp = round === 14;
+            state.round = round;
+            const field = Object.values(state.adventure!.fields).find(f => f.location === "dragon_utopia")!;
+            const hero = getMainHero(state, "p1")!;
+            hero.spaceId = field.spaceId;
+            for (const player of Object.values(state.players)) {
+              player.canMulligan = false; player.needsHandRefresh = false; player.hand = [];
+            }
+            state.activePlayerId = "p1";
+            state.phase = "player-turn";
+            startNeutralEncounter(state, hero, field);
+            state = ok(state, { type: "PLACE_COMBAT_UNIT", playerId: "p1",
+              armyUnitId: state.players.p1.army[0].id, position: 13 });
+            state = ok(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+            const units = Object.values(state.combat!.units).filter(u => u.controllerId === NEUTRAL_PLAYER_ID);
+            expect(units.length).toBeGreaterThan(0);
+            for (const unit of units) {
+              expect(unit.unitRank ?? 0).toBe(round === 14 ? 3 : enabled && mode === "dragon-hunt" ? 1 : 0);
+            }
+          }
+        }
+      }
+    }
+  });
+
   it("uses a map's guard default, allows a lobby override, and clears the default when the map is removed", () => {
     const preset = { victoryMode: "dragon-hunt" as const, objectives: { utopiaGuards: "two-azure-two-gold" as const } };
     let lobby = createAdventureLobbyState({ seed: "dragon-guard-default" });
@@ -139,6 +171,17 @@ describe("Dragon victories on designed VI–VII maps", () => {
     beginFieldVisit(state, hero.id, field.spaceId, false);
     expect(field.flagOwnerId).toBe("p1");
     expect(state.adventure!.winnerPlayerId).toBeNull();
+    pumpAdventureQueues(state);
+    for (let step = 0; state.pendingChoice && step < 20; step++) {
+      const choice = state.pendingChoice;
+      if (choice.type === "OPTION_CHOICE") {
+        state = ok(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice.id, optionIndex: 0 });
+      } else if (choice.type === "DECK_SEARCH") {
+        state = ok(state, { type: "RESOLVE_DECK_SEARCH", playerId: "p1", choiceId: choice.id,
+          pick: { kind: "revealed", index: 0 } });
+      } else break;
+    }
+    expect(state.pendingChoice).toBeNull();
     for (const player of Object.values(state.players)) {
       player.canMulligan = false; player.needsHandRefresh = false;
     }

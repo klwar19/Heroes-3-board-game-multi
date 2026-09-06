@@ -6460,9 +6460,10 @@ const VII_DRAGON_UTOPIA_ARTIFACT_SEARCH_COUNTS = [3, 3] as const;
 function queueDragonUtopiaArtifactSearches(
   state: GameState,
   hero: HeroState,
-  field: MapFieldState
+  field: MapFieldState,
+  counts: readonly number[] = VII_DRAGON_UTOPIA_ARTIFACT_SEARCH_COUNTS
 ): void {
-  for (const count of VII_DRAGON_UTOPIA_ARTIFACT_SEARCH_COUNTS) {
+  for (const count of counts) {
     state.adventure?.rewardQueue.push({
       playerId: hero.controllerId,
       kind: "shared-deck-search",
@@ -6584,9 +6585,11 @@ function handleDragonUtopiaVisit(state: GameState, hero: HeroState, field: MapFi
     field.flagOwnerId = hero.controllerId;
     field.everFlagged = true;
     field.blackCube = false;
-    // Bonus Search on the FIRST defeat only (a later re-capture is not a fresh
-    // Utopia clear).
+    // First defeat pays 10 gold and two Search (2) artifacts. Recapturing an
+    // opponent's flag does not clear a fresh Utopia or pay again.
     if (firstCapture) {
+      gainResources(state, hero.controllerId, { gold: 10 }, "cleared the Dragon Utopia");
+      queueDragonUtopiaArtifactSearches(state, hero, field, [2, 2]);
       grantUtopiaBonusSearch(state, hero.controllerId);
     }
     appendEvent(state, {

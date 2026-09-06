@@ -58,6 +58,20 @@ it("enables human neutral control for parallel co-op tables", () => {
   expect((within(row).getByRole("button", { name: "On" }) as HTMLButtonElement).disabled).toBe(false);
 });
 
+it.each([6, 7, 8])("increments parallel days from %i without preset limits", (days) => {
+  const { onAction } = renderLobby(state => { state.setupLobby!.options.parallelTurns = days; });
+  openAdvanced();
+  matchTab();
+  fireEvent.click(screen.getByRole("button", { name: "Increase parallel days" }));
+  expect(onAction).toHaveBeenLastCalledWith(expect.objectContaining({
+    type: "SET_GAME_OPTIONS", options: expect.objectContaining({ parallelTurns: days + 1 })
+  }));
+  fireEvent.click(screen.getByRole("button", { name: "Decrease parallel days" }));
+  expect(onAction).toHaveBeenLastCalledWith(expect.objectContaining({
+    type: "SET_GAME_OPTIONS", options: expect.objectContaining({ parallelTurns: days - 1 })
+  }));
+});
+
 function apply(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
   expect(result.errors, result.errors.map((error) => error.message).join("; ")).toEqual([]);

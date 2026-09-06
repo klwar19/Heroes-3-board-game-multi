@@ -2424,9 +2424,8 @@ describe("InspectPanel / zoom — veterancy for own, ENEMY and neutral cards", (
     enemy.unitExperience = 6;
 
     const ranked = unitZoomContent(enemy, state.ruleset);
-    // The concise headline remains, but the four ranks are structured data and
-    // no longer appear as a wall of paragraph text in the right-hand reader.
-    expect(ranked.lines!.some((line) => /Veteran rank 1 \(Seasoned\)/.test(line))).toBe(true);
+    // Experience belongs in the structured panel, not the unit description.
+    expect(ranked.lines!.some((line) => /Veteran rank/.test(line))).toBe(false);
     expect(ranked.lines!.filter((line) => /^[✔·] /.test(line))).toHaveLength(0);
     expect(ranked.veterancy?.ladder).toHaveLength(4);
     expect(ranked.veterancy?.ladder[0]).toMatchObject({ rankName: "Seasoned", threshold: 5, reached: true });
@@ -2450,6 +2449,9 @@ describe("InspectPanel / zoom — veterancy for own, ENEMY and neutral cards", (
     expect(panel).toBeTruthy();
     expect(panel!.textContent).toContain("Seasoned");
     expect(panel!.querySelectorAll(".unitXpRank")).toHaveLength(4);
+    const effects = ranked.veterancy!.ladder.flatMap(rung => rung.abilities);
+    expect(effects.length).toBeGreaterThan(0);
+    for (const ability of effects) expect(panel!.textContent).toContain(ability.text);
 
     // CONTROL: an untrained card emits neither the headline nor any rung.
     const bare = unitZoomContent(state.combat!.units.unit_p1_griffins, state.ruleset);

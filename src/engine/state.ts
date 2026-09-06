@@ -13750,14 +13750,14 @@ export type AdventureState = {
   /** Pandora's Box deck: shuffled draw pile (top = last element). */
   pandoraDeck?: CardId[];
   /**
-   * Creature Bank token piles (Naval Battles optional rule). Two shuffled piles
-   * of CreatureBankId — one for Far Map Tiles (II-III), one for Near (IV-V) —
-   * drawn from (top = last element) when a player places a bank on a discovered
-   * tile's Blocked Field. Present only when the rule is enabled; an empty pile
-   * means every token of that type has been placed.
+   * Seed supplies for Creature Banks, Far (II-III) and Near (IV-V), top last.
+   * Each player draws from an independent copy in creatureBankTokensByPlayer.
+   * Absent means disabled. Older saves used these as shared draw piles.
    */
   creatureBankTokensFar?: string[];
   creatureBankTokensNear?: string[];
+  /** Independent bank supplies per discovering player; seeded from the legacy piles. */
+  creatureBankTokensByPlayer?: Record<PlayerId, { far: string[]; near: string[] }>;
   /**
    * Pick-on-reveal Subterranean Gate placement (default ON). When a revealed
    * tile can host a Gate half in more than one spot — which touching hex becomes

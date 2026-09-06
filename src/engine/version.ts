@@ -1147,7 +1147,8 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // Elimination/forfeit removes rivals from Conquest instead of awarding PvP credit.
 // Earned faction cubes persist when the defeated rival leaves the match.
 // Next-activation specialties, open far/near bank arcs, surviving-rival conquest.
-export const ENGINE_PROTOCOL_VERSION = 114;
+// v115: independent player bank supplies and Dragon objective reward/rank rules.
+export const ENGINE_PROTOCOL_VERSION = 115;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

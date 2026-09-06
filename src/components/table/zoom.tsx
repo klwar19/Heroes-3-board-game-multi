@@ -241,17 +241,9 @@ export function unitZoomContent(
             flip.type !== unit.type ? ` (fights as a ${flip.type} unit)` : ""
           }.`
         : "",
-      // Unit Experience / Neutral Rank-Up: the headline line, then the whole
-      // four-rung ladder. Emitted for ANY card the reader can open — own,
-      // enemy PvP or a neutral guard — because `unitRank` / `unitExperience`
-      // are public engine fields (player-view never masks them). Nothing is
-      // emitted when neither rule folded a rank (`combatUnitVeterancy` → null).
-      veterancy
-        ? `Veteran rank ${veterancy.rank} (${veterancy.rankName}) — ${veterancyXpLabel(
-            veterancy
-          )} on the ${veterancy.trackLabel} path; rank bonuses are folded into the stats above.`
-        : "",
-      ...abilities.map(
+      ...abilities.filter((ability) => !veterancy?.ladder.some((rung) =>
+        rung.reached && rung.abilities.some((rankAbility) => rankAbility.id === ability.id)
+      )).map(
         (ability) =>
           `${ability.name}: ${ability.text}${ability.implementationStatus === "implemented" ? "" : " (manual rule)"}`
       )
@@ -292,6 +284,11 @@ function UnitExperienceZoomPanel({ veterancy }: { veterancy: UnitVeterancyView }
                 {rung.reached ? " · reached" : ""}
               </small>
               <span className="unitXpRankGains">{rung.text}</span>
+              {rung.abilities.map((ability) => (
+                <p className="unitXpEffect" key={ability.id}>
+                  <strong>{ability.name}</strong> {ability.text}
+                </p>
+              ))}
             </article>
           );
         })}

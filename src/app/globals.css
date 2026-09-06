@@ -47018,3 +47018,35 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
     display: none;
   }
 }
+
+/* Experience effects stay readable even for future ranks and narrow card zooms. */
+.zoomUnitXpPanel .zoomUnitXpRanks {
+  grid-template-columns: minmax(0, 1fr);
+}
+.unitXpWindow .unitXpRanks.large {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+}
+.unitXpWindow .unitXpRank.locked,
+.zoomUnitXpPanel .unitXpRank.locked {
+  opacity: 1;
+  filter: none;
+}
+.unitXpWindow .unitXpElite.locked,
+.unitXpWindow .unitXpElite > small {
+  color: #d6cbb6;
+  font-size: 14px;
+}
+.unitXpEffect {
+  grid-column: 1 / -1;
+  margin: 6px 0 0;
+  color: #e8dcc4;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: normal;
+}
+.unitXpActiveChip.large {
+  flex-wrap: wrap;
+}
+.unitXpActiveChip .unitXpEffect {
+  flex-basis: 100%;
+}

@@ -217,7 +217,7 @@ describe("Creature Bank placement on tile discovery", () => {
     expect(field.location).toBe("creature_bank");
     expect(field.bankId).toBeTruthy();
     expect(CREATURE_BANKS[field.bankId as CreatureBankId].tier).toBe("far");
-    expect(state.adventure!.creatureBankTokensFar!.length).toBe(pileBefore - 1);
+    expect(state.adventure!.creatureBankTokensByPlayer!.p1.far.length).toBe(pileBefore - 1);
     expect(state.pendingChoice).toBeNull();
     expect(state.phase).toBe("player-turn");
   });
@@ -342,7 +342,7 @@ describe("Creature Bank — reserved (known) before the tile is rotated", () => 
     expect(field.location).toBe("creature_bank");
     // The bank placed is exactly the one the player was shown while rotating.
     expect(field.bankId).toBe(reserved);
-    expect(state.adventure!.creatureBankTokensFar!.length).toBe(pileBefore - 1);
+    expect(state.adventure!.creatureBankTokensByPlayer!.p1.far.length).toBe(pileBefore - 1);
     expect(state.adventure!.tiles[tileId].reservedBankId).toBeUndefined();
   });
 

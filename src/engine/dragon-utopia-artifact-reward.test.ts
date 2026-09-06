@@ -155,6 +155,33 @@ function queuedArtifactSearchCounts(state: GameState): number[] {
 }
 
 describe("Ⅶ Dragon-Utopia FIELD — the artifact reward is two Search (3)", () => {
+  it("Dragon Defend pays 10 gold and two Search (2) choices only on first capture", () => {
+    const state = utopiaCentreMap("utopia-defend-reward");
+    state.adventure!.victoryMode = "dragon-conqueror";
+    const hero = getMainHero(state, "p1")!;
+    const field = objectiveField(state);
+    hero.spaceId = field.spaceId;
+    const gold = state.players.p1.resources.gold;
+    const artifacts = artifactsOwned(state, "p1").length;
+    beginFieldVisit(state, hero.id, field.spaceId, false);
+    expect(state.players.p1.resources.gold - gold).toBe(10);
+    const result = driveSearches(state);
+    expect(result.revealCounts).toEqual([2, 2]);
+    expect(artifactsOwned(state, "p1").length - artifacts).toBe(2);
+    expect(result.deckPickLabels).toHaveLength(2);
+    for (const labels of result.deckPickLabels) {
+      for (const tier of ["Minor", "Major", "Relic"]) {
+        expect(labels.some(label => label.includes(`${tier} Artifacts`))).toBe(true);
+      }
+    }
+    const capturedField = state.adventure!.fields[field.spaceId];
+    capturedField.flagOwnerId = "p2";
+    beginFieldVisit(state, hero.id, field.spaceId, false);
+    expect(capturedField.flagOwnerId).toBe("p1");
+    expect(state.players.p1.resources.gold - gold).toBe(10);
+    expect(queuedArtifactSearchCounts(state)).toEqual([]);
+  });
+
   it("a won Ⅶ Utopia field opens exactly two Search (3) rewards", () => {
     const state = utopiaCentreMap("utopia-reward-3");
     const hero = getMainHero(state, "p1")!;

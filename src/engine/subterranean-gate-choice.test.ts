@@ -349,7 +349,7 @@ describe("subterranean Creature Banks (house rule)", () => {
       .map((id) => adv(placed).fields[id])
       .find((field) => field?.location === "creature_bank");
     expect(bankField, "the cavern's Blocked Field is now a Creature Bank").toBeDefined();
-    expect(adv(placed).creatureBankTokensNear!.length).toBe(nearBefore - 1);
+    expect(adv(placed).creatureBankTokensByPlayer!.p1.near.length).toBe(nearBefore - 1);
   });
 
   it("offers the bank BEFORE the gate exit pick (bank → gate order)", () => {

@@ -1,5 +1,6 @@
 "use client";
 import { conquestProgress, requiredRivalHeroDefeats } from "@/engine/adventure";
+import { combatUnitVeterancy } from "@/components/table/unit-veterancy";
 
 /* eslint-disable @next/next/no-img-element */
 
@@ -6408,13 +6409,16 @@ export function ArmyPanel({
                       side
                         ? `Attack ${shownAttack} · Defense ${shownDefense} · HP ${shownHealth} · Initiative ${shownInitiative}`
                         : "",
-                      rankLine,
                       (unit.stacks ?? 0) > 0
                         ? `${unit.stacks} Polish Unit Stack${unit.stacks === 1 ? "" : "s"}: +1 Attack and ${unit.stacks} extra Pack health layer${unit.stacks === 1 ? "" : "s"}.`
                         : "",
                       side?.abilityText ?? "",
                       ...engineLines,
                     ].filter(Boolean),
+                    veterancy: rankInfo ? combatUnitVeterancy({
+                      unitDefId: unit.unitDefId, unitExperience: rankInfo.experience,
+                      unitRank: rankInfo.rank, job: unit.job, bankUnit: unit.side === "bank"
+                    }) ?? undefined : undefined,
                   })
                 }
                 title={hoverTitle}
@@ -15258,36 +15262,26 @@ function GameOptionsPanel({
               0,
               Math.min(MAX_PARALLEL_TURN_ROUNDS, options.parallelTurns ?? 0),
             );
-            const presets = [0, 1, 2, 3, 4, 6] as const;
             return (
               <div className="optionRow">
                 <small title="Optional: everyone plays their turns at the same time for the first rounds (multiplayer only)">
                   Parallel turns
                 </small>
                 <div className="optionButtons">
-                  {presets.map((rounds) => (
-                    <button
-                      aria-pressed={parallelRounds === rounds}
-                      disabled={singlePlayerParallelDisabled && rounds > 0}
-                      className={parallelRounds === rounds ? "selected" : ""}
-                      key={rounds}
-                      onClick={() => send({ parallelTurns: rounds })}
-                      title={
-                        singlePlayerParallelDisabled && rounds > 0
-                          ? "Parallel turns are unavailable in single-player games"
-                          : rounds === 0
-                          ? "Classic one-at-a-time turns"
-                          : `Everyone plays at once for the first ${rounds} round${rounds === 1 ? "" : "s"}`
-                      }
-                      type="button"
-                    >
-                      {rounds === 0 ? "Off" : `${rounds}`}
-                    </button>
-                  ))}
+                  <button type="button" aria-pressed={parallelRounds === 0}
+                    className={parallelRounds === 0 ? "selected" : ""}
+                    onClick={() => send({ parallelTurns: 0 })}>Off</button>
+                  <button type="button" aria-label="Decrease parallel days"
+                    disabled={singlePlayerParallelDisabled || parallelRounds === 0}
+                    onClick={() => send({ parallelTurns: parallelRounds - 1 })}>−</button>
+                  <output aria-label="Parallel days">{parallelRounds} days</output>
+                  <button type="button" aria-label="Increase parallel days"
+                    disabled={singlePlayerParallelDisabled || parallelRounds >= MAX_PARALLEL_TURN_ROUNDS}
+                    onClick={() => send({ parallelTurns: parallelRounds + 1 })}>+</button>
                 </div>
                 <small className="optionHint">
                   {singlePlayerParallelDisabled ? "Parallel turns are disabled in single-player games." : parallelRounds > 0
-                    ? `Everyone plays at the same time for the first ${parallelRounds} round${parallelRounds === 1 ? "" : "s"} — move, build, fight neutral battles and resolve your own visits, cards and rewards independently. Shared-deck draws go to whoever acts first. The next round starts after everyone finishes; round-start events resolve for every player before play resumes. Actions affecting another player wait for open battles and choices to finish, then STOP parallel turns with a warning and continue in normal turn order. The mode also ends when the chosen period is over. Multiplayer only.`
+                    ? "Play together. Player conflicts switch to ordered turns."
                     : "Classic turns: one player at a time, in seat order."}
                 </small>
               </div>

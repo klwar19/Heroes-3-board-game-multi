@@ -33,6 +33,7 @@ export type UnitVeterancyRung = {
   threshold: number | null;
   /** "+1 A · +1 HP" for a stats rung, the ability name for an ability rung. */
   text: string;
+  abilities: { id: string; name: string; text: string }[];
 };
 
 export type UnitVeterancyView = {
@@ -113,6 +114,10 @@ export function combatUnitVeterancy(
       // `armyUnitRankInfo` publishes only the NEXT bar, so each rung's own bar
       // comes from the same shipped table that reader indexed into.
       threshold: thresholds[r - 1] ?? null,
+      abilities: abilityIds.flatMap((id) => {
+        const ability = unitAbilities[id];
+        return ability ? [{ id, name: ability.name, text: ability.text }] : [];
+      }),
       text: [stats, abilityText].filter(Boolean).join(" · ") || "—"
     });
   }

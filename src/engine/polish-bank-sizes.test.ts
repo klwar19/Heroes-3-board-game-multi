@@ -30,6 +30,7 @@ import {
   placeCreatureBank,
 } from "./adventure";
 import { parallelStateForPlayer } from "./parallel-combats";
+import { creatureBankPileForPlayer } from "./adventure-reducer";
 import { markUnitRemovedIfNeeded } from "./combat-units";
 import { chooseComputerAction } from "./computer/policy";
 import { getUnitAbilityDefinitions } from "./unit-abilities";
@@ -290,9 +291,10 @@ describe("Polish Creature Bank offer", () => {
     )!;
     expect(field.bankId).toBe(selected.bankId);
     expect(field.bankSize).toBe(selected.size);
-    expect(state.adventure!.creatureBankTokensFar).toHaveLength(pileBefore.length - 1);
-    expect(state.adventure!.creatureBankTokensFar).not.toContain(selected.bankId);
-    expect(state.adventure!.creatureBankTokensFar).toContain(unchosen.bankId);
+    expect(state.adventure!.creatureBankTokensByPlayer!.p1.far).toHaveLength(pileBefore.length - 1);
+    expect(state.adventure!.creatureBankTokensByPlayer!.p1.far).not.toContain(selected.bankId);
+    expect(state.adventure!.creatureBankTokensByPlayer!.p1.far).toContain(unchosen.bankId);
+    expect(state.adventure!.creatureBankTokensFar).toEqual(pileBefore);
   });
 
   it("keeps an already-shown parallel Imp Cache choice selectable after its twin confirms first", () => {
@@ -304,7 +306,7 @@ describe("Polish Creature Bank offer", () => {
     // Exact legacy race: another player's independently parked tile had peeked
     // the same top token and consumed it first. The choice on this screen was
     // already minted and must still resolve instead of trapping Confirm forever.
-    state.adventure!.creatureBankTokensFar = state.adventure!.creatureBankTokensFar!.filter(
+    state.adventure!.creatureBankTokensByPlayer!.p1.far = state.adventure!.creatureBankTokensByPlayer!.p1.far.filter(
       (bankId) => bankId !== "imp_cache",
     );
     state = choosePolishBank(state, impIndex);
@@ -319,7 +321,7 @@ describe("Polish Creature Bank offer", () => {
     expect(state.adventure!.pendingTileChoice).toBeNull();
   });
 
-  it("lets different players confirm the same parallel bank while each A/B offer stays distinct", () => {
+  it.each([false, true])("lets different players confirm the same parallel bank (later discovery: %s)", (laterDiscovery) => {
     let state = createAdventureGameState({
       seed: "parallel-bank-reservations",
       difficulty: "normal",
@@ -357,6 +359,11 @@ describe("Polish Creature Bank offer", () => {
       ? p1.pendingChoice.creatureBank?.candidates?.map((candidate) => candidate.bankId) ?? []
       : [];
     expect(p1Banks).toEqual(["imp_cache", "crypt"]);
+    if (laterDiscovery) {
+      const firstChoice = p1.pendingChoice!;
+      state = apply(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: firstChoice.id, optionIndex: 0 });
+      state = apply(state, getLegalActions(state, "p1").find(legal => legal.action.type === "SET_TILE_ROTATION")!.action);
+    }
 
     const p2Place = getLegalActions(state, "p2").find((legal) => legal.action.type === "PLACE_TILE");
     expect(p2Place).toBeDefined();
@@ -374,18 +381,83 @@ describe("Polish Creature Bank offer", () => {
     if (p1Choice?.type !== "OPTION_CHOICE" || p2Choice?.type !== "OPTION_CHOICE") {
       throw new Error("expected both parallel bank choices");
     }
-    state = apply(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: p1Choice.id, optionIndex: 0 });
-    const p1Rotation = getLegalActions(state, "p1").find((legal) => legal.action.type === "SET_TILE_ROTATION");
-    expect(p1Rotation).toBeDefined();
-    state = apply(state, p1Rotation!.action);
+    if (!laterDiscovery) {
+      state = apply(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: p1Choice.id, optionIndex: 0 });
+      const p1Rotation = getLegalActions(state, "p1").find((legal) => legal.action.type === "SET_TILE_ROTATION");
+      expect(p1Rotation).toBeDefined();
+      state = apply(state, p1Rotation!.action);
+    }
 
-    // p1 consumed the shared Imp Cache token. p2's independently issued Imp
-    // Cache choice is still valid and confirms its own tile normally.
+    // p1 consumed their Imp Cache token; p2 can still confirm their own copy.
     state = apply(state, { type: "CHOOSE_OPTION", playerId: "p2", choiceId: p2Choice.id, optionIndex: 0 });
     const p2Rotation = getLegalActions(state, "p2").find((legal) => legal.action.type === "SET_TILE_ROTATION");
     expect(p2Rotation).toBeDefined();
     state = apply(state, p2Rotation!.action);
     expect(Object.values(state.adventure!.fields).filter((field) => field.bankId === "imp_cache")).toHaveLength(2);
+  });
+
+  it.each([0, 4])("keeps each player's Far and Near bank supply independent (%i parallel rounds)", (parallelTurns) => {
+    const state = createAdventureGameState({ seed: "independent-banks", creatureBanks: true,
+      parallelTurns, rollFirstPlayer: false });
+    for (const tier of ["far", "near"] as const) {
+      const first = creatureBankPileForPlayer(state, "p1", tier)!;
+      const original = [...first];
+      first.pop();
+      const second = creatureBankPileForPlayer(state, "p2", tier)!;
+      expect(second).toEqual(original);
+      expect(second).not.toBe(first);
+      expect(second.pop()).toBe(original.at(-1));
+      expect(first).toHaveLength(original.length - 1);
+    }
+  });
+
+  it("offers the same bank on a later player's ordered turn", () => {
+    let state = placeFarTileAwaitingRotation({ pile: ["crypt", "imp_cache"] });
+    state = choosePolishBank(state, 0);
+    state = finishRotation(state);
+    state = apply(state, { type: "END_TURN", playerId: "p1" });
+    expect(state.activePlayerId).toBe("p2");
+    const refresh = getLegalActions(state, "p2").find(legal => legal.action.type === "REFRESH_HAND");
+    if (refresh) state = apply(state, refresh.action);
+    state.heroes.hero_p2.spaceId = "h:7:2";
+    const placement = getLegalActions(state, "p2").find(legal => legal.action.type === "PLACE_TILE");
+    expect(placement).toBeDefined();
+    state = apply(state, placement!.action);
+    const choice = bankChoice(state);
+    expect(choice.creatureBank!.candidates!.map(c => c.bankId)).toEqual(["imp_cache", "crypt"]);
+    state = apply(state, { type: "CHOOSE_OPTION", playerId: "p2", choiceId: choice.id, optionIndex: 0 });
+    const rotation = getLegalActions(state, "p2").find(legal => legal.action.type === "SET_TILE_ROTATION");
+    expect(rotation).toBeDefined();
+    state = apply(state, rotation!.action);
+    expect(Object.values(state.adventure!.fields).filter(f => f.bankId === "imp_cache")).toHaveLength(2);
+  });
+
+  it("restores bank types consumed by an older shared-supply save", () => {
+    const state = createAdventureGameState({ seed: "old-bank-save", creatureBanks: true, rollFirstPlayer: false });
+    state.adventure!.creatureBankTokensFar = [];
+    const field = Object.values(state.adventure!.fields)[0];
+    field.location = "creature_bank";
+    field.bankId = "crypt";
+    expect(creatureBankPileForPlayer(state, "p1", "far")).toEqual(["crypt"]);
+    expect(creatureBankPileForPlayer(state, "p2", "far")).toEqual(["crypt"]);
+  });
+
+  it("honours a saved post-rotation sized choice after its supply entry is gone", () => {
+    let state = placeFarTileAwaitingRotation();
+    const offered = bankChoice(state);
+    state = choosePolishBank(state, 0);
+    const tileId = state.adventure!.pendingTileChoice!.tileInstanceId;
+    state = finishRotation(state);
+    const field = Object.values(state.adventure!.fields).find(f => f.tileInstanceId === tileId && f.location === "creature_bank")!;
+    const selected = offered.creatureBank!.candidates![0];
+    state.adventure!.creatureBankTokensByPlayer!.p1.far = [];
+    state.pendingChoice = { ...offered, creatureBank: { ...offered.creatureBank!, preRotation: false, fieldId: field.spaceId } };
+    state.phase = "choice";
+    state.priorityPlayerId = "p1";
+    state = choosePolishBank(state, 0);
+    expect(state.adventure!.fields[field.spaceId].bankId).toBe(selected.bankId);
+    expect(state.adventure!.fields[field.spaceId].bankSize).toBe(selected.size);
+    expect(state.pendingChoice).toBeNull();
   });
 
   it("offers Leave it blocked before rotation; declining leaves the field blocked and the pile intact", () => {
