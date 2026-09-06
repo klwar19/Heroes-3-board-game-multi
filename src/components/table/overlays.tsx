@@ -4178,13 +4178,12 @@ export function CombatResultModal({
               : `${winnerName} wins`;
   const detail =
     outcome.reason === "surrender"
-      ? // House rule: a paid escape that keeps the army and is NOT a win for the
-        // opponent (no experience, no Necromancy, no victory credit).
-        `${defeatedName} pays ${SURRENDER_GOLD_COST} gold and withdraws to ${fallBackTo} with their whole army — it does not count as a win for ${winnerName}.`
+      ? // Paid escape preserves the army; the PvP outcome still counts.
+        `${defeatedName} pays ${SURRENDER_GOLD_COST} gold and withdraws to ${fallBackTo} with their whole army — ${winnerName} wins the battle.`
       : outcome.reason === "surrender-secondary"
         ? // House rule: the 2nd hero is sacrificed (removed) instead of paying
-          // gold; the army and gold are kept and it is NOT a win for the opponent.
-          `${defeatedName} gives up their Secondary Hero to escape — no gold is paid and the army is kept, but the 2nd hero is lost. It does not count as a win for ${winnerName}.`
+          // gold; the army and gold are kept.
+          `${defeatedName} gives up their Secondary Hero to escape — no gold is paid and the army is kept, but the 2nd hero is lost. ${winnerName} wins the battle.`
         : outcome.reason === "retreat"
           ? `${defeatedName} falls back to ${fallBackTo}. The combat is over.`
           : `${winnerName} defeats ${defeatedName}${

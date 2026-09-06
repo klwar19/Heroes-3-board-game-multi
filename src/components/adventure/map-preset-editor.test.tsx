@@ -695,6 +695,10 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     expect(onChange).toHaveBeenLastCalledWith(
       expect.objectContaining({ objectives: { utopiaGuards: "four" } })
     );
+    fireEvent.click(within(section("Dragon Utopia guards")).getByRole("button", { name: "2 Azure + 2 Gold" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ objectives: { utopiaGuards: "two-azure-two-gold" } })
+    );
 
     // Utopia bonus search → objectives.utopiaBonusSearch.
     rerender(
@@ -719,6 +723,17 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     );
     fireEvent.click(within(section("Dragon Utopia bonus search")).getByRole("button", { name: "None" }));
     expect(onChange).toHaveBeenLastCalledWith({ victoryMode: "dragon-conqueror" });
+  });
+
+  it("allows both dragon victories on a map with the hidden Grail/Utopia package", () => {
+    const onChange = vi.fn();
+    render(<MapPresetEditor preset={{ objectives: { hiddenGrailUtopia: true } }} onChange={onChange} />);
+    for (const [name, victoryMode] of [["Dragon Hunt", "dragon-hunt"], ["Dragon Conqueror", "dragon-conqueror"]]) {
+      const button = within(section("Victory mode")).getByRole("button", { name });
+      expect((button as HTMLButtonElement).disabled).toBe(false);
+      fireEvent.click(button);
+      expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ victoryMode }));
+    }
   });
 
   it("offers the hidden Grail/Utopia package directly in the Map Editor", () => {

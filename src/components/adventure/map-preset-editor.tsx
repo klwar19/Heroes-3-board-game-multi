@@ -38,7 +38,6 @@ import {
   MAP_PRESET_OBELISK_BONUS_KINDS,
   MAP_PRESET_OBELISK_ROLE_OPTIONS,
   MAP_PRESET_VICTORY_OPTIONS,
-  mapHasAuthoredGrailOrUtopia,
   TIMED_EFFECT_KIND_LABELS,
   TIMED_EFFECT_KINDS,
   VICTORY_POINT_OBJECTIVE_OPTIONS,
@@ -231,7 +230,6 @@ export function MapPresetEditor({
   pickArmed?: { kind: "object-plan"; objectKind: SpecificPickKind } | null;
 }) {
   const value = preset ?? {};
-  const authoredGrailOrUtopia = mapHasAuthoredGrailOrUtopia(tiles, value);
   const soloHumanStarts = (tiles ?? []).filter(
     (plan) => plan.group === "starting" && plan.singlePlayer?.role === "human"
   ).length;
@@ -487,7 +485,7 @@ export function MapPresetEditor({
     }
     patchObjectives(next);
   };
-  const setUtopiaGuards = (guards: "four" | "by-difficulty" | undefined) => {
+  const setUtopiaGuards = (guards: NonNullable<CustomMapPreset["objectives"]>["utopiaGuards"]) => {
     const next = { ...objectives };
     if (guards === undefined) {
       delete next.utopiaGuards;
@@ -1319,17 +1317,11 @@ export function MapPresetEditor({
             <button
               aria-pressed={value.victoryMode === opt.id}
               className={`mapPresetChip${value.victoryMode === opt.id ? " active" : ""}`}
-              disabled={authoredGrailOrUtopia && opt.id !== "conquest"}
               key={opt.id}
               onClick={() =>
                 patch({
                   victoryMode: value.victoryMode === opt.id ? undefined : (opt.id as VictoryMode)
                 })
-              }
-              title={
-                authoredGrailOrUtopia && opt.id !== "conquest"
-                  ? "Unavailable: this map already authors Hidden Grail / Dragon Utopia fields."
-                  : undefined
               }
               type="button"
             >
@@ -1338,9 +1330,8 @@ export function MapPresetEditor({
           ))}
         </div>
         <small className="mapPresetHint">
-          {authoredGrailOrUtopia
-            ? "This map already authors Hidden Grail / Dragon Utopia fields, so Holy Grail, Dragon Hunt and Dragon Conqueror cannot add a second objective. Use Conquest, custom wins, or Victory Points."
-            : "Seeds the lobby when the map is picked — the host can still change it there (their choice wins), and switching maps restores the scenario default."}
+          Seeds the lobby when the map is picked. The host can change it there.
+          Dragon modes guarantee a Dragon Utopia on a VI–VII centre tile, including maps with hidden Grail/Utopia fields.
         </small>
       </section>
 
@@ -1731,6 +1722,15 @@ export function MapPresetEditor({
                 type="button"
               >
                 Four dragons
+              </button>
+              <button
+                aria-pressed={objectives.utopiaGuards === "two-azure-two-gold"}
+                className={`mapPresetChip${objectives.utopiaGuards === "two-azure-two-gold" ? " active" : ""}`}
+                onClick={() => setUtopiaGuards("two-azure-two-gold")}
+                title="Draw exactly two azure-tier and two gold-tier Neutral Units."
+                type="button"
+              >
+                2 Azure + 2 Gold
               </button>
             </div>
           </div>

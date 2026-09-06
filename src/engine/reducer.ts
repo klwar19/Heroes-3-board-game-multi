@@ -782,6 +782,7 @@ import type {
   VisitStep,
 } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
+import { applyCombatRetake, trackCombatRetake } from "./combat-retake";
 
 export type ReducerOptions = {
   cards?: CardLibrary;
@@ -5318,9 +5319,9 @@ function getAttackStackDetails(
     // Shamans' innate Air Shield is a unit passive, not an active effect.
     getSelfAttackerTypeDefenseBonus(defender, attacker) +
     // Veteran Guarded Stance: +Defense whenever this unit is attacked. Lives
-    // here, NOT in resolveDefendBonus, because it is unconditional — a Defense
-    // token is not required (that is DEFEND_BONUS / Mammoths' Thick Hide).
-    getFlatDefenseWhenAttacked(defender);
+    // here rather than resolveDefendBonus: no Defense token is required.
+    // The unit does not receive this bonus against retaliation.
+    (isRetaliation ? 0 : getFlatDefenseWhenAttacked(defender));
   const activeDefenseBonus =
     getActiveDefenseBonus(state, defender) +
     getModeChangeDefenseBonus(defender) +
@@ -34311,21 +34312,48 @@ export function applyAction(
   // `parallelStateForPlayer`, and that projection must never be committed by a
   // membership or lobby action they happen to send — exactly as before, they
   // act against the raw state.
-  const selected = "playerId" in action && typeof action.playerId === "string" &&
+  const selected =
+    "playerId" in action &&
+    typeof action.playerId === "string" &&
     state.turnOrder?.includes(action.playerId)
-    ? parallelStateForPlayer(state, action.playerId) : state;
-  if (action.parallelContextId && action.type !== "SELECT_PARALLEL_CONTEXT" &&
-    action.parallelContextId !== (selected.combat?.id ?? `map:${selected.parallelCombatOwnerId ?? ("playerId" in action ? action.playerId : "")}`)) {
-    return fail(state, { code: "ACTION_NOT_LEGAL", message: "That battle changed. Switch to the current battle and try again." });
+      ? parallelStateForPlayer(state, action.playerId)
+      : state;
+  if (
+    action.parallelContextId &&
+    action.type !== "SELECT_PARALLEL_CONTEXT" &&
+    action.parallelContextId !==
+      (selected.combat?.id ??
+        `map:${selected.parallelCombatOwnerId ?? ("playerId" in action ? action.playerId : "")}`)
+  ) {
+    return fail(state, {
+      code: "ACTION_NOT_LEGAL",
+      message:
+        "That battle changed. Switch to the current battle and try again.",
+    });
   }
   const result = applyActionInContext(selected, action, options);
-  const pendingOwner = result.state.pendingChoice?.playerId ?? result.state.reactionWindow?.priorityPlayerId;
-  if (!result.errors.length && pendingOwner && result.state.parallelCombats?.[pendingOwner] &&
-    (!result.state.combat || neutralCombatControllerId(result.state, result.state.combat) !== pendingOwner)) {
-    return fail(state, { code: "ACTION_NOT_LEGAL", message: "Wait for that player's parallel battle to finish before opening a choice for them." });
+  if (!result.errors.length) trackCombatRetake(selected, result.state, action);
+  const pendingOwner =
+    result.state.pendingChoice?.playerId ??
+    result.state.reactionWindow?.priorityPlayerId;
+  if (
+    !result.errors.length &&
+    pendingOwner &&
+    result.state.parallelCombats?.[pendingOwner] &&
+    (!result.state.combat ||
+      neutralCombatControllerId(result.state, result.state.combat) !==
+        pendingOwner)
+  ) {
+    return fail(state, {
+      code: "ACTION_NOT_LEGAL",
+      message:
+        "Wait for that player's parallel battle to finish before opening a choice for them.",
+    });
   }
   if (!result.errors.length) settleParallelCombatContext(result.state);
-  return result.errors.length && selected !== state ? { ...result, state } : result;
+  return result.errors.length && selected !== state
+    ? { ...result, state }
+    : result;
 }
 
 function applyActionInContext(
@@ -34375,6 +34403,12 @@ function applyActionInContext(
       });
   if (seatError) {
     return fail(state, { code: "ACTION_NOT_LEGAL", message: seatError });
+  }
+
+  if (action.type === "REQUEST_COMBAT_RETAKE" || action.type === "ANSWER_COMBAT_RETAKE" ||
+      (state.combatRetakeVote && "playerId" in action &&
+        [state.combatRetakeVote.requestedBy, state.combatRetakeVote.opponentId].includes(action.playerId))) {
+    return applyCombatRetake(state, action);
   }
 
   let base = state;

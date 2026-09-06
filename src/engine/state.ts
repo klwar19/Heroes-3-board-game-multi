@@ -77,6 +77,7 @@ export type ArtifactDeckAccess = {
  * union). Defined here so the pure-type state module needs no data-layer import.
  */
 export type HouseRuleId =
+  | "combat-retake"
   | "settlement-foreign-recruitment"
   // A controlled Settlement recruits the single-sided Neutral Unit cards that
   // correspond to the faction printed on that Settlement's map field.
@@ -657,9 +658,11 @@ export type PvpTroopLoss = "normal" | "none";
  *    touched, with the featured lead slot randomised per game to Azure or Rust
  *    so the encounter always leads with one of those two. Whatever the
  *    difficulty, all four stand.
+ *  - "two-azure-two-gold": draw exactly two cards from each of the Azure and
+ *    Gold Neutral decks, regardless of the selected game difficulty.
  * Absent on older snapshots; treated as "by-difficulty".
  */
-export type DragonUtopiaGuards = "four" | "by-difficulty";
+export type DragonUtopiaGuards = "four" | "by-difficulty" | "two-azure-two-gold";
 export type FactionId =
   | "castle"
   | "rampart"
@@ -5826,6 +5829,8 @@ type GameActionPayload =
       type: "UNDO_MOVE";
       playerId: PlayerId;
     }
+  | { type: "REQUEST_COMBAT_RETAKE"; playerId: PlayerId }
+  | { type: "ANSWER_COMBAT_RETAKE"; playerId: PlayerId; agree: boolean }
   | {
       /**
        * Open an AFK kick-or-wait vote against `targetPlayerId`. Legal only in a
@@ -14134,8 +14139,8 @@ export type AdventureState = {
    */
   grailTakenConversion?: "dragon_utopia" | "empty_field";
   /**
-   * Grail Hunt / Dragon Hunt: distinct enemy players each player has beaten in
-   * hero combat at least once (the "defeat every enemy hero" win path).
+   * Conquest / Grail Hunt / Dragon Hunt: distinct rival players beaten in
+   * hero combat at least once. Repeated defeats never increase the count.
    */
   heroDefeats?: Record<PlayerId, PlayerId[]>;
   /**
@@ -17791,6 +17796,9 @@ export type ComputerPolicyMemoryState = {
 };
 
 export type GameState = {
+  /** Server-only, bounded to one activation; stripped from every player view. */
+  combatRetakeCheckpoint?: { key: string; snapshot: GameState };
+  combatRetakeVote?: { requestedBy: PlayerId; opponentId: PlayerId; combatId: string };
   id: string;
   seed: string;
   mode: GameMode;

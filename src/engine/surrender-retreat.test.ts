@@ -32,7 +32,7 @@ type Mode = "conquest" | "grail";
 function makeGame(
   opts: {
     victoryMode?: Mode;
-    pvpTroopLoss?: "normal" | "none";
+    pvpTroopLoss?: "normal" | "none"; thirdSeat?: boolean;
     houseRules?: Partial<Record<HouseRuleId, boolean>>;
   } = {}
 ): GameState {
@@ -47,7 +47,8 @@ function makeGame(
     houseRules: opts.houseRules,
     players: [
       { id: "p1", name: "Catherine", factionId: "castle", heroDefId: "catherine" },
-      { id: "p2", name: "Alamar", factionId: "dungeon", heroDefId: "alamar" }
+      { id: "p2", name: "Alamar", factionId: "dungeon", heroDefId: "alamar" },
+      ...(opts.thirdSeat ? [{ id: "p3", name: "Sandro", factionId: "necropolis" as const, heroDefId: "sandro" }] : [])
     ]
   });
 }
@@ -185,7 +186,7 @@ describe("Surrender (house rule): a paid escape, not a defeat", () => {
   });
 
   it("opens Necromancy for an eligible winner after PvP surrender", () => {
-    const state = makeGame();
+    const state = makeGame({ thirdSeat: true });
     const { winnerId } = stageFinishedPvpFight(state, "surrender");
     state.players[winnerId].factionId = "necropolis";
     state.players[winnerId].hand = ["ability.necromancy"];
@@ -212,17 +213,15 @@ describe("Surrender (house rule): a paid escape, not a defeat", () => {
     expect(state.heroes[loserHeroId].movementPoints).toBe(2);
   });
 
-  it("does NOT count toward the opponent's defeat-every-hero victory (grail mode)", () => {
+  it("counts as a PvP win toward Conquest (grail mode)", () => {
     const state = makeGame({ victoryMode: "grail" });
     const { winnerId, loserId } = stageFinishedPvpFight(state, "surrender");
 
     finalizeAdventureCombat(state);
 
-    // No hero-defeat is recorded and, crucially, the game is NOT won — the
-    // contrast test below shows a real loss here WOULD win it.
-    expect(state.adventure?.heroDefeats?.[winnerId] ?? []).not.toContain(loserId);
-    expect(state.adventure?.winnerPlayerId ?? null).toBeNull();
-    expect(state.phase).not.toBe("game-over");
+    expect(state.adventure?.heroDefeats?.[winnerId] ?? []).toContain(loserId);
+    expect(state.adventure?.winnerPlayerId).toBe(winnerId);
+    expect(state.phase).toBe("game-over");
   });
 });
 
@@ -304,8 +303,8 @@ describe("Retreat / fought-out loss (house rule): a real defeat", () => {
     expect(state.phase).toBe("game-over");
   });
 
-  it("grants the opponent experience and a Necromancy window", () => {
-    const state = makeGame();
+  it("grants the opponent experience and a Necromancy window before the military win threshold", () => {
+    const state = makeGame({ thirdSeat: true });
     const { winnerId } = stageFinishedPvpFight(state, "retreat");
     state.players[winnerId].factionId = "necropolis";
     state.players[winnerId].hand = ["ability.necromancy"];
@@ -389,15 +388,15 @@ describe("Secondary-Hero surrender (house rule): sacrifice the 2nd hero, not 10 
     expect(state.players.p2.army.map((u) => u.id)).toEqual(["b1", "b2"]);
   });
 
-  it("gives the opponent NO victory credit (grail mode) and no Necromancy window", () => {
+  it("gives PvP victory credit (grail mode) and no Necromancy window", () => {
     const state = makeGame({ victoryMode: "grail" });
     stageSecondaryDefenderFight(state, "surrender-secondary");
     state.players.p1.necromancyWindow = false;
 
     finalizeAdventureCombat(state);
 
-    expect(state.adventure?.heroDefeats?.["p1"] ?? []).not.toContain("p2");
-    expect(state.adventure?.winnerPlayerId ?? null).toBeNull();
+    expect(state.adventure?.heroDefeats?.["p1"] ?? []).toContain("p2");
+    expect(state.adventure?.winnerPlayerId).toBe("p1");
     expect(state.players.p1.necromancyWindow).toBeFalsy();
   });
 
@@ -422,7 +421,7 @@ describe("Secondary-Hero surrender (house rule): sacrifice the 2nd hero, not 10 
   });
 
   it("does not resolve the Treasure field underneath an enemy Secondary after defeating it", () => {
-    const state = makeGame({ victoryMode: "conquest" });
+    const state = makeGame({ victoryMode: "conquest", thirdSeat: true });
     const { secondaryId } = stageSecondaryDefenderFight(state, "retreat");
     expect(state.combat?.context.kind).toBe("player");
     if (state.combat?.context.kind !== "player") throw new Error("expected PvP context");
@@ -443,7 +442,7 @@ describe("Secondary-Hero surrender (house rule): sacrifice the 2nd hero, not 10 
     // CONTROL: defeating a Main Hero on the same location keeps the ordinary
     // post-PvP field visit. A one-die Treasure result can resolve immediately
     // (leaving no pendingVisit), so the roll event is the stable observable.
-    const control = makeGame({ victoryMode: "conquest" });
+    const control = makeGame({ victoryMode: "conquest", thirdSeat: true });
     stageFinishedPvpFight(control, "retreat");
     if (control.combat?.context.kind !== "player") throw new Error("expected PvP context");
     control.adventure!.fields[control.combat.context.fieldId].location = "treasure_symbol";
@@ -460,7 +459,7 @@ describe("Secondary-Hero surrender (house rule): sacrifice the 2nd hero, not 10 
     // The visit-denial above is scoped to one-shot "visitable" prizes: a
     // Secondary parked on a flagged mine/town must never be a capture-denial
     // shield (the winner stands on the field and takes it, like any PvP win).
-    const state = makeGame({ victoryMode: "conquest" });
+    const state = makeGame({ victoryMode: "conquest", thirdSeat: true });
     const { secondaryId } = stageSecondaryDefenderFight(state, "retreat");
     if (state.combat?.context.kind !== "player") throw new Error("expected PvP context");
     const fieldId = state.combat.context.fieldId;
@@ -480,7 +479,7 @@ describe("Secondary-Hero surrender (house rule): sacrifice the 2nd hero, not 10 
   it("a defeated Grail-carrying Secondary hands the Grail to the owner's Main Hero (never orphaned)", () => {
     // The carrier hero is DELETED on defeat; without the hand-off the
     // carrierHeroId dangles and the Grail victory goes dead for the whole table.
-    const state = makeGame({ victoryMode: "conquest" });
+    const state = makeGame({ victoryMode: "conquest", thirdSeat: true });
     const { secondaryId } = stageSecondaryDefenderFight(state, "retreat");
     state.adventure!.grail = { status: "carried", carrierHeroId: secondaryId };
 

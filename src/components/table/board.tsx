@@ -5,6 +5,7 @@
 import { ChevronDown, ChevronUp, Hourglass, Mountain, Plus, ScrollText, Shield, Swords } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { AstrologersCombatNotice } from "./astrologers-combat-notice";
+import { CombatRetakeControls } from "./combat-retake-controls";
 import { COMBAT_TOKEN_IMAGES } from "@/data/assets/homm-assets";
 import { UNIT_RANK_NAMES, unitRankBadgeImage } from "@/data/units/experience";
 import { combatUnitVeterancy, veterancyXpLabel } from "./unit-veterancy";
@@ -3060,6 +3061,7 @@ export function CommandDock({
 
   return (
     <div className="commandDock" aria-label="Commands">
+      <CombatRetakeControls state={state} viewerPlayerId={viewerPlayerId} onAction={onAction} />
       <span className="dockStatus">{status}</span>
       {state.combat && !outcome ? (
         <div className="dockLimits" aria-label={watching ? `${player?.name ?? shownPlayerId} battle status` : "Your battle status"}>

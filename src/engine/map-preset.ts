@@ -1587,7 +1587,7 @@ function sanitizeObjectivesConfig(input: unknown): CustomMapObjectivesConfig | u
   if (raw.grailObelisksRequired === 1 || raw.grailObelisksRequired === 2 || raw.grailObelisksRequired === 3 || raw.grailObelisksRequired === 4) {
     config.grailObelisksRequired = raw.grailObelisksRequired;
   }
-  if (raw.utopiaGuards === "four" || raw.utopiaGuards === "by-difficulty") {
+  if (raw.utopiaGuards === "four" || raw.utopiaGuards === "by-difficulty" || raw.utopiaGuards === "two-azure-two-gold") {
     config.utopiaGuards = raw.utopiaGuards as DragonUtopiaGuards;
   }
   if (raw.utopiaBonusSearch === 1 || raw.utopiaBonusSearch === 2 || raw.utopiaBonusSearch === 3) {
@@ -2862,7 +2862,7 @@ export function describeObeliskBonus(bonus: CustomMapObeliskBonus): string {
  * field.
  */
 export function describeUtopiaGuards(guards: DragonUtopiaGuards): string {
-  return guards === "four" ? "always four dragons" : "the Field Difficulty table";
+  return guards === "four" ? "always four dragons" : guards === "two-azure-two-gold" ? "2 azure + 2 golden units" : "the Field Difficulty table";
 }
 
 /**
@@ -3407,6 +3407,7 @@ export function describeCustomMapPreset(preset: CustomMapPreset | null | undefin
 /** GameSetupOptions keys a map preset may force. */
 export type PresetForcedOptionKey =
   | "victoryMode"
+  | "dragonUtopiaGuards"
   | "gameMode"
   | "difficulty"
   | "farTileOpening"
@@ -3427,6 +3428,7 @@ export function presetForcedOptionKeys(
     return [];
   }
   const keys: PresetForcedOptionKey[] = [];
+  if (preset.objectives?.utopiaGuards) keys.push("dragonUtopiaGuards");
   if (preset.victoryMode) {
     keys.push("victoryMode");
   }
@@ -3485,6 +3487,10 @@ export function applyCustomMapPresetToOptions(
     return [];
   }
   const changes: string[] = [];
+  if (preset.objectives?.utopiaGuards && !skip?.has("dragonUtopiaGuards")) {
+    options.dragonUtopiaGuards = preset.objectives.utopiaGuards;
+    changes.push(`Dragon Utopia guards ${describeUtopiaGuards(preset.objectives.utopiaGuards)}`);
+  }
   if (preset.victoryMode && !skip?.has("victoryMode")) {
     options.victoryMode = preset.victoryMode;
     changes.push(`victory ${VICTORY_LABELS[preset.victoryMode] ?? preset.victoryMode}`);
@@ -3590,6 +3596,10 @@ export function revertCustomMapPresetOptions(
       continue;
     }
     switch (key) {
+      case "dragonUtopiaGuards":
+        options.dragonUtopiaGuards = defaults.dragonUtopiaGuards;
+        changes.push("Dragon Utopia guards back to the default");
+        break;
       case "victoryMode":
         options.victoryMode = defaults.victoryMode;
         changes.push(`victory back to ${VICTORY_LABELS[defaults.victoryMode ?? "conquest"] ?? "Conquest"}`);
@@ -3803,8 +3813,8 @@ function centerCanYield(plan: CustomMapTilePlan, designation: "grail" | "dragon_
 /**
  * A designed map already owns the combined Hidden Grail / Dragon Utopia
  * package when it turns on that preset or explicitly places both identities.
- * In that case the three scenario presets that inject another Grail/Utopia
- * objective are unavailable; Conquest/custom/VP objectives remain valid.
+ * This is presentation metadata, not a restriction on scenario selection.
+ * Dragon scenario setup guarantees a matching VI–VII Utopia objective.
  */
 export function mapHasAuthoredGrailOrUtopia(
   plans: readonly CustomMapTilePlan[] | null | undefined,
@@ -3847,13 +3857,13 @@ export function victoryDesignConflicts(
   const centerPlans = plans.filter((plan) => plan.group === "center");
 
   if (mode === "dragon-hunt" || mode === "dragon-conqueror") {
-    // The Dragon Utopia is a CENTER-tile field, so it can only come from a
-    // center slot. Compatible when at least one center slot can host one.
-    if (centerPlans.some((plan) => centerCanYield(plan, "dragon_utopia"))) {
+    // Dragon setup assigns one center slot to Utopia, including pinned or
+    // randomly designated slots. A pre-existing Utopia is not required.
+    if (centerPlans.length > 0) {
       return [];
     }
     return [
-      `${VICTORY_LABELS[mode]} needs a Dragon Utopia, but this design leaves no centre slot that can host one — every centre Ⅶ field is designated away from a Utopia (or there is no centre slot). Set a centre slot's Ⅶ field to Dragon Utopia, or leave one as a random draw.`
+      `${VICTORY_LABELS[mode]} needs a VI–VII centre tile for its Dragon Utopia. Add a centre tile; the selected win mode will supply its Utopia.`
     ];
   }
 

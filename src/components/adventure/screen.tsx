@@ -1,4 +1,5 @@
 "use client";
+import { conquestProgress, requiredRivalHeroDefeats } from "@/engine/adventure";
 
 /* eslint-disable @next/next/no-img-element */
 
@@ -4787,7 +4788,10 @@ export function AdventureHud({
       ) : null}
       {(() => {
         const mode = state.adventure?.victoryMode ?? "conquest";
-        let status = "flag an enemy town";
+        const required = requiredRivalHeroDefeats(state, viewerPlayerId);
+        const beaten = conquestProgress(state, viewerPlayerId);
+        const heroProgress = `rivals defeated ${beaten}/${required}`;
+        let status = `${heroProgress} (PvP wins or eliminated)`;
         if (mode === "grail") {
           const grail = state.adventure?.grail;
           if (grail?.status === "carried" && grail.carrierHeroId) {
@@ -4797,11 +4801,11 @@ export function AdventureHud({
             const visited = grail?.obelisksVisited?.[viewerId]?.length ?? 0;
             status =
               visited >= 2
-                ? "dig the Grail / beat all heroes"
-                : `Obelisks ${visited}/2 · dig the Grail / beat all heroes`;
+                ? `dig the Grail / ${heroProgress}`
+                : `Obelisks ${visited}/2 · dig the Grail / ${heroProgress}`;
           }
         } else if (mode === "dragon-hunt") {
-          status = "defeat the Dragon Utopia / beat all heroes";
+          status = `defeat the Dragon Utopia / ${heroProgress}`;
         } else if (mode === "dragon-conqueror") {
           const holder = Object.values(state.adventure?.fields ?? {}).find(
             (field) => field.location === "dragon_utopia" && field.flagOwnerId,
@@ -14792,14 +14796,9 @@ function GameOptionsPanel({
                     <button
                       aria-pressed={victoryMode === mode}
                       className={victoryMode === mode ? "selected" : ""}
-                      disabled={mapOwnsGrailOrUtopia && mode !== "conquest"}
                       key={mode}
                       onClick={() => send({ victoryMode: mode })}
-                      title={
-                        mapOwnsGrailOrUtopia && mode !== "conquest"
-                          ? "Unavailable: the selected map already contains Hidden Grail / Dragon Utopia fields."
-                          : VICTORY_MODE_DESCRIPTIONS[mode]
-                      }
+                      title={VICTORY_MODE_DESCRIPTIONS[mode]}
                       type="button"
                     >
                       {VICTORY_MODE_LABELS[mode]}
@@ -14808,7 +14807,7 @@ function GameOptionsPanel({
                 </div>
                 <small className="optionHint">
                   {mapOwnsGrailOrUtopia
-                    ? "This map already owns its Hidden Grail / Dragon Utopia fields. Holy Grail, Dragon Hunt and Dragon Conqueror cannot add a second objective; use Conquest, custom wins, or Victory Points."
+                    ? "The selected win condition uses this map’s Grail / Dragon Utopia fields."
                     : VICTORY_MODE_DESCRIPTIONS[victoryMode]}
                 </small>
               </div>
@@ -14839,8 +14838,15 @@ function GameOptionsPanel({
                     title="The full four-dragon party — Azure, Rust, Crystal and Faerie"
                     type="button"
                   >
-                    4 dragons
+                    All dragons
                   </button>
+                  <button
+                    aria-pressed={guards === "two-azure-two-gold"}
+                    className={guards === "two-azure-two-gold" ? "selected" : ""}
+                    onClick={() => send({ dragonUtopiaGuards: "two-azure-two-gold" })}
+                    title="Draw exactly two azure-tier and two gold-tier Neutral Units."
+                    type="button"
+                  >2 Azure + 2 Gold</button>
                   <button
                     aria-pressed={guards === "by-difficulty"}
                     className={guards === "by-difficulty" ? "selected" : ""}
@@ -14856,6 +14862,7 @@ function GameOptionsPanel({
                 <small className="optionHint">
                   {guards === "four"
                     ? "Four dragons guard the Utopia — Azure, Rust, Crystal and Faerie. The featured lead is a random Azure or Rust Dragon."
+                    : guards === "two-azure-two-gold" ? "Exactly 2 azure-tier + 2 gold-tier Neutral Units guard the Utopia, regardless of difficulty."
                     : "The complete difficulty row is used, including tiers (Hard VII: 1 golden + 2 azure)."}
                 </small>
               </div>

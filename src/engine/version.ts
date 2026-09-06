@@ -1142,7 +1142,9 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // garrison and replace the level-VII fill-to-seven reward with one exact level.
 // A v108 worker would build a different siege, controller and XP result.
 // `npm run deploy:partykit` owed with this bump.
-export const ENGINE_PROTOCOL_VERSION = 109;
+// PvP mutual-consent activation retakes, dragon objective/guard precedence,
+// larger-table Conquest thresholds and veteran ability corrections.
+export const ENGINE_PROTOCOL_VERSION = 110;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

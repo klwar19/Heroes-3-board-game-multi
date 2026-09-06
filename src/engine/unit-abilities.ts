@@ -1540,7 +1540,8 @@ export function getDefendBonus(unit: CombatUnitState): number {
 
 /**
  * Veteran Guarded Stance: extra Defense the unit gets whenever it is ATTACKED —
- * unconditional (no Defense token, no attacker-type gate), which is why it is a
+ * no Defense token or attacker-type gate. Retaliations are excluded by the
+ * caller. This is a
  * separate arm from DEFEND_BONUS. Folded into the defender's effective Defense
  * in getAttackStackDetails alongside the other conditional defence bonuses, so
  * it lands OUTSIDE resolveDefendBonus' Defend-token gate.

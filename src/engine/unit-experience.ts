@@ -209,6 +209,12 @@ function grantWouldBeStrictNoOp(abilityId: string, existing: Iterable<string>): 
   if (!granted || !NO_OP_DEDUPE_EFFECT_TYPES.has(granted.type)) return false;
   for (const heldId of existing) {
     const held = unitAbilities[heldId]?.effect;
+    // Opportunist needs a resolved low die. Mighty Blow's +1 floor makes
+    // that trigger impossible; don't award either half over the other.
+    if (granted.type === "DOUBLE_ATTACK" && granted.maxRoll !== undefined &&
+        held?.type === "MINIMUM_ATTACK_DIE" && held.minimum > granted.maxRoll) return true;
+    if (granted.type === "MINIMUM_ATTACK_DIE" && held?.type === "DOUBLE_ATTACK" &&
+        held.maxRoll !== undefined && granted.minimum > held.maxRoll) return true;
     if (!held || held.type !== granted.type) continue;
     switch (granted.type) {
       case "MINIMUM_ATTACK_DIE":

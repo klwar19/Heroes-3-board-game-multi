@@ -117,7 +117,7 @@ describe("Guarded Stance is a real +1 Defense on every incoming attack", () => {
     // the line above reads 3 again.
   });
 
-  it("also protects against a RETALIATION Attack (it is an attack on this unit)", () => {
+  it("does not protect against a retaliation", () => {
     function retaliationDamage(seed: string, attackerAbilities: string[]): number {
       const state = freshCombat(seed);
       place(state, ATTACKER, {
@@ -143,7 +143,7 @@ describe("Guarded Stance is a real +1 Defense on every incoming attack", () => {
       return attack(state, ATTACKER, DEFENDER).combat!.units[ATTACKER].damage;
     }
     expect(retaliationDamage("gs-retal-control", [])).toBe(3);
-    expect(retaliationDamage("gs-retal-live", ["veteran-guarded-stance"])).toBe(2);
+    expect(retaliationDamage("gs-retal-live", ["veteran-guarded-stance"])).toBe(3);
   });
 
   it("CONTROL: Mammoths' Thick Hide is UNCHANGED — still pays only while defending", () => {
@@ -196,4 +196,24 @@ describe("Neutral Rank-Up inherits the fix (a ranked guard really is harder to h
     expect(off).toBeGreaterThan(0);
     expect(on).toBe(off - 1);
   });
+});
+
+
+describe("Opportunist's Assault resolves real extra attacks", () => {
+  for (const type of ["ground", "flying", "ranged"] as const) {
+    for (const roll of [-1, 0, 1]) {
+      it(type + " with die " + roll + " doubles only low rolls", () => {
+        function hit(abilities: string[]) {
+          const state = freshCombat("opportunist-" + type + roll);
+          place(state, ATTACKER, { position: 9, abilities, attack: 4, defense: 0, type });
+          place(state, DEFENDER, { position: type === "ranged" ? 20 : 10, abilities: [], attack: 0, defense: 1, maxHealth: 60, damage: 0 });
+          state.combat!.dice.scriptedRolls = [roll, ...Array(40).fill(0)];
+          return attack(state, ATTACKER, DEFENDER).combat!.units[DEFENDER].damage;
+        }
+        const control = hit([]);
+        expect(control).toBe(3 + roll);
+        expect(hit(["veteran-double-attack-low-roll"])).toBe(control + (roll <= 0 ? 3 : 0));
+      });
+    }
+  }
 });

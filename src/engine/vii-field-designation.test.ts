@@ -817,7 +817,7 @@ describe("victoryDesignConflicts", () => {
     expect(twoSites).toEqual([]);
   });
 
-  it("Dragon modes: a no-Utopia design conflicts; a Utopia designation clears it", () => {
+  it("Dragon modes allow every VI–VII design; setup supplies its Utopia", () => {
     for (const mode of ["dragon-hunt", "dragon-conqueror"] as const) {
       const noUtopia = victoryDesignConflicts(
         [
@@ -826,8 +826,7 @@ describe("victoryDesignConflicts", () => {
         ],
         mode
       );
-      expect(noUtopia, mode).toHaveLength(1);
-      expect(noUtopia[0]).toMatch(/Dragon Utopia/i);
+      expect(noUtopia, mode).toEqual([]);
 
       const withUtopia = victoryDesignConflicts(
         [
@@ -914,15 +913,15 @@ describe("start block — conflicting designs are refused", () => {
     });
     expect(picked.errors).toHaveLength(0);
     state = picked.state;
-    expect(state.setupLobby?.options.victoryMode).toBe("conquest");
+    expect(state.setupLobby?.options.victoryMode).toBe("dragon-hunt");
 
     const forbidden = applyAction(state, {
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
       options: { victoryMode: "grail" }
     });
-    expect(forbidden.errors.some((error) => /already contains Hidden Grail/i.test(error.message))).toBe(true);
-    expect(forbidden.state.setupLobby?.options.victoryMode).toBe("conquest");
+    expect(forbidden.errors).toEqual([]);
+    expect(forbidden.state.setupLobby?.options.victoryMode).toBe("grail");
   });
 });
 

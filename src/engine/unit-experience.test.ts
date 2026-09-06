@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { hasMediaFile } from "@/lib/media-manifest";
 
+it("never grants an Opportunist rank whose low-roll trigger is made impossible by Mighty Blow", () => {
+  const conflicts: string[] = [];
+  for (const id of Object.keys(coreUnitDefinitions)) {
+    const abilities = [...printedAbilityIdsOf(id), ...unitRankAbilityIds(id, 4)];
+    const effects = abilities.map(ability => unitAbilities[ability]?.effect);
+    if (abilities.includes("veteran-double-attack-low-roll") && effects.some(effect =>
+      effect?.type === "MINIMUM_ATTACK_DIE" && effect.minimum > 0)) conflicts.push(id);
+  }
+  expect(conflicts).toEqual([]);
+});
+
 import {
   MAX_UNIT_RANK,
   UNIT_RANK_ABILITY_ICONS,

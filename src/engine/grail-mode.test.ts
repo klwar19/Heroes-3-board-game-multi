@@ -5,6 +5,8 @@ import {
   adventureSeatCount,
   beginFieldVisit,
   checkDragonConquerorHold,
+  conquestProgress,
+  eliminatePlayer,
   getMainHero,
   getTownOfPlayer,
   grailObelisksVisitedCount,
@@ -407,6 +409,8 @@ describe("Defeat every enemy hero", () => {
     expect(requiredHeroDefeats(2)).toBe(1);
     expect(requiredHeroDefeats(3)).toBe(2);
     expect(requiredHeroDefeats(4)).toBe(2);
+    expect(requiredHeroDefeats(5)).toBe(3);
+    expect(requiredHeroDefeats(6)).toBe(3);
   });
 
   function stagePvpWin(state: GameState, winnerId: PlayerId, loserId: PlayerId): void {
@@ -438,8 +442,52 @@ describe("Defeat every enemy hero", () => {
   }
 
   // Both objective modes also allow winning by military dominance.
-  for (const mode of ["grail", "dragon-hunt"] as const) {
-    it(`wins IMMEDIATELY once the required enemy heroes are beaten (2-player, ${mode})`, () => {
+  it("five-player Conquest needs three distinct rivals; repeated wins never count twice", () => {
+    const state = makeGameWithPlayers("conquest", [
+      { id: "p1", name: "A", factionId: "castle", heroDefId: "catherine" },
+      { id: "p2", name: "B", factionId: "dungeon", heroDefId: "alamar" },
+      { id: "p3", name: "C", factionId: "necropolis", heroDefId: "sandro" },
+      { id: "p4", name: "D", factionId: "tower", heroDefId: "solmyr" },
+      { id: "p5", name: "E", factionId: "rampart", heroDefId: "gelu" },
+    ]);
+    expect(adventureSeatCount(state)).toBe(5);
+    for (const rival of ["p2", "p2", "p3"]) {
+      stagePvpWin(state, "p1", rival);
+      finalizeAdventureCombat(state);
+      expect(state.adventure!.winnerPlayerId).toBeNull();
+    }
+    expect(state.adventure!.heroDefeats?.p1).toEqual(["p2", "p3"]);
+    stagePvpWin(state, "p1", "p4");
+    finalizeAdventureCombat(state);
+    expect(state.adventure!.winnerPlayerId).toBe("p1");
+    expect(state.phase).toBe("game-over");
+  });
+
+  for (const mode of ["conquest", "grail", "dragon-hunt", "dragon-conqueror"] as const) {
+    it(`combines elimination and PvP without double counting in ${mode}`, () => {
+      const state = makeGameWithPlayers(mode, [
+        { id: "p1", name: "A", factionId: "castle", heroDefId: "catherine" },
+        { id: "p2", name: "B", factionId: "dungeon", heroDefId: "alamar" },
+        { id: "p3", name: "C", factionId: "necropolis", heroDefId: "sandro" },
+        { id: "p4", name: "D", factionId: "tower", heroDefId: "solmyr" },
+        { id: "p5", name: "E", factionId: "rampart", heroDefId: "gelu" },
+      ]);
+      stagePvpWin(state, "p1", "p2");
+      finalizeAdventureCombat(state);
+      eliminatePlayer(state, "p2", "lost their last base and hero", false);
+      expect(conquestProgress(state, "p1")).toBe(1);
+      expect(state.adventure!.winnerPlayerId).toBeNull();
+      stagePvpWin(state, "p1", "p3");
+      finalizeAdventureCombat(state);
+      expect(conquestProgress(state, "p1")).toBe(2);
+      expect(state.adventure!.winnerPlayerId).toBeNull();
+      eliminatePlayer(state, "p4", "lost their last base and hero", false);
+      expect(conquestProgress(state, "p1")).toBe(3);
+      expect(state.adventure!.winnerPlayerId).toBe("p1");
+      expect(state.phase).toBe("game-over");
+    });
+
+    it(`keeps the two-player victory rule for ${mode}`, () => {
       const state = makeGame(mode);
       stagePvpWin(state, "p1", "p2");
 
@@ -493,7 +541,7 @@ describe("Defeat every enemy hero", () => {
       expect(state.adventure!.heroDefeats?.p1).not.toContain("p4");
     });
 
-    it(`does not lower the 3-player threshold when one seat is eliminated (${mode})`, () => {
+    it(`combines one eliminated rival with one PvP win at the 3-player threshold (${mode})`, () => {
       const state = makeGameWithPlayers(mode, [
         { id: "p1", name: "A", factionId: "castle", heroDefId: "catherine" },
         { id: "p2", name: "B", factionId: "dungeon", heroDefId: "alamar" },
@@ -509,11 +557,11 @@ describe("Defeat every enemy hero", () => {
       finalizeAdventureCombat(state);
       // Live turn order is only 2, but the scenario still needs 2 defeats.
       expect(state.adventure!.heroDefeats?.p1).toEqual(["p2"]);
-      expect(state.adventure!.winnerPlayerId).toBeNull();
+      expect(state.adventure!.winnerPlayerId).toBe("p1");
     });
   }
 
-  it("does not count a Surrender toward the hero-defeat win path", () => {
+  it("counts a surrendered PvP battle toward the shared Conquest win path", () => {
     const state = makeGame("dragon-hunt");
     const attacker = getMainHero(state, "p1")!;
     const defender = getMainHero(state, "p2")!;
@@ -540,8 +588,8 @@ describe("Defeat every enemy hero", () => {
 
     finalizeAdventureCombat(state);
 
-    expect(state.adventure!.heroDefeats?.p1 ?? []).toEqual([]);
-    expect(state.adventure!.winnerPlayerId).toBeNull();
+    expect(state.adventure!.heroDefeats?.p1).toEqual(["p2"]);
+    expect(state.adventure!.winnerPlayerId).toBe("p1");
   });
 });
 

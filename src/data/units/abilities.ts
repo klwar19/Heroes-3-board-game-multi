@@ -3755,7 +3755,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "veteran-guarded-stance": {
     id: "veteran-guarded-stance",
     name: "Guarded Stance",
-    text: "[unit_passive] This unit gains +1 Defense whenever it is attacked.",
+    text: "[unit_passive] This unit gains +1 Defense when attacked, but not against retaliation.",
     // NOT DEFEND_BONUS (Mammoths' Thick Hide) — that arm only pays while the
     // unit holds a Defense token, which a rank-1 reward (and every neutral
     // guard) essentially never does. FLAT_DEFENSE_WHEN_ATTACKED is the printed

@@ -59,6 +59,14 @@ export type HouseRuleDef = {
 
 export const HOUSE_RULES: HouseRuleDef[] = [
   {
+    id: "combat-retake",
+    label: "Combat: retake turn by agreement",
+    description: "During player-versus-player combat, either participant may request restarting the current unit's activation. The other participant must agree. Available before the next activation starts; not during simultaneous battles or map play.",
+    category: "combat",
+    default: false,
+    legacyDefault: false,
+  },
+  {
     id: "settlement-foreign-recruitment",
     label: "Settlements: recruit from another town",
     description: "Each captured Settlement rolls a fixed random town other than its first owner's faction. While you control it, recruit every unit tier from that town at normal cost, without extra dwellings. Reinforcing still needs a Citadel. Disabled Anime/Wuxia towns are excluded.",

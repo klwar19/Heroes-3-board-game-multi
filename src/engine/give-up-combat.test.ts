@@ -25,7 +25,7 @@ import type { CombatState, CombatUnitState, GameState, MapFieldState, PlayerId }
  *  - keep-troops mode: it keeps every unit but discards its entire hand.
  */
 
-function makeGame(opts: { victoryMode?: "conquest" | "grail"; pvpTroopLoss?: "normal" | "none" } = {}): GameState {
+function makeGame(opts: { victoryMode?: "conquest" | "grail"; pvpTroopLoss?: "normal" | "none"; thirdSeat?: boolean } = {}): GameState {
   return createAdventureGameState({
     seed: "give-up-combat",
     difficulty: "normal",
@@ -34,7 +34,8 @@ function makeGame(opts: { victoryMode?: "conquest" | "grail"; pvpTroopLoss?: "no
     pvpTroopLoss: opts.pvpTroopLoss ?? "normal",
     players: [
       { id: "p1", name: "Catherine", factionId: "castle", heroDefId: "catherine" },
-      { id: "p2", name: "Alamar", factionId: "dungeon", heroDefId: "alamar" }
+      { id: "p2", name: "Alamar", factionId: "dungeon", heroDefId: "alamar" },
+      ...(opts.thirdSeat ? [{ id: "p3", name: "Sandro", factionId: "necropolis" as const, heroDefId: "sandro" }] : [])
     ]
   });
 }
@@ -188,8 +189,8 @@ describe("Give up: a defeat with the Retreat consequences", () => {
     expect(state.adventure?.winnerPlayerId).toBe(winnerId);
   });
 
-  it("grants the opponent a Necromancy window (unlike a Surrender)", () => {
-    const state = makeGame();
+  it("grants the opponent a Necromancy window before the military win threshold", () => {
+    const state = makeGame({ thirdSeat: true });
     const { winnerId } = stageGiveUpPvp(state);
     state.players[winnerId].factionId = "necropolis";
     state.players[winnerId].hand = ["ability.necromancy"];

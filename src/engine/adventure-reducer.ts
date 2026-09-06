@@ -137,7 +137,7 @@ import {
   tournamentMoraleSearchAgainEnabled,
   getSecondaryHero,
   humanPlayerIds,
-  requiredRivalHeroDefeats,
+  checkConquestVictory,
   tryDeliverGrail,
   applyMineFlag,
   applySettlementResource,
@@ -13387,7 +13387,7 @@ function escapePvpCombat(state: GameState, playerId: PlayerId, reason: "retreat"
   }
   // A Secondary Hero surrenders differently (house rule): instead of paying the
   // 10-gold toll it SACRIFICES itself — the 2nd hero is removed from the game and
-  // the opponent gains no victory credit (see finalizeAdventureCombat). This is
+  // the opponent still receives PvP victory credit. This is
   // the only escape that costs no gold, so it needs no affordability check.
   const escapingHero = state.heroes[heroId];
   const secondarySurrender = reason === "surrender" && escapingHero?.kind === "secondary";
@@ -14794,18 +14794,11 @@ export function finalizeAdventureCombat(state: GameState): void {
   // therefore changes hands through normal field control instead.
   transferPolishCarriedGrailAfterPvp(state, winnerId, loserId, winnerHero ?? undefined);
 
-  // Surrender (house rule) is a paid escape, not a defeat: the loser keeps every
-  // unit (handled by `keepTroops` above), pays a flat toll to the opponent,
-  // takes no morale hit, and the opponent gains NOTHING toward winning — no
-  // experience and no credit toward the "defeat every enemy hero" victory
-  // path. Necromancy is still an after-PvP-combat ability regardless of how
-  // the loser conceded. A Retreat or a fought-out loss is a real defeat
-  // with the usual consequences (and its 5-gold toll may push the loser into
-  // debt — gold can go negative).
+  // Surrender preserves troops and changes the loss penalties, but the
+  // opponent still won this PvP battle for Conquest purposes.
   const surrendered = outcome.reason === "surrender";
   // Secondary-Hero surrender (house rule): the loser sacrifices ONLY the 2nd
-  // hero (removed from the game) — no gold, no morale, and the opponent earns no
-  // victory credit, exactly like a main-hero surrender denies credit. The 2nd
+  // hero (removed from the game) — no gold or morale penalty. The 2nd
   // hero's owner keeps their main hero, army, cards and gold.
   const surrenderedSecondary = outcome.reason === "surrender-secondary";
   const escapedWithoutDefeat = surrendered || surrenderedSecondary;
@@ -14839,7 +14832,7 @@ export function finalizeAdventureCombat(state: GameState): void {
       // VP. Tracked unconditionally; read only when VP mode is scored.
       recordVpSurrender(state, winnerId);
     } else if (surrenderedSecondary) {
-      // No gold, no morale hit, no victory credit — the 2nd hero itself is the
+      // No gold or morale hit — the 2nd hero itself is the
       // price. Remove it from the game (the player may hire another later).
       removeSecondaryHeroFromGame(state, loserHero, "surrendered to escape the battle");
       // Victory Points: a surrendered Secondary Hero is still a surrendered hero
@@ -14903,33 +14896,6 @@ export function finalizeAdventureCombat(state: GameState): void {
       // field — unattackable, still "alive" for the opponent, and both can end
       // up stacked on the same Town hex after the main retreats home.
       forceOtherHeroesHomeFromField(state, loserId, context.fieldId, loserHero.id);
-
-      // Grail Hunt & Dragon Hunt: beating an enemy hero in a real fight (retreat
-      // or a fought-out loss) counts toward the "defeat every enemy hero at least
-      // once" win path (only 2 of the 3 in a 4-player game). House rule: a
-      // Secondary Hero fought and lost counts as "1 win against the player" too,
-      // exactly like a main hero — so this branch no longer gates on
-      // `loserHero.kind === "main"`. Neither Surrender variant reaches this branch
-      // (each is handled above), so a sacrificed 2nd hero still grants no credit.
-      if (
-        victoryModeCountsHeroDefeats(adventureVictoryMode(state)) &&
-        winnerId !== NEUTRAL_PLAYER_ID &&
-        loserId !== winnerId
-      ) {
-        const defeats = (adventure.heroDefeats ??= {});
-        const beaten = (defeats[winnerId] ??= []);
-        if (!beaten.includes(loserId)) {
-          beaten.push(loserId);
-        }
-        // Allied computers are not enemy targets and cannot legally fight each
-        // other. Count only actual rivals, while still including eliminated
-        // observers so the threshold never shrinks during play.
-        if (beaten.length >= requiredRivalHeroDefeats(state, winnerId)) {
-          declareAdventureWinner(state, winnerId, "defeated the required enemy heroes", {
-            viaVictoryCondition: true
-          });
-        }
-      }
     }
   }
 
@@ -14945,6 +14911,17 @@ export function finalizeAdventureCombat(state: GameState): void {
 
   state.combat = null;
 
+  // Every resolved PvP win counts once per rival, including garrison fights
+  // and concessions. Hero rewards and escape penalties are independent.
+  if (
+    victoryModeCountsHeroDefeats(adventureVictoryMode(state)) &&
+    winnerId !== NEUTRAL_PLAYER_ID && loserId !== NEUTRAL_PLAYER_ID &&
+    winnerId !== loserId && state.players[winnerId] && state.players[loserId]
+  ) {
+    const beaten = ((adventure.heroDefeats ??= {})[winnerId] ??= []);
+    if (!beaten.includes(loserId)) beaten.push(loserId);
+  }
+
   // Siege defeat (house rule): a player whose MAIN Hero is defeated defending
   // their OWN faction Town — and who has no other base (Settlement or captured
   // Random Town) to fall back to — is eliminated IMMEDIATELY, not put on the
@@ -14955,7 +14932,7 @@ export function finalizeAdventureCombat(state: GameState): void {
   // (last faction standing); with three or more it is just this player's loss
   // and the game continues. The winner's "1 win" toward the defeat-every-hero
   // victory path (the faction-cube credit) was already recorded above, in the
-  // real-defeat branch's `heroDefeats` block, for the victory modes that count
+  // PvP outcome's `heroDefeats` block, for the victory modes that count
   // it. A Settlement (or Random Town) survivor is NOT eliminated — the beaten
   // Hero simply retreats there via moveDefeatedHeroHome above. Surrenders and
   // heroless garrison defenses never reach here (loserHero is null or the
@@ -14982,6 +14959,8 @@ export function finalizeAdventureCombat(state: GameState): void {
   ) {
     eliminatePlayer(state, loserId, "their Main Hero fell defending their last Town", false);
   }
+
+  checkConquestVictory(state, winnerId);
 
   // A win declared above (defeat-every-hero, or the siege elimination just now
   // taking the last enemy faction) ends the game; do not reopen turns.

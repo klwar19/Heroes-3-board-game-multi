@@ -224,7 +224,7 @@ describe("siege defeat — main Hero loses their last Town", () => {
   });
 
   it("CONTROL: a Settlement survivor is NOT eliminated — the beaten Hero retreats there", () => {
-    const state = makeGame();
+    const state = makeGame("conquest", players3());
     const settlement = injectSettlement(state, "40,40", "p2");
     const defenderHeroId = stageSiege(state);
 
@@ -238,8 +238,8 @@ describe("siege defeat — main Hero loses their last Town", () => {
     expect(state.heroes[defenderHeroId].spaceId).toBe(settlement.spaceId);
   });
 
-  it("CONTROL: a heroless garrison defense (no main Hero) is NOT eliminated instantly — the grace clock starts", () => {
-    const state = makeGame();
+  it("a heroless garrison loss counts as PvP defeat without instant elimination", () => {
+    const state = makeGame("conquest", players3());
     stageSiege(state, { garrison: true });
 
     finalizeAdventureCombat(state);
@@ -248,11 +248,12 @@ describe("siege defeat — main Hero loses their last Town", () => {
     // 2-turn elimination clock starts instead of an instant loss.
     expect(state.players.p2.eliminated).toBeFalsy();
     expect(state.players.p2.eliminationCountdown).toBe(2);
+    expect(state.adventure?.heroDefeats?.p1).toContain("p2");
     expect(state.adventure?.winnerPlayerId ?? null).toBeNull();
   });
 
   it("CONTROL: when the ATTACKER loses their assault, nobody is eliminated", () => {
-    const state = makeGame();
+    const state = makeGame("conquest", players3());
     stageSiege(state, { attackerLoses: true });
 
     finalizeAdventureCombat(state);

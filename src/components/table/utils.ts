@@ -399,12 +399,12 @@ export function formatEvent(event: GameEvent, state: GameState): string {
     case "COMBAT_ROUND_ENDED":
       return `Combat round ${event.round} ends.`;
     case "COMBAT_ENDED":
-      // House rule: a Surrender is a paid escape, not a win for the opponent.
+      // Surrender preserves the army but still resolves a battle winner.
       if (event.reason === "surrender") {
-        return `${playerName(state, event.defeatedPlayerId)} surrenders the combat (10 gold, army kept) — not a win for ${playerName(state, event.winnerPlayerId)}.`;
+        return `${playerName(state, event.defeatedPlayerId)} surrenders the combat (10 gold, army kept) — ${playerName(state, event.winnerPlayerId)} wins the battle.`;
       }
       if (event.reason === "surrender-secondary") {
-        return `${playerName(state, event.defeatedPlayerId)} surrenders their Secondary Hero (no gold, army kept, the 2nd hero is lost) — not a win for ${playerName(state, event.winnerPlayerId)}.`;
+        return `${playerName(state, event.defeatedPlayerId)} surrenders their Secondary Hero (no gold, army kept, the 2nd hero is lost) — ${playerName(state, event.winnerPlayerId)} wins the battle.`;
       }
       if (event.reason === "retreat") {
         return `${playerName(state, event.defeatedPlayerId)} retreats; ${playerName(state, event.winnerPlayerId)} wins the combat.`;

@@ -4587,6 +4587,9 @@ export function adventureVictoryMode(state: GameState): VictoryMode {
  * {@link DragonUtopiaGuards} modes; the preset surfaces them, it invents nothing.
  */
 export function adventureDragonUtopiaGuards(state: GameState): DragonUtopiaGuards {
+  if (adventureVictoryMode(state) === "dragon-hunt" || adventureVictoryMode(state) === "dragon-conqueror") {
+    return state.adventure?.dragonUtopiaGuards ?? state.adventure?.mapPreset?.objectives?.utopiaGuards ?? "by-difficulty";
+  }
   return (
     state.adventure?.mapPreset?.objectives?.utopiaGuards ??
     state.adventure?.dragonUtopiaGuards ??
@@ -4659,7 +4662,7 @@ export function currentSurrenderGoldCost(state: GameState): number {
  * dominance even if they never reach the objective creature bank.
  */
 export function victoryModeCountsHeroDefeats(mode: VictoryMode): boolean {
-  return mode === "grail" || mode === "dragon-hunt";
+  return mode === "conquest" || mode === "grail" || mode === "dragon-hunt" || mode === "dragon-conqueror";
 }
 
 /**
@@ -5198,9 +5201,25 @@ export function adventureRivalIds(state: GameState, playerId: PlayerId): PlayerI
   );
 }
 
-/** Same 1/2-opponent cap as the standard rule, applied to actual rivals. */
+/** Half the starting opposing table, rounded up; allies are excluded. */
 export function requiredRivalHeroDefeats(state: GameState, playerId: PlayerId): number {
-  return Math.min(2, adventureRivalIds(state, playerId).length);
+  const rivals = adventureRivalIds(state, playerId).length;
+  return rivals === 0 ? 0 : requiredHeroDefeats(rivals + 1);
+}
+
+/** Each rival counts once, whether beaten in PvP or eliminated. */
+export function conquestProgress(state: GameState, playerId: PlayerId): number {
+  const beaten = new Set(state.adventure?.heroDefeats?.[playerId] ?? []);
+  return adventureRivalIds(state, playerId).filter(id => beaten.has(id) || state.players[id]?.eliminated).length;
+}
+
+export function checkConquestVictory(state: GameState, playerId: PlayerId): void {
+  if (!state.adventure || state.adventure.winnerPlayerId || state.players[playerId]?.eliminated ||
+      !state.players[playerId] || !victoryModeCountsHeroDefeats(adventureVictoryMode(state))) return;
+  const required = requiredRivalHeroDefeats(state, playerId);
+  if (required > 0 && conquestProgress(state, playerId) >= required) {
+    declareAdventureWinner(state, playerId, "defeated the required enemy heroes", { viaVictoryCondition: true });
+  }
 }
 
 /**
@@ -5735,17 +5754,18 @@ export function eliminatePlayer(
       );
     }
   }
+  for (const survivor of state.turnOrder) checkConquestVictory(state, survivor);
 }
 
 /**
- * Enemy heroes a player must beat to win by military dominance (Grail Hunt /
- * Dragon Hunt): every enemy in a 2- or 3-player game (1 / 2), but only 2 of
- * the 3 in a 4-player game. `playerCount` is the scenario seat count at setup
+ * Distinct rivals required for military victory: 2/3/4/5/6 seats need
+ * 1/2/2/3/3 wins. Eliminated rivals also count, without double counting.
+ * `playerCount` is the scenario seat count at setup
  * (use `adventureSeatCount`, not the live turn order — eliminations must not
  * lower the threshold).
  */
 export function requiredHeroDefeats(playerCount: number): number {
-  return playerCount >= 4 ? 2 : Math.max(1, playerCount - 1);
+  return Math.max(1, Math.ceil(playerCount / 2));
 }
 
 /**
@@ -6494,7 +6514,8 @@ function handleDragonUtopiaVisit(state: GameState, hero: HeroState, field: MapFi
     recordVpUtopiaDefeat(state, hero.controllerId, field.spaceId);
   }
 
-  if (grailUtopiaFieldRulesEnabled(state)) {
+  if (grailUtopiaFieldRulesEnabled(state) &&
+      (field.grailConverted || (mode !== "dragon-hunt" && mode !== "dragon-conqueror"))) {
     if (!field.blackCube && !field.everFlagged) {
       field.blackCube = true;
       gainResources(state, hero.controllerId, { gold: 20 }, "cleared the Dragon Utopia");
@@ -7065,7 +7086,7 @@ export function checkDragonConquerorHold(state: GameState, playerId: PlayerId): 
   }
 
   const holdsUtopia = Object.values(adventure.fields).some(
-    (field) => field.location === "dragon_utopia" && field.flagOwnerId === playerId
+    (field) => field.location === "dragon_utopia" && !field.grailConverted && field.flagOwnerId === playerId
   );
   if (holdsUtopia) {
     declareAdventureWinner(state, playerId, "held the Dragon Utopia", { viaVictoryCondition: true });
@@ -16232,6 +16253,12 @@ export function dragonUtopiaGuardIds(state: GameState, difficulty: number): stri
  * variant and retains the fixed four-dragon party.
  */
 function drawDragonUtopiaArmy(state: GameState, difficulty: number): NeutralDraw[] {
+  if (adventureDragonUtopiaGuards(state) === "two-azure-two-gold") {
+    return (["azure", "azure", "gold", "gold"] as const).flatMap(tier => {
+      const unitDefId = drawFromNeutralDeck(state, tier);
+      return unitDefId ? [{ unitDefId, tier }] : [];
+    });
+  }
   if (adventureDragonUtopiaGuards(state) === "by-difficulty") {
     return drawNeutralArmyAtDifficulty(state, difficulty, baseNeutralArmyDifficulty(state));
   }
@@ -17194,6 +17221,10 @@ export function drawGuardArmy(state: GameState, field: MapFieldState | undefined
 }
 
 function drawGuardArmyBase(state: GameState, field: MapFieldState | undefined, difficulty: number): NeutralDraw[] {
+  if (field?.location === "dragon_utopia" && !field.grailConverted &&
+      (adventureVictoryMode(state) === "dragon-hunt" || adventureVictoryMode(state) === "dragon-conqueror")) {
+    return drawDragonUtopiaArmy(state, difficulty);
+  }
   // Designer "certain army" guard: mint the exact cards, Creature-Bank style —
   // never drawn from nor recycled to the tier decks. It REPLACES every
   // printed/location draw below. Unknown ids are skipped defensively.
@@ -17235,7 +17266,8 @@ function drawGuardArmyBase(state: GameState, field: MapFieldState | undefined, d
     return drawNeutralArmyAtDifficulty(state, difficulty, baseNeutralArmyDifficulty(state));
   }
 
-  if (grailUtopiaFieldRulesEnabled(state) && field?.location === "dragon_utopia") {
+  if (grailUtopiaFieldRulesEnabled(state) && field?.location === "dragon_utopia" &&
+      adventureVictoryMode(state) !== "dragon-hunt" && adventureVictoryMode(state) !== "dragon-conqueror") {
     return [
       ...drawNeutralArmyAtDifficulty(state, difficulty, baseNeutralArmyDifficulty(state)),
       { unitDefId: "neutral.black_dragons", tier: "gold" as const, bankGuard: true }

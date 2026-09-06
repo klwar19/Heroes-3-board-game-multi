@@ -382,6 +382,7 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
   const contextOptions = parallelContextOptions(state, viewerPlayerId);
   state = parallelStateForPlayer(state, viewerPlayerId);
   const base = cloneSerializable(state);
+  delete base.combatRetakeCheckpoint;
   // Other contexts contain private choices and must never cross the wire.
   delete base.parallelCombats;
   if (contextOptions.length) {

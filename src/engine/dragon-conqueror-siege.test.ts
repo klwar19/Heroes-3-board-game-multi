@@ -205,7 +205,7 @@ describe("Dragon Conqueror — contesting a held Utopia is a siege", () => {
     ).toBe(true);
   });
 
-  it("seizes the Utopia for the winner, who then holds it to win the game", () => {
+  it("winning a two-player Utopia siege also completes the shared Conquest victory", () => {
     let state = makeUtopiaSiegeReady();
     state = assaultUtopia(state);
     state = deploy(state);
@@ -229,8 +229,9 @@ describe("Dragon Conqueror — contesting a held Utopia is a siege", () => {
     finalizeAdventureCombat(state);
 
     expect(state.combat).toBeNull();
-    expect(state.adventure!.fields[townField].flagOwnerId).toBe("p1"); // seized
-    expect(state.adventure!.winnerPlayerId).toBeNull(); // not won yet — must hold it
+    expect(state.adventure!.heroDefeats?.p1).toEqual(["p2"]);
+    expect(state.adventure!.winnerPlayerId).toBe("p1");
+    expect(state.phase).toBe("game-over");
 
     // Holding the Utopia into the start of p1's next turn wins.
     checkDragonConquerorHold(state, "p1");
