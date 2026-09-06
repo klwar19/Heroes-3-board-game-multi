@@ -47023,18 +47023,9 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
 .zoomUnitXpPanel .zoomUnitXpRanks {
   grid-template-columns: minmax(0, 1fr);
 }
-.unitXpWindow .unitXpRanks.large {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
-}
-.unitXpWindow .unitXpRank.locked,
 .zoomUnitXpPanel .unitXpRank.locked {
   opacity: 1;
   filter: none;
-}
-.unitXpWindow .unitXpElite.locked,
-.unitXpWindow .unitXpElite > small {
-  color: #d6cbb6;
-  font-size: 14px;
 }
 .unitXpEffect {
   grid-column: 1 / -1;
@@ -47044,9 +47035,14 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
   line-height: 1.5;
   white-space: normal;
 }
-.unitXpActiveChip.large {
-  flex-wrap: wrap;
+.zoomCardBody.battleXpOpen {
+  width: min(520px, 90vw);
+  max-width: 520px;
 }
-.unitXpActiveChip .unitXpEffect {
-  flex-basis: 100%;
+.zoomUnitXpPanel .unitXpEffect strong {
+  display: block;
+  font-size: 14px;
+}
+.zoomUnitXpPanel .unitXpEffect {
+  font-size: 14px;
 }

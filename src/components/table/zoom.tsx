@@ -576,7 +576,7 @@ export function CardZoomProvider({ children }: { children: ReactNode }) {
               failedImageSrc={failedImageSrc}
               onImageError={() => setFailedImageSrc(content.image ?? null)}
             />
-            {!content.heroFace && !content.heroInfo ? <div className="zoomCardBody">
+            {!content.heroFace && !content.heroInfo ? <div className={`zoomCardBody${unitExperienceOpen ? " battleXpOpen" : ""}`} onClick={(event) => event.stopPropagation()}>
               <strong>{content.title}</strong>
               {content.empowered ? (
                 <span className="empoweredBadge zoomEmpoweredBadge">
@@ -584,7 +584,15 @@ export function CardZoomProvider({ children }: { children: ReactNode }) {
                 </span>
               ) : null}
               {content.subtitle ? <span className="zoomMeta">{content.subtitle}</span> : null}
-              {content.commanderFace ? (
+              {content.veterancy ? (
+                <button aria-expanded={unitExperienceOpen} className="zoomUnitXpButton"
+                  onClick={() => setUnitExperienceOpen((open) => !open)} type="button">
+                  {unitExperienceOpen ? "Back to card description" : "Open Unit Experience panel"}
+                </button>
+              ) : null}
+              {unitExperienceOpen && content.veterancy ? (
+                <UnitExperienceZoomPanel veterancy={content.veterancy} />
+              ) : content.commanderFace ? (
                 // WOG commander: the pro stats view (authentic comm3 symbols,
                 // grade bonuses, Damage dice, the Power ladder, and every
                 // combination skill explained) instead of the plain stat lines.
@@ -597,24 +605,6 @@ export function CardZoomProvider({ children }: { children: ReactNode }) {
               ) : (
                 content.lines.map((line) => <p key={line}>{line}</p>)
               )}
-              {content.veterancy ? (
-                <>
-                  <button
-                    aria-expanded={unitExperienceOpen}
-                    className="zoomUnitXpButton"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setUnitExperienceOpen((open) => !open);
-                    }}
-                    type="button"
-                  >
-                    {unitExperienceOpen ? "Hide" : "Open"} Unit Experience panel
-                  </button>
-                  {unitExperienceOpen ? (
-                    <UnitExperienceZoomPanel veterancy={content.veterancy} />
-                  ) : null}
-                </>
-              ) : null}
               <button onClick={close} type="button">
                 <X aria-hidden="true" size={14} />
                 <span>Close</span>

@@ -2452,6 +2452,11 @@ describe("InspectPanel / zoom — veterancy for own, ENEMY and neutral cards", (
     const effects = ranked.veterancy!.ladder.flatMap(rung => rung.abilities);
     expect(effects.length).toBeGreaterThan(0);
     for (const ability of effects) expect(panel!.textContent).toContain(ability.text);
+    expect(document.querySelector(".zoomCardBody.battleXpOpen")).toBeTruthy();
+    fireEvent.click(panel!);
+    expect(document.querySelector(".zoomUnitXpPanel")).toBeTruthy();
+    fireEvent.click(panelButton);
+    expect(document.querySelector(".zoomUnitXpPanel")).toBeNull();
 
     // CONTROL: an untrained card emits neither the headline nor any rung.
     const bare = unitZoomContent(state.combat!.units.unit_p1_griffins, state.ruleset);

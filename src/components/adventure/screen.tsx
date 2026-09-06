@@ -1,6 +1,5 @@
 "use client";
 import { conquestProgress, requiredRivalHeroDefeats } from "@/engine/adventure";
-import { combatUnitVeterancy } from "@/components/table/unit-veterancy";
 
 /* eslint-disable @next/next/no-img-element */
 
@@ -6409,16 +6408,13 @@ export function ArmyPanel({
                       side
                         ? `Attack ${shownAttack} · Defense ${shownDefense} · HP ${shownHealth} · Initiative ${shownInitiative}`
                         : "",
+                      rankLine,
                       (unit.stacks ?? 0) > 0
                         ? `${unit.stacks} Polish Unit Stack${unit.stacks === 1 ? "" : "s"}: +1 Attack and ${unit.stacks} extra Pack health layer${unit.stacks === 1 ? "" : "s"}.`
                         : "",
                       side?.abilityText ?? "",
                       ...engineLines,
                     ].filter(Boolean),
-                    veterancy: rankInfo ? combatUnitVeterancy({
-                      unitDefId: unit.unitDefId, unitExperience: rankInfo.experience,
-                      unitRank: rankInfo.rank, job: unit.job, bankUnit: unit.side === "bank"
-                    }) ?? undefined : undefined,
                   })
                 }
                 title={hoverTitle}

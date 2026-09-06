@@ -241,10 +241,10 @@ export function UnitExperienceWindow({
               {army.map((unit) => {
                 const def = coreUnitDefinitions[unit.unitDefId];
                 const rankInfo = armyUnitRankInfo(unit);
-                if (!def || !rankInfo) return null;
+                if (!def || !rankInfo || unit.side === "bank") return null;
                 const printed = armyUnitPrintedSide(def, unit.side, unit.unitDefId, unit.bankSideKey);
                 const side = printed
-                  ? unit.side === "bank" ? printed : applyUnitSideRules(ruleset, unit.unitDefId, unit.side, printed, sideOverrides)
+                  ? applyUnitSideRules(ruleset, unit.unitDefId, unit.side, printed, sideOverrides)
                   : undefined;
                 const thresholds = UNIT_RANK_THRESHOLDS[def.tier] ?? UNIT_RANK_THRESHOLDS.gold;
                 const maxXp = thresholds[MAX_UNIT_RANK - 1];
@@ -351,7 +351,6 @@ export function UnitExperienceWindow({
                         <span className="unitXpActiveChip large" key={id}>
                           <img alt="" src={assetUrl(unitRankAbilityIcon(id, detail.unit.unitDefId, detail.unit.job))} />
                           <b>{ability.name}</b>
-                          <span className="unitXpEffect">{ability.text}</span>
                         </span>
                       );
                     })}
