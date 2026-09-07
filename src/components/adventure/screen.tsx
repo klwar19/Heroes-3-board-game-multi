@@ -183,7 +183,6 @@ import {
 import {
   abilitySymbolIcon,
   creatureBankFieldImage,
-  HERO_INFO_STAT_ICONS,
   mapTokenImage,
   monolithTokenImage,
   ABILITY_EMPOWER_TOKEN_ICON,
@@ -15840,11 +15839,6 @@ function heroCardBrief(
   };
 }
 
-/** The specialty's own name, without the printed "I" / "IV" / "VI" level tail. */
-function specialtyDisplayName(name: string): string {
-  return name.replace(/\s+(?:I|IV|VI)$/, "");
-}
-
 /** Which balance packs this lobby's house rules have switched on. */
 function lobbyBalanceFlags(
   options: Parameters<typeof resolveHouseRules>[0],
@@ -15869,28 +15863,6 @@ const SPECIALTY_LEVEL_NUMERAL: Record<1 | 4 | 6, string> = {
   4: "IV",
   6: "VI",
 };
-
-/**
- * Read-only card for one hero: starting statistics, the starting ability and all
- * three specialty levels (I / IV / VI), each with the same rules text the table
- * shows when the card is zoomed. Shown beside the faction grid when a hero is
- * clicked or its info button is pressed.
- */
-/** The printed statistic symbol (crossed swords / shield / spell book / tomes). */
-function HeroInfoStatIcon({
-  stat,
-}: {
-  stat: keyof typeof HERO_INFO_STAT_ICONS;
-}) {
-  return (
-    <img
-      alt=""
-      aria-hidden="true"
-      className="heroStatSymbol"
-      src={assetUrl(HERO_INFO_STAT_ICONS[stat])}
-    />
-  );
-}
 
 /** The starting-ability's real secondary-skill emblem (or nothing if unmapped). */
 function AbilitySymbol({ cardId }: { cardId: string | undefined }) {
@@ -15984,7 +15956,8 @@ function heroZoomFaces(
       key: "portrait",
       label: "Hero",
       title: hero.name,
-      portrait: hero.portrait,
+      portrait: hero.boardScan ?? hero.portrait,
+      line: `${hero.class} · ${hero.type} · ${coreFactionDefinitions[hero.faction]?.name ?? hero.faction}. Attack ${hero.startingStats.attack} · Defense ${hero.startingStats.defense} · Power ${hero.startingStats.power} · Knowledge ${hero.startingStats.knowledge}`,
       ribbon: null,
     });
   }
@@ -16103,142 +16076,38 @@ function HeroCardZoom({
     : createPortal(overlay, document.body);
 }
 
-function HeroSetupDetail({
-  heroDefId,
-  flags,
-  onZoom,
-}: {
+/** Every hero uses the same icon-only launcher; each icon opens its own face. */
+function HeroSetupDetail({ heroDefId, faces, onZoom }: {
   heroDefId: string;
-  flags: HeroCardBalanceFlags;
+  faces: HeroZoomFace[];
   onZoom: (faceIndex: number) => void;
 }) {
   const hero = coreHeroDefinitions[heroDefId];
-  if (!hero) {
-    return null;
-  }
-  const faction = coreFactionDefinitions[hero.faction];
-  const ability = cardLibrary[hero.startingAbilityCardId];
-  const specialtyBrief = heroCardBrief(hero.specialtyCardIds?.[1], flags);
-  const abilityBrief = heroCardBrief(hero.startingAbilityCardId, flags);
-  const stats: { key: keyof typeof HERO_INFO_STAT_ICONS; label: string }[] = [
-    { key: "attack", label: "Attack" },
-    { key: "defense", label: "Defense" },
-    { key: "power", label: "Power" },
-    { key: "knowledge", label: "Knowledge" },
-  ];
-
+  if (!hero) return null;
   return (
-    <div className="heroDetail" aria-label={`${hero.name} details`}>
-      <div className="heroDetailHead">
-        <HeroPortrait name={hero.name} portrait={hero.portrait} size={54} />
-        <div className="heroDetailTitle">
-          <strong style={{ color: faction?.color }}>{hero.name}</strong>
-          <small>
-            {hero.class} · {hero.type} ·{" "}
-            {faction?.name ?? titleCase(hero.faction)}
-          </small>
-        </div>
-      </div>
-
-      <div className="heroDetailStats" aria-label="Starting statistics">
-        {stats.map((stat) => (
-          <div
-            aria-label={`${stat.label} ${hero.startingStats[stat.key]}`}
-            className="heroStat"
-            key={stat.key}
-            role="group"
-          >
-            <span className="heroStatIcon">
-              <HeroInfoStatIcon stat={stat.key} />
-            </span>
-            <span className="heroStatValue">
-              {hero.startingStats[stat.key]}
-            </span>
-            <span className="heroStatLabel">{stat.label}</span>
-          </div>
-        ))}
-      </div>
-
-      <div className="heroDetailSection">
-        <h4>Specialty</h4>
-        {specialtyBrief ? (
-          <div className="heroDetailEntry heroDetailEntrySymbol">
-            <span className="heroSpecArtWrap">
-              <SpecialtySymbol cardId={hero.specialtyCardIds?.[1]} />
-              <span className="heroSpecLevel">
-                {SPECIALTY_LEVEL_NUMERAL[1]}
-              </span>
-            </span>
-            <div className="heroDetailEntryText">
-              <strong>{specialtyDisplayName(specialtyBrief.name)}</strong>
-              {specialtyBrief.ribbon ? (
-                <span className="heroBalanceRibbon">
-                  {specialtyBrief.ribbon}
-                </span>
-              ) : null}
-              <span>{specialtyBrief.line}</span>
-            </div>
-          </div>
-        ) : (
-          <span className="heroDetailEmpty">—</span>
-        )}
-        {/* Levels IV / VI are symbols only — their rules live on the cards. */}
-        <div className="heroDetailSpecLevels" aria-label="Specialty levels">
-          {([4, 6] as const).map((level) => {
-            const cardId = hero.specialtyCardIds?.[level];
-            const card = cardId ? cardLibrary[cardId] : undefined;
-            return (
-              <span
-                className="heroSpecArtWrap"
-                key={level}
-                title={card?.name ?? cardId ?? SPECIALTY_LEVEL_NUMERAL[level]}
-              >
-                <SpecialtySymbol cardId={cardId} />
-                <span className="heroSpecLevel">
-                  {SPECIALTY_LEVEL_NUMERAL[level]}
-                </span>
-              </span>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="heroDetailSection">
-        <h4>Starting ability</h4>
-        {ability ? (
-          <div className="heroDetailEntry heroDetailEntrySymbol">
-            <AbilitySymbol cardId={hero.startingAbilityCardId} />
-            <div className="heroDetailEntryText">
-              <strong>{abilityBrief?.name ?? ability.name}</strong>
-              {abilityBrief?.ribbon ? (
-                <span className="heroBalanceRibbon">{abilityBrief.ribbon}</span>
-              ) : null}
-            </div>
-          </div>
-        ) : (
-          <span className="heroDetailEmpty">—</span>
-        )}
-      </div>
-
-      <button
-        className="heroDetailZoomButton"
-        onClick={() => onZoom(0)}
-        type="button"
-      >
-        Read the cards
-      </button>
+    <div className="heroIconGrid" aria-label={`${hero.name} details`}>
+      {faces.map((face, index) => (
+        <button
+          aria-label={`${face.label}: ${face.title}`}
+          className={`heroInfoIconButton${face.key === "portrait" ? " heroInfoPortraitButton" : face.key === "ability" ? " heroInfoAbilityButton" : ""}`}
+          key={face.key}
+          onClick={() => onZoom(index)}
+          type="button"
+        >
+          {face.key === "portrait" ? (
+            <HeroPortrait name={hero.name} portrait={hero.portrait} size={80} />
+          ) : face.key === "ability" ? (
+            <AbilitySymbol cardId={face.cardId} />
+          ) : (
+            <SpecialtySymbol cardId={face.cardId} />
+          )}
+        </button>
+      ))}
     </div>
   );
 }
 
-/**
- * Modal popup with one hero's SHORT summary — identity, starting stats, the
- * specialty's tier-I one-liner and the starting ability's name — plus the "Read
- * the cards" button that opens the real card faces at reading size.
- * Opened from any hero's info button in the setup lobby and
- * dismissed with the ✕, a backdrop click or Escape. This replaces the old inline
- * detail panel so the hero list is never pushed down by a giant card.
- */
+/** Shared icon-only popup for every hero in free pick, draft and ban lists. */
 function HeroInfoModal({
   heroDefId,
   flags,
@@ -16248,7 +16117,7 @@ function HeroInfoModal({
   flags: HeroCardBalanceFlags;
   onClose: () => void;
 }) {
-  // null = the short summary; a number = the card reader open at that face.
+  // null = the icon window; a number = the full card selected by its icon.
   const [zoomIndex, setZoomIndex] = useState<number | null>(null);
   const faces = useMemo(
     () => heroZoomFaces(heroDefId, flags),
@@ -16259,13 +16128,13 @@ function HeroInfoModal({
   );
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+      if (event.key === "Escape" && zoomIndex === null) {
         onClose();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, zoomIndex]);
 
   const modal = (
     <div
@@ -16288,7 +16157,7 @@ function HeroInfoModal({
           <X aria-hidden="true" size={16} />
         </button>
         <HeroSetupDetail
-          flags={flags}
+          faces={faces}
           heroDefId={heroDefId}
           onZoom={setZoomIndex}
         />

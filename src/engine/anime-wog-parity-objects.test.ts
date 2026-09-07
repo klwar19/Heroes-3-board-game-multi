@@ -16,8 +16,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { hasMediaFile } from "@/lib/media-manifest";
 import { locationDefinitions } from "@/data/map/locations";
 import {
   ANIME_FIELD_OVERRIDE_DEFINITIONS,
@@ -178,10 +177,10 @@ function lastAttackRoll(state: GameState): number {
 }
 
 // ===========================================================================
-// 1. Registry hygiene + art on disk
+// 1. Registry hygiene + art in the media manifest
 // ===========================================================================
 describe("Anime WOG-parity objects — registry", () => {
-  it("registers the 4 new kinds (2 xianxia + 2 isekai), implemented, art on disk, locations present", () => {
+  it("registers the 4 new kinds (2 xianxia + 2 isekai), implemented, art in the media manifest, locations present", () => {
     const expected: Record<string, "anime-xianxia" | "anime-isekai"> = {
       thi_luyen_thap: "anime-xianxia",
       linh_dien: "anime-xianxia",
@@ -195,7 +194,7 @@ describe("Anime WOG-parity objects — registry", () => {
       expect(def.implementationStatus, id).toBe("implemented");
       // Art wins — every new kind ships real hex art (no glyph placeholder).
       expect(def.image, id).toBeTruthy();
-      expect(existsSync(resolve(process.cwd(), `public${def.image}`)), `missing art ${def.image}`).toBe(true);
+      expect(hasMediaFile(def.image), `missing art ${def.image}`).toBe(true);
       expect(fieldOverrideGlyph(id), `${id} art must win over any glyph`).toBeUndefined();
       // The carve location resolves to an implemented location definition.
       expect(locationDefinitions[def.locationId]?.implementationStatus, id).toBe("implemented");

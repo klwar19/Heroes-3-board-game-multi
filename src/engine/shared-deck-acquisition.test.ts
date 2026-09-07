@@ -23,7 +23,7 @@ import {
 
 /**
  * House rules for pulling cards out of the shared Ability / Spell decks:
- *  - every deck holds exactly two copies of each card, so two players can each
+ *  - shared decks hold multiple copies of each card, so players can each
  *    own one, while a single hero never keeps a duplicate (a duplicate reveal is
  *    redrawn past);
  *  - Necromancy is Necropolis-only — other factions never even draw it;
@@ -51,10 +51,17 @@ function expectExactlyTwoOfEach(deck: string[], unique: string[]): void {
   }
 }
 
-describe("shared deck composition — two of each card", () => {
-  it("ability decks hold exactly two copies of every ability", () => {
-    expectExactlyTwoOfEach(abilityDeckLegacy, abilityDeckUnique);
-    expectExactlyTwoOfEach(abilityDeckBinh, abilityDeckUnique);
+describe("shared deck composition", () => {
+  it("ability decks use the printed copy counts", () => {
+    const exceptions: Record<string, number> = {
+      "ability.offense": 5, "ability.scouting": 5,
+      "ability.wisdom": 5, "ability.artillery": 4,
+    };
+    for (const deck of [abilityDeckLegacy, abilityDeckBinh]) {
+      const counts = countById(deck);
+      expect([...counts.keys()].sort()).toEqual([...abilityDeckUnique].sort());
+      for (const id of abilityDeckUnique) expect(counts.get(id), id).toBe(exceptions[id] ?? 3);
+    }
   });
 
   it("spell decks hold exactly two copies of every spell", () => {
@@ -64,7 +71,7 @@ describe("shared deck composition — two of each card", () => {
   });
 
   it("holds at most ONE copy of each artifact — artifacts are globally unique", () => {
-    // Unlike Spells/Abilities (two copies each), every artifact exists exactly
+    // Unlike Spells/Abilities (multiple copies each), every artifact exists exactly
     // once in the whole game, so no deck may stock a duplicate.
     for (const deck of [artifactDeckLegacy, artifactDeckBinhMinor, artifactDeckBinhMajor, artifactDeckBinhRelic]) {
       for (const [id, count] of countById(deck)) {

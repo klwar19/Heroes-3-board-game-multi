@@ -13,12 +13,13 @@ import { assetUrl } from "@/lib/asset-url";
 import { cardFaceImage } from "@/data/cards/empowered-card-art";
 import { polishBalanceCardImage } from "@/data/cards/polish-balance-art";
 import { communityBalanceCardImage } from "@/data/cards/community-balance-art";
+import { coreHeroDefinitions } from "@/data/factions/core";
 import type { HouseRuleId } from "@/engine";
 
 afterEach(cleanup);
 
 /**
- * The lobby hero popup: a SHORT summary derived from the card definitions, a
+ * The lobby hero popup: clickable icons with no visible text, a
  * blink on the unread info button, and a card reader showing the hero's real
  * faces — swapped for the Polish / Community reprint when that pack is on.
  *
@@ -54,10 +55,11 @@ function openHeroInfo(
 function openHeroCards(
   heroName: string,
   houseRules?: Partial<Record<HouseRuleId, boolean>>,
+  icon = "I",
 ): HTMLElement {
   const dialog = openHeroInfo(heroName, houseRules);
   fireEvent.click(
-    within(dialog).getByRole("button", { name: "Read the cards" }),
+    within(dialog).getByRole("button", { name: new RegExp(`^${icon}:`) }),
   );
   return screen.getByRole("dialog", { name: "Hero cards" });
 }
@@ -68,7 +70,7 @@ function srcs(container: HTMLElement): string[] {
   );
 }
 
-describe("Lobby hero popup — concise summary", () => {
+describe("Lobby hero popup — icons only", () => {
   it("never prints a balance-pack paragraph while both packs are OFF", () => {
     // REGRESSION: the old `cardRulesText` picked the LONGEST multi-word tag, and
     // the printed `ability.wisdom` definition carries the Polish reprint's own
@@ -78,7 +80,7 @@ describe("Lobby hero popup — concise summary", () => {
     const dialog = openHeroInfo("Rion");
     expect(dialog.textContent).not.toContain("Balance pack");
     expect(dialog.textContent).not.toContain("Community balance");
-    expect(dialog.textContent).toContain("Wisdom");
+    expect(dialog.textContent).toBe("");
   });
 
   it("the card reader's Wisdom line is the PRINTED rule, not the reprint's tag", () => {
@@ -86,23 +88,33 @@ describe("Lobby hero popup — concise summary", () => {
     // beside each face, and `ability.wisdom`'s printed definition still carries
     // the Polish reprint's documentation tag. With the pack OFF that sentence
     // must not be the line.
-    const reader = openHeroCards("Rion");
-    fireEvent.click(within(reader).getByRole("tab", { name: "Ability" }));
+    const reader = openHeroCards("Rion", undefined, "Ability");
     expect(reader.textContent).not.toContain("Balance pack");
     expect(reader.textContent).not.toContain("the basic side keeps");
     expect(within(reader).queryByText("Polish Balance")).toBeNull();
   });
 
-  it("shows the specialty name + ONE printed line, and no ability prose", () => {
+  it("shows only clickable icons with no visible text", () => {
     const dialog = openHeroInfo("Tamika");
-    const text = dialog.textContent ?? "";
-    // The tier-I one-liner, from the card's own printed tag.
-    expect(text).toContain("+1 Attack when this unit attacks");
-    // The printed level tail is dropped from the specialty NAME.
-    expect(within(dialog).getByText("Dread Knights")).toBeTruthy();
-    // The starting ability is a NAME only now — its rules text moved to the card.
-    expect(text).toContain("Offense");
-    expect(text).not.toContain("expert +2, then draw 1");
+    expect(dialog.textContent).toBe("");
+    for (const label of ["I:", "IV:", "VI:", "Ability:", "Hero:"]) {
+      expect(within(dialog).getByRole("button", { name: new RegExp("^" + label) })).toBeTruthy();
+    }
+  });
+
+  it("opens each exact face directly and Escape returns to the icons", () => {
+    const dialog = openHeroInfo("Tamika");
+    for (const label of ["I", "IV", "VI", "Ability", "Hero"]) {
+      fireEvent.click(within(dialog).getByRole("button", { name: new RegExp("^" + label + ":") }));
+      const reader = screen.getByRole("dialog", { name: "Hero cards" });
+      expect(within(reader).getByRole("tab", { name: label }).getAttribute("aria-selected")).toBe("true");
+      if (label === "Hero") {
+        expect(srcs(reader)).toContain(assetUrl(coreHeroDefinitions.tamika.boardScan ?? coreHeroDefinitions.tamika.portrait ?? ""));
+      }
+      fireEvent.keyDown(window, { key: "Escape" });
+      expect(screen.queryByRole("dialog", { name: "Hero cards" })).toBeNull();
+      expect(screen.getByRole("dialog", { name: "Hero details" })).toBe(dialog);
+    }
   });
 
   it("keeps the house-rule speculation off the summary line", () => {
@@ -166,6 +178,18 @@ describe("Lobby hero popup — the card reader", () => {
     expect(within(reader).queryByText("Polish Balance")).toBeNull();
   });
 
+  it.each(["polish-card-balance", "community-card-balance"] as const)(
+    "opens the correct ability directly with %s enabled alone",
+    (pack) => {
+      const reader = openHeroCards("Rion", { [pack]: true }, "Ability");
+      const expected = pack === "polish-card-balance"
+        ? polishBalanceCardImage("ability.wisdom")
+        : communityBalanceCardImage("ability.wisdom");
+      expect(expected).toBeTruthy();
+      expect(srcs(reader)).toContain(assetUrl(expected ?? ""));
+    },
+  );
+
   it("COMMUNITY WINS over Polish on a card both packs cover (Wisdom)", () => {
     const polish = assetUrl(polishBalanceCardImage("ability.wisdom") ?? "");
     const community = assetUrl(
@@ -177,15 +201,14 @@ describe("Lobby hero popup — the card reader", () => {
     const reader = openHeroCards("Rion", {
       "polish-card-balance": true,
       "community-card-balance": true,
-    });
-    fireEvent.click(within(reader).getByRole("tab", { name: "Ability" }));
+    }, "Ability");
     expect(srcs(reader)).toContain(community);
     expect(srcs(reader)).not.toContain(polish);
     expect(within(reader).getByText("Community Balance")).toBeTruthy();
   });
 
   it("the summary line comes from the SAME balanced card as the face", () => {
-    const dialog = openHeroInfo("Sandro", { "polish-card-balance": true });
+    const dialog = openHeroCards("Sandro", { "polish-card-balance": true });
     // The reprint's own "Balance pack: …" line, now that the pack IS on.
     expect(within(dialog).getByText("Polish Balance")).toBeTruthy();
     cleanup();

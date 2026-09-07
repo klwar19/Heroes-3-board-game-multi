@@ -12,8 +12,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { hasMediaFile } from "@/lib/media-manifest";
 import { locationDefinitions } from "@/data/map/locations";
 import {
   WOG_FIELD_OVERRIDE_DEFINITIONS,
@@ -153,10 +152,10 @@ function queuedSearches(state: GameState, deckId: string): number {
 }
 
 // ===========================================================================
-// 1. Registry hygiene + art on disk
+// 1. Registry hygiene + art in the media manifest
 // ===========================================================================
 describe("WOG New Objects — registry", () => {
-  it("registers exactly 7 kinds under package 'wog', all implemented, art on disk, locations present", () => {
+  it("registers exactly 7 kinds under package 'wog', all implemented, art in the media manifest, locations present", () => {
     const ids = Object.keys(WOG_FIELD_OVERRIDE_DEFINITIONS).sort();
     expect(ids).toEqual([
       "adventure_cave",
@@ -172,7 +171,7 @@ describe("WOG New Objects — registry", () => {
       expect(def.implementationStatus, def.id).toBe("implemented");
       // Art wins — every wog kind ships WITH a hex-art file (no glyph placeholder).
       expect(def.image, def.id).toBeTruthy();
-      expect(existsSync(resolve(process.cwd(), `public${def.image}`)), `missing art ${def.image}`).toBe(true);
+      expect(hasMediaFile(def.image), `missing art ${def.image}`).toBe(true);
       // Its carve location resolves to an implemented location definition.
       expect(locationDefinitions[def.locationId]?.implementationStatus, def.id).toBe("implemented");
       // Registered into the global catalog (the engine reads it via the catalog).

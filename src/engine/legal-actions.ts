@@ -9183,29 +9183,28 @@ function getLegalActionsCore(
         source.setDieFace === undefined,
     );
     if (nextSource) {
-      // USER RULE: Death Stare rolls TWO SEPARATE dice, so an ordinary reroll
+      // USER RULE: multi-die rolls contain separate dice, so an ordinary reroll
       // source rerolls the FIRST or the SECOND — never both. One button per
-      // die, ordered so a die outside the ability's success window (the one
-      // worth rerolling) comes first, which is also what an AFK/AI seat takes.
+      // die, with unsuccessful ability dice or lower attack faces first.
       // Diplomat's Ring alone prints "Reroll any die or any roll", so it keeps
       // the single re-throw-everything button (`rerollsWholeRoll`).
       const perDie =
-        abilityRoll !== undefined &&
         nextSource.rerollsWholeRoll !== true &&
         latest.rolls.length > 1;
-      if (perDie && abilityRoll) {
+      if (perDie) {
         const inWindow = (roll: number): boolean =>
-          roll >= abilityRoll.minRoll && roll <= abilityRoll.maxRoll;
+          abilityRoll ? roll >= abilityRoll.minRoll && roll <= abilityRoll.maxRoll : roll >= 1;
         const indexes = latest.rolls.map((_, index) => index);
         indexes.sort(
           (left, right) =>
-            Number(inWindow(latest.rolls[left]!)) -
-            Number(inWindow(latest.rolls[right]!)),
+            abilityRoll
+              ? Number(inWindow(latest.rolls[left]!)) - Number(inWindow(latest.rolls[right]!))
+              : latest.rolls[left]! - latest.rolls[right]!,
         );
         for (const index of indexes) {
           const face = latest.rolls[index]!;
           actions.push({
-            label: `Reroll ${abilityRoll.abilityName} die ${index + 1} (${face >= 0 ? `+${face}` : face}) (${nextSource.name})`,
+            label: `Reroll ${abilityRoll?.abilityName ?? "attack"} die ${index + 1} (${face >= 0 ? `+${face}` : face}) (${nextSource.name})`,
             action: {
               type: "REROLL_PENDING_CHOICE",
               playerId,
@@ -9218,7 +9217,7 @@ function getLegalActionsCore(
         actions.push({
           label: abilityRoll
             ? `Reroll ${abilityRoll.abilityName} dice (${nextSource.name})`
-            : `Reroll attack die (${nextSource.name})`,
+            : `Reroll attack ${latest.rolls.length > 1 ? "dice" : "die"} (${nextSource.name})`,
           action: {
             type: "REROLL_PENDING_CHOICE",
             playerId,

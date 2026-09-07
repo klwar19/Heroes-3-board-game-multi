@@ -541,5 +541,7 @@ describe("Merist's Stone Skin specialty", () => {
     expect(defendValue("merist-6-plain-1", false, 1), "token, roll +1, no aura -> +1 (unchanged)").toBe(1);
     // With Merist VI's aura, the same "0" roll grants +1.
     expect(defendValue("merist-6-aura-0", true, 0), "token, roll 0, aura -> +1").toBe(1);
+    expect(defendValue("merist-6-aura-1", true, 1), "token, roll +1, aura -> +2").toBe(2);
+    expect(defendValue("merist-6-aura-minus-1", true, -1)).toBe(0);
   });
 });

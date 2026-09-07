@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { hasMediaFile } from "@/lib/media-manifest";
 import { describe, expect, it } from "vitest";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { SUBTERRANEAN_GATE_TOKEN_IMAGES } from "@/data/assets/homm-assets";
@@ -150,7 +150,7 @@ describe("subterranean gate token art", () => {
     // The illustration shows two connecting hexes; each half is its own crop.
     expect(SUBTERRANEAN_GATE_TOKEN_IMAGES.surface).not.toBe(SUBTERRANEAN_GATE_TOKEN_IMAGES.subterranean);
     for (const path of Object.values(SUBTERRANEAN_GATE_TOKEN_IMAGES)) {
-      expect(existsSync(`public${path}`)).toBe(true);
+      expect(hasMediaFile(path)).toBe(true);
     }
   });
 });

@@ -5195,7 +5195,7 @@ export const adventureCards: CardLibrary = {
       "combat",
       "merist",
       "stone-skin",
-      'For this Combat, your Defense tokens provide the extra defense on a "0" or a "+1" roll. When played, place a Defense token on all your units.',
+      'For this Combat, your Defense tokens provide +1 defense on a "0" roll and +2 defense on a "+1" roll. When played, place a Defense token on all your units.',
     ],
     target: { type: "none" },
     effect: { type: "STONE_SKIN_AURA" },

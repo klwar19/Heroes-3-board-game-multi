@@ -1148,7 +1148,8 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // Earned faction cubes persist when the defeated rival leaves the match.
 // Next-activation specialties, open far/near bank arcs, surviving-rival conquest.
 // v115: independent player bank supplies and Dragon objective reward/rank rules.
-export const ENGINE_PROTOCOL_VERSION = 115;
+// v116: individual attack-die rerolls, corrected Ability supply and Merist VI defense.
+export const ENGINE_PROTOCOL_VERSION = 116;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

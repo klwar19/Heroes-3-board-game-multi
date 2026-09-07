@@ -149,6 +149,19 @@ describe("Polish Ballista firing windows", () => {
     }
   );
 
+  it("Torosar VI lets each Ballista choose a separate target with ongoing Artillery", () => {
+    let state = setup();
+    startWarMachineRound(state);
+    state = target(choose(state, "(basic)"));
+    state.players.p1.hand = ["specialty.torosar.6"];
+    state = play(state, "specialty.torosar.6");
+    state = target(state, SLOW);
+    state = target(state, FAST);
+    expect(state.combat!.units[SLOW].damage).toBe(1);
+    expect(state.combat!.units[FAST].damage).toBe(3);
+    expect(state.combat!.warMachineRound).toBeNull();
+  });
+
   it("offers Artillery when a specialty activates a Ballista mid-fight", () => {
     let state = setup(["specialty.torosar.1", "ability.artillery"]);
     state = play(state, "specialty.torosar.1", 1);

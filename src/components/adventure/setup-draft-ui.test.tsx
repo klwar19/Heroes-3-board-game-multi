@@ -43,22 +43,8 @@ describe("SetupLobbyScreen — hero info popup", () => {
 
     const detail = screen.getByLabelText("Rion details");
     const hero = coreHeroDefinitions.rion;
-    for (const [label, value] of [
-      ["Attack", hero.startingStats.attack],
-      ["Defense", hero.startingStats.defense],
-      ["Power", hero.startingStats.power],
-      ["Knowledge", hero.startingStats.knowledge]
-    ] as const) {
-      expect(within(detail).getByRole("group", { name: `${label} ${value}` })).toBeTruthy();
-    }
-    expect(within(detail).getByText(cardLibrary[hero.startingAbilityCardId].name)).toBeTruthy();
-    // The SUMMARY is deliberately short now: only the specialty's tier-I name
-    // (without its printed " I" tail). Levels IV / VI are symbols with a title
-    // tooltip here — their names live on the card faces, reachable through the
-    // "Read the cards" reader below.
-    const tierOne = cardLibrary[hero.specialtyCardIds![1]].name.replace(/\s+I$/, "");
-    expect(within(detail).getByText(tierOne)).toBeTruthy();
-    fireEvent.click(within(detail).getByRole("button", { name: "Read the cards" }));
+    expect(detail.textContent).toBe("");
+    fireEvent.click(within(detail).getByRole("button", { name: /^I:/ }));
     const reader = screen.getByRole("dialog", { name: "Hero cards" });
     for (const [level, label] of [[1, "I"], [4, "IV"], [6, "VI"]] as const) {
       fireEvent.click(within(reader).getByRole("tab", { name: label }));

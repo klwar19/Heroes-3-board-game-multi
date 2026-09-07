@@ -703,13 +703,7 @@ export const extraAbilityCards: CardLibrary = {
   },
 };
 
-/**
- * Every distinct Ability the shared deck can hold. The deck itself holds
- * exactly **two copies of each** (see `abilityDeckLegacy` / `abilityDeckBinh`):
- * two different players may each draw their own copy of an ability, but a single
- * hero never keeps two of the same one — the deck search redraws past a card the
- * hero already owns (see `canAcquireSharedDeckCard` in `engine/ruleset.ts`).
- */
+/** Every distinct shared Ability; heroes cannot keep duplicate abilities. */
 export const abilityDeckUnique: string[] = [
   "ability.resistance",
   "ability.archery",
@@ -752,20 +746,15 @@ export const abilityDeckUnique: string[] = [
   "ability.necromancy",
 ];
 
-/**
- * Shared Ability deck (legacy): two copies of every implemented Ability, so two
- * players can each hold the same ability while no hero ever owns a duplicate.
- */
-export const abilityDeckLegacy: string[] = abilityDeckUnique.flatMap((id) => [
-  id,
-  id,
-]);
-
-/**
- * BINH Ability deck. Same membership as the legacy deck (every implemented
- * Ability is reachable in both), again two copies of each.
- */
-export const abilityDeckBinh: string[] = abilityDeckUnique.flatMap((id) => [
-  id,
-  id,
-]);
+/** Printed supply: three each, with four exceptions. */
+const abilityCopies: Record<string, number> = {
+  "ability.offense": 5,
+  "ability.scouting": 5,
+  "ability.wisdom": 5,
+  "ability.artillery": 4,
+};
+export const abilityDeckLegacy: string[] = abilityDeckUnique.flatMap((id) =>
+  Array.from({ length: abilityCopies[id] ?? 3 }, () => id)
+);
+/** BINH uses the same Ability supply. */
+export const abilityDeckBinh: string[] = [...abilityDeckLegacy];

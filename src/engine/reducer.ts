@@ -7481,7 +7481,7 @@ function resolveDefendBonus(
   }
   const roll = stackItem.modifiers.defendRoll;
   // Merist's Stone Skin VI: while the defender's owner has the DEFENSE_TOKEN_ON_ZERO
-  // aura, the shield pays out on a "0" as well as the usual "+1" Defense roll.
+  // aura, add +1 to the token bonus on a "0" or "+1" Defense roll.
   const shieldOnZero = state.activeEffects.some(
     (effect) =>
       effect.scope === "player" &&
@@ -7490,11 +7490,11 @@ function resolveDefendBonus(
         (modifier) => modifier.type === "DEFENSE_TOKEN_ON_ZERO",
       ),
   );
-  const grantsBonus = shieldOnZero ? roll >= 0 : roll === 1;
+  const tokenBonus = (roll === 1 ? 1 : 0) + (shieldOnZero && roll >= 0 ? 1 : 0);
   // Mammoths' Thick Hide: a flat extra Defense the unit gets while it is
   // defending (holding a Defense token), on top of the Defend die.
   const defendAbilityBonus = getDefendBonus(details.defender);
-  return { roll, bonus: (grantsBonus ? 1 : 0) + defendAbilityBonus };
+  return { roll, bonus: tokenBonus + defendAbilityBonus };
 }
 
 /**
@@ -29829,6 +29829,37 @@ function rerollPendingChoice(
       : aggregateCandidateRoll(rolls, choice.rollMode);
 
   const latest = choice.candidates.at(-1);
+  const throwAttackReroll = (): AttackRollCandidate => {
+    if (!latest || latest.rolls.length <= 1) {
+      return rollAttackCandidate(combat, choice.rollMode);
+    }
+    const aggregation = latest.sumAllDice ? "sum" : choice.rollMode;
+    if (source.rerollsWholeRoll) {
+      const rolls = latest.rolls.map(() => rollAttackDie(combat));
+      return { rolls, roll: aggregateCandidateRoll(rolls, aggregation), ...(latest.sumAllDice ? { sumAllDice: true } : {}) };
+    }
+    const index = action.dieIndex ?? latest.rolls.indexOf(Math.min(...latest.rolls));
+    const rolls = [...latest.rolls];
+    const notes = [...(latest.modifierNotes ?? [])];
+    const rerollBeats: NonNullable<AttackRollCandidate["rerollBeats"]> = [];
+    rolls.forEach((_, at) => {
+      if (at !== index) return;
+      const fresh: AttackRollCandidate = { rolls: [rollAttackDie(combat)], roll: 0 };
+      fresh.roll = fresh.rolls[0]!;
+      applyMoraleDiceCurses(state, action.playerId, fresh, "normal");
+      applyEnemyPlusOneRerolls(state, action.playerId, fresh, "normal");
+      rolls[at] = fresh.rolls[0]!;
+      notes.push(...(fresh.modifierNotes ?? []));
+      rerollBeats.push(...(fresh.rerollBeats ?? []).map((beat) => ({ ...beat, index: at })));
+    });
+    return {
+      rolls,
+      roll: aggregateCandidateRoll(rolls, aggregation),
+      ...(latest.sumAllDice ? { sumAllDice: true } : {}),
+      modifierNotes: notes,
+      rerollBeats,
+    };
+  };
   const candidate =
     source.setDieFace !== undefined && latest
       ? // "Set one of the dice to the +1 side": flip the die that raises the
@@ -29879,7 +29910,7 @@ function rerollPendingChoice(
             abilityWindow,
             action.dieIndex,
           )
-        : rollAttackCandidate(combat, choice.rollMode);
+        : throwAttackReroll();
   if (choice.abilityRoll && source.setDieFace === undefined) {
     candidate.roll = candidate.rolls[0] ?? 0;
   }
@@ -29904,7 +29935,7 @@ function rerollPendingChoice(
               abilityWindow,
               action.dieIndex,
             )
-          : rollAttackCandidate(combat, choice.rollMode);
+          : throwAttackReroll();
       if (choice.abilityRoll) {
         extra.roll = extra.rolls[0] ?? 0;
       }
@@ -29916,7 +29947,7 @@ function rerollPendingChoice(
           abilityWindow,
           true,
         );
-      } else {
+      } else if (source.rerollsWholeRoll || !latest || latest.rolls.length <= 1) {
         applyMoraleDiceCurses(state, action.playerId, extra, choice.rollMode);
         applyEnemyPlusOneRerolls(
           state,
@@ -29946,7 +29977,7 @@ function rerollPendingChoice(
       abilityWindow,
       true,
     );
-  } else {
+  } else if (source.setDieFace !== undefined || source.rerollsWholeRoll || !latest || latest.rolls.length <= 1) {
     applyMoraleDiceCurses(state, action.playerId, candidate, choice.rollMode);
     applyEnemyPlusOneRerolls(
       state,

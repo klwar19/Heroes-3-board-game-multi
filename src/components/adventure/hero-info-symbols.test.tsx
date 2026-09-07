@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { SetupLobbyScreen } from "./screen";
 import { createAdventureLobbyState } from "@/engine";
-import { HERO_INFO_STAT_ICONS, abilitySymbolIcon } from "@/data/assets/homm-assets";
+import { abilitySymbolIcon } from "@/data/assets/homm-assets";
 
 afterEach(cleanup);
 
@@ -27,13 +27,10 @@ function imgSrcs(container: HTMLElement): string[] {
 }
 
 describe("Hero info board — printed statistic / ability / specialty symbols", () => {
-  it("shows the four printed statistic symbols in the stats row", () => {
+  it("has no visible text or starting statistics", () => {
     const dialog = openHeroInfo(/Tamika/);
-    const stats = within(dialog).getByLabelText("Starting statistics");
-    const srcs = imgSrcs(stats);
-    for (const stat of ["attack", "defense", "power", "knowledge"] as const) {
-      expect(srcs, stat).toContain(HERO_INFO_STAT_ICONS[stat]);
-    }
+    expect(dialog.textContent).toBe("");
+    expect(within(dialog).queryByLabelText("Starting statistics")).toBeNull();
   });
 
   it("shows the starting ability's real secondary-skill emblem (offense → Attack)", () => {
