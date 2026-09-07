@@ -17762,51 +17762,112 @@ button.setupHubNavItem:hover {
 
 .heroInfoModal {
   position: relative;
-  width: min(360px, 96vw);
+  width: min(540px, 96vw);
   max-height: 90vh;
   overflow-y: auto;
   padding: 8px;
   border: 2px solid var(--gold);
   border-radius: 14px;
-  background: rgb(24 21 15 / 98%);
+  background: linear-gradient(rgb(25 16 9 / 38%), rgb(25 16 9 / 48%)), url("/ui/hero-info/table-background.webp") center / 540px auto, #4b321e;
   box-shadow: 0 24px 60px rgb(0 0 0 / 60%);
 }
 
-.heroIconGrid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  padding: 42px 16px 20px;
-  justify-items: center;
-  align-items: center;
+.heroInfoModal .heroDetail {
+  border: none;
+  background: transparent;
 }
+
+.heroInfoModal .heroStat,
+.heroInfoModal .heroInfoCardRow {
+  background: linear-gradient(rgb(238 195 124 / 10%), rgb(238 195 124 / 3%)), url("/ui/hero-info/table-background.webp") center / 540px auto, #6b4d2c;
+  border: 1px solid rgb(216 176 99 / 68%);
+  box-shadow: inset 0 1px 0 rgb(255 232 178 / 16%), inset 0 0 12px rgb(33 18 7 / 22%), 0 2px 4px rgb(0 0 0 / 20%);
+}
+
+.heroInfoModal .heroStat:nth-child(2) { background-position: center, 25% 35%; }
+.heroInfoModal .heroStat:nth-child(3) { background-position: center, 65% 55%; }
+.heroInfoModal .heroStat:nth-child(4) { background-position: center, 90% 75%; }
+
+.heroInfoModal .heroInfoCardRow {
+  padding: 10px 12px;
+}
+
+.heroInfoModal .heroDetailTitle small,
+.heroInfoModal .heroStatLabel {
+  color: #dfc79b;
+}
+
+.heroInfoTavernArt {
+  overflow: hidden;
+  border: 1px solid rgba(220, 175, 95, 0.6);
+  border-radius: 7px;
+  box-shadow: 0 0 0 3px rgb(0 0 0 / 25%);
+  margin: 20px 0 4px;
+}
+
+.heroInfoTavernArt video {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 32 / 15;
+  object-fit: cover;
+}
+
+.heroInfoHeader {
+  padding: 2px 0;
+}
+
+.heroInfoCardRow {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.heroInfoRowLabel > span {
+  color: #ffd76a;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.heroInfoRowLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.heroInfoRowLabel > strong {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.heroInfoRowIcons {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
 .heroInfoIconButton {
-  display: grid;
+  display: inline-grid;
+  flex: 0 0 auto;
   place-items: center;
-  padding: 6px;
-  border: 1px solid rgba(200, 156, 88, 0.65);
-  border-radius: 12px;
-  background: #241b12;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
   cursor: pointer;
 }
+
+.heroInfoStatButton { cursor: pointer; font: inherit; }
+.heroInfoStatButton:hover,
+.heroInfoStatButton:focus-visible,
 .heroInfoIconButton:hover,
 .heroInfoIconButton:focus-visible {
-  border-color: #ffe9bd;
   outline: 2px solid var(--gold);
   outline-offset: 3px;
   filter: brightness(1.15);
-}
-.heroInfoIconButton .heroSpecArt,
-.heroInfoIconButton .heroAbilitySymbol {
-  width: clamp(48px, 16vw, 80px);
-  height: clamp(48px, 16vw, 80px);
-}
-.heroInfoAbilityButton {
-  grid-column: 2;
-}
-.heroInfoPortraitButton {
-  grid-column: 1 / -1;
-  grid-row: 1;
 }
 
 .heroInfoClose {

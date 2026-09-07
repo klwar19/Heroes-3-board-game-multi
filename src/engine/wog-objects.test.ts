@@ -171,7 +171,7 @@ describe("WOG New Objects — registry", () => {
       expect(def.implementationStatus, def.id).toBe("implemented");
       // Art wins — every wog kind ships WITH a hex-art file (no glyph placeholder).
       expect(def.image, def.id).toBeTruthy();
-      expect(hasMediaFile(def.image), `missing art ${def.image}`).toBe(true);
+      expect(hasMediaFile(def.image ?? ""), `missing art ${def.image}`).toBe(true);
       // Its carve location resolves to an implemented location definition.
       expect(locationDefinitions[def.locationId]?.implementationStatus, def.id).toBe("implemented");
       // Registered into the global catalog (the engine reads it via the catalog).

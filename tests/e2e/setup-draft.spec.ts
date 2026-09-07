@@ -66,7 +66,12 @@ test("hero info opens a closeable popup without choosing the hero", async ({ pag
   const modal = page.locator(".heroInfoModal");
   await expect(modal).toBeVisible();
   await expect(modal).toContainText("Catherine");
-  await expect(modal).toContainText("Crusaders"); // a Catherine specialty card
+  await test.info().attach("hero-info-panel", { body: await modal.screenshot(), contentType: "image/png" });
+  await expect(modal.getByRole("group", { name: "Ability" }).getByRole("button")).toHaveCount(1);
+  await expect(modal.getByRole("group", { name: "Speciality" }).getByRole("button")).toHaveCount(3);
+  await modal.getByRole("button", { name: /^I:/ }).click();
+  await expect(page.getByRole("dialog", { name: "Hero cards" })).toContainText("Crusaders");
+  await page.getByRole("dialog", { name: "Hero cards" }).getByRole("button", { name: "Close", exact: true }).click();
 
   // Inspecting must not have committed the seat: the Heroes box summary (the
   // classic .lobbySeat rows are hidden under the painted setup scene) still

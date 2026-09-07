@@ -182,6 +182,7 @@ import {
 } from "@/engine";
 import {
   abilitySymbolIcon,
+  HERO_INFO_STAT_ICONS,
   creatureBankFieldImage,
   mapTokenImage,
   monolithTokenImage,
@@ -15961,6 +15962,11 @@ function heroZoomFaces(
       ribbon: null,
     });
   }
+  for (const stat of ["attack", "defense", "power", "knowledge"] as const) {
+    const cardId = `stat.${stat}`;
+    const brief = heroCardBrief(cardId, flags);
+    faces.push({ key: cardId, label: titleCase(stat), title: brief?.name ?? titleCase(stat), cardId, line: brief?.line, ribbon: brief?.ribbon ?? null });
+  }
   return faces;
 }
 
@@ -16076,7 +16082,7 @@ function HeroCardZoom({
     : createPortal(overlay, document.body);
 }
 
-/** Every hero uses the same icon-only launcher; each icon opens its own face. */
+/** The original hero panel, with labelled rows of directly clickable card icons. */
 function HeroSetupDetail({ heroDefId, faces, onZoom }: {
   heroDefId: string;
   faces: HeroZoomFace[];
@@ -16084,30 +16090,88 @@ function HeroSetupDetail({ heroDefId, faces, onZoom }: {
 }) {
   const hero = coreHeroDefinitions[heroDefId];
   if (!hero) return null;
+  const faction = coreFactionDefinitions[hero.faction];
+  const portraitIndex = faces.findIndex((face) => face.key === "portrait");
   return (
-    <div className="heroIconGrid" aria-label={`${hero.name} details`}>
-      {faces.map((face, index) => (
+    <div className="heroDetail" aria-label={`${hero.name} details`}>
+      <div className="heroInfoTavernArt">
+        <video
+          aria-hidden="true"
+          autoPlay
+          loop
+          muted
+          playsInline
+          preload="auto"
+          poster="/ui/hero-info/tavern-poster.webp"
+          src="/ui/hero-info/tavern.mp4"
+        />
+      </div>
+      <div className="heroDetailHead heroInfoHeader">
         <button
-          aria-label={`${face.label}: ${face.title}`}
-          className={`heroInfoIconButton${face.key === "portrait" ? " heroInfoPortraitButton" : face.key === "ability" ? " heroInfoAbilityButton" : ""}`}
-          key={face.key}
-          onClick={() => onZoom(index)}
+          aria-label={`Hero: ${hero.name}`}
+          className="heroInfoIconButton"
+          disabled={portraitIndex < 0}
+          onClick={() => onZoom(portraitIndex)}
           type="button"
         >
-          {face.key === "portrait" ? (
-            <HeroPortrait name={hero.name} portrait={hero.portrait} size={80} />
-          ) : face.key === "ability" ? (
-            <AbilitySymbol cardId={face.cardId} />
-          ) : (
-            <SpecialtySymbol cardId={face.cardId} />
-          )}
+          <HeroPortrait name={hero.name} portrait={hero.portrait} size={54} />
         </button>
+        <div className="heroDetailTitle">
+          <strong style={{ color: faction?.color }}>{hero.name}</strong>
+          <small>{hero.class} · {hero.type} · {faction?.name ?? titleCase(hero.faction)}</small>
+        </div>
+      </div>
+      <div className="heroDetailStats" aria-label="Starting statistics">
+        {(["attack", "defense", "power", "knowledge"] as const).map((stat) => (
+          <button
+            type="button"
+            onClick={() => onZoom(faces.findIndex((face) => face.cardId === `stat.${stat}`))}
+            aria-label={`${titleCase(stat)} ${hero.startingStats[stat]}`}
+            className="heroStat heroInfoStatButton"
+            key={stat}
+          >
+            <span className="heroStatIcon">
+              <img alt="" aria-hidden="true" className="heroStatSymbol" src={assetUrl(HERO_INFO_STAT_ICONS[stat])} />
+            </span>
+            <span className="heroStatValue">{hero.startingStats[stat]}</span>
+            <span className="heroStatLabel">{titleCase(stat)}</span>
+          </button>
+        ))}
+      </div>
+      {(["specialty", "ability"] as const).map((kind) => (
+        <div className="heroDetailEntry heroInfoCardRow" key={kind}>
+          <div className="heroInfoRowLabel">
+            <span>{kind === "ability" ? "Ability" : "Speciality"}</span>
+            <strong>{faces.find((face) => kind === "ability" ? face.key === "ability" : face.key === "specialty-1")?.title.replace(/\s+(?:I|IV|VI)$/, "")}</strong>
+          </div>
+          <div className="heroInfoRowIcons" role="group" aria-label={kind === "ability" ? "Ability" : "Speciality"}>
+            {faces.map((face, index) => {
+              if (kind === "ability" ? face.key !== "ability" : !face.key.startsWith("specialty-")) return null;
+              return (
+                <button
+                  aria-label={`${face.label}: ${face.title}`}
+                  className="heroInfoIconButton"
+                  key={face.key}
+                  onClick={() => onZoom(index)}
+                  type="button"
+                >
+                  {kind === "ability" ? <AbilitySymbol cardId={face.cardId} /> : (
+                    <span className="heroSpecArtWrap">
+                      <SpecialtySymbol cardId={face.cardId} />
+                      <span className="heroSpecLevel">{face.label}</span>
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       ))}
     </div>
   );
 }
 
-/** Shared icon-only popup for every hero in free pick, draft and ban lists. */
+/** Shared hero popup for every hero in free pick, draft and ban lists. */
 function HeroInfoModal({
   heroDefId,
   flags,

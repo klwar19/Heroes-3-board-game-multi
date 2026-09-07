@@ -22,3 +22,7 @@ transparency and artwork are otherwise unmodified.
 NOTE: CC BY-NC-SA is non-commercial + share-alike. These specific symbol files
 carry that license independently of the rest of this repository. Replace them
 with original art before any commercial use.
+
+Hero panel texture: /ui/hero-info/table-background.webp
+Source: https://github.com/Heegu-sama/Homm3BG/blob/main/assets/layout/table-background.jpg
+Changes: resized to 1200px wide and converted from JPEG to WebP. Same CC BY-NC-SA 4.0 license as above.

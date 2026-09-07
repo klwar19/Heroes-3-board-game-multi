@@ -95,9 +95,9 @@ function duel(abilities: string[], rolls: number[]): GameState {
   );
 }
 
-function reroll(state: GameState, playerId: PlayerId = "p1"): GameState {
+function reroll(state: GameState, playerId: PlayerId = "p1", dieIndex?: number): GameState {
   return passAllReactions(
-    applyOk(state, { type: "REROLL_PENDING_CHOICE", playerId, choiceId: state.pendingChoice?.id ?? "" })
+    applyOk(state, { type: "REROLL_PENDING_CHOICE", playerId, choiceId: state.pendingChoice?.id ?? "", ...(dieIndex === undefined ? {} : { dieIndex }) })
   );
 }
 
@@ -583,11 +583,11 @@ describe("SWEEP — every printed unit reroll ability is bounded within one atta
     // "Roll 2 Attack dice and resolve the higher" has nothing to spend: it
     // reshapes EVERY throw of the attack, the reroll included. The once-per-
     // attack budget applies to the reroll ability sitting beside it, not to it.
-    const opened = duel(["attack-roll-advantage", "minotaur-reroll"], [-1, -1, -1, 1, ...Array(10).fill(0)]);
+    const opened = duel(["attack-roll-advantage", "minotaur-reroll"], [-1, -1, 1, ...Array(10).fill(0)]);
     expect(opened.pendingChoice).toMatchObject({ rollMode: "advantage", remainingRerolls: 1 });
     expect(opened.pendingChoice?.type === "ATTACK_DIE_REROLL" && opened.pendingChoice.candidates[0].rolls).toEqual([-1, -1]);
 
-    const once = reroll(opened);
+    const once = reroll(opened, "p1", 1);
     const choice = once.pendingChoice;
     expect(choice?.type).toBe("ATTACK_DIE_REROLL");
     // The reroll still threw TWO dice and still kept the higher — the mode

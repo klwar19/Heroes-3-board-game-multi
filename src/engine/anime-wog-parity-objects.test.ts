@@ -194,7 +194,7 @@ describe("Anime WOG-parity objects — registry", () => {
       expect(def.implementationStatus, id).toBe("implemented");
       // Art wins — every new kind ships real hex art (no glyph placeholder).
       expect(def.image, id).toBeTruthy();
-      expect(hasMediaFile(def.image), `missing art ${def.image}`).toBe(true);
+      expect(hasMediaFile(def.image ?? ""), `missing art ${def.image}`).toBe(true);
       expect(fieldOverrideGlyph(id), `${id} art must win over any glyph`).toBeUndefined();
       // The carve location resolves to an implemented location definition.
       expect(locationDefinitions[def.locationId]?.implementationStatus, id).toBe("implemented");

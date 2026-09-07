@@ -19,7 +19,7 @@ import type { HouseRuleId } from "@/engine";
 afterEach(cleanup);
 
 /**
- * The lobby hero popup: clickable icons with no visible text, a
+ * The lobby hero popup: the original hero header and labelled icon rows, a
  * blink on the unread info button, and a card reader showing the hero's real
  * faces — swapped for the Polish / Community reprint when that pack is on.
  *
@@ -70,7 +70,7 @@ function srcs(container: HTMLElement): string[] {
   );
 }
 
-describe("Lobby hero popup — icons only", () => {
+describe("Lobby hero popup — labelled icon rows", () => {
   it("never prints a balance-pack paragraph while both packs are OFF", () => {
     // REGRESSION: the old `cardRulesText` picked the LONGEST multi-word tag, and
     // the printed `ability.wisdom` definition carries the Polish reprint's own
@@ -80,7 +80,8 @@ describe("Lobby hero popup — icons only", () => {
     const dialog = openHeroInfo("Rion");
     expect(dialog.textContent).not.toContain("Balance pack");
     expect(dialog.textContent).not.toContain("Community balance");
-    expect(dialog.textContent).toBe("");
+    expect(within(dialog).getByText("Ability")).toBeTruthy();
+    expect(within(dialog).getByText("Speciality")).toBeTruthy();
   });
 
   it("the card reader's Wisdom line is the PRINTED rule, not the reprint's tag", () => {
@@ -94,9 +95,15 @@ describe("Lobby hero popup — icons only", () => {
     expect(within(reader).queryByText("Polish Balance")).toBeNull();
   });
 
-  it("shows only clickable icons with no visible text", () => {
+  it("keeps the hero identity and labelled rows with directly clickable icons", () => {
     const dialog = openHeroInfo("Tamika");
-    expect(dialog.textContent).toBe("");
+    expect(within(dialog).getByText("Ability")).toBeTruthy();
+    expect(within(dialog).getByText("Speciality")).toBeTruthy();
+    expect(within(dialog).getByText("Tamika")).toBeTruthy();
+    expect(dialog.textContent).toContain(coreHeroDefinitions.tamika.class);
+    expect(within(dialog).getByRole("group", { name: "Ability" }).querySelectorAll("button")).toHaveLength(1);
+    expect(within(dialog).getByRole("group", { name: "Speciality" }).querySelectorAll("button")).toHaveLength(3);
+    expect(within(dialog).queryByText("Read the cards")).toBeNull();
     for (const label of ["I:", "IV:", "VI:", "Ability:", "Hero:"]) {
       expect(within(dialog).getByRole("button", { name: new RegExp("^" + label) })).toBeTruthy();
     }
@@ -215,5 +222,17 @@ describe("Lobby hero popup — the card reader", () => {
     // CONTROL: pack off, no ribbon and no reprint wording.
     const off = openHeroInfo("Sandro");
     expect(within(off).queryByText("Polish Balance")).toBeNull();
+  });
+});
+
+describe("hero statistic card buttons", () => {
+  it("opens each matching statistic card", () => {
+    const dialog = openHeroInfo("Gelu");
+    for (const stat of ["attack", "defense", "power", "knowledge"]) {
+      fireEvent.click(within(dialog).getByRole("button", { name: new RegExp(stat + " [0-9]", "i") }));
+      const reader = screen.getByRole("dialog", { name: "Hero cards" });
+      expect(srcs(reader)).toContain(assetUrl(cardFaceImage("stat." + stat, false) ?? ""));
+      fireEvent.click(within(reader).getByRole("button", { name: "Close" }));
+    }
   });
 });

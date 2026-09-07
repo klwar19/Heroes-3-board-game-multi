@@ -43,7 +43,9 @@ describe("SetupLobbyScreen — hero info popup", () => {
 
     const detail = screen.getByLabelText("Rion details");
     const hero = coreHeroDefinitions.rion;
-    expect(detail.textContent).toBe("");
+    expect(within(detail).getByText("Rion")).toBeTruthy();
+    expect(within(detail).getByText("Ability")).toBeTruthy();
+    expect(within(detail).getByText("Speciality")).toBeTruthy();
     fireEvent.click(within(detail).getByRole("button", { name: /^I:/ }));
     const reader = screen.getByRole("dialog", { name: "Hero cards" });
     for (const [level, label] of [[1, "I"], [4, "IV"], [6, "VI"]] as const) {
