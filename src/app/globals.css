@@ -35458,6 +35458,69 @@ body {
   font-size: 0.78rem;
 }
 
+.sandboxUnitChip.ranked {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) minmax(145px, auto) auto;
+  align-items: end;
+  gap: 10px;
+  padding: 7px 8px;
+  border: 1px solid rgba(174, 136, 65, 0.24);
+  background: linear-gradient(100deg, rgba(53, 36, 15, 0.88), rgba(31, 23, 13, 0.76));
+}
+
+.sandboxUnitChipIdentity {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.sandboxUnitChipIdentity > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sandboxUnitChipIdentity small {
+  color: #9f8458;
+  text-transform: capitalize;
+}
+
+.sandboxUnitRankPicker {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sandboxUnitRankPicker > span {
+  color: #a8894f;
+  font-size: 0.62rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.sandboxUnitRankPicker select {
+  min-width: 140px;
+  border: 1px solid rgba(183, 145, 73, 0.52);
+  border-radius: 6px;
+  background: rgba(12, 9, 5, 0.94);
+  color: #f0dfb4;
+  padding: 4px 6px;
+}
+
+@media (max-width: 480px) {
+  .sandboxUnitChip.ranked {
+    grid-template-columns: 1fr auto;
+  }
+
+  .sandboxUnitRankPicker {
+    grid-column: 1 / -1;
+  }
+
+  .sandboxUnitRankPicker select {
+    width: 100%;
+  }
+}
+
 .sandboxEmpty {
   color: #8a7654 !important;
   font-style: italic;
@@ -47116,6 +47179,7 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
 .zoomUnitXpPanel .zoomUnitXpRanks {
   grid-template-columns: minmax(0, 1fr);
 }
+
 .zoomUnitXpPanel .unitXpRank.locked {
   opacity: 1;
   filter: none;

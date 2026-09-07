@@ -31,7 +31,7 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import { HERO_GRADE_NODE_IDS } from "@/data/anime/hero-grades";
 import { unitAbilities } from "@/data/units/abilities";
 import { mgqJobsForUnit } from "./mgq-jobs";
-import { getLegalMoveDestinations } from "./legal-actions";
+import { getAttackRollMode, getLegalMoveDestinations } from "./legal-actions";
 import {
   applyAction,
   createAdventureGameState,
@@ -210,7 +210,7 @@ describe("Unit Experience — rank math & either/or rewards", () => {
     }
   });
 
-  it("R1 uses only the approved small reward pool (every unit but the two overrides)", () => {
+  it("R1 uses only the approved small reward pool (except explicit signature overrides)", () => {
     const flatDefenseIds = new Set([
       "stronghold.wolf_raiders", "fuyuki.riders", "azure_breeze.spirit_crane", "hidden_leaf.anbu",
       "azur_lane.javelin", "heavenly_demon.bone_reavers", "little_busters.haruka", "mgq.miyabi",
@@ -220,13 +220,17 @@ describe("Unit Experience — rank math & either/or rewards", () => {
     ]);
     for (const def of Object.values(coreUnitDefinitions)) {
       const step = rankScheduleFor(def.id)[1];
-      // The two EXPLICIT R1 overrides are the ONLY units outside the pool.
+      // Explicit R1 signature overrides are the only units outside the pool.
       if (def.id === "fortress.hydras") {
         expect(step.kind === "ability" && step.choices).toEqual(["veteran-fear-aura"]);
         continue;
       }
       if (def.id === "castle.champions") {
         expect(step.kind === "ability" && step.choices).toEqual(["veteran-moving-pierce"]);
+        continue;
+      }
+      if (def.id === "neutral.sharpshooters") {
+        expect(step.kind === "ability" && step.choices).toEqual(["ranged-extra-shot-on-low-roll"]);
         continue;
       }
       // Every other unit is generator-served at R1: one point of stats, or one
@@ -833,6 +837,56 @@ function resolveArmyAttack(
 }
 
 describe("Unit Experience — observable redesigned effects in combat", () => {
+  it("Sharpshooter R2 ignores penalties even on retaliation and prevents melee retaliation", () => {
+    const rankOne = resolveArmyAttack(
+      "uxp-sharpshooter-r1-retaliation",
+      { unitDefId: "neutral.sharpshooters", side: "neutral", experience: 6 },
+      undefined,
+      3
+    );
+    const rankTwo = resolveArmyAttack(
+      "uxp-sharpshooter-r2-retaliation",
+      { unitDefId: "neutral.sharpshooters", side: "neutral", experience: 10 },
+      undefined,
+      3
+    );
+    expect(rankOne.combat!.units.unit_p1_griffins.damage).toBe(3);
+    expect(rankTwo.combat!.units.unit_p1_griffins.damage).toBe(0);
+
+    const shooter = makeCombatUnitFromArmy(
+      { id: "ss", unitDefId: "neutral.sharpshooters", side: "neutral", experience: 10 },
+      "p1",
+      "ss",
+      1,
+      "legacy"
+    )!;
+    const target = makeCombatUnitFromArmy(
+      { id: "target", unitDefId: "castle.halberdiers", side: "few" },
+      "p2",
+      "target",
+      2,
+      "legacy"
+    )!;
+    expect(getAttackRollMode(shooter, target, undefined, true)).toBe("normal");
+  });
+
+  it("Sharpshooter R3 shoots twice and R4 pierces 1 Defense", () => {
+    const rankTwo = resolveArmyAttack("uxp-sharpshooter-r2-shot", {
+      unitDefId: "neutral.sharpshooters", side: "neutral", experience: 10
+    });
+    const rankThree = resolveArmyAttack("uxp-sharpshooter-r3-shot", {
+      unitDefId: "neutral.sharpshooters", side: "neutral", experience: 15
+    });
+    const rankFour = resolveArmyAttack("uxp-sharpshooter-r4-pierce", {
+      unitDefId: "neutral.sharpshooters", side: "neutral", experience: 20
+    });
+    const r2Damage = rankTwo.combat!.units.unit_p2_skeletons.damage;
+    const r3Damage = rankThree.combat!.units.unit_p2_skeletons.damage;
+    const r4Damage = rankFour.combat!.units.unit_p2_skeletons.damage;
+    expect(r3Damage).toBe(r2Damage * 2);
+    expect(r4Damage).toBe(r3Damage + 2); // +1 through Defense on each of two shots.
+  });
+
   it("Rin's Cats Grade II heals exactly 1 HP after its own attack", () => {
     const gradeOne = resolveArmyAttack(
       "uxp-rins-cats-grade-one",
@@ -1205,6 +1259,55 @@ describe("Unit Experience — upgrade dilution", () => {
     const afterAid = applyOk(aid, { type: "COMMANDER_FIRST_AID", playerId: "p1", optionIndex: 0 });
     expect(afterAid.players.p1.army[0].experience).toBe(6);
     expect(afterAid.eventLog.some((e) => e.type === "UNIT_XP_DILUTED")).toBe(false);
+  });
+
+  it("pins the requested Sharpshooter and Ice Elemental rank tracks", () => {
+    expect(rankScheduleFor("neutral.sharpshooters")).toEqual({
+      1: { kind: "ability", choices: ["ranged-extra-shot-on-low-roll"] },
+      2: { kind: "ability", choices: ["veteran-sharpshooter-mastery"] },
+      3: { kind: "ability", choices: ["veteran-double-attack"] },
+      4: { kind: "ability", choices: ["veteran-defense-pierce"] }
+    });
+    expect(unitRankAbilityGainsAt("neutral.sharpshooters", 1)).toEqual(["ranged-extra-shot-on-low-roll"]);
+    expect(unitRankAbilityGainsAt("neutral.sharpshooters", 2)).toEqual(["veteran-sharpshooter-mastery"]);
+    expect(unitRankAbilityGainsAt("neutral.sharpshooters", 3)).toEqual(["veteran-double-attack"]);
+    expect(unitRankAbilityGainsAt("neutral.sharpshooters", 4)).toEqual(["veteran-defense-pierce"]);
+    expect(unitAbilities["veteran-sharpshooter-mastery"].effect).toEqual({
+      type: "IGNORE_RANGED_PENALTIES_AND_MELEE_RETALIATION"
+    });
+
+    expect(rankScheduleFor("neutral.ice_elementals")[2]).toEqual({
+      kind: "ability",
+      choices: ["veteran-attack-when-attacking"]
+    });
+    expect(rankScheduleFor("neutral.ice_elementals")[3]).toEqual({
+      kind: "ability",
+      choices: ["veteran-guarded-stance"]
+    });
+    expect(unitRankAbilityGainsAt("neutral.ice_elementals", 2)).toEqual(["veteran-attack-when-attacking"]);
+    expect(unitRankAbilityGainsAt("neutral.ice_elementals", 3)).toEqual(["veteran-guarded-stance"]);
+  });
+
+  it("a Hierophant revival restores the dead card with its exact XP progress", () => {
+    const state = makeAdventure("uxp-firstaid-revive", { unitExperience: true });
+    state.players.p1.army = [];
+    state.adventure!.pendingCommanderFirstAid = {
+      playerId: "p1",
+      options: [{
+        label: "Revive Griffins",
+        kind: "revive",
+        unitDefId: "castle.griffins",
+        side: "pack",
+        experience: 9
+      }]
+    };
+    const revived = applyOk(state, { type: "COMMANDER_FIRST_AID", playerId: "p1", optionIndex: 0 });
+    expect(revived.players.p1.army).toHaveLength(1);
+    expect(revived.players.p1.army[0]).toMatchObject({
+      unitDefId: "castle.griffins",
+      side: "pack",
+      experience: 9
+    });
   });
 });
 

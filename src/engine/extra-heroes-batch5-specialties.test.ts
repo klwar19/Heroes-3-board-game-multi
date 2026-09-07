@@ -342,6 +342,14 @@ describe("Gerwulf's Ballista specialty", () => {
     expect(play, "the 1-damage option is a combat play").toBeTruthy();
     const after = applyOk(state, play!.action);
     expect(after.combat!.units.unit_p2_skeletons.damage, "1 damage to the only enemy").toBe(1);
+    expect(after.players.p1.permanents).toContain("war_machine.ballista");
+    expect(after.players.p1.hand).not.toContain("specialty.gerwulf.4");
+    expect(
+      getLegalActions(after, "p1").some(
+        (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.gerwulf.4"
+      ),
+      "the on-turn side spends the card, so the instant discard side is gone"
+    ).toBe(false);
   });
 
   it("IV option B discards the Ballista to deal 2 damage to the selected enemy; gated on owning one", () => {
@@ -355,6 +363,8 @@ describe("Gerwulf's Ballista specialty", () => {
       "war_machine.ballista"
     );
     expect((after.players.p1.discard ?? []).includes("war_machine.ballista"), "Ballista to discard pile").toBe(true);
+    expect(after.players.p1.hand).not.toContain("specialty.gerwulf.4");
+    expect(after.players.p1.discard).toContain("specialty.gerwulf.4");
 
     // Without a Ballista the discard option is not offered.
     const none = combatWithBallista("gerwulf-4b-none", false);
@@ -370,6 +380,8 @@ describe("Gerwulf's Ballista specialty", () => {
     const after = applyOk(state, play!.action);
     expect(after.combat!.units.unit_p2_dread_knights.damage, "3 damage from the discarded Ballista").toBe(3);
     expect(after.players.p1.permanents ?? []).not.toContain("war_machine.ballista");
+    expect(after.players.p1.hand).not.toContain("specialty.gerwulf.6");
+    expect(after.players.p1.discard).toContain("specialty.gerwulf.6");
   });
 
   it("VI option A lets the owner aim the Ballista at ANY enemy at round start (NEW)", () => {

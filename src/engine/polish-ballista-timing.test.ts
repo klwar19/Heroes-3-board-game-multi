@@ -193,6 +193,31 @@ describe("Polish Ballista firing windows", () => {
     expect(state.combat!.units[SLOW].damage).toBe(0);
   });
 
+  it("Gerwulf VI may establish aim before the opening shot without a balance-pack timing rule", () => {
+    const state = setup(["specialty.gerwulf.6"]);
+    state.adventure = null;
+    startWarMachineRound(state);
+    expect(state.pendingChoice?.type).toBe("OPTION_CHOICE");
+    const aim = getLegalActions(state, "p1").find((legal) =>
+      legal.action.type === "PLAY_CARD" &&
+      legal.action.cardId === "specialty.gerwulf.6" &&
+      legal.action.optionIndex === 0
+    );
+    expect(aim, "the aim side is offered before the Ballista commits its first target").toBeTruthy();
+    const aimed = apply(state, aim!.action);
+    expect(aimed.players.p1.hand).not.toContain("specialty.gerwulf.6");
+    expect(aimed.players.p1.ongoingCards?.some((card) => card.cardId === "specialty.gerwulf.6")).toBe(true);
+    expect(
+      getLegalActions(aimed, "p1").some((legal) =>
+        legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.gerwulf.6"
+      ),
+      "using the aim side consumes the card, so its instant side cannot also be used"
+    ).toBe(false);
+    const fired = target(aimed, FAST);
+    expect(fired.combat!.units[FAST].damage).toBe(1);
+    expect(fired.combat!.units[SLOW].damage).toBe(0);
+  });
+
   it("discarding one of two Ballistas before firing cancels exactly its queued shot", () => {
     let state = setup(["specialty.gerwulf.6", "ability.artillery"]);
     state.players.p1.permanents!.push("war_machine.ballista");

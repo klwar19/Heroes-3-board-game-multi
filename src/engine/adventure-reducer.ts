@@ -15665,7 +15665,13 @@ export function resolveCommanderFirstAid(
       }
       discard.splice(index, 1);
     }
-    addArmyUnit(player, option.unitDefId, option.side);
+    const revived = addArmyUnit(player, option.unitDefId, option.side);
+    // First Aid restores this battle's casualty, not a fresh recruit. Keep the
+    // original card's veteran progress, matching any in-combat Resurrection
+    // that prevents the backing army card from leaving in the first place.
+    if (option.experience !== undefined) {
+      revived.experience = Math.max(0, Math.trunc(option.experience));
+    }
   }
 
   adventure.pendingCommanderFirstAid = null;

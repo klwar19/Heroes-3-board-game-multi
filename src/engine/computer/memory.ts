@@ -23,7 +23,7 @@ export type ResourceTrailEntry = {
 
 export type ComputerPolicyMemory = {
   developmentPlan?: DevelopmentPlan;
-  routeHistory?: Array<{ heroId: string; to: string; progress: string }>;
+  routeHistory?: Array<{ heroId: string; to: string; progress: string; round?: number }>;
   /** `${round}|${activePlayerId}|${completedTurns signature}` — clears visit list. */
   lastTurnKey: string;
   resourceTrail: ResourceTrailEntry[];
@@ -232,7 +232,7 @@ export function noteComputerAction(
   switch (action.type) {
     case "MOVE_HERO": {
       const to = action.to;
-      mem.routeHistory = [...(mem.routeHistory ?? []), { heroId: action.heroId, to, progress: routeProgressKey(state, playerId) }].slice(-12);
+      mem.routeHistory = [...(mem.routeHistory ?? []), { heroId: action.heroId, to, progress: routeProgressKey(state, playerId), round }].slice(-12);
       if (to && !mem.visitedThisTurn.includes(to)) {
         mem = {
           ...mem,
@@ -306,7 +306,7 @@ export function routeProgressKey(state: GameState, playerId: PlayerId): string {
 export function repeatsUnproductiveRoute(state: GameState, playerId: PlayerId, action: GameAction, memory?: ComputerPolicyMemory): boolean {
   if (action.type !== "MOVE_HERO" || !memory?.routeHistory) return false;
   const progress = routeProgressKey(state, playerId);
-  return memory.routeHistory.filter(step => step.heroId === action.heroId && step.to === action.to && step.progress === progress).length >= 2;
+  return memory.routeHistory.some(step => step.heroId === action.heroId && step.to === action.to && step.progress === progress);
 }
 
 /** Commit a sticky map objective for cross-turn march continuity. */

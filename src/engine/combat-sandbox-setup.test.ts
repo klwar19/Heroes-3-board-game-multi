@@ -5,6 +5,7 @@ import {
   createInitialGameState,
   getLegalActions,
   isCombatSandboxSetup,
+  unitRankForExperience,
   type GameState
 } from "./index";
 
@@ -68,6 +69,26 @@ describe("Battle Test free setup", () => {
     expect(state.combatSandboxSetup!.wog.enabled).toBe(true);
     expect(state.combatSandboxSetup!.wog.commanders).toBe(true);
     expect(state.wog?.commanders).toBe(true);
+  });
+
+  it("materialises each selected Unit Experience grade at the unit's exact tier threshold", () => {
+    let state = createCombatSandboxLobbyState("sandbox-unit-xp");
+    state = applyOk(state, {
+      type: "SANDBOX_SET_OPTIONS",
+      playerId: "p1",
+      options: { wog: { enabled: true, unitExperience: true } }
+    });
+    state = applyOk(state, {
+      type: "SANDBOX_CONFIGURE_SEAT",
+      playerId: "p1",
+      seatId: "p1",
+      units: [{ unitDefId: "castle.griffins", side: "pack", unitRank: 3 }]
+    });
+    state = applyOk(state, { type: "SANDBOX_BEGIN_COMBAT", playerId: "p1" });
+
+    const experience = state.players.p1.army[0].experience ?? 0;
+    expect(experience).toBeGreaterThan(0);
+    expect(unitRankForExperience("bronze", experience)).toBe(3);
   });
 
   it("lets the tester pick BINH, pure Legacy, or Tournament mode before Begin", () => {

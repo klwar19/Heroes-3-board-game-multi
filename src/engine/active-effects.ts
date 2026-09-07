@@ -418,8 +418,9 @@ export function ignoresAllRangedCombatPenalties(
     getUnitAbilityDefinitions(unit).some(
       (ability) =>
         ability.implementationStatus === "implemented" &&
-        ability.effect?.type === "IGNORE_RANGED_PENALTIES" &&
-        (!isRetaliation || Boolean(ability.effect.includesRetaliation))
+        (ability.effect?.type === "IGNORE_RANGED_PENALTIES_AND_MELEE_RETALIATION" ||
+          (ability.effect?.type === "IGNORE_RANGED_PENALTIES" &&
+            (!isRetaliation || Boolean(ability.effect.includesRetaliation))))
     )
   ) {
     return true;

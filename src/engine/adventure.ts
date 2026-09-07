@@ -22432,24 +22432,26 @@ export function legionDiscountTargets(state: GameState, playerId: PlayerId): Leg
   }
   const targets: LegionDiscountTarget[] = [];
 
-  // Recruit: whatever the player may ACTUALLY recruit a Few of right now, with
+  // Recruit: whatever the player may ACTUALLY recruit right now, with
   // gold to reduce. This must go through the SAME shared reads the recruit
   // surfaces use — `playerRecruitUnitIds` (own roster PLUS any settlement-granted
-  // foreign roster) and `playerCanRecruitFewNow` (tier/dwelling, the
+  // foreign roster OR a settlement's matching Neutral cards) and
+  // `playerCanRecruitFewNow` (tier/dwelling, deck availability, the
   // duplicate-copy house rule, the Factory/MGQ gold gates) — or a voucher can
   // never target a foreign unit or an extra copy, and (because legal-actions
   // withholds the GAIN_RECRUIT_DISCOUNT side when this list is empty) a full
   // own-faction army loses the discount side altogether.
   for (const unitDefId of playerRecruitUnitIds(state, playerId)) {
     const unit = coreUnitDefinitions[unitDefId];
-    const fewSide = getUnitSide(unitDefId, "few");
-    if (!unit || !fewSide) {
+    const recruitSideName = playerRecruitUnitSide(state, playerId, unitDefId);
+    const recruitSide = recruitSideName ? getUnitSide(unitDefId, recruitSideName) : null;
+    if (!unit || !recruitSide) {
       continue;
     }
     if (!playerCanRecruitFewNow(state, playerId, unitDefId)) {
       continue;
     }
-    if ((fewSide.cost.gold ?? 0) <= 0) {
+    if ((recruitSide.cost.gold ?? 0) <= 0) {
       continue;
     }
     const purchase: RecruitPurchaseRef = { kind: "recruit", unitDefId };
@@ -22500,12 +22502,15 @@ export function legionDiscountTargets(state: GameState, playerId: PlayerId): Leg
     });
   }
 
-  // NOTE (2026-08-03): recruitable NEUTRAL-deck cards are deliberately NOT
-  // targets here. A voucher banked in advance is useless at every neutral
+  // NOTE: the full Neutral deck is deliberately NOT added here. Random neutral
+  // surfaces remain reachable through their inline Legion choice, while the
+  // settlement house rule's known, currently purchasable Neutral cards enter
+  // through playerRecruitUnitIds above. A voucher banked in advance is useless
+  // at every other neutral
   // recruit surface — a Conflux/Circus field is reached by MOVING (the bank's
   // expiry seam), an Event resolves behind the round-start barrier, and
   // Diplomacy/Portal draw a RANDOM card nobody can name beforehand — while
-  // listing them would flood this prompt with the whole Neutral deck and show
+  // listing the full deck would flood this prompt and show
   // two "Recruit Marksmen" entries (most faction creatures have a Neutral
   // twin card). The reachable mechanism is the INLINE Legion offer inside the
   // neutral recruit menu itself (USE_LEGION_RECRUIT_DISCOUNT / the Diplomacy

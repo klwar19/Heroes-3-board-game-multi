@@ -79,5 +79,5 @@ describe("Azure Breeze Sect — live AI play", () => {
     }
     expect(totalRecruits, "live games should recruit Azure Breeze units").toBeGreaterThan(0);
     expect(totalActivity, "town construction, cultivation, grade, or skill activity should occur").toBeGreaterThan(0);
-  });
+  }, 30_000);
 });

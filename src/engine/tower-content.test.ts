@@ -240,7 +240,8 @@ describe("Tower content", () => {
     state.pendingChoice = null;
     state.reactionWindow = null;
     state.players.p1.hand = ["specialty.dracon.4"];
-    state.players.p1.army = [{ id: "army_magi", unitDefId: "tower.magi", side: "pack" }];
+    state.adventure!.unitExperience = true;
+    state.players.p1.army = [{ id: "army_magi", unitDefId: "tower.magi", side: "pack", experience: 19 }];
     expect(state.decks[NEUTRAL_DECK_IDS.gold].drawPile).toContain("neutral.enchanters");
     const enchantersBefore = state.decks[NEUTRAL_DECK_IDS.gold].drawPile.filter(
       (cardId) => cardId === "neutral.enchanters"
@@ -252,7 +253,7 @@ describe("Tower content", () => {
     expect(convert, "the Magi→Enchanters trade should be offered").toBeTruthy();
     const next = applyOk(state, convert!.action);
     expect(next.players.p1.army.some((unit) => unit.unitDefId === "tower.magi")).toBe(false);
-    expect(next.players.p1.army.some((unit) => unit.unitDefId === "neutral.enchanters")).toBe(true);
+    expect(next.players.p1.army.find((unit) => unit.unitDefId === "neutral.enchanters")?.experience).toBe(19);
     expect(
       next.decks[NEUTRAL_DECK_IDS.gold].drawPile.filter((cardId) => cardId === "neutral.enchanters")
     ).toHaveLength(enchantersBefore - 1);

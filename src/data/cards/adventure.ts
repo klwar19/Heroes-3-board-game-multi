@@ -5359,7 +5359,7 @@ export const adventureCards: CardLibrary = {
       "combat",
       "gerwulf",
       "ballista",
-      "On your turn: the selected unit suffers 1 damage. — OR — Instant (any time, incl. an enemy unit's turn start or end of its move): discard your Ballista to inflict 2 damage on the selected enemy unit.",
+      "Choose ONE — On your turn: the selected enemy unit suffers 1 damage (keep your Ballista). — OR — Instant (any time, incl. an enemy unit's turn start, end of its move, or before Retaliation): discard your Ballista to inflict 2 damage on the selected enemy unit. Playing either effect spends this card.",
     ],
     target: { type: "none" },
     effect: {
@@ -5397,7 +5397,7 @@ export const adventureCards: CardLibrary = {
       "combat",
       "gerwulf",
       "ballista",
-      "Ongoing (your turn): For this Combat, you can choose targets for your Ballista (if you have one). — OR — Instant (any time, incl. an enemy unit's turn start or end of its move): discard your Ballista to inflict 3 damage on the selected enemy unit.",
+      "Choose ONE — At the beginning of Combat or on your turn: for this Combat, choose targets for your Ballista (before its first shot, if played at the beginning). — OR — Instant (any time, incl. an enemy unit's turn start, end of its move, or before Retaliation): discard your Ballista to inflict 3 damage on the selected enemy unit. Playing either effect spends this card.",
     ],
     target: { type: "none" },
     effect: {

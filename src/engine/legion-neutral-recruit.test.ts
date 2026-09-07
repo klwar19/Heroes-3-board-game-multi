@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { coreUnitDefinitions } from "@/data/factions/units";
+import { neutralUnitIdsByFaction } from "@/data/factions/core";
 import { applyAction, createAdventureGameState } from "./index";
 import {
   beginFieldVisit,
@@ -362,6 +363,55 @@ describe("Legion vouchers on Neutral-Unit recruits — Diplomacy", () => {
 });
 
 describe("Legion vouchers on Neutral-Unit recruits — scope", () => {
+  it("the Settlement Neutral house rule exposes Legion targets and charges the reduced price", () => {
+    const state = refreshP1(makeGame());
+    state.players.p1.army = [];
+    state.players.p1.resources.gold = 40;
+    state.adventure!.houseRules = {
+      ...(state.adventure!.houseRules ?? {}),
+      "settlement-neutral-recruitment": true,
+      "settlement-foreign-recruitment": false
+    };
+    const factionId = "castle";
+    const unitDefId = neutralUnitIdsByFaction[factionId]![0]!;
+    const unit = coreUnitDefinitions[unitDefId]!;
+    const printedGold = unit.neutral!.cost.gold ?? 0;
+    state.adventure!.fields.settlement_shop = {
+      spaceId: "settlement_shop",
+      tileInstanceId: "settlement-test",
+      slot: 0,
+      location: "settlement",
+      faction: factionId,
+      blackCube: false,
+      flagOwnerId: "p1",
+      everFlagged: true,
+      settlementResource: "gold",
+      settlementRecruitFactionId: factionId
+    };
+    state.decks[NEUTRAL_DECK_IDS[unit.tier]].drawPile = [
+      ...state.decks[NEUTRAL_DECK_IDS[unit.tier]].drawPile.filter((id) => id !== unitDefId),
+      unitDefId
+    ];
+
+    const target = legionDiscountTargets(state, "p1").find(
+      (candidate) => candidate.purchase.kind === "recruit" && candidate.purchase.unitDefId === unitDefId
+    );
+    expect(target, "the known Settlement Neutral card must appear in the Legion popup").toBeTruthy();
+
+    // The same target voucher is consumed by the ordinary Population purchase,
+    // whose UI and reducer share applyRecruitGoldDiscount.
+    bankVoucher(state, "p1", "artifact.legs_of_legion", 4, { kind: "recruit", unitDefId });
+    const goldBefore = state.players.p1.resources.gold;
+    const after = apply(state, {
+      type: "POPULATION_ACTION",
+      playerId: "p1",
+      purchases: [{ kind: "recruit", unitDefId }]
+    });
+    expect(after.players.p1.army.at(-1)).toMatchObject({ unitDefId, side: "neutral" });
+    expect(after.players.p1.resources.gold).toBe(goldBefore - Math.max(0, printedGold - 4));
+    expect(after.players.p1.recruitDiscounts ?? []).toHaveLength(0);
+  });
+
   it("Portal of Summoning and the Mercenary Camp Event share the same priced seam", () => {
     // The seam itself is the guarantee (every surface reads neutralRecruitCost),
     // so pin the seam's own arithmetic including the Oidana printed reduction.

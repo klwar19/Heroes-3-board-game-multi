@@ -66,7 +66,7 @@ import {
 import type { UnitTier } from "@/data/factions/types";
 import { scoreMapAction } from "./map-policy";
 import { chooseComputerAction } from "./policy";
-import { emptyComputerMemory } from "./memory";
+import { emptyComputerMemory, noteComputerAction, getComputerMemory, repeatsUnproductiveRoute } from "./memory";
 import type { ComputerObservation } from "./types";
 
 /**
@@ -158,6 +158,46 @@ function observe(state: GameState): ComputerObservation {
     legalActions: [],
   };
 }
+
+describe("productive movement regressions", () => {
+  it("does not let an unreachable home reward hide a reachable hex elsewhere", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    const fields = state.adventure!.fields;
+    const isolated = "h:100:100";
+    fields[isolated] = { ...fields[RESOURCE], spaceId: isolated };
+    fields[RESOURCE].tileInstanceId = "outside-home";
+    expect(distanceFromHeroTo(state, hero, isolated)).toBeUndefined();
+    expect(primaryMapObjective(state, hero, [
+      { spaceId: isolated, kind: "visitable" },
+      { spaceId: RESOURCE, kind: "visitable" },
+    ], isolated)?.spaceId).toBe(RESOURCE);
+  });
+
+  it("abandons a staged guard for a reachable expansion hex", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 1;
+    state.players.p2.army = [];
+    state.adventure!.fields[MINE].difficulty = 7;
+    expect(canBeatGuardedField(state, hero, state.adventure!.fields[MINE])).toBe(false);
+    expect(primaryMapObjective(state, hero, [
+      { spaceId: MINE, kind: "guard" },
+      { spaceId: EMPTY, kind: "explore", opensFarTile: true },
+    ], MINE)?.spaceId).toBe(EMPTY);
+  });
+
+  it("rejects the first repeated empty circuit but allows returning after a pickup", () => {
+    let state = game();
+    const hero = p2Hero(state);
+    const move = (to: MapSpaceId): GameAction => ({ type: "MOVE_HERO", playerId: "p2", heroId: hero.id, to });
+    state = noteComputerAction(state, "p2", move(EMPTY));
+    state = noteComputerAction(state, "p2", move(TOWN));
+    expect(repeatsUnproductiveRoute(state, "p2", move(EMPTY), getComputerMemory(state, "p2"))).toBe(true);
+    state.players.p2.resources.gold += 3;
+    expect(repeatsUnproductiveRoute(state, "p2", move(EMPTY), getComputerMemory(state, "p2"))).toBe(false);
+  });
+});
 
 describe("PvE module navigation objectives", () => {
   it("marches a viable army to the shared Dungeon gate but not a gutted army", () => {
@@ -3868,6 +3908,16 @@ describe("enter-first-opened-tile boost — safe entries only", () => {
     expect(scored?.score).toBe(930);
   });
 
+  it("does not rearm the first-entry boost after walking back home", () => {
+    const { state, hero, entry } = placedTileEntry("enter-opened-safe");
+    const observation = observe(state);
+    observation.memory = { ...emptyComputerMemory(), visitedThisTurn: [entry] };
+    const scored = scoreMapAction(observation, {
+      type: "MOVE_HERO", playerId: "p2", heroId: hero.id, to: entry,
+    });
+    expect(scored?.policy).not.toBe("map.enter-first-opened-tile");
+  });
+
   it("never boosts onto an entry guard the hero cannot beat (falls back to moveScore)", () => {
     const { state, hero, entry } = placedTileEntry("enter-opened-guarded");
     state.adventure!.fields[entry].difficulty = 5; // far above a level-1 hero
@@ -4274,6 +4324,23 @@ describe("computer opening: tile Ⅰ rotation and Ⅱ–Ⅲ-first discovery", ()
       heroId,
       tileInstanceId: tileId,
     })!;
+
+  it("only plans expansion hexes that can perform the preferred opening", () => {
+    const { state, hero, farTile } = bothBandsDiscoverable(game());
+    hero.level = 2;
+    delete state.adventure!.tiles[farTile.id];
+    const objectives = collectMapObjectives(state, hero).filter(objective => objective.kind === "explore");
+    expect(objectives.length).toBeGreaterThan(0);
+    for (const objective of objectives) {
+      const probe = { ...hero, spaceId: objective.spaceId };
+      const canPlace = farTilePlacementCenters(state, probe, undefined, { requireImmediateAccess: true }).length > 0;
+      const canReveal = Object.values(state.adventure!.tiles).some(tile =>
+        tile.faceDown && tile.group === "far" && canHeroImmediatelyAccessAdjacentTile(state, probe, tile),
+      );
+      expect(canPlace || canReveal).toBe(true);
+      expect(objective.opensFarTile).toBe(true);
+    }
+  });
 
   it("flips the Ⅱ–Ⅲ tile, never the Ⅳ+ tile it cannot fight yet", () => {
     const { state, hero, highBand, farTile } = bothBandsDiscoverable(game());

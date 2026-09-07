@@ -352,6 +352,9 @@ function rotatedChoices(unitDefId: string, rank: number, pool: readonly string[]
 function explicitRankOne(unitDefId: string): RankStep | null {
   if (unitDefId === "fortress.hydras") return A("veteran-fear-aura");
   if (unitDefId === "castle.champions") return A("veteran-moving-pierce");
+  // Move the former generated R3 reward forward: veteran Sharpshooters begin
+  // with the same low-roll extra shot that their old schedule granted at R3.
+  if (unitDefId === "neutral.sharpshooters") return A("ranged-extra-shot-on-low-roll");
   return null;
 }
 
@@ -366,6 +369,8 @@ function rankOneStepFor(unitDefId: string): RankStep {
 function explicitRankTwo(unitDefId: string): RankStep | null {
   if (unitDefId === "castle.champions") return S({ ...Z, health: 1 });
   if (unitDefId === "little_busters.rins_cats") return A("veteran-soul-feast");
+  if (unitDefId === "neutral.sharpshooters") return A("veteran-sharpshooter-mastery");
+  if (unitDefId === "neutral.ice_elementals") return A("veteran-attack-when-attacking");
   return null;
 }
 
@@ -382,6 +387,9 @@ function explicitRankThree(unitDefId: string): RankStep | null {
   // Reserve Soul Feast for the requested Ghost Dragon capstone instead of
   // accidentally consuming it from the generic dragon pool one rank early.
   if (unitDefId.endsWith(".ghost_dragons")) return S();
+  if (unitDefId === "neutral.sharpshooters") return A("veteran-double-attack");
+  // Preserve Ice Elementals' former R2 Guarded Stance after moving it to R3.
+  if (unitDefId === "neutral.ice_elementals") return A("veteran-guarded-stance");
   return null;
 }
 
@@ -396,6 +404,7 @@ function explicitRankFour(unitDefId: string): RankStep | null {
   if (unitDefId.endsWith(".unicorns")) return A("veteran-low-roll-insight");
   if (unitDefId.endsWith(".zealots")) return A("veteran-defense-pierce");
   if (unitDefId.endsWith(".ghost_dragons")) return A("veteran-soul-feast");
+  if (unitDefId === "neutral.sharpshooters") return A("veteran-defense-pierce");
   return null;
 }
 
@@ -524,6 +533,7 @@ export const UNIT_RANK_ABILITY_ICONS: Record<string, string> = {
   "veteran-moving-pierce": "/assets/ui/rank-ability/moving-pierce.webp",
   "veteran-mobility-1": "/assets/ui/rank-ability/mobility.webp",
   "veteran-double-attack": "/assets/ui/rank-ability/double-strike.webp",
+  "veteran-sharpshooter-mastery": "/assets/ui/rank-ability/precision.webp",
   "reduce-spell-and-specialty-damage-2": "/assets/ui/rank-ability/arcane-aegis.webp",
   "pegasi-magic-damper": "/assets/ui/rank-ability/spell-dampening.webp"
 };

@@ -9,6 +9,7 @@ import {
 } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { COMMANDER_STAT_KEYS, COMMANDER_STAT_LABELS } from "@/data/commanders";
+import { MAX_UNIT_RANK, UNIT_RANK_NAMES } from "@/data/units/experience";
 import {
   isCombatSandboxSetup,
   sandboxBattlefieldChoices,
@@ -91,6 +92,7 @@ function SeatEditor({
   unitLimit,
   moraleCardsOn,
   commandersOn,
+  unitExperienceOn,
   onAction,
   actorId
 }: {
@@ -99,6 +101,7 @@ function SeatEditor({
   unitLimit: number;
   moraleCardsOn: boolean;
   commandersOn: boolean;
+  unitExperienceOn: boolean;
   onAction: (action: GameAction) => void;
   actorId: PlayerId;
 }) {
@@ -169,6 +172,12 @@ function SeatEditor({
 
   const removeUnit = (index: number) => {
     patch({ units: seat.units.filter((_, i) => i !== index) });
+  };
+
+  const setUnitRank = (index: number, unitRank: number) => {
+    patch({
+      units: seat.units.map((unit, i) => i === index ? { ...unit, unitRank } : unit)
+    });
   };
 
   const addCard = (cardId: string) => {
@@ -294,10 +303,27 @@ function SeatEditor({
           {seat.units.map((unit, index) => {
             const def = coreUnitDefinitions[unit.unitDefId];
             return (
-              <li key={`${unit.unitDefId}-${index}`}>
-                <span>
-                  {def?.name ?? unit.unitDefId} ({unit.side})
-                </span>
+              <li className={unitExperienceOn ? "sandboxUnitChip ranked" : "sandboxUnitChip"} key={`${unit.unitDefId}-${index}`}>
+                <div className="sandboxUnitChipIdentity">
+                  <span>{def?.name ?? unit.unitDefId}</span>
+                  <small>{unit.side}</small>
+                </div>
+                {unitExperienceOn ? (
+                  <label className="sandboxUnitRankPicker">
+                    <span>Experience grade</span>
+                    <select
+                      aria-label={`${def?.name ?? unit.unitDefId} experience grade for ${seatId}`}
+                      onChange={(event) => setUnitRank(index, Number(event.target.value))}
+                      value={unit.unitRank ?? 0}
+                    >
+                      {Array.from({ length: MAX_UNIT_RANK + 1 }, (_, rank) => (
+                        <option key={rank} value={rank}>
+                          {rank === 0 ? "0 · Recruit" : `${rank} · ${UNIT_RANK_NAMES[rank]}`}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
                 <button onClick={() => removeUnit(index)} type="button">
                   Remove
                 </button>
@@ -578,8 +604,8 @@ export function CombatSandboxSetupScreen({
           <span className="sandboxEyebrow">Battle Test</span>
           <h2>Build the fight</h2>
           <p>
-            Freely pick factions, units and cards for both seats, toggle morale / WOG commanders,
-            choose a battlefield, then begin. Both sides will place units like a normal PvP battle.
+            Freely pick factions, units and cards for both seats, toggle morale and WOG modules,
+            set each unit&apos;s experience grade, choose a battlefield, then begin.
           </p>
         </div>
         <button
@@ -672,6 +698,15 @@ export function CombatSandboxSetupScreen({
             />
             Commanders
           </label>
+          <label className="sandboxToggle">
+            <input
+              checked={Boolean(wog.enabled && wog.unitExperience)}
+              disabled={!wog.enabled}
+              onChange={(event) => setOptions({ wog: { enabled: true, unitExperience: event.target.checked } })}
+              type="checkbox"
+            />
+            Unit Experience
+          </label>
         </div>
         <p className="sandboxHint">
           {playMode === "tournament"
@@ -695,6 +730,7 @@ export function CombatSandboxSetupScreen({
             seat={setup.seats[seatId]}
             seatId={seatId}
             unitLimit={unitLimit}
+            unitExperienceOn={Boolean(wog.enabled && wog.unitExperience)}
           />
         ))}
       </div>

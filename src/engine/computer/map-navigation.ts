@@ -127,7 +127,7 @@ export type MapObjective = {
   spaceId: MapSpaceId;
   kind: MapObjectiveKind;
   /**
-   * Explore doorway that can FLIP a still face-down Far (Ⅱ–Ⅲ) tile. While the
+   * Explore doorway that can reveal or place a Far (Ⅱ–Ⅲ) tile. While the
    * seat has no Far economy yet, these doorways are the settlement lottery the
    * scenario guarantees (farTiles.guaranteeSettlement) — the march values them
    * well above generic exploration so the premium rush can find its target.
@@ -885,6 +885,7 @@ function collectExploreObjectives(
     let useful = false;
     let opensFarTile = false;
     for (const tile of faceDown) {
+      if (shouldDeferExpansionTile(state, probe, tile)) continue;
       // AI gate: geometric adjacency plus an open doorway now. Every yellow arc
       // is refused, a carved Creature Bank / Gate hex included — USER RULE
       // 2026-09-05 keeps the slot's PRINTED outer arc through a carve, so the
@@ -902,11 +903,12 @@ function collectExploreObjectives(
     // when every laid face-down tile is sealed off from here. Placement also
     // refuses sealed hero edges independently of the human rules toggle.
     if (
-      !useful &&
+      !opensFarTile &&
       canPlaceFar &&
       farTilePlacementCenters(state, probe, undefined, { requireImmediateAccess: true }).length > 0
     ) {
       useful = true;
+      opensFarTile = true;
     }
     if (useful) {
       found.set(field.spaceId, {
@@ -1758,6 +1760,17 @@ export function farExpansionRouteRemains(
   );
 }
 
+/** Keep doorway planning and the actual discovery decision on the same band gate. */
+export function shouldDeferExpansionTile(
+  state: GameState,
+  hero: HeroState,
+  tile: MapTileState,
+): boolean {
+  return tile.group !== "far" && tile.group !== "starting" &&
+    heroCanBeatNoGuardInBand(state, hero, tile.group) &&
+    farExpansionRouteRemains(state, hero.controllerId, hero);
+}
+
 const EXPANSION_BAND_ORDER: Readonly<Record<string, number>> = {
   starting: 0,
   far: 1,
@@ -1955,13 +1968,26 @@ export function primaryMapObjective(
   if (objectives.length === 0) {
     return null;
   }
+  // A sealed home reward must not hide every reachable target elsewhere.
+  const reachable = objectives.filter((objective) =>
+    distanceFromHeroTo(state, hero, objective.spaceId) !== undefined,
+  );
+  // Staging is only a fallback. Do not camp at a fight we cannot start while
+  // reachable pickups or expansion doorways can still improve the position.
+  const actionable = reachable.filter((objective) => {
+    const field = state.adventure?.fields[objective.spaceId];
+    return !field ||
+      (!isFieldGuarded(field) && field.location !== "creature_bank") ||
+      canBeatGuardedField(state, hero, field);
+  });
+  const available = actionable.length > 0 ? actionable : reachable;
   // Home tile first: while ANY sweepable payoff remains on tile Ⅰ and the hero
   // still stands there, ignore off-tile conquest / Far / sticky commits so all
   // three home items are collected every game before expanding to II–III.
-  const homeRemaining = objectives.filter((objective) =>
+  const homeRemaining = available.filter((objective) =>
     isHomeTileSweepObjective(state, hero, objective),
   );
-  const pool = homeRemaining.length > 0 ? homeRemaining : objectives;
+  const pool = homeRemaining.length > 0 ? homeRemaining : available;
   const openingRemaining = homeRemaining.filter((objective) =>
     isHomeTileOpeningObjective(state, hero, objective),
   );

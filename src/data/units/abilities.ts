@@ -25,6 +25,10 @@ export type UnitAbilityEffectDefinition =
       type: "IGNORE_ADJACENT_RANGED_PENALTY_AND_RETALIATION";
     }
   | {
+      /** Veteran Sharpshooters: full passive ranged waiver plus no melee retaliation. */
+      type: "IGNORE_RANGED_PENALTIES_AND_MELEE_RETALIATION";
+    }
+  | {
       /** Masato the Wall: intercept one normal attack on any adjacent ally per combat round. */
       type: "INTERCEPT_ADJACENT_ATTACK_ONCE";
       /** Optional highest printed tier this bodyguard may protect. */
@@ -1726,6 +1730,13 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "No Combat Penalties",
     text: "Ignores all ranged combat penalties — both attacking an adjacent unit and the long-range / behind-wall shot.",
     effect: { type: "IGNORE_RANGED_PENALTIES" },
+    implementationStatus: "implemented"
+  },
+  "veteran-sharpshooter-mastery": {
+    id: "veteran-sharpshooter-mastery",
+    name: "Sharpshooter Mastery",
+    text: "[unit_passive] Ignore all ranged combat penalties, including on Retaliation Attacks. Melee attacks by this unit do not provoke Retaliation.",
+    effect: { type: "IGNORE_RANGED_PENALTIES_AND_MELEE_RETALIATION" },
     implementationStatus: "implemented"
   },
   "ranged-extra-shot-on-low-roll": {

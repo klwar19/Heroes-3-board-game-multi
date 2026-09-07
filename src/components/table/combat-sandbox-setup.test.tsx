@@ -64,6 +64,23 @@ describe("CombatSandboxSetupScreen", () => {
     );
   });
 
+  it("shows per-unit experience-grade controls when the Unit Experience module is selected", () => {
+    const state = createCombatSandboxLobbyState("ui-unit-xp");
+    state.wog!.enabled = true;
+    state.wog!.unitExperience = true;
+    state.combatSandboxSetup!.wog = { ...state.combatSandboxSetup!.wog, enabled: true, unitExperience: true };
+    const onAction = vi.fn();
+    render(<CombatSandboxSetupScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
+
+    const grade = screen.getByLabelText(/Marksmen experience grade for p1/i);
+    fireEvent.change(grade, { target: { value: "3" } });
+    expect(onAction).toHaveBeenCalledWith(expect.objectContaining({
+      type: "SANDBOX_CONFIGURE_SEAT",
+      seatId: "p1",
+      units: expect.arrayContaining([expect.objectContaining({ unitDefId: "castle.marksmen", unitRank: 3 })])
+    }));
+  });
+
   it("dispatches a faction change for the attacker seat", () => {
     const state = createCombatSandboxLobbyState("ui-faction");
     const onAction = vi.fn();

@@ -1417,7 +1417,8 @@ export function collectFirstAidCandidates(state: GameState, playerId: PlayerId):
         kind: "revive",
         unitDefId: unit.unitDefId,
         side: armyUnit.side === "neutral" ? "neutral" : unit.variant === "pack" ? "pack" : "few",
-        neutralTier: armyUnit.side === "neutral" ? unit.grade : undefined
+        neutralTier: armyUnit.side === "neutral" ? unit.grade : undefined,
+        ...(armyUnit.experience !== undefined ? { experience: armyUnit.experience } : {})
       });
     } else if (armyUnit.side === "pack" && unit.variant === "few") {
       // Survived, but flipped down from its Pack side during the fight.

@@ -13888,6 +13888,8 @@ export type AdventureState = {
       armyUnitId?: string;
       /** revive of a neutral-side card: tier discard pile it recycled into. */
       neutralTier?: string;
+      /** Persistent Unit Experience carried by the casualty before it died. */
+      experience?: number;
     }[];
   } | null;
   /**
@@ -16154,6 +16156,8 @@ export type GameSetupState = {
 export type CombatSandboxUnitPick = {
   unitDefId: string;
   side: "few" | "pack" | "neutral";
+  /** Unit Experience grade 0–4; materialised as this tier's exact XP threshold. */
+  unitRank?: number;
 };
 
 /** One seat's free-setup choices in a Battle Test arena (before Begin). */

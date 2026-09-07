@@ -37,6 +37,7 @@ import { shuffleCards } from "./decks";
 import { appendEvent, nextEventNumber } from "./events";
 import { makeMoraleDecks } from "./morale-cards";
 import { freshSeed } from "./seed";
+import { rankMirrorXp } from "./unit-experience";
 import {
   DEFAULT_WOG_OPTIONS,
   type CardId,
@@ -414,6 +415,9 @@ function validateUnitPick(pick: CombatSandboxUnitPick): void {
   if (!side) {
     throw new Error(`${def.name} has no ${pick.side} side.`);
   }
+  if (pick.unitRank !== undefined && (!Number.isInteger(pick.unitRank) || pick.unitRank < 0 || pick.unitRank > 4)) {
+    throw new Error(`${def.name} has an invalid Unit Experience grade.`);
+  }
 }
 
 function validateCardId(cardId: CardId): void {
@@ -614,7 +618,11 @@ export function sandboxSetOptions(
   });
 }
 
-function buildPlayerFromSeat(seat: CombatSandboxSeatConfig, moraleCardsOn: boolean): PlayerState {
+function buildPlayerFromSeat(
+  seat: CombatSandboxSeatConfig,
+  moraleCardsOn: boolean,
+  unitExperienceOn: boolean
+): PlayerState {
   const level = clampHeroLevel(seat.heroLevel);
   const commander =
     makeInitialCommanderState(seat.factionId) ??
@@ -638,11 +646,17 @@ function buildPlayerFromSeat(seat: CombatSandboxSeatConfig, moraleCardsOn: boole
     discard: [],
     spellBook: [],
     removed: [],
-    army: seat.units.map((unit, index) => ({
-      id: `army_${seat.playerId}_${index + 1}`,
-      unitDefId: unit.unitDefId,
-      side: unit.side
-    })),
+    army: seat.units.map((unit, index) => {
+      const rank = Math.max(0, Math.min(4, Math.trunc(unit.unitRank ?? 0)));
+      const tier = coreUnitDefinitions[unit.unitDefId]?.tier;
+      const experience = unitExperienceOn && tier && rank > 0 ? rankMirrorXp(tier, rank) : 0;
+      return {
+        id: `army_${seat.playerId}_${index + 1}`,
+        unitDefId: unit.unitDefId,
+        side: unit.side,
+        ...(experience > 0 ? { experience } : {})
+      };
+    }),
     startingArmy: seat.units.map((unit) => ({
       unitDefId: unit.unitDefId,
       side: unit.side === "neutral" ? ("few" as const) : unit.side
@@ -710,8 +724,8 @@ export function sandboxBeginCombat(
   state.decks = makeSandboxDecks(state.seed, playMode);
   state.sandboxRules = { moraleCards: moraleCardsOn };
   state.players = {
-    p1: buildPlayerFromSeat(p1, moraleCardsOn),
-    p2: buildPlayerFromSeat(p2, moraleCardsOn)
+    p1: buildPlayerFromSeat(p1, moraleCardsOn, Boolean(wog.enabled && wog.unitExperience)),
+    p2: buildPlayerFromSeat(p2, moraleCardsOn, Boolean(wog.enabled && wog.unitExperience))
   };
 
   const level1 = clampHeroLevel(p1.heroLevel);

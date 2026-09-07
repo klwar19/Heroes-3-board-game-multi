@@ -15521,6 +15521,10 @@ function shouldRetaliate(
       attacker,
       "IGNORE_ADJACENT_RANGED_PENALTY_AND_RETALIATION",
     ) &&
+    !hasUnitAbilityEffect(
+      attacker,
+      "IGNORE_RANGED_PENALTIES_AND_MELEE_RETALIATION",
+    ) &&
     // Ash's Bloodlust IV: the ongoing card's Black cube — the unit cannot
     // retaliate at all while the effect lives (beats unlimited retaliation).
     !(state ? unitHasCannotRetaliateEffect(state, defender) : false) &&
@@ -27489,8 +27493,9 @@ function playCard(
       // of Magi / Elves you had." Read off the card being traded in BEFORE it
       // leaves the army; 0 layers (or a table without Polish Unit Stacks, where
       // `stacks` is never written) pays nothing.
+      const tradedUnit = tradesUnit ? player.army[fromIndex] : undefined;
       const tradedStackLayers = tradesUnit
-        ? Math.max(0, Math.trunc(player.army[fromIndex]?.stacks ?? 0))
+        ? Math.max(0, Math.trunc(tradedUnit?.stacks ?? 0))
         : 0;
       if (tradesUnit) {
         player.army.splice(fromIndex, 1);
@@ -27522,6 +27527,11 @@ function playCard(
         deck.discardPile.splice(inDiscard, 1);
       }
       const acquired = addArmyUnit(player, effect.toUnitDefId, "neutral");
+      // Gelu/Dracon transform experienced Elves/Magi into their specialist
+      // form; these are the same veterans, so keep even partial grade progress.
+      if (tradedUnit?.experience !== undefined) {
+        acquired.experience = Math.max(0, Math.trunc(tradedUnit.experience));
+      }
       // House rule (BINH) — Gelu IV: bake the permanent +Attack onto THIS card so
       // every combat it joins starts (and stays) buffed. Gated on the individual
       // `gelu-sharpshooter-buff` toggle — off, the recruit is a plain Sharpshooters.
@@ -34587,13 +34597,14 @@ function applyActionInContext(
         case "PLAY_CARD":
           // Likewise for any other card played on the quiet map turn.
           assertStartOfTurnDrawTaken(nextState, action.playerId);
-          if (polishBallistaOfferOpen(nextState, action.playerId)) {
+          const resumesBallistaOffer = polishBallistaOfferOpen(nextState, action.playerId);
+          if (resumesBallistaOffer) {
             nextState.pendingChoice = null;
             nextState.phase = "combat";
             nextState.priorityPlayerId = null;
           }
           playCard(nextState, action, cards);
-          if (polishBallistaTiming(nextState) && !nextState.pendingChoice) {
+          if ((polishBallistaTiming(nextState) || resumesBallistaOffer) && !nextState.pendingChoice) {
             processWarMachineRound(nextState);
           }
           // An "Instant (any time during Combat)" card played INSIDE a reaction

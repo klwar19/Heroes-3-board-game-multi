@@ -41,7 +41,9 @@ import {
 const ZERO_FOLD: UnitRankStatBonus = { attack: 0, defense: 0, health: 0, initiative: 0 };
 
 export function unitExperienceActive(state: GameState): boolean {
-  return Boolean(state.adventure?.unitExperience) || animeModuleEnabled(state, "unitExperience");
+  return Boolean(state.adventure?.unitExperience) ||
+    Boolean(state.mode === "combat-sandbox" && state.wog?.enabled && state.wog.unitExperience) ||
+    animeModuleEnabled(state, "unitExperience");
 }
 
 export function unitRankForExperience(tier: UnitTier, experience: number): number {

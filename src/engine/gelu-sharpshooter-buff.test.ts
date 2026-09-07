@@ -68,6 +68,18 @@ function recruitSharpshooters(seed: string): GameState {
 }
 
 describe("Gelu IV — the recruited Sharpshooters is permanently buffed", () => {
+  it("keeps all Unit Experience, including progress between grades, from the traded Elves", () => {
+    const state = geluMap("gelu-xp-transfer");
+    state.adventure!.unitExperience = true;
+    state.players.p1.army = [
+      { id: "army_elves", unitDefId: "rampart.elves", side: "pack", experience: 11 }
+    ];
+    const convert = findGeluOption(state, 0);
+    expect(convert, "the experienced Elves may transform").toBeTruthy();
+    const after = applyOk(state, convert!.action);
+    expect(after.players.p1.army.find((unit) => unit.unitDefId === "neutral.sharpshooters")?.experience).toBe(11);
+  });
+
   it("bakes a permanent +1 Attack onto the recruited Sharpshooters army card", () => {
     const after = recruitSharpshooters("gelu-buff-army");
     const sharpshooters = after.players.p1.army.find((unit) => unit.unitDefId === "neutral.sharpshooters");

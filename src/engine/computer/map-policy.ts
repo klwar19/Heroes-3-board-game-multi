@@ -18,6 +18,8 @@ import {
   getUnitSide,
   isFieldGuarded,
   isOuterEdgeSealed,
+  materializeTileFields,
+  heroMovementMax,
   neutralBattleLevel,
   playerHasPlaceableFarTile,
   wanderingMerchantAvailable,
@@ -60,9 +62,9 @@ import {
 import {
   canBeatGuardedField,
   collectMapObjectives,
-  farExpansionRouteRemains,
+  distanceFromHeroTo,
   freeSeizuresWithinReach,
-  heroCanBeatNoGuardInBand,
+  shouldDeferExpansionTile,
   isHomeTileOpeningObjective,
   lowerExpansionBandImmediatelyAvailable,
   homeTileInstanceId,
@@ -80,6 +82,7 @@ import {
   type ComputerPolicyMemory,
 } from "./memory";
 import type { ComputerObservation } from "./types";
+import { premiumCombatMovementReserve, scorePremiumApproach } from "./premium-approach";
 
 function memoryOf(observation: ComputerObservation): ComputerPolicyMemory {
   return (
@@ -1400,10 +1403,44 @@ function tileRotationScore(
   // never rotate yourself into a dead end when an equal entrance avoids it.
   score += tileRotationDoorwayScore(state, tile, action.rotation);
   score += startTileFarDoorwayScore(observation, state, tile, action.rotation);
+  score += premiumRotationRouteScore(state, tile, action.rotation, observation.playerId);
 
   // Stable preference among equal scores (lower rotation when all equal).
   score += (6 - action.rotation) * 0.01;
   return score;
+}
+
+/** Score the real path after rotation, including internal walls and guard stops. */
+export function premiumRotationRouteScore(
+  state: GameState, tile: MapTileState, rotation: number, playerId: PlayerId,
+): number {
+  if (!state.adventure || tile.group !== "far") return 0;
+  const heroId = state.adventure.pendingTileChoice?.heroId;
+  const hero = heroId ? state.heroes[heroId] : Object.values(state.heroes).find(
+    candidate => candidate.controllerId === playerId && candidate.kind === "main",
+  );
+  if (!hero?.spaceId) return 0;
+  const rotated = { ...tile, rotation, faceDown: false, awaitingRotation: false };
+  const adventure = { ...state.adventure, fields: { ...state.adventure.fields },
+    tiles: { ...state.adventure.tiles, [tile.id]: rotated } };
+  materializeTileFields(adventure, rotated);
+  const probe = { ...state, adventure };
+  let best = 0;
+  for (const field of Object.values(adventure.fields)) {
+    if (field.tileInstanceId !== tile.id || !isPremiumEconomyField(field)) continue;
+    if (isFieldGuarded(field) && !canBeatGuardedField(probe, hero, field)) continue;
+    const distance = distanceFromHeroTo(probe, hero, field.spaceId);
+    if (distance === undefined) continue;
+    const reserve = premiumCombatMovementReserve(probe, hero, field);
+    const budget = distance + reserve;
+    const captureThisTurn = budget <= hero.movementPoints;
+    const captureNextTurn = budget <= heroMovementMax(probe, hero);
+    // A clear two-step route with a combat point left beats a pretty entrance
+    // that needs a full turn merely to walk to the same mine.
+    best = Math.max(best, 300 - distance * 45 +
+      (captureThisTurn ? 120 : captureNextTurn ? 65 : 0));
+  }
+  return best;
 }
 
 /**
@@ -2271,7 +2308,8 @@ export function scoreMapAction(
       if (
         hero &&
         collectMapObjectives(state, hero).some((objective) =>
-          isHomeTileOpeningObjective(state, hero, objective),
+          isHomeTileOpeningObjective(state, hero, objective) &&
+          distanceFromHeroTo(state, hero, objective.spaceId) !== undefined,
         )
       ) {
         return { score: 100, policy: "map.finish-home-before-discover" };
@@ -2302,10 +2340,7 @@ export function scoreMapAction(
       if (
         hero &&
         tile &&
-        tile.group !== "far" &&
-        tile.group !== "starting" &&
-        heroCanBeatNoGuardInBand(state, hero, tile.group) &&
-        farExpansionRouteRemains(state, observation.playerId, hero)
+        shouldDeferExpansionTile(state, hero, tile)
       ) {
         return { score: 100, policy: "map.discover-high-band-defer" };
       }
@@ -2362,7 +2397,8 @@ export function scoreMapAction(
       if (
         hero &&
         collectMapObjectives(state, hero).some((objective) =>
-          isHomeTileOpeningObjective(state, hero, objective),
+          isHomeTileOpeningObjective(state, hero, objective) &&
+          distanceFromHeroTo(state, hero, objective.spaceId) !== undefined,
         )
       ) {
         return { score: 100, policy: "map.finish-home-before-place" };
@@ -2399,11 +2435,13 @@ export function scoreMapAction(
         policy: "map.observatory-place-expansion-tile",
       };
     case "MOVE_HERO": {
+      const ordinaryMoveScore = moveScore(observation, action);
       const enterHero = state.heroes[action.heroId];
       const enterField = state.adventure?.fields[action.to];
       if (
         (state.round ?? 0) <= 3 &&
         enterHero?.spaceId &&
+        !visitedThisTurn(memory, action.to) &&
         state.adventure?.fields[enterHero.spaceId]?.tileInstanceId ===
           homeTileInstanceId(state, observation.playerId) &&
         enterField?.tileInstanceId === latestPlacedTileId(state, observation.playerId) &&
@@ -2421,7 +2459,54 @@ export function scoreMapAction(
       ) {
         return { score: 930, policy: "map.enter-first-opened-tile" };
       }
-      return { score: moveScore(observation, action), policy: "map.move-to-objective" };
+      if (
+        (state.round ?? 0) <= 3 &&
+        enterHero?.spaceId &&
+        state.adventure?.fields[enterHero.spaceId]?.tileInstanceId ===
+          homeTileInstanceId(state, observation.playerId)
+      ) {
+        const openedTileId = latestPlacedTileId(state, observation.playerId);
+        const safeOpenedFields = openedTileId
+          ? Object.values(state.adventure.fields)
+              .filter((field) =>
+                field.tileInstanceId === openedTileId &&
+                (!isFieldGuarded(field) || canBeatGuardedField(state, enterHero, field)) &&
+                !Object.values(state.heroes).some(
+                  (other) =>
+                    other.spaceId === field.spaceId &&
+                    other.controllerId !== observation.playerId,
+                ),
+              )
+              .map((field) => ({ spaceId: field.spaceId, kind: "explore" as const }))
+          : [];
+        if (safeOpenedFields.length > 0) {
+          const towardOpenedTile = objectiveDistanceField(state, enterHero, safeOpenedFields);
+          const hereDistance = towardOpenedTile.get(enterHero.spaceId) ?? Infinity;
+          const nextDistance = towardOpenedTile.get(action.to) ?? Infinity;
+          if (
+            nextDistance < hereDistance &&
+            enterField &&
+            (!isFieldGuarded(enterField) || canBeatGuardedField(state, enterHero, enterField))
+          ) {
+            return { score: 929, policy: "map.approach-first-opened-tile" };
+          }
+        }
+      }
+      const premium = scorePremiumApproach(state, action, memory);
+      if (premium && (premium.score <= 300 || ordinaryMoveScore > 300 ||
+          premium.policy === "map.premium-pickup-before-next-turn")) {
+        // A detour may increase distance to the primary, but it must still be
+        // a legal safe step: never use a pickup plan to bypass a live fight.
+        const destination = state.adventure?.fields[action.to];
+        const enemy = Object.values(state.heroes).some(other =>
+          other.spaceId === action.to && !playersAreAllied(state, other.controllerId, observation.playerId),
+        );
+        if (premium.policy !== "map.premium-pickup-before-next-turn" ||
+            (destination && !isFieldGuarded(destination) && !enemy &&
+             (!destination.flagOwnerId || playersAreAllied(state, destination.flagOwnerId, observation.playerId) ||
+              locationDefinitions[destination.location]?.category === "flaggable"))) return premium;
+      }
+      return { score: ordinaryMoveScore, policy: "map.move-to-objective" };
     }
     case "REVISIT_FIELD": {
       // Revisits are optional luxuries — never outrank marching to new land or

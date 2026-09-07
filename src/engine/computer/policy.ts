@@ -272,7 +272,16 @@ export function chooseComputerAction(
       const planBias = base.score > 300 && base.score < 900
         ? developmentPlanBias(observation.state as unknown as GameState, observation.playerId, legal.action, observation.memory?.developmentPlan) : 0;
       const scored = { ...base, score: base.score + planBias };
-      if (repeatsUnproductiveRoute(observation.state as unknown as GameState, observation.playerId, legal.action, observation.memory)) {
+      const plannedRouteReturn = legal.action.type === "MOVE_HERO" &&
+        (base.policy === "map.premium-approach" ||
+          base.policy === "map.premium-capture-now" ||
+          base.policy === "map.enter-first-opened-tile") &&
+        !observation.memory?.routeHistory?.some(step =>
+          step.heroId === (legal.action as Extract<GameAction, { type: "MOVE_HERO" }>).heroId &&
+          step.to === (legal.action as Extract<GameAction, { type: "MOVE_HERO" }>).to &&
+          (step.round === undefined || step.round === observation.state.round),
+        );
+      if (!plannedRouteReturn && repeatsUnproductiveRoute(observation.state as unknown as GameState, observation.playerId, legal.action, observation.memory)) {
         scored.score = 100;
         scored.policy = "map.replan-repeated-route";
       }

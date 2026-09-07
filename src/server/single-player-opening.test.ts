@@ -171,15 +171,16 @@ describe("single-player opening: the computer sweeps its home tile", () => {
       // Non-vacuity: the seat really did expand.
       expect(bands.length, "the computer should open land by round 5").toBeGreaterThan(0);
       expect(bands[0], `bands opened: ${bands.join(", ")}`).toBe("far");
-      // FIXED-SEED FLOOR (measured): through round 5 these seats still hold a
-      // Ⅱ–Ⅲ supply tile, so the band rule keeps every opening Ⅱ–Ⅲ. Pre-fix this
-      // read "far, center". It is a behavioural floor, not a rule — a seat that
-      // spends its whole Ⅱ–Ⅲ supply DOES flip Ⅳ+ again (measured on the
-      // little_busters faction seed), which is the rule terminating by design.
-      expect(
-        bands.filter((band) => band !== "far"),
-        `bands opened: ${bands.join(", ")}`,
-      ).toEqual([]);
+      // A higher band may follow only after both supplied Ⅱ–Ⅲ tiles have been
+      // spent. Faster routing can legitimately exhaust that supply before this
+      // round; the invariant is the ordering, not a fixed turn-number floor.
+      const firstHigherBand = bands.findIndex((band) => band !== "far");
+      if (firstHigherBand >= 0) {
+        expect(
+          bands.slice(0, firstHigherBand),
+          `bands opened: ${bands.join(", ")}`,
+        ).toEqual(["far", "far"]);
+      }
     });
 
     it(`seed ${seed}: turn 1 banks at least two home payoffs (no stall)`, () => {
