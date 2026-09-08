@@ -41,6 +41,9 @@ import {
   legionDiscountTargets,
   legionTierReinforceOptions,
   legionPieceAlreadyBanked,
+  playerHasOverlappingHero,
+  heroesAtSpace,
+  getEndTurnMoveDestinationsForHero,
   playerHasPlaceableFarTile,
   reinforcementDiscountCostFor,
   reinforceCostFor,
@@ -227,6 +230,7 @@ import {
   equipmentRound1AttackAdvantage,
   equipmentGuardianReactionAvailable,
   equipmentHealReactionAvailable,
+  equipmentEndTurnStepAvailable,
   equipmentSpellPowerBonus,
   equipmentTradeGoldDiscount,
 } from "./anime-equipment";
@@ -16854,10 +16858,26 @@ function getAdventureLegalActions(
 
   addSatyrMoraleRollActions(actions, state, playerId);
 
-  actions.push({
-    label: "End turn",
-    action: { type: "END_TURN", playerId },
-  });
+  const overlappingHero = playerHasOverlappingHero(state, playerId);
+  const canSeparateAtEndOfTurn =
+    state.activeEffects.some(
+      (effect) =>
+        effect.controllerId === playerId &&
+        effect.modifiers.some((modifier) => modifier.type === "END_TURN_ADJACENT_MOVE"),
+    ) ||
+    (!player.nomadStepDoneThisTurn && armyHasMapEffect(state, playerId, "MAP_END_TURN_HERO_STEP")) ||
+    equipmentEndTurnStepAvailable(state, playerId);
+  const hasSeparationDestination = overlappingHero && Object.values(state.heroes).some(
+    (hero) => hero.controllerId === playerId && hero.spaceId !== null &&
+      heroesAtSpace(state, hero.spaceId, hero.id).length > 0 &&
+      getEndTurnMoveDestinationsForHero(state, hero).length > 0,
+  );
+  if (!overlappingHero || (canSeparateAtEndOfTurn && hasSeparationDestination)) {
+    actions.push({
+      label: overlappingHero ? "Separate heroes (end-turn move)" : "End turn",
+      action: { type: "END_TURN", playerId },
+    });
+  }
 
   // Concede: only on your own quiet map turn (never mid-Combat — "you cannot
   // surrender when defending your Faction Town", rulebook p.46).

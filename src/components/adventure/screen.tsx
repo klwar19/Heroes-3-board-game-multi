@@ -3040,8 +3040,12 @@ export function HexMapBoard({
           adventure.grail?.status === "carried" &&
           adventure.grail.carrierHeroId === occupant.heroId;
         // Only offer hero switching when the player actually has a second hero.
+        // If this occupied hex is a legal move target, let pointer events fall
+        // through the pawn to the hex so the selected hero can move in and
+        // temporarily share it. Once stacked, the current hex is not reachable
+        // and normal click-to-switch behavior returns.
         const canSelectHero =
-          isOwnHero && hasSecondaryHero && myTurn && !readOnly;
+          isOwnHero && hasSecondaryHero && myTurn && !readOnly && !reachable.has(spaceId);
         const isActiveHero =
           isOwnHero && hasSecondaryHero && myHero?.id === occupant.heroId;
         heroPawns.push(
@@ -3413,7 +3417,7 @@ export function HexMapBoard({
         adventure.grail?.status === "carried" &&
         adventure.grail.carrierHeroId === occupant.heroId;
       const canSelectHero =
-        isOwnHero && hasSecondaryHero && myTurn && !readOnly;
+        isOwnHero && hasSecondaryHero && myTurn && !readOnly && !reachable.has(spaceId);
       const isActiveHero =
         isOwnHero && hasSecondaryHero && myHero?.id === occupant.heroId;
       heroPawns.push(
@@ -4852,7 +4856,7 @@ export function AdventureHud({
             onClick={() => onAction(endTurn.action)}
             type="button"
           >
-            End turn
+            {endTurn.label}
           </button>
         ) : null}
         {giveUp ? (

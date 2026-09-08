@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { gunzipSync } from "node:zlib";
 import {
   accountsBackendKind,
   getAccountBackend,
@@ -7,9 +8,14 @@ import {
   supabaseConfigFromEnv,
 } from "@/server/accounts/account-store-instance";
 import type { MatchParticipantInput } from "@/server/accounts/account-store";
-import { rankedReplayEnabled, type RankedReplay } from "@/server/ranked-replay";
+import {
+  RANKED_REPLAY_MAX_BYTES,
+  rankedReplayEnabled,
+  type RankedReplay,
+} from "@/server/ranked-replay";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 const RESULTS = new Set(["win", "loss", "draw", "abandon"]);
 const MAX_PARTICIPANTS = 12;
@@ -72,7 +78,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "TOO_LARGE", message: "Match report exceeds the replay safety limit." }, { status: 413 });
   }
   const body = parsed.value as
-    | { matchId?: unknown; participants?: unknown; ranked?: unknown; replay?: unknown }
+    | { matchId?: unknown; participants?: unknown; ranked?: unknown; replay?: unknown; replayGzipBase64?: unknown }
     | null;
   const matchId = typeof body?.matchId === "string" ? body.matchId.slice(0, 200) : "";
   // Casual games still record win/loss but leave MMR alone. Absent ⇒ ranked
@@ -104,7 +110,20 @@ export async function POST(request: Request) {
   let replayStore: typeof import("@/server/ranked-replay-store") | null = null;
   let rankedReplay: RankedReplay | null = null;
   if (replayRequired) {
-    if (!body?.replay || typeof body.replay !== "object") {
+    let replayValue = body?.replay;
+    if ((!replayValue || typeof replayValue !== "object") && typeof body?.replayGzipBase64 === "string") {
+      try {
+        const compressed = Buffer.from(body.replayGzipBase64, "base64");
+        const expanded = gunzipSync(compressed, { maxOutputLength: RANKED_REPLAY_MAX_BYTES + 16_384 });
+        replayValue = JSON.parse(expanded.toString("utf8"));
+      } catch {
+        return NextResponse.json(
+          { error: "REPLAY_INVALID", message: "The compressed ranked replay is invalid or exceeds its expanded limit." },
+          { status: 400 },
+        );
+      }
+    }
+    if (!replayValue || typeof replayValue !== "object") {
       return NextResponse.json(
         { error: "REPLAY_REQUIRED", message: "A ranked result is accepted only with its training replay." },
         { status: 400 },
@@ -119,7 +138,7 @@ export async function POST(request: Request) {
       );
     }
     replayStore = await import("@/server/ranked-replay-store");
-    rankedReplay = body.replay as RankedReplay;
+    rankedReplay = replayValue as RankedReplay;
     // Validate before Elo can move. The actual insert must happen after the
     // parent match row because production enforces the replay -> match FK.
     if (!replayStore.validRankedReplay(matchId, rankedReplay)) {

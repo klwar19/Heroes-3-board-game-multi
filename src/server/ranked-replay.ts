@@ -19,11 +19,12 @@ import {
  * together with the terminal match report.
  */
 export const RANKED_REPLAY_SCHEMA_VERSION = 1;
-export const RANKED_REPLAY_MAX_ACTIONS = 2_000;
-// Kept below Vercel's compressed/uncompressed request ceiling with headroom for
-// match metadata and headers. This is large enough for long full adventures;
-// the previous 1.5 MB cap could truncate before late-game adaptation.
-export const RANKED_REPLAY_MAX_BYTES = 4_000_000;
+export const RANKED_REPLAY_MAX_ACTIONS = 10_000;
+// PartyKit gzip-compresses this payload for the terminal report, so the replay
+// no longer has to fit inside the app endpoint's 4.2 MB wire-body limit in its
+// expanded JSON form. The expanded bound still protects room and database
+// memory from pathological games while leaving ample room for long adventures.
+export const RANKED_REPLAY_MAX_BYTES = 16_000_000;
 export const RANKED_REPLAY_MAX_LEGAL_ACTIONS = 512;
 export const RANKED_REPLAY_MAX_ENTRY_BYTES = 96 * 1024;
 /**
@@ -472,7 +473,10 @@ export function appendRankedReplayEntryFromCursor(
   if (!built.entry) {
     return { cursor: { ...cursor, truncated: true, truncationReason: "entry-too-large" } };
   }
-  const nextBytes = cursor.byteLength + built.byteLength;
+  // Every entry after the first also adds a comma to the surrounding JSON
+  // array. Count it now so the cursor remains an exact expanded-byte budget
+  // instead of drifting low by one byte per action.
+  const nextBytes = cursor.byteLength + built.byteLength + (cursor.entryCount > 0 ? 1 : 0);
   if (nextBytes > RANKED_REPLAY_APPEND_BUDGET_BYTES) {
     return { cursor: { ...cursor, truncated: true, truncationReason: "byte-limit" } };
   }

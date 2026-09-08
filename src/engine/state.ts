@@ -9851,6 +9851,8 @@ export type CombatUnitState = {
   tokiFirstDefenseUsedThisCombat?: boolean;
   /** Azusa Pack: combat round in which Sagitta Mortis pierced Defense. */
   sagittaMortisUsedRound?: number;
+  /** Last combat round spent by each limited post-attack damage ability. */
+  postAttackDamageUsedRound?: Record<string, number>;
   /** Mutsuki Few: its first-melee-attacker Trick Mine has triggered this combat. */
   mutsukiTrickMineUsedThisCombat?: boolean;
   /** Seia Pack: Tea Party Order has protected its first adjacent ally this combat. */

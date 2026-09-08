@@ -2,7 +2,7 @@
   "version": 1,
   "cdn": "https://cdn.hamthefirt.xyz",
   "roots": ["assets","sounds"],
-  "count": 5779,
+  "count": 5780,
   "files": {
     "assets/abilities-air_magic-empowered.webp": { "md5": "f47398ae1322d34b22b6a213fe7f8549", "bytes": 135374, "width": 743, "height": 1040 },
     "assets/abilities-air_magic.webp": { "md5": "7f73e9cfeed567196c9b66122c3ad83a", "bytes": 137732, "width": 743, "height": 1040 },
@@ -1305,6 +1305,7 @@
     "assets/fx/lightning-crackle-alt.webp": { "md5": "69d262603928b7a4753ed88c511b0420", "bytes": 8680, "width": 97, "height": 491 },
     "assets/fx/lightning-crackle.webp": { "md5": "4b751b008c5821dc318f8ce73831cd7b", "bytes": 5884, "width": 1320, "height": 108 },
     "assets/fx/lightning-sparks.webp": { "md5": "3b0f01d3922743f91ab117201afde8fa", "bytes": 5962, "width": 1368, "height": 108 },
+    "assets/fx/low-roll-extra-shot-projectile.webp": { "md5": "8c7ddbb45fe6585452f6c1ee7159476f", "bytes": 2970, "width": 768, "height": 24 },
     "assets/fx/magic-arrow-hit.webp": { "md5": "e24c563243cdcdfb182149f3c51bbdad", "bytes": 24842, "width": 1806, "height": 113 },
     "assets/fx/magic-arrow-projectile-0.webp": { "md5": "fb69e588ef85ad2d66877297a71d7708", "bytes": 13556, "width": 1680, "height": 43 },
     "assets/fx/magic-arrow-projectile-1.webp": { "md5": "a67046ade9ae18d32ee0e8a64cd1cf31", "bytes": 15680, "width": 1785, "height": 55 },

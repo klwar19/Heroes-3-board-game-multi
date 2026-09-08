@@ -2,6 +2,7 @@
  * node scripts/train-ranked-policy.mjs --input path/to/export.json
  */
 import fs from "node:fs";
+import { gunzipSync } from "node:zlib";
 import { trainReplayPolicy } from "../src/engine/computer/replay-model.ts";
 import { extractStrategicDecisionSamples } from "../src/server/ranked-replay-learning.ts";
 const args = process.argv.slice(2);
@@ -40,13 +41,18 @@ else {
     }
   }
   data = {
-    replays: await all("homm3bg_ranked_replays", "match_id,payload"),
+    replays: await all("homm3bg_ranked_replays", "match_id,payload,payload_gzip_base64"),
     matches: await all("homm3bg_matches", "match_id,participants"),
   };
 }
 const samples = [];
 for (const row of data.replays) {
-  const p = row.payload;
+  const p = row.payload ?? (
+    typeof row.payload_gzip_base64 === "string"
+      ? JSON.parse(gunzipSync(Buffer.from(row.payload_gzip_base64, "base64")).toString("utf8"))
+      : null
+  );
+  if (!p) continue;
   const history = data.matches?.find((m) => m.match_id === row.match_id);
   if (
     row.match_id.includes("codex") ||

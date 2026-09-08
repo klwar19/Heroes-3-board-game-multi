@@ -237,6 +237,18 @@ const RANKED_REPLAY_ENTRY_PREFIX = "ranked-replay-entry-";
 const RANKED_REPLAY_CHUNK_BYTES = 64 * 1024;
 const RANKED_REPLAY_INITIAL_ENCODING = "base64-bytes-v1" as const;
 const RANKED_MATCH_REPORT_OUTBOX_KEY = "ranked-match-report-outbox-v1";
+
+async function gzipJsonBase64(value: unknown): Promise<string> {
+  const source = new TextEncoder().encode(JSON.stringify(value));
+  const stream = new Blob([source]).stream().pipeThrough(new CompressionStream("gzip"));
+  const compressed = new Uint8Array(await new Response(stream).arrayBuffer());
+  let binary = "";
+  for (let offset = 0; offset < compressed.byteLength; offset += 0x8000) {
+    binary += String.fromCharCode(...compressed.subarray(offset, offset + 0x8000));
+  }
+  return btoa(binary);
+}
+
 type StoredRankedReplayMeta = Omit<RankedReplay, "initialState" | "entries"> & {
   initialChunkCount: number;
   initialEncoding?: typeof RANKED_REPLAY_INITIAL_ENCODING;
@@ -2249,10 +2261,14 @@ export default class GameRoomServer implements Party.Server {
         if (replayRequired && !replay) {
           failure = "Ranked replay buffer is missing";
         } else {
+          // A full replay can be much larger than Vercel's request-body limit
+          // as plain JSON. Compress only the replay (the trusted endpoint
+          // expands and validates it) while keeping match metadata inspectable.
+          const replayGzipBase64 = replay ? await gzipJsonBase64(replay) : undefined;
           const response = await fetch(`${config.appUrl}/api/matches/report`, {
             method: "POST",
             headers: { "content-type": "application/json", "x-homm3bg-report-key": config.key },
-            body: JSON.stringify({ ...outbox.match, ...(replay ? { replay } : {}) }),
+            body: JSON.stringify({ ...outbox.match, ...(replayGzipBase64 ? { replayGzipBase64 } : {}) }),
           });
           const body = await response.json().catch(() => null) as
             | { applied?: boolean; replayStored?: boolean; error?: string; message?: string }
@@ -2301,7 +2317,7 @@ export default class GameRoomServer implements Party.Server {
     // RANKED only: close the table after a real attributed win/loss so rematch
     // cannot reuse seed/matchSeats. Casual / single-player / sandbox stay open.
     if (match.ranked) {
-      await this.forceCloseAfterRankedMatch(delivery !== "delivered");
+      await this.forceCloseAfterRankedMatch(match.matchId, delivery !== "delivered");
     }
   }
 
@@ -2309,16 +2325,23 @@ export default class GameRoomServer implements Party.Server {
    * System force-close after a ranked match (no host gate). Broadcasts a final
    * closed snapshot, wipes storage, and deregisters from the lobby directory.
    */
-  private async forceCloseAfterRankedMatch(preservePendingReport = false): Promise<void> {
-    await this.serialized(async () => {
+  private async forceCloseAfterRankedMatch(matchId: string, preservePendingReport = false): Promise<void> {
+    const closed = await this.serialized(async () => {
       const closing = this.snapshot;
-      if (closing) {
-        const message: ServerMessage = {
-          type: "snapshot",
-          snapshot: this.signed({ ...closing, closed: true })
-        };
-        this.room.broadcast(JSON.stringify(message));
+      // Report delivery awaits network I/O outside the mutation queue. A reset
+      // or restore may have replaced the match while that upload was pending.
+      // Never close or erase that newer timeline on behalf of an older result.
+      if (
+        !closing || closing.state.seed !== matchId ||
+        !closing.state.adventure?.winnerPlayerId
+      ) {
+        return false;
       }
+      const message: ServerMessage = {
+        type: "snapshot",
+        snapshot: this.signed({ ...closing, closed: true })
+      };
+      this.room.broadcast(JSON.stringify(message));
       this.snapshot = null;
       clearUndoHistory(this.room.id);
       this.answeredActionRequests.clear();
@@ -2330,7 +2353,9 @@ export default class GameRoomServer implements Party.Server {
       } catch (error) {
         console.error(`[room] ranked force-close storage wipe failed:`, error);
       }
+      return true;
     });
+    if (!closed) return;
     await this.deregisterFromLobby();
     console.log(`[room] force-closed ${this.room.id}: ranked match finished`);
   }

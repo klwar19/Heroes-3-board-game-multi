@@ -832,9 +832,12 @@ async function runProjectile(stage: HTMLElement, cue: Extract<FxCue, { kind: "pr
   }
 
   let frameTimer = 0;
+  let projectileFrame = 0;
   try {
     frameTimer = window.setInterval(() => {
-      const frame = Math.floor(Math.random() * sheet.frames);
+      const frame = sheet.sequentialFrames
+        ? (projectileFrame = (projectileFrame + 1) % sheet.frames)
+        : Math.floor(Math.random() * sheet.frames);
       const col = frame % sheet.cols;
       const row = Math.floor(frame / sheet.cols);
       sprite.style.backgroundPosition = `-${col * sheet.frameWidth}px -${row * sheet.frameHeight}px`;

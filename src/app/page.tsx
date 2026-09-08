@@ -2612,6 +2612,8 @@ export default function Home() {
         // cast while a later same-target strike still pins to its own beat).
         const leadingSpellEventIds = new Set<string>();
         const leadingSpellDamageAt = new Map<string, number>();
+        // Extra-shot damage follows its own projectile, after the primary hit.
+        const extraShotDamageAt = new Map<string, number>();
         // True once any spell/ability has queued damage, a heal or a death in
         // combat — holds the victory notice and the next guard's prompt until the
         // effect (and the death it caused) has played out, exactly like a strike.
@@ -3325,9 +3327,13 @@ export default function Home() {
               // which the amount guard below skips — so a later same-target strike
               // is never mispinned back to the (earlier) cast beat.
               const leadTargetId = event.target.type === "unit" ? event.target.unitId : undefined;
-              const leadAt = leadTargetId !== undefined ? leadingSpellDamageAt.get(leadTargetId) : undefined;
+              const extraShotAt = leadTargetId !== undefined ? extraShotDamageAt.get(leadTargetId) : undefined;
+              const leadAt = leadTargetId !== undefined
+                ? leadingSpellDamageAt.get(leadTargetId) ?? extraShotAt
+                : undefined;
               if (leadTargetId !== undefined && leadAt !== undefined) {
                 leadingSpellDamageAt.delete(leadTargetId);
+                extraShotDamageAt.delete(leadTargetId);
               }
               if (event.target.type === "unit" && event.amount > 0) {
                 const targetId = event.target.unitId;
@@ -3393,7 +3399,7 @@ export default function Home() {
                 if (attackBeat === undefined && inCombat) {
                   const defender = nextState.combat?.units[targetId];
                   if (defender && defender.position >= 0) {
-                    if (burnAt !== undefined) {
+                    if (burnAt !== undefined || extraShotAt !== undefined) {
                       // Fire Shield burn: back the burn out of whatever is already
                       // frozen (a pending retaliation the pre-pass froze) so the
                       // attacker's health drop waits for the flare, while its
@@ -3516,6 +3522,22 @@ export default function Home() {
                 break;
               }
               const targetUnitId = event.targetUnitId ?? event.unitId;
+              if (event.abilityId === "ranged-extra-shot-on-low-roll") {
+                timeline = Math.max(timeline, (impactByTarget.get(targetUnitId) ?? 0) + 600);
+                cues.push({
+                  kind: "floater",
+                  id: `${event.id}-extra-shot`,
+                  at: `unit:${event.unitId}`,
+                  text: "Low Roll Extra Shot",
+                  tone: "info",
+                  delayMs: timeline
+                });
+                queueBoardFx(plan, `${event.id}-ability`, `unit:${event.unitId}`, targetUnitId);
+                extraShotDamageAt.set(targetUnitId, timeline);
+                combatFxActive = true;
+                combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 1200);
+                break;
+              }
               if (event.abilityId === "fire-shield") {
                 // The burn answers the melee attack that just struck the shielded
                 // unit (event.unitId). Play the fire flare on the attacker

@@ -2312,6 +2312,21 @@
       "canvasHeight": 114
     }
   },
+  "low-roll-extra-shot-projectile": {
+    "src": "/assets/fx/low-roll-extra-shot-projectile.webp",
+    "label": "Low Roll Extra Shot — green-fletched arrow",
+    "sequentialFrames": true,
+    "group": "unit-ability",
+    "role": "projectile",
+    "frames": 8,
+    "cols": 8,
+    "rows": 1,
+    "frameWidth": 96,
+    "frameHeight": 24,
+    "fps": 24,
+    "anchor": "center",
+    "sourceDef": "ImageGen arrow + scripts/build-low-roll-extra-shot-fx.mjs (2026-09-08)"
+  },
   "sniper-shot-projectile": {
     "src": "/assets/fx/sniper-shot-projectile.webp",
     "label": "Sniper Shot tracer (Ibuki)",

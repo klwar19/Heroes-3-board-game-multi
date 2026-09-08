@@ -180,7 +180,10 @@ import {
   hasFreeBronzeStackTarget,
   hasRecruitResources,
   hasResources,
+  canHeroShareSpaceAfterMove,
+  getEndTurnMoveDestinationsForHero,
   heroAtSpace,
+  heroesAtSpace,
   heroCanDiscoverTileAcrossBorders,
   heroCanImmediatelyAccessTile,
   instantiateTile,
@@ -202,6 +205,7 @@ import {
   placementTokenLabel,
   placeMapToken,
   placeNeutralUnits,
+  playerHasOverlappingHero,
   playerDwellingTiers,
   playerHoldsTentFlag,
   processPendingVisit,
@@ -221,7 +225,6 @@ import {
   SCHOLAR_STAT_CARDS,
   setHexEventEncounterHook,
   setOnMapTileRevealHook,
-  subterraneanGateEntryRevealsTile,
   subterraneanTileBand,
   spendRecruitResources,
   spendResources,
@@ -1420,9 +1423,11 @@ export function getHeroMoveDestinations(state: GameState, hero: HeroState): MapS
     if (hasParkedParallelInteractions(state)) {
       const enemy = heroAtSpace(state, spaceId, hero.id);
       const flagOwner = adventure.fields[spaceId]?.flagOwnerId;
-      if ((enemy && !playersAreAllied(state, enemy.controllerId, hero.controllerId)) ||
+      const peacefulParking = enemy && canHeroShareSpaceAfterMove(state, hero, spaceId,
+        hero.movementPoints - (gateFieldsLinked(adventure.fields[hero.spaceId as MapSpaceId], adventure.fields[spaceId]) ? 0 : 1));
+      if (!peacefulParking && ((enemy && !playersAreAllied(state, enemy.controllerId, hero.controllerId)) ||
         (flagOwner && flagOwner !== hero.controllerId && flagOwner !== NEUTRAL_PLAYER_ID &&
-          state.players[flagOwner] && !state.players[flagOwner].eliminated && !playersAreAllied(state, flagOwner, hero.controllerId))) return false;
+          state.players[flagOwner] && !state.players[flagOwner].eliminated && !playersAreAllied(state, flagOwner, hero.controllerId)))) return false;
     }
     if (
       freeGateOnly &&
@@ -1440,7 +1445,8 @@ export function getHeroMoveDestinations(state: GameState, hero: HeroState): MapS
     // Combat). Blocked fields crossed by Fly are "pass-only" (you fly over but
     // cannot land), and allied heroes / sanctuaries are "pass-only" too — none
     // are valid stops.
-    const kind = classifyHeroStep(state, hero, spaceId, movement);
+    const kind = classifyHeroStep(state, hero, spaceId, movement,
+      hero.movementPoints - (gateFieldsLinked(adventure.fields[hero.spaceId as MapSpaceId], adventure.fields[spaceId]) ? 0 : 1));
     if (parallelBlocker) {
       // An invisible designer hex event classifies "open" but pays a reward /
       // springs an ambush on arrival — never a quiet step.
@@ -1563,7 +1569,20 @@ function resolveHeroArrival(
 
   const enemyHero = heroAtSpace(state, to, hero.id);
   if (enemyHero && !playersAreAllied(state, enemyHero.controllerId, hero.controllerId)) {
-    startPlayerCombat(state, hero, enemyHero, to);
+    const field = adventure.fields[to];
+    const protectedEnemy =
+      pvpAttacksBanned(state) ||
+      Boolean(field && locationDefinitions[field.location]?.passive?.protectsFromAttack);
+    if (!protectedEnemy) {
+      startPlayerCombat(state, hero, enemyHero, to);
+      return;
+    }
+  }
+
+  // A temporary shared hex is only a parking position. Its printed field was
+  // already occupied, so this arrival neither revisits it nor captures/guards
+  // through the other model. The next ordinary step resolves normally.
+  if (heroesAtSpace(state, to, hero.id).length > 0) {
     return;
   }
 
@@ -2265,6 +2284,8 @@ export function moveHeroPathAdventure(state: GameState, action: Extract<GameActi
   // turn open extra edges (through blocked fields, onto the sea).
   const movement = getHeroMovementCapabilities(state, hero);
   let cursor = hero.spaceId;
+  let paidCost = 0;
+  let affordableStop = hero.spaceId;
   for (const [index, step] of action.path.entries()) {
     if (!getAdjacentSpaceIds(cursor).includes(step)) {
       throw new Error("Each path step must be adjacent to the previous field.");
@@ -2273,8 +2294,14 @@ export function moveHeroPathAdventure(state: GameState, action: Extract<GameActi
       throw new Error("The path crosses a sealed tile border, a blocked field, or open sea.");
     }
 
-    const kind = classifyHeroStep(state, hero, step, movement);
     const isLast = index === action.path.length - 1;
+    if (!gateFieldsLinked(adventure.fields[cursor], adventure.fields[step])) {
+      paidCost += 1;
+    }
+    if (paidCost <= hero.movementPoints) {
+      affordableStop = step;
+    }
+    const kind = classifyHeroStep(state, hero, step, movement, hero.movementPoints - paidCost, cursor);
     if (kind === "block") {
       throw new Error("The path crosses an impassable field.");
     }
@@ -2304,6 +2331,10 @@ export function moveHeroPathAdventure(state: GameState, action: Extract<GameActi
   }
 
 
+  if (paidCost > hero.movementPoints && affordableStop !== hero.spaceId && heroAtSpace(state, affordableStop, hero.id)) {
+    throw new Error("The path needs enough movement to leave occupied fields.");
+  }
+
   const slotBefore = parallelBlocker ? parallelSlotSignature(state) : null;
   const rewardQueueBefore = adventure.rewardQueue.length;
   for (const [index, step] of action.path.entries()) {
@@ -2322,7 +2353,10 @@ export function moveHeroPathAdventure(state: GameState, action: Extract<GameActi
     // ("pass-only"), or when Pathfinding lets the hero walk through a
     // Neutral/enemy field ("encounter") that is not where the walk ends.
     // Ending on an "encounter" resolves normally — Combat begins.
-    const passThrough = kind === "pass-only" || (kind === "encounter" && !isLast);
+    const passThrough =
+      (Boolean(heroAtSpace(state, step, hero.id)) && !isLast) ||
+      kind === "pass-only" ||
+      (kind === "encounter" && !isLast);
     performHeroStep(state, hero, step, passThrough);
 
     // Parallel turns, foreign interaction open: a quiet walk must stay quiet.
@@ -18621,53 +18655,7 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
  * edges the hero cannot cross, are excluded too.
  */
 /** Empty-field destinations an end-of-turn step (Logistics / Nomads) may land on. */
-export function getEndTurnMoveDestinationsForHero(state: GameState, hero: HeroState): MapSpaceId[] {
-  const adventure = state.adventure;
-  if (!adventure || !hero.spaceId) {
-    return [];
-  }
-  const playerId = hero.controllerId;
-
-  return getAdjacentSpaceIds(hero.spaceId).filter((spaceId) => {
-    if (!canCrossEdge(state, hero.spaceId as MapSpaceId, spaceId)) {
-      return false;
-    }
-    if (heroAtSpace(state, spaceId, hero.id)) {
-      return false;
-    }
-    const field = adventure.fields[spaceId];
-    if (!field || isFieldGuarded(field)) {
-      return false;
-    }
-    const location = locationDefinitions[field.location];
-    if (!location || location.category === "blocked") {
-      return false;
-    }
-    // "Empty": nothing would trigger on entering — truly empty fields, used
-    // (black-cubed) visitables, and fields flagged by this player. Two
-    // "empty"-category locations are NOT nothing-happens fields:
-    //   - a designer Barrier may not be ENTERED at all without a matching
-    //     Keymaster's Tent flag (classifyHeroStep treats it like a blocked
-    //     field), so it can never be a landing;
-    //   - a Subterranean Gate whose partner tile is still face-down TRIGGERS
-    //     its free cross-layer discovery (the reveal/rotation chain) on entry.
-    //     Only a gate whose other side is already discovered is genuinely
-    //     "treated as an empty Field".
-    if (location.category === "empty") {
-      if (field.location === "barrier" && !playerHoldsTentFlag(state, playerId, field.gatePair)) {
-        return false;
-      }
-      return !subterraneanGateEntryRevealsTile(state, field);
-    }
-    if (location.category === "visitable") {
-      return field.blackCube;
-    }
-    if (location.category === "flaggable" || location.category === "town") {
-      return field.flagOwnerId === playerId;
-    }
-    return false;
-  });
-}
+export { getEndTurnMoveDestinationsForHero } from "./adventure";
 
 /** @deprecated Prefer {@link getEndTurnMoveDestinationsForHero} — Main Hero only. */
 export function getEndTurnMoveDestinations(state: GameState, playerId: PlayerId): MapSpaceId[] {
@@ -18685,8 +18673,10 @@ function offerEndTurnAdjacentMove(state: GameState, playerId: PlayerId, prompt: 
   // Logistics / Nomads: either hero the player commands may take the free step
   // (wiki Logistics: secondary may receive the movement too). List every legal
   // landing for every on-map hero, labeled by which hero steps.
+  const overlapping = playerHasOverlappingHero(state, playerId);
   const heroes = Object.values(state.heroes).filter(
     (hero) => hero.controllerId === playerId && hero.spaceId !== null
+      && (!overlapping || heroesAtSpace(state, hero.spaceId, hero.id).length > 0)
   );
   const moveOptions: { label: string; steps: VisitStep[] }[] = [];
   for (const hero of heroes) {
@@ -18718,7 +18708,10 @@ function offerEndTurnAdjacentMove(state: GameState, playerId: PlayerId, prompt: 
       {
         type: "CHOOSE_ONE",
         prompt,
-        options: [...moveOptions, { label: "Stay", steps: [] }]
+        // A normal end-turn step stays optional. When two models overlap it is
+        // the required separation action, so "Stay" would create an illegal
+        // turn end and is deliberately absent.
+        options: overlapping ? moveOptions : [...moveOptions, { label: "Stay", steps: [] }]
       }
     ]
   });
@@ -18946,6 +18939,10 @@ export function endTurnAdventure(state: GameState, action: Extract<GameAction, {
   }
   if (queueEquipmentEndTurnMove(state, action.playerId)) {
     return;
+  }
+
+  if (playerHasOverlappingHero(state, action.playerId)) {
+    throw new Error("Two heroes cannot finish a turn on the same hex. Move one hero away first.");
   }
 
   bankEquipmentMovementAtTurnEnd(state, action.playerId);

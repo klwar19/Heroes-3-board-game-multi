@@ -110,7 +110,7 @@ export type UnitAbilityEffectDefinition =
       type: "IMMUNE_TO_SPELL_SCHOOLS";
       schools: SpellSchool[];
     }
-  | { type: "EXTRA_RANGED_DAMAGE_ON_LOW_ROLL"; maxRoll: number; amount: number }
+  | { type: "EXTRA_RANGED_DAMAGE_ON_LOW_ROLL"; maxRoll: number; amount: number; ownAttackOnly?: boolean; oncePerRound?: boolean }
   | {
       /**
        * Token "other action" (Ogres' Attack token, Few Sorceresses' Weakness
@@ -1745,8 +1745,8 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "ranged-extra-shot-on-low-roll": {
     id: "ranged-extra-shot-on-low-roll",
     name: "Low Roll Extra Shot",
-    text: "After a ranged attack roll of 0 or lower, deals 1 extra attack damage to the defender.",
-    effect: { type: "EXTRA_RANGED_DAMAGE_ON_LOW_ROLL", maxRoll: 0, amount: 1 },
+    text: "[unit_attack] Once per combat round, after this unit's own ranged attack against a non-adjacent enemy rolls -1 or 0, deal 1 extra attack damage to the surviving defender. Either attack of a double attack can trigger it, but only once that round. This is extra damage, not another attack; never triggers on retaliation.",
+    effect: { type: "EXTRA_RANGED_DAMAGE_ON_LOW_ROLL", maxRoll: 0, amount: 1, ownAttackOnly: true, oncePerRound: true },
     implementationStatus: "implemented"
   },
   "double-attack": {

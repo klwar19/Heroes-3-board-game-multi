@@ -9,6 +9,7 @@ export type UnitAbilityDamageEffect = {
   targetUnitId: UnitId;
   amount: number;
   damageKind: DamageKind;
+  oncePerRound?: boolean;
   message: string;
 };
 
@@ -18,6 +19,7 @@ type PostAttackContext = {
   attackKind: "melee" | "ranged";
   roll: number;
   damage: number;
+  isRetaliation?: boolean;
 };
 
 function isAlive(unit: CombatUnitState): boolean {
@@ -1408,6 +1410,8 @@ export function getPostAttackAbilityDamageEffects(
     if (
       ability.effect?.type === "EXTRA_RANGED_DAMAGE_ON_LOW_ROLL" &&
       context.attackKind === "ranged" &&
+      (!ability.effect.ownAttackOnly || !context.isRetaliation) &&
+      (!ability.effect.oncePerRound || context.attacker.postAttackDamageUsedRound?.[ability.id] !== combat.round) &&
       context.roll <= ability.effect.maxRoll &&
       isAlive(context.defender)
     ) {
@@ -1416,8 +1420,9 @@ export function getPostAttackAbilityDamageEffects(
         sourceUnitId: context.attacker.id,
         targetUnitId: context.defender.id,
         amount: ability.effect.amount,
+        oncePerRound: ability.effect.oncePerRound,
         damageKind: "attack",
-        message: `${context.attacker.name} follows up with ${ability.name}.`
+        message: `${context.attacker.name} follows up with ${ability.name}: ${ability.effect.amount} extra attack damage${ability.effect.oncePerRound ? " (used for this round)" : ""}.`
       });
     }
   }

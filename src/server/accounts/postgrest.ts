@@ -26,6 +26,11 @@ export type PostgrestRequestOptions = {
   limit?: number;
 };
 
+export type PostgrestDeleteOptions = PostgrestRequestOptions & {
+  /** Skip returning deleted rows when the caller only needs best-effort cleanup. */
+  returnRepresentation?: boolean;
+};
+
 export class PostgrestError extends Error {
   readonly status: number;
   /** Postgres error code from the response body, e.g. "23505" (unique violation). */
@@ -82,8 +87,15 @@ export class PostgrestClient {
   }
 
   /** DELETE matching rows, returning the deleted rows (atomic consume). */
-  delete<T>(table: string, match: PgMatch, options: PostgrestRequestOptions = {}): Promise<T[]> {
-    return this.request<T[]>("DELETE", table, match, options, undefined, "return=representation");
+  delete<T>(table: string, match: PgMatch, options: PostgrestDeleteOptions = {}): Promise<T[]> {
+    return this.request<T[]>(
+      "DELETE",
+      table,
+      match,
+      options,
+      undefined,
+      options.returnRepresentation === false ? "return=minimal" : "return=representation"
+    );
   }
 
   private async request<T>(

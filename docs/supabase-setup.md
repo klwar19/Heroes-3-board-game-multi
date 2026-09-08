@@ -122,10 +122,12 @@ replay: On** and locks it: players cannot disable competitive collection.
 
 The room server keeps the replay outside `GameState`, so it never enlarges live
 snapshots or websocket broadcasts. PartyKit persists bounded 96 KiB-safe replay
-records through hibernation and sends exactly one authenticated payload when the
-match finishes. Each replay is capped at 2,000 accepted actions and about 1.5 MB;
-the payload records an explicit `truncated` reason if it reaches a cap. Database
-RLS has no public policy, so browsers cannot read or write the training data.
+records through hibernation and sends exactly one authenticated, gzip-compressed
+payload when the match finishes. Each replay is capped at 10,000 accepted actions
+and 16 MB of expanded JSON; the payload records an explicit `truncated` reason if
+it reaches a cap. Replay payloads are retained for a rolling seven days, while
+the parent match rows and cumulative W/L/MMR records remain. Database RLS has no
+public policy, so browsers cannot read or write the training data.
 
 To turn collection off later, set this on both Vercel and PartyKit:
 

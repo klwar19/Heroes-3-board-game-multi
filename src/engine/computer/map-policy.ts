@@ -16,6 +16,7 @@ import {
   gateFieldsLinked,
   getAdjacentSpaceIds,
   getUnitSide,
+  heroesAtSpace,
   isFieldGuarded,
   isOuterEdgeSealed,
   materializeTileFields,
@@ -797,6 +798,17 @@ function moveScore(
   const field = state.adventure?.fields[action.to];
   const hero = state.heroes[action.heroId];
   if (!field || !hero) return NO_PROGRESS_SCORE;
+
+  // A shared map hex is temporary and END_TURN is illegal there. Always take a
+  // legal step onto an unoccupied neighbor before optional economy/card noise;
+  // this also prevents an allied AI corridor step from stalling its turn.
+  if (
+    hero.spaceId &&
+    heroesAtSpace(state, hero.spaceId, hero.id).length > 0 &&
+    heroesAtSpace(state, action.to, hero.id).length === 0
+  ) {
+    return 1_050;
+  }
 
   const objectives = collectMapObjectives(state, hero);
   // Cross-turn sticky from multi-round memory beats pure instantaneous primary.

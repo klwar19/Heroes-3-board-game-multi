@@ -100,7 +100,7 @@ import {
   playerHoldsMoraleCard
 } from "./morale-cards";
 import { MORALE_CARD_IDS } from "@/data/cards/morale";
-import { parallelMapInteractionBlocker, stopParallelTurns } from "./parallel-turns";
+import { parallelMapInteractionBlocker, parallelTurnsActive, stopParallelTurns } from "./parallel-turns";
 import { dropParallelCombatContext, hasParkedParallelInteractions, reassignParkedNeutralController } from "./parallel-combats";
 import { clearResetVote } from "./reset-vote";
 import {
@@ -2610,6 +2610,132 @@ export function heroAtSpace(state: GameState, spaceId: MapSpaceId, excludeHeroId
   return null;
 }
 
+/** Every other deployed hero on a map field (normally zero or one). */
+export function heroesAtSpace(state: GameState, spaceId: MapSpaceId, excludeHeroId?: HeroId): HeroState[] {
+  return Object.values(state.heroes).filter(
+    (hero) => hero.id !== excludeHeroId && hero.spaceId === spaceId
+  );
+}
+
+/** Whether Basic Logistics can still provide this turn's separating step. */
+export function logisticsEndTurnMoveAvailable(state: GameState, playerId: PlayerId): boolean {
+  return (
+    state.activeEffects.some(
+      (effect) =>
+        effect.controllerId === playerId &&
+        effect.modifiers.some((modifier) => modifier.type === "END_TURN_ADJACENT_MOVE")
+    ) || state.players[playerId]?.hand.includes("ability.logistics") === true
+  );
+}
+
+/**
+ * Temporary stacking rule. A paid walk may finish on exactly one
+ * peaceful hero (an ally, a Sanctuary-protected enemy, or any enemy while PvP
+ * is banned) only when the mover can still separate the models: at least 1 MP
+ * remains after arrival, or Basic Logistics is in hand/already waiting for end
+ * of turn.
+ *
+ * In parallel play the other owner must still have an open, idle map turn.
+ * Parking never captures their field or changes their interaction context.
+ */
+export function canHeroShareSpaceAfterMove(
+  state: GameState,
+  hero: HeroState,
+  spaceId: MapSpaceId,
+  movementPointsAfterArrival: number,
+  from: MapSpaceId | null = hero.spaceId
+): boolean {
+  // Parallel seats mutate independently, so even a currently idle occupant can
+  // start an interaction before the moving seat separates the models.
+  if (parallelTurnsActive(state)) {
+    return false;
+  }
+  const occupants = heroesAtSpace(state, spaceId, hero.id);
+  if (occupants.length !== 1) {
+    return false;
+  }
+  const occupant = occupants[0]!;
+  const field = state.adventure?.fields[spaceId];
+  const protectedEnemy =
+    pvpAttacksBanned(state) ||
+    Boolean(field && locationDefinitions[field.location]?.passive?.protectsFromAttack);
+  if (!playersAreAllied(state, occupant.controllerId, hero.controllerId) && !protectedEnemy) {
+    return false;
+  }
+  const landedHero = { ...hero, spaceId, movementPoints: movementPointsAfterArrival };
+  const movement = getHeroMovementCapabilities(state, hero);
+  const canWalkAway = movementPointsAfterArrival >= 1 &&
+    !hero.movementHaltedThisTurn &&
+    !(from && seaStepHalts(state, from, spaceId, movement)) &&
+    getAdjacentSpaceIds(spaceId).some((next) => {
+      if (heroesAtSpace(state, next, hero.id).length || !canCrossEdge(state, spaceId, next, movement)) return false;
+      const kind = classifyHeroStep(state, landedHero, next, movement);
+      return kind === "open" || kind === "stop" || kind === "encounter";
+    });
+  return canWalkAway || (
+    logisticsEndTurnMoveAvailable(state, hero.controllerId) &&
+    getEndTurnMoveDestinationsForHero(state, landedHero).length > 0
+  );
+}
+
+export function getEndTurnMoveDestinationsForHero(state: GameState, hero: HeroState): MapSpaceId[] {
+  const adventure = state.adventure;
+  if (!adventure || !hero.spaceId) {
+    return [];
+  }
+  const playerId = hero.controllerId;
+
+  return getAdjacentSpaceIds(hero.spaceId).filter((spaceId) => {
+    if (!canCrossEdge(state, hero.spaceId as MapSpaceId, spaceId)) {
+      return false;
+    }
+    if (heroAtSpace(state, spaceId, hero.id)) {
+      return false;
+    }
+    const field = adventure.fields[spaceId];
+    if (!field || isFieldGuarded(field)) {
+      return false;
+    }
+    const location = locationDefinitions[field.location];
+    if (!location || location.category === "blocked") {
+      return false;
+    }
+    // "Empty": nothing would trigger on entering — truly empty fields, used
+    // (black-cubed) visitables, and fields flagged by this player. Two
+    // "empty"-category locations are NOT nothing-happens fields:
+    //   - a designer Barrier may not be ENTERED at all without a matching
+    //     Keymaster's Tent flag (classifyHeroStep treats it like a blocked
+    //     field), so it can never be a landing;
+    //   - a Subterranean Gate whose partner tile is still face-down TRIGGERS
+    //     its free cross-layer discovery (the reveal/rotation chain) on entry.
+    //     Only a gate whose other side is already discovered is genuinely
+    //     "treated as an empty Field".
+    if (location.category === "empty") {
+      if (field.location === "barrier" && !playerHoldsTentFlag(state, playerId, field.gatePair)) {
+        return false;
+      }
+      return !subterraneanGateEntryRevealsTile(state, field);
+    }
+    if (location.category === "visitable") {
+      return field.blackCube;
+    }
+    if (location.category === "flaggable" || location.category === "town") {
+      return field.flagOwnerId === playerId;
+    }
+    return false;
+  });
+}
+
+/** Whether one of a player's deployed heroes currently shares its exact hex. */
+export function playerHasOverlappingHero(state: GameState, playerId: PlayerId): boolean {
+  return Object.values(state.heroes).some(
+    (hero) =>
+      hero.controllerId === playerId &&
+      hero.spaceId !== null &&
+      heroesAtSpace(state, hero.spaceId, hero.id).length > 0
+  );
+}
+
 /** Whether the field still has undefeated neutral guards. */
 export function isFieldGuarded(field: MapFieldState): boolean {
   // Creature Banks have no Field Difficulty: they are guarded until the win is
@@ -2689,7 +2815,9 @@ export function classifyHeroStep(
   state: GameState,
   hero: HeroState,
   spaceId: MapSpaceId,
-  movement: HeroMovementCapabilities = NO_MOVEMENT_CAPABILITIES
+  movement: HeroMovementCapabilities = NO_MOVEMENT_CAPABILITIES,
+  movementPointsAfterArrival?: number,
+  from: MapSpaceId | null = hero.spaceId
 ): HeroStepKind {
   const adventure = state.adventure;
   const field = adventure?.fields[spaceId];
@@ -2715,6 +2843,14 @@ export function classifyHeroStep(
 
   const occupant = heroAtSpace(state, spaceId, hero.id);
   if (occupant) {
+    // Temporary peaceful stacking is a legal stop in ordered play when the
+    // mover retains an ordinary step or has Basic Logistics available.
+    // Only walking callers supply the remaining MP and departure field.
+    // Teleports and other classification users retain their original rules.
+    if (movementPointsAfterArrival !== undefined &&
+        canHeroShareSpaceAfterMove(state, hero, spaceId, movementPointsAfterArrival, from)) {
+      return "open";
+    }
     if (playersAreAllied(state, occupant.controllerId, playerId)) {
       return "pass-only";
     }
@@ -2980,7 +3116,8 @@ export function getReachableHeroPaths(state: GameState, hero: HeroState): Map<Ma
       ) {
         continue;
       }
-      const kind = classifyHeroStep(state, hero, neighbor, movement);
+      const kind = classifyHeroStep(state, hero, neighbor, movement,
+        hero.movementPoints - node.path.length + node.freeHops, node.spaceId);
       if (kind === "block") {
         continue;
       }
@@ -2994,7 +3131,11 @@ export function getReachableHeroPaths(state: GameState, hero: HeroState): Map<Ma
         }
         continue;
       }
-      if (kind !== "pass-only" && (!parallelQuietOnly || kind === "open") && quietStop(neighbor)) {
+      if (
+        kind !== "pass-only" &&
+        (!parallelQuietOnly || kind === "open") &&
+        quietStop(neighbor)
+      ) {
         results.set(neighbor, { spaceId: neighbor, path, cost });
       }
       tier.push({ spaceId: neighbor, path, freeHops });
@@ -3013,7 +3154,8 @@ export function getReachableHeroPaths(state: GameState, hero: HeroState): Map<Ma
           continue;
         }
 
-        const kind = classifyHeroStep(state, hero, neighbor, movement);
+        const kind = classifyHeroStep(state, hero, neighbor, movement,
+          hero.movementPoints - node.path.length - 1 + node.freeHops, node.spaceId);
         if (kind === "block") {
           continue;
         }

@@ -5116,6 +5116,7 @@ function applyPostAttackAbilityDamage(
   attackKind: "melee" | "ranged",
   roll: number,
   damage: number,
+  isRetaliation: boolean,
 ): void {
   const combat = state.combat;
   if (!combat) {
@@ -5128,12 +5129,22 @@ function applyPostAttackAbilityDamage(
     attackKind,
     roll,
     damage,
+    isRetaliation,
   });
 
   for (const effect of damageEffects) {
     const target = combat.units[effect.targetUnitId];
     if (!target || !isUnitAlive(target)) {
       continue;
+    }
+    if (effect.oncePerRound) {
+      if (attacker.postAttackDamageUsedRound?.[effect.abilityId] === combat.round) {
+        continue;
+      }
+      attacker.postAttackDamageUsedRound = {
+        ...attacker.postAttackDamageUsedRound,
+        [effect.abilityId]: combat.round,
+      };
     }
     // Factory Couatls' invulnerability ignores this post-attack ability damage.
     if (isUnitDamageImmune(target)) {
@@ -8427,6 +8438,7 @@ function finishResolvedAttack(
       details.attackKind,
       attackResult.roll,
       attackResult.damage,
+      details.isRetaliation,
     );
     if (
       equipmentRound1ZeroStuns(

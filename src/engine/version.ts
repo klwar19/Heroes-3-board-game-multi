@@ -1153,7 +1153,11 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // delayed damage, Solidify, Lightning Links, Phoenix Nests and saved Spell Echo
 // casts; Promestein IV records its once-per-silver-card permanent upgrade.
 // These fields and their legal actions require a matching PartyKit worker.
-export const ENGINE_PROTOCOL_VERSION = 117;
+// v118: ordered adventure movement may temporarily stack exactly two peaceful
+// heroes when the mover retains an exit point or Basic Logistics. Arrival skips
+// combat/field resolution, and END_TURN now requires the models to separate.
+// Parallel turns intentionally keep the v117 no-stacking behavior.
+export const ENGINE_PROTOCOL_VERSION = 118;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

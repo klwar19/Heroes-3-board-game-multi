@@ -81,15 +81,20 @@ create table if not exists public.homm3bg_matches (
 -- Private AI-training replays for Ranked Clash. One bounded JSON payload is
 -- inserted only when the match finishes; it never rides live room snapshots.
 -- The app service role is the only reader/writer (RLS with no public policy).
+-- Application writes remove replay payloads older than seven days while the
+-- parent match rows remain as permanent idempotency gates and W/L summaries.
 create table if not exists public.homm3bg_ranked_replays (
   match_id text primary key references public.homm3bg_matches (match_id) on delete cascade,
   recorded_at text not null,
   schema_version integer not null,
   engine_signature text not null,
-  action_count integer not null check (action_count >= 0 and action_count <= 2000),
-  byte_length integer not null check (byte_length >= 0 and byte_length <= 4000000),
+  action_count integer not null check (action_count >= 0 and action_count <= 10000),
+  byte_length integer not null check (byte_length >= 0 and byte_length <= 16000000),
   truncated boolean not null default false,
-  payload jsonb not null
+  payload jsonb,
+  payload_gzip_base64 text,
+  constraint homm3bg_ranked_replays_payload_present_check
+    check (payload is not null or payload_gzip_base64 is not null)
 );
 -- Keep existing projects aligned when replay retention is expanded. Merely
 -- re-running CREATE TABLE IF NOT EXISTS does not update an older constraint.
@@ -97,7 +102,21 @@ alter table public.homm3bg_ranked_replays
   drop constraint if exists homm3bg_ranked_replays_byte_length_check;
 alter table public.homm3bg_ranked_replays
   add constraint homm3bg_ranked_replays_byte_length_check
-  check (byte_length >= 0 and byte_length <= 4000000);
+  check (byte_length >= 0 and byte_length <= 16000000);
+alter table public.homm3bg_ranked_replays
+  drop constraint if exists homm3bg_ranked_replays_action_count_check;
+alter table public.homm3bg_ranked_replays
+  add constraint homm3bg_ranked_replays_action_count_check
+  check (action_count >= 0 and action_count <= 10000);
+alter table public.homm3bg_ranked_replays
+  add column if not exists payload_gzip_base64 text;
+alter table public.homm3bg_ranked_replays
+  alter column payload drop not null;
+alter table public.homm3bg_ranked_replays
+  drop constraint if exists homm3bg_ranked_replays_payload_present_check;
+alter table public.homm3bg_ranked_replays
+  add constraint homm3bg_ranked_replays_payload_present_check
+  check (payload is not null or payload_gzip_base64 is not null);
 create index if not exists homm3bg_ranked_replays_recorded_idx
   on public.homm3bg_ranked_replays (recorded_at);
 

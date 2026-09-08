@@ -18,6 +18,8 @@ export type FxSheet = {
   frameWidth: number;
   frameHeight: number;
   fps: number;
+  /** Loop ordered frames for authored projectile animations. */
+  sequentialFrames?: boolean;
   /** "bottom": the sprite stands on the cell floor (columns of light, bolts). */
   anchor: "center" | "bottom";
   opacity?: number;
@@ -295,6 +297,11 @@ const blueArchiveAbilityVoicePlans: Record<string, SpellFxPlan> = Object.fromEnt
 
 export const abilityFxPlans: Record<string, SpellFxPlan> = {
   ...blueArchiveAbilityVoicePlans,
+  "ranged-extra-shot-on-low-roll": {
+    projectile: "low-roll-extra-shot-projectile",
+    hit: "sniper-shot-hit",
+    sound: "units/wood-elf-shoot"
+  },
   // Mutsuki's mines use her own playful bomb silhouette before the damage
   // number lands. These override the voice-only defaults above.
   "kivotos-trick-mine": {
