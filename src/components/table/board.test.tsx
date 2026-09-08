@@ -2143,6 +2143,23 @@ describe("BattlefieldBoard — activation status badge", () => {
   });
 })
 
+describe("Bounty Hunter Mark token visibility", () => {
+  it("shows a marked target explicitly in the unit inspector", () => {
+    const state = createInitialGameState("bounty-mark-visible");
+    const unitId = "unit_p2_skeletons";
+    state.combat!.units[unitId].marked = true;
+
+    const view = render(
+      <CardZoomProvider>
+        <InspectPanel state={state} unitId={unitId} />
+      </CardZoomProvider>
+    );
+
+    expect(view.getByRole("status").textContent).toContain("Mark token");
+    expect(view.getByText(/Bounty Hunters gain their printed Attack bonus/i)).toBeTruthy();
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Pack/Few side info: a Pack card tells the player what it flips to.
 // ---------------------------------------------------------------------------

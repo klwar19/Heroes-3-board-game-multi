@@ -4,7 +4,10 @@ import type { CombatTokenKind, EffectDurationDefinition, SpellSchool, UnitType }
 // rotation). The USER rejected the mechanic outright — a boss no longer casts a
 // spell every round; each boss carries a UNIQUE kit of ordinary implemented
 // combat arms instead (see `src/data/anime/bosses.ts`). Do not reintroduce it.
+export type ElementalVeterancyMechanic = "distant-attack" | "faster-target" | "earth-shield" | "activation-burn" | "move-obstacle" | "nest" | "landing" | "activated-target" | "link" | "solidify" | "frozen-guard" | "ranged-defense" | "rebirth-heal" | "spell-block" | "water-damper" | "speed-damage" | "delay-damage" | "fire-heal" | "bodyguard" | "dispel-attack" | "spell-copy";
+
 export type UnitAbilityEffectDefinition =
+  | { type: "ELEMENTAL_VETERANCY"; mechanic: ElementalVeterancyMechanic }
   | { type: "ALLOW_UNLIMITED_RETALIATION" }
   | { type: "RETALIATION_ATTACK_BONUS"; amount: number }
   | { type: "IGNORE_RETALIATION" }
@@ -3814,6 +3817,69 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Soul Feast",
     text: "[unit_attack] After this unit's own attack, remove up to 1 damage from it.",
     effect: { type: "ON_ATTACK_HEAL_SELF", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "veteran-energy-drain": {
+    id: "veteran-energy-drain",
+    name: "Energy Drain",
+    text: "After this unit attacks, remove up to 2 damage from it.",
+    effect: { type: "ON_ATTACK_HEAL_SELF", amount: 2 },
+    implementationStatus: "implemented"
+  },
+  "veteran-ice-bolt": {
+    id: "veteran-ice-bolt", name: "Ice Bolt",
+    text: "At activation, cast Ice Bolt at a unit for 1 Water Spell damage without using the Spell limit.",
+    effect: { type: "ON_ACTIVATION_DAMAGE_SPELL", amount: 1 }, implementationStatus: "implemented"
+  },
+  "veteran-magic-splash": {
+    id: "veteran-magic-splash", name: "Arcane Pulse",
+    text: "After attacking, every surrounding enemy also takes 1 damage.",
+    effect: { type: "AFTER_ATTACK_SPLASH", amount: 1, enemiesOnly: true }, implementationStatus: "implemented"
+  },
+  "veteran-distant-storm": {
+    id: "veteran-distant-storm", name: "Distant Storm", text: "+1 Attack when attacking a non-adjacent target.",
+    effect: { type: "ELEMENTAL_VETERANCY", mechanic: "distant-attack" }, implementationStatus: "implemented"
+  },
+  "veteran-magma-hunter": {
+    id: "veteran-magma-hunter", name: "Molten Ambush", text: "+1 Attack when attacking a target with higher current Initiative.",
+    effect: { type: "ELEMENTAL_VETERANCY", mechanic: "faster-target" }, implementationStatus: "implemented"
+  },
+  "veteran-frozen-guard": {
+    id: "veteran-frozen-guard", name: "Frozen Guard", text: "While defending, always gain +1 Defense and reduce Spell damage by 2.",
+    effect: { type: "ELEMENTAL_VETERANCY", mechanic: "frozen-guard" }, implementationStatus: "implemented"
+  },
+  "veteran-storm-guard": {
+    id: "veteran-storm-guard", name: "Storm Guard", text: "+1 Defense against ranged attacks.",
+    effect: { type: "ELEMENTAL_VETERANCY", mechanic: "ranged-defense" }, implementationStatus: "implemented"
+  },
+  "veteran-renewed-rebirth": {
+    id: "veteran-renewed-rebirth", name: "Renewed Rebirth", text: "When this unit uses Rebirth, heal an additional 5 HP.",
+    effect: { type: "ELEMENTAL_VETERANCY", mechanic: "rebirth-heal" }, implementationStatus: "implemented"
+  },
+  "veteran-earth-shield": {
+    id: "veteran-earth-shield", name: "Earth Shield", text: "This unit can never accumulate more than 4 damage.",
+    effect: { type: "ELEMENTAL_VETERANCY", mechanic: "earth-shield" }, implementationStatus: "implemented"
+  },
+  "veteran-sprite-landing": { id: "veteran-sprite-landing", name: "Landing Sting", text: "After movement lands, deal 1 damage to one adjacent enemy.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "landing" }, implementationStatus: "implemented" },
+  "veteran-sprite-obstacle": { id: "veteran-sprite-obstacle", name: "Fairy Landscaping", text: "At activation, you may move one Combat Obstacle to an empty space.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "move-obstacle" }, implementationStatus: "implemented" },
+  "veteran-arcane-echo": { id: "veteran-arcane-echo", name: "Arcane Echo", text: "After attacking an enemy that already activated this round, choose a unit to take 2 damage.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "activated-target" }, implementationStatus: "implemented" },
+  "veteran-storm-link": { id: "veteran-storm-link", name: "Lightning Link", text: "Once per Combat after damaging a non-adjacent enemy, you may link it to another enemy adjacent to it. Before round end, the first linked unit voluntarily ending movement apart from the other takes 1 lightning effect damage and breaks the link.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "link" }, implementationStatus: "implemented" },
+  "veteran-magma-solidify": { id: "veteran-magma-solidify", name: "Solidify", text: "Once per Combat after finishing an activation, you may solidify: cannot move next round, and receives 1 less damage until attacking next round; then may move again.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "solidify" }, implementationStatus: "implemented" },
+  "veteran-phoenix-activation": { id: "veteran-phoenix-activation", name: "Scorch", text: "At activation, deal 1 damage to one adjacent enemy.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "activation-burn" }, implementationStatus: "implemented" },
+  "veteran-phoenix-nest": { id: "veteran-phoenix-nest", name: "Phoenix Nest", text: "At activation, place a 1 HP Nest in an adjacent empty space. At your next scheduled activation, if it survives, teleport there, remove 1 damage and then move normally.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "nest" }, implementationStatus: "implemented" },
+  "veteran-sprite-spell-block": { id: "veteran-sprite-spell-block", name: "Spell Block", text: "When a Spell targets this unit, roll a die: on −1 or 0, block it.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "spell-block" }, implementationStatus: "implemented" },
+  "veteran-water-damper": { id: "veteran-water-damper", name: "Water Dampening", text: "All enemy Water School Spells have −1 Power.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "water-damper" }, implementationStatus: "implemented" },
+  "veteran-storm-speed": { id: "veteran-storm-speed", name: "Swift Lightning", text: "Deal 1 bonus damage when attacking a target with lower current Initiative.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "speed-damage" }, implementationStatus: "implemented" },
+  "veteran-energy-delay": { id: "veteran-energy-delay", name: "Delayed Impact", text: "Once per Combat, before taking damage from an enemy attack, shift up to 2 damage to round end. Pay it then without reduction.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "delay-damage" }, implementationStatus: "implemented" },
+  "veteran-energy-fire-heal": { id: "veteran-energy-fire-heal", name: "Feed on Fire", text: "Whenever an enemy casts a Fire Spell, including Magic Arrow, heal 2 HP.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "fire-heal" }, implementationStatus: "implemented" },
+  "veteran-magma-guard": { id: "veteran-magma-guard", name: "Molten Guardian", text: "While defending, intercept attacks targeting adjacent allies. Do not retaliate against intercepted attacks.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "bodyguard" }, implementationStatus: "implemented" },
+  "veteran-magic-dispel": { id: "veteran-magic-dispel", name: "Dispelling Strike", text: "Once per Combat, you may attack with −2 Attack and remove one ongoing effect from the target.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "dispel-attack" }, implementationStatus: "implemented" },
+  "veteran-magic-copy": { id: "veteran-magic-copy", name: "Spell Echo", text: "After an enemy casts a Spell, you may cast that Spell at its lowest Power without using the Spell limit. Trigger-bound copies remain available until their normal timing is legal.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "spell-copy" }, implementationStatus: "implemented" },
+  "veteran-phoenix-breath": {
+    id: "veteran-phoenix-breath",
+    name: "Phoenix Breath",
+    text: "After a melee attack, the unit directly behind the target takes 2 damage.",
+    effect: { type: "SECOND_ATTACK_BEHIND_TARGET", baseAttack: 2, fixedDamage: true },
     implementationStatus: "implemented"
   },
   "veteran-speed-hunter": {

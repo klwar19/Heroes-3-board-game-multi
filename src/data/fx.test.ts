@@ -17,6 +17,20 @@ import {
 import { cardLibrary } from "./cards/library";
 import { WAR_MACHINE_CARD_IDS } from "./cards/permanents";
 
+describe("elemental experience presentation", () => {
+  it.each([
+    "veteran-ice-bolt", "veteran-sprite-spell-block", "veteran-arcane-echo",
+    "veteran-energy-fire-heal", "veteran-magma-solidify", "veteran-storm-link",
+  ])("%s uses an existing animation and measured sound", (id) => {
+    const plan = abilityFxPlans[id];
+    expect(plan).toBeDefined();
+    const sprites = [plan.projectile, plan.hit, ...(plan.affect ?? []).map(a => a.key)].filter((s): s is string => Boolean(s));
+    expect(sprites.length).toBeGreaterThan(0);
+    for (const sprite of sprites) expect(spriteDurationMs(sprite), sprite).toBeGreaterThan(0);
+    expect(soundDurationMs(plan.sound ?? plan.hitSound)).toBeGreaterThan(0);
+  });
+});
+
 describe("soundDurationMs", () => {
   it("reads measured MP3 lengths from the durations manifest", () => {
     // These come from public/sounds/durations.json (measured frame-by-frame).

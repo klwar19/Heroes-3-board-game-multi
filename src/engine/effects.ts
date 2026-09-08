@@ -1827,7 +1827,7 @@ export function describeCardEffect(card: CardDefinition): string {
     return `ongoing this combat: block ${card.effect.amount} from the next damage hit, then expire; heal ${card.effect.healAtActivation ?? 0} at activation start while shielded${card.effect.alsoRandomAlly ? "; also shield one random other ally" : ""}`;
   }
   if (card.effect.type === "REDIRECT_PENDING_DAMAGE")
-    return "instant before damage: prevent the whole hit to an ally and redirect half, rounded up, to another chosen living unit";
+    return "instant before damage: prevent the whole hit to an ally and redirect half, rounded up, to another chosen living ally";
   if (card.effect.type === "GAIN_MORALE_AND_GOLD")
     return `instant on map or in combat: gain ${card.effect.morale} Morale and ${card.effect.gold} gold`;
 
@@ -1855,7 +1855,7 @@ export function describeCardEffect(card: CardDefinition): string {
   }
 
   if (card.effect.type === "MGQ_MAD_SCIENCE") {
-    return `remove one bronze Few to give one silver card +${card.effect.attackBonus} permanent Attack`;
+    return `remove one bronze Few to give one silver card +${card.effect.attackBonus} permanent Attack (once per silver card)`;
   }
 
   if (card.effect.type === "TARNUM_OVERLIMIT_SEARCH") {

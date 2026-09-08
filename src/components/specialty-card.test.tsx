@@ -292,4 +292,15 @@ describe("SpecialtyCard", () => {
     expect(cardZoomContent("specialty.lingxi.4").specialtyCardId).toBe("specialty.lingxi.4");
     expect(cardZoomContent("specialty.lingxi.4").image).toBeUndefined();
   });
+
+  it.each([
+    ["specialty.rin_natsume.6", "deal 2 damage", "deal 3 damage"],
+    ["specialty.riki_naoe.6", "another living friendly unit", "friend or foe"],
+    ["specialty.promestein.4", "each silver card can be buffed only once", ""],
+  ])("renders the rebalanced rule on %s's visible card", (cardId, included, excluded) => {
+    const { container } = render(<SpecialtyCard cardId={cardId} />);
+    const visibleRule = container.querySelector(".scDesc")?.textContent ?? "";
+    expect(visibleRule).toContain(included);
+    if (excluded) expect(visibleRule).not.toContain(excluded);
+  });
 });

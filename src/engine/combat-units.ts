@@ -1,6 +1,7 @@
 import { expireEffectsForCombatEnd } from "./active-effects";
 import { getUnitSide } from "./adventure";
 import { combatFightingHasBegun } from "./combat-timing";
+import { elementalVeterancy } from "./elemental-veterancy";
 import { appendEvent } from "./events";
 import { armyUnitStacksActive } from "./house-rules";
 import { getRuleset, unitSideRuleOverrides } from "./ruleset";
@@ -203,6 +204,11 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
       abilityId: rebirth.abilityId,
       message: `${unit.cardName} is reborn and clings to life at 1 Health.`
     });
+    if (elementalVeterancy(unit, "rebirth-heal")) {
+      const healed = Math.min(5, unit.damage);
+      unit.damage -= healed;
+      appendEvent(state, { type: "DAMAGE_HEALED", source: { type: "unit", unitId: unit.id, controllerId: unit.controllerId }, target: { type: "unit", unitId: unit.id }, amount: healed });
+    }
     return;
   }
 
@@ -567,7 +573,7 @@ export function livingControllerIds(combat: CombatState): Set<PlayerId> {
     Object.values(combat.units)
       // "The attacker doesn't need to destroy it to win the Combat" — the
       // Arrow Tower alone never keeps the defender in the fight.
-      .filter((unit) => unit.damage < unit.maxHealth && !isArrowTowerUnit(unit))
+      .filter((unit) => unit.damage < unit.maxHealth && !isArrowTowerUnit(unit) && !unit.elementalVeterancy?.nestOwnerId)
       .map((unit) => unit.controllerId)
   );
 }

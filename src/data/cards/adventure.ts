@@ -7191,7 +7191,7 @@ function anytimeDamageCard(
 
 function catCorpsSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
   if (level === 6)
-    return anytimeDamageCard("rin_natsume", "Cat Corps", level, 3);
+    return anytimeDamageCard("rin_natsume", "Cat Corps", level, 2);
   const drawCards = level === 1 ? 1 : 2;
   return lbCard(
     "rin_natsume",
@@ -7218,7 +7218,7 @@ function littleBustersBondSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
       "riki_naoe",
       "Little Busters' Bond",
       level,
-      "Instant, before attack or Spell damage is applied: prevent the entire hit to one friendly unit, then deal half the prevented damage (rounded up) to another chosen living unit, friend or foe.",
+      "Instant, before attack or Spell damage: prevent the entire hit to a friendly unit. Deal half the prevented damage (rounded up) to another living friendly unit.",
       { type: "REDIRECT_PENDING_DAMAGE" },
       "instant",
       { type: "any-unit" },
@@ -7365,7 +7365,7 @@ function mgqMadScienceSpecialty(): CardLibrary[string] {
       "hero-specialty",
       "map",
       "promestein",
-      "Remove one bronze Few army card, then give one silver army card +1 permanent Attack.",
+      "Remove a bronze Few army card. Give a silver army card +1 permanent Attack; each silver card can be buffed only once.",
     ],
     target: { type: "none" },
     effect: { type: "MGQ_MAD_SCIENCE", attackBonus: 1 },

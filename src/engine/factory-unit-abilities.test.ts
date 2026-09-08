@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { applyAction, createInitialGameState, getLegalActions, tokenDefenseDelta } from "./index";
+import { applyAction, createInitialGameState, getLegalActions, makeCombatUnitFromArmy, tokenDefenseDelta } from "./index";
 import { effectiveInitiative, makeActiveEffect } from "./active-effects";
 import { applyCombatStartUnitAbilities, maybeOpenBountyHunterMarkStartChoice } from "./adventure-reducer";
 import { NEUTRAL_PLAYER_ID } from "./state";
@@ -758,6 +758,46 @@ describe("Factory Bounty Hunters — Mark", () => {
   it("a Pack Bounty Hunter deals +2 into a Marked unit (7)", () => {
     const marked = bountyHunterShot(["bounty-hunter-mark-2"], true);
     expect(marked.combat!.units.unit_p2_skeletons.damage).toBe(7);
+  });
+
+  it("a real recruited Few card retains Mark and deals +1 through combat construction", () => {
+    const state = createInitialGameState("factory-bounty-real-army-card");
+    const built = makeCombatUnitFromArmy(
+      { id: "army_bounty", unitDefId: "factory.gunslingers", side: "few" },
+      "p1",
+      "unit_p1_marksmen",
+      1,
+      state.ruleset
+    );
+    expect(built).not.toBeNull();
+    Object.assign(state.combat!.units.unit_p1_marksmen, built);
+    Object.assign(state.combat!.units.unit_p2_skeletons, {
+      defense: 0,
+      defenseToken: false,
+      maxHealth: 30,
+      damage: 0,
+      marked: true,
+      abilities: [],
+      position: 13
+    });
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    script(state, [0, 0, 0, 0]);
+    setActive(state, "p1", "unit_p1_marksmen");
+
+    const resolved = settle(applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_marksmen",
+      defenderId: "unit_p2_skeletons"
+    }));
+
+    expect(resolved.combat!.units.unit_p2_skeletons.damage).toBe(6);
+    expect(resolved.eventLog.some((event) =>
+      event.type === "UNIT_ABILITY_TRIGGERED" &&
+      event.abilityId === "bounty-hunter-mark-1" &&
+      event.message.includes("+1 Attack against Marked")
+    )).toBe(true);
   });
 
   it("CONTROL: an attacker WITHOUT the Mark ability gets no bonus vs a Marked unit", () => {

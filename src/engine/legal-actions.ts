@@ -570,7 +570,7 @@ export function standingSpellPower(
   if (card.kind === "spell") {
     bonus += equipmentFirstSpellPowerBonus(state, playerId);
   }
-  return bonus;
+  return bonus - (card.kind === "spell" ? enemyWaterSpellPowerReduction(state, playerId, powerCard) : 0);
 }
 
 /**
@@ -1613,6 +1613,7 @@ export function getLegalMoveDestinations(
   unit: CombatUnitState,
   state?: GameState,
 ): number[] {
+  if (unit.elementalVeterancy?.nestOwnerId || (unit.elementalVeterancy?.solidifyUntilRound !== undefined && unit.elementalVeterancy.solidifyUntilRound === combat.round)) return [];
   if (
     !isUnitAlive(unit) ||
     unit.activatedThisRound ||
@@ -1779,7 +1780,7 @@ export function getActivationStep(
   const initiativeOf = (unit: CombatUnitState) =>
     effectiveInitiative(unit, activeEffects, combat);
   return selectActivationStep(
-    Object.values(combat.units),
+    Object.values(combat.units).filter(unit => !unit.elementalVeterancy?.nestOwnerId),
     combat.attackerPlayerId,
     initiativeOf,
     (unit) => unit.activatedThisRound,
@@ -2352,7 +2353,7 @@ function getFriendlyTargets(
     .map<TargetRef>((unit) => ({ type: "unit", unitId: unit.id }));
 }
 
-function getTargetsForCard(
+export function getTargetsForCard(
   state: GameState,
   playerId: PlayerId,
   cardId: string,
@@ -5543,7 +5544,9 @@ function isMapPlayableEffect(
         coreUnitDefinitions[unit.unitDefId]?.tier === "bronze",
     );
     const hasSilver = army.some(
-      (unit) => coreUnitDefinitions[unit.unitDefId]?.tier === "silver",
+      (unit) =>
+        coreUnitDefinitions[unit.unitDefId]?.tier === "silver" &&
+        !unit.mgqMadScienceBuffed,
     );
     return Boolean(state.adventure && hasBronzeFew && hasSilver);
   }
@@ -10437,7 +10440,12 @@ export function damageTransferReactions(
     for (const cardId of new Set(owner.hand)) {
       if (cards[cardId]?.effect.type !== "REDIRECT_PENDING_DAMAGE") continue;
       for (const other of Object.values(combat.units)) {
-        if (other.id === unit.id || !isUnitAlive(other)) continue;
+        if (
+          other.id === unit.id ||
+          other.controllerId !== owner.id ||
+          !isUnitAlive(other)
+        )
+          continue;
         (result[owner.id] ??= []).push({
           label: `${cards[cardId].name}: protect ${unit.cardName}, redirect half to ${other.cardName}`,
           action: {
@@ -10455,6 +10463,37 @@ export function damageTransferReactions(
 }
 
 export function getLegalReactionsForTrigger(
+  state: GameState,
+  triggerEvent: GameEvent,
+  baseCards: CardLibrary = cardLibrary,
+): Record<PlayerId, LegalAction[]> {
+  const result = getLegalReactionsForTriggerCore(state, triggerEvent, baseCards);
+  if (!state.combat || spellAbilitiesSuppressed(state)) return result;
+  for (const unit of Object.values(state.combat.units)) {
+    const saved = unit.elementalVeterancy?.echoSpells;
+    const player = state.players[unit.controllerId];
+    if (!saved?.length || !player || !isUnitAlive(unit) || !getUnitAbilityDefinitions(unit).some(a => a.effect?.type === "ELEMENTAL_VETERANCY" && a.effect.mechanic === "spell-copy")) continue;
+    for (const cardId of new Set(saved)) {
+      // Read-only offer simulation: the real card remains in the enemy's zone.
+      const virtual = { ...state, players: { ...state.players, [player.id]: { ...player,
+        hand: [...player.hand.filter(id => id !== cardId), cardId],
+        combatStats: { ...player.combatStats, spellsCastThisRound: 0 },
+      } } };
+      const offers = getLegalReactionsForTriggerCore(virtual, triggerEvent, baseCards)[player.id] ?? [];
+      for (const offer of offers) {
+        const action = offer.action;
+        if (action.type !== "PLAY_REACTION" || action.cardId !== cardId || action.asPowerBoost || action.drawOnly || action.utilityOnly || action.mode === "expert" || action.costCardIds?.length || action.fromSpellDeck || action.fromScroll || action.fromSpellBook) continue;
+        const card = baseCards[cardId];
+        const option = card?.effect.type === "CHOOSE_ONE" && action.optionIndex !== undefined ? card.effect.options[action.optionIndex] : undefined;
+        if ((option?.cost?.powerCost ?? 0) > 0) continue;
+        (result[player.id] ??= []).push({ ...offer, label: `Spell Echo: ${baseCards[cardId]?.name ?? cardId} (free, Power 0)`, action: { ...action, elementalEchoUnitId: unit.id } });
+      }
+    }
+  }
+  return result;
+}
+
+function getLegalReactionsForTriggerCore(
   state: GameState,
   triggerEvent: GameEvent,
   baseCards: CardLibrary = cardLibrary,
@@ -12741,7 +12780,7 @@ export function resolvedSpellPowerForStackItem(
   const doubled = base * getSchoolPowerMultiplier(state, playerId, powerCard);
   const drained = Math.max(
     0,
-    doubled - enemySpellPowerReductionFor(state, playerId),
+    doubled - enemySpellPowerReductionFor(state, playerId) - enemyWaterSpellPowerReduction(state, playerId, powerCard),
   );
   // Polish Set Artifacts — Pendant of Reflection: an enemy holding the set drains
   // this cast by 1 SP, but never below the spell's WEAKEST useful effect (the
@@ -12800,6 +12839,11 @@ function astrologersSchoolPowerBonusFor(
  * a minimum of 0); Orb of Vulnerability suppresses the drain. Mirrors the
  * reducer's enemySpellPowerReduction so the readout/gate match the cast.
  */
+function enemyWaterSpellPowerReduction(state: GameState, casterId: PlayerId, card: CardDefinition | undefined): number {
+  if (!card?.spellSchools?.includes("water") || spellAbilitiesSuppressed(state)) return 0;
+  return Object.values(state.combat?.units ?? {}).filter(unit => unit.controllerId !== casterId && isUnitAlive(unit) && getUnitAbilityDefinitions(unit).some(a => a.effect?.type === "ELEMENTAL_VETERANCY" && a.effect.mechanic === "water-damper")).length;
+}
+
 function enemySpellPowerReductionFor(
   state: GameState,
   casterPlayerId: PlayerId,

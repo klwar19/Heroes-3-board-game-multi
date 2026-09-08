@@ -1844,6 +1844,15 @@ export function BattlefieldBoard({
                   Berserk
                 </span>
               ) : null}
+              {unit.marked ? (
+                <span
+                  aria-label="Marked by Bounty Hunters"
+                  className="bountyHunterMarkBadge"
+                  title="Mark token — Bounty Hunters gain their printed +1/+2 Attack when attacking this unit."
+                >
+                  MARK
+                </span>
+              ) : null}
               {isFlipping ? <span className="flipBadge">Flipped to Few</span> : null}
               {isClone ? (
                 <span className="cloneBadge" title="Clone Token — a 1-Health copy; destroyed by any damage, by being attacked, or if its original leaves.">
@@ -2492,6 +2501,11 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
         <div className={`inspectRetaliation ${retaliation}`} title={`Retaliation ${retaliationText[retaliation]}`}>
           <Swords aria-hidden="true" size={12} /> Retaliation: <b>{retaliation === "used" ? "spent" : retaliation}</b>
         </div>
+        {unit.marked ? (
+          <div className="inspectMarked" role="status">
+            Mark token · Bounty Hunters gain their printed Attack bonus against this unit
+          </div>
+        ) : null}
         {/* Unit Experience / Neutral Rank-Up (optional rules): one compact
             veterancy row for ANY inspected card — own, enemy PvP or a neutral
             guard. `unitExperience` / `unitRank` are PUBLIC (player-view never

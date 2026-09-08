@@ -1,4 +1,6 @@
 import { cardLibrary } from "@/data/cards/library";
+import { elementalVeterancy, elementalAttackBonus, elementalDamageCeiling, elementalActivation, elementalMovement, elementalAfterAttack, elementalFinishActivation, openElementalChoice, resolveElementalChoice, queueElementalChoice, noteElementalSpellCast } from "./elemental-veterancy";
+import { getTargetsForCard } from "./legal-actions";
 import { parallelStateForPlayer, settleParallelCombatContext } from "./parallel-combats";
 import { REROLL_REACTION_ARTIFACT_IDS } from "@/data/cards/artifacts";
 import { LUCKY_E_SPECIALTY_SOURCES } from "@/data/cards/adventure";
@@ -627,6 +629,7 @@ import {
   getAttackBonusVsTargetTokens,
   getAttackBonusVsDefenderName,
   getAttackBonusVsMarked,
+  getCombatStartMark,
   getAttackBonusVsRetaliatedTarget,
   getVanitasAttackBonus,
   getDamagedNonAdjacentAttackBonus,
@@ -2818,7 +2821,10 @@ function noteSpellCast(
   player: PlayerState,
   countsTowardLimit = true,
   inFlightCardIds: readonly CardId[] = [],
+  elementalSpellCardId?: string,
+  allowElementalCopy = true,
 ): void {
+  if (elementalSpellCardId) noteElementalSpellCast(state, player.id, elementalSpellCardId, allowElementalCopy);
   // Polish Balance Pack Intelligence (one-shot): the reprinted card grants
   // EXACTLY ONE free cast at the start of the Combat. Consume the effect on the
   // first Spell the holder casts, so a second Spell needs the ordinary
@@ -3362,6 +3368,7 @@ function totalSpellDamageReduction(
     return 0;
   }
   let total = getSpellDamageReduction(target);
+  if (target.defenseToken && elementalVeterancy(target, "frozen-guard")) total += 2;
 
   // Polish Set Artifacts — Power of the Dragon Father tiers 4 (+7): "all of your
   // units suffer 1 DM less from Spells", stacking to 2 at 7 pieces. Folded at
@@ -3514,12 +3521,25 @@ function bronRerollsAbilityRoll(
  * Dwarves' owner is hoping for: shrugging off a HOSTILE card, or letting their
  * own FRIENDLY card take hold.
  */
+function negatesSpriteSpell(state: GameState, target: TargetRef | undefined): boolean {
+  const combat = state.combat;
+  const unit = target?.type === "unit" ? combat?.units[target.unitId] : undefined;
+  if (!combat || !unit || !isUnitAlive(unit) || spellAbilitiesSuppressed(state) || !elementalVeterancy(unit, "spell-block")) return false;
+  const window = { minRoll: -1, maxRoll: 0 };
+  const result = rollAbilityCandidate(state, combat, unit.controllerId, 1, window, false);
+  const success = abilityRollSucceeds(result.rolls, window);
+  appendEvent(state, { type: "UNIT_ABILITY_TRIGGERED", unitId: unit.id, targetUnitId: unit.id, abilityId: success ? "veteran-sprite-spell-block" : "veteran-sprite-spell-block-roll", message: `${unit.cardName} rolls ${result.roll}: ${success ? "blocks the Spell" : "Spell passes"}.`, dice: { rolls: result.rolls, success, label: "Spell Block" } });
+  return success;
+}
+
 function negatesCardOnDwarfRoll(
   state: GameState,
   target: TargetRef | undefined,
   cardName: string,
   casterId: PlayerId,
+  isSpell = false,
 ): boolean {
+  if (isSpell && negatesSpriteSpell(state, target)) return true;
   const combat = state.combat;
   if (!combat || !target || target.type !== "unit") {
     return false;
@@ -4341,12 +4361,14 @@ function getAttackDamagePreview(
   // is ignored; "+1"-face abilities still fire (that is the separate
   // IGNORE_ATTACK_DIE_RESULT arm).
   ignorePlusOneDie = false,
+  state?: GameState,
 ): {
   attackValue: number;
   defenseValue: number;
   damage: number;
   dieAttackBonus: number;
   dieDefenseBonus: number;
+  damageBeforeDeferral: number;
 } {
   // Attack-die-face conditioned modifiers, resolved here so the actual hit and
   // the lethal-save preview always agree: Dread Knights' "Death Blow" adds to
@@ -4406,9 +4428,11 @@ function getAttackDamagePreview(
   // not the defense. The commander's Might dice already rode into attackValue
   // above (they are extra attack dice, not a post-defense bonus).
   const fuyukiFixedDamage = getFuyukiCasterFixedDamage(attacker);
-  const rawDamage =
+  let rawDamage =
     fuyukiFixedDamage ??
     Math.max(0, Math.max(0, attackValue - defenseValue) - damageReduction);
+  if (state && !isRetaliation && elementalVeterancy(attacker, "speed-damage") && effectiveInitiative(attacker, state.activeEffects, state.combat) > effectiveInitiative(defender, state.activeEffects, state.combat)) rawDamage += 1;
+  if (defender.elementalVeterancy?.solidifyUntilRound !== undefined) rawDamage = Math.max(0, rawDamage - 1);
   // Cove Nix (Pack): "cannot take more than N damage from a single attack." The
   // cap clamps the resolved damage of this one attack and is reflected in the
   // lethal-save preview too (both go through here), so a capped blow correctly
@@ -4425,10 +4449,13 @@ function getAttackDamagePreview(
       ? unitCapped
       : Math.min(unitCapped, cardDamageCap);
 
+  const damageBeforeDeferral = elementalDamageCeiling(defender, damage);
+  const deferred = attacker.controllerId !== defender.controllerId && elementalVeterancy(defender, "delay-damage") && !defender.elementalVeterancy?.delayUsed ? Math.min(2, damageBeforeDeferral) : 0;
   return {
     attackValue: fuyukiFixedDamage ?? attackValue,
     defenseValue: fuyukiFixedDamage === undefined ? defenseValue : 0,
-    damage,
+    damage: damageBeforeDeferral - deferred,
+    damageBeforeDeferral,
     dieAttackBonus,
     dieDefenseBonus,
   };
@@ -4555,10 +4582,11 @@ function applyAttackDamageFromCandidate(
     halveAttack,
     dieMultiplierSkipsNegative,
     ignorePlusOneDie,
+    state,
   );
   const { attackValue, defenseValue, dieAttackBonus, dieDefenseBonus } =
     preview;
-  let damage = preview.damage;
+  let damage = preview.damageBeforeDeferral;
   if (damage > 0) {
     damage = Math.max(
       0,
@@ -4722,6 +4750,8 @@ function applyAttackDamageFromCandidate(
   // Alamar's Resurrection: if this blow would reduce the defender to 0 HP and
   // its grade is within reach, the whole attack is cancelled — no damage, and
   // (handled by the caller) no Retaliation Attack either.
+  const deferred = damage > 0 && attacker.controllerId !== defender.controllerId && elementalVeterancy(defender, "delay-damage") && !defender.elementalVeterancy?.delayUsed ? Math.min(2, damage) : 0;
+  damage -= deferred;
   if (
     lethalCancel &&
     damage > 0 &&
@@ -4769,6 +4799,11 @@ function applyAttackDamageFromCandidate(
       cancelled: true,
       defeatedSideOrLayer: false,
     };
+  }
+
+  if (deferred > 0) {
+    Object.assign(defender.elementalVeterancy ??= {}, { delayUsed: true, deferredDamage: deferred, deferredRound: state.combat.round });
+    appendEvent(state, { type: "UNIT_ABILITY_TRIGGERED", unitId: defender.id, targetUnitId: defender.id, abilityId: "veteran-energy-delay", message: `${defender.cardName} shifts ${deferred} damage to round end.` });
   }
 
   // Remember whether the defender was on the board before this hit, so Cove
@@ -5610,6 +5645,7 @@ function getAttackStackDetails(
       commanderPositionalAttackBonus +
       targetStatusAttackBonus +
       slowerTargetAttackBonus +
+      elementalAttackBonus(state, attacker, defender, isRetaliation) +
       fleetFormationAttackBonus +
       bestFriendsAttackBonus +
       astrologersRoundAttackBonus +
@@ -5642,6 +5678,7 @@ function getAttackStackDetails(
       // into every recompute — arithmetically identical to -1 on the die result.
       (stackItem.modifiers.moraleRollPenalty ?? 0),
     defenseBonus:
+      (attackKind === "ranged" && elementalVeterancy(defender, "ranged-defense") ? 1 : 0) +
       defenseBonusBeforeAbility -
       defenseReductionAmount +
       retaliationDefenseBonus +
@@ -6604,6 +6641,11 @@ function concludeAttackerActivation(
   attacker: CombatUnitState,
 ): void {
   const combat = state.combat;
+  if (isUnitAlive(attacker) && attacker.elementalVeterancy?.solidifyCanMove) {
+    state.phase = "combat";
+    state.priorityPlayerId = null;
+    return;
+  }
 
   // Nagato (Azur Lane) "Big Seven Bombardment": the ranged flip lasts EXACTLY
   // this activation. Dropping it here (as well as at the next setActiveUnit)
@@ -7407,6 +7449,9 @@ function resolveDefendBonus(
   if (!hasShield || details.ignoreDefense) {
     return null;
   }
+  if (details.defender.defenseToken && elementalVeterancy(details.defender, "frozen-guard")) {
+    return { roll: null, bonus: 1 + getDefendBonus(details.defender) };
+  }
   const combat = state.combat;
   if (!combat) {
     return null;
@@ -7900,6 +7945,7 @@ function finishResolvedAttack(
       details.halveAttack,
       details.dieMultiplierSkipsNegative,
       details.ignorePlusOneDie,
+      state,
     );
     const stackLayerOnly = armyStacksWouldAbsorbHit(
       state,
@@ -7969,6 +8015,7 @@ function finishResolvedAttack(
         details.halveAttack,
         details.dieMultiplierSkipsNegative,
         details.ignorePlusOneDie,
+        state,
       );
       if (
         preview.damage > 0 &&
@@ -8047,6 +8094,7 @@ function finishResolvedAttack(
         details.halveAttack,
         details.dieMultiplierSkipsNegative,
         details.ignorePlusOneDie,
+        state,
       );
       return (
         preview.damage > 0 &&
@@ -8077,6 +8125,18 @@ function finishResolvedAttack(
     ? getDevourAbility(details.attacker, details.defender)
     : null;
   const devourTargetVariant = details.defender.variant;
+  if (getAttackBonusVsMarked(details.attacker, details.defender) > 0) {
+    const mark = getCombatStartMark(details.attacker);
+    if (mark) {
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: details.attacker.id,
+        abilityId: mark.abilityId,
+        targetUnitId: details.defender.id,
+        message: `${details.attacker.cardName} gains +${mark.attackBonus} Attack against Marked ${details.defender.cardName}.`,
+      });
+    }
+  }
   for (const teaParty of details.teaPartyDefenseSources) {
     teaParty.source.teaPartyOrderUsedThisCombat = true;
     appendEvent(state, {
@@ -8404,6 +8464,7 @@ function finishResolvedAttack(
   );
   // Vampires: drain life back to themselves after their own attack.
   applyOnAttackSelfHeal(state, details.attacker, details.isRetaliation);
+  if (!details.isRetaliation) elementalAfterAttack(state, details.attacker, details.defender, attackResult.damage);
   // Heavenly Demon Palace "Blood Siphon": heal 1 after its OWN attack DEALS
   // damage (a fully-soaked 0-damage attack heals nothing — the distinction from
   // the Vampire above). Never on a Retaliation Attack.
@@ -10290,6 +10351,46 @@ function openFlatDamageFollowUps(
 
   return false;
 }
+
+const elementalHooks = {
+  damage: (...args: Parameters<typeof applyFlatAbilityDamage>) => {
+    applyFlatAbilityDamage(...args);
+    finishCombatIfNeeded(args[0]);
+  }, chooser: combatUnitDecisionOwnerId,
+  targets: (state: GameState, unit: CombatUnitState, cardId: string) => {
+    const cards = balanceCardLibrary(state, cardLibrary);
+    const card = cards[cardId];
+    if (card?.effect.type !== "CHOOSE_ONE") return getTargetsForCard(state, unit.controllerId, cardId, cards).map(target => ({ target }));
+    const choices: Array<{ target?: TargetRef; optionIndex?: number; label?: string; saveEcho?: boolean }> = [];
+    for (const [optionIndex, option] of card.effect.options.entries()) {
+      if (option.trigger || option.mapOnly || !["CREATE_INITIATIVE_BUFF", "CREATE_ATTACK_BUFF", "CREATE_DEFENSE_BUFF"].includes(option.effect.type)) continue;
+      for (const target of getTargetsForCard(state, unit.controllerId, cardId, cards, option.target)) choices.push({ target, optionIndex, label: `${option.label}: ${target.type === "unit" ? state.combat?.units[target.unitId]?.cardName : target.type}` });
+    }
+    if (card.effect.options.some(option => option.trigger)) choices.push({ saveEcho: true, label: "Save this copy for its normal reaction timing" });
+    return choices;
+  },
+  copyBolt: (state: GameState, unit: CombatUnitState, targetId: string, abilityId: string, amount: number) => {
+    const target = state.combat?.units[targetId];
+    if (target) applyActivationDamageSpell(state, unit, target, { abilityId, abilityName: abilityId === "veteran-ice-bolt" ? "Ice Bolt" : "Faerie Bolt", amount }, true);
+  },
+  copy: (state: GameState, unit: CombatUnitState, cardId: string, target: TargetRef, optionIndex?: number) => {
+    const item = makeStackItem(state, { type: "CAST_SPELL", playerId: unit.controllerId, cardId, target, optionIndex });
+    item.modifiers.spellPowerBaseZero = true;
+    item.modifiers.scrollLocked = true;
+    appendEvent(state, { type: "SPELL_CAST_STARTED", playerId: unit.controllerId, spellCardId: cardId, target, power: 0 });
+    noteElementalSpellCast(state, unit.controllerId, cardId, false);
+    state.stack.push(item);
+    resolveTopStackCore(state, balanceCardLibrary(state, cardLibrary));
+  },
+  dispelAttack: (state: GameState, attack: Extract<GameAction, { type: "ATTACK_UNIT" | "MOVE_AND_ATTACK_UNIT" }>, dispel: boolean) => {
+    const unit = state.combat!.units[attack.attackerId];
+    if (dispel) {
+      (unit.elementalVeterancy ??= {}).dispelUsed = true;
+      removeOneEffectFromTarget(state, { type: "unit", unitId: unit.id, controllerId: unit.controllerId }, { type: "unit", unitId: attack.defenderId });
+    }
+    declareAttack(state, attack, cardLibrary, false, false, true, dispel ? -2 : 0);
+  },
+};
 
 function applyFlatAbilityDamage(
   state: GameState,
@@ -13202,6 +13303,7 @@ function applyActivationStartAbilities(
   if (!combat) {
     return;
   }
+  elementalActivation(state, unit);
 
   const artifactPulse = commanderArtifactBonusesForUnit(
     state,
@@ -13428,6 +13530,14 @@ function advanceActiveUnit(state: GameState): void {
   if (!combat) {
     return;
   }
+  const finished = combat.units[combat.activeUnitId ?? ""];
+  if (finished?.activatedThisRound) elementalFinishActivation(state, finished);
+  if (combat.elementalChoices?.length && (state.stack.length || state.pendingChoice || state.reactionWindow)) {
+    combat.elementalAwaitingAdvance = true;
+    return;
+  }
+  combat.elementalAwaitingAdvance = false;
+  if (openElementalChoice(state, elementalHooks)) return;
 
   let step = getActivationStep(combat, state.activeEffects);
 
@@ -13908,7 +14018,13 @@ function applyActivationDamageSpell(
   unit: CombatUnitState,
   target: CombatUnitState,
   ability: { abilityId: string; abilityName: string; amount: number },
+  copied = false,
 ): void {
+  if (!copied) for (const observer of Object.values(state.combat?.units ?? {})) {
+    if (isUnitAlive(observer) && observer.controllerId !== unit.controllerId && elementalVeterancy(observer, "spell-copy")) {
+      queueElementalChoice(state, { kind: "copy-bolt", unitId: observer.id, abilityId: ability.abilityId, amount: ability.amount });
+    }
+  }
   // The Faerie Bolt is a magic ATTACK — "a spell that does not count towards
   // your spell limit" — so it behaves like a real cast for both reduction AND
   // immunity (USER RULING 2026-08-20: "its magic attack, and can be reduced or
@@ -13937,7 +14053,8 @@ function applyActivationDamageSpell(
     });
     return;
   }
-  const boltSchools: readonly SpellSchool[] = ["any"];
+  if (negatesSpriteSpell(state, { type: "unit", unitId: target.id })) return;
+  const boltSchools: readonly SpellSchool[] = ability.abilityId === "veteran-ice-bolt" ? ["water"] : ["any"];
   if (
     unitImmuneToSpellSchoolsByEffect(state, target, boltSchools) ||
     (!spellAbilitiesSuppressed(state) &&
@@ -15172,7 +15289,7 @@ function maybeOpenPreActivationWindow(
 function resetCombatRound(combat: CombatState): void {
   combat.waitPhase = false;
   for (const unit of Object.values(combat.units)) {
-    unit.activatedThisRound = false;
+    unit.activatedThisRound = Boolean(unit.elementalVeterancy?.nestOwnerId);
     unit.activationInitiative = undefined;
     unit.movedThisActivation = false;
     unit.attackedThisActivation = false;
@@ -15503,6 +15620,7 @@ function shouldRetaliate(
   state?: GameState,
 ): boolean {
   return (
+    !defender.elementalVeterancy?.nestOwnerId &&
     isUnitAlive(attacker) &&
     isUnitAlive(defender) &&
     attackKind === "melee" &&
@@ -16629,6 +16747,7 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
         stackItem.action.target,
         card?.name ?? "the spell",
         stackItem.action.playerId,
+        true,
       )
     ) {
       appendEvent(state, {
@@ -18778,6 +18897,7 @@ function performSpellCast(
       !action.fromScroll &&
       !action.eagleEyeCopy,
     castInFlightCardIds(state, action),
+    action.cardId,
   );
 
   const stackItem = makeStackItem(state, action);
@@ -19895,13 +20015,16 @@ function applyReactionPlayCore(
     interferenceMode?: "damage" | "power";
   },
   cards: CardLibrary,
+  elementalEcho = false,
 ): { windowEnded: boolean } {
+  // Reuse every existing Scroll Power-0 gate without consuming a physical Scroll.
+  if (elementalEcho) play = { ...play, fromScroll: "elemental-echo" };
   if (!state.reactionWindow) {
     throw new Error("No reaction window is open.");
   }
 
   // Garrison / Secondary-Hero hand lock (same backstop as playCard).
-  if (isHandLockedInCombat(state, playerId)) {
+  if (!elementalEcho && isHandLockedInCombat(state, playerId)) {
     throw new Error(
       "You cannot use your Deck during this Combat (no Main Hero present).",
     );
@@ -20192,7 +20315,9 @@ function applyReactionPlayCore(
     }
   }
 
-  if (play.fromScroll) {
+  if (elementalEcho) {
+    // A saved ability copy spends no card, Scroll or crown.
+  } else if (play.fromScroll) {
     if (!consumeScrollSpell(state, playerId, play.fromScroll, play.cardId)) {
       throw new Error("That spell is not in the named Spell Scroll.");
     }
@@ -20397,6 +20522,8 @@ function applyReactionPlayCore(
       player,
       !play.tarnumReturn && !play.fromScroll && !spellDeckCastIsFree,
       reactionInFlightCardIds,
+      play.cardId,
+      !elementalEcho,
     );
   }
 
@@ -21468,6 +21595,7 @@ function applyReactionPlayCore(
         { type: "unit", unitId: affectedUnit.id },
         card.name,
         playerId,
+        card.kind === "spell",
       )
     ) {
       stackItem.modifiers.playedCardIds.push(play.cardId);
@@ -21963,6 +22091,7 @@ function applyReactionPlayCore(
         { type: "unit", unitId: blessTarget.id },
         card.name,
         playerId,
+        card.kind === "spell",
       )
     ) {
       stackItem.modifiers.playedCardIds.push(play.cardId);
@@ -22065,7 +22194,7 @@ function applyReactionPlayCore(
       type: "unit",
       unitId: stackItem.action.defenderId,
     };
-    if (!negatesCardOnDwarfRoll(state, defenderRef, card.name, playerId)) {
+    if (!negatesCardOnDwarfRoll(state, defenderRef, card.name, playerId, card.kind === "spell")) {
       // Adrienne's Fire Magic adds her bonus to a fire Slayer's roll-count Power.
       const slayerSchoolBonus = play.fromScroll
         ? 0
@@ -23032,11 +23161,19 @@ function playReaction(
     }
   }
 
+  if (action.elementalEchoUnitId) {
+    const unit = state.combat?.units[action.elementalEchoUnitId];
+    const saved = unit?.elementalVeterancy?.echoSpells;
+    const index = saved?.indexOf(action.cardId) ?? -1;
+    if (!unit || !isUnitAlive(unit) || unit.controllerId !== action.playerId || !elementalVeterancy(unit, "spell-copy") || index < 0) throw new Error("That saved Spell Echo is not available.");
+    saved!.splice(index, 1);
+  }
   const { windowEnded } = applyReactionPlayCore(
     state,
     action.playerId,
     action,
     cards,
+    Boolean(action.elementalEchoUnitId),
   );
   if (windowEnded) {
     return;
@@ -25219,7 +25356,7 @@ function playCard(
     }
     // This direct-play path records the cast before moving its physical card,
     // so no just-played card is in the discard during the after-cast draw yet.
-    noteSpellCast(state, playerForLimit);
+    noteSpellCast(state, playerForLimit, true, [], action.cardId);
   }
 
   // Old immediate-prompt BINH rule: Necromancy stays in hand until its blocking
@@ -27628,7 +27765,9 @@ function playCard(
         coreUnitDefinitions[unit.unitDefId]?.tier === "bronze",
     );
     const silver = (player?.army ?? []).filter(
-      (unit) => coreUnitDefinitions[unit.unitDefId]?.tier === "silver",
+      (unit) =>
+        coreUnitDefinitions[unit.unitDefId]?.tier === "silver" &&
+        !unit.mgqMadScienceBuffed,
     );
     const pairs = bronzeFew.flatMap((sacrifice) =>
       silver.map((targetUnit) => ({
@@ -31523,6 +31662,8 @@ function adjacentBodyguardFor(
   combat: CombatState,
   defender: CombatUnitState,
 ): { unit: CombatUnitState; abilityId: string } | null {
+  const magma = Object.values(combat.units).find(unit => unit.id !== defender.id && unit.controllerId === defender.controllerId && isUnitAlive(unit) && unit.defenseToken && isAdjacent(unit.position, defender.position) && elementalVeterancy(unit, "bodyguard"));
+  if (magma) return { unit: magma, abilityId: "veteran-magma-guard" };
   return (
     Object.values(combat.units)
       .filter(
@@ -31634,6 +31775,8 @@ function declareAttack(
    *  it is an internal follow-up, not a fresh player attack, so it bypasses the
    *  "already attacked" / faction-cube gate below. */
   isInternalFollowUp = false,
+  elementalChoiceResolved = false,
+  elementalAttackPenalty = 0,
 ): void {
   const combat = state.combat;
   if (!combat) {
@@ -31660,15 +31803,20 @@ function declareAttack(
   ) {
     throw new Error("That unit cannot attack the selected target.");
   }
+  if (!isRetaliation && !abilityAttack && !isInternalFollowUp && !elementalChoiceResolved && elementalVeterancy(attacker, "dispel-attack") && !attacker.elementalVeterancy?.dispelUsed) {
+    queueElementalChoice(state, { kind: "dispel", unitId: attacker.id, abilityId: "veteran-magic-dispel", attack: action });
+    openElementalChoice(state, elementalHooks);
+    return;
+  }
 
   let defender = selectedDefender;
   let resolvedAction = action;
-  // Bodyguard protects only a normal declared attack. It never recursively
-  // hijacks Retaliation or printed follow-up attacks, and spending it happens
-  // at declaration so reaction cards and the attack stack see Masato as the
-  // real defender from the beginning.
-  if (!isRetaliation && !abilityAttack && !isInternalFollowUp) {
-    const bodyguard = adjacentBodyguardFor(combat, selectedDefender);
+  // Magma's defending guard intercepts every attack; Masato's once-round
+  // Bodyguard covers normal declarations only. Redirect once at declaration so
+  // reaction cards see the actual defender without recursively chaining guards.
+  const intercept = adjacentBodyguardFor(combat, selectedDefender);
+  if (intercept?.abilityId === "veteran-magma-guard" || (!isRetaliation && !abilityAttack && !isInternalFollowUp)) {
+    const bodyguard = intercept;
     if (bodyguard) {
       bodyguard.unit.bodyguardInterceptUsedRound = combat.round;
       defender = bodyguard.unit;
@@ -31732,6 +31880,8 @@ function declareAttack(
   }
 
   const stackItem = makeStackItem(state, resolvedAction);
+  stackItem.modifiers.attackBonus += elementalAttackPenalty;
+  if (defender.id !== selectedDefender.id && elementalVeterancy(defender, "bodyguard")) stackItem.modifiers.ignoresRetaliationThisAttack = true;
   // Nagato (Azur Lane) VI: the armed bombardment adds its printed +1 Attack to
   // the shot it enabled. Only the unit's OWN declared attack — a Retaliation
   // Attack is never a bombardment (the arm is dropped when the activation ends).
@@ -31885,6 +32035,7 @@ function moveAndAttackUnit(
     to: finalPosition,
   });
   gainSectQiAfterMove(state, attacker, from, finalPosition);
+  elementalMovement(state, attacker, elementalHooks);
   healCommanderFromArtifactAction(state, attacker, "move");
 
   // A Fire Wall / Land Mine that struck the attacker down, or a Quicksand that
@@ -31913,6 +32064,10 @@ function moveAndAttackUnit(
   }
 
   if (!openMoveTransportChoice(state, attacker, from, action)) {
+    if (openElementalChoice(state, elementalHooks)) {
+      combat.elementalResumeAttack = action;
+      return;
+    }
     declareAttack(state, action, cards);
   }
 }
@@ -32606,6 +32761,7 @@ function moveUnit(
     to: finalPosition,
   });
   gainSectQiAfterMove(state, unit, from, finalPosition);
+  elementalMovement(state, unit, elementalHooks);
   healCommanderFromArtifactAction(state, unit, "move");
 
   // Rune Keeper commander (Rune Ritual, move half): +1 Rune whenever it moves.
@@ -32743,6 +32899,19 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
   }
 
   const finishedRound = state.combat.round;
+  for (const unit of Object.values(state.combat.units)) {
+    const debt = unit.elementalVeterancy;
+    if (!debt?.deferredDamage || debt.deferredRound !== finishedRound || !isUnitAlive(unit)) continue;
+    const amount = debt.deferredDamage;
+    debt.deferredDamage = 0;
+    debt.payingDebt = true;
+    unit.damage += amount;
+    appendEvent(state, { type: "DAMAGE_ASSIGNED", source: { type: "unit", unitId: unit.id, controllerId: unit.controllerId }, target: { type: "unit", unitId: unit.id }, amount, damageKind: "effect" });
+    debt.payingDebt = false;
+    markUnitRemovedIfNeeded(state, unit);
+  }
+  state.combat.elementalLinks = [];
+  if (finishCombatIfNeeded(state)) return;
   expireHeroGradeFamiliars(state, finishedRound);
   state.combat.round += 1;
   resetCombatRound(state.combat);
@@ -33448,6 +33617,7 @@ function executeNeutralActivation(
   if (!combat) {
     return;
   }
+  if (openElementalChoice(state, elementalHooks)) return;
 
   // A neutral's "[activation]" choice ability fires once, before it acts:
   // Enchanters take +1 Attack, Faerie Dragons zap their normal target (and may
@@ -33582,6 +33752,8 @@ function executeNeutralActivation(
       from,
       to: walked.finalPosition,
     });
+    elementalMovement(state, unit, elementalHooks);
+    if (openElementalChoice(state, elementalHooks)) return;
     appendExpiredEffectEvents(
       state,
       expireEffectsForActivationEnd(state, unit.id),
@@ -33618,6 +33790,11 @@ function executeNeutralActivation(
       from,
       to: walked.finalPosition,
     });
+    elementalMovement(state, unit, elementalHooks);
+    if (openElementalChoice(state, elementalHooks)) {
+      combat.elementalResumeAttack = { type: "ATTACK_UNIT", playerId: unit.controllerId, attackerId: unit.id, defenderId: intent.defenderId };
+      return;
+    }
     // A Fire Wall / Land Mine that felled the guard, or a Quicksand that stopped
     // it short, ends the activation with no attack — it never reaches its quarry.
     if (
@@ -35183,6 +35360,22 @@ function applyActionInContext(
             resolveExplosivePrankChoice(nextState, action);
           } else if (
             nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+            nextState.pendingChoice.context === "elemental-veterancy"
+          ) {
+            resolveElementalChoice(nextState, action, elementalHooks);
+            if (!openElementalChoice(nextState, elementalHooks) && !nextState.pendingChoice && !nextState.reactionWindow && !nextState.stack.length) {
+              const resume = nextState.combat?.elementalResumeAttack;
+              if (resume) {
+                delete nextState.combat!.elementalResumeAttack;
+                const defender = nextState.combat!.units[resume.defenderId];
+                if (defender && isUnitAlive(defender)) declareAttack(nextState, resume, cards);
+              } else {
+                const active = nextState.combat?.units[nextState.combat.activeUnitId ?? ""];
+                if (active?.activatedThisRound) advanceActiveUnit(nextState);
+              }
+            }
+          } else if (
+            nextState.pendingChoice?.type === "OPTION_CHOICE" &&
             nextState.pendingChoice.context === "kivotos-key-authority"
           ) {
             resolveKeyAuthorityChoice(nextState, action);
@@ -35406,6 +35599,8 @@ function applyActionInContext(
     // Once everything else has settled, surface a player-controlled unit's
     // "[activation]" choice (Enchanters' heal-or-buff, Faerie Dragons' Ice Bolt)
     // before it acts. Runs after the neutral pump and war-machine round-starts.
+    openElementalChoice(nextState, elementalHooks);
+    if (nextState.combat?.elementalAwaitingAdvance && !nextState.pendingChoice && !nextState.reactionWindow && !nextState.stack.length) advanceActiveUnit(nextState);
     maybeOpenPlayerActivationChoice(nextState);
 
     // Polish Banks Auto Combat (house rule, USER RULE 2026-09-03): the same

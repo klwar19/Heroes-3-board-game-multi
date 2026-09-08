@@ -1285,17 +1285,11 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
   // scanned it is recorded as the NEUTRAL side — the neutral-monster stat block a
   // creature uses when it guards a field (distinct stats/ability from Few/Pack).
   //
-  // ENGINE-WIRED (a test fails if removed — factory-content.test.ts /
-  // factory-combat.test.ts): Halflings twin-dice (attack-roll-advantage, both
-  // faction sides); the Automaton Pack's no-retaliation (ignores-retaliation);
-  // the neutral Automaton's on-death 1-damage Detonate (automaton-detonate-1,
-  // reusing the wired ON_REMOVAL_DAMAGE_ADJACENT effect).
-  //
-  // NOT-YET-WIRED — HONEST display-only (abilities: [], real card text only, each
-  // called out per side; each to be wired next with its own mutation test):
-  // Mechanics' reach line-attack + Repair, Armadillos' initiative-amplify, the
-  // faction Automaton's cube-scaled Detonate, Sandworms' extra-attack, Bounty
-  // Hunters' Mark, Couatls' invulnerability, Dreadnoughts' splash-allocation.
+  // ENGINE-WIRED (mutation/control tests fail if any hook is removed — see the
+  // factory-*ability test suites): every printed ability below, including
+  // Mechanics' line attack/Repair, Armadillo momentum, Automaton Detonate,
+  // Sandworm extra attacks, Bounty Hunter Mark/Preemptive Shot, Couatl
+  // invulnerability, and Dreadnought splash allocation.
   // The prior definitions here were PC-derived guesses ("no board game cards
   // exist yet") whose abilities were FABRICATED (Halfling ignore-penalties,
   // Armadillo Curl +2 Defense, Gunslinger double-shot, Dreadnought no-retaliation)
@@ -1344,7 +1338,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     wikiUrl: "https://heroes.thelazy.net/index.php/Mechanic",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
-      credit: "Stats/cost/ability from the physical Factory unit card (Few/Pack + single-cost Neutral scan). Reach line-attack and Repair NOT yet wired — display-only.",
+      credit: "Stats/cost/ability from the physical Factory unit card (Few/Pack + single-cost Neutral scan). Reach line-attack and Repair are engine-wired with mutation/control coverage.",
       url: "https://heroes.thelazy.net/index.php/Mechanic"
     }
   },
@@ -1364,7 +1358,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     wikiUrl: "https://heroes.thelazy.net/index.php/Armadillo",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Factory Expansion)",
-      credit: "Stats/cost from the physical Factory unit card (Few/Pack + single-cost Neutral scan). Few/Neutral have no ability; Pack initiative-amplify NOT yet wired — display-only.",
+      credit: "Stats/cost from the physical Factory unit card (Few/Pack + single-cost Neutral scan). Few/Neutral have no ability; Pack initiative-amplify is engine-wired with mutation/control coverage.",
       url: "https://heroes.thelazy.net/index.php/Armadillo"
     }
   },

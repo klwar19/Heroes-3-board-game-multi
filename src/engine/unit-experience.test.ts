@@ -214,7 +214,7 @@ describe("Unit Experience — rank math & either/or rewards", () => {
     const flatDefenseIds = new Set([
       "stronghold.wolf_raiders", "fuyuki.riders", "azure_breeze.spirit_crane", "hidden_leaf.anbu",
       "azur_lane.javelin", "heavenly_demon.bone_reavers", "little_busters.haruka", "mgq.miyabi",
-      "mgq.hild", "mgq.pochi", "conflux.ice_elementals", "dungeon.minotaurs", "necropolis.wraiths",
+      "mgq.hild", "mgq.pochi", "dungeon.minotaurs", "necropolis.wraiths",
       "inferno.demons", "tower.genies", "rampart.dendroids", "castle.marksmen", "fortress.gnolls",
       "wog.ghost", "doom.former_human", "doom.cacodemon"
     ]);
@@ -233,6 +233,7 @@ describe("Unit Experience — rank math & either/or rewards", () => {
         expect(step.kind === "ability" && step.choices).toEqual(["ranged-extra-shot-on-low-roll"]);
         continue;
       }
+      if (["neutral.sprites", "neutral.ice_elementals", "neutral.storm_elementals", "neutral.magma_elementals", "neutral.magic_elementals", "neutral.phoenixes", "conflux.ice_elementals", "conflux.energy_elementals", "conflux.magma_elementals", "conflux.magic_elementals"].includes(def.id)) continue;
       // Every other unit is generator-served at R1: one point of stats, or one
       // of the three approved small abilities.
       const gain = unitStatStepsFor(def.id, def.tier)[0]!;
@@ -295,7 +296,7 @@ describe("Unit Experience — rank math & either/or rewards", () => {
     expect(unitRankStatGainsAt("fortress.gorgons", "silver", 1)).toMatchObject({ initiative: 1 });
     expect(unitRankAbilityIds("fortress.hydras", 1)).toContain("veteran-fear-aura");
     expect(unitRankAbilityIds("stronghold.behemoths", 3)).toContain("veteran-flying-movement");
-    expect(unitRankAbilityIds("conflux.sprites", 4)).toContain("pegasi-magic-damper");
+    expect(unitRankAbilityIds("conflux.sprites", 4)).toContain("veteran-sprite-landing");
     expect(unitRankAbilityIds("castle.archangels", 3)).toContain("veteran-layer-draw");
     expect(unitRankAbilityIds("castle.champions", 1)).toContain("veteran-moving-pierce");
     expect(unitRankStatGainsAt("castle.champions", "gold", 2)).toMatchObject({ health: 1 });

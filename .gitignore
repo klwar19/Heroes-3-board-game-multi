@@ -183,3 +183,6 @@ assets-to-translate/**/*.ogg
 assets-to-translate/**/*.mp4
 assets-to-translate/**/*.mov
 assets-to-translate/**/*.bik
+
+# Gameplay tokens shipped with the engine.
+!public/game-tokens/phoenix-nest.png

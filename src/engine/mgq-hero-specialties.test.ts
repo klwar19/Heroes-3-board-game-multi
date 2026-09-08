@@ -299,9 +299,10 @@ describe("MGQ hero specialties — Ilias, Granberia and Promestein", () => {
 
   it("Promestein removes the chosen bronze Few and permanently buffs the chosen silver", () => {
     let state = mapState("mgq-promestein", "promestein");
-    state.players.p1.hand = ["specialty.promestein.4"];
+    state.players.p1.hand = ["specialty.promestein.4", "specialty.promestein.4"];
     state.players.p1.army = [
       { id: "pochi", unitDefId: "mgq.pochi", side: "few" },
+      { id: "pochi-2", unitDefId: "mgq.pochi", side: "few" },
       { id: "hild", unitDefId: "mgq.hild", side: "few" }
     ];
     const play = getLegalActions(state, "p1").find(
@@ -317,6 +318,12 @@ describe("MGQ hero specialties — Ilias, Granberia and Promestein", () => {
     });
     expect(state.players.p1.army.some((unit) => unit.id === "pochi")).toBe(false);
     expect(state.players.p1.army.find((unit) => unit.id === "hild")?.permanentAttackBonus).toBe(1);
+    expect(state.players.p1.army.find((unit) => unit.id === "hild")?.mgqMadScienceBuffed).toBe(true);
+    expect(
+      getLegalActions(state, "p1").some(
+        (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.promestein.4"
+      )
+    ).toBe(false);
     expect(cardLibrary["specialty.promestein.1"].effect).toEqual(cardLibrary["specialty.zydar.1"].effect);
     expect(cardLibrary["specialty.promestein.4"].effect).toEqual({ type: "MGQ_MAD_SCIENCE", attackBonus: 1 });
     expect(cardLibrary["specialty.promestein.6"].effect.type).toBe("CHOOSE_ONE");

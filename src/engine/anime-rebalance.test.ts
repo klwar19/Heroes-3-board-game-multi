@@ -101,7 +101,7 @@ describe("requested anime rebalance — actual outcomes", () => {
     const action = getLegalActions(s, "p2").find(({ action }) => (action.type === "PLAY_REACTION" || action.type === "PLAY_CARD") && action.cardId === id && action.target?.type === "unit" && action.target.unitId === A);
     expect(action).toBeTruthy();
     s = apply(s, action!.action);
-    expect(s.combat!.units[A].damage).toBe(hero === "rin_natsume" ? 3 : 1);
+    expect(s.combat!.units[A].damage).toBe(hero === "rin_natsume" ? 2 : 1);
     const hitIndex = (id: string) => s.eventLog.findIndex((event) => event.type === "DAMAGE_ASSIGNED" && event.target.type === "unit" && event.target.unitId === id && event.amount > 0);
     expect(hitIndex(A)).toBeGreaterThanOrEqual(0);
     expect(hitIndex(D)).toBeGreaterThan(hitIndex(A));
@@ -276,8 +276,8 @@ describe("requested anime rebalance — actual outcomes", () => {
     let s = board("spell.magic_arrow");
     s.players.p2.hand = ["specialty.riki_naoe.6"];
     s.combat!.units[D].maxHealth = 1;
-    s.combat!.units[F].maxHealth = 1;
-    s.combat!.units[F].variant = "few";
+    s.combat!.units[E].maxHealth = 1;
+    s.combat!.units[E].variant = "few";
     s = apply(s, {
       type: "CAST_SPELL",
       playerId: "p1",
@@ -294,19 +294,28 @@ describe("requested anime rebalance — actual outcomes", () => {
         x.action.type === "PLAY_REACTION" &&
         x.action.cardId === "specialty.riki_naoe.6" &&
         x.action.target?.type === "unit" &&
-        x.action.target.unitId === F,
+        x.action.target.unitId === E,
     );
     expect(a).toBeTruthy();
+    expect(
+      getLegalActions(s, "p2").some(
+        ({ action }) =>
+          action.type === "PLAY_REACTION" &&
+          action.cardId === "specialty.riki_naoe.6" &&
+          action.target?.type === "unit" &&
+          action.target.unitId === A,
+      ),
+    ).toBe(false);
     s = settle(apply(s, a!.action));
     expect(s.combat!.units[D].damage).toBe(0);
     expect(
-      s.eventLog.some((e) => e.type === "UNIT_REMOVED" && e.unitId === F),
+      s.eventLog.some((e) => e.type === "UNIT_REMOVED" && e.unitId === E),
     ).toBe(true);
   });
   it("prevented spell damage does not clear paralysis, but the redirected hit does", () => {
     let s = board("spell.magic_arrow");
     s.players.p2.hand = ["specialty.riki_naoe.6"];
-    for (const id of [D, F])
+    for (const id of [D, E])
       s.combat!.units[id].tokens = [
         {
           id: `paralysis-${id}`,
@@ -326,14 +335,14 @@ describe("requested anime rebalance — actual outcomes", () => {
         x.action.type === "PLAY_REACTION" &&
         x.action.protectedUnitId === D &&
         x.action.target?.type === "unit" &&
-        x.action.target.unitId === F,
+        x.action.target.unitId === E,
     );
     expect(a).toBeTruthy();
     s = settle(apply(s, a!.action));
     expect(s.combat!.units[D].tokens?.some((t) => t.kind === "paralysis")).toBe(
       true,
     );
-    expect(s.combat!.units[F].tokens?.some((t) => t.kind === "paralysis")).toBe(
+    expect(s.combat!.units[E].tokens?.some((t) => t.kind === "paralysis")).toBe(
       false,
     );
   });
@@ -363,12 +372,13 @@ describe("requested anime rebalance — actual outcomes", () => {
         x.action.type === "PLAY_REACTION" &&
         x.action.protectedUnitId === E &&
         x.action.target?.type === "unit" &&
-        x.action.target.unitId === F,
+        x.action.target.unitId === D,
     );
     expect(a).toBeTruthy();
     s = settle(apply(s, a!.action));
     expect(s.combat!.units[E].damage).toBe(0);
-    expect(s.combat!.units[F].damage).toBe(1);
+    // D takes its own primary Chain Lightning damage plus the redirected half.
+    expect(s.combat!.units[D].damage).toBe(2);
     expect(s.combat!.pendingCardDamageTransfers).toBeUndefined();
   });
   it("Riki VI retains protection through a later Frost Ring target choice", () => {
@@ -379,13 +389,13 @@ describe("requested anime rebalance — actual outcomes", () => {
     s.combat!.units[E].position = 6;
     s.combat!.units[F].position = 19;
     s = apply(s, { type: "CAST_SPELL", playerId: "p1", cardId: "spell.frost_ring", target: { type: "space", position: 5 } });
-    const reaction = getLegalActions(s, "p2").find(({ action }) => action.type === "PLAY_REACTION" && action.protectedUnitId === E && action.target?.type === "unit" && action.target.unitId === F);
+    const reaction = getLegalActions(s, "p2").find(({ action }) => action.type === "PLAY_REACTION" && action.protectedUnitId === E && action.target?.type === "unit" && action.target.unitId === D);
     expect(reaction).toBeTruthy();
     s = settle(apply(s, reaction!.action));
     expect(s.pendingChoice?.type).toBe("ABILITY_TARGET_CHOICE");
     s = apply(s, { type: "CHOOSE_ABILITY_TARGET", playerId: "p1", choiceId: s.pendingChoice!.id, targetUnitId: E });
     expect(s.combat!.units[E].damage).toBe(0);
-    expect(s.combat!.units[F].damage).toBe(1);
+    expect(s.combat!.units[D].damage).toBe(1);
     if (s.pendingChoice) s = apply(s, { type: "CHOOSE_ABILITY_TARGET", playerId: "p1", choiceId: s.pendingChoice.id, targetUnitId: A });
     expect(s.combat!.pendingCardDamageTransfers).toBeUndefined();
   });
@@ -497,18 +507,18 @@ describe("requested anime rebalance — actual outcomes", () => {
         action.type === "PLAY_REACTION" &&
         action.cardId === "specialty.riki_naoe.6" &&
         action.target?.type === "unit" &&
-        action.target.unitId === F,
+        action.target.unitId === E,
     );
     expect(a).toBeTruthy();
     s = settle(apply(s, a!.action));
     expect(s.combat!.units[D].damage).toBe(0);
-    expect(s.combat!.units[F].damage).toBe(3);
+    expect(s.combat!.units[E].damage).toBe(3);
     expect(
       s.eventLog.some((e) => e.type === "UNIT_REMOVED" && e.unitId === D),
     ).toBe(false);
   });
   it.each([
-    ["rin_natsume", 6, 3],
+    ["rin_natsume", 6, 2],
     ["yuiko_kurugaya", 1, 1],
   ])("%s %s deals its immediate damage", (hero, level, amount) => {
     const id = `specialty.${hero}.${level}`;

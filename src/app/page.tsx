@@ -393,7 +393,7 @@ const HIDDEN_HAND_REVEAL_BACKSTOP_MS = 4000;
  * (a preamble) and shifts the move + dice past them, so the table reads
  * "cast → damage → move → attack". Keyed by the UNIT_ABILITY_TRIGGERED abilityId.
  */
-const LEADING_ACTIVATION_SPELL_ABILITIES = new Set<string>(["faerie-dragon-spell"]);
+const LEADING_ACTIVATION_SPELL_ABILITIES = new Set<string>(["faerie-dragon-spell", "veteran-ice-bolt"]);
 
 const OBSERVER_SEAT = "observer";
 

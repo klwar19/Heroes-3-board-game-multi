@@ -4665,6 +4665,8 @@ type GameActionPayload =
     }
   | {
       type: "PLAY_REACTION";
+      /** Free, Power-0 spell saved by this Magic Elemental's Spell Echo. */
+      elementalEchoUnitId?: UnitId;
       protectedUnitId?: UnitId;
       playerId: PlayerId;
       cardId: CardId;
@@ -8834,6 +8836,8 @@ export type ArmyUnitState = {
    * so it never wears off. Absent on every normally-recruited card.
    */
   permanentAttackBonus?: number;
+  /** Promestein IV may permanently enhance each individual silver card once. */
+  mgqMadScienceBuffed?: boolean;
   /** WOG Ghost: permanent Health gained from Soul Harvest, capped at +2. */
   permanentHealthBonus?: number;
   /**
@@ -9715,6 +9719,21 @@ export type BattlefieldTokenState = {
 export type StackTokenStat = "attack" | "defense" | "health" | "initiative";
 
 export type CombatUnitState = {
+  elementalVeterancy?: {
+    deferredDamage?: number;
+    deferredRound?: number;
+    delayUsed?: boolean;
+    payingDebt?: boolean;
+    solidifyUsed?: boolean;
+    solidifyUntilRound?: number;
+    linkUsed?: boolean;
+    dispelUsed?: boolean;
+    solidifyOfferedRound?: number;
+    solidifyCanMove?: boolean;
+    echoSpells?: string[];
+    nestOwnerId?: string;
+    nestRound?: number;
+  };
   id: UnitId;
   controllerId: PlayerId;
   name: string;
@@ -10342,6 +10361,19 @@ export type CombatScriptStatModifier = {
 };
 
 export type CombatState = {
+  elementalResumeAttack?: Extract<GameAction, { type: "ATTACK_UNIT" | "MOVE_AND_ATTACK_UNIT" }>;
+  elementalAwaitingAdvance?: boolean;
+  elementalChoices?: Array<{
+    kind: "damage" | "obstacle" | "solidify" | "nest" | "link" | "copy" | "copy-bolt" | "dispel";
+    unitId: string;
+    abilityId: string;
+    amount?: number;
+    targetId?: string;
+    adjacent?: boolean;
+    cardId?: string;
+    attack?: Extract<GameAction, { type: "ATTACK_UNIT" | "MOVE_AND_ATTACK_UNIT" }>;
+  }>;
+  elementalLinks?: Array<{ left: string; right: string; source: string; round: number }>;
   redirectedDamageRemovals?: UnitId[];
   pendingCardDamageTransfers?: {
     cardId: CardId;
@@ -16646,6 +16678,7 @@ export type PendingChoice =
         | "combat-teleport"
         | "kivotos-prophetic-dream"
         | "kivotos-explosive-prank"
+        | "elemental-veterancy"
         | "kivotos-key-authority"
         | "kivotos-mode-change"
         | "neutral-destination"
@@ -16843,6 +16876,10 @@ export type PendingChoice =
         positions: number[];
         primaryDamage: number;
         adjacentEnemyDamage: number;
+      };
+      elementalChoice?: {
+        request: NonNullable<CombatState["elementalChoices"]>[number];
+        picks: Array<{ targetId?: string; position?: number; obstacle?: number; skip?: boolean; target?: TargetRef; optionIndex?: number; saveEcho?: boolean }>;
       };
       /** Kei reaction, with enough data to resume or cancel the triggering ability. */
       keyAuthority?: {

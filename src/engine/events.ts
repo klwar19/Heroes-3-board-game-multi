@@ -3,6 +3,7 @@ import { unitAbilities } from "@/data/units/abilities";
 import { noteUnitDamagedForTokens } from "./tokens";
 import { cardDamageNullified, specialtyImmunityActive } from "./active-effects";
 import {
+  getUnitAbilityDefinitions,
   hasImmuneToSpecialtyDamage,
   getSpecialtyDamageReduction,
   getSpellAndSpecialtyDamageReductionAura,
@@ -211,9 +212,11 @@ export function appendEvent<T extends EventDraft>(
     target?: { type: string; unitId?: string };
     amount?: number;
     source?: SourceRef;
+    damageKind?: string;
   };
+  const payingDebt = Boolean(damageEvent.target?.unitId && state.combat?.units[damageEvent.target.unitId]?.elementalVeterancy?.payingDebt);
   if (
-    damageEvent.type === "DAMAGE_ASSIGNED" &&
+    !payingDebt && damageEvent.type === "DAMAGE_ASSIGNED" &&
     damageEvent.target?.type === "unit" &&
     damageEvent.target.unitId &&
     (damageEvent.amount ?? 0) > 0
@@ -248,7 +251,7 @@ export function appendEvent<T extends EventDraft>(
     }
   }
   if (
-    damageEvent.type === "DAMAGE_ASSIGNED" &&
+    !payingDebt && damageEvent.type === "DAMAGE_ASSIGNED" &&
     damageEvent.target?.unitId &&
     damageEvent.source
   ) {
@@ -267,6 +270,29 @@ export function appendEvent<T extends EventDraft>(
           protectedUnit.damage - amount + remaining,
         );
       eventDraft = { ...eventDraft, amount: remaining } as EventDraft;
+    }
+  }
+
+  if (!payingDebt && damageEvent.type === "DAMAGE_ASSIGNED" && damageEvent.target?.unitId) {
+    const unit = state.combat?.units[damageEvent.target.unitId];
+    let amount = (eventDraft as { amount?: number }).amount ?? 0;
+    if (unit?.elementalVeterancy?.solidifyUntilRound !== undefined && amount > 0 && damageEvent.damageKind !== "attack") {
+      unit.damage = Math.max(0, unit.damage - 1);
+      amount -= 1;
+      eventDraft = { ...eventDraft, amount } as EventDraft;
+    }
+    const hasEarthShield = unit
+      ? getUnitAbilityDefinitions(unit).some(
+          (ability) =>
+            ability.implementationStatus === "implemented" &&
+            ability.effect?.type === "ELEMENTAL_VETERANCY" &&
+            ability.effect.mechanic === "earth-shield",
+        )
+      : false;
+    if (unit && hasEarthShield && unit.damage > 4) {
+      const prevented = Math.min(amount, unit.damage - 4);
+      unit.damage -= prevented;
+      eventDraft = { ...eventDraft, amount: amount - prevented } as EventDraft;
     }
   }
 

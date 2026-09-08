@@ -17230,12 +17230,14 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
       sacrifice.side !== "few" ||
       coreUnitDefinitions[sacrifice.unitDefId]?.tier !== "bronze" ||
       !target ||
-      coreUnitDefinitions[target.unitDefId]?.tier !== "silver"
+      coreUnitDefinitions[target.unitDefId]?.tier !== "silver" ||
+      target.mgqMadScienceBuffed
     ) {
       throw new Error("Mad Science still needs the selected bronze Few and silver army cards.");
     }
     player.army.splice(sacrificeIndex, 1);
     target.permanentAttackBonus = (target.permanentAttackBonus ?? 0) + data.attackBonus;
+    target.mgqMadScienceBuffed = true;
     state.pendingChoice = null;
     state.phase = choice.returnPhase;
     state.priorityPlayerId = null;

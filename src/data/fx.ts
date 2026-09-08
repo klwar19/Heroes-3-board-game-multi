@@ -361,6 +361,16 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
     sound: "spells/ice-bolt",
     hitSound: "spells/ice-bolt-hit"
   },
+  "veteran-ice-bolt": { projectile: "ice-bolt-projectile-0", hit: "ice-bolt-hit", sound: "spells/ice-bolt", hitSound: "spells/ice-bolt-hit" },
+  "veteran-magic-splash": { hit: "death-cloud", hitSound: "spells/death-cloud" },
+  "veteran-energy-drain": { affect: [{ key: "vampire-life-drain" }], sound: "effects/drain-life" },
+  "veteran-energy-fire-heal": { affect: [{ key: "cure" }], sound: "spells/cure" },
+  "veteran-energy-delay": { affect: [{ key: "stone-skin" }], sound: "spells/stone-skin" },
+  "veteran-magma-solidify": { affect: [{ key: "stone-skin" }], sound: "spells/stone-skin" },
+  "veteran-sprite-spell-block": { affect: [{ key: "magic-mirror" }], sound: "spells/magic-mirror" },
+  "veteran-arcane-echo": { hit: "death-cloud", hitSound: "spells/death-cloud" },
+  "veteran-storm-link": { affect: [{ key: "lightning-bolt" }], sound: "spells/lightning-bolt" },
+  "veteran-phoenix-nest": { sound: "spells/teleport" },
   // Lethal-save sources (Alamar's specialty, the Resurrection spell and the
   // Archangels' once-per-combat cancel) all emit the "resurrection" ability
   // event when the killing blow is cancelled, so one plan covers all three.

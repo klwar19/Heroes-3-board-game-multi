@@ -350,6 +350,15 @@ function rotatedChoices(unitDefId: string, rank: number, pool: readonly string[]
 }
 
 function explicitRankOne(unitDefId: string): RankStep | null {
+  if (unitDefId === "conflux.energy_elementals") return A("veteran-energy-delay");
+  if (unitDefId === "conflux.magic_elementals") return A("veteran-magic-dispel");
+  if (unitDefId === "conflux.magma_elementals") return A("veteran-magma-solidify");
+  if (unitDefId === "neutral.ice_elementals" || unitDefId === "conflux.ice_elementals") return A("veteran-ice-bolt");
+  if (unitDefId === "neutral.magic_elementals") return A("veteran-magic-splash");
+  if (unitDefId === "neutral.sprites") return S({ ...Z, health: 1, initiative: 3 });
+  if (unitDefId === "neutral.storm_elementals") return A("ignore-all-combat-penalties");
+  if (unitDefId === "neutral.magma_elementals") return S({ ...Z, health: 1 });
+  if (unitDefId === "neutral.phoenixes") return A("veteran-phoenix-breath");
   if (unitDefId === "fortress.hydras") return A("veteran-fear-aura");
   if (unitDefId === "castle.champions") return A("veteran-moving-pierce");
   // Move the former generated R3 reward forward: veteran Sharpshooters begin
@@ -367,6 +376,8 @@ function rankOneStepFor(unitDefId: string): RankStep {
 }
 
 function explicitRankTwo(unitDefId: string): RankStep | null {
+  if (unitDefId === "neutral.sprites") return A("veteran-sprite-spell-block");
+  if (unitDefId === "conflux.phoenixes") return A("veteran-phoenix-activation");
   if (unitDefId === "castle.champions") return S({ ...Z, health: 1 });
   if (unitDefId === "little_busters.rins_cats") return A("veteran-soul-feast");
   if (unitDefId === "neutral.sharpshooters") return A("veteran-sharpshooter-mastery");
@@ -375,6 +386,13 @@ function explicitRankTwo(unitDefId: string): RankStep | null {
 }
 
 function explicitRankThree(unitDefId: string): RankStep | null {
+  if (unitDefId === "conflux.storm_elementals") return H({ ...Z, initiative: 3 }, "veteran-storm-speed");
+  if (unitDefId === "conflux.energy_elementals") return A("veteran-energy-fire-heal");
+  if (unitDefId === "neutral.sprites") return A("veteran-sprite-landing");
+  if (unitDefId === "conflux.sprites") return A("veteran-sprite-obstacle");
+  if (unitDefId === "neutral.storm_elementals") return A("veteran-distant-storm");
+  if (unitDefId === "neutral.magma_elementals") return A("veteran-magma-hunter");
+  if (unitDefId === "neutral.energy_elementals") return A("veteran-energy-drain");
   if (unitDefId === "castle.archangels") return A("veteran-layer-draw");
   if (unitDefId === "castle.champions") {
     return H({ ...Z, initiative: 2 }, "veteran-mobility-1");
@@ -394,11 +412,22 @@ function explicitRankThree(unitDefId: string): RankStep | null {
 }
 
 function explicitRankFour(unitDefId: string): RankStep | null {
+  if (unitDefId === "neutral.magma_elementals") return A("veteran-magma-guard");
+  if (unitDefId === "conflux.ice_elementals") return A("veteran-water-damper");
+  if (unitDefId === "conflux.magic_elementals") return A("veteran-magic-copy");
+  if (unitDefId === "neutral.magic_elementals") return A("veteran-arcane-echo");
+  if (unitDefId === "conflux.storm_elementals") return A("veteran-storm-link");
+  if (unitDefId === "conflux.phoenixes") return A("veteran-phoenix-nest");
+  if (unitDefId === "neutral.ice_elementals") return A("veteran-frozen-guard");
+  if (unitDefId === "neutral.storm_elementals") return A("veteran-storm-guard");
+  if (unitDefId === "neutral.phoenixes") return H({ ...Z, health: 1 }, "veteran-renewed-rebirth");
+  if (unitDefId === "conflux.magma_elementals") return A("veteran-earth-shield");
+  if (unitDefId === "neutral.energy_elementals") return H({ ...Z, initiative: 5 }, "teleport-move");
   if (unitDefId === "castle.crusaders") return A("veteran-double-attack");
   if (unitDefId === "inferno.pit_lords") return A("veteran-defense-pierce");
   if (unitDefId === "inferno.magogs") return S({ ...Z, health: 2 });
   if (unitDefId === "necropolis.dread_knights") return A("reduce-spell-and-specialty-damage-2");
-  if (unitDefId === "conflux.sprites") return A("pegasi-magic-damper");
+  if (unitDefId === "conflux.sprites") return A("veteran-sprite-landing");
   if (unitDefId.endsWith(".skeletons")) return A("veteran-rebirth");
   if (unitDefId.endsWith(".magi")) return A("veteran-spell-sunder");
   if (unitDefId.endsWith(".unicorns")) return A("veteran-low-roll-insight");
