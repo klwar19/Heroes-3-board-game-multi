@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { hasMediaFile } from "@/lib/media-manifest";
 
 it("never grants an Opportunist rank whose low-roll trigger is made impossible by Mighty Blow", () => {
@@ -536,8 +538,15 @@ describe("Unit Experience — rank math & either/or rewards", () => {
 
   it("every shared ability and stat reward resolves to dedicated veterancy art on disk", () => {
     for (const [id, icon] of Object.entries(UNIT_RANK_ABILITY_ICONS)) {
-      expect(icon, id).toContain("/assets/ui/rank-ability/");
-      expect(hasMediaFile(icon), `${id} rank icon is not published (npm run media:publish)`).toBe(true);
+      const packaged = icon.startsWith("/game-tokens/rank-ability/");
+      expect(
+        icon.startsWith("/assets/ui/rank-ability/") || packaged,
+        id + " rank icon uses an unsupported location",
+      ).toBe(true);
+      expect(
+        packaged ? existsSync(join(process.cwd(), "public", icon.slice(1))) : hasMediaFile(icon),
+        id + " rank icon is not shipped",
+      ).toBe(true);
       expect(unitRankAbilityIcon(id), id).toBe(icon);
     }
     for (const [stat, icon] of Object.entries(UNIT_RANK_STAT_ICONS)) {
