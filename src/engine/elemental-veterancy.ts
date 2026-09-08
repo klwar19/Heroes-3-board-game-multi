@@ -516,7 +516,7 @@ function executeElementalPick(
       summoned: true,
       retaliatedThisRound: false,
       defenseToken: false,
-      assets: { cardImage: "/game-tokens/phoenix-nest.png" },
+      assets: { cardImage: "/game-tokens/phoenix-nest.webp" },
       elementalVeterancy: { nestOwnerId: unit.id, nestRound: combat.round },
     };
   }

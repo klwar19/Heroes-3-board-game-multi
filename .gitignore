@@ -185,4 +185,7 @@ assets-to-translate/**/*.mov
 assets-to-translate/**/*.bik
 
 # Gameplay tokens shipped with the engine.
-!public/game-tokens/phoenix-nest.png
+!public/game-tokens/phoenix-nest.webp
+!public/game-tokens/rank-ability/
+!public/game-tokens/rank-ability/conflux/
+!public/game-tokens/rank-ability/conflux/*.webp

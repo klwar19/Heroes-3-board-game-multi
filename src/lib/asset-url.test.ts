@@ -17,7 +17,7 @@ async function loadAssetUrl(base: string | undefined) {
 describe("assetUrl", () => {
   it("keeps packaged gameplay tokens on the app origin with a CDN configured", async () => {
     const { assetUrl } = await loadAssetUrl("https://cdn.example.com");
-    expect(assetUrl("/game-tokens/phoenix-nest.png")).toBe("/game-tokens/phoenix-nest.png");
+    expect(assetUrl("/game-tokens/phoenix-nest.webp")).toBe("/game-tokens/phoenix-nest.webp");
   });
   beforeEach(() => {
     vi.unstubAllEnvs();

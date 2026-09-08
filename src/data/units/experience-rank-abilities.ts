@@ -512,6 +512,20 @@ export const RANK_ABILITY_TRACK_LABELS: Record<string, string> = {
 };
 
 export const UNIT_RANK_ABILITY_ICONS: Record<string, string> = {
+  "veteran-ice-bolt": "/game-tokens/rank-ability/conflux/veteran-ice-bolt.webp",
+  "veteran-water-damper": "/game-tokens/rank-ability/conflux/veteran-water-damper.webp",
+  "veteran-sprite-obstacle": "/game-tokens/rank-ability/conflux/veteran-sprite-obstacle.webp",
+  "veteran-sprite-landing": "/game-tokens/rank-ability/conflux/veteran-sprite-landing.webp",
+  "veteran-storm-speed": "/game-tokens/rank-ability/conflux/veteran-storm-speed.webp",
+  "veteran-storm-link": "/game-tokens/rank-ability/conflux/veteran-storm-link.webp",
+  "veteran-energy-delay": "/game-tokens/rank-ability/conflux/veteran-energy-delay.webp",
+  "veteran-energy-fire-heal": "/game-tokens/rank-ability/conflux/veteran-energy-fire-heal.webp",
+  "veteran-magma-solidify": "/game-tokens/rank-ability/conflux/veteran-magma-solidify.webp",
+  "veteran-earth-shield": "/game-tokens/rank-ability/conflux/veteran-earth-shield.webp",
+  "veteran-magic-dispel": "/game-tokens/rank-ability/conflux/veteran-magic-dispel.webp",
+  "veteran-magic-copy": "/game-tokens/rank-ability/conflux/veteran-magic-copy.webp",
+  "veteran-phoenix-activation": "/game-tokens/rank-ability/conflux/veteran-phoenix-activation.webp",
+  "veteran-phoenix-nest": "/game-tokens/rank-ability/conflux/veteran-phoenix-nest.webp",
   "bulwark-thick-hide": "/assets/ui/rank-ability/thick-hide.webp",
   "bulwark-air-shield": "/assets/ui/rank-ability/air-shield.webp",
   "wog-no-negative-attack-roll": "/assets/ui/rank-ability/sure-shot.webp",
