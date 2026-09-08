@@ -198,7 +198,7 @@ describe("Astrologers — Sanctuary (PvP-attack ban)", () => {
     expect(state.combat).toBeNull();
   });
 
-  it("does not offer an enemy Hero's hex as a movement destination", () => {
+  it("offers a Sanctuary-protected enemy Hero's hex only when the mover can separate", () => {
     const state = sanctuaryGame(2);
     const attacker = getMainHero(state, "p1")!;
     const defender = getMainHero(state, "p2")!;
@@ -227,7 +227,15 @@ describe("Astrologers — Sanctuary (PvP-attack ban)", () => {
       getLegalActions(state, "p1").some(
         (legal) => legal.action.type === "MOVE_HERO" && legal.action.to === occupiedHex
       )
+    ).toBe(true);
+
+    attacker.movementPoints = 1;
+    expect(
+      getLegalActions(state, "p1").some(
+        (legal) => legal.action.type === "MOVE_HERO" && legal.action.to === occupiedHex
+      )
     ).toBe(false);
+    attacker.movementPoints = 2;
 
     // CONTROL: with Sanctuary inactive, the identical occupied hex is offered
     // as a PvP attack destination again.

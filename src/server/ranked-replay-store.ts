@@ -24,8 +24,10 @@ export function validRankedReplay(matchId: string, replay: RankedReplay): boolea
   const bytes = new TextEncoder().encode(JSON.stringify(replay)).byteLength;
   return (
     replay.entries.length <= RANKED_REPLAY_MAX_ACTIONS &&
-    bytes <= RANKED_REPLAY_MAX_BYTES &&
-    replay.byteLength === bytes
+    Number.isInteger(replay.byteLength) &&
+    replay.byteLength > 0 &&
+    replay.byteLength <= RANKED_REPLAY_MAX_BYTES &&
+    bytes <= RANKED_REPLAY_MAX_BYTES
   );
 }
 
@@ -96,7 +98,9 @@ export async function storeRankedReplay(
     // Keep the database write small too. Expanding the edge upload and then
     // posting 16 MB of JSON to PostgREST would only move the same request-size
     // failure one hop downstream. Training exports decode this private column.
-    const compressedPayload = gzipSync(JSON.stringify(replay)).toString("base64");
+    const serializedReplay = JSON.stringify(replay);
+    const expandedBytes = Buffer.byteLength(serializedReplay, "utf8");
+    const compressedPayload = gzipSync(serializedReplay).toString("base64");
     const inserted = await db.insert<{ match_id: string }>(
       RANKED_REPLAYS_TABLE,
       {
@@ -105,7 +109,7 @@ export async function storeRankedReplay(
         schema_version: replay.schemaVersion,
         engine_signature: replay.engineSignature,
         action_count: replay.entries.length,
-        byte_length: replay.byteLength,
+        byte_length: expandedBytes,
         truncated: replay.truncated,
         payload: null,
         payload_gzip_base64: compressedPayload,

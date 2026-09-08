@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { gunzipSync } from "node:zlib";
 import GameRoomServer, { type RoomSnapshot } from "../../party/index";
 import { createAdventureGameState } from "@/engine";
 import { createRankedReplay } from "./ranked-replay";
@@ -102,6 +103,9 @@ describe("PartyKit ranked match durable report outbox", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const uploaded = JSON.parse(String(fetchMock.mock.calls[1]![1]?.body));
     expect(uploaded.matchId).toBe("durable-report");
-    expect(uploaded.replay.entries).toEqual([]);
+    const uploadedReplay = JSON.parse(
+      gunzipSync(Buffer.from(uploaded.replayGzipBase64, "base64")).toString("utf8"),
+    );
+    expect(uploadedReplay.entries).toEqual([]);
   });
 });

@@ -473,10 +473,7 @@ export function appendRankedReplayEntryFromCursor(
   if (!built.entry) {
     return { cursor: { ...cursor, truncated: true, truncationReason: "entry-too-large" } };
   }
-  // Every entry after the first also adds a comma to the surrounding JSON
-  // array. Count it now so the cursor remains an exact expanded-byte budget
-  // instead of drifting low by one byte per action.
-  const nextBytes = cursor.byteLength + built.byteLength + (cursor.entryCount > 0 ? 1 : 0);
+  const nextBytes = cursor.byteLength + built.byteLength;
   if (nextBytes > RANKED_REPLAY_APPEND_BUDGET_BYTES) {
     return { cursor: { ...cursor, truncated: true, truncationReason: "byte-limit" } };
   }
