@@ -25,6 +25,7 @@ import {
   houseRuleEnabled,
   seatPickSummary,
   spellBookRuleEnabled,
+  STANDARD_SPELL_BOOK_LIMIT,
   spellCastRestrictionNotices,
   type GameAction,
   type GameState,
@@ -526,6 +527,7 @@ type HandCardEntry = {
   cardId: string;
   boardSelections: CardBoardAction[];
   immediateActions: LegalAction[];
+  empowerAction?: LegalAction;
 };
 
 /**
@@ -716,8 +718,18 @@ export function HandFan({
       ).values()
     );
     const immediateActions = actionsForCard.filter((legal) => !isBoardTargetCardAction(legal.action));
+    // Ability Empower tokens are offered as a separate action rather than a
+    // PLAY_CARD/CAST_SPELL action. Keep the offer attached to the hand card so
+    // phone players who open a card can discover the upgrade there too (the
+    // HUD token chip remains available as a global shortcut).
+    const empowerAction = legalActions.find(
+      (legal) =>
+        legal.action.type === "USE_ABILITY_EMPOWER_TOKEN" &&
+        legal.action.playerId === viewerPlayerId &&
+        legal.action.cardId === cardId,
+    );
 
-    return { handIndex, cardId, boardSelections, immediateActions };
+    return { handIndex, cardId, boardSelections, immediateActions, empowerAction };
   });
 
   const hiddenFromIndex = entries.length - Math.max(0, hiddenTailCount);
@@ -804,7 +816,11 @@ export function HandFan({
     bookCastActions.some((legal) => legal.action.fromSpellBook === true && !legal.action.castEnablerCardId);
 
   return (
-    <div className={`handFan ${trayActive ? "muted" : ""}`} aria-label="Your hand" data-fx-anchor={`hand:${viewerPlayerId}`}>
+    <div
+      className={`handFan ${entries.length > 7 ? "scrollable" : ""} ${trayActive ? "muted" : ""}`}
+      aria-label="Your hand"
+      data-fx-anchor={`hand:${viewerPlayerId}`}
+    >
       {showSpellBook || scrolls.length > 0 ? (() => {
         const shelf = (
         <div className="spellShelf" aria-label="Spell Book and Spell Scrolls">
@@ -831,7 +847,11 @@ export function HandFan({
                 type="button"
               >
                 <img alt="Spell Book" className="shelfGlyph" decoding="async" loading="lazy" src={assetUrl("/assets/ui/spell-book-button.png")} />
-                <span className="shelfCount">{spellBook.length}/{spellBook.length + spellBookUsed.length}</span>
+                <span className="shelfCount">
+                  {polishBook
+                    ? `${spellBook.length}/${spellBook.length + spellBookUsed.length}`
+                    : `${spellBook.length}/${STANDARD_SPELL_BOOK_LIMIT}`}
+                </span>
               </button>
               {shelfOpen === "book" ? (
                 // The same full two-page grimoire the map opens. A target-less
@@ -973,7 +993,7 @@ export function HandFan({
         const polishCastReady = (isPolishCastEnabler || isPolishIntelligenceEnabler) && bookCastShortcuts.length > 0;
         const playable =
           !trayActive &&
-          (entry.boardSelections.length > 0 || entry.immediateActions.length > 0 || polishCastReady);
+          (entry.boardSelections.length > 0 || entry.immediateActions.length > 0 || polishCastReady || Boolean(entry.empowerAction));
         const selected = entry.boardSelections.some((action) => sameCardSelection(selectedCardAction, action));
         const open = openIndex === entry.handIndex;
         const incoming = entryIndex >= hiddenFromIndex;
@@ -1018,6 +1038,18 @@ export function HandFan({
                           <span key={label}>{label}</span>
                         ))}
                       </div>
+                    ) : null}
+                    {entry.empowerAction ? (
+                      <button
+                        className="primary"
+                        onClick={() => {
+                          onAction(entry.empowerAction!.action);
+                          setOpenIndex(null);
+                        }}
+                        type="button"
+                      >
+                        👑 Empower with token
+                      </button>
                     ) : null}
                     <button
                       onClick={() => {
@@ -1201,7 +1233,7 @@ export function HandFan({
                 // enemy on the board — instead of opening a text popover. Cards
                 // with a choice (basic/expert mode, two CHOOSE_ONE options, an
                 // immediate "Use") still open the popover so the player can pick.
-                if (playable && entry.immediateActions.length === 0 && entry.boardSelections.length === 1) {
+                if (playable && !entry.empowerAction && entry.immediateActions.length === 0 && entry.boardSelections.length === 1) {
                   const action = entry.boardSelections[0];
                   onSelectCardAction(sameCardSelection(selectedCardAction, action) ? null : action);
                   setOpenIndex(null);
@@ -1340,6 +1372,7 @@ export function SeatNameplate({ state, playerId }: { state: GameState; playerId:
   const primary = person ?? identity.seatName;
   const baseTitle = summary ? `${primary} — ${summary}` : primary;
   const title = computer ? `${baseTitle} — computer-controlled` : baseTitle;
+  const turnOrderNumber = state.turnOrder.indexOf(playerId) + 1;
   // A verified account's nickname opens their public profile in a new tab.
   const primaryNode =
     identity.verified && person ? (
@@ -1361,6 +1394,11 @@ export function SeatNameplate({ state, playerId }: { state: GameState; playerId:
       <span className="seatFactionDot" style={{ background: identity.factionColor ?? "#b08d2f" }} aria-hidden="true" />
       <span className="seatWhoText">
         <strong>
+          {turnOrderNumber > 0 ? (
+            <span className="seatOrderNumber" title={`Player ${turnOrderNumber} in turn order`}>
+              {turnOrderNumber}.
+            </span>
+          ) : null}
           {primaryNode}
           {identity.role === "host" ? <Crown aria-hidden="true" size={11} className="seatHostCrown" /> : null}
           {computer ? <small className="seatControllerTag">Computer</small> : null}

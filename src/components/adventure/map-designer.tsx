@@ -580,6 +580,30 @@ function tokenLegalityKind(kind: PlanTokenKind): MapTokenKind {
   return kind === "whirlpool" ? "whirlpool" : "monolith";
 }
 
+type MapWideTokenBreaks = Pick<CustomMapPreset, "mines" | "obelisks">;
+
+/**
+ * Definition legality plus the map author's exact Break-field settings. The
+ * engine repeats this check against materialized fields, so a saved or
+ * hand-edited map cannot erase a Break even if it bypasses this UI.
+ */
+function legalTokenSlotsForPlan(
+  plan: CustomMapTilePlan,
+  def: TileDefinition,
+  kind: TokenPlacementKind,
+  mapWideBreaks?: MapWideTokenBreaks
+): number[] {
+  return legalTokenSlotsForTileDef(def, kind).filter((slot) => {
+    const location = def.fields[slot]?.location;
+    if (location !== "mine" && location !== "obelisk") {
+      return true;
+    }
+    const perTile = plan.objectPlans?.[location];
+    const global = mapWideBreaks?.[location === "mine" ? "mines" : "obelisks"];
+    return (perTile?.breakField ?? global?.breakField) !== true;
+  });
+}
+
 /**
  * Designer token art: a colored Gate renders as the MONOLITH image (tinted by a
  * color ring at the render site); Monolith/Whirlpool use their own scans.
@@ -676,7 +700,8 @@ function computeTileTokenTargets(
   customMap: CustomMapTilePlan[],
   kind: PlanTokenKind,
   sourceIndex: number | null,
-  sourceTokenIndex = 0
+  sourceTokenIndex = 0,
+  mapWideBreaks?: MapWideTokenBreaks
 ): { planIndex: number; slot?: number; hex: HexCoord; row: number; col: number }[] {
   const legalityKind = tokenLegalityKind(kind);
   const out: { planIndex: number; slot?: number; hex: HexCoord; row: number; col: number }[] = [];
@@ -711,7 +736,7 @@ function computeTileTokenTargets(
     if (!def) {
       return;
     }
-    for (const slot of legalTokenSlotsForTileDef(def, legalityKind)) {
+    for (const slot of legalTokenSlotsForPlan(plan, def, legalityKind, mapWideBreaks)) {
       if (occupied.has(slot)) {
         continue;
       }
@@ -860,8 +885,10 @@ function secretBoardLabel(plan: CustomMapTilePlan): string {
  * dropped (the chosen tile simply has no field the token may overwrite).
  */
 function retargetTokenForDef(
+  plan: CustomMapTilePlan,
   token: CustomMapTilePlan["token"],
-  tileDefId: string | undefined
+  tileDefId: string | undefined,
+  mapWideBreaks?: MapWideTokenBreaks
 ): CustomMapTilePlan["token"] {
   if (!token) {
     return undefined;
@@ -870,7 +897,7 @@ function retargetTokenForDef(
   if (!def) {
     return undefined;
   }
-  const legal = legalTokenSlotsForTileDef(def, tokenLegalityKind(token.kind));
+  const legal = legalTokenSlotsForPlan(plan, def, tokenLegalityKind(token.kind), mapWideBreaks);
   if (legal.length === 0) {
     return undefined;
   }
@@ -902,7 +929,8 @@ function tokensPatch(
  */
 function retargetTokensForDef(
   plan: CustomMapTilePlan,
-  tileDefId: string | undefined
+  tileDefId: string | undefined,
+  mapWideBreaks?: MapWideTokenBreaks
 ): { tokens: CustomMapTilePlan["tokens"]; token: undefined } {
   const def = tileDefId ? allTileDefinitions[tileDefId] : undefined;
   const used = new Set<number>(
@@ -914,7 +942,7 @@ function retargetTokensForDef(
     if (!def) {
       return undefined;
     }
-    const legal = legalTokenSlotsForTileDef(def, tokenLegalityKind(token.kind)).filter(
+    const legal = legalTokenSlotsForPlan(plan, def, tokenLegalityKind(token.kind), mapWideBreaks).filter(
       (slot) => !used.has(slot)
     );
     if (legal.length === 0) {
@@ -1141,7 +1169,8 @@ export function MapDesigner({
   hexEvents = EMPTY_HEX_EVENTS,
   onHexEventsChange,
   objectives,
-  supportedModes
+  supportedModes,
+  mapWideTokenBreaks
 }: {
   scenarioId: string;
   /** Active scenario seats to draw/reserve (defaults to the legacy footprint). */
@@ -1177,6 +1206,8 @@ export function MapDesigner({
    * when its authored starting-position roles leave one side nowhere to start.
    */
   supportedModes?: CustomMapPreset["supportedModes"];
+  /** Map-wide mine/obelisk Break flags protected from teleporter placement. */
+  mapWideTokenBreaks?: MapWideTokenBreaks;
 }) {
   const scenario = scenarioDefinitions[scenarioId];
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
@@ -1989,10 +2020,16 @@ export function MapDesigner({
     if (!placementKind || STANDALONE_ONLY_OBJECT_KINDS.has(placementKind)) {
       return [] as ReturnType<typeof computeTileTokenTargets>;
     }
-    return computeTileTokenTargets(customMap, placementKind as TokenPlacementKind, null).filter(
+    return computeTileTokenTargets(
+      customMap,
+      placementKind as TokenPlacementKind,
+      null,
+      0,
+      mapWideTokenBreaks
+    ).filter(
       (candidate) => candidate.slot === undefined || !objectHexSet.has(hexSpaceId(candidate.hex))
     );
-  }, [placementKind, customMap, objectHexSet]);
+  }, [placementKind, customMap, objectHexSet, mapWideTokenBreaks]);
   /**
    * Empty OFF-tile hexes adjacent to a tile — standalone candidates (land
    * teleporters only, no standalone Whirlpool). Shared by ARMED placement, the
@@ -2066,8 +2103,14 @@ export function MapDesigner({
     if (!tokenDrag) {
       return [] as ReturnType<typeof computeTileTokenTargets>;
     }
-    return computeTileTokenTargets(customMap, tokenDrag.kind, tokenDrag.index, tokenDrag.tokenIndex);
-  }, [tokenDrag, customMap]);
+    return computeTileTokenTargets(
+      customMap,
+      tokenDrag.kind,
+      tokenDrag.index,
+      tokenDrag.tokenIndex,
+      mapWideTokenBreaks
+    );
+  }, [tokenDrag, customMap, mapWideTokenBreaks]);
   /**
    * The drop target a TILE-TOKEN drag would land on over `hex`: another tile
    * (release → move the token) else an off-tile standalone hex (release →
@@ -3038,7 +3081,7 @@ export function MapDesigner({
       secretFeature: undefined,
       secretFeatures: undefined,
       excludeFeatures: undefined,
-      ...retargetTokensForDef(selected, fallbackId)
+      ...retargetTokensForDef(selected, fallbackId, mapWideTokenBreaks)
     });
   };
 
@@ -3117,7 +3160,7 @@ export function MapDesigner({
         ? tokensPatch(selected, (token) =>
             faceDownTokenKinds(selected.group).includes(token.kind) ? faceDownTokenOf(token) : undefined
           )
-        : retargetTokensForDef(selected, tileDefId))
+        : retargetTokensForDef(selected, tileDefId, mapWideTokenBreaks))
     });
   };
 
@@ -3150,7 +3193,7 @@ export function MapDesigner({
           ? tokensPatch(selected, (token) =>
               faceDownTokenKinds(selected.group).includes(token.kind) ? faceDownTokenOf(token) : undefined
             )
-          : retargetTokensForDef(selected, tileDefId))
+          : retargetTokensForDef(selected, tileDefId, mapWideTokenBreaks))
       });
       return;
     }
@@ -3175,7 +3218,7 @@ export function MapDesigner({
           : []
         : selectedTileDef
           ? (["whirlpool"] as MapTokenKind[]).filter(
-              (kind) => legalTokenSlotsForTileDef(selectedTileDef, kind).length > 0
+              (kind) => legalTokenSlotsForPlan(selected, selectedTileDef, kind, mapWideTokenBreaks).length > 0
             )
           : [];
 
@@ -5792,7 +5835,7 @@ export function MapDesigner({
                                 ? faceDownTokenOf(token)
                                 : undefined
                             )
-                          : retargetTokensForDef(selected, selected.tileDefId))
+                          : retargetTokensForDef(selected, selected.tileDefId, mapWideTokenBreaks))
                       });
                     }}
                     title={
@@ -6718,7 +6761,12 @@ export function MapDesigner({
                       >
                         {(selected.faceDown
                           ? [0, 1, 2, 3, 4, 5, 6]
-                          : legalTokenSlotsForTileDef(selectedTileDef!, tokenLegalityKind(selectedToken.kind))
+                          : legalTokenSlotsForPlan(
+                              selected,
+                              selectedTileDef!,
+                              tokenLegalityKind(selectedToken.kind),
+                              mapWideTokenBreaks
+                            )
                         ).map((slot) => (
                           <option key={slot} value={slot}>
                             {selected.faceDown
@@ -6761,7 +6809,7 @@ export function MapDesigner({
                             }
                             const token = selected.faceDown
                               ? { kind, slot: 0 }
-                              : retargetTokenForDef({ kind }, selected.tileDefId);
+                              : retargetTokenForDef(selected, { kind }, selected.tileDefId, mapWideTokenBreaks);
                             if (token) {
                               updateTile(selectedIndex as number, { token });
                             }
@@ -7434,7 +7482,12 @@ export function MapDesigner({
                 >
                   {(tokenPanelPlan.faceDown
                     ? [0, 1, 2, 3, 4, 5, 6]
-                    : legalTokenSlotsForTileDef(tokenPanelDef!, tokenLegalityKind(tokenPanelToken.kind))
+                    : legalTokenSlotsForPlan(
+                        tokenPanelPlan,
+                        tokenPanelDef!,
+                        tokenLegalityKind(tokenPanelToken.kind),
+                        mapWideTokenBreaks
+                      )
                   ).map((slot) => (
                     <option key={slot} value={slot}>
                       {tokenPanelPlan.faceDown

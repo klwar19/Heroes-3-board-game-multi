@@ -294,7 +294,8 @@ export const POLISH_CREATURE_BANK_UNIT_SIDES: Record<string, UnitSideDefinition>
   "guardian:liches": { attack: 3, defense: 0, health: 4, initiative: 6, type: "ranged", cost: {}, abilities: ["lich-death-cloud"], abilityText: "[unit_attack] Also attack a unit adjacent to the target with 2 [attack].", cardImage: "/assets/polish-banks/guardian-liches.webp" },
   "guardian:steel-golems": { attack: 3, defense: 1, health: 3, initiative: 5, type: "ground", cost: {}, abilities: ["reduce-spell-damage-1"], abilityText: "[unit_passive] Reduce damage from [spell] by 1 (minimum 0).", cardImage: "/assets/polish-banks/guardian-steel-golems.webp" },
   "guardian:vampire-lords": { attack: 3, defense: 0, health: 4, initiative: 7, type: "flying", cost: {}, abilities: ["ignores-retaliation", "polish-bank-vampire-heal-stacked"], abilityText: "[unit_attack] Ignore Retaliation. While Stacked, after attacking remove up to 2 damage from this unit.", cardImage: "/assets/polish-banks/guardian-vampire-lords.webp" },
-  "guardian:wolf-riders": { attack: 2, defense: 0, health: 5, initiative: 7, type: "ground", cost: {}, abilities: ["wolf-raiders-strike-twice"], abilityText: "[unit_attack] After the target retaliates, attack it again.", cardImage: "/assets/polish-banks/guardian-wolf-riders.webp" },
+  "guardian:wolf-riders": { attack: 2, defense: 0, health: 4, initiative: 7, type: "ground", cost: {}, abilities: ["wolf-raiders-strike-twice"], abilityText: "[unit_attack] After the target retaliates, attack it again.", cardImage: "/assets/polish-banks/guardian-wolf-riders.webp" },
+  "guardian:stockpile-cyclopes": { attack: 4, defense: 1, health: 5, initiative: 7, type: "ranged", cost: {}, abilities: [], cardImage: "/assets/polish-banks/guardian-stockpile-cyclopes.webp" },
   "guardian:green-dragon": { attack: 4, defense: 1, health: 5, initiative: 7, type: "flying", cost: {}, abilities: [], cardImage: "/assets/polish-banks/guardian-green-dragon.webp" },
   "guardian:red-dragon": { attack: 4, defense: 1, health: 6, initiative: 8, type: "flying", cost: {}, abilities: [], cardImage: "/assets/polish-banks/guardian-red-dragon.webp" },
   "guardian:gold-dragon": { attack: 4, defense: 1, health: 7, initiative: 9, type: "flying", cost: {}, abilities: ["dragon-line-attack-2"], abilityText: "[unit_attack] Attack 2 spaces in a line; the second attack has 2 [attack].", cardImage: "/assets/polish-banks/guardian-gold-dragon.webp" },
@@ -325,7 +326,8 @@ export const POLISH_CREATURE_BANK_UNIT_SIDES: Record<string, UnitSideDefinition>
 export const POLISH_CREATURE_BANK_CARD_NAMES: Record<string, string> = {
   "guardian:zombies": "Zombies", "guardian:evil-eyes": "Evil Eyes", "guardian:fire-elementals": "Fire Elementals",
   "guardian:liches": "Liches", "guardian:steel-golems": "Steel Golems", "guardian:vampire-lords": "Vampire Lords",
-  "guardian:wolf-riders": "Wolf Riders", "guardian:green-dragon": "Green Dragon", "guardian:red-dragon": "Red Dragon",
+  "guardian:wolf-riders": "Wolf Riders", "guardian:stockpile-cyclopes": "Cyclopes",
+  "guardian:green-dragon": "Green Dragon", "guardian:red-dragon": "Red Dragon",
   "guardian:gold-dragon": "Gold Dragon", "guardian:black-dragon": "Black Dragon",
   ...Object.fromEntries([1, 2, 3, 4].flatMap((size) => [
     [`reward:angels:${size}`, "Angels"], [`reward:cyclopes:${size}`, "Cyclopes"],
@@ -721,7 +723,11 @@ export const POLISH_CREATURE_BANKS: Record<CreatureBankId, CreatureBankDefinitio
     buildReward: (size) => polishUnitReward("neutral.archangels", "angels", size)
   },
   derelict_ship: { ...CREATURE_BANKS.derelict_ship, name: "Abandoned Ship" },
-  cyclops_stockpile: { ...CREATURE_BANKS.cyclops_stockpile, name: "Cyclops Hideout" }
+  cyclops_stockpile: {
+    ...CREATURE_BANKS.cyclops_stockpile,
+    name: "Cyclops Hideout",
+    unitSideKeys: Array(4).fill("guardian:stockpile-cyclopes")
+  }
 };
 
 /** Official supply — intentionally frozen at the original twelve banks. */

@@ -217,6 +217,24 @@ describe("griffin-buff toggle", () => {
   });
 });
 
+describe("gold-dragon-second-attack-3 toggle", () => {
+  const fewDragon = { id: "dragon", unitDefId: "rampart.gold_dragons", side: "few" as const };
+
+  it("ON gives the Few the same Attack-3 line follow-up as the Pack", () => {
+    const state = binhWith({ "gold-dragon-second-attack-3": true });
+    const unit = makeCombatUnitFromArmy(fewDragon, "p1", "dragon_on", 0, "binh", unitSideRuleOverrides(state))!;
+    expect(unit.abilities).toContain("dragon-line-attack-3");
+    expect(unit.abilities).not.toContain("dragon-line-attack-2");
+  });
+
+  it("OFF preserves the Few's printed Attack-2 line follow-up", () => {
+    const state = binhWith({ "gold-dragon-second-attack-3": false });
+    const unit = makeCombatUnitFromArmy(fewDragon, "p1", "dragon_off", 0, "binh", unitSideRuleOverrides(state))!;
+    expect(unit.abilities).toContain("dragon-line-attack-2");
+    expect(unit.abilities).not.toContain("dragon-line-attack-3");
+  });
+});
+
 describe("phoenix-pack-rebirth toggle", () => {
   const packPhoenix = { id: "ph", unitDefId: "conflux.phoenixes", side: "pack" as const };
   const fewPhoenix = { id: "phf", unitDefId: "conflux.phoenixes", side: "few" as const };

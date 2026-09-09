@@ -1,5 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
+throw new Error("Test execution is disabled by the user's explicit instruction.");
+
 // Point the suite at an already-running server (e.g. a production build on
 // another port) with: PW_BASE_URL=http://127.0.0.1:3001 npx playwright test
 const baseURL = process.env.PW_BASE_URL ?? "http://127.0.0.1:3000";

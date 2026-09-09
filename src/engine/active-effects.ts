@@ -1,3 +1,4 @@
+import { townDefenseToken } from "./town-veterancy";
 import { cardLibrary } from "@/data/cards/library";
 import { isAdjacent } from "./battlefield";
 import { balanceIntelligenceWindowClosed } from "./combat-timing";
@@ -5,6 +6,7 @@ import { appendEvent, nextEventNumber } from "./events";
 import { houseRuleEnabled } from "./house-rules";
 import {
   getInnateFlatAttackBonus,
+  factionVeterancy,
   getUnitAbilityDefinitions,
   getAdjacentEnemyInitiativeAuraDelta,
   getFriendlyAdjacentInitiativeAuraAmount,
@@ -279,6 +281,16 @@ export function getSchoolPowerBonus(
           }
         }
       }
+      for (const unit of Object.values(state.combat?.units ?? {})) {
+        if (unit.controllerId !== playerId || unit.damage >= unit.maxHealth) continue;
+        for (const ability of getUnitAbilityDefinitions(unit)) {
+          if (
+            ability.implementationStatus === "implemented" &&
+            ability.effect?.type === "SPELL_SCHOOL_POWER_AURA" &&
+            ability.effect.school === school
+          ) forSchool += ability.effect.amount;
+        }
+      }
       if (forSchool > best) {
         best = forSchool;
       }
@@ -294,6 +306,16 @@ export function getSchoolPowerBonus(
       if (modifier.type === "SPELL_SCHOOL_POWER_BONUS" && schools.includes(modifier.school)) {
         bonus += modifier.amount;
       }
+    }
+  }
+  for (const unit of Object.values(state.combat?.units ?? {})) {
+    if (unit.controllerId !== playerId || unit.damage >= unit.maxHealth) continue;
+    for (const ability of getUnitAbilityDefinitions(unit)) {
+      if (
+        ability.implementationStatus === "implemented" &&
+        ability.effect?.type === "SPELL_SCHOOL_POWER_AURA" &&
+        schools.includes(ability.effect.school)
+      ) bonus += ability.effect.amount;
     }
   }
   return bonus;
@@ -411,6 +433,7 @@ export function ignoresAllRangedCombatPenalties(
   state?: GameState,
   isRetaliation = false
 ): boolean {
+  if (factionVeterancy(unit, "eye-immunity")) return true;
   // Kivotos Hero Mode is printed [unit_passive], so its waiver also covers a
   // Retaliation Attack (includesRetaliation); the Magi/Sharpshooter reading stays
   // own-attack only.
@@ -434,7 +457,28 @@ export function ignoresAllRangedCombatPenalties(
   );
 }
 
-export function effectAppliesToUnit(effect: ActiveEffectState, unit: CombatUnitState): boolean {
+export function effectAppliesToUnit(effect: ActiveEffectState, unit: CombatUnitState, includeBlindInstinctPenalty = false): boolean {
+  const neutralTownMechanics = getUnitAbilityDefinitions(unit).filter(ability => ability.implementationStatus === "implemented" && ability.effect?.type === "NEUTRAL_TOWN_VETERANCY").map(ability => ability.effect?.type === "NEUTRAL_TOWN_VETERANCY" ? ability.effect.mechanic : undefined);
+  if (!includeBlindInstinctPenalty && effect.polarity === "negative" && effect.controllerId !== unit.controllerId && neutralTownMechanics.includes("blind-instinct")) return false;
+  if (effect.polarity === "positive" && effect.scope === "unit" && effect.target?.type === "unit" && effect.target.unitId === unit.id && unit.townVeterancy?.positiveEffectsBlocked && !unit.townVeterancy.allowedPositiveEffectIds?.includes(effect.id)) return false;
+  // Evil Eyes' Unclouded Eye is hostile-effect immunity, not self-suppression:
+  // enemy ongoing effects cannot touch it, while its controller's Archery and
+  // other friendly unit/player/global buffs still apply normally.
+  if (
+    factionVeterancy(unit, "eye-immunity") &&
+    effect.controllerId !== unit.controllerId
+  ) {
+    return false;
+  }
+  if (
+    effect.controllerId !== unit.controllerId &&
+    getUnitAbilityDefinitions(unit).some(ability =>
+      ability.implementationStatus === "implemented" &&
+      ability.effect?.type === "NEUTRAL_VETERANCY" &&
+      ability.effect.mechanic === "enemy-ongoing-immunity"
+    )
+  ) return false;
+  if (getUnitAbilityDefinitions(unit).some(ability => ability.implementationStatus === "implemented" && ability.effect?.type === "NEUTRAL_VETERANCY" && ability.effect.mechanic === "all-ongoing-immunity")) return false;
   // Tower Titans ignore ongoing effects played DIRECTLY on their unit card.
   // Player/global effects (Archery and other global ongoing artifacts) still
   // apply: those cards were not played on the Titan. Tower Gargoyles keep their
@@ -617,6 +661,7 @@ export function getActiveAttackBonus(state: GameState, context: AttackContext): 
         if (modifier.type === "ATTACK_BONUS") {
           return modifierTotal + modifier.amount;
         }
+        if (modifier.type === "NEUTRAL_NEXT_ATTACK_PENALTY") return modifierTotal - modifier.amount;
 
         if (modifier.type !== "RANGED_ATTACK_BONUS" || context.attacker.type !== "ranged") {
           return modifierTotal;
@@ -633,7 +678,7 @@ export function getActiveAttackBonus(state: GameState, context: AttackContext): 
 }
 
 export function getActiveDefenseBonus(state: GameState, unit: CombatUnitState): number {
-  return state.activeEffects.reduce((total, effect) => {
+  return (unit.townVeterancy?.defense ?? 0) + state.activeEffects.reduce((total, effect) => {
     if (!effectAppliesToUnit(effect, unit)) {
       return total;
     }
@@ -677,12 +722,17 @@ export function getDisplayAttackBonus(state: GameState, unit: CombatUnitState): 
     return (
       total +
       effect.modifiers.reduce(
-        (sum, modifier) => (modifier.type === "ATTACK_BONUS" ? sum + modifier.amount : sum),
+        (sum, modifier) => modifier.type === "ATTACK_BONUS" ? sum + modifier.amount : modifier.type === "NEUTRAL_NEXT_ATTACK_PENALTY" ? sum - modifier.amount : sum,
         0
       )
     );
   }, 0);
-  return activeBonus + getInnateFlatAttackBonus(unit, false);
+  const werewolfPackBonus = getUnitAbilityDefinitions(unit).some(
+    ability => ability.implementationStatus === "implemented" && ability.effect?.type === "NEUTRAL_VETERANCY" && ability.effect.mechanic === "werewolf-pack-call"
+  )
+    ? Object.values(state.combat?.units ?? {}).filter(candidate => candidate.damage < candidate.maxHealth && candidate.unitDefId === "wog.werewolf").length
+    : 0;
+  return activeBonus + getInnateFlatAttackBonus(unit, false) + (unit.townVeterancy?.attack ?? 0) + werewolfPackBonus;
 }
 
 /** Ingham's Zealots VI: does this unit have a lasting "ignores Defense" effect? */
@@ -760,7 +810,14 @@ export function effectiveInitiative(
         return Math.max(best, getFriendlyAdjacentInitiativeAuraAmount(candidate));
       }, 0)
     : 0;
-  return unit.initiative + amplified + adjacentEnemyAura + maidAura;
+  const astralHunt =
+    (combat?.worldRound ?? 1) % 2 === 0 &&
+    getUnitAbilityDefinitions(unit).some(ability =>
+      ability.implementationStatus === "implemented" &&
+      ability.effect?.type === "NEUTRAL_VETERANCY" &&
+      ability.effect.mechanic === "werewolf-astral-hunt"
+    ) ? 3 : 0;
+  return unit.initiative + amplified + adjacentEnemyAura + maidAura + astralHunt + (unit.factionVeterancy?.flipInitiative ?? 0);
 }
 
 /**

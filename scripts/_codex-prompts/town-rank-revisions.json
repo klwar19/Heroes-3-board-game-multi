@@ -1,0 +1,106 @@
+{
+  "mode": "built-in image_gen",
+  "style": "Single square fantasy board-game ability icon, painted heroic fantasy, bold legible silhouette at 48px, antique gold circular rim, dark charcoal background, no text or watermark.",
+  "assets": [
+    {
+      "slug": "griffin-counter",
+      "subject": "Griffin claw breaks retaliation suppression",
+      "path": "C:\\Users\\klwar\\.codex\\generated_images\\01a08440-c681-7843-b590-4409db6d61c0\\exec-a6122fc2-8eeb-4a44-a0b7-88e13cc4da5c.png"
+    },
+    {
+      "slug": "halberd-hunter",
+      "subject": "A steel halberd piercing a wing silhouette above a horse head, anti flying and cavalry",
+      "path": "C:\\Users\\klwar\\.codex\\generated_images\\01a08440-c681-7843-b590-4409db6d61c0\\exec-ae0c70ea-f234-4bca-a84d-0bf29f2db818.png"
+    },
+    {
+      "slug": "halberd-aura",
+      "subject": "A central upright halberd surrounded by protective blue shields in adjacent positions",
+      "path": "C:\\Users\\klwar\\.codex\\generated_images\\01a08440-c681-7843-b590-4409db6d61c0\\exec-810db5ed-6046-4df5-b2b8-775ffe3e5d18.png"
+    },
+    {
+      "slug": "marksman-survival",
+      "subject": "A wounded crossbowman rising with a glowing red heart and radiant crossbow",
+      "path": "C:\\Users\\klwar\\.codex\\generated_images\\01a08440-c681-7843-b590-4409db6d61c0\\exec-928f982d-11b1-4034-951d-df1c1ccee3a8.png"
+    },
+    {
+      "slug": "crusader-undead",
+      "subject": "Holy silver sword cleaving an undead skull under a protective radiant cross",
+      "path": "C:\\Users\\klwar\\.codex\\generated_images\\01a08440-c681-7843-b590-4409db6d61c0\\exec-294dfc34-acc3-4967-880d-4d88a86f1124.png"
+    },
+    {
+      "slug": "zealot-loss",
+      "subject": "A hooded zealot raising a golden mace as two fallen allied souls empower him",
+      "path": "C:\\Users\\klwar\\.codex\\generated_images\\01a08440-c681-7843-b590-4409db6d61c0\\exec-2788b766-6134-49c8-8c5f-c2f5b62c8db0.png"
+    },
+    {
+      "slug": "golem-cap",
+      "subject": "Iron golem armor blocking a powerful sword strike with one tiny red spark",
+      "path": "C:\\Users\\klwar\\.codex\\generated_images\\01a08440-c681-7843-b590-4409db6d61c0\\exec-fa3d8b17-7fec-465d-b41c-069bf8fd9d90.png"
+    },
+    {
+      "slug": "naga-pierce",
+      "subject": "Two curved naga swords slipping through a split steel shield",
+      "path": "C:\\Users\\klwar\\.codex\\generated_images\\01a08440-c681-7843-b590-4409db6d61c0\\exec-3c410263-01af-498f-945f-400690e19134.png"
+    },
+    {
+      "slug": "titan-bolt",
+      "subject": "A titan fist calling a brilliant blue white thunderbolt onto a nearby foe",
+      "path": "C:\\Users\\klwar\\.codex\\generated_images\\01a08440-c681-7843-b590-4409db6d61c0\\exec-b74915a4-356a-4f8c-9722-4c8329de85f6.png"
+    },
+    {
+      "slug": "goblin-save",
+      "subject": "A wounded green goblin standing defiantly with a tiny glowing heart and raising a rallying fist",
+      "path": "C:\\Users\\klwar\\.codex\\generated_images\\01a08440-c681-7843-b590-4409db6d61c0\\exec-0e23eb6d-ed56-4c5a-a6bb-a3939951f72e.png"
+    },
+    {
+      "slug": "orc-discard",
+      "subject": "An orc axe tearing a magical playing card from an enemy hand",
+      "path": "C:\\Users\\klwar\\.codex\\generated_images\\01a08440-c681-7843-b590-4409db6d61c0\\exec-4a86e169-4bd7-4854-b48d-9d49ae49a824.png"
+    },
+    {
+      "slug": "ogre-guard",
+      "subject": "A blood red ogre club transforming its red aura into a heavy protective iron shield",
+      "path": "C:\\Users\\klwar\\.codex\\generated_images\\01a08440-c681-7843-b590-4409db6d61c0\\exec-82f1ab66-6c83-46cf-94a5-8cb1f209394f.png"
+    },
+    {
+      "slug": "bird-lightning",
+      "subject": "A soaring thunderbird with a precise lightning bolt striking a target",
+      "path": "C:\\Users\\klwar\\.codex\\generated_images\\01a08440-c681-7843-b590-4409db6d61c0\\exec-668b537e-56c1-4bb8-9543-d7e9f2b6083f.png"
+    },
+    {
+      "slug": "dwarf-backlash",
+      "subject": "A dwarven rune hammer releasing a violet spark at an enemy spell scroll",
+      "path": "C:\\Users\\klwar\\.codex\\generated_images\\01a08440-c681-7843-b590-4409db6d61c0\\exec-97aa2159-d1ee-468f-b7c8-e65296018fb9.png"
+    },
+    {
+      "slug": "dragon-snare",
+      "subject": "Golden dragon scales reflecting a strike and golden roots binding an enemy boot",
+      "path": "C:\\Users\\klwar\\.codex\\generated_images\\01a08440-c681-7843-b590-4409db6d61c0\\exec-edb1f327-ce05-418f-be8d-f55d69f47a78.png"
+    },
+    {
+      "slug": "demon-paralyze",
+      "subject": "Red demon skin reflecting a sword strike with petrifying violet energy freezing an attacker",
+      "path": "C:\\Users\\klwar\\.codex\\generated_images\\01a08440-c681-7843-b590-4409db6d61c0\\exec-a152834b-918c-4e4c-bcaf-6aef812f3b6c.png"
+    },
+    {
+      "slug": "pit-mend",
+      "subject": "A horned pit lord absorbing a departing allied soul into a healing green heart",
+      "path": "C:\\Users\\klwar\\.codex\\generated_images\\01a08440-c681-7843-b590-4409db6d61c0\\exec-ae894dce-abfe-4784-bdfc-bcce80dbdeaf.png"
+    },
+    {
+      "slug": "devil-slow",
+      "subject": "An arch devil scythe laying glowing red chains across an enemy's boots",
+      "path": "C:\\Users\\klwar\\.codex\\generated_images\\01a08440-c681-7843-b590-4409db6d61c0\\exec-89f92219-fd70-4129-8272-fe10a1243a63.png"
+    },
+    {
+      "slug": "efreet-mend",
+      "subject": "A fire efreet absorbing a retaliating blade into a healing spiral of embers",
+      "path": "C:\\Users\\klwar\\.codex\\generated_images\\01a08440-c681-7843-b590-4409db6d61c0\\exec-fafdcb06-a34a-4303-afc7-e872c952e756.png"
+    },
+    {
+      "slug": "dwarf-fx",
+      "subject": "16 equal square frames, 4x4 grid. Luminous purple and gold rune impact on pure black, screen blended. No checkerboard.",
+      "path": "C:/Users/klwar/.codex/generated_images/01a08440-c681-7843-b590-4409db6d61c0/exec-413d8d9f-f616-4066-9bf6-104426edcd01.png"
+    }
+  ]
+}

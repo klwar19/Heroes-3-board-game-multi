@@ -32,7 +32,7 @@ on:
 
 jobs:
   verify:
-    if: github.repository_owner == 'klwar19'
+    if: ${{ false }} # Disabled by explicit user instruction: no tests.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

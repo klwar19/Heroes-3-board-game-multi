@@ -98,6 +98,9 @@ export type HouseRuleId =
   // BINH house rule: the Pack side of Arch Devils deals 6 damage instead of
   // the printed 7. The Few and Neutral cards remain unchanged.
   | "arch-devil-pack-damage-6"
+  // BINH Gold Dragons rule: both Few and Pack resolve the second space of
+  // their line attack at 3 Attack. Off: the Few keeps its printed 2 Attack.
+  | "gold-dragon-second-attack-3"
   | "wisdom-expert-discount"
   | "estates-nerf"
   | "sandro-skeleton-hp"
@@ -806,6 +809,10 @@ export type EffectDurationDefinition =
   | { type: "permanent" };
 
 export type ActiveEffectModifier =
+  | { type: "NEUTRAL_BLIND_DUST" }
+  | { type: "TOWN_MOVE_LIMIT"; amount: number }
+  | { type: "NEUTRAL_MOVE_LIMIT"; amount: number }
+  | { type: "NEUTRAL_NEXT_ATTACK_PENALTY"; amount: number }
   | {
       type: "DAMAGE_PER_ADJACENT_ENEMY"; amount: number }
   | {
@@ -1102,6 +1109,16 @@ export type ActiveEffectModifier =
        * so Legacy stays rulebook-faithful (movement is a fixed 3 / ranged 1).
        */
       type: "MOVEMENT_BONUS";
+      amount: number;
+    }
+  | {
+      /** Unit-experience movement shift independent of optional Haste movement rules. */
+      type: "NEUTRAL_MOVEMENT_BONUS";
+      amount: number;
+    }
+  | {
+      /** Lava Sharpshooter's non-stacking activation burn. */
+      type: "NEUTRAL_BURN_DAMAGE";
       amount: number;
     }
   | {
@@ -4437,8 +4454,9 @@ type GameActionPayload =
     }
   | {
       /**
-       * Unit Experience: Drill one army unit for +1 XP. This costs no movement
-       * at a Town/Settlement/Random Town and 1 movement elsewhere on the map.
+       * Unit Experience: Drill one army unit for +1 XP. Bronze units cost no
+       * movement. Other tiers cost no movement at a Town/Settlement/Random
+       * Town and 1 movement elsewhere on the map.
        * Tier/Neutral pricing and hero-level uses are validated by the reducer.
        * Handler-validated (self-validating).
        */
@@ -8041,6 +8059,7 @@ export type ResolutionStackItem = {
     | "cancelled";
   triggerEventIds: string[];
   modifiers: {
+    neutralPainBlocked?: boolean;
     spellPowerBonus: number;
     /**
      * Polish Set Artifacts — Pendant of Reflection: the enemy Spell-Power drain
@@ -9055,8 +9074,8 @@ export type PlayerState = {
    * Spell Book (house rule, default ON — `adventure.spellBook`). A personal,
    * face-down library of Spell cards set aside next to the hero, NOT in hand and
    * NOT counted against the hand limit. The owner may stash any Spell from hand
-   * here on their turn (MOVE_SPELL_TO_SPELL_BOOK) to free a hand slot without
-   * drawing a replacement. A Spell in the Book may be cast or played exactly like
+   * here on their turn (MOVE_SPELL_TO_SPELL_BOOK), up to 5 stored Spells, to
+   * free a hand slot without drawing a replacement. A Spell in the Book may be cast or played exactly like
    * a hand Spell — it obeys the same one-Spell-per-combat-round limit — and, like
    * a hand Spell, it may be discarded for +1 Power; but only ONE Book Spell may be
    * spent for Power ONCE PER CAST (see combatStats.spellBookPowerUsedThisTurn). A used
@@ -9719,6 +9738,13 @@ export type BattlefieldTokenState = {
 export type StackTokenStat = "attack" | "defense" | "health" | "initiative";
 
 export type CombatUnitState = {
+  neutralLastDamageSourceId?: string;
+  neutralBountyRecorded?: boolean;
+  /** Combat-scoped state for neutral Unit Experience abilities. */
+  neutralVeterancy?: {
+    damageDefense?: number;
+    hellSteedSaveUsed?: boolean;
+  };
   elementalVeterancy?: {
     deferredDamage?: number;
     deferredRound?: number;
@@ -9882,6 +9908,36 @@ export type CombatUnitState = {
   keyAuthorityCancelledAbilityIds?: string[];
   /** Phoenixes: set once this unit has spent its once-per-combat Rebirth self-save. */
   usedRebirthThisCombat?: boolean;
+  /** Town rank effects persist across side changes, and are rebuilt for each combat. */
+  townVeterancy?: {
+    damageSourceId?: string;
+    attack?: number;
+    defense?: number;
+    zeal?: number;
+    movedRound?: number;
+    markedTargets?: string[];
+    boundBy?: string[];
+    startUsed?: boolean;
+    saveUsed?: boolean;
+    flipUsed?: boolean;
+    lossRecorded?: boolean;
+    draws?: number;
+    lastAttackRoll?: number;
+    improvisedRound?: number;
+    returnFireRound?: number;
+    dreadChargeSpentActivation?: boolean;
+    positiveEffectsBlocked?: boolean;
+    allowedPositiveEffectIds?: string[];
+  };
+  factionVeterancy?: {
+    marked?: boolean;
+    rebirthUsed?: boolean;
+    rebirthAttack?: number;
+    guardRound?: number;
+    flipInitiative?: number;
+    flipHealth?: number;
+    lastDamage?: { kind: DamageKind; source: SourceRef; amount: number };
+  };
   /** MGQ Mage Job: the pre-movement Magic Arrow has been spent this combat. */
   usedMgqMageMagicArrowThisCombat?: boolean;
   /**
@@ -9957,6 +10013,8 @@ export type CombatUnitState = {
    * none remain. Repeated Wyvern hits stack more cubes here.
    */
   poisonCubes?: number;
+  /** Poison cubes planted by a Virulent Venom Wyvern; these tick for 2 damage. */
+  potentPoisonCubes?: number;
   /**
    * Factory faction cubes riding this unit (the "faction cube" subsystem). Two
    * units spend them: an Automaton (Few) may place up to 2 at activation and
@@ -10363,15 +10421,39 @@ export type CombatScriptStatModifier = {
 };
 
 export type CombatState = {
+  /** Adventure round captured when combat starts (even values are Astrologers' rounds). */
+  worldRound?: number;
+  veteranAttackContinuation?: {
+    kind: "followups";
+    attackerId: UnitId;
+    defenderId: UnitId;
+    attackKind: "melee" | "ranged";
+    attackRoll: number;
+    attackDamage?: number;
+    defeatedSideOrLayer?: boolean;
+    forceAbilityRoll: boolean;
+  } | { kind: "sequence" } | { kind: "retaliation"; attackerId: UnitId; defenderId: UnitId };
+  neutralSandstormStarted?: boolean;
+  neutralBountyGold?: Record<PlayerId, number>;
   elementalResumeAttack?: Extract<GameAction, { type: "ATTACK_UNIT" | "MOVE_AND_ATTACK_UNIT" }>;
   elementalAwaitingAdvance?: boolean;
   elementalChoices?: Array<{
-    kind: "damage" | "obstacle" | "solidify" | "nest" | "link" | "copy" | "copy-bolt" | "dispel";
+    kind: "return-fire" | "town-bolt" | "town-recover" | "town-buff" | "damage" | "heal" | "heal-self" | "move-one" | "move-ally-one" | "return-origin" | "debuff-attack" | "obstacle" | "solidify" | "nest" | "link" | "copy" | "copy-bolt" | "dispel" | "veteran-teleport" | "veteran-cleave" | "veteran-tribute" | "blind-dust" | "troll-snare" | "chain-lightning";
     unitId: string;
     abilityId: string;
     amount?: number;
     targetId?: string;
+    anchorId?: string;
+    excludeTargetId?: string;
+    enemiesOnly?: boolean;
+    alliesOnly?: boolean;
+    adjacentOrSelf?: boolean;
+    forcedTarget?: boolean;
+    position?: number;
     adjacent?: boolean;
+    valuablesCost?: number;
+    runeCost?: number;
+    optional?: boolean;
     cardId?: string;
     attack?: Extract<GameAction, { type: "ATTACK_UNIT" | "MOVE_AND_ATTACK_UNIT" }>;
   }>;
@@ -11477,6 +11559,12 @@ export type PendingVisit = {
   fieldId: MapSpaceId;
   /** Steps still to resolve for this visit (front of array first). */
   steps: VisitStep[];
+  /**
+   * A guarded Monolith was just beaten on this exact visit. If the player takes
+   * the offered teleport now, the destination guard is bypassed once without
+   * being cleared. Staying (or completing this visit) discards the privilege.
+   */
+  bypassMonolithArrivalGuard?: true;
 };
 
 export type AdventureReward =
@@ -12028,6 +12116,7 @@ export type VisitStep =
       heroId: HeroId;
       fieldId: MapSpaceId;
       revisit: boolean;
+      bypassMonolithArrivalGuard?: true;
     }
   | {
       type: "ROLL_TREASURE_DICE";
@@ -12662,6 +12751,8 @@ export type VisitStep =
       tileInstanceId: string;
       /** Colored-Gate travel only: the pair (1-4) the placement carves. */
       pair?: 1 | 2 | 3 | 4;
+      /** Immediate reward for beating the guarded origin Monolith. */
+      bypassArrivalGuard?: true;
     }
   | {
       /**
@@ -12702,6 +12793,8 @@ export type VisitStep =
       heroId: HeroId;
       spaceId: MapSpaceId;
       originSpaceId: MapSpaceId;
+      /** Leave a destination guard standing and skip it for this arrival only. */
+      bypassGuard?: true;
     }
   | {
       /**
@@ -13824,6 +13917,8 @@ export type AdventureState = {
     kind: "monolith" | "whirlpool" | "gate";
     /** Colored-Gate travel only: the pair (1-4) the placement carves. */
     pair?: 1 | 2 | 3 | 4;
+    /** Immediate reward for beating the guarded origin Monolith. */
+    bypassArrivalGuard?: true;
     /** The token the hero is travelling FROM (it stays put). */
     fromSpaceId: MapSpaceId;
     /** The face-down tile that hides the destination token. */
@@ -13853,6 +13948,7 @@ export type AdventureState = {
           kind: "field-visit";
           heroId: HeroId;
           fieldId: MapSpaceId;
+          bypassMonolithArrivalGuard?: true;
         }
       | {
           kind: "creature-bank";
@@ -13886,7 +13982,12 @@ export type AdventureState = {
       cost: ResourceCost;
     }[];
     deferredReward?:
-      | { kind: "field-visit"; heroId: HeroId; fieldId: MapSpaceId }
+      | {
+          kind: "field-visit";
+          heroId: HeroId;
+          fieldId: MapSpaceId;
+          bypassMonolithArrivalGuard?: true;
+        }
       | {
           kind: "creature-bank";
           heroId: HeroId;
@@ -16369,6 +16470,8 @@ export type HeroState = {
 };
 
 export type AttackRollCandidate = {
+  neutralDustApplied?: boolean;
+  hydraRerollApplied?: boolean;
   rolls: number[];
   roll: number;
   /**
@@ -16449,6 +16552,7 @@ export type AbilityDiceRoll = {
  */
 export type PendingAbilityRollContext = {
   kind:
+    | "town-bolt"
     | "attack-die-damage"
     | "death-stare"
     | "paralysis-extra"
@@ -17744,7 +17848,7 @@ export type PendingChoice =
     }
   | {
       /**
-       * A combat hand-discard prompt with four kinds:
+       * A combat hand-discard prompt with five kinds:
        *  - "magi-power-or-random": Neutral Magi "Power Drain" — after the Magi
        *    attack the defending player discards a Power-contributing card (a
        *    Power statistic or any Spell) of their choice, or lets a random card
@@ -17755,6 +17859,9 @@ export type PendingChoice =
        *  - "familiar-choose-discard": Neutral Familiars "Mana Leech" — after
        *    declaring a Spell from hand, the caster chooses any other card to
        *    discard before that held Spell is cast (no random option).
+       *  - "spell-sunder-choose-discard": Veteran Spell Sunder — after an
+       *    instant Spell is played from hand or Spell Book, the caster chooses
+       *    one additional card from hand to discard.
        *  - "wraith-choose-discard": Creature Bank Crypt/Shipwreck Wraiths "Soul
        *    Siphon" — after the Wraiths' attack the attacked player discards a
        *    card of THEIR choice (any card in hand; no random option). Combat
@@ -17767,6 +17874,7 @@ export type PendingChoice =
         | "magi-power-or-random"
         | "pegasi-toll"
         | "familiar-choose-discard"
+        | "spell-sunder-choose-discard"
         | "wraith-choose-discard";
       abilityId: string;
       abilityName: string;
@@ -17775,11 +17883,29 @@ export type PendingChoice =
       /**
        * Cards the chooser may pick from: the hand's Power cards for
        * "magi-power-or-random"/"pegasi-toll", or the eligible whole hand for
-       * "familiar-choose-discard"/"wraith-choose-discard".
+       * "familiar-choose-discard"/"spell-sunder-choose-discard"/
+       * "wraith-choose-discard".
        */
       powerCardIds: CardId[];
       /** "wraith-choose-discard" only: cards still owed after this pick (>= 1). */
       remaining?: number;
+      /** Standalone instant Spell parked until Spell Sunder is paid. */
+      directSpell?: Extract<GameAction, { type: "PLAY_CARD" }>;
+      /** Spell Sunder: the reaction Spell deferred until the extra discard is paid. */
+      reactionSpell?: {
+        cardId: CardId;
+        target?: TargetRef;
+        protectedUnitId?: UnitId;
+        dieIndex?: number;
+        mode?: CardPlayMode;
+        optionIndex?: number;
+        drawOnly?: true;
+        utilityOnly?: true;
+        costCardIds?: CardId[];
+        costCardModes?: CardPlayMode[];
+        fromSpellBook?: boolean;
+        castEnablerCardId?: CardId;
+      };
       /** Pegasi/Familiars: the Spell cast deferred until the discard is paid. */
       tollSpell?: {
         cardId: CardId;
@@ -17911,6 +18037,7 @@ export type GameState = {
   /** Public context summaries for the viewing seat; never contains private cards. */
   parallelContextOptions?: import("./parallel-combats").ParallelContextOption[];
   decks: Record<DeckId, DeckState>;
+  pendingManaTurbulence?: { casterId: string; unitId: string; stackDepth: number }[];
   stack: ResolutionStackItem[];
   reactionWindow: ReactionWindow | null;
   activeEffects: ActiveEffectState[];

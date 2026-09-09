@@ -1,4 +1,6 @@
+import { townCombatStart } from "./town-veterancy";
 import { cardLibrary } from "@/data/cards/library";
+import { neutralCombatStart } from "./neutral-veterancy";
 import { balanceCard } from "./community-balance-cards";
 import { DRILL_UNIT_XP, MAX_UNIT_RANK } from "@/data/units/experience";
 import { hasParkedParallelInteractions } from "./parallel-combats";
@@ -142,6 +144,7 @@ import {
   applyMineFlag,
   applySettlementResource,
   noteGateTravelSlipsPastGuard,
+  noteMonolithVictoryBypassesGuard,
   clearCustomGuard,
   setTeleportArrivalHook,
   flagField,
@@ -482,6 +485,7 @@ import {
   SPELL_DECK_EXPERT,
   spellBookPowerAvailable,
   spellBookRuleEnabled,
+  standardSpellBookHasCapacity,
   spellCanEnterSpellBook,
   unitSideRuleOverrides,
   wisdomGoldDiscount,
@@ -4556,7 +4560,7 @@ setDungeonEncounterHook((state, heroId, floor) => {
 // re-opening the teleport, and a retreat bounces the hero back to the ORIGIN
 // teleporter (lastVisitedField); or (c) stands on an empty exit (arrival never
 // re-triggers — Revisit to go again). Own-hero destinations were never offered.
-setTeleportArrivalHook((state, hero, field, originSpaceId) => {
+setTeleportArrivalHook((state, hero, field, originSpaceId, bypassGuard) => {
   const playerId = hero.controllerId;
   const enemyHero = heroAtSpace(state, field.spaceId, hero.id);
   if (enemyHero && !playersAreAllied(state, enemyHero.controllerId, playerId)) {
@@ -4564,6 +4568,10 @@ setTeleportArrivalHook((state, hero, field, originSpaceId) => {
     return;
   }
   if (isFieldGuarded(field) && field.flagOwnerId !== playerId && !breakClearedByTeam(state, playerId, field)) {
+    if (bypassGuard) {
+      noteMonolithVictoryBypassesGuard(state, playerId, field);
+      return;
+    }
     state.adventure!.lastVisitedField[hero.id] = originSpaceId;
     startNeutralEncounter(state, hero, field, { teleportArrival: true });
   }
@@ -5733,6 +5741,7 @@ function makeCombatShell(state: GameState, attackerPlayerId: PlayerId, defenderP
 
   const shell: CombatState = {
     id: `combat_${nextEventNumber(state)}`,
+    worldRound: state.round,
     round: 1,
     attackerPlayerId,
     defenderPlayerId,
@@ -12116,6 +12125,7 @@ function resumeCombatStartAfterCommanderPlacement(state: GameState): void {
   applyPermanentCombatEffects(state);
   applyCombatStartMoraleCards(state);
   applyCombatStartUnitAbilities(state);
+  if (combat.outcome) return;
   // Single-player smoothing (house rule #2): a computer attacker in a NON-PvP
   // fight draws its two temporary Empowered Attack/Defense statistic cards —
   // removed from the game again at combat end (finalizeAdventureCombat).
@@ -13142,8 +13152,10 @@ export function finishTactics(state: GameState, action: Extract<GameAction, { ty
  * once the first combat round opens.
  */
 export function applyCombatStartUnitAbilities(state: GameState): void {
+  neutralCombatStart(state);
+  townCombatStart(state);
   const combat = state.combat;
-  if (!combat) {
+  if (!combat || combat.outcome) {
     return;
   }
 
@@ -13692,7 +13704,9 @@ function releaseDeferredCombatReward(
   legacyFieldId?: MapSpaceId
 ): void {
   if (reward?.kind === "field-visit") {
-    beginFieldVisit(state, reward.heroId, reward.fieldId, false);
+    beginFieldVisit(state, reward.heroId, reward.fieldId, false, {
+      bypassMonolithArrivalGuard: reward.bypassMonolithArrivalGuard
+    });
   } else if (reward?.kind === "creature-bank") {
     grantCreatureBankReward(state, reward.heroId, reward.fieldId, reward.stackCount);
   } else if (reward?.kind === "wave") {
@@ -14729,16 +14743,24 @@ export function finalizeAdventureCombat(state: GameState): void {
           );
         }
       } else {
+        // Winning the guard fight on a Monolith grants one immediate passage:
+        // if this visit chooses Teleport, a destination guard is bypassed once
+        // and remains standing. The bit follows delayed Necromancy/Companion
+        // windows, but disappears if the player stays or the visit completes.
+        const bypassMonolithArrivalGuard = field.location === "monolith";
         const deferredReward: DeferredNecromancyReward = {
           kind: "field-visit",
           heroId: hero.id,
-          fieldId: context.fieldId
+          fieldId: context.fieldId,
+          ...(bypassMonolithArrivalGuard ? { bypassMonolithArrivalGuard: true } : {})
         };
         const deferred =
           openMgqCompanionWindow(state, playerId, hero.id, mgqCompanionOptions, deferredReward) ||
           openNecromancyWindow(state, playerId, hero.id, deferredReward);
         if (!deferred) {
-          beginFieldVisit(state, hero.id, context.fieldId, false);
+          beginFieldVisit(state, hero.id, context.fieldId, false, {
+            bypassMonolithArrivalGuard
+          });
         }
       }
     }
@@ -15216,8 +15238,8 @@ export function heroTrain(state: GameState, action: Extract<GameAction, { type: 
 
 /**
  * DRILL_UNIT (Unit Experience optional rule): pay the target's tier price to
- * grant one army unit card +1 XP. It is free to move at a Town, Settlement or
- * Random Town; anywhere else on the map also costs 1 movement.
+ * grant one army unit card +1 XP. Bronze units never spend movement; other
+ * tiers spend 1 movement outside a Town, Settlement or Random Town.
  * Recruited Neutrals and bronze cost 1, silver costs 2, gold/azure cost 3.
  * Uses per round scale from 1 to 2 at hero level IV and 3 at level VII.
  */
@@ -15238,21 +15260,21 @@ export function drillUnit(state: GameState, action: Extract<GameAction, { type: 
   }
   assertParallelInteractionFree(state, action.playerId);
   const hero = getMainHero(state, action.playerId);
-  const movementCost = unitDrillMovementCost(state, action.playerId);
+  const armyUnit = player.army.find((candidate) => candidate.id === action.armyUnitId);
+  if (!armyUnit) {
+    throw new Error("That unit is not in your army.");
+  }
+  const movementCost = unitDrillMovementCost(state, action.playerId, armyUnit);
   if (!hero || movementCost === null) {
     throw new Error("Your main hero must be on the map to drill a unit.");
   }
   if (hero.movementPoints < movementCost) {
-    throw new Error("Drilling outside a Town, Settlement or Random Town needs 1 movement.");
+    throw new Error("Drilling a non-bronze unit outside a Town, Settlement or Random Town needs 1 movement.");
   }
   if (!unitDrillAvailable(state, action.playerId)) {
     throw new Error(
       `Drilling needs enough gold, an unused drill this round, and a unit below max rank.`
     );
-  }
-  const armyUnit = player.army.find((candidate) => candidate.id === action.armyUnitId);
-  if (!armyUnit) {
-    throw new Error("That unit is not in your army.");
   }
   const def = coreUnitDefinitions[armyUnit.unitDefId];
   if (!def) {
@@ -18110,6 +18132,14 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
       });
     }
     if (index !== -1 && !refreshBlocked) {
+      if (
+        source !== "polish-used" &&
+        destination === "spellBook" &&
+        spellCanEnterSpellBook(cardId) &&
+        !standardSpellBookHasCapacity(player)
+      ) {
+        throw new Error("The standard Spell Book can hold at most 5 Spells.");
+      }
       sourcePile.splice(index, 1);
       if (source === "polish-used") {
         player.spellBook.push(cardId);
@@ -20915,6 +20945,7 @@ export function openDiscardPickChoice(
   // `destinations` stay parallel with `options`, so the pick reads the right card
   // and routes it to the right zone.
   const bookOn = spellBookRuleEnabled(state);
+  const bookHasCapacity = standardSpellBookHasCapacity(player);
   const entries: {
     cardId: CardId;
     destination: "hand" | "spellBook";
@@ -20929,7 +20960,12 @@ export function openDiscardPickChoice(
     entries.push({ cardId, destination: "hand", source });
     // Magic Arrow (any starting-only Spell) goes only to hand — it has no Spell
     // Book home, so no "→ Spell Book" route is offered for it.
-    if (bookOn && cardLibrary[cardId]?.kind === "spell" && spellCanEnterSpellBook(cardId)) {
+    if (
+      bookOn &&
+      bookHasCapacity &&
+      cardLibrary[cardId]?.kind === "spell" &&
+      spellCanEnterSpellBook(cardId)
+    ) {
       entries.push({ cardId, destination: "spellBook", source });
     }
   }

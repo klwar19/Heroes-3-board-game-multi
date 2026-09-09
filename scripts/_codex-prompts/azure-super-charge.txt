@@ -1,0 +1,6 @@
+Tool: built-in image_gen (new image)
+Final asset: public/game-tokens/rank-ability/azure-super-charge.webp
+Compression: Sharp, 256 x 256, WebP quality 82, effort 6; 20,632 bytes.
+
+Final prompt:
+Create a square game ability icon for Azure Dragon Super Charge: a fierce sapphire-blue western dragon head and neck, glowing icy cyan eyes, frost lightning radiating from its scales, roaring with a brilliant white-blue breath. Dark navy background, restrained antique gold rim, polished painterly high fantasy board game art, bold readable silhouette at 128 pixels, centered composition. No text, no letters, no numbers, no watermark. Single icon, not a sheet.

@@ -1,0 +1,21 @@
+{
+  "generator": "Built-in image_gen",
+  "output": "256x256 WebP, quality 90",
+  "style": "Square fantasy strategy game ability icons; painterly classic fantasy inventory art, bold centered silhouettes readable at 48px, dark backgrounds, restrained gold borders; no text or watermarks.",
+  "assetBriefs": {
+    "dragon-mark": "A black dragon's burning violet eye above a branded enemy shield, a single glowing curse mark.",
+    "manticore-revenge": "A manticore's poisonous tail delivers a final vengeful sting, green venom and dark gold armor.",
+    "minotaur-cleave": "A minotaur's massive axe cleaves across two adjacent armored targets.",
+    "medusa-execution": "A Medusa's glowing snake eye behind a cracked stone warrior struck by two magical arrows.",
+    "harpy-vitality": "A battle-worn harpy rising with renewed strength, four green sparks around feathered wings.",
+    "skeleton-rebirth": "An armored skeleton's bones coming together, crimson sword and brilliant heart spark in its ribs.",
+    "wraith-escape": "A hooded wraith evading a sword and reforming through a blue spectral portal.",
+    "wraith-magic": "A hooded wraith drawing violet spell energy into its chest, igniting a green life flame.",
+    "zombie-intercept": "A sturdy armored zombie stands in front of a smaller skeletal ally, catching half a magical blade with a split luminous shield.",
+    "lich-pierce": "A crowned skull exhales green death mist that pierces a cracked shield.",
+    "vampire-tribute": "A pale aristocratic vampire reaches for a glowing magical card as crimson wisps flow toward a chalice.",
+    "vampire-ward": "A vampire wraps its cloak around itself within a violet shield that blocks two magical bolts.",
+    "dragon-dread": "A ghost dragon skull looms above a rusting and cracking warrior shield, surrounded by spectral blue fear."
+  },
+  "medusaMendPrompt": "Use case: stylized-concept. Square fantasy strategy game ability icon. A regal adult Medusa with jade snake hair and emerald scales holds a luminous green healing crystal. Soft blue and green restorative light surrounds her, conveying magical regeneration and vitality. Serene expression, ornate modest armor. Painterly classic fantasy inventory art, bold centered silhouette readable at 48px, dark background, restrained gold border. No text, no letters, no watermark."
+}

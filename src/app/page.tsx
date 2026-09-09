@@ -32,6 +32,7 @@ import {
   resourceDieFaces,
   rulesetCardNote,
   spellBookPowerAvailable,
+  STANDARD_SPELL_BOOK_LIMIT,
   cardCanFuelSchoollessPower,
   spellPowerValueOfCard,
   setArtifactsEnabled,
@@ -946,6 +947,23 @@ export default function Home() {
     }
   }, [combatBoardTargetKey]);
   /* eslint-enable react-hooks/set-state-in-effect */
+  // AoE specialties and printed abilities may open a second, engine-owned
+  // battlefield target choice after their card/action resolves. Make that
+  // choice visible immediately on phone instead of leaving its legal targets
+  // hidden behind the Hand tab.
+  const battlefieldChoiceKey =
+    phoneUi &&
+    state?.pendingChoice?.type === "ABILITY_TARGET_CHOICE" &&
+    state.pendingChoice.playerId === viewerPlayerId
+      ? state.pendingChoice.id
+      : null;
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (battlefieldChoiceKey) {
+      setPhoneCombatTab("board");
+    }
+  }, [battlefieldChoiceKey]);
+  /* eslint-enable react-hooks/set-state-in-effect */
   /** The Town window popup (board / buildings views) over the adventure map. */
   const [townOpen, setTownOpen] = useState(false);
   /** Desktop map: expand the crowded left command rail into a large window. */
@@ -1029,6 +1047,8 @@ export default function Home() {
   const appliedCampaignSetupRef = useRef(false);
   const [drawCue, setDrawCue] = useState<DrawCue | null>(null);
   const [moveCue, setMoveCue] = useState<HeroMoveCue | null>(null);
+  // Shared by map pawn clicks and the two movement counters in the HUD.
+  const [selectedMapHeroId, setSelectedMapHeroId] = useState<string | null>(null);
   // Single-player: a computer opponent's whole map turn settles at once, so its
   // hero walks are replayed for the human slowly, cell by cell, one hero at a
   // time. The pawns render at these override cells until the walk finishes.
@@ -6210,6 +6230,8 @@ export default function Home() {
               }
               legalActions={legalActions}
               onAction={submitAction}
+              onSelectHero={isSeated ? setSelectedMapHeroId : undefined}
+              selectedHeroId={selectedMapHeroId}
               state={state}
               viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]}
             />
@@ -6336,8 +6358,10 @@ export default function Home() {
                   legalActions={legalActions}
                   moveCue={moveCue}
                   onAction={submitAction}
+                  onSelectedHeroIdChange={setSelectedMapHeroId}
                   placement={tilePlacement}
                   readOnly={mapReadOnly || !isSeated}
+                  selectedHeroId={selectedMapHeroId}
                   state={state}
                   view={playerView}
                   viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT}
@@ -6606,7 +6630,7 @@ export default function Home() {
                         <span className="spellBookCount">
                           {polishBook
                             ? `${spellBookCards.length}/${spellBookCards.length + spellBookUsedCards.length}`
-                            : spellBookCards.length}
+                            : `${spellBookCards.length}/${STANDARD_SPELL_BOOK_LIMIT}`}
                         </span>
                         <small>Spell Book</small>
                       </button>
@@ -7041,7 +7065,10 @@ export default function Home() {
                   </button>
                 </div>
               ) : null}
-              <div className="adventureHandCards" data-fx-anchor={`hand:${viewerPlayerId}`}>
+              <div
+                className={`adventureHandCards ${handCards.length > 7 ? "scrollable" : ""}`}
+                data-fx-anchor={`hand:${viewerPlayerId}`}
+              >
                 {handCards.length === 0 ? <small className="emptyHand">No cards in hand.</small> : null}
                 {/* The React refs rule currently misidentifies setState updater
                     parameters named `current` inside this render map as refs;
@@ -7049,6 +7076,15 @@ export default function Home() {
                 {/* eslint-disable react-hooks/refs */}
                 {handCards.map((cardId, index) => {
                   const plays = playActionsByCard.get(cardId) ?? [];
+                  // Ability Empower is a legal action separate from playing the
+                  // card. Attach it to the card menu so the map hand exposes the
+                  // same action on desktop and phone layouts.
+                  const empowerAction = legalActions.find(
+                    (legal) =>
+                      legal.action.type === "USE_ABILITY_EMPOWER_TOKEN" &&
+                      legal.action.playerId === viewerPlayerId &&
+                      legal.action.cardId === cardId,
+                  );
                   // Empowered abilities (and intrinsic Empowered Statistics) wear
                   // the same purple ring + badge on the MAP hand as in combat.
                   const empowered = cardIsEmpoweredFor(cardId, viewer?.empoweredAbilities);
@@ -7059,7 +7095,7 @@ export default function Home() {
                   const isCastCard = polishBook && isCastASpellCard(cardId);
                   // A Spell with no map play is still actionable when it can be
                   // stashed — clicking opens the menu instead of marking a discard.
-                  const actionable = plays.length > 0 || Boolean(stashAction) || isCastCard;
+                  const actionable = plays.length > 0 || Boolean(stashAction) || isCastCard || Boolean(empowerAction);
                   const isPayingSource = pendingCostPlay !== null;
                   const pickedForCost = Boolean(pendingCostPlay?.picks.includes(index));
                   const eligibleForCost =
@@ -7186,7 +7222,11 @@ export default function Home() {
                         ) : null}
                       </button>
                       {openHandIndex === index && !selecting && !isPayingSource && canOpenMenu ? (
-                        <div className="handPlayMenu" role="menu" aria-label={`${cardName(cardId)} plays`}>
+                        <div
+                          className={`handPlayMenu ${handCards.length > 7 ? "scrollDetached" : ""}`}
+                          role="menu"
+                          aria-label={`${cardName(cardId)} plays`}
+                        >
                           <strong>{cardName(cardId)}</strong>
                           {rulesetCardNote(state, cardId) ? (
                             <small className="rulesetNote">{rulesetCardNote(state, cardId)}</small>
@@ -7202,6 +7242,19 @@ export default function Home() {
                               {legal.label}
                             </button>
                           ))}
+                          {empowerAction ? (
+                            <button
+                              className="primary"
+                              onClick={() => {
+                                void submitAction(empowerAction.action);
+                                setOpenHandIndex(null);
+                              }}
+                              title="Permanently empower this Ability; its Expert side costs no crown."
+                              type="button"
+                            >
+                              👑 Empower with token
+                            </button>
+                          ) : null}
                           {isCastCard ? (
                             // Cast a Spell (Polish): two ways to reach the same
                             // cast — open the full grimoire, or pick from a quick

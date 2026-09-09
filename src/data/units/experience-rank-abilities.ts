@@ -350,6 +350,30 @@ function rotatedChoices(unitDefId: string, rank: number, pool: readonly string[]
 }
 
 function explicitRankOne(unitDefId: string): RankStep | null {
+  if (unitDefId === "wog.fire_messenger") return A("veteran-ranged-fire-shield");
+  if (unitDefId === "wog.war_zealot") return H({ ...Z, initiative: 1 }, "veteran-retaliation-fury");
+  if (unitDefId === "castle.halberdiers") return A("town-halberd-hunter");
+  if (unitDefId === "tower.gremlins") return S({ ...Z, health: 1 });
+  if (unitDefId === "tower.iron_golems") return A("town-golem-cap");
+  if (unitDefId === "tower.titans") return A("attack-roll-advantage-passive");
+  if (unitDefId === "rampart.dendroids") return A("bulwark-thick-hide");
+  if (unitDefId === "rampart.unicorns") return H({ ...Z, initiative: 1 }, "veteran-mobility-1");
+  if (unitDefId === "inferno.cerberi") return S({ ...Z, initiative: 2 });
+  if (unitDefId === "inferno.arch_devils") return H({ ...Z, initiative: 1 }, "town-devil-slow");
+  if (unitDefId === "dungeon.manticores") return A("veteran-manticore-mend");
+  if (unitDefId === "dungeon.minotaurs") return A("veteran-minotaur-hide");
+  if (unitDefId === "dungeon.harpies") return H({ ...Z, initiative: 3 }, "veteran-harpy-haste");
+  if (unitDefId === "dungeon.evil_eyes") return A("veteran-eye-splash");
+  if (unitDefId === "necropolis.ghost_dragons") return A("veteran-dragon-dread");
+  if (unitDefId === "neutral.crystal_dragons") return A("veteran-crystal-burst");
+  if (unitDefId === "doom.arch_vile") return S({ ...Z, initiative: 2, health: 1 });
+  if (unitDefId === "wog.dracolich") return A("veteran-dracolich-fear-aura");
+  if (unitDefId === "neutral.rust_dragons") return A("veteran-blind-dust");
+  if (unitDefId === "doom.spider_mastermind") return A("veteran-adjacent-pulse");
+  if (unitDefId === "neutral.unicorns") return H({ ...Z, initiative: 1 }, "imperium-shock-assault");
+  if (unitDefId === "neutral.wyverns") return A("veteran-flying-guard");
+  if (unitDefId === "neutral.peasants") return A("veteran-peasant-bounty");
+  if (unitDefId === "neutral.azure_dragons") return A("veteran-azure-fear-aura");
   if (unitDefId === "conflux.energy_elementals") return A("veteran-energy-delay");
   if (unitDefId === "conflux.magic_elementals") return A("veteran-magic-dispel");
   if (unitDefId === "conflux.magma_elementals") return A("veteran-magma-solidify");
@@ -360,6 +384,12 @@ function explicitRankOne(unitDefId: string): RankStep | null {
   if (unitDefId === "neutral.magma_elementals") return S({ ...Z, health: 1 });
   if (unitDefId === "neutral.phoenixes") return A("veteran-phoenix-breath");
   if (unitDefId === "fortress.hydras") return A("veteran-fear-aura");
+  if (unitDefId === "fortress.dragon_flies") return S({ ...Z, initiative: 2 });
+  if (unitDefId === "fortress.gorgons") return H({ ...Z, initiative: 1 }, "town-gorgon-stare-reroll");
+  if (unitDefId === "cove.haspids") return A("town-haspid-toxic-hide");
+  if (unitDefId === "bulwark.mountain_rams") return A("town-ram-spell-draw");
+  if (unitDefId === "bulwark.jotunns") return A("town-jotunn-rune-hide");
+  if (unitDefId === "bulwark.mammoths") return A("town-mammoth-rune-mend");
   if (unitDefId === "castle.champions") return A("veteran-moving-pierce");
   // Move the former generated R3 reward forward: veteran Sharpshooters begin
   // with the same low-roll extra shot that their old schedule granted at R3.
@@ -376,6 +406,47 @@ function rankOneStepFor(unitDefId: string): RankStep {
 }
 
 function explicitRankTwo(unitDefId: string): RankStep | null {
+  const neutralTownR2: Record<string, string> = {
+    "neutral.halberdiers": "ntv-set-the-spear", "neutral.centaurs": "ntv-skirmisher-step",
+  };
+  if (neutralTownR2[unitDefId]) return A(neutralTownR2[unitDefId]!);
+  if (unitDefId === "neutral.air_elementals") return A("bulwark-air-shield");
+  if (unitDefId === "neutral.earth_elementals") return A("veteran-earth-defense-token");
+  if (unitDefId === "wog.lava_sharpshooter") return A("veteran-lava-ongoing-immunity");
+  if (unitDefId === "wog.war_zealot") return A("veteran-defense-pierce");
+  if (unitDefId === "wog.werewolf") return A("veteran-werewolf-astral-hunt");
+  if (unitDefId === "fortress.gorgons") return A("town-gorgon-armored-prey");
+  if (unitDefId === "fortress.hydras") return A("town-hydra-forced-reroll");
+  if (unitDefId === "fortress.wyverns") return A("town-wyvern-reroll");
+  if (unitDefId === "cove.oceanids") return S({ ...Z, defense: 1, initiative: 1 });
+  if (unitDefId === "cove.seamen") return A("town-seaman-survival-gold");
+  if (unitDefId === "cove.sorceresses") return A("town-sorceress-ranged-mend");
+  if (unitDefId === "bulwark.snow_elves") return A("town-snow-elf-rune-strike");
+  if (unitDefId === "bulwark.yetis") return A("town-yeti-specialty-aura");
+  if (unitDefId === "castle.marksmen") return A("town-marksman-mark");
+  if (unitDefId === "castle.crusaders") return A("town-crusader-undead");
+  if (unitDefId === "tower.iron_golems") return A("town-golem-shield");
+  if (unitDefId === "tower.nagas") return A("town-naga-mend");
+  if (unitDefId === "rampart.dwarves") return A("town-dwarf-backlash");
+  if (unitDefId === "rampart.gold_dragons") return A("town-dragon-snare");
+  if (unitDefId === "rampart.unicorns") return A("town-unicorn-die");
+  if (unitDefId === "inferno.familiars") return A("town-familiar-backlash");
+  if (unitDefId === "inferno.magogs") return A("reduce-spell-and-specialty-damage-1");
+  if (unitDefId === "inferno.demons") return A("town-demon-paralyze");
+  if (unitDefId === "inferno.arch_devils") return A("reduce-spell-and-specialty-damage-1");
+  // Preserve R2 after replacing the earlier Guarded Stance that used to exclude it.
+  if (unitDefId === "necropolis.ghost_dragons") return A("bulwark-air-shield");
+  if (unitDefId === "dungeon.minotaurs") return A("veteran-minotaur-cleave");
+  if (unitDefId === "dungeon.medusas") return A("veteran-medusa-mend");
+  if (unitDefId === "necropolis.skeletons") return A("veteran-skeleton-retaliation");
+  if (unitDefId === "necropolis.liches") return A("veteran-lich-pierce");
+  if (unitDefId === "doom.cyberdemon") return A("veteran-adjacent-enfeeble");
+  if (unitDefId === "neutral.faerie_dragons") return A("wog-war-zealot-mirror");
+  if (unitDefId === "neutral.titans") return A("veteran-thunder-retaliation");
+  if (unitDefId === "neutral.trolls") return A("veteran-troll-resilience");
+  if (unitDefId === "neutral.unicorns") return A("veteran-unicorn-enfeeble");
+  if (unitDefId === "neutral.peasants") return S({ ...Z, health: 2 });
+  if (unitDefId === "neutral.azure_dragons") return H({ ...Z, health: 1 }, "veteran-azure-mending-scales");
   if (unitDefId === "neutral.sprites") return A("veteran-sprite-spell-block");
   if (unitDefId === "conflux.phoenixes") return A("veteran-phoenix-activation");
   if (unitDefId === "castle.champions") return S({ ...Z, health: 1 });
@@ -386,6 +457,65 @@ function explicitRankTwo(unitDefId: string): RankStep | null {
 }
 
 function explicitRankThree(unitDefId: string): RankStep | null {
+  const neutralTownR3: Record<string, string> = {
+    "neutral.marksmen":"ntv-marked-volley", "neutral.crusaders":"ntv-righteous-pursuit", "neutral.zealots":"ntv-consecrated-shot",
+    "neutral.dwarves":"ntv-runic-backlash", "neutral.elves":"ntv-first-volley", "neutral.pegasi":"ntv-mana-turbulence",
+    "neutral.gremlins":"ntv-improvised-ammunition", "neutral.gargoyles":"ntv-stone-landing", "neutral.iron_golems":"ntv-arcane-plating", "neutral.magi":"ntv-spell-channel", "neutral.genies":"ntv-unstable-wish",
+    "neutral.familiars":"ntv-stolen-spark", "neutral.magogs":"ntv-scattering-flame", "neutral.cerberi":"ntv-threefold-threat", "neutral.demons":"ntv-hellish-endurance",
+    "neutral.skeletons":"ntv-bone-wall", "neutral.zombies":"ntv-putrid-grasp", "neutral.wraiths":"ntv-ethereal-escape", "neutral.vampires":"ntv-blood-tribute", "neutral.liches":"ntv-death-cloud", "neutral.ghost_dragons":"ntv-ageing-breath",
+    "neutral.troglodytes":"ntv-blind-instinct", "neutral.harpies":"ntv-strike-and-return", "neutral.evil_eyes":"ntv-disrupting-gaze", "neutral.medusas":"ntv-petrifying-aim", "neutral.minotaurs":"ntv-labyrinth-cleave",
+    "neutral.goblins":"ntv-cowards-luck", "neutral.wolf_raiders":"ntv-pack-rush", "neutral.orcs":"ntv-suppressing-shot", "neutral.ogres":"ntv-bodyguard", "neutral.thunderbirds":"ntv-chain-lightning",
+    "neutral.gnolls":"ntv-marsh-scavenger", "neutral.lizardmen":"ntv-venom-arrow", "neutral.dragon_flies":"ntv-disorienting-landing", "neutral.basilisks":"ntv-heavy-gaze", "neutral.gorgons":"ntv-armoured-prey",
+    "neutral.oceanids":"ntv-flowing-assault", "neutral.seamen":"ntv-boarding-formation", "neutral.sea_dogs":"ntv-return-fire", "neutral.ayssids":"ntv-raking-dive", "neutral.sorceresses":"ntv-bewitching-bolt",
+    "neutral.halflings":"ntv-lucky-ricochet",
+  };
+  if (neutralTownR3[unitDefId]) return A(neutralTownR3[unitDefId]!);
+  if (unitDefId === "neutral.air_elementals") return A("veteran-air-chain-lightning");
+  if (unitDefId === "neutral.fire_elementals") return A("veteran-fire-damage-cap");
+  if (unitDefId === "neutral.water_elementals") return S({ ...Z, health: 4 });
+  if (unitDefId === "neutral.earth_elementals") return A("veteran-earth-low-defense");
+  if (unitDefId === "wog.arctic_sharpshooter") return A("veteran-arctic-harden");
+  if (unitDefId === "wog.lava_sharpshooter") return A("veteran-lava-burst");
+  if (unitDefId === "wog.war_zealot") return A("veteran-minotaur-hide");
+  if (unitDefId === "wog.werewolf") return A("veteran-werewolf-pack-call");
+  if (unitDefId === "fortress.gnolls") return A("town-gnoll-gold");
+  if (unitDefId === "fortress.gorgons") return A("veteran-minotaur-hide");
+  if (unitDefId === "cove.oceanids") return A("veteran-double-attack");
+  if (unitDefId === "cove.sea_dogs") return A("town-sea-dog-ranged-retaliation");
+  if (unitDefId === "cove.sorceresses") return A("town-sorceress-artifact-tax");
+  if (unitDefId === "cove.haspids") return A("reduce-spell-and-specialty-damage-1");
+  if (unitDefId === "bulwark.yetis") return A("bulwark-thick-hide");
+  if (unitDefId === "bulwark.jotunns") return A("town-jotunn-rune-bolt");
+  if (unitDefId === "bulwark.mammoths") return A("town-mammoth-hunter");
+  // Preserve the previous R3 stat reward after R1 became a hybrid.
+  if (unitDefId === "inferno.arch_devils") return S({ ...Z, attack: 1 });
+  if (unitDefId === "castle.halberdiers") return A("town-halberd-aura");
+  if (unitDefId === "castle.crusaders") return H({ ...Z, initiative: 1 }, "reduce-spell-damage-1");
+  if (unitDefId === "tower.gremlins") return H({ ...Z, attack: 1 }, "town-gremlin-die");
+  if (unitDefId === "tower.magi") return A("town-magi-recover");
+  if (unitDefId === "tower.nagas") return A("town-naga-pierce");
+  if (unitDefId === "stronghold.wolf_raiders") return S({ ...Z, attack: 1, initiative: 2 });
+  if (unitDefId === "stronghold.ogres") return A("town-ogre-guard");
+  if (unitDefId === "stronghold.thunderbirds") return A("town-bird-lightning");
+  if (unitDefId === "rampart.centaurs") return H({ ...Z, health: 1 }, "imperium-shock-assault");
+  if (unitDefId === "rampart.elves") return A("town-elf-guard");
+  if (unitDefId === "rampart.pegasi") return A("town-pegasus-guard");
+  if (unitDefId === "rampart.gold_dragons") return A("town-dragon-hunter");
+  if (unitDefId === "rampart.unicorns") return A("titan-ignore-ongoing");
+  if (unitDefId === "inferno.pit_lords") return H({ ...Z, health: 1 }, "town-pit-mend");
+  if (unitDefId === "inferno.efreet") return A("town-efreet-mend");
+  if (unitDefId === "dungeon.medusas") return A("veteran-medusa-execution");
+  if (unitDefId === "dungeon.harpies") return A("veteran-harpy-vitality");
+  if (unitDefId === "necropolis.wraiths") return A("veteran-wraith-escape");
+  if (unitDefId === "necropolis.zombies") return A("veteran-zombie-intercept");
+  if (unitDefId === "necropolis.vampires") return A("veteran-vampire-tribute");
+  if (unitDefId === "neutral.crystal_dragons") return A("veteran-crystal-immunity");
+  if (unitDefId === "doom.cyberdemon") return A("veteran-cyber-splash");
+  if (unitDefId === "neutral.rust_dragons" || unitDefId === "neutral.trolls") return S({ ...Z, health: 2 });
+  if (unitDefId === "doom.spider_mastermind") return S({ ...Z, initiative: 1, health: 1, defense: 1 });
+  if (unitDefId === "neutral.unicorns") return S({ ...Z, health: 1 });
+  if (unitDefId === "doom.pain_elemental") return S({ ...Z, health: 1, initiative: 1 });
+  if (unitDefId === "neutral.azure_dragons") return A("veteran-azure-line-attack");
   if (unitDefId === "conflux.storm_elementals") return H({ ...Z, initiative: 3 }, "veteran-storm-speed");
   if (unitDefId === "conflux.energy_elementals") return A("veteran-energy-fire-heal");
   if (unitDefId === "neutral.sprites") return A("veteran-sprite-landing");
@@ -412,6 +542,60 @@ function explicitRankThree(unitDefId: string): RankStep | null {
 }
 
 function explicitRankFour(unitDefId: string): RankStep | null {
+  const neutralTownR4: Record<string, string> = {
+    "neutral.griffins":"ntv-winged-riposte", "neutral.champions":"ntv-full-gallop", "neutral.archangels":"ntv-guardian-angel",
+    "neutral.dendroids":"ntv-deep-roots", "neutral.unicorns":"ntv-moonlit-aid", "neutral.nagas":"ntv-measured-blades",
+    "neutral.pit_lords":"ntv-summoned-torment", "neutral.efreet":"ntv-searing-passage", "neutral.arch_devils":"ntv-infernal-command",
+    "neutral.dread_knights":"ntv-dread-charge", "neutral.manticores":"ntv-barbed-revenge", "neutral.black_dragons":"ntv-predators-mark",
+    "neutral.cyclopes":"ntv-boulder-crash", "neutral.behemoths":"ntv-crushing-claws", "neutral.wyverns":"ntv-potent-venom",
+    "neutral.nix":"ntv-scaled-intercept", "neutral.haspids":"ntv-toxic-counter",
+  };
+  if (neutralTownR4[unitDefId]) return A(neutralTownR4[unitDefId]!);
+  if (unitDefId === "neutral.water_elementals") return A("veteran-water-spell-power");
+  if (unitDefId === "neutral.earth_elementals") return A("veteran-earth-spell-power");
+  if (unitDefId === "wog.hell_steed") return A("veteran-hell-steed-last-stand");
+  if (unitDefId === "wog.nightmare") return A("veteran-nightmare-death-stare-reroll");
+  if (unitDefId === "wog.arctic_sharpshooter") return A("veteran-arctic-slow-shot");
+  if (unitDefId === "wog.lava_sharpshooter") return A("veteran-lava-burn");
+  if (unitDefId === "fortress.dragon_flies") return A("town-dragon-fly-landing");
+  if (unitDefId === "fortress.lizardmen") return A("town-lizard-spell-draw");
+  if (unitDefId === "fortress.hydras") return A("town-hydra-round-mend");
+  if (unitDefId === "fortress.wyverns") return A("town-wyvern-potent-poison");
+  if (unitDefId === "cove.ayssids") return H({ ...Z, initiative: 2 }, "town-ayssid-slow");
+  if (unitDefId === "cove.haspids") return A("town-haspid-unstoppable-counter");
+  if (unitDefId === "cove.nix") return A("town-nix-intercept");
+  if (unitDefId === "bulwark.kobolds") return A("town-kobold-rune-step");
+  if (unitDefId === "bulwark.mammoths") return A("town-mammoth-last-stand");
+  if (unitDefId === "castle.griffins") return A("town-griffin-counter");
+  if (unitDefId === "castle.marksmen") return A("town-marksman-survival");
+  if (unitDefId === "castle.zealots") return A("town-zealot-loss");
+  if (unitDefId === "castle.archangels") return A("town-angel-safe");
+  if (unitDefId === "castle.champions") return A("town-champion-safe");
+  if (unitDefId === "tower.gremlins") return A("town-gremlin-recover");
+  if (unitDefId === "tower.titans") return A("town-titan-bolt");
+  if (unitDefId === "stronghold.goblins") return A("town-goblin-save");
+  if (unitDefId === "stronghold.orcs") return A("town-orc-discard");
+  if (unitDefId === "stronghold.wolf_raiders") return A("dragon-fly-retaliation-penalty-2");
+  if (unitDefId === "stronghold.thunderbirds") return A("veteran-dragon-feast");
+  if (unitDefId === "stronghold.cyclopes") return A("town-cyclops-splash");
+  if (unitDefId === "inferno.familiars") return A("town-familiar-pierce");
+  if (unitDefId === "inferno.arch_devils") return A("town-devil-draw");
+  if (unitDefId === "inferno.efreet") return A("town-efreet-second");
+  if (unitDefId === "dungeon.black_dragons") return A("veteran-dragon-mark");
+  if (unitDefId === "dungeon.manticores") return A("veteran-manticore-revenge");
+  if (unitDefId === "dungeon.troglodytes") return A("veteran-troglodyte-rebirth");
+  if (unitDefId === "dungeon.evil_eyes") return A("veteran-eye-immunity");
+  if (unitDefId === "necropolis.skeletons") return A("veteran-skeleton-rebirth");
+  if (unitDefId === "necropolis.wraiths") return A("veteran-wraith-magic");
+  if (unitDefId === "necropolis.zombies") return H({ ...Z, health: 1 }, "veteran-zombie-rest");
+  if (unitDefId === "necropolis.liches") return A("veteran-lich-mend");
+  if (unitDefId === "necropolis.vampires") return A("veteran-vampire-ward");
+  if (unitDefId === "necropolis.ghost_dragons") return A("veteran-dragon-feast");
+  if (unitDefId === "neutral.gold_dragons") return A("veteran-adjacent-pulse");
+  if (unitDefId === "neutral.rust_dragons") return A("veteran-sandstorm");
+  if (unitDefId === "neutral.trolls") return A("veteran-troll-snare");
+  if (unitDefId === "doom.pain_elemental") return A("veteran-pain-resistance");
+  if (unitDefId === "neutral.azure_dragons") return A("veteran-azure-super-charge");
   if (unitDefId === "neutral.magma_elementals") return A("veteran-magma-guard");
   if (unitDefId === "conflux.ice_elementals") return A("veteran-water-damper");
   if (unitDefId === "conflux.magic_elementals") return A("veteran-magic-copy");
@@ -511,7 +695,122 @@ export const RANK_ABILITY_TRACK_LABELS: Record<string, string> = {
   warden_line: "Bulwark"
 };
 
+const NEUTRAL_TOWN_ICON_SLUGS: Record<string, readonly string[]> = {
+  castle: ["set-the-spear","marked-volley","winged-riposte","righteous-pursuit","consecrated-shot","full-gallop","guardian-angel"],
+  rampart: ["skirmisher-step","runic-backlash","first-volley","mana-turbulence","deep-roots","moonlit-aid"],
+  tower: ["improvised-ammunition","stone-landing","arcane-plating","spell-channel","unstable-wish","measured-blades"],
+  inferno: ["stolen-spark","scattering-flame","threefold-threat","hellish-endurance","summoned-torment","searing-passage","infernal-command"],
+  necropolis: ["bone-wall","putrid-grasp","ethereal-escape","blood-tribute","death-cloud","dread-charge","ageing-breath"],
+  dungeon: ["blind-instinct","strike-and-return","disrupting-gaze","petrifying-aim","labyrinth-cleave","barbed-revenge","predators-mark"],
+  stronghold: ["cowards-luck","pack-rush","suppressing-shot","bodyguard","chain-lightning","boulder-crash","crushing-claws"],
+  fortress: ["marsh-scavenger","venom-arrow","disorienting-landing","heavy-gaze","armoured-prey","potent-venom"],
+  cove: ["flowing-assault","boarding-formation","return-fire","raking-dive","bewitching-bolt","scaled-intercept","toxic-counter"],
+  factory: ["lucky-ricochet"],
+};
+const NEUTRAL_TOWN_ICONS = Object.fromEntries(Object.entries(NEUTRAL_TOWN_ICON_SLUGS).flatMap(([faction, slugs]) => slugs.map(slug => [`ntv-${slug}`, `/game-tokens/rank-ability/neutral-town/${faction}-${slug}.webp`] as const)));
+
 export const UNIT_RANK_ABILITY_ICONS: Record<string, string> = {
+  "veteran-air-chain-lightning": "/game-tokens/rank-ability/neutral-revisions/air-chain-lightning.webp",
+  "veteran-fire-damage-cap": "/game-tokens/rank-ability/neutral-revisions/fire-damage-cap.webp",
+  "veteran-ranged-fire-shield": "/game-tokens/rank-ability/neutral-revisions/ranged-fire-shield.webp",
+  "veteran-water-spell-power": "/game-tokens/rank-ability/neutral-revisions/water-spell-power.webp",
+  "veteran-earth-spell-power": "/game-tokens/rank-ability/neutral-revisions/earth-spell-power.webp",
+  "veteran-hell-steed-last-stand": "/game-tokens/rank-ability/neutral-revisions/hell-steed-last-stand.webp",
+  "veteran-nightmare-death-stare-reroll": "/game-tokens/rank-ability/neutral-revisions/nightmare-death-stare-reroll.webp",
+  "veteran-arctic-harden": "/game-tokens/rank-ability/neutral-revisions/arctic-harden.webp",
+  "veteran-arctic-slow-shot": "/game-tokens/rank-ability/neutral-revisions/arctic-slow-shot.webp",
+  "veteran-lava-ongoing-immunity": "/game-tokens/rank-ability/neutral-revisions/lava-ongoing-immunity.webp",
+  "veteran-lava-burst": "/game-tokens/rank-ability/neutral-revisions/lava-burst.webp",
+  "veteran-lava-burn": "/game-tokens/rank-ability/neutral-revisions/lava-burn.webp",
+  "veteran-werewolf-astral-hunt": "/game-tokens/rank-ability/neutral-revisions/werewolf-astral-hunt.webp",
+  "veteran-werewolf-pack-call": "/game-tokens/rank-ability/neutral-revisions/werewolf-pack-call.webp",
+  ...NEUTRAL_TOWN_ICONS,
+  "town-dragon-fly-landing": "/game-tokens/rank-ability/town-revisions/dragon-fly-landing.webp",
+  "town-gnoll-gold": "/game-tokens/rank-ability/town-revisions/gnoll-raiders-pay.webp",
+  "town-lizard-spell-draw": "/game-tokens/rank-ability/town-revisions/lizard-spell-draw.webp",
+  "town-gorgon-stare-reroll": "/game-tokens/rank-ability/town-revisions/gorgon-stare-reroll.webp",
+  "town-gorgon-armored-prey": "/game-tokens/rank-ability/town-revisions/gorgon-armored-prey.webp",
+  "town-wyvern-potent-poison": "/game-tokens/rank-ability/town-revisions/wyvern-potent-poison.webp",
+  "town-sea-dog-ranged-retaliation": "/game-tokens/rank-ability/town-revisions/sea-dog-ranged-retaliation.webp",
+  "town-seaman-survival-gold": "/game-tokens/rank-ability/town-revisions/seaman-survival-gold.webp",
+  "town-sorceress-ranged-mend": "/game-tokens/rank-ability/town-revisions/sorceress-ranged-mend.webp",
+  "town-sorceress-artifact-tax": "/game-tokens/rank-ability/town-revisions/sorceress-artifact-tax.webp",
+  "town-haspid-toxic-hide": "/game-tokens/rank-ability/town-revisions/haspid-toxic-hide.webp",
+  "town-nix-intercept": "/game-tokens/rank-ability/town-revisions/nix-intercept.webp",
+  "town-yeti-specialty-aura": "/game-tokens/rank-ability/town-revisions/yeti-specialty-aura.webp",
+  "town-jotunn-rune-bolt": "/game-tokens/rank-ability/town-revisions/jotunn-rune-bolt.webp",
+  "town-mammoth-rune-mend": "/game-tokens/rank-ability/town-revisions/mammoth-rune-mend.webp",
+  "town-marksman-mark": "/assets/ui/rank-ability/precision.webp",
+  "town-angel-safe": "/assets/ui/rank-ability/no-retaliation.webp",
+  "town-champion-safe": "/assets/ui/rank-ability/charge.webp",
+  "town-gremlin-recover": "/assets/ui/rank-ability/low-roll-insight.webp",
+  "town-gremlin-die": "/assets/ui/rank-ability/sure-shot.webp",
+  "town-golem-shield": "/assets/ui/rank-ability/guarded.webp",
+  "town-magi-recover": "/assets/ui/rank-ability/low-roll-insight.webp",
+  "town-naga-mend": "/assets/ui/rank-ability/regeneration-2.webp",
+  "town-cyclops-splash": "/assets/ui/rank-ability/double-strike.webp",
+  "town-elf-guard": "/assets/ui/rank-ability/air-shield.webp",
+  "town-pegasus-guard": "/assets/ui/rank-ability/guarded.webp",
+  "town-dragon-hunter": "/assets/ui/rank-ability/speed-hunter.webp",
+  "town-unicorn-die": "/assets/ui/rank-ability/sure-shot.webp",
+  "town-familiar-backlash": "/assets/ui/rank-ability/spell-sunder.webp",
+  "town-familiar-pierce": "/assets/ui/rank-ability/defense-pierce.webp",
+  "town-devil-draw": "/assets/ui/rank-ability/layer-triumph.webp",
+  "town-efreet-second": "/game-tokens/rank-ability/town-revisions/efreet-mend.webp",
+  "town-griffin-counter": "/game-tokens/rank-ability/town-revisions/griffin-counter.webp",
+  "town-halberd-hunter": "/game-tokens/rank-ability/town-revisions/halberd-hunter.webp",
+  "town-halberd-aura": "/game-tokens/rank-ability/town-revisions/halberd-aura.webp",
+  "town-marksman-survival": "/game-tokens/rank-ability/town-revisions/marksman-survival.webp",
+  "town-crusader-undead": "/game-tokens/rank-ability/town-revisions/crusader-undead.webp",
+  "town-zealot-loss": "/game-tokens/rank-ability/town-revisions/zealot-loss.webp",
+  "town-golem-cap": "/game-tokens/rank-ability/town-revisions/golem-cap.webp",
+  "town-naga-pierce": "/game-tokens/rank-ability/town-revisions/naga-pierce.webp",
+  "town-titan-bolt": "/game-tokens/rank-ability/town-revisions/titan-bolt.webp",
+  "town-goblin-save": "/game-tokens/rank-ability/town-revisions/goblin-save.webp",
+  "town-orc-discard": "/game-tokens/rank-ability/town-revisions/orc-discard.webp",
+  "town-ogre-guard": "/game-tokens/rank-ability/town-revisions/ogre-guard.webp",
+  "town-bird-lightning": "/game-tokens/rank-ability/town-revisions/bird-lightning.webp",
+  "town-dwarf-backlash": "/game-tokens/rank-ability/town-revisions/dwarf-backlash.webp",
+  "town-dragon-snare": "/game-tokens/rank-ability/town-revisions/dragon-snare.webp",
+  "town-demon-paralyze": "/game-tokens/rank-ability/town-revisions/demon-paralyze.webp",
+  "town-pit-mend": "/game-tokens/rank-ability/town-revisions/pit-mend.webp",
+  "town-devil-slow": "/game-tokens/rank-ability/town-revisions/devil-slow.webp",
+  "town-efreet-mend": "/game-tokens/rank-ability/town-revisions/efreet-mend.webp",
+  "veteran-crystal-burst": "/game-tokens/rank-ability/neutral/crystal-burst.webp",
+  "veteran-blind-dust": "/game-tokens/rank-ability/neutral/blind-dust.webp",
+  "veteran-sandstorm": "/game-tokens/rank-ability/neutral/sandstorm.webp",
+  "veteran-thunder-retaliation": "/game-tokens/rank-ability/neutral/thunder-retaliation.webp",
+  "veteran-troll-resilience": "/game-tokens/rank-ability/neutral/troll-resilience.webp",
+  "veteran-troll-snare": "/game-tokens/rank-ability/neutral/troll-snare.webp",
+  "veteran-flying-guard": "/game-tokens/rank-ability/neutral/flying-guard.webp",
+  "veteran-pain-resistance": "/game-tokens/rank-ability/neutral/pain-resistance.webp",
+  "veteran-peasant-bounty": "/game-tokens/rank-ability/neutral/peasant-bounty.webp",
+  "veteran-dracolich-fear-aura": "/assets/ui/rank-ability/fear-aura.webp",
+  "veteran-crystal-immunity": "/assets/ui/rank-ability/spell-ward.webp",
+  "veteran-dragon-mark": "/game-tokens/rank-ability/dungeon-necropolis/dragon-mark.webp",
+  "veteran-manticore-revenge": "/game-tokens/rank-ability/dungeon-necropolis/manticore-revenge.webp",
+  "veteran-minotaur-hide": "/assets/ui/rank-ability/thick-hide.webp",
+  "veteran-minotaur-cleave": "/game-tokens/rank-ability/dungeon-necropolis/minotaur-cleave.webp",
+  "veteran-medusa-mend": "/game-tokens/rank-ability/dungeon-necropolis/medusa-mend.webp",
+  "veteran-medusa-execution": "/game-tokens/rank-ability/dungeon-necropolis/medusa-execution.webp",
+  "veteran-troglodyte-rebirth": "/assets/ui/rank-ability/rebirth.webp",
+  "veteran-harpy-haste": "/assets/ui/rank-ability/flying-movement.webp",
+  "veteran-harpy-vitality": "/game-tokens/rank-ability/dungeon-necropolis/harpy-vitality.webp",
+  "veteran-eye-immunity": "/assets/ui/rank-ability/precision.webp",
+  "veteran-skeleton-rebirth": "/game-tokens/rank-ability/dungeon-necropolis/skeleton-rebirth.webp",
+  "veteran-wraith-escape": "/game-tokens/rank-ability/dungeon-necropolis/wraith-escape.webp",
+  "veteran-wraith-magic": "/game-tokens/rank-ability/dungeon-necropolis/wraith-magic.webp",
+  "veteran-zombie-intercept": "/game-tokens/rank-ability/dungeon-necropolis/zombie-intercept.webp",
+  "veteran-zombie-rest": "/assets/ui/rank-ability/soul-mend.webp",
+  "veteran-lich-pierce": "/game-tokens/rank-ability/dungeon-necropolis/lich-pierce.webp",
+  "veteran-lich-mend": "/assets/ui/rank-ability/soul-mend.webp",
+  "veteran-vampire-tribute": "/game-tokens/rank-ability/dungeon-necropolis/vampire-tribute.webp",
+  "veteran-vampire-ward": "/game-tokens/rank-ability/dungeon-necropolis/vampire-ward.webp",
+  "veteran-dragon-dread": "/game-tokens/rank-ability/dungeon-necropolis/dragon-dread.webp",
+  "veteran-manticore-mend": "/assets/ui/rank-ability/regeneration-2.webp",
+  "veteran-eye-splash": "/assets/ui/rank-ability/double-strike.webp",
+  "veteran-skeleton-retaliation": "/assets/ui/rank-ability/retaliation-fury.webp",
+  "veteran-dragon-feast": "/assets/ui/rank-ability/soul-feast.webp",
   "veteran-ice-bolt": "/game-tokens/rank-ability/conflux/veteran-ice-bolt.webp",
   "veteran-water-damper": "/game-tokens/rank-ability/conflux/veteran-water-damper.webp",
   "veteran-sprite-obstacle": "/game-tokens/rank-ability/conflux/veteran-sprite-obstacle.webp",
@@ -572,6 +871,10 @@ export const UNIT_RANK_ABILITY_ICONS: Record<string, string> = {
   "veteran-regeneration-2": "/assets/ui/rank-ability/regeneration-2.webp",
   "veteran-flying-movement": "/assets/ui/rank-ability/flying-movement.webp",
   "veteran-fear-aura": "/assets/ui/rank-ability/fear-aura.webp",
+  "veteran-azure-fear-aura": "/assets/ui/rank-ability/fear-aura.webp",
+  "veteran-azure-mending-scales": "/assets/ui/rank-ability/regeneration-2.webp",
+  "veteran-azure-line-attack": "/game-tokens/rank-ability/azure-super-charge.webp",
+  "veteran-azure-super-charge": "/game-tokens/rank-ability/azure-super-charge.webp",
   "veteran-layer-draw": "/assets/ui/rank-ability/layer-triumph.webp",
   "veteran-moving-pierce": "/assets/ui/rank-ability/moving-pierce.webp",
   "veteran-mobility-1": "/assets/ui/rank-ability/mobility.webp",

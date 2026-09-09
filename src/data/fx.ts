@@ -20,6 +20,8 @@ export type FxSheet = {
   fps: number;
   /** Loop ordered frames for authored projectile animations. */
   sequentialFrames?: boolean;
+  /** Luminous artwork authored on black uses screen blending. */
+  blendMode?: "screen";
   /** "bottom": the sprite stands on the cell floor (columns of light, bolts). */
   anchor: "center" | "bottom";
   opacity?: number;
@@ -30,6 +32,16 @@ export type FxSheet = {
 };
 
 const sheets = manifest as Record<string, FxSheet>;
+sheets["town-dwarf-backlash"] = {
+  src: "/fx/town-dwarf-backlash.webp", label: "Runic Backlash", group: "town-veterancy", role: "affect",
+  frames: 16, cols: 4, rows: 4, frameWidth: 256, frameHeight: 256, fps: 20,
+  anchor: "center", coverage: 1.2, sourceDef: "imagegen-town-dwarf-backlash", sequentialFrames: true, blendMode: "screen",
+};
+sheets["neutral-sandstorm"] = {
+  src: "/fx/neutral-sandstorm.webp", label: "Sandstorm", group: "neutral-veterancy", role: "affect",
+  frames: 24, cols: 6, rows: 4, frameWidth: 256, frameHeight: 256, fps: 18,
+  anchor: "center", coverage: 1.8, sourceDef: "imagegen-neutral-sandstorm", sequentialFrames: true,
+};
 
 export function getFxSheet(key: string): FxSheet | undefined {
   return sheets[key];
@@ -294,8 +306,49 @@ const blueArchiveAbilityVoiceSources: readonly (readonly [string, readonly strin
 const blueArchiveAbilityVoicePlans: Record<string, SpellFxPlan> = Object.fromEntries(
   blueArchiveAbilityVoiceSources.flatMap(([slug, ids]) => ids.map((id) => [id, { sound: `blue-archive/voices/${slug}/ability` }]))
 );
+const neutralTownAbilityFxPlans: Record<string, SpellFxPlan> = Object.fromEntries([
+  ...["consecrated-shot","moonlit-aid","stolen-spark","blood-tribute","marsh-scavenger"].map(id => [`ntv-${id}`, { affect: [{ key: "cure" }], sound: "spells/cure" }]),
+  ...["guardian-angel","cowards-luck"].map(id => [`ntv-${id}`, { affect: [{ key: "resurrection" }], sound: "spells/resurrection" }]),
+  ...["putrid-grasp","suppressing-shot","venom-arrow","ageing-breath","disorienting-landing"].map(id => [`ntv-${id}`, { affect: [{ key: "slow" }], sound: "spells/slow" }]),
+  ...["petrifying-aim","heavy-gaze"].map(id => [`ntv-${id}`, { affect: [{ key: "paralyze" }], sound: "spells/paralyze" }]),
+  ...["scattering-flame","chain-lightning","spell-channel"].map(id => [`ntv-${id}`, { affect: [{ key: "lightning-bolt" }, { key: "lightning-crackle", delayMs: 220 }], sound: "spells/lightning-bolt" }]),
+  ...["potent-venom","toxic-counter"].map(id => [`ntv-${id}`, { affect: [{ key: "poison" }], sound: "spells/poison" }]),
+  ...["winged-riposte","skirmisher-step","ethereal-escape","strike-and-return","flowing-assault","infernal-command"].map(id => [`ntv-${id}`, { affect: [{ key: "teleport" }], sound: "spells/teleport" }]),
+] as Array<[string, SpellFxPlan]>);
 
 export const abilityFxPlans: Record<string, SpellFxPlan> = {
+  "veteran-air-chain-lightning": {
+    affect: [{ key: "lightning-bolt" }, { key: "lightning-crackle", delayMs: 220 }],
+    sound: "spells/chain-lightning",
+  },
+  "veteran-hell-steed-last-stand": {
+    affect: [{ key: "resurrection" }, { key: "inferno", delayMs: 180 }],
+    sound: "spells/fire-wall",
+  },
+  "town-gorgon-stare-reroll": { affect: [{ key: "death-stare" }], sound: "spells/death-stare" },
+  "veteran-nightmare-death-stare-reroll": { affect: [{ key: "death-stare" }], sound: "spells/death-stare" },
+  "veteran-arctic-harden": { affect: [{ key: "stone-skin" }], sound: "spells/stone-skin" },
+  "veteran-arctic-slow-shot": { affect: [{ key: "slow" }], sound: "spells/slow" },
+  "veteran-lava-burst": { hit: "fireball", sound: "spells/fireball", hitSound: "spells/fireball-hit" },
+  "veteran-lava-burn": { affect: [{ key: "fire-shield" }], sound: "spells/fire-wall" },
+  ...neutralTownAbilityFxPlans,
+  "town-dragon-fly-landing": { hit: "acid-breath", hitSound: "effects/acid-breath" },
+  "town-haspid-toxic-hide": { affect: [{ key: "poison" }], sound: "spells/poison" },
+  "town-jotunn-rune-bolt": {
+    projectile: "magic-arrow-projectile-0",
+    affect: [{ key: "lightning-bolt" }, { key: "lightning-crackle", delayMs: 220 }],
+    sound: "effects/rune"
+  },
+  "town-mammoth-rune-mend": { affect: [{ key: "cure" }], sound: "effects/rune" },
+  "town-dwarf-backlash": { affect: [{ key: "town-dwarf-backlash" }], sound: "spells/magic-arrow" },
+  "town-titan-bolt": { affect: [{ key: "lightning-bolt" }, { key: "lightning-crackle", delayMs: 220 }], sound: "spells/lightning-bolt" },
+  "town-demon-paralyze": { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },
+  "town-pit-mend": { affect: [{ key: "cure" }], sound: "spells/cure" },
+  "town-efreet-mend": { affect: [{ key: "cure" }], sound: "spells/cure" },
+  "town-naga-mend": { affect: [{ key: "cure" }], sound: "spells/cure" },
+  "town-dragon-snare": { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },
+  "town-devil-slow": { affect: [{ key: "slow" }], sound: "spells/slow" },
+  "town-goblin-save": { affect: [{ key: "resurrection" }], sound: "spells/resurrection" },
   ...blueArchiveAbilityVoicePlans,
   "ranged-extra-shot-on-low-roll": {
     projectile: "low-roll-extra-shot-projectile",
@@ -426,6 +479,34 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   // (bare id on land, `${id}-roll` on a miss — left unmapped below). The
   // Stacked Medusa Stores bank guard fires on its melee attack.
   "azure-dragon-paralysis": { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },
+  "veteran-azure-fear-aura": { affect: [{ key: "fear" }, { key: "paralyze", delayMs: 240 }], sound: "effects/fear" },
+  "veteran-dracolich-fear-aura": { affect: [{ key: "fear" }, { key: "paralyze", delayMs: 240 }], sound: "effects/fear" },
+  "veteran-crystal-burst": { projectile: "magic-arrow-projectile-0", hit: "magic-arrow-hit", sound: "spells/magic-arrow", hitSound: "spells/lightning-bolt" },
+  "veteran-adjacent-pulse": { hit: "fireball", sound: "spells/fireball-hit" },
+  "veteran-cyber-splash": { hit: "fireball", sound: "spells/fireball-hit" },
+  "veteran-blind-dust": { affect: [{ key: "neutral-sandstorm" }], sound: "spells/slow" },
+  "veteran-sandstorm": { affect: [{ key: "neutral-sandstorm" }], sound: "spells/earthquake" },
+  "veteran-thunder-retaliation": { affect: [{ key: "lightning-bolt" }, { key: "lightning-crackle", delayMs: 220 }], sound: "spells/lightning-bolt" },
+  "veteran-troll-snare": { affect: [{ key: "slow" }], sound: "spells/slow" },
+  "veteran-pain-resistance": { affect: [{ key: "anti-magic" }], sound: "spells/magic-mirror" },
+  "veteran-adjacent-enfeeble": { affect: [{ key: "weakness" }], sound: "spells/weakness" },
+  "veteran-unicorn-enfeeble": { affect: [{ key: "weakness" }], sound: "spells/weakness" },
+  "veteran-azure-super-charge-paralysis": { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },
+  "veteran-azure-mending-scales": { affect: [{ key: "cure" }], sound: "spells/cure" },
+  "veteran-dragon-mark": { affect: [{ key: "curse" }], sound: "spells/curse" },
+  "veteran-manticore-mend": { affect: [{ key: "cure" }], sound: "spells/cure" },
+  "veteran-manticore-revenge": { affect: [{ key: "poison" }], sound: "spells/poison" },
+  "veteran-medusa-mend": { affect: [{ key: "cure" }], sound: "spells/cure" },
+  "veteran-skeleton-rebirth": { affect: [{ key: "resurrection" }], sound: "spells/animate-dead" },
+  "veteran-wraith-escape": { affect: [{ key: "resurrection" }], sound: "spells/teleport" },
+  "veteran-wraith-magic": { affect: [{ key: "cure" }], sound: "spells/cure" },
+  "veteran-zombie-intercept": { affect: [{ key: "shield" }], sound: "spells/shield" },
+  "veteran-vampire-tribute": { affect: [{ key: "death-ripple" }], sound: "spells/death-ripple" },
+  "veteran-vampire-ward": { affect: [{ key: "anti-magic" }], sound: "effects/magic-resist" },
+  "veteran-dragon-dread": { affect: [{ key: "disrupting-ray" }], sound: "spells/disrupting-ray" },
+  "veteran-lich-mend": { affect: [{ key: "cure" }], sound: "spells/cure" },
+  "veteran-dragon-feast": { affect: [{ key: "cure" }], sound: "spells/cure" },
+  "veteran-troglodyte-rebirth": { affect: [{ key: "resurrection" }], sound: "spells/resurrection" },
   "fortress-basilisk-paralysis": { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },
   "basilisk-paralysis": { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },
   "medusa-paralyze-retaliation": { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },

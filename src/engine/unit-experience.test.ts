@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { hasMediaFile } from "@/lib/media-manifest";
+import { cardLibrary } from "@/data/cards/library";
 
 it("never grants an Opportunist rank whose low-roll trigger is made impossible by Mighty Blow", () => {
   const conflicts: string[] = [];
@@ -49,6 +50,7 @@ import { finalizeAdventureCombat } from "./adventure-reducer";
 import { makeCombatUnitFromNeutral } from "./adventure";
 import { applyUnitCurrentSide } from "./unit-transforms";
 import { ATTACK_DIE_FACES } from "./battlefield";
+import { effectAppliesToUnit, makeActiveEffect } from "./active-effects";
 import type { CombatState, GameAction, GameState } from "./state";
 import {
   armyUnitRankInfo,
@@ -138,6 +140,49 @@ const MARKSMEN = { id: "xp_marksmen", unitDefId: "castle.marksmen", side: "few" 
 const GRIFFINS = { id: "xp_griffins", unitDefId: "castle.griffins", side: "pack" as const };
 const ZEALOTS = { id: "xp_zealots", unitDefId: "castle.zealots", side: "few" as const };
 const HALBERDIERS = { id: "xp_halbs", unitDefId: "castle.halberdiers", side: "few" as const };
+
+describe("Evil Eyes veteran ongoing immunity", () => {
+  it("blocks hostile ongoing effects but keeps friendly Archery", () => {
+    const state = createInitialGameState("evil-eyes-friendly-ongoing");
+    const evilEyes = makeCombatUnitFromArmy(
+      {
+        id: "xp_evil_eyes",
+        unitDefId: "dungeon.evil_eyes",
+        side: "pack",
+        experience: UNIT_RANK_THRESHOLDS.bronze[3]
+      },
+      "p1",
+      "unit_p1_evil_eyes",
+      0
+    )!;
+    expect(evilEyes.abilities).toContain("veteran-eye-immunity");
+
+    const archeryEffect = cardLibrary["ability.archery"]!.effect;
+    if (archeryEffect?.type !== "CREATE_ACTIVE_EFFECT") {
+      throw new Error("Archery active effect is missing.");
+    }
+    const friendlyArchery = makeActiveEffect(
+      state,
+      archeryEffect.effect,
+      { type: "card", cardId: "ability.archery", controllerId: "p1" },
+      "p1"
+    );
+    const hostileOngoing = makeActiveEffect(
+      state,
+      {
+        name: "Hostile ongoing",
+        scope: "global",
+        duration: { type: "current-combat-round" },
+        modifiers: [{ type: "ATTACK_BONUS", amount: -1 }]
+      },
+      { type: "card", cardId: "spell.weakness", controllerId: "p2" },
+      "p2"
+    );
+
+    expect(effectAppliesToUnit(friendlyArchery, evilEyes)).toBe(true);
+    expect(effectAppliesToUnit(hostileOngoing, evilEyes)).toBe(false);
+  });
+});
 
 describe("Unit Experience — rank math & either/or rewards", () => {
   it("tier-scaled even ladder XP: bronze 5/9/13/17 (gold ranks slower, not stronger)", () => {

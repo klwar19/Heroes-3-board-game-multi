@@ -20,6 +20,7 @@ import { getSpellCastRestriction, playerHasSpellTimingFreedom } from "./active-e
 import { cardLibrary } from "@/data/cards/library";
 import {
   combatEnemyHandTaxUnit,
+  combatEnemySpellSunderUnit,
   combatEnemyPowerTaxUnit,
   combatEnemySpellLockUnit,
   isCombatCardWindowOpen,
@@ -148,6 +149,11 @@ export function spellCastRestrictionNotices(
       `${handTax.cardName}'s Mana Leech: casting a Spell from hand also discards another card of your choice.`,
       false
     );
+  }
+
+  const sunder = combatEnemySpellSunderUnit(state, playerId);
+  if (sunder) {
+    push("enemy-spell-sunder", `${sunder.cardName}'s Spell Sunder: casting a Spell from hand or Spell Book, including an instant Spell, discards another hand card of your choice if possible.`, false);
   }
 
   // 6. The per-combat-round Spell limit. Least-noisy honest reading: shown only

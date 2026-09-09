@@ -4,6 +4,7 @@ import { Coins, Dumbbell } from "lucide-react";
 
 import {
   unitDrillGoldCost,
+  unitDrillGoldCostFor,
   unitDrillLimit,
   unitDrillMovementCost,
   unitDrillsUsedThisRound,
@@ -28,20 +29,21 @@ export function DrillUnitButton({
   action: GameAction;
   onAction: (action: GameAction) => void;
 }) {
-  const cost = unitDrillGoldCost(unit);
+  const cost = unitDrillGoldCostFor(state, playerId, unit);
+  const printedCost = unitDrillGoldCost(unit);
   const limit = unitDrillLimit(state, playerId);
   const used = unitDrillsUsedThisRound(state, playerId);
   const remaining = Math.max(0, limit - used);
-  const movementCost = unitDrillMovementCost(state, playerId) ?? 0;
+  const movementCost = unitDrillMovementCost(state, playerId, unit) ?? 0;
   const pricing =
     unit.side === "neutral"
       ? "recruited Neutral rate"
       : unit.side === "bank"
         ? "Creature Bank card rate"
-        : `${cost === 1 ? "bronze" : cost === 2 ? "silver" : "gold/azure"} rate`;
+        : `${printedCost === 1 ? "bronze" : printedCost === 2 ? "silver" : "gold/azure"} rate`;
   const locationRule = movementCost
     ? "This field also costs 1 movement. Towns, Settlements and Random Towns waive that movement cost."
-    : "No movement cost at a Town, Settlement or Random Town.";
+    : "No movement cost for this drill. Bronze units always waive movement; Towns, Settlements, Random Towns and a free equipment drill also waive it.";
   const tip = `Drill ${unitName}: pay ${cost} gold to gain +1 persistent unit XP. ${pricing}; ${remaining} of ${limit} Drill ${limit === 1 ? "use" : "uses"} remaining this round. ${locationRule}`;
 
   return (

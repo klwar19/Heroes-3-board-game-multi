@@ -6,10 +6,13 @@ import { Clock3, Dices } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { COMBAT_TOKEN_IMAGES } from "@/data/assets/homm-assets";
 import { cardLibrary } from "@/data/cards/library";
+import { unitRankAbilityIcon } from "@/data/units/experience";
+import { townBound, townVeterancy, townDefenseToken } from "@/engine/town-veterancy";
 import {
   artifactSetDefinition,
   artifactSetIconImage,
   effectAppliesToUnit,
+  getAzureDragonSuperCharge,
   unitAttackRollAdvantaged,
   unitAttackRollDisadvantaged,
   type ActiveEffectModifier,
@@ -43,7 +46,7 @@ import {
 export type UnitEffectIcon = {
   /** Stable React key (an effect id, or the fixed key of a derived icon). */
   key: string;
-  kind: "defense-token" | "artifact-set" | "ongoing-card" | "roll-advantage" | "roll-disadvantage";
+  kind: "defense-token" | "artifact-set" | "ongoing-card" | "roll-advantage" | "roll-disadvantage" | "unit-ability";
   /** The owning set, for `artifact-set` icons (also stamped as `data-set-id`). */
   setId?: string;
   /** Asset path for image-backed icons; absent for the lucide dice glyph. */
@@ -73,6 +76,8 @@ function describeModifier(modifier: ActiveEffectModifier): string | null {
       return `${modifier.amount >= 0 ? "+" : ""}${modifier.amount} Attack`;
     case "DEFENSE_BONUS":
       return `${modifier.amount >= 0 ? "+" : ""}${modifier.amount} Defense`;
+    case "TOWN_MOVE_LIMIT":
+      return `movement limited to ${modifier.amount} spaces through the next activation`;
     case "FIRE_SHIELD":
       return `burns adjacent attackers for ${modifier.amount}`;
     default:
@@ -105,13 +110,61 @@ function describeSetEffect(effect: ActiveEffectState): string {
  */
 export function unitEffectIcons(state: GameState, unit: CombatUnitState): UnitEffectIcon[] {
   const icons: UnitEffectIcon[] = [];
+  const townIcon = (id: string, label: string) => icons.push({ key: id, kind: "unit-ability", image: unitRankAbilityIcon(id), label });
+  if (unit.townVeterancy?.zeal) townIcon("town-zealot-loss", `Martyr Zeal: +${unit.townVeterancy.zeal} Attack for this combat.`);
+  if (unit.townVeterancy?.flipUsed) townIcon("town-marksman-survival", "Last Stand: +3 maximum HP and +1 Attack after changing from Pack to Few.");
+  if (unit.townVeterancy?.defense) townIcon("town-ogre-guard", "Bloodlust Armor: +1 Defense for this combat.");
+  if (unit.townVeterancy?.saveUsed) townIcon("town-goblin-save", "Defiant Survivor has been used this combat.");
+  if (townBound(state, unit)) townIcon("town-dragon-snare", "Golden Roots: cannot move while the binding Gold Dragon is alive and adjacent.");
+  for (const effect of state.activeEffects.filter(effect => effectAppliesToUnit(effect, unit))) {
+    const limit = effect.modifiers.find(modifier => modifier.type === "TOWN_MOVE_LIMIT");
+    if (limit?.type === "TOWN_MOVE_LIMIT") icons.push({
+      key: effect.id, kind: "unit-ability",
+      image: unitRankAbilityIcon(limit.amount === 1 ? "ntv-putrid-grasp" : "town-devil-slow"),
+      label: `${effect.name}: movement is limited to ${limit.amount} space${limit.amount === 1 ? "" : "s"} through the next activation.`,
+    });
+  }
+  const markingUnits = Object.values(state.combat?.units ?? {}).filter(source => source.damage < source.maxHealth && source.townVeterancy?.markedTargets?.includes(unit.id));
+  if (markingUnits.length) townIcon("town-marksman-mark", `Sighted Target: attacks by ${markingUnits.map(source => source.cardName).join(", ")} pierce 1 Defense for this combat.`);
+  if (townVeterancy(unit, "champion-safe") && unit.townVeterancy?.movedRound === state.combat?.round) townIcon("town-champion-safe", "Unanswered Charge: attacks do not provoke retaliation for the rest of this round.");
+  for (const effect of state.activeEffects.filter(e => effectAppliesToUnit(e, unit))) {
+    const dust = effect.modifiers.some(m => m.type === "NEUTRAL_BLIND_DUST");
+    const snare = effect.modifiers.some(m => m.type === "NEUTRAL_MOVE_LIMIT");
+    const penalty = effect.modifiers.some(m => m.type === "NEUTRAL_NEXT_ATTACK_PENALTY");
+    if (dust || snare || penalty) icons.push({
+      key: effect.id, kind: "unit-ability",
+      image: unitRankAbilityIcon(dust ? "veteran-blind-dust" : snare ? "veteran-troll-snare" : "veteran-unicorn-enfeeble"),
+      label: dust ? "Blind Dust: reroll +1 dice until the end of this unit's next activation." : snare ? "Crippling Snare: maximum movement 1 space until the end of this unit's next activation." : effect.name,
+    });
+  }
+  if (unit.factionVeterancy?.marked) icons.push({
+    key: "veteran-dragon-mark", kind: "unit-ability", image: unitRankAbilityIcon("veteran-dragon-mark"),
+    label: "Vengeance Mark: takes 1 bonus damage whenever attacked by a Black Dragon this combat."
+  });
+  if (unit.factionVeterancy?.rebirthAttack) icons.push({
+    key: "veteran-skeleton-rebirth", kind: "unit-ability", image: unitRankAbilityIcon("veteran-skeleton-rebirth"),
+    label: "Deathless Fury: +1 Attack for this combat; survival already used."
+  });
+  if (unit.factionVeterancy?.flipHealth) icons.push({
+    key: "veteran-harpy-vitality", kind: "unit-ability", image: unitRankAbilityIcon("veteran-harpy-vitality"),
+    label: "Second Wind: +4 maximum HP after changing from Pack to Few."
+  });
+  const charge = getAzureDragonSuperCharge(unit);
+  if (charge) {
+    icons.push({
+      key: charge.abilityId,
+      kind: "unit-ability",
+      image: unitRankAbilityIcon(charge.abilityId),
+      label: "Super Charge active at 5 HP or lower: attacks pierce 1 Defense and also Paralyze on 0/+1; Fear Aura succeeds on −1/0."
+    });
+  }
 
-  if (unit.defenseToken) {
+  if (unit.defenseToken || townDefenseToken(state, unit)) {
     icons.push({
       key: "defense-token",
       kind: "defense-token",
       image: COMBAT_TOKEN_IMAGES.defense,
-      label: "Defense token — rolls the Defend die when struck (+1 Defense on a “+1”)"
+      label: townVeterancy(unit, "golem-shield") ? "Iron Guard — always defended; +1 Defense on a Defend roll of 0 or +1." : "Defense token — rolls the Defend die when struck (+1 Defense on a “+1”)"
     });
   }
 

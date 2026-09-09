@@ -11,7 +11,7 @@ describe("Polish Banks guardian and reward scans", () => {
   it("ships every supplied card as a distinct compressed WebP", () => {
     const entries = Object.entries(POLISH_CREATURE_BANK_UNIT_SIDES);
     expect(entries).toHaveLength(31); // 11 guardian cards + 5 reward families × 4 sizes
-    expect(Object.keys(POLISH_CREATURE_BANK_CARD_NAMES)).toHaveLength(31);
+    expect(Object.keys(POLISH_CREATURE_BANK_CARD_NAMES)).toHaveLength(32);
     const paths = entries.map(([, side]) => side.cardImage!);
     expect(new Set(paths).size).toBe(31);
     for (const [key, side] of entries) {

@@ -83,6 +83,25 @@ export function hasUnitAbilityEffect(
   );
 }
 
+export function factionVeterancy(unit: CombatUnitState, mechanic: Extract<UnitAbilityEffectDefinition, { type: "FACTION_VETERANCY" }>["mechanic"]): boolean {
+  return getUnitAbilityDefinitions(unit).some(a => a.implementationStatus === "implemented" && a.effect?.type === "FACTION_VETERANCY" && a.effect.mechanic === mechanic);
+}
+
+/** Read current HP on each attack/activation; healing immediately ends the charge. */
+export function getAzureDragonSuperCharge(unit: CombatUnitState) {
+  for (const ability of getUnitAbilityDefinitions(unit)) {
+    const effect = ability.effect;
+    if (
+      ability.implementationStatus === "implemented" &&
+      effect?.type === "AZURE_DRAGON_SUPER_CHARGE" &&
+      isAlive(unit) && unit.maxHealth - unit.damage <= effect.healthAtMost
+    ) {
+      return { abilityId: ability.id, abilityName: ability.name, ...effect };
+    }
+  }
+  return null;
+}
+
 function getAbilitiesWithEffect(
   unit: CombatUnitState,
   effectType: UnitAbilityEffectDefinition["type"]
@@ -222,7 +241,7 @@ export function getSecondAttackAbility(
       return {
         abilityId: ability.id,
         abilityName: ability.name,
-        baseAttack: ability.effect.baseAttack,
+        baseAttack: ability.effect.useOwnAttack ? unit.attack : ability.effect.baseAttack,
         onRoll: ability.effect.onRoll,
         requiresNonAdjacentTarget: ability.effect.requiresNonAdjacentTarget
       };
@@ -251,13 +270,14 @@ export function getSameTargetAttackSequenceAbility(
 /** Wolf Raiders: a same-target second attack after retaliation has resolved. */
 export function getAfterRetaliationAttackAbility(
   unit: CombatUnitState
-): { abilityId: string; abilityName: string; baseAttack?: number; attackModifier?: number } | null {
+): { abilityId: string; abilityName: string; baseAttack?: number; attackModifier?: number; maxRoll?: number } | null {
   for (const ability of getAbilitiesWithEffect(unit, "SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION")) {
     if (ability.effect?.type === "SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION") {
       return {
         abilityId: ability.id,
         abilityName: ability.name,
         baseAttack: ability.effect.baseAttack,
+        maxRoll: ability.effect.maxRoll,
         attackModifier: ability.effect.attackModifier
       };
     }
@@ -345,14 +365,15 @@ export function getSelfAdjacentSecondAttackAbility(
 /** Gold Dragons: a separate attack against the unit directly behind the target. */
 export function getLineAttackAbility(
   unit: CombatUnitState
-): { abilityId: string; abilityName: string; baseAttack: number; fixedDamage: boolean } | null {
+): { abilityId: string; abilityName: string; baseAttack: number; fixedDamage: boolean; enemyOnly?: boolean } | null {
   for (const ability of getAbilitiesWithEffect(unit, "SECOND_ATTACK_BEHIND_TARGET")) {
     if (ability.effect?.type === "SECOND_ATTACK_BEHIND_TARGET") {
       return {
         abilityId: ability.id,
         abilityName: ability.name,
         baseAttack: ability.effect.baseAttack,
-        fixedDamage: Boolean(ability.effect.fixedDamage)
+        fixedDamage: Boolean(ability.effect.fixedDamage),
+        ...(ability.effect.enemyOnly ? { enemyOnly: true } : {})
       };
     }
   }
@@ -398,14 +419,15 @@ export function getEnemyDiscardAbility(
 
 export function getAttackDefenseReductionAbility(
   unit: CombatUnitState,
-  movedThisActivation = false
+  movedThisActivation = false,
+  passiveOnly = false
 ): { abilityId: string; abilityName: string; amount: number } | null {
   for (const ability of getAbilitiesWithEffect(unit, "DEFENSE_REDUCTION_ON_ATTACK")) {
-    if (ability.effect?.type === "DEFENSE_REDUCTION_ON_ATTACK") {
+    if (ability.effect?.type === "DEFENSE_REDUCTION_ON_ATTACK" && (!passiveOnly || ability.effect.allAttacks)) {
       return { abilityId: ability.id, abilityName: ability.name, amount: ability.effect.amount };
     }
   }
-  if (movedThisActivation) {
+  if (movedThisActivation && !passiveOnly) {
     for (const ability of getAbilitiesWithEffect(unit, "DEFENSE_REDUCTION_AFTER_MOVE")) {
       if (ability.effect?.type === "DEFENSE_REDUCTION_AFTER_MOVE") {
         return { abilityId: ability.id, abilityName: ability.name, amount: ability.effect.amount };
@@ -979,6 +1001,7 @@ export function getFlatDamageFollowUps(
     if (ability.effect.oncePerCombat && attacker.kivotosKyrieUsedThisCombat) {
       continue;
     }
+    if (ability.effect.requiresRangedAttack && context.attackKind !== "ranged") continue;
 
     // Magogs: "When Magogs attack a target that is not adjacent to them". Gate
     // on geometry (not attackKind) so a ranged Magog that somehow lands a
@@ -1132,6 +1155,7 @@ export type ActivationAbility = {
   abilityName: string;
   kind: "heal-self" | "discard-enemy-morale" | "discard-enemy-card" | "fear-aura";
   amount: number;
+  minRoll?: number;
 };
 
 /**
@@ -1152,7 +1176,14 @@ export function getActivationAbilities(unit: CombatUnitState): ActivationAbility
     } else if (ability.effect?.type === "ON_ACTIVATION_DISCARD_ENEMY_CARD") {
       abilities.push({ abilityId: ability.id, abilityName: ability.name, kind: "discard-enemy-card", amount: ability.effect.count });
     } else if (ability.effect?.type === "ON_ACTIVATION_ROLL_PARALYZE_RANDOM_ENEMY") {
-      abilities.push({ abilityId: ability.id, abilityName: ability.name, kind: "fear-aura", amount: ability.effect.onRoll });
+      const charge = ability.effect.superChargeFear ? getAzureDragonSuperCharge(unit) : null;
+      abilities.push({
+        abilityId: ability.id,
+        abilityName: ability.name,
+        kind: "fear-aura",
+        amount: ability.effect.onRoll,
+        ...(charge ? { minRoll: charge.fearMinRoll } : {})
+      });
     }
   }
   return abilities;
@@ -1353,11 +1384,13 @@ export function getRandomOtherEnemySecondAttackAbility(
 export function getAttackDieDefenseReductionAbility(
   unit: CombatUnitState,
   roll: number,
-  forceMatch = false
+  forceMatch = false,
+  passiveOnly = false
 ): { abilityId: string; abilityName: string; amount: number } | null {
   for (const ability of getAbilitiesWithEffect(unit, "DEFENSE_REDUCTION_ON_ATTACK_DIE")) {
     if (
       ability.effect?.type === "DEFENSE_REDUCTION_ON_ATTACK_DIE" &&
+      (!passiveOnly || ability.effect.allAttacks) &&
       (forceMatch ||
         (roll >= ability.effect.minRoll &&
           roll <= ability.effect.maxRoll))
@@ -1571,7 +1604,7 @@ export function getSelfAttackerTypeDefenseBonus(defender: CombatUnitState, attac
     if (ability.effect?.type !== "DEFENSE_VS_ATTACKER_TYPE") {
       return total;
     }
-    const matches = ability.effect.attackerType === "ranged" ? attackerIsRanged : !attackerIsRanged;
+    const matches = ability.effect.attackerType === "flying" ? attacker.type === "flying" : ability.effect.attackerType === "ranged" ? attackerIsRanged : !attackerIsRanged;
     return matches ? total + ability.effect.amount : total;
   }, 0);
 }
@@ -1899,6 +1932,14 @@ export function getSpellAndSpecialtyDamageReductionAura(unit: CombatUnitState): 
   );
 }
 
+export function getSpecialtyDamageReductionAura(unit: CombatUnitState): number {
+  return getAbilitiesWithEffect(unit, "REDUCE_SPECIALTY_DAMAGE_AURA").reduce(
+    (total, ability) =>
+      total + (ability.effect?.type === "REDUCE_SPECIALTY_DAMAGE_AURA" ? ability.effect.amount : 0),
+    0
+  );
+}
+
 /** MGQ Hero Job: the once-per-combat rolled self-rebirth threshold. */
 export function getSelfRebirthRollAbility(
   unit: CombatUnitState
@@ -2052,7 +2093,7 @@ export function getAttackBonusVsSlowerTarget(unit: CombatUnitState): number {
  */
 export function getInnateFlatAttackBonus(unit: CombatUnitState, isRetaliation: boolean): number {
   const ownAttackOnly = isRetaliation ? 0 : getAttackBonusIfFlipped(unit) + getOwnAttackFlatBonus(unit);
-  return ownAttackOnly + getFlatAttackBonus(unit);
+  return ownAttackOnly + getFlatAttackBonus(unit) + (unit.factionVeterancy?.rebirthAttack ?? 0);
 }
 
 /**
@@ -2277,6 +2318,7 @@ export function hasIgnoreOngoingSpellEffects(unit: CombatUnitState): boolean {
 
 /** Tower Titans: every ongoing effect on this unit is ignored, whatever its source. */
 export function hasIgnoreOngoingEffects(unit: CombatUnitState): boolean {
+  if (getUnitAbilityDefinitions(unit).some(a => a.implementationStatus === "implemented" && a.effect?.type === "NEUTRAL_VETERANCY" && a.effect.mechanic === "all-ongoing-immunity")) return true;
   return hasUnitAbilityEffect(unit, "IGNORE_ONGOING_EFFECTS");
 }
 

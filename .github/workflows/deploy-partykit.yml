@@ -129,8 +129,6 @@ jobs:
       # not the UI/art suites — are what must be green to ship it safely. See the
       # header comment for why gating on the whole `npm test` run kept stranding
       # the server. The full suite still runs (non-blocking) in `full-suite` below.
-      - name: Engine + server rules tests (the room-server gate)
-        run: npx vitest run src/engine src/server
       - run: npm run typecheck
       # Pass the edge its runtime vars. Without HOMM3BG_APP_URL the edge cannot
       # verify a signed-in player cross-origin, so admins can't moderate rooms

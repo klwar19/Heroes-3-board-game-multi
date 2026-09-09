@@ -442,6 +442,28 @@ describe("Spell Book — stashing from hand (map turn)", () => {
     expect(moved.players.p1.deck.length).toBe(deckBefore);
   });
 
+  it("caps the standard Book at 5 Spells in both legality and resolution", () => {
+    const state = adventure("book-five-cap");
+    state.players.p1.spellBook = [
+      "spell.haste",
+      "spell.slow",
+      "spell.curse",
+      "spell.bless",
+      "spell.shield"
+    ];
+    state.players.p1.hand = ["spell.lightning_bolt"];
+
+    expect(legal(state, "p1").some((l) => l.action.type === "MOVE_SPELL_TO_SPELL_BOOK")).toBe(false);
+    const forced = applyAction(state, {
+      type: "MOVE_SPELL_TO_SPELL_BOOK",
+      playerId: "p1",
+      cardId: "spell.lightning_bolt"
+    });
+    expect(forced.errors.some((error) => error.message.includes("at most 5"))).toBe(true);
+    expect(forced.state.players.p1.spellBook).toHaveLength(5);
+    expect(forced.state.players.p1.hand).toContain("spell.lightning_bolt");
+  });
+
   it("Magic Arrow can be held and cast, but NEVER stashed into the Book", () => {
     const state = adventure("book-stash-magic-arrow");
     // A normal Spell alongside the starting-only Magic Arrow.
@@ -574,6 +596,26 @@ describe("Spell Book — refill from discard on pickup", () => {
     expect(took.players.p1.spellBook).toContain("spell.haste");
     expect(took.players.p1.hand).not.toContain("spell.haste");
     expect(took.players.p1.discard).not.toContain("spell.haste");
+  });
+
+  it("does not offer the Book destination when the standard Book already has 5 Spells", () => {
+    const state = adventure("book-refill-five-cap");
+    state.players.p1.hand = [];
+    state.players.p1.spellBook = [
+      "spell.haste",
+      "spell.slow",
+      "spell.curse",
+      "spell.bless",
+      "spell.shield"
+    ];
+    state.players.p1.discard = ["spell.lightning_bolt"];
+    state.adventure!.rewardQueue.push({ playerId: "p1", kind: "discard-pick", count: 1 });
+    pumpAdventureQueues(state);
+
+    const choice = state.pendingChoice;
+    const options = choice && "options" in choice ? choice.options : [];
+    expect(options).toHaveLength(1);
+    expect(options[0]?.label).not.toContain("Spell Book");
   });
 
   it("a picked-up Magic Arrow offers ONLY the hand route — never the Book", () => {

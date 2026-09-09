@@ -732,6 +732,8 @@ export function HexMapBoard({
   placement,
   moveCue,
   heroPositionOverrides,
+  selectedHeroId: controlledSelectedHeroId,
+  onSelectedHeroIdChange,
   readOnly = false,
 }: {
   state: GameState;
@@ -745,6 +747,9 @@ export function HexMapBoard({
   // being walked out cell by cell, its hero pawn renders at the OVERRIDE cell
   // instead of its settled spaceId, so the human watches it move step by step.
   heroPositionOverrides?: Record<string, MapSpaceId>;
+  /** Controlled by the table shell so the HUD movement chips and map pawns select the same hero. */
+  selectedHeroId?: string | null;
+  onSelectedHeroIdChange?: (heroId: string) => void;
   readOnly?: boolean;
 }) {
   const adventure = view.adventure;
@@ -892,7 +897,15 @@ export function HexMapBoard({
         : [],
     [state.heroes, isSeated, viewerPlayerId],
   );
-  const [selectedHeroId, setSelectedHeroId] = useState<string | null>(null);
+  const [localSelectedHeroId, setLocalSelectedHeroId] = useState<string | null>(null);
+  const selectedHeroId =
+    controlledSelectedHeroId === undefined
+      ? localSelectedHeroId
+      : controlledSelectedHeroId;
+  const setSelectedHeroId = (heroId: string) => {
+    setLocalSelectedHeroId(heroId);
+    onSelectedHeroIdChange?.(heroId);
+  };
   const myHero =
     myHeroes.find((candidate) => candidate.id === selectedHeroId) ??
     myHeroes.find((candidate) => candidate.kind === "main") ??
@@ -3039,13 +3052,12 @@ export function HexMapBoard({
         const carriesGrail =
           adventure.grail?.status === "carried" &&
           adventure.grail.carrierHeroId === occupant.heroId;
-        // Only offer hero switching when the player actually has a second hero.
-        // If this occupied hex is a legal move target, let pointer events fall
-        // through the pawn to the hex so the selected hero can move in and
-        // temporarily share it. Once stacked, the current hex is not reachable
-        // and normal click-to-switch behavior returns.
+        // The pawn itself always selects that hero, including when its field is
+        // also a legal destination for the other hero. The rest of the exposed
+        // hex remains the move target, so selection and movement no longer
+        // steal the same hit area from one another.
         const canSelectHero =
-          isOwnHero && hasSecondaryHero && myTurn && !readOnly && !reachable.has(spaceId);
+          isOwnHero && hasSecondaryHero && myTurn && !readOnly;
         const isActiveHero =
           isOwnHero && hasSecondaryHero && myHero?.id === occupant.heroId;
         heroPawns.push(
@@ -3417,7 +3429,7 @@ export function HexMapBoard({
         adventure.grail?.status === "carried" &&
         adventure.grail.carrierHeroId === occupant.heroId;
       const canSelectHero =
-        isOwnHero && hasSecondaryHero && myTurn && !readOnly && !reachable.has(spaceId);
+        isOwnHero && hasSecondaryHero && myTurn && !readOnly;
       const isActiveHero =
         isOwnHero && hasSecondaryHero && myHero?.id === occupant.heroId;
       heroPawns.push(
@@ -4558,12 +4570,16 @@ export function AdventureHud({
   viewerPlayerId,
   legalActions,
   onAction,
+  selectedHeroId,
+  onSelectHero,
   eventLogControl,
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
   legalActions: LegalAction[];
   onAction: (action: GameAction) => void;
+  selectedHeroId?: string | null;
+  onSelectHero?: (heroId: string) => void;
   eventLogControl?: ReactNode;
 }) {
   const { zoomContent } = useCardZoom();
@@ -4578,6 +4594,7 @@ export function AdventureHud({
       candidate.controllerId === viewerPlayerId &&
       candidate.kind === "secondary",
   );
+  const secondarySelected = Boolean(secondaryHero && selectedHeroId === secondaryHero.id);
   // Crowns (expert uses): remaining / round total, read straight from the engine
   // helpers so the HUD can never diverge from what canPlayExpertMode enforces.
   const crownsRemaining = player ? expertUsesAvailable(player) : 0;
@@ -4723,29 +4740,37 @@ export function AdventureHud({
           className="advHudCell moveMoraleCell"
           aria-label="Movement, morale, ability token and crowns"
         >
-          <span
-            className="statChip"
+          <button
+            aria-pressed={!secondarySelected}
+            className={`statChip heroMoveSelect${secondarySelected ? "" : " selected"}`}
             aria-label={`Main Hero movement points: ${hero.movementPoints}`}
-            title={`Main Hero: ${hero.movementPoints} movement point${hero.movementPoints === 1 ? "" : "s"} left this turn`}
+            disabled={!onSelectHero}
+            onClick={() => onSelectHero?.(hero.id)}
+            title={`Select Main Hero — ${hero.movementPoints} movement point${hero.movementPoints === 1 ? "" : "s"} left this turn`}
+            type="button"
           >
             <span aria-hidden="true" className="movePointIcon">
               🐎
             </span>
             <b>{hero.movementPoints}</b>
             <small>move</small>
-          </span>
+          </button>
           {secondaryHero ? (
-            <span
+            <button
+              aria-pressed={selectedHeroId === secondaryHero.id}
               aria-label={`Secondary Hero movement points: ${secondaryHero.movementPoints}`}
-              className="statChip secondaryHeroMoveChip"
-              title={`Secondary Hero: ${secondaryHero.movementPoints} movement point${secondaryHero.movementPoints === 1 ? "" : "s"} left this turn`}
+              className={`statChip heroMoveSelect secondaryHeroMoveChip${selectedHeroId === secondaryHero.id ? " selected" : ""}`}
+              disabled={!onSelectHero}
+              onClick={() => onSelectHero?.(secondaryHero.id)}
+              title={`Select Secondary Hero — ${secondaryHero.movementPoints} movement point${secondaryHero.movementPoints === 1 ? "" : "s"} left this turn`}
+              type="button"
             >
               <span aria-hidden="true" className="movePointIcon">
                 🐎
               </span>
               <b>{secondaryHero.movementPoints}</b>
               <small>2nd move</small>
-            </span>
+            </button>
           ) : null}
           <span
             className={`statChip${(player?.morale ?? 0) <= -2 ? " moraleDiscardPending" : ""}`}
@@ -13184,7 +13209,7 @@ function GameModeSection({
                       [
                         "unitExperience",
                         "Unit experience",
-                        "WoG Unit Experience System (board adaptation): units surviving won battles gain XP and veteran ranks — stat bonuses, an Elite ability per faction's signature unit, XP dilution on reinforce, and Drill training anywhere (1 movement outside Towns, Settlements and Random Towns).",
+                        "WoG Unit Experience System (board adaptation): units surviving won battles gain XP and veteran ranks — stat bonuses, rank abilities, XP dilution on reinforce, and Drill training anywhere (bronze units spend no movement; other tiers spend 1 movement outside Towns, Settlements and Random Towns).",
                       ],
                       [
                         "neutralRankUp",
@@ -14599,7 +14624,7 @@ function GameOptionsPanel({
 
                 <div className="optionRow">
                   <OptionRowLabel
-                    hint="House rule: each player keeps a personal Spell Book to stash, cast and boost Spells from"
+                    hint="House rule: each player keeps a personal Spell Book holding up to 5 Spells to stash, cast and boost from"
                     iconClassName="optionRowIcon spellBook"
                     iconSrc="/assets/ui/spell-book-button.png"
                     title="Spell Book"
@@ -14631,7 +14656,7 @@ function GameOptionsPanel({
                     {polishSpellBookOn
                       ? "Off because Polish Spell Book is selected; the two lifecycles cannot be combined."
                       : spellBookOn
-                        ? "Each player may set Spells aside in a personal Spell Book to free hand slots, then cast or boost from it (one Book Power boost per turn)."
+                        ? "Each player may set aside up to 5 Spells in a personal Spell Book to free hand slots, then cast or boost from it (one Book Power boost per turn)."
                         : "No Spell Book — Spells live only in hand, deck and discard."}
                   </small>
                 </div>
@@ -14741,7 +14766,7 @@ function GameOptionsPanel({
 
                 <div className="optionRow unitExperienceRow">
                   <OptionRowLabel
-                    hint="WoG Unit Experience (board adaptation): surviving army units gain XP and veteran ranks; Drill is free at Towns, Settlements and Random Towns, or costs 1 movement elsewhere"
+                    hint="WoG Unit Experience (board adaptation): surviving army units gain XP and veteran ranks; bronze units Drill without movement cost; other tiers spend 1 movement outside Towns, Settlements and Random Towns"
                     iconClassName="optionRowIcon crest"
                     iconSrc="/assets/spell-icons/slayer.png"
                     title="Unit experience"

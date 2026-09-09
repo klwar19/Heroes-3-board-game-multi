@@ -1157,7 +1157,13 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // heroes when the mover retains an exit point or Basic Logistics. Arrival skips
 // combat/field resolution, and END_TURN now requires the models to separate.
 // Parallel turns intentionally keep the v117 no-stacking behavior.
-export const ENGINE_PROTOCOL_VERSION = 118;
+// Bronze Drill waives movement per selected card; Azure Dragon has new rank
+// rewards, enemy-only Attack-5 breath and live low-HP Super Charge.
+// v121: the serialized BINH Gold Dragon second-attack toggle, standard Spell
+// Book five-card legality, Battle Test per-unit rank setup, and Evil Eyes'
+// hostile-only ongoing immunity must resolve the same way on the frontend and
+// authoritative PartyKit worker.
+export const ENGINE_PROTOCOL_VERSION = 121;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

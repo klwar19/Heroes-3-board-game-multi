@@ -2933,6 +2933,31 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
   overflow: visible;
 }
 
+/* More than seven combat cards use their full width and scroll sideways. The
+   ordinary <=7-card fan keeps its compact overlap exactly as before. Menus are
+   viewport-fixed, so horizontal clipping cannot hide play actions. */
+.handFan.scrollable {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  gap: 8px;
+  padding-top: 48px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.handFan.scrollable .fanSlot,
+.handFan.scrollable .fanCard {
+  flex: 0 0 auto;
+}
+
+.handFan.scrollable .fanCard {
+  margin-right: 0;
+}
+
 .handFan.muted {
   opacity: 0.35;
   pointer-events: none;
@@ -8244,8 +8269,19 @@ button.hbSlot:disabled {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  /* Keep visible so the play menu (.handPlayMenu) is not clipped away. */
-  overflow: visible;
+  justify-content: center;
+  min-width: 0;
+  padding: 3px 2px 8px;
+}
+
+.adventureHandCards.scrollable {
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
 }
 
 .adventureHandCard {
@@ -17777,6 +17813,12 @@ button.setupHubNavItem:hover {
   background: transparent;
 }
 
+.seatOrderNumber {
+  flex: 0 0 auto;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+
 .heroInfoModal .heroStat,
 .heroInfoModal .heroInfoCardRow {
   background: linear-gradient(rgb(238 195 124 / 10%), rgb(238 195 124 / 3%)), url("/ui/hero-info/table-background.webp") center / 540px auto, #6b4d2c;
@@ -20588,17 +20630,30 @@ button.setupHubNavItem:hover {
   bottom: calc(100% + 6px);
   left: 50%;
   transform: translateX(-50%);
-  z-index: 40;
+  z-index: 20;
   display: flex;
   flex-direction: column;
   gap: 4px;
   min-width: 215px;
   max-width: 300px;
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
   padding: 9px;
   background: #221a10;
   border: 1px solid #6d5832;
   border-radius: 9px;
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.55);
+}
+
+/* A menu inside an overflowing hand would otherwise be clipped by the scroll
+   container. Detach only the >7-card menu to the viewport. */
+.handPlayMenu.scrollDetached {
+  position: fixed;
+  top: 50%;
+  bottom: auto;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 120;
 }
 
 .handPlayMenu strong {
@@ -21042,6 +21097,8 @@ button.setupHubNavItem:hover {
 
 .handColumn {
   display: grid;
+  width: 100%;
+  min-width: 0;
   gap: 4px;
   justify-items: start;
   align-content: end;
@@ -27026,6 +27083,33 @@ img.cardBack {
 
 .secondaryHeroMoveChip small {
   color: #dfbf73;
+}
+
+/* Both movement counters are real hero selectors. Keep the compact HUD shape
+   while making the currently controlled hero obvious and keyboard accessible. */
+button.statChip.heroMoveSelect {
+  appearance: none;
+  margin: 0;
+  padding: 5px 7px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+button.statChip.heroMoveSelect:hover,
+button.statChip.heroMoveSelect:focus-visible,
+button.statChip.heroMoveSelect.selected {
+  border-color: rgb(231 190 91 / 68%);
+  background: rgb(217 178 90 / 12%);
+  outline: none;
+  box-shadow: inset 0 0 9px rgb(217 178 90 / 10%);
+}
+
+button.statChip.heroMoveSelect:disabled {
+  cursor: default;
 }
 
 .statChip .moraleIcon {
@@ -39830,6 +39914,10 @@ details.mapPresetGroup > summary::-webkit-details-marker {
     gap: 6px;
   }
 
+  .adventureRoot:not(.phoneMode) .playerCardBar .adventureHandCards.scrollable {
+    justify-content: flex-start;
+  }
+
   .adventureRoot:not(.phoneMode)
     .playerCardBar
     .adventureHandCard
@@ -40383,6 +40471,13 @@ details.mapPresetGroup > summary::-webkit-details-marker {
   touch-action: manipulation;
 }
 
+/* Deployment's Pointer-Events drag needs ownership of the touch gesture. This
+   deliberately outranks the generic phone-button rule above. */
+.phoneMode button.unitDraggable,
+.phoneMode button.battleCell.unitDraggable {
+  touch-action: none;
+}
+
 /* One column up top — the table menu leaves the top row (it becomes the
    "Menu" tab's panel below). */
 .phoneMode .tableTopRow {
@@ -40549,6 +40644,10 @@ details.mapPresetGroup > summary::-webkit-details-marker {
   justify-content: center;
 }
 
+.phoneMode .adventureHandCards.scrollable {
+  justify-content: flex-start;
+}
+
 .phoneMode.adventureRoot[data-phone-tab="decks"] .advDecksBottom {
   display: block;
 }
@@ -40617,6 +40716,14 @@ details.mapPresetGroup > summary::-webkit-details-marker {
   gap: 10px;
   min-height: 0;
   padding: 10px 6px;
+}
+
+.phoneMode .handFan.scrollable {
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  gap: 10px;
+  min-height: 0;
+  padding: 42px 6px 10px;
 }
 
 .phoneMode .fanCard {
@@ -40947,6 +41054,56 @@ body:has(main.phoneMode) .commanderLevelUpFace {
   border-image: none;
   border-radius: 10px;
   padding: 12px;
+}
+
+/* Phone deployment: keep the army handles and battlefield visible together.
+   The bottom tray scrolls sideways, giving each unit a large drag surface while
+   preserving the fixed navigation bar below it. */
+.phoneMode .tableMidRow.withPlacement {
+  padding-bottom: 222px;
+}
+
+.phoneMode .tableMidRow.withPlacement > .placementColumn {
+  position: fixed;
+  z-index: 86;
+  left: 6px;
+  right: 6px;
+  bottom: calc(70px + env(safe-area-inset-bottom, 0px));
+  max-height: 216px;
+}
+
+.phoneMode .placementPanel {
+  gap: 7px;
+  max-height: 216px;
+  overflow-y: auto;
+  box-shadow: 0 -10px 28px rgb(0 0 0 / 58%);
+}
+
+.phoneMode .placementUnits {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 1px 6px;
+  scroll-snap-type: x proximity;
+  overscroll-behavior-x: contain;
+}
+
+.phoneMode .placementUnit {
+  flex: 0 0 82px;
+  min-height: 104px;
+  padding: 6px;
+  scroll-snap-align: start;
+}
+
+.phoneMode .placementUnitPortrait,
+.phoneMode .placementUnit > .tierDot {
+  width: 64px;
+  height: 64px;
+}
+
+.phoneMode .placementUnitName {
+  font-size: 10px;
 }
 
 /* Town-window skin III fall-back: the 26px gem frame would eat the narrow

@@ -276,6 +276,9 @@ export {
   specialtyTransformHealth,
   spellBookPowerAvailable,
   spellBookRuleEnabled,
+  STANDARD_SPELL_BOOK_LIMIT,
+  standardSpellBookCount,
+  standardSpellBookHasCapacity,
   spellLimitFor,
   unitSideRuleOverrides,
   wisdomGoldDiscount,
@@ -378,6 +381,7 @@ export {
   unitDrillGoldCost,
   unitDrillLimit,
   unitDrillMovementCost,
+  unitDrillGoldCostFor,
   unitDrillsUsedThisRound
 } from "./adventure";
 export {
@@ -885,6 +889,7 @@ export {
   getInnateFlatAttackBonus,
   getPostAttackAbilityDamageEffects,
   getUnitAbilityDefinitions,
+  getAzureDragonSuperCharge,
   hasUnitAbilityEffect
 } from "./unit-abilities";
 export {

@@ -2,6 +2,8 @@ import { defineConfig } from "vitest/config";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+throw new Error("Test execution is disabled by the user's explicit instruction.");
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({

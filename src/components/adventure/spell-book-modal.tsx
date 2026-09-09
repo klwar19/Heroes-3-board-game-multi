@@ -244,7 +244,7 @@ export function SpellBookModal({
             {polishMode
               ? "Play Cast a Spell from your hand, then choose one refreshed Spell. It becomes used until the next round; Book Spells cannot pay Power."
               : subtitle ??
-              "Spells set aside for later. Cast one on your turn or in combat (the normal Spell limit still applies), or stash more from your hand with a card's 📖 button."}
+              "Up to 5 Spells set aside for later. Cast one on your turn or in combat (the normal Spell limit still applies), or stash more from your hand with a card's 📖 button."}
           </p>
           {restrictionNotices.length > 0 ? (
             <div aria-label="Spell restrictions" className="dockSpellNotices">

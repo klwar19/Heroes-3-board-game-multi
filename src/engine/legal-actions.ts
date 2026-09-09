@@ -1,3 +1,5 @@
+import { townBound } from "./town-veterancy";
+import { neutralTownDeepRooted } from "./neutral-town-veterancy";
 import { cardLibrary } from "@/data/cards/library";
 import { isParallelWatchOnly, parallelContextOptions, parallelStateForPlayer } from "./parallel-combats";
 import { POLISH_BALANCE_PRINTED_MOVEMENT_IDS } from "./polish-balance-spells";
@@ -305,6 +307,7 @@ import {
   getRuleset,
   spellBookPowerAvailable,
   spellBookRuleEnabled,
+  standardSpellBookHasCapacity,
   spellCanEnterSpellBook,
   spellLimitFor,
   SPELL_DECK_BASIC,
@@ -1419,8 +1422,24 @@ export function getUnitMoveRange(
   unit: CombatUnitState,
   state?: GameState,
 ): number {
-  const base =
-    (unit.type === "ranged" ? 1 : 3) + getUnitAbilityMoveRangeBonus(unit);
+  if (state?.activeEffects.some(effect => effectAppliesToUnit(effect, unit) && effect.modifiers.some(m => m.type === "NEUTRAL_MOVE_LIMIT"))) return 1;
+  const townLimit = state?.activeEffects.filter(e => effectAppliesToUnit(e, unit)).flatMap(e => e.modifiers.filter(m => m.type === "TOWN_MOVE_LIMIT").map(m => m.amount));
+  const moveCap = townLimit?.length ? Math.min(...townLimit) : Infinity;
+  const rooted = neutralTownDeepRooted(state, unit);
+  const baseRange = unit.type === "ranged" ? 1 : 3;
+  const base = baseRange + (rooted ? Math.min(0, getUnitAbilityMoveRangeBonus(unit)) : getUnitAbilityMoveRangeBonus(unit));
+  const neutralBonus = state?.activeEffects.reduce((total, effect) => {
+    if (!effectAppliesToUnit(effect, unit)) return total;
+    return total + effect.modifiers.reduce((sum, modifier) =>
+      modifier.type === "NEUTRAL_MOVEMENT_BONUS" ? sum + (rooted ? Math.min(0, modifier.amount) : modifier.amount) : sum, 0);
+  }, 0) ?? 0;
+  const astralHunt =
+    (state?.combat?.worldRound ?? 1) % 2 === 0 &&
+    getUnitAbilityDefinitions(unit).some(ability =>
+      ability.implementationStatus === "implemented" &&
+      ability.effect?.type === "NEUTRAL_VETERANCY" &&
+      ability.effect.mechanic === "werewolf-astral-hunt"
+    ) ? 1 : 0;
 
   // House rule ("combat-move-initiative"): Haste / Slow (and the initiative-buff
   // hero specialties — Cyra, Catherine VI, …) also shift Combat movement by ±1
@@ -1449,7 +1468,7 @@ export function getUnitMoveRange(
     state && houseRuleEnabled(state, "community-card-balance"),
   );
   if (!state || (!classicRider && !balancePrinted && !communityPrinted)) {
-    return base;
+    return Math.min(Math.max(1, base + (rooted ? Math.min(0, neutralBonus) : neutralBonus + astralHunt)), moveCap);
   }
   let bonus = 0;
   for (const effect of state.activeEffects) {
@@ -1468,16 +1487,16 @@ export function getUnitMoveRange(
     }
     for (const modifier of effect.modifiers) {
       if (modifier.type === "MOVEMENT_BONUS") {
-        bonus += modifier.amount;
+        bonus += rooted ? Math.min(0, modifier.amount) : modifier.amount;
       }
       // Necklace of Swiftness (Balance Pack): the ground twin — its player-scoped
       // effect reaches every unit, so the modifier itself gates on the type.
       if (modifier.type === "GROUND_MOVEMENT_BONUS" && unit.type === "ground") {
-        bonus += modifier.amount;
+        bonus += rooted ? Math.min(0, modifier.amount) : modifier.amount;
       }
     }
   }
-  return Math.max(1, base + bonus);
+  return Math.min(moveCap, Math.max(1, base + bonus + (rooted ? Math.min(0, neutralBonus) : neutralBonus + astralHunt)));
 }
 
 export function getCombatObstacles(combat: CombatState): number[] {
@@ -1633,7 +1652,7 @@ export function getLegalMoveDestinations(
     return [];
   }
 
-  if (hasCannotMoveEffect(state, unit)) {
+  if (townBound(state, unit) || hasCannotMoveEffect(state, unit)) {
     return [];
   }
 
@@ -1644,12 +1663,13 @@ export function getLegalMoveDestinations(
   const blocked = getBlockedSpaces(combat, unit);
 
   // Arch Devils teleport: a regular move may land on any empty space.
-  if (hasUnitAbilityEffect(unit, "MOVE_ANYWHERE")) {
+  if (hasUnitAbilityEffect(unit, "MOVE_ANYWHERE") && !neutralTownDeepRooted(state, unit) && !state?.activeEffects.some(effect => effectAppliesToUnit(effect, unit) && effect.modifiers.some(m => m.type === "NEUTRAL_MOVE_LIMIT"))) {
+    const limited = state?.activeEffects.some(effect => effectAppliesToUnit(effect, unit) && effect.modifiers.some(m => m.type === "TOWN_MOVE_LIMIT"));
     return Array.from(
       { length: BATTLEFIELD_CELL_COUNT },
       (_, position) => position,
     ).filter(
-      (position) => position !== unit.position && !blocked.has(position),
+      (position) => position !== unit.position && !blocked.has(position) && (!limited || getBattlefieldDistance(unit.position, position) <= getUnitMoveRange(unit, state)),
     );
   }
 
@@ -2616,6 +2636,7 @@ export function getTargetsForCard(
   // SAME `arrowTowerRefusesEffect`, so the two can never disagree. Every other
   // unit-targeted effect keeps the Tower as a legal target.
   targets = dropArrowTowerFromRelocation(state, targets, card?.effect);
+  if (card?.effect.type === "TELEPORT_UNIT") targets = targets.filter(target => target.type !== "unit" || !state.combat?.units[target.unitId] || !neutralTownDeepRooted(state, state.combat.units[target.unitId]));
 
   return targets;
 }
@@ -3061,7 +3082,30 @@ export function combatEnemyHandTaxUnit(
     (unit) =>
       unit.controllerId !== casterId &&
       isUnitAlive(unit) &&
-      hasSpellCastHandTax(unit),
+      hasSpellCastHandTax(unit) &&
+      getUnitAbilityDefinitions(unit).some(
+        (ability) => ability.id === "familiar-spell-tax",
+      ),
+  );
+}
+
+/** Veteran Spell Sunder: tax hand and Spell Book Spell casts separately from Familiars. */
+export function combatEnemySpellSunderUnit(
+  state: GameState,
+  casterId: PlayerId,
+): CombatUnitState | undefined {
+  const combat = state.combat;
+  if (!combat) {
+    return undefined;
+  }
+  return Object.values(combat.units).find(
+    (unit) =>
+      unit.controllerId !== casterId &&
+      isUnitAlive(unit) &&
+      hasSpellCastHandTax(unit) &&
+      getUnitAbilityDefinitions(unit).some(
+        (ability) => ability.id === "veteran-spell-sunder",
+      ),
   );
 }
 
@@ -6167,7 +6211,8 @@ function addSpellBookStashActions(
     state.combat ||
     !hasOpenAdventureTurn(state, playerId) ||
     state.pendingChoice ||
-    state.reactionWindow
+    state.reactionWindow ||
+    !standardSpellBookHasCapacity(player)
   ) {
     return;
   }
@@ -16443,14 +16488,15 @@ function getAdventureLegalActions(
   }
 
   // Unit Experience Drill (optional rule): pay gold to grant one army unit
-  // +1 XP. Towns, Settlements and Random Towns waive the 1-movement field cost.
+  // +1 XP. Bronze units and Towns/Settlements/Random Towns waive movement.
   if (unitDrillAvailable(state, playerId)) {
     for (const armyUnit of drillableArmyUnits(state, playerId)) {
       const cost = unitDrillGoldCostFor(state, playerId, armyUnit);
       if ((player.resources.gold ?? 0) < cost) continue;
       const unitName =
         coreUnitDefinitions[armyUnit.unitDefId]?.name ?? armyUnit.unitDefId;
-      const movementCost = unitDrillMovementCost(state, playerId) ?? 0;
+      const movementCost = unitDrillMovementCost(state, playerId, armyUnit);
+      if (movementCost === null || (getMainHero(state, playerId)?.movementPoints ?? 0) < movementCost) continue;
       actions.push({
         label: `Drill ${unitName} (${cost} gold${movementCost ? " + 1 movement" : ""} → +1 unit XP)`,
         action: { type: "DRILL_UNIT", playerId, armyUnitId: armyUnit.id },

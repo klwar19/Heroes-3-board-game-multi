@@ -6,7 +6,40 @@ import type { CombatTokenKind, EffectDurationDefinition, SpellSchool, UnitType }
 // combat arms instead (see `src/data/anime/bosses.ts`). Do not reintroduce it.
 export type ElementalVeterancyMechanic = "distant-attack" | "faster-target" | "earth-shield" | "activation-burn" | "move-obstacle" | "nest" | "landing" | "activated-target" | "link" | "solidify" | "frozen-guard" | "ranged-defense" | "rebirth-heal" | "spell-block" | "water-damper" | "speed-damage" | "delay-damage" | "fire-heal" | "bodyguard" | "dispel-attack" | "spell-copy";
 
+export type NeutralVeterancyMechanic =
+  | "crystal-burst" | "all-ongoing-immunity" | "enemy-ongoing-immunity"
+  | "adjacent-enfeeble" | "unicorn-enfeeble" | "cyber-splash" | "adjacent-pulse"
+  | "blind-dust" | "sandstorm" | "thunder-retaliation" | "troll-resilience"
+  | "troll-snare" | "pain-resistance" | "peasant-bounty" | "air-chain-lightning"
+  | "arctic-harden" | "arctic-slow-shot" | "lava-burn" | "hell-steed-last-stand"
+  | "werewolf-astral-hunt" | "werewolf-pack-call";
+
+/** Signature rank rules carried by the Neutral-deck counterparts of town units. */
+export type NeutralTownVeterancyMechanic =
+  | "set-the-spear" | "marked-volley" | "winged-riposte" | "righteous-pursuit" | "consecrated-shot" | "full-gallop" | "guardian-angel"
+  | "skirmisher-step" | "runic-backlash" | "first-volley" | "mana-turbulence" | "deep-roots" | "moonlit-aid"
+  | "improvised-ammunition" | "stone-landing" | "arcane-plating" | "spell-channel" | "unstable-wish" | "measured-blades"
+  | "stolen-spark" | "scattering-flame" | "threefold-threat" | "hellish-endurance" | "summoned-torment" | "searing-passage" | "infernal-command"
+  | "bone-wall" | "putrid-grasp" | "ethereal-escape" | "blood-tribute" | "death-cloud" | "dread-charge" | "ageing-breath"
+  | "blind-instinct" | "strike-and-return" | "disrupting-gaze" | "petrifying-aim" | "labyrinth-cleave" | "barbed-revenge" | "predators-mark"
+  | "cowards-luck" | "pack-rush" | "suppressing-shot" | "bodyguard" | "chain-lightning" | "boulder-crash" | "crushing-claws"
+  | "marsh-scavenger" | "venom-arrow" | "disorienting-landing" | "heavy-gaze" | "armoured-prey" | "potent-venom"
+  | "flowing-assault" | "boarding-formation" | "return-fire" | "raking-dive" | "bewitching-bolt" | "scaled-intercept" | "toxic-counter"
+  | "lucky-ricochet";
+
+export type TownVeterancyMechanic = "gremlin-die" | "griffin-counter" | "halberd-hunter" | "halberd-aura" | "marksman-mark" | "marksman-survival" | "crusader-undead" | "zealot-loss" | "angel-safe" | "champion-safe" | "gremlin-recover" | "golem-cap" | "golem-shield" | "magi-recover" | "naga-mend" | "titan-bolt" | "goblin-save" | "orc-discard" | "ogre-guard" | "bird-lightning" | "cyclops-splash" | "dwarf-backlash" | "elf-guard" | "pegasus-guard" | "dragon-snare" | "dragon-hunter" | "unicorn-die" | "familiar-backlash" | "demon-paralyze" | "pit-mend" | "devil-slow" | "devil-draw" | "efreet-mend"
+  | "dragon-fly-landing" | "gnoll-gold" | "lizard-spell-draw" | "gorgon-stare-reroll" | "gorgon-armored-prey"
+  | "hydra-forced-reroll" | "hydra-round-mend" | "wyvern-potent-poison" | "sea-dog-ranged-retaliation"
+  | "seaman-survival-gold" | "ayssid-slow" | "sorceress-ranged-mend" | "sorceress-artifact-tax"
+  | "haspid-toxic-hide" | "haspid-unstoppable-counter" | "kobold-rune-step" | "ram-spell-draw"
+  | "snow-elf-rune-strike" | "jotunn-rune-hide" | "jotunn-rune-bolt" | "mammoth-rune-mend"
+  | "mammoth-hunter" | "mammoth-last-stand";
+
 export type UnitAbilityEffectDefinition =
+  | { type: "NEUTRAL_VETERANCY"; mechanic: NeutralVeterancyMechanic }
+  | { type: "NEUTRAL_TOWN_VETERANCY"; mechanic: NeutralTownVeterancyMechanic }
+  | { type: "TOWN_VETERANCY"; mechanic: TownVeterancyMechanic }
+  | { type: "FACTION_VETERANCY"; mechanic: "mark" | "revenge" | "hide" | "cleave" | "medusa-mend" | "execution" | "full-rebirth" | "flip-haste" | "flip-health" | "eye-immunity" | "skeleton-rebirth" | "escape" | "spell-heal" | "intercept" | "defend-heal" | "cloud-pierce" | "ally-heal" | "tribute" | "first-ward" | "dread" }
   | { type: "ELEMENTAL_VETERANCY"; mechanic: ElementalVeterancyMechanic }
   | { type: "ALLOW_UNLIMITED_RETALIATION" }
   | { type: "RETALIATION_ATTACK_BONUS"; amount: number }
@@ -68,7 +101,9 @@ export type UnitAbilityEffectDefinition =
     }
   | { type: "DEFENSE_REDUCTION_AFTER_MOVE"; amount: number }
   | { type: "DRAW_ON_DEFEAT_SIDE_OR_LAYER"; amount: number }
-  | { type: "ON_ACTIVATION_ROLL_PARALYZE_RANDOM_ENEMY"; onRoll: number }
+  | { type: "ON_ACTIVATION_ROLL_PARALYZE_RANDOM_ENEMY"; onRoll: number; superChargeFear?: boolean }
+  | { type: "ON_ATTACKED_HEAL_SELF"; amount: number }
+  | { type: "AZURE_DRAGON_SUPER_CHARGE"; healthAtMost: number; defenseReduction: number; paralysisRolls: number[]; fearMinRoll: number }
   | {
       /**
        * Jotunn Warlord (Bulwark, house rule): at the START of its activation the
@@ -171,7 +206,7 @@ export type UnitAbilityEffectDefinition =
        * getSelfAttackerTypeDefenseBonus during the attack maths.
        */
       type: "DEFENSE_VS_ATTACKER_TYPE";
-      attackerType: "ground-or-flying" | "ranged";
+      attackerType: "ground-or-flying" | "ranged" | "flying";
       amount: number;
     }
   | {
@@ -283,6 +318,8 @@ export type UnitAbilityEffectDefinition =
       /** Innate Fire Shield: an adjacent attacker takes flat damage after striking this unit. */
       type: "FIRE_SHIELD_DAMAGE";
       amount: number;
+      /** Fire Messenger veterancy: the retaliation also answers ranged attacks. */
+      includesRanged?: boolean;
     }
   | { type: "REDUCE_SPELL_SCHOOL_DAMAGE"; school: Exclude<SpellSchool, "any">; amount: number }
   | { type: "MINIMUM_ATTACK_DIE"; minimum: number }
@@ -366,6 +403,8 @@ export type UnitAbilityEffectDefinition =
       oncePerCombat?: boolean;
       /** Kivotos Kyrie Eleison: only an ENEMY of the attacker may be splashed. */
       enemiesOnly?: boolean;
+      /** Lava Sharpshooter veterancy: only a ranged attack produces the burst. */
+      requiresRangedAttack?: boolean;
     }
   | {
       /**
@@ -491,6 +530,8 @@ export type UnitAbilityEffectDefinition =
        */
       type: "SECOND_ATTACK_ADJACENT_TO_TARGET";
       baseAttack: number;
+      /** Forked Gaze uses the unit's current Attack instead of a fixed replacement. */
+      useOwnAttack?: boolean;
       /** Optional die face that gates the follow-up (Spider Mastermind: -1). */
       onRoll?: number;
       /** Kivotos Royal Artillery: only after attacking a non-adjacent target. */
@@ -524,6 +565,8 @@ export type UnitAbilityEffectDefinition =
       baseAttack?: number;
       /** Signed adjustment to the attacker's live Attack when no fixed value is supplied. */
       attackModifier?: number;
+      /** Only follows an own attack whose resolved die is at most this value. */
+      maxRoll?: number;
     }
   | {
       /**
@@ -565,6 +608,7 @@ export type UnitAbilityEffectDefinition =
        * below zero after all attack-window modifiers are counted.
        */
       type: "DEFENSE_REDUCTION_ON_ATTACK";
+      allAttacks?: boolean;
       amount: number;
     }
   | {
@@ -655,6 +699,8 @@ export type UnitAbilityEffectDefinition =
        */
       type: "SECOND_ATTACK_BEHIND_TARGET";
       baseAttack: number;
+      /** Only enemy units qualify; an empty cell never damages fortifications. */
+      enemyOnly?: boolean;
       /** When true, deal `baseAttack` as fixed effect damage instead of rolling a second attack. */
       fixedDamage?: boolean;
     }
@@ -1108,6 +1154,7 @@ export type UnitAbilityEffectDefinition =
   | {
       /** MGQ Hunter Job: pierce Defense when the own Attack die is in range. */
       type: "DEFENSE_REDUCTION_ON_ATTACK_DIE";
+      allAttacks?: boolean;
       minRoll: number;
       maxRoll: number;
       amount: number;
@@ -1283,6 +1330,11 @@ export type UnitAbilityEffectDefinition =
       amount: number;
     }
   | {
+      /** Specialty-only protection for this unit and adjacent allies. */
+      type: "REDUCE_SPECIALTY_DAMAGE_AURA";
+      amount: number;
+    }
+  | {
       /**
        * Rampart Dendroids (Pack): "[unit_passive] Enemy units that start their
        * activation adjacent to this unit cannot move." A Bind aura, evaluated at
@@ -1393,6 +1445,18 @@ export type UnitAbilityEffectDefinition =
   | {
       /** Veterancy hunter: Attack bonus against a strictly slower live target. */
       type: "ATTACK_BONUS_VS_SLOWER_TARGET";
+      amount: number;
+    }
+  | {
+      /** Conditional innate Attack bonus against a target's current printed Defense. */
+      type: "ATTACK_BONUS_VS_DEFENSE_AT_MOST";
+      maximum: number;
+      amount: number;
+    }
+  | {
+      /** Living copies additively empower their controller's matching-school spells. */
+      type: "SPELL_SCHOOL_POWER_AURA";
+      school: SpellSchool;
       amount: number;
     }
   | {
@@ -1631,6 +1695,98 @@ export type UnitAbilityDefinition = {
 };
 
 export const unitAbilities: Record<string, UnitAbilityDefinition> = {
+  "ntv-set-the-spear": { id: "ntv-set-the-spear", name: "Set the Spear", text: "When an adjacent enemy moves before attacking this unit, this unit gains +1 Defense against that attack.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "set-the-spear" }, implementationStatus: "implemented" },
+  "ntv-marked-volley": { id: "ntv-marked-volley", name: "Marked Volley", text: "Once per round, after this unit's non-adjacent ranged attack damages an enemy, that enemy has -1 Defense against the next attack made against it this round.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "marked-volley" }, implementationStatus: "implemented" },
+  "ntv-winged-riposte": { id: "ntv-winged-riposte", name: "Winged Riposte", text: "After this unit retaliates, it may move 1 space to an empty space. This movement does not provoke effects.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "winged-riposte" }, implementationStatus: "implemented" },
+  "ntv-righteous-pursuit": { id: "ntv-righteous-pursuit", name: "Righteous Pursuit", text: "+1 Attack against an already-damaged enemy.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "righteous-pursuit" }, implementationStatus: "implemented" },
+  "ntv-consecrated-shot": { id: "ntv-consecrated-shot", name: "Consecrated Shot", text: "Once per round, after this unit's non-adjacent ranged attack resolves 0 or +1, remove 1 damage from a chosen ally.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "consecrated-shot" }, implementationStatus: "implemented" },
+  "ntv-full-gallop": { id: "ntv-full-gallop", name: "Full Gallop", text: "After moving at least 2 spaces during this activation, this unit's next attack pierces 1 Defense.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "full-gallop" }, implementationStatus: "implemented" },
+  "ntv-guardian-angel": { id: "ntv-guardian-angel", name: "Guardian Angel", text: "Once per combat, when another allied unit within 1 space would be defeated by attack damage, it survives at 1 Health.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "guardian-angel" }, implementationStatus: "implemented" },
+  "ntv-skirmisher-step": { id: "ntv-skirmisher-step", name: "Skirmisher's Step", text: "After this unit makes a non-adjacent ranged attack, it may move 1 space.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "skirmisher-step" }, implementationStatus: "implemented" },
+  "ntv-runic-backlash": { id: "ntv-runic-backlash", name: "Runic Backlash", text: "Once per round, after this unit reduces spell or Specialty damage, deal 1 damage to the source's unit, if one exists.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "runic-backlash" }, implementationStatus: "implemented" },
+  "ntv-first-volley": { id: "ntv-first-volley", name: "First Volley", text: "+1 Attack against an enemy that has not activated this round.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "first-volley" }, implementationStatus: "implemented" },
+  "ntv-mana-turbulence": { id: "ntv-mana-turbulence", name: "Mana Turbulence", text: "Once per round, when an enemy casts a spell while this unit is alive, that enemy discards 1 random card after resolving it.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "mana-turbulence" }, implementationStatus: "implemented" },
+  "ntv-deep-roots": { id: "ntv-deep-roots", name: "Deep Roots", text: "Enemies adjacent to this unit cannot gain bonus movement and cannot teleport.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "deep-roots" }, implementationStatus: "implemented" },
+  "ntv-moonlit-aid": { id: "ntv-moonlit-aid", name: "Moonlit Aid", text: "Once per round, after this unit attacks or retaliates, remove 1 damage from a chosen adjacent ally.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "moonlit-aid" }, implementationStatus: "implemented" },
+  "ntv-improvised-ammunition": { id: "ntv-improvised-ammunition", name: "Improvised Ammunition", text: "Once per round, after this unit's ranged Attack die resolves -1, reroll it. The second result must be used.", effect: { type: "ATTACK_DIE_REROLL", rerollsPerAttack: 1, onlyOnRoll: -1 }, implementationStatus: "implemented" },
+  "ntv-stone-landing": { id: "ntv-stone-landing", name: "Stone Landing", text: "After this unit moves at least 2 spaces, it gains +1 Defense until its next activation.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "stone-landing" }, implementationStatus: "implemented" },
+  "ntv-arcane-plating": { id: "ntv-arcane-plating", name: "Arcane Plating", text: "The first spell or Specialty damage this unit suffers each round is reduced by an additional 1.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "arcane-plating" }, implementationStatus: "implemented" },
+  "ntv-spell-channel": { id: "ntv-spell-channel", name: "Spell Channel", text: "Once per round, after an allied spell damages an enemy, this unit deals 1 damage to that enemy if it is within ranged attack distance.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "spell-channel" }, implementationStatus: "implemented" },
+  "ntv-unstable-wish": { id: "ntv-unstable-wish", name: "Unstable Wish", text: "Once per activation, before attacking, roll an Attack die: -1 gives +1 Defense, 0 gives +1 Initiative, and +1 gives +1 Attack until the next activation.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "unstable-wish" }, implementationStatus: "implemented" },
+  "ntv-measured-blades": { id: "ntv-measured-blades", name: "Measured Blades", text: "After this unit rolls -1 on its own attack, it gains +1 Attack on its next attack this combat round.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "measured-blades" }, implementationStatus: "implemented" },
+  "ntv-stolen-spark": { id: "ntv-stolen-spark", name: "Stolen Spark", text: "Once per round, when an enemy casts a spell, remove 1 damage from this unit.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "stolen-spark" }, implementationStatus: "implemented" },
+  "ntv-scattering-flame": { id: "ntv-scattering-flame", name: "Scattering Flame", text: "Once per round, after a non-adjacent ranged attack damages its target, deal 1 damage to another enemy adjacent to the target.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "scattering-flame" }, implementationStatus: "implemented" },
+  "ntv-threefold-threat": { id: "ntv-threefold-threat", name: "Threefold Threat", text: "Once per activation, after attacking, this unit may deal 1 damage to a different adjacent enemy.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "threefold-threat" }, implementationStatus: "implemented" },
+  "ntv-hellish-endurance": { id: "ntv-hellish-endurance", name: "Hellish Endurance", text: "The first time each round this unit would take 2 or more attack damage, reduce that damage by 1.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "hellish-endurance" }, implementationStatus: "implemented" },
+  "ntv-summoned-torment": { id: "ntv-summoned-torment", name: "Summoned Torment", text: "Once per round, after another allied unit is defeated, this unit gains +1 Attack until the end of its next activation.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "summoned-torment" }, implementationStatus: "implemented" },
+  "ntv-searing-passage": { id: "ntv-searing-passage", name: "Searing Passage", text: "After moving through or away from an adjacent enemy, this unit's next attack this activation deals 1 additional damage if it hits.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "searing-passage" }, implementationStatus: "implemented" },
+  "ntv-infernal-command": { id: "ntv-infernal-command", name: "Infernal Command", text: "Once per round, after this unit defeats an enemy, a chosen ally may move 1 space.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "infernal-command" }, implementationStatus: "implemented" },
+  "ntv-bone-wall": { id: "ntv-bone-wall", name: "Bone Wall", text: "+1 Defense while adjacent to another allied unit.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "bone-wall" }, implementationStatus: "implemented" },
+  "ntv-putrid-grasp": { id: "ntv-putrid-grasp", name: "Putrid Grasp", text: "An enemy damaged by this unit cannot move more than 1 space during its next activation.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "putrid-grasp" }, implementationStatus: "implemented" },
+  "ntv-ethereal-escape": { id: "ntv-ethereal-escape", name: "Ethereal Escape", text: "Once per round, after being attacked and surviving, this unit may move 1 space.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "ethereal-escape" }, implementationStatus: "implemented" },
+  "ntv-blood-tribute": { id: "ntv-blood-tribute", name: "Blood Tribute", text: "Once per round, after this unit damages an enemy, remove 1 damage from itself or a chosen adjacent ally.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "blood-tribute" }, implementationStatus: "implemented" },
+  "ntv-death-cloud": { id: "ntv-death-cloud", name: "Death Cloud", text: "Once per round, after a non-adjacent ranged attack damages its target, deal 1 damage to another living enemy adjacent to the target.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "death-cloud" }, implementationStatus: "implemented" },
+  "ntv-dread-charge": { id: "ntv-dread-charge", name: "Dread Charge", text: "After moving at least 1 space, this unit's next attack forces the defender to reroll a +1 Defense-die result.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "dread-charge" }, implementationStatus: "implemented" },
+  "ntv-ageing-breath": { id: "ntv-ageing-breath", name: "Ageing Breath", text: "Once per round, an enemy damaged by this unit suffers -1 Attack until it finishes its next activation.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "ageing-breath" }, implementationStatus: "implemented" },
+  "ntv-blind-instinct": { id: "ntv-blind-instinct", name: "Blind Instinct", text: "This unit ignores penalties caused by enemy effects and gains +1 Attack while affected by any negative ongoing effect.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "blind-instinct" }, implementationStatus: "implemented" },
+  "ntv-strike-and-return": { id: "ntv-strike-and-return", name: "Strike and Return", text: "After this unit's own attack, it may return to the space where it began that activation if the space is empty.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "strike-and-return" }, implementationStatus: "implemented" },
+  "ntv-disrupting-gaze": { id: "ntv-disrupting-gaze", name: "Disrupting Gaze", text: "Once per round, an enemy damaged by this unit cannot receive positive ongoing effects until its next activation ends.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "disrupting-gaze" }, implementationStatus: "implemented" },
+  "ntv-petrifying-aim": { id: "ntv-petrifying-aim", name: "Petrifying Aim", text: "Once per round, after a non-adjacent ranged attack resolves +1, Paralyze the surviving target.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "petrifying-aim" }, implementationStatus: "implemented" },
+  "ntv-labyrinth-cleave": { id: "ntv-labyrinth-cleave", name: "Labyrinth Cleave", text: "Once per activation, after damaging an adjacent enemy, deal 1 damage to a different enemy adjacent to this unit.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "labyrinth-cleave" }, implementationStatus: "implemented" },
+  "ntv-barbed-revenge": { id: "ntv-barbed-revenge", name: "Barbed Revenge", text: "Once per round, after an adjacent enemy attacks this unit, deal 1 damage to that attacker if this unit survives.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "barbed-revenge" }, implementationStatus: "implemented" },
+  "ntv-predators-mark": { id: "ntv-predators-mark", name: "Predator's Mark", text: "The first enemy damaged by this unit becomes marked until combat ends; this unit gains +1 Attack against that enemy, with only one mark active.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "predators-mark" }, implementationStatus: "implemented" },
+  "ntv-cowards-luck": { id: "ntv-cowards-luck", name: "Coward's Luck", text: "Once per combat, when an attack would defeat this unit, roll an Attack die; on +1 it survives at 1 Health.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "cowards-luck" }, implementationStatus: "implemented" },
+  "ntv-pack-rush": { id: "ntv-pack-rush", name: "Pack Rush", text: "+1 Attack if another allied unit is adjacent to this unit's target.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "pack-rush" }, implementationStatus: "implemented" },
+  "ntv-suppressing-shot": { id: "ntv-suppressing-shot", name: "Suppressing Shot", text: "Once per round, an enemy damaged by this unit loses 1 Initiative until its next activation ends.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "suppressing-shot" }, implementationStatus: "implemented" },
+  "ntv-bodyguard": { id: "ntv-bodyguard", name: "Bodyguard", text: "Once per round, when an adjacent ally is attacked, this unit may become the defender if it is a legal target.", effect: { type: "INTERCEPT_ADJACENT_ATTACK_ONCE" }, implementationStatus: "implemented" },
+  "ntv-chain-lightning": { id: "ntv-chain-lightning", name: "Chain Lightning", text: "Once per round, after this unit rolls +1 on an attack, deal 1 damage to another enemy within 1 space of the target.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "chain-lightning" }, implementationStatus: "implemented" },
+  "ntv-boulder-crash": { id: "ntv-boulder-crash", name: "Boulder Crash", text: "Once per round, after a non-adjacent ranged attack, deal 1 damage to each enemy directly behind the target.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "boulder-crash" }, implementationStatus: "implemented" },
+  "ntv-crushing-claws": { id: "ntv-crushing-claws", name: "Crushing Claws", text: "Pierce 1 additional Defense against targets with 2 or more current Defense.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "crushing-claws" }, implementationStatus: "implemented" },
+  "ntv-marsh-scavenger": { id: "ntv-marsh-scavenger", name: "Marsh Scavenger", text: "Once per round, after an adjacent enemy is defeated, remove 1 damage from this unit.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "marsh-scavenger" }, implementationStatus: "implemented" },
+  "ntv-venom-arrow": { id: "ntv-venom-arrow", name: "Venom Arrow", text: "Once per round, an enemy damaged by a non-adjacent ranged attack suffers -1 Attack on its next attack.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "venom-arrow" }, implementationStatus: "implemented" },
+  "ntv-disorienting-landing": { id: "ntv-disorienting-landing", name: "Disorienting Landing", text: "After moving at least 2 spaces, choose an adjacent enemy; it suffers -1 Attack until its next activation ends.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "disorienting-landing" }, implementationStatus: "implemented" },
+  "ntv-heavy-gaze": { id: "ntv-heavy-gaze", name: "Heavy Gaze", text: "When this unit's paralysis roll fails with -1, the target still loses 1 Initiative until its next activation ends.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "heavy-gaze" }, implementationStatus: "implemented" },
+  "ntv-armoured-prey": { id: "ntv-armoured-prey", name: "Armoured Prey", text: "+1 Attack against enemies with 2 or more current Defense.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "armoured-prey" }, implementationStatus: "implemented" },
+  "ntv-potent-venom": { id: "ntv-potent-venom", name: "Potent Venom", text: "Once per round, after this unit damages an enemy, deal 1 damage to that enemy when its next activation begins.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "potent-venom" }, implementationStatus: "implemented" },
+  "ntv-flowing-assault": { id: "ntv-flowing-assault", name: "Flowing Assault", text: "If this unit moved before attacking, it may move 1 space after that attack.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "flowing-assault" }, implementationStatus: "implemented" },
+  "ntv-boarding-formation": { id: "ntv-boarding-formation", name: "Boarding Formation", text: "+1 Defense while adjacent to an allied ranged unit.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "boarding-formation" }, implementationStatus: "implemented" },
+  "ntv-return-fire": { id: "ntv-return-fire", name: "Return Fire", text: "Once per round, after surviving a non-adjacent ranged attack, this unit may retaliate regardless of distance.", effect: { type: "TOWN_VETERANCY", mechanic: "sea-dog-ranged-retaliation" }, implementationStatus: "implemented" },
+  "ntv-raking-dive": { id: "ntv-raking-dive", name: "Raking Dive", text: "After moving at least 2 spaces, the target of this unit's next attack suffers -1 Defense for that attack.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "raking-dive" }, implementationStatus: "implemented" },
+  "ntv-bewitching-bolt": { id: "ntv-bewitching-bolt", name: "Bewitching Bolt", text: "Once per round, after damaging an enemy with a non-adjacent ranged attack, remove one positive removable effect from that enemy.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "bewitching-bolt" }, implementationStatus: "implemented" },
+  "ntv-scaled-intercept": { id: "ntv-scaled-intercept", name: "Scaled Intercept", text: "Once per round, when an adjacent ally is attacked, this unit takes up to 2 of the resulting damage instead.", effect: { type: "FACTION_VETERANCY", mechanic: "intercept" }, implementationStatus: "implemented" },
+  "ntv-toxic-counter": { id: "ntv-toxic-counter", name: "Toxic Counter", text: "Once per round, after this unit retaliates and damages an enemy, that enemy takes 1 damage at the start of its next activation.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "toxic-counter" }, implementationStatus: "implemented" },
+  "ntv-lucky-ricochet": { id: "ntv-lucky-ricochet", name: "Lucky Ricochet", text: "Once per round, after this unit's non-adjacent ranged attack resolves -1 or 0, deal 1 damage to a different enemy adjacent to the target.", effect: { type: "NEUTRAL_TOWN_VETERANCY", mechanic: "lucky-ricochet" }, implementationStatus: "implemented" },
+  "veteran-crystal-burst": { id: "veteran-crystal-burst", name: "Crystal Burst", text: "When this unit activates, you may spend 1 Valuables to deal 2 damage to an enemy. Neutral guards cannot use this ability, including human-controlled guards.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "crystal-burst" }, implementationStatus: "implemented" },
+  "veteran-crystal-immunity": { id: "veteran-crystal-immunity", name: "Crystal Purity", text: "This unit is immune to all ongoing effects.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "all-ongoing-immunity" }, implementationStatus: "implemented" },
+  "veteran-adjacent-enfeeble": { id: "veteran-adjacent-enfeeble", name: "Crippling Armor", text: "After an adjacent enemy attacks this unit, that enemy suffers -1 Attack on its next attack.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "adjacent-enfeeble" }, implementationStatus: "implemented" },
+  "veteran-unicorn-enfeeble": { id: "veteran-unicorn-enfeeble", name: "Dazzling Mane", text: "After an enemy attacks this unit, that enemy suffers -1 Attack on its next attack.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "unicorn-enfeeble" }, implementationStatus: "implemented" },
+  "veteran-cyber-splash": { id: "veteran-cyber-splash", name: "Explosive Salvo", text: "When this unit attacks and rolls -1 or 0, also deal 2 damage to a chosen unit adjacent to this unit.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "cyber-splash" }, implementationStatus: "implemented" },
+  "veteran-adjacent-pulse": { id: "veteran-adjacent-pulse", name: "Close Quarters Strike", text: "When this unit activates, deal 1 damage to a chosen adjacent enemy.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "adjacent-pulse" }, implementationStatus: "implemented" },
+  "veteran-blind-dust": { id: "veteran-blind-dust", name: "Blind Dust", text: "When this unit activates, choose an enemy. Until that enemy finishes its next activation, it must always reroll +1 die results.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "blind-dust" }, implementationStatus: "implemented" },
+  "veteran-dracolich-fear-aura": { id: "veteran-dracolich-fear-aura", name: "Fear Aura", text: "When this unit activates, roll 1 Attack die. On 0, Paralyze one random living enemy unit.", effect: { type: "ON_ACTIVATION_ROLL_PARALYZE_RANDOM_ENEMY", onRoll: 0 }, implementationStatus: "implemented" },
+  "veteran-sandstorm": { id: "veteran-sandstorm", name: "Sandstorm", text: "At the start of combat, deal 1 damage to every enemy unit.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "sandstorm" }, implementationStatus: "implemented" },
+  "veteran-thunder-retaliation": { id: "veteran-thunder-retaliation", name: "Thunderbolt Retaliation", text: "When this unit retaliates and rolls 0 or +1, also deal 1 bonus damage to the enemy.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "thunder-retaliation" }, implementationStatus: "implemented" },
+  "veteran-troll-resilience": { id: "veteran-troll-resilience", name: "Troll Resilience", text: "An enemy attacking this unit with a -1 or +1 die result suffers -2 Attack for that attack.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "troll-resilience" }, implementationStatus: "implemented" },
+  "veteran-troll-snare": { id: "veteran-troll-snare", name: "Crippling Snare", text: "When this unit activates, you may choose an enemy. Until it finishes its next activation, it cannot move more than 1 space.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "troll-snare" }, implementationStatus: "implemented" },
+  "veteran-pain-resistance": { id: "veteran-pain-resistance", name: "Painful Resistance", text: "Whenever an enemy casts a spell, roll a die. On -1, cancel that cast.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "pain-resistance" }, implementationStatus: "implemented" },
+  "veteran-peasant-bounty": { id: "veteran-peasant-bounty", name: "Spoils of Victory", text: "Each enemy this unit defeats grants you 3 Gold after combat.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "peasant-bounty" }, implementationStatus: "implemented" },
+  "veteran-air-chain-lightning": { id: "veteran-air-chain-lightning", name: "Living Chain Lightning", text: "At activation, cast Chain Lightning without a card: the primary and next closest unit take 1 damage; the third bolt deals 0.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "air-chain-lightning" }, implementationStatus: "implemented" },
+  "veteran-fire-damage-cap": { id: "veteran-fire-damage-cap", name: "Flame Body", text: "This unit cannot take more than 2 damage from a single attack.", effect: { type: "CAP_DAMAGE_PER_ATTACK", amount: 2 }, implementationStatus: "implemented" },
+  "veteran-ranged-fire-shield": { id: "veteran-ranged-fire-shield", name: "Blazing Fire Shield", text: "After any enemy attacks this unit, that attacker takes 1 damage, including after a ranged attack.", effect: { type: "FIRE_SHIELD_DAMAGE", amount: 1, includesRanged: true }, implementationStatus: "implemented" },
+  "veteran-water-spell-power": { id: "veteran-water-spell-power", name: "Water Affinity", text: "+1 Spell Power for your own Water Magic. Multiple living Water Elementals stack.", effect: { type: "SPELL_SCHOOL_POWER_AURA", school: "water", amount: 1 }, implementationStatus: "implemented" },
+  "veteran-earth-defense-token": { id: "veteran-earth-defense-token", name: "Earthen Guard", text: "This unit is always treated as having a Defense token and rolls the Defend die when attacked.", effect: { type: "SELF_DEFENSE_TOKEN" }, implementationStatus: "implemented" },
+  "veteran-earth-low-defense": { id: "veteran-earth-low-defense", name: "Crush the Frail", text: "+1 Attack against a unit with 2 or lower Defense.", effect: { type: "ATTACK_BONUS_VS_DEFENSE_AT_MOST", maximum: 2, amount: 1 }, implementationStatus: "implemented" },
+  "veteran-earth-spell-power": { id: "veteran-earth-spell-power", name: "Earth Affinity", text: "+1 Spell Power for your own Earth Magic. Multiple living Earth Elementals stack.", effect: { type: "SPELL_SCHOOL_POWER_AURA", school: "earth", amount: 1 }, implementationStatus: "implemented" },
+  "veteran-hell-steed-last-stand": { id: "veteran-hell-steed-last-stand", name: "Infernal Last Stand", text: "Once per Combat, when an attack would defeat this unit, it survives at 1 Health and deals 1 damage to every surrounding enemy unit.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "hell-steed-last-stand" }, implementationStatus: "implemented" },
+  "veteran-nightmare-death-stare-reroll": { id: "veteran-nightmare-death-stare-reroll", name: "Death Stare Mastery", text: "Each time this unit rolls Death Stare, you may reroll one of its dice once.", effect: { type: "TOWN_VETERANCY", mechanic: "gorgon-stare-reroll" }, implementationStatus: "implemented" },
+  "veteran-arctic-harden": { id: "veteran-arctic-harden", name: "Reactive Ice", text: "After this unit takes damage, it gains +1 Defense for the rest of Combat. Each separate damage instance can add another +1.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "arctic-harden" }, implementationStatus: "implemented" },
+  "veteran-arctic-slow-shot": { id: "veteran-arctic-slow-shot", name: "Crippling Frost Shot", text: "After this unit's ranged attack, the target has -2 Initiative and -1 movement for the rest of Combat. This effect does not stack.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "arctic-slow-shot" }, implementationStatus: "implemented" },
+  "veteran-lava-ongoing-immunity": { id: "veteran-lava-ongoing-immunity", name: "Molten Purity", text: "Enemy ongoing effects that target this unit do not affect it. Friendly ongoing effects still apply.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "enemy-ongoing-immunity" }, implementationStatus: "implemented" },
+  "veteran-lava-burst": { id: "veteran-lava-burst", name: "Lava Burst", text: "After this unit's ranged attack, deal 1 damage to a chosen enemy unit adjacent to the target.", effect: { type: "FLAT_DAMAGE_ADJACENT_TO_TARGET", amount: 1, requiresNonAdjacentTarget: false, enemiesOnly: true, requiresRangedAttack: true }, implementationStatus: "implemented" },
+  "veteran-lava-burn": { id: "veteran-lava-burn", name: "Searing Shot", text: "Every ranged attack Burns the target. A Burn deals 1 damage whenever that unit activates and does not stack.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "lava-burn" }, implementationStatus: "implemented" },
+  "veteran-werewolf-astral-hunt": { id: "veteran-werewolf-astral-hunt", name: "Astral Hunt", text: "During Astrologers' rounds, this unit also gains +3 Initiative and can move up to 4 spaces.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "werewolf-astral-hunt" }, implementationStatus: "implemented" },
+  "veteran-werewolf-pack-call": { id: "veteran-werewolf-pack-call", name: "Pack Call", text: "+1 Attack for every living Werewolf on the battlefield, including this unit. Werewolves on either side count.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "werewolf-pack-call" }, implementationStatus: "implemented" },
+  "veteran-flying-guard": { id: "veteran-flying-guard", name: "Skyward Guard", text: "+1 Defense against attacks from flying units.", effect: { type: "DEFENSE_VS_ATTACKER_TYPE", attackerType: "flying", amount: 1 }, implementationStatus: "implemented" },
   "mgq-undine-heal-1": {
     id: "mgq-undine-heal-1", name: "Healing Water",
     text: "[activation] Before moving, heal another friendly unit for 1 Health.",
@@ -3784,6 +3940,92 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "MINIMUM_ATTACK_DIE", minimum: 0 },
     implementationStatus: "implemented"
   },
+  "town-griffin-counter": { id: "town-griffin-counter", name: "Unstoppable Retaliation", text: "Can retaliate even against attacks that prevent retaliation.", effect: { type: "TOWN_VETERANCY", mechanic: "griffin-counter" }, implementationStatus: "implemented" },
+  "town-halberd-hunter": { id: "town-halberd-hunter", name: "Sky and Cavalry Hunter", text: "+1 Attack against flying units and Dread Knights, Champions, Nomads, and Boars.", effect: { type: "TOWN_VETERANCY", mechanic: "halberd-hunter" }, implementationStatus: "implemented" },
+  "town-halberd-aura": { id: "town-halberd-aura", name: "Surrounding Phalanx", text: "Other adjacent units are treated as having a Defense token.", effect: { type: "TOWN_VETERANCY", mechanic: "halberd-aura" }, implementationStatus: "implemented" },
+  "town-marksman-mark": { id: "town-marksman-mark", name: "Sighted Target", text: "Attacking an enemy marks it for this unit. Further attacks against that enemy ignore 1 Defense for this combat.", effect: { type: "TOWN_VETERANCY", mechanic: "marksman-mark" }, implementationStatus: "implemented" },
+  "town-marksman-survival": { id: "town-marksman-survival", name: "Last Stand", text: "When changing from Pack to Few, gain +3 maximum HP and +1 Attack for this combat.", effect: { type: "TOWN_VETERANCY", mechanic: "marksman-survival" }, implementationStatus: "implemented" },
+  "town-crusader-undead": { id: "town-crusader-undead", name: "Holy Steel", text: "+1 Attack against undead units. Undead units have -1 Attack when attacking this unit.", effect: { type: "TOWN_VETERANCY", mechanic: "crusader-undead" }, implementationStatus: "implemented" },
+  "town-zealot-loss": { id: "town-zealot-loss", name: "Martyr Zeal", text: "Whenever another ally dies, loses a Stack, or changes from Pack to Few, gain +1 Attack for this combat, up to +2.", effect: { type: "TOWN_VETERANCY", mechanic: "zealot-loss" }, implementationStatus: "implemented" },
+  "town-angel-safe": { id: "town-angel-safe", name: "Heavenly Assault", text: "Attacks against ground and flying units never provoke retaliation.", effect: { type: "TOWN_VETERANCY", mechanic: "angel-safe" }, implementationStatus: "implemented" },
+  "town-champion-safe": { id: "town-champion-safe", name: "Unanswered Charge", text: "After moving, attacks do not provoke retaliation for the rest of that combat round.", effect: { type: "TOWN_VETERANCY", mechanic: "champion-safe" }, implementationStatus: "implemented" },
+  "town-gremlin-recover": { id: "town-gremlin-recover", name: "Salvaged Magic", text: "At the start of combat, you may take one Spell from your discard pile into your hand.", effect: { type: "TOWN_VETERANCY", mechanic: "gremlin-recover" }, implementationStatus: "implemented" },
+  "town-golem-cap": { id: "town-golem-cap", name: "Tempered Iron", text: "In the first combat round, take at most 1 damage from each attack.", effect: { type: "TOWN_VETERANCY", mechanic: "golem-cap" }, implementationStatus: "implemented" },
+  "town-golem-shield": { id: "town-golem-shield", name: "Iron Guard", text: "Always treated as having a Defense token. Its Defense roll grants +1 Defense on 0 or +1.", effect: { type: "TOWN_VETERANCY", mechanic: "golem-shield" }, implementationStatus: "implemented" },
+  "town-magi-recover": { id: "town-magi-recover", name: "Arcane Recovery", text: "After this unit's own Attack die resolves -1 or 0, take one card from your discard pile into your hand.", effect: { type: "TOWN_VETERANCY", mechanic: "magi-recover" }, implementationStatus: "implemented" },
+  "town-naga-mend": { id: "town-naga-mend", name: "Renewing Coils", text: "After being attacked or damaged by a Spell, heal 1 HP if still alive.", effect: { type: "TOWN_VETERANCY", mechanic: "naga-mend" }, implementationStatus: "implemented" },
+  "town-titan-bolt": { id: "town-titan-bolt", name: "Thunderbolt", text: "After attacking or retaliating against an adjacent unit, roll an extra die: on -1 or 0, deal 2 additional damage.", effect: { type: "TOWN_VETERANCY", mechanic: "titan-bolt" }, implementationStatus: "implemented" },
+  "town-goblin-save": { id: "town-goblin-save", name: "Defiant Survivor", text: "Once per combat when an attack would defeat this unit, survive at 1 HP and you may give a unit +1 Attack for this combat.", effect: { type: "TOWN_VETERANCY", mechanic: "goblin-save" }, implementationStatus: "implemented" },
+  "town-orc-discard": { id: "town-orc-discard", name: "Plunder", text: "After attacking an enemy, its controller discards one random card.", effect: { type: "TOWN_VETERANCY", mechanic: "orc-discard" }, implementationStatus: "implemented" },
+  "town-ogre-guard": { id: "town-ogre-guard", name: "Bloodlust Armor", text: "After using Bloodlust, gain +1 Defense for this combat, at most once.", effect: { type: "TOWN_VETERANCY", mechanic: "ogre-guard" }, implementationStatus: "implemented" },
+  "town-bird-lightning": { id: "town-bird-lightning", name: "Certain Lightning", text: "Lightning Strike always hits without rolling its extra die.", effect: { type: "TOWN_VETERANCY", mechanic: "bird-lightning" }, implementationStatus: "implemented" },
+  "town-cyclops-splash": { id: "town-cyclops-splash", name: "Shattering Shot", text: "After a ranged attack, deal 1 damage to one other unit adjacent to the target.", effect: { type: "TOWN_VETERANCY", mechanic: "cyclops-splash" }, implementationStatus: "implemented" },
+  "town-dwarf-backlash": { id: "town-dwarf-backlash", name: "Runic Backlash", text: "Whenever an enemy casts a Spell, deal 1 damage to a random unit.", effect: { type: "TOWN_VETERANCY", mechanic: "dwarf-backlash" }, implementationStatus: "implemented" },
+  "town-elf-guard": { id: "town-elf-guard", name: "Canopy Guard", text: "+1 Defense against ranged and flying units.", effect: { type: "TOWN_VETERANCY", mechanic: "elf-guard" }, implementationStatus: "implemented" },
+  "town-pegasus-guard": { id: "town-pegasus-guard", name: "Wingmate Guard", text: "+1 Defense while adjacent to another ally.", effect: { type: "TOWN_VETERANCY", mechanic: "pegasus-guard" }, implementationStatus: "implemented" },
+  "town-dragon-snare": { id: "town-dragon-snare", name: "Golden Roots", text: "After an adjacent unit attacks this unit, it takes 1 damage and cannot move while this unit remains alive and adjacent.", effect: { type: "TOWN_VETERANCY", mechanic: "dragon-snare" }, implementationStatus: "implemented" },
+  "town-dragon-hunter": { id: "town-dragon-hunter", name: "Dominion", text: "+1 Attack against ground and flying units.", effect: { type: "TOWN_VETERANCY", mechanic: "dragon-hunter" }, implementationStatus: "implemented" },
+  "town-unicorn-die": { id: "town-unicorn-die", name: "Fortunate Horn", text: "Treat a -1 Attack die result as +1.", effect: { type: "TOWN_VETERANCY", mechanic: "unicorn-die" }, implementationStatus: "implemented" },
+  "town-familiar-backlash": { id: "town-familiar-backlash", name: "Impish Backlash", text: "Whenever an enemy casts a Spell, deal 1 damage to a random enemy unit.", effect: { type: "TOWN_VETERANCY", mechanic: "familiar-backlash" }, implementationStatus: "implemented" },
+  "town-demon-paralyze": { id: "town-demon-paralyze", name: "Petrifying Hide", text: "After an adjacent attacker resolves +1 on its Attack die, paralyze it.", effect: { type: "TOWN_VETERANCY", mechanic: "demon-paralyze" }, implementationStatus: "implemented" },
+  "town-pit-mend": { id: "town-pit-mend", name: "Feed on the Fallen", text: "Whenever another ally dies, loses a Stack, or changes from Pack to Few, heal 1 HP.", effect: { type: "TOWN_VETERANCY", mechanic: "pit-mend" }, implementationStatus: "implemented" },
+  "town-devil-slow": { id: "town-devil-slow", name: "Crippling Strike", text: "Attacked enemies can move at most 2 spaces during their next activation.", effect: { type: "TOWN_VETERANCY", mechanic: "devil-slow" }, implementationStatus: "implemented" },
+  "town-devil-draw": { id: "town-devil-draw", name: "Spoils of Death", text: "After defeating an enemy, including Pack to Few or a lost Stack, draw 1 card, at most 3 per combat.", effect: { type: "TOWN_VETERANCY", mechanic: "devil-draw" }, implementationStatus: "implemented" },
+  "town-efreet-mend": { id: "town-efreet-mend", name: "Cinder Renewal", text: "Enemy retaliation has -1 Attack. After being retaliated against, heal 1 HP if alive.", effect: { type: "TOWN_VETERANCY", mechanic: "efreet-mend" }, implementationStatus: "implemented" },
+  "town-dragon-fly-landing": { id: "town-dragon-fly-landing", name: "Venomous Landing", text: "After moving and landing, deal 1 damage to a chosen adjacent unit.", effect: { type: "TOWN_VETERANCY", mechanic: "dragon-fly-landing" }, implementationStatus: "implemented" },
+  "town-gnoll-gold": { id: "town-gnoll-gold", name: "Raiders' Pay", text: "After each attack or Retaliation Attack this unit resolves, gain 1 Gold.", effect: { type: "TOWN_VETERANCY", mechanic: "gnoll-gold" }, implementationStatus: "implemented" },
+  "town-lizard-spell-draw": { id: "town-lizard-spell-draw", name: "Spellwatch", text: "Whenever an enemy casts a Spell from hand, draw 1 card, at most twice per combat.", effect: { type: "TOWN_VETERANCY", mechanic: "lizard-spell-draw" }, implementationStatus: "implemented" },
+  "town-gorgon-stare-reroll": { id: "town-gorgon-stare-reroll", name: "Focused Death Stare", text: "Each time this unit rolls Death Stare, you may reroll one of its dice once.", effect: { type: "TOWN_VETERANCY", mechanic: "gorgon-stare-reroll" }, implementationStatus: "implemented" },
+  "town-gorgon-armored-prey": { id: "town-gorgon-armored-prey", name: "Crush Armor", text: "+1 Attack against units with 2 or more Defense.", effect: { type: "TOWN_VETERANCY", mechanic: "gorgon-armored-prey" }, implementationStatus: "implemented" },
+  "town-hydra-forced-reroll": { id: "town-hydra-forced-reroll", name: "Many-Headed Feint", text: "Once per attack, an enemy attacking this unit must reroll every +1 Attack die result.", effect: { type: "TOWN_VETERANCY", mechanic: "hydra-forced-reroll" }, implementationStatus: "implemented" },
+  "town-hydra-round-mend": { id: "town-hydra-round-mend", name: "Hydra Regrowth", text: "At the start of each combat round, remove up to 2 damage from this unit.", effect: { type: "TOWN_VETERANCY", mechanic: "hydra-round-mend" }, implementationStatus: "implemented" },
+  "town-wyvern-reroll": { id: "town-wyvern-reroll", name: "Predator's Instinct", text: "May reroll a -1 result on this unit's Attack die, up to twice per attack.", effect: { type: "ATTACK_DIE_REROLL", rerollsPerAttack: 2, onlyOnRoll: -1 }, implementationStatus: "implemented" },
+  "town-wyvern-potent-poison": { id: "town-wyvern-potent-poison", name: "Virulent Venom", text: "Poison cubes placed by this unit deal 2 damage instead of 1.", effect: { type: "TOWN_VETERANCY", mechanic: "wyvern-potent-poison" }, implementationStatus: "implemented" },
+  "town-sea-dog-ranged-retaliation": { id: "town-sea-dog-ranged-retaliation", name: "Return Fire", text: "This unit can retaliate against ranged attacks, including non-adjacent attackers.", effect: { type: "TOWN_VETERANCY", mechanic: "sea-dog-ranged-retaliation" }, implementationStatus: "implemented" },
+  "town-seaman-survival-gold": { id: "town-seaman-survival-gold", name: "Survivor's Share", text: "After taking part in a battle and surviving it, gain 1 bonus Gold.", effect: { type: "TOWN_VETERANCY", mechanic: "seaman-survival-gold" }, implementationStatus: "implemented" },
+  "town-ayssid-slow": { id: "town-ayssid-slow", name: "Raking Assault", text: "After this unit's own attack, the enemy loses 1 Initiative for this combat.", effect: { type: "TOWN_VETERANCY", mechanic: "ayssid-slow" }, implementationStatus: "implemented" },
+  "town-sorceress-ranged-mend": { id: "town-sorceress-ranged-mend", name: "Absorb Missiles", text: "Whenever an enemy ranged unit resolves an attack, heal 1 HP.", effect: { type: "TOWN_VETERANCY", mechanic: "sorceress-ranged-mend" }, implementationStatus: "implemented" },
+  "town-sorceress-artifact-tax": { id: "town-sorceress-artifact-tax", name: "Covetous Curse", text: "Whenever an enemy uses an Artifact, that enemy discards 1 additional random card from hand.", effect: { type: "TOWN_VETERANCY", mechanic: "sorceress-artifact-tax" }, implementationStatus: "implemented" },
+  "town-haspid-toxic-hide": { id: "town-haspid-toxic-hide", name: "Toxic Hide", text: "After an enemy ground or flying unit attacks this unit, that attacker receives 1 poison cube.", effect: { type: "TOWN_VETERANCY", mechanic: "haspid-toxic-hide" }, implementationStatus: "implemented" },
+  "town-haspid-unstoppable-counter": { id: "town-haspid-unstoppable-counter", name: "Unstoppable Vengeance", text: "May retaliate more than once per combat round and can retaliate even against attacks that normally prevent retaliation.", effect: { type: "TOWN_VETERANCY", mechanic: "haspid-unstoppable-counter" }, implementationStatus: "implemented" },
+  "town-nix-intercept": { id: "town-nix-intercept", name: "Tidewall Guard", text: "Once per combat round, this unit can intercept an attack against an adjacent ally and become its target.", effect: { type: "INTERCEPT_ADJACENT_ATTACK_ONCE" }, implementationStatus: "implemented" },
+  "town-kobold-rune-step": { id: "town-kobold-rune-step", name: "Runic Footfall", text: "Whenever this unit moves, gain 1 Rune.", effect: { type: "TOWN_VETERANCY", mechanic: "kobold-rune-step" }, implementationStatus: "implemented" },
+  "town-ram-spell-draw": { id: "town-ram-spell-draw", name: "Runic Inspiration", text: "Whenever you cast a Spell from any source, draw 1 card, at most twice per combat.", effect: { type: "TOWN_VETERANCY", mechanic: "ram-spell-draw" }, implementationStatus: "implemented" },
+  "town-snow-elf-rune-strike": { id: "town-snow-elf-rune-strike", name: "Rune-Tipped Strike", text: "After this unit's own attack, gain 1 additional Rune.", effect: { type: "TOWN_VETERANCY", mechanic: "snow-elf-rune-strike" }, implementationStatus: "implemented" },
+  "town-yeti-specialty-aura": { id: "town-yeti-specialty-aura", name: "Whiteout Shelter", text: "This unit and adjacent allied units take 1 less damage from Specialty cards.", effect: { type: "REDUCE_SPECIALTY_DAMAGE_AURA", amount: 1 }, implementationStatus: "implemented" },
+  "town-jotunn-rune-hide": { id: "town-jotunn-rune-hide", name: "Runes from Pain", text: "Whenever this unit is attacked, gain 1 Rune.", effect: { type: "TOWN_VETERANCY", mechanic: "jotunn-rune-hide" }, implementationStatus: "implemented" },
+  "town-jotunn-rune-bolt": { id: "town-jotunn-rune-bolt", name: "Rune Bolt", text: "At activation, you may spend 1 Rune to deal 1 damage to a chosen unit.", effect: { type: "TOWN_VETERANCY", mechanic: "jotunn-rune-bolt" }, implementationStatus: "implemented" },
+  "town-mammoth-rune-mend": { id: "town-mammoth-rune-mend", name: "Rune Mend", text: "At activation, you may spend 1 Rune to heal 1 HP from this unit.", effect: { type: "TOWN_VETERANCY", mechanic: "mammoth-rune-mend" }, implementationStatus: "implemented" },
+  "town-mammoth-hunter": { id: "town-mammoth-hunter", name: "Trampling Hunter", text: "+1 Attack against ground and ranged units.", effect: { type: "TOWN_VETERANCY", mechanic: "mammoth-hunter" }, implementationStatus: "implemented" },
+  "town-mammoth-last-stand": { id: "town-mammoth-last-stand", name: "Lasting Colossus", text: "Once per combat, when an attack would defeat this unit, it survives at 1 Health and gains a Defense token.", effect: { type: "TOWN_VETERANCY", mechanic: "mammoth-last-stand" }, implementationStatus: "implemented" },
+  "town-familiar-pierce": { id: "town-familiar-pierce", name: "Rending Claws", text: "Attacks and retaliation ignore 2 of the target’s Defense (minimum 0).", effect: { type: "DEFENSE_REDUCTION_ON_ATTACK", amount: 2, allAttacks: true }, implementationStatus: "implemented" },
+  "town-gremlin-die": { id: "town-gremlin-die", name: "Calibrated Shot", text: "Own Attack die always counts as +1.", effect: { type: "TOWN_VETERANCY", mechanic: "gremlin-die" }, implementationStatus: "implemented" },
+  "town-naga-pierce": { id: "town-naga-pierce", name: "Coiling Blades", text: "On an Attack die of -1 or 0, attacks and retaliation ignore 2 Defense.", effect: { type: "DEFENSE_REDUCTION_ON_ATTACK_DIE", minRoll: -1, maxRoll: 0, amount: 2, allAttacks: true }, implementationStatus: "implemented" },
+  "town-efreet-second": { id: "town-efreet-second", name: "Cinder Reprise", text: "After an own Attack die of -1 or 0 and the retaliation, attack the same target again at -3 Attack if both survive.", effect: { type: "SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION", attackModifier: -3, maxRoll: 0 }, implementationStatus: "implemented" },
+  "veteran-dragon-mark": { id: "veteran-dragon-mark", name: "Vengeance Mark", text: "Any unit attacking this Black Dragon is marked once for this combat. Marked units take 1 bonus damage whenever attacked by Black Dragons.", effect: { type: "FACTION_VETERANCY", mechanic: "mark" }, implementationStatus: "implemented" },
+  "veteran-manticore-revenge": { id: "veteran-manticore-revenge", name: "Dying Sting", text: "The enemy unit that kills this Manticore also takes 2 damage.", effect: { type: "FACTION_VETERANCY", mechanic: "revenge" }, implementationStatus: "implemented" },
+  "veteran-minotaur-hide": { id: "veteran-minotaur-hide", name: "Armored Hide", text: "+1 Defense against ground and flying units.", effect: { type: "FACTION_VETERANCY", mechanic: "hide" }, implementationStatus: "implemented" },
+  "veteran-minotaur-cleave": { id: "veteran-minotaur-cleave", name: "Cleave", text: "After attacking, deal 1 damage to one other unit adjacent to the target.", effect: { type: "FACTION_VETERANCY", mechanic: "cleave" }, implementationStatus: "implemented" },
+  "veteran-medusa-mend": { id: "veteran-medusa-mend", name: "Renewing Scales", text: "After being hit by a Spell, heal 2 HP. After being attacked, heal 1 HP, if still alive.", effect: { type: "FACTION_VETERANCY", mechanic: "medusa-mend" }, implementationStatus: "implemented" },
+  "veteran-medusa-execution": { id: "veteran-medusa-execution", name: "Shatter the Petrified", text: "Deal 2 bonus damage when attacking a Paralyzed enemy.", effect: { type: "FACTION_VETERANCY", mechanic: "execution" }, implementationStatus: "implemented" },
+  "veteran-troglodyte-rebirth": { id: "veteran-troglodyte-rebirth", name: "Unbroken", text: "Once per Combat when an attack would defeat this unit, it survives at full Health.", effect: { type: "FACTION_VETERANCY", mechanic: "full-rebirth" }, implementationStatus: "implemented" },
+  "veteran-harpy-haste": { id: "veteran-harpy-haste", name: "Desperate Flight", text: "Gain 3 additional Initiative when changing from Pack to Few, for this combat.", effect: { type: "FACTION_VETERANCY", mechanic: "flip-haste" }, implementationStatus: "implemented" },
+  "veteran-harpy-vitality": { id: "veteran-harpy-vitality", name: "Second Wind", text: "Gain 4 maximum HP when changing from Pack to Few, for this combat.", effect: { type: "FACTION_VETERANCY", mechanic: "flip-health" }, implementationStatus: "implemented" },
+  "veteran-eye-immunity": { id: "veteran-eye-immunity", name: "Unclouded Eye", text: "Ignores all ranged combat penalties and is immune to enemy ongoing effects. Friendly ongoing buffs still apply.", effect: { type: "FACTION_VETERANCY", mechanic: "eye-immunity" }, implementationStatus: "implemented" },
+  "veteran-skeleton-rebirth": { id: "veteran-skeleton-rebirth", name: "Deathless Fury", text: "Once per Combat when an attack would defeat this unit, survive at 1 Health and gain +1 Attack for this combat.", effect: { type: "FACTION_VETERANCY", mechanic: "skeleton-rebirth" }, implementationStatus: "implemented" },
+  "veteran-wraith-escape": { id: "veteran-wraith-escape", name: "Spectral Escape", text: "Once per Combat when an attack would defeat this unit, survive at 1 Health and choose an empty space to teleport to.", effect: { type: "FACTION_VETERANCY", mechanic: "escape" }, implementationStatus: "implemented" },
+  "veteran-wraith-magic": { id: "veteran-wraith-magic", name: "Feed on Magic", text: "Whenever an enemy casts a Spell, heal 1 HP.", effect: { type: "FACTION_VETERANCY", mechanic: "spell-heal" }, implementationStatus: "implemented" },
+  "veteran-zombie-intercept": { id: "veteran-zombie-intercept", name: "Carrion Guardian", text: "Once per combat round, when an adjacent ally is attacked, transfer half the damage (rounded up) to this unit.", effect: { type: "FACTION_VETERANCY", mechanic: "intercept" }, implementationStatus: "implemented" },
+  "veteran-zombie-rest": { id: "veteran-zombie-rest", name: "Grave Rest", text: "When this unit Defends, heal 1 HP.", effect: { type: "FACTION_VETERANCY", mechanic: "defend-heal" }, implementationStatus: "implemented" },
+  "veteran-lich-pierce": { id: "veteran-lich-pierce", name: "Piercing Death Cloud", text: "Death Cloud's second attack also ignores 1 Defense.", effect: { type: "FACTION_VETERANCY", mechanic: "cloud-pierce" }, implementationStatus: "implemented" },
+  "veteran-lich-mend": { id: "veteran-lich-mend", name: "Shared Necromancy", text: "After this unit's own attack, heal 1 HP to it and one random other living ally.", effect: { type: "FACTION_VETERANCY", mechanic: "ally-heal" }, implementationStatus: "implemented" },
+  "veteran-vampire-tribute": { id: "veteran-vampire-tribute", name: "Blood Tribute", text: "At activation, the enemy discards one card with Power, or one random enemy unit takes 1 damage.", effect: { type: "FACTION_VETERANCY", mechanic: "tribute" }, implementationStatus: "implemented" },
+  "veteran-vampire-ward": { id: "veteran-vampire-ward", name: "Twilight Ward", text: "During the first combat round, reduce Spell and Specialty damage by 2.", effect: { type: "FACTION_VETERANCY", mechanic: "first-ward" }, implementationStatus: "implemented" },
+  "veteran-dragon-dread": { id: "veteran-dragon-dread", name: "Dread of the Grave", text: "At activation in combat rounds 1 and 3, a random enemy loses 1 Defense for this combat.", effect: { type: "FACTION_VETERANCY", mechanic: "dread" }, implementationStatus: "implemented" },
+  "veteran-manticore-mend": { id: "veteran-manticore-mend", name: "Mending Hide", text: "After being attacked, heal 1 HP if still alive.", effect: { type: "ON_ATTACKED_HEAL_SELF", amount: 1 }, implementationStatus: "implemented" },
+  "veteran-eye-splash": { id: "veteran-eye-splash", name: "Forked Gaze", text: "After attacking, also attack one unit adjacent to the target using this unit's Attack.", effect: { type: "SECOND_ATTACK_ADJACENT_TO_TARGET", baseAttack: 0, useOwnAttack: true }, implementationStatus: "implemented" },
+  "veteran-skeleton-retaliation": { id: "veteran-skeleton-retaliation", name: "Vengeful Bones", text: "+2 Attack on Retaliation Attacks.", effect: { type: "RETALIATION_ATTACK_BONUS", amount: 2 }, implementationStatus: "implemented" },
+  "veteran-dragon-feast": { id: "veteran-dragon-feast", name: "Greater Soul Feast", text: "After this unit's own attack, remove up to 2 damage from it.", effect: { type: "ON_ATTACK_HEAL_SELF", amount: 2 }, implementationStatus: "implemented" },
   "veteran-rebirth": {
     id: "veteran-rebirth",
     name: "Veteran Rebirth",
@@ -3794,7 +4036,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "veteran-spell-sunder": {
     id: "veteran-spell-sunder",
     name: "Spell Sunder",
-    text: "[unit_passive] Whenever an enemy casts a Spell from hand, that enemy discards 1 additional card from hand.",
+    text: "[unit_passive] Whenever an enemy casts a Spell from hand or Spell Book, including an instant Spell, that enemy discards 1 additional card from hand if possible.",
     effect: { type: "SPELL_CAST_HAND_TAX" },
     implementationStatus: "implemented"
   },
@@ -3908,6 +4150,34 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Fear Aura",
     text: "When this unit activates, roll 1 Attack die. On −1, Paralyze one random living enemy unit.",
     effect: { type: "ON_ACTIVATION_ROLL_PARALYZE_RANDOM_ENEMY", onRoll: -1 },
+    implementationStatus: "implemented"
+  },
+  "veteran-azure-fear-aura": {
+    id: "veteran-azure-fear-aura",
+    name: "Fear Aura",
+    text: "When this unit activates, roll 1 Attack die. On 0, Paralyze one random living enemy unit. While Super Charge is active, succeeds on −1 or 0 instead.",
+    effect: { type: "ON_ACTIVATION_ROLL_PARALYZE_RANDOM_ENEMY", onRoll: 0, superChargeFear: true },
+    implementationStatus: "implemented"
+  },
+  "veteran-azure-mending-scales": {
+    id: "veteran-azure-mending-scales",
+    name: "Mending Scales",
+    text: "After being attacked, heal 1 HP if this unit survives. This also applies after a Retaliation Attack.",
+    effect: { type: "ON_ATTACKED_HEAL_SELF", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "veteran-azure-line-attack": {
+    id: "veteran-azure-line-attack",
+    name: "Azure Breath",
+    text: "After a melee attack, also attack the enemy directly behind the target at Attack 5. The second attack does not retaliate or chain further attacks; allies are never hit.",
+    effect: { type: "SECOND_ATTACK_BEHIND_TARGET", baseAttack: 5, enemyOnly: true },
+    implementationStatus: "implemented"
+  },
+  "veteran-azure-super-charge": {
+    id: "veteran-azure-super-charge",
+    name: "Super Charge",
+    text: "While at 5 HP or lower, this unit's attacks pierce 1 Defense and also Paralyze on a resolved Attack die of 0 or +1, including Azure Breath and Retaliation Attacks. Its printed −1 paralysis remains unchanged. Fear Aura succeeds on −1 or 0. Ends when HP rises above 5.",
+    effect: { type: "AZURE_DRAGON_SUPER_CHARGE", healthAtMost: 5, defenseReduction: 1, paralysisRolls: [0, 1], fearMinRoll: -1 },
     implementationStatus: "implemented"
   },
   "veteran-layer-draw": {

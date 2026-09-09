@@ -64,6 +64,24 @@ describe("CombatSandboxSetupScreen", () => {
     );
   });
 
+  it("lets Unit Experience be enabled directly and turns on its required WOG master switch", () => {
+    const state = createCombatSandboxLobbyState("ui-unit-xp-direct");
+    const onAction = vi.fn();
+    render(<CombatSandboxSetupScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
+
+    const unitExperience = screen.getByLabelText(/^Unit Experience$/i) as HTMLInputElement;
+    expect(unitExperience.disabled).toBe(false);
+    fireEvent.click(unitExperience);
+    expect(onAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "SANDBOX_SET_OPTIONS",
+        options: expect.objectContaining({
+          wog: expect.objectContaining({ enabled: true, unitExperience: true })
+        })
+      })
+    );
+  });
+
   it("shows per-unit experience-grade controls when the Unit Experience module is selected", () => {
     const state = createCombatSandboxLobbyState("ui-unit-xp");
     state.wog!.enabled = true;

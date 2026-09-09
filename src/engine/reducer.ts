@@ -1,5 +1,11 @@
+import { townVeterancy, townAttackBonus, townDefenseBonus, townDefenseToken, townAfterAttack, townSpellCast, townBound, townMovement, townActivation, townCombatRoundStart, townAllowsRangedRetaliation, townHasUnstoppableRetaliation } from "./town-veterancy";
 import { cardLibrary } from "@/data/cards/library";
+import { factionVeterancy } from "./unit-abilities";
+import { veteranActivation, veteranAfterAttack, veteranDamage, veteranHeal, veteranIntercept, veteranInterceptPreview, veteranTrigger } from "./faction-veterancy";
 import { elementalVeterancy, elementalAttackBonus, elementalDamageCeiling, elementalActivation, elementalMovement, elementalAfterAttack, elementalFinishActivation, openElementalChoice, resolveElementalChoice, queueElementalChoice, noteElementalSpellCast } from "./elemental-veterancy";
+import { neutralVeterancy, neutralActivation, neutralAfterAttack, neutralAttackBonus, applyNeutralBurnAtActivation } from "./neutral-veterancy";
+import { resolveManaTurbulence, neutralTownDelayedDamageAtActivation, neutralTownRunicBacklash, neutralTownDeepRooted } from "./neutral-town-veterancy";
+import { neutralTownVeterancy, neutralTownAttackBonus, neutralTownDefenseBonus, neutralTownAttackDamagePreview, neutralTownCommitAttackReduction, neutralTownMovement, neutralTownActivation, neutralTownAfterAttack, neutralTownFailedParalysis, neutralTownFinishActivation } from "./neutral-town-veterancy";
 import { getTargetsForCard } from "./legal-actions";
 import { parallelStateForPlayer, settleParallelCombatContext } from "./parallel-combats";
 import { REROLL_REACTION_ARTIFACT_IDS } from "@/data/cards/artifacts";
@@ -366,6 +372,7 @@ import {
   getRuleset,
   spellBookPowerAvailable,
   spellBookRuleEnabled,
+  standardSpellBookHasCapacity,
   spellCanEnterSpellBook,
   spellLimitFor,
   unitSideRuleOverrides,
@@ -589,6 +596,7 @@ import {
   isHandLockedInCombat,
   isUnitAlive,
   combatEnemyHandTaxUnit,
+  combatEnemySpellSunderUnit,
   payablePowerCardIds,
   playerHasAttackInstantOfSchool,
   preHitHealReactions,
@@ -634,6 +642,7 @@ import {
   getVanitasAttackBonus,
   getDamagedNonAdjacentAttackBonus,
   getAttackDefenseReductionAbility,
+  getAzureDragonSuperCharge,
   getSagittaMortisDefenseReduction,
   getAttackDieDefenseReductionAbility,
   getMightDiceCount,
@@ -723,6 +732,7 @@ import {
   getSpellSchoolDamageReduction,
   getSpellDamageReductionAura,
   getSpellAndSpecialtyDamageReductionAura,
+  getSpecialtyDamageReductionAura,
   getTriggeredAttackDieBonusAbilities,
   getUnitAbilityDefinitions,
   getUnitImmuneSpellSchools,
@@ -1142,6 +1152,22 @@ function assertBatchReactionLegal(
 
     const card = cards[play.cardId];
 
+    // Spell Sunder needs a one-card choice before each instant Spell resolves;
+    // a batch cannot pause midway through to collect that choice. Require the
+    // player to submit the Spell separately so the reducer can defer and resume
+    // it safely. (PLAY_REACTIONS has no Spell Book source marker, so these are
+    // ordinary hand reactions.)
+    if (
+      !play.asPowerBoost &&
+      card?.kind === "spell" &&
+      combatEnemySpellSunderUnit(state, action.playerId)
+    ) {
+      return {
+        code: "ACTION_NOT_LEGAL",
+        message: "Spell Sunder requires this Spell to be played separately.",
+      };
+    }
+
     const copiesLeft = handCounts.get(play.cardId) ?? 0;
     if (copiesLeft <= 0) {
       return {
@@ -1551,6 +1577,9 @@ function moveSpellToSpellBook(
   if (!player) {
     throw new Error("Unknown player.");
   }
+  if (!standardSpellBookHasCapacity(player)) {
+    throw new Error("The standard Spell Book can hold at most 5 Spells.");
+  }
   const card = cards[action.cardId];
   if (!card || card.kind !== "spell") {
     throw new Error("Only Spell cards can go into the Spell Book.");
@@ -1923,7 +1952,9 @@ function applyEnemyPlusOneRerolls(
   controllerId: PlayerId,
   candidate: AttackRollCandidate,
   aggregation: MoraleDiceAggregation,
+  roller?: CombatUnitState,
 ): AttackRollCandidate {
+  if (roller && (neutralVeterancy(roller, "all-ongoing-immunity") || factionVeterancy(roller, "eye-immunity"))) return candidate;
   const combat = state.combat;
   if (!combat) {
     return candidate;
@@ -1975,7 +2006,9 @@ function applyEnemyDieSetCurses(
   rollerControllerId: PlayerId,
   candidate: AttackRollCandidate,
   aggregation: MoraleDiceAggregation,
+  roller?: CombatUnitState,
 ): AttackRollCandidate {
+  if (roller && (neutralVeterancy(roller, "all-ongoing-immunity") || factionVeterancy(roller, "eye-immunity"))) return candidate;
   if (!state.combat || candidate.rolls.length === 0) {
     return candidate;
   }
@@ -2823,8 +2856,9 @@ function noteSpellCast(
   inFlightCardIds: readonly CardId[] = [],
   elementalSpellCardId?: string,
   allowElementalCopy = true,
+  fromHand = false,
 ): void {
-  if (elementalSpellCardId) noteElementalSpellCast(state, player.id, elementalSpellCardId, allowElementalCopy);
+  if (elementalSpellCardId) noteElementalSpellCast(state, player.id, elementalSpellCardId, allowElementalCopy, fromHand);
   // Polish Balance Pack Intelligence (one-shot): the reprinted card grants
   // EXACTLY ONE free cast at the start of the Combat. Consume the effect on the
   // first Spell the holder casts, so a second Spell needs the ordinary
@@ -3334,6 +3368,21 @@ function applyHealAfterAttacked(
   if (!state.combat || !isUnitAlive(defender) || defender.damage <= 0) {
     return;
   }
+  if (factionVeterancy(defender, "medusa-mend")) veteranHeal(state, defender, 1, "veteran-medusa-mend");
+  for (const ability of getUnitAbilityDefinitions(defender)) {
+    if (ability.implementationStatus !== "implemented" || ability.effect?.type !== "ON_ATTACKED_HEAL_SELF") continue;
+    const healed = Math.min(defender.damage, ability.effect.amount);
+    if (healed <= 0) continue;
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: defender.id,
+      targetUnitId: defender.id,
+      abilityId: ability.id,
+      message: `${defender.cardName}'s ${ability.name} heals ${healed} HP after being attacked.`,
+    });
+    healUnitDamage(state, { type: "unit", unitId: defender.id, controllerId: defender.controllerId },
+      { type: "unit", unitId: defender.id }, healed);
+  }
   for (const effect of state.activeEffects) {
     if (!effectAppliesToUnit(effect, defender)) {
       continue;
@@ -3368,6 +3417,7 @@ function totalSpellDamageReduction(
     return 0;
   }
   let total = getSpellDamageReduction(target);
+  if (state.combat?.round === 1 && factionVeterancy(target, "first-ward")) total += 2;
   if (target.defenseToken && elementalVeterancy(target, "frozen-guard")) total += 2;
 
   // Polish Set Artifacts — Power of the Dragon Father tiers 4 (+7): "all of your
@@ -3434,6 +3484,9 @@ function reducedSpellDamage(
   amount: number,
   schools: readonly SpellSchool[] = [],
 ): number {
+  if (amount > 0 && state.combat?.round === 1 && factionVeterancy(target, "first-ward") && !spellAbilitiesSuppressed(state)) {
+    veteranTrigger(state, target, "veteran-vampire-ward", target, `${target.cardName}'s Twilight Ward resists up to 2 Spell damage.`);
+  }
   const reduced = Math.max(
     0,
     amount -
@@ -3521,12 +3574,75 @@ function bronRerollsAbilityRoll(
  * Dwarves' owner is hoping for: shrugging off a HOSTILE card, or letting their
  * own FRIENDLY card take hold.
  */
+/** Only the chosen unit rerolls; other units under its controller are unaffected. */
+function applyBlindDustDice(state: GameState, unit: CombatUnitState, candidate: AttackRollCandidate, mode: MoraleDiceAggregation): AttackRollCandidate {
+  if (!state.combat || candidate.neutralDustApplied || !state.activeEffects.some(e => effectAppliesToUnit(e, unit) && e.modifiers.some(m => m.type === "NEUTRAL_BLIND_DUST"))) return candidate;
+  candidate.neutralDustApplied = true;
+  let changed = false;
+  for (let index = 0; index < candidate.rolls.length; index++) {
+    let guard = 0;
+    while (candidate.rolls[index] === 1 && guard++ < 32) {
+      const to = rollAttackDie(state.combat);
+      candidate.rolls[index] = to;
+      pushRerollBeat(candidate, index, 1, to);
+      changed = true;
+    }
+  }
+  if (changed) {
+    candidate.roll = aggregateCandidateRoll(candidate.rolls, candidate.sumAllDice ? "sum" : mode);
+    pushRollModifierNote(candidate, "Blind Dust", "+1 results are rerolled");
+  }
+  return candidate;
+}
+
+function applyHydraForcedReroll(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  candidate: AttackRollCandidate,
+  mode: MoraleDiceAggregation,
+): AttackRollCandidate {
+  if (!state.combat || candidate.hydraRerollApplied || attacker.controllerId === defender.controllerId || !townVeterancy(defender, "hydra-forced-reroll")) return candidate;
+  candidate.hydraRerollApplied = true;
+  let changed = false;
+  for (let index = 0; index < candidate.rolls.length; index += 1) {
+    if (candidate.rolls[index] !== 1) continue;
+    const to = rollAttackDie(state.combat);
+    candidate.rolls[index] = to;
+    pushRerollBeat(candidate, index, 1, to);
+    changed = true;
+  }
+  if (changed) {
+    candidate.roll = aggregateCandidateRoll(candidate.rolls, candidate.sumAllDice ? "sum" : mode);
+    pushRollModifierNote(candidate, "Many-Headed Feint", "all +1 results are rerolled once");
+    veteranTrigger(state, defender, "town-hydra-forced-reroll", attacker);
+  }
+  return candidate;
+}
+
+function negatesPainSpell(state: GameState, casterId: PlayerId): boolean {
+  const combat = state.combat;
+  if (!combat || spellAbilitiesSuppressed(state)) return false;
+  for (const unit of Object.values(combat.units)) {
+    if (unit.controllerId === casterId || !isUnitAlive(unit) || !neutralVeterancy(unit, "pain-resistance")) continue;
+    let result = rollAbilityCandidate(state, combat, unit, 1, { minRoll: -1, maxRoll: -1 }, false);
+    if (result.rolls[0] !== -1 && bronRerollsAbilityRoll(state, unit)) {
+      appendEvent(state, { type: "UNIT_ABILITY_TRIGGERED", unitId: unit.id, targetUnitId: unit.id, abilityId: "veteran-pain-resistance-roll", message: `${unit.cardName} rolls ${result.rolls[0]} for Painful Resistance — Multilingual Bron rerolls.`, dice: { rolls: [...result.rolls], success: false, label: "Painful Resistance", caption: "Multilingual Bron rerolls…" } });
+      result = rollAbilityCandidate(state, combat, unit, 1, { minRoll: -1, maxRoll: -1 }, false);
+    }
+    const success = result.rolls[0] === -1;
+    appendEvent(state, { type: "UNIT_ABILITY_TRIGGERED", unitId: unit.id, targetUnitId: unit.id, abilityId: success ? "veteran-pain-resistance" : "veteran-pain-resistance-roll", message: `${unit.cardName} rolls ${result.rolls[0]}: ${success ? "cancels the enemy spell" : "the spell passes"}.`, dice: { rolls: result.rolls, success, label: "Painful Resistance" } });
+    if (success) return true;
+  }
+  return false;
+}
+
 function negatesSpriteSpell(state: GameState, target: TargetRef | undefined): boolean {
   const combat = state.combat;
   const unit = target?.type === "unit" ? combat?.units[target.unitId] : undefined;
   if (!combat || !unit || !isUnitAlive(unit) || spellAbilitiesSuppressed(state) || !elementalVeterancy(unit, "spell-block")) return false;
   const window = { minRoll: -1, maxRoll: 0 };
-  const result = rollAbilityCandidate(state, combat, unit.controllerId, 1, window, false);
+  const result = rollAbilityCandidate(state, combat, unit, 1, window, false);
   const success = abilityRollSucceeds(result.rolls, window);
   appendEvent(state, { type: "UNIT_ABILITY_TRIGGERED", unitId: unit.id, targetUnitId: unit.id, abilityId: success ? "veteran-sprite-spell-block" : "veteran-sprite-spell-block-roll", message: `${unit.cardName} rolls ${result.roll}: ${success ? "blocks the Spell" : "Spell passes"}.`, dice: { rolls: result.rolls, success, label: "Spell Block" } });
   return success;
@@ -3566,7 +3682,7 @@ function negatesCardOnDwarfRoll(
   let candidate = rollAbilityCandidate(
     state,
     combat,
-    unit.controllerId,
+    unit,
     1,
     window,
     false,
@@ -3597,7 +3713,7 @@ function negatesCardOnDwarfRoll(
     candidate = rollAbilityCandidate(
       state,
       combat,
-      unit.controllerId,
+      unit,
       1,
       window,
       false,
@@ -3692,9 +3808,19 @@ function reducedCardDamage(
       return total + getSpellAndSpecialtyDamageReductionAura(source);
     }, 0);
   };
+  const specialtyAllyAuraReduction = (): number => {
+    const combat = state.combat;
+    if (!combat) return 0;
+    return Object.values(combat.units).reduce((total, source) =>
+      isUnitAlive(source) && source.controllerId === unit.controllerId &&
+      (source.id === unit.id || isAdjacent(source.position, unit.position))
+        ? total + getSpecialtyDamageReductionAura(source)
+        : total, 0);
+  };
   const reduction =
     card?.kind === "hero-specialty"
-      ? getSpecialtyDamageReduction(unit) + spellAndSpecialtyAuraReduction()
+      ? getSpecialtyDamageReduction(unit) + spellAndSpecialtyAuraReduction() + specialtyAllyAuraReduction() +
+        (state.combat?.round === 1 && factionVeterancy(unit, "first-ward") ? 2 : 0)
       : card?.kind === "spell"
         ? // Spell-kind: include the Rampart Unicorns' adjacency aura and any
           // WOG Messenger protection matching this spell's school.
@@ -3702,6 +3828,10 @@ function reducedCardDamage(
           getSpellSchoolDamageReduction(unit, card.spellSchools ?? [])
         : 0;
   const reduced = Math.max(0, amount - reduction);
+  if (amount > 0 && reduction > 0 && state.combat?.round === 1 && factionVeterancy(unit, "first-ward") &&
+      (card?.kind === "hero-specialty" || (card?.kind === "spell" && !spellAbilitiesSuppressed(state)))) {
+    veteranTrigger(state, unit, "veteran-vampire-ward", unit, `${unit.cardName}'s Twilight Ward resists up to 2 damage.`);
+  }
   // Spell cards (not specialty blasts) honour includeSpells damage caps.
   if (card?.kind === "spell") {
     const cap = availableDamageCap(state, unit, true);
@@ -4362,6 +4492,7 @@ function getAttackDamagePreview(
   // IGNORE_ATTACK_DIE_RESULT arm).
   ignorePlusOneDie = false,
   state?: GameState,
+  neutralDieIgnored = false,
 ): {
   attackValue: number;
   defenseValue: number;
@@ -4369,6 +4500,7 @@ function getAttackDamagePreview(
   dieAttackBonus: number;
   dieDefenseBonus: number;
   damageBeforeDeferral: number;
+  neutralTownDamageReduced: boolean;
 } {
   // Attack-die-face conditioned modifiers, resolved here so the actual hit and
   // the lethal-save preview always agree: Dread Knights' "Death Blow" adds to
@@ -4387,6 +4519,7 @@ function getAttackDamagePreview(
     ? 0
     : getDefenseBonusOnAttackDie(defender, roll);
   const baseAttack = baseAttackOverride ?? attacker.attack;
+  const neutralPenalty = !dieCancelled && !neutralDieIgnored && (roll === -1 || roll === 1) && neutralVeterancy(defender, "troll-resilience") ? 2 : 0;
   // WOG commander Might (Damage grade): `mightBonus` is the contribution of the
   // extra attack dice the commander rolled for this attack (+1 per "+1" face,
   // −1 for the whole pool if any "−1" appeared). They are ADDITIONAL attack
@@ -4399,7 +4532,8 @@ function getAttackDamagePreview(
   const countedRoll = ignorePlusOneDie && roll > 0 ? 0 : roll;
   const rawAttackValue = Math.max(
     0,
-    baseAttack +
+    baseAttack -
+      neutralPenalty +
       attackBonus +
       dieAttackBonus +
       countedRoll * effectiveDieMultiplier +
@@ -4431,6 +4565,9 @@ function getAttackDamagePreview(
   let rawDamage =
     fuyukiFixedDamage ??
     Math.max(0, Math.max(0, attackValue - defenseValue) - damageReduction);
+  if (isRetaliation && !dieCancelled && !neutralDieIgnored && (roll === 0 || roll === 1) && neutralVeterancy(attacker, "thunder-retaliation")) rawDamage += 1;
+  if (attacker.unitDefId?.endsWith(".black_dragons") && defender.factionVeterancy?.marked) rawDamage += 1;
+  if (factionVeterancy(attacker, "execution") && attacker.controllerId !== defender.controllerId && hasToken(defender, "paralysis")) rawDamage += 2;
   if (state && !isRetaliation && elementalVeterancy(attacker, "speed-damage") && effectiveInitiative(attacker, state.activeEffects, state.combat) > effectiveInitiative(defender, state.activeEffects, state.combat)) rawDamage += 1;
   if (defender.elementalVeterancy?.solidifyUntilRound !== undefined) rawDamage = Math.max(0, rawDamage - 1);
   // Cove Nix (Pack): "cannot take more than N damage from a single attack." The
@@ -4443,7 +4580,9 @@ function getAttackDamagePreview(
     defender.fuyukiCasterDamageCapUsedThisRound
       ? null
       : printedCap;
-  const unitCapped = cap ? Math.min(rawDamage, cap.amount) : rawDamage;
+  const roundCapped = state?.combat?.round === 1 && townVeterancy(defender, "golem-cap") ? Math.min(rawDamage, 1) : rawDamage;
+  const townNeutralCapped = state ? neutralTownAttackDamagePreview(state, defender, roundCapped) : roundCapped;
+  const unitCapped = cap ? Math.min(townNeutralCapped, cap.amount) : townNeutralCapped;
   const damage =
     cardDamageCap === undefined
       ? unitCapped
@@ -4454,8 +4593,9 @@ function getAttackDamagePreview(
   return {
     attackValue: fuyukiFixedDamage ?? attackValue,
     defenseValue: fuyukiFixedDamage === undefined ? defenseValue : 0,
-    damage: damageBeforeDeferral - deferred,
+    damage: state ? veteranInterceptPreview(state, attacker, defender, damageBeforeDeferral - deferred) : damageBeforeDeferral - deferred,
     damageBeforeDeferral,
+    neutralTownDamageReduced: townNeutralCapped < roundCapped,
     dieAttackBonus,
     dieDefenseBonus,
   };
@@ -4583,9 +4723,11 @@ function applyAttackDamageFromCandidate(
     dieMultiplierSkipsNegative,
     ignorePlusOneDie,
     state,
+    noDie,
   );
   const { attackValue, defenseValue, dieAttackBonus, dieDefenseBonus } =
     preview;
+  if (preview.neutralTownDamageReduced) neutralTownCommitAttackReduction(state, defender);
   let damage = preview.damageBeforeDeferral;
   if (damage > 0) {
     damage = Math.max(
@@ -4606,7 +4748,7 @@ function applyAttackDamageFromCandidate(
     let candidate = rollAbilityCandidate(
       state,
       state.combat,
-      defender.controllerId,
+      defender,
       1,
       window,
       false,
@@ -4638,7 +4780,7 @@ function applyAttackDamageFromCandidate(
       candidate = rollAbilityCandidate(
         state,
         state.combat,
-        defender.controllerId,
+        defender,
         1,
         window,
         false,
@@ -4681,7 +4823,9 @@ function applyAttackDamageFromCandidate(
   }
   // Reported bonuses fold in the die-face-conditioned deltas so the event's
   // numbers reconcile with the resolved attack/defense values.
-  const reportedAttackBonus = attackBonus + dieAttackBonus;
+  const trollAttackPenalty = !dieCancelled && !noDie && (candidate.roll === -1 || candidate.roll === 1) && neutralVeterancy(defender, "troll-resilience") ? 2 : 0;
+  const reportedAttackBonus = attackBonus + dieAttackBonus - trollAttackPenalty;
+  if (trollAttackPenalty) pushRollModifierNote(candidate, "Troll Resilience", "−2 Attack");
   // Include the Defend-die payout in the reported bonus. `defenseValue` already
   // contains it; omitting it here made the dice overlay subtract only other
   // buffs and present the shield twice (for example Gigi appeared as Defense 2
@@ -4755,7 +4899,7 @@ function applyAttackDamageFromCandidate(
   if (
     lethalCancel &&
     damage > 0 &&
-    defender.damage + damage >= defender.maxHealth &&
+    defender.damage + veteranInterceptPreview(state, attacker, defender, damage) >= defender.maxHealth &&
     bankAwareTierGateRank(
       defender,
       "CANCEL_LETHAL_ATTACK",
@@ -4810,11 +4954,14 @@ function applyAttackDamageFromCandidate(
   // Seamen's "removes a unit from Combat" reward can tell a real kill from a
   // Pack→Few flip (which leaves the unit alive) below.
   const defenderWasAlive = isUnitAlive(defender);
-  const defeatedSideOrLayer =
-    damage > 0 && defender.damage + damage >= defender.maxHealth;
-
   // Damage is not capped at the pack's health: the rulebook carries any
   // excess over onto the Few side when the pack flips.
+  damage = veteranIntercept(state, attacker, defender, damage);
+  const defeatedSideOrLayer = damage > 0 && defender.damage + damage >= defender.maxHealth;
+  if (factionVeterancy(defender, "mark") && !attacker.factionVeterancy?.marked) {
+    (attacker.factionVeterancy ??= {}).marked = true;
+    veteranTrigger(state, defender, "veteran-dragon-mark", attacker, `${attacker.cardName} is marked for this combat.`);
+  }
   defender.damage += damage;
 
   appendEvent(state, {
@@ -5434,10 +5581,15 @@ function getAttackStackDetails(
     // script targeting the DEFENDER's Defense (e.g. "the Neutral side +1 Defense").
     // Folds into the printed/buffed Defense before the reduction-ability clamp.
     combatScriptStatDelta(combat, defender, "defense");
-  const defenseReductionSource =
-    !isRetaliation && !abilityAttack
-      ? getAttackDefenseReductionAbility(attacker, attacker.movedThisActivation)
-      : null;
+  const normalDefenseReductionSource =
+    getAttackDefenseReductionAbility(attacker, attacker.movedThisActivation, isRetaliation || Boolean(abilityAttack));
+  // Super Charge enhances attacks, including retaliation and Azure Breath. Read current
+  // HP for each hit; retain the existing scope of other piercing abilities.
+  const azureCharge = getAzureDragonSuperCharge(attacker);
+  const defenseReductionSource = azureCharge
+    ? { abilityId: azureCharge.abilityId, abilityName: azureCharge.abilityName,
+        amount: azureCharge.defenseReduction + (normalDefenseReductionSource?.amount ?? 0) }
+    : normalDefenseReductionSource;
   const sagittaMortisSource =
     !isRetaliation && !abilityAttack
       ? getSagittaMortisDefenseReduction(attacker, defender, combat.round)
@@ -5652,6 +5804,8 @@ function getAttackStackDetails(
       (stackItem.modifiers.droneSupportAttackBonus ?? 0) +
       getModeChangeAttackBonus(attacker) +
       innateFlatAttackBonus +
+      townAttackBonus(attacker, defender, isRetaliation, currentDefenseValue) +
+      neutralTownAttackBonus(state, attacker, defender, currentDefenseValue) +
       chargeAttackBonus +
       commanderPositionalAttackBonus +
       targetStatusAttackBonus +
@@ -5660,6 +5814,7 @@ function getAttackStackDetails(
       fleetFormationAttackBonus +
       bestFriendsAttackBonus +
       astrologersRoundAttackBonus +
+      neutralAttackBonus(state, attacker, defender, Math.max(0, defender.defense + defenseBonusBeforeAbility + (defender.neutralVeterancy?.damageDefense ?? 0))) +
       // Forced Battle Events (Anime mod, §3.12): a fought field's environment-stat
       // script (e.g. Spirit Mist "ranged −1 Attack"). An environmental modifier,
       // added UNCLAMPED like the innate bonuses — a penalty still bites an
@@ -5689,6 +5844,11 @@ function getAttackStackDetails(
       // into every recompute — arithmetically identical to -1 on the die result.
       (stackItem.modifiers.moraleRollPenalty ?? 0),
     defenseBonus:
+      townDefenseBonus(state, attacker, defender) +
+      neutralTownDefenseBonus(state, attacker, defender, currentDefenseValue) +
+      (defender.neutralVeterancy?.damageDefense ?? 0) +
+      (factionVeterancy(defender, "hide") && (attacker.type === "ground" || attacker.type === "flying") ? 1 : 0) -
+      (factionVeterancy(attacker, "cloud-pierce") && abilityAttack?.abilityId === "lich-death-cloud" ? 1 : 0) +
       (attackKind === "ranged" && elementalVeterancy(defender, "ranged-defense") ? 1 : 0) +
       defenseBonusBeforeAbility -
       defenseReductionAmount +
@@ -5711,7 +5871,7 @@ function getAttackStackDetails(
       stackItem.modifiers.attackDieMultiplierSkipsNegative,
     ),
     // Community Balance Change Hourglass of the Evil Hour (option B).
-    ignorePlusOneDie: attackDiePlusOneIgnored(state),
+    ignorePlusOneDie: !neutralVeterancy(attacker, "all-ongoing-immunity") && !factionVeterancy(attacker, "eye-immunity") && attackDiePlusOneIgnored(state),
     ignoreAttackDie:
       Boolean(stackItem.modifiers.ignoreAttackDie) ||
       fuyukiFixedDamage !== undefined ||
@@ -5846,7 +6006,7 @@ function buildRerollSources(
     moved,
     isRetaliation,
     defender,
-  ).map((source) => ({
+  ).filter(source => source.abilityId !== "ntv-improvised-ammunition" || (attacker.type === "ranged" && !isAdjacent(attacker.position, defender.position) && attacker.townVeterancy?.improvisedRound !== state.combat?.round)).map((source) => ({
     name: source.name,
     abilityId: source.abilityId,
     sourceUnitId: attacker.id,
@@ -6272,7 +6432,7 @@ function applyAbilityDiceCurses(
 function rollAbilityCandidate(
   state: GameState,
   combat: CombatState,
-  controllerId: PlayerId,
+  roller: CombatUnitState,
   diceCount: number,
   window: AbilityRollWindow,
   fullKit: boolean,
@@ -6285,13 +6445,14 @@ function rollAbilityCandidate(
     roll: rolls[0] ?? 0,
     sumAllDice: true,
   };
-  return applyAbilityDiceCurses(
+  const cursed = applyAbilityDiceCurses(
     state,
-    controllerId,
+    roller.controllerId,
     candidate,
     window,
     fullKit,
   );
+  return applyBlindDustDice(state, roller, cursed, "normal");
 }
 
 /**
@@ -6379,6 +6540,7 @@ function prophecyLeavesDieWindow(state: GameState, cardId: CardId): boolean {
 function buildAbilityRerollSources(
   state: GameState,
   roller: CombatUnitState,
+  context?: PendingAbilityRollContext,
 ): AttackRerollSource[] {
   if (isNeutralUnit(roller) || attackRerollsBlocked(state)) {
     return [];
@@ -6461,7 +6623,12 @@ function buildAbilityRerollSources(
     roller.controllerId,
     true,
   ).filter((source) => source.name === "Heavenly Knight's Aegis");
+  const gorgonSources: AttackRerollSource[] =
+    context?.kind === "death-stare" && townVeterancy(roller, "gorgon-stare-reroll")
+      ? [{ name: "Focused Death Stare", abilityId: "town-gorgon-stare-reroll", sourceUnitId: roller.id, remaining: 1, used: 0 }]
+      : [];
   return [
+    ...gorgonSources,
     ...artifactSources,
     ...luckyESources,
     ...moraleSources,
@@ -6484,7 +6651,7 @@ function openAbilityRollWindow(
   candidate: AttackRollCandidate,
   context: PendingAbilityRollContext,
 ): boolean {
-  const sources = buildAbilityRerollSources(state, roller);
+  const sources = buildAbilityRerollSources(state, roller, context);
   if (sources.length === 0) {
     return false;
   }
@@ -6546,6 +6713,7 @@ function openAttackRerollChoice(
 ): void {
   const choiceId = `choice_${nextEventNumber(state)}`;
   const candidates = [candidate, ...extraCandidates];
+  for (const rolled of candidates) applyBlindDustDice(state, details.attacker, rolled, details.rollMode);
   const latest = candidates.at(-1) ?? candidate;
   const remainingRerolls = countAvailableRerolls(rerollSources, latest.roll);
   const sourceEffectIds = rerollSources.flatMap((source) =>
@@ -7396,6 +7564,7 @@ function getAfterRetaliationAttack(
   }
 
   const ability = getAfterRetaliationAttackAbility(attacker);
+  if (ability?.maxRoll !== undefined && (attacker.townVeterancy?.lastAttackRoll === undefined || attacker.townVeterancy.lastAttackRoll > ability.maxRoll)) return undefined;
   return ability
     ? {
         ...ability,
@@ -7456,6 +7625,7 @@ function resolveDefendBonus(
     unitHasVirtualDefenseToken(state, details.defender) ||
     hasAdjacentDefenseAura(state, details.defender) ||
     hasSelfDefenseToken(details.defender) ||
+    townDefenseToken(state, details.defender) ||
     Boolean(abyssalShield);
   if (!hasShield || details.ignoreDefense) {
     return null;
@@ -7495,6 +7665,12 @@ function resolveDefendBonus(
       combat,
       hasRerollAllMinusOne(details.defender),
     );
+    if (defendRoll === 1 && details.attacker.movedThisActivation && neutralTownVeterancy(details.attacker, "dread-charge") && !details.attacker.townVeterancy?.dreadChargeSpentActivation) {
+      (details.attacker.townVeterancy ??= {}).dreadChargeSpentActivation = true;
+      defendRoll = rollAttackDie(combat);
+      veteranTrigger(state, details.attacker, "ntv-dread-charge", details.defender);
+      (stackItem.modifiers.defendRollNotes ??= []).push({ source: "Dread Charge", text: 'the Defend die\'s "+1" is forcibly rerolled' });
+    }
     // Morale (defender's own cards, resolved at their Defense roll):
     // - "on a +1 on an Attack die, reroll the die" — the shield face is an
     //   Attack die the defender rolled, so a "+1" is forcibly rerolled;
@@ -7533,6 +7709,9 @@ function resolveDefendBonus(
         text: "-1 to the Defend roll",
       });
     }
+    const dustDefend = applyBlindDustDice(state, details.defender, { rolls: [defendRoll], roll: defendRoll }, "normal");
+    defendRoll = dustDefend.roll;
+    if (dustDefend.modifierNotes?.length) (stackItem.modifiers.defendRollNotes ??= []).push(...dustDefend.modifierNotes);
     stackItem.modifiers.defendRoll = defendRoll;
   }
   const roll = stackItem.modifiers.defendRoll;
@@ -7546,7 +7725,7 @@ function resolveDefendBonus(
         (modifier) => modifier.type === "DEFENSE_TOKEN_ON_ZERO",
       ),
   );
-  const tokenBonus = (roll === 1 ? 1 : 0) + (shieldOnZero && roll >= 0 ? 1 : 0);
+  const tokenBonus = ((roll === 1 || (roll === 0 && townVeterancy(details.defender, "golem-shield"))) ? 1 : 0) + (shieldOnZero && roll >= 0 ? 1 : 0);
   // Mammoths' Thick Hide: a flat extra Defense the unit gets while it is
   // defending (holding a Defense token), on top of the Defend die.
   const defendAbilityBonus = getDefendBonus(details.defender);
@@ -7806,6 +7985,19 @@ function finishResolvedAttack(
   candidate: AttackRollCandidate,
   cards: CardLibrary,
 ): void {
+  if (!details.ignoreAttackDie && !stackItem.modifiers.attackDieCancelled) {
+    applyBlindDustDice(state, details.attacker, candidate, details.rollMode);
+    applyHydraForcedReroll(
+      state,
+      details.attacker,
+      details.defender,
+      candidate,
+      details.rollMode,
+    );
+  }
+  // Snapshot before damage/healing/reflection so this hit's paralysis and
+  // Defense piercing agree about whether the dragon was charged.
+  const azureCharge = getAzureDragonSuperCharge(details.attacker);
   // A defending defender rolls its Defense die now (once, then reused), so the
   // lethal-save preview and the resolved hit agree on whether the shield held.
   const defend = resolveDefendBonus(state, stackItem, details);
@@ -7853,9 +8045,12 @@ function finishResolvedAttack(
       // expose a zeroed candidate to every downstream reader, not merely a
       // selected value of 0 while leaving the original negative face in `rolls`.
       { ...candidate, rolls: candidate.rolls.map(() => 0), roll: 0 }
-    : candidate;
-  const abilityMinimumAttackDie = getMinimumAttackDie(details.attacker);
-  const minimumAttackDie = abilityMinimumAttackDie;
+    : { ...candidate, rolls: [...candidate.rolls] };
+  if (townVeterancy(details.attacker, "unicorn-die") && uncappedCandidate.roll === -1) {
+    uncappedCandidate.roll = 1;
+    uncappedCandidate.rolls = uncappedCandidate.rolls.map(r => r === -1 ? 1 : r);
+  }
+  const minimumAttackDie = getMinimumAttackDie(details.attacker);
   let resolvedCandidate: AttackRollCandidate =
     minimumAttackDie !== null && uncappedCandidate.roll < minimumAttackDie
       ? {
@@ -7866,6 +8061,9 @@ function finishResolvedAttack(
           roll: minimumAttackDie,
         }
       : uncappedCandidate;
+  if (!details.isRetaliation && !dieCancelled && !details.ignoreAttackDie && townVeterancy(details.attacker, "gremlin-die")) {
+    resolvedCandidate = { ...resolvedCandidate, roll: 1, rolls: resolvedCandidate.rolls.map(() => 1) };
+  }
   // Assemble this attack's visible roll adjustments FRESH on every entry — the
   // lethal-save resume re-runs this function with the same candidate object, so
   // the notes must never be pushed into a shared array twice. Display-only:
@@ -7881,7 +8079,7 @@ function finishResolvedAttack(
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: details.attacker.id,
-      abilityId: "wog-no-negative-attack-roll",
+      abilityId: townVeterancy(details.attacker, "gremlin-die") && !details.isRetaliation ? "town-gremlin-die" : townVeterancy(details.attacker, "unicorn-die") ? "town-unicorn-die" : "wog-no-negative-attack-roll",
       message: `${details.attacker.cardName} treats its ${candidate.roll} Attack die as ${resolvedCandidate.roll}.`,
     });
   }
@@ -7905,11 +8103,12 @@ function finishResolvedAttack(
   // mutates the target or leaves a Corrosion token behind. Subtracting from the
   // aggregate Defense bonus keeps the lethal preview and final damage aligned.
   const dieDefenseReduction =
-    !dieCancelled && !details.isRetaliation && !details.abilityAttack
+    !dieCancelled && !details.ignoreAttackDie
       ? getAttackDieDefenseReductionAbility(
           details.attacker,
           resolvedCandidate.roll,
           Boolean(stackItem.modifiers.forceAbilityRollsThisAttack),
+          details.isRetaliation || Boolean(details.abilityAttack),
         )
       : null;
   if (dieDefenseReduction) {
@@ -7957,6 +8156,7 @@ function finishResolvedAttack(
       details.dieMultiplierSkipsNegative,
       details.ignorePlusOneDie,
       state,
+      details.ignoreAttackDie,
     );
     const stackLayerOnly = armyStacksWouldAbsorbHit(
       state,
@@ -8027,6 +8227,7 @@ function finishResolvedAttack(
         details.dieMultiplierSkipsNegative,
         details.ignorePlusOneDie,
         state,
+        details.ignoreAttackDie,
       );
       if (
         preview.damage > 0 &&
@@ -8106,6 +8307,7 @@ function finishResolvedAttack(
         details.dieMultiplierSkipsNegative,
         details.ignorePlusOneDie,
         state,
+        details.ignoreAttackDie,
       );
       return (
         preview.damage > 0 &&
@@ -8217,6 +8419,7 @@ function finishResolvedAttack(
   // its strike, but no damage, no on-attack abilities, and no Retaliation
   // Attack follow. Conclude the activation straight away.
   if (attackResult.cancelled) {
+    state.activeEffects = state.activeEffects.filter(e => !(e.target?.type === "unit" && e.target.unitId === details.attacker.id && e.modifiers.some(m => m.type === "NEUTRAL_NEXT_ATTACK_PENALTY")));
     // First Blood keys off the first DECLARED attack. A lethal-save cancellation
     // still spends that strike, so it must not leave the +2 armed for a later
     // attack in the same combat.
@@ -8476,6 +8679,20 @@ function finishResolvedAttack(
   );
   // Vampires: drain life back to themselves after their own attack.
   applyOnAttackSelfHeal(state, details.attacker, details.isRetaliation);
+  (details.attacker.townVeterancy ??= {}).lastAttackRoll = dieCancelled || details.ignoreAttackDie ? undefined : attackResult.roll;
+  townAfterAttack(state, details.attacker, details.defender, details.isRetaliation, attackResult.roll, dieCancelled || details.ignoreAttackDie, details.attackKind);
+  if (townVeterancy(details.attacker, "titan-bolt") && isUnitAlive(details.attacker) && isUnitAlive(details.defender) && isAdjacent(details.attacker.position, details.defender.position)) {
+    queueElementalChoice(state, { kind: "town-bolt", unitId: details.attacker.id, targetId: details.defender.id, abilityId: "town-titan-bolt" });
+  }
+  neutralAfterAttack(state, details.attacker, details.defender, details.isRetaliation, attackResult.roll, dieCancelled || details.ignoreAttackDie, details.attackKind);
+  neutralTownAfterAttack(state, details.attacker, details.defender, details.isRetaliation, attackResult.roll, dieCancelled || details.ignoreAttackDie, details.attackKind, attackResult.damage);
+  const neutralTownMemory = (details.attacker.townVeterancy ??= {}) as Record<string, unknown>;
+  if (!details.isRetaliation && details.attackKind === "ranged" && !isAdjacent(details.attacker.position, details.defender.position) && neutralTownVeterancy(details.attacker, "boulder-crash") && neutralTownMemory.boulderRound !== state.combat?.round) {
+    neutralTownMemory.boulderRound = state.combat!.round;
+    const behind = findUnitBehindTarget(state.combat!, details.attacker, details.defender);
+    if (behind && behind.controllerId !== details.attacker.controllerId) veteranDamage(state, details.attacker, behind, 1, "ntv-boulder-crash");
+  }
+  if (!details.isRetaliation) veteranAfterAttack(state, details.attacker, details.defender);
   if (!details.isRetaliation) elementalAfterAttack(state, details.attacker, details.defender, attackResult.damage);
   // Heavenly Demon Palace "Blood Siphon": heal 1 after its OWN attack DEALS
   // damage (a fully-soaked 0-damage attack heals nothing — the distinction from
@@ -8493,6 +8710,14 @@ function finishResolvedAttack(
     details.isRetaliation,
     attackResult.damage,
   );
+  if (azureCharge && !dieCancelled && isUnitAlive(details.defender) &&
+      details.defender.controllerId !== details.attacker.controllerId &&
+      (azureCharge.paralysisRolls.includes(attackResult.roll) || forceAbilityRoll)) {
+    applyParalysisToTarget(state, details.attacker, details.defender, {
+      abilityId: `${azureCharge.abilityId}-paralysis`,
+      abilityName: azureCharge.abilityName,
+    });
+  }
   // Rune Keeper commander: +1 Rune the first time it is attacked this combat.
   applyCommanderRuneRitual(state, details.defender, details.isRetaliation);
   gainCommanderActionPoint(state, details.attacker, "attacking");
@@ -8610,6 +8835,11 @@ function finishResolvedAttack(
     // intact here (attackerId === details.defender.id, retaliationPending already
     // spent). Skipped for a preemptive retaliation (handled above) since the
     // wraith is never a Bounty Hunter and that path resumes a parked blow.
+    if (state.combat && openPostAttackVeterancyChoice(state)) {
+      state.combat.veteranAttackContinuation = { kind: "retaliation", attackerId: details.attacker.id, defenderId: details.defender.id };
+      return;
+    }
+    if (finishCombatIfNeeded(state)) return;
     if (openWraithDiscardChoice(state, details.attacker, details.defender)) {
       return;
     }
@@ -8631,6 +8861,11 @@ function finishResolvedAttack(
   }
 
   if (details.abilityAttack) {
+    if (state.combat && openPostAttackVeterancyChoice(state)) {
+      state.combat.veteranAttackContinuation = { kind: "sequence" };
+      return;
+    }
+    if (finishCombatIfNeeded(state)) return;
     // Printed follow-up attacks never chain further follow-ups or their own
     // retaliations (wiki FAQ). BINH Cerberi may still owe more queued
     // follow-up attacks; otherwise pick the parked sequence back up — the
@@ -8695,6 +8930,15 @@ function finishResolvedAttack(
     };
   }
 
+  if (combat && openPostAttackVeterancyChoice(state)) {
+    combat.veteranAttackContinuation = {
+      kind: "followups", attackerId: details.attacker.id, defenderId: details.defender.id,
+      attackKind: details.attackKind, attackRoll: attackResult.roll, attackDamage: attackResult.damage,
+      defeatedSideOrLayer: attackResult.defeatedSideOrLayer, forceAbilityRoll
+    };
+    return;
+  }
+  if (finishCombatIfNeeded(state)) return;
   runPostAttackFollowUps(
     state,
     cards,
@@ -8709,6 +8953,14 @@ function finishResolvedAttack(
     },
     0,
   );
+}
+
+function openPostAttackVeterancyChoice(state: GameState): boolean {
+  // Salvo uses the shared damage picker, but belongs to this hit's continuation:
+  // it must resolve before retaliation, just like Cleave and Spectral Escape.
+  return Boolean(state.combat?.elementalChoices?.some(choice =>
+    choice.kind.startsWith("veteran-") || choice.kind.startsWith("town-") || choice.abilityId === "veteran-cyber-splash"
+  )) && openElementalChoice(state, elementalHooks);
 }
 
 /**
@@ -8978,6 +9230,9 @@ function applyOnAttackPoisonCubes(
   }
 
   defender.poisonCubes = (defender.poisonCubes ?? 0) + poison.count;
+  if (townVeterancy(attacker, "wyvern-potent-poison")) {
+    defender.potentPoisonCubes = (defender.potentPoisonCubes ?? 0) + poison.count;
+  }
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: attacker.id,
@@ -9139,15 +9394,18 @@ function applyPoisonCubesAtActivation(
   }
 
   unit.poisonCubes = cubes - 1;
-  const assigned = Math.min(1, Math.max(0, unit.maxHealth - unit.damage));
-  unit.damage += 1;
-  noteUnitDamagedForTokens(state, unit, 1);
+  const potent = (unit.potentPoisonCubes ?? 0) > 0;
+  if (potent) unit.potentPoisonCubes = Math.max(0, (unit.potentPoisonCubes ?? 0) - 1);
+  const poisonDamage = potent ? 2 : 1;
+  const assigned = Math.min(poisonDamage, Math.max(0, unit.maxHealth - unit.damage));
+  unit.damage += poisonDamage;
+  noteUnitDamagedForTokens(state, unit, poisonDamage);
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: unit.id,
     abilityId: "wyvern-poison-cube",
     targetUnitId: unit.id,
-    message: `Poison bleeds ${unit.cardName} for 1 damage (${unit.poisonCubes} cube${unit.poisonCubes === 1 ? "" : "s"} left).`,
+    message: `Poison bleeds ${unit.cardName} for ${poisonDamage} damage (${unit.poisonCubes} cube${unit.poisonCubes === 1 ? "" : "s"} left).`,
   });
   if (assigned > 0) {
     appendEvent(state, {
@@ -9217,7 +9475,7 @@ function applyFireShieldDamage(
   defender: CombatUnitState,
   attackKind: "melee" | "ranged",
 ): void {
-  if (attackKind !== "melee" || !state.combat || !isUnitAlive(attacker)) {
+  if (!state.combat || !isUnitAlive(attacker)) {
     return;
   }
   // An invulnerable Factory Couatl that strikes a Fire-Shielded unit takes no
@@ -9232,11 +9490,11 @@ function applyFireShieldDamage(
   let spellTotal = 0;
   let nonSpellTotal = 0;
   for (const ability of getUnitAbilityDefinitions(defender)) {
-    if (ability.effect?.type === "FIRE_SHIELD_DAMAGE") {
+    if (ability.effect?.type === "FIRE_SHIELD_DAMAGE" && (attackKind === "melee" || ability.effect.includesRanged)) {
       nonSpellTotal += ability.effect.amount;
     }
   }
-  for (const effect of state.activeEffects) {
+  if (attackKind === "melee") for (const effect of state.activeEffects) {
     if (
       effect.target?.type !== "unit" ||
       effect.target.unitId !== defender.id
@@ -9388,7 +9646,7 @@ function resolveAttackDieDamageOutcome(
     abilityId: lands ? followUp.abilityId : `${followUp.abilityId}-roll`,
     targetUnitId: defender.id,
     message: forceRoll
-      ? `${attacker.name} uses ${followUp.abilityName} regardless of the roll (Basilisks VI).`
+      ? `${attacker.name} uses ${followUp.abilityName} without rolling.`
       : attackRoll !== undefined
         ? `${attacker.name}'s Attack die shows ${attackRoll} — ${followUp.abilityName} ${lands ? "triggers" : "does not trigger"}.`
         : `${attacker.name} rolls ${candidate?.rolls.join(", ")} for ${followUp.abilityName}.`,
@@ -9469,7 +9727,7 @@ function applyAttackDieDamageFollowUps(
     }
 
     // Tarnum (Fortress) Basilisks VI forces the ability regardless of the face.
-    if (ctx.forceAbilityRoll) {
+    if (ctx.forceAbilityRoll || (followUp.abilityId === "thunderbirds-lightning" && townVeterancy(attacker, "bird-lightning"))) {
       resolveAttackDieDamageOutcome(
         state,
         attacker,
@@ -9500,7 +9758,7 @@ function applyAttackDieDamageFollowUps(
     let candidate = rollAbilityCandidate(
       state,
       combat,
-      attacker.controllerId,
+      attacker,
       1,
       window,
       true,
@@ -9529,7 +9787,7 @@ function applyAttackDieDamageFollowUps(
       candidate = rollAbilityCandidate(
         state,
         combat,
-        attacker.controllerId,
+        attacker,
         1,
         window,
         true,
@@ -9768,7 +10026,7 @@ function applyDeathStareFollowUps(
     let candidate = rollAbilityCandidate(
       state,
       combat,
-      attacker.controllerId,
+      attacker,
       diceCount,
       window,
       true,
@@ -9806,7 +10064,7 @@ function applyDeathStareFollowUps(
       candidate = rollAbilityCandidate(
         state,
         combat,
-        attacker.controllerId,
+        attacker,
         diceCount,
         window,
         true,
@@ -10230,6 +10488,11 @@ function resumeAttackSequence(state: GameState, cards: CardLibrary): void {
     shouldRetaliate(attacker, defender, sequence.attackKind, false, state)
   ) {
     sequence.retaliationPending = false;
+    if (!isAdjacent(attacker.position, defender.position) && getUnitAbilityDefinitions(defender).some(ability => ability.id === "ntv-return-fire")) {
+      queueElementalChoice(state, { kind: "return-fire", unitId: defender.id, targetId: attacker.id, abilityId: "ntv-return-fire", optional: true });
+      openElementalChoice(state, elementalHooks);
+      return;
+    }
     openRetaliationWindow(state, attacker, defender, cards);
     return;
   }
@@ -10364,7 +10627,52 @@ function openFlatDamageFollowUps(
   return false;
 }
 
+function resolveTownBolt(state: GameState, unit: CombatUnitState, target: CombatUnitState, candidate: AttackRollCandidate): void {
+  const lands = abilityRollSucceeds(candidate.rolls, { minRoll: -1, maxRoll: 0 });
+  appendEvent(state, { type: "UNIT_ABILITY_TRIGGERED", unitId: unit.id, targetUnitId: target.id, abilityId: lands ? "town-titan-bolt" : "town-titan-bolt-roll", message: `Thunderbolt rolls ${candidate.rolls.join(", ")}: ${lands ? "2 damage" : "no effect"}.`, dice: { rolls: [...candidate.rolls], success: lands, label: "Thunderbolt", modifiers: candidate.modifierNotes } });
+  if (lands) veteranDamage(state, unit, target, 2, "town-titan-bolt", false);
+}
+
+function resumeTownVeterancy(state: GameState, cards: CardLibrary): void {
+  if (finishCombatIfNeeded(state) || openElementalChoice(state, elementalHooks) || state.pendingChoice || state.reactionWindow || state.stack.length) return;
+  const continuation = state.combat?.veteranAttackContinuation;
+  if (!continuation) return;
+  delete state.combat!.veteranAttackContinuation;
+  if (continuation.kind === "followups") runPostAttackFollowUps(state, cards, continuation, 0);
+  else if (continuation.kind === "retaliation") {
+    const source = state.combat!.units[continuation.attackerId];
+    const target = state.combat!.units[continuation.defenderId];
+    if (!source || !target || !openWraithDiscardChoice(state, source, target)) resumeAttackSequence(state, cards);
+  } else if (!declareNextQueuedAbilityAttack(state, cards)) resumeAttackSequence(state, cards);
+}
+
 const elementalHooks = {
+  returnFire: (state: GameState, unit: CombatUnitState, targetId: string, accept: boolean) => {
+    const cards = balanceCardLibrary(state, cardLibrary);
+    const target = state.combat?.units[targetId];
+    if (accept && target && shouldRetaliate(target, unit, "ranged", false, state)) {
+      (unit.townVeterancy ??= {}).returnFireRound = state.combat!.round;
+      veteranTrigger(state, unit, "ntv-return-fire", target);
+      openRetaliationWindow(state, target, unit, cards);
+    } else resumeAttackSequence(state, cards);
+  },
+  chainLightning: (state: GameState, unit: CombatUnitState, target: CombatUnitState) => {
+    appendEvent(state, { type: "UNIT_ABILITY_TRIGGERED", unitId: unit.id, targetUnitId: target.id, abilityId: "veteran-air-chain-lightning", message: `${unit.cardName} casts Living Chain Lightning.` });
+    startChainLightning(state, unit.controllerId, balanceCardLibrary(state, cardLibrary)["spell.chain_lightning"], target.id, [1, 1, 0]);
+  },
+  townBolt: (state: GameState, unit: CombatUnitState, target: CombatUnitState): boolean => {
+    const combat = state.combat!;
+    const window = { minRoll: -1, maxRoll: 0 };
+    let candidate = rollAbilityCandidate(state, combat, unit, 1, window, true);
+    if (!abilityRollSucceeds(candidate.rolls, window) && bronRerollsAbilityRoll(state, unit)) {
+      appendEvent(state, { type: "UNIT_ABILITY_TRIGGERED", unitId: unit.id, targetUnitId: target.id, abilityId: "town-titan-bolt-roll", message: "Thunderbolt misses; Multilingual Bron rerolls.", dice: { rolls: [...candidate.rolls], success: false, label: "Thunderbolt" } });
+      candidate = rollAbilityCandidate(state, combat, unit, 1, window, true);
+    }
+    if (openAbilityRollWindow(state, unit, target, candidate, { kind: "town-bolt", abilityId: "town-titan-bolt", abilityName: "Thunderbolt", diceCount: 1, ...window, resume: { attackerId: unit.id, defenderId: target.id, attackKind: "melee", attackRoll: 0, forceAbilityRoll: false, fromStep: 0, followUpIndex: 0 } })) return true;
+    resolveTownBolt(state, unit, target, candidate);
+    finishCombatIfNeeded(state);
+    return false;
+  },
   damage: (...args: Parameters<typeof applyFlatAbilityDamage>) => {
     applyFlatAbilityDamage(...args);
     finishCombatIfNeeded(args[0]);
@@ -10688,10 +10996,11 @@ function openGoldDragonLineAttack(
     return false;
   }
   const ability = getLineAttackAbility(attacker);
-  if (!ability || (attacker.attacksThisActivation ?? 0) !== 1) {
+  if (!ability || (!ability.enemyOnly && (attacker.attacksThisActivation ?? 0) !== 1)) {
     return false;
   }
   const behind = findUnitBehindTarget(combat, attacker, defender);
+  if (ability.enemyOnly && (!behind || behind.controllerId === attacker.controllerId)) return false;
   if (!behind) {
     // House rule ("as like attack a unit"): with no unit behind the target, the
     // line breath fells an ENEMY Wall/Gate that occupies the single behind cell.
@@ -10932,6 +11241,7 @@ function resolveParalysisExtraOutcome(
     },
   });
   if (!paralyses) {
+    neutralTownFailedParalysis(state, attacker, defender, candidate.roll);
     return;
   }
   if (gazeImmune) {
@@ -10993,7 +11303,7 @@ function applyParalysisFollowUps(
     let candidate = rollAbilityCandidate(
       state,
       combat,
-      attacker.controllerId,
+      attacker,
       1,
       window,
       true,
@@ -11023,7 +11333,7 @@ function applyParalysisFollowUps(
       candidate = rollAbilityCandidate(
         state,
         combat,
-        attacker.controllerId,
+        attacker,
         1,
         window,
         true,
@@ -11132,7 +11442,7 @@ function applyRetaliationParalysis(
     let candidate = rollAbilityCandidate(
       state,
       combat,
-      retaliator.controllerId,
+      retaliator,
       1,
       window,
       false,
@@ -11161,7 +11471,7 @@ function applyRetaliationParalysis(
       candidate = rollAbilityCandidate(
         state,
         combat,
-        retaliator.controllerId,
+        retaliator,
         1,
         window,
         false,
@@ -11352,9 +11662,9 @@ function openMagiDiscardChoice(
 }
 
 /**
- * Resolves a COMBAT_HAND_DISCARD. Magi may choose Power or random; Wraiths and
- * Familiars choose the exact card; Pegasi choose the exact Power card. The two
- * spell taxes then resume the deferred cast.
+ * Resolves a COMBAT_HAND_DISCARD. Magi may choose Power or random; Familiars
+ * and Spell Sunder choose the exact card; Pegasi choose the exact Power card.
+ * The spell taxes then resume the deferred cast or reaction.
  */
 function resolveCombatHandDiscard(
   state: GameState,
@@ -11448,11 +11758,61 @@ function resolveCombatHandDiscard(
     state.phase = "combat";
     state.priorityPlayerId = null;
     if (deferredSpell) {
-      performSpellCast(
+      continueSpellCastAfterPowerTax(
         state,
         spellActionFromDeferred(action.playerId, deferredSpell),
         cards,
+        true,
       );
+    }
+    return;
+  }
+
+  // Veteran Spell Sunder: discard the extra card, then resume the deferred
+  // instant Spell in the same reaction window. The paid marker prevents the
+  // resumed play from opening the same prompt again.
+  if (choice.kind === "spell-sunder-choose-discard") {
+    if (action.cardId === "random") {
+      throw new Error("Spell Sunder requires a chosen card to be discarded.");
+    }
+    if (!choice.powerCardIds.includes(action.cardId)) {
+      throw new Error("That card cannot be chosen for Spell Sunder.");
+    }
+    if (!discardNamedCardFromHand(state, action.playerId, action.cardId)) {
+      throw new Error("That card is no longer in hand.");
+    }
+    const deferredReaction = choice.reactionSpell;
+    appendEvent(state, {
+      type: "PENDING_CHOICE_RESOLVED",
+      choiceId: choice.id,
+      playerId: action.playerId,
+      selectedIndex: choice.powerCardIds.indexOf(action.cardId),
+    });
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: choice.sourceUnitId,
+      abilityId: choice.abilityId,
+      message: `${chooser.name} discards ${cards[action.cardId]?.name ?? action.cardId} to ${choice.abilityName}.`,
+    });
+    state.pendingChoice = null;
+    state.phase = "combat";
+    state.priorityPlayerId = null;
+    if (deferredReaction) {
+      const { windowEnded } = applyReactionPlayCore(
+        state,
+        action.playerId,
+        deferredReaction,
+        cards,
+        false,
+        true,
+      );
+      if (!windowEnded) {
+        advanceReactionWindowAfterPlay(state, action.playerId, cards);
+      }
+    } else if (choice.tollSpell) {
+      performSpellCast(state, spellActionFromDeferred(action.playerId, choice.tollSpell), cards);
+    } else if (choice.directSpell) {
+      playCard(state, choice.directSpell, cards, true);
     }
     return;
   }
@@ -11797,7 +12157,7 @@ function openGhostDragonKnockback(
   let candidate = rollAbilityCandidate(
     state,
     combat,
-    attacker.controllerId,
+    attacker,
     1,
     window,
     true,
@@ -11827,7 +12187,7 @@ function openGhostDragonKnockback(
     candidate = rollAbilityCandidate(
       state,
       combat,
-      attacker.controllerId,
+      attacker,
       1,
       window,
       true,
@@ -11909,7 +12269,7 @@ function openTeleportChoice(
   abilityId?: string,
 ): boolean {
   const combat = state.combat;
-  if (!combat) {
+  if (!combat || townBound(state, unit) || neutralTownDeepRooted(state, unit)) {
     return false;
   }
 
@@ -11970,6 +12330,7 @@ function resolveTeleportChoice(
   if (
     !combat ||
     !unit ||
+    townBound(state, unit) || neutralTownDeepRooted(state, unit) ||
     destination === undefined ||
     isSpaceBlockedForSummon(combat, destination)
   ) {
@@ -12570,7 +12931,7 @@ function openUnitStepChoice(
   },
 ): boolean {
   const combat = state.combat;
-  if (!combat) {
+  if (!combat || townBound(state, unit)) {
     return false;
   }
 
@@ -12756,7 +13117,7 @@ function resolveUnitStepChoice(
     !combat ||
     !unit ||
     (!stayed &&
-      (destination === undefined ||
+      (townBound(state, unit) || destination === undefined ||
         isSpaceBlockedForSummon(combat, destination)))
   ) {
     throw new Error("That move destination is not available.");
@@ -12835,6 +13196,7 @@ function openSecondAttackFollowUp(
   // Lich never demolishes its own fortifications.
   if (
     ability.onRoll === undefined &&
+    ability.abilityId !== "veteran-eye-splash" &&
     destroyEnemyFortificationsInCells(
       state,
       attacker,
@@ -13026,6 +13388,19 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   const waitedReactivation = Boolean(
     state.combat.waitPhase && activeUnit?.waitPending,
   );
+
+  if (!waitedReactivation && (neutralTownDelayedDamageAtActivation(state, activeUnit) || applyNeutralBurnAtActivation(state, activeUnit))) {
+    if (finishCombatIfNeeded(state)) return;
+    markActivatedThisRound(activeUnit);
+    appendExpiredEffectEvents(
+      state,
+      expireEffectsForActivationEnd(state, activeUnit.id),
+      "activation-ended",
+    );
+    appendEvent(state, { type: "UNIT_ACTIVATION_ENDED", playerId: activeUnit.controllerId, unitId: activeUnit.id });
+    advanceActiveUnit(state);
+    return;
+  }
 
   // MGQ Temptation: one marker is pressure only; two consume this activation
   // through the same state transition as Paralysis, then BOTH markers clear.
@@ -13316,6 +13691,10 @@ function applyActivationStartAbilities(
     return;
   }
   elementalActivation(state, unit);
+  neutralActivation(state, unit);
+  neutralTownActivation(state, unit);
+  veteranActivation(state, unit);
+  townActivation(state, unit);
 
   const artifactPulse = commanderArtifactBonusesForUnit(
     state,
@@ -13444,13 +13823,13 @@ function applyActivationStartAbilities(
 
     if (ability.kind === "fear-aura") {
       const window: AbilityRollWindow = {
-        minRoll: ability.amount,
+        minRoll: ability.minRoll ?? ability.amount,
         maxRoll: ability.amount,
       };
       let candidate = rollAbilityCandidate(
         state,
         combat,
-        unit.controllerId,
+        unit,
         1,
         window,
         false,
@@ -13480,7 +13859,7 @@ function applyActivationStartAbilities(
         candidate = rollAbilityCandidate(
           state,
           combat,
-          unit.controllerId,
+          unit,
           1,
           window,
           false,
@@ -13543,7 +13922,10 @@ function advanceActiveUnit(state: GameState): void {
     return;
   }
   const finished = combat.units[combat.activeUnitId ?? ""];
-  if (finished?.activatedThisRound) elementalFinishActivation(state, finished);
+  if (finished?.activatedThisRound) {
+    elementalFinishActivation(state, finished);
+    neutralTownFinishActivation(state, finished);
+  }
   if (combat.elementalChoices?.length && (state.stack.length || state.pendingChoice || state.reactionWindow)) {
     combat.elementalAwaitingAdvance = true;
     return;
@@ -14032,11 +14414,16 @@ function applyActivationDamageSpell(
   ability: { abilityId: string; abilityName: string; amount: number },
   copied = false,
 ): void {
-  if (!copied) for (const observer of Object.values(state.combat?.units ?? {})) {
-    if (isUnitAlive(observer) && observer.controllerId !== unit.controllerId && elementalVeterancy(observer, "spell-copy")) {
+  if (!spellAbilitiesSuppressed(state)) townSpellCast(state, unit.controllerId);
+  for (const observer of Object.values(state.combat?.units ?? {})) {
+    if (isUnitAlive(observer) && observer.controllerId !== unit.controllerId && factionVeterancy(observer, "spell-heal") && !spellAbilitiesSuppressed(state)) veteranHeal(state, observer, 1, "veteran-wraith-magic");
+    if (!copied && isUnitAlive(observer) && observer.controllerId !== unit.controllerId && elementalVeterancy(observer, "spell-copy")) {
       queueElementalChoice(state, { kind: "copy-bolt", unitId: observer.id, abilityId: ability.abilityId, amount: ability.amount });
     }
   }
+  // Cast observers still trigger on a cancelled cast, as they do for card
+  // Spells. Resistance then cancels this bolt before target effects or damage.
+  if (negatesPainSpell(state, unit.controllerId)) return;
   // The Faerie Bolt is a magic ATTACK — "a spell that does not count towards
   // your spell limit" — so it behaves like a real cast for both reduction AND
   // immunity (USER RULING 2026-08-20: "its magic attack, and can be reduced or
@@ -14111,6 +14498,7 @@ function applyActivationDamageSpell(
     );
   }
   markUnitRemovedIfNeeded(state, target);
+  neutralTownRunicBacklash(state, target, unit, ability.amount - dealt);
   finishCombatIfNeeded(state);
 }
 
@@ -14212,6 +14600,8 @@ function resolveEnemyForceCardPlay(
     const dealt = reducedSpellDamage(state, target, execution.amount);
     note(`${dealt} Spell damage to ${target.cardName}`, target.id);
     if (dealt <= 0) {
+      neutralTownRunicBacklash(state, target, unit, execution.amount - dealt);
+      finishCombatIfNeeded(state);
       return;
     }
     target.damage += dealt;
@@ -14228,6 +14618,7 @@ function resolveEnemyForceCardPlay(
     });
     noteUnitDamagedForTokens(state, target, assignedDamage.amount);
     markUnitRemovedIfNeeded(state, target);
+    neutralTownRunicBacklash(state, target, unit, execution.amount - dealt);
     // A bolt that wiped the last unit of a side ends the fight before the
     // activation continues.
     finishCombatIfNeeded(state);
@@ -14656,7 +15047,7 @@ function maybeOpenAutomaticKeyAuthority(
   for (const ability of getUnitAbilityDefinitions(target)) {
     if (
       ability.effect &&
-      automaticTypes.has(ability.effect.type) &&
+      (automaticTypes.has(ability.effect.type) || (ability.effect.type === "NEUTRAL_VETERANCY" && ["crystal-burst", "adjacent-pulse", "blind-dust", "troll-snare"].includes(ability.effect.mechanic))) &&
       maybeOpenKeyAuthorityChoice(
         state,
         target,
@@ -15633,11 +16024,17 @@ function shouldRetaliate(
 ): boolean {
   return (
     !defender.elementalVeterancy?.nestOwnerId &&
+    !(state?.combat && !isAdjacent(attacker.position, defender.position) &&
+      getUnitAbilityDefinitions(defender).some(ability => ability.id === "ntv-return-fire") &&
+      defender.townVeterancy?.returnFireRound === state.combat.round) &&
     isUnitAlive(attacker) &&
     isUnitAlive(defender) &&
-    attackKind === "melee" &&
-    isAdjacent(attacker.position, defender.position) &&
+    ((attackKind === "melee" && isAdjacent(attacker.position, defender.position)) ||
+      (attackKind === "ranged" && townAllowsRangedRetaliation(defender))) &&
+    (townHasUnstoppableRetaliation(defender) || (
     !ignoreRetaliationOverride &&
+    !(townVeterancy(attacker, "angel-safe") && ["ground", "flying"].includes(defender.type)) &&
+    !(townVeterancy(attacker, "champion-safe") && state?.combat && attacker.townVeterancy?.movedRound === state.combat.round) &&
     !hasUnitAbilityEffect(attacker, "IGNORE_RETALIATION") &&
     !(
       attacker.movedThisActivation &&
@@ -15654,12 +16051,14 @@ function shouldRetaliate(
     !hasUnitAbilityEffect(
       attacker,
       "IGNORE_RANGED_PENALTIES_AND_MELEE_RETALIATION",
-    ) &&
+    )
+    )) &&
     // Ash's Bloodlust IV: the ongoing card's Black cube — the unit cannot
     // retaliate at all while the effect lives (beats unlimited retaliation).
     !(state ? unitHasCannotRetaliateEffect(state, defender) : false) &&
     (!defender.retaliatedThisRound ||
       hasUnitAbilityEffect(defender, "ALLOW_UNLIMITED_RETALIATION") ||
+      townVeterancy(defender, "haspid-unstoppable-counter") ||
       (state ? unitHasUnlimitedRetaliationEffect(state, defender) : false))
   );
 }
@@ -15685,6 +16084,8 @@ function qualifiesForPreemptiveRetaliation(
     isUnitAlive(attacker) &&
     isUnitAlive(defender) &&
     !ignoreRetaliationOverride &&
+    !(townVeterancy(attacker, "angel-safe") && ["ground", "flying"].includes(defender.type)) &&
+    !(townVeterancy(attacker, "champion-safe") && state?.combat && attacker.townVeterancy?.movedRound === state.combat.round) &&
     !hasUnitAbilityEffect(attacker, "IGNORE_RETALIATION") &&
     !(
       attacker.movedThisActivation &&
@@ -15811,6 +16212,8 @@ function resolveAttackOrOfferDieCancel(
   candidate: AttackRollCandidate,
   cards: CardLibrary,
 ): void {
+  applyBlindDustDice(state, details.attacker, candidate, details.rollMode);
+  applyHydraForcedReroll(state, details.attacker, details.defender, candidate, details.rollMode);
   if (
     !stackItem.modifiers.dieCancelOffered &&
     !stackItem.modifiers.attackDieCancelled
@@ -16069,9 +16472,9 @@ function resolveAttackStackItem(
           },
           "count-plus",
         ),
-        "count-plus",
+        "count-plus", details.attacker,
       ),
-      "count-plus",
+      "count-plus", details.attacker,
     );
     if (slayerCount < stackItem.modifiers.slayerRolls) {
       pushRollModifierNote(
@@ -16221,9 +16624,9 @@ function resolveAttackStackItem(
             applyBothCandidate,
             "sum",
           ),
-          "sum",
+          "sum", details.attacker,
         ),
-        "sum",
+        "sum", details.attacker,
       ),
       cards,
     );
@@ -16253,9 +16656,9 @@ function resolveAttackStackItem(
           rollAttackCandidate(combat, details.rollMode),
           details.rollMode,
         ),
-        details.rollMode,
+        details.rollMode, details.attacker,
       ),
-      details.rollMode,
+      details.rollMode, details.attacker,
     );
     if (collapsedToOneDie) {
       pushRollModifierNote(thrown, "Negative Morale", "one die less is rolled");
@@ -16746,6 +17149,7 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
     // Snapshot for the ongoing rule: effects created below mark this card as
     // staying in play until they end.
     const effectCountBeforeCast = state.activeEffects.length;
+    stackItem.modifiers.neutralPainBlocked ??= negatesPainSpell(state, stackItem.action.playerId);
     // Set when this cast lands a unit-targeted Initiative buff: after it fully
     // resolves, a faster friendly unit may "steal" a fresh enemy activation.
     let appliedCombatInitiativeBuff = false;
@@ -16754,7 +17158,7 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
     // to shrug it off. On the matching face the spell still resolves (and is
     // discarded) but applies none of its effects to the Dwarf.
     if (
-      negatesCardOnDwarfRoll(
+      stackItem.modifiers.neutralPainBlocked || negatesCardOnDwarfRoll(
         state,
         stackItem.action.target,
         card?.name ?? "the spell",
@@ -18573,14 +18977,16 @@ function spellActionFromDeferred(
 }
 
 /**
- * After any Pegasi Power toll, enforce Familiars' hand tax as a real choice.
- * Only a normal hand cast is taxed; the physical Spell being cast is reserved
- * and cannot be selected unless another copy of the same card remains.
+ * After any Pegasi Power toll, enforce the hand-cast taxes as a real choice.
+ * Familiars tax ordinary hand casts; Veteran Spell Sunder also taxes Spell Book
+ * casts. The physical hand Spell being cast is reserved and cannot be selected
+ * unless another copy of the same card remains.
  */
 function continueSpellCastAfterPowerTax(
   state: GameState,
   action: Extract<GameAction, { type: "CAST_SPELL" }>,
   cards: CardLibrary,
+  familiarPaid = false,
 ): void {
   const normalHandCast =
     !action.fromScroll &&
@@ -18588,21 +18994,36 @@ function continueSpellCastAfterPowerTax(
     !action.fromOwnDiscard &&
     !action.fromSpellBook &&
     !action.tarnumReturn;
-  // Shared read with the player-facing "Mana Leech" notice (see
-  // `combatEnemyHandTaxUnit`), so the warning and the real toll never disagree.
-  const familiar = normalHandCast
+  const handCastIncludingBook =
+    !action.fromScroll &&
+    !action.fromSpellDeck &&
+    !action.fromOwnDiscard &&
+    !action.tarnumReturn;
+  // Shared reads with the player-facing tax notices, so the warning and the
+  // real toll never disagree.
+  const familiar = normalHandCast && !familiarPaid
     ? combatEnemyHandTaxUnit(state, action.playerId)
     : undefined;
+  const spellSunder = handCastIncludingBook
+    ? combatEnemySpellSunderUnit(state, action.playerId)
+    : undefined;
   const caster = state.players[action.playerId];
-  if (!familiar || !caster) {
+  const taxUnit = familiar ?? spellSunder;
+  if (!taxUnit || !caster) {
     performSpellCast(state, action, cards);
     return;
   }
 
   const discardChoices = [...caster.hand];
-  const castCardIndex = discardChoices.indexOf(action.cardId);
-  if (castCardIndex !== -1) {
-    discardChoices.splice(castCardIndex, 1);
+  if (!action.fromSpellBook) {
+    const castCardIndex = discardChoices.indexOf(action.cardId);
+    if (castCardIndex !== -1) {
+      discardChoices.splice(castCardIndex, 1);
+    }
+  }
+  if (action.castEnablerCardId) {
+    const index = discardChoices.indexOf(action.castEnablerCardId);
+    if (index >= 0) discardChoices.splice(index, 1);
   }
   if (discardChoices.length === 0) {
     performSpellCast(state, action, cards);
@@ -18615,17 +19036,21 @@ function continueSpellCastAfterPowerTax(
     id: choiceId,
     type: "COMBAT_HAND_DISCARD",
     playerId: action.playerId,
-    kind: "familiar-choose-discard",
-    abilityId: "familiar-spell-tax",
-    abilityName: "Mana Leech",
-    sourceUnitId: familiar.id,
-    prompt: `${familiar.cardName}'s Mana Leech — choose a card to discard before casting ${spellName}.`,
+    kind: familiar ? "familiar-choose-discard" : "spell-sunder-choose-discard",
+    abilityId: familiar ? "familiar-spell-tax" : "veteran-spell-sunder",
+    abilityName: familiar ? "Mana Leech" : "Spell Sunder",
+    sourceUnitId: taxUnit.id,
+    prompt: `${taxUnit.cardName}'s ${familiar ? "Mana Leech" : "Spell Sunder"} — choose a card to discard before casting ${spellName}.`,
     powerCardIds: discardChoices,
     tollSpell: {
       cardId: action.cardId,
       target: action.target,
       ...(action.optionIndex !== undefined
         ? { optionIndex: action.optionIndex }
+        : {}),
+      ...(action.fromSpellBook ? { fromSpellBook: true } : {}),
+      ...(action.castEnablerCardId
+        ? { castEnablerCardId: action.castEnablerCardId }
         : {}),
     },
   };
@@ -18637,7 +19062,7 @@ function continueSpellCastAfterPowerTax(
     choiceType: "COMBAT_HAND_DISCARD",
     playerId: action.playerId,
     sourceEffectIds: [],
-    message: `${caster.name} chooses a card for ${familiar.cardName}'s Mana Leech.`,
+    message: `${caster.name} chooses a card for ${taxUnit.cardName}'s ${familiar ? "Mana Leech" : "Spell Sunder"}.`,
   });
 }
 
@@ -18910,12 +19335,15 @@ function performSpellCast(
       !action.eagleEyeCopy,
     castInFlightCardIds(state, action),
     action.cardId,
+    true,
+    !action.fromSpellBook && !action.fromScroll && !action.fromSpellDeck && !action.tarnumReturn && !action.eagleEyeCopy,
   );
 
   const stackItem = makeStackItem(state, action);
   if (crazyWizardReturn) {
     stackItem.modifiers.crazyWizardReturn = true;
   }
+  stackItem.modifiers.neutralPainBlocked = negatesPainSpell(state, action.playerId);
   if (card.spellSchools?.includes("any") && selectedPowerSchool) {
     stackItem.modifiers.selectedSpellSchool = selectedPowerSchool;
   }
@@ -20019,6 +20447,7 @@ function applyReactionPlayCore(
     fromSpellBook?: boolean;
     /** Polish Book: the generic hand card consumed to enable this Spell. */
     castEnablerCardId?: CardId;
+    utilityOnly?: true;
     /** Bowstring of the Unicorn's Mane: the friendly ranged unit to activate. */
     target?: TargetRef;
     /** Tarnum (Conflux) VI: free over-limit reaction; returns to the shared Spell deck. */
@@ -20028,6 +20457,7 @@ function applyReactionPlayCore(
   },
   cards: CardLibrary,
   elementalEcho = false,
+  spellSunderPaid = false,
 ): { windowEnded: boolean } {
   // Reuse every existing Scroll Power-0 gate without consuming a physical Scroll.
   if (elementalEcho) play = { ...play, fromScroll: "elemental-echo" };
@@ -20327,6 +20757,85 @@ function applyReactionPlayCore(
     }
   }
 
+  // Veteran Spell Sunder also applies when an instant Spell is played inside
+  // this reaction window. Defer the actual play until the caster chooses an
+  // additional card from hand; Scroll, Spell-deck, and Tarnum-return sources
+  // are excluded because the Spell did not come from the caster's hand.
+  if (
+    card.kind === "spell" &&
+    !play.asPowerBoost &&
+    !spellSunderPaid &&
+    !play.fromScroll &&
+    !play.fromSpellDeck &&
+    !play.tarnumReturn
+  ) {
+    const sunder = combatEnemySpellSunderUnit(state, playerId);
+    const caster = state.players[playerId];
+    if (sunder && caster) {
+      const discardChoices = [...caster.hand];
+      if (!play.fromSpellBook) {
+        const spellIndex = discardChoices.indexOf(play.cardId);
+        if (spellIndex !== -1) {
+          discardChoices.splice(spellIndex, 1);
+        }
+      }
+      // Reserve the Book enabler and declared costs so paying the tax cannot
+      // strand the already chosen Spell. Remove physical copies, not all IDs.
+      for (const reserved of [
+        ...(play.castEnablerCardId ? [play.castEnablerCardId] : []),
+        ...(play.costCardIds ?? []),
+      ]) {
+        const index = discardChoices.indexOf(reserved);
+        if (index >= 0) discardChoices.splice(index, 1);
+      }
+      if (discardChoices.length > 0) {
+        const choiceId = `choice_${nextEventNumber(state)}`;
+        state.pendingChoice = {
+          id: choiceId,
+          type: "COMBAT_HAND_DISCARD",
+          playerId,
+          kind: "spell-sunder-choose-discard",
+          abilityId: "veteran-spell-sunder",
+          abilityName: "Spell Sunder",
+          sourceUnitId: sunder.id,
+          prompt: `Enemy ${sunder.cardName}'s Spell Sunder: casting ${card.name}${play.fromSpellBook ? " from your Spell Book" : ""} requires 1 additional hand discard. Choose a card; then your Spell continues.`,
+          powerCardIds: discardChoices,
+          reactionSpell: {
+            cardId: play.cardId,
+            ...(play.target ? { target: play.target } : {}),
+            ...(play.protectedUnitId ? { protectedUnitId: play.protectedUnitId } : {}),
+            ...(play.dieIndex !== undefined ? { dieIndex: play.dieIndex } : {}),
+            ...(play.mode !== undefined ? { mode: play.mode } : {}),
+            ...(play.optionIndex !== undefined
+              ? { optionIndex: play.optionIndex }
+              : {}),
+            ...(play.drawOnly ? { drawOnly: true as const } : {}),
+            ...(play.utilityOnly ? { utilityOnly: true as const } : {}),
+            ...(play.costCardIds ? { costCardIds: [...play.costCardIds] } : {}),
+            ...(play.costCardModes
+              ? { costCardModes: [...play.costCardModes] }
+              : {}),
+            ...(play.fromSpellBook ? { fromSpellBook: true } : {}),
+            ...(play.castEnablerCardId
+              ? { castEnablerCardId: play.castEnablerCardId }
+              : {}),
+          },
+        };
+        state.phase = "choice";
+        state.priorityPlayerId = playerId;
+        appendEvent(state, {
+          type: "PENDING_CHOICE_CREATED",
+          choiceId,
+          choiceType: "COMBAT_HAND_DISCARD",
+          playerId,
+          sourceEffectIds: [],
+          message: `${caster.name} chooses a card for ${sunder.cardName}'s Spell Sunder.`,
+        });
+        return { windowEnded: false };
+      }
+    }
+  }
+
   if (elementalEcho) {
     // A saved ability copy spends no card, Scroll or crown.
   } else if (play.fromScroll) {
@@ -20536,6 +21045,7 @@ function applyReactionPlayCore(
       reactionInFlightCardIds,
       play.cardId,
       !elementalEcho,
+      !play.fromSpellBook && !play.fromScroll && !play.fromSpellDeck && !play.tarnumReturn,
     );
   }
 
@@ -20641,6 +21151,9 @@ function applyReactionPlayCore(
       }
     }
   }
+
+  // Fortune's printed "before a die roll" timing resolves in the declared-
+  if (card.kind === "spell" && negatesPainSpell(state, playerId)) return { windowEnded: false };
 
   // Fortune's printed "before a die roll" timing resolves in the declared-
   // attack reaction window. Create the reroll before the parked attack resumes,
@@ -22770,6 +23283,8 @@ function advanceReactionWindowAfterPlay(
   if (
     state.pendingChoice?.type === "OPTION_CHOICE" ||
     state.pendingChoice?.type === "DECK_SEARCH" ||
+    (state.pendingChoice?.type === "COMBAT_HAND_DISCARD" &&
+      state.pendingChoice.kind === "spell-sunder-choose-discard") ||
     (state.pendingChoice?.type === "ABILITY_TARGET_CHOICE" &&
       state.pendingChoice.kind === "area-pick")
   ) {
@@ -24932,6 +25447,7 @@ function playCard(
   state: GameState,
   action: Extract<GameAction, { type: "PLAY_CARD" }>,
   cards: CardLibrary,
+  spellSunderPaid = false,
 ): void {
   const card = cards[action.cardId];
   if (!card) {
@@ -25366,9 +25882,35 @@ function playCard(
     ) {
       throw new Error("Spell limit reached for this combat round.");
     }
+    const sunder = !spellSunderPaid && combatEnemySpellSunderUnit(state, action.playerId);
+    if (sunder) {
+      const discardChoices = [...playerForLimit.hand];
+      for (const reserved of [
+        ...(!action.fromSpellBook ? [action.cardId] : []),
+        ...(action.castEnablerCardId ? [action.castEnablerCardId] : []),
+        ...(action.costCardIds ?? []),
+      ]) {
+        const index = discardChoices.indexOf(reserved);
+        if (index >= 0) discardChoices.splice(index, 1);
+      }
+      if (discardChoices.length) {
+        const choiceId = `choice_${nextEventNumber(state)}`;
+        state.pendingChoice = {
+          id: choiceId, type: "COMBAT_HAND_DISCARD", playerId: action.playerId,
+          kind: "spell-sunder-choose-discard", abilityId: "veteran-spell-sunder",
+          abilityName: "Spell Sunder", sourceUnitId: sunder.id,
+          prompt: `${sunder.cardName}'s Spell Sunder — choose a card to discard before casting ${card.name}.`,
+          powerCardIds: discardChoices, directSpell: { ...action },
+        };
+        state.phase = "choice";
+        state.priorityPlayerId = action.playerId;
+        appendEvent(state, { type: "PENDING_CHOICE_CREATED", choiceId, choiceType: "COMBAT_HAND_DISCARD", playerId: action.playerId, sourceEffectIds: [], message: `${playerForLimit.name} chooses a card for ${sunder.cardName}'s Spell Sunder.` });
+        return;
+      }
+    }
     // This direct-play path records the cast before moving its physical card,
     // so no just-played card is in the discard during the after-cast draw yet.
-    noteSpellCast(state, playerForLimit, true, [], action.cardId);
+    noteSpellCast(state, playerForLimit, true, [], action.cardId, true, !action.fromSpellBook);
   }
 
   // Old immediate-prompt BINH rule: Necromancy stays in hand until its blocking
@@ -25445,6 +25987,7 @@ function playCard(
       optionLabel,
     });
   }
+  if (card.kind === "spell" && state.combat && negatesPainSpell(state, action.playerId)) return;
 
   if (action.drawOnly) {
     // Learning's standalone play (Balance Pack) draws exactly 1: its effect is
@@ -30008,7 +30551,7 @@ function rerollPendingChoice(
       const fresh: AttackRollCandidate = { rolls: [rollAttackDie(combat)], roll: 0 };
       fresh.roll = fresh.rolls[0]!;
       applyMoraleDiceCurses(state, action.playerId, fresh, "normal");
-      applyEnemyPlusOneRerolls(state, action.playerId, fresh, "normal");
+      applyEnemyPlusOneRerolls(state, action.playerId, fresh, "normal", combat.units[choice.attackerId]);
       rolls[at] = fresh.rolls[0]!;
       notes.push(...(fresh.modifierNotes ?? []));
       rerollBeats.push(...(fresh.rerollBeats ?? []).map((beat) => ({ ...beat, index: at })));
@@ -30114,7 +30657,7 @@ function rerollPendingChoice(
           state,
           action.playerId,
           extra,
-          choice.rollMode,
+          choice.rollMode, combat.units[choice.attackerId],
         );
       }
       extraCandidates.push(extra);
@@ -30144,8 +30687,13 @@ function rerollPendingChoice(
       state,
       action.playerId,
       candidate,
-      choice.rollMode,
+      choice.rollMode, combat.units[choice.attackerId],
     );
+  }
+  const dustRoller = combat.units[choice.attackerId];
+  if (dustRoller) {
+    applyBlindDustDice(state, dustRoller, candidate, choice.rollMode);
+    for (const extra of extraCandidates) applyBlindDustDice(state, dustRoller, extra, choice.rollMode);
   }
   choice.candidates.push(candidate);
   for (const extra of extraCandidates) {
@@ -30157,6 +30705,22 @@ function rerollPendingChoice(
   // `onlyOnRoll` only says WHEN the one use may be taken.
   source.remaining -= 1;
   source.used += 1;
+  if (source.abilityId === "ntv-improvised-ammunition" && source.sourceUnitId) {
+    const gremlin = combat.units[source.sourceUnitId];
+    if (gremlin) {
+      (gremlin.townVeterancy ??= {}).improvisedRound = combat.round;
+      veteranTrigger(state, gremlin, source.abilityId, combat.units[choice.defenderId]);
+    }
+  }
+  if (source.abilityId === "town-gorgon-stare-reroll" && source.sourceUnitId && source.used === 1) {
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: source.sourceUnitId,
+      abilityId: source.abilityId,
+      targetUnitId: choice.attackerId,
+      message: `${source.name} rerolls the Death Stare die.`,
+    });
+  }
   if (source.futureSight && source.sourceUnitId && source.used === 1) {
     const seia = combat.units[source.sourceUnitId];
     if (seia) {
@@ -30377,6 +30941,13 @@ function resolveAbilityRollKeep(
   context: PendingAbilityRollContext,
   candidate: AttackRollCandidate,
 ): void {
+  if (context.kind === "town-bolt") {
+    const unit = state.combat?.units[context.resume.attackerId];
+    const target = state.combat?.units[context.resume.defenderId];
+    if (unit && target && isUnitAlive(unit) && isUnitAlive(target)) resolveTownBolt(state, unit, target, candidate);
+    resumeTownVeterancy(state, cards);
+    return;
+  }
   // kind "spell-dice" (Community Inferno): the roll belongs to a SPELL whose
   // stack item is long gone — the kept dice land the parked blast and nothing
   // resumes. Handled before `resume` is read: that field is inert filler here.
@@ -31233,6 +31804,10 @@ function chooseAbilityTarget(
         choice.abilityName,
         choice.tokenRounds,
       );
+      if (choice.tokenKind === "attack" && townVeterancy(placer, "ogre-guard") && !placer.townVeterancy?.defense) {
+        (placer.townVeterancy ??= {}).defense = 1;
+        veteranTrigger(state, placer, "town-ogre-guard");
+      }
       const placingAbility = getUnitAbilityDefinitions(placer).find(
         (ability) => ability.id === choice.abilityId,
       );
@@ -32774,6 +33349,8 @@ function moveUnit(
   });
   gainSectQiAfterMove(state, unit, from, finalPosition);
   elementalMovement(state, unit, elementalHooks);
+  townMovement(state, unit, from, finalPosition);
+  neutralTownMovement(state, unit, from, finalPosition);
   healCommanderFromArtifactAction(state, unit, "move");
 
   // Rune Keeper commander (Rune Ritual, move half): +1 Rune whenever it moves.
@@ -32851,6 +33428,7 @@ function defendUnit(
 
   unit.defenseToken = true;
   markActivatedThisRound(unit, true);
+  if (factionVeterancy(unit, "defend-heal")) veteranHeal(state, unit, 1, "veteran-zombie-rest");
   // Bulwark "Runes" (Gamefound Update #3): taking the Defend action earns a
   // Bulwark unit's controller +2 Runes (RUNE_GAIN_DEFEND) — the richest Rune
   // source.
@@ -32992,6 +33570,7 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
   applyHeroGradeRoundStartDamage(state);
   applyLionRoundStartBarrage(state);
   applyAnimeCombatRoundPenalties(state);
+  townCombatRoundStart(state);
   if (finishCombatIfNeeded(state)) {
     return;
   }
@@ -35375,6 +35954,20 @@ function applyActionInContext(
             nextState.pendingChoice.context === "elemental-veterancy"
           ) {
             resolveElementalChoice(nextState, action, elementalHooks);
+            if (finishCombatIfNeeded(nextState)) break;
+            const veteranContinuation = nextState.combat?.veteranAttackContinuation;
+            if (veteranContinuation && !openElementalChoice(nextState, elementalHooks) && !nextState.pendingChoice && !nextState.reactionWindow && !nextState.stack.length) {
+              delete nextState.combat!.veteranAttackContinuation;
+              if (!finishCombatIfNeeded(nextState)) {
+                if (veteranContinuation.kind === "followups") runPostAttackFollowUps(nextState, cards, veteranContinuation, 0);
+                else if (veteranContinuation.kind === "retaliation") {
+                  const source = nextState.combat!.units[veteranContinuation.attackerId];
+                  const target = nextState.combat!.units[veteranContinuation.defenderId];
+                  if (!source || !target || !openWraithDiscardChoice(nextState, source, target)) resumeAttackSequence(nextState, cards);
+                } else if (!declareNextQueuedAbilityAttack(nextState, cards)) resumeAttackSequence(nextState, cards);
+              }
+              break;
+            }
             if (!openElementalChoice(nextState, elementalHooks) && !nextState.pendingChoice && !nextState.reactionWindow && !nextState.stack.length) {
               const resume = nextState.combat?.elementalResumeAttack;
               if (resume) {
@@ -35535,6 +36128,7 @@ function applyActionInContext(
     // (getUnitAbilityDefinitions) sees the current state however the effect was
     // just added (a cast) or removed (Dispel, combat/round end) — before any
     // automation or future action reads the unit's abilities.
+    resolveManaTurbulence(nextState);
     syncAbilitySuppression(nextState);
 
     // Paralysis laid on the unit whose activation slot is already open (the

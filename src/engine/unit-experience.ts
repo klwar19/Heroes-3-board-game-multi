@@ -23,6 +23,7 @@ import { appendEvent } from "./events";
 import { mgqEffectiveJob, mgqJobSignatureAbilityId } from "./mgq-jobs";
 import { getBonusUnitExperience } from "./unit-abilities";
 import { WAVE_WIN_UNIT_XP } from "./monster-waves";
+import { townVeterancy } from "./town-veterancy";
 import {
   NEUTRAL_PLAYER_ID,
   type ArmyUnitState,
@@ -587,6 +588,37 @@ export function awardUnitExperienceAfterCombat(state: GameState): void {
   const combat = state.combat;
   if (!unitExperienceActive(state) || !combat?.outcome || combat.context.kind === "sandbox") {
     return;
+  }
+  const paidSeamen = new Set<string>();
+  for (const unit of Object.values(combat.units)) {
+    if (
+      !unit.armyUnitId ||
+      unit.temporary ||
+      unit.damage >= unit.maxHealth ||
+      unit.controllerId === NEUTRAL_PLAYER_ID ||
+      !townVeterancy(unit, "seaman-survival-gold")
+    ) {
+      continue;
+    }
+    const owner = state.players[unit.controllerId];
+    const rewardKey = `${unit.controllerId}:${unit.armyUnitId}`;
+    if (!owner || paidSeamen.has(rewardKey)) continue;
+    paidSeamen.add(rewardKey);
+    owner.resources.gold += 1;
+    appendEvent(state, {
+      type: "RESOURCES_GAINED",
+      playerId: unit.controllerId,
+      gold: 1,
+      buildingMaterials: 0,
+      valuables: 0,
+      reason: "Survivor's Share",
+    });
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: unit.id,
+      abilityId: "town-seaman-survival-gold",
+      message: `${unit.cardName} earns 1 bonus Gold for surviving the battle.`,
+    });
   }
   const winnerId = combat.outcome.winnerPlayerId;
   if (!winnerId || winnerId === NEUTRAL_PLAYER_ID) {

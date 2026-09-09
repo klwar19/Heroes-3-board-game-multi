@@ -441,6 +441,7 @@ export default function MapDesignerPage() {
             hexEvents={preset?.hexEvents ?? []}
             objectives={preset?.objectives}
             objects={preset?.objects ?? []}
+            mapWideTokenBreaks={preset}
             supportedModes={preset?.supportedModes}
             onChange={(nextTiles) => commitEditorChange({ tiles: nextTiles })}
             onHexEventsChange={(hexEvents) => {

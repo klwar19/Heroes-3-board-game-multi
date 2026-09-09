@@ -43,7 +43,7 @@ export const RULESET_DESCRIPTIONS: Record<GameRuleset, string> = {
   binh:
     "BINH house rules: Basic/Expert Spell decks and Minor/Major/Relic Artifact decks with level and map gating, " +
     "Wisdom expert −3 gold, Estates 2/4 gold, Few Griffins 3 attack, Pack Griffins 1 defense, Pack Marksmen 3 HP, " +
-    "Pack Arch Devils 6 attack, inward-only Creature Bank entrances, Sandro's Horde/Legion of Skeletons fight " +
+    "Pack Arch Devils 6 attack, Gold Dragons' second line attack is 3 attack on both sides, Sandro's Horde/Legion of Skeletons fight " +
     "with 3 HP, and both embarking and disembarking end movement."
 };
 
@@ -92,6 +92,7 @@ export const PVP_TROOP_LOSS_DESCRIPTIONS: Record<"normal" | "none", string> = {
  *  - Pack Griffins: 1 defense (printed 0)
  *  - Pack Marksmen: 3 HP (printed 2)
  *  - Pack Arch Devils: 6 Attack (printed 7)
+ *  - Few Gold Dragons: second line attack uses 3 Attack (printed 2)
  *
  * Cerberi play by the printed card (1 flat damage to one adjacent enemy) in
  * both modes — no longer a BINH override.
@@ -111,6 +112,7 @@ export function applyUnitSideRules(
     griffinBuff?: boolean;
     marksmanBuff?: boolean;
     archDevilPackDamage6?: boolean;
+    goldDragonSecondAttack3?: boolean;
     phoenixPackRebirth?: boolean;
     /** `community-card-balance` — the Community Balance Change's Units tab. */
     communityBalance?: boolean;
@@ -119,6 +121,7 @@ export function applyUnitSideRules(
   const griffinBuff = overrides?.griffinBuff ?? ruleset === "binh";
   const marksmanBuff = overrides?.marksmanBuff ?? ruleset === "binh";
   const archDevilPackDamage6 = overrides?.archDevilPackDamage6 ?? ruleset === "binh";
+  const goldDragonSecondAttack3 = overrides?.goldDragonSecondAttack3 ?? ruleset === "binh";
   const phoenixPackRebirth = overrides?.phoenixPackRebirth ?? ruleset === "binh";
   // The Community Balance Change is a plain OFF-by-default house rule in both
   // modes, so — unlike the three BINH tweaks above — it never falls back to the
@@ -192,6 +195,26 @@ export function applyUnitSideRules(
   if (archDevilPackDamage6 && unitDefId === "inferno.arch_devils" && side === "pack") {
     return { ...definition, attack: 6 };
   }
+  // The dragon breath's second-space Attack is encoded by its ability id, not
+  // the unit's primary Attack stat. Swap only the Few's printed Attack-2
+  // follow-up; Pack already carries the Attack-3 version.
+  if (
+    goldDragonSecondAttack3 &&
+    unitDefId === "rampart.gold_dragons" &&
+    side === "few" &&
+    definition.abilities.includes("dragon-line-attack-2")
+  ) {
+    return {
+      ...definition,
+      abilities: definition.abilities.map((id) =>
+        id === "dragon-line-attack-2" ? "dragon-line-attack-3" : id
+      ),
+      abilityText: definition.abilityText?.replace(
+        "the second has 2 [attack]",
+        "the second has 3 [attack]"
+      )
+    };
+  }
   // BINH-only house rule: Pack Phoenixes also get Rebirth (the Few always has it
   // in printed data). Base game / Legacy plays the printed Pack — no Rebirth.
   if (
@@ -220,6 +243,7 @@ export function unitSideRuleOverrides(
   griffinBuff: boolean;
   marksmanBuff: boolean;
   archDevilPackDamage6: boolean;
+  goldDragonSecondAttack3: boolean;
   polishUnitStacks: boolean;
   neutralRankUp: boolean;
   phoenixPackRebirth: boolean;
@@ -229,6 +253,7 @@ export function unitSideRuleOverrides(
     griffinBuff: houseRuleEnabled(state, "griffin-buff"),
     marksmanBuff: houseRuleEnabled(state, "marksman-buff"),
     archDevilPackDamage6: houseRuleEnabled(state, "arch-devil-pack-damage-6"),
+    goldDragonSecondAttack3: houseRuleEnabled(state, "gold-dragon-second-attack-3"),
     // Community Balance Change (default OFF in BOTH modes): the sheet's Units
     // tab — Griffins Few+Pack 1 defense, Marksmen Pack 3 health, and the
     // Halberdier Pack's Parry losing its discard cost.
@@ -928,11 +953,32 @@ export function expertUsesTotalThisRound(player: PlayerState): number {
 }
 
 /**
- * Spell Book house rule on? Stored per adventure (`adventure.spellBook`, default
+ * Standard Spell Book house rule on? Stored per adventure (`adventure.spellBook`, default
  * ON). The combat sandbox has no adventure state, so the Book is available there
  * too — sandbox tests seed `player.spellBook` directly. A `false` adventure flag
  * (the lobby toggle) is the only thing that turns it off.
  */
+export const STANDARD_SPELL_BOOK_LIMIT = 5;
+
+/**
+ * Standard (non-Polish) Spell Book occupancy. A recalled ongoing Spell reserves
+ * its old shelf slot until its effect ends, preventing a later return from
+ * silently growing the Book past its five-Spell maximum.
+ */
+export function standardSpellBookCount(player: Pick<PlayerState, "spellBook" | "ongoingCards">): number {
+  const returning = (player.ongoingCards ?? []).filter(
+    (held) => held.returnTo === "spellBook"
+  ).length;
+  // Older snapshots may predate the zone even though PlayerState requires it.
+  return (Array.isArray(player.spellBook) ? player.spellBook.length : 0) + returning;
+}
+
+export function standardSpellBookHasCapacity(
+  player: Pick<PlayerState, "spellBook" | "ongoingCards">
+): boolean {
+  return standardSpellBookCount(player) < STANDARD_SPELL_BOOK_LIMIT;
+}
+
 export function spellBookRuleEnabled(state: GameState): boolean {
   if (getRuleset(state) === "legacy") {
     return false;

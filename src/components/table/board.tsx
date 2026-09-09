@@ -28,6 +28,7 @@ import {
   getBattlefieldTerrain,
   getDisplayAttackBonus,
   getUnitAbilityDefinitions,
+  getAzureDragonSuperCharge,
   getUnitMoveRange,
   getUnitTokens,
   hasUnitAbilityEffect,
@@ -2415,7 +2416,7 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
   // buff the instant it turns on instead of reading its printed base.
   const attack = displayedCombatAttack(state, unit);
   const attackBonus = attack - unit.attack;
-  const defenseBonus = getActiveDefenseBonus(state, unit) + tokenDefenseDelta(unit);
+  const defenseBonus = getActiveDefenseBonus(state, unit) + (unit.neutralVeterancy?.damageDefense ?? 0) + tokenDefenseDelta(unit);
   const defense = unit.defense + defenseBonus;
   // Whether this unit will counter-attack a melee blow right now (the same
   // reading the engine's shouldRetaliate uses), surfaced as a plain status line.
@@ -2504,6 +2505,11 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
         {unit.marked ? (
           <div className="inspectMarked" role="status">
             Mark token · Bounty Hunters gain their printed Attack bonus against this unit
+          </div>
+        ) : null}
+        {getAzureDragonSuperCharge(unit) ? (
+          <div className="inspectMarked" role="status">
+            Super Charge active · pierce 1 Defense · attack paralysis on 0/+1 · Fear Aura on −1/0
           </div>
         ) : null}
         {/* Unit Experience / Neutral Rank-Up (optional rules): one compact

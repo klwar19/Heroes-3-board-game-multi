@@ -189,3 +189,4 @@ assets-to-translate/**/*.bik
 !public/game-tokens/rank-ability/
 !public/game-tokens/rank-ability/conflux/
 !public/game-tokens/rank-ability/conflux/*.webp
+!public/game-tokens/rank-ability/azure-super-charge.webp

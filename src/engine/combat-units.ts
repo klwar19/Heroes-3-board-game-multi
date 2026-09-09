@@ -1,7 +1,13 @@
+import { townVeterancy } from "./town-veterancy";
+import { neutralTownVeterancy } from "./neutral-town-veterancy";
+import { isAdjacent } from "./battlefield";
 import { expireEffectsForCombatEnd } from "./active-effects";
 import { getUnitSide } from "./adventure";
 import { combatFightingHasBegun } from "./combat-timing";
 import { elementalVeterancy } from "./elemental-veterancy";
+import { queueElementalChoice } from "./elemental-veterancy";
+import { factionVeterancy, getUnitAbilityDefinitions } from "./unit-abilities";
+import { veteranHeal, veteranDamage, veteranTrigger } from "./faction-veterancy";
 import { appendEvent } from "./events";
 import { armyUnitStacksActive } from "./house-rules";
 import { getRuleset, unitSideRuleOverrides } from "./ruleset";
@@ -100,6 +106,21 @@ function payRaidBossLayerBreak(
  * ability damage and war machine shots.
  */
 export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState): void {
+  const hit = unit.factionVeterancy?.lastDamage;
+  if (unit.factionVeterancy) delete unit.factionVeterancy.lastDamage;
+  const revenge = factionVeterancy(unit, "revenge");
+  const spellMend = factionVeterancy(unit, "medusa-mend");
+  finalizeUnitRemoval(state, unit, hit?.kind === "attack");
+  if (unit.townVeterancy) delete unit.townVeterancy.damageSourceId;
+  if (hit?.kind === "spell" && hit.amount > 0 && townVeterancy(unit, "naga-mend")) veteranHeal(state, unit, 1, "town-naga-mend");
+  if (hit?.kind === "spell" && hit.amount > 0 && spellMend && unit.damage < unit.maxHealth) veteranHeal(state, unit, 2, "veteran-medusa-mend");
+  if (hit && revenge && unit.damage >= unit.maxHealth && hit.source.type === "unit") {
+    const killer = state.combat?.units[hit.source.unitId];
+    if (killer && killer.controllerId !== unit.controllerId) veteranDamage(state, unit, killer, 2, "veteran-manticore-revenge");
+  }
+}
+
+function finalizeUnitRemoval(state: GameState, unit: CombatUnitState, attackDamage: boolean): void {
   const redirected = state.combat?.redirectedDamageRemovals;
   if (redirected?.length) {
     delete state.combat?.redirectedDamageRemovals;
@@ -162,6 +183,60 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
 
   if (unit.damage < unit.maxHealth) {
     return;
+  }
+
+  if (attackDamage && neutralTownVeterancy(unit, "cowards-luck") && !unit.townVeterancy?.saveUsed) {
+    (unit.townVeterancy ??= {}).saveUsed = true;
+    const roll = createSeededRandom(`${state.seed}#cowards-luck#${unit.id}#${state.eventCounter ?? state.eventLog.length}`).nextInt(-1, 1);
+    veteranTrigger(state, unit, "ntv-cowards-luck", unit, `${unit.cardName}'s Coward's Luck rolls ${roll > 0 ? "+1" : roll}.`);
+    if (roll === 1) { unit.damage = Math.max(0, unit.maxHealth - 1); return; }
+  }
+
+  if (attackDamage && state.combat) {
+    const guardian = Object.values(state.combat.units).find(candidate => candidate.id !== unit.id && candidate.controllerId === unit.controllerId && candidate.damage < candidate.maxHealth && isAdjacent(candidate.position, unit.position) && neutralTownVeterancy(candidate, "guardian-angel") && !candidate.townVeterancy?.saveUsed);
+    if (guardian) {
+      (guardian.townVeterancy ??= {}).saveUsed = true;
+      unit.damage = Math.max(0, unit.maxHealth - 1);
+      veteranTrigger(state, guardian, "ntv-guardian-angel", unit, `${guardian.cardName} saves ${unit.cardName} at 1 Health.`);
+      return;
+    }
+  }
+
+  if (attackDamage && townVeterancy(unit, "mammoth-last-stand") && !unit.townVeterancy?.saveUsed) {
+    (unit.townVeterancy ??= {}).saveUsed = true;
+    unit.damage = Math.max(0, unit.maxHealth - 1);
+    unit.defenseToken = true;
+    veteranTrigger(state, unit, "town-mammoth-last-stand", unit, `${unit.cardName} survives at 1 Health and gains a Defense token.`);
+    return;
+  }
+
+  if (attackDamage && townVeterancy(unit, "goblin-save") && !unit.townVeterancy?.saveUsed) {
+    (unit.townVeterancy ??= {}).saveUsed = true;
+    unit.damage = Math.max(0, unit.maxHealth - 1);
+    veteranTrigger(state, unit, "town-goblin-save");
+    queueElementalChoice(state, { kind: "town-buff", unitId: unit.id, abilityId: "town-goblin-save", optional: true });
+    return;
+  }
+  if (attackDamage && getUnitAbilityDefinitions(unit).some(ability => ability.effect?.type === "NEUTRAL_VETERANCY" && ability.effect.mechanic === "hell-steed-last-stand") && !unit.neutralVeterancy?.hellSteedSaveUsed) {
+    (unit.neutralVeterancy ??= {}).hellSteedSaveUsed = true;
+    unit.damage = Math.max(0, unit.maxHealth - 1);
+    veteranTrigger(state, unit, "veteran-hell-steed-last-stand", unit, `${unit.cardName} survives at 1 Health and erupts.`);
+    const surroundingEnemies = Object.values(state.combat?.units ?? {}).filter(target =>
+      target.id !== unit.id && target.controllerId !== unit.controllerId && target.damage < target.maxHealth && isAdjacent(target.position, unit.position));
+    for (const target of surroundingEnemies) veteranDamage(state, unit, target, 1, "veteran-hell-steed-last-stand", false);
+    return;
+  }
+  if (attackDamage && !unit.factionVeterancy?.rebirthUsed) {
+    const mechanic = factionVeterancy(unit, "full-rebirth") ? "full-rebirth" : factionVeterancy(unit, "skeleton-rebirth") ? "skeleton-rebirth" : factionVeterancy(unit, "escape") ? "escape" : undefined;
+    if (mechanic) {
+      (unit.factionVeterancy ??= {}).rebirthUsed = true;
+      unit.damage = mechanic === "full-rebirth" ? 0 : Math.max(0, unit.maxHealth - 1);
+      const abilityId = mechanic === "full-rebirth" ? "veteran-troglodyte-rebirth" : mechanic === "escape" ? "veteran-wraith-escape" : "veteran-skeleton-rebirth";
+      if (mechanic === "skeleton-rebirth") unit.factionVeterancy.rebirthAttack = 1;
+      veteranTrigger(state, unit, abilityId, unit, `${unit.cardName} survives at ${unit.maxHealth - unit.damage} HP.`);
+      if (mechanic === "escape") queueElementalChoice(state, { kind: "veteran-teleport", unitId: unit.id, abilityId });
+      return;
+    }
   }
 
   // Phoenix Plate: the commander's once-per-combat immediate 1-Health revival
@@ -350,12 +425,30 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
     const fewSide = getUnitSide(unit.unitDefId, "few");
     if (fewSide) {
       const excess = unit.damage - unit.maxHealth;
+      const flipHaste = factionVeterancy(unit, "flip-haste");
+      const flipHealth = factionVeterancy(unit, "flip-health");
+      const marksmanSurvival = townVeterancy(unit, "marksman-survival");
       unit.variant = "few";
       // A Few card is no longer a Group and cannot carry Polish Stack layers.
       delete unit.armyStacks;
       unit.damage = 0;
       consumeCurrentLifeHealthBonuses(state, unit);
       applyUnitCurrentSide(unit, getRuleset(state), unitSideRuleOverrides(state));
+      if (marksmanSurvival && !unit.townVeterancy?.flipUsed) {
+        const memory = (unit.townVeterancy ??= {}); memory.flipUsed = true; memory.attack = (memory.attack ?? 0) + 1;
+        unit.combatMaxHealthBonus = (unit.combatMaxHealthBonus ?? 0) + 3; unit.maxHealth += 3;
+        veteranTrigger(state, unit, "town-marksman-survival");
+      }
+      if (flipHaste && !unit.factionVeterancy?.flipInitiative) {
+        (unit.factionVeterancy ??= {}).flipInitiative = 3;
+        veteranTrigger(state, unit, "veteran-harpy-haste");
+      }
+      if (flipHealth && !unit.factionVeterancy?.flipHealth) {
+        (unit.factionVeterancy ??= {}).flipHealth = 4;
+        unit.combatMaxHealthBonus = (unit.combatMaxHealthBonus ?? 0) + 4;
+        unit.maxHealth += 4;
+        veteranTrigger(state, unit, "veteran-harpy-vitality");
+      }
       unit.damage = Math.min(unit.maxHealth, Math.max(0, excess));
       // Cove Haspids (Few): record that this unit was knocked down from its
       // Pack side this combat, so the Few side's "Vengeance" +2 Attack turns on.

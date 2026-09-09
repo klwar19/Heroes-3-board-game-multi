@@ -435,7 +435,10 @@ function applyCustomMapTokens(
       // field. Face-up "one of N" resolves to a concrete tile here — the
       // preferred physical pin can land on an illegal printed field for that
       // roll, and must NOT silently drop the gate (guards + pair ride with it).
-      const legal = legalTokenSlotsForTileDef(def, legalityKind);
+      const legal = legalTokenSlotsForTileDef(def, legalityKind).filter((candidateSlot) => {
+        const candidateSpaceId = getTileFootprintSpaceIds(tile)[candidateSlot];
+        return candidateSpaceId !== undefined && adventure.fields[candidateSpaceId]?.breakField !== true;
+      });
       if (legal.length === 0) {
         continue;
       }
@@ -602,7 +605,7 @@ export type AdventureSetupOptions = {
    * nearest. Off restores the deterministic nearest-hex carve.
    */
   chooseSubterraneanGate?: boolean;
-  /** Spell Book house rule (default on): a personal Spell Book each player may stash, cast and boost from. */
+  /** Standard Spell Book house rule (default on): stash up to 5 Spells, then cast or boost from it. */
   spellBook?: boolean;
   /** Morale Cards optional rule (default off): replaces normal morale tokens with morale card decks. */
   moraleCards?: boolean;

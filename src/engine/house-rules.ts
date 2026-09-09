@@ -494,6 +494,15 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     legacyDefault: false,
   },
   {
+    id: "gold-dragon-second-attack-3",
+    label: "Gold Dragons: second attack is 3",
+    description:
+      "BINH house rule: both the Few and Pack of Gold Dragons resolve the second space of their line attack with 3 Attack. Off: Few uses its printed 2 Attack and Pack uses 3.",
+    category: "units",
+    default: true,
+    legacyDefault: false,
+  },
+  {
     id: "binh-ballista-cost-3-6",
     label: "Ballista costs 3 / 6 gold",
     description:

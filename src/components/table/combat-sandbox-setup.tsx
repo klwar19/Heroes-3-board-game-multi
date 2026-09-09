@@ -310,7 +310,7 @@ function SeatEditor({
                 </div>
                 {unitExperienceOn ? (
                   <label className="sandboxUnitRankPicker">
-                    <span>Experience grade</span>
+                    <span>EXP rank</span>
                     <select
                       aria-label={`${def?.name ?? unit.unitDefId} experience grade for ${seatId}`}
                       onChange={(event) => setUnitRank(index, Number(event.target.value))}
@@ -701,13 +701,21 @@ export function CombatSandboxSetupScreen({
           <label className="sandboxToggle">
             <input
               checked={Boolean(wog.enabled && wog.unitExperience)}
-              disabled={!wog.enabled}
-              onChange={(event) => setOptions({ wog: { enabled: true, unitExperience: event.target.checked } })}
+              onChange={(event) =>
+                setOptions({
+                  wog: { enabled: event.target.checked ? true : wog.enabled, unitExperience: event.target.checked }
+                })
+              }
               type="checkbox"
             />
             Unit Experience
           </label>
         </div>
+        {wog.enabled && wog.unitExperience ? (
+          <p className="sandboxHint">
+            EXP rank selectors are active beside every chosen unit below. The selected rank and its stat/ability bonuses carry into deployment and combat.
+          </p>
+        ) : null}
         <p className="sandboxHint">
           {playMode === "tournament"
             ? "Tournament: legacy decks, Diplomacy and Hourglass banned, printed unit values. "

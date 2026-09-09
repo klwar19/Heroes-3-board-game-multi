@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerE
 import { RESOURCE_ICONS } from "@/data/assets/homm-assets";
 import { cardLibrary } from "@/data/cards/library";
 import { getFxSheet } from "@/data/fx";
+import { combatEnemySpellSunderUnit } from "@/engine/legal-actions";
 import { playDiceRoll, playLibrarySound } from "@/lib/sound";
 import {
   AFK_AUTO_KICK_MS,
@@ -1087,6 +1088,7 @@ export function ReactionTray({
       ? true
       : Boolean(
           effect &&
+            !(card?.kind === "spell" && combatEnemySpellSunderUnit(state, viewerPlayerId)) &&
             // A target rides only the single PLAY_REACTION, never the batch
             // (PLAY_REACTIONS carries no target), so it must resolve on its own.
             !action.target &&

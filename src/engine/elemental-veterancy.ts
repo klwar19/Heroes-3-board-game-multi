@@ -1,4 +1,8 @@
+import { townSpellCast, townBound } from "./town-veterancy";
+import { neutralTownSpellCast, neutralTownDeepRooted } from "./neutral-town-veterancy";
 import { getUnitAbilityDefinitions } from "./unit-abilities";
+import { factionVeterancy } from "./unit-abilities";
+import { veteranHeal, veteranRandom, veteranDamage, veteranTrigger } from "./faction-veterancy";
 import {
   isAdjacent,
   BATTLEFIELD_CELL_COUNT,
@@ -20,9 +24,14 @@ import { cardLibrary } from "@/data/cards/library";
 import { balanceCardLibrary } from "./community-balance-cards";
 import { effectiveInitiative } from "./active-effects";
 import { appendEvent, nextEventNumber } from "./events";
+import { applyNeutralDebuff } from "./neutral-veterancy";
+import { spendRunes } from "./runes";
 
 type Request = NonNullable<CombatState["elementalChoices"]>[number];
 export type ElementalHooks = {
+  returnFire?(state: GameState, unit: CombatUnitState, targetId: string, accept: boolean): void;
+  chainLightning?(state: GameState, unit: CombatUnitState, target: CombatUnitState): void;
+  townBolt?(state: GameState, unit: CombatUnitState, target: CombatUnitState): boolean;
   damage(
     state: GameState,
     source: CombatUnitState,
@@ -83,6 +92,7 @@ export function noteElementalSpellCast(
   casterId: string,
   cardId: string,
   allowCopy = true,
+  fromHand = false,
 ): void {
   if (
     state.activeEffects.some((effect) =>
@@ -90,10 +100,13 @@ export function noteElementalSpellCast(
     )
   )
     return;
+  townSpellCast(state, casterId, fromHand);
+  neutralTownSpellCast(state, casterId);
   const card = balanceCardLibrary(state, cardLibrary)[cardId];
   const schools = card?.spellSchools ?? [];
   for (const unit of Object.values(state.combat?.units ?? {})) {
     if (!alive(unit) || unit.controllerId === casterId) continue;
+    if (factionVeterancy(unit, "spell-heal")) veteranHeal(state, unit, 1, "veteran-wraith-magic");
     if (
       elementalVeterancy(unit, "fire-heal") &&
       (schools.includes("fire") || schools.includes("any"))
@@ -318,6 +331,14 @@ export function openElementalChoice(
     const request = combat.elementalChoices.shift()!;
     const unit = combat.units[request.unitId];
     if (!unit || !alive(unit)) continue;
+    if (request.kind === "town-bolt") {
+      const target = combat.units[request.targetId!];
+      if (target && alive(target) && hooks.townBolt?.(state, unit, target)) return true;
+      if (combat.outcome) return false;
+      continue;
+    }
+    if (request.valuablesCost && (unit.controllerId === NEUTRAL_PLAYER_ID || (state.players[unit.controllerId]?.resources.valuables ?? 0) < request.valuablesCost)) continue;
+    if (request.runeCost && (combat.runes?.[unit.controllerId]?.count ?? 0) < request.runeCost) continue;
     const picks: NonNullable<
       Extract<
         NonNullable<GameState["pendingChoice"]>,
@@ -336,7 +357,67 @@ export function openElementalChoice(
         combat.siege?.gatePosition !== p &&
         !Object.values(combat.units).some((t) => alive(t) && t.position === p),
     );
-    if (request.kind === "copy") {
+    if (request.kind === "return-fire") {
+      picks.push({ targetId: request.targetId }); labels.push("Retaliate");
+    } else if (request.kind === "town-recover") {
+      const cards = balanceCardLibrary(state, cardLibrary);
+      for (const cardId of state.players[unit.controllerId]?.discard ?? []) {
+        if (request.abilityId === "town-gremlin-recover" && cards[cardId]?.kind !== "spell") continue;
+        picks.push({ targetId: cardId }); labels.push(cards[cardId]?.name ?? cardId);
+      }
+    } else if (request.kind === "town-buff") {
+      for (const target of Object.values(combat.units)) if (alive(target)) { picks.push({ targetId: target.id }); labels.push(target.cardName); }
+    } else if (request.kind === "move-one") {
+      if (townBound(state, unit)) continue;
+      for (const position of empty.filter(p => isAdjacent(p, unit.position))) {
+        picks.push({ position }); labels.push(`Move to ${getBattlefieldLabel(position)}`);
+      }
+    } else if (request.kind === "move-ally-one") {
+      for (const target of Object.values(combat.units)) {
+        if (!alive(target) || target.id === unit.id || target.controllerId !== unit.controllerId || townBound(state, target)) continue;
+        for (const position of empty.filter(p => isAdjacent(p, target.position))) {
+          picks.push({ targetId: target.id, position });
+          labels.push(`Move ${target.cardName} to ${getBattlefieldLabel(position)}`);
+        }
+      }
+    } else if (request.kind === "return-origin") {
+      if (townBound(state, unit)) continue;
+      if (request.position !== undefined && empty.includes(request.position)) {
+        picks.push({ position: request.position }); labels.push(`Return to ${getBattlefieldLabel(request.position)}`);
+      }
+    } else if (request.kind === "heal") {
+      for (const target of Object.values(combat.units)) {
+        if (!alive(target) || target.damage <= 0 || (request.alliesOnly && target.controllerId !== unit.controllerId)) continue;
+        if (request.adjacent && !isAdjacent(unit.position, target.position)) continue;
+        if (request.adjacentOrSelf && target.id !== unit.id && !isAdjacent(unit.position, target.position)) continue;
+        picks.push({ targetId: target.id }); labels.push(target.cardName);
+      }
+    } else if (request.kind === "veteran-teleport") {
+      if (townBound(state, unit) || neutralTownDeepRooted(state, unit)) continue;
+      for (const position of empty) {
+        picks.push({ position });
+        labels.push(`Teleport to ${getBattlefieldLabel(position)}`);
+      }
+    } else if (request.kind === "veteran-cleave") {
+      const anchor = combat.units[request.targetId!];
+      if (anchor) for (const target of Object.values(combat.units)) {
+        if (alive(target) && target.id !== anchor.id && target.id !== unit.id && isAdjacent(anchor.position, target.position)) {
+          picks.push({ targetId: target.id });
+          labels.push(target.cardName);
+        }
+      }
+    } else if (request.kind === "veteran-tribute") {
+      const enemyId = unit.controllerId === combat.attackerPlayerId ? combat.defenderPlayerId : combat.attackerPlayerId;
+      const cards = balanceCardLibrary(state, cardLibrary);
+      for (const cardId of state.players[enemyId]?.hand ?? []) {
+        if ((cards[cardId]?.power ?? 0) > 0) {
+          picks.push({ targetId: cardId });
+          labels.push(`Discard ${cards[cardId].name}`);
+        }
+      }
+      picks.push({});
+      labels.push("Take 1 damage on a random unit");
+    } else if (request.kind === "copy") {
       for (const option of hooks.targets(state, unit, request.cardId!)) {
         const target = option.target;
         picks.push(option);
@@ -350,15 +431,25 @@ export function openElementalChoice(
     } else if (request.kind === "dispel") {
       picks.push({});
       labels.push("Attack with −2 Attack and remove one ongoing effect");
+    } else if (request.kind === "heal-self") {
+      if (unit.damage > 0) {
+        picks.push({ targetId: unit.id });
+        labels.push(`Heal ${request.amount ?? 1} HP`);
+      }
     } else if (
       request.kind === "damage" ||
+      request.kind === "chain-lightning" ||
+      request.kind === "blind-dust" ||
+      request.kind === "troll-snare" ||
       request.kind === "link" ||
       request.kind === "copy-bolt"
     ) {
-      const anchor =
-        request.kind === "link" ? combat.units[request.targetId!] : unit;
+      const anchor = request.kind === "link" ? combat.units[request.targetId!] : request.anchorId ? combat.units[request.anchorId] : unit;
       const candidates =
-        request.abilityId === "veteran-arcane-echo"
+          request.abilityId === "veteran-arcane-echo" ||
+          request.abilityId === "veteran-cyber-splash" ||
+          request.abilityId === "town-jotunn-rune-bolt" ||
+          request.abilityId === "town-dragon-fly-landing"
           ? [
               ...enemies(state, unit),
               ...Object.values(combat.units).filter(
@@ -366,9 +457,13 @@ export function openElementalChoice(
               ),
             ]
           : enemies(state, unit);
-      if (anchor && alive(anchor))
+      // Splash keeps the struck space as its anchor even when the hit was lethal.
+      if (anchor && (request.anchorId !== undefined || alive(anchor)))
         for (const target of candidates) {
           if (request.kind === "link" && target.id === anchor.id) continue;
+          if (request.excludeTargetId && target.id === request.excludeTargetId) continue;
+          if (request.enemiesOnly && target.controllerId === unit.controllerId) continue;
+          if (request.alliesOnly && target.controllerId !== unit.controllerId) continue;
           if (
             (request.adjacent || request.kind === "link") &&
             !isAdjacent(anchor.position, target.position)
@@ -377,6 +472,10 @@ export function openElementalChoice(
           picks.push({ targetId: target.id });
           labels.push(target.cardName);
         }
+    } else if (request.kind === "debuff-attack") {
+      for (const target of enemies(state, unit)) if ((!request.adjacent || isAdjacent(unit.position, target.position))) {
+        picks.push({ targetId: target.id }); labels.push(target.cardName);
+      }
     } else if (request.kind === "obstacle") {
       for (const obstacle of combat.obstacles ?? [])
         for (const position of empty) {
@@ -399,13 +498,18 @@ export function openElementalChoice(
       );
     }
     if (!picks.length) continue;
-    if (request.kind !== "damage" && request.kind !== "nest") {
+    if (request.optional || (request.kind !== "damage" && request.kind !== "nest" && request.kind !== "blind-dust" && request.kind !== "veteran-cleave" && request.kind !== "veteran-tribute" && request.kind !== "town-recover")) {
       picks.push({ skip: true });
       labels.push("Skip");
     }
-    const chooser = hooks.chooser(state, combat, unit);
+    const chooser = request.kind === "veteran-tribute"
+      ? (unit.controllerId === combat.attackerPlayerId ? combat.defenderPlayerId : combat.attackerPlayerId)
+      : hooks.chooser(state, combat, unit);
     if (!chooser || chooser === NEUTRAL_PLAYER_ID) {
       executeElementalPick(state, request, picks[0], hooks);
+      // An automatic damage pick can end combat. Do not open another queued
+      // choice after that; the attack caller will stop its continuation.
+      if (combat.outcome) return false;
       if (state.pendingChoice || state.stack.length || state.reactionWindow)
         return true;
       continue;
@@ -414,7 +518,7 @@ export function openElementalChoice(
       id: `choice_${nextEventNumber(state)}`,
       type: "OPTION_CHOICE",
       playerId: chooser,
-      prompt: `${unit.cardName}: ${unitAbilities[request.abilityId]?.name ?? request.kind}${request.kind === "damage" ? ` — choose a target for ${request.amount} damage` : ""}`,
+      prompt: `${unit.cardName}: ${unitAbilities[request.abilityId]?.name ?? request.kind}${request.kind === "damage" ? ` — choose a target for ${request.amount} damage` : ""}${request.valuablesCost ? ` (spend ${request.valuablesCost} Valuables)` : ""}${request.runeCost ? ` (spend ${request.runeCost} Rune)` : ""}`,
       options: labels.map((label) => ({ label })),
       context: "elemental-veterancy",
       elementalChoice: { request, picks },
@@ -448,7 +552,119 @@ function executeElementalPick(
     hooks.dispelAttack(state, request.attack!, !pick.skip);
     return;
   }
+  if (request.kind === "return-fire") {
+    hooks.returnFire?.(state, unit, request.targetId!, !pick.skip);
+    return;
+  }
   if (pick.skip) return;
+  if ((request.kind === "move-one" || request.kind === "return-origin" || request.kind === "veteran-teleport") && townBound(state, unit)) throw new Error("This unit is bound and cannot move.");
+  if (request.kind === "veteran-teleport" && neutralTownDeepRooted(state, unit)) throw new Error("Deep Roots prevents this teleport.");
+  if (request.runeCost && !spendRunes(state, unit.controllerId, request.runeCost)) {
+    throw new Error(`That ability needs ${request.runeCost} Rune.`);
+  }
+  if (request.kind === "town-recover") {
+    const owner = state.players[unit.controllerId];
+    const cardId = pick.targetId!;
+    const index = owner?.discard.indexOf(cardId) ?? -1;
+    if (!owner || index < 0 || (request.abilityId === "town-gremlin-recover" && balanceCardLibrary(state, cardLibrary)[cardId]?.kind !== "spell")) throw new Error("Choose an eligible card from your discard pile.");
+    owner.discard.splice(index, 1); owner.hand.push(cardId);
+    veteranTrigger(state, unit, request.abilityId);
+    return;
+  }
+  if (request.kind === "town-buff") {
+    const target = combat.units[pick.targetId!];
+    if (!target || !alive(target)) throw new Error("Choose a living unit.");
+    const memory = (target.townVeterancy ??= {}); memory.attack = (memory.attack ?? 0) + 1;
+    veteranTrigger(state, unit, request.abilityId, target);
+    return;
+  }
+  if (request.kind === "move-one" || request.kind === "return-origin") {
+    const position = pick.position!;
+    const blocked = !Number.isInteger(position) || position < 0 || position >= BATTLEFIELD_CELL_COUNT ||
+      (request.kind === "move-one" && !isAdjacent(unit.position, position)) ||
+      (request.kind === "return-origin" && position !== request.position) ||
+      (combat.obstacles ?? []).includes(position) || (combat.battlefieldTokens ?? []).some(t => t.position === position) ||
+      Boolean(combat.siege?.walls.includes(position)) || combat.siege?.gatePosition === position ||
+      Object.values(combat.units).some(t => alive(t) && t.position === position);
+    if (blocked) throw new Error("That movement space is not available.");
+    const from = unit.position; unit.position = position;
+    veteranTrigger(state, unit, request.abilityId);
+    appendEvent(state, { type: "UNIT_MOVED", playerId: unit.controllerId, unitId: unit.id, from, to: position });
+    return;
+  }
+  if (request.kind === "move-ally-one") {
+    const target = combat.units[pick.targetId!];
+    const position = pick.position!;
+    const blocked = !target || !alive(target) || target.id === unit.id || target.controllerId !== unit.controllerId || townBound(state, target) ||
+      !Number.isInteger(position) || position < 0 || position >= BATTLEFIELD_CELL_COUNT || !isAdjacent(target.position, position) ||
+      (combat.obstacles ?? []).includes(position) || (combat.battlefieldTokens ?? []).some(t => t.position === position) ||
+      Boolean(combat.siege?.walls.includes(position)) || combat.siege?.gatePosition === position ||
+      Object.values(combat.units).some(t => alive(t) && t.position === position);
+    if (blocked) throw new Error("Choose an allied unit and an adjacent empty space.");
+    const from = target.position; target.position = position;
+    veteranTrigger(state, unit, request.abilityId, target);
+    appendEvent(state, { type: "UNIT_MOVED", playerId: target.controllerId, unitId: target.id, from, to: position });
+    return;
+  }
+  if (request.kind === "heal") {
+    const target = combat.units[pick.targetId!];
+    if (!target || !alive(target) || target.damage <= 0 || target.controllerId !== unit.controllerId ||
+      (request.adjacent && !isAdjacent(unit.position, target.position)) ||
+      (request.adjacentOrSelf && target.id !== unit.id && !isAdjacent(unit.position, target.position))) throw new Error("Choose a damaged allied unit in range.");
+    veteranHeal(state, target, request.amount ?? 1, request.abilityId, unit); return;
+  }
+  if (request.kind === "debuff-attack") {
+    const target = combat.units[pick.targetId!];
+    if (!target || !alive(target) || target.controllerId === unit.controllerId || request.adjacent && !isAdjacent(unit.position, target.position)) throw new Error("Choose an eligible enemy.");
+    applyNeutralDebuff(state, unit, target, request.abilityId, unitAbilities[request.abilityId]?.name ?? "Disoriented", { type: "ATTACK_BONUS", amount: -(request.amount ?? 1) }); return;
+  }
+  if (request.kind === "veteran-teleport") {
+    const position = pick.position!;
+    if (position < 0 || position >= BATTLEFIELD_CELL_COUNT || (combat.obstacles ?? []).includes(position) ||
+        combat.siege?.walls.includes(position) || combat.siege?.gatePosition === position ||
+        (combat.battlefieldTokens ?? []).some(t => t.position === position) ||
+        Object.values(combat.units).some(t => alive(t) && t.position === position)) throw new Error("That teleport space is occupied.");
+    const from = unit.position;
+    unit.position = position;
+    veteranTrigger(state, unit, request.abilityId);
+    appendEvent(state, { type: "UNIT_MOVED", playerId: unit.controllerId, unitId: unit.id, from, to: position });
+    return;
+  }
+  if (request.kind === "veteran-cleave") {
+    const target = combat.units[pick.targetId!];
+    const anchor = combat.units[request.targetId!];
+    if (!target || !anchor || !alive(target) || target.id === unit.id || target.id === anchor.id || !isAdjacent(anchor.position, target.position)) throw new Error("Choose a unit adjacent to the attack target.");
+    veteranDamage(state, unit, target, 1, request.abilityId);
+    return;
+  }
+  if (request.kind === "veteran-tribute") {
+    const enemyId = unit.controllerId === combat.attackerPlayerId ? combat.defenderPlayerId : combat.attackerPlayerId;
+    const enemy = state.players[enemyId];
+    if (pick.targetId) {
+      const index = enemy?.hand.indexOf(pick.targetId) ?? -1;
+      if (!enemy || index < 0 || (balanceCardLibrary(state, cardLibrary)[pick.targetId]?.power ?? 0) <= 0) throw new Error("Choose a card with Power in your hand.");
+      enemy.hand.splice(index, 1);
+      enemy.discard.push(pick.targetId);
+      veteranTrigger(state, unit, request.abilityId, unit, "Blood Tribute: the enemy discards a card with Power.");
+    } else {
+      const target = veteranRandom(state, Object.values(combat.units).filter(t => alive(t) && t.controllerId === enemyId), unit.id + "-tribute");
+      if (target) veteranDamage(state, unit, target, 1, request.abilityId);
+    }
+    return;
+  }
+  if (request.valuablesCost) {
+    const player = state.players[unit.controllerId];
+    const target = combat.units[pick.targetId!];
+    if (unit.controllerId === NEUTRAL_PLAYER_ID || !player || player.resources.valuables < request.valuablesCost || !target || !alive(target) || target.controllerId === unit.controllerId) return;
+    player.resources.valuables -= request.valuablesCost;
+  }
+  if (request.kind === "blind-dust" || request.kind === "troll-snare") {
+    const target = combat.units[pick.targetId!];
+    if (target && alive(target) && target.controllerId !== unit.controllerId) applyNeutralDebuff(state, unit, target, request.abilityId,
+      request.kind === "blind-dust" ? "Blind Dust" : "Crippling Snare",
+      request.kind === "blind-dust" ? { type: "NEUTRAL_BLIND_DUST" } : { type: "NEUTRAL_MOVE_LIMIT", amount: 1 });
+    return;
+  }
   if (request.kind === "copy") {
     if (pick.saveEcho)
       ((unit.elementalVeterancy ??= {}).echoSpells ??= []).push(
@@ -468,7 +684,15 @@ function executeElementalPick(
     );
     return;
   }
-  if (request.kind === "damage")
+  if (request.kind === "chain-lightning") {
+    const target = combat.units[pick.targetId!];
+    if (target && alive(target) && target.controllerId !== unit.controllerId)
+      hooks.chainLightning?.(state, unit, target);
+    return;
+  }
+  if (request.kind === "heal-self") {
+    veteranHeal(state, unit, request.amount ?? 1, request.abilityId);
+  } else if (request.kind === "damage")
     hooks.damage(
       state,
       unit,

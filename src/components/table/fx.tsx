@@ -740,6 +740,7 @@ async function runSprite(stage: HTMLElement, fxKey: string, at: string, soundKey
 
   const sprite = document.createElement("div");
   sprite.className = "fxSprite";
+  if (sheet.blendMode) sprite.style.mixBlendMode = sheet.blendMode;
   sprite.style.width = `${sheet.frameWidth}px`;
   sprite.style.height = `${sheet.frameHeight}px`;
   sprite.style.backgroundImage = `url(${assetUrl(sheet.src)})`;

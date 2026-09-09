@@ -25,6 +25,7 @@ export type ParallelCombatContext = Pick<
   | "pendingChoice"
   | "reactionWindow"
   | "stack"
+  | "pendingManaTurbulence"
 > & {
   adventure: Pick<AdventureState, (typeof adventureSlots)[number]>;
   effects: GameState["activeEffects"];
@@ -68,6 +69,7 @@ function capture(state: GameState): ParallelCombatContext {
     pendingChoice: state.pendingChoice,
     reactionWindow: state.reactionWindow,
     stack: state.stack,
+    pendingManaTurbulence: state.pendingManaTurbulence,
     adventure,
     effects: state.activeEffects.filter(localEffect),
     neutralPlayer: state.players[NEUTRAL_PLAYER_ID],
@@ -327,6 +329,7 @@ function projectContext(state: GameState, targetOwner: PlayerId): GameState {
     pendingChoice: target?.pendingChoice ?? null,
     reactionWindow: target?.reactionWindow ?? null,
     stack: target?.stack ?? [],
+    pendingManaTurbulence: target?.pendingManaTurbulence,
     players: {
       ...state.players,
       [NEUTRAL_PLAYER_ID]: target?.neutralPlayer ?? makeNeutralSeatPlayer(),

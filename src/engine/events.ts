@@ -1,14 +1,19 @@
+import { townVeterancy, townAllyLost, townArtifactUsed } from "./town-veterancy";
+import { neutralTownAllyLost, neutralTownCardDamageReduction, neutralTownCardDamageResolved } from "./neutral-town-veterancy";
 import type { GameEvent, GameState, SourceRef } from "./state";
+import { NEUTRAL_PLAYER_ID } from "./state";
 import { unitAbilities } from "@/data/units/abilities";
 import { noteUnitDamagedForTokens } from "./tokens";
 import { cardDamageNullified, specialtyImmunityActive } from "./active-effects";
 import {
   getUnitAbilityDefinitions,
+  factionVeterancy,
   hasImmuneToSpecialtyDamage,
   getSpecialtyDamageReduction,
   getSpellAndSpecialtyDamageReductionAura,
 } from "./unit-abilities";
 import { isAdjacent } from "./battlefield";
+import { cardLibrary } from "@/data/cards/library";
 
 type EventDraft = Omit<GameEvent, "id">;
 
@@ -154,7 +159,8 @@ export function transferPendingDamage(
       ? 0
       : Math.max(
           0,
-          Math.ceil(incoming / 2) - getSpecialtyDamageReduction(target) - aura,
+          Math.ceil(incoming / 2) - getSpecialtyDamageReduction(target) - aura -
+          (state.combat?.round === 1 && factionVeterancy(target, "first-ward") ? 2 : 0),
         );
     target.damage += amount;
     const assigned = appendEvent(state, {
@@ -207,6 +213,7 @@ export function appendEvent<T extends EventDraft>(
     | { unitId: string; amount: number; abilityId: string }
     | undefined;
   let starCandy: { unitId: string; amount: number } | undefined;
+  let neutralTownPrevented = 0;
   const damageEvent = event as unknown as {
     type: string;
     target?: { type: string; unitId?: string };
@@ -294,6 +301,14 @@ export function appendEvent<T extends EventDraft>(
       unit.damage -= prevented;
       eventDraft = { ...eventDraft, amount: amount - prevented } as EventDraft;
     }
+    if (unit && damageEvent.source) {
+      amount = (eventDraft as { amount?: number }).amount ?? 0;
+      neutralTownPrevented = neutralTownCardDamageReduction(state, unit, damageEvent.source, damageEvent.damageKind as import("./state").DamageKind, amount);
+      if (neutralTownPrevented > 0) {
+        unit.damage = Math.max(0, unit.damage - neutralTownPrevented);
+        eventDraft = { ...eventDraft, amount: amount - neutralTownPrevented } as EventDraft;
+      }
+    }
   }
 
   const nextEvent = {
@@ -305,6 +320,91 @@ export function appendEvent<T extends EventDraft>(
   } as unknown as Extract<GameEvent, { type: T["type"] }>;
 
   state.eventLog.push(nextEvent);
+  if (nextEvent.type === "CARD_PLAYED" && state.combat) {
+    const played = nextEvent as Extract<GameEvent, { type: "CARD_PLAYED" }>;
+    if (cardLibrary[played.cardId]?.kind === "artifact") {
+      townArtifactUsed(state, played.playerId);
+    }
+  }
+  if (nextEvent.type === "DAMAGE_ASSIGNED" && state.combat) {
+    const dealt = nextEvent as Extract<GameEvent, { type: "DAMAGE_ASSIGNED" }>;
+    if (dealt.target.type === "unit" && dealt.amount > 0) {
+      const target = state.combat.units[dealt.target.unitId];
+      // Only the lethal hit can earn a bounty. A later non-damage removal
+      // (for example, a disappearing clone) must not credit an older hit.
+      if (target) {
+        const memory = (target.townVeterancy ??= {});
+        if (target.damage - dealt.amount < target.maxHealth) delete memory.lossRecorded;
+        memory.damageSourceId = target.damage >= target.maxHealth && dealt.source.type === "unit" ? dealt.source.unitId : undefined;
+      }
+      if (target) target.neutralLastDamageSourceId = target.damage >= target.maxHealth && dealt.source.type === "unit" ? dealt.source.unitId : undefined;
+      if (
+        target && target.damage < target.maxHealth &&
+        getUnitAbilityDefinitions(target).some(ability => ability.effect?.type === "NEUTRAL_VETERANCY" && ability.effect.mechanic === "arctic-harden")
+      ) {
+        const memory = (target.neutralVeterancy ??= {});
+        memory.damageDefense = (memory.damageDefense ?? 0) + 1;
+        appendEvent(state, { type: "UNIT_ABILITY_TRIGGERED", unitId: target.id, targetUnitId: target.id, abilityId: "veteran-arctic-harden", message: `${target.cardName} gains +1 Defense after taking damage.` });
+      }
+    }
+  }
+  if (nextEvent.type === "UNIT_REMOVED" && state.combat) {
+    const removedEvent = nextEvent as Extract<GameEvent, { type: "UNIT_REMOVED" }>;
+    // A defeated dragon releases its snare permanently, even if it later revives.
+    for (const target of Object.values(state.combat.units)) {
+      if (target.townVeterancy?.boundBy) {
+        target.townVeterancy.boundBy = target.townVeterancy.boundBy.filter(id => id !== removedEvent.unitId);
+      }
+    }
+    const fallen = state.combat.units[removedEvent.unitId];
+    const killer = fallen?.neutralLastDamageSourceId ? state.combat.units[fallen.neutralLastDamageSourceId] : undefined;
+    if (fallen && fallen.damage >= fallen.maxHealth && !fallen.neutralBountyRecorded && killer && killer.controllerId !== fallen.controllerId && getUnitAbilityDefinitions(killer).some(a => a.implementationStatus === "implemented" && a.effect?.type === "NEUTRAL_VETERANCY" && a.effect.mechanic === "peasant-bounty")) {
+      fallen.neutralBountyRecorded = true;
+      const rewards = (state.combat.neutralBountyGold ??= {});
+      rewards[killer.controllerId] = (rewards[killer.controllerId] ?? 0) + 3;
+      appendEvent(state, { type: "UNIT_ABILITY_TRIGGERED", unitId: killer.id, targetUnitId: fallen.id, abilityId: "veteran-peasant-bounty", message: `${killer.cardName} earns 3 Gold, payable after combat.` });
+    }
+  }
+  if (nextEvent.type === "COMBAT_ENDED" && state.combat?.neutralBountyGold) {
+    const rewards = state.combat.neutralBountyGold;
+    delete state.combat.neutralBountyGold;
+    for (const [playerId, amount] of Object.entries(rewards)) {
+      const player = state.players[playerId];
+      if (player && playerId !== NEUTRAL_PLAYER_ID) player.resources.gold += amount;
+    }
+  }
+  if (nextEvent.type === "UNIT_MOVED" && state.combat) {
+    const moved = nextEvent as Extract<GameEvent, { type: "UNIT_MOVED" }>;
+    const unit = state.combat.units[moved.unitId];
+    if (unit && moved.from !== moved.to) (unit.townVeterancy ??= {}).movedRound = state.combat.round;
+    for (const target of Object.values(state.combat.units)) {
+      if (target.townVeterancy?.boundBy) target.townVeterancy.boundBy = target.townVeterancy.boundBy.filter(id => {
+        const source = state.combat!.units[id];
+        return source && source.damage < source.maxHealth && isAdjacent(source.position, target.position);
+      });
+    }
+  }
+  if ((nextEvent.type === "UNIT_REMOVED" || nextEvent.type === "UNIT_FLIPPED" || nextEvent.type === "ARMY_STACK_LOST" || nextEvent.type === "STACK_TOKEN_DISCARDED") && state.combat) {
+    const loss = nextEvent as Extract<GameEvent, { type: "UNIT_REMOVED" | "UNIT_FLIPPED" | "ARMY_STACK_LOST" | "STACK_TOKEN_DISCARDED" }>;
+    const fallen = state.combat.units[loss.unitId];
+    if (fallen && (nextEvent.type !== "UNIT_REMOVED" || !fallen.townVeterancy?.lossRecorded)) {
+      if (nextEvent.type === "UNIT_REMOVED") (fallen.townVeterancy ??= {}).lossRecorded = true;
+      townAllyLost(state, fallen);
+      neutralTownAllyLost(state, fallen, nextEvent.type);
+    }
+  }
+  if (nextEvent.type === "DAMAGE_ASSIGNED" && state.combat) {
+    const hit = nextEvent as Extract<GameEvent, { type: "DAMAGE_ASSIGNED" }>;
+    const target = hit.target.type === "unit" ? state.combat.units[hit.target.unitId] : undefined;
+    // Guardian Angel can protect any ally, including one without rank abilities.
+    // Record every hit so the removal chokepoint can distinguish attacks from spells.
+    if (target) {
+      (target.factionVeterancy ??= {}).lastDamage = { kind: hit.damageKind, source: hit.source, amount: hit.amount };
+    }
+    // Follow-up damage may remove the target recursively. Preserve this hit's
+    // bookkeeping first so the outer event cannot restore stale lethal state.
+    if (target) neutralTownCardDamageResolved(state, target, hit.source, hit.damageKind, hit.amount, neutralTownPrevented);
+  }
   if (nextEvent.type === "UNIT_REMOVED" && state.combat) {
     const lost =
       state.combat.units[

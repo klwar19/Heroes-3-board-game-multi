@@ -89,6 +89,16 @@ describe("Battle Test free setup", () => {
     const experience = state.players.p1.army[0].experience ?? 0;
     expect(experience).toBeGreaterThan(0);
     expect(unitRankForExperience("bronze", experience)).toBe(3);
+
+    state = applyOk(state, {
+      type: "PLACE_COMBAT_UNIT",
+      playerId: "p1",
+      armyUnitId: state.players.p1.army[0]!.id,
+      position: 12
+    });
+    const deployed = Object.values(state.combat!.units).find((unit) => unit.controllerId === "p1");
+    expect(deployed?.unitExperience).toBe(experience);
+    expect(deployed?.unitRank).toBe(3);
   });
 
   it("lets the tester pick BINH, pure Legacy, or Tournament mode before Begin", () => {

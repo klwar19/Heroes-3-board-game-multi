@@ -234,12 +234,23 @@ function getVisiblePendingChoice(choice: PendingChoice, viewerPlayerId: PlayerId
     };
   }
 
+  if (choice.type === "OPTION_CHOICE" && choice.context === "elemental-veterancy" &&
+      choice.elementalChoice?.request.kind === "veteran-tribute" && choice.playerId !== viewerPlayerId) {
+    return {
+      ...cloneSerializable(choice),
+      options: [{ label: "The enemy is choosing Blood Tribute." }],
+      elementalChoice: { request: cloneSerializable(choice.elementalChoice.request), picks: [] }
+    };
+  }
+
   // Magi Power Drain: the candidate Power cards are the defender's hand, so
   // their identities stay private to the choosing player.
   if (choice.type === "COMBAT_HAND_DISCARD" && choice.playerId !== viewerPlayerId) {
     return {
       ...cloneSerializable(choice),
-      powerCardIds: choice.powerCardIds.map(() => "hidden")
+      powerCardIds: choice.powerCardIds.map(() => "hidden"),
+      reactionSpell: undefined,
+      directSpell: undefined
     };
   }
 

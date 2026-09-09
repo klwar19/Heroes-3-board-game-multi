@@ -81,7 +81,7 @@ export function assetUrl(path: string): string;
 export function assetUrl(path: string | undefined): string | undefined;
 export function assetUrl(path: string | undefined): string | undefined {
   // Code-shipped gameplay tokens are included in the app deployment, independent of the media CDN.
-  if (path?.startsWith("/game-tokens/")) return path;
+  if (path?.startsWith("/game-tokens/") || path?.startsWith("/fx/")) return path;
   if (!ASSET_BASE_URL || path === undefined) {
     return path;
   }

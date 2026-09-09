@@ -635,6 +635,27 @@ export function noteGateTravelSlipsPastGuard(
   );
 }
 
+/**
+ * Immediate guarded-Monolith victory reward: travelling now skips a live guard
+ * on the destination without defeating or clearing it. The flag lives only on
+ * the winning visit/teleport step, so staying or entering again later fights as
+ * normal.
+ */
+export function noteMonolithVictoryBypassesGuard(
+  state: GameState,
+  playerId: PlayerId,
+  field: MapFieldState | undefined
+): void {
+  if (!field || !isFieldGuarded(field)) {
+    return;
+  }
+  eventNote(
+    state,
+    `${eventPlayerName(state, playerId)} uses the Monolith victory passage to bypass the guards at the ${locationDefinitionName(field.location)} — the guards remain for a later entry.`,
+    playerId
+  );
+}
+
 export type ResourceDieFace = { resource: ResourceKind; amount: number };
 
 /**
@@ -3766,10 +3787,11 @@ export function unitDrillsUsedThisRound(state: GameState, playerId: PlayerId): n
   return player?.unitDrillRound === state.round ? Math.max(0, player.unitDrillsUsed ?? 1) : 0;
 }
 
-/** Movement paid by Drill at the hero's current field; null means off-map. */
-export function unitDrillMovementCost(state: GameState, playerId: PlayerId): 0 | 1 | null {
+/** Movement paid by the selected unit's Drill; bronze is free, null means off-map. */
+export function unitDrillMovementCost(state: GameState, playerId: PlayerId, armyUnit?: ArmyUnitState): 0 | 1 | null {
   const hero = getMainHero(state, playerId);
   if (!hero?.spaceId) return null;
+  if (armyUnit && coreUnitDefinitions[armyUnit.unitDefId]?.tier === "bronze") return 0;
   const location = state.adventure?.fields[hero.spaceId]?.location;
   return equipmentFreeDrillAvailable(state, playerId) || location === "town" || location === "settlement" || location === "random_town" ? 0 : 1;
 }
@@ -3787,13 +3809,13 @@ export function unitDrillAvailable(state: GameState, playerId: PlayerId): boolea
   if (!player || unitDrillsUsedThisRound(state, playerId) >= unitDrillLimit(state, playerId)) {
     return false;
   }
-  const movementCost = unitDrillMovementCost(state, playerId);
   const hero = getMainHero(state, playerId);
-  if (movementCost === null || !hero || hero.movementPoints < movementCost) {
+  if (!hero?.spaceId) {
     return false;
   }
   return drillableArmyUnits(state, playerId).some(
-    (armyUnit) => (player.resources.gold ?? 0) >= unitDrillGoldCostFor(state, playerId, armyUnit)
+    (armyUnit) => hero.movementPoints >= (unitDrillMovementCost(state, playerId, armyUnit) ?? Infinity) &&
+      (player.resources.gold ?? 0) >= unitDrillGoldCostFor(state, playerId, armyUnit)
   );
 }
 
@@ -6146,10 +6168,24 @@ export function setDungeonEncounterHook(
  * tests without the reducer), arrival is inert — the hero simply arrives.
  */
 let teleportArrivalHook:
-  | ((state: GameState, hero: HeroState, field: MapFieldState, originSpaceId: MapSpaceId) => void)
+  | ((
+      state: GameState,
+      hero: HeroState,
+      field: MapFieldState,
+      originSpaceId: MapSpaceId,
+      bypassGuard: boolean
+    ) => void)
   | null = null;
 export function setTeleportArrivalHook(
-  hook: ((state: GameState, hero: HeroState, field: MapFieldState, originSpaceId: MapSpaceId) => void) | null
+  hook:
+    | ((
+        state: GameState,
+        hero: HeroState,
+        field: MapFieldState,
+        originSpaceId: MapSpaceId,
+        bypassGuard: boolean
+      ) => void)
+    | null
 ): void {
   teleportArrivalHook = hook;
 }
@@ -6163,7 +6199,8 @@ function resolveTeleportArrival(
   state: GameState,
   heroId: HeroId,
   spaceId: MapSpaceId,
-  originSpaceId: MapSpaceId
+  originSpaceId: MapSpaceId,
+  bypassGuard = false
 ): void {
   const adventure = state.adventure;
   const hero = state.heroes[heroId];
@@ -6171,7 +6208,7 @@ function resolveTeleportArrival(
   if (!adventure || !hero || !field) {
     return;
   }
-  teleportArrivalHook?.(state, hero, field, originSpaceId);
+  teleportArrivalHook?.(state, hero, field, originSpaceId, bypassGuard);
 }
 
 /**
@@ -9001,7 +9038,13 @@ export function queueEquipmentGradePurchase(
   state.adventure.rewardQueue.push({ playerId, kind: "visit-steps", steps: [step] });
 }
 
-export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSpaceId, revisit: boolean): void {
+export function beginFieldVisit(
+  state: GameState,
+  heroId: HeroId,
+  fieldId: MapSpaceId,
+  revisit: boolean,
+  options?: { bypassMonolithArrivalGuard?: boolean }
+): void {
   const adventure = state.adventure;
   const hero = state.heroes[heroId];
   const field = adventure?.fields[fieldId];
@@ -9020,7 +9063,13 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
       fieldId,
       steps: [
         ...Array.from({ length: pendingWogDice }, () => ({ type: "ROLL_RESOURCE_DICE", count: 1 } as const)),
-        { type: "RESUME_FIELD_VISIT", heroId, fieldId, revisit }
+        {
+          type: "RESUME_FIELD_VISIT",
+          heroId,
+          fieldId,
+          revisit,
+          ...(options?.bypassMonolithArrivalGuard ? { bypassMonolithArrivalGuard: true as const } : {})
+        }
       ]
     };
     processPendingVisit(state);
@@ -9409,7 +9458,13 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
     return;
   }
 
-  adventure.pendingVisit = { heroId, playerId, fieldId, steps };
+  adventure.pendingVisit = {
+    heroId,
+    playerId,
+    fieldId,
+    steps,
+    ...(options?.bypassMonolithArrivalGuard ? { bypassMonolithArrivalGuard: true as const } : {})
+  };
   processPendingVisit(state);
 }
 
@@ -10118,7 +10173,9 @@ export function processPendingVisit(state: GameState): void {
         rollResourceDice(state, visit, step.count, step.capHighValues, step.origin, step.resolveCount, step.prophecyThreePick);
         break;
       case "RESUME_FIELD_VISIT":
-        beginFieldVisit(state, step.heroId, step.fieldId, step.revisit);
+        beginFieldVisit(state, step.heroId, step.fieldId, step.revisit, {
+          bypassMonolithArrivalGuard: step.bypassMonolithArrivalGuard
+        });
         break;
       case "RAID_BOSS_FIGHT": {
         // The combat opener lives across the import cycle; the visit is done
@@ -11172,7 +11229,7 @@ export function processPendingVisit(state: GameState): void {
         if (adventure.pendingVisit === visit && visit.steps.length === 0) {
           adventure.pendingVisit = null;
         }
-        resolveTeleportArrival(state, heroId, spaceId, originSpaceId);
+        resolveTeleportArrival(state, heroId, spaceId, originSpaceId, step.bypassGuard === true);
         return;
       }
       case "CREATE_SECONDARY_HERO": {
@@ -13199,6 +13256,12 @@ function tokenMayCoverField(state: GameState, field: MapFieldState | undefined, 
   if (!field) {
     return false;
   }
+  // A designer-marked Break is map structure, not disposable field content.
+  // Keep it exactly like the protected VII objective ring: teleport tokens may
+  // use any other compatible field, but never erase this choke point.
+  if (field.breakField) {
+    return false;
+  }
   if (!tokenMayCoverLocation(field.location, field.difficulty)) {
     return false;
   }
@@ -13389,10 +13452,16 @@ function teleportStayOption(noun: string): { label: string; steps: VisitStep[] }
 
 /** The visit steps that carry the hero to one travel destination. */
 function mapTokenTravelSteps(visit: PendingVisit, kind: MapTokenKind, destination: MapTokenDestination): VisitStep[] {
+  const bypassArrivalGuard = kind === "monolith" && visit.bypassMonolithArrivalGuard === true;
   if (destination.type === "pending-tile") {
     // The unit toll of a Whirlpool travel into a face-down tile lands in
     // completeMapTokenTeleport, after the token is placed and the hero moves.
-    return [{ type: "TOKEN_TELEPORT_REVEAL", token: kind, tileInstanceId: destination.tileInstanceId }];
+    return [{
+      type: "TOKEN_TELEPORT_REVEAL",
+      token: kind,
+      tileInstanceId: destination.tileInstanceId,
+      ...(bypassArrivalGuard ? { bypassArrivalGuard: true as const } : {})
+    }];
   }
   return [
     // TELEPORT_HERO without `visit`: arriving on the destination token must NOT
@@ -13406,7 +13475,8 @@ function mapTokenTravelSteps(visit: PendingVisit, kind: MapTokenKind, destinatio
       type: "RESOLVE_TELEPORT_ARRIVAL",
       heroId: visit.heroId,
       spaceId: destination.spaceId,
-      originSpaceId: visit.fieldId
+      originSpaceId: visit.fieldId,
+      ...(bypassArrivalGuard ? { bypassGuard: true as const } : {})
     }
   ];
 }
@@ -14213,6 +14283,7 @@ function resolveTokenTeleportReveal(
     heroId: visit.heroId,
     kind: step.token,
     ...(step.pair !== undefined ? { pair: step.pair } : {}),
+    ...(step.bypassArrivalGuard ? { bypassArrivalGuard: true } : {}),
     fromSpaceId: visit.fieldId,
     destTileInstanceId: tile.id
   };
@@ -14490,7 +14561,8 @@ function completeMapTokenTeleport(
     type: "RESOLVE_TELEPORT_ARRIVAL",
     heroId: hero.id,
     spaceId: destSpaceId,
-    originSpaceId: from
+    originSpaceId: from,
+    ...(teleport.bypassArrivalGuard ? { bypassGuard: true } : {})
   };
   const steps: VisitStep[] = teleport.kind === "whirlpool" ? [{ type: "WHIRLPOOL_PENALTY" }, arrival] : [arrival];
   if (adventure.pendingVisit) {
