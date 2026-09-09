@@ -6160,6 +6160,8 @@ function addBankedReinforcementActions(
   }
 
   for (const discount of player.reinforcementDiscounts ?? []) {
+    // Saplings can only be spent inside its beginning-of-round prompt.
+    if (discount.source === "saplings") continue;
     for (const unit of player.army) {
       const name = coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId;
       const reinforceCost = reinforcementDiscountCostFor(

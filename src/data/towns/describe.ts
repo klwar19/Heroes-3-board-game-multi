@@ -31,7 +31,7 @@ export function describeBuildingEffect(building: TownBuildingDefinition): string
     case "RESOURCE_ROUND_RESOURCE_DIE":
       return "At the beginning of each Resource round, roll 1 Resource die and gain the rolled resources.";
     case "ASTROLOGERS_HALF_GOLD_REINFORCE":
-      return `At the beginning of each Astrologers' round, you may instantly reinforce one of your ${effect.tiers.join(" or ")} units for half of the gold cost.`;
+      return `At the beginning of each Astrologers' round, you may instantly reinforce one of your ${effect.tiers.join(" or ")} units for half of the gold cost (rounded up), then apply Legion and other discounts (minimum 0). Play Legion inside the beginning-of-round prompt before confirming; reinforce now or skip.`;
     case "ASTROLOGERS_FLAT_GOLD_REINFORCE":
       return `During each Astrologers' round, while Reinforcing units you may reduce one ${effect.tiers.join(" or ")} unit's reinforce cost by ${effect.discount} gold (minimum 0). Usable at any point of your turn that round; Reinforcing needs a Citadel.`;
     case "RESOURCE_ROUND_SEARCH_DISCARD":

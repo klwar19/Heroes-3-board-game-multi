@@ -5325,6 +5325,11 @@ export function redeemReinforcementDiscountAction(
   if (state.combat) {
     throw new Error("Banked reinforcement discounts cannot be redeemed during combat.");
   }
+  if (state.players[action.playerId]?.reinforcementDiscounts?.some(
+    (bank) => bank.id === action.discountId && bank.source === "saplings"
+  )) {
+    throw new Error("Resolve Saplings inside its beginning-of-round prompt.");
+  }
   // REDEEM_REINFORCEMENT_DISCOUNT is HANDLER-validated, so it skips the
   // getLegalActions membership check — this IS its turn gate, and it must match
   // the offer's (`addBankedReinforcementActions`). Without it a forged action

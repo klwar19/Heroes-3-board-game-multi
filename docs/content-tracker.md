@@ -22,7 +22,7 @@ Chosen in the lobby ("Game mode", BINH default), stored on the game state, synce
 | **Conquest** | ✅ | Flag an enemy faction Town — the default skirmish goal. |
 | **Grail Hunt** | ✅ | Win either way: capture the Grail (defeat its Lvl-VII guard, dig it for 1 MP, carry it home to your town), or beat every enemy hero in combat at least once (only 2 of 3 in a 4-player game). A Grail is forced onto a Center tile; the Dragon Utopia is **not** an objective here. |
 | **Dragon Hunt** | ✅ | Win either way: defeat the Dragon Utopia (no need to hold it afterwards), or beat every enemy hero in combat at least once (only 2 of 3 in a 4-player game). A Dragon Utopia is forced onto a Center tile. |
-| **Dragon Conqueror** | ✅ | Defeat the Dragon Utopia to capture it; the holder garrisons it and rivals must besiege it (Walls/Gate/Arrow Tower). Controlling it at the start of your turn wins. |
+| **Dragon Conqueror** | ✅ | Defeat the Dragon Utopia to capture it; the holder garrisons it and rivals must besiege it (Walls/Gate/Arrow Tower). Holding it through the end of the round following capture wins. |
 
 Non-objective Grail/Dragon Utopia fields are normal Lvl-VII fights rewarding 10 gold + a Relic artifact (Search 2, choose 1).
 

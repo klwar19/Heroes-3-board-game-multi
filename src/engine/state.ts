@@ -599,7 +599,7 @@ export type FieldOverridePlacementMode =
  *    game).
  *  - "dragon-conqueror": defeat the Dragon Utopia to capture it, then hold it.
  *    The holder garrisons it; rivals must besiege it (Walls, Gate, Arrow
- *    Tower) to take it. Controlling the Utopia at the start of your turn wins.
+ *    Tower) to take it. Hold through the end of the round following capture to win.
  */
 export type VictoryMode =
   | "conquest"
@@ -8967,8 +8967,9 @@ export type RecruitDiscountVoucher = {
  */
 export type ReinforcementDiscountBank = {
   id: string;
-  /** "repair-dock" = Akashi's (Azur Lane) Repair Dock hero specialty. */
-  source: "necromancy" | "hill-fort" | "pub" | "repair-dock";
+  /** Saplings is private to its blocking round-start visit, never a map action.
+   * "repair-dock" = Akashi's (Azur Lane) Repair Dock hero specialty. */
+  source: "necromancy" | "hill-fort" | "pub" | "saplings" | "repair-dock";
   /** Human-readable source card/object name used in action labels and logs. */
   sourceName: string;
   /** Unit tiers this source may reinforce. */
@@ -11167,6 +11168,8 @@ export type MapFieldState = {
   /** Visitable fields get a black cube after the visit and then count as empty. */
   blackCube: boolean;
   flagOwnerId: PlayerId | null;
+  /** Continuous Dragon Conqueror ownership; victory follows the next full round. */
+  dragonConquerorHold?: { ownerId: PlayerId; captureRound: number };
   /**
    * Obelisks and Star Axes keep every visitor's cube: players beyond the
    * first flagger land here ("do not remove any enemy Faction Cubes;
@@ -12950,6 +12953,27 @@ export type VisitStep =
       type: "NEUTRAL_RECRUIT_RESOLVE";
       drawn: string[];
       recruit?: string;
+    }
+  | {
+      /** Blocking Saplings round-start transaction, rebuilt after each Legion play. */
+      type: "SAPLINGS_REINFORCE_MENU";
+      buildingId: string;
+      tiers: string[];
+      discountId?: string;
+    }
+  | {
+      type: "SAPLINGS_REINFORCE_PICK";
+      discountId: string;
+      armyUnitId?: string;
+      kind?: "reinforce" | "stack";
+    }
+  | {
+      type: "SAPLINGS_LEGION";
+      cardId: CardId;
+      optionIndex: number;
+      armyUnitId: string;
+      kind: "reinforce" | "stack";
+      menu: Extract<VisitStep, { type: "SAPLINGS_REINFORCE_MENU" }>;
     }
   | {
       /** Saplings / settlement perks: reinforce with only the gold halved. */

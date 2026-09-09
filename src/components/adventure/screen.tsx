@@ -4836,11 +4836,12 @@ export function AdventureHud({
         } else if (mode === "dragon-hunt") {
           status = `defeat the Dragon Utopia / ${heroProgress}`;
         } else if (mode === "dragon-conqueror") {
-          const holder = Object.values(state.adventure?.fields ?? {}).find(
-            (field) => field.location === "dragon_utopia" && field.flagOwnerId,
-          )?.flagOwnerId;
+          const heldUtopia = Object.values(state.adventure?.fields ?? {}).find(
+            (field) => field.location === "dragon_utopia" && !field.grailConverted && field.flagOwnerId,
+          );
+          const holder = heldUtopia?.flagOwnerId;
           status = holder
-            ? `Utopia held by ${state.players[holder]?.name ?? "a rival"}`
+            ? `Utopia held by ${state.players[holder]?.name ?? "a rival"} · defend until all players end round ${(heldUtopia?.dragonConquerorHold?.captureRound ?? state.round) + 1}`
             : "capture the Dragon Utopia";
         }
         return (

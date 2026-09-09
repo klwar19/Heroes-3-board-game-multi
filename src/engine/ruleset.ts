@@ -69,7 +69,7 @@ export const VICTORY_MODE_DESCRIPTIONS: Record<VictoryMode, string> = {
     "(3/4 players need 2 distinct rivals; 5/6 need 3). A Dragon Utopia is guaranteed on a VI–VII Center tile.",
   "dragon-conqueror":
     "Defeat the Dragon Utopia to capture it, then hold it. The holder garrisons the Utopia and rivals must " +
-    "besiege it (Walls, Gate, Arrow Tower) to take it. Control the Utopia at the start of your turn to win, or meet the Conquest requirement through permanent faction cubes earned by distinct PvP wins (target fixed from the starting table)."
+    "besiege it (Walls, Gate, Arrow Tower) to take it. Hold the Utopia until every player has ended the round following capture to win (capture in round 1, win after the last player ends round 2), or meet the Conquest requirement through permanent faction cubes earned by distinct PvP wins (target fixed from the starting table)."
 };
 
 export const PVP_TROOP_LOSS_LABELS: Record<"normal" | "none", string> = {

@@ -4475,6 +4475,9 @@ export function flagField(state: GameState, playerId: PlayerId, field: MapFieldS
   }
 
   field.flagOwnerId = playerId;
+  if (field.location === "dragon_utopia" && previousOwnerId !== playerId) {
+    field.dragonConquerorHold = { ownerId: playerId, captureRound: state.round };
+  }
 
   ensureSettlementRecruitFactions(state);
 
@@ -6756,12 +6759,15 @@ function handleDragonUtopiaVisit(state: GameState, hero: HeroState, field: MapFi
 
   if (mode === "dragon-conqueror" && !field.grailConverted && !fieldFlaggedByAlly(state, hero.controllerId, field)) {
     // Capture: flag the Utopia for the victor and keep neutrals from
-    // respawning. Holding it at the start of a later turn wins. An ALLY's
+    // respawning. Hold through the end of the following round to win. An ALLY's
     // already-captured Utopia is skipped (this branch writes `flagOwnerId`
     // DIRECTLY, so it needs its own ally gate — `flagField` never sees it).
     const firstCapture = !field.everFlagged;
     const previousOwnerId = field.flagOwnerId;
     field.flagOwnerId = hero.controllerId;
+    if (previousOwnerId !== hero.controllerId || !field.dragonConquerorHold) {
+      field.dragonConquerorHold = { ownerId: hero.controllerId, captureRound: state.round };
+    }
     field.everFlagged = true;
     field.blackCube = false;
     // First defeat pays 10 gold and two Search (2) artifacts. Recapturing an
@@ -7269,21 +7275,17 @@ export function tryDeliverGrail(state: GameState, hero: HeroState): boolean {
   return true;
 }
 
-/**
- * Dragon Conqueror: a player who controls the Dragon Utopia at the start of
- * their turn has held it through a full round and wins.
- */
+/** Check only after the last player ends the round following capture. */
 export function checkDragonConquerorHold(state: GameState, playerId: PlayerId): void {
   const adventure = state.adventure;
-  if (!adventure || adventureVictoryMode(state) !== "dragon-conqueror" || adventure.winnerPlayerId) {
-    return;
-  }
-
-  const holdsUtopia = Object.values(adventure.fields).some(
-    (field) => field.location === "dragon_utopia" && !field.grailConverted && field.flagOwnerId === playerId
+  if (!adventure || adventureVictoryMode(state) !== "dragon-conqueror" || adventure.winnerPlayerId || state.players[playerId]?.eliminated) return;
+  const holdsUtopia = Object.values(adventure.fields).some((field) =>
+    field.location === "dragon_utopia" && !field.grailConverted &&
+    field.flagOwnerId === playerId && field.dragonConquerorHold?.ownerId === playerId &&
+    state.round > field.dragonConquerorHold.captureRound + 1
   );
   if (holdsUtopia) {
-    declareAdventureWinner(state, playerId, "held the Dragon Utopia", { viaVictoryCondition: true });
+    declareAdventureWinner(state, playerId, "held the Dragon Utopia through the end of the following round", { viaVictoryCondition: true });
   }
 }
 
@@ -10924,6 +10926,36 @@ export function processPendingVisit(state: GameState): void {
         }
         options.push(step.decline);
         visit.steps.unshift({ type: "CHOOSE_ONE", prompt: step.prompt, options });
+        break;
+      }
+      case "SAPLINGS_REINFORCE_MENU":
+        saplingsReinforceMenu(state, visit, step);
+        break;
+      case "SAPLINGS_REINFORCE_PICK": {
+        if (step.armyUnitId && step.kind) {
+          redeemReinforcementDiscount(state, visit.playerId, step.discountId, step.armyUnitId, step.kind);
+        } else {
+          const player = state.players[visit.playerId];
+          if (player) player.reinforcementDiscounts = player.reinforcementDiscounts?.filter((bank) => bank.id !== step.discountId);
+        }
+        break;
+      }
+      case "SAPLINGS_LEGION": {
+        const player = state.players[visit.playerId];
+        const card = balanceCard(state, step.cardId) ?? cardLibrary[step.cardId];
+        const effect = card?.effect.type === "CHOOSE_ONE" ? card.effect.options[step.optionIndex]?.effect : undefined;
+        if (player?.hand.includes(step.cardId) && !legionPieceAlreadyBanked(state, visit.playerId, step.cardId) &&
+            effect?.type === "GAIN_RECRUIT_DISCOUNT" && step.menu.discountId &&
+            reinforcementDiscountCostFor(state, visit.playerId, step.menu.discountId, step.armyUnitId, step.kind)) {
+          player.hand.splice(player.hand.indexOf(step.cardId), 1);
+          player.discard.push(step.cardId);
+          bankRecruitDiscountVoucher(state, visit.playerId, {
+            cardId: step.cardId, amount: effect.amount, valuables: effect.valuables,
+            target: { kind: step.kind, armyUnitId: step.armyUnitId }
+          });
+          appendEvent(state, { type: "CARD_PLAYED", playerId: visit.playerId, cardId: step.cardId, timing: card?.timing ?? "instant", mode: "basic" });
+        }
+        visit.steps.unshift(step.menu);
         break;
       }
       case "USE_LEGION_RECRUIT_DISCOUNT": {
@@ -19616,6 +19648,21 @@ export function startAdventureRound(state: GameState): void {
     return;
   }
 
+  // Ordered and parallel turns both arrive after everyone ends and the round
+  // counter advances. Resolve control before income and new-round effects.
+  if (adventureVictoryMode(state) === "dragon-conqueror") {
+    for (const field of Object.values(state.adventure?.fields ?? {})) {
+      if (field.location !== "dragon_utopia" || field.grailConverted || !field.flagOwnerId) continue;
+      // Older saves have no capture marker. Allow a full upcoming round to
+      // defend rather than awarding an immediate win during migration.
+      if (field.dragonConquerorHold?.ownerId !== field.flagOwnerId) {
+        field.dragonConquerorHold = { ownerId: field.flagOwnerId, captureRound: state.round - 1 };
+      }
+      checkDragonConquerorHold(state, field.flagOwnerId);
+      if (state.adventure?.winnerPlayerId) return;
+    }
+  }
+
   const kind = state.round === 1 ? "first" : state.round % 2 === 1 ? "resource" : "astrologers";
 
   // Anime faction hand-limit penalties (Hidden Leaf on Resource rounds, Little
@@ -20680,71 +20727,69 @@ function queueGardenOfLife(state: GameState, playerId: PlayerId, buildingId: str
 }
 
 function queueHalfGoldReinforce(state: GameState, playerId: PlayerId, buildingId: string, tiers: string[]): void {
-  const player = state.players[playerId];
-  if (!player) {
-    return;
-  }
-
-  const options: { label: string; steps: VisitStep[] }[] = [];
-  for (const unit of player.army) {
-    if (unit.side !== "few") {
-      continue;
-    }
-
-    const def = coreUnitDefinitions[unit.unitDefId];
-    const packSide = getUnitSide(unit.unitDefId, "pack");
-    if (!def || !packSide || !tiers.includes(def.tier)) {
-      continue;
-    }
-
-    const cost: ResourceCost = { ...packSide.cost };
-    cost.gold = Math.ceil((cost.gold ?? 0) / 2);
-    if (!hasResources(player, cost)) {
-      continue;
-    }
-
-    const costLabel = Object.entries(cost)
-      .filter(([, amount]) => amount)
-      .map(([resource, amount]) => `${amount} ${resource}`)
-      .join(" + ");
-    options.push({
-      label: `Reinforce ${def.name} (${costLabel || "free"})`,
-      steps: [{ type: "REINFORCE_HALF_GOLD", armyUnitId: unit.id }]
-    });
-  }
-
-  // Polish Unit Stacks: the Saplings' half-gold deal also buys ONE Stack layer
-  // on a matching-tier Pack/Neutral card (half the Stack gold, rounded up —
-  // the same rounding as its reinforce).
-  for (const target of stackOfferTargets(state, playerId, tiers)) {
-    const option = stackOfferOption(
-      state,
-      playerId,
-      target,
-      Math.ceil(target.baseGold / 2),
-      coreBuildingDefinitions[buildingId]?.name ?? "Saplings"
-    );
-    if (option) {
-      options.push(option);
-    }
-  }
-
-  if (options.length === 0) {
-    return;
-  }
-
-  options.push({ label: "Skip", steps: [] });
   state.adventure?.rewardQueue.push({
     playerId,
     kind: "visit-steps",
-    steps: [
-      {
-        type: "CHOOSE_ONE",
-        prompt: `${coreBuildingDefinitions[buildingId]?.name ?? "Saplings"}: reinforce one unit for half the gold cost`,
-        options
-      }
-    ]
+    steps: [{ type: "SAPLINGS_REINFORCE_MENU", buildingId, tiers }]
   });
+}
+
+/** A blocking round-start offer: Legion plays refresh this same menu. */
+function saplingsReinforceMenu(state: GameState, visit: PendingVisit, menu: Extract<VisitStep, { type: "SAPLINGS_REINFORCE_MENU" }>): void {
+  const player = state.players[visit.playerId];
+  if (!player) return;
+  const bank = menu.discountId
+    ? player.reinforcementDiscounts?.find((candidate) => candidate.id === menu.discountId)
+    : bankReinforcementDiscount(state, visit.playerId, "saplings", {
+        sourceName: coreBuildingDefinitions[menu.buildingId]?.name ?? "Saplings",
+        allowedTiers: menu.tiers as ReinforcementDiscountBank["allowedTiers"],
+        halfGoldOnly: true, roundDown: false, allowStack: true
+      });
+  if (!bank) return;
+  const nextMenu: typeof menu = { ...menu, discountId: bank.id };
+  const options: { label: string; steps: VisitStep[]; disabledReason?: string }[] = [];
+  for (const unit of player.army) {
+    for (const kind of ["reinforce", "stack"] as const) {
+      const cost = reinforcementDiscountCostFor(state, visit.playerId, bank.id, unit.id, kind);
+      if (!cost) continue;
+      const name = coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId;
+      const affordable = hasRecruitResources(state, visit.playerId, cost);
+      options.push({
+        label: `${kind === "stack" ? "Add a Stack to" : "Reinforce"} ${name} (${costLabelOf(cost)})`,
+        steps: [{ type: "SAPLINGS_REINFORCE_PICK", discountId: bank.id, armyUnitId: unit.id, kind }],
+        ...(!affordable ? { disabledReason: "Not enough resources; apply a Legion discount first or skip." } : {})
+      });
+      for (const cardId of new Set(player.hand)) {
+        if (legionPieceAlreadyBanked(state, visit.playerId, cardId)) continue;
+        const card = balanceCard(state, cardId) ?? cardLibrary[cardId];
+        if (card?.effect.type !== "CHOOSE_ONE") continue;
+        for (const [optionIndex, option] of card.effect.options.entries()) {
+          const effect = option.effect;
+          if (effect.type !== "GAIN_RECRUIT_DISCOUNT") continue;
+          // Preview via the same price seam, including the optional old-rule
+          // largest-Legion reading. Do not mutate the authoritative state.
+          const preview: GameState = { ...state, players: { ...state.players, [visit.playerId]: {
+            ...player, recruitDiscounts: [...(player.recruitDiscounts ?? []), {
+              cardId, amount: effect.amount, valuables: effect.valuables,
+              target: { kind, armyUnitId: unit.id }
+            }]
+          } } };
+          const cheaper = reinforcementDiscountCostFor(preview, visit.playerId, bank.id, unit.id, kind);
+          if (!cheaper || !Object.entries(cost).some(([resource, amount]) => (cheaper[resource as ResourceKind] ?? 0) < (amount ?? 0))) continue;
+          options.push({
+            label: `Play ${card.name} on ${name} (${kind}) — then pay ${costLabelOf(cheaper)}`,
+            steps: [{ type: "SAPLINGS_LEGION", cardId, optionIndex, armyUnitId: unit.id, kind, menu: nextMenu }]
+          });
+        }
+      }
+    }
+  }
+  if (options.length === 0) {
+    player.reinforcementDiscounts = player.reinforcementDiscounts?.filter((candidate) => candidate.id !== bank.id);
+    return;
+  }
+  options.push({ label: "Skip", steps: [{ type: "SAPLINGS_REINFORCE_PICK", discountId: bank.id }] });
+  visit.steps.unshift({ type: "CHOOSE_ONE", prompt: `${bank.sourceName}: reinforce now for half gold (rounded up), then other discounts. Play Legion below before confirming, or skip.`, options });
 }
 
 /**
@@ -20911,9 +20956,6 @@ export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
     return;
   }
 
-  // Dragon Conqueror: holding the Dragon Utopia into the start of your turn
-  // wins the game before anything else this turn resolves.
-  checkDragonConquerorHold(state, playerId);
   if (state.adventure?.winnerPlayerId) {
     return;
   }
