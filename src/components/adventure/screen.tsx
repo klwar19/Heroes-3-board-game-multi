@@ -137,7 +137,10 @@ import {
   sanitizeManualPlayerOrder,
   parallelInteractionBlocker,
   parallelTurnsActive,
+  playersAreAllied,
   polishArmyUnitStackCap,
+  polishQuickCombatArmyStrength,
+  polishQuickCombatEnabled,
   polishQuickCombatFieldInfo,
   readyCheckConfirmers,
   remainingParallelPlayerIds,
@@ -4821,7 +4824,16 @@ export function AdventureHud({
         const beaten = conquestProgress(state, viewerPlayerId);
         const heroProgress = `rivals defeated ${beaten}/${required}`;
         let status = `${heroProgress} (PvP wins or eliminated)`;
-        if (mode === "grail") {
+        if (mode === "conquer") {
+          const enemiesLeft = Object.values(state.players).filter(
+            (candidate) =>
+              candidate.id !== "neutrals" &&
+              candidate.id !== viewerPlayerId &&
+              !playersAreAllied(state, candidate.id, viewerPlayerId) &&
+              !candidate.eliminated,
+          ).length;
+          status = `${enemiesLeft} enemy faction${enemiesLeft === 1 ? "" : "s"} remaining`;
+        } else if (mode === "grail") {
           const grail = state.adventure?.grail;
           if (grail?.status === "carried" && grail.carrierHeroId) {
             status = `Grail carried by ${state.players[state.heroes[grail.carrierHeroId]?.controllerId ?? ""]?.name ?? "a hero"}`;
@@ -5331,7 +5343,11 @@ export function TownHeroDock({
             <small>
               {army.length} unit{army.length === 1 ? "" : "s"}
             </small>
-            <small className="dockSubtle">Army cards</small>
+            <small className="dockSubtle">
+              {polishQuickCombatEnabled(state)
+                ? `Army strength: ${polishQuickCombatArmyStrength(state, armyPlayer.id)}`
+                : "Army cards"}
+            </small>
           </span>
           <span aria-hidden="true" className="dockOpenHint">
             {armyOpen ? "Close ▾" : "Open ▸"}
@@ -6191,6 +6207,11 @@ export function ArmyPanel({
       <h3>
         {lexicon.army} ({player.army.length})
       </h3>
+      {polishQuickCombatEnabled(state) ? (
+        <small className="armyStrengthNote" role="note">
+          Army strength: {polishQuickCombatArmyStrength(state, playerId)} (top 5 units)
+        </small>
+      ) : null}
       {experienceActive && player.army.length > 0 ? (
         // The board itself is a POP-UP WINDOW (like the Hero Grade / Hero
         // Equipment windows): this button opens it with per-unit XP, the
@@ -11931,6 +11952,8 @@ const BINH_RULE_SUMMARIES: Partial<Record<HouseRuleId, string>> = {
 const POLISH_RULE_SUMMARIES: Partial<Record<HouseRuleId, string>> = {
   "polish-spell-book":
     "Spells live in a used/refreshed Book and are cast with Cast-a-Spell cards.",
+  "polish-single-dimension-door":
+    "Dimension Door may target each Hero only once per turn.",
   "polish-creature-banks":
     "Use the Polish 20-bank roster, guardian cards, abilities and rewards.",
   "polish-bank-sizes":
@@ -14818,6 +14841,7 @@ function GameOptionsPanel({
                   {(
                     [
                       "conquest",
+                      "conquer",
                       "grail",
                       "dragon-hunt",
                       "dragon-conqueror",

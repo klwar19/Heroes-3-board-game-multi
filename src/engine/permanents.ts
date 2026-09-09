@@ -1039,6 +1039,7 @@ function applyCatapultHit(state: GameState, playerId: PlayerId, targetId: UnitId
       type: "WAR_MACHINE_TRIGGERED",
       playerId,
       cardId,
+      targetPosition: fort.position,
       message: `${warMachineName(state, playerId)} batters the ${fort.kind === "gate" ? "Gate" : "Wall"}.`
     });
   }

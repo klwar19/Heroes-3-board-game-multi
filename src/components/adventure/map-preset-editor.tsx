@@ -509,7 +509,10 @@ export function MapPresetEditor({
     else delete next.hiddenGrailUtopia;
     patch({
       objectives: Object.keys(next).length > 0 ? next : undefined,
-      ...(enabled && value.victoryMode && value.victoryMode !== "conquest"
+      ...(enabled &&
+        value.victoryMode &&
+        value.victoryMode !== "conquest" &&
+        value.victoryMode !== "conquer"
         ? { victoryMode: undefined }
         : {})
     });

@@ -109,6 +109,7 @@ import {
   isHerolessMineDefender,
   isMapPowerTierSpell,
   dimensionDoorDestinations,
+  dimensionDoorHeroAvailable,
   townPortalDestinations,
   canHeroDiscoverAdjacentTile,
   isTileRotationConnected,
@@ -4608,6 +4609,7 @@ function isOptionEffectPlayable(
           (hero) =>
             hero.controllerId === playerId &&
             hero.spaceId !== null &&
+            dimensionDoorHeroAvailable(state, hero) &&
             dimensionDoorDestinations(state, hero, effect.fields).length > 0,
         ),
       );
@@ -10984,6 +10986,11 @@ function getLegalReactionsForTriggerCore(
                   playerId: player.id,
                   cardId,
                   mode: "basic",
+                  ...(variant.effect.type === "INTERFERE_SPELL" &&
+                  houseRuleEnabled(state, "polish-card-balance") &&
+                  triggerEvent.type === "SPELL_CAST_STARTED"
+                    ? { interferenceMode: "damage" as const }
+                    : {}),
                   ...(variant.optionIndex !== undefined
                     ? { optionIndex: variant.optionIndex }
                     : {}),
@@ -11089,6 +11096,11 @@ function getLegalReactionsForTriggerCore(
                 playerId: player.id,
                 cardId,
                 mode: "expert",
+                ...(variant.effect.type === "INTERFERE_SPELL" &&
+                houseRuleEnabled(state, "polish-card-balance") &&
+                triggerEvent.type === "SPELL_CAST_STARTED"
+                  ? { interferenceMode: "damage" as const }
+                  : {}),
                 ...(variant.optionIndex !== undefined
                   ? { optionIndex: variant.optionIndex }
                   : {}),

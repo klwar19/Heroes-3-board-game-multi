@@ -95,6 +95,8 @@ export type FxCue =
       delayMs?: number;
       sound?: string;
       hitSound?: string;
+      /** Recoil the matching in-play war-machine card as the shot launches. */
+      recoil?: "ballista" | "catapult" | "cannon";
     }
   | { kind: "floater"; id: string; at: string; text: string; tone: "damage" | "heal" | "info"; delayMs?: number }
   | { kind: "pulse"; id: string; at: string; text?: string; delayMs?: number }
@@ -198,6 +200,33 @@ export const NEUTRAL_ATTACK_PAUSE_MS = 2000;
 
 const SAFETY_TIMEOUT_MS = 9000;
 
+/** Prefer a rendered copy when responsive layouts contain duplicate anchors. */
+function firstVisibleAnchor(selector: string): Element | null {
+  const matches = document.querySelectorAll(selector);
+  for (const match of matches) {
+    const rect = match.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      return match;
+    }
+  }
+  return null;
+}
+
+function resolveAnchorElement(anchor: string): Element | null {
+  if (typeof document === "undefined") {
+    return null;
+  }
+  if (anchor.startsWith("war-machine:")) {
+    return firstVisibleAnchor(`[data-fx-anchor="${anchor}"]`);
+  }
+  const [kind, value] = anchor.split(":", 2);
+  return kind === "unit"
+    ? firstVisibleAnchor(`[data-fx-unit="${value}"]`)
+    : kind === "cell"
+      ? firstVisibleAnchor(`[data-fx-cell="${value}"]`)
+      : firstVisibleAnchor(`[data-fx-anchor="${anchor}"]`);
+}
+
 function resolveAnchorRect(anchor: string): DOMRect | null {
   if (typeof document === "undefined") {
     return null;
@@ -207,14 +236,18 @@ function resolveAnchorRect(anchor: string): DOMRect | null {
     const h = window.innerHeight;
     return new DOMRect(w / 2 - 70, h / 2 - 98, 140, 196);
   }
-  const [kind, value] = anchor.split(":", 2);
-  const element =
-    kind === "unit"
-      ? document.querySelector(`[data-fx-unit="${value}"]`)
-      : kind === "cell"
-        ? document.querySelector(`[data-fx-cell="${value}"]`)
-        : document.querySelector(`[data-fx-anchor="${anchor}"]`);
-  return element ? element.getBoundingClientRect() : null;
+  const element = resolveAnchorElement(anchor);
+  if (element) {
+    return element.getBoundingClientRect();
+  }
+  // A temporary specialty-granted Ballista has no physical permanent card.
+  // Launch from its owner's hand/seat instead; if that dock is off-screen, use
+  // center stage so multiplayer spectators still see the shot.
+  if (anchor.startsWith("war-machine:")) {
+    const [, playerId] = anchor.split(":", 3);
+    return resolveAnchorElement(`hand:${playerId}`)?.getBoundingClientRect() ?? resolveAnchorRect("center");
+  }
+  return null;
 }
 
 function centerOf(rect: DOMRect): { x: number; y: number } {
@@ -830,6 +863,22 @@ async function runProjectile(stage: HTMLElement, cue: Extract<FxCue, { kind: "pr
 
   if (cue.sound) {
     playLibrarySound(cue.sound);
+  }
+
+  const launcher = resolveAnchorElement(cue.from) as HTMLElement | null;
+  if (launcher && cue.recoil) {
+    const recoilPx = cue.recoil === "cannon" ? 11 : cue.recoil === "catapult" ? 8 : 5;
+    const unitX = distance > 0 ? dx / distance : 1;
+    const unitY = distance > 0 ? dy / distance : 0;
+    void animate(
+      launcher,
+      [
+        { transform: "translate(0, 0) scale(1)" },
+        { transform: `translate(${-unitX * recoilPx}px, ${-unitY * recoilPx}px) scale(0.97)`, offset: 0.28 },
+        { transform: "translate(0, 0) scale(1)" }
+      ],
+      { duration: cue.recoil === "cannon" ? 520 : 400, easing: "cubic-bezier(0.2, 0.8, 0.3, 1)" }
+    );
   }
 
   let frameTimer = 0;

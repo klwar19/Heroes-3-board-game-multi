@@ -81,14 +81,14 @@ create table if not exists public.homm3bg_matches (
 -- Private AI-training replays for Ranked Clash. One bounded JSON payload is
 -- inserted only when the match finishes; it never rides live room snapshots.
 -- The app service role is the only reader/writer (RLS with no public policy).
--- Application writes remove replay payloads older than seven days while the
+-- Application writes remove replay payloads older than one year while the
 -- parent match rows remain as permanent idempotency gates and W/L summaries.
 create table if not exists public.homm3bg_ranked_replays (
   match_id text primary key references public.homm3bg_matches (match_id) on delete cascade,
   recorded_at text not null,
   schema_version integer not null,
   engine_signature text not null,
-  action_count integer not null check (action_count >= 0 and action_count <= 10000),
+  action_count integer not null check (action_count >= 0 and action_count <= 1000000),
   byte_length integer not null check (byte_length >= 0 and byte_length <= 16000000),
   truncated boolean not null default false,
   payload jsonb,
@@ -107,7 +107,7 @@ alter table public.homm3bg_ranked_replays
   drop constraint if exists homm3bg_ranked_replays_action_count_check;
 alter table public.homm3bg_ranked_replays
   add constraint homm3bg_ranked_replays_action_count_check
-  check (action_count >= 0 and action_count <= 10000);
+  check (action_count >= 0 and action_count <= 1000000);
 alter table public.homm3bg_ranked_replays
   add column if not exists payload_gzip_base64 text;
 alter table public.homm3bg_ranked_replays

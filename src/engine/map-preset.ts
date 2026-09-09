@@ -522,6 +522,7 @@ export type CustomMapTimedEvent = NonNullable<CustomMapPreset["timedEvents"]>[nu
 
 const VICTORY_MODES = new Set<VictoryMode>([
   "conquest",
+  "conquer",
   "grail",
   "dragon-hunt",
   "dragon-conqueror"

@@ -22,9 +22,10 @@ export type ResourceTrailEntry = {
 };
 
 export type ComputerPolicyMemory = {
+  failedFields?: Array<{ fieldId: string; round: number; readiness: string }>;
   developmentPlan?: DevelopmentPlan;
   routeHistory?: Array<{ heroId: string; to: string; progress: string; round?: number }>;
-  /** `${round}|${activePlayerId}|${completedTurns signature}` — clears visit list. */
+  /** This seat's round/completion key — other seats cannot clear its visit list. */
   lastTurnKey: string;
   resourceTrail: ResourceTrailEntry[];
   focus: EconomyFocus;
@@ -81,6 +82,7 @@ export function getComputerMemory(
     visitedThisTurn: [...(raw.visitedThisTurn ?? [])],
     recentStateHashes: [...(raw.recentStateHashes ?? [])],
     routeHistory: [...(raw.routeHistory ?? [])],
+    failedFields: [...(raw.failedFields ?? [])],
   };
 }
 
@@ -150,8 +152,9 @@ export function inferEconomyFocus(
 }
 
 function turnKey(state: GameState, playerId: PlayerId): string {
-  const completed = state.turn?.completedPlayerIds?.join(",") ?? "";
-  return `${state.round}|${state.activePlayerId}|${playerId}|${completed}`;
+  // Another parallel seat ending its turn does not reset OUR route guard.
+  const completed = state.turn?.completedPlayerIds?.includes(playerId) ?? false;
+  return `${state.round}|${playerId}|${completed}`;
 }
 
 /**
@@ -228,10 +231,21 @@ export function noteComputerAction(
 ): GameState {
   let mem = getComputerMemory(state, playerId);
   const round = state.round ?? 0;
+  const combat = state.combat;
+  if (combat?.context.kind === "neutral" && combat.attackerPlayerId === playerId &&
+      combat.outcome && combat.outcome.winnerPlayerId !== playerId) {
+    const fieldId = combat.context.fieldId;
+    mem.failedFields = [...(mem.failedFields ?? []).filter(entry => entry.fieldId !== fieldId),
+      { fieldId, round, readiness: fightReadinessKey(state, playerId) }].slice(-8);
+  }
 
   switch (action.type) {
-    case "MOVE_HERO": {
-      const to = action.to;
+    case "MOVE_HERO":
+    case "MOVE_HERO_PATH": {
+      // Record the authoritative destination: path movement can stop early
+      // for a visit, combat, or an interruption.
+      const to = state.heroes[action.heroId]?.spaceId;
+      if (!to) break;
       mem.routeHistory = [...(mem.routeHistory ?? []), { heroId: action.heroId, to, progress: routeProgressKey(state, playerId), round }].slice(-12);
       if (to && !mem.visitedThisTurn.includes(to)) {
         mem = {
@@ -295,7 +309,7 @@ export function routeProgressKey(state: GameState, playerId: PlayerId): string {
     player?.resources, player?.army,
     Object.values(state.towns ?? {}).filter(t => t.controllerId === playerId).map(t => t.buildings),
     Object.values(state.heroes ?? {}).filter(h => h.controllerId === playerId).map(h => [h.id, h.level]),
-    Object.values(state.adventure?.fields ?? {}).map(f => [f.spaceId, f.flagOwnerId, f.blackCube]),
+    Object.values(state.adventure?.fields ?? {}).filter(f => f.flagOwnerId === playerId).map(f => [f.spaceId, f.blackCube]),
     Object.values(state.adventure?.tiles ?? {}).map(t => [t.id, t.faceDown]),
   ]);
   let hash = 2166136261;
@@ -304,9 +318,25 @@ export function routeProgressKey(state: GameState, playerId: PlayerId): string {
 }
 
 export function repeatsUnproductiveRoute(state: GameState, playerId: PlayerId, action: GameAction, memory?: ComputerPolicyMemory): boolean {
-  if (action.type !== "MOVE_HERO" || !memory?.routeHistory) return false;
+  if ((action.type !== "MOVE_HERO" && action.type !== "MOVE_HERO_PATH") || !memory?.routeHistory) return false;
+  const destination = action.type === "MOVE_HERO" ? action.to : action.path.at(-1);
   const progress = routeProgressKey(state, playerId);
-  return memory.routeHistory.some(step => step.heroId === action.heroId && step.to === action.to && step.progress === progress);
+  return memory.routeHistory.some(step => step.heroId === action.heroId && step.to === destination && step.progress === progress &&
+    (step.round === undefined || state.round - step.round <= 1));
+}
+
+/** A new hand, stronger army or hero level can justify a rematch. More gold
+ * alone cannot: spend it on preparation before retrying a failed guard. */
+function fightReadinessKey(state: GameState, playerId: PlayerId): string {
+  const player = state.players[playerId];
+  return JSON.stringify([player?.army, [...(player?.hand ?? [])].sort(),
+    Object.values(state.heroes ?? {}).filter(hero => hero.controllerId === playerId).map(hero => [hero.id, hero.level])]);
+}
+
+export function repeatsFailedFight(state: GameState, playerId: PlayerId, fieldId: string): boolean {
+  return (state.computerMemory?.[playerId]?.failedFields ?? []).some(entry =>
+    entry.fieldId === fieldId && state.round - entry.round <= 2 &&
+    entry.readiness === fightReadinessKey(state, playerId));
 }
 
 /** Commit a sticky map objective for cross-turn march continuity. */

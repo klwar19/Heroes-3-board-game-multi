@@ -1,4 +1,4 @@
-import { heroMovementMax, isFieldGuarded, neutralBattleLevel } from "../adventure";
+import { fieldCreatureBankId, heroMovementMax, isBankStyleGuardLocation, isFieldGuarded, isTeleportObjectGuardLocation, neutralBattleLevel } from "../adventure";
 import { houseRuleEnabled } from "../house-rules";
 import { polishQuickCombatEnabled, polishQuickCombatOutcome } from "../polish-quick-combat";
 import type { GameAction, GameState, HeroState, MapFieldState } from "../state";
@@ -11,7 +11,8 @@ import type { ComputerPolicyMemory } from "./memory";
 
 /** One paid continuation is a planning buffer, not a guarantee of battle length. */
 export function premiumCombatMovementReserve(state: GameState, hero: HeroState, field: MapFieldState): number {
-  if (!isFieldGuarded(field) || field.unlimitedCombatRounds ||
+  if (!isFieldGuarded(field) || fieldCreatureBankId(field) || isBankStyleGuardLocation(field.location) ||
+      isTeleportObjectGuardLocation(field.location) || field.location === "random_town" || field.unlimitedCombatRounds ||
       houseRuleEnabled(state, "free-neutral-combat-extend")) return 0;
   if (!field.customGuardUnits?.length) {
     const difficulty = field.difficulty ?? 1;

@@ -49,6 +49,7 @@ export const RULESET_DESCRIPTIONS: Record<GameRuleset, string> = {
 
 export const VICTORY_MODE_LABELS: Record<VictoryMode, string> = {
   conquest: "Conquest",
+  conquer: "Conquer",
   grail: "Holy Grail",
   "dragon-hunt": "Dragon Hunt",
   "dragon-conqueror": "Dragon Conqueror"
@@ -59,6 +60,8 @@ export const VICTORY_MODE_DESCRIPTIONS: Record<VictoryMode, string> = {
     "Win PvP battles against distinct rivals: 2 players need 1, 3 need 2, 4 need 2, 5 need 3. The cube target is fixed from the starting table. Elimination or match forfeit removes that rival without awarding a PvP win; earned cubes remain, and the last faction standing wins if every rival leaves. Flagging an enemy Town earns you a resource-gain " +
     "level (+5 gold, +2 materials, or +1 valuables) and starts their clock — a player with no Town and no " +
     "Settlement lasts 2 more turns before being removed. A held Settlement keeps them fighting. Last faction standing wins.",
+  conquer:
+    "Eliminate every enemy faction. Capturing an enemy Town starts its normal elimination clock, but neither that capture nor a PvP win ends the game while an enemy faction remains active. The last faction or alliance standing wins.",
   grail:
     "Win either way: capture the Holy Grail (defeat its Lvl-VII guard, visit 2 distinct Obelisks, dig for 1 " +
     "movement point, then carry it home to your town), or meet the Conquest requirement through permanent faction cubes earned by distinct PvP wins (target fixed from the starting table) " +

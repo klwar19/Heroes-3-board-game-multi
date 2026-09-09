@@ -116,6 +116,56 @@ function tags(cardId: string, balanceText: string): string[] {
   return [...keep, `Balance pack: ${balanceText}`];
 }
 
+/** Polish turn-long reprint shared by the four elemental Orbs. */
+function elementalOrbReprint(
+  cardId: string,
+  name: string,
+  school: "air" | "earth" | "fire" | "water",
+): CardDefinition {
+  const schoolName = school.charAt(0).toUpperCase() + school.slice(1);
+  return reprint(cardId, {
+    // The new ongoing arm can be played on the map before combat and remains
+    // live for the turn; it is not restricted to the printed combat window.
+    phaseLimit: undefined,
+    tags: tags(
+      cardId,
+      `For this turn, ${schoolName} Magic Basic Spells gain +1 Power and Expert Spells gain +2 Power. — OR — When casting a ${schoolName} Magic Spell, remove this card to gain +5 Power.`,
+    ),
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: `This turn: ${schoolName} Basic Spells +1 Power; Expert Spells +2 Power`,
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name,
+              scope: "player",
+              duration: { type: "current-turn" },
+              polarity: "positive",
+              removable: true,
+              modifiers: [
+                {
+                  type: "SPELL_SCHOOL_LEVEL_POWER_BONUS",
+                  school,
+                  basicAmount: 1,
+                  expertAmount: 2,
+                },
+              ],
+            },
+          },
+        },
+        {
+          label: `Remove this card: +5 Power to a ${schoolName} Magic Spell`,
+          cost: { removeSelf: true },
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
+          effect: { type: "ADD_SPELL_POWER", amount: 5, schoolOnly: school },
+        },
+      ],
+    },
+  });
+}
+
 /**
  * The five reprints whose PRINTED text carries a Combat-movement half. Read by
  * `getUnitMoveRange` beside the Balance-Pack Haste / Slow, so their movement
@@ -130,6 +180,27 @@ export const POLISH_BALANCE_MOVEMENT_ARTIFACT_IDS = [
 ] as const;
 
 export const polishBalanceArtifactCards: CardLibrary = {
+  "artifact.orb_of_driving_rain": elementalOrbReprint(
+    "artifact.orb_of_driving_rain",
+    "Orb of Driving Rain",
+    "water",
+  ),
+  "artifact.orb_of_silt": elementalOrbReprint(
+    "artifact.orb_of_silt",
+    "Orb of Silt",
+    "earth",
+  ),
+  "artifact.orb_of_tempestuous_fire": elementalOrbReprint(
+    "artifact.orb_of_tempestuous_fire",
+    "Orb of Tempestuous Fire",
+    "fire",
+  ),
+  "artifact.orb_of_the_firmament": elementalOrbReprint(
+    "artifact.orb_of_the_firmament",
+    "Orb of the Firmament",
+    "air",
+  ),
+
   // ---- Initiative + Combat-movement riders --------------------------------
 
   // Boots of Speed — option B gains "and can move 1 more space".

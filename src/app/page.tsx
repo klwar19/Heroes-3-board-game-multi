@@ -3013,6 +3013,50 @@ export default function Home() {
           timeline = start + spellPresentationMs(plan);
         };
 
+        /**
+         * Physical Ballista/Catapult/Cannon fire. Unlike a spell, its source is
+         * the matching face-up permanent card (with a hand/centre fallback for
+         * specialty-granted machines), and the launcher recoils as the generated
+         * projectile leaves it. Returns the impact-safe end of this shot.
+         */
+        const queueWarMachineShot = (
+          plan: SpellFxPlan,
+          eventId: string,
+          playerId: string,
+          targetAnchor: string,
+          start: number
+        ): number => {
+          const machineCardId = plan.warMachine ? `war_machine.${plan.warMachine}` : "";
+          const from = machineCardId ? `war-machine:${playerId}:${machineCardId}` : `hand:${playerId}`;
+          if (plan.projectile) {
+            cues.push({
+              kind: "projectile",
+              id: `${eventId}-projectile`,
+              fxKey: plan.projectile,
+              from,
+              to: targetAnchor,
+              hitFxKey: plan.hit,
+              sound: plan.sound,
+              hitSound: plan.hitSound,
+              recoil: plan.warMachine,
+              delayMs: start
+            });
+          } else if (plan.hit) {
+            cues.push({
+              kind: "sprite",
+              id: `${eventId}-hit`,
+              fxKey: plan.hit,
+              at: targetAnchor,
+              sound: plan.hitSound ?? plan.sound,
+              delayMs: start
+            });
+          } else if (plan.sound) {
+            const soundKey = plan.sound;
+            window.setTimeout(() => playLibrarySound(soundKey), start);
+          }
+          return start + spellPresentationMs(plan);
+        };
+
         // Walk the events in *presentation* order, not log order: a spell's
         // sprite must lead the damage / death / heal it caused, even though the
         // engine records the outcome first (the spell is still on the stack).
@@ -3322,16 +3366,24 @@ export default function Home() {
               // DAMAGE_ASSIGNED) land only once the shot has been heard. The
               // First Aid Tent never reaches this event (it heals — see
               // healFxPlans); the Ammo Cart is a passive buff that never fires.
-              const shotPlan = warMachineFxPlans[event.cardId];
-              if (shotPlan?.sound) {
-                if (event.targetUnitId) {
-                  queueBoardFx(shotPlan, `${event.id}-shot`, "center", event.targetUnitId);
-                } else {
-                  const soundKey = shotPlan.sound;
-                  const at = timeline;
-                  window.setTimeout(() => playLibrarySound(soundKey), at);
-                  timeline = at + spellPresentationMs(shotPlan);
-                }
+              // Ballistics' opening bombard uses the ability card as the rules
+              // source while physically firing a Catapult. Its card-shot plan
+              // is therefore the correct fallback, including for Wall/Gate hits
+              // that have no following DAMAGE_ASSIGNED event.
+              const shotPlan = warMachineFxPlans[event.cardId] ?? cardShotFxPlans[event.cardId];
+              if (shotPlan) {
+                const targetAnchor = event.targetUnitId
+                  ? `unit:${event.targetUnitId}`
+                  : event.targetPosition !== undefined
+                    ? `cell:${event.targetPosition}`
+                    : "center";
+                timeline = queueWarMachineShot(
+                  shotPlan,
+                  `${event.id}-shot`,
+                  event.playerId,
+                  targetAnchor,
+                  timeline
+                );
                 if (inCombat) {
                   combatFxActive = true;
                   combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 1200);
@@ -3389,16 +3441,29 @@ export default function Home() {
                 // first — exactly like a war machine's WAR_MACHINE_TRIGGERED shot.
                 // Only on non-attack card damage: an attack already carries its
                 // own strike sfx pinned to the impact beat.
+                const cardSource = event.source.type === "card" ? event.source : null;
+                const alreadyPresentedAsWarMachine =
+                  cardSource !== null &&
+                  freshFx.some(
+                    (candidate) =>
+                      candidate.type === "WAR_MACHINE_TRIGGERED" &&
+                      candidate.cardId === cardSource.cardId &&
+                      candidate.playerId === cardSource.controllerId &&
+                      candidate.targetUnitId === targetId
+                  );
                 const shotPlan =
-                  attackBeat === undefined && event.source.type === "card"
-                    ? cardShotFxPlans[event.source.cardId]
+                  attackBeat === undefined && cardSource && !alreadyPresentedAsWarMachine
+                    ? cardShotFxPlans[cardSource.cardId]
                     : undefined;
-                if (shotPlan?.sound) {
-                  const shotSound = shotPlan.sound;
-                  const shotAt = at;
-                  window.setTimeout(() => playLibrarySound(shotSound), shotAt);
-                  at = shotAt + spellPresentationMs(shotPlan);
-                  timeline = at;
+                if (shotPlan) {
+                  at = queueWarMachineShot(
+                    shotPlan,
+                    `${event.id}-card-shot`,
+                    cardSource?.controllerId ?? "",
+                    `unit:${targetId}`,
+                    at
+                  );
+                  timeline = Math.max(timeline, at);
                   if (inCombat) {
                     combatFxActive = true;
                   }

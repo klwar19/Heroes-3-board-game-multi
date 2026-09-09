@@ -81,10 +81,15 @@ export function polishQuickCombatEnabled(state: Pick<GameState, "ruleset" | "adv
 
 /**
  * Strength of one army card: tier value, doubled for a faction Pack side, plus
- * 0.5 per Unit-Stack layer. A neutral-side card counts 1× its tier (a single
- * group — see the module doc). Unknown definitions count 0.
+ * 0.5 per Unit-Stack layer. A won Creature-Bank reward card is always worth 2
+ * (the same as a Silver card), regardless of the guardian art/underlying tier.
+ * A neutral-side card counts 1× its tier (a single group — see the module doc).
+ * Unknown definitions count 0.
  */
 export function polishQuickCombatUnitStrength(unit: ArmyUnitState): number {
+  if (unit.side === "bank") {
+    return 2;
+  }
   const tier = coreUnitDefinitions[unit.unitDefId]?.tier;
   if (!tier) {
     return 0;

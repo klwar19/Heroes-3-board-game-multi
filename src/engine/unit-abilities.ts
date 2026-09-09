@@ -1513,8 +1513,50 @@ export function hasInnateMagicMirror(unit: CombatUnitState): boolean {
   return hasUnitAbilityEffect(unit, "INNATE_MAGIC_MIRROR");
 }
 
+/**
+ * Undead identities that do not live in the Necropolis faction namespace.
+ *
+ * Neutral copies and Creature-Bank cards deliberately keep their `neutral.*`
+ * definition id, so checking only `necropolis.*` makes the same creature stop
+ * being Undead when it appears as a guard (notably Crypt/Shipwreck Wraiths).
+ * Keep identity here rather than inferring it from card text or current
+ * abilities: Disrupting Ray may suppress abilities, but it must not turn an
+ * Undead creature into a living one for Holy Steel / Soul Harvest purposes.
+ */
+const NON_NECROPOLIS_UNDEAD_UNIT_IDS = new Set<string>([
+  // Core neutral cards; Creature Banks reuse these ids.
+  "neutral.skeletons",
+  "neutral.zombies",
+  "neutral.wraiths",
+  "neutral.vampires",
+  "neutral.liches",
+  "neutral.mummies",
+  "neutral.dread_knights",
+  "neutral.ghost_dragons",
+
+  // WoG neutral undead.
+  "wog.ghost",
+  "wog.dracolich",
+
+  // Heavenly Demon units whose authored identity is explicitly undead/spectral.
+  "heavenly_demon.corpse_puppets",
+  "heavenly_demon.bone_reavers",
+  "heavenly_demon.ghost_king",
+
+  // Built-in classic raid bosses. Custom bosses still need an explicit UNDEAD
+  // ability tag; their names are intentionally not guessed.
+  "boss.lich_archon",
+  "boss.wailing_banshee",
+  "boss.warden_bone_colossus",
+]);
+
 export function isUndeadUnit(unit: CombatUnitState): boolean {
-  return hasUnitAbilityEffect(unit, "UNDEAD") || unit.unitDefId?.startsWith("necropolis.") === true;
+  const unitDefId = unit.unitDefId;
+  return (
+    unit.abilities.some((abilityId) => unitAbilities[abilityId]?.effect?.type === "UNDEAD") ||
+    unitDefId?.startsWith("necropolis.") === true ||
+    (unitDefId !== undefined && NON_NECROPOLIS_UNDEAD_UNIT_IDS.has(unitDefId))
+  );
 }
 
 export function getOnKillHealthHarvest(

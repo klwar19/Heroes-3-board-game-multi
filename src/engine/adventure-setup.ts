@@ -565,7 +565,7 @@ export type AdventureSetupOptions = {
   wog?: Partial<WogModOptions>;
   /** Anime mod modules; honored only when the BINH ruleset is active. */
   anime?: Partial<AnimeModOptions>;
-  /** Win condition: "conquest", "grail", "dragon-hunt" or "dragon-conqueror". */
+  /** Win condition: Conquest, Conquer (elimination), Holy Grail, or a Dragon mode. */
   victoryMode?: VictoryMode;
   /** PvP Combat casualties: "normal" (lose dead units) or "none" (keep troops). */
   pvpTroopLoss?: PvpTroopLoss;
@@ -2907,6 +2907,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   const scenario = getScenario(options.scenarioId);
   const setupOptions: GameSetupOptions = {
     ...defaultGameSetupOptions(scenario),
+    ...(options.sessionMode === "single-player" && options.victoryMode === undefined
+      ? { victoryMode: "conquer" as const }
+      : {}),
     ...(options.gameMode !== undefined ? { gameMode: options.gameMode } : {}),
     ...(options.teamAssignments !== undefined ? { teamAssignments: options.teamAssignments } : {}),
     ...(options.startingTileAssignments !== undefined
@@ -4977,6 +4980,12 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
   const seed = options.seed ?? freshSeed("homm3bg-lobby");
   const scenario = getScenario(options.scenarioId);
   const setupOptions = defaultGameSetupOptions(scenario);
+  if (options.sessionMode === "single-player" && options.victoryMode === undefined) {
+    setupOptions.victoryMode = "conquer";
+  }
+  if (options.victoryMode !== undefined) {
+    setupOptions.victoryMode = options.victoryMode;
+  }
   if (options.gameMode !== undefined) {
     setupOptions.gameMode = options.gameMode;
   }
@@ -5394,7 +5403,7 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
   }
 
   if (next.victoryMode !== undefined) {
-    const validVictoryModes: VictoryMode[] = ["conquest", "grail", "dragon-hunt", "dragon-conqueror"];
+    const validVictoryModes: VictoryMode[] = ["conquest", "conquer", "grail", "dragon-hunt", "dragon-conqueror"];
     if (!validVictoryModes.includes(next.victoryMode)) {
       throw new Error("Unknown win condition.");
     }

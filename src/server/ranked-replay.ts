@@ -19,14 +19,18 @@ import {
  * together with the terminal match report.
  */
 export const RANKED_REPLAY_SCHEMA_VERSION = 1;
-export const RANKED_REPLAY_MAX_ACTIONS = 10_000;
+// Allow long matches without removing the byte budget: terminal delivery still
+// assembles and serializes the full replay in room memory.
+export const RANKED_REPLAY_MAX_ACTIONS = 1_000_000;
 // PartyKit gzip-compresses this payload for the terminal report, so the replay
 // no longer has to fit inside the app endpoint's 4.2 MB wire-body limit in its
 // expanded JSON form. The expanded bound still protects room and database
 // memory from pathological games while leaving ample room for long adventures.
 export const RANKED_REPLAY_MAX_BYTES = 16_000_000;
-export const RANKED_REPLAY_MAX_LEGAL_ACTIONS = 512;
-export const RANKED_REPLAY_MAX_ENTRY_BYTES = 96 * 1024;
+export const RANKED_REPLAY_MAX_LEGAL_ACTIONS = 4_096;
+// PartyKit stores entries separately. Keep one entry below the platform's
+// per-value ceiling while allowing substantially larger decision spaces.
+export const RANKED_REPLAY_MAX_ENTRY_BYTES = 120 * 1024;
 /**
  * `finishRankedReplay` adds `finishedAt` / `winnerPlayerId` AFTER the append
  * budget is spent. Reserve room for them so a replay that fills the budget to

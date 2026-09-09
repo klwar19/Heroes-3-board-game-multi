@@ -494,6 +494,15 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     legacyDefault: false,
   },
   {
+    id: "polish-single-dimension-door",
+    label: "Single Dimension Door per Hero",
+    description:
+      "Polish house rule: Dimension Door cannot be played on the same Hero more than once per turn. A refreshed Dimension Door may still be played on another Hero. Fly, Water Walk and Town Portal are unchanged.",
+    category: "polish",
+    default: false,
+    legacyDefault: false,
+  },
+  {
     id: "gold-dragon-second-attack-3",
     label: "Gold Dragons: second attack is 3",
     description:

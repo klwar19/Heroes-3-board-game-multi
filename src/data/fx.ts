@@ -42,6 +42,26 @@ sheets["neutral-sandstorm"] = {
   frames: 24, cols: 6, rows: 4, frameWidth: 256, frameHeight: 256, fps: 18,
   anchor: "center", coverage: 1.8, sourceDef: "imagegen-neutral-sandstorm", sequentialFrames: true,
 };
+// Purpose-built, transparent physical projectiles for the three damaging war
+// machines. These are code-shipped under /public/fx (rather than CDN media), so
+// a combat snapshot can always render them even when the larger art pack is not
+// installed locally. All point right; FxStage rotates/mirrors them to the live
+// source/target geometry.
+sheets["war-machine-ballista-projectile"] = {
+  src: "/fx/war-machine-ballista-projectile.webp", label: "Ballista bolt", group: "war-machines", role: "projectile",
+  frames: 1, cols: 1, rows: 1, frameWidth: 180, frameHeight: 60, fps: 15,
+  anchor: "center", sourceDef: "imagegen-war-machine-ballista-projectile",
+};
+sheets["war-machine-catapult-projectile"] = {
+  src: "/fx/war-machine-catapult-projectile.webp", label: "Catapult boulder", group: "war-machines", role: "projectile",
+  frames: 1, cols: 1, rows: 1, frameWidth: 140, frameHeight: 70, fps: 15,
+  anchor: "center", sourceDef: "imagegen-war-machine-catapult-projectile",
+};
+sheets["war-machine-cannon-projectile"] = {
+  src: "/fx/war-machine-cannon-projectile.webp", label: "Cannonball", group: "war-machines", role: "projectile",
+  frames: 1, cols: 1, rows: 1, frameWidth: 150, frameHeight: 75, fps: 15,
+  anchor: "center", sourceDef: "imagegen-war-machine-cannon-projectile",
+};
 
 export function getFxSheet(key: string): FxSheet | undefined {
   return sheets[key];
@@ -66,6 +86,8 @@ export type SpellFxPlan = {
   /** /public/sounds manifest key, e.g. "spells/fireball". */
   sound?: string;
   hitSound?: string;
+  /** Physical launcher whose in-play card recoils when this projectile fires. */
+  warMachine?: "ballista" | "catapult" | "cannon";
 };
 
 export const spellFxPlans: Record<string, SpellFxPlan> = {
@@ -711,16 +733,25 @@ export const healFxPlans: Record<string, SpellFxPlan> = {
  * War machines that FIRE a shot in combat — the Ballista, Catapult and Cannon —
  * play their own Heroes III shot at the WAR_MACHINE_TRIGGERED cue (see page.tsx),
  * just before the struck unit's hurt cry lands on the DAMAGE_ASSIGNED that
- * follows. Sound-only: the converted library has no shot sprite for these (the
- * floating damage number is the visual), so each plan carries just its measured
- * shot clip. The First Aid Tent is deliberately absent — it heals rather than
+ * follows. Each plan combines a generated transparent physical projectile,
+ * impact sprite, and its measured Heroes III shot clip. The First Aid Tent is
+ * deliberately absent — it heals rather than
  * fires and carries its cue through `healFxPlans` — and the Ammo Cart is a
  * passive ranged buff that never fires a shot of its own.
  */
 export const warMachineFxPlans: Record<string, SpellFxPlan> = {
-  "war_machine.ballista": { sound: "units/ballista-shoot" },
-  "war_machine.catapult": { sound: "units/catapult-shoot" },
-  "war_machine.cannon": { sound: "units/cannon-shoot" }
+  "war_machine.ballista": {
+    projectile: "war-machine-ballista-projectile", hit: "sniper-shot-hit",
+    sound: "units/ballista-shoot", hitSound: "effects/siege-wall-hit", warMachine: "ballista"
+  },
+  "war_machine.catapult": {
+    projectile: "war-machine-catapult-projectile", hit: "land-mine-hit",
+    sound: "units/catapult-shoot", hitSound: "effects/siege-wall-hit", warMachine: "catapult"
+  },
+  "war_machine.cannon": {
+    projectile: "war-machine-cannon-projectile", hit: "land-mine-hit",
+    sound: "units/cannon-shoot", hitSound: "effects/siege-wall-hit", warMachine: "cannon"
+  }
 };
 
 /**
@@ -733,11 +764,40 @@ export const warMachineFxPlans: Record<string, SpellFxPlan> = {
  * visual. Keyed by source card id, mirroring `healFxPlans`.
  */
 export const cardShotFxPlans: Record<string, SpellFxPlan> = {
-  "ability.artillery": { sound: "units/ballista-shoot" },
+  "ability.artillery": {
+    projectile: "war-machine-ballista-projectile", hit: "sniper-shot-hit",
+    sound: "units/ballista-shoot", hitSound: "effects/siege-wall-hit", warMachine: "ballista"
+  },
   // Ballistics' expert bombardment fires the siege Catapult's report on each
   // hit (primary + the adjacent splash), both logged as card-sourced
   // DAMAGE_ASSIGNED events keyed to this card id.
-  "ability.ballistics": { sound: "units/catapult-shoot" }
+  "ability.ballistics": {
+    projectile: "war-machine-catapult-projectile", hit: "land-mine-hit",
+    sound: "units/catapult-shoot", hitSound: "effects/siege-wall-hit", warMachine: "catapult"
+  },
+  // Specialty damage clauses that are physical shots but retain the specialty
+  // card as DAMAGE_ASSIGNED's rules source. Grant/activate clauses already flow
+  // through WAR_MACHINE_TRIGGERED and therefore must not be duplicated here.
+  "specialty.tarnum_castle.6": {
+    projectile: "war-machine-ballista-projectile", hit: "sniper-shot-hit",
+    sound: "units/ballista-shoot", hitSound: "effects/siege-wall-hit", warMachine: "ballista"
+  },
+  "specialty.gerwulf.4": {
+    projectile: "war-machine-ballista-projectile", hit: "sniper-shot-hit",
+    sound: "units/ballista-shoot", hitSound: "effects/siege-wall-hit", warMachine: "ballista"
+  },
+  "specialty.jeremy.1": {
+    projectile: "war-machine-cannon-projectile", hit: "land-mine-hit",
+    sound: "units/cannon-shoot", hitSound: "effects/siege-wall-hit", warMachine: "cannon"
+  },
+  "specialty.jeremy.4": {
+    projectile: "war-machine-cannon-projectile", hit: "land-mine-hit",
+    sound: "units/cannon-shoot", hitSound: "effects/siege-wall-hit", warMachine: "cannon"
+  },
+  "specialty.jeremy.6": {
+    projectile: "war-machine-cannon-projectile", hit: "land-mine-hit",
+    sound: "units/cannon-shoot", hitSound: "effects/siege-wall-hit", warMachine: "cannon"
+  }
 };
 
 // ---------------------------------------------------------------------------

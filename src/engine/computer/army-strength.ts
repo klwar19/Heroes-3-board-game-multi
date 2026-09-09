@@ -18,6 +18,7 @@ import {
   neutralArmyDifficultyForField,
 } from "../adventure";
 import { armyUnitRankInfo } from "../unit-experience";
+import { combatUnitLimit } from "../adventure-reducer";
 import { NEUTRAL_PLAYER_ID } from "../state";
 import type {
   ArmyUnitState,
@@ -166,6 +167,14 @@ export function activeEnemySideCount(
   return sides.size;
 }
 
+/** Only units that can actually deploy may justify an engagement. Reserve
+ * cards still have economic value, but cannot all attack in the same battle. */
+export function deployedArmyStrength(state: GameState, playerId: PlayerId): number {
+  return (state.players[playerId]?.army ?? []).map(unitSideStrength)
+    .sort((a, b) => b - a).slice(0, combatUnitLimit(state))
+    .reduce((sum, strength) => sum + strength, 0);
+}
+
 /** PvP risk is contextual: trade aggressively in a duel, demand a survivor's
  * cushion when one or more third parties remain. */
 export function enemyEngagementRatio(
@@ -196,20 +205,29 @@ export function shouldEngageEnemy(
   playerId: PlayerId,
   enemyPlayerId: PlayerId,
   /** `ignoreHeroLevel`: the fight has no enemy hero in it (heroless garrison). */
-  options: { ignoreHeroLevel?: boolean } = {},
+  options: { ignoreHeroLevel?: boolean; field?: MapFieldState } = {},
 ): boolean {
-  const enemyStrength = playerArmyStrength(state, enemyPlayerId);
+  const enemyStrength = deployedArmyStrength(state, enemyPlayerId);
   if (enemyStrength <= 0) {
     return true;
   }
   const levelMargin = options.ignoreHeroLevel
     ? 0
     : enemyMainHeroLevelLead(state, playerId, enemyPlayerId) * HERO_LEVEL_ENGAGE_MARGIN;
+  const field = options.field;
+  // Walls consume attacker actions while the tower and defending shooters
+  // keep firing. Only public, actually fortified holdings earn this margin.
+  const fortified = field && Object.values(state.towns ?? {}).some(town =>
+    town.controllerId === enemyPlayerId &&
+    town.buildings.some(id => coreBuildingDefinitions[id]?.effect?.type === "UNLOCK_REINFORCE") &&
+    ((field.location === "town" && town.fieldId === field.spaceId) ||
+      ((field.location === "settlement" || field.location === "random_town") &&
+        field.flagOwnerId === enemyPlayerId)));
   const ratio = Math.min(
-    MAX_HERO_LEVEL_ENGAGE_RATIO,
-    enemyEngagementRatio(state, playerId) + levelMargin,
+    MAX_HERO_LEVEL_ENGAGE_RATIO + (fortified ? 0.2 : 0),
+    enemyEngagementRatio(state, playerId) + levelMargin + (fortified ? 0.2 : 0),
   );
-  return playerArmyStrength(state, playerId) >= enemyStrength * ratio;
+  return deployedArmyStrength(state, playerId) >= enemyStrength * ratio;
 }
 
 /**
@@ -281,7 +299,7 @@ export function canBeatCreatureBank(
     Boolean(state.adventure?.houseRules?.["polish-creature-banks"]),
   );
   if (!Number.isFinite(bankStr) || bankStr <= 0) return false;
-  return playerArmyStrength(state, playerId) >= bankStr * BANK_ENGAGE_RATIO;
+  return deployedArmyStrength(state, playerId) >= bankStr * BANK_ENGAGE_RATIO;
 }
 
 // ---------------------------------------------------------------------------
@@ -653,5 +671,5 @@ export function shouldAssaultEnemyHolding(
   if (playersAreAllied(state, ownerId, playerId)) return false;
   // A garrison is defended by the owner's unit deck alone — no hero, so the
   // owner's hero level (cards, crowns) never enters this fight.
-  return shouldEngageEnemy(state, playerId, ownerId, { ignoreHeroLevel: true });
+  return shouldEngageEnemy(state, playerId, ownerId, { ignoreHeroLevel: true, field });
 }

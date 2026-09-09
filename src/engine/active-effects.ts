@@ -278,6 +278,14 @@ export function getSchoolPowerBonus(
         for (const modifier of effect.modifiers) {
           if (modifier.type === "SPELL_SCHOOL_POWER_BONUS" && modifier.school === school) {
             forSchool += modifier.amount;
+          } else if (
+            modifier.type === "SPELL_SCHOOL_LEVEL_POWER_BONUS" &&
+            modifier.school === school
+          ) {
+            forSchool +=
+              spellCard?.spellLevel === "expert"
+                ? modifier.expertAmount
+                : modifier.basicAmount;
           }
         }
       }
@@ -305,6 +313,14 @@ export function getSchoolPowerBonus(
     for (const modifier of effect.modifiers) {
       if (modifier.type === "SPELL_SCHOOL_POWER_BONUS" && schools.includes(modifier.school)) {
         bonus += modifier.amount;
+      } else if (
+        modifier.type === "SPELL_SCHOOL_LEVEL_POWER_BONUS" &&
+        schools.includes(modifier.school)
+      ) {
+        bonus +=
+          spellCard?.spellLevel === "expert"
+            ? modifier.expertAmount
+            : modifier.basicAmount;
       }
     }
   }
@@ -1224,6 +1240,24 @@ export function expireCommunityLuckAtTurnEnd(state: GameState, playerId: PlayerI
   const expired = state.activeEffects.filter(isTurnScopedReroll);
   if (expired.length > 0) {
     state.activeEffects = state.activeEffects.filter((effect) => !isTurnScopedReroll(effect));
+  }
+  return expired;
+}
+
+/**
+ * Polish elemental Orbs say "for this turn", so their tiered school bonus ends
+ * when that turn ends (not at the owner's next turn start, the legacy lifetime
+ * used by older current-turn effects).
+ */
+export function expirePolishOrbAtTurnEnd(state: GameState, playerId: PlayerId): ActiveEffectState[] {
+  const isTurnOrb = (effect: ActiveEffectState): boolean =>
+    effect.expiresAtTurnEndPlayerId === playerId &&
+    effect.modifiers.some(
+      (modifier) => modifier.type === "SPELL_SCHOOL_LEVEL_POWER_BONUS",
+    );
+  const expired = state.activeEffects.filter(isTurnOrb);
+  if (expired.length > 0) {
+    state.activeEffects = state.activeEffects.filter((effect) => !isTurnOrb(effect));
   }
   return expired;
 }

@@ -1,5 +1,6 @@
 import { unitAbilities } from "@/data/units/abilities";
 import { getBattlefieldDistance, isAdjacent } from "../battlefield";
+import { getUnitSide } from "../adventure";
 import type { CombatState, CombatUnitState, PlayerId, UnitGrade } from "../state";
 
 /**
@@ -28,6 +29,15 @@ export function unitRemainingHealth(unit: CombatUnitState): number {
   return currentBar + stackLayers * unit.maxHealth;
 }
 
+/** A Pack's first depleted bar flips it, not removes it. Token survivors have
+ * changing printed stats; do not claim a guaranteed removal from this estimate. */
+export function unitRemovalHealth(unit: CombatUnitState): number {
+  if (unit.stackToken) return Number.POSITIVE_INFINITY;
+  const fewHealth = unit.variant === "pack" && unit.unitDefId
+    ? getUnitSide(unit.unitDefId, "few")?.health ?? 0 : 0;
+  return unitRemainingHealth(unit) + fewHealth;
+}
+
 /**
  * Expected damage of a melee/base attack: `max(0, attack - defense)`, matching
  * the engine's `rawDamage = max(0, attackValue - defenseValue)` with the die at
@@ -42,9 +52,8 @@ export function expectedAttackDamage(
 }
 
 /**
- * Whether `attacker`'s expected hit removes `defender` outright — the engine's
- * lethal test is `defender.damage + damage >= defender.maxHealth`, i.e. the hit
- * meets the defender's remaining health. Guarded on positive damage so a fully
+ * Whether the expected hit covers the target's estimated removal durability,
+ * including its remaining Pack/Few bars. Guarded on positive damage so a fully
  * blocked (0-damage) attack is never counted as lethal.
  */
 export function attackIsLethal(
@@ -52,7 +61,7 @@ export function attackIsLethal(
   defender: CombatUnitState,
 ): boolean {
   const damage = expectedAttackDamage(attacker, defender);
-  return damage > 0 && damage >= unitRemainingHealth(defender);
+  return damage > 0 && damage >= unitRemovalHealth(defender);
 }
 
 /**

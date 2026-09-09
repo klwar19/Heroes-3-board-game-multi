@@ -244,7 +244,11 @@ export function PermanentSlot({
         const actionsOpen = openCardActions === popupKey;
 
         return (
-          <div className={`permanentSlot cardOnly ${compact ? "compact" : ""}`} key={`${cardId}-${index}`}>
+          <div
+            className={`permanentSlot cardOnly ${compact ? "compact" : ""}`}
+            data-fx-anchor={`war-machine:${playerId}:${cardId}`}
+            key={`${cardId}-${index}`}
+          >
             <button
               aria-expanded={actionsOpen}
               aria-haspopup="menu"

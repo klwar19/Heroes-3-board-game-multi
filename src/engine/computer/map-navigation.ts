@@ -11,11 +11,14 @@ import {
   classifyHeroStep,
   farTilePlacementCenters,
   fieldFlaggedByAlly,
+  fieldCreatureBankId,
   gateFieldsLinked,
   getAdjacentSpaceIds,
   getHeroMovementCapabilities,
   heroAtSpace,
   isFieldGuarded,
+  isBankStyleGuardLocation,
+  isTeleportObjectGuardLocation,
   listKnownTeleportDestinations,
   materializeTileFields,
   neutralBattleLevel,
@@ -29,6 +32,8 @@ import { ANIME_EQUIPMENT_SLOTS } from "@/data/anime/equipment";
 import { equipmentEnabled, heroEquipmentSlot } from "../anime-equipment";
 import { canHeroImmediatelyAccessAdjacentTile } from "../adventure-reducer";
 import { isComputerPlayer, playersAreAllied } from "./control";
+import { repeatsFailedFight } from "./memory";
+import { polishQuickCombatEnabled, polishQuickCombatOutcome } from "../polish-quick-combat";
 import type {
   GameState,
   HeroState,
@@ -321,9 +326,9 @@ function victoryObjectiveKind(
     }
   }
 
-  // Conquest: capturing an enemy faction town IS the win condition — elevate
-  // unowned / enemy towns above ordinary "town" so the sticky primary commits.
-  if (mode === "conquest") {
+  // Military modes: an enemy faction Town is the route to its elimination
+  // clock, so elevate it above ordinary economy and keep the primary sticky.
+  if (mode === "conquest" || mode === "conquer") {
     const category = locationDefinitions[field.location]?.category;
     if (
       category === "town" &&
@@ -409,7 +414,7 @@ export function canBeatGuardedField(
   // afraid of unit losses. Enemy-held/victory fields are deliberately not
   // covered by this neutral-only gate.
   const rushProfile = armyDevelopmentProfile(state, hero.controllerId);
-  const fieldDifficulty = field.difficulty ?? 0;
+  const fieldDifficulty = field.location === "random_town" ? 7 : field.difficulty ?? 0;
   const premiumEconomy = isPremiumEconomyField(field);
   // With optional PvP Neutral Control, the next live HUMAN seat can coordinate
   // guard focus instead of following the stock neutral script. When free guard
@@ -453,9 +458,14 @@ export function canBeatGuardedField(
   // A strict level advantage resolves before a battle opens. Secondary heroes
   // should collect these free cleanups even without a Silver unit.
   const guaranteedQuickWin =
-    field.location !== "creature_bank" &&
+    !fieldCreatureBankId(field) &&
+    !isBankStyleGuardLocation(field.location) &&
+    !isTeleportObjectGuardLocation(field.location) &&
+    !field.customGuardUnits?.length && !field.unlimitedCombatRounds &&
     fieldDifficulty > 0 &&
-    neutralBattleLevel(state, hero) > fieldDifficulty;
+    (polishQuickCombatEnabled(state)
+      ? polishQuickCombatOutcome(state, hero, fieldDifficulty) === "mandatory"
+      : neutralBattleLevel(state, hero) > fieldDifficulty);
   if (hero.kind === "secondary" && guaranteedQuickWin) return true;
   // A strict level advantage resolves as Quick Combat BEFORE a battle opens:
   // free XP, loot and the field visit at zero army risk. The core-preservation
@@ -465,6 +475,7 @@ export function canBeatGuardedField(
   // from the moment the Pack core stood until Far economy opened, flatlining
   // hero levels at 2-3 for the whole mid-game.
   if (hero.kind === "main" && guaranteedQuickWin) return true;
+  if (repeatsFailedFight(state, hero.controllerId, field.spaceId)) return false;
   // Easy neutrals the hero level already covers (difficulty ≤ 1): ALWAYS take.
   // Older gates parked the army for several turns "waiting for its core / Far
   // economy" before walking into a free/equal difficulty-1 fight — that felt
@@ -475,7 +486,10 @@ export function canBeatGuardedField(
     fieldDifficulty > 0 &&
     fieldDifficulty <= 1 &&
     heroBattleLevel >= fieldDifficulty;
-  if (hero.kind === "main" && easyLevelCovered) return true;
+  if (hero.kind === "main" && easyLevelCovered) {
+    return humanNeutralFormationReady &&
+      currentArmyCoversGuardField(state, hero.controllerId, fieldDifficulty, field);
+  }
   // establish-core: only refuse difficulty-2+ fair/hard neutrals (equal or
   // under-level). Difficulty-1 is handled above.
   const rebuildingCoreCannotRiskNeutral =
@@ -517,7 +531,7 @@ export function canBeatGuardedField(
     !premiumEconomy &&
     !homeOpeningGuard &&
     fieldDifficulty >= 2 &&
-    adventureVictoryMode(state) === "conquest" &&
+    (adventureVictoryMode(state) === "conquest" || adventureVictoryMode(state) === "conquer") &&
     (shouldLaunchBronzeRush(state, hero.controllerId) ||
       preservingNextRoundRush)
   ) {
@@ -636,7 +650,7 @@ function objectiveKind(
       if (locationDefinitions[field.location]?.passive?.protectsFromAttack) {
         return null;
       }
-      return shouldEngageEnemy(state, playerId, occupant.controllerId)
+      return shouldEngageEnemy(state, playerId, occupant.controllerId, { field })
         ? "victory"
         : null;
     }
@@ -657,6 +671,7 @@ function objectiveKind(
     // conquest target there, gated by its own clause).
     if (
       adventureVictoryMode(state) !== "conquest" &&
+      adventureVictoryMode(state) !== "conquer" &&
       field.flagOwnerId &&
       !playersAreAllied(state, field.flagOwnerId, playerId) &&
       (locationDefinitions[field.location]?.category === "town" ||
@@ -678,7 +693,7 @@ function objectiveKind(
     ) {
       return null;
     }
-    return shouldEngageEnemy(state, playerId, occupant.controllerId)
+    return shouldEngageEnemy(state, playerId, occupant.controllerId, { field })
       ? "enemy-hero"
       : null;
   }
@@ -1351,7 +1366,7 @@ export function objectiveStrategicValue(
   const mode = adventureVictoryMode(state);
   const bronzeRush =
     hero.kind === "main" &&
-    mode === "conquest" &&
+    (mode === "conquest" || mode === "conquer") &&
     shouldLaunchBronzeRush(state, hero.controllerId);
   const field = state.adventure?.fields[objective.spaceId];
   const homeSweep = isHomeTileSweepObjective(state, hero, objective, field);
@@ -1365,7 +1380,7 @@ export function objectiveStrategicValue(
           field?.flagOwnerId === hero.controllerId,
       );
       if (carryingGrailHome) value = 1_250;
-      else if (mode === "conquest") value = bronzeRush ? 1_080 : ready ? 790 : 360;
+      else if (mode === "conquest" || mode === "conquer") value = bronzeRush ? 1_080 : ready ? 790 : 360;
       else if (mode === "dragon-hunt" || mode === "dragon-conqueror") {
         value = ready ? 900 : 390;
       } else value = 950;
@@ -1534,7 +1549,7 @@ export function objectiveStrategicValue(
   if (
     ready &&
     (objective.kind === "enemy-hero" ||
-      (objective.kind === "victory" && mode === "conquest"))
+      (objective.kind === "victory" && (mode === "conquest" || mode === "conquer")))
   ) {
     value += coopHumanHuntBonus(state, hero.controllerId);
   }
@@ -1545,6 +1560,21 @@ export function objectiveStrategicValue(
     alliedComputerSeatCloser(state, hero, objective.spaceId)
   ) {
     value -= ALLY_CLAIM_PENALTY;
+  }
+  // Price recurring resources by the next real development deficit. An early
+  // materials mine that unlocks a dwelling can beat another gold pickup.
+  if (field && field.flagOwnerId !== hero.controllerId &&
+      (field.location === "mine" || field.location === "settlement")) {
+    const resources = state.players[hero.controllerId]?.resources;
+    const targets = developmentResourceTargets(state, hero.controllerId);
+    if (resources && field.location === "mine" && field.resource) {
+      const resource = field.resource;
+      if (resource === "gold" || resource === "buildingMaterials" || resource === "valuables") {
+        const deficit = Math.max(0, targets[resource] - resources[resource]);
+        value += Math.min(60, deficit * (resource === "gold" ? 4 : 12));
+      }
+    }
+    if (field.location === "settlement" && !hasOpenedFarEconomy(state, hero.controllerId)) value += 45;
   }
   return value - distance * 18;
 }

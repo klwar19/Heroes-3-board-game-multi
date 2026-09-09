@@ -163,6 +163,9 @@ export type HouseRuleId =
   // and require generic Cast-a-Spell cards. Mutually exclusive with the
   // existing stash-style `adventure.spellBook` rule.
   | "polish-spell-book"
+  // Polish map-spell option: each individual Hero may be selected for Dimension
+  // Door at most once during its controller's turn. Another Hero remains legal.
+  | "polish-single-dimension-door"
   // Polish Creature Bank content pack: the 20-bank roster, guardian/reward
   // cards and printed rewards. Independent from the I-IV size procedure.
   | "polish-creature-banks"
@@ -587,7 +590,9 @@ export type FieldOverridePlacementMode =
   | "manual-or-refuse";
 /**
  * How the scenario is won:
- *  - "conquest": flag an enemy faction Town (the classic skirmish goal).
+ *  - "conquest": defeat the required number of distinct rival Heroes.
+ *  - "conquer": eliminate every enemy faction; a Town capture or PvP win alone
+ *    never ends the game while an enemy Hero remains active.
  *  - "grail" (Holy Grail): win by capturing the Grail — defeat a Lvl-VII guard,
  *    visit 2 distinct Obelisks, dig for 1 movement point, then carry it home —
  *    or by beating every enemy hero in combat at least once (only 2 of them in
@@ -603,6 +608,7 @@ export type FieldOverridePlacementMode =
  */
 export type VictoryMode =
   | "conquest"
+  | "conquer"
   | "grail"
   | "dragon-hunt"
   | "dragon-conqueror";
@@ -1384,6 +1390,17 @@ export type ActiveEffectModifier =
        */
       type: "SPELL_POWER_DOUBLE";
       school: SpellSchool;
+    }
+  | {
+      /**
+       * Polish Balance elemental Orb, option A: for this turn, matching Basic
+       * Spells gain +1 Power and matching Expert Spells gain +2. Magic Arrow's
+       * `any` school follows the same single-best-school rule as other bonuses.
+       */
+      type: "SPELL_SCHOOL_LEVEL_POWER_BONUS";
+      school: SpellSchool;
+      basicAmount: number;
+      expertAmount: number;
     }
   | {
       /**
@@ -7859,6 +7876,8 @@ type GameEventPayload =
       playerId: PlayerId;
       cardId: CardId;
       targetUnitId?: UnitId;
+      /** Siege Wall/Gate shots have no unit id; anchor their projectile to this cell. */
+      targetPosition?: number;
       message: string;
     }
   | {
@@ -14394,7 +14413,7 @@ export type GameSetupOptions = {
   wog?: WogModOptions;
   /** Anime mod modules. Enabled only in BINH mode; absent means fully off. */
   anime?: AnimeModOptions;
-  /** Win condition: "conquest", "grail" (Holy Grail), "dragon-hunt" or "dragon-conqueror". */
+  /** Win condition: Conquest, Conquer (elimination), Holy Grail, or a Dragon mode. */
   victoryMode?: VictoryMode;
   /** PvP Combat casualties: "normal" (lose dead units) or "none" (keep troops). */
   pvpTroopLoss?: PvpTroopLoss;
@@ -16403,6 +16422,8 @@ export type HeroState = {
    * it (the hero keeps moving across the sea).
    */
   movementHaltedThisTurn?: boolean;
+  /** Polish single-DD rule: set when this Hero is selected for Dimension Door; reset next own turn. */
+  dimensionDoorUsedThisTurn?: boolean;
   /**
    * Watering Hole (Factory): set when the hero visits the field this turn.
    * Cleared and spent as +1 movement at the start of the owner's next turn.
@@ -17956,6 +17977,7 @@ export type PendingChoice =
  * derived priorities. Redacted from other seats' player views.
  */
 export type ComputerPolicyMemoryState = {
+  failedFields?: Array<{ fieldId: string; round: number; readiness: string }>;
   developmentPlan?: {
     goal: "rebuild" | "silver" | "gold" | "gold-recruit" | "pressure";
     sinceRound: number;
@@ -17964,7 +17986,7 @@ export type ComputerPolicyMemoryState = {
     armyValue: number;
     rebuilding: boolean;
   };
-  routeHistory?: Array<{ heroId: string; to: string; progress: string }>;
+  routeHistory?: Array<{ heroId: string; to: string; progress: string; round?: number }>;
   lastTurnKey: string;
   resourceTrail: Array<{
     round: number;

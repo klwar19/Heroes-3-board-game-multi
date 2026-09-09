@@ -6,6 +6,8 @@ import {
 } from "../battlefield";
 import { getSpellDamageAmount, getSpellDiceRollCount } from "../effects";
 import { houseRuleEnabled } from "../house-rules";
+import { balanceCardLibrary } from "../community-balance-cards";
+import { resolvedSpellPowerForStackItem } from "../legal-actions";
 import type {
   CardDefinition,
   CardPlayMode,
@@ -31,6 +33,7 @@ import {
   livingEnemyUnits,
   pendingIncomingDamage,
   unitRemainingHealth,
+  unitRemovalHealth,
   unitThreatValue,
 } from "./score";
 import type { ComputerObservation } from "./types";
@@ -464,7 +467,8 @@ function scoreStatReaction(
       : ("amount" in effect ? (effect.amount as number) : 1);
 
   if (effect.type === "ADD_SPELL_POWER" || card.statisticType === "power") {
-    // Power boost mid-spell: always take when offered (legal only in the window).
+    const impact = pendingSpellBoostImpact(observation, amount);
+    if (impact === "lethal-already" || impact === "no-ladder-step") return 1_020;
     return 1_100 + amount * 10 + modeBonus(mode);
   }
   if (effect.type === "RECALL_SPELL") {
@@ -504,7 +508,7 @@ function scoreStatReaction(
           }
           // Do not spend another Attack card when even the low (-1) printed
           // die already removes the target. Keep it for a subsequent attack.
-          if (Math.min(cap, Math.max(0, currentDamage - 1)) >= unitRemainingHealth(defender)) {
+          if (Math.min(cap, Math.max(0, currentDamage - 1)) >= unitRemovalHealth(defender)) {
             return 1_020;
           }
         }
@@ -526,7 +530,7 @@ function scoreStatReaction(
           const defenseValue = defender.defense + (top.modifiers.defenseBonus ?? 0);
           const beforeDamage = Math.max(0, attackValue - defenseValue);
           const afterDamage = Math.max(0, attackValue - defenseValue - amount);
-          const remaining = unitRemainingHealth(defender);
+          const remaining = unitRemovalHealth(defender);
           // Ranked-PvP lesson v1: preserve a scarce Defense card when its
           // expected reduction still leaves the attacked unit dead. This is
           // outcome-aware conservation, not imitation of a named unit/faction;
@@ -919,37 +923,38 @@ function scoreEffect(
  */
 function pendingSpellBoostImpact(
   observation: ComputerObservation,
+  boost = 1,
 ): "lethal-already" | "no-ladder-step" | "kills" | "chips" | null {
   const combat = observation.state.combat;
   const top = observation.state.stack?.at(-1);
   if (!combat || !top || top.action.type !== "CAST_SPELL") return null;
-  const spell = cardLibrary[top.action.cardId];
+  const publicState = observation.state as unknown as GameState;
+  const cards = balanceCardLibrary(publicState, cardLibrary);
+  const spell = cards[top.action.cardId];
   const target = top.action.target;
   if (!spell || !target || target.type !== "unit") return null;
   if (!COMBAT_DAMAGE_EFFECTS.has(spell.effect.type)) return null;
   const defender = combat.units[target.unitId];
   if (!defender || defender.controllerId === observation.playerId) return null;
-  const modifiers = top.modifiers as
-    | {
-        spellPowerBonus?: number;
-        schoolPowerBonus?: number;
-        townCubePowerBonus?: number;
-      }
-    | undefined;
-  const power =
-    (spell.power ?? 0) +
-    (modifiers?.spellPowerBonus ?? 0) +
-    (modifiers?.schoolPowerBonus ?? 0) +
-    (modifiers?.townCubePowerBonus ?? 0);
+  // This read uses public power sources/modifiers, not hidden draw piles. Keep
+  // the redacted object; the engine helper's broader signature needs the cast.
+  const power = resolvedSpellPowerForStackItem(publicState, top, cards);
+  const boostedPower = resolvedSpellPowerForStackItem(publicState, {
+    ...top,
+    modifiers: { ...top.modifiers, spellPowerBonus: top.modifiers.spellPowerBonus + boost },
+  }, cards);
   // Dice-roll spells (Inferno, Slayer): the ladder is the DICE count.
   const diceNow = getSpellDiceRollCount(spell, power);
   if (diceNow !== null) {
-    const diceBoosted = getSpellDiceRollCount(spell, power + 1) ?? diceNow;
+    const diceBoosted = getSpellDiceRollCount(spell, boostedPower) ?? diceNow;
     return diceBoosted > diceNow ? "chips" : "no-ladder-step";
   }
+  // The scalar helper does not model chains, splashes or secondary effects.
+  // Unknown marginal value is not evidence that their Power is worthless.
+  if (spell.effect.type !== "DEAL_DAMAGE") return null;
   const now = getSpellDamageAmount(spell, power);
-  const boosted = getSpellDamageAmount(spell, power + 1);
-  const remaining = unitRemainingHealth(defender);
+  const boosted = getSpellDamageAmount(spell, boostedPower);
+  const remaining = unitRemovalHealth(defender);
   if (now > 0 && now >= remaining) return "lethal-already";
   if (boosted <= now) return "no-ladder-step";
   return boosted >= remaining ? "kills" : "chips";
@@ -1258,7 +1263,8 @@ export function scoreCardAction(
         return { score: 620, policy: "card.use-active-effect" };
       }
       const remaining = unitRemainingHealth(target);
-      const missingHealth = Math.max(0, target.maxHealth - remaining);
+      // Stack layers are future health bars, not healing on the current bar.
+      const missingHealth = Math.max(0, target.damage);
       const threat = unitThreatValue(target);
       const effect = observation.state.activeEffects?.find(
         (candidate) => candidate.id === action.effectId,

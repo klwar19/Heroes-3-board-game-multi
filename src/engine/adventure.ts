@@ -20990,6 +20990,9 @@ export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
       hero.movementPoints += 1;
       hero.wateringHoleBonusPending = false;
     }
+    if (hero.controllerId === playerId) {
+      hero.dimensionDoorUsedThisTurn = false;
+    }
   }
   const mainHero = getMainHero(state, playerId);
   if (mainHero && (player.bankedEquipmentMovement ?? 0) > 0) {

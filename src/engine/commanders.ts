@@ -296,7 +296,10 @@ export function commanderAbilityIds(commander: CommanderPlayerState): string[] {
   // first-aid precedent — so any future Undead commander (the Heavenly Demon
   // "Undying Demon Body") gets it too.
   if (definition?.specialty.id === "undead") {
-    ids.push("ignore-paralysis");
+    // `wog-undead` is the shared identity marker read by Holy Steel and every
+    // non-Undead kill gate. Keep `ignore-paralysis` as the specialty's stated
+    // gameplay benefit; identity and immunity are intentionally separate.
+    ids.push("wog-undead", "ignore-paralysis");
   }
 
   // The command ability itself (offered as a USE_UNIT_ABILITY during its

@@ -30,6 +30,7 @@ import {
 } from "./score";
 import type { ComputerObservation } from "./types";
 import { coordinatedReplyDamage } from "./opponent-reply";
+import { unitSideStrength } from "./army-strength";
 
 /**
  * True when our side is clearly losing a neutral fight: no living unit can
@@ -584,6 +585,32 @@ function placeScore(
     (side?.health ?? existing?.maxHealth ?? 0) +
     (side?.defense ?? existing?.defense ?? 0);
 
+  if (existing && existing.position >= 0) {
+    // Placement is reversible. Only accept a strict improvement to the WHOLE
+    // formation (including a displaced ally), otherwise Ready must win.
+    const allies = Object.values(combat.units).filter(unit =>
+      unit.controllerId === observation.playerId && unit.position >= 0);
+    const formationValue = (candidate: CombatState) => allies.reduce((sum, unit) => {
+      const current = candidate.units[unit.id];
+      return sum + formationFitScore(candidate, observation.playerId, unitRole(current),
+        current.position, current.id, current.maxHealth + current.defense, unitThreatValue(current));
+    }, 0);
+    const occupant = allies.find(unit => unit.id !== existing.id && unit.position === action.position);
+    const units = { ...combat.units, [existing.id]: { ...existing, position: action.position } };
+    if (occupant) units[occupant.id] = { ...occupant, position: existing.position };
+    const gain = formationValue({ ...combat, units }) - formationValue(combat);
+    return gain > 0 ? 905 + Math.min(40, gain) : 870;
+  }
+
+  // Fill the limited deployment slots with the force used by the engagement
+  // estimate. A cheap shooter's perfect corner must not bench a gold Pack.
+  // Lower-strength cards remain legal fallbacks, but wait for stronger cards.
+  if (armyUnit && player.army.some(candidate =>
+    observation.legalActions.some(legal => legal.action.type === "PLACE_COMBAT_UNIT" &&
+      legal.action.armyUnitId === candidate.id) &&
+    !Object.values(combat.units).some(unit => unit.armyUnitId === candidate.id) &&
+    unitSideStrength(candidate) > unitSideStrength(armyUnit))) return 890;
+
   let score =
     920 +
     formationFitScore(
@@ -605,7 +632,8 @@ function placeScore(
   if (side) {
     score += Math.min(8, Math.round((side.attack * 3 + side.health) / 8));
   }
-  return score;
+  // An awkward remaining square still beats leaving a deployment slot empty.
+  return Math.max(901, score);
 }
 
 /**
@@ -660,7 +688,7 @@ function neutralPlacementScore(
 }
 
 /**
- * Tactics swap: only swap when formation quality of the pair improves. Finish
+ * Tactics swap: only swap when whole-formation quality improves. Finish
  * when no swap is clearly better so we never thrash.
  */
 function swapScore(
@@ -676,17 +704,14 @@ function swapScore(
     return 800;
   }
 
-  const roleA = unitRole(a);
-  const roleB = unitRole(b);
-  const bulkA = a.maxHealth + a.defense;
-  const bulkB = b.maxHealth + b.defense;
-
-  const before =
-    formationFitScore(combat, observation.playerId, roleA, a.position, a.id, bulkA, unitThreatValue(a)) +
-    formationFitScore(combat, observation.playerId, roleB, b.position, b.id, bulkB, unitThreatValue(b));
-  const after =
-    formationFitScore(combat, observation.playerId, roleA, b.position, a.id, bulkA, unitThreatValue(a)) +
-    formationFitScore(combat, observation.playerId, roleB, a.position, b.id, bulkB, unitThreatValue(b));
+  const formationValue = (candidate: CombatState) => Object.values(candidate.units)
+    .filter(unit => unit.controllerId === observation.playerId && unit.position >= 0)
+    .reduce((sum, unit) => sum + formationFitScore(candidate, observation.playerId,
+      unitRole(unit), unit.position, unit.id, unit.maxHealth + unit.defense, unitThreatValue(unit)), 0);
+  const before = formationValue(combat);
+  const after = formationValue({ ...combat, units: { ...combat.units,
+    [a.id]: { ...a, position: b.position }, [b.id]: { ...b, position: a.position },
+  } });
   const gain = after - before;
   if (gain <= 0) {
     // No improvement — fall below FINISH_TACTICS (900) so we stop.

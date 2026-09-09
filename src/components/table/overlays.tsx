@@ -75,6 +75,8 @@ type TrayGroup = {
   optionIndex?: number;
   /** Bowstring post-roll option: exact die represented by this button. */
   dieIndex?: number;
+  /** Polish Interference: mutually-exclusive defense or Spell-Power arm. */
+  interferenceMode?: ReactionLegal["interferenceMode"];
   optionLabel?: string;
   modes: CardPlayMode[];
   batchable: boolean;
@@ -100,6 +102,8 @@ type TraySelection = {
   optionIndex?: number;
   /** Bowstring post-roll option: exact die selected by the player. */
   dieIndex?: number;
+  /** See TrayGroup.interferenceMode — must survive grouping and dispatch. */
+  interferenceMode?: ReactionLegal["interferenceMode"];
   mode: CardPlayMode;
   asPowerBoost?: boolean;
   /** See TrayGroup.drawOnly — must ride the dispatched PLAY_REACTION(S). */
@@ -1070,7 +1074,11 @@ export function ReactionTray({
     // dispatch the wrong one.
     const drawOnlyKey = action.drawOnly ? "#drawOnly" : "";
     const dieKey = action.dieIndex !== undefined ? `#die${action.dieIndex}` : "";
-    const key = `${action.cardId}#${action.optionIndex ?? -1}#${action.asPowerBoost ? "boost" : "play"}${targetKey}${drawOnlyKey}${dieKey}`;
+    // Interference's two printed arms share the same card/option/mode. Keep the
+    // arm in the key; otherwise the Power choice collapses into the defense
+    // choice and dispatch silently drops `interferenceMode`.
+    const interferenceKey = action.interferenceMode ? `#interference:${action.interferenceMode}` : "";
+    const key = `${action.cardId}#${action.optionIndex ?? -1}#${action.asPowerBoost ? "boost" : "play"}${targetKey}${drawOnlyKey}${dieKey}${interferenceKey}`;
     // Resolve the Balance-Pack reprint so the option LABEL ("+1 attack, discard
     // X cards: +X more attack") matches what the engine runs, not the classic
     // "Discard X cards: +X attack".
@@ -1120,8 +1128,11 @@ export function ReactionTray({
         (group.protectedUnitId ? `#protect:${group.protectedUnitId}` : "");
       const groupDrawOnlyKey = group.drawOnly ? "#drawOnly" : "";
       const groupDieKey = group.dieIndex !== undefined ? `#die${group.dieIndex}` : "";
+      const groupInterferenceKey = group.interferenceMode
+        ? `#interference:${group.interferenceMode}`
+        : "";
       return (
-        `${group.cardId}#${group.optionIndex ?? -1}#${group.asPowerBoost ? "boost" : "play"}${groupTargetKey}${groupDrawOnlyKey}${groupDieKey}` ===
+        `${group.cardId}#${group.optionIndex ?? -1}#${group.asPowerBoost ? "boost" : "play"}${groupTargetKey}${groupDrawOnlyKey}${groupDieKey}${groupInterferenceKey}` ===
         key
       );
     });
@@ -1136,8 +1147,13 @@ export function ReactionTray({
         protectedUnitId: action.protectedUnitId,
         optionIndex: action.optionIndex,
         dieIndex: action.dieIndex,
+        interferenceMode: action.interferenceMode,
         optionLabel: action.asPowerBoost
           ? "Discard for +1 Power"
+          : action.interferenceMode === "power"
+            ? "Reduce this Spell by up to 2 SP (4 SP Expert; minimum weakest effect)"
+            : action.interferenceMode === "damage"
+              ? "+1 Defense against this Spell (+2 Expert)"
           : action.protectedUnitId && action.target?.type === "unit"
             ? `Protect ${unitName(state, action.protectedUnitId)} → half to ${unitName(state, action.target.unitId)}`
             : action.target?.type === "unit"
@@ -1217,6 +1233,7 @@ export function ReactionTray({
         existing &&
         existing.optionIndex === group.optionIndex &&
         existing.dieIndex === group.dieIndex &&
+        existing.interferenceMode === group.interferenceMode &&
         Boolean(existing.asPowerBoost) === Boolean(group.asPowerBoost) &&
         Boolean(existing.drawOnly) === Boolean(group.drawOnly)
       ) {
@@ -1228,6 +1245,7 @@ export function ReactionTray({
         cardId,
         optionIndex: group.optionIndex,
         dieIndex: group.dieIndex,
+        interferenceMode: group.interferenceMode,
         mode: "basic",
         asPowerBoost: group.asPowerBoost,
         drawOnly: group.drawOnly,
@@ -1468,6 +1486,7 @@ export function ReactionTray({
         mode: selection.mode,
         ...(selection.optionIndex !== undefined ? { optionIndex: selection.optionIndex } : {}),
         ...(selection.dieIndex !== undefined ? { dieIndex: selection.dieIndex } : {}),
+        ...(selection.interferenceMode ? { interferenceMode: selection.interferenceMode } : {}),
         ...(selection.asPowerBoost ? { asPowerBoost: true } : {}),
         // `drawOnly` MUST ride the play: dropping it resolves the FULL primary
         // effect instead of the draw rider the button promised (Runes granted
@@ -1974,6 +1993,7 @@ export function ReactionTray({
                     selection &&
                       selection.optionIndex === group.optionIndex &&
                       selection.dieIndex === group.dieIndex &&
+                      selection.interferenceMode === group.interferenceMode &&
                       Boolean(selection.asPowerBoost) === Boolean(group.asPowerBoost)
                   );
                   if (!group.batchable && !group.costCards) {
@@ -1994,6 +2014,7 @@ export function ReactionTray({
                             mode,
                             ...(group.optionIndex !== undefined ? { optionIndex: group.optionIndex } : {}),
                             ...(group.dieIndex !== undefined ? { dieIndex: group.dieIndex } : {}),
+                            ...(group.interferenceMode ? { interferenceMode: group.interferenceMode } : {}),
                             ...(group.target ? { target: group.target } : {}),
                             ...(group.protectedUnitId ? { protectedUnitId: group.protectedUnitId } : {}),
                             ...(group.drawOnly ? { drawOnly: true as const } : {}),

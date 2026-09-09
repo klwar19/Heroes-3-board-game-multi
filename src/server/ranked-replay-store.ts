@@ -13,9 +13,9 @@ import {
 } from "@/server/ranked-replay";
 
 export const RANKED_REPLAYS_TABLE = "homm3bg_ranked_replays";
-export const RANKED_REPLAY_RETENTION_MS = 7 * 24 * 60 * 60 * 1_000;
-const BUILTIN_MAX_FILES = 200;
-const BUILTIN_MAX_TOTAL_BYTES = 250 * 1024 * 1024;
+export const RANKED_REPLAY_RETENTION_MS = 365 * 24 * 60 * 60 * 1_000;
+const BUILTIN_MAX_FILES = 10_000;
+const BUILTIN_MAX_TOTAL_BYTES = 100 * 1024 * 1024 * 1024;
 
 export type RankedReplayStoreOutcome = { stored: boolean; reason?: string };
 
@@ -82,7 +82,7 @@ export async function storeRankedReplay(
   const config = supabaseConfigFromEnv(env);
   if (config) {
     const db = new PostgrestClient(config.url, config.serviceRoleKey);
-    // Retain only the rolling seven-day training window. This deletes replay
+    // Retain a full year of training/audit history. This deletes replay
     // payloads, not homm3bg_matches, so match-result idempotency and players'
     // cumulative W/L/MMR remain intact. Cleanup is best-effort: an unavailable
     // cleanup query must not discard the newly completed match.

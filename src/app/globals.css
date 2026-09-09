@@ -23094,9 +23094,12 @@ img.cardBack {
   position: static;
   display: flex;
   flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
   gap: 6px;
-  width: auto;
+  width: fit-content;
+  max-width: 100%;
   margin-top: 6px;
   padding: 8px;
   border-radius: 12px;
@@ -23129,6 +23132,17 @@ img.cardBack {
     0 0 18px rgb(85 127 153 / 45%);
 }
 
+/* A ranged attack or Cyclops demolition uses the same direct-card affordance
+   as an attackable battlefield unit. Keeping the ring on the whole off-board
+   card makes the target obvious with a mouse and without hover on a phone. */
+.arrowTower.attackTarget {
+  outline: 3px solid rgb(219 91 74 / 94%);
+  outline-offset: 2px;
+  box-shadow:
+    0 8px 22px rgba(0, 0, 0, 0.5),
+    0 0 20px rgb(219 91 74 / 52%);
+}
+
 .arrowTower.healTarget {
   outline: 2px solid rgb(126 196 126 / 90%);
   outline-offset: 2px;
@@ -23138,12 +23152,20 @@ img.cardBack {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
+  flex: 0 1 132px;
+  width: min(132px, 34vw);
+  min-width: 88px;
+  min-height: 44px;
   gap: 3px;
+  padding: 0;
   background: none;
   border: none;
   color: #f3e7c8;
   cursor: pointer;
   font: inherit;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: rgb(255 227 155 / 24%);
 }
 
 /* Sits AFTER the base `.arrowTowerBody` so the target cursor/ring reads as an
@@ -23154,7 +23176,8 @@ img.cardBack {
 }
 
 .arrowTowerBody.towerTarget:hover,
-.arrowTowerBody.towerTarget:focus-visible {
+.arrowTowerBody.towerTarget:focus-visible,
+.arrowTowerBody.towerTarget:active {
   outline: 3px solid rgb(255 227 155 / 58%);
   outline-offset: -3px;
 }

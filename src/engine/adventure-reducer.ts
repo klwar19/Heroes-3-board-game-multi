@@ -308,6 +308,7 @@ import {
 } from "./wuxia-factions";
 import {
   expireCommunityLuckAtTurnEnd,
+  expirePolishOrbAtTurnEnd,
   expireEffectsForCombatEnd,
   getActiveDefenseBonus,
   getDisplayAttackBonus,
@@ -1905,6 +1906,14 @@ export function dimensionDoorDestinations(state: GameState, hero: HeroState, ran
   return destinations;
 }
 
+/** Whether this Hero may be selected by the Polish once-per-Hero DD option. */
+export function dimensionDoorHeroAvailable(state: GameState, hero: HeroState): boolean {
+  return (
+    !houseRuleEnabled(state, "polish-single-dimension-door") ||
+    !hero.dimensionDoorUsedThisTurn
+  );
+}
+
 /**
  * Opens the Dimension Door destination choice after the traveller is chosen.
  * With no reachable destination the spell fizzles (the card is already spent),
@@ -1983,6 +1992,7 @@ export function openDimensionDoorChoice(state: GameState, playerId: PlayerId, ra
     (hero) =>
       hero.controllerId === playerId &&
       hero.spaceId !== null &&
+      dimensionDoorHeroAvailable(state, hero) &&
       dimensionDoorDestinations(state, hero, range).length > 0
   );
   if (eligibleHeroes.length === 0) {
@@ -2038,6 +2048,14 @@ export function resolveDimensionDoorHeroChoice(state: GameState, playerId: Playe
   const hero = heroId ? state.heroes[heroId] : undefined;
   if (!hero || hero.controllerId !== playerId) {
     throw new Error("Choose a Hero to teleport with Dimension Door.");
+  }
+  if (!dimensionDoorHeroAvailable(state, hero)) {
+    throw new Error("Dimension Door was already played on that Hero this turn.");
+  }
+  if (houseRuleEnabled(state, "polish-single-dimension-door")) {
+    // Selecting the Hero spends that Hero's allowance even if the player later
+    // cancels the destination: the Spell has already been played on this Hero.
+    hero.dimensionDoorUsedThisTurn = true;
   }
   openDimensionDoorDestinationChoice(state, playerId, hero, pending.range);
 }
@@ -19065,6 +19083,13 @@ function expireCommunityLuck(state: GameState, playerId: PlayerId): void {
   }
 }
 
+/** Expires the Polish Orb turn-long school bonus at that same turn's end. */
+function expirePolishOrbs(state: GameState, playerId: PlayerId): void {
+  for (const effect of expirePolishOrbAtTurnEnd(state, playerId)) {
+    appendEvent(state, { type: "ACTIVE_EFFECT_EXPIRED", effectId: effect.id, reason: "turn-ended" });
+  }
+}
+
 function advanceAfterTurn(
   state: GameState,
   endingPlayerId: PlayerId,
@@ -19134,6 +19159,7 @@ function advanceAfterTurn(
   // otherwise a round-start Astrologers roll made after their turn was still
   // rerollable. No-op for every other card, this pack off included.
   expireCommunityLuck(state, endingPlayerId);
+  expirePolishOrbs(state, endingPlayerId);
 
   // Whether this round already ran everyone's start-of-turn (a parallel round
   // start that stopped mid-round) — read BEFORE the round counter moves.
@@ -19205,6 +19231,7 @@ function endParallelTurn(
 
   // Same turn-END expiry as the ordered path above.
   expireCommunityLuck(state, endingPlayerId);
+  expirePolishOrbs(state, endingPlayerId);
 
   if (eliminate) {
     eliminatePlayer(state, endingPlayerId, eliminate.reason, gaveUp);

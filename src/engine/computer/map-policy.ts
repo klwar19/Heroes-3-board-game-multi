@@ -1040,7 +1040,7 @@ function hasReachableBronzeRushTarget(
 ): boolean {
   if (
     hero.kind !== "main" ||
-    adventureVictoryMode(state) !== "conquest" ||
+    (adventureVictoryMode(state) !== "conquest" && adventureVictoryMode(state) !== "conquer") ||
     !shouldLaunchBronzeRush(state, hero.controllerId) ||
     !hero.spaceId
   ) {
@@ -2450,6 +2450,15 @@ export function scoreMapAction(
       const ordinaryMoveScore = moveScore(observation, action);
       const enterHero = state.heroes[action.heroId];
       const enterField = state.adventure?.fields[action.to];
+      if (enterHero && enterField && isFieldGuarded(enterField) &&
+          !(enterHero.spaceId && heroesAtSpace(state, enterHero.spaceId).length > 1) &&
+          !gateFieldsLinked(enterHero.spaceId ? state.adventure?.fields[enterHero.spaceId] : undefined, enterField) &&
+          premiumCombatMovementReserve(state, enterHero, enterField) > 0 &&
+          enterHero.movementPoints < 2 && heroMovementMax(state, enterHero) >= 2) {
+        // Keep one MP for a paid continuation on ordinary guards too. Banks
+        // and unlimited fights are explicitly exempt from this budget.
+        return { score: 250, policy: "map.save-guard-continuation" };
+      }
       if (
         (state.round ?? 0) <= 3 &&
         enterHero?.spaceId &&

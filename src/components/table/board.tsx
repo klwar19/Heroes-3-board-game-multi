@@ -647,6 +647,8 @@ function ArrowTowerCard({
   onInspect: (unitId: string) => void;
 }) {
   const health = Math.max(0, tower.maxHealth - tower.damage);
+  // Keep explicit text controls as an accessible fallback. The full card also
+  // dispatches these actions through `targetAction`, matching battlefield units.
   const attackAction = legalActions.find(
     (legal) => legal.action.type === "ATTACK_UNIT" && legal.action.defenderId === tower.id
   );
@@ -662,7 +664,9 @@ function ArrowTowerCard({
       <button
         aria-label={targetAction ? targetAction.label : undefined}
         className={`arrowTowerBody ${targetAction ? "towerTarget" : ""}`}
+        data-fx-unit={tower.id}
         onClick={() => (targetAction ? onAction(targetAction.action) : onInspect(tower.id))}
+        onMouseEnter={() => onInspect(tower.id)}
         title={targetAction ? targetAction.label : towerTitle}
         type="button"
       >
@@ -670,6 +674,7 @@ function ArrowTowerCard({
           <img
             alt={tower.assets.imageAlt ?? "Arrow Tower card"}
             className="arrowTowerCardImg"
+            draggable={false}
             loading="eager"
             referrerPolicy="no-referrer"
             src={assetUrl(tower.assets.cardImage)}
@@ -1063,12 +1068,12 @@ export function BattlefieldBoard({
 
   // The Arrow Tower's share of the very same per-unit maps the cells read below.
   // It stands at position -1 (no cell), so without this every unit-targeted
-  // offer aimed at it — an armed Magic Arrow / Lightning Bolt / Slow, an ability
-  // target pick, a First Aid mend, an armed Set-Artifact power — was enumerated
-  // by the engine and then had NO clickable surface at all. The precedence
-  // mirrors the cell's exactly (armed card first; the heal only when nothing is
-  // armed), so the Tower can never advertise a different action than a cell
-  // would for the same unit.
+  // offer aimed at it — an ordinary ranged attack, Cyclops demolition, an armed
+  // Magic Arrow / Lightning Bolt / Slow, an ability target pick, a First Aid
+  // mend, or an armed Set-Artifact power — was enumerated by the engine and then
+  // had NO battlefield cell to bind to. Resolve the same action precedence as a
+  // normal occupied cell and make the entire Tower card the target. This avoids
+  // relying on a small adjacent command button, especially on touch screens.
   const arrowTowerTargetAction = (() => {
     if (!arrowTower) {
       return null;
@@ -1077,6 +1082,10 @@ export function BattlefieldBoard({
     const order = activationOrderActionsByUnit.get(arrowTower.id);
     if (order) {
       return { action: order, label: `Choose ${name} to activate first`, kind: "activationOrderTarget" };
+    }
+    const setPower = armedSetPower?.targets.get(arrowTower.id);
+    if (setPower && armedSetPower) {
+      return { action: setPower, label: `${armedSetPower.setName}: use on ${name}`, kind: "artifactSetTarget" };
     }
     const ability = abilityTargetActions.get(arrowTower.id);
     if (ability) {
@@ -1088,14 +1097,27 @@ export function BattlefieldBoard({
     if (card) {
       return { action: card, label: `Target ${name}`, kind: "cardTarget" };
     }
-    // The mend, like a cell's, yields to anything armed.
+    // Ordinary attacks and siege demolition, like movement/attacks on the grid,
+    // yield while a hand card is armed. The legal-action list remains the sole
+    // authority: melee attacks never appear here because the engine refuses
+    // them against the off-board Tower.
+    const attack = selectedCardAction ? undefined : attackActionsByDefender.get(arrowTower.id);
+    if (attack) {
+      return { action: attack, label: `Attack ${name}`, kind: "attackTarget" };
+    }
+    const demolish = selectedCardAction
+      ? undefined
+      : legalActions.find(
+          (legal) =>
+            legal.action.type === "ATTACK_FORTIFICATION" && legal.action.target.kind === "arrow-tower"
+        );
+    if (demolish) {
+      return { action: demolish.action, label: demolish.label, kind: "attackTarget" };
+    }
+    // The mend, like a cell's, yields to an armed hand card and to attacks.
     const heal = selectedCardAction ? undefined : healActionsByTarget.get(arrowTower.id);
     if (heal) {
       return { action: heal, label: `First Aid Tent: heal ${name}`, kind: "healTarget" };
-    }
-    const setPower = armedSetPower?.targets.get(arrowTower.id);
-    if (setPower && armedSetPower) {
-      return { action: setPower, label: `${armedSetPower.setName}: use on ${name}`, kind: "artifactSetTarget" };
     }
     return null;
   })();
