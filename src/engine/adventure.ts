@@ -20746,6 +20746,9 @@ function saplingsReinforceMenu(state: GameState, visit: PendingVisit, menu: Extr
         halfGoldOnly: true, roundDown: false, allowStack: true
       });
   if (!bank) return;
+  // Saplings is a beginning-of-round entitlement. It must disappear with the
+  // round-start offer if the player skips or cannot afford a target.
+  bank.expiresAfterRound = state.round;
   const nextMenu: typeof menu = { ...menu, discountId: bank.id };
   const options: { label: string; steps: VisitStep[]; disabledReason?: string }[] = [];
   for (const unit of player.army) {
