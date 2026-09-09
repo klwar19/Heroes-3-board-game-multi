@@ -13214,7 +13214,7 @@ function GameModeSection({
                       [
                         "neutralRankUp",
                         "Neutral rank-up",
-                        "Neutral-OWNED guards toughen with the round: bronze Seasoned/Veteran/Elite at rounds 3/5/8; silver at 6/8/12; gold at 6/10/14. Creature Banks use Far 4/6/9 or Near 6/8/12. Winning against Veteran guards adds +1 unit XP; Elite adds +2. This never gates player-controlled recruited Neutral XP.",
+                        "Neutral-OWNED guards toughen with the round: bronze Seasoned/Veteran/Elite at rounds 3/5/8; silver at 6/8/12; gold at 6/10/14; azure at 8/12/16. Creature Banks use Far 4/6/9 or Near 6/8/12, with azure defenders ranking 2 rounds later. Winning against Veteran guards adds +1 unit XP; Elite adds +2. This never gates player-controlled recruited Neutral XP.",
                       ],
                       [
                         "monsterWaves",

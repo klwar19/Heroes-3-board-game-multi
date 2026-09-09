@@ -348,7 +348,7 @@ export const COMMANDER_COMBOS: readonly CommanderCombo[] = [
     requires: ["health", "magic"],
     abilityId: "commander-paralyze",
     icon: "/assets/spell-icons/blind.png",
-    text: 'After the commander\'s attack, roll an Attack die — on "0" the target gains Paralysis.'
+    text: 'After the commander\'s attack, roll an Attack die — on "-1" or "0" the target gains Paralysis.'
   },
   {
     id: "regeneration",
@@ -724,13 +724,13 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       icon: "/assets/spell-icons/precision.png",
       // Power ladder (user spec): Pow 0 = +1 but the ranged unit must be
       // adjacent to the commander; Pow 1 = +1 anywhere; Pow 2 = +2 anywhere.
-      // Always for THIS round only. The "ignore ranged penalties" rider stays.
+      // The Attack and ranged-penalty buff lasts for this round and the next.
       targeting: { side: "friendly", unitType: "ranged", adjacentBelowPower: 1, canTargetSelf: false },
       effect: { kind: "precision", amountByPower: [1, 1, 2] },
       tierText: [
-        "A friendly ranged unit ADJACENT to the commander gains +1 Attack and ignores all ranged penalties this round.",
-        "A friendly ranged unit anywhere gains +1 Attack and ignores all ranged penalties this round.",
-        "A friendly ranged unit anywhere gains +2 Attack and ignores all ranged penalties this round."
+        "A friendly ranged unit ADJACENT to the commander gains +1 Attack and ignores all ranged penalties for 2 combat rounds.",
+        "A friendly ranged unit anywhere gains +1 Attack and ignores all ranged penalties for 2 combat rounds.",
+        "A friendly ranged unit anywhere gains +2 Attack and ignores all ranged penalties for 2 combat rounds."
       ]
     },
     specialty: {

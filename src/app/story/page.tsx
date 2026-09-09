@@ -31,6 +31,14 @@ function difficultyLabel(chapter: CampaignChapter): string {
   return difficulty.charAt(0).toUpperCase() + difficulty.slice(1);
 }
 
+function victoryRule(chapter: CampaignChapter, language: StoryLanguage): string {
+  const roundLimit = chapter.scenarioMap?.preset.roundLimit;
+  const bonus = chapter.scenarioMap?.preset.victoryPoints?.victoryConditionVp ?? 3;
+  return language === "en"
+    ? `Complete the primary goal${roundLimit ? ` or reach the end of round ${roundLimit}` : ""}. The mission then ends: highest Victory Point total wins, and the player who completed the goal gains +${bonus} VP.`
+    : `Hoàn thành mục tiêu chính${roundLimit ? ` hoặc đi đến hết vòng ${roundLimit}` : ""}. Sau đó nhiệm vụ kết thúc: người có tổng VP cao nhất thắng; người hoàn thành mục tiêu nhận +${bonus} VP.`;
+}
+
 const CAMPAIGN_RULE_CHOICES: Array<{
   key: keyof CampaignRuleOptions;
   title: LocalizedText;
@@ -185,7 +193,8 @@ export default function StoryPage() {
             <h2>{text(selected.title, language)}</h2>
             <p>{text(selected.synopsis, language)}</p>
             <dl>
-              <div><dt>{language === "en" ? "Objective" : "Mục tiêu"}</dt><dd>{text(selected.objective, language)}</dd></div>
+              <div><dt>{language === "en" ? "Primary goal" : "Mục tiêu chính"}</dt><dd>{text(selected.objective, language)}</dd></div>
+              <div><dt>{language === "en" ? "Victory rule" : "Điều kiện thắng"}</dt><dd>{victoryRule(selected, language)}</dd></div>
               <div><dt>{language === "en" ? "Difficulty" : "Độ khó"}</dt><dd>{difficultyLabel(selected)}</dd></div>
               <div><dt>{language === "en" ? "Map" : "Bản đồ"}</dt><dd>{selected.scenarioMap?.tiles.length ?? 0} {language === "en" ? "authored tiles" : "ô thiết kế"}</dd></div>
             </dl>
@@ -212,7 +221,8 @@ export default function StoryPage() {
                 <section className="campaignBriefingBlock">
                   <h3>{language === "en" ? "Mission rules" : "Luật nhiệm vụ"}</h3>
                   <dl className="campaignRulesGrid">
-                    <div><dt>{language === "en" ? "Victory" : "Chiến thắng"}</dt><dd>{text(selected.objective, language)}</dd></div>
+                    <div><dt>{language === "en" ? "Primary goal" : "Mục tiêu chính"}</dt><dd>{text(selected.objective, language)}</dd></div>
+                    <div><dt>{language === "en" ? "Victory rule" : "Điều kiện thắng"}</dt><dd>{victoryRule(selected, language)}</dd></div>
                     <div><dt>{language === "en" ? "Difficulty" : "Độ khó"}</dt><dd>{difficultyLabel(selected)} · {language === "en" ? "fixed" : "cố định"}</dd></div>
                     <div><dt>{language === "en" ? "Hero cap" : "Giới hạn hero"}</dt><dd>{selected.levelCap ?? (language === "en" ? "None" : "Không")}</dd></div>
                     <div><dt>{language === "en" ? "Commander" : "Chỉ huy"}</dt><dd>{selected.setup?.playerHeroDefId ? coreHeroDefinitions[selected.setup.playerHeroDefId]?.name : "Catherine"} · {language === "en" ? "1 main hero deployed" : "triển khai 1 hero chính"}</dd></div>

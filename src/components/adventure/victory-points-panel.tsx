@@ -208,11 +208,13 @@ export function ScenarioObjectivesDock({
     ? VICTORY_MODE_LABELS[adventure.victoryMode] ?? "Scenario victory"
     : "Scenario victory";
   const roundLimit = preset?.roundLimit;
-  const headline = encounterFields.length > 0
-    ? `Defeat ${locationDefinitions[encounterFields[0]!.location]?.name ?? "the marked encounter"}`
-    : custom[0]
-      ? describeCustomWinCondition(custom[0])
-      : modeLabel;
+  const endConditions = [
+    ...encounterFields.map(
+      (field) => `Defeat ${locationDefinitions[field.location]?.name ?? "the marked encounter"}`,
+    ),
+    ...custom.map(describeCustomWinCondition),
+  ];
+  const headline = endConditions.length > 0 ? endConditions.join(" or ") : modeLabel;
 
   return (
     <div className="objectiveDock">

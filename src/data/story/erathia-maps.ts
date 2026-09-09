@@ -16,18 +16,27 @@ type LatticeSlot = readonly [a: number, b: number, group: CampaignTileGroup];
  * (1,0), (0,1) and (1,1) are the three touching-neighbour axes.
  */
 function campaignGeometry(slots: readonly LatticeSlot[]): CustomMapTilePlan[] {
+  let startingIndex = 0;
   return slots.map(([a, b, group]) => {
     // Start at offset (30,30) = axial (15,30), walk the two index-7
     // sublattice axes, then convert axial back to the engine's odd-r offset.
     const q = 15 + 2 * a + b;
     const row = 30 + a - 3 * b;
     const col = q + (row - (row & 1)) / 2;
+    const soloRole =
+      group === "starting"
+        ? startingIndex++ === 0
+          ? "human" as const
+          : "computer" as const
+        : undefined;
     return {
       row,
       col,
       group,
       faceDown: group !== "starting",
-      ...(group === "starting" ? { lockRotation: true } : {}),
+      ...(group === "starting"
+        ? { lockRotation: true, singlePlayer: { role: soloRole! } }
+        : {}),
       ...(group === "sea" ? { seaBand: "iv-v" as const } : {}),
       ...(group === "subterranean" ? { subBand: "iv-v" as const } : {})
     };

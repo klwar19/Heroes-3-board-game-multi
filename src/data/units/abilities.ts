@@ -713,6 +713,8 @@ export type UnitAbilityEffectDefinition =
       type: "PARALYZE_TARGET_ON_DIE";
       source: "own" | "extra";
       onRoll: number;
+      /** Inclusive upper edge; absent means only `onRoll` succeeds. */
+      maxRoll?: number;
     }
   | {
       /**
@@ -4280,8 +4282,8 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "commander-paralyze": {
     id: "commander-paralyze",
     name: "Paralyzing Touch",
-    text: '[unit_attack] After the attack, roll 1 Attack die; on a "0" the target gains Paralysis (it skips its next activation; any damage clears it).',
-    effect: { type: "PARALYZE_TARGET_ON_DIE", source: "extra", onRoll: 0 },
+    text: '[unit_attack] After the attack, roll 1 Attack die; on a "-1" or "0" the target gains Paralysis (it skips its next activation; any damage clears it).',
+    effect: { type: "PARALYZE_TARGET_ON_DIE", source: "extra", onRoll: -1, maxRoll: 0 },
     implementationStatus: "implemented"
   },
   "commander-regeneration": {
@@ -4308,7 +4310,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "commander-cast-temple_guardian": {
     id: "commander-cast-temple_guardian",
     name: "Precision",
-    text: "[activation] Once per combat round: a friendly ranged unit gains +1/+2/+3 Attack (Power 0/1/2) and ignores all ranged penalties this round. Does not end the activation.",
+    text: "[activation] Once per combat round: a friendly ranged unit gains +1/+1/+2 Attack (Power 0/1/2) and ignores all ranged penalties for 2 combat rounds. Does not end the activation.",
     effect: { type: "COMMANDER_CAST" },
     implementationStatus: "implemented"
   },

@@ -386,6 +386,7 @@ export type ParalysisFollowUp = {
   abilityName: string;
   source: "own" | "extra";
   onRoll: number;
+  maxRoll?: number;
 };
 
 /** Azure Dragons / Basilisks: paralyse the target on a matching Attack die face. */
@@ -397,7 +398,8 @@ export function getParalysisFollowUps(unit: CombatUnitState): ParalysisFollowUp[
             abilityId: ability.id,
             abilityName: ability.name,
             source: ability.effect.source,
-            onRoll: ability.effect.onRoll
+            onRoll: ability.effect.onRoll,
+            ...(ability.effect.maxRoll !== undefined ? { maxRoll: ability.effect.maxRoll } : {})
           }
         ]
       : []

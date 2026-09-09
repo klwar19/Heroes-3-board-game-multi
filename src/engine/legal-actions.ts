@@ -465,6 +465,16 @@ export function getCardPlayVariants(card: CardDefinition, state?: GameState): Ca
   ];
 }
 
+/** A positive, explicit draw face may be played wherever cards can be used. */
+function hasTimingFreeDrawVariant(card: CardDefinition, state?: GameState): boolean {
+  return getCardPlayVariants(card, state).some(
+    (variant) =>
+      !variant.mapOnly &&
+      variant.effect.type === "DRAW_CARDS" &&
+      getEffectAmount(variant.effect, "basic") > 0,
+  );
+}
+
 /**
  * The "free" spell Power a player brings to a spell from standing sources this
  * turn/round — the once-per-turn Astrologers bonus, the once-per-round active
@@ -3916,6 +3926,7 @@ function addPlayableCardActions(
     ) {
       continue;
     }
+    const timingFreeDraw = hasTimingFreeDrawVariant(card, state);
 
     // Polish Balance Pack: Learning's ONLY hand play is the standalone "draw 1
     // card" (its reprint's OR side) — offered on the holder's own unit
@@ -4000,8 +4011,8 @@ function addPlayableCardActions(
 
     if (
       card.effect.type === "REDIRECT_PENDING_DAMAGE" ||
-      card.trigger ||
-      !isPhaseAllowedForCard(state, card)
+      (card.trigger && !timingFreeDraw) ||
+      (!isPhaseAllowedForCard(state, card) && !timingFreeDraw)
     ) {
       continue;
     }
@@ -4018,7 +4029,8 @@ function addPlayableCardActions(
       card.timing !== "instant" &&
       card.timing !== "ongoing" &&
       card.timing !== "action" &&
-      !balanceCardWaivesCombatTiming(state, card)
+      !balanceCardWaivesCombatTiming(state, card) &&
+      !timingFreeDraw
     ) {
       continue;
     }
@@ -5718,6 +5730,7 @@ function addTurnCardActions(
     if (!card || card.implementationStatus !== "implemented") {
       continue;
     }
+    const timingFreeDraw = hasTimingFreeDrawVariant(card, state);
     if (
       card.kind === "spell" &&
       spellEffectIsAlreadyOngoing(state, playerId, cardId)
@@ -5807,7 +5820,7 @@ function addTurnCardActions(
       Boolean(card.effect.drawCards);
     if (
       card.effect.type === "REDIRECT_PENDING_DAMAGE" ||
-      (card.trigger && !drawOnly)
+      (card.trigger && !drawOnly && !timingFreeDraw)
     ) {
       continue;
     }
@@ -5815,7 +5828,11 @@ function addTurnCardActions(
     // Spells reach the map only when printed as Map effects (Town Portal) or
     // when their effect is otherwise useful there (Fortune's adventure-die
     // rerolls — same gate isMapPlayableEffect applies to non-spell cards).
-    if (card.kind === "spell" && card.timing !== "map") {
+    if (
+      card.kind === "spell" &&
+      card.timing !== "map" &&
+      !timingFreeDraw
+    ) {
       const mapUsable =
         card.effect.type !== "CHOOSE_ONE" &&
         isMapPlayableEffect(state, playerId, card, card.effect);
@@ -5827,7 +5844,8 @@ function addTurnCardActions(
     if (
       card.timing !== "instant" &&
       card.timing !== "ongoing" &&
-      card.timing !== "map"
+      card.timing !== "map" &&
+      !timingFreeDraw
     ) {
       continue;
     }
@@ -10699,7 +10717,8 @@ function getLegalReactionsForTriggerCore(
         (card.timing === "reaction" ||
           card.timing === "instant" ||
           Boolean(card.permanent) ||
-          balanceCardWaivesCombatTiming(state, card));
+          balanceCardWaivesCombatTiming(state, card) ||
+          hasTimingFreeDrawVariant(card, state));
       if (
         !card ||
         !allowedTiming ||
@@ -10716,7 +10735,8 @@ function getLegalReactionsForTriggerCore(
       // Every implemented Instant whose face draws cards or recovers from the
       // discard pile may join a reaction window. This is effect-based so new
       // cards cannot silently regress behind a card-id whitelist.
-      const allowTriggerlessUtility = card.timing === "instant";
+      const allowTriggerlessUtility =
+        card.timing === "instant" || hasTimingFreeDrawVariant(card, state);
 
       // Spell instants (hand or Book) respect the one-Spell-per-combat-round limit.
       if (card.kind === "spell" && spellLimitLeft <= 0) {
@@ -10773,8 +10793,15 @@ function getLegalReactionsForTriggerCore(
           state,
           false,
         );
+        // A plain draw is an explicit OR face, not a fallback approximation of
+        // another effect. It remains selectable even when a sibling happens to
+        // match this window (the card owner still chooses which printed arm).
+        const explicitDraw =
+          variant.effect.type === "DRAW_CARDS" &&
+          getEffectAmount(variant.effect, "basic") > 0;
         const allowUtilityJoin =
-          allowTriggerlessUtility && !cardHasPrintedTriggerMatch;
+          explicitDraw ||
+          (allowTriggerlessUtility && !cardHasPrintedTriggerMatch);
         // GAIN_MORALE (Leadership) and TAKE_FROM_DISCARD (Scholar) are the
         // HISTORICAL trigger-free opt-ins: they keep their unflagged,
         // window-OPENING status (reactionOfferOpensWindow treats an unflagged

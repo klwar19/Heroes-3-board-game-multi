@@ -16582,6 +16582,8 @@ export type PendingAbilityRollContext = {
     fromStep: number;
     /** This roll's index within its step's follow-up list. */
     followUpIndex: number;
+    /** Commander Double Strike: finish the activation after this stare step. */
+    finishAfterDeathStare?: boolean;
   };
   /**
    * kind "spell-dice" (Community Balance Pack Inferno): the roll belongs to a

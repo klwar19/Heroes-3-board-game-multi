@@ -428,7 +428,7 @@ const ERATHIA_LONG_LIVE_QUEEN: Campaign = {
         en: "Establish a base on the occupied coast, rally Erathia's militia, uncover Nighon's invasion road and capture the underground town of Terraneus.",
         vi: "Lập căn cứ trên bờ biển bị chiếm đóng, tập hợp dân quân Erathia, tìm đường xâm lược của Nighon và chiếm thành Terraneus dưới lòng đất."
       },
-      objective: { en: "Defeat Terraneus's marked garrison or control 2 towns; then score VP", vi: "Đánh bại đồn trú Terraneus hoặc kiểm soát 2 thành; sau đó tính VP" },
+      objective: { en: "Defeat Terraneus's marked garrison or control 2 towns", vi: "Đánh bại đồn trú Terraneus hoặc kiểm soát 2 thành" },
       playable: true,
       briefingArt: erathiaArt("homecoming"),
       mapPosition: { x: 17, y: 72 },
@@ -475,7 +475,7 @@ const ERATHIA_LONG_LIVE_QUEEN: Campaign = {
         en: "Reach Fair Feather and break the Nighon–Kreegan siege. If the rumors are true, the angels protecting the city may join Erathia's cause.",
         vi: "Tiến đến Fair Feather và phá vòng vây Nighon–Kreegan. Nếu tin đồn đúng, các thiên thần bảo vệ thành có thể gia nhập Erathia."
       },
-      objective: { en: "Defeat Fair Feather's marked siege army; then score VP", vi: "Đánh bại quân vây hãm được đánh dấu tại Fair Feather; sau đó tính VP" },
+      objective: { en: "Defeat Fair Feather's marked siege army", vi: "Đánh bại quân vây hãm được đánh dấu tại Fair Feather" },
       playable: true,
       briefingArt: erathiaArt("guardian-angels"),
       mapPosition: { x: 30, y: 18 },
@@ -522,7 +522,7 @@ const ERATHIA_LONG_LIVE_QUEEN: Campaign = {
         en: "Liberate all seven Griffin Towers from the combined Nighon and Kreegan occupation before the march on Steadwick.",
         vi: "Giải phóng cả bảy Tháp Griffin khỏi liên quân Nighon và Kreegan trước khi tiến quân đến Steadwick."
       },
-      objective: { en: "Flag all 7 Griffin Towers", vi: "Cắm cờ cả 7 Tháp Griffin" },
+      objective: { en: "Flag all 7 Griffin Towers or defeat the marked Sky Tyrant", vi: "Cắm cờ cả 7 Tháp Griffin hoặc đánh bại Sky Tyrant được đánh dấu" },
       playable: true,
       briefingArt: erathiaArt("griffin-cliff"),
       mapPosition: { x: 40, y: 43 },
@@ -571,7 +571,7 @@ const ERATHIA_LONG_LIVE_QUEEN: Campaign = {
         en: "The griffin legions are assembled, but two enemy relief columns control the river roads. Seize both bridge towns and open the final march to Erathia's capital.",
         vi: "Quân đoàn Griffin đã tập hợp, nhưng hai cánh quân cứu viện của địch kiểm soát các tuyến đường ven sông. Hãy chiếm hai thành cầu và mở đường tiến quân cuối cùng tới kinh đô Erathia."
       },
-      objective: { en: "Control 3 towns across the twin banks; then score VP", vi: "Kiểm soát 3 thành dọc hai bờ sông; sau đó tính VP" },
+      objective: { en: "Control 3 towns across the twin banks", vi: "Kiểm soát 3 thành dọc hai bờ sông" },
       playable: true,
       briefingArt: erathiaArt("road-to-steadwick-generated", ".webp"),
       mapPosition: { x: 49, y: 58 },
@@ -621,7 +621,7 @@ const ERATHIA_LONG_LIVE_QUEEN: Campaign = {
         en: "Steadwick is encircled by Nighon and the undead court that betrayed King Gryphonheart. Break the siege ring, storm the capital, and raise Catherine's standard above the palace.",
         vi: "Steadwick bị bao vây bởi Nighon và triều đình undead đã phản bội Vua Gryphonheart. Hãy phá vòng vây, công phá kinh đô và dựng cờ Catherine trên cung điện."
       },
-      objective: { en: "Defeat Steadwick's marked garrison or control 3 towns; then score VP", vi: "Đánh bại đồn trú Steadwick hoặc kiểm soát 3 thành; sau đó tính VP" },
+      objective: { en: "Defeat Steadwick's marked garrison or control 3 towns", vi: "Đánh bại đồn trú Steadwick hoặc kiểm soát 3 thành" },
       playable: true,
       briefingArt: erathiaArt("liberation-day-generated", ".webp"),
       mapPosition: { x: 58, y: 53 },
@@ -671,7 +671,7 @@ const ERATHIA_LONG_LIVE_QUEEN: Campaign = {
         en: "Steadwick is free, yet the invasion survives behind the Ash Gate. Lead the royal host into the scorched southeast, destroy the final war-engine, and take the Black Citadel.",
         vi: "Steadwick đã tự do, nhưng cuộc xâm lược vẫn tồn tại sau Cổng Tro. Hãy dẫn hoàng quân vào vùng đông nam cháy xém, phá hủy chiến cụ cuối cùng và chiếm Hắc Thành."
       },
-      objective: { en: "Defeat the Utopia, then the marked Black Citadel army; highest VP wins", vi: "Đánh bại Utopia rồi quân Hắc Thành được đánh dấu; VP cao nhất thắng" },
+      objective: { en: "Defeat the marked Black Citadel army (the Dragon Utopia grants bonus VP)", vi: "Đánh bại quân Hắc Thành được đánh dấu (Dragon Utopia cho VP thưởng)" },
       playable: true,
       briefingArt: erathiaArt("throne-of-ash-generated", ".webp"),
       mapPosition: { x: 66, y: 80 },

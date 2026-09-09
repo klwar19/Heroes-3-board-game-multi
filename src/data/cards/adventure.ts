@@ -3232,7 +3232,7 @@ export const adventureCards: CardLibrary = {
       "enchanters",
       // House rule (BINH): besides trading a Pack of Magi, Dracon may also upgrade
       // the cheaper Few of Magi into the Enchanters by paying 6 extra gold.
-      "If you have a Pack of Magi Unit card, discard it, then search the Neutral Unit golden deck for the Enchanters card and add it to your Unit deck (only 1 Enchanters at a time). — OR — Draw a card. — OR — Discard a Few of Magi AND pay 6 gold to take the Enchanters the same way.",
+      "If you have a Pack of Magi Unit card, discard it, then search the Neutral Unit golden deck for the Enchanters card and add it to your Unit deck (only 1 Enchanters at a time). — OR — Draw a card at any time (map, combat turn, or reaction). — OR — Discard a Few of Magi AND pay 6 gold to take the Enchanters the same way.",
     ],
     target: { type: "none" },
     effect: {
@@ -3251,7 +3251,7 @@ export const adventureCards: CardLibrary = {
           },
         },
         {
-          label: "Draw a card",
+          label: "Draw a card (map, combat turn, or reaction)",
           effect: { type: "DRAW_CARDS", amount: 1 },
         },
         {

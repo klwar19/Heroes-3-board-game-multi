@@ -8867,7 +8867,30 @@ function finishResolvedAttack(
     }
     if (finishCombatIfNeeded(state)) return;
     // Printed follow-up attacks never chain further follow-ups or their own
-    // retaliations (wiki FAQ). BINH Cerberi may still owe more queued
+    // retaliations (wiki FAQ). Commander Double Strike is the narrow exception:
+    // Death Stare belongs to each strike, so its second blow gets a fresh stare.
+    if (details.abilityAttack.abilityId === "commander-double-strike") {
+      const pausedOrFinished = applyDeathStareFollowUps(
+        state,
+        details.attacker,
+        details.defender,
+        {
+          attackerId: details.attacker.id,
+          defenderId: details.defender.id,
+          attackKind: details.attackKind,
+          attackRoll: attackResult.roll,
+          attackDamage: attackResult.damage,
+          defeatedSideOrLayer: attackResult.defeatedSideOrLayer,
+          forceAbilityRoll: false,
+          finishAfterDeathStare: true,
+        },
+        2,
+      );
+      if (pausedOrFinished) return;
+      concludeAttackerActivation(state, details.attacker);
+      return;
+    }
+    // BINH Cerberi may still owe more queued
     // follow-up attacks; otherwise pick the parked sequence back up — the
     // original target's retaliation fires only now.
     if (declareNextQueuedAbilityAttack(state, cards)) {
@@ -8980,6 +9003,8 @@ type PostAttackFollowUpContext = {
   defeatedSideOrLayer?: boolean;
   /** Tarnum (Fortress) Basilisks VI: die-gated follow-ups fire regardless. */
   forceAbilityRoll: boolean;
+  /** The second Double Strike only repeats Death Stare, then ends the activation. */
+  finishAfterDeathStare?: boolean;
 };
 
 /**
@@ -11202,7 +11227,7 @@ function resolveParalysisExtraOutcome(
   state: GameState,
   attacker: CombatUnitState,
   defender: CombatUnitState,
-  followUp: { abilityId: string; abilityName: string; onRoll: number },
+  followUp: { abilityId: string; abilityName: string; onRoll: number; maxRoll?: number },
   candidate: AttackRollCandidate,
   forceRoll: boolean,
 ): void {
@@ -11214,7 +11239,7 @@ function resolveParalysisExtraOutcome(
     forceRoll ||
     abilityRollSucceeds(candidate.rolls, {
       minRoll: followUp.onRoll,
-      maxRoll: followUp.onRoll,
+      maxRoll: followUp.maxRoll ?? followUp.onRoll,
     });
   const gazeImmune = paralyses && unitImmuneToParalysis(state, defender);
   const lands = paralyses && !gazeImmune;
@@ -11290,7 +11315,11 @@ function applyParalysisFollowUps(
     if (followUp.source !== "extra") {
       // The "own" source reads the attack die, which the attack-reroll window
       // (and the attack roll's own curses) already covered.
-      if (ctx.forceAbilityRoll || ctx.attackRoll === followUp.onRoll) {
+      if (
+        ctx.forceAbilityRoll ||
+        (ctx.attackRoll >= followUp.onRoll &&
+          ctx.attackRoll <= (followUp.maxRoll ?? followUp.onRoll))
+      ) {
         applyParalysisToTarget(state, attacker, defender, followUp);
       }
       continue;
@@ -11298,7 +11327,7 @@ function applyParalysisFollowUps(
 
     const window: AbilityRollWindow = {
       minRoll: followUp.onRoll,
-      maxRoll: followUp.onRoll,
+      maxRoll: followUp.maxRoll ?? followUp.onRoll,
     };
     let candidate = rollAbilityCandidate(
       state,
@@ -30992,6 +31021,7 @@ function resolveAbilityRollKeep(
     attackDamage: resume.attackDamage,
     defeatedSideOrLayer: resume.defeatedSideOrLayer,
     forceAbilityRoll: resume.forceAbilityRoll,
+    finishAfterDeathStare: resume.finishAfterDeathStare,
   };
 
   switch (context.kind) {
@@ -31057,6 +31087,10 @@ function resolveAbilityRollKeep(
           resume.followUpIndex + 1,
         )
       ) {
+        return;
+      }
+      if (ctx.finishAfterDeathStare) {
+        concludeAttackerActivation(state, attacker);
         return;
       }
       break;
@@ -31212,7 +31246,7 @@ function resolveCommanderCast(
         {
           name: `${cast.name} (${caster.cardName})`,
           scope: "unit",
-          duration: { type: "current-combat-round" },
+          duration: { type: "combat-rounds", rounds: 2 },
           polarity: "positive",
           removable: true,
           modifiers: [

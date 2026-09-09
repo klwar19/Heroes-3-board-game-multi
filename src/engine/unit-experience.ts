@@ -374,7 +374,7 @@ export const withEliteAbility = withRankAbilities;
 // `adventure.neutralRankUp`:
 //
 //  • FIELD GUARDS: bronze reaches Seasoned/Veteran/Elite at rounds 3/5/8,
-//    silver at 6/8/12, and gold/azure at 6/10/14.
+//    silver at 6/8/12, gold at 6/10/14, and azure at 8/12/16.
 //  • CREATURE BANKS: every defender follows its token's map band: Far 4/6/9,
 //    Near 6/8/12. This progression is independent of ordinary Stack Tokens.
 //
@@ -388,13 +388,19 @@ export const NEUTRAL_GUARD_ROUND_THRESHOLDS: Record<UnitTier, readonly [number, 
   bronze: [3, 5, 8],
   silver: [6, 8, 12],
   gold: [6, 10, 14],
-  azure: [6, 10, 14]
+  azure: [8, 12, 16]
 };
 
 /** Creature-Bank round thresholds by the bank token's map band. */
 export const NEUTRAL_BANK_ROUND_THRESHOLDS = {
   far: [4, 6, 9],
   near: [6, 8, 12]
+} as const;
+
+/** Azure bank defenders rank two rounds later than their Gold counterparts. */
+export const NEUTRAL_AZURE_BANK_ROUND_THRESHOLDS = {
+  far: [6, 8, 11],
+  near: [8, 10, 14]
 } as const;
 
 /** Whether the optional Neutral Rank-Up module is frozen on for this game. */
@@ -432,16 +438,19 @@ export function rankMirrorXp(tier: UnitTier, rank: number): number {
 }
 
 /** The Seasoned/Veteran/Elite rank for a Far or Near Creature Bank this round. */
-export function neutralBankRoundsRank(bankTier: "far" | "near", round: number): number {
+export function neutralBankRoundsRank(bankTier: "far" | "near", round: number, tier?: UnitTier): number {
   const currentRound = Math.max(1, Math.trunc(round));
-  return NEUTRAL_BANK_ROUND_THRESHOLDS[bankTier].filter((threshold) => currentRound >= threshold).length;
+  const thresholds = tier === "azure"
+    ? NEUTRAL_AZURE_BANK_ROUND_THRESHOLDS[bankTier]
+    : NEUTRAL_BANK_ROUND_THRESHOLDS[bankTier];
+  return thresholds.filter((threshold) => currentRound >= threshold).length;
 }
 
 /** Real unit XP that mirrors a bank's explicit round rank through the shared fold. */
 export function neutralBankMirrorXp(unitDefId: string, bankTier: "far" | "near", round: number): number {
   const def = coreUnitDefinitions[unitDefId];
   if (!def) return 0;
-  const rank = neutralBankRoundsRank(bankTier, round);
+  const rank = neutralBankRoundsRank(bankTier, round, def.tier);
   return rank <= 0 ? 0 : UNIT_RANK_THRESHOLDS[def.tier][rank - 1];
 }
 
