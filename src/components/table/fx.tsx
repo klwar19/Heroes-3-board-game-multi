@@ -865,9 +865,9 @@ async function runPhasedProjectile(
   const sprite = document.createElement("div");
   sprite.className = "fxSprite fxProjectile";
   sprite.style.backgroundImage = `url(${assetUrl(sheet.src)})`;
-  sprite.style.mixBlendMode = sheet.blendMode ?? "screen";
-  // These atlases carry their own coloured glow. The generic drop-shadow
-  // would outline the opaque black frame as a glowing square before blending.
+  sprite.style.mixBlendMode = "normal";
+  // Phased atlases contain real alpha; their appearance must not depend on
+  // compositing through the fixed stage or its ancestors' stacking contexts.
   sprite.style.filter = "none";
   sprite.style.transformOrigin = "center";
   stage.appendChild(sprite);

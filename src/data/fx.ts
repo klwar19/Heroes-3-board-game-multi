@@ -103,10 +103,10 @@ const rangedPhaseSizes: Record<string, [number, number]> = {
 };
 for (const [name, [widthInCells, impactWidthInCells]] of Object.entries(rangedPhaseSizes)) {
   sheets[`${name}-shot-phases`] = {
-    src: `/fx/${name}-shot-phases.webp`, label: `${name} phased shot`,
+    src: `/fx/${name}-shot-phases-alpha.webp`, label: `${name} phased shot`,
     group: "ranged-attacks", role: "projectile",
     frames: 16, cols: 4, rows: 4, frameWidth: 313.5, frameHeight: 313.5,
-    fps: 24, anchor: "center", blendMode: "screen", sequentialFrames: true,
+    fps: 24, anchor: "center", sequentialFrames: true,
     sourceDef: `imagegen-${name}-shot-phases`,
     projectilePhases: {
       launch: [0, 4], flight: [4, 8], impact: [12, 4],
