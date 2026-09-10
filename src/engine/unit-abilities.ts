@@ -1,7 +1,8 @@
 import { unitAbilities, type UnitAbilityDefinition, type UnitAbilityEffectDefinition } from "@/data/units/abilities";
 import { BATTLEFIELD_COLUMNS } from "./battlefield";
 import { hasToken } from "./tokens";
-import type { CombatState, CombatTokenKind, CombatUnitState, DamageKind, SpellSchool, UnitId, UnitType } from "./state";
+import type { CombatState, CombatTokenKind, CombatUnitState, DamageKind, GameState, SpellSchool, UnitId, UnitType } from "./state";
+import { isAdjacent } from "./battlefield";
 
 export type UnitAbilityDamageEffect = {
   abilityId: string;
@@ -489,7 +490,7 @@ export function mightDiceAttackBonus(rolls: readonly number[]): number {
  */
 export function getAttackBonusAfterMove(unit: CombatUnitState): number {
   return getAbilitiesWithEffect(unit, "ATTACK_BONUS_AFTER_MOVE").reduce(
-    (total, ability) => total + (ability.effect?.type === "ATTACK_BONUS_AFTER_MOVE" ? ability.effect.amount : 0),
+    (total, ability) => total + (ability.effect?.type === "ATTACK_BONUS_AFTER_MOVE" && !(ability.id === "veteran-magma-attack-after-move" && unit.townVeterancy?.attackAfterMoveUsed) ? ability.effect.amount : 0),
     0
   );
 }
@@ -2213,6 +2214,30 @@ export function rollsTwoDiceOnRetaliation(unit: CombatUnitState): boolean {
   );
 }
 
+export function getAttackBonusVsDefenderDefense(attacker: CombatUnitState, defender: CombatUnitState, minimum: number): number {
+  return getAbilitiesWithEffect(attacker, "ATTACK_BONUS_VS_DEFENSE_AT_LEAST").reduce(
+    (total, ability) => total + (ability.effect?.type === "ATTACK_BONUS_VS_DEFENSE_AT_LEAST" && defender.defense >= minimum ? ability.effect.amount : 0), 0
+  );
+}
+
+export function getDefenseBonusWhenAttackedByAttack(defender: CombatUnitState, attacker: CombatUnitState): number {
+  return getAbilitiesWithEffect(defender, "DEFENSE_BONUS_WHEN_ATTACKED_BY_ATTACK").reduce(
+    (total, ability) => total + (ability.effect?.type === "DEFENSE_BONUS_WHEN_ATTACKED_BY_ATTACK" && attacker.attack >= ability.effect.minimumAttack ? ability.effect.amount : 0), 0
+  );
+}
+
+export function getAdjacentNeutralAttackPenalty(state: GameState, attacker: CombatUnitState): number {
+  return Object.values(state.combat?.units ?? {}).reduce((total, source) =>
+    total + (source.id !== attacker.id && source.controllerId !== attacker.controllerId && isAlive(source) && isAdjacent(source.position, attacker.position) && neutralVeterancy(source, "nomad-aura") ? 1 : 0), 0);
+}
+
+export function getApplyBothDiceCount(unit: CombatUnitState): number {
+  for (const ability of getAbilitiesWithEffect(unit, "ROLL_TWO_DICE_APPLY_BOTH")) {
+    if (ability.effect?.type === "ROLL_TWO_DICE_APPLY_BOTH" && ability.effect.diceCount) return ability.effect.diceCount;
+  }
+  return 2;
+}
+
 /**
  * Neutral Champions ([unit_passive], always on): "Reroll this unit's all '-1'
  * rolls." Every Attack/Defend die this unit rolls rerolls a "-1", repeatedly,
@@ -2402,6 +2427,12 @@ export function getDamageCapPerAttack(
     }
   }
   return cap;
+}
+
+export function getDamageCapOverflowReflection(unit: CombatUnitState): boolean {
+  return getAbilitiesWithEffect(unit, "CAP_DAMAGE_PER_ATTACK").some(
+    (ability) => ability.effect?.type === "CAP_DAMAGE_PER_ATTACK" && ability.effect.reflectOverflow === true,
+  );
 }
 
 /**

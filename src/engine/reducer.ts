@@ -650,6 +650,7 @@ import {
   mightDiceAttackBonus,
   getDamageCapPerAttack,
   getDamageCapPerSpell,
+  getDamageCapOverflowReflection,
   getOnKillResourceGain,
   getAttackDieDamageFollowUps,
   getAttackDieResultBonus,
@@ -675,6 +676,7 @@ import {
   getDefenseBonusWhenRetaliated,
   getDefenseDieDamageReduction,
   getDoubleAttackAbility,
+  getApplyBothDiceCount,
   getCardNegateOnDie,
   getDeckDiscardTakeSpell,
   getDefeatedSideOrLayerDraw,
@@ -743,6 +745,9 @@ import {
   getDefendBonus,
   getFlatDefenseWhenAttacked,
   getSelfAttackerTypeDefenseBonus,
+  getDefenseBonusWhenAttackedByAttack,
+  getAttackBonusVsDefenderDefense,
+  getAdjacentNeutralAttackPenalty,
   hasDefenseTokenAura,
   hasIgnoreOwnAttackDie,
   hasImmuneToSpecialtyDamage,
@@ -3499,9 +3504,19 @@ function reducedSpellDamage(
   const cap = availableDamageCap(state, target, true);
   if (cap && reduced > cap.amount) {
     markFuyukiCasterDamageCapUsed(state, target, cap.abilityId);
+    reflectMagmaSpellOverflow(state, target, reduced - cap.amount);
     return cap.amount;
   }
   return reduced;
+}
+
+function reflectMagmaSpellOverflow(state: GameState, magma: CombatUnitState, prevented: number): void {
+  if (prevented <= 0 || !getDamageCapOverflowReflection(magma) || !state.combat) return;
+  const amount = Math.floor(prevented / 2);
+  const targets = Object.values(state.combat.units).filter(unit => isUnitAlive(unit) && unit.controllerId !== magma.controllerId);
+  if (amount <= 0 || targets.length === 0) return;
+  const index = createSeededRandom(`${state.seed}#magma-overflow#${magma.id}#${state.eventCounter ?? state.eventLog.length}`).nextInt(0, targets.length - 1);
+  veteranDamage(state, magma, targets[index]!, amount, "veteran-magma-overflow");
 }
 
 /**
@@ -3839,8 +3854,12 @@ function reducedCardDamage(
     if (cap) {
       if (reduced > cap.amount)
         markFuyukiCasterDamageCapUsed(state, unit, cap.abilityId);
+      if (reduced > cap.amount) reflectMagmaSpellOverflow(state, unit, reduced - cap.amount);
       return Math.min(reduced, cap.amount);
     }
+  } else if (card?.kind === "hero-specialty") {
+    const cap = availableDamageCap(state, unit, false);
+    if (cap) return Math.min(reduced, cap.amount);
   }
   return reduced;
 }
@@ -4599,6 +4618,7 @@ function getAttackDamagePreview(
     neutralTownDamageReduced: townNeutralCapped < roundCapped,
     dieAttackBonus,
     dieDefenseBonus,
+    damageCapOverflow: getDamageCapOverflowReflection(defender) ? Math.max(0, rawDamage - 4) : 0,
   };
 }
 
@@ -4945,6 +4965,7 @@ function applyAttackDamageFromCandidate(
       roll: candidate.roll,
       cancelled: true,
       defeatedSideOrLayer: false,
+      damageCapOverflow: 0,
     };
   }
 
@@ -5517,7 +5538,8 @@ function getAttackStackDetails(
     // Veteran Guarded Stance: +Defense whenever this unit is attacked. Lives
     // here rather than resolveDefendBonus: no Defense token is required.
     // The unit does not receive this bonus against retaliation.
-    (isRetaliation ? 0 : getFlatDefenseWhenAttacked(defender));
+    (isRetaliation ? 0 : getFlatDefenseWhenAttacked(defender)) +
+    (isRetaliation ? 0 : getDefenseBonusWhenAttackedByAttack(defender, attacker));
   const activeDefenseBonus =
     getActiveDefenseBonus(state, defender) +
     getModeChangeDefenseBonus(defender) +
@@ -5818,6 +5840,8 @@ function getAttackStackDetails(
       bestFriendsAttackBonus +
       astrologersRoundAttackBonus +
       neutralAttackBonus(state, attacker, defender, Math.max(0, defender.defense + defenseBonusBeforeAbility + (defender.neutralVeterancy?.damageDefense ?? 0))) +
+      getAttackBonusVsDefenderDefense(attacker, defender, 1) -
+      getAdjacentNeutralAttackPenalty(state, attacker) +
       // Forced Battle Events (Anime mod, §3.12): a fought field's environment-stat
       // script (e.g. Spirit Mist "ranged −1 Attack"). An environmental modifier,
       // added UNCLAMPED like the innate bonuses — a penalty still bites an
@@ -5847,7 +5871,7 @@ function getAttackStackDetails(
       // into every recompute — arithmetically identical to -1 on the die result.
       (stackItem.modifiers.moraleRollPenalty ?? 0),
     defenseBonus:
-      townDefenseBonus(state, attacker, defender) +
+      townDefenseBonus(state, attacker, defender, isRetaliation) +
       neutralTownDefenseBonus(state, attacker, defender, currentDefenseValue) +
       (defender.neutralVeterancy?.damageDefense ?? 0) +
       (factionVeterancy(defender, "hide") && (attacker.type === "ground" || attacker.type === "flying") ? 1 : 0) -
@@ -8410,6 +8434,13 @@ function finishResolvedAttack(
   }
 
   if (!attackResult.cancelled) {
+    if (attackResult.damageCapOverflow > 0 && isUnitAlive(details.defender)) {
+      const reflected = Math.floor(attackResult.damageCapOverflow / 2);
+      if (reflected > 0 && isUnitAlive(details.attacker)) {
+        veteranDamage(state, details.defender, details.attacker, reflected, "veteran-magma-overflow");
+        appendEvent(state, { type: "UNIT_ABILITY_TRIGGERED", unitId: details.defender.id, targetUnitId: details.attacker.id, abilityId: "veteran-magma-overflow", message: `${details.defender.cardName} returns ${reflected} overflow damage.` });
+      }
+    }
     recordSwordIntentAfterAttack(
       state,
       details.attacker,
@@ -16641,10 +16672,11 @@ function resolveAttackStackItem(
     const doublesThisAttack =
       !details.isRetaliation || rollsTwoDiceOnRetaliation(details.attacker);
     // Morale "roll 1 die less" only bites when 2 dice would otherwise be rolled.
+    const intrinsicDiceCount = getApplyBothDiceCount(details.attacker);
     const reduced =
       doublesThisAttack &&
-      takeMoraleRollOneLess(state, details.attacker.controllerId, 2) < 2;
-    const diceCount = doublesThisAttack && !reduced ? 2 : 1;
+      takeMoraleRollOneLess(state, details.attacker.controllerId, intrinsicDiceCount) < intrinsicDiceCount;
+    const diceCount = doublesThisAttack && !reduced ? intrinsicDiceCount : 1;
     applyMoraleAttackRollPenalty(state, stackItem, details);
     const applyBothCandidate = rollApplyBothCandidate(
       combat,

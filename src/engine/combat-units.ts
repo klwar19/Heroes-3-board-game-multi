@@ -1,7 +1,7 @@
 import { townVeterancy } from "./town-veterancy";
 import { neutralTownVeterancy } from "./neutral-town-veterancy";
 import { isAdjacent } from "./battlefield";
-import { expireEffectsForCombatEnd } from "./active-effects";
+import { expireEffectsForCombatEnd, makeActiveEffect } from "./active-effects";
 import { getUnitSide } from "./adventure";
 import { combatFightingHasBegun } from "./combat-timing";
 import { elementalVeterancy } from "./elemental-veterancy";
@@ -120,6 +120,15 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
   }
 }
 
+function triggerDracolichDeathFeast(state: GameState, deadUnitId: string): void {
+  for (const dracolich of Object.values(state.combat?.units ?? {})) {
+    if (dracolich.damage >= dracolich.maxHealth || dracolich.id === deadUnitId) continue;
+    if (!getUnitAbilityDefinitions(dracolich).some(ability => ability.id === "veteran-dracolich-death-heal")) continue;
+    dracolich.damage -= 1;
+    appendEvent(state, { type: "UNIT_ABILITY_TRIGGERED", unitId: dracolich.id, targetUnitId: dracolich.id, abilityId: "veteran-dracolich-death-heal", message: `${dracolich.cardName} feeds on the battlefield death and heals 1 HP.` });
+  }
+}
+
 function finalizeUnitRemoval(state: GameState, unit: CombatUnitState, attackDamage: boolean): void {
   const redirected = state.combat?.redirectedDamageRemovals;
   if (redirected?.length) {
@@ -217,6 +226,20 @@ function finalizeUnitRemoval(state: GameState, unit: CombatUnitState, attackDama
     queueElementalChoice(state, { kind: "town-buff", unitId: unit.id, abilityId: "town-goblin-save", optional: true });
     return;
   }
+  if (attackDamage && townVeterancy(unit, "minotaur-last-stand") && !unit.townVeterancy?.saveUsed) {
+    (unit.townVeterancy ??= {}).saveUsed = true;
+    unit.damage = Math.max(0, unit.maxHealth - 1);
+    unit.townVeterancy.attack = (unit.townVeterancy.attack ?? 0) + 1;
+    veteranTrigger(state, unit, "veteran-minotaur-last-stand", unit, `${unit.cardName} survives at 1 Health and gains +1 Attack.`);
+    return;
+  }
+  if (attackDamage && townVeterancy(unit, "skeleton-last-stand") && !unit.townVeterancy?.saveUsed) {
+    (unit.townVeterancy ??= {}).saveUsed = true;
+    unit.damage = Math.max(0, unit.maxHealth - 1);
+    unit.townVeterancy.attack = (unit.townVeterancy.attack ?? 0) + 2;
+    veteranTrigger(state, unit, "veteran-skeleton-last-stand", unit, `${unit.cardName} survives at 1 Health and gains +2 Attack.`);
+    return;
+  }
   if (attackDamage && getUnitAbilityDefinitions(unit).some(ability => ability.effect?.type === "NEUTRAL_VETERANCY" && ability.effect.mechanic === "hell-steed-last-stand") && !unit.neutralVeterancy?.hellSteedSaveUsed) {
     (unit.neutralVeterancy ??= {}).hellSteedSaveUsed = true;
     unit.damage = Math.max(0, unit.maxHealth - 1);
@@ -224,6 +247,17 @@ function finalizeUnitRemoval(state: GameState, unit: CombatUnitState, attackDama
     const surroundingEnemies = Object.values(state.combat?.units ?? {}).filter(target =>
       target.id !== unit.id && target.controllerId !== unit.controllerId && target.damage < target.maxHealth && isAdjacent(target.position, unit.position));
     for (const target of surroundingEnemies) veteranDamage(state, unit, target, 1, "veteran-hell-steed-last-stand", false);
+    return;
+  }
+  if (attackDamage && getUnitAbilityDefinitions(unit).some(ability => ability.id === "veteran-mummy-last-stand") && !unit.neutralVeterancy?.mummySaveUsed) {
+    (unit.neutralVeterancy ??= {}).mummySaveUsed = true;
+    unit.damage = Math.max(0, unit.maxHealth - 1);
+    const source = unit.neutralLastDamageSourceId ? state.combat?.units[unit.neutralLastDamageSourceId] : undefined;
+    if (source && source.controllerId !== unit.controllerId) {
+      const curse = makeActiveEffect(state, { name: "Mummy's Curse", scope: "unit", polarity: "negative", removable: true, duration: { type: "combat-rounds", rounds: 3 }, modifiers: [{ type: "ATTACK_BONUS", amount: -2 }] }, { type: "unit", unitId: unit.id, controllerId: unit.controllerId }, unit.controllerId, { type: "unit", unitId: source.id });
+      state.activeEffects.push(curse);
+    }
+    veteranTrigger(state, unit, "veteran-mummy-last-stand", source, `${unit.cardName} survives at 1 Health and curses its attacker.`);
     return;
   }
   if (attackDamage && !unit.factionVeterancy?.rebirthUsed) {
@@ -380,6 +414,7 @@ function finalizeUnitRemoval(state: GameState, unit: CombatUnitState, attackDama
       remainingStacks: unit.armyStacks,
       excessDamage: excess
     });
+    triggerDracolichDeathFeast(state, unit.id);
 
     // Raid Bosses (§6.5.3): every layer broken pays the FIGHTER 2 gold at
     // once and lands on the per-player payout ledger ("soften it so I can
@@ -461,6 +496,7 @@ function finalizeUnitRemoval(state: GameState, unit: CombatUnitState, attackDama
         unitName: unit.name,
         excessDamage: Math.max(0, excess)
       });
+      triggerDracolichDeathFeast(state, unit.id);
       gainBloodEssenceFromCasualty(state, unit);
 
       if (unit.damage < unit.maxHealth) {
@@ -485,6 +521,7 @@ function finalizeUnitRemoval(state: GameState, unit: CombatUnitState, attackDama
     unitId: unit.id,
     playerId: unit.controllerId
   });
+  triggerDracolichDeathFeast(state, unit.id);
   gainBloodEssenceFromCasualty(state, unit);
 
   // Clone Spell: "A Clone is removed from the Combat Board if its original unit

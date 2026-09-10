@@ -374,8 +374,9 @@ describe("Adelaide's Frost Ring specialty", () => {
     expect(picked.combat!.units.unit_p1_griffins.damage, "the un-picked third adjacent unit is spared").toBe(0);
   });
 
-  it("VI rings a space for 2 damage to adjacent units for a 2-card discard", () => {
+  it("VI rings a space for 2 damage to every adjacent unit for a 2-card discard", () => {
     const state = ringState("adelaide-vi", "specialty.adelaide.6");
+    state.combat!.units.unit_p2_vampires.position = 8;
     const blast = applyOk(state, {
       type: "PLAY_CARD",
       playerId: "p1",
@@ -387,6 +388,7 @@ describe("Adelaide's Frost Ring specialty", () => {
     });
     expect(blast.combat!.units.unit_p1_griffins.damage).toBe(2);
     expect(blast.combat!.units.unit_p2_skeletons.damage).toBe(2);
+    expect(blast.combat!.units.unit_p2_vampires.damage).toBe(2);
     expect(blast.combat!.units.unit_p1_crusaders.damage).toBe(0);
   });
 

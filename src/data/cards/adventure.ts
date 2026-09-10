@@ -4220,7 +4220,7 @@ export const adventureCards: CardLibrary = {
       "combat",
       "adelaide",
       "frost-ring",
-      "Instant (any time, incl. an enemy unit's turn start or end of its move): discard 2 cards, then target a space on the Combat board and choose up to 2 units adjacent to it (not the space itself, friend or foe) to take 2 damage.",
+      "Instant (any time, incl. an enemy unit's turn start or end of its move): discard 2 cards, then target a space on the Combat board; every unit adjacent to it (not the space itself, friend or foe) takes 2 damage.",
     ],
     target: { type: "any-space" },
     effect: {
@@ -4228,14 +4228,12 @@ export const adventureCards: CardLibrary = {
       options: [
         {
           label:
-            "Discard 2 cards: 2 damage to up to 2 units adjacent to a space",
+            "Discard 2 cards: 2 damage to every unit adjacent to a space",
           combatAnytime: true,
           cost: { discardCards: 2 },
           effect: {
-            type: "AREA_DAMAGE_PICK_ADJACENT",
+            type: "AREA_DAMAGE_ALL_ADJACENT",
             amount: 2,
-            includeCenter: false,
-            adjacentPicks: 2,
           },
         },
       ],

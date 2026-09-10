@@ -172,7 +172,7 @@ export function elementalActivation(
 ): void {
   const combat = state.combat;
   if (!combat || !alive(unit)) return;
-  const risingNest = getUnitAbilityDefinitions(unit).some(a => a.id === "veteran-phoenix-rising-nest");
+  const risingNest = getUnitAbilityDefinitions(unit).some(a => ["veteran-phoenix-rising-nest", "veteran-phoenix-rising-nest-heal"].includes(a.id));
   for (const nest of Object.values(combat.units)) {
     if (
       nest.elementalVeterancy?.nestOwnerId !== unit.id ||
@@ -185,7 +185,7 @@ export function elementalActivation(
     const from = unit.position;
     unit.position = nest.position;
     nest.damage = nest.maxHealth;
-    const healed = risingNest ? 0 : Math.min(1, unit.damage);
+    const healed = risingNest ? Math.min(1, unit.damage) : Math.min(1, unit.damage);
     unit.damage -= healed;
     if (risingNest) (unit.elementalVeterancy ??= {}).nestAttackBonus = Math.min(2, (unit.elementalVeterancy?.nestAttackBonus ?? 0) + 1);
     appendEvent(state, {
@@ -845,7 +845,7 @@ export function elementalAttackBonus(
   defender: CombatUnitState,
   retaliation: boolean,
 ): number {
-  let bonus = getUnitAbilityDefinitions(attacker).some(a => a.id === "veteran-phoenix-rising-nest") ? Math.min(2, attacker.elementalVeterancy?.nestAttackBonus ?? 0) : 0;
+  let bonus = getUnitAbilityDefinitions(attacker).some(a => ["veteran-phoenix-rising-nest", "veteran-phoenix-rising-nest-heal"].includes(a.id)) ? Math.min(2, attacker.elementalVeterancy?.nestAttackBonus ?? 0) : 0;
   if (retaliation) return bonus;
   if (
     elementalVeterancy(attacker, "distant-attack") &&

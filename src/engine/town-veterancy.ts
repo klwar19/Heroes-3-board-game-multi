@@ -81,8 +81,10 @@ export function townDefenseBonus(
   state: GameState,
   attacker: CombatUnitState,
   defender: CombatUnitState,
+  isRetaliation = false,
 ): number {
   return (
+    (!isRetaliation && state.combat?.round !== undefined && state.combat.round % 2 === 1 && townVeterancy(defender, "behemoth-odd-defense") ? 1 : 0) +
     (townVeterancy(defender, "elf-guard") &&
     ["ranged", "flying"].includes(attacker.type)
       ? 1
@@ -184,6 +186,14 @@ export function townAfterAttack(
   dieCancelled: boolean,
   kind: "melee" | "ranged",
 ): void {
+  if (!retaliation && attacker.movedThisActivation && getUnitAbilityDefinitions(attacker).some(a => a.id === "veteran-magma-attack-after-move")) {
+    (attacker.townVeterancy ??= {}).attackAfterMoveUsed = true;
+  }
+  if (retaliation && townVeterancy(attacker, "centaur-retaliation") && alive(attacker)) {
+    const memory = (attacker.townVeterancy ??= {});
+    memory.attack = Math.min(3, (memory.attack ?? 0) + 1);
+    veteranTrigger(state, attacker, "veteran-centaur-retaliation", attacker, `${attacker.cardName} gains +1 Attack after retaliating.`);
+  }
   if (townVeterancy(attacker, "gnoll-gold")) {
     const owner = state.players[attacker.controllerId];
     if (owner) {

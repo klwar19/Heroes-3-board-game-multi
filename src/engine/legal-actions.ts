@@ -1648,10 +1648,12 @@ export function getLegalMoveDestinations(
   state?: GameState,
 ): number[] {
   if (unit.elementalVeterancy?.nestOwnerId || (unit.elementalVeterancy?.solidifyUntilRound !== undefined && unit.elementalVeterancy.solidifyUntilRound === combat.round)) return [];
+  const waitedReactivation = Boolean(combat.waitPhase && unit.waitPending);
   if (
     !isUnitAlive(unit) ||
-    unit.activatedThisRound ||
-    unit.movedThisActivation
+    (unit.activatedThisRound && !waitedReactivation) ||
+    unit.movedThisActivation ||
+    (unit.attackedThisActivation && !(unit.type === "ranged" && hasUnitAbilityEffect(unit, "MOVE_ANYWHERE")))
   ) {
     return [];
   }
@@ -8097,7 +8099,10 @@ function addUnitActions(
   }
 
   const activeUnit = combat.units[combat.activeUnitId];
-  if (!activeUnit || activeUnit.activatedThisRound) {
+  if (
+    !activeUnit ||
+    (activeUnit.activatedThisRound && !(combat.waitPhase && activeUnit.waitPending))
+  ) {
     return;
   }
   // PvP Neutral Control: the controlling player drives an active Neutral guard

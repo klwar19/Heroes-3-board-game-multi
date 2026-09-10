@@ -12,7 +12,8 @@ export type NeutralVeterancyMechanic =
   | "blind-dust" | "sandstorm" | "thunder-retaliation" | "troll-resilience"
   | "troll-snare" | "pain-resistance" | "peasant-bounty" | "air-chain-lightning"
   | "arctic-harden" | "arctic-slow-shot" | "lava-burn" | "hell-steed-last-stand"
-  | "werewolf-astral-hunt" | "werewolf-pack-call";
+  | "werewolf-astral-hunt" | "werewolf-pack-call"
+  | "boar-hardiness" | "boar-brace" | "dracolich-death-heal" | "nomad-aura";
 
 /** Signature rank rules carried by the Neutral-deck counterparts of town units. */
 export type NeutralTownVeterancyMechanic =
@@ -33,7 +34,7 @@ export type TownVeterancyMechanic = "gremlin-die" | "griffin-counter" | "halberd
   | "seaman-survival-gold" | "ayssid-slow" | "sorceress-ranged-mend" | "sorceress-artifact-tax"
   | "haspid-toxic-hide" | "haspid-unstoppable-counter" | "kobold-rune-step" | "ram-spell-draw"
   | "snow-elf-rune-strike" | "jotunn-rune-hide" | "jotunn-rune-bolt" | "mammoth-rune-mend"
-  | "mammoth-hunter" | "mammoth-last-stand";
+  | "mammoth-hunter" | "mammoth-last-stand" | "centaur-retaliation" | "behemoth-odd-defense" | "minotaur-last-stand" | "skeleton-last-stand";
 
 export type CustomTownVeterancyMechanic = "muscle-reversal" | "returning-edge" | "covering-extraction" | "meridian-exchange" | "rule-unravel" | "field-repair" | "break-cover" | "clear-mind" | "rescue-step" | "blood-price";
 
@@ -752,6 +753,8 @@ export type UnitAbilityEffectDefinition =
       amount: number;
       /** When true, also cap a single Spell-card / spell-damage hit at `amount`. */
       includeSpells?: boolean;
+      /** Magma Elementals return half of damage prevented by their cap. */
+      reflectOverflow?: boolean;
     }
   | {
       /**
@@ -1136,6 +1139,7 @@ export type UnitAbilityEffectDefinition =
        */
       type: "SELF_REBIRTH_ONCE";
     }
+  | { type: "MUMMY_LAST_STAND" }
   | {
       /** MGQ Hero Job: one death-save roll per combat; succeeds at or below maxRoll. */
       type: "SELF_REBIRTH_ROLL_ONCE";
@@ -1211,6 +1215,8 @@ export type UnitAbilityEffectDefinition =
       type: "ROLL_TWO_DICE_APPLY_BOTH";
       /** The Doom Sergeant also applies the two-dice roll while retaliating. */
       retaliationAlso?: boolean;
+      /** Town veterancy may use three dice; classic users remain at two. */
+      diceCount?: 2 | 3;
     }
   | {
       /**
@@ -1456,6 +1462,18 @@ export type UnitAbilityEffectDefinition =
       /** Conditional innate Attack bonus against a target's current printed Defense. */
       type: "ATTACK_BONUS_VS_DEFENSE_AT_MOST";
       maximum: number;
+      amount: number;
+    }
+  | {
+      /** Conditional innate Attack bonus against a target's current Defense. */
+      type: "ATTACK_BONUS_VS_DEFENSE_AT_LEAST";
+      minimum: number;
+      amount: number;
+    }
+  | {
+      /** Conditional Defense while attacked by a sufficiently strong attacker. */
+      type: "DEFENSE_BONUS_WHEN_ATTACKED_BY_ATTACK";
+      minimumAttack: number;
       amount: number;
     }
   | {
@@ -1808,6 +1826,15 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "veteran-lava-burn": { id: "veteran-lava-burn", name: "Searing Shot", text: "Every ranged attack Burns the target. A Burn deals 1 damage whenever that unit activates and does not stack.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "lava-burn" }, implementationStatus: "implemented" },
   "veteran-werewolf-astral-hunt": { id: "veteran-werewolf-astral-hunt", name: "Astral Hunt", text: "During Astrologers' rounds, this unit also gains +3 Initiative and can move up to 4 spaces.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "werewolf-astral-hunt" }, implementationStatus: "implemented" },
   "veteran-werewolf-pack-call": { id: "veteran-werewolf-pack-call", name: "Pack Call", text: "+1 Attack for every living Werewolf on the battlefield, including this unit. Werewolves on either side count.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "werewolf-pack-call" }, implementationStatus: "implemented" },
+  "veteran-boar-regeneration": { id: "veteran-boar-regeneration", name: "Boar Vitality", text: "At the start of this unit's activation, remove 1 damage from it.", effect: { type: "ON_ACTIVATION_HEAL_SELF", amount: 1 }, implementationStatus: "implemented" },
+  "veteran-boar-armor-break": { id: "veteran-boar-armor-break", name: "Tusks Through Armor", text: "+1 Attack against a unit with 1 or more Defense.", effect: { type: "ATTACK_BONUS_VS_DEFENSE_AT_LEAST", minimum: 1, amount: 1 }, implementationStatus: "implemented" },
+  "veteran-boar-brace": { id: "veteran-boar-brace", name: "Brace", text: "+1 Defense, plus 1 additional Defense when attacked by a unit with 5 or more Attack.", effect: { type: "DEFENSE_BONUS_WHEN_ATTACKED_BY_ATTACK", minimumAttack: 5, amount: 1 }, implementationStatus: "implemented" },
+  "veteran-boar-pierce": { id: "veteran-boar-pierce", name: "Deep Tusks", text: "Ignore 2 of the target's Defense on this unit's attacks and Retaliation Attacks (minimum 0).", effect: { type: "DEFENSE_REDUCTION_ON_ATTACK", amount: 2 }, implementationStatus: "implemented" },
+  "veteran-dracolich-death-heal": { id: "veteran-dracolich-death-heal", name: "Death Feast", text: "+1 Health. Whenever a unit on the battlefield dies, remove 1 damage from this unit.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "dracolich-death-heal" }, implementationStatus: "implemented" },
+  "veteran-nomad-hardcap": { id: "veteran-nomad-hardcap", name: "Hardy Nomad", text: "This unit cannot take more than 2 damage from a Spell, Specialty, or attack.", effect: { type: "CAP_DAMAGE_PER_ATTACK", amount: 2, includeSpells: true }, implementationStatus: "implemented" },
+  "veteran-nomad-aura": { id: "veteran-nomad-aura", name: "Disruptive Presence", text: "Adjacent enemies have -1 Attack.", effect: { type: "NEUTRAL_VETERANCY", mechanic: "nomad-aura" }, implementationStatus: "implemented" },
+  "veteran-mummy-attack-heal": { id: "veteran-mummy-attack-heal", name: "Cursed Vitality", text: "+1 Health. After this unit attacks, remove 1 damage from it.", effect: { type: "ON_ATTACK_HEAL_SELF", amount: 1 }, implementationStatus: "implemented" },
+  "veteran-mummy-last-stand": { id: "veteran-mummy-last-stand", name: "Final Curse", text: "Once per Combat when an attack would defeat this unit, it survives at 1 Health and the attacker has -2 Attack for 3 rounds.", effect: { type: "MUMMY_LAST_STAND" }, implementationStatus: "implemented" },
   "veteran-flying-guard": { id: "veteran-flying-guard", name: "Skyward Guard", text: "+1 Defense against attacks from flying units.", effect: { type: "DEFENSE_VS_ATTACKER_TYPE", attackerType: "flying", amount: 1 }, implementationStatus: "implemented" },
   "mgq-undine-heal-1": {
     id: "mgq-undine-heal-1", name: "Healing Water",
@@ -4014,7 +4041,9 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "town-kobold-rune-step": { id: "town-kobold-rune-step", name: "Runic Footfall", text: "Whenever this unit moves, gain 1 Rune.", effect: { type: "TOWN_VETERANCY", mechanic: "kobold-rune-step" }, implementationStatus: "implemented" },
   "town-ram-spell-draw": { id: "town-ram-spell-draw", name: "Runic Inspiration", text: "Whenever you cast a Spell from any source, draw 1 card, at most twice per combat.", effect: { type: "TOWN_VETERANCY", mechanic: "ram-spell-draw" }, implementationStatus: "implemented" },
   "town-snow-elf-rune-strike": { id: "town-snow-elf-rune-strike", name: "Rune-Tipped Strike", text: "After this unit's own attack, gain 1 additional Rune.", effect: { type: "TOWN_VETERANCY", mechanic: "snow-elf-rune-strike" }, implementationStatus: "implemented" },
-  "town-yeti-specialty-aura": { id: "town-yeti-specialty-aura", name: "Whiteout Shelter", text: "This unit and adjacent allied units take 1 less damage from Specialty cards.", effect: { type: "REDUCE_SPECIALTY_DAMAGE_AURA", amount: 1 }, implementationStatus: "implemented" },
+  "town-yeti-specialty-aura": { id: "town-yeti-specialty-aura", name: "Whiteout Shelter", text: "This unit and adjacent allied units take 1 less damage from Spell and Specialty cards.", effect: { type: "REDUCE_SPELL_AND_SPECIALTY_DAMAGE_AURA", amount: 1 }, implementationStatus: "implemented" },
+  "town-yeti-spell-specialty-aura": { id: "town-yeti-spell-specialty-aura", name: "Whiteout Shelter", text: "This unit and adjacent allied units take 1 less damage from Spell and Specialty cards.", effect: { type: "REDUCE_SPELL_AND_SPECIALTY_DAMAGE_AURA", amount: 1 }, implementationStatus: "implemented" },
+  "veteran-magma-overflow": { id: "veteran-magma-overflow", name: "Molten Body", text: "This unit can never accumulate more than 4 damage. Half the extra damage is returned to the attacker; if the source was a Spell, return it to a random enemy unit.", effect: { type: "CAP_DAMAGE_PER_ATTACK", amount: 4, reflectOverflow: true, includeSpells: true }, implementationStatus: "implemented" },
   "town-jotunn-rune-hide": { id: "town-jotunn-rune-hide", name: "Runes from Pain", text: "Whenever this unit is attacked, gain 1 Rune.", effect: { type: "TOWN_VETERANCY", mechanic: "jotunn-rune-hide" }, implementationStatus: "implemented" },
   "town-jotunn-rune-bolt": { id: "town-jotunn-rune-bolt", name: "Rune Bolt", text: "At activation, you may spend 1 Rune to deal 1 damage to a chosen unit.", effect: { type: "TOWN_VETERANCY", mechanic: "jotunn-rune-bolt" }, implementationStatus: "implemented" },
   "town-mammoth-rune-mend": { id: "town-mammoth-rune-mend", name: "Rune Mend", text: "At activation, you may spend 1 Rune to heal 1 HP from this unit.", effect: { type: "TOWN_VETERANCY", mechanic: "mammoth-rune-mend" }, implementationStatus: "implemented" },
@@ -4083,6 +4112,17 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "ON_ATTACK_HEAL_SELF", amount: 1 },
     implementationStatus: "implemented"
   },
+  "veteran-defense-pierce-2": { id: "veteran-defense-pierce-2", name: "Crushing Talons", text: "Ignore 2 of the target's Defense on this unit's attacks and Retaliation Attacks (minimum 0).", effect: { type: "DEFENSE_REDUCTION_ON_ATTACK", amount: 2 }, implementationStatus: "implemented" },
+  "veteran-centaur-retaliation": { id: "veteran-centaur-retaliation", name: "Retaliatory Charge", text: "After retaliating, this unit gains +1 Attack (maximum +3).", effect: { type: "TOWN_VETERANCY", mechanic: "centaur-retaliation" }, implementationStatus: "implemented" },
+  "veteran-behemoth-odd-defense": { id: "veteran-behemoth-odd-defense", name: "Odd-Hour Hide", text: "On odd-numbered combat rounds, this unit gains +1 Defense when attacked, but not against Retaliation Attacks.", effect: { type: "TOWN_VETERANCY", mechanic: "behemoth-odd-defense" }, implementationStatus: "implemented" },
+  "veteran-minotaur-last-stand": { id: "veteran-minotaur-last-stand", name: "Labyrinthine Survival", text: "Once per Combat when an attack would defeat this unit, it survives at 1 Health and gains +1 Attack.", effect: { type: "TOWN_VETERANCY", mechanic: "minotaur-last-stand" }, implementationStatus: "implemented" },
+  "veteran-skeleton-last-stand": { id: "veteran-skeleton-last-stand", name: "Deathless Fury", text: "Once per Combat when an attack would defeat this unit, it survives at 1 Health and gains +2 Attack for this combat.", effect: { type: "TOWN_VETERANCY", mechanic: "skeleton-last-stand" }, implementationStatus: "implemented" },
+  "veteran-ayssid-two-dice": { id: "veteran-ayssid-two-dice", name: "Twin Talons", text: "Always roll 2 Attack dice and apply both results.", effect: { type: "ROLL_TWO_DICE_APPLY_BOTH", retaliationAlso: true, diceCount: 2 }, implementationStatus: "implemented" },
+  "veteran-troglodyte-three-dice": { id: "veteran-troglodyte-three-dice", name: "Threefold Savage", text: "Always roll 3 Attack dice and apply all results.", effect: { type: "ROLL_TWO_DICE_APPLY_BOTH", retaliationAlso: true, diceCount: 3 }, implementationStatus: "implemented" },
+  "veteran-magma-teleport-strike": { id: "veteran-magma-teleport-strike", name: "Lava Leap", text: "As a regular movement, move to any empty space. After moving, gain +1 Attack for the next attack.", effect: { type: "MOVE_ANYWHERE" }, implementationStatus: "implemented" },
+  "veteran-magma-attack-after-move": { id: "veteran-magma-attack-after-move", name: "Lava Leap Strike", text: "After moving, gain +1 Attack for the next attack.", effect: { type: "ATTACK_BONUS_AFTER_MOVE", amount: 1 }, implementationStatus: "implemented" },
+  "veteran-shaman-teleport-strike": { id: "veteran-shaman-teleport-strike", name: "Spirit Step", text: "As a regular movement, move to any empty space. After moving, gain +1 Attack for the next attack.", effect: { type: "MOVE_ANYWHERE" }, implementationStatus: "implemented" },
+  "veteran-phoenix-rising-nest-heal": { id: "veteran-phoenix-rising-nest-heal", name: "Rising Nest", text: "At activation, place a 1 HP Nest in an adjacent empty space. At your next scheduled activation, if it survives, teleport there, gain +1 Attack for this combat (maximum +2 from nests), move normally, and heal 1 HP. Bound or Deep Rooted units cannot return to the Nest.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "nest" }, implementationStatus: "implemented" },
   "veteran-energy-drain": {
     id: "veteran-energy-drain",
     name: "Energy Drain",

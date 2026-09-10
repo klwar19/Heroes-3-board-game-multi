@@ -9764,6 +9764,7 @@ export type CombatUnitState = {
   neutralVeterancy?: {
     damageDefense?: number;
     hellSteedSaveUsed?: boolean;
+    mummySaveUsed?: boolean;
   };
   elementalVeterancy?: {
     deferredDamage?: number;
@@ -9950,6 +9951,7 @@ export type CombatUnitState = {
     dreadChargeSpentActivation?: boolean;
     positiveEffectsBlocked?: boolean;
     allowedPositiveEffectIds?: string[];
+    attackAfterMoveUsed?: boolean;
   };
   factionVeterancy?: {
     marked?: boolean;

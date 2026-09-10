@@ -290,6 +290,17 @@ export function pickSpellSchoolForPower(
       (permanent?.basicPower ?? 0) +
       elementalTileSpellPowerBonus(state, school) +
       specialtySchoolPowerBonus(state, playerId, school) +
+      // Polish Balance elemental Orbs grant +1 to Basic and +2 to Expert
+      // spells for their school. Include the applicable tier here so Magic
+      // Arrow selects the same complete school package used at resolution.
+      state.activeEffects.reduce((total, effect) => {
+        if (effect.controllerId !== playerId) return total;
+        return total + effect.modifiers.reduce((sum, modifier) =>
+          modifier.type === "SPELL_SCHOOL_LEVEL_POWER_BONUS" && modifier.school === school
+            ? sum + (spellCard.spellLevel === "expert" ? modifier.expertAmount : modifier.basicAmount)
+            : sum,
+        0);
+      }, 0) +
       astrologersBonus +
       activationBonus;
     // Prefer a school that also doubles (Orb) when additive totals tie — the

@@ -351,6 +351,8 @@ function rotatedChoices(unitDefId: string, rank: number, pool: readonly string[]
 }
 
 function explicitRankOne(unitDefId: string): RankStep | null {
+  if (unitDefId === "neutral.boars") return H({ ...Z, health: 1 }, "veteran-boar-regeneration");
+  if (unitDefId === "rampart.centaurs") return H({ ...Z, health: 1 }, "veteran-centaur-retaliation");
   if (unitDefId === "wog.fire_messenger") return A("veteran-ranged-fire-shield");
   if (unitDefId === "wog.war_zealot") return H({ ...Z, initiative: 1 }, "veteran-retaliation-fury");
   if (unitDefId === "castle.halberdiers") return A("town-halberd-hunter");
@@ -416,6 +418,13 @@ function rankOneStepFor(unitDefId: string): RankStep {
 }
 
 function explicitRankTwo(unitDefId: string): RankStep | null {
+  if (unitDefId === "neutral.boars") return A("veteran-boar-armor-break");
+  if (unitDefId === "neutral.nomads") return A("veteran-nomad-hardcap");
+  if (unitDefId === "neutral.mummies") return H({ ...Z, health: 1 }, "veteran-mummy-attack-heal");
+  if (unitDefId === "cove.ayssids") return A("veteran-ayssid-two-dice", "wog-no-negative-attack-roll");
+  if (unitDefId === "dungeon.troglodytes") return A("veteran-troglodyte-three-dice", "wog-no-negative-attack-roll");
+  if (unitDefId === "bulwark.yetis") return A("town-yeti-spell-specialty-aura");
+  if (unitDefId === "stronghold.behemoths") return A("veteran-behemoth-odd-defense");
   const neutralTownR2: Record<string, string> = {
     "neutral.halberdiers": "ntv-set-the-spear", "neutral.centaurs": "ntv-skirmisher-step",
   };
@@ -467,6 +476,12 @@ function explicitRankTwo(unitDefId: string): RankStep | null {
 }
 
 function explicitRankThree(unitDefId: string): RankStep | null {
+  if (unitDefId === "neutral.boars") return H({ ...Z, defense: 1 }, "veteran-boar-brace");
+  if (unitDefId === "wog.dracolich") return H({ ...Z, health: 1 }, "veteran-dracolich-death-heal");
+  if (unitDefId === "tower.gargoyles") return H({ ...Z, health: 2 }, "veteran-earth-defense-token");
+  if (unitDefId === "tower.titans") return H({ ...Z, health: 1 }, "veteran-earth-defense-token");
+  if (unitDefId === "necropolis.skeletons") return S({ ...Z, health: 2 });
+  if (unitDefId === "conflux.magma_elementals") return A("veteran-magma-teleport-strike", "veteran-magma-attack-after-move");
   const neutralTownR3: Record<string, string> = {
     "neutral.marksmen":"ntv-marked-volley", "neutral.crusaders":"ntv-righteous-pursuit", "neutral.zealots":"ntv-consecrated-shot",
     "neutral.dwarves":"ntv-runic-backlash", "neutral.elves":"ntv-first-volley", "neutral.pegasi":"ntv-mana-turbulence",
@@ -552,6 +567,15 @@ function explicitRankThree(unitDefId: string): RankStep | null {
 }
 
 function explicitRankFour(unitDefId: string): RankStep | null {
+  if (unitDefId === "neutral.boars") return A("veteran-boar-pierce");
+  if (unitDefId === "neutral.nomads") return A("veteran-nomad-aura");
+  if (unitDefId === "neutral.mummies") return A("veteran-mummy-last-stand");
+  if (unitDefId === "tower.gargoyles") return A("veteran-defense-pierce-2");
+  if (unitDefId === "conflux.phoenixes") return A("veteran-phoenix-rising-nest-heal");
+  if (unitDefId === "conflux.magma_elementals") return A("veteran-magma-overflow");
+  if (unitDefId === "bulwark.shamans") return A("teleport-move", "veteran-magma-attack-after-move");
+  if (unitDefId === "dungeon.minotaurs") return A("veteran-minotaur-last-stand");
+  if (unitDefId === "necropolis.skeletons") return A("veteran-skeleton-last-stand");
   const neutralTownR4: Record<string, string> = {
     "neutral.griffins":"ntv-winged-riposte", "neutral.champions":"ntv-full-gallop", "neutral.archangels":"ntv-guardian-angel",
     "neutral.dendroids":"ntv-deep-roots", "neutral.unicorns":"ntv-moonlit-aid", "neutral.nagas":"ntv-measured-blades",
@@ -805,6 +829,15 @@ export const UNIT_RANK_ABILITY_ICONS: Record<string, string> = {
   "veteran-thunder-retaliation": "/game-tokens/rank-ability/neutral/thunder-retaliation.webp",
   "veteran-troll-resilience": "/game-tokens/rank-ability/neutral/troll-resilience.webp",
   "veteran-troll-snare": "/game-tokens/rank-ability/neutral/troll-snare.webp",
+  "veteran-boar-regeneration": "/assets/ui/rank-ability/regeneration-2.webp",
+  "veteran-boar-armor-break": "/assets/ui/rank-ability/defense-pierce.webp",
+  "veteran-boar-brace": "/assets/ui/rank-ability/guarded-stance.webp",
+  "veteran-boar-pierce": "/assets/ui/rank-ability/defense-pierce.webp",
+  "veteran-dracolich-death-heal": "/assets/ui/rank-ability/soul-feast.webp",
+  "veteran-nomad-hardcap": "/assets/ui/rank-ability/thick-hide.webp",
+  "veteran-nomad-aura": "/assets/ui/rank-ability/fear-aura.webp",
+  "veteran-mummy-attack-heal": "/assets/ui/rank-ability/soul-mend.webp",
+  "veteran-mummy-last-stand": "/assets/ui/rank-ability/rebirth.webp",
   "veteran-flying-guard": "/game-tokens/rank-ability/neutral/flying-guard.webp",
   "veteran-pain-resistance": "/game-tokens/rank-ability/neutral/pain-resistance.webp",
   "veteran-peasant-bounty": "/game-tokens/rank-ability/neutral/peasant-bounty.webp",
