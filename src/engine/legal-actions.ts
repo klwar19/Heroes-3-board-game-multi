@@ -1,4 +1,5 @@
 import { townBound } from "./town-veterancy";
+import { heroGradePickBlockReason } from "./hero-grade-picking";
 import { neutralTownDeepRooted } from "./neutral-town-veterancy";
 import { cardLibrary } from "@/data/cards/library";
 import { isParallelWatchOnly, parallelContextOptions, parallelStateForPlayer } from "./parallel-combats";
@@ -16610,7 +16611,7 @@ function getAdventureLegalActions(
   // the rule is off.
   addArtifactSetActions(actions, state, playerId);
 
-  for (const node of heroGradePickableNodes(state, playerId)) {
+  for (const node of heroGradePickBlockReason(state, playerId) ? [] : heroGradePickableNodes(state, playerId)) {
     actions.push({
       label: `Grade up: learn ${node.name.en} (${node.name.vi})`,
       action: { type: "HERO_GRADE_PICK", playerId, nodeId: node.id },

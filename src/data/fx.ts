@@ -20,6 +20,14 @@ export type FxSheet = {
   fps: number;
   /** Loop ordered frames for authored projectile animations. */
   sequentialFrames?: boolean;
+  /** Authored charge, travelling frames and impact frames in one atlas. */
+  projectilePhases?: {
+    launch: [number, number];
+    flight: [number, number];
+    impact: [number, number];
+    widthInCells: number;
+    impactWidthInCells: number;
+  };
   /** Luminous artwork authored on black uses screen blending. */
   blendMode?: "screen";
   /** "bottom": the sprite stands on the cell floor (columns of light, bolts). */
@@ -69,6 +77,48 @@ sheets["war-machine-cannon-projectile"] = {
   src: "/fx/war-machine-cannon-projectile.webp", label: "Cannonball", group: "war-machines", role: "projectile",
   frames: 1, cols: 1, rows: 1, frameWidth: 150, frameHeight: 75, fps: 15,
   anchor: "center", sourceDef: "imagegen-war-machine-cannon-projectile",
+};
+
+// Generated 4x4 phase atlases. Dimensions reflect the delivered 1254px images,
+// not the requested generator size. CSS samples each quarter without recutting.
+const rangedPhaseSizes: Record<string, [number, number]> = {
+  titan: [0.95, 1.25],
+  magi: [0.75, 1.05],
+  "evil-eye": [0.7, 0.9],
+  "azur-lane": [0.7, 1.3],
+  "blue-archive": [0.5, 0.65],
+  zealot: [0.7, 1.05],
+  arrow: [0.6, 0.6],
+  crossbow: [0.5, 0.55],
+  axe: [0.5, 0.7],
+  spear: [0.75, 0.65],
+  stone: [0.35, 0.6],
+  fireball: [0.7, 1.2],
+  "death-cloud": [0.75, 1.25],
+  ice: [0.65, 1],
+  plasma: [0.55, 0.9],
+  rocket: [0.65, 1.2],
+  kunai: [0.45, 0.55],
+  baseball: [0.4, 0.55],
+};
+for (const [name, [widthInCells, impactWidthInCells]] of Object.entries(rangedPhaseSizes)) {
+  sheets[`${name}-shot-phases`] = {
+    src: `/fx/${name}-shot-phases.webp`, label: `${name} phased shot`,
+    group: "ranged-attacks", role: "projectile",
+    frames: 16, cols: 4, rows: 4, frameWidth: 313.5, frameHeight: 313.5,
+    fps: 24, anchor: "center", blendMode: "screen", sequentialFrames: true,
+    sourceDef: `imagegen-${name}-shot-phases`,
+    projectilePhases: {
+      launch: [0, 4], flight: [4, 8], impact: [12, 4],
+      widthInCells, impactWidthInCells,
+    },
+  };
+}
+
+// The same tumbling stone needs a substantially larger silhouette for Cyclopes.
+sheets["boulder-shot-phases"] = {
+  ...sheets["stone-shot-phases"], label: "Boulder phased shot",
+  projectilePhases: { ...sheets["stone-shot-phases"].projectilePhases!, widthInCells: 0.85, impactWidthInCells: 1.2 },
 };
 
 export function getFxSheet(key: string): FxSheet | undefined {
@@ -408,7 +458,7 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   },
   "town-mammoth-rune-mend": { affect: [{ key: "cure" }], sound: "effects/rune" },
   "town-dwarf-backlash": { affect: [{ key: "town-dwarf-backlash" }], sound: "spells/magic-arrow" },
-  "town-titan-bolt": { affect: [{ key: "lightning-bolt" }, { key: "lightning-crackle", delayMs: 220 }], sound: "spells/lightning-bolt" },
+  "town-titan-bolt": { projectile: "titan-shot-phases", sound: "units/titan-shoot" },
   "town-demon-paralyze": { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },
   "town-pit-mend": { affect: [{ key: "cure" }], sound: "spells/cure" },
   "town-efreet-mend": { affect: [{ key: "cure" }], sound: "spells/cure" },
@@ -740,21 +790,78 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
  * Faerie Dragon fire.
  */
 export const unitShotFxPlans: Record<string, SpellFxPlan> = {
+  marksmen: { projectile: "crossbow-shot-phases" },
+  elves: { projectile: "arrow-shot-phases" },
+  medusas: { projectile: "arrow-shot-phases" },
+  snow_elves: { projectile: "arrow-shot-phases" },
+  sharpshooters: { projectile: "arrow-shot-phases" },
+  arctic_sharpshooter: { projectile: "arrow-shot-phases" },
+  lava_sharpshooter: { projectile: "arrow-shot-phases" },
+  sylvan_centaur: { projectile: "arrow-shot-phases" },
+  orcs: { projectile: "axe-shot-phases" },
+  lizardmen: { projectile: "spear-shot-phases" },
+  halflings: { projectile: "stone-shot-phases" },
+  cyclopes: { projectile: "boulder-shot-phases" },
+  magogs: { projectile: "fireball-shot-phases" },
+  liches: { projectile: "death-cloud-shot-phases" },
+  dracolich: { projectile: "death-cloud-shot-phases" },
+  storm_elementals: { projectile: "titan-shot-phases" },
+  ice_elementals: { projectile: "ice-shot-phases" },
+  shamans: { projectile: "ice-shot-phases" },
+  sorceresses: { projectile: "magi-shot-phases" },
+  enchanters: { projectile: "magi-shot-phases" },
+  sea_dogs: { projectile: "blue-archive-shot-phases" },
+  gunslingers: { projectile: "blue-archive-shot-phases" },
+  titans: { projectile: "titan-shot-phases" },
+  titan: { projectile: "titan-shot-phases" },
+  magi: { projectile: "magi-shot-phases" },
+  evil_eyes: { projectile: "evil-eye-shot-phases" },
+  zealots: { projectile: "zealot-shot-phases" },
+  war_zealot: { projectile: "zealot-shot-phases" },
+  wog_war_zealot: { projectile: "zealot-shot-phases" },
   santa_gremlin: {
-    projectile: "ice-bolt-projectile-0",
-    hit: "ice-bolt-hit",
+    projectile: "ice-shot-phases",
     sound: "spells/ice-bolt",
     hitSound: "spells/ice-bolt-hit"
   }
 };
 
-/** The shot FX plan for a unit's ranged attack, or undefined for a plain arrow. */
+const factionShotProjectiles: Record<string, string> = {
+  "doom.former_human": "blue-archive",
+  "doom.former_human_sergeant": "blue-archive",
+  "doom.former_commando": "blue-archive",
+  "doom.imp": "fireball",
+  "doom.mancubus": "fireball",
+  "doom.arachnotron": "plasma",
+  "doom.arch_vile": "fireball",
+  "doom.cyberdemon": "rocket",
+  "imperium.astra_militarum": "plasma",
+  "imperium.dreadnought": "azur-lane",
+  "fuyuki.archers": "arrow",
+  "fuyuki.casters": "magi",
+  "azure_breeze.core_master": "zealot",
+  "hidden_leaf.anbu": "kunai",
+  "hidden_leaf.jonin": "kunai",
+  "heavenly_demon.gu_witches": "death-cloud",
+  "heavenly_demon.ghost_king": "death-cloud",
+  "little_busters.softball_club": "baseball",
+};
+
+/** Select the weapon before falling back to the ordinary arrow renderer. */
 export function unitShotFxPlan(unitDefId: string | undefined): SpellFxPlan | undefined {
   if (!unitDefId) {
     return undefined;
   }
   const bareName = unitDefId.split(".")[1] ?? unitDefId;
-  return unitShotFxPlans[bareName];
+  const factionProjectile = factionShotProjectiles[unitDefId];
+  if (factionProjectile) return { projectile: `${factionProjectile}-shot-phases` };
+  if (unitDefId.startsWith("azur_lane.")) {
+    return { projectile: "azur-lane-shot-phases", sound: "units/cannon-shoot" };
+  }
+  if (unitDefId.startsWith("blue_archive.")) {
+    return { projectile: "blue-archive-shot-phases", sound: "mgq/effects/gun2" };
+  }
+  return unitShotFxPlans[bareName] ?? unitShotFxPlans[bareName.replace(/^wog_/, "")];
 }
 
 /**
@@ -801,14 +908,20 @@ export const warMachineFxPlans: Record<string, SpellFxPlan> = {
   }
 };
 
+// Direct specialty damage has no SPELL_CAST_RESOLVED event. Present the
+// specialty's spell on its damage event, without animating its Power option.
+export const cardSpellFxPlans: Record<string, SpellFxPlan> = {
+  "specialty.ciele.6": spellFxPlans["spell.magic_arrow"],
+};
+
 /**
  * Ability/permanent cards that deal damage as a fired SHOT rather than a Spell:
  * the Artillery ability directs a Ballista-style volley at the lowest-initiative
  * enemy. Its DAMAGE_ASSIGNED (source = the card) carries the shot sound — the
  * same H3 Ballista report the war-machine Ballista uses — played just before the
  * struck unit's hurt cry + damage number (see page.tsx), so the shot is heard
- * first. Sound-only, like the war-machine shots: the floating damage is the
- * visual. Keyed by source card id, mirroring `healFxPlans`.
+ * first. Each shot carries its physical projectile, launcher recoil and impact
+ * effect. Keyed by source card id, mirroring `healFxPlans`.
  */
 export const cardShotFxPlans: Record<string, SpellFxPlan> = {
   "ability.artillery": {
@@ -954,6 +1067,9 @@ function tintSegmentMs(plan: SpellFxPlan): number {
 export function spellPresentationMs(plan: SpellFxPlan | undefined): number {
   if (!plan) {
     return 0;
+  }
+  if (plan.projectile && getFxSheet(plan.projectile)?.projectilePhases) {
+    return Math.max(800, 120 + soundDurationMs(plan.sound), 500 + soundDurationMs(plan.hitSound));
   }
   let total = 0;
   if (plan.projectile) {

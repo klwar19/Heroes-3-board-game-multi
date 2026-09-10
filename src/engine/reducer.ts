@@ -54,6 +54,7 @@ import {
 } from "./community-balance-cards";
 import {
   balanceIntelligenceWindowClosed,
+  combatStartWindowOpen,
   polishIntelligenceHandReadingActive,
 } from "./combat-timing";
 import { openHandDiscardChoice } from "./hand-discard-choice";
@@ -28245,15 +28246,24 @@ function playCard(
         action.playerId,
       );
     }
-    // Immediate activation counts the just-granted one too.
+    // The opening queue was built before this grant. Add only the new
+    // Ballista's shot; the existing Ballista already has its own queued shot.
+    // Tarnum IV must join that opening volley under every ruleset.
     if (
       state.combat?.warMachineRound &&
-      polishBallistaTiming(state) &&
+      (polishBallistaTiming(state) ||
+        (card.id === "specialty.tarnum_castle.4" && combatStartWindowOpen(state.combat))) &&
       effect.grant &&
       !effect.activate
     ) {
-      activateBallistas(state, action.playerId, 1);
+      state.combat.warMachineRound.pending.push({
+        playerId: action.playerId,
+        cardId: "war_machine.ballista",
+        granted: true,
+      });
+      processWarMachineRound(state);
     }
+    // Immediate activation counts the just-granted one too.
     if (state.combat && effect.activate === "all") {
       activateBallistas(
         state,

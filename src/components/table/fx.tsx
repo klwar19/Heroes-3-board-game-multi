@@ -95,6 +95,8 @@ export type FxCue =
       delayMs?: number;
       sound?: string;
       hitSound?: string;
+      /** Fixed attack beat; independent of viewport size and shot distance. */
+      flightMs?: number;
       /** Recoil the matching in-play war-machine card as the shot launches. */
       recoil?: "ballista" | "catapult" | "cannon";
     }
@@ -238,7 +240,12 @@ function resolveAnchorRect(anchor: string): DOMRect | null {
   }
   const element = resolveAnchorElement(anchor);
   if (element) {
-    return element.getBoundingClientRect();
+    const rect = element.getBoundingClientRect();
+    if (anchor.startsWith("hand:") &&
+      (rect.bottom <= 0 || rect.top >= window.innerHeight || rect.right <= 0 || rect.left >= window.innerWidth)) {
+      return resolveAnchorRect("center");
+    }
+    return rect;
   }
   // A temporary specialty-granted Ballista has no physical permanent card.
   // Launch from its owner's hand/seat instead; if that dock is off-screen, use
@@ -246,6 +253,11 @@ function resolveAnchorRect(anchor: string): DOMRect | null {
   if (anchor.startsWith("war-machine:")) {
     const [, playerId] = anchor.split(":", 3);
     return resolveAnchorElement(`hand:${playerId}`)?.getBoundingClientRect() ?? resolveAnchorRect("center");
+  }
+  // Opponent hands may live in a closed info panel, especially on phones.
+  // Spell flight must still launch when that hand has no rendered anchor.
+  if (anchor.startsWith("hand:")) {
+    return resolveAnchorRect("center");
   }
   return null;
 }
@@ -832,12 +844,96 @@ async function runSprite(stage: HTMLElement, fxKey: string, at: string, soundKey
   }
 }
 
+async function runPhasedProjectile(
+  stage: HTMLElement,
+  cue: Extract<FxCue, { kind: "projectile" }>,
+  sheet: NonNullable<ReturnType<typeof getFxSheet>>,
+  fromRect: DOMRect,
+  toRect: DOMRect,
+): Promise<void> {
+  const phases = sheet.projectilePhases!;
+  const from = centerOf(fromRect);
+  const to = centerOf(toRect);
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+  const mirror = Math.abs(angle) > 90 ? " scaleY(-1)" : "";
+  const cellWidth = Math.min(fromRect.width, toRect.width);
+  const launchMs = 120;
+  const flightMs = cue.flightMs ?? BOLT_FLIGHT_MS;
+  const impactMs = 300;
+  const sprite = document.createElement("div");
+  sprite.className = "fxSprite fxProjectile";
+  sprite.style.backgroundImage = `url(${assetUrl(sheet.src)})`;
+  sprite.style.mixBlendMode = sheet.blendMode ?? "screen";
+  // These atlases carry their own coloured glow. The generic drop-shadow
+  // would outline the opaque black frame as a glowing square before blending.
+  sprite.style.filter = "none";
+  sprite.style.transformOrigin = "center";
+  stage.appendChild(sprite);
+  const paint = (range: [number, number], progress: number, x: number, y: number, width: number, rotated: boolean) => {
+    const frame = range[0] + Math.min(range[1] - 1, Math.floor(progress * range[1]));
+    const height = width * sheet.frameHeight / sheet.frameWidth;
+    sprite.style.width = `${width}px`;
+    sprite.style.height = `${height}px`;
+    sprite.style.backgroundSize = `${width * sheet.cols}px ${height * sheet.rows}px`;
+    sprite.style.backgroundPosition = `-${(frame % sheet.cols) * width}px -${Math.floor(frame / sheet.cols) * height}px`;
+    sprite.style.left = `${x - width / 2}px`;
+    sprite.style.top = `${y - height / 2}px`;
+    sprite.style.transform = rotated ? `rotate(${angle}deg)${mirror}` : "none";
+  };
+  const started = performance.now();
+  let playedShot = false;
+  let playedImpact = false;
+  try {
+    await new Promise<void>((resolve) => {
+      const tick = (now: number) => {
+        if (!stage.isConnected) {
+          resolve();
+          return;
+        }
+        const elapsed = now - started;
+        if (elapsed < launchMs) {
+          paint(phases.launch, elapsed / launchMs, from.x, from.y, cellWidth * phases.widthInCells, true);
+        } else if (elapsed < launchMs + flightMs) {
+          if (!playedShot) {
+            playedShot = true;
+            if (cue.sound) playLibrarySound(cue.sound);
+          }
+          const p = (elapsed - launchMs) / flightMs;
+          paint(phases.flight, p, from.x + dx * p, from.y + dy * p, cellWidth * phases.widthInCells, true);
+        } else if (elapsed < launchMs + flightMs + impactMs) {
+          if (!playedImpact) {
+            playedImpact = true;
+            if (cue.hitSound) playLibrarySound(cue.hitSound);
+          }
+          paint(phases.impact, (elapsed - launchMs - flightMs) / impactMs,
+            to.x, to.y, toRect.width * phases.impactWidthInCells, false);
+        } else {
+          resolve();
+          return;
+        }
+        window.requestAnimationFrame(tick);
+      };
+      tick(started);
+    });
+  } finally {
+    sprite.remove();
+  }
+}
+
 async function runProjectile(stage: HTMLElement, cue: Extract<FxCue, { kind: "projectile" }>): Promise<void> {
   const sheet = getFxSheet(cue.fxKey);
   const fromRect = resolveAnchorRect(cue.from);
   const toRect = resolveAnchorRect(cue.to);
   if (!sheet || !fromRect || !toRect) {
+    // A layout change can remove a visual anchor while a delayed cue waits.
+    // Missing geometry must not also swallow the spell's sound.
+    if (cue.sound) playLibrarySound(cue.sound);
     return;
+  }
+  if (sheet.projectilePhases) {
+    return runPhasedProjectile(stage, cue, sheet, fromRect, toRect);
   }
 
   const from = centerOf(fromRect);
@@ -845,7 +941,7 @@ async function runProjectile(stage: HTMLElement, cue: Extract<FxCue, { kind: "pr
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   const distance = Math.hypot(dx, dy);
-  const durationMs = Math.max(280, Math.min(560, distance / 1.4));
+  const durationMs = cue.flightMs ?? Math.max(280, Math.min(560, distance / 1.4));
   // Projectile art points to the right; rotate along the flight vector and
   // mirror vertically on right-to-left shots so it never flies upside down.
   const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
@@ -1128,6 +1224,16 @@ export function FxStage({ cues, onDone }: { cues: FxCue[]; onDone: (id: string) 
         continue;
       }
       startedRef.current.add(cue.id);
+
+      // Start fetching phase art while the dice/card presentation is still
+      // running, rather than waiting until its first launch frame is due.
+      if (cue.kind === "projectile") {
+        const sheet = getFxSheet(cue.fxKey);
+        if (sheet?.projectilePhases) {
+          const preload = new Image();
+          preload.src = assetUrl(sheet.src);
+        }
+      }
 
       const play = async () => {
         switch (cue.kind) {

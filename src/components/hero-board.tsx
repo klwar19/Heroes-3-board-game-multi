@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useState } from "react";
+import { heroGradePickBlockReason } from "@/engine/hero-grade-picking";
 import { createPortal } from "react-dom";
 import { Check, GripVertical, HelpCircle, Lock, Medal, PackageOpen, Sparkles, X } from "lucide-react";
 
@@ -337,14 +338,16 @@ export function HeroBoard({
 }: {
   state: GameState;
   playerId: PlayerId;
-  /** When provided, the Hero-Grade node picker dispatches HERO_GRADE_PICK. */
-  onAction?: (action: GameAction) => void;
+  /** Async dispatchers may return false on rejection or true on acknowledgement. */
+  onAction?: (action: GameAction) => unknown;
   /** Engine-validated offers for the Unit Experience Board (Drill etc.). */
   legalActions?: LegalAction[];
 }) {
   const { zoomCard, zoomContent } = useCardZoom();
   const [systemsOpen, setSystemsOpen] = useState<"grade" | "equipment" | "unitxp" | null>(null);
   const [gradeHelpOpen, setGradeHelpOpen] = useState(false);
+  const [gradeSubmitting, setGradeSubmitting] = useState(false);
+  const [gradeError, setGradeError] = useState<string | null>(null);
   const [equipHelpOpen, setEquipHelpOpen] = useState(false);
   const [draggedEquipmentId, setDraggedEquipmentId] = useState<string | null>(null);
   const player = state.players[playerId];
@@ -392,6 +395,27 @@ export function HeroBoard({
   const dealtGradeNodes = heroGradeNodesForPlayer(state, playerId);
   const ownedGradeNodes = new Set(heroGradeNodesOf(state, playerId));
   const pickableNodeIds = new Set(pickableGradeNodes.map((node) => node.id));
+  const gradeBlocked = !onAction
+    ? "Only the player controlling this hero can spend its Grade points."
+    : heroGradePickBlockReason(state, playerId);
+  const pickGradeNode = async (nodeId: string) => {
+    if (!onAction || gradeBlocked || gradeSubmitting) return;
+    setGradeSubmitting(true);
+    setGradeError(null);
+    try {
+      const result = await onAction({ type: "HERO_GRADE_PICK", playerId, nodeId });
+      if (result === false) {
+        setGradeError("The Grade choice was not accepted. Close this window to see the rules message, then try again.");
+      } else if (result === true) {
+        // One-time rewards can open a Search; reveal it after spending the point.
+        setSystemsOpen(null);
+      }
+    } catch (error) {
+      setGradeError(error instanceof Error ? error.message : "Could not learn this Grade bonus. Try again.");
+    } finally {
+      setGradeSubmitting(false);
+    }
+  };
   // Anime Equipment (§3.13): always-on item chips (slot glyph + EN/VI name).
   // Renders only with the module on AND something equipped (CONTROL: off = null).
   const showEquip =
@@ -811,19 +835,22 @@ export function HeroBoard({
                         Battlefield hero bonus: {gradeValue === 0 ? "none" : gradeValue === 1 ? "+1 Health" : gradeValue === 2 ? "+1 Health, +1 Initiative" : "+1 Attack, +2 Health, +1 Initiative"}. If defeated, the hero returns at full Health next combat.
                       </p>
                     ) : null}
+                    {gradeBlocked ? <p className="hbGradePickText" role="status">{gradeBlocked}</p> : null}
+                    {gradeError ? <p className="hbGradePickText" role="alert">{gradeError}</p> : null}
+                    {gradeSubmitting ? <p className="hbGradePickText" role="status">Learning Grade bonus…</p> : null}
                     <div className="heroGradeTree" aria-label="Skill and passive tree">
                       {Array.from({ length: HERO_GRADE_MAX }, (_, index) => index + 1).map((tier) => (
                         <div className={`heroGradeTier tier-${tier}`} key={tier}>
                           <h3><span>Tier {tier}</span><small>{tier === 1 ? "Foundation" : tier === 2 ? "Mastery" : tier === 3 ? "Legacy" : `Ascension ${tier}`}</small></h3>
                           {dealtGradeNodes.filter((node) => node.tier === tier).map((node) => {
                             const owned = ownedGradeNodes.has(node.id);
-                            const available = pickableNodeIds.has(node.id) && Boolean(onAction);
+                            const available = pickableNodeIds.has(node.id) && !gradeBlocked && !gradeSubmitting;
                             return (
                               <button
                                 className={`heroGradeNode tier-${tier} ${owned ? "owned" : available ? "available" : "locked"}`}
                                 disabled={!available}
                                 key={node.id}
-                                onClick={() => onAction?.({ type: "HERO_GRADE_PICK", playerId, nodeId: node.id })}
+                                onClick={() => void pickGradeNode(node.id)}
                                 type="button"
                               >
                                 <span className="heroGradeNodeIcon">

@@ -1,4 +1,5 @@
 import { townCombatStart } from "./town-veterancy";
+import { heroGradePickBlockReason } from "./hero-grade-picking";
 import { cardLibrary } from "@/data/cards/library";
 import { neutralCombatStart } from "./neutral-veterancy";
 import { balanceCard } from "./community-balance-cards";
@@ -15442,15 +15443,10 @@ export function heroGradePick(state: GameState, action: Extract<GameAction, { ty
   if (!player) {
     throw new Error("Unknown player.");
   }
-  if (state.combat) {
-    throw new Error("Grade nodes are picked outside of combat.");
-  }
-  if (!hasOpenAdventureTurn(state, action.playerId)) {
-    throw new Error("Pick a grade node on your own map turn.");
-  }
   // Some nodes grant cards or queue a Search immediately. Keep those one-time
   // rewards out of another seat's singleton interaction machinery.
-  assertParallelInteractionFree(state, action.playerId);
+  const blocked = heroGradePickBlockReason(state, action.playerId);
+  if (blocked) throw new Error(blocked);
   if (!heroGradesEnabled(state)) {
     throw new Error("Hero Grades is off for this game.");
   }

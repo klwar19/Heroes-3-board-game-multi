@@ -240,7 +240,9 @@ import {
   abilityFxPlans,
   cancelFx,
   cardShotFxPlans,
+  cardSpellFxPlans,
   healFxPlans,
+  getFxSheet,
   spellFxPlans,
   spellPresentationMs,
   unitShotFxPlan,
@@ -344,6 +346,9 @@ const FX_EVENT_TYPES = new Set<GameEvent["type"]>([
   "SPELL_CAST_CANCELLED",
   "DAMAGE_ASSIGNED",
   "DAMAGE_HEALED",
+  // Actual shots, including specialty activations and Artillery volleys,
+  // must reach the projectile/recoil/SFX handler before their damage events.
+  "WAR_MACHINE_TRIGGERED",
   "UNIT_ABILITY_TRIGGERED",
   "HAND_REFRESHED",
   // Creature voices: each unit speaks with its own H3 clips in combat.
@@ -2820,12 +2825,13 @@ export default function Home() {
           // declaration). A magical striker (the Magic Elemental) layers a magic
           // zap over its voice so its blow reads as raw magic, not a plain thwack.
           const attackerVoice = unitVoice(roll.attackerId);
-          playUnitSound(attackerVoice, ranged ? "shoot" : "attack", strikeAt);
+          const shotPlan = ranged ? unitShotFxPlan(attackerVoice) : undefined;
+          const phasedShot = Boolean(shotPlan?.projectile && getFxSheet(shotPlan.projectile)?.projectilePhases);
+          playUnitSound(attackerVoice, ranged ? "shoot" : "attack", strikeAt + (phasedShot ? RANGED_RELEASE_MS : 0));
           // A unit whose ranged SHOT is a spell bolt (the Santa Gremlin's Ice
           // Bolt) flies the real projectile + burst + spell sound below; its
           // spell sound then carries the shot, so the extra flourish is skipped
           // (playing it too would double the ice-bolt cue).
-          const shotPlan = ranged ? unitShotFxPlan(attackerVoice) : undefined;
           const attackFlourish = shotPlan?.projectile ? undefined : unitAttackFlourish(attackerVoice);
           if (attackFlourish) {
             window.setTimeout(() => playLibrarySound(attackFlourish, 0.4), strikeAt);
@@ -2845,8 +2851,8 @@ export default function Home() {
             const attackerCell =
               attacker.position >= 0 ? `cell:${attacker.position}` : `unit:${roll.attackerId}`;
             if (shotPlan?.projectile) {
-              // The Ice Bolt projectile flies from the shooter to the target and
-              // bursts on impact, with the Ice Bolt spell's launch + hit sounds.
+              // Authored launch/flight/impact frames follow the same impact
+              // clock as damage, regardless of distance or screen size.
               cues.push({
                 kind: "projectile",
                 id: `${roll.id}-bolt`,
@@ -2856,7 +2862,9 @@ export default function Home() {
                 hitFxKey: shotPlan.hit,
                 sound: shotPlan.sound,
                 hitSound: shotPlan.hitSound,
-                delayMs: strikeAt + RANGED_RELEASE_MS
+                flightMs: ATTACK_IMPACT_MS - RANGED_RELEASE_MS,
+                // Authored sheets include their own 120ms launch phase.
+                delayMs: strikeAt + (phasedShot ? 0 : RANGED_RELEASE_MS)
               });
             } else {
               cues.push({
@@ -3238,6 +3246,12 @@ export default function Home() {
               }
               if (event.target.type === "unit") {
                 queueBoardFx(plan, event.id, `hand:${event.playerId}`, event.target.unitId);
+                // Even a zero-damage/free cast needs its full presentation.
+                // Do not rely on a later damage event to keep the board open.
+                if (inCombat) {
+                  combatFxActive = true;
+                  combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 1200);
+                }
               } else if (event.target.type === "space") {
                 const at = timeline;
                 if (plan.hit) {
@@ -3468,6 +3482,19 @@ export default function Home() {
                     combatFxActive = true;
                   }
                 }
+                const specialtySpellPlan = attackBeat === undefined && cardSource
+                  ? cardSpellFxPlans[cardSource.cardId]
+                  : undefined;
+                if (specialtySpellPlan && cardSource) {
+                  timeline = Math.max(timeline, at);
+                  queueBoardFx(specialtySpellPlan, `${event.id}-specialty-spell`,
+                    `hand:${cardSource.controllerId}`, targetId);
+                  at = timeline;
+                  if (inCombat) {
+                    combatFxActive = true;
+                    combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 1200);
+                  }
+                }
                 playUnitSound(unitVoice(targetId), "hurt", at);
                 cues.push({
                   kind: "floater",
@@ -3617,7 +3644,13 @@ export default function Home() {
                   tone: "info",
                   delayMs: timeline
                 });
-                queueBoardFx(plan, `${event.id}-ability`, `unit:${event.unitId}`, targetUnitId);
+                const shooterId = unitVoice(event.unitId);
+                const shooterPlan = unitShotFxPlan(shooterId);
+                const extraShotPlan = shooterPlan ?? plan;
+                if (shooterPlan) {
+                  playUnitSound(shooterId, "shoot", timeline + RANGED_RELEASE_MS);
+                }
+                queueBoardFx(extraShotPlan, `${event.id}-ability`, `unit:${event.unitId}`, targetUnitId);
                 extraShotDamageAt.set(targetUnitId, timeline);
                 combatFxActive = true;
                 combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 1200);

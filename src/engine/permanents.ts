@@ -1466,8 +1466,8 @@ export function polishBallistaTiming(state: GameState): boolean {
 
 /** An unresolved firing offer is also a window for ordering Ballista specialties. */
 export function polishBallistaOfferOpen(state: GameState, playerId: PlayerId): boolean {
-  // Gerwulf VI must be playable before the opening Ballista shot under every
-  // ruleset, not only while the Polish firing-order rule is enabled.
+  // Opening Ballista specialties (including Gerwulf VI and Tarnum IV) must
+  // be playable under every ruleset, independently of Polish firing order.
   return (polishBallistaTiming(state) || Boolean(state.combat && combatStartWindowOpen(state.combat))) &&
     state.pendingChoice?.type === "OPTION_CHOICE" &&
     state.pendingChoice.context === "war-machine" &&
@@ -1648,10 +1648,12 @@ export function processWarMachineRound(state: GameState): void {
       // BALLISTA_SPECIALTY map card such as Torosar IV matched the old tag-only
       // test and produced a single-option, no-Skip DEAD CLICK every round, so
       // this mirrors that filter exactly, off the same balanced definition.
-      const gerwulfOpeningAim =
+      const openingBallistaSpecialty =
         combatStartWindowOpen(combat) &&
-        (state.players[playerId]?.hand ?? []).includes("specialty.gerwulf.6");
-      if ((polishBallistaTiming(state) || gerwulfOpeningAim) && (state.players[playerId]?.hand ?? []).some((id) => {
+        (state.players[playerId]?.hand ?? []).some((id) =>
+          id === "specialty.gerwulf.6" || id === "specialty.tarnum_castle.4",
+        );
+      if ((polishBallistaTiming(state) || openingBallistaSpecialty) && (state.players[playerId]?.hand ?? []).some((id) => {
         const specialty = balanceCard(state, id);
         if (specialty?.kind !== "hero-specialty" || !specialty.tags.includes("ballista")) {
           return false;
