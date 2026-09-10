@@ -54,25 +54,14 @@ const nextConfig: NextConfig = {
       ...assetRedirects(assetBaseUrl, undefined, assetVersion)
     ];
   },
-  // The room API routes import src/server/game-room-store.ts, which persists rooms
-  // with runtime fs reads/writes against a dynamic path (HOMM3BG_ROOM_DIR env var,
-  // falling back to the OS temp dir). Next.js's file tracer cannot statically resolve
-  // that path, so it conservatively traces the WHOLE project and bundles every file
-  // that is NOT excluded here into each serverless function — pushing
-  // api/rooms/[roomId]/actions past Vercel's uncompressed function-size limit.
-  //
-  // Everything listed below is either served from Vercel's static CDN (public/**)
-  // or is BUILD-TIME-ONLY tooling that a running function never reads: the art
-  // pipeline sources (raw illustration masters, editable SVGs, preview/session-art
-  // renders — hundreds of MB across every faction), design docs, tests and the
-  // e2e suite. Excluding them keeps every function bundle to single-digit MB
-  // regardless of how much art source the repo carries, with zero runtime change.
-  // (The engine reads its data from imported TS modules under src/**, never from
-  // these paths, so none of them can be a runtime dependency.)
+  // Runtime room-file reads opt out of tracing in game-room-store.ts. Keep
+  // static media and offline tooling excluded as a packaging safeguard;
+  // server functions do not read these directories.
   outputFileTracingExcludes: {
     "*": [
       "public/**",
       "scripts/**",
+      "artifacts/**",
       "generated-session-art/**",
       "assets-to-translate/**",
       "sounds-incoming/**",

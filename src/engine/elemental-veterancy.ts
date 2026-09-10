@@ -185,7 +185,7 @@ export function elementalActivation(
     const from = unit.position;
     unit.position = nest.position;
     nest.damage = nest.maxHealth;
-    const healed = risingNest ? Math.min(1, unit.damage) : Math.min(1, unit.damage);
+    const healed = Math.min(1, Math.max(0, unit.damage));
     unit.damage -= healed;
     if (risingNest) (unit.elementalVeterancy ??= {}).nestAttackBonus = Math.min(2, (unit.elementalVeterancy?.nestAttackBonus ?? 0) + 1);
     appendEvent(state, {

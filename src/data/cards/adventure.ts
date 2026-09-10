@@ -4234,6 +4234,7 @@ export const adventureCards: CardLibrary = {
           effect: {
             type: "AREA_DAMAGE_ALL_ADJACENT",
             amount: 2,
+            includeCenter: false,
           },
         },
       ],

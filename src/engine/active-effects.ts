@@ -354,6 +354,26 @@ function effectIsFromSpecialty(effect: ActiveEffectState): boolean {
   return effect.source.type === "card" && cardLibrary[effect.source.cardId]?.kind === "hero-specialty";
 }
 
+/** Spells that place an ongoing effect directly on their selected unit. */
+export function spellCreatesDirectUnitOngoingEffect(
+  card: (Pick<CardDefinition, "kind"> & Partial<Pick<CardDefinition, "effect">>) | undefined,
+): boolean {
+  if (!card?.effect || card.kind !== "spell") return false;
+  switch (card.effect.type) {
+    case "BERSERK":
+    case "FORGETFULNESS":
+    case "DISRUPTING_RAY":
+    case "CREATE_INITIATIVE_BUFF":
+    case "CREATE_SPELL_IMMUNITY":
+    case "CREATE_FIRE_SHIELD":
+      return true;
+    case "CREATE_ACTIVE_EFFECT":
+      return card.effect.effect.scope === "unit";
+    default:
+      return false;
+  }
+}
+
 /**
  * Fangarm's printed exception is deliberately about the EFFECT of a Spell or
  * Specialty, not about being a legal target and not about damage. Keep this
@@ -366,6 +386,9 @@ export function unitIgnoresCardNonDamage(
   state?: GameState
 ): boolean {
   return (
+    (card?.kind === "spell" &&
+      spellCreatesDirectUnitOngoingEffect(card) &&
+      (hasIgnoreOngoingEffects(unit) || hasIgnoreOngoingSpellEffects(unit))) ||
     (hasIgnoreSpellAndSpecialtyNonDamage(unit) &&
       (card?.kind === "spell" || card?.kind === "hero-specialty")) ||
     (card?.kind === "hero-specialty" && specialtyImmunityActive(state, unit))

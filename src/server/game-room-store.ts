@@ -147,6 +147,8 @@ globalThis.__homm3bgRoomBootId = bootId;
 // ---------------------------------------------------------------------------
 // Disk persistence: rooms survive dev-server restarts and idle reclaims of
 // the host process. Best effort — read-only filesystems simply skip it.
+// These files are created at runtime, never deployment inputs. Ignore their
+// dynamic paths during tracing so Turbopack does not bundle the whole repo.
 // ---------------------------------------------------------------------------
 
 const persistDir = process.env.HOMM3BG_ROOM_DIR ?? join(tmpdir(), "homm3bg-rooms");
@@ -169,10 +171,10 @@ function persistRoom(record: GameRoomRecord): void {
 function loadPersistedRoom(roomId: string): GameRoomRecord | null {
   try {
     const path = roomFilePath(roomId);
-    if (!existsSync(path)) {
+    if (!existsSync(/* turbopackIgnore: true */ path)) {
       return null;
     }
-    const record = JSON.parse(readFileSync(path, "utf8")) as GameRoomRecord;
+    const record = JSON.parse(readFileSync(/* turbopackIgnore: true */ path, "utf8")) as GameRoomRecord;
     if (!record || record.roomId !== roomId || !record.state) {
       return null;
     }
@@ -1072,19 +1074,19 @@ const persistedReadCache = new Map<string, { mtimeMs: number; size: number; reco
 /** Reads every persisted room record off disk (best effort, skips junk files). */
 function readPersistedRecords(): GameRoomRecord[] {
   try {
-    if (!existsSync(persistDir)) {
+    if (!existsSync(/* turbopackIgnore: true */ persistDir)) {
       return [];
     }
     const records: GameRoomRecord[] = [];
     const seen = new Set<string>();
-    for (const file of readdirSync(persistDir)) {
+    for (const file of readdirSync(/* turbopackIgnore: true */ persistDir)) {
       if (!file.endsWith(".json")) {
         continue;
       }
       seen.add(file);
       const path = join(persistDir, file);
       try {
-        const { mtimeMs, size } = statSync(path);
+        const { mtimeMs, size } = statSync(/* turbopackIgnore: true */ path);
         const cached = persistedReadCache.get(file);
         if (cached && cached.mtimeMs === mtimeMs && cached.size === size) {
           if (cached.record) {
@@ -1092,7 +1094,7 @@ function readPersistedRecords(): GameRoomRecord[] {
           }
           continue;
         }
-        const parsed = JSON.parse(readFileSync(path, "utf8")) as GameRoomRecord;
+        const parsed = JSON.parse(readFileSync(/* turbopackIgnore: true */ path, "utf8")) as GameRoomRecord;
         const record = parsed?.roomId && parsed.state ? parsed : null;
         persistedReadCache.set(file, { mtimeMs, size, record });
         if (record) {

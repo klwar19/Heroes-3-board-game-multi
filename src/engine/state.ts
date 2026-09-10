@@ -2579,6 +2579,8 @@ export type EffectDefinition =
        */
       type: "AREA_DAMAGE_ALL_ADJACENT";
       amount: number;
+      /** Defaults to true for Inferno; Frost Ring excludes the selected space. */
+      includeCenter?: boolean;
     }
   | {
       /**

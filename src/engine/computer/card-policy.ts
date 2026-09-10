@@ -333,7 +333,10 @@ function areaDamageUnits(
     effect.type === "AREA_DAMAGE_ALL_ADJACENT" ||
     effect.type === "INFERNO"
   ) {
-    const positions = new Set([center, ...getOrthogonalNeighbors(center)]);
+    const positions = new Set([
+      ...(effect.type === "AREA_DAMAGE_ALL_ADJACENT" && effect.includeCenter === false ? [] : [center]),
+      ...getOrthogonalNeighbors(center),
+    ]);
     return living.filter((unit) => positions.has(unit.position));
   }
   if (effect.type === "AREA_DAMAGE_PICK_ADJACENT") {

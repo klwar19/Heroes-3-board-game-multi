@@ -124,7 +124,8 @@ function triggerDracolichDeathFeast(state: GameState, deadUnitId: string): void 
   for (const dracolich of Object.values(state.combat?.units ?? {})) {
     if (dracolich.damage >= dracolich.maxHealth || dracolich.id === deadUnitId) continue;
     if (!getUnitAbilityDefinitions(dracolich).some(ability => ability.id === "veteran-dracolich-death-heal")) continue;
-    dracolich.damage -= 1;
+    if (dracolich.damage <= 0) continue;
+    dracolich.damage = Math.max(0, dracolich.damage - 1);
     appendEvent(state, { type: "UNIT_ABILITY_TRIGGERED", unitId: dracolich.id, targetUnitId: dracolich.id, abilityId: "veteran-dracolich-death-heal", message: `${dracolich.cardName} feeds on the battlefield death and heals 1 HP.` });
   }
 }

@@ -11,6 +11,7 @@ dist
 tmp
 test-results
 playwright-report
+artifacts
 generated-session-art
 assets-to-translate
 sounds-incoming

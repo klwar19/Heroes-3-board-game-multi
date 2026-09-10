@@ -3857,9 +3857,6 @@ function reducedCardDamage(
       if (reduced > cap.amount) reflectMagmaSpellOverflow(state, unit, reduced - cap.amount);
       return Math.min(reduced, cap.amount);
     }
-  } else if (card?.kind === "hero-specialty") {
-    const cap = availableDamageCap(state, unit, false);
-    if (cap) return Math.min(reduced, cap.amount);
   }
   return reduced;
 }
@@ -4234,7 +4231,7 @@ function applyAreaAllAdjacentPlay(
     return;
   }
   const blastArea = new Set<number>([
-    center,
+    ...(effect.includeCenter === false ? [] : [center]),
     ...getOrthogonalNeighbors(center),
   ]);
   const inBlast = Object.values(state.combat.units).filter(
@@ -4521,6 +4518,7 @@ function getAttackDamagePreview(
   dieDefenseBonus: number;
   damageBeforeDeferral: number;
   neutralTownDamageReduced: boolean;
+  damageCapOverflow: number;
 } {
   // Attack-die-face conditioned modifiers, resolved here so the actual hit and
   // the lethal-save preview always agree: Dread Knights' "Death Blow" adds to
@@ -4618,7 +4616,7 @@ function getAttackDamagePreview(
     neutralTownDamageReduced: townNeutralCapped < roundCapped,
     dieAttackBonus,
     dieDefenseBonus,
-    damageCapOverflow: getDamageCapOverflowReflection(defender) ? Math.max(0, rawDamage - 4) : 0,
+    damageCapOverflow: getDamageCapOverflowReflection(defender) ? Math.max(0, townNeutralCapped - unitCapped) : 0,
   };
 }
 
@@ -4720,9 +4718,10 @@ function applyAttackDamageFromCandidate(
   roll: number;
   cancelled: boolean;
   defeatedSideOrLayer: boolean;
+  damageCapOverflow: number;
 } {
   if (!state.combat) {
-    return { damage: 0, roll: 0, cancelled: false, defeatedSideOrLayer: false };
+    return { damage: 0, roll: 0, cancelled: false, defeatedSideOrLayer: false, damageCapOverflow: 0 };
   }
 
   const preview = getAttackDamagePreview(
@@ -5184,6 +5183,7 @@ function applyAttackDamageFromCandidate(
     roll: candidate.roll,
     cancelled: false,
     defeatedSideOrLayer,
+    damageCapOverflow: preview.damageCapOverflow,
   };
 }
 
@@ -13605,6 +13605,7 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
     activeUnit,
   );
   activeUnit.movedThisActivation = false;
+  if (activeUnit.townVeterancy) activeUnit.townVeterancy.attackAfterMoveUsed = false;
   activeUnit.movementLockedThisActivation = false;
   activeUnit.attackedThisActivation = false;
   activeUnit.attacksThisActivation = 0;
@@ -16673,17 +16674,16 @@ function resolveAttackStackItem(
       !details.isRetaliation || rollsTwoDiceOnRetaliation(details.attacker);
     // Morale "roll 1 die less" only bites when 2 dice would otherwise be rolled.
     const intrinsicDiceCount = getApplyBothDiceCount(details.attacker);
-    const reduced =
-      doublesThisAttack &&
-      takeMoraleRollOneLess(state, details.attacker.controllerId, intrinsicDiceCount) < intrinsicDiceCount;
-    const diceCount = doublesThisAttack && !reduced ? intrinsicDiceCount : 1;
+    const diceCount = doublesThisAttack
+      ? takeMoraleRollOneLess(state, details.attacker.controllerId, intrinsicDiceCount)
+      : 1;
     applyMoraleAttackRollPenalty(state, stackItem, details);
     const applyBothCandidate = rollApplyBothCandidate(
       combat,
       diceCount,
       rerollMinus,
     );
-    if (reduced) {
+    if (doublesThisAttack && diceCount < intrinsicDiceCount) {
       pushRollModifierNote(
         applyBothCandidate,
         "Negative Morale",
@@ -23266,6 +23266,163 @@ function applyReactionPlayCore(
     }
   }
 
+  // Damage-producing combat-anytime cards are real reactions, not merely
+  // modifiers for the pending attack.  Resolve them while the attack is still
+  // parked.  In particular, Tarnum/Castle I's Ballista I used to be offered in
+  // an elemental's retaliation window, consumed, and then silently do nothing;
+  // the retaliation consequently resolved against a unit that the Ballista
+  // should have killed.  A dead retaliation attacker is discarded by
+  // resolveAttackStackItem before its blow lands, so this preserves the
+  // required ordering: attack -> damage instant -> no counter if it dies.
+  const reactionPlayCard = {
+    ...play,
+    type: "PLAY_CARD" as const,
+    playerId,
+  } as Extract<GameAction, { type: "PLAY_CARD" }>;
+  const target = play.target;
+
+  if (effect.type === "DEAL_DAMAGE" && state.combat && target?.type === "unit") {
+    const unit = state.combat.units[target.unitId];
+    if (unit && isUnitAlive(unit)) {
+      const amount = reducedCardDamage(state, unit, card, getEffectDamageAmount(effect, card.power ?? 0));
+      unit.damage += amount;
+      const assignedDamage = appendEvent(state, {
+        type: "DAMAGE_ASSIGNED",
+        source: { type: "card", cardId: card.id, controllerId: playerId },
+        target,
+        amount,
+        damageKind: effect.damageKind,
+      });
+      noteUnitDamagedForTokens(state, unit, assignedDamage.amount);
+      markUnitRemovedIfNeeded(state, unit);
+    }
+    finishCombatIfNeeded(state);
+  }
+
+  if (effect.type === "BALLISTA_SPECIALTY") {
+    // This is the shared Tarnum/Torosar/Gerwulf Ballista-I reaction side.  The
+    // normal PLAY_CARD path already uses this engine function; the reaction
+    // path must do the same instead of only recording the card play.
+    if (effect.grant) {
+      createActiveEffect(
+        state,
+        {
+          name: "Ballista",
+          scope: "player",
+          duration: effect.grant === "game-round"
+            ? { type: "current-game-round" }
+            : { type: "combat" },
+          polarity: "positive",
+          removable: false,
+          modifiers: [{ type: "EXTRA_BALLISTA" }],
+        },
+        { type: "card", cardId: card.id, controllerId: playerId },
+        playerId,
+      );
+    }
+    if (state.combat && effect.activate === "one" && countBallistas(state, playerId) >= 1) {
+      activateBallistas(state, playerId, 1);
+    } else if (state.combat && effect.activate === "all") {
+      activateBallistas(state, playerId, countBallistas(state, playerId));
+    } else if (state.combat && effect.activate === "up-to-two") {
+      activateBallistas(state, playerId, Math.min(2, countBallistas(state, playerId)));
+    }
+  }
+
+  if (effect.type === "DAMAGE_CHOSEN_ENEMIES" && state.combat) {
+    const enemyIds = Object.values(state.combat.units)
+      .filter((unit) => unit.controllerId !== playerId && isUnitAlive(unit))
+      .map((unit) => unit.id);
+    applyAdjacentPicks(state, playerId, card, enemyIds, effect.count, effect.amount);
+    finishCombatIfNeeded(state);
+  }
+
+  if (
+    (effect.type === "AREA_DAMAGE_PICK_ADJACENT" ||
+      effect.type === "AREA_DAMAGE_ALL_ADJACENT") &&
+    state.combat
+  ) {
+    if (effect.type === "AREA_DAMAGE_PICK_ADJACENT") {
+      applyAreaPickAdjacentPlay(state, reactionPlayCard, card, effect, cards);
+    } else {
+      applyAreaAllAdjacentPlay(state, reactionPlayCard, card, effect);
+    }
+    finishCombatIfNeeded(state);
+  }
+
+  if (effect.type === "DAMAGE_BATTLEFIELD_LINE" && state.combat && target) {
+    const center = target.type === "space"
+      ? target.position
+      : target.type === "unit"
+        ? state.combat.units[target.unitId]?.position
+        : undefined;
+    if (center !== undefined) {
+      const column = getBattlefieldCoordinates(center).column;
+      for (const unit of Object.values(state.combat.units)) {
+        if (isUnitAlive(unit) && getBattlefieldCoordinates(unit.position).column === column) {
+          dealAreaCardDamage(state, playerId, card, unit, effect.amount);
+        }
+      }
+      finishCombatIfNeeded(state);
+    }
+  }
+
+  if (effect.type === "DAMAGE_ENEMY_UNITS_BY_GRADE" && state.combat) {
+    const grades = new Set(effect.grades);
+    for (const unit of Object.values(state.combat.units)) {
+      if (unit.controllerId !== playerId && isUnitAlive(unit) && grades.has(unit.grade)) {
+        dealAreaCardDamage(state, playerId, card, unit, effect.amount);
+      }
+    }
+    finishCombatIfNeeded(state);
+  }
+
+  if (effect.type === "DAMAGE_ALL_ENEMY_UNITS" && state.combat) {
+    for (const unit of Object.values(state.combat.units)) {
+      if (unit.controllerId !== playerId && isUnitAlive(unit)) {
+        dealAreaCardDamage(state, playerId, card, unit, effect.amount);
+      }
+    }
+    finishCombatIfNeeded(state);
+  }
+
+  // Some instant debuffs also carry printed damage.  Apply that damage first;
+  // the non-damage slow remains a normal combat-long effect when applicable.
+  if (effect.type === "SLOW_ALL_ENEMIES" && state.combat) {
+    for (const unit of Object.values(state.combat.units)) {
+      if (unit.controllerId !== playerId && isUnitAlive(unit)) {
+        if (effect.damage) dealAreaCardDamage(state, playerId, card, unit, effect.damage);
+        if (isUnitAlive(unit) && !unitIgnoresCardNonDamage(unit, card, state)) {
+          createActiveEffect(state, {
+            name: effect.name, scope: "unit", duration: { type: "combat" },
+            polarity: "negative", removable: true,
+            modifiers: [
+              { type: "INITIATIVE_BONUS", amount: effect.initiative },
+              ...(effect.movementBonus !== undefined
+                ? [{ type: "MOVEMENT_BONUS" as const, amount: effect.movementBonus }]
+                : []),
+            ],
+          }, { type: "card", cardId: card.id, controllerId: playerId }, playerId, { type: "unit", unitId: unit.id });
+        }
+      }
+    }
+    if (effect.drawCards) drawCardsForPlayer(state, playerId, effect.drawCards, { inFlightCardIds: reactionInFlightCardIds });
+    finishCombatIfNeeded(state);
+  }
+
+  if (effect.type === "DISCARD_WAR_MACHINE_DAMAGE" && state.combat && target?.type === "unit") {
+    const unit = state.combat.units[target.unitId];
+    if (!unit || !isUnitAlive(unit) || unit.controllerId === playerId) {
+      throw new Error(`${card.name} must hit a living enemy unit.`);
+    }
+    if (!getPermanentCardIds(state, playerId).includes(effect.warMachineCardId)) {
+      throw new Error(`${card.name} requires an in-play ${effect.warMachineCardId} to discard.`);
+    }
+    discardPermanentFromPlay(state, playerId, effect.warMachineCardId);
+    const amount = astrologersBallistaDamage(state, effect.amount);
+    applyWarMachineDamage(state, playerId, unit.id, amount, `${card.name} hits ${unit.cardName} for ${amount} damage.`, effect.warMachineCardId);
+  }
+
   // Artillery (basic) fired as an instant reaction (e.g. when the owner's unit
   // is attacked): the slowest enemy takes `amount` "effect" damage — the same
   // shot the Ballista makes. Mirrors the on-turn resolution in playCard;
@@ -23368,7 +23525,8 @@ function advanceReactionWindowAfterPlay(
     (state.pendingChoice?.type === "COMBAT_HAND_DISCARD" &&
       state.pendingChoice.kind === "spell-sunder-choose-discard") ||
     (state.pendingChoice?.type === "ABILITY_TARGET_CHOICE" &&
-      state.pendingChoice.kind === "area-pick")
+      (state.pendingChoice.kind === "area-pick" ||
+        state.pendingChoice.kind === "war-machine"))
   ) {
     state.reactionWindow.passedPlayerIds = [];
     state.reactionWindow.priorityPlayerId = playerId;
@@ -26124,9 +26282,7 @@ function playCard(
   // Direct-play damage options on Specialty/Artifact cards do not use the Spell
   // stack. Resolve them here through the same immunity, token and removal seams.
   if (effect.type === "DEAL_DAMAGE" && targetUnit && target) {
-    const amount = unitIgnoresCardDamage(state, targetUnit, card)
-      ? 0
-      : getEffectDamageAmount(effect, card.power ?? 0);
+    const amount = reducedCardDamage(state, targetUnit, card, getEffectDamageAmount(effect, card.power ?? 0));
     targetUnit.damage += amount;
     const assignedDamage = appendEvent(state, {
       type: "DAMAGE_ASSIGNED",
@@ -31578,6 +31734,13 @@ function chooseAbilityTarget(
       choice.amount ?? 1,
     );
     finishCombatIfNeeded(state);
+    // A Ballista activated from an instant reaction may open its own target
+    // choice while the original attack is parked.  Once that choice is
+    // answered, resume the same reaction window; otherwise the pending
+    // retaliation could resolve without giving the player another response.
+    if (state.reactionWindow) {
+      advanceReactionWindowAfterPlay(state, action.playerId, cards);
+    }
     return;
   }
 

@@ -1645,7 +1645,9 @@ export function describeCardEffect(card: CardDefinition): string {
   }
 
   if (card.effect.type === "AREA_DAMAGE_ALL_ADJACENT") {
-    return `${card.effect.amount} damage to a space and every adjacent unit (friend or foe)`;
+    return card.effect.includeCenter === false
+      ? `${card.effect.amount} damage to every unit adjacent to the chosen space (excluding the center; friend or foe)`
+      : `${card.effect.amount} damage to a space and every adjacent unit (friend or foe)`;
   }
 
   if (card.effect.type === "AREA_DAMAGE_PICK_ADJACENT") {

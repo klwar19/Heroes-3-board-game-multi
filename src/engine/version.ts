@@ -1170,7 +1170,9 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // v124: additional custom/neutral rank actions and the Phoenix Nest's serialized
 // combat-long Attack bonus must resolve identically in the room worker.
 // v125: BINH Random Town level-VI and level-VII gold defenders both use Few.
-export const ENGINE_PROTOCOL_VERSION = 125;
+// v126: Frost Ring/Wait fixes, corrected veterancy damage, instant Ballista
+// reactions and direct ongoing-spell immunity require matching room semantics.
+export const ENGINE_PROTOCOL_VERSION = 126;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

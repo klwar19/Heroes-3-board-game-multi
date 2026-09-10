@@ -134,6 +134,7 @@ import {
   unitAttackRollDisadvantaged,
   unitImmuneToSpellSchoolsByEffect,
   unitIsBerserk,
+  spellCreatesDirectUnitOngoingEffect,
 } from "./active-effects";
 import {
   cancelSpellAllowsSchoolAndLevel,
@@ -384,6 +385,8 @@ import {
   getUnitAbilityMoveRangeBonus,
   getUnitAbilityDefinitions,
   hasBindAdjacentEnemies,
+  hasIgnoreOngoingEffects,
+  hasIgnoreOngoingSpellEffects,
   hasInnateMagicMirror,
   hasSpellCastHandTax,
   hasSpellCastLock,
@@ -1112,12 +1115,19 @@ export function isUnitSpellImmune(
 export function unitBlockedBySpellCard(
   state: GameState,
   unit: CombatUnitState,
-  card: Pick<CardDefinition, "kind" | "spellSchools">,
+  card: Pick<CardDefinition, "kind" | "spellSchools"> &
+    Partial<Pick<CardDefinition, "effect">>,
 ): boolean {
   if (card.kind !== "spell") {
     return false;
   }
   if (isUnitSpellImmune(state, unit)) {
+    return true;
+  }
+  if (
+    spellCreatesDirectUnitOngoingEffect(card) &&
+    (hasIgnoreOngoingEffects(unit) || hasIgnoreOngoingSpellEffects(unit))
+  ) {
     return true;
   }
   if (unitImmuneToSpellSchoolsByEffect(state, unit, card.spellSchools)) {
@@ -4692,6 +4702,8 @@ function isOptionEffectPlayable(
           );
         })
       );
+    case "BALLISTICS_OPENING_BOMBARD":
+      return context === "combat" && ballisticsOpeningBombardAvailable(state);
     case "CREATE_INITIATIVE_BUFF":
     case "CREATE_PRAYER_BUFF":
     case "DEAL_DAMAGE":
@@ -4711,8 +4723,6 @@ function isOptionEffectPlayable(
     // Ballistics' expert bombardment: a combat play. The primary enemy is the
     // option's `enemy-unit` target (so an empty enemy board offers no play); the
     // building-material price is enforced by canAffordCardCost.
-    case "BALLISTICS_OPENING_BOMBARD":
-      return context === "combat" && ballisticsOpeningBombardAvailable(state);
     case "BALLISTICS_BOMBARD":
     case "DAMAGE_LOWEST_INITIATIVE_ENEMY":
     // Septienna's Death Ripple: a targetless combat activation that sweeps every
@@ -7068,7 +7078,10 @@ export function unitIdsThreatenedByDamageEffect(
     }
     return unitsOnPositions(
       combat,
-      new Set([center, ...getOrthogonalNeighbors(center)]),
+      new Set([
+        ...(effect.type === "AREA_DAMAGE_ALL_ADJACENT" && effect.includeCenter === false ? [] : [center]),
+        ...getOrthogonalNeighbors(center),
+      ]),
     );
   }
 

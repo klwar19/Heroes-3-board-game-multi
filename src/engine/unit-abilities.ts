@@ -1,5 +1,4 @@
 import { unitAbilities, type UnitAbilityDefinition, type UnitAbilityEffectDefinition } from "@/data/units/abilities";
-import { BATTLEFIELD_COLUMNS } from "./battlefield";
 import { hasToken } from "./tokens";
 import type { CombatState, CombatTokenKind, CombatUnitState, DamageKind, GameState, SpellSchool, UnitId, UnitType } from "./state";
 import { isAdjacent } from "./battlefield";
@@ -25,15 +24,6 @@ type PostAttackContext = {
 
 function isAlive(unit: CombatUnitState): boolean {
   return unit.damage < unit.maxHealth;
-}
-
-function isAdjacent(leftPosition: number, rightPosition: number): boolean {
-  const leftRow = Math.floor(leftPosition / BATTLEFIELD_COLUMNS);
-  const leftColumn = leftPosition % BATTLEFIELD_COLUMNS;
-  const rightRow = Math.floor(rightPosition / BATTLEFIELD_COLUMNS);
-  const rightColumn = rightPosition % BATTLEFIELD_COLUMNS;
-
-  return Math.abs(leftRow - rightRow) + Math.abs(leftColumn - rightColumn) === 1;
 }
 
 export function getUnitAbilityDefinitions(unit: CombatUnitState): UnitAbilityDefinition[] {
@@ -2228,7 +2218,7 @@ export function getDefenseBonusWhenAttackedByAttack(defender: CombatUnitState, a
 
 export function getAdjacentNeutralAttackPenalty(state: GameState, attacker: CombatUnitState): number {
   return Object.values(state.combat?.units ?? {}).reduce((total, source) =>
-    total + (source.id !== attacker.id && source.controllerId !== attacker.controllerId && isAlive(source) && isAdjacent(source.position, attacker.position) && neutralVeterancy(source, "nomad-aura") ? 1 : 0), 0);
+    total + (source.id !== attacker.id && source.controllerId !== attacker.controllerId && isAlive(source) && isAdjacent(source.position, attacker.position) && getUnitAbilityDefinitions(source).some(ability => ability.effect?.type === "NEUTRAL_VETERANCY" && ability.effect.mechanic === "nomad-aura") ? 1 : 0), 0);
 }
 
 export function getApplyBothDiceCount(unit: CombatUnitState): number {
@@ -2421,8 +2411,11 @@ export function getDamageCapPerAttack(
   let cap: { amount: number; abilityId: string; abilityName: string } | null = null;
   for (const ability of getAbilitiesWithEffect(unit, "CAP_DAMAGE_PER_ATTACK")) {
     if (ability.effect?.type === "CAP_DAMAGE_PER_ATTACK") {
-      if (cap === null || ability.effect.amount < cap.amount) {
-        cap = { amount: ability.effect.amount, abilityId: ability.id, abilityName: ability.name };
+      const amount = ability.effect.reflectOverflow
+        ? Math.max(0, ability.effect.amount - unit.damage)
+        : ability.effect.amount;
+      if (cap === null || amount < cap.amount) {
+        cap = { amount, abilityId: ability.id, abilityName: ability.name };
       }
     }
   }
@@ -2446,8 +2439,11 @@ export function getDamageCapPerSpell(
   let cap: { amount: number; abilityId: string; abilityName: string } | null = null;
   for (const ability of getAbilitiesWithEffect(unit, "CAP_DAMAGE_PER_ATTACK")) {
     if (ability.effect?.type === "CAP_DAMAGE_PER_ATTACK" && ability.effect.includeSpells) {
-      if (cap === null || ability.effect.amount < cap.amount) {
-        cap = { amount: ability.effect.amount, abilityId: ability.id, abilityName: ability.name };
+      const amount = ability.effect.reflectOverflow
+        ? Math.max(0, ability.effect.amount - unit.damage)
+        : ability.effect.amount;
+      if (cap === null || amount < cap.amount) {
+        cap = { amount, abilityId: ability.id, abilityName: ability.name };
       }
     }
   }
