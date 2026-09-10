@@ -32,6 +32,14 @@ export type FxSheet = {
 };
 
 const sheets = manifest as Record<string, FxSheet>;
+const customVeterancyFxKeys = ["muscle-reversal", "returning-edge", "covering-extraction", "meridian-exchange", "rule-unravel", "field-repair", "break-cover", "clear-mind", "rescue-step", "blood-price"] as const;
+for (const key of customVeterancyFxKeys) {
+  sheets[`ctv-${key}`] = {
+    src: `/fx/custom-town/${key}.webp`, label: key.replaceAll("-", " "), group: "custom-town-veterancy", role: "affect",
+    frames: 16, cols: 4, rows: 4, frameWidth: 256, frameHeight: 256, fps: 18,
+    anchor: "center", coverage: 1.15, sourceDef: `imagegen-ctv-${key}`, sequentialFrames: true, blendMode: "screen",
+  };
+}
 sheets["town-dwarf-backlash"] = {
   src: "/fx/town-dwarf-backlash.webp", label: "Runic Backlash", group: "town-veterancy", role: "affect",
   frames: 16, cols: 4, rows: 4, frameWidth: 256, frameHeight: 256, fps: 20,
@@ -339,6 +347,43 @@ const neutralTownAbilityFxPlans: Record<string, SpellFxPlan> = Object.fromEntrie
 ] as Array<[string, SpellFxPlan]>);
 
 export const abilityFxPlans: Record<string, SpellFxPlan> = {
+  "ctv-mountain-break": { affect: [{ key: "ctv-break-cover" }], sound: "custom-veterancy/break-cover" },
+  "ctv-mountain-break-heal": { affect: [{ key: "cure" }], sound: "spells/cure" },
+  "ntv-mountain-stillness": { affect: [{ key: "paralyze" }], sound: "spells/paralyze" },
+  "ntv-core-suppression": { affect: [{ key: "slow" }, { key: "curse", delayMs: 120 }], sound: "spells/slow" },
+  "ntv-victory-command": { tint: "bloodlust", sound: "spells/bloodlust" },
+  "ntv-victory-command-move": { affect: [{ key: "teleport" }], sound: "spells/teleport" },
+  "veteran-phoenix-rising-nest": { sound: "spells/teleport" },
+  "veteran-phoenix-rising-nest-return": { tint: "bloodlust", sound: "spells/teleport" },
+  ...Object.fromEntries(customVeterancyFxKeys.map(key => [`ctv-${key}`, { affect: [{ key: `ctv-${key}` }], sound: `custom-veterancy/${key}` }])),
+  "ntv-marked-volley": { affect: [{ key: "disrupting-ray" }], sound: "spells/disrupting-ray" },
+  "ntv-stone-landing": { affect: [{ key: "stone-skin" }], sound: "spells/stone-skin" },
+  "ntv-bewitching-bolt": { affect: [{ key: "dispel" }], sound: "spells/dispel" },
+  "ntv-disrupting-gaze": { affect: [{ key: "curse" }], sound: "spells/curse" },
+  "ntv-searing-passage": { affect: [{ key: "fire-shield" }], sound: "spells/fire-wall" },
+  "ntv-death-cloud": { affect: [{ key: "death-ripple" }], sound: "spells/death-ripple" },
+  "ntv-boulder-crash": { affect: [{ key: "magic-arrow-hit" }], sound: "spells/magic-arrow" },
+  "ntv-summoned-torment": { tint: "bloodlust", sound: "spells/bloodlust" },
+  "ntv-scaled-intercept": { affect: [{ key: "shield" }], sound: "spells/shield" },
+  "ntv-predators-mark": { affect: [{ key: "curse" }], sound: "spells/curse" },
+  "ntv-mana-turbulence": { affect: [{ key: "dispel" }], sound: "spells/dispel" },
+  "ntv-return-fire": { affect: [{ key: "counterstrike" }], sound: "spells/counterstrike" },
+  "ntv-lucky-ricochet": { affect: [{ key: "magic-arrow-hit" }], sound: "spells/magic-arrow" },
+  "ntv-labyrinth-cleave": { affect: [{ key: "counterstrike" }], sound: "spells/counterstrike" },
+  "ntv-bodyguard": { affect: [{ key: "shield" }], sound: "spells/shield" },
+  "ntv-hellish-endurance": { affect: [{ key: "stone-skin" }], sound: "spells/stone-skin" },
+  "town-gremlin-recover": { affect: [{ key: "prayer" }], sound: "spells/prayer" },
+  "town-magi-recover": { affect: [{ key: "fortune" }], sound: "spells/fortune" },
+  "town-devil-draw": { affect: [{ key: "death-ripple" }], sound: "spells/death-ripple" },
+  "town-sorceress-ranged-mend": { affect: [{ key: "cure" }], sound: "spells/cure" },
+  // Shared veterancy rewards used by the custom-town distributions. These
+  // plans attach to the real UNIT_ABILITY_TRIGGERED events emitted by the
+  // engine; passive arithmetic remains quiet until it changes an outcome.
+  "veteran-soul-feast": { affect: [{ key: "cure" }], sound: "effects/drain-life" },
+  "veteran-rebirth": { affect: [{ key: "resurrection" }], sound: "spells/resurrection" },
+  "veteran-low-roll-insight": { affect: [{ key: "fortune" }], sound: "spells/fortune" },
+  "veteran-spell-sunder": { affect: [{ key: "curse" }], sound: "spells/curse" },
+  "wog-no-negative-attack-roll": { affect: [{ key: "fortune" }], sound: "spells/fortune" },
   "veteran-air-chain-lightning": {
     affect: [{ key: "lightning-bolt" }, { key: "lightning-crackle", delayMs: 220 }],
     sound: "spells/chain-lightning",
@@ -448,6 +493,8 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   "veteran-energy-drain": { affect: [{ key: "vampire-life-drain" }], sound: "effects/drain-life" },
   "veteran-energy-fire-heal": { affect: [{ key: "cure" }], sound: "spells/cure" },
   "veteran-energy-delay": { affect: [{ key: "stone-skin" }], sound: "spells/stone-skin" },
+  "veteran-magic-dispel": { affect: [{ key: "dispel" }], sound: "spells/dispel" },
+  "veteran-sprite-obstacle": { affect: [{ key: "stone-skin" }], sound: "spells/earthquake" },
   "veteran-magma-solidify": { affect: [{ key: "stone-skin" }], sound: "spells/stone-skin" },
   "veteran-sprite-spell-block": { affect: [{ key: "magic-mirror" }], sound: "spells/magic-mirror" },
   "veteran-arcane-echo": { hit: "death-cloud", hitSound: "spells/death-cloud" },

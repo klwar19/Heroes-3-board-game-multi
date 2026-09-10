@@ -1,5 +1,5 @@
 import type { NeutralTownVeterancyMechanic } from "@/data/units/abilities";
-import type { CombatUnitState, DamageKind, GameState, SourceRef } from "./state";
+import type { ActiveEffectState, CombatUnitState, DamageKind, GameState, SourceRef } from "./state";
 import { getUnitAbilityDefinitions } from "./unit-abilities";
 import { getBattlefieldDistance, isAdjacent } from "./battlefield";
 import { effectAppliesToUnit, makeActiveEffect, unitImmuneToParalysis } from "./active-effects";
@@ -29,6 +29,8 @@ export function neutralTownAttackBonus(state: GameState, attacker: CombatUnitSta
     + Number(neutralTownVeterancy(attacker, "pack-rush") && allies.some(u => alive(u) && u.id !== attacker.id && u.controllerId === attacker.controllerId && isAdjacent(u.position, defender.position)))
     + Number(neutralTownVeterancy(attacker, "armoured-prey") && currentDefense >= 2)
     + Number(neutralTownVeterancy(attacker, "blind-instinct") && state.activeEffects.some(e => e.polarity === "negative" && effectAppliesToUnit(e, attacker, true)))
+    + Number(neutralTownVeterancy(attacker, "ally-blind-instinct") && allies.some(u => alive(u) && u.controllerId === attacker.controllerId && state.activeEffects.some(e => e.polarity === "negative" && effectAppliesToUnit(e, u, true))))
+    + Number(neutralTownVeterancy(attacker, "victory-command") && memory(attacker).victoryAttackReady === true)
     + Number(neutralTownVeterancy(attacker, "predators-mark") && memory(attacker).predatorTarget === defender.id)
     + Number(memory(attacker).measuredRound === state.combat?.round)
     + Number((memory(attacker).tormentUntilRound as number | undefined) !== undefined)
@@ -55,7 +57,10 @@ export function neutralTownAttackDamagePreview(state: GameState, defender: Comba
 }
 
 export function neutralTownCommitAttackReduction(state: GameState, defender: CombatUnitState): void {
-  if (neutralTownVeterancy(defender, "hellish-endurance") && state.combat) markRound(defender, "enduranceRound", state.combat.round);
+  if (neutralTownVeterancy(defender, "hellish-endurance") && state.combat) {
+    markRound(defender, "enduranceRound", state.combat.round);
+    veteranTrigger(state, defender, "ntv-hellish-endurance", defender, `${defender.cardName} reduces attack damage by 1.`);
+  }
 }
 
 export function neutralTownMovement(state: GameState, unit: CombatUnitState, from: number, to: number): void {
@@ -121,7 +126,7 @@ function debuff(state: GameState, source: CombatUnitState, target: CombatUnitSta
   if (effectAppliesToUnit(effect, target, true)) { state.activeEffects.push(effect); veteranTrigger(state, source, abilityId, target); }
 }
 
-export function neutralTownAfterAttack(state: GameState, attacker: CombatUnitState, defender: CombatUnitState, retaliation: boolean, roll: number, dieCancelled: boolean, kind: "melee" | "ranged", damage: number): void {
+export function neutralTownAfterAttack(state: GameState, attacker: CombatUnitState, defender: CombatUnitState, retaliation: boolean, roll: number, dieCancelled: boolean, kind: "melee" | "ranged", damage: number, removeEffect: (effect: ActiveEffectState) => void): void {
   const combat = state.combat; if (!combat) return;
   // A cancelled/ignored die supplies no face for any rank trigger.
   if (dieCancelled) roll = NaN;
@@ -137,6 +142,15 @@ export function neutralTownAfterAttack(state: GameState, attacker: CombatUnitSta
     if (effectAppliesToUnit(effect, defender, true)) { state.activeEffects.push(effect); veteranTrigger(state, attacker, "ntv-putrid-grasp", defender); }
   }
   if (damage > 0 && neutralTownVeterancy(attacker, "suppressing-shot") && !usedThisRound(attacker, "suppressRound", round)) { markRound(attacker, "suppressRound", round); debuff(state, attacker, defender, "ntv-suppressing-shot", "initiative", 1); }
+  if (damage > 0 && alive(defender) && neutralTownVeterancy(attacker, "core-suppression") && !usedThisRound(attacker, "coreSuppressRound", round)) {
+    markRound(attacker, "coreSuppressRound", round);
+    debuff(state, attacker, defender, "ntv-core-suppression", "initiative", 1);
+    debuff(state, attacker, defender, "ntv-core-suppression", "attack", 1);
+  }
+  if (!retaliation && (roll === -1 || roll === 0) && alive(defender) && attacker.controllerId !== defender.controllerId && neutralTownVeterancy(attacker, "mountain-stillness") && !unitImmuneToParalysis(state, defender)) {
+    placeCombatToken(state, defender, "paralysis", 0, "Mountain Stillness");
+    veteranTrigger(state, attacker, "ntv-mountain-stillness", defender);
+  }
   if (damage > 0 && neutralTownVeterancy(attacker, "venom-arrow") && kind === "ranged" && nonAdjacent && !usedThisRound(attacker, "venomRound", round)) { markRound(attacker, "venomRound", round); applyNeutralDebuff(state, attacker, defender, "ntv-venom-arrow", "Venom Arrow", { type: "NEUTRAL_NEXT_ATTACK_PENALTY", amount: 1 }); }
   if (damage > 0 && neutralTownVeterancy(attacker, "ageing-breath") && !usedThisRound(attacker, "ageRound", round)) { markRound(attacker, "ageRound", round); debuff(state, attacker, defender, "ntv-ageing-breath", "attack", 1); }
   if (damage > 0 && neutralTownVeterancy(attacker, "potent-venom") && !usedThisRound(attacker, "potentRound", round)) { markRound(attacker, "potentRound", round); queueVenom(defender, attacker.id, round); veteranTrigger(state, attacker, "ntv-potent-venom", defender); }
@@ -162,7 +176,7 @@ export function neutralTownAfterAttack(state: GameState, attacker: CombatUnitSta
   if (!retaliation && neutralTownVeterancy(attacker, "strike-and-return") && typeof mem.activationOrigin === "number") queueElementalChoice(state, { kind: "return-origin", unitId: attacker.id, abilityId: "ntv-strike-and-return", position: mem.activationOrigin as number, optional: true });
   if (neutralTownVeterancy(defender, "barbed-revenge") && alive(defender) && isAdjacent(attacker.position, defender.position) && !usedThisRound(defender, "barbRound", round)) { markRound(defender, "barbRound", round); veteranDamage(state, defender, attacker, 1, "ntv-barbed-revenge"); }
   if (neutralTownVeterancy(attacker, "petrifying-aim") && kind === "ranged" && nonAdjacent && roll === 1 && alive(defender) && !unitImmuneToParalysis(state, defender) && !usedThisRound(attacker, "petrifyRound", round)) { markRound(attacker, "petrifyRound", round); placeCombatToken(state, defender, "paralysis", 0, "Petrifying Aim"); veteranTrigger(state, attacker, "ntv-petrifying-aim", defender); }
-  if (damage > 0 && neutralTownVeterancy(attacker, "bewitching-bolt") && kind === "ranged" && nonAdjacent && !usedThisRound(attacker, "bewitchRound", round)) { const effect = state.activeEffects.find(e => e.polarity === "positive" && e.removable && e.target?.type === "unit" && e.target.unitId === defender.id); if (effect) { markRound(attacker, "bewitchRound", round); state.activeEffects = state.activeEffects.filter(e => e.id !== effect.id); veteranTrigger(state, attacker, "ntv-bewitching-bolt", defender); } }
+  if (damage > 0 && neutralTownVeterancy(attacker, "bewitching-bolt") && kind === "ranged" && nonAdjacent && !usedThisRound(attacker, "bewitchRound", round)) { const effect = state.activeEffects.find(e => e.polarity === "positive" && e.removable && e.target?.type === "unit" && e.target.unitId === defender.id); if (effect) { markRound(attacker, "bewitchRound", round); removeEffect(effect); veteranTrigger(state, attacker, "ntv-bewitching-bolt", defender); } }
   if (damage > 0 && neutralTownVeterancy(attacker, "disrupting-gaze") && !usedThisRound(attacker, "disruptRound", round)) {
     markRound(attacker, "disruptRound", round);
     memory(defender).positiveEffectsBlocked = true;
@@ -233,6 +247,12 @@ export function neutralTownAllyLost(state: GameState, fallen: CombatUnitState, l
   }
   const sourceId = memory(fallen).damageSourceId as string | undefined;
   const source = sourceId ? state.combat?.units[sourceId] : undefined;
+  if (source && alive(source) && source.controllerId !== fallen.controllerId && neutralTownVeterancy(source, "victory-command") && !usedThisRound(source, "victoryCommandRound", round)) {
+    markRound(source, "victoryCommandRound", round);
+    memory(source).victoryAttackReady = true;
+    veteranTrigger(state, source, "ntv-victory-command", source, `${source.cardName} gains +1 Attack for its next attack.`);
+    queueElementalChoice(state, { kind: "move-ally-one", unitId: source.id, abilityId: "ntv-victory-command", optional: true });
+  }
   if (source && alive(source) && source.controllerId !== fallen.controllerId && neutralTownVeterancy(source, "infernal-command") && !usedThisRound(source, "commandRound", round)) {
     markRound(source, "commandRound", round);
     queueElementalChoice(state, { kind: "move-ally-one", unitId: source.id, abilityId: "ntv-infernal-command", optional: true });

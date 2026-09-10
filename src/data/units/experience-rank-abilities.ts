@@ -16,6 +16,7 @@
  * CLAUDE.md §2: every ability id is already-implemented.
  */
 
+import { CUSTOM_VETERANCY_OVERRIDES } from "./custom-experience-overrides";
 import type { UnitTier } from "@/data/factions/types";
 import { coreUnitDefinitions } from "@/data/factions/units";
 
@@ -94,8 +95,8 @@ export function scheduleAbilityCount(schedule: RankSchedule): number {
 // `docs/unit-experience-balance-sheet.md` is the design authority for what every
 // unit's four ranks pay. A later audit mistook the table for live data and
 // re-plugged it into the resolver, silently changing 127 units' rewards; it is
-// gone now so that cannot recur. Do NOT reintroduce a bespoke schedule table —
-// a unit that needs a signature rank gets an explicit override below.
+// gone now so that cannot recur. Custom-town overrides now live in
+// custom-experience-overrides.ts; the old template-fill machinery stays retired.
 // ---------------------------------------------------------------------------
 
 type Flavour =
@@ -397,6 +398,15 @@ function explicitRankOne(unitDefId: string): RankStep | null {
   return null;
 }
 
+/** Explicit unit-role overrides; the broad flavour fallback still serves other towns. */
+const CUSTOM_VETERANCY_FACTIONS = new Set([
+  "fuyuki", "azure_breeze", "hidden_leaf", "azur_lane", "heavenly_demon",
+  "little_busters", "blue_archive", "mgq", "imperium"
+]);
+
+function customVeterancyStep(unitDefId: string, rank: 1 | 2 | 3 | 4): RankStep | null {
+  return CUSTOM_VETERANCY_OVERRIDES[unitDefId]?.[rank] ?? null;
+}
 function rankOneStepFor(unitDefId: string): RankStep {
   const profile = rankOneProfileFor(unitDefId);
   if (["defense", "health", "initiative"].includes(profile)) return S();
@@ -601,7 +611,7 @@ function explicitRankFour(unitDefId: string): RankStep | null {
   if (unitDefId === "conflux.magic_elementals") return A("veteran-magic-copy");
   if (unitDefId === "neutral.magic_elementals") return A("veteran-arcane-echo");
   if (unitDefId === "conflux.storm_elementals") return A("veteran-storm-link");
-  if (unitDefId === "conflux.phoenixes") return A("veteran-phoenix-nest");
+  if (unitDefId === "conflux.phoenixes") return A("veteran-phoenix-rising-nest");
   if (unitDefId === "neutral.ice_elementals") return A("veteran-frozen-guard");
   if (unitDefId === "neutral.storm_elementals") return A("veteran-storm-guard");
   if (unitDefId === "neutral.phoenixes") return H({ ...Z, health: 1 }, "veteran-renewed-rebirth");
@@ -628,15 +638,16 @@ function explicitRankFour(unitDefId: string): RankStep | null {
  */
 export function rankScheduleFor(unitDefId: string): RankSchedule {
   const flavour = inferFlavour(unitDefId);
-  const rankThree = explicitRankThree(unitDefId) ??
+  const customRankThree = customVeterancyStep(unitDefId, 3);
+  const rankThree = customRankThree ?? explicitRankThree(unitDefId) ??
     (stableRankHash(unitDefId, 3) % 3 === 0
       ? A(...rotatedChoices(unitDefId, 3, RANK_THREE_ABILITIES[flavour]))
       : S());
   return {
-    1: explicitRankOne(unitDefId) ?? rankOneStepFor(unitDefId),
-    2: explicitRankTwo(unitDefId) ?? A(...rotatedChoices(unitDefId, 2, RANK_TWO_ABILITIES[flavour])),
+    1: customVeterancyStep(unitDefId, 1) ?? explicitRankOne(unitDefId) ?? rankOneStepFor(unitDefId),
+    2: customVeterancyStep(unitDefId, 2) ?? explicitRankTwo(unitDefId) ?? A(...rotatedChoices(unitDefId, 2, RANK_TWO_ABILITIES[flavour])),
     3: rankThree,
-    4: explicitRankFour(unitDefId) ?? A(...rotatedChoices(unitDefId, 4, RANK_FOUR_ABILITIES[flavour]))
+    4: customVeterancyStep(unitDefId, 4) ?? explicitRankFour(unitDefId) ?? A(...rotatedChoices(unitDefId, 4, RANK_FOUR_ABILITIES[flavour]))
   };
 }
 
@@ -646,6 +657,7 @@ export function rankScheduleFor(unitDefId: string): RankSchedule {
  * signature rank exist for this unit", not "is this unit in some table".
  */
 export function hasUniqueRankSchedule(unitDefId: string): boolean {
+  if (customVeterancyStep(unitDefId, 1)) return true;
   return Boolean(
     explicitRankOne(unitDefId) ??
       explicitRankTwo(unitDefId) ??
@@ -661,6 +673,8 @@ export function hasUniqueRankSchedule(unitDefId: string): boolean {
 export type RankAbilityTrackId = Flavour;
 
 export function rankAbilityTrackFor(unitDefId: string): string {
+  const faction = unitDefId.split(".")[0] ?? "";
+  if (CUSTOM_VETERANCY_FACTIONS.has(faction)) return `${faction}-veterancy`;
   return inferFlavour(unitDefId);
 }
 
@@ -678,6 +692,15 @@ export const RANK_ABILITY_TRACK_LABELS: Record<string, string> = {
   mystic: "Arcane disciple",
   assassin: "Silent blade",
   warden: "Bulwark",
+  "fuyuki-veterancy": "Heroic spirit",
+  "azure_breeze-veterancy": "Sect inheritance",
+  "hidden_leaf-veterancy": "Shinobi way",
+  "azur_lane-veterancy": "Fleet doctrine",
+  "heavenly_demon-veterancy": "Demonic path",
+  "little_busters-veterancy": "Team spirit",
+  "blue_archive-veterancy": "Academy training",
+  "mgq-veterancy": "Adventurer growth",
+  "imperium-veterancy": "Battle honours",
   // legacy aliases
   melee_line: "Shield wall",
   ranged_line: "Sharpshooter",
@@ -1036,14 +1059,71 @@ export const MGQ_JOB_RANK_ABILITY_ICONS: Record<string, string> = {
   "ignores-retaliation": "/assets/anime/icons/mgq/rank-job-warrior.webp",
   "unlimited-retaliation": "/assets/anime/icons/mgq/rank-job-guard.webp",
   "titan-ignore-ongoing": "/assets/anime/icons/mgq/rank-job-mage.webp",
-  "wraith-heal-1": "/assets/anime/icons/mgq/rank-job-healer.webp"
+  "wraith-heal-1": "/assets/anime/icons/mgq/rank-job-healer.webp",
+  "veteran-attack-when-attacking": "/assets/anime/icons/mgq/rank-job-martial-artist.webp",
+  "veteran-retaliation-fury": "/assets/anime/icons/mgq/rank-job-warrior.webp",
+  "veteran-guarded-stance": "/assets/anime/icons/mgq/rank-job-guard.webp",
+  "veteran-steady-aim": "/assets/anime/icons/mgq/rank-job-hunter.webp",
+  "veteran-soul-feast": "/assets/anime/icons/mgq/rank-job-spiritualist.webp",
+  "commander-charge": "/assets/anime/icons/mgq/rank-job-thief.webp",
+  "reduce-spell-damage-1": "/assets/anime/icons/mgq/rank-job-mage.webp",
+  "wog-no-negative-attack-roll": "/assets/anime/icons/mgq/rank-job-hunter.webp",
+  "veteran-defense-pierce": "/assets/anime/icons/mgq/rank-job-martial-artist.webp",
+  "veteran-rebirth": "/assets/anime/icons/mgq/rank-job-hero.webp",
+  "veteran-low-roll-insight": "/assets/anime/icons/mgq/rank-job-gadabout.webp"
 };
 
 const RANK_ABILITY_ICON_FALLBACK = "/assets/spell-icons/slayer.png";
-export const BLUE_ARCHIVE_RANK_ABILITY_ICON = "/assets/anime/icons/blue-archive/rank-shared.webp";
+export const BLUE_ARCHIVE_RANK_ABILITY_ICON = "/assets/anime/icons/blue-archive/unit-experience/precision.webp";
+
+const BLUE_ARCHIVE_RANK_ABILITY_ICONS: Record<string, string> = {
+  "veteran-steady-aim": "/assets/anime/icons/blue-archive/unit-experience/precision.webp",
+  "veteran-attack-when-attacking": "/assets/anime/icons/blue-archive/unit-experience/precision.webp",
+  "veteran-low-roll-insight": "/assets/anime/icons/blue-archive/unit-experience/precision.webp",
+  "veteran-defense-pierce": "/assets/anime/icons/blue-archive/unit-experience/precision.webp",
+  "wog-no-negative-attack-roll": "/assets/anime/icons/blue-archive/unit-experience/precision.webp",
+  "veteran-guarded-stance": "/assets/anime/icons/blue-archive/unit-experience/guard.webp",
+  "veteran-retaliation-fury": "/assets/anime/icons/blue-archive/unit-experience/guard.webp",
+  "commander-defense-token": "/assets/anime/icons/blue-archive/unit-experience/guard.webp",
+  "bulwark-air-shield": "/assets/anime/icons/blue-archive/unit-experience/guard.webp",
+  "commander-charge": "/assets/anime/icons/blue-archive/unit-experience/mobility.webp",
+  "veteran-speed-hunter": "/assets/anime/icons/blue-archive/unit-experience/mobility.webp",
+  "veteran-soul-feast": "/assets/anime/icons/blue-archive/unit-experience/recovery.webp"
+};
+
+const IMPERIUM_RANK_ABILITY_ICONS: Record<string, string> = {
+  "imperium.astra_militarum": "/assets/warhammer/icons/unit-experience/astra-militarum.webp",
+  "imperium.apothecary": "/assets/warhammer/icons/unit-experience/apothecary.webp",
+  "imperium.space_marines": "/assets/warhammer/icons/unit-experience/assault-marines.webp",
+  "imperium.rhino": "/assets/warhammer/icons/unit-experience/rhino.webp",
+  "imperium.terminators": "/assets/warhammer/icons/unit-experience/terminators.webp",
+  "imperium.dreadnought": "/assets/warhammer/icons/unit-experience/dreadnought.webp",
+  "imperium.titan": "/assets/warhammer/icons/unit-experience/titan.webp"
+};
 
 export function unitRankAbilityIcon(abilityId: string, unitDefId?: string, mgqJob?: string): string {
-  if (unitDefId?.startsWith("blue_archive.")) return BLUE_ARCHIVE_RANK_ABILITY_ICON;
+  const revisedIconSources: Record<string, string> = {
+    "ctv-mountain-break": "ctv-break-cover", "ntv-mountain-stillness": "veteran-troll-snare",
+    "ntv-core-suppression": "ctv-meridian-exchange", "ntv-victory-command": "ntv-infernal-command",
+    "ntv-ally-blind-instinct": "ctv-clear-mind", "ntv-water-air-damper": "veteran-water-damper",
+    "veteran-phoenix-rising-nest": "veteran-phoenix-nest",
+  };
+  if (revisedIconSources[abilityId]) return unitRankAbilityIcon(revisedIconSources[abilityId]!, unitDefId, mgqJob);
+  // These are ability-specific images. Old faction portraits must not mask the
+  // actual learned rule (notably Kivotos and Imperium's former single icons).
+  if (abilityId.startsWith("ctv-")) return `/game-tokens/rank-ability/custom-town/${abilityId.slice(4)}.webp`;
+  if (NEUTRAL_TOWN_ICONS[abilityId]) return NEUTRAL_TOWN_ICONS[abilityId];
+  if (unitDefId && CUSTOM_VETERANCY_OVERRIDES[unitDefId] && UNIT_RANK_ABILITY_ICONS[abilityId]) {
+    // MGQ's job-specific rewards keep their existing job artwork.
+    if ((unitDefId.startsWith("mgq.") || mgqJob) && MGQ_JOB_RANK_ABILITY_ICONS[abilityId]) return MGQ_JOB_RANK_ABILITY_ICONS[abilityId];
+    return UNIT_RANK_ABILITY_ICONS[abilityId];
+  }
+  if (unitDefId?.startsWith("blue_archive.")) {
+    return BLUE_ARCHIVE_RANK_ABILITY_ICONS[abilityId] ?? BLUE_ARCHIVE_RANK_ABILITY_ICON;
+  }
+  if (unitDefId?.startsWith("imperium.")) {
+    return IMPERIUM_RANK_ABILITY_ICONS[unitDefId] ?? RANK_ABILITY_ICON_FALLBACK;
+  }
   if (unitDefId?.startsWith("mgq.") || mgqJob) {
     const jobIcon = MGQ_JOB_RANK_ABILITY_ICONS[abilityId];
     if (jobIcon) return jobIcon;

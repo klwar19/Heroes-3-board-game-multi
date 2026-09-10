@@ -1,3 +1,4 @@
+import { customTownAfterAttack, customTownActivation } from "./custom-town-veterancy";
 import { townVeterancy, townAttackBonus, townDefenseBonus, townDefenseToken, townAfterAttack, townSpellCast, townBound, townMovement, townActivation, townCombatRoundStart, townAllowsRangedRetaliation, townHasUnstoppableRetaliation } from "./town-veterancy";
 import { cardLibrary } from "@/data/cards/library";
 import { factionVeterancy } from "./unit-abilities";
@@ -4727,6 +4728,8 @@ function applyAttackDamageFromCandidate(
   );
   const { attackValue, defenseValue, dieAttackBonus, dieDefenseBonus } =
     preview;
+  // Spend the previous victory before damage can earn a fresh one on a kill.
+  if (attacker.townVeterancy) delete (attacker.townVeterancy as Record<string, unknown>).victoryAttackReady;
   if (preview.neutralTownDamageReduced) neutralTownCommitAttackReduction(state, defender);
   let damage = preview.damageBeforeDeferral;
   if (damage > 0) {
@@ -8685,7 +8688,18 @@ function finishResolvedAttack(
     queueElementalChoice(state, { kind: "town-bolt", unitId: details.attacker.id, targetId: details.defender.id, abilityId: "town-titan-bolt" });
   }
   neutralAfterAttack(state, details.attacker, details.defender, details.isRetaliation, attackResult.roll, dieCancelled || details.ignoreAttackDie, details.attackKind);
-  neutralTownAfterAttack(state, details.attacker, details.defender, details.isRetaliation, attackResult.roll, dieCancelled || details.ignoreAttackDie, details.attackKind, attackResult.damage);
+  const removeVeterancyEffect = (effect: ActiveEffectState) => {
+    state.activeEffects = state.activeEffects.filter(e => e.id !== effect.id);
+    stripCombatHealthBonusFromRemovedEffects(state, [effect]);
+    appendEvent(state, {
+      type: "ACTIVE_EFFECTS_REMOVED",
+      source: { type: "unit", unitId: details.attacker.id, controllerId: details.attacker.controllerId },
+      target: { type: "unit", unitId: details.defender.id },
+      effectIds: [effect.id],
+    });
+  };
+  neutralTownAfterAttack(state, details.attacker, details.defender, details.isRetaliation, attackResult.roll, dieCancelled || details.ignoreAttackDie, details.attackKind, attackResult.damage, removeVeterancyEffect);
+  customTownAfterAttack(state, details.attacker, details.defender, details.isRetaliation, attackResult.roll, dieCancelled || details.ignoreAttackDie, details.attackKind, attackResult.damage, removeVeterancyEffect);
   const neutralTownMemory = (details.attacker.townVeterancy ??= {}) as Record<string, unknown>;
   if (!details.isRetaliation && details.attackKind === "ranged" && !isAdjacent(details.attacker.position, details.defender.position) && neutralTownVeterancy(details.attacker, "boulder-crash") && neutralTownMemory.boulderRound !== state.combat?.round) {
     neutralTownMemory.boulderRound = state.combat!.round;
@@ -10731,7 +10745,9 @@ const elementalHooks = {
     const unit = state.combat!.units[attack.attackerId];
     if (dispel) {
       (unit.elementalVeterancy ??= {}).dispelUsed = true;
-      removeOneEffectFromTarget(state, { type: "unit", unitId: unit.id, controllerId: unit.controllerId }, { type: "unit", unitId: attack.defenderId });
+      if (removeOneEffectFromTarget(state, { type: "unit", unitId: unit.id, controllerId: unit.controllerId }, { type: "unit", unitId: attack.defenderId })) {
+        veteranTrigger(state, unit, "veteran-magic-dispel", state.combat!.units[attack.defenderId]);
+      }
     }
     declareAttack(state, attack, cardLibrary, false, false, true, dispel ? -2 : 0);
   },
@@ -13722,6 +13738,11 @@ function applyActivationStartAbilities(
   elementalActivation(state, unit);
   neutralActivation(state, unit);
   neutralTownActivation(state, unit);
+  customTownActivation(state, unit, effect => {
+    state.activeEffects = state.activeEffects.filter(e => e.id !== effect.id);
+    stripCombatHealthBonusFromRemovedEffects(state, [effect]);
+    appendEvent(state, { type: "ACTIVE_EFFECTS_REMOVED", source: { type: "unit", unitId: unit.id, controllerId: unit.controllerId }, target: { type: "unit", unitId: unit.id }, effectIds: [effect.id] });
+  });
   veteranActivation(state, unit);
   townActivation(state, unit);
 
@@ -15076,7 +15097,7 @@ function maybeOpenAutomaticKeyAuthority(
   for (const ability of getUnitAbilityDefinitions(target)) {
     if (
       ability.effect &&
-      (automaticTypes.has(ability.effect.type) || (ability.effect.type === "NEUTRAL_VETERANCY" && ["crystal-burst", "adjacent-pulse", "blind-dust", "troll-snare"].includes(ability.effect.mechanic))) &&
+      (automaticTypes.has(ability.effect.type) || (ability.effect.type === "CUSTOM_TOWN_VETERANCY" && ["field-repair", "clear-mind", "rescue-step"].includes(ability.effect.mechanic)) || (ability.effect.type === "NEUTRAL_VETERANCY" && ["crystal-burst", "adjacent-pulse", "blind-dust", "troll-snare"].includes(ability.effect.mechanic))) &&
       maybeOpenKeyAuthorityChoice(
         state,
         target,

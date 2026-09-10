@@ -475,7 +475,7 @@ export function ignoresAllRangedCombatPenalties(
 
 export function effectAppliesToUnit(effect: ActiveEffectState, unit: CombatUnitState, includeBlindInstinctPenalty = false): boolean {
   const neutralTownMechanics = getUnitAbilityDefinitions(unit).filter(ability => ability.implementationStatus === "implemented" && ability.effect?.type === "NEUTRAL_TOWN_VETERANCY").map(ability => ability.effect?.type === "NEUTRAL_TOWN_VETERANCY" ? ability.effect.mechanic : undefined);
-  if (!includeBlindInstinctPenalty && effect.polarity === "negative" && effect.controllerId !== unit.controllerId && neutralTownMechanics.includes("blind-instinct")) return false;
+  if (!includeBlindInstinctPenalty && effect.polarity === "negative" && effect.controllerId !== unit.controllerId && (neutralTownMechanics.includes("blind-instinct") || neutralTownMechanics.includes("ally-blind-instinct"))) return false;
   if (effect.polarity === "positive" && effect.scope === "unit" && effect.target?.type === "unit" && effect.target.unitId === unit.id && unit.townVeterancy?.positiveEffectsBlocked && !unit.townVeterancy.allowedPositiveEffectIds?.includes(effect.id)) return false;
   // Evil Eyes' Unclouded Eye is hostile-effect immunity, not self-suppression:
   // enemy ongoing effects cannot touch it, while its controller's Archery and

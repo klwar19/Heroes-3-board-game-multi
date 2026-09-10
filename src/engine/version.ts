@@ -1163,7 +1163,14 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // Book five-card legality, Battle Test per-unit rank setup, and Evil Eyes'
 // hostile-only ongoing immunity must resolve the same way on the frontend and
 // authoritative PartyKit worker.
-export const ENGINE_PROTOCOL_VERSION = 121;
+// v122: anime, wuxia, MGQ and Imperium unit-experience schedules use stable
+// faction-shaped reward distributions. An older worker would fold different
+// abilities and stats onto the same public unitExperience value.
+// v123: authored custom-town rank rewards and six event-backed veterancy rules.
+// v124: additional custom/neutral rank actions and the Phoenix Nest's serialized
+// combat-long Attack bonus must resolve identically in the room worker.
+// v125: BINH Random Town level-VI and level-VII gold defenders both use Few.
+export const ENGINE_PROTOCOL_VERSION = 125;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

@@ -632,7 +632,7 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     id: "random-town-veteran-defense",
     label: "Random Town: veteran AI defense",
     description:
-      "BINH house rule: the Random Town keeps five defenders, but one of its two gold Fews fights as a Pack (1 bronze Pack, 2 silver Packs, 1 gold Pack, 1 gold Few). With Unit Experience on, every defender is at least rank 1; Neutral Rank-Up may raise them further for the current round. The Neutral AI controls formation and combat, protects its most valuable guard, and coordinates focus fire even when manual/PvP Neutral Control is enabled.",
+      "BINH house rule: the Random Town keeps its five printed defenders (1 bronze Pack, 2 silver Packs, 2 gold Fews). With Unit Experience on, every defender is at least rank 1; Neutral Rank-Up may raise them further for the current round. The Neutral AI controls formation and combat, protects its most valuable guard, and coordinates focus fire even when manual/PvP Neutral Control is enabled.",
     category: "combat",
     default: true,
     legacyDefault: false,

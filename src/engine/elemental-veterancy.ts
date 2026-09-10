@@ -1,6 +1,6 @@
 import { townSpellCast, townBound } from "./town-veterancy";
 import { neutralTownSpellCast, neutralTownDeepRooted } from "./neutral-town-veterancy";
-import { getUnitAbilityDefinitions } from "./unit-abilities";
+import { getUnitAbilityDefinitions, isUnitDamageImmune } from "./unit-abilities";
 import { factionVeterancy } from "./unit-abilities";
 import { veteranHeal, veteranRandom, veteranDamage, veteranTrigger } from "./faction-veterancy";
 import {
@@ -26,8 +26,22 @@ import { effectiveInitiative } from "./active-effects";
 import { appendEvent, nextEventNumber } from "./events";
 import { applyNeutralDebuff } from "./neutral-veterancy";
 import { spendRunes } from "./runes";
+import { noteUnitDamagedForTokens } from "./tokens";
+import { destroyFortification, defenderOnFortification } from "./siege";
 
 type Request = NonNullable<CombatState["elementalChoices"]>[number];
+export function breakCoverTargets(state: GameState, target: CombatUnitState, includeFortifications: boolean): number[] {
+  const combat = state.combat;
+  if (!combat) return [];
+  const siege = combat.siege;
+  const positions = [...(combat.obstacles ?? [])];
+  if (includeFortifications && siege) {
+    positions.push(...siege.walls);
+    if (siege.gatePosition !== null) positions.push(siege.gatePosition);
+  }
+  return [...new Set(positions)].filter(p => isAdjacent(p, target.position) && !(combat.battlefieldTokens ?? []).some(t => t.position === p) &&
+    (includeFortifications ? !siege || !defenderOnFortification(combat, siege, p) : !siege?.walls.includes(p) && siege?.gatePosition !== p));
+}
 export type ElementalHooks = {
   returnFire?(state: GameState, unit: CombatUnitState, targetId: string, accept: boolean): void;
   chainLightning?(state: GameState, unit: CombatUnitState, target: CombatUnitState): void;
@@ -158,6 +172,7 @@ export function elementalActivation(
 ): void {
   const combat = state.combat;
   if (!combat || !alive(unit)) return;
+  const risingNest = getUnitAbilityDefinitions(unit).some(a => a.id === "veteran-phoenix-rising-nest");
   for (const nest of Object.values(combat.units)) {
     if (
       nest.elementalVeterancy?.nestOwnerId !== unit.id ||
@@ -165,11 +180,14 @@ export function elementalActivation(
       (nest.elementalVeterancy.nestRound ?? combat.round) >= combat.round
     )
       continue;
+    if (!elementalVeterancy(unit, "nest")) continue;
+    if (risingNest && (townBound(state, unit) || neutralTownDeepRooted(state, unit))) continue;
     const from = unit.position;
     unit.position = nest.position;
     nest.damage = nest.maxHealth;
-    const healed = Math.min(1, unit.damage);
+    const healed = risingNest ? 0 : Math.min(1, unit.damage);
     unit.damage -= healed;
+    if (risingNest) (unit.elementalVeterancy ??= {}).nestAttackBonus = Math.min(2, (unit.elementalVeterancy?.nestAttackBonus ?? 0) + 1);
     appendEvent(state, {
       type: "UNIT_MOVED",
       playerId: unit.controllerId,
@@ -177,7 +195,7 @@ export function elementalActivation(
       from,
       to: unit.position,
     });
-    appendEvent(state, {
+    if (healed > 0) appendEvent(state, {
       type: "DAMAGE_HEALED",
       source: {
         type: "unit",
@@ -191,7 +209,7 @@ export function elementalActivation(
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: unit.id,
       targetUnitId: unit.id,
-      abilityId: "veteran-phoenix-nest",
+      abilityId: risingNest ? "veteran-phoenix-rising-nest-return" : "veteran-phoenix-nest",
       message: `${unit.cardName} returns to its Nest.`,
     });
   }
@@ -213,7 +231,7 @@ export function elementalActivation(
     queueElementalChoice(state, {
       kind: "nest",
       unitId: unit.id,
-      abilityId: "veteran-phoenix-nest",
+      abilityId: risingNest ? "veteran-phoenix-rising-nest" : "veteran-phoenix-nest",
     });
 }
 
@@ -357,7 +375,18 @@ export function openElementalChoice(
         combat.siege?.gatePosition !== p &&
         !Object.values(combat.units).some((t) => alive(t) && t.position === p),
     );
-    if (request.kind === "return-fire") {
+    if (request.kind === "break-cover" || request.kind === "blood-price") {
+      const target = combat.units[request.targetId!];
+      if (!target || !alive(target) || isUnitDamageImmune(target) || target.controllerId === unit.controllerId || unit.customVeterancyRounds?.[request.kind] !== undefined) continue;
+      if (request.kind === "break-cover") {
+        for (const obstacle of breakCoverTargets(state, target, request.abilityId === "ctv-mountain-break")) {
+          const kind = combat.siege?.gatePosition === obstacle ? "gate" : combat.siege?.walls.includes(obstacle) ? "wall" : "obstacle";
+          picks.push({ obstacle }); labels.push(`Destroy ${kind} at ${getBattlefieldLabel(obstacle)}; deal 1 damage to ${target.cardName}`);
+        }
+      } else if (unit.maxHealth - unit.damage >= 2) {
+        picks.push({ targetId: target.id }); labels.push(`Pay 1 HP; deal 2 damage to ${target.cardName}`);
+      }
+    } else if (request.kind === "return-fire") {
       picks.push({ targetId: request.targetId }); labels.push("Retaliate");
     } else if (request.kind === "town-recover") {
       const cards = balanceCardLibrary(state, cardLibrary);
@@ -368,20 +397,22 @@ export function openElementalChoice(
     } else if (request.kind === "town-buff") {
       for (const target of Object.values(combat.units)) if (alive(target)) { picks.push({ targetId: target.id }); labels.push(target.cardName); }
     } else if (request.kind === "move-one") {
-      if (townBound(state, unit)) continue;
+      if (townBound(state, unit) || neutralTownDeepRooted(state, unit)) continue;
       for (const position of empty.filter(p => isAdjacent(p, unit.position))) {
         picks.push({ position }); labels.push(`Move to ${getBattlefieldLabel(position)}`);
       }
     } else if (request.kind === "move-ally-one") {
       for (const target of Object.values(combat.units)) {
-        if (!alive(target) || target.id === unit.id || target.controllerId !== unit.controllerId || townBound(state, target)) continue;
+        if (!alive(target) || target.id === unit.id || target.controllerId !== unit.controllerId || townBound(state, target) || neutralTownDeepRooted(state, target)) continue;
+        if (request.adjacent && !isAdjacent(unit.position, target.position)) continue;
+        if (request.engagedOnly && !Object.values(combat.units).some(e => alive(e) && e.controllerId !== target.controllerId && isAdjacent(e.position, target.position))) continue;
         for (const position of empty.filter(p => isAdjacent(p, target.position))) {
           picks.push({ targetId: target.id, position });
           labels.push(`Move ${target.cardName} to ${getBattlefieldLabel(position)}`);
         }
       }
     } else if (request.kind === "return-origin") {
-      if (townBound(state, unit)) continue;
+      if (townBound(state, unit) || neutralTownDeepRooted(state, unit)) continue;
       if (request.position !== undefined && empty.includes(request.position)) {
         picks.push({ position: request.position }); labels.push(`Return to ${getBattlefieldLabel(request.position)}`);
       }
@@ -557,8 +588,25 @@ function executeElementalPick(
     return;
   }
   if (pick.skip) return;
+  if (request.kind === "break-cover" || request.kind === "blood-price") {
+    const target = combat.units[request.targetId!];
+    if (!target || !alive(target) || isUnitDamageImmune(target) || target.controllerId === unit.controllerId || unit.customVeterancyRounds?.[request.kind] !== undefined || !getUnitAbilityDefinitions(unit).some(a => a.id === request.abilityId)) throw new Error("That combat ability is no longer available.");
+    if (request.kind === "break-cover") {
+      if (pick.obstacle === undefined || !breakCoverTargets(state, target, request.abilityId === "ctv-mountain-break").includes(pick.obstacle)) throw new Error("Choose eligible cover adjacent to the enemy.");
+      if (combat.siege?.walls.includes(pick.obstacle) || combat.siege?.gatePosition === pick.obstacle) destroyFortification(state, unit, combat.siege.gatePosition === pick.obstacle ? "gate" : "wall", pick.obstacle);
+      combat.obstacles = (combat.obstacles ?? []).filter(p => p !== pick.obstacle);
+    } else {
+      if (unit.maxHealth - unit.damage < 2) throw new Error("Blood Price requires at least 2 remaining HP.");
+      unit.damage += 1;
+      const cost = appendEvent(state, { type: "DAMAGE_ASSIGNED", source: { type: "unit", unitId: unit.id, controllerId: unit.controllerId }, target: { type: "unit", unitId: unit.id }, amount: 1, damageKind: "effect" });
+      noteUnitDamagedForTokens(state, unit, cost.amount);
+    }
+    (unit.customVeterancyRounds ??= {})[request.kind] = combat.round;
+    hooks.damage(state, unit, target.id, request.abilityId, unitAbilities[request.abilityId]!.name, request.kind === "break-cover" ? 1 : 2);
+    return;
+  }
   if ((request.kind === "move-one" || request.kind === "return-origin" || request.kind === "veteran-teleport") && townBound(state, unit)) throw new Error("This unit is bound and cannot move.");
-  if (request.kind === "veteran-teleport" && neutralTownDeepRooted(state, unit)) throw new Error("Deep Roots prevents this teleport.");
+  if ((request.kind === "veteran-teleport" || request.kind === "move-one" || request.kind === "return-origin") && neutralTownDeepRooted(state, unit)) throw new Error("Deep Roots prevents bonus movement and teleportation.");
   if (request.runeCost && !spendRunes(state, unit.controllerId, request.runeCost)) {
     throw new Error(`That ability needs ${request.runeCost} Rune.`);
   }
@@ -595,14 +643,16 @@ function executeElementalPick(
   if (request.kind === "move-ally-one") {
     const target = combat.units[pick.targetId!];
     const position = pick.position!;
-    const blocked = !target || !alive(target) || target.id === unit.id || target.controllerId !== unit.controllerId || townBound(state, target) ||
+    const blocked = !target || !alive(target) || target.id === unit.id || target.controllerId !== unit.controllerId || townBound(state, target) || neutralTownDeepRooted(state, target) ||
+      (request.adjacent && !isAdjacent(unit.position, target.position)) ||
+      (request.engagedOnly && !Object.values(combat.units).some(e => alive(e) && e.controllerId !== target.controllerId && isAdjacent(e.position, target.position))) ||
       !Number.isInteger(position) || position < 0 || position >= BATTLEFIELD_CELL_COUNT || !isAdjacent(target.position, position) ||
       (combat.obstacles ?? []).includes(position) || (combat.battlefieldTokens ?? []).some(t => t.position === position) ||
       Boolean(combat.siege?.walls.includes(position)) || combat.siege?.gatePosition === position ||
       Object.values(combat.units).some(t => alive(t) && t.position === position);
     if (blocked) throw new Error("Choose an allied unit and an adjacent empty space.");
     const from = target.position; target.position = position;
-    veteranTrigger(state, unit, request.abilityId, target);
+    veteranTrigger(state, unit, request.abilityId === "ntv-victory-command" ? "ntv-victory-command-move" : request.abilityId, target);
     appendEvent(state, { type: "UNIT_MOVED", playerId: target.controllerId, unitId: target.id, from, to: position });
     return;
   }
@@ -795,8 +845,8 @@ export function elementalAttackBonus(
   defender: CombatUnitState,
   retaliation: boolean,
 ): number {
-  if (retaliation) return 0;
-  let bonus = 0;
+  let bonus = getUnitAbilityDefinitions(attacker).some(a => a.id === "veteran-phoenix-rising-nest") ? Math.min(2, attacker.elementalVeterancy?.nestAttackBonus ?? 0) : 0;
+  if (retaliation) return bonus;
   if (
     elementalVeterancy(attacker, "distant-attack") &&
     !isAdjacent(attacker.position, defender.position)

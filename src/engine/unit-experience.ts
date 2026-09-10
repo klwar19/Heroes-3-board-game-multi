@@ -67,9 +67,8 @@ function addStats(a: UnitRankStatBonus, b: UnitRankStatBonus): UnitRankStatBonus
 }
 
 /**
- * Cumulative stats at this rank for this unit — only ranks whose schedule step
- * is `kind: "stats"` contribute. Gold does not get larger packages; it only
- * uses Attack-first steps when a stats rank lands.
+ * Cumulative stats from explicit stats and hybrid ranks. An unconfigured stats
+ * step uses the unit's fallback package; explicit packages keep their amounts.
  *
  * Overload-friendly: `unitRankStatBonuses(tier, rank)` still works for tests
  * that pass a plain melee path (no unitDefId) — treats every rank as stats
@@ -146,7 +145,7 @@ export function unitRankStep(unitDefId: string, rank: number, job?: MgqJob): Ran
   if (job) {
     const signature = mgqJobSignatureAbilityId(job);
     if (rank === 1) return rankScheduleFor(unitDefId)[1];
-    if (rank === 2) return { kind: "stats" };
+    if (rank === 2) return rankScheduleFor(unitDefId)[2];
     if (rank === 3 && signature) {
       const baseStep = rankScheduleFor(unitDefId)[3];
       return {

@@ -12930,8 +12930,9 @@ function astrologersSchoolPowerBonusFor(
  * reducer's enemySpellPowerReduction so the readout/gate match the cast.
  */
 function enemyWaterSpellPowerReduction(state: GameState, casterId: PlayerId, card: CardDefinition | undefined): number {
-  if (!card?.spellSchools?.includes("water") || spellAbilitiesSuppressed(state)) return 0;
-  return Object.values(state.combat?.units ?? {}).filter(unit => unit.controllerId !== casterId && isUnitAlive(unit) && getUnitAbilityDefinitions(unit).some(a => a.effect?.type === "ELEMENTAL_VETERANCY" && a.effect.mechanic === "water-damper")).length;
+  const water = card?.spellSchools?.includes("water"), air = card?.spellSchools?.includes("air");
+  if ((!water && !air) || spellAbilitiesSuppressed(state)) return 0;
+  return Object.values(state.combat?.units ?? {}).filter(unit => unit.controllerId !== casterId && isUnitAlive(unit) && getUnitAbilityDefinitions(unit).some(a => (water && a.effect?.type === "ELEMENTAL_VETERANCY" && a.effect.mechanic === "water-damper") || ((water || air) && a.effect?.type === "NEUTRAL_TOWN_VETERANCY" && a.effect.mechanic === "water-air-damper"))).length;
 }
 
 function enemySpellPowerReductionFor(

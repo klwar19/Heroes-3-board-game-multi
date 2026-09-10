@@ -335,8 +335,8 @@ export type HouseRuleId =
   // (`src/data/cards/community-balance-art.ts`). With BOTH balance rules on the
   // COMMUNITY reprint/face WINS for a card both packs cover.
   | "community-card-balance"
-  // BINH Random Town defense: keep the five-card printed army, but upgrade one
-  // of its two gold Fews to a Pack. When Unit Experience is active every guard
+  // BINH Random Town defense: keep the five-card printed army, including both
+  // gold units on their Few sides. When Unit Experience is active every guard
   // starts at rank 1 (or the higher Neutral Rank-Up round rank), and the whole
   // defense is formed and driven by the coordinated Neutral AI.
   | "random-town-veteran-defense"
@@ -9778,6 +9778,7 @@ export type CombatUnitState = {
     solidifyCanMove?: boolean;
     echoSpells?: string[];
     nestOwnerId?: string;
+    nestAttackBonus?: number;
     nestRound?: number;
   };
   id: UnitId;
@@ -9929,6 +9930,7 @@ export type CombatUnitState = {
   /** Phoenixes: set once this unit has spent its once-per-combat Rebirth self-save. */
   usedRebirthThisCombat?: boolean;
   /** Town rank effects persist across side changes, and are rebuilt for each combat. */
+  customVeterancyRounds?: Partial<Record<import("@/data/units/abilities").CustomTownVeterancyMechanic, number>>;
   townVeterancy?: {
     damageSourceId?: string;
     attack?: number;
@@ -10458,7 +10460,7 @@ export type CombatState = {
   elementalResumeAttack?: Extract<GameAction, { type: "ATTACK_UNIT" | "MOVE_AND_ATTACK_UNIT" }>;
   elementalAwaitingAdvance?: boolean;
   elementalChoices?: Array<{
-    kind: "return-fire" | "town-bolt" | "town-recover" | "town-buff" | "damage" | "heal" | "heal-self" | "move-one" | "move-ally-one" | "return-origin" | "debuff-attack" | "obstacle" | "solidify" | "nest" | "link" | "copy" | "copy-bolt" | "dispel" | "veteran-teleport" | "veteran-cleave" | "veteran-tribute" | "blind-dust" | "troll-snare" | "chain-lightning";
+    kind: "break-cover" | "blood-price" | "return-fire" | "town-bolt" | "town-recover" | "town-buff" | "damage" | "heal" | "heal-self" | "move-one" | "move-ally-one" | "return-origin" | "debuff-attack" | "obstacle" | "solidify" | "nest" | "link" | "copy" | "copy-bolt" | "dispel" | "veteran-teleport" | "veteran-cleave" | "veteran-tribute" | "blind-dust" | "troll-snare" | "chain-lightning";
     unitId: string;
     abilityId: string;
     amount?: number;
@@ -10468,6 +10470,7 @@ export type CombatState = {
     enemiesOnly?: boolean;
     alliesOnly?: boolean;
     adjacentOrSelf?: boolean;
+    engagedOnly?: boolean;
     forcedTarget?: boolean;
     position?: number;
     adjacent?: boolean;

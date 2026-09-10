@@ -17371,7 +17371,8 @@ export function drawPveThemedArmy(
  *  - Dragon Utopia: the complete Field Difficulty table row (the default
  *    "by-difficulty" mode, drawn from the decks) or the fixed, minted
  *    four-dragon party in "four" mode — see {@link drawDragonUtopiaArmy}.
- *  - Random Town: the rolled faction's packs (1 bronze, 2 silver, 2 gold).
+ *  - Random Town: the rolled faction's army (1 bronze Pack, 2 silver Packs,
+ *    2 gold Fews).
  *  - Cyclops Stockpile: the normal draw plus 2 golden Cyclopes added to the
  *    Neutral Army (the rulebook override).
  * Every other field draws normally from the Field Difficulty Level Table.
@@ -18235,8 +18236,8 @@ export function randomTownDefaultBronzePackId(faction: string): string | undefin
  * flagged `randomTownChoice` so the reveal chain can offer that pick; the
  * default is the faction's most expensive bronze Pack), TWO Packs of silver-tier
  * units and TWO Fews of gold-tier units, all from the faction not in play. The
- * BINH veteran-defense rule upgrades the first gold slot from Few to Pack while
- * retaining the same five bodies.
+ * BINH veteran-defense rule raises their veteran ranks and delegates the fight
+ * to the coordinated AI; it does not change either gold unit's physical side.
  *
  * A faction short of a printed body for a slot falls back to a same-tier
  * NEUTRAL draw (the `packDrawWithNeutralFallback` / `fewDrawWithNeutralFallback`
@@ -18278,31 +18279,23 @@ function randomTownGuardDraws(state: GameState, field: MapFieldState): NeutralDr
     if (fallback) draws.push(fallback as NeutralDraw);
   }
 
-  // 3) two gold bodies. Under the BINH veteran-defense rule, the first of the
-  // existing Fews is upgraded to its Pack side (five defenders still total).
+  // 3) two gold Fews. In particular, the faction roster's first gold slot
+  // (normally its level-VI creature) stays on the Few side under BINH rules.
   const goldFews = unitIds.filter(
     (id) => coreUnitDefinitions[id]?.tier === "gold" && coreUnitDefinitions[id]?.few
   );
-  const upgradedGoldIndex = goldFews.findIndex((id) => Boolean(coreUnitDefinitions[id]?.pack));
   for (let slot = 0; slot < 2; slot += 1) {
     const id = goldFews[slot];
     if (id) {
-      const upgradedPack =
-        slot === upgradedGoldIndex &&
-        houseRuleEnabled(state, "random-town-veteran-defense") &&
-        Boolean(coreUnitDefinitions[id]?.pack);
       draws.push({
         unitDefId: id,
         tier: "gold",
-        ...(upgradedPack ? { factionPack: true } : { factionFew: true }),
+        factionFew: true,
         bankGuard: true
       });
       continue;
     }
-    const fallback =
-      slot === 0 && houseRuleEnabled(state, "random-town-veteran-defense")
-        ? packDrawWithNeutralFallback("gold", faction, random)
-        : fewDrawWithNeutralFallback("gold", faction, random);
+    const fallback = fewDrawWithNeutralFallback("gold", faction, random);
     if (fallback) draws.push(fallback as NeutralDraw);
   }
 

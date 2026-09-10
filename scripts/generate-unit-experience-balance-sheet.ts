@@ -61,7 +61,7 @@ const lines: string[] = [
   "",
   "Generated from the live unit definitions and veterancy resolver. Stats are shown as **Attack/Defense/HP/Initiative**. Every R1–R4 cell is the exact reward currently granted at that rank, including engine-backed ability text.",
   "",
-  "R1 default: units receive one small reward: +1 HP, +1 Initiative, +1 Attack while attacking, +1 Attack while retaliating, or +1 Defense while being attacked. The approved exception pool may receive permanent +1 Defense, but a unit with printed Defense 3 never gains additional permanent Defense. Explicitly designed unit abilities may replace this default.",
+  "Generated R1 defaults are small single rewards. Explicit unit tracks can instead grant larger stat packages, abilities, or hybrid rewards. Assess each complete track alongside both printed sides: ranks deliberately vary in strength, and Gold does not receive an automatic larger budget. Units with printed Defense 3 or higher gain no additional permanent Defense.",
   "",
   `XP thresholds: Bronze ${UNIT_RANK_THRESHOLDS.bronze.join("/")}; Silver ${UNIT_RANK_THRESHOLDS.silver.join("/")}; Gold and Azure ${UNIT_RANK_THRESHOLDS.gold.join("/")}.`,
   "",
@@ -84,7 +84,7 @@ for (const faction of [...new Set(units.map((unit) => unit.faction))]) {
 
 const mgqUnits = units.filter((unit) => unit.faction === "mgq");
 lines.push("## MGQ job-specific paths", "");
-lines.push("MGQ units keep their unit-specific R1 and capstone identity while their selected Job can replace R3 with its signature. These are the exact resolved rewards for every offered unit/job combination.", "");
+lines.push("MGQ units keep their unit-specific R1, R2 and capstone rewards while their selected Job can replace R3 with its signature. R2 no longer falls back to a generic stat rank. These are the exact resolved rewards for every offered unit/job combination.", "");
 for (const unit of mgqUnits) {
   lines.push(`### ${md(unit.name)} \`${unit.id}\``, "");
   lines.push("| Job | R1 | R2 | R3 | R4 |");

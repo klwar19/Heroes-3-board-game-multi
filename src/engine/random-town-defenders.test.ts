@@ -237,14 +237,14 @@ describe("Random Town faction pick", () => {
 });
 
 describe("Random Town — BINH veteran AI defense", () => {
-  it("keeps five guards and upgrades exactly one existing gold Few to Pack", () => {
+  it("keeps five guards with both gold units on their Few sides", () => {
     const state = fightRandomTown(makeGame("rt-veteran-pack", {
       houseRules: { "random-town-veteran-defense": true }
     }));
     const guards = neutralUnits(state);
     expect(guards).toHaveLength(5);
-    expect(guards.filter((unit) => unit.grade === "gold" && unit.variant === "pack")).toHaveLength(1);
-    expect(guards.filter((unit) => unit.grade === "gold" && unit.variant === "few")).toHaveLength(1);
+    expect(guards.filter((unit) => unit.grade === "gold" && unit.variant === "pack")).toHaveLength(0);
+    expect(guards.filter((unit) => unit.grade === "gold" && unit.variant === "few")).toHaveLength(2);
     expect(guards.filter((unit) => unit.grade === "silver" && unit.variant === "pack")).toHaveLength(2);
     expect(guards.filter((unit) => unit.grade === "bronze" && unit.variant === "pack")).toHaveLength(1);
   });
