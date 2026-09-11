@@ -3209,7 +3209,9 @@ export default function Home() {
               break;
             }
             case "SPELL_CAST_STARTED": {
-              if (!seatVisible(event.playerId)) {
+              // A Faerie Bolt is a unit ability, not a card: there is nothing to
+              // fly out of a hand into a discard, so skip the card-flight cue.
+              if (event.unitBoltUnitId || !seatVisible(event.playerId)) {
                 break;
               }
               cues.push({

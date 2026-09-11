@@ -2802,10 +2802,17 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "ON_ACTIVATION_HEAL_FRIENDLY_OR_BUFF_SELF", healAmount: 2, attackBonus: 1 },
     implementationStatus: "implemented"
   },
+  // COUNTERPLAY (USER RULE 2026-09-11): the bolt is answerable by EXACTLY three
+  // artifact plays and nothing else — Boots of Polarity option 1 (roll 2 Attack
+  // dice; a "+1" ignores it), Surcoat of Counterpoise option 1 (it is cast at
+  // Power 0, so the "Power 1 or less" gate always passes), and the Orb of
+  // Inhibition (option 2 stops the dragon firing at all for the round; option 1
+  // leaves the bolt dealing 0 damage for the rest of the Combat). The defender
+  // gets a real reaction window before the bolt lands; no other card may answer.
   "faerie-dragon-spell": {
     id: "faerie-dragon-spell",
     name: "Faerie Bolt",
-    text: "[activation] The selected unit suffers 2 damage — a spell that does not count towards your spell limit. (A neutral Faerie Dragon targets it like a normal attack.) Then the unit acts normally.",
+    text: "[activation] The selected unit suffers 2 damage — a spell that does not count towards your spell limit. (A neutral Faerie Dragon targets it like a normal attack.) Then the unit acts normally. The defender may answer it with Boots of Polarity or Surcoat of Counterpoise; the Orb of Inhibition stops or zeroes it.",
     effect: { type: "ON_ACTIVATION_DAMAGE_SPELL", amount: 2 },
     implementationStatus: "implemented"
   },

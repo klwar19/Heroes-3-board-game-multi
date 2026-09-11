@@ -2234,7 +2234,10 @@ export const artifactCards: CardLibrary = {
   // Surcoat of Counterpoise (Tower): option A is a low-power spell counter —
   // played as the enemy casts, it ends that Spell only if it was cast with 1
   // Power or less (engine: CANCEL_SPELL maxPower 1, re-checked against the
-  // spell's final Power at resolution, exactly like Resistance). Option B —
+  // spell's final Power at resolution, exactly like Resistance). USER RULE
+  // 2026-09-11: option A also answers a Faerie Dragon's FAERIE BOLT (and the
+  // veteran Ice Bolt) — that bolt is cast at Power 0, so the cap always passes;
+  // it and the Boots of Polarity are the only two cards offered in that window. Option B —
   // remove the Surcoat and Search (1) the Artifact deck — plays on the map AND
   // mid-combat (a printed Instant; see instantSideAllowedInCombat).
   "artifact.surcoat_of_counterpoise": {
@@ -3000,11 +3003,16 @@ export const artifactCards: CardLibrary = {
   //  - Option A ("all Spell and Specialty cards deal 0 damage … Remove this card
   //    instead of discarding it"): a combat-long global NULLIFY_CARD_DAMAGE effect
   //    (engine: reducedCardDamage returns 0 for every Spell/Specialty card hit —
-  //    direct, area, Xyron, Chain Lightning — for both armies). The removeSelf cost
+  //    direct, area, Xyron, Chain Lightning — for both armies). USER RULE
+  //    2026-09-11: it also zeroes a Faerie Dragon's FAERIE BOLT (the bolt is
+  //    printed as a spell) — the bolt still fires, it just deals 0 damage. The removeSelf cost
   //    sends the card to the removed-from-game zone; the effect lives on its own in
   //    activeEffects until the Combat ends.
   //  - Option B ("during this Combat round, units cannot use their special
   //    abilities"): a global, current-combat-round UNIT_ABILITY_SUPPRESSED effect.
+  //    USER RULE 2026-09-11: this is the hard stop on a FAERIE BOLT — a suppressed
+  //    Faerie Dragon is offered no bolt at all (neutral and player-controlled
+  //    alike) and simply moves and attacks.
   //    syncAbilitySuppression flags every unit (effectAppliesToUnit treats a global
   //    effect as applying to all), so the ability chokepoint (getUnitAbilityDefinitions)
   //    sees nothing for one round; it lifts automatically at the round's end. Tower
@@ -3128,7 +3136,10 @@ export const artifactCards: CardLibrary = {
   // Boots of Polarity (Relic): option A is a chance-based spell counter — react
   // to an enemy cast, roll 2 Attack dice and keep the best; on a "+1" face the
   // Spell is ignored (CANCEL_SPELL with a diceRoll gate). A failed roll still
-  // spends the card but lets the Spell resolve. Option B is a single-effect
+  // spends the card but lets the Spell resolve. USER RULE 2026-09-11: option A
+  // also answers a Faerie Dragon's FAERIE BOLT (and the veteran Ice Bolt) — the
+  // bolt is parked on the stack behind a real reaction window for the defender,
+  // and these Boots are one of only two cards offered there. Option B is a single-effect
   // dispel: REMOVE_ACTIVE_EFFECT strips one removable ongoing effect from a
   // chosen unit (the most recently applied one).
   "artifact.boots_of_polarity": {

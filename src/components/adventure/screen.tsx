@@ -11975,19 +11975,26 @@ const POLISH_RULE_SUMMARIES: Partial<Record<HouseRuleId, string>> = {
     "Use the Polish/BINH major-tier placement for Eversmoking Ring.",
 };
 
+// Polish house-rule info sheets: section crops of "Heroes 3 BG v1.3 ENG -
+// Balance UPDATE" (2026-09-11), one or more pages per rule.
 const POLISH_RULE_INFO_IMAGES: Partial<Record<HouseRuleId, string[]>> = {
-  "polish-spell-book": ["/assets/rules/polish/spell-book.webp"],
-  "polish-creature-banks": ["/assets/rules/polish/map-rules.webp"],
-  "polish-bank-sizes": ["/assets/rules/polish/map-rules.webp"],
-  "polish-unit-stacks": ["/assets/rules/polish/unit-stacks.webp"],
-  "polish-reduced-starting-bonus": ["/assets/rules/polish/game-rules.webp"],
-  "polish-rule-111": ["/assets/rules/polish/game-rules.webp"],
-  "polish-reduced-surrender": ["/assets/rules/polish/game-rules.webp"],
-  "polish-random-artifacts": ["/assets/rules/polish/artifacts.webp"],
-  "polish-pandora-search": ["/assets/rules/polish/map-rules.webp"],
-  "polish-wait": ["/assets/rules/polish/wait.webp"],
-  "polish-quick-combat": ["/assets/rules/polish/quick-combat.webp"],
-  "polish-alliance-mode": ["/assets/rules/polish/alliance.webp"],
+  "polish-spell-book": ["/assets/rules/polish/v13-spell-book.webp"],
+  "polish-creature-banks": ["/assets/rules/polish/v13-banks.webp"],
+  "polish-bank-sizes": ["/assets/rules/polish/v13-banks.webp"],
+  "polish-unit-stacks": ["/assets/rules/polish/v13-unit-stacks.webp"],
+  "polish-reduced-starting-bonus": ["/assets/rules/polish/v13-starting-bonus.webp"],
+  "polish-rule-111": ["/assets/rules/polish/v13-rule-111.webp"],
+  "polish-reduced-surrender": ["/assets/rules/polish/v13-surrender.webp"],
+  "polish-random-artifacts": ["/assets/rules/polish/v13-artifacts.webp"],
+  "polish-pandora-search": ["/assets/rules/polish/v13-pandora.webp"],
+  "polish-wait": ["/assets/rules/polish/v13-wait.webp"],
+  "polish-quick-combat": ["/assets/rules/polish/v13-quick-combat.webp"],
+  "polish-alliance-mode": ["/assets/rules/polish/v13-alliance.webp"],
+  "polish-set-artifacts": [
+    "/assets/rules/polish/v13-set-artifacts-1.webp",
+    "/assets/rules/polish/v13-set-artifacts-2.webp",
+    "/assets/rules/polish/v13-set-artifacts-3.webp",
+  ],
 };
 
 function HouseRuleToggleButton({
@@ -12106,7 +12113,7 @@ function HouseRuleInfoModal({
         <p>{rule.description}</p>
         {(POLISH_RULE_INFO_IMAGES[rule.id] ?? []).map((src) => (
           <img
-            alt={`${rule.label} reference from H3 BG Rules v1.2`}
+            alt={`${rule.label} reference from H3 BG v1.3 Balance Update`}
             key={src}
             loading="lazy"
             src={assetUrl(src)}

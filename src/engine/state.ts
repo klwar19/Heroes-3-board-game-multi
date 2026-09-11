@@ -6364,6 +6364,15 @@ type GameEventPayload =
       spellCardId: CardId;
       target: TargetRef;
       power: number;
+      /**
+       * Faerie Bolt / veteran Ice Bolt: this "cast" is a UNIT ACTIVATION ABILITY,
+       * not a Spell card — `spellCardId` carries the ability id, which is NOT in
+       * the card library. Set to the bolting unit's id so legal-actions can
+       * restrict the counter offers (only Boots of Polarity / Surcoat of
+       * Counterpoise answer a bolt) and the UI can name it from `unitAbilities`
+       * instead of looking up a card face that does not exist.
+       */
+      unitBoltUnitId?: UnitId;
     }
   | {
       id: string;
@@ -8275,6 +8284,21 @@ export type ResolutionStackItem = {
      * spell's weakest tier — the printed card says "You can add SP to this spell".
      */
     spellPowerBaseZero?: boolean;
+    /**
+     * Faerie Dragons' "Faerie Bolt" (and the elemental veteran "Ice Bolt") parked
+     * on the stack so the DEFENDER gets a real counter window before it lands.
+     * The item wears a CAST_SPELL-shaped action whose `cardId` is the ABILITY id
+     * (never a card in the library), so every reader on the cast path must tolerate
+     * an undefined card definition. Present ONLY on such a bolt item.
+     */
+    unitBolt?: {
+      unitId: UnitId;
+      targetUnitId: UnitId;
+      abilityId: string;
+      abilityName: string;
+      amount: number;
+      copied: boolean;
+    };
     /**
      * Helm of the Alabaster Unicorn cast (option B): the spell was cast from the
      * top of the Spell-deck discard pile. Like a scroll cast it has no hand/discard
@@ -10701,6 +10725,13 @@ export type CombatState = {
    * 1 MP to continue for another round or retreat.
    */
   awaitingContinue: boolean;
+  /**
+   * The open `awaitingContinue` window costs NO movement to continue: a
+   * Creature Bank fight pauses after every round (USER RULE 2026-09-11) even
+   * where the rulebook / a designer limit would have rolled straight on, and
+   * that free roll-on is what continuing means there. Cleared with the window.
+   */
+  continueFree?: boolean;
   /**
    * Polish "Banks auto combat" (house rule `polish-bank-auto-combat`): this
    * combat has already put the automatic-Bank-win proposal to the attacker
@@ -17601,6 +17632,10 @@ export type PendingChoice =
         difficulty: number;
         kind: "neutral" | "bank";
         crownFree?: boolean;
+        /** The offering branch fights without a Round limit (outpost / gateway / break field). */
+        unlimitedRounds?: boolean;
+        /** The offering branch is a teleport-ARRIVAL guard fight (win clears, no re-teleport). */
+        teleportArrival?: boolean;
       };
       /**
        * polish-quick-combat: a covered neutral fight the Polish strength-based

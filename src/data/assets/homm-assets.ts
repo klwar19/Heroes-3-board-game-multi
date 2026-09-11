@@ -568,7 +568,7 @@ export const CREATURE_BANK_FIELD_IMAGES: Record<CreatureBankId, string> = {
   crypt: "/assets/locations-crypt.webp",
   ruins: "/assets/polish-banks/location-ruins.webp",
   black_tower: "/assets/polish-banks/location-black_tower.webp",
-  sanctuary_of_zealots: "/assets/polish-banks/location-sanctuary_of_zealots.webp",
+  sanctuary_of_zealots: "/assets/polish-banks/location-sanctuary_of_beholder.webp",
   dwarven_treasury: "/assets/locations-dwarven_treasury.webp",
   medusa_stores: "/assets/locations-medusa_stores.webp",
   dragon_fly_hive: "/assets/locations-dragon_fly_hive.webp",

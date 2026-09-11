@@ -13,26 +13,29 @@ import { standardComputerController } from "./computer/control";
 import type { CombatState, MapFieldState } from "./state";
 
 // ---------------------------------------------------------------------------
-// Learning after a WON combat (USER RULE 2026-08-22).
+// Learning after a won combat — CLASSIC LEVEL-CROSSING TIMING.
 //
-// REPORT: "why i fight lv 3 neutral but can't use learning skill afterwards?
-// make learning a pop up after neutral or pvp battle too, basic and expert".
+// The printed card reads "play when the Hero is ABOUT TO LEVEL UP", and that is
+// exactly what the engine does: `gainExperience` queues the "learning-level-up"
+// offer only when the gain actually crosses a whole level (`levelsGained > 0`)
+// and the Hero is still below the Experience cap. A gain that stays inside the
+// same level offers nothing.
 //
-// ROOT CAUSE: the printed timing is "play when the Hero is ABOUT TO LEVEL UP",
-// and the engine queued the offer only when `hero.level > previousLevel`. A guard
-// fight at a difficulty EQUAL to the hero's level pays 1 Experience = a HALF
-// level, which crosses no level — so the offer never opened and the card looked
-// dead after a won battle.
+// Experience runs in HALF levels: `levelOfExperience(e) = min(7, 1 + floor(e/2))`,
+// so Experience 0/1 = level 1, 2/3 = level 2, 4/5 = level 3 … 12 = level 7 (the
+// cap). A +1 gain therefore crosses a level only from an ODD Experience (the
+// half-step just below the boundary: 1 -> 2, 3 -> 4, 5 -> 6); a +2 gain always
+// crosses one. The fixtures below park the Hero on that half-step whenever a
+// crossing is wanted, and each claim carries a CONTROL at a NON-crossing gain.
 //
-// FIX (superseded, then widened): the first pass flagged the two combat-victory
-// XP seams. FOLLOW-UP USER RULE, same day — "the map object that offers
-// experience: Learning ability not pick it up. Must show instant reaction
-// whenever you receive exp, from ANY source" — moved the trigger to the single
-// chokepoint `gainExperience`, so every source reaches it. The combat suites
-// below still pass unchanged; the "any source" suite is further down.
+// ONLY the Polish Balance Pack reprint (`polish-card-balance`) widens the timing
+// to EVERY Experience gain — one spec at the bottom pins that difference.
 //
-// Each claim below carries a CONTROL that fails if the widening leaked
-// somewhere it must not (no card, a loss, a zero gain, the Experience cap).
+// The trigger lives at the single chokepoint every hero-XP grant funnels through
+// (`gainExperience`), so a won fight, a map object, a designer timed event and a
+// PvP win all reach it without enumerating sources — the suites below cover each
+// of those seams at a crossing gain, plus the usual no-card / loss / zero-gain /
+// Experience-cap controls.
 // ---------------------------------------------------------------------------
 
 function apply(state: GameState, action: GameAction): GameState {
@@ -41,7 +44,7 @@ function apply(state: GameState, action: GameAction): GameState {
   return result.state;
 }
 
-function makeGame(seed = "learning-after-combat"): GameState {
+function makeGame(seed = "learning-after-combat", houseRules?: { "polish-card-balance"?: boolean }): GameState {
   const state = createAdventureGameState({
     seed,
     ruleset: "binh",
@@ -50,7 +53,8 @@ function makeGame(seed = "learning-after-combat"): GameState {
       { id: "p1", name: "Attacker", factionId: "castle", heroDefId: "catherine" },
       { id: "p2", name: "Defender", factionId: "rampart", heroDefId: "mephala" }
     ],
-    rollFirstPlayer: false
+    rollFirstPlayer: false,
+    ...(houseRules ? { houseRules } : {})
   });
   for (const player of Object.values(state.players)) {
     player.canMulligan = false;
@@ -60,13 +64,25 @@ function makeGame(seed = "learning-after-combat"): GameState {
 }
 
 /**
+ * Parks p1's main Hero on a given Experience (its level follows the half-level
+ * scale). An ODD value is the half-step just below a level boundary, so the next
+ * +1 Experience crosses a level; an EVEN value stays inside the level.
+ */
+function setExperience(state: GameState, experience: number): void {
+  const hero = getMainHero(state, "p1")!;
+  hero.experience = experience;
+  hero.level = Math.min(7, 1 + Math.floor(experience / 2));
+}
+
+/**
  * Stages a just-finished NEUTRAL combat on a plain guard field of the given
  * difficulty, won (or lost) by p1. finalizeAdventureCombat then runs the real
  * after-combat flow: the XP award, the deferred field visit and the queue pump.
  *
- * `difficulty` defaults to the hero's own LEVEL — the exact shape the user
- * reported: it pays 1 Experience (a half level) and crosses NO level, so the
- * old level-crossing gate withheld the Learning offer entirely.
+ * `difficulty` defaults to the hero's own LEVEL — an equal-difficulty guard,
+ * which pays 1 Experience (a half level). Whether that opens the Learning offer
+ * depends entirely on where the Hero started: from an odd Experience it crosses
+ * a level and the offer opens, from an even one it does not.
  */
 function stageNeutralCombat(
   state: GameState,
@@ -109,33 +125,39 @@ function learningChoice(state: GameState) {
   return choice;
 }
 
+/** True when a Learning offer is parked in the reward queue (not yet opened). */
+function learningQueued(state: GameState): boolean {
+  return (state.adventure?.rewardQueue ?? []).some((reward) => reward.kind === "learning-level-up");
+}
+
 function settleAfterCombat(state: GameState): void {
   finalizeAdventureCombat(state);
   pumpAdventureQueues(state);
 }
 
-describe("Learning is offered after a won NEUTRAL combat that paid Experience", () => {
-  it("opens the offer after a same-level guard win that crosses NO level, and playing it really advances the Hero", () => {
+describe("Learning after a won NEUTRAL combat — offered only when the Experience CROSSES a level", () => {
+  it("opens the offer when the guard's 1 Experience crosses a level, and playing it really advances the Hero", () => {
     const state = makeGame();
-    const hero = getMainHero(state, "p1")!;
-    // Level 1, Experience 0 — a Field Difficulty 1 guard pays exactly 1
-    // Experience: half a level, NO level crossing. This is the reported case.
-    expect(hero.level).toBe(1);
-    expect(hero.experience).toBe(0);
+    // Experience 1 = level 1, the half-step just below the level-2 boundary. An
+    // equal-difficulty (1) guard pays 1 Experience: 1 -> 2, which IS a level-up,
+    // so the Hero is "about to level up" and the offer must open.
+    setExperience(state, 1);
     state.players.p1.hand = ["ability.learning"];
 
     stageNeutralCombat(state, { difficulty: 1 });
     settleAfterCombat(state);
 
-    // The combat XP landed and, as the report says, crossed no level.
+    // The combat XP landed and crossed the level.
     const afterWin = getMainHero(state, "p1")!;
-    expect(afterWin.experience).toBe(1);
-    expect(afterWin.level).toBe(1);
+    expect(afterWin.experience).toBe(2);
+    expect(afterWin.level).toBe(2);
 
-    // ...and the Learning pop-up is open anyway (the whole point of the fix).
+    // ...and the Learning pop-up is open.
     const choice = learningChoice(state);
     expect(choice).not.toBeNull();
     expect(choice!.playerId).toBe("p1");
+    // The classic prompt names the level-up timing, not a bare gain.
+    expect(choice!.prompt).toContain("leveling up");
     // Basic is offered; Decline is the trailing option.
     expect(choice!.learningLevelUp?.modes).toContain("basic");
     expect(choice!.options.at(-1)?.label).toMatch(/decline/i);
@@ -144,24 +166,46 @@ describe("Learning is offered after a won NEUTRAL combat that paid Experience", 
     const basicIndex = choice!.learningLevelUp!.modes.indexOf("basic");
     const played = apply(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice!.id, optionIndex: basicIndex });
     const advanced = getMainHero(played, "p1")!;
-    expect(advanced.experience).toBe(2); // 1 -> 2 (+1 Experience = a half level)
-    expect(advanced.level).toBe(2); // and that half level really crossed into level 2
+    expect(advanced.experience).toBe(3); // 2 -> 3 (+1 Experience = a half level)
+    expect(advanced.level).toBe(2);
     // The spent card left the hand for the discard pile (basic side).
     expect(played.players.p1.hand).not.toContain("ability.learning");
     expect(played.players.p1.discard).toContain("ability.learning");
   });
 
+  it("CONTROL: the same guard win that stays INSIDE the level opens nothing", () => {
+    const state = makeGame("learning-no-crossing");
+    const hero = getMainHero(state, "p1")!;
+    // Experience 0 = level 1; the guard's 1 Experience takes it to 1, still
+    // level 1. No level is about to be crossed, so the classic card stays silent.
+    expect(hero.level).toBe(1);
+    expect(hero.experience).toBe(0);
+    state.players.p1.hand = ["ability.learning"];
+
+    stageNeutralCombat(state, { difficulty: 1 });
+    settleAfterCombat(state);
+
+    const afterWin = getMainHero(state, "p1")!;
+    expect(afterWin.experience).toBe(1); // the XP still landed
+    expect(afterWin.level).toBe(1);
+
+    expect(learningChoice(state)).toBeNull();
+    expect(learningQueued(state)).toBe(false);
+    expect(state.players.p1.hand).toContain("ability.learning");
+    // Nothing is stranded: the seat can keep playing.
+    expect(getLegalActions(state, "p1").length).toBeGreaterThan(0);
+  });
+
   it("offers the EXPERT side when a crown is available, and it advances a FULL level and removes the card", () => {
     const state = makeGame();
-    const hero = getMainHero(state, "p1")!;
-    hero.experience = 2;
-    hero.level = 2;
+    // Experience 3 = level 2, the half-step below the level-3 boundary.
+    setExperience(state, 3);
     state.players.p1.hand = ["ability.learning"];
     // Level 2 grants an expert use; make sure one is genuinely spare.
     state.players.p1.limits.expertUses = 2;
     state.players.p1.combatStats.expertUsesSpentThisRound = 0;
 
-    stageNeutralCombat(state, { difficulty: 2 }); // equal difficulty -> +1 XP, no level crossing
+    stageNeutralCombat(state, { difficulty: 2 }); // equal difficulty -> +1 XP: 3 -> 4 = level 3
     settleAfterCombat(state);
 
     const choice = learningChoice(state);
@@ -170,13 +214,14 @@ describe("Learning is offered after a won NEUTRAL combat that paid Experience", 
     expect(expertIndex).toBeGreaterThanOrEqual(0);
 
     const before = getMainHero(state, "p1")!.experience;
-    expect(before).toBe(3); // 2 + the combat's 1
+    expect(before).toBe(4); // 3 + the combat's 1, and that crossed into level 3
+    expect(getMainHero(state, "p1")!.level).toBe(3);
     const spentCrowns = state.players.p1.combatStats.expertUsesSpentThisRound;
 
     const played = apply(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice!.id, optionIndex: expertIndex });
     const advanced = getMainHero(played, "p1")!;
-    expect(advanced.experience).toBe(5); // +2 Experience = a full level
-    expect(advanced.level).toBe(3);
+    expect(advanced.experience).toBe(6); // +2 Experience = a full level
+    expect(advanced.level).toBe(4);
     // Expert removes the card from the game (never the discard) and burns a crown.
     expect(played.players.p1.removed).toContain("ability.learning");
     expect(played.players.p1.discard).not.toContain("ability.learning");
@@ -185,15 +230,13 @@ describe("Learning is offered after a won NEUTRAL combat that paid Experience", 
 
   it("CONTROL: an Empowered Learning's Expert side spends NO crown", () => {
     const state = makeGame();
-    const hero = getMainHero(state, "p1")!;
-    hero.experience = 2;
-    hero.level = 2;
+    setExperience(state, 3); // level 2, one half-step below level 3
     state.players.p1.hand = ["ability.learning"];
     state.players.p1.limits.expertUses = 0; // no crown at all
     state.players.p1.combatStats.expertUsesSpentThisRound = 0;
     state.players.p1.empoweredAbilities = ["ability.learning"];
 
-    stageNeutralCombat(state, { difficulty: 2 });
+    stageNeutralCombat(state, { difficulty: 2 }); // 3 -> 4 = a level crossing
     settleAfterCombat(state);
 
     const choice = learningChoice(state);
@@ -203,13 +246,14 @@ describe("Learning is offered after a won NEUTRAL combat that paid Experience", 
     expect(expertIndex).toBeGreaterThanOrEqual(0);
 
     const played = apply(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice!.id, optionIndex: expertIndex });
-    expect(getMainHero(played, "p1")!.experience).toBe(5);
+    expect(getMainHero(played, "p1")!.experience).toBe(6);
     // The crown-free rule holds: nothing was spent.
     expect(played.players.p1.combatStats.expertUsesSpentThisRound).toBe(0);
   });
 
   it("declining costs nothing — the card stays in hand and the Experience is untouched", () => {
     const state = makeGame();
+    setExperience(state, 1); // the crossing fixture: 1 -> 2 = level 2
     state.players.p1.hand = ["ability.learning"];
     stageNeutralCombat(state, { difficulty: 1 });
     settleAfterCombat(state);
@@ -217,9 +261,8 @@ describe("Learning is offered after a won NEUTRAL combat that paid Experience", 
     const choice = learningChoice(state);
     expect(choice).not.toBeNull();
     const declineIndex = choice!.options.length - 1;
-
     const declined = apply(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice!.id, optionIndex: declineIndex });
-    expect(getMainHero(declined, "p1")!.experience).toBe(1); // just the combat XP
+    expect(getMainHero(declined, "p1")!.experience).toBe(2); // just the combat XP
     expect(declined.players.p1.hand).toContain("ability.learning");
     expect(learningChoice(declined)).toBeNull();
   });
@@ -228,44 +271,43 @@ describe("Learning is offered after a won NEUTRAL combat that paid Experience", 
 describe("Learning after combat — CONTROLS", () => {
   it("CONTROL: no Learning card in hand -> no prompt at all", () => {
     const state = makeGame();
+    setExperience(state, 1); // a crossing gain, so only the missing card can silence it
     state.players.p1.hand = ["ability.wisdom"];
     stageNeutralCombat(state, { difficulty: 1 });
     settleAfterCombat(state);
 
-    expect(getMainHero(state, "p1")!.experience).toBe(1); // the XP still landed
+    expect(getMainHero(state, "p1")!.experience).toBe(2); // the XP still landed
+    expect(getMainHero(state, "p1")!.level).toBe(2); // and it crossed a level
     expect(learningChoice(state)).toBeNull();
   });
 
   it("CONTROL: a LOST fight pays no Experience and opens no prompt", () => {
     const state = makeGame();
+    setExperience(state, 1); // a WIN here would cross a level; the loss pays nothing
     state.players.p1.hand = ["ability.learning"];
     stageNeutralCombat(state, { difficulty: 1, won: false });
     settleAfterCombat(state);
 
-    expect(getMainHero(state, "p1")!.experience).toBe(0);
+    expect(getMainHero(state, "p1")!.experience).toBe(1);
     expect(learningChoice(state)).toBeNull();
     expect(state.players.p1.hand).toContain("ability.learning");
   });
 
   it("CONTROL: a fight BELOW the hero's level pays no Experience, so no prompt", () => {
     const state = makeGame();
-    const hero = getMainHero(state, "p1")!;
-    hero.experience = 4;
-    hero.level = 3;
+    setExperience(state, 5); // level 3, one half-step below level 4
     state.players.p1.hand = ["ability.learning"];
 
     stageNeutralCombat(state, { difficulty: 1 }); // difficulty < level -> 0 XP
     settleAfterCombat(state);
 
-    expect(getMainHero(state, "p1")!.experience).toBe(4);
+    expect(getMainHero(state, "p1")!.experience).toBe(5);
     expect(learningChoice(state)).toBeNull();
   });
 
   it("CONTROL: at the Experience cap the offer stays closed (advancing would do nothing)", () => {
     const state = makeGame();
-    const hero = getMainHero(state, "p1")!;
-    hero.experience = 12; // MAX_EXPERIENCE
-    hero.level = 7;
+    setExperience(state, 12); // MAX_EXPERIENCE, level 7
     state.players.p1.hand = ["ability.learning"];
 
     stageNeutralCombat(state, { difficulty: 7 });
@@ -275,12 +317,14 @@ describe("Learning after combat — CONTROLS", () => {
     expect(state.players.p1.hand).toContain("ability.learning");
   });
 
-  it("the combat win offers EXACTLY ONE Learning window (no double-offer after the widening)", () => {
+  it("a combat win that crosses a level offers EXACTLY ONE Learning window", () => {
     const state = makeGame("learning-single-offer");
+    setExperience(state, 5); // level 3; the guard's +1 crosses into level 4
     state.players.p1.hand = ["ability.learning"];
-    stageNeutralCombat(state, { difficulty: 1 });
+    stageNeutralCombat(state, { difficulty: 3 });
     settleAfterCombat(state);
 
+    expect(getMainHero(state, "p1")!.level).toBe(4);
     // One queued offer, one open window — not two.
     const queued = (state.adventure?.rewardQueue ?? []).filter((r) => r.kind === "learning-level-up");
     expect(queued).toHaveLength(0); // the single offer was popped into the window
@@ -295,23 +339,20 @@ describe("Learning after combat — CONTROLS", () => {
       optionIndex: choice.options.length - 1
     });
     expect(learningChoice(after)).toBeNull();
-    expect((after.adventure?.rewardQueue ?? []).some((r) => r.kind === "learning-level-up")).toBe(false);
+    expect(learningQueued(after)).toBe(false);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Learning on EVERY Experience source (USER RULE 2026-08-22, superseding the
-// combat-only widening above).
+// Learning on EVERY Experience SOURCE — still gated on the level crossing.
 //
-// REPORT: "The map object that offers experience: Learning ability not pick it
-// up. Must show instant reaction whenever you receive exp, from ANY source —
-// neutral, object… — and not mess up others."
-//
-// The trigger moved to the ONE chokepoint every hero-XP grant funnels through
+// The trigger sits at the ONE chokepoint every hero-XP grant funnels through
 // (`gainExperience`), so a map object, a designer timed event, a hex event, a
 // centre-hex reward and a won fight all reach it without enumerating sources.
+// What each of them must respect is the printed timing: the offer opens when the
+// gain is about to level the Hero, and stays shut when it is not.
 // ---------------------------------------------------------------------------
-describe("Learning is offered on EVERY Experience source, not only combat", () => {
+describe("Learning is reachable from EVERY Experience source, at a level crossing", () => {
   /** Puts p1's main hero on a real map field carrying the given location. */
   function stageLocationField(state: GameState, location: string): string {
     const hero = getMainHero(state, "p1")!;
@@ -332,30 +373,27 @@ describe("Learning is offered on EVERY Experience source, not only combat", () =
     return fieldId;
   }
 
-  it("a MAP OBJECT that pays Experience (Learning Stone) opens the offer, and playing it really advances the Hero", async () => {
+  it("a MAP OBJECT that levels the Hero (Learning Stone) opens the offer, and playing it really advances further", async () => {
     const { beginFieldVisit } = await import("./adventure");
     const state = makeGame("learning-map-object");
     state.players.p1.hand = ["ability.learning"];
+    // Experience 1 = level 1: the Stone's +1 crosses into level 2.
+    setExperience(state, 1);
     const hero = getMainHero(state, "p1")!;
-    expect(hero.level).toBe(1);
-    expect(hero.experience).toBe(0);
 
-    // The exact reported shape: a visitable map object granting +1 hero XP —
-    // half a level, crossing NO level, so the old level-crossing gate withheld
-    // the offer entirely and the card "did not pick it up".
     const fieldId = stageLocationField(state, "learning_stone");
     beginFieldVisit(state, hero.id, fieldId, false);
     pumpAdventureQueues(state);
 
     const afterVisit = getMainHero(state, "p1")!;
-    expect(afterVisit.experience).toBe(1);
-    expect(afterVisit.level).toBe(1);
+    expect(afterVisit.experience).toBe(2);
+    expect(afterVisit.level).toBe(2);
 
     const choice = learningChoice(state);
     expect(choice).not.toBeNull();
     expect(choice!.playerId).toBe("p1");
 
-    // OBSERVABLE OUTCOME: the play moves Experience AND crosses the level.
+    // OBSERVABLE OUTCOME: the play moves Experience another half level.
     const basicIndex = choice!.learningLevelUp!.modes.indexOf("basic");
     const played = apply(state, {
       type: "CHOOSE_OPTION",
@@ -363,7 +401,7 @@ describe("Learning is offered on EVERY Experience source, not only combat", () =
       choiceId: choice!.id,
       optionIndex: basicIndex
     });
-    expect(getMainHero(played, "p1")!.experience).toBe(2);
+    expect(getMainHero(played, "p1")!.experience).toBe(3);
     expect(getMainHero(played, "p1")!.level).toBe(2);
     expect(played.players.p1.discard).toContain("ability.learning");
   });
@@ -372,13 +410,17 @@ describe("Learning is offered on EVERY Experience source, not only combat", () =
     const { beginFieldVisit } = await import("./adventure");
     const state = makeGame("learning-map-object-control");
     state.players.p1.hand = ["ability.wisdom"];
+    // Experience 5 = level 3: the Stone's +1 crosses into level 4 (a specialty
+    // level, so the crossing queues no Ability Search to leave a window open).
+    setExperience(state, 5);
     const hero = getMainHero(state, "p1")!;
 
     const fieldId = stageLocationField(state, "learning_stone");
     beginFieldVisit(state, hero.id, fieldId, false);
     pumpAdventureQueues(state);
 
-    expect(getMainHero(state, "p1")!.experience).toBe(1); // the XP still landed
+    expect(getMainHero(state, "p1")!.experience).toBe(6); // the XP still landed
+    expect(getMainHero(state, "p1")!.level).toBe(4); // and it crossed a level
     expect(learningChoice(state)).toBeNull();
     expect(state.pendingChoice).toBeNull();
     expect(state.adventure?.pendingVisit ?? null).toBeNull();
@@ -386,10 +428,33 @@ describe("Learning is offered on EVERY Experience source, not only combat", () =
     expect(getLegalActions(state, "p1").length).toBeGreaterThan(0);
   });
 
+  it("CONTROL: a map object whose Experience crosses NO level opens nothing, card in hand or not", async () => {
+    const { beginFieldVisit } = await import("./adventure");
+    const state = makeGame("learning-map-object-no-crossing");
+    state.players.p1.hand = ["ability.learning"];
+    const hero = getMainHero(state, "p1")!;
+    // Experience 0 = level 1; the Stone's +1 leaves the Hero inside level 1.
+    expect(hero.experience).toBe(0);
+
+    const fieldId = stageLocationField(state, "learning_stone");
+    beginFieldVisit(state, hero.id, fieldId, false);
+    pumpAdventureQueues(state);
+
+    expect(getMainHero(state, "p1")!.experience).toBe(1);
+    expect(getMainHero(state, "p1")!.level).toBe(1);
+    expect(learningChoice(state)).toBeNull();
+    expect(learningQueued(state)).toBe(false);
+    expect(state.players.p1.hand).toContain("ability.learning");
+    expect(getLegalActions(state, "p1").length).toBeGreaterThan(0);
+  });
+
   it("declining a map-object offer costs nothing and leaves the table playable", async () => {
     const { beginFieldVisit } = await import("./adventure");
     const state = makeGame("learning-map-object-decline");
     state.players.p1.hand = ["ability.learning"];
+    // Experience 5 -> 6 crosses into level 4 — a specialty level, so nothing
+    // else (no Ability Search) is waiting behind the declined offer.
+    setExperience(state, 5);
     const hero = getMainHero(state, "p1")!;
 
     const fieldId = stageLocationField(state, "learning_stone");
@@ -403,17 +468,18 @@ describe("Learning is offered on EVERY Experience source, not only combat", () =
       choiceId: choice.id,
       optionIndex: choice.options.length - 1
     });
-    expect(getMainHero(after, "p1")!.experience).toBe(1); // just the object's XP
+    expect(getMainHero(after, "p1")!.experience).toBe(6); // just the object's XP
     expect(after.players.p1.hand).toContain("ability.learning");
     expect(after.pendingChoice).toBeNull();
     expect(computerDecisionOwner(after)).toBeNull();
     expect(getLegalActions(after, "p1").length).toBeGreaterThan(0);
   });
 
-  it("a designer TIMED MAP EVENT paying hero Experience offers it too (the shared pipeline, not a per-object hook)", async () => {
+  it("a designer TIMED MAP EVENT that levels the Hero offers it too (the shared pipeline, not a per-object hook)", async () => {
     const { applyCustomMapTimedEvents } = await import("./adventure");
     const state = makeGame("learning-timed-event");
     state.players.p1.hand = ["ability.learning"];
+    setExperience(state, 1); // the event's +1 crosses into level 2
     state.adventure!.mapPreset = {
       ...(state.adventure!.mapPreset ?? {}),
       timedEvents: [{ round: 1, effect: { kind: "experience", amount: 1 } }]
@@ -422,7 +488,8 @@ describe("Learning is offered on EVERY Experience source, not only combat", () =
     applyCustomMapTimedEvents(state);
     pumpAdventureQueues(state);
 
-    expect(getMainHero(state, "p1")!.experience).toBe(1);
+    expect(getMainHero(state, "p1")!.experience).toBe(2);
+    expect(getMainHero(state, "p1")!.level).toBe(2);
     const choice = learningChoice(state);
     expect(choice).not.toBeNull();
     const basicIndex = choice!.learningLevelUp!.modes.indexOf("basic");
@@ -432,10 +499,29 @@ describe("Learning is offered on EVERY Experience source, not only combat", () =
       choiceId: choice!.id,
       optionIndex: basicIndex
     });
-    expect(getMainHero(played, "p1")!.experience).toBe(2);
+    expect(getMainHero(played, "p1")!.experience).toBe(3);
   });
 
-  it("CONTROL: a zero-Experience 'gain' opens nothing, and the Experience CAP still closes the offer", async () => {
+  it("CONTROL: the same timed event inside the level opens nothing", async () => {
+    const { applyCustomMapTimedEvents } = await import("./adventure");
+    const state = makeGame("learning-timed-event-no-crossing");
+    state.players.p1.hand = ["ability.learning"];
+    // Experience 0 -> 1 stays inside level 1.
+    state.adventure!.mapPreset = {
+      ...(state.adventure!.mapPreset ?? {}),
+      timedEvents: [{ round: 1, effect: { kind: "experience", amount: 1 } }]
+    } as NonNullable<GameState["adventure"]>["mapPreset"];
+
+    applyCustomMapTimedEvents(state);
+    pumpAdventureQueues(state);
+
+    expect(getMainHero(state, "p1")!.experience).toBe(1);
+    expect(getMainHero(state, "p1")!.level).toBe(1);
+    expect(learningChoice(state)).toBeNull();
+    expect(learningQueued(state)).toBe(false);
+  });
+
+  it("CONTROL: a zero-Experience 'gain' and a non-crossing gain open nothing, and the Experience CAP closes the offer", async () => {
     const { gainExperience } = await import("./adventure");
     const state = makeGame("learning-any-source-controls");
     const hero = getMainHero(state, "p1")!;
@@ -445,13 +531,22 @@ describe("Learning is offered on EVERY Experience source, not only combat", () =
     gainExperience(state, "p1", 0);
     pumpAdventureQueues(state);
     expect(learningChoice(state)).toBeNull();
+    expect(learningQueued(state)).toBe(false);
 
-    // A real gain from a bare non-combat source DOES open it now (the exact
-    // line under test: revert the widening and this assertion flips).
+    // A real gain that stays INSIDE the level (0 -> 1) still opens nothing —
+    // this is the exact line under test: widen the gate and this flips.
+    gainExperience(state, "p1", 1);
+    pumpAdventureQueues(state);
+    expect(getMainHero(state, "p1")!.experience).toBe(1);
+    expect(learningChoice(state)).toBeNull();
+    expect(learningQueued(state)).toBe(false);
+
+    // The very next half-step DOES cross into level 2, and the offer opens.
     gainExperience(state, "p1", 1);
     pumpAdventureQueues(state);
     const openOffer = learningChoice(state);
     expect(openOffer).not.toBeNull();
+    expect(getMainHero(state, "p1")!.level).toBe(2);
     apply(state, {
       type: "CHOOSE_OPTION",
       playerId: "p1",
@@ -461,11 +556,13 @@ describe("Learning is offered on EVERY Experience source, not only combat", () =
     state.pendingChoice = null;
     state.phase = "player-turn";
 
-    // At the Experience cap the offer stays closed (advancing does nothing).
-    hero.experience = 12; // MAX_EXPERIENCE
-    hero.level = 7;
-    gainExperience(state, "p1", 1);
+    // At the Experience cap the offer stays closed even though the level moved
+    // (advancing further does nothing).
+    hero.experience = 11; // one half-step below the cap, level 6
+    hero.level = 6;
+    gainExperience(state, "p1", 1); // 11 -> 12 = MAX_EXPERIENCE, level 7
     pumpAdventureQueues(state);
+    expect(getMainHero(state, "p1")!.level).toBe(7);
     expect(learningChoice(state)).toBeNull();
     expect(state.players.p1.hand).toContain("ability.learning");
   });
@@ -476,6 +573,7 @@ describe("Learning is offered on EVERY Experience source, not only combat", () =
     state.controllers = { ...(state.controllers ?? {}), p1: standardComputerController() };
     state.sessionMode = "single-player";
     state.players.p1.hand = ["ability.learning"];
+    setExperience(state, 1); // the Stone's +1 crosses into level 2
     const hero = getMainHero(state, "p1")!;
 
     const fieldId = stageLocationField(state, "learning_stone");
@@ -520,29 +618,47 @@ describe("Learning after a won PvP combat", () => {
     } as unknown as CombatState;
   }
 
-  it("offers Learning after beating an equal-level enemy Hero (1 XP, no level crossing)", () => {
+  it("offers Learning after beating an enemy Hero when the 1 XP crosses a level", () => {
     const state = makeGame("learning-pvp");
     state.players.p1.hand = ["ability.learning"];
+    // Beating an equal-level Hero pays 1 Experience; from 1 that crosses into
+    // level 2, so the winner is "about to level up".
+    setExperience(state, 1);
     stagePvpWin(state);
     settleAfterCombat(state);
 
-    // Equal levels -> 1 Experience, which crosses no level from 0.
     const hero = getMainHero(state, "p1")!;
-    expect(hero.experience).toBe(1);
-    expect(hero.level).toBe(1);
+    expect(hero.experience).toBe(2);
+    expect(hero.level).toBe(2);
 
     const choice = learningChoice(state);
     expect(choice).not.toBeNull();
 
     const basicIndex = choice!.learningLevelUp!.modes.indexOf("basic");
     const played = apply(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice!.id, optionIndex: basicIndex });
-    expect(getMainHero(played, "p1")!.experience).toBe(2);
+    expect(getMainHero(played, "p1")!.experience).toBe(3);
     expect(getMainHero(played, "p1")!.level).toBe(2);
+  });
+
+  it("CONTROL: the same PvP win whose 1 XP crosses NO level opens nothing", () => {
+    const state = makeGame("learning-pvp-no-crossing");
+    state.players.p1.hand = ["ability.learning"];
+    // Experience 0 -> 1: the reward lands but the winner stays inside level 1.
+    stagePvpWin(state);
+    settleAfterCombat(state);
+
+    const hero = getMainHero(state, "p1")!;
+    expect(hero.experience).toBe(1);
+    expect(hero.level).toBe(1);
+    expect(learningChoice(state)).toBeNull();
+    expect(learningQueued(state)).toBe(false);
+    expect(state.players.p1.hand).toContain("ability.learning");
   });
 
   it("CONTROL: the LOSER of that PvP fight is never offered Learning", () => {
     const state = makeGame("learning-pvp-loser");
     state.players.p2.hand = ["ability.learning"];
+    setExperience(state, 1); // the WINNER crosses a level here; the loser gains nothing
     stagePvpWin(state);
     settleAfterCombat(state);
 
@@ -560,6 +676,7 @@ describe("Learning after combat — no stall for a computer/AFK seat", () => {
     state.controllers = { ...(state.controllers ?? {}), p1: standardComputerController() };
     state.sessionMode = "single-player";
     state.players.p1.hand = ["ability.learning"];
+    setExperience(state, 1); // the guard's +1 crosses into level 2
     stageNeutralCombat(state, { difficulty: 1 });
     settleAfterCombat(state);
 
@@ -577,7 +694,10 @@ describe("Learning after combat — no stall for a computer/AFK seat", () => {
   it("the offer is answerable and clears — declining leaves the table playable", () => {
     const state = makeGame("learning-ai-clear");
     state.players.p1.hand = ["ability.learning"];
-    stageNeutralCombat(state, { difficulty: 1 });
+    // 5 -> 6 crosses into level 4 (a specialty level), so declining leaves an
+    // EMPTY table rather than the level's own Ability Search.
+    setExperience(state, 5);
+    stageNeutralCombat(state, { difficulty: 3 });
     settleAfterCombat(state);
 
     const choice = learningChoice(state)!;
@@ -611,10 +731,11 @@ describe("Learning after combat — the Necromancy window is unaffected", () => 
     return state;
   }
 
-  it("Necromancy still opens FIRST and holds the table; Learning waits behind it", () => {
+  it("Necromancy still opens FIRST and holds the table; the level-up Learning offer waits behind it", () => {
     const state = makeNecroGame();
     state.players.p1.hand = ["ability.necromancy", "ability.learning"];
     state.players.p1.army = [{ id: "army_skel", unitDefId: "necropolis.skeletons", side: "few" }];
+    setExperience(state, 1); // the guard's +1 crosses into level 2, so Learning qualifies
     stageNeutralCombat(state, { difficulty: 1 });
     settleAfterCombat(state);
 
@@ -623,7 +744,7 @@ describe("Learning after combat — the Necromancy window is unaffected", () => 
     expect(state.adventure?.pendingNecromancy?.playerId).toBe("p1");
     expect(learningChoice(state)).toBeNull();
     // The Learning offer is parked in the reward queue, not lost.
-    expect(state.adventure?.rewardQueue.some((r) => r.kind === "learning-level-up")).toBe(true);
+    expect(learningQueued(state)).toBe(true);
 
     // Resolving Necromancy releases it — nothing is stranded.
     const after = apply(state, { type: "SKIP_NECROMANCY", playerId: "p1" });
@@ -634,21 +755,55 @@ describe("Learning after combat — the Necromancy window is unaffected", () => 
     const choice = learningChoice(after)!;
     const basicIndex = choice.learningLevelUp!.modes.indexOf("basic");
     const played = apply(after, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice!.id, optionIndex: basicIndex });
-    expect(getMainHero(played, "p1")!.experience).toBe(2);
+    expect(getMainHero(played, "p1")!.experience).toBe(3);
   });
 
   it("CONTROL: with no Learning card the Necromancy flow is byte-identical (window opens, resolves, nothing queued)", () => {
     const state = makeNecroGame();
     state.players.p1.hand = ["ability.necromancy"];
     state.players.p1.army = [{ id: "army_skel", unitDefId: "necropolis.skeletons", side: "few" }];
+    setExperience(state, 1); // the same crossing gain as the spec above
     stageNeutralCombat(state, { difficulty: 1 });
     settleAfterCombat(state);
 
     expect(state.adventure?.pendingNecromancy?.playerId).toBe("p1");
-    expect(state.adventure?.rewardQueue.some((r) => r.kind === "learning-level-up")).toBe(false);
+    expect(learningQueued(state)).toBe(false);
 
     const after = apply(state, { type: "SKIP_NECROMANCY", playerId: "p1" });
     expect(after.adventure?.pendingNecromancy ?? null).toBeNull();
     expect(learningChoice(after)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The ONE house rule that widens the timing: the Polish Balance Pack reprint.
+// ---------------------------------------------------------------------------
+describe("Polish Balance Pack — the reprint still offers Learning on a NON-crossing gain", () => {
+  it("a guard win that stays inside the level opens the offer under polish-card-balance", () => {
+    const state = makeGame("learning-polish-balance", { "polish-card-balance": true });
+    const hero = getMainHero(state, "p1")!;
+    // Experience 0 -> 1: no level crossed. Classic keeps quiet here (see the
+    // CONTROL in the first suite); the Polish reprint asks anyway.
+    expect(hero.experience).toBe(0);
+    state.players.p1.hand = ["ability.learning"];
+
+    stageNeutralCombat(state, { difficulty: 1 });
+    settleAfterCombat(state);
+
+    const afterWin = getMainHero(state, "p1")!;
+    expect(afterWin.experience).toBe(1);
+    expect(afterWin.level).toBe(1); // still inside level 1
+
+    const choice = learningChoice(state);
+    expect(choice).not.toBeNull();
+    // The reprint's prompt names the GAIN timing, not the level-up timing.
+    expect(choice!.prompt).toContain("gained Experience");
+    expect(choice!.prompt).not.toContain("leveling up");
+
+    // ...and it still pays out: the basic side advances another half level.
+    const basicIndex = choice!.learningLevelUp!.modes.indexOf("basic");
+    const played = apply(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice!.id, optionIndex: basicIndex });
+    expect(getMainHero(played, "p1")!.experience).toBe(2);
+    expect(played.players.p1.discard).toContain("ability.learning");
   });
 });

@@ -1661,6 +1661,12 @@ function nextPlayerId(state: GameState, playerId: PlayerId): PlayerId {
 function makeStackItem(
   state: GameState,
   action: GameAction,
+  /**
+   * Faerie Bolt: the parked bolt wears a CAST_SPELL-shaped action but is a UNIT
+   * ABILITY, not a Spell card. It must NOT spend an enemy Pendant of Reflection
+   * charge (a once-per-combat drain that only real casts pay).
+   */
+  skipSpellDrainLock = false,
 ): ResolutionStackItem {
   // IDs must be unique for the whole game — NOT `stack_${state.stack.length + 1}`.
   // The stack is empty between attacks, so length-based ids always reuse
@@ -1697,7 +1703,7 @@ function makeStackItem(
       // read 1 before and 0 after. `markArtifactSetSpellDrain` runs only when a
       // drain actually applied, so an unaffected cast leaves the charge for the
       // next enemy Spell. Absent/0 when the rule is off.
-      ...(action.type === "CAST_SPELL"
+      ...(action.type === "CAST_SPELL" && !skipSpellDrainLock
         ? {
             artifactSetSpellDrain: lockArtifactSetSpellDrain(
               state,
@@ -14587,7 +14593,121 @@ function applyActivationDamageSpell(
     });
     return;
   }
-  const dealt = reducedSpellDamage(state, target, ability.amount);
+  // COUNTER WINDOW (2026-09-11 user rule): the bolt is answerable by exactly
+  // three artifact plays — Boots of Polarity (option 1, the 2-die cancel),
+  // Surcoat of Counterpoise (option 1, cancel a cast of Power <= 1; the bolt is
+  // Power 0 so it always qualifies) and the Orb of Inhibition (option 2 switches
+  // the ability off upstream; option 1 zeroes the damage in the tail below).
+  // Nothing else may answer it. Park the bolt on the stack and let the DEFENDER
+  // respond; with no counter held this returns false and the bolt lands
+  // immediately, exactly as it always did.
+  if (tryOpenUnitBoltCounterWindow(state, unit, target, ability, copied)) {
+    return;
+  }
+  landActivationDamageSpell(state, unit, target, ability);
+}
+
+/**
+ * Parks a Faerie Bolt / veteran Ice Bolt on the resolution stack behind a
+ * SPELL_CAST_STARTED reaction window so the defending side can answer it with
+ * the Boots of Polarity or the Surcoat of Counterpoise. Mirrors the pre-hit heal
+ * window (`tryDeferSpecialtyDamageForHeals`): returns true when the window
+ * opened (the caller must return; the bolt lands later from resolveTopStack),
+ * false when nobody can counter — in which case NOTHING was left on the stack
+ * and the caller lands the damage immediately, byte-identically to the classic
+ * path.
+ *
+ * The stack item's action is CAST_SPELL-shaped but its `cardId` is the ABILITY
+ * id, which is NOT in the card library: every reader on the cast path already
+ * tolerates an undefined card (`cards[id]?.…`), and `spellPowerBaseZero` pins
+ * the item's Power at 0 so the Surcoat's "Power 1 or less" gate always passes.
+ *
+ * COPIED bolts (the elemental veteran "spell-copy" echo) are NOT parked: that
+ * copy resolves from inside an elemental-choice resolution which continues
+ * driving the unit after the hook returns, so suspending it there would strand
+ * the choice queue. A copied bolt still lands through the same tail (so the Orb
+ * of Inhibition option 1 nullification below covers it).
+ */
+function tryOpenUnitBoltCounterWindow(
+  state: GameState,
+  unit: CombatUnitState,
+  target: CombatUnitState,
+  ability: { abilityId: string; abilityName: string; amount: number },
+  copied: boolean,
+): boolean {
+  if (!state.combat || copied || state.reactionWindow) {
+    return false;
+  }
+  // Never re-park the bolt that is itself resolving off the stack.
+  if (state.stack.some((item) => item.modifiers.unitBolt)) {
+    return false;
+  }
+
+  const cards = balanceCardLibrary(state, cardLibrary);
+  const action: Extract<GameAction, { type: "CAST_SPELL" }> = {
+    type: "CAST_SPELL",
+    playerId: unit.controllerId,
+    cardId: ability.abilityId,
+    target: { type: "unit", unitId: target.id },
+  };
+  const stackItem = makeStackItem(state, action, true);
+  stackItem.source = { type: "unit", unitId: unit.id, controllerId: unit.controllerId };
+  stackItem.modifiers.spellPowerBaseZero = true;
+  stackItem.modifiers.unitBolt = {
+    unitId: unit.id,
+    targetUnitId: target.id,
+    abilityId: ability.abilityId,
+    abilityName: ability.abilityName,
+    amount: ability.amount,
+    copied,
+  };
+  state.stack.push(stackItem);
+
+  const boltStarted = appendEvent(state, {
+    type: "SPELL_CAST_STARTED",
+    playerId: unit.controllerId,
+    spellCardId: ability.abilityId,
+    target: action.target,
+    power: 0,
+    unitBoltUnitId: unit.id,
+  });
+  stackItem.triggerEventIds.push(boltStarted.id);
+
+  if (!openReactionWindowForTrigger(state, stackItem, boltStarted, cards)) {
+    // Nobody holds one of the two counters — leave nothing stranded on the
+    // stack and let the caller land the bolt right now.
+    state.stack.pop();
+    return false;
+  }
+  return true;
+}
+
+/**
+ * The damage tail of a Faerie Bolt / Ice Bolt, split out of
+ * `applyActivationDamageSpell` so it can run either immediately (nobody could
+ * counter) or after the counter window closes with the bolt uncancelled.
+ */
+function landActivationDamageSpell(
+  state: GameState,
+  unit: CombatUnitState,
+  target: CombatUnitState,
+  ability: { abilityId: string; abilityName: string; amount: number },
+): void {
+  // Orb of Inhibition (option 1): "During this Combat, all Spell and Specialty
+  // cards deal 0 damage." USER RULE 2026-09-11 — the Faerie Bolt is a spell, so
+  // the Orb zeroes it too. The bolt still HAPPENS (the activation is spent, the
+  // ability event fires): it simply deals nothing.
+  const nullified = cardDamageNullified(state);
+  if (nullified) {
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: unit.id,
+      abilityId: ability.abilityId,
+      targetUnitId: target.id,
+      message: `Orb of Inhibition nullifies ${ability.abilityName}; ${target.cardName} takes no damage.`,
+    });
+  }
+  const dealt = nullified ? 0 : reducedSpellDamage(state, target, ability.amount);
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: unit.id,
@@ -14617,7 +14737,9 @@ function applyActivationDamageSpell(
     );
   }
   markUnitRemovedIfNeeded(state, target);
-  neutralTownRunicBacklash(state, target, unit, ability.amount - dealt);
+  // A bolt the Orb nullified never interacted with the target: no Runic
+  // Backlash for "prevented" damage (that is a reduction/ward mechanic).
+  if (!nullified) neutralTownRunicBacklash(state, target, unit, ability.amount - dealt);
   finishCombatIfNeeded(state);
 }
 
@@ -17205,9 +17327,14 @@ function noteEagleEyeCopyOpportunity(
 }
 
 function resolveTopStack(state: GameState, cards: CardLibrary): void {
-  const pendingSpellCast = state.stack.at(-1)?.action;
+  const pendingItem = state.stack.at(-1);
+  const pendingSpellCast = pendingItem?.action;
+  // A parked Faerie Bolt wears a CAST_SPELL action but is a unit ability with no
+  // Spell card behind it — never bank it as an Eagle Eye copy opportunity.
   const spellCast =
-    pendingSpellCast?.type === "CAST_SPELL" ? pendingSpellCast : undefined;
+    pendingSpellCast?.type === "CAST_SPELL" && !pendingItem?.modifiers.unitBolt
+      ? pendingSpellCast
+      : undefined;
   const eventsBefore = spellCast ? state.eventLog.length : 0;
   resolveTopStackCore(state, cards);
   if (spellCast) {
@@ -17223,7 +17350,49 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
     return;
   }
 
+  // A Boots/Surcoat cancel pops the item itself, so a cancelled item normally
+  // never reaches here — this snapshot keeps the bolt branch below correct for
+  // any future path that leaves a cancelled item on the stack.
+  const statusBeforeResolve: ResolutionStackItem["status"] = stackItem.status;
   stackItem.status = "resolving";
+
+  // Faerie Bolt / veteran Ice Bolt parked behind its counter window. This branch
+  // MUST come before the generic CAST_SPELL branch below — that one assumes a
+  // real Spell card, and this item's `cardId` is a unit-ability id.
+  const unitBolt = stackItem.modifiers.unitBolt;
+  if (unitBolt) {
+    const bolter = state.combat?.units[unitBolt.unitId];
+    const boltTarget = state.combat?.units[unitBolt.targetUnitId];
+    if (statusBeforeResolve === "cancelled") {
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: unitBolt.unitId,
+        abilityId: unitBolt.abilityId,
+        targetUnitId: unitBolt.targetUnitId,
+        message: `${unitBolt.abilityName} is countered; ${boltTarget?.cardName ?? "the target"} takes no damage.`,
+      });
+    } else if (bolter && boltTarget && isUnitAlive(boltTarget)) {
+      landActivationDamageSpell(state, bolter, boltTarget, {
+        abilityId: unitBolt.abilityId,
+        abilityName: unitBolt.abilityName,
+        amount: unitBolt.amount,
+      });
+    }
+    stackItem.status =
+      statusBeforeResolve === "cancelled" ? "cancelled" : "resolved";
+    state.stack.pop();
+    if (finishCombatIfNeeded(state)) {
+      return;
+    }
+    if (state.pendingChoice) {
+      state.phase = "choice";
+      state.priorityPlayerId = state.pendingChoice.playerId;
+      return;
+    }
+    state.phase = "combat";
+    state.priorityPlayerId = null;
+    return;
+  }
 
   // Deferred specialty (or other PLAY_CARD) damage: the card was already paid
   // and discarded when played; only the damage application was parked so Cure /
@@ -21424,6 +21593,18 @@ function applyReactionPlayCore(
       cancelledByPlayerId: playerId,
       cancelledByCardId: play.cardId,
     });
+    // A countered Faerie Bolt: this cancel path pops the item itself, so the
+    // bolt never reaches resolveTopStackCore and lands nothing.
+    const cancelledBolt = stackItem.modifiers.unitBolt;
+    if (cancelledBolt) {
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: cancelledBolt.unitId,
+        abilityId: cancelledBolt.abilityId,
+        targetUnitId: cancelledBolt.targetUnitId,
+        message: `${card.name} counters ${cancelledBolt.abilityName}; ${state.combat?.units[cancelledBolt.targetUnitId]?.cardName ?? "the target"} takes no damage.`,
+      });
+    }
     // A Knowledge/Mysticism recall declared before the cancel still takes the
     // card back ("instead of discarding it" — no effect ever hit the table).
     // A Book cast returns to the Book, not the hand.
@@ -34537,6 +34718,14 @@ function executeNeutralActivation(
     if (combat.outcome) {
       return;
     }
+    // The Faerie Bolt parked itself behind a counter window (Boots of Polarity /
+    // Surcoat of Counterpoise). Stop here: the neutral pump re-enters this
+    // function once the window closes and the bolt resolves, and
+    // `activationAbilityDone` is already set so the bolt never fires twice — the
+    // dragon then plans its normal move/attack.
+    if (state.reactionWindow) {
+      return;
+    }
   }
 
   const intent = planNeutralActivation(
@@ -35074,7 +35263,27 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
         // designer value overrides the azure / level-VII / bank exemptions).
         // "unlimited" never opens the window. Never an automatic retreat.
         const freeRoundsLeft = typeof fieldRoundLimit === "number" && combat.round < fieldRoundLimit;
+        // USER RULE 2026-09-11: a Creature Bank fight ALWAYS pauses after every
+        // round with the continue-or-retreat window — rulebook (no Round
+        // limit), Polish rules, a designer round limit and `bank-move-points`
+        // alike — so the attacker can cut their losses after round 1.
+        // Continuing is FREE wherever the bank would otherwise have rolled
+        // straight on (no limit / "unlimited" / a designer free round); it
+        // costs the usual movement only where the paid window already applied
+        // (`bank-move-points`, or a numeric designer limit once its free
+        // rounds are used up).
+        const isBankFight = combat.context.kind === "neutral" && combat.context.bankId !== undefined;
+        const openContinueWindow = (free: boolean): void => {
+          combat.awaitingContinue = true;
+          combat.continueFree = free;
+          state.priorityPlayerId = combat.attackerPlayerId;
+          state.activePlayerId = combat.attackerPlayerId;
+        };
         if (fieldRoundLimit === "unlimited" || freeRoundsLeft) {
+          if (isBankFight) {
+            openContinueWindow(true);
+            continue;
+          }
           advanceCombatRound(state, combat.attackerPlayerId);
           continue;
         }
@@ -35088,9 +35297,11 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
           (combat.context.bankId === undefined ||
             houseRuleEnabled(state, "bank-move-points")))
         ) {
-          combat.awaitingContinue = true;
-          state.priorityPlayerId = combat.attackerPlayerId;
-          state.activePlayerId = combat.attackerPlayerId;
+          openContinueWindow(false);
+          continue;
+        }
+        if (isBankFight) {
+          openContinueWindow(true);
           continue;
         }
 

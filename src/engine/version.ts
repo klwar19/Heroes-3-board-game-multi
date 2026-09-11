@@ -1203,7 +1203,7 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // and a reducer gate that refuses every gameplay action while paused, plus
 // AFK/turn clocks that freeze at `pausedAt` and shift on resume. A v131 worker
 // rejects the pause actions outright. `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 132;
+export const ENGINE_PROTOCOL_VERSION = 133;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

@@ -5868,6 +5868,13 @@ export function startNeutralEncounter(
     if (!field.customGuardUnits?.length && !field.customGuardLevel && field.difficulty) {
       field.customGuardLevel = field.difficulty;
     }
+    // USER RULE 2026-09-11: an unlimited-round fight still gets the Balance-Pack
+    // Diplomacy ease window (one unit of the lowest-tier pair downgraded); the
+    // fight keeps its own rules (no Quick Combat / XP, no Round limit).
+    if (canUseDiplomacyBattleEase(state, playerId) && diplomacyGuardReductionTier(state, field, 0)) {
+      openDiplomacyBattleEaseChoice(state, hero, field, 0, "neutral", { unlimitedRounds: true, teleportArrival: true });
+      return;
+    }
     beginNeutralCombatPlacement(state, hero, field, 0, { unlimitedRounds: true, teleportArrival: true });
     return;
   }
@@ -5902,6 +5909,13 @@ export function startNeutralEncounter(
   // unlimited, as in Banks"). The army still draws at the designed level /
   // exact list via `customGuardLevel` / `customGuardUnits` in drawGuardArmy.
   if (isBankStyleGuardLocation(field.location)) {
+    // USER RULE 2026-09-11: an unlimited-round fight still gets the Balance-Pack
+    // Diplomacy ease window (one unit of the lowest-tier pair downgraded); the
+    // fight keeps its own rules (no Quick Combat / XP, no Round limit).
+    if (canUseDiplomacyBattleEase(state, playerId) && diplomacyGuardReductionTier(state, field, 0)) {
+      openDiplomacyBattleEaseChoice(state, hero, field, 0, "neutral", { unlimitedRounds: true });
+      return;
+    }
     beginNeutralCombatPlacement(state, hero, field, 0, { unlimitedRounds: true });
     return;
   }
@@ -5918,6 +5932,13 @@ export function startNeutralEncounter(
   if (isTeleportObjectGuardLocation(field.location)) {
     if (!field.customGuardUnits?.length && !field.customGuardLevel && field.difficulty) {
       field.customGuardLevel = field.difficulty;
+    }
+    // USER RULE 2026-09-11: an unlimited-round fight still gets the Balance-Pack
+    // Diplomacy ease window (one unit of the lowest-tier pair downgraded); the
+    // fight keeps its own rules (no Quick Combat / XP, no Round limit).
+    if (canUseDiplomacyBattleEase(state, playerId) && diplomacyGuardReductionTier(state, field, 0)) {
+      openDiplomacyBattleEaseChoice(state, hero, field, 0, "neutral", { unlimitedRounds: true });
+      return;
     }
     beginNeutralCombatPlacement(state, hero, field, 0, { unlimitedRounds: true });
     return;
@@ -5936,6 +5957,13 @@ export function startNeutralEncounter(
 
   // Break-field unlimited rounds (level guard or printed guard with the flag).
   if (field.unlimitedCombatRounds) {
+    // USER RULE 2026-09-11: an unlimited-round fight still gets the Balance-Pack
+    // Diplomacy ease window (one unit of the lowest-tier pair downgraded); the
+    // fight keeps its own rules (no Quick Combat / XP, no Round limit).
+    if (canUseDiplomacyBattleEase(state, playerId) && diplomacyGuardReductionTier(state, field, difficulty)) {
+      openDiplomacyBattleEaseChoice(state, hero, field, difficulty, "neutral", { unlimitedRounds: true });
+      return;
+    }
     beginNeutralCombatPlacement(state, hero, field, difficulty, { unlimitedRounds: true });
     return;
   }
@@ -6392,13 +6420,22 @@ function canUseDiplomacySkip(state: GameState, player: PlayerState | undefined):
   );
 }
 
+/**
+ * How the fight behind a Diplomacy ease window opens once it is answered: the
+ * unlimited-round / teleport-arrival flags of the branch that offered it
+ * (outposts, gateway guards, break fields) — carried on the choice so the
+ * answer re-opens the SAME fight the branch would have started.
+ */
+type DiplomacyEaseFightOptions = { unlimitedRounds?: boolean; teleportArrival?: boolean };
+
 /** Open the Balance-Pack Diplomacy use-or-fight window before real setup. */
 function openDiplomacyBattleEaseChoice(
   state: GameState,
   hero: HeroState,
   field: MapFieldState,
   difficulty: number,
-  kind: "neutral" | "bank"
+  kind: "neutral" | "bank",
+  fight?: DiplomacyEaseFightOptions
 ): void {
   const player = state.players[hero.controllerId];
   const crownFree = Boolean(player && abilityExpertIsCrownFree(player, "ability.diplomacy"));
@@ -6421,7 +6458,15 @@ function openDiplomacyBattleEaseChoice(
       { label: "Fight without using Diplomacy" }
     ],
     context: "diplomacy-battle-ease",
-    diplomacyBattleEase: { heroId: hero.id, fieldId: field.spaceId, difficulty, kind, crownFree },
+    diplomacyBattleEase: {
+      heroId: hero.id,
+      fieldId: field.spaceId,
+      difficulty,
+      kind,
+      crownFree,
+      ...(fight?.unlimitedRounds ? { unlimitedRounds: true } : {}),
+      ...(fight?.teleportArrival ? { teleportArrival: true } : {})
+    },
     returnPhase: state.phase
   };
   state.phase = "choice";
@@ -6434,10 +6479,12 @@ function beginDiplomacyTargetBattle(
   field: MapFieldState,
   difficulty: number,
   kind: "neutral" | "bank",
-  enhanced: boolean
+  enhanced: boolean,
+  fight?: DiplomacyEaseFightOptions
 ): void {
   beginNeutralCombatPlacement(state, hero, field, kind === "bank" ? 0 : difficulty, {
-    ...(kind === "neutral" && field.unlimitedCombatRounds ? { unlimitedRounds: true } : {}),
+    ...(kind === "neutral" && (field.unlimitedCombatRounds || fight?.unlimitedRounds) ? { unlimitedRounds: true } : {}),
+    ...(fight?.teleportArrival ? { teleportArrival: true } : {}),
     ...(enhanced && kind === "neutral" ? { diplomacyTierReduction: true } : {}),
     ...(enhanced && kind === "bank" ? { diplomacyFewerBankStacks: true } : {})
   });
@@ -6465,7 +6512,7 @@ export function resolveDiplomacyBattleEaseChoice(
   if (!hero || !field) return;
 
   if (optionIndex !== 0) {
-    beginDiplomacyTargetBattle(state, hero, field, decision.difficulty, decision.kind, false);
+    beginDiplomacyTargetBattle(state, hero, field, decision.difficulty, decision.kind, false, decision);
     return;
   }
 
@@ -6481,7 +6528,7 @@ export function resolveDiplomacyBattleEaseChoice(
     !diplomacyCardHasEffect(state, "DIPLOMACY_EASE_BATTLE") ||
     (!crownFree && expertUsesAvailable(player) <= 0)
   ) {
-    beginDiplomacyTargetBattle(state, hero, field, decision.difficulty, decision.kind, false);
+    beginDiplomacyTargetBattle(state, hero, field, decision.difficulty, decision.kind, false, decision);
     return;
   }
 
@@ -6502,7 +6549,7 @@ export function resolveDiplomacyBattleEaseChoice(
       ? "Diplomacy: the Bank fights with one fewer Stack Token; its reward is unchanged."
       : "Diplomacy: one unit in the lowest-tier pair is reduced by one tier."
   });
-  beginDiplomacyTargetBattle(state, hero, field, decision.difficulty, decision.kind, true);
+  beginDiplomacyTargetBattle(state, hero, field, decision.difficulty, decision.kind, true, decision);
 }
 
 /** Opens the Diplomacy skip-or-fight pop-up at a qualifying-level Neutral field. */
@@ -13539,7 +13586,10 @@ export function continueNeutralCombat(
     throw new Error("Only the attacking hero may continue the combat.");
   }
 
-  const freeExtend = houseRuleEnabled(state, "free-neutral-combat-extend");
+  // A Creature Bank between-round window is free whenever the bank would
+  // otherwise have rolled straight on (`continueFree`, set where the window
+  // opened) — the attacker only pays where the paid window already applied.
+  const freeExtend = houseRuleEnabled(state, "free-neutral-combat-extend") || Boolean(combat.continueFree);
   if (hero.movementPoints <= 0 && !freeExtend) {
     throw new Error("Continuing a neutral combat costs 1 movement point.");
   }
@@ -13548,6 +13598,7 @@ export function continueNeutralCombat(
     hero.movementPoints -= 1;
   }
   combat.awaitingContinue = false;
+  combat.continueFree = false;
 
   appendEvent(state, {
     type: "COMBAT_CONTINUED",
@@ -13583,6 +13634,7 @@ export function retreatFromCombat(state: GameState, action: Extract<GameAction, 
     reason: "retreat"
   };
   combat.awaitingContinue = false;
+  combat.continueFree = false;
   appendEvent(state, {
     type: "COMBAT_ENDED",
     winnerPlayerId: NEUTRAL_PLAYER_ID,
@@ -14669,7 +14721,8 @@ export function finalizeAdventureCombat(state: GameState): void {
           // exactly one level while ON, or the original fill-to-7 while OFF.
           // A lower-difficulty azure guard retains the original fill-to-7 rule.
           // The won-combat Learning pop-up needs no flag here: gainExperience
-          // offers Learning on EVERY gain from every source (2026-08-22 rule).
+          // offers Learning whenever the gain CROSSES a level (printed "about to
+          // level up" timing; the Polish reprint alone offers on every gain).
           if (
             context.difficulty >= 7 &&
             houseRuleEnabled(state, "level-seven-one-level")
@@ -15160,7 +15213,8 @@ export function finalizeAdventureCombat(state: GameState): void {
       // when no Main Hero stood on either side: a garrison defense win pays
       // nothing, and a Secondary Hero never gains experience from its fights.
       if (winnerHero && winnerHero.kind === "main" && loserHero.kind === "main") {
-        // As with a neutral win, the Learning pop-up rides gainExperience itself.
+        // As with a neutral win, the Learning pop-up rides gainExperience itself
+        // (offered only when this gain crosses a level; Polish reprint: every gain).
         if (loserHero.level > winnerHero.level) {
           gainExperience(state, winnerId, 2);
         } else if (loserHero.level === winnerHero.level) {

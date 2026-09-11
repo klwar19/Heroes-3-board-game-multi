@@ -272,7 +272,9 @@ export function buildCoachTip(
         return {
           id: "neutral-continue",
           headline: "Neutral combat — round over",
-          detail: "Spend 1 movement to fight another round, or retreat to the map.",
+          detail: combat.continueFree
+            ? "Fight another round (no movement cost), or retreat to the map."
+            : "Spend 1 movement to fight another round, or retreat to the map.",
           tone: "choice"
         };
       }

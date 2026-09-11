@@ -173,7 +173,10 @@ export function targetName(state: GameState, target: TargetRef): string {
 }
 
 export function cardName(cardId: string): string {
-  return cardLibrary[cardId]?.name ?? cardId;
+  // A Faerie Bolt is logged through the Spell-cast events (SPELL_CAST_STARTED /
+  // _CANCELLED) with the UNIT-ABILITY id in `spellCardId` — there is no card
+  // face behind it, so fall back to the ability's printed name.
+  return cardLibrary[cardId]?.name ?? unitAbilities[cardId]?.name ?? cardId;
 }
 
 /**

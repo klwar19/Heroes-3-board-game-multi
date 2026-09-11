@@ -647,8 +647,11 @@ export const CREATURE_BANKS: Record<CreatureBankId, CreatureBankDefinition> = {
       search(size <= 2 ? "artifacts-minor" : "artifacts-major", size === 1 || size === 3 ? 2 : 3)
     ] })
   },
+  // Renamed "Sanctuary of Beholder" (user ruling 2026-09-11; the printed card
+  // shows Evil Eyes). The internal id stays `sanctuary_of_zealots`: it is
+  // persisted in saved games, designer maps and replays.
   sanctuary_of_zealots: {
-    id: "sanctuary_of_zealots", name: "Sanctuary of Zealots", tier: "far",
+    id: "sanctuary_of_zealots", name: "Sanctuary of Beholder", tier: "far",
     units: Array(4).fill("neutral.evil_eyes"), unitSideKeys: Array(4).fill("guardian:evil-eyes"),
     rewardText: "5 gold. Extra: +3X gold.", rewardStatus: "implemented",
     buildReward: (x) => ({ type: "GAIN_RESOURCES", gold: 5 + 3 * x })

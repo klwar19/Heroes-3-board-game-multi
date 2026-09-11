@@ -10602,6 +10602,85 @@ export function getLegalReactionsForTrigger(
   return result;
 }
 
+/**
+ * The ONLY plays that may answer a Faerie Bolt (USER RULE 2026-09-11): Boots of
+ * Polarity option 1 (roll 2 Attack dice, cancel on a "+1") and Surcoat of
+ * Counterpoise option 1 (cancel a cast made with Power 1 or less — the bolt is
+ * Power 0, so it always qualifies). Deliberately NOT offered: Resistance,
+ * Protection-from-X, Magic Mirror, Eagle Eye, Power cards for the caster and
+ * every trigger-free utility/draw/morale join. The Orb of Inhibition is not
+ * listed because neither of its sides is a reaction — option 2 switches the
+ * ability off upstream and option 1 zeroes the damage in the bolt's own tail.
+ */
+const UNIT_BOLT_COUNTER_OPTIONS: ReadonlyArray<{
+  cardId: CardId;
+  optionIndex: number;
+}> = [
+  { cardId: "artifact.boots_of_polarity", optionIndex: 0 },
+  { cardId: "artifact.surcoat_of_counterpoise", optionIndex: 0 },
+];
+
+function getUnitBoltCounterReactions(
+  state: GameState,
+  triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" }>,
+  cards: CardLibrary,
+): Record<PlayerId, LegalAction[]> {
+  const result: Record<PlayerId, LegalAction[]> = {};
+  for (const player of Object.values(state.players)) {
+    // Only the side being bolted may answer — never the dragon's own controller,
+    // and never a bystander to someone else's Neutral fight.
+    if (player.id === triggerEvent.playerId) {
+      continue;
+    }
+    if (state.combat && !isCombatParticipant(state, player.id)) {
+      continue;
+    }
+    // Garrison defense: no Main Hero, no card plays at all.
+    if (isHandLockedInCombat(state, player.id)) {
+      continue;
+    }
+    const offers: LegalAction[] = [];
+    for (const { cardId, optionIndex } of UNIT_BOLT_COUNTER_OPTIONS) {
+      if (!player.hand.includes(cardId)) {
+        continue;
+      }
+      const card = cards[cardId];
+      if (!card || card.implementationStatus !== "implemented") {
+        continue;
+      }
+      const variant = getCardPlayVariants(card, state).find(
+        (candidate) =>
+          candidate.optionIndex === optionIndex &&
+          candidate.effect.type === "CANCEL_SPELL",
+      );
+      if (!variant || variant.mapOnly) {
+        continue;
+      }
+      if (!canAffordCardCost(state, player.id, cardId, variant.cost)) {
+        continue;
+      }
+      offers.push(
+        makeReactionAction(
+          variant.optionLabel
+            ? `${card.name}: ${variant.optionLabel}`
+            : card.name,
+          {
+            type: "PLAY_REACTION",
+            playerId: player.id,
+            cardId,
+            mode: "basic",
+            optionIndex,
+          },
+        ),
+      );
+    }
+    if (offers.length > 0) {
+      result[player.id] = offers;
+    }
+  }
+  return result;
+}
+
 function getLegalReactionsForTriggerCore(
   state: GameState,
   triggerEvent: GameEvent,
@@ -10638,6 +10717,13 @@ function getLegalReactionsForTriggerCore(
     triggerEvent.type !== "UNIT_ACTIVATION_STARTED"
   ) {
     return {};
+  }
+
+  // Faerie Bolt / veteran Ice Bolt (a UNIT ABILITY parked as a cast): USER RULE
+  // 2026-09-11 — it is counterable by EXACTLY two plays and nothing else, so this
+  // window never runs the generic reaction scan. See getUnitBoltCounterReactions.
+  if (triggerEvent.type === "SPELL_CAST_STARTED" && triggerEvent.unitBoltUnitId) {
+    return getUnitBoltCounterReactions(state, triggerEvent, cards);
   }
 
   const result: Record<PlayerId, LegalAction[]> = {};
@@ -16048,12 +16134,13 @@ function getCombatInteractionActions(
     if (context.kind === "neutral") {
       const hero = state.heroes[context.heroId];
       if (hero?.controllerId === playerId) {
-        if (
-          hero.movementPoints > 0 ||
-          houseRuleEnabled(state, "free-neutral-combat-extend")
-        ) {
+        // `continueFree`: a Creature Bank between-round window where the bank
+        // would otherwise have rolled straight on — continuing costs nothing.
+        const freeContinue =
+          houseRuleEnabled(state, "free-neutral-combat-extend") || Boolean(combat.continueFree);
+        if (hero.movementPoints > 0 || freeContinue) {
           actions.push({
-            label: houseRuleEnabled(state, "free-neutral-combat-extend")
+            label: freeContinue
               ? "Fight another combat round (no movement cost)"
               : "Spend 1 movement point: fight another combat round",
             action: { type: "CONTINUE_NEUTRAL_COMBAT", playerId },
