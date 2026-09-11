@@ -25998,6 +25998,11 @@ function playCard(
       "Diplomacy's skip is offered when your hero meets matching-level Neutral Units.",
     );
   }
+  if (effect.type === "DIPLOMACY_EASE_BATTLE") {
+    throw new Error(
+      "Diplomacy's battle effect is offered immediately before an eligible Neutral battle.",
+    );
+  }
   // Classic Learning is never played from hand: the engine offers it when the
   // Hero is about to level up (see the "learning-level-up" pending choice).
   // Polish Balance Pack EXCEPTION: Learning's reprint may be played standalone
@@ -35054,26 +35059,25 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
           combat.attackerPlayerId !== NEUTRAL_PLAYER_ID
             ? utopiaField?.combatRoundLimit
             : undefined;
-        if (combat.context.kind === "neutral" && fieldRoundLimit !== undefined) {
-          // Designer override only. No continuation window can bypass a hard cap.
-          if (fieldRoundLimit !== "unlimited" && combat.round >= fieldRoundLimit) {
-            combat.awaitingContinue = true;
-            appendEvent(state, {
-              type: "EVENT_NOTE",
-              playerId: combat.attackerPlayerId,
-              message: "Field round limit (" + fieldRoundLimit + ") reached: automatic retreat."
-            });
-            retreatFromCombat(state, { type: "RETREAT_FROM_COMBAT", playerId: combat.attackerPlayerId });
-            continue;
-          }
-        } else if (
-          combat.context.kind === "neutral" &&
+        // USER RULE 2026-09-11: a numeric designer limit means that many FREE
+        // rounds; once they are used up the normal continue-or-retreat window
+        // opens and every further round costs movement points as usual (the
+        // designer value overrides the azure / level-VII / bank exemptions).
+        // "unlimited" never opens the window. Never an automatic retreat.
+        const freeRoundsLeft = typeof fieldRoundLimit === "number" && combat.round < fieldRoundLimit;
+        if (fieldRoundLimit === "unlimited" || freeRoundsLeft) {
+          advanceCombatRound(state, combat.attackerPlayerId);
+          continue;
+        }
+        if (
+          typeof fieldRoundLimit === "number" ||
+          (combat.context.kind === "neutral" &&
           !combat.context.hasAzure &&
           !isDragonUtopiaFight &&
           !isLevelSevenField &&
           !combat.context.unlimitedRounds &&
           (combat.context.bankId === undefined ||
-            houseRuleEnabled(state, "bank-move-points"))
+            houseRuleEnabled(state, "bank-move-points")))
         ) {
           combat.awaitingContinue = true;
           state.priorityPlayerId = combat.attackerPlayerId;

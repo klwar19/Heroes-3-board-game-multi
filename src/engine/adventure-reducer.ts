@@ -106,6 +106,7 @@ import {
   declareAdventureWinner,
   drawFromNeutralDeck,
   drawDungeonArmy,
+  diplomacyGuardReductionTier,
   drawGuardArmy,
   drawNeutralArmy,
   randomTownBronzePackCandidates,
@@ -5883,6 +5884,15 @@ export function startNeutralEncounter(
     ) {
       return;
     }
+    // Polish-sized Black Tower places NO Stack Token (tokenRolls = 0), so the
+    // card would be spent for nothing — never offer the window there.
+    if (
+      canUseDiplomacyBattleEase(state, playerId) &&
+      !(creatureBankId === "black_tower" && houseRuleEnabled(state, "polish-bank-sizes"))
+    ) {
+      openDiplomacyBattleEaseChoice(state, hero, field, 0, "bank");
+      return;
+    }
     beginNeutralCombatPlacement(state, hero, field, 0);
     return;
   }
@@ -5968,7 +5978,12 @@ export function startNeutralEncounter(
   // alternative and therefore needs no crown. The level bar is
   // `diplomacySkipLevelQualifies` (hero level AT LEAST the Field Difficulty), so
   // the Ⅵ/Ⅶ centre band remains reachable when the Polish rule forces a fight.
-  if (diplomacySkipLevelQualifies(level, difficulty) && canUseDiplomacySkip(state.players[playerId])) {
+  if (canUseDiplomacyBattleEase(state, playerId) && diplomacyGuardReductionTier(state, field, difficulty)) {
+    openDiplomacyBattleEaseChoice(state, hero, field, difficulty, "neutral");
+    return;
+  }
+
+  if (diplomacySkipLevelQualifies(level, difficulty) && canUseDiplomacySkip(state, state.players[playerId])) {
     openDiplomacySkipChoice(state, hero, field, difficulty);
     return;
   }
@@ -6140,7 +6155,11 @@ export function resolvePolishQuickCombatChoice(state: GameState, playerId: Playe
   // shortcut — Cyra's Diplomacy still gets its qualifying-level skip offer, then
   // the normal guard Combat Setup.
   const level = neutralBattleLevel(state, hero);
-  if (diplomacySkipLevelQualifies(level, decision.difficulty) && canUseDiplomacySkip(state.players[playerId])) {
+  if (canUseDiplomacyBattleEase(state, playerId) && diplomacyGuardReductionTier(state, field, decision.difficulty)) {
+    openDiplomacyBattleEaseChoice(state, hero, field, decision.difficulty, "neutral");
+    return;
+  }
+  if (diplomacySkipLevelQualifies(level, decision.difficulty) && canUseDiplomacySkip(state, state.players[playerId])) {
     openDiplomacySkipChoice(state, hero, field, decision.difficulty);
     return;
   }
@@ -6212,6 +6231,10 @@ function beginNeutralCombatPlacement(
     dungeonFloor?: number;
     /** Teleport ARRIVAL guard fight (2026-07-24): win clears guard, no re-teleport. */
     teleportArrival?: boolean;
+    /** Balance-Pack Diplomacy: edit the table composition at reveal time. */
+    diplomacyTierReduction?: boolean;
+    /** Balance-Pack Diplomacy: remove one Bank Stack Token after normal rolls. */
+    diplomacyFewerBankStacks?: boolean;
   }
 ): void {
   const playerId = hero.controllerId;
@@ -6245,7 +6268,9 @@ function beginNeutralCombatPlacement(
     ...(options?.waveAssault ? { waveAssault: options.waveAssault } : {}),
     ...(options?.raidBossId ? { raidBossId: options.raidBossId } : {}),
     ...(options?.dungeonFloor !== undefined ? { dungeonFloor: options.dungeonFloor } : {}),
-    ...(options?.teleportArrival ? { teleportArrival: true } : {})
+    ...(options?.teleportArrival ? { teleportArrival: true } : {}),
+    ...(options?.diplomacyTierReduction ? { diplomacyTierReduction: true } : {}),
+    ...(options?.diplomacyFewerBankStacks ? { diplomacyFewerBankStacks: true } : {})
   };
   if (field.location === "random_town") {
     // Random Town fights use the siege battlefield and its four middle-row
@@ -6340,12 +6365,144 @@ export function diplomacySkipLevelQualifies(level: number, difficulty: number): 
   return level >= difficulty;
 }
 
-/** Whether a qualifying-level encounter may currently use Diplomacy's Instant side. */
-function canUseDiplomacySkip(player: PlayerState | undefined): boolean {
+function diplomacyCardHasEffect(state: GameState, type: "DIPLOMACY_SKIP_COMBAT" | "DIPLOMACY_EASE_BATTLE"): boolean {
+  const effect = balanceCard(state, "ability.diplomacy")?.effect;
   return Boolean(
+    effect && (effect.type === type ||
+      (effect.type === "CHOOSE_ONE" && effect.options.some((option) => option.effect.type === type)))
+  );
+}
+
+/** The reprinted battle side is usable with a crown, or free while Empowered. */
+function canUseDiplomacyBattleEase(state: GameState, playerId: PlayerId): boolean {
+  const player = state.players[playerId];
+  return Boolean(
+    diplomacyCardHasEffect(state, "DIPLOMACY_EASE_BATTLE") &&
+    player?.hand.includes("ability.diplomacy") &&
+    (expertUsesAvailable(player) > 0 || abilityExpertIsCrownFree(player, "ability.diplomacy"))
+  );
+}
+
+/** Whether a qualifying-level encounter may currently use Diplomacy's Instant side. */
+function canUseDiplomacySkip(state: GameState, player: PlayerState | undefined): boolean {
+  return Boolean(
+    diplomacyCardHasEffect(state, "DIPLOMACY_SKIP_COMBAT") &&
     player?.hand.includes("ability.diplomacy") &&
       (expertUsesAvailable(player) > 0 || abilityExpertIsCrownFree(player, "ability.diplomacy"))
   );
+}
+
+/** Open the Balance-Pack Diplomacy use-or-fight window before real setup. */
+function openDiplomacyBattleEaseChoice(
+  state: GameState,
+  hero: HeroState,
+  field: MapFieldState,
+  difficulty: number,
+  kind: "neutral" | "bank"
+): void {
+  const player = state.players[hero.controllerId];
+  const crownFree = Boolean(player && abilityExpertIsCrownFree(player, "ability.diplomacy"));
+  const effectLabel = kind === "bank"
+    ? "fight with 1 fewer Stack Token (normal reward)"
+    : "downgrade one unit in the lowest-tier pair";
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId: hero.controllerId,
+    prompt: crownFree
+      ? `Empowered Diplomacy: ${effectLabel}?`
+      : `Diplomacy (Expert): spend 1 Expert-effect crown to ${effectLabel}?`,
+    options: [
+      {
+        label: crownFree
+          ? `Use Empowered Diplomacy: ${effectLabel}`
+          : `Use Diplomacy: spend 1 crown and ${effectLabel}`
+      },
+      { label: "Fight without using Diplomacy" }
+    ],
+    context: "diplomacy-battle-ease",
+    diplomacyBattleEase: { heroId: hero.id, fieldId: field.spaceId, difficulty, kind, crownFree },
+    returnPhase: state.phase
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = hero.controllerId;
+}
+
+function beginDiplomacyTargetBattle(
+  state: GameState,
+  hero: HeroState,
+  field: MapFieldState,
+  difficulty: number,
+  kind: "neutral" | "bank",
+  enhanced: boolean
+): void {
+  beginNeutralCombatPlacement(state, hero, field, kind === "bank" ? 0 : difficulty, {
+    ...(kind === "neutral" && field.unlimitedCombatRounds ? { unlimitedRounds: true } : {}),
+    ...(enhanced && kind === "neutral" ? { diplomacyTierReduction: true } : {}),
+    ...(enhanced && kind === "bank" ? { diplomacyFewerBankStacks: true } : {})
+  });
+}
+
+/** Resolve the reprinted Diplomacy window; every path still begins Combat. */
+export function resolveDiplomacyBattleEaseChoice(
+  state: GameState,
+  playerId: PlayerId,
+  optionIndex: number
+): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice || choice.type !== "OPTION_CHOICE" || choice.context !== "diplomacy-battle-ease" ||
+    !choice.diplomacyBattleEase || choice.playerId !== playerId
+  ) {
+    throw new Error("There is no Diplomacy battle decision to make.");
+  }
+  const decision = choice.diplomacyBattleEase;
+  const hero = state.heroes[decision.heroId];
+  const field = state.adventure?.fields[decision.fieldId];
+  state.pendingChoice = null;
+  state.phase = choice.returnPhase;
+  state.priorityPlayerId = null;
+  if (!hero || !field) return;
+
+  if (optionIndex !== 0) {
+    beginDiplomacyTargetBattle(state, hero, field, decision.difficulty, decision.kind, false);
+    return;
+  }
+
+  const player = state.players[playerId];
+  const empowered = Boolean(player && abilityExpertIsCrownFree(player, "ability.diplomacy"));
+  const crownFree = decision.crownFree === undefined ? empowered : decision.crownFree && empowered;
+  const handIndex = player?.hand.indexOf("ability.diplomacy") ?? -1;
+  const stillEligible = decision.kind === "bank"
+    ? Boolean(fieldCreatureBankId(field))
+    : Boolean(diplomacyGuardReductionTier(state, field, decision.difficulty));
+  if (
+    !player || handIndex < 0 || !stillEligible ||
+    !diplomacyCardHasEffect(state, "DIPLOMACY_EASE_BATTLE") ||
+    (!crownFree && expertUsesAvailable(player) <= 0)
+  ) {
+    beginDiplomacyTargetBattle(state, hero, field, decision.difficulty, decision.kind, false);
+    return;
+  }
+
+  if (!crownFree) player.combatStats.expertUsesSpentThisRound += 1;
+  player.hand.splice(handIndex, 1);
+  player.discard.push("ability.diplomacy");
+  appendEvent(state, {
+    type: "CARD_PLAYED",
+    playerId,
+    cardId: "ability.diplomacy",
+    timing: "instant",
+    mode: "expert"
+  });
+  appendEvent(state, {
+    type: "EVENT_NOTE",
+    playerId,
+    message: decision.kind === "bank"
+      ? "Diplomacy: the Bank fights with one fewer Stack Token; its reward is unchanged."
+      : "Diplomacy: one unit in the lowest-tier pair is reduced by one tier."
+  });
+  beginDiplomacyTargetBattle(state, hero, field, decision.difficulty, decision.kind, true);
 }
 
 /** Opens the Diplomacy skip-or-fight pop-up at a qualifying-level Neutral field. */
@@ -6754,13 +6911,10 @@ export function resolveDiplomacyRecruitChoice(state: GameState, playerId: Player
 // ---------------------------------------------------------------------------
 
 /**
- * Learning: the Hero gained Experience from ANY source (a won neutral/PvP
- * combat, a map object's GAIN_EXPERIENCE step, a hex/timed event, a wave
- * victory…) and the player holds a Learning card. Offer to advance an extra
- * half level (basic) or a full level (expert — which spends an expert use and
- * removes the card from the game). Returns true if a choice was opened so the
- * queue pump waits on it; false (e.g. the card left the hand, or the Experience
- * is already capped) lets the pump move on.
+ * Learning: a qualifying Experience gain queued this offer and the player still
+ * holds the card. Classic/Community-only queue it on an actual level-up; Polish
+ * queues it on every XP gain. Basic advances half a level; Expert advances a
+ * full level, spends a crown and removes the card. Returns true if opened.
  */
 function openLearningLevelUpChoice(state: GameState, playerId: PlayerId): boolean {
   const player = state.players[playerId];
@@ -10299,9 +10453,13 @@ function revealCreatureBankArmy(state: GameState, bankId: CreatureBankId): void 
     state,
     bankId,
     bankField?.bankSize,
-    bankField?.bankVariant
+    bankField?.bankVariant,
+    { diplomacyFewerStacks: combat.context.diplomacyFewerBankStacks }
   );
   combat.context.bankStackCount = stackedCount;
+  if (combat.context.diplomacyFewerBankStacks) {
+    combat.context.bankRewardStackCount = rewardStackCount;
+  }
   // Bank defenders carry no tier, so the azure "no time limit" rule never fires.
   combat.context.hasAzure = false;
 
@@ -10596,7 +10754,9 @@ export function resolveJudgeDread(state: GameState, playerId: PlayerId, optionIn
     // army and are therefore part of what the player sees being replaced.
     const discarded = draws.map(({ unitDefId, tier }) => ({ unitDefId, tier }));
     const field = state.adventure?.fields[combat.context.fieldId];
-    const fresh = drawGuardArmy(state, field, combat.context.difficulty);
+    const fresh = drawGuardArmy(state, field, combat.context.difficulty, {
+      diplomacyTierReduction: combat.context.diplomacyTierReduction
+    });
 
     // Guard composition is deterministic for the field/difficulty, so the fresh
     // army normally repeats the exact tier pattern it replaced. A divergence
@@ -11640,7 +11800,9 @@ export function finishCombatPlacement(state: GameState, action: Extract<GameActi
       return;
     }
     const guardField = state.adventure?.fields[combat.context.fieldId];
-    const draws = drawGuardArmy(state, guardField, combat.context.difficulty);
+    const draws = drawGuardArmy(state, guardField, combat.context.difficulty, {
+      diplomacyTierReduction: combat.context.diplomacyTierReduction
+    });
     // Random Town: the printed card's choosable BRONZE Pack belongs to the player
     // who CONTROLS THE DEFENSE. With a human controller (PvP Neutral Control /
     // manual guard control, multiplayer) that pick opens now; otherwise the
@@ -14596,13 +14758,17 @@ export function finalizeAdventureCombat(state: GameState): void {
         ) {
           queueSkeletonReinforce(state, playerId);
         }
-      } else if (hero.kind === "secondary") {
-        // A lost Secondary Hero is removed, including retreats and special
-        // neutral encounters whose Main Hero defeat rules leave it in place.
+      } else if (hero.kind === "secondary" && !context.waveAssault && context.dungeonFloor === undefined) {
+        // A lost Secondary Hero is removed, including retreats (the same reading
+        // as the PvP path). A Calamity Wave or Dungeon floor "deals fair" —
+        // nothing lost but the wounds (§6.7.3) — so those keep the hero.
         if (field?.persistentGuard) {
           persistLivingGuardsOnField(state, field, combat);
         }
-        removeSecondaryHeroFromGame(state, hero, "was defeated in battle");
+        removeSecondaryHeroFromGame(
+          state, hero,
+          outcome.reason === "retreat" ? "was lost retreating from battle" : "was defeated in battle"
+        );
       } else if (outcome.reason === "retreat") {
         // Persistent break-field army: keep living guards for a later re-fight.
         if (field?.persistentGuard) {
@@ -14789,7 +14955,7 @@ export function finalizeAdventureCombat(state: GameState): void {
             kind: "creature-bank",
             heroId: hero.id,
             fieldId: context.fieldId,
-            stackCount: context.bankStackCount ?? 0
+            stackCount: context.bankRewardStackCount ?? context.bankStackCount ?? 0
           };
         if (
           !openMgqCompanionWindow(state, playerId, hero.id, mgqCompanionOptions, deferredReward) &&
@@ -14799,7 +14965,7 @@ export function finalizeAdventureCombat(state: GameState): void {
             state,
             hero.id,
             context.fieldId,
-            context.bankStackCount ?? 0
+            context.bankRewardStackCount ?? context.bankStackCount ?? 0
           );
         }
       } else {
@@ -18503,6 +18669,11 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
 
   if (choice.context === "diplomacy-skip") {
     resolveDiplomacySkipChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "diplomacy-battle-ease") {
+    resolveDiplomacyBattleEaseChoice(state, action.playerId, action.optionIndex);
     return;
   }
 

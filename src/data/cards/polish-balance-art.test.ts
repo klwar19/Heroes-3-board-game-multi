@@ -77,7 +77,7 @@ describe("Polish Balance Pack art", () => {
   });
 
   it("ships a real 743×1040 EMPOWERED balance face for every empowered ability id", () => {
-    expect(POLISH_BALANCE_EMPOWERED_ABILITY_IDS.length).toBe(12);
+    expect(POLISH_BALANCE_EMPOWERED_ABILITY_IDS.length).toBe(13);
     for (const cardId of POLISH_BALANCE_EMPOWERED_ABILITY_IDS) {
       // Every empowered id must also have a wired plain reprint (the empowered
       // face is the same card's empowered display state).
@@ -105,10 +105,11 @@ describe("Polish Balance Pack art", () => {
         `${cardId} empowered balance face looks like a stub`,
       ).toBeGreaterThan(40 * 1024);
     }
-    // Diplomacy has no dedicated Empowered balance-pack reprint.
+    // Diplomacy now ships the dedicated Empowered reprint supplied with its
+    // new pre-battle / Bank rules.
     expect(
       polishBalanceEmpoweredCardImage("ability.diplomacy"),
-    ).toBeUndefined();
+    ).toBe("/assets/polish-balance/ability-diplomacy-empowered.webp");
     // A card outside the empowered list resolves nothing.
     expect(polishBalanceEmpoweredCardImage("ability.estates")).toBeUndefined();
   });

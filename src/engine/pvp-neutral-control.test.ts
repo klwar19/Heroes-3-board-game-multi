@@ -13,6 +13,7 @@ import { nextAfkDropAction } from "./afk-drop";
 import { seatIsAwaitedInOrderedPlay, turnClockPausedFor } from "./afk";
 import { applyAction, createAdventureGameState, NEUTRAL_PLAYER_ID, redactStateForSeat } from "./index";
 import { getLegalActions } from "./legal-actions";
+import { getBattlefieldDistance } from "./battlefield";
 import { combatHasHumanParticipant } from "./computer/control";
 import { combatUnitDecisionOwnerId, neutralCombatControllerId } from "./neutral-control";
 import { parallelInteractionBlocker } from "./parallel-turns";
@@ -673,14 +674,23 @@ describe("PvP Neutral Control — the mustAttack sub-toggle", () => {
       )
       .map((offer) => offer.action.type);
 
-  it("DEFAULT (must attack): a guard that can strike gets ONLY attacks — no Defend, no move, no hold", () => {
+  it("DEFAULT (must attack): a guard that can strike may strike OR move to another STRIKE cell — no Defend, no hold", () => {
+    // v130: an adjacent enemy does not pin the guard; every offered move still
+    // lands adjacent to a prey (never a wander).
     const state = sceneTwoPreys("pnc-must-attack", {});
     const guard = guardsOf(state)[0];
-    const types = unitCommandTypes(getLegalActions(state, "p2"), guard.id);
+    const offers = getLegalActions(state, "p2");
+    const types = unitCommandTypes(offers, guard.id);
     expect(types).toContain("ATTACK_UNIT");
+    expect(types).toContain("MOVE_UNIT");
     expect(types).not.toContain("DEFEND_UNIT");
-    expect(types).not.toContain("MOVE_UNIT");
     expect(types).not.toContain("END_ACTIVATION");
+    const preys = Object.values(state.combat!.units).filter((unit) => unit.controllerId === "p1" && unit.damage < unit.maxHealth);
+    const moveCells = offers.flatMap((offer) =>
+      offer.action.type === "MOVE_UNIT" && offer.action.unitId === guard.id ? [offer.action.destination] : []
+    );
+    expect(moveCells.length).toBeGreaterThan(0);
+    expect(moveCells.every((cell) => preys.some((prey) => getBattlefieldDistance(cell, prey.position) === 1))).toBe(true);
   });
 
   it("DEFAULT (must attack): with no reachable strike, only CLOSING moves are offered", () => {

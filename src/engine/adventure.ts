@@ -16518,7 +16518,11 @@ export function dragonUtopiaGuardIds(state: GameState, difficulty: number): stri
  * its tiers (Hard VII = 1 golden + 2 azure). "four" is the explicit scenario
  * variant and retains the fixed four-dragon party.
  */
-function drawDragonUtopiaArmy(state: GameState, difficulty: number): NeutralDraw[] {
+function drawDragonUtopiaArmy(
+  state: GameState,
+  difficulty: number,
+  diplomacyTierReduction = false
+): NeutralDraw[] {
   if (adventureDragonUtopiaGuards(state) === "two-azure-two-gold") {
     return (["azure", "azure", "gold", "gold"] as const).flatMap(tier => {
       const unitDefId = drawFromNeutralDeck(state, tier);
@@ -16526,7 +16530,12 @@ function drawDragonUtopiaArmy(state: GameState, difficulty: number): NeutralDraw
     });
   }
   if (adventureDragonUtopiaGuards(state) === "by-difficulty") {
-    return drawNeutralArmyAtDifficulty(state, difficulty, baseNeutralArmyDifficulty(state));
+    return drawNeutralArmyAtDifficulty(
+      state,
+      difficulty,
+      baseNeutralArmyDifficulty(state),
+      diplomacyTierReduction
+    );
   }
   return dragonUtopiaGuardIds(state, difficulty).map((unitDefId) => ({
     unitDefId,
@@ -17261,6 +17270,44 @@ export function neutralArmyDifficultyForField(
     : neutralArmyDifficulty(state);
 }
 
+/**
+ * Lowest table tier Balance-Pack Diplomacy can reduce for this upcoming normal
+ * guard fight. Fixed certain armies, Pack armies, Random Town parties and the
+ * fixed Dragon-Utopia variants have no Field-Difficulty "combination" to edit.
+ * Location extras (the Utopia's Black Dragon, Stockpile Cyclopes and a Mine's
+ * reinforcement) are deliberately outside that combination and stay intact.
+ */
+export function diplomacyGuardReductionTier(
+  state: GameState,
+  field: MapFieldState | undefined,
+  difficulty: number
+): keyof NeutralTierCounts | null {
+  if (!field || field.customGuardUnits?.length || field.customGuardLevelArmy === "packs" || field.location === "random_town") {
+    return null;
+  }
+
+  let scenarioDifficulty: GameDifficulty;
+  if (field.customGuardLevel) {
+    difficulty = field.customGuardLevel;
+    scenarioDifficulty = baseNeutralArmyDifficulty(state);
+  } else if (field.location === "grail") {
+    scenarioDifficulty = baseNeutralArmyDifficulty(state);
+  } else if (field.location === "dragon_utopia") {
+    const victoryMode = adventureVictoryMode(state);
+    const normalFieldUtopia = grailUtopiaFieldRulesEnabled(state) &&
+      victoryMode !== "dragon-hunt" && victoryMode !== "dragon-conqueror";
+    if (!normalFieldUtopia && adventureDragonUtopiaGuards(state) !== "by-difficulty") {
+      return null;
+    }
+    scenarioDifficulty = baseNeutralArmyDifficulty(state);
+  } else {
+    scenarioDifficulty = neutralArmyDifficultyForField(state, field);
+  }
+
+  const counts = NEUTRAL_ARMY_TABLE[scenarioDifficulty]?.[difficulty];
+  return counts ? lowestDiplomacyPairTier(counts) : null;
+}
+
 /** Signature golden guards used by the optional Field-Difficulty V rule. */
 export const LEVEL_V_SIGNATURE_NEUTRAL_IDS = [
   "neutral.archangels",
@@ -17303,7 +17350,8 @@ export function drawNeutralArmy(state: GameState, difficulty: number): NeutralDr
 function drawNeutralArmyAtDifficulty(
   state: GameState,
   difficulty: number,
-  scenarioDifficulty: GameDifficulty
+  scenarioDifficulty: GameDifficulty,
+  diplomacyTierReduction = false
 ): NeutralDraw[] {
   const adventure = state.adventure;
   if (!adventure) {
@@ -17313,6 +17361,15 @@ function drawNeutralArmyAtDifficulty(
   const printedCounts = NEUTRAL_ARMY_TABLE[scenarioDifficulty][difficulty];
   if (!printedCounts) {
     return [];
+  }
+  const counts = { ...printedCounts };
+  if (diplomacyTierReduction) {
+    const tier = lowestDiplomacyPairTier(counts);
+    if (tier) {
+      counts[tier] -= 1;
+      const lower = DIPLOMACY_LOWER_TIER[tier];
+      if (lower) counts[lower] += 1;
+    }
   }
 
   const draws: NeutralDraw[] = [];
@@ -17336,6 +17393,20 @@ function drawNeutralArmyAtDifficulty(
   }
 
   return draws;
+}
+
+const DIPLOMACY_LOWER_TIER = {
+  bronze: null,
+  silver: "bronze",
+  gold: "silver",
+  azure: "gold"
+} as const;
+
+type NeutralTierCounts = { bronze: number; silver: number; gold: number; azure: number };
+
+/** The reprint always changes the lowest tier represented at least twice. */
+function lowestDiplomacyPairTier(counts: NeutralTierCounts): keyof NeutralTierCounts | null {
+  return (["bronze", "silver", "gold", "azure"] as const).find((tier) => counts[tier] >= 2) ?? null;
 }
 
 /**
@@ -17477,7 +17548,12 @@ function mineGuardReinforcementDraws(state: GameState, field: MapFieldState | un
   return unitDefId ? [{ unitDefId, tier: "bronze" }] : [];
 }
 
-export function drawGuardArmy(state: GameState, field: MapFieldState | undefined, difficulty: number): NeutralDraw[] {
+export function drawGuardArmy(
+  state: GameState,
+  field: MapFieldState | undefined,
+  difficulty: number,
+  options?: { diplomacyTierReduction?: boolean }
+): NeutralDraw[] {
   // Global "mine guards +1 bronze" house rule composes with EVERY base branch
   // below (level draw, designer exact / level, Random Town, etc.) — it appends
   // one extra bronze on a mine field, or nothing when the rule is off / the field
@@ -17490,10 +17566,16 @@ export function drawGuardArmy(state: GameState, field: MapFieldState | undefined
   ];
 }
 
-function drawGuardArmyBase(state: GameState, field: MapFieldState | undefined, difficulty: number): NeutralDraw[] {
+function drawGuardArmyBase(
+  state: GameState,
+  field: MapFieldState | undefined,
+  difficulty: number,
+  options?: { diplomacyTierReduction?: boolean }
+): NeutralDraw[] {
+  const diplomacyTierReduction = Boolean(options?.diplomacyTierReduction);
   if (field?.location === "dragon_utopia" && !field.grailConverted &&
       (adventureVictoryMode(state) === "dragon-hunt" || adventureVictoryMode(state) === "dragon-conqueror")) {
-    return drawDragonUtopiaArmy(state, difficulty);
+    return drawDragonUtopiaArmy(state, difficulty, diplomacyTierReduction);
   }
   // Designer "certain army" guard: mint the exact cards, Creature-Bank style —
   // never drawn from nor recycled to the tier decks. It REPLACES every
@@ -17529,17 +17611,32 @@ function drawGuardArmyBase(state: GameState, field: MapFieldState | undefined, d
         playableFactions: playable
       }) as NeutralDraw[];
     }
-    return drawNeutralArmyAtDifficulty(state, levelForDraw, baseNeutralArmyDifficulty(state));
+    return drawNeutralArmyAtDifficulty(
+      state,
+      levelForDraw,
+      baseNeutralArmyDifficulty(state),
+      diplomacyTierReduction
+    );
   }
 
   if (grailUtopiaFieldRulesEnabled(state) && field?.location === "grail") {
-    return drawNeutralArmyAtDifficulty(state, difficulty, baseNeutralArmyDifficulty(state));
+    return drawNeutralArmyAtDifficulty(
+      state,
+      difficulty,
+      baseNeutralArmyDifficulty(state),
+      diplomacyTierReduction
+    );
   }
 
   if (grailUtopiaFieldRulesEnabled(state) && field?.location === "dragon_utopia" &&
       adventureVictoryMode(state) !== "dragon-hunt" && adventureVictoryMode(state) !== "dragon-conqueror") {
     return [
-      ...drawNeutralArmyAtDifficulty(state, difficulty, baseNeutralArmyDifficulty(state)),
+      ...drawNeutralArmyAtDifficulty(
+        state,
+        difficulty,
+        baseNeutralArmyDifficulty(state),
+        diplomacyTierReduction
+      ),
       { unitDefId: "neutral.black_dragons", tier: "gold" as const, bankGuard: true }
     ];
   }
@@ -17550,7 +17647,7 @@ function drawGuardArmyBase(state: GameState, field: MapFieldState | undefined, d
   // field draws its normal Grail guards, and only an EXTRA Grail field CONVERTED
   // after the dig (location "dragon_utopia") reaches the Utopia draw below.
   if (field?.location === "dragon_utopia") {
-    return drawDragonUtopiaArmy(state, difficulty);
+    return drawDragonUtopiaArmy(state, difficulty, diplomacyTierReduction);
   }
 
   if (field?.location === "random_town") {
@@ -17562,7 +17659,8 @@ function drawGuardArmyBase(state: GameState, field: MapFieldState | undefined, d
   const draws = drawNeutralArmyAtDifficulty(
     state,
     difficulty,
-    neutralArmyDifficultyForField(state, field)
+    neutralArmyDifficultyForField(state, field),
+    diplomacyTierReduction
   );
 
   if (field?.location === "cyclops_stockpile") {
@@ -17784,8 +17882,9 @@ export function buildCreatureBankCombatUnits(
   state: GameState,
   bankId: CreatureBankId,
   bankSize?: BankSize,
-  bankVariant?: BankSize
-): { units: CombatUnitState[]; stackedCount: number } {
+  bankVariant?: BankSize,
+  options?: { diplomacyFewerStacks?: boolean }
+): { units: CombatUnitState[]; stackedCount: number; rewardStackCount: number } {
   const ruleset = getRuleset(state);
   const sideOverrides = unitSideRuleOverrides(state);
   const polishMode = houseRuleEnabled(state, "polish-bank-sizes");
@@ -17850,6 +17949,23 @@ export function buildCreatureBankCombatUnits(
     // Re-derive the fighting statistics so the token's bonus is baked in.
     applyUnitCurrentSide(unit, ruleset, sideOverrides);
     stackedCount += 1;
+  }
+
+  // Balance-Pack Diplomacy changes the FIGHT, not its payout. Build the normal
+  // token result first (preserving every existing seeded roll and the optional
+  // 80% placement rule), remember that count for rewards, then remove one
+  // actually placed token and recompute that defender's printed statistics.
+  const rewardStackCount = stackedCount;
+  if (options?.diplomacyFewerStacks && stackedCount > 0) {
+    const reduced = [...order]
+      .reverse()
+      .map((index) => units[index])
+      .find((unit) => Boolean(unit?.stackToken));
+    if (reduced) {
+      reduced.stackToken = null;
+      applyUnitCurrentSide(reduced, ruleset, sideOverrides);
+      stackedCount -= 1;
+    }
   }
 
   // Neutral Rank-Up is a separate optional rule from player Unit Experience.

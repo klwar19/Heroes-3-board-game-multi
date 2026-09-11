@@ -746,6 +746,16 @@ function moveUnitScore(
   if (current === null || next === null) return null;
 
   const role = unitRole(mover);
+  // Post-shot step (ranged only): the shot is spent, so closing in buys nothing
+  // and adjacency costs next round's clean shot. Back off when engaged; never
+  // outrank the passive exit (END_ACTIVATION = 400) by advancing.
+  if (mover.attackedThisActivation && mover.type === "ranged") {
+    const touchNow = current <= 1;
+    const touchNext = next <= 1;
+    if (touchNow && !touchNext) return { score: 560, policy: "combat.ranged-disengage" };
+    if (!touchNow && touchNext) return { score: 120, policy: "combat.ranged-step-into-melee" };
+    return { score: next > current ? 430 : 330, policy: "combat.ranged-post-shot-step" };
+  }
   let score: number;
 
   if (next < current) {
@@ -1226,6 +1236,12 @@ export function scoreCombatAction(
     case "GIVE_UP_COMBAT": {
       // Foundation scores these −900 (last resort). Promote only when the fight
       // is clearly lost so the AI saves movement / remaining army.
+      // A Secondary Hero that retreats from a neutral fight is REMOVED from the
+      // game (v130), so the AI keeps fighting with it while any unit stands.
+      const fighter = combat.context.kind === "neutral" ? observation.state.heroes[combat.context.heroId] : undefined;
+      if (fighter?.kind === "secondary" && livingFriendlies(combat, observation.playerId).length > 0) {
+        return { score: -900, policy: "combat.retreat-refuse-secondary" };
+      }
       if (combatIsHopeless(observation, combat)) {
         return { score: 380, policy: "combat.retreat-hopeless" };
       }

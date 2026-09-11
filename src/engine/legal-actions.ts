@@ -1664,7 +1664,9 @@ export function getLegalMoveDestinations(
     !isUnitAlive(unit) ||
     (unit.activatedThisRound && !waitedReactivation) ||
     unit.movedThisActivation ||
-    (unit.attackedThisActivation && unit.type !== "ranged")
+    // Ranged units step 1 after shooting; a Magma Elemental whose Solidify just
+    // ended "may move again" (elementalAfterAttack sets solidifyCanMove).
+    (unit.attackedThisActivation && unit.type !== "ranged" && !unit.elementalVeterancy?.solidifyCanMove)
   ) {
     return [];
   }
@@ -4690,6 +4692,10 @@ function isOptionEffectPlayable(
         Boolean(state.adventure) &&
         unlockedRecruitTiers(state, playerId).size > 0
       );
+    case "DIPLOMACY_EASE_BATTLE":
+      // Offered only by the authoritative encounter-entry window. Keeping the
+      // marker out of PLAY_CARD prevents using it without a pending battle.
+      return false;
     case "VISIONS_SCRY":
       // Visions scrys a Neutral Unit deck — only useful when at least one tier
       // deck still holds cards.
@@ -8046,8 +8052,11 @@ function addControlledNeutralUnitActions(
   );
 
   // An adjacent enemy does not pin the guard: it may move to strike another
-  // target, while still satisfying the attack obligation after moving.
-  const strikeCells = moveDestinations.filter((space) =>
+  // target, while still satisfying the attack obligation after moving. A guard
+  // that already HAS a strike may not trade it for a walk across a Quicksand
+  // board (the halt would end its activation with no attack — audit 2026-09-11).
+  const quicksandOnBoard = (combat.battlefieldTokens ?? []).some((token) => token.kind === "quicksand");
+  const strikeCells = attacks.length > 0 && quicksandOnBoard ? [] : moveDestinations.filter((space) =>
     enemies.some(
       (target) =>
         isAdjacent(space, target.position) &&

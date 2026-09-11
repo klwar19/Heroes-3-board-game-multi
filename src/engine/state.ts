@@ -3704,6 +3704,14 @@ export type EffectDefinition =
     }
   | {
       /**
+       * Polish Balance Diplomacy's battle side. Declarative only: the engine
+       * offers it immediately before an eligible Neutral or Creature-Bank
+       * battle. It never resolves as a free-standing PLAY_CARD action.
+       */
+      type: "DIPLOMACY_EASE_BATTLE";
+    }
+  | {
+      /**
        * Learning ability. Never played from hand: it is offered automatically
        * when a Hero is about to level up (see the "learning-level-up" reward and
        * pending choice). Basic advances the Hero's Experience an extra half level
@@ -10251,7 +10259,8 @@ export type CombatContext =
        * Creature Bank combat (Naval Battles optional rule): the bank being
        * fought. When set, this is NOT a Field-Difficulty fight — there is no
        * Quick Combat, no Round limit, no MP to extend and no experience, and the
-       * win reward is the bank's (scaled by `bankStackCount`). A CreatureBankId
+       * win reward is the bank's (normally scaled by `bankStackCount`, or by
+       * `bankRewardStackCount` after Balance Diplomacy). A CreatureBankId
        * (typed loosely here because state.ts has no data-layer imports).
        */
       bankId?: string;
@@ -10263,6 +10272,12 @@ export type CombatContext =
       bankFormation?: boolean;
       /** Number of Stacked defenders placed on the bank (the reward's X). */
       bankStackCount?: number;
+      /** Reward X before Balance Diplomacy removes one Stack Token. */
+      bankRewardStackCount?: number;
+      /** Balance Diplomacy modifies this normal guard draw after deployment. */
+      diplomacyTierReduction?: boolean;
+      /** Balance Diplomacy removes one placed Creature-Bank Stack Token. */
+      diplomacyFewerBankStacks?: boolean;
       /**
        * Designer outpost fight (Garrison / Keymaster's Tent / one-way monolith
        * entrance): the printed "unlimited, as in Banks" reading — the combat
@@ -11467,7 +11482,11 @@ export type MapFieldState = {
    * continue-or-retreat window). Absent = normal Round limit + MP-to-extend.
    */
   unlimitedCombatRounds?: boolean;
-  /** Hard round cap: automatically retreat if enemies survive; absent keeps normal extension rules. */
+  /**
+   * Designer round limit: that many FREE combat rounds, after which the normal
+   * continue-or-retreat window opens and each further round costs movement
+   * points as usual; "unlimited" never opens the window. Absent = printed rules.
+   */
   combatRoundLimit?: 1 | 2 | 3 | "unlimited";
   /**
    * Subterranean Gate token (Stronghold expansion). When a gate is placed, the
@@ -16886,6 +16905,7 @@ export type PendingChoice =
          | "mgq-mad-science"
          | "mgq-gold-contract"
         | "diplomacy-skip"
+        | "diplomacy-battle-ease"
         | "polish-quick-combat"
         | "polish-bank-auto-combat"
         | "diplomacy-recruit"
@@ -17482,6 +17502,17 @@ export type PendingChoice =
         heroId: HeroId;
         fieldId: MapSpaceId;
         difficulty: number;
+        crownFree?: boolean;
+      };
+      /**
+       * Balance Diplomacy's pre-battle choice. Both branches start a real
+       * battle; option 0 spends the card and applies the named reduction.
+       */
+      diplomacyBattleEase?: {
+        heroId: HeroId;
+        fieldId: MapSpaceId;
+        difficulty: number;
+        kind: "neutral" | "bank";
         crownFree?: boolean;
       };
       /**

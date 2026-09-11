@@ -145,9 +145,15 @@ Per-card NEW text (verbatim from `NEW Ability`; ⏎ = printed line break removed
   level up" to "when the Hero gains experience". "Then/or" offers both the
   combined +0.5-and-draw play and a draw-only play; at the Experience cap the
   draw-only play remains useful.
-- **Diplomacy** — Basic: adds "Decide for each unpurchased unit: place its
-  card on the top or bottom of its appropriate deck." (OLD: unpurchased units
-  return without a placement choice.) Expert unchanged.
+- **Diplomacy** — Basic adds: "Decide for each unpurchased unit: place its
+  card on the top or bottom of its appropriate deck." Expert replaces the old
+  combat skip. Before a real battle against Neutral Units, find the lowest tier
+  represented by a pair and reduce one body by one tier (remove it if bronze);
+  before entering a Creature Bank, fight with one fewer Stack Token. The battle
+  still happens and its field/Bank reward is unchanged. On Normal difficulty
+  this maps II/III to −1 bronze, IV/V/VI to silver→bronze, and VII to
+  Azure→gold; the normal Dragon Utopia is therefore 1 Azure + 1 gold + its
+  fixed Black Dragon.
 - **Artillery** — Basic: "Deal 1 DM to an enemy unit with the lowest
   initiative. OR When using the Ballista card, resolve its effect against the
   same target 2 times. ∂: If you have a Balista card played, until the end of

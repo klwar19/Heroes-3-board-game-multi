@@ -545,6 +545,12 @@ function scorePositionOption(
     return optionIndex === 0 ? CHOICE_BASE + 40 : CHOICE_BASE + 10;
   }
 
+  if (context === "diplomacy-battle-ease" && choice.diplomacyBattleEase) {
+    // The card never replaces the battle; it strictly weakens the same fight
+    // without reducing its reward, so the computer should use it when offered.
+    return optionIndex === 0 ? CHOICE_BASE + 40 : CHOICE_BASE + 10;
+  }
+
   if (context === "polish-quick-combat" && choice.polishQuickCombat) {
     // Polish strength-based Quick Combat: option 0 is the certain unfought win
     // (no XP), option 1 the real dice fight for XP. Prefer the certain win —

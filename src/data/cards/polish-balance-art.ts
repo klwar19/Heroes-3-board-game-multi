@@ -161,9 +161,6 @@ export function polishBalanceCardImage(
  * (unlike `stat.knowledge.empowered`, a real distinct library card whose face
  * `polishBalanceCardImage` already derives).
  *
- * Diplomacy is deliberately absent because no dedicated Empowered balance-pack
- * reprint is shipped; its plain balance face must win over the classic old-text scan.
- *
  * The `-empowered` faces DO print the NEW rules text (unlike the classic
  * `-empowered` fan scans, which print the OLD text — the reason the plain balance
  * face used to win over them), so preferring them for an empowered holder is
@@ -172,6 +169,7 @@ export function polishBalanceCardImage(
 export const POLISH_BALANCE_EMPOWERED_ABILITY_IDS = [
   "ability.artillery",
   "ability.ballistics",
+  "ability.diplomacy",
   "ability.eagle_eye",
   "ability.first_aid",
   "ability.intelligence",

@@ -18,7 +18,7 @@ import { extraAbilityCards } from "./abilities-extra";
  * `tags`' last entries are the human-readable "Balance pack: …" text (the
  * `initiative-specialty-draw` precedent) stating exactly what runs.
  *
- * --- INTELLIGENCE (the one reprint here) ---
+ * --- INTELLIGENCE ---
  * Printed: "At the start of a Combat, before any unit activates, you can Cast a
  * Spell. (you don't need to play Cast a Spell card.)" Expert adds: "This spell
  * does not count toward your spell limit per Combat round."
@@ -53,6 +53,31 @@ function printed(cardId: string): CardDefinition {
 }
 
 export const polishBalanceAbilityCards: CardLibrary = {
+  "ability.diplomacy": {
+    ...printed("ability.diplomacy"),
+    tags: [
+      "ability",
+      "map",
+      "Regular (basic): for every Dwelling you have, draw 1 corresponding Neutral Unit card; you may recruit one by paying its cost. Decide separately whether each unpurchased card returns to the top or bottom of its deck.",
+      "Expert: before a battle against Neutral Units, reduce one unit in the lowest-tier pair by one tier (remove it if bronze), OR enter a Creature Bank with one fewer Stack Token on its defenders. The battle and its normal field or Bank reward still resolve. Empowered: use either side without spending a crown.",
+      "Balance pack: the old Diplomacy combat skip is replaced. This side only makes the real battle easier; it never Quick-Combats, claims a field, grants Experience, or changes its reward."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Draw 1 Neutral Unit per Dwelling, recruit one, then place each unpurchased card on its deck's top or bottom",
+          mapOnly: true,
+          effect: { type: "DIPLOMACY_RECRUIT" }
+        },
+        {
+          label: "Expert: before a Neutral battle, downgrade the lowest-tier pair; or fight a Bank with 1 fewer Stack Token",
+          expertOnly: true,
+          effect: { type: "DIPLOMACY_EASE_BATTLE" }
+        }
+      ]
+    }
+  },
   "ability.artillery": {
     ...printed("ability.artillery"),
     tags: [

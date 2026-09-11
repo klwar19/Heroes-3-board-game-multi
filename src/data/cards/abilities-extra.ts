@@ -375,7 +375,7 @@ export const extraAbilityCards: CardLibrary = {
       "ability",
       "map",
       "Regular (basic): for every Dwelling you have, draw 1 corresponding Neutral Unit card; you may Recruit one by paying its cost. Expert: skip Combat with Neutral Units on a field whose Difficulty equals your Hero's level — claim the field and resolve its effect, gaining no Experience. Empowered: use either side without spending a crown.",
-      'Balance pack: the basic side adds "Decide for each unpurchased unit: place its card on the top or bottom of its appropriate deck" — one two-button placement choice per unpurchased draw (the shared deck-card-placement window) instead of the silent return to the discard pile. Expert is unchanged.',
+      'Balance pack: the basic side adds a top-or-bottom choice for every unpurchased draw. The Expert skip is replaced: before a real Neutral battle, downgrade one unit in the lowest-tier pair (remove it if bronze), or enter a Creature Bank with one fewer Stack Token; rewards stay unchanged.',
       "House ruling: the Expert skip works on any field whose Field Difficulty is AT MOST your Hero's level. Classic Quick Combat still resolves first when the Hero is above the field; a hero below the Field Difficulty still has to fight.",
     ],
     effect: {

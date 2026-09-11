@@ -557,7 +557,10 @@ export function unitExperienceForWonCombat(context: CombatContext): number {
   }
   if (context.kind === "neutral") {
     return context.bankId
-      ? Math.max(UNIT_XP_BANK_MIN, Math.trunc(context.bankStackCount ?? 0))
+      ? Math.max(
+          UNIT_XP_BANK_MIN,
+          Math.trunc(context.bankRewardStackCount ?? context.bankStackCount ?? 0)
+        )
       : Math.max(1, Math.trunc(context.difficulty ?? 1));
   }
   return UNIT_XP_PVP_WIN;

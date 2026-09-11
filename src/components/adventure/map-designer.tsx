@@ -546,7 +546,7 @@ export function describeTileSpecificPlan(plan: CustomMapTilePlan, kind: Specific
     if (p.winCondition) bits.push("first clear WINS");
     if (p.breakField) bits.push("Break field");
     if (p.persistentGuard) bits.push("persistent army");
-    if (p.combatRoundLimit !== undefined) bits.push(p.combatRoundLimit === "unlimited" ? "unlimited rounds" : `${p.combatRoundLimit}-round limit (automatic retreat)`);
+    if (p.combatRoundLimit !== undefined) bits.push(p.combatRoundLimit === "unlimited" ? "unlimited rounds" : `${p.combatRoundLimit} free round${p.combatRoundLimit === 1 ? "" : "s"}, then pay MP`);
     else if (p.unlimitedRounds) bits.push("unlimited rounds");
     if (p.flaggableDragonUtopia) bits.push("flaggable Utopia + Azure recruit");
   };
@@ -6288,9 +6288,9 @@ export function MapDesigner({
                     />
 
                     <label className="popoverSubLabel">Combat round limit
-                        <select title="Hard limit: automatically retreat if enemies survive the last round. No movement points or cards can extend it. Default rules leaves normal field rules unchanged." aria-label="Combat round limit" value={selected.centerHex?.combatRoundLimit ?? (selected.centerHex?.unlimitedRounds ? "unlimited" : "default")} onChange={(event) => updateTile(selectedIndex as number, { centerHex: nextCenterHex(selected.centerHex, { combatRoundLimit: event.target.value === "default" ? undefined : event.target.value === "unlimited" ? "unlimited" : Number(event.target.value) as 1 | 2 | 3, unlimitedRounds: undefined }) })}>
+                        <select title="Free combat rounds before the normal continue-or-retreat window: after that many rounds each further round costs movement points as usual. Unlimited never asks. Default keeps the printed field rules." aria-label="Combat round limit" value={selected.centerHex?.combatRoundLimit ?? (selected.centerHex?.unlimitedRounds ? "unlimited" : "default")} onChange={(event) => updateTile(selectedIndex as number, { centerHex: nextCenterHex(selected.centerHex, { combatRoundLimit: event.target.value === "default" ? undefined : event.target.value === "unlimited" ? "unlimited" : Number(event.target.value) as 1 | 2 | 3, unlimitedRounds: undefined }) })}>
                           <option value="default">Default rules</option>
-                          <option value="1">1 round</option><option value="2">2 rounds</option><option value="3">3 rounds</option><option value="unlimited">Unlimited</option>
+                          <option value="1">1 free round, then pay MP</option><option value="2">2 free rounds, then pay MP</option><option value="3">3 free rounds, then pay MP</option><option value="unlimited">Unlimited</option>
                         </select>
                       </label>
                     <div className="popoverSubLabel">Break &amp; control</div>
@@ -6678,9 +6678,9 @@ export function MapDesigner({
                         }
                       />
                     <label className="popoverSubLabel">Combat round limit
-                        <select title="Hard limit: automatically retreat if enemies survive the last round. No movement points or cards can extend it. Default rules leaves normal field rules unchanged." aria-label="Combat round limit" value={selected.objectPlans?.[objectKind]?.combatRoundLimit ?? (selected.objectPlans?.[objectKind]?.unlimitedRounds ? "unlimited" : "default")} onChange={(event) => updateTile(selectedIndex as number, { objectPlans: nextObjectPlans(selected.objectPlans, objectKind, nextObjectPlan(selected.objectPlans?.[objectKind], { combatRoundLimit: event.target.value === "default" ? undefined : event.target.value === "unlimited" ? "unlimited" : Number(event.target.value) as 1 | 2 | 3, unlimitedRounds: undefined })) })}>
+                        <select title="Free combat rounds before the normal continue-or-retreat window: after that many rounds each further round costs movement points as usual. Unlimited never asks. Default keeps the printed field rules." aria-label="Combat round limit" value={selected.objectPlans?.[objectKind]?.combatRoundLimit ?? (selected.objectPlans?.[objectKind]?.unlimitedRounds ? "unlimited" : "default")} onChange={(event) => updateTile(selectedIndex as number, { objectPlans: nextObjectPlans(selected.objectPlans, objectKind, nextObjectPlan(selected.objectPlans?.[objectKind], { combatRoundLimit: event.target.value === "default" ? undefined : event.target.value === "unlimited" ? "unlimited" : Number(event.target.value) as 1 | 2 | 3, unlimitedRounds: undefined })) })}>
                           <option value="default">Default rules</option>
-                          <option value="1">1 round</option><option value="2">2 rounds</option><option value="3">3 rounds</option><option value="unlimited">Unlimited</option>
+                          <option value="1">1 free round, then pay MP</option><option value="2">2 free rounds, then pay MP</option><option value="3">3 free rounds, then pay MP</option><option value="unlimited">Unlimited</option>
                         </select>
                       </label>
                       <div className="popoverGuardRow" role="group" aria-label={`${objectKind} break options`}>
@@ -7311,7 +7311,7 @@ export function MapDesigner({
                   : "An exit monolith is never guarded — only entrances fight."}
               </small>
             )}
-            <label>Combat round limit<select title="Hard limit: automatically retreat at the cap; no extension. Default preserves normal rules." aria-label="Object combat round limit" value={selectedObject.combatRoundLimit ?? "default"} onChange={(event) => patchObject(selectedObjectIndex as number, { combatRoundLimit: event.target.value === "default" ? undefined : event.target.value === "unlimited" ? "unlimited" : Number(event.target.value) as 1 | 2 | 3 })}><option value="default">Default</option><option value="1">1 round</option><option value="2">2 rounds</option><option value="3">3 rounds</option><option value="unlimited">Unlimited</option></select></label>
+            <label>Combat round limit<select title="Free combat rounds before the normal continue-or-retreat window: after that many rounds each further round costs movement points as usual. Unlimited never asks. Default keeps the printed rules." aria-label="Object combat round limit" value={selectedObject.combatRoundLimit ?? "default"} onChange={(event) => patchObject(selectedObjectIndex as number, { combatRoundLimit: event.target.value === "default" ? undefined : event.target.value === "unlimited" ? "unlimited" : Number(event.target.value) as 1 | 2 | 3 })}><option value="default">Default</option><option value="1">1 free round, then pay MP</option><option value="2">2 free rounds, then pay MP</option><option value="3">3 free rounds, then pay MP</option><option value="unlimited">Unlimited</option></select></label>
             {selectedObject.kind !== "barrier" && selectedObject.kind !== "creature_bank" ? (
               <>
                 <div className="popoverSectionLabel">First-clear reward</div>
@@ -7633,7 +7633,7 @@ export function MapDesigner({
                 </span>
               </label>
             ) : null}
-            <label>Combat round limit<select title="Hard limit: automatically retreat at the cap; no extension. Default preserves normal rules." aria-label="Token combat round limit" value={tokenPanelToken.combatRoundLimit ?? "default"} onChange={(event) => updateTile(selectedTokenIndex as number, { tokens: (tokenPanelPlan ? planTokens(tokenPanelPlan) : []).map((token, i) => i === tokenPanelPin ? { ...token, combatRoundLimit: event.target.value === "default" ? undefined : event.target.value === "unlimited" ? "unlimited" : Number(event.target.value) as 1 | 2 | 3 } : token), token: undefined })}><option value="default">Default</option><option value="1">1 round</option><option value="2">2 rounds</option><option value="3">3 rounds</option><option value="unlimited">Unlimited</option></select></label>
+            <label>Combat round limit<select title="Free combat rounds before the normal continue-or-retreat window: after that many rounds each further round costs movement points as usual. Unlimited never asks. Default keeps the printed rules." aria-label="Token combat round limit" value={tokenPanelToken.combatRoundLimit ?? "default"} onChange={(event) => updateTile(selectedTokenIndex as number, { tokens: (tokenPanelPlan ? planTokens(tokenPanelPlan) : []).map((token, i) => i === tokenPanelPin ? { ...token, combatRoundLimit: event.target.value === "default" ? undefined : event.target.value === "unlimited" ? "unlimited" : Number(event.target.value) as 1 | 2 | 3 } : token), token: undefined })}><option value="default">Default</option><option value="1">1 free round, then pay MP</option><option value="2">2 free rounds, then pay MP</option><option value="3">3 free rounds, then pay MP</option><option value="unlimited">Unlimited</option></select></label>
             {tokenPanelToken.kind !== "oneway_exit" ? (
               <>
                 <div className="popoverSectionLabel">Guard (monster)</div>

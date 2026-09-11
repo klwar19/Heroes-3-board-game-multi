@@ -2,7 +2,7 @@
   "version": 1,
   "cdn": "https://cdn.hamthefirt.xyz",
   "roots": ["assets","sounds"],
-  "count": 5796,
+  "count": 5797,
   "files": {
     "assets/abilities-air_magic-empowered.webp": { "md5": "f47398ae1322d34b22b6a213fe7f8549", "bytes": 135374, "width": 743, "height": 1040 },
     "assets/abilities-air_magic.webp": { "md5": "7f73e9cfeed567196c9b66122c3ad83a", "bytes": 137732, "width": 743, "height": 1040 },
@@ -1889,7 +1889,8 @@
     "assets/polish-balance/ability-artillery.webp": { "md5": "de4dec03da2b7e2109a138e9434c3683", "bytes": 86078, "width": 743, "height": 1040 },
     "assets/polish-balance/ability-ballistics-empowered.webp": { "md5": "10581e3e950960ef4cbe1f3cf153d34a", "bytes": 59198, "width": 743, "height": 1040 },
     "assets/polish-balance/ability-ballistics.webp": { "md5": "362628f66b07e3ef031048114c53e69f", "bytes": 119022, "width": 743, "height": 1040 },
-    "assets/polish-balance/ability-diplomacy.webp": { "md5": "bfeb2297f4f34f637f51c3fcdb3f5cc9", "bytes": 120872, "width": 743, "height": 1040 },
+    "assets/polish-balance/ability-diplomacy-empowered.webp": { "md5": "f223bda2853fefa697da74ef02fc3af8", "bytes": 96022, "width": 743, "height": 1040 },
+    "assets/polish-balance/ability-diplomacy.webp": { "md5": "ddc71455e8642bc3775887c8e5e0ab65", "bytes": 117238, "width": 743, "height": 1040 },
     "assets/polish-balance/ability-eagle_eye-empowered.webp": { "md5": "d6a703860fd5bb2acef008bbc1ab9779", "bytes": 109244, "width": 743, "height": 1040 },
     "assets/polish-balance/ability-eagle_eye.webp": { "md5": "29fbd7c8071e3b1ae63fcfeced3c0806", "bytes": 112144, "width": 743, "height": 1040 },
     "assets/polish-balance/ability-first_aid-empowered.webp": { "md5": "54bb512d05c04cbfc1ec3e566385d35c", "bytes": 81298, "width": 743, "height": 1040 },

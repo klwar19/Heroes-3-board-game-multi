@@ -931,20 +931,26 @@ describe("Diplomacy Expert skips Ⅵ and Ⅶ guard fields", () => {
     expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
   });
 
-  it("the same Ⅵ/Ⅶ skips work with the POLISH rules on (quick-combat + card balance)", () => {
-    // "for both polish rule and normal games": `polish-quick-combat` classifies a
-    // Ⅵ/Ⅶ field as "fight" whatever the army, so the Diplomacy branch is the one
-    // that must still be reached; the Polish REPRINT of the card prints the same
-    // Expert skip, so the balance pack must not close it either.
+  it("with the POLISH card balance ON the Ⅵ/Ⅶ skip is replaced by the battle-ease window (v131)", () => {
+    // The Polish reprint of Diplomacy no longer skips: before a real Neutral
+    // battle it offers a tier reduction (or one fewer Bank Stack Token). The
+    // fight ALWAYS happens; the field is never auto-claimed.
     const rules = { "polish-quick-combat": true, "polish-card-balance": true } as const;
     for (const difficulty of [6, 7]) {
       let state = encounter(bandGame({ level: 7, difficulty, houseRules: { ...rules } }));
-      const xpBefore = getMainHero(state, "p1")!.experience;
-      state = takeSkip(state);
-      expect(state.combat, `Ⅵ/Ⅶ=${difficulty}: no combat under the Polish rules`).toBeNull();
-      expect(state.adventure!.fields["band-field"].flagOwnerId).toBe("p1");
-      expect(getMainHero(state, "p1")!.experience).toBe(xpBefore);
+      expect(skipContext(state), `Ⅵ/Ⅶ=${difficulty}`).toBe("diplomacy-battle-ease");
+      const choice = state.pendingChoice!;
+      state = apply(state, {
+        type: "CHOOSE_OPTION",
+        playerId: "p1",
+        choiceId: (choice as { id: string }).id,
+        optionIndex: 0
+      });
+      expect(state.combat, `Ⅵ/Ⅶ=${difficulty}: the fight must open`).not.toBeNull();
+      expect(state.adventure!.fields["band-field"].flagOwnerId).toBeNull();
+      expect(state.players.p1.hand).not.toContain("ability.diplomacy");
       expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+      expect(state.combat!.context.kind === "neutral" && state.combat!.context.diplomacyTierReduction).toBe(true);
     }
   });
 

@@ -56,7 +56,7 @@ describe("Polish Balance Pack — card faces swap while the rule is ON", () => {
     // NEW rules text; an Empowered holder must get THAT, not the classic
     // `-empowered` fan scan (OLD text) nor — as before this feature — the plain
     // balance face. Cards WITHOUT an empowered balance variant (spells, the
-    // Knowledge statistic, Diplomacy) keep the plain balance face when Empowered.
+    // Knowledge statistic) keep the plain balance face when Empowered.
     let empoweredCovered = 0;
     for (const cardId of POLISH_BALANCE_CARD_IDS) {
       const empoweredBalance = polishBalanceEmpoweredCardImage(cardId);
@@ -71,7 +71,7 @@ describe("Polish Balance Pack — card faces swap while the rule is ON", () => {
       expect(faceSrc(cardId, { balance: false, empowered: true })).toBe(classicEmpowered);
     }
     // Non-vacuity: exactly the 12 abilities carry an empowered balance face.
-    expect(empoweredCovered).toBe(12);
+    expect(empoweredCovered).toBe(13);
     // The Knowledge statistic has no empowered balance variant → plain face even Empowered.
     expect(faceSrc("stat.knowledge", { balance: true, empowered: true })).toBe(
       "/assets/polish-balance/stat-knowledge.webp"
@@ -81,9 +81,9 @@ describe("Polish Balance Pack — card faces swap while the rule is ON", () => {
     expect(faceSrc("stat.knowledge.empowered", { balance: true })).toBe(
       "/assets/polish-balance/stat-knowledge-empowered.webp"
     );
-    // Diplomacy has no dedicated Empowered balance reprint, so the balance face wins.
+    // Diplomacy now ships a dedicated Empowered balance face (v131 rules text).
     expect(faceSrc("ability.diplomacy", { balance: true, empowered: true })).toBe(
-      "/assets/polish-balance/ability-diplomacy.webp"
+      "/assets/polish-balance/ability-diplomacy-empowered.webp"
     );
   });
 

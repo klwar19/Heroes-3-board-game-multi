@@ -1183,8 +1183,9 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // Towns and faction Towns do); `settlement-neutral-recruitment` also sells the
 // Settlement faction's AZURE signature Neutral (Gold Dragons / Titans / Hydras /
 // Phoenixes) once the buyer has a Gold Dwelling; the designer per-field combat
-// round cap applies only to the field's own guard fight (never a wave / delve /
-// raid boss). Audit fixes riding the same bump: the legacy OPEN_WANDERING_MERCHANT
+// round limit means that many FREE rounds before the normal pay-movement-points
+// continue window (never an automatic retreat), and applies only to the field's
+// own guard fight (never a wave / delve / raid boss). Audit fixes riding the same bump: the legacy OPEN_WANDERING_MERCHANT
 // visit is turn-gated again and an atomic buy closes an opened legacy shop; the
 // parallel round-event router never throws from an auto-pumped Marketplace
 // answer, never captures the table's round-start queue into one seat's window,
@@ -1192,7 +1193,12 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // when parallel play stops; Conquer keeps the surviving-rival shortcut. A v129
 // worker builds a different siege and refuses the recruit.
 // `npm run deploy:partykit` owed with this bump.
-export const ENGINE_PROTOCOL_VERSION = 130;
+// v131 (2026-09-11): Polish Balance Diplomacy replaces its old neutral-combat
+// skip with a pre-battle tier reduction or one fewer Creature-Bank Stack Token.
+// The authoritative combat context carries the chosen reduction through hidden
+// guard reveal, while Bank rewards retain their unreduced Stack count. A v131
+// worker would still offer the obsolete auto-claim. `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 131;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

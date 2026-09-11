@@ -433,7 +433,7 @@ describe("view + reducer plumbing", () => {
 
   it("is offered to a COMPUTER seat and scored as a real buy", () => {
     const state = merchantRound();
-    state.controllers = { ...(state.controllers ?? {}), p3: { kind: "computer", difficulty: "normal" } } as GameState["controllers"];
+    state.controllers = { ...(state.controllers ?? {}), p3: { kind: "computer", difficulty: "normal" } } as unknown as GameState["controllers"];
     const observation = observeForComputer(state, "p3");
     const offer = observation.legalActions.find((entry) => entry.action.type === "BUY_WANDERING_MERCHANT");
     expect(offer, "the AI sees the purchase").toBeTruthy();
