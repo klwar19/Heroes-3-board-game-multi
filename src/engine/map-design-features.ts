@@ -597,6 +597,7 @@ export function applyBreakFieldOptions(
         breakField?: boolean;
         persistentGuard?: boolean;
         unlimitedRounds?: boolean;
+        combatRoundLimit?: 1 | 2 | 3 | "unlimited";
       }
     | undefined
 ): void {
@@ -605,6 +606,8 @@ export function applyBreakFieldOptions(
   else delete field.breakField;
   if (options.persistentGuard) field.persistentGuard = true;
   else delete field.persistentGuard;
+  if (options.combatRoundLimit !== undefined) field.combatRoundLimit = options.combatRoundLimit;
+  else delete field.combatRoundLimit;
   if (options.unlimitedRounds) field.unlimitedCombatRounds = true;
   else delete field.unlimitedCombatRounds;
 }

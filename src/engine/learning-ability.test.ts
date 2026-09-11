@@ -92,7 +92,10 @@ describe("Learning offer timing", () => {
   // level. "Must show instant reaction whenever you receive exp, from ANY source"
   // — a half-level gain now opens it too. See learning-after-combat.test.ts for
   // the map-object / timed-event coverage of the same widened trigger.
-  it("DOES offer Learning on a half-level gain that crosses no level", () => {
+  // v129: the classic card is back on its PRINTED timing — the offer opens only
+  // when the gain actually crosses a level (the Polish reprint alone keeps the
+  // every-gain trigger, covered in polish-card-balance-abilities.test.ts).
+  it("does NOT offer classic Learning on a half-level gain that crosses no level", () => {
     const state = makeGame();
     const hero = getMainHero(state, "p1")!;
     hero.experience = 4; // level 3
@@ -103,7 +106,7 @@ describe("Learning offer timing", () => {
     expect(getMainHero(state, "p1")!.level).toBe(3);
     const isLearningChoice =
       state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context === "learning-level-up";
-    expect(isLearningChoice).toBe(true);
+    expect(isLearningChoice).toBe(false);
   });
 
   it("does NOT offer Learning at the Experience cap", () => {

@@ -1,4 +1,5 @@
 "use client";
+import { WanderingMerchantNotice } from "@/components/adventure/wandering-merchant-notice";
 import { isParallelWatchOnly, parallelPresentationEvents, parallelStateForPlayer } from "@/engine/parallel-combats";
 import { ParallelBattleSwitcher } from "@/components/table/parallel-battle-switcher";
 
@@ -12,6 +13,7 @@ import {
   ENGINE_SIGNATURE,
   getEffectiveCardEffect,
   explorersHandStepActive,
+  isEmpowerableStatisticCard,
   getLegalActions,
   getPermanentCardIds,
   getPlayerView,
@@ -5980,6 +5982,16 @@ export default function Home() {
     const explorersActive = explorersHandStepActive(state);
     const explorersDiscardPending =
       Boolean(viewer?.explorersDiscardPending) && hasOpenAdventureTurn(state, viewerPlayerId);
+    // Explorers pays out ONLY as free empowers of Statistics still in hand
+    // (queueExplorersEmpower skips when none is left). Warn before the player
+    // throws cards away for nothing: no Statistic in hand at all, or every
+    // Statistic is itself among the picked discards (USER RULE 2026-09-11).
+    const explorersStatisticsInHand = explorersDiscardPending
+      ? handCards.filter((cardId) => isEmpowerableStatisticCard(cardId)).length
+      : 0;
+    const explorersStatisticsKept = explorersDiscardPending
+      ? handCards.filter((cardId, index) => !handDiscards.includes(index) && isEmpowerableStatisticCard(cardId)).length
+      : 0;
     // Over the hand limit at the start of the turn (only via card effects):
     // the player MUST discard down to the limit before acting. Parallel turns:
     // every open parallel turn counts as "my turn" here.
@@ -6835,6 +6847,13 @@ export default function Home() {
                     replace one Statistic with its Empowered version.
                   </span>
                 ) : null}
+                {explorersDiscardPending && explorersStatisticsKept === 0 ? (
+                  <span className="handWarning" data-testid="explorers-no-statistic-warning" role="alert">
+                    {explorersStatisticsInHand === 0
+                      ? "Warning: you hold no Statistic card, so discarding cannot empower anything — discarded cards are simply lost. Confirm with nothing selected to keep your hand."
+                      : "Warning: every Statistic card in your hand is selected for discard — nothing would be left to empower. Keep at least one Statistic to benefit."}
+                  </span>
+                ) : null}
                 {canOpeningMulligan && handMode === null ? (
                   <span className="handHint mulliganHint">
                     Opening Mulligan available — keep your hand, or discard cards to your deck and redraw that many.
@@ -7492,6 +7511,7 @@ export default function Home() {
             </div>
           ) : null}
 
+          {isSeated ? <WanderingMerchantNotice state={state} viewerPlayerId={viewerPlayerId} onAction={submitAction} /> : null}
           <AdventureEventFeed
             items={feedItems}
             onDismiss={(id) => setFeedItems((current) => current.filter((item) => item.id !== id))}
@@ -7959,6 +7979,7 @@ export default function Home() {
         </div>
       </div>
 
+      {isSeated && state.mode === "adventure" ? <WanderingMerchantNotice state={state} viewerPlayerId={viewerPlayerId} onAction={submitAction} /> : null}
       <AdventureEventFeed
         items={feedItems}
         onDismiss={(id) => setFeedItems((current) => current.filter((item) => item.id !== id))}

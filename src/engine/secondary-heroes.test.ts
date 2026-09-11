@@ -19,7 +19,7 @@ import { getLegalActions, isHandLockedInCombat } from "./legal-actions";
 import { applyAction, createAdventureGameState } from "./index";
 import { ATTACK_DIE_FACES } from "./battlefield";
 
-type Mode = "conquest" | "grail" | "dragon-conqueror";
+type Mode = "conquest" | "conquer" | "grail" | "dragon-conqueror";
 
 function makeGame(victoryMode: Mode = "conquest"): GameState {
   return createAdventureGameState({ seed: `sec-${victoryMode}`, difficulty: "normal", rollFirstPlayer: false, victoryMode });
@@ -471,7 +471,8 @@ describe("Secondary Hero experience", () => {
   });
 
   it("grants no experience when it defeats an enemy hero, but the win still counts", () => {
-    const state = makeGame("grail");
+    // v127: only Conquer records PvP cubes, so that is the mode under test.
+    const state = makeGame("conquer");
     const secondary = createSecondaryHero(state, "p1", "70,70");
     const enemyMain = getMainHero(state, "p2")!;
     const field = injectField(state, "empty_field", "76,76");
@@ -494,7 +495,7 @@ describe("Secondary Hero experience", () => {
 
     // No experience for the Secondary Hero's win...
     expect(getMainHero(state, "p1")!.experience).toBe(0);
-    // ...but beating the enemy Main Hero still counts toward conquest.
+    // ...but beating the enemy Main Hero still counts toward Conquer.
     expect(state.adventure!.heroDefeats?.p1).toEqual(["p2"]);
     expect(state.adventure!.winnerPlayerId).toBe("p1");
   });

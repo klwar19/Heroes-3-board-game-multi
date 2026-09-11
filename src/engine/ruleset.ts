@@ -57,22 +57,15 @@ export const VICTORY_MODE_LABELS: Record<VictoryMode, string> = {
 
 export const VICTORY_MODE_DESCRIPTIONS: Record<VictoryMode, string> = {
   conquest:
-    "Win PvP battles against distinct rivals: 2 players need 1, 3 need 2, 4 need 2, 5 need 3. The cube target is fixed from the starting table. Elimination or match forfeit removes that rival without awarding a PvP win; earned cubes remain, and the last faction standing wins if every rival leaves. Flagging an enemy Town earns you a resource-gain " +
-    "level (+5 gold, +2 materials, or +1 valuables) and starts their clock — a player with no Town and no " +
-    "Settlement lasts 2 more turns before being removed. A held Settlement keeps them fighting. Last faction standing wins.",
+    "Default in multiplayer and single player: eliminate every enemy faction. A settlement capture, Town capture, or PvP win alone does not win while an enemy faction remains. A player with no Town or Settlement has 2 more turns before elimination. The last faction or alliance standing wins.",
   conquer:
-    "Eliminate every enemy faction. Capturing an enemy Town starts its normal elimination clock, but neither that capture nor a PvP win ends the game while an enemy faction remains active. The last faction or alliance standing wins.",
+    "Win PvP battles against distinct rivals: 2 players need 1, 3 or 4 need 2, 5 or 6 need 3. The target is fixed from the starting table; eliminations do not award PvP credit or lower it, but once every surviving rival has been beaten the path completes. Eliminating every enemy faction also wins.",
   grail:
-    "Win either way: capture the Holy Grail (defeat its Lvl-VII guard, visit 2 distinct Obelisks, dig for 1 " +
-    "movement point, then carry it home to your town), or meet the Conquest requirement through permanent faction cubes earned by distinct PvP wins (target fixed from the starting table) " +
-    "(3/4 players need 2 distinct rivals; 5/6 need 3). The map seeds at least 2 Obelisks (designer presets count) and " +
-    "up to 2 Grail dig sites when layout space allows. The Dragon Utopia is just a creature bank here.",
+    "Capture the Holy Grail: defeat its Lvl-VII guard, visit 2 distinct Obelisks, dig for 1 movement point, then carry it home to your town. Or win by Conquest: eliminate every enemy faction. The map seeds at least 2 Obelisks and up to 2 Grail dig sites when space allows. The Dragon Utopia is just a creature bank here.",
   "dragon-hunt":
-    "Win either way: defeat the Dragon Utopia (no need to hold it afterwards), or meet the Conquest requirement through permanent faction cubes earned by distinct PvP wins (target fixed from the starting table) " +
-    "(3/4 players need 2 distinct rivals; 5/6 need 3). A Dragon Utopia is guaranteed on a VI–VII Center tile.",
+    "Defeat the Dragon Utopia (no need to hold it afterwards), or win by Conquest: eliminate every enemy faction. A Dragon Utopia is guaranteed on a VI–VII Center tile.",
   "dragon-conqueror":
-    "Defeat the Dragon Utopia to capture it, then hold it. The holder garrisons the Utopia and rivals must " +
-    "besiege it (Walls, Gate, Arrow Tower) to take it. Hold the Utopia until every player has ended the round following capture to win (capture in round 1, win after the last player ends round 2), or meet the Conquest requirement through permanent faction cubes earned by distinct PvP wins (target fixed from the starting table)."
+    "Capture the Dragon Utopia and hold it until every player has ended the round following capture. Rivals must besiege it (Walls, Gate, Arrow Tower) to take it. Or win by Conquest: eliminate every enemy faction."
 };
 
 export const PVP_TROOP_LOSS_LABELS: Record<"normal" | "none", string> = {

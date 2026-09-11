@@ -1172,7 +1172,27 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // v125: BINH Random Town level-VI and level-VII gold defenders both use Few.
 // v126: Frost Ring/Wait fixes, corrected veterancy damage, instant Ballista
 // reactions and direct ongoing-spell immunity require matching room semantics.
-export const ENGINE_PROTOCOL_VERSION = 126;
+// v127: Conquest requires faction elimination in every mode; only Conquer
+// counts distinct PvP wins. Single-player defaults to Conquest as well.
+// v128: independent parallel round-event contexts and atomic discounted
+// Wandering Merchant purchases, including while another seat is in combat.
+// v129: Classic Learning (including Community-only games) triggers only on an
+// actual level-up; the Polish reprint alone retains its every-XP-gain timing.
+// v130 (2026-09-11, audited v127–v129 batch + user rules): a PvP attack on a
+// controlled SETTLEMENT never raises Citadel walls/gate/tower (only Random
+// Towns and faction Towns do); `settlement-neutral-recruitment` also sells the
+// Settlement faction's AZURE signature Neutral (Gold Dragons / Titans / Hydras /
+// Phoenixes) once the buyer has a Gold Dwelling; the designer per-field combat
+// round cap applies only to the field's own guard fight (never a wave / delve /
+// raid boss). Audit fixes riding the same bump: the legacy OPEN_WANDERING_MERCHANT
+// visit is turn-gated again and an atomic buy closes an opened legacy shop; the
+// parallel round-event router never throws from an auto-pumped Marketplace
+// answer, never captures the table's round-start queue into one seat's window,
+// keeps merely-queued seats behind a wave barrier, and re-homes open windows
+// when parallel play stops; Conquer keeps the surviving-rival shortcut. A v129
+// worker builds a different siege and refuses the recruit.
+// `npm run deploy:partykit` owed with this bump.
+export const ENGINE_PROTOCOL_VERSION = 130;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

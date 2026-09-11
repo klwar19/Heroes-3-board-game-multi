@@ -468,6 +468,7 @@ export function sanitizeCenterHexPlan(input: unknown): CustomCenterHexPlan | und
   if (raw.breakField === true) centerHex.breakField = true;
   if (raw.persistentGuard === true) centerHex.persistentGuard = true;
   if (raw.unlimitedRounds === true) centerHex.unlimitedRounds = true;
+  if (raw.combatRoundLimit === 1 || raw.combatRoundLimit === 2 || raw.combatRoundLimit === 3 || raw.combatRoundLimit === "unlimited") centerHex.combatRoundLimit = raw.combatRoundLimit;
   if (raw.flaggableDragonUtopia === true) centerHex.flaggableDragonUtopia = true;
   return Object.keys(centerHex).length > 0 ? centerHex : undefined;
 }
@@ -1360,6 +1361,7 @@ export function sanitizeObjectFieldPlan(input: unknown): CustomObjectFieldPlan |
     breakField?: unknown;
     persistentGuard?: unknown;
     unlimitedRounds?: unknown;
+    combatRoundLimit?: unknown;
     winCondition?: unknown;
   };
   const plan: CustomObjectFieldPlan = {};
@@ -1377,6 +1379,7 @@ export function sanitizeObjectFieldPlan(input: unknown): CustomObjectFieldPlan |
   if (raw.breakField === true) plan.breakField = true;
   if (raw.persistentGuard === true) plan.persistentGuard = true;
   if (raw.unlimitedRounds === true) plan.unlimitedRounds = true;
+  if (raw.combatRoundLimit === 1 || raw.combatRoundLimit === 2 || raw.combatRoundLimit === 3 || raw.combatRoundLimit === "unlimited") plan.combatRoundLimit = raw.combatRoundLimit;
   if (raw.winCondition === true) plan.winCondition = true;
   return Object.keys(plan).length > 0 ? plan : undefined;
 }
@@ -1419,19 +1422,23 @@ function sanitizeBreakFlags(raw: {
   breakField?: unknown;
   persistentGuard?: unknown;
   unlimitedRounds?: unknown;
+  combatRoundLimit?: unknown;
 }): {
   breakField?: true;
   persistentGuard?: true;
   unlimitedRounds?: true;
+  combatRoundLimit?: 1 | 2 | 3 | "unlimited";
 } {
   const flags: {
     breakField?: true;
     persistentGuard?: true;
     unlimitedRounds?: true;
+    combatRoundLimit?: 1 | 2 | 3 | "unlimited";
   } = {};
   if (raw.breakField === true) flags.breakField = true;
   if (raw.persistentGuard === true) flags.persistentGuard = true;
   if (raw.unlimitedRounds === true) flags.unlimitedRounds = true;
+  if (raw.combatRoundLimit === 1 || raw.combatRoundLimit === 2 || raw.combatRoundLimit === 3 || raw.combatRoundLimit === "unlimited") flags.combatRoundLimit = raw.combatRoundLimit;
   return flags;
 }
 
@@ -1448,6 +1455,7 @@ function sanitizeObeliskConfig(input: unknown): CustomMapObeliskConfig | undefin
     breakField?: unknown;
     persistentGuard?: unknown;
     unlimitedRounds?: unknown;
+    combatRoundLimit?: unknown;
   };
   if (typeof raw.role !== "string" || !OBELISK_ROLES.has(raw.role as CustomMapObeliskConfig["role"])) {
     return undefined;
@@ -1491,11 +1499,12 @@ function sanitizeMinesConfig(input: unknown): CustomMapMinesConfig | undefined {
     breakField?: unknown;
     persistentGuard?: unknown;
     unlimitedRounds?: unknown;
+    combatRoundLimit?: unknown;
   };
   const config: CustomMapMinesConfig = { ...sanitizeBreakFlags(raw) };
   const guard = sanitizeCustomGuardSpec(raw.guard);
   if (guard) config.guard = guard;
-  return config.guard || config.breakField || config.persistentGuard || config.unlimitedRounds
+  return config.guard || config.breakField || config.persistentGuard || config.unlimitedRounds || config.combatRoundLimit
     ? config
     : undefined;
 }
@@ -1873,6 +1882,7 @@ export function sanitizeCustomMapObject(input: unknown): CustomMapObject | null 
     bankId?: unknown;
     bankSize?: unknown;
     garrisonBorderPassage?: unknown;
+    combatRoundLimit?: unknown;
   };
   if (typeof raw.kind !== "string" || !CUSTOM_MAP_OBJECT_KINDS.has(raw.kind as CustomMapObjectKind)) {
     return null;
@@ -1948,6 +1958,7 @@ export function sanitizeCustomMapObject(input: unknown): CustomMapObject | null 
   // A designer guard (optional): the LEGACY plain number is a level 1-7; the
   // spec form adds "certain army" guards. Both normalise to a clean spec. A
   // Barrier and a one-way EXIT are NEVER guarded (printed rules) — stripped.
+  if (raw.combatRoundLimit === 1 || raw.combatRoundLimit === 2 || raw.combatRoundLimit === 3 || raw.combatRoundLimit === "unlimited") object.combatRoundLimit = raw.combatRoundLimit;
   const guard = kind === "barrier" || kind === "oneway_exit" ? undefined : sanitizeObjectGuard(raw.guard);
   if (guard) {
     object.guard = guard;

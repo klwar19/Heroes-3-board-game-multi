@@ -97,6 +97,7 @@ import {
   openViewEarthChoice,
   openMarket,
   openWanderingMerchant,
+  buyWanderingMerchant,
   openSharedDeckSearch,
   maybeOpenPostSearchOffers,
   openDiscardTopPick,
@@ -120,6 +121,7 @@ import {
   populationAction,
   redeemReinforcementDiscountAction,
   pumpAdventureQueues,
+  pumpParallelRoundEvents,
   openDiscardPickChoice,
   giveUpCombat,
   refreshHand,
@@ -6895,7 +6897,7 @@ function concludeAttackerActivation(
     attacker.type === "ranged" &&
     isUnitAlive(attacker) &&
     !attacker.movedThisActivation &&
-    !attacker.activatedThisRound &&
+    (!attacker.activatedThisRound || (combat.waitPhase && attacker.waitPending)) &&
     getLegalMoveDestinations(combat, attacker, state).length > 0;
 
   if (canRangedReposition) {
@@ -9052,6 +9054,31 @@ type PostAttackFollowUpContext = {
   /** The second Double Strike only repeats Death Stare, then ends the activation. */
   finishAfterDeathStare?: boolean;
 };
+
+/** Event/Astrologers choices intentionally mutate shared event state while parallel play is active. */
+function isParallelEventResolutionAction(state: GameState, action: GameAction): boolean {
+  if (action.type !== "RESOLVE_VISIT_STEP") return false;
+  const visit = state.adventure?.pendingVisit;
+  const step = visit?.steps[0];
+  if (!visit || !step) return false;
+  // Only a visit the round-event router actually opened is exempt. Several of
+  // the step types below are shared with map objects and buildings (designer
+  // `empowerStatistic` rewards, Garden of Life, town reinforcement, Dwelling
+  // recruits), so the type test alone would disarm the parallel PvP backstop
+  // for ordinary play (audit 2026-09-11).
+  if (!state.adventure?.parallelEventOpenPlayers?.includes(visit.playerId)) return false;
+  const eventSpecific = new Set([
+    "DISRUPTION_ROTATE_OFFER", "DISRUPTION_ROTATE_TILE", "DISRUPTION_SET_ROTATION",
+    "REINFORCE_FREE", "WAR_MACHINE_GRANT_OFFER", "NEUTRAL_RECRUIT_OFFER", "FACTION_RECRUIT_OFFER",
+    "REMOVE_UP_TO", "FLIP_PACK_TO_FEW", "DESTRUCTION_REMOVE_PERMANENT", "REINFORCE_ARMY_UNIT",
+    "STAT_EMPOWER_OFFER", "EVENT_POOL_TAKE_RANDOM", "EVENT_POOL_TAKE_CARD", "EVENT_TAKE_POOL_DIE",
+  ]);
+  const containsEvent = (candidate: VisitStep): boolean => {
+    if (candidate.type.startsWith("EVENT_") || eventSpecific.has(candidate.type)) return true;
+    return candidate.type === "CHOOSE_ONE" && candidate.options.some((option) => option.steps.some(containsEvent));
+  };
+  return containsEvent(step);
+}
 
 /**
  * The pause-capable follow-ups of a resolved, NON-retaliation attack, in
@@ -35015,13 +35042,35 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
         const isDragonUtopiaFight = utopiaField?.location === "dragon_utopia";
         const isLevelSevenField =
           combat.context.kind === "neutral" && combat.context.difficulty >= 7;
-        if (
+        // Designer per-field round cap: only a fight AGAINST that field's own
+        // guard. A Calamity Wave / Dungeon delve / Raid Boss merely happens on
+        // the hero's field and keeps its own rules (a wave is neutral-attacked,
+        // so the forced "retreat" below would even throw for it).
+        const fieldRoundLimit =
+          combat.context.kind === "neutral" &&
+          !combat.context.waveAssault &&
+          combat.context.dungeonFloor === undefined &&
+          !combat.context.raidBossId &&
+          combat.attackerPlayerId !== NEUTRAL_PLAYER_ID
+            ? utopiaField?.combatRoundLimit
+            : undefined;
+        if (combat.context.kind === "neutral" && fieldRoundLimit !== undefined) {
+          // Designer override only. No continuation window can bypass a hard cap.
+          if (fieldRoundLimit !== "unlimited" && combat.round >= fieldRoundLimit) {
+            combat.awaitingContinue = true;
+            appendEvent(state, {
+              type: "EVENT_NOTE",
+              playerId: combat.attackerPlayerId,
+              message: "Field round limit (" + fieldRoundLimit + ") reached: automatic retreat."
+            });
+            retreatFromCombat(state, { type: "RETREAT_FROM_COMBAT", playerId: combat.attackerPlayerId });
+            continue;
+          }
+        } else if (
           combat.context.kind === "neutral" &&
           !combat.context.hasAzure &&
           !isDragonUtopiaFight &&
           !isLevelSevenField &&
-          // Designer outposts (Garrison / Keymaster's Tent / one-way entrance):
-          // "the fight is unlimited, as in Banks" — never a Round limit.
           !combat.context.unlimitedRounds &&
           (combat.context.bankId === undefined ||
             houseRuleEnabled(state, "bank-move-points"))
@@ -35174,6 +35223,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "BUILD_GRAIL",
   "OPEN_MARKET",
   "OPEN_WANDERING_MERCHANT",
+  "BUY_WANDERING_MERCHANT",
   "DISCOVER_TILE",
   "PLACE_TILE",
   "PLACE_OBSERVATORY_TILE",
@@ -35393,6 +35443,7 @@ export function applyAction(
       : state;
   if (
     action.parallelContextId &&
+    action.type !== "BUY_WANDERING_MERCHANT" &&
     action.type !== "SELECT_PARALLEL_CONTEXT" &&
     action.parallelContextId !==
       (selected.combat?.id ??
@@ -35405,12 +35456,13 @@ export function applyAction(
     });
   }
   const result = applyActionInContext(selected, action, options);
-  if (!result.errors.length) trackCombatRetake(selected, result.state, action);
+  if (!result.errors.length && action.type !== "BUY_WANDERING_MERCHANT") trackCombatRetake(selected, result.state, action);
   const pendingOwner =
     result.state.pendingChoice?.playerId ??
     result.state.reactionWindow?.priorityPlayerId;
   if (
     !result.errors.length &&
+    action.type !== "BUY_WANDERING_MERCHANT" &&
     pendingOwner &&
     result.state.parallelCombats?.[pendingOwner] &&
     (!result.state.combat ||
@@ -35423,7 +35475,27 @@ export function applyAction(
         "Wait for that player's parallel battle to finish before opening a choice for them.",
     });
   }
-  if (!result.errors.length) settleParallelCombatContext(result.state);
+  if (!result.errors.length) {
+    // Parallel round-event windows open AFTER the action settled. Only the
+    // pump is guarded: its own per-window rollback (pumpParallelRoundEvents'
+    // run()) already absorbs a stale parked window, so a throw reaching here is
+    // a genuine refusal of the acting player's action and is reported as one.
+    // settleParallelCombatContext stays outside the guard, exactly as before
+    // v128, so a context bug surfaces instead of being masked as "not legal".
+    const previousEntropy = setActiveEntropy(options.entropy);
+    try {
+      if (action.type !== "BUY_WANDERING_MERCHANT") pumpParallelRoundEvents(result.state);
+    } catch (error) {
+      return fail(state, { code: "ACTION_NOT_LEGAL", message: (error as Error).message });
+    } finally {
+      setActiveEntropy(previousEntropy);
+    }
+    settleParallelCombatContext(result.state);
+    // Re-wrap so events appended by a window that just opened are returned too
+    // (`startEventNumber` inside applyActionInContext equals this seed: the
+    // projection never touches eventLog/eventCounter).
+    return ok(result.state, eventSeedNumber(selected));
+  }
   return result.errors.length && selected !== state
     ? { ...result, state }
     : result;
@@ -35595,6 +35667,7 @@ function applyActionInContext(
   if (
     actorPlayerId &&
     !isTableMetaAction &&
+    action.type !== "BUY_WANDERING_MERCHANT" &&
     isRoundStartEventBarrierActive(nextState)
   ) {
     const resolver = roundStartEventResolver(nextState);
@@ -35828,6 +35901,9 @@ function applyActionInContext(
           break;
         case "OPEN_WANDERING_MERCHANT":
           openWanderingMerchant(nextState, action);
+          break;
+        case "BUY_WANDERING_MERCHANT":
+          buyWanderingMerchant(nextState, action);
           break;
         case "DISCOVER_TILE":
           discoverTile(nextState, action);
@@ -36371,6 +36447,14 @@ function applyActionInContext(
       });
     }
 
+    // This purchase cannot advance an unrelated battle or pump its pending
+    // choices. Its handler already validates the buyer, price and round limit.
+    if (action.type === "BUY_WANDERING_MERCHANT") {
+      applyAfkBookkeeping(nextState, action, options.now);
+      applyTurnClockBookkeeping(nextState, options.now, turnClockPausedBefore);
+      return ok(nextState, startEventNumber);
+    }
+
     if (nextState.combat) {
       for (const [unitId, controllerId] of livingArmyBefore) {
         const unit = nextState.combat.units[unitId];
@@ -36498,7 +36582,7 @@ function applyActionInContext(
 
     if (actorPlayerId && !isTableMetaAction) {
       const affected = parallelPlayerImpact(base, nextState, actorPlayerId);
-      if (affected) {
+      if (affected && !isParallelEventResolutionAction(base, action)) {
         try {
           stopParallelTurns(
             nextState,

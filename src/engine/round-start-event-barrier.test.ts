@@ -88,6 +88,40 @@ function resolveCurrentEventStep(state: GameState): GameState {
   return apply(state, legal!.action);
 }
 
+
+/**
+ * v128 parallel round events: every seat's Event/Astrologers window is parked
+ * per seat and opens in that seat's own context after its start-of-turn draw.
+ * Drives each seat through draw → choice/window until nothing is offered.
+ */
+function driveParallelWindows(
+  state: GameState,
+  seats: PlayerId[]
+): { state: GameState; sawWindow: Set<PlayerId>; sawChoice: Set<PlayerId> } {
+  const sawWindow = new Set<PlayerId>();
+  const sawChoice = new Set<PlayerId>();
+  for (let guard = 0; guard < 40; guard += 1) {
+    let progressed = false;
+    for (const id of seats) {
+      const offers = getLegalActions(state, id);
+      if (offers.some((entry) => entry.action.type === "RESOLVE_VISIT_STEP")) sawWindow.add(id);
+      if (offers.some((entry) => entry.action.type === "CHOOSE_OPTION")) sawChoice.add(id);
+      const next =
+        offers.find((entry) => entry.action.type === "CHOOSE_OPTION") ??
+        offers.find((entry) => entry.action.type === "RESOLVE_VISIT_STEP") ??
+        offers.find((entry) => entry.action.type === "REFRESH_HAND");
+      if (!next) continue;
+      state = apply(state, next.action);
+      progressed = true;
+      // Never a whole-table barrier, never a stop of parallel play.
+      expect(state.adventure?.eventResolution ?? null).toBeNull();
+      expect(state.turn.mode).toBe("parallel");
+    }
+    if (!progressed) break;
+  }
+  return { state, sawWindow, sawChoice };
+}
+
 /** Repaints an empty, trigger-free field next to a hero and returns its id. */
 function emptyFieldNextTo(state: GameState, heroId: string): string {
   const hero = state.heroes[heroId];
@@ -114,47 +148,43 @@ function emptyFieldNextTo(state: GameState, heroId: string): string {
 // A. Parallel — the whole table freezes until every player resolves the Event
 // ===========================================================================
 
-describe("Event deck × parallel — the whole table freezes until every player resolves it", () => {
-  it("opens the drawer's Event choice; every other player is frozen (no quiet move, no draw, no End Turn)", () => {
+describe("Event deck × parallel — every seat resolves the Event in its OWN window; nobody is frozen (v128)", () => {
+  it("parks one window per seat, opens it after that seat's draw, and leaves the other seat free to move", () => {
     const state = parallelEventsGame("barrier-par-freeze");
     stackEventDeck(state, "event.stables");
     startEventResourceRound(state);
 
-    // The Event resolves FIRST: its barrier is up and the drawer's choice is open.
-    expect(state.adventure?.eventResolution?.round).toBe(3);
-    const drawer = eventVisitOwner(state);
-    expect(drawer).toBeTruthy();
-    const bystander: PlayerId = drawer === "p1" ? "p2" : "p1";
+    // No whole-table barrier and no shared visit: the Event is parked per seat.
+    expect(state.adventure?.eventResolution ?? null).toBeNull();
+    expect(state.adventure?.pendingVisit).toBeNull();
+    for (const id of ["p1", "p2"] as PlayerId[]) {
+      expect(state.adventure?.parallelRoundRewards?.[id]?.length ?? 0, `${id} parked`).toBeGreaterThan(0);
+      expect(getLegalActions(state, id).some((entry) => entry.action.type === "END_TURN"), `${id} END_TURN withheld`).toBe(false);
+    }
 
-    // The bystander is FULLY frozen — no legal action at all, and every attempt
-    // (quiet move, ending the turn) is rejected with the barrier message.
-    expect(getLegalActions(state, bystander)).toEqual([]);
-    const quiet = emptyFieldNextTo(state, `hero_${bystander}`);
-    expect(
-      expectRejected(state, { type: "MOVE_HERO", playerId: bystander, heroId: `hero_${bystander}`, to: quiet })
-    ).toContain("Event is still being resolved");
-    expect(expectRejected(state, { type: "END_TURN", playerId: bystander })).toContain("Event is still being resolved");
-    // The blocked move never happened.
-    expect(state.heroes[`hero_${bystander}`].spaceId).not.toBe(quiet);
+    // p1 takes its start-of-turn draw: ITS window opens; p2 is not frozen.
+    let next = apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    expect(getLegalActions(next, "p1").some((entry) => entry.action.type === "RESOLVE_VISIT_STEP")).toBe(true);
+    expect(getLegalActions(next, "p2").some((entry) => entry.action.type === "REFRESH_HAND")).toBe(true);
+    next = apply(next, { type: "REFRESH_HAND", playerId: "p2", discardCardIds: [] });
+    expect(getLegalActions(next, "p2").some((entry) => entry.action.type === "RESOLVE_VISIT_STEP")).toBe(true);
 
-    // The drawer resolves; the barrier hands the choice to the next seat and is
-    // STILL up — so now the former drawer is the one frozen out.
-    let next = resolveCurrentEventStep(state);
-    expect(next.adventure?.eventResolution?.round).toBe(3);
-    expect(eventVisitOwner(next)).toBe(bystander);
-    const drawerQuiet = emptyFieldNextTo(next, `hero_${drawer}`);
-    expect(
-      expectRejected(next, { type: "MOVE_HERO", playerId: drawer!, heroId: `hero_${drawer}`, to: drawerQuiet })
-    ).toContain("Event is still being resolved");
+    // p2 answers its own window first (no seat order) while p1's stays open…
+    const answerP2 = getLegalActions(next, "p2").find((entry) => entry.action.type === "RESOLVE_VISIT_STEP")!;
+    next = apply(next, answerP2.action);
+    expect(getLegalActions(next, "p1").some((entry) => entry.action.type === "RESOLVE_VISIT_STEP")).toBe(true);
+    // …and moves freely beside it (CONTROL: the old barrier rejected this).
+    const quiet = emptyFieldNextTo(next, "hero_p2");
+    next = apply(next, { type: "MOVE_HERO", playerId: "p2", heroId: "hero_p2", to: quiet });
+    expect(next.heroes.hero_p2.spaceId).toBe(quiet);
 
-    // The last seat resolves: the barrier LIFTS, and the quiet move it rejected a
-    // moment ago now succeeds (CONTROL — the freeze was temporary and Event-scoped).
-    next = resolveCurrentEventStep(next);
-    expect(next.adventure?.eventResolution ?? null).toBeNull();
-    expect(next.turn.mode).toBe("parallel");
-    const nowQuiet = emptyFieldNextTo(next, `hero_${bystander}`);
-    next = apply(next, { type: "MOVE_HERO", playerId: bystander, heroId: `hero_${bystander}`, to: nowQuiet });
-    expect(next.heroes[`hero_${bystander}`].spaceId).toBe(nowQuiet);
+    // p1 answers last: nothing stays parked and the table is still parallel.
+    const drained = driveParallelWindows(next, ["p1", "p2"]);
+    expect(drained.sawWindow.has("p1")).toBe(true);
+    expect(drained.state.adventure?.parallelEventOpenPlayers ?? []).toEqual([]);
+    expect(Object.values(drained.state.adventure?.parallelRoundRewards ?? {}).flat()).toEqual([]);
+    expect(drained.state.adventure?.eventResolution ?? null).toBeNull();
+    expect(drained.state.turn.mode).toBe("parallel");
   });
 });
 
@@ -162,32 +192,37 @@ describe("Event deck × parallel — the whole table freezes until every player 
 // B. Ordering — the Event resolves BEFORE City Hall round-start choices
 // ===========================================================================
 
-describe("Event deck — resolves BEFORE City Hall choices, not after", () => {
-  it("keeps the City Hall choice queued behind the whole Event; it only opens once the Event is done", () => {
+describe("Event deck × parallel — table-wide City Hall choices drain first, then each seat's Event window (v128)", () => {
+  // Parallel play keeps the SHARED round-start queue (City Hall choices for
+  // every seat) on the old table path and never captures it into one seat's
+  // Event context (audit 2026-09-11): the Event windows open once that queue
+  // has drained. Ordered play still resolves the Event first (see C below).
+  it("never buries another seat's City Hall inside an Event window; both seats reach both", () => {
     const state = parallelEventsGame("barrier-order");
-    // Give both seats a City Hall (a RESOURCE_ROUND_CHOICE round-start reward).
     for (const playerId of ["p1", "p2"] as PlayerId[]) {
       getTownOfPlayer(state, playerId)!.buildings = ["castle.city_hall"];
     }
     stackEventDeck(state, "event.stables");
     startEventResourceRound(state);
 
-    // The FIRST thing open is the Event (a pendingVisit), NOT a City Hall choice
-    // (a pendingChoice) — and the City Hall reward is still parked in the queue.
-    expect(state.adventure?.eventResolution?.round).toBe(3);
-    expect(state.adventure?.pendingVisit).toBeTruthy();
-    expect(state.pendingChoice).toBeNull();
-    expect(state.adventure?.rewardQueue.some((reward) => reward.kind === "city-hall-choice")).toBe(true);
-
-    // Resolve the Event for every seat.
-    let next = resolveCurrentEventStep(state); // drawer
-    next = resolveCurrentEventStep(next); // other seat
-
-    // NOW — and only now — the barrier is down and the City Hall choice opens.
-    expect(next.adventure?.eventResolution ?? null).toBeNull();
-    const choice = next.pendingChoice;
+    expect(state.adventure?.eventResolution ?? null).toBeNull();
+    // The shared queue's City Hall choice is what opens first; the Event
+    // windows are parked per seat and wait for it.
+    const choice = state.pendingChoice;
     expect(choice?.type).toBe("OPTION_CHOICE");
     expect(choice?.type === "OPTION_CHOICE" ? choice.context : null).toBe("city-hall");
+    expect(state.adventure?.pendingVisit).toBeNull();
+    expect(Object.keys(state.adventure?.parallelEventSuspended ?? {})).toEqual([]);
+    expect(state.adventure?.parallelRoundRewards?.p1?.length ?? 0).toBeGreaterThan(0);
+    expect(state.adventure?.parallelRoundRewards?.p2?.length ?? 0).toBeGreaterThan(0);
+
+    const drained = driveParallelWindows(state, ["p1", "p2"]);
+    expect([...drained.sawChoice].sort()).toEqual(["p1", "p2"]);
+    expect([...drained.sawWindow].sort()).toEqual(["p1", "p2"]);
+    expect(Object.keys(drained.state.adventure?.parallelEventSuspended ?? {})).toEqual([]);
+    expect(drained.state.adventure?.parallelEventOpenPlayers ?? []).toEqual([]);
+    expect(drained.state.adventure?.rewardQueue.some((reward) => reward.kind === "city-hall-choice")).toBe(false);
+    expect(drained.state.turn.parallelStopped ?? null).toBeNull();
   });
 });
 
@@ -255,25 +290,26 @@ describe("Event deck — a real Resource-round wrap resolves the Event before th
     next = apply(next, { type: "END_TURN", playerId: "p1" });
     expect(next.round).toBe(3);
 
-    // The Event resolves first as a whole-table barrier — the start-of-turn draw
-    // that the wrap queued for every seat is still parked behind it.
-    expect(next.adventure?.eventResolution?.round).toBe(3);
-    const owner = eventVisitOwner(next);
-    expect(owner).toBeTruthy();
-    const other: PlayerId = owner === "p1" ? "p2" : "p1";
-    // The non-resolving seat cannot take its first-turn draw yet (it is frozen).
-    expect(expectRejected(next, { type: "REFRESH_HAND", playerId: other, discardCardIds: [] })).toContain(
-      "Event is still being resolved"
-    );
-
-    // Resolve the Event for the whole table; the barrier lifts and normal play
-    // (including the deferred start-of-turn draw) becomes available again.
-    next = resolveCurrentEventStep(next);
-    next = resolveCurrentEventStep(next);
+    // v128: no whole-table barrier. The Event is parked per seat; each seat's
+    // start-of-turn draw is offered at once (nobody waits for another seat) and
+    // that seat's own window opens right after its draw.
     expect(next.adventure?.eventResolution ?? null).toBeNull();
-    expect(next.turn.mode).toBe("parallel");
-    // The start-of-turn draw the barrier blocked is now takeable.
-    expect(getLegalActions(next, other).some((entry) => entry.action.type === "REFRESH_HAND")).toBe(true);
+    expect(next.adventure?.pendingVisit).toBeNull();
+    for (const id of ["p1", "p2"] as PlayerId[]) {
+      expect(next.adventure?.parallelRoundRewards?.[id]?.length ?? 0, `${id} parked`).toBeGreaterThan(0);
+      expect(getLegalActions(next, id).some((entry) => entry.action.type === "REFRESH_HAND"), `${id} draw offered`).toBe(true);
+    }
+    next = apply(next, { type: "REFRESH_HAND", playerId: "p2", discardCardIds: [] });
+    expect(getLegalActions(next, "p2").some((entry) => entry.action.type === "RESOLVE_VISIT_STEP")).toBe(true);
+    // p1 has not drawn yet: its window stays parked, its draw is still offered.
+    expect(next.adventure?.parallelRoundRewards?.p1?.length ?? 0).toBeGreaterThan(0);
+    expect(getLegalActions(next, "p1").some((entry) => entry.action.type === "REFRESH_HAND")).toBe(true);
+
+    const drained = driveParallelWindows(next, ["p1", "p2"]);
+    expect([...drained.sawWindow].sort()).toEqual(["p1", "p2"]);
+    expect(drained.state.adventure?.eventResolution ?? null).toBeNull();
+    expect(drained.state.turn.mode).toBe("parallel");
+    expect(drained.state.adventure?.parallelEventOpenPlayers ?? []).toEqual([]);
   });
 });
 

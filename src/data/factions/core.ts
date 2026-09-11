@@ -2932,6 +2932,29 @@ export const neutralUnitIdsByFaction: Record<string, string[]> = Object.fromEntr
 );
 
 /**
+ * The AZURE-tier Neutral Units card depicting a faction's gold-tier signature
+ * creature (Rampart → neutral.gold_dragons, Tower → neutral.titans, Fortress →
+ * neutral.hydras, Conflux → neutral.phoenixes) — matched by creature NAME
+ * against the roster's gold units, since the azure card is deliberately not a
+ * same-tier counterpart (see `neutralCounterpartId`). `undefined` for factions
+ * whose top creature has no azure printing. Consumed by the BINH house rule
+ * `settlement-neutral-recruitment`, which additionally sells this card to a
+ * Settlement owner who has built a Gold Dwelling (USER RULE 2026-09-11).
+ */
+export function azureNeutralCounterpartId(factionId: string): string | undefined {
+  const goldNames = new Set(
+    (coreFactionDefinitions[factionId]?.units ?? [])
+      .map((unitId) => coreUnitDefinitions[unitId])
+      .filter((unit) => unit?.tier === "gold")
+      .map((unit) => unit!.name)
+  );
+  if (goldNames.size === 0) {
+    return undefined;
+  }
+  return neutralUnitIdsByTier.azure.find((id) => goldNames.has(coreUnitDefinitions[id]!.name));
+}
+
+/**
  * Factions whose rosters do not have printed Neutral Unit counterparts.
  * Unexpected Reinforcements falls back to one random, Dwelling-eligible Neutral
  * Unit for these factions instead of leaving them with no card effect.

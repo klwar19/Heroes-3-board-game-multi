@@ -411,6 +411,7 @@ function applyCustomMapTokens(
           ...((isGate || isOneway) && token.pair !== undefined ? { pair: token.pair } : {}),
           ...(preferredSpaceId ? { preferredSpaceId } : {}),
           ...(guard ? { guard } : {}),
+          ...(token.combatRoundLimit !== undefined ? { combatRoundLimit: token.combatRoundLimit } : {}),
           ...(reward ? { reward } : {}),
           ...(tokenVp !== undefined ? { vp: tokenVp } : {}),
           // Two-way gates/monoliths share the one-way exit-mode vocabulary
@@ -487,6 +488,7 @@ function applyCustomMapTokens(
       const carved = adventure.fields[spaceId];
       if (carved) {
         applyCustomGuardToField(carved, guard);
+        carved.combatRoundLimit = token.combatRoundLimit;
         stampDesignerFieldReward(carved, reward, tokenVp);
         // One-way entrance fights are bank-style: keep the army level for the
         // draw while the combat opens at difficulty 0.
@@ -565,7 +567,7 @@ export type AdventureSetupOptions = {
   wog?: Partial<WogModOptions>;
   /** Anime mod modules; honored only when the BINH ruleset is active. */
   anime?: Partial<AnimeModOptions>;
-  /** Win condition: Conquest, Conquer (elimination), Holy Grail, or a Dragon mode. */
+  /** Win condition: Conquest (elimination), Conquer (PvP), Holy Grail, or a Dragon mode. */
   victoryMode?: VictoryMode;
   /** PvP Combat casualties: "normal" (lose dead units) or "none" (keep troops). */
   pvpTroopLoss?: PvpTroopLoss;
@@ -2236,6 +2238,7 @@ function applyCustomMapObjects(adventure: AdventureState, objects: CustomMapObje
       const carved = adventure.fields[spaceId];
       if (carved) {
         applyCustomGuardToField(carved, objectGuardSpec(object));
+        carved.combatRoundLimit = object.combatRoundLimit;
         stampDesignerFieldReward(carved, object.reward, object.vp);
       }
       continue;
@@ -2327,6 +2330,7 @@ function applyCustomMapObjects(adventure: AdventureState, objects: CustomMapObje
       field.garrisonBorderPassage = object.garrisonBorderPassage !== false;
     }
     applyCustomGuardToField(field, objectGuardSpec(object));
+    field.combatRoundLimit = object.combatRoundLimit;
     stampDesignerFieldReward(field, object.reward, object.vp);
     // Outpost / one-way-entrance fights run BANK-style (no Quick Combat, no
     // experience, no Round limit) whatever the guard shape: a LEVEL guard
@@ -2908,7 +2912,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   const setupOptions: GameSetupOptions = {
     ...defaultGameSetupOptions(scenario),
     ...(options.sessionMode === "single-player" && options.victoryMode === undefined
-      ? { victoryMode: "conquer" as const }
+      ? { victoryMode: "conquest" as const }
       : {}),
     ...(options.gameMode !== undefined ? { gameMode: options.gameMode } : {}),
     ...(options.teamAssignments !== undefined ? { teamAssignments: options.teamAssignments } : {}),
@@ -3501,7 +3505,8 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(victoryMode === "grail" || polishGrailUtopiaOn || mapPreset?.objectives?.hiddenGrailUtopia
       ? { grail: { status: "uncollected" as const } }
       : {}),
-    // Grail Hunt and Dragon Hunt both track the "defeat every enemy hero" path.
+    // Only Conquer tracks the distinct-PvP-win path (v127); every other mode
+    // wins by eliminating every enemy faction.
     ...(victoryModeCountsHeroDefeats(victoryMode) ? { heroDefeats: {} } : {}),
     pendingTileChoice: null,
     ...(openingFirstPlayerSeed ? { openingFirstPlayerSeed } : {}),
@@ -4981,7 +4986,7 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
   const scenario = getScenario(options.scenarioId);
   const setupOptions = defaultGameSetupOptions(scenario);
   if (options.sessionMode === "single-player" && options.victoryMode === undefined) {
-    setupOptions.victoryMode = "conquer";
+    setupOptions.victoryMode = "conquest";
   }
   if (options.victoryMode !== undefined) {
     setupOptions.victoryMode = options.victoryMode;

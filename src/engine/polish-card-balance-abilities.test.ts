@@ -878,15 +878,11 @@ describe("Balance Pack — Learning", () => {
       expect(on.pendingChoice.context).toBe("learning-level-up");
     }
 
-    // NOTE (2026-08-22 USER RULE): the CLASSIC card now opens on any gain too —
-    // the "whenever you receive exp, from ANY source" widening. The pack's
-    // remaining distinguishing trigger is the EXPERIENCE CAP: the reprint's
-    // basic side also draws, so it stays worth offering where the extra half
-    // level can do nothing, while the classic card is withheld there.
-    const alsoOn = offerAfterGain(learner("balance-learning-off", false), 1);
-    expect(alsoOn.pendingChoice && "context" in alsoOn.pendingChoice && alsoOn.pendingChoice.context).toBe(
-      "learning-level-up"
-    );
+    // CONTROL (v129): with the pack OFF the classic card keeps its printed
+    // timing — a gain that crosses no level opens nothing. The reprint's
+    // every-gain trigger above is therefore the pack's own distinguishing rule.
+    const alsoOff = offerAfterGain(learner("balance-learning-off", false), 1);
+    expect(alsoOff.pendingChoice).toBeNull();
 
     function atCap(seed: string, balance: boolean): GameState {
       const state = learner(seed, balance);

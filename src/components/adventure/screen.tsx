@@ -1,5 +1,5 @@
 "use client";
-import { conquestProgress, requiredRivalHeroDefeats } from "@/engine/adventure";
+import { conquestProgress, requiredRivalHeroDefeats, wanderingMerchantAvailable, wanderingMerchantBlockReason } from "@/engine/adventure";
 
 /* eslint-disable @next/next/no-img-element */
 
@@ -78,6 +78,7 @@ import {
 import { fieldSymbolOverlayFor } from "@/data/map/field-symbol-modules";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { pveThemeFieldArt } from "@/engine/pve-content";
+import { houseRuleEnabled } from "@/engine/house-rules";
 import {
   NEUTRAL_DECK_IDS,
   NEUTRAL_PLAYER_ID,
@@ -4618,6 +4619,13 @@ export function AdventureHud({
         : "astrologers round";
   const astrologersCard = getActiveAstrologersCard(state);
   const eventCard = getActiveEventCard(state);
+  const merchantAvailable = wanderingMerchantAvailable(state, viewerPlayerId);
+  const merchantStatus = astrologersCard?.effect.type === "WAR_MACHINE_DISCOUNT_OFFER"
+    ? state.round % 2 !== 0 ? "Offer expired"
+      : state.adventure?.astrologers?.wanderingMerchantBoughtBy?.includes(viewerPlayerId)
+        ? "You already bought your War Machine this round"
+        : wanderingMerchantBlockReason(state, viewerPlayerId) ?? "Open shop — anywhere, during any player's turn"
+    : null;
 
   const endTurn = legalActions.find(
     (legal) => legal.action.type === "END_TURN",
@@ -4670,24 +4678,31 @@ export function AdventureHud({
       {astrologersCard ? (
         <button
           className="advHudCell astrologers"
-          onClick={() =>
+          onClick={() => {
+            // The merchant round re-expands the notice AND still zooms the card:
+            // the proclamation text must stay readable from the HUD.
+            if (merchantStatus && merchantAvailable) {
+              window.dispatchEvent(new Event("open-wandering-merchant"));
+            }
             zoomContent({
               title: `Astrologers proclaim: ${astrologersCard.name}`,
               image: astrologersCard.image,
               lines: [astrologersCard.text,
                 ...(astrologersCard.id === "astrologers.wind" && getRuleset(state) === "binh"
                   ? ["BINH house rule: Wind also allows continued movement from sea to land."] : [])],
-              subtitle: astrologersCard.ongoing
+              subtitle: merchantStatus ?? (state.adventure?.parallelEventPlayers?.includes(viewerPlayerId)
+                ? "Your event choice is pending"
+                : astrologersCard.ongoing
                 ? "Active until the next Astrologers round"
-                : "Resolved this round",
-            })
-          }
+                : "Resolved this round"),
+            });
+          }}
           title={astrologersCard.text}
           type="button"
         >
           <strong>🔭 {astrologersCard.name}</strong>
-          <small>{astrologersCard.id === "astrologers.wind" && getRuleset(state) === "binh"
-            ? "BINH: land ↔ sea without stopping" : "astrologers proclaim"}</small>
+          <small>{merchantStatus ?? (astrologersCard.id === "astrologers.wind" && getRuleset(state) === "binh"
+            ? "BINH: land ↔ sea without stopping" : "astrologers proclaim")}</small>
         </button>
       ) : null}
       {eventCard ? (
@@ -4822,21 +4837,18 @@ export function AdventureHud({
         const mode = state.adventure?.victoryMode ?? "conquest";
         const required = requiredRivalHeroDefeats(state, viewerPlayerId);
         const beaten = conquestProgress(state, viewerPlayerId);
-        const heroProgress = `rivals defeated ${beaten}/${required}`;
-        let status = `${heroProgress} (PvP wins or eliminated)`;
+        const enemiesLeft = Object.values(state.players).filter(
+          (candidate) => candidate.id !== "neutrals" && candidate.id !== viewerPlayerId &&
+            !playersAreAllied(state, candidate.id, viewerPlayerId) && !candidate.eliminated,
+        ).length;
+        const heroProgress = `${enemiesLeft} enemy faction${enemiesLeft === 1 ? "" : "s"} remaining`;
+        let status = heroProgress;
         if (mode === "conquer") {
-          const enemiesLeft = Object.values(state.players).filter(
-            (candidate) =>
-              candidate.id !== "neutrals" &&
-              candidate.id !== viewerPlayerId &&
-              !playersAreAllied(state, candidate.id, viewerPlayerId) &&
-              !candidate.eliminated,
-          ).length;
-          status = `${enemiesLeft} enemy faction${enemiesLeft === 1 ? "" : "s"} remaining`;
+          status = `distinct PvP wins ${beaten}/${required} / ${heroProgress}`;
         } else if (mode === "grail") {
           const grail = state.adventure?.grail;
           if (grail?.status === "carried" && grail.carrierHeroId) {
-            status = `Grail carried by ${state.players[state.heroes[grail.carrierHeroId]?.controllerId ?? ""]?.name ?? "a hero"}`;
+            status = `Grail carried by ${state.players[state.heroes[grail.carrierHeroId]?.controllerId ?? ""]?.name ?? "a hero"} / ${heroProgress}`;
           } else {
             const viewerId = viewerPlayerId;
             const visited = grail?.obelisksVisited?.[viewerId]?.length ?? 0;
@@ -4855,6 +4867,7 @@ export function AdventureHud({
           status = holder
             ? `Utopia held by ${state.players[holder]?.name ?? "a rival"} · defend until all players end round ${(heldUtopia?.dragonConquerorHold?.captureRound ?? state.round) + 1}`
             : "capture the Dragon Utopia";
+          status += ` / ${heroProgress}`;
         }
         return (
           <div className="advHudCell">
@@ -9515,9 +9528,9 @@ export function PromptTray({
 // ---------------------------------------------------------------------------
 
 /**
- * Pops in the player's face the instant their Hero crosses an Experience level
- * while holding a Learning card — from ANY source that grants Experience (a
- * Learning Stone, a Tree of Knowledge, a won Combat, …). It shows the Learning
+ * Pops in the player's face when Learning's current printing triggers: a level
+ * crossing in a normal/Community-only game, or any XP gain under Polish Balance.
+ * The source may be a Learning Stone, Tree of Knowledge, won Combat, etc. It shows the Learning
  * card itself and offers the basic play (advance a half level), the expert play
  * (advance a full level, spend an expert use / "crown", then remove the card —
  * only shown when an expert use is available) and a Decline. The engine drives
@@ -9542,12 +9555,8 @@ export function LearningOfferModal({
     return null;
   }
 
-  // Since 2026-08-22 (USER RULE) the offer opens on ANY Experience gain from any
-  // source — a map object, a won fight, an event — so the old "about to level up"
-  // wording would be a lie on most of them. One timing-neutral label for both the
-  // classic card and the Balance Pack reprint (which additionally fires AT the
-  // Experience cap — an engine-side difference, not a wording one).
-  const gainingLabel = "gaining experience";
+  const balanceLearning = houseRuleEnabled(state, "polish-card-balance");
+  const gainingLabel = balanceLearning ? "gaining experience" : "leveling up";
 
   // While another player is deciding, show a quiet waiting strip instead.
   if (choice.playerId !== viewerPlayerId) {
@@ -9587,7 +9596,11 @@ export function LearningOfferModal({
     >
       <div className="searchModal learningOfferModal">
         <header>
-          <strong>Your Hero is gaining Experience!</strong>
+          <strong>
+            {balanceLearning
+              ? "Your Hero is gaining Experience!"
+              : "Your Hero is leveling up!"}
+          </strong>
           <span>
             You hold Learning. Play it now to advance even further — or keep it
             for later.
@@ -9682,32 +9695,6 @@ export function MarketPanel({
     // Secondary) is parked on a Market field, OPEN_MARKET is legal and free —
     // surface it as a persistent, blinking tab so the market is reachable any
     // time without re-walking onto the tile.
-    const merchantAction = legalActions.find(
-      (
-        legal,
-      ): legal is LegalAction & {
-        action: Extract<GameAction, { type: "OPEN_WANDERING_MERCHANT" }>;
-      } => legal.action.type === "OPEN_WANDERING_MERCHANT",
-    );
-    if (merchantAction) {
-      return (
-        <button
-          className="marketTab wanderingMerchantTab"
-          onClick={() => onAction(merchantAction.action)}
-          title="Wandering Merchant — buy one discounted War Machine any time during your turn"
-          type="button"
-        >
-          <img
-            alt=""
-            aria-hidden="true"
-            className="wanderingMerchantIcon"
-            src={assetUrl("/assets/ui/wandering-merchant-ballista.webp")}
-          />
-          Wandering Merchant
-        </button>
-      );
-    }
-
     const openAction = legalActions.find(
       (
         legal,
@@ -9835,7 +9822,7 @@ export function MarketPanel({
           {done ? (
             <button
               onClick={() => onAction(done.action)}
-              title={isWanderingMerchant ? "Close — you can buy later this turn" : "End the visit"}
+              title={isWanderingMerchant ? "Close — you can buy later this round" : "End the visit"}
               type="button"
             >
               <X size={13} />

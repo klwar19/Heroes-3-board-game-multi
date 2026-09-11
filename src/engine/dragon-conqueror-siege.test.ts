@@ -229,9 +229,11 @@ describe("Dragon Conqueror — contesting a held Utopia is a siege", () => {
     finalizeAdventureCombat(state);
 
     expect(state.combat).toBeNull();
-    expect(state.adventure!.heroDefeats?.p1).toEqual(["p2"]);
-    expect(state.adventure!.winnerPlayerId).toBe("p1");
-    expect(state.phase).toBe("game-over");
+    // v127: Dragon Conqueror no longer counts PvP wins — the siege win alone
+    // ends nothing; only holding the Utopia (below) or elimination wins.
+    expect(state.adventure!.heroDefeats).toBeUndefined();
+    expect(state.adventure!.winnerPlayerId ?? null).toBeNull();
+    expect(state.phase).not.toBe("game-over");
 
     // Holding the Utopia into the start of p1's next turn wins.
     checkDragonConquerorHold(state, "p1");

@@ -477,6 +477,10 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
   const adventure = base.adventure
     ? {
         ...base.adventure,
+        parallelEventSuspended: undefined,
+        parallelRoundRewards: base.adventure.parallelRoundRewards?.[viewerPlayerId]
+          ? { [viewerPlayerId]: base.adventure.parallelRoundRewards[viewerPlayerId] } : undefined,
+        parallelSharedEventQueue: base.adventure.parallelSharedEventQueue?.filter((reward) => reward.playerId === viewerPlayerId),
         tiles: Object.fromEntries(
           Object.entries(base.adventure.tiles).map(([tileId, tile]) => [
             tileId,

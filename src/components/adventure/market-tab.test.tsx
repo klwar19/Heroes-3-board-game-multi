@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MarketPanel } from "./screen";
+import { WanderingMerchantNotice } from "./wandering-merchant-notice";
 import { applyAction, createAdventureGameState, getLegalActions } from "@/engine";
 import type { GameState, HeroState, MapFieldState } from "@/engine";
 import { astrologersCardDefinitions } from "@/data/cards/astrologers";
@@ -99,19 +100,36 @@ describe("MarketPanel — persistent blinking Market tab", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("shows Wandering Merchant as a blinking, real war-machine icon during the turn", () => {
+  // v128: the Wandering Merchant left the MarketPanel tab for its own notice,
+  // which buys atomically (BUY_WANDERING_MERCHANT) from anywhere, any turn.
+  it("the Merchant is no longer a MarketPanel tab; its notice buys atomically for any seat", () => {
     const { state } = gameWithHeroOn("empty_field");
     state.round = 2;
     state.players.p1.resources.gold = 20;
+    state.players.p2.resources.gold = 20;
     state.adventure!.astrologers!.activeCardId = "astrologers.wandering_merchant";
-    const onAction = renderMarket(state);
+    const { container } = render(
+      <MarketPanel legalActions={getLegalActions(state, "p1")} onAction={vi.fn()} state={state} viewerPlayerId="p1" />
+    );
+    expect(container.firstChild).toBeNull();
+    cleanup();
 
-    const tab = screen.getByRole("button", { name: /Wandering Merchant/ });
-    expect(tab.classList.contains("marketTab")).toBe(true);
-    expect(tab.querySelector('img[src*="wandering-merchant-ballista"]')).toBeTruthy();
+    // The OFF-TURN seat (p2; p1 is active) gets the same notice and can buy.
+    const onAction = vi.fn();
+    render(<WanderingMerchantNotice state={state} viewerPlayerId="p2" onAction={onAction} />);
+    expect(screen.getByRole("complementary", { name: "Wandering Merchant offer" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Open shop/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Buy First Aid Tent/ }));
+    expect(onAction).toHaveBeenCalledWith({ type: "BUY_WANDERING_MERCHANT", playerId: "p2", cardId: "war_machine.first_aid_tent" });
+    const bought = applyAction(state, { type: "BUY_WANDERING_MERCHANT", playerId: "p2", cardId: "war_machine.first_aid_tent" });
+    expect(bought.errors).toEqual([]);
+    expect(bought.state.players.p2.hand).toContain("war_machine.first_aid_tent");
+    expect(bought.state.activePlayerId).toBe("p1");
+    cleanup();
 
-    fireEvent.click(tab);
-    expect(onAction).toHaveBeenCalledWith({ type: "OPEN_WANDERING_MERCHANT", playerId: "p1" });
+    // Once bought, the notice is gone for that seat.
+    const { container: after } = render(<WanderingMerchantNotice state={bought.state} viewerPlayerId="p2" onAction={vi.fn()} />);
+    expect(after.firstChild).toBeNull();
   });
 
   // The shop's discount must be the LIVE proclamation effect, not a number
@@ -126,10 +144,8 @@ describe("MarketPanel — persistent blinking Market tab", () => {
     state.round = 2;
     state.players.p1.resources.gold = 40;
     state.adventure!.astrologers!.activeCardId = "astrologers.wandering_merchant";
-    const open = getLegalActions(state, "p1").find(
-      (legal) => legal.action.type === "OPEN_WANDERING_MERCHANT",
-    );
-    const opened = applyAction(state, open!.action).state;
+    // The legacy shop visit is still resolvable for the active seat.
+    const opened = applyAction(state, { type: "OPEN_WANDERING_MERCHANT", playerId: "p1" }).state;
     renderMarket(opened);
 
     const heading = screen.getByRole("heading", { name: /War machines/ });
@@ -148,20 +164,18 @@ describe("MarketPanel — persistent blinking Market tab", () => {
     state.round = 2;
     state.players.p1.resources.gold = 20;
     state.adventure!.astrologers!.activeCardId = "astrologers.wandering_merchant";
-    const open = getLegalActions(state, "p1").find(
-      (legal) => legal.action.type === "OPEN_WANDERING_MERCHANT",
-    );
-    expect(open).toBeTruthy();
-    const opened = applyAction(state, open!.action).state;
+    const openResult = applyAction(state, { type: "OPEN_WANDERING_MERCHANT", playerId: "p1" });
+    expect(openResult.errors).toEqual([]);
+    const opened = openResult.state;
     const onAction = renderMarket(opened);
 
     expect(screen.getByRole("dialog", { name: "Wandering Merchant" })).toBeTruthy();
-    fireEvent.click(screen.getByTitle("Close — you can buy later this turn"));
+    fireEvent.click(screen.getByTitle("Close — you can buy later this round"));
     const close = onAction.mock.calls[0]?.[0];
     expect(close).toMatchObject({ type: "RESOLVE_VISIT_STEP", playerId: "p1" });
 
     const closed = applyAction(opened, close).state;
     expect(closed.adventure?.pendingVisit).toBeNull();
-    expect(getLegalActions(closed, "p1").some((legal) => legal.action.type === "OPEN_WANDERING_MERCHANT")).toBe(true);
+    expect(getLegalActions(closed, "p1").some((legal) => legal.action.type === "BUY_WANDERING_MERCHANT")).toBe(true);
   });
 });

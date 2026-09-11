@@ -56,12 +56,18 @@ function chooseVisitOption(state: GameState, playerId: PlayerId, match: RegExp):
   return applyOk(state, legal!.action);
 }
 
+/**
+ * The LEGACY shop path (v128): the atomic `BUY_WANDERING_MERCHANT` is what
+ * getLegalActions offers now (see audit-wandering-merchant-buy.test.ts); the
+ * turn-gated `OPEN_WANDERING_MERCHANT` visit is kept resolvable for older
+ * clients and saved visits, so it is sent directly here.
+ */
 function openMerchant(state: GameState, playerId: PlayerId): GameState {
-  const legal = getLegalActions(state, playerId).find(
-    (entry) => entry.action.type === "OPEN_WANDERING_MERCHANT"
-  );
-  expect(legal, "expected the during-turn Wandering Merchant action").toBeTruthy();
-  return applyOk(state, legal!.action);
+  return applyOk(state, { type: "OPEN_WANDERING_MERCHANT", playerId });
+}
+
+function buyOffered(state: GameState, playerId: PlayerId): boolean {
+  return getLegalActions(state, playerId).some((entry) => entry.action.type === "BUY_WANDERING_MERCHANT");
 }
 
 describe("Astrologers — Wandering Merchant (discounted War Machine buy)", () => {
@@ -77,7 +83,7 @@ describe("Astrologers — Wandering Merchant (discounted War Machine buy)", () =
     expect(bought.players.p1.resources.gold).toBe(0);
     expect(bought.players.p1.hand).toContain("war_machine.first_aid_tent");
   });
-  it("does not interrupt round start; it exposes a during-turn action instead", () => {
+  it("does not interrupt round start; it exposes an any-turn purchase action instead", () => {
     const state = roundWith("astrologers.wandering_merchant");
     state.players.p1.resources.gold = 20;
     drawAstrologersCard(state);
@@ -85,7 +91,10 @@ describe("Astrologers — Wandering Merchant (discounted War Machine buy)", () =
     expect(state.adventure?.astrologers?.activeCardId).toBe("astrologers.wandering_merchant");
     expect(state.adventure?.pendingVisit).toBeNull();
     expect(state.adventure?.rewardQueue).toEqual([]);
-    expect(getLegalActions(state, "p1").some((entry) => entry.action.type === "OPEN_WANDERING_MERCHANT")).toBe(true);
+    expect(buyOffered(state, "p1")).toBe(true);
+    // Off-turn seats get the same atomic offer; the legacy shop stays turn-gated.
+    expect(buyOffered(state, "p2")).toBe(true);
+    expect(applyAction(state, { type: "OPEN_WANDERING_MERCHANT", playerId: "p2" }).errors.length).toBeGreaterThan(0);
     expect(getLegalActions(state, "p1").some((entry) => entry.action.type === "END_TURN")).toBe(true);
   });
 
@@ -109,7 +118,8 @@ describe("Astrologers — Wandering Merchant (discounted War Machine buy)", () =
     // available so every OTHER player can still buy their own.
     expect(next.adventure?.warMachineSupply).toContain("war_machine.first_aid_tent");
     expect(next.adventure?.pendingVisit).toBeNull();
-    expect(getLegalActions(next, "p1").some((entry) => entry.action.type === "OPEN_WANDERING_MERCHANT")).toBe(false);
+    // Once per round: the atomic offer is gone for p1 too.
+    expect(buyOffered(next, "p1")).toBe(false);
   });
 
   it("only offers machines the player can still afford at the discounted price", () => {
@@ -136,18 +146,18 @@ describe("Astrologers — Wandering Merchant (discounted War Machine buy)", () =
     expect(next.players.p1.resources.gold).toBe(10);
     expect(next.players.p1.hand.filter((id) => id.startsWith("war_machine."))).toEqual([]);
     expect(next.adventure?.pendingVisit).toBeNull();
-    expect(getLegalActions(next, "p1").some((entry) => entry.action.type === "OPEN_WANDERING_MERCHANT")).toBe(true);
+    expect(buyOffered(next, "p1")).toBe(true);
   });
 
   it("expires after the Astrologers round even though the card remains face up", () => {
     const state = roundWith("astrologers.wandering_merchant");
     state.players.p1.resources.gold = 20;
     drawAstrologersCard(state);
-    expect(getLegalActions(state, "p1").some((entry) => entry.action.type === "OPEN_WANDERING_MERCHANT")).toBe(true);
+    expect(buyOffered(state, "p1")).toBe(true);
 
     state.round = 3;
     expect(state.adventure?.astrologers?.activeCardId).toBe("astrologers.wandering_merchant");
-    expect(getLegalActions(state, "p1").some((entry) => entry.action.type === "OPEN_WANDERING_MERCHANT")).toBe(false);
+    expect(buyOffered(state, "p1")).toBe(false);
   });
 
   it("per-player catalog: a machine one player buys is STILL on the next player's menu (both can buy the Tent)", () => {
@@ -208,7 +218,7 @@ describe("Astrologers — Wandering Merchant (discounted War Machine buy)", () =
     drawAstrologersCard(state);
 
     expect(state.adventure?.pendingVisit).toBeNull();
-    expect(getLegalActions(state, "p1").some((entry) => entry.action.type === "OPEN_WANDERING_MERCHANT")).toBe(false);
+    expect(buyOffered(state, "p1")).toBe(false);
     const offers = (state.adventure?.rewardQueue ?? []).filter(
       (reward) => reward.kind === "visit-steps" && reward.steps[0]?.type === "WAR_MACHINE_DISCOUNT_OFFER"
     );

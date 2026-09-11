@@ -185,7 +185,8 @@ describe("Give up: a defeat with the Retreat consequences", () => {
 
     finalizeAdventureCombat(state);
 
-    expect(state.adventure?.heroDefeats?.[winnerId] ?? []).toContain(loserId);
+    // v127: Grail Hunt records no PvP cube; the win below is last-faction-standing.
+    expect(state.adventure?.heroDefeats).toBeUndefined();
     expect(state.adventure?.winnerPlayerId).toBe(winnerId);
   });
 

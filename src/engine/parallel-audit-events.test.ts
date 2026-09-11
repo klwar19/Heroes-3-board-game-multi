@@ -65,6 +65,40 @@ function emptyFieldNextTo(state: GameState, heroId: string): string {
   return field.spaceId;
 }
 
+
+/**
+ * v128 parallel round events: every seat's Event/Astrologers window is parked
+ * per seat and opens in that seat's own context after its start-of-turn draw.
+ * Drives each seat through draw → choice/window until nothing is offered.
+ */
+function driveParallelWindows(
+  state: GameState,
+  seats: PlayerId[]
+): { state: GameState; sawWindow: Set<PlayerId>; sawChoice: Set<PlayerId> } {
+  const sawWindow = new Set<PlayerId>();
+  const sawChoice = new Set<PlayerId>();
+  for (let guard = 0; guard < 40; guard += 1) {
+    let progressed = false;
+    for (const id of seats) {
+      const offers = getLegalActions(state, id);
+      if (offers.some((entry) => entry.action.type === "RESOLVE_VISIT_STEP")) sawWindow.add(id);
+      if (offers.some((entry) => entry.action.type === "CHOOSE_OPTION")) sawChoice.add(id);
+      const next =
+        offers.find((entry) => entry.action.type === "CHOOSE_OPTION") ??
+        offers.find((entry) => entry.action.type === "RESOLVE_VISIT_STEP") ??
+        offers.find((entry) => entry.action.type === "REFRESH_HAND");
+      if (!next) continue;
+      state = apply(state, next.action);
+      progressed = true;
+      // Never a whole-table barrier, never a stop of parallel play.
+      expect(state.adventure?.eventResolution ?? null).toBeNull();
+      expect(state.turn.mode).toBe("parallel");
+    }
+    if (!progressed) break;
+  }
+  return { state, sawWindow, sawChoice };
+}
+
 function eventOwner(state: GameState): PlayerId | null {
   return state.pendingChoice?.playerId ?? state.adventure?.pendingVisit?.playerId ?? null;
 }
@@ -166,11 +200,11 @@ describe("AUDIT — a per-player Event across three parallel seats", () => {
     return state;
   }
 
-  it("pays income BEFORE the Event, opens one seat at a time, and reopens every parallel turn afterwards", () => {
+  it("pays income BEFORE the Event, parks one window per seat, and freezes nobody (v128)", () => {
     let state = parallelEventsGame("audit-event-three");
     stackEventDeck(state, "event.stables");
     // Round 2 is an Astrologers round: keep it instant so only the round-3
-    // Event raises a barrier.
+    // Event parks per-seat work.
     state.decks.astrologers.drawPile = ["astrologers.dead_silence", "astrologers.dead_silence"];
 
     // REAL parallel round wraps: 1 -> 2 (instant Astrologers), 2 -> 3 (Event).
@@ -190,41 +224,33 @@ describe("AUDIT — a per-player Event across three parallel seats", () => {
     expect(state.round).toBe(3);
 
     // Income (rulebook: income, THEN Event) already paid for every seat while
-    // the Event barrier is still up and unresolved.
-    expect(state.adventure?.eventResolution?.round).toBe(3);
+    // the Event work is still parked and unresolved. No whole-table barrier.
+    expect(state.adventure?.eventResolution ?? null).toBeNull();
     for (const id of seats) {
       expect(state.players[id].resources.gold, id + " income").toBeGreaterThan(
         goldBefore[id as "p1"]
       );
+      expect(state.adventure?.parallelRoundRewards?.[id]?.length ?? 0, id + " parked").toBeGreaterThan(0);
+      // Nobody is frozen: every seat's own start-of-turn draw is offered…
+      expect(state.players[id].canMulligan, id + " start-of-turn draw").toBe(true);
+      expect(
+        getLegalActions(state, id).some((entry) => entry.action.type === "REFRESH_HAND"),
+        id + " REFRESH_HAND offered"
+      ).toBe(true);
+      // …but the turn cannot be ended around the parked Event.
+      expect(getLegalActions(state, id).some((entry) => entry.action.type === "END_TURN"), id + " END_TURN").toBe(false);
     }
 
-    // Exactly one seat's choice is open; the other two are fully frozen.
-    let next = state;
-    const resolvers: PlayerId[] = [];
-    for (let step = 0; step < 3; step += 1) {
-      const owner = eventOwner(next);
-      expect(owner, "step " + step + ": expected an open event choice").toBeTruthy();
-      resolvers.push(owner!);
-      for (const bystander of seats.filter((id) => id !== owner)) {
-        expect(getLegalActions(next, bystander), bystander + " frozen at step " + step).toEqual([]);
-      }
-      next = resolveCurrentEventStep(next);
-    }
-
-    // Every live seat resolved it exactly once.
-    expect([...resolvers].sort()).toEqual(["p1", "p2", "p3"]);
-
-    // The barrier lifted and every seat has an OPEN parallel turn with the
-    // mandatory start-of-turn draw available.
-    expect(next.adventure?.eventResolution ?? null).toBeNull();
+    // Every seat draws and answers its OWN window, in any order.
+    const drained = driveParallelWindows(state, seats);
+    expect([...drained.sawWindow].sort()).toEqual(["p1", "p2", "p3"]);
+    const next = drained.state;
+    expect(next.adventure?.parallelEventOpenPlayers ?? []).toEqual([]);
+    expect(Object.values(next.adventure?.parallelRoundRewards ?? {}).flat()).toEqual([]);
     expect(next.turn.mode).toBe("parallel");
     expect(next.turn.completedPlayerIds).toEqual([]);
     for (const id of seats) {
-      expect(next.players[id].canMulligan, id + " start-of-turn draw").toBe(true);
-      expect(
-        getLegalActions(next, id).some((entry) => entry.action.type === "REFRESH_HAND"),
-        id + " REFRESH_HAND offered"
-      ).toBe(true);
+      expect(getLegalActions(next, id).some((entry) => entry.action.type === "END_TURN"), id + " END_TURN").toBe(true);
     }
   });
 
@@ -234,10 +260,8 @@ describe("AUDIT — a per-player Event across three parallel seats", () => {
     startAdventureRound(state);
     pumpAdventureQueues(state);
     const firstDrawer = getEventsState(state)!.lastDrawerId;
-    let next = state;
-    for (let step = 0; step < 3; step += 1) {
-      next = resolveCurrentEventStep(next);
-    }
+    // v128: each seat answers its own parked window (after its draw).
+    let next = driveParallelWindows(state, ["p1", "p2", "p3"]).state;
 
     next.round = 5;
     startAdventureRound(next);
@@ -275,25 +299,28 @@ describe("AUDIT — elimination mid-barrier never strands a parallel table", () 
       state = apply(state, { type: "END_TURN", playerId: id });
     }
     expect(state.round).toBe(2);
-    expect(state.adventure?.eventResolution?.round).toBe(2);
-    expect(state.adventure?.pendingVisit?.playerId).toBe("p1");
+    // v128: the Dancing Imp empowers are parked per seat; no whole-table barrier.
+    expect(state.adventure?.eventResolution ?? null).toBeNull();
+    for (const id of ["p1", "p2", "p3"] as PlayerId[]) {
+      expect(state.adventure?.parallelRoundRewards?.[id]?.length ?? 0, id + " parked").toBeGreaterThan(0);
+    }
 
-    // The CURRENT resolver is removed (AFK-kick path — GIVE_UP is refused while
-    // an interaction is open).
+    // A seat is removed while its work is still parked (AFK-kick path).
     eliminatePlayer(state, "p1", "removed mid-resolution", false);
     pumpAdventureQueues(state);
 
-    expect(state.adventure?.pendingVisit?.playerId).toBe("p2");
-    expect(state.adventure?.eventResolution?.round).toBe(2);
-
-    let next = resolveCurrentEventStep(state);
-    next = resolveCurrentEventStep(next);
-
+    // The survivors resolve their own windows; the departed seat's parked work
+    // is dropped and never strands the table.
+    const drained = driveParallelWindows(state, ["p2", "p3"]);
+    const next = drained.state;
+    expect([...drained.sawWindow].sort()).toEqual(["p2", "p3"]);
+    expect(next.adventure?.parallelRoundRewards?.p1 ?? []).toEqual([]);
+    expect(next.adventure?.parallelEventPlayers ?? []).not.toContain("p1");
+    expect(next.adventure?.parallelEventOpenPlayers ?? []).toEqual([]);
     expect(next.adventure?.eventResolution ?? null).toBeNull();
     expect(next.turn.mode).toBe("parallel");
     expect(next.turn.completedPlayerIds).toEqual([]);
     for (const id of ["p2", "p3"] as PlayerId[]) {
-      expect(next.players[id].canMulligan, id + " draw").toBe(true);
       expect(getLegalActions(next, id).length, id + " can act").toBeGreaterThan(0);
     }
   });
@@ -453,7 +480,7 @@ describe("AUDIT — a parallel wave round hands every seat its turn back", () =>
 // ===========================================================================
 
 describe("AUDIT — Isra's Friends reaches every parallel seat", () => {
-  it("queues one offer per live seat behind the barrier, resolved one at a time", () => {
+  it("parks one offer per live seat; each resolves in its own window with no barrier (v128)", () => {
     let state = createAdventureGameState({
       seed: "audit-isra-parallel",
       difficulty: "normal",
@@ -473,25 +500,17 @@ describe("AUDIT — Isra's Friends reaches every parallel seat", () => {
     }
     expect(state.round).toBe(2);
     expect(state.adventure?.astrologers?.activeCardId).toBe("astrologers.isras_friends");
-    expect(state.adventure?.eventResolution?.round).toBe(2);
+    expect(state.adventure?.eventResolution ?? null).toBeNull();
 
     const seats: PlayerId[] = ["p1", "p2", "p3"];
-    const resolvers: PlayerId[] = [];
-    let next = state;
-    for (let step = 0; step < 3; step += 1) {
-      const owner = eventOwner(next);
-      expect(owner, `step ${step}`).toBeTruthy();
-      resolvers.push(owner!);
-      for (const bystander of seats.filter((id) => id !== owner)) {
-        expect(getLegalActions(next, bystander), `${bystander} frozen`).toEqual([]);
-      }
-      next = resolveCurrentEventStep(next);
-    }
-    expect([...resolvers].sort()).toEqual(["p1", "p2", "p3"]);
-    expect(next.adventure?.eventResolution ?? null).toBeNull();
-    expect(next.turn.mode).toBe("parallel");
     for (const id of seats) {
-      expect(next.players[id].canMulligan, `${id} draw`).toBe(true);
+      expect(state.adventure?.parallelRoundRewards?.[id]?.length ?? 0, `${id} parked`).toBeGreaterThan(0);
+      expect(state.players[id].canMulligan, `${id} draw`).toBe(true);
+      expect(getLegalActions(state, id).some((entry) => entry.action.type === "REFRESH_HAND"), `${id} not frozen`).toBe(true);
     }
+    const drained = driveParallelWindows(state, seats);
+    expect([...drained.sawWindow].sort()).toEqual(["p1", "p2", "p3"]);
+    expect(drained.state.adventure?.parallelEventOpenPlayers ?? []).toEqual([]);
+    expect(drained.state.turn.mode).toBe("parallel");
   });
 });

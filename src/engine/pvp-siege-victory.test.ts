@@ -84,7 +84,28 @@ function injectSettlement(state: GameState, spaceId: string, ownerId: PlayerId):
 }
 
 describe("PvP on a controlled Settlement", () => {
-  it.each(["settlement", "random_town"])("defends a controlled %s with Citadel walls, gate and tower", (location) => {
+  it("never fortifies a controlled Settlement, even with a Citadel (only Random Towns and faction Towns do)", () => {
+    // USER RULE 2026-09-11: attacking a Settlement needs no walls or tower.
+    const state = makeGame();
+    const settlement = injectSettlement(state, "20,20", "p2");
+    state.towns.town_p2.buildings.push("dungeon.citadel");
+    const attacker = getMainHero(state, "p1")!;
+    const defender = getMainHero(state, "p2")!;
+    attacker.spaceId = settlement.spaceId;
+    defender.spaceId = settlement.spaceId;
+
+    startPlayerCombat(state, attacker, defender, settlement.spaceId);
+
+    expect(state.combat?.context).toMatchObject({
+      kind: "player",
+      defenderHeroId: defender.id,
+      fieldId: settlement.spaceId,
+      holdingDefense: "settlement",
+    });
+    expect(state.combat?.context.kind === "player" && state.combat.context.siege).toBeFalsy();
+    expect(state.combat?.siege ?? null).toBeNull();
+  });
+  it.each(["random_town"])("defends a controlled %s with Citadel walls, gate and tower", (location) => {
     const state = makeGame();
     const settlement = injectSettlement(state, "20,20", "p2");
     settlement.location = location;
@@ -218,7 +239,8 @@ describe("siege defeat — main Hero loses their last Town", () => {
     // The starting three-player target remains two cubes; p3 must still be beaten.
     expect(state.adventure?.winnerPlayerId ?? null).toBeNull();
     expect(state.phase).not.toBe("game-over");
-    expect(state.adventure?.heroDefeats?.p1).toContain("p2");
+    // v127: only Conquer records PvP cubes; the default Conquest mode never does.
+    expect(state.adventure?.heroDefeats?.p1).toBeUndefined();
   });
 
   it("credits the winner 1 win (the faction cube) toward the defeat-every-hero path", () => {
@@ -229,7 +251,7 @@ describe("siege defeat — main Hero loses their last Town", () => {
 
     finalizeAdventureCombat(state);
 
-    expect(state.adventure?.heroDefeats?.p1 ?? []).toContain("p2");
+    expect(state.adventure?.heroDefeats?.p1).toBeUndefined();
     expect(state.players.p2.eliminated).toBe(true);
     expect(state.adventure?.winnerPlayerId ?? null).toBeNull();
   });
@@ -259,7 +281,8 @@ describe("siege defeat — main Hero loses their last Town", () => {
     // 2-turn elimination clock starts instead of an instant loss.
     expect(state.players.p2.eliminated).toBeFalsy();
     expect(state.players.p2.eliminationCountdown).toBe(2);
-    expect(state.adventure?.heroDefeats?.p1).toContain("p2");
+    // v127: only Conquer records PvP cubes; the default Conquest mode never does.
+    expect(state.adventure?.heroDefeats?.p1).toBeUndefined();
     expect(state.adventure?.winnerPlayerId ?? null).toBeNull();
   });
 

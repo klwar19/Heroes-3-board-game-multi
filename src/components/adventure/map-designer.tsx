@@ -431,6 +431,7 @@ function nextObjectPlan(
     "breakField",
     "persistentGuard",
     "unlimitedRounds",
+    "combatRoundLimit",
     "winCondition"
   ] as const) {
     if (!next[key]) {
@@ -526,6 +527,7 @@ export function describeTileSpecificPlan(plan: CustomMapTilePlan, kind: Specific
           breakField?: boolean;
           persistentGuard?: boolean;
           unlimitedRounds?: boolean;
+          combatRoundLimit?: 1 | 2 | 3 | "unlimited";
           flaggableDragonUtopia?: boolean;
         }
       | undefined
@@ -544,7 +546,8 @@ export function describeTileSpecificPlan(plan: CustomMapTilePlan, kind: Specific
     if (p.winCondition) bits.push("first clear WINS");
     if (p.breakField) bits.push("Break field");
     if (p.persistentGuard) bits.push("persistent army");
-    if (p.unlimitedRounds) bits.push("unlimited rounds");
+    if (p.combatRoundLimit !== undefined) bits.push(p.combatRoundLimit === "unlimited" ? "unlimited rounds" : `${p.combatRoundLimit}-round limit (automatic retreat)`);
+    else if (p.unlimitedRounds) bits.push("unlimited rounds");
     if (p.flaggableDragonUtopia) bits.push("flaggable Utopia + Azure recruit");
   };
   if (kind === "obelisk" || kind === "mine") {
@@ -657,7 +660,7 @@ function tileTokenValue(
   pair: 1 | 2 | 3 | 4 | undefined,
   slot: number | undefined,
   guard?: CustomGuardSpec,
-  carry?: Pick<CustomMapTileToken, "exitMode" | "alwaysPickable" | "reward" | "vp">
+  carry?: Pick<CustomMapTileToken, "exitMode" | "alwaysPickable" | "reward" | "vp" | "combatRoundLimit">
 ): NonNullable<CustomMapTilePlan["token"]> {
   const slotPart = slot !== undefined ? { slot } : {};
   const guardPart = guard ? { guard } : {};
@@ -669,6 +672,7 @@ function tileTokenValue(
   const carriesExitMode = kind === "oneway_entrance" || kind === "gate" || kind === "monolith";
   const carriesAlwaysPickable = kind === "oneway_exit" || kind === "gate" || kind === "monolith";
   const carryPart = {
+    ...(carry?.combatRoundLimit !== undefined ? { combatRoundLimit: carry.combatRoundLimit } : {}),
     ...(carriesExitMode && carry?.exitMode ? { exitMode: carry.exitMode } : {}),
     ...(carriesAlwaysPickable && carry?.alwaysPickable ? { alwaysPickable: true } : {})
   };
@@ -2342,13 +2346,17 @@ export function MapDesigner({
   );
 
   const patchObject = useCallback(
-    (index: number, patch: Partial<Pick<CustomMapObject, "reward" | "vp">>) => {
+    (index: number, patch: Partial<Pick<CustomMapObject, "reward" | "vp" | "combatRoundLimit">>) => {
       onObjectsChange?.(
         objects.map((object, i) => {
           if (i !== index) {
             return object;
           }
           const next: CustomMapObject = { ...object };
+          if ("combatRoundLimit" in patch) {
+            if (patch.combatRoundLimit !== undefined) next.combatRoundLimit = patch.combatRoundLimit;
+            else delete next.combatRoundLimit;
+          }
           if ("reward" in patch) {
             if (patch.reward) next.reward = patch.reward;
             else delete next.reward;
@@ -2490,7 +2498,7 @@ export function MapDesigner({
       if (!source || !dragged || dragged.kind === "whirlpool") {
         return;
       }
-      const { kind, pair, guard, reward, vp, exitMode, alwaysPickable } = dragged;
+      const { kind, pair, guard, reward, vp, exitMode, alwaysPickable, combatRoundLimit } = dragged;
       onChange(
         customMap.map((plan, planIndex) => {
           if (planIndex !== sourceIndex) {
@@ -2508,6 +2516,7 @@ export function MapDesigner({
         ...((kind === "gate" || kind === "oneway_entrance" || kind === "oneway_exit") && pair ? { pair } : {}),
         placement: { type: "standalone", row, col },
         ...(guard ? { guard } : {}),
+        ...(combatRoundLimit !== undefined ? { combatRoundLimit } : {}),
         ...(reward ? { reward } : {}),
         ...(vp && vp > 0 ? { vp } : {}),
         // Exit-pick extras survive the conversion — one-way AND two-way
@@ -6278,13 +6287,18 @@ export function MapDesigner({
                       }
                     />
 
+                    <label className="popoverSubLabel">Combat round limit
+                        <select title="Hard limit: automatically retreat if enemies survive the last round. No movement points or cards can extend it. Default rules leaves normal field rules unchanged." aria-label="Combat round limit" value={selected.centerHex?.combatRoundLimit ?? (selected.centerHex?.unlimitedRounds ? "unlimited" : "default")} onChange={(event) => updateTile(selectedIndex as number, { centerHex: nextCenterHex(selected.centerHex, { combatRoundLimit: event.target.value === "default" ? undefined : event.target.value === "unlimited" ? "unlimited" : Number(event.target.value) as 1 | 2 | 3, unlimitedRounds: undefined }) })}>
+                          <option value="default">Default rules</option>
+                          <option value="1">1 round</option><option value="2">2 rounds</option><option value="3">3 rounds</option><option value="unlimited">Unlimited</option>
+                        </select>
+                      </label>
                     <div className="popoverSubLabel">Break &amp; control</div>
                     <div className="popoverGuardRow" role="group" aria-label="Center VII break options">
                       {(
                         [
                           { key: "breakField", label: "Break field", hint: "Pathfinding may not walk through this guarded Ⅶ field." },
-                          { key: "persistentGuard", label: "Persistent army", hint: "A lost fight leaves living guards for a re-fight." },
-                          { key: "unlimitedRounds", label: "No round limit", hint: "The fight continues without the normal round limit." }
+                          { key: "persistentGuard", label: "Persistent army", hint: "A lost fight leaves living guards for a re-fight." }
                         ] as const
                       ).map((flag) => (
                         <label className="popoverCheckRow popoverCheckChip" key={flag.key} title={flag.hint}>
@@ -6663,12 +6677,17 @@ export function MapDesigner({
                           })
                         }
                       />
+                    <label className="popoverSubLabel">Combat round limit
+                        <select title="Hard limit: automatically retreat if enemies survive the last round. No movement points or cards can extend it. Default rules leaves normal field rules unchanged." aria-label="Combat round limit" value={selected.objectPlans?.[objectKind]?.combatRoundLimit ?? (selected.objectPlans?.[objectKind]?.unlimitedRounds ? "unlimited" : "default")} onChange={(event) => updateTile(selectedIndex as number, { objectPlans: nextObjectPlans(selected.objectPlans, objectKind, nextObjectPlan(selected.objectPlans?.[objectKind], { combatRoundLimit: event.target.value === "default" ? undefined : event.target.value === "unlimited" ? "unlimited" : Number(event.target.value) as 1 | 2 | 3, unlimitedRounds: undefined })) })}>
+                          <option value="default">Default rules</option>
+                          <option value="1">1 round</option><option value="2">2 rounds</option><option value="3">3 rounds</option><option value="unlimited">Unlimited</option>
+                        </select>
+                      </label>
                       <div className="popoverGuardRow" role="group" aria-label={`${objectKind} break options`}>
                         {(
                           [
                             { key: "breakField", label: "Break field", hint: "Pathfinding may not walk through — must fight to enter." },
-                            { key: "persistentGuard", label: "Persistent army", hint: "A lost fight leaves the living guards for a re-fight." },
-                            { key: "unlimitedRounds", label: "No round limit", hint: "The fight has no Round limit (bank-style rounds)." }
+                            { key: "persistentGuard", label: "Persistent army", hint: "A lost fight leaves the living guards for a re-fight." }
                           ] as const
                         ).map((flag) => (
                           <label className="popoverCheckRow popoverCheckChip" key={flag.key} title={flag.hint}>
@@ -7276,8 +7295,8 @@ export function MapDesigner({
                   {selectedObject.kind === "garrison" ||
                   selectedObject.kind === "keymaster_tent" ||
                   selectedObject.kind === "oneway_entrance"
-                    ? "The fight is bank-style: no Quick Combat, no experience, no round limit."
-                    : "A guard on this hex must be beaten to use it; arriving through a teleport network fights it too (bank-style: no Quick Combat, no experience, no round limit)."}
+                    ? "The fight is bank-style: no Quick Combat or experience; round limit set below."
+                    : "A guard on this hex must be beaten to use it; arriving through a teleport network fights it too (bank-style: no Quick Combat or experience; round limit set below)."}
                 </small>
                 <GuardSpecEditor
                   guard={objectGuardDisplay(selectedObject)}
@@ -7292,6 +7311,7 @@ export function MapDesigner({
                   : "An exit monolith is never guarded — only entrances fight."}
               </small>
             )}
+            <label>Combat round limit<select title="Hard limit: automatically retreat at the cap; no extension. Default preserves normal rules." aria-label="Object combat round limit" value={selectedObject.combatRoundLimit ?? "default"} onChange={(event) => patchObject(selectedObjectIndex as number, { combatRoundLimit: event.target.value === "default" ? undefined : event.target.value === "unlimited" ? "unlimited" : Number(event.target.value) as 1 | 2 | 3 })}><option value="default">Default</option><option value="1">1 round</option><option value="2">2 rounds</option><option value="3">3 rounds</option><option value="unlimited">Unlimited</option></select></label>
             {selectedObject.kind !== "barrier" && selectedObject.kind !== "creature_bank" ? (
               <>
                 <div className="popoverSectionLabel">First-clear reward</div>
@@ -7613,13 +7633,14 @@ export function MapDesigner({
                 </span>
               </label>
             ) : null}
+            <label>Combat round limit<select title="Hard limit: automatically retreat at the cap; no extension. Default preserves normal rules." aria-label="Token combat round limit" value={tokenPanelToken.combatRoundLimit ?? "default"} onChange={(event) => updateTile(selectedTokenIndex as number, { tokens: (tokenPanelPlan ? planTokens(tokenPanelPlan) : []).map((token, i) => i === tokenPanelPin ? { ...token, combatRoundLimit: event.target.value === "default" ? undefined : event.target.value === "unlimited" ? "unlimited" : Number(event.target.value) as 1 | 2 | 3 } : token), token: undefined })}><option value="default">Default</option><option value="1">1 round</option><option value="2">2 rounds</option><option value="3">3 rounds</option><option value="unlimited">Unlimited</option></select></label>
             {tokenPanelToken.kind !== "oneway_exit" ? (
               <>
                 <div className="popoverSectionLabel">Guard (monster)</div>
                 <small className="popoverHint">
                   {tokenPanelToken.kind === "oneway_entrance"
-                    ? "The fight is bank-style: no Quick Combat, no experience, no round limit; winning teleports."
-                    : "A guard on this hex must be beaten to use the teleporter; arriving through the network fights it too (bank-style: no Quick Combat, no experience, no round limit)."}
+                    ? "The fight is bank-style: no Quick Combat or experience; round limit set below; winning teleports."
+                    : "A guard on this hex must be beaten to use the teleporter; arriving through the network fights it too (bank-style: no Quick Combat or experience; round limit set below)."}
                 </small>
                 <GuardSpecEditor
                   guard={tokenPanelToken.guard}

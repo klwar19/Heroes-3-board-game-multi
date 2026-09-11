@@ -4,7 +4,7 @@ import { cardLibrary } from "@/data/cards/library";
 import { neutralCombatStart } from "./neutral-veterancy";
 import { balanceCard } from "./community-balance-cards";
 import { DRILL_UNIT_XP, MAX_UNIT_RANK } from "@/data/units/experience";
-import { hasParkedParallelInteractions } from "./parallel-combats";
+import { hasParkedParallelInteractions, projectContext, captureParallelContext, replaceEventContext } from "./parallel-combats";
 import {
   awardUnitExperienceAfterCombat,
   diluteUnitExperienceForUpgrade,
@@ -176,6 +176,7 @@ import {
   unitDrillsUsedThisRound,
   unitDrillAvailable,
   wanderingMerchantAvailable,
+  wanderingMerchantOffers,
   neutralBattleLevel,
   getTileFootprintSpaceIds,
   getTownOfPlayer,
@@ -197,6 +198,7 @@ import {
   isTeleportConnectorLocation,
   isTileSlotDesignedSealed,
   isSharedEventBookkeepingReward,
+  migrateParallelEventRewards,
   seaStepHalts,
   makeCombatUnitFromArmy,
   makeCombatUnitFromNeutral,
@@ -536,6 +538,7 @@ import {
   type HexCoord
 } from "./hex";
 import type {
+  AdventureReward,
   AdventureState,
   ArmyUnitState,
   BankSize,
@@ -2786,12 +2789,40 @@ export function openMarket(state: GameState, action: Extract<GameAction, { type:
   beginFieldVisit(state, hero.id, hero.spaceId, true);
 }
 
-/** Open Wandering Merchant without consuming it; only a completed buy does. */
+/** Purchase without touching the shared visit, choice, turn or combat machinery. */
+export function buyWanderingMerchant(state: GameState, action: Extract<GameAction, { type: "BUY_WANDERING_MERCHANT" }>): void {
+  requireAdventure(state);
+  const offer = wanderingMerchantOffers(state, action.playerId).find((entry) => entry.cardId === action.cardId);
+  if (!offer) throw new Error("This War Machine offer is no longer available this round.");
+  if (!offer.affordable) throw new Error("Not enough resources for this discounted War Machine.");
+  const astrologers = getAstrologersState(state)!;
+  spendResources(state, action.playerId, offer.cost, `bought the ${cardLibrary[action.cardId]?.name ?? action.cardId}`);
+  state.players[action.playerId].hand.push(action.cardId);
+  astrologers.wanderingMerchantBoughtBy = [...new Set([...(astrologers.wanderingMerchantBoughtBy ?? []), action.playerId])];
+  const pending = state.adventure?.pendingVisit;
+  // A stale legacy shop of THIS buyer is closed: either the unprocessed offer
+  // step, or the OPENED shop — processPendingVisit rewrites the offer into a
+  // CHOOSE_ONE of PRICED GRANT_WAR_MACHINE leaves (a free McGiver grant carries
+  // no cost and is not a merchant shop).
+  const isMerchantStep = (step: VisitStep): boolean => step.type === "WAR_MACHINE_DISCOUNT_OFFER" ||
+    (step.type === "GRANT_WAR_MACHINE" && Boolean(step.cost)) ||
+    (step.type === "CHOOSE_ONE" && step.options.some((option) => option.steps.some(isMerchantStep)));
+  if (pending?.playerId === action.playerId && pending.steps.some(isMerchantStep)) {
+    state.adventure!.pendingVisit = null;
+  }
+  appendEvent(state, { type: "WAR_MACHINE_BOUGHT", playerId: action.playerId, cardId: action.cardId, cost: offer.cost, at: "trading-post" });
+}
+
+/** Legacy shop actions remain resolvable for older clients and saved visits. */
 export function openWanderingMerchant(
   state: GameState,
   action: Extract<GameAction, { type: "OPEN_WANDERING_MERCHANT" }>
 ): void {
   const adventure = requireAdventure(state);
+  // LEGACY opener only: it occupies the single shared pendingVisit slot, so it
+  // stays turn-gated exactly as before (an off-turn open would freeze the
+  // active player behind another seat's shop). The any-turn purchase is
+  // BUY_WANDERING_MERCHANT, which touches no shared slot.
   assertActiveTurn(state, action.playerId);
   assertHandRefreshed(state, action.playerId);
   assertParallelInteractionFree(state, action.playerId);
@@ -6766,11 +6797,7 @@ function openLearningLevelUpChoice(state: GameState, playerId: PlayerId): boolea
     playerId,
     prompt: balance
       ? "Your Hero gained Experience — play Learning?"
-      : // Timing-neutral on purpose: since 2026-08-22 this window opens on EVERY
-        // Experience gain (a map object's XP, a won fight whose XP crossed no
-        // level…), where the printed "about to level up" wording would be a lie.
-        // Every case is a gain, so the gain is what the prompt names.
-        "Your Hero gained Experience — play Learning to advance further?",
+      : "Your Hero is leveling up — play Learning to advance further?",
     options: [
       ...modes.map((mode) => ({
         label:
@@ -10268,7 +10295,7 @@ function revealCreatureBankArmy(state: GameState, bankId: CreatureBankId): void 
   }
 
   const bankField = state.adventure?.fields[combat.context.fieldId];
-  const { units, stackedCount } = buildCreatureBankCombatUnits(
+  const { units, stackedCount, rewardStackCount } = buildCreatureBankCombatUnits(
     state,
     bankId,
     bankField?.bankSize,
@@ -10949,7 +10976,9 @@ export function startPlayerCombat(
   const field = state.adventure?.fields[fieldId];
   // A hero standing on a Town/Settlement they control is defending that
   // holding, not fighting an ordinary open-field battle. Keep this independent
-  // from town ownership: controlled Settlements/Random Towns use the defender's Citadel.
+  // from `siege`: a controlled Random Town borrows the defender's Citadel
+  // (walls, gate, arrow tower); a Settlement NEVER does (USER RULE 2026-09-11:
+  // fortifications only on a Random Town or a faction Town).
   // A DUEL is fought on a neutral arena board: the `fieldId` is only the
   // attacker's own hex (the label/board anchor), never a holding the defender is
   // defending, so no holding defense and no walls/gate/tower.
@@ -10973,7 +11002,7 @@ export function startPlayerCombat(
     isBuiltGrailField(state, field) && field?.flagOwnerId === defenderPlayerId;
   const holdingCitadelSiege =
     field?.flagOwnerId === defenderPlayerId &&
-    (field.location === "settlement" || field.location === "random_town") &&
+    field.location === "random_town" &&
     Object.values(state.towns).some(candidate =>
       candidate.controllerId === defenderPlayerId && candidate.buildings.some(
         id => coreBuildingDefinitions[id]?.effect?.type === "UNLOCK_REINFORCE",
@@ -14567,6 +14596,13 @@ export function finalizeAdventureCombat(state: GameState): void {
         ) {
           queueSkeletonReinforce(state, playerId);
         }
+      } else if (hero.kind === "secondary") {
+        // A lost Secondary Hero is removed, including retreats and special
+        // neutral encounters whose Main Hero defeat rules leave it in place.
+        if (field?.persistentGuard) {
+          persistLivingGuardsOnField(state, field, combat);
+        }
+        removeSecondaryHeroFromGame(state, hero, "was defeated in battle");
       } else if (outcome.reason === "retreat") {
         // Persistent break-field army: keep living guards for a later re-fight.
         if (field?.persistentGuard) {
@@ -15894,6 +15930,9 @@ function removeSecondaryHeroFromGame(state: GameState, hero: HeroState, reason: 
   hero.spaceId = null;
   hero.movementPoints = 0;
   delete state.heroes[hero.id];
+  if (state.adventure) {
+    delete state.adventure.lastVisitedField[hero.id];
+  }
   appendEvent(state, {
     type: "HERO_LOST",
     playerId: hero.controllerId,
@@ -18959,6 +18998,10 @@ export function payTurnEndOngoingIncome(state: GameState, playerId: PlayerId): v
 
 export function endTurnAdventure(state: GameState, action: Extract<GameAction, { type: "END_TURN" }>): void {
   assertActiveTurn(state, action.playerId);
+  if (state.adventure?.parallelRoundRewards?.[action.playerId]?.length ||
+      state.adventure?.parallelSharedEventQueue?.some((reward) => reward.playerId === action.playerId)) {
+    throw new Error("Resolve your round event rewards before ending your turn.");
+  }
   const endingPlayer = state.players[action.playerId];
   if (endingPlayer?.canMulligan && explorersHandStepActive(state)) {
     throw new Error("Explorers requires drawing up to your hand limit before ending the turn.");
@@ -21058,6 +21101,193 @@ export function openDiscardPickChoice(
  * searches reuse the shared DECK_SEARCH pending choice; City Hall choices
  * open an OPTION_CHOICE.
  */
+/** Open each ready seat's round window in its own saved interaction context. */
+export function pumpParallelRoundEvents(state: GameState): void {
+  if (state.mode !== "adventure" || state.turn.mode !== "parallel" || !state.adventure || state.adventure.winnerPlayerId) return;
+  migrateParallelEventRewards(state);
+  if (!Object.values(state.adventure.parallelRoundRewards ?? {}).some((queue) => queue?.length) &&
+      !state.adventure.parallelSharedEventQueue?.length && !state.adventure.parallelSharedEventOwner &&
+      !state.adventure.parallelSharedEventStage && !state.adventure.parallelEventPlayers?.length &&
+      !state.adventure.parallelEventOpenPlayers?.length) {
+    // A legacy parallel snapshot can retain the ordered barrier sentinel after
+    // its Event rewards were moved. Let the original queue pump consume that
+    // sentinel once no Event window remains; never touch a live combat context.
+    if (state.adventure.eventResolution?.round === state.round && !state.combat &&
+        !state.pendingChoice && !state.reactionWindow && !state.stack.length) {
+      const barrierOwner = state.adventure.parallelEventBarrierOwner ?? state.parallelCombatOwnerId;
+      if (barrierOwner) Object.assign(state, projectContext(state, barrierOwner));
+      pumpAdventureQueues(state);
+    }
+    return;
+  }
+  // Unowned round-start work belongs to the TABLE, not to a seat: City Hall
+  // choices, equipment purchases, round dice and the legacy barrier sentinel
+  // are queued for EVERY player on the one shared reward queue. Taking
+  // ownership of that frame would bury the other seats' rewards inside one
+  // player's context (and inside `parallelEventSuspended`), where nothing can
+  // reach them again — and answering the buried choice later would open ANOTHER
+  // seat's City Hall inside that context and stop parallel play for the table.
+  // Let the ordinary queue drain first: every window opens on a later action,
+  // exactly as it does when no such work exists (audit 2026-09-11).
+  if (!state.parallelCombatOwnerId && (
+    state.combat || state.pendingChoice || state.reactionWindow || state.stack.length ||
+    state.adventure.pendingVisit || state.adventure.pendingTileChoice ||
+    state.adventure.rewardQueue.some((reward) => reward.kind !== "start-turn-hand")
+  )) return;
+  if (!state.parallelCombatOwnerId) {
+    state.parallelCombatOwnerId = state.pendingChoice?.playerId ?? state.adventure.pendingVisit?.playerId ??
+      state.adventure.pendingTileChoice?.playerId ?? (state.combat
+        ? state.combat.attackerPlayerId === NEUTRAL_PLAYER_ID ? state.combat.defenderPlayerId : state.combat.attackerPlayerId
+        : state.activePlayerId);
+  }
+  if (state.adventure.eventResolution?.round === state.round) {
+    state.adventure.parallelEventBarrierOwner ??= state.parallelCombatOwnerId;
+  } else {
+    delete state.adventure.parallelEventBarrierOwner;
+  }
+  const returnOwner = state.adventure.parallelEventBarrierOwner ?? state.parallelCombatOwnerId ?? state.activePlayerId;
+  const idle = (playerId: PlayerId): boolean => {
+    const player = state.players[playerId];
+    if (!player || player.eliminated) return false;
+    const own = projectContext(state, playerId);
+    const a = own.adventure!;
+    return !own.combat && !own.pendingChoice && !own.reactionWindow && !own.stack.length &&
+      !a.pendingVisit && !a.pendingTileChoice && !a.pendingNecromancy && !a.pendingCompanionRecruitment &&
+      !a.pendingCommanderFirstAid && !a.pendingFarTileFlip && !a.pendingGarrison && !a.pendingTokenTeleport && !a.rewardQueue.length;
+  };
+  const finished = new Set<PlayerId>();
+  state.adventure!.parallelEventOpenPlayers = state.adventure!.parallelEventOpenPlayers?.filter((id) => {
+    if (!state.players[id]?.eliminated) return true;
+    delete state.adventure!.parallelEventSuspended?.[id];
+    return false;
+  });
+  const finish = (playerId: PlayerId) => {
+    if (!state.adventure!.parallelEventOpenPlayers?.includes(playerId) || !idle(playerId)) return;
+    const saved = state.adventure!.parallelEventSuspended?.[playerId];
+    state.adventure!.parallelEventOpenPlayers = state.adventure!.parallelEventOpenPlayers!.filter((id) => id !== playerId);
+    delete state.adventure!.parallelEventSuspended?.[playerId];
+    finished.add(playerId);
+    if (saved) Object.assign(state, replaceEventContext(state, playerId, saved));
+  };
+  for (const playerId of [...(state.adventure!.parallelEventOpenPlayers ?? [])]) finish(playerId);
+  const ready = (playerId: PlayerId) => Boolean(state.players[playerId] && !state.players[playerId].eliminated) &&
+    !state.adventure!.parallelEventOpenPlayers?.includes(playerId) && !projectContext(state, playerId).combat &&
+    !state.players[playerId].needsHandRefresh && !state.players[playerId].canMulligan && !state.players[playerId].explorersDiscardPending;
+  const run = (playerId: PlayerId, rewards: AdventureReward[]) => {
+    Object.assign(state, projectContext(state, playerId));
+    state.adventure!.parallelEventPlayers = [...new Set([...(state.adventure!.parallelEventPlayers ?? []), playerId])];
+    if (!idle(playerId)) {
+      (state.adventure!.parallelEventSuspended ??= {})[playerId] = captureParallelContext(state);
+      Object.assign(state, replaceEventContext(state, playerId));
+    }
+    (state.adventure!.parallelEventOpenPlayers ??= []).push(playerId);
+    const rollback = captureParallelContext(state);
+    try {
+      state.adventure!.rewardQueue.push(...rewards);
+      pumpAdventureQueues(state);
+    } catch (error) {
+      // A parked window whose shared prerequisite vanished (a spent Marketplace
+      // deal, an emptied pool) must never reject the ACTING player's committed
+      // action, and must not re-throw on every later action either. Roll this
+      // one window back, drop it, and tell its owner why (audit 2026-09-11).
+      // Put back the interaction this window interrupted (if any) instead of
+      // the empty frame, exactly as finish() would have after a clean window.
+      const saved = state.adventure!.parallelEventSuspended?.[playerId];
+      delete state.adventure!.parallelEventSuspended?.[playerId];
+      Object.assign(state, replaceEventContext(state, playerId, saved ?? rollback));
+      state.adventure!.parallelEventOpenPlayers =
+        state.adventure!.parallelEventOpenPlayers!.filter((id) => id !== playerId);
+      appendEvent(state, { type: "EVENT_NOTE", playerId, message: (error as Error).message });
+    }
+    finish(playerId);
+  };
+  for (const playerId of state.turnOrder) {
+    const rewards = state.adventure!.parallelRoundRewards?.[playerId];
+    if (!rewards?.length) continue;
+    if (state.players[playerId]?.eliminated) {
+      delete state.adventure!.parallelRoundRewards![playerId];
+    } else if (ready(playerId)) {
+      delete state.adventure!.parallelRoundRewards![playerId];
+      run(playerId, rewards);
+    }
+  }
+  // Older snapshots may have one active shared offer. Finish that offer before
+  // adopting concurrent stages, without discarding its reserved cards/choices.
+  let active = state.adventure!.parallelSharedEventOwner;
+  if (active && (state.players[active]?.eliminated || finished.has(active) ||
+      (!state.adventure!.parallelEventOpenPlayers?.includes(active) && !state.adventure!.parallelEventSuspended?.[active] && idle(active)))) {
+    delete state.adventure!.parallelSharedEventOwner;
+    active = undefined;
+  }
+  let stage = state.adventure!.parallelSharedEventStage;
+  if (stage) {
+    stage.players = stage.players.filter((id) => !state.players[id]?.eliminated && state.adventure!.parallelEventOpenPlayers?.includes(id));
+    if (!stage.players.length) {
+      delete state.adventure!.parallelSharedEventStage;
+      stage = undefined;
+    }
+  }
+  while (!active && state.adventure!.parallelSharedEventQueue?.length) {
+    const queue = state.adventure!.parallelSharedEventQueue!;
+    let rewardIndex = 0;
+    let reward = queue[0];
+    const stageStep = reward.kind === "visit-steps" ? reward.steps[0]?.type : undefined;
+    if (stage && stage.step !== stageStep) break;
+    if (stageStep === "EVENT_AUCTION_RESOLVE") {
+      const bids = Object.entries(state.adventure!.events?.auction?.bids ?? {});
+      const highest = Math.max(0, ...bids.map(([, amount]) => amount));
+      const winners = bids.filter(([id, amount]) => amount === highest && highest > 0 && !state.players[id]?.eliminated);
+      if (winners.length === 1) {
+        // The bidder's own fight/draw delays their award, never another seat's.
+        if (!ready(winners[0][0])) break;
+        reward.playerId = winners[0][0];
+      }
+    }
+    if (state.players[reward.playerId]?.eliminated) {
+      const replacement = state.turnOrder.find((id) => id !== NEUTRAL_PLAYER_ID && !state.players[id]?.eliminated);
+      if (replacement && isSharedEventBookkeepingReward(reward)) reward.playerId = replacement;
+      else { state.adventure!.parallelSharedEventQueue!.shift(); continue; }
+    }
+    if (!ready(reward.playerId)) {
+      if (isSharedEventBookkeepingReward(reward)) {
+        const available = state.turnOrder.find((id) => id !== NEUTRAL_PLAYER_ID && ready(id));
+        if (!available) break;
+        reward.playerId = available;
+      } else {
+        // A busy seat does not hold up other participants in the same stage.
+        // Never cross a contribution/bidding/cleanup boundary: those depend on
+        // the earlier stage's actual choices, not on which player's turn it is.
+        const firstStep = reward.kind === "visit-steps" ? reward.steps[0]?.type : undefined;
+        if (!firstStep) break;
+        const boundary = queue.findIndex((entry) => entry.kind !== "visit-steps" || entry.steps[0]?.type !== firstStep);
+        const end = boundary < 0 ? queue.length : boundary;
+        rewardIndex = queue.findIndex((entry, index) => index < end && ready(entry.playerId));
+        if (rewardIndex < 0) break;
+        reward = queue[rewardIndex];
+      }
+    }
+    queue.splice(rewardIndex, 1);
+    run(reward.playerId, [reward]);
+    if (state.adventure!.parallelEventOpenPlayers?.includes(reward.playerId)) {
+      // Marketplace proposals share a single deal, and Prison passes a hand
+      // between seats. Their answer/pass dependencies remain ordered; shops,
+      // contributions, recruitment, dice choices and sealed bids open together.
+      if (stageStep === "EVENT_PLAYER_CHOICE" || stageStep === "EVENT_PRISON_OFFER" || !stageStep) {
+        active = reward.playerId;
+        state.adventure!.parallelSharedEventOwner = active;
+      } else {
+        stage ??= { step: stageStep, players: [] };
+        stage.players.push(reward.playerId);
+        state.adventure!.parallelSharedEventStage = stage;
+      }
+    }
+  }
+  state.adventure!.parallelEventPlayers = state.adventure!.parallelEventPlayers?.filter((id) =>
+    !state.players[id]?.eliminated && (state.adventure!.parallelEventOpenPlayers?.includes(id) || state.adventure!.parallelRoundRewards?.[id]?.length ||
+      state.adventure!.parallelSharedEventQueue?.some((reward) => reward.playerId === id)));
+  Object.assign(state, projectContext(state, returnOwner));
+}
+
 export function pumpAdventureQueues(state: GameState): void {
   const adventure = state.adventure;
   if (!adventure) {

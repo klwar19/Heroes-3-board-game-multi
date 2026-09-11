@@ -20097,6 +20097,47 @@ button.setupHubNavItem:hover {
   vertical-align: middle;
 }
 
+.merchantNotice {
+  position: fixed;
+  right: 18px;
+  bottom: 112px;
+  z-index: 62;
+  width: min(390px, calc(100vw - 24px));
+  max-height: calc(100dvh - 140px);
+  overflow-y: auto;
+  border: 2px solid #e8b754;
+  border-radius: 16px;
+  background: linear-gradient(145deg, #302113, #121c20);
+  color: #fff0ce;
+  box-shadow: 0 12px 40px #000b;
+  animation: marketTabBlink 1.8s ease-in-out infinite;
+}
+.merchantNotice:hover, .merchantNotice:focus-within { animation-play-state: paused; }
+.merchantNoticeArt { position: relative; }
+.merchantNoticeArt > img { display: block; width: 100%; aspect-ratio: 2 / 1; object-fit: cover; object-position: center 57%; }
+.merchantNoticeBadge { position: absolute; bottom: 12px; left: 16px; padding: 6px 12px; border: 1px solid #ffe5a1; border-radius: 6px; background: #271804ed; color: #ffda71; font-size: 19px; font-weight: 900; }
+.merchantNoticeMinimize { position: absolute; top: 10px; right: 10px; display: grid; place-items: center; width: 38px; height: 38px; border: 1px solid #d8b579; border-radius: 8px; background: #10191ff0; color: #fff0ce; cursor: pointer; }
+.merchantNoticeBody { display: grid; gap: 10px; padding: 17px 20px 20px; }
+.merchantNoticeBody > small { color: #d9c39e; font-size: 12px; line-height: 1.5; }
+.merchantNoticeBody h3 { margin: 0; color: #ffe1a0; font-size: 25px; line-height: 1.15; }
+.merchantNoticeBody p { margin: 0; font-size: 15px; line-height: 1.5; }
+.merchantNoticeOffers { display: grid; gap: 8px; }
+.merchantNoticeBuy { width: 100%; min-height: 46px; padding: 10px; border: 1px solid #ffe1a0; border-radius: 8px; background: linear-gradient(#f3cc74, #b67b2b); color: #261605; font-weight: 800; font-size: 16px; cursor: pointer; }
+.merchantNoticeBuy:disabled { opacity: .55; cursor: default; }
+.merchantNotice button:focus-visible, .merchantNoticeChip:focus-visible { outline: 3px solid #fff1ba; outline-offset: 3px; }
+.merchantNoticeChip > img { width: 62px; height: 46px; border-radius: 7px; object-fit: cover; }
+.merchantNoticeChip > span { display: grid; gap: 4px; text-align: left; }
+.merchantNoticeChip strong { font-size: 12px; color: #f2cd80; }
+@media (max-width: 600px) {
+  .merchantNotice { right: 12px; bottom: 90px; max-height: calc(100dvh - 112px); }
+  .merchantNoticeArt > img { aspect-ratio: 2.6 / 1; }
+  .merchantNoticeBody { padding: 12px 16px; gap: 8px; }
+  .merchantNoticeChip { right: 12px; bottom: 90px; max-width: calc(100vw - 24px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .merchantNotice, .merchantNoticeChip { animation: none; }
+}
+
 @keyframes marketTabBlink {
   0%,
   100% {

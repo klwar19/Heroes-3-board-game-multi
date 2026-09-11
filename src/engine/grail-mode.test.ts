@@ -20,7 +20,7 @@ import { ATTACK_DIE_FACES } from "./battlefield";
 import { gameIsOver, detectFinishedMatch } from "@/server/match-report";
 import type { AdventurePlayerConfig } from "./adventure-setup";
 
-type Mode = "conquest" | "grail" | "dragon-hunt" | "dragon-conqueror";
+type Mode = "conquest" | "conquer" | "grail" | "dragon-hunt" | "dragon-conqueror";
 
 function makeGame(victoryMode: Mode): GameState {
   return createAdventureGameState({ seed: `wc-${victoryMode}`, difficulty: "normal", rollFirstPlayer: false, victoryMode });
@@ -84,14 +84,16 @@ describe("Dragon Conqueror setup", () => {
 });
 
 describe("Dragon Hunt setup", () => {
-  it("guarantees a Dragon Utopia on a Center tile and tracks hero defeats", () => {
+  it("guarantees a Dragon Utopia on a Center tile and tracks NO hero defeats (v127: only Conquer does)", () => {
     const state = makeGame("dragon-hunt");
     const tileDefs = Object.values(state.adventure!.tiles).map((tile) => tile.tileDefId);
     expect(tileDefs.some((id) => id === "C1" || id === "C3")).toBe(true);
     expect(state.adventure!.victoryMode).toBe("dragon-hunt");
-    // No Grail token is minted; the "defeat every enemy hero" path is tracked.
+    // No Grail token is minted; since v127 the PvP-cube path belongs to Conquer
+    // alone, so nothing is seeded here — Dragon Hunt wins by the Utopia or by
+    // eliminating every enemy faction.
     expect(state.adventure!.grail).toBeUndefined();
-    expect(state.adventure!.heroDefeats).toEqual({});
+    expect(state.adventure!.heroDefeats).toBeUndefined();
   });
 });
 
@@ -442,9 +444,10 @@ describe("Defeat every enemy hero", () => {
     } as CombatState;
   }
 
-  // Both objective modes also allow winning by military dominance.
-  it("five-player Conquest needs three distinct rivals; repeated wins never count twice", () => {
-    const state = makeGameWithPlayers("conquest", [
+  // v127: the distinct-PvP-win path is Conquer's alone; every other mode wins
+  // its objective or by eliminating every enemy faction.
+  it("five-player Conquer needs three distinct rivals; repeated wins never count twice", () => {
+    const state = makeGameWithPlayers("conquer", [
       { id: "p1", name: "A", factionId: "castle", heroDefId: "catherine" },
       { id: "p2", name: "B", factionId: "dungeon", heroDefId: "alamar" },
       { id: "p3", name: "C", factionId: "necropolis", heroDefId: "sandro" },
@@ -464,7 +467,7 @@ describe("Defeat every enemy hero", () => {
     expect(state.phase).toBe("game-over");
   });
 
-  for (const mode of ["conquest", "grail", "dragon-hunt", "dragon-conqueror"] as const) {
+  for (const mode of ["conquer"] as const) {
     for (const seats of [3, 4]) for (const gaveUp of [false, true]) {
       it(`wins when the last unbeaten rival departs (${mode}, ${seats}, quit=${gaveUp})`, () => {
         const players: AdventurePlayerConfig[] = [
@@ -629,8 +632,8 @@ describe("Defeat every enemy hero", () => {
     });
   }
 
-  it("counts a surrendered PvP battle toward the shared Conquest win path", () => {
-    const state = makeGame("dragon-hunt");
+  it("counts a surrendered PvP battle toward the Conquer win path", () => {
+    const state = makeGame("conquer");
     const attacker = getMainHero(state, "p1")!;
     const defender = getMainHero(state, "p2")!;
     const field = injectField(state, "empty_field");
@@ -659,6 +662,19 @@ describe("Defeat every enemy hero", () => {
     expect(state.adventure!.heroDefeats?.p1).toEqual(["p2"]);
     expect(state.adventure!.winnerPlayerId).toBe("p1");
   });
+
+  // CONTROL (v127): the other four modes record no PvP cube and a lone PvP
+  // win ends nothing — only their objective or full elimination wins.
+  for (const mode of ["conquest", "grail", "dragon-hunt", "dragon-conqueror"] as const) {
+    it(`records no PvP credit and no win from a single PvP victory in ${mode}`, () => {
+      const state = makeGame(mode);
+      stagePvpWin(state, "p1", "p2");
+      finalizeAdventureCombat(state);
+      expect(state.adventure!.heroDefeats).toBeUndefined();
+      expect(state.adventure!.winnerPlayerId).toBeNull();
+      expect(state.phase).not.toBe("game-over");
+    });
+  }
 });
 
 describe("Match W/L detection after combat-end notice", () => {

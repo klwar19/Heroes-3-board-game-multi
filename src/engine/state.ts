@@ -590,18 +590,16 @@ export type FieldOverridePlacementMode =
   | "manual-or-refuse";
 /**
  * How the scenario is won:
- *  - "conquest": defeat the required number of distinct rival Heroes.
- *  - "conquer": eliminate every enemy faction; a Town capture or PvP win alone
- *    never ends the game while an enemy Hero remains active.
+ * All modes also allow Conquest: eliminate every enemy faction.
+ *  - "conquest": elimination only (default, including single player).
+ *  - "conquer": reach the fixed distinct PvP-win target, or eliminate every rival.
  *  - "grail" (Holy Grail): win by capturing the Grail — defeat a Lvl-VII guard,
  *    visit 2 distinct Obelisks, dig for 1 movement point, then carry it home —
- *    or by beating every enemy hero in combat at least once (only 2 of them in
- *    a 4-player game). The map seeds up to 2 Grail tiles and at least 2
+ *    or by eliminating every enemy faction. The map seeds up to 2 Grail tiles and at least 2
  *    Obelisks (designer presets count). The Dragon Utopia is NOT an objective
  *    here; it is just a creature bank.
  *  - "dragon-hunt": win by defeating the Dragon Utopia (no need to hold it) or
- *    by beating every enemy hero in combat at least once (only 2 in a 4-player
- *    game).
+ *    by eliminating every enemy faction.
  *  - "dragon-conqueror": defeat the Dragon Utopia to capture it, then hold it.
  *    The holder garrisons it; rivals must besiege it (Walls, Gate, Arrow
  *    Tower) to take it. Hold through the end of the round following capture to win.
@@ -4995,6 +4993,12 @@ type GameActionPayload =
        */
       type: "OPEN_WANDERING_MERCHANT";
       playerId: PlayerId;
+    }
+  | {
+      /** Atomic round purchase; does not occupy or wait for a visit/combat slot. */
+      type: "BUY_WANDERING_MERCHANT";
+      playerId: PlayerId;
+      cardId: CardId;
     }
   | { type: "REVISIT_FIELD"; playerId: PlayerId; heroId: HeroId }
   | {
@@ -11007,6 +11011,7 @@ export type MapTileState = {
     preferredSpaceId?: MapSpaceId;
     /** Designer guard placed with the token (level or exact army). */
     guard?: CustomGuardSpec;
+    combatRoundLimit?: 1 | 2 | 3 | "unlimited";
     /** Designer first-clear reward, carried to the carved field. */
     reward?: CustomFieldReward;
     /** Designer first-clear VP, carried to the carved field. */
@@ -11045,6 +11050,7 @@ export type MapTileState = {
     preferredSpaceId?: MapSpaceId;
     /** Designer guard placed with the token (level or exact army). */
     guard?: CustomGuardSpec;
+    combatRoundLimit?: 1 | 2 | 3 | "unlimited";
     /** Designer first-clear reward, carried to the carved field. */
     reward?: CustomFieldReward;
     /** Designer first-clear VP, carried to the carved field. */
@@ -11461,6 +11467,8 @@ export type MapFieldState = {
    * continue-or-retreat window). Absent = normal Round limit + MP-to-extend.
    */
   unlimitedCombatRounds?: boolean;
+  /** Hard round cap: automatically retreat if enemies survive; absent keeps normal extension rules. */
+  combatRoundLimit?: 1 | 2 | 3 | "unlimited";
   /**
    * Subterranean Gate token (Stronghold expansion). When a gate is placed, the
    * sacrificed hex's `location` becomes "subterranean_gate" and these point at
@@ -13135,6 +13143,7 @@ export type VisitStep =
       cardId: CardId;
       deckId: DeckId;
       price: number;
+      eventOffer?: true;
     }
   | {
       /**
@@ -13475,6 +13484,8 @@ export type VisitStep =
       /** Leaf: remove the pool die at `index` and resolve its face. */
       type: "EVENT_TAKE_POOL_DIE";
       index: number;
+      /** Match by face for concurrent offers; index remains for older saves. */
+      die?: EventDiePoolEntry;
     }
   | {
       /** Den of Thieves (drawer only): menu — pick the Neutral Unit deck to raid. */
@@ -14325,7 +14336,7 @@ export type AdventureState = {
    */
   grailTakenConversion?: "dragon_utopia" | "empty_field";
   /**
-   * Conquest / Grail Hunt / Dragon Hunt: distinct rival players beaten in
+   * Conquer: distinct rival players beaten in
    * hero combat at least once. Repeated defeats never increase the count.
    */
   heroDefeats?: Record<PlayerId, PlayerId[]>;
@@ -14362,8 +14373,9 @@ export type AdventureState = {
   /** Event deck state (Resource rounds; optional rule, multiplayer only). */
   events?: EventsState;
   /**
-   * Round-start Event / Astrologers barrier (both event types, ordered AND
-   * parallel play). Set at the start of a round whose Event or Astrologers
+   * Round-start barrier for ordered Event/Astrologers resolution and separate
+   * wave/timed-event systems. Parallel Event windows use the contexts below.
+   * Set when an ordered Event or Astrologers
    * proclamation queued per-player resolution; while it is set the WHOLE table
    * is frozen — only the player whose event choice is currently open may act,
    * every other player waits (no quiet moves, no start-of-turn draw, no town or
@@ -14375,6 +14387,20 @@ export type AdventureState = {
    * round). Absent/null when no Event is mid-resolution — i.e. almost always.
    */
   eventResolution?: { round: number } | null;
+  /** Parallel round windows wait only for their own seat's hand/combat. */
+  parallelRoundRewards?: Partial<Record<PlayerId, AdventureReward[]>>;
+  /** Shared pools/auction stages retain printed order without a table barrier. */
+  parallelSharedEventQueue?: AdventureReward[];
+  parallelSharedEventOwner?: PlayerId;
+  /** Concurrent participants in one shared Event stage; cleanup waits for this stage. */
+  parallelSharedEventStage?: { step: VisitStep["type"]; players: PlayerId[] };
+  /** Seats whose independent Event/Astrologers work has not finished. */
+  parallelEventPlayers?: PlayerId[];
+  /** Preserve a separate non-event round barrier while event seats act. */
+  parallelEventBarrierOwner?: PlayerId;
+  /** Event-only interruption: resume the player's prior noncombat choice afterward. */
+  parallelEventSuspended?: Partial<Record<PlayerId, import("./parallel-combats").ParallelCombatContext>>;
+  parallelEventOpenPlayers?: PlayerId[];
 };
 
 /**
@@ -14420,7 +14446,7 @@ export type GameSetupOptions = {
   wog?: WogModOptions;
   /** Anime mod modules. Enabled only in BINH mode; absent means fully off. */
   anime?: AnimeModOptions;
-  /** Win condition: Conquest, Conquer (elimination), Holy Grail, or a Dragon mode. */
+  /** Win condition: Conquest (elimination), Conquer (PvP), Holy Grail, or a Dragon mode. */
   victoryMode?: VictoryMode;
   /** PvP Combat casualties: "normal" (lose dead units) or "none" (keep troops). */
   pvpTroopLoss?: PvpTroopLoss;
@@ -15029,6 +15055,7 @@ export type CustomMapPreset = {
      * their own first-visit guard. Absent = unguarded (classic behaviour).
      */
     guard?: CustomGuardSpec;
+    combatRoundLimit?: 1 | 2 | 3 | "unlimited";
     /**
      * Break-field options (PC "Jebus Cross" style). When set, Pathfinding may
      * NOT walk through the guarded Obelisk — it must be fought to enter. With
@@ -15050,6 +15077,7 @@ export type CustomMapPreset = {
    */
   mines?: {
     guard?: CustomGuardSpec;
+    combatRoundLimit?: 1 | 2 | 3 | "unlimited";
     breakField?: boolean;
     persistentGuard?: boolean;
     unlimitedRounds?: boolean;
@@ -15434,6 +15462,7 @@ export type CustomMapObject = {
   pair?: 1 | 2 | 3 | 4;
   placement: CustomMapObjectPlacement;
   guard?: number | CustomGuardSpec;
+  combatRoundLimit?: 1 | 2 | 3 | "unlimited";
   /**
    * Creature Bank object ONLY — which of the 12 banks this hex hosts
    * (`imp_cache`, `crypt`, …). Required for `kind: "creature_bank"`; stripped
@@ -15991,6 +16020,7 @@ export type CustomMapTilePlan = {
  */
 export type CustomObjectFieldPlan = {
   guard?: CustomGuardSpec;
+  combatRoundLimit?: 1 | 2 | 3 | "unlimited";
   reward?: CustomFieldReward;
   vp?: number;
   breakField?: boolean;
@@ -16095,6 +16125,7 @@ export type CustomMapTileToken = {
   pair?: 1 | 2 | 3 | 4;
   slot?: number;
   guard?: CustomGuardSpec;
+  combatRoundLimit?: 1 | 2 | 3 | "unlimited";
   /**
    * One-time first-clear reward on the carved token hex (same shape as a
    * center-hex reward). Granted once after the guard is cleared / on a peaceful
@@ -16185,6 +16216,7 @@ export type CustomCenterHexReward = CustomFieldReward;
 export type CustomCenterHexPlan = {
   /** Replace the printed difficulty-7 guard with a level or a certain army. */
   guard?: CustomGuardSpec;
+  combatRoundLimit?: 1 | 2 | 3 | "unlimited";
   /** One-time bonus for whoever first clears / captures the objective. */
   reward?: CustomFieldReward;
   /** Victory Points for the first clearer (scored in VP mode; 1-10). */

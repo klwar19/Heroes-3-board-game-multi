@@ -661,6 +661,49 @@ describe("hand-step directives banner — the mandatory start-of-turn draw", () 
     });
   });
 
+  // USER RULE 2026-09-11: Explorers pays out only as empowers of Statistics
+  // still in hand, so the picker must WARN before cards are thrown away for
+  // nothing — no Statistic in hand at all, or every Statistic picked as a discard.
+  it("Explorers warns when no Statistic card would be left to empower, and stays quiet otherwise", async () => {
+    window.localStorage.setItem(UI_MODE_STORAGE_KEY, "computer");
+    const arm = (seed: string, hand: string[]) => {
+      const state = createAdventureGameState({ seed, rollFirstPlayer: false });
+      state.round = 2;
+      state.activePlayerId = "p1";
+      state.adventure!.astrologers = {
+        activeCardId: "astrologers.explorers",
+        nextResourceModifiers: { gold: 0, valuables: 0 },
+        crazyWizardUsedBy: [],
+        swiftWeaselUsedBy: []
+      };
+      state.players.p1.canMulligan = false;
+      state.players.p1.needsHandRefresh = false;
+      state.players.p1.explorersDiscardPending = true;
+      state.players.p1.hand = hand;
+      return state;
+    };
+    const warning = () => document.querySelector('[data-testid="explorers-no-statistic-warning"]');
+
+    // No Statistic at all → the "you hold no Statistic card" warning is up immediately.
+    serveRoom(arm("explorers-warn-none", ["ability.pathfinding", "ability.logistics"]));
+    const first = render(<Home />);
+    await settle();
+    expect(screen.getByText("Explorers — choose discards")).toBeTruthy();
+    expect(warning()?.textContent).toContain("you hold no Statistic card");
+    first.unmount();
+
+    // CONTROL: one Statistic in hand → no warning until it is picked for discard,
+    // then the "every Statistic card ... selected for discard" warning appears.
+    serveRoom(arm("explorers-warn-kept", ["stat.attack", "ability.logistics"]));
+    render(<Home />);
+    await settle();
+    expect(warning()).toBeNull();
+    fireEvent.click(screen.getByTitle("Toggle discard Attack"));
+    expect(warning()?.textContent).toContain("every Statistic card in your hand is selected for discard");
+    fireEvent.click(screen.getByTitle("Toggle discard Attack"));
+    expect(warning()).toBeNull();
+  });
+
   it("renders `.handDirectives.mandatory` outside the hand header with the Draw button inside", async () => {
     window.localStorage.setItem(UI_MODE_STORAGE_KEY, "computer");
     const state = createAdventureGameState({ seed: "banner-draw", rollFirstPlayer: false });

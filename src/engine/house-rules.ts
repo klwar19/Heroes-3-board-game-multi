@@ -78,7 +78,7 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     id: "settlement-neutral-recruitment",
     label: "Settlements: faction Neutral Units",
     description:
-      "Each Settlement belongs to the faction printed on its map field. While you control it, you may buy only that faction's corresponding single-sided Neutral Unit cards at their printed Neutral cost; you do not gain access to the faction's normal Few/Pack roster. These recruits cannot be reinforced. Takes precedence over \"Settlements: recruit from another town\" when both are on.",
+      "Each Settlement belongs to the faction printed on its map field. While you control it, you may buy only that faction's corresponding single-sided Neutral Unit cards at their printed Neutral cost; you do not gain access to the faction's normal Few/Pack roster. With a Gold Dwelling built in one of your towns, the faction's azure signature creature (Gold Dragons, Titans, Hydras, Phoenixes) is sold too, at its printed Neutral cost. These recruits cannot be reinforced. Takes precedence over \"Settlements: recruit from another town\" when both are on.",
     category: "units",
     default: false,
     legacyDefault: false,

@@ -2589,6 +2589,8 @@ export function scoreMapAction(
           ? 710 + economyFocusBias(memory, "market") : 0,
         policy: "map.open-wandering-merchant",
       };
+    case "BUY_WANDERING_MERCHANT":
+      return { score: 710 + economyFocusBias(memory, "market"), policy: "map.buy-wandering-merchant" };
     case "TRADE_RESOURCES":
       return {
         score: tradeResourceScore(observation, action),

@@ -27,7 +27,7 @@ import type { CombatState, CombatUnitState, GameState, HouseRuleId, MapFieldStat
  *   library-cards.test.ts).
  */
 
-type Mode = "conquest" | "grail";
+type Mode = "conquest" | "conquer" | "grail";
 
 function makeGame(
   opts: {
@@ -213,8 +213,8 @@ describe("Surrender (house rule): a paid escape, not a defeat", () => {
     expect(state.heroes[loserHeroId].movementPoints).toBe(2);
   });
 
-  it("counts as a PvP win toward Conquest (grail mode)", () => {
-    const state = makeGame({ victoryMode: "grail" });
+  it("counts as a PvP win toward Conquest (Conquer mode — the only mode that counts PvP wins since v127)", () => {
+    const state = makeGame({ victoryMode: "conquer" });
     const { winnerId, loserId } = stageFinishedPvpFight(state, "surrender");
 
     finalizeAdventureCombat(state);
@@ -291,8 +291,8 @@ describe("Retreat / fought-out loss (house rule): a real defeat", () => {
     expect(kept.players.p2.army.map((u) => u.id)).toEqual(["b1", "b2"]);
   });
 
-  it("counts as a win for the opponent — records a hero-defeat and can win the game (grail mode)", () => {
-    const state = makeGame({ victoryMode: "grail" });
+  it("counts as a win for the opponent — records a hero-defeat and can win the game (Conquer mode — the only mode that counts PvP wins since v127)", () => {
+    const state = makeGame({ victoryMode: "conquer" });
     const { winnerId, loserId } = stageFinishedPvpFight(state, "retreat");
 
     finalizeAdventureCombat(state);
@@ -388,8 +388,8 @@ describe("Secondary-Hero surrender (house rule): sacrifice the 2nd hero, not 10 
     expect(state.players.p2.army.map((u) => u.id)).toEqual(["b1", "b2"]);
   });
 
-  it("gives PvP victory credit (grail mode) and no Necromancy window", () => {
-    const state = makeGame({ victoryMode: "grail" });
+  it("gives PvP victory credit (Conquer mode — the only mode that counts PvP wins since v127) and no Necromancy window", () => {
+    const state = makeGame({ victoryMode: "conquer" });
     stageSecondaryDefenderFight(state, "surrender-secondary");
     state.players.p1.necromancyWindow = false;
 
@@ -401,7 +401,7 @@ describe("Secondary-Hero surrender (house rule): sacrifice the 2nd hero, not 10 
   });
 
   it("FIGHTING and losing with the 2nd hero removes it and counts as a win (5 gold + credit)", () => {
-    const state = makeGame({ victoryMode: "grail" });
+    const state = makeGame({ victoryMode: "conquer" });
     const { secondaryId, homeFieldId } = stageSecondaryDefenderFight(state, "retreat");
     state.players.p2.resources.gold = 10;
     state.players.p1.resources.gold = 10;

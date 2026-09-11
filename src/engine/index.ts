@@ -713,6 +713,7 @@ export {
   gateFieldsLinked,
   getActiveAstrologersCard,
   explorersHandStepActive,
+  isEmpowerableStatisticCard,
   getActiveEventCard,
   getEventsState,
   getAdjacentSpaceIds,

@@ -3,7 +3,7 @@
   "family": "sources",
   "cdn": "https://cdn.hamthefirt.xyz",
   "roots": ["scripts/anime-art","scripts/commander-art","scripts/neutral-unit-art","scripts/doom-art","generated-session-art","assets-to-translate"],
-  "count": 851,
+  "count": 852,
   "files": {
     "assets-to-translate/conflux-drive/english/_ALL_MODIFIED/artifacts_major-orb_of_tempestuous_fire.webp": { "md5": "52f9b3ad757049ba5cbad587c75c26ba", "bytes": 226028, "width": 743, "height": 1040 },
     "assets-to-translate/conflux-drive/english/_ALL_MODIFIED/artifacts_major-orb_of_the_firmament.webp": { "md5": "24a77adb78762c2d3ecfe3af603244dc", "bytes": 144598, "width": 743, "height": 1040 },
@@ -682,6 +682,7 @@
     "scripts/anime-art/raw/little-busters/units/rins-cats-master.png": { "md5": "b79778b91fd819c9dcc82c62d74c77e1", "bytes": 2280837, "width": 1060, "height": 1484 },
     "scripts/anime-art/raw/little-busters/units/saya-tokido-master.png": { "md5": "256cf2d6a250122da39d1d24e9e1329a", "bytes": 2171569, "width": 1122, "height": 1402 },
     "scripts/anime-art/raw/little-busters/units/softball-club-master.png": { "md5": "e871583c839b9abbeb860d3bea87f883", "bytes": 2605094, "width": 1060, "height": 1484 },
+    "scripts/anime-art/raw/low-roll-extra-shot/arrow.webp": { "md5": "35a87e9b259cea9e2a4a88fe2ee139cd", "bytes": 27470, "width": 1024, "height": 133 },
     "scripts/anime-art/raw/mgq/backgrounds/aria-scene.png": { "md5": "35015daac6c7ef5c813f04f617012d93", "bytes": 2652304, "width": 1024, "height": 1536 },
     "scripts/anime-art/raw/mgq/backgrounds/ilias-sealed-scene.png": { "md5": "444c3cb2626178489fb761a83e710398", "bytes": 2216781, "width": 1024, "height": 1536 },
     "scripts/anime-art/raw/mgq/backgrounds/lisa-scene.png": { "md5": "251d2563b89f97d89f4687f78b18d71c", "bytes": 1819992, "width": 1024, "height": 1536 },

@@ -139,7 +139,7 @@ describe("Astrologers × parallel — immediate all-player effects reach non-act
 // B. Per-player choice serializes through the singleton interaction
 // ===========================================================================
 
-describe("Astrologers × parallel — per-player choices freeze the whole table until every seat resolves", () => {
+describe("Astrologers × parallel — per-player choices open in each seat's OWN window; nobody is frozen (v128)", () => {
   function dancingImpGame(seed: string): GameState {
     const state = makeParallelGame(seed, "astrologers.dancing_imp");
     // Each seat holds an empowerable Statistic, so each is offered the empower.
@@ -148,65 +148,54 @@ describe("Astrologers × parallel — per-player choices freeze the whole table 
     return state;
   }
 
-  it("opens seat 1's empower first; seat 2 is FULLY frozen (no quiet move) until the whole table resolves", () => {
+  it("opens each seat's empower after that seat's own draw; the other seat keeps moving and ending its turn", () => {
     let state = wrapIntoRound2(dancingImpGame("par-astro-imp"));
 
-    // Seat 1's Dancing Imp empower is the open (singleton) interaction — offered
-    // to seat 1 (the empower renders as a CHOOSE_ONE visit; assert by its label).
-    expect(state.adventure?.pendingVisit?.playerId).toBe("p1");
-    expect(state.adventure?.eventResolution?.round).toBe(2); // the barrier is up
+    // No whole-table barrier and no shared visit: the per-player empowers are
+    // parked PER SEAT and open only once THAT seat has taken its draw.
+    expect(state.adventure?.eventResolution ?? null).toBeNull();
+    expect(state.adventure?.pendingVisit).toBeNull();
+    expect(state.adventure?.parallelRoundRewards?.p1?.length ?? 0).toBeGreaterThan(0);
+    expect(state.adventure?.parallelRoundRewards?.p2?.length ?? 0).toBeGreaterThan(0);
+    // A seat with parked round work may not end its turn around it.
+    expect(getLegalActions(state, "p2").some((legal) => legal.action.type === "END_TURN")).toBe(false);
+
+    // Seat 1 draws: ITS window opens. Seat 2 is not frozen — its draw is offered.
+    state = takeStartOfTurnDraw(state, "p1");
+    expect(visitLabels(state, "p1").some((label) => /Empower Attack/.test(label))).toBe(true);
+    expect(getLegalActions(state, "p2").some((legal) => legal.action.type === "REFRESH_HAND")).toBe(true);
+    state = takeStartOfTurnDraw(state, "p2");
+    // Both windows are open at once, each in its own context.
+    expect(visitLabels(state, "p2").some((label) => /Empower Attack/.test(label))).toBe(true);
     expect(visitLabels(state, "p1").some((label) => /Empower Attack/.test(label))).toBe(true);
 
-    // Seat 2 is frozen by the round-start Event barrier: it has NO legal actions
-    // at all — it may not resolve the visit, may not end its turn, and (unlike a
-    // plain foreign-interaction bystander) may not even take a quiet move.
-    expect(getLegalActions(state, "p2")).toEqual([]);
-    expect(expectRejected(state, { type: "END_TURN", playerId: "p2" })).toContain("Event is still being resolved");
-    const quiet = emptyFieldNextTo(state, "hero_p2");
-    expect(expectRejected(state, { type: "MOVE_HERO", playerId: "p2", heroId: "hero_p2", to: quiet })).toContain(
-      "Event is still being resolved"
-    );
-    // The blocked move never happened — seat 2's hero stayed put and seat 1's
-    // interaction is untouched.
-    expect(state.heroes.hero_p2.spaceId).not.toBe(quiet);
-    expect(state.adventure?.pendingVisit?.playerId).toBe("p1");
-
-    // Seat 1 empowers: the effect actually fires for a parallel seat...
-    const empowerP1 = getLegalActions(state, "p1").find(
-      (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && /Empower Attack/.test(legal.label)
-    );
-    expect(empowerP1).toBeTruthy();
-    state = apply(state, empowerP1!.action);
-    expect(state.players.p1.hand).toContain("stat.attack.empowered");
-
-    // ...and the barrier hands the choice to seat 2 next (seat order). It is STILL
-    // up, so now it is SEAT 1 that is frozen out — even of a quiet move.
-    expect(state.adventure?.pendingVisit?.playerId).toBe("p2");
-    expect(state.adventure?.eventResolution?.round).toBe(2);
-    const seat1Quiet = emptyFieldNextTo(state, "hero_p1");
-    expect(expectRejected(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: seat1Quiet })).toContain(
-      "Event is still being resolved"
-    );
-
+    // Seat 2 resolves FIRST (no seat order): the effect fires for that seat…
     const empowerP2 = getLegalActions(state, "p2").find(
       (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && /Empower Attack/.test(legal.label)
     );
     expect(empowerP2).toBeTruthy();
     state = apply(state, empowerP2!.action);
     expect(state.players.p2.hand).toContain("stat.attack.empowered");
+    // …seat 1's open window is untouched, and seat 2 plays on beside it.
+    expect(visitLabels(state, "p1").some((label) => /Empower Attack/.test(label))).toBe(true);
+    expect(state.players.p1.hand).not.toContain("stat.attack.empowered");
+    const quiet = emptyFieldNextTo(state, "hero_p2");
+    state = apply(state, { type: "MOVE_HERO", playerId: "p2", heroId: "hero_p2", to: quiet });
+    expect(state.heroes.hero_p2.spaceId).toBe(quiet);
+    expect(getLegalActions(state, "p2").some((legal) => legal.action.type === "END_TURN")).toBe(true);
+    // Seat 1 must answer its own window before ending its turn.
+    expect(getLegalActions(state, "p1").some((legal) => legal.action.type === "END_TURN")).toBe(false);
 
-    // Both empowers resolved: the barrier LIFTS (sentinel cleared it), the
-    // singleton interaction is free, and the table is still in parallel mode.
-    expect(state.adventure?.pendingVisit).toBeNull();
+    const empowerP1 = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && /Empower Attack/.test(legal.label)
+    );
+    expect(empowerP1).toBeTruthy();
+    state = apply(state, empowerP1!.action);
+    expect(state.players.p1.hand).toContain("stat.attack.empowered");
+    expect(state.adventure?.parallelEventOpenPlayers ?? []).toEqual([]);
+    expect(Object.values(state.adventure?.parallelRoundRewards ?? {}).flat()).toEqual([]);
     expect(state.adventure?.eventResolution ?? null).toBeNull();
     expect(state.turn.mode).toBe("parallel");
-
-    // CONTROL: with the whole table done resolving, the quiet move the barrier
-    // rejected moments ago now succeeds again (after the freed start-of-turn draw).
-    state = takeStartOfTurnDraw(state, "p2");
-    const nowQuiet = emptyFieldNextTo(state, "hero_p2");
-    state = apply(state, { type: "MOVE_HERO", playerId: "p2", heroId: "hero_p2", to: nowQuiet });
-    expect(state.heroes.hero_p2.spaceId).toBe(nowQuiet);
   });
 });
 

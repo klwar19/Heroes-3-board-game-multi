@@ -55,7 +55,7 @@ function owner(state: GameState): PlayerId | undefined {
   );
 }
 
-function capture(state: GameState): ParallelCombatContext {
+export function captureParallelContext(state: GameState): ParallelCombatContext {
   const adventure = Object.fromEntries(
     adventureSlots.map((key) => [
       key,
@@ -214,10 +214,19 @@ export function parallelStateForPlayer(
     state.mode !== "adventure" ||
     state.turn.mode !== "parallel" ||
     !state.adventure ||
-    state.adventure.eventResolution?.round === state.round ||
     state.adventure.winnerPlayerId
   )
     return state;
+  if (state.adventure.eventResolution?.round === state.round) {
+    // Only a seat whose Event window is actually OPEN leaves a separate wave /
+    // timed-event barrier. A seat with work merely QUEUED must keep the raw
+    // frame: projecting it parks the barrier owner's combat/visit, so
+    // `roundStartEventResolver` reads null off the empty projection and both
+    // barrier gates (`resolver && resolver !== playerId`) would let it act
+    // freely under a whole-table freeze (audit 2026-09-11).
+    return state.adventure.parallelEventOpenPlayers?.includes(playerId)
+      ? projectContext(state, playerId) : state;
+  }
   const currentOwner = owner(state);
   const parked = state.parallelCombats ?? {};
   // A viewer with no seat of their own — an unseated spectator or an eliminated
@@ -307,7 +316,7 @@ function watchTargetFor(
  * from `parallelStateForPlayer`, which has already established `state.adventure`
  * — the `!` below is that guarantee, not a guess.
  */
-function projectContext(state: GameState, targetOwner: PlayerId): GameState {
+export function projectContext(state: GameState, targetOwner: PlayerId): GameState {
   const currentOwner = owner(state);
   const contexts = { ...(state.parallelCombats ?? {}) };
   if (currentOwner) {
@@ -362,6 +371,18 @@ export function hasParkedParallelInteractions(state: GameState): boolean {
   return Object.entries(state.parallelCombats ?? {}).some(([ownerId, context]) =>
     contextCounts(state, ownerId, context),
   );
+}
+
+const capture = captureParallelContext;
+
+/** Replace only one Event seat's interaction slots; all other contexts stay parked. */
+export function replaceEventContext(state: GameState, playerId: PlayerId, replacement?: ParallelCombatContext): GameState {
+  const own = projectContext(state, playerId);
+  const contexts = { ...own.parallelCombats };
+  if (replacement) contexts[playerId] = replacement;
+  else delete contexts[playerId];
+  // Do not re-capture the frame being replaced. Event callers have saved it.
+  return projectContext({ ...own, parallelCombatOwnerId: undefined, combat: null, parallelCombats: contexts }, playerId);
 }
 
 /**

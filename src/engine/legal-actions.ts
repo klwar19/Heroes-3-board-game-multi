@@ -77,7 +77,7 @@ import {
   unitDrillMovementCost,
   unitDrillAvailable,
   heroHasFreeGateStep,
-  wanderingMerchantAvailable,
+  wanderingMerchantOffers,
 } from "./adventure";
 import {
   MGQ_JOB_LABELS,
@@ -1664,7 +1664,7 @@ export function getLegalMoveDestinations(
     !isUnitAlive(unit) ||
     (unit.activatedThisRound && !waitedReactivation) ||
     unit.movedThisActivation ||
-    (unit.attackedThisActivation && !(unit.type === "ranged" && hasUnitAbilityEffect(unit, "MOVE_ANYWHERE")))
+    (unit.attackedThisActivation && unit.type !== "ranged")
   ) {
     return [];
   }
@@ -7904,8 +7904,8 @@ function addControlledNeutralTokenActions(
  * BANK — both obey the `pvpNeutralControlMustAttack` sub-toggle (user rules):
  *
  *  - MUST-ATTACK mode (default): the rulebook constraint — a guard that can
- *    strike now may ONLY strike; one that can reach a strike by moving may only
- *    move to those cells; otherwise it may only step strictly CLOSER to some
+ *    strike now may strike or move to another cell from which it can strike;
+ *    otherwise it may only step strictly CLOSER to some
  *    enemy — never Defend, never a token "other action", never wander to buy
  *    time; it holds only when boxed in. (A bank guard must attack too.)
  *  - FREE mode: "do whatever" — move anywhere legal, attack, Defend, hold, AND
@@ -8015,7 +8015,7 @@ function addControlledNeutralUnitActions(
     return;
   }
 
-  // Must-attack: a strike from here is mandatory when one exists. Under the
+  // Must-attack: strike here or move into another legal strike. Under the
   // polish-wait house rule the guard may WAIT instead (all units can Wait) —
   // but its Waited re-activation must attack (maybeAddControlledNeutralWait
   // self-guards on the wait phase, so a Waited guard is never offered Wait
@@ -8039,19 +8039,14 @@ function addControlledNeutralUnitActions(
     return;
   }
 
-  if (attacks.length > 0) {
-    actions.push(...attacks);
-    return;
-  }
-
   const enemies = Object.values(combat.units).filter(
     (candidate) =>
       candidate.controllerId !== activeUnit.controllerId &&
       isUnitAlive(candidate),
   );
 
-  // No strike from here — cells from which the guard CAN strike this
-  // activation come first (the move half of a forced move-and-attack)…
+  // An adjacent enemy does not pin the guard: it may move to strike another
+  // target, while still satisfying the attack obligation after moving.
   const strikeCells = moveDestinations.filter((space) =>
     enemies.some(
       (target) =>
@@ -8059,7 +8054,8 @@ function addControlledNeutralUnitActions(
         canUnitMoveAndAttack(combat, activeUnit, space, target, state),
     ),
   );
-  if (strikeCells.length > 0) {
+  if (attacks.length > 0 || strikeCells.length > 0) {
+    actions.push(...attacks);
     for (const destination of strikeCells) {
       pushMove(destination);
     }
@@ -8716,6 +8712,20 @@ export function getLegalActions(
   const coreActions = watching
     ? []
     : getLegalActionsCore(state, playerId, cards, buildings);
+  // Independent purchase: even a watched/parked battle or another player's
+  // pending choice must not hide it. It changes only this buyer's cards/gold.
+  for (const offer of wanderingMerchantOffers(state, playerId)) {
+    if (offer.affordable) coreActions.push({
+      label: `Buy ${cards[offer.cardId]?.name ?? offer.cardId} (${offer.cost.gold ?? 0} gold) — Wandering Merchant`,
+      action: { type: "BUY_WANDERING_MERCHANT", playerId, cardId: offer.cardId },
+    });
+  }
+  if (state.adventure?.parallelRoundRewards?.[playerId]?.length ||
+      state.adventure?.parallelSharedEventQueue?.some((reward) => reward.playerId === playerId)) {
+    for (let i = coreActions.length - 1; i >= 0; i -= 1) {
+      if (coreActions[i].action.type === "END_TURN") coreActions.splice(i, 1);
+    }
+  }
   for (const context of parallelContextOptions(state, playerId)) {
     if (context.ownerPlayerId === (state.parallelCombatOwnerId ?? playerId))
       continue;
@@ -16494,15 +16504,6 @@ function getAdventureLegalActions(
       label:
         "Opening Mulligan — discard 0 or more cards to your deck and draw that many (or keep your hand)",
       action: { type: "OPENING_HAND_MULLIGAN", playerId, discardCardIds: [] },
-    });
-  }
-
-  // Wandering Merchant is a once-during-the-round opportunity, not a
-  // round-start decision. Keep it alongside normal map play until bought.
-  if (wanderingMerchantAvailable(state, playerId)) {
-    actions.push({
-      label: "Open Wandering Merchant — buy a discounted War Machine",
-      action: { type: "OPEN_WANDERING_MERCHANT", playerId },
     });
   }
 

@@ -343,6 +343,63 @@ export function stopParallelTurns(
         : `⏳ Parallel turns have ENDED: the agreed period (${state.turn.simultaneousRoundLimit} round${state.turn.simultaneousRoundLimit === 1 ? "" : "s"}) is over. Play continues in normal turn order.`;
 
   state.turn.mode = "ordered";
+  if (state.adventure) {
+    const adventure = state.adventure;
+    // An OPEN round-event window is a pendingVisit inside that seat's PARKED
+    // context, and the interaction it interrupted lives in
+    // parallelEventSuspended. Ordered play never projects a parked context
+    // again, so both must come back to the ordered queue or they are lost for
+    // good. The round wrap and the PvP reasons normally refuse to stop while
+    // any such window is open (END_TURN is withheld, parked interactions
+    // throw), so this is the defensive path (audit 2026-09-11).
+    for (const playerId of [...(adventure.parallelEventOpenPlayers ?? [])]) {
+      const parked = state.parallelCombats?.[playerId];
+      const live = state.parallelCombatOwnerId === playerId;
+      const visit = parked?.adventure.pendingVisit ?? (live ? adventure.pendingVisit : null);
+      if (visit?.steps.length) {
+        adventure.rewardQueue.push({
+          playerId,
+          kind: "visit-steps",
+          ...(visit.heroId ? { heroId: visit.heroId } : {}),
+          steps: visit.steps
+        });
+        if (parked) parked.adventure.pendingVisit = null;
+        else adventure.pendingVisit = null;
+      }
+      const saved = adventure.parallelEventSuspended?.[playerId];
+      if (saved) {
+        adventure.rewardQueue.push(...saved.adventure.rewardQueue);
+        if (saved.adventure.pendingVisit && !adventure.pendingVisit) {
+          adventure.pendingVisit = saved.adventure.pendingVisit;
+        }
+        if (saved.pendingChoice && !state.pendingChoice && !state.combat) {
+          state.pendingChoice = saved.pendingChoice;
+        }
+      }
+    }
+    for (const rewards of Object.values(adventure.parallelRoundRewards ?? {})) {
+      adventure.rewardQueue.push(...(rewards ?? []));
+    }
+    adventure.rewardQueue.push(...(adventure.parallelSharedEventQueue ?? []));
+    // Ordered play resolves round-event work behind the whole-table barrier:
+    // re-raise it (same shape as beginRoundStartEventBarrier — inlined to keep
+    // this module free of an adventure.ts import cycle) when any was flushed.
+    if (adventure.rewardQueue.some((reward) => reward.kind === "visit-steps" &&
+        (adventure.parallelEventPlayers?.includes(reward.playerId) || adventure.parallelSharedEventQueue?.includes(reward)))) {
+      adventure.eventResolution = { round: state.round };
+      adventure.rewardQueue = adventure.rewardQueue.filter((reward) => reward.kind !== "round-start-events-resolved");
+      const sentinelPlayerId = state.turnOrder.find((id) => id !== NEUTRAL_PLAYER_ID) ?? state.turnOrder[0] ?? "";
+      adventure.rewardQueue.push({ playerId: sentinelPlayerId, kind: "round-start-events-resolved" });
+    }
+    delete state.adventure.parallelRoundRewards;
+    delete state.adventure.parallelSharedEventQueue;
+    delete state.adventure.parallelSharedEventOwner;
+    delete state.adventure.parallelSharedEventStage;
+    delete state.adventure.parallelEventPlayers;
+    delete state.adventure.parallelEventBarrierOwner;
+    delete state.adventure.parallelEventOpenPlayers;
+    delete state.adventure.parallelEventSuspended;
+  }
   delete state.parallelContextSelections;
   state.turn.parallelStopped = { reason, round: state.round };
 

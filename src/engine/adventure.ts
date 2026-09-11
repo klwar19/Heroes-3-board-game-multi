@@ -5,6 +5,7 @@ import { spellDeckBinhExpert } from "@/data/cards/spells";
 import { cardLibrary } from "@/data/cards/library";
 import { balanceCard, balanceRerollReactionArtifactIds } from "./community-balance-cards";
 import {
+  azureNeutralCounterpartId,
   coreBuildingDefinitions,
   coreFactionDefinitions,
   coreHeroDefinitions,
@@ -1330,19 +1331,20 @@ export function materializeTileFields(
  */
 function mergeObjectBreakFlags(
   perTile:
-    | { breakField?: boolean; persistentGuard?: boolean; unlimitedRounds?: boolean }
+    | { breakField?: boolean; persistentGuard?: boolean; unlimitedRounds?: boolean; combatRoundLimit?: 1 | 2 | 3 | "unlimited" }
     | undefined,
   global:
-    | { breakField?: boolean; persistentGuard?: boolean; unlimitedRounds?: boolean }
+    | { breakField?: boolean; persistentGuard?: boolean; unlimitedRounds?: boolean; combatRoundLimit?: 1 | 2 | 3 | "unlimited" }
     | undefined
-): { breakField?: boolean; persistentGuard?: boolean; unlimitedRounds?: boolean } | undefined {
+): { breakField?: boolean; persistentGuard?: boolean; unlimitedRounds?: boolean; combatRoundLimit?: 1 | 2 | 3 | "unlimited" } | undefined {
   if (!perTile && !global) {
     return undefined;
   }
   return {
     breakField: perTile?.breakField ?? global?.breakField,
     persistentGuard: perTile?.persistentGuard ?? global?.persistentGuard,
-    unlimitedRounds: perTile?.unlimitedRounds ?? global?.unlimitedRounds
+    unlimitedRounds: perTile?.unlimitedRounds ?? global?.unlimitedRounds,
+    combatRoundLimit: perTile?.combatRoundLimit ?? global?.combatRoundLimit
   };
 }
 
@@ -3988,21 +3990,12 @@ export function gainExperience(state: GameState, playerId: PlayerId, amount: num
     gainGradeProgress(state, playerId, levelsGained, "level-up");
   }
 
-  // Learning ability — offered on EVERY Experience gain, from EVERY source.
-  //
-  // USER RULE (2026-08-22, superseding the 2026-08-22 combat-only widening):
-  // "Must show instant reaction whenever you receive exp, from ANY source —
-  // neutral, object…". The trigger therefore lives HERE, at the one chokepoint
-  // every hero-XP grant funnels through (won neutral/PvP combats, a repelled
-  // Calamity Wave, a Tree of Knowledge / Emerald Tower / Altar of the Gods
-  // GAIN_EXPERIENCE visit step, a designer hex event, a timed map event, a
-  // centre-hex reward, a CHOOSE_OPTION reward…). Enumerating sources is exactly
-  // what left the map objects out before — the invariant is "a gain happened".
-  //
-  // The printed "play when the Hero is about to level up" timing is deliberately
-  // NOT the gate any more; the Experience CAP still is, because advancing past
-  // it does nothing. Polish Balance Pack: the reprint's basic side also draws a
-  // card, so it stays worth taking AT the cap too — the one case that ignores it.
+  // Learning ability. Keep the printed card and the Polish reprint isolated:
+  // classic (including Community-only, which does not reprint Learning) triggers
+  // only when this gain actually levels the Hero; Polish triggers on every XP
+  // gain and remains useful at the cap because its Basic side also draws a card.
+  // Every XP source still funnels through this chokepoint, so a qualifying map
+  // object, event or combat can never miss the window.
   //
   // Deferred to the reward queue (never opened inline) so it surfaces after the
   // level-up's own benefits settle, after any combat that granted the XP fully
@@ -4011,7 +4004,7 @@ export function gainExperience(state: GameState, playerId: PlayerId, amount: num
   // so a queued offer whose card left the hand simply skips.
   const balanceLearning = houseRuleEnabled(state, "polish-card-balance");
   if (
-    (balanceLearning || hero.experience < MAX_EXPERIENCE) &&
+    (balanceLearning || (levelsGained > 0 && hero.experience < MAX_EXPERIENCE)) &&
     state.adventure &&
     player.hand.includes("ability.learning")
   ) {
@@ -4829,13 +4822,9 @@ export function currentSurrenderGoldCost(state: GameState): number {
   return polishSurrenderGoldCost(round);
 }
 
-/**
- * Whether the "defeat every enemy hero" path can win this game. Shared by the
- * Grail Hunt and Dragon Hunt modes — both let a player win by military
- * dominance even if they never reach the objective creature bank.
- */
+/** Only Conquer adds a victory path based on distinct PvP wins. */
 export function victoryModeCountsHeroDefeats(mode: VictoryMode): boolean {
-  return mode === "conquest" || mode === "grail" || mode === "dragon-hunt" || mode === "dragon-conqueror";
+  return mode === "conquer";
 }
 
 /**
@@ -5355,7 +5344,7 @@ export function humanPlayerIds(state: GameState): PlayerId[] {
 
 /**
  * Seats that started the scenario, INCLUDING eliminated observers.
- * Conquest keeps the starting cube target and also accepts beating all survivors.
+ * Conquer keeps its PvP cube target fixed to the starting table.
  */
 export function adventureSeatCount(state: GameState): number {
   return Object.keys(state.players).filter((id) => id !== NEUTRAL_PLAYER_ID).length;
@@ -5364,7 +5353,7 @@ export function adventureSeatCount(state: GameState): number {
 /**
  * Enemy seats this player had when the Scenario began. Allied seats are never
  * military-victory targets: they cannot legally fight one another, so counting
- * them would make Grail/Dragon hero-defeat victory impossible for an AI team.
+ * them would make Conquer PvP victory impossible for an AI team.
  */
 export function adventureRivalIds(state: GameState, playerId: PlayerId): PlayerId[] {
   return Object.keys(state.players).filter(
@@ -5391,13 +5380,18 @@ export function checkConquestVictory(state: GameState, playerId: PlayerId): void
   if (!state.adventure || state.adventure.winnerPlayerId || state.players[playerId]?.eliminated ||
       !state.players[playerId] || !victoryModeCountsHeroDefeats(adventureVictoryMode(state))) return;
   const required = requiredRivalHeroDefeats(state, playerId);
+  // Surviving-rival shortcut (USER FEATURE 2026-09-06, 0bc1b4b3 — kept through
+  // the v127 Conquer split): the cube target never shrinks when rivals leave,
+  // but once EVERY surviving rival has been beaten there is no unbeaten rival
+  // left to earn the missing cubes from, so the PvP path completes. Without it
+  // a 4-seat Conquer game whose two unbeaten rivals both quit leaves the
+  // leader's advertised "PvP wins 1/2" permanently unreachable.
   const beaten = new Set(state.adventure.heroDefeats?.[playerId] ?? []);
   const rivals = adventureRivalIds(state, playerId);
-  const allRemainingBeaten = rivals.length > 0 && rivals.every(
-    id => state.players[id]?.eliminated || beaten.has(id),
-  );
-  if (required > 0 && (conquestProgress(state, playerId) >= required || allRemainingBeaten)) {
-    declareAdventureWinner(state, playerId, "defeated the required enemy heroes", { viaVictoryCondition: true });
+  const allSurvivingRivalsBeaten =
+    rivals.length > 0 && rivals.every((id) => state.players[id]?.eliminated || beaten.has(id));
+  if (required > 0 && (conquestProgress(state, playerId) >= required || allSurvivingRivalsBeaten)) {
+    declareAdventureWinner(state, playerId, "won the required battles against distinct enemy factions", { viaVictoryCondition: true });
   }
 }
 
@@ -5940,8 +5934,8 @@ export function eliminatePlayer(
  * Distinct rivals required for military victory: 2/3/4/5/6 seats need
  * 1/2/2/3/3 wins. This target is based on the starting opposing table and
  * does not shrink when a rival is eliminated or forfeits; those departures
- * award no cube. Beating every surviving rival also wins, and if every rival
- * leaves, last faction standing still wins.
+ * award no cube and never win by themselves (v127). Only Conquer reads this
+ * target; every mode also wins by last faction / alliance standing.
  */
 export function requiredHeroDefeats(playerCount: number): number {
   return Math.max(1, Math.ceil(playerCount / 2));
@@ -12417,14 +12411,20 @@ export function processPendingVisit(state: GameState): void {
         // buyer never removes a machine from the rest of the table.
         const player = state.players[visit.playerId];
         const supply = adventure.warMachineSupply ?? [];
-        if (!player || !supply.includes(step.cardId) || playerOwnsWarMachine(state, visit.playerId, step.cardId)) {
+        const merchantAlreadyBought = step.cost && (getAstrologersState(state)?.wanderingMerchantBoughtBy ?? []).includes(visit.playerId);
+        if (!player || !supply.includes(step.cardId) || playerOwnsWarMachine(state, visit.playerId, step.cardId) || merchantAlreadyBought) {
+          // Same outcome in every turn mode: the leaf simply grants nothing
+          // (a stale opened shop after an atomic buy, a machine already owned,
+          // an emptied supply). Never reject the visit step by turn mode.
           break;
         }
         if (step.cost) {
-          if (!hasResources(player, step.cost)) {
+          const offer = wanderingMerchantOffers(state, visit.playerId).find((entry) => entry.cardId === step.cardId);
+          if (!offer?.affordable) {
             break;
           }
-          spendResources(state, visit.playerId, step.cost, `bought the ${cardLibrary[step.cardId]?.name ?? step.cardId}`);
+          step.cost = offer.cost;
+          spendResources(state, visit.playerId, offer.cost, `bought the ${cardLibrary[step.cardId]?.name ?? step.cardId}`);
         }
         player.hand.push(step.cardId);
         if (step.cost && getActiveAstrologersCard(state)?.effect.type === "WAR_MACHINE_DISCOUNT_OFFER") {
@@ -12733,6 +12733,10 @@ export function processPendingVisit(state: GameState): void {
         const player = state.players[visit.playerId];
         const deck = state.decks[step.deckId];
         const index = deck?.discardPile.lastIndexOf(step.cardId) ?? -1;
+        if (step.eventOffer && (!player || !deck || index !== deck.discardPile.length - 1 || index < 0 ||
+            !hasResources(player, { gold: step.price }) || !canAcquireSharedDeckCard(state, visit.playerId, step.deckId, step.cardId))) {
+          throw new Error("That Event discard-top offer is no longer available. Choose another offer or pass.");
+        }
         if (!player || !deck || index === -1 || !hasResources(player, { gold: step.price })) {
           clearPolishArtifactAccess(state);
           break;
@@ -14494,6 +14498,7 @@ export function placeMapToken(state: GameState, tile: MapTileState, spaceId: Map
   const carvedField = adventure.fields[spaceId];
   if (carvedField) {
     applyCustomGuardToField(carvedField, pendingToken.guard);
+      carvedField.combatRoundLimit = pendingToken.combatRoundLimit;
     stampDesignerFieldReward(carvedField, pendingToken.reward, pendingToken.vp);
   }
   shiftPendingMapToken(tile);
@@ -17305,8 +17310,8 @@ function drawNeutralArmyAtDifficulty(
     return [];
   }
 
-  const counts = NEUTRAL_ARMY_TABLE[scenarioDifficulty][difficulty];
-  if (!counts) {
+  const printedCounts = NEUTRAL_ARMY_TABLE[scenarioDifficulty][difficulty];
+  if (!printedCounts) {
     return [];
   }
 
@@ -17479,7 +17484,10 @@ export function drawGuardArmy(state: GameState, field: MapFieldState | undefined
   // is not a mine. Placement caps gracefully: the 8-cell defender zone seats a
   // legit mine army (≤ 6 designer units + 1); an over-full hand-edited map leaves
   // the surplus at its default cell (placeNeutralUnits) — no crash, no stall.
-  return [...drawGuardArmyBase(state, field, difficulty), ...mineGuardReinforcementDraws(state, field)];
+  return [
+    ...drawGuardArmyBase(state, field, difficulty, options),
+    ...mineGuardReinforcementDraws(state, field)
+  ];
 }
 
 function drawGuardArmyBase(state: GameState, field: MapFieldState | undefined, difficulty: number): NeutralDraw[] {
@@ -17861,7 +17869,7 @@ export function buildCreatureBankCombatUnits(
     }
   }
 
-  return { units, stackedCount };
+  return { units, stackedCount, rewardStackCount };
 }
 
 /**
@@ -18064,11 +18072,21 @@ export function settlementRecruitFactions(state: GameState, playerId: PlayerId):
   ))];
 }
 
-/** Neutral-deck cards sold by the factions of this player's Settlements. */
+/**
+ * Neutral-deck cards sold by the factions of this player's Settlements. With a
+ * Gold Dwelling built in any controlled town, the Settlement faction's AZURE
+ * signature creature (Gold Dragons / Titans / Hydras / Phoenixes) is sold too
+ * (USER RULE 2026-09-11) — the same single-sided Neutral card at its printed
+ * Neutral cost, pulled from the azure Neutral deck like every other recruit.
+ */
 export function settlementNeutralRecruitUnitIds(state: GameState, playerId: PlayerId): string[] {
   if (!houseRuleEnabled(state, "settlement-neutral-recruitment")) return [];
+  const goldDwelling = unlockedRecruitTiers(state, playerId).has("gold");
   return [...new Set(settlementRecruitFactions(state, playerId)
-    .flatMap((factionId) => neutralUnitIdsByFaction[factionId] ?? []))];
+    .flatMap((factionId) => {
+      const azure = goldDwelling ? azureNeutralCounterpartId(factionId) : undefined;
+      return [...(neutralUnitIdsByFaction[factionId] ?? []), ...(azure ? [azure] : [])];
+    }))];
 }
 
 /**
@@ -19624,6 +19642,57 @@ function handleRiftLairVisit(state: GameState, playerId: PlayerId, heroId: HeroI
  * and expert effects; then even rounds draw an Astrologers Proclaim card and
  * odd rounds after the first pay Resource Round income.
  */
+/** Route only Event/Astrologers rewards, leaving other round systems unchanged. */
+export function parkParallelEventRewards(state: GameState, rewards: AdventureReward[]): void {
+  const adventure = state.adventure;
+  if (!adventure || !rewards.length) return;
+  adventure.parallelEventPlayers = [...new Set([...(adventure.parallelEventPlayers ?? []), ...rewards.map((reward) => reward.playerId)])];
+  const shared = rewards.some((reward) => reward.kind === "visit-steps" && reward.steps.some((step) =>
+    (step.type.startsWith("EVENT_") && step.type !== "EVENT_PLAYER_CHOICE" && step.type !== "EVENT_MESSENGER_DRAW") ||
+    (step.type === "EVENT_PLAYER_CHOICE" && eventCardDefinitions[step.eventCardId]?.effect.type === "MARKETPLACE")));
+  if (shared) (adventure.parallelSharedEventQueue ??= []).push(...rewards);
+  else {
+    const personal = adventure.parallelRoundRewards ??= {};
+    for (const reward of rewards) (personal[reward.playerId] ??= []).push(reward);
+  }
+}
+
+/** Move identifiable legacy Event rewards off a saved round barrier, preserving other work. */
+export function migrateParallelEventRewards(state: GameState): void {
+  const adventure = state.adventure;
+  if (!adventure || state.turn.mode !== "parallel" || adventure.eventResolution?.round !== state.round ||
+      adventure.parallelEventPlayers?.length) return;
+  const boundary = adventure.rewardQueue.findIndex((reward) => reward.kind === "round-start-events-resolved");
+  if (boundary < 0) return;
+  const astro = getActiveAstrologersCard(state);
+  const isEventStep = (step: VisitStep): boolean => step.type.startsWith("EVENT_") ||
+    (step.type === "CHOOSE_ONE" && step.options.some((option) => option.steps.some(isEventStep)));
+  const migrated: AdventureReward[] = [];
+  adventure.rewardQueue = adventure.rewardQueue.filter((reward, index) => {
+    if (index >= boundary || reward.kind !== "visit-steps") return true;
+    const identified = reward.steps.some((step) => isEventStep(step) ||
+      (astro && "prompt" in step && typeof step.prompt === "string" && step.prompt.startsWith(`${astro.name}:`)) ||
+      (step.type === "DISRUPTION_ROTATE_OFFER" && astro?.effect.type === "ROTATE_TILE_EACH") ||
+      (step.type === "REINFORCE_FREE" && astro?.effect.type === "FIRST_COMBAT_GROUND_ATTACK") ||
+      (step.type === "WAR_MACHINE_GRANT_OFFER" && astro?.effect.type === "GRANT_WAR_MACHINE_CHOICE") ||
+      (step.type === "NEUTRAL_RECRUIT_OFFER" && astro?.effect.type === "RECRUIT_NEUTRAL_DRAW") ||
+      (step.type === "FACTION_RECRUIT_OFFER" && astro?.effect.type === "RECRUIT_FACTION_FREE") ||
+      (step.type === "REMOVE_UP_TO" && astro?.effect.type === "REMOVE_CARDS_CHOICE") ||
+      (step.type === "FLIP_PACK_TO_FEW" && astro?.effect.type === "PLAGUE_FLIP_ALL") ||
+      (step.type === "DESTRUCTION_REMOVE_PERMANENT" && astro?.effect.type === "REMOVE_PERMANENT_FOR_GOLD") ||
+      (step.type === "REINFORCE_ARMY_UNIT" && astro?.effect.type === "REINFORCE_HALF_COST_ALL") ||
+      (step.type === "STAT_EMPOWER_OFFER" && astro?.effect.type === "EMPOWER_STATISTIC_CHOICE") ||
+      ((step.type === "ROLL_RESOURCE_DICE" || step.type === "ROLL_TREASURE_DICE") && astro?.effect.type === "ROLL_DICE_ALL"));
+    if (identified) migrated.push(reward);
+    return !identified;
+  });
+  if (!migrated.length) return;
+  parkParallelEventRewards(state, migrated);
+  if (adventure.parallelSharedEventQueue?.length && adventure.pendingVisit?.steps.some(isEventStep)) {
+    adventure.parallelSharedEventOwner = adventure.pendingVisit.playerId;
+  }
+}
+
 export function startAdventureRound(state: GameState): void {
   // Victory Points mode: the round limit is the HARD end trigger. Both round
   // wraps (ordered `endTurnAdventure`, parallel `endParallelTurn`) call this
@@ -20156,6 +20225,7 @@ export function startAdventureRound(state: GameState): void {
       }
     }
 
+    const eventRewardsBefore = state.adventure?.rewardQueue.length ?? 0;
     // McGiver (Astrologers): "at the beginning of the next round, each player can
     // take 1 War Machine of their choice from the supply at no cost." That next
     // round is this Resource round — the proclamation is still face up (it expires
@@ -20176,9 +20246,12 @@ export function startAdventureRound(state: GameState): void {
     // offered at the Astrologers round it was drawn (resolveAstrologersCard); this
     // is the second offer, at the following Resource round, while it stays face up.
     const activeRecruit = getActiveAstrologersCard(state)?.effect;
-    if (activeRecruit?.type === "RECRUIT_NEUTRAL_DRAW") {
-      queueNeutralRecruitOffer(state, playerId, { maxDraws: activeRecruit.maxDraws });
-    }
+      if (activeRecruit?.type === "RECRUIT_NEUTRAL_DRAW") {
+        queueNeutralRecruitOffer(state, playerId, { maxDraws: activeRecruit.maxDraws });
+      }
+      if (state.turn.mode === "parallel" && state.adventure) {
+        parkParallelEventRewards(state, state.adventure.rewardQueue.splice(eventRewardsBefore));
+      }
   }
 
   if (astrologers) {
@@ -21036,7 +21109,10 @@ export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
   // Phase divider: the hand-limit snapshot runs after every round-start effect
   // queued before this call. A pure-combat fixture has no reward queue, so take
   // the snapshot inline there.
-  if (state.adventure) {
+  if (state.adventure && !(state.turn.mode === "parallel" && (
+    state.adventure.parallelRoundRewards?.[playerId]?.length ||
+    state.adventure.parallelSharedEventQueue?.some((reward) => reward.playerId === playerId)
+  ))) {
     state.adventure.rewardQueue.push({ playerId, kind: "start-turn-hand" });
   } else {
     finalizeStartOfTurnHand(state, playerId);
@@ -21521,6 +21597,14 @@ export function drawAstrologersCard(state: GameState): void {
 }
 
 function resolveAstrologersCard(state: GameState, card: AstrologersCardDefinition): void {
+  const before = state.adventure?.rewardQueue.length ?? 0;
+  resolveAstrologersCardCore(state, card);
+  if (state.turn.mode === "parallel" && state.adventure) {
+    parkParallelEventRewards(state, state.adventure.rewardQueue.splice(before));
+  }
+}
+
+function resolveAstrologersCardCore(state: GameState, card: AstrologersCardDefinition): void {
   const astrologers = getAstrologersState(state);
   const adventure = state.adventure;
   if (!astrologers || !adventure) {
@@ -21717,8 +21801,8 @@ function resolveAstrologersCard(state: GameState, card: AstrologersCardDefinitio
     case "WAR_MACHINE_DISCOUNT_OFFER": {
       // Wandering Merchant: "once during this round, each player can buy a War
       // Machine as if at a Trading Post". This is deliberately NOT a round-start
-      // reward: each player gets a persistent map action throughout their turn,
-      // implemented by OPEN_WANDERING_MERCHANT. That keeps the optional purchase
+      // reward: each player gets a persistent map action during any player's turn,
+      // implemented by BUY_WANDERING_MERCHANT. That keeps the optional purchase
       // from freezing the table before anybody can actually take a turn.
       break;
     }
@@ -21735,6 +21819,9 @@ export function wanderingMerchantAvailable(state: GameState, playerId: PlayerId,
     !adventure ||
     !astrologers ||
     !player ||
+    player.eliminated ||
+    !state.turnOrder.includes(playerId) ||
+    state.phase === "game-over" ||
     state.round % 2 !== 0 ||
     effect?.type !== "WAR_MACHINE_DISCOUNT_OFFER" ||
     (astrologers.wanderingMerchantBoughtBy ?? []).includes(playerId)
@@ -21749,6 +21836,30 @@ export function wanderingMerchantAvailable(state: GameState, playerId: PlayerId,
       ...base,
       gold: Math.max(0, (base.gold ?? 0) - effect.discountGold)
     });
+  });
+}
+
+/** Live prices for the player's independent, once-per-round merchant purchase. */
+export function wanderingMerchantBlockReason(state: GameState, playerId: PlayerId): string | null {
+  const player = state.players[playerId];
+  const ownCombat = [state.combat, ...Object.values(state.parallelCombats ?? {}).map((context) => context.combat)]
+    .some((combat) => combat && (combat.attackerPlayerId === playerId || combat.defenderPlayerId === playerId)) ||
+    state.parallelContextOptions?.some((context) => context.ownerPlayerId === playerId && context.hasCombat);
+  if (ownCombat) return "Finish your own combat to buy.";
+  if (player?.needsHandRefresh || player?.canMulligan || player?.explorersDiscardPending) return "Finish your hand draw to buy.";
+  return null;
+}
+
+export function wanderingMerchantOffers(state: GameState, playerId: PlayerId): { cardId: CardId; cost: ResourceCost; affordable: boolean }[] {
+  if (!wanderingMerchantAvailable(state, playerId) || wanderingMerchantBlockReason(state, playerId)) return [];
+  const effect = getActiveAstrologersCard(state)?.effect;
+  if (effect?.type !== "WAR_MACHINE_DISCOUNT_OFFER") return [];
+  return (state.adventure?.warMachineSupply ?? []).flatMap((cardId) => {
+    if (playerOwnsWarMachine(state, playerId, cardId)) return [];
+    const base = balanceCard(state, cardId)?.warMachineCosts?.tradingPost;
+    if (!base) return [];
+    const cost = { ...base, gold: Math.max(0, (base.gold ?? 0) - effect.discountGold) };
+    return [{ cardId, cost, affordable: hasResources(state.players[playerId], cost) }];
   });
 }
 
@@ -22059,14 +22170,15 @@ function queueRemoveCardsChoice(state: GameState, playerId: PlayerId, count: num
   });
 }
 
+/** Whether a card is a Statistic that Explorers / Hero could still empower. */
+export function isEmpowerableStatisticCard(cardId: CardId): boolean {
+  const card = cardLibrary[cardId];
+  return card?.kind === "statistic" && Boolean(card.statisticType) && !cardId.endsWith(".empowered");
+}
+
 /** Whether `player` holds at least one non-Empowered Statistic in `sources`. */
 function hasEmpowerableStatistic(player: PlayerState, sources: ("hand" | "discard")[]): boolean {
-  return sources.some((source) =>
-    player[source].some((cardId) => {
-      const card = cardLibrary[cardId];
-      return card?.kind === "statistic" && Boolean(card.statisticType) && !cardId.endsWith(".empowered");
-    })
-  );
+  return sources.some((source) => player[source].some((cardId) => isEmpowerableStatisticCard(cardId)));
 }
 
 /**
@@ -23927,6 +24039,14 @@ export function drawEventCard(state: GameState): void {
  * read; per-player menus are built later, from each player's live state.
  */
 function resolveEventCard(state: GameState, card: EventCardDefinition, order: PlayerId[]): void {
+  const before = state.adventure?.rewardQueue.length ?? 0;
+  resolveEventCardCore(state, card, order);
+  if (state.turn.mode === "parallel" && state.adventure) {
+    parkParallelEventRewards(state, state.adventure.rewardQueue.splice(before));
+  }
+}
+
+function resolveEventCardCore(state: GameState, card: EventCardDefinition, order: PlayerId[]): void {
   const adventure = state.adventure;
   const events = getEventsState(state);
   if (!adventure || !events) {
@@ -24565,7 +24685,11 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
       const before = adventure.rewardQueue.length;
       resolveEventCard(state, card, rotated);
       const added = adventure.rewardQueue.splice(before);
-      adventure.rewardQueue.unshift(...added);
+      if (state.turn.mode === "parallel") {
+        parkParallelEventRewards(state, added);
+      } else {
+        adventure.rewardQueue.unshift(...added);
+      }
       break;
     }
     case "EVENT_PLAYER_CHOICE": {
@@ -25040,10 +25164,16 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
     }
     case "EVENT_TAKE_POOL_CARD": {
       if (!player || (step.cost && !hasResources(player, step.cost))) {
+        if (state.turn.mode === "parallel") throw new Error("You can no longer afford that Event purchase. Choose another option.");
         break;
+      }
+      const availableEntry = events?.pool.find((entry) => entry.cardId === step.cardId);
+      if (availableEntry && !canAcquireSharedDeckCard(state, visit.playerId, availableEntry.deckId, step.cardId)) {
+        throw new Error("You cannot acquire that card. Choose another Event offer.");
       }
       const entry = takeEventPoolEntry(state, step.cardId);
       if (!entry) {
+        if (state.turn.mode === "parallel") throw new Error("That Event card was already taken. Choose another card or skip.");
         break;
       }
       if (step.cost) {
@@ -25217,6 +25347,7 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
     }
     case "EVENT_POOL_TAKE_RANDOM": {
       if (!player || !events || events.pool.length === 0) {
+        if (state.turn.mode === "parallel") throw new Error("The Event pool is now empty. Choose the gold option.");
         break;
       }
       const random = adventureRandom(state, "event-forest-take");
@@ -25264,7 +25395,7 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
         options: [
           ...matches.map(({ die, index }) => ({
             label: `Take the ${eventDieLabel(die)} die`,
-            steps: [{ type: "EVENT_TAKE_POOL_DIE", index } as VisitStep]
+            steps: [{ type: "EVENT_TAKE_POOL_DIE", index, die: { ...die } } as VisitStep]
           })),
           { label: "Take nothing", steps: [] }
         ]
@@ -25272,11 +25403,16 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
       break;
     }
     case "EVENT_TAKE_POOL_DIE": {
-      const die = events?.dicePool[step.index];
+      const index = step.die ? (events?.dicePool.findIndex((entry) =>
+        entry.kind === step.die!.kind && (entry.kind === "treasure"
+          ? step.die!.kind === "treasure" && entry.face === step.die!.face
+          : step.die!.kind === "resource" && entry.resource === step.die!.resource && entry.amount === step.die!.amount)) ?? -1) : step.index;
+      const die = events?.dicePool[index];
       if (!events || !die) {
+        if (state.turn.mode === "parallel") throw new Error("That die was already taken. Choose another matching die or take nothing.");
         break;
       }
-      events.dicePool.splice(step.index, 1);
+      events.dicePool.splice(index, 1);
       if (die.kind === "treasure") {
         visit.steps.unshift(...treasureFaceSteps(die.face));
       } else {
@@ -25349,9 +25485,11 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
       const def = coreUnitDefinitions[step.unitDefId];
       const cost = neutralRecruitCost(state, visit.playerId, step.unitDefId);
       if (!player || !def?.neutral || !hasRecruitResources(state, visit.playerId, cost)) {
+        if (state.turn.mode === "parallel") throw new Error("You can no longer afford that Event recruit. Choose another option.");
         break;
       }
       if (!takeEventPoolEntry(state, step.unitDefId)) {
+        if (state.turn.mode === "parallel") throw new Error("That Event unit was already taken. Choose another unit or skip.");
         break;
       }
       spendRecruitResources(state, visit.playerId, cost, `recruited ${def.name} (Event)`);
@@ -25454,6 +25592,7 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
     }
     case "EVENT_NEUTRAL_DISCARD_GOLD": {
       if (!takeEventPoolEntry(state, step.unitDefId)) {
+        if (state.turn.mode === "parallel") throw new Error("That Event unit was already taken. Choose another unit or skip.");
         break;
       }
       const tier = (coreUnitDefinitions[step.unitDefId]?.tier ?? "bronze") as "bronze" | "silver" | "gold" | "azure";
@@ -25502,6 +25641,9 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
         }
         drawn.push(unitDefId);
         events.pool.push({ cardId: unitDefId, deckId: NEUTRAL_DECK_IDS[step.tier], faceUp: true });
+      }
+      if (state.turn.mode === "parallel" && drawn.length < step.count) {
+        throw new Error("That Neutral deck no longer has enough cards. Choose another Event deck.");
       }
       if (drawn.length > 0) {
         eventNote(
@@ -25596,7 +25738,7 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
           if (canAcquireSharedDeckCard(state, visit.playerId, deckId, top) && hasResources(player, { gold: price })) {
             options.push({
               label: `Buy the discard top ${cardLibrary[top]?.name ?? top} (${price} gold)`,
-              steps: [{ type: "BLACK_MARKET_BUY", cardId: top, deckId, price } as VisitStep]
+              steps: [{ type: "BLACK_MARKET_BUY", cardId: top, deckId, price, eventOffer: true } as VisitStep]
             });
           }
         }
@@ -25648,7 +25790,8 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
     }
     case "EVENT_AUCTION_SET_BID": {
       const auction = events?.auction;
-      if (!auction) {
+      if (!auction || !player || step.amount < 0 || step.amount > player.resources.gold) {
+        if (state.turn.mode === "parallel") throw new Error("Your gold changed. Choose a lower bid or no bid.");
         break;
       }
       auction.bids[visit.playerId] = step.amount;
@@ -25665,7 +25808,7 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
       const winners = bids.filter(([, amount]) => amount === highest && highest > 0);
       const winner = winners.length === 1 ? winners[0] : null;
       const winningPlayer = winner ? state.players[winner[0]] : null;
-      if (winner && winningPlayer && hasResources(winningPlayer, { gold: winner[1] })) {
+      if (winner && winningPlayer && !winningPlayer.eliminated && hasResources(winningPlayer, { gold: winner[1] })) {
         spendResources(state, winner[0], { gold: winner[1] }, "won the auction");
         winningPlayer.hand.push(auction.lotCardId);
         appendEvent(state, {
@@ -25719,13 +25862,16 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
       const order = liveEventPlayers(state);
       const seat = order.indexOf(visit.playerId);
       const others = seat === -1 ? order : [...order.slice(seat + 1), ...order.slice(0, seat)];
-      adventure.rewardQueue.unshift(
-        ...others.map((playerId) => ({
+      const answers = others.map((playerId) => ({
           playerId,
           kind: "visit-steps" as const,
           steps: [{ type: "EVENT_MARKET_DEAL_ANSWER" } as VisitStep]
-        }))
-      );
+        }));
+      if (state.turn.mode === "parallel") {
+        (adventure.parallelSharedEventQueue ??= []).unshift(...answers);
+        adventure.parallelEventPlayers = [...new Set([...(adventure.parallelEventPlayers ?? []), ...others])];
+      }
+      else adventure.rewardQueue.unshift(...answers);
       eventNote(
         state,
         `${eventPlayerName(state, visit.playerId)} offers 1 ${RESOURCE_KIND_LABELS[step.give]} for 1 ${RESOURCE_KIND_LABELS[step.get]}.`,
@@ -25744,6 +25890,12 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
         (proposer.resources[deal.give] ?? 0) < 1 ||
         (player.resources[deal.get] ?? 0) < 1
       ) {
+        // Auto-pumped step (it only opens the Accept/Decline menu): a deal this
+        // seat cannot answer is simply no answer, never an error. Throwing here
+        // rejected whichever player's action happened to run the pump — even
+        // the proposer's own proposal — and, once parked, every later action
+        // of every seat (audit 2026-09-11). The player-chosen ACCEPT below is
+        // where a stale deal legitimately throws.
         break;
       }
       visit.steps.unshift({
@@ -25770,6 +25922,7 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
         (proposer.resources[deal.give] ?? 0) < 1 ||
         (player.resources[deal.get] ?? 0) < 1
       ) {
+        if (state.turn.mode === "parallel") throw new Error("That Marketplace deal is no longer available. Choose another option.");
         break;
       }
       deal.done = true;
