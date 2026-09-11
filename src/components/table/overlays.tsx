@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { Check, CircleOff, Crosshair, Crown, Dices, GripHorizontal, Hourglass, Layers, Maximize2, Minus, Plus, Sparkles, Sunrise, Swords, Zap } from "lucide-react";
+import { Check, CircleOff, Crosshair, Crown, Dices, GripHorizontal, Hourglass, Layers, Maximize2, Minus, Pause, Play, Plus, Sparkles, Sunrise, Swords, Zap } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { RESOURCE_ICONS } from "@/data/assets/homm-assets";
@@ -14,6 +14,11 @@ import {
   AFK_AUTO_KICK_MS,
   AFK_IDLE_MS,
   AFK_REASK_MS,
+  gamePaused,
+  pauseClockNow,
+  pausedMillis,
+  pauseOverrideAvailableAt,
+  pauseVoters,
   seatIsAwaitedInOrderedPlay,
   TURN_TIME_LIMIT_MS,
   turnClockPausedFor,
@@ -4403,14 +4408,18 @@ export function AfkVotePanel({
   // responsive without hammering; 5s is plenty for a minute-scale threshold —
   // but tighten to 1s while a turn-timer countdown is on screen, so the
   // MM:SS readout ticks smoothly.
-  const [nowTick, setNowTick] = useState(() => Date.now());
+  const [wallTick, setWallTick] = useState(() => Date.now());
   const hasTurnClock = Boolean(
     state.afk?.turnOpenSince && Object.keys(state.afk.turnOpenSince).length > 0
   );
   useEffect(() => {
-    const timer = setInterval(() => setNowTick(Date.now()), hasTurnClock ? 1_000 : 5_000);
+    const timer = setInterval(() => setWallTick(Date.now()), hasTurnClock ? 1_000 : 5_000);
     return () => clearInterval(timer);
   }, [hasTurnClock]);
+  // A PAUSED table freezes every clock (src/engine/game-pause.ts): read the
+  // time as of the pause, exactly as the engine does, so the countdown holds
+  // still and no auto-kick / turn-timeout is fired from the frozen stamps.
+  const nowTick = pauseClockNow(state, wallTick);
   // Two-step "call a vote" confirm: the first click arms this target, the second
   // (Confirm) actually opens the vote. "Press it, then confirm or cancel."
   const [pendingKickTarget, setPendingKickTarget] = useState<PlayerId | null>(null);
@@ -4766,6 +4775,158 @@ export function ResetVotePanel({
       {canForceReset ? (
         <span className="afkVoteWaiting">as host you can start now, or wait for everyone to confirm.</span>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * The table PAUSE (src/engine/game-pause.ts) — one panel for the whole flow.
+ *
+ *  - While a pause REQUEST is open, every player sees the banner; live seats
+ *    confirm it (a hosted room offers the viewer their OWN seat, an open table
+ *    a Confirm per still-unconfirmed seat, like the new-adventure vote), and
+ *    any live seat can decline (the requester withdraws).
+ *  - Once EVERY live human seat has confirmed, the table is PAUSED: a blocking
+ *    curtain covers the board (chat stays reachable above it), the paused
+ *    stretch ticks up, and the seat that asked for the pause gets the Resume
+ *    button. The other seats can each "ask to resume" — the engine resumes
+ *    without the pauser once every other seat has asked (or straight away when
+ *    the pauser is no longer in the game), so a table is never stuck.
+ *
+ * Rendered on the adventure map AND the combat table, next to AfkVotePanel.
+ * Returns null when nothing is open, so it self-gates on every screen.
+ */
+export function PausePanel({
+  state,
+  viewerPlayerId,
+  onAction
+}: {
+  state: GameState;
+  viewerPlayerId: PlayerId;
+  onAction: (action: GameAction) => void;
+}) {
+  const paused = gamePaused(state);
+  // Tick the "paused for" readout once a second while the curtain is up.
+  const [wallTick, setWallTick] = useState(() => Date.now());
+  useEffect(() => {
+    if (!paused) {
+      return;
+    }
+    const timer = setInterval(() => setWallTick(Date.now()), 1_000);
+    return () => clearInterval(timer);
+  }, [paused]);
+
+  const pause = state.pause ?? null;
+  if (!pause) {
+    return null;
+  }
+  const voters = pauseVoters(state);
+  const hosted = Boolean(state.room?.hosted);
+  const viewerLive = voters.includes(viewerPlayerId);
+  const requesterName = state.players[pause.requestedByPlayerId]?.name ?? pause.requestedByPlayerId;
+
+  if (!paused) {
+    const confirmed = voters.filter((seat) => pause.confirmations[seat] === true).length;
+    // Seats this viewer may confirm now: their OWN seat in a hosted room; every
+    // still-unconfirmed live seat on an open table (one browser holds them all).
+    const confirmableSeats = (hosted ? (viewerLive ? [viewerPlayerId] : []) : voters).filter(
+      (seat) => pause.confirmations[seat] !== true
+    );
+    const cancelSeat = viewerLive ? viewerPlayerId : hosted ? null : (voters[0] ?? null);
+    return (
+      <div className="afkVotePanel pauseRequestPanel" role="dialog" aria-label="Pause request">
+        <Pause aria-hidden="true" size={14} />
+        <span>
+          <strong>{requesterName}</strong> asks to pause the game — everyone still in the game must confirm.
+          {" "}({confirmed}/{voters.length} confirmed)
+        </span>
+        <span className="afkVoteButtons">
+          {confirmableSeats.map((seat) => (
+            <button
+              className="commandButton primary"
+              key={seat}
+              type="button"
+              onClick={() => onAction({ type: "CONFIRM_PAUSE", playerId: seat })}
+            >
+              {hosted || confirmableSeats.length === 1 ? "Confirm pause" : `Confirm as ${state.players[seat]?.name ?? seat}`}
+            </button>
+          ))}
+          {cancelSeat ? (
+            <button
+              className="commandButton danger"
+              type="button"
+              onClick={() => onAction({ type: "CANCEL_PAUSE", playerId: cancelSeat })}
+            >
+              {pause.requestedByPlayerId === cancelSeat ? "Withdraw" : "Decline"}
+            </button>
+          ) : null}
+        </span>
+        {viewerLive && confirmableSeats.length === 0 ? (
+          <span className="afkVoteWaiting">you confirmed — waiting for the other players…</span>
+        ) : null}
+      </div>
+    );
+  }
+
+  // ACTIVE pause: the curtain.
+  const pauserLive = voters.includes(pause.requestedByPlayerId);
+  const canResumeDirectly = viewerLive && (viewerPlayerId === pause.requestedByPlayerId || !pauserLive);
+  const others = voters.filter((seat) => seat !== pause.requestedByPlayerId);
+  const asked = others.filter((seat) => pause.resumeVotes?.[seat] === true).length;
+  const alreadyAsked = pause.resumeVotes?.[viewerPlayerId] === true;
+  const pausedFor = formatCountdown(pausedMillis(state, wallTick));
+  // The other seats' unanimous ask is honoured only once the pause has lasted
+  // PAUSE_OVERRIDE_MS: until then an already-cast ask just waits (the engine
+  // would refuse a re-send), after that a re-send completes the override.
+  const overrideAt = pauseOverrideAvailableAt(state) ?? wallTick;
+  const overrideIn = Math.max(0, overrideAt - wallTick);
+  const everyoneAsked = others.length > 0 && asked >= others.length;
+  const askDisabled = alreadyAsked && !(everyoneAsked && overrideIn === 0);
+  const askLabel = !alreadyAsked
+    ? `Ask to resume (${asked}/${others.length})`
+    : everyoneAsked
+      ? overrideIn === 0
+        ? `Resume without ${requesterName}`
+        : `Resume without ${requesterName} in ${formatCountdown(overrideIn)}`
+      : `Asked to resume (${asked}/${others.length})`;
+  return (
+    <div className="pauseCurtain" role="dialog" aria-modal="true" aria-label="Game paused">
+      <div className="pauseCard">
+        <div className="pauseCardTitle">
+          <Pause aria-hidden="true" size={18} />
+          <span>Game paused</span>
+        </div>
+        <p className="pauseCardLine">
+          Paused by <strong>{requesterName}</strong> · for <strong className="pauseCardClock">{pausedFor}</strong>
+        </p>
+        <p className="pauseCardNote">
+          Turn timers and AFK clocks are frozen. Chat stays open.
+          {pauserLive
+            ? ` Only ${requesterName} can resume the game.`
+            : ` ${requesterName} is no longer in the game — anyone can resume.`}
+        </p>
+        <div className="afkVoteButtons pauseCardButtons">
+          {canResumeDirectly ? (
+            <button
+              className="commandButton primary"
+              type="button"
+              onClick={() => onAction({ type: "RESUME_GAME", playerId: viewerPlayerId })}
+            >
+              <Play aria-hidden="true" size={13} /> Resume game
+            </button>
+          ) : viewerLive ? (
+            <button
+              className="commandButton"
+              type="button"
+              disabled={askDisabled}
+              title="The game resumes without the pauser once every other player has asked and the pause has lasted 10 minutes"
+              onClick={() => onAction({ type: "RESUME_GAME", playerId: viewerPlayerId })}
+            >
+              {askLabel}
+            </button>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }

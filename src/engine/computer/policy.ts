@@ -57,6 +57,10 @@ const NEVER_AUTOMATE = new Set<GameAction["type"]>([
   "CAST_AFK_VOTE",
   "FORCE_AFK_KICK",
   "FORCE_TURN_TIMEOUT",
+  "REQUEST_PAUSE",
+  "CONFIRM_PAUSE",
+  "CANCEL_PAUSE",
+  "RESUME_GAME",
 ]);
 
 function foundationScore(action: GameAction): {

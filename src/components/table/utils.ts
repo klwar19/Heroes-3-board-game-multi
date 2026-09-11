@@ -841,6 +841,18 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return event.message;
     case "TURN_TIME_EXPIRED":
       return event.message;
+    case "PAUSE_REQUESTED":
+      return event.message;
+    case "PAUSE_CONFIRMED":
+      return `${playerName(state, event.playerId)} confirms the pause (${event.confirmed}/${event.needed}).`;
+    case "PAUSE_CANCELLED":
+      return event.message;
+    case "GAME_PAUSED":
+      return event.message;
+    case "RESUME_VOTE_CAST":
+      return event.message;
+    case "GAME_RESUMED":
+      return event.message;
     case "ROOM_RANKED_CHANGED":
       return event.ranked
         ? `${roomMemberName(state, event.byClientId)} set this to a Ranked game (counts MMR).`

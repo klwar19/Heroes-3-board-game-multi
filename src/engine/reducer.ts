@@ -486,6 +486,15 @@ import {
   requestRoomReset,
 } from "./reset-vote";
 import {
+  actionAllowedWhilePaused,
+  cancelPause,
+  confirmPause,
+  gamePaused,
+  pausedRefusalMessage,
+  requestPause,
+  resumeGame,
+} from "./game-pause";
+import {
   appendEvent,
   eventSeedNumber,
   nextEventNumber,
@@ -35345,6 +35354,10 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "REQUEST_ROOM_RESET",
   "CONFIRM_ROOM_RESET",
   "CANCEL_ROOM_RESET",
+  "REQUEST_PAUSE",
+  "CONFIRM_PAUSE",
+  "CANCEL_PAUSE",
+  "RESUME_GAME",
   // Single-player: human may confirm the next computer map beat while the
   // computer owns the active seat (not the human's map turn).
   "ADVANCE_COMPUTER",
@@ -35554,6 +35567,16 @@ function applyActionInContext(
     return fail(state, { code: "ACTION_NOT_LEGAL", message: seatError });
   }
 
+  // Table PAUSE (src/engine/game-pause.ts): while every seat has confirmed a
+  // pause, no gameplay action runs at all — moves, cards, combat, END_TURN, the
+  // AFK/turn-timeout machinery, the computer watchdog, a combat retake. Only
+  // the pause actions themselves, chat/emotes, room membership and the
+  // new-adventure vote get through. Checked before the retake fast path and
+  // every handler so nothing can advance the frozen table.
+  if (gamePaused(state) && !actionAllowedWhilePaused(action)) {
+    return fail(state, { code: "ACTION_NOT_LEGAL", message: pausedRefusalMessage(state) });
+  }
+
   if (action.type === "REQUEST_COMBAT_RETAKE" || action.type === "ANSWER_COMBAT_RETAKE" ||
       (state.combatRetakeVote && "playerId" in action &&
         [state.combatRetakeVote.requestedBy, state.combatRetakeVote.opponentId].includes(action.playerId))) {
@@ -35651,6 +35674,14 @@ function applyActionInContext(
     action.type === "REQUEST_ROOM_RESET" ||
     action.type === "CONFIRM_ROOM_RESET" ||
     action.type === "CANCEL_ROOM_RESET" ||
+    // The pause request / confirm / cancel / resume are table decisions too:
+    // asking for a pause is most needed exactly while the table is frozen on
+    // someone's interaction, and the handlers touch only `state.pause` (plus,
+    // on resume, the AFK clock stamps — no exclusive-interaction slot).
+    action.type === "REQUEST_PAUSE" ||
+    action.type === "CONFIRM_PAUSE" ||
+    action.type === "CANCEL_PAUSE" ||
+    action.type === "RESUME_GAME" ||
     // Human may ADVANCE_COMPUTER while a computer seat owns the map turn.
     action.type === "ADVANCE_COMPUTER";
   const parallelBystanderBlocker =
@@ -36439,6 +36470,18 @@ function applyActionInContext(
           break;
         case "CANCEL_ROOM_RESET":
           cancelRoomReset(nextState, action);
+          break;
+        case "REQUEST_PAUSE":
+          requestPause(nextState, action, options.now);
+          break;
+        case "CONFIRM_PAUSE":
+          confirmPause(nextState, action, options.now);
+          break;
+        case "CANCEL_PAUSE":
+          cancelPause(nextState, action);
+          break;
+        case "RESUME_GAME":
+          resumeGame(nextState, action, options.now);
           break;
       }
     } catch (error) {

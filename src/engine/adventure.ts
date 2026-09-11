@@ -104,6 +104,7 @@ import { MORALE_CARD_IDS } from "@/data/cards/morale";
 import { parallelMapInteractionBlocker, parallelTurnsActive, stopParallelTurns } from "./parallel-turns";
 import { dropParallelCombatContext, hasParkedParallelInteractions, reassignParkedNeutralController } from "./parallel-combats";
 import { clearResetVote } from "./reset-vote";
+import { clearPauseOnElimination } from "./game-pause";
 import {
   artifactCountOf,
   computeVictoryPoints,
@@ -5904,6 +5905,9 @@ export function eliminatePlayer(
   // changes (this seat can no longer confirm / may have been the requester):
   // clear it so a stale vote never sits half-approved. The table can re-open it.
   clearResetVote(state);
+  // Likewise an OPEN pause request (an ACTIVE pause stays; if the pauser is
+  // the one leaving, any remaining seat may resume — see game-pause.ts).
+  clearPauseOnElimination(state);
 
   appendEvent(state, { type: "PLAYER_ELIMINATED", playerId, reason, gaveUp });
 

@@ -7,6 +7,7 @@ import {
   computerDecisionOwner,
   computerPlayerIds,
   freshEntropy,
+  gamePaused,
   legalityMatchKey,
   observeForComputer,
   primaryMapObjective,
@@ -567,7 +568,12 @@ export function settleComputerForLiveAction(state: GameState): GameState {
  * Includes map work, AI-only encounters and human-involved combat.
  */
 export function computerWorkPending(state: GameState): boolean {
+  // A PAUSED multiplayer table (src/engine/game-pause.ts) owes nothing: the
+  // alarm pump, the live-action PvP beat and the ADVANCE_COMPUTER watchdog all
+  // read this, so an AI seat's turn simply waits for RESUME_GAME (the action
+  // that resumes re-arms the pump through the normal transport path).
   return (
+    !gamePaused(state) &&
     computerPlayerIds(state).length > 0 &&
     !computerWorkIsInstantBulk(state) &&
     computerDecisionOwner(state) !== null

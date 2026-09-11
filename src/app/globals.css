@@ -31382,6 +31382,77 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
   border-color: rgba(120, 190, 255, 0.6);
 }
 
+/* Table PAUSE request banner: same slot as the new-adventure vote (below the
+   AFK panel), teal so it reads as a calm table decision. */
+.pauseRequestPanel {
+  top: 56px;
+  max-width: min(640px, calc(100vw - 24px));
+  flex-wrap: wrap;
+  justify-content: center;
+  text-align: center;
+  border-color: rgba(110, 210, 190, 0.6);
+}
+
+/* The PAUSED curtain: blocks the board (every gameplay click would be refused
+   by the server anyway) but sits UNDER the chat dock (z 200) so the table can
+   keep talking while it waits for the pauser. */
+.pauseCurtain {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(8, 6, 3, 0.62);
+  backdrop-filter: blur(2px);
+}
+
+.pauseCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: min(460px, 100%);
+  padding: 22px 26px 20px;
+  border: 1px solid rgba(110, 210, 190, 0.6);
+  border-radius: 14px;
+  background: rgba(24, 18, 10, 0.96);
+  color: #f3e4c3;
+  text-align: center;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
+}
+
+.pauseCardTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.pauseCardLine {
+  margin: 0;
+  font-size: 14px;
+}
+
+.pauseCardClock {
+  font-variant-numeric: tabular-nums;
+}
+
+.pauseCardNote {
+  margin: 0;
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+.pauseCardButtons {
+  margin-top: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
 /* 10-minute turn-timer countdown chip (top-right, clear of the vote banner):
    appears once an open turn is under five minutes, turns red in the last
    minute, and announces the force-end while the server shifts the turn. */
@@ -40918,6 +40989,10 @@ details.mapPresetGroup > summary::-webkit-details-marker {
   left: 8px;
   right: 8px;
   width: auto;
+}
+
+.phoneMode .pauseCard {
+  padding: 16px 14px 14px;
 }
 
 /* Deep windows (town, morale panels, market…) already use viewport-relative

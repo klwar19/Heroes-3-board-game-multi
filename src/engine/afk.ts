@@ -7,6 +7,7 @@ import {
   parallelTurnsActive,
   roundStartEventResolver
 } from "./parallel-turns";
+import { gamePaused, isPauseAction, pauseClockNow } from "./game-pause";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import type { AfkState, GameAction, GameState, PlayerId } from "./state";
 
@@ -179,7 +180,8 @@ function playerName(state: GameState, playerId: PlayerId): string {
  */
 export function idleMillis(state: GameState, playerId: PlayerId, now: number): number {
   const last = state.afk?.lastActionAt?.[playerId];
-  return last === undefined ? 0 : Math.max(0, now - last);
+  // A paused table freezes every clock: read the time as of the pause.
+  return last === undefined ? 0 : Math.max(0, pauseClockNow(state, now) - last);
 }
 
 /**
@@ -190,6 +192,16 @@ export function idleMillis(state: GameState, playerId: PlayerId, now: number): n
  */
 export function applyAfkBookkeeping(state: GameState, action: GameAction, now: number | undefined): void {
   if (state.sessionMode === "single-player" || state.mode !== "adventure" || now === undefined || isAfkMetaAction(action)) {
+    return;
+  }
+  // A pause action that leaves the table PAUSED (a "please resume" vote that
+  // is not yet unanimous) is not activity on a running clock: stamping the raw
+  // wall time here would put that seat's idle stamp AHEAD of the paused
+  // stretch that RESUME_GAME later forgives (shiftTimeControlStamps), so the
+  // seat would read as "just active" for minutes after the resume. The request
+  // / confirm actions run pre-freeze and the actual RESUME leaves the table
+  // un-paused, so those still stamp normally.
+  if (isPauseAction(action) && gamePaused(state)) {
     return;
   }
   const actorId =
@@ -551,7 +563,8 @@ export function turnClockPausedFor(state: GameState, playerId: PlayerId): boolea
  */
 export function turnElapsedMillis(state: GameState, playerId: PlayerId, now: number): number {
   const since = state.afk?.turnOpenSince?.[playerId];
-  return since === undefined ? 0 : Math.max(0, now - since);
+  // A paused table freezes every clock: read the time as of the pause.
+  return since === undefined ? 0 : Math.max(0, pauseClockNow(state, now) - since);
 }
 
 /**

@@ -5985,6 +5985,46 @@ type GameActionPayload =
        */
       type: "RESOLVE_TURN_TIMEOUT";
       playerId: PlayerId;
+    }
+  | {
+      /**
+       * Ask the table to PAUSE the game (multiplayer adventure only). Opens a
+       * request every other live human seat must confirm (the requester's own
+       * request counts as their confirmation); nothing freezes until the last
+       * confirmation is in. Exempt from the turn/barrier gates like chat.
+       * See src/engine/game-pause.ts.
+       */
+      type: "REQUEST_PAUSE";
+      playerId: PlayerId;
+    }
+  | {
+      /**
+       * Confirm the open pause request for `playerId`'s seat. Once EVERY live
+       * human seat has confirmed the table is paused: gameplay actions are
+       * refused, the computer pump stops and every turn/AFK clock freezes.
+       */
+      type: "CONFIRM_PAUSE";
+      playerId: PlayerId;
+    }
+  | {
+      /**
+       * Decline (any live seat) or withdraw (the requester) the OPEN pause
+       * request. Not usable once the table is actually paused — only
+       * RESUME_GAME ends a pause.
+       */
+      type: "CANCEL_PAUSE";
+      playerId: PlayerId;
+    }
+  | {
+      /**
+       * Resume a PAUSED table. From the seat that asked for the pause this
+       * resumes immediately and shifts every time-control clock forward by the
+       * paused stretch. From any other live seat it is a "please resume" vote:
+       * the table resumes without the pauser once every other live seat has
+       * asked (or at once if the pauser is no longer in the game).
+       */
+      type: "RESUME_GAME";
+      playerId: PlayerId;
     };
 
 export type LegalAction = {
@@ -7965,6 +8005,53 @@ type GameEventPayload =
       type: "TURN_TIME_EXPIRED";
       targetPlayerId: PlayerId;
       byPlayerId: PlayerId;
+      message: string;
+    }
+  | {
+      id: string;
+      /** A live seat asked the table to pause (every other seat must confirm). */
+      type: "PAUSE_REQUESTED";
+      byPlayerId: PlayerId;
+      message: string;
+    }
+  | {
+      id: string;
+      /** One seat confirmed the open pause request (`confirmed`/`needed`). */
+      type: "PAUSE_CONFIRMED";
+      playerId: PlayerId;
+      confirmed: number;
+      needed: number;
+    }
+  | {
+      id: string;
+      /** The open pause request was withdrawn by its requester or declined. */
+      type: "PAUSE_CANCELLED";
+      byPlayerId: PlayerId;
+      withdrawn: boolean;
+      message: string;
+    }
+  | {
+      id: string;
+      /** Every seat confirmed: the table is paused and every clock is frozen. */
+      type: "GAME_PAUSED";
+      byPlayerId: PlayerId;
+      message: string;
+    }
+  | {
+      id: string;
+      /** A non-pauser asked to resume (`votes`/`needed` among the other seats). */
+      type: "RESUME_VOTE_CAST";
+      playerId: PlayerId;
+      votes: number;
+      needed: number;
+      message: string;
+    }
+  | {
+      id: string;
+      /** The pause ended; `pausedMs` was forgiven on every time control. */
+      type: "GAME_RESUMED";
+      byPlayerId: PlayerId;
+      pausedMs: number;
       message: string;
     }
   | {
@@ -18200,6 +18287,42 @@ export type GameState = {
    * is naturally cleared by the reset it triggers. See src/engine/reset-vote.ts.
    */
   resetVote?: ResetVoteState | null;
+  /**
+   * The table PAUSE (multiplayer adventure only): an open "everyone must
+   * confirm" pause request, or — once every live human seat has confirmed
+   * (`pausedAt` set) — the active pause that freezes gameplay and every
+   * turn/AFK clock until the requester resumes. Absent when nothing is open,
+   * on solo/lobby/finished games and on legacy snapshots. Public — it holds
+   * no hidden information. See src/engine/game-pause.ts.
+   */
+  pause?: GamePauseState | null;
+};
+
+/**
+ * The table pause request / active pause. A single one runs at a time: an open
+ * request ends when every live human seat confirms (it becomes the active
+ * pause), when any live seat declines it, or when a player is eliminated; an
+ * active pause ends only through RESUME_GAME.
+ */
+export type GamePauseState = {
+  /** The seat that asked for the pause — the only one who resumes it normally. */
+  requestedByPlayerId: PlayerId;
+  /** Server wall-clock ms when the request opened (display / stable key only). */
+  requestedAt: number;
+  /** Each live seat's confirmation so far (the requester's is implicit). */
+  confirmations: Record<PlayerId, boolean>;
+  /**
+   * Server wall-clock ms the table actually froze (the last confirmation's
+   * stamp); null while the request is still collecting confirmations. Every
+   * time-control read clamps its `now` to this, and RESUME_GAME shifts every
+   * stamp forward by `now - pausedAt`.
+   */
+  pausedAt: number | null;
+  /**
+   * "Please resume" votes cast by seats OTHER than the requester while paused;
+   * the table resumes without the pauser once every other live seat has voted.
+   */
+  resumeVotes?: Record<PlayerId, boolean>;
 };
 
 /**

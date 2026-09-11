@@ -56,6 +56,21 @@ export {
   resetVoteRequired
 } from "./reset-vote";
 export {
+  actionAllowedWhilePaused,
+  clearPauseOnElimination,
+  gamePaused,
+  isPauseAction,
+  pauseAvailable,
+  pauseClockNow,
+  pauseConfirmationsMissing,
+  pausedMillis,
+  pausedRefusalMessage,
+  pauseOverrideAvailableAt,
+  pauseRequestOpen,
+  pauseVoters,
+  PAUSE_OVERRIDE_MS
+} from "./game-pause";
+export {
   defaultRoomName,
   dropDisconnectedMember,
   hashRoomPassword,
@@ -1169,6 +1184,7 @@ export type {
   ReactionWindow,
   ResolutionStackItem,
   ResetVoteState,
+  GamePauseState,
   RoomMember,
   RoomMembershipState,
   RoomSeat,

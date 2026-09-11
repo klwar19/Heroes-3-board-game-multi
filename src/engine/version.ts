@@ -1196,9 +1196,14 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // v131 (2026-09-11): Polish Balance Diplomacy replaces its old neutral-combat
 // skip with a pre-battle tier reduction or one fewer Creature-Bank Stack Token.
 // The authoritative combat context carries the chosen reduction through hidden
-// guard reveal, while Bank rewards retain their unreduced Stack count. A v131
+// guard reveal, while Bank rewards retain their unreduced Stack count. A v130
 // worker would still offer the obsolete auto-claim. `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 131;
+// v132 (2026-09-11): table PAUSE — four new actions (REQUEST_PAUSE,
+// CONFIRM_PAUSE, CANCEL_PAUSE, RESUME_GAME), the persisted `state.pause` slice
+// and a reducer gate that refuses every gameplay action while paused, plus
+// AFK/turn clocks that freeze at `pausedAt` and shift on resume. A v131 worker
+// rejects the pause actions outright. `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 132;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

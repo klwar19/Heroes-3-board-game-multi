@@ -3,7 +3,7 @@ import { WanderingMerchantNotice } from "@/components/adventure/wandering-mercha
 import { isParallelWatchOnly, parallelPresentationEvents, parallelStateForPlayer } from "@/engine/parallel-combats";
 import { ParallelBattleSwitcher } from "@/components/table/parallel-battle-switcher";
 
-import { Castle, CheckCircle2, Crosshair, Crown, Eye, Hand as HandIcon, Layers, Lock, Map as MapIcon, Maximize2, Menu as MenuIcon, Minimize2, Sparkles, StepForward, Swords, Users } from "lucide-react";
+import { Castle, CheckCircle2, Crosshair, Crown, Eye, Hand as HandIcon, Layers, Lock, Map as MapIcon, Maximize2, Menu as MenuIcon, Minimize2, Pause, Sparkles, StepForward, Swords, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   astrologersCardDefinitions,
@@ -27,6 +27,8 @@ import {
   computerDecisionOwner,
   isParallelActor,
   isResetVoteApproved,
+  gamePaused,
+  pauseAvailable,
   houseRuleEnabled,
   polishBookSpellEffectIsLive,
   polishSpellBookEnabled,
@@ -86,6 +88,7 @@ import {
   EventDrawnOverlay,
   MapEventOverlay,
   AfkVotePanel,
+  PausePanel,
   ResetVotePanel,
   ReactionTray,
   MeteorPowerWindow,
@@ -5810,6 +5813,20 @@ export default function Home() {
             )}
           </button>
         )}
+        {/* Table PAUSE (multiplayer adventure): opens the "everyone must confirm"
+            pause request; once confirmed the table freezes until the requester
+            resumes it (see PausePanel / src/engine/game-pause.ts). Hidden while
+            a request or pause is already open — the panel carries the flow. */}
+        {pauseAvailable(state) && isSeated && !state.pause && !gamePaused(state) ? (
+          <button
+            className="commandButton"
+            onClick={() => void submitAction({ type: "REQUEST_PAUSE", playerId: viewerPlayerId })}
+            title="Ask every player to pause the game — turn timers and AFK clocks freeze until you resume"
+            type="button"
+          >
+            <Pause aria-hidden="true" size={13} /> Pause game
+          </button>
+        ) : null}
         {singlePlayerSaveSection}
       </div>
     </div>
@@ -5875,6 +5892,11 @@ export default function Home() {
         onAction={(action) => void submitAction(action)}
         canForceReset={Boolean(state.room?.hosted && myMember?.isHost)}
         onForceReset={() => void resetRoom("adventure")}
+      />
+      <PausePanel
+        state={state}
+        viewerPlayerId={viewerPlayerId}
+        onAction={(action) => void submitAction(action)}
       />
       <AnimeFactionMechanicsOverlay state={state} viewerPlayerId={isSeated ? viewerPlayerId : null} />
     </>
