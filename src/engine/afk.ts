@@ -227,14 +227,18 @@ export function applyAfkBookkeeping(state: GameState, action: GameAction, now: n
   }
 
   const afk = getAfkState(state);
+  // Clamp to the pause (see pauseClockNow): an allowed action on a PAUSED table
+  // (chat, an emote) must not stamp a raw wall time that RESUME's forward shift
+  // would then push into the FUTURE, handing that seat free idle/turn budget.
+  const stamp = pauseClockNow(state, now);
   // First stamped action of the game: start EVERY live seat's clock now, so a
   // player who never acts still becomes kickable once the window passes.
   if (Object.keys(afk.lastActionAt).length === 0) {
     for (const seat of liveSeats(state)) {
-      afk.lastActionAt[seat] = now;
+      afk.lastActionAt[seat] = stamp;
     }
   }
-  afk.lastActionAt[actorId] = now;
+  afk.lastActionAt[actorId] = stamp;
 
   // The accused seat took a real action: the vote is moot — cancel it.
   if (afk.vote && afk.vote.targetPlayerId === actorId) {
@@ -604,6 +608,9 @@ export function applyTurnClockBookkeeping(
     return;
   }
   const slice = getAfkState(state);
+  // Frozen while the table is paused (see pauseClockNow), so a chat sent during
+  // the pause cannot re-stamp a turn clock into the future once RESUME shifts it.
+  const stamp = pauseClockNow(state, now);
   const clock = (slice.turnOpenSince ??= {});
   for (const seat of Object.keys(clock)) {
     if (!open.includes(seat)) {
@@ -612,7 +619,7 @@ export function applyTurnClockBookkeeping(
   }
   for (const seat of open) {
     if (clock[seat] === undefined || pausedBefore.includes(seat) || turnClockPausedFor(state, seat)) {
-      clock[seat] = now;
+      clock[seat] = stamp;
     }
   }
   if (slice.turnTimeoutPlayerId && !open.includes(slice.turnTimeoutPlayerId)) {
