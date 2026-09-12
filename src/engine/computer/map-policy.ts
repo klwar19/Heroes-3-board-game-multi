@@ -1,3 +1,13 @@
+import {
+  GOLD_RESERVE,
+  MARKET_MIN_ROUND,
+  playerResources,
+  resourceDeficits,
+  tradeUtility,
+  wantsMarketVisit,
+  type ResourceKey,
+} from "./market-trades";
+export { MARKET_MIN_ROUND, resourceDeficits, hasUsefulMarketTrade, tradeUtility } from "./market-trades";
 import { coreBuildingDefinitions, coreFactionDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { secondaryHeroOpportunity } from "./secondary-plan";
@@ -5,7 +15,7 @@ import { HERO_GRADE_NODES } from "@/data/anime/hero-grades";
 import { getEquipmentDefinition } from "@/data/anime/equipment";
 import { heroEquipmentSlot } from "../anime-equipment";
 import { cardLibrary } from "@/data/cards/library";
-import { locationDefinitions, TRADE_RATES } from "@/data/map/locations";
+import { isMarketLocation, locationDefinitions } from "@/data/map/locations";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { hasInternalBorder } from "@/data/map/borders";
 import {
@@ -22,7 +32,6 @@ import {
   materializeTileFields,
   heroMovementMax,
   neutralBattleLevel,
-  playerHasPlaceableFarTile,
   wanderingMerchantAvailable,
 } from "../adventure";
 import {
@@ -64,7 +73,6 @@ import {
   spendDelaysSavedCost,
   unitDevelopmentSideStrength,
   shouldPrioritizeFirstAidTent,
-  shouldSeekLateWarMachineShop,
   shouldLaunchBronzeRush,
 } from "./development";
 import {
@@ -79,6 +87,7 @@ import {
   objectiveDistanceField,
   premiumEconomyResourceBonus,
   primaryMapObjective,
+  seatHoldsFarSupplyTile,
   startTileRotationOpensFarExpansion,
   type MapObjective,
   type MapObjectiveKind,
@@ -114,10 +123,6 @@ function latestPlacedTileId(state: GameState, playerId: PlayerId): string | null
   return null;
 }
 
-/** Keep a small gold cushion so the AI does not spend to 0 and stall next turn. */
-const GOLD_RESERVE = 5;
-/** The opening four rounds avoid markets except a well-funded First Aid Tent. */
-export const MARKET_MIN_ROUND = 5;
 
 // Dwelling-rush trade planner (see development.assessDwellingRush).
 /** A trade that converts genuine surplus into the missing dwelling input — above
@@ -132,129 +137,9 @@ const DWELLING_RUSH_SUPPRESS_SCORE = 280;
  *  and any scenario-winning map step (victory enter 980). */
 const DWELLING_RUSH_OPEN_MARKET_SCORE = 945;
 
-type ResourceKey = "gold" | "buildingMaterials" | "valuables";
 
 function playerGold(state: GameState, playerId: string): number {
   return state.players[playerId]?.resources.gold ?? 0;
-}
-
-function playerResources(
-  state: GameState,
-  playerId: string,
-): Record<ResourceKey, number> {
-  const r = state.players[playerId]?.resources;
-  return {
-    gold: r?.gold ?? 0,
-    buildingMaterials: r?.buildingMaterials ?? 0,
-    valuables: r?.valuables ?? 0,
-  };
-}
-
-/**
- * How much of each resource the seat "wants" right now (positive = deficit).
- * Public resource counts only — used to open the market and rank trades without
- * spinning forever on repeatable exchanges.
- */
-export function resourceDeficits(
-  state: GameState,
-  playerId: PlayerId,
-): Record<ResourceKey, number> {
-  const res = playerResources(state, playerId);
-  const army = state.players[playerId]?.army.length ?? 0;
-  // Preserve the ACTUAL next dwelling cost. The old fixed 3 materials / one
-  // valuable target made the market sell the Silver/Gold savings as "surplus",
-  // leaving the computer permanently stuck on Bronze units.
-  const target = developmentResourceTargets(state, playerId);
-  const goldTarget = Math.max(target.gold, army < 5 ? 14 : 10) +
-    (res.gold < GOLD_RESERVE ? 6 : 0);
-  const wantGold = goldTarget - res.gold;
-  const wantMats = Math.max(0, target.buildingMaterials - res.buildingMaterials) > 0
-    ? target.buildingMaterials - res.buildingMaterials
-    : res.buildingMaterials >= target.buildingMaterials + 2
-      ? -(res.buildingMaterials - target.buildingMaterials - 1)
-      : 0;
-  const wantVals = target.valuables - res.valuables > 0
-    ? target.valuables - res.valuables
-    : res.valuables >= target.valuables + 2
-      ? -(res.valuables - target.valuables - 1)
-      : 0;
-  return {
-    gold: wantGold,
-    buildingMaterials: wantMats,
-    valuables: wantVals,
-  };
-}
-
-/** True when at least one TRADE_RATES exchange would reduce a real deficit. */
-export function hasUsefulMarketTrade(
-  state: GameState,
-  playerId: PlayerId,
-): boolean {
-  return TRADE_RATES.some((rate, index) => tradeUtility(state, playerId, index) > 0);
-}
-
-/**
- * Net utility of one market rate: + for filling a deficit with surplus stock,
- * ≤0 when the seat would burn a scarce resource for something it does not need.
- */
-export function tradeUtility(
-  state: GameState,
-  playerId: PlayerId,
-  rateIndex: number,
-): number {
-  const rate = TRADE_RATES[rateIndex];
-  if (!rate) return -99;
-  const res = playerResources(state, playerId);
-  // Must be able to pay (legal-actions already gates, but score still ranks).
-  for (const key of Object.keys(rate.sell) as ResourceKey[]) {
-    if ((res[key] ?? 0) < (rate.sell[key] ?? 0)) return -99;
-  }
-  // DWELLING-INPUT FLOOR: until the Gold dwelling stands, materials and
-  // valuables are the bottleneck the whole tempo hangs on, and the market
-  // spread makes every sell-then-rebuy a net loss (1m sells for 1g, rebuys at
-  // 2g; 1v sells for 3g, rebuys at 6g). Measured pre-fix: seven materials
-  // dumped at 1:1 plus a v→2m / 3m→v churn cycle in the round before the
-  // Silver dwelling. A trade may only sell m/v stock that stays a cushion
-  // ABOVE the current dwelling target after the sale (materials keep +3
-  // toward the NEXT dwelling's rebuild; valuables +2, they trickle slower).
-  // The margin also breaks the churn pair: after a v→m conversion the bought
-  // side sits at/above its target, so the reverse trade buys "nothing wanted"
-  // and scores below zero.
-  if (!armyDevelopmentProfile(state, playerId).goldUnlocked) {
-    const target = developmentResourceTargets(state, playerId);
-    const cushion = { buildingMaterials: 3, valuables: 2 } as const;
-    for (const key of ["buildingMaterials", "valuables"] as const) {
-      const sold = rate.sell[key] ?? 0;
-      if (sold > 0 && res[key] - sold < (target[key] ?? 0) + cushion[key]) {
-        return -99;
-      }
-    }
-  }
-  const deficit = resourceDeficits(state, playerId);
-  let utility = 0;
-  for (const key of Object.keys(rate.sell) as ResourceKey[]) {
-    const amount = rate.sell[key] ?? 0;
-    // Selling something we still want is a cost; selling surplus is free-ish.
-    const remainingWant = deficit[key];
-    if (remainingWant > 0) {
-      // Burning a scarce resource — heavy penalty.
-      utility -= amount * 6;
-    } else {
-      // Surplus: mild cost so we do not spam-convert for no reason.
-      utility -= amount * 0.5;
-    }
-  }
-  for (const key of Object.keys(rate.buy) as ResourceKey[]) {
-    const amount = rate.buy[key] ?? 0;
-    const want = deficit[key];
-    if (want > 0) {
-      utility += Math.min(want, amount) * 5 + amount;
-    } else {
-      // Buying something we already have enough of is almost worthless.
-      utility += 0.2;
-    }
-  }
-  return utility;
 }
 
 function heroMarketLocation(state: GameState, heroId: string): string | undefined {
@@ -262,32 +147,42 @@ function heroMarketLocation(state: GameState, heroId: string): string | undefine
   return spaceId ? state.adventure?.fields[spaceId]?.location : undefined;
 }
 
-/** Whether the seat should bother opening this particular market this turn. */
-function wantsMarketVisit(
-  state: GameState,
-  playerId: PlayerId,
-  location?: string,
+
+/**
+ * A concrete map payoff the hero can march toward with its remaining movement. This
+ * gate keeps a marketplace visit from consuming the turn while a fight, free
+ * claim, town, visit, or expansion doorway is reachable. Staging at
+ * an unbeatable guard does not count as actionable work.
+ */
+function hasReachableMapWork(
+  observation: ComputerObservation,
+  heroId: string,
 ): boolean {
-  if (
-    location === "war_machine_factory" &&
-    shouldPrioritizeFirstAidTent(state, playerId)
-  ) {
-    return true;
-  }
-  if ((state.round ?? 0) < MARKET_MIN_ROUND) return false;
-  if (
-    TRADE_RATES.some(
-      (_, index) => tradeUtility(state, playerId, index) >= 4,
-    )
-  ) {
-    return true;
-  }
-  // War-machine detours are specific to the Factory and use the shared
-  // late-development/surplus gate.
-  return (
-    location === "war_machine_factory" &&
-    shouldSeekLateWarMachineShop(state, playerId)
-  );
+  const state = observation.state as unknown as GameState;
+  const hero = state.heroes[heroId];
+  if (!hero?.spaceId || (hero.movementPoints ?? 0) <= 0) return false;
+  // A market can share a doorway with a face-down tile. In that case its field
+  // is classified as the market visitable (rather than a second explore
+  // objective), so use the authoritative legal set to retain the direct reveal.
+  if (observation.legalActions.some((legal) => {
+    const action = legal.action;
+    return (
+      (action.type === "DISCOVER_TILE" || action.type === "PLACE_TILE") &&
+      action.heroId === heroId
+    );
+  })) return true;
+  return collectMapObjectives(state, hero).some((objective) => {
+    const distance = distanceFromHeroTo(state, hero, objective.spaceId);
+    // Distance zero is the marketplace itself, not a reason to reject opening
+    // that marketplace. Direct exploration at the same field is caught above.
+    if (distance === undefined || distance === 0) {
+      return false;
+    }
+    const field = state.adventure?.fields[objective.spaceId];
+    if (field && isMarketLocation(field.location) && objective.kind === "visitable") return false;
+    if (objective.kind !== "guard") return true;
+    return Boolean(field && canBeatGuardedField(state, hero, field));
+  });
 }
 
 /**
@@ -1573,7 +1468,7 @@ function tileRotationScore(
 export function premiumRotationRouteScore(
   state: GameState, tile: MapTileState, rotation: number, playerId: PlayerId,
 ): number {
-  if (!state.adventure || tile.group !== "far") return 0;
+  if (!state.adventure || (tile.group !== "far" && tile.group !== "near")) return 0;
   const heroId = state.adventure.pendingTileChoice?.heroId;
   const hero = heroId ? state.heroes[heroId] : Object.values(state.heroes).find(
     candidate => candidate.controllerId === playerId && candidate.kind === "main",
@@ -1586,17 +1481,25 @@ export function premiumRotationRouteScore(
   const probe = { ...state, adventure };
   let best = 0;
   for (const field of Object.values(adventure.fields)) {
-    if (field.tileInstanceId !== tile.id || !isPremiumEconomyField(field)) continue;
-    if (isFieldGuarded(field) && !canBeatGuardedField(probe, hero, field)) continue;
+    if (field.tileInstanceId !== tile.id) continue;
+    const premium = isPremiumEconomyField(field);
+    const category = locationDefinitions[field.location]?.category;
+    if (!premium && field.location !== "mine" && category !== "visitable" && category !== "flaggable" && category !== "town") continue;
+    if (isMarketLocation(field.location)) continue;
+    const ready = !isFieldGuarded(field) || canBeatGuardedField(probe, hero, field);
     const distance = distanceFromHeroTo(probe, hero, field.spaceId);
     if (distance === undefined) continue;
     const reserve = premiumCombatMovementReserve(probe, hero, field);
     const budget = distance + reserve;
-    const captureThisTurn = budget <= hero.movementPoints;
-    const captureNextTurn = budget <= heroMovementMax(probe, hero);
+    const captureThisTurn = ready && budget <= hero.movementPoints;
+    const captureNextTurn = ready && budget <= heroMovementMax(probe, hero);
     // A clear two-step route with a combat point left beats a pretty entrance
     // that needs a full turn merely to walk to the same mine.
-    best = Math.max(best, 300 - distance * 45 +
+    // Unbeatable rewards still need an accessible return route after army
+    // development. They never get the immediate-capture bonus. This is only
+    // rotation geometry; the ordinary fight-readiness gate still controls entry.
+    best = Math.max(best, (premium ? 300 : field.location === "mine" ? 220 : 160) - distance * 30 +
+      (ready ? 45 : 0) +
       (captureThisTurn ? 120 : captureNextTurn ? 65 : 0));
   }
   return best;
@@ -2573,7 +2476,7 @@ export function scoreMapAction(
       // Prefer place when boxed (no fight + only expand left) or when the seat
       // still holds supply and nothing better is on the board.
       const expandUrgency =
-        !hasFight && playerHasPlaceableFarTile(state, observation.playerId)
+        !hasFight && seatHoldsFarSupplyTile(state, observation.playerId)
           ? 40
           : hasExplore
             ? 15
@@ -2597,12 +2500,14 @@ export function scoreMapAction(
       const ordinaryMoveScore = moveScore(observation, action);
       const enterHero = state.heroes[action.heroId];
       const enterField = state.adventure?.fields[action.to];
+      const combatReserve = enterHero && enterField
+        ? premiumCombatMovementReserve(state, enterHero, enterField) : 0;
       if (enterHero && enterField && isFieldGuarded(enterField) &&
           !(enterHero.spaceId && heroesAtSpace(state, enterHero.spaceId).length > 1) &&
           !gateFieldsLinked(enterHero.spaceId ? state.adventure?.fields[enterHero.spaceId] : undefined, enterField) &&
-          premiumCombatMovementReserve(state, enterHero, enterField) > 0 &&
-          enterHero.movementPoints < 2 && heroMovementMax(state, enterHero) >= 2) {
-        // Keep one MP for a paid continuation on ordinary guards too. Banks
+          combatReserve > 0 &&
+          enterHero.movementPoints < 1 + combatReserve && heroMovementMax(state, enterHero) >= 1 + combatReserve) {
+        // Preserve the planned paid continuations before entering. Banks
         // and unlimited fights are explicitly exempt from this budget.
         return { score: 250, policy: "map.save-guard-continuation" };
       }
@@ -2711,6 +2616,14 @@ export function scoreMapAction(
           score: DWELLING_RUSH_OPEN_MARKET_SCORE,
           policy: "map.open-market-dwelling-rush",
         };
+      }
+      // Ranked lesson (latest four through 2026-09-12): the losing Tower seat
+      // opened the market three times in round 4, made one trade, and performed
+      // no productive map action, while the winner kept fighting, flagging and
+      // revealing. A useful but non-urgent conversion must not pin the hero to
+      // the shop when its current MP can already reach real board progress.
+      if (!earlyTentVisit && hasReachableMapWork(observation, action.heroId)) {
+        return { score: 250, policy: "map.leave-market-for-objective" };
       }
       // Free while parked on a market. Only open when a useful trade or shop
       // buy exists — otherwise the hero would open/close forever (score 0 was

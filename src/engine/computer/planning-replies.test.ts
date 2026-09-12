@@ -98,10 +98,10 @@ describe("persistent empty-route guard", () => {
         getComputerMemory(state, "p2"),
       ),
     ).toBe(true);
-    vi.spyOn(mapPolicy, "scoreMapAction").mockReturnValue({
-      score: 600,
+    vi.spyOn(mapPolicy, "scoreMapAction").mockImplementation((_obs, candidate) => ({
+      score: candidate.type === "MOVE_HERO" && candidate.to === action.to ? 260 : 600,
       policy: "test-move",
-    });
+    }));
     const alternate: GameAction = { ...action, to: "h:2:0" };
     const obs = {
       playerId: "p2",
@@ -122,6 +122,38 @@ describe("persistent empty-route guard", () => {
         getComputerMemory(state, "p2"),
       ),
     ).toBe(false);
+    vi.restoreAllMocks();
+  });
+
+  it("allows a previously visited route when it now reaches productive map work", () => {
+    let state = createAdventureGameState({
+      seed: "route-becomes-objective",
+      playerCount: 2,
+      events: false,
+      rollFirstPlayer: false,
+    });
+    state = refreshComputerMemory(state, "p2");
+    const hero = Object.values(state.heroes).find((h) => h.controllerId === "p2")!;
+    const objective: GameAction = {
+      type: "MOVE_HERO", playerId: "p2", heroId: hero.id, to: "h:1:0",
+    };
+    state = noteComputerAction(state, "p2", objective);
+    state.round++;
+    const alternate: GameAction = { ...objective, to: "h:2:0" };
+    vi.spyOn(mapPolicy, "scoreMapAction").mockImplementation((_obs, candidate) => ({
+      score: candidate.type === "MOVE_HERO" && candidate.to === objective.to ? 830 : 600,
+      policy: "map.move-to-objective",
+    }));
+    const observation = {
+      playerId: "p2",
+      state: state as unknown as PlayerVisibleState,
+      memory: getComputerMemory(state, "p2"),
+      legalActions: [
+        { label: "claim objective", action: objective },
+        { label: "empty detour", action: alternate },
+      ],
+    };
+    expect(chooseComputerAction(observation)?.action).toEqual(objective);
     vi.restoreAllMocks();
   });
 });

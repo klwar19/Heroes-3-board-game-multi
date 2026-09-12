@@ -573,6 +573,17 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     legacyDefault: false,
   },
   {
+    id: "elemental-damage-zero-die",
+    label: "Elemental damage: no Attack die (always 0)",
+    description:
+      "On (BINH house rule): elemental attacks do not roll the Attack die at all — it always counts as 0, so no +1/-1 result and no die-triggered abilities. The hit lands for the unit's Attack plus any card/token bonuses, and Defense is still ignored. Off (official, default): elemental attacks roll the Attack die normally. Independent of the \"cannot take +Attack buffs\" rule; both may be on at once.",
+    category: "combat",
+    // OFF in both modes: the official reading rolls the die. Turning it ON makes
+    // every elemental attack resolve as if the die showed 0.
+    default: false,
+    legacyDefault: false,
+  },
+  {
     id: "discovery-border-gate",
     label: "Yellow borders block Tile discovery",
     description:

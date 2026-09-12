@@ -22,7 +22,6 @@ import {
   listKnownTeleportDestinations,
   materializeTileFields,
   neutralBattleLevel,
-  playerHasPlaceableFarTile,
   playerHoldsTentFlag,
   pvpAttacksBanned,
 } from "../adventure";
@@ -33,6 +32,7 @@ import { equipmentEnabled, heroEquipmentSlot } from "../anime-equipment";
 import { canHeroImmediatelyAccessAdjacentTile } from "../adventure-reducer";
 import { isComputerPlayer, playersAreAllied } from "./control";
 import { repeatsFailedFight } from "./memory";
+import { wantsMarketVisit } from "./market-trades";
 import { polishQuickCombatEnabled, polishQuickCombatOutcome } from "../polish-quick-combat";
 import type {
   GameState,
@@ -57,41 +57,10 @@ import {
 import {
   armyDevelopmentProfile,
   armyReadyForContestedFight,
-  assessDwellingRush,
   developmentResourceTargets,
   hasOpenedFarEconomy,
-  shouldPrioritizeFirstAidTent,
-  shouldSeekLateWarMachineShop,
   shouldLaunchBronzeRush,
 } from "./development";
-
-/**
- * Lightweight resource-need probe (mirrors map-policy trade deficits without a
- * circular import). Markets become march targets only when gold is tight and
- * the seat holds materials/valuables to convert, or vice versa.
- */
-function needsMarketRebalance(state: GameState, playerId: PlayerId): boolean {
-  if ((state.round ?? 0) < 5) return false;
-  const res = state.players[playerId]?.resources;
-  if (!res) return false;
-  const gold = res.gold ?? 0;
-  const mats = res.buildingMaterials ?? 0;
-  const vals = res.valuables ?? 0;
-  const target = developmentResourceTargets(state, playerId);
-  if (assessDwellingRush(state, playerId)?.feasible) return true;
-  const goldDwellingBuilt = armyDevelopmentProfile(state, playerId).goldUnlocked;
-  // Broke with convertible stock → sell for gold.
-  if (
-    gold < target.gold &&
-    (mats > target.buildingMaterials + 1 ||
-      (goldDwellingBuilt && vals > target.valuables))
-  ) return true;
-  // Flush gold but no materials for building → buy materials.
-  if (mats < target.buildingMaterials && gold >= 10) return true;
-  // Gold for a valuables build when none held.
-  if (vals < target.valuables && (gold >= 14 || mats > target.buildingMaterials)) return true;
-  return false;
-}
 
 /**
  * Map navigation for the computer opponent. The stock policy scored each
@@ -787,7 +756,7 @@ function objectiveKind(
   if (category === "flaggable" && !ownedByUs) {
     return "flaggable";
   }
-  if (category === "visitable" && !field.blackCube) {
+  if (category === "visitable" && !field.blackCube && !isMarketLocation(field.location)) {
     return "visitable";
   }
   // Markets (revisitable) are only worth a detour when resources need a trade.
@@ -795,10 +764,9 @@ function objectiveKind(
   // one is only justified by a real rebalance need.
   if (
     isMarketLocation(field.location) &&
-    (needsMarketRebalance(state, playerId) ||
-      (field.location === "war_machine_factory" &&
-        (shouldPrioritizeFirstAidTent(state, playerId) ||
-          shouldSeekLateWarMachineShop(state, playerId))))
+    field.spaceId !== hero.spaceId &&
+    state.computerMemory?.[playerId]?.lastMarketRound !== state.round &&
+    wantsMarketVisit(state, playerId, field.location)
   ) {
     return "visitable";
   }
@@ -893,7 +861,7 @@ function collectExploreObjectives(
     return [];
   }
   const faceDown = Object.values(adventure.tiles ?? {}).filter((tile) => tile.faceDown);
-  const canPlaceFar = playerHasPlaceableFarTile(state, hero.controllerId);
+  const canPlaceFar = seatHoldsFarSupplyTile(state, hero.controllerId);
   if (faceDown.length === 0 && !canPlaceFar) {
     return [];
   }
@@ -1517,7 +1485,7 @@ export function objectiveStrategicValue(
       // moderately-distant leftover so the hero keeps expanding, not parking.
       // After the home tile is drained and Far economy is still missing, push
       // II–III discovery harder (the bronze-rush cap used to park the hero).
-      value = playerHasPlaceableFarTile(state, hero.controllerId) ? 530 : 500;
+      value = seatHoldsFarSupplyTile(state, hero.controllerId) ? 530 : 500;
       if (!fightAvailable) value += 60;
       if (
         bronzeRush ||
@@ -1526,7 +1494,7 @@ export function objectiveStrategicValue(
           !hasOpenedFarEconomy(state, hero.controllerId))
       ) {
         // Still expand — just do not outrank a live premium-economy fight.
-        value = Math.max(value, playerHasPlaceableFarTile(state, hero.controllerId) ? 560 : 520);
+        value = Math.max(value, seatHoldsFarSupplyTile(state, hero.controllerId) ? 560 : 520);
       }
       if (bronzeRush && fightAvailable) value = Math.min(value, 480);
       // FAR-TILE HUNT: a doorway that can FLIP a face-down Ⅱ–Ⅲ tile while the
@@ -1603,8 +1571,15 @@ const FREE_SEIZE_KINDS: ReadonlySet<MapObjectiveKind> = new Set([
   "town",
 ]);
 
-export function isFreeSeizeObjective(objective: MapObjective): boolean {
-  return FREE_SEIZE_KINDS.has(objective.kind);
+export function isFreeSeizeObjective(objective: MapObjective, state?: GameState): boolean {
+  const field = state?.adventure?.fields[objective.spaceId];
+  // A shop offers a purchase, not free loot. Never use it as a pickup detour
+  // that interrupts a mine/settlement march or spends its combat MP reserve.
+  return FREE_SEIZE_KINDS.has(objective.kind) && !(field && (
+    isMarketLocation(field.location) ||
+    field.location === "anime.ren_binh_cac" ||
+    field.location === "anime.adventurer_outfitter"
+  ));
 }
 
 /**
@@ -1618,7 +1593,7 @@ export function freeSeizuresWithinReach(
 ): MapObjective[] {
   const mp = Math.max(0, hero.movementPoints ?? 0);
   return objectives.filter((objective) => {
-    if (!isFreeSeizeObjective(objective)) return false;
+    if (!isFreeSeizeObjective(objective, state)) return false;
     const distance = distanceFromHeroTo(state, hero, objective.spaceId);
     return distance !== undefined && distance <= mp;
   });
@@ -1938,7 +1913,7 @@ function isImmediateExpansionDoorway(
     }
   }
   return Boolean(
-    playerHasPlaceableFarTile(state, hero.controllerId) &&
+    seatHoldsFarSupplyTile(state, hero.controllerId) &&
       farTilePlacementCenters(state, probe, undefined, {
         requireImmediateAccess: true,
       }).length > 0
@@ -2108,7 +2083,7 @@ export function primaryMapObjective(
             sticky.kind === "guard"
           );
         const freeSeizeBreak =
-          isFreeSeizeObjective(objective) &&
+          isFreeSeizeObjective(objective, state) &&
           (sticky.kind === "guard" ||
             sticky.kind === "enemy-hero" ||
             sticky.kind === "explore") &&

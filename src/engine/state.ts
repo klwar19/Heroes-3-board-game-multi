@@ -286,6 +286,13 @@ export type HouseRuleId =
   // window cannot raise them (debuffs still lower them; Attack tokens work).
   // The historical id is retained so saved setup payloads remain compatible.
   | "elemental-damage-no-die"
+  // BINH house rule (default OFF in BOTH modes): elemental attacks skip the
+  // Attack die entirely — it never rolls and always counts as 0 (no +1/-1, no
+  // die-triggered abilities), so an elemental hit lands for its base Attack plus
+  // any card/token bonuses only. Independent of `elemental-damage-no-die`; both
+  // may be on together (die forced to 0 AND positive buffs clamped). Defense
+  // bypass is unchanged. Wired via `ignoreAttackDie` in getAttackStackDetails.
+  | "elemental-damage-zero-die"
   // BINH house rule (default OFF in BOTH modes — the OFFICIAL reading is the
   // default): while ON, DISCOVERING a face-down Tile (and OPENING a new Ⅱ–Ⅲ one)
   // additionally requires an un-sealed border between the hero and the tile — a

@@ -26,12 +26,14 @@ import {
   pendingIncomingDamage,
   targetPriority,
   unitRemainingHealth,
+  unitRemovalHealth,
   tierWeight,
   unitThreatValue,
 } from "./score";
 import type { ComputerObservation } from "./types";
 import { coordinatedReplyDamage } from "./opponent-reply";
 import { unitSideStrength } from "./army-strength";
+import { canUnitAttack } from "../legal-actions";
 
 /**
  * True when our side is clearly losing a neutral fight: no living unit can
@@ -298,23 +300,28 @@ function attackScore(
   const ownRemaining = unitRemainingHealth(attacker);
   let retaliationDamage = 0;
 
-  // Allies that have NOT acted yet this round and can hit this same enemy now
-  // (adjacent melee, or any ranged). Movement has its own focus-march signal;
-  // keeping this estimate immediate avoids claiming two different targets can
-  // both be finished by the same walking unit.
+  // Project the attacker's landing before measuring immediate follow-ups.
+  // Engaged/disabled shooters and paralyzed allies cannot supply a free shot.
+  const projectedAttacker = { ...attacker, position: attackFromPosition };
+  const attackBoard = { ...combat, units: { ...combat.units, [attacker.id]: projectedAttacker } };
   const reachingAllies = Object.values(combat.units).filter(
     (unit) =>
       unit.controllerId === playerId &&
       unit.id !== attacker.id &&
       unitRemainingHealth(unit) > 0 &&
       !unit.activatedThisRound &&
-      (unit.type === "ranged" || isAdjacent(unit.position, defender.position)),
+      !unit.attackedThisActivation &&
+      unit.position >= 0 &&
+      !isParalyzed(unit) &&
+      canUnitAttack(attackBoard, unit, defender, state.activeEffects ?? []),
   );
   const allyFollowUpDamage = reachingAllies.reduce(
     (sum, unit) => sum + expectedAttackDamage(unit, defender),
     0,
   );
-  const armyCanFinish = damage + allyFollowUpDamage >= remaining;
+  // Breaking a Pack's first health bar is a flip, not a removal. Do not use
+  // that false finish to justify waking paralysis or exposing a valuable unit.
+  const armyCanFinish = damage + allyFollowUpDamage >= unitRemovalHealth(defender);
 
   // Don't wake a safely-skippable paralyzed enemy for chip: any damage removes
   // its Paralysis token, cancelling the activation it would have skipped. Only a
@@ -764,10 +771,20 @@ function moveUnitScore(
   if (current === null || next === null) return null;
 
   const role = unitRole(mover);
+  const state = observation.state as unknown as GameState;
+  const incomingNow = combat.context?.kind === "player"
+    ? coordinatedReplyDamage(combat, mover, mover.position, undefined, state) : 0;
+  const incomingNext = combat.context?.kind === "player"
+    ? coordinatedReplyDamage(combat, mover, action.destination, undefined, state) : 0;
+  const remaining = unitRemainingHealth(mover);
+  const escapesLethalReply = incomingNow >= remaining && incomingNext < remaining;
+  const entersLethalReply = incomingNext >= remaining && incomingNext > incomingNow;
   // Post-shot step (ranged only): the shot is spent, so closing in buys nothing
   // and adjacency costs next round's clean shot. Back off when engaged; never
   // outrank the passive exit (END_ACTIVATION = 400) by advancing.
   if (mover.attackedThisActivation && mover.type === "ranged") {
+    if (escapesLethalReply) return { score: 570, policy: "combat.ranged-escape-focus" };
+    if (entersLethalReply) return { score: 180, policy: "combat.ranged-avoid-focus" };
     const touchNow = current <= 1;
     const touchNext = next <= 1;
     if (touchNow && !touchNext) return { score: 560, policy: "combat.ranged-disengage" };
@@ -869,6 +886,11 @@ function moveUnitScore(
   score += surroundOpportunityBonus(combat, side, mover, action.destination);
 
   score -= positionalExposurePenalty(combat, side, mover, action.destination);
+
+  // PvP movement accounts for enemy move-and-attacks, not only bodies already
+  // adjacent. A screen or a safe retreat can preserve the next shot.
+  if (escapesLethalReply) return { score: Math.max(570, score), policy: "combat.escape-focus" };
+  if (entersLethalReply) return { score: Math.min(350, score), policy: "combat.avoid-focus" };
 
   if (next >= current && score < 400) {
     return { score: Math.min(score, 260), policy: "combat.hold-position" };
@@ -1133,9 +1155,7 @@ export function scoreCombatAction(
       const canStrikeNow =
         !waiter.attackedThisActivation &&
         enemies.some(
-          (enemy) =>
-            waiter.type === "ranged" ||
-            isAdjacent(waiter.position, enemy.position),
+          (enemy) => canUnitAttack(combat, waiter, enemy, observation.state.activeEffects ?? []),
         );
       if (canStrikeNow) {
         return { score: WAIT_IDLE_SCORE, policy: "combat.wait-idle" };
@@ -1151,6 +1171,8 @@ export function scoreCombatAction(
       const baited = enemies.some(
         (enemy) =>
           !enemy.activatedThisRound &&
+          enemy.type !== "ranged" &&
+          !isParalyzed(enemy) &&
           enemy.position >= 0 &&
           getBattlefieldDistance(waiter.position, enemy.position) <=
             WAIT_BAIT_MAX_DISTANCE,
@@ -1183,7 +1205,9 @@ export function scoreCombatAction(
       // under player-controlled neutrals the decision owner is a player while
       // the guard stays neutral-side (the attack branch's rule).
       const defenderSide = defender.controllerId;
-      const incoming = pendingIncomingDamage(combat, defenderSide, defender);
+      const incoming = combat.context?.kind === "player"
+        ? coordinatedReplyDamage(combat, defender, defender.position, undefined, observation.state as unknown as GameState)
+        : pendingIncomingDamage(combat, defenderSide, defender);
       const adjacentEnemies = livingEnemyUnits(combat, defenderSide).filter(
         (enemy) => isAdjacent(enemy.position, defender.position),
       ).length;

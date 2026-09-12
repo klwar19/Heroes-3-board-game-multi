@@ -1220,7 +1220,15 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // combat-start card discard) faction penalties go live. A v135 worker would
 // resolve these attacks/penalties differently from the new UI's previews.
 // `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 136;
+// v137 (2026-09-12): new BINH house rule `elemental-damage-zero-die` — while
+// ON, elemental attacks skip the Attack die entirely (it never rolls and always
+// counts as 0, so no +1/-1 and no die-triggered abilities), on own attacks and
+// retaliations; the hit lands for base Attack plus card/token bonuses only, with
+// Defense still bypassed. Independent of `elemental-damage-no-die`. A v136 worker
+// does not know the rule and would still roll the die, resolving these attacks
+// differently from the new UI's previews.
+// `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 137;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

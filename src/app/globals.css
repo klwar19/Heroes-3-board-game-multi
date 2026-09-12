@@ -8652,6 +8652,92 @@ button.hbSlot:disabled {
   overflow: hidden;
 }
 
+/* Commander-artifact offer: the armed (selected-but-not-yet-bought) card, and
+   the confirm/cancel step that shows the full effect below the row. */
+.promptRewardCard.selected {
+  border-color: #f4d98a;
+  box-shadow:
+    0 0 0 2px rgba(244, 217, 138, 0.85),
+    0 6px 16px rgba(0, 0, 0, 0.45);
+}
+.commanderOfferHint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 2px 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #c9b083;
+}
+.commanderOfferHint svg {
+  flex: 0 0 auto;
+}
+.commanderOfferConfirm {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid rgba(244, 217, 138, 0.5);
+  border-radius: 10px;
+  background: rgba(28, 20, 12, 0.6);
+}
+.commanderOfferConfirmCard {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.commanderOfferConfirmCard .promptRewardArtWrap,
+.commanderOfferConfirmCard .marketCardFallback {
+  flex: 0 0 auto;
+  width: 72px;
+}
+.commanderOfferConfirmCard .promptRewardArtWrap img {
+  width: 72px;
+  height: auto;
+  border-radius: 6px;
+}
+.commanderOfferConfirmMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.commanderOfferConfirmMeta strong {
+  font-size: 13px;
+  color: #f4e4bf;
+}
+.commanderOfferConfirmMeta p {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: #d8c39a;
+  /* The whole point: the effect is fully visible, never clamped. */
+}
+.commanderOfferConfirmTags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  text-transform: capitalize;
+  color: #c9b083;
+}
+.commanderOfferConfirmTags em {
+  font-style: normal;
+}
+.commanderOfferConfirmActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.commanderOfferConfirmActions .commandButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.commanderOfferConfirmActions .commandButton.primary {
+  background: linear-gradient(180deg, #6a5220, #4a3714);
+  border-color: #f4d98a;
+  color: #f8ecca;
+}
+
 /* ---- Pandora card decisions (scry keep/discard · Polish Pandora Search) ----
    Both prompts used to be word-only lists. Every tile shows the real card face
    with that card's own buttons, and the ROW SCROLLS SIDEWAYS (flex-wrap: nowrap
@@ -43153,6 +43239,22 @@ body:has(main.phoneMode) .opponentInfoModal .heroInfoClose {
   font-size: 9px;
   text-transform: uppercase;
   letter-spacing: 0.13em;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+/* Slot-type emblem beside an inventory item's "slot · tier" line, so each item
+   reads as weapon / armor / trinket at a glance. */
+.commanderArtifactSlotTag {
+  display: inline-flex;
+  align-items: center;
+  color: var(--mod-accent, #e4bd68);
+}
+.commanderArtifactSlotTag img,
+.commanderArtifactSlotTag svg {
+  width: 13px;
+  height: 13px;
+  object-fit: contain;
 }
 .commanderInventoryCard strong {
   margin-top: 2px;

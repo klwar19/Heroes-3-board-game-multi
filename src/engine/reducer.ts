@@ -5933,6 +5933,11 @@ function getAttackStackDetails(
     ignoreAttackDie:
       Boolean(stackItem.modifiers.ignoreAttackDie) ||
       fuyukiFixedDamage !== undefined ||
+      // BINH house rule "elemental-damage-zero-die": an elemental attack skips
+      // the die entirely (always 0), on own attacks AND retaliations. Distinct
+      // from "elemental-damage-no-die" (which keeps the die, clamps + buffs).
+      (dealsElemental &&
+        houseRuleEnabled(state, "elemental-damage-zero-die")) ||
       // Polish Balance Pack Bless: a lasting buff, so the die is skipped for
       // every attack it covers (own attacks AND retaliations — the reprint
       // carries no [unit_attack] icon).

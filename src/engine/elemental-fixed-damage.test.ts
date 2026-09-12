@@ -356,6 +356,67 @@ describe("every Elemental deals die-proof, fixed damage (real unit data)", () =>
     expect(weakened(false)).toBe(air.attack - 1);
     expect(weakened(true)).toBe(air.attack - 1);
   });
+
+  it("ZERO-DIE HOUSE RULE: the Attack die is skipped (always 0), buffs still apply", () => {
+    const air = coreUnitDefinitions["neutral.air_elementals"].neutral!;
+    const build = (houseRuleOn: boolean): GameState =>
+      duel((draft) => {
+        const a = draft.combat!.units.unit_p1_griffins;
+        a.attack = air.attack;
+        a.abilities = [...(air.abilities ?? [])];
+        // Queue a +1 die face and a +2 Attack buff against Defense 4.
+        draft.combat!.dice.scriptedRolls = [1, 1, 1, 1];
+        draft.combat!.units.unit_p2_skeletons.defense = 4;
+        attackBonus(draft, "unit_p1_griffins", 2);
+        if (houseRuleOn) {
+          draft.adventure = {
+            houseRules: { "elemental-damage-zero-die": true },
+          } as unknown as GameState["adventure"];
+        }
+      });
+
+    // OFF (control): the queued +1 die applies on top of the +2 buff. This is
+    // the DIVERGING case — if the gate were removed, the ON run below would
+    // match this instead of dropping the die.
+    const off = firstAttack(runAttack(build(false)));
+    expect(off.noDie ?? false, "official reading rolls the die").toBe(false);
+    expect(off.roll, "the queued +1 face applies").toBe(1);
+    expect(off.attackValue, "printed Attack + buff + die").toBe(
+      air.attack + 2 + 1,
+    );
+
+    // ON: the die never rolls and counts as 0; the +2 buff still lands, and
+    // Defense is ignored like any elemental attack.
+    const on = firstAttack(runAttack(build(true)));
+    expect(on.noDie, "the rule skips the die").toBe(true);
+    expect(on.roll, "the skipped die counts as 0").toBe(0);
+    expect(on.attackValue, "printed Attack + buff, no die contribution").toBe(
+      air.attack + 2,
+    );
+    expect(on.defenseValue, "Defense is still ignored entirely").toBe(0);
+    expect(on.damage, "lands for Attack + buff with no die and no soak").toBe(
+      air.attack + 2,
+    );
+  });
+
+  it("ZERO-DIE HOUSE RULE only affects elemental attacks", () => {
+    // A non-elemental attacker with the rule ON still rolls its die normally.
+    const state = duel((draft) => {
+      draft.combat!.dice.scriptedRolls = [1, 1, 1, 1];
+      draft.adventure = {
+        houseRules: { "elemental-damage-zero-die": true },
+      } as unknown as GameState["adventure"];
+    });
+    const event = firstAttack(runAttack(state));
+    expect(
+      unitDealsElementalDamage(state, state.combat!.units.unit_p1_griffins),
+      "the plain attacker is not elemental",
+    ).toBe(false);
+    expect(event.noDie ?? false, "a normal attack still rolls the die").toBe(
+      false,
+    );
+    expect(event.roll, "the +1 face applies to a non-elemental attack").toBe(1);
+  });
 });
 
 // ---------------------------------------------------------------------------

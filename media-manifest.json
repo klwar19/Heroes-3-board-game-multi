@@ -2,7 +2,7 @@
   "version": 1,
   "cdn": "https://cdn.hamthefirt.xyz",
   "roots": ["assets","sounds"],
-  "count": 5813,
+  "count": 5816,
   "files": {
     "assets/abilities-air_magic-empowered.webp": { "md5": "f47398ae1322d34b22b6a213fe7f8549", "bytes": 135374, "width": 743, "height": 1040 },
     "assets/abilities-air_magic.webp": { "md5": "7f73e9cfeed567196c9b66122c3ad83a", "bytes": 137732, "width": 743, "height": 1040 },
@@ -2511,6 +2511,9 @@
     "assets/ui/commander-paperdoll-body-anime.webp": { "md5": "a54cb1500e01f62f2580b604df03b26f", "bytes": 87332, "width": 768, "height": 1152 },
     "assets/ui/commander-paperdoll-body-wuxia.webp": { "md5": "497f642324784271b03d7a80a8ebad3d", "bytes": 116452, "width": 768, "height": 1152 },
     "assets/ui/commander-paperdoll-body.webp": { "md5": "446d9ba935693d7ef957dad5cd1a0935", "bytes": 103092, "width": 864, "height": 1821 },
+    "assets/ui/commander-slot-armor.webp": { "md5": "8ac65657b98e355998d24371610a400c", "bytes": 5656, "width": 128, "height": 128 },
+    "assets/ui/commander-slot-trinket.webp": { "md5": "1c63884262138e1876933efeb72d6c9a", "bytes": 5514, "width": 128, "height": 128 },
+    "assets/ui/commander-slot-weapon.webp": { "md5": "de674e1dba9bab0aae1248f262957791", "bytes": 4228, "width": 128, "height": 128 },
     "assets/ui/coop/coop-mounted-party-v2.webp": { "md5": "d8e3feb091ce2e72d3ad2908a7d84f35", "bytes": 287688, "width": 1672, "height": 941 },
     "assets/ui/defend-button.png": { "md5": "ee238f74e5dce00032d931e27ed9b6ce", "bytes": 3958, "width": 48, "height": 36 },
     "assets/ui/dice-resource-tools.webp": { "md5": "52e7591cf2a77266c2ac7d82a9f54834", "bytes": 14872, "width": 256, "height": 256 },

@@ -4,7 +4,7 @@ import { conquestProgress, requiredRivalHeroDefeats, wanderingMerchantAvailable,
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
-import { assetUrl } from "@/lib/asset-url";
+import { assetUrl, contentAddressedPath } from "@/lib/asset-url";
 import { playLibrarySound } from "@/lib/sound";
 import {
   createContext,
@@ -26,6 +26,7 @@ import {
   ChevronsUp,
   Crown,
   Dices,
+  Gem,
   Hammer,
   HelpCircle,
   Hourglass,
@@ -5091,6 +5092,41 @@ function playerFactionColor(factionId: string | undefined): string {
   return (factionId && coreFactionDefinitions[factionId]?.color) || "#b08d2f";
 }
 
+/** The three commander equipment slots, in paperdoll order. */
+const COMMANDER_SLOTS = ["weapon", "armor", "trinket"] as const;
+type CommanderSlot = (typeof COMMANDER_SLOTS)[number];
+
+/**
+ * Slot-type emblem for a commander equipment slot. It prefers a painted slot
+ * icon (`/assets/ui/commander-slot-<slot>.webp`) once that art is published, and
+ * otherwise draws a distinct per-slot glyph — so weapon / armor / trinket read
+ * apart at a glance whether or not the painted art has shipped (no broken image,
+ * no regression). The glyph choice makes the slot's item TYPE obvious: a blade
+ * for weapons, a shield for armor, a gem for trinkets.
+ */
+function CommanderSlotEmblem({
+  slot,
+  size = 28,
+}: {
+  slot: CommanderSlot;
+  size?: number;
+}) {
+  const logicalPath = `/assets/ui/commander-slot-${slot}.webp`;
+  if (contentAddressedPath(logicalPath)) {
+    return (
+      <img
+        alt=""
+        aria-hidden="true"
+        className="commanderSlotEmblemArt"
+        src={assetUrl(logicalPath)}
+      />
+    );
+  }
+  if (slot === "weapon") return <Swords aria-hidden="true" size={size} />;
+  if (slot === "armor") return <Shield aria-hidden="true" size={size} />;
+  return <Gem aria-hidden="true" size={size} />;
+}
+
 export function TownHeroDock({
   state,
   viewerPlayerId,
@@ -5706,7 +5742,7 @@ export function TownHeroDock({
                     />
                   </div>
                 ) : null}
-                {(["weapon", "armor", "trinket"] as const).map((slot) => {
+                {COMMANDER_SLOTS.map((slot) => {
                   const cardId = commander.artifacts?.[slot];
                   const spec = cardId
                     ? COMMANDER_ARTIFACT_SPECS[cardId]
@@ -5751,7 +5787,7 @@ export function TownHeroDock({
                             )}
                           />
                         ) : (
-                          <Shield aria-hidden="true" size={28} />
+                          <CommanderSlotEmblem slot={slot} />
                         )}
                       </div>
                       <div className="commanderArtifactSlotMeta">
@@ -5767,7 +5803,7 @@ export function TownHeroDock({
                         <strong>{spec?.name ?? "Empty"}</strong>
                         <span>
                           {spec?.effectText ??
-                            "Drag a matching artifact from the bag"}
+                            `Bind a ${slot} artifact here — drag one from the bag below.`}
                         </span>
                       </div>
                     </div>
@@ -5847,6 +5883,12 @@ export function TownHeroDock({
                         )}
                         <div>
                           <span className="commanderArtifactMeta">
+                            <span
+                              aria-hidden="true"
+                              className="commanderArtifactSlotTag"
+                            >
+                              <CommanderSlotEmblem slot={spec.slot} size={13} />
+                            </span>
                             <EquipGradeChip
                               grade={tierToGrade(spec.tier)}
                               title={`${spec.tier} · Grade ${tierToGrade(spec.tier)}`}
@@ -7422,6 +7464,12 @@ export function PromptTray({
   const balanceArt = useBalanceArtFlags();
   const visit = state.adventure?.pendingVisit;
   const choice = state.pendingChoice;
+  // Commander-artifact purchase offers are a real gold spend, so clicking a card
+  // must NOT buy it outright ("no chance to think"). The click selects the card
+  // and reveals a confirm/cancel step; only Confirm dispatches the purchase. The
+  // selection is the option's actionKey, cleared whenever the open choice changes.
+  const [pendingCommanderArtifactKey, setPendingCommanderArtifactKey] =
+    useState<string | null>(null);
   const balanceSpellCardId =
     choice?.type === "OPTION_CHOICE"
       ? choice.balanceSpellChoice?.cardId
@@ -8369,6 +8417,12 @@ export function PromptTray({
     choice.context === "commander-artifact-offer" &&
     choice.playerId === viewerPlayerId
       ? (choice.commanderArtifactOffer?.cardIds ?? null)
+      : null;
+  const commanderArtifactOfferCost =
+    choice?.type === "OPTION_CHOICE" &&
+    choice.context === "commander-artifact-offer" &&
+    choice.playerId === viewerPlayerId
+      ? (choice.commanderArtifactOffer?.cost ?? null)
       : null;
   // A Tome / Eagle Eye dig (EAGLE_EYE_DIG) revealed ONE spell to take-or-discard;
   // the take AND the discard button are about the SAME found card, so both show
@@ -9461,13 +9515,30 @@ export function PromptTray({
       <div
         className={`promptOptions${hasAnyRewardArt ? " rewardCards" : ""}${hasTileRewardArt ? " tileCards" : ""}`}
       >
-        {displayedRewardOptions.map(({ legal, art }) =>
-          art ? (
+        {displayedRewardOptions.map(({ legal, art }) => {
+          const key = actionKey(legal.action);
+          // A commander-artifact purchase option (has a real artifact card) is
+          // armed, not bought, on the first click; every other reward acts at
+          // once as before. The trailing "Decline" option carries no card id, so
+          // it stays a direct action.
+          const isCommanderPurchase = Boolean(
+            commanderArtifactOfferCards &&
+              art?.cardId &&
+              COMMANDER_ARTIFACT_SPECS[art.cardId],
+          );
+          const isSelected =
+            isCommanderPurchase && pendingCommanderArtifactKey === key;
+          return art ? (
             <button
               aria-label={legal.label}
-              className={`promptRewardCard${art.tileRotation !== undefined ? " tileThumb" : ""}${art.resource ? " resourceReward" : ""}`}
-              key={actionKey(legal.action)}
-              onClick={() => onAction(legal.action)}
+              aria-pressed={isCommanderPurchase ? isSelected : undefined}
+              className={`promptRewardCard${art.tileRotation !== undefined ? " tileThumb" : ""}${art.resource ? " resourceReward" : ""}${isSelected ? " selected" : ""}`}
+              key={key}
+              onClick={() =>
+                isCommanderPurchase
+                  ? setPendingCommanderArtifactKey(key)
+                  : onAction(legal.action)
+              }
               title={
                 art.detail ? `${legal.label} — ${art.detail}` : legal.label
               }
@@ -9510,14 +9581,124 @@ export function PromptTray({
           ) : (
             <button
               className="commandButton"
-              key={actionKey(legal.action)}
+              key={key}
               onClick={() => onAction(legal.action)}
               type="button"
             >
               {legal.label}
             </button>
-          ),
+          );
+        })}
+      </div>
+      {commanderArtifactOfferCards ? (
+        <CommanderArtifactOfferConfirm
+          balanceArt={balanceArt}
+          cost={commanderArtifactOfferCost}
+          onCancel={() => setPendingCommanderArtifactKey(null)}
+          onConfirm={(action) => {
+            setPendingCommanderArtifactKey(null);
+            onAction(action);
+          }}
+          selected={
+            pendingCommanderArtifactKey
+              ? displayedRewardOptions.find(
+                  ({ legal }) =>
+                    actionKey(legal.action) === pendingCommanderArtifactKey,
+                )
+              : undefined
+          }
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Confirm/cancel step for a commander-artifact purchase offer. The offer is a
+ * real gold spend, so the tray arms a card first (see PromptTray) and this panel
+ * shows the FULL wired effect (never clamped, unlike the card's teaser line) plus
+ * the slot, tier and gold cost before the buy is committed. Rendered only for the
+ * commander-artifact-offer prompt; nothing here fires until Confirm is pressed.
+ */
+function CommanderArtifactOfferConfirm({
+  balanceArt,
+  cost,
+  onCancel,
+  onConfirm,
+  selected,
+}: {
+  balanceArt: ReturnType<typeof useBalanceArtFlags>;
+  cost: number | null;
+  onCancel: () => void;
+  onConfirm: (action: GameAction) => void;
+  selected:
+    | { legal: LegalAction; art: VisitRewardArt | null }
+    | undefined;
+}) {
+  if (!selected || !selected.art?.cardId) {
+    return (
+      <p className="commanderOfferHint" role="note">
+        <Info aria-hidden="true" size={13} /> Tap an artifact to see its full
+        effect, then confirm the purchase — nothing is bought until you do.
+      </p>
+    );
+  }
+  const art = selected.art;
+  const spec = art.cardId ? COMMANDER_ARTIFACT_SPECS[art.cardId] : undefined;
+  return (
+    <div
+      aria-label="Confirm commander artifact purchase"
+      className="commanderOfferConfirm"
+      role="group"
+    >
+      <div className="commanderOfferConfirmCard">
+        {art.image ? (
+          <span className="promptRewardArtWrap">
+            <CardSetFrame cardId={art.cardId}>
+              <img
+                alt=""
+                aria-hidden="true"
+                draggable={false}
+                referrerPolicy="no-referrer"
+                src={assetUrl(rewardArtImage(balanceArt, art))}
+              />
+            </CardSetFrame>
+          </span>
+        ) : (
+          <span className="marketCardFallback">{art.name}</span>
         )}
+        <div className="commanderOfferConfirmMeta">
+          <span className="commanderOfferConfirmTags">
+            {spec ? (
+              <EquipGradeChip
+                grade={tierToGrade(spec.tier)}
+                title={`${spec.tier} · Grade ${tierToGrade(spec.tier)}`}
+              />
+            ) : null}
+            {spec ? (
+              <em>
+                {spec.slot} · {spec.tier}
+              </em>
+            ) : null}
+          </span>
+          <strong>{spec?.name ?? art.name}</strong>
+          {spec?.effectText || art.detail ? (
+            <p>{spec?.effectText ?? art.detail}</p>
+          ) : null}
+        </div>
+      </div>
+      <div className="commanderOfferConfirmActions">
+        <button
+          className="commandButton primary"
+          onClick={() => onConfirm(selected.legal.action)}
+          type="button"
+        >
+          <Check aria-hidden="true" size={15} />
+          {cost !== null ? `Buy for ${cost} gold` : "Confirm purchase"}
+        </button>
+        <button className="commandButton" onClick={onCancel} type="button">
+          Cancel
+        </button>
       </div>
     </div>
   );
@@ -11926,6 +12107,7 @@ const BINH_RULE_SUMMARIES: Partial<Record<HouseRuleId, string>> = {
   "phoenix-pack-rebirth": "Pack Phoenixes may Rebirth after being defeated.",
   "resource-die-single-valuables": "Resource-die valuables are capped at 1.",
   "elemental-damage-no-die": "Positive Attack buffs cannot raise elemental damage.",
+  "elemental-damage-zero-die": "Elemental attacks skip the Attack die (always counts as 0).",
   "discovery-border-gate": "Yellow borders block discovery from across the border.",
   "deck-access-hero-level": "Hero level controls accessible Spell and Artifact tiers.",
   // Global map rules share the same compact-row + info-button treatment.

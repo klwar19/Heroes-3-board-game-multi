@@ -2,14 +2,13 @@ import { fieldCreatureBankId, heroMovementMax, isBankStyleGuardLocation, isField
 import { houseRuleEnabled } from "../house-rules";
 import { polishQuickCombatEnabled, polishQuickCombatOutcome } from "../polish-quick-combat";
 import type { GameAction, GameState, HeroState, MapFieldState } from "../state";
-import { isPremiumEconomyField } from "./army-strength";
 import {
   canBeatGuardedField, collectMapObjectives, distanceFromHeroTo,
   isFreeSeizeObjective, objectiveDistanceField, primaryMapObjective,
 } from "./map-navigation";
 import type { ComputerPolicyMemory } from "./memory";
 
-/** One paid continuation is a planning buffer, not a guarantee of battle length. */
+/** Reserve paid continuations before entry; dice/cards can still prolong a fight. */
 export function premiumCombatMovementReserve(state: GameState, hero: HeroState, field: MapFieldState): number {
   if (!isFieldGuarded(field) || fieldCreatureBankId(field) || isBankStyleGuardLocation(field.location) ||
       isTeleportObjectGuardLocation(field.location) || field.location === "random_town" || field.unlimitedCombatRounds ||
@@ -21,7 +20,12 @@ export function premiumCombatMovementReserve(state: GameState, hero: HeroState, 
       : neutralBattleLevel(state, hero) > difficulty;
     if (quickWin) return 0;
   }
-  return 1;
+  // Level 2–3 FAR economy (and harder NEAR economy) can take more than two
+  // battle rounds. Budget two continuations, capped by a refreshed turn's
+  // actual capacity after paying entry so a low-MP hero cannot wait forever.
+  const economyFight = field.location === "settlement" || field.location === "mine";
+  const reserve = economyFight && (field.difficulty ?? 0) >= 2 ? 2 : 1;
+  return Math.min(reserve, Math.max(0, heroMovementMax(state, hero) - 1));
 }
 
 /** Convert the premium economy commitment into a current/next-turn movement budget. */
@@ -35,8 +39,8 @@ export function scorePremiumApproach(
   const objectives = collectMapObjectives(state, hero);
   const primary = primaryMapObjective(state, hero, objectives, memory.stickyObjectiveSpaceId);
   const field = primary && state.adventure?.fields[primary.spaceId];
-  if (!primary || !field || !isPremiumEconomyField(field) ||
-      (field.difficulty ?? 0) > 3 || !canBeatGuardedField(state, hero, field)) return null;
+  if (!primary || !field || (field.location !== "settlement" && field.location !== "mine") ||
+      !canBeatGuardedField(state, hero, field)) return null;
 
   const distance = objectiveDistanceField(state, hero, [primary]);
   const here = distance.get(hero.spaceId) ?? Infinity;
@@ -58,7 +62,7 @@ export function scorePremiumApproach(
   // a real pickup that leaves the premium guard in next turn's strike range.
   if (here + reserve > movement) {
     const pickups = objectives.filter(objective => {
-      if (!isFreeSeizeObjective(objective) || objective.spaceId === hero.spaceId ||
+      if (!isFreeSeizeObjective(objective, state) || objective.spaceId === hero.spaceId ||
           objective.spaceId === primary.spaceId) return false;
       const walk = distanceFromHeroTo(state, hero, objective.spaceId);
       const returnWalk = distance.get(objective.spaceId) ?? Infinity;
