@@ -510,15 +510,16 @@ export function armyTierGuardCap(
  * introduces a silver guard — so hard/normal/easy field-3 parties (which all
  * mix in silver) would wait for a silver recruit. Premium economy is worth
  * unit losses, so three bronze Packs alone unlock difficulty 3 on easy /
- * normal / hard the moment the Pack core is ready. Impossible still needs at
- * least one silver body (3 pure silver guards). Silver/gold tier extensions
+ * normal / hard the moment the Pack core is ready. Strong easy/normal openings
+ * may use their smaller composition-ready core. Impossible FAR economy allows
+ * field 3 with three Packs and a full attack-turn movement budget. Tier extensions
  * still raise the cap above 3 when the army qualifies.
  *
  * Grounded in NEUTRAL_ARMY_TABLE field-3 parties:
  *   easy    {bronze 1, silver 1}  — 3 Packs overpower
  *   normal  {bronze 2, silver 1}  — 3 Packs overpower with losses
  *   hard    {bronze 1, silver 2}  — user: 3 Packs can tackle
- *   impossible {silver 3}         — needs a silver body + 3 Packs
+ *   impossible {silver 3}         — 3 Packs attempt with two continuations
  */
 export function premiumEconomyEngageCap(
   state: GameState,
@@ -538,11 +539,24 @@ export function premiumEconomyEngageCap(
     cap = Math.max(cap, armyTierGuardCap(scenario, tier));
   }
 
-  // Three bronze Packs → lv3 ASAP on every difficulty that does not field a
-  // pure multi-silver wall (Impossible needs the soft-silver unlock above).
+  // Easier guards can be attempted with the actual composition-ready core;
+  // do not force a strong faction to buy a redundant third Pack first.
+  if ((scenario === "easy" || scenario === "normal") && counts.bronze >= 3 &&
+      bronzePacks >= openingCorePackTarget(state, playerId)) {
+    cap = Math.max(cap, 3);
+  }
+
+  // Three bronze Packs can attempt FAR income without waiting for Silver.
+  // Impossible's stronger party is paired with a three-MP entry budget in
+  // combat-movement; this exception never opens unrelated silver guards.
   if (bronzePacks >= BRONZE_PACK_CORE_FOR_SILVER) {
     if (scenario === "impossible") {
-      if (counts.silver + counts.gold + counts.azure >= 1) {
+      // Impossible field 2 draws two bronzes and one silver, not field 3's
+      // three silvers. A full Pack core can open II economy before Silver.
+      cap = Math.max(cap, 2);
+      const farEconomy = field && isPremiumEconomyField(field) && field.tileInstanceId &&
+        state.adventure?.tiles[field.tileInstanceId]?.group === "far";
+      if (farEconomy || counts.silver + counts.gold + counts.azure >= 1) {
         cap = Math.max(cap, 3);
       }
     } else {

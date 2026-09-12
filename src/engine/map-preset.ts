@@ -555,7 +555,7 @@ const SEARCH_DECKS = new Set(["artifacts", "spells", "abilities"]);
 const CUBE_LOCATIONS = new Set(["windmill", "water_wheel", "mystical_garden"]);
 /** The six tile groups a clear_tile_cubes filter may target. */
 const TILE_GROUPS = new Set(["starting", "far", "near", "center", "sea", "subterranean"]);
-const OBELISK_ROLES = new Set<CustomMapObeliskConfig["role"]>(["monolith", "bonus", "victory-only"]);
+const OBELISK_ROLES = new Set<CustomMapObeliskConfig["role"]>(["classic", "monolith", "bonus", "victory-only"]);
 const VICTORY_POINT_OBJECTIVE_KINDS = new Set<VictoryPointObjective["kind"]>([
   "control-towns",
   "flag-mines",
@@ -1297,6 +1297,7 @@ export function sanitizeSettlementFieldPlan(input: unknown): CustomMapSettlement
     guard?: unknown;
     winCondition?: unknown;
     reward?: unknown;
+    combatRoundLimit?: unknown;
     vp?: unknown;
     holdRoundsToWin?: unknown;
     holdRequiresGrail?: unknown;
@@ -1310,6 +1311,14 @@ export function sanitizeSettlementFieldPlan(input: unknown): CustomMapSettlement
   const reward = sanitizeFieldReward(raw.reward);
   if (reward) {
     plan.reward = reward;
+  }
+  if (
+    raw.combatRoundLimit === 1 ||
+    raw.combatRoundLimit === 2 ||
+    raw.combatRoundLimit === 3 ||
+    raw.combatRoundLimit === "unlimited"
+  ) {
+    plan.combatRoundLimit = raw.combatRoundLimit;
   }
   // clampInt(0, min=1, …) would lift 0 → 1; treat non-positive as "absent".
   if (typeof raw.vp === "number" && Number.isFinite(raw.vp) && raw.vp > 0) {
@@ -1410,8 +1419,9 @@ export function sanitizeObjectPlans(
 }
 
 /**
- * Sanitize the map-wide Obelisk role. Unknown role → undefined (treated as
- * ABSENT = classic locked-die). A guard applies to every role (an Obelisk may be
+ * Sanitize the map-wide Obelisk role. Unknown role → undefined. A plain
+ * classic locked-die Obelisk remains absent, while Classic plus map-wide field
+ * settings is stored explicitly. A guard applies to every role (an Obelisk may be
  * guarded in any mode). Only "bonus" carries awards: the multi-award `bonuses`
  * list (degenerate entries dropped, capped) with an optional `bonusMode` OR the
  * legacy single `bonus`, falling back to {@link DEFAULT_OBELISK_BONUS} so the
@@ -1456,6 +1466,8 @@ function sanitizeObeliskConfig(input: unknown): CustomMapObeliskConfig | undefin
     persistentGuard?: unknown;
     unlimitedRounds?: unknown;
     combatRoundLimit?: unknown;
+    reward?: unknown;
+    vp?: unknown;
   };
   if (typeof raw.role !== "string" || !OBELISK_ROLES.has(raw.role as CustomMapObeliskConfig["role"])) {
     return undefined;
@@ -1463,9 +1475,15 @@ function sanitizeObeliskConfig(input: unknown): CustomMapObeliskConfig | undefin
   const role = raw.role as CustomMapObeliskConfig["role"];
   const guard = sanitizeCustomGuardSpec(raw.guard);
   const breakFlags = sanitizeBreakFlags(raw);
+  const reward = sanitizeFieldReward(raw.reward);
+  const vp = typeof raw.vp === "number" && Number.isFinite(raw.vp) && raw.vp > 0
+    ? Math.min(MAX_CENTER_HEX_VP, Math.floor(raw.vp))
+    : undefined;
   if (role !== "bonus") {
     const config: CustomMapObeliskConfig = { role, ...breakFlags };
     if (guard) config.guard = guard;
+    if (reward) config.reward = reward;
+    if (vp) config.vp = vp;
     return config;
   }
   const config: CustomMapObeliskConfig = { role, ...breakFlags };
@@ -1486,6 +1504,8 @@ function sanitizeObeliskConfig(input: unknown): CustomMapObeliskConfig | undefin
   if (guard) {
     config.guard = guard;
   }
+  if (reward) config.reward = reward;
+  if (vp) config.vp = vp;
   return config;
 }
 
@@ -1500,13 +1520,28 @@ function sanitizeMinesConfig(input: unknown): CustomMapMinesConfig | undefined {
     persistentGuard?: unknown;
     unlimitedRounds?: unknown;
     combatRoundLimit?: unknown;
+    reward?: unknown;
+    vp?: unknown;
   };
   const config: CustomMapMinesConfig = { ...sanitizeBreakFlags(raw) };
   const guard = sanitizeCustomGuardSpec(raw.guard);
   if (guard) config.guard = guard;
-  return config.guard || config.breakField || config.persistentGuard || config.unlimitedRounds || config.combatRoundLimit
+  const reward = sanitizeFieldReward(raw.reward);
+  if (reward) config.reward = reward;
+  if (typeof raw.vp === "number" && Number.isFinite(raw.vp) && raw.vp > 0) {
+    config.vp = Math.min(MAX_CENTER_HEX_VP, Math.floor(raw.vp));
+  }
+  return config.guard || config.reward || config.vp || config.breakField || config.persistentGuard || config.unlimitedRounds || config.combatRoundLimit
     ? config
     : undefined;
+}
+
+/** Sanitize MAP-WIDE difficulty-Ⅶ center-object defaults. */
+function sanitizeCenterHexesConfig(input: unknown): CustomMapPreset["centerHexes"] | undefined {
+  const plan = sanitizeObjectFieldPlan(input);
+  if (!plan) return undefined;
+  const { winCondition: _specificOnly, ...global } = plan;
+  return Object.keys(global).length > 0 ? global : undefined;
 }
 
 /** Sanitize MAP-WIDE Random Town options. Empty → undefined. */
@@ -1516,6 +1551,8 @@ function sanitizeRandomTownsConfig(input: unknown): CustomMapRandomTownsConfig |
   }
   const raw = input as {
     guard?: unknown;
+    combatRoundLimit?: unknown;
+    reward?: unknown;
     captureReward?: unknown;
     incomeGold?: unknown;
     vp?: unknown;
@@ -1523,6 +1560,16 @@ function sanitizeRandomTownsConfig(input: unknown): CustomMapRandomTownsConfig |
   const config: CustomMapRandomTownsConfig = {};
   const guard = sanitizeCustomGuardSpec(raw.guard);
   if (guard) config.guard = guard;
+  if (
+    raw.combatRoundLimit === 1 ||
+    raw.combatRoundLimit === 2 ||
+    raw.combatRoundLimit === 3 ||
+    raw.combatRoundLimit === "unlimited"
+  ) {
+    config.combatRoundLimit = raw.combatRoundLimit;
+  }
+  const reward = sanitizeFieldReward(raw.reward);
+  if (reward) config.reward = reward;
   if (raw.captureReward && typeof raw.captureReward === "object") {
     const r = raw.captureReward as Record<string, unknown>;
     const gold = clampInt(r.gold, 0, 50, 0);
@@ -1542,7 +1589,7 @@ function sanitizeRandomTownsConfig(input: unknown): CustomMapRandomTownsConfig |
   if (typeof raw.vp === "number" && Number.isFinite(raw.vp) && raw.vp > 0) {
     config.vp = Math.min(MAX_SETTLEMENT_VP, Math.floor(raw.vp));
   }
-  return config.guard || config.captureReward || config.incomeGold !== undefined || config.vp
+  return config.guard || config.combatRoundLimit || config.reward || config.captureReward || config.incomeGold !== undefined || config.vp
     ? config
     : undefined;
 }
@@ -1556,17 +1603,34 @@ function sanitizeSettlementConfig(input: unknown): CustomMapSettlementConfig | u
   if (!input || typeof input !== "object") {
     return undefined;
   }
-  const raw = input as { guard?: unknown; vp?: unknown };
+  const raw = input as {
+    guard?: unknown;
+    reward?: unknown;
+    vp?: unknown;
+    combatRoundLimit?: unknown;
+  };
   const guard = sanitizeCustomGuardSpec(raw.guard);
   const vp = clampInt(raw.vp, 0, MAX_SETTLEMENT_VP, 0);
   const config: CustomMapSettlementConfig = {};
   if (guard) {
     config.guard = guard;
   }
+  const reward = sanitizeFieldReward(raw.reward);
+  if (reward) {
+    config.reward = reward;
+  }
+  if (
+    raw.combatRoundLimit === 1 ||
+    raw.combatRoundLimit === 2 ||
+    raw.combatRoundLimit === 3 ||
+    raw.combatRoundLimit === "unlimited"
+  ) {
+    config.combatRoundLimit = raw.combatRoundLimit;
+  }
   if (vp > 0) {
     config.vp = vp;
   }
-  return config.guard || config.vp !== undefined ? config : undefined;
+  return config.guard || config.reward || config.combatRoundLimit || config.vp !== undefined ? config : undefined;
 }
 
 /**
@@ -2527,6 +2591,10 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
     if (raw.breaks.teamScope === "team") breaks.teamScope = "team";
     if (Object.keys(breaks).length > 0) preset.breaks = breaks;
   }
+  if (raw.centerHexes !== undefined) {
+    const centerHexes = sanitizeCenterHexesConfig(raw.centerHexes);
+    if (centerHexes) preset.centerHexes = centerHexes;
+  }
   if (raw.houseRules && typeof raw.houseRules === "object") {
     const houseRules: NonNullable<CustomMapPreset["houseRules"]> = {};
     for (const id of ["no-secondary-heroes", "free-neutral-combat-extend"] as const) {
@@ -2709,6 +2777,7 @@ export function customMapPresetIsActive(preset: CustomMapPreset | null | undefin
       preset.farTileTypeChoice !== undefined ||
       (preset.farTileTypeChoices && preset.farTileTypeChoices.length > 0) ||
       Boolean(preset.breaks) ||
+      Boolean(preset.centerHexes) ||
       Boolean(preset.houseRules && Object.keys(preset.houseRules).length > 0) ||
       preset.startingResources ||
       preset.computerStartingBonus ||
@@ -3013,8 +3082,17 @@ export function describeObeliskRole(config: CustomMapObeliskConfig): string {
   if (config.guard) extras.push(`guard ${describeGuardSpec(config.guard)}`);
   if (config.breakField) extras.push("break field");
   if (config.persistentGuard) extras.push("persistent army");
-  if (config.unlimitedRounds) extras.push("unlimited rounds");
+  if (config.combatRoundLimit) {
+    extras.push(config.combatRoundLimit === "unlimited" ? "unlimited rounds" : `${config.combatRoundLimit} free combat rounds`);
+  } else if (config.unlimitedRounds) {
+    extras.push("unlimited rounds");
+  }
+  if (config.reward) extras.push(`first clear: ${describeFieldReward(config.reward)}`);
+  if (config.vp) extras.push(`+${config.vp} VP first clear`);
   const tail = extras.length > 0 ? ` (${extras.join(", ")})` : "";
+  if (config.role === "classic") {
+    return `Obelisks: classic locked die${tail}`;
+  }
   if (config.role === "monolith") {
     return `Obelisks: Monolith teleport network${tail}`;
   }
@@ -3030,6 +3108,12 @@ export function describeSettlementConfig(config: CustomMapSettlementConfig): str
   if (config.guard) {
     parts.push(`guard ${describeGuardSpec(config.guard)}`);
   }
+  if (config.combatRoundLimit) {
+    parts.push(config.combatRoundLimit === "unlimited" ? "unlimited rounds" : `${config.combatRoundLimit} free combat rounds`);
+  }
+  if (config.reward) {
+    parts.push(`first flag: ${describeFieldReward(config.reward)}`);
+  }
   if (config.vp) {
     parts.push(`+${config.vp} VP each`);
   }
@@ -3041,6 +3125,12 @@ export function describeSettlementFieldPlan(plan: CustomMapSettlementFieldPlan):
   const parts: string[] = [];
   if (plan.guard) {
     parts.push(`guard ${describeGuardSpec(plan.guard)}`);
+  }
+  if (plan.combatRoundLimit) {
+    parts.push(plan.combatRoundLimit === "unlimited" ? "unlimited rounds" : `${plan.combatRoundLimit} free combat rounds`);
+  }
+  if (plan.reward) {
+    parts.push(`first flag: ${describeFieldReward(plan.reward)}`);
   }
   if (plan.vp) {
     parts.push(`+${plan.vp} VP`);
@@ -3327,6 +3417,19 @@ export function describeCustomMapPresetEntries(
       text: gates.length > 0 ? `Break: ${gates.join(", ")} · ${teamScope}` : `Break team rule: ${teamScope}`
     });
   }
+  if (preset.centerHexes) {
+    const parts: string[] = [];
+    if (preset.centerHexes.guard) parts.push(`guard ${describeGuardSpec(preset.centerHexes.guard)}`);
+    if (preset.centerHexes.combatRoundLimit) {
+      parts.push(preset.centerHexes.combatRoundLimit === "unlimited" ? "unlimited rounds" : `${preset.centerHexes.combatRoundLimit} free combat rounds`);
+    }
+    if (preset.centerHexes.reward) parts.push(`first clear: ${describeFieldReward(preset.centerHexes.reward)}`);
+    if (preset.centerHexes.vp) parts.push(`+${preset.centerHexes.vp} VP first clear`);
+    if (preset.centerHexes.breakField) parts.push("break field");
+    if (preset.centerHexes.persistentGuard) parts.push("persistent army");
+    if (preset.centerHexes.unlimitedRounds && !preset.centerHexes.combatRoundLimit) parts.push("unlimited rounds");
+    entries.push({ icon: "Ⅶ", text: `Center objectives: ${parts.join(", ") || "custom"}` });
+  }
   if (preset.obelisks) {
     entries.push({ icon: "🗿", text: describeObeliskRole(preset.obelisks) });
   }
@@ -3336,14 +3439,24 @@ export function describeCustomMapPresetEntries(
   if (preset.mines) {
     const parts: string[] = [];
     if (preset.mines.guard) parts.push(`guard ${describeGuardSpec(preset.mines.guard)}`);
+    if (preset.mines.combatRoundLimit) {
+      parts.push(preset.mines.combatRoundLimit === "unlimited" ? "unlimited rounds" : `${preset.mines.combatRoundLimit} free combat rounds`);
+    }
+    if (preset.mines.reward) parts.push(`first clear: ${describeFieldReward(preset.mines.reward)}`);
+    if (preset.mines.vp) parts.push(`+${preset.mines.vp} VP first clear`);
     if (preset.mines.breakField) parts.push("break field");
     if (preset.mines.persistentGuard) parts.push("persistent army");
-    if (preset.mines.unlimitedRounds) parts.push("unlimited rounds");
+    // Legacy flag: only when no explicit round limit already said so.
+    if (preset.mines.unlimitedRounds && !preset.mines.combatRoundLimit) parts.push("unlimited rounds");
     entries.push({ icon: "⛏️", text: `Mines: ${parts.join(", ") || "custom"}` });
   }
   if (preset.randomTowns) {
     const parts: string[] = [];
     if (preset.randomTowns.guard) parts.push(`guard ${describeGuardSpec(preset.randomTowns.guard)}`);
+    if (preset.randomTowns.combatRoundLimit) {
+      parts.push(preset.randomTowns.combatRoundLimit === "unlimited" ? "unlimited rounds" : `${preset.randomTowns.combatRoundLimit} free combat rounds`);
+    }
+    if (preset.randomTowns.reward) parts.push(`extra first capture: ${describeFieldReward(preset.randomTowns.reward)}`);
     if (preset.randomTowns.incomeGold !== undefined) {
       parts.push(`${preset.randomTowns.incomeGold} gold income`);
     }
@@ -4076,9 +4189,8 @@ export const MAP_PRESET_DIFFICULTY_OPTIONS: { id: GameDifficulty; label: string 
 ).map((id) => ({ id, label: DIFFICULTY_LABELS[id] }));
 
 /**
- * Obelisk role picker for the designer. "classic" is the ABSENCE of a config
- * (the locked-die house rule) — it is NOT a stored enum value; the editor maps
- * it to `obelisks: undefined`.
+ * Obelisk role picker for the designer. A plain Classic choice collapses to an
+ * absent config; Classic with global guard/reward/round settings stays stored.
  */
 export const MAP_PRESET_OBELISK_ROLE_OPTIONS: {
   id: CustomMapObeliskConfig["role"] | "classic";

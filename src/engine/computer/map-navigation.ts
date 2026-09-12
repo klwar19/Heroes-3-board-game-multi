@@ -16,6 +16,7 @@ import {
   getAdjacentSpaceIds,
   getHeroMovementCapabilities,
   heroAtSpace,
+  heroMovementMax,
   isFieldGuarded,
   isBankStyleGuardLocation,
   isTeleportObjectGuardLocation,
@@ -33,6 +34,7 @@ import { canHeroImmediatelyAccessAdjacentTile } from "../adventure-reducer";
 import { isComputerPlayer, playersAreAllied } from "./control";
 import { repeatsFailedFight } from "./memory";
 import { wantsMarketVisit } from "./market-trades";
+import { premiumCombatMovementReserve } from "./combat-movement";
 import { polishQuickCombatEnabled, polishQuickCombatOutcome } from "../polish-quick-combat";
 import type {
   GameState,
@@ -57,6 +59,7 @@ import {
 import {
   armyDevelopmentProfile,
   armyReadyForContestedFight,
+  assessDwellingRush,
   developmentResourceTargets,
   hasOpenedFarEconomy,
   shouldLaunchBronzeRush,
@@ -382,8 +385,8 @@ export function canBeatGuardedField(
   // that timing window into pressure on the opponent, not bleed units into a
   // side neutral on the way — EXCEPT premium Far economy (settlement / gold /
   // valuables mine). Those ARE the economy the rush is for, and with three
-  // bronze Packs + a silver the AI must hit lv3 of them before round 5–6, not
-  // afraid of unit losses. Enemy-held/victory fields are deliberately not
+  // bronze Packs the AI must attempt FAR III by round 4 with its combat reserve,
+  // accepting losses. Enemy-held/victory fields are deliberately not
   // covered by this neutral-only gate.
   const rushProfile = armyDevelopmentProfile(state, hero.controllerId);
   const fieldDifficulty = field.location === "random_town" ? 7 : field.difficulty ?? 0;
@@ -546,7 +549,7 @@ export function canBeatGuardedField(
     return false;
   }
   // Premium settlement / gold / valuables: scenario-difficulty Pack-core rush
-  // (hard: 3 bronze Packs alone; impossible: Packs + 1 silver). Losses OK.
+  // (Impossible FAR III: three bronze Packs with three entry MP). Losses OK.
   if (
     premiumEconomy &&
     armyCoversPremiumEconomyGuard(state, hero.controllerId, difficulty, field)
@@ -1028,6 +1031,7 @@ export function objectiveDistanceField(
   state: GameState,
   hero: HeroState,
   objectives: ReadonlyArray<MapObjective>,
+  resolvePeacefulVisits = false,
 ): Map<MapSpaceId, number> {
   const distance = new Map<MapSpaceId, number>();
   const fields = state.adventure?.fields ?? {};
@@ -1114,7 +1118,13 @@ export function objectiveDistanceField(
       // Only "open"/passable cells may be walked THROUGH; a "stop" cell is a
       // reachable endpoint but not a walk corridor. Stop landings still fire
       // reverse teleport edges so a portal-pair shortens the field.
-      if (kind !== "stop") {
+      // A premium march may finish a peaceful one-use visit and continue with
+      // another legal MOVE_HERO. Keep combat stops, markets and teleports out
+      // of this exception; ordinary path consumers retain their usual graph.
+      const peacefulVisit = resolvePeacefulVisits && kind === "stop" &&
+        locationDefinitions[fields[neighbor].location]?.category === "visitable" &&
+        !isFieldGuarded(fields[neighbor]) && !heroAtSpace(state, neighbor, hero.id);
+      if (kind !== "stop" || peacefulVisit) {
         queue.push(neighbor);
       } else {
         relaxReverseTeleports(neighbor, next);
@@ -1137,6 +1147,7 @@ export function distanceFromHeroTo(
   state: GameState,
   hero: HeroState,
   spaceId: MapSpaceId,
+  resolvePeacefulVisits = false,
 ): number | undefined {
   if (!hero.spaceId) {
     return undefined;
@@ -1146,7 +1157,7 @@ export function distanceFromHeroTo(
   }
   const field = objectiveDistanceField(state, hero, [
     { spaceId, kind: "visitable" },
-  ]);
+  ], resolvePeacefulVisits);
   return field.get(hero.spaceId);
 }
 
@@ -1462,6 +1473,8 @@ export function objectiveStrategicValue(
       break;
     case "visitable":
       value = 600 + (VISITABLE_LOCATION_VALUE[field?.location ?? ""] ?? 0);
+      if (field && isMarketLocation(field.location) &&
+          assessDwellingRush(state, hero.controllerId)?.feasible) value = 940;
       // Equipment shops: extra pull when surplus + empty slot (else the base
       // value alone rarely wins over economy flaggables — intentional).
       if (
@@ -1642,12 +1655,13 @@ function bestObjectiveOf(
   hero: HeroState,
   candidates: ReadonlyArray<MapObjective>,
   fightAvailable: boolean,
+  resolvePeacefulVisits = false,
 ): MapObjective | null {
   let best: MapObjective | null = null;
   let bestValue = Number.NEGATIVE_INFINITY;
   let bestDistance = Number.POSITIVE_INFINITY;
   for (const objective of candidates) {
-    const distance = distanceFromHeroTo(state, hero, objective.spaceId);
+    const distance = distanceFromHeroTo(state, hero, objective.spaceId, resolvePeacefulVisits);
     if (distance === undefined) continue;
     const value = objectiveStrategicValue(
       state,
@@ -2012,6 +2026,61 @@ export function primaryMapObjective(
   const openingObjective = openingRemaining.length === homeRemaining.length
     ? bestHomeOpeningObjective(state, hero, openingRemaining)
     : null;
+
+  // FAR II–III income is the opening objective, starting as soon as the army
+  // can fight (including rounds 2–3). Pick an actionable Settlement first,
+  // then gold/valuables mines, before a sticky trinket, shop or conquest march.
+  // Keep this on the AI's target path: shared movement and battle legality are
+  // unchanged, and unreachable/unbeatable guards were filtered above.
+  const fullBronzeOpening = state.round >= 3 &&
+    armyDevelopmentProfile(state, hero.controllerId).bronzePacks >= 3;
+  if (hero.kind === "main" && (homeRemaining.length === 0 || fullBronzeOpening)) {
+    const secured = new Set<string>();
+    for (const field of Object.values(state.adventure?.fields ?? {})) {
+      const tile = field.tileInstanceId && state.adventure?.tiles[field.tileInstanceId];
+      if (field.flagOwnerId !== hero.controllerId || !tile || tile.group !== "far" || tile.faceDown) continue;
+      if (field.location === "settlement") secured.add("settlement");
+      else if (field.location === "mine" && field.resource) secured.add(field.resource);
+    }
+    const farEconomy = objectives.filter(objective => {
+      if (objective.kind !== "guard" && objective.kind !== "flaggable") return false;
+      const field = state.adventure?.fields[objective.spaceId];
+      const tile = field?.tileInstanceId && state.adventure?.tiles[field.tileInstanceId];
+      return field && tile && tile.group === "far" && !tile.faceDown &&
+        isPremiumEconomyField(field) &&
+        distanceFromHeroTo(state, hero, objective.spaceId, true) !== undefined &&
+        (!isFieldGuarded(field) || canBeatGuardedField(state, hero, field));
+    });
+    // Prefer a capture by round 4 over a Settlement that cannot be reached
+    // by then. After the deadline, use the earliest available attack turn.
+    // This is a route estimate, never permission to enter an unready fight.
+    const attackRound = (objective: MapObjective) => {
+      const field = state.adventure!.fields[objective.spaceId];
+      const distance = distanceFromHeroTo(state, hero, objective.spaceId, true) ?? Infinity;
+      const reserve = premiumCombatMovementReserve(state, hero, field);
+      return state.round + Math.max(0, Math.ceil(
+        (distance + reserve - hero.movementPoints) / Math.max(1, heroMovementMax(state, hero)),
+      ));
+    };
+    const schedule = farEconomy.map(objective => ({ objective, round: attackRound(objective) }));
+    const earliest = Math.min(...schedule.map(candidate => candidate.round));
+    const timely = schedule.filter(candidate => candidate.round <= Math.max(4, earliest))
+      .map(candidate => candidate.objective);
+    const settlements = timely.filter(objective =>
+      state.adventure?.fields[objective.spaceId]?.location === "settlement",
+    );
+    const newMines = timely.filter(objective => {
+      const field = state.adventure!.fields[objective.spaceId];
+      return field.location === "mine" && field.resource && !secured.has(field.resource);
+    });
+    const captures = !secured.has("settlement") && settlements.length > 0 ? settlements :
+      newMines.length > 0 ? newMines : timely;
+    if (captures.length > 0) {
+      return captures.find(objective => objective.spaceId === stickySpaceId) ??
+        bestObjectiveOf(state, hero, captures, true, true);
+    }
+  }
+
   if (openingObjective) return openingObjective;
 
   // "Can we fight anything at all?" — when no beatable guard / enemy hero is
@@ -2030,6 +2099,10 @@ export function primaryMapObjective(
       const stickyIsFree =
         Boolean(stickySpaceId) &&
         freeNow.some((objective) => objective.spaceId === stickySpaceId);
+      // The runner records this objective, then movement scoring reads it
+      // again. Returning a different target merely because it is now sticky
+      // made those two reads alternate and sent the hero back and forth.
+      if (stickyIsFree) return freeNow.find(objective => objective.spaceId === stickySpaceId)!;
       if (!stickyIsFree) {
         const bestFree = bestObjectiveOf(state, hero, freeNow, fightAvailable);
         if (bestFree) {

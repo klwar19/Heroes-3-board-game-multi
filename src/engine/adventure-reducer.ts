@@ -283,6 +283,7 @@ import {
   applyLionRoundStartBarrage,
   applyCommanderCombatStart,
   collectFirstAidCandidates,
+  commanderFirstAidGoldCost,
   commanderGradesOf,
   commanderIntegratedDeploymentSortAvailable,
   commanderMarchesWithHero,
@@ -4709,8 +4710,9 @@ export function resolveFarTileFlip(state: GameState, optionIndex: number): void 
   }
 
   if (flip.offerMode === "pick") {
-    // [0] place the Settlement tile (the current candidate); [1] place the last
-    // tile seen before the reroll. The unchosen one returns to the pool.
+    // [0] place the current rerolled tile; [1] place the tile held from before
+    // the reroll. This serves both Settlement and material-Mine rerolls. The
+    // unchosen tile returns to the pool.
     finalizeFarTileFlip(state, optionIndex === 1 ? (flip.lastNonSettlement ?? flip.candidate) : flip.candidate);
     return;
   }
@@ -4760,14 +4762,32 @@ export function resolveFarTileFlip(state: GameState, optionIndex: number): void 
     return;
   }
 
-  // offerMode === "mine": reroll once. The mined tile returns to the pool; the
-  // fresh draw goes through the normal offer/finalize path (a 2nd-opening draw
-  // with no Settlement re-engages the settlement guarantee).
+  // offerMode === "mine": reroll once, but hold the mined tile aside until the
+  // player sees the replacement and chooses between them. This mirrors the
+  // Settlement reroll's final pick instead of silently discarding the old tile.
   flip.mineRerollUsed = true;
-  returnFarTileToPool(state, flip.candidate);
+  // A tile may already be held from an earlier Settlement reroll in this same
+  // opening; only ONE tile is held at a time, so return it before holding the
+  // mined tile (otherwise it silently leaves the pool for the rest of the game).
+  if (flip.lastNonSettlement) {
+    returnFarTileToPool(state, flip.lastNonSettlement);
+  }
+  flip.lastNonSettlement = flip.candidate;
   const next = drawFarTileFromPool(state);
-  flip.candidate = next ?? flip.candidate;
-  presentFarTileOffersOrFinalize(state);
+  if (!next) {
+    const held = flip.lastNonSettlement;
+    flip.lastNonSettlement = null;
+    finalizeFarTileFlip(state, held);
+    return;
+  }
+  flip.candidate = next;
+  flip.offerMode = "pick";
+  openFarTileFlipChoice(
+    state,
+    flip,
+    `Rerolled to ${describeFarTile(next)}. Place it, or keep the previous tile — ${describeFarTile(flip.lastNonSettlement)}?`,
+    [`Place the rerolled tile (${describeFarTile(next)})`, `Place the previous tile (${describeFarTile(flip.lastNonSettlement)})`]
+  );
 }
 
 export function placeTile(state: GameState, action: Extract<GameAction, { type: "PLACE_TILE" }>): void {
@@ -15993,7 +16013,7 @@ export function resolveCommanderFirstAid(
     appendEvent(state, {
       type: "COMMANDER_FIRST_AID_USED",
       playerId: action.playerId,
-      message: "The Hierophant's First Aid is declined."
+      message: "The commander's First Aid is declined."
     });
     return;
   }
@@ -16001,6 +16021,11 @@ export function resolveCommanderFirstAid(
   const option = pending.options[action.optionIndex];
   if (!option) {
     throw new Error("That First Aid choice does not exist.");
+  }
+
+  const goldCost = commanderFirstAidGoldCost(option);
+  if (!hasResources(player, { gold: goldCost })) {
+    throw new Error(`First Aid needs ${goldCost} gold to restore that unit.`);
   }
 
   if (option.kind === "flip-up") {
@@ -16030,11 +16055,15 @@ export function resolveCommanderFirstAid(
     }
   }
 
+  if (goldCost > 0) {
+    spendResources(state, action.playerId, { gold: goldCost }, "paid First Aid restoration");
+  }
+
   adventure.pendingCommanderFirstAid = null;
   appendEvent(state, {
     type: "COMMANDER_FIRST_AID_USED",
     playerId: action.playerId,
-    message: `First Aid Master: ${option.label}.`
+    message: `First Aid Master: ${option.label} (${goldCost} gold).`
   });
 }
 

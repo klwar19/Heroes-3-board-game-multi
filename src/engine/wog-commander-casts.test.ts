@@ -666,7 +666,7 @@ describe("commander casts — Succubus' Fire Shield", () => {
 });
 
 describe("commander casts — Soul Eater's Animate Dead", () => {
-  it("heals 2 with a bronze → silver → gold tier ladder; undamaged units are never offered", () => {
+  it("heals 1/2/3 by Power on any graded tier; undamaged units are never offered", () => {
     function prepare(state: GameState): GameState {
       const marksmen = state.combat!.units.unit_p1_marksmen; // bronze
       const griffins = state.combat!.units.unit_p1_griffins; // silver
@@ -683,33 +683,33 @@ describe("commander casts — Soul Eater's Animate Dead", () => {
       return state;
     }
 
-    // Pow 0: bronze only.
+    // Pow 0 already reaches every graded tier (2026-09-12: the tier ladder
+    // no longer gates the target; Power scales the heal instead).
     const low = prepare(castState("soul_eater"));
     const lowIds = castCandidateIds(low, "soul_eater");
     expect(lowIds).toContain("unit_p1_marksmen");
-    expect(lowIds).not.toContain("unit_p1_griffins");
-    expect(lowIds).not.toContain("unit_p1_crusaders");
+    expect(lowIds).toContain("unit_p1_griffins");
+    expect(lowIds).toContain("unit_p1_crusaders");
 
-    // Pow 1 (Magic grade 2): silver joins; Pow 2 (grade 3): even gold.
-    const mid = prepare(castState("soul_eater", { magic: 2 }));
-    const midIds = castCandidateIds(mid, "soul_eater");
-    expect(midIds).toContain("unit_p1_griffins");
-    expect(midIds).not.toContain("unit_p1_crusaders");
+    // Even an azure body qualifies — only tierless bodies stay excluded.
+    const azure = prepare(castState("soul_eater"));
+    azure.combat!.units.unit_p1_crusaders.grade = "azure";
+    expect(castCandidateIds(azure, "soul_eater")).toContain("unit_p1_crusaders");
 
-    const high = prepare(castState("soul_eater", { magic: 3 }));
-    const highIds = castCandidateIds(high, "soul_eater");
-    expect(highIds).toContain("unit_p1_crusaders");
+    // Power 0 / 1 / 2 (Magic grade 0-1 / 2 / 3) remove 1 / 2 / 3 damage.
+    const healedLow = castOn(prepare(castState("soul_eater")), "soul_eater", "unit_p1_crusaders");
+    expect(healedLow.combat!.units.unit_p1_crusaders.damage).toBe(2);
+    const healedMid = castOn(prepare(castState("soul_eater", { magic: 2 })), "soul_eater", "unit_p1_crusaders");
+    expect(healedMid.combat!.units.unit_p1_crusaders.damage).toBe(1);
+    const healedHigh = castOn(prepare(castState("soul_eater", { magic: 3 })), "soul_eater", "unit_p1_crusaders");
+    expect(healedHigh.combat!.units.unit_p1_crusaders.damage).toBe(0);
 
-    // The heal itself removes 2 damage.
-    const healed = castOn(prepare(castState("soul_eater")), "soul_eater", "unit_p1_marksmen");
-    expect(healed.combat!.units.unit_p1_marksmen.damage).toBe(1);
-
-    // Undamaged bronze: not a target.
+    // Undamaged units: not a target.
     const clean = castState("soul_eater");
     clean.combat!.units.unit_p1_marksmen.grade = "bronze";
     clean.combat!.units.unit_p1_griffins.damage = 0;
     clean.combat!.units.unit_p1_marksmen.damage = 0;
-    // With NO damaged friendly of the unlocked tier the cast is not offered at all.
+    // With NO damaged friendly at all the cast is not offered.
     clean.combat!.units.unit_p1_crusaders.damage = 0;
     expect(castOffer(clean, "soul_eater")).toBeUndefined();
   });

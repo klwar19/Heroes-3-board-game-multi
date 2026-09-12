@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createAdventureGameState } from "../adventure-setup";
-import { isFieldGuarded, materializeTileFields } from "../adventure";
+import { getAdjacentSpaceIds, isFieldGuarded, materializeTileFields } from "../adventure";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { canBeatGuardedField, distanceFromHeroTo } from "./map-navigation";
 import { emptyComputerMemory, getComputerMemory, noteComputerAction } from "./memory";
@@ -43,12 +43,19 @@ function fixture() {
 }
 
 describe("premium capture movement budget", () => {
-  it("collects a nearby reward on the last MP and stays in next-turn capture range", () => {
+  it("collects a nearby reward on the last MP only when it keeps the guard in reach", () => {
     const {state, hero, target, pickup, move, observation} = fixture();
     expect(premiumCombatMovementReserve(state, hero, target)).toBe(1);
     expect(scoreMapAction(observation(), move(target.spaceId))!.score).toBeLessThan(300);
-    expect(scoreMapAction(observation(), move(pickup.spaceId))!.policy).toBe("map.premium-pickup-before-next-turn");
-    const probe = { ...hero, spaceId: pickup.spaceId };
+    // The reward BEHIND the hero (h:10:8) lengthens the route to the guard
+    // (return walk 2 > the current 1): never walk away from the guard for it.
+    expect(scoreMapAction(observation(), move(pickup.spaceId))!.policy).not.toBe("map.premium-pickup-before-next-turn");
+    // A reward beside BOTH the hero and the guard keeps the route intact — take it.
+    const beside = getAdjacentSpaceIds(hero.spaceId!).find(id =>
+      id !== target.spaceId && getAdjacentSpaceIds(target.spaceId).includes(id))!;
+    state.adventure!.fields[beside] = { ...pickup, spaceId: beside };
+    expect(scoreMapAction(observation(), move(beside))!.policy).toBe("map.premium-pickup-before-next-turn");
+    const probe = { ...hero, spaceId: beside };
     expect(distanceFromHeroTo(state, probe, target.spaceId)! + 1).toBeLessThanOrEqual(hero.movementPointsMax);
   });
 

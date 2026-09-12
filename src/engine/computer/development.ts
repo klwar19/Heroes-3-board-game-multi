@@ -258,9 +258,9 @@ export function shouldSeekLateWarMachineShop(
  * Whether THIS player has secured the opening Far (II-III) economy the computer
  * is looking for: a Settlement, Gold Mine, or Valuables Mine.
  *
- * Scoped strictly to the player's OWN holdings — a Far Settlement they opened
- * (tracked per player at flip time in `farSettlementOpenedByPlayer`) or a Far
- * Settlement / premium mine they have FLAGGED. A previous version scanned every
+ * Scoped strictly to the player's OWN captured holdings. Revealing a settlement
+ * does not earn income and must not switch off the capture priority.
+ * A previous version scanned every
  * revealed Far field globally, so an OPPONENT opening a Far mine wrongly flipped
  * this player's rush decisions (turned off the bronze rush, re-opened
  * side-neutral fights) purely because a rival had expanded.
@@ -271,7 +271,6 @@ export function hasOpenedFarEconomy(
 ): boolean {
   const adventure = state.adventure;
   if (!adventure || !state.players[playerId]) return false;
-  if (adventure.farSettlementOpenedByPlayer?.[playerId]) return true;
   return Object.values(adventure.fields).some((field) => {
     if (field.flagOwnerId !== playerId) return false;
     const tile = field.tileInstanceId
@@ -411,7 +410,7 @@ function hostileGoldDwellingStands(state: GameState, playerId: PlayerId): boolea
  * winners is the GOLD dwelling by R7 (2p games with both seats reaching Gold:
  * winner R7 vs loser R9 twice, R7 vs R11 once). No seat built a hall after R7.
  * So the hall goes first only while it buys that tempo:
- *  - the Pack core stands (opening Pack reinforces always come first);
+ *  - the Pack core stands and has captured its first FAR economy;
  *  - round ≤ INCOME_FIRST_LAST_ROUND (later the +5/round cannot repay before
  *    the Gold spending peak; from INCOME_NEVER_FROM_ROUND it is never built);
  *  - the seat is not already behind — a hostile main hero
@@ -419,7 +418,7 @@ function hostileGoldDwellingStands(state: GameState, playerId: PlayerId): boolea
  *    still lack Silver — then every coin goes to the army;
  *  - the next dwelling is NOT in reach: affordable now (trading the input gap
  *    from gold counts — the rush planner does that) → build the dwelling; from
- *    R4 on, landing next Resource Round → do not push it out for the hall.
+ *    landing next Resource Round → do not push it out for the hall.
  * Town costs make this vary by faction on their own (Bulwark's 10g/6b hall,
  * the 8g/6b/3v Silver dwellings), so no per-town table is hard-coded.
  *
@@ -438,6 +437,9 @@ export function incomeBuildingBeforeDwelling(
   bronzeCoreHasWork = true,
 ) {
   if (!bronzeCoreHasWork) return null;
+  // Until the first FAR income is captured, fund Silver/Gold and its fighting
+  // army. A revealed settlement is still a battle to win, not an income base.
+  if (!hasOpenedFarEconomy(state, playerId)) return null;
   const profile = armyDevelopmentProfile(state, playerId);
   if (profile.phase !== "unlock-silver" && profile.phase !== "unlock-gold") {
     return null;
@@ -470,7 +472,6 @@ export function incomeBuildingBeforeDwelling(
   if (dwelling?.cost && player) {
     if (purchaseReachable(player.resources, {}, dwelling.cost, 0)) return null;
     if (
-      round >= 4 &&
       purchaseReachable(player.resources, player.production ?? {}, dwelling.cost, 1)
     ) {
       return null;

@@ -143,8 +143,8 @@ export function wantsMarketVisit(
   ) {
     return true;
   }
-  if ((state.round ?? 0) < MARKET_MIN_ROUND) return false;
   if (assessDwellingRush(state, playerId)?.feasible) return true;
+  if ((state.round ?? 0) < MARKET_MIN_ROUND) return false;
   if (
     TRADE_RATES.some(
       (_, index) => tradeUtility(state, playerId, index) >= 4,

@@ -25,6 +25,20 @@ it("hires a second hero for reachable jobs, never merely for surplus cash", () =
   const placement = Object.values(state.towns).find(
     (t) => t.controllerId === "p2",
   )!.fieldId!;
+  // A Far (II-III) gold mine p2 has FLAGGED: the opening economy is secured,
+  // which is the precondition for spending on a second hero at all.
+  const sourceTile = Object.values(state.adventure!.tiles)[0];
+  const sourceField = Object.values(state.adventure!.fields)[0];
+  state.adventure!.tiles["hire-far"] = { ...sourceTile, id: "hire-far", group: "far", faceDown: false };
+  state.adventure!.fields["h:99:99"] = {
+    ...sourceField,
+    spaceId: "h:99:99",
+    tileInstanceId: "hire-far",
+    location: "mine",
+    resource: "gold",
+    difficulty: undefined,
+    flagOwnerId: "p2",
+  };
   vi.spyOn(navigation, "primaryMapObjective").mockReturnValue(null);
   vi.spyOn(navigation, "collectMapObjectives").mockReturnValue([]);
   const hire: GameAction = {

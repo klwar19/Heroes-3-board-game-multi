@@ -24,6 +24,8 @@ import {
   canHeroReachPlacementCenter,
   canHeroReachPlacedTile,
   gateFieldsLinked,
+  freeSpellBookActive,
+  getTownOfPlayer,
   getAdjacentSpaceIds,
   getUnitSide,
   heroesAtSpace,
@@ -56,7 +58,8 @@ import { playersAreAllied } from "./control";
 import { cardTier } from "./card-values";
 import { isPremiumEconomyField, playerArmyStrength } from "./army-strength";
 import { polishArmyUnitStackCost, polishUnitStackCost } from "../polish-unit-stacks";
-import { effectiveTownBuildingCost } from "../house-rules";
+import { effectiveTownBuildingCost, houseRuleEnabled } from "../house-rules";
+import { getRuleset, wisdomGoldDiscount } from "../ruleset";
 import { armyUnitRankInfo } from "../unit-experience";
 import {
   armyDevelopmentProfile,
@@ -67,7 +70,6 @@ import {
   hasOpenedFarEconomy,
   INCOME_NEVER_FROM_ROUND,
   incomeBuildingBeforeDwelling,
-  nextDevelopmentBuildingCost,
   nextGoldLadderStep,
   rankedGoldUnits,
   spendDelaysSavedCost,
@@ -216,6 +218,15 @@ function buildingScore(
   const development = armyDevelopmentProfile(state, playerId);
   const armySize = state.players[playerId]?.army.length ?? 0;
   const gold = playerGold(state, playerId);
+  if (effect?.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "silver" &&
+      !hasOpenedFarEconomy(state, playerId)) {
+    const cost = effectiveTownBuildingCost(state, coreBuildingDefinitions[buildingId]);
+    const remainingBronzeGold = (state.players[playerId]?.army ?? []).reduce((sum, unit) => {
+      const definition = coreUnitDefinitions[unit.unitDefId];
+      return sum + (definition?.tier === "bronze" && unit.side === "few" ? definition.pack?.cost.gold ?? 0 : 0);
+    }, 0);
+    if (gold - (cost?.gold ?? 0) < Math.max(GOLD_RESERVE, remainingBronzeGold)) return 240;
+  }
   // When the army is thin, prefer recruit unlocks / reinforce over soft economy.
   const needsArmy = armySize < 4;
   // When gold is tight, deprioritise expensive soft builds so recruit can fire.
@@ -629,6 +640,17 @@ function populationScore(
   score += Math.min(40, Math.round(totalGain * 1.5 + efficiency));
   if (gold >= GOLD_RESERVE + 10) score += 5;
   score += economyFocusBias(memory, "recruit");
+  // Silver is an optional surplus purchase. Never spend the Bronze opening /
+  // next dwelling or Gold-recruit fund merely to satisfy a tier gate.
+  if (action.purchases.some(
+    purchase => coreUnitDefinitions[purchase.unitDefId]?.tier === "silver",
+  )) {
+    const reserve = developmentResourceTargets(state, observation.playerId);
+    const resources = playerResources(state, observation.playerId);
+    if (resources.gold - spentGold < reserve.gold ||
+        resources.buildingMaterials - spentMaterials < reserve.buildingMaterials ||
+        resources.valuables - spentValuables < reserve.valuables) return 240;
+  }
   // Necropolis tempo: when a currently beatable guard can trigger a held
   // Necromancy card, do not spend the Population token on a nonessential
   // full-price Pack first. Fight, resolve the discounted reinforcement, then
@@ -734,11 +756,8 @@ function populationScore(
     development.phase === "unlock-silver" ||
     development.phase === "unlock-gold"
   ) {
-    // The FIRST silver body is exempt from the dwelling-fund guard: it turns
-    // the ready bronze core into the force that takes lv3 premium guards
-    // on Impossible and diff-3/4 side guards everywhere (armyEngagementTier's
-    // soft silver unlock), and the fight loot it opens repays the dwelling fund
-    // faster than hoarding would. Every LATER silver/gold body saves normally.
+    // A first Silver bought from genuine surplus adds useful combat depth.
+    // The shared Silver purchase gate above already protects the saved fund.
     const firstSilverBody =
       development.silverUnits === 0 &&
       action.purchases.some(
@@ -746,20 +765,6 @@ function populationScore(
           purchase.kind === "recruit" &&
           coreUnitDefinitions[purchase.unitDefId]?.tier === "silver",
       );
-    // "Skip the silver unit to buy gold" (user rule): the exemption is
-    // withdrawn when the Silver body would push the Gold dwelling — otherwise
-    // landing next round — a round further out; then it waits for the build.
-    const silverDelaysDwelling =
-      firstSilverBody &&
-      spendDelaysSavedCost(
-        state,
-        observation.playerId,
-        nextDevelopmentBuildingCost(state, observation.playerId) ?? {},
-        { gold: spentGold, buildingMaterials: spentMaterials, valuables: spentValuables },
-      );
-    if (silverDelaysDwelling) {
-      return Math.min(score, 240);
-    }
     if (firstSilverBody) {
       return Math.min(score, 945);
     }
@@ -874,9 +879,12 @@ function moveScore(
   if (primary) {
     marchTargets.push(primary);
     seen.add(primary.spaceId);
-    const scoopable = freeThisTurn.filter(
-      (objective) => !seen.has(objective.spaceId),
-    );
+    const primaryField = state.adventure?.fields[primary.spaceId];
+    // Premium detours are budgeted by scorePremiumApproach. A second,
+    // unbudgeted multi-source pickup route can consume its combat reserve.
+    const scoopable = primaryField && isPremiumEconomyField(primaryField)
+      ? []
+      : freeThisTurn.filter((objective) => !seen.has(objective.spaceId));
     if (scoopable.length > 0) {
       const towardPrimary = objectiveDistanceField(state, hero, [primary]);
       const heroToPrimary = hero.spaceId
@@ -898,9 +906,19 @@ function moveScore(
       marchTargets.push(objective);
     }
   }
-  const distance = objectiveDistanceField(state, hero, marchTargets);
+  const primaryEconomy = primary && state.adventure?.fields[primary.spaceId];
+  const distance = objectiveDistanceField(state, hero, marchTargets,
+    Boolean(primaryEconomy && isPremiumEconomyField(primaryEconomy)));
   const here = hero.spaceId ? distance.get(hero.spaceId) ?? Infinity : Infinity;
   const to = distance.get(action.to) ?? Infinity;
+
+  // A funded dwelling conversion is a concrete development step. Its march
+  // must beat more tile reveals just as opening/trading does once we arrive.
+  // A known FAR capture is selected ahead of this market by the primary plan.
+  const primaryField = primary && state.adventure?.fields[primary.spaceId];
+  const dwellingMarketMarch = Boolean(primaryField &&
+    isMarketLocation(primaryField.location) && primary?.kind === "visitable" &&
+    assessDwellingRush(state, observation.playerId)?.feasible);
 
   // The free hop between the two linked halves of a Subterranean Gate SLIPS
   // PAST a live guard on the far half (engine rule 2026-08-07): this step can
@@ -928,7 +946,8 @@ function moveScore(
     ) {
       return 250;
     }
-    return OBJECTIVE_ENTER_SCORE[arriving.kind];
+    return dwellingMarketMarch && arriving.spaceId === primary?.spaceId
+      ? 935 : OBJECTIVE_ENTER_SCORE[arriving.kind];
   }
 
   // Not a chosen objective: keep clear of a fight we did not calculate for — an
@@ -1012,6 +1031,7 @@ function moveScore(
 
   // Progress toward the sticky objective: prefer the biggest step in.
   if (to < here) {
+    if (dwellingMarketMarch) return 935;
     return OBJECTIVE_PROGRESS_BASE + Math.max(0, 10 - to);
   }
 
@@ -1487,7 +1507,7 @@ export function premiumRotationRouteScore(
     if (!premium && field.location !== "mine" && category !== "visitable" && category !== "flaggable" && category !== "town") continue;
     if (isMarketLocation(field.location)) continue;
     const ready = !isFieldGuarded(field) || canBeatGuardedField(probe, hero, field);
-    const distance = distanceFromHeroTo(probe, hero, field.spaceId);
+    const distance = distanceFromHeroTo(probe, hero, field.spaceId, premium);
     if (distance === undefined) continue;
     const reserve = premiumCombatMovementReserve(probe, hero, field);
     const budget = distance + reserve;
@@ -1514,7 +1534,6 @@ function tradeResourceScore(
   action: Extract<GameAction, { type: "TRADE_RESOURCES" }>,
 ): number {
   const state = observation.state as unknown as GameState;
-  if ((state.round ?? 0) < MARKET_MIN_ROUND) return 180;
   // Dwelling rush: a trade that buys a missing dwelling input is either the
   // decisive enabler (feasible surplus) or actively SUPPRESSED (would strip the
   // recruit reserve). This overrides the generic heuristic, which would happily
@@ -1523,6 +1542,7 @@ function tradeResourceScore(
   if (rush && rush.inputRateIndices.includes(action.rateIndex)) {
     return rush.feasible ? DWELLING_RUSH_TRADE_SCORE : DWELLING_RUSH_SUPPRESS_SCORE;
   }
+  if ((state.round ?? 0) < MARKET_MIN_ROUND) return 180;
   const utility = tradeUtility(state, observation.playerId, action.rateIndex);
   if (utility <= 0) {
     // Below "Done trading" (520) so a useless exchange never loops.
@@ -2498,6 +2518,9 @@ export function scoreMapAction(
       };
     case "MOVE_HERO": {
       const ordinaryMoveScore = moveScore(observation, action);
+      if (ordinaryMoveScore >= 1_000) {
+        return { score: ordinaryMoveScore, policy: "map.clear-shared-space" };
+      }
       const enterHero = state.heroes[action.heroId];
       const enterField = state.adventure?.fields[action.to];
       const combatReserve = enterHero && enterField
@@ -2506,10 +2529,22 @@ export function scoreMapAction(
           !(enterHero.spaceId && heroesAtSpace(state, enterHero.spaceId).length > 1) &&
           !gateFieldsLinked(enterHero.spaceId ? state.adventure?.fields[enterHero.spaceId] : undefined, enterField) &&
           combatReserve > 0 &&
-          enterHero.movementPoints < 1 + combatReserve && heroMovementMax(state, enterHero) >= 1 + combatReserve) {
-        // Preserve the planned paid continuations before entering. Banks
-        // and unlimited fights are explicitly exempt from this budget.
+          enterHero.movementPoints < 1 + combatReserve) {
+        // Preserve the planned paid continuations before entering. Only
+        // banks with free continuations and unlimited fights are exempt.
         return { score: 250, policy: "map.save-guard-continuation" };
+      }
+      const premium = scorePremiumApproach(state, action, memory);
+      if (premium && (premium.score <= 300 || ordinaryMoveScore > 300 ||
+          premium.policy === "map.premium-pickup-before-next-turn")) {
+        const destination = state.adventure?.fields[action.to];
+        const enemy = Object.values(state.heroes).some(other =>
+          other.spaceId === action.to && !playersAreAllied(state, other.controllerId, observation.playerId),
+        );
+        if (premium.policy !== "map.premium-pickup-before-next-turn" ||
+            (destination && !isFieldGuarded(destination) && !enemy &&
+             (!destination.flagOwnerId || playersAreAllied(state, destination.flagOwnerId, observation.playerId) ||
+              locationDefinitions[destination.location]?.category === "flaggable"))) return premium;
       }
       if (
         (state.round ?? 0) <= 3 &&
@@ -2565,20 +2600,6 @@ export function scoreMapAction(
           }
         }
       }
-      const premium = scorePremiumApproach(state, action, memory);
-      if (premium && (premium.score <= 300 || ordinaryMoveScore > 300 ||
-          premium.policy === "map.premium-pickup-before-next-turn")) {
-        // A detour may increase distance to the primary, but it must still be
-        // a legal safe step: never use a pickup plan to bypass a live fight.
-        const destination = state.adventure?.fields[action.to];
-        const enemy = Object.values(state.heroes).some(other =>
-          other.spaceId === action.to && !playersAreAllied(state, other.controllerId, observation.playerId),
-        );
-        if (premium.policy !== "map.premium-pickup-before-next-turn" ||
-            (destination && !isFieldGuarded(destination) && !enemy &&
-             (!destination.flagOwnerId || playersAreAllied(state, destination.flagOwnerId, observation.playerId) ||
-              locationDefinitions[destination.location]?.category === "flaggable"))) return premium;
-      }
       return { score: ordinaryMoveScore, policy: "map.move-to-objective" };
     }
     case "REVISIT_FIELD": {
@@ -2597,7 +2618,8 @@ export function scoreMapAction(
       const earlyTentVisit =
         marketLocation === "war_machine_factory" &&
         shouldPrioritizeFirstAidTent(state, observation.playerId);
-      if ((state.round ?? 0) < MARKET_MIN_ROUND && !earlyTentVisit) {
+      const dwellingRush = assessDwellingRush(state, observation.playerId)?.feasible;
+      if ((state.round ?? 0) < MARKET_MIN_ROUND && !earlyTentVisit && !dwellingRush) {
         return { score: 180, policy: "map.market-wait-until-round-five" };
       }
       // Already used the market this round — avoid open/close thrash (applies to
@@ -2611,7 +2633,7 @@ export function scoreMapAction(
       // Dwelling rush: convert genuine gold surplus into the missing dwelling
       // input and build THIS turn. Decisive so the AI does not fritter the gold
       // on stray troops / idle away instead of reaching Silver/Gold.
-      if (assessDwellingRush(state, observation.playerId)?.feasible) {
+      if (dwellingRush) {
         return {
           score: DWELLING_RUSH_OPEN_MARKET_SCORE,
           policy: "map.open-market-dwelling-rush",
@@ -2785,19 +2807,19 @@ export function scoreMapAction(
         policy: "map.resolve-visit",
       };
     case "SPELL_BOOK_ACTION": {
-      // Spells are a luxury: buy only once the army core + dwellings are done
-      // AND the purchase is actually a good deal — Wisdom in hand makes it one
-      // (cheaper buy + a bigger Search), otherwise only genuine surplus gold
-      // may fund it. A spell bought out of the dwelling/recruit fund does not
-      // help the next fight the way a stronger army does.
+      // Price this specific action before protecting the next recruit fund.
+      // Wisdom discounts the purchase; holding it never makes army money spare.
       const phase = armyDevelopmentProfile(state, observation.playerId).phase;
-      const holdsWisdom = (
-        state.players[observation.playerId]?.hand ?? []
-      ).includes("ability.wisdom");
       const target = developmentResourceTargets(state, observation.playerId);
-      const flushGold =
-        playerGold(state, observation.playerId) >= target.gold + 4;
-      const funded = phase === "improve-army" && (holdsWisdom || flushGold);
+      const mageGuild = getTownOfPlayer(state, observation.playerId)?.buildings
+        .map(id => coreBuildingDefinitions[id])
+        .find(building => building?.effect?.type === "MAGE_GUILD");
+      const baseCost = freeSpellBookActive(state) ? 0 : (mageGuild?.spellBookCost ?? 5);
+      const discount = action.wisdom ? wisdomGoldDiscount(getRuleset(state), action.wisdom.mode,
+        houseRuleEnabled(state, "wisdom-expert-discount")) : 0;
+      const cost = action.rollSpell ? 3 : Math.max(0, baseCost - discount);
+      const funded = cost === 0 || (phase === "improve-army" &&
+        playerGold(state, observation.playerId) - cost >= target.gold);
 
       // Rolling Spells trades a weak owned Spell for two new looks. Keep strong
       // S/A/B spells and only roll C/D cards once the army fund is protected.

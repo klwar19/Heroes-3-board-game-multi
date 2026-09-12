@@ -633,13 +633,21 @@ describe("subterranean gate: reverse direction (Subterranean tile up, Surface ti
     expect(state.pendingChoice?.type).toBe("OPTION_CHOICE");
     expect(adv(state).pendingVisit).toBeNull();
 
-    // Reroll once → F1 (no Mine) lands on the SAME slot; the mined def returns to
-    // the pool, and the gate carving flow then proceeds as usual.
-    const rerolled = applyOk(state, {
+    // Reroll once → F1 (no Mine) is offered against the held #F4; placing the
+    // rerolled tile lands it on the SAME slot, the mined def returns to the
+    // pool, and the gate carving flow then proceeds as usual.
+    const offeredPick = applyOk(state, {
       type: "CHOOSE_OPTION",
       playerId: "p1",
       choiceId: state.pendingChoice!.id,
       optionIndex: 1
+    });
+    expect(offeredPick.adventure!.pendingFarTileFlip?.offerMode).toBe("pick");
+    const rerolled = applyOk(offeredPick, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: offeredPick.pendingChoice!.id,
+      optionIndex: 0
     });
     expect(rerolled.adventure!.tiles[surface.id].tileDefId).toBe("F1");
     expect(rerolled.adventure!.farTilePool).toContain("#F4");

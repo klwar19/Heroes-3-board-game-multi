@@ -356,7 +356,7 @@ export const polishBalanceSpecialtyCards: CardLibrary = {
   "specialty.tarnum_conflux.1": reprint("specialty.tarnum_conflux.1", {
     tags: tags(
       "specialty.tarnum_conflux.1",
-      "Map: Search (1) Spell and add it to your Spellbook (your hand without the Polish Spell Book). The card can no longer be Removed from the game instead.",
+      "Search (1) Spell and add it to your Spellbook (your hand without the Polish Spell Book) — on the map or mid-Combat, like every printed Instant Search. The card can no longer be Removed from the game instead.",
     ),
     effect: { type: "CARD_DECK_SEARCH", deck: "spells", count: 1 },
   }),

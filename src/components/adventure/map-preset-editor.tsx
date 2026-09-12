@@ -59,6 +59,7 @@ import {
   type VictoryPointObjective
 } from "@/engine";
 import { GuardSpecEditor } from "./guard-spec-editor";
+import { FieldRewardEditor } from "./field-reward-editor";
 import {
   describeTileSpecificPlan,
   planEligibleForPick,
@@ -315,7 +316,8 @@ export function MapPresetEditor({
       delete next.heroDefeatGold;
     }
     if ("obelisks" in partial && partial.obelisks === undefined) {
-      // "Classic" is the ABSENCE of a config — remove the key entirely.
+      // A plain Classic Obelisk has no config; Classic plus global
+      // guard/reward/round settings is stored explicitly.
       delete next.obelisks;
     }
     if (
@@ -354,6 +356,18 @@ export function MapPresetEditor({
     onChange(keys.length === 0 ? undefined : next);
   };
 
+  const commitCenterHexes = (
+    partial: Partial<NonNullable<CustomMapPreset["centerHexes"]>>
+  ) => {
+    const next = { ...(value.centerHexes ?? {}), ...partial };
+    for (const key of Object.keys(next) as (keyof typeof next)[]) {
+      if (next[key] === undefined || next[key] === false || next[key] === 0) {
+        delete next[key];
+      }
+    }
+    patch({ centerHexes: Object.keys(next).length > 0 ? next : undefined });
+  };
+
   const resources = value.startingResources ?? { gold: 10, buildingMaterials: 0, valuables: 0 };
   const computerBonus = value.computerStartingBonus ?? { gold: 0, buildingMaterials: 0, valuables: 0 };
   const setComputerBonus = (
@@ -383,7 +397,7 @@ export function MapPresetEditor({
     patch({ houseRules: Object.keys(next).length > 0 ? next : undefined });
   };
   const obeliskConfig = value.obelisks;
-  const obeliskRole: CustomMapObeliskConfig["role"] | "classic" = obeliskConfig?.role ?? "classic";
+  const obeliskRole: CustomMapObeliskConfig["role"] = obeliskConfig?.role ?? "classic";
   const obeliskGuard = obeliskConfig?.guard;
   // The award list, folding the legacy single `bonus` into a one-item list.
   const obeliskBonuses: CustomMapObeliskBonus[] =
@@ -397,7 +411,7 @@ export function MapPresetEditor({
   // Commit the whole obelisk block from current pieces + explicit overrides.
   // `guardSet` distinguishes "clear the guard" (guard: undefined) from "leave it".
   const commitObelisk = (parts: {
-    role?: CustomMapObeliskConfig["role"] | "classic";
+    role?: CustomMapObeliskConfig["role"];
     bonuses?: CustomMapObeliskBonus[];
     mode?: "all" | "choose";
     guard?: CustomGuardSpec | undefined;
@@ -405,24 +419,54 @@ export function MapPresetEditor({
     breakField?: boolean;
     persistentGuard?: boolean;
     unlimitedRounds?: boolean;
+    combatRoundLimit?: 1 | 2 | 3 | "unlimited";
+    roundLimitSet?: boolean;
+    reward?: CustomMapObeliskConfig["reward"];
+    rewardSet?: boolean;
+    vp?: number;
+    vpSet?: boolean;
     breakSet?: boolean;
   }) => {
     const role = parts.role ?? obeliskRole;
-    if (role === "classic") {
-      patch({ obelisks: undefined });
-      return;
-    }
     const guard = parts.guardSet ? parts.guard : obeliskGuard;
     const breakField = parts.breakSet ? parts.breakField : obeliskConfig?.breakField;
     const persistentGuard = parts.breakSet ? parts.persistentGuard : obeliskConfig?.persistentGuard;
-    const unlimitedRounds = parts.breakSet ? parts.unlimitedRounds : obeliskConfig?.unlimitedRounds;
+    const unlimitedRounds = parts.roundLimitSet
+      ? undefined
+      : parts.breakSet
+        ? parts.unlimitedRounds
+        : obeliskConfig?.unlimitedRounds;
+    const combatRoundLimit = parts.roundLimitSet
+      ? parts.combatRoundLimit
+      : obeliskConfig?.combatRoundLimit;
+    const reward = parts.rewardSet ? parts.reward : obeliskConfig?.reward;
+    const vp = parts.vpSet ? parts.vp : obeliskConfig?.vp;
+    const fieldReward = {
+      ...(reward ? { reward } : {}),
+      ...(vp ? { vp } : {})
+    };
     const breakFlags = {
       ...(breakField ? { breakField: true as const } : {}),
       ...(persistentGuard ? { persistentGuard: true as const } : {}),
-      ...(unlimitedRounds ? { unlimitedRounds: true as const } : {})
+      ...(unlimitedRounds && !combatRoundLimit ? { unlimitedRounds: true as const } : {}),
+      ...(combatRoundLimit ? { combatRoundLimit } : {})
     };
+    if (role === "classic") {
+      const config: CustomMapObeliskConfig = {
+        role: "classic",
+        ...(guard ? { guard } : {}),
+        ...breakFlags,
+        ...fieldReward
+      };
+      patch({
+        obelisks: guard || Object.keys(breakFlags).length > 0 || Object.keys(fieldReward).length > 0
+          ? config
+          : undefined
+      });
+      return;
+    }
     if (role !== "bonus") {
-      patch({ obelisks: { role, ...(guard ? { guard } : {}), ...breakFlags } });
+      patch({ obelisks: { role, ...(guard ? { guard } : {}), ...breakFlags, ...fieldReward } });
       return;
     }
     const list = parts.bonuses ?? obeliskBonuses;
@@ -433,11 +477,12 @@ export function MapPresetEditor({
         bonuses: list,
         ...(mode === "choose" && list.length > 1 ? { bonusMode: "choose" as const } : {}),
         ...(guard ? { guard } : {}),
-        ...breakFlags
+        ...breakFlags,
+        ...fieldReward
       }
     });
   };
-  const setObeliskRole = (role: CustomMapObeliskConfig["role"] | "classic") => commitObelisk({ role });
+  const setObeliskRole = (role: CustomMapObeliskConfig["role"]) => commitObelisk({ role });
   const setObeliskGuard = (guard: CustomGuardSpec | undefined) =>
     commitObelisk({ guard, guardSet: true });
   const updateObeliskBonus = (index: number, bonus: CustomMapObeliskBonus) =>
@@ -452,21 +497,37 @@ export function MapPresetEditor({
   };
   const setObeliskBonusMode = (mode: "all" | "choose") => commitObelisk({ mode });
 
-  // Map-wide settlement options (guard + extra VP each).
+  // Map-wide settlement options. These deliberately mirror the per-tile
+  // settlement controls; a specific value overrides its global twin.
   const settlementConfig = value.settlements;
   const settlementGuard = settlementConfig?.guard;
   const settlementVp = settlementConfig?.vp ?? 0;
   const commitSettlements = (parts: {
     guard?: CustomGuardSpec | undefined;
     guardSet?: boolean;
+    reward?: CustomMapSettlementConfig["reward"];
+    rewardSet?: boolean;
     vp?: number;
+    combatRoundLimit?: 1 | 2 | 3 | "unlimited";
+    roundLimitSet?: boolean;
   }) => {
     const guard = parts.guardSet ? parts.guard : settlementGuard;
+    const reward = parts.rewardSet ? parts.reward : settlementConfig?.reward;
     const vp = parts.vp !== undefined ? parts.vp : settlementVp;
+    const combatRoundLimit = parts.roundLimitSet
+      ? parts.combatRoundLimit
+      : settlementConfig?.combatRoundLimit;
     const next: CustomMapSettlementConfig = {};
     if (guard) next.guard = guard;
+    if (reward) next.reward = reward;
     if (vp > 0) next.vp = vp;
-    patch({ settlements: next.guard || next.vp !== undefined ? next : undefined });
+    if (combatRoundLimit) next.combatRoundLimit = combatRoundLimit;
+    patch({
+      settlements:
+        next.guard || next.reward || next.vp !== undefined || next.combatRoundLimit
+          ? next
+          : undefined
+    });
   };
   const setSettlementGuard = (guard: CustomGuardSpec | undefined) =>
     commitSettlements({ guard, guardSet: true });
@@ -707,6 +768,7 @@ export function MapPresetEditor({
       (value.objectives ? describeObjectivesConfig(value.objectives).length : 0),
     mapLocations:
       (value.breaks ? 1 : 0) +
+      (value.centerHexes ? 1 : 0) +
       (value.obelisks ? 1 : 0) +
       (value.settlements ? 1 : 0) +
       (value.mines ? 1 : 0) +
@@ -2153,6 +2215,65 @@ export function MapPresetEditor({
         {objectMode("center") === "specific"
           ? specificPanel("center", "No Ⅵ–Ⅶ center tile is placed yet — place one to configure its exact Ⅶ field.")
           : null}
+        <div hidden={objectMode("center") !== "global"}>
+          <div className="mapPresetSectionLabel">All Ⅶ center objectives</div>
+          <small className="mapPresetHint">
+            Defaults for every Ⅶ center fight. A value under 📍 Specific overrides its matching global value.
+          </small>
+          <GuardLevelChips
+            ariaLabel="Global center objective guard"
+            guard={value.centerHexes?.guard}
+            label="Guard"
+            onChange={(guard) => commitCenterHexes({ guard })}
+          />
+          <label className="mapPresetObjectiveRow">Combat round limit
+            <select
+              aria-label="Global center objective combat round limit"
+              className="mapPresetSelect"
+              onChange={(event) => commitCenterHexes({
+                combatRoundLimit: event.target.value === "default"
+                  ? undefined
+                  : event.target.value === "unlimited"
+                    ? "unlimited"
+                    : Number(event.target.value) as 1 | 2 | 3,
+                unlimitedRounds: undefined
+              })}
+              value={value.centerHexes?.combatRoundLimit ?? (value.centerHexes?.unlimitedRounds ? "unlimited" : "default")}
+            >
+              <option value="default">Default rules</option>
+              <option value="1">1 free round, then pay MP</option>
+              <option value="2">2 free rounds, then pay MP</option>
+              <option value="3">3 free rounds, then pay MP</option>
+              <option value="unlimited">Unlimited</option>
+            </select>
+          </label>
+          <div className="mapPresetSectionLabel">First-clear reward</div>
+          <FieldRewardEditor
+            ariaLabel="Global center objective first-clear reward"
+            reward={value.centerHexes?.reward}
+            onChange={(reward) => commitCenterHexes({ reward })}
+            vp={value.centerHexes?.vp}
+            onVpChange={(vp) => commitCenterHexes({ vp })}
+          />
+          <div className="mapPresetChipRow" role="group" aria-label="Global center objective break options">
+            {(
+              [
+                ["breakField", "Break field"],
+                ["persistentGuard", "Persistent army"]
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                aria-pressed={Boolean(value.centerHexes?.[key])}
+                className={`mapPresetChip${value.centerHexes?.[key] ? " active" : ""}`}
+                key={key}
+                onClick={() => commitCenterHexes({ [key]: !value.centerHexes?.[key] })}
+                type="button"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
       </section>
 
       {startingPositionCount >= 2 ? (
@@ -2226,7 +2347,7 @@ export function MapPresetEditor({
             </button>
           ))}
         </div>
-        {obeliskRole !== "classic" ? (
+        {(
           <>
             <GuardLevelChips
               ariaLabel="Obelisk guard"
@@ -2267,25 +2388,38 @@ export function MapPresetEditor({
               >
                 Persistent army
               </button>
-              <button
-                aria-pressed={Boolean(obeliskConfig?.unlimitedRounds)}
-                className={`mapPresetChip${obeliskConfig?.unlimitedRounds ? " active" : ""}`}
-                onClick={() =>
-                  commitObelisk({
-                    breakSet: true,
-                    breakField: obeliskConfig?.breakField,
-                    persistentGuard: obeliskConfig?.persistentGuard,
-                    unlimitedRounds: !obeliskConfig?.unlimitedRounds
-                  })
-                }
-                title="Fight has no Round limit (bank-style)."
-                type="button"
-              >
-                Unlimited rounds
-              </button>
             </div>
+            <label className="mapPresetObjectiveRow">Combat round limit
+              <select
+                aria-label="Global Obelisk combat round limit"
+                className="mapPresetSelect"
+                onChange={(event) => commitObelisk({
+                  roundLimitSet: true,
+                  combatRoundLimit: event.target.value === "default"
+                    ? undefined
+                    : event.target.value === "unlimited"
+                      ? "unlimited"
+                      : Number(event.target.value) as 1 | 2 | 3
+                })}
+                value={obeliskConfig?.combatRoundLimit ?? (obeliskConfig?.unlimitedRounds ? "unlimited" : "default")}
+              >
+                <option value="default">Default rules</option>
+                <option value="1">1 free round, then pay MP</option>
+                <option value="2">2 free rounds, then pay MP</option>
+                <option value="3">3 free rounds, then pay MP</option>
+                <option value="unlimited">Unlimited</option>
+              </select>
+            </label>
+            <div className="mapPresetSectionLabel">First-clear reward</div>
+            <FieldRewardEditor
+              ariaLabel="Global Obelisk first-clear reward"
+              reward={obeliskConfig?.reward}
+              onChange={(reward) => commitObelisk({ reward, rewardSet: true })}
+              vp={obeliskConfig?.vp}
+              onVpChange={(vp) => commitObelisk({ vp, vpSet: true })}
+            />
           </>
-        ) : null}
+        )}
         {obeliskRole === "bonus" ? (
           <div className="mapPresetObeliskAwards">
             {obeliskBonuses.length > 1 ? (
@@ -2374,7 +2508,7 @@ export function MapPresetEditor({
             else delete next.guard;
             patch({
               mines:
-                next.guard || next.breakField || next.persistentGuard || next.unlimitedRounds
+                next.guard || next.reward || next.vp || next.combatRoundLimit || next.breakField || next.persistentGuard || next.unlimitedRounds
                   ? next
                   : undefined
             });
@@ -2384,8 +2518,7 @@ export function MapPresetEditor({
           {(
             [
               ["breakField", "Break field"],
-              ["persistentGuard", "Persistent army"],
-              ["unlimitedRounds", "Unlimited rounds"]
+              ["persistentGuard", "Persistent army"]
             ] as const
           ).map(([key, label]) => (
             <button
@@ -2398,7 +2531,7 @@ export function MapPresetEditor({
                 else next[key] = true;
                 patch({
                   mines:
-                    next.guard || next.breakField || next.persistentGuard || next.unlimitedRounds
+                    next.guard || next.reward || next.vp || next.combatRoundLimit || next.breakField || next.persistentGuard || next.unlimitedRounds
                       ? next
                       : undefined
                 });
@@ -2409,6 +2542,59 @@ export function MapPresetEditor({
             </button>
           ))}
         </div>
+        <label className="mapPresetObjectiveRow">Combat round limit
+          <select
+            aria-label="Global Mine combat round limit"
+            className="mapPresetSelect"
+            onChange={(event) => {
+              const next = { ...(value.mines ?? {}) };
+              const selected = event.target.value;
+              delete next.unlimitedRounds;
+              if (selected === "default") delete next.combatRoundLimit;
+              else next.combatRoundLimit = selected === "unlimited"
+                ? "unlimited"
+                : Number(selected) as 1 | 2 | 3;
+              patch({
+                mines: next.guard || next.reward || next.vp || next.combatRoundLimit || next.breakField || next.persistentGuard
+                  ? next
+                  : undefined
+              });
+            }}
+            value={value.mines?.combatRoundLimit ?? (value.mines?.unlimitedRounds ? "unlimited" : "default")}
+          >
+            <option value="default">Default rules</option>
+            <option value="1">1 free round, then pay MP</option>
+            <option value="2">2 free rounds, then pay MP</option>
+            <option value="3">3 free rounds, then pay MP</option>
+            <option value="unlimited">Unlimited</option>
+          </select>
+        </label>
+        <div className="mapPresetSectionLabel">First-clear reward</div>
+        <FieldRewardEditor
+          ariaLabel="Global Mine first-clear reward"
+          reward={value.mines?.reward}
+          onChange={(reward) => {
+            const next = { ...(value.mines ?? {}) };
+            if (reward) next.reward = reward;
+            else delete next.reward;
+            patch({
+              mines: next.guard || next.reward || next.vp || next.combatRoundLimit || next.breakField || next.persistentGuard || next.unlimitedRounds
+                ? next
+                : undefined
+            });
+          }}
+          vp={value.mines?.vp}
+          onVpChange={(vp) => {
+            const next = { ...(value.mines ?? {}) };
+            if (vp) next.vp = vp;
+            else delete next.vp;
+            patch({
+              mines: next.guard || next.reward || next.vp || next.combatRoundLimit || next.breakField || next.persistentGuard || next.unlimitedRounds
+                ? next
+                : undefined
+            });
+          }}
+        />
         </div>
       </section>
 
@@ -2438,11 +2624,55 @@ export function MapPresetEditor({
             else delete next.guard;
             patch({
               randomTowns:
-                next.guard || next.captureReward || next.incomeGold !== undefined || next.vp
+                next.guard || next.combatRoundLimit || next.reward || next.captureReward || next.incomeGold !== undefined || next.vp
                   ? next
                   : undefined
             });
           }}
+        />
+        <label className="mapPresetObjectiveRow">Combat round limit
+          <select
+            aria-label="Global Random Town combat round limit"
+            className="mapPresetSelect"
+            onChange={(event) => {
+              const next = { ...(value.randomTowns ?? {}) };
+              const selected = event.target.value;
+              if (selected === "default") delete next.combatRoundLimit;
+              else next.combatRoundLimit = selected === "unlimited"
+                ? "unlimited"
+                : Number(selected) as 1 | 2 | 3;
+              patch({
+                randomTowns:
+                  next.guard || next.combatRoundLimit || next.reward || next.captureReward || next.incomeGold !== undefined || next.vp
+                    ? next
+                    : undefined
+              });
+            }}
+            value={value.randomTowns?.combatRoundLimit ?? "default"}
+          >
+            <option value="default">Default rules</option>
+            <option value="1">1 free round, then pay MP</option>
+            <option value="2">2 free rounds, then pay MP</option>
+            <option value="3">3 free rounds, then pay MP</option>
+            <option value="unlimited">Unlimited</option>
+          </select>
+        </label>
+        <div className="mapPresetSectionLabel">Extra first-capture reward</div>
+        <FieldRewardEditor
+          ariaLabel="Global Random Town first-capture reward"
+          reward={value.randomTowns?.reward}
+          onChange={(reward) => {
+            const next = { ...(value.randomTowns ?? {}) };
+            if (reward) next.reward = reward;
+            else delete next.reward;
+            patch({
+              randomTowns:
+                next.guard || next.combatRoundLimit || next.reward || next.captureReward || next.incomeGold !== undefined || next.vp
+                  ? next
+                  : undefined
+            });
+          }}
+          showVp={false}
         />
         <div className="mapPresetObjectiveRow" role="group" aria-label="Random Town income">
           <span className="mapPresetObjectiveLabel">Gold income</span>
@@ -2454,7 +2684,7 @@ export function MapPresetEditor({
             onChange={(e) => {
               const next = { ...(value.randomTowns ?? {}) };
               const income = Math.max(0, Math.min(50, Number(e.target.value) || 0));
-              if (income === 10 && !next.guard && !next.captureReward && !next.vp) {
+              if (income === 10 && !next.guard && !next.combatRoundLimit && !next.reward && !next.captureReward && !next.vp) {
                 patch({ randomTowns: undefined });
                 return;
               }
@@ -2482,7 +2712,7 @@ export function MapPresetEditor({
               }
               patch({
                 randomTowns:
-                  next.guard || next.captureReward || next.incomeGold !== undefined || next.vp
+                  next.guard || next.combatRoundLimit || next.reward || next.captureReward || next.incomeGold !== undefined || next.vp
                     ? next
                     : undefined
               });
@@ -2503,7 +2733,7 @@ export function MapPresetEditor({
               else delete next.vp;
               patch({
                 randomTowns:
-                  next.guard || next.captureReward || next.incomeGold !== undefined || next.vp
+                  next.guard || next.combatRoundLimit || next.reward || next.captureReward || next.incomeGold !== undefined || next.vp
                     ? next
                     : undefined
               });
@@ -2524,14 +2754,42 @@ export function MapPresetEditor({
           : null}
         <div hidden={objectMode("settlement") !== "global"}>
         <small className="mapPresetHint">
-          Make settlements matter: a guard fought the first time each one is flagged, and extra Victory
-          Points for every settlement a player controls (VP mode only — on top of the flat 1 VP each).
+          Make settlements matter: a guard fought the first time each one is flagged, a first-flag reward,
+          and extra Victory Points for every settlement a player controls (VP mode only — on top of the flat 1 VP each).
         </small>
         <GuardLevelChips
           ariaLabel="Settlement guard"
           guard={settlementGuard}
           label="Guard (fought on first flag)"
           onChange={setSettlementGuard}
+        />
+        <label className="mapPresetObjectiveRow">Combat round limit
+          <select
+            aria-label="Global Settlement combat round limit"
+            className="mapPresetSelect"
+            onChange={(event) => commitSettlements({
+              roundLimitSet: true,
+              combatRoundLimit: event.target.value === "default"
+                ? undefined
+                : event.target.value === "unlimited"
+                  ? "unlimited"
+                  : Number(event.target.value) as 1 | 2 | 3
+            })}
+            value={settlementConfig?.combatRoundLimit ?? "default"}
+          >
+            <option value="default">Default rules</option>
+            <option value="1">1 free round, then pay MP</option>
+            <option value="2">2 free rounds, then pay MP</option>
+            <option value="3">3 free rounds, then pay MP</option>
+            <option value="unlimited">Unlimited</option>
+          </select>
+        </label>
+        <div className="mapPresetSectionLabel">First-flag reward</div>
+        <FieldRewardEditor
+          ariaLabel="Global Settlement first-flag reward"
+          reward={settlementConfig?.reward}
+          onChange={(reward) => commitSettlements({ reward, rewardSet: true })}
+          showVp={false}
         />
         <div className="mapPresetResourceRow">
           <ResourceField

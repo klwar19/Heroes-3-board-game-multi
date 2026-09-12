@@ -91,8 +91,9 @@ describe("hero units are tierless at EVERY commanderSlug-keyed tier gate", () =>
     state.wog = { enabled: true, commanders: true, newObjects: false, newCreatures: false, artifacts: false };
     state.players.p1.commander = {
       slug: "soul_eater",
-      // Magic grade 3 → cast Power 2 → the GOLD rung of maxTierByPower, so the
-      // control below cannot pass merely because the ally is low-tier.
+      // Magic grade 3 → cast Power 2 → the top rung of maxTierByPower (every
+      // graded tier), so the control below cannot pass merely because the ally
+      // is low-tier.
       grades: { attack: 0, defense: 0, health: 0, damage: 0, magic: 3, speed: 0 }
     };
     const commander = makeCommanderCombatUnit(state.players.p1, 9);

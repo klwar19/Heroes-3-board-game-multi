@@ -22,6 +22,7 @@ import {
   type CommanderSlug
 } from "@/data/commanders";
 import { aggregateCommanderArtifactBonuses } from "@/data/wog/commander-artifacts";
+import { coreUnitDefinitions } from "@/data/factions/units";
 import {
   equipmentCommanderHealthBonus,
   equipmentCommanderSpeedBonus,
@@ -876,7 +877,7 @@ export function commanderRunePool(state: GameState, playerId: PlayerId): number 
   return state.combat?.runes?.[playerId]?.count ?? 0;
 }
 
-const TIER_RANK: Record<string, number> = { bronze: 0, silver: 1, gold: 2 };
+const TIER_RANK: Record<string, number> = { bronze: 0, silver: 1, gold: 2, azure: 3 };
 
 /**
  * Whether the cast has already been used this combat round; the once-per-round
@@ -1376,6 +1377,23 @@ function mainHeroLevelOf(state: GameState, playerId: PlayerId): number | null {
 export type CommanderFirstAidOption = NonNullable<
   NonNullable<GameState["adventure"]>["pendingCommanderFirstAid"]
 >["options"][number];
+
+/**
+ * First Aid Master's discounted payment for the side being restored.
+ * A dead Few returns on its Few side; a dead Pack returns as a Pack; and a
+ * surviving Few restored to Pack pays the Pack reinforcement price. Only gold
+ * is charged: half the printed gold cost, rounded down, then reduced by 1
+ * (minimum 0).
+ */
+export function commanderFirstAidGoldCost(option: CommanderFirstAidOption): number {
+  const definition = coreUnitDefinitions[option.unitDefId];
+  const side = option.kind === "flip-up" || option.side === "pack"
+    ? definition?.pack
+    : option.side === "neutral"
+      ? definition?.neutral
+      : definition?.few;
+  return Math.max(0, Math.floor((side?.cost.gold ?? 0) / 2) - 1);
+}
 
 /**
  * Hierophant — First Aid Master: collect this player's restorable casualties.

@@ -410,6 +410,11 @@ function nextSettlementPlan(
   if (!next.winCondition) {
     delete next.winCondition;
   }
+  // "Map-wide / printed rules" clears the per-tile round limit; without this
+  // the key lingers as `undefined` and the tile keeps a phantom specific plan.
+  if (!next.combatRoundLimit) {
+    delete next.combatRoundLimit;
+  }
   // Pre-assigned owner: index 0 is a REAL seat (S1), so only an explicit
   // undefined ("None") clears it — never a truthiness check.
   if (next.ownerStart === undefined) {
@@ -6507,6 +6512,29 @@ export function MapDesigner({
                         })
                       }
                     />
+                    <label className="popoverSubLabel">Combat round limit
+                      <select
+                        aria-label="Settlement combat round limit"
+                        onChange={(event) =>
+                          updateTile(selectedIndex as number, {
+                            settlement: nextSettlementPlan(selected.settlement, {
+                              combatRoundLimit: event.target.value === "default"
+                                ? undefined
+                                : event.target.value === "unlimited"
+                                  ? "unlimited"
+                                  : Number(event.target.value) as 1 | 2 | 3
+                            })
+                          })
+                        }
+                        value={selected.settlement?.combatRoundLimit ?? "default"}
+                      >
+                        <option value="default">Map-wide / printed rules</option>
+                        <option value="1">1 free round, then pay MP</option>
+                        <option value="2">2 free rounds, then pay MP</option>
+                        <option value="3">3 free rounds, then pay MP</option>
+                        <option value="unlimited">Unlimited</option>
+                      </select>
+                    </label>
                     <div className="popoverSubLabel">First-flag reward</div>
                     <FieldRewardEditor
                       ariaLabel="Settlement first-flag reward"

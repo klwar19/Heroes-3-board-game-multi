@@ -318,9 +318,10 @@ describe("premium economy + soft silver unlock", () => {
       expect(armyTierCoversGuardField(state, "p2", 3)).toBe(false);
     }
 
-    // Impossible field-3 is 3 silver — Pack core alone is not enough.
+    // Impossible field-3 is 3 silver — Pack core alone is not enough for lv3,
+    // but it opens lv2 (two bronzes + one silver) without waiting for Silver.
     state.adventure!.difficulty = "impossible";
-    expect(premiumEconomyEngageCap(state, "p2")).toBe(0);
+    expect(premiumEconomyEngageCap(state, "p2")).toBe(2);
     expect(armyCoversPremiumEconomyGuard(state, "p2", 3)).toBe(false);
 
     state.players.p2.army.push({

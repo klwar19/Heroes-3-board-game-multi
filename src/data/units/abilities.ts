@@ -4131,7 +4131,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "veteran-behemoth-odd-defense": { id: "veteran-behemoth-odd-defense", name: "Odd-Hour Hide", text: "On odd-numbered combat rounds, this unit gains +1 Defense when attacked, but not against Retaliation Attacks.", effect: { type: "TOWN_VETERANCY", mechanic: "behemoth-odd-defense" }, implementationStatus: "implemented" },
   "veteran-minotaur-last-stand": { id: "veteran-minotaur-last-stand", name: "Labyrinthine Survival", text: "Once per Combat when an attack would defeat this unit, it survives at 1 Health and gains +1 Attack.", effect: { type: "TOWN_VETERANCY", mechanic: "minotaur-last-stand" }, implementationStatus: "implemented" },
   "veteran-skeleton-last-stand": { id: "veteran-skeleton-last-stand", name: "Deathless Fury", text: "Once per Combat when an attack would defeat this unit, it survives at 1 Health and gains +2 Attack for this combat.", effect: { type: "TOWN_VETERANCY", mechanic: "skeleton-last-stand" }, implementationStatus: "implemented" },
-  "veteran-ayssid-two-dice": { id: "veteran-ayssid-two-dice", name: "Twin Talons", text: "Always roll 2 Attack dice and apply both results.", effect: { type: "ROLL_TWO_DICE_APPLY_BOTH", retaliationAlso: true, diceCount: 2 }, implementationStatus: "implemented" },
+  "veteran-ayssid-two-dice": { id: "veteran-ayssid-two-dice", name: "Twin Talons", text: "Always roll 2 Attack dice and apply both results. You may reroll each \"-1\" die once.", effect: { type: "ROLL_TWO_DICE_APPLY_BOTH", retaliationAlso: true, diceCount: 2, negativeRerollChoice: true }, implementationStatus: "implemented" },
   "veteran-troglodyte-three-dice": { id: "veteran-troglodyte-three-dice", name: "Threefold Savage", text: "Always roll 3 Attack dice and apply all results. You may reroll each \"-1\" die once.", effect: { type: "ROLL_TWO_DICE_APPLY_BOTH", retaliationAlso: true, diceCount: 3, negativeRerollChoice: true }, implementationStatus: "implemented" },
   "veteran-magma-teleport-strike": { id: "veteran-magma-teleport-strike", name: "Lava Leap", text: "As a regular movement, move to any empty space. After moving, gain +1 Attack for the next attack.", effect: { type: "MOVE_ANYWHERE" }, implementationStatus: "implemented" },
   "veteran-magma-attack-after-move": { id: "veteran-magma-attack-after-move", name: "Lava Leap Strike", text: "After moving, gain +1 Attack for the next attack.", effect: { type: "ATTACK_BONUS_AFTER_MOVE", amount: 1 }, implementationStatus: "implemented" },
@@ -4405,7 +4405,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "commander-cast-soul_eater": {
     id: "commander-cast-soul_eater",
     name: "Animate Dead",
-    text: "[activation] Once per combat round: remove 2 damage from a friendly bronze unit (Power 1: or silver; Power 2: any tier). Does not end the activation.",
+    text: "[activation] Once per combat round: remove 1/2/3 damage (Power 0/1/2) from any friendly unit. Does not end the activation.",
     effect: { type: "COMMANDER_CAST" },
     implementationStatus: "implemented"
   },

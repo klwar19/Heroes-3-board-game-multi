@@ -2244,7 +2244,16 @@ export function getApplyBothDiceCount(unit: CombatUnitState): number {
  * apply-both users keep their intrinsic behaviour untouched.
  */
 export function hasApplyBothNegativeRerollChoice(unit: CombatUnitState): boolean {
-  return getAbilitiesWithEffect(unit, "ROLL_TWO_DICE_APPLY_BOTH").some(
+  return applyBothNegativeRerollAbility(unit) !== undefined;
+}
+
+/**
+ * The marker ability that grants the per-die "-1" reroll (Threefold Savage,
+ * Twin Talons, …) — the reroll window is labelled after it, so each unit's
+ * own rank ability is named in the offer instead of a hard-coded one.
+ */
+export function applyBothNegativeRerollAbility(unit: CombatUnitState): UnitAbilityDefinition | undefined {
+  return getAbilitiesWithEffect(unit, "ROLL_TWO_DICE_APPLY_BOTH").find(
     (ability) => ability.effect?.type === "ROLL_TWO_DICE_APPLY_BOTH" && ability.effect.negativeRerollChoice === true
   );
 }

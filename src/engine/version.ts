@@ -1228,7 +1228,19 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // does not know the rule and would still roll the die, resolving these attacks
 // differently from the new UI's previews.
 // `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 137;
+// v138 (2026-09-12): First Aid Master now charges gold (half the restored
+// side's printed gold cost, rounded down, minus 1; unaffordable picks are
+// hidden and refused), Soul Eater's Animate Dead heals 1/2/3 by Power on any
+// graded tier, the material-Mine reroll holds the mined tile and opens a
+// pick between it and the fresh draw, designer presets carry global/specific
+// combat-round limits and first-clear rewards for every tile category, the
+// Phoenix Pack Rebirth house rule gives one save per side (Pack, then Few),
+// Tarnum (Conflux) I is an Instant (Search in combat), veteran Ayssids' Twin
+// Talons rerolls each "-1" die once, and the computer AI's FAR-economy
+// scheduling/movement reserve changed. A v137 worker would resolve every one
+// of these differently from the new UI's previews.
+// `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 138;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

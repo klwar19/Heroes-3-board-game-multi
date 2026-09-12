@@ -4,6 +4,7 @@ import {
   armyReadyForContestedFight,
   developmentResourceTargets,
   armyDevelopmentProfile,
+  hasOpenedFarEconomy,
 } from "./development";
 import {
   collectMapObjectives,
@@ -21,6 +22,7 @@ export function secondaryHeroOpportunity(
   const reserve = developmentResourceTargets(state, playerId);
   if (
     !player ||
+    !hasOpenedFarEconomy(state, playerId) ||
     !armyReadyForContestedFight(state, playerId) ||
     player.resources.gold < reserve.gold + 10 ||
     (armyDevelopmentProfile(state, playerId).goldUnlocked &&
@@ -78,7 +80,7 @@ export function secondaryHeroOpportunity(
       return (
         o.kind === "flaggable" &&
         (f?.location === "settlement" ||
-          (f?.location === "mine" && f.resource === "gold"))
+          (f?.location === "mine" && (f.resource === "gold" || f.resource === "valuables")))
       );
     });
     const worthwhile = jobs.length >= 2 || Boolean(premium);

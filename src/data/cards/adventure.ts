@@ -3949,6 +3949,11 @@ export const adventureCards: CardLibrary = {
   // Wiki (en.homm3bg.wiki/heroes/tarnum_conflux): Elementalist, A0 D0 P2 K3,
   // starting ability Wisdom, specialty Enchanters.
   //  I  — Search(1) Spell; keep the found Spell OR Remove it from the game.
+  //       USER RULING 2026-09-12 ("make it usable IN COMBAT properly — Search in
+  //       combat"): printed as an INSTANT, so the card-manipulation Search is a
+  //       click-to-use play on the map AND mid-Combat, exactly like every other
+  //       instant Search side (instantSideAllowedInCombat; the reducer opens the
+  //       Search straight away during a live fight instead of queueing a reward).
   //  IV — Pay 10 gold to fetch the unique neutral Enchanters card (only 1 at a
   //       time) — OR — Draw a card.
   //  VI — Search(1) the Spell deck twice into hand; you may immediately cast
@@ -3961,10 +3966,10 @@ export const adventureCards: CardLibrary = {
     id: "specialty.tarnum_conflux.1",
     name: "Enchanters I",
     kind: "hero-specialty",
-    timing: "map",
+    timing: "instant",
     tags: [
       "hero-specialty",
-      "map",
+      "instant",
       "tarnum_conflux",
       "enchanters",
       "Search(1) Spell. You can Remove this card instead of taking it into your hand.",

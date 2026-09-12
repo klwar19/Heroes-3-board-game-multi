@@ -532,7 +532,7 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     id: "phoenix-pack-rebirth",
     label: "Phoenix Pack Rebirth",
     description:
-      "On (BINH house rule): the Pack of Phoenixes also has Rebirth (once per Combat, lethal damage leaves it at 1 Health on its Pack side). Off (printed/wiki, and the BASE GAME default): only the Few (and Neutral) Phoenixes have Rebirth — the Pack has the line attack and Fire immunity only.",
+      "On (BINH house rule): the Pack of Phoenixes also has Rebirth, and the two sides carry SEPARATE charges — lethal damage leaves the Pack at 1 Health (still Pack), and once it is later knocked down to its Few side that Few gets its own Rebirth again (one lethal save per side, so two per Combat at most). Off (printed/wiki, and the BASE GAME default): only the Few (and Neutral) Phoenixes have Rebirth — the Pack has the line attack and Fire immunity only.",
     category: "units",
     // BINH-only: ON by default under BINH, OFF in Legacy (no `legacyDefault`), so
     // the base game plays the printed Pack. Either mode may flip it explicitly.

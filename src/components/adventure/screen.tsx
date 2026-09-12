@@ -8341,6 +8341,15 @@ export function PromptTray({
     choice.playerId === viewerPlayerId
       ? (choice.subterraneanTilePick?.candidates ?? null)
       : null;
+  // Far-tile keep/reroll decisions must show the physical tile being kept.
+  // After a Settlement or material-Mine reroll, the current and held previous
+  // tiles remain independently pickable; the reroll action uses the face-down back.
+  const farTileFlip =
+    choice?.type === "OPTION_CHOICE" &&
+    choice.context === "far-tile-flip" &&
+    choice.playerId === viewerPlayerId
+      ? state.adventure?.pendingFarTileFlip ?? null
+      : null;
   // Groovy Satyr: every guard just drawn is public to the attacker and is a
   // distinct discard candidate. Show its real Neutral face regardless of tier.
   const satyrDraws =
@@ -8524,6 +8533,43 @@ export function PromptTray({
               : null;
             return { legal, art };
           })
+        : farTileFlip
+          ? body.map((legal) => {
+              const optionIndex =
+                legal.action.type === "CHOOSE_OPTION" &&
+                legal.action.optionIndex !== undefined
+                  ? legal.action.optionIndex
+                  : undefined;
+              let tileDefId: string | null = null;
+              if (optionIndex !== undefined) {
+                if (farTileFlip.offerMode === "pick") {
+                  tileDefId = optionIndex === 0
+                    ? farTileFlip.candidate
+                    : optionIndex === 1
+                      ? farTileFlip.lastNonSettlement
+                      : null;
+                } else if (optionIndex === 0) {
+                  tileDefId = farTileFlip.candidate;
+                } else if (optionIndex === 2) {
+                  tileDefId = farTileFlip.lastNonSettlement;
+                }
+              }
+              const definition = tileDefId ? allTileDefinitions[tileDefId] : undefined;
+              const art: VisitRewardArt = tileDefId
+                ? {
+                    name: definition?.id ?? tileDefId,
+                    image: definition?.assets?.tileImage,
+                    tileRotation: 0,
+                    caption: legal.label,
+                  }
+                : {
+                    name: "Random Ⅱ–Ⅲ tile",
+                    image: tileBackImage("far", "Ⅱ–Ⅲ"),
+                    tileRotation: 0,
+                    caption: legal.label,
+                  };
+              return { legal, art };
+            })
         : handDiscardCards
           ? body.map((legal) => {
               const optionIndex =
@@ -12104,7 +12150,7 @@ const BINH_RULE_SUMMARIES: Partial<Record<HouseRuleId, string>> = {
   "obelisk-rewards": "The first Obelisk visit rolls and locks a shared reward.",
   "freelancers-guild-bounty": "Freelancer's Guild pays 2 gold per Neutral victory.",
   "multi-demon-summon": "Pit Lords may summon more than one Demon unit.",
-  "phoenix-pack-rebirth": "Pack Phoenixes may Rebirth after being defeated.",
+  "phoenix-pack-rebirth": "Phoenixes Rebirth once as a Pack and again as a Few.",
   "resource-die-single-valuables": "Resource-die valuables are capped at 1.",
   "elemental-damage-no-die": "Positive Attack buffs cannot raise elemental damage.",
   "elemental-damage-zero-die": "Elemental attacks skip the Attack die (always counts as 0).",

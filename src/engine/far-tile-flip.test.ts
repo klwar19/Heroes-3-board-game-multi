@@ -346,7 +346,7 @@ describe("Ⅱ–Ⅲ tile flip — true random + keep/reroll/pick", () => {
       expect(placed.adventure!.farTileScriptedDraws).toEqual([SETTLEMENT_NO_MINE]);
     });
 
-    it("offers a one-time reroll when the tile has an ORE Mine, and the reroll replaces it", () => {
+    it("offers a one-time reroll when the tile has an ORE Mine; the reroll then lets the player place either tile", () => {
       const state = setup();
       // Opening 1, scripted: an ORE Mine tile, then a no-Mine tile on the reroll.
       state.adventure!.farTileScriptedDraws = [ORE_MINE_NO_SETTLEMENT, SETTLEMENT_NO_MINE];
@@ -356,12 +356,30 @@ describe("Ⅱ–Ⅲ tile flip — true random + keep/reroll/pick", () => {
       expect(flip.candidate).toBe(ORE_MINE_NO_SETTLEMENT);
 
       const rerolled = choose(offered, 1); // Reroll once (ore mine)
-      // The fresh tile (no ore mine) auto-finalizes; the ore tile returns to the pool.
-      expect(rerolled.adventure!.pendingFarTileFlip).toBeNull();
-      expect(rerolled.adventure!.tiles[rerolled.adventure!.pendingTileChoice!.tileInstanceId].tileDefId).toBe(
+      // The fresh tile is shown next to the held ore tile — the player may place either.
+      const pick = rerolled.adventure!.pendingFarTileFlip!;
+      expect(pick.offerMode).toBe("pick");
+      expect(pick.candidate).toBe(SETTLEMENT_NO_MINE);
+      expect(pick.lastNonSettlement).toBe(ORE_MINE_NO_SETTLEMENT);
+      expect(pick.mineRerollUsed).toBe(true);
+
+      // [0] place the rerolled tile; the ore tile returns to the pool.
+      const placed = choose(rerolled, 0);
+      expect(placed.adventure!.pendingFarTileFlip).toBeNull();
+      expect(placed.adventure!.tiles[placed.adventure!.pendingTileChoice!.tileInstanceId].tileDefId).toBe(
         SETTLEMENT_NO_MINE
       );
-      expect(rerolled.adventure!.farTilePool).toContain(ORE_MINE_NO_SETTLEMENT);
+      expect(placed.adventure!.farTilePool).toContain(ORE_MINE_NO_SETTLEMENT);
+      expect(placed.adventure!.farTilePool).not.toContain(SETTLEMENT_NO_MINE);
+
+      // [1] take the previous tile back instead: the ore Mine lands and the fresh draw returns.
+      const kept = choose(rerolled, 1);
+      expect(kept.adventure!.pendingFarTileFlip).toBeNull();
+      expect(kept.adventure!.tiles[kept.adventure!.pendingTileChoice!.tileInstanceId].tileDefId).toBe(
+        ORE_MINE_NO_SETTLEMENT
+      );
+      expect(kept.adventure!.farTilePool).toContain(SETTLEMENT_NO_MINE);
+      expect(kept.adventure!.farTilePool).not.toContain(ORE_MINE_NO_SETTLEMENT);
     });
 
     it("KEEP lands the ore Mine tile (control: an ore Mine reaches the board)", () => {

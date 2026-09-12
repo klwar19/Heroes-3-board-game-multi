@@ -10063,6 +10063,13 @@ export type CombatUnitState = {
   keyAuthorityCancelledAbilityIds?: string[];
   /** Phoenixes: set once this unit has spent its once-per-combat Rebirth self-save. */
   usedRebirthThisCombat?: boolean;
+  /**
+   * Set ONLY while the `phoenix-pack-rebirth` house rule is on, and only by the
+   * printed SELF_REBIRTH_ONCE save: the card side ("pack") that spent the latch.
+   * The Pack→Few flip clears the latch again when it reads "pack" here, so the
+   * Few side gets its OWN Rebirth (one lethal save per side, each once).
+   */
+  rebirthUsedOnSide?: "pack";
   /** Town rank effects persist across side changes, and are rebuilt for each combat. */
   customVeterancyRounds?: Partial<Record<import("@/data/units/abilities").CustomTownVeterancyMechanic, number>>;
   townVeterancy?: {
@@ -13940,7 +13947,7 @@ export type PendingFarTileFlip = {
    * been drawn yet and this holds the empty string.
    */
   candidate: string;
-  /** The most recent NON-settlement tile held aside during a settlement reroll, offered against the Settlement at the final pick. */
+  /** The tile held aside during a Settlement or material-Mine reroll, offered against the replacement at the final pick. */
   lastNonSettlement: string | null;
   /** Whether the one-time material-mine reroll has been spent this opening. */
   mineRerollUsed: boolean;
@@ -13949,7 +13956,7 @@ export type PendingFarTileFlip = {
    * to read the chosen index:
    *  - "settlement": [Keep, Reroll for a Settlement]
    *  - "mine":       [Keep, Reroll once (material mine)]
-   *  - "pick":       [Place the Settlement tile, Place the previous tile]
+   *  - "pick":       [Place the rerolled tile, Place the previous tile]
    *  - "blind":      [No preference, Prefer a GOLD mine, Prefer a VALUABLES
    *                  mine] — the blind Ⅱ–Ⅲ choice asked BEFORE the draw
    *                  (candidate is still ""); resolving it draws the tile.
@@ -15002,6 +15009,19 @@ export type CustomMapPreset = {
     teamScope?: "individual" | "team";
   };
   /**
+   * MAP-WIDE defaults for every difficulty-Ⅶ center objective. Per-tile
+   * `centerHex` values override these field-by-field.
+   */
+  centerHexes?: {
+    guard?: CustomGuardSpec;
+    combatRoundLimit?: 1 | 2 | 3 | "unlimited";
+    reward?: CustomFieldReward;
+    vp?: number;
+    breakField?: boolean;
+    persistentGuard?: boolean;
+    unlimitedRounds?: boolean;
+  };
+  /**
    * Calamity Waves designer overrides (module `monsterWaves`): `cadence`
    * overrides the lobby wave rhythm for this map; `waves` maps a wave NUMBER
    * (1-based) to an exact guard spec (the {@link CustomGuardSpec} vocabulary)
@@ -15181,7 +15201,7 @@ export type CustomMapPreset = {
    *   - "victory-only": no reward at all (a quiet note); grail progress still runs.
    */
   obelisks?: {
-    role: "monolith" | "bonus" | "victory-only";
+    role: "classic" | "monolith" | "bonus" | "victory-only";
     /**
      * The reward for role "bonus". Legacy SINGLE bonus (kept for old presets);
      * `bonuses` below is the multi-award form. When both are absent the role
@@ -15204,6 +15224,10 @@ export type CustomMapPreset = {
      */
     guard?: CustomGuardSpec;
     combatRoundLimit?: 1 | 2 | 3 | "unlimited";
+    /** One-time first-clear reward, independently of the Obelisk's visit role. */
+    reward?: CustomFieldReward;
+    /** Optional first-clear Victory Points (VP mode only). */
+    vp?: number;
     /**
      * Break-field options (PC "Jebus Cross" style). When set, Pathfinding may
      * NOT walk through the guarded Obelisk — it must be fought to enter. With
@@ -15226,6 +15250,10 @@ export type CustomMapPreset = {
   mines?: {
     guard?: CustomGuardSpec;
     combatRoundLimit?: 1 | 2 | 3 | "unlimited";
+    /** One-time reward paid the first time each Mine is successfully cleared. */
+    reward?: CustomFieldReward;
+    /** Optional first-clear Victory Points (VP mode only). */
+    vp?: number;
     breakField?: boolean;
     persistentGuard?: boolean;
     unlimitedRounds?: boolean;
@@ -15243,6 +15271,9 @@ export type CustomMapPreset = {
    */
   randomTowns?: {
     guard?: CustomGuardSpec;
+    combatRoundLimit?: 1 | 2 | 3 | "unlimited";
+    /** Extra one-time first-capture reward using the shared field-reward editor. */
+    reward?: CustomFieldReward;
     captureReward?: {
       gold?: number;
       buildingMaterials?: number;
@@ -15280,6 +15311,9 @@ export type CustomMapPreset = {
    */
   settlements?: {
     guard?: CustomGuardSpec;
+    combatRoundLimit?: 1 | 2 | 3 | "unlimited";
+    /** One-time reward paid the first time each Settlement is flagged. */
+    reward?: CustomFieldReward;
     vp?: number;
   };
   /**
@@ -16192,6 +16226,7 @@ export type CustomObjectFieldPlan = {
  */
 export type CustomMapSettlementFieldPlan = {
   guard?: CustomGuardSpec;
+  combatRoundLimit?: 1 | 2 | 3 | "unlimited";
   /**
    * One-time first-flag reward (same shape as a center-hex first-clear bonus:
    * resources / dice / Times×Search(X)). Paid once when the settlement is

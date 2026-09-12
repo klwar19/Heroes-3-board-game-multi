@@ -38,8 +38,10 @@ import {
   DEFAULT_ANIME_OPTIONS,
   EQUIPMENT_IDS
 } from "./index";
+import { coreUnitDefinitions } from "@/data/factions/units";
 import {
   COMMANDER_FRONT_LINE_SPEED_EFFECT_NAME,
+  commanderFirstAidGoldCost,
   commanderLiveAttackBonus,
   finalizeCommandersAfterCombat,
   latchCommanderFrontLineAttack
@@ -1719,6 +1721,47 @@ describe("WOG commanders — Hierophant First Aid window", () => {
     const revived = apply(fight, { type: "COMMANDER_FIRST_AID", playerId: "p1", optionIndex: reviveIndex });
     expect(revived.adventure!.pendingCommanderFirstAid).toBeFalsy();
     expect(revived.players.p1.army.length).toBe(armySizeBefore); // the casualty came back
+  });
+
+  it("First Aid costs half the restored side's gold, rounded down, minus 1 — and an unaffordable pick is hidden and refused", () => {
+    const fight = hierophantFight("cmd-firstaid-gold");
+    const own = Object.values(fight.combat!.units).filter(
+      (unit) => unit.controllerId === "p1" && !unit.commanderSlug && (unit.grade === "bronze" || unit.grade === "silver")
+    );
+    // Prefer a silver casualty (a real printed price) so the control below is a live check.
+    const fallen = own.find((unit) => unit.grade === "silver") ?? own[0];
+    expect(fallen, "a bronze/silver army unit in the fight").toBeTruthy();
+    fallen!.damage = fallen!.maxHealth;
+    winFight(fight);
+
+    const pending = fight.adventure!.pendingCommanderFirstAid!;
+    const reviveIndex = pending.options.findIndex((option) => option.kind === "revive");
+    const option = pending.options[reviveIndex];
+    const printed = coreUnitDefinitions[option.unitDefId]![option.side === "neutral" ? "neutral" : option.side]!.cost.gold ?? 0;
+    const cost = commanderFirstAidGoldCost(option);
+    expect(cost).toBe(Math.max(0, Math.floor(printed / 2) - 1));
+
+    fight.players.p1.resources.gold = cost + 3;
+    const offered = getLegalActions(fight, "p1").find(
+      (legal) => legal.action.type === "COMMANDER_FIRST_AID" && legal.action.optionIndex === reviveIndex
+    );
+    expect(offered?.label).toContain(`(${cost} gold)`);
+    const revived = apply(fight, { type: "COMMANDER_FIRST_AID", playerId: "p1", optionIndex: reviveIndex });
+    expect(revived.players.p1.resources.gold).toBe(3); // the price was actually charged
+
+    // CONTROL: one gold short — the option disappears from the menu and the
+    // engine refuses it (only meaningful when the side has a non-zero price).
+    if (cost > 0) {
+      fight.players.p1.resources.gold = cost - 1;
+      expect(
+        getLegalActions(fight, "p1").some(
+          (legal) => legal.action.type === "COMMANDER_FIRST_AID" && legal.action.optionIndex === reviveIndex
+        )
+      ).toBe(false);
+      expect(applyError(fight, { type: "COMMANDER_FIRST_AID", playerId: "p1", optionIndex: reviveIndex })).toContain("gold");
+      // Declining stays free and always available.
+      expect(getLegalActions(fight, "p1").some((legal) => legal.label === "Decline First Aid")).toBe(true);
+    }
   });
 
   /**

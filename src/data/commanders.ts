@@ -404,7 +404,7 @@ export function commanderUnlockedCombos(grades: CommanderGrades): CommanderCombo
 // Command abilities (the once-per-combat-round cast).
 // ---------------------------------------------------------------------------
 
-export type CommanderTargetTier = "bronze" | "silver" | "gold";
+export type CommanderTargetTier = "bronze" | "silver" | "gold" | "azure";
 
 export interface CommanderCastTargeting {
   side: "friendly" | "enemy";
@@ -712,7 +712,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     specialty: {
       id: "first-aid",
       name: "First Aid Master",
-      text: "After a combat: one of your bronze/silver units that died or flipped from Pack to Few may be restored (choose 1)."
+      text: "After a combat, choose 1 bronze/silver casualty: revive it or restore Few to Pack by paying half that side's gold cost, rounded down, minus 1 (minimum 0). You cannot choose a unit you cannot afford."
     },
     cardImage: "/assets/units-commander-hierophant.webp"
   },
@@ -798,14 +798,17 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       targeting: {
         side: "friendly",
         damagedOnly: true,
-        maxTierByPower: ["bronze", "silver", "gold"],
+        // Every graded tier at every Power; the ladder stays so tierless
+        // bodies (other commanders, bank guards, summons, battlefield
+        // heroes) remain excluded exactly as before.
+        maxTierByPower: ["azure", "azure", "azure"],
         canTargetSelf: false
       },
-      effect: { kind: "heal", healByPower: [2, 2, 2] },
+      effect: { kind: "heal", healByPower: [1, 2, 3] },
       tierText: [
-        "Remove 2 damage from a friendly bronze unit.",
-        "Remove 2 damage from a friendly bronze or silver unit.",
-        "Remove 2 damage from a friendly unit of any tier — even gold."
+        "Remove 1 damage from any friendly unit.",
+        "Remove 2 damage from any friendly unit.",
+        "Remove 3 damage from any friendly unit."
       ]
     },
     specialty: {
@@ -1061,7 +1064,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     specialty: {
       id: "first-aid",
       name: "Impeccable Service",
-      text: "After a combat: one of your bronze/silver units that died or flipped from Pack to Few may be restored (choose 1)."
+      text: "After a combat, choose 1 bronze/silver casualty: revive it or restore Few to Pack by paying half that side's gold cost, rounded down, minus 1 (minimum 0). You cannot choose a unit you cannot afford."
     },
     cardImage: "/assets/units-commander-belfast.webp"
   },

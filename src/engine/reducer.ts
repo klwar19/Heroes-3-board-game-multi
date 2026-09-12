@@ -735,7 +735,7 @@ import {
   getRetaliationParalysis,
   getSameTargetAttackSequenceAbility,
   getSummonUnitOnAttackAbility,
-  hasApplyBothNegativeRerollChoice,
+  applyBothNegativeRerollAbility,
   hasRollTwoDiceApplyBoth,
   rollsTwoDiceOnRetaliation,
   hasRerollAllMinusOne,
@@ -16887,15 +16887,16 @@ function resolveAttackStackItem(
       ),
       "sum", details.attacker,
     );
-    // Veteran Troglodytes' "Threefold Savage": after the dice settle, the
-    // controller may reroll each "-1" die once through the interactive window
-    // (choice + reroll animation per die). Only opened when the marker is
-    // present, a "-1" is actually showing, and reroll sources are not globally
-    // locked (Spirit of Oppression). Every other apply-both unit falls straight
-    // through to resolution exactly as before.
+    // Veteran Troglodytes' "Threefold Savage" / veteran Ayssids' "Twin Talons":
+    // after the dice settle, the controller may reroll each "-1" die once
+    // through the interactive window (choice + reroll animation per die). Only
+    // opened when the marker ability is present, a "-1" is actually showing,
+    // and reroll sources are not globally locked (Spirit of Oppression). Every
+    // other apply-both unit falls straight through to resolution exactly as before.
     const negativeDieCount = resolvedApplyBoth.rolls.filter((face) => face < 0).length;
+    const negativeRerollAbility = applyBothNegativeRerollAbility(details.attacker);
     if (
-      hasApplyBothNegativeRerollChoice(details.attacker) &&
+      negativeRerollAbility &&
       !attackRerollsBlocked(state) &&
       negativeDieCount > 0
     ) {
@@ -16906,8 +16907,8 @@ function resolveAttackStackItem(
         resolvedApplyBoth,
         [
           {
-            name: "Threefold Savage",
-            abilityId: "veteran-troglodyte-three-dice",
+            name: negativeRerollAbility.name,
+            abilityId: negativeRerollAbility.id,
             sourceUnitId: details.attacker.id,
             remaining: negativeDieCount,
             used: 0,

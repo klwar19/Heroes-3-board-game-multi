@@ -1,32 +1,12 @@
-import { fieldCreatureBankId, heroMovementMax, isBankStyleGuardLocation, isFieldGuarded, isTeleportObjectGuardLocation, neutralBattleLevel } from "../adventure";
-import { houseRuleEnabled } from "../house-rules";
-import { polishQuickCombatEnabled, polishQuickCombatOutcome } from "../polish-quick-combat";
-import type { GameAction, GameState, HeroState, MapFieldState } from "../state";
+import { heroMovementMax, isFieldGuarded } from "../adventure";
+import type { GameAction, GameState } from "../state";
+import { premiumCombatMovementReserve } from "./combat-movement";
+export { premiumCombatMovementReserve } from "./combat-movement";
 import {
   canBeatGuardedField, collectMapObjectives, distanceFromHeroTo,
   isFreeSeizeObjective, objectiveDistanceField, primaryMapObjective,
 } from "./map-navigation";
 import type { ComputerPolicyMemory } from "./memory";
-
-/** Reserve paid continuations before entry; dice/cards can still prolong a fight. */
-export function premiumCombatMovementReserve(state: GameState, hero: HeroState, field: MapFieldState): number {
-  if (!isFieldGuarded(field) || fieldCreatureBankId(field) || isBankStyleGuardLocation(field.location) ||
-      isTeleportObjectGuardLocation(field.location) || field.location === "random_town" || field.unlimitedCombatRounds ||
-      houseRuleEnabled(state, "free-neutral-combat-extend")) return 0;
-  if (!field.customGuardUnits?.length) {
-    const difficulty = field.difficulty ?? 1;
-    const quickWin = polishQuickCombatEnabled(state)
-      ? polishQuickCombatOutcome(state, hero, difficulty) === "mandatory"
-      : neutralBattleLevel(state, hero) > difficulty;
-    if (quickWin) return 0;
-  }
-  // Level 2–3 FAR economy (and harder NEAR economy) can take more than two
-  // battle rounds. Budget two continuations, capped by a refreshed turn's
-  // actual capacity after paying entry so a low-MP hero cannot wait forever.
-  const economyFight = field.location === "settlement" || field.location === "mine";
-  const reserve = economyFight && (field.difficulty ?? 0) >= 2 ? 2 : 1;
-  return Math.min(reserve, Math.max(0, heroMovementMax(state, hero) - 1));
-}
 
 /** Convert the premium economy commitment into a current/next-turn movement budget. */
 export function scorePremiumApproach(
@@ -40,9 +20,9 @@ export function scorePremiumApproach(
   const primary = primaryMapObjective(state, hero, objectives, memory.stickyObjectiveSpaceId);
   const field = primary && state.adventure?.fields[primary.spaceId];
   if (!primary || !field || (field.location !== "settlement" && field.location !== "mine") ||
-      !canBeatGuardedField(state, hero, field)) return null;
+      (isFieldGuarded(field) && !canBeatGuardedField(state, hero, field))) return null;
 
-  const distance = objectiveDistanceField(state, hero, [primary]);
+  const distance = objectiveDistanceField(state, hero, [primary], true);
   const here = distance.get(hero.spaceId) ?? Infinity;
   const to = distance.get(action.to) ?? Infinity;
   const reserve = premiumCombatMovementReserve(state, hero, field);
@@ -52,7 +32,7 @@ export function scorePremiumApproach(
   if (action.to === primary.spaceId) {
     // The entry itself costs one point. Never start a paid-continuation fight
     // on the last MP when a refreshed turn can afford entry plus the buffer.
-    if (movement < 1 + reserve && nextMovement >= 1 + reserve) {
+    if (movement < 1 + reserve) {
       return { score: 250, policy: "map.premium-save-combat-movement" };
     }
     return { score: 945, policy: "map.premium-capture-now" };
@@ -60,13 +40,16 @@ export function scorePremiumApproach(
 
   // No diversion when the capture plus buffer fits THIS turn. Otherwise take
   // a real pickup that leaves the premium guard in next turn's strike range.
-  if (here + reserve > movement) {
+  if (here + reserve > movement && here + reserve <= nextMovement) {
     const pickups = objectives.filter(objective => {
       if (!isFreeSeizeObjective(objective, state) || objective.spaceId === hero.spaceId ||
           objective.spaceId === primary.spaceId) return false;
       const walk = distanceFromHeroTo(state, hero, objective.spaceId);
       const returnWalk = distance.get(objective.spaceId) ?? Infinity;
-      return walk !== undefined && walk <= movement && returnWalk + reserve <= nextMovement;
+      // Never walk away from the guard to spend leftover MP. A pickup must
+      // maintain or shorten the committed route and preserve next-turn entry.
+      return walk !== undefined && walk <= movement && returnWalk <= here &&
+        returnWalk + reserve <= nextMovement;
     }).sort((a, b) =>
       (distanceFromHeroTo(state, hero, a.spaceId) ?? Infinity) -
       (distanceFromHeroTo(state, hero, b.spaceId) ?? Infinity) ||

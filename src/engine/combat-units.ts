@@ -9,7 +9,7 @@ import { queueElementalChoice } from "./elemental-veterancy";
 import { factionVeterancy, getUnitAbilityDefinitions } from "./unit-abilities";
 import { veteranHeal, veteranDamage, veteranTrigger } from "./faction-veterancy";
 import { appendEvent } from "./events";
-import { armyUnitStacksActive } from "./house-rules";
+import { armyUnitStacksActive, houseRuleEnabled } from "./house-rules";
 import { getRuleset, unitSideRuleOverrides } from "./ruleset";
 import { RAID_BOSS_LAYER_BREAK_GOLD } from "./raid-bosses";
 import { isArrowTowerUnit } from "./siege";
@@ -307,6 +307,15 @@ function finalizeUnitRemoval(state: GameState, unit: CombatUnitState, attackDama
   const rebirth = getSelfRebirthAbility(unit);
   if (rebirth && !unit.usedRebirthThisCombat) {
     unit.usedRebirthThisCombat = true;
+    // House rule `phoenix-pack-rebirth` (USER RULING): the Pack Rebirth and the
+    // Few Rebirth are SEPARATE charges — "it can revive as a Pack, THEN it can
+    // ALSO revive as a Few". Remember that the PACK side spent this latch so the
+    // Pack→Few flip below can hand the Few side its own charge. Recorded only for
+    // the printed Rebirth (never Phoenix Plate / the MGQ rolled save) and only
+    // while the rule is on, so the rule-OFF state is untouched.
+    if (unit.variant === "pack" && houseRuleEnabled(state, "phoenix-pack-rebirth")) {
+      unit.rebirthUsedOnSide = "pack";
+    }
     unit.damage = Math.max(0, unit.maxHealth - 1);
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
@@ -465,6 +474,15 @@ function finalizeUnitRemoval(state: GameState, unit: CombatUnitState, attackDama
       const flipHealth = factionVeterancy(unit, "flip-health");
       const marksmanSurvival = townVeterancy(unit, "marksman-survival");
       unit.variant = "few";
+      // House rule `phoenix-pack-rebirth`: the Pack Rebirth this unit already
+      // spent belonged to the PACK side. Flipping to the Few side hands it a
+      // FRESH once-per-combat Rebirth (two lethal saves per combat at most, one
+      // per side). Without the rule the marker is never written, so the Few side
+      // keeps the printed single charge exactly as before.
+      if (unit.rebirthUsedOnSide === "pack" && unit.usedRebirthThisCombat) {
+        unit.usedRebirthThisCombat = false;
+      }
+      delete unit.rebirthUsedOnSide;
       // A Few card is no longer a Group and cannot carry Polish Stack layers.
       delete unit.armyStacks;
       unit.damage = 0;

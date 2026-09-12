@@ -1158,7 +1158,19 @@ export function materializeTileFields(
     // the bonus as `viiFieldReward`/`viiFieldVp` (with a `viiField` gate) — fold
     // those too so a mid-flight game keeps its designed bonus.
     if (fieldDef.difficulty === 7) {
-      const centerHex = tile.centerHex;
+      const randomTownDefaults = fieldDef.location === "random_town"
+        ? adventure.mapPreset?.randomTowns
+        : undefined;
+      const globalCenter = adventure.mapPreset?.centerHexes;
+      const centerHex = globalCenter || randomTownDefaults || tile.centerHex
+        ? {
+            ...(globalCenter ?? {}),
+            ...(randomTownDefaults?.guard ? { guard: randomTownDefaults.guard } : {}),
+            ...(randomTownDefaults?.combatRoundLimit ? { combatRoundLimit: randomTownDefaults.combatRoundLimit } : {}),
+            ...(randomTownDefaults?.reward ? { reward: randomTownDefaults.reward } : {}),
+            ...(tile.centerHex ?? {})
+          }
+        : undefined;
       // USER RULE 2026-08-19 ("I should get 2 Artifacts AT MOST"): on a Grail /
       // Dragon Utopia objective the designer centre-hex reward's ARTIFACT
       // Searches are DROPPED — they used to STACK on the field's built-in two
@@ -1185,7 +1197,7 @@ export function materializeTileFields(
         delete rest.searchArtifactTimes;
         return rest;
       };
-      const cappedReward = capArtifacts(centerHex?.reward);
+      const cappedReward = capArtifacts(centerHex?.reward ?? randomTownDefaults?.reward);
       if (cappedReward && Object.keys(cappedReward).length > 0) {
         field.centerHexReward = cappedReward;
       }
@@ -1198,7 +1210,10 @@ export function materializeTileFields(
       // Shared stamp (sets designedGuard) so a center-hex guard is flagged as
       // designer-altered exactly like a token / settlement / obelisk guard.
       applyCustomGuardToField(field, centerHex?.guard);
-      applyBreakFieldOptions(field, centerHex);
+      applyBreakFieldOptions(field, {
+        ...(centerHex ?? {}),
+        combatRoundLimit: centerHex?.combatRoundLimit ?? randomTownDefaults?.combatRoundLimit
+      });
       if (field.location === "dragon_utopia" && centerHex?.flaggableDragonUtopia) {
         field.flaggableDragonUtopia = true;
       }
@@ -1227,7 +1242,7 @@ export function materializeTileFields(
       const perTile = tile.objectPlans?.obelisk;
       applyCustomGuardToField(field, perTile?.guard ?? obelisks?.guard);
       applyBreakFieldOptions(field, mergeObjectBreakFlags(perTile, obelisks));
-      stampDesignerFieldReward(field, perTile?.reward, perTile?.vp);
+      stampDesignerFieldReward(field, perTile?.reward ?? obelisks?.reward, perTile?.vp ?? obelisks?.vp);
       if (perTile?.winCondition) {
         field.designerWinCondition = true;
       }
@@ -1240,13 +1255,14 @@ export function materializeTileFields(
         applyCustomGuardToField(field, guard);
       }
       applyBreakFieldOptions(field, mergeObjectBreakFlags(perTile, mines));
-      stampDesignerFieldReward(field, perTile?.reward, perTile?.vp);
+      stampDesignerFieldReward(field, perTile?.reward ?? mines?.reward, perTile?.vp ?? mines?.vp);
       if (perTile?.winCondition) {
         field.designerWinCondition = true;
       }
     } else if (field.location === "settlement") {
       const perTile = tile.settlement;
       const centerHex = fieldDef.difficulty === 7 ? tile.centerHex : undefined;
+      const globalCenter = fieldDef.difficulty === 7 ? adventure.mapPreset?.centerHexes : undefined;
       // Ⅶ Random Settlement designation: tag so hold-with-grail can target it
       // separately from printed settlements, and prefer center-hex customization.
       if (tile.viiField === "settlement" && fieldDef.difficulty === 7) {
@@ -1254,10 +1270,18 @@ export function materializeTileFields(
       }
       applyCustomGuardToField(
         field,
-        centerHex?.guard ?? perTile?.guard ?? adventure.mapPreset?.settlements?.guard
+        centerHex?.guard ?? perTile?.guard ?? adventure.mapPreset?.settlements?.guard ?? globalCenter?.guard
       );
-      if (perTile?.reward) {
-        stampDesignerFieldReward(field, perTile.reward);
+      const settlements = adventure.mapPreset?.settlements;
+      applyBreakFieldOptions(field, {
+        breakField: centerHex?.breakField ?? globalCenter?.breakField,
+        persistentGuard: centerHex?.persistentGuard ?? globalCenter?.persistentGuard,
+        unlimitedRounds: centerHex?.unlimitedRounds ?? globalCenter?.unlimitedRounds,
+        combatRoundLimit: centerHex?.combatRoundLimit ?? perTile?.combatRoundLimit ?? settlements?.combatRoundLimit ?? globalCenter?.combatRoundLimit
+      });
+      const settlementReward = perTile?.reward ?? settlements?.reward;
+      if (settlementReward) {
+        stampDesignerFieldReward(field, settlementReward);
       }
       // Control VP: per-tile settlement plan, else center-hex controlVp on a Ⅶ settlement.
       const controlVp = perTile?.vp ?? centerHex?.controlVp;
@@ -1298,7 +1322,14 @@ export function materializeTileFields(
       }
     } else if (field.location === "random_town") {
       const rtGuard = adventure.mapPreset?.randomTowns?.guard;
-      const centerHex = tile.centerHex;
+      const centerHex = {
+        ...(adventure.mapPreset?.centerHexes ?? {}),
+        ...(rtGuard ? { guard: rtGuard } : {}),
+        ...(adventure.mapPreset?.randomTowns?.combatRoundLimit
+          ? { combatRoundLimit: adventure.mapPreset.randomTowns.combatRoundLimit }
+          : {}),
+        ...(tile.centerHex ?? {})
+      };
       if (centerHex?.guard) {
         applyCustomGuardToField(field, centerHex.guard);
       } else if (rtGuard) {
@@ -6400,8 +6431,8 @@ function recordGrailObeliskVisit(state: GameState, playerId: PlayerId, fieldId: 
 
 /**
  * The map-wide Obelisk role a designed map forces, or `undefined` for the
- * classic locked-die house rule. ABSENCE is classic — there is no stored
- * "classic" value that could drift. Rides on `adventure.mapPreset.obelisks`
+ * classic locked-die house rule. Both absence and an explicit `classic` config
+ * select that behavior; the explicit form carries global field settings.
  * (public; passes through player views / reconnects untouched). The
  * winning-condition role (Holy-Grail dig progress) is identical in every mode;
  * only the visit reward/behaviour changes. See CustomMapPreset.obelisks.
@@ -6409,7 +6440,8 @@ function recordGrailObeliskVisit(state: GameState, playerId: PlayerId, fieldId: 
 export function obeliskPresetRole(
   state: GameState
 ): "monolith" | "bonus" | "victory-only" | undefined {
-  return state.adventure?.mapPreset?.obelisks?.role;
+  const role = state.adventure?.mapPreset?.obelisks?.role;
+  return role === "classic" ? undefined : role;
 }
 
 /** Whether Obelisk fields join the Monolith teleport network (role "monolith"). */

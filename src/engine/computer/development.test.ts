@@ -686,6 +686,21 @@ describe("computer development — income-first City Hall and the Gold ladder (r
     const state = game();
     establishPacks(state);
     const town = coreTown(state);
+    const farTile = Object.values(state.adventure!.tiles)[0];
+    const farField = Object.values(state.adventure!.fields)[0];
+    const flagFarGoldMine = (owner: "p1" | "p2") => {
+      state.adventure!.tiles["hall-far"] = { ...farTile, id: "hall-far", group: "far", faceDown: false };
+      state.adventure!.fields["h:99:99"] = {
+        ...farField,
+        spaceId: "h:99:99",
+        tileInstanceId: "hall-far",
+        location: "mine",
+        resource: "gold",
+        difficulty: undefined,
+        flagOwnerId: owner,
+      };
+    };
+    flagFarGoldMine("p2");
     const income = buildingWith(state, (effect) => effect.type === "RESOURCE_ROUND_CHOICE");
     const silver = buildingWith(
       state,
@@ -705,6 +720,11 @@ describe("computer development — income-first City Hall and the Gold ladder (r
     // the dwelling-fund guard, below a scenario-winning step.
     hallOnly();
     expect(incomeBuildingBeforeDwelling(state, "p2")?.id).toBe(income);
+    // CONTROL: without a captured FAR income (a rival's flag does not count)
+    // every coin funds the dwelling and its army — no hall first.
+    flagFarGoldMine("p1");
+    expect(incomeBuildingBeforeDwelling(state, "p2")).toBeNull();
+    flagFarGoldMine("p2");
     const hall = score(state, build(state, income));
     expect(hall).toBeGreaterThanOrEqual(970);
     expect(hall).toBeLessThan(980);

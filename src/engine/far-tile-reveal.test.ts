@@ -240,8 +240,11 @@ describe("Ⅱ–Ⅲ tile discovery — keep/reroll/pick on a tile already on the
       expect(flip.offerMode).toBe("mine");
       expect(flip.candidate).toBe(ORE_MINE_NO_SETTLEMENT);
 
-      const rerolled = choose(offered, 1); // Reroll once (ore mine)
-      // The fresh (no-ore-mine) tile auto-finalizes onto the same slot; the ore def returns to the pool.
+      const afterReroll = choose(offered, 1); // Reroll once (ore mine)
+      // The fresh draw is offered against the held ore tile; placing the fresh
+      // (no-ore-mine) tile lands it on the same slot and the ore def returns to the pool.
+      expect(afterReroll.adventure!.pendingFarTileFlip?.offerMode).toBe("pick");
+      const rerolled = choose(afterReroll, 0); // Place the rerolled tile
       expect(rerolled.adventure!.pendingFarTileFlip).toBeNull();
       expect(rerolled.adventure!.tiles[tile.id].tileDefId).toBe(SETTLEMENT_NO_MINE);
       expect(rerolled.adventure!.farTilePool).toContain(ORE_MINE_NO_SETTLEMENT);

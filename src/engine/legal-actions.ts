@@ -167,6 +167,7 @@ import {
   commanderIntegratedDeploymentSortAvailable,
   commanderActionPoints,
   commanderCastActionPointsPayable,
+  commanderFirstAidGoldCost,
   commanderCommandUsedThisActivation,
   commanderStandsInCurrentCombat,
   commanderUnitId,
@@ -16468,8 +16469,12 @@ function getAdventureLegalActions(
     const firstAid = adventure.pendingCommanderFirstAid;
     if (firstAid.playerId === playerId) {
       firstAid.options.forEach((option, index) => {
+        const goldCost = commanderFirstAidGoldCost(option);
+        if ((state.players[playerId]?.resources.gold ?? 0) < goldCost) {
+          return;
+        }
         actions.push({
-          label: `First Aid: ${option.label}`,
+          label: `First Aid: ${option.label} (${goldCost} gold)`,
           action: { type: "COMMANDER_FIRST_AID", playerId, optionIndex: index },
         });
       });
