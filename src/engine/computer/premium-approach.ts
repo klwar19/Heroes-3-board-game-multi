@@ -7,6 +7,20 @@ import {
   isFreeSeizeObjective, objectiveDistanceField, primaryMapObjective,
 } from "./map-navigation";
 import type { ComputerPolicyMemory } from "./memory";
+import { isPremiumEconomyField } from "./army-strength";
+
+/** A known, fightable income route takes precedence over another reveal. */
+export function hasCommittedIncomeRoute(
+  state: GameState, heroId: string, memory: ComputerPolicyMemory,
+): boolean {
+  const hero = state.heroes[heroId];
+  if (!hero?.spaceId || hero.kind !== "main") return false;
+  const primary = primaryMapObjective(state, hero, undefined, memory.stickyObjectiveSpaceId);
+  const field = primary && state.adventure?.fields[primary.spaceId];
+  return Boolean(primary && field && isPremiumEconomyField(field) &&
+    (!isFieldGuarded(field) || canBeatGuardedField(state, hero, field)) &&
+    distanceFromHeroTo(state, hero, primary.spaceId, true) !== undefined);
+}
 
 /** Convert the premium economy commitment into a current/next-turn movement budget. */
 export function scorePremiumApproach(
@@ -25,6 +39,7 @@ export function scorePremiumApproach(
   const distance = objectiveDistanceField(state, hero, [primary], true);
   const here = distance.get(hero.spaceId) ?? Infinity;
   const to = distance.get(action.to) ?? Infinity;
+  if (!Number.isFinite(here)) return null;
   const reserve = premiumCombatMovementReserve(state, hero, field);
   const movement = hero.movementPoints;
   const nextMovement = heroMovementMax(state, hero);
@@ -67,5 +82,12 @@ export function scorePremiumApproach(
   // Ordinary safe corridor steps only; existing scoring still handles guards,
   // enemy occupants and gate mechanics. The caller checks that safety score.
   if (to < here) return { score: 931 + Math.max(0, 8 - to), policy: "map.premium-approach" };
-  return null;
+  // Do not let a fallback home/exploration move spend the reserved attack
+  // turn or reverse this route. Safe, budgeted pickups were handled above.
+  // The clamp exists for the PREMIUM income commitment only: an ordinary-mine
+  // primary keeps normal scoring (free-pickup scoops stay collectable), and a
+  // zero-distance stand (gate-slip re-entry, where no step can shorten the
+  // route) must fall through so the guard-reentry setup score can win.
+  if (here === 0 || !isPremiumEconomyField(field)) return null;
+  return { score: 200, policy: "map.premium-keep-commitment" };
 }

@@ -1237,7 +1237,8 @@ export function homeTileInstanceId(
 /**
  * Whether this objective qualifies for the home-tile sweep: a sweepable payoff
  * on the hero's OWN starting tile, while the hero still stands on that tile.
- * No round cap — drain all three home items whenever the hero is still there.
+ * Only the first two rounds force the opening sweep. Returning home later
+ * must not restart the opening and displace an income commitment.
  * Pure public-state reads (town flag, tile ids) — never touches the
  * guaranteed-win house rule.
  */
@@ -1247,6 +1248,7 @@ export function isHomeTileSweepObjective(
   objective: MapObjective,
   field: MapFieldState | undefined = state.adventure?.fields[objective.spaceId],
 ): boolean {
+  if (state.round > 2) return false;
   if (!SWEEPABLE_KINDS.has(objective.kind)) return false;
   const homeTile = homeTileInstanceId(state, hero.controllerId);
   if (!homeTile) return false;
@@ -2013,9 +2015,8 @@ export function primaryMapObjective(
       canBeatGuardedField(state, hero, field);
   });
   const available = actionable.length > 0 ? actionable : reachable;
-  // Home tile first: while ANY sweepable payoff remains on tile Ⅰ and the hero
-  // still stands there, ignore off-tile conquest / Far / sticky commits so all
-  // three home items are collected every game before expanding to II–III.
+  // During rounds 1–2, sweep reachable home rewards before expanding. Later
+  // returns retain normal reward value without restarting the opening.
   const homeRemaining = available.filter((objective) =>
     isHomeTileSweepObjective(state, hero, objective),
   );
@@ -2032,9 +2033,7 @@ export function primaryMapObjective(
   // then gold/valuables mines, before a sticky trinket, shop or conquest march.
   // Keep this on the AI's target path: shared movement and battle legality are
   // unchanged, and unreachable/unbeatable guards were filtered above.
-  const fullBronzeOpening = state.round >= 3 &&
-    armyDevelopmentProfile(state, hero.controllerId).bronzePacks >= 3;
-  if (hero.kind === "main" && (homeRemaining.length === 0 || fullBronzeOpening)) {
+  if (hero.kind === "main" && homeRemaining.length === 0) {
     const secured = new Set<string>();
     for (const field of Object.values(state.adventure?.fields ?? {})) {
       const tile = field.tileInstanceId && state.adventure?.tiles[field.tileInstanceId];
@@ -2051,6 +2050,14 @@ export function primaryMapObjective(
         distanceFromHeroTo(state, hero, objective.spaceId, true) !== undefined &&
         (!isFieldGuarded(field) || canBeatGuardedField(state, hero, field));
     });
+    // Remaining MP changes on every step. Do not let a recalculated attack
+    // round reverse a live march toward income we still lack.
+    const committedIncome = farEconomy.find(objective => {
+      if (objective.spaceId !== stickySpaceId) return false;
+      const field = state.adventure!.fields[objective.spaceId];
+      return !secured.has(field.location === "settlement" ? "settlement" : field.resource!);
+    });
+    if (committedIncome) return committedIncome;
     // Prefer a capture by round 4 over a Settlement that cannot be reached
     // by then. After the deadline, use the earliest available attack turn.
     // This is a route estimate, never permission to enter an unready fight.
@@ -2082,6 +2089,16 @@ export function primaryMapObjective(
   }
 
   if (openingObjective) return openingObjective;
+
+  // After the two-turn home opening, find income land before spending another
+  // turn on home leftovers. A known attainable FAR capture returned above.
+  if (hero.kind === "main" && state.round >= 3 && !hasOpenedFarEconomy(state, hero.controllerId)) {
+    const incomeDoorways = available.filter(objective => objective.kind === "explore" && objective.opensFarTile);
+    if (incomeDoorways.length > 0) {
+      return incomeDoorways.find(objective => objective.spaceId === stickySpaceId) ??
+        bestObjectiveOf(state, hero, incomeDoorways, false);
+    }
+  }
 
   // "Can we fight anything at all?" — when no beatable guard / enemy hero is
   // listed, explore objectives get a boost so the hero opens new land instead

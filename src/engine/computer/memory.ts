@@ -302,15 +302,15 @@ export function noteComputerAction(
   return writeComputerMemory(state, playerId, mem);
 }
 
-/** Excludes clock, event counters and movement so an empty walk is not progress. */
+/** Captured value / army development, not tile reveals or passive income. */
 export function routeProgressKey(state: GameState, playerId: PlayerId): string {
   const player = state.players[playerId];
   const text = JSON.stringify([
-    player?.resources, player?.army,
+    player?.army,
     Object.values(state.towns ?? {}).filter(t => t.controllerId === playerId).map(t => t.buildings),
     Object.values(state.heroes ?? {}).filter(h => h.controllerId === playerId).map(h => [h.id, h.level]),
     Object.values(state.adventure?.fields ?? {}).filter(f => f.flagOwnerId === playerId).map(f => [f.spaceId, f.blackCube]),
-    Object.values(state.adventure?.tiles ?? {}).map(t => [t.id, t.faceDown]),
+    Object.values(state.adventure?.fields ?? {}).filter(f => f.blackCube).map(f => f.spaceId),
   ]);
   let hash = 2166136261;
   for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619);
@@ -322,7 +322,7 @@ export function repeatsUnproductiveRoute(state: GameState, playerId: PlayerId, a
   const destination = action.type === "MOVE_HERO" ? action.to : action.path.at(-1);
   const progress = routeProgressKey(state, playerId);
   return memory.routeHistory.some(step => step.heroId === action.heroId && step.to === destination && step.progress === progress &&
-    (step.round === undefined || state.round - step.round <= 1));
+    (step.round === undefined || state.round - step.round <= 3));
 }
 
 /** A new hand, stronger army or hero level can justify a rematch. More gold

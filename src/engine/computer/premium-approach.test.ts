@@ -78,7 +78,15 @@ describe("premium capture movement budget", () => {
   });
 
   it("allows a purposeful return next round but still blocks a same-round circuit", () => {
-    const {state, hero, pickup, move, observation} = fixture();
+    const {state, hero, target, pickup, move, observation} = fixture();
+    // The old fixture left a beatable settlement ahead: returning toward it
+    // was productive and failed even on the unchanged baseline. Empty the
+    // circuit by removing the payoff location, then re-arm it as CONTROL.
+    // Location/difficulty are deliberately NOT part of the route-progress key
+    // (flags are), so both halves compare the SAME progress hash and the pass
+    // genuinely exercises the returns-toward-payoff exemption, not a key change.
+    target.location = "empty_field";
+    target.difficulty = undefined;
     hero.spaceId = pickup.spaceId;
     pickup.blackCube = true;
     Object.assign(state, noteComputerAction(state, "p2", move("h:10:7")));
@@ -89,6 +97,8 @@ describe("premium capture movement budget", () => {
     ] } as ComputerObservation);
     expect(choose()?.action.type).toBe("END_TURN");
     state.round += 1;
+    target.location = "settlement";
+    target.difficulty = 3;
     expect(choose()?.action.type).toBe("MOVE_HERO");
   });
 

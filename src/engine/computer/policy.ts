@@ -1,5 +1,5 @@
 import { cardLibrary } from "@/data/cards/library";
-import { effectiveHandLimit } from "../adventure";
+import { effectiveHandLimit, isFieldGuarded } from "../adventure";
 import type { GameAction, GameState, LegalAction } from "../state";
 import { cardKeepValue, scoreCardAction } from "./card-policy";
 import { heroPickBias } from "./card-values";
@@ -10,6 +10,23 @@ import type { ComputerDecision, ComputerObservation } from "./types";
 import { learnedActionBias } from "./learned-policy";
 import { developmentPlanBias } from "./development-plan";
 import { repeatsUnproductiveRoute } from "./memory";
+import { canBeatGuardedField, objectiveDistanceField, primaryMapObjective } from "./map-navigation";
+import { isPremiumEconomyField } from "./army-strength";
+
+/** A scored move alone is not evidence that retracing a route pays off. */
+function returnsTowardPayoff(observation: ComputerObservation, action: GameAction): boolean {
+  if (action.type !== "MOVE_HERO" && action.type !== "MOVE_HERO_PATH") return false;
+  const state = observation.state as unknown as GameState;
+  const hero = state.heroes[action.heroId];
+  const destination = action.type === "MOVE_HERO" ? action.to : action.path.at(-1);
+  if (!hero?.spaceId || !destination) return false;
+  const primary = primaryMapObjective(state, hero, undefined, observation.memory?.stickyObjectiveSpaceId);
+  if (!primary || primary.kind === "explore") return false;
+  const field = state.adventure?.fields[primary.spaceId];
+  if (!field || (isFieldGuarded(field) && !canBeatGuardedField(state, hero, field))) return false;
+  const distance = objectiveDistanceField(state, hero, [primary], isPremiumEconomyField(field));
+  return (distance.get(destination) ?? Infinity) < (distance.get(hero.spaceId) ?? Infinity);
+}
 
 /** Stable serialization independent of object property insertion order. */
 export function canonicalActionKey(value: unknown): string {
@@ -276,16 +293,11 @@ export function chooseComputerAction(
       const planBias = base.score > 300 && base.score < 900
         ? developmentPlanBias(observation.state as unknown as GameState, observation.playerId, legal.action, observation.memory?.developmentPlan) : 0;
       const scored = { ...base, score: base.score + planBias };
-      // Route history is a cycle guard, not a ban on revisiting map cells.
-      // A destination can become productive after the earlier visit (a guard is
-      // now beatable, an enemy/free flag is present, or the selected objective
-      // requires retracing a corridor after shopping). `moveScore` proves that
-      // current value by putting real objective progress above END_TURN (300).
-      // Keep those moves available and suppress only a repeated route that the
-      // current map evaluation still rates as idle/no-progress.
-      const productiveRouteReturn =
-        legal.action.type === "MOVE_HERO" && base.score > 300;
-      if (!productiveRouteReturn && repeatsUnproductiveRoute(observation.state as unknown as GameState, observation.playerId, legal.action, observation.memory)) {
+      // Preserve returns toward a concrete payoff and forced unblocking, but
+      // exploration's high score cannot exempt an empty repeated route.
+      if (repeatsUnproductiveRoute(observation.state as unknown as GameState, observation.playerId, legal.action, observation.memory) &&
+          base.policy !== "map.clear-shared-space" &&
+          !(base.score > 300 && returnsTowardPayoff(observation, legal.action))) {
         scored.score = 100;
         scored.policy = "map.replan-repeated-route";
       }

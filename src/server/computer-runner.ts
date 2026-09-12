@@ -25,6 +25,7 @@ import {
   setStickyObjective,
 } from "@/engine/computer/memory";
 import { computerStallRecoveryDecision } from "@/engine/computer/stall-recovery";
+import { reconsiderComputerPlan } from "@/engine/computer/reconsider";
 
 export const DEFAULT_COMPUTER_STEP_LIMIT = 256;
 
@@ -162,6 +163,16 @@ export function progressFingerprint(state: GameState, playerId: PlayerId): strin
         ]
       : null,
     heroes,
+    // The compact summary above misses rules that only change modifiers,
+    // charges, building state or a choice payload. Those are real progress,
+    // even without an event. Keep rule state in a bounded hash; exclude AI
+    // memory, clocks, room bookkeeping and rewind snapshots.
+    ruleState: fingerprintHash(JSON.stringify([
+      state.combat, state.players, state.heroes, state.towns,
+      state.adventure, state.map, state.turn, state.pendingChoice,
+      state.reactionWindow, state.stack, state.activeEffects,
+      state.pendingManaTurbulence,
+    ])),
   });
 }
 
@@ -238,10 +249,16 @@ export function driveComputerPlayers(
     const available = observation.legalActions.filter(
       (legal) => !attempted.has(legalityMatchKey(legal.action)),
     );
-    const decision = chooseComputerAction({
+    let decision = chooseComputerAction({
       ...observation,
       legalActions: available,
     });
+    const reconsidered = reconsiderComputerPlan(state, playerId, available, decision);
+    let decisionState = state;
+    if (reconsidered) {
+      decision = reconsidered.decision;
+      decisionState = reconsidered.state;
+    }
     if (!decision) {
       return {
         state,
@@ -266,7 +283,7 @@ export function driveComputerPlayers(
     }
     attempted.add(actionKey);
 
-    const result = apply(state, decision.action, playerId);
+    const result = apply(decisionState, decision.action, playerId);
     if (result.errors.length > 0) {
       // Recompute at the same state and try another legal candidate. If none
       // remain, the next loop returns the explicit stall instead of spinning.
@@ -286,10 +303,8 @@ export function driveComputerPlayers(
       continue;
     }
     if (nextFingerprint === fingerprint) {
-      // The action applied cleanly but moved no fingerprinted field — a no-op
-      // for progress purposes (e.g. an in-combat ability play that only sets a
-      // pending modifier, or a card whose effect the fingerprint doesn't
-      // capture). The old code stalled the WHOLE pump here, which froze the AI
+      // The action applied cleanly but changed no tracked rule state. The old
+      // code stalled the WHOLE pump here, which froze the AI
       // turn ("says it's taking its turn and does nothing") whenever such an
       // action outscored a real one. Instead treat it exactly like a rejected
       // attempt: it is already in `attempted`, so DISCARD it (keep the pre-
@@ -453,8 +468,8 @@ export function settleComputerVisibleStep(state: GameState): ComputerRunResult {
 
   const decisions: ComputerDecision[] = [];
   let current = state;
-  // Soft cap for bookkeeping; AI-only combat extends this so a long fight
-  // never leaks a mid-battle frame for want of steps.
+  // AI-only combat gets a larger, FINITE budget. The server persists the
+  // returned progress and schedules another tick if computer work is owed.
   let bulkCap = 96;
   for (let i = 0; i < bulkCap; i += 1) {
     if (!computerDecisionOwner(current)) {
@@ -498,10 +513,11 @@ export function settleComputerVisibleStep(state: GameState): ComputerRunResult {
     current = peek.state;
     decisions.push(step);
 
-    // Genuinely AI-only fight open: keep going (extend the cap). Human-controlled
-    // neutrals are intentionally excluded by combatHasHumanParticipant.
+    // AI-only fights continue within this tick's budget. Do not add i to the
+    // cap: extending it on every iteration makes the limit unreachable.
+    // Human-controlled neutrals retain normal visible combat pacing.
     if (current.combat && !combatHasHumanParticipant(current)) {
-      bulkCap = Math.max(bulkCap, i + DEFAULT_COMPUTER_STEP_LIMIT);
+      bulkCap = Math.max(bulkCap, DEFAULT_COMPUTER_STEP_LIMIT);
       continue;
     }
 

@@ -106,7 +106,7 @@ import {
   type ComputerPolicyMemory,
 } from "./memory";
 import type { ComputerObservation } from "./types";
-import { premiumCombatMovementReserve, scorePremiumApproach } from "./premium-approach";
+import { hasCommittedIncomeRoute, premiumCombatMovementReserve, scorePremiumApproach } from "./premium-approach";
 
 function memoryOf(observation: ComputerObservation): ComputerPolicyMemory {
   return (
@@ -2390,6 +2390,12 @@ export function scoreMapAction(
 ): ComputerActionScore | null {
   const state = observation.state as unknown as GameState;
   const memory = memoryOf(observation);
+  if ((action.type === "DISCOVER_TILE" || action.type === "PLACE_TILE") &&
+      hasCommittedIncomeRoute(state, action.heroId, memory)) {
+    // Includes the unconditional FAR-discovery bonus below. When entry needs
+    // refreshed MP, keep the combat budget instead of opening another tile.
+    return { score: 200, policy: "map.capture-income-before-expansion" };
+  }
   switch (action.type) {
     case "RESOLVE_COMPANION_RECRUITMENT":
       return {
