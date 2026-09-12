@@ -377,7 +377,8 @@ function explicitRankOne(unitDefId: string): RankStep | null {
   if (unitDefId === "neutral.wyverns") return A("veteran-flying-guard");
   if (unitDefId === "neutral.peasants") return A("veteran-peasant-bounty");
   if (unitDefId === "neutral.azure_dragons") return A("veteran-azure-fear-aura");
-  if (unitDefId === "conflux.energy_elementals") return A("veteran-energy-delay");
+  if (unitDefId === "conflux.storm_elementals") return H({ ...Z, health: 1 }, "veteran-attack-when-attacking");
+  if (unitDefId === "conflux.energy_elementals") return H({ ...Z, health: 1 }, "veteran-energy-delay");
   if (unitDefId === "conflux.magic_elementals") return A("veteran-magic-dispel");
   if (unitDefId === "conflux.magma_elementals") return A("veteran-magma-solidify");
   if (unitDefId === "neutral.ice_elementals" || unitDefId === "conflux.ice_elementals") return A("veteran-ice-bolt");
@@ -638,7 +639,7 @@ function explicitRankFour(unitDefId: string): RankStep | null {
   if (unitDefId === "conflux.ice_elementals") return A("veteran-water-damper");
   if (unitDefId === "conflux.magic_elementals") return A("veteran-magic-copy");
   if (unitDefId === "neutral.magic_elementals") return A("veteran-arcane-echo");
-  if (unitDefId === "conflux.storm_elementals") return A("veteran-storm-link");
+  if (unitDefId === "conflux.storm_elementals") return A("veteran-storm-link-2");
   if (unitDefId === "conflux.phoenixes") return A("veteran-phoenix-rising-nest");
   if (unitDefId === "neutral.ice_elementals") return A("veteran-frozen-guard");
   if (unitDefId === "neutral.storm_elementals") return A("veteran-storm-guard");
@@ -877,6 +878,7 @@ export const UNIT_RANK_ABILITY_ICONS: Record<string, string> = {
   "veteran-sprite-landing": "/game-tokens/rank-ability/conflux/veteran-sprite-landing.webp",
   "veteran-storm-speed": "/game-tokens/rank-ability/conflux/veteran-storm-speed.webp",
   "veteran-storm-link": "/game-tokens/rank-ability/conflux/veteran-storm-link.webp",
+  "veteran-storm-link-2": "/game-tokens/rank-ability/conflux/veteran-storm-link.webp",
   "veteran-energy-delay": "/game-tokens/rank-ability/conflux/veteran-energy-delay.webp",
   "veteran-energy-fire-heal": "/game-tokens/rank-ability/conflux/veteran-energy-fire-heal.webp",
   "veteran-magma-solidify": "/game-tokens/rank-ability/conflux/veteran-magma-solidify.webp",

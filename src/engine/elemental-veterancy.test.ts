@@ -191,7 +191,7 @@ describe("Elemental experience combat outcomes", () => {
     ["conflux.sprites", 3, "veteran-sprite-obstacle"],
     ["conflux.sprites", 4, "veteran-sprite-landing"],
     ["conflux.storm_elementals", 3, "veteran-storm-speed"],
-    ["conflux.storm_elementals", 4, "veteran-storm-link"],
+    ["conflux.storm_elementals", 4, "veteran-storm-link-2"],
     ["conflux.energy_elementals", 1, "veteran-energy-delay"],
     ["conflux.energy_elementals", 3, "veteran-energy-fire-heal"],
     ["conflux.magma_elementals", 1, "veteran-magma-solidify"],
@@ -874,6 +874,30 @@ describe("Elemental experience combat outcomes", () => {
     expect(s.combat!.elementalLinks).toHaveLength(0);
     elementalMovement(s, d, hooks);
     expect(d.damage).toBe(1);
+  });
+  it("Conflux Storm Elemental's R4 Lightning Link breaks for 2 damage", () => {
+    const s = fixture(),
+      a = s.combat!.units[A],
+      d = s.combat!.units[D],
+      other = s.combat!.units.unit_p2_vampires;
+    a.abilities = ["veteran-storm-link-2"];
+    d.position = 17;
+    other.position = 18;
+    elementalAfterAttack(s, a, d, 3);
+    choose(s);
+    expect(s.combat!.elementalLinks).toHaveLength(1);
+    d.position = 10;
+    elementalMovement(s, d, hooks);
+    expect(d.damage).toBe(2);
+    expect(s.combat!.elementalLinks).toHaveLength(0);
+  });
+  it("Conflux Storm & Energy Elementals gain +1 HP at rank 1", () => {
+    expect(
+      unitRankStatBonusesFor("conflux.storm_elementals", "bronze", 1).health,
+    ).toBe(1);
+    expect(
+      unitRankStatBonusesFor("conflux.energy_elementals", "silver", 1).health,
+    ).toBe(1);
   });
   it("Solidify locks next-round movement and is released by an attack", () => {
     const s = fixture(),

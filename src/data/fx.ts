@@ -20,6 +20,8 @@ export type FxSheet = {
   fps: number;
   /** Loop ordered frames for authored projectile animations. */
   sequentialFrames?: boolean;
+  /** Optional authored playback order when an atlas contains unusable takes. */
+  frameOrder?: number[];
   /** Authored charge, travelling frames and impact frames in one atlas. */
   projectilePhases?: {
     launch: [number, number];
@@ -79,6 +81,53 @@ sheets["war-machine-cannon-projectile"] = {
   anchor: "center", sourceDef: "imagegen-war-machine-cannon-projectile",
 };
 
+// Original transparent melee-contact atlas. FxStage mirrors it from the live
+// attacker/defender geometry so the crescent follows either army's strike.
+sheets["melee-crescent-slash"] = {
+  src: "/fx/melee-crescent-slash-v2.webp", label: "Melee crescent slash", group: "melee-attacks", role: "hit",
+  frames: 16, cols: 4, rows: 4, frameWidth: 314, frameHeight: 314, fps: 40,
+  anchor: "center", sourceDef: "imagegen-melee-crescent-slash-v2", sequentialFrames: true,
+};
+sheets["melee-starry-strike"] = {
+  src: "/fx/melee-starry-strike.webp", label: "Melee starry strike", group: "melee-attacks", role: "hit",
+  frames: 16, cols: 4, rows: 4, frameWidth: 314, frameHeight: 314, fps: 40,
+  anchor: "center", sourceDef: "imagegen-melee-starry-strike", sequentialFrames: true,
+};
+sheets["melee-thrust-impact"] = {
+  src: "/fx/melee-thrust-impact.webp", label: "Melee thrust impact", group: "melee-attacks", role: "hit",
+  frames: 16, cols: 4, rows: 4, frameWidth: 314, frameHeight: 314, fps: 40,
+  anchor: "center", sourceDef: "imagegen-melee-thrust-impact", sequentialFrames: true,
+  // Frames 10–12 redraw the jab from the contact point backwards. Skip them so
+  // the motion remains drive-in → puncture → sparks instead of visibly rewinding.
+  frameOrder: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 13, 14, 15],
+};
+
+export type MeleeFxKey = "melee-crescent-slash" | "melee-starry-strike" | "melee-thrust-impact";
+
+// Only unmistakable blade users receive the crescent. Point-first weapons,
+// horns and charges use the close-range thrust; claws, fists, bites, clubs,
+// magic bodies and any custom unit without a specific profile use the compact
+// contact burst, which does not imply a weapon the creature does not possess.
+const crescentSlashUnits = new Set([
+  "arch_devils", "assassins", "berserkers", "bounty_hunters", "crusaders",
+  "dread_knights", "dwarves", "efreet", "genin_squad", "hokage_vanguard",
+  "inner_swordsmen", "minotaurs", "nagas", "nix", "nomads", "oceanids",
+  "outer_disciples", "pit_lords", "rogues", "sabers", "seamen", "sect_protectors",
+  "skeletons", "space_marines", "true_inheritors", "wolf_raiders",
+]);
+const thrustUnits = new Set([
+  "ayssids", "basilisks", "boars", "centaurs", "champions", "couatls",
+  "dragon_flies", "gorgons", "halberdiers", "haspids", "kobolds", "lancers",
+  "manticores", "mountain_rams", "pegasi", "troglodytes", "unicorns",
+]);
+
+export function unitMeleeFxKey(unitDefId: string | undefined): MeleeFxKey {
+  const slug = unitDefId?.split(/[.:]/).at(-1);
+  if (slug && crescentSlashUnits.has(slug)) return "melee-crescent-slash";
+  if (slug && thrustUnits.has(slug)) return "melee-thrust-impact";
+  return "melee-starry-strike";
+}
+
 // Generated 4x4 phase atlases. Dimensions reflect the delivered 1254px images,
 // not the requested generator size. CSS samples each quarter without recutting.
 const rangedPhaseSizes: Record<string, [number, number]> = {
@@ -98,6 +147,7 @@ const rangedPhaseSizes: Record<string, [number, number]> = {
   ice: [0.65, 1],
   plasma: [0.55, 0.9],
   rocket: [0.65, 1.2],
+  shotgun: [0.95, 1.2],
   kunai: [0.45, 0.55],
   baseball: [0.4, 0.55],
 };
@@ -115,10 +165,52 @@ for (const [name, [widthInCells, impactWidthInCells]] of Object.entries(rangedPh
   };
 }
 
+// Original compact commander atlases. They use 256px cells so the two new
+// WebP files stay materially smaller than the generator outputs.
+for (const [name, label, widthInCells, impactWidthInCells] of [
+  ["commander-holy-hammer", "Commander holy hammer shot", 0.9, 1.45],
+  ["commander-spirit-blade", "Commander spirit blade shot", 1.05, 1.35],
+] as const) {
+  sheets[`${name}-shot-phases`] = {
+    src: `/fx/${name}-shot-phases-alpha.webp`, label,
+    group: "ranged-attacks", role: "projectile",
+    frames: 16, cols: 4, rows: 4, frameWidth: 256, frameHeight: 256,
+    fps: 24, anchor: "center", sequentialFrames: true,
+    sourceDef: `imagegen-${name}-shot-phases`,
+    projectilePhases: {
+      launch: [0, 4], flight: [4, 8], impact: [12, 4],
+      widthInCells, impactWidthInCells,
+    },
+  };
+}
+
+// Kud's launcher and Akagi's carrier strike share this original right-facing
+// rocket atlas. The standard projectile stage mirrors it from live geometry.
+sheets["anime-rocket-shot-phases"] = {
+  src: "/fx/anime-rocket-shot-phases.webp", label: "Anime rocket shot", group: "ranged-attacks", role: "projectile",
+  frames: 16, cols: 4, rows: 4, frameWidth: 314, frameHeight: 314,
+  fps: 24, anchor: "center", sequentialFrames: true,
+  sourceDef: "imagegen-anime-rocket-shot-phases",
+  projectilePhases: {
+    launch: [0, 4], flight: [4, 8], impact: [12, 4],
+    widthInCells: 0.85, impactWidthInCells: 1.35,
+  },
+};
+
 // The same tumbling stone needs a substantially larger silhouette for Cyclopes.
 sheets["boulder-shot-phases"] = {
   ...sheets["stone-shot-phases"], label: "Boulder phased shot",
   projectilePhases: { ...sheets["stone-shot-phases"].projectilePhases!, widthInCells: 0.85, impactWidthInCells: 1.2 },
+};
+
+// Liches need a heavier, more readable cloud than other death-cloud users.
+sheets["lich-death-cloud-shot-phases"] = {
+  ...sheets["death-cloud-shot-phases"], label: "Large Lich death-cloud shot",
+  projectilePhases: {
+    ...sheets["death-cloud-shot-phases"].projectilePhases!,
+    widthInCells: 1.15,
+    impactWidthInCells: 1.7,
+  },
 };
 
 export function getFxSheet(key: string): FxSheet | undefined {
@@ -138,6 +230,10 @@ export function listFxSheets(): Record<string, FxSheet> {
  */
 export type SpellFxPlan = {
   projectile?: string;
+  /** Number of visual rounds in one rapid-fire attack (game damage is unchanged). */
+  projectileCount?: number;
+  /** Delay between visual rounds in a rapid-fire attack. */
+  projectileIntervalMs?: number;
   hit?: string;
   affect?: { key: string; delayMs?: number }[];
   tint?: "bloodlust";
@@ -315,8 +411,14 @@ export const spellFxPlans: Record<string, SpellFxPlan> = {
   // but present as her Rocket Launcher: a board-filling flame burst with the
   // supplied BAZOOKA.oggpak explosion. IV is utility/Power, so it does not fake
   // a launcher shot.
-  "specialty.kudryavka_noumi.1": { affect: [{ key: "inferno" }], sound: "little-busters/effects/bazooka" },
-  "specialty.kudryavka_noumi.6": { affect: [{ key: "inferno" }], sound: "little-busters/effects/bazooka" },
+  "specialty.kudryavka_noumi.1": {
+    projectile: "anime-rocket-shot-phases", hit: "inferno",
+    sound: "doom/dsrlaunc", hitSound: "little-busters/effects/bazooka"
+  },
+  "specialty.kudryavka_noumi.6": {
+    projectile: "anime-rocket-shot-phases", hit: "inferno",
+    sound: "doom/dsrlaunc", hitSound: "little-busters/effects/bazooka"
+  },
   "specialty.alice.1": { affect: [{ key: "fear" }], sound: "effects/fear" },
   // Septienna's Death Ripple sweep (every level's damage side), Melodia's Fortune
   // luck wash and Glacius's Frost Ring (I/VI area damage) all resolve through a
@@ -549,6 +651,7 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   "veteran-sprite-spell-block": { affect: [{ key: "magic-mirror" }], sound: "spells/magic-mirror" },
   "veteran-arcane-echo": { hit: "death-cloud", hitSound: "spells/death-cloud" },
   "veteran-storm-link": { affect: [{ key: "lightning-bolt" }], sound: "spells/lightning-bolt" },
+  "veteran-storm-link-2": { affect: [{ key: "lightning-bolt" }], sound: "spells/lightning-bolt" },
   "veteran-phoenix-nest": { sound: "spells/teleport" },
   // Lethal-save sources (Alamar's specialty, the Resurrection spell and the
   // Archangels' once-per-combat cancel) all emit the "resurrection" ability
@@ -801,9 +904,10 @@ export const unitShotFxPlans: Record<string, SpellFxPlan> = {
   orcs: { projectile: "axe-shot-phases" },
   lizardmen: { projectile: "spear-shot-phases" },
   halflings: { projectile: "stone-shot-phases" },
+  gremlins: { projectile: "stone-shot-phases" },
   cyclopes: { projectile: "boulder-shot-phases" },
   magogs: { projectile: "fireball-shot-phases" },
-  liches: { projectile: "death-cloud-shot-phases" },
+  liches: { projectile: "lich-death-cloud-shot-phases" },
   dracolich: { projectile: "death-cloud-shot-phases" },
   storm_elementals: { projectile: "titan-shot-phases" },
   ice_elementals: { projectile: "ice-shot-phases" },
@@ -819,6 +923,12 @@ export const unitShotFxPlans: Record<string, SpellFxPlan> = {
   zealots: { projectile: "zealot-shot-phases" },
   war_zealot: { projectile: "zealot-shot-phases" },
   wog_war_zealot: { projectile: "zealot-shot-phases" },
+  hild: { projectile: "evil-eye-shot-phases" },
+  maya: { projectile: "ice-shot-phases" },
+  cupi: { projectile: "arrow-shot-phases" },
+  disciplinary_committee: { projectile: "zealot-shot-phases" },
+  mio: { projectile: "magi-shot-phases" },
+  spider_overmind: { projectile: "plasma-shot-phases" },
   santa_gremlin: {
     projectile: "ice-shot-phases",
     sound: "spells/ice-bolt",
@@ -828,8 +938,9 @@ export const unitShotFxPlans: Record<string, SpellFxPlan> = {
 
 const factionShotProjectiles: Record<string, string> = {
   "doom.former_human": "blue-archive",
-  "doom.former_human_sergeant": "blue-archive",
+  "doom.former_human_sergeant": "shotgun",
   "doom.former_commando": "blue-archive",
+  "doom.spider_mastermind": "blue-archive",
   "doom.imp": "fireball",
   "doom.mancubus": "fireball",
   "doom.arachnotron": "plasma",
@@ -847,21 +958,102 @@ const factionShotProjectiles: Record<string, string> = {
   "little_busters.softball_club": "baseball",
 };
 
-/** Select the weapon before falling back to the ordinary arrow renderer. */
+const rapidFireShots: Record<string, number> = {
+  "doom.former_human": 3,
+  "doom.former_commando": 4,
+  "doom.spider_mastermind": 4,
+  "doom.arachnotron": 4,
+};
+
+/** Every commander can unlock Can Shoot, so every slug needs a real weapon. */
+const commanderShotFxPlans: Record<string, SpellFxPlan> = {
+  "commander:paladin": { projectile: "commander-holy-hammer-shot-phases" },
+  "commander:hierophant": { projectile: "magi-shot-phases" },
+  "commander:temple_guardian": { projectile: "titan-shot-phases" },
+  "commander:succubus": { projectile: "fireball-shot-phases" },
+  "commander:brute": { projectile: "boulder-shot-phases" },
+  "commander:soul_eater": { projectile: "death-cloud-shot-phases" },
+  "commander:ogre_leader": { projectile: "axe-shot-phases" },
+  "commander:shaman": { projectile: "ice-shot-phases" },
+  "commander:astral_spirit": { projectile: "titan-shot-phases" },
+  "commander:corsair": { projectile: "azur-lane-shot-phases", sound: "units/cannon-shoot" },
+  "commander:factory": { projectile: "plasma-shot-phases" },
+  "commander:bulwark": { projectile: "ice-shot-phases" },
+  "commander:ruler": { projectile: "magi-shot-phases" },
+  "commander:sword_saint": { projectile: "commander-spirit-blade-shot-phases" },
+  "commander:might_guy": { projectile: "kunai-shot-phases" },
+  "commander:belfast": { projectile: "azur-lane-shot-phases", sound: "units/cannon-shoot" },
+  "commander:demon_ancestor": { projectile: "death-cloud-shot-phases" },
+  "commander:kyousuke_natsume": { projectile: "baseball-shot-phases" },
+  "commander:ibuki": {
+    projectile: "blue-archive-shot-phases",
+    projectileCount: 4,
+    projectileIntervalMs: 55,
+    sound: "mgq/effects/gun2",
+  },
+  "commander:lion_el_jonson": { projectile: "commander-spirit-blade-shot-phases" },
+  "commander:sonya": { projectile: "magi-shot-phases" },
+};
+
+const groundFirearmVisualUnits = new Set([
+  "doom.former_human_sergeant",
+  "doom.spider_mastermind",
+]);
+
+const blueArchiveFirearmVisualUnits = new Set([
+  "blue_archive.nagisa", "blue_archive.aris", "blue_archive.shiroko",
+  "blue_archive.hina", "blue_archive.aru", "blue_archive.toki",
+  "blue_archive.azusa", "blue_archive.wakamo", "blue_archive.iori",
+  "blue_archive.mutsuki", "blue_archive.hasumi",
+]);
+
+/** Shooter presentation without changing the unit's engine attack type. */
+export function unitUsesProjectilePresentation(unitDefId: string | undefined): boolean {
+  return Boolean(
+    unitDefId &&
+    (blueArchiveFirearmVisualUnits.has(unitDefId) || groundFirearmVisualUnits.has(unitDefId))
+  );
+}
+
+/** Select the weapon before falling back to the phased ordinary arrow. */
 export function unitShotFxPlan(unitDefId: string | undefined): SpellFxPlan | undefined {
   if (!unitDefId) {
     return undefined;
   }
-  const bareName = unitDefId.split(".")[1] ?? unitDefId;
+  const commanderPlan = commanderShotFxPlans[unitDefId];
+  if (commanderPlan) {
+    return commanderPlan;
+  }
+  const bareName = unitDefId.split(/[.:]/).at(-1) ?? unitDefId;
+  const normalizedBareName = bareName.replace(/-/g, "_");
   const factionProjectile = factionShotProjectiles[unitDefId];
-  if (factionProjectile) return { projectile: `${factionProjectile}-shot-phases` };
+  if (factionProjectile) {
+    const projectileCount = rapidFireShots[unitDefId];
+    return {
+      projectile: `${factionProjectile}-shot-phases`,
+      ...(projectileCount ? { projectileCount, projectileIntervalMs: 58 } : {}),
+    };
+  }
+  if (unitDefId === "azur_lane.akagi") {
+    return { projectile: "anime-rocket-shot-phases", sound: "units/cannon-shoot" };
+  }
   if (unitDefId.startsWith("azur_lane.")) {
     return { projectile: "azur-lane-shot-phases", sound: "units/cannon-shoot" };
   }
   if (unitDefId.startsWith("blue_archive.")) {
-    return { projectile: "blue-archive-shot-phases", sound: "mgq/effects/gun2" };
+    return {
+      projectile: "blue-archive-shot-phases",
+      projectileCount: 4,
+      projectileIntervalMs: 55,
+      sound: "mgq/effects/gun2",
+    };
   }
-  return unitShotFxPlans[bareName] ?? unitShotFxPlans[bareName.replace(/^wog_/, "")];
+  if (unitDefId === "guardian:stockpile-cyclopes" || unitDefId.startsWith("reward:cyclopes:")) {
+    return { projectile: "boulder-shot-phases" };
+  }
+  return unitShotFxPlans[normalizedBareName]
+    ?? unitShotFxPlans[normalizedBareName.replace(/^wog_/, "")]
+    ?? { projectile: "arrow-shot-phases" };
 }
 
 /**
@@ -1021,10 +1213,17 @@ export function spriteDurationMs(key: string | undefined): number {
  * the sound playing under it have finished.
  */
 function projectileSegmentMs(plan: SpellFxPlan): number {
-  const flight = MAX_PROJECTILE_FLIGHT_MS;
+  const sheet = plan.projectile ? getFxSheet(plan.projectile) : undefined;
+  // Phased atlases include a 120ms launch and 300ms embedded contact phase in
+  // addition to travel. A separate hit sprite (Kud's Inferno) starts after all
+  // three, so the state reveal must remain gated through the complete sequence.
+  const flight = sheet?.projectilePhases
+    ? 120 + MAX_PROJECTILE_FLIGHT_MS + 300
+    : MAX_PROJECTILE_FLIGHT_MS;
+  const volleyTail = Math.max(0, (plan.projectileCount ?? 1) - 1) * (plan.projectileIntervalMs ?? 60);
   // The cast sound fires as the bolt launches; the hit sprite + hit sound land
   // when it arrives (after the flight).
-  return Math.max(
+  return volleyTail + Math.max(
     flight + spriteDurationMs(plan.hit),
     soundDurationMs(plan.sound),
     flight + soundDurationMs(plan.hitSound)

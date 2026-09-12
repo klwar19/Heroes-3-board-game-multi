@@ -1,4 +1,6 @@
 import { cardLibrary } from "@/data/cards/library";
+import { evaluateUnitAbility, abilityDamageValue, abilityHealValue, activationUtilityValue } from "./unit-ability-value";
+import { getEnchanterActivationAbility } from "../unit-abilities";
 import type { GameAction, GameState, PendingChoice } from "../state";
 import { isAdjacent } from "../battlefield";
 import { cardKeepValue, crownsAvailable } from "./card-policy";
@@ -231,6 +233,35 @@ function scoreAbilityTarget(
     choice?.type === "ABILITY_TARGET_CHOICE" &&
     choice.kind === "war-machine" &&
     choice.abilityId === "war_machine.catapult";
+  if (choice?.type === "ABILITY_TARGET_CHOICE" && choice.sourceUnitId) {
+    const source = combat.units[choice.sourceUnitId];
+    const state = observation.state as unknown as GameState;
+    if (source && (choice.kind === "couatl-invulnerability" || choice.kind === "automaton-cube")) {
+      const value = activationUtilityValue(state, source, choice.kind);
+      return value > 0 ? CHOICE_BASE + 10 + value * 8 : CHOICE_BASE - 60;
+    }
+    if (source && choice.kind === "place-token" && choice.abilityId) {
+      const result = evaluateUnitAbility(state, { type: "USE_UNIT_ABILITY", playerId: source.controllerId,
+        unitId: source.id, abilityId: choice.abilityId, target: { type: "unit", unitId: unit.id } });
+      return result && result.value > 0 ? CHOICE_BASE + 10 + result.value * 8 : CHOICE_BASE - 60;
+    }
+    // Equal non-lethal chip damage must still prefer the bigger threat (the
+    // ranking the shared threat-based scorer below always applied).
+    const threatTiebreak = Math.min(30, Math.round(unitThreatValue(unit) / 4));
+    if (source && choice.kind === "dreadnought-splash") {
+      const value = abilityDamageValue(unit, choice.chainRemainingDamages?.[0] ?? 0);
+      return source.controllerId === unit.controllerId || value <= 0 ? CHOICE_BASE - 60
+        : CHOICE_BASE + 10 + value * 8 + threatTiebreak;
+    }
+    if (source && (choice.kind === "flat-damage" || choice.kind === "commander-overflow-zap")) {
+      const value = abilityDamageValue(unit, choice.amount ?? 1);
+      return source.controllerId === unit.controllerId ? CHOICE_BASE - 40 - value * 8 :
+        value > 0 ? CHOICE_BASE + 10 + value * 8 + threatTiebreak : CHOICE_BASE - 20;
+    }
+    if (source && choice.kind === "enchanter-activation") {
+      return CHOICE_BASE + 10 + abilityHealValue(state, unit, getEnchanterActivationAbility(source)?.healAmount ?? 0) * 8;
+    }
+  }
   const isDamagePick =
     choice?.type === "ABILITY_TARGET_CHOICE" &&
     (choice.kind === "flat-damage" ||

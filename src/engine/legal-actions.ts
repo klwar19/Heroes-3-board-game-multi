@@ -7161,6 +7161,33 @@ function placeTokenCommandLabel(
   return `${unitName}: ${abilityName} — place it on ${sideWord} unit (${amount >= 0 ? "+" : ""}${amount})`;
 }
 
+/** Board-only abilities can be offered to the automatic neutral seat without
+ * borrowing a human controller's hand, army, resources or commander. Keep the
+ * player menu's original effect-specific legality as the single offer path. */
+export function getAutomaticNeutralAbilityActions(state: GameState, unit: CombatUnitState): LegalAction[] {
+  const combat = state.combat;
+  if (!combat || combat.activeUnitId !== unit.id || unit.activatedThisRound ||
+      unit.attackedThisActivation || unitIsBerserk(state.activeEffects, unit)) return [];
+  const boardEffects = new Set([
+    "PLACE_TOKEN_ACTION", "ACTIVATION_ATTACK_BUFF", "MGQ_WHITE_MAGIC_ACTION",
+    "MGQ_MAGE_MAGIC_ARROW_ACTION", "MARK_ENEMY_FOR_NEXT_FRIENDLY_ATTACK",
+    "PLACE_ADJACENT_OBSTACLE_ACTION",
+  ]);
+  const actor = { ...unit, abilities: getUnitAbilityDefinitions(unit)
+    .filter(ability => ability.effect && boardEffects.has(ability.effect.type)).map(ability => ability.id) };
+  const actions: LegalAction[] = [];
+  addUnitAbilityActions(actions, state, unit.controllerId, actor);
+  const splash = getSplashAllocationAttack(unit);
+  if (splash && Object.values(combat.units).some(target => isUnitAlive(target) &&
+      target.controllerId !== unit.controllerId && isAdjacent(unit.position, target.position) && !isArrowTowerUnit(target))) {
+    actions.push({ label: `${unit.name}: ${splash.abilityName}`, action: {
+      type: "USE_UNIT_ABILITY", playerId: unit.controllerId, unitId: unit.id,
+      abilityId: splash.abilityId, target: { type: "none" },
+    } });
+  }
+  return actions;
+}
+
 function addUnitAbilityActions(
   actions: LegalAction[],
   state: GameState,
@@ -7839,11 +7866,9 @@ function addBerserkUnitActions(
 }
 
 /**
- * The token-placement "other actions" a CONTROLLED neutral guard may use in the
- * FREE-play menu (user rule "mode free: do whatever" — including "use token"):
- * the Ogres' Bloodlust Attack token and the Sorceresses' Weakness token
- * (`PLACE_TOKEN_ACTION`). These are the one guard "other action" that reads only
- * the guard's OWN side (`activeUnit.controllerId`), so they are neutral-safe. The
+ * Board-only abilities a CONTROLLED neutral guard may use in the FREE-play
+ * menu. Targets and benefits use the guard's OWN side, just as for automatic
+ * neutrals. The
  * deck-digging (Genie Wish) and Summon Demons other-actions stay OFF a controlled
  * guard — they read the CONTROLLER's own deck / removed units, not the neutral
  * side, so handing them over would be a bug/exploit, and the AI never used them.
@@ -7853,63 +7878,16 @@ function addBerserkUnitActions(
  * choice it opens is a NEUTRAL-owned choice the pump hands back to the controller
  * — exactly like the guards' [activation] follow-ups.
  */
-function addControlledNeutralTokenActions(
+function addControlledNeutralAbilityActions(
   actions: LegalAction[],
   state: GameState,
   playerId: PlayerId,
   activeUnit: CombatUnitState,
 ): void {
-  const combat = state.combat;
-  // A token "other action" is used INSTEAD of moving/attacking — never once the
-  // guard has begun to move (mirrors addUnitAbilityActions' own gate).
-  if (!combat || activeUnit.movedThisActivation) {
-    return;
-  }
-
-  for (const ability of getUnitAbilityDefinitions(activeUnit)) {
-    if (
-      ability.implementationStatus !== "implemented" ||
-      ability.effect?.type !== "PLACE_TOKEN_ACTION"
-    ) {
-      continue;
+  for (const entry of getAutomaticNeutralAbilityActions(state, activeUnit)) {
+    if (entry.action.type === "USE_UNIT_ABILITY") {
+      actions.push({ ...entry, action: { ...entry.action, playerId } });
     }
-    const effect = ability.effect;
-    const hasCandidate = Object.values(combat.units).some((target) => {
-      const sideOk =
-        effect.targets === "any" ||
-        (effect.targets === "friendly" &&
-          target.controllerId === activeUnit.controllerId) ||
-        (effect.targets === "enemy" &&
-          target.controllerId !== activeUnit.controllerId);
-      return (
-        sideOk &&
-        isUnitAlive(target) &&
-        // Enemy-DEBUFF tokens (Sorceresses' Weakness) may land on the Arrow
-        // Tower; friendly BUFFS still skip it. Matches the enforcement above.
-        (effect.targets === "enemy" || !isArrowTowerUnit(target)) &&
-        (!effect.adjacentOnly ||
-          isAdjacent(activeUnit.position, target.position)) &&
-        (!effect.targetTypes || effect.targetTypes.includes(target.type))
-      );
-    });
-    if (!hasCandidate) {
-      continue;
-    }
-    actions.push({
-      label: placeTokenCommandLabel(
-        activeUnit.name,
-        ability.name,
-        effect.targets,
-        effect.amount,
-      ),
-      action: {
-        type: "USE_UNIT_ABILITY",
-        playerId,
-        unitId: activeUnit.id,
-        abilityId: ability.id,
-        target: { type: "none" },
-      },
-    });
   }
 }
 
@@ -7924,8 +7902,8 @@ function addControlledNeutralTokenActions(
  *    enemy — never Defend, never a token "other action", never wander to buy
  *    time; it holds only when boxed in. (A bank guard must attack too.)
  *  - FREE mode: "do whatever" — move anywhere legal, attack, Defend, hold, AND
- *    use the guard's token "other actions" (Bloodlust / Weakness tokens; see
- *    addControlledNeutralTokenActions). A bank guard "keeps its corner as start
+ *    use the guard's board-only abilities (see
+ *    addControlledNeutralAbilityActions). A bank guard "keeps its corner as start
  *    but can do whatever it wants".
  *
  * A WOG Werewolf's Astrologers-round frenzy forces the must-attack menu even
@@ -8024,7 +8002,7 @@ function addControlledNeutralUnitActions(
         action: { type: "DEFEND_UNIT", playerId, unitId: activeUnit.id },
       });
     }
-    addControlledNeutralTokenActions(actions, state, playerId, activeUnit);
+    addControlledNeutralAbilityActions(actions, state, playerId, activeUnit);
     maybeAddControlledNeutralWait(actions, state, playerId, activeUnit);
     actions.push(hold);
     return;

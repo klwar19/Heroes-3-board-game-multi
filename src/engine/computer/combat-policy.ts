@@ -1,4 +1,5 @@
 import { coreUnitDefinitions } from "@/data/factions/units";
+import { bestAttackOpportunity, evaluateUnitAbility } from "./unit-ability-value";
 import { unitAbilities } from "@/data/units/abilities";
 import { getUnitSide } from "../adventure";
 import { commanderAdjacentAllies, commanderCastOf } from "../commanders";
@@ -1027,6 +1028,25 @@ export function scoreCombatAction(
 ): ComputerActionScore | null {
   const combat: CombatState | null = observation.state.combat;
   if (!combat) return null;
+
+  if (action.type === "USE_UNIT_ABILITY" || action.type === "SUMMON_DEMONS" || action.type === "USE_GENIE_DECK_DRAW") {
+    const state = observation.state as unknown as GameState;
+    const value = evaluateUnitAbility(state, action);
+    const actor = combat.units[action.unitId];
+    if (value && actor) {
+      if (value.value <= 0) return { score: 350, policy: "combat.ability-no-benefit" };
+      if (value.free) return { score: 890 + Math.min(9, value.value), policy: "combat.free-unit-ability" };
+      const opportunity = bestAttackOpportunity(state, actor);
+      const bestAttackScore = Math.max(550, ...observation.legalActions.flatMap(({ action: candidate }) => {
+        if ((candidate.type !== "ATTACK_UNIT" && candidate.type !== "MOVE_AND_ATTACK_UNIT") || candidate.attackerId !== actor.id) return [];
+        const target = combat.units[candidate.defenderId];
+        return target ? [attackScore(combat, actor.controllerId, actor, target,
+          candidate.type === "MOVE_AND_ATTACK_UNIT" ? candidate.destination : actor.position, state)] : [];
+      }));
+      return { score: Math.max(410, Math.min(885, bestAttackScore + (value.value - opportunity) * 24)),
+        policy: "combat.unit-ability-value" };
+    }
+  }
 
   switch (action.type) {
     case "PLACE_COMBAT_UNIT":

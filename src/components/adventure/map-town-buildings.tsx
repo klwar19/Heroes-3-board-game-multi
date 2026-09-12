@@ -20,9 +20,10 @@
 // never an empty window.
 // ---------------------------------------------------------------------------
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { Landmark, X } from "lucide-react";
+import { ChevronUp, Landmark, Minus, X } from "lucide-react";
 
 import { coreBuildingDefinitions, coreFactionDefinitions } from "@/data/factions/core";
 import type { TownBuildingDefinition } from "@/data/factions/types";
@@ -98,10 +99,31 @@ export function MapTownBuildingsDock({
   onAction: (action: GameAction) => void;
 }) {
   const [open, setOpen] = useState(false);
+  // A map-screen utility window, not a blocking modal: the player keeps the map
+  // visible, can drag it out of the way (desktop) and minimize it to a title bar
+  // so a long action list never sits on top of the board.
+  const [minimized, setMinimized] = useState(false);
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const [isPhone, setIsPhone] = useState(false);
+  const windowRef = useRef<HTMLElement | null>(null);
+  const dragRef = useRef<{ dx: number; dy: number } | null>(null);
   const buildings = actionableTownBuildings(state, viewerPlayerId, legalActions);
 
-  // Esc closes the window (matches the game's other modals). Registered
-  // unconditionally so hook order never depends on `open`.
+  // Phone layout is a fixed bottom sheet (CSS-driven), so drag is disabled and
+  // inline positioning is skipped there. Guarded for jsdom, where matchMedia is
+  // absent. Registered unconditionally so hook order never depends on `open`.
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return;
+    }
+    const mq = window.matchMedia("(max-width: 640px)");
+    const apply = () => setIsPhone(mq.matches);
+    apply();
+    mq.addEventListener?.("change", apply);
+    return () => mq.removeEventListener?.("change", apply);
+  }, []);
+
+  // Esc closes the window (matches the game's other dialogs).
   useEffect(() => {
     if (!open) {
       return;
@@ -114,6 +136,46 @@ export function MapTownBuildingsDock({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
+
+  // Drag the window by its title bar (desktop only). Ignores drags that begin on
+  // a control button so the minimize / close hit-targets still click. Position is
+  // clamped so the bar can never be dragged fully off-screen.
+  const onBarPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) => {
+      if (isPhone || (event.target as HTMLElement).closest("button")) {
+        return;
+      }
+      const el = windowRef.current;
+      if (!el) {
+        return;
+      }
+      const rect = el.getBoundingClientRect();
+      dragRef.current = { dx: event.clientX - rect.left, dy: event.clientY - rect.top };
+      setPos({ x: rect.left, y: rect.top });
+      const onMove = (moveEvent: PointerEvent) => {
+        if (!dragRef.current) {
+          return;
+        }
+        const width = el.offsetWidth;
+        const maxX = Math.max(6, window.innerWidth - width - 6);
+        const x = Math.min(Math.max(6, moveEvent.clientX - dragRef.current.dx), maxX);
+        const y = Math.min(
+          Math.max(6, moveEvent.clientY - dragRef.current.dy),
+          Math.max(6, window.innerHeight - 44)
+        );
+        setPos({ x, y });
+      };
+      const onUp = () => {
+        dragRef.current = null;
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      event.preventDefault();
+    },
+    [isPhone]
+  );
 
   // Nothing to use right now → no button (never an empty window). If a window was
   // left open when the last action was spent, it closes on the next render.
@@ -129,6 +191,11 @@ export function MapTownBuildingsDock({
       ? `Use ${buildings[0].name}`
       : `Use town buildings (${buildings.length})`;
 
+  // Desktop: honour the dragged position and drop the CSS bottom-right anchor.
+  // Phone / un-dragged: let CSS place it.
+  const windowStyle: CSSProperties =
+    !isPhone && pos ? { left: pos.x, top: pos.y, right: "auto", bottom: "auto" } : {};
+
   return (
     <section aria-label="Town building actions" className="heroActionsDock mapTownBuildingsDock">
       <header>Town buildings</header>
@@ -136,7 +203,10 @@ export function MapTownBuildingsDock({
         aria-haspopup="dialog"
         aria-expanded={open}
         className="heroActionButton mapTownBuildingsButton actionable"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          setOpen(true);
+          setMinimized(false);
+        }}
         title="Use your town's special building actions from the map — Cover of Darkness, Castle Gate, the Blacksmith, the Mage Guild, the City Hall choice, and more"
         type="button"
       >
@@ -152,49 +222,66 @@ export function MapTownBuildingsDock({
       </button>
       {open && typeof document !== "undefined"
         ? createPortal(
-            <div
+            <section
               aria-label="Town building actions"
-              aria-modal="true"
-              className="modalBackdrop mapTownBuildingsBackdrop"
-              onClick={() => setOpen(false)}
+              className={`mapTownBuildingsWindow${minimized ? " minimized" : ""}${isPhone ? " phone" : ""}`}
+              ref={windowRef}
               role="dialog"
+              style={windowStyle}
             >
-              <section
-                className="objectiveModal mapTownBuildingsModal"
-                onClick={(event) => event.stopPropagation()}
+              <header
+                className="mapTownBuildingsBar"
+                onPointerDown={onBarPointerDown}
+                title={isPhone ? undefined : "Drag to move"}
               >
-                <button
-                  className="heroInfoClose"
-                  onClick={() => setOpen(false)}
-                  title="Close"
-                  type="button"
-                >
-                  <X size={16} />
-                </button>
-                <header className="objectiveModalHead mapTownBuildingsHead">
-                  <Landmark aria-hidden size={22} />
-                  <div>
-                    <span>TOWN BUILDINGS</span>
-                    <h2>Use a building</h2>
+                <span className="mapTownBuildingsBarTitle">
+                  <Landmark aria-hidden size={16} />
+                  Town buildings
+                  {buildings.length > 1 ? (
+                    <em className="mapTownBuildingsCount">{buildings.length}</em>
+                  ) : null}
+                </span>
+                <span className="mapTownBuildingsBarControls">
+                  <button
+                    aria-label={minimized ? "Expand" : "Minimize"}
+                    className="mapTownBuildingsBarBtn"
+                    onClick={() => setMinimized((value) => !value)}
+                    title={minimized ? "Expand" : "Minimize"}
+                    type="button"
+                  >
+                    {minimized ? <ChevronUp size={15} /> : <Minus size={15} />}
+                  </button>
+                  <button
+                    aria-label="Close"
+                    className="mapTownBuildingsBarBtn"
+                    onClick={() => setOpen(false)}
+                    title="Close"
+                    type="button"
+                  >
+                    <X size={15} />
+                  </button>
+                </span>
+              </header>
+              {minimized ? null : (
+                <div className="mapTownBuildingsBody">
+                  <p className="objectiveRuleSummary mapTownBuildingsIntro">
+                    Special actions your town offers right now — trigger them here without opening the town window.
+                  </p>
+                  <div className="mapTownBuildingsList">
+                    {buildings.map((building) => (
+                      <BuildingDetailPanel
+                        building={building}
+                        key={building.id}
+                        legalActions={legalActions}
+                        onAction={onAction}
+                        state={state}
+                        viewerPlayerId={viewerPlayerId}
+                      />
+                    ))}
                   </div>
-                </header>
-                <p className="objectiveRuleSummary mapTownBuildingsIntro">
-                  Special actions your town offers right now — trigger them here without opening the town window.
-                </p>
-                <div className="mapTownBuildingsList">
-                  {buildings.map((building) => (
-                    <BuildingDetailPanel
-                      building={building}
-                      key={building.id}
-                      legalActions={legalActions}
-                      onAction={onAction}
-                      state={state}
-                      viewerPlayerId={viewerPlayerId}
-                    />
-                  ))}
                 </div>
-              </section>
-            </div>,
+              )}
+            </section>,
             document.body
           )
         : null}

@@ -1,4 +1,5 @@
 import { townCombatStart } from "./town-veterancy";
+import { placeRandomTownFormation } from "./random-town-tactics";
 import { heroGradePickBlockReason } from "./hero-grade-picking";
 import { cardLibrary } from "@/data/cards/library";
 import { neutralCombatStart } from "./neutral-veterancy";
@@ -9557,7 +9558,7 @@ export function revealNeutralArmy(
     state.adventure?.fields[combat.context.fieldId]?.location === "random_town" &&
     houseRuleEnabled(state, "random-town-veteran-defense")
   ) {
-    placeCoordinatedRandomTownGuards(neutralUnits);
+    placeRandomTownFormation(state, combat, neutralUnits, DEFENDER_FRONTLINE, DEFENDER_BACKLINE);
   } else {
     placeNeutralUnits(neutralUnits, DEFENDER_BACKLINE, DEFENDER_FRONTLINE);
   }
@@ -9632,30 +9633,6 @@ export function revealNeutralArmy(
     return;
   }
   finalizeCombatStart(state);
-}
-
-/**
- * Coordinated Random Town setup: the most valuable guard anchors a central
- * back-row cell, ranged support fills the remaining back row, and the toughest
- * melee bodies take the central front cells first as a screen. This remains a
- * pure deterministic sort so reconnects/replays produce the identical board.
- */
-function placeCoordinatedRandomTownGuards(units: CombatUnitState[]): void {
-  const value = (unit: CombatUnitState): number =>
-    unit.attack * 3 + unit.maxHealth * 2 + unit.defense + unit.initiative +
-    ({ bronze: 0, silver: 12, gold: 24, azure: 36 }[unit.grade] ?? 0) +
-    (unit.type === "ranged" ? 8 : 0);
-  const ordered = [...units].sort((left, right) => value(right) - value(left) || left.id.localeCompare(right.id));
-  const protectedUnit = ordered.shift();
-  const back = [DEFENDER_BACKLINE[1], DEFENDER_BACKLINE[2], DEFENDER_BACKLINE[0], DEFENDER_BACKLINE[3]];
-  const front = [DEFENDER_FRONTLINE[1], DEFENDER_FRONTLINE[2], DEFENDER_FRONTLINE[0], DEFENDER_FRONTLINE[3]];
-  if (protectedUnit) protectedUnit.position = back.shift()!;
-  for (const unit of ordered.filter((candidate) => candidate.type === "ranged")) {
-    unit.position = (back.shift() ?? front.shift())!;
-  }
-  for (const unit of ordered.filter((candidate) => candidate.type !== "ranged")) {
-    unit.position = (front.shift() ?? back.shift())!;
-  }
 }
 
 /**

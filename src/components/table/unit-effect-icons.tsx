@@ -80,6 +80,8 @@ function describeModifier(modifier: ActiveEffectModifier): string | null {
       return `movement limited to ${modifier.amount} spaces through the next activation`;
     case "FIRE_SHIELD":
       return `burns adjacent attackers for ${modifier.amount}`;
+    case "UNIT_ABILITY_SUPPRESSED":
+      return "cannot use special abilities";
     default:
       return null;
   }
@@ -218,6 +220,9 @@ export function unitEffectIcons(state: GameState, unit: CombatUnitState): UnitEf
   );
   for (const effect of [...ongoingCardEffects, ...broadScopeCardEffects]) {
     const card = effect.source.type === "card" ? cardLibrary[effect.source.cardId] : undefined;
+    const details = effect.modifiers
+      .map(describeModifier)
+      .filter((detail): detail is string => Boolean(detail));
     const rounds =
       effect.expiresAtCombatRoundEnd !== undefined && state.combat
         ? Math.max(1, effect.expiresAtCombatRoundEnd - state.combat.round + 1)
@@ -231,7 +236,7 @@ export function unitEffectIcons(state: GameState, unit: CombatUnitState): UnitEf
       counter: rounds === undefined ? undefined : String(rounds),
       label: `${card?.name ?? effect.name} — ongoing on ${unit.cardName}${
         rounds === undefined ? "" : ` (${rounds} ${rounds === 1 ? "round/activation" : "rounds"} remaining)`
-      }`
+      }${details.length > 0 ? `: ${details.join(", ")}` : ""}`
     });
   }
 
@@ -268,12 +273,9 @@ export function unitEffectIcons(state: GameState, unit: CombatUnitState): UnitEf
  * no defense token and no tagged effect, so an ordinary battlefield card keeps
  * exactly the DOM it has always had.
  *
- * LIMIT: the rail is `pointer-events: none` (like its `.boardCardStatTokens`
- * sibling) so it can never swallow a click meant for the battlefield cell it
- * hangs in — which also means the browser does not fire the native `title`
- * tooltip on hover. The `title` is kept as the element's accessible text (and
- * the DOM contract the tests pin); the icon itself is the at-a-glance signal and
- * the unit inspector stays the full text surface.
+ * The rail itself stays pointer-transparent, while each icon opts back into
+ * pointer events so its native title tooltip works. A click still bubbles to the
+ * battlefield cell and opens the normal unit inspector.
  */
 export function UnitEffectIcons({ state, unit }: { state: GameState; unit: CombatUnitState }) {
   const icons = unitEffectIcons(state, unit);

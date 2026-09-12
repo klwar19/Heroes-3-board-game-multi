@@ -1,4 +1,6 @@
 import { customTownAfterAttack, customTownActivation } from "./custom-town-veterancy";
+import { randomTownTokenValue } from "./random-town-tactics";
+import { abilityDamageValue, abilityHealValue, activationUtilityValue } from "./computer/unit-ability-value";
 import { townVeterancy, townAttackBonus, townDefenseBonus, townDefenseToken, townAfterAttack, townSpellCast, townBound, townMovement, townActivation, townCombatRoundStart, townAllowsRangedRetaliation, townHasUnstoppableRetaliation } from "./town-veterancy";
 import { cardLibrary } from "@/data/cards/library";
 import { factionVeterancy, twilightWardReduction } from "./unit-abilities";
@@ -2268,6 +2270,16 @@ function createActiveEffect(
     target,
   );
   state.activeEffects.push(activeEffect);
+  // Ability suppression must become authoritative immediately. Some card
+  // resolutions continue inside the same reducer action, before the shared
+  // reducer tail gets a chance to refresh derived combat-unit flags.
+  if (
+    activeEffect.modifiers.some(
+      (modifier) => modifier.type === "UNIT_ABILITY_SUPPRESSED",
+    )
+  ) {
+    syncAbilitySuppression(state);
+  }
   appendActiveEffectCreatedEvent(state, activeEffect);
   return activeEffect;
 }
@@ -15131,7 +15143,7 @@ function applyNeutralActivationAbility(
     const candidates = enchanterHealCandidates(combat, unit, enchant);
     if (candidates.length > 0) {
       const target = candidates.reduce((best, candidate) =>
-        candidate.damage > best.damage ? candidate : best,
+        abilityHealValue(state, candidate, enchant.healAmount) > abilityHealValue(state, best, enchant.healAmount) ? candidate : best,
       );
       applyEnchanterHeal(state, unit, target, enchant);
     } else {
@@ -15511,7 +15523,7 @@ function resolvePropheticDreamChoice(
  * end of every action so it never collides with reaction windows, war-machine
  * round-starts or the neutral pump.
  */
-export function maybeOpenPlayerActivationChoice(state: GameState): void {
+export function maybeOpenPlayerActivationChoice(state: GameState, automaticNeutralUtility = false): void {
   const combat = state.combat;
   if (
     !combat ||
@@ -15535,7 +15547,7 @@ export function maybeOpenPlayerActivationChoice(state: GameState): void {
     !unit ||
     !isUnitAlive(unit) ||
     !chooser ||
-    chooser === NEUTRAL_PLAYER_ID ||
+    (chooser === NEUTRAL_PLAYER_ID && !automaticNeutralUtility) ||
     unit.activatedThisRound ||
     unit.activationAbilityDone ||
     unit.movedThisActivation ||
@@ -32742,9 +32754,26 @@ function autoResolveNeutralAbilityChoice(
     (unit) => unit.controllerId !== source.controllerId,
   );
   const pool = enemies.length > 0 ? enemies : candidates;
-  const sorted = sortNeutralTargetCandidates(combat, source, pool);
+  if (choice.kind === "couatl-invulnerability" || choice.kind === "automaton-cube") {
+    chooseAbilityTarget(state, { type: "CHOOSE_ABILITY_TARGET", playerId: NEUTRAL_PLAYER_ID, choiceId: choice.id,
+      targetUnitId: activationUtilityValue(state, source, choice.kind) > 0 ? source.id : "skip" }, cards);
+    return true;
+  }
+  if (choice.kind === "dreadnought-splash") {
+    const amount = choice.chainRemainingDamages?.[0] ?? 0;
+    const target = [...enemies].sort((left, right) => abilityDamageValue(right, amount) - abilityDamageValue(left, amount))[0];
+    chooseAbilityTarget(state, { type: "CHOOSE_ABILITY_TARGET", playerId: NEUTRAL_PLAYER_ID,
+      choiceId: choice.id, targetUnitId: target && abilityDamageValue(target, amount) > 0 ? target.id : "skip" }, cards);
+    return true;
+  }
+  const tokenAbility = choice.kind === "place-token"
+    ? getUnitAbilityDefinitions(source).find(ability => ability.id === choice.abilityId)?.effect : undefined;
+  const tacticalToken = tokenAbility?.type === "PLACE_TOKEN_ACTION";
+  const sorted = tacticalToken
+    ? [...candidates].sort((left, right) => randomTownTokenValue(state, source, right, tokenAbility) - randomTownTokenValue(state, source, left, tokenAbility))
+    : sortNeutralTargetCandidates(combat, source, pool);
   const target =
-    enemies.length > 0
+    tacticalToken || enemies.length > 0
       ? sorted[0]
       : // Forced friendly hit: spare the strongest — hit the lowest tier,
         // farthest, lowest position.
@@ -34764,6 +34793,15 @@ function executeNeutralActivation(
   // Enchanters take +1 Attack, Faerie Dragons zap their normal target (and may
   // end the combat outright). It never ends the activation otherwise.
   if (!unit.activationAbilityDone) {
+    // These board-only activation choices share the player resolver, including
+    // Key Authority, once-per-combat limits and whether they consume the turn.
+    // Earlier activation families keep their existing automatic dispatch.
+    if (!getEnchanterActivationAbility(unit) && !getActivationDamageSpellAbility(unit, spellAbilitiesSuppressed(state)) &&
+        !getUnitAbilityDefinitions(unit).some(ability => ability.effect && ["TELEPORT_ANY_AT_ACTIVATION", "PLACE_SPLASH_MINE_AT_ACTIVATION", "ACTIVATION_CHOOSE_ATTACK_OR_DEFENSE"].includes(ability.effect.type)) &&
+        (getInvulnerabilityActivation(unit) || getPlaceFactionCubeActivation(unit))) {
+      maybeOpenPlayerActivationChoice(state, true);
+      if (state.pendingChoice || state.reactionWindow || unit.activatedThisRound) return;
+    }
     const neutralActivation = getUnitAbilityDefinitions(unit).find(
       (ability) =>
         ability.effect?.type === "ON_ACTIVATION_HEAL_FRIENDLY_OR_BUFF_SELF" ||
@@ -34876,6 +34914,19 @@ function executeNeutralActivation(
 
   if (intent.kind === "pass") {
     passNeutralActivation(state, unit);
+    return;
+  }
+
+  if (intent.kind === "unit-action") {
+    // Keep target selection behind the normal ability dispatcher, including
+    // any Key Authority interruption. Deferred picks use the same evaluator.
+    applyUnitAbilityAction(state, intent.action);
+    const choice = state.pendingChoice;
+    if (intent.targetUnitId && choice?.type === "ABILITY_TARGET_CHOICE" && choice.kind === "place-token" &&
+        choice.sourceUnitId === unit.id && choice.candidateUnitIds.includes(intent.targetUnitId)) {
+      chooseAbilityTarget(state, { type: "CHOOSE_ABILITY_TARGET", playerId: unit.controllerId,
+        choiceId: choice.id, targetUnitId: intent.targetUnitId }, cards);
+    }
     return;
   }
 
@@ -34992,6 +35043,11 @@ function previewNeutralIntent(
 ): NonNullable<NonNullable<CombatState["pendingNeutralStep"]>["intent"]> {
   const intent = planNeutralActivation(state, combat, unit);
   switch (intent.kind) {
+    case "unit-action": {
+      const targetId = intent.targetUnitId ?? (intent.action.target.type === "unit" ? intent.action.target.unitId : undefined);
+      return { kind: "ability", abilityName: getUnitAbilityDefinitions(unit).find(ability => ability.id === intent.action.abilityId)?.name,
+        targetUnitId: targetId, targetName: targetId ? combat.units[targetId]?.name : undefined };
+    }
     case "attack":
     case "move-and-attack": {
       const target = combat.units[intent.defenderId];
@@ -35881,6 +35937,14 @@ function applyActionInContext(
     base = cloneState(state);
     ensureUniqueArmyUnitIds(base);
   }
+
+  // Rebuild this derived flag before legality or resolution reads any unit
+  // ability. Hosted rooms and parallel projections can be restored from a
+  // snapshot whose active effect is authoritative while the cached unit flag
+  // is absent or stale; in that state Disrupting Ray used to leave reactions
+  // such as Archangels' Resurrection legal and automatic saves such as Phoenix
+  // Rebirth live.
+  syncAbilitySuppression(base);
 
   const legalError = isHandlerValidated(base, action)
     ? null
@@ -36961,6 +37025,11 @@ function applyActionInContext(
     // Per-turn clock (10-minute budget): stamp/re-stamp/drop each seat's
     // turn-open clock from the post-action turn state (see src/engine/afk.ts).
     applyTurnClockBookkeeping(nextState, options.now, turnClockPausedBefore);
+
+    // Automatic follow-ups may replace or rebuild a combat unit after the
+    // earlier synchronization pass. Persist the derived flags from the final
+    // active-effect state so the next legal-action read cannot observe a gap.
+    syncAbilitySuppression(nextState);
 
     return ok(nextState, startEventNumber);
   } finally {

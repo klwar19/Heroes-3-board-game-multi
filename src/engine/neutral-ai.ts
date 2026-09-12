@@ -1,17 +1,20 @@
 import { unitIsBerserk } from "./active-effects";
 import { getBattlefieldDistance } from "./battlefield";
 import { houseRuleEnabled } from "./house-rules";
+import { planRandomTownActivation } from "./random-town-tactics";
+import { bestAttackOpportunity, evaluateUnitAbility } from "./computer/unit-ability-value";
 import {
   canUnitAttack,
   canUnitMoveAndAttack,
   canUnitMoveTo,
   getBerserkNearestTargets,
   getLegalMoveDestinations,
+  getAutomaticNeutralAbilityActions,
   getPathDistances,
   isAdjacent,
   isUnitAlive
 } from "./legal-actions";
-import type { CombatState, CombatUnitState, GameState, UnitGrade, UnitId } from "./state";
+import type { CombatState, CombatUnitState, GameAction, GameState, UnitGrade, UnitId } from "./state";
 import { NEUTRAL_PLAYER_ID } from "./state";
 
 /**
@@ -374,6 +377,7 @@ export function sortNeutralTargetCandidates(
 }
 
 export type NeutralIntent =
+  | { kind: "unit-action"; action: Extract<GameAction, { type: "USE_UNIT_ABILITY" }>; targetUnitId?: UnitId }
   | { kind: "attack"; defenderId: string }
   | { kind: "move-and-attack"; destination: number; defenderId: string }
   | { kind: "move"; destination: number }
@@ -409,6 +413,39 @@ export function planNeutralActivation(
   forcedTargetId?: UnitId,
   forcedDestination?: number
 ): NeutralIntent {
+  // The full default plan (a whole-board search under the coordinated Random
+  // Town rule) is only computed when no ability wins, so an ability activation
+  // never pays for the planning it replaces.
+  if (forcedTargetId || forcedDestination !== undefined || unit.attackedThisActivation ||
+      unitIsBerserk(state.activeEffects, unit)) {
+    return planNeutralDefault(state, combat, unit, forcedTargetId, forcedDestination);
+  }
+  const projected = { ...state, combat };
+  const abilities = getAutomaticNeutralAbilityActions(projected, unit);
+  if (abilities.length === 0) return planNeutralDefault(state, combat, unit);
+  const attackValue = bestAttackOpportunity(projected, unit);
+  let value = Math.max(0.25, attackValue);
+  let intent: NeutralIntent | null = null;
+  for (const { action } of abilities) {
+    if (action.type !== "USE_UNIT_ABILITY") continue;
+    const evaluated = evaluateUnitAbility(projected, action);
+    if (!evaluated || evaluated.value <= 0) continue;
+    const candidateValue = evaluated.value + (evaluated.free ? attackValue + 1 : 0);
+    if (candidateValue > value) {
+      value = candidateValue;
+      intent = { kind: "unit-action", action, targetUnitId: evaluated.targetUnitId };
+    }
+  }
+  return intent ?? planNeutralDefault(state, combat, unit);
+}
+
+function planNeutralDefault(
+  state: GameState,
+  combat: CombatState,
+  unit: CombatUnitState,
+  forcedTargetId?: UnitId,
+  forcedDestination?: number
+): NeutralIntent {
   const coordinated = coordinatedRandomTownDefense(state, combat);
   // A neutral that already fired never repositions: its activation is over.
   if (unit.attackedThisActivation) {
@@ -435,6 +472,9 @@ export function planNeutralActivation(
     }
     // The chosen target is gone — fall through and re-plan from scratch.
   }
+
+  // The optional coordinated garrison compares trades, abilities and screens.
+  if (coordinated) return planRandomTownActivation(state, combat, unit);
 
   // Rulebook: a Neutral Unit "must always attack if possible." Choose only
   // among the enemies the unit can actually strike this activation, never

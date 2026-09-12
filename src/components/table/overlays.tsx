@@ -4329,6 +4329,8 @@ export function NeutralStepOverlay({
       summary = intent.targetName
         ? `${step.name} is about to attack your ${intent.targetName}.`
         : `${step.name} is about to attack.`;
+    } else if (intent?.kind === "ability") {
+      summary = `${step.name} is about to use ${intent.abilityName ?? "a unit ability"}${intent.targetName ? ` on ${intent.targetName}` : ""}.`;
     } else if (intent?.kind === "move") {
       summary = `${step.name} is about to move.`;
     } else {

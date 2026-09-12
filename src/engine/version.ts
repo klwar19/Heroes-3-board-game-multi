@@ -1260,7 +1260,28 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 //    tests; the bump makes a skewed edge/client show the version banner rather
 //    than silently resolving these differently.
 // `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 139;
+
+// v140 (2026-09-13): neutral-guard utility AI + Disrupting Ray hardening +
+// elemental veterancy tuning land together — each one makes an old worker
+// resolve a shared game differently from the new client:
+//  - Automatic neutral guards now USE board-only abilities (Ogre Bloodlust /
+//    Sorceress Weakness tokens, splash attacks, activation buffs) when the
+//    static valuation prefers them over the attack, and Couatl invulnerability /
+//    Automaton cube activations run through the player choice-resolver (Key
+//    Authority included); pendingNeutralStep.intent gains kind "ability". The
+//    coordinated Random-Town garrison gets a real formation optimizer and a
+//    trade-aware activation planner replacing the fixed sort.
+//  - Disrupting Ray: the derived `abilitiesSuppressed` flag is rebuilt before
+//    legality and again after every action's follow-ups, so a restored /
+//    projected room no longer lets a suppressed unit's Phoenix Rebirth,
+//    Archangel lethal save or Archdevil no-retaliation slip through.
+//  - Conflux Storm/Energy Elementals gain +1 HP at rank 1; Storm R4 Lightning
+//    Link breaks for 2 damage (new ability id `veteran-storm-link-2`).
+//  - Computer seats price unit abilities/token placements with the shared
+//    evaluator, and side buildings wait for the Gold Dwelling (Cove Pub /
+//    Freelancer's Guild at rock-bottom priority) — AI-only, folded in.
+// `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 140;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

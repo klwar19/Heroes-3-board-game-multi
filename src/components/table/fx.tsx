@@ -125,9 +125,11 @@ export type FxCue =
       delayMs?: number;
     }
   | {
-      /** A melee strike flash (placeholder slash) landing on a cell. */
+      /** An authored melee slash landing on a cell from the attacker's side. */
       kind: "slash";
       id: string;
+      fxKey: string;
+      from: string;
       at: string;
       delayMs?: number;
     }
@@ -191,7 +193,7 @@ const RANGED_RECOIL_MS = 440;
 /** The struck unit's recoil vibration. */
 const DEFENDER_SHAKE_MS = 360;
 /** The melee slash flash sweeping across the target. */
-const MELEE_SLASH_MS = 320;
+const MELEE_SLASH_MS = 400;
 /** The little burst where a projectile lands. */
 const PROJECTILE_IMPACT_MS = 260;
 /**
@@ -646,61 +648,63 @@ async function runShake(cue: Extract<FxCue, { kind: "shake" }>): Promise<void> {
   );
 }
 
-/**
- * A melee strike landing: a bright slash streak sweeps across the target cell
- * with an impact spark at its center. Anchored to the cell (not the unit) so it
- * still plays on a killing blow. Placeholder art — a real slash sprite can drop
- * straight into this handler later.
- */
+/** Plays the unit-appropriate melee-contact atlas over the defender. */
 async function runSlash(stage: HTMLElement, cue: Extract<FxCue, { kind: "slash" }>): Promise<void> {
+  const sheet = getFxSheet(cue.fxKey);
+  const fromRect = resolveAnchorRect(cue.from);
   const rect = resolveAnchorRect(cue.at);
-  if (!rect) {
+  if (!sheet || !fromRect || !rect) {
     return;
   }
-  const center = centerOf(rect);
-  const reach = Math.max(rect.width, rect.height);
-  const angle = -32 - Math.random() * 46;
+  const attacker = centerOf(fromRect);
+  const target = centerOf(rect);
+  const scale = Math.min(
+    (rect.width * 1.45) / sheet.frameWidth,
+    (rect.height * 1.45) / sheet.frameHeight,
+  );
+  const firesLeft = target.x < attacker.x;
+  const horizontalReach = cue.fxKey === "melee-thrust-impact" ? 1.7 : 1;
+  const frameOrder = sheet.frameOrder ?? Array.from({ length: sheet.frames }, (_, frame) => frame);
 
-  const container = document.createElement("div");
-  container.className = "fxSlash";
-  container.style.left = `${center.x}px`;
-  container.style.top = `${center.y}px`;
-  container.style.setProperty("--fx-slash-rot", `${angle}deg`);
-
-  const streak = document.createElement("div");
-  streak.className = "fxSlashStreak";
-  streak.style.width = `${reach * 1.15}px`;
-
-  const spark = document.createElement("div");
-  spark.className = "fxSlashSpark";
-
-  container.append(streak, spark);
-  stage.appendChild(container);
+  const sprite = document.createElement("div");
+  sprite.className = "fxSprite fxMeleeImpact";
+  sprite.style.width = `${sheet.frameWidth}px`;
+  sprite.style.height = `${sheet.frameHeight}px`;
+  sprite.style.backgroundImage = `url(${assetUrl(sheet.src)})`;
+  sprite.style.left = `${target.x - sheet.frameWidth / 2}px`;
+  sprite.style.top = `${target.y - sheet.frameHeight / 2}px`;
+  sprite.style.transform = `scale(${(firesLeft ? -scale : scale) * horizontalReach}, ${scale})`;
+  sprite.style.transformOrigin = "center";
+  stage.appendChild(sprite);
   playMeleeImpact();
 
   try {
-    await Promise.all([
-      animate(
-        streak,
-        [
-          { transform: "translate(-50%, -50%) translateX(-55%) scaleX(0.15)", opacity: 0, offset: 0 },
-          { transform: "translate(-50%, -50%) translateX(-12%) scaleX(1)", opacity: 1, offset: 0.35 },
-          { transform: "translate(-50%, -50%) translateX(22%) scaleX(1.05)", opacity: 0, offset: 1 }
-        ],
-        { duration: MELEE_SLASH_MS, easing: "cubic-bezier(0.2, 0.7, 0.3, 1)" }
-      ),
-      animate(
-        spark,
-        [
-          { transform: "translate(-50%, -50%) scale(0.3)", opacity: 0, offset: 0 },
-          { transform: "translate(-50%, -50%) scale(1)", opacity: 0.95, offset: 0.3 },
-          { transform: "translate(-50%, -50%) scale(1.5)", opacity: 0, offset: 1 }
-        ],
-        { duration: MELEE_SLASH_MS, easing: "ease-out" }
-      )
-    ]);
+    await new Promise<void>((resolve) => {
+      const started = performance.now();
+      const tick = (now: number) => {
+        if (!stage.isConnected) {
+          resolve();
+          return;
+        }
+        const elapsed = now - started;
+        if (elapsed >= MELEE_SLASH_MS) {
+          resolve();
+          return;
+        }
+        const sequenceIndex = Math.min(
+          frameOrder.length - 1,
+          Math.floor((elapsed / MELEE_SLASH_MS) * frameOrder.length),
+        );
+        const frame = frameOrder[sequenceIndex];
+        const col = frame % sheet.cols;
+        const row = Math.floor(frame / sheet.cols);
+        sprite.style.backgroundPosition = `-${col * sheet.frameWidth}px -${row * sheet.frameHeight}px`;
+        window.requestAnimationFrame(tick);
+      };
+      tick(started);
+    });
   } finally {
-    container.remove();
+    sprite.remove();
   }
 }
 
@@ -857,7 +861,16 @@ async function runPhasedProjectile(
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   const angle = Math.atan2(dy, dx) * 180 / Math.PI;
-  const mirror = Math.abs(angle) > 90 ? " scaleY(-1)" : "";
+  const firesLeft = dx < 0;
+  // Every authored phase atlas faces right. Keep the art upright while aiming
+  // it along the shot: a left-firing atlas is mirrored horizontally first,
+  // then only tilted by the screen-space slope. This also follows the board's
+  // seat flip because `dx` comes from the rendered source/target anchors.
+  const flightAngle = firesLeft ? angle - Math.sign(angle || 1) * 180 : angle;
+  const flightTransform = `rotate(${flightAngle}deg)${firesLeft ? " scaleX(-1)" : ""}`;
+  // Impact frames still contain the projectile/remnants, so they must retain
+  // the firing side even though the burst itself should no longer be tilted.
+  const impactTransform = firesLeft ? "scaleX(-1)" : "none";
   const cellWidth = Math.min(fromRect.width, toRect.width);
   const launchMs = 120;
   const flightMs = cue.flightMs ?? BOLT_FLIGHT_MS;
@@ -871,7 +884,14 @@ async function runPhasedProjectile(
   sprite.style.filter = "none";
   sprite.style.transformOrigin = "center";
   stage.appendChild(sprite);
-  const paint = (range: [number, number], progress: number, x: number, y: number, width: number, rotated: boolean) => {
+  const paint = (
+    range: [number, number],
+    progress: number,
+    x: number,
+    y: number,
+    width: number,
+    transform: string,
+  ) => {
     const frame = range[0] + Math.min(range[1] - 1, Math.floor(progress * range[1]));
     const height = width * sheet.frameHeight / sheet.frameWidth;
     sprite.style.width = `${width}px`;
@@ -880,7 +900,7 @@ async function runPhasedProjectile(
     sprite.style.backgroundPosition = `-${(frame % sheet.cols) * width}px -${Math.floor(frame / sheet.cols) * height}px`;
     sprite.style.left = `${x - width / 2}px`;
     sprite.style.top = `${y - height / 2}px`;
-    sprite.style.transform = rotated ? `rotate(${angle}deg)${mirror}` : "none";
+    sprite.style.transform = transform;
   };
   const started = performance.now();
   let playedShot = false;
@@ -894,21 +914,23 @@ async function runPhasedProjectile(
         }
         const elapsed = now - started;
         if (elapsed < launchMs) {
-          paint(phases.launch, elapsed / launchMs, from.x, from.y, cellWidth * phases.widthInCells, true);
+          paint(phases.launch, elapsed / launchMs, from.x, from.y, cellWidth * phases.widthInCells, flightTransform);
         } else if (elapsed < launchMs + flightMs) {
           if (!playedShot) {
             playedShot = true;
             if (cue.sound) playLibrarySound(cue.sound);
           }
           const p = (elapsed - launchMs) / flightMs;
-          paint(phases.flight, p, from.x + dx * p, from.y + dy * p, cellWidth * phases.widthInCells, true);
+          paint(phases.flight, p, from.x + dx * p, from.y + dy * p, cellWidth * phases.widthInCells, flightTransform);
         } else if (elapsed < launchMs + flightMs + impactMs) {
           if (!playedImpact) {
             playedImpact = true;
-            if (cue.hitSound) playLibrarySound(cue.hitSound);
+            // A separate hit sprite (Kud's Inferno after her rocket) owns the
+            // impact sound when it begins immediately after this atlas.
+            if (cue.hitSound && !cue.hitFxKey) playLibrarySound(cue.hitSound);
           }
           paint(phases.impact, (elapsed - launchMs - flightMs) / impactMs,
-            to.x, to.y, toRect.width * phases.impactWidthInCells, false);
+            to.x, to.y, toRect.width * phases.impactWidthInCells, impactTransform);
         } else {
           resolve();
           return;
@@ -933,7 +955,11 @@ async function runProjectile(stage: HTMLElement, cue: Extract<FxCue, { kind: "pr
     return;
   }
   if (sheet.projectilePhases) {
-    return runPhasedProjectile(stage, cue, sheet, fromRect, toRect);
+    await runPhasedProjectile(stage, cue, sheet, fromRect, toRect);
+    if (cue.hitFxKey) {
+      await runSprite(stage, cue.hitFxKey, cue.to, cue.hitSound);
+    }
+    return;
   }
 
   const from = centerOf(fromRect);

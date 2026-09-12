@@ -10789,7 +10789,8 @@ export type CombatState = {
     to?: number;
     /** "pre-activation": a preview of what the (neutral) unit is about to do. */
     intent?: {
-      kind: "attack" | "move" | "pass";
+      kind: "attack" | "move" | "pass" | "ability";
+      abilityName?: string;
       /** "attack": the unit the guard will strike (when already decided). */
       targetUnitId?: UnitId;
       targetName?: string;

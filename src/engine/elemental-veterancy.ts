@@ -254,15 +254,24 @@ export function elementalMovement(
       continue;
     combat.elementalLinks = combat.elementalLinks!.filter((l) => l !== link);
     const source = combat.units[link.source];
-    if (source)
+    if (source) {
+      // The linking unit's own rank ability sets the jolt size: the Conflux
+      // Storm Elemental's R4 (`veteran-storm-link-2`) hits for 2, every other
+      // Lightning Link carrier for 1.
+      const linkAbility = getUnitAbilityDefinitions(source).find(
+        (a) =>
+          a.effect?.type === "ELEMENTAL_VETERANCY" &&
+          a.effect.mechanic === "link",
+      );
       hooks.damage(
         state,
         source,
         unit.id,
-        "veteran-storm-link",
-        "Lightning Link",
-        1,
+        linkAbility?.id ?? "veteran-storm-link",
+        linkAbility?.name ?? "Lightning Link",
+        linkAbility?.id === "veteran-storm-link-2" ? 2 : 1,
       );
+    }
   }
   if (unit.elementalVeterancy) unit.elementalVeterancy.solidifyCanMove = false;
   if (alive(unit) && elementalVeterancy(unit, "landing"))
@@ -300,7 +309,12 @@ export function elementalAfterAttack(
       kind: "link",
       unitId: unit.id,
       targetId: target.id,
-      abilityId: "veteran-storm-link",
+      abilityId:
+        getUnitAbilityDefinitions(unit).find(
+          (a) =>
+            a.effect?.type === "ELEMENTAL_VETERANCY" &&
+            a.effect.mechanic === "link",
+        )?.id ?? "veteran-storm-link",
     });
   }
   if (

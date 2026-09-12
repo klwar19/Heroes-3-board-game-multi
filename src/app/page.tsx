@@ -251,7 +251,9 @@ import {
   getFxSheet,
   spellFxPlans,
   spellPresentationMs,
+  unitMeleeFxKey,
   unitShotFxPlan,
+  unitUsesProjectilePresentation,
   warMachineFxPlans,
   type SpellFxPlan
 } from "@/data/fx";
@@ -2831,9 +2833,17 @@ export default function Home() {
           // declaration). A magical striker (the Magic Elemental) layers a magic
           // zap over its voice so its blow reads as raw magic, not a plain thwack.
           const attackerVoice = unitVoice(roll.attackerId);
-          const shotPlan = ranged ? unitShotFxPlan(attackerVoice) : undefined;
+          // Some firearm creatures retain ground movement/attack legality but
+          // still need their authored gun presentation (Shotgun Guy, Spider
+          // Mastermind, and ground-class Blue Archive students). This lookup is
+          // visual only and never changes the engine's attack kind or legality.
+          const shotPlan =
+            ranged || unitUsesProjectilePresentation(attackerVoice)
+              ? unitShotFxPlan(attackerVoice)
+              : undefined;
+          const usesProjectilePresentation = ranged || Boolean(shotPlan?.projectile);
           const phasedShot = Boolean(shotPlan?.projectile && getFxSheet(shotPlan.projectile)?.projectilePhases);
-          playUnitSound(attackerVoice, ranged ? "shoot" : "attack", strikeAt + (phasedShot ? RANGED_RELEASE_MS : 0));
+          playUnitSound(attackerVoice, usesProjectilePresentation ? "shoot" : "attack", strikeAt + (phasedShot ? RANGED_RELEASE_MS : 0));
           // A unit whose ranged SHOT is a spell bolt (the Santa Gremlin's Ice
           // Bolt) flies the real projectile + burst + spell sound below; its
           // spell sound then carries the shot, so the extra flourish is skipped
@@ -2847,31 +2857,40 @@ export default function Home() {
             id: `${roll.id}-lunge`,
             attackerId: roll.attackerId,
             to: defenderCell,
-            attackKind: ranged ? "ranged" : "melee",
+            attackKind: usesProjectilePresentation ? "ranged" : "melee",
             // Cards always stand upright now, so the lunge uses the plain
             // screen-space direction to the target.
             flip: false,
             delayMs: strikeAt
           });
-          if (ranged) {
-            const attackerCell =
-              attacker.position >= 0 ? `cell:${attacker.position}` : `unit:${roll.attackerId}`;
+          const attackerCell =
+            attacker.position >= 0 ? `cell:${attacker.position}` : `unit:${roll.attackerId}`;
+          if (usesProjectilePresentation) {
             if (shotPlan?.projectile) {
               // Authored launch/flight/impact frames follow the same impact
-              // clock as damage, regardless of distance or screen size.
-              cues.push({
-                kind: "projectile",
-                id: `${roll.id}-bolt`,
-                fxKey: shotPlan.projectile,
-                from: attackerCell,
-                to: defenderCell,
-                hitFxKey: shotPlan.hit,
-                sound: shotPlan.sound,
-                hitSound: shotPlan.hitSound,
-                flightMs: ATTACK_IMPACT_MS - RANGED_RELEASE_MS,
-                // Authored sheets include their own 120ms launch phase.
-                delayMs: strikeAt + (phasedShot ? 0 : RANGED_RELEASE_MS)
-              });
+              // clock as damage. Rapid-fire profiles stagger 3–4 visible rounds
+              // around that same impact beat without changing damage resolution.
+              const projectileCount = Math.max(1, shotPlan.projectileCount ?? 1);
+              const projectileIntervalMs = shotPlan.projectileIntervalMs ?? 60;
+              const flightMs = Math.max(
+                180,
+                ATTACK_IMPACT_MS - RANGED_RELEASE_MS - ((projectileCount - 1) * projectileIntervalMs) / 2,
+              );
+              for (let projectileIndex = 0; projectileIndex < projectileCount; projectileIndex += 1) {
+                cues.push({
+                  kind: "projectile",
+                  id: `${roll.id}-bolt-${projectileIndex}`,
+                  fxKey: shotPlan.projectile,
+                  from: attackerCell,
+                  to: defenderCell,
+                  hitFxKey: shotPlan.hit,
+                  sound: shotPlan.sound,
+                  hitSound: shotPlan.hitSound,
+                  flightMs,
+                  // Authored sheets include their own 120ms launch phase.
+                  delayMs: strikeAt + (phasedShot ? 0 : RANGED_RELEASE_MS) + projectileIndex * projectileIntervalMs
+                });
+              }
             } else {
               cues.push({
                 kind: "bolt",
@@ -2882,7 +2901,14 @@ export default function Home() {
               });
             }
           } else {
-            cues.push({ kind: "slash", id: `${roll.id}-slash`, at: defenderCell, delayMs: impactAt });
+            cues.push({
+              kind: "slash",
+              id: `${roll.id}-slash`,
+              fxKey: unitMeleeFxKey(attackerVoice),
+              from: attackerCell,
+              at: defenderCell,
+              delayMs: impactAt
+            });
           }
           // The struck unit recoils at the moment of impact.
           cues.push({ kind: "shake", id: `${roll.id}-shake`, unitId: roll.defenderId, delayMs: impactAt });
@@ -2970,17 +2996,28 @@ export default function Home() {
           const at = `unit:${targetUnitId}`;
           const start = timeline;
           if (plan.projectile) {
-            cues.push({
-              kind: "projectile",
-              id: `${eventId}-projectile`,
-              fxKey: plan.projectile,
-              from: fromAnchor,
-              to: at,
-              hitFxKey: plan.hit,
-              sound: plan.sound,
-              hitSound: plan.hitSound,
-              delayMs: start
-            });
+            const projectileCount = Math.max(1, plan.projectileCount ?? 1);
+            const projectileIntervalMs = plan.projectileIntervalMs ?? 60;
+            const flightMs = projectileCount > 1
+              ? Math.max(
+                  180,
+                  ATTACK_IMPACT_MS - RANGED_RELEASE_MS - ((projectileCount - 1) * projectileIntervalMs) / 2,
+                )
+              : undefined;
+            for (let projectileIndex = 0; projectileIndex < projectileCount; projectileIndex += 1) {
+              cues.push({
+                kind: "projectile",
+                id: `${eventId}-projectile-${projectileIndex}`,
+                fxKey: plan.projectile,
+                from: fromAnchor,
+                to: at,
+                hitFxKey: plan.hit,
+                sound: plan.sound,
+                hitSound: plan.hitSound,
+                flightMs,
+                delayMs: start + projectileIndex * projectileIntervalMs
+              });
+            }
           } else if (plan.hit) {
             cues.push({
               kind: "sprite",
@@ -3156,7 +3193,23 @@ export default function Home() {
                 const anchor =
                   event.targetUnitId && inCombat ? `unit:${event.targetUnitId}` : "center";
                 const affectKey = playedPlan.affect?.[0]?.key;
-                if (affectKey) {
+                if (playedPlan.projectile) {
+                  cues.push({
+                    kind: "projectile",
+                    id: `${event.id}-played-projectile`,
+                    fxKey: playedPlan.projectile,
+                    from: `hand:${event.playerId}`,
+                    to: anchor,
+                    hitFxKey: playedPlan.hit,
+                    sound: playedPlan.sound,
+                    hitSound: playedPlan.hitSound,
+                    delayMs: at
+                  });
+                  // A specialty projectile can continue after its card finishes
+                  // flying (Kud: rocket, then Inferno). Hold following damage
+                  // presentation until the complete projectile/impact sequence.
+                  timeline = Math.max(timeline, at + spellPresentationMs(playedPlan));
+                } else if (affectKey) {
                   cues.push({
                     kind: "sprite",
                     id: `${event.id}-played-fx`,

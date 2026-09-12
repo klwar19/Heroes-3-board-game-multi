@@ -73,6 +73,7 @@ import {
   goldArmyAllowsBronzePurchase,
   hasOpenedFarEconomy,
   INCOME_NEVER_FROM_ROUND,
+  factionBuildingForEffect,
   incomeBuildingBeforeDwelling,
   nextGoldLadderStep,
   rankedGoldUnits,
@@ -489,6 +490,31 @@ function buildingScore(
     if (!protectsDwellingFund) {
       return Math.min(score, 280);
     }
+  }
+  // USER RULE: before the faction's Gold Dwelling stands, a side building is
+  // never bought — genuine surplus included (the milestone builds returned
+  // above, and the situational income-first City Hall keeps its own gate: it
+  // IS the gold-dwelling plan). The two cheap recurring-payout exceptions —
+  // Cove's Pub and Stronghold's Freelancer's Guild — stay buyable at
+  // rock-bottom priority (just above END_TURN 300), everything else waits in
+  // the 280 "do not do this" band until the Gold Dwelling is built.
+  if (
+    !development.goldUnlocked &&
+    effect?.type !== "UNLOCK_RECRUIT_TIER" &&
+    effect?.type !== "UNLOCK_REINFORCE" &&
+    factionBuildingForEffect(
+      state,
+      playerId,
+      (candidate) =>
+        candidate.type === "UNLOCK_RECRUIT_TIER" && candidate.tier === "gold",
+    )
+  ) {
+    return Math.min(
+      score,
+      buildingId === "cove.pub" || buildingId === "stronghold.freelancers_guild"
+        ? 310
+        : 280,
+    );
   }
   // Building the Gold Dwelling is not the milestone's outcome. Until one real
   // Gold unit has joined the army, do not let a side building consume its exact

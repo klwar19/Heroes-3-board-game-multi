@@ -2180,10 +2180,9 @@ button.battleCell {
    rail above (which hangs off the outer RIGHT edge). `.boardCard` is
    `width: min(150px, 66%)` inside a centred cell, so both rails sit in the
    cell's own slack and neither can reach the printed stat rail, the name plate
-   or the HUD pill. `pointer-events: none` matches the sibling rail so the icons
-   can never swallow a click meant for the battlefield cell — which also means
-   the native `title` tooltip does not fire on hover (see the component's doc
-   comment: the icon is the signal, the inspector is the text surface). */
+   or the HUD pill. The rail is pointer-transparent; individual icons opt back in
+   so their explanatory title tooltip works, and clicks still bubble to the
+   battlefield cell's inspector. */
 .boardCardEffectIcons {
   position: absolute;
   right: 100%;
@@ -2206,6 +2205,8 @@ button.battleCell {
   background: rgb(12 11 9 / 92%);
   box-shadow: 0 1px 3px rgb(0 0 0 / 55%);
   line-height: 0;
+  pointer-events: auto;
+  cursor: help;
 }
 
 .boardEffectIcon img {
@@ -19925,56 +19926,12 @@ button.setupHubNavItem:hover {
 }
 
 /* ---- Combat strike effects ------------------------------------------------
-   The attacker's card lunges and the struck card recoils via the FX layer
-   (real board cards, animated in JS). These screen-space overlays sell the
-   contact itself: a melee slash streak + spark, and a placeholder ranged
-   projectile with a small impact burst. Art is intentionally CSS-only for now
-   — real slash / projectile sprites can drop into the matching FX handlers
-   later without touching the rest of the pipeline. */
-.fxSlash {
-  position: absolute;
+   The attacker's card lunges and the struck card recoils via the FX layer.
+   Melee contact uses the transparent crescent atlas; the fallback ranged bolt
+   below remains CSS-painted for units without an authored projectile. */
+.fxMeleeImpact {
   z-index: 3;
-  width: 0;
-  height: 0;
-  transform: translate(-50%, -50%) rotate(var(--fx-slash-rot, -45deg));
-  pointer-events: none;
-}
-
-.fxSlashStreak {
-  position: absolute;
-  left: 0;
-  top: 0;
-  height: 7px;
-  border-radius: 999px;
-  background: linear-gradient(
-    90deg,
-    transparent 4%,
-    rgb(255 246 214 / 85%) 40%,
-    rgb(255 255 255 / 98%) 52%,
-    rgb(255 214 150 / 80%) 64%,
-    transparent 96%
-  );
-  box-shadow:
-    0 0 10px rgb(255 226 158 / 80%),
-    0 0 22px rgb(255 180 90 / 55%);
-  filter: drop-shadow(0 0 4px rgb(255 255 255 / 70%));
-  will-change: transform, opacity;
-}
-
-.fxSlashSpark {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: radial-gradient(
-    circle,
-    rgb(255 255 255 / 95%) 0%,
-    rgb(255 222 150 / 70%) 35%,
-    transparent 70%
-  );
-  will-change: transform, opacity;
+  filter: drop-shadow(0 0 8px rgb(255 218 130 / 62%));
 }
 
 .fxBolt {
@@ -30362,6 +30319,150 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
   opacity: 0.72;
 }
 
+/* Map town-buildings floating window — a draggable (desktop) / bottom-sheet
+   (phone) utility panel surfacing a controlled town's special building actions
+   on the map. Non-blocking (no backdrop) so the board stays visible, and it sits
+   below the choice-modal layer (z 90) so an action's own prompt lands on top. */
+.mapTownBuildingsWindow {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 88;
+  width: min(360px, calc(100vw - 28px));
+  max-height: min(70vh, 620px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(214, 172, 91, 0.55);
+  border-radius: 12px;
+  background: linear-gradient(
+    180deg,
+    rgba(24, 21, 15, 0.98),
+    rgba(16, 14, 10, 0.99)
+  );
+  box-shadow:
+    0 18px 46px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 235, 190, 0.08);
+  color: #ead9b4;
+  overflow: hidden;
+}
+
+.mapTownBuildingsWindow.minimized {
+  max-height: none;
+}
+
+.mapTownBuildingsBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 8px 8px 12px;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  border-bottom: 1px solid rgba(214, 172, 91, 0.28);
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.mapTownBuildingsWindow.minimized .mapTownBuildingsBar {
+  border-bottom: none;
+}
+
+.mapTownBuildingsBar:active {
+  cursor: grabbing;
+}
+
+.mapTownBuildingsBarTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #f2dfaf;
+}
+
+.mapTownBuildingsCount {
+  font-style: normal;
+  font-size: 11px;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  text-align: center;
+  background: rgba(214, 172, 91, 0.22);
+  border: 1px solid rgba(214, 172, 91, 0.4);
+  color: #f6e6bd;
+}
+
+.mapTownBuildingsBarControls {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.mapTownBuildingsBarBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(214, 172, 91, 0.3);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.25);
+  color: #ead9b4;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.mapTownBuildingsBarBtn:hover {
+  background: rgba(214, 172, 91, 0.22);
+  border-color: rgba(214, 172, 91, 0.6);
+}
+
+.mapTownBuildingsBody {
+  padding: 12px;
+  overflow-y: auto;
+}
+
+.mapTownBuildingsIntro {
+  margin: 0 0 10px;
+  font-size: 12px;
+  opacity: 0.82;
+}
+
+.mapTownBuildingsList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Phone: a full-width bottom sheet; drag disabled, inline position skipped so
+   the CSS anchor wins (!important beats any stale inline left/top). */
+@media (max-width: 640px) {
+  .mapTownBuildingsWindow.phone {
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    top: auto !important;
+    width: 100%;
+    max-height: 76vh;
+    border-radius: 14px 14px 0 0;
+    border-left: none;
+    border-right: none;
+  }
+
+  .mapTownBuildingsWindow.phone .mapTownBuildingsBar {
+    cursor: default;
+    padding: 12px 10px 12px 14px;
+  }
+
+  .mapTownBuildingsWindow.phone .mapTownBuildingsBarBtn {
+    width: 34px;
+    height: 34px;
+  }
+}
+
 .moraleDeckGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -35322,11 +35423,7 @@ body {
   transition-duration: 0ms;
 }
 
-/* Melee slash and impact sparks hit harder (hotter core, deeper glow). */
-.fxSlashStreak {
-  filter: brightness(1.22) drop-shadow(0 0 10px rgb(255 214 120 / 65%));
-}
-
+/* Projectile impact sparks hit harder (hotter core, deeper glow). */
 .fxImpactSpark {
   filter: brightness(1.3) drop-shadow(0 0 6px rgb(255 190 90 / 70%));
 }
