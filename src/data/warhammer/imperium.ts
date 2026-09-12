@@ -36,7 +36,7 @@ export const imperiumUnitDefinitions: Record<string, UnitDefinition> = {
   "imperium.rhino": {
     id: "imperium.rhino", name: "Rhino", faction: "imperium", tier: "silver", type: "ground",
     few: { attack: 3, defense: 1, health: 5, initiative: 5, cost: { gold: 6 }, abilities: ["imperium-rhino-transport"], abilityText: "[movement] Armoured Transport — when this unit moves, it may carry one adjacent friendly unit and place it in an empty space adjacent to where this unit lands.", cardImage: unitCard("silver", "rhino", "few") },
-    pack: { attack: 4, defense: 1, health: 6, initiative: 6, cost: { gold: 10 }, abilities: ["imperium-rhino-transport"], abilityText: "[movement] Armoured Transport — when this unit moves, it may carry one adjacent friendly unit and place it in an empty space adjacent to where this unit lands.", cardImage: unitCard("silver", "rhino", "pack") },
+    pack: { attack: 4, defense: 1, health: 8, initiative: 9, cost: { gold: 12 }, abilities: ["imperium-rhino-transport"], abilityText: "[movement] Armoured Transport — when this unit moves, it may carry one adjacent friendly unit and place it in an empty space adjacent to where this unit lands.", cardImage: unitCard("silver", "rhino", "pack") },
     source
   },
   "imperium.terminators": {
@@ -47,8 +47,8 @@ export const imperiumUnitDefinitions: Record<string, UnitDefinition> = {
   },
   "imperium.dreadnought": {
     id: "imperium.dreadnought", name: "Dreadnought", faction: "imperium", tier: "gold", type: "ranged",
-    few: { attack: 5, defense: 1, health: 7, initiative: 6, cost: { gold: 13 }, abilities: ["imperium-duty-eternal-few"], abilityText: "[unit_passive] Duty Eternal — once per Combat, reduce one damage assignment to this unit by 1.", cardImage: unitCard("golden", "dreadnought", "few") },
-    pack: { attack: 5, defense: 1, health: 8, initiative: 8, cost: { gold: 21, valuables: 1 }, abilities: ["imperium-duty-eternal-pack", "imperium-target-acquisition"], abilityText: "1 [valuables] [unit_attack] Venerable Ancient — once per Combat, reduce one damage assignment by 2; +1 Attack against a damaged non-adjacent target.", cardImage: unitCard("golden", "dreadnought", "pack") },
+    few: { attack: 5, defense: 1, health: 7, initiative: 6, cost: { gold: 13 }, abilities: ["imperium-assault-cannon", "imperium-duty-eternal-few"], abilityText: "[unit_passive] Assault Cannon — this ranged unit ignores all Combat penalties (adjacent and long-range). Duty Eternal — once per Combat, reduce one damage assignment to this unit by 1.", cardImage: unitCard("golden", "dreadnought", "few") },
+    pack: { attack: 5, defense: 1, health: 8, initiative: 8, cost: { gold: 21, valuables: 1 }, abilities: ["imperium-assault-cannon", "imperium-adamantine-hull", "imperium-target-acquisition"], abilityText: "[unit_passive] Assault Cannon — this ranged unit ignores all Combat penalties. Adamantine Hull — once per Combat, the first damage assigned to this unit is reduced so it takes only 1 damage. [unit_attack] Target Acquisition — +1 Attack against a damaged non-adjacent target.", cardImage: unitCard("golden", "dreadnought", "pack") },
     source
   },
   "imperium.titan": {

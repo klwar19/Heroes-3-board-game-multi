@@ -45,13 +45,26 @@ export function reduceFirstDamageByAbility(
       if (definition?.implementationStatus !== "implemented") return false;
       if (effect?.type === "REDUCE_FIRST_DAMAGE_EACH_ROUND") return unit.ironHorusUsedRound !== combat.round;
       if (effect?.type === "REDUCE_FIRST_DAMAGE_EACH_COMBAT") return !unit.dutyEternalUsedThisCombat;
+      // Adamantine Hull caps the first damage: it only fires (and spends its
+      // once-per-Combat proc) on a damage assignment large enough for the cap to
+      // actually reduce it, so a 1-damage poke never wastes the shield.
+      if (effect?.type === "CAP_FIRST_DAMAGE_EACH_COMBAT") return !unit.dutyEternalUsedThisCombat && incoming > effect.cap;
       return false;
     });
   const effect = ability?.effect;
-  if (!ability || !effect || (effect.type !== "REDUCE_FIRST_DAMAGE_EACH_ROUND" && effect.type !== "REDUCE_FIRST_DAMAGE_EACH_COMBAT")) {
+  if (
+    !ability ||
+    !effect ||
+    (effect.type !== "REDUCE_FIRST_DAMAGE_EACH_ROUND" &&
+      effect.type !== "REDUCE_FIRST_DAMAGE_EACH_COMBAT" &&
+      effect.type !== "CAP_FIRST_DAMAGE_EACH_COMBAT")
+  ) {
     return { amount: incoming, reduced: 0 };
   }
-  const reduced = Math.min(effect.amount, incoming);
+  const reduced =
+    effect.type === "CAP_FIRST_DAMAGE_EACH_COMBAT"
+      ? incoming - effect.cap
+      : Math.min(effect.amount, incoming);
   if (effect.type === "REDUCE_FIRST_DAMAGE_EACH_ROUND") unit.ironHorusUsedRound = combat.round;
   else unit.dutyEternalUsedThisCombat = true;
   return { amount: incoming - reduced, reduced, abilityId: ability.id };

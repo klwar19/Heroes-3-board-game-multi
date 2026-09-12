@@ -88,6 +88,18 @@ export type UnitAbilityEffectDefinition =
       /** Kivotos Hero Mode ([unit_passive]): the waiver also covers a Retaliation Attack. */
       includesRetaliation?: boolean;
     }
+  | {
+      /**
+       * Imperium Venerable Dreadnought "Adamantine Hull": once per Combat the
+       * first damage assignment large enough to exceed `cap` is reduced so this
+       * unit takes only `cap` damage from it, no matter the source or size. It
+       * shares the once-per-Combat proc (`dutyEternalUsedThisCombat`) with
+       * REDUCE_FIRST_DAMAGE_EACH_COMBAT and is resolved by the same
+       * `reduceFirstDamageByAbility` seam.
+       */
+      type: "CAP_FIRST_DAMAGE_EACH_COMBAT";
+      cap: number;
+    }
   | { type: "MOVE_ANYWHERE" }
   | { type: "UNIT_MOVE_RANGE_BONUS"; amount: number }
   | {
@@ -4507,6 +4519,8 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "imperium-duty-eternal-few": { id: "imperium-duty-eternal-few", name: "Duty Eternal", text: "Once per Combat, reduce one damage assignment to this unit by 1.", effect: { type: "REDUCE_FIRST_DAMAGE_EACH_COMBAT", amount: 1 }, implementationStatus: "implemented" },
   "imperium-duty-eternal-pack": { id: "imperium-duty-eternal-pack", name: "Venerable Duty Eternal", text: "Once per Combat, reduce one damage assignment to this unit by 2.", effect: { type: "REDUCE_FIRST_DAMAGE_EACH_COMBAT", amount: 2 }, implementationStatus: "implemented" },
   "imperium-target-acquisition": { id: "imperium-target-acquisition", name: "Target Acquisition", text: "Gain +1 Attack against a damaged non-adjacent target.", effect: { type: "ATTACK_BONUS_VS_DAMAGED_NON_ADJACENT", amount: 1 }, implementationStatus: "implemented" },
+  "imperium-assault-cannon": { id: "imperium-assault-cannon", name: "Assault Cannon", text: "This ranged unit ignores all Combat penalties (adjacent and long-range), on its own attacks and on Retaliation Attacks.", effect: { type: "IGNORE_RANGED_PENALTIES", includesRetaliation: true }, implementationStatus: "implemented" },
+  "imperium-adamantine-hull": { id: "imperium-adamantine-hull", name: "Adamantine Hull", text: "Once per Combat, the first damage assigned to this unit is reduced so it takes only 1 damage from it.", effect: { type: "CAP_FIRST_DAMAGE_EACH_COMBAT", cap: 1 }, implementationStatus: "implemented" },
   "imperium-god-engine-sweep-few": { id: "imperium-god-engine-sweep-few", name: "God-Engine Sweep", text: "After attacking, attack every adjacent enemy with 3 Attack.", effect: { type: "SECOND_ATTACK_ALL_ADJACENT_TO_SELF", baseAttack: 3 }, implementationStatus: "implemented" },
   "imperium-god-engine-sweep-pack": { id: "imperium-god-engine-sweep-pack", name: "Exalted God-Engine", text: "After attacking, attack every adjacent enemy with 4 Attack.", effect: { type: "SECOND_ATTACK_ALL_ADJACENT_TO_SELF", baseAttack: 4 }, implementationStatus: "implemented" },
   "kivotos-piercing-judgment": { id: "kivotos-piercing-judgment", name: "Piercing Judgment", text: "After moving, reroll one -1 Attack die.", effect: { type: "ATTACK_DIE_REROLL", rerollsPerAttack: 1, onlyOnRoll: -1, requiresMoved: true }, implementationStatus: "implemented" },

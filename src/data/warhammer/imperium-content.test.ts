@@ -41,7 +41,7 @@ describe("Imperium component set", () => {
       "imperium.astra_militarum": { type: "ranged", few: [2, 0, 2, 4, 3, 0], pack: [2, 0, 3, 6, 5, 0] },
       "imperium.apothecary": { type: "ground", few: [2, 1, 3, 4, 3, 0], pack: [2, 1, 4, 5, 6, 0] },
       "imperium.space_marines": { type: "flying", few: [3, 0, 3, 7, 4, 0], pack: [3, 1, 4, 9, 7, 0] },
-      "imperium.rhino": { type: "ground", few: [3, 1, 5, 5, 6, 0], pack: [4, 1, 6, 6, 10, 0] },
+      "imperium.rhino": { type: "ground", few: [3, 1, 5, 5, 6, 0], pack: [4, 1, 8, 9, 12, 0] },
       "imperium.terminators": { type: "ground", few: [4, 2, 4, 5, 8, 0], pack: [5, 2, 4, 7, 13, 0] },
       "imperium.dreadnought": { type: "ranged", few: [5, 1, 7, 6, 13, 0], pack: [5, 1, 8, 8, 21, 1] },
       "imperium.titan": { type: "ground", few: [6, 3, 9, 4, 20, 1], pack: [7, 3, 10, 6, 29, 2] }
