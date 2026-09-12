@@ -13,6 +13,7 @@
 - This restriction includes direct runs and runs through scripts, CI, helpers, or background jobs. Do not bypass disabled runner configurations without that explicit request.
 - Review the relevant code paths and edge cases without executing tests. Do not broaden work into unrelated checks.
 - When the user explicitly requests a test or simulation, run only what they requested; do not expand it into other tests or suites. Check observable behavior, not just labels or data presence. Never change an expected result merely to hide a failure.
+- A test verifies a rule only if it FAILS when that rule's logic is removed (mutation-checked). A wiring/data check that still passes with the behavior broken is not coverage: treat a "verified" claim whose test survives the mutation as a finding to fix, not as proof. Assert the observable outcome against a CONTROL where the old and new behavior diverge.
 
 ## Honest completion
 - Complete the requested behavior; do not substitute a stub or silently change the rules.
