@@ -1281,7 +1281,19 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 //    evaluator, and side buildings wait for the Gold Dwelling (Cove Pub /
 //    Freelancer's Guild at rock-bottom priority) — AI-only, folded in.
 // `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 140;
+//
+// v141 (2026-09-13):
+//  - Commander artifacts: gold purchases (post-victory offer + Commander
+//    Forge) are limited to ONE per round, and each purchase raises every
+//    later purchase's price by +2 gold (per player, lifetime).
+//  - Unit Experience underdog rule: a seat whose best gold/azure veteran
+//    trails any opponent's by MORE than 9 XP trains its whole army +1 XP at
+//    every round start until the gap closes.
+//  - Computer AI: FAR-income commitment overhaul (home sweep capped at
+//    rounds 1–2, sticky income commitment survives MP recalculation,
+//    discovery deferral, widened route-repeat guard, END_TURN reconsider
+//    pass, broader progress fingerprint, finite AI-combat bulk cap).
+export const ENGINE_PROTOCOL_VERSION = 141;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

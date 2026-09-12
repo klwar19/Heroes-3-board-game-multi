@@ -251,6 +251,7 @@ import { pveEncounterScriptsFor } from "@/data/anime/pve-combat-scripts";
 import { combatScriptEffectLines } from "@/data/map/combat-scripts";
 import { applyUnitCurrentSide } from "./unit-transforms";
 import {
+  applyUnderdogUnitExperience,
   diluteUnitExperienceForUpgrade,
   grantArmyUnitExperience,
   neutralBankMirrorXp,
@@ -19935,6 +19936,9 @@ export function startAdventureRound(state: GameState): void {
       if (state.adventure?.winnerPlayerId) return;
     }
   }
+
+  // Underdog catch-up: trailing seats train before this round's turns begin.
+  applyUnderdogUnitExperience(state);
 
   const kind = state.round === 1 ? "first" : state.round % 2 === 1 ? "resource" : "astrologers";
 

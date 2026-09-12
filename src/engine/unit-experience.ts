@@ -728,6 +728,63 @@ export function grantArmyUnitExperience(
 }
 
 /**
+ * Underdog catch-up (USER RULE 2026-09-13): compares each seat's best
+ * TOP-TIER veteran (highest XP among gold/azure army cards; no such card
+ * reads 0). While any opponent's best is MORE than this gap ahead, the
+ * trailing seat's whole army trains +1 XP at every round start. Re-checked
+ * each round, so it stops as soon as the gap closes to the threshold and
+ * resumes whenever someone pulls ahead again.
+ */
+export const UNDERDOG_UNIT_XP_GAP = 9;
+
+/** Highest XP among a player's gold/azure army cards (0 without one). */
+function topTierUnitExperience(player: { army: ArmyUnitState[] }): number {
+  let best = 0;
+  for (const armyUnit of player.army) {
+    const tier = coreUnitDefinitions[armyUnit.unitDefId]?.tier;
+    if (tier !== "gold" && tier !== "azure") continue;
+    best = Math.max(best, Math.trunc(armyUnit.experience ?? 0));
+  }
+  return best;
+}
+
+/**
+ * Round-start underdog pass. No-op unless Unit Experience is on and at least
+ * two live seats exist. Awards go through grantArmyUnitExperience so rank-ups
+ * still emit UNIT_RANK_UP; one summary note per trained seat keeps the log
+ * readable.
+ */
+export function applyUnderdogUnitExperience(state: GameState): void {
+  if (!unitExperienceActive(state)) return;
+  const seats = Object.values(state.players).filter(
+    (player) => player.id !== NEUTRAL_PLAYER_ID && !player.eliminated
+  );
+  if (seats.length < 2) return;
+  const best = new Map<PlayerId, number>();
+  for (const seat of seats) best.set(seat.id, topTierUnitExperience(seat));
+  for (const seat of seats) {
+    let bestOther = 0;
+    for (const other of seats) {
+      if (other.id !== seat.id) bestOther = Math.max(bestOther, best.get(other.id) ?? 0);
+    }
+    if (bestOther - (best.get(seat.id) ?? 0) <= UNDERDOG_UNIT_XP_GAP) continue;
+    let trained = 0;
+    for (const armyUnit of seat.army) {
+      if (!coreUnitDefinitions[armyUnit.unitDefId]) continue;
+      grantArmyUnitExperience(state, seat.id, armyUnit, 1);
+      trained += 1;
+    }
+    if (trained > 0) {
+      appendEvent(state, {
+        type: "EVENT_NOTE",
+        playerId: seat.id,
+        message: `Underdog training: ${seat.name}'s units each gain 1 experience (top-tier veteran gap over ${UNDERDOG_UNIT_XP_GAP}).`
+      });
+    }
+  }
+}
+
+/**
  * WoG Crexpmod adaptation — upgrades cost experience. Reinforcing a Few card
  * to a Pack halves its XP (fresh recruits dilute the veterans); buying a
  * Polish Unit Stack layer costs 1 XP per layer (the same read, scaled to the
