@@ -1,0 +1,9 @@
+
+ RUN  v4.1.8 E:/heroes 3 BG multi
+
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 69 skipped (70)
+   Start at  08:53:07
+   Duration  13.77s (transform 11.97s, setup 0ms, import 13.17s, tests 61ms, environment 0ms)
+

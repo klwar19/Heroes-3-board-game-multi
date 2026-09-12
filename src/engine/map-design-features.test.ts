@@ -256,6 +256,105 @@ describe("map-design-features — break field + persistent army", () => {
     expect(without).toBe("encounter");
   });
 
+  it("a tile-group Break seals the WHOLE broken center tile, not just its guarded hex", () => {
+    // REPORTED 2026-09-12: "Break: tiles VI–VII" only blocked the guarded VII
+    // field, so a hero could step onto an OPEN hex of the tile and side-step the
+    // guard. The seal now walls off every hex of the tile from outside until the
+    // guard falls, while the guard itself stays enterable (you fight your way in).
+    const state = makeGame("break-tile-seal");
+    state.adventure!.mapPreset = { breaks: { enterCenterTiles: true } };
+    state.adventure!.tiles["ctile"] = {
+      id: "ctile",
+      tileDefId: "C1",
+      centerRow: 90,
+      centerCol: 90,
+      rotation: 0,
+      faceDown: false,
+      group: "center"
+    } as never;
+    const guard = injectField(state, "shrine_of_magic_gesture", "90,90", {
+      tileInstanceId: "ctile",
+      difficulty: 6,
+      designedGuard: true
+    });
+    const open = injectField(state, "mystical_garden", "90,91", { tileInstanceId: "ctile" });
+    injectField(state, "empty_field", "89,90", { tileInstanceId: "othertile" });
+    const hero = getMainHero(state, "p1")!;
+    hero.spaceId = "89,90";
+
+    // Open hex: walled off from outside while the guard stands.
+    expect(classifyHeroStep(state, hero, open.spaceId)).toBe("block");
+    // Guarded hex: still enterable — the only way in is to fight it.
+    expect(classifyHeroStep(state, hero, guard.spaceId)).toBe("stop");
+
+    // CONTROL: without the tile-group Break the open hex is freely enterable.
+    state.adventure!.mapPreset = { breaks: {} };
+    expect(classifyHeroStep(state, hero, open.spaceId)).not.toBe("block");
+  });
+
+  it("clearing the broken tile's guard lifts the tile-group seal", () => {
+    const state = makeGame("break-tile-open");
+    state.adventure!.mapPreset = { breaks: { enterCenterTiles: true } };
+    state.adventure!.tiles["ctile"] = {
+      id: "ctile",
+      tileDefId: "C1",
+      centerRow: 90,
+      centerCol: 90,
+      rotation: 0,
+      faceDown: false,
+      group: "center"
+    } as never;
+    const guard = injectField(state, "shrine_of_magic_gesture", "90,90", {
+      tileInstanceId: "ctile",
+      difficulty: 6,
+      designedGuard: true
+    });
+    const open = injectField(state, "mystical_garden", "90,91", { tileInstanceId: "ctile" });
+    injectField(state, "empty_field", "89,90", { tileInstanceId: "othertile" });
+    const hero = getMainHero(state, "p1")!;
+    hero.spaceId = "89,90";
+    expect(classifyHeroStep(state, hero, open.spaceId)).toBe("block");
+
+    // Defeat + flag the guard: it is no longer guarded, so the tile opens.
+    guard.flagOwnerId = "p1";
+    guard.everFlagged = true;
+    expect(classifyHeroStep(state, hero, open.spaceId)).not.toBe("block");
+  });
+
+  it("a designer 'no experience' field withholds hero XP on a REAL win (CONTROL: it pays without the flag)", () => {
+    // Difficulty VI vs a level-1 hero normally pays experience for a fought win;
+    // the designer opt-out (`field.noExperience`) suppresses ONLY the XP — the
+    // fight is real and every other reward path still runs.
+    function fightAndFinishXp(noExperience: boolean): number {
+      const state = makeGame(`no-xp-${noExperience}`);
+      const hero = getMainHero(state, "p1")!;
+      hero.level = 1;
+      hero.experience = 0;
+      const field = injectField(state, "mine", "77,77", {
+        difficulty: 6,
+        designedGuard: true,
+        customGuardUnits: ["neutral.skeletons"],
+        ...(noExperience ? { noExperience: true } : {})
+      });
+      placeHero(state, "p1", field.spaceId);
+      startNeutralEncounter(state, hero, field);
+      const combat = state.combat!;
+      combat.setup = null;
+      combat.units = {};
+      combat.activeUnitId = null;
+      combat.outcome = {
+        winnerPlayerId: "p1",
+        defeatedPlayerId: NEUTRAL_PLAYER_ID,
+        reason: "all-enemy-units-defeated"
+      };
+      finalizeAdventureCombat(state);
+      return getMainHero(state, "p1")!.experience;
+    }
+
+    expect(fightAndFinishXp(false)).toBeGreaterThan(0);
+    expect(fightAndFinishXp(true)).toBe(0);
+  });
+
   it("survivorsToCustomGuardUnits keeps living units only", () => {
     const living = [
       { unitDefId: "neutral.skeletons", damage: 0, maxHealth: 2 },

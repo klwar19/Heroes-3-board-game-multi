@@ -1240,7 +1240,27 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // scheduling/movement reserve changed. A v137 worker would resolve every one
 // of these differently from the new UI's previews.
 // `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 138;
+
+// v139 (2026-09-12): a batch of concurrent-session changes lands together —
+// each is a real skew hazard, so one bump covers them all.
+//  - Map design (this session): a neutral FIELD fight now opens the
+//    continue-or-retreat "rest" window after EVERY round (round 1 included),
+//    like a Creature Bank, EXCEPT a true Level-VII field (azure guard /
+//    difficulty 7 / Dragon Utopia) which still fights to the death; a v138
+//    worker would auto-advance a field's free/unlimited round where the new
+//    client offers Retreat. A near/center TILE-group Break now seals the WHOLE
+//    tile from outside (classifyHeroStep blocks its unguarded hexes until a
+//    guard falls), so a v138 worker's reachability/pathing disagrees. New
+//    optional field flag `MapFieldState.noExperience` (designer "no experience"
+//    toggle) — additive/ignored by an old worker, but a fought win pays XP on
+//    v138 where the new rules withhold it.
+//  - Concurrent sessions folded into the same protocol: Warhammer/Imperium town
+//    content, the meteor-shower / secondary-hero ballista-artillery combat
+//    changes, and the computer-AI policy + market-visit tuning. See each area's
+//    tests; the bump makes a skewed edge/client show the version banner rather
+//    than silently resolving these differently.
+// `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 139;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

@@ -1,0 +1,57 @@
+
+ RUN  v4.1.8 E:/heroes 3 BG multi
+
+stdout | artifacts/far-ai-verification/gameplay.test.ts > necropolis impossible: two FAR tiles, early capture and development
+current impossible necropolis round 1, 0 actions
+current impossible necropolis round 2, 11 actions
+current impossible necropolis round 3, 34 actions
+current impossible necropolis round 4, 41 actions
+current impossible necropolis round 5, 87 actions
+current impossible necropolis round 6, 105 actions
+current impossible necropolis round 7, 139 actions
+current impossible necropolis round 8, 180 actions
+{"variant":"current","difficulty":"impossible","faction":"necropolis","steps":195,"round":9,"farAttacks":[{"round":4,"field":"h:12:6","location":"mine","resource":"gold","difficulty":3,"group":"far","entryMp":3,"remainingMp":2,"battle":"combat_103","army":[{"id":"army_p2_1","unitDefId":"necropolis.skeletons","side":"pack"},{"id":"army_p2_2","unitDefId":"necropolis.zombies","side":"pack"},{"id":"army_p2_3","unitDefId":"necropolis.wraiths","side":"pack"}]},{"round":6,"field":"h:13:7","location":"settlement","difficulty":3,"group":"far","entryMp":3,"remainingMp":2,"battle":"combat_306","army":[{"id":"army_p2_2","unitDefId":"necropolis.zombies","side":"pack"},{"id":"army_p2_4","unitDefId":"necropolis.wraiths","side":"pack"},{"id":"army_p2_5","unitDefId":"necropolis.skeletons","side":"pack","transforms":[{"cardId":"specialty.sandro.1","name":"Horde of Skeletons","attack":3,"defense":1,"health":3,"initiative":6,"cardImage":"/assets/hero_specialties-sandro-1.webp"}]}]}],"captures":[{"round":2,"field":"h:10:6","location":"mine","resource":"buildingMaterials","group":"starting"},{"round":4,"field":"h:12:6","location":"mine","resource":"gold","group":"far"},{"round":6,"field":"h:13:7","location":"settlement","group":"far"}],"builds":[{"round":3,"building":"necropolis.dwelling_silver","effect":{"type":"UNLOCK_RECRUIT_TIER","tier":"silver"}},{"round":7,"building":"necropolis.dwelling_gold","effect":{"type":"UNLOCK_RECRUIT_TIER","tier":"gold"}}],"outcomes":[{"round":2,"context":{"kind":"neutral","heroId":"hero_p2","fieldId":"h:11:6","difficulty":1,"hasAzure":false},"winnerPlayerId":"p2","defeatedPlayerId":"neutrals","reason":"all-enemy-units-defeated"},{"round":2,"context":{"kind":"neutral","heroId":"hero_p2","fieldId":"h:10:6","difficulty":1,"hasAzure":false},"winnerPlayerId":"p2","defeatedPlayerId":"neutrals","reason":"all-enemy-units-defeated"},{"round":4,"context":{"kind":"neutral","heroId":"hero_p2","fieldId":"h:12:6","difficulty":3,"hasAzure":false},"winnerPlayerId":"p2","defeatedPlayerId":"neutrals","reason":"all-enemy-units-defeated"},{"round":6,"context":{"kind":"neutral","heroId":"hero_p2","fieldId":"h:13:7","difficulty":3,"hasAzure":false},"winnerPlayerId":"p2","defeatedPlayerId":"neutrals","reason":"all-enemy-units-defeated"},{"round":7,"context":{"kind":"neutral","heroId":"hero_p2","fieldId":"h:12:8","difficulty":0,"hasAzure":false,"bankId":"imp_cache","bankFormation":true,"bankStackCount":4},"winnerPlayerId":"p2","defeatedPlayerId":"neutrals","reason":"all-enemy-units-defeated"}],"errors":[]}
+
+stdout | artifacts/far-ai-verification/gameplay.test.ts > conflux impossible: two FAR tiles, early capture and development
+current impossible conflux round 1, 0 actions
+current impossible conflux round 2, 17 actions
+current impossible conflux round 3, 35 actions
+current impossible conflux round 4, 42 actions
+current impossible conflux round 5, 86 actions
+current impossible conflux round 6, 107 actions
+current impossible conflux round 7, 149 actions
+current impossible conflux round 8, 164 actions
+{"variant":"current","difficulty":"impossible","faction":"conflux","steps":181,"round":9,"farAttacks":[{"round":4,"field":"h:9:8","location":"settlement","difficulty":3,"group":"far","entryMp":3,"remainingMp":2,"battle":"combat_105","army":[{"id":"army_p2_1","unitDefId":"conflux.sprites","side":"pack"},{"id":"army_p2_2","unitDefId":"conflux.storm_elementals","side":"pack"},{"id":"army_p2_3","unitDefId":"conflux.ice_elementals","side":"pack"}]},{"round":6,"field":"h:6:9","location":"mine","resource":"valuables","difficulty":3,"group":"far","entryMp":3,"remainingMp":2,"battle":"combat_286","army":[{"id":"army_p2_2","unitDefId":"conflux.storm_elementals","side":"pack"},{"id":"army_p2_3","unitDefId":"conflux.ice_elementals","side":"pack"},{"id":"army_p2_4","unitDefId":"conflux.sprites","side":"pack"}]}],"captures":[{"round":1,"field":"h:10:6","location":"mine","resource":"buildingMaterials","group":"starting"},{"round":4,"field":"h:9:8","location":"settlement","group":"far"},{"round":6,"field":"h:6:9","location":"mine","resource":"valuables","group":"far"},{"round":8,"field":"h:8:8","location":"settlement","group":"far"}],"builds":[{"round":5,"building":"conflux.dwelling_silver","effect":{"type":"UNLOCK_RECRUIT_TIER","tier":"silver"}},{"round":7,"building":"conflux.dwelling_gold","effect":{"type":"UNLOCK_RECRUIT_TIER","tier":"gold"}}],"outcomes":[{"round":1,"context":{"kind":"neutral","heroId":"hero_p2","fieldId":"h:10:6","difficulty":1,"hasAzure":false},"winnerPlayerId":"p2","defeatedPlayerId":"neutrals","reason":"all-enemy-units-defeated"},{"round":2,"context":{"kind":"neutral","heroId":"hero_p2","fieldId":"h:9:7","difficulty":1,"hasAzure":false},"winnerPlayerId":"p2","defeatedPlayerId":"neutrals","reason":"all-enemy-units-defeated"},{"round":4,"context":{"kind":"neutral","heroId":"hero_p2","fieldId":"h:9:8","difficulty":3,"hasAzure":false},"winnerPlayerId":"p2","defeatedPlayerId":"neutrals","reason":"all-enemy-units-defeated"},{"round":6,"context":{"kind":"neutral","heroId":"hero_p2","fieldId":"h:6:9","difficulty":3,"hasAzure":false},"winnerPlayerId":"p2","defeatedPlayerId":"neutrals","reason":"all-enemy-units-defeated"}],"errors":[]}
+
+ ❯ artifacts/far-ai-verification/gameplay.test.ts (3 tests | 2 failed) 48351ms
+   × necropolis impossible: two FAR tiles, early capture and development 13143ms
+   × conflux impossible: two FAR tiles, early capture and development 16350ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  artifacts/far-ai-verification/gameplay.test.ts > necropolis impossible: two FAR tiles, early capture and development
+ FAIL  artifacts/far-ai-verification/gameplay.test.ts > conflux impossible: two FAR tiles, early capture and development
+AssertionError: Gold army by round 8: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ artifacts/far-ai-verification/gameplay.test.ts:154:139
+    152|         (c.location === "mine" && (c.resource === "gold" || c.resource…
+    153|         .map(c => c.field)).size, "capture economy from both FAR tiles…
+    154|     if (maxRound >= 8) expect(state.players.p2.army.some(u => coreUnit…
+       |                                                                                                                                           ^
+    155|   });
+    156| }
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 1 passed (3)
+   Start at  16:02:04
+   Duration  66.91s (transform 14.19s, setup 0ms, import 17.38s, tests 48.35s, environment 0ms)
+

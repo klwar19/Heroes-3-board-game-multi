@@ -1,0 +1,35 @@
+
+ RUN  v4.1.8 E:/heroes 3 BG multi
+
+stdout | artifacts/far-ai-verification/gameplay.test.ts > necropolis impossible: two FAR tiles, early capture and development
+no-peaceful-route impossible necropolis round 1, 0 actions
+no-peaceful-route impossible necropolis round 2, 11 actions
+no-peaceful-route impossible necropolis round 3, 34 actions
+no-peaceful-route impossible necropolis round 4, 41 actions
+no-peaceful-route impossible necropolis round 5, 87 actions
+no-peaceful-route impossible necropolis round 6, 102 actions
+{"variant":"no-peaceful-route","difficulty":"impossible","faction":"necropolis","steps":120,"round":7,"farAttacks":[{"round":4,"field":"h:12:6","location":"mine","resource":"gold","difficulty":3,"group":"far","entryMp":3,"remainingMp":2,"battle":"combat_103","army":[{"id":"army_p2_1","unitDefId":"necropolis.skeletons","side":"pack"},{"id":"army_p2_2","unitDefId":"necropolis.zombies","side":"pack"},{"id":"army_p2_3","unitDefId":"necropolis.wraiths","side":"pack"}]}],"captures":[{"round":2,"field":"h:10:6","location":"mine","resource":"buildingMaterials","group":"starting"},{"round":4,"field":"h:12:6","location":"mine","resource":"gold","group":"far"}],"builds":[{"round":3,"building":"necropolis.dwelling_silver","effect":{"type":"UNLOCK_RECRUIT_TIER","tier":"silver"}}],"outcomes":[{"round":2,"context":{"kind":"neutral","heroId":"hero_p2","fieldId":"h:11:6","difficulty":1,"hasAzure":false},"winnerPlayerId":"p2","defeatedPlayerId":"neutrals","reason":"all-enemy-units-defeated"},{"round":2,"context":{"kind":"neutral","heroId":"hero_p2","fieldId":"h:10:6","difficulty":1,"hasAzure":false},"winnerPlayerId":"p2","defeatedPlayerId":"neutrals","reason":"all-enemy-units-defeated"},{"round":4,"context":{"kind":"neutral","heroId":"hero_p2","fieldId":"h:12:6","difficulty":3,"hasAzure":false},"winnerPlayerId":"p2","defeatedPlayerId":"neutrals","reason":"all-enemy-units-defeated"}],"errors":[]}
+
+ ❯ artifacts/far-ai-verification/gameplay.test.ts (1 test | 1 failed) 12454ms
+   × necropolis impossible: two FAR tiles, early capture and development 12452ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  artifacts/far-ai-verification/gameplay.test.ts > necropolis impossible: two FAR tiles, early capture and development
+AssertionError: capture economy from both FAR tiles: expected 1 to be greater than or equal to 2
+ ❯ artifacts/far-ai-verification/gameplay.test.ts:153:74
+    151|       new Set(captures.filter(c => c.group === "far" && (c.location ==…
+    152|         (c.location === "mine" && (c.resource === "gold" || c.resource…
+    153|         .map(c => c.field)).size, "capture economy from both FAR tiles…
+       |                                                                          ^
+    154|     if (maxRound >= 8) expect(state.players.p2.army.some(u => coreUnit…
+    155|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+   Start at  15:56:25
+   Duration  28.94s (transform 13.92s, setup 0ms, import 15.30s, tests 12.45s, environment 0ms)
+

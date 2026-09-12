@@ -468,6 +468,7 @@ export function sanitizeCenterHexPlan(input: unknown): CustomCenterHexPlan | und
   if (raw.breakField === true) centerHex.breakField = true;
   if (raw.persistentGuard === true) centerHex.persistentGuard = true;
   if (raw.unlimitedRounds === true) centerHex.unlimitedRounds = true;
+  if (raw.noExperience === true) centerHex.noExperience = true;
   if (raw.combatRoundLimit === 1 || raw.combatRoundLimit === 2 || raw.combatRoundLimit === 3 || raw.combatRoundLimit === "unlimited") centerHex.combatRoundLimit = raw.combatRoundLimit;
   if (raw.flaggableDragonUtopia === true) centerHex.flaggableDragonUtopia = true;
   return Object.keys(centerHex).length > 0 ? centerHex : undefined;
@@ -1370,6 +1371,7 @@ export function sanitizeObjectFieldPlan(input: unknown): CustomObjectFieldPlan |
     breakField?: unknown;
     persistentGuard?: unknown;
     unlimitedRounds?: unknown;
+    noExperience?: unknown;
     combatRoundLimit?: unknown;
     winCondition?: unknown;
   };
@@ -1388,6 +1390,7 @@ export function sanitizeObjectFieldPlan(input: unknown): CustomObjectFieldPlan |
   if (raw.breakField === true) plan.breakField = true;
   if (raw.persistentGuard === true) plan.persistentGuard = true;
   if (raw.unlimitedRounds === true) plan.unlimitedRounds = true;
+  if (raw.noExperience === true) plan.noExperience = true;
   if (raw.combatRoundLimit === 1 || raw.combatRoundLimit === 2 || raw.combatRoundLimit === 3 || raw.combatRoundLimit === "unlimited") plan.combatRoundLimit = raw.combatRoundLimit;
   if (raw.winCondition === true) plan.winCondition = true;
   return Object.keys(plan).length > 0 ? plan : undefined;
@@ -1432,22 +1435,26 @@ function sanitizeBreakFlags(raw: {
   breakField?: unknown;
   persistentGuard?: unknown;
   unlimitedRounds?: unknown;
+  noExperience?: unknown;
   combatRoundLimit?: unknown;
 }): {
   breakField?: true;
   persistentGuard?: true;
   unlimitedRounds?: true;
+  noExperience?: true;
   combatRoundLimit?: 1 | 2 | 3 | "unlimited";
 } {
   const flags: {
     breakField?: true;
     persistentGuard?: true;
     unlimitedRounds?: true;
+    noExperience?: true;
     combatRoundLimit?: 1 | 2 | 3 | "unlimited";
   } = {};
   if (raw.breakField === true) flags.breakField = true;
   if (raw.persistentGuard === true) flags.persistentGuard = true;
   if (raw.unlimitedRounds === true) flags.unlimitedRounds = true;
+  if (raw.noExperience === true) flags.noExperience = true;
   if (raw.combatRoundLimit === 1 || raw.combatRoundLimit === 2 || raw.combatRoundLimit === 3 || raw.combatRoundLimit === "unlimited") flags.combatRoundLimit = raw.combatRoundLimit;
   return flags;
 }
@@ -1531,7 +1538,7 @@ function sanitizeMinesConfig(input: unknown): CustomMapMinesConfig | undefined {
   if (typeof raw.vp === "number" && Number.isFinite(raw.vp) && raw.vp > 0) {
     config.vp = Math.min(MAX_CENTER_HEX_VP, Math.floor(raw.vp));
   }
-  return config.guard || config.reward || config.vp || config.breakField || config.persistentGuard || config.unlimitedRounds || config.combatRoundLimit
+  return config.guard || config.reward || config.vp || config.breakField || config.persistentGuard || config.unlimitedRounds || config.noExperience || config.combatRoundLimit
     ? config
     : undefined;
 }

@@ -9919,7 +9919,7 @@ export function MarketPanel({
 
   if (!isMarket || !visit || !step) {
     // No market is open right now. While one of the viewer's heroes (Main or
-    // Secondary) is parked on a Market field, OPEN_MARKET is legal and free —
+    // Secondary) is parked on a Market field, OPEN_MARKET checks its MP cost —
     // surface it as a persistent, blinking tab so the market is reachable any
     // time without re-walking onto the tile.
     const openAction = legalActions.find(
@@ -9944,11 +9944,13 @@ export function MarketPanel({
       <button
         className="marketTab"
         onClick={() => onAction(openAction.action)}
-        title={`Open the ${marketName} — your hero is standing here, trade any time`}
+        title={openAction.label}
         type="button"
       >
         <span className="marketTabIcon">⚖</span>
-        {marketName}
+        {marketName}{marketField?.location === "trading_post"
+          ? ` — 1 movement point (${parkedHero?.kind === "secondary" ? "Secondary" : "Main"} Hero)`
+          : ""}
       </button>
     );
   }
@@ -10057,6 +10059,15 @@ export function MarketPanel({
           ) : null}
         </div>
       </header>
+
+      {isTradingPost && state.adventure?.fields[visit.fieldId]?.location === "trading_post" ? (
+        <p role="note">
+          First opening on arrival is free. After closing or completing this visit,
+          reopening costs the visiting {state.heroes[visit.heroId]?.kind === "secondary" ? "Secondary" : "Main"} Hero
+          {" "}1 movement point, even next turn. With 0 movement points, you cannot
+          reopen. Minimizing keeps this visit open for free.
+        </p>
+      ) : null}
 
       {isTradingPost ? (
         <section className="marketTrades" aria-label="Resource trades">

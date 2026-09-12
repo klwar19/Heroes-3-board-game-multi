@@ -1,0 +1,2261 @@
+{
+  "variant": "no-stable-pickup",
+  "difficulty": "impossible",
+  "faction": "conflux",
+  "initial": {
+    "resources": {
+      "gold": 10,
+      "buildingMaterials": 2,
+      "valuables": 1
+    },
+    "production": {
+      "gold": 10,
+      "buildingMaterials": 2,
+      "valuables": 1
+    },
+    "army": [
+      {
+        "id": "army_p2_1",
+        "unitDefId": "conflux.sprites",
+        "side": "few"
+      },
+      {
+        "id": "army_p2_2",
+        "unitDefId": "conflux.storm_elementals",
+        "side": "few"
+      },
+      {
+        "id": "army_p2_3",
+        "unitDefId": "conflux.ice_elementals",
+        "side": "few"
+      }
+    ],
+    "towns": {
+      "town_p1": {
+        "id": "town_p1",
+        "controllerId": "p1",
+        "buildings": [
+          "tower.citadel",
+          "tower.mage_guild",
+          "tower.dwelling_bronze"
+        ],
+        "factionId": "tower",
+        "fieldId": "h:8:2"
+      },
+      "town_p2": {
+        "id": "town_p2",
+        "controllerId": "p2",
+        "buildings": [
+          "conflux.citadel",
+          "conflux.mage_guild",
+          "conflux.dwelling_bronze"
+        ],
+        "factionId": "conflux",
+        "fieldId": "h:10:7"
+      }
+    },
+    "houseRules": {
+      "combat-retake": false,
+      "settlement-foreign-recruitment": false,
+      "settlement-neutral-recruitment": false,
+      "duplicate-unit-recruitment": false,
+      "side-buildings-materials-only": false,
+      "split-decks": true,
+      "mystical-garden-gold": true,
+      "torso-of-legion-major": true,
+      "eversmoking-ring-of-sulfur-major": true,
+      "griffin-buff": true,
+      "marksman-buff": true,
+      "arch-devil-pack-damage-6": true,
+      "sandro-skeleton-hp": true,
+      "wisdom-expert-discount": true,
+      "estates-nerf": true,
+      "immediate-reinforcement-prompts": false,
+      "gelu-sharpshooter-buff": true,
+      "initiative-specialty-draw": true,
+      "dracon-few-magi-trade": true,
+      "combat-move-initiative": true,
+      "far-tile-rerolls": true,
+      "ballistics-buff": true,
+      "pathfinding-expert": true,
+      "vision-battle-swap": true,
+      "bank-empower-ability": true,
+      "bank-move-points": true,
+      "bank-stack-chance-80": false,
+      "dwarven-treasury-reward-nerf": true,
+      "defeat-gold-debt": true,
+      "obelisk-rewards": true,
+      "polish-spell-book": false,
+      "polish-creature-banks": false,
+      "polish-bank-sizes": false,
+      "polish-unit-stacks": false,
+      "polish-reduced-starting-bonus": false,
+      "polish-rule-111": false,
+      "polish-reduced-surrender": false,
+      "polish-random-artifacts": false,
+      "polish-pandora-search": false,
+      "polish-wait": false,
+      "polish-quick-combat": false,
+      "freelancers-guild-bounty": true,
+      "polish-bank-auto-combat": false,
+      "polish-grail-utopia": false,
+      "polish-alliance-mode": false,
+      "polish-set-artifacts": false,
+      "polish-bank-unit-spells": false,
+      "polish-card-balance": false,
+      "community-card-balance": false,
+      "polish-single-dimension-door": false,
+      "gold-dragon-second-attack-3": true,
+      "binh-ballista-cost-3-6": true,
+      "multi-demon-summon": true,
+      "phoenix-pack-rebirth": true,
+      "resource-die-single-valuables": true,
+      "mine-guard-reinforcement": false,
+      "elemental-damage-no-die": false,
+      "elemental-damage-zero-die": false,
+      "discovery-border-gate": true,
+      "deck-access-hero-level": false,
+      "mine-army-defense": false,
+      "no-secondary-heroes": false,
+      "free-neutral-combat-extend": false,
+      "level-v-signature-neutral": false,
+      "random-town-veteran-defense": true,
+      "level-seven-one-level": true
+    },
+    "wog": {
+      "enabled": false,
+      "commanders": false,
+      "newObjects": false,
+      "newCreatures": true,
+      "artifacts": false,
+      "unitExperience": false,
+      "neutralRankUp": false,
+      "monsterWaves": false,
+      "raidBosses": false,
+      "dungeon": false,
+      "pveTheme": "classic",
+      "wavePressure": "standard",
+      "waveDefeatLimit": 0,
+      "raidBossSpawnRound": 5,
+      "dungeonDepth": 10,
+      "dungeonDescentCost": 1
+    }
+  },
+  "round": 7,
+  "steps": 104,
+  "attacks": [
+    {
+      "round": 1,
+      "field": "h:10:6",
+      "location": "mine",
+      "resource": "buildingMaterials",
+      "difficulty": 1,
+      "group": "starting",
+      "entryMp": 3,
+      "remainingMp": 2,
+      "battle": "combat_17",
+      "army": [
+        {
+          "id": "army_p2_1",
+          "unitDefId": "conflux.sprites",
+          "side": "pack"
+        },
+        {
+          "id": "army_p2_2",
+          "unitDefId": "conflux.storm_elementals",
+          "side": "pack"
+        },
+        {
+          "id": "army_p2_3",
+          "unitDefId": "conflux.ice_elementals",
+          "side": "few"
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "field": "h:9:7",
+      "location": "treasure_symbol",
+      "difficulty": 1,
+      "group": "starting",
+      "entryMp": 2,
+      "remainingMp": 1,
+      "battle": "combat_51",
+      "army": [
+        {
+          "id": "army_p2_1",
+          "unitDefId": "conflux.sprites",
+          "side": "pack"
+        },
+        {
+          "id": "army_p2_2",
+          "unitDefId": "conflux.storm_elementals",
+          "side": "pack"
+        },
+        {
+          "id": "army_p2_3",
+          "unitDefId": "conflux.ice_elementals",
+          "side": "few"
+        }
+      ]
+    },
+    {
+      "round": 4,
+      "field": "h:9:8",
+      "location": "settlement",
+      "difficulty": 3,
+      "group": "far",
+      "entryMp": 3,
+      "remainingMp": 2,
+      "battle": "combat_105",
+      "army": [
+        {
+          "id": "army_p2_1",
+          "unitDefId": "conflux.sprites",
+          "side": "pack"
+        },
+        {
+          "id": "army_p2_2",
+          "unitDefId": "conflux.storm_elementals",
+          "side": "pack"
+        },
+        {
+          "id": "army_p2_3",
+          "unitDefId": "conflux.ice_elementals",
+          "side": "pack"
+        }
+      ]
+    }
+  ],
+  "captures": [
+    {
+      "round": 1,
+      "field": "h:10:6",
+      "location": "mine",
+      "resource": "buildingMaterials",
+      "group": "starting"
+    },
+    {
+      "round": 4,
+      "field": "h:9:8",
+      "location": "settlement",
+      "group": "far"
+    }
+  ],
+  "builds": [
+    {
+      "round": 5,
+      "building": "conflux.dwelling_silver",
+      "effect": {
+        "type": "UNLOCK_RECRUIT_TIER",
+        "tier": "silver"
+      }
+    }
+  ],
+  "outcomes": [
+    {
+      "round": 1,
+      "context": {
+        "kind": "neutral",
+        "heroId": "hero_p2",
+        "fieldId": "h:10:6",
+        "difficulty": 1,
+        "hasAzure": false
+      },
+      "winnerPlayerId": "p2",
+      "defeatedPlayerId": "neutrals",
+      "reason": "all-enemy-units-defeated"
+    },
+    {
+      "round": 2,
+      "context": {
+        "kind": "neutral",
+        "heroId": "hero_p2",
+        "fieldId": "h:9:7",
+        "difficulty": 1,
+        "hasAzure": false
+      },
+      "winnerPlayerId": "p2",
+      "defeatedPlayerId": "neutrals",
+      "reason": "all-enemy-units-defeated"
+    },
+    {
+      "round": 4,
+      "context": {
+        "kind": "neutral",
+        "heroId": "hero_p2",
+        "fieldId": "h:9:8",
+        "difficulty": 3,
+        "hasAzure": false
+      },
+      "winnerPlayerId": "p2",
+      "defeatedPlayerId": "neutrals",
+      "reason": "all-enemy-units-defeated"
+    }
+  ],
+  "errors": [],
+  "snapshots": [
+    {
+      "round": 1,
+      "space": "h:10:7",
+      "army": [
+        {
+          "id": "army_p2_1",
+          "unitDefId": "conflux.sprites",
+          "side": "few"
+        },
+        {
+          "id": "army_p2_2",
+          "unitDefId": "conflux.storm_elementals",
+          "side": "few"
+        },
+        {
+          "id": "army_p2_3",
+          "unitDefId": "conflux.ice_elementals",
+          "side": "few"
+        }
+      ],
+      "resources": {
+        "gold": 10,
+        "buildingMaterials": 2,
+        "valuables": 1
+      }
+    },
+    {
+      "round": 2,
+      "space": "h:11:7",
+      "army": [
+        {
+          "id": "army_p2_1",
+          "unitDefId": "conflux.sprites",
+          "side": "pack"
+        },
+        {
+          "id": "army_p2_2",
+          "unitDefId": "conflux.storm_elementals",
+          "side": "pack"
+        },
+        {
+          "id": "army_p2_3",
+          "unitDefId": "conflux.ice_elementals",
+          "side": "few"
+        }
+      ],
+      "resources": {
+        "gold": 1,
+        "buildingMaterials": 8,
+        "valuables": 1
+      }
+    },
+    {
+      "round": 3,
+      "space": "h:9:7",
+      "army": [
+        {
+          "id": "army_p2_1",
+          "unitDefId": "conflux.sprites",
+          "side": "pack"
+        },
+        {
+          "id": "army_p2_2",
+          "unitDefId": "conflux.storm_elementals",
+          "side": "pack"
+        },
+        {
+          "id": "army_p2_3",
+          "unitDefId": "conflux.ice_elementals",
+          "side": "few"
+        }
+      ],
+      "resources": {
+        "gold": 16,
+        "buildingMaterials": 16,
+        "valuables": 2
+      }
+    },
+    {
+      "round": 4,
+      "space": "h:8:8",
+      "army": [
+        {
+          "id": "army_p2_1",
+          "unitDefId": "conflux.sprites",
+          "side": "pack"
+        },
+        {
+          "id": "army_p2_2",
+          "unitDefId": "conflux.storm_elementals",
+          "side": "pack"
+        },
+        {
+          "id": "army_p2_3",
+          "unitDefId": "conflux.ice_elementals",
+          "side": "pack"
+        }
+      ],
+      "resources": {
+        "gold": 9,
+        "buildingMaterials": 16,
+        "valuables": 2
+      }
+    },
+    {
+      "round": 5,
+      "space": "h:9:8",
+      "army": [
+        {
+          "id": "army_p2_2",
+          "unitDefId": "conflux.storm_elementals",
+          "side": "pack"
+        },
+        {
+          "id": "army_p2_3",
+          "unitDefId": "conflux.ice_elementals",
+          "side": "pack"
+        },
+        {
+          "id": "army_p2_4",
+          "unitDefId": "conflux.sprites",
+          "side": "pack"
+        }
+      ],
+      "resources": {
+        "gold": 23,
+        "buildingMaterials": 20,
+        "valuables": 3
+      }
+    },
+    {
+      "round": 6,
+      "space": "h:8:8",
+      "army": [
+        {
+          "id": "army_p2_2",
+          "unitDefId": "conflux.storm_elementals",
+          "side": "pack"
+        },
+        {
+          "id": "army_p2_3",
+          "unitDefId": "conflux.ice_elementals",
+          "side": "pack"
+        },
+        {
+          "id": "army_p2_4",
+          "unitDefId": "conflux.sprites",
+          "side": "pack"
+        }
+      ],
+      "resources": {
+        "gold": 15,
+        "buildingMaterials": 14,
+        "valuables": 0
+      }
+    }
+  ],
+  "trace": [
+    {
+      "step": 3,
+      "round": 1,
+      "action": {
+        "type": "SET_TILE_ROTATION",
+        "playerId": "p2",
+        "tileInstanceId": "tile_2_S8",
+        "rotation": 1
+      },
+      "policy": "map.rotate-tile-for-path",
+      "from": "h:10:7",
+      "mp": 3,
+      "primary": "h:10:8",
+      "resources": {
+        "gold": 10,
+        "buildingMaterials": 2,
+        "valuables": 1
+      },
+      "resourcesAfter": {
+        "gold": 10,
+        "buildingMaterials": 2,
+        "valuables": 1
+      },
+      "primaryReady": false,
+      "reserve": 0,
+      "distance": 1
+    },
+    {
+      "step": 4,
+      "round": 1,
+      "action": {
+        "type": "POPULATION_ACTION",
+        "playerId": "p2",
+        "purchases": [
+          {
+            "kind": "reinforce",
+            "unitDefId": "conflux.sprites",
+            "armyUnitId": "army_p2_1"
+          }
+        ]
+      },
+      "policy": "map.recruit-army",
+      "from": "h:10:7",
+      "mp": 3,
+      "primary": "h:10:6",
+      "resources": {
+        "gold": 10,
+        "buildingMaterials": 2,
+        "valuables": 1
+      },
+      "resourcesAfter": {
+        "gold": 6,
+        "buildingMaterials": 2,
+        "valuables": 1
+      },
+      "primaryReady": true,
+      "reserve": 1,
+      "distance": 1
+    },
+    {
+      "step": 5,
+      "round": 1,
+      "action": {
+        "type": "POPULATION_ACTION",
+        "playerId": "p2",
+        "purchases": [
+          {
+            "kind": "reinforce",
+            "unitDefId": "conflux.storm_elementals",
+            "armyUnitId": "army_p2_2"
+          }
+        ]
+      },
+      "policy": "map.recruit-army",
+      "from": "h:10:7",
+      "mp": 3,
+      "primary": "h:10:6",
+      "resources": {
+        "gold": 6,
+        "buildingMaterials": 2,
+        "valuables": 1
+      },
+      "resourcesAfter": {
+        "gold": 1,
+        "buildingMaterials": 2,
+        "valuables": 1
+      },
+      "primaryReady": true,
+      "reserve": 1,
+      "distance": 1
+    },
+    {
+      "step": 6,
+      "round": 1,
+      "action": {
+        "type": "REFRESH_HAND",
+        "playerId": "p2",
+        "discardCardIds": []
+      },
+      "policy": "mandatory.start-turn",
+      "from": "h:10:7",
+      "mp": 3,
+      "primary": "h:10:6",
+      "resources": {
+        "gold": 1,
+        "buildingMaterials": 2,
+        "valuables": 1
+      },
+      "resourcesAfter": {
+        "gold": 1,
+        "buildingMaterials": 2,
+        "valuables": 1
+      },
+      "primaryReady": true,
+      "reserve": 1,
+      "distance": 1
+    },
+    {
+      "step": 7,
+      "round": 1,
+      "action": {
+        "type": "MOVE_HERO",
+        "playerId": "p2",
+        "heroId": "hero_p2",
+        "to": "h:10:6"
+      },
+      "policy": "map.premium-capture-now",
+      "from": "h:10:7",
+      "mp": 3,
+      "primary": "h:10:6",
+      "resources": {
+        "gold": 1,
+        "buildingMaterials": 2,
+        "valuables": 1
+      },
+      "resourcesAfter": {
+        "gold": 1,
+        "buildingMaterials": 2,
+        "valuables": 1
+      },
+      "primaryReady": true,
+      "reserve": 1,
+      "distance": 1
+    },
+    {
+      "step": 13,
+      "round": 1,
+      "action": {
+        "type": "MOVE_HERO",
+        "playerId": "p2",
+        "heroId": "hero_p2",
+        "to": "h:11:6"
+      },
+      "policy": "map.move-to-objective",
+      "from": "h:10:6",
+      "mp": 2,
+      "primary": "h:11:7",
+      "resources": {
+        "gold": 1,
+        "buildingMaterials": 4,
+        "valuables": 1
+      },
+      "resourcesAfter": {
+        "gold": 1,
+        "buildingMaterials": 4,
+        "valuables": 1
+      },
+      "primaryReady": false,
+      "reserve": 0,
+      "distance": 2
+    },
+    {
+      "step": 14,
+      "round": 1,
+      "action": {
+        "type": "MOVE_HERO",
+        "playerId": "p2",
+        "heroId": "hero_p2",
+        "to": "h:11:7"
+      },
+      "policy": "map.move-to-objective",
+      "from": "h:11:6",
+      "mp": 1,
+      "primary": "h:11:7",
+      "resources": {
+        "gold": 1,
+        "buildingMaterials": 4,
+        "valuables": 1
+      },
+      "resourcesAfter": {
+        "gold": 1,
+        "buildingMaterials": 8,
+        "valuables": 1
+      },
+      "primaryReady": false,
+      "reserve": 0,
+      "distance": 1
+    },
+    {
+      "step": 15,
+      "round": 1,
+      "action": {
+        "type": "PLAY_CARD",
+        "playerId": "p2",
+        "cardId": "ability.water_magic",
+        "mode": "basic",
+        "target": {
+          "type": "none"
+        }
+      },
+      "policy": "card.play-ability",
+      "from": "h:11:7",
+      "mp": 0,
+      "primary": "h:9:7",
+      "resources": {
+        "gold": 1,
+        "buildingMaterials": 8,
+        "valuables": 1
+      },
+      "resourcesAfter": {
+        "gold": 1,
+        "buildingMaterials": 8,
+        "valuables": 1
+      },
+      "primaryReady": true,
+      "reserve": 1,
+      "distance": 2
+    },
+    {
+      "step": 16,
+      "round": 1,
+      "action": {
+        "type": "END_TURN",
+        "playerId": "p2"
+      },
+      "policy": "safe.end-turn",
+      "from": "h:11:7",
+      "mp": 0,
+      "primary": "h:9:7",
+      "resources": {
+        "gold": 1,
+        "buildingMaterials": 8,
+        "valuables": 1
+      },
+      "resourcesAfter": {
+        "gold": 1,
+        "buildingMaterials": 8,
+        "valuables": 1
+      },
+      "primaryReady": true,
+      "reserve": 1,
+      "distance": 2
+    },
+    {
+      "step": 19,
+      "round": 2,
+      "action": {
+        "type": "REFRESH_HAND",
+        "playerId": "p2",
+        "discardCardIds": []
+      },
+      "policy": "mandatory.start-turn",
+      "from": "h:11:7",
+      "mp": 3,
+      "primary": "h:9:7",
+      "resources": {
+        "gold": 1,
+        "buildingMaterials": 8,
+        "valuables": 1
+      },
+      "resourcesAfter": {
+        "gold": 1,
+        "buildingMaterials": 8,
+        "valuables": 1
+      },
+      "primaryReady": true,
+      "reserve": 1,
+      "distance": 2
+    },
+    {
+      "step": 20,
+      "round": 2,
+      "action": {
+        "type": "MOVE_HERO",
+        "playerId": "p2",
+        "heroId": "hero_p2",
+        "to": "h:10:8"
+      },
+      "policy": "map.move-to-objective",
+      "from": "h:11:7",
+      "mp": 3,
+      "primary": "h:9:7",
+      "resources": {
+        "gold": 1,
+        "buildingMaterials": 8,
+        "valuables": 1
+      },
+      "resourcesAfter": {
+        "gold": 1,
+        "buildingMaterials": 8,
+        "valuables": 1
+      },
+      "primaryReady": true,
+      "reserve": 1,
+      "distance": 2
+    },
+    {
+      "step": 21,
+      "round": 2,
+      "action": {
+        "type": "MOVE_HERO",
+        "playerId": "p2",
+        "heroId": "hero_p2",
+        "to": "h:9:7"
+      },
+      "policy": "map.move-to-objective",
+      "from": "h:10:8",
+      "mp": 2,
+      "primary": "h:9:7",
+      "resources": {
+        "gold": 1,
+        "buildingMaterials": 8,
+        "valuables": 1
+      },
+      "resourcesAfter": {
+        "gold": 1,
+        "buildingMaterials": 8,
+        "valuables": 1
+      },
+      "primaryReady": true,
+      "reserve": 1,
+      "distance": 1
+    },
+    {
+      "step": 27,
+      "round": 2,
+      "action": {
+        "type": "RESOLVE_VISIT_STEP",
+        "playerId": "p2",
+        "optionIndex": 0
+      },
+      "policy": "map.resolve-visit",
+      "from": "h:9:7",
+      "mp": 1,
+      "primary": "h:9:7",
+      "resources": {
+        "gold": 1,
+        "buildingMaterials": 8,
+        "valuables": 1
+      },
+      "resourcesAfter": {
+        "gold": 1,
+        "buildingMaterials": 12,
+        "valuables": 1
+      },
+      "primaryReady": true,
+      "reserve": 0,
+      "distance": 0
+    },
+    {
+      "step": 28,
+      "round": 2,
+      "action": {
+        "type": "CHOOSE_OPTION",
+        "playerId": "p2",
+        "choiceId": "choice_66",
+        "optionIndex": 0
+      },
+      "policy": "choice.deck-search-mode",
+      "from": "h:9:7",
+      "mp": 1,
+      "primary": "h:9:7",
+      "resources": {
+        "gold": 1,
+        "buildingMaterials": 12,
+        "valuables": 1
+      },
+      "resourcesAfter": {
+        "gold": 1,
+        "buildingMaterials": 12,
+        "valuables": 1
+      },
+      "primaryReady": true,
+      "reserve": 0,
+      "distance": 0
+    },
+    {
+      "step": 29,
+      "round": 2,
+      "action": {
+        "type": "RESOLVE_DECK_SEARCH",
+        "playerId": "p2",
+        "choiceId": "choice_67",
+        "pick": {
+          "kind": "revealed",
+          "index": 0
+        }
+      },
+      "policy": "choice.deck-search-keep",
+      "from": "h:9:7",
+      "mp": 1,
+      "primary": "h:9:7",
+      "resources": {
+        "gold": 1,
+        "buildingMaterials": 12,
+        "valuables": 1
+      },
+      "resourcesAfter": {
+        "gold": 1,
+        "buildingMaterials": 12,
+        "valuables": 1
+      },
+      "primaryReady": true,
+      "reserve": 0,
+      "distance": 0
+    },
+    {
+      "step": 30,
+      "round": 2,
+      "action": {
+        "type": "PLACE_TILE",
+        "playerId": "p2",
+        "heroId": "hero_p2",
+        "supplyIndex": 0,
+        "centerRow": 8,
+        "centerCol": 9
+      },
+      "policy": "map.place-far-tile",
+      "from": "h:9:7",
+      "mp": 1,
+      "primary": "h:9:7",
+      "resources": {
+        "gold": 1,
+        "buildingMaterials": 12,
+        "valuables": 1
+      },
+      "resourcesAfter": {
+        "gold": 1,
+        "buildingMaterials": 12,
+        "valuables": 1
+      },
+      "primaryReady": true,
+      "reserve": 0,
+      "distance": 0
+    },
+    {
+      "step": 31,
+      "round": 2,
+      "action": {
+        "type": "SET_TILE_ROTATION",
+        "playerId": "p2",
+        "tileInstanceId": "tile_6_F19",
+        "rotation": 0
+      },
+      "policy": "map.rotate-tile-for-path",
+      "from": "h:9:7",
+      "mp": 0,
+      "primary": "h:10:6",
+      "resources": {
+        "gold": 1,
+        "buildingMaterials": 12,
+        "valuables": 1
+      },
+      "resourcesAfter": {
+        "gold": 1,
+        "buildingMaterials": 12,
+        "valuables": 1
+      },
+      "primaryReady": true,
+      "reserve": 0,
+      "distance": 2
+    },
+    {
+      "step": 32,
+      "round": 2,
+      "action": {
+        "type": "CHOOSE_OPTION",
+        "playerId": "p2",
+        "choiceId": "choice_72",
+        "optionIndex": 0
+      },
+      "policy": "choice.place-creature-bank",
+      "from": "h:9:7",
+      "mp": 0,
+      "primary": "h:10:6",
+      "resources": {
+        "gold": 1,
+        "buildingMaterials": 12,
+        "valuables": 1
+      },
+      "resourcesAfter": {
+        "gold": 1,
+        "buildingMaterials": 12,
+        "valuables": 1
+      },
+      "primaryReady": true,
+      "reserve": 0,
+      "distance": 2
+    },
+    {
+      "step": 33,
+      "round": 2,
+      "action": {
+        "type": "PLAY_CARD",
+        "playerId": "p2",
+        "cardId": "ability.air_magic",
+        "mode": "basic",
+        "target": {
+          "type": "none"
+        }
+      },
+      "policy": "card.play-ability",
+      "from": "h:9:7",
+      "mp": 0,
+      "primary": "h:10:6",
+      "resources": {
+        "gold": 1,
+        "buildingMaterials": 12,
+        "valuables": 1
+      },
+      "resourcesAfter": {
+        "gold": 1,
+        "buildingMaterials": 12,
+        "valuables": 1
+      },
+      "primaryReady": true,
+      "reserve": 0,
+      "distance": 2
+    },
+    {
+      "step": 34,
+      "round": 2,
+      "action": {
+        "type": "END_TURN",
+        "playerId": "p2"
+      },
+      "policy": "safe.end-turn",
+      "from": "h:9:7",
+      "mp": 0,
+      "primary": "h:10:6",
+      "resources": {
+        "gold": 1,
+        "buildingMaterials": 12,
+        "valuables": 1
+      },
+      "resourcesAfter": {
+        "gold": 16,
+        "buildingMaterials": 16,
+        "valuables": 2
+      },
+      "primaryReady": true,
+      "reserve": 0,
+      "distance": 2
+    },
+    {
+      "step": 37,
+      "round": 3,
+      "action": {
+        "type": "REFRESH_HAND",
+        "playerId": "p2",
+        "discardCardIds": []
+      },
+      "policy": "mandatory.start-turn",
+      "from": "h:9:7",
+      "mp": 3,
+      "primary": "h:8:8",
+      "resources": {
+        "gold": 16,
+        "buildingMaterials": 16,
+        "valuables": 2
+      },
+      "resourcesAfter": {
+        "gold": 16,
+        "buildingMaterials": 16,
+        "valuables": 2
+      },
+      "primaryReady": false,
+      "reserve": 0,
+      "distance": 1
+    },
+    {
+      "step": 38,
+      "round": 3,
+      "action": {
+        "type": "MOVE_HERO",
+        "playerId": "p2",
+        "heroId": "hero_p2",
+        "to": "h:8:8"
+      },
+      "policy": "map.enter-first-opened-tile",
+      "from": "h:9:7",
+      "mp": 3,
+      "primary": "h:8:8",
+      "resources": {
+        "gold": 16,
+        "buildingMaterials": 16,
+        "valuables": 2
+      },
+      "resourcesAfter": {
+        "gold": 16,
+        "buildingMaterials": 16,
+        "valuables": 2
+      },
+      "primaryReady": false,
+      "reserve": 0,
+      "distance": 1
+    },
+    {
+      "step": 39,
+      "round": 3,
+      "action": {
+        "type": "POPULATION_ACTION",
+        "playerId": "p2",
+        "purchases": [
+          {
+            "kind": "reinforce",
+            "unitDefId": "conflux.ice_elementals",
+            "armyUnitId": "army_p2_3"
+          }
+        ]
+      },
+      "policy": "map.recruit-army",
+      "from": "h:8:8",
+      "mp": 2,
+      "primary": "h:7:8",
+      "resources": {
+        "gold": 16,
+        "buildingMaterials": 16,
+        "valuables": 2
+      },
+      "resourcesAfter": {
+        "gold": 9,
+        "buildingMaterials": 16,
+        "valuables": 2
+      },
+      "primaryReady": false,
+      "reserve": 0,
+      "distance": 1
+    },
+    {
+      "step": 40,
+      "round": 3,
+      "action": {
+        "type": "SPEND_MORALE",
+        "playerId": "p2",
+        "benefit": "draw"
+      },
+      "policy": "card.spend-morale-draw",
+      "from": "h:8:8",
+      "mp": 2,
+      "primary": "h:9:8",
+      "resources": {
+        "gold": 9,
+        "buildingMaterials": 16,
+        "valuables": 2
+      },
+      "resourcesAfter": {
+        "gold": 9,
+        "buildingMaterials": 16,
+        "valuables": 2
+      },
+      "primaryReady": true,
+      "reserve": 2,
+      "distance": 1
+    },
+    {
+      "step": 41,
+      "round": 3,
+      "action": {
+        "type": "END_TURN",
+        "playerId": "p2"
+      },
+      "policy": "safe.end-turn",
+      "from": "h:8:8",
+      "mp": 2,
+      "primary": "h:9:8",
+      "resources": {
+        "gold": 9,
+        "buildingMaterials": 16,
+        "valuables": 2
+      },
+      "resourcesAfter": {
+        "gold": 9,
+        "buildingMaterials": 16,
+        "valuables": 2
+      },
+      "primaryReady": true,
+      "reserve": 2,
+      "distance": 1
+    },
+    {
+      "step": 45,
+      "round": 4,
+      "action": {
+        "type": "REFRESH_HAND",
+        "playerId": "p2",
+        "discardCardIds": [
+          "stat.knowledge"
+        ]
+      },
+      "policy": "forced.only-legal-action",
+      "from": "h:8:8",
+      "mp": 3,
+      "primary": "h:9:8",
+      "resources": {
+        "gold": 9,
+        "buildingMaterials": 16,
+        "valuables": 2
+      },
+      "resourcesAfter": {
+        "gold": 9,
+        "buildingMaterials": 16,
+        "valuables": 2
+      },
+      "primaryReady": true,
+      "reserve": 2,
+      "distance": 1
+    },
+    {
+      "step": 46,
+      "round": 4,
+      "action": {
+        "type": "RESOLVE_EXPLORERS_DISCARD",
+        "playerId": "p2",
+        "discardCardIds": []
+      },
+      "policy": "forced.only-legal-action",
+      "from": "h:8:8",
+      "mp": 3,
+      "primary": "h:9:8",
+      "resources": {
+        "gold": 9,
+        "buildingMaterials": 16,
+        "valuables": 2
+      },
+      "resourcesAfter": {
+        "gold": 9,
+        "buildingMaterials": 16,
+        "valuables": 2
+      },
+      "primaryReady": true,
+      "reserve": 2,
+      "distance": 1
+    },
+    {
+      "step": 47,
+      "round": 4,
+      "action": {
+        "type": "MOVE_HERO",
+        "playerId": "p2",
+        "heroId": "hero_p2",
+        "to": "h:9:8"
+      },
+      "policy": "map.premium-capture-now",
+      "from": "h:8:8",
+      "mp": 3,
+      "primary": "h:9:8",
+      "resources": {
+        "gold": 9,
+        "buildingMaterials": 16,
+        "valuables": 2
+      },
+      "resourcesAfter": {
+        "gold": 9,
+        "buildingMaterials": 16,
+        "valuables": 2
+      },
+      "primaryReady": true,
+      "reserve": 2,
+      "distance": 1
+    },
+    {
+      "step": 69,
+      "round": 4,
+      "action": {
+        "type": "CONTINUE_NEUTRAL_COMBAT",
+        "playerId": "p2"
+      },
+      "policy": "combat.continue",
+      "from": "h:9:8",
+      "mp": 2,
+      "resources": {
+        "gold": 9,
+        "buildingMaterials": 16,
+        "valuables": 2
+      },
+      "resourcesAfter": {
+        "gold": 9,
+        "buildingMaterials": 16,
+        "valuables": 2
+      },
+      "primaryReady": null,
+      "reserve": null,
+      "distance": null
+    },
+    {
+      "step": 77,
+      "round": 4,
+      "action": {
+        "type": "CONTINUE_NEUTRAL_COMBAT",
+        "playerId": "p2"
+      },
+      "policy": "combat.continue",
+      "from": "h:9:8",
+      "mp": 1,
+      "resources": {
+        "gold": 9,
+        "buildingMaterials": 16,
+        "valuables": 2
+      },
+      "resourcesAfter": {
+        "gold": 9,
+        "buildingMaterials": 16,
+        "valuables": 2
+      },
+      "primaryReady": null,
+      "reserve": null,
+      "distance": null
+    },
+    {
+      "step": 80,
+      "round": 4,
+      "action": {
+        "type": "RESOLVE_VISIT_STEP",
+        "playerId": "p2",
+        "optionIndex": 0
+      },
+      "policy": "map.resolve-visit",
+      "from": "h:9:8",
+      "mp": 0,
+      "primary": "h:7:9",
+      "resources": {
+        "gold": 9,
+        "buildingMaterials": 16,
+        "valuables": 2
+      },
+      "resourcesAfter": {
+        "gold": 14,
+        "buildingMaterials": 16,
+        "valuables": 2
+      },
+      "primaryReady": true,
+      "reserve": 0,
+      "distance": 3
+    },
+    {
+      "step": 81,
+      "round": 4,
+      "action": {
+        "type": "CHOOSE_OPTION",
+        "playerId": "p2",
+        "choiceId": "choice_224",
+        "optionIndex": 0
+      },
+      "policy": "choice.deck-search-mode",
+      "from": "h:9:8",
+      "mp": 0,
+      "primary": "h:7:9",
+      "resources": {
+        "gold": 14,
+        "buildingMaterials": 16,
+        "valuables": 2
+      },
+      "resourcesAfter": {
+        "gold": 14,
+        "buildingMaterials": 16,
+        "valuables": 2
+      },
+      "primaryReady": true,
+      "reserve": 0,
+      "distance": 3
+    },
+    {
+      "step": 82,
+      "round": 4,
+      "action": {
+        "type": "RESOLVE_DECK_SEARCH",
+        "playerId": "p2",
+        "choiceId": "choice_225",
+        "pick": {
+          "kind": "revealed",
+          "index": 0
+        }
+      },
+      "policy": "choice.deck-search-keep",
+      "from": "h:9:8",
+      "mp": 0,
+      "primary": "h:7:9",
+      "resources": {
+        "gold": 14,
+        "buildingMaterials": 16,
+        "valuables": 2
+      },
+      "resourcesAfter": {
+        "gold": 14,
+        "buildingMaterials": 16,
+        "valuables": 2
+      },
+      "primaryReady": true,
+      "reserve": 0,
+      "distance": 3
+    },
+    {
+      "step": 83,
+      "round": 4,
+      "action": {
+        "type": "POPULATION_ACTION",
+        "playerId": "p2",
+        "purchases": [
+          {
+            "kind": "recruit",
+            "unitDefId": "conflux.sprites"
+          }
+        ]
+      },
+      "policy": "map.recruit-army",
+      "from": "h:9:8",
+      "mp": 0,
+      "primary": "h:7:9",
+      "resources": {
+        "gold": 14,
+        "buildingMaterials": 16,
+        "valuables": 2
+      },
+      "resourcesAfter": {
+        "gold": 12,
+        "buildingMaterials": 16,
+        "valuables": 2
+      },
+      "primaryReady": true,
+      "reserve": 0,
+      "distance": 3
+    },
+    {
+      "step": 84,
+      "round": 4,
+      "action": {
+        "type": "POPULATION_ACTION",
+        "playerId": "p2",
+        "purchases": [
+          {
+            "kind": "reinforce",
+            "unitDefId": "conflux.sprites",
+            "armyUnitId": "army_p2_4"
+          }
+        ]
+      },
+      "policy": "map.recruit-army",
+      "from": "h:9:8",
+      "mp": 0,
+      "primary": "h:7:9",
+      "resources": {
+        "gold": 12,
+        "buildingMaterials": 16,
+        "valuables": 2
+      },
+      "resourcesAfter": {
+        "gold": 8,
+        "buildingMaterials": 16,
+        "valuables": 2
+      },
+      "primaryReady": true,
+      "reserve": 0,
+      "distance": 3
+    },
+    {
+      "step": 85,
+      "round": 4,
+      "action": {
+        "type": "END_TURN",
+        "playerId": "p2"
+      },
+      "policy": "safe.end-turn",
+      "from": "h:9:8",
+      "mp": 0,
+      "primary": "h:7:9",
+      "resources": {
+        "gold": 8,
+        "buildingMaterials": 16,
+        "valuables": 2
+      },
+      "resourcesAfter": {
+        "gold": 23,
+        "buildingMaterials": 20,
+        "valuables": 3
+      },
+      "primaryReady": true,
+      "reserve": 0,
+      "distance": 3
+    },
+    {
+      "step": 88,
+      "round": 5,
+      "action": {
+        "type": "BUILD_STRUCTURE",
+        "playerId": "p2",
+        "townId": "town_p2",
+        "buildingId": "conflux.dwelling_silver"
+      },
+      "policy": "map.build-structure",
+      "from": "h:9:8",
+      "mp": 3,
+      "primary": "h:9:9",
+      "resources": {
+        "gold": 23,
+        "buildingMaterials": 20,
+        "valuables": 3
+      },
+      "resourcesAfter": {
+        "gold": 15,
+        "buildingMaterials": 14,
+        "valuables": 0
+      },
+      "primaryReady": false,
+      "reserve": 0,
+      "distance": 1
+    },
+    {
+      "step": 89,
+      "round": 5,
+      "action": {
+        "type": "REFRESH_HAND",
+        "playerId": "p2",
+        "discardCardIds": []
+      },
+      "policy": "mandatory.start-turn",
+      "from": "h:9:8",
+      "mp": 3,
+      "primary": "h:7:9",
+      "resources": {
+        "gold": 15,
+        "buildingMaterials": 14,
+        "valuables": 0
+      },
+      "resourcesAfter": {
+        "gold": 15,
+        "buildingMaterials": 14,
+        "valuables": 0
+      },
+      "primaryReady": true,
+      "reserve": 0,
+      "distance": 3
+    },
+    {
+      "step": 90,
+      "round": 5,
+      "action": {
+        "type": "MOVE_HERO",
+        "playerId": "p2",
+        "heroId": "hero_p2",
+        "to": "h:8:8"
+      },
+      "policy": "map.move-to-objective",
+      "from": "h:9:8",
+      "mp": 3,
+      "primary": "h:9:9",
+      "resources": {
+        "gold": 15,
+        "buildingMaterials": 14,
+        "valuables": 0
+      },
+      "resourcesAfter": {
+        "gold": 15,
+        "buildingMaterials": 14,
+        "valuables": 0
+      },
+      "primaryReady": false,
+      "reserve": 0,
+      "distance": 1
+    },
+    {
+      "step": 91,
+      "round": 5,
+      "action": {
+        "type": "MOVE_HERO",
+        "playerId": "p2",
+        "heroId": "hero_p2",
+        "to": "h:9:8"
+      },
+      "policy": "map.move-to-objective",
+      "from": "h:8:8",
+      "mp": 2,
+      "primary": "h:7:9",
+      "resources": {
+        "gold": 15,
+        "buildingMaterials": 14,
+        "valuables": 0
+      },
+      "resourcesAfter": {
+        "gold": 15,
+        "buildingMaterials": 14,
+        "valuables": 0
+      },
+      "primaryReady": true,
+      "reserve": 0,
+      "distance": 2
+    },
+    {
+      "step": 92,
+      "round": 5,
+      "action": {
+        "type": "MOVE_HERO",
+        "playerId": "p2",
+        "heroId": "hero_p2",
+        "to": "h:8:8"
+      },
+      "policy": "map.move-to-objective",
+      "from": "h:9:8",
+      "mp": 1,
+      "primary": "h:9:9",
+      "resources": {
+        "gold": 15,
+        "buildingMaterials": 14,
+        "valuables": 0
+      },
+      "resourcesAfter": {
+        "gold": 15,
+        "buildingMaterials": 14,
+        "valuables": 0
+      },
+      "primaryReady": false,
+      "reserve": 0,
+      "distance": 1
+    },
+    {
+      "step": 93,
+      "round": 5,
+      "action": {
+        "type": "PLAY_CARD",
+        "playerId": "p2",
+        "cardId": "specialty.ciele.1",
+        "mode": "basic",
+        "optionIndex": 0,
+        "target": {
+          "type": "none"
+        }
+      },
+      "policy": "card.play-card",
+      "from": "h:8:8",
+      "mp": 0,
+      "primary": "h:7:9",
+      "resources": {
+        "gold": 15,
+        "buildingMaterials": 14,
+        "valuables": 0
+      },
+      "resourcesAfter": {
+        "gold": 15,
+        "buildingMaterials": 14,
+        "valuables": 0
+      },
+      "primaryReady": true,
+      "reserve": 0,
+      "distance": 2
+    },
+    {
+      "step": 94,
+      "round": 5,
+      "action": {
+        "type": "CHOOSE_OPTION",
+        "playerId": "p2",
+        "choiceId": "choice_251",
+        "optionIndex": 0
+      },
+      "policy": "forced.only-legal-action",
+      "from": "h:8:8",
+      "mp": 0,
+      "primary": "h:7:9",
+      "resources": {
+        "gold": 15,
+        "buildingMaterials": 14,
+        "valuables": 0
+      },
+      "resourcesAfter": {
+        "gold": 15,
+        "buildingMaterials": 14,
+        "valuables": 0
+      },
+      "primaryReady": true,
+      "reserve": 0,
+      "distance": 2
+    },
+    {
+      "step": 95,
+      "round": 5,
+      "action": {
+        "type": "END_TURN",
+        "playerId": "p2"
+      },
+      "policy": "safe.end-turn",
+      "from": "h:8:8",
+      "mp": 0,
+      "primary": "h:7:9",
+      "resources": {
+        "gold": 15,
+        "buildingMaterials": 14,
+        "valuables": 0
+      },
+      "resourcesAfter": {
+        "gold": 15,
+        "buildingMaterials": 14,
+        "valuables": 0
+      },
+      "primaryReady": true,
+      "reserve": 0,
+      "distance": 2
+    },
+    {
+      "step": 99,
+      "round": 6,
+      "action": {
+        "type": "REFRESH_HAND",
+        "playerId": "p2",
+        "discardCardIds": []
+      },
+      "policy": "mandatory.start-turn",
+      "from": "h:8:8",
+      "mp": 3,
+      "primary": "h:9:9",
+      "resources": {
+        "gold": 15,
+        "buildingMaterials": 14,
+        "valuables": 0
+      },
+      "resourcesAfter": {
+        "gold": 15,
+        "buildingMaterials": 14,
+        "valuables": 0
+      },
+      "primaryReady": false,
+      "reserve": 0,
+      "distance": 2
+    },
+    {
+      "step": 100,
+      "round": 6,
+      "action": {
+        "type": "MOVE_HERO",
+        "playerId": "p2",
+        "heroId": "hero_p2",
+        "to": "h:9:8"
+      },
+      "policy": "map.move-to-objective",
+      "from": "h:8:8",
+      "mp": 3,
+      "primary": "h:7:9",
+      "resources": {
+        "gold": 15,
+        "buildingMaterials": 14,
+        "valuables": 0
+      },
+      "resourcesAfter": {
+        "gold": 15,
+        "buildingMaterials": 14,
+        "valuables": 0
+      },
+      "primaryReady": true,
+      "reserve": 0,
+      "distance": 2
+    },
+    {
+      "step": 101,
+      "round": 6,
+      "action": {
+        "type": "MOVE_HERO",
+        "playerId": "p2",
+        "heroId": "hero_p2",
+        "to": "h:8:8"
+      },
+      "policy": "map.move-to-objective",
+      "from": "h:9:8",
+      "mp": 2,
+      "primary": "h:9:9",
+      "resources": {
+        "gold": 15,
+        "buildingMaterials": 14,
+        "valuables": 0
+      },
+      "resourcesAfter": {
+        "gold": 15,
+        "buildingMaterials": 14,
+        "valuables": 0
+      },
+      "primaryReady": false,
+      "reserve": 0,
+      "distance": 1
+    },
+    {
+      "step": 102,
+      "round": 6,
+      "action": {
+        "type": "MOVE_HERO",
+        "playerId": "p2",
+        "heroId": "hero_p2",
+        "to": "h:7:8"
+      },
+      "policy": "map.move-to-objective",
+      "from": "h:8:8",
+      "mp": 1,
+      "primary": "h:7:9",
+      "resources": {
+        "gold": 15,
+        "buildingMaterials": 14,
+        "valuables": 0
+      },
+      "resourcesAfter": {
+        "gold": 15,
+        "buildingMaterials": 14,
+        "valuables": 0
+      },
+      "primaryReady": true,
+      "reserve": 0,
+      "distance": 2
+    },
+    {
+      "step": 103,
+      "round": 6,
+      "action": {
+        "type": "END_TURN",
+        "playerId": "p2"
+      },
+      "policy": "safe.end-turn",
+      "from": "h:7:8",
+      "mp": 0,
+      "primary": "h:7:9",
+      "resources": {
+        "gold": 15,
+        "buildingMaterials": 14,
+        "valuables": 0
+      },
+      "resourcesAfter": {
+        "gold": 30,
+        "buildingMaterials": 18,
+        "valuables": 1
+      },
+      "primaryReady": true,
+      "reserve": 0,
+      "distance": 1
+    }
+  ],
+  "final": {
+    "army": [
+      {
+        "id": "army_p2_2",
+        "unitDefId": "conflux.storm_elementals",
+        "side": "pack"
+      },
+      {
+        "id": "army_p2_3",
+        "unitDefId": "conflux.ice_elementals",
+        "side": "pack"
+      },
+      {
+        "id": "army_p2_4",
+        "unitDefId": "conflux.sprites",
+        "side": "pack"
+      }
+    ],
+    "resources": {
+      "gold": 30,
+      "buildingMaterials": 18,
+      "valuables": 1
+    },
+    "fields": {
+      "h:8:2": {
+        "spaceId": "h:8:2",
+        "tileInstanceId": "tile_1_#S1",
+        "slot": 0,
+        "location": "town",
+        "blackCube": false,
+        "flagOwnerId": "p1",
+        "everFlagged": true,
+        "settlementResource": null,
+        "faction": "tower"
+      },
+      "h:7:2": {
+        "spaceId": "h:7:2",
+        "tileInstanceId": "tile_1_#S1",
+        "slot": 1,
+        "location": "blocked_field",
+        "blackCube": false,
+        "flagOwnerId": null,
+        "everFlagged": false,
+        "settlementResource": null
+      },
+      "h:8:3": {
+        "spaceId": "h:8:3",
+        "tileInstanceId": "tile_1_#S1",
+        "slot": 2,
+        "location": "empty_field",
+        "blackCube": false,
+        "flagOwnerId": null,
+        "everFlagged": false,
+        "settlementResource": null
+      },
+      "h:9:2": {
+        "spaceId": "h:9:2",
+        "tileInstanceId": "tile_1_#S1",
+        "slot": 3,
+        "location": "treasure_symbol",
+        "blackCube": false,
+        "flagOwnerId": null,
+        "everFlagged": false,
+        "settlementResource": null,
+        "difficulty": 1
+      },
+      "h:9:1": {
+        "spaceId": "h:9:1",
+        "tileInstanceId": "tile_1_#S1",
+        "slot": 4,
+        "location": "resource_symbol",
+        "blackCube": false,
+        "flagOwnerId": null,
+        "everFlagged": false,
+        "settlementResource": null
+      },
+      "h:8:1": {
+        "spaceId": "h:8:1",
+        "tileInstanceId": "tile_1_#S1",
+        "slot": 5,
+        "location": "empty_field",
+        "blackCube": false,
+        "flagOwnerId": null,
+        "everFlagged": false,
+        "settlementResource": null
+      },
+      "h:7:1": {
+        "spaceId": "h:7:1",
+        "tileInstanceId": "tile_1_#S1",
+        "slot": 6,
+        "location": "mine",
+        "blackCube": false,
+        "flagOwnerId": null,
+        "everFlagged": false,
+        "settlementResource": null,
+        "difficulty": 1,
+        "resource": "buildingMaterials",
+        "amount": 2
+      },
+      "h:10:7": {
+        "spaceId": "h:10:7",
+        "tileInstanceId": "tile_2_S8",
+        "slot": 0,
+        "location": "town",
+        "blackCube": false,
+        "flagOwnerId": "p2",
+        "everFlagged": true,
+        "settlementResource": null,
+        "faction": "conflux"
+      },
+      "h:9:7": {
+        "spaceId": "h:9:7",
+        "tileInstanceId": "tile_2_S8",
+        "slot": 6,
+        "location": "treasure_symbol",
+        "blackCube": true,
+        "flagOwnerId": null,
+        "everFlagged": false,
+        "settlementResource": null,
+        "difficulty": 1
+      },
+      "h:10:8": {
+        "spaceId": "h:10:8",
+        "tileInstanceId": "tile_2_S8",
+        "slot": 1,
+        "location": "empty_field",
+        "blackCube": false,
+        "flagOwnerId": null,
+        "everFlagged": false,
+        "settlementResource": null
+      },
+      "h:11:7": {
+        "spaceId": "h:11:7",
+        "tileInstanceId": "tile_2_S8",
+        "slot": 2,
+        "location": "resource_symbol",
+        "blackCube": true,
+        "flagOwnerId": null,
+        "everFlagged": false,
+        "settlementResource": null
+      },
+      "h:11:6": {
+        "spaceId": "h:11:6",
+        "tileInstanceId": "tile_2_S8",
+        "slot": 3,
+        "location": "empty_field",
+        "blackCube": false,
+        "flagOwnerId": null,
+        "everFlagged": false,
+        "settlementResource": null
+      },
+      "h:10:6": {
+        "spaceId": "h:10:6",
+        "tileInstanceId": "tile_2_S8",
+        "slot": 4,
+        "location": "mine",
+        "blackCube": false,
+        "flagOwnerId": "p2",
+        "everFlagged": true,
+        "settlementResource": null,
+        "difficulty": 1,
+        "resource": "buildingMaterials",
+        "amount": 2
+      },
+      "h:9:6": {
+        "spaceId": "h:9:6",
+        "tileInstanceId": "tile_2_S8",
+        "slot": 5,
+        "location": "blocked_field",
+        "blackCube": false,
+        "flagOwnerId": null,
+        "everFlagged": false,
+        "settlementResource": null
+      },
+      "h:8:9": {
+        "spaceId": "h:8:9",
+        "tileInstanceId": "tile_6_F19",
+        "slot": 0,
+        "location": "creature_bank",
+        "blackCube": false,
+        "flagOwnerId": null,
+        "everFlagged": false,
+        "settlementResource": null,
+        "bankId": "crypt"
+      },
+      "h:7:9": {
+        "spaceId": "h:7:9",
+        "tileInstanceId": "tile_6_F19",
+        "slot": 1,
+        "location": "learning_stone",
+        "blackCube": false,
+        "flagOwnerId": null,
+        "everFlagged": false,
+        "settlementResource": null,
+        "difficulty": 2
+      },
+      "h:8:10": {
+        "spaceId": "h:8:10",
+        "tileInstanceId": "tile_6_F19",
+        "slot": 2,
+        "location": "stables",
+        "blackCube": false,
+        "flagOwnerId": null,
+        "everFlagged": false,
+        "settlementResource": null
+      },
+      "h:9:9": {
+        "spaceId": "h:9:9",
+        "tileInstanceId": "tile_6_F19",
+        "slot": 3,
+        "location": "shrine_of_magic_incantation",
+        "blackCube": false,
+        "flagOwnerId": null,
+        "everFlagged": false,
+        "settlementResource": null
+      },
+      "h:9:8": {
+        "spaceId": "h:9:8",
+        "tileInstanceId": "tile_6_F19",
+        "slot": 4,
+        "location": "settlement",
+        "blackCube": false,
+        "flagOwnerId": "p2",
+        "everFlagged": true,
+        "settlementResource": "gold",
+        "difficulty": 3,
+        "faction": "stronghold"
+      },
+      "h:8:8": {
+        "spaceId": "h:8:8",
+        "tileInstanceId": "tile_6_F19",
+        "slot": 5,
+        "location": "temple",
+        "blackCube": true,
+        "flagOwnerId": null,
+        "everFlagged": false,
+        "settlementResource": null
+      },
+      "h:7:8": {
+        "spaceId": "h:7:8",
+        "tileInstanceId": "tile_6_F19",
+        "slot": 6,
+        "location": "empty_field",
+        "blackCube": false,
+        "flagOwnerId": null,
+        "everFlagged": false,
+        "settlementResource": null
+      }
+    },
+    "tiles": {
+      "tile_1_#S1": {
+        "id": "tile_1_#S1",
+        "tileDefId": "#S1",
+        "centerRow": 8,
+        "centerCol": 2,
+        "rotation": 0,
+        "faceDown": false,
+        "backLabel": "Ⅰ",
+        "group": "starting",
+        "awaitingRotation": false
+      },
+      "tile_2_S8": {
+        "id": "tile_2_S8",
+        "tileDefId": "S8",
+        "centerRow": 10,
+        "centerCol": 7,
+        "rotation": 1,
+        "faceDown": false,
+        "backLabel": "Ⅰ",
+        "group": "starting",
+        "awaitingRotation": false
+      },
+      "tile_3_N14": {
+        "id": "tile_3_N14",
+        "tileDefId": "N14",
+        "centerRow": 7,
+        "centerCol": 6,
+        "rotation": 0,
+        "faceDown": true,
+        "backLabel": "Ⅳ–Ⅴ",
+        "group": "near"
+      },
+      "tile_4_N5": {
+        "id": "tile_4_N5",
+        "tileDefId": "N5",
+        "centerRow": 11,
+        "centerCol": 2,
+        "rotation": 0,
+        "faceDown": true,
+        "backLabel": "Ⅳ–Ⅴ",
+        "group": "near"
+      },
+      "tile_5_C1": {
+        "id": "tile_5_C1",
+        "tileDefId": "C1",
+        "centerRow": 9,
+        "centerCol": 4,
+        "rotation": 0,
+        "faceDown": true,
+        "backLabel": "Ⅵ–Ⅶ",
+        "group": "center"
+      },
+      "tile_6_F19": {
+        "id": "tile_6_F19",
+        "tileDefId": "F19",
+        "centerRow": 8,
+        "centerCol": 9,
+        "rotation": 0,
+        "faceDown": false,
+        "backLabel": "Ⅱ–Ⅲ",
+        "group": "far",
+        "awaitingRotation": false
+      }
+    },
+    "farSupply": [
+      "?"
+    ],
+    "memory": {
+      "lastTurnKey": "6|p2|false",
+      "resourceTrail": [
+        {
+          "round": 1,
+          "gold": 1,
+          "mats": 8,
+          "vals": 1,
+          "army": 3,
+          "buildings": 3
+        },
+        {
+          "round": 2,
+          "gold": 1,
+          "mats": 12,
+          "vals": 1,
+          "army": 3,
+          "buildings": 3
+        },
+        {
+          "round": 3,
+          "gold": 9,
+          "mats": 16,
+          "vals": 2,
+          "army": 3,
+          "buildings": 3
+        },
+        {
+          "round": 4,
+          "gold": 8,
+          "mats": 16,
+          "vals": 2,
+          "army": 3,
+          "buildings": 3
+        },
+        {
+          "round": 5,
+          "gold": 15,
+          "mats": 14,
+          "vals": 0,
+          "army": 3,
+          "buildings": 4
+        },
+        {
+          "round": 6,
+          "gold": 15,
+          "mats": 14,
+          "vals": 0,
+          "army": 3,
+          "buildings": 4
+        }
+      ],
+      "focus": "army",
+      "stickyObjectiveSpaceId": "h:7:9",
+      "stickySinceRound": 6,
+      "visitedThisTurn": [],
+      "lastMarketRound": null,
+      "stagnantArmyTurns": 2,
+      "recentStateHashes": [],
+      "developmentPlan": {
+        "goal": "gold",
+        "sinceRound": 5,
+        "buildingId": "conflux.dwelling_gold",
+        "reserve": {
+          "gold": 14,
+          "buildingMaterials": 8,
+          "valuables": 4
+        },
+        "armyValue": 50,
+        "rebuilding": false
+      },
+      "routeHistory": [
+        {
+          "heroId": "hero_p2",
+          "to": "h:11:6",
+          "progress": "74f12498",
+          "round": 1
+        },
+        {
+          "heroId": "hero_p2",
+          "to": "h:11:7",
+          "progress": "23d69084",
+          "round": 1
+        },
+        {
+          "heroId": "hero_p2",
+          "to": "h:10:8",
+          "progress": "23d69084",
+          "round": 2
+        },
+        {
+          "heroId": "hero_p2",
+          "to": "h:9:7",
+          "progress": "23d69084",
+          "round": 2
+        },
+        {
+          "heroId": "hero_p2",
+          "to": "h:8:8",
+          "progress": "32149da4",
+          "round": 3
+        },
+        {
+          "heroId": "hero_p2",
+          "to": "h:9:8",
+          "progress": "ab3ab099",
+          "round": 4
+        },
+        {
+          "heroId": "hero_p2",
+          "to": "h:8:8",
+          "progress": "c92697f",
+          "round": 5
+        },
+        {
+          "heroId": "hero_p2",
+          "to": "h:9:8",
+          "progress": "c92697f",
+          "round": 5
+        },
+        {
+          "heroId": "hero_p2",
+          "to": "h:8:8",
+          "progress": "c92697f",
+          "round": 5
+        },
+        {
+          "heroId": "hero_p2",
+          "to": "h:9:8",
+          "progress": "c92697f",
+          "round": 6
+        },
+        {
+          "heroId": "hero_p2",
+          "to": "h:8:8",
+          "progress": "c92697f",
+          "round": 6
+        },
+        {
+          "heroId": "hero_p2",
+          "to": "h:7:8",
+          "progress": "c92697f",
+          "round": 6
+        }
+      ],
+      "failedFields": []
+    }
+  }
+}

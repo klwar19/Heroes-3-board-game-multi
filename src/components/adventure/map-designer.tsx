@@ -6303,7 +6303,8 @@ export function MapDesigner({
                       {(
                         [
                           { key: "breakField", label: "Break field", hint: "Pathfinding may not walk through this guarded Ⅶ field." },
-                          { key: "persistentGuard", label: "Persistent army", hint: "A lost fight leaves living guards for a re-fight." }
+                          { key: "persistentGuard", label: "Persistent army", hint: "A lost fight leaves living guards for a re-fight." },
+                          { key: "noExperience", label: "No experience", hint: "Winning grants the hero no experience — the fight is still real and pays its other rewards." }
                         ] as const
                       ).map((flag) => (
                         <label className="popoverCheckRow popoverCheckChip" key={flag.key} title={flag.hint}>

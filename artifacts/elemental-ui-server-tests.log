@@ -1,0 +1,10 @@
+
+ RUN  v4.1.8 E:/heroes 3 BG multi
+
+ ❯ src/components/adventure/module-gate-board.test.tsx (7 tests | 1 failed) 1540ms
+     × creature_bank: the hex opens its INSIDE ring and keeps the printed outer arc 328ms
+Debugger listening on ws://127.0.0.1:9229/4fad5588-7d59-4226-867b-b8e3fb5b5670
+For help, see: https://nodejs.org/en/docs/inspector
+Debugger attached.
+Debugger ending on ws://127.0.0.1:9229/4fad5588-7d59-4226-867b-b8e3fb5b5670
+For help, see: https://nodejs.org/en/docs/inspector

@@ -1,0 +1,88 @@
+
+ RUN  v4.1.8 E:/heroes 3 BG multi
+
+ ❯ artifacts/far-ai-verification/behavior.test.ts (20 tests | 1 failed | 19 skipped) 188ms
+   × Wisdom purchase preserves the first Gold recruit fund 185ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  artifacts/far-ai-verification/behavior.test.ts > Wisdom purchase preserves the first Gold recruit fund
+AssertionError: expected [ { …(3) }, …(7) ] to not deep equally contain ObjectContaining{…}
+
+- Expected:
+ObjectContaining {
+  "type": "SPELL_BOOK_ACTION",
+}
+
++ Received:
+[
+  {
+    "playerId": "p2",
+    "type": "SPELL_BOOK_ACTION",
+    "wisdom": {
+      "cardId": "ability.wisdom",
+      "mode": "basic",
+    },
+  },
+  {
+    "choiceId": "choice_9",
+    "optionIndex": 0,
+    "playerId": "p2",
+    "type": "CHOOSE_OPTION",
+  },
+  {
+    "choiceId": "choice_10",
+    "pick": {
+      "index": 1,
+      "kind": "revealed",
+    },
+    "playerId": "p2",
+    "type": "RESOLVE_DECK_SEARCH",
+  },
+  {
+    "choiceId": "choice_13",
+    "optionIndex": 0,
+    "playerId": "p2",
+    "type": "CHOOSE_OPTION",
+  },
+  {
+    "cardId": "spell.bless",
+    "playerId": "p2",
+    "type": "MOVE_SPELL_TO_SPELL_BOOK",
+  },
+  {
+    "cardId": "ability.leadership",
+    "mode": "basic",
+    "playerId": "p2",
+    "target": {
+      "type": "none",
+    },
+    "type": "PLAY_CARD",
+  },
+  {
+    "benefit": "draw",
+    "playerId": "p2",
+    "type": "SPEND_MORALE",
+  },
+  {
+    "playerId": "p2",
+    "type": "END_TURN",
+  },
+]
+
+ ❯ artifacts/far-ai-verification/behavior.test.ts:149:30
+    147|   state.players.p2.resources = { ...reserve };
+    148|   const result = drive(state, s => s.activePlayerId !== "p2");
+    149|   expect(result.actions).not.toContainEqual(expect.objectContaining({ …
+       |                              ^
+    150| });
+    151|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 19 skipped (20)
+   Start at  15:51:31
+   Duration  18.92s (transform 15.53s, setup 0ms, import 17.32s, tests 188ms, environment 0ms)
+

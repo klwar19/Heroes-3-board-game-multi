@@ -1,0 +1,53 @@
+
+ RUN  v4.1.8 E:/heroes 3 BG multi
+
+ ❯ artifacts/far-ai-verification/behavior.test.ts (20 tests | 2 failed) 3298ms
+   × necropolis: two MP enters settlement before a competing gold mine in round 2 and captures it 755ms
+   × castle: two MP enters settlement before a competing gold mine in round 2 and captures it 743ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  artifacts/far-ai-verification/behavior.test.ts > necropolis: two MP enters settlement before a competing gold mine in round 2 and captures it
+AssertionError: [{"type":"PLACE_COMBAT_UNIT","playerId":"p2","armyUnitId":"army_p2_3","position":13},{"type":"PLACE_COMBAT_UNIT","playerId":"p2","armyUnitId":"army_p2_1","position":14},{"type":"PLACE_COMBAT_UNIT","playerId":"p2","armyUnitId":"army_p2_2","position":12},{"type":"FINISH_COMBAT_PLACEMENT","playerId":"p2"},{"type":"CONTINUE_NEUTRAL_STEP","playerId":"p2"},{"type":"PLAY_REACTION","playerId":"p2","cardId":"stat.defense","mode":"expert"},{"type":"PASS_REACTION","playerId":"p2"},{"type":"PLAY_CARD","playerId":"p2","cardId":"ability.sorcery","mode":"basic","target":{"type":"none"}},{"type":"PLAY_CARD","playerId":"p2","cardId":"specialty.sandro.1","mode":"basic","target":{"type":"unit","unitId":"unit_p2_army_p2_1"}},{"type":"MOVE_UNIT","playerId":"p2","unitId":"unit_p2_army_p2_3","destination":9},{"type":"DEFEND_UNIT","playerId":"p2","unitId":"unit_p2_army_p2_3"},{"type":"CONTINUE_NEUTRAL_STEP","playerId":"p2"},{"type":"MOVE_UNIT","playerId":"p2","unitId":"unit_p2_army_p2_1","destination":2},{"type":"ATTACK_UNIT","playerId":"p2","attackerId":"unit_p2_army_p2_1","defenderId":"neutral_3_liches"},{"type":"PLAY_REACTION","playerId":"p2","cardId":"stat.attack","mode":"expert"},{"type":"PLAY_REACTION","playerId":"p2","cardId":"stat.attack","mode":"expert"},{"type":"MOVE_UNIT","playerId":"p2","unitId":"unit_p2_army_p2_2","destination":8},{"type":"ATTACK_UNIT","playerId":"p2","attackerId":"unit_p2_army_p2_2","defenderId":"neutral_1_halberdiers"},{"type":"CONTINUE_NEUTRAL_STEP","playerId":"p2"},{"type":"CONTINUE_NEUTRAL_COMBAT","playerId":"p2"},{"type":"CONTINUE_NEUTRAL_STEP","playerId":"p2"},{"type":"CHOOSE_ABILITY_TARGET","playerId":"p2","choiceId":"choice_72","targetUnitId":"unit_p2_army_p2_2"},{"type":"MOVE_UNIT","playerId":"p2","unitId":"unit_p2_army_p2_3","destination":4},{"type":"ATTACK_UNIT","playerId":"p2","attackerId":"unit_p2_army_p2_3","defenderId":"neutral_2_sharpshooters"},{"type":"MOVE_UNIT","playerId":"p2","unitId":"unit_p2_army_p2_1","destination":1},{"type":"ATTACK_UNIT","playerId":"p2","attackerId":"unit_p2_army_p2_1","defenderId":"neutral_2_sharpshooters"},{"type":"DEFEND_UNIT","playerId":"p2","unitId":"unit_p2_army_p2_2"},{"type":"RETREAT_FROM_COMBAT","playerId":"p2"},{"type":"ACKNOWLEDGE_COMBAT_END","playerId":"p2"},{"type":"END_TURN","playerId":"p2"}]: expected null to be 'p2' // Object.is equality
+
+- Expected:
+"p2"
+
++ Received:
+null
+
+ ❯ artifacts/far-ai-verification/behavior.test.ts:78:109
+     76|     expect(getMainHero(entry.state, "p2")?.movementPoints).toBe(1);
+     77|     const result = drive(entry.state, s => s.adventure?.fields[settlem…
+     78|     expect(result.state.adventure?.fields[settlement.spaceId]?.flagOwn…
+       |                                                                                                             ^
+     79|     expect(result.state.round).toBe(2);
+     80|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  artifacts/far-ai-verification/behavior.test.ts > castle: two MP enters settlement before a competing gold mine in round 2 and captures it
+AssertionError: [{"type":"PLACE_COMBAT_UNIT","playerId":"p2","armyUnitId":"army_p2_3","position":14},{"type":"PLACE_COMBAT_UNIT","playerId":"p2","armyUnitId":"army_p2_1","position":13},{"type":"PLACE_COMBAT_UNIT","playerId":"p2","armyUnitId":"army_p2_2","position":16},{"type":"FINISH_COMBAT_PLACEMENT","playerId":"p2"},{"type":"MOVE_UNIT","playerId":"p2","unitId":"unit_p2_army_p2_3","destination":9},{"type":"ATTACK_UNIT","playerId":"p2","attackerId":"unit_p2_army_p2_3","defenderId":"neutral_3_pit_lords"},{"type":"PLAY_REACTION","playerId":"p2","cardId":"stat.attack","mode":"expert"},{"type":"PLAY_REACTION","playerId":"p2","cardId":"specialty.catherine.1","mode":"basic","optionIndex":0},{"type":"PASS_REACTION","playerId":"p2"},{"type":"PLAY_REACTION","playerId":"p2","cardId":"stat.defense","mode":"expert"},{"type":"PLAY_REACTION","playerId":"p2","cardId":"stat.defense","mode":"expert"},{"type":"PLAY_REACTION","playerId":"p2","cardId":"stat.defense","mode":"expert"},{"type":"PASS_REACTION","playerId":"p2"},{"type":"CONTINUE_NEUTRAL_STEP","playerId":"p2"},{"type":"CHOOSE_OPTION","playerId":"p2","choiceId":"choice_37","optionIndex":0},{"type":"PASS_REACTION","playerId":"p2"},{"type":"CONTINUE_NEUTRAL_STEP","playerId":"p2"},{"type":"PASS_REACTION","playerId":"p2"},{"type":"PASS_REACTION","playerId":"p2"},{"type":"ATTACK_UNIT","playerId":"p2","attackerId":"unit_p2_army_p2_2","defenderId":"neutral_1_ice_elementals"},{"type":"PASS_REACTION","playerId":"p2"},{"type":"PASS_REACTION","playerId":"p2"},{"type":"MOVE_UNIT","playerId":"p2","unitId":"unit_p2_army_p2_2","destination":17},{"type":"MOVE_UNIT","playerId":"p2","unitId":"unit_p2_army_p2_1","destination":12},{"type":"ATTACK_UNIT","playerId":"p2","attackerId":"unit_p2_army_p2_1","defenderId":"neutral_2_vampires"},{"type":"PASS_REACTION","playerId":"p2"},{"type":"PASS_REACTION","playerId":"p2"},{"type":"CONTINUE_NEUTRAL_STEP","playerId":"p2"},{"type":"PASS_REACTION","playerId":"p2"},{"type":"CONTINUE_NEUTRAL_COMBAT","playerId":"p2"},{"type":"CONTINUE_NEUTRAL_STEP","playerId":"p2"},{"type":"CHOOSE_ABILITY_TARGET","playerId":"p2","choiceId":"choice_114","targetUnitId":"unit_p2_army_p2_3"},{"type":"PASS_REACTION","playerId":"p2"},{"type":"ATTACK_UNIT","playerId":"p2","attackerId":"unit_p2_army_p2_3","defenderId":"neutral_2_vampires"},{"type":"PASS_REACTION","playerId":"p2"},{"type":"PASS_REACTION","playerId":"p2"},{"type":"ATTACK_UNIT","playerId":"p2","attackerId":"unit_p2_army_p2_1","defenderId":"neutral_2_vampires"},{"type":"PASS_REACTION","playerId":"p2"},{"type":"CONTINUE_NEUTRAL_STEP","playerId":"p2"},{"type":"PASS_REACTION","playerId":"p2"},{"type":"ATTACK_UNIT","playerId":"p2","attackerId":"unit_p2_army_p2_2","defenderId":"neutral_1_ice_elementals"},{"type":"PASS_REACTION","playerId":"p2"},{"type":"MOVE_UNIT","playerId":"p2","unitId":"unit_p2_army_p2_2","destination":18},{"type":"RETREAT_FROM_COMBAT","playerId":"p2"},{"type":"ACKNOWLEDGE_COMBAT_END","playerId":"p2"},{"type":"PLAY_CARD","playerId":"p2","cardId":"ability.leadership","mode":"basic","target":{"type":"none"}},{"type":"SPEND_MORALE","playerId":"p2","benefit":"draw"},{"type":"END_TURN","playerId":"p2"}]: expected null to be 'p2' // Object.is equality
+
+- Expected:
+"p2"
+
++ Received:
+null
+
+ ❯ artifacts/far-ai-verification/behavior.test.ts:78:109
+     76|     expect(getMainHero(entry.state, "p2")?.movementPoints).toBe(1);
+     77|     const result = drive(entry.state, s => s.adventure?.fields[settlem…
+     78|     expect(result.state.adventure?.fields[settlement.spaceId]?.flagOwn…
+       |                                                                                                             ^
+     79|     expect(result.state.round).toBe(2);
+     80|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 18 passed (20)
+   Start at  15:52:13
+   Duration  12.99s (transform 8.01s, setup 0ms, import 9.24s, tests 3.30s, environment 0ms)
+

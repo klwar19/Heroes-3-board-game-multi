@@ -1,0 +1,33 @@
+
+ RUN  v4.1.8 E:/heroes 3 BG multi
+
+ ❯ artifacts/far-ai-verification/behavior.test.ts (37 tests | 1 failed | 35 skipped) 208ms
+   × Silver recruitment requires surplus: rich=false 152ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  artifacts/far-ai-verification/behavior.test.ts > Silver recruitment requires surplus: rich=false
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ artifacts/far-ai-verification/behavior.test.ts:197:103
+    195|     valuables: reserve.valuables };
+    196|   const result = drive(state, s => s.activePlayerId !== "p2");
+    197|   expect(result.state.players.p2.army.some(u => coreUnitDefinitions[u.…
+       |                                                                                                       ^
+    198| });
+    199|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed | 35 skipped (37)
+   Start at  16:03:43
+   Duration  9.86s (transform 7.86s, setup 0ms, import 9.12s, tests 208ms, environment 0ms)
+

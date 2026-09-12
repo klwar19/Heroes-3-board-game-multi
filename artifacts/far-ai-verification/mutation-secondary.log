@@ -1,0 +1,33 @@
+
+ RUN  v4.1.8 E:/heroes 3 BG multi
+
+ ❯ artifacts/far-ai-verification/behavior.test.ts (37 tests | 1 failed | 35 skipped) 337ms
+   × second hero waits for first FAR capture: captured=false 236ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  artifacts/far-ai-verification/behavior.test.ts > second hero waits for first FAR capture: captured=false
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ artifacts/far-ai-verification/behavior.test.ts:216:107
+    214|   mine.location = "mine"; mine.resource = "valuables";
+    215|   const result = drive(state, s => s.activePlayerId !== "p2");
+    216|   expect(Object.values(result.state.heroes).some(h => h.controllerId =…
+       |                                                                                                           ^
+    217| });
+    218|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed | 35 skipped (37)
+   Start at  16:03:54
+   Duration  12.81s (transform 10.52s, setup 0ms, import 11.85s, tests 337ms, environment 0ms)
+

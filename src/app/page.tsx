@@ -204,6 +204,7 @@ import {
 } from "@/components/adventure/screen";
 import { SetupAmbientFx } from "@/components/adventure/setup-ambient";
 import { HeroActionsDock } from "@/components/adventure/hero-actions-dock";
+import { MapTownBuildingsDock } from "@/components/adventure/map-town-buildings";
 import { AzureClawChill } from "@/components/adventure/azure-claw-chill";
 import { OpponentInfoDock, PhoneOpponentPanel } from "@/components/adventure/opponent-info";
 import { ScenarioObjectivesDock, VictoryPointsDock, VictoryPointsScoringOverlay } from "@/components/adventure/victory-points-panel";
@@ -6460,6 +6461,18 @@ export default function Home() {
                     only while the engine offers them to this seat. */}
                 {isSeated ? (
                   <HeroActionsDock legalActions={legalActions} onAction={submitAction} />
+                ) : null}
+                {/* Use a controlled town's special building actions (Cover of
+                    Darkness, Castle Gate, Blacksmith, Mage Guild, City Hall
+                    choice…) straight from the map — shown only when the engine
+                    is offering one right now. */}
+                {isSeated ? (
+                  <MapTownBuildingsDock
+                    legalActions={legalActions}
+                    onAction={submitAction}
+                    state={state}
+                    viewerPlayerId={viewerPlayerId}
+                  />
                 ) : null}
                 <MoraleCardsDock state={state} viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]} />
                 <ScenarioObjectivesDock state={state} viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]} />

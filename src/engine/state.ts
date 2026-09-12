@@ -5035,9 +5035,8 @@ type GameActionPayload =
   | {
       /**
        * Open the Trading Post / War Machine Factory panel for a hero parked on
-       * a market field. Free and repeatable — unlike REVISIT_FIELD it costs no
-       * movement point, so the market stays available while any of the player's
-       * heroes (Main or Secondary) sits on the tile.
+       * a market field. Trading Post reopenings cost the selected Main or
+       * Secondary Hero 1 movement point, even next turn. Factory access is free.
        */
       type: "OPEN_MARKET";
       playerId: PlayerId;
@@ -11622,6 +11621,13 @@ export type MapFieldState = {
    */
   combatRoundLimit?: 1 | 2 | 3 | "unlimited";
   /**
+   * Designer opt-out: winning this field's neutral fight grants the hero NO
+   * experience (the fight is still real and pays every other reward). Absent =
+   * the ordinary Field-Difficulty experience rule (XP only when the field's
+   * difficulty ≥ the hero's level). Creature Banks never grant XP regardless.
+   */
+  noExperience?: boolean;
+  /**
    * Subterranean Gate token (Stronghold expansion). When a gate is placed, the
    * sacrificed hex's `location` becomes "subterranean_gate" and these point at
    * the tile on the OTHER layer the gate bridges:
@@ -15020,6 +15026,7 @@ export type CustomMapPreset = {
     breakField?: boolean;
     persistentGuard?: boolean;
     unlimitedRounds?: boolean;
+    noExperience?: boolean;
   };
   /**
    * Calamity Waves designer overrides (module `monsterWaves`): `cadence`
@@ -15239,6 +15246,8 @@ export type CustomMapPreset = {
     breakField?: boolean;
     persistentGuard?: boolean;
     unlimitedRounds?: boolean;
+    /** Winning the Obelisk guard grants the hero no experience (see field.noExperience). */
+    noExperience?: boolean;
   };
   /**
    * MAP-WIDE mine options — make mines matter like PC "break" sites. Absent =
@@ -15257,6 +15266,8 @@ export type CustomMapPreset = {
     breakField?: boolean;
     persistentGuard?: boolean;
     unlimitedRounds?: boolean;
+    /** Winning the Mine guard grants the hero no experience (see field.noExperience). */
+    noExperience?: boolean;
   };
   /**
    * MAP-WIDE Random Town customization. Absent = classic Random Town (rolled
@@ -15315,6 +15326,8 @@ export type CustomMapPreset = {
     /** One-time reward paid the first time each Settlement is flagged. */
     reward?: CustomFieldReward;
     vp?: number;
+    /** Winning the Settlement guard grants the hero no experience (see field.noExperience). */
+    noExperience?: boolean;
   };
   /**
    * Designer-placed one-hex map objects — a flexible list riding the preset (it
@@ -16208,6 +16221,8 @@ export type CustomObjectFieldPlan = {
   breakField?: boolean;
   persistentGuard?: boolean;
   unlimitedRounds?: boolean;
+  /** Winning this object's guard grants the hero no experience (see field.noExperience). */
+  noExperience?: boolean;
   /** First player to clear / flag THIS object wins the game immediately. */
   winCondition?: boolean;
 };
@@ -16234,6 +16249,8 @@ export type CustomMapSettlementFieldPlan = {
    */
   reward?: CustomFieldReward;
   vp?: number;
+  /** Winning this settlement's guard grants the hero no experience (see field.noExperience). */
+  noExperience?: boolean;
   holdRoundsToWin?: number;
   /**
    * With {@link holdRoundsToWin}: only count continuous hold rounds while the
@@ -16426,6 +16443,8 @@ export type CustomCenterHexPlan = {
   persistentGuard?: boolean;
   /** This neutral fight has no combat-round limit. */
   unlimitedRounds?: boolean;
+  /** Winning this objective grants the hero no experience (see field.noExperience). */
+  noExperience?: boolean;
   /**
    * Make a Dragon Utopia on this center hex a capturable holding. Its controller
    * gets one paid Search(2)-Azure recruit offer at each Astrologers round.

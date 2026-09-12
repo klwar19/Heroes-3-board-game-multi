@@ -1,0 +1,53 @@
+
+ RUN  v4.1.8 E:/heroes 3 BG multi
+
+ ❯ src/engine/computer/planning-replies.test.ts (3 tests | 2 failed) 56ms
+     × sees move-and-attack threats, screens, and activation exhaustion 11ms
+     × does not count an attack forbidden by a visible ongoing effect 17ms
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ Test Files  1 failed | 621 passed (622)
+      Tests  2 failed | 9936 passed | 3 skipped (9941)
+   Start at  08:47:35
+   Duration  662.81s (transform 92.01s, setup 0ms, import 712.59s, tests 150.08s, environment 121.18s)
+
+ FAIL  src/engine/computer/planning-replies.test.ts > enemy legal reply search > sees move-and-attack threats, screens, and activation exhaustion
+AssertionError: expected +0 to be 3 // Object.is equality
+
+- Expected
++ Received
+
+- 3
++ 0
+
+ ❯ src/engine/computer/planning-replies.test.ts:46:51
+     44|       obstacles: [],
+     45|     } as unknown as CombatState;
+     46|     expect(coordinatedReplyDamage(board, own, 0)).toBe(3);
+       |                                                   ^
+     47|     board.units.screen = unit("screen", 4, "p2");
+     48|     board.units.screen2 = unit("screen2", 1, "p2");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  src/engine/computer/planning-replies.test.ts > enemy legal reply search > does not count an attack forbidden by a visible ongoing effect
+AssertionError: expected +0 to be 3 // Object.is equality
+
+- Expected
++ Received
+
+- 3
++ 0
+
+ ❯ src/engine/computer/planning-replies.test.ts:60:69
+     58|     const state = createAdventureGameState({ seed: "reply-effects", pl…
+     59|     const board = { units: { own, enemy }, obstacles: [] } as unknown …
+     60|     expect(coordinatedReplyDamage(board, own, 0, undefined, state)).to…
+       |                                                                     ^
+     61|     state.activeEffects.push({
+     62|       id: "cannot-attack", sourceCardId: "test", ownerPlayerId: "p2",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+

@@ -1277,7 +1277,8 @@ export function materializeTileFields(
         breakField: centerHex?.breakField ?? globalCenter?.breakField,
         persistentGuard: centerHex?.persistentGuard ?? globalCenter?.persistentGuard,
         unlimitedRounds: centerHex?.unlimitedRounds ?? globalCenter?.unlimitedRounds,
-        combatRoundLimit: centerHex?.combatRoundLimit ?? perTile?.combatRoundLimit ?? settlements?.combatRoundLimit ?? globalCenter?.combatRoundLimit
+        combatRoundLimit: centerHex?.combatRoundLimit ?? perTile?.combatRoundLimit ?? settlements?.combatRoundLimit ?? globalCenter?.combatRoundLimit,
+        noExperience: centerHex?.noExperience ?? perTile?.noExperience ?? settlements?.noExperience ?? globalCenter?.noExperience
       });
       const settlementReward = perTile?.reward ?? settlements?.reward;
       if (settlementReward) {
@@ -1363,12 +1364,12 @@ export function materializeTileFields(
  */
 function mergeObjectBreakFlags(
   perTile:
-    | { breakField?: boolean; persistentGuard?: boolean; unlimitedRounds?: boolean; combatRoundLimit?: 1 | 2 | 3 | "unlimited" }
+    | { breakField?: boolean; persistentGuard?: boolean; unlimitedRounds?: boolean; combatRoundLimit?: 1 | 2 | 3 | "unlimited"; noExperience?: boolean }
     | undefined,
   global:
-    | { breakField?: boolean; persistentGuard?: boolean; unlimitedRounds?: boolean; combatRoundLimit?: 1 | 2 | 3 | "unlimited" }
+    | { breakField?: boolean; persistentGuard?: boolean; unlimitedRounds?: boolean; combatRoundLimit?: 1 | 2 | 3 | "unlimited"; noExperience?: boolean }
     | undefined
-): { breakField?: boolean; persistentGuard?: boolean; unlimitedRounds?: boolean; combatRoundLimit?: 1 | 2 | 3 | "unlimited" } | undefined {
+): { breakField?: boolean; persistentGuard?: boolean; unlimitedRounds?: boolean; combatRoundLimit?: 1 | 2 | 3 | "unlimited"; noExperience?: boolean } | undefined {
   if (!perTile && !global) {
     return undefined;
   }
@@ -1376,7 +1377,8 @@ function mergeObjectBreakFlags(
     breakField: perTile?.breakField ?? global?.breakField,
     persistentGuard: perTile?.persistentGuard ?? global?.persistentGuard,
     unlimitedRounds: perTile?.unlimitedRounds ?? global?.unlimitedRounds,
-    combatRoundLimit: perTile?.combatRoundLimit ?? global?.combatRoundLimit
+    combatRoundLimit: perTile?.combatRoundLimit ?? global?.combatRoundLimit,
+    noExperience: perTile?.noExperience ?? global?.noExperience
   };
 }
 
@@ -2866,6 +2868,43 @@ function breakNeedsIndividualFlag(state: GameState, playerId: PlayerId, field: M
   );
 }
 
+/**
+ * A near/center TILE-group Break seals the WHOLE tile, not just its guarded
+ * fields: a hero coming from another tile may not step onto ANY of the broken
+ * tile's fields — even an open, unguarded hex — until the tile's guard(s) are
+ * cleared, so it cannot be side-stepped by walking in through an empty hex.
+ * Guarded fields keep their own Break handling (you enter one to FIGHT it — the
+ * only way in); once every guard the player has not yet cleared is gone the tile
+ * opens. Returns true only for a non-guarded destination that this rule walls
+ * off; the guarded break fields themselves are handled by the caller above.
+ * Cheap group / origin gates run before the field scan.
+ */
+function tileGroupBreakSealsEntry(state: GameState, hero: HeroState, field: MapFieldState): boolean {
+  const adventure = state.adventure;
+  const config = adventure?.mapPreset?.breaks;
+  if (!adventure || !config) return false;
+  const tile = adventure.tiles[field.tileInstanceId];
+  if (!tile) return false;
+  const groupBroken =
+    (config.enterNearTiles === true && tile.group === "near") ||
+    (config.enterCenterTiles === true && tile.group === "center");
+  if (!groupBroken) return false;
+  // Moving WITHIN the broken tile (or the very field you already stand on) is
+  // never a fresh entry — only crossing in from a different tile is sealed.
+  const originField = hero.spaceId ? adventure.fields[hero.spaceId] : undefined;
+  if (originField?.tileInstanceId === field.tileInstanceId) return false;
+  // Sealed while any guard on the tile is still uncleared FOR THIS PLAYER
+  // (individual scope: an ally's cube does not open it; team scope: it does).
+  const playerId = hero.controllerId;
+  return Object.values(adventure.fields).some(
+    (other) =>
+      other.tileInstanceId === field.tileInstanceId &&
+      isFieldGuarded(other) &&
+      other.flagOwnerId !== playerId &&
+      !breakClearedByTeam(state, playerId, other)
+  );
+}
+
 export function classifyHeroStep(
   state: GameState,
   hero: HeroState,
@@ -2964,6 +3003,13 @@ export function classifyHeroStep(
     }
     // Pathfinding walks through Neutral Units; Combat only if you END here.
     return movement.passEncounters || passAnyField(movement) ? "encounter" : "stop";
+  }
+
+  // Tile-group Break seal: an UNGUARDED hex of a broken near/center tile is
+  // walled off from outside until the tile's guard(s) fall, so the guard cannot
+  // be side-stepped. Flying (pass-any / move-through) still passes over.
+  if (tileGroupBreakSealsEntry(state, hero, field)) {
+    return passAnyField(movement) || movement.moveThrough ? "pass-only" : "block";
   }
 
   if (breakNeedsIndividualFlag(state, playerId, field)) {

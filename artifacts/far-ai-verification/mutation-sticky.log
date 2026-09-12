@@ -1,0 +1,82 @@
+
+ RUN  v4.1.8 E:/heroes 3 BG multi
+
+stdout | artifacts/far-ai-verification/gameplay.test.ts > conflux impossible: two FAR tiles, early capture and development
+no-stable-pickup impossible conflux round 1, 0 actions
+no-stable-pickup impossible conflux round 2, 17 actions
+no-stable-pickup impossible conflux round 3, 35 actions
+no-stable-pickup impossible conflux round 4, 42 actions
+no-stable-pickup impossible conflux round 5, 86 actions
+no-stable-pickup impossible conflux round 6, 96 actions
+{"variant":"no-stable-pickup","difficulty":"impossible","faction":"conflux","steps":104,"round":7,"farAttacks":[{"round":4,"field":"h:9:8","location":"settlement","difficulty":3,"group":"far","entryMp":3,"remainingMp":2,"battle":"combat_105","army":[{"id":"army_p2_1","unitDefId":"conflux.sprites","side":"pack"},{"id":"army_p2_2","unitDefId":"conflux.storm_elementals","side":"pack"},{"id":"army_p2_3","unitDefId":"conflux.ice_elementals","side":"pack"}]}],"captures":[{"round":1,"field":"h:10:6","location":"mine","resource":"buildingMaterials","group":"starting"},{"round":4,"field":"h:9:8","location":"settlement","group":"far"}],"builds":[{"round":5,"building":"conflux.dwelling_silver","effect":{"type":"UNLOCK_RECRUIT_TIER","tier":"silver"}}],"outcomes":[{"round":1,"context":{"kind":"neutral","heroId":"hero_p2","fieldId":"h:10:6","difficulty":1,"hasAzure":false},"winnerPlayerId":"p2","defeatedPlayerId":"neutrals","reason":"all-enemy-units-defeated"},{"round":2,"context":{"kind":"neutral","heroId":"hero_p2","fieldId":"h:9:7","difficulty":1,"hasAzure":false},"winnerPlayerId":"p2","defeatedPlayerId":"neutrals","reason":"all-enemy-units-defeated"},{"round":4,"context":{"kind":"neutral","heroId":"hero_p2","fieldId":"h:9:8","difficulty":3,"hasAzure":false},"winnerPlayerId":"p2","defeatedPlayerId":"neutrals","reason":"all-enemy-units-defeated"}],"errors":[]}
+
+ ❯ artifacts/far-ai-verification/gameplay.test.ts (1 test | 1 failed) 9859ms
+   × conflux impossible: two FAR tiles, early capture and development 9858ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  artifacts/far-ai-verification/gameplay.test.ts > conflux impossible: two FAR tiles, early capture and development
+AssertionError: no consecutive A-B-A-B movement cycle: expected [ { step: 92, round: 5, …(10) } ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "action": {
++       "heroId": "hero_p2",
++       "playerId": "p2",
++       "to": "h:8:8",
++       "type": "MOVE_HERO",
++     },
++     "distance": 1,
++     "from": "h:9:8",
++     "mp": 1,
++     "policy": "map.move-to-objective",
++     "primary": "h:9:9",
++     "primaryReady": false,
++     "reserve": 0,
++     "resources": {
++       "buildingMaterials": 14,
++       "gold": 15,
++       "valuables": 0,
++     },
++     "resourcesAfter": {
++       "buildingMaterials": 14,
++       "gold": 15,
++       "valuables": 0,
++     },
++     "round": 5,
++     "step": 92,
++   },
++ ]
+
+ ❯ artifacts/far-ai-verification/gameplay.test.ts:149:66
+    147|       entry.round === trace[index - 2].round && entry.action.to === tr…
+    148|       entry.from === trace[index - 2].from);
+    149|     expect.soft(cycles, "no consecutive A-B-A-B movement cycle").toEqu…
+       |                                                                  ^
+    150|     if (difficulty === "impossible" && maxRound >= 6 && !humanNeutrals…
+    151|       new Set(captures.filter(c => c.group === "far" && (c.location ==…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  artifacts/far-ai-verification/gameplay.test.ts > conflux impossible: two FAR tiles, early capture and development
+AssertionError: capture economy from both FAR tiles: expected 1 to be greater than or equal to 2
+ ❯ artifacts/far-ai-verification/gameplay.test.ts:153:74
+    151|       new Set(captures.filter(c => c.group === "far" && (c.location ==…
+    152|         (c.location === "mine" && (c.resource === "gold" || c.resource…
+    153|         .map(c => c.field)).size, "capture economy from both FAR tiles…
+       |                                                                          ^
+    154|     if (maxRound >= 8) expect(state.players.p2.army.some(u => coreUnit…
+    155|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+   Start at  15:54:47
+   Duration  26.98s (transform 15.00s, setup 0ms, import 16.39s, tests 9.86s, environment 0ms)
+

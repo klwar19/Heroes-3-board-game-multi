@@ -598,6 +598,7 @@ export function applyBreakFieldOptions(
         persistentGuard?: boolean;
         unlimitedRounds?: boolean;
         combatRoundLimit?: 1 | 2 | 3 | "unlimited";
+        noExperience?: boolean;
       }
     | undefined
 ): void {
@@ -610,6 +611,8 @@ export function applyBreakFieldOptions(
   else delete field.combatRoundLimit;
   if (options.unlimitedRounds) field.unlimitedCombatRounds = true;
   else delete field.unlimitedCombatRounds;
+  if (options.noExperience) field.noExperience = true;
+  else delete field.noExperience;
 }
 
 /** Grail dig MP cost (0 / 1 / 2). Absent preset ⇒ classic 1. */

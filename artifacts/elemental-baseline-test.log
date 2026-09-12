@@ -1,0 +1,33 @@
+
+ RUN  v4.1.8 E:/heroes 3 BG multi/artifacts/elemental-baseline
+
+ ❯ src/components/adventure/module-gate-board.test.tsx (7 tests | 1 failed) 1134ms
+     × creature_bank: the hex opens its INSIDE ring and keeps the printed outer arc 271ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/adventure/module-gate-board.test.tsx > a Gate carved over a Blocked Field draws only the printed OUTER arc on the board > creature_bank: the hex opens its INSIDE ring and keeps the printed outer arc
+AssertionError: the carve keeps only its outward containment arc: expected 30 to be 33 // Object.is equality
+
+- Expected
++ Received
+
+- 33
++ 30
+
+ ❯ src/components/adventure/module-gate-board.test.tsx:88:9
+     86|         carvedLines,
+     87|         "the carve keeps only its outward containment arc",
+     88|       ).toBe(printedLines - 3);
+       |         ^
+     89|     });
+     90|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 6 passed (7)
+   Start at  08:56:15
+   Duration  36.46s (transform 13.58s, setup 0ms, import 24.30s, tests 1.13s, environment 10.39s)
+

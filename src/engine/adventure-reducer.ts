@@ -2765,10 +2765,9 @@ function grantFreeTownBuilding(
 
 /**
  * Opens the Market (Trading Post / War Machine Factory) panel for a hero parked
- * on a market field. Unlike REVISIT_FIELD this is free and repeatable: as long
- * as one of the player's heroes (Main or Secondary) stays on the tile, the
- * player can reopen the market at will. The rulebook's "one non-trade action
- * per visit" rule still applies inside each opened visit.
+ * on a market field. Arrival opens the first visit automatically. Reopening
+ * a Trading Post costs that hero 1 MP, including on later turns. Factory
+ * reopening remains free. The one-action rule still applies within a visit.
  */
 export function openMarket(state: GameState, action: Extract<GameAction, { type: "OPEN_MARKET" }>): void {
   const adventure = requireAdventure(state);
@@ -2786,6 +2785,13 @@ export function openMarket(state: GameState, action: Extract<GameAction, { type:
 
   if (!isMarketLocation(field.location)) {
     throw new Error("That hero is not standing on a Market.");
+  }
+
+  if (field.location === "trading_post") {
+    if (hero.movementPoints < 1) {
+      throw new Error("Reopening the Trading Post costs this hero 1 movement point, including on later turns.");
+    }
+    hero.movementPoints -= 1;
   }
 
   beginFieldVisit(state, hero.id, hero.spaceId, true);
@@ -14759,8 +14765,10 @@ export function finalizeAdventureCombat(state: GameState): void {
         // Creature Banks have no Field Difficulty and grant NO experience
         // (rulebook p.66). Secondary Heroes never gain experience either; the
         // gold (Freelancer's Guild) and Necromancy rewards below are
-        // player-level and still apply.
-        if (hero.kind === "main" && !context.bankId) {
+        // player-level and still apply. A map designer may also mark an ordinary
+        // custom field "no experience" (`field.noExperience`) — the fight is
+        // real and pays its other rewards, but grants the winning hero no XP.
+        if (hero.kind === "main" && !context.bankId && !field?.noExperience) {
           const level = hero.level;
           // Field Difficulty Ⅶ follows its independent BINH reward toggle:
           // exactly one level while ON, or the original fill-to-7 while OFF.

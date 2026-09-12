@@ -180,42 +180,35 @@ describe("Population recruit — unit view + one-click shortcut", () => {
     expect(screen.getByText(/1\/3/)).toBeTruthy();
     expect(screen.getByText(/bronze · max 3/i)).toBeTruthy();
 
-    // Buying a Stack is spent gold: the first click ARMS a confirm step; it must
-    // NOT dispatch anything yet.
+    // USER RULE 2026-09-12: a Stack buys on a SINGLE click, like Reinforce — no
+    // arm/Confirm/Cancel step. The one click dispatches the exact purchase.
     fireEvent.click(screen.getByRole("button", { name: /Buy Stack for Griffins/i }));
-    expect(onAction).not.toHaveBeenCalled();
-
-    // The confirm step names the unit AND the gold cost.
-    const confirmPanel = document.querySelector(".stackPurchaseConfirm") as HTMLElement;
-    expect(confirmPanel, "arming shows the confirm panel").toBeTruthy();
-    expect(confirmPanel.textContent).toMatch(/Griffins/);
-    expect(confirmPanel.textContent).toMatch(/gold/i);
-
-    // Only the explicit Confirm dispatches the exact previous action.
-    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
     expect(onAction).toHaveBeenCalledTimes(1);
     expect(onAction).toHaveBeenCalledWith({
       type: "POPULATION_ACTION",
       playerId: "p1",
       purchases: [{ kind: "stack", unitDefId: "castle.griffins", armyUnitId: "army_stack_1" }]
     });
+    // No confirm panel is ever rendered.
+    expect(document.querySelector(".stackPurchaseConfirm")).toBeFalsy();
+    expect(screen.queryByRole("button", { name: "Confirm" })).toBeNull();
   });
 
-  it("Cancelling an armed Stack purchase dispatches nothing", () => {
+  it("an illegal (unaffordable) Stack button is disabled and dispatches nothing on click", () => {
     const state = recruitReadyState();
     state.adventure!.houseRules!["polish-unit-stacks"] = true;
     state.players.p1.army = [{ id: "army_stack_1", unitDefId: "castle.griffins", side: "pack", stacks: 1 }];
     const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p1")!;
     town.buildings = town.buildings.filter((buildingId) => buildingId !== "castle.dwelling_bronze");
+    // Strip the resources so the Stack purchase is not a legal action.
+    state.players.p1.resources.gold = 0;
+    state.players.p1.resources.valuables = 0;
     const { onAction } = renderRecruit(state);
 
-    fireEvent.click(screen.getByRole("button", { name: /Buy Stack for Griffins/i }));
+    const button = screen.getByRole("button", { name: /Buy Stack for Griffins/i }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    fireEvent.click(button);
     expect(onAction).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(onAction).not.toHaveBeenCalled();
-    // Backing out restores the Buy button (nothing staged).
-    expect(screen.getByRole("button", { name: /Buy Stack for Griffins/i })).toBeTruthy();
-    expect(document.querySelector(".stackPurchaseConfirm")).toBeFalsy();
   });
 
   it("lists recruited Neutrals with clear Stack UI at army caps (not bank max)", () => {
@@ -227,19 +220,15 @@ describe("Population recruit — unit view + one-click shortcut", () => {
     expect(screen.getByText(/Recruited Neutrals/i)).toBeTruthy();
     expect(screen.getByText(/gold · max 1/i)).toBeTruthy();
     expect(document.querySelector(".neutralBadge")?.textContent).toMatch(/Neutral/i);
-    // Same confirm step for a recruited Neutral: arm, then Confirm.
+    // Same single-click purchase for a recruited Neutral.
     fireEvent.click(screen.getByRole("button", { name: /Buy Stack for Nagas/i }));
-    expect(onAction).not.toHaveBeenCalled();
-    const confirmPanel = document.querySelector(".stackPurchaseConfirm") as HTMLElement;
-    expect(confirmPanel.textContent).toMatch(/Nagas/);
-    expect(confirmPanel.textContent).toMatch(/gold/i);
-    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
     expect(onAction).toHaveBeenCalledTimes(1);
     expect(onAction).toHaveBeenCalledWith({
       type: "POPULATION_ACTION",
       playerId: "p1",
       purchases: [{ kind: "stack", unitDefId: "neutral.nagas", armyUnitId: "army_n1" }]
     });
+    expect(document.querySelector(".stackPurchaseConfirm")).toBeFalsy();
   });
 
   it("shows a Stack's valuables cost directly on the Add Stack button", () => {

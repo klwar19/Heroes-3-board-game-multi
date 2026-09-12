@@ -1,0 +1,1506 @@
+{
+  "count": 4,
+  "matches": [
+    {
+      "matchId": "room-room-w4ibj2-14f07497-6118-4e98-9e25-c3bb76a64242",
+      "recordedAt": "2026-09-12T02:38:07.052Z",
+      "truncated": false,
+      "winnerPlayerId": "p1",
+      "seats": {
+        "p1": {
+          "faction": "necropolis",
+          "outcome": "win",
+          "actionCount": 114,
+          "lastRound": 4,
+          "marketRounds": [],
+          "marketTimeline": [
+            {
+              "sequence": 75,
+              "round": 1,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 121,
+              "round": 2,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 245,
+              "round": 3,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 284,
+              "round": 3,
+              "action": "END_TURN"
+            }
+          ],
+          "immediateRouteReturns": [],
+          "flags": 3,
+          "tilesOpened": [
+            {
+              "round": 2,
+              "type": "TILE_REVEALED",
+              "tileDefId": "F7"
+            },
+            {
+              "round": 4,
+              "type": "TILE_REVEALED",
+              "tileDefId": "F11"
+            }
+          ],
+          "combatsWon": [
+            {
+              "round": 1,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 1,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 3,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 4,
+              "defeatedPlayerId": "neutrals"
+            }
+          ],
+          "milestones": [
+            {
+              "round": 1,
+              "type": "UNIT_RECRUITED",
+              "id": "necropolis.zombies",
+              "kind": "recruit"
+            },
+            {
+              "round": 1,
+              "type": "UNIT_RECRUITED",
+              "id": "necropolis.vampires",
+              "kind": "reinforce"
+            },
+            {
+              "round": 1,
+              "type": "FIELD_FLAGGED",
+              "id": "mine"
+            },
+            {
+              "round": 1,
+              "type": "HERO_LEVEL_UP",
+              "id": "level-2"
+            },
+            {
+              "round": 2,
+              "type": "STRUCTURE_BUILT",
+              "id": "necropolis.necromancy_amplifier"
+            },
+            {
+              "round": 3,
+              "type": "UNIT_RECRUITED",
+              "id": "necropolis.wraiths",
+              "kind": "recruit"
+            },
+            {
+              "round": 3,
+              "type": "HERO_LEVEL_UP",
+              "id": "level-3"
+            },
+            {
+              "round": 3,
+              "type": "FIELD_FLAGGED",
+              "id": "mine"
+            },
+            {
+              "round": 4,
+              "type": "HERO_LEVEL_UP",
+              "id": "level-4"
+            },
+            {
+              "round": 4,
+              "type": "FIELD_FLAGGED",
+              "id": "mine"
+            },
+            {
+              "round": 4,
+              "type": "STRUCTURE_BUILT",
+              "id": "necropolis.city_hall"
+            }
+          ]
+        },
+        "p2": {
+          "faction": "tower",
+          "outcome": "loss",
+          "actionCount": 149,
+          "lastRound": 4,
+          "marketRounds": [
+            {
+              "round": 4,
+              "opens": 3,
+              "trades": 1,
+              "productiveMapActions": 0
+            }
+          ],
+          "marketTimeline": [
+            {
+              "sequence": 82,
+              "round": 1,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 178,
+              "round": 2,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 266,
+              "round": 3,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 293,
+              "round": 4,
+              "action": "OPEN_MARKET"
+            },
+            {
+              "sequence": 297,
+              "round": 4,
+              "action": "OPEN_MARKET"
+            },
+            {
+              "sequence": 316,
+              "round": 4,
+              "action": "OPEN_MARKET"
+            },
+            {
+              "sequence": 317,
+              "round": 4,
+              "action": "TRADE_RESOURCES"
+            }
+          ],
+          "immediateRouteReturns": [],
+          "flags": 1,
+          "tilesOpened": [
+            {
+              "round": 2,
+              "type": "TILE_REVEALED",
+              "tileDefId": "F23"
+            },
+            {
+              "round": 3,
+              "type": "TILE_REVEALED",
+              "tileDefId": "F10"
+            }
+          ],
+          "combatsWon": [
+            {
+              "round": 1,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 2,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 3,
+              "defeatedPlayerId": "neutrals"
+            }
+          ],
+          "milestones": [
+            {
+              "round": 1,
+              "type": "UNIT_RECRUITED",
+              "id": "tower.gargoyles",
+              "kind": "recruit"
+            },
+            {
+              "round": 1,
+              "type": "UNIT_RECRUITED",
+              "id": "tower.gargoyles",
+              "kind": "reinforce"
+            },
+            {
+              "round": 1,
+              "type": "UNIT_RECRUITED",
+              "id": "tower.gremlins",
+              "kind": "recruit"
+            },
+            {
+              "round": 2,
+              "type": "HERO_LEVEL_UP",
+              "id": "level-2"
+            },
+            {
+              "round": 2,
+              "type": "FIELD_FLAGGED",
+              "id": "mine"
+            },
+            {
+              "round": 3,
+              "type": "UNIT_RECRUITED",
+              "id": "tower.iron_golems",
+              "kind": "recruit"
+            },
+            {
+              "round": 3,
+              "type": "UNIT_RECRUITED",
+              "id": "tower.gremlins",
+              "kind": "recruit"
+            },
+            {
+              "round": 3,
+              "type": "STRUCTURE_BUILT",
+              "id": "tower.dwelling_silver"
+            },
+            {
+              "round": 4,
+              "type": "UNIT_RECRUITED",
+              "id": "tower.gremlins",
+              "kind": "recruit"
+            },
+            {
+              "round": 4,
+              "type": "UNIT_RECRUITED",
+              "id": "tower.gremlins",
+              "kind": "reinforce"
+            }
+          ]
+        },
+        "p3": {
+          "faction": "castle",
+          "outcome": "loss",
+          "actionCount": 145,
+          "lastRound": 4,
+          "marketRounds": [],
+          "marketTimeline": [
+            {
+              "sequence": 95,
+              "round": 1,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 176,
+              "round": 2,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 287,
+              "round": 3,
+              "action": "END_TURN"
+            }
+          ],
+          "immediateRouteReturns": [],
+          "flags": 3,
+          "tilesOpened": [
+            {
+              "round": 1,
+              "type": "TILE_REVEALED",
+              "tileDefId": "F15"
+            },
+            {
+              "round": 3,
+              "type": "TILE_REVEALED",
+              "tileDefId": "F1"
+            }
+          ],
+          "combatsWon": [
+            {
+              "round": 1,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 2,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 3,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 4,
+              "defeatedPlayerId": "neutrals"
+            }
+          ],
+          "milestones": [
+            {
+              "round": 1,
+              "type": "UNIT_RECRUITED",
+              "id": "castle.marksmen",
+              "kind": "recruit"
+            },
+            {
+              "round": 1,
+              "type": "UNIT_RECRUITED",
+              "id": "castle.marksmen",
+              "kind": "reinforce"
+            },
+            {
+              "round": 2,
+              "type": "UNIT_RECRUITED",
+              "id": "castle.griffins",
+              "kind": "recruit"
+            },
+            {
+              "round": 2,
+              "type": "HERO_LEVEL_UP",
+              "id": "level-2"
+            },
+            {
+              "round": 2,
+              "type": "FIELD_FLAGGED",
+              "id": "mine"
+            },
+            {
+              "round": 3,
+              "type": "UNIT_RECRUITED",
+              "id": "castle.griffins",
+              "kind": "reinforce"
+            },
+            {
+              "round": 3,
+              "type": "HERO_LEVEL_UP",
+              "id": "level-3"
+            },
+            {
+              "round": 3,
+              "type": "FIELD_FLAGGED",
+              "id": "mine"
+            },
+            {
+              "round": 4,
+              "type": "FIELD_FLAGGED",
+              "id": "settlement"
+            },
+            {
+              "round": 4,
+              "type": "STRUCTURE_BUILT",
+              "id": "castle.city_hall"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "matchId": "room-room-al8ilr-f627d9f9-b792-4a74-841f-0e2e66d7f5ec",
+      "recordedAt": "2026-09-11T17:35:25.693Z",
+      "truncated": false,
+      "winnerPlayerId": "p1",
+      "seats": {
+        "p1": {
+          "faction": "castle",
+          "outcome": "win",
+          "actionCount": 141,
+          "lastRound": 6,
+          "marketRounds": [],
+          "marketTimeline": [
+            {
+              "sequence": 42,
+              "round": 1,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 72,
+              "round": 2,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 149,
+              "round": 3,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 219,
+              "round": 4,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 252,
+              "round": 5,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 296,
+              "round": 6,
+              "action": "TRADE_RESOURCES"
+            },
+            {
+              "sequence": 300,
+              "round": 6,
+              "action": "TRADE_RESOURCES"
+            },
+            {
+              "sequence": 312,
+              "round": 6,
+              "action": "END_TURN"
+            }
+          ],
+          "immediateRouteReturns": [],
+          "flags": 3,
+          "tilesOpened": [
+            {
+              "round": 2,
+              "type": "TILE_REVEALED",
+              "tileDefId": "F23"
+            },
+            {
+              "round": 4,
+              "type": "TILE_REVEALED",
+              "tileDefId": "F10"
+            }
+          ],
+          "combatsWon": [
+            {
+              "round": 1,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 3,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 4,
+              "defeatedPlayerId": "neutrals"
+            }
+          ],
+          "milestones": [
+            {
+              "round": 1,
+              "type": "UNIT_RECRUITED",
+              "id": "castle.griffins",
+              "kind": "recruit"
+            },
+            {
+              "round": 1,
+              "type": "UNIT_RECRUITED",
+              "id": "castle.griffins",
+              "kind": "reinforce"
+            },
+            {
+              "round": 1,
+              "type": "HERO_LEVEL_UP",
+              "id": "level-2"
+            },
+            {
+              "round": 1,
+              "type": "FIELD_FLAGGED",
+              "id": "mine"
+            },
+            {
+              "round": 3,
+              "type": "HERO_LEVEL_UP",
+              "id": "level-3"
+            },
+            {
+              "round": 3,
+              "type": "FIELD_FLAGGED",
+              "id": "mine"
+            },
+            {
+              "round": 3,
+              "type": "STRUCTURE_BUILT",
+              "id": "castle.city_hall"
+            },
+            {
+              "round": 4,
+              "type": "FIELD_FLAGGED",
+              "id": "settlement"
+            },
+            {
+              "round": 5,
+              "type": "STRUCTURE_BUILT",
+              "id": "castle.dwelling_silver"
+            },
+            {
+              "round": 5,
+              "type": "UNIT_RECRUITED",
+              "id": "castle.zealots",
+              "kind": "recruit"
+            },
+            {
+              "round": 5,
+              "type": "HERO_LEVEL_UP",
+              "id": "level-4"
+            }
+          ]
+        },
+        "p2": {
+          "faction": "necropolis",
+          "outcome": "loss",
+          "actionCount": 193,
+          "lastRound": 6,
+          "marketRounds": [],
+          "marketTimeline": [
+            {
+              "sequence": 61,
+              "round": 1,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 99,
+              "round": 2,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 159,
+              "round": 3,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 228,
+              "round": 4,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 245,
+              "round": 5,
+              "action": "TRADE_RESOURCES"
+            },
+            {
+              "sequence": 248,
+              "round": 5,
+              "action": "TRADE_RESOURCES"
+            },
+            {
+              "sequence": 283,
+              "round": 5,
+              "action": "TRADE_RESOURCES"
+            },
+            {
+              "sequence": 284,
+              "round": 5,
+              "action": "TRADE_RESOURCES"
+            },
+            {
+              "sequence": 285,
+              "round": 5,
+              "action": "TRADE_RESOURCES"
+            },
+            {
+              "sequence": 286,
+              "round": 5,
+              "action": "TRADE_RESOURCES"
+            },
+            {
+              "sequence": 287,
+              "round": 5,
+              "action": "TRADE_RESOURCES"
+            },
+            {
+              "sequence": 289,
+              "round": 5,
+              "action": "END_TURN"
+            }
+          ],
+          "immediateRouteReturns": [],
+          "flags": 3,
+          "tilesOpened": [
+            {
+              "round": 1,
+              "type": "TILE_REVEALED",
+              "tileDefId": "#F1"
+            },
+            {
+              "round": 3,
+              "type": "TILE_REVEALED",
+              "tileDefId": "&F3"
+            },
+            {
+              "round": 4,
+              "type": "TILE_REVEALED",
+              "tileDefId": "&N1"
+            }
+          ],
+          "combatsWon": [
+            {
+              "round": 1,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 2,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 3,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 4,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 6,
+              "defeatedPlayerId": "neutrals"
+            }
+          ],
+          "milestones": [
+            {
+              "round": 1,
+              "type": "UNIT_RECRUITED",
+              "id": "necropolis.zombies",
+              "kind": "recruit"
+            },
+            {
+              "round": 1,
+              "type": "UNIT_RECRUITED",
+              "id": "necropolis.vampires",
+              "kind": "reinforce"
+            },
+            {
+              "round": 1,
+              "type": "FIELD_FLAGGED",
+              "id": "mine"
+            },
+            {
+              "round": 2,
+              "type": "HERO_LEVEL_UP",
+              "id": "level-2"
+            },
+            {
+              "round": 4,
+              "type": "UNIT_RECRUITED",
+              "id": "necropolis.wraiths",
+              "kind": "recruit"
+            },
+            {
+              "round": 4,
+              "type": "UNIT_RECRUITED",
+              "id": "necropolis.wraiths",
+              "kind": "reinforce"
+            },
+            {
+              "round": 4,
+              "type": "HERO_LEVEL_UP",
+              "id": "level-3"
+            },
+            {
+              "round": 4,
+              "type": "FIELD_FLAGGED",
+              "id": "mine"
+            },
+            {
+              "round": 5,
+              "type": "STRUCTURE_BUILT",
+              "id": "necropolis.dwelling_silver"
+            },
+            {
+              "round": 5,
+              "type": "UNIT_RECRUITED",
+              "id": "necropolis.liches",
+              "kind": "recruit"
+            },
+            {
+              "round": 6,
+              "type": "HERO_LEVEL_UP",
+              "id": "level-4"
+            },
+            {
+              "round": 6,
+              "type": "UNIT_RECRUITED",
+              "id": "necropolis.wraiths",
+              "kind": "reinforce"
+            },
+            {
+              "round": 6,
+              "type": "FIELD_FLAGGED",
+              "id": "settlement"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "matchId": "room-room-wv1n1h-30165dbc-2fc0-46be-aaa1-6a495fe6287f",
+      "recordedAt": "2026-09-11T09:51:03.391Z",
+      "truncated": false,
+      "winnerPlayerId": "p1",
+      "seats": {
+        "p1": {
+          "faction": "rampart",
+          "outcome": "win",
+          "actionCount": 425,
+          "lastRound": 11,
+          "marketRounds": [],
+          "marketTimeline": [
+            {
+              "sequence": 55,
+              "round": 1,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 109,
+              "round": 2,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 167,
+              "round": 3,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 272,
+              "round": 4,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 357,
+              "round": 5,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 392,
+              "round": 6,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 506,
+              "round": 7,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 588,
+              "round": 8,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 701,
+              "round": 9,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 790,
+              "round": 10,
+              "action": "END_TURN"
+            }
+          ],
+          "immediateRouteReturns": [],
+          "flags": 3,
+          "tilesOpened": [
+            {
+              "round": 2,
+              "type": "TILE_REVEALED",
+              "tileDefId": "F6"
+            },
+            {
+              "round": 3,
+              "type": "TILE_REVEALED",
+              "tileDefId": "F13"
+            },
+            {
+              "round": 7,
+              "type": "TILE_REVEALED",
+              "tileDefId": "#N9"
+            },
+            {
+              "round": 8,
+              "type": "TILE_REVEALED",
+              "tileDefId": "#N8"
+            }
+          ],
+          "combatsWon": [
+            {
+              "round": 1,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 3,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 4,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 5,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 7,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 8,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 10,
+              "defeatedPlayerId": "neutrals"
+            }
+          ],
+          "milestones": [
+            {
+              "round": 1,
+              "type": "UNIT_RECRUITED",
+              "id": "rampart.dwarves",
+              "kind": "recruit"
+            },
+            {
+              "round": 1,
+              "type": "UNIT_RECRUITED",
+              "id": "rampart.dwarves",
+              "kind": "reinforce"
+            },
+            {
+              "round": 1,
+              "type": "HERO_LEVEL_UP",
+              "id": "level-2"
+            },
+            {
+              "round": 1,
+              "type": "FIELD_FLAGGED",
+              "id": "mine"
+            },
+            {
+              "round": 3,
+              "type": "UNIT_RECRUITED",
+              "id": "rampart.centaurs",
+              "kind": "recruit"
+            },
+            {
+              "round": 3,
+              "type": "UNIT_RECRUITED",
+              "id": "rampart.centaurs",
+              "kind": "reinforce"
+            },
+            {
+              "round": 3,
+              "type": "HERO_LEVEL_UP",
+              "id": "level-3"
+            },
+            {
+              "round": 3,
+              "type": "FIELD_FLAGGED",
+              "id": "mine"
+            },
+            {
+              "round": 3,
+              "type": "STRUCTURE_BUILT",
+              "id": "rampart.city_hall"
+            },
+            {
+              "round": 4,
+              "type": "FIELD_FLAGGED",
+              "id": "settlement"
+            },
+            {
+              "round": 4,
+              "type": "HERO_LEVEL_UP",
+              "id": "level-4"
+            },
+            {
+              "round": 4,
+              "type": "UNIT_RECRUITED",
+              "id": "neutral.sharpshooters",
+              "kind": "recruit"
+            },
+            {
+              "round": 5,
+              "type": "STRUCTURE_BUILT",
+              "id": "rampart.dwelling_silver"
+            },
+            {
+              "round": 5,
+              "type": "UNIT_RECRUITED",
+              "id": "rampart.dendroids",
+              "kind": "recruit"
+            },
+            {
+              "round": 5,
+              "type": "UNIT_RECRUITED",
+              "id": "rampart.elves",
+              "kind": "recruit"
+            },
+            {
+              "round": 6,
+              "type": "UNIT_RECRUITED",
+              "id": "neutral.dendroids",
+              "kind": "recruit"
+            },
+            {
+              "round": 9,
+              "type": "STRUCTURE_BUILT",
+              "id": "rampart.dwelling_gold"
+            },
+            {
+              "round": 9,
+              "type": "UNIT_RECRUITED",
+              "id": "rampart.gold_dragons",
+              "kind": "recruit"
+            },
+            {
+              "round": 10,
+              "type": "STRUCTURE_BUILT",
+              "id": "rampart.saplings"
+            },
+            {
+              "round": 10,
+              "type": "UNIT_RECRUITED",
+              "id": "rampart.unicorns",
+              "kind": "recruit"
+            }
+          ]
+        },
+        "p2": {
+          "faction": "necropolis",
+          "outcome": "loss",
+          "actionCount": 362,
+          "lastRound": 9,
+          "marketRounds": [],
+          "marketTimeline": [
+            {
+              "sequence": 98,
+              "round": 1,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 108,
+              "round": 2,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 192,
+              "round": 3,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 271,
+              "round": 4,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 361,
+              "round": 5,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 427,
+              "round": 6,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 533,
+              "round": 7,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 563,
+              "round": 8,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 648,
+              "round": 9,
+              "action": "END_TURN"
+            }
+          ],
+          "immediateRouteReturns": [],
+          "flags": 3,
+          "tilesOpened": [
+            {
+              "round": 3,
+              "type": "TILE_REVEALED",
+              "tileDefId": "F19"
+            },
+            {
+              "round": 4,
+              "type": "TILE_REVEALED",
+              "tileDefId": "F16"
+            },
+            {
+              "round": 5,
+              "type": "TILE_REVEALED",
+              "tileDefId": "W5"
+            },
+            {
+              "round": 8,
+              "type": "TILE_REVEALED",
+              "tileDefId": "W2"
+            },
+            {
+              "round": 9,
+              "type": "TILE_REVEALED",
+              "tileDefId": "W7"
+            }
+          ],
+          "combatsWon": [
+            {
+              "round": 1,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 1,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 3,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 4,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 5,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 6,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 7,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 9,
+              "defeatedPlayerId": "neutrals"
+            }
+          ],
+          "milestones": [
+            {
+              "round": 1,
+              "type": "UNIT_RECRUITED",
+              "id": "necropolis.zombies",
+              "kind": "recruit"
+            },
+            {
+              "round": 1,
+              "type": "UNIT_RECRUITED",
+              "id": "necropolis.skeletons",
+              "kind": "recruit"
+            },
+            {
+              "round": 1,
+              "type": "UNIT_RECRUITED",
+              "id": "necropolis.skeletons",
+              "kind": "reinforce"
+            },
+            {
+              "round": 1,
+              "type": "HERO_LEVEL_UP",
+              "id": "level-2"
+            },
+            {
+              "round": 1,
+              "type": "FIELD_FLAGGED",
+              "id": "mine"
+            },
+            {
+              "round": 3,
+              "type": "HERO_LEVEL_UP",
+              "id": "level-3"
+            },
+            {
+              "round": 3,
+              "type": "STRUCTURE_BUILT",
+              "id": "necropolis.city_hall"
+            },
+            {
+              "round": 4,
+              "type": "STRUCTURE_BUILT",
+              "id": "necropolis.necromancy_amplifier"
+            },
+            {
+              "round": 5,
+              "type": "STRUCTURE_BUILT",
+              "id": "necropolis.dwelling_silver"
+            },
+            {
+              "round": 5,
+              "type": "UNIT_RECRUITED",
+              "id": "necropolis.vampires",
+              "kind": "recruit"
+            },
+            {
+              "round": 5,
+              "type": "UNIT_RECRUITED",
+              "id": "necropolis.vampires",
+              "kind": "reinforce"
+            },
+            {
+              "round": 5,
+              "type": "FIELD_FLAGGED",
+              "id": "settlement"
+            },
+            {
+              "round": 6,
+              "type": "UNIT_RECRUITED",
+              "id": "neutral.liches",
+              "kind": "recruit"
+            },
+            {
+              "round": 6,
+              "type": "HERO_LEVEL_UP",
+              "id": "level-4"
+            },
+            {
+              "round": 6,
+              "type": "UNIT_RECRUITED",
+              "id": "necropolis.vampires",
+              "kind": "reinforce"
+            },
+            {
+              "round": 6,
+              "type": "FIELD_FLAGGED",
+              "id": "settlement"
+            },
+            {
+              "round": 7,
+              "type": "UNIT_RECRUITED",
+              "id": "necropolis.liches",
+              "kind": "recruit"
+            },
+            {
+              "round": 7,
+              "type": "UNIT_RECRUITED",
+              "id": "necropolis.liches",
+              "kind": "reinforce"
+            },
+            {
+              "round": 9,
+              "type": "HERO_LEVEL_UP",
+              "id": "level-5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "matchId": "room-room-ceqyjy-3ddec47b-2d30-4d2e-8a1f-8cef3f5abe35",
+      "recordedAt": "2026-09-10T15:37:14.289Z",
+      "truncated": false,
+      "winnerPlayerId": "p1",
+      "seats": {
+        "p1": {
+          "faction": "castle",
+          "outcome": "win",
+          "actionCount": 196,
+          "lastRound": 8,
+          "marketRounds": [],
+          "marketTimeline": [
+            {
+              "sequence": 74,
+              "round": 1,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 91,
+              "round": 2,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 158,
+              "round": 3,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 219,
+              "round": 4,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 245,
+              "round": 5,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 347,
+              "round": 6,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 423,
+              "round": 7,
+              "action": "END_TURN"
+            }
+          ],
+          "immediateRouteReturns": [],
+          "flags": 4,
+          "tilesOpened": [
+            {
+              "round": 3,
+              "type": "TILE_REVEALED",
+              "tileDefId": "F21"
+            },
+            {
+              "round": 4,
+              "type": "TILE_REVEALED",
+              "tileDefId": "F17"
+            },
+            {
+              "round": 7,
+              "type": "TILE_REVEALED",
+              "tileDefId": "W6"
+            }
+          ],
+          "combatsWon": [
+            {
+              "round": 1,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 1,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 3,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 4,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 6,
+              "defeatedPlayerId": "neutrals"
+            }
+          ],
+          "milestones": [
+            {
+              "round": 1,
+              "type": "UNIT_RECRUITED",
+              "id": "castle.griffins",
+              "kind": "recruit"
+            },
+            {
+              "round": 1,
+              "type": "UNIT_RECRUITED",
+              "id": "castle.griffins",
+              "kind": "reinforce"
+            },
+            {
+              "round": 1,
+              "type": "HERO_LEVEL_UP",
+              "id": "level-2"
+            },
+            {
+              "round": 1,
+              "type": "FIELD_FLAGGED",
+              "id": "mine"
+            },
+            {
+              "round": 3,
+              "type": "HERO_LEVEL_UP",
+              "id": "level-3"
+            },
+            {
+              "round": 3,
+              "type": "FIELD_FLAGGED",
+              "id": "mine"
+            },
+            {
+              "round": 4,
+              "type": "FIELD_FLAGGED",
+              "id": "mine"
+            },
+            {
+              "round": 4,
+              "type": "STRUCTURE_BUILT",
+              "id": "castle.city_hall"
+            },
+            {
+              "round": 5,
+              "type": "FIELD_FLAGGED",
+              "id": "star_axis"
+            },
+            {
+              "round": 5,
+              "type": "STRUCTURE_BUILT",
+              "id": "castle.dwelling_silver"
+            },
+            {
+              "round": 6,
+              "type": "UNIT_RECRUITED",
+              "id": "castle.zealots",
+              "kind": "recruit"
+            },
+            {
+              "round": 7,
+              "type": "UNIT_RECRUITED",
+              "id": "castle.zealots",
+              "kind": "reinforce"
+            },
+            {
+              "round": 7,
+              "type": "UNIT_RECRUITED",
+              "id": "castle.crusaders",
+              "kind": "reinforce"
+            },
+            {
+              "round": 8,
+              "type": "UNIT_RECRUITED",
+              "id": "neutral.zealots",
+              "kind": "recruit"
+            }
+          ]
+        },
+        "p2": {
+          "faction": "fortress",
+          "outcome": "loss",
+          "actionCount": 230,
+          "lastRound": 7,
+          "marketRounds": [
+            {
+              "round": 3,
+              "opens": 1,
+              "trades": 3,
+              "productiveMapActions": 0
+            }
+          ],
+          "marketTimeline": [
+            {
+              "sequence": 76,
+              "round": 1,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 117,
+              "round": 2,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 121,
+              "round": 3,
+              "action": "TRADE_RESOURCES"
+            },
+            {
+              "sequence": 122,
+              "round": 3,
+              "action": "TRADE_RESOURCES"
+            },
+            {
+              "sequence": 125,
+              "round": 3,
+              "action": "OPEN_MARKET"
+            },
+            {
+              "sequence": 127,
+              "round": 3,
+              "action": "TRADE_RESOURCES"
+            },
+            {
+              "sequence": 133,
+              "round": 3,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 220,
+              "round": 4,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 281,
+              "round": 5,
+              "action": "END_TURN"
+            },
+            {
+              "sequence": 391,
+              "round": 6,
+              "action": "END_TURN"
+            }
+          ],
+          "immediateRouteReturns": [],
+          "flags": 2,
+          "tilesOpened": [
+            {
+              "round": 2,
+              "type": "TILE_REVEALED",
+              "tileDefId": "#F6"
+            },
+            {
+              "round": 5,
+              "type": "TILE_REVEALED",
+              "tileDefId": "F22"
+            }
+          ],
+          "combatsWon": [
+            {
+              "round": 1,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 2,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 4,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 5,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 6,
+              "defeatedPlayerId": "neutrals"
+            },
+            {
+              "round": 6,
+              "defeatedPlayerId": "neutrals"
+            }
+          ],
+          "milestones": [
+            {
+              "round": 1,
+              "type": "UNIT_RECRUITED",
+              "id": "fortress.lizardmen",
+              "kind": "recruit"
+            },
+            {
+              "round": 1,
+              "type": "UNIT_RECRUITED",
+              "id": "fortress.lizardmen",
+              "kind": "reinforce"
+            },
+            {
+              "round": 1,
+              "type": "FIELD_FLAGGED",
+              "id": "mine"
+            },
+            {
+              "round": 2,
+              "type": "HERO_LEVEL_UP",
+              "id": "level-2"
+            },
+            {
+              "round": 3,
+              "type": "STRUCTURE_BUILT",
+              "id": "fortress.dwelling_silver"
+            },
+            {
+              "round": 3,
+              "type": "UNIT_RECRUITED",
+              "id": "fortress.gorgons",
+              "kind": "recruit"
+            },
+            {
+              "round": 4,
+              "type": "HERO_LEVEL_UP",
+              "id": "level-3"
+            },
+            {
+              "round": 5,
+              "type": "HERO_LEVEL_UP",
+              "id": "level-4"
+            },
+            {
+              "round": 5,
+              "type": "FIELD_FLAGGED",
+              "id": "mine"
+            },
+            {
+              "round": 6,
+              "type": "UNIT_RECRUITED",
+              "id": "fortress.gorgons",
+              "kind": "reinforce"
+            },
+            {
+              "round": 6,
+              "type": "STRUCTURE_BUILT",
+              "id": "fortress.city_hall"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

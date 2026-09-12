@@ -2259,7 +2259,8 @@ export function MapPresetEditor({
             {(
               [
                 ["breakField", "Break field"],
-                ["persistentGuard", "Persistent army"]
+                ["persistentGuard", "Persistent army"],
+                ["noExperience", "No experience"]
               ] as const
             ).map(([key, label]) => (
               <button
@@ -2518,7 +2519,8 @@ export function MapPresetEditor({
           {(
             [
               ["breakField", "Break field"],
-              ["persistentGuard", "Persistent army"]
+              ["persistentGuard", "Persistent army"],
+              ["noExperience", "No experience"]
             ] as const
           ).map(([key, label]) => (
             <button
@@ -2531,7 +2533,7 @@ export function MapPresetEditor({
                 else next[key] = true;
                 patch({
                   mines:
-                    next.guard || next.reward || next.vp || next.combatRoundLimit || next.breakField || next.persistentGuard || next.unlimitedRounds
+                    next.guard || next.reward || next.vp || next.combatRoundLimit || next.breakField || next.persistentGuard || next.unlimitedRounds || next.noExperience
                       ? next
                       : undefined
                 });

@@ -1,0 +1,39 @@
+
+ RUN  v4.1.8 E:/heroes 3 BG multi
+
+ ❯ src/engine/elemental-veterancy.test.ts (71 tests | 1 failed) 436ms
+     × Phoenix activation burns one adjacent enemy and leaves the unit free to move 15ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/engine/elemental-veterancy.test.ts > Elemental experience combat outcomes > Phoenix activation burns one adjacent enemy and leaves the unit free to move
+AssertionError: [{"code":"ACTION_NOT_LEGAL","message":"That action is not legal in the current game state."}]: expected [ { code: 'ACTION_NOT_LEGAL', …(1) } ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "code": "ACTION_NOT_LEGAL",
++     "message": "That action is not legal in the current game state.",
++   },
++ ]
+
+ ❯ ok src/engine/elemental-veterancy.test.ts:70:56
+     68| function ok(s: GameState, a: GameAction) {
+     69|   const result = applyAction(s, a);
+     70|   expect(result.errors, JSON.stringify(result.errors)).toEqual([]);
+       |                                                        ^
+     71|   return result.state;
+     72| }
+ ❯ src/engine/elemental-veterancy.test.ts:598:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 5 passed (6)
+      Tests  1 failed | 292 passed (293)
+   Start at  08:58:24
+   Duration  14.99s (transform 18.58s, setup 0ms, import 23.30s, tests 2.21s, environment 1ms)
+

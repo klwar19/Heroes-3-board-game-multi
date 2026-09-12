@@ -1056,9 +1056,14 @@ function assertLegal(
           "Chain Lightning requires 3 living units on the battlefield: select 1 unit and the 2 closest units.",
       };
     }
+    // Defence-in-depth twin of the addOptionPlays gate: the exact-multi-target
+    // meteor family (`includeCenter` — it rings the chosen unit AND itself) needs
+    // `adjacentPicks` living adjacent UNITS at its centre. Scoped on `includeCenter`
+    // (not `amountByPower`) so it never touches the "up to" space-target rings, and
+    // guarded on a unit target so a space-centred ring is never rejected here.
     if (
       effect?.type === "AREA_DAMAGE_PICK_ADJACENT" &&
-      effect.amountByPower !== undefined &&
+      effect.includeCenter &&
       action.target?.type === "unit" &&
       state.combat
     ) {
@@ -35308,18 +35313,18 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
         const isDragonUtopiaFight = utopiaField?.location === "dragon_utopia";
         const isLevelSevenField =
           combat.context.kind === "neutral" && combat.context.difficulty >= 7;
-        // Designer per-field round cap: only a fight AGAINST that field's own
-        // guard. A Calamity Wave / Dungeon delve / Raid Boss merely happens on
-        // the hero's field and keeps its own rules (a wave is neutral-attacked,
-        // so the forced "retreat" below would even throw for it).
-        const fieldRoundLimit =
+        // A player-attacker fight against a FIELD's own neutral guard (not a
+        // Calamity Wave / Dungeon delve / Raid Boss — those merely happen on the
+        // hero's field and keep their own rules; a wave is neutral-attacked, so
+        // the forced "retreat" below would even throw for it). Only these fights
+        // take the designer per-field round cap and the rest/retreat window.
+        const isPlayerFieldFight =
           combat.context.kind === "neutral" &&
           !combat.context.waveAssault &&
           combat.context.dungeonFloor === undefined &&
           !combat.context.raidBossId &&
-          combat.attackerPlayerId !== NEUTRAL_PLAYER_ID
-            ? utopiaField?.combatRoundLimit
-            : undefined;
+          combat.attackerPlayerId !== NEUTRAL_PLAYER_ID;
+        const fieldRoundLimit = isPlayerFieldFight ? utopiaField?.combatRoundLimit : undefined;
         // USER RULE 2026-09-11: a numeric designer limit means that many FREE
         // rounds; once they are used up the normal continue-or-retreat window
         // opens and every further round costs movement points as usual (the
@@ -35336,6 +35341,20 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
         // (`bank-move-points`, or a numeric designer limit once its free
         // rounds are used up).
         const isBankFight = combat.context.kind === "neutral" && combat.context.bankId !== undefined;
+        // USER RULE 2026-09-12: a neutral FIELD fight lets the attacker rest —
+        // the continue-or-retreat window opens after EVERY round (round 1
+        // included), exactly like a Creature Bank — so they can cut their losses
+        // instead of being forced to fight on. Only a TRUE Level-VII field
+        // (azure guard / Field Difficulty 7 / Dragon Utopia) still fights to the
+        // death with no retreat. A designer numeric turn-limit is unaffected: its
+        // own paid window (the `number` branch below) still opens even on a VII
+        // field once its free rounds run out. `fieldMayRest` only opens the FREE
+        // window a bank would have had (never overriding the paid branch).
+        const isTrueViiField =
+          (combat.context.kind === "neutral" && combat.context.hasAzure) ||
+          isLevelSevenField ||
+          isDragonUtopiaFight;
+        const fieldMayRest = isPlayerFieldFight && !isTrueViiField;
         const openContinueWindow = (free: boolean): void => {
           combat.awaitingContinue = true;
           combat.continueFree = free;
@@ -35343,7 +35362,7 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
           state.activePlayerId = combat.attackerPlayerId;
         };
         if (fieldRoundLimit === "unlimited" || freeRoundsLeft) {
-          if (isBankFight) {
+          if (isBankFight || fieldMayRest) {
             openContinueWindow(true);
             continue;
           }
@@ -35363,7 +35382,7 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
           openContinueWindow(false);
           continue;
         }
-        if (isBankFight) {
+        if (isBankFight || fieldMayRest) {
           openContinueWindow(true);
           continue;
         }

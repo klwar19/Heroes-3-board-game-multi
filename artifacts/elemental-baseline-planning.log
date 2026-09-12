@@ -1,0 +1,9 @@
+
+ RUN  v4.1.8 E:/heroes 3 BG multi/artifacts/elemental-baseline
+
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  08:57:23
+   Duration  16.42s (transform 13.30s, setup 0ms, import 15.34s, tests 52ms, environment 0ms)
+

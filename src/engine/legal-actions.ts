@@ -5328,12 +5328,20 @@ function addOptionPlays(
       ? getTargetsForCard(state, playerId, cardId, cards, option.target)
       : [{ type: "none" } as TargetRef];
 
-    // Meteor Shower is an exact multi-target effect, not an "up to" blast. Its
-    // centre is legal only when all printed adjacent picks exist. This is scoped
-    // to Deemer's Meteor Shower; Frost Ring and Fireball keep their own rules.
+    // Meteor Shower is an exact multi-target effect, not an "up to" blast: it
+    // hits the CENTRE unit ("select a unit") plus a fixed count of units adjacent
+    // to it, so its centre is legal only when at least `adjacentPicks` living
+    // adjacent UNITS exist (Walls, the Gate and the beside-board Arrow Tower are
+    // never units and never count). The tell is `includeCenter` — the meteor
+    // family rings the chosen unit AND itself. The "up to N" space-target rings
+    // (Frost Ring the spell + Adelaide/Glacius' Frost-Ring specialties, all
+    // `includeCenter:false`) are legal even with fewer neighbours and are NOT
+    // gated here — nor is Fireball. Scoping on `includeCenter` instead of the
+    // incidental `amountByPower` keeps this off the power-scaled Frost Ring spell
+    // (which also has `amountByPower` but must keep its no-minimum space target).
     if (
       option.effect.type === "AREA_DAMAGE_PICK_ADJACENT" &&
-      option.effect.amountByPower !== undefined
+      option.effect.includeCenter
     ) {
       const adjacentPicks = option.effect.adjacentPicks;
       targets = targets.filter((target) =>
@@ -16895,12 +16903,11 @@ function getAdventureLegalActions(
       }
     }
 
-    // A hero parked on a Market may reopen the trade/shop panel any time, for
-    // free — no movement point needed, so it stays available even when a
-    // Secondary Hero simply sits on the tile.
-    if (field && isMarketLocation(field.location)) {
+    // Arrival opens the first visit; Trading Post reopenings cost this hero 1 MP.
+    if (field && isMarketLocation(field.location) &&
+        (field.location !== "trading_post" || hero.movementPoints >= 1)) {
       actions.push({
-        label: `Open the ${locationDefinitions[field.location]?.name ?? field.location}`,
+        label: `Open the ${locationDefinitions[field.location]?.name ?? field.location}${field.location === "trading_post" ? " — costs 1 movement point" : ""}${whichHero(hero.kind)}`,
         action: { type: "OPEN_MARKET", playerId, heroId: hero.id },
       });
     }
@@ -17016,7 +17023,7 @@ function getAdventureLegalActions(
           // Obelisk role "monolith": Revisit (1 MP) travels the network again,
           // like a Monolith token (which is category "revisitable").
           (field.location === "obelisk" && obeliskRoleIsMonolith(state))) &&
-        // Markets use the free OPEN_MARKET path above, not the 1-MP revisit.
+        // Markets use OPEN_MARKET above; Trading Post reopenings cost 1 MP.
         !isMarketLocation(field.location)
       ) {
         actions.push({
