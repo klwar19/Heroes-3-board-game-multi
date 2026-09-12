@@ -12,6 +12,7 @@ import {
 } from "./adventure";
 import { isAdjacent } from "./battlefield";
 import { combatStartWindowOpen } from "./combat-timing";
+import { isHandLockedInCombat } from "./legal-actions";
 import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { defenderOnFortification, destroyFortification, fortificationTargets, parseFortificationTargetId } from "./siege";
 import { noteUnitDamagedForTokens } from "./tokens";
@@ -1601,6 +1602,13 @@ export function processWarMachineRound(state: GameState): void {
 
     const name = warMachineName(state, playerId);
 
+    // A Combat fought by a SECONDARY Hero (or a heroless garrison) is hand-locked:
+    // that player may play no cards, so the war machine simply auto-fires. Skip the
+    // Artillery / Ballistics / Ballista-specialty offers (all card plays) — offering
+    // them would be a dead prompt the owner cannot act on (e.g. a 2nd Hero clearing
+    // a Bank should just shoot). The plain shot below still resolves.
+    const handLocked = isHandLockedInCombat(state, playerId);
+
     if (roundStart.kind === "damage-lowest-initiative") {
       // Gerwulf's Ballista VI (ongoing): while held, the owner aims their
       // Ballista at any enemy they choose instead of the forced slowest one.
@@ -1613,8 +1621,8 @@ export function processWarMachineRound(state: GameState): void {
 
       // Artillery: the Polish reprint adds a crown-free Basic 2-shot choice;
       // classic/community retain only the crown-costed Expert 3-shot choice.
-      const basicArtillery = playerCanUseBasicArtilleryVolley(state, playerId);
-      const expertArtillery = playerCanUseArtilleryVolley(state, playerId);
+      const basicArtillery = !handLocked && playerCanUseBasicArtilleryVolley(state, playerId);
+      const expertArtillery = !handLocked && playerCanUseArtilleryVolley(state, playerId);
       if (basicArtillery || expertArtillery) {
         const basicShots = artilleryVolleyShots(state, false);
         const expertShots = artilleryVolleyShots(state, true);
@@ -1653,7 +1661,7 @@ export function processWarMachineRound(state: GameState): void {
         (state.players[playerId]?.hand ?? []).some((id) =>
           id === "specialty.gerwulf.6" || id === "specialty.tarnum_castle.4",
         );
-      if ((polishBallistaTiming(state) || openingBallistaSpecialty) && (state.players[playerId]?.hand ?? []).some((id) => {
+      if (!handLocked && (polishBallistaTiming(state) || openingBallistaSpecialty) && (state.players[playerId]?.hand ?? []).some((id) => {
         const specialty = balanceCard(state, id);
         if (specialty?.kind !== "hero-specialty" || !specialty.tags.includes("ballista")) {
           return false;
@@ -1691,7 +1699,7 @@ export function processWarMachineRound(state: GameState): void {
       const player = state.players[playerId];
       // Balance Pack: the Ballistics expert fires this WITHOUT paying, so a broke
       // owner still gets the offer when they hold it.
-      const ballistics = playerCanUseBallisticsCatapultDouble(state, playerId);
+      const ballistics = !handLocked && playerCanUseBallisticsCatapultDouble(state, playerId);
       const canPay = Boolean(player && hasResources(player, roundStart.cost));
       if (!player || (!canPay && !ballistics) || splashFirstTargets(state).length === 0) {
         queue.pending.shift();
