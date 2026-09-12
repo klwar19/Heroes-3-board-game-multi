@@ -118,6 +118,34 @@ export function hasThreatAbility(unit: CombatUnitState): boolean {
 const CASTER_THREAT_BONUS = 10;
 
 /**
+ * Effect types of the OUTPUT riders that make a unit hit far harder than its
+ * printed Attack: a second attack, Defense shred on attack / after moving, card
+ * Defense ignored, a bonus on the attack die. Ranked-replay evidence (16 PvP
+ * fights, 2026-09-10/11): the Behemoth crush (−2 Defense) turned a10 vs d1
+ * into 9–10 damage twice and Behemoths were the sample's top killer (5
+ * removals); Manticore's −3 killed a Haspids Pack; veteran second attacks and
+ * pierces fired in four fights. `max(0, attack − defense)` sees none of it.
+ */
+const OUTPUT_ABILITY_EFFECT_TYPES = new Set<string>([
+  "DOUBLE_ATTACK",
+  "DEFENSE_REDUCTION_ON_ATTACK",
+  "DEFENSE_REDUCTION_AFTER_MOVE",
+  "IGNORE_TARGET_CARD_DEFENSE",
+  "ATTACK_BONUS_ON_ATTACK_DIE",
+]);
+
+/** Whether the unit carries an output rider (see OUTPUT_ABILITY_EFFECT_TYPES). */
+export function hasOutputAbility(unit: CombatUnitState): boolean {
+  return (unit.abilities ?? []).some((abilityId) => {
+    const effectType = unitAbilities[abilityId]?.effect?.type;
+    return effectType !== undefined && OUTPUT_ABILITY_EFFECT_TYPES.has(effectType);
+  });
+}
+
+/** Threat premium for an output rider: about one tier step (silver 8 → gold 20). */
+const OUTPUT_THREAT_BONUS = 12;
+
+/**
  * How valuable it is to remove / how dangerous a unit is: its offensive output
  * (weighted heaviest — its current Attack IS its damage output), durability and
  * initiative, with a premium for ranged units (they threaten damage without
@@ -130,6 +158,7 @@ export function unitThreatValue(unit: CombatUnitState): number {
   if (unit.type === "ranged") threat += 6;
   threat += tierWeight(unit.grade);
   if (hasThreatAbility(unit)) threat += CASTER_THREAT_BONUS;
+  if (hasOutputAbility(unit)) threat += OUTPUT_THREAT_BONUS;
   return threat;
 }
 

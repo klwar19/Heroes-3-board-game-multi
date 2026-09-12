@@ -78,7 +78,8 @@ export function factionVisualRegister(factionId: string | undefined): FactionVis
     factionId === "hidden_leaf" ||
     factionId === "azur_lane" ||
     factionId === "little_busters" ||
-    factionId === "mgq"
+    factionId === "mgq" ||
+    factionId === "blue_archive"
   ) {
     return "anime";
   }

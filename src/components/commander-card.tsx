@@ -1536,7 +1536,12 @@ function gradeUpBenefit(key: CommanderStatKey, grade: CommanderGrade): string {
     case "health":
       return `Health ${value} (+${value - base} over base)`;
     case "speed":
-      return `Initiative ${value} (+${value - base} over base)`;
+      // The +1 Speed milestone (grade I) permanently unlocks arranging your
+      // commander among your units before the fight (commanderSortUnlocked) —
+      // note it clearly on the point that actually buys it.
+      return grade === 1
+        ? `Initiative ${value} (+${value - base} over base) — unlocks arranging your commander with your units in battle`
+        : `Initiative ${value} (+${value - base} over base)`;
     case "defense":
       if (grade === COMMANDER_DEFENSE_TOKEN_GRADE) {
         return `Defense ${value} + a "+1 when attacked" Defend die`;

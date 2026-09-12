@@ -3,6 +3,7 @@ import {
   LobbyChatBoard,
   LobbyChatError,
   LOBBY_CHAT_FLOOD_LIMIT,
+  LOBBY_CHAT_FLOOD_WINDOW_MS,
   LOBBY_CHAT_MESSAGE_TTL_MS,
   MAX_LOBBY_CHAT_MESSAGES,
   MAX_LOBBY_CHAT_NAME_LENGTH,
@@ -71,14 +72,20 @@ describe("LobbyChatBoard", () => {
     expect(list.at(-1)?.text).toBe(`m${total - 1}`);
   });
 
-  it("flood-caps one client and another sender resets the budget (control)", () => {
-    const board = new LobbyChatBoard();
+  it("flood-caps one client only inside a rolling time window", () => {
+    let t = 1_000_000;
+    const board = new LobbyChatBoard({ now: () => t });
     for (let i = 0; i < LOBBY_CHAT_FLOOD_LIMIT; i += 1) {
       board.post({ clientId: "c1", name: "A", text: `s${i}` });
     }
     expect(reason(() => board.post({ clientId: "c1", name: "A", text: "again" }))).toMatch(/slow down/i);
-    // Control: any other sender clears the run.
+
+    // Another sender does not bypass c1's per-client limit.
     board.post({ clientId: "c2", name: "B", text: "interject" });
+    expect(reason(() => board.post({ clientId: "c1", name: "A", text: "still blocked" }))).toMatch(/slow down/i);
+
+    // The sender automatically regains the budget when the short window ends.
+    t += LOBBY_CHAT_FLOOD_WINDOW_MS + 1;
     expect(board.post({ clientId: "c1", name: "A", text: "back" }).text).toBe("back");
   });
 

@@ -83,10 +83,10 @@ export const ANIME_FACTION_PENALTIES: readonly AnimeFactionPenaltyDefinition[] =
   {
     factionId: "mgq",
     register: "anime",
-    title: "No Faction Penalty",
-    short: "No recurring penalty",
-    detail: "Monster Girl Quest currently has no faction penalty.",
-    timing: "combat-start",
+    title: "Spirit Tithe",
+    short: "Pay 3 gold each Resource round; discard 1 card to summon the spirit",
+    detail: "After Resource-round income, pay 3 gold as the spirit's tithe (floored at available gold, never into debt). At the start of each PvP battle you discard 1 card from your hand to summon your contracted elemental spirit.",
+    timing: "resource-round",
     mechanicTitle: "Four Spirits",
     mechanicDetail:
       "Your main hero contracts one elemental spirit — Sylph, Gnome, Undine or Salamander — and summons it into every battle without an additional faction cost.",
@@ -115,6 +115,18 @@ export const ANIME_FACTION_PENALTIES: readonly AnimeFactionPenaltyDefinition[] =
     mechanicDetail:
       "Your Kansen fight as a fleet — Fleet Formation gives adjacent allies +1 Attack, Full Barrage splashes enemies around your target, and Enterprise's Lucky E rerolls her dice. Every commander carries her own doctrine: Concentrated Fire, Big Seven Bombardment, Repair Dock and Royal Maid's Cover.",
     artImage: "/assets/anime/notices/azur-lane-maintenance.webp"
+  },
+  {
+    factionId: "blue_archive",
+    register: "anime",
+    title: "Academy Overheads",
+    short: "Costlier silver/gold dwellings; enemy draws 1 at combat start",
+    detail: "The Advanced Academy (silver) and Elite Sanctuary (gold) dwellings cost more gold, building materials and valuables to raise. In PvP, the opposing player draws 1 card at the start of combat.",
+    timing: "combat-start",
+    mechanicTitle: "Kivotos Students",
+    mechanicDetail:
+      "Recruit the Kivotos student roster across Trinity, Millennium, Abydos, Gehenna and other schools, each fielded as a lone Few or a Pack that inherits her signature. Aris switches to Hero Mode to ignore ranged penalties, Seia's Prophetic Dream digs the top 3 cards of your deck for 1, and Hina, Wakamo and Miyo bring barrage, mark and teleport play.",
+    artImage: "/assets/anime/notices/blue-archive-academy-overheads.webp"
   }
 ] as const;
 

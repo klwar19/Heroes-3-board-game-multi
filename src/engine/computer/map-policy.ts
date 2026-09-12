@@ -54,7 +54,14 @@ import {
   armyReadyForContestedFight,
   assessDwellingRush,
   developmentResourceTargets,
+  goldPurchaseReachable,
   hasOpenedFarEconomy,
+  INCOME_NEVER_FROM_ROUND,
+  incomeBuildingBeforeDwelling,
+  nextDevelopmentBuildingCost,
+  nextGoldLadderStep,
+  rankedGoldUnits,
+  spendDelaysSavedCost,
   unitDevelopmentSideStrength,
   shouldPrioritizeFirstAidTent,
   shouldSeekLateWarMachineShop,
@@ -283,6 +290,27 @@ function wantsMarketVisit(
   );
 }
 
+/**
+ * Whether the main hero's current army still has winnable work on the map: an
+ * unguarded objective (flag, visit, town, victory site, exploration) or a guard
+ * the army can beat now. False means the army is the bottleneck — the next
+ * dwelling, not the income building, is the plan (see
+ * incomeBuildingBeforeDwelling). Enemy heroes are not "work" here: PvP has its
+ * own engagement gate.
+ */
+function bronzeCoreHasWork(state: GameState, playerId: PlayerId): boolean {
+  const main = Object.values(state.heroes ?? {}).find(
+    (hero) => hero.controllerId === playerId && hero.kind === "main",
+  );
+  if (!main) return false;
+  return collectMapObjectives(state, main).some((objective) => {
+    if (objective.kind === "enemy-hero") return false;
+    if (objective.kind !== "guard") return true;
+    const field = state.adventure?.fields[objective.spaceId];
+    return Boolean(field && canBeatGuardedField(state, main, field));
+  });
+}
+
 function buildingScore(
   state: GameState,
   playerId: PlayerId,
@@ -477,6 +505,29 @@ function buildingScore(
   ) {
     score = 950;
   }
+  // Too late for income: no ranked seat built a City Hall from R8 on — the
+  // +5/round cannot repay its cost before the game is decided. Never build it.
+  if (
+    effect?.type === "RESOURCE_ROUND_CHOICE" &&
+    (state.round ?? 0) >= INCOME_NEVER_FROM_ROUND
+  ) {
+    return 280;
+  }
+  // SITUATIONAL income-first (all ranked replays through 2026-09-11, see
+  // incomeBuildingBeforeDwelling): while the hall buys tempo toward a Gold
+  // dwelling by R7 — next dwelling out of reach, early, not behind — it
+  // outranks both dwelling milestones and skips the dwelling-fund guard (it IS
+  // the fund's payback). The dwellings keep their own scores (a hall the seat
+  // cannot afford never stalls them) but cap below it. Otherwise the hall is
+  // an ordinary side build: surplus only, fund protected.
+  const incomeFirst = incomeBuildingBeforeDwelling(
+    state,
+    playerId,
+    bronzeCoreHasWork(state, playerId),
+  );
+  if (incomeFirst?.id === buildingId) {
+    return Math.min(975, 970 + economyFocusBias(memory, focusKind));
+  }
   // Multi-round focus: nudge toward the remembered economy priority.
   score += economyFocusBias(memory, focusKind);
   const developmentMilestone =
@@ -498,8 +549,9 @@ function buildingScore(
       effect.tier === "gold");
   if (developmentMilestone) {
     // A development focus may break a close tie, but must never outscore a
-    // legal step that completes the scenario immediately (980).
-    return Math.min(score, 975);
+    // legal step that completes the scenario immediately (980), nor the
+    // income-first City Hall (970+) while that is still missing.
+    return Math.min(score, incomeFirst ? 960 : 975);
   }
   // Dwelling-first: while saving for the Silver/Gold dwelling, a side building
   // (Mage Guild, economy, anything non-milestone) that would eat into the
@@ -588,6 +640,19 @@ function populationScore(
   let spentGold = 0;
   let spentMaterials = 0;
   let spentValuables = 0;
+  const ownsUnit = (unitDefId: string) =>
+    player?.army.find((unit) => unit.side !== "bank" && unit.unitDefId === unitDefId);
+  const goldLadder = rankedGoldUnits(state, observation.playerId);
+  const ownsTopGold = goldLadder.length > 0 && Boolean(ownsUnit(goldLadder[0]));
+  const goldFewMissing = goldLadder.some((unitDefId) => !ownsUnit(unitDefId));
+  const silverPacks = (player?.army ?? []).filter(
+    (unit) => unit.side === "pack" && coreUnitDefinitions[unit.unitDefId]?.tier === "silver",
+  ).length;
+  const buysSilverPack = action.purchases.some(
+    (purchase) =>
+      purchase.kind === "reinforce" &&
+      coreUnitDefinitions[purchase.unitDefId]?.tier === "silver",
+  );
   for (const purchase of action.purchases) {
     const definition = coreUnitDefinitions[purchase.unitDefId];
     // A Settlement Neutral-Units recruit (BINH house rule) buys the single-sided
@@ -648,7 +713,16 @@ function populationScore(
       else if (definition?.tier === "silver") score = Math.max(score, 915);
       else score = Math.min(score, 820);
     } else if (definition?.tier === "gold") {
-      score = Math.max(score, purchase.kind === "reinforce" ? 950 : 955);
+      // Gold ladder bases (see nextGoldLadderStep): top Few, lower Few, top
+      // Pack, lower Pack. The exact saved step is promoted after the loop.
+      const rank = goldLadder.indexOf(purchase.unitDefId);
+      if (purchase.kind !== "reinforce") {
+        score = Math.max(score, rank === 0 ? 960 : 955);
+      } else if (goldFewMissing) {
+        score = Math.max(score, 930);
+      } else {
+        score = Math.max(score, rank === 0 ? 950 : 945);
+      }
     } else if (definition?.tier === "silver") {
       score = Math.max(score, purchase.kind === "reinforce" ? 935 : 940);
     } else if (purchase.kind === "reinforce") {
@@ -693,13 +767,72 @@ function populationScore(
     // while still beating ordinary fights, exploration, and END_TURN.
     return Math.min(score, 970 + Math.min(5, Math.round(efficiency)));
   }
-  if (development.goldUnlocked && development.goldUnits === 0) {
-    const buysGold = action.purchases.some(
-      (purchase) => coreUnitDefinitions[purchase.unitDefId]?.tier === "gold",
-    );
-    if (!buysGold) {
-      // Hold the Population token and treasury for the first Gold body.
-      return Math.min(score, 240);
+  // Silver stays at Few until the top Gold body is owned — one Silver Pack at
+  // most before then (user rule; the replay winners packed at most one Silver
+  // unit before their Gold Few). A pending Necromancy discount is exempt: the
+  // half-price window is the Necropolis engine, not a treasury leak.
+  if (
+    !ownsTopGold &&
+    buysSilverPack &&
+    silverPacks >= 1 &&
+    (development.phase === "unlock-gold" || development.phase === "improve-army") &&
+    state.adventure?.pendingNecromancy?.playerId !== observation.playerId
+  ) {
+    return Math.min(score, 240);
+  }
+  if (development.goldUnlocked) {
+    const step = nextGoldLadderStep(state, observation.playerId);
+    if (step) {
+      const buysStep = action.purchases.some(
+        (purchase) =>
+          purchase.unitDefId === step.unitDefId &&
+          (purchase.kind === "reinforce") === (step.kind === "reinforce"),
+      );
+      if (buysStep) {
+        // The saved ladder step: above every other purchase, below a
+        // scenario-winning map step (980).
+        return Math.min(975, Math.max(score, 968));
+      }
+      score = Math.min(score, 965);
+      const buysLowerGoldFew =
+        step.kind === "recruit" &&
+        action.purchases.some(
+          (purchase) =>
+            purchase.kind === "recruit" &&
+            coreUnitDefinitions[purchase.unitDefId]?.tier === "gold",
+        );
+      if (buysLowerGoldFew) {
+        // The lower Gold Few while the top Few is still missing: skip it while
+        // the top body lands within two Resource Rounds, unless the seat has
+        // already waited two rounds for it (no idle treasury, no idle token).
+        const plan = memory.developmentPlan;
+        const waited =
+          plan?.goal === "gold-recruit" ? (state.round ?? 0) - plan.sinceRound : 0;
+        if (goldPurchaseReachable(state, observation.playerId, step.cost, 2) && waited < 2) {
+          return Math.min(score, 240);
+        }
+        return score;
+      }
+      const saving =
+        step.kind === "recruit" ||
+        goldPurchaseReachable(state, observation.playerId, step.cost, 1);
+      if (saving) {
+        if (development.goldUnits === 0) {
+          // Hold the Population token and treasury for the first Gold body.
+          return Math.min(score, 240);
+        }
+        if (
+          spendDelaysSavedCost(state, observation.playerId, step.cost, {
+            gold: spentGold,
+            buildingMaterials: spentMaterials,
+            valuables: spentValuables,
+          })
+        ) {
+          // A cheaper body that would push the saved Gold step past the next
+          // Resource Round waits one round; one that changes nothing flows.
+          return Math.min(score, 240);
+        }
+      }
     }
   }
   if (
@@ -718,6 +851,20 @@ function populationScore(
           purchase.kind === "recruit" &&
           coreUnitDefinitions[purchase.unitDefId]?.tier === "silver",
       );
+    // "Skip the silver unit to buy gold" (user rule): the exemption is
+    // withdrawn when the Silver body would push the Gold dwelling — otherwise
+    // landing next round — a round further out; then it waits for the build.
+    const silverDelaysDwelling =
+      firstSilverBody &&
+      spendDelaysSavedCost(
+        state,
+        observation.playerId,
+        nextDevelopmentBuildingCost(state, observation.playerId) ?? {},
+        { gold: spentGold, buildingMaterials: spentMaterials, valuables: spentValuables },
+      );
+    if (silverDelaysDwelling) {
+      return Math.min(score, 240);
+    }
     if (firstSilverBody) {
       return Math.min(score, 945);
     }

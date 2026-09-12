@@ -8,6 +8,7 @@ import { cardDamageNullified, specialtyImmunityActive } from "./active-effects";
 import {
   getUnitAbilityDefinitions,
   factionVeterancy,
+  twilightWardReduction,
   hasImmuneToSpecialtyDamage,
   getSpecialtyDamageReduction,
   getSpellAndSpecialtyDamageReductionAura,
@@ -160,7 +161,7 @@ export function transferPendingDamage(
       : Math.max(
           0,
           Math.ceil(incoming / 2) - getSpecialtyDamageReduction(target) - aura -
-          (state.combat?.round === 1 && factionVeterancy(target, "first-ward") ? 2 : 0),
+          twilightWardReduction(target, state.combat?.round),
         );
     target.damage += amount;
     const assigned = appendEvent(state, {

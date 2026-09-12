@@ -401,6 +401,9 @@ export function premiumEconomyResourceBonus(
  * gates below may deliberately defer an equal-risk neutral while the core is
  * rebuilding or being preserved for the conquest timing window.
  */
+/** Field difficulty from which must-attack human guard control needs three bodies. */
+export const HUMAN_MUST_ATTACK_DEPTH_DIFFICULTY = 4;
+
 export function canBeatGuardedField(
   state: GameState,
   hero: HeroState,
@@ -429,16 +432,26 @@ export function canBeatGuardedField(
     fighterIndex >= 0 && turnOrder.length >= 2
       ? turnOrder[(fighterIndex + 1) % turnOrder.length]
       : undefined;
-  const freeHumanNeutralControl = Boolean(
+  const humanNeutralControl = Boolean(
     state.gameMode !== "coop" &&
       state.adventure?.pvpNeutralControl &&
-      state.adventure.pvpNeutralControlMustAttack === false &&
       nextNeutralController &&
       nextNeutralController !== hero.controllerId &&
       state.controllers?.[nextNeutralController]?.kind === "human",
   );
+  const freeHumanNeutralControl =
+    humanNeutralControl && state.adventure?.pvpNeutralControlMustAttack === false;
+  // Must-attack human guards still choose WHICH unit each guard hits. At the
+  // hardest side fields (difficulty 4+, where the printed party carries two
+  // premium bodies) a two-body army cannot screen its carry against that
+  // focus, so the same formation depth is required there; difficulty ≤ 3
+  // stays on the printed strength curve (CONTROL kept).
+  const deepFormationNeeded =
+    freeHumanNeutralControl ||
+    (humanNeutralControl &&
+      fieldDifficulty >= HUMAN_MUST_ATTACK_DEPTH_DIFFICULTY);
   const humanNeutralFormationReady =
-    !freeHumanNeutralControl ||
+    !deepFormationNeeded ||
     (state.players[hero.controllerId]?.army.filter(
       (unit) => unit.side !== "bank",
     ).length ?? 0) >= 3;

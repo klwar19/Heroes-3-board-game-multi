@@ -31,10 +31,13 @@ describe("persistent development plan", () => {
       (unitDefId, i) => ({ id: "army" + i, unitDefId, side: "pack" as const }),
     );
     const town = Object.values(state.towns).find((t) => t.controllerId === "p2")!;
+    // City Hall stands: it is income-first once the Pack core is ready, so the
+    // dwelling ladder (silver → gold) is what this test isolates.
     town.buildings = coreFactionDefinitions.stronghold.buildings.filter((id) => {
       const e = coreBuildingDefinitions[id].effect;
       return (
         e?.type === "UNLOCK_REINFORCE" ||
+        e?.type === "RESOURCE_ROUND_CHOICE" ||
         (e?.type === "UNLOCK_RECRUIT_TIER" && e.tier === "bronze")
       );
     });
@@ -55,7 +58,7 @@ describe("persistent development plan", () => {
       type: "BUILD_STRUCTURE",
       playerId: "p2",
       townId: town.id,
-      buildingId: "stronghold.city_hall",
+      buildingId: "stronghold.mage_guild",
     };
     // The side purchase is the better BASE decision by 20 points.
     vi.spyOn(mapPolicy, "scoreMapAction").mockImplementation((_o, a) => ({
@@ -64,7 +67,7 @@ describe("persistent development plan", () => {
     }));
     const legalActions = [
       { label: "gold dwelling", action: planned },
-      { label: "city hall", action: side },
+      { label: "mage guild", action: side },
     ];
     const observation = (mem?: typeof memory) => ({
       playerId: "p2",
@@ -108,6 +111,24 @@ describe("persistent development plan", () => {
         );
       },
     );
+    // Income-first (ranked replays 2026-09-10/11): with the Pack core ready
+    // and no City Hall, the hall is the plan and keeps the plan bonus (its
+    // base score already outscores the dwellings), while a side build that eats
+    // its fund is discouraged.
+    state = refreshComputerMemory(state, "p2");
+    const income = getComputerMemory(state, "p2").developmentPlan!;
+    expect(income.goal).toBe("income");
+    expect(income.buildingId).toBe("stronghold.city_hall");
+    state.players.p2.resources = { gold: 10, buildingMaterials: 4, valuables: 0 };
+    const buildAt = (buildingId: string): GameAction => ({
+      type: "BUILD_STRUCTURE",
+      playerId: "p2",
+      townId: town.id,
+      buildingId,
+    });
+    expect(developmentPlanBias(state, "p2", buildAt("stronghold.city_hall"), income)).toBeGreaterThan(0);
+    expect(developmentPlanBias(state, "p2", buildAt("stronghold.mage_guild"), income)).toBeLessThan(0);
+    state.towns[town.id].buildings.push("stronghold.city_hall");
     state = refreshComputerMemory(state, "p2");
     expect(getComputerMemory(state, "p2").developmentPlan?.goal).toBe("silver");
     state.towns[town.id].buildings.push("stronghold.dwelling_silver");
@@ -130,7 +151,7 @@ describe("persistent development plan", () => {
           type: "BUILD_STRUCTURE",
           playerId: "p2",
           townId: town.id,
-          buildingId: "stronghold.city_hall",
+          buildingId: "stronghold.mage_guild",
         },
         gold,
       ),

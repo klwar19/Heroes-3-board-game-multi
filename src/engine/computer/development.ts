@@ -2,7 +2,10 @@ import { coreBuildingDefinitions, coreFactionDefinitions } from "@/data/factions
 import { coreUnitDefinitions } from "@/data/factions/units";
 import type { TownBuildingEffect, UnitSideDefinition, UnitTier } from "@/data/factions/types";
 import { TRADE_RATES } from "@/data/map/locations";
+import { NEUTRAL_PLAYER_ID } from "../state";
 import type { GameState, PlayerId, ResourceCost } from "../state";
+import { unitExperienceActive } from "../unit-experience";
+import { playersAreAllied } from "./control";
 
 /** Maximum opening Pack target. Composition-aware openings may need only 1–2. */
 export const CORE_PACK_TARGET = 3;
@@ -302,6 +305,180 @@ export function shouldLaunchBronzeRush(
   );
 }
 
+/** The faction's income building (City Hall — RESOURCE_ROUND_CHOICE). */
+export function factionIncomeBuilding(state: GameState, playerId: PlayerId) {
+  return factionBuildingForEffect(
+    state,
+    playerId,
+    (effect) => effect.type === "RESOURCE_ROUND_CHOICE",
+  );
+}
+
+/** Last round in which the hall may go BEFORE the next dwelling (winners: R2–R6). */
+export const INCOME_FIRST_LAST_ROUND = 6;
+/**
+ * Same window when the bronze-only stretch the hall implies is SLOW or HARD:
+ * no unit experience and no commanders (Packs never grow, so Silver is the only
+ * way the army improves), or human-played neutrals (PvP Neutral Control: a
+ * rival seat focuses the guards, so bronze fights cost more). Reasoning, not
+ * replay-evidenced — every ranked record ran with commanders and unit
+ * experience on and the scripted Neutral AI.
+ */
+export const INCOME_FIRST_LAST_ROUND_SLOW = 4;
+/** No ranked seat built a City Hall from R8 on; from here its +5/round never pays back. */
+export const INCOME_NEVER_FROM_ROUND = 9;
+/** A hostile main hero this many levels (or more) ahead = "behind": army first, no hall-first. */
+export const INCOME_FIRST_LEVEL_DEFICIT = 2;
+
+/**
+ * Whether the bronze-only stretch a hall-first plan implies is slow: Packs
+ * cannot rank up (no unit experience) and no commander grows with the hero.
+ */
+export function bronzeStretchIsSlow(state: GameState): boolean {
+  const commanders = Boolean(state.wog?.enabled && state.wog.commanders);
+  return !unitExperienceActive(state) && !commanders;
+}
+
+/**
+ * Neutral guards are played AGAINST this seat by a human (PvP Neutral Control
+ * with a live human seat other than ours; co-op keeps the scripted Neutral AI).
+ * Manual Guard Control is NOT this case — there the fighter commands the guards.
+ */
+export function neutralsArePlayerControlled(
+  state: GameState,
+  playerId: PlayerId,
+): boolean {
+  if (state.gameMode === "coop" || !state.adventure?.pvpNeutralControl) return false;
+  return Object.entries(state.controllers ?? {}).some(
+    ([otherId, controller]) =>
+      otherId !== playerId &&
+      controller?.kind === "human" &&
+      !state.players[otherId]?.eliminated,
+  );
+}
+
+function isHostile(state: GameState, playerId: PlayerId, otherId: string): boolean {
+  return (
+    otherId !== playerId &&
+    otherId !== NEUTRAL_PLAYER_ID &&
+    !state.players[otherId]?.eliminated &&
+    !playersAreAllied(state, playerId, otherId)
+  );
+}
+
+/** Largest level lead a live hostile MAIN hero holds over ours (public levels). */
+function hostileMainHeroLevelLead(state: GameState, playerId: PlayerId): number {
+  const levelOf = (id: string) =>
+    Object.values(state.heroes ?? {}).reduce(
+      (best, hero) =>
+        hero.controllerId === id && hero.kind === "main" ? Math.max(best, hero.level) : best,
+      0,
+    );
+  const own = levelOf(playerId);
+  if (own <= 0) return 0;
+  let lead = 0;
+  for (const otherId of Object.keys(state.players)) {
+    if (isHostile(state, playerId, otherId)) {
+      lead = Math.max(lead, levelOf(otherId) - own);
+    }
+  }
+  return lead;
+}
+
+/** A live hostile seat already owns a Gold dwelling (public town buildings). */
+function hostileGoldDwellingStands(state: GameState, playerId: PlayerId): boolean {
+  return Object.values(state.towns ?? {}).some(
+    (town) =>
+      town.controllerId &&
+      isHostile(state, playerId, town.controllerId) &&
+      town.buildings.some((id) => {
+        const effect = coreBuildingDefinitions[id]?.effect;
+        return effect?.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "gold";
+      }),
+  );
+}
+
+/**
+ * SITUATIONAL income-first step: the still-missing City Hall when building it
+ * before the next dwelling is the better tempo — else null and the hall stays an
+ * ordinary side build (surplus only, dwelling fund protected).
+ *
+ * Evidence, all 23 ranked replays through 2026-09-11 (not just the last four):
+ * hall-first winners (hall R2–R3, Silver R5–R6: dc1o0g, 0oyq08, b7gyqi, cpgbmq,
+ * wv1n1h, mnrtc8, al8ilr) and Silver-first winners (Silver R3–R5, hall R5–R7 or
+ * never: 06j7su, 58nqa1, 910btc, l6675g, 5fcaqr, id6j4t) both exist; the loser
+ * who built Silver on R3 and starved (ceqyjy) is one seat. What separates the
+ * winners is the GOLD dwelling by R7 (2p games with both seats reaching Gold:
+ * winner R7 vs loser R9 twice, R7 vs R11 once). No seat built a hall after R7.
+ * So the hall goes first only while it buys that tempo:
+ *  - the Pack core stands (opening Pack reinforces always come first);
+ *  - round ≤ INCOME_FIRST_LAST_ROUND (later the +5/round cannot repay before
+ *    the Gold spending peak; from INCOME_NEVER_FROM_ROUND it is never built);
+ *  - the seat is not already behind — a hostile main hero
+ *    INCOME_FIRST_LEVEL_DEFICIT levels up, or an enemy Gold dwelling while we
+ *    still lack Silver — then every coin goes to the army;
+ *  - the next dwelling is NOT in reach: affordable now (trading the input gap
+ *    from gold counts — the rush planner does that) → build the dwelling; from
+ *    R4 on, landing next Resource Round → do not push it out for the hall.
+ * Town costs make this vary by faction on their own (Bulwark's 10g/6b hall,
+ * the 8g/6b/3v Silver dwellings), so no per-town table is hard-coded.
+ *
+ * Big picture: choosing the hall means fighting with the bronze core for a
+ * while longer. That is only a plan when the core still HAS work it can win —
+ * the map policy passes `bronzeCoreHasWork` (a beatable guard or unguarded
+ * progress in the objective list; false = the army is the bottleneck, so the
+ * dwelling comes first) — and the window shrinks to INCOME_FIRST_LAST_ROUND_SLOW
+ * when the rule variants make that stretch slow (no unit experience, no
+ * commanders) or hard (player-controlled neutrals, which also lowers the
+ * tolerated hero-level deficit to one).
+ */
+export function incomeBuildingBeforeDwelling(
+  state: GameState,
+  playerId: PlayerId,
+  bronzeCoreHasWork = true,
+) {
+  if (!bronzeCoreHasWork) return null;
+  const profile = armyDevelopmentProfile(state, playerId);
+  if (profile.phase !== "unlock-silver" && profile.phase !== "unlock-gold") {
+    return null;
+  }
+  const building = factionIncomeBuilding(state, playerId);
+  if (!building) return null;
+  const built = Object.values(state.towns ?? {}).some(
+    (town) =>
+      town.controllerId === playerId && town.buildings.includes(building.id),
+  );
+  if (built) return null;
+  const round = state.round ?? 0;
+  const hardNeutrals = neutralsArePlayerControlled(state, playerId);
+  const lastRound =
+    bronzeStretchIsSlow(state) || hardNeutrals
+      ? INCOME_FIRST_LAST_ROUND_SLOW
+      : INCOME_FIRST_LAST_ROUND;
+  if (round > lastRound) return null;
+  const levelDeficit = hardNeutrals ? 1 : INCOME_FIRST_LEVEL_DEFICIT;
+  if (hostileMainHeroLevelLead(state, playerId) >= levelDeficit) return null;
+  if (!profile.silverUnlocked && hostileGoldDwellingStands(state, playerId)) return null;
+  const dwelling = factionBuildingForEffect(
+    state,
+    playerId,
+    (effect) =>
+      effect.type === "UNLOCK_RECRUIT_TIER" &&
+      effect.tier === (profile.silverUnlocked ? "gold" : "silver"),
+  );
+  const player = state.players[playerId];
+  if (dwelling?.cost && player) {
+    if (purchaseReachable(player.resources, {}, dwelling.cost, 0)) return null;
+    if (
+      round >= 4 &&
+      purchaseReachable(player.resources, player.production ?? {}, dwelling.cost, 1)
+    ) {
+      return null;
+    }
+  }
+  return building;
+}
+
 export function factionBuildingForEffect(
   state: GameState,
   playerId: PlayerId,
@@ -325,6 +502,10 @@ export function nextDevelopmentBuildingCost(
 ): ResourceCost | null {
   const profile = armyDevelopmentProfile(state, playerId);
   const phase = profile.phase;
+  // Income-first: with the Pack core ready, the missing City Hall is the build
+  // being saved for (its cost drives the treasury target and the rush trades).
+  const income = incomeBuildingBeforeDwelling(state, playerId);
+  if (income) return income.cost ?? null;
   if (phase === "establish-core") {
     if (!profile.reinforceUnlocked) {
       return (
@@ -374,39 +555,136 @@ export function nextDevelopmentBuildingCost(
   );
 }
 
+// ---------------------------------------------------------------------------
+// GOLD LADDER
+// ---------------------------------------------------------------------------
+//
+// User rule (2026-09-12) backed by the ranked replays of 2026-09-10/11: buy the
+// top Gold Few (the "lv7" body) first, then the lower Gold Few, then upgrade the
+// top unit to a Pack, then the lower one. Silver stays at Few (one Pack at most)
+// until the top Gold body is owned. Evidence: the Tower winner bought the Titans
+// Few the round its dwelling stood (R7), the Titans Pack plus the Nagas Few on
+// R9 and won the batch's only PvP on R10 at a LOWER hero level; the Necropolis
+// loser reached Gold on R9, bought both Fews and upgraded the CHEAPER one to a
+// Pack first — it was defending with a Dread Knights Pack and a Ghost Dragons
+// Few when the Titans arrived.
+
+const costWeight = (cost: ResourceCost | undefined): number =>
+  (cost?.gold ?? 0) +
+  (cost?.buildingMaterials ?? 0) * 3 +
+  (cost?.valuables ?? 0) * 7;
+
 /**
- * Cheapest missing faction Gold body after its Dwelling is unlocked. This is
- * the development outcome the policy saves for; constructing the Gold
- * Dwelling alone is not a completed milestone.
+ * The faction's Gold units, strongest first: printed Few cost (weighted like
+ * the dwelling planner), ties broken by roster order (later = higher level).
+ * Index 0 is the "lv7" body. Units without both printed sides are skipped.
  */
-export function firstGoldRecruitCost(
-  state: GameState,
-  playerId: PlayerId,
-): ResourceCost | null {
+export function rankedGoldUnits(state: GameState, playerId: PlayerId): string[] {
   const player = state.players[playerId];
-  if (!player) return null;
-  const candidates = (coreFactionDefinitions[player.factionId ?? ""]?.units ?? [])
-    .filter((unitDefId) => {
-      const unit = coreUnitDefinitions[unitDefId];
-      return (
-        unit?.tier === "gold" &&
-        Boolean(unit.few) &&
-        !player.army.some(
-          (owned) => owned.side !== "bank" && owned.unitDefId === unitDefId,
-        )
-      );
-    })
-    .map((unitDefId) => coreUnitDefinitions[unitDefId]!.few!.cost)
+  const roster = coreFactionDefinitions[player?.factionId ?? ""]?.units ?? [];
+  return roster
+    .map((unitDefId, index) => ({ unitDefId, index, unit: coreUnitDefinitions[unitDefId] }))
+    .filter(({ unit }) => unit?.tier === "gold" && Boolean(unit.few) && Boolean(unit.pack))
     .sort(
       (left, right) =>
-        (left.gold ?? 0) +
-        (left.buildingMaterials ?? 0) * 3 +
-        (left.valuables ?? 0) * 7 -
-        ((right.gold ?? 0) +
-          (right.buildingMaterials ?? 0) * 3 +
-          (right.valuables ?? 0) * 7),
-    );
-  return candidates[0] ?? null;
+        costWeight(right.unit!.few!.cost) - costWeight(left.unit!.few!.cost) ||
+        right.index - left.index,
+    )
+    .map(({ unitDefId }) => unitDefId);
+}
+
+export type GoldLadderStep = {
+  unitDefId: string;
+  kind: "recruit" | "reinforce";
+  cost: ResourceCost;
+  /** 0 = the top Gold body. */
+  rank: number;
+};
+
+/**
+ * The next Gold-army purchase in the taught order: the highest-ranked missing
+ * Few, else the highest-ranked unit still at Few (its Pack). Null before the
+ * Gold dwelling stands or once every Gold unit is a Pack. A Gold body lost in
+ * combat re-opens its Few step, so the ladder "goes back" on its own.
+ */
+export function nextGoldLadderStep(
+  state: GameState,
+  playerId: PlayerId,
+): GoldLadderStep | null {
+  const player = state.players[playerId];
+  if (!player || !armyDevelopmentProfile(state, playerId).goldUnlocked) return null;
+  const ranked = rankedGoldUnits(state, playerId);
+  const owned = (unitDefId: string) =>
+    player.army.find((unit) => unit.side !== "bank" && unit.unitDefId === unitDefId);
+  for (const [rank, unitDefId] of ranked.entries()) {
+    if (!owned(unitDefId)) {
+      return { unitDefId, kind: "recruit", cost: coreUnitDefinitions[unitDefId]!.few!.cost, rank };
+    }
+  }
+  for (const [rank, unitDefId] of ranked.entries()) {
+    if (owned(unitDefId)?.side === "few") {
+      return { unitDefId, kind: "reinforce", cost: coreUnitDefinitions[unitDefId]!.pack!.cost, rank };
+    }
+  }
+  return null;
+}
+
+/**
+ * Whether `cost` is payable after `rounds` more Resource Rounds of printed
+ * production, buying any remaining materials/valuables gap from that gold at
+ * Trading Post rates (2 gold per material, 6 per valuable). Public state only.
+ */
+export function purchaseReachable(
+  resources: ResourceCost,
+  production: ResourceCost,
+  cost: ResourceCost,
+  rounds: number,
+): boolean {
+  const gold = (resources.gold ?? 0) + rounds * (production.gold ?? 0);
+  const materials =
+    (resources.buildingMaterials ?? 0) + rounds * (production.buildingMaterials ?? 0);
+  const valuables = (resources.valuables ?? 0) + rounds * (production.valuables ?? 0);
+  const need =
+    (cost.gold ?? 0) +
+    2 * Math.max(0, (cost.buildingMaterials ?? 0) - materials) +
+    6 * Math.max(0, (cost.valuables ?? 0) - valuables);
+  return gold >= need;
+}
+
+export function goldPurchaseReachable(
+  state: GameState,
+  playerId: PlayerId,
+  cost: ResourceCost,
+  rounds: number,
+): boolean {
+  const player = state.players[playerId];
+  if (!player) return false;
+  return purchaseReachable(player.resources, player.production ?? {}, cost, rounds);
+}
+
+/**
+ * True when paying `spend` now would push a saved purchase past the next
+ * Resource Round: it lands next round without the spend but not with it. A
+ * purchase that changes nothing about the landing round is never a delay, so
+ * cheap bodies keep flowing while the savings are safe.
+ */
+export function spendDelaysSavedCost(
+  state: GameState,
+  playerId: PlayerId,
+  cost: ResourceCost,
+  spend: ResourceCost,
+): boolean {
+  const player = state.players[playerId];
+  if (!player) return false;
+  const production = player.production ?? {};
+  if (!purchaseReachable(player.resources, production, cost, 1)) return false;
+  const after: ResourceCost = {
+    gold: (player.resources.gold ?? 0) - (spend.gold ?? 0),
+    buildingMaterials:
+      (player.resources.buildingMaterials ?? 0) - (spend.buildingMaterials ?? 0),
+    valuables: (player.resources.valuables ?? 0) - (spend.valuables ?? 0),
+  };
+  return !purchaseReachable(after, production, cost, 1);
 }
 
 /**
@@ -429,14 +707,20 @@ export function developmentResourceTargets(
   if (profile.phase === "establish-core") {
     return { gold: 16, buildingMaterials: 3, valuables: 1 };
   }
-  if (profile.goldUnlocked && profile.goldUnits === 0) {
-    const recruit = firstGoldRecruitCost(state, playerId);
-    if (recruit) {
+  if (profile.goldUnlocked) {
+    // Save for the next Gold-ladder step: always for a missing Gold Few, and
+    // for a Gold Pack only once it lands within one Resource Round (so the
+    // mature target below keeps side spending alive during a long save).
+    const step = nextGoldLadderStep(state, playerId);
+    if (
+      step &&
+      (step.kind === "recruit" || goldPurchaseReachable(state, playerId, step.cost, 1))
+    ) {
       return {
         // Preserve the normal five-gold safety cushion after the purchase.
-        gold: (recruit.gold ?? 0) + 5,
-        buildingMaterials: recruit.buildingMaterials ?? 0,
-        valuables: recruit.valuables ?? 0,
+        gold: (step.cost.gold ?? 0) + 5,
+        buildingMaterials: step.cost.buildingMaterials ?? 0,
+        valuables: step.cost.valuables ?? 0,
       };
     }
   }

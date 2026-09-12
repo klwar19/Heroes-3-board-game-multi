@@ -673,8 +673,8 @@ export const animeTownBuildingDefinitions: Record<string, TownBuildingDefinition
   ,"blue_archive.citadel": building("blue_archive.citadel", "Sanctum Citadel", "blue_archive", { gold: 8, buildingMaterials: 5, valuables: 1 }, { type: "UNLOCK_REINFORCE" })
   ,"blue_archive.mage_guild": { ...building("blue_archive.mage_guild", "Halo Research Tower", "blue_archive", { gold: 4, buildingMaterials: 2, valuables: 1 }, { type: "MAGE_GUILD" }), spellBookCost: 5 }
   ,"blue_archive.dwelling_bronze": building("blue_archive.dwelling_bronze", "District Academy", "blue_archive", { gold: 5, buildingMaterials: 3, valuables: 1 }, { type: "UNLOCK_RECRUIT_TIER", tier: "bronze" })
-  ,"blue_archive.dwelling_silver": building("blue_archive.dwelling_silver", "Advanced Academy", "blue_archive", { gold: 8, buildingMaterials: 6, valuables: 3 }, { type: "UNLOCK_RECRUIT_TIER", tier: "silver" }, ["blue_archive.dwelling_bronze"])
-  ,"blue_archive.dwelling_gold": building("blue_archive.dwelling_gold", "Elite Sanctuary", "blue_archive", { gold: 10, buildingMaterials: 9, valuables: 4 }, { type: "UNLOCK_RECRUIT_TIER", tier: "gold" }, ["blue_archive.dwelling_silver"])
+  ,"blue_archive.dwelling_silver": building("blue_archive.dwelling_silver", "Advanced Academy", "blue_archive", { gold: 10, buildingMaterials: 7, valuables: 4 }, { type: "UNLOCK_RECRUIT_TIER", tier: "silver" }, ["blue_archive.dwelling_bronze"])
+  ,"blue_archive.dwelling_gold": building("blue_archive.dwelling_gold", "Elite Sanctuary", "blue_archive", { gold: 12, buildingMaterials: 10, valuables: 5 }, { type: "UNLOCK_RECRUIT_TIER", tier: "gold" }, ["blue_archive.dwelling_silver"])
   ,"blue_archive.research_workshop": building("blue_archive.research_workshop", "Millennium Workshop", "blue_archive", { gold: 6, buildingMaterials: 4 }, { type: "ARTIFACT_SMITH", searchCost: 5, sellGold: 3 })
   ,"blue_archive.training_ground": building("blue_archive.training_ground", "Schale Training Ground", "blue_archive", { gold: 7, buildingMaterials: 4 }, { type: "HALL_OF_VALHALLA", amount: 0, trainingWinXp: 1, trainingWinGoldWhenXpOff: 2 })
 };

@@ -330,12 +330,12 @@ describe("Elemental experience combat outcomes", () => {
     expect(s.pendingChoice).toBeNull();
   });
   it("Magma debt is paid at round end without Solidify or Earth Shield reducing it", () => {
-    let s = fixture(),
-      d = s.combat!.units[D];
+    let s = fixture();
+    const d = s.combat!.units[D];
     d.abilities = ["veteran-earth-shield"];
     d.damage = 4;
     d.elementalVeterancy = {
-      delayUsed: true,
+      delayUsedRound: s.combat!.round,
       deferredDamage: 2,
       deferredRound: s.combat!.round,
       solidifyUntilRound: s.combat!.round + 1,
@@ -768,15 +768,55 @@ describe("Elemental experience combat outcomes", () => {
     cast("p2", "spell.cure");
     expect(u.damage).toBe(6);
   });
-  it("delays two damage from the first enemy attack only", () => {
+  it("delays two damage from an enemy attack once per combat round", () => {
     const s = fixture();
     s.combat!.units[D].abilities = ["veteran-energy-delay"];
     const r = attack(s);
     expect(r.combat!.units[D].damage).toBe(1);
     expect(r.combat!.units[D].elementalVeterancy).toMatchObject({
-      delayUsed: true,
+      delayUsedRound: r.combat!.round,
       deferredDamage: 2,
+      deferredRound: r.combat!.round,
     });
+  });
+  it("Delayed Impact stays spent for the rest of its round and re-arms next round", () => {
+    const spent = fixture();
+    spent.combat!.units[D].abilities = ["veteran-energy-delay"];
+    spent.combat!.units[D].elementalVeterancy = { delayUsedRound: spent.combat!.round };
+    const same = attack(spent);
+    expect(same.combat!.units[D].damage).toBe(3);
+    expect(same.combat!.units[D].elementalVeterancy?.deferredDamage ?? 0).toBe(0);
+    const rearmed = fixture();
+    rearmed.combat!.units[D].abilities = ["veteran-energy-delay"];
+    rearmed.combat!.round = 2;
+    rearmed.combat!.units[D].elementalVeterancy = { delayUsedRound: 1 };
+    const next = attack(rearmed);
+    expect(next.combat!.units[D].damage).toBe(1);
+    expect(next.combat!.units[D].elementalVeterancy).toMatchObject({
+      delayUsedRound: 2,
+      deferredDamage: 2,
+      deferredRound: 2,
+    });
+  });
+  it("Twilight Ward reduces Spell damage by 2 in round 1 and by 1 from round 2", () => {
+    const plain = fixture();
+    expect(cast(plain, "spell.lightning_bolt").combat!.units[D].damage).toBe(2);
+    const first = fixture();
+    first.combat!.units[D].abilities = ["veteran-vampire-ward"];
+    expect(cast(first, "spell.lightning_bolt").combat!.units[D].damage).toBe(0);
+    const later = fixture();
+    later.combat!.units[D].abilities = ["veteran-vampire-ward"];
+    later.combat!.round = 2;
+    const r = cast(later, "spell.lightning_bolt");
+    expect(r.combat!.units[D].damage).toBe(1);
+    expect(
+      r.eventLog.some(
+        (e) =>
+          e.type === "UNIT_ABILITY_TRIGGERED" &&
+          e.abilityId === "veteran-vampire-ward" &&
+          e.message?.includes("up to 1 Spell damage"),
+      ),
+    ).toBe(true);
   });
   it("landing sting offers adjacent enemies and applies exactly one damage", () => {
     const s = fixture(),

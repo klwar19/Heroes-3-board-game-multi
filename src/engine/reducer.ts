@@ -1,7 +1,7 @@
 import { customTownAfterAttack, customTownActivation } from "./custom-town-veterancy";
 import { townVeterancy, townAttackBonus, townDefenseBonus, townDefenseToken, townAfterAttack, townSpellCast, townBound, townMovement, townActivation, townCombatRoundStart, townAllowsRangedRetaliation, townHasUnstoppableRetaliation } from "./town-veterancy";
 import { cardLibrary } from "@/data/cards/library";
-import { factionVeterancy } from "./unit-abilities";
+import { factionVeterancy, twilightWardReduction } from "./unit-abilities";
 import { veteranActivation, veteranAfterAttack, veteranDamage, veteranHeal, veteranIntercept, veteranInterceptPreview, veteranTrigger } from "./faction-veterancy";
 import { elementalVeterancy, elementalAttackBonus, elementalDamageCeiling, elementalActivation, elementalMovement, elementalAfterAttack, elementalFinishActivation, openElementalChoice, resolveElementalChoice, queueElementalChoice, noteElementalSpellCast } from "./elemental-veterancy";
 import { neutralVeterancy, neutralActivation, neutralAfterAttack, neutralAttackBonus, applyNeutralBurnAtActivation } from "./neutral-veterancy";
@@ -735,6 +735,7 @@ import {
   getRetaliationParalysis,
   getSameTargetAttackSequenceAbility,
   getSummonUnitOnAttackAbility,
+  hasApplyBothNegativeRerollChoice,
   hasRollTwoDiceApplyBoth,
   rollsTwoDiceOnRetaliation,
   hasRerollAllMinusOne,
@@ -3441,7 +3442,7 @@ function totalSpellDamageReduction(
     return 0;
   }
   let total = getSpellDamageReduction(target);
-  if (state.combat?.round === 1 && factionVeterancy(target, "first-ward")) total += 2;
+  total += twilightWardReduction(target, state.combat?.round);
   if (target.defenseToken && elementalVeterancy(target, "frozen-guard")) total += 2;
 
   // Polish Set Artifacts — Power of the Dragon Father tiers 4 (+7): "all of your
@@ -3508,8 +3509,9 @@ function reducedSpellDamage(
   amount: number,
   schools: readonly SpellSchool[] = [],
 ): number {
-  if (amount > 0 && state.combat?.round === 1 && factionVeterancy(target, "first-ward") && !spellAbilitiesSuppressed(state)) {
-    veteranTrigger(state, target, "veteran-vampire-ward", target, `${target.cardName}'s Twilight Ward resists up to 2 Spell damage.`);
+  const twilightWard = twilightWardReduction(target, state.combat?.round);
+  if (amount > 0 && twilightWard > 0 && !spellAbilitiesSuppressed(state)) {
+    veteranTrigger(state, target, "veteran-vampire-ward", target, `${target.cardName}'s Twilight Ward resists up to ${twilightWard} Spell damage.`);
   }
   const reduced = Math.max(
     0,
@@ -3854,7 +3856,7 @@ function reducedCardDamage(
   const reduction =
     card?.kind === "hero-specialty"
       ? getSpecialtyDamageReduction(unit) + spellAndSpecialtyAuraReduction() + specialtyAllyAuraReduction() +
-        (state.combat?.round === 1 && factionVeterancy(unit, "first-ward") ? 2 : 0)
+        twilightWardReduction(unit, state.combat?.round)
       : card?.kind === "spell"
         ? // Spell-kind: include the Rampart Unicorns' adjacency aura and any
           // WOG Messenger protection matching this spell's school.
@@ -3862,9 +3864,10 @@ function reducedCardDamage(
           getSpellSchoolDamageReduction(unit, card.spellSchools ?? [])
         : 0;
   const reduced = Math.max(0, amount - reduction);
-  if (amount > 0 && reduction > 0 && state.combat?.round === 1 && factionVeterancy(unit, "first-ward") &&
+  const twilightWard = twilightWardReduction(unit, state.combat?.round);
+  if (amount > 0 && reduction > 0 && twilightWard > 0 &&
       (card?.kind === "hero-specialty" || (card?.kind === "spell" && !spellAbilitiesSuppressed(state)))) {
-    veteranTrigger(state, unit, "veteran-vampire-ward", unit, `${unit.cardName}'s Twilight Ward resists up to 2 damage.`);
+    veteranTrigger(state, unit, "veteran-vampire-ward", unit, `${unit.cardName}'s Twilight Ward resists up to ${twilightWard} damage.`);
   }
   // Spell cards (not specialty blasts) honour includeSpells damage caps.
   if (card?.kind === "spell") {
@@ -4497,6 +4500,16 @@ function adjacentEnemyDamageBonus(
   );
 }
 
+/**
+ * Energy Elementals' Delayed Impact: one shift of up to 2 attack damage per
+ * combat round. The round it was spent in is remembered, so the next round
+ * re-arms it; a preview without combat context treats it as available.
+ */
+function delayedImpactAvailable(defender: CombatUnitState, round: number | undefined): boolean {
+  if (!elementalVeterancy(defender, "delay-damage")) return false;
+  return round === undefined || defender.elementalVeterancy?.delayUsedRound !== round;
+}
+
 function getAttackDamagePreview(
   attacker: CombatUnitState,
   defender: CombatUnitState,
@@ -4625,7 +4638,7 @@ function getAttackDamagePreview(
       : Math.min(unitCapped, cardDamageCap);
 
   const damageBeforeDeferral = elementalDamageCeiling(defender, damage);
-  const deferred = attacker.controllerId !== defender.controllerId && elementalVeterancy(defender, "delay-damage") && !defender.elementalVeterancy?.delayUsed ? Math.min(2, damageBeforeDeferral) : 0;
+  const deferred = attacker.controllerId !== defender.controllerId && delayedImpactAvailable(defender, state?.combat?.round) ? Math.min(2, damageBeforeDeferral) : 0;
   return {
     attackValue: fuyukiFixedDamage ?? attackValue,
     defenseValue: fuyukiFixedDamage === undefined ? defenseValue : 0,
@@ -4934,7 +4947,7 @@ function applyAttackDamageFromCandidate(
   // Alamar's Resurrection: if this blow would reduce the defender to 0 HP and
   // its grade is within reach, the whole attack is cancelled — no damage, and
   // (handled by the caller) no Retaliation Attack either.
-  const deferred = damage > 0 && attacker.controllerId !== defender.controllerId && elementalVeterancy(defender, "delay-damage") && !defender.elementalVeterancy?.delayUsed ? Math.min(2, damage) : 0;
+  const deferred = damage > 0 && attacker.controllerId !== defender.controllerId && delayedImpactAvailable(defender, state.combat.round) ? Math.min(2, damage) : 0;
   damage -= deferred;
   if (
     lethalCancel &&
@@ -4987,7 +5000,7 @@ function applyAttackDamageFromCandidate(
   }
 
   if (deferred > 0) {
-    Object.assign(defender.elementalVeterancy ??= {}, { delayUsed: true, deferredDamage: deferred, deferredRound: state.combat.round });
+    Object.assign(defender.elementalVeterancy ??= {}, { delayUsedRound: state.combat.round, deferredDamage: deferred, deferredRound: state.combat.round });
     appendEvent(state, { type: "UNIT_ABILITY_TRIGGERED", unitId: defender.id, targetUnitId: defender.id, abilityId: "veteran-energy-delay", message: `${defender.cardName} shifts ${deferred} damage to round end.` });
   }
 
@@ -6755,6 +6768,9 @@ function openAttackRerollChoice(
     playerId: PlayerId;
     rerollSources: AttackRerollSource[];
   }> = [],
+  // Veteran Troglodytes' "Threefold Savage": restrict this window to rerolling
+  // only the "-1" dice, each once. Additive — false for every other window.
+  rerollNegativeDiceOnly = false,
 ): void {
   const choiceId = `choice_${nextEventNumber(state)}`;
   const candidates = [candidate, ...extraCandidates];
@@ -6783,6 +6799,7 @@ function openAttackRerollChoice(
     ...(followUpRerollStages.length > 0 ? { followUpRerollStages } : {}),
     sourceEffectIds,
     ...(extraCandidates.length > 0 ? { freeCandidateChoice: true } : {}),
+    ...(rerollNegativeDiceOnly ? { rerollNegativeDiceOnly: true, rerolledDieIndexes: [] } : {}),
   };
   state.phase = "choice";
   state.priorityPlayerId = details.attacker.controllerId;
@@ -16849,26 +16866,60 @@ function resolveAttackStackItem(
         "one die less is rolled",
       );
     }
+    const resolvedApplyBoth = applyEnemyDieSetCurses(
+      state,
+      details.attacker.controllerId,
+      applyEnemyPlusOneRerolls(
+        state,
+        details.attacker.controllerId,
+        applyMoraleDiceCurses(
+          state,
+          details.attacker.controllerId,
+          applyBothCandidate,
+          "sum",
+        ),
+        "sum", details.attacker,
+      ),
+      "sum", details.attacker,
+    );
+    // Veteran Troglodytes' "Threefold Savage": after the dice settle, the
+    // controller may reroll each "-1" die once through the interactive window
+    // (choice + reroll animation per die). Only opened when the marker is
+    // present, a "-1" is actually showing, and reroll sources are not globally
+    // locked (Spirit of Oppression). Every other apply-both unit falls straight
+    // through to resolution exactly as before.
+    const negativeDieCount = resolvedApplyBoth.rolls.filter((face) => face < 0).length;
+    if (
+      hasApplyBothNegativeRerollChoice(details.attacker) &&
+      !attackRerollsBlocked(state) &&
+      negativeDieCount > 0
+    ) {
+      openAttackRerollChoice(
+        state,
+        stackItem,
+        details,
+        resolvedApplyBoth,
+        [
+          {
+            name: "Threefold Savage",
+            abilityId: "veteran-troglodyte-three-dice",
+            sourceUnitId: details.attacker.id,
+            remaining: negativeDieCount,
+            used: 0,
+          },
+        ],
+        [],
+        details.attacker.controllerId,
+        [],
+        true,
+      );
+      return;
+    }
     resolveAttackOrOfferDieCancel(
       state,
       stackItem,
       details,
-      applyEnemyDieSetCurses(
-        state,
-        details.attacker.controllerId,
-        applyEnemyPlusOneRerolls(
-          state,
-          details.attacker.controllerId,
-          applyMoraleDiceCurses(
-            state,
-            details.attacker.controllerId,
-            applyBothCandidate,
-            "sum",
-          ),
-          "sum", details.attacker,
-        ),
-        "sum", details.attacker,
-      ),
+      resolvedApplyBoth,
       cards,
     );
     return;
@@ -31175,6 +31226,12 @@ function rerollPendingChoice(
   // `onlyOnRoll` only says WHEN the one use may be taken.
   source.remaining -= 1;
   source.used += 1;
+  // Threefold Savage: each "-1" die may be rerolled at most once. Record the
+  // die just rerolled so legal-actions stops offering it (even if it landed on
+  // another "-1"). Additive — only a `rerollNegativeDiceOnly` window sets this.
+  if (choice.rerollNegativeDiceOnly && action.dieIndex !== undefined) {
+    (choice.rerolledDieIndexes ??= []).push(action.dieIndex);
+  }
   if (source.abilityId === "ntv-improvised-ammunition" && source.sourceUnitId) {
     const gremlin = combat.units[source.sourceUnitId];
     if (gremlin) {

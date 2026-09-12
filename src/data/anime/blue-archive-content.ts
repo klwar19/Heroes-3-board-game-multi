@@ -132,10 +132,10 @@ export const blueArchiveTown = {
     { id: "blue_archive.city_hall", name: "General Student Council", bar: 1, gold: 10, materials: 4, effect: "Choose 5 gold or draw 3 cards each resource round." },
     { id: "blue_archive.dwelling_bronze", name: "District Academy", bar: 2, gold: 5, materials: 3, effect: "Unlock bronze Kivotos students." },
     { id: "blue_archive.research_workshop", name: "Millennium Workshop", bar: 3, gold: 6, materials: 4, effect: "Upgrade or repair one deployed unit after combat." },
-    { id: "blue_archive.dwelling_silver", name: "Advanced Academy", bar: 4, gold: 8, materials: 6, valuables: 3, effect: "Unlock silver Kivotos students." },
+    { id: "blue_archive.dwelling_silver", name: "Advanced Academy", bar: 4, gold: 10, materials: 7, valuables: 4, effect: "Unlock silver Kivotos students." },
     { id: "blue_archive.training_ground", name: "Schale Training Ground", bar: 4, gold: 7, materials: 4, effect: "After each won combat: surviving units gain 1 experience, or gain 2 gold when Unit Experience is off." },
     { id: "blue_archive.mage_guild", name: "Halo Research Tower", bar: 5, gold: 4, materials: 2, valuables: 1, effect: "Unlock the spell book and advanced research." },
     { id: "blue_archive.citadel", name: "Sanctum Citadel", bar: 6, gold: 8, materials: 5, valuables: 1, effect: "Unlock fortification cards and reinforcing." },
-    { id: "blue_archive.dwelling_gold", name: "Elite Sanctuary", bar: 7, gold: 10, materials: 9, valuables: 4, effect: "Unlock gold Kivotos students." }
+    { id: "blue_archive.dwelling_gold", name: "Elite Sanctuary", bar: 7, gold: 12, materials: 10, valuables: 5, effect: "Unlock gold Kivotos students." }
   ]
 } as const;

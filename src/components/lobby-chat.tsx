@@ -42,9 +42,10 @@ export function LobbyChat({
   clientId: string;
   messages: LobbyChatMessage[];
   error?: string | null;
-  onSend: (text: string) => void;
+  onSend: (text: string) => void | Promise<void>;
 }) {
   const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
   const [now, setNow] = useState(0);
   const listRef = useRef<HTMLDivElement | null>(null);
   const lastSendAtRef = useRef(0);
@@ -102,9 +103,9 @@ export function LobbyChat({
     }
   };
 
-  const submit = () => {
+  const submit = async () => {
     const text = draft.trim();
-    if (!text) {
+    if (!text || sending) {
       return;
     }
     const at = Date.now();
@@ -113,8 +114,16 @@ export function LobbyChat({
     }
     lastSendAtRef.current = at;
     stickToBottomRef.current = true;
-    onSend(text);
-    setDraft("");
+    setSending(true);
+    try {
+      await onSend(text);
+      setDraft("");
+    } catch {
+      // The owner renders the transport error. Keep the draft so a temporary
+      // rate limit or network failure never destroys what the player typed.
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -168,17 +177,18 @@ export function LobbyChat({
         className="lobbyChatComposer"
         onSubmit={(event) => {
           event.preventDefault();
-          submit();
+          void submit();
         }}
       >
         <input
           aria-label="Lobby message"
           maxLength={MAX_LOBBY_CHAT_TEXT_LENGTH}
+          disabled={sending}
           onChange={(event) => setDraft(event.target.value)}
           placeholder="Message the lobby…"
           value={draft}
         />
-        <button aria-label="Send lobby message" className="commandButton" disabled={draft.trim().length === 0} type="submit">
+        <button aria-label="Send lobby message" className="commandButton" disabled={sending || draft.trim().length === 0} type="submit">
           <Send aria-hidden="true" size={14} />
         </button>
       </form>

@@ -78,6 +78,15 @@ export function factionVeterancy(unit: CombatUnitState, mechanic: Extract<UnitAb
   return getUnitAbilityDefinitions(unit).some(a => a.implementationStatus === "implemented" && a.effect?.type === "FACTION_VETERANCY" && a.effect.mechanic === mechanic);
 }
 
+/**
+ * Vampires' Twilight Ward: Spell and Specialty damage is reduced by 2 during
+ * the first combat round and by 1 from round 2 onward. Zero outside combat.
+ */
+export function twilightWardReduction(unit: CombatUnitState, round: number | undefined): number {
+  if (round === undefined || !factionVeterancy(unit, "first-ward")) return 0;
+  return round === 1 ? 2 : 1;
+}
+
 /** Read current HP on each attack/activation; healing immediately ends the charge. */
 export function getAzureDragonSuperCharge(unit: CombatUnitState) {
   for (const ability of getUnitAbilityDefinitions(unit)) {
@@ -2226,6 +2235,18 @@ export function getApplyBothDiceCount(unit: CombatUnitState): number {
     if (ability.effect?.type === "ROLL_TWO_DICE_APPLY_BOTH" && ability.effect.diceCount) return ability.effect.diceCount;
   }
   return 2;
+}
+
+/**
+ * Veteran Troglodytes' "Threefold Savage": the apply-both roll offers an
+ * optional per-die reroll of each "-1" (once each) instead of a flat clamp.
+ * True only for the marker ability that opts in — the classic Champion/Ayssid
+ * apply-both users keep their intrinsic behaviour untouched.
+ */
+export function hasApplyBothNegativeRerollChoice(unit: CombatUnitState): boolean {
+  return getAbilitiesWithEffect(unit, "ROLL_TWO_DICE_APPLY_BOTH").some(
+    (ability) => ability.effect?.type === "ROLL_TWO_DICE_APPLY_BOTH" && ability.effect.negativeRerollChoice === true
+  );
 }
 
 /**

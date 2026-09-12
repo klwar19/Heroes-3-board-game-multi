@@ -31,6 +31,7 @@ import {
 } from "./adventure";
 import { parallelStateForPlayer } from "./parallel-combats";
 import { creatureBankPileForPlayer } from "./adventure-reducer";
+import { shuffleCards } from "./decks";
 import { markUnitRemovedIfNeeded } from "./combat-units";
 import { chooseComputerAction } from "./computer/policy";
 import { getUnitAbilityDefinitions } from "./unit-abilities";
@@ -400,13 +401,18 @@ describe("Polish Creature Bank offer", () => {
     const state = createAdventureGameState({ seed: "independent-banks", creatureBanks: true,
       parallelTurns, rollFirstPlayer: false });
     for (const tier of ["far", "near"] as const) {
+      const base = [...(tier === "far"
+        ? state.adventure!.creatureBankTokensFar!
+        : state.adventure!.creatureBankTokensNear!)];
       const first = creatureBankPileForPlayer(state, "p1", tier)!;
       const original = [...first];
+      expect(original).toEqual(shuffleCards(base, `${state.seed}#creature-banks#player#p1#${tier}`));
       first.pop();
       const second = creatureBankPileForPlayer(state, "p2", tier)!;
-      expect(second).toEqual(original);
+      expect(second).toEqual(shuffleCards(base, `${state.seed}#creature-banks#player#p2#${tier}`));
+      expect([...second].sort()).toEqual([...original].sort());
       expect(second).not.toBe(first);
-      expect(second.pop()).toBe(original.at(-1));
+      second.pop();
       expect(first).toHaveLength(original.length - 1);
     }
   });
@@ -419,6 +425,9 @@ describe("Polish Creature Bank offer", () => {
     expect(state.activePlayerId).toBe("p2");
     const refresh = getLegalActions(state, "p2").find(legal => legal.action.type === "REFRESH_HAND");
     if (refresh) state = apply(state, refresh.action);
+    // Force the same personal ordering to prove a coincidental duplicate is
+    // still legal and p1's consumption did not remove p2's copy.
+    creatureBankPileForPlayer(state, "p2", "far")!.splice(0, Infinity, "crypt", "imp_cache");
     state.heroes.hero_p2.spaceId = "h:7:2";
     const placement = getLegalActions(state, "p2").find(legal => legal.action.type === "PLACE_TILE");
     expect(placement).toBeDefined();

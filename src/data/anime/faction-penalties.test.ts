@@ -7,10 +7,10 @@ import { factionVisualRegister } from "@/data/faction-theme";
 
 
 describe("anime/xianxia faction briefings", () => {
-  it("covers exactly the seven custom towns, each a real faction", () => {
+  it("covers exactly the eight custom towns, each a real faction", () => {
     const ids = ANIME_FACTION_PENALTIES.map((entry) => entry.factionId);
     expect(new Set(ids)).toEqual(
-      new Set(["fuyuki", "azure_breeze", "heavenly_demon", "hidden_leaf", "mgq", "little_busters", "azur_lane"])
+      new Set(["fuyuki", "azure_breeze", "heavenly_demon", "hidden_leaf", "mgq", "little_busters", "azur_lane", "blue_archive"])
     );
     ids.forEach((id) => expect(coreFactionDefinitions[id]).toBeDefined());
   });
@@ -74,6 +74,8 @@ describe("anime/xianxia faction briefings", () => {
     expect(animeFactionPenalty("little_busters")?.detail).not.toContain("Paralysis");
     expect(animeFactionPenalty("little_busters")?.detail).not.toContain("−2 Attack");
     expect(animeFactionPenalty("azur_lane")?.detail).toContain("draws 1 card");
-    expect(animeFactionPenalty("mgq")?.short).toBe("No recurring penalty");
+    expect(animeFactionPenalty("mgq")?.short).toContain("3 gold");
+    expect(animeFactionPenalty("mgq")?.detail).toContain("into debt");
+    expect(animeFactionPenalty("blue_archive")?.detail).toContain("draws 1 card");
   });
 });

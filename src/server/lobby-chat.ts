@@ -36,8 +36,11 @@ export const MAX_LOBBY_CHAT_TEXT_LENGTH = 300;
 /** Longest display name shown on a lobby line. */
 export const MAX_LOBBY_CHAT_NAME_LENGTH = 24;
 
-/** A client may not own more than this many of the most-recent lines (anti-flood). */
+/** Maximum messages one client may send inside the rolling anti-flood window. */
 export const LOBBY_CHAT_FLOOD_LIMIT = 5;
+
+/** Rolling window used by the per-client anti-flood cap. */
+export const LOBBY_CHAT_FLOOD_WINDOW_MS = 10_000;
 
 /** Messages older than this are dropped from the feed (list + post both prune). */
 export const LOBBY_CHAT_MESSAGE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -113,8 +116,8 @@ export class LobbyChatBoard {
   /**
    * Post one line. Throws LobbyChatError on an empty/oversized-clientId send or a
    * per-client flood. Returns the stored message. Text and name are sanitised
-   * and capped; a per-client flood cap (like the in-room chat) stops one client
-   * monopolising the feed.
+   * and capped; a short rolling per-client flood cap (like the in-room chat)
+   * stops one client monopolising the feed without locking them out forever.
    */
   post(input: PostLobbyChatInput): LobbyChatMessage {
     // Drop expired lines first so the flood window and cap only see live ones.
@@ -130,15 +133,17 @@ export class LobbyChatBoard {
     }
     const name = sanitizeLobbyText(input.name, MAX_LOBBY_CHAT_NAME_LENGTH) || "Player";
 
-    if (this.messages.length >= LOBBY_CHAT_FLOOD_LIMIT) {
-      const recent = this.messages.slice(-LOBBY_CHAT_FLOOD_LIMIT);
-      if (recent.every((message) => message.clientId === clientId)) {
-        throw new LobbyChatError("Slow down — too many messages at once.");
-      }
+    const receivedAt = this.now();
+    const floodWindowStart = receivedAt - LOBBY_CHAT_FLOOD_WINDOW_MS;
+    const recentFromClient = this.messages.filter(
+      (message) => message.clientId === clientId && message.at >= floodWindowStart
+    ).length;
+    if (recentFromClient >= LOBBY_CHAT_FLOOD_LIMIT) {
+      throw new LobbyChatError("Slow down — wait a few seconds before sending another message.");
     }
 
     this.seq += 1;
-    const message: LobbyChatMessage = { seq: this.seq, clientId, name, text, at: this.now() };
+    const message: LobbyChatMessage = { seq: this.seq, clientId, name, text, at: receivedAt };
     this.messages.push(message);
     if (this.messages.length > MAX_LOBBY_CHAT_MESSAGES) {
       this.messages = this.messages.slice(-MAX_LOBBY_CHAT_MESSAGES);

@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { currentArmyCoversGuardField } from "./army-strength";
 import { describe, expect, it } from "vitest";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { locationDefinitions } from "@/data/map/locations";
@@ -370,6 +371,15 @@ describe("canBeatGuardedField (Quick-Combat grounded engagement)", () => {
     state.players.p2.army.pop();
     state.adventure!.pvpNeutralControlMustAttack = true;
     expect(canBeatGuardedField(state, hero, guard)).toBe(true);
+    // Must-attack humans still pick targets: at difficulty 4+ (two premium
+    // guards) the two-body army is refused until a third body can screen the
+    // carry; with three bodies the printed strength curve decides again.
+    const hardGuard = { ...guard, difficulty: 4, resource: "buildingMaterials" as const };
+    expect(canBeatGuardedField(state, hero, hardGuard)).toBe(false);
+    state.players.p2.army.push({ id: "gold-a", unitDefId: gold.id, side: "few" });
+    expect(canBeatGuardedField(state, hero, hardGuard)).toBe(
+      currentArmyCoversGuardField(state, "p2", 4, hardGuard),
+    );
   });
 
   it("lets a secondary take free Quick Combat, but requires Silver for a real cleanup fight", () => {

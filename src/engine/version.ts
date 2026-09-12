@@ -1203,7 +1203,24 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // and a reducer gate that refuses every gameplay action while paused, plus
 // AFK/turn clocks that freeze at `pausedAt` and shift on resume. A v131 worker
 // rejects the pause actions outright. `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 133;
+// v134 (2026-09-12): Energy Elementals' Delayed Impact re-arms every combat
+// round (`elementalVeterancy.delayUsedRound` replaces the once-per-combat
+// `delayUsed` flag) and Vampires' Twilight Ward keeps a -1 Spell/Specialty
+// reduction from round 2 onward. A v133 worker would settle both differently
+// from the new UI's previews. `npm run deploy:partykit` owed.
+// v135 (2026-09-12): per-player Creature Bank supplies receive distinct seeded
+// shuffles instead of byte-identical copies; legacy personal supplies migrate
+// once without restoring tokens already consumed. A v134 worker would keep
+// every seat on the same bank sequence. `npm run deploy:partykit` owed.
+// v136 (2026-09-12): veteran Troglodytes' "Threefold Savage" adds an optional
+// per-die reroll of each "-1" (interactive `rerollNegativeDiceOnly` window),
+// veteran Sea Dogs' R2 also grants +1 Health, and the Blue Archive ("Academy
+// Overheads": costlier silver/gold dwellings + enemy combat-start draw) and
+// Monster Girl Quest ("Spirit Tithe": 3 gold each Resource round + a
+// combat-start card discard) faction penalties go live. A v135 worker would
+// resolve these attacks/penalties differently from the new UI's previews.
+// `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 136;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

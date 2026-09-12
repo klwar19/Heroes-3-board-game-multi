@@ -9289,11 +9289,23 @@ function getLegalActionsCore(
       });
     }
 
-    const nextSource = state.pendingChoice.rerollSources.find(
-      (source) =>
-        rerollSourceAvailableFor(source, latest.roll) &&
-        source.setDieFace === undefined,
-    );
+    // Veteran Troglodytes' "Threefold Savage": this window rerolls ONLY the dice
+    // still showing "-1", each at most once. When set, the offer is restricted to
+    // those die indexes; if none remain, no reroll button is shown (only the
+    // keep). Additive — undefined on every other reroll window.
+    const negativeOnly = state.pendingChoice.rerollNegativeDiceOnly === true;
+    const alreadyRerolled = state.pendingChoice.rerolledDieIndexes ?? [];
+    const negativeOfferableIndexes = latest.rolls
+      .map((_, index) => index)
+      .filter((index) => latest.rolls[index]! < 0 && !alreadyRerolled.includes(index));
+    const nextSource =
+      negativeOnly && negativeOfferableIndexes.length === 0
+        ? undefined
+        : state.pendingChoice.rerollSources.find(
+            (source) =>
+              rerollSourceAvailableFor(source, latest.roll) &&
+              source.setDieFace === undefined,
+          );
     if (nextSource) {
       // USER RULE: multi-die rolls contain separate dice, so an ordinary reroll
       // source rerolls the FIRST or the SECOND — never both. One button per
@@ -9306,7 +9318,7 @@ function getLegalActionsCore(
       if (perDie) {
         const inWindow = (roll: number): boolean =>
           abilityRoll ? roll >= abilityRoll.minRoll && roll <= abilityRoll.maxRoll : roll >= 1;
-        const indexes = latest.rolls.map((_, index) => index);
+        const indexes = (negativeOnly ? negativeOfferableIndexes : latest.rolls.map((_, index) => index));
         indexes.sort(
           (left, right) =>
             abilityRoll

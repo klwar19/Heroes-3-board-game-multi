@@ -1,13 +1,97 @@
 {
   "version": 1,
-  "matches": 10,
-  "samples": 3114,
+  "matches": 15,
+  "samples": 8086,
   "weights": {
-    "midgame|fortress|map|stable|BUILD_STRUCTURE|fortress.city_hall||": {
+    "late-game|castle|map|stable|BUILD_STRUCTURE|castle.brotherhood_of_the_sword||": {
       "wins": 2,
       "losses": 1,
       "matches": 3,
       "bias": 1.7142857142857135
+    },
+    "late-game|castle|neutral|stable|CAST_SPELL|spell.magic_arrow||": {
+      "wins": 4,
+      "losses": 0,
+      "matches": 4,
+      "bias": 6
+    },
+    "late-game|castle|neutral|stable|PLAY_REACTION|stat.attack|expert|": {
+      "wins": 3,
+      "losses": 0,
+      "matches": 3,
+      "bias": 5.142857142857143
+    },
+    "late-game|castle|neutral|stable|PLAY_REACTION|stat.knowledge|expert|": {
+      "wins": 3,
+      "losses": 0,
+      "matches": 3,
+      "bias": 5.142857142857143
+    },
+    "late-game|necropolis|map|stable|BUILD_STRUCTURE|necropolis.dwelling_gold||": {
+      "wins": 2,
+      "losses": 1,
+      "matches": 3,
+      "bias": 1.7142857142857135
+    },
+    "midgame|castle|map|pressure|CAST_SPELL|spell.magic_arrow||": {
+      "wins": 2,
+      "losses": 1,
+      "matches": 3,
+      "bias": 1.7142857142857135
+    },
+    "midgame|castle|map|stable|BUILD_STRUCTURE|castle.city_hall||": {
+      "wins": 2,
+      "losses": 2,
+      "matches": 4,
+      "bias": 0
+    },
+    "midgame|castle|map|stable|BUILD_STRUCTURE|castle.dwelling_silver||": {
+      "wins": 4,
+      "losses": 2,
+      "matches": 6,
+      "bias": 2.3999999999999995
+    },
+    "midgame|castle|neutral|pressure|CAST_SPELL|spell.magic_arrow||": {
+      "wins": 2,
+      "losses": 1,
+      "matches": 3,
+      "bias": 1.7142857142857135
+    },
+    "midgame|castle|neutral|stable|CAST_SPELL|spell.magic_arrow||": {
+      "wins": 3,
+      "losses": 0,
+      "matches": 3,
+      "bias": 5.142857142857143
+    },
+    "midgame|castle|neutral|stable|PLAY_REACTION|stat.attack|basic|": {
+      "wins": 3,
+      "losses": 0,
+      "matches": 3,
+      "bias": 5.142857142857143
+    },
+    "midgame|necropolis|map|stable|BUILD_STRUCTURE|necropolis.dwelling_silver||": {
+      "wins": 1,
+      "losses": 2,
+      "matches": 3,
+      "bias": -1.7142857142857149
+    },
+    "midgame|necropolis|map|stable|CAST_SPELL|spell.magic_arrow||": {
+      "wins": 1,
+      "losses": 2,
+      "matches": 3,
+      "bias": -1.7142857142857149
+    },
+    "midgame|necropolis|map|stable|PLAY_CARD|ability.necromancy|basic|": {
+      "wins": 2,
+      "losses": 2,
+      "matches": 4,
+      "bias": 0
+    },
+    "opening|cove|neutral|pressure|CAST_SPELL|spell.magic_arrow||": {
+      "wins": 0,
+      "losses": 3,
+      "matches": 3,
+      "bias": -5.142857142857143
     }
   }
 }

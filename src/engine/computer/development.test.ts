@@ -9,7 +9,10 @@ import {
   armyDevelopmentProfile,
   developmentResourceTargets,
   hasOpenedFarEconomy,
+  incomeBuildingBeforeDwelling,
+  nextGoldLadderStep,
   openingCorePackTarget,
+  rankedGoldUnits,
   shouldLaunchBronzeRush,
 } from "./development";
 import { resourceDeficits, scoreMapAction } from "./map-policy";
@@ -195,6 +198,8 @@ describe("computer long-horizon development plan", () => {
     expect(packAction?.purchases[0]?.kind).toBe("reinforce");
 
     establishPacks(state);
+    // Flush treasury: the Silver dwelling is in reach, so the situational
+    // income-first step stays off and the dwelling goes up first.
     const unlockSilver = chooseComputerAction(observeForComputer(state, "p2"));
     expect(unlockSilver?.action).toMatchObject({
       type: "BUILD_STRUCTURE",
@@ -246,11 +251,12 @@ describe("computer long-horizon development plan", () => {
     town.buildings = [citadel, bronze];
     expect(armyDevelopmentProfile(state, "p2").phase).toBe("unlock-silver");
 
+    // City Hall is income-first (exempt from the fund guard by design), so the
+    // side build must be a genuine extra.
     const side = buildingWith(
       state,
       (effect) =>
         effect.type === "MAGE_GUILD" ||
-        effect.type === "RESOURCE_ROUND_CHOICE" ||
         effect.type === "RESOURCE_ROUND_SEARCH_DISCARD",
     );
     const sideCost = coreBuildingDefinitions[side].cost ?? {};
@@ -626,5 +632,263 @@ describe("computer Population scoring — Settlement Neutral-Units recruits (BIN
         purchases: [{ kind: "recruit", unitDefId }],
       })!.score;
     expect(scoreOf(strongest.id)).not.toBe(scoreOf(weakest.id));
+  });
+});
+
+describe("computer development — income-first City Hall and the Gold ladder (ranked replays 2026-09-10/11)", () => {
+  function coreTown(state: GameState, extra: string[] = []) {
+    const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p2")!;
+    town.buildings = [
+      buildingWith(state, (effect) => effect.type === "UNLOCK_REINFORCE"),
+      buildingWith(state, (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "bronze"),
+      ...extra,
+    ];
+    return town;
+  }
+  const build = (state: GameState, buildingId: string): GameAction =>
+    ({
+      type: "BUILD_STRUCTURE",
+      playerId: "p2",
+      townId: Object.values(state.towns).find((candidate) => candidate.controllerId === "p2")!.id,
+      buildingId,
+    }) as GameAction;
+  const recruit = (unitDefId: string): GameAction => ({
+    type: "POPULATION_ACTION",
+    playerId: "p2",
+    purchases: [{ kind: "recruit", unitDefId }],
+  });
+  const reinforce = (state: GameState, unitDefId: string): GameAction => ({
+    type: "POPULATION_ACTION",
+    playerId: "p2",
+    purchases: [
+      {
+        kind: "reinforce",
+        unitDefId,
+        armyUnitId: state.players.p2.army.find((unit) => unit.unitDefId === unitDefId)!.id,
+      },
+    ],
+  });
+  const score = (state: GameState, action: GameAction) =>
+    scoreMapAction(observation(state), action)!.score;
+  function goldTown(state: GameState) {
+    establishPacks(state);
+    return coreTown(state, [
+      buildingWith(state, (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "silver"),
+      buildingWith(state, (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "gold"),
+      buildingWith(state, (effect) => effect.type === "RESOURCE_ROUND_CHOICE"),
+    ]);
+  }
+  function addUnit(state: GameState, unitDefId: string, side: "few" | "pack") {
+    state.players.p2.army.push({ id: `ladder-${state.players.p2.army.length}`, unitDefId, side });
+  }
+
+  it("puts City Hall first only when it is situational: dwelling out of reach, early, not behind", () => {
+    const state = game();
+    establishPacks(state);
+    const town = coreTown(state);
+    const income = buildingWith(state, (effect) => effect.type === "RESOURCE_ROUND_CHOICE");
+    const silver = buildingWith(
+      state,
+      (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "silver",
+    );
+    const hallCost = coreBuildingDefinitions[income].cost ?? {};
+    const hallOnly = () => {
+      state.players.p2.resources = {
+        gold: hallCost.gold ?? 0,
+        buildingMaterials: hallCost.buildingMaterials ?? 0,
+        valuables: 0,
+      };
+    };
+    state.round = 3;
+    state.players.p2.production = { gold: 5, buildingMaterials: 2, valuables: 1 };
+    // Silver dwelling out of reach, hall affordable: hall first, exempt from
+    // the dwelling-fund guard, below a scenario-winning step.
+    hallOnly();
+    expect(incomeBuildingBeforeDwelling(state, "p2")?.id).toBe(income);
+    const hall = score(state, build(state, income));
+    expect(hall).toBeGreaterThanOrEqual(970);
+    expect(hall).toBeLessThan(980);
+    expect(score(state, build(state, silver))).toBeLessThanOrEqual(960);
+    // Silver dwelling in reach now: take it; the hall is an ordinary side
+    // build again (early Silver won 06j7su R3, 58nqa1 R4, 5fcaqr R3).
+    state.players.p2.resources = { gold: 99, buildingMaterials: 99, valuables: 99 };
+    expect(incomeBuildingBeforeDwelling(state, "p2")).toBeNull();
+    expect(score(state, build(state, silver))).toBe(955);
+    expect(score(state, build(state, income))).toBeLessThan(900);
+    // From R4 a dwelling landing next Resource Round is not pushed out either.
+    state.round = 4;
+    const silverCost = coreBuildingDefinitions[silver].cost ?? {};
+    state.players.p2.resources = {
+      gold: (silverCost.gold ?? 0) - 1,
+      buildingMaterials: silverCost.buildingMaterials ?? 0,
+      valuables: silverCost.valuables ?? 0,
+    };
+    expect(incomeBuildingBeforeDwelling(state, "p2")).toBeNull();
+    // Too late: no hall-first after R6; from R9 the hall is never built.
+    hallOnly();
+    state.round = 7;
+    expect(incomeBuildingBeforeDwelling(state, "p2")).toBeNull();
+    state.round = 9;
+    expect(score(state, build(state, income))).toBeLessThanOrEqual(280);
+    // Behind already: a hostile main hero two levels up → army first.
+    state.round = 3;
+    expect(incomeBuildingBeforeDwelling(state, "p2")?.id).toBe(income);
+    const enemyMain = Object.values(state.heroes).find(
+      (hero) => hero.controllerId === "p1" && hero.kind === "main",
+    )!;
+    const ownMain = Object.values(state.heroes).find(
+      (hero) => hero.controllerId === "p2" && hero.kind === "main",
+    )!;
+    enemyMain.level = ownMain.level + 2;
+    expect(incomeBuildingBeforeDwelling(state, "p2")).toBeNull();
+    enemyMain.level = ownMain.level;
+    expect(incomeBuildingBeforeDwelling(state, "p2")?.id).toBe(income);
+    // Bronze core with nothing it can win: the dwelling is the plan instead.
+    expect(incomeBuildingBeforeDwelling(state, "p2", false)).toBeNull();
+    // Slow bronze stretch (no unit experience, no commanders) or player-
+    // controlled neutrals: the hall-first window closes after R4.
+    state.round = 5;
+    state.adventure!.unitExperience = true;
+    expect(incomeBuildingBeforeDwelling(state, "p2")?.id).toBe(income);
+    state.adventure!.unitExperience = false;
+    if (state.wog) state.wog.enabled = false;
+    expect(incomeBuildingBeforeDwelling(state, "p2")).toBeNull();
+    state.round = 3;
+    expect(incomeBuildingBeforeDwelling(state, "p2")?.id).toBe(income);
+    state.round = 5;
+    state.adventure!.unitExperience = true;
+    state.adventure!.pvpNeutralControl = true;
+    state.controllers = { ...(state.controllers ?? {}), p1: { kind: "human" } };
+    expect(incomeBuildingBeforeDwelling(state, "p2")).toBeNull();
+    state.round = 3;
+    enemyMain.level = ownMain.level + 1;
+    expect(incomeBuildingBeforeDwelling(state, "p2")).toBeNull();
+    enemyMain.level = ownMain.level;
+    state.adventure!.pvpNeutralControl = false;
+    // CONTROL: with the hall standing the Silver dwelling is the milestone again.
+    town.buildings.push(income);
+    state.players.p2.resources = { gold: 99, buildingMaterials: 99, valuables: 99 };
+    expect(incomeBuildingBeforeDwelling(state, "p2")).toBeNull();
+    expect(score(state, build(state, silver))).toBe(955);
+    // The opening never waits for the hall: Pack reinforces come first.
+    town.buildings.pop();
+    hallOnly();
+    for (const unit of state.players.p2.army) unit.side = "few";
+    expect(incomeBuildingBeforeDwelling(state, "p2")).toBeNull();
+  });
+
+  it("walks the Gold ladder: top Few, lower Few, top Pack, lower Pack", () => {
+    const state = game();
+    goldTown(state);
+    const [top, lower] = rankedGoldUnits(state, "p2");
+    expect(top && lower, "fixture faction needs two Gold units").toBeTruthy();
+    const topFewCost = coreUnitDefinitions[top].few!.cost;
+    expect(
+      (topFewCost.gold ?? 0) + (topFewCost.valuables ?? 0) * 7,
+      "the top body is the expensive one",
+    ).toBeGreaterThan((coreUnitDefinitions[lower].few!.cost.gold ?? 0));
+    expect(nextGoldLadderStep(state, "p2")).toMatchObject({ unitDefId: top, kind: "recruit", rank: 0 });
+    addUnit(state, top, "few");
+    expect(nextGoldLadderStep(state, "p2")).toMatchObject({ unitDefId: lower, kind: "recruit" });
+    addUnit(state, lower, "few");
+    expect(nextGoldLadderStep(state, "p2")).toMatchObject({ unitDefId: top, kind: "reinforce", rank: 0 });
+    state.players.p2.army.find((unit) => unit.unitDefId === top)!.side = "pack";
+    expect(nextGoldLadderStep(state, "p2")).toMatchObject({ unitDefId: lower, kind: "reinforce" });
+    state.players.p2.army.find((unit) => unit.unitDefId === lower)!.side = "pack";
+    expect(nextGoldLadderStep(state, "p2")).toBeNull();
+  });
+
+  it("buys the top Gold Few first and skips the lower Few while the top one lands within two rounds", () => {
+    const state = game();
+    goldTown(state);
+    const [top, lower] = rankedGoldUnits(state, "p2");
+    state.players.p2.resources = { gold: 99, buildingMaterials: 99, valuables: 99 };
+    const topScore = score(state, recruit(top));
+    expect(topScore).toBeGreaterThanOrEqual(968);
+    expect(topScore).toBeLessThan(980);
+    expect(score(state, recruit(lower))).toBeLessThanOrEqual(240);
+    // The treasury target now saves for the TOP body, not the cheapest one.
+    const target = developmentResourceTargets(state, "p2");
+    const topCost = coreUnitDefinitions[top].few!.cost;
+    expect(target.gold).toBe((topCost.gold ?? 0) + 5);
+    expect(target.valuables).toBe(topCost.valuables ?? 0);
+    // CONTROL: the top body out of reach for two Resource Rounds → the lower
+    // Few is bought now instead of idling the token.
+    const lowerCost = coreUnitDefinitions[lower].few!.cost;
+    state.players.p2.resources = { gold: lowerCost.gold ?? 0, buildingMaterials: 0, valuables: 0 };
+    state.players.p2.production = { gold: 1, buildingMaterials: 0, valuables: 0 };
+    expect(score(state, recruit(lower))).toBeGreaterThan(900);
+  });
+
+  it("upgrades the top Gold Pack before the lower one and holds a lower Pack that would delay it a round", () => {
+    const state = game();
+    goldTown(state);
+    const [top, lower] = rankedGoldUnits(state, "p2");
+    addUnit(state, top, "few");
+    addUnit(state, lower, "few");
+    state.players.p2.resources = { gold: 99, buildingMaterials: 99, valuables: 99 };
+    const topPack = score(state, reinforce(state, top));
+    const lowerPack = score(state, reinforce(state, lower));
+    expect(topPack).toBeGreaterThanOrEqual(968);
+    expect(lowerPack).toBeGreaterThan(900);
+    expect(topPack).toBeGreaterThan(lowerPack);
+    // Top Pack lands NEXT round; the lower Pack would push it a round further.
+    const packCost = coreUnitDefinitions[top].pack!.cost;
+    state.players.p2.production = { gold: 10, buildingMaterials: 1, valuables: 1 };
+    state.players.p2.resources = {
+      gold: (packCost.gold ?? 0) - 5,
+      buildingMaterials: 5,
+      valuables: packCost.valuables ?? 0,
+    };
+    expect(score(state, reinforce(state, lower))).toBeLessThanOrEqual(240);
+  });
+
+  it("skips the first Silver body when it would delay a Gold dwelling that lands next round", () => {
+    const state = game();
+    establishPacks(state);
+    coreTown(state, [
+      buildingWith(state, (effect) => effect.type === "RESOURCE_ROUND_CHOICE"),
+      buildingWith(state, (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "silver"),
+    ]);
+    expect(armyDevelopmentProfile(state, "p2").phase).toBe("unlock-gold");
+    const factionId = state.players.p2.factionId!;
+    const silverUnit = coreFactionDefinitions[factionId].units.find(
+      (unitDefId) => coreUnitDefinitions[unitDefId]?.tier === "silver",
+    )!;
+    const gold = buildingWith(
+      state,
+      (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "gold",
+    );
+    const cost = coreBuildingDefinitions[gold].cost ?? {};
+    // Inputs secured, one gold short: the dwelling lands next Resource Round
+    // unless the Silver body spends that gold first.
+    state.players.p2.production = { gold: 5, buildingMaterials: 4, valuables: 1 };
+    state.players.p2.resources = {
+      gold: (cost.gold ?? 0) - 1,
+      buildingMaterials: cost.buildingMaterials ?? 0,
+      valuables: cost.valuables ?? 0,
+    };
+    expect(score(state, recruit(silverUnit))).toBeLessThanOrEqual(240);
+    // CONTROL: with the dwelling far off, the first Silver body keeps its
+    // exemption — it is what takes the lv3 premium guards.
+    state.players.p2.resources = { gold: 8, buildingMaterials: 0, valuables: 0 };
+    expect(score(state, recruit(silverUnit))).toBe(945);
+  });
+
+  it("keeps Silver at Few (one Pack at most) until the top Gold body is owned", () => {
+    const state = game();
+    goldTown(state);
+    const factionId = state.players.p2.factionId!;
+    const silvers = coreFactionDefinitions[factionId].units.filter(
+      (unitDefId) => coreUnitDefinitions[unitDefId]?.tier === "silver",
+    );
+    expect(silvers.length, "fixture faction needs two Silver units").toBeGreaterThanOrEqual(2);
+    addUnit(state, silvers[0], "pack");
+    addUnit(state, silvers[1], "few");
+    state.players.p2.resources = { gold: 99, buildingMaterials: 99, valuables: 99 };
+    expect(score(state, reinforce(state, silvers[1]))).toBeLessThanOrEqual(240);
+    // CONTROL: the top Gold Few in the army re-opens Silver Packs.
+    addUnit(state, rankedGoldUnits(state, "p2")[0], "few");
+    expect(score(state, reinforce(state, silvers[1]))).toBeGreaterThan(900);
   });
 });

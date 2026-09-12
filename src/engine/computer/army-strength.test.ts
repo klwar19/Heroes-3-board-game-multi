@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { createAdventureGameState } from "../adventure-setup";
+import { makeInitialCommanderState } from "../commanders";
 import type { GameState, MapFieldState } from "../state";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import {
+  deployedArmyStrength,
+  commanderStrength,
   activeEnemySideCount,
   armyCoversPremiumEconomyGuard,
   armyEngagementTier,
@@ -355,5 +358,25 @@ describe("premium economy + soft silver unlock", () => {
     // CONTROL: gut the army below even size Ⅰ.
     state.players.p2.army = state.players.p2.army.slice(0, 1);
     expect(canBeatCreatureBank(state, "p2", sizeI)).toBe(false);
+  });
+});
+
+describe("commander in the PvP engagement estimate", () => {
+  it("prices the living commander as the extra body only while the module is on", () => {
+    const state = game();
+    const off = deployedArmyStrength(state, "p2");
+    expect(commanderStrength(state, "p2")).toBe(0);
+    state.players.p2.commander = makeInitialCommanderState(state.players.p2.factionId) ?? undefined;
+    expect(state.players.p2.commander, "fixture faction has a commander").toBeTruthy();
+    // CONTROL: a commander state without the module counts nothing.
+    expect(commanderStrength(state, "p2")).toBe(0);
+    expect(deployedArmyStrength(state, "p2")).toBe(off);
+    state.wog = { ...state.wog, enabled: true, commanders: true } as GameState["wog"];
+    const priced = commanderStrength(state, "p2");
+    expect(priced).toBeGreaterThan(0);
+    expect(deployedArmyStrength(state, "p2")).toBe(off + priced);
+    // A dead commander is not a body.
+    state.players.p2.commander!.dead = true;
+    expect(commanderStrength(state, "p2")).toBe(0);
   });
 });

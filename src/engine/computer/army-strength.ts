@@ -19,6 +19,7 @@ import {
 } from "../adventure";
 import { armyUnitRankInfo } from "../unit-experience";
 import { combatUnitLimit } from "../adventure-reducer";
+import { commandersModuleEnabled, makeCommanderCombatUnit } from "../commanders";
 import { NEUTRAL_PLAYER_ID } from "../state";
 import type {
   ArmyUnitState,
@@ -167,12 +168,36 @@ export function activeEnemySideCount(
   return sides.size;
 }
 
+/**
+ * The living commander is the army's extra body when the WOG commanders module
+ * is on (combatUnitLimit already drops a card slot for it): price it with the
+ * same stat formula as a deployed card, off the BUILT unit so grades and
+ * commander artifacts count. 0 with the module off or the commander dead, so
+ * every other game reads exactly as before. Ranked-replay evidence (4 of 11
+ * rooms with commanders): the commander fought in all 5 commander sides and
+ * was the last body standing in two fights — leaving it out made the PvP gate
+ * read both armies short by one gold-grade unit.
+ */
+export function commanderStrength(state: GameState, playerId: PlayerId): number {
+  if (!commandersModuleEnabled(state)) return 0;
+  const player = state.players[playerId];
+  if (!player) return 0;
+  const built = makeCommanderCombatUnit(player, 0);
+  if (!built) return 0;
+  return (
+    built.attack * 3 +
+    built.maxHealth * 2 +
+    built.defense +
+    Math.round(built.initiative / 2)
+  );
+}
+
 /** Only units that can actually deploy may justify an engagement. Reserve
  * cards still have economic value, but cannot all attack in the same battle. */
 export function deployedArmyStrength(state: GameState, playerId: PlayerId): number {
   return (state.players[playerId]?.army ?? []).map(unitSideStrength)
     .sort((a, b) => b - a).slice(0, combatUnitLimit(state))
-    .reduce((sum, strength) => sum + strength, 0);
+    .reduce((sum, strength) => sum + strength, commanderStrength(state, playerId));
 }
 
 /** PvP risk is contextual: trade aggressively in a duel, demand a survivor's

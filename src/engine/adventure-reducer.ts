@@ -2960,7 +2960,7 @@ function attackRollLabel(roll: number): string {
   return roll > 0 ? `+${roll}` : String(roll);
 }
 
-/** Each player discovers from an independent copy of the seeded bank supply. */
+/** Each player discovers from an independently shuffled copy of the bank supply. */
 export function creatureBankPileForPlayer(state: GameState, playerId: PlayerId, tier: "far" | "near"): string[] | undefined {
   const adventure = state.adventure;
   if (!adventure) return undefined;
@@ -2978,9 +2978,34 @@ export function creatureBankPileForPlayer(state: GameState, playerId: PlayerId, 
     }
     adventure.creatureBankTokensByPlayer = {};
   }
+  if (adventure.creatureBankPersonalShuffleVersion !== 2) {
+    // Repair saves created by the original independent-supply implementation,
+    // which cloned one shared ordering byte-for-byte for every seat. Shuffle
+    // only each seat's REMAINING tokens so already-placed banks stay consumed.
+    for (const [savedPlayerId, supplies] of Object.entries(adventure.creatureBankTokensByPlayer)) {
+      supplies.far = shuffleCards(
+        supplies.far,
+        `${state.seed}#creature-banks#player#${savedPlayerId}#far#migrate-v2`
+      );
+      supplies.near = shuffleCards(
+        supplies.near,
+        `${state.seed}#creature-banks#player#${savedPlayerId}#near#migrate-v2`
+      );
+    }
+    adventure.creatureBankPersonalShuffleVersion = 2;
+  }
   adventure.creatureBankTokensByPlayer[playerId] ??= {
-    far: [...(adventure.creatureBankTokensFar ?? [])],
-    near: [...(adventure.creatureBankTokensNear ?? [])]
+    // Include the seat in the deterministic seed so personal supplies do not
+    // all inherit the same top-to-bottom order. Equal draws remain possible by
+    // chance, while consuming one seat's token never changes another's pile.
+    far: shuffleCards(
+      adventure.creatureBankTokensFar ?? [],
+      `${state.seed}#creature-banks#player#${playerId}#far`
+    ),
+    near: shuffleCards(
+      adventure.creatureBankTokensNear ?? [],
+      `${state.seed}#creature-banks#player#${playerId}#near`
+    )
   };
   return adventure.creatureBankTokensByPlayer[playerId][tier];
 }

@@ -5,9 +5,10 @@ import {
   armyDevelopmentProfile,
   developmentResourceTargets,
   factionBuildingForEffect,
+  incomeBuildingBeforeDwelling,
 } from "./development";
 export type DevelopmentPlan = {
-  goal: "rebuild" | "silver" | "gold" | "gold-recruit" | "pressure";
+  goal: "rebuild" | "income" | "silver" | "gold" | "gold-recruit" | "pressure";
   sinceRound: number;
   buildingId?: string;
   reserve: Required<ResourceCost>;
@@ -37,10 +38,13 @@ export function updateDevelopmentPlan(
       armyValue < previous.armyValue * 0.7 &&
       profile.phase === "establish-core",
     ) || Boolean(previous?.rebuilding && profile.phase === "establish-core");
+  const income = incomeBuildingBeforeDwelling(state, playerId);
   const goal =
     rebuilding || profile.phase === "establish-core"
       ? "rebuild"
-      : !profile.silverUnlocked
+      : income
+        ? "income"
+        : !profile.silverUnlocked
         ? "silver"
         : !profile.goldUnlocked
           ? "gold"
@@ -48,7 +52,9 @@ export function updateDevelopmentPlan(
             ? "gold-recruit"
             : "pressure";
   const building =
-    goal === "silver" || goal === "gold"
+    goal === "income"
+      ? income
+      : goal === "silver" || goal === "gold"
       ? factionBuildingForEffect(
           state,
           playerId,
@@ -79,7 +85,8 @@ export function developmentPlanBias(
     if (
       cost &&
       resources &&
-      (plan.goal === "silver" ||
+      (plan.goal === "income" ||
+        plan.goal === "silver" ||
         plan.goal === "gold" ||
         plan.goal === "gold-recruit")
     ) {

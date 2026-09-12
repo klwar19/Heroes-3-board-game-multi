@@ -440,6 +440,10 @@ function explicitRankTwo(unitDefId: string): RankStep | null {
   if (unitDefId === "cove.oceanids") return S({ ...Z, defense: 1, initiative: 1 });
   if (unitDefId === "cove.seamen") return A("town-seaman-survival-gold");
   if (unitDefId === "cove.sorceresses") return A("town-sorceress-ranged-mend");
+  // Sea Dogs keep their generated R2 ability CHOICE and ALSO gain +1 Health —
+  // reproduce the exact rotated pool the generator would roll so the choice is
+  // unchanged, then fold it into a hybrid that always adds the Health step.
+  if (unitDefId === "cove.sea_dogs") return H({ ...Z, health: 1 }, ...rotatedChoices(unitDefId, 2, RANK_TWO_ABILITIES[inferFlavour(unitDefId)]));
   if (unitDefId === "bulwark.snow_elves") return A("town-snow-elf-rune-strike");
   if (unitDefId === "bulwark.yetis") return A("town-yeti-specialty-aura");
   if (unitDefId === "castle.marksmen") return A("town-marksman-mark");
@@ -881,6 +885,55 @@ export const UNIT_RANK_ABILITY_ICONS: Record<string, string> = {
   "veteran-magic-copy": "/game-tokens/rank-ability/conflux/veteran-magic-copy.webp",
   "veteran-phoenix-activation": "/game-tokens/rank-ability/conflux/veteran-phoenix-activation.webp",
   "veteran-phoenix-nest": "/game-tokens/rank-ability/conflux/veteran-phoenix-nest.webp",
+  // 2026-09-12 fill: every rank reward that still showed the Slayer fallback
+  // (Phoenix, Gargoyle, Magma/Energy/Earth/Storm/Magic/Ice Elementals, Bulwark,
+  // Cove, Fortress, Hydra, Doom and other rerolled lines) — Codex-painted icons
+  // (scripts/veterancy-icon-gen).
+  "dragon-fly-retaliation-penalty-2": "/game-tokens/rank-ability/veterancy/dragon-fly-retaliation-penalty-2.webp",
+  "imperium-shock-assault": "/game-tokens/rank-ability/veterancy/imperium-shock-assault.webp",
+  "reduce-spell-and-specialty-damage-1": "/game-tokens/rank-ability/veterancy/reduce-spell-and-specialty-damage-1.webp",
+  "titan-ignore-ongoing": "/game-tokens/rank-ability/veterancy/titan-ignore-ongoing.webp",
+  "town-ayssid-slow": "/game-tokens/rank-ability/veterancy/town-ayssid-slow.webp",
+  "town-haspid-unstoppable-counter": "/game-tokens/rank-ability/veterancy/town-haspid-unstoppable-counter.webp",
+  "town-hydra-forced-reroll": "/game-tokens/rank-ability/veterancy/town-hydra-forced-reroll.webp",
+  "town-hydra-round-mend": "/game-tokens/rank-ability/veterancy/town-hydra-round-mend.webp",
+  "town-jotunn-rune-hide": "/game-tokens/rank-ability/veterancy/town-jotunn-rune-hide.webp",
+  "town-kobold-rune-step": "/game-tokens/rank-ability/veterancy/town-kobold-rune-step.webp",
+  "town-mammoth-hunter": "/game-tokens/rank-ability/veterancy/town-mammoth-hunter.webp",
+  "town-mammoth-last-stand": "/game-tokens/rank-ability/veterancy/town-mammoth-last-stand.webp",
+  "town-ram-spell-draw": "/game-tokens/rank-ability/veterancy/town-ram-spell-draw.webp",
+  "town-snow-elf-rune-strike": "/game-tokens/rank-ability/veterancy/town-snow-elf-rune-strike.webp",
+  "town-wyvern-reroll": "/game-tokens/rank-ability/veterancy/town-wyvern-reroll.webp",
+  "town-yeti-spell-specialty-aura": "/game-tokens/rank-ability/veterancy/town-yeti-spell-specialty-aura.webp",
+  "veteran-adjacent-enfeeble": "/game-tokens/rank-ability/veterancy/veteran-adjacent-enfeeble.webp",
+  "veteran-adjacent-pulse": "/game-tokens/rank-ability/veterancy/veteran-adjacent-pulse.webp",
+  "veteran-arcane-echo": "/game-tokens/rank-ability/veterancy/veteran-arcane-echo.webp",
+  "veteran-ayssid-two-dice": "/game-tokens/rank-ability/veterancy/veteran-ayssid-two-dice.webp",
+  "veteran-behemoth-odd-defense": "/game-tokens/rank-ability/veterancy/veteran-behemoth-odd-defense.webp",
+  "veteran-centaur-retaliation": "/game-tokens/rank-ability/veterancy/veteran-centaur-retaliation.webp",
+  "veteran-cyber-splash": "/game-tokens/rank-ability/veterancy/veteran-cyber-splash.webp",
+  "veteran-defense-pierce-2": "/game-tokens/rank-ability/veterancy/veteran-defense-pierce-2.webp",
+  "veteran-distant-storm": "/game-tokens/rank-ability/veterancy/veteran-distant-storm.webp",
+  "veteran-earth-defense-token": "/game-tokens/rank-ability/veterancy/veteran-earth-defense-token.webp",
+  "veteran-earth-low-defense": "/game-tokens/rank-ability/veterancy/veteran-earth-low-defense.webp",
+  "veteran-energy-drain": "/game-tokens/rank-ability/veterancy/veteran-energy-drain.webp",
+  "veteran-frozen-guard": "/game-tokens/rank-ability/veterancy/veteran-frozen-guard.webp",
+  "veteran-magic-splash": "/game-tokens/rank-ability/veterancy/veteran-magic-splash.webp",
+  "veteran-magma-attack-after-move": "/game-tokens/rank-ability/veterancy/veteran-magma-attack-after-move.webp",
+  "veteran-magma-guard": "/game-tokens/rank-ability/veterancy/veteran-magma-guard.webp",
+  "veteran-magma-hunter": "/game-tokens/rank-ability/veterancy/veteran-magma-hunter.webp",
+  "veteran-magma-overflow": "/game-tokens/rank-ability/veterancy/veteran-magma-overflow.webp",
+  "veteran-magma-teleport-strike": "/game-tokens/rank-ability/veterancy/veteran-magma-teleport-strike.webp",
+  "veteran-minotaur-last-stand": "/game-tokens/rank-ability/veterancy/veteran-minotaur-last-stand.webp",
+  "veteran-phoenix-breath": "/game-tokens/rank-ability/veterancy/veteran-phoenix-breath.webp",
+  "veteran-phoenix-rising-nest-heal": "/game-tokens/rank-ability/veterancy/veteran-phoenix-rising-nest-heal.webp",
+  "veteran-renewed-rebirth": "/game-tokens/rank-ability/veterancy/veteran-renewed-rebirth.webp",
+  "veteran-skeleton-last-stand": "/game-tokens/rank-ability/veterancy/veteran-skeleton-last-stand.webp",
+  "veteran-sprite-spell-block": "/game-tokens/rank-ability/veterancy/veteran-sprite-spell-block.webp",
+  "veteran-storm-guard": "/game-tokens/rank-ability/veterancy/veteran-storm-guard.webp",
+  "veteran-troglodyte-three-dice": "/game-tokens/rank-ability/veterancy/veteran-troglodyte-three-dice.webp",
+  "veteran-unicorn-enfeeble": "/game-tokens/rank-ability/veterancy/veteran-unicorn-enfeeble.webp",
+  "wog-war-zealot-mirror": "/game-tokens/rank-ability/veterancy/wog-war-zealot-mirror.webp",
   "bulwark-thick-hide": "/assets/ui/rank-ability/thick-hide.webp",
   "bulwark-air-shield": "/assets/ui/rank-ability/air-shield.webp",
   "wog-no-negative-attack-roll": "/assets/ui/rank-ability/sure-shot.webp",

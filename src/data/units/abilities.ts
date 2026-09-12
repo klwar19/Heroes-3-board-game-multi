@@ -1217,6 +1217,13 @@ export type UnitAbilityEffectDefinition =
       retaliationAlso?: boolean;
       /** Town veterancy may use three dice; classic users remain at two. */
       diceCount?: 2 | 3;
+      /**
+       * Veteran Troglodytes' "Threefold Savage": after the dice are thrown, the
+       * controller may reroll each "-1" die ONCE (an optional, per-die interactive
+       * reroll window that replaces a flat no-negative clamp). Off for the classic
+       * Champion/Ayssid apply-both users, who keep the intrinsic behaviour.
+       */
+      negativeRerollChoice?: boolean;
     }
   | {
       /**
@@ -4078,7 +4085,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "veteran-lich-pierce": { id: "veteran-lich-pierce", name: "Piercing Death Cloud", text: "Death Cloud's second attack also ignores 1 Defense.", effect: { type: "FACTION_VETERANCY", mechanic: "cloud-pierce" }, implementationStatus: "implemented" },
   "veteran-lich-mend": { id: "veteran-lich-mend", name: "Shared Necromancy", text: "After this unit's own attack, heal 1 HP to it and one random other living ally.", effect: { type: "FACTION_VETERANCY", mechanic: "ally-heal" }, implementationStatus: "implemented" },
   "veteran-vampire-tribute": { id: "veteran-vampire-tribute", name: "Blood Tribute", text: "At activation, the enemy discards one card with Power, or one random enemy unit takes 1 damage.", effect: { type: "FACTION_VETERANCY", mechanic: "tribute" }, implementationStatus: "implemented" },
-  "veteran-vampire-ward": { id: "veteran-vampire-ward", name: "Twilight Ward", text: "During the first combat round, reduce Spell and Specialty damage by 2.", effect: { type: "FACTION_VETERANCY", mechanic: "first-ward" }, implementationStatus: "implemented" },
+  "veteran-vampire-ward": { id: "veteran-vampire-ward", name: "Twilight Ward", text: "During the first combat round, reduce Spell and Specialty damage by 2. From round 2 onward, reduce it by 1.", effect: { type: "FACTION_VETERANCY", mechanic: "first-ward" }, implementationStatus: "implemented" },
   "veteran-dragon-dread": { id: "veteran-dragon-dread", name: "Dread of the Grave", text: "At activation in combat rounds 1 and 3, a random enemy loses 1 Defense for this combat.", effect: { type: "FACTION_VETERANCY", mechanic: "dread" }, implementationStatus: "implemented" },
   "veteran-manticore-mend": { id: "veteran-manticore-mend", name: "Mending Hide", text: "After being attacked, heal 1 HP if still alive.", effect: { type: "ON_ATTACKED_HEAL_SELF", amount: 1 }, implementationStatus: "implemented" },
   "veteran-eye-splash": { id: "veteran-eye-splash", name: "Forked Gaze", text: "After attacking, also attack one unit adjacent to the target using this unit's Attack.", effect: { type: "SECOND_ATTACK_ADJACENT_TO_TARGET", baseAttack: 0, useOwnAttack: true }, implementationStatus: "implemented" },
@@ -4125,7 +4132,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "veteran-minotaur-last-stand": { id: "veteran-minotaur-last-stand", name: "Labyrinthine Survival", text: "Once per Combat when an attack would defeat this unit, it survives at 1 Health and gains +1 Attack.", effect: { type: "TOWN_VETERANCY", mechanic: "minotaur-last-stand" }, implementationStatus: "implemented" },
   "veteran-skeleton-last-stand": { id: "veteran-skeleton-last-stand", name: "Deathless Fury", text: "Once per Combat when an attack would defeat this unit, it survives at 1 Health and gains +2 Attack for this combat.", effect: { type: "TOWN_VETERANCY", mechanic: "skeleton-last-stand" }, implementationStatus: "implemented" },
   "veteran-ayssid-two-dice": { id: "veteran-ayssid-two-dice", name: "Twin Talons", text: "Always roll 2 Attack dice and apply both results.", effect: { type: "ROLL_TWO_DICE_APPLY_BOTH", retaliationAlso: true, diceCount: 2 }, implementationStatus: "implemented" },
-  "veteran-troglodyte-three-dice": { id: "veteran-troglodyte-three-dice", name: "Threefold Savage", text: "Always roll 3 Attack dice and apply all results.", effect: { type: "ROLL_TWO_DICE_APPLY_BOTH", retaliationAlso: true, diceCount: 3 }, implementationStatus: "implemented" },
+  "veteran-troglodyte-three-dice": { id: "veteran-troglodyte-three-dice", name: "Threefold Savage", text: "Always roll 3 Attack dice and apply all results. You may reroll each \"-1\" die once.", effect: { type: "ROLL_TWO_DICE_APPLY_BOTH", retaliationAlso: true, diceCount: 3, negativeRerollChoice: true }, implementationStatus: "implemented" },
   "veteran-magma-teleport-strike": { id: "veteran-magma-teleport-strike", name: "Lava Leap", text: "As a regular movement, move to any empty space. After moving, gain +1 Attack for the next attack.", effect: { type: "MOVE_ANYWHERE" }, implementationStatus: "implemented" },
   "veteran-magma-attack-after-move": { id: "veteran-magma-attack-after-move", name: "Lava Leap Strike", text: "After moving, gain +1 Attack for the next attack.", effect: { type: "ATTACK_BONUS_AFTER_MOVE", amount: 1 }, implementationStatus: "implemented" },
   "veteran-shaman-teleport-strike": { id: "veteran-shaman-teleport-strike", name: "Spirit Step", text: "As a regular movement, move to any empty space. After moving, gain +1 Attack for the next attack.", effect: { type: "MOVE_ANYWHERE" }, implementationStatus: "implemented" },
@@ -4181,7 +4188,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "veteran-sprite-spell-block": { id: "veteran-sprite-spell-block", name: "Spell Block", text: "When a Spell targets this unit, roll a die: on −1 or 0, block it.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "spell-block" }, implementationStatus: "implemented" },
   "veteran-water-damper": { id: "veteran-water-damper", name: "Water Dampening", text: "All enemy Water School Spells have −1 Power.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "water-damper" }, implementationStatus: "implemented" },
   "veteran-storm-speed": { id: "veteran-storm-speed", name: "Swift Lightning", text: "Deal 1 bonus damage when attacking a target with lower current Initiative.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "speed-damage" }, implementationStatus: "implemented" },
-  "veteran-energy-delay": { id: "veteran-energy-delay", name: "Delayed Impact", text: "Once per Combat, before taking damage from an enemy attack, shift up to 2 damage to round end. Pay it then without reduction.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "delay-damage" }, implementationStatus: "implemented" },
+  "veteran-energy-delay": { id: "veteran-energy-delay", name: "Delayed Impact", text: "Once per combat round, before taking damage from an enemy attack, shift up to 2 damage to round end. Pay it then without reduction.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "delay-damage" }, implementationStatus: "implemented" },
   "veteran-energy-fire-heal": { id: "veteran-energy-fire-heal", name: "Feed on Fire", text: "Whenever an enemy casts a Fire Spell, including Magic Arrow, heal 2 HP.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "fire-heal" }, implementationStatus: "implemented" },
   "veteran-magma-guard": { id: "veteran-magma-guard", name: "Molten Guardian", text: "While defending, intercept attacks targeting adjacent allies. Do not retaliate against intercepted attacks.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "bodyguard" }, implementationStatus: "implemented" },
   "veteran-magic-dispel": { id: "veteran-magic-dispel", name: "Dispelling Strike", text: "Once per Combat, you may attack with −2 Attack and remove one ongoing effect from the target.", effect: { type: "ELEMENTAL_VETERANCY", mechanic: "dispel-attack" }, implementationStatus: "implemented" },

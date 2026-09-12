@@ -26,6 +26,7 @@ import {
   pendingIncomingDamage,
   targetPriority,
   unitRemainingHealth,
+  tierWeight,
   unitThreatValue,
 } from "./score";
 import type { ComputerObservation } from "./types";
@@ -111,6 +112,20 @@ const RANGED_TARGET_BONUS = 18;
 // Genie, splash…) with our melee this activation is the same "deny the backline"
 // hunt as pressuring a shooter — a strong humans-deny-shooters bonus.
 const CASTER_TARGET_BONUS = 14;
+// PvP only: humans hunt the enemy's GOLD body. Ranked-replay evidence (16 PvP
+// fights, 167 attacks, 2026-09-10/11): gold bodies took 49.7% of attacks at
+// 44.5% of the bodies, shooters 8.4% at 14.7%, and 17 of 24 opening attacks
+// went at a gold stack (1 at a shooter); 26 of 27 unit-targeted spells hit
+// gold or better. The /4 threat term above prices a whole gold tier at 5,
+// below the flat shooter bonus, so the AI opened on the shooter instead.
+// Neutral fights keep the shooter hunt: guard parties are scripted.
+const PVP_TIER_TARGET_CAP = 24;
+// A hopeless PvP fight after a real casualty: the in-fight Retreat (5 gold,
+// −1 morale, fall back home; survivors kept in losing-troop mode). Two of the
+// 14 decided ranked PvP fights ended exactly so, with stacks still standing.
+// Placed above every non-lethal poke and Defend (≤ ~720) but BELOW a lethal
+// attack (≥ 780) so a kill that can still turn the fight is never conceded.
+const PVP_CONCEDE_SCORE = 760;
 // Focus fire: reward stacking damage onto a body reachable allies can also hit,
 // capped so it orders WITHIN the attack band without swamping the lethal/chip
 // signal, and a larger bonus when this hit plus those allies can FINISH it now.
@@ -373,6 +388,9 @@ function attackScore(
   }
   if (hasThreatAbility(defender)) {
     quality += CASTER_TARGET_BONUS;
+  }
+  if (combat.context?.kind === "player") {
+    quality += Math.min(PVP_TIER_TARGET_CAP, tierWeight(defender.grade));
   }
   // User-directed anti-Fuyuki doctrine: break the durable front line before
   // wasting actions on Medea's fixed-damage backliner.
@@ -1243,6 +1261,17 @@ export function scoreCombatAction(
         return { score: -900, policy: "combat.retreat-refuse-secondary" };
       }
       if (combatIsHopeless(observation, combat)) {
+        const lostAUnit = Object.values(combat.units).some(
+          (unit) =>
+            unit.controllerId === observation.playerId && unitRemainingHealth(unit) <= 0,
+        );
+        if (
+          combat.context.kind === "player" &&
+          lostAUnit &&
+          livingFriendlies(combat, observation.playerId).length > 0
+        ) {
+          return { score: PVP_CONCEDE_SCORE, policy: "combat.pvp-concede-hopeless" };
+        }
         return { score: 380, policy: "combat.retreat-hopeless" };
       }
       return { score: -900, policy: "combat.retreat-refuse" };

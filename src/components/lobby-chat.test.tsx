@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LobbyChat } from "./lobby-chat";
 import type { LobbyChatMessage } from "@/server/lobby-chat";
@@ -29,7 +29,7 @@ describe("LobbyChat", () => {
     expect(screen.getByText("Hi")).toBeTruthy();
   });
 
-  it("sends trimmed text and clears the field (control: empty is not sendable)", () => {
+  it("sends trimmed text and clears the field (control: empty is not sendable)", async () => {
     const onSend = vi.fn();
     render(<LobbyChat clientId="me" messages={[]} onSend={onSend} />);
     const input = screen.getByLabelText("Lobby message") as HTMLInputElement;
@@ -40,7 +40,19 @@ describe("LobbyChat", () => {
     expect(send.disabled).toBe(false);
     fireEvent.click(send);
     expect(onSend).toHaveBeenCalledWith("hello lobby");
-    expect(input.value).toBe("");
+    await waitFor(() => expect(input.value).toBe(""));
+  });
+
+  it("keeps the draft when sending fails so it can be retried", async () => {
+    const onSend = vi.fn().mockRejectedValue(new Error("Slow down"));
+    render(<LobbyChat clientId="me" messages={[]} onSend={onSend} />);
+    const input = screen.getByLabelText("Lobby message") as HTMLInputElement;
+
+    fireEvent.change(input, { target: { value: "please keep this" } });
+    fireEvent.click(screen.getByRole("button", { name: /send lobby message/i }));
+
+    await waitFor(() => expect(input.disabled).toBe(false));
+    expect(input.value).toBe("please keep this");
   });
 
   it("styles my own lines distinctly and surfaces an error", () => {

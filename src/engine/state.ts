@@ -9894,7 +9894,8 @@ export type CombatUnitState = {
   elementalVeterancy?: {
     deferredDamage?: number;
     deferredRound?: number;
-    delayUsed?: boolean;
+    /** Combat round in which Delayed Impact was last spent (one shift per round). */
+    delayUsedRound?: number;
     payingDebt?: boolean;
     solidifyUsed?: boolean;
     solidifyUntilRound?: number;
@@ -14075,13 +14076,16 @@ export type AdventureState = {
   pandoraDeck?: CardId[];
   /**
    * Seed supplies for Creature Banks, Far (II-III) and Near (IV-V), top last.
-   * Each player draws from an independent copy in creatureBankTokensByPlayer.
+   * Each player draws from an independently shuffled copy in
+   * creatureBankTokensByPlayer.
    * Absent means disabled. Older saves used these as shared draw piles.
    */
   creatureBankTokensFar?: string[];
   creatureBankTokensNear?: string[];
-  /** Independent bank supplies per discovering player; seeded from the legacy piles. */
+  /** Independently shuffled bank supplies per player, seeded from the legacy piles. */
   creatureBankTokensByPlayer?: Record<PlayerId, { far: string[]; near: string[] }>;
+  /** Version 2 gives every personal bank supply its own deterministic ordering. */
+  creatureBankPersonalShuffleVersion?: 2;
   /**
    * Pick-on-reveal Subterranean Gate placement (default ON). When a revealed
    * tile can host a Gate half in more than one spot — which touching hex becomes
@@ -16924,6 +16928,15 @@ export type PendingChoice =
        * not only the latest — the printed "resolve 1 chosen result".
        */
       freeCandidateChoice?: boolean;
+      /**
+       * Veteran Troglodytes' "Threefold Savage": this window may reroll ONLY the
+       * dice currently showing "-1", and each such die at most ONCE (the rerolled
+       * indexes are tracked in `rerolledDieIndexes`). Additive — absent on every
+       * other reroll window, whose behaviour is unchanged.
+       */
+      rerollNegativeDiceOnly?: boolean;
+      /** Die indexes already rerolled in a `rerollNegativeDiceOnly` window. */
+      rerolledDieIndexes?: number[];
       /** Reroll pools in spend order — Luck is always sorted last. */
       rerollSources: AttackRerollSource[];
       /** Controller-separated reroll windows that resolve after this window. */
@@ -18171,7 +18184,7 @@ export type PendingChoice =
 export type ComputerPolicyMemoryState = {
   failedFields?: Array<{ fieldId: string; round: number; readiness: string }>;
   developmentPlan?: {
-    goal: "rebuild" | "silver" | "gold" | "gold-recruit" | "pressure";
+    goal: "rebuild" | "income" | "silver" | "gold" | "gold-recruit" | "pressure";
     sinceRound: number;
     buildingId?: string;
     reserve: Required<ResourceCost>;

@@ -2,7 +2,7 @@
   "version": 1,
   "cdn": "https://cdn.hamthefirt.xyz",
   "roots": ["assets","sounds"],
-  "count": 5812,
+  "count": 5813,
   "files": {
     "assets/abilities-air_magic-empowered.webp": { "md5": "f47398ae1322d34b22b6a213fe7f8549", "bytes": 135374, "width": 743, "height": 1040 },
     "assets/abilities-air_magic.webp": { "md5": "7f73e9cfeed567196c9b66122c3ad83a", "bytes": 137732, "width": 743, "height": 1040 },
@@ -522,6 +522,7 @@
     "assets/anime/icons/mgq/token-temptation.webp": { "md5": "0d8b00dddb915cee9637738ddadeb31e", "bytes": 47532, "width": 512, "height": 512 },
     "assets/anime/notices/azur-lane-maintenance.webp": { "md5": "2e274918662650c54f3e5b47af613f01", "bytes": 80946, "width": 1280, "height": 720 },
     "assets/anime/notices/azure-breeze-spirit-tithe.webp": { "md5": "3e4ab4c1513da7a697865149f2ba5522", "bytes": 70068, "width": 1280, "height": 720 },
+    "assets/anime/notices/blue-archive-academy-overheads.webp": { "md5": "4f3a7c4359f9a2456ff1aa1440321345", "bytes": 159038, "width": 1280, "height": 720 },
     "assets/anime/notices/fuyuki-grail-upkeep.webp": { "md5": "9d3a8f8eb0c0d736f8e8f8ae3a95a9ce", "bytes": 68434, "width": 1280, "height": 720 },
     "assets/anime/notices/heavenly-demon-blood-tribute.webp": { "md5": "0afd438a089f305fe52ca017bf5c0ae0", "bytes": 46556, "width": 1280, "height": 720 },
     "assets/anime/notices/hidden-leaf-chakra-strain.webp": { "md5": "c5e4cd57d4b8b7a05f5ec41e89da3e78", "bytes": 120722, "width": 1280, "height": 720 },

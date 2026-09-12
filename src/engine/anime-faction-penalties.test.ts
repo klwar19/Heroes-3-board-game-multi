@@ -67,11 +67,15 @@ describe("anime faction Resource-round penalties", () => {
     )).toBe(false);
   });
 
-  it("Monster Girl Quest has no Resource-round penalty", () => {
+  it("Monster Girl Quest pays 3 gold each Resource round", () => {
     const state = resourceState("mgq");
     startAdventureRound(state);
-    expect(state.players.p1.resources).toMatchObject({ gold: 10, buildingMaterials: 3 });
+    expect(state.players.p1.resources).toMatchObject({ gold: 7, buildingMaterials: 3 });
     expect(state.players.p1.otherworldHandLimitLoss ?? 0).toBe(0);
+    const title = animeFactionPenaltyTitle("mgq")!;
+    expect(state.eventLog.some((event) =>
+      event.type === "EVENT_NOTE" && event.message.startsWith(`${title} —`)
+    )).toBe(true);
   });
 
   it("clears the round-scoped hand-limit penalty on a round that does not re-apply it", () => {
@@ -139,6 +143,32 @@ describe("new PvP faction penalties", () => {
     applyAnimeCombatStartPenalties(state);
     expect(state.players.p2.hand).toHaveLength(0);
     expect(own.reduce((sum, unit) => sum + unit.damage, 0)).toBe(1);
+  });
+
+  it("Blue Archive lets the enemy draw exactly 1 card at combat start, once", () => {
+    const state = createInitialGameState("blue-archive-opening-penalty");
+    state.combat!.context = { kind: "player", attackerHeroId: "hero_p1", defenderHeroId: "hero_p2", fieldId: "0,0" };
+    state.players.p1.factionId = "blue_archive";
+    state.players.p2.hand = [];
+    state.players.p2.deck = ["stat.attack", "stat.defense"];
+    applyAnimeCombatStartPenalties(state);
+    expect(state.players.p2.hand).toHaveLength(1);
+    applyAnimeCombatStartPenalties(state);
+    expect(state.players.p2.hand).toHaveLength(1);
+  });
+
+  it("Monster Girl Quest discards 1 card to summon its spirit, once", () => {
+    const state = createInitialGameState("mgq-opening-penalty");
+    state.combat!.context = { kind: "player", attackerHeroId: "hero_p1", defenderHeroId: "hero_p2", fieldId: "0,0" };
+    state.players.p1.factionId = "mgq";
+    state.players.p1.hand = ["stat.attack", "stat.defense"];
+    state.players.p1.discard = [];
+    applyAnimeCombatStartPenalties(state);
+    expect(state.players.p1.hand).toHaveLength(1);
+    expect(state.players.p1.discard).toHaveLength(1);
+    applyAnimeCombatStartPenalties(state);
+    expect(state.players.p1.hand).toHaveLength(1);
+    expect(state.players.p1.discard).toHaveLength(1);
   });
 
   it("Azure Breeze gives the enemy one draw in rounds 1 and 3 only", () => {

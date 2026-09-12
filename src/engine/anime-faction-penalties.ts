@@ -65,6 +65,16 @@ export function applyAnimeFactionResourceRoundPenalty(state: GameState, playerId
       playerId,
       message: `${title} — ${paid.gold} gold and ${paid.buildingMaterials} building material paid${paid.gold < 6 || paid.buildingMaterials < 1 ? " (all available resources)" : ""}.`
     });
+    return;
+  }
+
+  if (player.factionId === "mgq") {
+    const paid = spendAvailable(state, playerId, { gold: 3 });
+    appendEvent(state, {
+      type: "EVENT_NOTE",
+      playerId,
+      message: `${title} — ${paid.gold} gold paid${paid.gold < 3 ? " (all available gold)" : ""}.`
+    });
   }
 }
 
@@ -146,6 +156,42 @@ export function applyAnimeCombatStartPenalties(state: GameState): void {
           type: "EVENT_NOTE",
           playerId,
           message: `Demonic Backlash — ${unit.cardName} loses 1 HP at combat start.`
+        });
+      }
+      done.push(key);
+      continue;
+    }
+    if (factionId === "blue_archive") {
+      const opponentId = playerId === combat.attackerPlayerId ? combat.defenderPlayerId : combat.attackerPlayerId;
+      if (opponentId !== "neutrals") {
+        drawCardsForPlayer(state, opponentId, 1);
+      }
+      appendEvent(state, {
+        type: "EVENT_NOTE",
+        playerId,
+        message: `${animeFactionPenaltyTitle("blue_archive") ?? "Academy Overheads"} — the enemy draws 1 card at combat start.`
+      });
+      done.push(key);
+      continue;
+    }
+    if (factionId === "mgq") {
+      const title = animeFactionPenaltyTitle("mgq") ?? "Spirit Tithe";
+      const mgqPlayer = state.players[playerId];
+      if (mgqPlayer && mgqPlayer.hand.length > 0) {
+        const random = createSeededRandom(`${state.seed}#mgq-spirit-tithe#${combat.id}#${playerId}`);
+        const index = random.nextInt(0, mgqPlayer.hand.length - 1);
+        const [discarded] = mgqPlayer.hand.splice(index, 1);
+        mgqPlayer.discard.push(discarded);
+        appendEvent(state, {
+          type: "EVENT_NOTE",
+          playerId,
+          message: `${title} — discard 1 card to summon the contracted spirit.`
+        });
+      } else {
+        appendEvent(state, {
+          type: "EVENT_NOTE",
+          playerId,
+          message: `${title} — no card in hand to discard for the spirit summon.`
         });
       }
       done.push(key);

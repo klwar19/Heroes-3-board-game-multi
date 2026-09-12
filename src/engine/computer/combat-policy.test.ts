@@ -1089,3 +1089,55 @@ describe("combat policy — siege fortifications", () => {
     expect(decision?.action.type).toBe("ATTACK_UNIT");
   });
 });
+
+describe("combat policy — PvP lessons from the ranked replays (2026-09-10/11)", () => {
+  const withContext = (obs: ComputerObservation, context: unknown): ComputerObservation => {
+    (obs.state.combat as unknown as { context: unknown }).context = context;
+    (obs.state as unknown as { heroes: Record<string, unknown> }).heroes = {};
+    return obs;
+  };
+  const pvp = (obs: ComputerObservation) =>
+    withContext(obs, { kind: "player", attackerHeroId: "hero_p2", defenderHeroId: "hero_p1" });
+  const neutral = (obs: ComputerObservation) =>
+    withContext(obs, { kind: "neutral", heroId: "hero_p2", fieldId: "h:0:0" });
+  const defenderOf = (decision: ReturnType<typeof chooseComputerAction>) =>
+    (decision?.action as { defenderId?: string }).defenderId;
+  const giveUp: LegalAction = {
+    action: { type: "GIVE_UP_COMBAT", playerId: "p2" } as GameAction,
+    label: "Retreat",
+  };
+
+  it("hunts the enemy GOLD body in PvP while neutral fights keep the shooter hunt", () => {
+    // Both attacks are non-lethal chips; the bronze shooter is the easier
+    // chip, the gold ground unit is the fight's carry.
+    const attacker = unit({ id: "A", controllerId: "p2", attack: 5, defense: 2, maxHealth: 20, position: 8 });
+    const shooter = unit({ id: "E1", type: "ranged", attack: 3, defense: 0, maxHealth: 10, position: 12 });
+    const gold = unit({ id: "E2", grade: "gold", attack: 4, defense: 0, maxHealth: 8, position: 9 });
+    const legal = [attackOn("A", "E1"), attackOn("A", "E2")];
+    expect(defenderOf(chooseComputerAction(pvp(observation([attacker, shooter, gold], legal))))).toBe("E2");
+    // CONTROL: the same board in a neutral fight still opens on the shooter.
+    expect(defenderOf(chooseComputerAction(neutral(observation([attacker, shooter, gold], legal))))).toBe("E1");
+  });
+
+  it("concedes a hopeless PvP fight after a casualty, never a neutral fight, a fresh one, or a fight a kill can still turn", () => {
+    const survivor = unit({ id: "A", controllerId: "p2", attack: 2, defense: 1, maxHealth: 5, damage: 4, position: 8 });
+    const fallen = unit({ id: "D", controllerId: "p2", attack: 4, maxHealth: 5, damage: 5, position: -1 });
+    const brute = unit({ id: "E1", grade: "gold", attack: 8, defense: 2, maxHealth: 12, position: 9 });
+    const second = unit({ id: "E2", attack: 8, defense: 0, maxHealth: 12, position: 13 });
+    const legal = [attackOn("A", "E1"), giveUp];
+    const concede = chooseComputerAction(pvp(observation([survivor, fallen, brute, second], legal)));
+    expect(concede?.action.type).toBe("GIVE_UP_COMBAT");
+    // CONTROL 1: a neutral fight keeps the old below-attack retreat score.
+    const vsNeutral = chooseComputerAction(neutral(observation([survivor, fallen, brute, second], legal)));
+    expect(vsNeutral?.action.type).toBe("ATTACK_UNIT");
+    // CONTROL 2: no casualty yet → fight on.
+    const fresh = chooseComputerAction(pvp(observation([survivor, brute, second], legal)));
+    expect(fresh?.action.type).toBe("ATTACK_UNIT");
+    // CONTROL 3: a lethal attack that can still turn the fight outranks the concession.
+    const almostDead = unit({ id: "E2", attack: 8, defense: 0, maxHealth: 12, damage: 11, position: 13 });
+    const kill = chooseComputerAction(
+      pvp(observation([survivor, fallen, brute, almostDead], [attackOn("A", "E2"), giveUp])),
+    );
+    expect(kill?.action.type).toBe("ATTACK_UNIT");
+  });
+});

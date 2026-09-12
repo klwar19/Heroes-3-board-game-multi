@@ -173,12 +173,12 @@ describe("Kivotos buildings — dwellings, citadel, guild, workshop", () => {
     townOf(state, "p1").buildings.push("blue_archive.dwelling_bronze");
     let before = { ...state.players.p1.resources };
     state = applyOk(state, { type: "BUILD_STRUCTURE", playerId: "p1", townId: town.id, buildingId: "blue_archive.dwelling_silver" });
-    expect(state.players.p1.resources).toEqual({ gold: before.gold - 8, buildingMaterials: before.buildingMaterials - 6, valuables: before.valuables - 3 });
+    expect(state.players.p1.resources).toEqual({ gold: before.gold - 10, buildingMaterials: before.buildingMaterials - 7, valuables: before.valuables - 4 });
 
     state.players.p1.townTokens.build = true;
     before = { ...state.players.p1.resources };
     state = applyOk(state, { type: "BUILD_STRUCTURE", playerId: "p1", townId: town.id, buildingId: "blue_archive.dwelling_gold" });
-    expect(state.players.p1.resources).toEqual({ gold: before.gold - 10, buildingMaterials: before.buildingMaterials - 9, valuables: before.valuables - 4 });
+    expect(state.players.p1.resources).toEqual({ gold: before.gold - 12, buildingMaterials: before.buildingMaterials - 10, valuables: before.valuables - 5 });
 
     // Outcome: a GOLD student (Seia, few 15 gold) is now recruitable.
     const goldBefore = state.players.p1.resources.gold;

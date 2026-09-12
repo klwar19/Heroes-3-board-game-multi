@@ -197,16 +197,17 @@ export function RoomBrowser({
   }, [clientId]);
 
   const sendChat = useCallback(
-    (text: string) => {
+    async (text: string) => {
       setChatError(null);
       // After a successful post, re-fetch the full feed so concurrent lines from
       // other browsers land immediately (not only our own optimistic merge).
-      postLobbyChat({ clientId, name: displayName.trim() || "Player", text })
-        .then(() => fetchLobbyChat())
-        .then(setChatMessages)
-        .catch((sendError: unknown) =>
-          setChatError(sendError instanceof Error ? sendError.message : "Could not send the message.")
-        );
+      try {
+        await postLobbyChat({ clientId, name: displayName.trim() || "Player", text });
+        setChatMessages(await fetchLobbyChat());
+      } catch (sendError: unknown) {
+        setChatError(sendError instanceof Error ? sendError.message : "Could not send the message.");
+        throw sendError;
+      }
     },
     [clientId, displayName]
   );

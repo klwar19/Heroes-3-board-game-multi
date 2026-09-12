@@ -370,6 +370,13 @@ function scoreRerollOffer(
     if (action.useSetDie) return CHOICE_BASE + 35; // set the worst die into window
     return choice.remainingRerolls > 0 ? CHOICE_BASE + 25 : CHOICE_BASE - 40;
   }
+  // Veteran Troglodytes' "Threefold Savage": every offered die is a "-1" that may
+  // be rerolled once. A "-1" reroll is strictly non-worsening (the "-1" is the
+  // floor), so always take each offer — the choice then falls through to the keep
+  // once no "-1" die remains offerable.
+  if (choice.rerollNegativeDiceOnly) {
+    return choice.remainingRerolls > 0 ? CHOICE_BASE + 25 : CHOICE_BASE - 40;
+  }
   // Attack roll — prefer set-die (+1) over a raw reroll when offered.
   if (action.useSetDie) {
     return CHOICE_BASE + 35;
