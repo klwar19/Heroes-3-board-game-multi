@@ -177,6 +177,8 @@ import {
   COMMANDER_ARTIFACT_GOLD_COST,
   availableCommanderArtifactSpecs,
   commanderArtifactBonusesForUnit,
+  commanderArtifactBoughtThisRound,
+  commanderArtifactSurcharge,
   commanderForgeCandidates,
 } from "./commander-artifacts";
 import {
@@ -6356,8 +6358,11 @@ function addCommanderMapActions(
 
   // Grade I/II keep two stable offers. Grade III unlocks later and is either
   // one hidden seeded-random result at base cost or any specific result for +2.
+  // One gold purchase per round; each purchase raises later prices by +2 gold.
+  const boughtThisRound = commanderArtifactBoughtThisRound(state, playerId);
+  const surcharge = commanderArtifactSurcharge(state, playerId);
   const addForgeTier = (tier: "minor" | "major" | "relic") => {
-    const cost = COMMANDER_ARTIFACT_GOLD_COST[tier];
+    const cost = COMMANDER_ARTIFACT_GOLD_COST[tier] + surcharge;
     if ((player.resources.gold ?? 0) < cost) return;
     for (const spec of commanderForgeCandidates(state, playerId, tier)) {
       actions.push({
@@ -6371,13 +6376,13 @@ function addCommanderMapActions(
       });
     }
   };
-  if (state.round >= 2 && !commander.forgeMinorUsed) addForgeTier("minor");
+  if (state.round >= 2 && !boughtThisRound && !commander.forgeMinorUsed) addForgeTier("minor");
   const legacyHighSpent = commander.forgeHighUsed === true;
-  if (state.round >= 7 && !legacyHighSpent && !commander.forgeMajorUsed) {
+  if (state.round >= 7 && !boughtThisRound && !legacyHighSpent && !commander.forgeMajorUsed) {
     addForgeTier("major");
   }
-  if (state.round >= 9 && !legacyHighSpent && !commander.forgeRelicUsed) {
-    const baseCost = COMMANDER_ARTIFACT_GOLD_COST.relic;
+  if (state.round >= 9 && !boughtThisRound && !legacyHighSpent && !commander.forgeRelicUsed) {
+    const baseCost = COMMANDER_ARTIFACT_GOLD_COST.relic + surcharge;
     const random = commanderForgeCandidates(state, playerId, "relic")[0];
     if (random && (player.resources.gold ?? 0) >= baseCost) {
       actions.push({

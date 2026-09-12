@@ -129,7 +129,13 @@ describe("Commander Forge", () => {
     const randomAfter = apply(state, randomRelics[0]!.action);
     expect(randomAfter.players.p1.resources.gold).toBe(19);
     expect(randomAfter.players.p1.commander?.forgeRelicUsed).toBe(true);
-    expect(forgeActions(randomAfter).some((offer) => offer.action.tier === "major")).toBe(true);
+    // One purchase per round: the Grade-II offer returns only next round,
+    // 2 gold dearer than its base price.
+    expect(forgeActions(randomAfter)).toHaveLength(0);
+    randomAfter.round += 1;
+    const nextRoundMajor = forgeActions(randomAfter).filter((offer) => offer.action.tier === "major");
+    expect(nextRoundMajor.length).toBeGreaterThan(0);
+    expect(nextRoundMajor[0]!.label).toContain("(10 gold)");
 
     const chosenState = mapState("forge-high-specific");
     chosenState.round = 9;
@@ -147,6 +153,7 @@ describe("Commander Forge", () => {
     const major = forgeActions(state).find((offer) => offer.action.tier === "major")!;
     const afterMajor = apply(state, major.action);
     expect(afterMajor.players.p1.commander?.forgeMajorUsed).toBe(true);
+    afterMajor.round += 1; // one purchase per round: Grade III returns next round
     expect(forgeActions(afterMajor).some((offer) => offer.action.tier === "relic")).toBe(true);
 
     const legacy = mapState("forge-legacy-high");
@@ -174,6 +181,45 @@ describe("Commander Forge", () => {
     const after = apply(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice.id, optionIndex: 0 });
     expect(after.players.p1.resources.gold).toBe(22);
     expect(after.players.p1.hand).toContain(offeredId);
+  });
+
+  it("allows one purchase per round and raises each later price by 2 gold", () => {
+    const state = mapState("forge-escalation");
+    state.round = 9;
+    const minor = forgeActions(state).find((offer) => offer.action.tier === "minor")!;
+    const after = apply(state, minor.action);
+    expect(after.players.p1.resources.gold).toBe(25);
+    // Same round: every further Forge offer is withheld, and a post-victory
+    // offer will not even queue.
+    expect(forgeActions(after)).toHaveLength(0);
+    expect(queueNeutralCommanderArtifactOffer(after, "p1", 4)).toBe(false);
+    // Next round: offers return, one purchase dearer (major 8 -> 10).
+    after.round += 1;
+    const major = forgeActions(after).find((offer) => offer.action.tier === "major")!;
+    expect(major.label).toContain("(10 gold)");
+    const paid = apply(after, major.action);
+    expect(paid.players.p1.resources.gold).toBe(15);
+    // Third purchase carries +4: the queued neutral offer prices it in.
+    paid.round += 1;
+    expect(queueNeutralCommanderArtifactOffer(paid, "p1", 4)).toBe(true);
+    const queued = paid.adventure?.rewardQueue.find((reward) => reward.kind === "commander-artifact-offer");
+    expect(queued && queued.kind === "commander-artifact-offer" ? queued.cost : null).toBe(12);
+  });
+
+  it("a second offer queued in the same round lapses after the first purchase", () => {
+    const state = mapState("neutral-offer-limit");
+    expect(queueNeutralCommanderArtifactOffer(state, "p1", 4)).toBe(true);
+    expect(queueNeutralCommanderArtifactOffer(state, "p1", 3)).toBe(true);
+    pumpAdventureQueues(state);
+    const choice = state.pendingChoice;
+    if (choice?.type !== "OPTION_CHOICE") throw new Error("expected commander artifact purchase");
+    const after = apply(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice.id, optionIndex: 0 });
+    expect(after.players.p1.resources.gold).toBe(22);
+    expect(after.players.p1.commander?.artifactPurchases).toBe(1);
+    pumpAdventureQueues(after);
+    // The trailing same-round offer never re-opens a choice.
+    expect(after.pendingChoice).toBeNull();
+    expect(after.adventure?.rewardQueue.some((reward) => reward.kind === "commander-artifact-offer")).toBe(false);
   });
 
   it("removes artifacts claimed elsewhere before a queued offer is shown", () => {

@@ -35,9 +35,12 @@ import { COMMANDER_ARTIFACT_SPECS, aggregateCommanderArtifactBonuses } from "@/d
 import {
   availableCommanderArtifactSpecs,
   COMMANDER_ARTIFACT_GOLD_COST,
+  commanderArtifactBoughtThisRound,
+  commanderArtifactSurcharge,
   commanderArtifactTierForDungeonFloor,
   commanderForgeCandidates,
   grantCommanderArtifactCard,
+  noteCommanderArtifactPurchase,
   queueNeutralCommanderArtifactOffer
 } from "./commander-artifacts";
 import type { RaidBossDefinition } from "@/data/anime/bosses";
@@ -17565,10 +17568,14 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     if (!player || !spec || !hasResources(player, { gold: offer.cost })) {
       throw new Error(`Buying that commander artifact costs ${offer.cost} gold.`);
     }
+    if (commanderArtifactBoughtThisRound(state, action.playerId)) {
+      throw new Error("Only one commander artifact can be bought per round.");
+    }
     spendResources(state, action.playerId, { gold: offer.cost }, `bought ${spec.name} from ${offer.source}`);
     if (!grantCommanderArtifactCard(state, action.playerId, cardId)) {
       throw new Error("That commander artifact was already claimed.");
     }
+    noteCommanderArtifactPurchase(state, action.playerId);
     appendEvent(state, {
       type: "EVENT_NOTE",
       playerId: action.playerId,
@@ -19142,6 +19149,9 @@ export function forgeCommanderArtifact(
   if (commander.artifacts?.[spec.slot]) {
     throw new Error(`Your commander's ${spec.slot} slot is already filled.`);
   }
+  if (commanderArtifactBoughtThisRound(state, action.playerId)) {
+    throw new Error("Only one commander artifact can be bought per round.");
+  }
   const offered =
     action.tier === "relic" && action.specific
       ? availableCommanderArtifactSpecs(state, action.playerId, "relic", true).map((candidate) => candidate.cardId)
@@ -19151,7 +19161,8 @@ export function forgeCommanderArtifact(
   if (!offered.includes(action.cardId)) {
     throw new Error("That artifact is not available from the Forge.");
   }
-  const cost = COMMANDER_ARTIFACT_GOLD_COST[action.tier] + (action.tier === "relic" && action.specific ? 2 : 0);
+  const cost = COMMANDER_ARTIFACT_GOLD_COST[action.tier] + (action.tier === "relic" && action.specific ? 2 : 0) +
+    commanderArtifactSurcharge(state, action.playerId);
   if (!hasResources(player, { gold: cost })) {
     throw new Error(`Forging that artifact costs ${cost} gold.`);
   }
@@ -19159,6 +19170,7 @@ export function forgeCommanderArtifact(
   if (!grantCommanderArtifactCard(state, action.playerId, action.cardId)) {
     throw new Error("That commander artifact was already claimed.");
   }
+  noteCommanderArtifactPurchase(state, action.playerId);
   if (action.tier === "minor") commander.forgeMinorUsed = true;
   else if (action.tier === "major") commander.forgeMajorUsed = true;
   else commander.forgeRelicUsed = true;
@@ -21732,6 +21744,9 @@ export function pumpAdventureQueues(state: GameState): void {
 
     if (reward.kind === "commander-artifact-offer") {
       adventure.rewardQueue.shift();
+      // One gold purchase per round: a second offer queued behind an accepted
+      // one silently lapses instead of presenting an unbuyable choice.
+      if (commanderArtifactBoughtThisRound(state, reward.playerId)) continue;
       const availableIds = new Set(
         availableCommanderArtifactSpecs(state, reward.playerId, undefined, true).map((spec) => spec.cardId)
       );

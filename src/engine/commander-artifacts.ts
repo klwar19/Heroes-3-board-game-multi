@@ -14,6 +14,27 @@ export const COMMANDER_ARTIFACT_GOLD_COST: Record<ArtifactTier, number> = {
   relic: 11
 };
 
+/** Each gold purchase (offer or Forge) raises every later purchase by +2 gold. */
+export const COMMANDER_ARTIFACT_REPEAT_SURCHARGE = 2;
+
+/** Cumulative +2-per-purchase price increase for this player's NEXT purchase. */
+export function commanderArtifactSurcharge(state: GameState, playerId: PlayerId): number {
+  return (state.players[playerId]?.commander?.artifactPurchases ?? 0) * COMMANDER_ARTIFACT_REPEAT_SURCHARGE;
+}
+
+/** One gold purchase per round: true while this round's budget is spent. */
+export function commanderArtifactBoughtThisRound(state: GameState, playerId: PlayerId): boolean {
+  return state.players[playerId]?.commander?.artifactPurchaseRound === state.round;
+}
+
+/** Record a completed gold purchase (round budget + escalating price). */
+export function noteCommanderArtifactPurchase(state: GameState, playerId: PlayerId): void {
+  const commander = state.players[playerId]?.commander;
+  if (!commander) return;
+  commander.artifactPurchases = (commander.artifactPurchases ?? 0) + 1;
+  commander.artifactPurchaseRound = state.round;
+}
+
 export function commanderArtifactTierForNeutralVictory(difficulty: number): ArtifactTier | null {
   if (difficulty === 3) return "minor";
   if (difficulty === 4 || difficulty === 5) return "major";
@@ -34,7 +55,8 @@ export function queueNeutralCommanderArtifactOffer(
   const adventure = state.adventure;
   const player = state.players[playerId];
   if (!tier || !adventure || !player?.commander) return false;
-  const cost = COMMANDER_ARTIFACT_GOLD_COST[tier];
+  if (commanderArtifactBoughtThisRound(state, playerId)) return false;
+  const cost = COMMANDER_ARTIFACT_GOLD_COST[tier] + commanderArtifactSurcharge(state, playerId);
   if ((player.resources.gold ?? 0) < cost) return false;
   const cardIds = commanderForgeCandidates(state, playerId, tier).map((spec) => spec.cardId);
   if (cardIds.length === 0) return false;

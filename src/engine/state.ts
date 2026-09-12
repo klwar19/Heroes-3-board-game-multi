@@ -9207,6 +9207,17 @@ export type CommanderPlayerState = {
   forgeRelicUsed?: boolean;
   /** Legacy shared Grade-II/III budget; true blocks both in old snapshots. */
   forgeHighUsed?: boolean;
+  /**
+   * Round of this player's latest GOLD purchase of a commander artifact
+   * (post-neutral offer or Commander Forge). Only one such purchase is allowed
+   * per round. Absent = never bought (legacy snapshots unaffected).
+   */
+  artifactPurchaseRound?: number;
+  /**
+   * Lifetime count of gold commander-artifact purchases; each one raises every
+   * later purchase's price by +2 gold. Absent = zero.
+   */
+  artifactPurchases?: number;
 };
 
 export type PlayerState = {
