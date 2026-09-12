@@ -6204,7 +6204,16 @@ function fireDesignerWinCondition(state: GameState, playerId: PlayerId, field: M
  * registered, an ambush guard simply stays stamped on the field — the NEXT
  * entry fights it through the normal guarded-field flow (safe fallback).
  */
-let hexEventEncounterHook:
+// NOTE: these cross-import-cycle injected hooks use `var`, not `let`, on
+// purpose. adventure-reducer.ts registers them at MODULE INIT (setHexEvent…Hook
+// etc.), and under Next's scope-hoisted server bundle the registrar module can
+// evaluate BEFORE this module's declaration line. A `let`/`const` binding would
+// then throw "Cannot access X before initialization" (a TDZ) during page-data
+// collection; `var` is hoisted and initialised to `undefined`, so an early
+// registration simply assigns the hoisted binding and every guarded `if (hook)`
+// read still behaves (undefined ≡ not-yet-registered). Do not switch to let.
+// eslint-disable-next-line no-var
+var hexEventEncounterHook:
   | ((state: GameState, hero: HeroState, field: MapFieldState) => void)
   | null = null;
 export function setHexEventEncounterHook(
@@ -6219,7 +6228,8 @@ export function setHexEventEncounterHook(
  * {@link setHexEventEncounterHook}. Until registered, the RAID_BOSS_FIGHT
  * visit step is a safe no-op (the lair simply stays; the next visit retries).
  */
-let raidBossEncounterHook: ((state: GameState, heroId: HeroId, bossInstanceId: string) => void) | null =
+// eslint-disable-next-line no-var -- hoisted to survive cross-cycle init order (see hexEventEncounterHook)
+var raidBossEncounterHook: ((state: GameState, heroId: HeroId, bossInstanceId: string) => void) | null =
   null;
 export function setRaidBossEncounterHook(
   hook: ((state: GameState, heroId: HeroId, bossInstanceId: string) => void) | null
@@ -6228,7 +6238,8 @@ export function setRaidBossEncounterHook(
 }
 
 /** The Dungeon (§6.7.3): the floor fight's reducer-side opener (same pattern). */
-let dungeonEncounterHook: ((state: GameState, heroId: HeroId, floor: number) => void) | null = null;
+// eslint-disable-next-line no-var -- hoisted to survive cross-cycle init order (see hexEventEncounterHook)
+var dungeonEncounterHook: ((state: GameState, heroId: HeroId, floor: number) => void) | null = null;
 export function setDungeonEncounterHook(
   hook: ((state: GameState, heroId: HeroId, floor: number) => void) | null
 ): void {
@@ -6245,7 +6256,8 @@ export function setDungeonEncounterHook(
  * left, so the reducer can bounce a retreat back there. Until registered (unit
  * tests without the reducer), arrival is inert — the hero simply arrives.
  */
-let teleportArrivalHook:
+// eslint-disable-next-line no-var -- hoisted to survive cross-cycle init order (see hexEventEncounterHook)
+var teleportArrivalHook:
   | ((
       state: GameState,
       hero: HeroState,
@@ -13046,7 +13058,8 @@ function drawTopOfSharedDeck(
  * reveal. See {@link resolveSubterraneanGate} and the reducer's revealOnMapTile.
  */
 export type OnMapTileRevealSource = "ordinary" | "subterranean-gate";
-let onMapTileRevealHook:
+// eslint-disable-next-line no-var -- hoisted to survive cross-cycle init order (see hexEventEncounterHook)
+var onMapTileRevealHook:
   | ((state: GameState, playerId: PlayerId, tile: MapTileState, source: OnMapTileRevealSource) => void)
   | null = null;
 export function setOnMapTileRevealHook(
