@@ -1,9 +1,9 @@
-/** Training runs before builds when credentials exist, or explicitly from an export.
+/** Explicit offline training from stored replays or a local export; no games run.
  * node scripts/train-ranked-policy.mjs --input path/to/export.json
  */
 import fs from "node:fs";
 import { gunzipSync } from "node:zlib";
-import { trainReplayPolicy } from "../src/engine/computer/replay-model.ts";
+import { describeReplayAction, trainReplayPolicy } from "../src/engine/computer/replay-model.ts";
 import { extractStrategicDecisionSamples } from "../src/server/ranked-replay-learning.ts";
 const args = process.argv.slice(2);
 const input = args[args.indexOf("--input") + 1];
@@ -62,12 +62,11 @@ for (const row of data.replays) {
   )
     continue;
   for (const sample of extractStrategicDecisionSamples(p)) {
-    const action = { ...sample.chosenAction };
-    if (
-      action.type === "RESOLVE_DECK_SEARCH" &&
-      action.pick?.kind === "revealed"
-    )
-      action.cardId = sample.context.search?.revealedCardIds[action.pick.index];
+    // Older combat records may have a domain but no health/kind snapshot.
+    // Missing tactical context must not teach a fabricated map-spell policy.
+    if (!sample.context.combat && sample.context.domains.some((domain) =>
+      domain === "pvp-combat" || domain === "neutral-combat")) continue;
+    const action = describeReplayAction(sample.chosenAction, sample.context.search?.revealedCardIds);
     samples.push({
       matchId: sample.matchId,
       action,
@@ -102,5 +101,10 @@ console.log(
     matches: model.matches,
     samples: model.samples,
     learnedPatterns: Object.keys(model.weights).length,
+    samplesByDomain: Object.fromEntries(["map", "pvp", "neutral"].map((domain) =>
+      [domain, samples.filter((sample) => sample.context.combat === domain).length])),
+    patternsByAction: Object.fromEntries([...new Set(samples.map((sample) => sample.action.type))].sort()
+      .map((type) => [type, Object.keys(model.weights).filter((key) => key.split("|")[4] === type).length])
+      .filter(([, count]) => count > 0)),
   }),
 );

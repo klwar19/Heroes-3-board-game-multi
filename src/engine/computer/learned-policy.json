@@ -1,13 +1,37 @@
 {
   "version": 1,
-  "matches": 16,
-  "samples": 8480,
+  "matches": 19,
+  "samples": 10586,
   "weights": {
     "late-game|castle|map|stable|BUILD_STRUCTURE|castle.brotherhood_of_the_sword||": {
       "wins": 2,
       "losses": 1,
       "matches": 3,
       "bias": 1.7142857142857135
+    },
+    "late-game|castle|map|stable|POPULATION_ACTION|recruit:castle.archangels||": {
+      "wins": 1,
+      "losses": 2,
+      "matches": 3,
+      "bias": -1.7142857142857149
+    },
+    "late-game|castle|map|stable|POPULATION_ACTION|recruit:castle.champions||": {
+      "wins": 2,
+      "losses": 2,
+      "matches": 4,
+      "bias": 0
+    },
+    "late-game|castle|map|stable|POPULATION_ACTION|reinforce:castle.archangels||": {
+      "wins": 2,
+      "losses": 2,
+      "matches": 4,
+      "bias": 0
+    },
+    "late-game|castle|map|stable|POPULATION_ACTION|reinforce:castle.champions||": {
+      "wins": 2,
+      "losses": 2,
+      "matches": 4,
+      "bias": 0
     },
     "late-game|castle|neutral|stable|CAST_SPELL|spell.magic_arrow||": {
       "wins": 4,
@@ -33,6 +57,42 @@
       "matches": 3,
       "bias": 1.7142857142857135
     },
+    "late-game|necropolis|map|stable|PLAY_CARD|ability.necromancy|expert|": {
+      "wins": 2,
+      "losses": 1,
+      "matches": 3,
+      "bias": 1.7142857142857135
+    },
+    "late-game|necropolis|map|stable|POPULATION_ACTION|recruit:necropolis.dread_knights||": {
+      "wins": 2,
+      "losses": 1,
+      "matches": 3,
+      "bias": 1.7142857142857135
+    },
+    "late-game|necropolis|map|stable|POPULATION_ACTION|recruit:necropolis.ghost_dragons||": {
+      "wins": 2,
+      "losses": 2,
+      "matches": 4,
+      "bias": 0
+    },
+    "late-game|tower|map|stable|POPULATION_ACTION|recruit:tower.nagas||": {
+      "wins": 1,
+      "losses": 2,
+      "matches": 3,
+      "bias": -1.7142857142857149
+    },
+    "late-game|tower|map|stable|POPULATION_ACTION|reinforce:tower.titans||": {
+      "wins": 1,
+      "losses": 2,
+      "matches": 3,
+      "bias": -1.7142857142857149
+    },
+    "late-game|tower|neutral|stable|CAST_SPELL|spell.magic_arrow||": {
+      "wins": 3,
+      "losses": 0,
+      "matches": 3,
+      "bias": 5.142857142857143
+    },
     "midgame|castle|map|pressure|CAST_SPELL|spell.magic_arrow||": {
       "wins": 2,
       "losses": 1,
@@ -47,9 +107,9 @@
     },
     "midgame|castle|map|stable|BUILD_STRUCTURE|castle.dwelling_silver||": {
       "wins": 4,
-      "losses": 2,
-      "matches": 6,
-      "bias": 2.3999999999999995
+      "losses": 3,
+      "matches": 7,
+      "bias": 1.09090909090909
     },
     "midgame|castle|neutral|pressure|CAST_SPELL|spell.magic_arrow||": {
       "wins": 2,
@@ -64,10 +124,10 @@
       "bias": 5.142857142857143
     },
     "midgame|castle|neutral|stable|PLAY_REACTION|stat.attack|basic|": {
-      "wins": 3,
+      "wins": 4,
       "losses": 0,
-      "matches": 3,
-      "bias": 5.142857142857143
+      "matches": 4,
+      "bias": 6
     },
     "midgame|necropolis|map|stable|BUILD_STRUCTURE|necropolis.city_hall||": {
       "wins": 2,
@@ -95,9 +155,39 @@
     },
     "midgame|necropolis|neutral|pressure|CAST_SPELL|spell.magic_arrow||": {
       "wins": 0,
-      "losses": 3,
+      "losses": 4,
+      "matches": 4,
+      "bias": -6
+    },
+    "midgame|necropolis|neutral|pressure|PLAY_REACTION|stat.knowledge|expert|": {
+      "wins": 1,
+      "losses": 2,
       "matches": 3,
-      "bias": -5.142857142857143
+      "bias": -1.7142857142857149
+    },
+    "midgame|rampart|map|stable|BUILD_STRUCTURE|rampart.mystic_pond||": {
+      "wins": 1,
+      "losses": 2,
+      "matches": 3,
+      "bias": -1.7142857142857149
+    },
+    "midgame|tower|map|pressure|CAST_SPELL|spell.magic_arrow||": {
+      "wins": 1,
+      "losses": 2,
+      "matches": 3,
+      "bias": -1.7142857142857149
+    },
+    "midgame|tower|map|stable|BUILD_STRUCTURE|tower.dwelling_silver||": {
+      "wins": 1,
+      "losses": 2,
+      "matches": 3,
+      "bias": -1.7142857142857149
+    },
+    "midgame|tower|neutral|stable|CAST_SPELL|spell.magic_arrow||": {
+      "wins": 2,
+      "losses": 1,
+      "matches": 3,
+      "bias": 1.7142857142857135
     },
     "opening|cove|neutral|pressure|CAST_SPELL|spell.magic_arrow||": {
       "wins": 0,

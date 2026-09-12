@@ -1,10 +1,13 @@
 import { cardLibrary } from "@/data/cards/library";
 import { unitAbilities } from "@/data/units/abilities";
+import { coreUnitDefinitions } from "@/data/factions/units";
 import {
   getBattlefieldCoordinates,
   getOrthogonalNeighbors,
 } from "../battlefield";
-import { getSpellDamageAmount, getSpellDiceRollCount } from "../effects";
+import { cancelSpellAllowsSchoolAndLevel, getSpellDamageAmount, getSpellDiceRollCount } from "../effects";
+import { abilityExpertIsCrownFree, spellLimitFor } from "../ruleset";
+import { getDamageCapPerSpell } from "../unit-abilities";
 import { houseRuleEnabled } from "../house-rules";
 import { balanceCardLibrary } from "../community-balance-cards";
 import { resolvedSpellPowerForStackItem } from "../legal-actions";
@@ -286,6 +289,31 @@ export function cardKeepValue(
     cardId,
     view ? cardValueContext(view.state, view.playerId) : null,
   );
+  if (view) {
+    // Only our known hand/discard/permanents; never inspect hidden draw order
+    // or an opponent's hand. Acquisitions and discards share this valuation.
+    const owner = view.state.players?.[view.playerId];
+    const known = [...(owner?.hand ?? []), ...(owner?.discard ?? []), ...(owner?.permanents ?? [])]
+      .map((id) => cardLibrary[id]).filter((entry) => entry?.implementationStatus === "implemented");
+    const spells = known.filter((entry) => entry.kind === "spell").length;
+    const power = known.filter((entry) => entry.effect.type === "ADD_SPELL_POWER").length;
+    const recall = known.filter((entry) => entry.effect.type === "RECALL_SPELL").length;
+    if (card.effect.type === "ADD_SPELL_POWER" && spells > power) value += 14;
+    if (card.effect.type === "RECALL_SPELL" && spells > 0 && recall < 2) value += 18;
+    if (card.kind === "spell" && spells === 0) value += 12;
+    if (card.effect.type === "CANCEL_SPELL" && cardValueContext(view.state, view.playerId).enemyHeroThreat) {
+      const counters = known.filter((entry) => entry.effect.type === "CANCEL_SPELL").length;
+      if (counters < 2) value += 14;
+    }
+    if (card.id === "ability.archery" || card.id === "spell.precision" || card.id === "artifact.golden_bow") {
+      const ranged = (owner?.army ?? []).filter((unit) => {
+        const def = coreUnitDefinitions[unit.unitDefId];
+        const side = unit.side === "bank" ? undefined : def?.[unit.side];
+        return (side?.type ?? def?.type) === "ranged";
+      }).length;
+      value += ranged > 0 ? Math.min(18, ranged * 9) : -18;
+    }
+  }
   return value;
 }
 
@@ -588,6 +616,49 @@ function threatenedAllyBonus(observation: ComputerObservation): number {
   return 0;
 }
 
+/** Narrow, conservative counter conservation for a plain attack-stat instant.
+ * Match the resolver's last eligible instant and recorded Power-scaled delta.
+ * Complex riders keep the normal counter priority rather than a false proof.
+ */
+function counteredInstantHasNoBenefit(
+  observation: ComputerObservation,
+  counter: Extract<EffectDefinition, { type: "CANCEL_SPELL" }>,
+  mode: CardPlayMode | undefined,
+): boolean {
+  const item = observation.state.stack?.at(-1);
+  const pending = pendingAttackValues(observation);
+  if (!item || !pending || pending.defender.controllerId !== observation.playerId) return false;
+  const cards = balanceCardLibrary(observation.state as unknown as GameState, cardLibrary);
+  const instant = [...(item.modifiers.cancellableSpellInstants ?? [])].reverse().find((entry) => {
+    const spell = cards[entry.cardId];
+    return entry.playerId !== observation.playerId && spell && cancelSpellAllowsSchoolAndLevel(counter,
+      { schools: spell.spellSchools ?? [], level: spell.spellLevel }, mode ?? "basic");
+  });
+  const effect = instant ? cards[instant.cardId]?.effect : undefined;
+  const record = [...(item.modifiers.powerScaledAttackInstants ?? [])].reverse()
+    .find((entry) => entry.cardId === instant?.cardId);
+  if (effect?.type !== "ADD_COMBAT_STAT" || effect.ignoreRangedPenalty || !record ||
+      record.stat !== "attack" || record.appliedAmount < 0) return false;
+  if (record.appliedAmount === 0) return true;
+  // Only a plain melee exchange permits this lower-bound calculation.
+  if (pending.attacker.type === "ranged" || pending.attacker.abilities.length ||
+      pending.defender.abilities.length || pending.attacker.tokens?.length || pending.defender.tokens?.length ||
+      pending.defender.defenseToken || pending.attacker.commanderSlug || pending.defender.commanderSlug || observation.state.activeEffects?.length ||
+      item.modifiers.cultivationDefenseBonus ||
+      item.modifiers.slayerRolls || item.modifiers.redirectedInstants?.length) return false;
+  // A counter may combine with another defense/save; never discard that line.
+  const furtherDefense = observation.legalActions.some(({ action }) => {
+    if (action.type === "PLAY_REACTIONS" || action.type === "USE_HERO_SKILL_REACTION" ||
+        action.type === "USE_ACTIVE_EFFECT") return true;
+    if (action.type !== "PLAY_REACTION" || action.asPowerBoost) return false;
+    const other = cards[action.cardId];
+    const otherEffect = other ? primaryEffect(other, action.optionIndex) : undefined;
+    return otherEffect && ((otherEffect.type === "ADD_COMBAT_STAT" && otherEffect.stat === "defense") ||
+      (SAVE_EFFECTS.has(otherEffect.type) && otherEffect.type !== "CANCEL_SPELL"));
+  });
+  return !furtherDefense && pending.damage - record.appliedAmount - 1 >= unitRemovalHealth(pending.defender);
+}
+
 function scoreSaveReaction(
   observation: ComputerObservation,
   effect: EffectDefinition,
@@ -604,6 +675,7 @@ function scoreSaveReaction(
     return 1_150 + modeBonus(mode) + ally;
   }
   if (effect.type === "CANCEL_SPELL" || effect.type === "REDIRECT_SPELL") {
+    if (effect.type === "CANCEL_SPELL" && counteredInstantHasNoBenefit(observation, effect, mode)) return 1_010;
     return 1_140 + modeBonus(mode);
   }
   if (effect.type === "INTERFERE_SPELL") {
@@ -955,8 +1027,9 @@ function pendingSpellBoostImpact(
   // The scalar helper does not model chains, splashes or secondary effects.
   // Unknown marginal value is not evidence that their Power is worthless.
   if (spell.effect.type !== "DEAL_DAMAGE") return null;
-  const now = getSpellDamageAmount(spell, power);
-  const boosted = getSpellDamageAmount(spell, boostedPower);
+  const cap = getDamageCapPerSpell(defender)?.amount ?? Number.POSITIVE_INFINITY;
+  const now = Math.min(cap, getSpellDamageAmount(spell, power));
+  const boosted = Math.min(cap, getSpellDamageAmount(spell, boostedPower));
   const remaining = unitRemovalHealth(defender);
   if (now > 0 && now >= remaining) return "lethal-already";
   if (boosted <= now) return "no-ladder-step";
@@ -1210,6 +1283,21 @@ export function scoreCardAction(
       // EXCEPT when it would burn the round's last crown on a map convenience.
       if (mode === "expert") {
         score += expertCrownNudge(observation, card, optionIndex);
+      }
+      if (isReaction && mode === "expert" && observation.state.combat) {
+        const state = observation.state as unknown as GameState;
+        const player = state.players[observation.playerId];
+        const recall = balanceCardLibrary(state, cardLibrary)[action.cardId]?.effect;
+        // Keep crown-free/empowered modes and enhanced Mysticism retrieval.
+        // Only defer a paid extra-limit upgrade when basic is offered and the
+        // current limit already leaves a cast. Stay outside learned tie range.
+        if (recall?.type === "RECALL_SPELL" && recall.expertSpellLimitBonus && !recall.expertRecallPlayedCards &&
+            player && !abilityExpertIsCrownFree(player, action.cardId) &&
+            player.combatStats.spellsCastThisRound < spellLimitFor(state, player) &&
+            observation.legalActions.some(({ action: candidate }) => candidate.type === "PLAY_REACTION" &&
+              candidate.cardId === action.cardId && candidate.mode !== "expert" && !candidate.asPowerBoost)) {
+          return { score: 1_020, policy: "card.recall-preserve-crown" };
+        }
       }
 
       score -= discardCostPenalty(

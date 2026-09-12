@@ -28,6 +28,8 @@ import {
   getTownOfPlayer,
   getAdjacentSpaceIds,
   getUnitSide,
+  reinforceCostFor,
+  reinforcementDiscountCostFor,
   heroesAtSpace,
   isFieldGuarded,
   isOuterEdgeSealed,
@@ -67,6 +69,8 @@ import {
   assessDwellingRush,
   developmentResourceTargets,
   goldPurchaseReachable,
+  hasGoldArmy,
+  goldArmyAllowsBronzePurchase,
   hasOpenedFarEconomy,
   INCOME_NEVER_FROM_ROUND,
   incomeBuildingBeforeDwelling,
@@ -506,6 +510,8 @@ function buildingScore(
   return score;
 }
 
+const premiumPopulationAvailable = new WeakMap<ComputerObservation, boolean>();
+
 function populationScore(
   observation: ComputerObservation,
   action: Extract<GameAction, { type: "POPULATION_ACTION" }>,
@@ -515,6 +521,29 @@ function populationScore(
   const player = state.players[observation.playerId];
   const development = armyDevelopmentProfile(state, observation.playerId);
   const gold = player?.resources.gold ?? 0;
+
+  const goldArmy = hasGoldArmy(state, observation.playerId);
+  const bronzePurchases = action.purchases.filter((purchase) =>
+    coreUnitDefinitions[purchase.unitDefId]?.tier === "bronze");
+  if (goldArmy && bronzePurchases.length > 0) {
+    // Reject the entire bundle, including bronze hidden alongside a Gold buy.
+    // 180 also stays below the PvP preparation exit (225).
+    if (bronzePurchases.some((purchase) => !goldArmyAllowsBronzePurchase(
+      state, observation.playerId, purchase.unitDefId, purchase.kind,
+    )) || action.purchases.length !== bronzePurchases.length ||
+      development.totalUnits + bronzePurchases.length > 5 ||
+      (player?.army.filter((unit) => coreUnitDefinitions[unit.unitDefId]?.tier === "bronze").length ?? 0) + bronzePurchases.length > 2) return 180;
+    // A useful affordable premium purchase gets the Population opportunity first.
+    let premiumAvailable = premiumPopulationAvailable.get(observation);
+    if (premiumAvailable === undefined) {
+      premiumAvailable = observation.legalActions.some(({ action: candidate }) =>
+        candidate.type === "POPULATION_ACTION" && candidate.purchases.length > 0 &&
+        candidate.purchases.every((purchase) => coreUnitDefinitions[purchase.unitDefId]?.tier !== "bronze") &&
+        populationScore(observation, candidate) > 300);
+      premiumPopulationAvailable.set(observation, premiumAvailable);
+    }
+    if (premiumAvailable) return 180;
+  }
 
   // Polish Unit Stacks are durability investments, not fresh bodies. Buy one
   // only after the three-tier army core is complete and after preserving the
@@ -642,7 +671,7 @@ function populationScore(
   score += economyFocusBias(memory, "recruit");
   // Silver is an optional surplus purchase. Never spend the Bronze opening /
   // next dwelling or Gold-recruit fund merely to satisfy a tier gate.
-  if (action.purchases.some(
+  if (!goldArmy && action.purchases.some(
     purchase => coreUnitDefinitions[purchase.unitDefId]?.tier === "silver",
   )) {
     const reserve = developmentResourceTargets(state, observation.playerId);
@@ -1680,6 +1709,7 @@ function eventNeutralUnitUtility(
   const def = coreUnitDefinitions[unitDefId];
   const side = def?.neutral;
   if (!def || !side) return 0;
+  if (!goldArmyAllowsBronzePurchase(state, playerId, unitDefId, "recruit")) return -100;
   const tierBonus =
     def.tier === "azure" ? 48 : def.tier === "gold" ? 34 : def.tier === "silver" ? 20 : 8;
   const combatValue =
@@ -1760,9 +1790,13 @@ function visitStepsUtility(
       case "WITCH_HUT_DISCARD":
         utility += 2;
         break;
-      case "REINFORCE_ARMY_UNIT":
-        utility += 36;
+      case "REINFORCE_ARMY_UNIT": {
+        const unit = state.players[playerId]?.army.find((candidate) => candidate.id === step.armyUnitId);
+        const cost = reinforceCostFor(state, playerId, step.armyUnitId, step.halfCost, false, step.roundDown ?? false);
+        const paid = eventResourceCostValue(cost ?? undefined) > 0;
+        utility += unit && paid && !goldArmyAllowsBronzePurchase(state, playerId, unit.unitDefId, "reinforce") ? -100 : 36;
         break;
+      }
       case "RECRUIT_FREE":
         utility += 40;
         break;
@@ -1870,6 +1904,10 @@ function visitStepsUtility(
         utility += step.cost ? (res.gold >= GOLD_RESERVE + (step.cost.gold ?? 0) + 5 ? 22 : 8) : 32;
         break;
       case "RECRUIT_DRAWN_NEUTRAL":
+        utility += hasGoldArmy(state, playerId)
+          ? step.recruit ? eventNeutralUnitUtility(state, playerId, step.recruit.unitDefId) : 0
+          : army < 6 ? 28 : 12;
+        break;
       case "RECRUIT_FACTION_UNIT":
         utility += army < 6 ? 28 : 12;
         break;
@@ -2135,6 +2173,25 @@ function equipmentBuyScore(state: GameState, playerId: string, equipmentId: stri
   return 1_000;
 }
 
+/** Keep policy rejections below the menu's Leave option; utility's generic
+ * minimum otherwise turns even a rejected purchase into an automatic buy. */
+function rejectsPaidBronzeSteps(state: GameState, playerId: PlayerId, steps: ReadonlyArray<VisitStep>): boolean {
+  if (!hasGoldArmy(state, playerId)) return false;
+  return steps.some((step) => {
+    if (step.type === "EVENT_NEUTRAL_BUY") return !goldArmyAllowsBronzePurchase(state, playerId, step.unitDefId, "recruit");
+    if (step.type === "RECRUIT_DRAWN_NEUTRAL") return Boolean(step.recruit &&
+      !goldArmyAllowsBronzePurchase(state, playerId, step.recruit.unitDefId, "recruit"));
+    if (step.type === "REINFORCE_ARMY_UNIT") {
+      const unit = state.players[playerId]?.army.find((candidate) => candidate.id === step.armyUnitId);
+      const cost = reinforceCostFor(state, playerId, step.armyUnitId, step.halfCost, false, step.roundDown ?? false);
+      return Boolean(unit && eventResourceCostValue(cost ?? undefined) > 0 &&
+        !goldArmyAllowsBronzePurchase(state, playerId, unit.unitDefId, "reinforce"));
+    }
+    if (step.type === "PAY_TO") return rejectsPaidBronzeSteps(state, playerId, step.steps);
+    return false;
+  });
+}
+
 function resolveVisitStepScore(
   observation: ComputerObservation,
   action: Extract<GameAction, { type: "RESOLVE_VISIT_STEP" }>,
@@ -2180,6 +2237,7 @@ function resolveVisitStepScore(
   if (step.type === "CHOOSE_ONE") {
     const option = step.options[optionIndex];
     if (!option) return 1_000;
+    if (rejectsPaidBronzeSteps(state, playerId, option.steps)) return 1_020;
     // Anime Equipment outfitter (§3.13): buy an item into an EMPTY slot only from
     // genuine surplus (gold ≥ cost + 6); otherwise leave. A buy below that scores
     // under the Leave option (1_050) so the shop always exits cleanly (no stall).
@@ -2206,6 +2264,7 @@ function resolveVisitStepScore(
 
   // --- PAY_TO (optional paid field uses) ------------------------------------
   if (step.type === "PAY_TO") {
+    if (rejectsPaidBronzeSteps(state, playerId, step.steps)) return 1_020;
     const cost: ResourceCost = step.costOptions[optionIndex] ?? {};
     const goldCost = cost.gold ?? 0;
     const matsCost = cost.buildingMaterials ?? 0;
@@ -2231,7 +2290,8 @@ function resolveVisitStepScore(
     const topThree = player?.discard.slice(-3).reverse() ?? [];
     const cardId = topThree[optionIndex];
     if (!cardId) return 1_050;
-    return 1_100 + Math.min(40, cardKeepValue(cardId, { state, playerId }));
+    const value = Math.max(0, cardKeepValue(cardId, { state, playerId }));
+    return 1_100 + 60 * value / (80 + value);
   }
 
   // --- Search discard top: take best card -----------------------------------
@@ -2240,7 +2300,8 @@ function resolveVisitStepScore(
     const topCards = deck ? deck.discardPile.slice(-step.count).reverse() : [];
     const cardId = topCards[optionIndex];
     if (!cardId) return 1_050;
-    return 1_100 + Math.min(40, cardKeepValue(cardId, { state, playerId }));
+    const value = Math.max(0, cardKeepValue(cardId, { state, playerId }));
+    return 1_100 + 60 * value / (80 + value);
   }
 
   // --- Remove hand card: dump lowest keep value -----------------------------
@@ -2259,6 +2320,13 @@ function resolveVisitStepScore(
 
   // --- Hill Fort: reinforce when offered (legal-actions already gates cost) -
   if (step.type === "HILL_FORT") {
+    const unit = state.players[playerId]?.army.filter((candidate) => {
+      const def = coreUnitDefinitions[candidate.unitDefId];
+      return candidate.side === "few" && def?.pack && (def.tier === "bronze" || def.tier === "silver");
+    })[optionIndex];
+    const cost = unit ? reinforceCostFor(state, playerId, unit.id, false, false, false, 3) : null;
+    if (unit && eventResourceCostValue(cost ?? undefined) > 0 &&
+        !goldArmyAllowsBronzePurchase(state, playerId, unit.unitDefId, "reinforce")) return 1_020;
     return 1_130 - Math.min(15, optionIndex);
   }
 
@@ -2319,6 +2387,14 @@ export function scoreMapAction(
         policy: "map.recruit-army",
       };
     case "REDEEM_REINFORCEMENT_DISCOUNT":
+      {
+        const unit = state.players[observation.playerId]?.army.find((candidate) => candidate.id === action.armyUnitId);
+        const cost = reinforcementDiscountCostFor(state, observation.playerId, action.discountId, action.armyUnitId, action.kind);
+        if (unit && eventResourceCostValue(cost ?? undefined) > 0 &&
+            !goldArmyAllowsBronzePurchase(state, observation.playerId, unit.unitDefId, action.kind)) {
+          return { score: 180, policy: "map.preserve-premium-army-fund" };
+        }
+      }
       // Inside the atomic after-combat Necromancy window the bank is USE-IT-OR-
       // LOSE-IT: SKIP_NECROMANCY ("Resolve bonuses and continue", 1_120) expires
       // every offer this window created. At the ordinary 820/760 the AI played
@@ -2605,7 +2681,7 @@ export function scoreMapAction(
     case "REVISIT_FIELD": {
       // Revisits are optional luxuries — never outrank marching to new land or
       // a real objective (was 690 and pulled heroes back to known sites).
-      // Markets use free OPEN_MARKET, not this 1-MP revisit.
+      // Markets use OPEN_MARKET; Trading Post reopenings also cost 1 MP.
       // Multi-round memory: do not re-spend MP on a field already walked this turn.
       const heroSpace = state.heroes[action.heroId]?.spaceId;
       if (heroSpace && visitedThisTurn(memory, heroSpace)) {
@@ -2647,7 +2723,7 @@ export function scoreMapAction(
       if (!earlyTentVisit && hasReachableMapWork(observation, action.heroId)) {
         return { score: 250, policy: "map.leave-market-for-objective" };
       }
-      // Free while parked on a market. Only open when a useful trade or shop
+      // Trading Post reopenings cost 1 MP. Only open when a useful trade or shop
       // buy exists — otherwise the hero would open/close forever (score 0 was
       // below END_TURN so it never opened; a high unconditional score loops).
       if (!wantsMarketVisit(state, observation.playerId, marketLocation)) {

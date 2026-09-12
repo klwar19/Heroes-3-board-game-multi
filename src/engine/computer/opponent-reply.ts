@@ -7,8 +7,8 @@ import type { CombatState, CombatUnitState, GameState } from "../state";
 import {
   isParalyzed,
   unitRemainingHealth,
-  expectedAttackDamage,
 } from "./score";
+import { estimatedStrikeDamage } from "./strike-value";
 /** Bounded one-reply public-board search. Enemy cards/dice are never invented.
  * Project our destination first so screens, engagement and blocked cells matter. */
 export function coordinatedReplyDamage(
@@ -35,13 +35,16 @@ export function coordinatedReplyDamage(
       isParalyzed(enemy)
     )
       continue;
-    const reaches =
-      canUnitAttack(board, enemy, projected, state?.activeEffects ?? []) ||
-      (enemy.type !== "ranged" &&
-        getLegalMoveDestinations(board, enemy, projectedState).some((destination) =>
-          canUnitMoveAndAttack(board, enemy, destination, projected, projectedState),
-        ));
-    if (reaches) damage += expectedAttackDamage(enemy, projected);
+    let best = canUnitAttack(board, enemy, projected, state?.activeEffects ?? [])
+      ? estimatedStrikeDamage(enemy, projected) : 0;
+    if (enemy.type !== "ranged") {
+      for (const destination of getLegalMoveDestinations(board, enemy, projectedState)) {
+        if (canUnitMoveAndAttack(board, enemy, destination, projected, projectedState)) {
+          best = Math.max(best, estimatedStrikeDamage(enemy, projected, destination));
+        }
+      }
+    }
+    damage += best;
   }
   return damage;
 }

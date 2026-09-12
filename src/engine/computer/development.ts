@@ -156,7 +156,9 @@ export function armyDevelopmentProfile(
   const corePackTarget = openingCorePackTarget(state, playerId);
 
   let phase: ArmyDevelopmentPhase;
-  if (army.length < CORE_BODY_TARGET || packUnits < corePackTarget) {
+  // Gold survivors (including foreign recruits) must not restart the bronze
+  // opening after a screen dies or a Pack flips. Fight readiness is separate.
+  if (!hasGoldArmy(state, playerId) && (army.length < CORE_BODY_TARGET || packUnits < corePackTarget)) {
     phase = "establish-core";
   } else if (!silverUnlocked) {
     phase = "unlock-silver";
@@ -182,6 +184,36 @@ export function armyDevelopmentProfile(
   };
 }
 
+export function hasGoldArmy(state: GameState, playerId: PlayerId): boolean {
+  return (state.players[playerId]?.army ?? []).some((unit) => {
+    const tier = coreUnitDefinitions[unit.unitDefId]?.tier;
+    return tier === "gold" || tier === "azure";
+  });
+}
+
+/** Paid bronze after Gold is only a replacement screen: a cheap level 1–2
+ * Few, at most two bronze bodies and five deployable cards overall. Faction
+ * rosters use the same level order as starting-army selection. Unranked neutral
+ * cards cannot masquerade as a level 1–2 faction unit. Free rewards are separate.
+ */
+export function goldArmyAllowsBronzePurchase(
+  state: GameState,
+  playerId: PlayerId,
+  unitDefId: string,
+  kind: "recruit" | "reinforce" | "stack",
+): boolean {
+  const definition = coreUnitDefinitions[unitDefId];
+  if (!hasGoldArmy(state, playerId) || definition?.tier !== "bronze") return true;
+  if (kind !== "recruit" || !definition.few) return false;
+  const levelIndex = coreFactionDefinitions[definition.faction]?.units.indexOf(unitDefId) ?? -1;
+  const cost = definition.few.cost;
+  if (levelIndex < 0 || levelIndex > 1 || (cost.gold ?? 0) > 4 ||
+      (cost.buildingMaterials ?? 0) > 0 || (cost.valuables ?? 0) > 0) return false;
+  const army = state.players[playerId]?.army ?? [];
+  return army.length < 5 &&
+    army.filter((unit) => coreUnitDefinitions[unit.unitDefId]?.tier === "bronze").length < 2;
+}
+
 /**
  * A fair neutral fight is acceptable once the composition-aware core is ready.
  * Guaranteed Quick Combat wins are handled separately and never need this gate.
@@ -193,7 +225,7 @@ export function armyReadyForContestedFight(
   const profile = armyDevelopmentProfile(state, playerId);
   return (
     profile.totalUnits >= CORE_BODY_TARGET &&
-    profile.packUnits >= profile.corePackTarget
+    (profile.packUnits >= profile.corePackTarget || hasGoldArmy(state, playerId))
   );
 }
 

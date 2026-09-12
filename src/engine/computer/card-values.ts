@@ -311,7 +311,10 @@ export type CardValueContext = {
 export type CardValueStateView = {
   players?: Record<
     string,
-    { factionId?: string; eliminated?: boolean } | undefined
+    { factionId?: string; eliminated?: boolean;
+      hand?: readonly string[]; discard?: readonly string[]; permanents?: readonly string[];
+      army?: ReadonlyArray<{ unitDefId: string; side: "few" | "pack" | "neutral" | "bank" }>;
+    } | undefined
   > | null;
   towns?: Record<
     string,

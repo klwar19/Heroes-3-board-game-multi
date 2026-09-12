@@ -17,7 +17,6 @@ import {
 import type { CombatState, CombatUnitState, GameAction, GameState } from "../state";
 import type { ComputerActionScore } from "./map-policy";
 import {
-  attackIsLethal,
   distanceToNearestEnemy,
   expectedAttackDamage,
   hasThreatAbility,
@@ -32,8 +31,9 @@ import {
 } from "./score";
 import type { ComputerObservation } from "./types";
 import { coordinatedReplyDamage } from "./opponent-reply";
+import { estimatedStrikeDamage } from "./strike-value";
 import { unitSideStrength } from "./army-strength";
-import { canUnitAttack } from "../legal-actions";
+import { canUnitAttack, canUnitMoveAndAttack, getLegalMoveDestinations } from "../legal-actions";
 
 /**
  * True when our side is clearly losing a neutral fight: no living unit can
@@ -294,9 +294,9 @@ function attackScore(
 ): number {
   const remaining = unitRemainingHealth(defender);
   const threat = unitThreatValue(defender);
-  const damage = expectedAttackDamage(attacker, defender);
+  const damage = estimatedStrikeDamage(attacker, defender, attackFromPosition);
   const damageFraction = remaining > 0 ? damage / remaining : 0;
-  const lethal = attackIsLethal(attacker, defender);
+  const lethal = damage > 0 && damage >= unitRemovalHealth(defender);
   const ownRemaining = unitRemainingHealth(attacker);
   let retaliationDamage = 0;
 
@@ -316,7 +316,7 @@ function attackScore(
       canUnitAttack(attackBoard, unit, defender, state.activeEffects ?? []),
   );
   const allyFollowUpDamage = reachingAllies.reduce(
-    (sum, unit) => sum + expectedAttackDamage(unit, defender),
+    (sum, unit) => sum + estimatedStrikeDamage(unit, defender),
     0,
   );
   // Breaking a Pack's first health bar is a flip, not a removal. Do not use
@@ -347,7 +347,7 @@ function attackScore(
     if (damage === 0) quality -= 35;
     else quality -= Math.min(18, Math.max(0, defender.defense - attacker.attack) * 3);
     if (provokesRetaliation(attacker, defender, attackFromPosition)) {
-      const retaliation = expectedAttackDamage(defender, attacker);
+      const retaliation = estimatedStrikeDamage(defender, attacker, defender.position, true);
       retaliationDamage = retaliation;
       if (
         attacker.commanderSlug &&
@@ -518,6 +518,7 @@ export function formationFitScore(
   bulk?: number,
   /** Printed combat value: premium shooters deserve the safest screened cell. */
   priority = 0,
+  reserve = false,
 ): number {
   let score = 0;
   const front = isFrontlineCell(combat, playerId, position);
@@ -543,6 +544,9 @@ export function formationFitScore(
     // Flying: front preferred, mid ok, pure back mild penalty.
     score += front ? 18 : back ? -8 : 8;
   }
+  // An expensive melee/flying damage dealer can counter from behind a cheaper
+  // screen. Do not treat every high-health Gold card as disposable frontage.
+  if (reserve && role !== "ranged") score += back ? 55 : front ? -45 : 10;
 
   // Prefer central columns (1,2) for reach / less edge waste. Ranged units get
   // a larger protected-corner bonus above and therefore still choose corners.
@@ -581,6 +585,24 @@ export function formationFitScore(
   return score;
 }
 
+function reserveCombatUnit(combat: CombatState, unit: CombatUnitState): boolean {
+  return (unit.grade === "gold" || unit.grade === "azure" || hasThreatAbility(unit)) &&
+    livingFriendlies(combat, unit.controllerId).some((ally) =>
+      ally.id !== unit.id && ally.position >= 0 && ally.type !== "ranged" &&
+      !ally.commanderSlug && unitThreatValue(ally) < unitThreatValue(unit) * 0.65);
+}
+
+/** All reposition/swap callers use the same whole-board objective, so changing
+ * one screen cannot create a swap cycle. Reach checks include flying landings
+ * and blockers; no projected attack is executed. */
+function placedUnitFit(state: GameState, combat: CombatState, unit: CombatUnitState): number {
+  const fit = formationFitScore(combat, unit.controllerId, unitRole(unit), unit.position,
+    unit.id, unit.maxHealth + unit.defense, unitThreatValue(unit), reserveCombatUnit(combat, unit));
+  const incoming = coordinatedReplyDamage(combat, unit, unit.position, undefined, state);
+  const exposure = Math.min(55, incoming * (unit.grade === "gold" || unit.grade === "azure" ? 7 : 3));
+  return fit - exposure;
+}
+
 /**
  * Placement: multi-unit formation — tanks/frontline melee screen, ranged in
  * back, column diversity, adjacency to complementary allies. Base stays in the
@@ -617,8 +639,7 @@ function placeScore(
       unit.controllerId === observation.playerId && unit.position >= 0);
     const formationValue = (candidate: CombatState) => allies.reduce((sum, unit) => {
       const current = candidate.units[unit.id];
-      return sum + formationFitScore(candidate, observation.playerId, unitRole(current),
-        current.position, current.id, current.maxHealth + current.defense, unitThreatValue(current));
+      return sum + placedUnitFit(observation.state as unknown as GameState, candidate, current);
     }, 0);
     const occupant = allies.find(unit => unit.id !== existing.id && unit.position === action.position);
     const units = { ...combat.units, [existing.id]: { ...existing, position: action.position } };
@@ -648,6 +669,13 @@ function placeScore(
       side
         ? side.attack * 3 + side.health * 2 + side.defense + Math.round(side.initiative / 2)
         : 0,
+      Boolean(def && (def.tier === "gold" || def.tier === "azure") &&
+        player.army.some((ally) => {
+          const allyDef = coreUnitDefinitions[ally.unitDefId];
+          const allySide = getUnitSide(ally.unitDefId, ally.side);
+          return ally.id !== armyUnit?.id && (allyDef?.tier === "bronze" || allyDef?.tier === "silver") &&
+            (allySide?.type ?? allyDef?.type) !== "ranged";
+        })),
     );
 
   if (armyUnit) {
@@ -689,15 +717,7 @@ function neutralPlacementScore(
       const unit = candidate.units[original.id];
       return (
         sum +
-        formationFitScore(
-          candidate,
-          guard.controllerId,
-          unitRole(unit),
-          unit.position,
-          unit.id,
-          unit.maxHealth + unit.defense,
-          unitThreatValue(unit),
-        )
+        placedUnitFit(observation.state as unknown as GameState, candidate, unit)
       );
     }, 0);
 
@@ -731,8 +751,7 @@ function swapScore(
 
   const formationValue = (candidate: CombatState) => Object.values(candidate.units)
     .filter(unit => unit.controllerId === observation.playerId && unit.position >= 0)
-    .reduce((sum, unit) => sum + formationFitScore(candidate, observation.playerId,
-      unitRole(unit), unit.position, unit.id, unit.maxHealth + unit.defense, unitThreatValue(unit)), 0);
+    .reduce((sum, unit) => sum + placedUnitFit(observation.state as unknown as GameState, candidate, unit), 0);
   const before = formationValue(combat);
   const after = formationValue({ ...combat, units: { ...combat.units,
     [a.id]: { ...a, position: b.position }, [b.id]: { ...b, position: a.position },
@@ -891,6 +910,9 @@ function moveUnitScore(
   // adjacent. A screen or a safe retreat can preserve the next shot.
   if (escapesLethalReply) return { score: Math.max(570, score), policy: "combat.escape-focus" };
   if (entersLethalReply) return { score: Math.min(350, score), policy: "combat.avoid-focus" };
+  if (reserveCombatUnit(combat, mover) && incomingNext > incomingNow && !mover.attackedThisActivation) {
+    return { score: Math.min(450, score), policy: "combat.preserve-counter-position" };
+  }
 
   if (next >= current && score < 400) {
     return { score: Math.min(score, 260), policy: "combat.hold-position" };
@@ -1159,6 +1181,28 @@ export function scoreCombatAction(
         );
       if (canStrikeNow) {
         return { score: WAIT_IDLE_SCORE, policy: "combat.wait-idle" };
+      }
+      // Wait behind a screen only when an unspent enemy has a legal approach
+      // to that screen and we can answer from the resulting board. Ranged
+      // enemies never supply this bait; a flyer still needs a free landing.
+      const state = observation.state as unknown as GameState;
+      if (reserveCombatUnit(combat, waiter) &&
+          coordinatedReplyDamage(combat, waiter, waiter.position, undefined, state) === 0) {
+        const screens = livingFriendlies(combat, side).filter((ally) =>
+          ally.id !== waiter.id && !ally.commanderSlug &&
+          unitThreatValue(ally) < unitThreatValue(waiter) * 0.65);
+        const canCounterApproach = enemies.some((enemy) =>
+          !enemy.activatedThisRound && enemy.type !== "ranged" && !isParalyzed(enemy) &&
+          getLegalMoveDestinations(combat, enemy, state).some((destination) => {
+            if (!screens.some((screen) => canUnitMoveAndAttack(combat, enemy, destination, screen, state))) return false;
+            const moved = { ...enemy, position: destination };
+            const board = { ...combat, units: { ...combat.units, [enemy.id]: moved } };
+            const projected = { ...state, combat: board };
+            return canUnitAttack(board, waiter, moved, state.activeEffects) ||
+              getLegalMoveDestinations(board, waiter, projected).some((reply) =>
+                canUnitMoveAndAttack(board, waiter, reply, moved, projected));
+          }));
+        if (canCounterApproach) return { score: 590, policy: "combat.wait-screen-counter" };
       }
       // A wounded body saves itself with Defend (500+) rather than acting last.
       if (waiter.maxHealth - unitRemainingHealth(waiter) >= 2) {

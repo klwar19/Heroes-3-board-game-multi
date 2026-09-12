@@ -1,5 +1,5 @@
 import model from "./learned-policy.json";
-import { replayPolicyBias } from "./replay-model";
+import { describeReplayAction, replayPolicyBias } from "./replay-model";
 import type { GameAction } from "../state";
 import type { ComputerObservation } from "./types";
 /** Small learned tie-break. The caller preserves hard safety/mandatory bands. */
@@ -7,18 +7,8 @@ export function learnedActionBias(
   observation: ComputerObservation,
   action: GameAction,
 ): number {
-  let described = action;
-  if (
-    action.type === "RESOLVE_DECK_SEARCH" &&
-    action.pick.kind === "revealed"
-  ) {
-    const choice = observation.state.pendingChoice;
-    if (choice?.type !== "DECK_SEARCH") return 0;
-    described = {
-      ...action,
-      cardId: choice.revealedCardIds[action.pick.index],
-    } as GameAction;
-  }
+  const choice = observation.state.pendingChoice;
+  const described = describeReplayAction(action, choice?.type === "DECK_SEARCH" ? choice.revealedCardIds : undefined);
   const fight = observation.state.combat;
   const own = fight
     ? Object.values(fight.units).filter(

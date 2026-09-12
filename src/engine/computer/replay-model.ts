@@ -12,7 +12,22 @@ export type PolicyAction = {
   buildingId?: string;
   mode?: string;
   kind?: string;
+  abilityId?: string;
+  optionIndex?: number | null;
+  asPowerBoost?: boolean;
+  drawOnly?: boolean;
+  purchases?: ReadonlyArray<{ unitDefId: string; kind: string }>;
+  pick?: { kind: string; index?: number; cardId?: string; remove?: boolean };
 };
+
+/** Both training and live selection resolve search indices through the actual
+ * revealed cards. A raw option index is never a card identity. */
+export function describeReplayAction(action: PolicyAction, revealed?: readonly string[]): PolicyAction {
+  if (action.type !== "RESOLVE_DECK_SEARCH") return action;
+  const cardId = action.pick?.kind === "revealed"
+    ? revealed?.[action.pick.index ?? -1] : action.pick?.cardId;
+  return { ...action, cardId };
+}
 export type ReplayPolicyModel = {
   version: number;
   matches: number;
@@ -26,9 +41,11 @@ export function replayPolicyKey(
   context: ReplayPolicyContext,
   action: PolicyAction,
 ): string | null {
-  const identity = action.cardId ?? action.unitDefId ?? action.buildingId;
+  const identity = action.cardId ?? action.unitDefId ?? action.buildingId ?? action.abilityId ??
+    (action.purchases?.length ? action.purchases.map((purchase) =>
+      `${purchase.kind}:${purchase.unitDefId}`).sort().join(",") : undefined);
   if (!identity) return null;
-  return [
+  const key = [
     context.stage,
     context.faction,
     context.combat,
@@ -38,6 +55,12 @@ export function replayPolicyKey(
     action.mode ?? "",
     action.kind ?? "",
   ].join("|");
+  // Keep distinct uses distinct: casting Magic Arrow and burning it for Power,
+  // or two choices of one artifact, must never receive the same outcome vote.
+  return key + (action.asPowerBoost ? "|power-fuel" : "") +
+    (action.drawOnly ? "|draw-only" : "") +
+    (action.pick?.remove ? "|remove-pick" : "") +
+    (action.optionIndex != null ? `|option:${action.optionIndex}` : "");
 }
 export function trainReplayPolicy(
   samples: Array<{

@@ -1,0 +1,23 @@
+# Gold-army spending and tactical decisions
+
+The computer's live action scoring now keeps an army that owns Gold or Azure out of its bronze opening/rebuild phase. Losing the last premium unit permits the existing recovery plan again. The three-body readiness requirement and opponent/guard strength assessments remain; Gold ownership replaces the opening Pack-count requirement.
+
+Paid bronze is limited to replacement level 1–2 faction Few units costing at most 4 gold and no other resources. These replacements are considered only with fewer than five army cards and fewer than two bronze cards, and only when no useful premium Population purchase is currently available. Silver and Gold purchases take priority. Bronze Pack/Stack purchases, level 3 bronze, and bundles mixing bronze with premium purchases are declined. Paid Hill Fort, reinforcement-discount, and map recruit choices follow the same restriction. Free rewards remain eligible. Unranked neutral cards are not assumed to be level 1–2 faction units.
+
+Gold/Flying damage dealers can deploy behind cheaper screens. Placement and tactics compare whole-formation quality and enemy legal attacks/move-and-attacks, including occupied flying landing squares. Swaps require a strict improvement. Wait can preserve a screened unit when an unspent melee/flying enemy has a legal approach to its screen and the protected unit can answer that approach. This is a plausible reply, not a prediction that a human must advance. Legal attacks retain their own damage, focus, and exposure scoring.
+
+An AI-only strike estimator uses the resolver's existing armor-piercing and damage-cap helpers, with the ordinary-attack/retaliation distinction and movement-triggered pierce. It feeds attack selection, allied focus estimates, and projected enemy replies. It does not change combat resolution or shared legal actions. Dice, secondary attacks, cards, and other conditional abilities remain approximate.
+
+Card acquisition/retention considers the owner's known spells, Power, Knowledge, counterspells, and ranged army. Hidden deck order and enemy hands are not used. Map discard searches no longer clip all valuable cards to an identical score. Power spending respects spell damage caps; paid expert Knowledge yields to an offered basic recall when the existing limit still allows a cast, while crown-free modes and enhanced Mysticism retrieval remain eligible. Counterspell conservation is deliberately narrow: a recorded zero-value attack-stat instant, or a plain otherwise-fatal melee exchange without another offered save. Complex effects retain normal counter priority.
+
+## Ranked replay evidence and learning
+
+The existing saved replay notes in `computer-ranked-lessons-2026-09-05.md` and the combat policy's PvP evidence describe premium units receiving opening attacks, commander losses to retaliation, and a Bloodlust cancellation followed by lethal damage. These observations motivate the tactical rules; they do not prove an alternative would win.
+
+Explicit offline training read stored ranked replays on 12 September 2026 and wrote the bundled runtime model: 19 usable matches, 10,586 outcome-labelled decisions (3,689 map, 862 PvP, 6,035 neutral). It retained 32 patterns across building, recruitment, spell, card, and reaction actions. Some retained patterns have zero bias. No PvP-specific or card-search pattern met the current three-independent-match threshold. The tactical and card-search improvements therefore use explicit heuristics, not claimed learned win-rate gains.
+
+Training and runtime share card-search identity mapping. Recruitment bundles and unit ability IDs now have feature identities. Power-fuel uses, draw-only uses, card options, and removing a searched card are distinguished from ordinary use/acquisition. Battle decisions use their recorded local battle result; mixed match votes and insufficient evidence do not become preferences. Existing runtime restrictions limit learning to nearby choices of the same action type; it cannot promote a rejected bronze purchase above an exit.
+
+## Review limits
+
+Reviewed the affected scoring, authoritative purchase costs, legal movement, attack ability reads, recall/cancellation resolution, and server runner connection. The final TypeScript check (`tsc --noEmit --pretty false`), focused ESLint check, and scoped `git diff --check` passed. No tests, simulations, matches, or mutation checks were created or run. These changes are local and have not been committed or deployed. Formation/reply estimates cannot guarantee first-round protection against every ability, spell, or human choice.
