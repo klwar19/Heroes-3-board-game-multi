@@ -1,3 +1,4 @@
+import { bronzeArmyNeedsWithdrawal } from "./necropolis-combat";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { bestAttackOpportunity, evaluateUnitAbility } from "./unit-ability-value";
 import { unitAbilities } from "@/data/units/abilities";
@@ -45,6 +46,7 @@ function combatIsHopeless(
   observation: ComputerObservation,
   combat: CombatState,
 ): boolean {
+  if (bronzeArmyNeedsWithdrawal(observation.state as unknown as GameState, observation.playerId, combat)) return true;
   const own = Object.values(combat.units).filter(
     (unit) =>
       unit.controllerId === observation.playerId &&
@@ -293,6 +295,7 @@ function attackScore(
   attackFromPosition: number,
   state: GameState,
 ): number {
+  if (bronzeArmyNeedsWithdrawal(state, playerId, combat)) return 180;
   const remaining = unitRemainingHealth(defender);
   const threat = unitThreatValue(defender);
   const damage = estimatedStrikeDamage(attacker, defender, attackFromPosition);
@@ -542,8 +545,8 @@ export function formationFitScore(
       score += Math.min(12, bulk ?? 0);
     }
   } else {
-    // Flying: front preferred, mid ok, pure back mild penalty.
-    score += front ? 18 : back ? -8 : 8;
+    // Flyers counter from the second row; melee bodies hold the first.
+    score += front ? -12 : back ? 26 : 8;
   }
   // An expensive melee/flying damage dealer can counter from behind a cheaper
   // screen. Do not treat every high-health Gold card as disposable frontage.
@@ -563,7 +566,7 @@ export function formationFitScore(
   if (sameCol >= 2) score -= 10 * (sameCol - 1);
 
   // Ranged wants a friendly melee adjacent in front (screen).
-  if (role === "ranged") {
+  if (role === "ranged" || role === "flying") {
     const screened = friends.some(
       (unit) =>
         unitRole(unit) === "melee" &&
@@ -577,7 +580,7 @@ export function formationFitScore(
   if (role === "melee" && front) {
     const coversRanged = friends.some(
       (unit) =>
-        unitRole(unit) === "ranged" &&
+        (unitRole(unit) === "ranged" || unitRole(unit) === "flying") &&
         isAdjacent(unit.position, position),
     );
     if (coversRanged) score += 12;
@@ -587,6 +590,8 @@ export function formationFitScore(
 }
 
 function reserveCombatUnit(combat: CombatState, unit: CombatUnitState): boolean {
+  if (unit.type === "flying" && livingFriendlies(combat, unit.controllerId).some(ally =>
+      ally.id !== unit.id && unitRole(ally) === "melee" && !ally.commanderSlug)) return true;
   return (unit.grade === "gold" || unit.grade === "azure" || hasThreatAbility(unit)) &&
     livingFriendlies(combat, unit.controllerId).some((ally) =>
       ally.id !== unit.id && ally.position >= 0 && ally.type !== "ranged" &&
@@ -670,7 +675,7 @@ function placeScore(
       side
         ? side.attack * 3 + side.health * 2 + side.defense + Math.round(side.initiative / 2)
         : 0,
-      Boolean(def && (def.tier === "gold" || def.tier === "azure") &&
+      Boolean(def && (role === "flying" || def.tier === "gold" || def.tier === "azure") &&
         player.army.some((ally) => {
           const allyDef = coreUnitDefinitions[ally.unitDefId];
           const allySide = getUnitSide(ally.unitDefId, ally.side);
@@ -779,6 +784,47 @@ function moveUnitScore(
   const mover = combat.units[action.unitId];
   if (!mover) return null;
 
+  if (bronzeArmyNeedsWithdrawal(observation.state as unknown as GameState, observation.playerId, combat)) {
+    const before = distanceToNearestEnemy(combat, mover.controllerId, mover.position) ?? 0;
+    const after = distanceToNearestEnemy(combat, mover.controllerId, action.destination) ?? 0;
+    const beforeIncoming = coordinatedReplyDamage(combat, mover, mover.position, undefined, observation.state as unknown as GameState);
+    const afterIncoming = coordinatedReplyDamage(combat, mover, action.destination, undefined, observation.state as unknown as GameState);
+    // A stationary ranged guard can remain the nearest enemy on every safe
+    // square. Still escape approaching melee guards instead of defending in
+    // their charge lane merely because that nearest-enemy distance ties.
+    const melee = livingEnemyUnits(combat, mover.controllerId).filter(enemy =>
+      enemy.type !== "ranged" && !enemy.activatedThisRound && enemy.position >= 0);
+    const meleeDistance = (position: number) => melee.reduce((sum, enemy) =>
+      sum + getBattlefieldDistance(position, enemy.position), 0);
+    const meleeGain = meleeDistance(action.destination) - meleeDistance(mover.position);
+    const spacing = (position: number) => livingEnemyUnits(combat, mover.controllerId)
+      .filter(enemy => !enemy.activatedThisRound && enemy.position >= 0)
+      .reduce((sum, enemy) => sum + getBattlefieldDistance(position, enemy.position), 0);
+    const spacingGain = spacing(action.destination) - spacing(mover.position);
+    // Preserve the formation, not just the active unit. A retreating flyer
+    // may need to block a charge lane until the slower shooter can withdraw.
+    const armyRisk = (position: number) => {
+      const projected = { ...combat, units: { ...combat.units, [mover.id]: { ...mover, position } } };
+      return livingFriendlies(projected, mover.controllerId).reduce((sum, friend) => {
+        // Withdrawal should survive a +1 die, and elemental attacks ignore
+        // printed Defense. Keep this conservative projection in retreat only.
+        const units = Object.fromEntries(Object.entries(projected.units).map(([id, unit]) => [id,
+          unit.controllerId === mover.controllerId ? unit : { ...unit,
+            attack: unit.attack + 1 + (unit.abilities.includes("elemental-damage") ? friend.defense : 0) }]));
+        const incoming = coordinatedReplyDamage({ ...projected, units }, friend, friend.position, undefined, observation.state as unknown as GameState);
+        const fraction = incoming / Math.max(1, unitRemovalHealth(friend));
+        return sum + Math.min(2, fraction) * unitThreatValue(friend) + (fraction >= 1 ? 60 : 0);
+      }, 0);
+    };
+    const protectionGain = armyRisk(mover.position) - armyRisk(action.destination);
+    // Move once to a safer square, then defend. Never spend round 1 charging
+    // or poking while the plan is to preserve the army and withdraw.
+    return { score: protectionGain > 1 || (protectionGain >= 0 && afterIncoming <= beforeIncoming &&
+        (after > before || afterIncoming < beforeIncoming || meleeGain > 0 || spacingGain > 0))
+      ? 700 + Math.min(100, protectionGain * 4) + Math.min(20, after * 3) + Math.min(12, meleeGain * 3) + Math.min(8, spacingGain * 2) - Math.min(30, afterIncoming * 3) : 180,
+      policy: "combat.bronze-disengage" };
+  }
+
   // In player-controlled-neutrals mode the decision owner is a player, but the
   // acting guard remains controlled by the neutral side. Score allies, enemies
   // and distances from the unit's ACTUAL side (the attack branch already did;
@@ -792,9 +838,12 @@ function moveUnitScore(
 
   const role = unitRole(mover);
   const state = observation.state as unknown as GameState;
-  const incomingNow = combat.context?.kind === "player"
+  const evaluateReplies = combat.context?.kind === "player" ||
+    (combat.context?.kind === "neutral" && side === combat.attackerPlayerId &&
+      (state.players[side]?.factionId === "necropolis" || mover.type === "flying"));
+  const incomingNow = evaluateReplies
     ? coordinatedReplyDamage(combat, mover, mover.position, undefined, state) : 0;
-  const incomingNext = combat.context?.kind === "player"
+  const incomingNext = evaluateReplies
     ? coordinatedReplyDamage(combat, mover, action.destination, undefined, state) : 0;
   const remaining = unitRemainingHealth(mover);
   const escapesLethalReply = incomingNow >= remaining && incomingNext < remaining;
@@ -822,6 +871,14 @@ function moveUnitScore(
     score = 260;
   }
 
+  if (state.players[observation.playerId]?.factionId === "necropolis" && combat.context.kind === "neutral" &&
+      side === observation.playerId && !mover.attackedThisActivation) {
+    const attacks = livingEnemyUnits(combat, side).filter(enemy=>
+      canUnitMoveAndAttack(combat, mover, action.destination, enemy, state));
+    const best = Math.max(0,...attacks.map(enemy=>attackScore(combat,side,mover,enemy,action.destination,state)));
+    if (best >= ATTACK_FLOOR) score += 110 + Math.min(60,best - ATTACK_FLOOR);
+  }
+
   // Ranged: strong penalty for walking adjacent to an enemy (melee range).
   if (role === "ranged") {
     const enemies = livingEnemyUnits(combat, side);
@@ -847,7 +904,8 @@ function moveUnitScore(
   // threatened (screen), or between enemy and that ranged.
   if (role === "melee" || role === "flying") {
     const friends = livingFriendlies(combat, side).filter(
-      (unit) => unit.id !== mover.id && unitRole(unit) === "ranged",
+      (unit) => unit.id !== mover.id && (unitRole(unit) === "ranged" ||
+        (role === "melee" && unitRole(unit) === "flying")),
     );
     for (const ranged of friends) {
       // Threats near THIS ranged ally. Use board distance per enemy — the old

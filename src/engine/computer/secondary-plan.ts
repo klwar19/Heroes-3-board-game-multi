@@ -3,13 +3,13 @@ import type { GameState, HeroState } from "../state";
 import {
   armyReadyForContestedFight,
   developmentResourceTargets,
-  armyDevelopmentProfile,
-  hasOpenedFarEconomy,
+  hasGoldArmy,
 } from "./development";
 import {
   collectMapObjectives,
   objectiveDistanceField,
   primaryMapObjective,
+  isFreeSeizeObjective,
 } from "./map-navigation";
 /** Hire for a concrete short route, not merely because the treasury can pay.
  * Two jobs or a premium income capture must be reachable within two turns. */
@@ -22,11 +22,9 @@ export function secondaryHeroOpportunity(
   const reserve = developmentResourceTargets(state, playerId);
   if (
     !player ||
-    !hasOpenedFarEconomy(state, playerId) ||
+    !hasGoldArmy(state, playerId) ||
     !armyReadyForContestedFight(state, playerId) ||
-    player.resources.gold < reserve.gold + 10 ||
-    (armyDevelopmentProfile(state, playerId).goldUnlocked &&
-      armyDevelopmentProfile(state, playerId).goldUnits === 0)
+    player.resources.gold < reserve.gold + 10
   )
     return { worthwhile: false, jobs: 0 };
   const main = Object.values(state.heroes ?? {}).find(
@@ -66,7 +64,10 @@ export function secondaryHeroOpportunity(
     const jobs = collectMapObjectives(state, scout)
       .filter(
         (o) =>
-          ["flaggable", "visitable", "explore"].includes(o.kind) &&
+          // "town" passes isFreeSeizeObjective but means an enemy town — a
+          // siege is not a collection job for the fresh scout.
+          o.kind !== "town" &&
+          isFreeSeizeObjective(o, state) &&
           o.spaceId !== mainGoal?.spaceId,
       )
       .filter((o) => {
@@ -80,7 +81,7 @@ export function secondaryHeroOpportunity(
       return (
         o.kind === "flaggable" &&
         (f?.location === "settlement" ||
-          (f?.location === "mine" && (f.resource === "gold" || f.resource === "valuables")))
+          f?.location === "mine")
       );
     });
     const worthwhile = jobs.length >= 2 || Boolean(premium);

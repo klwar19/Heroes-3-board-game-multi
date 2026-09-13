@@ -3,8 +3,9 @@ import { evaluateUnitAbility, abilityDamageValue, abilityHealValue, activationUt
 import { getEnchanterActivationAbility } from "../unit-abilities";
 import type { GameAction, GameState, PendingChoice } from "../state";
 import { isAdjacent } from "../battlefield";
-import { cardKeepValue, crownsAvailable } from "./card-policy";
+import { cardHandValue, cardKeepValue, crownsAvailable, scholarRetrievalValue } from "./card-policy";
 import { developmentResourceTargets } from "./development";
+import { inlineLegionSavings, upcomingFight } from "./card-planning";
 import {
   BANK_ENGAGE_RATIO,
   creatureBankStrength,
@@ -64,8 +65,11 @@ function developmentGainValue(
 /** Acquire for the current plan as well as printed quality. Combat searches
  * retain tactical card valuation; economy bonuses apply only on the map. */
 function acquisitionValue(cardId: string, observation: ComputerObservation): number {
-  const base = cardKeepValue(cardId, observation);
+  const base = upcomingFight(observation) ? cardHandValue(cardId, observation) : cardKeepValue(cardId, observation);
   const card = cardLibrary[cardId];
+  if (cardId === "spell.magic_arrow" && observation.state.players[observation.playerId] &&
+      !observation.state.players[observation.playerId].hand.includes(cardId) &&
+      !observation.state.players[observation.playerId].spellBook?.includes(cardId)) return base + 35;
   if (!card || observation.state.combat || card.implementationStatus !== "implemented") return base;
   const effects = card.effect.type === "CHOOSE_ONE"
     ? card.effect.options.map((option) => option.effect)
@@ -207,7 +211,7 @@ function scoreCombatDiscard(
     return CHOICE_BASE + 5;
   }
   // Prefer discarding the LEAST valuable named card (invert keep value).
-  const value = cardKeepValue(action.cardId, observation);
+  const value = cardHandValue(action.cardId, observation);
   return CHOICE_BASE + Math.max(0, 50 - Math.min(50, value));
 }
 
@@ -636,7 +640,7 @@ function scorePositionOption(
     // very pick, an infinite loop. Score it strictly below the Done/skip exit
     // (and below any real card) so anything else, or declining, always wins.
     if (reopensDiscardPick(cardId)) return CHOICE_BASE - 50;
-    return acquisitionScore(acquisitionValue(cardId, observation));
+    return acquisitionScore(scholarRetrievalValue(cardId, observation));
   }
 
   if (context === "hand-discard" && choice.handDiscard) {
@@ -645,7 +649,7 @@ function scorePositionOption(
     // Discard lowest value.
     return (
       CHOICE_BASE +
-      Math.max(0, 50 - Math.min(50, cardKeepValue(cardId, observation)))
+      Math.max(0, 50 - Math.min(50, cardHandValue(cardId, observation)))
     );
   }
 
@@ -828,15 +832,12 @@ function scorePositionOption(
   }
 
   if (context === "diplomacy-recruit") {
-    // The trailing inline Legion offers (2026-08-03) score BELOW decline: they
-    // re-open the same choice, so a competitive score could cycle the whole hand
-    // of Legion pieces, and every pre-existing option index keeps the score it
-    // had before they were added (the seeded single-player runs stay identical).
-    // A computer seat therefore never spends a Legion piece here — a documented
-    // limit, not an oversight.
     const legionCount = choice?.type === "OPTION_CHOICE" ? choice.diplomacyRecruit?.legionPlays?.length ?? 0 : 0;
     if (legionCount > 0 && optionIndex >= choice!.options.length - legionCount) {
-      return CHOICE_BASE + 2;
+      const offer = choice.diplomacyRecruit!.legionPlays![optionIndex - (choice.options.length - legionCount)];
+      const savings = offer ? inlineLegionSavings(observation.state as unknown as GameState, observation.playerId,
+        offer.unitDefId, offer.amount, choice.diplomacyRecruit?.goldReduction) : 0;
+      return CHOICE_BASE + (savings > 0 ? 50 + Math.min(20, savings) : 2);
     }
     // Free / cheap neutral recruit — take it.
     if (looksLikeDecline(optionLabel(choice, optionIndex))) {

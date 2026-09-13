@@ -1,3 +1,7 @@
+import { cardLibrary } from "@/data/cards/library";
+import { hasNecromancyPlan, necropolisFarArmyReady } from "./necromancy-plan";
+import { openingBronzeCoreReady, committedGoldInvestment, nextGoldLadderStep } from "./development";
+import { secondFarFightNeedsSilver, securedFarTileIds } from "./far-sweep";
 import { isMarketLocation, locationDefinitions } from "@/data/map/locations";
 import {
   CREATURE_BANKS,
@@ -23,6 +27,7 @@ import {
   listKnownTeleportDestinations,
   materializeTileFields,
   neutralBattleLevel,
+  neutralArmyDifficultyForField,
   playerHoldsTentFlag,
   pvpAttacksBanned,
 } from "../adventure";
@@ -33,6 +38,7 @@ import { equipmentEnabled, heroEquipmentSlot } from "../anime-equipment";
 import { canHeroImmediatelyAccessAdjacentTile } from "../adventure-reducer";
 import { isComputerPlayer, playersAreAllied } from "./control";
 import { repeatsFailedFight } from "./memory";
+import { isOpeningFarMaterialMine, isOpeningFarSweepField } from "./far-sweep";
 import { wantsMarketVisit } from "./market-trades";
 import { premiumCombatMovementReserve } from "./combat-movement";
 import { polishQuickCombatEnabled, polishQuickCombatOutcome } from "../polish-quick-combat";
@@ -61,6 +67,7 @@ import {
   armyReadyForContestedFight,
   assessDwellingRush,
   developmentResourceTargets,
+  hasGoldArmy,
   hasOpenedFarEconomy,
   shouldLaunchBronzeRush,
 } from "./development";
@@ -390,7 +397,8 @@ export function canBeatGuardedField(
   // covered by this neutral-only gate.
   const rushProfile = armyDevelopmentProfile(state, hero.controllerId);
   const fieldDifficulty = field.location === "random_town" ? 7 : field.difficulty ?? 0;
-  const premiumEconomy = isPremiumEconomyField(field);
+  const premiumEconomy = isPremiumEconomyField(field) ||
+    (hero.kind === "main" && isOpeningFarMaterialMine(state, hero.controllerId, field));
   // With optional PvP Neutral Control, the next live HUMAN seat can coordinate
   // guard focus instead of following the stock neutral script. When free guard
   // control is enabled (must-attack OFF), require formation depth for a real
@@ -460,6 +468,37 @@ export function canBeatGuardedField(
   // from the moment the Pack core stood until Far economy opened, flatlining
   // hero levels at 2-3 for the whole mid-game.
   if (hero.kind === "main" && guaranteedQuickWin) return true;
+  // After the income opening, finish the first Gold Pack before risking
+  // both Gold Few cards in an optional bank/deep guard. Losing the lower
+  // Few repeatedly otherwise restarts recruitment and starves the upgrade.
+  if (hero.kind === "main" && !field.flagOwnerId &&
+      (fieldCreatureBankId(field) || fieldDifficulty >= 4) &&
+      committedGoldInvestment(state, hero.controllerId) &&
+      nextGoldLadderStep(state, hero.controllerId)?.kind === "reinforce" &&
+      !state.players[hero.controllerId].army.some(unit => unit.side === "pack" &&
+        ["gold", "azure"].includes(coreUnitDefinitions[unit.unitDefId]?.tier))) return false;
+  // Other towns pay for their Bronze core and bring a real Silver body to
+  // the next Far III. This is AI planning only; quick wins remain free.
+  if (hero.kind === "main" && state.players[hero.controllerId]?.factionId !== "necropolis" &&
+      fieldDifficulty >= 3 && field.tileInstanceId &&
+      state.adventure?.tiles[field.tileInstanceId]?.group === "far") {
+    const higherTier = state.players[hero.controllerId].army.some(unit => unit.side !== "bank" &&
+      ["silver", "gold", "azure"].includes(coreUnitDefinitions[unit.unitDefId]?.tier));
+    if (!higherTier && (!openingBronzeCoreReady(state, hero.controllerId) ||
+        secondFarFightNeedsSilver(state, hero.controllerId, field))) return false;
+  }
+  if (hero.kind === "main" && hasNecromancyPlan(state, hero.controllerId) &&
+      ["hard", "impossible"].includes(neutralArmyDifficultyForField(state, field)) &&
+      fieldDifficulty >= 2 && (field.location === "settlement" || field.location === "mine") &&
+      field.tileInstanceId && state.adventure?.tiles[field.tileInstanceId]?.group === "far") {
+    const army = state.players[hero.controllerId].army;
+    const silver = army.some(u=>u.side!=="bank" && ["silver","gold","azure"].includes(coreUnitDefinitions[u.unitDefId]?.tier));
+    if (!silver && !necropolisFarArmyReady(state, hero.controllerId)) return false;
+    const otherFarIncome = Object.values(state.adventure.fields).some(f=> f.tileInstanceId &&
+      f.tileInstanceId !== field.tileInstanceId && state.adventure!.tiles[f.tileInstanceId]?.group === "far" &&
+      f.flagOwnerId === hero.controllerId && (f.location === "settlement" || f.location === "mine"));
+    if (fieldDifficulty >= 3 && otherFarIncome && !silver) return false;
+  }
   if (repeatsFailedFight(state, hero.controllerId, field.spaceId)) return false;
   // Easy neutrals the hero level already covers (difficulty ≤ 1): ALWAYS take.
   // Older gates parked the army for several turns "waiting for its core / Far
@@ -475,6 +514,13 @@ export function canBeatGuardedField(
     return humanNeutralFormationReady &&
       currentArmyCoversGuardField(state, hero.controllerId, fieldDifficulty, field);
   }
+  // A held Necromancy can complete the Bronze core through a level-II
+  // fight before the first Far III commitment. Home guards remain first.
+  if (hero.kind === "main" && hasNecromancyPlan(state, hero.controllerId) &&
+      fieldDifficulty === 2 && !fieldCreatureBankId(field) && !field.customGuardUnits?.length &&
+      heroBattleLevel >= 2 && rushProfile.totalUnits >= 3 && rushProfile.bronzePacks >= 1 &&
+      !necropolisFarArmyReady(state, hero.controllerId) &&
+      state.players[hero.controllerId].hand.some(id=>cardLibrary[id]?.effect.type === "NECROMANCY_REINFORCE")) return true;
   // establish-core: only refuse difficulty-2+ fair/hard neutrals (equal or
   // under-level). Difficulty-1 is handled above.
   const rebuildingCoreCannotRiskNeutral =
@@ -2028,17 +2074,79 @@ export function primaryMapObjective(
     ? bestHomeOpeningObjective(state, hero, openingRemaining)
     : null;
 
+  // Fund the next army milestone with attainable resources: Silver after
+  // the first Far capture, then the Gold dwelling/recruit/upgrade ladder.
+  // Gate on STICKY-INDEPENDENT facts only: needsPremiumSilverBreakthrough's
+  // committed-target branch reads the sticky objective this block would then
+  // overwrite with a resource source, flipping the predicate every decision
+  // (the known gate-oscillation stall class).
+  if (hero.kind === "main" && homeRemaining.length === 0 &&
+      ((state.computerMemory?.[hero.controllerId]?.settlementLossStreak ?? 0) >= 2 ||
+        securedFarTileIds(state, hero.controllerId).size > 0)) {
+    const targets = developmentResourceTargets(state, hero.controllerId);
+    const resources = state.players[hero.controllerId].resources;
+    for (const resource of ["valuables", "buildingMaterials", "gold"] as const) {
+      if (resources[resource] >= targets[resource]) continue;
+      const sources = actionable.filter(objective => {
+        const field = state.adventure?.fields[objective.spaceId];
+        if (!field || objective.kind === "explore" || field.location === "settlement") return false;
+        if (field.location === "mine") return field.resource === resource && field.flagOwnerId !== hero.controllerId;
+        const interaction = locationDefinitions[field.location]?.interaction;
+        return interaction?.type === "GAIN_RESOURCES" && (interaction[resource] ?? 0) > 0;
+      });
+      if (sources.length > 0) {
+        // bestObjectiveOf re-resolves distances with peaceful visits and can
+        // come back empty; fall through to the capture blocks instead of
+        // returning null (which would leave the hero with no objective).
+        const funding = sources.find(objective => objective.spaceId === stickySpaceId) ??
+          bestObjectiveOf(state, hero, sources, true, true);
+        if (funding) return funding;
+      }
+    }
+  }
+
   // FAR II–III income is the opening objective, starting as soon as the army
   // can fight (including rounds 2–3). Pick an actionable Settlement first,
   // then gold/valuables mines, before a sticky trinket, shop or conquest march.
   // Keep this on the AI's target path: shared movement and battle legality are
   // unchanged, and unreachable/unbeatable guards were filtered above.
+  if (hero.kind === "main" && homeRemaining.length === 0 && !hasGoldArmy(state, hero.controllerId)) {
+    const sweep = objectives.filter(objective => {
+      const field = state.adventure?.fields[objective.spaceId];
+      return field && isOpeningFarSweepField(state, hero.controllerId, field) &&
+        (objective.kind === "guard" || isFreeSeizeObjective(objective, state)) &&
+        (!isFieldGuarded(field) || canBeatGuardedField(state, hero, field)) &&
+        distanceFromHeroTo(state, hero, objective.spaceId, true) !== undefined;
+    });
+    const captures = sweep.filter(objective => {
+      const field = state.adventure!.fields[objective.spaceId];
+      return field.location === "settlement" || field.location === "mine";
+    });
+    // The sweep used to return before the round-four scheduling below, so
+    // a distant sticky settlement could silently defeat the opening deadline.
+    const attackRound = (objective: MapObjective) => {
+      const field = state.adventure!.fields[objective.spaceId];
+      const distance = distanceFromHeroTo(state, hero, objective.spaceId, true) ?? Infinity;
+      return state.round + Math.max(0, Math.ceil((distance + premiumCombatMovementReserve(state, hero, field) -
+        hero.movementPoints) / Math.max(1, heroMovementMax(state, hero))));
+    };
+    const earliest = Math.min(...captures.map(attackRound));
+    const timely = captures.filter(objective => attackRound(objective) <= Math.max(4, earliest));
+    const remaining = timely.length > 0 ? timely : sweep;
+    if (remaining.length > 0) return remaining.find(objective => objective.spaceId === stickySpaceId) ??
+      bestObjectiveOf(state, hero, remaining, true, true);
+  }
   if (hero.kind === "main" && homeRemaining.length === 0) {
     const secured = new Set<string>();
+    let securedSettlements = 0;
+    const settlementTarget = hasGoldArmy(state, hero.controllerId) ? 1 : 2;
     for (const field of Object.values(state.adventure?.fields ?? {})) {
       const tile = field.tileInstanceId && state.adventure?.tiles[field.tileInstanceId];
       if (field.flagOwnerId !== hero.controllerId || !tile || tile.group !== "far" || tile.faceDown) continue;
-      if (field.location === "settlement") secured.add("settlement");
+      if (field.location === "settlement") {
+        secured.add("settlement");
+        securedSettlements++;
+      }
       else if (field.location === "mine" && field.resource) secured.add(field.resource);
     }
     const farEconomy = objectives.filter(objective => {
@@ -2055,7 +2163,9 @@ export function primaryMapObjective(
     const committedIncome = farEconomy.find(objective => {
       if (objective.spaceId !== stickySpaceId) return false;
       const field = state.adventure!.fields[objective.spaceId];
-      return !secured.has(field.location === "settlement" ? "settlement" : field.resource!);
+      return field.location === "settlement" ? securedSettlements < settlementTarget :
+        !secured.has(field.resource!) && (settlementTarget === 1 || securedSettlements >= settlementTarget ||
+          !farEconomy.some(candidate => state.adventure?.fields[candidate.spaceId]?.location === "settlement"));
     });
     if (committedIncome) return committedIncome;
     // Prefer a capture by round 4 over a Settlement that cannot be reached
@@ -2073,14 +2183,22 @@ export function primaryMapObjective(
     const earliest = Math.min(...schedule.map(candidate => candidate.round));
     const timely = schedule.filter(candidate => candidate.round <= Math.max(4, earliest))
       .map(candidate => candidate.objective);
-    const settlements = timely.filter(objective =>
+    // Timely settlements keep the round-4 deadline preference; the pre-Gold
+    // two-settlement plan may still fall back to a distant one, but never
+    // while a timely settlement (or the earliest capture) is a settlement.
+    const timelySettlements = timely.filter(objective =>
       state.adventure?.fields[objective.spaceId]?.location === "settlement",
     );
+    const settlements = timelySettlements.length > 0 || settlementTarget !== 2
+      ? timelySettlements
+      : farEconomy.filter(objective =>
+          state.adventure?.fields[objective.spaceId]?.location === "settlement",
+        );
     const newMines = timely.filter(objective => {
       const field = state.adventure!.fields[objective.spaceId];
       return field.location === "mine" && field.resource && !secured.has(field.resource);
     });
-    const captures = !secured.has("settlement") && settlements.length > 0 ? settlements :
+    const captures = securedSettlements < settlementTarget && settlements.length > 0 ? settlements :
       newMines.length > 0 ? newMines : timely;
     if (captures.length > 0) {
       return captures.find(objective => objective.spaceId === stickySpaceId) ??
@@ -2089,6 +2207,18 @@ export function primaryMapObjective(
   }
 
   if (openingObjective) return openingObjective;
+
+  // The post-Gold collector consumes existing leftovers before opening more
+  // land. It must not chase the main hero's current objective.
+  if (hero.kind === "secondary" && hasGoldArmy(state, hero.controllerId)) {
+    const mainTarget = state.computerMemory?.[hero.controllerId]?.stickyObjectiveSpaceId;
+    // "town" passes isFreeSeizeObjective but is an enemy town — a siege, not a
+    // leftover pickup for the fresh collector.
+    const leftovers = actionable.filter(objective =>
+      objective.spaceId !== mainTarget && objective.kind !== "town" &&
+      isFreeSeizeObjective(objective, state));
+    if (leftovers.length > 0) return bestObjectiveOf(state, hero, leftovers, false);
+  }
 
   // After the two-turn home opening, find income land before spending another
   // turn on home leftovers. A known attainable FAR capture returned above.

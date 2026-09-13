@@ -1,3 +1,4 @@
+import { reinforceCostFor } from "../adventure";
 import { cardLibrary } from "@/data/cards/library";
 import { unitAbilities } from "@/data/units/abilities";
 import { coreUnitDefinitions } from "@/data/factions/units";
@@ -8,7 +9,6 @@ import {
 import { cancelSpellAllowsSchoolAndLevel, getSpellDamageAmount, getSpellDiceRollCount } from "../effects";
 import { abilityExpertIsCrownFree, spellLimitFor } from "../ruleset";
 import { getDamageCapPerSpell } from "../unit-abilities";
-import { houseRuleEnabled } from "../house-rules";
 import { balanceCardLibrary } from "../community-balance-cards";
 import { resolvedSpellPowerForStackItem } from "../legal-actions";
 import type {
@@ -31,6 +31,8 @@ import {
   developmentResourceTargets,
 } from "./development";
 import { collectMapObjectives } from "./map-navigation";
+import { legionPurchaseSavings, readySpells, saveLegionForAfterFight, upcomingFight } from "./card-planning";
+import { getPermanentCardIds, permanentLimitFor } from "../permanents";
 import {
   expectedAttackDamage,
   livingEnemyUnits,
@@ -221,6 +223,42 @@ function primaryEffect(
   return card.effect;
 }
 
+/** Current hand utility differs from long-term acquisition quality. */
+export function cardHandValue(cardId: string, observation: ComputerObservation): number {
+  const state = observation.state as unknown as GameState;
+  const card = balanceCardLibrary(state, cardLibrary)[cardId];
+  if (!card) return 0;
+  const fight = upcomingFight(observation);
+  let value = cardKeepValue(cardId, observation);
+  const effect = card.effect;
+  if (cardId === "spell.magic_arrow") return Math.max(value, fight ? 90 : 75);
+  if (effect.type === "NECROMANCY_REINFORCE" && state.players[observation.playerId]?.factionId === "necropolis") return Math.max(value, 85);
+  const spells = readySpells(state, observation.playerId).filter(spell =>
+    !fight || spell.timing !== "map" || (effect.type === "RECALL_SPELL" && !state.combat));
+  if ((effect.type === "ADD_SPELL_POWER" || effect.type === "RECALL_SPELL" ||
+      effect.type === "SET_SPELL_POWER_MAX") && !spells.length && !card.permanent) value = Math.min(value, 12);
+  if (spells.length && (effect.type === "ADD_SPELL_POWER" || effect.type === "RECALL_SPELL" ||
+      effect.type === "SET_SPELL_POWER_MAX") && !card.permanent) value = Math.max(value, 65);
+  const school = card.permanentEffect?.schoolBonus?.school;
+  if (school && !spells.some(spell => spell.spellSchools?.includes(school) || spell.spellSchools?.includes("any"))) value = 20;
+  if (card.id === "ability.resistance") {
+    if (fight?.kind === "neutral") return 8;
+    if (fight?.kind === "pvp") return Math.max(value, 80);
+  }
+  if (fight) {
+    // These are spendable before entering combat, or saved for its reward purchase.
+    if (!state.combat && (card.id === "ability.estates" || card.id === "spell.view_air" || card.id.includes("_of_legion"))) return Math.max(value, 75);
+    if (card.id === "ability.learning") return Math.max(value, 70);
+    if (card.id === "ability.scholar" || card.id === "ability.luck" || card.id === "ability.leadership") return Math.max(value, 80);
+    if (card.id === "ability.diplomacy") return (!state.combat || state.combat.prep) && fight.kind === "neutral" &&
+      (cardValueContext(state, observation.playerId).ownHeroLevel ?? 0) >= 3 ? Math.max(value, 70) : 8;
+    if (card.id === "war_machine.first_aid_tent") return Math.max(value, 70);
+    if (card.timing === "map" || MAP_ECONOMY_EFFECTS.has(effect.type)) value = Math.min(value, 35);
+    if (card.kind === "spell" && card.timing !== "map") value += 20;
+  }
+  return value;
+}
+
 function combatUnitFromTarget(
   observation: ComputerObservation,
   target: TargetRef | undefined,
@@ -293,7 +331,8 @@ export function cardKeepValue(
     // Only our known hand/discard/permanents; never inspect hidden draw order
     // or an opponent's hand. Acquisitions and discards share this valuation.
     const owner = view.state.players?.[view.playerId];
-    const known = [...(owner?.hand ?? []), ...(owner?.discard ?? []), ...(owner?.permanents ?? [])]
+    const known = [...(owner?.hand ?? []), ...(owner?.discard ?? []), ...(owner?.permanents ?? []),
+      ...(owner?.spellBook ?? []), ...(owner?.spellBookUsed ?? [])]
       .map((id) => cardLibrary[id]).filter((entry) => entry?.implementationStatus === "implemented");
     const spells = known.filter((entry) => entry.kind === "spell").length;
     const power = known.filter((entry) => entry.effect.type === "ADD_SPELL_POWER").length;
@@ -313,6 +352,16 @@ export function cardKeepValue(
       }).length;
       value += ranged > 0 ? Math.min(18, ranged * 9) : -18;
     }
+    const context = cardValueContext(view.state, view.playerId);
+    if (card.id === "ability.wisdom" && !context.mageGuildBuilt) value = 8;
+    if (card.id === "ability.pathfinding" && (context.ownHeroLevel ?? 1) < 3) value = 18;
+    if (card.id === "ability.artillery" || card.id === "ability.ballistics" || card.id.startsWith("ability.basic_")) value = Math.min(value, 18);
+    if (card.id === "ability.tactics") value = Math.min(value, 25);
+    if (card.id === "ability.eagle_eye") value = Math.max(value, spells < 2 ? 80 : 60);
+    if (card.id === "ability.learning" && (context.ownHeroLevel ?? 1) < 7) value = Math.max(value, 70);
+    if (card.id === "ability.diplomacy") value = (context.ownHeroLevel ?? 1) >= 3 ? Math.max(value, 65) : 20;
+    if (card.id === "ability.offense" || card.id === "ability.armorer") value = Math.max(value, 80);
+    if (card.id === "ability.sorcery" && spells === 0) value = 20;
   }
   return value;
 }
@@ -498,6 +547,7 @@ function scoreStatReaction(
       : ("amount" in effect ? (effect.amount as number) : 1);
 
   if (effect.type === "ADD_SPELL_POWER" || card.statisticType === "power") {
+    if (pendingViewAirGold(observation)) return 180;
     const impact = pendingSpellBoostImpact(observation, amount);
     if (impact === "lethal-already" || impact === "no-ladder-step") return 1_020;
     return 1_100 + amount * 10 + modeBonus(mode);
@@ -659,6 +709,64 @@ function counteredInstantHasNoBenefit(
   return !furtherDefense && pending.damage - record.appliedAmount - 1 >= unitRemovalHealth(pending.defender);
 }
 
+/** Scholar must buy a usable card, and must never retrieve another retriever. */
+export function scholarRetrievalValue(cardId: string, observation: ComputerObservation): number {
+  const state = observation.state as unknown as GameState;
+  const card = balanceCardLibrary(state, cardLibrary)[cardId];
+  if (!card || card.implementationStatus !== "implemented") return 0;
+  const effects = card.effect.type === "CHOOSE_ONE" ? card.effect.options.map(option => option.effect) : [card.effect];
+  if (effects.some(effect => effect.type === "TAKE_FROM_DISCARD")) return 0;
+  const inCombat = Boolean(state.combat && !state.combat.prep && !state.combat.outcome);
+  if (inCombat) {
+    if (card.id === "ability.leadership") return 85;
+    if (card.timing === "map" || effects.every(effect => MAP_ECONOMY_EFFECTS.has(effect.type) || MAP_SEARCH_EFFECTS.has(effect.type))) return 0;
+    if (card.kind === "spell" && state.players[observation.playerId].combatStats.spellsCastThisRound >=
+        spellLimitFor(state, state.players[observation.playerId])) return 15;
+    // Tent/school swaps are useful only if they improve the occupied slot.
+    if (card.permanent && permanentPlayScore(observation, card) < 300) return 0;
+    return cardHandValue(cardId, observation);
+  }
+  if (cardId === "ability.estates" || cardId === "spell.view_air") return 150;
+  if (cardId.includes("_of_legion")) return 145;
+  return cardHandValue(cardId, observation);
+}
+
+function permanentUtility(observation: ComputerObservation, card: CardDefinition): number {
+  const state = observation.state as unknown as GameState;
+  const school = card.permanentEffect?.schoolBonus?.school;
+  if (school) {
+    const matching = readySpells(state, observation.playerId).filter(spell =>
+      (!state.combat || spell.timing !== "map") &&
+      (spell.spellSchools?.includes(school) || spell.spellSchools?.includes("any"))).length;
+    return matching ? 95 + Math.min(45, matching * 15) : 10;
+  }
+  if (card.id === "war_machine.first_aid_tent") {
+    const wounded = Object.values(state.combat?.units ?? {}).some(unit =>
+      unit.controllerId === observation.playerId && unit.damage > 0 && unitRemainingHealth(unit) > 0);
+    return wounded ? 130 : 80;
+  }
+  if (card.permanentEffect?.permanentLimitOverride) return 200;
+  return cardKeepValue(card.id, observation);
+}
+
+function permanentPlayScore(observation: ComputerObservation, card: CardDefinition): number {
+  const state = observation.state as unknown as GameState;
+  const ids = getPermanentCardIds(state, observation.playerId);
+  const isBallista = (id: string) => cardLibrary[id]?.permanentEffect?.roundStart?.kind === "damage-lowest-initiative";
+  const slots = ids.filter(id => !isBallista(id)).length + Number(ids.some(isBallista));
+  const addsSlot = !isBallista(card.id) || !ids.some(isBallista);
+  const limit = Math.max(permanentLimitFor(state, observation.playerId), card.permanentEffect?.permanentLimitOverride ?? 1);
+  const value = permanentUtility(observation, card);
+  if (value < 30) return 180;
+  if (addsSlot && slots >= limit) {
+    const previous = balanceCardLibrary(state, cardLibrary)[ids[0]];
+    if (previous && value <= permanentUtility(observation, previous) + 10) return 180;
+    // Do not evict a capacity provider and cascade-discard other permanents.
+    if (previous?.permanentEffect?.permanentLimitOverride && ids.length > 1) return 180;
+  }
+  return state.combat && !state.combat.prep ? 760 + Math.min(40, value / 4) : 1_015;
+}
+
 function scoreSaveReaction(
   observation: ComputerObservation,
   effect: EffectDefinition,
@@ -753,20 +861,8 @@ function scoreMapEconomy(
   }
   if (effect.type === "GAIN_RECRUIT_DISCOUNT") {
     const state = observation.state as unknown as GameState;
-    const phase = armyDevelopmentProfile(state, observation.playerId).phase;
-    if (phase === "establish-core") return 930 + effect.amount;
-    // Legion vouchers are banked recruit gold in EVERY phase — silver/gold
-    // bodies and reinforces keep coming all game, so a voucher rotting in
-    // hand is pure waste.
-    // The hold below is OLD-RULE ONLY: under `immediate-reinforcement-prompts`
-    // Legion does not stack, so banking a second voucher on a unit forfeits the
-    // first and the piece is worth keeping. Under the DEFAULT reading distinct
-    // pieces ADD, and the engine already hides a piece that has banked its own
-    // voucher — so holding it only wastes gold. Pinned in legion-learning.test.ts.
-    const outstanding =
-      houseRuleEnabled(state, "immediate-reinforcement-prompts") &&
-      (state.players[observation.playerId]?.recruitDiscounts?.length ?? 0) > 0;
-    return outstanding ? base + 35 : 800 + effect.amount;
+    const savings = legionPurchaseSavings(state, observation.playerId, effect.amount, effect.valuables);
+    return savings > 0 ? 1_065 + Math.min(20, savings) : 180;
   }
   return base + 10;
 }
@@ -815,6 +911,42 @@ function scoreEffect(
 ): number {
   const effect = primaryEffect(card, optionIndex);
   if (!effect) return 250;
+
+  const state = observation.state as unknown as GameState;
+  if (!isReaction) {
+    if (effect.type === "DIPLOMACY_SKIP_COMBAT" || effect.type === "DIPLOMACY_EASE_BATTLE") return 1_080;
+    if (card.id === "ability.scholar" && effect.type === "SCHOLAR_EMPOWER_SWAP") return 180;
+    if (card.id === "ability.scholar" && effect.type === "TAKE_FROM_DISCARD") {
+      const best = Math.max(0, ...(state.players[observation.playerId]?.discard ?? [])
+        .map(id => scholarRetrievalValue(id, observation)));
+      return best < 50 ? 180 : state.combat && !state.combat.prep ? 740 + Math.min(65, best / 2) : 1_050 + Math.min(20, best / 8);
+    }
+    if (card.id === "ability.luck") {
+      const existing = state.activeEffects?.some(active => active.controllerId === observation.playerId &&
+        active.source.type === "card" && active.source.cardId === card.id);
+      if (existing) return 180;
+      return mode === "expert" ? 1_020 : upcomingFight(observation) ? 180 : 580;
+    }
+    if (card.id === "ability.leadership") {
+      return state.combat && !state.combat.prep ? mode === "expert" ? 810 : 660 : 180;
+    }
+    if (card.id === "ability.diplomacy" && effect.type === "DIPLOMACY_RECRUIT" && upcomingFight(observation)?.kind === "neutral") return 180;
+    if (card.id === "spell.view_air" && effect.type === "GAIN_RESOURCES") {
+      return effect.gain.gold ? 1_060 + effect.gain.gold : 500;
+    }
+    if (card.id.includes("_of_legion") && effect.type === "GAIN_RESOURCES" && effect.gain.gold &&
+        saveLegionForAfterFight(observation)) return 180;
+    if (card.id.includes("_of_legion") && effect.type === "GAIN_RECRUIT_DISCOUNT") {
+      const goldAlternative = card.effect.type === "CHOOSE_ONE" ? Math.max(0, ...card.effect.options.map(option =>
+        option.effect.type === "GAIN_RESOURCES" ? option.effect.gain.gold ?? 0 : 0)) : 0;
+      const savings = legionPurchaseSavings(state, observation.playerId, effect.amount, effect.valuables);
+      if (savings <= goldAlternative && !saveLegionForAfterFight(observation)) return 180;
+    }
+    if (card.id === "ability.eagle_eye" && effect.type === "EAGLE_EYE_DIG") return 1_055;
+    if (card.id === "ability.pathfinding" && (cardValueContext(state, observation.playerId).ownHeroLevel ?? 1) < 3) return 180;
+    if (effect.type === "ADD_SPELL_POWER" && !card.permanent &&
+        !readySpells(state, observation.playerId).some(spell => state.combat ? spell.timing !== "map" : spell.timing === "map")) return 180;
+  }
 
   if (SAVE_EFFECTS.has(effect.type)) {
     return scoreSaveReaction(observation, effect, mode);
@@ -890,8 +1022,7 @@ function scoreEffect(
   }
 
   if (effect.type === "ENTER_PLAY" || card.permanent) {
-    // One permanent in play is valuable; only offered when legal.
-    return 640 + modeBonus(mode);
+    return permanentPlayScore(observation, card);
   }
 
   if (STAT_COMBAT_EFFECTS.has(effect.type)) {
@@ -905,17 +1036,9 @@ function scoreEffect(
     return 650 + modeBonus(mode);
   }
 
-  // In an active combat activation, a pure map-economy / map-search play has NO
-  // combat value. Worse, TAKE_FROM_DISCARD (Scholar's basic side is
-  // `allowInCombat`) can retrieve the VERY card just played — the AI would then
-  // replay it forever, an infinite loop the runner's no-progress guard cannot
-  // catch because each half-step flips phase/eventCounter (play → discard-pick →
-  // take-it-back → play …). Score these BELOW END_ACTIVATION (400) so the AI
-  // ends its activation instead of cycling a map card mid-fight. Map turns (no
-  // combat) and reaction windows keep the normal economy/search scores; combat
-  // damage/buff/stat/save/enter-play/active families were already handled above,
-  // and MAP_MOVEMENT is deliberately left alone (CONTINUE_NEUTRAL_FREE and the
-  // continue-window movement-extend plays are genuinely useful in a fight).
+  // Scholar's useful combat recovery and Leadership are handled above. Other
+  // pure map economy/search cards stay below END_ACTIVATION; movement effects
+  // such as CONTINUE_NEUTRAL_FREE keep their combat continuation value.
   const inCombatActivation =
     Boolean(observation.state.combat && !observation.state.combat.outcome) &&
     !isReaction;
@@ -949,7 +1072,14 @@ function scoreEffect(
   }
 
   if (MAP_ECONOMY_EFFECTS.has(effect.type)) {
-    return scoreMapEconomy(observation, effect, 590 + modeBonus(mode));
+    const resolvedEffect = effect.type === "GAIN_RESOURCES" && mode === "expert" && effect.expertGain
+      ? { ...effect, gain: effect.expertGain } : effect;
+    // Estates leads the economy band, but scoreMapEconomy's additive bonuses
+    // (gold, plan progress, goal-closing +260) were calibrated on a 590 base:
+    // uncapped it would preempt mandatory picks (1_100+) and save reactions.
+    return card.id === "ability.estates"
+      ? Math.min(1_075, scoreMapEconomy(observation, resolvedEffect, 1_050 + modeBonus(mode)))
+      : scoreMapEconomy(observation, resolvedEffect, 590 + modeBonus(mode));
   }
 
   if (effect.type === "CREATE_ACTIVE_EFFECT") {
@@ -1048,6 +1178,7 @@ function asPowerBoostScore(
   observation: ComputerObservation,
   cardId: string,
 ): number {
+  if (pendingViewAirGold(observation)) return 180;
   const card = cardLibrary[cardId];
   if (!card) return 900;
   const effect = primaryEffect(card);
@@ -1132,7 +1263,22 @@ function expertCrownNudge(
   card: CardDefinition,
   optionIndex: number | undefined,
 ): number {
+  if (card.id === "ability.estates" || card.id === "ability.luck" || card.id === "ability.leadership") return 35;
   const effect = primaryEffect(card, optionIndex);
+  if (effect?.type === "NECROMANCY_REINFORCE") {
+    const state = observation.state as unknown as GameState;
+    const player = state.players[observation.playerId];
+    const goldUpgrade = effect.forceMode !== "basic" && player.army.some(unit => {
+      if (unit.side !== "few" || !["gold", "azure"].includes(coreUnitDefinitions[unit.unitDefId]?.tier)) return false;
+      const cost = reinforceCostFor(state, observation.playerId, unit.id, false, true, true);
+      return cost && player.resources.gold >= (cost.gold ?? 0) &&
+        player.resources.buildingMaterials >= (cost.buildingMaterials ?? 0) &&
+        player.resources.valuables >= (cost.valuables ?? 0);
+    });
+    // This crown unlocks a real Gold upgrade in the expiring victory window.
+    // Basic cannot upgrade Gold; saving the last crown would waste the win.
+    return goldUpgrade ? 45 : -30;
+  }
   const combatImpact =
     effect &&
     (SAVE_EFFECTS.has(effect.type) ||
@@ -1142,6 +1288,14 @@ function expertCrownNudge(
       STAT_COMBAT_EFFECTS.has(effect.type));
   if (combatImpact) return 12;
   return crownsAvailable(observation) >= 2 ? 12 : -30;
+}
+
+function pendingViewAirGold(observation: ComputerObservation): boolean {
+  const action = observation.state.stack?.at(-1)?.action;
+  if (action?.type !== "CAST_SPELL" || action.cardId !== "spell.view_air") return false;
+  const card = balanceCardLibrary(observation.state as unknown as GameState, cardLibrary)[action.cardId];
+  const effect = card && primaryEffect(card, action.optionIndex);
+  return effect?.type === "GAIN_RESOURCES" && (effect.gain.gold ?? 0) > 0;
 }
 
 function pendingAttackValues(observation: ComputerObservation) {
@@ -1203,7 +1357,7 @@ export function scoreCardAction(
     case "PLAY_CARD":
     case "CAST_SPELL":
     case "PLAY_REACTION": {
-      const card = cardLibrary[action.cardId];
+      const card = balanceCardLibrary(observation.state as unknown as GameState, cardLibrary)[action.cardId];
       if (!card) {
         return { score: 250, policy: "card.unknown" };
       }

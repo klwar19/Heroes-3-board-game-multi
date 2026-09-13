@@ -313,6 +313,7 @@ export type CardValueStateView = {
     string,
     { factionId?: string; eliminated?: boolean;
       hand?: readonly string[]; discard?: readonly string[]; permanents?: readonly string[];
+      spellBook?: readonly string[]; spellBookUsed?: readonly string[];
       army?: ReadonlyArray<{ unitDefId: string; side: "few" | "pack" | "neutral" | "bank" }>;
     } | undefined
   > | null;

@@ -6,6 +6,9 @@ import {
   developmentResourceTargets,
   factionBuildingForEffect,
   incomeBuildingBeforeDwelling,
+  needsPremiumSilverBreakthrough,
+  needsNecromancyVampire,
+  committedGoldInvestment,
 } from "./development";
 export type DevelopmentPlan = {
   goal: "rebuild" | "income" | "silver" | "gold" | "gold-recruit" | "pressure";
@@ -42,19 +45,22 @@ export function updateDevelopmentPlan(
   const goal =
     rebuilding || profile.phase === "establish-core"
       ? "rebuild"
+      : needsPremiumSilverBreakthrough(state, playerId) &&
+          !needsNecromancyVampire(state, playerId)
+        ? "silver"
       : income
         ? "income"
         : !profile.silverUnlocked
         ? "silver"
         : !profile.goldUnlocked
           ? "gold"
-          : profile.goldUnits === 0
+          : profile.goldUnits === 0 || committedGoldInvestment(state, playerId)
             ? "gold-recruit"
             : "pressure";
   const building =
     goal === "income"
       ? income
-      : goal === "silver" || goal === "gold"
+      : (goal === "silver" && !profile.silverUnlocked) || goal === "gold"
       ? factionBuildingForEffect(
           state,
           playerId,

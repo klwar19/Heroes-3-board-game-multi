@@ -1301,7 +1301,30 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 //    behind it never resolved — "Learning not asked after combat"). The
 //    selection survives and returns the seat to the chosen battle once its
 //    own queue empties.
-export const ENGINE_PROTOCOL_VERSION = 142;
+// v143 (2026-09-13):
+//  - Commander rebalance: Rampart Shield is an instant reaction with a real
+//    budget (P0 once per combat +1; P1/P2 once per round, twice per combat,
+//    +1/+2) tracked in commanderCastCount; Astral Spirit Counterstrike lasts
+//    2 combat rounds and adds +1 Attack on Retaliation Attacks plus
+//    retaliation that ignores attackers' ignore-retaliation rules (new
+//    RETALIATION_ATTACK_BONUS / UNSTOPPABLE_RETALIATION modifiers).
+//  - Rampart Elves rank-4 Spell Sunder is its own budgeted ability (once per
+//    combat round, twice per combat); other units keep the unlimited version.
+//    Angel "Heavenly Assault" suppresses retaliation on ODD combat rounds only.
+//  - Map design: a tile-group Break now seals movement INSIDE the tile too
+//    (a beaten side guard is not a back door), a designer-designated Break
+//    field is THE gate when present (beating it opens the tile even while
+//    side guards stand, and the conquered Break hex itself stays enterable —
+//    dimension door included); tiles without a designated Break keep the
+//    v139 any-guard fallback.
+//  - Computer AI (audited codex batch): FAR two-tile opening sweep with
+//    capture scheduling, premium Silver breakthrough after losses/first
+//    capture, committed Gold investment plan, second-hero leftover collector,
+//    Necropolis necromancy opening (mulligan hunt, earned-upgrade order,
+//    vampire milestone, bronze-army withdrawal), fight-preparation hand
+//    refresh + card hand-values (Learning/Estates/Scholar/Legion/permanents),
+//    settlement loss streaks with bounded blacklists, flying formation rework.
+export const ENGINE_PROTOCOL_VERSION = 143;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

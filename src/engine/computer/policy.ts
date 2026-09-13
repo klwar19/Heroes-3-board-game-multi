@@ -1,7 +1,9 @@
+import { hasNecromancyPlan } from "./development";
 import { cardLibrary } from "@/data/cards/library";
-import { effectiveHandLimit, isFieldGuarded } from "../adventure";
+import { effectiveHandLimit, explorersHandStepActive, isFieldGuarded } from "../adventure";
 import type { GameAction, GameState, LegalAction } from "../state";
-import { cardKeepValue, scoreCardAction } from "./card-policy";
+import { cardHandValue, scoreCardAction } from "./card-policy";
+import { upcomingFight } from "./card-planning";
 import { heroPickBias } from "./card-values";
 import { scoreChoiceAction } from "./choice-policy";
 import { scoreCombatAction } from "./combat-policy";
@@ -48,10 +50,10 @@ export function canonicalActionKey(value: unknown): string {
  * Legality-match key: how a chosen action is matched back against the offered
  * legal set. Identical to canonicalActionKey except for handler-validated
  * actions whose offer is a bare template the policy parameterizes — currently
- * only REFRESH_HAND, whose discardCardIds are the policy's own pick.
+ * hand refresh and the optional opening mulligan, whose discards we choose.
  */
 export function legalityMatchKey(action: GameAction): string {
-  if (action.type === "REFRESH_HAND") {
+  if (action.type === "REFRESH_HAND" || action.type === "OPENING_HAND_MULLIGAN") {
     return canonicalActionKey({ ...action, discardCardIds: [] });
   }
   return canonicalActionKey(action);
@@ -138,6 +140,7 @@ function foundationScore(action: GameAction): {
     case "END_COMBAT_ROUND":
       return { score: 890, policy: "mandatory.finish-combat-round" };
     case "REFRESH_HAND":
+    case "OPENING_HAND_MULLIGAN":
     case "RESOLVE_EXPLORERS_DISCARD":
       return { score: 850, policy: "mandatory.start-turn" };
     case "ATTACK_UNIT":
@@ -206,6 +209,18 @@ function holdsPlayableNecromancy(
   );
 }
 
+function wantsOpeningNecromancy(observation: ComputerObservation): boolean {
+  const state = observation.state as unknown as GameState;
+  if (state.round !== 1 || !hasNecromancyPlan(state, observation.playerId)) return false;
+  const player = state.players[observation.playerId];
+  const upgrades = player.army.filter(unit => unit.side === "few" &&
+    ["necropolis.wraiths", "necropolis.zombies"].includes(unit.unitDefId)).length;
+  const held = player.hand.filter(id => cardLibrary[id]?.effect.type === "NECROMANCY_REINFORCE").length;
+  // Keep the first copy and dig for the second: two opening victories can
+  // pay for both remaining Bronze Packs, not just the Wraith.
+  return held < Math.max(1, Math.min(2, upgrades));
+}
+
 function voluntaryCycleThreshold(observation: ComputerObservation): number {
   const player = observation.state.players[observation.playerId];
   if (
@@ -220,40 +235,59 @@ function voluntaryCycleThreshold(observation: ComputerObservation): number {
 /**
  * REFRESH_HAND is offered as a bare template (discardCardIds: []), but a hand
  * over the limit MUST discard down in the same action (the handler rejects an
- * insufficient list). Deterministic pick: lowest cardKeepValue first (dump
+ * insufficient list). Deterministic pick: lowest cardHandValue first (dump
  * junk, keep artifacts/spells/saves), with stable hand-order ties. On top of
- * the forced overflow, the AI voluntarily cycles low-value cards (bounded by
- * VOLUNTARY_CYCLE_MAX and by the real replacement supply deckCount+discard,
- * so an empty library never churns the same cards). effectiveHandLimit only
- * reads public fields plus the viewer's own hand, so the redacted view is a
- * safe stand-in for the full state.
+ * the forced overflow, the AI voluntarily cycles low-value cards — on every
+ * refresh window, not just an over-limit one, so a planned fight or the
+ * Necropolis engine hunt can rebuild the hand — bounded by
+ * VOLUNTARY_CYCLE_MAX (or the hand limit when hunting/fight-prepping) and by
+ * the real replacement supply deckCount+discard, so an empty library never
+ * churns the same cards. effectiveHandLimit only reads public fields plus the
+ * viewer's own hand, so the redacted view is a safe stand-in for the state.
  */
 function withRefreshDiscards(
   observation: ComputerObservation,
-  action: Extract<GameAction, { type: "REFRESH_HAND" }>,
+  action: Extract<GameAction, { type: "REFRESH_HAND" | "OPENING_HAND_MULLIGAN" }>,
 ): GameAction {
   const player = observation.state.players[observation.playerId];
-  if (!player?.needsHandRefresh) {
+  if (!player) {
     return action;
   }
   const limit = effectiveHandLimit(
     observation.state as unknown as GameState,
     observation.playerId,
   );
-  const overflow = Math.max(0, player.hand.length - limit);
+  const overflow = action.type === "REFRESH_HAND" ? Math.max(0, player.hand.length - limit) : 0;
+  const state = observation.state as unknown as GameState;
+  // Respect draw-before-discard Explorers and the separate full opening mulligan.
+  if (action.type === "REFRESH_HAND" && !player.needsHandRefresh &&
+      (explorersHandStepActive(state) || (state.round === 1 && player.hand.length >= limit))) return action;
+  const openingNecromancyHunt = wantsOpeningNecromancy(observation);
+  const necromancyHunt = hasNecromancyPlan(state, observation.playerId) && !holdsPlayableNecromancy(observation) &&
+    player.army.some(unit=>unit.side==="few" && unit.unitDefId.startsWith("necropolis."));
+  const prepareFight = !explorersHandStepActive(state) && Boolean(upcomingFight(observation));
   const ranked = player.hand
     .map((cardId, index) => ({
       cardId,
       index,
-      value: cardKeepValue(cardId, observation),
+      value: cardHandValue(cardId, observation),
     }))
     .sort((a, b) => a.value - b.value || a.index - b.index);
   const discards = ranked.slice(0, overflow);
-  const threshold = voluntaryCycleThreshold(observation);
-  const supply = (player.deckCount ?? 0) + player.discard.length;
+
+  const orphanedMagic = ranked.some(entry => entry.value <= 12 &&
+    ["ADD_SPELL_POWER", "RECALL_SPELL", "SET_SPELL_POWER_MAX"].includes(cardLibrary[entry.cardId]?.effect.type));
+  // The Necromancy hunt must stay below cardHandValue's explicit keep floors
+  // (Learning / First Aid Tent / Diplomacy at 70) or it dumps exactly the
+  // cards the fight-preparation valuation just protected.
+  const threshold = openingNecromancyHunt ? Infinity : necromancyHunt ? 70 : prepareFight ? 50 : voluntaryCycleThreshold(observation);
+  // Underfilled hands already consume replacement cards before any cycling.
+  const supply = Math.max(0, (player.deckCount ?? 0) + player.discard.length -
+    (action.type === "REFRESH_HAND" ? Math.max(0, limit - player.hand.length) : 0));
   for (const entry of ranked.slice(overflow)) {
     const voluntary = discards.length - overflow;
-    if (voluntary >= VOLUNTARY_CYCLE_MAX || voluntary >= supply) break;
+    if (voluntary >= (openingNecromancyHunt || prepareFight || orphanedMagic ? limit : VOLUNTARY_CYCLE_MAX) || voluntary >= supply) break;
+    if (entry.cardId === "spell.magic_arrow" || cardLibrary[entry.cardId]?.effect.type === "NECROMANCY_REINFORCE") continue;
     if (entry.value >= threshold) break;
     discards.push(entry);
   }
@@ -280,6 +314,7 @@ export function chooseComputerAction(
     return null;
   }
   const tieSeed = `${observation.state.seed}|${observation.state.round}|${observation.state.eventCounter ?? 0}|${observation.playerId}`;
+  const vouchers = observation.state.players[observation.playerId]?.recruitDiscounts ?? [];
   const ranked = candidates
     .map((legal) => {
       // Priority: mandatory choices → cards/spells/reactions → combat → map →
@@ -293,6 +328,23 @@ export function chooseComputerAction(
       const planBias = base.score > 300 && base.score < 900
         ? developmentPlanBias(observation.state as unknown as GameState, observation.playerId, legal.action, observation.memory?.developmentPlan) : 0;
       const scored = { ...base, score: base.score + planBias };
+      if (base.score > 300 && legal.action.type === "POPULATION_ACTION" && legal.action.purchases.some(purchase =>
+        vouchers.some(({ target }) => target.kind === purchase.kind && (target.kind === "recruit"
+          ? target.unitDefId === purchase.unitDefId
+          : purchase.kind !== "recruit" && target.armyUnitId === purchase.armyUnitId)))) {
+        scored.score = Math.max(scored.score, 1_090);
+        scored.policy = "card.spend-legion-before-moving";
+      }
+      if ((legal.action.type === "REFRESH_HAND" || legal.action.type === "OPENING_HAND_MULLIGAN") && upcomingFight(observation) &&
+          !explorersHandStepActive(observation.state as unknown as GameState)) {
+        scored.score = 1_040;
+        scored.policy = "card.refresh-before-fight";
+      }
+      if ((legal.action.type === "REFRESH_HAND" || legal.action.type === "OPENING_HAND_MULLIGAN") &&
+          wantsOpeningNecromancy(observation)) {
+        scored.score = 1_045;
+        scored.policy = "card.opening-necromancy-hunt";
+      }
       // Preserve returns toward a concrete payoff and forced unblocking, but
       // exploration's high score cannot exempt an empty repeated route.
       if (repeatsUnproductiveRoute(observation.state as unknown as GameState, observation.playerId, legal.action, observation.memory) &&
@@ -327,8 +379,20 @@ export function chooseComputerAction(
           : {}),
         tie: tieValue(tieSeed, legal),
       };
-    })
-    .sort(
+    });
+  // Finish finite, useful card preparation before the march can start a fight.
+  // Required choices, combat actions and emergency route clearing retain priority.
+  const preparingFight = !observation.state.combat && upcomingFight(observation) && ranked.some(candidate =>
+    candidate.score >= 1_000 && (candidate.legal.action.type === "PLAY_CARD" || candidate.legal.action.type === "CAST_SPELL"));
+  if (preparingFight || ranked.some(candidate => candidate.policy === "card.spend-legion-before-moving")) {
+    for (const candidate of ranked) {
+      if ((candidate.legal.action.type === "MOVE_HERO" || candidate.legal.action.type === "MOVE_HERO_PATH" ||
+          candidate.legal.action.type === "END_TURN") && candidate.policy !== "map.clear-shared-space") {
+        candidate.score = Math.min(candidate.score, 950);
+      }
+    }
+  }
+  ranked.sort(
       (a, b) =>
         b.score - a.score ||
         b.tie - a.tie ||
@@ -344,7 +408,7 @@ export function chooseComputerAction(
   close.sort((a, b) => b.score - a.score || b.tie - a.tie);
   const learnedSelected = close[0] ?? selected;
   const action =
-    learnedSelected.legal.action.type === "REFRESH_HAND"
+    learnedSelected.legal.action.type === "REFRESH_HAND" || learnedSelected.legal.action.type === "OPENING_HAND_MULLIGAN"
       ? withRefreshDiscards(observation, learnedSelected.legal.action)
       : learnedSelected.legal.action;
   return {

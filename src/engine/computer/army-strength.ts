@@ -8,8 +8,9 @@ import {
 } from "@/data/map/creature-banks";
 import { coreBuildingDefinitions, coreFactionDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
-import { assessDwellingRush, openingCorePackTarget } from "./development";
+import { assessDwellingRush, openingCorePackTarget, openingBronzeCoreReady } from "./development";
 import { playersAreAllied } from "./control";
+import { isOpeningFarMaterialMine, secondFarFightNeedsSilver } from "./far-sweep";
 import type { UnitTier } from "@/data/factions/types";
 import {
   getUnitSide,
@@ -533,6 +534,14 @@ export function premiumEconomyEngageCap(
   const counts = armyTierCounts(state, playerId);
   let cap = 0;
 
+  // The paid faction core (two or three Packs) opens Far III on every
+  // difficulty. Restrict this to the income route, never generic side guards.
+  const openingFar = field && field.tileInstanceId &&
+    state.adventure?.tiles[field.tileInstanceId]?.group === "far" &&
+    (isPremiumEconomyField(field) || isOpeningFarMaterialMine(state, playerId, field));
+  if (state.players[playerId]?.factionId !== "necropolis" && openingFar &&
+      openingBronzeCoreReady(state, playerId)) cap = 3;
+
   // Full silver/gold/azure tier extension still applies on premium targets.
   const tier = armyEngagementTier(state, playerId);
   if (tier && TIER_RANK[tier] >= TIER_RANK.silver) {
@@ -554,7 +563,7 @@ export function premiumEconomyEngageCap(
       // Impossible field 2 draws two bronzes and one silver, not field 3's
       // three silvers. A full Pack core can open II economy before Silver.
       cap = Math.max(cap, 2);
-      const farEconomy = field && isPremiumEconomyField(field) && field.tileInstanceId &&
+      const farEconomy = field && (isPremiumEconomyField(field) || isOpeningFarMaterialMine(state, playerId, field)) && field.tileInstanceId &&
         state.adventure?.tiles[field.tileInstanceId]?.group === "far";
       if (farEconomy || counts.silver + counts.gold + counts.azure >= 1) {
         cap = Math.max(cap, 3);
@@ -565,6 +574,11 @@ export function premiumEconomyEngageCap(
     }
   }
 
+  // Keep staging and entry aligned: a second Far III needs a purchased
+  // premium body even when the intact Bronze core could attempt the first.
+  if (field && state.players[playerId]?.factionId !== "necropolis" &&
+      secondFarFightNeedsSilver(state, playerId, field) &&
+      counts.silver + counts.gold + counts.azure === 0) return Math.min(cap, 2);
   return cap;
 }
 

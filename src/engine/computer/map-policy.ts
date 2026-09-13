@@ -1,3 +1,5 @@
+import { isOpeningFarSweepField } from "./far-sweep";
+import { preferredOpeningPacks, committedGoldInvestment } from "./development";
 import {
   GOLD_RESERVE,
   MARKET_MIN_ROUND,
@@ -15,11 +17,13 @@ import { HERO_GRADE_NODES } from "@/data/anime/hero-grades";
 import { getEquipmentDefinition } from "@/data/anime/equipment";
 import { heroEquipmentSlot } from "../anime-equipment";
 import { cardLibrary } from "@/data/cards/library";
+import { inlineLegionSavings, legionPurchaseSavings } from "./card-planning";
 import { isMarketLocation, locationDefinitions } from "@/data/map/locations";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { hasInternalBorder } from "@/data/map/borders";
 import {
   adventureVictoryMode,
+  applyRecruitGoldDiscount,
   canHeroImmediatelyReachPlacementCenter,
   canHeroReachPlacementCenter,
   canHeroReachPlacedTile,
@@ -64,7 +68,12 @@ import { effectiveTownBuildingCost, houseRuleEnabled } from "../house-rules";
 import { getRuleset, wisdomGoldDiscount } from "../ruleset";
 import { armyUnitRankInfo } from "../unit-experience";
 import {
+  hasNecromancyPlan,
+  needsNecromancyVampire,
+  necromancyUpgradePriority,
+  neutralsArePlayerControlled,
   armyDevelopmentProfile,
+  needsPremiumSilverBreakthrough,
   armyReadyForContestedFight,
   assessDwellingRush,
   developmentResourceTargets,
@@ -221,6 +230,8 @@ function buildingScore(
 ): number {
   const effect = coreBuildingDefinitions[buildingId]?.effect;
   const development = armyDevelopmentProfile(state, playerId);
+  if (effect?.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "gold" &&
+      needsPremiumSilverBreakthrough(state, playerId)) return 240;
   const armySize = state.players[playerId]?.army.length ?? 0;
   const gold = playerGold(state, playerId);
   if (effect?.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "silver" &&
@@ -228,10 +239,20 @@ function buildingScore(
     const cost = effectiveTownBuildingCost(state, coreBuildingDefinitions[buildingId]);
     const remainingBronzeGold = (state.players[playerId]?.army ?? []).reduce((sum, unit) => {
       const definition = coreUnitDefinitions[unit.unitDefId];
-      return sum + (definition?.tier === "bronze" && unit.side === "few" ? definition.pack?.cost.gold ?? 0 : 0);
+      if (definition?.tier !== "bronze" || unit.side !== "few") return sum;
+      const preferred = preferredOpeningPacks(state, playerId);
+      if (preferred.length > 0 && !preferred.includes(unit.unitDefId)) return sum;
+      const waitForNecromancy = hasNecromancyPlan(state, playerId) &&
+        (unit.unitDefId === "necropolis.zombies" ||
+          (unit.unitDefId === "necropolis.wraiths" && !neutralsArePlayerControlled(state, playerId)));
+      return sum + (reinforceCostFor(state, playerId, unit.id, false, waitForNecromancy, waitForNecromancy)?.gold ?? 0);
     }, 0);
     if (gold - (cost?.gold ?? 0) < Math.max(GOLD_RESERVE, remainingBronzeGold)) return 240;
   }
+  // After the bronze-funding guard above so the breakthrough Silver dwelling
+  // can never strand the gold reserved for a remaining opening Pack.
+  if (effect?.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "silver" &&
+      needsPremiumSilverBreakthrough(state, playerId)) return 976;
   // When the army is thin, prefer recruit unlocks / reinforce over soft economy.
   const needsArmy = armySize < 4;
   // When gold is tight, deprioritise expensive soft builds so recruit can fire.
@@ -360,6 +381,7 @@ function buildingScore(
       focusKind = "build-other";
       break;
   }
+  if (needsNecromancyVampire(state, playerId) && effect?.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "gold") return 180;
   // Coherent development ladder: secure three Pack stacks, then unlock Silver,
   // then Gold. An immediately winning map step still scores above these bands,
   // but ordinary movement/fights wait until the round's key build is made.
@@ -519,7 +541,7 @@ function buildingScore(
   // Building the Gold Dwelling is not the milestone's outcome. Until one real
   // Gold unit has joined the army, do not let a side building consume its exact
   // recruit fund.
-  if (development.goldUnlocked && development.goldUnits === 0) {
+  if (development.goldUnlocked && (development.goldUnits === 0 || committedGoldInvestment(state, playerId))) {
     const building = coreBuildingDefinitions[buildingId];
     const cost = building ? effectiveTownBuildingCost(state, building) : {};
     const resources = playerResources(state, playerId);
@@ -548,7 +570,36 @@ function populationScore(
   const development = armyDevelopmentProfile(state, observation.playerId);
   const gold = player?.resources.gold ?? 0;
 
+  // Necromancy supplies these Packs without a Population token. Only the
+  // skeleton opening (and Wraiths against human guards) pays full price.
+  if (hasNecromancyPlan(state, observation.playerId) && !hasGoldArmy(state, observation.playerId)) {
+    if (action.purchases.some(purchase => purchase.kind !== "recruit" &&
+        (purchase.unitDefId === "necropolis.vampires" || purchase.unitDefId === "necropolis.zombies" ||
+          (purchase.unitDefId === "necropolis.wraiths" && !neutralsArePlayerControlled(state, observation.playerId))))) return 180;
+    const skeletonNeedsPack = player.army.some(unit => unit.unitDefId === "necropolis.skeletons" && unit.side === "few");
+    if (skeletonNeedsPack && action.purchases.some(purchase => purchase.kind === "reinforce" &&
+        purchase.unitDefId === "necropolis.wraiths")) return 180;
+    if (action.purchases.length === 1 && action.purchases[0].kind === "reinforce" &&
+        action.purchases[0].unitDefId === "necropolis.skeletons") return 976;
+    if (needsNecromancyVampire(state, observation.playerId)) {
+      if (action.purchases.some(purchase => coreUnitDefinitions[purchase.unitDefId]?.tier === "gold" ||
+          purchase.unitDefId === "necropolis.liches")) return 180;
+      if (action.purchases.length === 1 && action.purchases[0].kind === "recruit" &&
+          action.purchases[0].unitDefId === "necropolis.vampires" &&
+          player.army.some(unit => unit.unitDefId === "necropolis.skeletons" && unit.side === "pack")) return 976;
+    }
+  }
+
   const goldArmy = hasGoldArmy(state, observation.playerId);
+  const preferred = preferredOpeningPacks(state, observation.playerId);
+  if (!goldArmy && development.silverUnits === 0 && preferred.length > 0) {
+    const next = preferred.find(id => !player?.army.some(unit => unit.unitDefId === id && unit.side === "pack"));
+    if (action.purchases.some(purchase => purchase.kind === "reinforce" &&
+        coreUnitDefinitions[purchase.unitDefId]?.tier === "bronze" && purchase.unitDefId !== next)) return 240;
+    if (next && !player?.army.some(unit => unit.unitDefId === next) &&
+        action.purchases.length === 1 && action.purchases[0].kind === "recruit" &&
+        action.purchases[0].unitDefId === next) return 976;
+  }
   const bronzePurchases = action.purchases.filter((purchase) =>
     coreUnitDefinitions[purchase.unitDefId]?.tier === "bronze");
   if (goldArmy && bronzePurchases.length > 0) {
@@ -584,9 +635,9 @@ function populationScore(
     // priced it at +Infinity and the AI could never buy it a Stack.
     const stackSide = target?.side === "neutral" ? "neutral" : "pack";
     const side = getUnitSide(stackPurchase.unitDefId, stackSide);
-    const cost =
-      (target ? polishArmyUnitStackCost(target) : polishUnitStackCost(stackPurchase.unitDefId, stackSide))?.gold ??
-      Number.POSITIVE_INFINITY;
+    const stackCost = target ? polishArmyUnitStackCost(target) : polishUnitStackCost(stackPurchase.unitDefId, stackSide);
+    const cost = stackCost && target ? applyRecruitGoldDiscount(state, observation.playerId,
+      { kind: "stack", unitDefId: stackPurchase.unitDefId, armyUnitId: target.id }, stackCost).gold ?? 0 : Number.POSITIVE_INFINITY;
     const treasury = developmentResourceTargets(state, observation.playerId);
     const protectsPlan = Number.isFinite(cost) && gold - cost >= Math.max(GOLD_RESERVE, treasury.gold);
     if (!target || !side || development.phase !== "improve-army" || !protectsPlan) {
@@ -645,7 +696,11 @@ function populationScore(
       : 0;
     const gain = Math.max(0, sideValue - previousValue);
     totalGain += gain;
-    const printedCost = gainedSide?.cost ?? {};
+    const discountedUnitId = purchase.armyUnitId ?? ownsUnit(purchase.unitDefId)?.id;
+    const priceRef = purchase.kind === "recruit"
+      ? { kind: "recruit" as const, unitDefId: purchase.unitDefId }
+      : discountedUnitId ? { kind: purchase.kind, unitDefId: purchase.unitDefId, armyUnitId: discountedUnitId } : null;
+    const printedCost = priceRef ? applyRecruitGoldDiscount(state, observation.playerId, priceRef, gainedSide?.cost ?? {}) : gainedSide?.cost ?? {};
     spentGold += printedCost.gold ?? 0;
     spentMaterials += printedCost.buildingMaterials ?? 0;
     spentValuables += printedCost.valuables ?? 0;
@@ -695,6 +750,13 @@ function populationScore(
   score += Math.min(40, Math.round(totalGain * 1.5 + efficiency));
   if (gold >= GOLD_RESERVE + 10) score += 5;
   score += economyFocusBias(memory, "recruit");
+  // Only the first Silver recruit for a premium commitment can spend this
+  // reserve. Mixed baskets and Gold actions retain their existing scores.
+  if (needsPremiumSilverBreakthrough(state, observation.playerId) &&
+      action.purchases.length === 1 && action.purchases[0].kind === "recruit" &&
+      coreUnitDefinitions[action.purchases[0].unitDefId]?.tier === "silver") {
+    return 976 + Math.min(1, efficiency / 100);
+  }
   // Silver is an optional surplus purchase. Never spend the Bronze opening /
   // next dwelling or Gold-recruit fund merely to satisfy a tier gate.
   if (!goldArmy && action.purchases.some(
@@ -764,6 +826,13 @@ function populationScore(
         // The saved ladder step: above every other purchase, below a
         // scenario-winning map step (980).
         return Math.min(975, Math.max(score, 968));
+      }
+      if (committedGoldInvestment(state, observation.playerId)) {
+        const reserve = developmentResourceTargets(state, observation.playerId);
+        const resources = playerResources(state, observation.playerId);
+        if (resources.gold - spentGold < reserve.gold ||
+            resources.buildingMaterials - spentMaterials < reserve.buildingMaterials ||
+            resources.valuables - spentValuables < reserve.valuables) return 240;
       }
       score = Math.min(score, 965);
       const buysLowerGoldFew =
@@ -963,7 +1032,8 @@ function moveScore(
   }
   const primaryEconomy = primary && state.adventure?.fields[primary.spaceId];
   const distance = objectiveDistanceField(state, hero, marchTargets,
-    Boolean(primaryEconomy && isPremiumEconomyField(primaryEconomy)));
+    Boolean(primaryEconomy && (isPremiumEconomyField(primaryEconomy) ||
+      isOpeningFarSweepField(state, observation.playerId, primaryEconomy))));
   const here = hero.spaceId ? distance.get(hero.spaceId) ?? Infinity : Infinity;
   const to = distance.get(action.to) ?? Infinity;
 
@@ -1938,12 +2008,13 @@ function visitStepsUtility(
         utility += army < 6 ? 28 : 12;
         break;
       case "USE_LEGION_RECRUIT_DISCOUNT":
-        // Inline Legion play at a neutral-recruit menu. Deliberately scored BELOW
-        // a plain recruit (28/12): the option re-opens the same menu, so a higher
-        // score could make the AI cycle its whole hand of Legion pieces before
-        // buying. A computer seat therefore only takes it when the recruit itself
-        // is unaffordable at full price (the plain option is then absent).
-        utility += 10;
+        {
+          const savings = inlineLegionSavings(state, playerId, step.unitDefId, step.amount);
+          utility += savings > 0 ? 50 + savings : -50;
+        }
+        break;
+      case "BANK_RECRUIT_DISCOUNT":
+        utility += legionPurchaseSavings(state, playerId, step.amount, step.valuables, step.target) * 8;
         break;
       case "EVENT_REMOVE_FOR_SEARCH":
         // Value the searches already earned, but stop removing once the next
@@ -2263,6 +2334,19 @@ function resolveVisitStepScore(
   if (step.type === "CHOOSE_ONE") {
     const option = step.options[optionIndex];
     if (!option) return 1_000;
+    if (state.adventure?.pendingNecromancy?.playerId === playerId) {
+      const reinforce = option.steps.find(inner => inner.type === "REINFORCE_HALF_GOLD");
+      if (reinforce?.type === "REINFORCE_HALF_GOLD") {
+        const unit = state.players[playerId].army.find(candidate => candidate.id === reinforce.armyUnitId);
+        return 1_150 + necromancyUpgradePriority(unit?.unitDefId ?? "") * 5;
+      }
+    }
+    // Optional deck thinning must never delete the engine or its damage spell.
+    // Utility's minimum still beats Done, so this needs an explicit refusal.
+    if (option.steps.some(inner=>
+        inner.type === "REMOVE_CARD_FROM_PILE" && (inner.cardId === "spell.magic_arrow" ||
+          (state.players[playerId]?.factionId === "necropolis" &&
+            cardLibrary[inner.cardId]?.effect.type === "NECROMANCY_REINFORCE")))) return 1_020;
     if (rejectsPaidBronzeSteps(state, playerId, option.steps)) return 1_020;
     // Anime Equipment outfitter (§3.13): buy an item into an EMPTY slot only from
     // genuine surplus (gold ≥ cost + 6); otherwise leave. A buy below that scores
@@ -2436,7 +2520,8 @@ export function scoreMapAction(
       // resolve.
       if (state.adventure?.pendingNecromancy?.playerId === observation.playerId) {
         return {
-          score: action.kind === "reinforce" ? 1_135 : 1_130,
+          score: action.kind === "reinforce" ? 1_135 + necromancyUpgradePriority(
+            state.players[observation.playerId].army.find(unit => unit.id === action.armyUnitId)?.unitDefId ?? "") : 1_130,
           policy: "map.redeem-reinforcement-discount",
         };
       }
@@ -2475,9 +2560,8 @@ export function scoreMapAction(
       ) {
         return { score: 150, policy: "map.hire-secondary-hold" };
       }
-      const army = state.players[observation.playerId]?.army.length ?? 0;
       return {
-        score: army >= 5 ? 700 : 640,
+        score: 946,
         policy: "map.hire-secondary-hero",
       };
     }
@@ -2926,7 +3010,11 @@ export function scoreMapAction(
       const discount = action.wisdom ? wisdomGoldDiscount(getRuleset(state), action.wisdom.mode,
         houseRuleEnabled(state, "wisdom-expert-discount")) : 0;
       const cost = action.rollSpell ? 3 : Math.max(0, baseCost - discount);
-      const funded = cost === 0 || (phase === "improve-army" &&
+      const needsArrow =
+        ![...state.players[observation.playerId].hand, ...state.players[observation.playerId].discard,
+          ...(state.players[observation.playerId].spellBook ?? [])].includes("spell.magic_arrow");
+      const arrowFunded = needsArrow && phase !== "establish-core" && playerGold(state, observation.playerId) - cost >= target.gold;
+      const funded = cost === 0 || arrowFunded || (phase === "improve-army" &&
         playerGold(state, observation.playerId) - cost >= target.gold);
 
       // Rolling Spells trades a weak owned Spell for two new looks. Keep strong
@@ -2952,7 +3040,7 @@ export function scoreMapAction(
       }
 
       if (funded) {
-        return { score: 620, policy: "town.buy-spells-after-army-core" };
+        return { score: arrowFunded ? 930 : 620, policy: arrowFunded ? "town.seek-magic-arrow" : "town.buy-spells-after-army-core" };
       }
       return { score: 250, policy: "town.skip-spell-buy-fund-army" };
     }

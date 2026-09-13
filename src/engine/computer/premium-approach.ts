@@ -8,6 +8,7 @@ import {
 } from "./map-navigation";
 import type { ComputerPolicyMemory } from "./memory";
 import { isPremiumEconomyField } from "./army-strength";
+import { isOpeningFarSweepField } from "./far-sweep";
 
 /** A known, fightable income route takes precedence over another reveal. */
 export function hasCommittedIncomeRoute(
@@ -17,7 +18,7 @@ export function hasCommittedIncomeRoute(
   if (!hero?.spaceId || hero.kind !== "main") return false;
   const primary = primaryMapObjective(state, hero, undefined, memory.stickyObjectiveSpaceId);
   const field = primary && state.adventure?.fields[primary.spaceId];
-  return Boolean(primary && field && isPremiumEconomyField(field) &&
+  return Boolean(primary && primary.kind !== "explore" && field && (isPremiumEconomyField(field) || isOpeningFarSweepField(state, hero.controllerId, field)) &&
     (!isFieldGuarded(field) || canBeatGuardedField(state, hero, field)) &&
     distanceFromHeroTo(state, hero, primary.spaceId, true) !== undefined);
 }
@@ -33,7 +34,8 @@ export function scorePremiumApproach(
   const objectives = collectMapObjectives(state, hero);
   const primary = primaryMapObjective(state, hero, objectives, memory.stickyObjectiveSpaceId);
   const field = primary && state.adventure?.fields[primary.spaceId];
-  if (!primary || !field || (field.location !== "settlement" && field.location !== "mine") ||
+  if (!primary || primary.kind === "explore" || !field || (field.location !== "settlement" && field.location !== "mine" &&
+      !isOpeningFarSweepField(state, hero.controllerId, field)) ||
       (isFieldGuarded(field) && !canBeatGuardedField(state, hero, field))) return null;
 
   const distance = objectiveDistanceField(state, hero, [primary], true);
@@ -88,6 +90,6 @@ export function scorePremiumApproach(
   // primary keeps normal scoring (free-pickup scoops stay collectable), and a
   // zero-distance stand (gate-slip re-entry, where no step can shorten the
   // route) must fall through so the guard-reentry setup score can win.
-  if (here === 0 || !isPremiumEconomyField(field)) return null;
+  if (here === 0 || (!isPremiumEconomyField(field) && !isOpeningFarSweepField(state, hero.controllerId, field))) return null;
   return { score: 200, policy: "map.premium-keep-commitment" };
 }

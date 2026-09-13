@@ -57,7 +57,7 @@ function establishPacks(state: GameState): void {
 }
 
 describe("computer long-horizon development plan", () => {
-  it("uses one exceptional Elves Pack, otherwise two ordinary Packs, before pivoting to Silver", () => {
+  it("requires both Elves and Dwarves Packs before the Rampart Silver pivot", () => {
     const state = game();
     state.players.p2.factionId = "rampart";
     state.players.p2.army = ["rampart.centaurs", "rampart.dwarves", "rampart.elves"].map(
@@ -74,21 +74,16 @@ describe("computer long-horizon development plan", () => {
       ),
     ];
 
-    expect(openingCorePackTarget(state, "p2")).toBe(1);
+    expect(openingCorePackTarget(state, "p2")).toBe(2);
     expect(armyDevelopmentProfile(state, "p2").phase).toBe("establish-core");
     state.players.p2.army[2].side = "pack"; // double-attacking ranged Elves
+    expect(armyDevelopmentProfile(state, "p2").phase).toBe("establish-core");
+    // CONTROL: an unrelated Centaur Pack cannot replace the Dwarf screen.
+    state.players.p2.army[0].side = "pack";
+    expect(armyDevelopmentProfile(state, "p2").phase).toBe("establish-core");
+    state.players.p2.army[0].side = "few";
+    state.players.p2.army[1].side = "pack";
     expect(armyDevelopmentProfile(state, "p2").phase).toBe("unlock-silver");
-
-    // CONTROL: without the exceptional repeat attack, the same printed bodies
-    // use the ordinary two-Pack opening rather than receiving an ID exception.
-    const elfPack = coreUnitDefinitions["rampart.elves"].pack!;
-    const abilities = elfPack.abilities;
-    try {
-      elfPack.abilities = [];
-      expect(openingCorePackTarget(state, "p2")).toBe(2);
-    } finally {
-      elfPack.abilities = abilities;
-    }
   });
 
   it("reinforces the tempo Pack before cheaper low-impact upgrades", () => {

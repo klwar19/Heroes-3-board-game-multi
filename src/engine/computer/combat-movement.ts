@@ -5,6 +5,7 @@ import {
 import { houseRuleEnabled } from "../house-rules";
 import { polishQuickCombatEnabled, polishQuickCombatOutcome } from "../polish-quick-combat";
 import type { GameState, HeroState, MapFieldState } from "../state";
+import { isOpeningFarMaterialMine } from "./far-sweep";
 
 /** Entry budget only; dice/cards can still require additional continuations. */
 export function premiumCombatMovementReserve(state: GameState, hero: HeroState, field: MapFieldState): number {
@@ -29,6 +30,7 @@ export function premiumCombatMovementReserve(state: GameState, hero: HeroState, 
   // so a short approach can still lead to an earlier attack that same turn.
   const economyFight = field.location === "settlement" || field.location === "mine";
   const premium = field.location === "settlement" ||
+    (hero.kind === "main" && isOpeningFarMaterialMine(state, hero.controllerId, field)) ||
     (field.location === "mine" && (field.resource === "gold" || field.resource === "valuables"));
   const impossibleEconomy = premium && (field.difficulty ?? 0) >= 2 &&
     neutralArmyDifficultyForField(state, field) === "impossible";

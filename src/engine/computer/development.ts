@@ -1,4 +1,6 @@
-import { coreBuildingDefinitions, coreFactionDefinitions } from "@/data/factions/core";
+import { coreBuildingDefinitions, coreFactionDefinitions, factoryGoldUnitConflict } from "@/data/factions/core";
+import { hasNecromancyPlan } from "./necromancy-plan";
+export { hasNecromancyPlan } from "./necromancy-plan";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import type { TownBuildingEffect, UnitSideDefinition, UnitTier } from "@/data/factions/types";
 import { TRADE_RATES } from "@/data/map/locations";
@@ -6,8 +8,74 @@ import { NEUTRAL_PLAYER_ID } from "../state";
 import type { GameState, PlayerId, ResourceCost } from "../state";
 import { unitExperienceActive } from "../unit-experience";
 import { playersAreAllied } from "./control";
+import { isFieldGuarded, reinforceCostFor, applyRecruitGoldDiscount } from "../adventure";
+import { isOpeningFarMaterialMine, securedFarTileIds } from "./far-sweep";
 
-/** Maximum opening Pack target. Composition-aware openings may need only 1–2. */
+/** Ordered Pack purchases; the third starting card remains a Few screen. */
+export function preferredOpeningPacks(state: GameState, playerId: PlayerId): readonly string[] {
+  return ({
+    rampart: ["rampart.elves", "rampart.dwarves"],
+    inferno: ["inferno.cerberi", "inferno.familiars"],
+    dungeon: ["dungeon.harpies", "dungeon.evil_eyes"],
+  } as Record<string, string[]>)[state.players[playerId]?.factionId ?? ""] ?? [];
+}
+
+export function openingBronzeCoreReady(state: GameState, playerId: PlayerId): boolean {
+  const army = (state.players[playerId]?.army ?? []).filter(unit => unit.side !== "bank");
+  const preferred = preferredOpeningPacks(state, playerId);
+  return army.length >= CORE_BODY_TARGET && (preferred.length > 0
+    ? preferred.every(id => army.some(unit => unit.unitDefId === id && unit.side === "pack"))
+    : army.filter(unit => unit.side === "pack" && coreUnitDefinitions[unit.unitDefId]?.tier === "bronze").length >= openingCorePackTarget(state, playerId));
+}
+
+export function necromancyUpgradePriority(unitDefId: string): number {
+  const tier = coreUnitDefinitions[unitDefId]?.tier;
+  if (tier === "gold" || tier === "azure") return 8;
+  if (tier === "silver") return unitDefId === "necropolis.vampires" ? 7 : 6;
+  return ({ "necropolis.wraiths": 4,
+    "necropolis.zombies": 2, "necropolis.skeletons": 1 } as Record<string, number>)[unitDefId] ?? 0;
+}
+
+export function needsNecromancyVampire(state: GameState, playerId: PlayerId): boolean {
+  return hasNecromancyPlan(state, playerId) && !hasGoldArmy(state, playerId) &&
+    !state.computerMemory?.[playerId]?.necromancyVampirePackEarned &&
+    !state.players[playerId].army.some(unit => unit.unitDefId === "necropolis.vampires" && unit.side === "pack");
+}
+
+/** A first Silver may fund a concrete premium breakthrough before the Gold
+ * ladder opens. No change to ordinary exploration or any Gold purchase plan. */
+export function needsPremiumSilverBreakthrough(state: GameState, playerId: PlayerId): boolean {
+  const profile = armyDevelopmentProfile(state, playerId);
+  if (hasGoldArmy(state, playerId) || profile.silverUnits > 0) return false;
+  // Once the Gold ladder is open, the Gold Few IS the breakthrough body — a
+  // Silver bought here would outrank the saved Gold step (968) at 976.
+  if (profile.goldUnlocked) return false;
+  if (state.players[playerId]?.factionId !== "necropolis" && securedFarTileIds(state, playerId).size > 0) return true;
+  const memory = state.computerMemory?.[playerId];
+  if ((memory?.settlementLossStreak ?? 0) >= 2) return true;
+  const target = memory?.stickyObjectiveSpaceId;
+  const field = target && state.adventure?.fields[target];
+  return Boolean(field && isFieldGuarded(field) && field.flagOwnerId !== playerId &&
+    (field.location === "settlement" || isOpeningFarMaterialMine(state, playerId, field) ||
+      (field.location === "mine" && (field.resource === "gold" || field.resource === "valuables"))) &&
+    profile.bronzePacks >= profile.corePackTarget);
+}
+
+/** The two-Far income base funds Gold growth before optional town extras. */
+export function committedGoldInvestment(state: GameState, playerId: PlayerId): boolean {
+  return state.players[playerId]?.factionId !== "necropolis" &&
+    securedFarTileIds(state, playerId).size >= 2 && nextGoldLadderStep(state, playerId) !== null;
+}
+
+function premiumSilverCost(state: GameState, playerId: PlayerId): ResourceCost | null {
+  const faction = coreFactionDefinitions[state.players[playerId]?.factionId ?? ""];
+  const offers = (faction?.units ?? []).map(id => coreUnitDefinitions[id])
+    .filter(unit => unit?.tier === "silver" && unit.few);
+  offers.sort((a, b) => costWeight(a.few?.cost) - costWeight(b.few?.cost));
+  return offers[0]?.few?.cost ?? null;
+}
+
+/** Paid openings need two or three Packs; Necromancy earns its own upgrades. */
 export const CORE_PACK_TARGET = 3;
 export const CORE_BODY_TARGET = 3;
 
@@ -52,13 +120,17 @@ export function unitDevelopmentSideStrength(
 
 /**
  * Minimum Packs needed before pivoting into Silver for this actual bronze
- * roster. One exceptional tempo Pack plus two useful Few can be enough; most
- * factions want two; weak/attrition openings retain the safe three-Pack plan.
+ * roster. Strong factions want two; weak/attrition openings retain the
+ * three-Pack plan. Necromancy has its separate earned-upgrade opening.
  */
 export function openingCorePackTarget(
   state: GameState,
   playerId: PlayerId,
 ): 1 | 2 | 3 {
+  // A Necromancer must fight to earn the remaining Packs. Requiring all
+  // three first deadlocks the very battles that pay for Wraiths and Zombies.
+  if (hasNecromancyPlan(state, playerId)) return neutralsArePlayerControlled(state, playerId) ? 2 : 1;
+  if (preferredOpeningPacks(state, playerId).length > 0) return 2;
   const player = state.players[playerId];
   const factionBronze = (coreFactionDefinitions[player?.factionId ?? ""]?.units ?? [])
     .filter((unitDefId) => {
@@ -87,9 +159,6 @@ export function openingCorePackTarget(
       (sum, unit, index) => sum + (index < packs ? unit.pack : unit.few),
       0,
     );
-  // A one-Pack pivot requires a genuinely exceptional individual, not merely
-  // a high-stat collection of Few cards.
-  if (bronze[0].pack >= 29 && projected(1) >= 54) return 1;
   if (projected(2) >= 52) return 2;
   return 3;
 }
@@ -158,7 +227,10 @@ export function armyDevelopmentProfile(
   let phase: ArmyDevelopmentPhase;
   // Gold survivors (including foreign recruits) must not restart the bronze
   // opening after a screen dies or a Pack flips. Fight readiness is separate.
-  if (!hasGoldArmy(state, playerId) && (army.length < CORE_BODY_TARGET || packUnits < corePackTarget)) {
+  if (!hasGoldArmy(state, playerId) &&
+      (silverUnits === 0 || army.length < CORE_BODY_TARGET || state.players[playerId]?.factionId === "necropolis") &&
+      (army.length < CORE_BODY_TARGET || packUnits < corePackTarget ||
+        (preferredOpeningPacks(state, playerId).length > 0 && !openingBronzeCoreReady(state, playerId)))) {
     phase = "establish-core";
   } else if (!silverUnlocked) {
     phase = "unlock-silver";
@@ -468,7 +540,8 @@ export function incomeBuildingBeforeDwelling(
   playerId: PlayerId,
   bronzeCoreHasWork = true,
 ) {
-  if (!bronzeCoreHasWork) return null;
+  if (!bronzeCoreHasWork || needsNecromancyVampire(state, playerId) ||
+      needsPremiumSilverBreakthrough(state, playerId) || securedFarTileIds(state, playerId).size >= 2) return null;
   // Until the first FAR income is captured, fund Silver/Gold and its fighting
   // army. A revealed settlement is still a battle to win, not an income base.
   if (!hasOpenedFarEconomy(state, playerId)) return null;
@@ -534,6 +607,11 @@ export function nextDevelopmentBuildingCost(
   playerId: PlayerId,
 ): ResourceCost | null {
   const profile = armyDevelopmentProfile(state, playerId);
+  if (needsPremiumSilverBreakthrough(state, playerId) && !needsNecromancyVampire(state, playerId)) {
+    return profile.silverUnlocked ? null : factionBuildingForEffect(state, playerId,
+      effect => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "silver")?.cost ?? null;
+  }
+  if (profile.silverUnlocked && needsNecromancyVampire(state, playerId)) return null;
   const phase = profile.phase;
   // Income-first: with the Pack core ready, the missing City Hall is the build
   // being saved for (its cost drives the treasury target and the rush trades).
@@ -617,7 +695,8 @@ export function rankedGoldUnits(state: GameState, playerId: PlayerId): string[] 
   const roster = coreFactionDefinitions[player?.factionId ?? ""]?.units ?? [];
   return roster
     .map((unitDefId, index) => ({ unitDefId, index, unit: coreUnitDefinitions[unitDefId] }))
-    .filter(({ unit }) => unit?.tier === "gold" && Boolean(unit.few) && Boolean(unit.pack))
+    .filter(({ unit, unitDefId }) => unit?.tier === "gold" && Boolean(unit.few) && Boolean(unit.pack) &&
+      !factoryGoldUnitConflict(player?.army ?? [], unitDefId))
     .sort(
       (left, right) =>
         costWeight(right.unit!.few!.cost) - costWeight(left.unit!.few!.cost) ||
@@ -636,7 +715,8 @@ export type GoldLadderStep = {
 
 /**
  * The next Gold-army purchase in the taught order: the highest-ranked missing
- * Few, else the highest-ranked unit still at Few (its Pack). Null before the
+ * Few, else the highest-ranked unit still at Few (its Pack), with an affordable
+ * first-Pack fallback for the non-Necropolis two-Far plan. Null before the
  * Gold dwelling stands or once every Gold unit is a Pack. A Gold body lost in
  * combat re-opens its Few step, so the ladder "goes back" on its own.
  */
@@ -653,6 +733,22 @@ export function nextGoldLadderStep(
     if (!owned(unitDefId)) {
       return { unitDefId, kind: "recruit", cost: coreUnitDefinitions[unitDefId]!.few!.cost, rank };
     }
+  }
+  // Once both Gold bodies stand, take an affordable first Pack when scarce
+  // inputs block the preferred one. This gives the army its breakthrough now
+  // instead of parking both Few cards through several Resource Rounds.
+  if (player.factionId !== "necropolis" && securedFarTileIds(state, playerId).size >= 2 &&
+      !ranked.some(id => owned(id)?.side === "pack")) {
+    const affordable = ranked.find(id => {
+      const unit = owned(id);
+      const cost = unit && reinforceCostFor(state, playerId, unit.id, false, false, false);
+      return unit?.side === "few" && cost &&
+        player.resources.gold >= (cost.gold ?? 0) &&
+        player.resources.buildingMaterials >= (cost.buildingMaterials ?? 0) &&
+        player.resources.valuables >= (cost.valuables ?? 0);
+    });
+    if (affordable) return { unitDefId: affordable, kind: "reinforce",
+      cost: coreUnitDefinitions[affordable]!.pack!.cost, rank: ranked.indexOf(affordable) };
   }
   for (const [rank, unitDefId] of ranked.entries()) {
     if (owned(unitDefId)?.side === "few") {
@@ -729,7 +825,35 @@ export function developmentResourceTargets(
   playerId: PlayerId,
 ): Required<ResourceCost> {
   const profile = armyDevelopmentProfile(state, playerId);
+  if (needsPremiumSilverBreakthrough(state, playerId) && !needsNecromancyVampire(state, playerId)) {
+    const recruit = premiumSilverCost(state, playerId) ?? {};
+    const dwelling = nextDevelopmentBuildingCost(state, playerId) ?? {};
+    return {
+      gold: (recruit.gold ?? 0) + (dwelling.gold ?? 0) + 5,
+      buildingMaterials: (recruit.buildingMaterials ?? 0) + (dwelling.buildingMaterials ?? 0),
+      valuables: (recruit.valuables ?? 0) + (dwelling.valuables ?? 0),
+    };
+  }
   const nextBuilding = nextDevelopmentBuildingCost(state, playerId);
+  if (needsNecromancyVampire(state, playerId)) {
+    const vampire = state.players[playerId].army.find(unit => unit.unitDefId === "necropolis.vampires" && unit.side !== "bank");
+    const few = applyRecruitGoldDiscount(state, playerId, { kind: "recruit", unitDefId: "necropolis.vampires" }, coreUnitDefinitions["necropolis.vampires"].few!.cost);
+    const pack = coreUnitDefinitions["necropolis.vampires"].pack!.cost;
+    const upgrade = vampire ? reinforceCostFor(state, playerId, vampire.id, false, true, true) ?? pack
+      : { ...pack, gold: Math.floor((pack.gold ?? 0) / 2) };
+    const dwelling = profile.silverUnlocked ? {} : nextBuilding ?? {};
+    const bronzeGold = state.players[playerId].army.reduce((sum, unit) => {
+      if (unit.side !== "few" || coreUnitDefinitions[unit.unitDefId]?.tier !== "bronze") return sum;
+      const paid = unit.unitDefId === "necropolis.skeletons" ||
+        (unit.unitDefId === "necropolis.wraiths" && neutralsArePlayerControlled(state, playerId));
+      return sum + (reinforceCostFor(state, playerId, unit.id, false, !paid, !paid)?.gold ?? 0);
+    }, 0);
+    return {
+      gold: bronzeGold + (dwelling.gold ?? 0) + (vampire ? 0 : few.gold ?? 0) + (upgrade.gold ?? 0),
+      buildingMaterials: (dwelling.buildingMaterials ?? 0) + (vampire ? 0 : few.buildingMaterials ?? 0) + (upgrade.buildingMaterials ?? 0),
+      valuables: (dwelling.valuables ?? 0) + (vampire ? 0 : few.valuables ?? 0) + (upgrade.valuables ?? 0),
+    };
+  }
   if (nextBuilding) {
     return {
       gold: Math.max(14, (nextBuilding.gold ?? 0) + 5),
@@ -747,7 +871,7 @@ export function developmentResourceTargets(
     const step = nextGoldLadderStep(state, playerId);
     if (
       step &&
-      (step.kind === "recruit" || goldPurchaseReachable(state, playerId, step.cost, 1))
+      (step.kind === "recruit" || committedGoldInvestment(state, playerId) || goldPurchaseReachable(state, playerId, step.cost, 1))
     ) {
       return {
         // Preserve the normal five-gold safety cushion after the purchase.

@@ -1,5 +1,8 @@
 import type { GameAction, GameState, MapSpaceId, PlayerId } from "../state";
 import { updateDevelopmentPlan, type DevelopmentPlan } from "./development-plan";
+import { bronzeArmyNeedsWithdrawal } from "./necropolis-combat";
+import { playerArmyStrength } from "./army-strength";
+import { coreUnitDefinitions } from "@/data/factions/units";
 
 /**
  * Bounded multi-round policy memory for a computer seat. Persisted on
@@ -22,7 +25,13 @@ export type ResourceTrailEntry = {
 };
 
 export type ComputerPolicyMemory = {
-  failedFields?: Array<{ fieldId: string; round: number; readiness: string }>;
+  withdrawalCombatId?: string;
+  /** The opening Vampire Pack milestone survives casualties and saves. */
+  necromancyVampirePackEarned?: boolean;
+  settlementLossStreak?: number;
+  settlementLossRound?: number;
+  lastSettlementCombatId?: string;
+  failedFields?: Array<{ fieldId: string; round: number; readiness: string; armyStrength?: number; heroLevel?: number; hadArrow?: boolean }>;
   developmentPlan?: DevelopmentPlan;
   routeHistory?: Array<{ heroId: string; to: string; progress: string; round?: number }>;
   /** This seat's round/completion key — other seats cannot clear its visit list. */
@@ -231,12 +240,32 @@ export function noteComputerAction(
 ): GameState {
   let mem = getComputerMemory(state, playerId);
   const round = state.round ?? 0;
+  if (state.players[playerId]?.factionId === "necropolis" && state.players[playerId].army.some(unit =>
+      unit.unitDefId === "necropolis.vampires" && unit.side === "pack")) mem.necromancyVampirePackEarned = true;
   const combat = state.combat;
+  if (combat && !combat.outcome && bronzeArmyNeedsWithdrawal(state, playerId, combat)) mem.withdrawalCombatId = combat.id;
+  // Outcome windows can span several actions. Count each settlement battle
+  // exactly once, and keep the streak across turns, unrelated fights and saves.
+  if (combat?.context.kind === "neutral" && combat.attackerPlayerId === playerId &&
+      combat.outcome && mem.lastSettlementCombatId !== combat.id &&
+      state.adventure?.fields[combat.context.fieldId]?.location === "settlement") {
+    mem.lastSettlementCombatId = combat.id;
+    if (combat.outcome.winnerPlayerId !== playerId) mem.settlementLossRound = round;
+    mem.settlementLossStreak = combat.outcome.winnerPlayerId === playerId
+      ? 0 : Math.min(2, (mem.settlementLossStreak ?? 0) + 1);
+  }
   if (combat?.context.kind === "neutral" && combat.attackerPlayerId === playerId &&
       combat.outcome && combat.outcome.winnerPlayerId !== playerId) {
     const fieldId = combat.context.fieldId;
     mem.failedFields = [...(mem.failedFields ?? []).filter(entry => entry.fieldId !== fieldId),
-      { fieldId, round, readiness: fightReadinessKey(state, playerId) }].slice(-8);
+      { fieldId, round, readiness: fightReadinessKey(state, playerId),
+        armyStrength: playerArmyStrength(state, playerId),
+        // Main-hero level: repeatsFailedFight compares against the CURRENT
+        // main hero, so a secondary's defeat must not skew the release rule.
+        heroLevel: Object.values(state.heroes).find(hero =>
+          hero.controllerId === playerId && hero.kind === "main")?.level ?? 0,
+        hadArrow: state.players[playerId]?.hand.includes("spell.magic_arrow") ||
+          state.players[playerId]?.spellBook?.includes("spell.magic_arrow") }].slice(-8);
   }
 
   switch (action.type) {
@@ -334,6 +363,27 @@ function fightReadinessKey(state: GameState, playerId: PlayerId): string {
 }
 
 export function repeatsFailedFight(state: GameState, playerId: PlayerId, fieldId: string): boolean {
+  // A different hand alone is no longer a reason for a third bronze-only
+  // settlement attempt. Let the normal map planner find income elsewhere
+  // until a Silver (or higher) body is actually in the army.
+  // Bounded like failedFields: without a window, two early losses plus an
+  // unaffordable Silver would blacklist every settlement for the whole game.
+  if (state.adventure?.fields[fieldId]?.location === "settlement" &&
+      (state.computerMemory?.[playerId]?.settlementLossStreak ?? 0) >= 2 &&
+      state.round - (state.computerMemory?.[playerId]?.settlementLossRound ?? 0) <= 8 &&
+      !(state.players[playerId]?.army ?? []).some(unit => unit.side !== "bank" &&
+        ["silver", "gold", "azure"].includes(coreUnitDefinitions[unit.unitDefId]?.tier))) return true;
+  if (state.players[playerId]) {
+    const failed = state.computerMemory?.[playerId]?.failedFields?.find(entry=>entry.fieldId===fieldId);
+    if (failed?.armyStrength !== undefined && state.round - failed.round <= 3) {
+      const level = Object.values(state.heroes).find(h=>h.controllerId===playerId && h.kind==="main")?.level ?? 0;
+      const addedArrow = !failed.hadArrow &&
+        (state.players[playerId].hand.includes("spell.magic_arrow") ||
+          state.players[playerId].spellBook?.includes("spell.magic_arrow"));
+      if (playerArmyStrength(state,playerId) <= failed.armyStrength * 1.1 &&
+          level <= (failed.heroLevel ?? 0) && !addedArrow) return true;
+    }
+  }
   return (state.computerMemory?.[playerId]?.failedFields ?? []).some(entry =>
     entry.fieldId === fieldId && state.round - entry.round <= 2 &&
     entry.readiness === fightReadinessKey(state, playerId));

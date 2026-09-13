@@ -1,3 +1,4 @@
+import { hasNecromancyPlan } from "./computer/necromancy-plan";
 import { townCombatStart } from "./town-veterancy";
 import { placeRandomTownFormation } from "./random-town-tactics";
 import { heroGradePickBlockReason } from "./hero-grade-picking";
@@ -1199,14 +1200,14 @@ export function refreshHand(state: GameState, action: Extract<GameAction, { type
   player.explorersDiscardPending = explorersActive && player.hand.length > 0;
 
   // Option ON + round 1: after the fill-to-limit, arm the second pass (discard
-  // 0–N from the full hand, draw the same number). Humans only — computer seats
-  // keep the filled hand so the AI never freezes on an optional window.
+  // 0–N from the full hand, draw the same number). Necromancy computers also
+  // use this finite window to find their opening engine card.
   if (
     state.round === 1 &&
     !player.needsHandRefresh &&
     !explorersActive &&
     state.adventure?.startingHandMulligan !== false &&
-    state.controllers?.[action.playerId]?.kind !== "computer"
+    (state.controllers?.[action.playerId]?.kind !== "computer" || hasNecromancyPlan(state, action.playerId))
   ) {
     player.canOpeningMulligan = true;
   } else {
