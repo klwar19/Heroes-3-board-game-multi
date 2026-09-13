@@ -1,5 +1,5 @@
 "use client";
-import { conquestProgress, requiredRivalHeroDefeats, wanderingMerchantAvailable, wanderingMerchantBlockReason } from "@/engine/adventure";
+import { conquestProgress, currentSaplingsOffer, requiredRivalHeroDefeats, wanderingMerchantAvailable, wanderingMerchantBlockReason } from "@/engine/adventure";
 
 /* eslint-disable @next/next/no-img-element */
 
@@ -8179,7 +8179,7 @@ export function PromptTray({
     visit.playerId === viewerPlayerId &&
     visitActions.length > 0
   ) {
-    const step = visit.steps[0];
+    const step = currentSaplingsOffer(state, visit)?.step ?? visit.steps[0];
     // The market panel owns the Trading Post / War Machine Factory visits.
     if (step?.type === "TRADING_POST" || step?.type === "WAR_MACHINE_SHOP" ||
       (step?.type === "CHOOSE_ONE" && step.prompt.startsWith("Wandering Merchant:"))) {
@@ -9466,7 +9466,9 @@ export function PromptTray({
     return (
       <div className="promptTray withRewardCards" role="dialog" aria-label={title}>
         <strong>{title}</strong>
-        <small>All drawn Neutral Unit cards are shown. A card you cannot afford stays visible but cannot be recruited.</small>
+        <small>{visit && currentSaplingsOffer(state, visit)
+          ? "Reinforce directly or apply optional Legion discounts first. Unaffordable reinforcements become available when you can pay."
+          : "All drawn Neutral Unit cards are shown. A card you cannot afford stays visible but cannot be recruited."}</small>
         <div className="promptOptions rewardCards">
           {chooseOneOptions.map((option, optionIndex) => {
             const legal = body.find(

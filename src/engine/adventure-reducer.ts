@@ -1,4 +1,5 @@
 import { hasNecromancyPlan } from "./computer/necromancy-plan";
+import { currentSaplingsOffer } from "./adventure";
 import { townCombatStart } from "./town-veterancy";
 import { placeRandomTownFormation } from "./random-town-tactics";
 import { heroGradePickBlockReason } from "./hero-grade-picking";
@@ -4867,6 +4868,16 @@ export function resolveVisitStep(state: GameState, action: Extract<GameAction, {
     throw new Error("Resolve the pending card choice first.");
   }
 
+  const saplings = currentSaplingsOffer(state, visit);
+  if (saplings) {
+    const option = action.optionIndex === undefined ? undefined : saplings.step.options[action.optionIndex];
+    if (!option || option.disabledReason || action.saplingsOption !== option.label) {
+      throw new Error("Saplings options changed. Choose again from the current menu.");
+    }
+    visit.steps[0] = saplings.step;
+    state.players[visit.playerId].reinforcementDiscounts = saplings.banks;
+    state.eventCounter = saplings.eventCounter;
+  }
   const step = visit.steps[0];
   if (!step) {
     adventure.pendingVisit = null;

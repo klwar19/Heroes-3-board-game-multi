@@ -21033,6 +21033,45 @@ function queueGardenOfLife(state: GameState, playerId: PlayerId, buildingId: str
   });
 }
 
+/** Live Saplings choices, shared by presentation, legality and resolution.
+ * Previewing never banks a discount or advances the real event counter.
+ */
+export function currentSaplingsOffer(state: GameState, visit: PendingVisit): {
+  step: Extract<VisitStep, { type: "CHOOSE_ONE" }>;
+  banks: ReinforcementDiscountBank[];
+  eventCounter: GameState["eventCounter"];
+} | null {
+  const stored = visit.steps[0];
+  const player = state.players[visit.playerId];
+  if (!player || stored?.type !== "CHOOSE_ONE") return null;
+  const pick = stored.options.flatMap((option) => option.steps)
+    .find((step) => step.type === "SAPLINGS_REINFORCE_PICK");
+  const bank = pick?.type === "SAPLINGS_REINFORCE_PICK"
+    ? player.reinforcementDiscounts?.find((candidate) => candidate.id === pick.discountId && candidate.source === "saplings")
+    : undefined;
+  const printedOffer = stored.prompt === "Saplings: reinforce one unit for half the gold cost" &&
+    stored.options.every((option) => option.steps.every((step) =>
+      step.type === "REINFORCE_HALF_GOLD" || step.type === "BUY_UNIT_STACK"));
+  if (!bank && !printedOffer) return null;
+  const preview: GameState = { ...state, players: { ...state.players, [visit.playerId]: {
+    ...player, reinforcementDiscounts: (player.reinforcementDiscounts ?? []).map((entry) => ({ ...entry }))
+  } } };
+  const previewVisit: PendingVisit = { ...visit, steps: [] };
+  saplingsReinforceMenu(preview, previewVisit, {
+    type: "SAPLINGS_REINFORCE_MENU", buildingId: "rampart.saplings",
+    tiers: bank?.allowedTiers ?? ["bronze", "silver"], discountId: bank?.id
+  });
+  const step = previewVisit.steps[0];
+  return {
+    step: step?.type === "CHOOSE_ONE" ? step : {
+      type: "CHOOSE_ONE", prompt: "Saplings: no eligible unit remains.",
+      options: [{ label: "Skip", steps: [] }]
+    },
+    banks: preview.players[visit.playerId].reinforcementDiscounts ?? [],
+    eventCounter: preview.eventCounter
+  };
+}
+
 function queueHalfGoldReinforce(state: GameState, playerId: PlayerId, buildingId: string, tiers: string[]): void {
   state.adventure?.rewardQueue.push({
     playerId,
@@ -21099,7 +21138,7 @@ function saplingsReinforceMenu(state: GameState, visit: PendingVisit, menu: Extr
     return;
   }
   options.push({ label: "Skip", steps: [{ type: "SAPLINGS_REINFORCE_PICK", discountId: bank.id }] });
-  visit.steps.unshift({ type: "CHOOSE_ONE", prompt: `${bank.sourceName}: reinforce now for half gold (rounded up), then other discounts. Play Legion below before confirming, or skip.`, options });
+  visit.steps.unshift({ type: "CHOOSE_ONE", prompt: `${bank.sourceName}: reinforce for half gold (rounded up), then other discounts. Legion is optional: reinforce directly, play eligible pieces one at a time, or skip. Playing a Legion card discards it immediately.`, options });
 }
 
 /**

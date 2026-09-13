@@ -1324,7 +1324,8 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 //    vampire milestone, bronze-army withdrawal), fight-preparation hand
 //    refresh + card hand-values (Learning/Estates/Scholar/Legion/permanents),
 //    settlement loss streaks with bounded blacklists, flying formation rework.
-export const ENGINE_PROTOCOL_VERSION = 143;
+// v144: Saplings resolves live Legion choices with a bound option/price.
+export const ENGINE_PROTOCOL_VERSION = 144;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

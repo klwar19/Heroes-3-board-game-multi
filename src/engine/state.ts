@@ -5095,6 +5095,8 @@ type GameActionPayload =
       playerId: PlayerId;
       optionIndex?: number;
       decline?: boolean;
+      /** Bind a live Saplings pick to its displayed unit/card and price. */
+      saplingsOption?: string;
     }
   | {
       /** Trade resources at a Trading Post (rate index from TRADE_RATES). */

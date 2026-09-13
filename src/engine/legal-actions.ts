@@ -27,6 +27,7 @@ import {
 import { sampleBuildings } from "@/data/towns/buildings";
 import {
   adventurePvpTroopLoss,
+  currentSaplingsOffer,
   playerRecruitUnitIds,
   playerRecruitUnitSide,
   playerRecruitTierUnlocked,
@@ -13828,7 +13829,8 @@ function addVisitStepActions(
 ): void {
   const adventure = state.adventure;
   const visit = adventure?.pendingVisit;
-  const step = visit?.steps[0];
+  const saplings = visit ? currentSaplingsOffer(state, visit) : null;
+  const step = saplings?.step ?? visit?.steps[0];
   if (!adventure || !visit || !step || visit.playerId !== playerId) {
     return;
   }
@@ -13874,7 +13876,8 @@ function addVisitStepActions(
       }
       actions.push({
         label: option.label,
-        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex },
+        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex,
+          ...(saplings ? { saplingsOption: option.label } : {}) },
       });
     }
     return;
