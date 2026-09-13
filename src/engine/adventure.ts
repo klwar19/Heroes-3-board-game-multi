@@ -2871,14 +2871,28 @@ function breakNeedsIndividualFlag(state: GameState, playerId: PlayerId, field: M
 
 /**
  * A near/center TILE-group Break seals the WHOLE tile, not just its guarded
- * fields: a hero coming from another tile may not step onto ANY of the broken
- * tile's fields — even an open, unguarded hex — until the tile's guard(s) are
- * cleared, so it cannot be side-stepped by walking in through an empty hex.
- * Guarded fields keep their own Break handling (you enter one to FIGHT it — the
- * only way in); once every guard the player has not yet cleared is gone the tile
- * opens. Returns true only for a non-guarded destination that this rule walls
- * off; the guarded break fields themselves are handled by the caller above.
- * Cheap group / origin gates run before the field scan.
+ * fields: a hero may not step onto ANY of the broken tile's open, unguarded
+ * hexes — whether coming from another tile OR from a hex INSIDE the tile.
+ * Standing on a beaten side guard (e.g. a Bank you fought into) is NOT a back
+ * door into the rest of the tile (USER REPORT 2026-09-13: "not beat break
+ * obelisk, only beat bank, but can still enter break field from bank").
+ * Guarded fields keep their own Break handling (you enter one to FIGHT it —
+ * the only way in), so a hero on a beaten Bank may still step onto the Break
+ * guard to fight it, or walk back out.
+ *
+ * WHICH guard holds the tile shut: a designer-designated Break field
+ * (`field.breakField` — e.g. a Break Obelisk) is THE gate when the tile has
+ * one. Beating it opens the tile even while ordinary side guards (a guarded
+ * Pandora, an unfought bank) still stand — those keep their own per-field
+ * fights but no longer wall off the whole tile, and in particular the
+ * conquered Break hex itself is enterable again (USER REPORT 2026-09-13:
+ * "even after beating break guard obelisk, still can't use dimension door on
+ * the break field"). Only a tile with NO designated Break field keeps the
+ * v139 fallback: every uncleared guard seals it.
+ *
+ * Returns true only for a non-guarded destination that this rule walls off;
+ * the guarded break fields themselves are handled by the caller above.
+ * Cheap group / own-hex gates run before the field scan.
  */
 function tileGroupBreakSealsEntry(state: GameState, hero: HeroState, field: MapFieldState): boolean {
   const adventure = state.adventure;
@@ -2890,20 +2904,32 @@ function tileGroupBreakSealsEntry(state: GameState, hero: HeroState, field: MapF
     (config.enterNearTiles === true && tile.group === "near") ||
     (config.enterCenterTiles === true && tile.group === "center");
   if (!groupBroken) return false;
-  // Moving WITHIN the broken tile (or the very field you already stand on) is
-  // never a fresh entry — only crossing in from a different tile is sealed.
-  const originField = hero.spaceId ? adventure.fields[hero.spaceId] : undefined;
-  if (originField?.tileInstanceId === field.tileInstanceId) return false;
-  // Sealed while any guard on the tile is still uncleared FOR THIS PLAYER
-  // (individual scope: an ally's cube does not open it; team scope: it does).
+  // The very hex the hero already stands on is never a fresh entry.
+  if (hero.spaceId === field.spaceId) return false;
+  // A hex this player already flagged (their conquered Break Obelisk, a mine
+  // they took while the tile was open) stays enterable — they earned it there.
   const playerId = hero.controllerId;
-  return Object.values(adventure.fields).some(
-    (other) =>
-      other.tileInstanceId === field.tileInstanceId &&
+  if (field.flagOwnerId === playerId || field.extraFlagOwnerIds?.includes(playerId)) {
+    return false;
+  }
+  // Sealed while the tile's BREAK guard is still uncleared FOR THIS PLAYER
+  // (individual scope: an ally's cube does not open it; team scope: it does).
+  // Designated Break fields are the gate when present; otherwise any guard.
+  let tileHasDesignatedBreak = false;
+  let designatedUncleared = false;
+  let anyUncleared = false;
+  for (const other of Object.values(adventure.fields)) {
+    if (other.tileInstanceId !== field.tileInstanceId) continue;
+    if (other.breakField === true) tileHasDesignatedBreak = true;
+    const uncleared =
       isFieldGuarded(other) &&
       other.flagOwnerId !== playerId &&
-      !breakClearedByTeam(state, playerId, other)
-  );
+      !breakClearedByTeam(state, playerId, other);
+    if (!uncleared) continue;
+    anyUncleared = true;
+    if (other.breakField === true) designatedUncleared = true;
+  }
+  return tileHasDesignatedBreak ? designatedUncleared : anyUncleared;
 }
 
 export function classifyHeroStep(
