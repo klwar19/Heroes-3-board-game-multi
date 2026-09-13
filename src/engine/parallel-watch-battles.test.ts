@@ -34,6 +34,7 @@ import {
   parallelStateForPlayer,
   settleParallelCombatContext,
 } from "./parallel-combats";
+import { neutralCombatControllerId } from "./neutral-control";
 import { getPlayerView } from "./player-view";
 
 const SPECTATOR = "observer" as PlayerId;
@@ -252,6 +253,141 @@ describe("a seat with no decision in a battle can WATCH it read-only", () => {
     settleParallelCombatContext(state);
     expect(state.parallelContextSelections?.p3).toBeUndefined();
     expect(isParallelWatchOnly(parallelStateForPlayer(state, "p3"), "p3")).toBe(false);
+  });
+
+  it("a watch selection never hides the viewer's OWN open decision (Learning after combat)", () => {
+    // User report 2026-09-13: in PARALLEL multiplayer, winning a combat that
+    // crosses a level asked NO Learning. Root cause: a seat that had switched to
+    // WATCH another still-live battle kept that selection (getPlayerView mirrors
+    // it onto the wire, settle only drops it when the watched battle ENDS). The
+    // watch out-ranked the seat's own parked level-up Learning pop-up, so the
+    // seat was shown the other fight and never its own offer.
+    let state = twoBattles("watch-never-hides-own-learning");
+    // p1's battle is parked; make it p1's OWN pending decision — the Learning
+    // offer that opens once a won combat has crossed a level.
+    const p1ctx = state.parallelCombats!.p1;
+    p1ctx.combat = null;
+    p1ctx.pendingChoice = {
+      id: "p1-learning",
+      type: "OPTION_CHOICE",
+      playerId: "p1",
+      prompt: "Your Hero is leveling up — play Learning to advance further?",
+      options: [
+        { label: "Play Learning — advance a half level (+1 Experience)" },
+        { label: "Decline" },
+      ],
+      context: "learning-level-up",
+      learningLevelUp: { modes: ["basic"] },
+      returnPhase: "player-turn",
+    } as GameState["pendingChoice"];
+    // p1 had earlier switched to watch p2's live battle (selection set before the
+    // pop-up opened, exactly as a mid-round peek leaves it).
+    state.parallelContextSelections = { ...(state.parallelContextSelections ?? {}), p1: "p2" };
+
+    const choice = getPlayerView(state, "p1").pendingChoice;
+    expect(choice?.type, "p1's own Learning offer is surfaced, not p2's fight").toBe("OPTION_CHOICE");
+    expect(choice && choice.type === "OPTION_CHOICE" ? choice.context : null).toBe("learning-level-up");
+    expect(choice?.playerId).toBe("p1");
+    // ...and it is answerable from p1's seat.
+    expect(getLegalActions(state, "p1").some((legal) => legal.action.type === "CHOOSE_OPTION")).toBe(true);
+  });
+
+  it("a watch selection never blocks the viewer's OWN combat acknowledgement (the REAL after-combat pipeline)", () => {
+    // User re-report 2026-09-13: the parked-pendingChoice redirect above was not
+    // enough — in the real pipeline NOTHING has opened yet when the battle ends.
+    // XP, the field visit and the Learning offer all resolve only after the
+    // winner's ACKNOWLEDGE_COMBAT_END (finalizeAdventureCombat), and while the
+    // watch selection pinned the seat to the other battle that acknowledgement
+    // was not even legal (a watcher is offered nothing but the switch). The
+    // finished battle sat parked forever unless the seat manually switched back.
+    let state = twoBattles("watch-never-blocks-own-ack");
+    const hero = state.heroes.hero_p1;
+    hero.experience = 1; // half-step below level 2: the guard's +1 XP crosses it
+    hero.level = 1;
+    state.players.p1.hand = ["ability.learning"];
+    state = apply(state, { type: "SELECT_PARALLEL_CONTEXT", playerId: "p1", ownerPlayerId: "p2" });
+
+    // p1's own battle (live or parked — the selection commit may have swapped
+    // which one holds it) is decided while p1 still watches p2's fight.
+    const own = state.parallelCombats?.p1?.combat ??
+      (state.parallelCombatOwnerId === "p1" ? state.combat! : null);
+    own!.outcome = {
+      winnerPlayerId: "p1",
+      defeatedPlayerId: "neutrals" as PlayerId,
+      reason: "all-enemy-units-defeated",
+    };
+
+    // The viewer is shown their OWN finished battle, and the acknowledgement is
+    // offered — the watch selection no longer outranks it. (Pre-fix: the view
+    // stayed on p2's live battle and ACKNOWLEDGE_COMBAT_END was refused.)
+    expect(getPlayerView(state, "p1").combat?.outcome).toBeTruthy();
+    expect(
+      getLegalActions(state, "p1").some((legal) => legal.action.type === "ACKNOWLEDGE_COMBAT_END"),
+    ).toBe(true);
+    state = apply(state, { type: "ACKNOWLEDGE_COMBAT_END", playerId: "p1" });
+
+    // The real finalize ran: XP crossed the level and the Learning offer is OPEN.
+    expect(state.heroes.hero_p1.experience).toBe(2);
+    const choice = getPlayerView(state, "p1").pendingChoice;
+    expect(choice?.type).toBe("OPTION_CHOICE");
+    expect(choice && choice.type === "OPTION_CHOICE" ? choice.context : null).toBe("learning-level-up");
+    // The selection itself survives (p2's battle still runs), so once p1's own
+    // queue empties the seat returns to the watched battle by itself.
+    expect(state.parallelContextSelections?.p1).toBe("p2");
+    // ...and p2's live battle was not disturbed.
+    const p2Combat = state.parallelCombatOwnerId === "p2" ? state.combat : state.parallelCombats?.p2?.combat;
+    expect(p2Combat && !p2Combat.outcome).toBeTruthy();
+  });
+
+  it("a CONTROL pin (PvP Neutral Control) never blocks the controller's own acknowledgement or Learning", () => {
+    // Same report, the guard-commander variant: the seat had switched to the
+    // battle whose NEUTRALS it commands. That pin used to be honoured
+    // unconditionally ("not a passive watch"), so after the seat's own battle
+    // was decided elsewhere its acknowledgement — and the Learning offer behind
+    // it — never surfaced. Owed work OUTSIDE the pinned context now outranks a
+    // control pin too; the still-standing selection returns the seat to the
+    // commanded battle once its own queue empties.
+    let state = twoBattles("control-never-blocks-own-ack", { pvpNeutralControl: true });
+    // Under PvP Neutral Control p2 commands the guards of p1's battle.
+    expect(neutralCombatControllerId(state, state.parallelCombats!.p1.combat!)).toBe("p2");
+    const hero = state.heroes.hero_p2;
+    hero.experience = 1;
+    hero.level = 1;
+    state.players.p2.hand = ["ability.learning"];
+    state = apply(state, { type: "SELECT_PARALLEL_CONTEXT", playerId: "p2", ownerPlayerId: "p1" });
+
+    // p2's own battle is decided while p2 commands p1's guards.
+    const own = state.parallelCombats?.p2?.combat ??
+      (state.parallelCombatOwnerId === "p2" ? state.combat! : null);
+    own!.outcome = {
+      winnerPlayerId: "p2",
+      defeatedPlayerId: "neutrals" as PlayerId,
+      reason: "all-enemy-units-defeated",
+    };
+
+    expect(getPlayerView(state, "p2").combat?.outcome).toBeTruthy();
+    expect(
+      getLegalActions(state, "p2").some((legal) => legal.action.type === "ACKNOWLEDGE_COMBAT_END"),
+    ).toBe(true);
+    state = apply(state, { type: "ACKNOWLEDGE_COMBAT_END", playerId: "p2" });
+
+    const choice = getPlayerView(state, "p2").pendingChoice;
+    expect(choice && choice.type === "OPTION_CHOICE" ? choice.context : null).toBe("learning-level-up");
+    expect(choice?.playerId).toBe("p2");
+    // The pin survives for the way back, and the commanded battle is untouched.
+    expect(state.parallelContextSelections?.p2).toBe("p1");
+    expect(state.parallelCombats?.p1?.combat ?? state.combat).toBeTruthy();
+  });
+
+  it("CONTROL: an IDLE watcher (nothing owed) still holds the battle it selected", () => {
+    // The fix must NOT drag a passive watcher off the fight they chose: only a
+    // seat that actually OWES a decision is redirected to it.
+    let state = twoBattles("watch-idle-still-watches");
+    // p3 is idle (its own turn open, owes nothing) and watches p2's live battle.
+    state = apply(state, { type: "SELECT_PARALLEL_CONTEXT", playerId: "p3", ownerPlayerId: "p2" });
+    const watched = parallelStateForPlayer(state, "p3");
+    expect(watched.combat?.id, "an idle watcher keeps the battle it picked").toBe(state.combat!.id);
+    expect(isParallelWatchOnly(watched, "p3")).toBe(true);
   });
 
   it("a watched context's private search reveals stay masked", () => {

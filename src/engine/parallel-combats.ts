@@ -241,16 +241,64 @@ export function parallelStateForPlayer(
   const preferred = requestedOwner ?? (forcedOwnTurn ? playerId : state.parallelContextSelections?.[playerId]) ??
     (state.adventure.pvpNeutralControl ? playerId : undefined);
   const preferredCombat = preferred === currentOwner ? state.combat : preferred ? parked[preferred]?.combat : null;
-  const targetPreference = preferred && (preferred === playerId ||
-    (preferredCombat && !preferredCombat.outcome &&
-      // Read-only WATCH: any live battle may be selected. `isParallelWatchOnly`
-      // then reports the projection as watch-only and `getLegalActions` offers
-      // nothing there but the switch back, so watching dispatches nothing.
+  // A read-only WATCH selection must never HIDE a decision the viewer themselves
+  // owes — a level-up Learning offer, a reward/visit choice, a reaction — whether
+  // it is live or parked behind the battle they are watching. Their selection
+  // sticks (getPlayerView mirrors it into the view) until the watched battle ends,
+  // so without this a seat that peeked at another fight never sees its own pop-up
+  // after winning ("Learning not asked after combat" in parallel play). An IDLE
+  // watcher (nothing to answer) still keeps the battle it picked. A battle the
+  // viewer FIGHTS or CONTROLS is not a passive watch, so it is honoured regardless.
+  // Work the viewer themselves OWES in a context: an open pop-up or reaction
+  // addressed to them, or — user re-report 2026-09-13 — their own DECIDED but
+  // still unacknowledged battle. The acknowledgement comes BEFORE any pop-up
+  // exists: XP, the field visit and the level-up Learning offer all resolve
+  // only after this seat's ACKNOWLEDGE_COMBAT_END (finalizeAdventureCombat),
+  // and while a selection pinned the seat to ANOTHER battle that
+  // acknowledgement was not even legal (a watcher is offered nothing but the
+  // switch), so the finished battle — and everything queued behind it — sat
+  // parked until the seat manually switched back ("Learning not asked after
+  // combat" in parallel play).
+  const owesCombatAck = (combat: ParallelCombatContext["combat"]): boolean =>
+    Boolean(
+      combat?.outcome &&
+        !combat.endAcknowledged &&
+        combat.context.kind !== "sandbox" &&
+        (combat.attackerPlayerId === playerId || combat.defenderPlayerId === playerId),
+    );
+  const owesIn = (context: Pick<ParallelCombatContext, "combat" | "pendingChoice" | "reactionWindow">): boolean =>
+    context.pendingChoice?.playerId === playerId ||
+    context.reactionWindow?.priorityPlayerId === playerId ||
+    owesCombatAck(context.combat);
+  // A selection is only honoured while the viewer owes nothing OUTSIDE the
+  // selected context — and that holds for a battle they CONTROL exactly as for
+  // a read-only watch: the guards they command can wait the one click their own
+  // acknowledgement / Learning offer / reward pop-up takes, and once their own
+  // queue empties the still-standing selection returns them to the battle it
+  // names by itself. (Owed work INSIDE the selected battle honours the
+  // selection, of course — that projection is where the work is answered.)
+  const viewerOwesElsewhere =
+    (currentOwner !== preferred && owesIn(state)) ||
+    Object.entries(parked).some(([ownerId, context]) => ownerId !== preferred && owesIn(context));
+  const honorsWatch = Boolean(preferred) && (preferred === playerId ||
+    (preferredCombat && !preferredCombat.outcome && !viewerOwesElsewhere &&
       // A seat the AFK / turn-timeout driver is FORCING still only ever gets its
       // own window — that driver must never end up in a read-only context (it
       // already overrides `preferred`; this covers an explicit requestedOwner).
-      (neutralCombatControllerId(state, preferredCombat) === playerId || !forcedOwnTurn)))
-    ? preferred : preferred ? playerId : undefined;
+      (neutralCombatControllerId(state, preferredCombat) === playerId ||
+        !forcedOwnTurn)));
+  // When a watch is refused because the viewer owes work elsewhere, fall
+  // THROUGH to the owner-resolution below (which finds the exact context that
+  // holds it — own live/parked window, a finished battle awaiting their
+  // acknowledgement, or a battle they control) rather than pinning them to
+  // their own empty map frame.
+  const targetPreference = honorsWatch
+    ? preferred
+    : viewerOwesElsewhere
+      ? undefined
+      : preferred
+        ? playerId
+        : undefined;
   if (currentOwner === (targetPreference ?? playerId)) {
     // Restored battles may predate the explicit owner marker. Persist the
     // inferred owner before an acknowledgement clears combat, or Necromancy
@@ -280,6 +328,10 @@ export function parallelStateForPlayer(
         ([, context]) =>
           context.pendingChoice?.playerId === playerId ||
           context.reactionWindow?.priorityPlayerId === playerId ||
+          // A finished battle parked under ANOTHER owner's key still awaiting
+          // THIS participant's acknowledgement (a PvP fight is keyed by one
+          // side only).
+          owesCombatAck(context.combat) ||
           (context.combat &&
             neutralCombatControllerId(state, context.combat) === playerId),
       );

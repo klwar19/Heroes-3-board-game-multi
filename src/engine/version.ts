@@ -1293,7 +1293,15 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 //    rounds 1–2, sticky income commitment survives MP recalculation,
 //    discovery deferral, widened route-repeat guard, END_TURN reconsider
 //    pass, broader progress fingerprint, finite AI-combat bulk cap).
-export const ENGINE_PROTOCOL_VERSION = 141;
+// v142 (2026-09-13): parallel turns — a battle-window selection (read-only
+//    WATCH or a PvP-Neutral-Control guard command) no longer hides the seat's
+//    own owed work in ANOTHER context. In particular the seat's own DECIDED
+//    but unacknowledged battle now surfaces (its ACKNOWLEDGE_COMBAT_END was
+//    not even legal while pinned, so XP / field visit / the Learning offer
+//    behind it never resolved — "Learning not asked after combat"). The
+//    selection survives and returns the seat to the chosen battle once its
+//    own queue empties.
+export const ENGINE_PROTOCOL_VERSION = 142;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
