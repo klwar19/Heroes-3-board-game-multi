@@ -448,6 +448,7 @@ import {
   expireEffectsForTurnEnd,
   discardOngoingCardVoluntarily,
   getActiveAttackBonus,
+  getActiveRetaliationAttackBonus,
   getActiveDefenseBonus,
   getAttackerTypeDefenseBonus,
   getAttackRerollEffects,
@@ -466,6 +467,7 @@ import {
   unitHasCannotRetaliateEffect,
   unitHasVirtualDefenseToken,
   unitHasUnlimitedRetaliationEffect,
+  unitHasUnstoppableRetaliationEffect,
   unitIgnoresCardNonDamage,
   specialtyImmunityActive,
   unitIgnoresAttackDieFromEffects,
@@ -5827,7 +5829,7 @@ function getAttackStackDetails(
     ? getRetaliationAgainstAttackPenalty(defender)
     : 0;
   const retaliationAttackBonus = isRetaliation
-    ? getRetaliationAttackBonus(attacker)
+    ? getRetaliationAttackBonus(attacker) + getActiveRetaliationAttackBonus(state, attacker)
     : 0;
 
   // Elemental damage (Elemental units, Moandor's Liches VI specialty).
@@ -16302,6 +16304,8 @@ function shouldRetaliate(
   /** When given, the Counterstrike UNLIMITED_RETALIATION effect is honoured. */
   state?: GameState,
 ): boolean {
+  const unstoppable = townHasUnstoppableRetaliation(defender) ||
+    Boolean(state && unitHasUnstoppableRetaliationEffect(state, defender));
   return (
     !defender.elementalVeterancy?.nestOwnerId &&
     !(state?.combat && !isAdjacent(attacker.position, defender.position) &&
@@ -16311,27 +16315,15 @@ function shouldRetaliate(
     isUnitAlive(defender) &&
     ((attackKind === "melee" && isAdjacent(attacker.position, defender.position)) ||
       (attackKind === "ranged" && townAllowsRangedRetaliation(defender))) &&
-    (townHasUnstoppableRetaliation(defender) || (
-    !ignoreRetaliationOverride &&
-    !(townVeterancy(attacker, "angel-safe") && ["ground", "flying"].includes(defender.type)) &&
-    !(townVeterancy(attacker, "champion-safe") && state?.combat && attacker.townVeterancy?.movedRound === state.combat.round) &&
-    !hasUnitAbilityEffect(attacker, "IGNORE_RETALIATION") &&
-    !(
-      attacker.movedThisActivation &&
-      hasUnitAbilityEffect(attacker, "IGNORE_RETALIATION_AFTER_MOVE")
-    ) &&
-    !(
-      hasUnitAbilityEffect(attacker, "VANITAS_VS_UNACTIVATED") &&
-      !defender.activatedThisRound
-    ) &&
-    !hasUnitAbilityEffect(
-      attacker,
-      "IGNORE_ADJACENT_RANGED_PENALTY_AND_RETALIATION",
-    ) &&
-    !hasUnitAbilityEffect(
-      attacker,
-      "IGNORE_RANGED_PENALTIES_AND_MELEE_RETALIATION",
-    )
+    (unstoppable || (
+      !ignoreRetaliationOverride &&
+      !(townVeterancy(attacker, "angel-safe") && state?.combat && state.combat.round % 2 === 1 && ["ground", "flying"].includes(defender.type)) &&
+      !(townVeterancy(attacker, "champion-safe") && state?.combat && attacker.townVeterancy?.movedRound === state.combat.round) &&
+      !hasUnitAbilityEffect(attacker, "IGNORE_RETALIATION") &&
+      !(attacker.movedThisActivation && hasUnitAbilityEffect(attacker, "IGNORE_RETALIATION_AFTER_MOVE")) &&
+      !(hasUnitAbilityEffect(attacker, "VANITAS_VS_UNACTIVATED") && !defender.activatedThisRound) &&
+      !hasUnitAbilityEffect(attacker, "IGNORE_ADJACENT_RANGED_PENALTY_AND_RETALIATION") &&
+      !hasUnitAbilityEffect(attacker, "IGNORE_RANGED_PENALTIES_AND_MELEE_RETALIATION")
     )) &&
     // Ash's Bloodlust IV: the ongoing card's Black cube — the unit cannot
     // retaliate at all while the effect lives (beats unlimited retaliation).
@@ -16359,31 +16351,26 @@ function qualifiesForPreemptiveRetaliation(
   /** When given, the Bloodlust IV combat-long CANNOT_RETALIATE cube is honoured. */
   state?: GameState,
 ): boolean {
+  const unstoppable = Boolean(state && unitHasUnstoppableRetaliationEffect(state, defender));
   return (
     Boolean(getPreemptiveRetaliation(defender)) &&
     isUnitAlive(attacker) &&
     isUnitAlive(defender) &&
-    !ignoreRetaliationOverride &&
-    !(townVeterancy(attacker, "angel-safe") && ["ground", "flying"].includes(defender.type)) &&
-    !(townVeterancy(attacker, "champion-safe") && state?.combat && attacker.townVeterancy?.movedRound === state.combat.round) &&
-    !hasUnitAbilityEffect(attacker, "IGNORE_RETALIATION") &&
-    !(
-      attacker.movedThisActivation &&
-      hasUnitAbilityEffect(attacker, "IGNORE_RETALIATION_AFTER_MOVE")
-    ) &&
-    !(
-      hasUnitAbilityEffect(attacker, "VANITAS_VS_UNACTIVATED") &&
-      !defender.activatedThisRound
-    ) &&
-    !hasUnitAbilityEffect(
-      attacker,
-      "IGNORE_ADJACENT_RANGED_PENALTY_AND_RETALIATION",
-    ) &&
+    (unstoppable || (
+      !ignoreRetaliationOverride &&
+      !(townVeterancy(attacker, "angel-safe") && state?.combat && state.combat.round % 2 === 1 && ["ground", "flying"].includes(defender.type)) &&
+      !(townVeterancy(attacker, "champion-safe") && state?.combat && attacker.townVeterancy?.movedRound === state.combat.round) &&
+      !hasUnitAbilityEffect(attacker, "IGNORE_RETALIATION") &&
+      !(attacker.movedThisActivation && hasUnitAbilityEffect(attacker, "IGNORE_RETALIATION_AFTER_MOVE")) &&
+      !(hasUnitAbilityEffect(attacker, "VANITAS_VS_UNACTIVATED") && !defender.activatedThisRound) &&
+      !hasUnitAbilityEffect(attacker, "IGNORE_ADJACENT_RANGED_PENALTY_AND_RETALIATION")
+    )) &&
     // A pre-emptive strike is still a Retaliation Attack, so the Bloodlust IV
     // combat-long Black cube suppresses it too.
     !(state ? unitHasCannotRetaliateEffect(state, defender) : false) &&
     (!defender.retaliatedThisRound ||
-      hasUnitAbilityEffect(defender, "ALLOW_UNLIMITED_RETALIATION"))
+      hasUnitAbilityEffect(defender, "ALLOW_UNLIMITED_RETALIATION") ||
+      (state ? unitHasUnlimitedRetaliationEffect(state, defender) : false))
   );
 }
 
@@ -19344,6 +19331,21 @@ function spellActionFromDeferred(
  * casts. The physical hand Spell being cast is reserved and cannot be selected
  * unless another copy of the same card remains.
  */
+function spellSunderAbilityId(unit: CombatUnitState): "veteran-spell-sunder" | "veteran-elf-spell-sunder" {
+  return unit.unitDefId === "rampart.elves" ||
+    getUnitAbilityDefinitions(unit).some((ability) => ability.id === "veteran-elf-spell-sunder")
+    ? "veteran-elf-spell-sunder"
+    : "veteran-spell-sunder";
+}
+
+/** Spend the Elves-only once-per-round / twice-per-combat Spell Sunder budget. */
+function noteSpellSunderTriggered(state: GameState, unit: CombatUnitState): void {
+  if (!state.combat || spellSunderAbilityId(unit) !== "veteran-elf-spell-sunder") return;
+  const memory = (unit.townVeterancy ??= {});
+  memory.elfSpellSunderRound = state.combat.round;
+  memory.elfSpellSunderUses = (memory.elfSpellSunderUses ?? 0) + 1;
+}
+
 function continueSpellCastAfterPowerTax(
   state: GameState,
   action: Extract<GameAction, { type: "CAST_SPELL" }>,
@@ -19399,7 +19401,7 @@ function continueSpellCastAfterPowerTax(
     type: "COMBAT_HAND_DISCARD",
     playerId: action.playerId,
     kind: familiar ? "familiar-choose-discard" : "spell-sunder-choose-discard",
-    abilityId: familiar ? "familiar-spell-tax" : "veteran-spell-sunder",
+    abilityId: familiar ? "familiar-spell-tax" : spellSunderAbilityId(taxUnit),
     abilityName: familiar ? "Mana Leech" : "Spell Sunder",
     sourceUnitId: taxUnit.id,
     prompt: `${taxUnit.cardName}'s ${familiar ? "Mana Leech" : "Spell Sunder"} — choose a card to discard before casting ${spellName}.`,
@@ -19418,6 +19420,7 @@ function continueSpellCastAfterPowerTax(
   };
   state.phase = "choice";
   state.priorityPlayerId = action.playerId;
+  if (!familiar && spellSunder) noteSpellSunderTriggered(state, spellSunder);
   appendEvent(state, {
     type: "PENDING_CHOICE_CREATED",
     choiceId,
@@ -21157,7 +21160,7 @@ function applyReactionPlayCore(
           type: "COMBAT_HAND_DISCARD",
           playerId,
           kind: "spell-sunder-choose-discard",
-          abilityId: "veteran-spell-sunder",
+          abilityId: spellSunderAbilityId(sunder),
           abilityName: "Spell Sunder",
           sourceUnitId: sunder.id,
           prompt: `Enemy ${sunder.cardName}'s Spell Sunder: casting ${card.name}${play.fromSpellBook ? " from your Spell Book" : ""} requires 1 additional hand discard. Choose a card; then your Spell continues.`,
@@ -21185,6 +21188,7 @@ function applyReactionPlayCore(
         };
         state.phase = "choice";
         state.priorityPlayerId = playerId;
+        noteSpellSunderTriggered(state, sunder);
         appendEvent(state, {
           type: "PENDING_CHOICE_CREATED",
           choiceId,
@@ -26434,13 +26438,14 @@ function playCard(
         const choiceId = `choice_${nextEventNumber(state)}`;
         state.pendingChoice = {
           id: choiceId, type: "COMBAT_HAND_DISCARD", playerId: action.playerId,
-          kind: "spell-sunder-choose-discard", abilityId: "veteran-spell-sunder",
+          kind: "spell-sunder-choose-discard", abilityId: spellSunderAbilityId(sunder),
           abilityName: "Spell Sunder", sourceUnitId: sunder.id,
           prompt: `${sunder.cardName}'s Spell Sunder — choose a card to discard before casting ${card.name}.`,
           powerCardIds: discardChoices, directSpell: { ...action },
         };
         state.phase = "choice";
         state.priorityPlayerId = action.playerId;
+        noteSpellSunderTriggered(state, sunder);
         appendEvent(state, { type: "PENDING_CHOICE_CREATED", choiceId, choiceType: "COMBAT_HAND_DISCARD", playerId: action.playerId, sourceEffectIds: [], message: `${playerForLimit.name} chooses a card for ${sunder.cardName}'s Spell Sunder.` });
         return;
       }
@@ -31851,25 +31856,48 @@ function resolveCommanderCast(
       );
       break;
     }
-    case "unlimited-retaliation":
+    case "unlimited-retaliation": {
+      const astralCounterstrike = cast.abilityId === "commander-cast-astral_spirit";
+      if (astralCounterstrike) {
+        // Recasting on the same unit refreshes Counterstrike instead of stacking
+        // another +1 retaliation Attack rider.
+        state.activeEffects = state.activeEffects.filter((activeEffect) => !(
+          activeEffect.source.type === "unit" &&
+          activeEffect.source.unitId === caster.id &&
+          activeEffect.target?.type === "unit" &&
+          activeEffect.target.unitId === target.id &&
+          activeEffect.modifiers.some((modifier) => modifier.type === "UNSTOPPABLE_RETALIATION")
+        ));
+      }
       createActiveEffect(
         state,
         {
           name: `${cast.name} (${caster.cardName})`,
           scope: "unit",
           duration:
-            effect.duration === "combat"
+            astralCounterstrike
+              ? { type: "combat-rounds", rounds: 2 }
+              : effect.duration === "combat"
               ? { type: "combat" }
               : { type: "current-combat-round" },
           polarity: "positive",
           removable: true,
-          modifiers: [{ type: "UNLIMITED_RETALIATION" }],
+          modifiers: [
+            { type: "UNLIMITED_RETALIATION" },
+            ...(astralCounterstrike
+              ? [
+                  { type: "RETALIATION_ATTACK_BONUS" as const, amount: 1 },
+                  { type: "UNSTOPPABLE_RETALIATION" as const },
+                ]
+              : []),
+          ],
         },
         source,
         caster.controllerId,
         targetRef,
       );
       break;
+    }
     // Kyousuke "Little Busters, Assemble!": the clicked target is only the
     // picker's anchor — the rally lands on EVERY living ally adjacent to the
     // commander (the commander itself is never buffed).
@@ -31931,6 +31959,9 @@ function resolveCommanderCast(
   }
 
   caster.commanderCastRound = combat.round;
+  if (!commanderUsesActionPoints(caster.commanderSlug)) {
+    caster.commanderCastCount = (caster.commanderCastCount ?? 0) + 1;
+  }
   if (commanderUsesActionPoints(caster.commanderSlug)) {
     if (commanderActionPoints(caster) < COMMANDER_AP_CAST_COST)
       throw new Error(`${cast.name} needs ${COMMANDER_AP_CAST_COST} AP.`);

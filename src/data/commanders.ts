@@ -700,13 +700,13 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       name: "Shield",
       icon: "/assets/spell-icons/shield.png",
       targeting: { side: "friendly", canTargetSelf: false },
-      effect: { kind: "defense-buff", amountByPower: [1, 2, 3], vs: "melee" },
+      effect: { kind: "defense-buff", amountByPower: [1, 1, 2], vs: "melee" },
       // INSTANT REACTION (not an activation cast): play when one of your units is
       // attacked in melee, before damage — the attacked unit gains the Defense.
       tierText: [
-        "Instant reaction: when your unit is attacked in melee, it gains +1 Defense vs melee this round.",
-        "Instant reaction: when your unit is attacked in melee, it gains +2 Defense vs melee this round.",
-        "Instant reaction: when your unit is attacked in melee, it gains +3 Defense vs melee this round."
+        "Instant reaction, once per combat: when your unit is attacked in melee, it gains +1 Defense vs melee this round.",
+        "Instant reaction, once per combat round and at most twice per combat: when your unit is attacked in melee, it gains +1 Defense vs melee this round.",
+        "Instant reaction, once per combat round and at most twice per combat: when your unit is attacked in melee, it gains +2 Defense vs melee this round."
       ]
     },
     specialty: {
@@ -880,9 +880,9 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       },
       effect: { kind: "unlimited-retaliation" },
       tierText: [
-        "A friendly bronze unit may retaliate any number of times this round.",
-        "A friendly bronze or silver unit may retaliate any number of times this round.",
-        "A friendly unit of any tier — even gold — may retaliate any number of times this round."
+        "For 2 combat rounds, a friendly bronze unit has +1 Attack on Retaliation Attacks, may retaliate any number of times, and may retaliate against units that ignore retaliation.",
+        "For 2 combat rounds, a friendly bronze or silver unit has +1 Attack on Retaliation Attacks, may retaliate any number of times, and may retaliate against units that ignore retaliation.",
+        "For 2 combat rounds, a friendly unit of any tier — even gold — has +1 Attack on Retaliation Attacks, may retaliate any number of times, and may retaliate against units that ignore retaliation."
       ]
     },
     specialty: {

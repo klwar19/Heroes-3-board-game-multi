@@ -138,6 +138,7 @@ export {
   effectAppliesToUnit,
   effectiveInitiative,
   getActiveAttackBonus,
+  getActiveRetaliationAttackBonus,
   getActiveDefenseBonus,
   getDisplayAttackBonus,
   getAttackRerollEffects,
@@ -147,6 +148,7 @@ export {
   unitAttackRollDisadvantaged,
   unitDealsElementalDamage,
   unitHasUnlimitedRetaliationEffect,
+  unitHasUnstoppableRetaliationEffect,
   unitIsBerserk
 } from "./active-effects";
 export {

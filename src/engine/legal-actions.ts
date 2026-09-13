@@ -3127,15 +3127,20 @@ export function combatEnemySpellSunderUnit(
   if (!combat) {
     return undefined;
   }
-  return Object.values(combat.units).find(
-    (unit) =>
-      unit.controllerId !== casterId &&
-      isUnitAlive(unit) &&
-      hasSpellCastHandTax(unit) &&
-      getUnitAbilityDefinitions(unit).some(
-        (ability) => ability.id === "veteran-spell-sunder",
-      ),
-  );
+  return Object.values(combat.units).find((unit) => {
+    if (unit.controllerId === casterId || !isUnitAlive(unit) || !hasSpellCastHandTax(unit)) {
+      return false;
+    }
+    const abilityIds = getUnitAbilityDefinitions(unit).map((ability) => ability.id);
+    // unitDefId keeps an in-progress legacy save (which stores the former generic
+    // ability id) on the new Elves-only budget as soon as it is loaded.
+    if (abilityIds.includes("veteran-elf-spell-sunder") ||
+        (unit.unitDefId === "rampart.elves" && abilityIds.includes("veteran-spell-sunder"))) {
+      return (unit.townVeterancy?.elfSpellSunderUses ?? 0) < 2 &&
+        unit.townVeterancy?.elfSpellSunderRound !== combat.round;
+    }
+    return abilityIds.includes("veteran-spell-sunder");
+  });
 }
 
 /**

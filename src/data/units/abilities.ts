@@ -4022,7 +4022,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "town-marksman-survival": { id: "town-marksman-survival", name: "Last Stand", text: "When changing from Pack to Few, gain +3 maximum HP and +1 Attack for this combat.", effect: { type: "TOWN_VETERANCY", mechanic: "marksman-survival" }, implementationStatus: "implemented" },
   "town-crusader-undead": { id: "town-crusader-undead", name: "Holy Steel", text: "+1 Attack against undead units. Undead units have -1 Attack when attacking this unit.", effect: { type: "TOWN_VETERANCY", mechanic: "crusader-undead" }, implementationStatus: "implemented" },
   "town-zealot-loss": { id: "town-zealot-loss", name: "Martyr Zeal", text: "Whenever another ally dies, loses a Stack, or changes from Pack to Few, gain +1 Attack for this combat, up to +2.", effect: { type: "TOWN_VETERANCY", mechanic: "zealot-loss" }, implementationStatus: "implemented" },
-  "town-angel-safe": { id: "town-angel-safe", name: "Heavenly Assault", text: "Attacks against ground and flying units never provoke retaliation.", effect: { type: "TOWN_VETERANCY", mechanic: "angel-safe" }, implementationStatus: "implemented" },
+  "town-angel-safe": { id: "town-angel-safe", name: "Heavenly Assault", text: "During odd-numbered combat rounds, attacks against ground and flying units do not provoke retaliation.", effect: { type: "TOWN_VETERANCY", mechanic: "angel-safe" }, implementationStatus: "implemented" },
   "town-champion-safe": { id: "town-champion-safe", name: "Unanswered Charge", text: "After moving, attacks do not provoke retaliation for the rest of that combat round.", effect: { type: "TOWN_VETERANCY", mechanic: "champion-safe" }, implementationStatus: "implemented" },
   "town-gremlin-recover": { id: "town-gremlin-recover", name: "Salvaged Magic", text: "At the start of combat, you may take one Spell from your discard pile into your hand.", effect: { type: "TOWN_VETERANCY", mechanic: "gremlin-recover" }, implementationStatus: "implemented" },
   "town-golem-cap": { id: "town-golem-cap", name: "Tempered Iron", text: "In the first combat round, take at most 1 damage from each attack.", effect: { type: "TOWN_VETERANCY", mechanic: "golem-cap" }, implementationStatus: "implemented" },
@@ -4114,6 +4114,13 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     id: "veteran-spell-sunder",
     name: "Spell Sunder",
     text: "[unit_passive] Whenever an enemy casts a Spell from hand or Spell Book, including an instant Spell, that enemy discards 1 additional card from hand if possible.",
+    effect: { type: "SPELL_CAST_HAND_TAX" },
+    implementationStatus: "implemented"
+  },
+  "veteran-elf-spell-sunder": {
+    id: "veteran-elf-spell-sunder",
+    name: "Spell Sunder",
+    text: "[unit_passive] Once per combat round, at most twice per combat: when an enemy casts a Spell from hand or Spell Book, including an instant Spell, that enemy discards 1 additional card from hand if possible.",
     effect: { type: "SPELL_CAST_HAND_TAX" },
     implementationStatus: "implemented"
   },
@@ -4390,7 +4397,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "commander-cast-hierophant": {
     id: "commander-cast-hierophant",
     name: "Shield",
-    text: "[activation] Once per combat round: a friendly unit gains +1/+2/+3 Defense (Power 0/1/2) against melee attacks this round. Does not end the activation.",
+    text: "[instant] When a friendly unit is attacked in melee, give it Defense against melee for this round. Power 0: +1 Defense, once per combat. Power 1: +1 Defense, once per combat round, at most twice per combat. Power 2: +2 Defense, once per combat round, at most twice per combat.",
     effect: { type: "COMMANDER_CAST" },
     implementationStatus: "implemented"
   },
@@ -4439,7 +4446,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "commander-cast-astral_spirit": {
     id: "commander-cast-astral_spirit",
     name: "Counterstrike",
-    text: "[activation] Once per combat round: a friendly bronze unit (Power 1: or silver; Power 2: any tier) may retaliate any number of times this round. Does not end the activation.",
+    text: "[activation] Once per combat round: for 2 combat rounds, a friendly bronze unit (Power 1: or silver; Power 2: any tier) gains +1 Attack on Retaliation Attacks, may retaliate any number of times, and may retaliate against units that ignore retaliation. Does not end the activation.",
     effect: { type: "COMMANDER_CAST" },
     implementationStatus: "implemented"
   },

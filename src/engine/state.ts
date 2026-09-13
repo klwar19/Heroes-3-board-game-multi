@@ -1174,6 +1174,15 @@ export type ActiveEffectModifier =
       type: "UNLIMITED_RETALIATION";
     }
   | {
+      /** Astral Spirit Counterstrike: +Attack applies to Retaliation Attacks only. */
+      type: "RETALIATION_ATTACK_BONUS";
+      amount: number;
+    }
+  | {
+      /** Astral Spirit Counterstrike: retaliation bypasses attackers' ignore-retaliation rules. */
+      type: "UNSTOPPABLE_RETALIATION";
+    }
+  | {
       /**
        * Ash's Bloodlust IV: the ONGOING card's printed "Place a Black cube on
        * that unit" — because the card stays in play for the Combat, the cube
@@ -10102,6 +10111,9 @@ export type CombatUnitState = {
     positiveEffectsBlocked?: boolean;
     allowedPositiveEffectIds?: string[];
     attackAfterMoveUsed?: boolean;
+    /** Elves' rank-4 Spell Sunder: round of the last tax and total taxes this combat. */
+    elfSpellSunderRound?: number;
+    elfSpellSunderUses?: number;
   };
   factionVeterancy?: {
     marked?: boolean;
@@ -10341,6 +10353,8 @@ export type CombatUnitState = {
    * cast is once per combat round ("may cast"), free during its own activation.
    */
   commanderCastRound?: number;
+  /** Total non-AP command casts made in this combat; used by ability-specific combat caps. */
+  commanderCastCount?: number;
   /**
    * An ACTION-POINT commander's persistent per-combat command resource (Blue
    * Archive Ibuki, Little Busters Kyousuke). Starts at 1; read through
@@ -18255,7 +18269,15 @@ export type PendingChoice =
  * derived priorities. Redacted from other seats' player views.
  */
 export type ComputerPolicyMemoryState = {
-  failedFields?: Array<{ fieldId: string; round: number; readiness: string }>;
+  /** Consecutive settlement defeats; absent in older saves. */
+  settlementLossStreak?: number;
+  /** Round of the most recent settlement defeat; bounds the streak blacklist. */
+  settlementLossRound?: number;
+  lastSettlementCombatId?: string;
+  withdrawalCombatId?: string;
+  /** The opening Vampire Pack milestone survives casualties and saves. */
+  necromancyVampirePackEarned?: boolean;
+  failedFields?: Array<{ fieldId: string; round: number; readiness: string; armyStrength?: number; heroLevel?: number; hadArrow?: boolean }>;
   developmentPlan?: {
     goal: "rebuild" | "income" | "silver" | "gold" | "gold-recruit" | "pressure";
     sinceRound: number;

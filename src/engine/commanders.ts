@@ -879,11 +879,17 @@ export function commanderRunePool(state: GameState, playerId: PlayerId): number 
 
 const TIER_RANK: Record<string, number> = { bronze: 0, silver: 1, gold: 2, azure: 3 };
 
-/**
- * Whether the cast has already been used this combat round; the once-per-round
- * budget is tracked as the round number of the last cast.
- */
+/** Whether this commander's ability-specific cast budget is exhausted now. */
 export function commanderCastUsedThisRound(state: GameState, unit: CombatUnitState): boolean {
+  // Rampart Shield: Power 0 is once per combat; Power 1/2 is once per round,
+  // with a maximum of two uses in the combat.
+  if (unit.commanderSlug === "hierophant") {
+    // Legacy mid-combat saves have only commanderCastRound; count that recorded
+    // cast as one so loading cannot restore a spent Shield use.
+    const uses = unit.commanderCastCount ?? (unit.commanderCastRound !== undefined ? 1 : 0);
+    if (commanderCastPower(state, unit) <= 0) return uses >= 1;
+    return uses >= 2 || unit.commanderCastRound === state.combat?.round;
+  }
   return unit.commanderCastRound !== undefined && unit.commanderCastRound === state.combat?.round;
 }
 

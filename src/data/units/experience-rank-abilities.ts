@@ -572,6 +572,11 @@ function explicitRankThree(unitDefId: string): RankStep | null {
 }
 
 function explicitRankFour(unitDefId: string): RankStep | null {
+  if (unitDefId === "rampart.elves") {
+    return A(...rotatedChoices(unitDefId, 4, RANK_FOUR_ABILITIES.ranged).map(
+      (abilityId) => abilityId === "veteran-spell-sunder" ? "veteran-elf-spell-sunder" : abilityId,
+    ));
+  }
   if (unitDefId === "neutral.boars") return A("veteran-boar-pierce");
   if (unitDefId === "neutral.nomads") return A("veteran-nomad-aura");
   if (unitDefId === "neutral.mummies") return A("veteran-mummy-last-stand");
@@ -975,6 +980,7 @@ export const UNIT_RANK_ABILITY_ICONS: Record<string, string> = {
   "veteran-steady-aim": "/assets/ui/rank-ability/steady-aim.webp",
   "veteran-rebirth": "/assets/ui/rank-ability/rebirth.webp",
   "veteran-spell-sunder": "/assets/ui/rank-ability/spell-sunder.webp",
+  "veteran-elf-spell-sunder": "/assets/ui/rank-ability/spell-sunder.webp",
   "veteran-low-roll-insight": "/assets/ui/rank-ability/low-roll-insight.webp",
   "veteran-defense-pierce": "/assets/ui/rank-ability/defense-pierce.webp",
   "veteran-soul-feast": "/assets/ui/rank-ability/soul-feast.webp",

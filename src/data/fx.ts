@@ -535,6 +535,7 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   "veteran-rebirth": { affect: [{ key: "resurrection" }], sound: "spells/resurrection" },
   "veteran-low-roll-insight": { affect: [{ key: "fortune" }], sound: "spells/fortune" },
   "veteran-spell-sunder": { affect: [{ key: "curse" }], sound: "spells/curse" },
+  "veteran-elf-spell-sunder": { affect: [{ key: "curse" }], sound: "spells/curse" },
   "wog-no-negative-attack-roll": { affect: [{ key: "fortune" }], sound: "spells/fortune" },
   "veteran-air-chain-lightning": {
     affect: [{ key: "lightning-bolt" }, { key: "lightning-crackle", delayMs: 220 }],

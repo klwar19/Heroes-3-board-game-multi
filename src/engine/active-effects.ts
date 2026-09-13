@@ -1267,6 +1267,26 @@ export function expireCommunityLuckAtTurnEnd(state: GameState, playerId: PlayerI
   return expired;
 }
 
+/** Counterstrike's retaliation-only Attack bonus; ordinary attacks never read it. */
+export function getActiveRetaliationAttackBonus(state: GameState, unit: CombatUnitState): number {
+  return state.activeEffects.reduce((total, effect) => {
+    if (!effectAppliesToUnit(effect, unit)) return total;
+    return total + effect.modifiers.reduce(
+      (sum, modifier) => modifier.type === "RETALIATION_ATTACK_BONUS" ? sum + modifier.amount : sum,
+      0,
+    );
+  }, 0);
+}
+
+/** Counterstrike lets the affected unit answer attacks that normally suppress retaliation. */
+export function unitHasUnstoppableRetaliationEffect(state: GameState, unit: CombatUnitState): boolean {
+  return state.activeEffects.some(
+    (effect) =>
+      effectAppliesToUnit(effect, unit) &&
+      effect.modifiers.some((modifier) => modifier.type === "UNSTOPPABLE_RETALIATION"),
+  );
+}
+
 /**
  * Polish elemental Orbs say "for this turn", so their tiered school bonus ends
  * when that turn ends (not at the owner's next turn start, the legacy lifetime

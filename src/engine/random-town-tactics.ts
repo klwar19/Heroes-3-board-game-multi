@@ -1,11 +1,11 @@
-import { effectiveInitiative, getActiveAttackBonus, getActiveDefenseBonus, getAttackerTypeDefenseBonus, getConditionalAttackBonus, getConditionalDefenseBonus, unitHasCannotRetaliateEffect, unitHasUnlimitedRetaliationEffect } from "./active-effects";
+import { effectiveInitiative, getActiveAttackBonus, getActiveDefenseBonus, getActiveRetaliationAttackBonus, getAttackerTypeDefenseBonus, getConditionalAttackBonus, getConditionalDefenseBonus, unitHasCannotRetaliateEffect, unitHasUnlimitedRetaliationEffect, unitHasUnstoppableRetaliationEffect } from "./active-effects";
 import { getBattlefieldDistance, getOrthogonalNeighbors, isAdjacent } from "./battlefield";
 import { commanderLiveAttackBonus, commanderLiveDefenseBonus } from "./commanders";
 import { canUnitAttack, canUnitMoveAndAttack, getAttackRollMode, getLegalMoveDestinations, getPathDistances, isUnitAlive } from "./legal-actions";
 import { unitRemovalHealth, unitThreatValue } from "./computer/score";
 import { tokenAttackBonus, tokenDefenseDelta } from "./tokens";
 import { getAttackBonusAfterMove, getAttackBonusOnAttackDie, getDefenseBonusOnAttackDie, getAttackDefenseReductionAbility, getDamageCapPerAttack, getDefendBonus, getFlatDefenseWhenAttacked, getIgnoreTargetCardDefenseAbility, getInnateFlatAttackBonus, getRetaliationAttackBonus, getSelfAttackerTypeDefenseBonus, getUnitAbilityDefinitions, hasUnitAbilityEffect, isUnitDamageImmune, getPreemptiveRetaliation } from "./unit-abilities";
-import { townAllowsRangedRetaliation, townAttackBonus, townDefenseBonus, townHasUnstoppableRetaliation } from "./town-veterancy";
+import { townAllowsRangedRetaliation, townAttackBonus, townDefenseBonus, townHasUnstoppableRetaliation, townVeterancy } from "./town-veterancy";
 import type { CombatState, CombatUnitState, GameState } from "./state";
 import type { NeutralIntent } from "./neutral-ai";
 
@@ -21,7 +21,7 @@ export function randomTownStrikeValue(state: GameState, attacker: CombatUnitStat
   const attack = attacker.attack + tokenAttackBonus(attacker) +
     getActiveAttackBonus(state, { attacker, defender, attackKind: attacker.type === "ranged" && !isAdjacent(attacker.position, defender.position) ? "ranged" : "melee" }) + getConditionalAttackBonus(state, attacker, defender) +
     getInnateFlatAttackBonus(attacker, retaliation) + commanderLiveAttackBonus(state, attacker) +
-    townAttackBonus(attacker, defender, retaliation) + (retaliation ? getRetaliationAttackBonus(attacker) : 0) +
+    townAttackBonus(attacker, defender, retaliation) + (retaliation ? getRetaliationAttackBonus(attacker) + getActiveRetaliationAttackBonus(state, attacker) : 0) +
     (!retaliation && attacker.movedThisActivation ? getAttackBonusAfterMove(attacker) : 0);
   const pierce = getAttackDefenseReductionAbility(attacker, attacker.movedThisActivation, retaliation)?.amount ?? 0;
   const printed = !retaliation && getIgnoreTargetCardDefenseAbility(attacker) ? 0 : defender.defense;
@@ -65,7 +65,8 @@ export function retaliationValue(state: GameState, attacker: CombatUnitState, de
       (!isAdjacent(attacker.position, defender.position) && !townAllowsRangedRetaliation(defender) && !getPreemptiveRetaliation(defender))) return 0;
   if (defender.retaliatedThisRound && !hasUnitAbilityEffect(defender, "ALLOW_UNLIMITED_RETALIATION") &&
       !unitHasUnlimitedRetaliationEffect(state, defender) && !townHasUnstoppableRetaliation(defender)) return 0;
-  if (!townHasUnstoppableRetaliation(defender) && (
+  if (!townHasUnstoppableRetaliation(defender) && !unitHasUnstoppableRetaliationEffect(state, defender) && (
+      (townVeterancy(attacker, "angel-safe") && (state.combat?.round ?? 0) % 2 === 1 && ["ground", "flying"].includes(defender.type)) ||
       hasUnitAbilityEffect(attacker, "IGNORE_RETALIATION") ||
       hasUnitAbilityEffect(attacker, "IGNORE_ADJACENT_RANGED_PENALTY_AND_RETALIATION") ||
       hasUnitAbilityEffect(attacker, "IGNORE_RANGED_PENALTIES_AND_MELEE_RETALIATION") ||
