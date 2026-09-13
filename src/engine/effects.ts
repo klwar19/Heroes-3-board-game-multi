@@ -1471,7 +1471,9 @@ export function describeCardEffect(card: CardDefinition): string {
   if (card.effect.type === "RECALL_SPELL") {
     const expert = card.effect.expertSpellLimitBonus
       ? `, expert spell limit +${card.effect.expertSpellLimitBonus}`
-      : "";
+      : card.effect.expertRecallPlayedCards
+        ? ", expert also returns all cards played with the spell"
+        : "";
     return `return cast spell to hand${expert}`;
   }
 

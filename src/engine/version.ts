@@ -1325,7 +1325,14 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 //    refresh + card hand-values (Learning/Estates/Scholar/Legion/permanents),
 //    settlement loss streaks with bounded blacklists, flying formation rework.
 // v144: Saplings resolves live Legion choices with a bound option/price.
-export const ENGINE_PROTOCOL_VERSION = 144;
+// v145: Stronghold veterancy replaces Orc R4 with a true second attack and
+//    gives Cyclops R3 a full ranged-penalty waiver plus one -1 reroll per own
+//    attack. Castle Zealot R3 Spell Sunder is limited to once per combat round
+//    and twice per combat. The bump prevents stale room workers from silently
+//    resolving these abilities under the previous rules.
+// v146: Expert Mysticism recalls instant-spell fuel added later in the same
+//    attack window; preserves paid-source zones and deferred return cards.
+export const ENGINE_PROTOCOL_VERSION = 146;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

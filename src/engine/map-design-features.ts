@@ -645,6 +645,16 @@ export function grailUtopiaFieldRulesEnabled(state: GameState): boolean {
   );
 }
 
+export const DEFAULT_GRAIL_UTOPIA_GUARD: CustomGuardSpec = {
+  units: ["neutral.black_dragons", "random:azure", "random:azure"]
+};
+
+/** Field objectives only: Creature Bank tokens keep their own combat rules. */
+export function isGrailUtopiaModeField(state: GameState, field: MapFieldState | undefined): boolean {
+  return Boolean(field && (field.location === "grail" || field.location === "dragon_utopia") &&
+    grailUtopiaFieldRulesEnabled(state));
+}
+
 /** Legal construction sites for the effective Grail rules. */
 export function grailBuildAt(
   state: GameState

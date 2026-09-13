@@ -114,6 +114,7 @@ import {
   drawDungeonArmy,
   diplomacyGuardReductionTier,
   drawGuardArmy,
+  applyGrailUtopiaEncounterRules,
   drawNeutralArmy,
   randomTownBronzePackCandidates,
   drawPveThemedArmy,
@@ -964,9 +965,41 @@ export const COMBAT_UNIT_LIMIT = 5;
  */
 export const COMMANDER_COMBAT_UNIT_LIMIT = 4;
 
-/** Per-game deployment cap (4 with the WOG Commanders module, else 5). */
-export function combatUnitLimit(state: GameState): number {
-  return commandersModuleEnabled(state) ? COMMANDER_COMBAT_UNIT_LIMIT : COMBAT_UNIT_LIMIT;
+/**
+ * Army-card deployment cap. The Commander module reserves a slot only for a
+ * side whose Commander actually joins this combat. Secondary heroes,
+ * heroless garrisons and sides whose Commander is dead still deploy all five
+ * normal units.
+ *
+ * `playerId` is optional because non-combat callers (AI army valuation and
+ * setup-shell creation) still need the module's default cap. Once a combat
+ * exists, placement callers must pass the player so mixed main/secondary PvP
+ * battles can have different limits on the two sides.
+ */
+export function combatUnitLimit(state: GameState, playerId?: PlayerId): number {
+  if (!commandersModuleEnabled(state)) {
+    return COMBAT_UNIT_LIMIT;
+  }
+  if (
+    playerId !== undefined &&
+    state.combat &&
+    !commanderStandsInCurrentCombat(state, playerId)
+  ) {
+    return COMBAT_UNIT_LIMIT;
+  }
+  return COMMANDER_COMBAT_UNIT_LIMIT;
+}
+
+/**
+ * Effective cap for an in-progress setup. Preserve explicit/custom setup caps;
+ * only expand the module's legacy shared cap when this particular side has no
+ * Commander body. This also repairs saves already paused in deployment.
+ */
+export function combatSetupUnitLimit(state: GameState, playerId: PlayerId): number {
+  const configured = state.combat?.setup?.unitLimit ?? combatUnitLimit(state, playerId);
+  return configured === COMMANDER_COMBAT_UNIT_LIMIT
+    ? combatUnitLimit(state, playerId)
+    : configured;
 }
 
 /**
@@ -5914,6 +5947,7 @@ export function startNeutralEncounter(
   options?: { teleportArrival?: boolean }
 ): void {
   requireAdventure(state);
+  applyGrailUtopiaEncounterRules(state, field);
   const playerId = hero.controllerId;
   // A Random Town is always the printed VII field. A designer may replace its
   // guard army, but may not accidentally downgrade the fight's rules: winning
@@ -6341,8 +6375,8 @@ function beginNeutralCombatPlacement(
   });
 
   // Rulebook Combat Setup order: the player places up to 5 units first (4 when
-  // the WOG Commanders module reserves the fifth slot for the commander); the
-  // guard army is drawn from the tier decks only after placement finishes.
+  // their WOG Commander actually joins and reserves the fifth slot); the guard
+  // army is drawn from the tier decks only after placement finishes.
   const bankId = fieldCreatureBankId(field);
   const combat = makeCombatShell(state, playerId, NEUTRAL_PLAYER_ID);
   combat.context = {
@@ -7550,6 +7584,7 @@ type MapSpellBoostFlags = {
   castEnablerCardId?: CardId;
   /** Spell, enabler, and support cards whose effects have not finished yet. */
   inFlightCardIds?: CardId[];
+  bookPlayedCardIds?: CardId[];
   schoolFetchExpertUsed?: boolean;
   schoolPermanentExpertUsed?: boolean;
   /**
@@ -7972,6 +8007,7 @@ export function openMapSpellBoost(
       ...(flags.fromSpellBook ? { fromSpellBook: true as const } : {}),
       ...(flags.castEnablerCardId ? { castEnablerCardId: flags.castEnablerCardId } : {}),
       ...(flags.inFlightCardIds ? { inFlightCardIds: flags.inFlightCardIds } : {}),
+      ...(flags.bookPlayedCardIds ? { bookPlayedCardIds: flags.bookPlayedCardIds } : {}),
       ...(flags.costDiscards ? { costDiscards: flags.costDiscards } : {})
     },
     returnPhase: "player-turn"
@@ -8001,6 +8037,7 @@ export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId,
     fromSpellBook,
     castEnablerCardId,
     inFlightCardIds,
+    bookPlayedCardIds,
     schoolFetchExpertUsed,
     schoolPermanentExpertUsed,
     costDiscards
@@ -8036,6 +8073,7 @@ export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId,
     ...(fromSpellBook ? { fromSpellBook: true as const } : {}),
     ...(castEnablerCardId ? { castEnablerCardId } : {}),
     ...(inFlightCardIds ? { inFlightCardIds } : {}),
+    ...(bookPlayedCardIds ? { bookPlayedCardIds } : {}),
     ...(schoolFetchExpertUsed ? { schoolFetchExpertUsed: true } : {}),
     ...(schoolPermanentExpertUsed ? { schoolPermanentExpertUsed: true } : {}),
     ...(costDiscards ? { costDiscards } : {}),
@@ -8218,6 +8256,7 @@ export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId,
     }
     if (offer.fromBook) {
       player.combatStats.spellBookPowerUsedThisTurn = true;
+      nextFlags.bookPlayedCardIds = [...(nextFlags.bookPlayedCardIds ?? []), offer.cardId];
     }
 
     appendEvent(state, {
@@ -8690,7 +8729,7 @@ export function queueTownPortalChoice(state: GameState, playerId: PlayerId, move
 
 const queueTownPortalFromMapSpell = queueTownPortalChoice;
 
-function offerMapSpellKnowledgeRecall(
+export function offerMapSpellKnowledgeRecall(
   state: GameState,
   playerId: PlayerId,
   spell: CardDefinition,
@@ -8698,6 +8737,7 @@ function offerMapSpellKnowledgeRecall(
     fromSpellBook?: boolean;
     castEnablerCardId?: CardId;
     inFlightCardIds?: CardId[];
+    bookPlayedCardIds?: CardId[];
   }
 ): boolean {
   if (!state.adventure || state.combat) {
@@ -8741,9 +8781,13 @@ function offerMapSpellKnowledgeRecall(
 
   // Preserve multiplicity: two physical copies with the same card id are two
   // cards played with the cast, and expert Mysticism returns both.
-  const playedWithCast = (bookFlags.inFlightCardIds ?? []).filter(
-    (cardId) => cardId !== spell.id && cardId !== bookFlags.castEnablerCardId
-  );
+  const excluded = [spell.id, ...(bookFlags.castEnablerCardId ? [bookFlags.castEnablerCardId] : [])];
+  const playedWithCast = (bookFlags.inFlightCardIds ?? []).filter((cardId) => {
+    const index = excluded.indexOf(cardId);
+    if (index === -1) return true;
+    excluded.splice(index, 1);
+    return false;
+  });
   const options: { label: string; steps: VisitStep[] }[] = [];
   for (const { cardId, card } of recallCards) {
     const recallEffect = card.effect.type === "RECALL_SPELL" ? card.effect : null;
@@ -8779,6 +8823,7 @@ function offerMapSpellKnowledgeRecall(
               spellCardId: spell.id,
               knowledgeCardId: cardId,
               recallPlayedCardIds: [alongsideId],
+              recallBookCardIds: bookFlags.bookPlayedCardIds,
               mode: "basic",
               ...bookFlag
             }
@@ -8818,6 +8863,7 @@ function offerMapSpellKnowledgeRecall(
             spellCardId: spell.id,
             knowledgeCardId: cardId,
             recallPlayedCardIds: playedWithCast,
+            recallBookCardIds: bookFlags.bookPlayedCardIds,
             mode: "expert",
             ...bookFlag
           }
@@ -11744,8 +11790,9 @@ export function placeCombatUnit(state: GameState, action: Extract<GameAction, { 
     throw new Error("That space is already taken.");
   }
 
-  if (placed.length >= setup.unitLimit) {
-    throw new Error(`Only ${setup.unitLimit} units may join a combat.`);
+  const unitLimit = combatSetupUnitLimit(state, action.playerId);
+  if (placed.length >= unitLimit) {
+    throw new Error(`Only ${unitLimit} units may join a combat.`);
   }
 
   const formationError = hiddenLeafCombatFormationError(player, [

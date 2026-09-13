@@ -1,5 +1,6 @@
 import { customTownAfterAttack, customTownActivation } from "./custom-town-veterancy";
 import { randomTownTokenValue } from "./random-town-tactics";
+import { isGrailUtopiaModeField } from "./map-design-features";
 import { abilityDamageValue, abilityHealValue, activationUtilityValue } from "./computer/unit-ability-value";
 import { townVeterancy, townAttackBonus, townDefenseBonus, townDefenseToken, townAfterAttack, townSpellCast, townBound, townMovement, townActivation, townCombatRoundStart, townAllowsRangedRetaliation, townHasUnstoppableRetaliation } from "./town-veterancy";
 import { cardLibrary } from "@/data/cards/library";
@@ -171,6 +172,7 @@ import {
   unplaceCombatUnit,
   endTurnAdventure,
   maybeOpenMidFightBankAutoCombatChoice,
+  offerMapSpellKnowledgeRecall,
 } from "./adventure-reducer";
 import {
   banHero,
@@ -3020,10 +3022,12 @@ function stackInFlightCardIds(
       ? castInFlightCardIds(state, stackItem.action)
       : []),
     ...(stackItem.modifiers.playedCardIdsByPlayer?.[playerId] ?? []),
-    // The flat ledger too: several push sites return BEFORE the by-player map
-    // is stamped (the asPowerBoost "+1 Power" discard, USE_SCHOOL_FETCH_EXPERT's
-    // consumed permanent) — reading only the by-player map let those be dealt
-    // straight back mid-resolution. A card may appear in BOTH lists; the extra
+    ...(stackItem.modifiers.recallPaidCards ?? [])
+      .filter((entry) => entry.playerId === playerId)
+      .map((entry) => entry.cardId),
+    // The flat ledger too, deliberately: every push site now stamps the
+    // by-player map, but keeping the shared list protects legacy in-flight
+    // saves whose items predate it. A card may appear in BOTH lists; the extra
     // occurrence only over-protects (a genuine duplicate stays put once more),
     // which is the safe direction — never a mid-resolution leak.
     ...stackItem.modifiers.playedCardIds,
@@ -17147,8 +17151,18 @@ function finalizeSpellCardDestination(
     )
     .map((effect) => effect.id);
   const allSupportCards = expertRecallSupportCardIds(
-    stackItem.modifiers.playedCardIds,
+    [
+      ...recallPlayedCardIdsForPlayer(stackItem, playerId),
+      ...(stackItem.modifiers.recallPaidCards ?? [])
+        .filter((entry) => entry.playerId === playerId)
+        .map((entry) => entry.cardId),
+    ],
     recall?.sourceCardId,
+    [
+      ...(recall?.additionalSourceCardIds ?? []),
+      ...(recall?.polishRecallEnabler && stackItem.action.castEnablerCardId
+        ? [stackItem.action.castEnablerCardId] : []),
+    ],
   );
   // Community Mysticism (basic) recalls only N of the cards played alongside the
   // Spell ("… as well as 1 card played alongside it"); the printed Expert recall
@@ -17257,40 +17271,51 @@ function finalizeSpellCardDestination(
   // once (they resolved on the spot — only the spell itself can be ongoing).
   // Book-sourced support cards (a Book "+1 Power" discard) return to the Book.
   if (recall?.recallPlayedCards) {
-    const caster = state.players[playerId];
-    const bookPlayed = stackItem.modifiers.bookPlayedCardIds ?? [];
+    const bookPlayed = [
+      ...(stackItem.modifiers.bookPlayedCardIds ?? []),
+      ...(stackItem.modifiers.recallPaidCards ?? [])
+        .filter((entry) => entry.playerId === playerId && entry.fromBook)
+        .map((entry) => entry.cardId),
+    ];
     if (opensAlongsidePick) {
       openRecallAlongsidePick(state, playerId, pickCandidates, bookPlayed);
       return;
     }
     for (const playedCardId of expertSupportCards) {
-      const playedIndex = caster.discard.lastIndexOf(playedCardId);
-      if (playedIndex !== -1) {
-        caster.discard.splice(playedIndex, 1);
-        if (bookPlayed.includes(playedCardId)) {
-          caster.spellBook.push(playedCardId);
-        } else {
-          caster.hand.push(playedCardId);
-        }
-      }
+      returnSpellFromDiscardToHand(
+        state, playerId, playedCardId, takeRecallBookSource(bookPlayed, playedCardId),
+      );
     }
   }
 }
 
-/**
- * Expert Mysticism returns cards played together with the Spell, never the
- * Mysticism card that created the recall. Card ids are definitions rather than
- * physical-instance ids, so remove exactly one matching occurrence: another
- * copy with the same id that genuinely was played as support still qualifies.
- */
+/** Consume one physical Book source, leaving same-id hand copies in hand. */
+function takeRecallBookSource(bookCardIds: CardId[], cardId: CardId): boolean {
+  const index = bookCardIds.indexOf(cardId);
+  if (index === -1) return false;
+  bookCardIds.splice(index, 1);
+  return true;
+}
+
+function recallPlayedCardIdsForPlayer(stackItem: ResolutionStackItem, playerId: PlayerId): CardId[] {
+  // Use physical plays belonging to this player, not the effect-specific flat
+  // list shared with their opponent. The owner ledger excludes removed cards
+  // and includes draw-only instants and the actual Polish cast enabler.
+  const owned = stackItem.modifiers.playedCardIdsByPlayer?.[playerId];
+  return [...(owned ?? stackItem.modifiers.playedCardIds)];
+}
+
+/** Exclude exactly one copy of each recall/enabler already handled separately. */
 function expertRecallSupportCardIds(
   playedCardIds: CardId[],
   sourceCardId?: CardId,
+  additionalSourceCardIds: CardId[] = [],
 ): CardId[] {
-  let skippedSource = false;
+  const sources = [...(sourceCardId ? [sourceCardId] : []), ...additionalSourceCardIds];
   return playedCardIds.filter((cardId) => {
-    if (!skippedSource && sourceCardId && cardId === sourceCardId) {
-      skippedSource = true;
+    const index = sources.indexOf(cardId);
+    if (index !== -1) {
+      sources.splice(index, 1);
       return false;
     }
     return true;
@@ -18953,6 +18978,37 @@ function processDeferredSpellRecalls(
   state: GameState,
   stackItem: ResolutionStackItem,
 ): void {
+  const expertRecalls = stackItem.modifiers.deferredExpertSpellRecalls ?? [];
+  stackItem.modifiers.deferredExpertSpellRecalls = [];
+  const queued = (stackItem.modifiers.deferredSpellRecalls ??= []);
+  for (const playerId of new Set(expertRecalls.map((entry) => entry.playerId))) {
+    const recalls = expertRecalls.filter((entry) => entry.playerId === playerId);
+    const paid = (stackItem.modifiers.recallPaidCards ?? []).filter((entry) => entry.playerId === playerId);
+    const bookCards = [
+      ...(stackItem.modifiers.bookPlayedCardIds ?? []),
+      ...paid.filter((entry) => entry.fromBook).map((entry) => entry.cardId),
+    ];
+    const remainingDiscard = [...state.players[playerId].discard];
+    for (const entry of queued) {
+      if (entry.playerId !== playerId || entry.fromPolishUsed) continue;
+      const index = remainingDiscard.lastIndexOf(entry.cardId);
+      if (index !== -1) remainingDiscard.splice(index, 1);
+      if (entry.toSpellBook) takeRecallBookSource(bookCards, entry.cardId);
+    }
+    const excluded = recalls.flatMap((entry) => [
+      entry.sourceCardId, entry.spellCardId,
+      ...(entry.castEnablerCardId ? [entry.castEnablerCardId] : []),
+    ]);
+    const support = expertRecallSupportCardIds(
+      recallPlayedCardIdsForPlayer(stackItem, playerId), undefined, excluded,
+    );
+    for (const cardId of [...support, ...paid.map((entry) => entry.cardId)]) {
+      const index = remainingDiscard.lastIndexOf(cardId);
+      if (index === -1) continue;
+      remainingDiscard.splice(index, 1);
+      queued.push({ cardId, playerId, toSpellBook: takeRecallBookSource(bookCards, cardId) });
+    }
+  }
   const deferred = stackItem.modifiers.deferredSpellRecalls;
   if (!deferred || deferred.length === 0) {
     return;
@@ -18973,12 +19029,18 @@ function processDeferredSpellRecalls(
     } else if (entry.fromPolishUsed) {
       refreshPolishUsedSpell(state, entry.playerId, entry.cardId);
     } else {
-      returnSpellFromDiscardToHand(
+      const returned = returnSpellFromDiscardToHand(
         state,
         entry.playerId,
         entry.cardId,
         entry.toSpellBook,
       );
+      if (!returned) {
+        const ongoing = state.players[entry.playerId]?.ongoingCards?.find(
+          (card) => card.cardId === entry.cardId,
+        );
+        if (ongoing) ongoing.returnTo = entry.toSpellBook ? "spellBook" : "hand";
+      }
     }
   }
 }
@@ -19331,16 +19393,20 @@ function spellActionFromDeferred(
  * casts. The physical hand Spell being cast is reserved and cannot be selected
  * unless another copy of the same card remains.
  */
-function spellSunderAbilityId(unit: CombatUnitState): "veteran-spell-sunder" | "veteran-elf-spell-sunder" {
-  return unit.unitDefId === "rampart.elves" ||
-    getUnitAbilityDefinitions(unit).some((ability) => ability.id === "veteran-elf-spell-sunder")
-    ? "veteran-elf-spell-sunder"
-    : "veteran-spell-sunder";
+function spellSunderAbilityId(unit: CombatUnitState): "veteran-spell-sunder" | "veteran-elf-spell-sunder" | "veteran-zealot-spell-sunder" {
+  const abilityIds = getUnitAbilityDefinitions(unit).map((ability) => ability.id);
+  if (abilityIds.includes("veteran-zealot-spell-sunder") || unit.unitDefId === "castle.zealots") {
+    return "veteran-zealot-spell-sunder";
+  }
+  if (unit.unitDefId === "rampart.elves" || abilityIds.includes("veteran-elf-spell-sunder")) {
+    return "veteran-elf-spell-sunder";
+  }
+  return "veteran-spell-sunder";
 }
 
-/** Spend the Elves-only once-per-round / twice-per-combat Spell Sunder budget. */
+/** Spend a limited once-per-round / twice-per-combat Spell Sunder budget. */
 function noteSpellSunderTriggered(state: GameState, unit: CombatUnitState): void {
-  if (!state.combat || spellSunderAbilityId(unit) !== "veteran-elf-spell-sunder") return;
+  if (!state.combat || spellSunderAbilityId(unit) === "veteran-spell-sunder") return;
   const memory = (unit.townVeterancy ??= {});
   memory.elfSpellSunderRound = state.combat.round;
   memory.elfSpellSunderUses = (memory.elfSpellSunderUses ?? 0) + 1;
@@ -20019,6 +20085,7 @@ function payOptionCardCost(
   cards: CardLibrary,
   /** Index-aligned with costCardIds: "expert" values a Power source at expertAmount and spends a crown. */
   costCardModes?: CardPlayMode[],
+  paidCards?: { cardId: CardId; fromBook: boolean }[],
 ): number {
   const cardName = playedCard.name;
   const paying = costCardIds ?? [];
@@ -20284,6 +20351,16 @@ function payOptionCardCost(
     // Consume the School expert bank the same way: it paid toward this cast,
     // so a single committed permanent can never serve two Spells.
     if (schoolBank > 0 && state.reactionWindow?.schoolExpertPowerByPlayer) {
+      const sourceCardId = state.reactionWindow.schoolExpertPowerByPlayer[playerId]?.cardId;
+      if (sourceCardId) {
+        paidCards?.push({ cardId: sourceCardId, fromBook: false });
+        const pending = state.stack.at(-1);
+        if (pending) {
+          (pending.modifiers.recallPaidCards ??= []).push({
+            cardId: sourceCardId, playerId, fromBook: false,
+          });
+        }
+      }
       delete state.reactionWindow.schoolExpertPowerByPlayer[playerId];
     }
     // The window pool is deliberately NOT consumed here, unlike the map and
@@ -20314,6 +20391,15 @@ function payOptionCardCost(
       player.removed.push(cardId);
     } else {
       player.discard.push(cardId);
+      paidCards?.push({ cardId, fromBook });
+      const pending = state.stack.at(-1);
+      if (
+        pending &&
+        (pending.action.type === "CAST_SPELL" || isAttackStackItem(pending)) &&
+        (playedCard.kind === "spell" || cost.costCardFilter === "power-source")
+      ) {
+        (pending.modifiers.recallPaidCards ??= []).push({ cardId, playerId, fromBook });
+      }
     }
   });
   // Spending a Book Spell for Power consumes the once-per-CAST Book Power
@@ -20413,6 +20499,7 @@ function castReactionRecallRecord(
     castEnablerCardId?: CardId;
     costCardIds?: CardId[];
   },
+  powerBookCardIds: CardId[] = [],
 ) {
   const powerCardIds =
     play.costCardIds && play.costCardIds.length > 0
@@ -20427,6 +20514,7 @@ function castReactionRecallRecord(
       ? { castEnablerCardId: play.castEnablerCardId }
       : {}),
     ...(powerCardIds ? { powerCardIds } : {}),
+    ...(powerBookCardIds.length ? { powerBookCardIds } : {}),
   };
 }
 
@@ -20447,6 +20535,7 @@ function startCastReactionRecallWindow(
     costCardIds?: CardId[];
   },
   cards: CardLibrary,
+  powerBookCardIds: CardId[] = [],
 ): void {
   if (!state.combat || !state.reactionWindow) {
     return;
@@ -20455,6 +20544,7 @@ function startCastReactionRecallWindow(
     playerId,
     state.reactionWindow.triggerEvent.id,
     play,
+    powerBookCardIds,
   );
   state.reactionWindow.passedPlayerIds = [];
   refreshReactionWindowLegalReactions(state, cards);
@@ -20893,6 +20983,8 @@ function applyReactionPlayCore(
       stackItemForBoost.modifiers.spellPowerBonus += 1;
     }
     stackItemForBoost.modifiers.playedCardIds.push(play.cardId);
+    const boostByPlayer = (stackItemForBoost.modifiers.playedCardIdsByPlayer ??= {});
+    (boostByPlayer[playerId] ??= []).push(play.cardId);
     if (play.fromSpellBook) {
       // Record the Book source so a Mysticism-expert sweep returns it to the Book.
       (stackItemForBoost.modifiers.bookPlayedCardIds ??= []).push(play.cardId);
@@ -21310,6 +21402,7 @@ function applyReactionPlayCore(
     !option?.cost?.removeSelf &&
     claimCrazyWizardFirstSpellReturn(state, playerId);
 
+  const paidCards: { cardId: CardId; fromBook: boolean }[] = [];
   const costCardsPaid = play.fromScroll
     ? 0
     : // Power costs (Magic Mirror silver/gold, Sorrow, lethal saves, …) may draw
@@ -21323,6 +21416,7 @@ function applyReactionPlayCore(
         play.costCardIds,
         cards,
         play.costCardModes,
+        paidCards,
       );
 
   let effectAmount = getEffectAmount(effect, mode);
@@ -21369,6 +21463,12 @@ function applyReactionPlayCore(
       recomputePowerScaledAttackInstants(state, stackItem);
     }
     if (schoolBank > 0 && state.reactionWindow?.schoolExpertPowerByPlayer) {
+      const sourceCardId = state.reactionWindow.schoolExpertPowerByPlayer[playerId]?.cardId;
+      if (sourceCardId) {
+        stackItem.modifiers.playedCardIds.push(sourceCardId);
+        const byPlayer = (stackItem.modifiers.playedCardIdsByPlayer ??= {});
+        (byPlayer[playerId] ??= []).push(sourceCardId);
+      }
       delete state.reactionWindow.schoolExpertPowerByPlayer[playerId];
     }
   }
@@ -21724,6 +21824,31 @@ function applyReactionPlayCore(
         stackItem.action.cardId,
       );
     }
+    // Cancellation still owes an already-declared expert Mysticism's support
+    // recall. This path pops the cast without normal destination finalization.
+    const cancelledRecall = stackItem.modifiers.recallSpell;
+    if (cancelledRecall?.recallPlayedCards && cancelledRecall.recallPlayedCardLimit === undefined) {
+      const casterId = stackItem.action.playerId;
+      const paid = (stackItem.modifiers.recallPaidCards ?? []).filter(
+        (entry) => entry.playerId === casterId,
+      );
+      const support = expertRecallSupportCardIds(
+        [...recallPlayedCardIdsForPlayer(stackItem, casterId), ...paid.map((entry) => entry.cardId)],
+        cancelledRecall.sourceCardId,
+        [
+          ...(cancelledRecall.additionalSourceCardIds ?? []),
+          ...(cancelledRecall.polishRecallEnabler && stackItem.action.castEnablerCardId
+            ? [stackItem.action.castEnablerCardId] : []),
+        ],
+      );
+      const bookPlayed = [
+        ...(stackItem.modifiers.bookPlayedCardIds ?? []),
+        ...paid.filter((entry) => entry.fromBook).map((entry) => entry.cardId),
+      ];
+      for (const cardId of support) {
+        returnSpellFromDiscardToHand(state, casterId, cardId, takeRecallBookSource(bookPlayed, cardId));
+      }
+    }
     state.stack.pop();
 
     // Knowledge / Mysticism on the COUNTER itself: a Protection-from-X (a real
@@ -21739,7 +21864,10 @@ function applyReactionPlayCore(
       state.combat &&
       state.reactionWindow
     ) {
-      startCastReactionRecallWindow(state, playerId, play, cards);
+      startCastReactionRecallWindow(
+        state, playerId, { ...play, costCardIds: paidCards.map((entry) => entry.cardId) }, cards,
+        paidCards.filter((entry) => entry.fromBook).map((entry) => entry.cardId),
+      );
       return { windowEnded: false };
     }
 
@@ -21869,7 +21997,8 @@ function applyReactionPlayCore(
       state.combat.pendingCastReactionRecall = castReactionRecallRecord(
         playerId,
         armRecallTriggerId,
-        play,
+        { ...play, costCardIds: paidCards.map((entry) => entry.cardId) },
+        paidCards.filter((entry) => entry.fromBook).map((entry) => entry.cardId),
       );
     }
     state.phase = "choice";
@@ -22004,13 +22133,15 @@ function applyReactionPlayCore(
       // Mysticism ("also take back all other cards played together with it")
       // sweeps them back to hand in the take-back handler below.
       const powerCardIds =
-        play.costCardIds && play.costCardIds.length > 0
-          ? [...play.costCardIds]
+        paidCards.length > 0
+          ? paidCards.map((entry) => entry.cardId)
           : undefined;
       state.combat.pendingActivationSkipRecall = {
         cardId: play.cardId,
         playerId,
         fromSpellBook: Boolean(play.fromSpellBook),
+        ...(play.castEnablerCardId ? { castEnablerCardId: play.castEnablerCardId } : {}),
+        powerBookCardIds: paidCards.filter((entry) => entry.fromBook).map((entry) => entry.cardId),
         ...(powerCardIds ? { powerCardIds } : {}),
       };
       // Recompute the window's offers — now ONLY the caster's recall — and hand
@@ -22052,21 +22183,23 @@ function applyReactionPlayCore(
       caster.combatStats.spellLimitBonusThisRound +=
         effect.expertSpellLimitBonus ?? 0;
     }
-    returnSpellFromDiscardToHand(
-      state,
-      playerId,
-      recall.cardId,
-      recall.fromSpellBook,
-    );
+    if (polishSpellBookEnabled(state) && recall.fromSpellBook) {
+      if (!effect.basicSpellLimitBonus && !effect.expertSpellLimitBonus) {
+        refreshPolishUsedSpell(state, playerId, recall.cardId);
+      }
+      if (recall.castEnablerCardId) {
+        returnSpellFromDiscardToHand(state, playerId, recall.castEnablerCardId);
+      }
+    } else {
+      returnSpellFromDiscardToHand(state, playerId, recall.cardId, recall.fromSpellBook);
+    }
     if (mode === "expert" && effect.expertRecallPlayedCards) {
-      // Sorrow's pow cost cards always come from hand (a Sorrow skip never taps
-      // the Book Power budget), so each returns from the discard to the hand.
+      // Return each paid source to the zone it came from.
+      const bookCards = [...(recall.powerBookCardIds ?? [])];
       for (const powerCardId of recall.powerCardIds ?? []) {
-        const index = caster.discard.lastIndexOf(powerCardId);
-        if (index !== -1) {
-          caster.discard.splice(index, 1);
-          caster.hand.push(powerCardId);
-        }
+        returnSpellFromDiscardToHand(
+          state, playerId, powerCardId, takeRecallBookSource(bookCards, powerCardId),
+        );
       }
     }
     state.combat.pendingActivationSkipRecall = null;
@@ -22128,15 +22261,13 @@ function applyReactionPlayCore(
     }
 
     // Mysticism EXPERT: "also take back all other cards played together with it" —
-    // the Power sources a silver/gold Magic Mirror ate. They came from hand, so
-    // each returns from the discard to the hand.
+    // the Power sources a silver/gold Magic Mirror ate, with their source zone.
     if (mode === "expert" && effect.expertRecallPlayedCards) {
+      const bookCards = [...(recall.powerBookCardIds ?? [])];
       for (const powerCardId of recall.powerCardIds ?? []) {
-        const index = caster.discard.lastIndexOf(powerCardId);
-        if (index !== -1) {
-          caster.discard.splice(index, 1);
-          caster.hand.push(powerCardId);
-        }
+        returnSpellFromDiscardToHand(
+          state, playerId, powerCardId, takeRecallBookSource(bookCards, powerCardId),
+        );
       }
     }
 
@@ -23249,15 +23380,22 @@ function applyReactionPlayCore(
     // recall, capped at `basicRecallPlayedCards`.
     const basicAlongside =
       mode === "expert" ? 0 : (effect.basicRecallPlayedCards ?? 0);
+    const previousRecall = stackItem.modifiers.recallSpell;
+    const recallsAllSupport =
+      (mode === "expert" && Boolean(effect.expertRecallPlayedCards)) ||
+      Boolean(previousRecall?.recallPlayedCards && previousRecall.recallPlayedCardLimit === undefined);
+    const supportLimit = Math.max(basicAlongside, previousRecall?.recallPlayedCardLimit ?? 0);
     stackItem.modifiers.recallSpell = {
       toHand: true,
       recallPlayedCards:
-        (mode === "expert" && Boolean(effect.expertRecallPlayedCards)) ||
-        basicAlongside > 0,
-      ...(basicAlongside > 0 ? { recallPlayedCardLimit: basicAlongside } : {}),
-      sourceCardId: play.cardId,
+        recallsAllSupport || supportLimit > 0,
+      ...(!recallsAllSupport && supportLimit > 0 ? { recallPlayedCardLimit: supportLimit } : {}),
+      sourceCardId: previousRecall?.sourceCardId ?? play.cardId,
+      ...(previousRecall?.sourceCardId ? {
+        additionalSourceCardIds: [...(previousRecall.additionalSourceCardIds ?? []), play.cardId],
+      } : {}),
       toSpellBook: Boolean(stackItem.action.fromSpellBook) && !polishBookCast,
-      ...(isPolishMysticism ? { polishRefreshSpell: true } : {}),
+      ...(isPolishMysticism || previousRecall?.polishRefreshSpell ? { polishRefreshSpell: true } : {}),
       // Polish Spell Book (reference sheet): BOTH Knowledge and Mysticism return
       // the Cast a Spell enabler to hand ("Cast a Spell returns → Hand"). Knowledge
       // leaves the Spell used; Mysticism additionally refreshes it (polishRefreshSpell).
@@ -23370,45 +23508,18 @@ function applyReactionPlayCore(
       });
     }
 
-    // Mysticism expert: the OTHER cards this player played into the attack come
-    // back too. Snapshot them now (so cards played after the recall are not
-    // swept) and defer their return alongside the spell — a Book-sourced support
-    // card routes back to the Book. The spell rides its own deferred entry above,
-    // and the Mysticism/Knowledge card itself remains discarded: it was not a
-    // card played together with the Spell.
+    // The instant remains empowerable after Mysticism is played. Collect its
+    // support at attack resolution, just as normal CAST_SPELL recall does.
     if (mode === "expert" && effect.expertRecallPlayedCards) {
-      const bookPlayed = stackItem.modifiers.bookPlayedCardIds ?? [];
-      const remainingDiscard = [...caster.discard];
-      // Do not double-count the spell already queued for deferred return.
-      const spellIdx = remainingDiscard.lastIndexOf(entry.cardId);
-      if (spellIdx !== -1) {
-        remainingDiscard.splice(spellIdx, 1);
-      }
-      let skippedRecallCard = false;
-      for (const playedCardId of stackItem.modifiers.playedCardIds) {
-        if (playedCardId === entry.cardId) {
-          continue;
-        }
-        if (!skippedRecallCard && playedCardId === play.cardId) {
-          skippedRecallCard = true;
-          continue;
-        }
-        const idx = remainingDiscard.lastIndexOf(playedCardId);
-        if (idx !== -1) {
-          remainingDiscard.splice(idx, 1);
-          deferred.push({
-            cardId: playedCardId,
-            playerId,
-            toSpellBook: bookPlayed.includes(playedCardId),
-          });
-        }
-      }
-      // (The Cast a Spell enabler is already queued for return in the Polish
-      // block above — for both Knowledge and Mysticism — so it is not re-pushed
-      // here, which would return it twice.)
+      (stackItem.modifiers.deferredExpertSpellRecalls ??= []).push({
+        playerId,
+        spellCardId: entry.cardId,
+        sourceCardId: play.cardId,
+        ...(entry.fromSpellBook ? { fromSpellBook: true } : {}),
+        ...(polishBookInstant && entry.castEnablerCardId ? { castEnablerCardId: entry.castEnablerCardId } : {}),
+      });
     }
   }
-
   // Interference: react to an enemy damaging Spell aimed at one of your units
   // Interference / Plate of the Dying Light vs an enemy damaging Spell:
   // wiki `<instant>` — reduce THIS cast's Spell damage against the targeted
@@ -23988,6 +24099,11 @@ function applySchoolFetchExpert(
     action.playerId,
     `ability.basic_${action.school}_magic` as CardId,
   );
+  if (consumed) {
+    stackItem.modifiers.playedCardIds.push(fetchCardId);
+    const byPlayer = (stackItem.modifiers.playedCardIdsByPlayer ??= {});
+    (byPlayer[action.playerId] ??= []).push(fetchCardId);
+  }
   appendEvent(state, {
     type: "CARD_PLAYED",
     playerId: action.playerId,
@@ -24098,12 +24214,15 @@ function applySchoolPermanentExpert(
       currentCast.modifiers.selectedSpellSchool = school.school;
     }
     currentCast.modifiers.playedCardIds.push(action.cardId);
+    const byPlayer = (currentCast.modifiers.playedCardIdsByPlayer ??= {});
+    (byPlayer[action.playerId] ??= []).push(action.cardId);
   } else {
     // For an attack/activation/lethal window, bank the expert until the player
     // plays a matching reaction Spell into that window.
     (window.schoolExpertPowerByPlayer ??= {})[action.playerId] = {
       school: school.school,
       power: school.expertPower,
+      cardId: action.cardId,
     };
   }
   if (!abilityExpertIsCrownFree(player, action.cardId)) {
@@ -26490,6 +26609,7 @@ function playCard(
 
   // Map Power tiers (View Air / Fly / Dimension Door, …) may also spend ONE
   // Book Spell toward the Power cost — same once-per-turn Book Power budget.
+  const mapPaidCards: { cardId: CardId; fromBook: boolean }[] = [];
   payOptionCardCost(
     state,
     action.playerId,
@@ -26498,6 +26618,7 @@ function playCard(
     action.costCardIds,
     cards,
     action.costCardModes,
+    mapPaidCards,
   );
 
   // An Empowered ability's Expert side spends no crown.
@@ -28927,114 +29048,16 @@ function playCard(
     );
   }
 
-  // Map Spells do not use the combat spell stack, so their SPELL_CAST_STARTED
-  // reaction never existed. Offer Knowledge / Mysticism recall explicitly after map
-  // resolution (View Air, Dimension Door, Fly, Town Portal, Water Walk, …).
-  // Queued behind any immediate spell destination choice, then a real
-  // choose/decline prompt. Basic recall takes the spell back with NO crown
-  // (there is no per-turn spell limit outside combat). Regular Knowledge's
-  // expert limit side is not useful here; expert Mysticism can also recover
-  // support cards played into the cast.
-  if (
-    card.kind === "spell" &&
-    !state.combat &&
-    playedToDiscard &&
-    state.adventure
-  ) {
-    const player = state.players[action.playerId];
-    const knowledgeCardId = player?.hand.find((cardId) => {
-      const held = cards[cardId];
-      return held?.effect.type === "RECALL_SPELL";
+  // Use the same recall offer as interactive map casts: include every held
+  // recall card, expert/Empowered modes, and the complete cast's support cards.
+  if (card.kind === "spell" && !state.combat && playedToDiscard && state.adventure) {
+    offerMapSpellKnowledgeRecall(state, action.playerId, card, {
+      fromSpellBook: action.fromSpellBook,
+      castEnablerCardId: action.castEnablerCardId,
+      inFlightCardIds: playInFlightCardIds,
+      bookPlayedCardIds: mapPaidCards.filter((entry) => entry.fromBook).map((entry) => entry.cardId),
     });
-    const knowledge = knowledgeCardId ? cards[knowledgeCardId] : undefined;
-    const recallEffect =
-      knowledge?.effect.type === "RECALL_SPELL" ? knowledge.effect : null;
-    const polishBookCast =
-      polishSpellBookEnabled(state) && Boolean(action.fromSpellBook);
-    const spellIsRecallable =
-      (polishBookCast
-        ? Boolean(
-            action.castEnablerCardId &&
-            player?.discard.includes(action.castEnablerCardId),
-          )
-        : Boolean(player?.discard.includes(action.cardId))) ||
-      Boolean(
-        player?.ongoingCards?.some((entry) => entry.cardId === action.cardId),
-      );
-    if (player && knowledgeCardId && recallEffect && spellIsRecallable) {
-      const returnLabel = polishBookCast
-        ? "return Cast a Spell to your hand (the Book spell stays used)"
-        : action.fromSpellBook
-          ? `return ${card.name} to your Spell Book`
-          : `return ${card.name} to your hand`;
-      const bookFlag = polishBookCast
-        ? { castEnablerCardId: action.castEnablerCardId }
-        : action.fromSpellBook
-          ? { fromSpellBook: true as const }
-          : {};
-      const options: { label: string; steps: VisitStep[] }[] = [];
-
-      // Every recall card has a free basic take-back on the map. Regular
-      // Knowledge's expert spell-limit bonus is deliberately not offered here:
-      // map casting has no spell limit. Expert Mysticism remains meaningful
-      // when other cards were played with the cast.
-      options.push({
-        label: `Use ${knowledge?.name ?? "recall"}: ${returnLabel}`,
-        steps: [
-          {
-            type: "KNOWLEDGE_RECALL_MAP_SPELL",
-            spellCardId: action.cardId,
-            knowledgeCardId,
-            mode: "basic",
-            ...bookFlag,
-          },
-        ],
-      });
-      const otherPlayedCardIds = playInFlightCardIds.filter(
-        (cardId) =>
-          cardId !== action.cardId && cardId !== action.castEnablerCardId,
-      );
-      if (
-        hasExpertUseAvailable(state, action.playerId) &&
-        recallEffect.expertRecallPlayedCards &&
-        otherPlayedCardIds.length > 0
-      ) {
-        options.push({
-          label: `Use ${knowledge?.name ?? "recall"} expert (1 crown): ${returnLabel} and recover the other cast cards`,
-          steps: [
-            {
-              type: "KNOWLEDGE_RECALL_MAP_SPELL",
-              spellCardId: action.cardId,
-              knowledgeCardId,
-              recallPlayedCardIds: otherPlayedCardIds,
-              mode: "expert",
-              ...bookFlag,
-            },
-          ],
-        });
-      }
-      options.push({
-        label: `Keep Knowledge / Mysticism; leave ${card.name} spent`,
-        steps: [],
-      });
-
-      // Append after rewards the Spell itself just queued (notably Town
-      // Portal's destination), so "take it back" is always asked after the
-      // map effect has finished rather than before its target is chosen.
-      state.adventure.rewardQueue.push({
-        playerId: action.playerId,
-        kind: "visit-steps",
-        steps: [
-          {
-            type: "CHOOSE_ONE",
-            prompt: `Knowledge / Mysticism: recall ${card.name} after casting?`,
-            options,
-          },
-        ],
-      });
-    }
   }
-
   // A play that opened a choice (Chain Lightning's allocation, Solmyr IV's deck
   // dig) owns the phase/priority it just set — don't stomp it back to combat.
   if (state.pendingChoice) {
@@ -35411,7 +35434,11 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
           combat.context.dungeonFloor === undefined &&
           !combat.context.raidBossId &&
           combat.attackerPlayerId !== NEUTRAL_PLAYER_ID;
-        const fieldRoundLimit = isPlayerFieldFight ? utopiaField?.combatRoundLimit : undefined;
+        const fieldRoundLimit = isPlayerFieldFight
+          ? combat.context.kind === "neutral" && !combat.context.bankId && isGrailUtopiaModeField(state, utopiaField)
+            ? "unlimited"
+            : utopiaField?.combatRoundLimit
+          : undefined;
         // USER RULE 2026-09-11: a numeric designer limit means that many FREE
         // rounds; once they are used up the normal continue-or-retreat window
         // opens and every further round costs movement points as usual (the

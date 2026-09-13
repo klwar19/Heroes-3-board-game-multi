@@ -8461,12 +8461,16 @@ export type ResolutionStackItem = {
       recallPlayedCardLimit?: number;
       /** The Mysticism/Knowledge card itself; Expert recall never returns it. */
       sourceCardId?: CardId;
+      /** Additional recall plays on this cast, excluded once per physical copy. */
+      additionalSourceCardIds?: CardId[];
       toSpellBook?: boolean;
       /** Polish Mysticism: refresh the used Book Spell itself. */
       polishRefreshSpell?: boolean;
       /** Polish Knowledge / expert Mysticism: return the generic cast card. */
       polishRecallEnabler?: boolean;
     };
+    /** Cards paid directly as spell fuel, rather than played as reactions. */
+    recallPaidCards?: { cardId: CardId; playerId: PlayerId; fromBook: boolean }[];
     /**
      * Spell instants played as reactions into this ATTACK window whose card now
      * sits in the caster's own discard pile (Stone Skin, Bloodlust, Curse,
@@ -8510,6 +8514,18 @@ export type ResolutionStackItem = {
       castEnablerCardId?: CardId;
       /** Distinguishes the automatic proclamation return from a played recall. */
       reason?: "Crazy Wizard";
+    }[];
+    /**
+     * Expert Mysticism also recovers support added after it, until the attack
+     * resolves (USER-reported recorded game wkz495: Bloodlust, expert
+     * Mysticism, Basilisk, drawn Power — everything returns).
+     */
+    deferredExpertSpellRecalls?: {
+      playerId: PlayerId;
+      spellCardId: CardId;
+      sourceCardId: CardId;
+      castEnablerCardId?: CardId;
+      fromSpellBook?: boolean;
     }[];
     /** Reminder data for a Crazy Wizard Spell held by a lasting reaction effect. */
     crazyWizardOngoingSpell?: {
@@ -8724,7 +8740,7 @@ export type ReactionWindow = {
    * (cost payment or the attack-Power pool, whichever comes first).
    */
   schoolExpertPowerByPlayer?: Partial<
-    Record<PlayerId, { school: SpellSchool; power: number }>
+    Record<PlayerId, { school: SpellSchool; power: number; cardId?: CardId }>
   >;
 };
 
@@ -10541,7 +10557,7 @@ export type CombatSetupState = {
   pendingPlayerIds: PlayerId[];
   /** Army unit instance ids already placed this setup, per player. */
   placedUnitIds: Record<PlayerId, string[]>;
-  /** Maximum units a side may field. */
+  /** Stored/default unit cap; Commander combats may derive a per-side effective cap. */
   unitLimit: number;
 };
 
@@ -10839,6 +10855,8 @@ export type CombatState = {
     cardId: CardId;
     playerId: PlayerId;
     fromSpellBook: boolean;
+    castEnablerCardId?: CardId;
+    powerBookCardIds?: CardId[];
     /**
      * Power-source ("pow") cards discarded to pay a silver/gold Sorrow's cost
      * (its `power-source` cost cards). Mysticism's EXPERT side — "also take back
@@ -10871,6 +10889,7 @@ export type CombatState = {
     triggerEventId: string;
     /** Cast from a Spell Book (the old stash Book returns there; Polish refreshes the used side). */
     fromSpellBook: boolean;
+    powerBookCardIds?: CardId[];
     /** Polish Spell Book: the generic hand card consumed to enable this Spell. */
     castEnablerCardId?: CardId;
     /**
@@ -12801,6 +12820,7 @@ export type VisitStep =
       castEnablerCardId?: CardId;
       /** Other support cards expert Mysticism may return from discard. */
       recallPlayedCardIds?: CardId[];
+      recallBookCardIds?: CardId[];
       /** "basic" (default) = free recall; "expert" = Mysticism + one crown. */
       mode?: CardPlayMode;
     }
@@ -15390,6 +15410,8 @@ export type CustomMapPreset = {
      * house-rule toggle enables the same package without writing this flag.
      */
     hiddenGrailUtopia?: boolean;
+    /** Army for both Grail and Utopia fields in the hidden-rules mode. */
+    grailUtopiaGuard?: CustomGuardSpec;
     grailObelisksRequired?: 1 | 2 | 3 | 4;
     utopiaGuards?: DragonUtopiaGuards;
     utopiaBonusSearch?: 1 | 2 | 3;
@@ -17922,6 +17944,7 @@ export type PendingChoice =
         castEnablerCardId?: CardId;
         /** Spell/support/enabler cards held out of empty-deck reshuffles until resolution. */
         inFlightCardIds?: CardId[];
+        bookPlayedCardIds?: CardId[];
         /**
          * A played power side's still-open printed card cost (Titan's Cuirass /
          * Breastplate of Brimstone): `required` more discards owed before the

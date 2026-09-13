@@ -195,6 +195,26 @@ export function digFromOwnDeckTop(
       for (const cardId of options?.inFlightCardIds ?? []) {
         protectedCounts.set(cardId, (protectedCounts.get(cardId) ?? 0) + 1);
       }
+      // A declared recall remains in flight until the attack ends. Kill and
+      // retaliation draws must not shuffle these promised copies away. Counts
+      // ACCUMULATE: each stack item's promises and each queued return are
+      // distinct physical copies on top of the in-flight ones above. Only the
+      // owner ledger is read — the flat playedCardIds list is shared with the
+      // opponent and must never hold this player's reshuffle hostage.
+      for (const item of state.stack) {
+        if (item.modifiers.deferredExpertSpellRecalls?.some((recall) => recall.playerId === playerId)) {
+          for (const cardId of [
+            ...(item.modifiers.playedCardIdsByPlayer?.[playerId] ?? []),
+            ...(item.modifiers.recallPaidCards ?? []).filter((entry) => entry.playerId === playerId).map((entry) => entry.cardId),
+          ]) {
+            protectedCounts.set(cardId, (protectedCounts.get(cardId) ?? 0) + 1);
+          }
+        }
+        for (const recall of item.modifiers.deferredSpellRecalls ?? []) {
+          if (recall.playerId !== playerId || recall.fromPolishUsed) continue;
+          protectedCounts.set(recall.cardId, (protectedCounts.get(recall.cardId) ?? 0) + 1);
+        }
+      }
       const held: CardId[] = [];
       const toShuffle: CardId[] = [];
       for (const cardId of player.discard) {

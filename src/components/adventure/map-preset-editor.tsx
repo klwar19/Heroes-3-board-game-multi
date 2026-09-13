@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowUpDown, Clock3, Copy, Plus, Trash2 } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
+import { DEFAULT_GRAIL_UTOPIA_GUARD } from "@/engine/map-design-features";
 import { DESIGNER_UI_ICONS, REWARD_GLYPH_ICONS, SECRET_FEATURE_ICONS } from "@/data/assets/homm-assets";
 import { listStoryScenes } from "@/data/story/scenes";
 import {
@@ -1414,8 +1415,9 @@ export function MapPresetEditor({
         <small className="mapPresetHint">
           On each face-down Center (Ⅶ) tile, select both Grail and Dragon Utopia and leave “Player picks” off.
           The game balances the hidden results: 4 fields = 2 + 2; 3 fields = a random 2 + 1 split.
-          Grail guards use the difficulty table; dig costs 1 MP and gives 20 gold plus the 3-VP Grail token.
-          Dragon Utopia adds a Black Dragon and rewards 20 gold, Morale or an Ability token, plus two Search(3)
+          Both fields use the mode army below (default: one Black Dragon and two random Azure units), with unlimited combat rounds.
+          Dig costs 1 MP and gives 20 gold plus the 3-VP Grail token.
+          Dragon Utopia rewards 20 gold, Morale or an Ability token, plus two Search(3)
           rewards from the Artifact deck (two Artifacts). The Utopia Creature Bank (Ⅳ–Ⅴ) pays its own richer
           reward instead: 40 gold, Search(3), then Search(5) twice.
         </small>
@@ -1691,6 +1693,17 @@ export function MapPresetEditor({
       {objectives.hiddenGrailUtopia ? (
         <section className="mapPresetSection" aria-label="Objectives">
           <div className="mapPresetSectionLabel">🏆 Grail objective (hidden rules)</div>
+          <GuardLevelChips
+            ariaLabel="Grail and Utopia mode army"
+            guard={objectives.grailUtopiaGuard ?? DEFAULT_GRAIL_UTOPIA_GUARD}
+            label="Grail / Utopia army"
+            onChange={(guard) => patchObjectives({ ...objectives, grailUtopiaGuard: guard })}
+          />
+          <small className="mapPresetHint">
+            This army guards every Grail and Dragon Utopia field, including converted sites.
+            Default: one Black Dragon and two random Azure units. Combat rounds are unlimited;
+            center-field and Break round settings do not apply to these mode encounters.
+          </small>
           <div className="mapPresetObjectiveRow" role="group" aria-label="Grail Obelisks required">
             <span className="mapPresetObjectiveLabel">🏆 Grail dig — Obelisks needed</span>
             <div className="mapPresetChipRow">
@@ -1758,7 +1771,7 @@ export function MapPresetEditor({
       utopiaOnMap ? (
         <section className="mapPresetSection" aria-label="Objectives">
           <div className="mapPresetSectionLabel">🐉 Dragon Utopia objective</div>
-          <div className="mapPresetObjectiveRow" role="group" aria-label="Dragon Utopia guards">
+          {!objectives.hiddenGrailUtopia ? <div className="mapPresetObjectiveRow" role="group" aria-label="Dragon Utopia guards">
             <span className="mapPresetObjectiveLabel">🐉 Dragon Utopia guards</span>
             <div className="mapPresetChipRow">
               <button
@@ -1798,7 +1811,7 @@ export function MapPresetEditor({
                 2 Azure + 2 Gold
               </button>
             </div>
-          </div>
+          </div> : null}
 
           <div className="mapPresetObjectiveRow" role="group" aria-label="Dragon Utopia bonus search">
             <span className="mapPresetObjectiveLabel">🐉 Dragon Utopia bonus Search</span>
@@ -2218,7 +2231,7 @@ export function MapPresetEditor({
         <div hidden={objectMode("center") !== "global"}>
           <div className="mapPresetSectionLabel">All Ⅶ center objectives</div>
           <small className="mapPresetHint">
-            Defaults for every Ⅶ center fight. A value under 📍 Specific overrides its matching global value.
+            Defaults for Ⅶ center fights outside the hidden Grail / Utopia mode. A value under 📍 Specific overrides its matching global value.
           </small>
           <GuardLevelChips
             ariaLabel="Global center objective guard"

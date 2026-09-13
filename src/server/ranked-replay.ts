@@ -1,3 +1,4 @@
+import { replayDecisionFacts } from "../engine/computer/replay-context";
 import {
   ENGINE_SIGNATURE,
   NEUTRAL_PLAYER_ID,
@@ -52,6 +53,7 @@ export type RankedReplayLearningDomain =
   | "recovery";
 
 export type RankedReplayLearningContext = {
+  policyFacts?: ReturnType<typeof replayDecisionFacts>;
   stage: "opening" | "midgame" | "late-game";
   domains: RankedReplayLearningDomain[];
   legalAlternativeCount: number;
@@ -355,6 +357,7 @@ function learningContextFor(
 
   return {
     stage,
+    ...(actorPlayerId ? { policyFacts: replayDecisionFacts(state, actorPlayerId, action) } : {}),
     domains: [...domains],
     legalAlternativeCount,
     underPressure: pressureSignals.length > 0,
@@ -440,7 +443,10 @@ function buildRankedReplayEntry(
     ...(options.entropy ? { entropy: options.entropy } : {}),
     ...(options.now != null ? { now: options.now } : {}),
     events: sanitizeReplayValue(result.events, before, replacements) as GameEvent[],
-    learningContext: learningContextFor(before, actorPlayerId, action, legal.length),
+    // The learning context embeds a copy of the action (policyFacts), so it
+    // must receive the SANITIZED action — never the raw one with chat text,
+    // room passwords/names or opaque client ids.
+    learningContext: learningContextFor(before, actorPlayerId, sanitizeAction(action, before, replacements), legal.length),
   };
   const entryBytes = encodedBytes(entry);
   // A pathological legal-action fanout must never break the room. Preserve the

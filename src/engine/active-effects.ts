@@ -451,8 +451,9 @@ export function activeSpellPowerBonus(state: GameState, playerId: PlayerId): num
 
 /**
  * THE single read of the FULL ranged-penalty waiver — "Ignore combat penalties"
- * (`IGNORE_RANGED_PENALTIES`: Magi / Sharpshooters / the neutral Halfling) plus
- * the player-scoped Ammo Cart standing effect (`RANGED_IGNORE_ALL_PENALTIES`).
+ * (`IGNORE_RANGED_PENALTIES`: Magi / Sharpshooters / the neutral Halfling), the
+ * Cyclops R3 compound waiver, plus the player-scoped Ammo Cart standing effect
+ * (`RANGED_IGNORE_ALL_PENALTIES`).
  *
  * It lives HERE, below both `getAttackRollMode` (legal-actions.ts) and
  * `siegeRangedDamageReduction` (siege.ts), so the two ranged penalties the
@@ -481,6 +482,7 @@ export function ignoresAllRangedCombatPenalties(
       (ability) =>
         ability.implementationStatus === "implemented" &&
         (ability.effect?.type === "IGNORE_RANGED_PENALTIES_AND_MELEE_RETALIATION" ||
+          ability.effect?.type === "IGNORE_RANGED_PENALTIES_AND_REROLL_MINUS_ONE" ||
           (ability.effect?.type === "IGNORE_RANGED_PENALTIES" &&
             (!isRetaliation || Boolean(ability.effect.includesRetaliation))))
     )

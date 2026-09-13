@@ -1,199 +1,175 @@
 {
   "version": 1,
-  "matches": 19,
-  "samples": 10586,
+  "matches": 20,
+  "samples": 12152,
   "weights": {
-    "late-game|castle|map|stable|BUILD_STRUCTURE|castle.brotherhood_of_the_sword||": {
+    "late-game|castle|map|stable|COMMANDER_GRADE_UP|attack|||rules:binh,commander:true,xp:true,book:true": {
       "wins": 2,
       "losses": 1,
       "matches": 3,
       "bias": 1.7142857142857135
     },
-    "late-game|castle|map|stable|POPULATION_ACTION|recruit:castle.archangels||": {
+    "late-game|castle|map|stable|COMMANDER_GRADE_UP|health|||rules:binh,commander:true,xp:true,book:true": {
+      "wins": 2,
+      "losses": 1,
+      "matches": 3,
+      "bias": 1.7142857142857135
+    },
+    "late-game|castle|map|stable|COMMANDER_GRADE_UP|speed|||rules:binh,commander:true,xp:true,book:true": {
+      "wins": 2,
+      "losses": 1,
+      "matches": 3,
+      "bias": 1.7142857142857135
+    },
+    "late-game|castle|map|stable|MOVE_SPELL_TO_SPELL_BOOK|spell.weakness|||rules:binh,commander:true,xp:true,book:true": {
+      "wins": 2,
+      "losses": 1,
+      "matches": 3,
+      "bias": 1.7142857142857135
+    },
+    "late-game|castle|map|stable|PLAY_CARD|ability.eagle_eye|basic||rules:binh,commander:true,xp:true,book:true": {
+      "wins": 2,
+      "losses": 1,
+      "matches": 3,
+      "bias": 1.7142857142857135
+    },
+    "late-game|castle|map|stable|POPULATION_ACTION|recruit:castle.archangels|||rules:binh,commander:true,xp:true,book:true": {
       "wins": 1,
       "losses": 2,
       "matches": 3,
       "bias": -1.7142857142857149
     },
-    "late-game|castle|map|stable|POPULATION_ACTION|recruit:castle.champions||": {
+    "late-game|castle|map|stable|POPULATION_ACTION|recruit:castle.champions|||rules:binh,commander:true,xp:true,book:true": {
       "wins": 2,
       "losses": 2,
       "matches": 4,
       "bias": 0
     },
-    "late-game|castle|map|stable|POPULATION_ACTION|reinforce:castle.archangels||": {
+    "late-game|castle|map|stable|POPULATION_ACTION|reinforce:castle.archangels|||rules:binh,commander:true,xp:true,book:true": {
       "wins": 2,
       "losses": 2,
       "matches": 4,
       "bias": 0
     },
-    "late-game|castle|map|stable|POPULATION_ACTION|reinforce:castle.champions||": {
+    "late-game|castle|map|stable|POPULATION_ACTION|reinforce:castle.champions|||rules:binh,commander:true,xp:true,book:true": {
       "wins": 2,
       "losses": 2,
       "matches": 4,
       "bias": 0
     },
-    "late-game|castle|neutral|stable|CAST_SPELL|spell.magic_arrow||": {
+    "late-game|castle|map|stable|POPULATION_ACTION|reinforce:castle.crusaders|||rules:binh,commander:true,xp:true,book:true": {
+      "wins": 2,
+      "losses": 1,
+      "matches": 3,
+      "bias": 1.7142857142857135
+    },
+    "late-game|castle|map|stable|SPELL_BOOK_ACTION|SPELL_BOOK_ACTION|||rules:binh,commander:true,xp:true,book:true": {
+      "wins": 2,
+      "losses": 2,
+      "matches": 4,
+      "bias": 0
+    },
+    "late-game|castle|neutral|stable|CAST_SPELL|spell.magic_arrow|||rules:binh,commander:true,xp:true,book:true": {
       "wins": 4,
       "losses": 0,
       "matches": 4,
       "bias": 6
     },
-    "late-game|castle|neutral|stable|PLAY_REACTION|stat.attack|expert|": {
+    "late-game|castle|neutral|stable|PLAY_REACTION|stat.attack|expert||rules:binh,commander:true,xp:true,book:true": {
       "wins": 3,
       "losses": 0,
       "matches": 3,
       "bias": 5.142857142857143
     },
-    "late-game|castle|neutral|stable|PLAY_REACTION|stat.knowledge|expert|": {
+    "late-game|castle|neutral|stable|PLAY_REACTION|stat.knowledge|expert||rules:binh,commander:true,xp:true,book:true": {
       "wins": 3,
       "losses": 0,
       "matches": 3,
       "bias": 5.142857142857143
     },
-    "late-game|necropolis|map|stable|BUILD_STRUCTURE|necropolis.dwelling_gold||": {
-      "wins": 2,
-      "losses": 1,
+    "late-game|castle|neutral|stable|USE_UNIT_ABILITY|commander-cast-paladin|||rules:binh,commander:true,xp:true,book:true": {
+      "wins": 3,
+      "losses": 0,
       "matches": 3,
-      "bias": 1.7142857142857135
+      "bias": 5.142857142857143
     },
-    "late-game|necropolis|map|stable|PLAY_CARD|ability.necromancy|expert|": {
-      "wins": 2,
-      "losses": 1,
-      "matches": 3,
-      "bias": 1.7142857142857135
-    },
-    "late-game|necropolis|map|stable|POPULATION_ACTION|recruit:necropolis.dread_knights||": {
-      "wins": 2,
-      "losses": 1,
-      "matches": 3,
-      "bias": 1.7142857142857135
-    },
-    "late-game|necropolis|map|stable|POPULATION_ACTION|recruit:necropolis.ghost_dragons||": {
-      "wins": 2,
+    "late-game|necropolis|map|stable|POPULATION_ACTION|recruit:necropolis.ghost_dragons|||rules:binh,commander:true,xp:true,book:true": {
+      "wins": 1,
       "losses": 2,
-      "matches": 4,
+      "matches": 3,
+      "bias": -1.7142857142857149
+    },
+    "late-game|tower|map|stable|POPULATION_ACTION|recruit:tower.nagas|||rules:binh,commander:true,xp:true,book:true": {
+      "wins": 1,
+      "losses": 2,
+      "matches": 3,
+      "bias": -1.7142857142857149
+    },
+    "late-game|tower|map|stable|POPULATION_ACTION|reinforce:tower.titans|||rules:binh,commander:true,xp:true,book:true": {
+      "wins": 1,
+      "losses": 2,
+      "matches": 3,
+      "bias": -1.7142857142857149
+    },
+    "late-game|tower|map|stable|SPELL_BOOK_ACTION|SPELL_BOOK_ACTION|||rules:binh,commander:true,xp:true,book:true": {
+      "wins": 1,
+      "losses": 2,
+      "matches": 3,
+      "bias": -1.7142857142857149
+    },
+    "late-game|tower|neutral|stable|CAST_SPELL|spell.magic_arrow|||rules:binh,commander:true,xp:true,book:true": {
+      "wins": 3,
+      "losses": 0,
+      "matches": 3,
+      "bias": 5.142857142857143
+    },
+    "midgame|castle|map|stable|BUILD_STRUCTURE|castle.dwelling_silver|||rules:binh,commander:true,xp:true,book:true": {
+      "wins": 3,
+      "losses": 3,
+      "matches": 6,
       "bias": 0
     },
-    "late-game|tower|map|stable|POPULATION_ACTION|recruit:tower.nagas||": {
-      "wins": 1,
-      "losses": 2,
+    "midgame|castle|map|stable|COMMANDER_GRADE_UP|health|||rules:binh,commander:true,xp:true,book:true": {
+      "wins": 2,
+      "losses": 1,
       "matches": 3,
-      "bias": -1.7142857142857149
+      "bias": 1.7142857142857135
     },
-    "late-game|tower|map|stable|POPULATION_ACTION|reinforce:tower.titans||": {
-      "wins": 1,
-      "losses": 2,
+    "midgame|castle|map|stable|POPULATION_ACTION|recruit:castle.zealots|||rules:binh,commander:true,xp:true,book:true": {
+      "wins": 2,
+      "losses": 1,
       "matches": 3,
-      "bias": -1.7142857142857149
+      "bias": 1.7142857142857135
     },
-    "late-game|tower|neutral|stable|CAST_SPELL|spell.magic_arrow||": {
+    "midgame|castle|map|stable|SPELL_BOOK_ACTION|SPELL_BOOK_ACTION|||rules:binh,commander:true,xp:true,book:true": {
       "wins": 3,
-      "losses": 0,
-      "matches": 3,
-      "bias": 5.142857142857143
+      "losses": 1,
+      "matches": 4,
+      "bias": 3
     },
-    "midgame|castle|map|pressure|CAST_SPELL|spell.magic_arrow||": {
+    "midgame|necropolis|map|stable|COMMANDER_GRADE_UP|attack|||rules:binh,commander:true,xp:true,book:true": {
+      "wins": 1,
+      "losses": 2,
+      "matches": 3,
+      "bias": -1.7142857142857149
+    },
+    "midgame|necropolis|map|stable|PLAY_CARD|ability.necromancy|basic||rules:binh,commander:true,xp:true,book:true": {
+      "wins": 1,
+      "losses": 2,
+      "matches": 3,
+      "bias": -1.7142857142857149
+    },
+    "midgame|tower|map|stable|BUILD_STRUCTURE|tower.dwelling_silver|||rules:binh,commander:true,xp:true,book:true": {
+      "wins": 1,
+      "losses": 2,
+      "matches": 3,
+      "bias": -1.7142857142857149
+    },
+    "midgame|tower|neutral|stable|CAST_SPELL|spell.magic_arrow|||rules:binh,commander:true,xp:true,book:true": {
       "wins": 2,
       "losses": 1,
       "matches": 3,
       "bias": 1.7142857142857135
-    },
-    "midgame|castle|map|stable|BUILD_STRUCTURE|castle.city_hall||": {
-      "wins": 2,
-      "losses": 3,
-      "matches": 5,
-      "bias": -1.333333333333334
-    },
-    "midgame|castle|map|stable|BUILD_STRUCTURE|castle.dwelling_silver||": {
-      "wins": 4,
-      "losses": 3,
-      "matches": 7,
-      "bias": 1.09090909090909
-    },
-    "midgame|castle|neutral|pressure|CAST_SPELL|spell.magic_arrow||": {
-      "wins": 2,
-      "losses": 1,
-      "matches": 3,
-      "bias": 1.7142857142857135
-    },
-    "midgame|castle|neutral|stable|CAST_SPELL|spell.magic_arrow||": {
-      "wins": 3,
-      "losses": 0,
-      "matches": 3,
-      "bias": 5.142857142857143
-    },
-    "midgame|castle|neutral|stable|PLAY_REACTION|stat.attack|basic|": {
-      "wins": 4,
-      "losses": 0,
-      "matches": 4,
-      "bias": 6
-    },
-    "midgame|necropolis|map|stable|BUILD_STRUCTURE|necropolis.city_hall||": {
-      "wins": 2,
-      "losses": 1,
-      "matches": 3,
-      "bias": 1.7142857142857135
-    },
-    "midgame|necropolis|map|stable|BUILD_STRUCTURE|necropolis.dwelling_silver||": {
-      "wins": 1,
-      "losses": 2,
-      "matches": 3,
-      "bias": -1.7142857142857149
-    },
-    "midgame|necropolis|map|stable|CAST_SPELL|spell.magic_arrow||": {
-      "wins": 2,
-      "losses": 2,
-      "matches": 4,
-      "bias": 0
-    },
-    "midgame|necropolis|map|stable|PLAY_CARD|ability.necromancy|basic|": {
-      "wins": 2,
-      "losses": 2,
-      "matches": 4,
-      "bias": 0
-    },
-    "midgame|necropolis|neutral|pressure|CAST_SPELL|spell.magic_arrow||": {
-      "wins": 0,
-      "losses": 4,
-      "matches": 4,
-      "bias": -6
-    },
-    "midgame|necropolis|neutral|pressure|PLAY_REACTION|stat.knowledge|expert|": {
-      "wins": 1,
-      "losses": 2,
-      "matches": 3,
-      "bias": -1.7142857142857149
-    },
-    "midgame|rampart|map|stable|BUILD_STRUCTURE|rampart.mystic_pond||": {
-      "wins": 1,
-      "losses": 2,
-      "matches": 3,
-      "bias": -1.7142857142857149
-    },
-    "midgame|tower|map|pressure|CAST_SPELL|spell.magic_arrow||": {
-      "wins": 1,
-      "losses": 2,
-      "matches": 3,
-      "bias": -1.7142857142857149
-    },
-    "midgame|tower|map|stable|BUILD_STRUCTURE|tower.dwelling_silver||": {
-      "wins": 1,
-      "losses": 2,
-      "matches": 3,
-      "bias": -1.7142857142857149
-    },
-    "midgame|tower|neutral|stable|CAST_SPELL|spell.magic_arrow||": {
-      "wins": 2,
-      "losses": 1,
-      "matches": 3,
-      "bias": 1.7142857142857135
-    },
-    "opening|cove|neutral|pressure|CAST_SPELL|spell.magic_arrow||": {
-      "wins": 0,
-      "losses": 3,
-      "matches": 3,
-      "bias": -5.142857142857143
     }
   }
 }

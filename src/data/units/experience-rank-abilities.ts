@@ -521,12 +521,14 @@ function explicitRankThree(unitDefId: string): RankStep | null {
   if (unitDefId === "inferno.arch_devils") return S({ ...Z, attack: 1 });
   if (unitDefId === "castle.halberdiers") return A("town-halberd-aura");
   if (unitDefId === "castle.crusaders") return H({ ...Z, initiative: 1 }, "reduce-spell-damage-1");
+  if (unitDefId === "castle.zealots") return A("veteran-zealot-spell-sunder");
   if (unitDefId === "tower.gremlins") return H({ ...Z, attack: 1 }, "town-gremlin-die");
   if (unitDefId === "tower.magi") return A("town-magi-recover");
   if (unitDefId === "tower.nagas") return A("town-naga-pierce");
   if (unitDefId === "stronghold.wolf_raiders") return S({ ...Z, attack: 1, initiative: 2 });
   if (unitDefId === "stronghold.ogres") return A("town-ogre-guard");
   if (unitDefId === "stronghold.thunderbirds") return A("town-bird-lightning");
+  if (unitDefId === "stronghold.cyclopes") return A("town-cyclops-siegebreaker-focus");
   if (unitDefId === "rampart.centaurs") return H({ ...Z, health: 1 }, "imperium-shock-assault");
   if (unitDefId === "rampart.elves") return A("town-elf-guard");
   if (unitDefId === "rampart.pegasi") return A("town-pegasus-guard");
@@ -618,7 +620,7 @@ function explicitRankFour(unitDefId: string): RankStep | null {
   if (unitDefId === "tower.gremlins") return A("town-gremlin-recover");
   if (unitDefId === "tower.titans") return A("town-titan-bolt");
   if (unitDefId === "stronghold.goblins") return A("town-goblin-save");
-  if (unitDefId === "stronghold.orcs") return A("town-orc-discard");
+  if (unitDefId === "stronghold.orcs") return A("town-orc-double-attack");
   if (unitDefId === "stronghold.wolf_raiders") return A("dragon-fly-retaliation-penalty-2");
   if (unitDefId === "stronghold.thunderbirds") return A("veteran-dragon-feast");
   if (unitDefId === "stronghold.cyclopes") return A("town-cyclops-splash");
@@ -820,13 +822,16 @@ export const UNIT_RANK_ABILITY_ICONS: Record<string, string> = {
   "town-marksman-survival": "/game-tokens/rank-ability/town-revisions/marksman-survival.webp",
   "town-crusader-undead": "/game-tokens/rank-ability/town-revisions/crusader-undead.webp",
   "town-zealot-loss": "/game-tokens/rank-ability/town-revisions/zealot-loss.webp",
+  "veteran-zealot-spell-sunder": "/assets/ui/rank-ability/spell-sunder.webp",
   "town-golem-cap": "/game-tokens/rank-ability/town-revisions/golem-cap.webp",
   "town-naga-pierce": "/game-tokens/rank-ability/town-revisions/naga-pierce.webp",
   "town-titan-bolt": "/game-tokens/rank-ability/town-revisions/titan-bolt.webp",
   "town-goblin-save": "/game-tokens/rank-ability/town-revisions/goblin-save.webp",
   "town-orc-discard": "/game-tokens/rank-ability/town-revisions/orc-discard.webp",
+  "town-orc-double-attack": "/assets/ui/rank-ability/double-strike.webp",
   "town-ogre-guard": "/game-tokens/rank-ability/town-revisions/ogre-guard.webp",
   "town-bird-lightning": "/game-tokens/rank-ability/town-revisions/bird-lightning.webp",
+  "town-cyclops-siegebreaker-focus": "/assets/ui/rank-ability/precision.webp",
   "town-dwarf-backlash": "/game-tokens/rank-ability/town-revisions/dwarf-backlash.webp",
   "town-dragon-snare": "/game-tokens/rank-ability/town-revisions/dragon-snare.webp",
   "town-demon-paralyze": "/game-tokens/rank-ability/town-revisions/demon-paralyze.webp",

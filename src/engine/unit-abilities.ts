@@ -197,7 +197,7 @@ export function getUnitAttackRerollSources(
   if (isRetaliation) {
     return [];
   }
-  return getAbilitiesWithEffect(unit, "ATTACK_DIE_REROLL").flatMap((ability) =>
+  const ordinarySources = getAbilitiesWithEffect(unit, "ATTACK_DIE_REROLL").flatMap((ability) =>
     ability.effect?.type === "ATTACK_DIE_REROLL" &&
     ability.effect.rerollsPerAttack > 0 &&
     (!ability.effect.requiresMoved || moved) &&
@@ -214,6 +214,16 @@ export function getUnitAttackRerollSources(
         }]
       : []
   );
+  const cyclopsSources = getAbilitiesWithEffect(
+    unit,
+    "IGNORE_RANGED_PENALTIES_AND_REROLL_MINUS_ONE"
+  ).map((ability) => ({
+    name: ability.name,
+    abilityId: ability.id,
+    rerolls: 1,
+    onlyOnRoll: -1
+  }));
+  return [...ordinarySources, ...cyclopsSources];
 }
 
 /** Marksmen/Elves: attack the same non-adjacent target a second time. */

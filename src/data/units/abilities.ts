@@ -89,6 +89,10 @@ export type UnitAbilityEffectDefinition =
       includesRetaliation?: boolean;
     }
   | {
+      /** Cyclops R3: full ranged-penalty waiver plus one -1 reroll per own attack. */
+      type: "IGNORE_RANGED_PENALTIES_AND_REROLL_MINUS_ONE";
+    }
+  | {
       /**
        * Imperium Venerable Dreadnought "Adamantine Hull": once per Combat the
        * first damage assignment large enough to exceed `cap` is reduced so this
@@ -4032,9 +4036,11 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "town-titan-bolt": { id: "town-titan-bolt", name: "Thunderbolt", text: "After attacking or retaliating against an adjacent unit, roll an extra die: on -1 or 0, deal 2 additional damage.", effect: { type: "TOWN_VETERANCY", mechanic: "titan-bolt" }, implementationStatus: "implemented" },
   "town-goblin-save": { id: "town-goblin-save", name: "Defiant Survivor", text: "Once per combat when an attack would defeat this unit, survive at 1 HP and you may give a unit +1 Attack for this combat.", effect: { type: "TOWN_VETERANCY", mechanic: "goblin-save" }, implementationStatus: "implemented" },
   "town-orc-discard": { id: "town-orc-discard", name: "Plunder", text: "After attacking an enemy, its controller discards one random card.", effect: { type: "TOWN_VETERANCY", mechanic: "orc-discard" }, implementationStatus: "implemented" },
+  "town-orc-double-attack": { id: "town-orc-double-attack", name: "Brutal Barrage", text: "After this unit's first attack, it attacks the same target a second time if the target survives.", effect: { type: "DOUBLE_ATTACK", anyRange: true }, implementationStatus: "implemented" },
   "town-ogre-guard": { id: "town-ogre-guard", name: "Bloodlust Armor", text: "After using Bloodlust, gain +1 Defense for this combat, at most once.", effect: { type: "TOWN_VETERANCY", mechanic: "ogre-guard" }, implementationStatus: "implemented" },
   "town-bird-lightning": { id: "town-bird-lightning", name: "Certain Lightning", text: "Lightning Strike always hits without rolling its extra die.", effect: { type: "TOWN_VETERANCY", mechanic: "bird-lightning" }, implementationStatus: "implemented" },
   "town-cyclops-splash": { id: "town-cyclops-splash", name: "Shattering Shot", text: "After a ranged attack, deal 1 damage to one other unit adjacent to the target.", effect: { type: "TOWN_VETERANCY", mechanic: "cyclops-splash" }, implementationStatus: "implemented" },
+  "town-cyclops-siegebreaker-focus": { id: "town-cyclops-siegebreaker-focus", name: "Siegebreaker's Focus", text: "[unit_passive] Ignores all ranged combat penalties. [unit_attack] Once during each own attack, may reroll a -1 result on this unit's Attack die; the new result must be used.", effect: { type: "IGNORE_RANGED_PENALTIES_AND_REROLL_MINUS_ONE" }, implementationStatus: "implemented" },
   "town-dwarf-backlash": { id: "town-dwarf-backlash", name: "Runic Backlash", text: "Whenever an enemy casts a Spell, deal 1 damage to a random unit.", effect: { type: "TOWN_VETERANCY", mechanic: "dwarf-backlash" }, implementationStatus: "implemented" },
   "town-elf-guard": { id: "town-elf-guard", name: "Canopy Guard", text: "+1 Defense against ranged and flying units.", effect: { type: "TOWN_VETERANCY", mechanic: "elf-guard" }, implementationStatus: "implemented" },
   "town-pegasus-guard": { id: "town-pegasus-guard", name: "Wingmate Guard", text: "+1 Defense while adjacent to another ally.", effect: { type: "TOWN_VETERANCY", mechanic: "pegasus-guard" }, implementationStatus: "implemented" },
@@ -4119,6 +4125,13 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   },
   "veteran-elf-spell-sunder": {
     id: "veteran-elf-spell-sunder",
+    name: "Spell Sunder",
+    text: "[unit_passive] Once per combat round, at most twice per combat: when an enemy casts a Spell from hand or Spell Book, including an instant Spell, that enemy discards 1 additional card from hand if possible.",
+    effect: { type: "SPELL_CAST_HAND_TAX" },
+    implementationStatus: "implemented"
+  },
+  "veteran-zealot-spell-sunder": {
+    id: "veteran-zealot-spell-sunder",
     name: "Spell Sunder",
     text: "[unit_passive] Once per combat round, at most twice per combat: when an enemy casts a Spell from hand or Spell Book, including an instant Spell, that enemy discards 1 additional card from hand if possible.",
     effect: { type: "SPELL_CAST_HAND_TAX" },

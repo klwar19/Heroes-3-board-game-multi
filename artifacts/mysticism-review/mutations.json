@@ -1,0 +1,71 @@
+[
+  {
+    "mutation": "late",
+    "killed": true,
+    "failures": [
+      "Mysticism full recall regression recorded wkz495 order: Bloodlust, expert Mysticism, Basilisk, draw Power, pass",
+      "Mysticism full recall regression Polish instant recall returns late fuel plus the enabler, and refreshes Bloodlust",
+      "Mysticism full recall regression Power drawn by late Basilisk and then spent is also returned"
+    ]
+  },
+  {
+    "mutation": "cancelled",
+    "killed": true,
+    "failures": [
+      "Mysticism full recall regression cast returns Tome and duplicate Power, cancelled=true"
+    ]
+  },
+  {
+    "mutation": "preserve",
+    "killed": true,
+    "failures": [
+      "Mysticism full recall regression later Knowledge cannot downgrade expert Mysticism or return either recall card"
+    ]
+  },
+  {
+    "mutation": "mirror",
+    "killed": true,
+    "failures": [
+      "Mysticism full recall regression Sorrow expert returns paid fuel: hand",
+      "Mysticism full recall regression Sorrow expert returns paid fuel: school",
+      "Mysticism full recall regression Sorrow expert returns paid fuel: book",
+      "Mysticism full recall regression paid Magic Mirror returns fuel only at expert: expert"
+    ]
+  },
+  {
+    "mutation": "reshuffle",
+    "killed": true,
+    "failures": [
+      "Mysticism full recall regression a draw with an empty deck cannot reshuffle promised support before attack completion"
+    ]
+  },
+  {
+    "mutation": "map",
+    "killed": true,
+    "failures": [
+      "Mysticism full recall regression map returns Power and Tome with Knowledge also held, Polish Book=false",
+      "Mysticism full recall regression map returns Power and Tome with Knowledge also held, Polish Book=true"
+    ]
+  },
+  {
+    "mutation": "owner",
+    "killed": true,
+    "failures": [
+      "Mysticism full recall regression instant recall excludes the opponent's same-id card in your older discard"
+    ]
+  },
+  {
+    "mutation": "school",
+    "killed": true,
+    "failures": [
+      "Mysticism full recall regression Sorrow expert returns paid fuel: school"
+    ]
+  },
+  {
+    "mutation": "book",
+    "killed": true,
+    "failures": [
+      "Mysticism full recall regression Sorrow expert returns paid fuel: book"
+    ]
+  }
+]

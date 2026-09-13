@@ -1651,6 +1651,7 @@ function sanitizeObjectivesConfig(input: unknown): CustomMapObjectivesConfig | u
   }
   const raw = input as {
     hiddenGrailUtopia?: unknown;
+    grailUtopiaGuard?: unknown;
     grailObelisksRequired?: unknown;
     utopiaGuards?: unknown;
     utopiaBonusSearch?: unknown;
@@ -1662,6 +1663,8 @@ function sanitizeObjectivesConfig(input: unknown): CustomMapObjectivesConfig | u
     grailBuildReward?: unknown;
   };
   const config: CustomMapObjectivesConfig = {};
+  const modeGuard = sanitizeObjectGuard(raw.grailUtopiaGuard);
+  if (modeGuard) config.grailUtopiaGuard = modeGuard;
   if (raw.hiddenGrailUtopia === true) {
     config.hiddenGrailUtopia = true;
   }
@@ -2963,7 +2966,7 @@ export function describeObjectivesConfig(config: CustomMapObjectivesConfig): Cus
   if (config.hiddenGrailUtopia) {
     entries.push({
       icon: "🏆",
-      text: "Hidden Grail / Utopia fields: balanced placement and special rewards"
+      text: `Hidden Grail / Utopia fields: balanced placement, special rewards, unlimited combat rounds; guards: ${config.grailUtopiaGuard ? describeGuardSpec(config.grailUtopiaGuard) : "1 Black Dragon + 2 random Azure units"}`
     });
   }
   if (config.grailObelisksRequired) {
@@ -2972,7 +2975,7 @@ export function describeObjectivesConfig(config: CustomMapObjectivesConfig): Cus
       text: `Grail dig needs ${config.grailObelisksRequired} Obelisk${config.grailObelisksRequired === 1 ? "" : "s"}`
     });
   }
-  if (config.utopiaGuards) {
+  if (config.utopiaGuards && !config.hiddenGrailUtopia) {
     entries.push({ icon: "🐉", text: `Dragon Utopia guards: ${describeUtopiaGuards(config.utopiaGuards)}` });
   }
   if (config.utopiaBonusSearch) {

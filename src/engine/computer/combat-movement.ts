@@ -3,6 +3,7 @@ import {
   isTeleportObjectGuardLocation, neutralBattleLevel, neutralArmyDifficultyForField,
 } from "../adventure";
 import { houseRuleEnabled } from "../house-rules";
+import { isGrailUtopiaModeField } from "../map-design-features";
 import { polishQuickCombatEnabled, polishQuickCombatOutcome } from "../polish-quick-combat";
 import type { GameState, HeroState, MapFieldState } from "../state";
 import { isOpeningFarMaterialMine } from "./far-sweep";
@@ -12,6 +13,7 @@ export function premiumCombatMovementReserve(state: GameState, hero: HeroState, 
   if (!isFieldGuarded(field) || houseRuleEnabled(state, "free-neutral-combat-extend") ||
       field.combatRoundLimit === "unlimited") return 0;
   const bankId = fieldCreatureBankId(field);
+  if (!bankId && isGrailUtopiaModeField(state, field)) return 0;
   const designerPaidRounds = typeof field.combatRoundLimit === "number";
   if (!designerPaidRounds && (
       (bankId && !houseRuleEnabled(state, "bank-move-points")) ||

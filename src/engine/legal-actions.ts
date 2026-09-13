@@ -100,6 +100,7 @@ import { firstPlayerCeremonyPending } from "./first-player";
 import { grailBuildAt, grailDigMovementCost } from "./map-design-features";
 import {
   placementCellsFor,
+  combatSetupUnitLimit,
   neutralFormationCellsFor,
   commanderDeploymentCellsFor,
   neutralFormationCellsForGuard,
@@ -3136,7 +3137,9 @@ export function combatEnemySpellSunderUnit(
     // unitDefId keeps an in-progress legacy save (which stores the former generic
     // ability id) on the new Elves-only budget as soon as it is loaded.
     if (abilityIds.includes("veteran-elf-spell-sunder") ||
-        (unit.unitDefId === "rampart.elves" && abilityIds.includes("veteran-spell-sunder"))) {
+        abilityIds.includes("veteran-zealot-spell-sunder") ||
+        ((unit.unitDefId === "rampart.elves" || unit.unitDefId === "castle.zealots") &&
+          abilityIds.includes("veteran-spell-sunder"))) {
       return (unit.townVeterancy?.elfSpellSunderUses ?? 0) < 2 &&
         unit.townVeterancy?.elfSpellSunderRound !== combat.round;
     }
@@ -14277,7 +14280,7 @@ function addCombatSetupActions(
     Object.values(combat.units).map((unit) => unit.position),
   );
 
-  if (placed.length < setup.unitLimit) {
+  if (placed.length < combatSetupUnitLimit(state, playerId)) {
     const placedFormation = placed.flatMap((armyUnitId) => {
       const unit = player.army.find((candidate) => candidate.id === armyUnitId);
       return unit

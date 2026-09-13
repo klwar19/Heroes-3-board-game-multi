@@ -4,6 +4,9 @@ export type ReplayPolicyContext = {
   faction: string;
   combat: string;
   pressure: boolean;
+  /** Optional for legacy captures; never infer disabled rules from missing data. */
+  conditions?: string;
+  situation?: string;
 };
 export type PolicyAction = {
   type: string;
@@ -16,6 +19,17 @@ export type PolicyAction = {
   optionIndex?: number | null;
   asPowerBoost?: boolean;
   drawOnly?: boolean;
+  stat?: string;
+  stance?: string;
+  tier?: string | number;
+  fromSpellBook?: boolean;
+  takeCastCard?: boolean;
+  rollSpell?: { cardId: string };
+  wisdom?: { cardId: string; mode?: string };
+  slot?: string | number;
+  position?: number;
+  objective?: string;
+  tacticalTarget?: string;
   purchases?: ReadonlyArray<{ unitDefId: string; kind: string }>;
   pick?: { kind: string; index?: number; cardId?: string; remove?: boolean };
 };
@@ -41,9 +55,16 @@ export function replayPolicyKey(
   context: ReplayPolicyContext,
   action: PolicyAction,
 ): string | null {
-  const identity = action.cardId ?? action.unitDefId ?? action.buildingId ?? action.abilityId ??
+  const identity = action.cardId ?? action.unitDefId ?? action.buildingId ?? action.abilityId ?? action.stat ?? action.stance ?? action.objective ??
+    action.rollSpell?.cardId ??
+    action.wisdom?.cardId ??
     (action.purchases?.length ? action.purchases.map((purchase) =>
-      `${purchase.kind}:${purchase.unitDefId}`).sort().join(",") : undefined);
+      `${purchase.kind}:${purchase.unitDefId}`).sort().join(",") : undefined) ??
+    // Payload-free commander/Book actions may key on their type alone. Types
+    // whose real decision lives in an unlisted field must stay out: a raw
+    // COMMANDER_FIRST_AID option index is never a target identity.
+    (/COMMANDER|SPELL_BOOK/.test(action.type) && action.type !== "COMMANDER_FIRST_AID"
+      ? action.type : undefined);
   if (!identity) return null;
   const key = [
     context.stage,
@@ -59,8 +80,18 @@ export function replayPolicyKey(
   // or two choices of one artifact, must never receive the same outcome vote.
   return key + (action.asPowerBoost ? "|power-fuel" : "") +
     (action.drawOnly ? "|draw-only" : "") +
+    (action.fromSpellBook ? "|book-cast" : "") +
+    (action.takeCastCard ? "|cast-enabler" : "") +
+    (action.rollSpell ? "|roll-spell" : "") +
+    (action.wisdom ? `|wisdom:${action.wisdom.mode ?? "basic"}` : "") +
+    (action.slot !== undefined ? `|slot:${action.slot}` : "") +
+    (action.position !== undefined ? `|pos:${action.position}` : "") +
+    (action.tier ? `|tier:${action.tier}` : "") +
+    (action.tacticalTarget ? `|target:${action.tacticalTarget}` : "") +
     (action.pick?.remove ? "|remove-pick" : "") +
-    (action.optionIndex != null ? `|option:${action.optionIndex}` : "");
+    (action.optionIndex != null ? `|option:${action.optionIndex}` : "") +
+    (context.conditions ? `|rules:${context.conditions}` : "") +
+    (context.situation ? `|situation:${context.situation}` : "");
 }
 export function trainReplayPolicy(
   samples: Array<{
@@ -73,13 +104,19 @@ export function trainReplayPolicy(
 ): ReplayPolicyModel {
   const votes = new Map<string, Map<string, Set<string>>>();
   for (const sample of samples) {
-    const key = replayPolicyKey(sample.context, sample.action);
-    if (!key) continue;
-    const matches = votes.get(key) ?? new Map<string, Set<string>>();
-    const outcomes = matches.get(sample.matchId) ?? new Set<string>();
-    outcomes.add(sample.outcome);
-    matches.set(sample.matchId, outcomes);
-    votes.set(key, matches);
+    const keys = new Set([
+      replayPolicyKey(sample.context, sample.action),
+      replayPolicyKey({ ...sample.context, situation: undefined }, sample.action),
+      replayPolicyKey({ ...sample.context, situation: undefined }, { ...sample.action, tacticalTarget: undefined }),
+    ]);
+    for (const key of keys) {
+      if (!key) continue;
+      const matches = votes.get(key) ?? new Map<string, Set<string>>();
+      const outcomes = matches.get(sample.matchId) ?? new Set<string>();
+      outcomes.add(sample.outcome);
+      matches.set(sample.matchId, outcomes);
+      votes.set(key, matches);
+    }
   }
   const model: ReplayPolicyModel = {
     version: 1,
@@ -109,7 +146,10 @@ export function replayPolicyBias(
   action: PolicyAction,
 ): number {
   const key = replayPolicyKey(context, action);
-  const entry = key ? model.weights[key] : undefined;
+  const fallback = replayPolicyKey({ ...context, situation: undefined }, action);
+  const broad = replayPolicyKey({ ...context, situation: undefined }, { ...action, tacticalTarget: undefined });
+  const entry = (key ? model.weights[key] : undefined) ?? (fallback ? model.weights[fallback] : undefined) ??
+    (broad ? model.weights[broad] : undefined);
   return model.version === 1 &&
     entry &&
     entry.matches >= 3 &&

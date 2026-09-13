@@ -1,0 +1,225 @@
+{
+  "entries": [
+    {
+      "events": [
+        {
+          "id": "evt_3347",
+          "type": "UNIT_ATTACK_DECLARED",
+          "playerId": "p3",
+          "attackerId": "unit_p3_army_p3_8",
+          "defenderId": "unit_p1_army_p1_1",
+          "isRetaliation": false,
+          "attackKind": "melee",
+          "rollMode": "normal"
+        },
+        {
+          "id": "evt_3348",
+          "type": "REACTION_WINDOW_OPENED",
+          "windowId": "reaction_evt_3347",
+          "triggerEventId": "evt_3347",
+          "priorityPlayerId": "p3",
+          "allowedPlayerIds": [
+            "p3"
+          ]
+        }
+      ],
+      "sequence": 1173,
+      "action": {
+        "type": "ATTACK_UNIT",
+        "playerId": "p3",
+        "attackerId": "unit_p3_army_p3_8",
+        "defenderId": "unit_p1_army_p1_1"
+      },
+      "round": 11
+    },
+    {
+      "events": [
+        {
+          "id": "evt_3350",
+          "type": "PENDING_CHOICE_CREATED",
+          "choiceId": "choice_3349",
+          "choiceType": "COMBAT_HAND_DISCARD",
+          "playerId": "p3",
+          "sourceEffectIds": [],
+          "message": "Luna of Conflux chooses a card for Few Zealots's Spell Sunder."
+        }
+      ],
+      "sequence": 1174,
+      "action": {
+        "type": "PLAY_REACTION",
+        "playerId": "p3",
+        "cardId": "spell.bloodlust",
+        "mode": "basic"
+      },
+      "round": 11
+    },
+    {
+      "events": [
+        {
+          "id": "evt_3351",
+          "type": "PENDING_CHOICE_RESOLVED",
+          "choiceId": "choice_3349",
+          "playerId": "p3",
+          "selectedIndex": 1
+        },
+        {
+          "id": "evt_3352",
+          "type": "UNIT_ABILITY_TRIGGERED",
+          "unitId": "unit_p1_army_p1_3",
+          "abilityId": "veteran-spell-sunder",
+          "message": "Luna of Conflux discards Power to Spell Sunder."
+        },
+        {
+          "id": "evt_3353",
+          "type": "CARD_PLAYED",
+          "playerId": "p3",
+          "cardId": "spell.bloodlust",
+          "timing": "instant",
+          "mode": "basic",
+          "effectAmount": 1,
+          "targetUnitId": "unit_p3_army_p3_8"
+        }
+      ],
+      "sequence": 1175,
+      "action": {
+        "type": "RESOLVE_COMBAT_DISCARD",
+        "playerId": "p3",
+        "choiceId": "choice_3349",
+        "cardId": "stat.power"
+      },
+      "round": 11
+    },
+    {
+      "events": [
+        {
+          "id": "evt_3354",
+          "type": "CARD_PLAYED",
+          "playerId": "p3",
+          "cardId": "ability.mysticism",
+          "timing": "instant",
+          "mode": "expert"
+        }
+      ],
+      "sequence": 1176,
+      "action": {
+        "type": "PLAY_REACTION",
+        "playerId": "p3",
+        "cardId": "ability.mysticism",
+        "mode": "expert"
+      },
+      "round": 11
+    },
+    {
+      "events": [
+        {
+          "id": "evt_3355",
+          "type": "CARD_PLAYED",
+          "playerId": "p3",
+          "cardId": "artifact.scales_of_the_greater_basilisk",
+          "timing": "instant",
+          "mode": "basic",
+          "effectAmount": 1,
+          "optionLabel": "+1 Power, then draw a card"
+        },
+        {
+          "id": "evt_3356",
+          "type": "CARDS_DRAWN",
+          "playerId": "p3",
+          "count": 1,
+          "requested": 1,
+          "reshuffledDiscard": false,
+          "cardIds": [
+            "stat.power"
+          ]
+        }
+      ],
+      "sequence": 1177,
+      "action": {
+        "type": "PLAY_REACTION",
+        "playerId": "p3",
+        "cardId": "artifact.scales_of_the_greater_basilisk",
+        "mode": "basic",
+        "optionIndex": 1
+      },
+      "round": 11
+    },
+    {
+      "events": [
+        {
+          "id": "evt_3357",
+          "type": "REACTION_PASSED",
+          "playerId": "p3",
+          "windowId": "reaction_evt_3347"
+        },
+        {
+          "id": "evt_3358",
+          "type": "REACTION_WINDOW_CLOSED",
+          "windowId": "reaction_evt_3347",
+          "reason": "all-pass"
+        },
+        {
+          "id": "evt_3359",
+          "type": "ATTACK_ROLLED",
+          "attackerId": "unit_p3_army_p3_8",
+          "defenderId": "unit_p1_army_p1_1",
+          "rolls": [
+            1
+          ],
+          "roll": 1,
+          "rollMode": "normal",
+          "attackBonus": 2,
+          "defenseBonus": 0,
+          "attackValue": 7,
+          "defenseValue": 2,
+          "damage": 5,
+          "isRetaliation": false
+        },
+        {
+          "id": "evt_3360",
+          "type": "DAMAGE_ASSIGNED",
+          "source": {
+            "type": "unit",
+            "unitId": "unit_p3_army_p3_8",
+            "controllerId": "p3"
+          },
+          "target": {
+            "type": "unit",
+            "unitId": "unit_p1_army_p1_1"
+          },
+          "amount": 5,
+          "damageKind": "attack"
+        },
+        {
+          "id": "evt_3361",
+          "type": "UNIT_REMOVED",
+          "unitId": "unit_p1_army_p1_1",
+          "playerId": "p1"
+        },
+        {
+          "id": "evt_3362",
+          "type": "SPELL_RETURNED_TO_HAND",
+          "playerId": "p3",
+          "cardId": "spell.bloodlust",
+          "reason": "Knowledge/Mysticism"
+        },
+        {
+          "id": "evt_3364",
+          "type": "PENDING_CHOICE_CREATED",
+          "choiceId": "choice_3363",
+          "choiceType": "ABILITY_TARGET_CHOICE",
+          "playerId": "p3",
+          "sourceEffectIds": [],
+          "message": "Luna of Conflux chooses which tied unit activates first."
+        }
+      ],
+      "sequence": 1178,
+      "action": {
+        "type": "PASS_REACTION",
+        "playerId": "p3"
+      },
+      "round": 11
+    }
+  ],
+  "matchId": "room-room-wkz495-d4feab4b-26b3-4d63-8f48-f195d790cfa0",
+  "capturedMatchFile": "artifacts/mysticism-review/room-room-wkz495-d4feab4b-26b3-4d63-8f48-f195d790cfa0.json"
+}

@@ -12,6 +12,8 @@ import {
 export { MARKET_MIN_ROUND, resourceDeficits, hasUsefulMarketTrade, tradeUtility } from "./market-trades";
 import { coreBuildingDefinitions, coreFactionDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
+import { COMMANDER_GRADE_VALUES, commanderUnlockedCombos } from "@/data/commanders";
+import { commanderGradesOf } from "../commanders";
 import { secondaryHeroOpportunity } from "./secondary-plan";
 import { HERO_GRADE_NODES } from "@/data/anime/hero-grades";
 import { getEquipmentDefinition } from "@/data/anime/equipment";
@@ -33,6 +35,8 @@ import {
   getAdjacentSpaceIds,
   getUnitSide,
   reinforceCostFor,
+  unitDrillGoldCostFor,
+  unitDrillMovementCost,
   reinforcementDiscountCostFor,
   heroesAtSpace,
   isFieldGuarded,
@@ -655,16 +659,17 @@ function populationScore(
   const ownsUnit = (unitDefId: string) =>
     player?.army.find((unit) => unit.side !== "bank" && unit.unitDefId === unitDefId);
   const goldLadder = rankedGoldUnits(state, observation.playerId);
-  const ownsTopGold = goldLadder.length > 0 && Boolean(ownsUnit(goldLadder[0]));
   const goldFewMissing = goldLadder.some((unitDefId) => !ownsUnit(unitDefId));
-  const silverPacks = (player?.army ?? []).filter(
-    (unit) => unit.side === "pack" && coreUnitDefinitions[unit.unitDefId]?.tier === "silver",
-  ).length;
   const buysSilverPack = action.purchases.some(
     (purchase) =>
       purchase.kind === "reinforce" &&
       coreUnitDefinitions[purchase.unitDefId]?.tier === "silver",
   );
+  // Paid Silver Packs wait for both Gold Few bodies and their Packs. Keep
+  // earned Necromancy upgrades in their own discounted resolution path.
+  const goldGrowthPending = !development.goldUnlocked || nextGoldLadderStep(state, observation.playerId) !== null;
+  if (buysSilverPack && goldGrowthPending &&
+      state.adventure?.pendingNecromancy?.playerId !== observation.playerId) return 180;
   for (const purchase of action.purchases) {
     const definition = coreUnitDefinitions[purchase.unitDefId];
     // A Settlement Neutral-Units recruit (BINH house rule) buys the single-sided
@@ -800,19 +805,6 @@ function populationScore(
     // Never postpone an adjacent scenario-winning capture just to buy a Pack,
     // while still beating ordinary fights, exploration, and END_TURN.
     return Math.min(score, 970 + Math.min(5, Math.round(efficiency)));
-  }
-  // Silver stays at Few until the top Gold body is owned — one Silver Pack at
-  // most before then (user rule; the replay winners packed at most one Silver
-  // unit before their Gold Few). A pending Necromancy discount is exempt: the
-  // half-price window is the Necropolis engine, not a treasury leak.
-  if (
-    !ownsTopGold &&
-    buysSilverPack &&
-    silverPacks >= 1 &&
-    (development.phase === "unlock-gold" || development.phase === "improve-army") &&
-    state.adventure?.pendingNecromancy?.playerId !== observation.playerId
-  ) {
-    return Math.min(score, 240);
   }
   if (development.goldUnlocked) {
     const step = nextGoldLadderStep(state, observation.playerId);
@@ -2962,17 +2954,22 @@ export function scoreMapAction(
     case "DISCARD_PERMANENT":
       return { score: 100, policy: "card.keep-useful-permanent" };
     case "COMMANDER_GRADE_UP": {
-      const priorities = {
-        attack: 760,
-        damage: 750,
-        defense: 735,
-        health: 725,
-        speed: 715,
-        magic: 705,
-      } as const;
+      const commander = state.players[observation.playerId]?.commander;
+      if (!commander) return { score: 0, policy: "commander.missing" };
+      const grades = commanderGradesOf(commander);
+      const next = { ...grades, [action.stat]: Math.min(3, grades[action.stat] + 1) } as typeof grades;
+      const delta = COMMANDER_GRADE_VALUES[action.stat][next[action.stat]] -
+        COMMANDER_GRADE_VALUES[action.stat][grades[action.stat]];
+      const weight = { attack: 5, damage: 3, defense: 5, health: 3, speed: 2, magic: 6 };
+      const combos = commanderUnlockedCombos(next).length - commanderUnlockedCombos(grades).length;
+      // Magic I adds immunity/ward despite no Power increase; Defense II adds
+      // its defend die despite no printed Defense increase. Free points should
+      // be spent before marching into a battle, with learned close-choice ties.
+      const ward = action.stat === "magic" && grades.magic === 0 ? 6 : 0;
+      const defendDie = action.stat === "defense" && grades.defense === 1 ? 3 : 0;
       return {
-        score: priorities[action.stat],
-        policy: "commander.grade-combat-impact",
+        score: 1000 + delta * weight[action.stat] + ward + defendDie + combos * 14,
+        policy: "commander.grade-stats-and-combos",
       };
     }
     case "REVIVE_COMMANDER": {
@@ -3112,26 +3109,28 @@ export function scoreMapAction(
       // Unit Experience Drill: surplus-gold only; prefer silver/gold bodies and
       // cards close to the next rank when unit experience is on.
       const gold = playerGold(state, observation.playerId);
-      if (gold < 10) {
-        return { score: 5, policy: "map.drill-unit-broke" };
-      }
       const unit = state.players[observation.playerId]?.army.find(
         (candidate) => candidate.id === action.armyUnitId,
       );
+      if (!unit) return { score: 5, policy: "map.drill-unit-missing" };
+      const cost = unitDrillGoldCostFor(state, observation.playerId, unit);
+      if (cost > 0 && gold - cost < developmentResourceTargets(state, observation.playerId).gold) {
+        return { score: 5, policy: "map.drill-preserve-development" };
+      }
       const tier = unit ? coreUnitDefinitions[unit.unitDefId]?.tier : undefined;
       const tierNudge =
         tier === "gold" || tier === "azure" ? 18 : tier === "silver" ? 12 : 4;
-      // Rank proximity — actually read the veteran track (the old score only
-      // CLAIMED to): a card 1-2 XP short of its next rank converts this drill
-      // straight into a stat/ability step, worth taking over idle turns.
+      // Drill grants one XP: only a card one XP short ranks up immediately.
+      // Two XP short is progress, with a smaller value than an actual unlock.
       const rankInfo = unit ? armyUnitRankInfo(unit) : null;
       const toNextRank =
         rankInfo && rankInfo.nextThreshold !== null
           ? rankInfo.nextThreshold - rankInfo.experience
           : null;
-      const proximityNudge = toNextRank !== null && toNextRank <= 2 ? 40 : 0;
+      const proximityNudge = toNextRank === 1 ? 40 : toNextRank === 2 ? 10 : 0;
+      const movementCost = unitDrillMovementCost(state, observation.playerId, unit) ?? 0;
       return {
-        score: 325 + tierNudge + proximityNudge,
+        score: 325 + tierNudge + proximityNudge - movementCost * 20,
         policy: "map.drill-unit",
       };
     }

@@ -344,6 +344,8 @@ import {
   grailDigMovementCost,
   grailAsUtopiaMode,
   grailUtopiaFieldRulesEnabled,
+  DEFAULT_GRAIL_UTOPIA_GUARD,
+  isGrailUtopiaModeField,
 } from "./map-design-features";
 
 /** Hero level track: hand limit and expert-effect uses by level (hero board). */
@@ -464,6 +466,14 @@ export function applyCustomGuardToField(field: MapFieldState, guard: CustomGuard
     }
     delete field.customGuardUnits;
   }
+}
+
+/** Apply mode rules at encounter entry, including fields from older saves. */
+export function applyGrailUtopiaEncounterRules(state: GameState, field: MapFieldState): void {
+  if (!isGrailUtopiaModeField(state, field)) return;
+  applyCustomGuardToField(field,
+    state.adventure?.mapPreset?.objectives?.grailUtopiaGuard ?? DEFAULT_GRAIL_UTOPIA_GUARD);
+  field.combatRoundLimit = "unlimited";
 }
 
 /** Remove a beaten / swept designed guard from a field (all its traces). */
@@ -1352,6 +1362,11 @@ export function materializeTileFields(
       if (centerHex?.winCondition) {
         field.designerWinCondition = true;
       }
+    }
+    if (adventure.mapPreset?.objectives?.hiddenGrailUtopia &&
+        (field.location === "grail" || field.location === "dragon_utopia")) {
+      applyCustomGuardToField(field, adventure.mapPreset.objectives.grailUtopiaGuard ?? DEFAULT_GRAIL_UTOPIA_GUARD);
+      field.combatRoundLimit = "unlimited";
     }
     adventure.fields[spaceId] = field;
   }
@@ -10550,21 +10565,21 @@ export function processPendingVisit(state: GameState): void {
               : (effect.basicRecallPlayedCards ?? 0);
         if (alongsideLimit > 0) {
           let returned = 0;
+          const bookCards = [...(step.recallBookCardIds ?? [])];
           for (const cardId of step.recallPlayedCardIds ?? []) {
             if (returned >= alongsideLimit) {
               break;
             }
-            if (
-              cardId === step.spellCardId ||
-              cardId === step.knowledgeCardId ||
-              cardId === step.castEnablerCardId
-            ) {
-              continue;
-            }
             const playedIndex = player.discard.lastIndexOf(cardId);
             if (playedIndex !== -1) {
               player.discard.splice(playedIndex, 1);
-              player.hand.push(cardId);
+              const bookIndex = bookCards.indexOf(cardId);
+              if (bookIndex !== -1) {
+                bookCards.splice(bookIndex, 1);
+                player.spellBook.push(cardId);
+              } else {
+                player.hand.push(cardId);
+              }
               returned += 1;
             }
           }
@@ -17676,6 +17691,12 @@ export function drawGuardArmy(
   difficulty: number,
   options?: { diplomacyTierReduction?: boolean }
 ): NeutralDraw[] {
+  // Also resolve legacy saved fields through the mode's army, without changing
+  // the map while merely previewing a guard draw.
+  if (isGrailUtopiaModeField(state, field) && field) {
+    field = { ...field };
+    applyGrailUtopiaEncounterRules(state, field);
+  }
   // Global "mine guards +1 bronze" house rule composes with EVERY base branch
   // below (level draw, designer exact / level, Random Town, etc.) — it appends
   // one extra bronze on a mine field, or nothing when the rule is off / the field
@@ -17695,7 +17716,7 @@ function drawGuardArmyBase(
   options?: { diplomacyTierReduction?: boolean }
 ): NeutralDraw[] {
   const diplomacyTierReduction = Boolean(options?.diplomacyTierReduction);
-  if (field?.location === "dragon_utopia" && !field.grailConverted &&
+  if (!isGrailUtopiaModeField(state, field) && field?.location === "dragon_utopia" && !field.grailConverted &&
       (adventureVictoryMode(state) === "dragon-hunt" || adventureVictoryMode(state) === "dragon-conqueror")) {
     return drawDragonUtopiaArmy(state, difficulty, diplomacyTierReduction);
   }
