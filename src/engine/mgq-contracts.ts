@@ -1,5 +1,6 @@
 import { coreUnitDefinitions } from "@/data/factions/units";
 import type { GameState, PlayerState } from "./state";
+import { choiceReturnPhase } from "./choice-phase";
 
 export const MGQ_GOLD_CONTRACT_LIMIT = 3;
 
@@ -93,7 +94,7 @@ export function ensureMgqGoldContractSetupChoice(state: GameState): boolean {
       })),
       context: "mgq-gold-contract",
       mgqGoldContract: { pairs },
-      returnPhase: state.phase
+      returnPhase: choiceReturnPhase(state)
     };
     state.phase = "choice";
     state.priorityPlayerId = playerId;

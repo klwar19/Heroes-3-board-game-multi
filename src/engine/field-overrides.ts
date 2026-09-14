@@ -10,6 +10,7 @@
 
 import { allTileDefinitions } from "@/data/map/tiles";
 import { locationDefinitions } from "@/data/map/locations";
+import { choiceReturnPhase } from "./choice-phase";
 // Side-effect: register Anime package kinds into the global catalog.
 import "@/data/anime/field-overrides";
 // Side-effect: register Wake of Gods (wog.newObjects) package kinds too.
@@ -661,7 +662,7 @@ export function offerPendingFieldOverridePlacement(
       candidates,
       allowRefuse
     },
-    returnPhase: state.phase
+    returnPhase: choiceReturnPhase(state)
   };
   state.phase = "choice";
   state.priorityPlayerId = playerId;

@@ -1,4 +1,5 @@
 import { customTownAfterAttack, customTownActivation } from "./custom-town-veterancy";
+import { repairOrphanedChoicePhase } from "./choice-phase";
 import { randomTownTokenValue } from "./random-town-tactics";
 import { isGrailUtopiaModeField } from "./map-design-features";
 import { abilityDamageValue, abilityHealValue, activationUtilityValue } from "./computer/unit-ability-value";
@@ -35915,6 +35916,11 @@ export function applyAction(
       setActiveEntropy(previousEntropy);
     }
     settleParallelCombatContext(result.state);
+    // A fight left in phase "choice" with no pending choice is unplayable
+    // (frozen-table class); restore the combat phase before anyone reads
+    // legality. Creators now inherit the outer choice return phase, so this
+    // only ever fires for a creator that still records a stale phase.
+    repairOrphanedChoicePhase(result.state);
     // Re-wrap so events appended by a window that just opened are returned too
     // (`startEventNumber` inside applyActionInContext equals this seed: the
     // projection never touches eventLog/eventCounter).

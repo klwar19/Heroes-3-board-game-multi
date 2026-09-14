@@ -1,5 +1,6 @@
 import { hasNecromancyPlan } from "./computer/necromancy-plan";
 import { currentSaplingsOffer } from "./adventure";
+import { choiceReturnPhase } from "./choice-phase";
 import { townCombatStart } from "./town-veterancy";
 import { placeRandomTownFormation } from "./random-town-tactics";
 import { heroGradePickBlockReason } from "./hero-grade-picking";
@@ -2695,7 +2696,7 @@ function openGrailFreeBuildingPicker(state: GameState, playerId: PlayerId): void
       townId: town.id,
       buildingIds: candidates.map((c) => c.buildingId)
     },
-    returnPhase: state.phase === "choice" ? "player-turn" : state.phase
+    returnPhase: choiceReturnPhase(state)
   };
   state.phase = "choice";
   state.priorityPlayerId = playerId;
@@ -3185,7 +3186,7 @@ function openPolishBankChoiceBeforeRotation(state: GameState, tile: MapTileState
       tileInstanceId: tile.id,
       preRotation: true
     },
-    returnPhase: state.phase
+    returnPhase: choiceReturnPhase(state)
   };
   state.phase = "choice";
   state.priorityPlayerId = playerId;
@@ -3583,7 +3584,7 @@ function openSubterraneanGatePlacementChoice(
     context: "subterranean-gate-placement",
     // Bank already ran before the gate choice; only tokens wait behind it.
     subterraneanGate: { tileInstanceId: tile.id, candidates, deferBank: false },
-    returnPhase: state.phase
+    returnPhase: choiceReturnPhase(state)
   };
   state.phase = "choice";
   state.priorityPlayerId = playerId;
@@ -3740,7 +3741,7 @@ function offerCreatureBankPlacement(state: GameState, tile: MapTileState, player
       ...(sizedCandidates.length > 0 ? { candidates: sizedCandidates } : {}),
       tileInstanceId: tile.id
     },
-    returnPhase: state.phase
+    returnPhase: choiceReturnPhase(state)
   };
   state.phase = "choice";
   state.priorityPlayerId = playerId;
@@ -3804,7 +3805,7 @@ function offerPendingTokenPlacement(state: GameState, tile: MapTileState, player
       ...(pendingToken.pair !== undefined ? { pair: pendingToken.pair } : {}),
       candidates
     },
-    returnPhase: state.phase
+    returnPhase: choiceReturnPhase(state)
   };
   state.phase = "choice";
   state.priorityPlayerId = playerId;
@@ -4232,7 +4233,7 @@ function beginFarTileFlip(
         centerCol: ctx.centerCol,
         via: ctx.via,
         ...(ctx.observatoryFieldId ? { observatoryFieldId: ctx.observatoryFieldId } : {}),
-        returnPhase: state.phase,
+        returnPhase: choiceReturnPhase(state),
         openingIndex: (adventure.farTilesOpenedByPlayer?.[ctx.playerId] ?? 0) + 1,
         candidate: "",
         lastNonSettlement: null,
@@ -4271,7 +4272,7 @@ function beginFarTileFlip(
       centerCol: ctx.centerCol,
       via: ctx.via,
       ...(ctx.observatoryFieldId ? { observatoryFieldId: ctx.observatoryFieldId } : {}),
-      returnPhase: state.phase,
+      returnPhase: choiceReturnPhase(state),
       openingIndex: (adventure.farTilesOpenedByPlayer?.[ctx.playerId] ?? 0) + 1,
       candidate: "",
       lastNonSettlement: null,
@@ -4301,7 +4302,7 @@ function beginFarTileFlip(
     centerCol: ctx.centerCol,
     via: ctx.via,
     ...(ctx.observatoryFieldId ? { observatoryFieldId: ctx.observatoryFieldId } : {}),
-    returnPhase: state.phase,
+    returnPhase: choiceReturnPhase(state),
     openingIndex: (adventure.farTilesOpenedByPlayer?.[ctx.playerId] ?? 0) + 1,
     candidate,
     lastNonSettlement: null,
@@ -4339,7 +4340,7 @@ function beginFarTileReveal(state: GameState, playerId: PlayerId, tile: MapTileS
     centerCol: tile.centerCol,
     via: "reveal",
     tileInstanceId: tile.id,
-    returnPhase: state.phase,
+    returnPhase: choiceReturnPhase(state),
     openingIndex: (adventure.farTilesOpenedByPlayer?.[playerId] ?? 0) + 1,
     candidate: tile.tileDefId,
     lastNonSettlement: null,
@@ -4392,7 +4393,7 @@ function openSubterraneanTilePick(state: GameState, playerId: PlayerId, tile: Ma
     options: [{ label: "Choose tile A" }, { label: "Choose tile B" }],
     context: "subterranean-tile-pick",
     subterraneanTilePick: { tileInstanceId: tile.id, candidates: [tile.tileDefId, alternateId] },
-    returnPhase: state.phase
+    returnPhase: choiceReturnPhase(state)
   };
   state.phase = "choice";
   state.priorityPlayerId = playerId;
@@ -4446,7 +4447,7 @@ function openPlayerResourcePick(state: GameState, playerId: PlayerId, tile: MapT
     ],
     context: "player-resource-pick",
     playerTilePick: { tileInstanceId: tile.id },
-    returnPhase: state.phase
+    returnPhase: choiceReturnPhase(state)
   };
   state.phase = "choice";
   state.priorityPlayerId = playerId;
@@ -4469,7 +4470,7 @@ function openPlayerViiPick(state: GameState, playerId: PlayerId, tile: MapTileSt
     options,
     context: "player-vii-pick",
     playerTilePick: { tileInstanceId: tile.id, viiFields: fields },
-    returnPhase: state.phase
+    returnPhase: choiceReturnPhase(state)
   };
   state.phase = "choice";
   state.priorityPlayerId = playerId;
@@ -6154,7 +6155,7 @@ function maybeOpenBlackTowerDragonChoice(
     options: BLACK_TOWER_DRAGON_OPTIONS.map((name) => ({ label: name })),
     context: "black-tower-dragon",
     blackTowerDragon: { fieldId: field.spaceId, heroId: hero.id },
-    returnPhase: state.phase,
+    returnPhase: choiceReturnPhase(state),
   };
   state.phase = "choice";
   state.priorityPlayerId = playerId;
@@ -6244,7 +6245,7 @@ function openPolishQuickCombatChoice(
     ],
     context: "polish-quick-combat",
     polishQuickCombat: { heroId: hero.id, fieldId: field.spaceId, difficulty },
-    returnPhase: state.phase
+    returnPhase: choiceReturnPhase(state)
   };
   state.phase = "choice";
   state.priorityPlayerId = hero.controllerId;
@@ -6568,7 +6569,7 @@ function openDiplomacyBattleEaseChoice(
       ...(fight?.unlimitedRounds ? { unlimitedRounds: true } : {}),
       ...(fight?.teleportArrival ? { teleportArrival: true } : {})
     },
-    returnPhase: state.phase
+    returnPhase: choiceReturnPhase(state)
   };
   state.phase = "choice";
   state.priorityPlayerId = hero.controllerId;
@@ -6679,7 +6680,7 @@ function openDiplomacySkipChoice(
     ],
     context: "diplomacy-skip",
     diplomacySkip: { heroId: hero.id, fieldId: field.spaceId, difficulty, crownFree },
-    returnPhase: state.phase
+    returnPhase: choiceReturnPhase(state)
   };
   state.phase = "choice";
   state.priorityPlayerId = hero.controllerId;
@@ -6932,7 +6933,7 @@ function openDiplomacyRecruitChoice(
       goldReduction,
       ...(legionPlays.length > 0 ? { legionPlays } : {})
     },
-    returnPhase: state.phase
+    returnPhase: choiceReturnPhase(state)
   };
   state.phase = "choice";
   state.priorityPlayerId = playerId;
@@ -21884,7 +21885,7 @@ export function pumpAdventureQueues(state: GameState): void {
             count: reward.count,
             ...(reward.strictExpertGate ? { strictExpertGate: true } : {})
           },
-          returnPhase: state.phase === "choice" ? "player-turn" : state.phase
+          returnPhase: choiceReturnPhase(state)
         };
         state.phase = "choice";
         state.priorityPlayerId = reward.playerId;
@@ -21986,7 +21987,7 @@ export function pumpAdventureQueues(state: GameState): void {
         // Carry the full option payloads in state so resolution does not depend
         // on any off-state cache that a reload/reconnect would wipe.
         cityHall: { options },
-        returnPhase: state.phase === "choice" ? "player-turn" : state.phase
+        returnPhase: choiceReturnPhase(state)
       };
       state.phase = "choice";
       state.priorityPlayerId = reward.playerId;
