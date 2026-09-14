@@ -103,6 +103,11 @@ describe("Power poured into a damage spell against armoured neutral guards", () 
     expect(vsOgre!.score).toBeGreaterThan(1_050);
     expect(vsGoblin!.score).toBeLessThan(1_050);
   });
+  it("treats neutral Crusaders (Defense 2) like the other armoured guards", () => {
+    const crusaders = unit({ id: "CRU", unitDefId: "neutral.crusaders", controllerId: "neutrals", abilities: ["double-attack"], position: 11, maxHealth: 8 });
+    const vsCrusaders = scoreCardAction({ playerId: "p2", state: castState(crusaders, ["ability.leadership", "spell.magic_arrow"]) as unknown as PlayerVisibleState, legalActions: [] }, fuel("ability.leadership"));
+    expect(vsCrusaders!.score).toBeGreaterThan(1_050);
+  });
   it("never burns a second damage spell as fuel", () => {
     const arrow = scoreCardAction({ playerId: "p2", state: castState(ogrePack(), ["spell.magic_arrow", "spell.magic_arrow"]) as unknown as PlayerVisibleState, legalActions: [] }, fuel("spell.magic_arrow"));
     expect(arrow!.score).toBeLessThan(1_050);

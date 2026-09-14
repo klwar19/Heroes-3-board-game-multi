@@ -1197,11 +1197,11 @@ function pendingSpellBoostImpact(
  */
 /**
  * Armoured neutral guards the dice barely scratch — Ogres, Gorgons, Dendroids,
- * Minotaurs, and any neutral whose Defense leaves our best physical hit at one
+ * Minotaurs, Crusaders (all Defense 2), and any neutral whose Defense leaves our best physical hit at one
  * point. User ruling (2026-09-14): a damage spell is THE answer to these, so
  * Power is poured into it up to the kill ("not over the limit"), not rationed.
  */
-const ARMOURED_NEUTRAL_GUARDS = new Set(["ogres", "gorgons", "dendroids", "minotaurs"]);
+const ARMOURED_NEUTRAL_GUARDS = new Set(["ogres", "gorgons", "dendroids", "minotaurs", "crusaders"]);
 function armouredNeutralTarget(observation: ComputerObservation): boolean {
   const combat = observation.state.combat;
   const top = observation.state.stack?.at(-1);
