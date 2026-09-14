@@ -31,6 +31,14 @@ const src = (relative) => pathToFileURL(path.join(ROOT, "src", relative)).href;
 
 const CLASSIC_FACTIONS = ["castle", "rampart", "tower", "inferno", "necropolis", "dungeon", "stronghold", "fortress", "conflux"];
 
+/** Rule-variant presets a batch cycles through (learned keys carry them). */
+const VARIANTS = {
+  default: {},
+  xp: { unitExperience: true },
+  commanders: { unitExperience: true, wog: { enabled: true, commanders: true } },
+  guards: { manualGuardControl: true },
+};
+
 // ---------------------------------------------------------------- CLI ----
 const argv = process.argv.slice(2);
 const command = argv[0];
@@ -96,17 +104,21 @@ async function loadEngine() {
 }
 
 /** One job = one game. Seat policies come from the caller (play vs eval). */
-function jobsFor({ games, prefix, factions, difficulty, seats, extraOptions, pairing }) {
+function jobsFor({ games, prefix, factions, difficulties, seats, extraOptions, pairing, variants }) {
   const jobs = [];
   for (let index = 0; index < games; index += 1) {
     const seed = `${prefix}-${index + 1}`;
     const random = rng(seed);
+    const difficulty = difficulties[index % difficulties.length];
+    const variant = variants[index % variants.length];
+    if (!(variant in VARIANTS)) throw new Error(`unknown variant ${variant}; known: ${Object.keys(VARIANTS).join(", ")}`);
     const pool = [...factions];
     const first = pool.splice(Math.floor(random() * pool.length), 1)[0];
     // Towns have different flows: a "mirror" pairing (same town, different
     // heroes) keeps the development race a comparison of decisions, not towns.
     const second = pairing === "mixed" && pool.length ? pool[Math.floor(random() * pool.length)] : first;
-    jobs.push({ seed, factions: [first, second], heroIndex: Math.floor(random() * 7), difficulty, seats, extraOptions });
+    jobs.push({ seed, factions: [first, second], heroIndex: Math.floor(random() * 7), difficulty, variant, seats,
+      extraOptions: { ...VARIANTS[variant], ...(extraOptions ?? {}) } });
   }
   return jobs;
 }
@@ -265,6 +277,8 @@ async function playGame(job, settings) {
   const record = {
     seed: job.seed,
     difficulty: job.difficulty,
+    variant: job.variant ?? "default",
+    heroes: Object.fromEntries(players.map((p) => [p.id, p.heroDefId ?? null])),
     seats: job.seats,
     winner,
     winReason: winner ? (state.eventLog ?? []).findLast?.((e) => e.type === "GAME_WON")?.reason ?? null : null,
@@ -304,9 +318,16 @@ function fightScore(startCombat, endState, playerId) {
 }
 
 /** Apply one alternative, then let the deterministic policy finish the fight. */
-function rolloutFight(api, start, playerId, action, policy, maxSteps) {
+function rolloutFight(api, start, playerId, action, policy, maxSteps, entropy) {
   const combatId = start.combat.id;
-  const opened = api.applyAction(start, action, { computerActorPlayerId: playerId });
+  // A distinct entropy stream per sample: dice differ between samples, so a
+  // label needs the alternative to hold up across rolls, not on one lucky die.
+  let rolls = 0;
+  const apply = (s, a, p) => api.applyAction(s, a, {
+    computerActorPlayerId: p,
+    ...(entropy ? { entropy: `${entropy}|${rolls++}` } : {}),
+  });
+  const opened = apply(start, action, playerId);
   if (opened.errors.length) return null;
   let state = opened.state;
   let last = state;
@@ -314,7 +335,7 @@ function rolloutFight(api, start, playerId, action, policy, maxSteps) {
     if (!state.combat || state.combat.id !== combatId) break;
     last = state;
     if (state.combat.outcome) break;
-    const run = api.driveComputerPlayers(state, undefined, { maxSteps: 1, policy });
+    const run = api.driveComputerPlayers(state, apply, { maxSteps: 1, policy });
     if (run.decisions.length === 1) { state = run.state; continue; }
     if (run.stalled) return null;
     const fallback = api.pickHumanAction(state, state.activePlayerId ?? "p1");
@@ -327,9 +348,21 @@ function rolloutFight(api, start, playerId, action, policy, maxSteps) {
   return fightScore(start.combat, last, playerId);
 }
 
+/** Mean fight score over `samples` entropy streams; null if any rollout failed. */
+function rolloutFightMean(api, start, playerId, action, policy, settings, seed, sequence, index) {
+  const scores = [];
+  for (let k = 0; k < settings.counterfactualSamples; k += 1) {
+    const entropy = settings.counterfactualSamples > 1 ? `${seed}|cf${sequence}|alt${index}|k${k}` : undefined;
+    const score = rolloutFight(api, start, playerId, action, policy, settings.rolloutSteps, entropy);
+    if (score === null) return null;
+    scores.push(score);
+  }
+  return scores.reduce((a, b) => a + b, 0) / scores.length;
+}
+
 function counterfactualSamples(api, before, decision, close, policy, settings, seed, sequence) {
   const playerId = decision.playerId;
-  const scored = close.map((action) => ({ action, score: rolloutFight(api, before, playerId, action, policy, settings.rolloutSteps) }))
+  const scored = close.map((action, index) => ({ action, score: rolloutFightMean(api, before, playerId, action, policy, settings, seed, sequence, index) }))
     .filter((row) => row.score !== null);
   if (scored.length < 2) return [];
   const best = Math.max(...scored.map((row) => row.score));
@@ -377,12 +410,14 @@ export function developmentRaceWinner(seats) {
     const x = pick(seats[a]), y = pick(seats[b]);
     return x === y ? null : x > y ? a : b;
   };
+  // User ruling: PvP results and the FINAL Gold packs rank above the first
+  // Gold pack; the first Gold pack still decides before bodies and neutrals.
   const rules = [
-    ["first-gold-pack", () => earlier((s) => s.firstGoldPackRound)],
-    ["gold-packs", () => more((s) => s.goldPacks)],
-    ["first-gold-body", () => earlier((s) => s.firstGoldRound)],
-    ["gold-bodies", () => more((s) => s.goldBodies)],
     ["pvp-fights", () => more((s) => s.pvpFights.won - s.pvpFights.lost)],
+    ["gold-packs", () => more((s) => s.goldPacks)],
+    ["first-gold-pack", () => earlier((s) => s.firstGoldPackRound)],
+    ["gold-bodies", () => more((s) => s.goldBodies)],
+    ["first-gold-body", () => earlier((s) => s.firstGoldRound)],
     ["neutral-fights", () => more((s) => s.neutralFights.won - 2 * s.neutralFights.lost)],
   ];
   for (const [reason, rule] of rules) {
@@ -439,8 +474,14 @@ function settingsFromFlags() {
     counterfactualMax: num("cf-max", 60),
     counterfactualWidth: num("cf-width", 3),
     counterfactualMargin: num("cf-margin", 0.1),
+    /** Entropy streams per alternative (dice vary between them). */
+    counterfactualSamples: num("cf-samples", 2),
     rolloutSteps: num("rollout-steps", 400),
   };
+}
+
+function listFlag(name, fallback) {
+  return flag(name, fallback).split(",").map((s) => s.trim()).filter(Boolean);
 }
 
 function factionsFromFlags() {
@@ -471,7 +512,8 @@ async function commandPlay() {
     games: num("games", 4),
     prefix: flag("seed-prefix", `selfplay-${batch}`),
     factions: factionsFromFlags(),
-    difficulty: flag("difficulty", "normal"),
+    difficulties: listFlag("difficulty", "normal"),
+    variants: listFlag("variants", "default"),
     seats: { p1: { learned, explore }, p2: { learned, explore } },
     extraOptions: extraOptionsFromFlags(),
     pairing: flag("pairing", "mirror"),
@@ -552,7 +594,8 @@ async function commandEval() {
     games: num("games", 4),
     prefix: flag("seed-prefix", `selfplay-${batch}`),
     factions: factionsFromFlags(),
-    difficulty: flag("difficulty", "normal"),
+    difficulties: listFlag("difficulty", "normal"),
+    variants: listFlag("variants", "default"),
     seats: {},
     extraOptions: extraOptionsFromFlags(),
     pairing: flag("pairing", "mirror"),
@@ -634,6 +677,81 @@ async function commandReport() {
   const batches = flag("batch", "").split(",").map((s) => s.trim()).filter(Boolean);
   const records = batches.flatMap((batch) => JSON.parse(fs.readFileSync(path.join(batchDir(batch), "games.json"), "utf8")).games);
   printReport(records);
+  printBreakdown(records);
+  if (has("deep")) await printDeepReport(batches, records);
+}
+
+/** Win share by difficulty, variant and hero — the race is judged within a game, so these are fair. */
+function printBreakdown(records) {
+  const groups = { difficulty: {}, variant: {}, hero: {} };
+  for (const record of records) {
+    const decided = decidedWinner(record);
+    const bump = (map, key, playerId) => {
+      const row = map[key] ??= { games: 0, wins: 0 };
+      row.games += 1;
+      if (decided === playerId) row.wins += 1;
+    };
+    for (const playerId of Object.keys(record.players)) {
+      bump(groups.difficulty, record.difficulty ?? "normal", playerId);
+      bump(groups.variant, record.variant ?? "default", playerId);
+      bump(groups.hero, `${record.players[playerId].factionId}/${record.heroes?.[playerId] ?? "?"}`, playerId);
+    }
+  }
+  for (const [name, map] of Object.entries(groups)) {
+    const rows = Object.entries(map).sort();
+    if (rows.length <= 1 && name !== "hero") continue;
+    console.log(`by ${name}: ` + rows.map(([key, row]) => `${key} ${row.wins}/${row.games}`).join("  "));
+  }
+}
+
+/** Scan the replays: which guards cost fights and units, and which cards were in won fights. */
+async function printDeepReport(batches, records) {
+  const api = await loadEngine();
+  const guards = {};
+  const cards = {};
+  const retreatsByRound = {};
+  for (const batch of batches) {
+    const replayDir = path.join(batchDir(batch), "replays");
+    if (!fs.existsSync(replayDir)) continue;
+    for (const file of fs.readdirSync(replayDir).filter((f) => f.endsWith(".json.gz")).sort()) {
+      const p = JSON.parse(gunzipSync(fs.readFileSync(path.join(replayDir, file))).toString("utf8"));
+      const open = new Map(); // combat id → { guardKey, actor, cards:Set, lost:0 }
+      let current = null;
+      for (const e of p.entries) {
+        for (const ev of e.events) {
+          if (ev.type === "NEUTRAL_COMBAT_STARTED" || ev.type === "CREATURE_BANK_COMBAT_STARTED") {
+            const key = (ev.unitDefIds ?? []).map((id) => id.replace(/^neutral\./, "")).sort().join("+") || "bank";
+            current = { guardKey: `${ev.type === "CREATURE_BANK_COMBAT_STARTED" ? "bank:" : ""}${key} (d${ev.difficulty ?? "?"})`, actor: ev.playerId, cards: new Set(), lost: 0, round: e.round };
+          }
+          if (ev.type === "PLAYER_COMBAT_STARTED") current = { guardKey: "pvp", actor: ev.attackerPlayerId ?? e.actorPlayerId, cards: new Set(), lost: 0, round: e.round };
+          if (!current) continue;
+          if ((ev.type === "CARD_PLAYED" || ev.type === "SPELL_CAST_STARTED") && ev.playerId === current.actor) current.cards.add(ev.cardId ?? ev.spellCardId);
+          if (ev.type === "UNIT_REMOVED" && ev.playerId === current.actor) current.lost += 1;
+          if (ev.type === "COMBAT_ENDED") {
+            const won = ev.winnerPlayerId === current.actor;
+            const row = guards[current.guardKey] ??= { fights: 0, won: 0, retreats: 0, unitsLost: 0 };
+            row.fights += 1; if (won) row.won += 1; if (ev.reason === "retreat") row.retreats += 1; row.unitsLost += current.lost;
+            if (ev.reason === "retreat") retreatsByRound[current.round] = (retreatsByRound[current.round] ?? 0) + 1;
+            for (const card of current.cards) {
+              const c = cards[card] ??= { fights: 0, won: 0, unitsLost: 0 };
+              c.fights += 1; if (won) c.won += 1; c.unitsLost += current.lost;
+            }
+            current = null;
+          }
+        }
+      }
+    }
+  }
+  const pct = (a, b) => b ? Math.round(100 * a / b) + "%" : "-";
+  console.log("\nguards (own units lost per fight is the setback measure; a win with losses still costs tempo):");
+  for (const [key, row] of Object.entries(guards).sort((a, b) => (b[1].fights - b[1].won) - (a[1].fights - a[1].won) || b[1].unitsLost - a[1].unitsLost).slice(0, 25)) {
+    console.log(`  ${key.padEnd(46)} fights ${String(row.fights).padStart(3)}  won ${pct(row.won, row.fights).padStart(4)}  retreats ${row.retreats}  units lost/fight ${(row.unitsLost / row.fights).toFixed(2)}`);
+  }
+  console.log("\ncards played in fights (win share of the fight they were played in; a card seen only in easy fights looks good — read with the guard table):");
+  for (const [key, row] of Object.entries(cards).sort((a, b) => b[1].fights - a[1].fights).slice(0, 30)) {
+    console.log(`  ${key.padEnd(40)} fights ${String(row.fights).padStart(3)}  won ${pct(row.won, row.fights).padStart(4)}  units lost/fight ${(row.unitsLost / row.fights).toFixed(2)}`);
+  }
+  console.log("retreats by round: " + Object.entries(retreatsByRound).sort((a, b) => a[0] - b[0]).map(([r, n]) => `R${r}:${n}`).join(" "));
 }
 
 const commands = { play: commandPlay, worker: commandWorker, train: commandTrain, eval: commandEval, report: commandReport };
