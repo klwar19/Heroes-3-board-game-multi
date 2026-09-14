@@ -1,5 +1,5 @@
 import type { GameAction, GameEvent, PlayerId } from "@/engine";
-import type { RankedReplay, RankedReplayLearningContext } from "./ranked-replay";
+import type { RankedReplay, RankedReplayLearningContext, RankedReplaySource } from "./ranked-replay";
 
 export type StrategicDecisionSample = {
   matchId: string;
@@ -15,6 +15,18 @@ export type StrategicDecisionSample = {
   terminalOutcome: "win" | "loss";
   immediateEventTypes: GameEvent["type"][];
   completeTrajectory: boolean;
+};
+
+export type StrategicSampleOptions = {
+  /** Entry sources that count as decisions (default: human seats only). */
+  sources?: ReadonlyArray<RankedReplaySource>;
+  /**
+   * A replay with no declared winner (round-capped self-play) may still teach
+   * its battles: combat decisions keep their local battle label; every
+   * decision without a battle label is dropped rather than given a made-up
+   * match result. Default false = the historical "no winner, no samples".
+   */
+  battleLabelsWithoutWinner?: boolean;
 };
 
 export type StrategicPreference = {
@@ -114,15 +126,20 @@ function battleOutcomes(replay: RankedReplay): Map<number, PlayerId> {
  * move remains evidence—not an automatic error—and unchosen moves remain
  * counterfactual candidates, never fabricated negative labels.
  */
-export function extractStrategicDecisionSamples(replay: RankedReplay): StrategicDecisionSample[] {
-  if (!replay.winnerPlayerId) return [];
+export function extractStrategicDecisionSamples(
+  replay: RankedReplay,
+  options: StrategicSampleOptions = {},
+): StrategicDecisionSample[] {
+  const winner = replay.winnerPlayerId;
+  if (!winner && !options.battleLabelsWithoutWinner) return [];
+  const sources = new Set<RankedReplaySource>(options.sources ?? ["human"]);
   const continuous = replay.entries.every((entry, index) => index === 0 || replay.entries[index - 1].afterStateHash === entry.beforeStateHash);
   const completeTrajectory = replay.captureStart === "adventure-start" && !replay.truncated && continuous;
   const localBattleWinners = battleOutcomes(replay);
   const ambiguousLegacyCombat = hasOverlappingLegacyBattles(replay);
   return replay.entries.flatMap((entry) => {
     if (
-      entry.source !== "human" ||
+      !sources.has(entry.source) ||
       !entry.actorPlayerId ||
       !entry.learningContext ||
       entry.legalActionsTruncated ||
@@ -135,7 +152,9 @@ export function extractStrategicDecisionSamples(replay: RankedReplay): Strategic
     const combatDecision = entry.learningContext.domains.some((domain) => domain === "pvp-combat" || domain === "neutral-combat");
     // Unknown local battle results must not turn into fabricated match labels.
     if (combatDecision && (!battleWinner || (ambiguousLegacyCombat && !entry.learningContext.combat?.id))) return [];
-    const terminalOutcome = entry.actorPlayerId === replay.winnerPlayerId ? "win" : "loss";
+    // No winner and no battle label: nothing real to learn from this decision.
+    if (!winner && !battleWinner) return [];
+    const terminalOutcome = entry.actorPlayerId === (winner ?? battleWinner) ? "win" : "loss";
     return [{
       matchId: replay.matchId,
       sequence: entry.sequence,

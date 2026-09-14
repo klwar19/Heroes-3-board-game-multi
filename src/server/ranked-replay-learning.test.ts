@@ -184,6 +184,36 @@ describe("ranked replay strategic learning extraction", () => {
     expect(extractStrategicDecisionSamples(replay("partial", "p1", "mid-match-recovery"))).toEqual([]);
   });
 
+  it("counts computer seats only when a self-play trainer opts in", () => {
+    const selfPlay = replay("self-play", "p1");
+    selfPlay.entries[0] = { ...selfPlay.entries[0]!, source: "computer" };
+    // CONTROL: the ranked trainer's default still ignores AI moves.
+    expect(extractStrategicDecisionSamples(selfPlay)).toHaveLength(0);
+    const [sample] = extractStrategicDecisionSamples(selfPlay, { sources: ["computer"] });
+    expect(sample?.terminalOutcome).toBe("win");
+    // Opting into computer seats does not silently admit human/system ones.
+    expect(extractStrategicDecisionSamples(replay("human", "p1"), { sources: ["computer"] })).toHaveLength(0);
+  });
+
+  it("keeps only battle-labelled decisions of a round-capped game with no winner", () => {
+    const unfinished = replay("no-winner", "p1");
+    delete unfinished.winnerPlayerId;
+    // Default: no winner, no samples (the historical contract).
+    expect(extractStrategicDecisionSamples(unfinished)).toHaveLength(0);
+    // A map decision has no battle label → dropped, never given a made-up match label.
+    expect(extractStrategicDecisionSamples(unfinished, { battleLabelsWithoutWinner: true })).toHaveLength(0);
+    unfinished.entries[0] = {
+      ...unfinished.entries[0]!,
+      phase: "combat",
+      learningContext: { stage: "opening", domains: ["neutral-combat"], legalAlternativeCount: 2, underPressure: false, pressureSignals: [] },
+      events: [{ id: "battle-ended", type: "COMBAT_ENDED", winnerPlayerId: "neutrals", defeatedPlayerId: "p1", reason: "all-enemy-units-defeated" }],
+    };
+    const [sample] = extractStrategicDecisionSamples(unfinished, { battleLabelsWithoutWinner: true });
+    expect(sample?.decisionOutcome).toBe("loss");
+    expect(sample?.outcomeBasis).toBe("battle");
+    expect(sample?.terminalOutcome).toBe("loss");
+  });
+
   it("requires corroboration across matches before recommending a pattern", () => {
     expect(aggregateStrategicPreferences([replay("1", "p1")])).toEqual([]);
     const evidence = ["1", "2", "3", "4", "5"].map((id) => replay(id, "p1"));

@@ -26,6 +26,7 @@ import {
 } from "@/engine/computer/memory";
 import { computerStallRecoveryDecision } from "@/engine/computer/stall-recovery";
 import { reconsiderComputerPlan } from "@/engine/computer/reconsider";
+import type { ChooseComputerActionOptions } from "@/engine/computer/policy";
 
 export const DEFAULT_COMPUTER_STEP_LIMIT = 256;
 
@@ -205,7 +206,11 @@ const liveApply: ComputerApply = (state, action, playerId) =>
 export function driveComputerPlayers(
   initialState: GameState,
   apply: ComputerApply = defaultApply,
-  options: { maxSteps?: number } = {},
+  options: {
+    maxSteps?: number;
+    /** Offline self-play only: per-seat learned-model selection / exploration. */
+    policy?: (playerId: PlayerId) => ChooseComputerActionOptions | undefined;
+  } = {},
 ): ComputerRunResult {
   const maxSteps = Math.max(
     1,
@@ -249,11 +254,12 @@ export function driveComputerPlayers(
     const available = observation.legalActions.filter(
       (legal) => !attempted.has(legalityMatchKey(legal.action)),
     );
+    const policyOptions = options.policy?.(playerId);
     let decision = chooseComputerAction({
       ...observation,
       legalActions: available,
-    });
-    const reconsidered = reconsiderComputerPlan(state, playerId, available, decision);
+    }, policyOptions);
+    const reconsidered = reconsiderComputerPlan(state, playerId, available, decision, policyOptions);
     let decisionState = state;
     if (reconsidered) {
       decision = reconsidered.decision;

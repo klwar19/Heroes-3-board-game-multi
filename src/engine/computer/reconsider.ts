@@ -3,7 +3,7 @@ import type { GameState, LegalAction, PlayerId } from "../state";
 import { canBeatGuardedField, distanceFromHeroTo } from "./map-navigation";
 import { getComputerMemory, writeComputerMemory } from "./memory";
 import { observeForComputer } from "./observation";
-import { chooseComputerAction } from "./policy";
+import { chooseComputerAction, type ChooseComputerActionOptions } from "./policy";
 import { hasCommittedIncomeRoute } from "./premium-approach";
 import type { ComputerDecision } from "./types";
 
@@ -13,6 +13,7 @@ export function reconsiderComputerPlan(
   playerId: PlayerId,
   available: LegalAction[],
   decision: ComputerDecision | null,
+  options?: ChooseComputerActionOptions,
 ): { state: GameState; decision: ComputerDecision } | null {
   if (state.combat || !state.adventure ||
       (decision && decision.action.type !== "END_TURN" &&
@@ -41,7 +42,7 @@ export function reconsiderComputerPlan(
   const candidate = chooseComputerAction({
     ...observeForComputer(reconsidered, playerId),
     legalActions: available,
-  });
+  }, options);
   if (!candidate || candidate.score <= Math.max(300, decision?.score ?? 300) ||
       candidate.action.type === "END_TURN" ||
       candidate.action.type === "COMPLETE_SIMULTANEOUS_TURN") return null;

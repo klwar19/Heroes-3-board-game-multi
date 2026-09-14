@@ -2,10 +2,8 @@
  * node scripts/train-ranked-policy.mjs --input path/to/export.json
  */
 import fs from "node:fs";
-import { gunzipSync } from "node:zlib";
-import { describeReplayAction, trainReplayPolicy } from "../src/engine/computer/replay-model.ts";
-import { replayConditions } from "../src/engine/computer/replay-context.ts";
-import { extractStrategicDecisionSamples } from "../src/server/ranked-replay-learning.ts";
+import { trainReplayPolicy } from "../src/engine/computer/replay-model.ts";
+import { buildReplaySamples, replayPayload, trainingReport } from "./lib/replay-samples.mjs";
 const args = process.argv.slice(2);
 const input = args[args.indexOf("--input") + 1];
 let data;
@@ -48,11 +46,7 @@ else {
 }
 const samples = [];
 for (const row of data.replays) {
-  const p = row.payload ?? (
-    typeof row.payload_gzip_base64 === "string"
-      ? JSON.parse(gunzipSync(Buffer.from(row.payload_gzip_base64, "base64")).toString("utf8"))
-      : null
-  );
+  const p = replayPayload(row);
   if (!p) continue;
   const history = data.matches?.find((m) => m.match_id === row.match_id);
   if (
@@ -62,32 +56,7 @@ for (const row of data.replays) {
     p.entries.some((e) => e.events.some((v) => v.type === "AFK_AUTO_KICKED"))
   )
     continue;
-  for (const sample of extractStrategicDecisionSamples(p)) {
-    // Older combat records may have a domain but no health/kind snapshot.
-    // Missing tactical context must not teach a fabricated map-spell policy.
-    if (!sample.context.combat && sample.context.domains.some((domain) =>
-      domain === "pvp-combat" || domain === "neutral-combat")) continue;
-    const action = describeReplayAction(sample.context.policyFacts?.action ?? sample.chosenAction, sample.context.search?.revealedCardIds);
-    samples.push({
-      matchId: sample.matchId,
-      action,
-      outcome: sample.decisionOutcome,
-      context: {
-        conditions: sample.context.policyFacts?.conditions ?? (p.initialState ? replayConditions(p.initialState) : undefined),
-        situation: sample.context.policyFacts?.situation,
-        stage: sample.context.stage,
-        faction:
-          sample.context.development?.factionId ??
-          p.initialState.players[sample.actorPlayerId]?.factionId ??
-          "unknown",
-        combat: sample.context.combat?.kind ?? "map",
-        pressure: sample.context.combat
-          ? sample.context.combat.ownRemainingHealth <
-            sample.context.combat.enemyRemainingHealth
-          : (sample.context.actorEconomy?.gold ?? 99) <= 2,
-      },
-    });
-  }
+  samples.push(...buildReplaySamples(p));
 }
 const model = trainReplayPolicy(samples);
 const path = args.includes("--output")
@@ -99,23 +68,7 @@ if (model.samples === 0) {
 }
 fs.writeFileSync(path + ".tmp", JSON.stringify(model, null, 2) + "\n");
 fs.renameSync(path + ".tmp", path);
-const report = {
-    matches: model.matches,
-    samples: model.samples,
-    learnedPatterns: Object.keys(model.weights).length,
-    samplesWithDecisionTimeFacts: samples.filter(sample => sample.context.situation).length,
-    samplesByStage: Object.fromEntries(["opening", "midgame", "late-game"].map(stage =>
-      [stage, samples.filter(sample => sample.context.stage === stage).length])),
-    samplesByConditions: Object.fromEntries([...new Set(samples.map(sample => sample.context.conditions))].map(conditions =>
-      [conditions, samples.filter(sample => sample.context.conditions === conditions).length])),
-    samplesByAction: Object.fromEntries([...new Set(samples.map(sample => sample.action.type))].sort().map(type =>
-      [type, samples.filter(sample => sample.action.type === type).length])),
-    samplesByDomain: Object.fromEntries(["map", "pvp", "neutral"].map((domain) =>
-      [domain, samples.filter((sample) => sample.context.combat === domain).length])),
-    patternsByAction: Object.fromEntries([...new Set(samples.map((sample) => sample.action.type))].sort()
-      .map((type) => [type, Object.keys(model.weights).filter((key) => key.split("|")[4] === type).length])
-      .filter(([, count]) => count > 0)),
-};
+const report = trainingReport(model, samples);
 const reportPath = args.includes("--report") ? args[args.indexOf("--report") + 1] : undefined;
 if (reportPath) fs.writeFileSync(reportPath, JSON.stringify(report, null, 2) + "\n");
 console.log(JSON.stringify(report));

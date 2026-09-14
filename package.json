@@ -22,7 +22,11 @@
     "media:publish": "node scripts/media.mjs publish",
     "media:pull": "node scripts/media.mjs pull",
     "media:verify": "node scripts/media.mjs verify",
-    "train:ranked": "node scripts/train-ranked-policy.mjs"
+    "train:ranked": "node scripts/train-ranked-policy.mjs",
+    "selfplay:play": "node scripts/self-play.mjs play",
+    "selfplay:train": "node scripts/self-play.mjs train",
+    "selfplay:eval": "node scripts/self-play.mjs eval",
+    "selfplay:report": "node scripts/self-play.mjs report"
   },
   "dependencies": {
     "lucide-react": "1.17.0",

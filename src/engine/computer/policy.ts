@@ -9,7 +9,7 @@ import { scoreChoiceAction } from "./choice-policy";
 import { scoreCombatAction } from "./combat-policy";
 import { scoreMapAction } from "./map-policy";
 import type { ComputerDecision, ComputerObservation } from "./types";
-import { learnedActionBias } from "./learned-policy";
+import { learnedActionBias, type LearnedModelSelection } from "./learned-policy";
 import { developmentPlanBias } from "./development-plan";
 import { repeatsUnproductiveRoute } from "./memory";
 import { canBeatGuardedField, objectiveDistanceField, primaryMapObjective } from "./map-navigation";
@@ -301,11 +301,35 @@ function withRefreshDiscards(
 }
 
 /**
+ * Offline self-play knobs. Production callers pass nothing: the chooser stays
+ * the deterministic policy with every committed learned model applied.
+ */
+export type ChooseComputerActionOptions = {
+  /** Which committed learned models bias close choices (default "all"). */
+  learned?: LearnedModelSelection;
+  /**
+   * Self-play exploration: with probability `rate` pick uniformly among the
+   * CLOSE candidates (same action type, within the learned-bias band, above
+   * the safety floor) instead of the top one. Exploration can never reach a
+   * mandatory exit, a lethal-save band or a rejected action — those are
+   * outside the band by construction, exactly like the learned bias.
+   */
+  explore?: { rate: number; random: () => number };
+  /**
+   * Self-play instrumentation: receives the close candidate set (best first,
+   * learned bias applied) whenever more than one candidate is close. Lets an
+   * offline lab roll each alternative out; never changes the decision.
+   */
+  onClose?: (close: ReadonlyArray<GameAction>) => void;
+};
+
+/**
  * Total deterministic policy. Context policies handle strategic decisions and
  * the foundation score remains the terminating fallback for every legal set.
  */
 export function chooseComputerAction(
   observation: ComputerObservation,
+  options: ChooseComputerActionOptions = {},
 ): ComputerDecision | null {
   const candidates = observation.legalActions.filter(
     (legal) => !NEVER_AUTOMATE.has(legal.action.type),
@@ -404,9 +428,18 @@ export function chooseComputerAction(
   // Learned correlations only decide close choices of the SAME action type.
   // Never override a mandatory exit, lethal-save band, or safety rejection.
   const close = ranked.filter(candidate => candidate.legal.action.type === selected.legal.action.type && selected.score - candidate.score <= 12 && candidate.score > 300);
-  for (const candidate of close) candidate.score += learnedActionBias(observation, candidate.legal.action);
+  const learnedModels = options.learned ?? "all";
+  if (learnedModels !== "none") {
+    for (const candidate of close) candidate.score += learnedActionBias(observation, candidate.legal.action, learnedModels);
+  }
   close.sort((a, b) => b.score - a.score || b.tie - a.tie);
-  const learnedSelected = close[0] ?? selected;
+  let learnedSelected = close[0] ?? selected;
+  if (close.length > 1) options.onClose?.(close.map(candidate => candidate.legal.action));
+  const explore = options.explore;
+  if (explore && close.length > 1 && explore.rate > 0 && explore.random() < explore.rate) {
+    const pick = Math.min(close.length - 1, Math.max(0, Math.floor(explore.random() * close.length)));
+    learnedSelected = { ...close[pick], policy: `explore:${close[pick].policy}` };
+  }
   const action =
     learnedSelected.legal.action.type === "REFRESH_HAND" || learnedSelected.legal.action.type === "OPENING_HAND_MULLIGAN"
       ? withRefreshDiscards(observation, learnedSelected.legal.action)
