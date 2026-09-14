@@ -720,8 +720,12 @@ async function printDeepReport(batches, records) {
       for (const e of p.entries) {
         for (const ev of e.events) {
           if (ev.type === "NEUTRAL_COMBAT_STARTED" || ev.type === "CREATURE_BANK_COMBAT_STARTED") {
-            const key = (ev.unitDefIds ?? []).map((id) => id.replace(/^neutral\./, "")).sort().join("+") || "bank";
-            current = { guardKey: `${ev.type === "CREATURE_BANK_COMBAT_STARTED" ? "bank:" : ""}${key} (d${ev.difficulty ?? "?"})`, actor: ev.playerId, cards: new Set(), lost: 0, round: e.round };
+            current = { guardKey: `${ev.type === "CREATURE_BANK_COMBAT_STARTED" ? "bank" : "guards"} (d${ev.difficulty ?? "?"})`, actor: ev.playerId, cards: new Set(), lost: 0, round: e.round };
+          }
+          // The guard identity arrives with the reveal, after the start event.
+          if (ev.type === "NEUTRAL_ARMY_REVEALED" && current && ev.unitDefIds?.length) {
+            current.guardUnits = [...new Set(ev.unitDefIds.map((id) => id.replace(/^neutral\./, "")))];
+            current.difficulty = ev.difficulty ?? current.guardKey.match(/d(\d+)/)?.[1];
           }
           if (ev.type === "PLAYER_COMBAT_STARTED") current = { guardKey: "pvp", actor: ev.attackerPlayerId ?? e.actorPlayerId, cards: new Set(), lost: 0, round: e.round };
           if (!current) continue;
@@ -729,8 +733,16 @@ async function printDeepReport(batches, records) {
           if (ev.type === "UNIT_REMOVED" && ev.playerId === current.actor) current.lost += 1;
           if (ev.type === "COMBAT_ENDED") {
             const won = ev.winnerPlayerId === current.actor;
-            const row = guards[current.guardKey] ??= { fights: 0, won: 0, retreats: 0, unitsLost: 0 };
-            row.fights += 1; if (won) row.won += 1; if (ev.reason === "retreat") row.retreats += 1; row.unitsLost += current.lost;
+            // One row per guard UNIT (a fight with three guard kinds counts for
+            // each) plus the difficulty band, so a monster's cost shows across
+            // the many distinct guard combinations.
+            const keys = current.guardUnits?.length
+              ? current.guardUnits.map((unit) => `${unit} (d${current.difficulty ?? "?"})`)
+              : [current.guardKey];
+            for (const key of keys) {
+              const row = guards[key] ??= { fights: 0, won: 0, retreats: 0, unitsLost: 0 };
+              row.fights += 1; if (won) row.won += 1; if (ev.reason === "retreat") row.retreats += 1; row.unitsLost += current.lost;
+            }
             if (ev.reason === "retreat") retreatsByRound[current.round] = (retreatsByRound[current.round] ?? 0) + 1;
             for (const card of current.cards) {
               const c = cards[card] ??= { fights: 0, won: 0, unitsLost: 0 };
