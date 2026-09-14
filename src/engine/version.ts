@@ -1332,7 +1332,12 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 //    resolving these abilities under the previous rules.
 // v146: Expert Mysticism recalls instant-spell fuel added later in the same
 //    attack window; preserves paid-source zones and deferred return cards.
-export const ENGINE_PROTOCOL_VERSION = 146;
+// v147: a choice opened while another choice resolves returns to the OUTER
+//   phase (a nested Genie/battlefield-token choice froze a fight in phase
+//   "choice"); AI reads elemental strikes as undefendable, drops Magic Arrow
+//   against Arrow-immune guards, pours Power into damage spells vs armoured
+//   neutrals (Ogres/Gorgons/Dendroids/Minotaurs/Crusaders).
+export const ENGINE_PROTOCOL_VERSION = 147;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
