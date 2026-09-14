@@ -8,9 +8,12 @@ import {
 } from "../battlefield";
 import { cancelSpellAllowsSchoolAndLevel, getSpellDamageAmount, getSpellDiceRollCount } from "../effects";
 import { abilityExpertIsCrownFree, spellLimitFor } from "../ruleset";
-import { getDamageCapPerSpell } from "../unit-abilities";
+import { getDamageCapPerSpell, unitImmuneToSpellSchools } from "../unit-abilities";
+import { dealsElementalStrike } from "./strike-value";
+import { houseRuleEnabled } from "../house-rules";
 import { balanceCardLibrary } from "../community-balance-cards";
 import { resolvedSpellPowerForStackItem } from "../legal-actions";
+import { NEUTRAL_PLAYER_ID } from "../state";
 import type {
   CardDefinition,
   CardPlayMode,
@@ -231,7 +234,14 @@ export function cardHandValue(cardId: string, observation: ComputerObservation):
   const fight = upcomingFight(observation);
   let value = cardKeepValue(cardId, observation);
   const effect = card.effect;
-  if (cardId === "spell.magic_arrow") return Math.max(value, fight ? 90 : 75);
+  if (cardId === "spell.magic_arrow") {
+    // Inside a fight whose every living enemy is Arrow-immune (Elementals,
+    // spell-immune guards) the Arrow is dead weight: refresh it away.
+    const enemies = state.combat ? Object.values(state.combat.units).filter(unit =>
+      unit.controllerId !== observation.playerId && unit.position >= 0 && unit.damage < unit.maxHealth) : [];
+    if (enemies.length && enemies.every(unit => unitImmuneToSpellSchools(unit, card.spellSchools))) return 10;
+    return Math.max(value, fight ? 90 : 75);
+  }
   if (effect.type === "NECROMANCY_REINFORCE" && state.players[observation.playerId]?.factionId === "necropolis") return Math.max(value, 85);
   const spells = readySpells(state, observation.playerId).filter(spell =>
     !fight || spell.timing !== "map" || (effect.type === "RECALL_SPELL" && !state.combat));
@@ -575,10 +585,16 @@ function scoreStatReaction(
               ? Math.min(lowest, abilityEffect.amount)
               : lowest;
           }, Number.POSITIVE_INFINITY);
+          const ownElemental = dealsElementalStrike(attacker);
+          // BINH house rule: an elemental attack cannot be raised by Attack
+          // cards at all — the card would be burned for nothing.
+          if (ownElemental && houseRuleEnabled(observation.state as unknown as GameState, "elemental-damage-no-die")) {
+            return 1_020;
+          }
           const currentDamage = Math.max(
             0,
             attacker.attack + (top.modifiers.attackBonus ?? 0) -
-              defender.defense - (top.modifiers.defenseBonus ?? 0),
+              (ownElemental ? 0 : defender.defense + (top.modifiers.defenseBonus ?? 0)),
           );
           // The Absolution–VuHy replay showed Offense + Sword of Hellfire
           // stacked onto Hydras even though Nix's Hardened Shell already capped
@@ -607,6 +623,11 @@ function scoreStatReaction(
         const attacker = combat.units[attack.attackerId];
         const defender = combat.units[attack.defenderId];
         if (attacker && defender?.controllerId === observation.playerId) {
+          // An elemental strike ignores the Defense value AND Defense cards:
+          // the card would change nothing. Keep it for a hit it can reduce.
+          if (dealsElementalStrike(attacker)) {
+            return 300;
+          }
           const attackValue = attacker.attack + (top.modifiers.attackBonus ?? 0);
           const defenseValue = defender.defense + (top.modifiers.defenseBonus ?? 0);
           const beforeDamage = Math.max(0, attackValue - defenseValue);
@@ -1174,6 +1195,29 @@ function pendingSpellBoostImpact(
  * already lethal, refuse a +1 that does not move the printed ladder, and pay
  * up eagerly when one more Power turns the cast into a removal.
  */
+/**
+ * Armoured neutral guards the dice barely scratch — Ogres, Gorgons, Dendroids,
+ * Minotaurs, and any neutral whose Defense leaves our best physical hit at one
+ * point. User ruling (2026-09-14): a damage spell is THE answer to these, so
+ * Power is poured into it up to the kill ("not over the limit"), not rationed.
+ */
+const ARMOURED_NEUTRAL_GUARDS = new Set(["ogres", "gorgons", "dendroids", "minotaurs"]);
+function armouredNeutralTarget(observation: ComputerObservation): boolean {
+  const combat = observation.state.combat;
+  const top = observation.state.stack?.at(-1);
+  if (!combat || !top || top.action.type !== "CAST_SPELL") return false;
+  const target = top.action.target;
+  if (!target || target.type !== "unit") return false;
+  const defender = combat.units[target.unitId];
+  if (!defender || defender.controllerId !== NEUTRAL_PLAYER_ID) return false;
+  const baseName = (defender.unitDefId ?? "").replace(/^[a-z_]+\./, "");
+  if (ARMOURED_NEUTRAL_GUARDS.has(baseName)) return true;
+  const bestPhysical = Object.values(combat.units).reduce((best, unit) =>
+    unit.controllerId === observation.playerId && unitRemainingHealth(unit) > 0
+      ? Math.max(best, expectedAttackDamage(unit, defender)) : best, 0);
+  return defender.defense >= 2 && bestPhysical <= 1;
+}
+
 function asPowerBoostScore(
   observation: ComputerObservation,
   cardId: string,
@@ -1192,6 +1236,12 @@ function asPowerBoostScore(
     return 320;
   }
   const keep = cardKeepValue(cardId, observation);
+  if (impact === "chips" && armouredNeutralTarget(observation)) {
+    // Every Power point that still moves the ladder goes in against an
+    // armoured guard. Only another real damage spell stays for its own cast.
+    if (effect && COMBAT_DAMAGE_EFFECTS.has(effect.type)) return 980;
+    return 1_095 - Math.min(30, Math.floor(keep / 2));
+  }
   if (impact === "kills") {
     // One more Power converts the cast into a removal: worth any low/mid-CLASS
     // card. High-value artifacts/expert spells still stay in hand (940 < PASS).
@@ -1313,11 +1363,14 @@ function pendingAttackValues(observation: ComputerObservation) {
   const defender = combat.units[item.action.defenderId];
   if (!attacker || !defender) return null;
   const attackValue = attacker.attack + (item.modifiers.attackBonus ?? 0);
-  const defenseValue = defender.defense + (item.modifiers.defenseBonus ?? 0);
+  // Elemental strikes ignore printed Defense AND every Defense card played.
+  const elemental = dealsElementalStrike(attacker);
+  const defenseValue = elemental ? 0 : defender.defense + (item.modifiers.defenseBonus ?? 0);
   return {
     attacker,
     defender,
     damage: Math.max(0, attackValue - defenseValue),
+    elemental,
   };
 }
 
@@ -1328,16 +1381,21 @@ function marginalAttackModifierScore(
 ): number {
   const pending = pendingAttackValues(observation);
   if (!pending) return 1_020;
-  const { attacker, defender, damage } = pending;
+  const { attacker, defender, damage, elemental } = pending;
   if (boost === "attack") {
     if (attacker.controllerId !== observation.playerId) return 900;
     const remaining = unitRemainingHealth(defender);
     if (damage < remaining && damage + 1 >= remaining) return 1_155;
     if (damage === 0) return 1_105;
-    if (unitThreatValue(defender) >= 30) return free ? 1_080 : 1_060;
+    // An Elemental cannot be defended against and (Magic Arrow-immune) cannot
+    // be burned down by the Arrow either: Attack cards are the tool against it.
+    if (unitThreatValue(defender) >= 30 || dealsElementalStrike(defender)) return free ? 1_080 : 1_060;
     return free ? 1_060 : 1_030;
   }
   if (defender.controllerId !== observation.playerId) return 900;
+  // A Defense card against an elemental strike changes nothing (the resolver
+  // ignores Defense cards too): keep it for a hit it can actually reduce.
+  if (elemental) return 300;
   const remaining = unitRemainingHealth(defender);
   const nextDamage = Math.max(0, damage - 1);
   if (damage >= remaining && nextDamage < remaining) return 1_165;

@@ -2,6 +2,7 @@ import { unitAbilities } from "@/data/units/abilities";
 import { getBattlefieldDistance, isAdjacent } from "../battlefield";
 import { getUnitSide } from "../adventure";
 import type { CombatState, CombatUnitState, PlayerId, UnitGrade } from "../state";
+import { dealsElementalStrike } from "./strike-value";
 
 /**
  * Shared strategic estimators used by the combat policy. Every helper reads
@@ -41,14 +42,15 @@ export function unitRemovalHealth(unit: CombatUnitState): number {
 /**
  * Expected damage of a melee/base attack: `max(0, attack - defense)`, matching
  * the engine's `rawDamage = max(0, attackValue - defenseValue)` with the die at
- * its expected value 0. Ability splashes, caps and elemental defense-ignores are
- * intentionally not modeled here.
+ * its expected value 0. An ELEMENTAL strike ignores Defense completely (the
+ * resolver skips the Defense value and Defense cards), so its expectation is
+ * the full Attack value. Ability splashes and caps are not modeled here.
  */
 export function expectedAttackDamage(
   attacker: CombatUnitState,
   defender: CombatUnitState,
 ): number {
-  return Math.max(0, attacker.attack - defender.defense);
+  return Math.max(0, attacker.attack - (dealsElementalStrike(attacker) ? 0 : defender.defense));
 }
 
 /**

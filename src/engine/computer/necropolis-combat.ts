@@ -1,5 +1,6 @@
 import type { CombatState, GameState } from "../state";
 import { estimatedStrikeDamage } from "./strike-value";
+import { unitImmuneToSpellSchools } from "../unit-abilities";
 import {
   hasThreatAbility,
   unitRemainingHealth,
@@ -71,12 +72,7 @@ export function bronzeArmyNeedsWithdrawal(
   // spent spell or an Arrow against a wholly Arrow-immune elemental army.
   const arrow =
     state.players[playerId].hand.includes("spell.magic_arrow") &&
-    guards.some(
-      (g) =>
-        !g.abilities.some((id) =>
-          ["earth-elemental-immunity", "immune-all-spells"].includes(id),
-        ),
-    );
+    guards.some((g) => !unitImmuneToSpellSchools(g, ["any"]));
   const spellDamage = arrow ? 3 : 0;
   const roundsToWin =
     guards.reduce(
