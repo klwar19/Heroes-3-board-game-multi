@@ -12,14 +12,12 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import { adventureCards } from "@/data/cards/adventure";
 import { cardLibrary } from "@/data/cards/library";
 import type { FactionId } from "@/data/factions/types";
-import type { ActiveEffectModifier, CardOptionDefinition, GameAction, GameState, PlayerId, UnitId } from "./state";
+import type { CardOptionDefinition, GameAction, GameState, PlayerId, UnitId } from "./state";
 
 /**
- * Bulwark heroes. The genuinely NEW engine code is Kriv's GAIN_RUNES specialty
- * effect, so it gets a behavioural test (banks Runes for a Bulwark caster; the
- * option is not even offered to anyone else). Dhuin/Creyle reuse the tested
- * unit-specialist factories and Glacius reuses Adelaide's Frost-Ring area
- * damage, so those are guarded at the wiring level.
+ * Bulwark heroes. Kriv and Eikthurn exercise the combat Rune pool; Dhuin and
+ * Eikthurn also have bespoke specialties rather than the generic unit-specialist
+ * trio. Glacius reuses Adelaide's Frost-Ring area damage.
  */
 
 function applyOk(state: GameState, action: GameAction): GameState {
@@ -82,22 +80,6 @@ function findUnitPlay(state: GameState, cardId: string, unitId: UnitId) {
       legal.action.target?.type === "unit" &&
       legal.action.target.unitId === unitId
   );
-}
-
-/** Net total of a given active-effect modifier kind sitting on one unit. */
-function modifierTotalOn(state: GameState, unitId: UnitId, kind: ActiveEffectModifier["type"]): number {
-  let total = 0;
-  for (const effect of state.activeEffects) {
-    if (effect.target?.type !== "unit" || effect.target.unitId !== unitId) {
-      continue;
-    }
-    for (const modifier of effect.modifiers) {
-      if (modifier.type === kind && "amount" in modifier) {
-        total += modifier.amount;
-      }
-    }
-  }
-  return total;
 }
 
 /** Combat sandbox with p1 holding Kriv's level-I specialty; faction varies. */
@@ -416,16 +398,20 @@ describe("Bulwark heroes — roster & specialty wiring", () => {
     }
   });
 
-  it("Dhuin doubles Snow Elves; Creyle doubles Mammoths", () => {
-    const dhuin1 = adventureCards["specialty.dhuin.1"].effect as { options: { effect: unknown }[] };
-    expect(dhuin1.options[0].effect).toMatchObject({ type: "ADD_COMBAT_STAT", doubleForUnitName: "Snow Elves" });
-    // House rule (BINH): the initiative specialty is now a CHOOSE_ONE — option A
-    // is the (now movement-granting) initiative buff, option B draws a card.
-    const dhuin6 = adventureCards["specialty.dhuin.6"].effect as { options: { effect: unknown }[] };
-    expect(dhuin6.options[0].effect).toMatchObject({
-      type: "CREATE_INITIATIVE_BUFF",
+  it("Dhuin I/IV attack and draw; VI doubles its ongoing Attack on Snow Elves", () => {
+    for (const id of ["specialty.dhuin.1", "specialty.dhuin.4"] as const) {
+      expect(adventureCards[id].effect).toMatchObject({
+        type: "ADD_COMBAT_STAT",
+        stat: "attack",
+        amount: 1,
+        drawCards: 1
+      });
+    }
+    expect(adventureCards["specialty.dhuin.6"].effect).toMatchObject({
+      type: "CREATE_ATTACK_BUFF",
+      amount: 1,
       doubleForUnitName: "Snow Elves",
-      movementBonus: 1
+      duration: { type: "combat" }
     });
     const creyle1 = adventureCards["specialty.creyle.1"].effect as { options: { effect: unknown }[] };
     expect(creyle1.options[0].effect).toMatchObject({ type: "ADD_COMBAT_STAT", doubleForUnitName: "Mammoths" });
@@ -587,110 +573,46 @@ describe("Bulwark hero — Glacius's Frost Ring (space + choose up to 2 adjacent
   });
 });
 
-/** The attack bonus recorded on the resolved attack made BY `attackerId`. */
-function attackBonusBy(state: GameState, attackerId: UnitId): number | null {
-  // Filter by attacker so a follow-up retaliation's ATTACK_ROLLED (bonus 0) is
-  // never mistaken for the caster's own buffed strike.
-  const rolled = [...state.eventLog]
-    .reverse()
-    .find((event) => event.type === "ATTACK_ROLLED" && event.attackerId === attackerId);
-  return rolled && rolled.type === "ATTACK_ROLLED" ? rolled.attackBonus : null;
-}
-
-/**
- * p1's `unit_p1_griffins` (renamed to `attackerName`) strikes an adjacent enemy;
- * p1 answers its OWN attack with `cardId` (an attack-declared reaction). Returns
- * the attack bonus that lands on the strike (0 if the reaction is not offered).
- */
-function selfAttackReactionBonus(seed: string, cardId: string, attackerName: string): number {
-  const state = createInitialGameState(seed);
-  state.players.p1.hand = [cardId];
-  state.players.p2.hand = [];
-  const attacker = state.combat!.units.unit_p1_griffins;
-  attacker.name = attackerName;
-  attacker.position = 9;
-  // A tanky target that survives the hit, so the reaction bonus is a clean read.
-  const target = state.combat!.units.unit_p2_skeletons;
-  target.position = 13; // adjacent → a melee strike
-  target.maxHealth = 40;
-  target.damage = 0;
-  const declared = applyOk(state, {
-    type: "ATTACK_UNIT",
-    playerId: "p1",
-    attackerId: "unit_p1_griffins",
-    defenderId: "unit_p2_skeletons"
-  });
-  const reaction = declared.reactionWindow?.legalReactions.p1?.find(
-    (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === cardId
-  );
-  expect(reaction, `${cardId} should be offered as a reaction to the caster's own attack`).toBeTruthy();
-  return attackBonusBy(settleReactions(applyOk(declared, reaction!.action)), "unit_p1_griffins") ?? 0;
-}
-
 describe("Bulwark hero — Eikthurn's Mountain Rams specialty (the bronze lv2 unit, doubled)", () => {
-  it("I's +1 Attack rider is doubled to +2 for a Mountain Rams attacker (control: +1 for any other)", () => {
-    expect(selfAttackReactionBonus("eik-i-ram", "specialty.eikthurn.1", "Mountain Rams"), "doubled").toBe(2);
-    expect(selfAttackReactionBonus("eik-i-other", "specialty.eikthurn.1", "Griffins"), "flat +1 control").toBe(1);
-  });
-
-  it("IV adds +1 max HP, doubled (+2) on a Mountain Rams unit", () => {
-    const state = createInitialGameState("eik-iv-ram");
-    state.players.p1.hand = ["specialty.eikthurn.4"];
+  it("I adds +1 max HP, doubled (+2) on a Mountain Rams unit", () => {
+    const state = createInitialGameState("eik-i-ram");
+    state.players.p1.hand = ["specialty.eikthurn.1"];
     const ram = state.combat!.units.unit_p1_crusaders;
     ram.name = "Mountain Rams";
     const before = ram.maxHealth;
-    const play = findUnitPlay(state, "specialty.eikthurn.4", "unit_p1_crusaders");
-    expect(play, "Eikthurn IV should target a friendly unit").toBeTruthy();
+    const play = findUnitPlay(state, "specialty.eikthurn.1", "unit_p1_crusaders");
+    expect(play, "Eikthurn I should target a friendly unit").toBeTruthy();
     expect(applyOk(state, play!.action).combat!.units.unit_p1_crusaders.maxHealth).toBe(before + 2);
   });
 
-  it("IV adds only +1 max HP on a non-Mountain-Rams unit (control)", () => {
-    const state = createInitialGameState("eik-iv-other");
-    state.players.p1.hand = ["specialty.eikthurn.4"];
+  it("I adds only +1 max HP on a non-Mountain-Rams unit (control)", () => {
+    const state = createInitialGameState("eik-i-other");
+    state.players.p1.hand = ["specialty.eikthurn.1"];
     const before = state.combat!.units.unit_p1_griffins.maxHealth;
-    const play = findUnitPlay(state, "specialty.eikthurn.4", "unit_p1_griffins");
-    expect(play, "Eikthurn IV should be playable").toBeTruthy();
+    const play = findUnitPlay(state, "specialty.eikthurn.1", "unit_p1_griffins");
+    expect(play, "Eikthurn I should be playable").toBeTruthy();
     expect(applyOk(state, play!.action).combat!.units.unit_p1_griffins.maxHealth).toBe(before + 1);
   });
 
-  it("VI option A: the initiative buff is doubled (+2) on a Mountain Rams unit", () => {
-    const state = createInitialGameState("eik-vi");
-    state.players.p1.hand = ["specialty.eikthurn.6"];
-    state.combat!.units.unit_p1_crusaders.name = "Mountain Rams";
-    const play = findUnitPlay(state, "specialty.eikthurn.6", "unit_p1_crusaders");
-    expect(play, "Eikthurn VI option A should be playable on a friendly unit").toBeTruthy();
-    const next = applyOk(state, play!.action);
-    expect(modifierTotalOn(next, "unit_p1_crusaders", "INITIATIVE_BONUS")).toBe(2);
-  });
-
-  it("VI option B: a flat +2 Attack on the caster's next attack — even a Mountain Rams attacker (never doubled)", () => {
-    // A Mountain Rams attacker still gets only +2 (flat), proving the +2 attack
-    // side carries no doubleForUnitName. If it did, this would be +4.
-    expect(selfAttackReactionBonus("eik-vi-attack", "specialty.eikthurn.6", "Mountain Rams"), "flat +2").toBe(2);
-  });
-
-  it("wires all three levels to the Mountain Rams signature unit; VI trades the draw for a flat +2 Attack", () => {
-    const one = adventureCards["specialty.eikthurn.1"].effect as { options: { effect: unknown }[] };
-    expect(one.options[0].effect).toMatchObject({ type: "ADD_COMBAT_STAT", doubleForUnitName: "Mountain Rams" });
-    expect(adventureCards["specialty.eikthurn.4"].effect).toMatchObject({
+  it("wires IV to Attack + Rune gain and VI to a Rune-priced Defense reaction", () => {
+    expect(adventureCards["specialty.eikthurn.1"].effect).toMatchObject({
       type: "ADD_UNIT_MAX_HEALTH",
       doubleForUnitName: "Mountain Rams"
     });
-    const eikthurn6 = adventureCards["specialty.eikthurn.6"].effect as {
-      options: { effect: { type: string; stat?: string; amount?: number; doubleForUnitName?: string } }[];
-    };
-    expect(eikthurn6.options[0].effect).toMatchObject({
-      type: "CREATE_INITIATIVE_BUFF",
-      doubleForUnitName: "Mountain Rams",
-      movementBonus: 1
+    expect(adventureCards["specialty.eikthurn.4"].effect).toMatchObject({
+      type: "ADD_COMBAT_STAT",
+      stat: "attack",
+      amount: 1,
+      gainRunes: 2,
+      doubleForUnitName: "Mountain Rams"
     });
-    // Option B is a FLAT +2 attack (no draw-a-card, no Mountain Rams doubling).
-    expect(eikthurn6.options[1].effect).toMatchObject({ type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 });
-    expect(eikthurn6.options[1].effect.doubleForUnitName, "the +2 attack is flat, never doubled").toBeUndefined();
-    expect(
-      eikthurn6.options.some((option) => option.effect.type === "DRAW_CARDS"),
-      "VI no longer offers the generic draw-a-card alternative"
-    ).toBe(false);
+    expect(adventureCards["specialty.eikthurn.6"].effect).toMatchObject({
+      type: "ADD_COMBAT_STAT",
+      stat: "defense",
+      amount: 3,
+      runeCost: 1,
+      doubleForUnitName: "Mountain Rams"
+    });
   });
 });
 

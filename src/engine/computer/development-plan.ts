@@ -9,6 +9,7 @@ import {
   needsPremiumSilverBreakthrough,
   needsNecromancyVampire,
   committedGoldInvestment,
+  nextGoldLadderStep,
 } from "./development";
 export type DevelopmentPlan = {
   goal: "rebuild" | "income" | "silver" | "gold" | "gold-recruit" | "pressure";
@@ -54,7 +55,7 @@ export function updateDevelopmentPlan(
         ? "silver"
         : !profile.goldUnlocked
           ? "gold"
-          : profile.goldUnits === 0 || committedGoldInvestment(state, playerId)
+          : nextGoldLadderStep(state, playerId)?.kind === "recruit" || committedGoldInvestment(state, playerId)
             ? "gold-recruit"
             : "pressure";
   const building =

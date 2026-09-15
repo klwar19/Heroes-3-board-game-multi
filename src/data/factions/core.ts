@@ -2543,10 +2543,9 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
   },
   // ---- Bulwark heroes, batch 2 (expansion; fan faction, placeholder portraits) --
   // Eikthurn (Chieftain, Might): the Mountain Rams unit-specialist (the bronze
-  // level-2 unit) — the SAME might trio Dhuin/Creyle use (ADD_COMBAT_STAT /
-  // ADD_UNIT_MAX_HEALTH / CREATE_INITIATIVE_BUFF, doubled for the signature unit),
-  // except his VI trades the "draw a card" alternative for a flat +2 Attack. His
-  // starting ability is Logistics. Oidana (Elder, Magic): the diplomat — her
+  // level-2 unit) — ongoing Health at I, Attack + Rune gain at IV, and a
+  // Rune-priced Defense reaction at VI; each benefit doubles for Mountain Rams.
+  // His starting ability is Logistics. Oidana (Elder, Magic): the diplomat — her
   // starting ability is Diplomacy (DIPLOMACY_RECRUIT / skip-combat), and each
   // specialty is a CHOOSE_ONE: a scaling card draw (DRAW_CARDS 1/2/2) OR a
   // Diplomacy-mastery side — I recruits from 1 drawn Neutral, IV recruits from 2

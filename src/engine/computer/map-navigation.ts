@@ -1,7 +1,7 @@
 import { cardLibrary } from "@/data/cards/library";
 import { pvpReach } from "./pvp-reach";
 import { hasNecromancyPlan, necropolisFarArmyReady } from "./necromancy-plan";
-import { openingBronzeCoreReady, committedGoldInvestment, nextGoldLadderStep } from "./development";
+import { openingBronzeCoreReady, committedGoldInvestment } from "./development";
 import { secondFarFightNeedsSilver, securedFarTileIds } from "./far-sweep";
 import { isMarketLocation, locationDefinitions } from "@/data/map/locations";
 import {
@@ -68,6 +68,7 @@ import {
   armyReadyForContestedFight,
   assessDwellingRush,
   developmentResourceTargets,
+  nextGoldLadderStep,
   hasGoldArmy,
   hasReachedGoldArmy,
   hasOpenedFarEconomy,
@@ -413,6 +414,28 @@ function interactionCanYield(interaction: unknown, resource: string, depth = 0):
     default:
       return false;
   }
+}
+
+/** A visible funding opportunity, not guaranteed income from an unrolled die.
+ * Bound travel to two turns and use the normal guard/path checks. */
+export function hasAttainableGoldFunding(state: GameState, playerId: string): boolean {
+  const step = nextGoldLadderStep(state, playerId);
+  const player = state.players[playerId];
+  if (!step || step.kind !== "recruit" || !player) return false;
+  return Object.values(state.heroes).some(hero => hero.controllerId === playerId && hero.spaceId &&
+    collectMapObjectives(state, hero).some(objective => {
+      const field = state.adventure?.fields[objective.spaceId];
+      if (!field || objective.kind === "explore" ||
+          ((isFieldGuarded(field) || field.location === "creature_bank") && !canBeatGuardedField(state, hero, field))) return false;
+      const distance = distanceFromHeroTo(state, hero, objective.spaceId, true);
+      if (distance === undefined || distance + premiumCombatMovementReserve(state, hero, field) >
+          hero.movementPoints + heroMovementMax(state, hero)) return false;
+      return (["gold", "buildingMaterials", "valuables"] as const).some(resource =>
+        player.resources[resource] < (step.cost[resource] ?? 0) &&
+        (field.location === "settlement" ? field.flagOwnerId !== playerId :
+          field.location === "mine" ? field.resource === resource && field.flagOwnerId !== playerId :
+            interactionCanYield(locationDefinitions[field.location]?.interaction, resource)));
+    }));
 }
 
 /**
@@ -2249,12 +2272,13 @@ export function primaryMapObjective(
   // resource-funding (below) and far-economy capture blocks, so the hero would
   // march for XP the moment ~2 far tiles are secured and never gather the
   // valuables the gold dwelling needs. Keep gathering until the targets are met
-  // (or a gold body already stands); the growth march resumes unchanged then.
+  // (or no Gold recruit remains); the growth march resumes unchanged then.
   // Gate at the CALL SITE only — heroReadyForGrowth itself is unchanged so its
   // other users (growth-tile band) keep their behaviour.
   const goldEconomyTargets = developmentResourceTargets(state, hero.controllerId);
   const goldEconomyRes = state.players[hero.controllerId]?.resources;
-  const savingForGoldEconomy = !hasGoldArmy(state, hero.controllerId) && goldEconomyRes !== undefined &&
+  const missingGoldRecruit = nextGoldLadderStep(state, hero.controllerId)?.kind === "recruit";
+  const savingForGoldEconomy = (!hasGoldArmy(state, hero.controllerId) || missingGoldRecruit) && goldEconomyRes !== undefined &&
     ((goldEconomyRes.valuables ?? 0) < (goldEconomyTargets.valuables ?? 0) ||
       (goldEconomyRes.buildingMaterials ?? 0) < (goldEconomyTargets.buildingMaterials ?? 0) ||
       (goldEconomyRes.gold ?? 0) < (goldEconomyTargets.gold ?? 0));
@@ -2286,7 +2310,7 @@ export function primaryMapObjective(
   // overwrite with a resource source, flipping the predicate every decision
   // (the known gate-oscillation stall class).
   if (hero.kind === "main" && homeRemaining.length === 0 &&
-      ((state.computerMemory?.[hero.controllerId]?.settlementLossStreak ?? 0) >= 2 ||
+      (missingGoldRecruit || (state.computerMemory?.[hero.controllerId]?.settlementLossStreak ?? 0) >= 2 ||
         securedFarTileIds(state, hero.controllerId).size > 0)) {
     const targets = developmentResourceTargets(state, hero.controllerId);
     const resources = state.players[hero.controllerId].resources;

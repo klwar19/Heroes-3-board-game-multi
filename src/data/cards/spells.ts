@@ -1576,12 +1576,11 @@ export const spellCards: CardLibrary = {
   // a single School. Played as an instant when the opponent casts a Spell of that
   // School, it ends that Spell (reuses the CANCEL_SPELL machinery — the pending
   // cast is cancelled, or a matching enemy Spell instant on an attack is
-  // reversed). The card's two printed tiers ("Power 0 / Power 1") are the engine's
-  // basic / expert play: basic ends a Basic Spell of the School; the expert play
-  // (spending a crown, like every other expert play) ends a Basic OR Expert
-  // Spell. A School-agnostic Spell (Magic Arrow) counts as belonging to every
-  // School, so any Protection can end it. The "OR Instant: +1 Power" side is the
-  // universal power-source discard.
+  // reversed). The card's two printed tiers are SPELL-POWER tiers, not the
+  // generic crown-funded Basic/Expert card-play modes: Power 0 ends a Basic
+  // Spell; Power 1 ends a Basic or Expert Spell. A School-agnostic Spell (Magic
+  // Arrow) counts as belonging to every School, so any Protection can end it.
+  // The "OR Instant: +1 Power" side remains the universal power-source discard.
   "spell.protection_from_air": {
     id: "spell.protection_from_air",
     name: "Protection from Air",
@@ -1594,15 +1593,24 @@ export const spellCards: CardLibrary = {
       "spell",
       "basic",
       "air",
-      "Instant: Play after a Spell from the School of Air Magic is cast to ignore that spell's effect. Basic: a Basic Spell; Expert: a Basic or an Expert Spell. — OR — Instant: +1 Power."
+      "Instant: Play after a Spell from the School of Air Magic is cast to ignore that spell's effect. Power 0: a Basic Spell; Power 1: a Basic or an Expert Spell. — OR — Instant: +1 Power."
     ],
     power: 0,
-    trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
     effect: {
-      type: "CANCEL_SPELL",
-      schools: ["air"],
-      maxSpellLevel: "basic",
-      expertIgnoresMaxSpellLevel: true
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Power 0: ignore a Basic Air Magic spell",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
+          effect: { type: "CANCEL_SPELL", schools: ["air"], maxSpellLevel: "basic" }
+        },
+        {
+          label: "Power 1: ignore a Basic or Expert Air Magic spell",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
+          cost: { powerCost: 1, costCardFilter: "power-source" },
+          effect: { type: "CANCEL_SPELL", schools: ["air"], maxSpellLevel: "expert" }
+        }
+      ]
     },
     assets: {
       // Original card face (scripts/build-missing-spell-cards.mjs) — the wiki
@@ -1625,15 +1633,24 @@ export const spellCards: CardLibrary = {
       "spell",
       "basic",
       "earth",
-      "Instant: Play after a Spell from the School of Earth Magic is cast to ignore that spell's effect. Basic: a Basic Spell; Expert: a Basic or an Expert Spell. — OR — Instant: +1 Power."
+      "Instant: Play after a Spell from the School of Earth Magic is cast to ignore that spell's effect. Power 0: a Basic Spell; Power 1: a Basic or an Expert Spell. — OR — Instant: +1 Power."
     ],
     power: 0,
-    trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
     effect: {
-      type: "CANCEL_SPELL",
-      schools: ["earth"],
-      maxSpellLevel: "basic",
-      expertIgnoresMaxSpellLevel: true
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Power 0: ignore a Basic Earth Magic spell",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
+          effect: { type: "CANCEL_SPELL", schools: ["earth"], maxSpellLevel: "basic" }
+        },
+        {
+          label: "Power 1: ignore a Basic or Expert Earth Magic spell",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
+          cost: { powerCost: 1, costCardFilter: "power-source" },
+          effect: { type: "CANCEL_SPELL", schools: ["earth"], maxSpellLevel: "expert" }
+        }
+      ]
     },
     assets: {
       // Original card face (scripts/build-missing-spell-cards.mjs) — the wiki
@@ -1656,15 +1673,24 @@ export const spellCards: CardLibrary = {
       "spell",
       "basic",
       "fire",
-      "Instant: Play after a Spell from the School of Fire Magic is cast to ignore that spell's effect. Basic: a Basic Spell; Expert: a Basic or an Expert Spell. — OR — Instant: +1 Power."
+      "Instant: Play after a Spell from the School of Fire Magic is cast to ignore that spell's effect. Power 0: a Basic Spell; Power 1: a Basic or an Expert Spell. — OR — Instant: +1 Power."
     ],
     power: 0,
-    trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
     effect: {
-      type: "CANCEL_SPELL",
-      schools: ["fire"],
-      maxSpellLevel: "basic",
-      expertIgnoresMaxSpellLevel: true
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Power 0: ignore a Basic Fire Magic spell",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
+          effect: { type: "CANCEL_SPELL", schools: ["fire"], maxSpellLevel: "basic" }
+        },
+        {
+          label: "Power 1: ignore a Basic or Expert Fire Magic spell",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
+          cost: { powerCost: 1, costCardFilter: "power-source" },
+          effect: { type: "CANCEL_SPELL", schools: ["fire"], maxSpellLevel: "expert" }
+        }
+      ]
     },
     assets: {
       // Original card face (scripts/build-missing-spell-cards.mjs) — the wiki
@@ -1687,15 +1713,24 @@ export const spellCards: CardLibrary = {
       "spell",
       "basic",
       "water",
-      "Instant: Play after a Spell from the School of Water Magic is cast to ignore that spell's effect. Basic: a Basic Spell; Expert: a Basic or an Expert Spell. — OR — Instant: +1 Power."
+      "Instant: Play after a Spell from the School of Water Magic is cast to ignore that spell's effect. Power 0: a Basic Spell; Power 1: a Basic or an Expert Spell. — OR — Instant: +1 Power."
     ],
     power: 0,
-    trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
     effect: {
-      type: "CANCEL_SPELL",
-      schools: ["water"],
-      maxSpellLevel: "basic",
-      expertIgnoresMaxSpellLevel: true
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Power 0: ignore a Basic Water Magic spell",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
+          effect: { type: "CANCEL_SPELL", schools: ["water"], maxSpellLevel: "basic" }
+        },
+        {
+          label: "Power 1: ignore a Basic or Expert Water Magic spell",
+          trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
+          cost: { powerCost: 1, costCardFilter: "power-source" },
+          effect: { type: "CANCEL_SPELL", schools: ["water"], maxSpellLevel: "expert" }
+        }
+      ]
     },
     assets: {
       // Original card face (scripts/build-missing-spell-cards.mjs) — the wiki

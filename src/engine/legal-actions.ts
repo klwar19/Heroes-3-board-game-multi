@@ -11570,16 +11570,63 @@ function getLegalReactionsForTriggerCore(
           const card = cards[cardId];
           if (
             !card ||
-            card.effect.type !== "CANCEL_SPELL" ||
             card.implementationStatus !== "implemented" ||
             (card.timing !== "reaction" && card.timing !== "instant")
           ) {
             continue;
           }
+          // Power-tiered Protection cards expose one CANCEL_SPELL variant per
+          // printed tier. This dedicated attack-instant path predates optioned
+          // counters, so enumerate those variants here as well as the direct
+          // Resistance effect below.
+          if (card.effect.type === "CHOOSE_ONE") {
+            for (const variant of getCardPlayVariants(card, state)) {
+              if (
+                variant.effect.type !== "CANCEL_SPELL" ||
+                variant.mapOnly ||
+                !canAffordCardCost(state, player.id, cardId, variant.cost)
+              ) {
+                continue;
+              }
+              const cancelEffect = variant.effect;
+              const matches = enemyInstants.some((entry) => {
+                const instantSpell = cards[entry.cardId];
+                return cancelSpellAllowsSchoolAndLevel(
+                  cancelEffect,
+                  {
+                    schools: instantSpell?.spellSchools ?? [],
+                    level: instantSpell?.spellLevel,
+                  },
+                  "basic",
+                );
+              });
+              if (!matches) {
+                continue;
+              }
+              reactions.push(
+                makeReactionAction(
+                  `${card.name}: ${variant.optionLabel ?? "ignore spell"}${fromSpellBook ? " (Spell Book)" : ""}`,
+                  {
+                    type: "PLAY_REACTION",
+                    playerId: player.id,
+                    cardId,
+                    mode: "basic",
+                    ...(variant.optionIndex !== undefined
+                      ? { optionIndex: variant.optionIndex }
+                      : {}),
+                    ...(fromSpellBook ? { fromSpellBook: true } : {}),
+                  },
+                ),
+              );
+            }
+            continue;
+          }
+          if (card.effect.type !== "CANCEL_SPELL") {
+            continue;
+          }
           const cancel = card.effect;
-          // Protection-from-X is offered only when an enemy instant of its own
-          // School (and, at basic, Basic level) is on the attack; Resistance, with
-          // no such gate, matches every enemy instant.
+          // Direct CANCEL_SPELL cards (currently Resistance) match every enemy
+          // instant. Power-tiered Protection was handled by the option loop above.
           const matchesAt = (mode: CardPlayMode) =>
             enemyInstants.some((entry) =>
               cancelSpellAllowsSchoolAndLevel(
@@ -11610,8 +11657,7 @@ function getLegalReactionsForTriggerCore(
             );
           }
           if (
-            (cancel.expertIgnoresMaxPower ||
-              cancel.expertIgnoresMaxSpellLevel) &&
+            cancel.expertIgnoresMaxPower &&
             (expertUsesLeft > 0 || abilityExpertIsCrownFree(player, cardId)) &&
             matchesAt("expert")
           ) {
@@ -12906,7 +12952,21 @@ function variantMatchesTrigger(
     return utilityFallback;
   }
 
-  const isSelf = triggerEvent.playerId === playerId;
+  // An attack reaction belongs to the controller of the unit that is actually
+  // attacking, not necessarily to the player id carried by the action that
+  // caused the declaration.  Retaliations and engine-generated attacks are
+  // built while another action is resolving, and treating that outer/initiating
+  // id as the controller can invert the printed `self` / `opponent` trigger.
+  // In particular, Weakness (`opponent`) then disappears for the unit being hit
+  // even though isEffectLegalForTrigger correctly identifies that player as the
+  // owner of the debuff.  Resolve the controller from the authoritative combat
+  // unit; retain the event id only as a defensive fallback for legacy events.
+  const triggerControllerId =
+    triggerEvent.type === "UNIT_ATTACK_DECLARED"
+      ? (state.combat?.units[triggerEvent.attackerId]?.controllerId ??
+        triggerEvent.playerId)
+      : triggerEvent.playerId;
+  const isSelf = triggerControllerId === playerId;
   if (variant.trigger.controller === "self" && !isSelf) {
     return utilityFallback;
   }
@@ -13234,11 +13294,9 @@ export function effectHasExpertMode(effect: ConcreteEffect): boolean {
   }
 
   if (effect.type === "CANCEL_SPELL") {
-    // Resistance's expert ignores the power cap; Protection-from-X's expert
-    // ignores the spell-level cap. Either makes the card's expert play real.
-    return Boolean(
-      effect.expertIgnoresMaxPower || effect.expertIgnoresMaxSpellLevel,
-    );
+    // Resistance's expert ignores the power cap. Protection-from-X uses
+    // explicit Power-0 / Power-1 options and never spends a crown.
+    return Boolean(effect.expertIgnoresMaxPower);
   }
 
   // Interference has an expert side (+2 instead of +1); Plate of the Dying
@@ -13474,8 +13532,9 @@ export function isEffectLegalForTrigger(
         return false;
       }
 
-      // Protection-from-X: the pending spell must belong to the card's School,
-      // and (basic play) be a Basic spell. Resistance leaves both gates open.
+      // Protection-from-X: the pending spell must belong to the card's School
+      // and fit the chosen Power tier's printed level ceiling. Resistance leaves
+      // both gates open.
       const pendingSpell = cardLibrary[pendingStackItem.action.cardId];
       if (
         !cancelSpellAllowsSchoolAndLevel(
@@ -13769,6 +13828,15 @@ export function isEffectLegalForTrigger(
     // Bloodlust/Precision/Golden Bow restrict the unit types they boost.
     const affected = effect.stat === "attack" ? attacker : defender;
     if (effect.unitTypes && !effect.unitTypes.includes(affected.type)) {
+      return false;
+    }
+    // Eikthurn VI pays from the live, combat-scoped Bulwark Rune pool. Keep an
+    // unaffordable defense reaction out of every human/AI/multiplayer offer;
+    // the reducer repeats this check before changing the pending attack.
+    if (
+      effect.runeCost &&
+      (state.combat?.runes?.[playerId]?.count ?? 0) < effect.runeCost
+    ) {
       return false;
     }
     if (

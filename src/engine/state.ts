@@ -1704,13 +1704,10 @@ export type EffectDefinition =
        * end it. Resistance leaves this undefined (it cancels any school).
        */
       schools?: SpellSchool[];
-      /**
-       * Protection from X gates on the cancelled spell's printed LEVEL, not its
-       * power: the basic play cancels a Basic spell only; the expert play
-       * (expertIgnoresMaxSpellLevel) cancels a Basic OR Expert spell.
+      /** Protection from X gates on the cancelled spell's printed level. Its
+       * Power-0 and Power-1 options carry Basic and Expert ceilings respectively.
        */
       maxSpellLevel?: "basic" | "expert";
-      expertIgnoresMaxSpellLevel?: boolean;
       /**
        * Boots of Polarity: a chance-based cancel. When set, playing the reaction
        * rolls `count` Attack dice and the player keeps the best ("choose one");
@@ -1761,6 +1758,18 @@ export type EffectDefinition =
       perCostCard?: number;
       /** Offense/Armorer: "Then draw 1 card." */
       drawCards?: number;
+      /**
+       * Eikthurn IV: bank this many Bulwark Runes when the stat reaction is
+       * played. The gain is doubled by `doubleForUnitName` together with the
+       * stat bonus, so the named unit receives the complete doubled effect.
+       */
+      gainRunes?: number;
+      /**
+       * Eikthurn VI: Runes paid immediately for this stat reaction. A play is
+       * unavailable, and rejected at resolution, when the combat pool cannot
+       * cover the cost. Spending never revokes an already-earned Rune level.
+       */
+      runeCost?: number;
       /** Draw-rider cards such as Kei IV discard only after the new cards enter hand. */
       thenDiscard?: number;
       /** Yuuka VI: after the defense reaction, discard random cards from the opponent. */

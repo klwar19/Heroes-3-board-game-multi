@@ -102,6 +102,7 @@ import {
 import {
   canBeatGuardedField,
   collectMapObjectives,
+  hasAttainableGoldFunding,
   distanceFromHeroTo,
   freeSeizuresWithinReach,
   shouldDeferExpansionTile,
@@ -548,10 +549,9 @@ function buildingScore(
         : 280,
     );
   }
-  // Building the Gold Dwelling is not the milestone's outcome. Until one real
-  // Gold unit has joined the army, do not let a side building consume its exact
-  // recruit fund.
-  if (development.goldUnlocked && (development.goldUnits === 0 || committedGoldInvestment(state, playerId))) {
+  // Keep the missing Gold recruit funded even if the lower Gold body already
+  // stands. A side building must not consume the remaining recruit fund.
+  if (development.goldUnlocked && (nextGoldLadderStep(state, playerId)?.kind === "recruit" || committedGoldInvestment(state, playerId))) {
     const building = coreBuildingDefinitions[buildingId];
     const cost = building ? effectiveTownBuildingCost(state, building) : {};
     const resources = playerResources(state, playerId);
@@ -601,7 +601,11 @@ function populationScore(
       player.army.some(unit => unit.unitDefId === "necropolis.skeletons" && unit.side === "pack");
     // A held ability without a reachable fight cannot pay for an upgrade.
     // Use the legal paid offer to break that deadlock, including Vampire Pack.
-    if (fallbackUpgrade && !earnedUpgradeAvailable) return 976;
+    const fallbackPurchase = action.purchases[0];
+    const fallbackCost = fallbackPurchase?.kind === "reinforce" && fallbackPurchase.armyUnitId
+      ? reinforceCostFor(state, observation.playerId, fallbackPurchase.armyUnitId, false, false, false) : null;
+    if (fallbackUpgrade && !earnedUpgradeAvailable &&
+        !spendsMissingGoldRecruitFund(state, observation.playerId, fallbackCost)) return 976;
     if (action.purchases.some(purchase => purchase.kind !== "recruit" &&
         (purchase.unitDefId === "necropolis.vampires" || purchase.unitDefId === "necropolis.wraiths" ||
           (purchase.unitDefId === "necropolis.zombies" && player.army.some(u => u.unitDefId === "necropolis.wraiths" && u.side === "pack") && player.hand.some(id =>
@@ -871,13 +875,11 @@ function populationScore(
             coreUnitDefinitions[purchase.unitDefId]?.tier === "gold",
         );
       if (buysLowerGoldFew) {
-        // The lower Gold Few while the top Few is still missing: skip it while
-        // the top body lands within two Resource Rounds, unless the seat has
-        // already waited two rounds for it (no idle treasury, no idle token).
-        const plan = memory.developmentPlan;
-        const waited =
-          plan?.goal === "gold-recruit" ? (state.round ?? 0) - plan.sinceRound : 0;
-        if (goldPurchaseReachable(state, observation.playerId, step.cost, 2) && waited < 2) {
+        // Elapsed time does not make spending the level-7 fund sensible.
+        // Visible, reachable pickups can finish the fund even when printed
+        // production alone cannot. Reconsider after each actual collection.
+        if (goldPurchaseReachable(state, observation.playerId, step.cost, 2) ||
+            hasAttainableGoldFunding(state, observation.playerId)) {
           return Math.min(score, 240);
         }
         return score;
@@ -886,8 +888,10 @@ function populationScore(
         step.kind === "recruit" ||
         goldPurchaseReachable(state, observation.playerId, step.cost, 1);
       if (saving) {
-        if (development.goldUnits === 0) {
-          // Hold the Population token and treasury for the first Gold body.
+        if (development.goldUnits === 0 || (step.kind === "recruit" &&
+            (goldPurchaseReachable(state, observation.playerId, step.cost, 2) ||
+              hasAttainableGoldFunding(state, observation.playerId)))) {
+          // Hold the Population token and treasury for the missing Gold body.
           return Math.min(score, 240);
         }
         if (
@@ -2358,18 +2362,26 @@ function equipmentBuyScore(state: GameState, playerId: string, equipmentId: stri
   return 1_000;
 }
 
-/** Keep policy rejections below the menu's Leave option; utility's generic
- * minimum otherwise turns even a rejected purchase into an automatic buy. */
+/** Optional paid upgrades must leave the missing Gold body's inputs intact. */
+function spendsMissingGoldRecruitFund(state: GameState, playerId: PlayerId, cost: ResourceCost | null): boolean {
+  const step = nextGoldLadderStep(state, playerId);
+  if (!cost || step?.kind !== "recruit" ||
+      state.adventure?.pendingNecromancy?.playerId === playerId) return false;
+  const resources = state.players[playerId].resources;
+  return (["gold", "buildingMaterials", "valuables"] as const).some(resource =>
+    (cost[resource] ?? 0) > 0 && resources[resource] - (cost[resource] ?? 0) < (step.cost[resource] ?? 0));
+}
+
 function rejectsPaidBronzeSteps(state: GameState, playerId: PlayerId, steps: ReadonlyArray<VisitStep>): boolean {
-  if (!hasGoldArmy(state, playerId)) return false;
   return steps.some((step) => {
-    if (step.type === "EVENT_NEUTRAL_BUY") return !goldArmyAllowsBronzePurchase(state, playerId, step.unitDefId, "recruit");
-    if (step.type === "RECRUIT_DRAWN_NEUTRAL") return Boolean(step.recruit &&
+    if (step.type === "EVENT_NEUTRAL_BUY") return hasGoldArmy(state, playerId) && !goldArmyAllowsBronzePurchase(state, playerId, step.unitDefId, "recruit");
+    if (step.type === "RECRUIT_DRAWN_NEUTRAL") return Boolean(hasGoldArmy(state, playerId) && step.recruit &&
       !goldArmyAllowsBronzePurchase(state, playerId, step.recruit.unitDefId, "recruit"));
     if (step.type === "REINFORCE_ARMY_UNIT") {
       const unit = state.players[playerId]?.army.find((candidate) => candidate.id === step.armyUnitId);
       const cost = reinforceCostFor(state, playerId, step.armyUnitId, step.halfCost, false, step.roundDown ?? false);
-      return Boolean(unit && eventResourceCostValue(cost ?? undefined) > 0 &&
+      return spendsMissingGoldRecruitFund(state, playerId, cost) || Boolean(hasGoldArmy(state, playerId) &&
+        unit && eventResourceCostValue(cost ?? undefined) > 0 &&
         !goldArmyAllowsBronzePurchase(state, playerId, unit.unitDefId, "reinforce"));
     }
     if (step.type === "PAY_TO") return rejectsPaidBronzeSteps(state, playerId, step.steps);
@@ -2523,6 +2535,7 @@ function resolveVisitStepScore(
       return candidate.side === "few" && def?.pack && (def.tier === "bronze" || def.tier === "silver");
     })[optionIndex];
     const cost = unit ? reinforceCostFor(state, playerId, unit.id, false, false, false, 3) : null;
+    if (spendsMissingGoldRecruitFund(state, playerId, cost)) return 1_020;
     if (unit && eventResourceCostValue(cost ?? undefined) > 0 &&
         !goldArmyAllowsBronzePurchase(state, playerId, unit.unitDefId, "reinforce")) return 1_020;
     return 1_130 - Math.min(15, optionIndex);
@@ -2596,6 +2609,9 @@ export function scoreMapAction(
       {
         const unit = state.players[observation.playerId]?.army.find((candidate) => candidate.id === action.armyUnitId);
         const cost = reinforcementDiscountCostFor(state, observation.playerId, action.discountId, action.armyUnitId, action.kind);
+        if (spendsMissingGoldRecruitFund(state, observation.playerId, cost)) {
+          return { score: 180, policy: "map.save-for-missing-gold-recruit" };
+        }
         if (unit && eventResourceCostValue(cost ?? undefined) > 0 &&
             !goldArmyAllowsBronzePurchase(state, observation.playerId, unit.unitDefId, action.kind)) {
           return { score: 180, policy: "map.preserve-premium-army-fund" };

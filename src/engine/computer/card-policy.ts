@@ -386,8 +386,12 @@ export function cardKeepValue(
     if (card.effect.type === "ADD_SPELL_POWER" && spells > power) value += 14;
     if (card.effect.type === "RECALL_SPELL" && spells > 0 && recall < 2) value += 18;
     if (card.kind === "spell" && spells === 0) value += 12;
-    if (card.effect.type === "CANCEL_SPELL" && cardValueContext(view.state, view.playerId).enemyHeroThreat) {
-      const counters = known.filter((entry) => entry.effect.type === "CANCEL_SPELL").length;
+    const isCounter = (entry: CardDefinition) =>
+      entry.effect.type === "CANCEL_SPELL" ||
+      (entry.effect.type === "CHOOSE_ONE" &&
+        entry.effect.options.some((option) => option.effect.type === "CANCEL_SPELL"));
+    if (isCounter(card) && cardValueContext(view.state, view.playerId).enemyHeroThreat) {
+      const counters = known.filter(isCounter).length;
       if (counters < 2) value += 14;
     }
     if (card.id === "ability.archery" || card.id === "spell.precision" || card.id === "artifact.golden_bow") {
@@ -816,7 +820,12 @@ function scoreStatReaction(
     // Attack window for self / defense window for opponent — both are offered
     // only when useful. Prefer expert when crowns allow (already gated).
     if (stat === "attack" || stat === "defense") {
-      return 1_090 + amount * 12 + modeBonus(mode);
+      // Eikthurn's bespoke reactions add/spend combat Runes in the same play.
+      // Value the immediate gain and charge a modest opportunity cost for the
+      // spend; affordability itself is enforced by legal-actions.
+      const runeValue =
+        (effect.gainRunes ?? 0) * 10 - (effect.runeCost ?? 0) * 12;
+      return 1_090 + amount * 12 + runeValue + modeBonus(mode);
     }
     return 1_070 + amount * 8 + modeBonus(mode);
   }

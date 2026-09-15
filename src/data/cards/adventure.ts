@@ -4253,17 +4253,71 @@ export const adventureCards: CardLibrary = {
   },
 
   // ---- Bulwark heroes (expansion; fan faction, placeholder art) ----------
-  // Dhuin (Chieftain): Snow Elves specialist — the standard might unit-buff trio
-  // (Catherine pattern). Creyle (Chieftain): the same for Mammoths.
-  "specialty.dhuin.1": withoutArt(
-    mightSpecialtyOne("dhuin", "Snow Elves", "Snow Elves"),
-  ),
-  "specialty.dhuin.4": withoutArt(
-    unitHealthSpecialty("dhuin", "Snow Elves", 4, 1, "Snow Elves"),
-  ),
-  "specialty.dhuin.6": withoutArt(
-    unitInitiativeSpecialty("dhuin", "Snow Elves", 6, 1, "Snow Elves"),
-  ),
+  // Dhuin (Chieftain): Snow Elves specialist. I/IV are identical instant
+  // attack reactions that also draw a card; their shared draw rider remains a
+  // legal draw-only play on the map or during Dhuin's own activation. VI is a
+  // combat-long +Attack effect on one friendly unit, doubled for Snow Elves.
+  "specialty.dhuin.1": withoutArt({
+    id: "specialty.dhuin.1",
+    name: "Snow Elves I",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "dhuin",
+      "Instant: your attacking unit gains +1 Attack for this attack, then draw 1 card. You may play this card just to draw 1 card.",
+    ],
+    trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+    target: { type: "none" },
+    effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1, drawCards: 1 },
+    implementationStatus: "implemented",
+    source: heroSource("dhuin"),
+  }),
+  "specialty.dhuin.4": withoutArt({
+    id: "specialty.dhuin.4",
+    name: "Snow Elves IV",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "dhuin",
+      "Instant: your attacking unit gains +1 Attack for this attack, then draw 1 card. You may play this card just to draw 1 card.",
+    ],
+    trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+    target: { type: "none" },
+    effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1, drawCards: 1 },
+    implementationStatus: "implemented",
+    source: heroSource("dhuin"),
+  }),
+  "specialty.dhuin.6": withoutArt({
+    id: "specialty.dhuin.6",
+    name: "Snow Elves VI",
+    kind: "hero-specialty",
+    timing: "ongoing",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "ongoing",
+      "dhuin",
+      "Ongoing (Combat): give a friendly unit +1 Attack for this combat — doubled (+2) for Snow Elves.",
+    ],
+    target: { type: "friendly-unit" },
+    effect: {
+      type: "CREATE_ATTACK_BUFF",
+      name: "Snow Elves Specialty",
+      amount: 1,
+      duration: { type: "combat" },
+      polarity: "positive",
+      removable: false,
+      doubleForUnitName: "Snow Elves",
+    },
+    implementationStatus: "implemented",
+    source: heroSource("dhuin"),
+  }),
   "specialty.creyle.1": withoutArt(
     mightSpecialtyOne("creyle", "Mammoths", "Mammoths"),
   ),
@@ -4497,19 +4551,51 @@ export const adventureCards: CardLibrary = {
     source: heroSource("kriv"),
   },
 
-  // Eikthurn (Chieftain): Mountain Rams specialist (the bronze level-2 unit) — the
-  // standard might unit-buff trio (Catherine/Dhuin pattern): I is the +1
-  // attack/defense rider doubled for Mountain Rams, IV adds +1 max HP (×2 Mountain
-  // Rams). VI departs from the shared helper: instead of the generic "initiative
-  // buff OR draw a card" it is "initiative buff (Initiative ×2 for Mountain Rams,
-  // +1 movement) OR a flat, one-shot +2 Attack on your unit's next attack" — the
-  // same instant +2-attack reaction Casmetra VI uses (never doubled).
-  "specialty.eikthurn.1": withoutArt(
-    mightSpecialtyOne("eikthurn", "Mountain Rams", "Mountain Rams"),
-  ),
-  "specialty.eikthurn.4": withoutArt(
-    unitHealthSpecialty("eikthurn", "Mountain Rams", 4, 1, "Mountain Rams"),
-  ),
+  // Eikthurn (Chieftain): Mountain Rams specialist. I is a combat-long Health
+  // buff. IV adds Attack and Runes to the declared attack, with both parts
+  // doubled for Mountain Rams. VI spends one live Rune for a large Defense
+  // reaction, whose Defense (but not its cost) doubles for Mountain Rams.
+  "specialty.eikthurn.1": withoutArt({
+    id: "specialty.eikthurn.1",
+    name: "Mountain Rams I",
+    kind: "hero-specialty",
+    timing: "ongoing",
+    phaseLimit: ["combat"],
+    tags: [
+      "hero-specialty",
+      "ongoing",
+      "eikthurn",
+      "Ongoing (Combat): give a friendly unit +1 maximum Health for this combat — doubled (+2) for Mountain Rams.",
+    ],
+    target: { type: "friendly-unit" },
+    effect: { type: "ADD_UNIT_MAX_HEALTH", amount: 1, doubleForUnitName: "Mountain Rams" },
+    implementationStatus: "implemented",
+    source: heroSource("eikthurn"),
+  }),
+  "specialty.eikthurn.4": withoutArt({
+    id: "specialty.eikthurn.4",
+    name: "Mountain Rams IV",
+    kind: "hero-specialty",
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "eikthurn",
+      "Instant: your attacking unit gains +1 Attack for this attack and you gain 2 Runes — both effects are doubled (+2 Attack and 4 Runes) for Mountain Rams.",
+    ],
+    trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+    target: { type: "none" },
+    effect: {
+      type: "ADD_COMBAT_STAT",
+      stat: "attack",
+      amount: 1,
+      gainRunes: 2,
+      doubleForUnitName: "Mountain Rams",
+    },
+    implementationStatus: "implemented",
+    source: heroSource("eikthurn"),
+  }),
   "specialty.eikthurn.6": withoutArt({
     id: "specialty.eikthurn.6",
     name: "Mountain Rams VI",
@@ -4520,40 +4606,16 @@ export const adventureCards: CardLibrary = {
       "hero-specialty",
       "instant",
       "eikthurn",
-      // Option A is the house-rule initiative buff (doubled for Mountain Rams, +1
-      // Combat movement); option B is a flat, one-shot +2 Attack on the caster's
-      // next attack (an attack reaction, never doubled).
-      "Combat: give a friendly unit +1 Initiative AND +1 Combat movement range this combat — Initiative doubled (+2) for Mountain Rams. — OR — Instant: your selected unit gains +2 Attack on its next attack.",
+      "Instant: spend 1 Rune; your defending unit gains +3 Defense for this attack — doubled (+6) for Mountain Rams.",
     ],
     target: { type: "none" },
+    trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
     effect: {
-      type: "CHOOSE_ONE",
-      options: [
-        {
-          label:
-            "+1 Initiative & +1 movement (Initiative x2 for Mountain Rams)",
-          combatOnly: true,
-          target: { type: "friendly-unit" },
-          effect: {
-            type: "CREATE_INITIATIVE_BUFF",
-            name: "Mountain Rams Specialty",
-            amount: 1,
-            duration: { type: "combat" },
-            polarity: "positive",
-            removable: false,
-            doubleForUnitName: "Mountain Rams",
-            // House rule (BINH): the buff also raises Combat movement by 1.
-            movementBonus: 1,
-          },
-        },
-        {
-          // Instant, one-shot +2 Attack on the caster's next attack (an attack
-          // reaction, like Casmetra VI). Flat — no Mountain Rams doubling.
-          label: "+2 attack",
-          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 2 },
-        },
-      ],
+      type: "ADD_COMBAT_STAT",
+      stat: "defense",
+      amount: 3,
+      runeCost: 1,
+      doubleForUnitName: "Mountain Rams",
     },
     implementationStatus: "implemented",
     source: heroSource("eikthurn"),

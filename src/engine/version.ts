@@ -1349,7 +1349,14 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 //   map tiles persist public advance-warning badges for guaranteed landmarks and
 //   reveal-time choices. The reducer semantics and MapTileState schema both
 //   changed, so the frontend and authoritative PartyKit worker must match.
-export const ENGINE_PROTOCOL_VERSION = 149;
+// v150 (2026-09-15): declared attacks now derive their initiating player from
+//   the attacking unit's authoritative controller. This keeps self/opponent
+//   instant ownership correct for retaliations and engine-generated attacks, so
+//   the attacked side is offered Weakness before the strike resolves.
+// v151 (2026-09-16): Dhuin and Eikthurn use their bespoke Bulwark specialty
+//   cards. Eikthurn's attack reactions can gain or spend the combat Rune pool,
+//   so clients and the authoritative room worker must share these semantics.
+export const ENGINE_PROTOCOL_VERSION = 151;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

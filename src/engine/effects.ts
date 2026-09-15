@@ -176,15 +176,15 @@ export function getCardOptions(card: CardDefinition): CardOptionDefinition[] {
  * reactions). Resistance sets neither `schools` nor `maxSpellLevel`, so it always
  * passes here — its only gate is power, checked separately at each call site.
  * Protection from Air/Earth/Fire/Water restricts the cancel to its School (a
- * school-agnostic spell like Magic Arrow counts as every School) and, in basic
- * play, to a Basic spell; its expert play (`expertIgnoresMaxSpellLevel`) lifts
- * the level cap but keeps the School gate. The power gate is NOT evaluated here.
+ * school-agnostic spell like Magic Arrow counts as every School). Its selected
+ * Power tier supplies the Basic or Expert level ceiling. The Power payment is
+ * evaluated by the option-cost pipeline, not here.
  */
 export function cancelSpellAllowsSchoolAndLevel(
   effect: Extract<EffectDefinition, { type: "CANCEL_SPELL" }>,
   spell: { schools: readonly SpellSchool[]; level: "basic" | "expert" | undefined;
   },
-  mode: CardPlayMode
+  _mode: CardPlayMode
 ): boolean {
   // School gate: the cancelled spell must belong to one of the named Schools. A
   // school-agnostic spell ("any", e.g. Magic Arrow) counts as belonging to every
@@ -198,11 +198,8 @@ export function cancelSpellAllowsSchoolAndLevel(
     }
   }
 
-  // Level gate: expert play (expertIgnoresMaxSpellLevel) ignores the cap; the
-  // basic play caps at `maxSpellLevel` (an Expert spell outranks a Basic one).
-  if (mode === "expert" && effect.expertIgnoresMaxSpellLevel) {
-    return true;
-  }
+  // Level gate: the chosen Protection Power tier supplies maxSpellLevel (an
+  // Expert spell outranks a Basic one). Resistance leaves the field undefined.
   if (effect.maxSpellLevel) {
     const rank = (level: "basic" | "expert" | undefined) =>
       level === "expert" ? 1 : 0;
@@ -1372,13 +1369,19 @@ export function describeCardEffect(card: CardDefinition): string {
     const draw = card.effect.drawCards
       ? `, then draw ${card.effect.drawCards}`
       : "";
+    const runes = card.effect.gainRunes
+      ? `, then gain ${card.effect.gainRunes} Rune${card.effect.gainRunes === 1 ? "" : "s"}`
+      : "";
+    const runeCost = card.effect.runeCost
+      ? ` (cost: ${card.effect.runeCost} Rune${card.effect.runeCost === 1 ? "" : "s"})`
+      : "";
     const penalty = card.effect.selfStatPenalty
       ? `, then -${card.effect.selfStatPenalty.amount} ${card.effect.selfStatPenalty.stat} until the end of the Combat`
       : "";
     const expert = card.effect.expertAmount
       ? `, expert +${card.effect.expertAmount}`
       : "";
-    return `+${card.effect.amount} ${card.effect.stat}${expert}${doubled}${draw}${penalty}`;
+    return `+${card.effect.amount} ${card.effect.stat}${expert}${doubled}${runes}${draw}${penalty}${runeCost}`;
   }
 
   if (card.effect.type === "TRIPLE_ATTACK_DIE") {

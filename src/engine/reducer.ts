@@ -20087,11 +20087,9 @@ function effectSupportsExpertPlay(
   }
 
   if (effect.type === "CANCEL_SPELL") {
-    // Resistance's expert ignores the power cap; Protection-from-X's expert
-    // ignores the spell-level cap. Either makes the card's expert play real.
-    return Boolean(
-      effect.expertIgnoresMaxPower || effect.expertIgnoresMaxSpellLevel,
-    );
+    // Resistance's expert ignores the power cap. Protection-from-X uses
+    // explicit Power-0 / Power-1 options and never spends a crown.
+    return Boolean(effect.expertIgnoresMaxPower);
   }
 
   // Interference's expert side (+2 instead of +1) exists; Plate of the Dying
@@ -21229,8 +21227,8 @@ function applyReactionPlayCore(
   }
 
   // Protection-from-X self-defends its School/level gate at resolution: a
-  // fabricated reaction can never cancel a spell of the wrong School or, in
-  // basic play, an Expert spell (the legal-action layer already filters offers).
+  // fabricated reaction can never cancel a spell of the wrong School or above
+  // the chosen Power tier's ceiling (the legal-action layer already filters offers).
   if (
     effect.type === "CANCEL_SPELL" &&
     stackItem?.action.type === "CAST_SPELL"
@@ -22773,6 +22771,24 @@ function applyReactionPlayCore(
       adjacencyDefenseBonus +
       adjacentFriendlyDefenseBonus +
       concentratedFire;
+
+    // Eikthurn's Rune-priced defense must be paid before the pending attack is
+    // changed. The legal-action layer hides an unaffordable play; this guard
+    // also rejects forged/stale multiplayer actions without granting Defense.
+    if (
+      effect.runeCost &&
+      !spendRunes(state, playerId, effect.runeCost)
+    ) {
+      throw new Error(`${card.name} needs ${effect.runeCost} Rune${effect.runeCost === 1 ? "" : "s"}.`);
+    }
+
+    // Eikthurn IV grants Runes as part of this exact attack reaction. The same
+    // signature-unit multiplier as its Attack bonus applies to the Rune gain;
+    // syncRuneEffects runs immediately, so crossing a threshold can affect the
+    // attack currently paused on the stack.
+    if (effect.gainRunes) {
+      gainRunes(state, playerId, effect.gainRunes * doubleFactor);
+    }
 
     // Polish Balance Pack Shield (Power 2): "takes up to 3 damage" replaces the
     // Defense bonus for this one blow — a per-attack damage cap, the tightest
@@ -33203,7 +33219,12 @@ function declareAttack(
   const rollMode = getAttackRollMode(attacker, defender, state, isRetaliation);
   const attackDeclared = appendEvent(state, {
     type: "UNIT_ATTACK_DECLARED",
-    playerId: resolvedAction.playerId,
+    // The attack event's initiator is the attacking unit's controller.  An
+    // engine-generated/follow-up attack can be declared while resolving an
+    // action attributed to another player; leaking that outer id reverses
+    // `self`/`opponent` instant ownership and can hide Weakness from the unit
+    // being attacked.  Retaliation construction already uses this same source.
+    playerId: attacker.controllerId,
     attackerId: attacker.id,
     defenderId: defender.id,
     isRetaliation,
